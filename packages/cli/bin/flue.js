@@ -418,14 +418,44 @@ async function install() {
 		process.exit(1);
 	}
 
-	// Add opencode bin to $GITHUB_PATH if running in GitHub Actions
-	const githubPath = process.env.GITHUB_PATH;
-	if (githubPath) {
-		fs.appendFileSync(githubPath, `${process.env.HOME}/.opencode/bin\n`);
-		console.error('[flue] Added ~/.opencode/bin to $GITHUB_PATH');
-	}
+	// Persist ~/.opencode/bin on $PATH for subsequent CI steps
+	const opencodeBin = `${process.env.HOME}/.opencode/bin`;
+	addToPathCI(opencodeBin);
+	// Also make it available in the current process
+	process.env.PATH = `${opencodeBin}${path.delimiter}${process.env.PATH}`;
 
 	console.error('[flue] opencode installed successfully');
+}
+
+/**
+ * Add a directory to $PATH for subsequent CI steps.
+ * Each CI system has its own mechanism for persisting env changes across steps.
+ */
+function addToPathCI(dir) {
+	// GitHub Actions
+	if (process.env.GITHUB_PATH) {
+		fs.appendFileSync(process.env.GITHUB_PATH, `${dir}\n`);
+		console.error(`[flue] Added ${dir} to $GITHUB_PATH`);
+		return;
+	}
+	// CircleCI / GitLab CI (when BASH_ENV is set)
+	if (process.env.BASH_ENV && process.env.CI) {
+		fs.appendFileSync(process.env.BASH_ENV, `export PATH="${dir}:$PATH"\n`);
+		console.error(`[flue] Added ${dir} to $BASH_ENV`);
+		return;
+	}
+	// Azure Pipelines
+	if (process.env.TF_BUILD) {
+		console.log(`##vso[task.prependpath]${dir}`);
+		console.error(`[flue] Added ${dir} to PATH via Azure Pipelines logging command`);
+		return;
+	}
+	// Buildkite
+	if (process.env.BUILDKITE_ENV_FILE) {
+		fs.appendFileSync(process.env.BUILDKITE_ENV_FILE, `PATH="${dir}:${process.env.PATH}"\n`);
+		console.error(`[flue] Added ${dir} to $BUILDKITE_ENV_FILE`);
+		return;
+	}
 }
 
 // -- Main --------------------------------------------------------------------
