@@ -11,6 +11,8 @@ export interface FlueWorkerOptions {
 	gatewayKVBinding?: string;
 	/** Name of the env var/secret holding the gateway HMAC secret (default: 'GATEWAY_SECRET'). */
 	gatewaySecretBinding?: string;
+	/** If true, serve opencode endpoints to attach to TUI (default: false). */
+	serveOpencode?: boolean;
 }
 
 /**
@@ -79,22 +81,24 @@ export class FlueWorker<E extends Record<string, any>> extends Hono<{ Bindings: 
 		// Proxy to OpenCode server running inside the container on port 48765.
 		// Usage: opencode attach https://<worker>/opencode/<sandboxSessionId>
 		// Matches both /opencode/<sessionId> and /opencode/<sessionId>/sub/path
-		this.all('/opencode/*', async (c) => {
-			const url = new URL(c.req.url);
-			const rest = url.pathname.slice('/opencode/'.length);
-			const slashIdx = rest.indexOf('/');
-			const sessionId = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
-			const forwardPath = slashIdx === -1 ? '/' : rest.slice(slashIdx);
-			if (!sessionId) return c.json({ error: 'missing sandbox session id' }, 400);
-			try {
-				const sandbox = getSandbox(c.env[bindingName], sessionId);
-				const target = new URL(forwardPath + url.search, 'http://container');
-				const proxyReq = new Request(target.toString(), c.req.raw);
-				return await sandbox.containerFetch(proxyReq, 48765);
-			} catch (e) {
-				return c.json({ error: String(e) }, 502);
-			}
-		});
+		if (options?.serveOpencode) {
+			this.all('/opencode/*', async (c) => {
+				const url = new URL(c.req.url);
+				const rest = url.pathname.slice('/opencode/'.length);
+				const slashIdx = rest.indexOf('/');
+				const sessionId = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
+				const forwardPath = slashIdx === -1 ? '/' : rest.slice(slashIdx);
+				if (!sessionId) return c.json({ error: 'missing sandbox session id' }, 400);
+				try {
+					const sandbox = getSandbox(c.env[bindingName], sessionId);
+					const target = new URL(forwardPath + url.search, 'http://container');
+					const proxyReq = new Request(target.toString(), c.req.raw);
+					return await sandbox.containerFetch(proxyReq, 48765);
+				} catch (e) {
+					return c.json({ error: String(e) }, 502);
+				}
+			});
+		}
 
 		// Stream structured log events from the OpenCode server.
 		// Connects to the container's SSE event stream and transforms raw
