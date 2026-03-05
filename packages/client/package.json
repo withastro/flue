@@ -1,6 +1,6 @@
 {
 	"name": "@flue/client",
-	"version": "0.0.29",
+	"version": "0.0.30",
 	"type": "module",
 	"license": "Apache-2.0",
 	"exports": {

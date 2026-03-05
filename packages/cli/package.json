@@ -1,6 +1,6 @@
 {
 	"name": "@flue/cli",
-	"version": "0.0.47",
+	"version": "0.0.48",
 	"type": "module",
 	"license": "Apache-2.0",
 	"bin": {
@@ -15,7 +15,7 @@
 		"check:types": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@flue/client": "^0.0.29",
+		"@flue/client": "^0.0.30",
 		"@valibot/to-json-schema": "^1.0.0",
 		"valibot": "^1.0.0"
 	},
