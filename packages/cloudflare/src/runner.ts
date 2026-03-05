@@ -15,6 +15,7 @@ export class FlueRuntime {
 	private readonly sessionId: string;
 	private opencodeServer: OpencodeServer | null = null;
 	private resolvedProxies: ProxyService[] = [];
+	private proxyToken: string | null = null;
 	private _client: FlueClient | null = null;
 	private setupComplete = false;
 
@@ -71,7 +72,7 @@ export class FlueRuntime {
 			await this.setupProxies();
 		}
 
-		const opencodeConfig = this.buildOpencodeConfig();
+		const opencodeConfig = await this.buildOpencodeConfig();
 		console.log(`[flue] setup: starting OpenCode server (workdir: ${this.workdir})`);
 		const result = await createOpencode(this.sandbox, {
 			port: 48765,
@@ -123,7 +124,7 @@ export class FlueRuntime {
 		if (!secret) throw new Error('[flue] gateway.secret is required when proxies are configured');
 		if (!kv) throw new Error('[flue] gateway.kv is required when proxies are configured');
 
-		const proxyToken = await generateProxyToken(secret, this.sessionId);
+		const proxyToken = await this.getOrCreateProxyToken();
 		const envVars: Record<string, string> = {};
 
 		for (const proxy of proxies) {
@@ -207,7 +208,7 @@ export class FlueRuntime {
 	/**
 	 * Build OpenCode config, routing model providers through proxies when available.
 	 */
-	private buildOpencodeConfig(): object {
+	private async buildOpencodeConfig(): Promise<object> {
 		const gateway = this.options.gateway;
 		const proxies = this.resolvedProxies;
 
@@ -216,6 +217,7 @@ export class FlueRuntime {
 		}
 
 		const providerConfig: Record<string, object> = {};
+		const proxyToken = await this.getOrCreateProxyToken();
 		for (const proxy of proxies) {
 			if (proxy.isModelProvider && proxy.providerConfig) {
 				const { providerKey, options = {} } = proxy.providerConfig;
@@ -224,6 +226,7 @@ export class FlueRuntime {
 					options: {
 						baseURL: `${proxyUrl}/v1`,
 						...options,
+						apiKey: proxyToken,
 					},
 				};
 			}
@@ -237,6 +240,22 @@ export class FlueRuntime {
 			...(this.options.opencodeConfig as Record<string, unknown> | undefined),
 			provider: providerConfig,
 		};
+	}
+
+	/**
+	 * Lazily create a proxy token and reuse it across setup phases.
+	 */
+	private async getOrCreateProxyToken(): Promise<string> {
+		if (this.proxyToken) return this.proxyToken;
+
+		const gateway = this.options.gateway;
+		const secret = gateway?.secret;
+		if (!secret) {
+			throw new Error('[flue] gateway.secret is required when proxies are configured');
+		}
+
+		this.proxyToken = await generateProxyToken(secret, this.sessionId);
+		return this.proxyToken;
 	}
 }
 

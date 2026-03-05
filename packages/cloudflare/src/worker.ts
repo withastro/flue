@@ -134,7 +134,7 @@ export class FlueWorker<E extends Record<string, any>> extends Hono<{ Bindings: 
 				return c.json({ error: 'proxy not configured' }, 500);
 			}
 
-			const token = extractBearerToken(c.req.header('Authorization'));
+			const token = extractBearerToken(c.req.header('Authorization')) ?? c.req.header('x-api-key') ?? null;
 			if (!token || !(await validateProxyToken(secret, sessionId, token))) {
 				return c.json({ error: 'invalid proxy token' }, 401);
 			}

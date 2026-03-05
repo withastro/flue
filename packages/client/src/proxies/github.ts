@@ -65,7 +65,7 @@ export function github(opts?: { policy?: string | ProxyPolicy }): ProxyFactory<{
 			policy: resolvedPolicy,
 			setup: [
 				'git config --global url."{{proxyUrl}}/".insteadOf "https://github.com/"',
-				'git config --global http.{{proxyUrl}}/.extraheader "Authorization: Bearer proxy-placeholder"',
+				'git config --global http.{{proxyUrl}}/.extraheader "Authorization: Bearer {{proxyToken}}"',
 			],
 			denyResponse,
 		};
@@ -106,8 +106,8 @@ function resolveGitHubPolicy(policy?: string | ProxyPolicy): ProxyPolicy {
 					// gh CLI uses POST /graphql for most read operations
 					{ method: 'POST', path: '/graphql', body: githubBody.graphql() },
 					// git clone / fetch
-					{ method: 'POST', path: '/*/git-upload-pack' },
-					{ method: 'GET', path: '/*/info/refs' },
+					{ method: 'POST', path: '/**/git-upload-pack' },
+					{ method: 'GET', path: '/**/info/refs' },
 					...userAllow,
 				],
 				deny: userDeny,
