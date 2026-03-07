@@ -48,86 +48,101 @@ export async function runPrompt<S extends v.GenericSchema | undefined = undefine
 	}
 
 	const sessionId = session.data.id;
-	const promptStart = Date.now();
-
-	console.log(`[flue] ${label}: sending prompt async`);
-	const asyncResult = await client.session.promptAsync({
-		path: { id: sessionId },
-		query: { directory: workdir },
-		body: {
-			...(model ? { model } : {}),
-			parts: [{ type: 'text', text: prompt }],
-		},
-	});
-
-	console.log(`[flue] ${label}: prompt sent`, {
-		hasError: !!asyncResult.error,
-		error: asyncResult.error,
-		data: asyncResult.data,
-	});
-
-	if (asyncResult.error) {
-		throw new Error(
-			`Failed to send prompt for "${label}" (session ${sessionId}): ${JSON.stringify(asyncResult.error)}`,
-		);
-	}
-
-	// Confirm the session actually started processing
-	await confirmSessionStarted(client, sessionId, workdir, label);
-
-	console.log(`[flue] ${label}: starting polling`);
-	const parts = await pollUntilIdle(client, sessionId, workdir, label, promptStart, timeout);
-	const promptElapsed = ((Date.now() - promptStart) / 1000).toFixed(1);
-
-	console.log(`[flue] ${label}: completed (${promptElapsed}s)`);
-
-	if (!schema) {
-		return undefined as S extends v.GenericSchema ? v.InferOutput<S> : undefined;
-	}
 
 	try {
-		return extractResult(parts, schema as v.GenericSchema, sessionId) as S extends v.GenericSchema
-			? v.InferOutput<S>
-			: undefined;
-	} catch (error) {
-		if (!(error instanceof SkillOutputError)) throw error;
-		if (!error.message.includes('---RESULT_START---')) throw error;
-		// The LLM forgot to include the RESULT_START/RESULT_END block.
-		// Send a follow-up message in the same session to ask for the result
-		// while the format instructions are fresh in context.
-		console.log(
-			`[flue] ${label}: result extraction failed, sending follow-up prompt to request result`,
-		);
+		const promptStart = Date.now();
 
-		const followUpResult = await client.session.promptAsync({
+		console.log(`[flue] ${label}: sending prompt async`);
+		const asyncResult = await client.session.promptAsync({
 			path: { id: sessionId },
 			query: { directory: workdir },
 			body: {
 				...(model ? { model } : {}),
-				parts: [
-					{
-						type: 'text',
-						text: buildResultExtractionPrompt(schema as v.GenericSchema),
-					},
-				],
+				parts: [{ type: 'text', text: prompt }],
 			},
 		});
 
-		if (followUpResult.error) {
-			if ((followUpResult.error instanceof Error)) {
-				followUpResult.error.cause = error;
-			}
-			throw followUpResult.error;
+		console.log(`[flue] ${label}: prompt sent`, {
+			hasError: !!asyncResult.error,
+			error: asyncResult.error,
+			data: asyncResult.data,
+		});
+
+		if (asyncResult.error) {
+			throw new Error(
+				`Failed to send prompt for "${label}" (session ${sessionId}): ${JSON.stringify(asyncResult.error)}`,
+			);
 		}
 
+		// Confirm the session actually started processing
 		await confirmSessionStarted(client, sessionId, workdir, label);
-		const allParts = await pollUntilIdle(client, sessionId, workdir, label, Date.now(), timeout);
 
-		return extractResult(
-			allParts,
-			schema as v.GenericSchema,
-			sessionId,
-		) as S extends v.GenericSchema ? v.InferOutput<S> : undefined;
+		console.log(`[flue] ${label}: starting polling`);
+		const parts = await pollUntilIdle(client, sessionId, workdir, label, promptStart, timeout);
+		const promptElapsed = ((Date.now() - promptStart) / 1000).toFixed(1);
+
+		console.log(`[flue] ${label}: completed (${promptElapsed}s)`);
+
+		if (!schema) {
+			return undefined as S extends v.GenericSchema ? v.InferOutput<S> : undefined;
+		}
+
+		try {
+			return extractResult(parts, schema as v.GenericSchema, sessionId) as S extends v.GenericSchema
+				? v.InferOutput<S>
+				: undefined;
+		} catch (error) {
+			if (!(error instanceof SkillOutputError)) throw error;
+			if (!error.message.includes('---RESULT_START---')) throw error;
+			// The LLM forgot to include the RESULT_START/RESULT_END block.
+			// Send a follow-up message in the same session to ask for the result
+			// while the format instructions are fresh in context.
+			console.log(
+				`[flue] ${label}: result extraction failed, sending follow-up prompt to request result`,
+			);
+
+			const followUpResult = await client.session.promptAsync({
+				path: { id: sessionId },
+				query: { directory: workdir },
+				body: {
+					...(model ? { model } : {}),
+					parts: [
+						{
+							type: 'text',
+							text: buildResultExtractionPrompt(schema as v.GenericSchema),
+						},
+					],
+				},
+			});
+
+			if (followUpResult.error) {
+				if ((followUpResult.error instanceof Error)) {
+					followUpResult.error.cause = error;
+				}
+				throw followUpResult.error;
+			}
+
+			await confirmSessionStarted(client, sessionId, workdir, label);
+			const allParts = await pollUntilIdle(client, sessionId, workdir, label, Date.now(), timeout);
+
+			return extractResult(
+				allParts,
+				schema as v.GenericSchema,
+				sessionId,
+			) as S extends v.GenericSchema ? v.InferOutput<S> : undefined;
+		}
+	} finally {
+		// Clean up the session to free server resources. Without this,
+		// workflows that call prompt/skill in a loop (e.g. re-rating all
+		// open issues) accumulate orphaned sessions and eventually OOM.
+		try {
+			await client.session.delete({
+				path: { id: sessionId },
+				query: { directory: workdir },
+			});
+		} catch {
+			// Session cleanup is best-effort — don't mask the real error.
+		}
 	}
 }
 
