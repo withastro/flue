@@ -24,7 +24,7 @@
 	},
 	"dependencies": {
 		"@cloudflare/sandbox": "^0.7.1",
-		"@flue/client": "^0.0.30",
+		"@flue/client": "^0.0.31",
 		"@opencode-ai/sdk": "^1.1.56",
 		"hono": "^4.0.0"
 	},
