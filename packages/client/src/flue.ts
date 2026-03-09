@@ -1,5 +1,6 @@
 import { createOpencodeClient, type OpencodeClient } from '@opencode-ai/sdk';
 import type * as v from 'valibot';
+import { ShellCommandError } from './errors.ts';
 import { buildProxyInstructions, buildResultInstructions, HEADLESS_PREAMBLE } from './prompt.ts';
 import { runPrompt, runSkill } from './skill.ts';
 import type {
@@ -95,7 +96,11 @@ export class FlueClient {
 
 	/** Execute a shell command with scoped environment variables. */
 	async shell(command: string, options?: ShellOptions): Promise<ShellResult> {
-		return this.shellFn(command, { ...options, cwd: options?.cwd ?? this.workdir });
+		const result = await this.shellFn(command, { ...options, cwd: options?.cwd ?? this.workdir });
+		if (options?.throwOnError && result.exitCode !== 0) {
+			throw new ShellCommandError(command, result);
+		}
+		return result;
 	}
 
 	/** Close the OpenCode client connection. */

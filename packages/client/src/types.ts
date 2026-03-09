@@ -47,6 +47,8 @@ export interface ShellOptions {
 	cwd?: string;
 	/** Timeout in milliseconds. */
 	timeout?: number;
+	/** Throw a ShellCommandError when the command exits non-zero. */
+	throwOnError?: boolean;
 }
 
 export interface ShellResult {
