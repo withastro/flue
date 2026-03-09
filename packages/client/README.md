@@ -35,9 +35,10 @@ Run a shell command in the target environment. Returns `{ stdout, stderr, exitCo
 ```ts
 const result = await flue.shell('pnpm test');
 const result = await flue.shell('cat -', { stdin: 'hello' });
+await flue.shell('pnpm test', { throwOnError: true });
 ```
 
-Options: `env`, `stdin`, `cwd`, `timeout`
+Options: `env`, `stdin`, `cwd`, `timeout`, `throwOnError`
 
 ### `flue.skill(name, options?)`
 

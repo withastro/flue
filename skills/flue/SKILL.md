@@ -31,9 +31,12 @@ const issue = JSON.parse(result.stdout);
 
 // With stdin
 await flue.shell('gh issue comment 123 --body-file -', { stdin: commentBody });
+
+// Throw when the command exits non-zero
+await flue.shell('pnpm test', { throwOnError: true });
 ```
 
-**Options:** `env`, `stdin`, `cwd`, `timeout`
+**Options:** `env`, `stdin`, `cwd`, `timeout`, `throwOnError`
 
 ### `flue.prompt(text, options?)`
 
