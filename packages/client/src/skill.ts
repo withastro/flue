@@ -29,7 +29,7 @@ export async function runPrompt<S extends v.GenericSchema | undefined = undefine
 	options?: PromptOptions<S>,
 	debug?: boolean,
 ): Promise<S extends v.GenericSchema ? v.InferOutput<S> : void> {
-	const { result: schema, model, timeout } = options ?? {};
+	const { result: schema, agent, model, timeout } = options ?? {};
 	console.log(`[flue] ${label}: starting`);
 	console.log(`[flue] ${label}: creating session`);
 	const session = await client.session.create({
@@ -57,6 +57,7 @@ export async function runPrompt<S extends v.GenericSchema | undefined = undefine
 			path: { id: sessionId },
 			query: { directory: workdir },
 			body: {
+				agent: agent || 'build',
 				...(model ? { model } : {}),
 				parts: [{ type: 'text', text: prompt }],
 			},
@@ -117,6 +118,7 @@ export async function runPrompt<S extends v.GenericSchema | undefined = undefine
 				path: { id: sessionId },
 				query: { directory: workdir },
 				body: {
+					agent: agent || 'build',
 					...(model ? { model } : {}),
 					parts: [
 						{

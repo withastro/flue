@@ -87,6 +87,7 @@ export class FlueClient {
 			fullPrompt,
 			{
 				result: options?.result,
+				agent: options?.agent,
 				model: options?.model ?? this.model,
 			},
 			this.debug,

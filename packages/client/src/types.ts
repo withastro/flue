@@ -32,6 +32,8 @@ export interface SkillOptions<S extends v.GenericSchema | undefined = undefined>
 export interface PromptOptions<S extends v.GenericSchema | undefined = undefined> {
 	/** Valibot schema for structured result extraction. */
 	result?: S;
+	/** Override agent for this prompt. */
+	agent?: string;
 	/** Override model for this prompt. */
 	model?: { providerID: string; modelID: string };
 	/** Max time to wait for the prompt to complete (ms). Defaults to 60 minutes. */
