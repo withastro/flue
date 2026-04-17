@@ -1,0 +1,25 @@
+@import 'tailwindcss';
+
+@theme {
+	--font-heading: system-ui, -apple-system, sans-serif;
+}
+
+.animated-dash {
+	background-image: repeating-linear-gradient(
+		to bottom,
+		#93c5fd 0px,
+		#93c5fd 4px,
+		transparent 4px,
+		transparent 8px
+	);
+	animation: dash-flow 0.6s linear infinite;
+}
+
+@keyframes dash-flow {
+	0% {
+		background-position: 0 0;
+	}
+	100% {
+		background-position: 0 8px;
+	}
+}

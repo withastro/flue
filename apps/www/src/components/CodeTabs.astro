@@ -1,0 +1,197 @@
+---
+import { Code } from 'astro:components';
+import { createHighlighter } from 'shiki';
+
+interface Tab {
+  id: string;
+  label: string;
+  badgeLabel: string;
+  code: string;
+}
+
+const tabs: Tab[] = [
+  {
+    id: 'triage',
+    label: 'AI Issue Triage',
+    badgeLabel: 'Issue Triage',
+    code: `export default async function triage(flue, { issueNumber, branch }) {
+  const issue = await flue.shell(\`gh issue view \${issueNumber} --json title,body,author,labels,comments\`)
+  const result = await flue.skill('triage/reproduce.md', {
+    args: { issueNumber, issue },
+    result: v.object({ reproducible: v.boolean(), verdict: v.picklist(['bug', 'intended-behavior', 'unclear']) }),
+  })
+  if (result.reproducible) {
+    const fix = await flue.skill('triage/fix.md', { args: { issue } })
+    if (fix.fixed) {
+      await flue.shell(\`git add -A && git commit -m "\${fix.commitMessage}"\`)
+      await flue.shell(\`git push -f origin \${branch}\`)
+    }
+  }
+  const comment = await flue.skill('triage/comment.md', {
+    args: { issue, result, branch },
+    result: v.string(),
+  })
+  await postGitHubComment(issueNumber, comment)
+  await addGitHubLabels(issueNumber, result.labels)
+}`,
+  },
+  {
+    id: 'review',
+    label: 'AI Code Review',
+    badgeLabel: 'Code Review',
+    code: `export default async function review(flue, { prNumber }) {
+  await flue.shell(\`gh pr checkout \${prNumber}\`)
+  const diff = await flue.shell(\`gh pr diff \${prNumber}\`)
+  const details = await flue.shell(\`gh pr view \${prNumber} --json body\`)
+  const review = await flue.skill('review/analyze.md', {
+    args: { diff, details },
+    result: v.object({
+      verdict: v.picklist(['approve', 'request-changes', 'comment']),
+      comments: v.array(v.object({ path: v.string(), line: v.number(), body: v.string() })),
+      summary: v.string(),
+    }),
+  })
+  await flue.shell(\`gh api repos/{owner}/{repo}/pulls/\${prNumber}/reviews --method POST --input -\`, {
+    stdin: JSON.stringify({ event: review.verdict.toUpperCase(), body: review.summary, comments: review.comments }),
+  })
+}`,
+  },
+  {
+    id: 'security',
+    label: 'AI Security Scan',
+    badgeLabel: 'Security Scan',
+    code: `export default async function securityScan(flue) {
+  const checks = await flue.shell('ls .agents/skills/security/references/')
+  const findings = []
+  for (const check of checks) {
+    const result = await flue.skill(\`security/\${check}\`, {
+      result: v.array(v.object({
+        severity: v.picklist(['critical', 'high', 'medium', 'low']),
+        file: v.string(),
+        line: v.number(),
+        description: v.string(),
+      })),
+    })
+    findings.push(...result)
+  }
+  if (findings.length > 0) {
+    await flue.skill('security/fix.md', { args: { findings } })
+    const report = await flue.prompt(\`Summarize these security findings:\\n\${JSON.stringify(findings)}\`)
+    await flue.shell('gh api repos/{owner}/{repo}/security-advisories --method POST --input -', {
+      stdin: JSON.stringify({ summary: 'Automated security scan findings', description: report }),
+    })
+  }
+}`,
+  },
+  {
+    id: 'general',
+    label: 'AI Assistant',
+    badgeLabel: 'AI Assistant',
+    code: `export default async function assistant(flue, { issueNumber, commentId, prompt }) {
+  const reaction = await flue.shell(\`gh api repos/{owner}/{repo}/issues/comments/\${commentId}/reactions --method POST -f content=eyes\`)
+  const runUrl = \`\${process.env.GITHUB_SERVER_URL}/\${process.env.GITHUB_REPOSITORY}/actions/runs/\${process.env.GITHUB_RUN_ID}\`
+  const result = await flue.skill('assistant.md', {
+    args: { issueNumber, prompt },
+    result: v.object({
+      summary: v.string(),
+      actions: v.array(v.string()),
+    }),
+  })
+  await flue.shell(\`gh api repos/{owner}/{repo}/issues/comments/\${commentId}/reactions/\${reaction.id} --method DELETE\`)
+  await flue.shell(\`gh issue comment \${issueNumber} --body-file -\`, {
+    stdin: \`\${result.summary}\\n\\n\${result.actions.map(a => \`- \${a}\`).join('\\n')}\\n\\n[View run](\${runUrl})\`,
+  })
+}`,
+  },
+];
+
+const highlighter = await createHighlighter({
+  themes: ['github-light'],
+  langs: ['typescript'],
+});
+
+const highlighted = tabs.map((tab) => ({
+  ...tab,
+  html: highlighter.codeToHtml(tab.code, {
+    lang: 'typescript',
+    theme: 'github-light',
+  }),
+}));
+---
+
+<div class="grid lg:grid-cols-12 gap-12 lg:gap-16 items-start">
+  <div class="lg:col-span-5 lg:sticky lg:top-24">
+    <h2 class="text-3xl sm:text-4xl font-bold tracking-tight leading-tight">
+      Build your own <br/><span id="build-label" class="text-blue-700">{highlighted[0].label}</span>.
+    </h2>
+    <p class="mt-6 text-lg text-gray-500 leading-relaxed">
+      Stop paying for generic agents that don't deliver. Build specialized agents with just a few lines of TypeScript, in a codebase that you control. Flue gives you the building blocks, what you build is up to you.
+    </p>
+  </div>
+
+  <div class="lg:col-span-7">
+    <div class="shadow-sm outline outline-black/10 rounded-xl overflow-hidden">
+      <div class="flex border-b border-gray-200 [&>button]:flex-1" id="build-badges">
+        {highlighted.map((tab, i) => (
+          <button
+            data-build={tab.id}
+            class:list={[
+              'build-badge px-4 py-2.5 text-sm font-medium transition-colors relative',
+              i === 0
+                ? 'text-gray-950 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-gray-950'
+                : 'text-gray-400 hover:text-gray-600',
+            ]}
+          >
+            {tab.badgeLabel}
+          </button>
+        ))}
+      </div>
+      {highlighted.map((tab, i) => (
+        <div
+          id={`build-code-${tab.id}`}
+          class:list={['build-code-panel [&_pre]:p-8 [&_pre]:text-sm [&_pre]:leading-loose [&_pre]:overflow-x-auto [&_pre]:min-h-[360px] [&_pre]:m-0 [&_pre]:rounded-none', i !== 0 && 'hidden']}
+          set:html={tab.html}
+        />
+      ))}
+    </div>
+  </div>
+</div>
+
+<script>
+  const label = document.getElementById('build-label');
+  const badges = document.querySelectorAll('.build-badge');
+  const panels = document.querySelectorAll('.build-code-panel');
+
+  const labels: Record<string, string> = {
+    triage: 'AI Issue Triage',
+    review: 'AI Code Review',
+    security: 'AI Security Scan',
+    general: 'AI Assistant',
+  };
+
+  function setActiveBuild(key: string) {
+    if (!labels[key] || !label) return;
+    label.textContent = labels[key];
+    panels.forEach((p) => {
+      p.classList.toggle('hidden', !p.id.endsWith(key));
+    });
+    badges.forEach((b) => {
+      const el = b as HTMLElement;
+      if (el.dataset.build === key) {
+        el.className = 'build-badge px-4 py-2.5 text-sm font-medium transition-colors relative text-gray-950 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-[2px] after:bg-gray-950';
+      } else {
+        el.className = 'build-badge px-4 py-2.5 text-sm font-medium transition-colors relative text-gray-400 hover:text-gray-600';
+      }
+    });
+  }
+
+  badges.forEach((b) => {
+    b.addEventListener('click', () => setActiveBuild((b as HTMLElement).dataset.build!));
+  });
+</script>
+
+<style is:global>
+  .build-code-panel .shiki {
+    background-color: white !important;
+  }
+</style>
