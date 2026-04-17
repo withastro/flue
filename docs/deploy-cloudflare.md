@@ -192,31 +192,28 @@ done
 
 The examples above all run on virtual sandboxes — no container needed. But for agents that need a full Linux environment — git, Node.js, a browser, system packages — you want a real container.
 
-[Daytona](https://www.daytona.io/) provides container sandboxes that integrate directly with Flue. Each session gets its own isolated environment with a persistent filesystem and shell.
+Cloudflare has native container support via [`@cloudflare/sandbox`](https://developers.cloudflare.com/containers/). Each session gets its own isolated container with a persistent filesystem, shell, and full Linux userspace. The container image is defined in a `Dockerfile` that `flue build` generates for you.
 
-`.flue/agents/code.ts`:
+`.flue/agents/assistant.ts`:
 
 ```typescript
 import type { FlueContext } from '@flue/sdk/client';
-import { Daytona } from '@daytona/sdk';
-import { daytona } from '@flue/connectors/daytona';
+import { getSandbox } from '@cloudflare/sandbox';
 
 export const triggers = { webhook: true };
 
-export default async function ({ init, payload, env }: FlueContext) {
-  const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
-  const sandbox = await client.create();
-  const session = await init({
-    sandbox: daytona(sandbox, { cleanup: true }),
-  });
+export default async function ({ init, sessionId, env, payload }: FlueContext) {
+  // Each session gets its own container via Cloudflare's native sandbox.
+  // The container is tied to the Durable Object — it persists across
+  // requests for the same session.
+  const sandbox = getSandbox(env.Sandbox, sessionId);
+  const session = await init({ sandbox });
 
-  // Clone the target repo and install dependencies
-  await session.shell(`git clone ${payload.repo} /workspace/project`);
-  await session.shell('npm install', { cwd: '/workspace/project' });
-
-  return await session.prompt(payload.prompt);
+  return await session.prompt(payload.message);
 }
 ```
+
+The `Sandbox` binding is a Durable Object that Flue configures automatically in the generated `wrangler.jsonc`. No extra setup needed — `flue build --target cloudflare` generates both the wrangler config and a default `Dockerfile` for the container.
 
 ### When to use containers
 
@@ -311,6 +308,6 @@ Here's the progression of sandbox types available on Cloudflare, from simplest t
 1. **Empty virtual sandbox** — `init()` with no arguments. Fast, cheap, stateless. Good for prompt-and-response agents.
 2. **Virtual sandbox with shell setup** — Use `session.shell()` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
 3. **R2-backed virtual sandbox** — `getVirtualSandbox(env.BUCKET)`. Persistent storage, searchable filesystem. Ideal for knowledge bases, support agents, data processing.
-4. **Container sandbox** — Full Linux environment via Daytona or other providers. For coding agents, complex dev environments, and anything that needs real system tools.
+4. **Container sandbox** — Full Linux environment via `@cloudflare/sandbox`. For coding agents, complex dev environments, and anything that needs real system tools.
 
 Start simple. Move up when you need to.
