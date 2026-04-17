@@ -1,0 +1,358 @@
+# Build Agents for GitLab CI/CD
+
+Build and run Flue agents in GitLab CI/CD pipelines. This guide walks you through creating your first agent, running it locally with the CLI, and wiring it into a pipeline.
+
+## Hello World
+
+A minimal agent that runs in CI whenever an issue is opened.
+
+### 1. Set up your project
+
+```bash
+mkdir my-flue-project && cd my-flue-project
+npm init -y
+npm install @flue/sdk valibot
+npm install -D @flue/cli
+```
+
+### 2. Create your first agent
+
+`.flue/agents/hello.ts`:
+
+```typescript
+import type { FlueContext } from '@flue/sdk/client';
+import * as v from 'valibot';
+
+export const triggers = {};
+
+export default async function ({ init, payload }: FlueContext) {
+  const session = await init({ sandbox: 'local' });
+
+  const result = await session.prompt(
+    `Say hello to ${payload.name ?? 'the user'} and share an interesting fact.`,
+    {
+      result: v.object({
+        greeting: v.string(),
+        fact: v.string(),
+      }),
+    },
+  );
+
+  return result;
+}
+```
+
+A few things to note:
+
+- **`triggers = {}`** — This agent has no HTTP trigger. It's designed to be run from the CLI, which is perfect for CI.
+- **`sandbox: 'local'`** — The `"local"` sandbox mounts the host filesystem at `/workspace`. In CI, this is the checked-out repo. Skills and `AGENTS.md` are discovered automatically from the workspace directory.
+- **Result schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns a typed object.
+
+### 3. Test it locally
+
+```bash
+npx flue run hello --target node --session-id test-1 \
+  --payload '{"name": "World"}'
+```
+
+`flue run` builds the workspace, starts a temporary server, invokes the agent, streams progress to stderr, and prints the final result as JSON to stdout. This is the fastest way to iterate on an agent — no deployment needed.
+
+### 4. Wire it into GitLab CI/CD
+
+`.gitlab-ci.yml`:
+
+```yaml
+hello:
+  image: node:22
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $ISSUE_ACTION == "open"
+  before_script:
+    - npm ci
+  script:
+    - |
+      npx flue run hello --target node \
+        --session-id "hello-$ISSUE_IID" \
+        --payload "{\"name\": \"$ISSUE_AUTHOR\"}"
+```
+
+#### Triggering pipelines from issue events
+
+GitLab doesn't pass issue data into CI variables automatically. You need a [pipeline trigger](https://docs.gitlab.com/ee/ci/triggers/) to bridge the gap:
+
+1. Create a pipeline trigger token: **Settings > CI/CD > Pipeline trigger tokens**
+2. Add a project webhook (**Settings > Webhooks**) that fires on **Issue events**, pointing at a small relay that calls the trigger API with the right variables:
+
+```typescript
+// Deploy as a serverless function or lightweight server
+async function handleGitLabWebhook(event) {
+  const { object_kind, object_attributes, issue } = event;
+  let variables: Record<string, string> = {};
+
+  if (object_kind === 'issue') {
+    variables = {
+      ISSUE_ACTION: object_attributes.action,
+      ISSUE_IID: String(object_attributes.iid),
+      ISSUE_AUTHOR: object_attributes.author?.username ?? '',
+    };
+  } else if (object_kind === 'note' && issue) {
+    variables = {
+      ISSUE_ACTION: 'note',
+      ISSUE_IID: String(issue.iid),
+    };
+  } else {
+    return;
+  }
+
+  await fetch(`${GITLAB_URL}/api/v4/projects/${PROJECT_ID}/trigger/pipeline`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token: TRIGGER_TOKEN, ref: 'main', variables }),
+  });
+}
+```
+
+Once wired up, open an issue and you'll see a passing pipeline with the agent's greeting in the logs.
+
+## Building a real agent
+
+Now let's build something useful — an issue triage agent that analyzes an issue and reports back. This is where Flue's agent features start to shine.
+
+### The agent handler
+
+The agent handler is where orchestration lives. The `FlueContext` gives you everything you need: `init()` to create a session, `payload` for input data, and `env` for environment bindings.
+
+Once you have a session, you have three core methods:
+
+- **`session.shell(cmd)`** — Run a shell command in the sandbox. Returns `{ stdout, stderr, exitCode }`.
+- **`session.prompt(text, opts)`** — Send a prompt to the agent and get back a result.
+- **`session.skill(name, opts)`** — Run a named skill — a reusable agent task defined by a markdown instruction file.
+
+Both `prompt()` and `skill()` accept a `result` option — a [Valibot](https://valibot.dev) schema that defines the expected output shape. Flue parses the agent's response and returns a typed object:
+
+```typescript
+import * as v from 'valibot';
+
+// const summary: string
+const summary = await session.prompt(`Summarize this diff:\n${diff}`, {
+  result: v.string(),
+});
+
+// const diagnosis: { reproducible: boolean, skipped: boolean }
+const diagnosis = await session.skill('triage', {
+  args: { issueIid, issue },
+  result: v.object({
+    reproducible: v.boolean(),
+    skipped: v.boolean(),
+  }),
+});
+```
+
+### Connecting external CLIs with commands
+
+In CI, your agent often needs to interact with external tools. But you don't want to hand the agent your raw API keys. **Commands** solve this — they let you connect privileged CLIs to the agent without leaking secrets.
+
+Secrets are hooked up inside the command definition, so the agent never sees them. Commands are granted per-prompt or per-skill, so you can be as granular with access as you need. Here's a triage agent that puts it all together:
+
+`.flue/agents/triage.ts`:
+
+```typescript
+import { defineCommand, type FlueContext } from '@flue/sdk/client';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import * as v from 'valibot';
+
+export const triggers = {};
+
+// Connect privileged CLIs to your agent without leaking sensitive keys.
+// Secrets are hooked up inside the command definition here, so the agent
+// never sees them.
+const curl = defineCommand('curl', async (args) =>
+  promisify(execFile)('curl', args, {
+    env: {
+      PATH: process.env.PATH,
+      GITLAB_API_TOKEN: process.env.GITLAB_API_TOKEN,
+    },
+  }),
+);
+
+const npm = defineCommand('npm', async (args) =>
+  promisify(execFile)('npm', args, {
+    env: { PATH: process.env.PATH },
+  }),
+);
+
+export default async function ({ init, payload }: FlueContext) {
+  const session = await init({ sandbox: 'local' });
+
+  const result = await session.skill('triage', {
+    args: {
+      issueIid: payload.issueIid,
+      projectId: payload.projectId,
+      apiUrl: payload.apiUrl,
+    },
+    // Grant access to `curl` and `npm` for the life of this skill.
+    commands: [curl, npm],
+    result: v.object({
+      severity: v.picklist(['low', 'medium', 'high', 'critical']),
+      reproducible: v.boolean(),
+      summary: v.string(),
+      fix_applied: v.boolean(),
+    }),
+  });
+
+  return result;
+}
+```
+
+The agent can now use `curl` to interact with the GitLab API through the command — but it never has access to the `GITLAB_API_TOKEN` itself. If the agent tries to run `curl` outside of a prompt where it was granted, the command is blocked.
+
+### Skills and roles
+
+**Skills** are reusable agent tasks defined as markdown files. They live in `.agents/skills/` and give the agent a focused instruction set for a specific job:
+
+`.agents/skills/triage/SKILL.md`:
+
+```markdown
+---
+name: triage
+description: Triage a GitLab issue — reproduce, assess severity, and optionally fix.
+---
+
+Given the issue IID and project ID in the arguments:
+
+1. Use `curl` with the GitLab API to fetch the issue details
+2. Read the codebase to understand the relevant area
+3. Attempt to reproduce the issue
+4. Assess severity and write a summary
+5. If the fix is straightforward, apply it and push a branch
+```
+
+**Roles** are agent personas that shape behavior across prompts. They live in `.flue/roles/`:
+
+`.flue/roles/reviewer.md`:
+
+```markdown
+---
+description: A careful code reviewer focused on correctness and security
+---
+
+You are a senior code reviewer. Focus on correctness, security implications,
+and adherence to the project's coding standards. Be direct and specific in
+your feedback.
+```
+
+Use a role by passing it to `prompt()`:
+
+```typescript
+const review = await session.prompt(`Review this MR:\n${diff}`, {
+  role: 'reviewer',
+  result: v.object({ approved: v.boolean(), comments: v.array(v.string()) }),
+});
+```
+
+### The AGENTS.md file
+
+`AGENTS.md` at the root of your workspace is the agent's system prompt — it provides global context about the project. When using `sandbox: 'local'`, Flue discovers this file automatically from the workspace directory:
+
+```markdown
+You are a helpful assistant working on the my-project codebase.
+
+## Project structure
+
+- `src/` — Application source code
+- `tests/` — Test suite
+
+## Guidelines
+
+- Always run tests before suggesting a fix is complete
+- Use the project's existing patterns and conventions
+```
+
+### Wiring it into GitLab CI/CD
+
+`.gitlab-ci.yml`:
+
+```yaml
+triage:
+  image: node:22
+  timeout: 30 minutes
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "trigger" && $ISSUE_ACTION == "open"
+  before_script:
+    - npm ci
+  script:
+    - |
+      npx flue run triage --target node \
+        --session-id "triage-$ISSUE_IID" \
+        --payload "{\"issueIid\": $ISSUE_IID, \"projectId\": \"$CI_PROJECT_ID\", \"apiUrl\": \"$CI_API_V4_URL\"}"
+```
+
+Add these as CI/CD variables (**Settings > CI/CD > Variables**, masked):
+
+| Variable            | Description                                       |
+| ------------------- | ------------------------------------------------- |
+| `ANTHROPIC_API_KEY` | API key for your LLM provider                     |
+| `GITLAB_API_TOKEN`  | Project or personal access token with `api` scope |
+
+## Typed results and orchestration
+
+Result schemas aren't just for type safety — they're how you orchestrate multi-step workflows. Because you get typed data back from `prompt()` and `skill()`, you can branch on results within a single agent:
+
+```typescript
+import { defineCommand, type FlueContext } from '@flue/sdk/client';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import * as v from 'valibot';
+
+const curl = defineCommand('curl', async (args) =>
+  promisify(execFile)('curl', args, {
+    env: { PATH: process.env.PATH, GITLAB_API_TOKEN: process.env.GITLAB_API_TOKEN },
+  }),
+);
+const npm = defineCommand('npm', async (args) =>
+  promisify(execFile)('npm', args, { env: { PATH: process.env.PATH } }),
+);
+
+export default async function ({ init, payload }: FlueContext) {
+  const session = await init({ sandbox: 'local' });
+
+  const diagnosis = await session.skill('triage', {
+    args: { issueIid: payload.issueIid },
+    commands: [curl],
+    result: v.object({
+      severity: v.picklist(['low', 'medium', 'high', 'critical']),
+      reproducible: v.boolean(),
+      summary: v.string(),
+    }),
+  });
+
+  if (diagnosis.severity === 'critical' && diagnosis.reproducible) {
+    // Escalate: attempt an automated fix
+    await session.skill('auto-fix', {
+      args: { issueIid: payload.issueIid },
+      commands: [curl, npm],
+      result: v.object({ fix_applied: v.boolean(), branch: v.optional(v.string()) }),
+    });
+  }
+
+  return diagnosis;
+}
+```
+
+This pattern — prompt or skill call, check the result, decide what to do next — is how you build sophisticated agents that go beyond single-shot prompts.
+
+## Running agents locally
+
+During development, `flue run` is your main tool. It builds the workspace and runs the agent in one step:
+
+```bash
+# Run with a payload
+npx flue run triage --target node --session-id test-1 \
+  --payload '{"issueIid": 42, "projectId": "123", "apiUrl": "https://gitlab.com/api/v4"}'
+
+# Pipe the result to jq
+npx flue run triage --target node --session-id test-2 \
+  --payload '{"issueIid": 42}' | jq '.severity'
+```
+
+The CLI builds your workspace, starts a temporary server, invokes the agent via SSE, streams progress to stderr, and prints the final result to stdout. The `--session-id` flag identifies the session — use a consistent ID to resume a previous session, or a unique one for a fresh start.
