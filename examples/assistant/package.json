@@ -1,0 +1,11 @@
+{
+	"name": "assistant",
+	"private": true,
+	"type": "module",
+	"dependencies": {
+		"@flue/sdk": "workspace:*",
+		"@cloudflare/sandbox": "*",
+		"agents": "*",
+		"valibot": "^1.0.0"
+	}
+}

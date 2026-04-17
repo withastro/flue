@@ -1,0 +1,50 @@
+{
+	"name": "@flue/sdk",
+	"version": "0.0.1",
+	"type": "module",
+	"license": "Apache-2.0",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"import": "./dist/index.mjs"
+		},
+		"./client": {
+			"types": "./dist/client.d.mts",
+			"import": "./dist/client.mjs"
+		},
+		"./sandbox": {
+			"types": "./dist/sandbox.d.mts",
+			"import": "./dist/sandbox.mjs"
+		},
+		"./cloudflare": {
+			"types": "./dist/cloudflare/index.d.mts",
+			"import": "./dist/cloudflare/index.mjs"
+		}
+	},
+	"main": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsdown",
+		"check:types": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@cloudflare/shell": "^0.3.2",
+		"@hono/node-server": "^1.14.0",
+		"@mariozechner/pi-agent-core": "*",
+		"@mariozechner/pi-ai": "*",
+		"@valibot/to-json-schema": "^1.0.0",
+		"agentfs-sdk": "^0.6.4",
+		"esbuild": "^0.25.0",
+		"hono": "^4.7.0",
+		"just-bash": "^2.14.2",
+		"package-up": "^5.0.0",
+		"valibot": "^1.0.0"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20250410.0",
+		"tsdown": "^0.20.3"
+	}
+}

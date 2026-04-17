@@ -39,3 +39,6 @@ data/
 
 # Docker build artifacts (machine-specific CA certs for TLS proxy)
 corporate-ca.pem
+
+# legacy code (kept locally for reference, not pushed)
+legacy/

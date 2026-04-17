@@ -1,0 +1,12 @@
+{
+	"name": "hello-world",
+	"private": true,
+	"type": "module",
+	"dependencies": {
+		"@flue/sdk": "workspace:*",
+		"@flue/connectors": "workspace:*",
+		"@daytona/sdk": "*",
+		"just-bash": "^2.14.2",
+		"valibot": "^1.0.0"
+	}
+}

@@ -1,9 +1,8 @@
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-	entry: ['bin/flue.ts'],
+	entry: ['src/index.ts', 'src/client.ts', 'src/sandbox.ts', 'src/cloudflare/index.ts'],
 	format: ['esm'],
-	dts: false,
+	dts: true,
 	clean: true,
-	outDir: 'dist',
 });

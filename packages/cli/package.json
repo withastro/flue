@@ -1,23 +1,19 @@
 {
 	"name": "@flue/cli",
-	"version": "0.0.49",
+	"version": "0.0.1",
 	"type": "module",
 	"license": "Apache-2.0",
 	"bin": {
 		"flue": "dist/flue.js"
 	},
 	"files": [
-		"dist",
-		"src/sandbox/"
+		"dist"
 	],
 	"scripts": {
-		"build": "tsdown && mv dist/flue.mjs dist/flue.js",
-		"check:types": "tsc --noEmit"
+		"build": "tsdown && mv dist/flue.mjs dist/flue.js"
 	},
 	"dependencies": {
-		"@flue/client": "^0.0.31",
-		"@valibot/to-json-schema": "^1.0.0",
-		"valibot": "^1.0.0"
+		"@flue/sdk": "workspace:*"
 	},
 	"devDependencies": {
 		"tsdown": "^0.20.3"

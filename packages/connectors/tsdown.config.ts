@@ -1,9 +1,8 @@
 import { defineConfig } from 'tsdown';
 
 export default defineConfig({
-	entry: ['bin/flue.ts'],
+	entry: ['src/daytona.ts'],
 	format: ['esm'],
-	dts: false,
+	dts: true,
 	clean: true,
-	outDir: 'dist',
 });

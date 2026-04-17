@@ -19,11 +19,16 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.2.0",
+		"@flue/sdk": "workspace:*",
+		"@mariozechner/pi-coding-agent": "^0.66.1",
 		"@types/node": "^22.10.10",
 		"bgproc": "^0.2.0",
 		"prettier": "^3.4.2",
 		"tsx": "^4.19.2",
 		"turbo": "^2.3.3",
 		"typescript": "^5.9.2"
+	},
+	"dependencies": {
+		"just-bash": "^2.14.2"
 	}
 }

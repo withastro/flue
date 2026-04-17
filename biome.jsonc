@@ -44,7 +44,7 @@
 			}
 		},
 		{
-			"includes": ["packages/sdk/src/**", "apps/astro-triage/src/**"],
+			"includes": ["packages/sdk/src/**"],
 			"linter": {
 				"rules": {
 					"suspicious": {
