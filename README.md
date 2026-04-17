@@ -18,6 +18,10 @@ Agent framework where agents are directories compiled into deployable server art
 
 The simplest agent — no container, no tools, just a prompt and a typed result.
 
+Unless you opt-in to initializing a full container sandbox, Flue will default to a virtual sandbox for every agent, powered by [just-bash](https://github.com/vercel-labs/just-bash). A virtual sandbox is going to be dramatically faster, cheaper, and more scalable than running a full container for every agent, which makes it perfect for building high-traffic/high-scale agents.
+
+You can provide your own custom `Bash` instance to `init()` to customize your virtual sandbox, or rely on us to set it up for you.
+
 ```ts
 // .flue/agents/hello-world.ts
 import type { FlueContext } from '@flue/sdk/client';
@@ -34,8 +38,8 @@ export default async function ({ init, payload, sessionId }: FlueContext) {
   const session = await init();
 
   // prompt() sends a message in the session, triggering action.
-  // You can pass a schema to `result` to get typed, validated JSON back.
   const result = await session.prompt(`Translate this to ${payload.language}: "${payload.text}"`, {
+    // Pass a result schema to get typed, schema-validated data back from your agent.
     result: v.object({
       translation: v.string(),
       confidence: v.picklist(['low', 'medium', 'high']),
@@ -48,9 +52,9 @@ export default async function ({ init, payload, sessionId }: FlueContext) {
 
 ### Support Agent
 
-A support agent, also running in a virtual sandbox but now with an R2 bucket mounted as its file-system. The knowledge base is stored in R2 and mounted directly into the agent's filesystem — the agent searches it with its built-in tools (grep, glob, read).
+A support agent can also run in a virtual sandbox, but we now add a file-system using an R2 bucket. The knowledge base is stored in R2 and mounted directly into the agent's filesystem — the agent searches it with its built-in tools (grep, glob, read). Skills are also defined in the bucket that help the agent perform its task.
 
-Session message history and file-system state are automatically persisted using Durable Objects (Cloudflare only). So you can revisit this session days, weeks, or years later and pick up where you left off automatically.
+Because this agent is deployed to Cloudflare, message history and session state are automatically persisted for you. So you (or your customer) can revisit this support session days, weeks, or years later and pick up exactly where you left off.
 
 ```ts
 // .flue/agents/support.ts
@@ -72,15 +76,19 @@ export default async function ({ init, payload, env }: FlueContext) {
     relevant to this request, then write a helpful response.
 
     Customer: ${payload.message}`,
+    {
+      // Provide roles (aka subagents) to guide your agent. Defined in .flue/roles/
+      role: 'triager',
+    },
   );
 }
 ```
 
 ### Issue Triage (CI)
 
-A triage agent that runs whenever a new issue is opened (or commented on) on GitHub, running on GitHub Actions.
+Flue was designed to power CI workflows since day one.
 
-Flue was designed to power CI workflows since day one. The `"local"` filesystem sandbox enables two things:
+Here we have a triage agent that runs whenever a new issue is opened (or commented on) on GitHub. The `"local"` filesystem sandbox is great for CI environments like GitHub Actions, where the platform is already providing an isolated, clean starting filesystem for you on every run. Setting your session `sandbox` to `"local"` does two things:
 
 1. Mount the current directory to your virtual file system.
 2. Connect privileged CLIs to your agent (`gh`, `glab`, `git`) without leaking sensitive keys and secrets.
@@ -92,6 +100,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import * as v from 'valibot';
 
+// Because we are running this in CI, we don't need to expose this as an HTTP endpoint.
+// The CLI can run any agent from the command line, `flue run triage ...`
 export const triggers = {};
 
 // Connect privileged CLIs to your agent without leaking sensitive keys and secrets.
@@ -115,8 +125,6 @@ export default async function ({ init, payload }: FlueContext) {
     args: { issueNumber: payload.issueNumber },
     // Grant access to `gh` and `npm` for the life of this skill.
     commands: [gh, npm],
-    // Provide roles (aka subagents) to guide your agent. Defined in .flue/roles/
-    role: 'triager',
     // Result schemas are great for being able to act/orchestrate
     // based on the result of your prompt or skill call.
     result: v.object({
