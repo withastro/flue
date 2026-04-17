@@ -20,8 +20,6 @@ The simplest agent — no container, no tools, just a prompt and a typed result.
 
 Unless you opt-in to initializing a full container sandbox, Flue will default to a virtual sandbox for every agent, powered by [just-bash](https://github.com/vercel-labs/just-bash). A virtual sandbox is going to be dramatically faster, cheaper, and more scalable than running a full container for every agent, which makes it perfect for building high-traffic/high-scale agents.
 
-You can provide your own custom `Bash` instance to `init()` to customize your virtual sandbox, or rely on us to set it up for you.
-
 ```ts
 // .flue/agents/hello-world.ts
 import type { FlueContext } from '@flue/sdk/client';
