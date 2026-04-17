@@ -11,72 +11,107 @@ Agent framework where agents are directories compiled into deployable server art
 | [`@flue/sdk`](packages/sdk) | Core SDK: build system, sessions, tools |
 | [`@flue/cli`](packages/cli) | CLI for building and running agents     |
 
-## Example
+## Examples
+
+### Support Bot
+
+A support agent that triages incoming requests and returns structured results.
 
 ```ts
-// .flue/agents/triage.ts
-import { defineCommand, type FlueRuntime } from '@flue/sdk/client';
+// .flue/agents/support.ts
+import type { FlueContext } from '@flue/sdk/client';
 import * as v from 'valibot';
 
-// Agent config:
-// - `filesystem: 'local'` — agent operates on the real filesystem (for CI/deploy).
-//   Without this, agents use an isolated in-memory overlay (safe by default).
-// - `triggers` — how the agent is invoked (webhook, cron).
-export const config = {
-  filesystem: 'local',
-  triggers: { webhook: true },
-};
+export const triggers = { webhook: true };
 
-// Every agent exports a default handler function. For this "triage" agent, we
-// accept the direct GitHub webhook for the "issues" and "issue_comment" events.
-export default async function (flue: FlueRuntime, payload: any) {
-  // Sessions are persistent conversations with resumable message history.
-  // We'll pick back up this same session for the full lifecycle of an issue.
-  const session = await flue.session(`issue-${payload.issue.number}`);
+export default async function ({ init, payload }: FlueContext) {
+  const session = await init();
 
-  // Sessions store metadata, which you can use to track session state.
-  if (session.metadata.resolved) {
-    return { status: 'already-resolved' };
-  }
-
-  const prompt =
-    payload.action === 'opened'
-      ? `New issue: ${payload.issue.title}\n\n${payload.issue.body}`
-      : `New update on issue: ${payload.issue.title}\n\n${payload.issue.body}`;
-
-  // session.prompt() sends a message to the agent. The agent uses its
-  // tools (bash, read, write, edit, grep, glob) plus any commands you
-  // provide to complete the task.
-  const result = await session.prompt(prompt, {
-    // Define custom CLI commands that are allowed in the sandbox, outside of the normal
-    // utilities. Environment variables are passed such that the agent never sees them.
-    // External commands are scoped per-prompt. The next prompt won't have access.
-    commands: [
-      defineCommand('gh', { env: { GH_TOKEN: process.env.GITHUB_TOKEN } }),
-      defineCommand('bgproc'),
-      defineCommand('agent-browser'),
-    ],
-    // Structured output! `result` returns a typed JSON object.
+  const result = await session.prompt(`Triage this support request:\n\n${payload.message}`, {
     result: v.object({
-      severity: v.picklist(['low', 'medium', 'high', 'critical']),
-      summary: v.string(),
-      reproducible: v.boolean(),
+      priority: v.picklist(['low', 'medium', 'high', 'critical']),
+      category: v.string(),
+      response: v.string(),
     }),
   });
-
-  if (result.reproducible === true) {
-    session.metadata.resolved = true;
-  }
 
   return result;
 }
 ```
 
-```bash
-# Build and run an agent in one step, good for testing and CI.
-flue run triage --payload '{"action": "opened", "issue": {"number": 1, "title": "Bug", "body": "..."}}'
+### Issue Triage Agent
 
-# Or, build the server and deploy it (Node supported, Cloudflare coming soon).
-flue build
-node dist/server.mjs  # serves all webhook-enabled agents via HTTP
+A more complete agent that checks out a repo, investigates issues, and delegates focused tasks to sub-agents. Uses a real container sandbox, custom tools, roles, and structured output.
+
+```ts
+// .flue/agents/triage.ts
+import { Type, type FlueContext, type ToolDef } from '@flue/sdk/client';
+import { Daytona } from '@daytona/sdk';
+import { daytona } from '@flue/connectors/daytona';
+import * as v from 'valibot';
+
+export const triggers = { webhook: true };
+
+export default async function ({ init, payload, env }: FlueContext) {
+  // Spin up a real container sandbox via Daytona
+  const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
+  const sandbox = await client.create();
+
+  const session = await init({
+    sandbox: daytona(sandbox, { cleanup: true }),
+  });
+
+  // Clone the repo into the sandbox
+  await session.shell(`git clone ${payload.repo} /workspace/repo`);
+
+  // Expose a custom tool so the LLM can delegate focused work to sub-agents
+  const taskTool: ToolDef = {
+    name: 'task',
+    description:
+      'Delegate a focused task to a sub-agent working in a specific directory. ' +
+      'The sub-agent discovers AGENTS.md and skills from that directory automatically.',
+    parameters: Type.Object({
+      workspace: Type.String({ description: 'Directory for the sub-agent to work in' }),
+      prompt: Type.String({ description: 'Instructions for the sub-agent' }),
+    }),
+    execute: async (args) => {
+      const result = await session.task(args.prompt, { workspace: args.workspace });
+      return result.text;
+    },
+  };
+
+  // Triage the issue: the agent can read code, run tests, and delegate sub-tasks
+  const result = await session.prompt(
+    [
+      `Investigate this issue in /workspace/repo:`,
+      `**${payload.issue.title}**`,
+      payload.issue.body,
+      `Check if it's reproducible. If you can fix it, do so.`,
+    ].join('\n\n'),
+    {
+      role: 'triager',
+      tools: [taskTool],
+      result: v.object({
+        severity: v.picklist(['low', 'medium', 'high', 'critical']),
+        reproducible: v.boolean(),
+        summary: v.string(),
+        fix_applied: v.boolean(),
+      }),
+    },
+  );
+
+  return result;
+}
+```
+
+### Running Agents
+
+```bash
+# Build and run an agent locally
+flue run support --target node --session-id req-1 \
+  --payload '{"message": "I can not log in"}'
+
+# Build the server for deployment (Node or Cloudflare Workers)
+flue build --target node
+node dist/server.mjs
 ```
