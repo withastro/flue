@@ -5,13 +5,13 @@ export default async function ({ init, payload }) {
   // Initialize a new session for the agent:
   const session = await init({ sandbox: new YourFavoriteSandboxProvider() }); 
 
-  // Run the "triage" skill that already exists in your sandbox:
+  // Run your "triage" skill with structured inputs and outputs:
   const result = await session.skill('triage', {
     args: { issueNumber: payload.issueNumber },
     result: v.object({ summary: v.string(), fix_applied: v.boolean() }),
   });
 
-  // Control agent behavior and react with structured result data:
+  // Control agent behavior and react to prompts and skill responses:
   if (result.fix_applied) {
     await session.shell('git add -A');
     await session.shell('git commit -m "fix: ' + result.summary + '"');
