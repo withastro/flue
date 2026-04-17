@@ -10,7 +10,8 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsdown && mv dist/flue.mjs dist/flue.js"
+		"build": "tsdown && mv dist/flue.mjs dist/flue.js",
+		"prepublishOnly": "cp ../../README.md ."
 	},
 	"dependencies": {
 		"@flue/sdk": "workspace:*"

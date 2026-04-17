@@ -14,7 +14,8 @@
 	],
 	"scripts": {
 		"build": "tsdown",
-		"check:types": "tsc --noEmit"
+		"check:types": "tsc --noEmit",
+		"prepublishOnly": "cp ../../README.md ."
 	},
 	"dependencies": {
 		"@flue/sdk": "workspace:*"

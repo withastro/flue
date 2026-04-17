@@ -28,7 +28,8 @@
 	],
 	"scripts": {
 		"build": "tsdown",
-		"check:types": "tsc --noEmit"
+		"check:types": "tsc --noEmit",
+		"prepublishOnly": "cp ../../README.md ."
 	},
 	"dependencies": {
 		"@cloudflare/shell": "^0.3.2",
