@@ -84,12 +84,7 @@ export default async function ({ init, payload, env }: FlueContext) {
 
 ### Issue Triage (CI)
 
-Flue was designed to power CI workflows since day one.
-
-Here we have a triage agent that runs whenever a new issue is opened (or commented on) on GitHub. The `"local"` filesystem sandbox is great for CI environments like GitHub Actions, where the platform is already providing an isolated, clean starting filesystem for you on every run. Setting your session `sandbox` to `"local"` does two things:
-
-1. Mount the current directory to your virtual file system.
-2. Connect privileged CLIs to your agent (`gh`, `glab`, `git`) without leaking sensitive keys and secrets.
+A triage agent that runs in CI whenever an issue is opened on GitHub. The `"local"` sandbox mounts the host filesystem and lets you connect privileged CLIs (`gh`, `npm`, `git`) to the agent without leaking secrets.
 
 ```ts
 // .flue/agents/triage.ts
