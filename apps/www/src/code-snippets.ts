@@ -25,9 +25,9 @@ Please do the following:
 4. Scaffold a minimal first version of what I described. Keep it small — I'd rather iterate than start with a kitchen-sink scaffold.
 `;
 
-export const HERO = `export default async function ({ init, payload, env }: FlueContext) {
-  // Initialize a new session, or resume an existing one.
-  // By default, Flue will spin up a lightweight virtual sandbox + filesystem.
+export const HERO = `export default async function ({ init, payload, env }) {
+  // Initialize a new agent session, or resume an existing one.
+  // By default, Flue spins up a lightweight virtual sandbox + filesystem.
   const session = await init();
 
   // Leverage agent skills as typed, reusable LLM calls with structured output:
