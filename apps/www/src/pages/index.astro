@@ -168,7 +168,7 @@ const floatingSquares = [
         <p class="mt-6 max-w-2xl lg:max-w-4xl text-lg lg:text-2xl text-gray-600 text-balance">
           Build powerful AI agents with Flue's programmable TypeScript agent harness. Write once, deploy anywhere.
         </p>
-        <div class="mt-8 flex flex-wrap items-center gap-4">
+        <div class="mt-8 flex flex-col items-start gap-4 sm:flex-row sm:flex-wrap sm:items-center">
           <!-- Copy Prompt CTA.
                Cluster of three AI-tool glyphs (retro-pixel / Web3 / modern)
                that subtly splay outward on hover, hinting the prompt is
@@ -223,7 +223,7 @@ const floatingSquares = [
                 <span class="font-[JetBrains_Mono,monospace] text-[13px] text-gray-600">flue run triage</span>
               </div>
               <!-- HTTP webhook run mode -->
-              <div class="flex items-baseline gap-2 px-4 py-2.5" title="Invoke the agent remotely via HTTP">
+              <div class="hidden md:flex items-baseline gap-2 px-4 py-2.5" title="Invoke the agent remotely via HTTP">
                 <svg class="w-3.5 h-3.5 text-gray-400 shrink-0 self-center" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <circle cx="12" cy="12" r="10"/>
                   <line x1="2" y1="12" x2="22" y2="12"/>
