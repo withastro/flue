@@ -12,7 +12,7 @@ const replaces: Record<string, string[]> = {
 };
 
 const tabs = [
-  { id: 'support', label: 'AI support agent', badgeLabel: 'Support Agent', code: SUPPORT_AGENT, lines: SUPPORT_AGENT.split('\n').length },
+  { id: 'support', label: 'customer support agent', badgeLabel: 'Support Agent', code: SUPPORT_AGENT, lines: SUPPORT_AGENT.split('\n').length },
   { id: 'triage', label: 'AI issue triage', badgeLabel: 'Issue Triage', code: ISSUE_TRIAGE, lines: ISSUE_TRIAGE.split('\n').length },
   { id: 'coding', label: 'AI coding agent', badgeLabel: 'Coding Agent', code: CODING_AGENT, lines: CODING_AGENT.split('\n').length },
   { id: 'data', label: 'AI data agent', badgeLabel: 'Data Agent', code: DATA_AGENT, lines: DATA_AGENT.split('\n').length },
@@ -285,15 +285,15 @@ const floatingSquares = [
                     desc: 'skills · roles · AGENTS.md',
                     color: '#d97706',     // amber-600 — warm, paper/document feel
                     textColor: '#b45309', // amber-700 (AA)
-                    rows: 2,
+                    rows: 3,
                   },
                   {
                     key: 'sandbox',
                     label: 'Sandbox',
-                    desc: 'security · network · packages',
+                    desc: 'bash · security · network',
                     color: '#8b5cf6',     // violet-500 — boundary/space
                     textColor: '#6d28d9', // violet-700 (AA)
-                    rows: 3,
+                    rows: 4,
                   },
                   {
                     key: 'agent',
@@ -301,7 +301,7 @@ const floatingSquares = [
                     desc: 'intelligence · tools · memory',
                     color: '#2563eb',     // blue-600 — vivid, active orchestrator
                     textColor: '#1d4ed8', // blue-700 (AA)
-                    rows: 4,
+                    rows: 5,
                   },
                 ].map((layer, index) => {
                   // Layer number counts down from the top-visible band (01 at
