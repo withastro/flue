@@ -1,24 +1,21 @@
-export const HERO = `// .flue/agents/triage.ts
-export const triggers = {webhook: true};
+export const HERO = `export default async function ({ init, payload, env }: FlueContext) {
+  // Initialize a new session, or resume an existing one.
+  // By default, Flue will spin up a lightweight virtual sandbox + filesystem.
+  const session = await init();
 
-export default async function ({ init, payload }) {
-  // Initialize a new session for the agent:
-  const session = await init({ sandbox: new YourFavoriteSandboxProvider() }); 
-
-  // Run your "triage" skill with structured inputs and outputs:
-  const result = await session.skill('triage', {
+  // Leverage agent skills as typed, reusable LLM calls with structured output:
+  const triage = await session.skill('triage', {
     args: { issueNumber: payload.issueNumber },
-    result: v.object({ summary: v.string(), fix_applied: v.boolean() }),
+    result: v.object({ summary: v.string(), fixApplied: v.boolean() }),
   });
 
-  // Control agent behavior and react to prompts and skill responses:
-  if (result.fix_applied) {
-    await session.shell('git add -A');
-    await session.shell('git commit -m "fix: ' + result.summary + '"');
+  // Keep absolute, deterministic control over the most critical decisions:
+  if (triage.fixApplied) {
+    await session.shell(\`git add -A && git commit -m "fix: \${triage.summary}"\`);
   }
 
-  // Combine LLM prompts with determinstic commands:
-  const comment = await session.prompt(\`Write a GitHub comment summarizing this triage: \${result.summary}\`);
+  // Run any CLI tool in the agent's sandbox (git, gh, curl, ...):
+  const comment = await session.prompt('Write a GitHub comment summarizing the triage.');
   await session.shell(\`gh issue comment \${payload.issueNumber} --body-file -\`, { stdin: comment });
 }`;
 

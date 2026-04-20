@@ -29,6 +29,17 @@ const highlighted = tabs.map((tab) => ({
 }));
 
 highlighter.dispose();
+
+// Floating blueprint squares clustered in the upper-right of the hero,
+// roughly at the height of the headline. Coordinates are in the SVG's 400x500
+// viewBox; all squares are 2x2 grid units (40x40px).
+// `delay` (seconds) staggers BOTH the entrance fade-in and the float loop start,
+// so squares fade in one by one and pulse out of sync.
+const floatingSquares = [
+  { x: 300, y: 120, opacity: 1.0,  delay: 0.7,    duration: 4 }, // hero — center of cluster
+  { x: 220, y: 60, opacity: 0.8, delay: 0.3,  duration: 4 }, // upper-left of hero
+  { x: 160, y: 160, opacity: 0.5,  delay: 0.0,  duration: 4 }, // right of hero
+];
 ---
 
 <html lang="en">
@@ -75,38 +86,181 @@ highlighter.dispose();
       </div>
     </nav>
 
+      <!-- Blueprint background: grid (always visible) + floating blue squares (hidden on mobile) -->
+      <div class="absolute inset-0 pointer-events-none overflow-hidden -z-1">
+        <div class="absolute top-1/2 left-1/2 transform -translate-y-1/3 rotate-16 scale-150">
+          <svg 
+            width="700" 
+            height="850" 
+            viewBox="0 0 400 500" 
+            fill="none" 
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <defs>
+              <!-- Construction grid pattern -->
+              <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
+                <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#dddddd" stroke-width="1" opacity="1"/>
+              </pattern>
+
+              <!-- Fade mask - subtle fade only where it meets content on the left -->
+              <linearGradient id="fadeLeft" x1="0%" y1="0%" x2="100%" y2="0%">
+                <stop offset="0%" stop-color="white" stop-opacity="0.1"/>
+                <stop offset="15%" stop-color="white" stop-opacity="0.4"/>
+                <stop offset="35%" stop-color="white" stop-opacity="0.7"/>
+                <stop offset="100%" stop-color="white" stop-opacity="1"/>
+              </linearGradient>
+              <mask id="fadeMask">
+                <rect width="700" height="850" fill="url(#fadeLeft)"/>
+              </mask>
+
+              <!-- Soft drop shadow filter to lift the square off the grid plane -->
+              <filter id="squareShadow" x="-75%" y="-75%" width="250%" height="250%">
+                <feGaussianBlur in="SourceAlpha" stdDeviation="2.5"/>
+                <feOffset dx="0" dy="2.5" result="offsetblur"/>
+                <feComponentTransfer>
+                  <feFuncA type="linear" slope="0.22"/>
+                </feComponentTransfer>
+                <feMerge>
+                  <feMergeNode/>
+                  <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+              </filter>
+            </defs>
+
+            <!-- Apply fade mask to all background content -->
+            <g mask="url(#fadeMask)">
+              <!-- Grid background -->
+              <rect width="400" height="500" fill="url(#grid)" />
+
+              <!-- Floating blueprint squares scattered across the grid. -->
+              <!-- Outer <g> handles positioning so the inner animated <g> has a clean -->
+              <!-- transform-box for CSS scale animation (avoids Chrome SVG transform conflicts). -->
+              <!-- Wrapping <g> hides all squares on mobile (the grid stays visible). -->
+              <g class="hidden sm:block">
+                {floatingSquares.map((sq) => (
+                  <g transform={`translate(${sq.x}, ${sq.y})`} opacity={sq.opacity}>
+                    <g
+                      class="floating-square"
+                      filter="url(#squareShadow)"
+                      style={`animation-delay: ${sq.delay * 1000}ms, ${sq.delay * 1000}ms; animation-duration: 700ms, ${sq.duration}s;`}
+                    >
+                      {/* Main 2x2 filled square */}
+                      <rect
+                        width="40"
+                        height="40"
+                        fill="#3b82f6"
+                        fill-opacity="0.18"
+                        stroke="#3b82f6"
+                        stroke-opacity="0.65"
+                        stroke-width="1"
+                      />
+                      {/* Dotted crosshair: vertical divider */}
+                      <line
+                        x1="20" y1="0" x2="20" y2="40"
+                        stroke="#3b82f6"
+                        stroke-opacity="0.55"
+                        stroke-width="0.75"
+                        stroke-dasharray="2,2"
+                      />
+                      {/* Dotted crosshair: horizontal divider */}
+                      <line
+                        x1="0" y1="20" x2="40" y2="20"
+                        stroke="#3b82f6"
+                        stroke-opacity="0.55"
+                        stroke-width="0.75"
+                        stroke-dasharray="2,2"
+                      />
+                      {/* Small corner markers for extra blueprint feel */}
+                      <circle cx="0"  cy="0"  r="1.25" fill="#3b82f6" fill-opacity="0.75"/>
+                      <circle cx="40" cy="0"  r="1.25" fill="#3b82f6" fill-opacity="0.75"/>
+                      <circle cx="0"  cy="40" r="1.25" fill="#3b82f6" fill-opacity="0.75"/>
+                      <circle cx="40" cy="40" r="1.25" fill="#3b82f6" fill-opacity="0.75"/>
+                    </g>
+                  </g>
+                ))}
+              </g>
+            </g>
+          </svg>
+        </div>
+      </div>
+
     <!-- HERO (white bg) -->
-    <section class="bg-white">
-      <div class="max-w-6xl mx-auto px-6 pt-20 pb-16 lg:pt-28 lg:pb-20">
-          <h1 class="font-heading text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight leading-[1.1]">
+    <section class="bg-transparent relative overflow-hidden">
+      <div class="max-w-6xl mx-auto px-6 pt-20 lg:pt-28 lg:pb-8 relative z-10">
+          <h1 class="font-heading text-5xl sm:text-6xl lg:text-7xl font-bold tracking-tight leading-[1.1]">
             The Sandbox Agent Framework
           </h1>
-          <p class="mt-6  max-w-2xl text-lg lg:text-2xl text-gray-500 text-balance">
-            Flue is the TypeScript agent harness for building powerful AI agents. Solve complex complex tasks and multi-step workflows.
+          <p class="mt-6  max-w-2xl lg:max-w-4xl text-lg lg:text-2xl text-gray-600 text-balance">
+            Build the most powerful AI agents with Flue's programmable TypeScript harness. Write once, deploy anywhere.
           </p>
-          <div class="mt-8 flex items-center gap-4">
-            <a href="https://github.com/withastro/flue" target="_blank" rel="noopener noreferrer" class="group inline-flex items-center gap-2.5 bg-gray-950 hover:bg-gray-800 rounded-full px-5 py-3 text-sm font-medium text-white transition-colors">
+          <div class="mt-8 flex flex-wrap items-center gap-4">
+            <button id="copy-prompt-btn" type="button" class="group inline-flex items-center gap-2.5 bg-gray-950 hover:bg-gray-800 rounded-full px-5 py-3 text-sm font-medium text-white transition-colors cursor-pointer">
+              <span class="copy-prompt-icons relative flex items-center justify-start shrink-0 text-white w-[70px] h-5">
+                <svg class="copy-prompt-icon w-5 h-5 transition-transform duration-300 ease-out -rotate-6 group-hover:-rotate-12 group-hover:-translate-x-0.5" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z"/></svg>
+                <svg class="copy-prompt-icon w-5 h-5 ml-1 transition-transform duration-300 ease-out" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"/></svg>
+                <svg class="copy-prompt-icon w-5 h-5 ml-0.5 transition-transform duration-300 ease-out rotate-6 group-hover:rotate-12 group-hover:translate-x-0.5" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><path d="M16 6H8v12h8V6zm4 16H4V2h16v20z"/></svg>
+              </span>
+              Copy Prompt
+            </button>
+            <a href="https://github.com/withastro/flue" target="_blank" rel="noopener noreferrer" class="group inline-flex items-center gap-2.5 border border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50 rounded-full px-5 py-3 text-sm font-medium text-gray-700 transition-colors">
               Get Started
-              <svg class="w-4 h-4 text-gray-400 group-hover:text-white transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </a>
         </div>
+      </div>
 
-        <!-- Full-width code snippet -->
-        <div class="mt-14">
-          <div class="hero-code border border-gray-300 rounded-sm overflow-hidden [&_pre]:p-6 [&_pre]:text-sm [&_pre]:leading-relaxed [&_pre]:overflow-x-auto [&_pre]:m-0 [&_pre]:rounded-none">
-            <Code code={HERO} lang="typescript" theme="github-light" />
+
+    </section>
+
+    <!-- Code snippet transition section - gradient from white to gray -->
+    <section class="relative z-1" style="background: linear-gradient(to bottom, transparent 0%, transparent 50%, #f8f9fb 50%, #f8f9fb 100%);">
+      <!-- Optional 1px border line in the middle - behind code snippet -->
+      <div class="absolute top-1/2 left-0 right-0 h-px bg-gray-300 transform -translate-y-1/2 z-0"></div>
+      
+      <div class="max-w-6xl mx-auto px-6 py-16 relative z-10">
+        <div class="hero-code border border-gray-300 rounded-sm overflow-hidden shadow-lg bg-white/70 backdrop-blur-sm [&_pre]:p-6 [&_pre]:text-sm [&_pre]:leading-relaxed [&_pre]:overflow-x-auto [&_pre]:m-0 [&_pre]:rounded-none [&_pre]:bg-transparent">
+          <!-- Code block header: filename (left) + run modes (right) -->
+          <div class="flex items-stretch border-b border-gray-200 bg-gray-50/60">
+            <!-- Filename -->
+            <div class="flex items-center gap-2 px-4 py-2.5 min-w-0">
+              <svg class="w-3.5 h-3.5 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+              </svg>
+              <span class="font-[JetBrains_Mono,monospace] text-[13px] text-gray-600 truncate">agents/triage.ts</span>
+            </div>
+
+            <!-- Run modes (right side) -->
+            <div class="ml-auto flex items-stretch divide-x divide-gray-200 border-l border-gray-200">
+              <!-- CLI -->
+              <div class="hidden md:flex items-baseline gap-2 px-4 py-2.5" title="Run the agent locally — useful for CI">
+                <svg class="w-3.5 h-3.5 text-gray-400 shrink-0 self-center" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <polyline points="4 17 10 11 4 5"/>
+                  <line x1="12" y1="19" x2="20" y2="19"/>
+                </svg>
+                <span class="font-[JetBrains_Mono,monospace] text-[13px] text-gray-600">flue run triage</span>
+              </div>
+              <!-- Webhook -->
+              <div class="flex items-baseline gap-2 px-4 py-2.5" title="Invoke the agent remotely via HTTP">
+                <svg class="w-3.5 h-3.5 text-gray-400 shrink-0 self-center" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="10"/>
+                  <line x1="2" y1="12" x2="22" y2="12"/>
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
+                </svg>
+                <span class="font-[JetBrains_Mono,monospace] text-[13px] text-gray-600">POST /agents/triage/:id</span>
+              </div>
+            </div>
           </div>
+          <Code code={HERO} lang="typescript" theme="github-light" />
         </div>
       </div>
     </section>
 
-    <!-- Everything below hero: cool off-white bg -->
-    <div class="bg-gray-200 h-px"></div>
+    <!-- Everything below: gray bg -->
     <div class="bg-[#f8f9fb]">
 
     <!-- SECTION 1: What is a Sandbox Agent? -->
     <section>
-      <div class="max-w-6xl mx-auto px-6 py-24 pt-36">
+      <div class="max-w-6xl mx-auto px-6 py-24 ">
         <div class="grid lg:grid-cols-12 gap-12 lg:gap-20 items-center">
           <div class="lg:col-span-7">
             <h2 class="font-heading text-3xl sm:text-4xl font-bold tracking-tight leading-[1.1] text-balance">
@@ -120,14 +274,31 @@ highlighter.dispose();
             </p>
           </div>
 
-          <!-- Diagram: Agent → Sandbox -->
+          <!-- Diagram: Build → Run → Sandbox -->
           <div class="lg:col-span-5 flex justify-center">
             <div class="w-full max-w-sm flex flex-col items-center gap-0">
-              <!-- Agent card -->
+              <!-- Build card -->
               <div class="relative z-10 w-full bg-white border border-gray-300 rounded-sm p-4">
                 <div class="flex items-center gap-2.5 text-[13px] font-mono text-gray-600 tracking-wider uppercase">
                   <svg class="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></svg>
+                  flue build
+                </div>
+              </div>
+
+              <!-- Animated line (behind cards) -->
+              <div class="-my-1 z-0">
+                <div class="w-[3px] h-10 animated-dash"></div>
+              </div>
+
+              <!-- Run card: CLI + HTTP as two subtly-split entries in one card -->
+              <div class="relative z-10 w-full bg-white border border-gray-300 rounded-sm overflow-hidden">
+                <div class="p-4 flex items-center gap-2.5 text-[13px] font-mono text-gray-600 tracking-wider uppercase">
+                  <svg class="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="M12 4l8 8-8 8"/></svg>
                   flue run agents/support.ts
+                </div>
+                <div class="border-t border-dashed border-gray-200 p-4 flex items-center gap-2.5 text-[13px] font-mono text-gray-600 tracking-wider uppercase">
+                  <svg class="w-4 h-4 text-gray-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h16"/><path d="M12 4l8 8-8 8"/></svg>
+                  POST /agents/support/:id
                 </div>
               </div>
 
@@ -377,6 +548,14 @@ highlighter.dispose();
       badges.forEach((b) => {
         b.addEventListener('click', () => setActiveBuild((b as HTMLElement).dataset.build!));
       });
+
+      // Copy prompt CTA — placeholder (real clipboard logic TBD)
+      const copyPromptBtn = document.getElementById('copy-prompt-btn');
+      if (copyPromptBtn) {
+        copyPromptBtn.addEventListener('click', () => {
+          alert('Copy prompt coming soon.');
+        });
+      }
 
       // Coming soon toast for deploy cards
       const toast = document.getElementById('coming-soon-toast');
