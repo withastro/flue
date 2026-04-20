@@ -54,8 +54,55 @@
 	}
 }
 
+/* Pattern layer card — colored drop shadow (per-card tint via CSS var --shadow-rgb).
+   Uses rgb(R G B / A) modern syntax — required for space-separated CSS variable channels. */
+.pattern-layer {
+	filter: drop-shadow(0 2px 6px rgb(var(--shadow-rgb, 15 23 42) / 0.4))
+		drop-shadow(0 12px 12px rgb(var(--shadow-rgb, 15 23 42) / 0.4));
+}
+
+/* Floating squares color cycle.
+   --sq-color is registered so the browser interpolates it as a color across
+   keyframes (smooth hue transitions, no muddy RGB midpoints). The `.floating-
+   square-color` wrapper sets `color: var(--sq-color)` so every `fill="current
+   Color"` / `stroke="currentColor"` in the SVG subtree picks it up. Only ONE
+   property animates per square — cheap paint cost, no layout impact.
+   All three squares share the same keyframe timeline with no stagger, so
+   they shift hue in sync. */
+@property --sq-color {
+	syntax: '<color>';
+	inherits: true;
+	initial-value: #3b82f6;
+}
+
+.floating-square-color {
+	color: var(--sq-color);
+	animation: square-color-cycle 24s linear infinite;
+}
+
+@keyframes square-color-cycle {
+	0% {
+		--sq-color: #3b82f6;
+	} /* blue-500 */
+	25% {
+		--sq-color: #8b5cf6;
+	} /* violet-500 */
+	50% {
+		--sq-color: #059669;
+	} /* emerald-600 */
+	75% {
+		--sq-color: #d97706;
+	} /* amber-600 */
+	100% {
+		--sq-color: #3b82f6;
+	} /* back to blue — close the loop */
+}
+
 @media (prefers-reduced-motion: reduce) {
 	.floating-square {
+		animation: none;
+	}
+	.floating-square-color {
 		animation: none;
 	}
 }

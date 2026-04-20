@@ -1,3 +1,30 @@
+// Prompt copied to the user's clipboard by the "Copy Prompt" CTA in the hero.
+// Designed to be pasted into a capable coding agent (Claude Code, Cursor,
+// Copilot, etc.) as a self-contained onboarding flow: the agent reads the
+// homepage + README, interviews the user, follows the matching deploy guide,
+// and scaffolds a minimal Flue agent.
+//
+// Tone: the user is speaking TO the agent. Steps are directive but light —
+// the agent ultimately drives the flow.
+export const COPY_PROMPT = `Help me set up a new Flue project. Flue is a TypeScript framework for building sandbox AI agents.
+
+Please do the following:
+
+1. Fetch and read these two pages:
+   - https://flueframework.com/
+   - https://raw.githubusercontent.com/withastro/flue/refs/heads/main/README.md
+
+2. Early on, ask me these four questions before scaffolding anything:
+   a. Where do I want to deploy? (e.g. Cloudflare, Node.js, GitHub Actions, Vercel, Fly.io, etc.)
+   b. Any sandbox services I'd like to use? (e.g. Daytona, E2B, Modal — or Flue's default local/virtual sandbox)
+   c. What do I want to build? A short description is fine — you can scaffold a simple first version.
+   d. Where on disk should the project go? Flue agents can live as a standalone repo, or under \`.flue/\` inside an existing project. Ask me which fits my setup.
+
+3. From the homepage, pick the deploy guide that best matches my answer to (a), follow the link, and read that guide.
+
+4. Scaffold a minimal first version of what I described. Keep it small — I'd rather iterate than start with a kitchen-sink scaffold.
+`;
+
 export const HERO = `export default async function ({ init, payload, env }: FlueContext) {
   // Initialize a new session, or resume an existing one.
   // By default, Flue will spin up a lightweight virtual sandbox + filesystem.
@@ -19,10 +46,11 @@ export const HERO = `export default async function ({ init, payload, env }: Flue
   await session.shell(\`gh issue comment \${payload.issueNumber} --body-file -\`, { stdin: comment });
 }`;
 
-export const SUPPORT_AGENT = `// .flue/agents/support.ts
+export const SUPPORT_AGENT = `// Built for: Cloudflare
 import { getVirtualSandbox } from '@flue/sdk/cloudflare';
 import type { FlueContext } from '@flue/sdk/client';
 
+// POST /agents/support/:id
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload, env }: FlueContext) {
@@ -41,13 +69,12 @@ export default async function ({ init, payload, env }: FlueContext) {
   );
 }`;
 
-export const ISSUE_TRIAGE = `// .flue/agents/triage.ts
-import { defineCommand, type FlueContext } from '@flue/sdk/client';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+export const ISSUE_TRIAGE = `// Built for: Node, GitHub Actions
+import type { FlueContext } from '@flue/sdk/client';
+import * as v from 'valibot';
 
-/** Triggered via CI, so no need to expose this as API... yet. */
-export const triggers = {webhook: false};
+// Triggered from CI via the CLI — no HTTP endpoint needed.
+export const triggers = {};
 
 export default async function ({ init, payload }: FlueContext) {
   const session = await init({ sandbox: 'local' });
@@ -61,11 +88,12 @@ export default async function ({ init, payload }: FlueContext) {
   });
 }`;
 
-export const CODING_AGENT = `// .flue/agents/code.ts
+export const CODING_AGENT = `// Built for: Node, Daytona
 import type { FlueContext } from '@flue/sdk/client';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '@flue/connectors/daytona';
 
+// POST /agents/code/:id
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload, env }: FlueContext) {
@@ -82,9 +110,11 @@ export default async function ({ init, payload, env }: FlueContext) {
   return await session.prompt(payload.prompt);
 }`;
 
-export const DATA_AGENT = `// .flue/agents/data.ts
+export const DATA_AGENT = `// Built for: Node
 import type { FlueContext } from '@flue/sdk/client';
+import * as v from 'valibot';
 
+// POST /agents/data/:id
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload }: FlueContext) {
