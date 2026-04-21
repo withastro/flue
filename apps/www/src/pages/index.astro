@@ -46,7 +46,6 @@ const floatingSquares = [
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="/favicon.ico" />
     <meta name="generator" content={Astro.generator} />
     <title>Flue — The Sandbox Agent Framework</title>
@@ -251,13 +250,13 @@ const floatingSquares = [
               The Universal Agent
             </h2>
             <p class="mt-6 text-lg text-gray-500 leading-relaxed">
-              A <a href="https://developers.openai.com/api/docs/guides/agents/sandboxes" target="_blank" rel="noopener noreferrer" class="text-gray-950 underline decoration-gray-300 underline-offset-2 hover:decoration-gray-950 transition-colors">Sandbox Agent</a> is a powerful form of AI agent that pairs an agent harness (like Claude Code or pi) with a dedicated workspace for the agent to operate in.
+              A <a href="https://developers.openai.com/api/docs/guides/agents/sandboxes" target="_blank" rel="noopener noreferrer" class="text-gray-950 underline decoration-gray-300 underline-offset-2 hover:decoration-gray-950 transition-colors">Sandbox Agent</a> is the most powerful form of AI agent. The pattern pairs an agent harness (like Claude Code or pi) with a dedicated workspace for the agent that includes an isolated filesystem, bash, and all of the agent context required to complete its task.
             </p>
             <p class="mt-6 text-lg text-gray-500 leading-relaxed">
-              <strong>We believe that every agent should have a sandbox.</strong> Traditional containers and VMs are still too slow and expensive to run in most real-world scenarios. But recent advances in microVMs and in-process sandbox virtualization have suddenly made sandboxes cheaper and more accessible for more use-cases than ever. It's time to embrace the shift.
+              <strong>We believe every agent should have a sandbox.</strong> Historically, the sandbox pattern was too slow and expensive to use in most situations. But recent advances in microVMs and in-process virtualization have made sandboxes fast and cheap enough to run everywhere — even in high-traffic scenarios like customer support and search. It's time to embrace the shift.
             </p>
             <p class="mt-6 text-lg text-gray-500 leading-relaxed">
-              <strong>Flue is a TypeScript framework for building sandbox agents.</strong> Flue wraps your agent in a programmable harness, mixing deterministic flow control with autonomous agent problem-solving. Prompt, use skills, explore the file system, and run commands in your secure virtual sandbox or container. 
+              <strong>Flue is the agent framework designed for sandbox agents.</strong> Prompt the LLM, call skills, navigate the file tree, delegate tasks, and run bash commands — all inside a secure virtualized sandbox or proper container that you control.
             </p>
             <p class="mt-6 text-lg text-gray-500 leading-relaxed">
               When you're ready to ship, Flue builds and bundles your agents into an HTTP server bundle that you can deploy anywhere. Or, skip the build and run your agents locally, perfect for automating CI workflows.
@@ -272,7 +271,7 @@ const floatingSquares = [
                grid cells, creating a subtle visual hierarchy. -->
           <div class="lg:col-span-5 flex justify-center">
             <div class="w-full max-w-md relative">
-              <p class="text-xs font-medium text-gray-500 uppercase tracking-wider text-center mb-3">Sandbox Agent Architecture</p>
+              <p class="text-xs font-medium text-gray-500 uppercase tracking-wider text-center mb-3">The Sandbox Agent</p>
               <div class="flex flex-col-reverse gap-4">
                 {[
                   {
@@ -307,7 +306,7 @@ const floatingSquares = [
                   },
                   {
                     key: 'agent',
-                    label: 'Agent',
+                    label: 'Harness',
                     desc: 'intelligence · tools · memory',
                     color: '#2563eb',     // blue-600 — vivid, active orchestrator
                     textColor: '#1d4ed8', // blue-700 (AA)
@@ -334,7 +333,7 @@ const floatingSquares = [
                   const hex = layer.textColor.replace('#', '');
                   const shadowRgb = `${parseInt(hex.slice(0, 2), 16)} ${parseInt(hex.slice(2, 4), 16)} ${parseInt(hex.slice(4, 6), 16)}`;
                   return (
-                    <div class="pattern-layer relative transition-transform duration-300 ease-out hover:-translate-y-px hover:scale-[1.02] hover:z-10 cursor-default" style={`--shadow-rgb: ${shadowRgb}; animation-delay: ${(3 - index) * 150 + 1200}ms;`}>
+                    <div class="pattern-layer relative transition-transform duration-300 ease-out hover:-translate-y-px hover:scale-[1.02] hover:z-10 cursor-default" style={`--shadow-rgb: ${shadowRgb}; animation-delay: ${(3 - index) * 150 + 800}ms;`}>
                       <svg
                         viewBox={`0 0 ${width} ${height}`}
                         width="100%"
@@ -422,7 +421,7 @@ const floatingSquares = [
                Stop renting someone else's agent. Off-the-shelf AI tools are built for a general audience and struggle to fit to your product, your data, your customers, or your exact workflows.
              </p>
              <p class="mt-4 text-lg text-gray-500 leading-relaxed">
-                Flue gives you the building blocks to build agents with maximum context, in just a few lines of code. You own the agent, the harness, the infrastructure, and the behavior to build the agent of your dreams.
+                Flue gives you the building blocks to build smarter agents with an intuitive, programmable interface. You own the entire stack: the agent, the harness, and the sandbox itself. Connect it all together and start building a more powerful, autonomous agent.
              </p>
           </div>
 
@@ -724,7 +723,7 @@ const floatingSquares = [
               pulseObserver.disconnect();
             });
           },
-          { threshold: 0.6 }
+          { threshold: 0.75 }
         );
         pulseObserver.observe(archSection);
       }
