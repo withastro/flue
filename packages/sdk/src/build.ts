@@ -26,20 +26,13 @@ export async function build(options: BuildOptions): Promise<void> {
 		throw new Error(`No agents found in ${path.join(agentDir, '.flue/agents/')}`);
 	}
 
-	for (const agent of agents) {
-		const hasTriggers = agent.triggers.webhook || agent.triggers.cron;
-		if (!hasTriggers) {
-			throw new Error(
-				`[flue] Agent "${agent.name}" has no triggers configured. ` +
-					`Add a triggers export to your agent file:\n\n` +
-					`  export const triggers = { webhook: true };\n\n` +
-					`Available triggers: webhook (HTTP endpoint), cron (scheduled)`,
-			);
-		}
-	}
-
+	// NOTE: agents without triggers are valid. They aren't exposed as HTTP
+	// routes in deployed builds, but the `flue run` CLI can still invoke them
+	// locally (see FLUE_MODE=local in the Node plugin). This supports the
+	// "CI-only agent" pattern documented in the README.
 	const webhookAgents = agents.filter((a) => a.triggers.webhook);
 	const cronAgents = agents.filter((a) => a.triggers.cron);
+	const triggerlessAgents = agents.filter((a) => !a.triggers.webhook && !a.triggers.cron);
 
 	console.log(
 		`[flue] Found ${Object.keys(roles).length} role(s): ${Object.keys(roles).join(', ') || '(none)'}`,
@@ -51,6 +44,11 @@ export async function build(options: BuildOptions): Promise<void> {
 	if (cronAgents.length > 0) {
 		console.log(
 			`[flue] Cron agents (manifest only): ${cronAgents.map((a) => `${a.name} (${a.triggers.cron})`).join(', ')}`,
+		);
+	}
+	if (triggerlessAgents.length > 0) {
+		console.log(
+			`[flue] CLI-only agents (no HTTP route in deployed build): ${triggerlessAgents.map((a) => a.name).join(', ')}`,
 		);
 	}
 	console.log(
@@ -75,7 +73,6 @@ export async function build(options: BuildOptions): Promise<void> {
 		roles,
 		agentDir,
 		options,
-		resolveSDKImport: resolveSDKImportFn,
 	};
 
 	const serverCode = plugin.generateEntryPoint(ctx);
@@ -252,18 +249,4 @@ function getSDKDir(): string {
 	} catch {
 		return __dirname;
 	}
-}
-
-function getSDKSrcDir(): string {
-	const thisDir = getSDKDir();
-	if (thisDir.endsWith('/dist') || thisDir.endsWith('\\dist')) {
-		const srcDir = path.join(path.dirname(thisDir), 'src');
-		if (fs.existsSync(srcDir)) return srcDir;
-	}
-	return thisDir;
-}
-
-function resolveSDKImportFn(module: string): string {
-	const srcDir = getSDKSrcDir();
-	return path.join(srcDir, `${module}.ts`).replace(/\\/g, '/');
 }

@@ -5,7 +5,7 @@ export class CloudflarePlugin implements BuildPlugin {
 	name = 'cloudflare';
 
 	generateEntryPoint(ctx: BuildContext): string {
-		const { agents, roles, resolveSDKImport } = ctx;
+		const { agents, roles } = ctx;
 		const rolesJson = JSON.stringify(roles);
 
 		const webhookAgents = agents.filter((a) => a.triggers.webhook);
@@ -49,9 +49,7 @@ export class CloudflarePlugin implements BuildPlugin {
 import { Agent, routeAgentRequest } from 'agents';
 import { Bash, InMemoryFs } from 'just-bash';
 import { getModel } from '@mariozechner/pi-ai';
-import { createFlueContext } from '${resolveSDKImport('client')}';
-import { InMemorySessionStore } from '${resolveSDKImport('session')}';
-import { bashToSessionEnv } from '${resolveSDKImport('sandbox')}';
+import { createFlueContext, InMemorySessionStore, bashToSessionEnv } from '@flue/sdk/internal';
 import { setCloudflareContext, clearCloudflareContext, cfSandboxToSessionEnv } from '@flue/sdk/cloudflare';
 
 ${agentImports}

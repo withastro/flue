@@ -335,7 +335,12 @@ function startServer(
 	return spawn('node', [serverPath], {
 		stdio: ['ignore', 'pipe', 'pipe'],
 		cwd,
-		env: { ...process.env, ...env, PORT: String(port) },
+		// FLUE_MODE=local signals the generated server to allow invocation of
+		// any registered agent (including trigger-less CI-only agents). Without
+		// this flag, the server enforces the `webhook: true` gate — which is
+		// the correct behavior for production deployments, but would prevent
+		// `flue run` from working with CI-only agents.
+		env: { ...process.env, ...env, PORT: String(port), FLUE_MODE: 'local' },
 	});
 }
 

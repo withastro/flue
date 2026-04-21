@@ -5,12 +5,15 @@ export class NodePlugin implements BuildPlugin {
 	name = 'node';
 
 	generateEntryPoint(ctx: BuildContext): string {
-		const { agents, roles, resolveSDKImport } = ctx;
+		const { agents, roles } = ctx;
 		const rolesJson = JSON.stringify(roles);
 
 		const webhookAgents = agents.filter((a) => a.triggers.webhook);
 
-		// Generate import statements for all agent handlers
+		// Generate import statements for all agent handlers. We register every
+		// agent — including trigger-less ones — in the handler map so that the
+		// CLI's `flue run` can invoke them in local mode. The webhookAgents
+		// set below gates which are reachable over public HTTP when deployed.
 		const agentImports = agents
 			.map((a) => {
 				const varName = agentVarName(a.name);
@@ -19,12 +22,12 @@ export class NodePlugin implements BuildPlugin {
 			})
 			.join('\n');
 
-		// Build the handler map
+		// Build the handler map — includes ALL agents, not just webhook ones.
 		const handlerMapEntries = agents
 			.map((a) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name)},`)
 			.join('\n');
 
-		// Build webhook agent names set
+		// Build webhook agent names set — used to gate the public HTTP route.
 		const webhookNames = JSON.stringify(webhookAgents.map((a) => a.name));
 
 		// Manifest for /agents endpoint
@@ -46,9 +49,7 @@ import { streamSSE } from 'hono/streaming';
 import { serve } from '@hono/node-server';
 import { Bash, InMemoryFs, MountableFs, ReadWriteFs } from 'just-bash';
 import { getModel } from '@mariozechner/pi-ai';
-import { createFlueContext } from '${resolveSDKImport('client')}';
-import { InMemorySessionStore } from '${resolveSDKImport('session')}';
-import { bashToSessionEnv } from '${resolveSDKImport('sandbox')}';
+import { createFlueContext, InMemorySessionStore, bashToSessionEnv } from '@flue/sdk/internal';
 import { randomUUID } from 'node:crypto';
 
 ${agentImports}
@@ -64,6 +65,13 @@ ${handlerMapEntries}
 };
 
 const webhookAgents = new Set(${webhookNames});
+
+// When the CLI starts this server via \`flue run\`, it sets FLUE_MODE=local.
+// In local mode the HTTP route accepts any registered agent (including
+// trigger-less CI-only agents). In any other mode the route is restricted to
+// agents with \`webhook: true\`, preventing accidental public exposure of
+// agents that the user only intended to invoke from their CI pipeline.
+const isLocalMode = process.env.FLUE_MODE === 'local';
 
 const manifest = ${manifest};
 
@@ -164,7 +172,7 @@ app.post('/agents/:name/:sessionId', async (c) => {
   if (!handlers[name]) {
     return c.json({ error: 'Agent not found' }, 404);
   }
-  if (!webhookAgents.has(name)) {
+  if (!webhookAgents.has(name) && !isLocalMode) {
     return c.json({ error: 'Agent "' + name + '" is not web-accessible (no webhook trigger)' }, 404);
   }
 
@@ -243,7 +251,12 @@ const port = parseInt(process.env.PORT || '3000', 10);
 
 const server = serve({ fetch: app.fetch, port });
 console.log('[flue] Server listening on http://localhost:' + port);
-console.log('[flue] Available agents: ' + ${JSON.stringify(webhookAgents.map((a) => a.name).join(', '))});
+if (isLocalMode) {
+  console.log('[flue] Mode: local (all agents invokable, including trigger-less)');
+  console.log('[flue] Available agents: ' + ${JSON.stringify(agents.map((a) => a.name).join(', '))});
+} else {
+  console.log('[flue] Available agents: ' + ${JSON.stringify(webhookAgents.map((a) => a.name).join(', '))});
+}
 
 process.on('SIGINT', () => { server.close(); process.exit(0); });
 process.on('SIGTERM', () => { server.close(); process.exit(0); });

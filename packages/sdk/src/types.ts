@@ -332,7 +332,6 @@ export interface BuildContext {
 	roles: Record<string, Role>;
 	agentDir: string;
 	options: BuildOptions;
-	resolveSDKImport: (module: string) => string;
 }
 
 /** Controls the build output format for a target platform. */

@@ -1,6 +1,6 @@
 {
 	"name": "@flue/sdk",
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"type": "module",
 	"license": "Apache-2.0",
 	"exports": {
@@ -15,6 +15,10 @@
 		"./sandbox": {
 			"types": "./dist/sandbox.d.mts",
 			"import": "./dist/sandbox.mjs"
+		},
+		"./internal": {
+			"types": "./dist/internal.d.mts",
+			"import": "./dist/internal.mjs"
 		},
 		"./cloudflare": {
 			"types": "./dist/cloudflare/index.d.mts",
