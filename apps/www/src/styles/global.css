@@ -57,8 +57,9 @@
 /* Pattern layer card — colored drop shadow (per-card tint via CSS var --shadow-rgb).
    Uses rgb(R G B / A) modern syntax — required for space-separated CSS variable channels. */
 .pattern-layer {
-	filter: drop-shadow(0 2px 4px rgb(var(--shadow-rgb, 15 23 42) / 0.8))
-		drop-shadow(0 12px 12px rgb(var(--shadow-rgb, 15 23 42) / 0.1));
+	filter: drop-shadow(0 10px 15px rgb(var(--shadow-rgb, 15 23 42) / .05))
+	drop-shadow(0 4px 6px rgb(var(--shadow-rgb, 15 23 42) / .1))
+		drop-shadow(0 2px 3px rgb(var(--shadow-rgb, 15 23 42) / .15));
 }
 
 /* Floating squares color.

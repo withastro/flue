@@ -281,6 +281,8 @@ const floatingSquares = [
                     desc: 'read · write · grep · glob',
                     color: '#059669',     // emerald-600 — foundational "ground"
                     textColor: '#047857', // emerald-700 (AA on tinted bg)
+                    fillLight: '#d6e4e1',
+                    fillDark: '#add3c5',
                     rows: 3,
                   },
                   {
@@ -289,6 +291,8 @@ const floatingSquares = [
                     desc: 'skills · roles · AGENTS.md',
                     color: '#d97706',     // amber-600 — warm, paper/document feel
                     textColor: '#b45309', // amber-700 (AA)
+                    fillLight: '#efdfd8',
+                    fillDark: '#e8c5af',
                     rows: 3,
                   },
                   {
@@ -297,6 +301,8 @@ const floatingSquares = [
                     desc: 'bash · security · network',
                     color: '#8b5cf6',     // violet-500 — boundary/space
                     textColor: '#6d28d9', // violet-700 (AA)
+                    fillLight: '#e1dbfa',
+                    fillDark: '#cdbbf5',
                     rows: 3,
                   },
                   {
@@ -305,6 +311,8 @@ const floatingSquares = [
                     desc: 'intelligence · tools · memory',
                     color: '#2563eb',     // blue-600 — vivid, active orchestrator
                     textColor: '#1d4ed8', // blue-700 (AA)
+                    fillLight: '#d5dff8',
+                    fillDark: '#afc1f2',
                     rows: 3,
                   },
                 ].map((layer, index) => {
@@ -326,7 +334,7 @@ const floatingSquares = [
                   const hex = layer.textColor.replace('#', '');
                   const shadowRgb = `${parseInt(hex.slice(0, 2), 16)} ${parseInt(hex.slice(2, 4), 16)} ${parseInt(hex.slice(4, 6), 16)}`;
                   return (
-                    <div class="pattern-layer relative" style={`--shadow-rgb: ${shadowRgb};`}>
+                    <div class="pattern-layer relative transition-transform duration-300 ease-out hover:-translate-y-px hover:scale-[1.02] hover:z-10 cursor-default" style={`--shadow-rgb: ${shadowRgb}; animation-delay: ${(3 - index) * 150 + 1200}ms;`}>
                       <svg
                         viewBox={`0 0 ${width} ${height}`}
                         width="100%"
@@ -338,8 +346,8 @@ const floatingSquares = [
                         style={`aspect-ratio: ${width} / ${height};`}
                       >
                         {/* Schematic zone background + darker label bar. */}
-                        <rect x="0" y="0" width={width} height={schematicHeight} fill={layer.color} fill-opacity="0.09"/>
-                        <rect x="0" y={schematicHeight} width={width} height={cell} fill={layer.color} fill-opacity="0.20"/>
+                        <rect x="0" y="0" width={width} height={schematicHeight} fill={layer.fillLight}/>
+                        <rect x="0" y={schematicHeight} width={width} height={cell} fill={layer.fillDark}/>
 
                         {/* Dotted grid lines inside the schematic zone. */}
                         <g stroke={layer.color} stroke-opacity="0.5" stroke-width="0.6" stroke-dasharray="1,2" vector-effect="non-scaling-stroke">
@@ -702,11 +710,39 @@ const floatingSquares = [
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(measureGuideSoonPills, 150);
       });
+
+      // --- Architecture cards: staggered entrance pulse ----------------------
+      // Fires once when the architecture diagram scrolls into view.
+      const archSection = document.querySelector('.pattern-layer')?.closest('section');
+      if (archSection && 'IntersectionObserver' in window) {
+        const pulseObserver = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              if (!entry.isIntersecting) return;
+              const cards = archSection.querySelectorAll<HTMLElement>('.pattern-layer');
+              cards.forEach((card) => card.classList.add('card-pulse'));
+              pulseObserver.disconnect();
+            });
+          },
+          { threshold: 0.6 }
+        );
+        pulseObserver.observe(archSection);
+      }
     </script>
 
     <style is:global>
       .build-code-panel .shiki {
         background-color: white !important;
+      }
+
+      /* One-time entrance pulse for architecture cards. */
+      @keyframes cardPulse {
+        0%   { transform: translateY(0) scale(1); }
+        50%  { transform: translateY(-6px) scale(1.02); }
+        100% { transform: translateY(0) scale(1); }
+      }
+      .pattern-layer.card-pulse {
+        animation: cardPulse 600ms ease-out forwards;
       }
 
       /* "Guide coming soon" hover swap for disabled deploy-card buttons.
