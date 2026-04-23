@@ -174,6 +174,14 @@ export interface SessionInit {
 	 * Precedence (highest wins): per-call `model` > role `model` > session `model` > build-time default.
 	 */
 	model?: string;
+
+	/**
+	 * Session-wide commands. Every prompt(), skill(), and shell() call inherits
+	 * this list. Per-call `commands` are merged on top — if a per-call command
+	 * shares a name with a session command, the per-call version wins for that
+	 * call.
+	 */
+	commands?: Command[];
 }
 
 // ─── Flue Session (returned by init()) ──────────────────────────────────

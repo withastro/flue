@@ -174,26 +174,19 @@ Your agent may need to interact with tools like `git`, `npm`, or `docker`. **Com
 `.flue/agents/deploy.ts`:
 
 ```typescript
-import { defineCommand, type FlueContext } from '@flue/sdk/client';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { type FlueContext } from '@flue/sdk/client';
+import { defineCommand } from '@flue/sdk/node';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
 
-// Secrets are hooked up inside the command definition,
-// so the agent never sees them.
-const git = defineCommand('git', async (args) =>
-  promisify(execFile)('git', args, {
-    env: { ...process.env, GIT_AUTHOR_NAME: 'flue-bot' },
-  }),
-);
+// Bare pass-through. Safe, non-sensitive env vars like PATH, HOME, LANG, and TZ
+// are forwarded automatically — API keys and secrets stay on the host.
+const git = defineCommand('git', { env: { GIT_AUTHOR_NAME: 'flue-bot' } });
 
-const npm = defineCommand('npm', async (args) =>
-  promisify(execFile)('npm', args, {
-    env: { PATH: process.env.PATH, NPM_TOKEN: process.env.NPM_TOKEN },
-  }),
-);
+// Opt the agent into a single privileged env var without exposing the rest
+// of process.env.
+const npm = defineCommand('npm', { env: { NPM_TOKEN: process.env.NPM_TOKEN } });
 
 export default async function ({ init, payload }: FlueContext) {
   const session = await init({ sandbox: 'local' });
@@ -212,7 +205,35 @@ export default async function ({ init, payload }: FlueContext) {
 }
 ```
 
+`defineCommand(name)` and `defineCommand(name, { env })` shell out via `child_process.execFile` with a sensible default env. If you need full control over how the command runs (custom logic, a different binary, fine-grained env scrubbing), use the function form:
+
+```typescript
+const gh = defineCommand('gh', async (args) => {
+  // Your own implementation — return the stdout/stderr/exitCode however you like.
+  // Thrown errors are caught automatically and surfaced as a non-zero exit code.
+  const res = await fetch('https://api.github.com/...');
+  return { stdout: await res.text() };
+});
+```
+
 Commands are granted per-prompt or per-skill, so you can be as granular with access as you need. If the agent tries to run `git` outside of a prompt where it was granted, the command is blocked.
+
+### Session-wide commands
+
+If every call in a session needs the same set of commands, pass them to `init()` once instead of to every `prompt()` / `skill()` / `shell()`:
+
+```typescript
+const session = await init({
+  sandbox: 'local',
+  commands: [git, npm],
+});
+
+// `git` and `npm` are available here without repeating `commands: [...]`.
+await session.skill('deploy-check', { args: { branch: payload.branch } });
+await session.shell('git status');
+```
+
+Per-call `commands` still work and are merged on top of the session list. If a per-call command shares a name with a session command, the per-call version wins for that call only — the session command is restored afterward.
 
 ## Container agents
 

@@ -132,27 +132,18 @@ Secrets are hooked up inside the command definition, so the agent never sees the
 `.flue/agents/triage.ts`:
 
 ```typescript
-import { defineCommand, type FlueContext } from '@flue/sdk/client';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { type FlueContext } from '@flue/sdk/client';
+import { defineCommand } from '@flue/sdk/node';
 import * as v from 'valibot';
 
 export const triggers = {};
 
 // Connect privileged CLIs to your agent without leaking sensitive keys.
 // Secrets are hooked up inside the command definition here, so the agent
-// never sees them.
-const gh = defineCommand('gh', async (args) =>
-  promisify(execFile)('gh', args, {
-    env: { GH_TOKEN: process.env.GH_TOKEN },
-  }),
-);
-
-const npm = defineCommand('npm', async (args) =>
-  promisify(execFile)('npm', args, {
-    env: { PATH: process.env.PATH },
-  }),
-);
+// never sees them. The default env forwards safe vars like PATH and HOME —
+// anything else (tokens, keys) must be opted in explicitly.
+const gh = defineCommand('gh', { env: { GH_TOKEN: process.env.GH_TOKEN } });
+const npm = defineCommand('npm');
 
 export default async function ({ init, payload }: FlueContext) {
   const session = await init({ sandbox: 'local' });
@@ -278,17 +269,12 @@ The `--payload` flag passes JSON data to the agent's `payload` property. `GITHUB
 Result schemas aren't just for type safety — they're how you orchestrate multi-step workflows. Because you get typed data back from `prompt()` and `skill()`, you can branch on results within a single agent:
 
 ```typescript
-import { defineCommand, type FlueContext } from '@flue/sdk/client';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { type FlueContext } from '@flue/sdk/client';
+import { defineCommand } from '@flue/sdk/node';
 import * as v from 'valibot';
 
-const gh = defineCommand('gh', async (args) =>
-  promisify(execFile)('gh', args, { env: { GH_TOKEN: process.env.GH_TOKEN } }),
-);
-const npm = defineCommand('npm', async (args) =>
-  promisify(execFile)('npm', args, { env: { PATH: process.env.PATH } }),
-);
+const gh = defineCommand('gh', { env: { GH_TOKEN: process.env.GH_TOKEN } });
+const npm = defineCommand('npm');
 
 export default async function ({ init, payload }: FlueContext) {
   const session = await init({ sandbox: 'local' });

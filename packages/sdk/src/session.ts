@@ -78,6 +78,7 @@ export class Session implements FlueSession {
 	private compactionAbortController: AbortController | undefined;
 	private eventCallback: FlueEventCallback | undefined;
 	private builtinTools: AgentTool<any>[];
+	private sessionCommands: Command[];
 
 	constructor(
 		id: string,
@@ -86,11 +87,13 @@ export class Session implements FlueSession {
 		store: SessionStore,
 		existingData: SessionData | null,
 		onAgentEvent?: FlueEventCallback,
+		sessionCommands?: Command[],
 	) {
 		this.id = id;
 		this.config = config;
 		this.env = env;
 		this.store = store;
+		this.sessionCommands = sessionCommands ?? [];
 
 		this.metadata = existingData?.metadata ?? {};
 		this.createdAt = existingData?.createdAt;
@@ -181,10 +184,11 @@ export class Session implements FlueSession {
 		const schema = options?.result as v.GenericSchema | undefined;
 		const fullPrompt = buildPromptText(promptWithRole, schema);
 
-		if (options?.commands) {
-			this.assertCommandSupport(options.commands);
+		const effectiveCommands = this.mergeCommands(options?.commands);
+		if (effectiveCommands.length > 0) {
+			this.assertCommandSupport(effectiveCommands);
 		}
-		const registeredCommandNames = options?.commands ? this.registerCommands(options.commands) : [];
+		const registeredCommandNames = this.registerCommands(effectiveCommands);
 		const registeredToolNames = options?.tools ? this.registerCustomTools(options.tools) : [];
 		try {
 			await this.agent.prompt(fullPrompt);
@@ -237,10 +241,11 @@ export class Session implements FlueSession {
 		const skillPrompt = buildSkillPrompt(registeredSkill.instructions, options?.args, schema);
 		const promptWithRole = this.injectRoleInstructions(skillPrompt, options?.role);
 
-		if (options?.commands) {
-			this.assertCommandSupport(options.commands);
+		const effectiveCommands = this.mergeCommands(options?.commands);
+		if (effectiveCommands.length > 0) {
+			this.assertCommandSupport(effectiveCommands);
 		}
-		const registeredCommandNames = options?.commands ? this.registerCommands(options.commands) : [];
+		const registeredCommandNames = this.registerCommands(effectiveCommands);
 		const registeredToolNames = options?.tools ? this.registerCustomTools(options.tools) : [];
 		try {
 			await this.agent.prompt(promptWithRole);
@@ -261,10 +266,11 @@ export class Session implements FlueSession {
 	}
 
 	async shell(command: string, options?: ShellOptions): Promise<ShellResult> {
-		if (options?.commands) {
-			this.assertCommandSupport(options.commands);
+		const effectiveCommands = this.mergeCommands(options?.commands);
+		if (effectiveCommands.length > 0) {
+			this.assertCommandSupport(effectiveCommands);
 		}
-		const registeredNames = options?.commands ? this.registerCommands(options.commands) : [];
+		const registeredNames = this.registerCommands(effectiveCommands);
 		try {
 			const result = await this.env.exec(command, {
 				env: options?.env,
@@ -430,6 +436,20 @@ export class Session implements FlueSession {
 					'Remote sandboxes handle command execution at the platform level.',
 			);
 		}
+	}
+
+	/**
+	 * Merge session-wide `commands` (from init()) with per-call commands. When
+	 * both define a command with the same name, the per-call entry wins for
+	 * that call.
+	 */
+	private mergeCommands(perCall: Command[] | undefined): Command[] {
+		if (!perCall || perCall.length === 0) return this.sessionCommands;
+		if (this.sessionCommands.length === 0) return perCall;
+		const byName = new Map<string, Command>();
+		for (const cmd of this.sessionCommands) byName.set(cmd.name, cmd);
+		for (const cmd of perCall) byName.set(cmd.name, cmd);
+		return Array.from(byName.values());
 	}
 
 	private registerCommands(commands: Command[]): string[] {

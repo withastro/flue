@@ -156,30 +156,24 @@ Secrets are hooked up inside the command definition, so the agent never sees the
 `.flue/agents/triage.ts`:
 
 ```typescript
-import { defineCommand, type FlueContext } from '@flue/sdk/client';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { type FlueContext } from '@flue/sdk/client';
+import { defineCommand } from '@flue/sdk/node';
 import * as v from 'valibot';
 
 export const triggers = {};
 
 // Connect privileged CLIs to your agent without leaking sensitive keys.
 // Secrets are hooked up inside the command definition here, so the agent
-// never sees them.
-const curl = defineCommand('curl', async (args) =>
-  promisify(execFile)('curl', args, {
-    env: {
-      PATH: process.env.PATH,
-      GITLAB_API_TOKEN: process.env.GITLAB_API_TOKEN,
-    },
-  }),
-);
-
-const npm = defineCommand('npm', async (args) =>
-  promisify(execFile)('npm', args, {
-    env: { PATH: process.env.PATH },
-  }),
-);
+// never sees them. The default env forwards safe vars like PATH and HOME —
+// anything else (tokens, keys) must be opted in explicitly.
+//
+// `glab` is the official GitLab CLI — scoped to GitLab's API, so the token
+// can only reach GitLab. Prefer purpose-built CLIs over general-purpose
+// HTTP clients like `curl` for this exact reason.
+const glab = defineCommand('glab', {
+  env: { GITLAB_TOKEN: process.env.GITLAB_API_TOKEN },
+});
+const npm = defineCommand('npm');
 
 export default async function ({ init, payload }: FlueContext) {
   const session = await init({ sandbox: 'local' });
@@ -188,10 +182,9 @@ export default async function ({ init, payload }: FlueContext) {
     args: {
       issueIid: payload.issueIid,
       projectId: payload.projectId,
-      apiUrl: payload.apiUrl,
     },
-    // Grant access to `curl` and `npm` for the life of this skill.
-    commands: [curl, npm],
+    // Grant access to `glab` and `npm` for the life of this skill.
+    commands: [glab, npm],
     result: v.object({
       severity: v.picklist(['low', 'medium', 'high', 'critical']),
       reproducible: v.boolean(),
@@ -204,7 +197,7 @@ export default async function ({ init, payload }: FlueContext) {
 }
 ```
 
-The agent can now use `curl` to interact with the GitLab API through the command — but it never has access to the `GITLAB_API_TOKEN` itself. If the agent tries to run `curl` outside of a prompt where it was granted, the command is blocked.
+The agent can now use `glab` to interact with the GitLab API through the command — but it never has access to the `GITLAB_API_TOKEN` itself. If the agent tries to run `glab` outside of a prompt where it was granted, the command is blocked.
 
 ### Skills and roles
 
@@ -220,7 +213,7 @@ description: Triage a GitLab issue — reproduce, assess severity, and optionall
 
 Given the issue IID and project ID in the arguments:
 
-1. Use `curl` with the GitLab API to fetch the issue details
+1. Use `glab issue view <iid>` to fetch the issue details
 2. Read the codebase to understand the relevant area
 3. Attempt to reproduce the issue
 4. Assess severity and write a summary
@@ -284,7 +277,7 @@ triage:
     - |
       npx flue run triage --target node \
         --session-id "triage-$ISSUE_IID" \
-        --payload "{\"issueIid\": $ISSUE_IID, \"projectId\": \"$CI_PROJECT_ID\", \"apiUrl\": \"$CI_API_V4_URL\"}"
+        --payload "{\"issueIid\": $ISSUE_IID, \"projectId\": \"$CI_PROJECT_ID\"}"
 ```
 
 Add these as CI/CD variables (**Settings > CI/CD > Variables**, masked):
@@ -299,26 +292,19 @@ Add these as CI/CD variables (**Settings > CI/CD > Variables**, masked):
 Result schemas aren't just for type safety — they're how you orchestrate multi-step workflows. Because you get typed data back from `prompt()` and `skill()`, you can branch on results within a single agent:
 
 ```typescript
-import { defineCommand, type FlueContext } from '@flue/sdk/client';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { type FlueContext } from '@flue/sdk/client';
+import { defineCommand } from '@flue/sdk/node';
 import * as v from 'valibot';
 
-const curl = defineCommand('curl', async (args) =>
-  promisify(execFile)('curl', args, {
-    env: { PATH: process.env.PATH, GITLAB_API_TOKEN: process.env.GITLAB_API_TOKEN },
-  }),
-);
-const npm = defineCommand('npm', async (args) =>
-  promisify(execFile)('npm', args, { env: { PATH: process.env.PATH } }),
-);
+const glab = defineCommand('glab', { env: { GITLAB_TOKEN: process.env.GITLAB_API_TOKEN } });
+const npm = defineCommand('npm');
 
 export default async function ({ init, payload }: FlueContext) {
   const session = await init({ sandbox: 'local' });
 
   const diagnosis = await session.skill('triage', {
     args: { issueIid: payload.issueIid },
-    commands: [curl],
+    commands: [glab],
     result: v.object({
       severity: v.picklist(['low', 'medium', 'high', 'critical']),
       reproducible: v.boolean(),
@@ -330,7 +316,7 @@ export default async function ({ init, payload }: FlueContext) {
     // Escalate: attempt an automated fix
     await session.skill('auto-fix', {
       args: { issueIid: payload.issueIid },
-      commands: [curl, npm],
+      commands: [glab, npm],
       result: v.object({ fix_applied: v.boolean(), branch: v.optional(v.string()) }),
     });
   }
@@ -348,7 +334,7 @@ During development, `flue run` is your main tool. It builds the workspace and ru
 ```bash
 # Run with a payload
 npx flue run triage --target node --session-id test-1 \
-  --payload '{"issueIid": 42, "projectId": "123", "apiUrl": "https://gitlab.com/api/v4"}'
+  --payload '{"issueIid": 42, "projectId": "123"}'
 
 # Pipe the result to jq
 npx flue run triage --target node --session-id test-2 \

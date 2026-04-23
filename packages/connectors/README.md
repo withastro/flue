@@ -87,9 +87,8 @@ Flue was designed to power CI workflows since day one. The `"local"` filesystem 
 
 ```ts
 // .flue/agents/triage.ts
-import { defineCommand, type FlueContext } from '@flue/sdk/client';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { type FlueContext } from '@flue/sdk/client';
+import { defineCommand } from '@flue/sdk/node';
 import * as v from 'valibot';
 
 export const triggers = {};
@@ -97,12 +96,8 @@ export const triggers = {};
 // Connect privileged CLIs to your agent without leaking sensitive keys and secrets.
 // Secrets are hooked up inside the command definition here, so your agent never sees them.
 // Commands are controlled per-prompt, so you can be as granular with access as you need.
-const npm = defineCommand('npm', async (args) => promisify(execFile)('npm', args));
-const gh = defineCommand('gh', async (args) =>
-  promisify(execFile)('gh', args, {
-    env: { GH_TOKEN: process.env.GH_TOKEN },
-  }),
-);
+const npm = defineCommand('npm');
+const gh = defineCommand('gh', { env: { GH_TOKEN: process.env.GH_TOKEN } });
 
 export default async function ({ init, payload }: FlueContext) {
   // 'local' mounts the host filesystem at /workspace — ideal for CI

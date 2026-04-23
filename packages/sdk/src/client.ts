@@ -4,20 +4,13 @@ import { Session } from './session.ts';
 import type {
 	AgentConfig,
 	BashLike,
-	Command,
 	FlueContext,
 	FlueEventCallback,
 	FlueSession,
-	PromptOptions,
-	PromptResponse,
 	SandboxFactory,
 	SessionEnv,
 	SessionInit,
 	SessionStore,
-	ShellOptions,
-	ShellResult,
-	SkillOptions,
-	TaskOptions,
 } from './types.ts';
 
 export interface FlueContextConfig {
@@ -90,6 +83,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 				store,
 				savedData,
 				currentEventCallback,
+				options?.commands,
 			);
 		},
 
@@ -166,9 +160,4 @@ export type {
 	ToolDef,
 } from './types.ts';
 
-export function defineCommand(
-	name: string,
-	execute: (args: string[]) => Promise<{ stdout: string; stderr: string; exitCode: number }>,
-): Command {
-	return { name, execute };
-}
+
