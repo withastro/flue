@@ -49,20 +49,28 @@ A few things to note:
 
 ### 3. Build and deploy
 
-First, set your API key:
-
-```bash
-wrangler secret put ANTHROPIC_API_KEY
-```
-
-Then build and deploy:
-
 ```bash
 npx flue build --target cloudflare
 npx wrangler deploy
 ```
 
 `flue build --target cloudflare` compiles your workspace into a `./dist` directory containing a Cloudflare Workers-compatible artifact. `wrangler deploy` pushes it live.
+
+### 4. Set your API key
+
+> **Heads up:** Your agent will fail with a "No API key" error until you set an API key for your chosen model provider. Now that your Worker exists (from the first deploy above), you can set one as a secret.
+
+The simplest way is to store it as a Worker secret with Wrangler:
+
+```bash
+npx wrangler secret put ANTHROPIC_API_KEY
+```
+
+Use the env var name your provider expects — `ANTHROPIC_API_KEY` for Anthropic, `OPENAI_API_KEY` for OpenAI, and so on. If you're routing through an AI gateway or have a different setup, follow your own process — as long as the expected variable is set as a Worker secret, the agent will pick it up. `wrangler secret put` deploys a new version of your Worker immediately, so the key is live as soon as the command completes.
+
+We recommend doing this **after** your first `wrangler deploy` so the Worker exists when you set the secret.
+
+### 5. Try it locally
 
 For local development, use `wrangler dev` to run the worker locally:
 

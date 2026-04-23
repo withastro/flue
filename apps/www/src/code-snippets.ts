@@ -14,17 +14,20 @@ Please do the following:
    - https://flueframework.com/
    - https://raw.githubusercontent.com/withastro/flue/refs/heads/main/README.md
 
-2. Early on, ask me these four questions before scaffolding anything:
+2. Early on, ask me these questions before scaffolding anything:
    a. Where do I want to deploy? (e.g. Cloudflare, Node.js, GitHub Actions, Vercel, Fly.io, etc.)
    b. Any sandbox services I'd like to use? (e.g. Daytona, E2B, Modal — or Flue's default local/virtual sandbox)
-   c. What do I want to build? A short description is fine — you can scaffold a simple first version.
-   d. Where on disk should the project go? Flue agents can live as a standalone repo, or under \`.flue/\` inside an existing project. Ask me which fits my setup.
+   c. Which LLM provider / model family should the agent use? (e.g. Anthropic Claude, OpenAI GPT, Google Gemini.) This tells you which environment variable and default model ID to reference later.
+   d. What do I want to build? A short description is fine — you can scaffold a simple first version.
+   e. Where on disk should the project go? Flue agents can live as a standalone repo, or under \`.flue/\` inside an existing project. Ask me which fits my setup.
 
 3. From the homepage, pick the deploy guide that best matches my answer to (a), follow the link, and read that guide.
 
-4. When you need a model identifier for the scaffolded agent (e.g. \`'anthropic/claude-sonnet-4-20250514'\`), **look it up at https://models.dev/** — don't guess from memory. Model IDs change frequently and your training data is likely out of date. Default to a current Anthropic model unless I tell you otherwise.
+4. When you need a model identifier for the scaffolded agent (e.g. \`'anthropic/claude-sonnet-4-20250514'\`), **look it up at https://models.dev/** for the provider I picked in (c) — don't guess from memory. Model IDs change frequently and your training data is likely out of date.
 
 5. Scaffold a minimal first version of what I described. Keep it small — I'd rather iterate than start with a kitchen-sink scaffold.
+
+**Rule:** Never invent values for API keys or other secrets. If the setup needs a secret (like the provider API key implied by 2c), either ask me to provide it or show me the exact command to set it myself — following whatever the deploy guide recommends. Running the agent with a fake key will fail in confusing ways later.
 `;
 
 export const HERO = `export default async function ({ init, payload, env }) {
