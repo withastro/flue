@@ -22,15 +22,24 @@ pnpm run build          # in packages/cli/
 Use the CLI to build and run an agent in one step:
 
 ```
-node packages/cli/dist/flue.js run <agent-name> --dir <workspace-dir> [--payload '<json>']
+node packages/cli/dist/flue.js run <agent-name> [--workspace <path>] [--output <path>] [--payload '<json>']
 ```
 
-Examples:
+`--workspace` points at the directory containing `agents/` and `roles/`. If omitted, the CLI looks for `./.flue/` first, else falls back to `./`. `--output` controls where `dist/` is written; defaults to the current directory.
+
+Examples (run from the `examples/hello-world/` directory so the `./.flue/` waterfall picks it up):
 
 ```
-node packages/cli/dist/flue.js run hello --dir examples/hello-world
-node packages/cli/dist/flue.js run with-role --dir examples/hello-world --payload '{"name": "Fred"}'
-node packages/cli/dist/flue.js run with-skill --dir examples/hello-world --payload '{"name": "World"}'
+cd examples/hello-world
+node ../../packages/cli/dist/flue.js run hello
+node ../../packages/cli/dist/flue.js run with-role --payload '{"name": "Fred"}'
+node ../../packages/cli/dist/flue.js run with-skill --payload '{"name": "World"}'
+```
+
+Or pass both flags explicitly:
+
+```
+node packages/cli/dist/flue.js run hello --workspace examples/hello-world/.flue --output examples/hello-world
 ```
 
 This builds the workspace, starts a temporary server, invokes the agent via SSE, streams output to stderr, prints the final result to stdout, and shuts down.

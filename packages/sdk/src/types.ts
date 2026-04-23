@@ -338,7 +338,10 @@ export interface AgentInfo {
 export interface BuildContext {
 	agents: AgentInfo[];
 	roles: Record<string, Role>;
-	agentDir: string;
+	/** The workspace root: the directory directly containing agents/ and roles/. */
+	workspaceDir: string;
+	/** Where dist/ is written. Typically the project root, independent of workspaceDir. */
+	outputDir: string;
 	options: BuildOptions;
 }
 
@@ -352,7 +355,19 @@ export interface BuildPlugin {
 }
 
 export interface BuildOptions {
-	agentDir: string;
+	/**
+	 * The workspace directory: the directory directly containing agents/ and
+	 * roles/. Pass an explicit path — no .flue/ waterfall is performed here.
+	 * Callers that want the waterfall behavior (e.g. the CLI when --workspace
+	 * is omitted) should resolve it themselves with `resolveWorkspaceFromCwd`.
+	 */
+	workspaceDir: string;
+	/**
+	 * Where to write the dist/ directory. Independent of workspaceDir — typically
+	 * the project root, so platform config like wrangler.jsonc ends up where the
+	 * deploy tool expects it.
+	 */
+	outputDir: string;
 	target?: 'node' | 'cloudflare';
 	/** Overrides `target` when provided. */
 	plugin?: BuildPlugin;

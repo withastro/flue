@@ -2,6 +2,15 @@
 
 Build and deploy Flue agents as a Node.js server. This guide walks you through creating your first agent, running it locally, and deploying it anywhere you can run Node.js — a VPS, Docker, Railway, Fly.io, or any cloud platform.
 
+## Project layout
+
+Flue looks for your workspace in one of two places:
+
+- `./` — agents in `./agents/`, roles in `./roles/`.
+- `./.flue/` — agents in `./.flue/agents/`, roles in `./.flue/roles/`.
+
+If `./.flue/` exists, Flue uses it. Otherwise it uses the project root. Examples in this guide use the `./.flue/` layout — drop the prefix if you prefer the root.
+
 ## Hello World
 
 The simplest agent — no container, no storage, just a prompt and a typed result.

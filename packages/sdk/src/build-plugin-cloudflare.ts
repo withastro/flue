@@ -352,8 +352,11 @@ export default {
 		const allBindings = [...agentBindings, { class_name: 'Sandbox', name: 'Sandbox' }];
 		const allSqliteClasses = allBindings.map((b) => b.class_name);
 
-		// Generate wrangler.jsonc
-		const workerName = ctx.agentDir.split('/').pop() ?? 'flue-agents';
+		// Generate wrangler.jsonc.
+		// Derive the worker name from the output dir (typically the project root)
+		// rather than the workspace dir, since the workspace may be ./.flue/ which
+		// would produce a useless ".flue" worker name.
+		const workerName = ctx.outputDir.split('/').pop() ?? 'flue-agents';
 		outputs['wrangler.jsonc'] = JSON.stringify(
 			{
 				$schema: 'https://workers.cloudflare.com/schema/wrangler.json',

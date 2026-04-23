@@ -9,21 +9,33 @@ import type { AgentInfo, BuildContext, BuildOptions, BuildPlugin, Role } from '.
 
 /**
  * Build a workspace into a deployable artifact.
+ *
+ * `options.workspaceDir` is treated as an explicit workspace root — the directory
+ * directly containing agents/ and roles/. No .flue/ waterfall is performed here;
+ * callers that want waterfall behavior (e.g. the CLI when --workspace is omitted)
+ * should use `resolveWorkspaceFromCwd` first.
+ *
  * AGENTS.md and .agents/skills/ are NOT bundled — discovered at runtime from session cwd.
  */
 export async function build(options: BuildOptions): Promise<void> {
-	const agentDir = path.resolve(options.agentDir);
+	const workspaceDir = path.resolve(options.workspaceDir);
+	const outputDir = path.resolve(options.outputDir);
 
 	const plugin = resolvePlugin(options);
 
-	console.log(`[flue] Building workspace: ${agentDir}`);
+	console.log(`[flue] Building workspace: ${workspaceDir}`);
+	console.log(`[flue] Output: ${outputDir}/dist`);
 	console.log(`[flue] Target: ${plugin.name}`);
 
-	const roles = discoverRoles(agentDir);
-	const agents = discoverAgents(agentDir);
+	const roles = discoverRoles(workspaceDir);
+	const agents = discoverAgents(workspaceDir);
 
 	if (agents.length === 0) {
-		throw new Error(`No agents found in ${path.join(agentDir, '.flue/agents/')}`);
+		throw new Error(
+			`[flue] No agent files found.\n\n` +
+				`Expected at: ${path.join(workspaceDir, 'agents')}/\n` +
+				`Add at least one agent file (e.g. hello.ts).`,
+		);
 	}
 
 	// NOTE: agents without triggers are valid. They aren't exposed as HTTP
@@ -55,7 +67,7 @@ export async function build(options: BuildOptions): Promise<void> {
 		`[flue] AGENTS.md and .agents/skills/ will be discovered at runtime from session cwd`,
 	);
 
-	const distDir = path.join(agentDir, 'dist');
+	const distDir = path.join(outputDir, 'dist');
 	fs.mkdirSync(distDir, { recursive: true });
 
 	const manifest = {
@@ -71,7 +83,8 @@ export async function build(options: BuildOptions): Promise<void> {
 	const ctx: BuildContext = {
 		agents,
 		roles,
-		agentDir,
+		workspaceDir,
+		outputDir,
 		options,
 	};
 
@@ -83,11 +96,11 @@ export async function build(options: BuildOptions): Promise<void> {
 	fs.writeFileSync(entryPath, serverCode, 'utf-8');
 
 	try {
-		const nodePathsSet = collectNodePaths(agentDir);
+		const nodePathsSet = collectNodePaths(workspaceDir);
 		const { external: pluginExternal = [], ...pluginEsbuildOpts } = plugin.esbuildOptions(ctx);
 
 		// User's direct deps are externalized (resolved at runtime); Flue infra gets bundled
-		const userExternals = getUserExternals(agentDir);
+		const userExternals = getUserExternals(workspaceDir);
 
 		await esbuild.build({
 			entryPoints: [entryPath],
@@ -147,8 +160,28 @@ function resolvePlugin(options: BuildOptions): BuildPlugin {
 	}
 }
 
-function discoverRoles(agentDir: string): Record<string, Role> {
-	const rolesDir = path.join(agentDir, '.flue', 'roles');
+/**
+ * Resolve a Flue workspace directory from the current working directory,
+ * using the two-layout convention. Intended for the CLI when `--workspace` is
+ * not provided — callers that pass an explicit workspace path should skip this
+ * and pass the path straight to `build()`.
+ *
+ * Two supported layouts, checked in order:
+ *   1. `<cwd>/.flue/` — use this when Flue is embedded in an existing project.
+ *   2. `<cwd>/` — use this when the project itself is the Flue workspace.
+ *
+ * If `.flue/` exists, it wins unconditionally — no mixing with the bare layout.
+ * Returns null if neither is present so the caller can produce a helpful error.
+ */
+export function resolveWorkspaceFromCwd(cwd: string): string | null {
+	const dotFlue = path.join(cwd, '.flue');
+	if (fs.existsSync(dotFlue)) return dotFlue;
+	if (fs.existsSync(path.join(cwd, 'agents'))) return cwd;
+	return null;
+}
+
+function discoverRoles(workspaceRoot: string): Record<string, Role> {
+	const rolesDir = path.join(workspaceRoot, 'roles');
 	if (!fs.existsSync(rolesDir)) return {};
 
 	const roles: Record<string, Role> = {};
@@ -171,12 +204,9 @@ function discoverRoles(agentDir: string): Record<string, Role> {
 	return roles;
 }
 
-function discoverAgents(agentDir: string): AgentInfo[] {
-	let agentsDir = path.join(agentDir, '.flue', 'agents');
-	if (!fs.existsSync(agentsDir)) {
-		agentsDir = path.join(agentDir, '.flue', 'workflows');
-		if (!fs.existsSync(agentsDir)) return [];
-	}
+function discoverAgents(workspaceRoot: string): AgentInfo[] {
+	const agentsDir = path.join(workspaceRoot, 'agents');
+	if (!fs.existsSync(agentsDir)) return [];
 
 	return fs
 		.readdirSync(agentsDir)
@@ -213,8 +243,8 @@ function parseTriggers(filePath: string): { webhook?: boolean; cron?: string } {
 }
 
 /** Externalize user's direct deps (bare name + subpath wildcard). */
-function getUserExternals(agentDir: string): string[] {
-	const pkgPath = packageUpSync({ cwd: agentDir });
+function getUserExternals(workspaceDir: string): string[] {
+	const pkgPath = packageUpSync({ cwd: workspaceDir });
 	if (!pkgPath) return [];
 
 	try {
@@ -230,9 +260,9 @@ function getUserExternals(agentDir: string): string[] {
 	}
 }
 
-function collectNodePaths(agentDir: string): Set<string> {
+function collectNodePaths(workspaceDir: string): Set<string> {
 	const nodePathsSet = new Set<string>();
-	for (const startDir of [agentDir, getSDKDir()]) {
+	for (const startDir of [workspaceDir, getSDKDir()]) {
 		let dir = startDir;
 		while (dir !== path.dirname(dir)) {
 			const nm = path.join(dir, 'node_modules');
