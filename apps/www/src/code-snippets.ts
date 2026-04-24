@@ -1,34 +1,5 @@
 // Prompt copied to the user's clipboard by the "Copy Prompt" CTA in the hero.
-// Designed to be pasted into a capable coding agent (Claude Code, Cursor,
-// Copilot, etc.) as a self-contained onboarding flow: the agent reads the
-// homepage + README, interviews the user, follows the matching deploy guide,
-// and scaffolds a minimal Flue agent.
-//
-// Tone: the user is speaking TO the agent. Steps are directive but light —
-// the agent ultimately drives the flow.
-export const COPY_PROMPT = `Help me set up a new Flue project. Flue is a TypeScript framework for building sandbox AI agents.
-
-Please do the following:
-
-1. Fetch and read these two pages:
-   - https://flueframework.com/
-   - https://raw.githubusercontent.com/withastro/flue/refs/heads/main/README.md
-
-2. Early on, ask me these questions before scaffolding anything:
-   a. Where do I want to deploy? (e.g. Cloudflare, Node.js, GitHub Actions, Vercel, Fly.io, etc.)
-   b. Any sandbox services I'd like to use? (e.g. Daytona, E2B, Modal — or Flue's default local/virtual sandbox)
-   c. Which LLM provider / model family should the agent use? (e.g. Anthropic Claude, OpenAI GPT, Google Gemini.) This tells you which environment variable and default model ID to reference later.
-   d. What do I want to build? A short description is fine — you can scaffold a simple first version.
-   e. Where on disk should the project go? Flue agents can live as a standalone repo, or under \`.flue/\` inside an existing project. Ask me which fits my setup.
-
-3. From the homepage, pick the deploy guide that best matches my answer to (a), follow the link, and read that guide.
-
-4. When you need a model identifier for the scaffolded agent (e.g. \`'anthropic/claude-sonnet-4-20250514'\`), **look it up at https://models.dev/** for the provider I picked in (c) — don't guess from memory. Model IDs change frequently and your training data is likely out of date.
-
-5. Scaffold a minimal first version of what I described. Keep it small — I'd rather iterate than start with a kitchen-sink scaffold.
-
-**Rule:** Never invent values for API keys or other secrets. If the setup needs a secret (like the provider API key implied by 2c), either ask me to provide it or show me the exact command to set it myself — following whatever the deploy guide recommends. Running the agent with a fake key will fail in confusing ways later.
-`;
+export const COPY_PROMPT = `fetch https://flueframework.com/start.md to create a new agent`;
 
 export const HERO = `export default async function ({ init, payload, env }) {
   // Initialize a new agent session, or resume an existing one.
@@ -43,12 +14,12 @@ export const HERO = `export default async function ({ init, payload, env }) {
 
   // Keep absolute, deterministic control over the most critical decisions:
   if (triage.fixApplied) {
-    await session.shell(\`git add -A && git commit -m "fix: \${triage.summary}"\`);
+    await session.shell('git add -A && git commit --file -', { stdin: \`fix: \${triage.summary}\` });
   }
 
   // Run any CLI tool in the agent's sandbox (git, gh, curl, ...):
   const comment = await session.prompt('Write a GitHub comment summarizing the triage.');
-  await session.shell(\`gh issue comment \${payload.issueNumber} --body-file -\`, { stdin: comment });
+  await session.shell(\`gh issue comment \${Number(payload.issueNumber)} --body-file -\`, { stdin: comment });
 }`;
 
 export const SUPPORT_AGENT = `// Built for: Cloudflare
