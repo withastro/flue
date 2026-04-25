@@ -41,7 +41,7 @@ Then, determine the following. Ask the user only for information you do not alre
 
 1. What should the agent do?
    - Use this to create a simple starter agent in the theme of what they are building.
-   - If the user has no idea yet, suggest a simple "hello world" agent.
+   - Suggest/recommend a simple "hello world" agent, but give them room to request a specific focus/agent instead.
 2. Where should the project live on disk?
    - Use filesystem tools to inspect the current working directory first. Infer its layout as the default target using the layout rules below.
    - Confirm with the user that they want to implement there. Mention the inferred layout in that confirmation. For example: "Use the current directory with the \`.flue\` layout because it already has files?"
@@ -56,8 +56,13 @@ ${await getDeployGuideList()}
    - If they choose a host without a deploy guide, use the Node.js guide as the baseline unless they ask for something else.
 4. Do they have an LLM provider/model in mind?
    - Optional, but recommended. Setup is easier if you know which provider they plan to use, because you can scaffold the right model identifier and environment variable names.
-   - Fetch \`https://flueframework.com/models.json\` before suggesting a default. Use an exact model identifier from that file.
-   - If the requested provider/model is not listed, ask before substituting another model.
+   - We suggest these exact model IDs:
+     - \`anthropic/claude-sonnet-4-6\` - latest Sonnet
+     - \`anthropic/claude-opus-4-7\` - latest Opus
+     - \`openai/gpt-5.5\` - GPT-5.5
+     - \`openrouter/moonshotai/kimi-k2.6\` - latest Kimi
+   - If the user wants a different provider or model, use this list to get the best model ID: \`https://flueframework.com/models.json\`
+   - If their requested model is unavailable, ask before substituting another model. Don't continue until you have a model ID.
 
 Before implementing, restate the chosen requirements to yourself as an implementation contract:
 
@@ -66,7 +71,7 @@ Before implementing, restate the chosen requirements to yourself as an implement
 - Workspace layout: \`root\` if the target directory is new or empty, otherwise \`.flue\`
 - Agent file path: \`./agents/<name>.ts\` or \`./.flue/agents/<name>.ts\`
 - Deploy target: \`<target>\`
-- Provider/model: \`<exact model id from models.json>\`
+- Provider/model: \`<exact model id>\`
 
 ## Step 3: Build the Smallest Useful Starter Project
 
@@ -77,9 +82,8 @@ Before implementing, restate the chosen requirements to yourself as an implement
 3. Create or update the project in the requested directory.
 4. Scaffold one minimal Flue agent that matches the user's idea. Keep it closer to "hello world" than production app.
 5. Add only the dependencies and config required by the selected deploy guide.
-6. Fetch \`https://flueframework.com/models.json\` and use one of its exact model identifiers for the LLM provider/model. Do not guess model IDs.
-7. Run the most relevant validation command you can, such as build, typecheck, or a local Flue run. If you cannot run it, explain why.
-8. Finish with the exact next commands the user should run, including how to set any required secrets.
+6. Run the most relevant validation command you can, such as build, typecheck, or a local Flue run. If you cannot run it, explain why.
+7. Finish with the exact next commands the user should run, including how to set any required secrets.
 
 ## Step 4: Verify Implementation
 
@@ -90,7 +94,7 @@ Before finishing, verify that the implementation matches the user's explicit cho
   - New or empty target directory means root layout: \`./agents/<name>.ts\`.
   - Existing non-empty target directory means \`.flue\` layout: \`./.flue/agents/<name>.ts\`.
 - **Deploy target**: Config and commands match the user's selected deploy target.
-- **LLM provider/model**: Model identifier is an exact value from \`https://flueframework.com/models.json\`.
+- **LLM provider/model**: Model identifier is one of the suggested exact IDs, or an exact value from \`https://flueframework.com/models.json\` if the user requested another model.
 - **Secrets**: No fake API keys, tokens, or secrets were invented.
 - **Dependencies**: Only dependencies required by the selected deploy guide were added.
 
@@ -100,8 +104,6 @@ In your final response, include a short checklist with the project directory, in
 
 ## Important Instructions and Constraints to be Successful
 
-- Important: Never guess at model IDs. Your training data is likely out of date, and the models you're familiar with may no longer be hosted, causing "404 not found" issues.
-  - Instead: Fetch https://flueframework.com/models.json and choose an exact model ID from that array.
 - Important: Never invent API keys or secrets.
   - Instead: You can scaffold out obvious placeholders, but always ask the user to provide the API secrets/keys/tokens themselves. You can still help the user by showing them the command to run to set the secret, based on their local dev setup and chosen host.
 - Important: Flue doesn't have a standalone \`flue dev\` command.
