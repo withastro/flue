@@ -60,14 +60,14 @@ ${await getDeployGuideList()}
 2. Create or update the project in the requested location.
 3. Scaffold one minimal Flue agent that matches the user's idea. Keep it closer to "hello world" than production app.
 4. Add only the dependencies and config required by the selected deploy guide.
-5. Use https://models.dev/ to look up the model identifier for the LLM provider/model. Do not guess model IDs.
+5. Fetch https://flueframework.com/models.json and use one of its exact model identifiers for the LLM provider/model. Do not guess model IDs.
 6. Run the most relevant validation command you can, such as build, typecheck, or a local Flue run. If you cannot run it, explain why.
 7. Finish with the exact next commands the user should run, including how to set any required secrets.
 
 ## Important Instructions and Constraints to be Successful
 
 - Important: Never guess at model IDs! Your training data is likely out of date, and the models you're familiar with are no longer hosted, causing "404 not found" issues.
-  - Instead: Use https://models.dev/ to look up the model identifier for the LLM provider/model. 
+  - Instead: Fetch https://flueframework.com/models.json and choose an exact model ID from that array.
 - Important: Never invent API keys or secrets.
   - Instead: You can scaffold out obvious placeholders, but always ask the user to provide the API secrets/keys/tokens themselves. You can still help the user by showing them the command to run to set the secret, based on their local dev setup and chosen host.
 
