@@ -96,11 +96,12 @@ curl http://localhost:8787/agents/translate/test-1 \
   -d '{"text": "Hello world", "language": "French"}'
 ```
 
-You can also test any agent from the CLI before deploying:
+`flue run` starts the generated server in Node.js, so it only supports `--target node`. Cloudflare builds use Worker-only runtime modules and must be run with Wrangler. To test a Cloudflare agent locally, keep `wrangler dev` running and call the generated agent endpoint:
 
 ```bash
-npx flue run translate --target cloudflare --session-id test-1 \
-  --payload '{"text": "Hello world", "language": "French"}'
+curl http://localhost:8787/agents/translate/test-1 \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello world", "language": "French"}'
 ```
 
 ## Using the sandbox

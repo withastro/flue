@@ -45,7 +45,7 @@ function resolveOutputDir(explicitOutput: string | undefined): string {
 function printUsage() {
 	console.error(
 		'Usage:\n' +
-			'  flue run <agent> --target <node|cloudflare> --session-id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>]\n' +
+			'  flue run <agent> --target node --session-id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>]\n' +
 			'  flue build --target <node|cloudflare> [--workspace <path>] [--output <path>]\n' +
 			'\n' +
 			'Flags:\n' +
@@ -66,7 +66,7 @@ function printUsage() {
 interface RunArgs {
 	command: 'run';
 	agent: string;
-	target: 'node' | 'cloudflare';
+	target: 'node';
 	sessionId: string;
 	payload: string;
 	/** Explicit --workspace value, or undefined to apply the cwd waterfall. */
@@ -88,14 +88,14 @@ interface BuildArgs {
 type ParsedArgs = RunArgs | BuildArgs;
 
 function parseFlags(flags: string[]): {
-	target?: string;
+	target?: 'node' | 'cloudflare';
 	sessionId?: string;
 	explicitWorkspace: string | undefined;
 	explicitOutput: string | undefined;
 	payload: string;
 	port: number;
 } {
-	let target: string | undefined;
+	let target: 'node' | 'cloudflare' | undefined;
 	let sessionId: string | undefined;
 	let explicitWorkspace: string | undefined;
 	let explicitOutput: string | undefined;
@@ -111,15 +111,16 @@ function parseFlags(flags: string[]): {
 				process.exit(1);
 			}
 		} else if (arg === '--target') {
-			target = flags[++i];
-			if (!target) {
+			const targetFlag = flags[++i];
+			if (!targetFlag) {
 				console.error('Missing value for --target');
 				process.exit(1);
 			}
-			if (target !== 'node' && target !== 'cloudflare') {
-				console.error(`Invalid target: "${target}". Supported targets: node, cloudflare`);
+			if (targetFlag !== 'node' && targetFlag !== 'cloudflare') {
+				console.error(`Invalid target: "${targetFlag}". Supported targets: node, cloudflare`);
 				process.exit(1);
 			}
+			target = targetFlag;
 		} else if (arg === '--session-id') {
 			sessionId = flags[++i];
 			if (!sessionId) {
@@ -162,6 +163,25 @@ function parseFlags(flags: string[]): {
 	};
 }
 
+function shellQuote(value: string): string {
+	return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function printCloudflareRunUnsupported(agent: string, sessionId: string, payload: string): never {
+	console.error(
+		'[flue] `flue run --target cloudflare` is not supported.\n\n' +
+			'`flue run` starts the generated server with Node.js, but Cloudflare builds use Worker-only runtime modules that Node cannot load.\n\n' +
+			'To test a Cloudflare target locally, build the Worker and run it with Wrangler:\n\n' +
+			'  npx flue build --target cloudflare\n' +
+			'  npx wrangler dev\n\n' +
+			'Then invoke the agent endpoint in another terminal:\n\n' +
+			`  curl http://localhost:8787/agents/${agent}/${sessionId} \\\n` +
+			'    -H "Content-Type: application/json" \\\n' +
+			`    -d ${shellQuote(payload)}`,
+	);
+	process.exit(1);
+}
+
 function parseArgs(argv: string[]): ParsedArgs {
 	const [command, ...rest] = argv;
 
@@ -185,7 +205,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 		const flags = parseFlags(rest.slice(1));
 
 		if (!flags.target) {
-			console.error('Missing required --target flag. Supported targets: node, cloudflare');
+			console.error('Missing required --target flag. `flue run` only supports --target node');
 			printUsage();
 			process.exit(1);
 		}
@@ -203,10 +223,14 @@ function parseArgs(argv: string[]): ParsedArgs {
 			process.exit(1);
 		}
 
+		if (flags.target === 'cloudflare') {
+			printCloudflareRunUnsupported(agent, flags.sessionId, flags.payload);
+		}
+
 		return {
 			command: 'run',
 			agent,
-			target: flags.target as 'node' | 'cloudflare',
+			target: flags.target,
 			sessionId: flags.sessionId,
 			payload: flags.payload,
 			explicitWorkspace: flags.explicitWorkspace,
