@@ -37,7 +37,7 @@ import * as v from 'valibot';
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init();
+  const session = await init({ model: 'anthropic/claude-sonnet-4-6' });
 
   const result = await session.prompt(`Translate this to ${payload.language}: "${payload.text}"`, {
     result: v.object({
@@ -53,7 +53,7 @@ export default async function ({ init, payload }: FlueContext) {
 A few things to note:
 
 - **`triggers = { webhook: true }`** — This agent is invoked via HTTP. Flue creates a route for it automatically.
-- **`init()` with no arguments** — By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed. Virtual sandboxes are dramatically faster, cheaper, and more scalable than containers — perfect for high-traffic agents.
+- **`init({ model })`** — Every session needs a model. If you do not pass one, no model is chosen and `prompt()` / `skill()` calls will fail. By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
 - **Result schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns a typed object.
 
 ### 3. Build and deploy
@@ -125,7 +125,7 @@ import type { FlueContext } from '@flue/sdk/client';
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init();
+  const session = await init({ model: 'openai/gpt-5.5' });
 
   // The agent has a full virtual filesystem and shell.
   // Set up context files before prompting.
@@ -164,7 +164,7 @@ export const triggers = { webhook: true };
 
 export default async function ({ init, payload, env }: FlueContext) {
   const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
-  const session = await init({ sandbox });
+  const session = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
 
   return await session.prompt(
     `You are a support agent. Search the knowledge base for articles
@@ -272,7 +272,7 @@ export const triggers = { webhook: true };
 export default async function ({ init, sessionId, env, payload }: FlueContext) {
   // The binding name you chose in wrangler.jsonc is the key on `env`.
   const sandbox = getSandbox(env.Sandbox, sessionId);
-  const session = await init({ sandbox });
+  const session = await init({ sandbox, model: 'anthropic/claude-opus-4-7' });
 
   return await session.prompt(payload.message);
 }
@@ -414,7 +414,7 @@ curl https://my-support-agent.<your-subdomain>.workers.dev/agents/support/sessio
 
 Here's the progression of sandbox types available on Cloudflare, from simplest to most powerful:
 
-1. **Empty virtual sandbox** — `init()` with no arguments. Fast, cheap, stateless. Good for prompt-and-response agents.
+1. **Empty virtual sandbox** — `init({ model: 'anthropic/claude-sonnet-4-6' })`. Fast, cheap, stateless. Good for prompt-and-response agents.
 2. **Virtual sandbox with shell setup** — Use `session.shell()` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
 3. **R2-backed virtual sandbox** — `getVirtualSandbox(env.BUCKET)`. Persistent storage, searchable filesystem. Ideal for knowledge bases, support agents, data processing.
 4. **Container sandbox** — Full Linux environment via `@cloudflare/sandbox`. For coding agents, complex dev environments, and anything that needs real system tools.

@@ -36,10 +36,8 @@ export const triggers = { webhook: true };
 
 // The agent handler. Where the orchestration of the agent lives.
 export default async function ({ init, payload, sessionId }: FlueContext) {
-  // `session` -- Your session with the agent, including sandbox, message history, etc.
-  // By default, calling `init()` with no arguments gets you a completely empty agent,
-  // with no skills, AGENTS.md, or files.
-  const session = await init();
+  // `session` -- Your session with the agent including sandbox, message history, etc.
+  const session = await init({ model: 'anthropic/claude-sonnet-4-6' });
 
   // prompt() sends a message in the session, triggering action.
   const result = await session.prompt(`Translate this to ${payload.language}: "${payload.text}"`, {
@@ -73,7 +71,7 @@ export default async function ({ init, payload, env }: FlueContext) {
   // The agent can grep, glob, and read articles with bash, but
   // without needing to spin up an entire container sandbox.
   const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
-  const session = await init({ sandbox });
+  const session = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
 
   return await session.prompt(
     `You are a support agent. Search the knowledge base for articles
@@ -117,7 +115,7 @@ export default async function ({ init, payload }: FlueContext) {
   // session. Override per-call with `{ model: '...' }` on prompt()/skill().
   const session = await init({
     sandbox: 'local',
-    model: 'anthropic/claude-opus-4-20250514',
+    model: 'anthropic/claude-opus-4-7',
   });
 
   // Skills can be referenced either by their frontmatter `name:` (shown below)
@@ -168,6 +166,7 @@ export default async function ({ init, payload, env }: FlueContext) {
   const sandbox = await client.create();
   const session = await init({
     sandbox: daytona(sandbox, { cleanup: true }),
+    model: 'openai/gpt-5.5',
   });
 
   // For simplicity, we clone the target repo into the sandbox here.

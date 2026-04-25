@@ -29,9 +29,9 @@ export const triggers = { webhook: true };
 // The agent handler. Where the orchestration of the agent lives.
 export default async function ({ init, payload, sessionId }: FlueContext) {
   // `session` -- Your session with the agent, including sandbox, message history, etc.
-  // By default, calling `init()` with no arguments gets you a completely empty agent,
+  // Every session needs a model. By default, Flue gives you an empty virtual sandbox,
   // with no skills, AGENTS.md, or files.
-  const session = await init();
+  const session = await init({ model: 'anthropic/claude-sonnet-4-6' });
 
   // prompt() sends a message in the session, triggering action.
   // You can pass a schema to `result` to get typed, validated JSON back.
@@ -65,7 +65,7 @@ export default async function ({ init, payload, env }: FlueContext) {
   // The agent can grep, glob, and read articles with bash, but
   // without needing to spin up an entire container sandbox.
   const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
-  const session = await init({ sandbox });
+  const session = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
 
   return await session.prompt(
     `You are a support agent. Search the knowledge base for articles
@@ -103,7 +103,7 @@ export default async function ({ init, payload }: FlueContext) {
   // 'local' mounts the host filesystem at /workspace — ideal for CI
   // where the repo is already checked out. Skills and AGENTS.md are
   // discovered automatically from the workspace directory.
-  const session = await init({ sandbox: 'local' });
+  const session = await init({ sandbox: 'local', model: 'anthropic/claude-opus-4-7' });
 
   const result = await session.skill('triage', {
     // Pass arguments to any prompt or skill.
@@ -151,6 +151,7 @@ export default async function ({ init, payload, env }: FlueContext) {
   const sandbox = await client.create();
   const session = await init({
     sandbox: daytona(sandbox, { cleanup: true }),
+    model: 'openai/gpt-5.5',
   });
 
   // For simplicity, we clone the target repo into the sandbox here.

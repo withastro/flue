@@ -81,9 +81,10 @@ Before implementing, restate the chosen requirements to yourself as an implement
    - If the target directory has files and the guide shows \`agents/hello.ts\`, create \`./.flue/agents/hello.ts\` instead.
 3. Create or update the project in the requested directory.
 4. Scaffold one minimal Flue agent that matches the user's idea. Keep it closer to "hello world" than production app.
-5. Add only the dependencies and config required by the selected deploy guide.
-6. Run the most relevant validation command you can, such as build, typecheck, or a local Flue run. If you cannot run it, explain why.
-7. Finish with the exact next commands the user should run, including how to set any required secrets.
+5. Pass the selected model ID to \`init({ model: '<exact model id>' })\`. Flue does not choose a model automatically.
+6. Add only the dependencies and config required by the selected deploy guide.
+7. Run the most relevant validation command you can, such as build, typecheck, or a local Flue run. If you cannot run it, explain why.
+8. Finish with the exact next commands the user should run, including how to set any required secrets.
 
 ## Step 4: Verify Implementation
 
@@ -95,6 +96,7 @@ Before finishing, verify that the implementation matches the user's explicit cho
   - Existing non-empty target directory means \`.flue\` layout: \`./.flue/agents/<name>.ts\`.
 - **Deploy target**: Config and commands match the user's selected deploy target.
 - **LLM provider/model**: Model identifier is one of the suggested exact IDs, or an exact value from \`https://flueframework.com/models.json\` if the user requested another model.
+- **Agent initialization**: The selected model ID is passed to \`init({ model })\`, or to individual \`prompt()\` / \`skill()\` calls (not common).
 - **Secrets**: No fake API keys, tokens, or secrets were invented.
 - **Dependencies**: Only dependencies required by the selected deploy guide were added.
 

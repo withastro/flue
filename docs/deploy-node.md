@@ -35,7 +35,7 @@ import * as v from 'valibot';
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init();
+  const session = await init({ model: 'openai/gpt-5.5' });
 
   const result = await session.prompt(`Translate this to ${payload.language}: "${payload.text}"`, {
     result: v.object({
@@ -51,14 +51,14 @@ export default async function ({ init, payload }: FlueContext) {
 A few things to note:
 
 - **`triggers = { webhook: true }`** — This agent is invoked via HTTP. Flue creates a route for it automatically.
-- **`init()` with no arguments** — By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed. Virtual sandboxes are dramatically faster, cheaper, and more scalable than containers — perfect for high-traffic agents.
+- **`init({ model })`** — Every session needs a model. If you do not pass one, no model is chosen and `prompt()` / `skill()` calls will fail. By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
 - **Result schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns a typed object.
 
 ### 3. Build and run
 
 ```bash
 npx flue build --target node
-ANTHROPIC_API_KEY=sk-... node dist/server.mjs
+OPENAI_API_KEY=sk-... node dist/server.mjs
 ```
 
 `flue build --target node` compiles your workspace into a `./dist` directory. The built server uses [Hono](https://hono.dev/) under the hood and listens on port 3000 by default (configurable via the `PORT` environment variable). Your project's `node_modules` are still needed at runtime — the build externalizes your dependencies rather than bundling them.
@@ -141,7 +141,7 @@ import * as v from 'valibot';
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ sandbox: 'local' });
+  const session = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
 
   const result = await session.prompt(
     `Review the codebase and identify potential issues in the area
@@ -198,7 +198,7 @@ const git = defineCommand('git', { env: { GIT_AUTHOR_NAME: 'flue-bot' } });
 const npm = defineCommand('npm', { env: { NPM_TOKEN: process.env.NPM_TOKEN } });
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ sandbox: 'local' });
+  const session = await init({ sandbox: 'local', model: 'anthropic/claude-opus-4-7' });
 
   const result = await session.skill('deploy-check', {
     args: { branch: payload.branch },
@@ -235,6 +235,7 @@ If every call in a session needs the same set of commands, pass them to `init()`
 const session = await init({
   sandbox: 'local',
   commands: [git, npm],
+  model: 'openrouter/moonshotai/kimi-k2.6',
 });
 
 // `git` and `npm` are available here without repeating `commands: [...]`.
@@ -264,6 +265,7 @@ export default async function ({ init, payload, env }: FlueContext) {
   const sandbox = await client.create();
   const session = await init({
     sandbox: daytona(sandbox, { cleanup: true }),
+    model: 'openai/gpt-5.5',
   });
 
   await session.shell(`git clone ${payload.repo} /workspace/project`);
@@ -320,6 +322,7 @@ export default async function ({ init, payload }: FlueContext) {
   const session = await init({
     sandbox: 'local',
     persist: store,
+    model: 'anthropic/claude-sonnet-4-6',
   });
   // ...
 }
@@ -365,7 +368,7 @@ CMD ["node", "dist/server.mjs"]
 
 ```bash
 docker build -t my-flue-server .
-docker run -p 8080:8080 -e ANTHROPIC_API_KEY=sk-... my-flue-server
+docker run -p 8080:8080 -e OPENAI_API_KEY=sk-... my-flue-server
 ```
 
 ### Deploying elsewhere
@@ -381,9 +384,9 @@ The output is just a Node.js server, so it runs anywhere:
 
 Here's the progression of sandbox types available on Node.js, from simplest to most powerful:
 
-1. **Empty virtual sandbox** — `init()` with no arguments. Fast, cheap, stateless. Good for prompt-and-response agents.
+1. **Empty virtual sandbox** — `init({ model: 'openai/gpt-5.5' })`. Fast, cheap, stateless. Good for prompt-and-response agents.
 2. **Virtual sandbox with shell setup** — Use `session.shell()` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
-3. **Local sandbox** — `init({ sandbox: 'local' })`. Mounts the host filesystem at `/workspace`. Ideal for self-hosted agents, CI tasks, and dev tooling.
+3. **Local sandbox** — `init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' })`. Mounts the host filesystem at `/workspace`. Ideal for self-hosted agents, CI tasks, and dev tooling.
 4. **Container sandbox** — Full isolated Linux environment via Daytona or other providers. For multi-tenant agents, coding sandboxes, and anything that needs per-session isolation.
 
 Start simple. Move up when you need to.

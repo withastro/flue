@@ -2,9 +2,9 @@
 export const COPY_PROMPT = `fetch https://flueframework.com/start.md to create a new agent`;
 
 export const HERO = `export default async function ({ init, payload, env }) {
-  // Initialize a new agent session, or resume an existing one.
+  // Initialize a session with a default model.
   // By default, Flue spins up a lightweight virtual sandbox + filesystem.
-  const session = await init();
+  const session = await init({ model: 'anthropic/claude-sonnet-4-6' });
 
   // Leverage agent skills as typed, reusable LLM calls with structured output:
   const triage = await session.skill('triage', {
@@ -34,7 +34,7 @@ export default async function ({ init, payload, env }: FlueContext) {
   // The agent can grep, glob, and read from the knowledge base with 
   // bash, without the need of a traditional, expensive container.
   const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
-  const session = await init({ sandbox });
+  const session = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
   // Prompt! The agent harness includes your workspace AGENTS.md,
   // skills, and roles (aka subagents) to complete your task as 
   // desired. Use \`session.skill()\` to call a skill directly.
@@ -53,7 +53,7 @@ import * as v from 'valibot';
 export const triggers = {};
 
 export default async function ({ init, payload, env }: FlueContext) {
-  const session = await init();
+  const session = await init({ model: 'anthropic/claude-opus-4-7' });
   // Run the 'triage' skill to triage the GitHub issue.
   const triage = await session.skill('triage', {
     args: { issueNumber: payload.issueNumber },
@@ -86,7 +86,7 @@ export default async function ({ init, payload, env }: FlueContext) {
   // Each session gets a real container via Daytona.
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
-  const session = await init({ sandbox: daytona(sandbox) });
+  const session = await init({ sandbox: daytona(sandbox), model: 'openai/gpt-5.5' });
   // Setup the sandbox (for illustrative purposes only). 
   // In production, you'd want to bake setup into the container image,
   // or use a snapshot (if available from your sandbox provider).
@@ -108,7 +108,10 @@ export default async function ({ init, payload }: FlueContext) {
   // all the files (context) & skills (abilities) needed for the agent to
   // complete its task. The agent can run \`ls\`, \`grep\`, write Python, 
   // and make read-only queries to fetch data from your analytics service.
-  const session = await init({ sandbox: await getVirtualSandbox('./data') });
+  const session = await init({
+    sandbox: await getVirtualSandbox('./data'),
+    model: 'anthropic/claude-sonnet-4-6',
+  });
   // Prompt! The agent harness includes your workspace AGENTS.md,
   // skills, and roles (aka subagents) to analyze the data and
   // complete your task as desired.

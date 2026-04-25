@@ -26,7 +26,7 @@ import * as v from 'valibot';
 export const triggers = {};
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ sandbox: 'local' });
+  const session = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
 
   const result = await session.prompt(
     `Say hello to ${payload.name ?? 'the user'} and share an interesting fact.`,
@@ -45,6 +45,7 @@ export default async function ({ init, payload }: FlueContext) {
 A few things to note:
 
 - **`triggers = {}`** — This agent has no HTTP trigger. It's designed to be run from the CLI, which is perfect for CI.
+- **`model`** — Every session needs a model. If you do not pass one to `init()` or a specific `prompt()` / `skill()` call, no model is chosen.
 - **`sandbox: 'local'`** — The `"local"` sandbox mounts the host filesystem at `/workspace`. In CI, this is the checked-out repo. Skills and `AGENTS.md` are discovered automatically from the workspace directory.
 - **Result schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns a typed object.
 
@@ -146,7 +147,7 @@ const gh = defineCommand('gh', { env: { GH_TOKEN: process.env.GH_TOKEN } });
 const npm = defineCommand('npm');
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ sandbox: 'local' });
+  const session = await init({ sandbox: 'local', model: 'anthropic/claude-opus-4-7' });
 
   const result = await session.skill('triage', {
     args: { issueNumber: payload.issueNumber },
@@ -277,7 +278,7 @@ const gh = defineCommand('gh', { env: { GH_TOKEN: process.env.GH_TOKEN } });
 const npm = defineCommand('npm');
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ sandbox: 'local' });
+  const session = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
 
   const diagnosis = await session.skill('triage', {
     args: { issueNumber: payload.issueNumber },
