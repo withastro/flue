@@ -1,25 +1,27 @@
-import type { APIRoute } from "astro";
-import { readdir, readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import type { APIRoute } from 'astro';
+import { readdir, readFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../..");
-const docsDir = join(repoRoot, "docs");
-const rawDocsUrl = "https://raw.githubusercontent.com/withastro/flue/refs/heads/main/docs";
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
+const docsDir = join(repoRoot, 'docs');
+const rawDocsUrl = 'https://raw.githubusercontent.com/withastro/flue/refs/heads/main/docs';
 
 async function getDeployGuideList() {
-  const files = (await readdir(docsDir)).filter((file) => file.startsWith("deploy-") && file.endsWith(".md")).sort();
+	const files = (await readdir(docsDir))
+		.filter((file) => file.startsWith('deploy-') && file.endsWith('.md'))
+		.sort();
 
-  const guides = await Promise.all(
-    files.map(async (file) => {
-      const contents = await readFile(join(docsDir, file), "utf-8");
-      const title = contents.match(/^#\s+(.+)$/m)?.[1] ?? file;
+	const guides = await Promise.all(
+		files.map(async (file) => {
+			const contents = await readFile(join(docsDir, file), 'utf-8');
+			const title = contents.match(/^#\s+(.+)$/m)?.[1] ?? file;
 
-      return `   - ${title}: ${rawDocsUrl}/${file}`;
-    }),
-  );
+			return `   - ${title}: ${rawDocsUrl}/${file}`;
+		}),
+	);
 
-  return guides.join("\n");
+	return guides.join('\n');
 }
 
 const START_INSTRUCTIONS = `# Skill: Create a New Flue Agent
@@ -28,56 +30,90 @@ You are helping the user create a new Flue agent.
 
 ## Step 1: Gather Context
 
-First, fetch and read the Flue README:
+First, fetch and read the Flue README and homepage:
 
 https://raw.githubusercontent.com/withastro/flue/refs/heads/main/README.md
-
-Use the README as the source of truth for how Flue works.
+https://flueframework.com/
 
 ## Step 2: Discover Requirements
 
-Then, determine the following (ask the user if you don't already have the answer from other context):
+Then, determine the following. Ask the user only for information you do not already know from the conversation. If the user has already made a choice, treat that choice as binding.
 
-1. In a simple sentence, what should the agent do? 
-   - You will use this to create a simple hello world that is in the theme of what they are building.
-   - Suggestion: You can suggest a simple "hello world" as the default, if they don't have an idea in mind.
+1. What should the agent do?
+   - Use this to create a simple starter agent in the theme of what they are building.
+   - If the user has no idea yet, suggest a simple "hello world" agent.
 2. Where should the project live on disk?
-   - You will use this to create the project in this directory.
-   - Suggestion: the current directory. If the current directory has files, use the \`.flue\` subdirectory feature (see README)
-3. Where should it deploy? For example: Cloudflare, Node.js, GitHub Actions, Vercel, Fly.io.
+   - Use filesystem tools to inspect the current working directory first. Infer its layout as the default target using the layout rules below.
+   - Confirm with the user that they want to implement there. Mention the inferred layout in that confirmation. For example: "Use the current directory with the \`.flue\` layout because it already has files?"
+   - If they choose a different location, inspect that directory instead and infer the layout again using the same layout rules.
+   - Project layout rules:
+     - Directory does not exist: create it and use the root layout: \`./agents/\` and \`./roles/\`.
+     - Directory exists and is empty: use the root layout: \`./agents/\` and \`./roles/\`.
+     - Directory exists and already has files: use the \`.flue\` layout: \`./.flue/agents/\` and \`./.flue/roles/\`.
+3. Where should it deploy? For example: Cloudflare Workers, Node.js, GitHub Actions, GitLab CI/CD, Vercel, Fly.io.
    - Available deploy guides:
 ${await getDeployGuideList()}
-4. (Skip if Cloudflare) Do you have a sandbox provider in mind? 
-   - Optional! For most users, a good starter project should use the built-in, default virtual sandbox.
-   - However, sometimes a user will already have a specific sandbox provider that they are trying integrate, so it is good to ask.
-5. Do you have an LLM provider/model in mind? 
-   - Optional, but recommended! Flue really only makes sense with an LLM. Setup is easier if you know which LLM provider the user is planning to use, so that you can scaffold out a good default model identifier, the ENV keys needed to talk to that API, etc.
-   - Suggestion: Whatever model/provider you are, if you can tell from this conversation. Otherwise, Anthropic is a common default choice.
+   - If they choose a host without a deploy guide, use the Node.js guide as the baseline unless they ask for something else.
+4. Do they have an LLM provider/model in mind?
+   - Optional, but recommended. Setup is easier if you know which provider they plan to use, because you can scaffold the right model identifier and environment variable names.
+   - Fetch \`https://flueframework.com/models.json\` before suggesting a default. Use an exact model identifier from that file.
+   - If the requested provider/model is not listed, ask before substituting another model.
+
+Before implementing, restate the chosen requirements to yourself as an implementation contract:
+
+- Agent purpose: \`<purpose>\`
+- Project directory: \`<absolute or relative path>\`
+- Workspace layout: \`root\` if the target directory is new or empty, otherwise \`.flue\`
+- Agent file path: \`./agents/<name>.ts\` or \`./.flue/agents/<name>.ts\`
+- Deploy target: \`<target>\`
+- Provider/model: \`<exact model id from models.json>\`
 
 ## Step 3: Build the Smallest Useful Starter Project
 
 1. Pick the deploy guide that best matches the user's target, fetch it, and follow it.
-2. Create or update the project in the requested location.
-3. Scaffold one minimal Flue agent that matches the user's idea. Keep it closer to "hello world" than production app.
-4. Add only the dependencies and config required by the selected deploy guide.
-5. Fetch https://flueframework.com/models.json and use one of its exact model identifiers for the LLM provider/model. Do not guess model IDs.
-6. Run the most relevant validation command you can, such as build, typecheck, or a local Flue run. If you cannot run it, explain why.
-7. Finish with the exact next commands the user should run, including how to set any required secrets.
+2. Prefer the collapsible starter template files near the top of the deploy guide for package and config scaffolding. Adapt paths to the inferred workspace layout.
+   - If the target directory is new or empty and the guide shows \`.flue/agents/hello.ts\`, create \`./agents/hello.ts\` instead.
+   - If the target directory has files and the guide shows \`agents/hello.ts\`, create \`./.flue/agents/hello.ts\` instead.
+3. Create or update the project in the requested directory.
+4. Scaffold one minimal Flue agent that matches the user's idea. Keep it closer to "hello world" than production app.
+5. Add only the dependencies and config required by the selected deploy guide.
+6. Fetch \`https://flueframework.com/models.json\` and use one of its exact model identifiers for the LLM provider/model. Do not guess model IDs.
+7. Run the most relevant validation command you can, such as build, typecheck, or a local Flue run. If you cannot run it, explain why.
+8. Finish with the exact next commands the user should run, including how to set any required secrets.
+
+## Step 4: Verify Implementation
+
+Before finishing, verify that the implementation matches the user's explicit choices:
+
+- **Project location**: Files were created in the requested directory.
+- **Workspace layout**: Agent file is in the exact location corresponding to the inferred layout.
+  - New or empty target directory means root layout: \`./agents/<name>.ts\`.
+  - Existing non-empty target directory means \`.flue\` layout: \`./.flue/agents/<name>.ts\`.
+- **Deploy target**: Config and commands match the user's selected deploy target.
+- **LLM provider/model**: Model identifier is an exact value from \`https://flueframework.com/models.json\`.
+- **Secrets**: No fake API keys, tokens, or secrets were invented.
+- **Dependencies**: Only dependencies required by the selected deploy guide were added.
+
+If any item does not match the user's choices, fix it before you finish.
+
+In your final response, include a short checklist with the project directory, inferred layout, agent file path, deploy target, model ID, and validation result.
 
 ## Important Instructions and Constraints to be Successful
 
-- Important: Never guess at model IDs! Your training data is likely out of date, and the models you're familiar with are no longer hosted, causing "404 not found" issues.
+- Important: Never guess at model IDs. Your training data is likely out of date, and the models you're familiar with may no longer be hosted, causing "404 not found" issues.
   - Instead: Fetch https://flueframework.com/models.json and choose an exact model ID from that array.
 - Important: Never invent API keys or secrets.
   - Instead: You can scaffold out obvious placeholders, but always ask the user to provide the API secrets/keys/tokens themselves. You can still help the user by showing them the command to run to set the secret, based on their local dev setup and chosen host.
-- Important: Flue doesn't have a concept of dev yet, so don't add a "dev" package.json script.
-  - Instead: Create only "build" ("flue build") and "run" ("flue run") script aliases to flue.
+- Important: Flue doesn't have a standalone \`flue dev\` command.
+  - Instead: Use scripts from the selected deploy guide. If writing scripts manually, include the explicit target, such as \`flue build --target node\` or \`flue build --target cloudflare\`.
+- Important: \`flue run --target cloudflare\` is not supported.
+  - Instead: For Cloudflare users, use \`flue build --target cloudflare && wrangler dev\` to start the local dev server, then \`curl\` to hit the expected endpoint. Put this in a README or AGENTS.md if it is too long for a simple script.
 `;
 
 export const GET: APIRoute = () => {
-  return new Response(START_INSTRUCTIONS, {
-    headers: {
-      "Content-Type": "text/markdown; charset=utf-8",
-    },
-  });
+	return new Response(START_INSTRUCTIONS, {
+		headers: {
+			'Content-Type': 'text/markdown; charset=utf-8',
+		},
+	});
 };
