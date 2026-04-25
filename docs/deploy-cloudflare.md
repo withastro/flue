@@ -65,19 +65,28 @@ npx wrangler deploy
 
 `flue build --target cloudflare` compiles your workspace into a `./dist` directory containing a Cloudflare Workers-compatible artifact. `wrangler deploy` pushes it live.
 
-### 4. Set your API key
+### 4. Add your API key
 
-> **Heads up:** Your agent will fail with a "No API key" error until you set an API key for your chosen model provider. Now that your Worker exists (from the first deploy above), you can set one as a secret.
-
-The simplest way is to store it as a Worker secret with Wrangler:
+Put provider API keys in `.dev.vars` at the project root:
 
 ```bash
-npx wrangler secret put ANTHROPIC_API_KEY
+cat > .dev.vars <<'EOF'
+ANTHROPIC_API_KEY="your-api-key"
+EOF
+
+printf '\n.dev.vars*\n' >> .gitignore
 ```
 
-Use the env var name your provider expects — `ANTHROPIC_API_KEY` for Anthropic, `OPENAI_API_KEY` for OpenAI, and so on. If you're routing through an AI gateway or have a different setup, follow your own process — as long as the expected variable is set as a Worker secret, the agent will pick it up. `wrangler secret put` deploys a new version of your Worker immediately, so the key is live as soon as the command completes.
+Use the env var name your provider expects — `ANTHROPIC_API_KEY` for Anthropic, `OPENAI_API_KEY` for OpenAI, and so on. Do not commit `.dev.vars`.
 
-We recommend doing this **after** your first `wrangler deploy` so the Worker exists when you set the secret.
+Wrangler loads `.dev.vars` automatically during local development. To include these secrets when deploying this starter, pass the file explicitly:
+
+```bash
+npx flue build --target cloudflare
+npx wrangler deploy --secrets-file .dev.vars
+```
+
+For production, you can use a separate dotenv file such as `.env.production` instead of `.dev.vars`.
 
 ### 5. Try it locally
 
