@@ -256,7 +256,7 @@ const floatingSquares = [
               The Universal Agent
             </h2>
             <p class="mt-6 text-lg text-gray-500 leading-relaxed">
-              A <a href="https://developers.openai.com/api/docs/guides/agents/sandboxes" target="_blank" rel="noopener noreferrer" class="text-gray-950 underline decoration-gray-300 underline-offset-2 hover:decoration-gray-950 transition-colors">Sandbox Agent</a> is the most powerful form of AI agent. The pattern pairs an agent harness (like Claude Code or pi) with a dedicated workspace for the agent that includes an isolated filesystem, bash, and all of the agent context required to complete its task.
+              A <a href="https://developers.openai.com/api/docs/guides/agents/sandboxes" target="_blank" rel="noopener noreferrer" class="text-gray-950 underline decoration-gray-300 underline-offset-2 hover:decoration-gray-950 transition-colors">Sandbox Agent</a> is an architecture for building powerful, autonomous agents. The pattern pairs an agent harness (like Claude Code or pi) with a dedicated workspace for the agent that includes an isolated filesystem, bash, and all of the agent context required to complete its task.
             </p>
             <p class="mt-6 text-lg text-gray-500 leading-relaxed">
               <strong>We believe every agent should have a sandbox.</strong> Historically, the sandbox pattern was too slow and expensive to use in most situations. But recent advances in microVMs and in-process virtualization have made sandboxes fast and cheap enough to run everywhere — even in high-traffic scenarios like customer support and search. It's time to embrace the shift.
@@ -270,7 +270,7 @@ const floatingSquares = [
           </div>
 
           <!-- Illustration: Sandbox Agent Architecture.
-               Four stacked blueprint bands (agent → sandbox → context → filesystem,
+               Four stacked blueprint bands (harness → model → sandbox → filesystem,
                top-down in visual order; rendered in reverse via flex-col-reverse
                so the array reads bottom-up like a stack). Each band: schematic
                zone (top) + label bar (bottom). `rows` controls band height in
@@ -291,20 +291,20 @@ const floatingSquares = [
                     rows: 3,
                   },
                   {
-                    key: 'context',
-                    label: 'Context',
-                    desc: 'skills · roles · AGENTS.md',
-                    color: '#d97706',     // amber-600 — warm, paper/document feel
+                    key: 'sandbox',
+                    label: 'Sandbox',
+                    desc: 'bash · security · network',
+                    color: '#d97706',     // amber-600 — boundary/caution
                     textColor: '#b45309', // amber-700 (AA)
                     fillLight: '#efdfd8',
                     fillDark: '#e8c5af',
                     rows: 3,
                   },
                   {
-                    key: 'sandbox',
-                    label: 'Sandbox',
-                    desc: 'bash · security · network',
-                    color: '#8b5cf6',     // violet-500 — boundary/space
+                    key: 'model',
+                    label: 'Model',
+                    desc: 'intelligence · context · tokens',
+                    color: '#8b5cf6',     // violet-500 — AI/intelligence
                     textColor: '#6d28d9', // violet-700 (AA)
                     fillLight: '#e1dbfa',
                     fillDark: '#cdbbf5',
@@ -313,7 +313,7 @@ const floatingSquares = [
                   {
                     key: 'agent',
                     label: 'Harness',
-                    desc: 'intelligence · tools · memory',
+                    desc: 'tools · memory · sessions',
                     color: '#2563eb',     // blue-600 — vivid, active orchestrator
                     textColor: '#1d4ed8', // blue-700 (AA)
                     fillLight: '#d5dff8',
