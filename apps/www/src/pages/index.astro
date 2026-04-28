@@ -256,16 +256,16 @@ const floatingSquares = [
               The Universal Agent
             </h2>
             <p class="mt-6 text-lg text-gray-500 leading-relaxed">
-              A <a href="https://developers.openai.com/api/docs/guides/agents/sandboxes" target="_blank" rel="noopener noreferrer" class="text-gray-950 underline decoration-gray-300 underline-offset-2 hover:decoration-gray-950 transition-colors">Sandbox Agent</a> is an architecture for building powerful, autonomous agents. The pattern pairs an agent harness (like Claude Code or pi) with a dedicated workspace for the agent that includes an isolated filesystem, bash, and all of the agent context required to complete its task.
+              A <a href="https://developers.openai.com/api/docs/guides/agents/sandboxes" target="_blank" rel="noopener noreferrer" class="text-gray-950 underline decoration-gray-300 underline-offset-2 hover:decoration-gray-950 transition-colors">Sandbox Agent</a> is an architecture for building powerful, autonomous agents. It takes the same harness-and-workspace pattern developers already use with coding agents, like Claude Code or pi, and applies it to any task: an isolated filesystem, bash, tools, skills, and the context required to complete the work.
             </p>
             <p class="mt-6 text-lg text-gray-500 leading-relaxed">
-              <strong>We believe every agent should have a sandbox.</strong> Historically, the sandbox pattern was too slow and expensive to use in most situations. But recent advances in microVMs and in-process virtualization have made sandboxes fast and cheap enough to run everywhere — even in high-traffic scenarios like customer support and search. It's time to embrace the shift.
+              <strong>We believe every agent should have a sandbox.</strong> Historically, that pattern was too slow and expensive to use outside of high-value coding tasks. Recent advances in microVMs and in-process virtualization make sandboxes fast and cheap enough for the long tail of agent work: the support reply, the issue triage, the data question, the internal workflow that was never worth building as a bespoke AI product.
             </p>
             <p class="mt-6 text-lg text-gray-500 leading-relaxed">
-              <strong>Flue is the agent framework designed for sandbox agents.</strong> Prompt the LLM, call skills, navigate the file tree, delegate tasks, and run bash commands — all inside a secure virtualized sandbox or proper container that you control.
+              <strong>Flue is the agent framework designed for sandbox agents.</strong> Define the harness, instructions, skills, roles, and workspace context in your repo, so one developer can turn a useful local pattern into something the whole team can run, review, and improve.
             </p>
             <p class="mt-6 text-lg text-gray-500 leading-relaxed">
-              When you're ready to ship, Flue builds and bundles your agents into an HTTP server bundle that you can deploy anywhere. Or, skip the build and run your agents locally, perfect for automating CI workflows.
+              When you're ready to ship, Flue bundles your agents into an HTTP server that you can deploy anywhere. Or skip the server and run them locally in CI, so repo-native agents can automate the workflows your team already repeats by hand.
             </p>
           </div>
 
@@ -301,9 +301,9 @@ const floatingSquares = [
                     rows: 3,
                   },
                   {
-                    key: 'model',
-                    label: 'Model',
-                    desc: 'intelligence · context · tokens',
+                    key: 'agent',
+                    label: 'Harness',
+                    desc: 'tools · memory · sessions',
                     color: '#8b5cf6',     // violet-500 — AI/intelligence
                     textColor: '#6d28d9', // violet-700 (AA)
                     fillLight: '#e1dbfa',
@@ -311,9 +311,9 @@ const floatingSquares = [
                     rows: 3,
                   },
                   {
-                    key: 'agent',
-                    label: 'Harness',
-                    desc: 'tools · memory · sessions',
+                    key: 'model',
+                    label: 'Model',
+                    desc: 'tokens · messages · context',
                     color: '#2563eb',     // blue-600 — vivid, active orchestrator
                     textColor: '#1d4ed8', // blue-700 (AA)
                     fillLight: '#d5dff8',

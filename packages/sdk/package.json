@@ -45,7 +45,6 @@
 		"@mariozechner/pi-agent-core": "*",
 		"@mariozechner/pi-ai": "*",
 		"@valibot/to-json-schema": "^1.0.0",
-		"agentfs-sdk": "^0.6.4",
 		"esbuild": "^0.25.0",
 		"hono": "^4.7.0",
 		"jsonc-parser": "^3.3.1",
