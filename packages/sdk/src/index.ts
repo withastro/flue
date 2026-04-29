@@ -20,7 +20,6 @@ export type {
 	SkillOptions,
 	ShellOptions,
 	ShellResult,
-	TaskOptions,
 	Skill,
 	Role,
 	AgentConfig,

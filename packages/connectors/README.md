@@ -149,17 +149,25 @@ export default async function ({ init, payload, env }: FlueContext) {
   // instead to best pick up where you last left off in the conversation.
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
-  const agent = await init({
+  const setupAgent = await init({
     sandbox: daytona(sandbox, { cleanup: true }),
     model: 'openai/gpt-5.5',
   });
-  const session = await agent.session();
+  const setup = await setupAgent.session();
 
   // For simplicity, we clone the target repo into the sandbox here.
   // You could also bake these into the container image snapshot for a
   // faster / near-instant startup.
-  await session.shell(`git clone ${payload.repo} /workspace/project`);
-  await session.shell('npm install', { cwd: '/workspace/project' });
+  await setup.shell(`git clone ${payload.repo} /workspace/project`);
+  await setup.shell('npm install', { cwd: '/workspace/project' });
+
+  const projectAgent = await init({
+    id: 'project',
+    sandbox: daytona(sandbox),
+    cwd: '/workspace/project',
+    model: 'openai/gpt-5.5',
+  });
+  const session = await projectAgent.session();
 
   // Coding agents don't hide the agent DX from the user, so no need to
   // wrap the user's prompt in anything. Just send it to the agent directly

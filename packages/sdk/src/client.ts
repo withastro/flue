@@ -1,5 +1,5 @@
 import { discoverSessionContext } from './context.ts';
-import { bashFactoryToSessionEnv } from './sandbox.ts';
+import { bashFactoryToSessionEnv, createCwdSessionEnv } from './sandbox.ts';
 import { AgentClient } from './agent-client.ts';
 import type {
 	AgentConfig,
@@ -60,7 +60,8 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 
 			try {
 				const sandbox = options?.sandbox;
-				const env = await resolveSessionEnv(id, sandbox, config);
+				const baseEnv = await resolveSessionEnv(id, sandbox, config, options?.cwd);
+				const env = options?.cwd ? createCwdSessionEnv(baseEnv, options.cwd) : baseEnv;
 				const store: SessionStore = options?.persist ?? config.defaultStore;
 				const localContext = await discoverSessionContext(env);
 
@@ -134,6 +135,7 @@ async function resolveSessionEnv(
 	id: string,
 	sandbox: AgentInit['sandbox'],
 	config: FlueContextConfig,
+	cwd: string | undefined,
 ): Promise<SessionEnv> {
 	if (sandbox === undefined || sandbox === 'empty') {
 		return config.createDefaultEnv();
@@ -155,7 +157,7 @@ async function resolveSessionEnv(
 		if (resolved) return resolved;
 	}
 	if (isSandboxFactory(sandbox)) {
-		return sandbox.createSessionEnv({ id });
+		return sandbox.createSessionEnv({ id, cwd });
 	}
 	throw new Error('[flue] Invalid sandbox option passed to init().');
 }
@@ -185,6 +187,5 @@ export type {
 	SkillOptions,
 	ShellOptions,
 	ShellResult,
-	TaskOptions,
 	ToolDef,
 } from './types.ts';

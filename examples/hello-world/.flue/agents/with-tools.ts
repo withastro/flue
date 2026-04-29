@@ -1,18 +1,21 @@
 import { Type, type FlueContext, type ToolDef } from '@flue/sdk/client';
+import { Bash, InMemoryFs } from 'just-bash';
 
 export const triggers = { webhook: true };
 
 /**
- * Custom tools + task tool test.
+ * Custom tools + delegated agent tool test.
  *
  * Verifies that:
  * - Custom tools can be passed to session.prompt()
  * - The LLM can call custom tools and receives the result
  * - Custom tools with the same name as a built-in tool are rejected
- * - An inline task tool (using session.task()) creates a working sub-agent
+ * - An inline tool can delegate to another agent rooted at a different cwd
  */
 export default async function ({ init }: FlueContext) {
-	const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+	const fs = new InMemoryFs();
+	const sandbox = () => new Bash({ fs, network: { dangerouslyAllowFullInternetAccess: true } });
+	const agent = await init({ sandbox, model: 'anthropic/claude-sonnet-4-6' });
 	const session = await agent.session();
 
 	const results: Record<string, boolean> = {};
@@ -61,7 +64,7 @@ export default async function ({ init }: FlueContext) {
 		results['builtin collision rejected'] ? 'PASS' : 'FAIL',
 	);
 
-	// ─── Test 3: Inline task tool (session.task) ────────────────────────────
+	// ─── Test 3: Inline delegated agent tool ─────────────────────────────────
 
 	// Write an AGENTS.md to a task directory so the sub-agent picks it up
 	await session.shell('mkdir -p /home/user/task-workspace');
@@ -69,8 +72,8 @@ export default async function ({ init }: FlueContext) {
 		'echo "You are a math helper. Always respond with just the numeric answer, nothing else." > /home/user/task-workspace/AGENTS.md',
 	);
 
-	const taskTool: ToolDef = {
-		name: 'task',
+	const delegateTool: ToolDef = {
+		name: 'delegate',
 		description:
 			'Delegate a task to a focused agent working in a specific directory. ' +
 			'The agent automatically discovers and follows any AGENTS.md instructions ' +
@@ -83,17 +86,28 @@ export default async function ({ init }: FlueContext) {
 			prompt: Type.String({ description: 'The task or instructions for the agent' }),
 		}),
 		execute: async (args) => {
-			const result = await session.task(args.prompt, { workspace: args.workspace });
-			return result.text;
+			const childAgent = await init({
+				id: `delegate-${Date.now()}`,
+				sandbox,
+				cwd: args.workspace,
+				model: 'anthropic/claude-sonnet-4-6',
+			});
+			try {
+				const childSession = await childAgent.session();
+				const result = await childSession.prompt(args.prompt);
+				return result.text;
+			} finally {
+				await childAgent.destroy();
+			}
 		},
 	};
 
 	const taskResponse = await session.prompt(
-		'Use the task tool to ask the agent at /home/user/task-workspace: "What is 100 + 23?"',
-		{ tools: [taskTool] },
+		'Use the delegate tool to ask the agent at /home/user/task-workspace: "What is 100 + 23?"',
+		{ tools: [delegateTool] },
 	);
-	results['task tool works'] = taskResponse.text.includes('123');
-	console.log('[with-tools] task tool works:', results['task tool works'] ? 'PASS' : 'FAIL');
+	results['delegate tool works'] = taskResponse.text.includes('123');
+	console.log('[with-tools] delegate tool works:', results['delegate tool works'] ? 'PASS' : 'FAIL');
 
 	// ─── Summary ────────────────────────────────────────────────────────────
 

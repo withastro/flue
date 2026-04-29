@@ -1,4 +1,5 @@
 import type { FlueContext } from '@flue/sdk';
+import { Bash, InMemoryFs } from 'just-bash';
 
 export const triggers = { webhook: true };
 
@@ -6,13 +7,15 @@ export const triggers = { webhook: true };
  * Task (sub-agent) tests.
  *
  * Verifies that:
- * - session.task() runs a prompt in a specified workspace
- * - The task discovers its own AGENTS.md from the workspace
- * - The task returns a PromptResponse with the agent's output
- * - The parent session continues working after the task completes
+ * - A second agent runs a prompt in a specified cwd
+ * - The second agent discovers its own AGENTS.md from that cwd
+ * - The second agent returns a PromptResponse with the agent's output
+ * - The parent session continues working after the second agent completes
  */
 export default async function ({ init }: FlueContext) {
-	const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+	const fs = new InMemoryFs();
+	const sandbox = () => new Bash({ fs, network: { dangerouslyAllowFullInternetAccess: true } });
+	const agent = await init({ sandbox, model: 'anthropic/claude-sonnet-4-6' });
 	const session = await agent.session();
 
 	const results: Record<string, boolean> = {};
@@ -23,10 +26,20 @@ export default async function ({ init }: FlueContext) {
 		'echo "You are a task agent. Always respond with the prefix [TASK]." > /home/user/task-workspace/AGENTS.md',
 	);
 
-	// 1. Run a task in the subdirectory
-	const taskResult = await session.task('Say hello. Keep it very brief.', {
-		workspace: '/home/user/task-workspace',
+	// 1. Run a second agent in the subdirectory
+	const taskAgent = await init({
+		id: 'task-agent',
+		sandbox,
+		cwd: '/home/user/task-workspace',
+		model: 'anthropic/claude-sonnet-4-6',
 	});
+	const taskSession = await taskAgent.session();
+	let taskResult;
+	try {
+		taskResult = await taskSession.prompt('Say hello. Keep it very brief.');
+	} finally {
+		await taskAgent.destroy();
+	}
 	results['task returns result'] = taskResult.text.length > 0;
 	console.log('[task-test] task returns result:', results['task returns result'] ? 'PASS' : 'FAIL');
 

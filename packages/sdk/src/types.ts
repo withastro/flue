@@ -149,6 +149,9 @@ export interface AgentInit {
 	/** Agent/sandbox scope id. Defaults to the route/context id. */
 	id?: string;
 
+	/** Working directory for context discovery, tools, and shell calls. Defaults to the sandbox cwd. */
+	cwd?: string;
+
 	/**
 	 * - `'empty'` (default): In-memory sandbox, no files, no host access.
 	 * - `'local'`: Mounts process.cwd() at /workspace. Node only.
@@ -161,8 +164,8 @@ export interface AgentInit {
 	persist?: SessionStore;
 
 	/**
-	 * Override the default model for this agent. Applies to all prompt(), skill(),
-	 * and task() calls unless overridden at the call site.
+	 * Override the default model for this agent. Applies to all prompt() and skill()
+	 * calls unless overridden at the call site.
 	 *
 	 * Format: `'provider/modelId'` (e.g. `'anthropic/claude-opus-4-20250514'`).
 	 *
@@ -223,13 +226,6 @@ export interface FlueSession {
 	): Promise<v.InferOutput<S>>;
 	skill(name: string, options?: SkillOptions): Promise<PromptResponse>;
 
-	/** Sub-agent task with its own conversation history, context discovery, and compaction. */
-	task<S extends v.GenericSchema>(
-		prompt: string,
-		options: TaskOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
-	task(prompt: string, options?: TaskOptions): Promise<PromptResponse>;
-
 	delete(): Promise<void>;
 }
 
@@ -280,14 +276,6 @@ export interface SkillOptions<S extends v.GenericSchema | undefined = undefined>
 	model?: string;
 }
 
-export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> {
-	/** Workspace directory — AGENTS.md and skills are discovered from here. */
-	workspace?: string;
-	result?: S;
-	role?: string;
-	model?: string;
-}
-
 export interface ShellOptions {
 	env?: Record<string, string>;
 	cwd?: string;
@@ -305,7 +293,7 @@ export interface ShellResult {
 
 /** Wraps external sandboxes (Daytona, CF Containers, etc.) into Flue's SessionEnv. */
 export interface SandboxFactory {
-	createSessionEnv(options: { id: string; workspace?: string }): Promise<SessionEnv>;
+	createSessionEnv(options: { id: string; cwd?: string }): Promise<SessionEnv>;
 }
 
 /**
@@ -345,8 +333,6 @@ export type FlueEvent = (
 	| { type: 'command_end'; command: string; exitCode: number }
 	| { type: 'compaction_start'; reason: 'threshold' | 'overflow'; estimatedTokens: number }
 	| { type: 'compaction_end'; messagesBefore: number; messagesAfter: number }
-	| { type: 'task_start'; workspace: string }
-	| { type: 'task_end' }
 	| { type: 'done' }
 	| { type: 'error'; error: string }
 ) & { sessionId?: string };

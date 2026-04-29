@@ -7,6 +7,43 @@ import { normalizePath } from './session.ts';
 
 export type { SandboxFactory, SessionEnv, CommandDef, FileStat } from './types.ts';
 
+export function createCwdSessionEnv(parentEnv: SessionEnv, cwd: string): SessionEnv {
+	const scopedCwd = normalizePath(cwd);
+	const resolvePath = (p: string): string => {
+		if (p.startsWith('/')) return normalizePath(p);
+		if (scopedCwd === '/') return normalizePath('/' + p);
+		return normalizePath(scopedCwd + '/' + p);
+	};
+
+	return {
+		exec: (cmd, opts) => parentEnv.exec(cmd, { cwd: opts?.cwd ?? scopedCwd, env: opts?.env }),
+		scope: async (options) => createCwdSessionEnv(await scopeEnv(parentEnv, options?.commands ?? []), scopedCwd),
+		readFile: (p) => parentEnv.readFile(resolvePath(p)),
+		readFileBuffer: (p) => parentEnv.readFileBuffer(resolvePath(p)),
+		writeFile: (p, c) => parentEnv.writeFile(resolvePath(p), c),
+		stat: (p) => parentEnv.stat(resolvePath(p)),
+		readdir: (p) => parentEnv.readdir(resolvePath(p)),
+		exists: (p) => parentEnv.exists(resolvePath(p)),
+		mkdir: (p, o) => parentEnv.mkdir(resolvePath(p), o),
+		rm: (p, o) => parentEnv.rm(resolvePath(p), o),
+		cwd: scopedCwd,
+		resolvePath,
+		cleanup: () => parentEnv.cleanup(),
+	};
+}
+
+async function scopeEnv(env: SessionEnv, commands: Command[]): Promise<SessionEnv> {
+	if (env.scope) return env.scope({ commands });
+	if (commands.length > 0) {
+		throw new Error(
+			'[flue] Cannot use commands: this environment does not support scoped command execution. ' +
+				'Commands are only available in BashFactory sandbox mode. ' +
+				'Remote sandboxes handle command execution at the platform level.',
+		);
+	}
+	return env;
+}
+
 export async function bashFactoryToSessionEnv(factory: BashFactory): Promise<SessionEnv> {
 	const seen = new WeakSet<object>();
 

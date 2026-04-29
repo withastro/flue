@@ -267,14 +267,22 @@ export const triggers = { webhook: true };
 export default async function ({ init, payload, env }: FlueContext) {
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
-  const agent = await init({
+  const setupAgent = await init({
     sandbox: daytona(sandbox, { cleanup: true }),
     model: 'openai/gpt-5.5',
   });
-  const session = await agent.session();
+  const setup = await setupAgent.session();
 
-  await session.shell(`git clone ${payload.repo} /workspace/project`);
-  await session.shell('npm install', { cwd: '/workspace/project' });
+  await setup.shell(`git clone ${payload.repo} /workspace/project`);
+  await setup.shell('npm install', { cwd: '/workspace/project' });
+
+  const projectAgent = await init({
+    id: 'project',
+    sandbox: daytona(sandbox),
+    cwd: '/workspace/project',
+    model: 'openai/gpt-5.5',
+  });
+  const session = await projectAgent.session();
 
   return await session.prompt(payload.prompt);
 }

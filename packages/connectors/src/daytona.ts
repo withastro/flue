@@ -128,8 +128,8 @@ export function daytona(
 	options?: DaytonaConnectorOptions,
 ): SandboxFactory {
 	return {
-		async createSessionEnv(): Promise<SessionEnv> {
-			const sandboxCwd = (await sandbox.getWorkDir()) ?? '/home/daytona';
+		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
+			const sandboxCwd = cwd ?? (await sandbox.getWorkDir()) ?? '/home/daytona';
 			const api = new DaytonaSandboxApi(sandbox);
 
 			// Resolve cleanup function

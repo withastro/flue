@@ -22,7 +22,7 @@ import {
 	extractResult,
 	ResultExtractionError,
 } from './result.ts';
-import { discoverSessionContext, loadSkillByPath } from './context.ts';
+import { loadSkillByPath } from './context.ts';
 import type {
 	AgentConfig,
 	Command,
@@ -37,7 +37,6 @@ import type {
 	ShellOptions,
 	ShellResult,
 	SkillOptions,
-	TaskOptions,
 	ToolDef,
 } from './types.ts';
 
@@ -270,68 +269,6 @@ export class Session implements FlueSession {
 		});
 	}
 
-	async task<S extends v.GenericSchema>(
-		prompt: string,
-		options: TaskOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
-	async task(prompt: string, options?: TaskOptions): Promise<PromptResponse>;
-	async task(prompt: string, options?: TaskOptions<v.GenericSchema | undefined>): Promise<any> {
-		return this.runExclusive('task', async () => {
-			this.assertRoleExists(options?.role);
-
-			if (!options?.workspace) {
-				throw new Error('[flue] task() requires a workspace option.');
-			}
-
-			const taskCwd = options.workspace.startsWith('/')
-				? options.workspace
-				: normalizePath(this.env.cwd + '/' + options.workspace);
-			const taskEnv = this.createTaskEnv(taskCwd, this.env);
-			const localContext = await discoverSessionContext(taskEnv);
-
-			let taskModel: Model<any> | undefined = this.config.model;
-			const taskRole = options?.role ? this.config.roles[options.role] : undefined;
-			if (taskRole?.model && this.config.resolveModel) {
-				taskModel = this.config.resolveModel(taskRole.model);
-			}
-			if (options?.model && this.config.resolveModel) {
-				taskModel = this.config.resolveModel(options.model);
-			}
-
-			const taskConfig: AgentConfig = {
-				systemPrompt: localContext.systemPrompt,
-				skills: localContext.skills,
-				roles: this.config.roles,
-				model: this.requireModel(taskModel, 'this task() call'),
-				resolveModel: this.config.resolveModel,
-				compaction: this.config.compaction,
-			};
-
-			this.emit({ type: 'task_start', workspace: taskCwd });
-
-			const taskStore = new InMemorySessionStore();
-			const taskSession = new Session(
-				`${this.id}:task:${Date.now()}`,
-				`${this.storageKey}:task:${Date.now()}`,
-				taskConfig,
-				taskEnv,
-				taskStore,
-				null,
-				this.eventCallback,
-				this.agentCommands,
-			);
-
-			try {
-				const promptOpts: PromptOptions<any> = { role: options?.role };
-				if (options?.result) promptOpts.result = options.result;
-				return await taskSession.prompt(prompt, promptOpts);
-			} finally {
-				this.emit({ type: 'task_end' });
-				await taskSession.delete();
-			}
-		});
-	}
-
 	abort(): void {
 		this.harness.abort();
 		this.compactionAbortController?.abort();
@@ -364,7 +301,7 @@ export class Session implements FlueSession {
 			model = this.config.resolveModel(promptModel);
 		}
 
-		this.harness.state.model = this.requireModel(model, 'this prompt()/skill()/task() call');
+		this.harness.state.model = this.requireModel(model, 'this prompt()/skill() call');
 	}
 
 	/**
@@ -377,14 +314,14 @@ export class Session implements FlueSession {
 		throw new Error(
 			`[flue] No model configured for ${callSite}. ` +
 				`Pass \`{ model: "provider/model-id" }\` to \`init()\` for an agent-wide default, ` +
-				`or to this prompt()/skill()/task() call for a one-off override.`,
+				`or to this prompt()/skill() call for a one-off override.`,
 		);
 	}
 
 	/**
 	 * Throws a clear error when a caller references a role that isn't registered.
 	 * Roles are loaded from `.flue/roles/` at build time. Called eagerly at the top
-	 * of prompt()/skill()/task() so typos surface before any LLM work begins.
+	 * of prompt()/skill() so typos surface before any LLM work begins.
 	 */
 	private assertRoleExists(roleName: string | undefined): void {
 		if (!roleName) return;
@@ -402,31 +339,6 @@ export class Session implements FlueSession {
 		const role = this.config.roles[roleName];
 		if (!role) return text;
 		return `<role>\n${role.instructions}\n</role>\n\n${text}`;
-	}
-
-	private createTaskEnv(taskCwd: string, parentEnv: SessionEnv): SessionEnv {
-		const resolveTaskPath = (p: string): string => {
-			if (p.startsWith('/')) return normalizePath(p);
-			if (taskCwd === '/') return normalizePath('/' + p);
-			return normalizePath(taskCwd + '/' + p);
-		};
-
-		return {
-			exec: (cmd, opts) => parentEnv.exec(cmd, { cwd: opts?.cwd ?? taskCwd, env: opts?.env }),
-			scope: async (scopeOptions) =>
-				this.createTaskEnv(taskCwd, await this.scopeEnv(parentEnv, scopeOptions?.commands ?? [])),
-			readFile: (p) => parentEnv.readFile(resolveTaskPath(p)),
-			readFileBuffer: (p) => parentEnv.readFileBuffer(resolveTaskPath(p)),
-			writeFile: (p, c) => parentEnv.writeFile(resolveTaskPath(p), c),
-			stat: (p) => parentEnv.stat(resolveTaskPath(p)),
-			readdir: (p) => parentEnv.readdir(resolveTaskPath(p)),
-			exists: (p) => parentEnv.exists(resolveTaskPath(p)),
-			mkdir: (p, o) => parentEnv.mkdir(resolveTaskPath(p), o),
-			rm: (p, o) => parentEnv.rm(resolveTaskPath(p), o),
-			cwd: taskCwd,
-			resolvePath: resolveTaskPath,
-			cleanup: async () => {},
-		};
 	}
 
 	// ─── Commands ────────────────────────────────────────────────────────────
