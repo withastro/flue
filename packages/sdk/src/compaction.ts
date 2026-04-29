@@ -624,17 +624,4 @@ export async function compact(
 
 	return { summary, firstKeptIndex, tokensBefore, details: { readFiles, modifiedFiles } };
 }
-
-export function buildCompactedMessages(
-	messages: AgentMessage[],
-	result: CompactionResult,
-): AgentMessage[] {
-	const summaryMessage: UserMessage = {
-		role: 'user',
-		content: [{ type: 'text', text: `[Context Summary]\n\n${result.summary}` }],
-		timestamp: Date.now(),
-	};
-	return [summaryMessage, ...messages.slice(result.firstKeptIndex)];
-}
-
 export { isContextOverflow };

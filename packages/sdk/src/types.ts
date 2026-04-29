@@ -236,15 +236,42 @@ export interface PromptResponse {
 // ─── Session Store ──────────────────────────────────────────────────────────
 
 export interface SessionData {
-	messages: AgentMessage[];
+	version: 2;
+	entries: SessionEntry[];
+	leafId: string | null;
 	metadata: Record<string, any>;
 	createdAt: string;
 	updatedAt: string;
-	lastCompaction?: {
-		summary: string;
-		firstKeptIndex: number;
-		details?: { readFiles: string[]; modifiedFiles: string[] };
-	};
+}
+
+export type SessionEntry = MessageEntry | CompactionEntry | BranchSummaryEntry;
+
+export interface SessionEntryBase {
+	type: string;
+	id: string;
+	parentId: string | null;
+	timestamp: string;
+}
+
+export interface MessageEntry extends SessionEntryBase {
+	type: 'message';
+	message: AgentMessage;
+	source?: 'prompt' | 'skill' | 'shell' | 'task' | 'retry';
+}
+
+export interface CompactionEntry extends SessionEntryBase {
+	type: 'compaction';
+	summary: string;
+	firstKeptEntryId: string;
+	tokensBefore: number;
+	details?: { readFiles: string[]; modifiedFiles: string[] };
+}
+
+export interface BranchSummaryEntry extends SessionEntryBase {
+	type: 'branch_summary';
+	fromId: string;
+	summary: string;
+	details?: unknown;
 }
 
 export interface SessionStore {
@@ -333,7 +360,7 @@ export type FlueEvent = (
 	| { type: 'command_end'; command: string; exitCode: number }
 	| { type: 'compaction_start'; reason: 'threshold' | 'overflow'; estimatedTokens: number }
 	| { type: 'compaction_end'; messagesBefore: number; messagesAfter: number }
-	| { type: 'done' }
+	| { type: 'idle' }
 	| { type: 'error'; error: string }
 ) & { sessionId?: string };
 

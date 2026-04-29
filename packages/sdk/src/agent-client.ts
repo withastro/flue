@@ -1,4 +1,5 @@
 import { Session } from './session.ts';
+import { createScopedEnv, mergeCommands } from './env-utils.ts';
 import type {
 	AgentConfig,
 	Command,
@@ -42,8 +43,8 @@ export class AgentClient implements FlueAgent {
 
 	async shell(command: string, options?: ShellOptions): Promise<ShellResult> {
 		this.assertActive();
-		const effectiveCommands = this.mergeCommands(options?.commands);
-		const env = await this.createScopedEnv(effectiveCommands);
+		const effectiveCommands = mergeCommands(this.agentCommands, options?.commands);
+		const env = await createScopedEnv(this.env, effectiveCommands);
 		const result = await env.exec(command, {
 			env: options?.env,
 			cwd: options?.cwd,
@@ -119,27 +120,6 @@ export class AgentClient implements FlueAgent {
 		}
 	}
 
-	private async createScopedEnv(commands: Command[]): Promise<SessionEnv> {
-		if (this.env.scope) return this.env.scope({ commands });
-		if (commands.length > 0) {
-			throw new Error(
-				'[flue] Cannot use commands: this environment does not support scoped command execution. ' +
-					'Commands are only available in BashFactory sandbox mode. ' +
-					'Remote sandboxes handle command execution at the platform level.',
-			);
-		}
-		return this.env;
-	}
-
-	private mergeCommands(perCall: Command[] | undefined): Command[] {
-		if (!perCall || perCall.length === 0) return this.agentCommands;
-		if (this.agentCommands.length === 0) return perCall;
-		const byName = new Map<string, Command>();
-		for (const cmd of this.agentCommands) byName.set(cmd.name, cmd);
-		for (const cmd of perCall) byName.set(cmd.name, cmd);
-		return Array.from(byName.values());
-	}
-
 }
 
 function normalizeSessionId(id: string | undefined): string {
@@ -153,7 +133,9 @@ function createSessionStorageKey(agentId: string, sessionId: string): string {
 function createEmptySessionData(): SessionData {
 	const now = new Date().toISOString();
 	return {
-		messages: [],
+		version: 2,
+		entries: [],
+		leafId: null,
 		metadata: {},
 		createdAt: now,
 		updatedAt: now,

@@ -4,6 +4,7 @@
  */
 import type { BashFactory, BashLike, Command, FileStat, SessionEnv, ShellResult } from './types.ts';
 import { normalizePath } from './session.ts';
+import { createScopedEnv } from './env-utils.ts';
 
 export type { SandboxFactory, SessionEnv, CommandDef, FileStat } from './types.ts';
 
@@ -17,7 +18,8 @@ export function createCwdSessionEnv(parentEnv: SessionEnv, cwd: string): Session
 
 	return {
 		exec: (cmd, opts) => parentEnv.exec(cmd, { cwd: opts?.cwd ?? scopedCwd, env: opts?.env }),
-		scope: async (options) => createCwdSessionEnv(await scopeEnv(parentEnv, options?.commands ?? []), scopedCwd),
+		scope: async (options) =>
+			createCwdSessionEnv(await createScopedEnv(parentEnv, options?.commands ?? []), scopedCwd),
 		readFile: (p) => parentEnv.readFile(resolvePath(p)),
 		readFileBuffer: (p) => parentEnv.readFileBuffer(resolvePath(p)),
 		writeFile: (p, c) => parentEnv.writeFile(resolvePath(p), c),
@@ -30,18 +32,6 @@ export function createCwdSessionEnv(parentEnv: SessionEnv, cwd: string): Session
 		resolvePath,
 		cleanup: () => parentEnv.cleanup(),
 	};
-}
-
-async function scopeEnv(env: SessionEnv, commands: Command[]): Promise<SessionEnv> {
-	if (env.scope) return env.scope({ commands });
-	if (commands.length > 0) {
-		throw new Error(
-			'[flue] Cannot use commands: this environment does not support scoped command execution. ' +
-				'Commands are only available in BashFactory sandbox mode. ' +
-				'Remote sandboxes handle command execution at the platform level.',
-		);
-	}
-	return env;
 }
 
 export async function bashFactoryToSessionEnv(factory: BashFactory): Promise<SessionEnv> {
@@ -60,14 +50,14 @@ export async function bashFactoryToSessionEnv(factory: BashFactory): Promise<Ses
 		return bash;
 	}
 
-	async function createScopedEnv(commands: Command[]): Promise<SessionEnv> {
+	async function createBashScopedEnv(commands: Command[]): Promise<SessionEnv> {
 		const scoped = await createBash();
 		registerCommands(scoped, commands);
-		return createBashSessionEnv(scoped, createScopedEnv);
+		return createBashSessionEnv(scoped, createBashScopedEnv);
 	}
 
 	const base = await createBash();
-	return createBashSessionEnv(base, createScopedEnv);
+	return createBashSessionEnv(base, createBashScopedEnv);
 }
 
 function createBashSessionEnv(

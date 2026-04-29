@@ -38,7 +38,7 @@ export default async function ({ init }: FlueContext) {
 	const inheritedA = await session.shell('node --version');
 	const inheritedOk = inheritedA.stdout.trim().startsWith('v');
 	console.log(
-		'[session-commands] form A inherited:',
+		'[agent-commands] form A inherited:',
 		inheritedA.stdout.trim(),
 		inheritedOk ? 'PASS' : 'FAIL',
 	);
@@ -49,7 +49,7 @@ export default async function ({ init }: FlueContext) {
 	);
 	const inheritedEnvOk = inheritedB.stdout.trim() === 'injected-value';
 	console.log(
-		'[session-commands] form B inherited (env injection):',
+		'[agent-commands] form B inherited (env injection):',
 		inheritedEnvOk ? 'PASS' : 'FAIL',
 	);
 
@@ -59,7 +59,7 @@ export default async function ({ init }: FlueContext) {
 	const mergedResult = await session.shell('echo-sentinel', { commands: [extra] });
 	const mergedOk = mergedResult.stdout.trim() === 'sentinel';
 	console.log(
-		'[session-commands] per-call merges with agent:',
+		'[agent-commands] per-call merges with agent:',
 		mergedResult.stdout.trim(),
 		mergedOk ? 'PASS' : 'FAIL',
 	);
@@ -67,7 +67,7 @@ export default async function ({ init }: FlueContext) {
 	const stillHaveNode = await session.shell('node --version');
 	const stillHaveNodeOk = stillHaveNode.stdout.trim().startsWith('v');
 	console.log(
-		'[session-commands] agent command still present after merged call:',
+		'[agent-commands] agent command still present after merged call:',
 		stillHaveNodeOk ? 'PASS' : 'FAIL',
 	);
 
@@ -77,7 +77,7 @@ export default async function ({ init }: FlueContext) {
 	const overrideResult = await session.shell('node --version', { commands: [override] });
 	const overrideOk = overrideResult.stdout.trim() === 'override';
 	console.log(
-		'[session-commands] per-call overrides agent by name:',
+		'[agent-commands] per-call overrides agent by name:',
 		overrideResult.stdout.trim(),
 		overrideOk ? 'PASS' : 'FAIL',
 	);
@@ -85,7 +85,7 @@ export default async function ({ init }: FlueContext) {
 	const restored = await session.shell('node --version');
 	const restoredOk = restored.stdout.trim().startsWith('v');
 	console.log(
-		'[session-commands] agent command restored after override:',
+		'[agent-commands] agent command restored after override:',
 		restored.stdout.trim(),
 		restoredOk ? 'PASS' : 'FAIL',
 	);
@@ -97,7 +97,7 @@ export default async function ({ init }: FlueContext) {
 		stillHaveNodeOk &&
 		overrideOk &&
 		restoredOk;
-	console.log(`[session-commands] ${allPassed ? 'ALL PASSED' : 'SOME FAILED'}`);
+	console.log(`[agent-commands] ${allPassed ? 'ALL PASSED' : 'SOME FAILED'}`);
 	return {
 		inheritedOk,
 		inheritedEnvOk,

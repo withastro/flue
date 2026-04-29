@@ -208,13 +208,19 @@ app.post('/agents/:name/:id', async (c) => {
   if (isSSE) {
     return streamSSE(c, async (stream) => {
       let eventId = 0;
+      let isIdle = false;
       const ctx = createContextForRequest(id, payload);
       ctx.setEventCallback((event) => {
+        if (event.type === 'idle') isIdle = true;
         stream.writeSSE({ data: JSON.stringify(event), event: event.type, id: String(eventId++) }).catch(() => {});
       });
 
       try {
         const result = await handler(ctx);
+        if (!isIdle) {
+          const idle = { type: 'idle' };
+          await stream.writeSSE({ data: JSON.stringify(idle), event: 'idle', id: String(eventId++) });
+        }
         await stream.writeSSE({
           data: JSON.stringify({ type: 'result', data: result !== undefined ? result : null }),
           event: 'result',
@@ -226,6 +232,10 @@ app.post('/agents/:name/:id', async (c) => {
           event: 'error',
           id: String(eventId++),
         });
+        if (!isIdle) {
+          const idle = { type: 'idle' };
+          await stream.writeSSE({ data: JSON.stringify(idle), event: 'idle', id: String(eventId++) });
+        }
       } finally {
         ctx.setEventCallback(undefined);
       }

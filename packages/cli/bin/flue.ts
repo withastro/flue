@@ -326,7 +326,7 @@ function logEvent(event: any) {
 			);
 			break;
 
-		case 'done':
+		case 'idle':
 			flushTextBuffer();
 			break;
 

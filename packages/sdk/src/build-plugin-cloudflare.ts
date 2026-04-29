@@ -250,6 +250,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
       const writer = writable.getWriter();
       const encoder = new TextEncoder();
       let eventId = 0;
+      let isIdle = false;
 
       const writeSSE = async (data, event) => {
         const lines = [];
@@ -262,12 +263,16 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
 
       const ctx = createContextForRequest(id, payload, doInstance);
       ctx.setEventCallback((event) => {
+        if (event.type === 'idle') isIdle = true;
         writeSSE(event, event.type).catch(() => {});
       });
 
       (async () => {
         try {
           const result = await handler(ctx);
+          if (!isIdle) {
+            await writeSSE({ type: 'idle' }, 'idle');
+          }
           await writeSSE(
             { type: 'result', data: result !== undefined ? result : null },
             'result',
@@ -277,6 +282,9 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
             { type: 'error', error: String(err) },
             'error',
           );
+          if (!isIdle) {
+            await writeSSE({ type: 'idle' }, 'idle');
+          }
         } finally {
           ctx.setEventCallback(undefined);
           clearCloudflareContext();

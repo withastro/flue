@@ -5,11 +5,9 @@ import type { AssistantMessage, Model } from '@mariozechner/pi-ai';
 import type * as v from 'valibot';
 import { BUILTIN_TOOL_NAMES, createTools } from './agent.ts';
 import {
-	buildCompactedMessages,
 	calculateContextTokens,
 	compact,
 	DEFAULT_COMPACTION_SETTINGS,
-	estimateContextTokens,
 	isContextOverflow,
 	prepareCompaction,
 	shouldCompact,
@@ -23,6 +21,8 @@ import {
 	ResultExtractionError,
 } from './result.ts';
 import { loadSkillByPath } from './context.ts';
+import { createScopedEnv as scopeSessionEnv, mergeCommands } from './env-utils.ts';
+import { SessionHistory, type ContextEntry, type MessageSource } from './session-history.ts';
 import type {
 	AgentConfig,
 	Command,
@@ -67,15 +67,9 @@ export class Session implements FlueSession {
 	private config: AgentConfig;
 	private env: SessionEnv;
 	private store: SessionStore;
+	private history: SessionHistory;
 	private createdAt: string | undefined;
 	private compactionSettings: CompactionSettings;
-	private lastCompaction:
-		| {
-				summary: string;
-				firstKeptIndex: number;
-				details?: { readFiles: string[]; modifiedFiles: string[] };
-		  }
-		| undefined;
 	private overflowRecoveryAttempted = false;
 	private compactionAbortController: AbortController | undefined;
 	private eventCallback: FlueEventCallback | undefined;
@@ -103,7 +97,7 @@ export class Session implements FlueSession {
 		this.metadata = existingData?.metadata ?? {};
 		this.createdAt = existingData?.createdAt;
 
-		this.lastCompaction = existingData?.lastCompaction;
+		this.history = SessionHistory.fromData(existingData);
 
 		const cc = config.compaction;
 		this.compactionSettings = {
@@ -116,7 +110,7 @@ export class Session implements FlueSession {
 
 		const tools = createTools(env);
 
-		const previousMessages = existingData?.messages ?? [];
+		const previousMessages = this.history.buildContext();
 
 		this.harness = new Agent({
 			initialState: {
@@ -161,15 +155,8 @@ export class Session implements FlueSession {
 				case 'turn_end':
 					this.emit({ type: 'turn_end' });
 					break;
-				case 'agent_end': {
-					const messages = this.harness.state.messages;
-					const lastMsg = messages[messages.length - 1];
-					if (lastMsg?.role === 'assistant') {
-						await this.checkCompaction(lastMsg as AssistantMessage);
-					}
-					this.emit({ type: 'done' });
+				case 'agent_end':
 					break;
-				}
 			}
 		});
 	}
@@ -180,7 +167,7 @@ export class Session implements FlueSession {
 	): Promise<v.InferOutput<S>>;
 	async prompt(text: string, options?: PromptOptions): Promise<PromptResponse>;
 	async prompt(text: string, options?: PromptOptions<v.GenericSchema | undefined>): Promise<any> {
-		return this.runExclusive('prompt', async () => {
+		return this.runOperation('prompt', async () => {
 			this.assertRoleExists(options?.role);
 			this.resolveModelForCall(options?.model, options?.role);
 			const promptWithRole = this.injectRoleInstructions(text, options?.role);
@@ -188,13 +175,15 @@ export class Session implements FlueSession {
 			const schema = options?.result as v.GenericSchema | undefined;
 			const fullPrompt = buildPromptText(promptWithRole, schema);
 
-			const effectiveCommands = this.mergeCommands(options?.commands);
+			const effectiveCommands = mergeCommands(this.agentCommands, options?.commands);
 			const customTools = this.createCustomTools(options?.tools ?? []);
 			return this.withScopedTools(effectiveCommands, customTools, async () => {
+				const beforeLength = this.harness.state.messages.length;
 				await this.harness.prompt(fullPrompt);
 				await this.harness.waitForIdle();
+				await this.syncHarnessMessagesSince(beforeLength, 'prompt');
+				await this.checkLatestAssistantForCompaction();
 				this.throwIfError('prompt');
-				await this.save();
 
 				if (schema) {
 					return this.extractResultWithRetry(schema);
@@ -210,7 +199,7 @@ export class Session implements FlueSession {
 	): Promise<v.InferOutput<S>>;
 	async skill(name: string, options?: SkillOptions): Promise<PromptResponse>;
 	async skill(name: string, options?: SkillOptions<v.GenericSchema | undefined>): Promise<any> {
-		return this.runExclusive('skill', async () => {
+		return this.runOperation('skill', async () => {
 			this.assertRoleExists(options?.role);
 
 			let registeredSkill = this.config.skills[name];
@@ -238,13 +227,15 @@ export class Session implements FlueSession {
 			const skillPrompt = buildSkillPrompt(registeredSkill.instructions, options?.args, schema);
 			const promptWithRole = this.injectRoleInstructions(skillPrompt, options?.role);
 
-			const effectiveCommands = this.mergeCommands(options?.commands);
+			const effectiveCommands = mergeCommands(this.agentCommands, options?.commands);
 			const customTools = this.createCustomTools(options?.tools ?? []);
 			return this.withScopedTools(effectiveCommands, customTools, async () => {
+				const beforeLength = this.harness.state.messages.length;
 				await this.harness.prompt(promptWithRole);
 				await this.harness.waitForIdle();
+				await this.syncHarnessMessagesSince(beforeLength, 'skill');
+				await this.checkLatestAssistantForCompaction();
 				this.throwIfError(`skill("${name}")`);
-				await this.save();
 
 				if (schema) {
 					return this.extractResultWithRetry(schema);
@@ -255,15 +246,17 @@ export class Session implements FlueSession {
 	}
 
 	async shell(command: string, options?: ShellOptions): Promise<ShellResult> {
-		return this.runExclusive('shell', async () => {
-			const effectiveCommands = this.mergeCommands(options?.commands);
-			const env = await this.createScopedEnv(effectiveCommands);
+		return this.runOperation('shell', async () => {
+			const effectiveCommands = mergeCommands(this.agentCommands, options?.commands);
+			const env = await scopeSessionEnv(this.env, effectiveCommands);
 			const result = await env.exec(command, {
 				env: options?.env,
 				cwd: options?.cwd,
 			});
 			const shellResult = { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
-			this.recordShellMessage(command, shellResult, options);
+			const message = this.createShellMessage(command, shellResult, options);
+			this.history.appendMessage(message, 'shell');
+			this.harness.state.messages = this.history.buildContext();
 			await this.save();
 			return shellResult;
 		});
@@ -341,38 +334,6 @@ export class Session implements FlueSession {
 		return `<role>\n${role.instructions}\n</role>\n\n${text}`;
 	}
 
-	// ─── Commands ────────────────────────────────────────────────────────────
-
-	private async createScopedEnv(commands: Command[]): Promise<SessionEnv> {
-		return this.scopeEnv(this.env, commands);
-	}
-
-	private async scopeEnv(env: SessionEnv, commands: Command[]): Promise<SessionEnv> {
-		if (env.scope) return env.scope({ commands });
-		if (commands.length > 0) {
-			throw new Error(
-				'[flue] Cannot use commands: this environment does not support scoped command execution. ' +
-					'Commands are only available in BashFactory sandbox mode. ' +
-					'Remote sandboxes handle command execution at the platform level.',
-			);
-		}
-		return env;
-	}
-
-	/**
-	 * Merge agent-wide `commands` (from init()) with per-call commands. When
-	 * both define a command with the same name, the per-call entry wins for
-	 * that call.
-	 */
-	private mergeCommands(perCall: Command[] | undefined): Command[] {
-		if (!perCall || perCall.length === 0) return this.agentCommands;
-		if (this.agentCommands.length === 0) return perCall;
-		const byName = new Map<string, Command>();
-		for (const cmd of this.agentCommands) byName.set(cmd.name, cmd);
-		for (const cmd of perCall) byName.set(cmd.name, cmd);
-		return Array.from(byName.values());
-	}
-
 	// ─── Custom Tools ───────────────────────────────────────────────────────
 
 	private createCustomTools(tools: ToolDef[]): AgentTool<any>[] {
@@ -414,7 +375,7 @@ export class Session implements FlueSession {
 		customTools: AgentTool<any>[],
 		fn: () => Promise<T>,
 	): Promise<T> {
-		const scopedEnv = await this.createScopedEnv(commands);
+		const scopedEnv = await scopeSessionEnv(this.env, commands);
 		const previousTools = this.harness.state.tools;
 		this.harness.state.tools = [...createTools(scopedEnv), ...customTools];
 		try {
@@ -425,6 +386,19 @@ export class Session implements FlueSession {
 	}
 
 	// ─── Internal ────────────────────────────────────────────────────────────
+
+	private async runOperation<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+		return this.runExclusive(operation, async () => {
+			try {
+				return await fn();
+			} catch (error) {
+				this.emit({ type: 'error', error: getErrorMessage(error) });
+				throw error;
+			} finally {
+				this.emit({ type: 'idle' });
+			}
+		});
+	}
 
 	private async runExclusive<T>(operation: string, fn: () => Promise<T>): Promise<T> {
 		this.assertActive();
@@ -452,7 +426,7 @@ export class Session implements FlueSession {
 		}
 	}
 
-	private recordShellMessage(command: string, result: ShellResult, options?: ShellOptions): void {
+	private createShellMessage(command: string, result: ShellResult, options?: ShellOptions): AgentMessage {
 		const cwdLine = options?.cwd ? `\ncwd: ${options.cwd}` : '';
 		const envLine = options?.env
 			? `\nenv: ${Object.keys(options.env)
@@ -460,27 +434,36 @@ export class Session implements FlueSession {
 					.join(', ')}`
 			: '';
 		const output = formatShellHistory(command, result, cwdLine, envLine);
-		this.harness.state.messages.push({
+		return {
 			role: 'user',
 			content: [{ type: 'text', text: output }],
 			timestamp: Date.now(),
-		} as AgentMessage);
+		} as AgentMessage;
+	}
+
+	private async syncHarnessMessagesSince(index: number, source: MessageSource): Promise<void> {
+		const messages = this.harness.state.messages.slice(index) as AgentMessage[];
+		if (messages.length === 0) return;
+		this.history.appendMessages(messages, source);
+		await this.save();
 	}
 
 	private async save(): Promise<void> {
 		const now = new Date().toISOString();
-		const data: SessionData = {
-			messages: this.harness.state.messages as AgentMessage[],
-			metadata: this.metadata,
-			createdAt: this.createdAt ?? now,
-			updatedAt: now,
-			lastCompaction: this.lastCompaction,
-		};
+		const data = this.history.toData(this.metadata, this.createdAt ?? now, now);
 		if (!this.createdAt) this.createdAt = now;
 		await this.store.save(this.storageKey, data);
 	}
 
 	// ─── Compaction ───────────────────────────────────────────────────────────
+
+	private async checkLatestAssistantForCompaction(): Promise<void> {
+		const messages = this.harness.state.messages;
+		const lastMsg = messages[messages.length - 1];
+		if (lastMsg?.role === 'assistant') {
+			await this.checkCompaction(lastMsg as AssistantMessage);
+		}
+	}
 
 	private async checkCompaction(assistantMessage: AssistantMessage): Promise<void> {
 		if (!this.compactionSettings.enabled) return;
@@ -488,8 +471,9 @@ export class Session implements FlueSession {
 
 		const model = this.harness.state.model;
 		const contextWindow = model.contextWindow ?? 0;
+		const overflow = isContextOverflow(assistantMessage, contextWindow);
 
-		if (isContextOverflow(assistantMessage, contextWindow)) {
+		if (overflow) {
 			if (this.overflowRecoveryAttempted) return;
 			this.overflowRecoveryAttempted = true;
 
@@ -499,20 +483,16 @@ export class Session implements FlueSession {
 			const lastMsg = messages[messages.length - 1];
 			if (lastMsg && lastMsg.role === 'assistant') {
 				this.harness.state.messages = messages.slice(0, -1);
+				this.history.removeLeafMessage(lastMsg as AgentMessage);
+				await this.save();
 			}
 
 			await this.runCompaction('overflow', true);
 			return;
 		}
+		if (assistantMessage.stopReason === 'error') return;
 
-		let contextTokens: number;
-		if (assistantMessage.stopReason === 'error') {
-			const estimate = estimateContextTokens(this.harness.state.messages);
-			if (estimate.lastUsageIndex === null) return;
-			contextTokens = estimate.tokens;
-		} else {
-			contextTokens = calculateContextTokens(assistantMessage.usage);
-		}
+		const contextTokens = calculateContextTokens(assistantMessage.usage);
 
 		if (shouldCompact(contextTokens, contextWindow, this.compactionSettings)) {
 			console.error(
@@ -530,11 +510,28 @@ export class Session implements FlueSession {
 
 		try {
 			const model = this.harness.state.model;
-			const messages = this.harness.state.messages as AgentMessage[];
+			const contextEntries = this.history.buildContextEntries();
+			const messages = contextEntries.map((entry) => entry.message);
+			const latestCompaction = this.history.getLatestCompaction();
 
-			const preparation = prepareCompaction(messages, this.compactionSettings, this.lastCompaction);
+			const preparation = prepareCompaction(
+				messages,
+				this.compactionSettings,
+				latestCompaction
+					? {
+							summary: latestCompaction.summary,
+							firstKeptIndex: 1,
+							details: latestCompaction.details,
+						}
+					: undefined,
+			);
 			if (!preparation) {
 				console.error(`[flue:compaction] Nothing to compact (no valid cut point found)`);
+				return;
+			}
+			const firstKeptEntry = contextEntries[preparation.firstKeptIndex]?.entry;
+			if (!firstKeptEntry || firstKeptEntry.type !== 'message') {
+				console.error(`[flue:compaction] Nothing to compact (first kept message has no entry)`);
 				return;
 			}
 
@@ -558,22 +555,21 @@ export class Session implements FlueSession {
 
 			if (this.compactionAbortController.signal.aborted) return;
 
-			const newMessages = buildCompactedMessages(messages, result);
-			this.harness.state.messages = newMessages;
+			this.history.appendCompaction({
+				summary: result.summary,
+				firstKeptEntryId: firstKeptEntry.id,
+				tokensBefore: result.tokensBefore,
+				details: result.details,
+			});
+			this.harness.state.messages = this.history.buildContext();
 
-			const messagesAfter = newMessages.length;
+			const messagesAfter = this.harness.state.messages.length;
 			console.error(
 				`[flue:compaction] Complete — messages: ${messagesBefore} → ${messagesAfter}, ` +
 					`tokens before: ${result.tokensBefore}`,
 			);
 
 			this.emit({ type: 'compaction_end', messagesBefore, messagesAfter });
-
-			this.lastCompaction = {
-				summary: result.summary,
-				firstKeptIndex: 1,
-				details: result.details,
-			};
 
 			await this.save();
 
@@ -584,7 +580,10 @@ export class Session implements FlueSession {
 					this.harness.state.messages = msgs.slice(0, -1);
 				}
 				console.error(`[flue:compaction] Retrying after overflow recovery...`);
+				const beforeRetry = this.harness.state.messages.length;
 				await this.harness.continue();
+				await this.harness.waitForIdle();
+				await this.syncHarnessMessagesSince(beforeRetry, 'retry');
 			}
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
@@ -630,9 +629,11 @@ export class Session implements FlueSession {
 			if (!err.message.includes('RESULT_START')) throw err;
 
 			const followUpPrompt = buildResultExtractionPrompt(schema);
+			const beforeRetry = this.harness.state.messages.length;
 			await this.harness.prompt(followUpPrompt);
 			await this.harness.waitForIdle();
-			await this.save();
+			await this.syncHarnessMessagesSince(beforeRetry, 'retry');
+			await this.checkLatestAssistantForCompaction();
 
 			const retryText = this.getAssistantText();
 			return extractResult(retryText, schema);
@@ -679,4 +680,8 @@ function truncateShellHistory(text: string): string {
 		`[Shell output truncated: ${truncated} leading characters omitted]\n` +
 		text.slice(text.length - MAX_SHELL_HISTORY_CHARS)
 	);
+}
+
+function getErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
 }
