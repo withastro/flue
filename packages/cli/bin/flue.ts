@@ -45,7 +45,7 @@ function resolveOutputDir(explicitOutput: string | undefined): string {
 function printUsage() {
 	console.error(
 		'Usage:\n' +
-			'  flue run <agent> --target node --session-id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>]\n' +
+			'  flue run <agent> --target node --id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>]\n' +
 			'  flue build --target <node|cloudflare> [--workspace <path>] [--output <path>]\n' +
 			'\n' +
 			'Flags:\n' +
@@ -53,8 +53,8 @@ function printUsage() {
 			'  --output <path>      Where dist/ is written. Default: current working directory\n' +
 			'\n' +
 			'Examples:\n' +
-			'  flue run hello --target node --session-id test-1\n' +
-			'  flue run hello --target node --session-id test-1 --payload \'{"name": "World"}\'\n' +
+			'  flue run hello --target node --id test-1\n' +
+			'  flue run hello --target node --id test-1 --payload \'{"name": "World"}\'\n' +
 			'  flue build --target node\n' +
 			'  flue build --target cloudflare --workspace ./.flue --output ./build\n' +
 			'\n' +
@@ -67,7 +67,7 @@ interface RunArgs {
 	command: 'run';
 	agent: string;
 	target: 'node';
-	sessionId: string;
+	id: string;
 	payload: string;
 	/** Explicit --workspace value, or undefined to apply the cwd waterfall. */
 	explicitWorkspace: string | undefined;
@@ -89,14 +89,14 @@ type ParsedArgs = RunArgs | BuildArgs;
 
 function parseFlags(flags: string[]): {
 	target?: 'node' | 'cloudflare';
-	sessionId?: string;
+	id?: string;
 	explicitWorkspace: string | undefined;
 	explicitOutput: string | undefined;
 	payload: string;
 	port: number;
 } {
 	let target: 'node' | 'cloudflare' | undefined;
-	let sessionId: string | undefined;
+	let id: string | undefined;
 	let explicitWorkspace: string | undefined;
 	let explicitOutput: string | undefined;
 	let payload = '{}';
@@ -121,10 +121,10 @@ function parseFlags(flags: string[]): {
 				process.exit(1);
 			}
 			target = targetFlag;
-		} else if (arg === '--session-id') {
-			sessionId = flags[++i];
-			if (!sessionId) {
-				console.error('Missing value for --session-id');
+		} else if (arg === '--id') {
+			id = flags[++i];
+			if (!id) {
+				console.error('Missing value for --id');
 				process.exit(1);
 			}
 		} else if (arg === '--workspace') {
@@ -155,7 +155,7 @@ function parseFlags(flags: string[]): {
 
 	return {
 		target,
-		sessionId,
+		id,
 		explicitWorkspace: explicitWorkspace ? path.resolve(explicitWorkspace) : undefined,
 		explicitOutput: explicitOutput ? path.resolve(explicitOutput) : undefined,
 		payload,
@@ -167,7 +167,7 @@ function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function printCloudflareRunUnsupported(agent: string, sessionId: string, payload: string): never {
+function printCloudflareRunUnsupported(agent: string, id: string, payload: string): never {
 	console.error(
 		'[flue] `flue run --target cloudflare` is not supported.\n\n' +
 			'`flue run` starts the generated server with Node.js, but Cloudflare builds use Worker-only runtime modules that Node cannot load.\n\n' +
@@ -175,7 +175,7 @@ function printCloudflareRunUnsupported(agent: string, sessionId: string, payload
 			'  npx flue build --target cloudflare\n' +
 			'  npx wrangler dev\n\n' +
 			'Then invoke the agent endpoint in another terminal:\n\n' +
-			`  curl http://localhost:8787/agents/${agent}/${sessionId} \\\n` +
+			`  curl http://localhost:8787/agents/${agent}/${id} \\\n` +
 			'    -H "Content-Type: application/json" \\\n' +
 			`    -d ${shellQuote(payload)}`,
 	);
@@ -210,8 +210,8 @@ function parseArgs(argv: string[]): ParsedArgs {
 			process.exit(1);
 		}
 
-		if (!flags.sessionId) {
-			console.error('Missing required --session-id flag for run command.');
+		if (!flags.id) {
+			console.error('Missing required --id flag for run command.');
 			printUsage();
 			process.exit(1);
 		}
@@ -224,14 +224,14 @@ function parseArgs(argv: string[]): ParsedArgs {
 		}
 
 		if (flags.target === 'cloudflare') {
-			printCloudflareRunUnsupported(agent, flags.sessionId, flags.payload);
+			printCloudflareRunUnsupported(agent, flags.id, flags.payload);
 		}
 
 		return {
 			command: 'run',
 			agent,
 			target: flags.target,
-			sessionId: flags.sessionId,
+			id: flags.id,
 			payload: flags.payload,
 			explicitWorkspace: flags.explicitWorkspace,
 			explicitOutput: flags.explicitOutput,
@@ -509,7 +509,7 @@ async function run(args: RunArgs) {
 
 	// 3. Start server
 	console.error(`[flue] Starting server on port ${port}...`);
-	const child = startServer(serverPath, port, {}, workspaceDir);
+	const child = startServer(serverPath, port, {}, outputDir);
 
 	// Pipe server stdout/stderr for visibility
 	const pipeServerOutput = (data: Buffer) => {
@@ -558,7 +558,7 @@ async function run(args: RunArgs) {
 
 	try {
 		outcome = await consumeSSE(
-			`http://localhost:${port}/agents/${args.agent}/${args.sessionId}`,
+			`http://localhost:${port}/agents/${args.agent}/${args.id}`,
 			args.payload,
 			sseAbort.signal,
 		);

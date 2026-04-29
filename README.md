@@ -35,9 +35,10 @@ import * as v from 'valibot';
 export const triggers = { webhook: true };
 
 // The agent handler. Where the orchestration of the agent lives.
-export default async function ({ init, payload, sessionId }: FlueContext) {
-  // `session` -- Your session with the agent including sandbox, message history, etc.
-  const session = await init({ model: 'anthropic/claude-sonnet-4-6' });
+export default async function ({ init, payload }: FlueContext) {
+  // `agent` -- Your initialized agent runtime including sandbox, tools, skills, etc.
+  const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+  const session = await agent.session();
 
   // prompt() sends a message in the session, triggering action.
   const result = await session.prompt(`Translate this to ${payload.language}: "${payload.text}"`, {
@@ -71,7 +72,8 @@ export default async function ({ init, payload, env }: FlueContext) {
   // The agent can grep, glob, and read articles with bash, but
   // without needing to spin up an entire container sandbox.
   const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
-  const session = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
+  const agent = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
+  const session = await agent.session();
 
   return await session.prompt(
     `You are a support agent. Search the knowledge base for articles
@@ -112,11 +114,12 @@ export default async function ({ init, payload }: FlueContext) {
   // discovered automatically from the workspace directory.
   //
   // `model` sets the default model for every prompt/skill call in this
-  // session. Override per-call with `{ model: '...' }` on prompt()/skill().
-  const session = await init({
+  // agent. Override per-call with `{ model: '...' }` on prompt()/skill().
+  const agent = await init({
     sandbox: 'local',
     model: 'anthropic/claude-opus-4-7',
   });
+  const session = await agent.session();
 
   // Skills can be referenced either by their frontmatter `name:` (shown below)
   // or by a relative path under `.agents/skills/` — e.g.
@@ -156,18 +159,19 @@ import { daytona } from '@flue/connectors/daytona';
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload, env }: FlueContext) {
-  // Each session gets a real container via Daytona. The container has
+  // Each agent gets a real container via Daytona. The container has
   // a full Linux environment with persistent filesystem and shell.
   //
   // For simplicity, we always create a new sandbox here. You could also
-  // first check for an existing sandbox for the sessionId, and reuse that
+  // first check for an existing sandbox for the agent id, and reuse that
   // instead to best pick up where you last left off in the conversation.
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
-  const session = await init({
+  const agent = await init({
     sandbox: daytona(sandbox, { cleanup: true }),
     model: 'openai/gpt-5.5',
   });
+  const session = await agent.session();
 
   // For simplicity, we clone the target repo into the sandbox here.
   // You could also bake these into the container image snapshot for a
@@ -182,15 +186,15 @@ export default async function ({ init, payload, env }: FlueContext) {
 }
 ```
 
-## Sessions
+## Agents And Sessions
 
-Every agent invocation runs inside a session. For HTTP agents, the session ID is the last path segment:
+Every agent invocation runs inside an initialized agent runtime. For HTTP agents, the agent ID is the last path segment:
 
 ```txt
-POST /agents/<agent-name>/<session-id>
+POST /agents/<agent-name>/<id>
 ```
 
-Reuse the same session ID to continue the same conversation. Use a new session ID to start fresh.
+By default, `agent.session()` opens the default session for that agent ID. Reuse the same agent ID to continue the same default conversation. Use a new agent ID to start fresh.
 
 ```bash
 # Start a conversation
@@ -209,9 +213,25 @@ curl http://localhost:8787/agents/hello/session-xyz \
   -d '{"name": "Alice"}'
 ```
 
-Sessions persist message history, agent state, and sandbox state such as files written during the session. On Cloudflare, sessions are backed by Durable Objects and survive across requests. On Node.js, sessions are stored in memory by default unless you provide a custom store.
+Agents own sandbox state such as files written during a run. Sessions persist message history and conversation metadata inside an agent. On Cloudflare, session data is backed by Durable Objects and survives across requests. On Node.js, sessions are stored in memory by default unless you provide a custom store.
 
-In production, generate a stable session ID for each user conversation. Good choices include UUIDs, authenticated user IDs, or thread IDs from your database.
+In production, generate a stable agent ID for the sandbox/runtime scope you want to preserve. Use `agent.session(threadId)` when you need multiple conversations inside the same agent.
+
+### Custom Virtual Sandboxes
+
+For most agents, use the built-in virtual sandbox or `sandbox: 'local'`. If you need to customize just-bash directly, pass a Bash factory. The factory must return a fresh Bash-like runtime each time; share the filesystem object in the closure to persist files across sessions and prompts.
+
+```ts
+import { Bash, InMemoryFs } from 'just-bash';
+
+const fs = new InMemoryFs();
+
+const agent = await init({
+  sandbox: () => new Bash({ fs, cwd: '/workspace', python: true }),
+  model: 'anthropic/claude-sonnet-4-6',
+});
+const session = await agent.session();
+```
 
 ## Running Agents
 
@@ -220,7 +240,7 @@ In production, generate a stable session ID for each user conversation. Good cho
 Build and run any agent locally, perfect for fast local testing or running in CI.
 
 ```bash
-flue run hello --target node --session-id test-1 \
+flue run hello --target node --id test-1 \
   --payload '{"text": "Hello world", "language": "French"}'
 ```
 

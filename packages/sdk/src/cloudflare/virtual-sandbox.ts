@@ -93,8 +93,9 @@ export async function getVirtualSandbox(
 ): Promise<any> {
 	if (bucket === undefined) {
 		const { Bash, InMemoryFs } = await import(/* @vite-ignore */ 'just-bash' as string);
-		return new Bash({
-			fs: new InMemoryFs(),
+		const fs = new InMemoryFs();
+		return () => new Bash({
+			fs,
 			network: { dangerouslyAllowFullInternetAccess: true },
 		});
 	}
@@ -116,7 +117,7 @@ export async function getVirtualSandbox(
 	const fs = new MountableFs({ base: new InMemoryFs() });
 	fs.mount('/workspace', r2Adapter);
 
-	return new Bash({
+	return () => new Bash({
 		fs,
 		cwd: '/workspace',
 		network: { dangerouslyAllowFullInternetAccess: true },

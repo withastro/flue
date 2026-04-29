@@ -35,7 +35,8 @@ import * as v from 'valibot';
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ model: 'openai/gpt-5.5' });
+  const agent = await init({ model: 'openai/gpt-5.5' });
+  const session = await agent.session();
 
   const result = await session.prompt(`Translate this to ${payload.language}: "${payload.text}"`, {
     result: v.object({
@@ -51,7 +52,7 @@ export default async function ({ init, payload }: FlueContext) {
 A few things to note:
 
 - **`triggers = { webhook: true }`** — This agent is invoked via HTTP. Flue creates a route for it automatically.
-- **`init({ model })`** — Every session needs a model. If you do not pass one, no model is chosen and `prompt()` / `skill()` calls will fail. By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
+- **`init({ model })`** — Every agent needs a model. If you do not pass one, no model is chosen and `prompt()` / `skill()` calls will fail. By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
 - **Result schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns a typed object.
 
 ### 3. Build and run
@@ -71,12 +72,12 @@ curl http://localhost:3000/agents/translate/test-1 \
   -d '{"text": "Hello world", "language": "French"}'
 ```
 
-Every agent with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/agents/<name>/<session-id>` — for example, `.flue/agents/translate.ts` becomes `/agents/translate/:sessionId`.
+Every agent with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/agents/<name>/<id>` — for example, `.flue/agents/translate.ts` becomes `/agents/translate/:id`.
 
 You can also test any agent from the CLI without starting a server:
 
 ```bash
-npx flue run translate --target node --session-id test-1 \
+npx flue run translate --target node --id test-1 \
   --payload '{"text": "Hello world", "language": "French"}'
 ```
 
@@ -141,7 +142,8 @@ import * as v from 'valibot';
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
+  const agent = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
+  const session = await agent.session();
 
   const result = await session.prompt(
     `Review the codebase and identify potential issues in the area
@@ -198,7 +200,8 @@ const git = defineCommand('git', { env: { GIT_AUTHOR_NAME: 'flue-bot' } });
 const npm = defineCommand('npm', { env: { NPM_TOKEN: process.env.NPM_TOKEN } });
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ sandbox: 'local', model: 'anthropic/claude-opus-4-7' });
+  const agent = await init({ sandbox: 'local', model: 'anthropic/claude-opus-4-7' });
+  const session = await agent.session();
 
   const result = await session.skill('deploy-check', {
     args: { branch: payload.branch },
@@ -227,23 +230,24 @@ const gh = defineCommand('gh', async (args) => {
 
 Commands are granted per-prompt or per-skill, so you can be as granular with access as you need. If the agent tries to run `git` outside of a prompt where it was granted, the command is blocked.
 
-### Session-wide commands
+### Agent-wide commands
 
-If every call in a session needs the same set of commands, pass them to `init()` once instead of to every `prompt()` / `skill()` / `shell()`:
+If every call in an agent needs the same set of commands, pass them to `init()` once instead of to every `prompt()` / `skill()` / `shell()`:
 
 ```typescript
-const session = await init({
+const agent = await init({
   sandbox: 'local',
   commands: [git, npm],
   model: 'openrouter/moonshotai/kimi-k2.6',
 });
+const session = await agent.session();
 
 // `git` and `npm` are available here without repeating `commands: [...]`.
 await session.skill('deploy-check', { args: { branch: payload.branch } });
 await session.shell('git status');
 ```
 
-Per-call `commands` still work and are merged on top of the session list. If a per-call command shares a name with a session command, the per-call version wins for that call only — the session command is restored afterward.
+Per-call `commands` still work and are merged on top of the agent list. If a per-call command shares a name with an agent command, the per-call version wins for that call only — the agent command is restored afterward.
 
 ## Container agents
 
@@ -263,10 +267,11 @@ export const triggers = { webhook: true };
 export default async function ({ init, payload, env }: FlueContext) {
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
-  const session = await init({
+  const agent = await init({
     sandbox: daytona(sandbox, { cleanup: true }),
     model: 'openai/gpt-5.5',
   });
+  const session = await agent.session();
 
   await session.shell(`git clone ${payload.repo} /workspace/project`);
   await session.shell('npm install', { cwd: '/workspace/project' });
@@ -319,11 +324,12 @@ const store: SessionStore = {
 };
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({
+  const agent = await init({
     sandbox: 'local',
     persist: store,
     model: 'anthropic/claude-sonnet-4-6',
   });
+  const session = await agent.session();
   // ...
 }
 ```
@@ -349,7 +355,7 @@ The server exposes:
 
 - `GET /health` — Health check
 - `GET /agents` — Agent manifest (lists all agents and their triggers)
-- `POST /agents/:name/:sessionId` — Invoke an agent
+- `POST /agents/:name/:id` — Invoke an agent
 
 ### Deploying with Docker
 

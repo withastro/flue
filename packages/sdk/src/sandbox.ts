@@ -1,39 +1,49 @@
 /**
- * Sandbox adapters: wraps BashLike or SandboxApi into SessionEnv.
+ * Sandbox adapters: wraps BashFactory or SandboxApi into SessionEnv.
  * Remote sandboxes don't use just-bash — commands go directly to the sandbox shell.
  */
-import type { BashLike, CommandSupport, FileStat, SessionEnv, ShellResult } from './types.ts';
+import type { BashFactory, BashLike, Command, FileStat, SessionEnv, ShellResult } from './types.ts';
 import { normalizePath } from './session.ts';
 
 export type { SandboxFactory, SessionEnv, CommandDef, FileStat } from './types.ts';
 
-export function bashToSessionEnv(bash: BashLike): SessionEnv {
+export async function bashFactoryToSessionEnv(factory: BashFactory): Promise<SessionEnv> {
+	const seen = new WeakSet<object>();
+
+	async function createBash(): Promise<BashLike> {
+		const bash = await factory();
+		assertBashLike(bash);
+		if (seen.has(bash)) {
+			throw new Error(
+				'[flue] BashFactory must return a fresh Bash-like instance for each operation. ' +
+					'Share the filesystem object in the factory closure to persist files across calls.',
+			);
+		}
+		seen.add(bash);
+		return bash;
+	}
+
+	async function createScopedEnv(commands: Command[]): Promise<SessionEnv> {
+		const scoped = await createBash();
+		registerCommands(scoped, commands);
+		return createBashSessionEnv(scoped, createScopedEnv);
+	}
+
+	const base = await createBash();
+	return createBashSessionEnv(base, createScopedEnv);
+}
+
+function createBashSessionEnv(
+	bash: BashLike,
+	createScope: (commands: Command[]) => Promise<SessionEnv>,
+): SessionEnv {
 	const fs = bash.fs;
 	const cwd = bash.getCwd();
 	const resolve = (p: string) => (p.startsWith('/') ? p : fs.resolvePath(cwd, p));
 
-	let commandSupport: CommandSupport | undefined;
-	if (typeof bash.registerCommand === 'function') {
-		const registerCommand = bash.registerCommand.bind(bash);
-		commandSupport = {
-			register(cmd) {
-				registerCommand({ name: cmd.name, execute: cmd.execute });
-			},
-			unregister(name) {
-				registerCommand({
-					name,
-					execute: async () => ({
-						stdout: '',
-						stderr: name + ': command not available (not registered for this call)',
-						exitCode: 127,
-					}),
-				});
-			},
-		};
-	}
-
 	return {
 		exec: (cmd, opts) => bash.exec(cmd, opts),
+		scope: (options) => createScope(options?.commands ?? []),
 		readFile: (p) => fs.readFile(resolve(p)),
 		readFileBuffer: (p) => fs.readFileBuffer(resolve(p)),
 		writeFile: async (p, content) => {
@@ -55,9 +65,35 @@ export function bashToSessionEnv(bash: BashLike): SessionEnv {
 		rm: (p, o) => fs.rm(resolve(p), o),
 		cwd,
 		resolvePath: resolve,
-		commandSupport,
 		cleanup: async () => {},
 	};
+}
+
+function registerCommands(bash: BashLike, commands: Command[]): void {
+	if (commands.length === 0) return;
+	if (typeof bash.registerCommand !== 'function') {
+		throw new Error(
+			'[flue] Cannot use commands: this Bash-like sandbox does not support command registration.',
+		);
+	}
+	for (const cmd of commands) {
+		bash.registerCommand({ name: cmd.name, execute: cmd.execute });
+	}
+}
+
+function assertBashLike(value: unknown): asserts value is BashLike {
+	if (
+		typeof value !== 'object' ||
+		value === null ||
+		!('exec' in value) ||
+		!('getCwd' in value) ||
+		!('fs' in value) ||
+		typeof (value as any).exec !== 'function' ||
+		typeof (value as any).getCwd !== 'function' ||
+		typeof (value as any).fs !== 'object'
+	) {
+		throw new Error('[flue] BashFactory must return a Bash-like object.');
+	}
 }
 
 /** Interface that remote sandbox providers must implement. */
@@ -134,8 +170,6 @@ export function createSandboxSessionEnv(
 		cwd,
 
 		resolvePath,
-
-		commandSupport: undefined,
 
 		async cleanup(): Promise<void> {
 			if (cleanup) await cleanup();

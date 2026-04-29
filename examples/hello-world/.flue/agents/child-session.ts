@@ -12,7 +12,8 @@ export const triggers = { webhook: true };
  * - The parent session continues working after the task completes
  */
 export default async function ({ init }: FlueContext) {
-	const session = await init();
+	const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+	const session = await agent.session();
 
 	const results: Record<string, boolean> = {};
 

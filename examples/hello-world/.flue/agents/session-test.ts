@@ -5,8 +5,8 @@ export const triggers = { webhook: true };
 /**
  * Tests cross-invocation session persistence.
  *
- * The session ID comes from the URL (routed by the platform).
- * Two requests to the same session ID share conversation history.
+ * The agent ID comes from the URL (routed by the platform).
+ * Two requests to the same agent ID share the default session history.
  *
  * Payload:
  *   { "action": "set" }    — store a secret in the session
@@ -22,15 +22,16 @@ export const triggers = { webhook: true };
  * if you were recently changing code that impacted sessions/persistence, or were doing a larger
  * refactor. Otherwise, this test is safe to skip and not run as part of your regular test suite.
  */
-export default async function ({ init, payload, sessionId }: FlueContext) {
-	const session = await init();
+export default async function ({ init, payload, id }: FlueContext) {
+	const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+	const session = await agent.session();
 
 	const action = payload.action;
 
 	if (action === 'set') {
 		const secret = payload.secret ?? 'FLUE-42-ALPHA';
 		await session.prompt(`Remember this secret code: ${secret}. I will ask you about it later.`);
-		return { status: 'secret-set', sessionId };
+		return { status: 'secret-set', id, sessionId: session.id };
 	}
 
 	if (action === 'recall') {
@@ -38,10 +39,10 @@ export default async function ({ init, payload, sessionId }: FlueContext) {
 			'What was the secret code I told you earlier? Reply with just the code, nothing else.',
 		);
 		const text = response.text.trim();
-		return { status: 'recalled', sessionId, recalled: text };
+		return { status: 'recalled', id, sessionId: session.id, recalled: text };
 	}
 
 	return {
-		error: 'Pass payload.action: "set" or "recall". Session ID comes from the URL path.',
+		error: 'Pass payload.action: "set" or "recall". Agent ID comes from the URL path.',
 	};
 }

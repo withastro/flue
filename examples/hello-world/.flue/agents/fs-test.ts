@@ -12,7 +12,8 @@ export const triggers = { webhook: true };
  * - Shell can create files (non-LLM path)
  */
 export default async function ({ init }: FlueContext) {
-	const session = await init();
+	const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+	const session = await agent.session();
 
 	const results: Record<string, boolean> = {};
 

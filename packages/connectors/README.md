@@ -27,11 +27,9 @@ import * as v from 'valibot';
 export const triggers = { webhook: true };
 
 // The agent handler. Where the orchestration of the agent lives.
-export default async function ({ init, payload, sessionId }: FlueContext) {
-  // `session` -- Your session with the agent, including sandbox, message history, etc.
-  // Every session needs a model. By default, Flue gives you an empty virtual sandbox,
-  // with no skills, AGENTS.md, or files.
-  const session = await init({ model: 'anthropic/claude-sonnet-4-6' });
+export default async function ({ init, payload }: FlueContext) {
+  const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+  const session = await agent.session();
 
   // prompt() sends a message in the session, triggering action.
   // You can pass a schema to `result` to get typed, validated JSON back.
@@ -65,7 +63,8 @@ export default async function ({ init, payload, env }: FlueContext) {
   // The agent can grep, glob, and read articles with bash, but
   // without needing to spin up an entire container sandbox.
   const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
-  const session = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
+  const agent = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
+  const session = await agent.session();
 
   return await session.prompt(
     `You are a support agent. Search the knowledge base for articles
@@ -103,7 +102,8 @@ export default async function ({ init, payload }: FlueContext) {
   // 'local' mounts the host filesystem at /workspace — ideal for CI
   // where the repo is already checked out. Skills and AGENTS.md are
   // discovered automatically from the workspace directory.
-  const session = await init({ sandbox: 'local', model: 'anthropic/claude-opus-4-7' });
+  const agent = await init({ sandbox: 'local', model: 'anthropic/claude-opus-4-7' });
+  const session = await agent.session();
 
   const result = await session.skill('triage', {
     // Pass arguments to any prompt or skill.
@@ -145,14 +145,15 @@ export default async function ({ init, payload, env }: FlueContext) {
   // a full Linux environment with persistent filesystem and shell.
   //
   // For simplicity, we always create a new sandbox here. You could also
-  // first check for an existing sandbox for the sessionId, and reuse that
+  // first check for an existing sandbox for the agent id, and reuse that
   // instead to best pick up where you last left off in the conversation.
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
-  const session = await init({
+  const agent = await init({
     sandbox: daytona(sandbox, { cleanup: true }),
     model: 'openai/gpt-5.5',
   });
+  const session = await agent.session();
 
   // For simplicity, we clone the target repo into the sandbox here.
   // You could also bake these into the container image snapshot for a
@@ -174,7 +175,7 @@ export default async function ({ init, payload, env }: FlueContext) {
 Build and run any agent locally, perfect for fast local testing or running in CI.
 
 ```bash
-flue run hello --target node --session-id test-1 \
+flue run hello --target node --id test-1 \
   --payload '{"text": "Hello world", "language": "French"}'
 ```
 

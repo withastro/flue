@@ -26,6 +26,7 @@ import { discoverSessionContext, loadSkillByPath } from './context.ts';
 import type {
 	AgentConfig,
 	Command,
+	FlueEvent,
 	FlueEventCallback,
 	FlueSession,
 	PromptOptions,
@@ -39,6 +40,8 @@ import type {
 	TaskOptions,
 	ToolDef,
 } from './types.ts';
+
+const MAX_SHELL_HISTORY_CHARS = 50 * 1024;
 
 /** In-memory session store. Sessions persist for the lifetime of the process. */
 export class InMemorySessionStore implements SessionStore {
@@ -61,7 +64,7 @@ export class Session implements FlueSession {
 	readonly id: string;
 	metadata: Record<string, any>;
 
-	private agent: Agent;
+	private harness: Agent;
 	private config: AgentConfig;
 	private env: SessionEnv;
 	private store: SessionStore;
@@ -77,23 +80,26 @@ export class Session implements FlueSession {
 	private overflowRecoveryAttempted = false;
 	private compactionAbortController: AbortController | undefined;
 	private eventCallback: FlueEventCallback | undefined;
-	private builtinTools: AgentTool<any>[];
-	private sessionCommands: Command[];
+	private agentCommands: Command[];
+	private deleted = false;
+	private activeOperation: string | undefined;
 
 	constructor(
 		id: string,
+		private storageKey: string,
 		config: AgentConfig,
 		env: SessionEnv,
 		store: SessionStore,
 		existingData: SessionData | null,
 		onAgentEvent?: FlueEventCallback,
-		sessionCommands?: Command[],
+		agentCommands?: Command[],
+		private onDelete?: () => void,
 	) {
 		this.id = id;
 		this.config = config;
 		this.env = env;
 		this.store = store;
-		this.sessionCommands = sessionCommands ?? [];
+		this.agentCommands = agentCommands ?? [];
 
 		this.metadata = existingData?.metadata ?? {};
 		this.createdAt = existingData?.createdAt;
@@ -110,11 +116,10 @@ export class Session implements FlueSession {
 		const systemPrompt = config.systemPrompt;
 
 		const tools = createTools(env);
-		this.builtinTools = tools;
 
 		const previousMessages = existingData?.messages ?? [];
 
-		this.agent = new Agent({
+		this.harness = new Agent({
 			initialState: {
 				systemPrompt,
 				model: config.model,
@@ -125,21 +130,20 @@ export class Session implements FlueSession {
 		});
 
 		this.eventCallback = onAgentEvent;
-		const emit = onAgentEvent;
-		this.agent.subscribe(async (event) => {
+		this.harness.subscribe(async (event) => {
 			switch (event.type) {
 				case 'agent_start':
-					emit?.({ type: 'agent_start' });
+					this.emit({ type: 'agent_start' });
 					break;
 				case 'message_update': {
 					const aEvent = event.assistantMessageEvent;
 					if (aEvent.type === 'text_delta') {
-						emit?.({ type: 'text_delta', text: aEvent.delta });
+						this.emit({ type: 'text_delta', text: aEvent.delta });
 					}
 					break;
 				}
 				case 'tool_execution_start':
-					emit?.({
+					this.emit({
 						type: 'tool_start',
 						toolName: event.toolName,
 						toolCallId: event.toolCallId,
@@ -147,7 +151,7 @@ export class Session implements FlueSession {
 					});
 					break;
 				case 'tool_execution_end':
-					emit?.({
+					this.emit({
 						type: 'tool_end',
 						toolName: event.toolName,
 						toolCallId: event.toolCallId,
@@ -156,15 +160,15 @@ export class Session implements FlueSession {
 					});
 					break;
 				case 'turn_end':
-					emit?.({ type: 'turn_end' });
+					this.emit({ type: 'turn_end' });
 					break;
 				case 'agent_end': {
-					const messages = this.agent.state.messages;
+					const messages = this.harness.state.messages;
 					const lastMsg = messages[messages.length - 1];
 					if (lastMsg?.role === 'assistant') {
 						await this.checkCompaction(lastMsg as AssistantMessage);
 					}
-					emit?.({ type: 'done' });
+					this.emit({ type: 'done' });
 					break;
 				}
 			}
@@ -177,35 +181,28 @@ export class Session implements FlueSession {
 	): Promise<v.InferOutput<S>>;
 	async prompt(text: string, options?: PromptOptions): Promise<PromptResponse>;
 	async prompt(text: string, options?: PromptOptions<v.GenericSchema | undefined>): Promise<any> {
-		this.assertRoleExists(options?.role);
-		this.resolveModelForCall(options?.model, options?.role);
-		const promptWithRole = this.injectRoleInstructions(text, options?.role);
+		return this.runExclusive('prompt', async () => {
+			this.assertRoleExists(options?.role);
+			this.resolveModelForCall(options?.model, options?.role);
+			const promptWithRole = this.injectRoleInstructions(text, options?.role);
 
-		const schema = options?.result as v.GenericSchema | undefined;
-		const fullPrompt = buildPromptText(promptWithRole, schema);
+			const schema = options?.result as v.GenericSchema | undefined;
+			const fullPrompt = buildPromptText(promptWithRole, schema);
 
-		const effectiveCommands = this.mergeCommands(options?.commands);
-		if (effectiveCommands.length > 0) {
-			this.assertCommandSupport(effectiveCommands);
-		}
-		const registeredCommandNames = this.registerCommands(effectiveCommands);
-		const registeredToolNames = options?.tools ? this.registerCustomTools(options.tools) : [];
-		try {
-			await this.agent.prompt(fullPrompt);
-			await this.agent.waitForIdle();
-			this.throwIfError('prompt');
-			await this.save();
+			const effectiveCommands = this.mergeCommands(options?.commands);
+			const customTools = this.createCustomTools(options?.tools ?? []);
+			return this.withScopedTools(effectiveCommands, customTools, async () => {
+				await this.harness.prompt(fullPrompt);
+				await this.harness.waitForIdle();
+				this.throwIfError('prompt');
+				await this.save();
 
-			if (schema) {
-				return this.extractResultWithRetry(schema);
-			}
-			return { text: this.getAssistantText() };
-		} finally {
-			this.unregisterCommands(registeredCommandNames);
-			if (registeredToolNames.length > 0) {
-				this.unregisterCustomTools();
-			}
-		}
+				if (schema) {
+					return this.extractResultWithRetry(schema);
+				}
+				return { text: this.getAssistantText() };
+			});
+		});
 	}
 
 	async skill<S extends v.GenericSchema>(
@@ -214,72 +211,63 @@ export class Session implements FlueSession {
 	): Promise<v.InferOutput<S>>;
 	async skill(name: string, options?: SkillOptions): Promise<PromptResponse>;
 	async skill(name: string, options?: SkillOptions<v.GenericSchema | undefined>): Promise<any> {
-		this.assertRoleExists(options?.role);
+		return this.runExclusive('skill', async () => {
+			this.assertRoleExists(options?.role);
 
-		let registeredSkill = this.config.skills[name];
+			let registeredSkill = this.config.skills[name];
 
-		// Fallback: file-path lookup under .agents/skills/. Only attempted when the
-		// name looks like a path (contains `/` or ends in `.md`/`.markdown`) so that
-		// typos of registered skill names still fail fast with a helpful error.
-		if (!registeredSkill && (name.includes('/') || /\.(md|markdown)$/i.test(name))) {
-			const loaded = await loadSkillByPath(this.env, this.env.cwd, name);
-			if (loaded) registeredSkill = loaded;
-		}
-
-		if (!registeredSkill) {
-			const available = Object.keys(this.config.skills).join(', ') || '(none)';
-			throw new Error(
-				`Skill "${name}" not registered. Available: ${available}. ` +
-					`Skills can also be referenced by relative path under .agents/skills/ ` +
-					`(e.g. "triage/reproduce.md").`,
-			);
-		}
-
-		this.resolveModelForCall(options?.model, options?.role);
-
-		const schema = options?.result as v.GenericSchema | undefined;
-		const skillPrompt = buildSkillPrompt(registeredSkill.instructions, options?.args, schema);
-		const promptWithRole = this.injectRoleInstructions(skillPrompt, options?.role);
-
-		const effectiveCommands = this.mergeCommands(options?.commands);
-		if (effectiveCommands.length > 0) {
-			this.assertCommandSupport(effectiveCommands);
-		}
-		const registeredCommandNames = this.registerCommands(effectiveCommands);
-		const registeredToolNames = options?.tools ? this.registerCustomTools(options.tools) : [];
-		try {
-			await this.agent.prompt(promptWithRole);
-			await this.agent.waitForIdle();
-			this.throwIfError(`skill("${name}")`);
-			await this.save();
-
-			if (schema) {
-				return this.extractResultWithRetry(schema);
+			// Fallback: file-path lookup under .agents/skills/. Only attempted when the
+			// name looks like a path (contains `/` or ends in `.md`/`.markdown`) so that
+			// typos of registered skill names still fail fast with a helpful error.
+			if (!registeredSkill && (name.includes('/') || /\.(md|markdown)$/i.test(name))) {
+				const loaded = await loadSkillByPath(this.env, this.env.cwd, name);
+				if (loaded) registeredSkill = loaded;
 			}
-			return { text: this.getAssistantText() };
-		} finally {
-			this.unregisterCommands(registeredCommandNames);
-			if (registeredToolNames.length > 0) {
-				this.unregisterCustomTools();
+
+			if (!registeredSkill) {
+				const available = Object.keys(this.config.skills).join(', ') || '(none)';
+				throw new Error(
+					`Skill "${name}" not registered. Available: ${available}. ` +
+						`Skills can also be referenced by relative path under .agents/skills/ ` +
+						`(e.g. "triage/reproduce.md").`,
+				);
 			}
-		}
+
+			this.resolveModelForCall(options?.model, options?.role);
+
+			const schema = options?.result as v.GenericSchema | undefined;
+			const skillPrompt = buildSkillPrompt(registeredSkill.instructions, options?.args, schema);
+			const promptWithRole = this.injectRoleInstructions(skillPrompt, options?.role);
+
+			const effectiveCommands = this.mergeCommands(options?.commands);
+			const customTools = this.createCustomTools(options?.tools ?? []);
+			return this.withScopedTools(effectiveCommands, customTools, async () => {
+				await this.harness.prompt(promptWithRole);
+				await this.harness.waitForIdle();
+				this.throwIfError(`skill("${name}")`);
+				await this.save();
+
+				if (schema) {
+					return this.extractResultWithRetry(schema);
+				}
+				return { text: this.getAssistantText() };
+			});
+		});
 	}
 
 	async shell(command: string, options?: ShellOptions): Promise<ShellResult> {
-		const effectiveCommands = this.mergeCommands(options?.commands);
-		if (effectiveCommands.length > 0) {
-			this.assertCommandSupport(effectiveCommands);
-		}
-		const registeredNames = this.registerCommands(effectiveCommands);
-		try {
-			const result = await this.env.exec(command, {
+		return this.runExclusive('shell', async () => {
+			const effectiveCommands = this.mergeCommands(options?.commands);
+			const env = await this.createScopedEnv(effectiveCommands);
+			const result = await env.exec(command, {
 				env: options?.env,
 				cwd: options?.cwd,
 			});
-			return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
-		} finally {
-			this.unregisterCommands(registeredNames);
-		}
+			const shellResult = { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
+			this.recordShellMessage(command, shellResult, options);
+			await this.save();
+			return shellResult;
+		});
 	}
 
 	async task<S extends v.GenericSchema>(
@@ -288,89 +276,80 @@ export class Session implements FlueSession {
 	): Promise<v.InferOutput<S>>;
 	async task(prompt: string, options?: TaskOptions): Promise<PromptResponse>;
 	async task(prompt: string, options?: TaskOptions<v.GenericSchema | undefined>): Promise<any> {
-		this.assertRoleExists(options?.role);
+		return this.runExclusive('task', async () => {
+			this.assertRoleExists(options?.role);
 
-		if (!options?.workspace) {
-			throw new Error('[flue] task() requires a workspace option.');
-		}
+			if (!options?.workspace) {
+				throw new Error('[flue] task() requires a workspace option.');
+			}
 
-		const taskCwd = options.workspace.startsWith('/')
-			? options.workspace
-			: normalizePath(this.env.cwd + '/' + options.workspace);
+			const taskCwd = options.workspace.startsWith('/')
+				? options.workspace
+				: normalizePath(this.env.cwd + '/' + options.workspace);
+			const taskEnv = this.createTaskEnv(taskCwd, this.env);
+			const localContext = await discoverSessionContext(taskEnv);
 
-		function taskResolvePath(p: string): string {
-			if (p.startsWith('/')) return normalizePath(p);
-			if (taskCwd === '/') return normalizePath('/' + p);
-			return normalizePath(taskCwd + '/' + p);
-		}
+			let taskModel: Model<any> | undefined = this.config.model;
+			const taskRole = options?.role ? this.config.roles[options.role] : undefined;
+			if (taskRole?.model && this.config.resolveModel) {
+				taskModel = this.config.resolveModel(taskRole.model);
+			}
+			if (options?.model && this.config.resolveModel) {
+				taskModel = this.config.resolveModel(options.model);
+			}
 
-		const parentEnv = this.env;
-		const taskEnv: SessionEnv = {
-			exec: (cmd, opts) => parentEnv.exec(cmd, { cwd: opts?.cwd ?? taskCwd, env: opts?.env }),
-			readFile: (p) => parentEnv.readFile(taskResolvePath(p)),
-			readFileBuffer: (p) => parentEnv.readFileBuffer(taskResolvePath(p)),
-			writeFile: (p, c) => parentEnv.writeFile(taskResolvePath(p), c),
-			stat: (p) => parentEnv.stat(taskResolvePath(p)),
-			readdir: (p) => parentEnv.readdir(taskResolvePath(p)),
-			exists: (p) => parentEnv.exists(taskResolvePath(p)),
-			mkdir: (p, o) => parentEnv.mkdir(taskResolvePath(p), o),
-			rm: (p, o) => parentEnv.rm(taskResolvePath(p), o),
-			cwd: taskCwd,
-			resolvePath: taskResolvePath,
-			commandSupport: parentEnv.commandSupport,
-			cleanup: async () => {},
-		};
+			const taskConfig: AgentConfig = {
+				systemPrompt: localContext.systemPrompt,
+				skills: localContext.skills,
+				roles: this.config.roles,
+				model: this.requireModel(taskModel, 'this task() call'),
+				resolveModel: this.config.resolveModel,
+				compaction: this.config.compaction,
+			};
 
-		const localContext = await discoverSessionContext(taskEnv);
+			this.emit({ type: 'task_start', workspace: taskCwd });
 
-		let taskModel: Model<any> | undefined = this.config.model;
-		const taskRole = options?.role ? this.config.roles[options.role] : undefined;
-		if (taskRole?.model && this.config.resolveModel) {
-			taskModel = this.config.resolveModel(taskRole.model);
-		}
-		if (options?.model && this.config.resolveModel) {
-			taskModel = this.config.resolveModel(options.model);
-		}
+			const taskStore = new InMemorySessionStore();
+			const taskSession = new Session(
+				`${this.id}:task:${Date.now()}`,
+				`${this.storageKey}:task:${Date.now()}`,
+				taskConfig,
+				taskEnv,
+				taskStore,
+				null,
+				this.eventCallback,
+				this.agentCommands,
+			);
 
-		const taskConfig: AgentConfig = {
-			systemPrompt: localContext.systemPrompt,
-			skills: localContext.skills,
-			roles: this.config.roles,
-			model: this.requireModel(taskModel, 'this task() call'),
-			resolveModel: this.config.resolveModel,
-			compaction: this.config.compaction,
-		};
-
-		this.eventCallback?.({ type: 'task_start', workspace: taskCwd });
-
-		const taskStore = new InMemorySessionStore();
-		const taskSession = new Session(
-			`${this.id}:task:${Date.now()}`,
-			taskConfig,
-			taskEnv,
-			taskStore,
-			null,
-			this.eventCallback,
-		);
-
-		try {
-			const promptOpts: PromptOptions<any> = { role: options?.role };
-			if (options?.result) promptOpts.result = options.result;
-			return await taskSession.prompt(prompt, promptOpts);
-		} finally {
-			this.eventCallback?.({ type: 'task_end' });
-			await taskSession.destroy();
-		}
+			try {
+				const promptOpts: PromptOptions<any> = { role: options?.role };
+				if (options?.result) promptOpts.result = options.result;
+				return await taskSession.prompt(prompt, promptOpts);
+			} finally {
+				this.emit({ type: 'task_end' });
+				await taskSession.delete();
+			}
+		});
 	}
 
 	abort(): void {
-		this.agent.abort();
+		this.harness.abort();
+		this.compactionAbortController?.abort();
 	}
 
-	async destroy(): Promise<void> {
-		this.agent.abort();
-		await this.store.delete(this.id);
-		await this.env.cleanup();
+	close(): void {
+		if (this.deleted) return;
+		this.deleted = true;
+		this.abort();
+		this.onDelete?.();
+	}
+
+	async delete(): Promise<void> {
+		if (this.deleted) return;
+		this.deleted = true;
+		this.abort();
+		await this.store.delete(this.storageKey);
+		this.onDelete?.();
 	}
 
 	/** Precedence: prompt-level > role-level > agent-level default. */
@@ -385,7 +364,7 @@ export class Session implements FlueSession {
 			model = this.config.resolveModel(promptModel);
 		}
 
-		this.agent.state.model = this.requireModel(model, 'this prompt()/skill()/task() call');
+		this.harness.state.model = this.requireModel(model, 'this prompt()/skill()/task() call');
 	}
 
 	/**
@@ -397,7 +376,7 @@ export class Session implements FlueSession {
 		if (model) return model;
 		throw new Error(
 			`[flue] No model configured for ${callSite}. ` +
-				`Pass \`{ model: "provider/model-id" }\` to \`init()\` for a session-wide default, ` +
+				`Pass \`{ model: "provider/model-id" }\` to \`init()\` for an agent-wide default, ` +
 				`or to this prompt()/skill()/task() call for a one-off override.`,
 		);
 	}
@@ -425,54 +404,66 @@ export class Session implements FlueSession {
 		return `<role>\n${role.instructions}\n</role>\n\n${text}`;
 	}
 
+	private createTaskEnv(taskCwd: string, parentEnv: SessionEnv): SessionEnv {
+		const resolveTaskPath = (p: string): string => {
+			if (p.startsWith('/')) return normalizePath(p);
+			if (taskCwd === '/') return normalizePath('/' + p);
+			return normalizePath(taskCwd + '/' + p);
+		};
+
+		return {
+			exec: (cmd, opts) => parentEnv.exec(cmd, { cwd: opts?.cwd ?? taskCwd, env: opts?.env }),
+			scope: async (scopeOptions) =>
+				this.createTaskEnv(taskCwd, await this.scopeEnv(parentEnv, scopeOptions?.commands ?? [])),
+			readFile: (p) => parentEnv.readFile(resolveTaskPath(p)),
+			readFileBuffer: (p) => parentEnv.readFileBuffer(resolveTaskPath(p)),
+			writeFile: (p, c) => parentEnv.writeFile(resolveTaskPath(p), c),
+			stat: (p) => parentEnv.stat(resolveTaskPath(p)),
+			readdir: (p) => parentEnv.readdir(resolveTaskPath(p)),
+			exists: (p) => parentEnv.exists(resolveTaskPath(p)),
+			mkdir: (p, o) => parentEnv.mkdir(resolveTaskPath(p), o),
+			rm: (p, o) => parentEnv.rm(resolveTaskPath(p), o),
+			cwd: taskCwd,
+			resolvePath: resolveTaskPath,
+			cleanup: async () => {},
+		};
+	}
+
 	// ─── Commands ────────────────────────────────────────────────────────────
 
-	private assertCommandSupport(commands: Command[]): void {
-		if (commands.length === 0) return;
-		if (!this.env.commandSupport) {
+	private async createScopedEnv(commands: Command[]): Promise<SessionEnv> {
+		return this.scopeEnv(this.env, commands);
+	}
+
+	private async scopeEnv(env: SessionEnv, commands: Command[]): Promise<SessionEnv> {
+		if (env.scope) return env.scope({ commands });
+		if (commands.length > 0) {
 			throw new Error(
-				'[flue] Cannot use commands: this environment does not support command registration. ' +
-					'Commands are only available in isolate sandbox mode. ' +
+				'[flue] Cannot use commands: this environment does not support scoped command execution. ' +
+					'Commands are only available in BashFactory sandbox mode. ' +
 					'Remote sandboxes handle command execution at the platform level.',
 			);
 		}
+		return env;
 	}
 
 	/**
-	 * Merge session-wide `commands` (from init()) with per-call commands. When
+	 * Merge agent-wide `commands` (from init()) with per-call commands. When
 	 * both define a command with the same name, the per-call entry wins for
 	 * that call.
 	 */
 	private mergeCommands(perCall: Command[] | undefined): Command[] {
-		if (!perCall || perCall.length === 0) return this.sessionCommands;
-		if (this.sessionCommands.length === 0) return perCall;
+		if (!perCall || perCall.length === 0) return this.agentCommands;
+		if (this.agentCommands.length === 0) return perCall;
 		const byName = new Map<string, Command>();
-		for (const cmd of this.sessionCommands) byName.set(cmd.name, cmd);
+		for (const cmd of this.agentCommands) byName.set(cmd.name, cmd);
 		for (const cmd of perCall) byName.set(cmd.name, cmd);
 		return Array.from(byName.values());
 	}
 
-	private registerCommands(commands: Command[]): string[] {
-		if (!this.env.commandSupport || commands.length === 0) return [];
-
-		const names: string[] = [];
-		for (const cmd of commands) {
-			this.env.commandSupport.register(cmd);
-			names.push(cmd.name);
-		}
-		return names;
-	}
-
-	private unregisterCommands(names: string[]): void {
-		if (!this.env.commandSupport || names.length === 0) return;
-		for (const name of names) {
-			this.env.commandSupport.unregister(name);
-		}
-	}
-
 	// ─── Custom Tools ───────────────────────────────────────────────────────
 
-	private registerCustomTools(tools: ToolDef[]): string[] {
+	private createCustomTools(tools: ToolDef[]): AgentTool<any>[] {
 		const names: string[] = [];
 
 		for (const toolDef of tools) {
@@ -490,7 +481,7 @@ export class Session implements FlueSession {
 			names.push(toolDef.name);
 		}
 
-		const agentTools: AgentTool<any>[] = tools.map((toolDef) => ({
+		return tools.map((toolDef) => ({
 			name: toolDef.name,
 			label: toolDef.name,
 			description: toolDef.description,
@@ -504,28 +495,77 @@ export class Session implements FlueSession {
 				};
 			},
 		}));
-
-		this.agent.state.tools = [...this.agent.state.tools, ...agentTools];
-		return names;
 	}
 
-	private unregisterCustomTools(): void {
-		this.agent.state.tools = [...this.builtinTools];
+	private async withScopedTools<T>(
+		commands: Command[],
+		customTools: AgentTool<any>[],
+		fn: () => Promise<T>,
+	): Promise<T> {
+		const scopedEnv = await this.createScopedEnv(commands);
+		const previousTools = this.harness.state.tools;
+		this.harness.state.tools = [...createTools(scopedEnv), ...customTools];
+		try {
+			return await fn();
+		} finally {
+			this.harness.state.tools = previousTools;
+		}
 	}
 
 	// ─── Internal ────────────────────────────────────────────────────────────
 
+	private async runExclusive<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+		this.assertActive();
+		if (this.activeOperation) {
+			throw new Error(
+				`[flue] Session "${this.id}" is already running ${this.activeOperation}. ` +
+					'Start another session for parallel conversation branches.',
+			);
+		}
+		this.activeOperation = operation;
+		try {
+			return await fn();
+		} finally {
+			this.activeOperation = undefined;
+		}
+	}
+
+	private emit(event: FlueEvent): void {
+		this.eventCallback?.({ ...event, sessionId: this.id });
+	}
+
+	private assertActive(): void {
+		if (this.deleted) {
+			throw new Error(`[flue] Session "${this.id}" has been deleted.`);
+		}
+	}
+
+	private recordShellMessage(command: string, result: ShellResult, options?: ShellOptions): void {
+		const cwdLine = options?.cwd ? `\ncwd: ${options.cwd}` : '';
+		const envLine = options?.env
+			? `\nenv: ${Object.keys(options.env)
+					.sort()
+					.join(', ')}`
+			: '';
+		const output = formatShellHistory(command, result, cwdLine, envLine);
+		this.harness.state.messages.push({
+			role: 'user',
+			content: [{ type: 'text', text: output }],
+			timestamp: Date.now(),
+		} as AgentMessage);
+	}
+
 	private async save(): Promise<void> {
 		const now = new Date().toISOString();
 		const data: SessionData = {
-			messages: this.agent.state.messages as AgentMessage[],
+			messages: this.harness.state.messages as AgentMessage[],
 			metadata: this.metadata,
 			createdAt: this.createdAt ?? now,
 			updatedAt: now,
 			lastCompaction: this.lastCompaction,
 		};
 		if (!this.createdAt) this.createdAt = now;
-		await this.store.save(this.id, data);
+		await this.store.save(this.storageKey, data);
 	}
 
 	// ─── Compaction ───────────────────────────────────────────────────────────
@@ -534,7 +574,7 @@ export class Session implements FlueSession {
 		if (!this.compactionSettings.enabled) return;
 		if (assistantMessage.stopReason === 'aborted') return;
 
-		const model = this.agent.state.model;
+		const model = this.harness.state.model;
 		const contextWindow = model.contextWindow ?? 0;
 
 		if (isContextOverflow(assistantMessage, contextWindow)) {
@@ -543,10 +583,10 @@ export class Session implements FlueSession {
 
 			console.error(`[flue:compaction] Overflow detected, compacting and retrying...`);
 
-			const messages = this.agent.state.messages;
+			const messages = this.harness.state.messages;
 			const lastMsg = messages[messages.length - 1];
 			if (lastMsg && lastMsg.role === 'assistant') {
-				this.agent.state.messages = messages.slice(0, -1);
+				this.harness.state.messages = messages.slice(0, -1);
 			}
 
 			await this.runCompaction('overflow', true);
@@ -555,7 +595,7 @@ export class Session implements FlueSession {
 
 		let contextTokens: number;
 		if (assistantMessage.stopReason === 'error') {
-			const estimate = estimateContextTokens(this.agent.state.messages);
+			const estimate = estimateContextTokens(this.harness.state.messages);
 			if (estimate.lastUsageIndex === null) return;
 			contextTokens = estimate.tokens;
 		} else {
@@ -574,11 +614,11 @@ export class Session implements FlueSession {
 
 	private async runCompaction(reason: 'threshold' | 'overflow', willRetry: boolean): Promise<void> {
 		this.compactionAbortController = new AbortController();
-		const messagesBefore = this.agent.state.messages.length;
+		const messagesBefore = this.harness.state.messages.length;
 
 		try {
-			const model = this.agent.state.model;
-			const messages = this.agent.state.messages as AgentMessage[];
+			const model = this.harness.state.model;
+			const messages = this.harness.state.messages as AgentMessage[];
 
 			const preparation = prepareCompaction(messages, this.compactionSettings, this.lastCompaction);
 			if (!preparation) {
@@ -595,7 +635,7 @@ export class Session implements FlueSession {
 			);
 
 			const estimatedTokens = preparation.tokensBefore;
-			this.eventCallback?.({ type: 'compaction_start', reason, estimatedTokens });
+			this.emit({ type: 'compaction_start', reason, estimatedTokens });
 
 			const result = await compact(
 				preparation,
@@ -607,7 +647,7 @@ export class Session implements FlueSession {
 			if (this.compactionAbortController.signal.aborted) return;
 
 			const newMessages = buildCompactedMessages(messages, result);
-			this.agent.state.messages = newMessages;
+			this.harness.state.messages = newMessages;
 
 			const messagesAfter = newMessages.length;
 			console.error(
@@ -615,7 +655,7 @@ export class Session implements FlueSession {
 					`tokens before: ${result.tokensBefore}`,
 			);
 
-			this.eventCallback?.({ type: 'compaction_end', messagesBefore, messagesAfter });
+			this.emit({ type: 'compaction_end', messagesBefore, messagesAfter });
 
 			this.lastCompaction = {
 				summary: result.summary,
@@ -626,13 +666,13 @@ export class Session implements FlueSession {
 			await this.save();
 
 			if (willRetry) {
-				const msgs = this.agent.state.messages;
+				const msgs = this.harness.state.messages;
 				const lastMsg = msgs[msgs.length - 1];
 				if (lastMsg?.role === 'assistant' && (lastMsg as AssistantMessage).stopReason === 'error') {
-					this.agent.state.messages = msgs.slice(0, -1);
+					this.harness.state.messages = msgs.slice(0, -1);
 				}
 				console.error(`[flue:compaction] Retrying after overflow recovery...`);
-				await this.agent.continue();
+				await this.harness.continue();
 			}
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
@@ -643,14 +683,14 @@ export class Session implements FlueSession {
 	}
 
 	private throwIfError(context: string): void {
-		const errorMsg = this.agent.state.errorMessage;
+		const errorMsg = this.harness.state.errorMessage;
 		if (errorMsg) {
 			throw new Error(`[flue] ${context} failed: ${errorMsg}`);
 		}
 	}
 
 	private getAssistantText(): string {
-		const messages = this.agent.state.messages;
+		const messages = this.harness.state.messages;
 		for (let i = messages.length - 1; i >= 0; i--) {
 			const msg = messages[i]!;
 			if (msg.role !== 'assistant') continue;
@@ -678,8 +718,8 @@ export class Session implements FlueSession {
 			if (!err.message.includes('RESULT_START')) throw err;
 
 			const followUpPrompt = buildResultExtractionPrompt(schema);
-			await this.agent.prompt(followUpPrompt);
-			await this.agent.waitForIdle();
+			await this.harness.prompt(followUpPrompt);
+			await this.harness.waitForIdle();
 			await this.save();
 
 			const retryText = this.getAssistantText();
@@ -702,4 +742,29 @@ export function normalizePath(p: string): string {
 		}
 	}
 	return '/' + result.join('/');
+}
+
+function formatShellHistory(
+	command: string,
+	result: ShellResult,
+	cwdLine: string,
+	envLine: string,
+): string {
+	const sections = [
+		`<shell_command>\n$ ${command}${cwdLine}${envLine}\n</shell_command>`,
+		`<shell_result exitCode="${result.exitCode}">`,
+	];
+	if (result.stdout) sections.push(`<stdout>\n${result.stdout}\n</stdout>`);
+	if (result.stderr) sections.push(`<stderr>\n${result.stderr}\n</stderr>`);
+	sections.push('</shell_result>');
+	return truncateShellHistory(sections.join('\n'));
+}
+
+function truncateShellHistory(text: string): string {
+	if (text.length <= MAX_SHELL_HISTORY_CHARS) return text;
+	const truncated = text.length - MAX_SHELL_HISTORY_CHARS;
+	return (
+		`[Shell output truncated: ${truncated} leading characters omitted]\n` +
+		text.slice(text.length - MAX_SHELL_HISTORY_CHARS)
+	);
 }

@@ -12,7 +12,8 @@
  *
  * const client = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
  * const sandbox = await client.create({ image: 'ubuntu:latest' });
- * const session = await init({ sandbox: daytona(sandbox) });
+ * const agent = await init({ sandbox: daytona(sandbox) });
+ * const session = await agent.session();
  * ```
  */
 import { createSandboxSessionEnv } from '@flue/sdk/sandbox';

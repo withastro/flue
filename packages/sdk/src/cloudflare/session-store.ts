@@ -1,25 +1,29 @@
 /**
- * DO-backed session store. Uses setState/state directly since each DO instance
- * holds one session. Usually not needed — the generated entry point uses DO SQLite by default.
+ * DO-backed session store. Uses setState/state directly. Usually not needed —
+ * the generated entry point uses DO SQLite by default.
  */
 import type { SessionData, SessionStore } from '../types.ts';
 import { getCloudflareContext } from './context.ts';
 
 export function store(): SessionStore {
 	return {
-		async save(_id: string, data: SessionData): Promise<void> {
+		async save(id: string, data: SessionData): Promise<void> {
 			const { agentInstance } = getCloudflareContext();
-			agentInstance.setState({ ...agentInstance.state, sessionData: data });
+			const sessions = { ...(agentInstance.state?.sessions ?? {}) };
+			sessions[id] = data;
+			agentInstance.setState({ ...agentInstance.state, sessions });
 		},
 
-		async load(_id: string): Promise<SessionData | null> {
+		async load(id: string): Promise<SessionData | null> {
 			const { agentInstance } = getCloudflareContext();
-			return agentInstance.state?.sessionData ?? null;
+			return agentInstance.state?.sessions?.[id] ?? null;
 		},
 
-		async delete(_id: string): Promise<void> {
+		async delete(id: string): Promise<void> {
 			const { agentInstance } = getCloudflareContext();
-			agentInstance.setState({ ...agentInstance.state, sessionData: null });
+			const sessions = { ...(agentInstance.state?.sessions ?? {}) };
+			delete sessions[id];
+			agentInstance.setState({ ...agentInstance.state, sessions });
 		},
 	};
 }

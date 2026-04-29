@@ -15,9 +15,10 @@ export const triggers = { webhook: true };
  *   { "message": "Clone cloudflare/workers-sdk and fix the failing tests", "userId": "..." }
  *   { "message": "What version of Node.js is installed?", "userId": "..." }
  */
-export default async function ({ init, sessionId, env, payload }: FlueContext) {
-	const sandbox = getSandbox(env.Sandbox, sessionId);
-	const session = await init({ sandbox });
+export default async function ({ init, id, env, payload }: FlueContext) {
+	const sandbox = getSandbox(env.Sandbox, id);
+	const agent = await init({ sandbox, model: 'anthropic/claude-sonnet-4-6' });
+	const session = await agent.session();
 	const message = payload.message ?? '';
 	const response = await session.prompt(message);
 	return { reply: response.text };

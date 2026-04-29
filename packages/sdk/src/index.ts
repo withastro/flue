@@ -1,7 +1,9 @@
 export type {
 	FlueContext,
+	FlueAgent,
+	FlueSessions,
 	FlueSession,
-	SessionInit,
+	AgentInit,
 	FlueEvent,
 	FlueEventCallback,
 	SessionData,
@@ -9,9 +11,9 @@ export type {
 	SessionEnv,
 	Command,
 	CommandDef,
-	CommandSupport,
 	FileStat,
 	SandboxFactory,
+	BashFactory,
 	BashLike,
 	PromptOptions,
 	PromptResponse,
@@ -32,7 +34,7 @@ export type {
 export { build, resolveWorkspaceFromCwd } from './build.ts';
 export { createTools, BUILTIN_TOOL_NAMES } from './agent.ts';
 
-// Note: createFlueContext, InMemorySessionStore, bashToSessionEnv, and the
+// Note: createFlueContext, InMemorySessionStore, bashFactoryToSessionEnv, and the
 // FlueContextConfig/FlueContextInternal types are intentionally NOT re-exported
 // here. They are internal runtime helpers consumed exclusively by the generated
 // server entry point — see `@flue/sdk/internal`. User agent code should not

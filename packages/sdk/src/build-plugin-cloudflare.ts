@@ -68,7 +68,7 @@ export class CloudflarePlugin implements BuildPlugin {
 import { Agent, routeAgentRequest } from 'agents';
 import { Bash, InMemoryFs } from 'just-bash';
 import { getModel } from '@mariozechner/pi-ai';
-import { createFlueContext, InMemorySessionStore, bashToSessionEnv } from '@flue/sdk/internal';
+import { createFlueContext, InMemorySessionStore, bashFactoryToSessionEnv } from '@flue/sdk/internal';
 import { setCloudflareContext, clearCloudflareContext, cfSandboxToSessionEnv } from '@flue/sdk/cloudflare';
 
 ${agentImports}
@@ -83,7 +83,7 @@ const manifest = ${manifest};
 // ─── Infrastructure ─────────────────────────────────────────────────────────
 
 // No build-time model default. The user sets model at runtime via
-// \`init({ model: "provider/model-id" })\` for a session default, or via
+// \`init({ model: "provider/model-id" })\` for an agent default, or via
 // \`{ model: "provider/model-id" }\` on any individual prompt/skill/task call.
 const model = undefined;
 
@@ -114,11 +114,11 @@ function resolveModel(modelString) {
  * Create an empty in-memory sandbox (default).
  */
 async function createDefaultEnv() {
-  const bash = new Bash({
-    fs: new InMemoryFs(),
+  const fs = new InMemoryFs();
+  return bashFactoryToSessionEnv(() => new Bash({
+    fs,
     network: { dangerouslyAllowFullInternetAccess: true },
-  });
-  return bashToSessionEnv(bash);
+  }));
 }
 
 /**
@@ -127,7 +127,7 @@ async function createDefaultEnv() {
 async function createLocalEnv() {
   throw new Error(
     "[flue] 'local' sandbox is not supported on Cloudflare Workers. " +
-    "Use the default empty sandbox, pass a custom Bash instance, " +
+    "Use the default empty sandbox, pass a BashFactory, " +
     "or pass a sandbox instance (from any SDK — e.g. @cloudflare/sandbox " +
     "or a Flue connector) to init({ sandbox })."
   );
@@ -179,14 +179,14 @@ function createDOStore(sql) {
   };
 }
 
-function createContextForRequest(sessionId, payload, doInstance) {
+function createContextForRequest(id, payload, doInstance) {
   // Use DO SQLite storage by default, fall back to in-memory
   const defaultStore = doInstance?.ctx?.storage?.sql
     ? createDOStore(doInstance.ctx.storage.sql)
     : memoryStore;
 
   return createFlueContext({
-    sessionId,
+    id,
     payload,
     env: doInstance?.env ?? {},
     agentConfig: {
@@ -202,8 +202,8 @@ function createContextForRequest(sessionId, payload, doInstance) {
 // ─── Shared Request Handler ────────────────────────────────────────────────
 
 async function handleAgentRequest(request, doInstance, agentName, handler) {
-  // Session ID is the DO "room name" set by routeAgentRequest
-  const sessionId = doInstance.name;
+  // Agent id is the DO "room name" set by routeAgentRequest
+  const id = doInstance.name;
 
   // Parse payload
   let payload;
@@ -224,7 +224,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
     // Fire-and-forget (webhook mode)
     if (isWebhook) {
       const requestId = crypto.randomUUID();
-      const ctx = createContextForRequest(sessionId, payload, doInstance);
+      const ctx = createContextForRequest(id, payload, doInstance);
       handler(ctx).then(
         (result) => {
           ctx.setEventCallback(undefined);
@@ -260,7 +260,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
         await writer.write(encoder.encode(lines.join('\\n')));
       };
 
-      const ctx = createContextForRequest(sessionId, payload, doInstance);
+      const ctx = createContextForRequest(id, payload, doInstance);
       ctx.setEventCallback((event) => {
         writeSSE(event, event.type).catch(() => {});
       });
@@ -294,7 +294,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
     }
 
     // Sync mode (default)
-    const ctx = createContextForRequest(sessionId, payload, doInstance);
+    const ctx = createContextForRequest(id, payload, doInstance);
     const result = await handler(ctx);
     ctx.setEventCallback(undefined);
     clearCloudflareContext();
@@ -345,7 +345,7 @@ export default {
     }
 
     // Route to per-agent DOs via the Agents SDK
-    // URL: /agents/<agent-name>/<session-id>
+    // URL: /agents/<agent-name>/<id>
     const response = await routeAgentRequest(request, env);
     if (response) return response;
 

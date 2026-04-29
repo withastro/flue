@@ -26,7 +26,8 @@ import * as v from 'valibot';
 export const triggers = {};
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
+  const agent = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
+  const session = await agent.session();
 
   const result = await session.prompt(
     `Say hello to ${payload.name ?? 'the user'} and share an interesting fact.`,
@@ -52,7 +53,7 @@ A few things to note:
 ### 3. Test it locally
 
 ```bash
-npx flue run hello --target node --session-id test-1 \
+npx flue run hello --target node --id test-1 \
   --payload '{"name": "World"}'
 ```
 
@@ -72,7 +73,7 @@ hello:
   script:
     - |
       npx flue run hello --target node \
-        --session-id "hello-$ISSUE_IID" \
+        --id "hello-$ISSUE_IID" \
         --payload "{\"name\": \"$ISSUE_AUTHOR\"}"
 ```
 
@@ -177,7 +178,8 @@ const glab = defineCommand('glab', {
 const npm = defineCommand('npm');
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ sandbox: 'local', model: 'anthropic/claude-opus-4-7' });
+  const agent = await init({ sandbox: 'local', model: 'anthropic/claude-opus-4-7' });
+  const session = await agent.session();
 
   const result = await session.skill('triage', {
     args: {
@@ -277,7 +279,7 @@ triage:
   script:
     - |
       npx flue run triage --target node \
-        --session-id "triage-$ISSUE_IID" \
+        --id "triage-$ISSUE_IID" \
         --payload "{\"issueIid\": $ISSUE_IID, \"projectId\": \"$CI_PROJECT_ID\"}"
 ```
 
@@ -301,7 +303,8 @@ const glab = defineCommand('glab', { env: { GITLAB_TOKEN: process.env.GITLAB_API
 const npm = defineCommand('npm');
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
+  const agent = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
+  const session = await agent.session();
 
   const diagnosis = await session.skill('triage', {
     args: { issueIid: payload.issueIid },
@@ -334,12 +337,12 @@ During development, `flue run` is your main tool. It builds the workspace and ru
 
 ```bash
 # Run with a payload
-npx flue run triage --target node --session-id test-1 \
+npx flue run triage --target node --id test-1 \
   --payload '{"issueIid": 42, "projectId": "123"}'
 
 # Pipe the result to jq
-npx flue run triage --target node --session-id test-2 \
+npx flue run triage --target node --id test-2 \
   --payload '{"issueIid": 42}' | jq '.severity'
 ```
 
-The CLI builds your workspace, starts a temporary server, invokes the agent via SSE, streams progress to stderr, and prints the final result to stdout. The `--session-id` flag identifies the session — use a consistent ID to resume a previous session, or a unique one for a fresh start.
+The CLI builds your workspace, starts a temporary server, invokes the agent via SSE, streams progress to stderr, and prints the final result to stdout. The `--id` flag identifies the agent runtime — use a consistent ID to resume the default session, or a unique one for a fresh start.

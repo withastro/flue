@@ -11,4 +11,4 @@
 export { createFlueContext } from './client.ts';
 export type { FlueContextConfig, FlueContextInternal } from './client.ts';
 export { InMemorySessionStore } from './session.ts';
-export { bashToSessionEnv } from './sandbox.ts';
+export { bashFactoryToSessionEnv } from './sandbox.ts';

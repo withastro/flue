@@ -1,20 +1,21 @@
 import { discoverSessionContext } from './context.ts';
-import { bashToSessionEnv } from './sandbox.ts';
-import { Session } from './session.ts';
+import { bashFactoryToSessionEnv } from './sandbox.ts';
+import { AgentClient } from './agent-client.ts';
 import type {
 	AgentConfig,
+	AgentInit,
+	BashFactory,
 	BashLike,
 	FlueContext,
 	FlueEventCallback,
-	FlueSession,
+	FlueAgent,
 	SandboxFactory,
 	SessionEnv,
-	SessionInit,
 	SessionStore,
 } from './types.ts';
 
 export interface FlueContextConfig {
-	sessionId: string;
+	id: string;
 	payload: any;
 	env: Record<string, any>;
 	agentConfig: AgentConfig;
@@ -34,12 +35,12 @@ export interface FlueContextInternal extends FlueContext {
 }
 
 export function createFlueContext(config: FlueContextConfig): FlueContextInternal {
-	let initialized = false;
 	let currentEventCallback: FlueEventCallback | undefined;
+	const initializedAgentIds = new Set<string>();
 
 	const ctx: FlueContextInternal = {
-		get sessionId() {
-			return config.sessionId;
+		get id() {
+			return config.id;
 		},
 
 		get payload() {
@@ -50,41 +51,45 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			return config.env;
 		},
 
-		async init(options?: SessionInit): Promise<FlueSession> {
-			if (initialized) {
-				throw new Error('[flue] init() can only be called once per request.');
+		async init(options?: AgentInit): Promise<FlueAgent> {
+			const id = options?.id ?? config.id;
+			if (initializedAgentIds.has(id)) {
+				throw new Error(`[flue] init() has already been called for agent "${id}" in this request.`);
 			}
-			initialized = true;
+			initializedAgentIds.add(id);
 
-			const sandbox = options?.sandbox;
-			const env = await resolveSessionEnv(config.sessionId, sandbox, config);
-			const store: SessionStore = options?.persist ?? config.defaultStore;
-			const savedData = await store.load(config.sessionId);
-			const localContext = await discoverSessionContext(env);
+			try {
+				const sandbox = options?.sandbox;
+				const env = await resolveSessionEnv(id, sandbox, config);
+				const store: SessionStore = options?.persist ?? config.defaultStore;
+				const localContext = await discoverSessionContext(env);
 
-			// Session-level model override. Per-call `model` on prompt()/skill() still wins
-			// because resolveModelForCall() applies it on top of this default.
-			const sessionModel =
-				options?.model && config.agentConfig.resolveModel
-					? config.agentConfig.resolveModel(options.model)
-					: config.agentConfig.model;
+				// Agent-level model override. Per-call `model` on prompt()/skill() still wins
+				// because resolveModelForCall() applies it on top of this default.
+				const agentModel =
+					options?.model && config.agentConfig.resolveModel
+						? config.agentConfig.resolveModel(options.model)
+						: config.agentConfig.model;
 
-			const sessionConfig: AgentConfig = {
-				...config.agentConfig,
-				systemPrompt: localContext.systemPrompt,
-				skills: localContext.skills,
-				model: sessionModel,
-			};
+				const agentConfig: AgentConfig = {
+					...config.agentConfig,
+					systemPrompt: localContext.systemPrompt,
+					skills: localContext.skills,
+					model: agentModel,
+				};
 
-			return new Session(
-				config.sessionId,
-				sessionConfig,
-				env,
-				store,
-				savedData,
-				currentEventCallback,
-				options?.commands,
-			);
+				return new AgentClient(
+					id,
+					agentConfig,
+					env,
+					store,
+					currentEventCallback,
+					options?.commands,
+				);
+			} catch (error) {
+				initializedAgentIds.delete(id);
+				throw error;
+			}
 		},
 
 		setEventCallback(callback: FlueEventCallback | undefined): void {
@@ -111,10 +116,23 @@ function isBashLike(value: unknown): value is BashLike {
 	);
 }
 
-/** Resolve sandbox option to SessionEnv: empty → local → BashLike → platform hook → SandboxFactory. */
+function isBashFactory(value: unknown): value is BashFactory {
+	return typeof value === 'function';
+}
+
+function isSandboxFactory(value: unknown): value is SandboxFactory {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		'createSessionEnv' in value &&
+		typeof (value as any).createSessionEnv === 'function'
+	);
+}
+
+/** Resolve sandbox option to SessionEnv: empty → local → BashFactory → platform hook → SandboxFactory. */
 async function resolveSessionEnv(
-	sessionId: string,
-	sandbox: SessionInit['sandbox'],
+	id: string,
+	sandbox: AgentInit['sandbox'],
 	config: FlueContextConfig,
 ): Promise<SessionEnv> {
 	if (sandbox === undefined || sandbox === 'empty') {
@@ -123,14 +141,23 @@ async function resolveSessionEnv(
 	if (sandbox === 'local') {
 		return config.createLocalEnv();
 	}
+	if (isBashFactory(sandbox)) {
+		return bashFactoryToSessionEnv(sandbox);
+	}
 	if (isBashLike(sandbox)) {
-		return bashToSessionEnv(sandbox);
+		throw new Error(
+			'[flue] init({ sandbox }) no longer accepts a Bash-like object directly. ' +
+				'Pass a BashFactory instead, e.g. `sandbox: () => new Bash({ fs })`.',
+		);
 	}
 	if (config.resolveSandbox) {
 		const resolved = await config.resolveSandbox(sandbox);
 		if (resolved) return resolved;
 	}
-	return (sandbox as SandboxFactory).createSessionEnv({ sessionId });
+	if (isSandboxFactory(sandbox)) {
+		return sandbox.createSessionEnv({ id });
+	}
+	throw new Error('[flue] Invalid sandbox option passed to init().');
 }
 
 // ─── @flue/sdk/client public API ────────────────────────────────────────────
@@ -139,16 +166,18 @@ export { Type } from '@mariozechner/pi-ai';
 
 export type {
 	FlueContext,
+	FlueAgent,
+	FlueSessions,
 	FlueSession,
-	SessionInit,
+	AgentInit,
 	FlueEvent,
 	FlueEventCallback,
 	SessionData,
 	SessionStore,
 	Command,
-	CommandSupport,
 	FileStat,
 	SandboxFactory,
+	BashFactory,
 	BashLike,
 	SessionEnv,
 	PromptOptions,
@@ -159,5 +188,3 @@ export type {
 	TaskOptions,
 	ToolDef,
 } from './types.ts';
-
-

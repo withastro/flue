@@ -65,14 +65,6 @@ export interface FileStat {
 	mtime: Date;
 }
 
-// ─── Command Support ────────────────────────────────────────────────────────
-
-/** Registers commands into the isolate's bash. Only present when the sandbox supports it. */
-export interface CommandSupport {
-	register(cmd: Command): void;
-	unregister(name: string): void;
-}
-
 // ─── Session Environment ────────────────────────────────────────────────────
 
 /**
@@ -86,6 +78,9 @@ export interface SessionEnv {
 		command: string,
 		options?: { cwd?: string; env?: Record<string, string> },
 	): Promise<ShellResult>;
+
+	/** Create an operation-scoped environment, usually backed by a fresh Bash runtime. */
+	scope?(options?: { commands?: Command[] }): Promise<SessionEnv>;
 
 	readFile(path: string): Promise<string>;
 	readFileBuffer(path: string): Promise<Uint8Array>;
@@ -104,9 +99,6 @@ export interface SessionEnv {
 	 * for your own logic (e.g., extracting the parent directory).
 	 */
 	resolvePath(p: string): string;
-
-	/** Only present with isolate/local sandboxes. Undefined for remote sandboxes. */
-	commandSupport?: CommandSupport;
 
 	cleanup(): Promise<void>;
 }
@@ -130,7 +122,7 @@ export interface AgentConfig {
 	skills: Record<string, Skill>;
 	roles: Record<string, Role>;
 	/**
-	 * Session-wide default model. Undefined by default — the user must set it via
+	 * Agent-wide default model. Undefined by default — the user must set it via
 	 * `init({ model: "provider/model-id" })` or pass `{ model }` at each prompt/
 	 * skill/task call site. Calls with no model resolved throw clearly at runtime.
 	 */
@@ -144,47 +136,77 @@ export interface AgentConfig {
 
 /** Request context passed to agent handler functions. */
 export interface FlueContext {
-	readonly sessionId: string;
+	readonly id: string;
 	readonly payload: any;
 	/** Platform env bindings (process.env on Node, Worker env on Cloudflare). */
 	readonly env: Record<string, any>;
-	/** Create a session with sandbox + persistence. Can only be called once per request. */
-	init(options?: SessionInit): Promise<FlueSession>;
+	/** Initialize an agent runtime with sandbox + persistence. */
+	init(options?: AgentInit): Promise<FlueAgent>;
 }
 
 /** All fields are optional — omitting gives platform defaults (empty sandbox, platform store, build-time model). */
-export interface SessionInit {
+export interface AgentInit {
+	/** Agent/sandbox scope id. Defaults to the route/context id. */
+	id?: string;
+
 	/**
 	 * - `'empty'` (default): In-memory sandbox, no files, no host access.
 	 * - `'local'`: Mounts process.cwd() at /workspace. Node only.
-	 * - `BashLike`: User-configured just-bash instance.
+	 * - `BashFactory`: User-configured just-bash factory. Must return a fresh Bash-like instance.
 	 * - `SandboxFactory`: Connector-wrapped external sandbox (Daytona, CF Containers, etc.).
 	 */
-	sandbox?: 'empty' | 'local' | SandboxFactory | BashLike;
+	sandbox?: 'empty' | 'local' | SandboxFactory | BashFactory;
 
 	/** Defaults to platform store (in-memory on Node, DO SQLite on Cloudflare). */
 	persist?: SessionStore;
 
 	/**
-	 * Override the default model for this session. Applies to all prompt(), skill(),
+	 * Override the default model for this agent. Applies to all prompt(), skill(),
 	 * and task() calls unless overridden at the call site.
 	 *
 	 * Format: `'provider/modelId'` (e.g. `'anthropic/claude-opus-4-20250514'`).
 	 *
-	 * Precedence (highest wins): per-call `model` > role `model` > session `model` > build-time default.
+	 * Precedence (highest wins): per-call `model` > role `model` > agent `model` > build-time default.
 	 */
 	model?: string;
 
 	/**
-	 * Session-wide commands. Every prompt(), skill(), and shell() call inherits
+	 * Agent-wide commands. Every prompt(), skill(), and shell() call inherits
 	 * this list. Per-call `commands` are merged on top — if a per-call command
-	 * shares a name with a session command, the per-call version wins for that
+	 * shares a name with an agent command, the per-call version wins for that
 	 * call.
 	 */
 	commands?: Command[];
 }
 
-// ─── Flue Session (returned by init()) ──────────────────────────────────
+// ─── Flue Agent (returned by init()) ────────────────────────────────────────
+
+export interface FlueAgent {
+	readonly id: string;
+
+	/** Get or create a session in this agent. Defaults to the "default" session. */
+	session(id?: string): Promise<FlueSession>;
+
+	/** Explicit session management helpers. */
+	readonly sessions: FlueSessions;
+
+	/** Run a shell command in the agent sandbox without recording it in a conversation. */
+	shell(command: string, options?: ShellOptions): Promise<ShellResult>;
+
+	/** Destroy the agent runtime and clean up the sandbox resources it owns. */
+	destroy(): Promise<void>;
+}
+
+export interface FlueSessions {
+	/** Load an existing session. Throws if it does not exist. */
+	get(id?: string): Promise<FlueSession>;
+	/** Create a new session. Throws if it already exists. */
+	create(id?: string): Promise<FlueSession>;
+	/** Delete a session's stored conversation state. No-op when missing. */
+	delete(id?: string): Promise<void>;
+}
+
+// ─── Flue Session ───────────────────────────────────────────────────────────
 
 export interface FlueSession {
 	prompt<S extends v.GenericSchema>(
@@ -208,7 +230,7 @@ export interface FlueSession {
 	): Promise<v.InferOutput<S>>;
 	task(prompt: string, options?: TaskOptions): Promise<PromptResponse>;
 
-	destroy(): Promise<void>;
+	delete(): Promise<void>;
 }
 
 export interface PromptResponse {
@@ -283,7 +305,7 @@ export interface ShellResult {
 
 /** Wraps external sandboxes (Daytona, CF Containers, etc.) into Flue's SessionEnv. */
 export interface SandboxFactory {
-	createSessionEnv(options: { sessionId: string; workspace?: string }): Promise<SessionEnv>;
+	createSessionEnv(options: { id: string; workspace?: string }): Promise<SessionEnv>;
 }
 
 /**
@@ -310,7 +332,10 @@ export interface BashLike {
 	registerCommand?(cmd: any): void;
 }
 
-export type FlueEvent =
+/** Factory for a fresh Bash-like runtime. Share `fs` inside the closure to persist files. */
+export type BashFactory = () => BashLike | Promise<BashLike>;
+
+export type FlueEvent = (
 	| { type: 'agent_start' }
 	| { type: 'text_delta'; text: string }
 	| { type: 'tool_start'; toolName: string; toolCallId: string; args?: any }
@@ -323,7 +348,8 @@ export type FlueEvent =
 	| { type: 'task_start'; workspace: string }
 	| { type: 'task_end' }
 	| { type: 'done' }
-	| { type: 'error'; error: string };
+	| { type: 'error'; error: string }
+) & { sessionId?: string };
 
 export type FlueEventCallback = (event: FlueEvent) => void;
 

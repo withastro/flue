@@ -37,7 +37,8 @@ import * as v from 'valibot';
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ model: 'anthropic/claude-sonnet-4-6' });
+  const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+  const session = await agent.session();
 
   const result = await session.prompt(`Translate this to ${payload.language}: "${payload.text}"`, {
     result: v.object({
@@ -125,7 +126,8 @@ import type { FlueContext } from '@flue/sdk/client';
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload }: FlueContext) {
-  const session = await init({ model: 'openai/gpt-5.5' });
+  const agent = await init({ model: 'openai/gpt-5.5' });
+  const session = await agent.session();
 
   // The agent has a full virtual filesystem and shell.
   // Set up context files before prompting.
@@ -164,7 +166,8 @@ export const triggers = { webhook: true };
 
 export default async function ({ init, payload, env }: FlueContext) {
   const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
-  const session = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
+  const agent = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
+  const session = await agent.session();
 
   return await session.prompt(
     `You are a support agent. Search the knowledge base for articles
@@ -269,10 +272,11 @@ import { getSandbox } from '@cloudflare/sandbox';
 
 export const triggers = { webhook: true };
 
-export default async function ({ init, sessionId, env, payload }: FlueContext) {
+export default async function ({ init, id, env, payload }: FlueContext) {
   // The binding name you chose in wrangler.jsonc is the key on `env`.
-  const sandbox = getSandbox(env.Sandbox, sessionId);
-  const session = await init({ sandbox, model: 'anthropic/claude-opus-4-7' });
+  const sandbox = getSandbox(env.Sandbox, id);
+  const agent = await init({ sandbox, model: 'anthropic/claude-opus-4-7' });
+  const session = await agent.session();
 
   return await session.prompt(payload.message);
 }
@@ -300,7 +304,7 @@ Different agents can use different container images. Declare a separate binding 
 }
 ```
 
-Each agent grabs the sandbox it needs: `getSandbox(env.PyBox, sessionId)` or `getSandbox(env.NodeBox, sessionId)`.
+Each agent grabs the sandbox it needs: `getSandbox(env.PyBox, id)` or `getSandbox(env.NodeBox, id)`.
 
 ### Secure egress with outbound Workers
 
@@ -401,7 +405,7 @@ npx wrangler dev
 npx wrangler deploy
 ```
 
-Every agent with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/agents/<name>/<session-id>` — for example, `.flue/agents/translate.ts` becomes `/agents/translate/:sessionId`.
+Every agent with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/agents/<name>/<id>` — for example, `.flue/agents/translate.ts` becomes `/agents/translate/:id`.
 
 ```bash
 # Hit your deployed agent

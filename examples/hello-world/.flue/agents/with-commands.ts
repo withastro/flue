@@ -31,7 +31,8 @@ const bogus = defineCommand('bogus', async () => {
 });
 
 export default async function ({ init }: FlueContext) {
-	const session = await init({ sandbox: 'local' });
+	const agent = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
+	const session = await agent.session();
 
 	// Test 1: Read a workspace file (ReadWriteFs reads from real filesystem)
 	const cat = await session.shell('cat AGENTS.md');

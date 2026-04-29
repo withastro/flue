@@ -49,7 +49,7 @@ import { streamSSE } from 'hono/streaming';
 import { serve } from '@hono/node-server';
 import { Bash, InMemoryFs, MountableFs, ReadWriteFs } from 'just-bash';
 import { getModel } from '@mariozechner/pi-ai';
-import { createFlueContext, InMemorySessionStore, bashToSessionEnv } from '@flue/sdk/internal';
+import { createFlueContext, InMemorySessionStore, bashFactoryToSessionEnv } from '@flue/sdk/internal';
 import { randomUUID } from 'node:crypto';
 
 ${agentImports}
@@ -78,7 +78,7 @@ const manifest = ${manifest};
 // ─── Infrastructure ─────────────────────────────────────────────────────────
 
 // No build-time model default. The user sets model at runtime via
-// \`init({ model: "provider/model-id" })\` for a session default, or via
+// \`init({ model: "provider/model-id" })\` for an agent default, or via
 // \`{ model: "provider/model-id" }\` on any individual prompt/skill/task call.
 const model = undefined;
 
@@ -111,11 +111,11 @@ function resolveModel(modelString) {
  * cwd = /home/user, /tmp exists, /bin and /usr/bin exist.
  */
 async function createDefaultEnv() {
-  const bash = new Bash({
-    fs: new InMemoryFs(),
+  const fs = new InMemoryFs();
+  return bashFactoryToSessionEnv(() => new Bash({
+    fs,
     network: { dangerouslyAllowFullInternetAccess: true },
-  });
-  return bashToSessionEnv(bash);
+  }));
 }
 
 /**
@@ -126,20 +126,19 @@ async function createLocalEnv() {
   const rwfs = new ReadWriteFs({ root: process.cwd() });
   const fs = new MountableFs({ base: new InMemoryFs() });
   fs.mount('/workspace', rwfs);
-  const bash = new Bash({
+  return bashFactoryToSessionEnv(() => new Bash({
     fs,
     cwd: '/workspace',
     network: { dangerouslyAllowFullInternetAccess: true },
-  });
-  return bashToSessionEnv(bash);
+  }));
 }
 
 // Default persistence store for Node — in-memory, process lifetime.
 const defaultStore = new InMemorySessionStore();
 
-function createContextForRequest(sessionId, payload) {
+function createContextForRequest(id, payload) {
   return createFlueContext({
-    sessionId,
+    id,
     payload,
     env: process.env,
     agentConfig: {
@@ -158,16 +157,16 @@ const app = new Hono();
 app.get('/health', (c) => c.json({ status: 'ok' }));
 app.get('/agents', (c) => c.json(manifest));
 
-// Session ID is required in the URL
+// Agent id is required in the URL
 app.post('/agents/:name', (c) => {
   return c.json({
-    error: 'Session ID is required. Use /agents/:name/:sessionId',
+    error: 'Agent id is required. Use /agents/:name/:id',
   }, 400);
 });
 
-app.post('/agents/:name/:sessionId', async (c) => {
+app.post('/agents/:name/:id', async (c) => {
   const name = c.req.param('name');
-  const sessionId = c.req.param('sessionId');
+  const id = c.req.param('id');
 
   if (!handlers[name]) {
     return c.json({ error: 'Agent not found' }, 404);
@@ -191,7 +190,7 @@ app.post('/agents/:name/:sessionId', async (c) => {
   // Fire-and-forget (webhook mode)
   if (isWebhook) {
     const requestId = randomUUID();
-    const ctx = createContextForRequest(sessionId, payload);
+    const ctx = createContextForRequest(id, payload);
     handler(ctx).then(
       (result) => {
         ctx.setEventCallback(undefined);
@@ -209,7 +208,7 @@ app.post('/agents/:name/:sessionId', async (c) => {
   if (isSSE) {
     return streamSSE(c, async (stream) => {
       let eventId = 0;
-      const ctx = createContextForRequest(sessionId, payload);
+      const ctx = createContextForRequest(id, payload);
       ctx.setEventCallback((event) => {
         stream.writeSSE({ data: JSON.stringify(event), event: event.type, id: String(eventId++) }).catch(() => {});
       });
@@ -235,7 +234,7 @@ app.post('/agents/:name/:sessionId', async (c) => {
 
   // Sync mode (default)
   try {
-    const ctx = createContextForRequest(sessionId, payload);
+    const ctx = createContextForRequest(id, payload);
     const result = await handler(ctx);
     ctx.setEventCallback(undefined);
     return c.json({ result: result !== undefined ? result : null });

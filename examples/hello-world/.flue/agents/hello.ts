@@ -4,7 +4,8 @@ import * as v from 'valibot';
 export const triggers = { webhook: true };
 
 export default async function ({ init }: FlueContext) {
-	const session = await init();
+	const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+	const session = await agent.session();
 
 	// Test: prompt with structured result
 	const result = await session.prompt('What is 2 + 2? Return only the number.', {
