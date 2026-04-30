@@ -240,18 +240,18 @@ POST /agents/<agent-name>/<id>
 By default, `agent.session()` opens the default session for that agent ID. Reuse the same agent ID to continue the same default conversation. Use a new agent ID to start fresh.
 
 ```bash
-# Start a conversation
-curl http://localhost:8787/agents/hello/session-abc \
+# Start a conversation (port 3583 is `flue dev`'s default)
+curl http://localhost:3583/agents/hello/session-abc \
   -H "Content-Type: application/json" \
   -d '{"name": "Alice"}'
 
 # Continue that conversation
-curl http://localhost:8787/agents/hello/session-abc \
+curl http://localhost:3583/agents/hello/session-abc \
   -H "Content-Type: application/json" \
   -d '{"name": "Alice"}'
 
 # Start a separate conversation
-curl http://localhost:8787/agents/hello/session-xyz \
+curl http://localhost:3583/agents/hello/session-xyz \
   -H "Content-Type: application/json" \
   -d '{"name": "Alice"}'
 ```
@@ -305,22 +305,37 @@ const session = await agent.session();
 
 ## Running Agents
 
-### Trigger From the CLI
+### Local Development (`flue dev`)
 
-Build and run any agent locally, perfect for fast local testing or running in CI.
+Long-running watch-mode dev server. Rebuilds and reloads on file changes — edit an agent, re-run `curl`, see your change.
+
+```bash
+flue dev --target node          # Node.js dev server
+flue dev --target cloudflare    # Cloudflare Workers (via wrangler) dev server
+```
+
+Defaults to port `3583` ("FLUE" on a phone keypad). Override with `--port`.
+
+`flue dev --target cloudflare` requires `wrangler` as a peer dependency in your project (`npm install --save-dev wrangler`).
+
+### Trigger From the CLI (`flue run`)
+
+Build and run any agent locally, perfect for running in CI or for one-shot scripted invocations. Production-shaped — builds the deployable artifact and starts it once.
 
 ```bash
 flue run hello --target node --id test-1 \
   --payload '{"text": "Hello world", "language": "French"}'
 ```
 
-### Trigger From HTTP Endpoint
+### Trigger From HTTP Endpoint (`flue build`)
 
 Build and deploy your agents as a web server, perfect for hosted agents.
 
-`flue build` builds to a `./dist` directory, which you can then deploy anywhere. Cloudflare and any Node.js host are supported today, with more coming in the future.
+`flue build` builds to a `./dist` directory, which you can then deploy. Cloudflare and any Node.js host are supported today, with more coming in the future.
 
 ```
-flue build --target node          # Node.js server
+flue build --target node          # Node.js server (single bundled .mjs)
 flue build --target cloudflare    # Cloudflare Workers + Durable Objects
 ```
+
+For Cloudflare, `flue build` produces an unbundled TypeScript entry that `wrangler deploy` bundles itself — the same path `flue dev --target cloudflare` uses. Dev and deploy go through the same bundler, so what works in dev will work in production.

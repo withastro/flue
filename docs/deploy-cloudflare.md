@@ -91,28 +91,21 @@ For production, you can use a separate dotenv file such as `.env.production` ins
 
 ### 5. Try it locally
 
-For local development, use `wrangler dev` to run the worker locally:
+For local development, use `flue dev --target cloudflare`. It builds your workspace, then starts a Cloudflare Workers dev server (via wrangler) on port 3583 and watches for changes:
 
 ```bash
-npx flue build --target cloudflare
-npx wrangler dev
+npx flue dev --target cloudflare
 ```
 
 Then test it:
 
 ```bash
-curl http://localhost:8787/agents/translate/test-1 \
+curl http://localhost:3583/agents/translate/test-1 \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello world", "language": "French"}'
 ```
 
-`flue run` starts the generated server in Node.js, so it only supports `--target node`. Cloudflare builds use Worker-only runtime modules and must be run with Wrangler. To test a Cloudflare agent locally, keep `wrangler dev` running and call the generated agent endpoint:
-
-```bash
-curl http://localhost:8787/agents/translate/test-1 \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Hello world", "language": "French"}'
-```
+`flue run` starts the generated server in Node.js, so it only supports `--target node`. Cloudflare builds use Worker-only runtime modules — `flue dev --target cloudflare` is the equivalent for testing them locally.
 
 ## Using the sandbox
 
@@ -395,11 +388,11 @@ const response = await session.prompt('Help me reset my password', {
 Flue compiles your workspace into a deployable artifact. For Cloudflare, this means a Workers-compatible bundle:
 
 ```bash
-# Build for Cloudflare
-npx flue build --target cloudflare
+# Local development (build + watch + dev server on port 3583)
+npx flue dev --target cloudflare
 
-# Local development
-npx wrangler dev
+# One-off build for Cloudflare
+npx flue build --target cloudflare
 
 # Deploy to production
 npx wrangler deploy

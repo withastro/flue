@@ -108,10 +108,10 @@ In your final response, include a short checklist with the project directory, in
 
 - Important: Never invent API keys or secrets.
   - Instead: You can scaffold out obvious placeholders, but always ask the user to provide the API secrets/keys/tokens themselves. You can still help the user by showing them the command to run to set the secret, based on their local dev setup and chosen host.
-- Important: Flue doesn't have a standalone \`flue dev\` command.
-  - Instead: Use scripts from the selected deploy guide. If writing scripts manually, include the explicit target, such as \`flue build --target node\` or \`flue build --target cloudflare\`.
+- Important: For local development, prefer \`flue dev --target node\` or \`flue dev --target cloudflare\`. The dev server defaults to port 3583, watches for file changes, and rebuilds + reloads on edits.
+  - Instead of: combining \`flue build\` with \`wrangler dev\` (the previous workflow). \`flue dev --target cloudflare\` covers that case directly and stays in sync with what \`wrangler deploy\` will bundle.
 - Important: \`flue run --target cloudflare\` is not supported.
-  - Instead: For Cloudflare users, do not combine \`flue build --target cloudflare && wrangler dev\` into a single "dev" script, it's confusing. Instead, document the "build" and then in the README document how you can use \`wrangler dev\` and \`curl\` to hit the expected endpoint.
+  - Instead: \`flue run\` only supports \`--target node\`. To exercise a Cloudflare agent locally, use \`flue dev --target cloudflare\` and hit the endpoint with \`curl\`. For one-shot/scripted Cloudflare invocations, build with \`flue build --target cloudflare\` and call the deployed endpoint after \`wrangler deploy\`.
 `;
 
 export const GET: APIRoute = () => {

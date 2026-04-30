@@ -57,6 +57,24 @@ A few things to note:
 
 ### 3. Build and run
 
+For local development, `flue dev --target node` is the fastest path. It builds your workspace, starts the server on port 3583, and watches for changes — edit an agent file, the server reloads automatically.
+
+```bash
+OPENAI_API_KEY=sk-... npx flue dev --target node
+```
+
+Test it:
+
+```bash
+curl http://localhost:3583/agents/translate/test-1 \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello world", "language": "French"}'
+```
+
+Every agent with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/agents/<name>/<id>` — for example, `.flue/agents/translate.ts` becomes `/agents/translate/:id`.
+
+For a one-shot production-style run (no watcher), use `flue build` + the generated server:
+
 ```bash
 npx flue build --target node
 OPENAI_API_KEY=sk-... node dist/server.mjs
@@ -64,17 +82,7 @@ OPENAI_API_KEY=sk-... node dist/server.mjs
 
 `flue build --target node` compiles your workspace into a `./dist` directory. The built server uses [Hono](https://hono.dev/) under the hood and listens on port 3000 by default (configurable via the `PORT` environment variable). Your project's `node_modules` are still needed at runtime — the build externalizes your dependencies rather than bundling them.
 
-Test it:
-
-```bash
-curl http://localhost:3000/agents/translate/test-1 \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Hello world", "language": "French"}'
-```
-
-Every agent with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/agents/<name>/<id>` — for example, `.flue/agents/translate.ts` becomes `/agents/translate/:id`.
-
-You can also test any agent from the CLI without starting a server:
+You can also invoke any agent from the CLI without starting a server:
 
 ```bash
 npx flue run translate --target node --id test-1 \

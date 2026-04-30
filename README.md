@@ -240,18 +240,18 @@ POST /agents/<agent-name>/<id>
 By default, `agent.session()` opens the default session for that agent ID. Reuse the same agent ID to continue the same default conversation. Use a new agent ID to start fresh.
 
 ```bash
-# Start a conversation
-curl http://localhost:8787/agents/hello/session-abc \
+# Start a conversation (port 3583 is `flue dev`'s default)
+curl http://localhost:3583/agents/hello/session-abc \
   -H "Content-Type: application/json" \
   -d '{"name": "Alice"}'
 
 # Continue that conversation
-curl http://localhost:8787/agents/hello/session-abc \
+curl http://localhost:3583/agents/hello/session-abc \
   -H "Content-Type: application/json" \
   -d '{"name": "Alice"}'
 
 # Start a separate conversation
-curl http://localhost:8787/agents/hello/session-xyz \
+curl http://localhost:3583/agents/hello/session-xyz \
   -H "Content-Type: application/json" \
   -d '{"name": "Alice"}'
 ```
