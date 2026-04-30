@@ -30,6 +30,7 @@ export type {
 	BuildContext,
 	AgentInfo,
 	ToolDef,
+	ToolParameters,
 } from './types.ts';
 
 export { build, resolveWorkspaceFromCwd } from './build.ts';

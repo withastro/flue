@@ -44,6 +44,7 @@
 		"@hono/node-server": "^1.14.0",
 		"@mariozechner/pi-agent-core": "*",
 		"@mariozechner/pi-ai": "*",
+		"@modelcontextprotocol/sdk": "^1.29.0",
 		"@valibot/to-json-schema": "^1.0.0",
 		"esbuild": "^0.25.0",
 		"hono": "^4.7.0",

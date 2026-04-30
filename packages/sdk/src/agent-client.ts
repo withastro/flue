@@ -16,6 +16,7 @@ import type {
 	SessionStore,
 	ShellOptions,
 	ShellResult,
+	ToolDef,
 } from './types.ts';
 
 const DEFAULT_SESSION_ID = 'default';
@@ -39,6 +40,7 @@ export class AgentClient implements FlueAgent {
 		private store: SessionStore,
 		private eventCallback?: FlueEventCallback,
 		private agentCommands: Command[] = [],
+		private agentTools: ToolDef[] = [],
 	) {}
 
 	async session(id?: string, options?: SessionOptions): Promise<FlueSession> {
@@ -103,20 +105,21 @@ export class AgentClient implements FlueAgent {
 			await this.store.save(storageKey, data);
 		}
 
-		const session = new Session(
-			sessionId,
+		const session = new Session({
+			id: sessionId,
 			storageKey,
-			this.config,
-			this.env,
-			this.store,
-			data,
-			this.eventCallback,
-			this.agentCommands,
-			options?.role,
-			0,
-			(options) => this.createTaskSession(options),
-			() => this.openSessions.delete(sessionId),
-		);
+			config: this.config,
+			env: this.env,
+			store: this.store,
+			existingData: data,
+			onAgentEvent: this.eventCallback,
+			agentCommands: this.agentCommands,
+			agentTools: this.agentTools,
+			sessionRole: options?.role,
+			taskDepth: 0,
+			createTaskSession: (taskOptions) => this.createTaskSession(taskOptions),
+			onDelete: () => this.openSessions.delete(sessionId),
+		});
 		this.openSessions.set(sessionId, session);
 		return session;
 	}
@@ -167,19 +170,20 @@ export class AgentClient implements FlueAgent {
 				}
 			: undefined;
 
-		return new Session(
-			sessionId,
+		return new Session({
+			id: sessionId,
 			storageKey,
-			taskConfig,
-			taskEnv,
-			this.store,
-			data,
-			eventCallback,
-			options.commands,
-			options.role,
-			options.depth,
-			(childOptions) => this.createTaskSession(childOptions),
-		);
+			config: taskConfig,
+			env: taskEnv,
+			store: this.store,
+			existingData: data,
+			onAgentEvent: eventCallback,
+			agentCommands: options.commands,
+			agentTools: this.agentTools,
+			sessionRole: options.role,
+			taskDepth: options.depth,
+			createTaskSession: (childOptions) => this.createTaskSession(childOptions),
+		});
 	}
 
 	private assertActive(): void {

@@ -89,6 +89,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					store,
 					currentEventCallback,
 					options?.commands,
+					options?.tools,
 				);
 			} catch (error) {
 				initializedAgentIds.delete(id);
@@ -168,6 +169,9 @@ async function resolveSessionEnv(
 // ─── @flue/sdk/client public API ────────────────────────────────────────────
 
 export { Type } from '@mariozechner/pi-ai';
+export { connectMcpServer } from './mcp.ts';
+
+export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
 
 export type {
 	FlueContext,
@@ -193,4 +197,5 @@ export type {
 	ShellOptions,
 	ShellResult,
 	ToolDef,
+	ToolParameters,
 } from './types.ts';

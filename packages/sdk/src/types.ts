@@ -40,19 +40,23 @@ export interface CommandDef {
 
 // ─── Custom Tools ───────────────────────────────────────────────────────────
 
+export type ToolParameters = TSchema | Record<string, unknown>;
+
 /**
- * Custom tool passed to prompt() or skill(). Scoped to the duration of the call.
- * Parameters use TypeBox schemas — import `Type` from `@flue/sdk/client`.
+ * Custom tool passed to init(), prompt(), skill(), or task(). init() tools are
+ * available to every session call; prompt/skill/task tools are scoped to that call.
+ * Parameters are JSON Schema-compatible. Use `Type` from `@flue/sdk/client` for
+ * hand-written tools, or pass schemas discovered from adapters such as MCP.
  */
-export interface ToolDef<TParams extends TSchema = TSchema> {
+export interface ToolDef<TParams extends ToolParameters = ToolParameters> {
 	/** Must be unique across built-in and custom tools. */
 	name: string;
 	/** Tells the LLM when and how to use this tool. */
 	description: string;
-	/** TypeBox parameter schema. */
+	/** JSON Schema-compatible parameter schema. */
 	parameters: TParams;
 	/** Returns a string result sent back to the LLM. Thrown errors become tool errors. */
-	execute: (args: Record<string, any>) => Promise<string>;
+	execute: (args: Record<string, any>, signal?: AbortSignal) => Promise<string>;
 }
 
 // ─── File Stat ──────────────────────────────────────────────────────────────
@@ -177,6 +181,12 @@ export interface AgentInit {
 
 	/** Agent-wide default role. Overridden by session-level or per-call roles. */
 	role?: string;
+
+	/**
+	 * Agent-wide tools. Every prompt(), skill(), and task() call can use these.
+	 * Per-call tools are added on top and must not reuse the same names.
+	 */
+	tools?: ToolDef[];
 
 	/**
 	 * Agent-wide commands. Every prompt(), skill(), and shell() call inherits

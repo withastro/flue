@@ -66,6 +66,22 @@ export interface CreateTaskSessionOptions {
 
 export type CreateTaskSession = (options: CreateTaskSessionOptions) => Promise<Session>;
 
+interface SessionInitOptions {
+	id: string;
+	storageKey: string;
+	config: AgentConfig;
+	env: SessionEnv;
+	store: SessionStore;
+	existingData: SessionData | null;
+	onAgentEvent?: FlueEventCallback;
+	agentCommands?: Command[];
+	agentTools?: ToolDef[];
+	sessionRole?: string;
+	taskDepth?: number;
+	createTaskSession?: CreateTaskSession;
+	onDelete?: () => void;
+}
+
 interface RuntimeScopeOptions {
 	commands: Command[];
 	tools: ToolDef[];
@@ -113,6 +129,7 @@ export class Session implements FlueSession {
 	}
 
 	private harness: Agent;
+	private storageKey: string;
 	private config: AgentConfig;
 	private env: SessionEnv;
 	private store: SessionStore;
@@ -123,62 +140,63 @@ export class Session implements FlueSession {
 	private compactionAbortController: AbortController | undefined;
 	private eventCallback: FlueEventCallback | undefined;
 	private agentCommands: Command[];
+	private agentTools: ToolDef[];
 	private deleted = false;
 	private activeOperation: string | undefined;
 	private activeTasks = new Set<Session>();
+	private sessionRole: string | undefined;
+	private taskDepth: number;
+	private createTaskSession: CreateTaskSession | undefined;
+	private onDelete: (() => void) | undefined;
 
-	constructor(
-		id: string,
-		private storageKey: string,
-		config: AgentConfig,
-		env: SessionEnv,
-		store: SessionStore,
-		existingData: SessionData | null,
-		onAgentEvent?: FlueEventCallback,
-		agentCommands?: Command[],
-		private sessionRole?: string,
-		private taskDepth = 0,
-		private createTaskSession?: CreateTaskSession,
-		private onDelete?: () => void,
-	) {
-		this.id = id;
-		this.config = config;
-		this.env = env;
-		this.store = store;
-		this.agentCommands = agentCommands ?? [];
+	constructor(options: SessionInitOptions) {
+		this.id = options.id;
+		this.storageKey = options.storageKey;
+		this.config = options.config;
+		this.env = options.env;
+		this.store = options.store;
+		this.agentCommands = options.agentCommands ?? [];
+		this.agentTools = options.agentTools ?? [];
+		this.sessionRole = options.sessionRole;
+		this.taskDepth = options.taskDepth ?? 0;
+		this.createTaskSession = options.createTaskSession;
+		this.onDelete = options.onDelete;
 
-		this.metadata = existingData?.metadata ?? {};
-		this.createdAt = existingData?.createdAt;
+		this.metadata = options.existingData?.metadata ?? {};
+		this.createdAt = options.existingData?.createdAt;
 
-		this.history = SessionHistory.fromData(existingData);
+		this.history = SessionHistory.fromData(options.existingData);
 
-		const cc = config.compaction;
+		const cc = this.config.compaction;
 		this.compactionSettings = {
 			enabled: cc?.enabled ?? DEFAULT_COMPACTION_SETTINGS.enabled,
 			reserveTokens: cc?.reserveTokens ?? DEFAULT_COMPACTION_SETTINGS.reserveTokens,
 			keepRecentTokens: cc?.keepRecentTokens ?? DEFAULT_COMPACTION_SETTINGS.keepRecentTokens,
 		};
 
-		const systemPrompt = config.systemPrompt;
+		const systemPrompt = this.config.systemPrompt;
 
 		assertRoleExists(this.config.roles, this.config.role);
 		assertRoleExists(this.config.roles, this.sessionRole);
 
-		const tools = this.createBuiltinTools(env, this.agentCommands, []);
+		const tools = [
+			...this.createBuiltinTools(this.env, this.agentCommands, []),
+			...this.createCustomTools(this.agentTools),
+		];
 
 		const previousMessages = this.history.buildContext();
 
 		this.harness = new Agent({
 			initialState: {
 				systemPrompt,
-				model: config.model,
+				model: this.config.model,
 				tools,
 				messages: previousMessages,
 			},
 			toolExecution: 'parallel',
 		});
 
-		this.eventCallback = onAgentEvent;
+		this.eventCallback = options.onAgentEvent;
 		this.harness.subscribe(async (event) => {
 			switch (event.type) {
 				case 'agent_start':
@@ -419,22 +437,7 @@ export class Session implements FlueSession {
 	// ─── Custom Tools ───────────────────────────────────────────────────────
 
 	private createCustomTools(tools: ToolDef[]): AgentTool<any>[] {
-		const names: string[] = [];
-
-		for (const toolDef of tools) {
-			if (BUILTIN_TOOL_NAMES.has(toolDef.name)) {
-				throw new Error(
-					`[flue] Custom tool "${toolDef.name}" conflicts with a built-in tool. ` +
-						`Built-in tools: ${[...BUILTIN_TOOL_NAMES].join(', ')}`,
-				);
-			}
-			if (names.includes(toolDef.name)) {
-				throw new Error(
-					`[flue] Duplicate custom tool name "${toolDef.name}". Tool names must be unique.`,
-				);
-			}
-			names.push(toolDef.name);
-		}
+		this.validateCustomToolNames(tools);
 
 		return tools.map((toolDef) => ({
 			name: toolDef.name,
@@ -443,13 +446,31 @@ export class Session implements FlueSession {
 			parameters: toolDef.parameters,
 			async execute(_toolCallId: string, params: Record<string, any>, signal?: AbortSignal) {
 				if (signal?.aborted) throw new Error('Operation aborted');
-				const resultText = await toolDef.execute(params);
+				const resultText = await toolDef.execute(params, signal);
 				return {
 					content: [{ type: 'text' as const, text: resultText }],
 					details: { customTool: toolDef.name },
 				};
 			},
 		}));
+	}
+
+	private validateCustomToolNames(tools: ToolDef[]): void {
+		const names = new Set<string>();
+		for (const toolDef of tools) {
+			if (BUILTIN_TOOL_NAMES.has(toolDef.name)) {
+				throw new Error(
+					`[flue] Custom tool "${toolDef.name}" conflicts with a built-in tool. ` +
+						`Built-in tools: ${[...BUILTIN_TOOL_NAMES].join(', ')}`,
+				);
+			}
+			if (names.has(toolDef.name)) {
+				throw new Error(
+					`[flue] Duplicate custom tool name "${toolDef.name}". Tool names must be unique.`,
+				);
+			}
+			names.add(toolDef.name);
+		}
 	}
 
 	private createBuiltinTools(
@@ -469,7 +490,7 @@ export class Session implements FlueSession {
 		options: RuntimeScopeOptions,
 		fn: () => Promise<T>,
 	): Promise<T> {
-		const customTools = this.createCustomTools(options.tools);
+		const customTools = this.createCustomTools([...this.agentTools, ...options.tools]);
 		const scopedEnv = await scopeSessionEnv(this.env, options.commands);
 		const previousTools = this.harness.state.tools;
 		const previousModel = this.harness.state.model;

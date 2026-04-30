@@ -196,6 +196,39 @@ export default async function ({ init, payload, env }: FlueContext) {
 }
 ```
 
+### Remote MCP Tools
+
+MCP is available as a runtime tool adapter. Connect to a remote MCP server in trusted code, pass its tools to `init()`, and keep secrets in `env` instead of filesystem context or prompts.
+
+```ts
+// .flue/agents/assistant.ts
+import { connectMcpServer, type FlueContext } from '@flue/sdk/client';
+
+export const triggers = { webhook: true };
+
+export default async function ({ init, payload, env }: FlueContext) {
+  const github = await connectMcpServer('github', {
+    url: 'https://mcp.github.com/mcp',
+    headers: {
+      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+    },
+  });
+
+  try {
+    const agent = await init({
+      model: 'anthropic/claude-sonnet-4-6',
+      tools: github.tools,
+    });
+    const session = await agent.session();
+    return await session.prompt(payload.prompt);
+  } finally {
+    await github.close();
+  }
+}
+```
+
+`connectMcpServer()` defaults to modern streamable HTTP. For legacy SSE servers, pass `transport: 'sse'`. Flue does not auto-detect transports, spawn local stdio MCP servers, or handle OAuth callbacks in this first version.
+
 ## Agents And Sessions
 
 Every agent invocation runs inside an initialized agent runtime. For HTTP agents, the agent ID is the last path segment:
