@@ -117,15 +117,9 @@ importers:
         specifier: workspace:*
         version: link:../sdk
     devDependencies:
-      '@aws-sdk/client-s3':
-        specifier: '*'
-        version: 3.1029.0
       '@daytona/sdk':
         specifier: '*'
         version: 0.164.0(ws@8.18.0)
-      just-bash:
-        specifier: '*'
-        version: 2.14.2
       tsdown:
         specifier: ^0.20.3
         version: 0.20.3(typescript@5.9.3)
