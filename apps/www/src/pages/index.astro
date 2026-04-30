@@ -13,10 +13,10 @@ const replaces: Record<string, string[]> = {
 
 
 const tabs = [
-  { id: 'support', label: 'customer support agent', badgeLabel: 'Support Agent', code: SUPPORT_AGENT, lines: SUPPORT_AGENT.split('\n').filter(l => l.replace(/\/\/ .*/, '').trim()).length },
   { id: 'triage', label: 'AI issue triage', badgeLabel: 'Issue Triage', code: ISSUE_TRIAGE, lines: ISSUE_TRIAGE.split('\n').filter(l => l.replace(/\/\/ .*/, '').trim()).length },
-  { id: 'coding', label: 'coding agent', badgeLabel: 'Coding Agent', code: CODING_AGENT, lines: CODING_AGENT.split('\n').filter(l => l.replace(/\/\/ .*/, '').trim()).length },
   { id: 'data', label: 'data analyst', badgeLabel: 'Data Analyst', code: DATA_AGENT, lines: DATA_AGENT.split('\n').filter(l => l.replace(/\/\/ .*/, '').trim()).length },
+  { id: 'coding', label: 'coding agent', badgeLabel: 'Coding Agent', code: CODING_AGENT, lines: CODING_AGENT.split('\n').filter(l => l.replace(/\/\/ .*/, '').trim()).length },
+  { id: 'support', label: 'customer support agent', badgeLabel: 'Support Agent', code: SUPPORT_AGENT, lines: SUPPORT_AGENT.split('\n').filter(l => l.replace(/\/\/ .*/, '').trim()).length },
 ];
 
 const highlighter = await createHighlighter({
@@ -75,7 +75,7 @@ const floatingSquares = [
     <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur-sm border-b border-gray-200">
       <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
         <a href="/" class="flex items-baseline gap-2">
-          <span class="text-2xl font-extrabold tracking-tight text-gray-950 leading-8">Flue</span><span id="nav-tagline" class="overflow-hidden h-8 leading-8"><span class="inline-block text-base sm:text-lg text-gray-500 translate-y-full opacity-0 transition-all duration-300 ease-out">The agent harness framework.</span></span>
+          <span class="text-2xl font-extrabold tracking-tight text-gray-950 leading-8">Flue</span><span id="nav-tagline" class="overflow-hidden h-8 leading-8"><span class="inline-block text-base sm:text-lg text-gray-500 translate-y-full opacity-0 transition-all duration-300 ease-out">the agent harness framework.</span></span>
         </a>
         <div class="hidden sm:flex items-center gap-6">
           <a href="https://github.com/withastro/flue" target="_blank" rel="noopener noreferrer" class="text-gray-400 hover:text-gray-950 transition-colors" aria-label="GitHub">
@@ -259,7 +259,7 @@ const floatingSquares = [
               It's <a href="https://www.langchain.com/blog/the-anatomy-of-an-agent-harness" target="_blank" rel="noopener noreferrer" class="text-gray-600 hover:underline transition-colors">the architecture</a> that makes coding agents like Claude Code and Codex so powerful. They can plan, gather context, write files, spawn subagents, adopt roles, and problem-solve. These agents are more than just chatbots. Why isnt every agent built like this?
             </p>
             <p class="mt-6 text-lg text-gray-600 leading-relaxed">
-              <strong>Flue is the framework for building real agents.</strong> Flue's programmable agent harness is able to represent any autonomous agent, from simple chatbots to entire coding platforms. Connect Flue to your favorite remote sandbox platform, or use our built-in zero-config virtual sandbox.
+              <strong>Flue is a framework for the next generation of agents.</strong> Flue's programmable agent harness is able to represent any autonomous agent or workflow, from simple chatbots to entire coding platforms. Connect your favorite remote sandbox, or use our built-in zero-config virtual sandbox to give your agent a place to work through any task.
             </p>
             <p class="mt-6 text-lg text-gray-600 leading-relaxed">
               When you're ready to ship, Flue bundles your agents into an HTTP server that you can deploy anywhere. Or skip the server and run your agents right from the CLI, perfect for local tasks and CI.

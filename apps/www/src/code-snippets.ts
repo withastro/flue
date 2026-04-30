@@ -28,18 +28,19 @@ export const HERO = `export default async function ({ init, payload, env }) {
   });
 }`;
 
-export const SUPPORT_AGENT = `// Built for: Cloudflare
-import { getVirtualSandbox } from '@flue/sdk/cloudflare';
+export const SUPPORT_AGENT = `import { getVirtualSandbox } from '@flue/sdk/cloudflare';
 import type { FlueContext } from '@flue/sdk/client';
 
 // POST /agents/support/:id
 export const triggers = { webhook: true };
 
+// Built for: Cloudflare Workers, R2
 export default async function ({ init, payload, env }: FlueContext) {
-  // Mount a bucket as your agent's filesystem in a virtual sandbox.
-  // The agent can grep, glob, and read from the knowledge base with 
-  // bash, without the need of a traditional, expensive container.
-  const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
+  // Mount your R2 bucket (declared as a binding in wrangler.jsonc) as
+  // the agent's filesystem at /workspace, backed by Durable Object
+  // SQLite + R2 under the hood. The agent searches it with bash —
+  // grep, glob, read — without spinning up a container.
+  const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE_BUCKET);
   const agent = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
   const session = await agent.session();
   // Prompt! The agent harness includes your workspace AGENTS.md,
@@ -51,20 +52,21 @@ export default async function ({ init, payload, env }: FlueContext) {
   );
 }`;
 
-export const ISSUE_TRIAGE = `// Built for: Node, GitHub Actions
-import type { FlueContext } from '@flue/sdk/client';
+export const ISSUE_TRIAGE = `import type { FlueContext } from '@flue/sdk/client';
 import { Octokit } from '@octokit/core';
 import * as v from 'valibot';
 
-// Triggered in CI via the CLI — no HTTP endpoint needed.
+// Triggered in CI via \`flue run\` CLI — no HTTP endpoint needed.
 export const triggers = {};
 
+// Built for: Node, GitHub Actions
 export default async function ({ init, payload, env }: FlueContext) {
+  const { issueNumber } = payload;
   const agent = await init({ model: 'anthropic/claude-opus-4-7' });
   const session = await agent.session();
   // Run the 'triage' skill to triage the GitHub issue.
   const triage = await session.skill('triage', {
-    args: { issueNumber: payload.issueNumber },
+    args: { issueNumber },
     result: v.object({
       severity: v.picklist(['low', 'medium', 'high', 'critical']),
       reproducible: v.boolean(),
@@ -73,23 +75,21 @@ export default async function ({ init, payload, env }: FlueContext) {
   });
   // Post the triage result back to GitHub.
   // The agent/sandbox never sees your sensitive GITHUB_TOKEN.
-  const octokit = new Octokit({ auth: env.GITHUB_TOKEN });
-  await octokit.request('POST /repos/{owner}/{repo}/issues/{num}/comments', {
-    owner: 'withastro',
-    repo: 'flue',
-    num: payload.issueNumber,
-    body: \`**Severity:** \${triage.severity}\\n**Reproducible:** \${triage.reproducible}\\n\\n\${triage.summary}\`,
-  });
+  const body = \`**Severity:** \${triage.severity}\\n**Reproducible:** \${triage.reproducible}\\n\\n\${triage.summary}\`;
+  await (new Octokit({ auth: env.GITHUB_TOKEN })).request(
+    'POST /repos/{owner}/{repo}/issues/{num}/comments', 
+    { owner: 'withastro', repo: 'flue', num: issueNumber, body },
+  );
 }`;
 
-export const CODING_AGENT = `// Built for: Node, Daytona
-import type { FlueContext } from '@flue/sdk/client';
+export const CODING_AGENT = `import type { FlueContext } from '@flue/sdk/client';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '@flue/connectors/daytona';
 
 // POST /agents/code/:id
 export const triggers = { webhook: true };
 
+// Built for: Node, Daytona
 export default async function ({ init, payload, env }: FlueContext) {
   // Each agent gets a real container via Daytona.
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
@@ -104,21 +104,23 @@ export default async function ({ init, payload, env }: FlueContext) {
   return await session.prompt(payload.prompt);
 }`;
 
-export const DATA_AGENT = `// Built for: Node
-import type { FlueContext } from '@flue/sdk/client';
-import { getVirtualSandbox } from '@flue/sdk/node';
-import * as v from 'valibot';
+export const DATA_AGENT = `import type { FlueContext } from '@flue/sdk/client';
+import { Bash, InMemoryFs, MountableFs, ReadWriteFs } from 'just-bash';
 
 // POST /agents/data/:id
 export const triggers = { webhook: true };
 
+// Built for: Node
 export default async function ({ init, payload }: FlueContext) {
-  // Mount the data analyst context to the agent — this contains
-  // all the files (context) & skills (abilities) needed for the agent to
-  // complete its task. The agent can run \`ls\`, \`grep\`, write Python, 
-  // and make read-only queries to fetch data from your analytics service.
+  // Mount the current directory at /workspace, so the agent can read,
+  // write, grep, and glob from your project files using bash.
+  const fs = new MountableFs({ base: new InMemoryFs() });
+  fs.mount('/workspace', new ReadWriteFs({ root: process.cwd() }));
+
+  // Create a custom virtual sandbox with 'just-bash'. Enable Python use
+  // so the agent can write code to analyze data, generate reports, etc.
   const agent = await init({
-    sandbox: await getVirtualSandbox('./data'),
+    sandbox: () => new Bash({ fs, cwd: '/workspace', python: true }),
     model: 'anthropic/claude-sonnet-4-6',
   });
   const session = await agent.session();
