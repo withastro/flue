@@ -318,6 +318,17 @@ Defaults to port `3583` ("FLUE" on a phone keypad). Override with `--port`.
 
 `flue dev --target cloudflare` requires `wrangler` as a peer dependency in your project (`npm install --save-dev wrangler`).
 
+#### Loading environment variables
+
+Pass `--env <path>` to load a `.env`-format file. Works for both targets:
+
+```bash
+flue dev --target node --env .env
+flue dev --target cloudflare --env .env
+```
+
+Repeatable; later files override earlier ones on key collision. Shell-set env vars win over file values. Edits to the file trigger a reload. Same flag works for `flue run`.
+
 ### Trigger From the CLI (`flue run`)
 
 Build and run any agent locally, perfect for running in CI or for one-shot scripted invocations. Production-shaped — builds the deployable artifact and starts it once.

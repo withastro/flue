@@ -55,12 +55,26 @@ A few things to note:
 - **`init({ model })`** — Every agent needs a model. If you do not pass one, no model is chosen and `prompt()` / `skill()` calls will fail. By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
 - **Result schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns a typed object.
 
-### 3. Build and run
+### 3. Add your API key
 
-For local development, `flue dev --target node` is the fastest path. It builds your workspace, starts the server on port 3583, and watches for changes — edit an agent file, the server reloads automatically.
+Put provider API keys in a `.env` file at the project root:
 
 ```bash
-OPENAI_API_KEY=sk-... npx flue dev --target node
+cat > .env <<'EOF'
+OPENAI_API_KEY="your-api-key"
+EOF
+
+printf '\n.env\n' >> .gitignore
+```
+
+Use the env var name your provider expects — `OPENAI_API_KEY` for OpenAI, `ANTHROPIC_API_KEY` for Anthropic, and so on. Do not commit `.env`.
+
+### 4. Build and run
+
+For local development, `flue dev --target node --env .env` is the fastest path. It builds your workspace, loads the env file, starts the server on port 3583, and watches for changes — edit an agent file, the server reloads automatically.
+
+```bash
+npx flue dev --target node --env .env
 ```
 
 Test it:
@@ -73,19 +87,20 @@ curl http://localhost:3583/agents/translate/test-1 \
 
 Every agent with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/agents/<name>/<id>` — for example, `.flue/agents/translate.ts` becomes `/agents/translate/:id`.
 
-For a one-shot production-style run (no watcher), use `flue build` + the generated server:
+For a one-shot production-style run (no watcher), use `flue build` + the generated server. The built server reads `process.env` directly, so source your env file in your shell or pass values explicitly:
 
 ```bash
 npx flue build --target node
-OPENAI_API_KEY=sk-... node dist/server.mjs
+set -a; source .env; set +a
+node dist/server.mjs
 ```
 
 `flue build --target node` compiles your workspace into a `./dist` directory. The built server uses [Hono](https://hono.dev/) under the hood and listens on port 3000 by default (configurable via the `PORT` environment variable). Your project's `node_modules` are still needed at runtime — the build externalizes your dependencies rather than bundling them.
 
-You can also invoke any agent from the CLI without starting a server:
+You can also invoke any agent from the CLI without starting a server. `flue run` accepts the same `--env` flag:
 
 ```bash
-npx flue run translate --target node --id test-1 \
+npx flue run translate --target node --id test-1 --env .env \
   --payload '{"text": "Hello world", "language": "French"}'
 ```
 

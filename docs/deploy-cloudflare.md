@@ -68,33 +68,39 @@ npx wrangler deploy
 
 ### 4. Add your API key
 
-Put provider API keys in `.dev.vars` at the project root:
+Put provider API keys in a `.env` file at the project root:
 
 ```bash
-cat > .dev.vars <<'EOF'
+cat > .env <<'EOF'
 ANTHROPIC_API_KEY="your-api-key"
 EOF
 
-printf '\n.dev.vars*\n' >> .gitignore
+printf '\n.env\n' >> .gitignore
 ```
 
-Use the env var name your provider expects — `ANTHROPIC_API_KEY` for Anthropic, `OPENAI_API_KEY` for OpenAI, and so on. Do not commit `.dev.vars`.
+Use the env var name your provider expects — `ANTHROPIC_API_KEY` for Anthropic, `OPENAI_API_KEY` for OpenAI, and so on. Do not commit `.env`.
 
-Wrangler loads `.dev.vars` automatically during local development. To include these secrets when deploying this starter, pass the file explicitly:
+Pass the file explicitly with `--env <path>`. Flue loads it for both `flue dev` and `flue run` (the same flag works for Node and Cloudflare targets):
+
+```bash
+npx flue dev --target cloudflare --env .env
+```
+
+For deploying, Wrangler reads the same file:
 
 ```bash
 npx flue build --target cloudflare
-npx wrangler deploy --secrets-file .dev.vars
+npx wrangler deploy --secrets-file .env
 ```
 
-For production, you can use a separate dotenv file such as `.env.production` instead of `.dev.vars`.
+> **Note on `.dev.vars`.** Wrangler's docs use `.dev.vars` as the convention for local secrets. The format is identical to `.env`, and you can call your file whatever you like — Flue just needs a path. We use `.env` in these examples because it's the broader Node/Web convention and works the same way regardless of which target you're using.
 
 ### 5. Try it locally
 
 For local development, use `flue dev --target cloudflare`. It builds your workspace, then starts a Cloudflare Workers dev server (via wrangler) on port 3583 and watches for changes:
 
 ```bash
-npx flue dev --target cloudflare
+npx flue dev --target cloudflare --env .env
 ```
 
 Then test it:
@@ -389,13 +395,13 @@ Flue compiles your workspace into a deployable artifact. For Cloudflare, this me
 
 ```bash
 # Local development (build + watch + dev server on port 3583)
-npx flue dev --target cloudflare
+npx flue dev --target cloudflare --env .env
 
 # One-off build for Cloudflare
 npx flue build --target cloudflare
 
-# Deploy to production
-npx wrangler deploy
+# Deploy to production (Wrangler reads the same .env as a secrets bundle)
+npx wrangler deploy --secrets-file .env
 ```
 
 Every agent with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/agents/<name>/<id>` — for example, `.flue/agents/translate.ts` becomes `/agents/translate/:id`.

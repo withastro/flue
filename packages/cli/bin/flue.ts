@@ -1,7 +1,14 @@
 #!/usr/bin/env node
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
-import { build, dev, DEFAULT_DEV_PORT, resolveWorkspaceFromCwd } from '@flue/sdk';
+import {
+	build,
+	dev,
+	DEFAULT_DEV_PORT,
+	parseEnvFiles,
+	resolveEnvFiles,
+	resolveWorkspaceFromCwd,
+} from '@flue/sdk';
 
 /**
  * Resolve the workspace directory for a CLI command.
@@ -45,8 +52,8 @@ function resolveOutputDir(explicitOutput: string | undefined): string {
 function printUsage() {
 	console.error(
 		'Usage:\n' +
-			'  flue dev   --target <node|cloudflare> [--workspace <path>] [--output <path>] [--port <number>]\n' +
-			'  flue run   <agent> --target node --id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>]\n' +
+			'  flue dev   --target <node|cloudflare> [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
+			'  flue run   <agent> --target node --id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
 			'  flue build --target <node|cloudflare> [--workspace <path>] [--output <path>]\n' +
 			'\n' +
 			'Commands:\n' +
@@ -58,12 +65,15 @@ function printUsage() {
 			'  --workspace <path>   Workspace root (containing agents/ and roles/). Default: ./.flue/ if it exists, else ./\n' +
 			'  --output <path>      Where dist/ is written. Default: current working directory\n' +
 			`  --port <number>      Port for the dev server. Default: ${DEFAULT_DEV_PORT}\n` +
+			'  --env <path>         Load env vars from a .env-format file. Repeatable; later files override earlier on key collision.\n' +
+			'                       Works for both Node and Cloudflare targets. Shell-set env vars win over file values.\n' +
 			'\n' +
 			'Examples:\n' +
 			'  flue dev --target node\n' +
 			'  flue dev --target cloudflare --port 8787\n' +
+			'  flue dev --target node --env .env\n' +
 			'  flue run hello --target node --id test-1\n' +
-			'  flue run hello --target node --id test-1 --payload \'{"name": "World"}\'\n' +
+			'  flue run hello --target node --id test-1 --payload \'{"name": "World"}\' --env .env\n' +
 			'  flue build --target node\n' +
 			'  flue build --target cloudflare --workspace ./.flue --output ./build\n' +
 			'\n' +
@@ -83,6 +93,8 @@ interface RunArgs {
 	/** Explicit --output value, or undefined to default to cwd. */
 	explicitOutput: string | undefined;
 	port: number;
+	/** Resolved absolute paths from --env flags (repeatable). */
+	envFiles: string[];
 }
 
 interface BuildArgs {
@@ -103,6 +115,8 @@ interface DevArgs {
 	explicitOutput: string | undefined;
 	/** 0 = use the SDK default (DEFAULT_DEV_PORT). */
 	port: number;
+	/** Raw --env values, in order; resolved/validated by the SDK. */
+	envFiles: string[];
 }
 
 type ParsedArgs = RunArgs | BuildArgs | DevArgs;
@@ -114,6 +128,7 @@ function parseFlags(flags: string[]): {
 	explicitOutput: string | undefined;
 	payload: string;
 	port: number;
+	envFiles: string[];
 } {
 	let target: 'node' | 'cloudflare' | undefined;
 	let id: string | undefined;
@@ -121,6 +136,7 @@ function parseFlags(flags: string[]): {
 	let explicitOutput: string | undefined;
 	let payload = '{}';
 	let port = 0;
+	const envFiles: string[] = [];
 
 	for (let i = 0; i < flags.length; i++) {
 		const arg = flags[i];
@@ -166,6 +182,13 @@ function parseFlags(flags: string[]): {
 				console.error('Invalid value for --port');
 				process.exit(1);
 			}
+		} else if (arg === '--env') {
+			const value = flags[++i];
+			if (!value) {
+				console.error('Missing value for --env');
+				process.exit(1);
+			}
+			envFiles.push(value);
 		} else {
 			console.error(`Unknown argument: ${arg}`);
 			printUsage();
@@ -180,6 +203,7 @@ function parseFlags(flags: string[]): {
 		explicitOutput: explicitOutput ? path.resolve(explicitOutput) : undefined,
 		payload,
 		port,
+		envFiles,
 	};
 }
 
@@ -232,6 +256,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 			explicitWorkspace: flags.explicitWorkspace,
 			explicitOutput: flags.explicitOutput,
 			port: flags.port,
+			envFiles: flags.envFiles,
 		};
 	}
 
@@ -271,6 +296,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 			explicitWorkspace: flags.explicitWorkspace,
 			explicitOutput: flags.explicitOutput,
 			port: flags.port,
+			envFiles: flags.envFiles,
 		};
 	}
 
@@ -463,7 +489,11 @@ function startServer(
 		// this flag, the server enforces the `webhook: true` gate — which is
 		// the correct behavior for production deployments, but would prevent
 		// `flue run` from working with CI-only agents.
-		env: { ...process.env, ...env, PORT: String(port), FLUE_MODE: 'local' },
+		//
+		// Merge order: env-file values first, then `process.env` (so shell
+		// vars win on key collision — matches dotenv-cli convention), then
+		// our explicit Flue overrides last (PORT/FLUE_MODE always win).
+		env: { ...env, ...process.env, PORT: String(port), FLUE_MODE: 'local' },
 	});
 }
 
@@ -537,6 +567,7 @@ async function devCommand(args: DevArgs) {
 			outputDir,
 			target: args.target,
 			port: args.port || undefined,
+			envFiles: args.envFiles,
 		});
 	} catch (err) {
 		console.error(`[flue] Dev server failed:`, err instanceof Error ? err.message : String(err));
@@ -548,6 +579,20 @@ async function run(args: RunArgs) {
 	const workspaceDir = resolveWorkspaceDir(args.explicitWorkspace);
 	const outputDir = resolveOutputDir(args.explicitOutput);
 	const serverPath = path.join(outputDir, 'dist', 'server.mjs');
+
+	// 0. Resolve --env paths up front so a typo errors before we kick
+	//    off a build. Resolves relative to outputDir (the project root).
+	let resolvedEnvFiles: string[];
+	try {
+		resolvedEnvFiles = resolveEnvFiles(args.envFiles, outputDir);
+	} catch (err) {
+		console.error(err instanceof Error ? err.message : String(err));
+		process.exit(1);
+	}
+	for (const f of resolvedEnvFiles) {
+		console.error(`[flue] Loading env from: ${f}`);
+	}
+	const fileEnv = parseEnvFiles(resolvedEnvFiles);
 
 	// 1. Build
 	try {
@@ -562,7 +607,7 @@ async function run(args: RunArgs) {
 
 	// 3. Start server
 	console.error(`[flue] Starting server on port ${port}...`);
-	const child = startServer(serverPath, port, {}, outputDir);
+	const child = startServer(serverPath, port, fileEnv, outputDir);
 
 	// Pipe server stdout/stderr for visibility
 	const pipeServerOutput = (data: Buffer) => {

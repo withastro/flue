@@ -35,6 +35,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { parseEnv } from 'node:util';
 import { build } from './build.ts';
 import type { BuildOptions } from './types.ts';
 
@@ -46,6 +47,24 @@ export interface DevOptions {
 	target: 'node' | 'cloudflare';
 	/** Defaults to 3583 ("FLUE" on a phone keypad). */
 	port?: number;
+	/**
+	 * Absolute paths to env files (`.env`-format) to load before starting the
+	 * dev server. Repeatable; later files override earlier ones on key
+	 * collision (matching wrangler's `envFiles` semantics and standard
+	 * dotenv composition patterns).
+	 *
+	 * - Node: parsed with `node:util.parseEnv` and merged into the child
+	 *   server process's env. Shell-set env vars win over file values.
+	 * - Cloudflare: passed through to wrangler's `unstable_startWorker` as
+	 *   `envFiles`, which loads them as `secret_text` bindings.
+	 *
+	 * If empty/undefined, no env loading happens. Cloudflare's auto-discovery
+	 * of `.dev.vars` is disabled in either case (we always pass an explicit
+	 * `envFiles` array to wrangler so its default search is suppressed).
+	 *
+	 * Each path must exist; otherwise dev fails fast with a clear error.
+	 */
+	envFiles?: string[];
 }
 
 /** Default port for `flue dev`. F=3, L=5, U=8, E=3 on a phone keypad. */
@@ -95,6 +114,14 @@ export async function dev(options: DevOptions): Promise<void> {
 	const outputDir = path.resolve(options.outputDir);
 	const port = options.port ?? DEFAULT_DEV_PORT;
 
+	// Resolve env files up front so a typo errors before we kick off a build.
+	// Resolved against outputDir so relative paths feel natural ("the path
+	// they look like from the project root").
+	const envFiles = resolveEnvFiles(options.envFiles, outputDir);
+	for (const f of envFiles) {
+		console.error(`[flue] Loading env from: ${f}`);
+	}
+
 	const buildOptions: BuildOptions = {
 		workspaceDir,
 		outputDir,
@@ -117,8 +144,8 @@ export async function dev(options: DevOptions): Promise<void> {
 
 	const reloader: DevReloader =
 		options.target === 'node'
-			? new NodeReloader({ outputDir, port })
-			: await createCloudflareReloader({ outputDir, port });
+			? new NodeReloader({ outputDir, port, envFiles })
+			: await createCloudflareReloader({ outputDir, port, envFiles });
 
 	await reloader.start();
 
@@ -135,14 +162,17 @@ export async function dev(options: DevOptions): Promise<void> {
 	// ─── Watch loop ──────────────────────────────────────────────────────────
 
 	const rebuilder = createRebuilder(buildOptions, reloader);
+	const envFileSet = new Set(envFiles);
 	const watcher = createWatcher({
 		workspaceDir,
 		outputDir,
 		target: options.target,
+		envFiles,
 		onChange: (relPath) => {
 			if (!reloader.shouldRebuildOn(relPath)) return;
+			const isEnvFile = envFileSet.has(relPath);
 			console.error(`[flue] Change detected: ${relPath}`);
-			rebuilder.schedule();
+			rebuilder.schedule(isEnvFile);
 		},
 	});
 
@@ -191,22 +221,30 @@ interface Rebuilder {
 	 * Schedule a rebuild. If a rebuild is already running, queues exactly one
 	 * follow-up. Multiple calls during the in-flight or queued window are
 	 * coalesced.
+	 *
+	 * `forceReload`: if any scheduled call within a debounce window passes
+	 * `true`, the resulting reload is treated as forced — the reloader is
+	 * told `buildChanged: true` even if the build wrote nothing new. This is
+	 * how env-file edits trigger a worker restart on the Cloudflare path:
+	 * the build is unchanged but the runtime needs the new env values.
 	 */
-	schedule(): void;
+	schedule(forceReload?: boolean): void;
 }
 
 function createRebuilder(buildOptions: BuildOptions, reloader: DevReloader): Rebuilder {
 	let running = false;
 	let queued = false;
+	let queuedForce = false;
+	let pendingForce = false;
 	let debounceTimer: NodeJS.Timeout | null = null;
 
-	const runOnce = async () => {
+	const runOnce = async (force: boolean) => {
 		running = true;
 		const start = Date.now();
 		console.error(`[flue] Rebuilding...`);
 		try {
 			const { changed } = await build(buildOptions);
-			await reloader.reload(changed);
+			await reloader.reload(changed || force);
 			console.error(`[flue] Reloaded in ${Date.now() - start}ms\n`);
 		} catch (err) {
 			// Don't exit the dev loop on a rebuild error — the user is editing
@@ -217,21 +255,27 @@ function createRebuilder(buildOptions: BuildOptions, reloader: DevReloader): Reb
 		} finally {
 			running = false;
 			if (queued) {
+				const nextForce = queuedForce;
 				queued = false;
-				void runOnce();
+				queuedForce = false;
+				void runOnce(nextForce);
 			}
 		}
 	};
 
 	return {
-		schedule() {
+		schedule(forceReload = false) {
+			if (forceReload) pendingForce = true;
 			if (debounceTimer) clearTimeout(debounceTimer);
 			debounceTimer = setTimeout(() => {
 				debounceTimer = null;
+				const force = pendingForce;
+				pendingForce = false;
 				if (running) {
 					queued = true;
+					if (force) queuedForce = true;
 				} else {
-					void runOnce();
+					void runOnce(force);
 				}
 			}, 150);
 		},
@@ -244,6 +288,8 @@ interface WatcherOptions {
 	workspaceDir: string;
 	outputDir: string;
 	target: 'node' | 'cloudflare';
+	/** Absolute paths of env files to watch. Empty means none. */
+	envFiles: string[];
 	onChange: (relPath: string) => void;
 }
 
@@ -266,7 +312,7 @@ interface WatcherHandle {
  *   - editor backup/swap suffixes
  */
 function createWatcher(options: WatcherOptions): WatcherHandle {
-	const { workspaceDir, outputDir, target, onChange } = options;
+	const { workspaceDir, outputDir, target, envFiles, onChange } = options;
 	const watchers: fs.FSWatcher[] = [];
 
 	const isIgnoredPath = (relPath: string): boolean => {
@@ -317,6 +363,20 @@ function createWatcher(options: WatcherOptions): WatcherHandle {
 		}
 	}
 
+	// Watch user-supplied env files. Edits trigger a full reload (respawn
+	// child for Node; dispose+restart worker for Cloudflare) since env
+	// values affect runtime behavior the bundler can't see. Path passed to
+	// onChange is the absolute path so the reload-decision code can match
+	// against the resolved set deterministically.
+	for (const envPath of envFiles) {
+		try {
+			const w = fs.watch(envPath, () => onChange(envPath));
+			watchers.push(w);
+		} catch {
+			// Best-effort; continue without this watch.
+		}
+	}
+
 	return {
 		close() {
 			for (const w of watchers) {
@@ -337,11 +397,13 @@ class NodeReloader implements DevReloader {
 	private readonly serverPath: string;
 	private readonly outputDir: string;
 	private readonly port: number;
+	private readonly envFiles: string[];
 	url: string;
 
-	constructor(opts: { outputDir: string; port: number }) {
+	constructor(opts: { outputDir: string; port: number; envFiles: string[] }) {
 		this.outputDir = opts.outputDir;
 		this.port = opts.port;
+		this.envFiles = opts.envFiles;
 		this.serverPath = path.join(this.outputDir, 'dist', 'server.mjs');
 		this.url = `http://localhost:${this.port}`;
 	}
@@ -384,6 +446,11 @@ class NodeReloader implements DevReloader {
 	// ── Internals ──
 
 	private async spawnAndWait(): Promise<void> {
+		// Compose env: parsed env-file values first, then process.env on top so
+		// shell-set vars win over file values (matches dotenv-cli convention),
+		// then explicit Flue overrides last. Re-read env files on every spawn
+		// so mid-session edits to the file are picked up on the next reload.
+		const fromFiles = parseEnvFiles(this.envFiles);
 		const child = spawn('node', [this.serverPath], {
 			stdio: ['ignore', 'pipe', 'pipe'],
 			cwd: this.outputDir,
@@ -391,6 +458,7 @@ class NodeReloader implements DevReloader {
 			// HTTP (useful when iterating on CI-only agents locally). Mirrors
 			// the behavior of `flue run`.
 			env: {
+				...fromFiles,
 				...process.env,
 				PORT: String(this.port),
 				FLUE_MODE: 'local',
@@ -479,6 +547,7 @@ class NodeReloader implements DevReloader {
 async function createCloudflareReloader(opts: {
 	outputDir: string;
 	port: number;
+	envFiles: string[];
 }): Promise<DevReloader> {
 	let wrangler: typeof import('wrangler');
 	try {
@@ -502,15 +571,17 @@ class CloudflareReloader implements DevReloader {
 	private readonly outputDir: string;
 	private readonly port: number;
 	private readonly configPath: string;
+	private readonly envFiles: string[];
 	url?: string;
 
 	constructor(
 		wrangler: typeof import('wrangler'),
-		opts: { outputDir: string; port: number },
+		opts: { outputDir: string; port: number; envFiles: string[] },
 	) {
 		this.wrangler = wrangler;
 		this.outputDir = opts.outputDir;
 		this.port = opts.port;
+		this.envFiles = opts.envFiles;
 		this.configPath = path.join(this.outputDir, 'dist', 'wrangler.jsonc');
 	}
 
@@ -539,6 +610,11 @@ class CloudflareReloader implements DevReloader {
 	 * baked into the entry).
 	 */
 	shouldRebuildOn(relPath: string): boolean {
+		// Env-file changes come through the watcher as absolute paths — match
+		// directly against our resolved set rather than the workspace-relative
+		// suffix logic used for source files.
+		if (this.envFiles.includes(relPath)) return true;
+
 		const normalized = relPath.replace(/\\/g, '/');
 		if (
 			normalized === 'wrangler.jsonc' ||
@@ -608,8 +684,21 @@ class CloudflareReloader implements DevReloader {
 		// guaranteed to have `nodejs_compat` set with a compat date that
 		// resolves to v2 mode. Reading the config to compute it would just
 		// re-derive the constant on every reload.
+		// Always pass an explicit `envFiles` array (even if empty). Per
+		// wrangler's docs: "If `envFiles` is defined, only the files in the
+		// array will be considered for loading local dev variables." So an
+		// explicit `[]` fully disables wrangler's auto-discovery (which by
+		// default would hunt in the dist/ dir for `.dev.vars` and `.env*` —
+		// the wrong place since our config lives there but the user's env
+		// files don't).
+		//
+		// Users opt into env loading via `--env <path>` on the CLI.
+		// Paths come in as absolute (resolved + existence-checked at the
+		// `dev()` entry point), so wrangler's "relative to config dir"
+		// resolution doesn't apply.
 		this.worker = await this.wrangler.unstable_startWorker({
 			config: this.configPath,
+			envFiles: this.envFiles,
 			build: {
 				nodejsCompatMode: 'v2',
 			},
@@ -649,6 +738,45 @@ class CloudflareReloader implements DevReloader {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+/**
+ * Resolve and validate a list of env-file paths. Returns absolute paths.
+ *
+ * Throws a friendly `[flue]`-prefixed error if any path doesn't exist. The
+ * goal of `--env` is explicitness — silent skip on a typo would defeat
+ * the purpose.
+ */
+export function resolveEnvFiles(envFiles: string[] | undefined, cwd: string): string[] {
+	if (!envFiles || envFiles.length === 0) return [];
+	return envFiles.map((p) => {
+		const abs = path.isAbsolute(p) ? p : path.resolve(cwd, p);
+		if (!fs.existsSync(abs)) {
+			throw new Error(`[flue] --env points at a path that doesn't exist: ${p}`);
+		}
+		return abs;
+	});
+}
+
+/**
+ * Parse one or more `.env`-format files and return their merged contents.
+ * Later files override earlier files on key collision.
+ *
+ * Uses Node's built-in `util.parseEnv` (Node 20.6+; Flue requires Node 22+).
+ * No `dotenv` package needed.
+ *
+ * Parse-only — doesn't touch `process.env`. Caller composes with
+ * `process.env` as needed (typical pattern: spread file vars first, then
+ * `process.env`, so shell-set values win).
+ */
+export function parseEnvFiles(absolutePaths: string[]): Record<string, string> {
+	const merged: Record<string, string> = {};
+	for (const p of absolutePaths) {
+		const content = fs.readFileSync(p, 'utf-8');
+		const parsed = parseEnv(content) as Record<string, string>;
+		Object.assign(merged, parsed);
+	}
+	return merged;
+}
 
 async function waitForHealth(baseUrl: string, timeoutMs: number): Promise<boolean> {
 	const start = Date.now();
