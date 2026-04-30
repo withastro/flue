@@ -43,19 +43,33 @@ export interface DoBinding {
 	name: string;
 }
 
-/** A migration entry Flue contributes (SQLite class creation for its agents). */
+/**
+ * A Cloudflare Durable Object migration entry.
+ *
+ * Models the union of all five migration shapes Cloudflare supports
+ * (create / create-kv / delete / rename / transfer). Flue itself only ever
+ * emits `new_sqlite_classes`; the other shapes are accepted in user-authored
+ * migrations and passed through untouched.
+ *
+ * See: https://developers.cloudflare.com/durable-objects/reference/durable-objects-migrations/
+ */
 export interface Migration {
 	tag: string;
-	new_sqlite_classes: string[];
+	new_sqlite_classes?: string[];
+	new_classes?: string[];
+	deleted_classes?: string[];
+	renamed_classes?: Array<{ from: string; to: string }>;
+	transferred_classes?: Array<{ from: string; from_script: string; to: string }>;
 }
 
 /**
  * Everything Flue contributes to the wrangler config.
  *
  * Flue contributes only the per-agent DO bindings (one per webhook agent) and
- * their migration entry. Everything else — user Durable Object bindings (e.g.
- * Sandbox), container entries, migrations for user DO classes — belongs to the
- * user's own wrangler.jsonc and is passed through untouched during merge.
+ * a per-class migration entry for each net-new agent. Everything else — user
+ * Durable Object bindings (e.g. Sandbox), container entries, migrations for
+ * user DO classes, manual rename/delete migrations — belongs to the user's own
+ * wrangler.jsonc and is passed through untouched during merge.
  */
 export interface FlueAdditions {
 	/** Fallback name if the user didn't set one in their wrangler config. */
@@ -64,8 +78,15 @@ export interface FlueAdditions {
 	main: string;
 	/** Flue's per-agent DO bindings. Merged into durable_objects.bindings by `name`. */
 	doBindings: DoBinding[];
-	/** Flue's migration entry (per-agent classes). Appended only if no existing entry has the same tag. */
-	migration: Migration;
+	/**
+	 * Migrations Flue wants to add for net-new agent classes. Each entry is
+	 * appended to the merged migrations array iff a migration with the same
+	 * `tag` is not already present. Order is preserved.
+	 *
+	 * Computed by {@link computeFlueMigrations} from the current set of agent
+	 * class names + the user's existing migrations.
+	 */
+	migrations: Migration[];
 }
 
 // ─── Reading user config ────────────────────────────────────────────────────
@@ -199,6 +220,102 @@ export function validateUserWranglerConfig(config: Record<string, unknown>): voi
 	}
 }
 
+// ─── Migration planning ────────────────────────────────────────────────────
+
+/**
+ * Compute Flue's migration contributions for a build.
+ *
+ * Algorithm:
+ *
+ * 1. Walk every existing migration entry in the user's config and union the
+ *    SQLite-backed classes it declares — across `new_sqlite_classes` and
+ *    the `to` side of `renamed_classes` / `transferred_classes`. The
+ *    resulting set is "already-declared": every SQLite-backed class
+ *    Cloudflare's runtime currently knows about for this Worker.
+ *    `deleted_classes` and the `from` side of renames are subtracted, since
+ *    they've been explicitly removed.
+ *
+ *    KV-backed classes (`new_classes`) are deliberately NOT added to the
+ *    "declared" set. Flue agents always need a SQLite-backed class for
+ *    session storage; if a user happens to have a KV-backed DO with the
+ *    same name as a Flue agent, we still need to emit our SQLite migration.
+ *    The deploy itself will then surface a clear "class already defined"
+ *    error from Cloudflare rather than silently shipping a broken worker
+ *    where the agent has no working session store.
+ * 2. For each class in `currentClasses` that isn't already-declared, emit a
+ *    deterministic per-class migration: one tag, one class. Per-class tags
+ *    are essential because Cloudflare migration tags are immutable once
+ *    deployed — packing all classes under a single shared tag (the original
+ *    bug in issue #15) means new classes added on a redeploy are silently
+ *    ignored. With per-class tags, every redeploy is a no-op except for
+ *    the truly net-new classes.
+ *
+ * Renames and deletes are not auto-detected. If an agent file disappears,
+ * Flue silently emits no migration for it — Cloudflare's runtime keeps the
+ * orphaned class data alive but unbound, and the user can clean up (or
+ * rename to recover) by adding a manual `renamed_classes` / `deleted_classes`
+ * migration to their own wrangler.jsonc. Auto-emitting `deleted_classes`
+ * would destroy stored DO data on every accidental file removal, which is
+ * never the right default.
+ *
+ * Returned in alphabetical order so a regenerated `dist/wrangler.jsonc` is
+ * byte-identical across machines and CI runs.
+ *
+ * Pure function: takes the current class list + the user's existing
+ * migrations array (typically `userConfig.migrations` straight from
+ * wrangler's reader) and returns the migrations to append. Doesn't read or
+ * write any files.
+ */
+export function computeFlueMigrations(
+	currentClasses: string[],
+	userMigrations: unknown,
+): Migration[] {
+	const migrationsArray = Array.isArray(userMigrations) ? userMigrations : [];
+
+	const declared = new Set<string>();
+
+	for (const raw of migrationsArray) {
+		if (typeof raw !== 'object' || raw === null) continue;
+		const m = raw as Record<string, unknown>;
+
+		const collectClassList = (key: string): string[] => {
+			const v = m[key];
+			return Array.isArray(v) ? v.filter((c): c is string => typeof c === 'string') : [];
+		};
+
+		// `new_classes` (KV-backed) is intentionally not unioned in — see
+		// algorithm note in the docstring.
+		for (const c of collectClassList('new_sqlite_classes')) declared.add(c);
+		for (const c of collectClassList('deleted_classes')) declared.delete(c);
+
+		// Renames: subtract `from`, add `to`.
+		const renamed = Array.isArray(m.renamed_classes) ? m.renamed_classes : [];
+		for (const r of renamed) {
+			if (typeof r !== 'object' || r === null) continue;
+			const obj = r as Record<string, unknown>;
+			if (typeof obj.from === 'string') declared.delete(obj.from);
+			if (typeof obj.to === 'string') declared.add(obj.to);
+		}
+
+		// Transfers: add `to` (the source class lives in a different Worker,
+		// so subtracting `from` here would be wrong).
+		const transferred = Array.isArray(m.transferred_classes) ? m.transferred_classes : [];
+		for (const t of transferred) {
+			if (typeof t !== 'object' || t === null) continue;
+			const obj = t as Record<string, unknown>;
+			if (typeof obj.to === 'string') declared.add(obj.to);
+		}
+	}
+
+	const additions: Migration[] = [];
+	for (const c of [...currentClasses].sort()) {
+		if (!declared.has(c)) {
+			additions.push({ tag: `flue-class-${c}`, new_sqlite_classes: [c] });
+		}
+	}
+	return additions;
+}
+
 // ─── Merging ────────────────────────────────────────────────────────────────
 
 /**
@@ -267,10 +384,11 @@ export function mergeFlueAdditions(
 		bindings: [...existingBindings, ...flueBindingsToAdd],
 	};
 
-	// migrations: append Flue's migration entry only if no existing entry has
-	// the same tag. Migration order matters to wrangler, so we append rather
-	// than prepend — user's historical migrations come first, Flue's new
-	// tagged entry comes last.
+	// migrations: append Flue's per-class migration entries, in order, skipping
+	// any whose tag is already present. Migration order matters to wrangler
+	// (Cloudflare applies them sequentially), so we append rather than
+	// prepend — user's historical migrations come first, Flue's new tagged
+	// entries come last.
 	const existingMigrations = Array.isArray(merged.migrations)
 		? (merged.migrations as unknown[])
 		: [];
@@ -281,8 +399,11 @@ export function mergeFlueAdditions(
 			.filter((t): t is string => typeof t === 'string'),
 	);
 	const migrationsOut = [...existingMigrations];
-	if (!existingMigrationTags.has(additions.migration.tag)) {
-		migrationsOut.push(additions.migration);
+	for (const migration of additions.migrations) {
+		if (!existingMigrationTags.has(migration.tag)) {
+			migrationsOut.push(migration);
+			existingMigrationTags.add(migration.tag);
+		}
 	}
 	merged.migrations = migrationsOut;
 

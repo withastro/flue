@@ -9,6 +9,7 @@ import {
 	writeDeployRedirectIfMissing,
 	detectSandboxBindings,
 	assertSandboxPackageInstalled,
+	computeFlueMigrations,
 	type FlueAdditions,
 } from './cloudflare-wrangler-merge.ts';
 
@@ -444,6 +445,29 @@ export default {
 		}));
 		const flueSqliteClasses = flueBindings.map((b) => b.class_name);
 
+		// Read and validate the user's wrangler config (if any). User's file
+		// lives at outputDir and is never modified; the composed output is
+		// written to dist/wrangler.jsonc. Wrangler's reader normalizes
+		// relative paths (e.g. containers[].image) to absolute paths against
+		// the user's config dir, so the merged file stays correct after we
+		// write it to dist/.
+		const { config: userConfig, path: userConfigPath } = await this.getUserConfig(
+			ctx.outputDir,
+		);
+		if (userConfigPath) {
+			console.log(`[flue] Merging with user wrangler config: ${userConfigPath}`);
+		}
+		validateUserWranglerConfig(userConfig);
+
+		// Compute the migrations Flue wants to add for net-new agent classes.
+		// Cloudflare migration tags are immutable once deployed, so we emit
+		// one tag per class — that lets every redeploy be a no-op for already
+		// deployed classes and a single-tag append for the truly net-new ones.
+		// Renames and deletes are the user's responsibility (manual entries
+		// in their wrangler.jsonc); Flue never auto-emits destructive
+		// migrations.
+		const flueMigrations = computeFlueMigrations(flueSqliteClasses, userConfig.migrations);
+
 		// Flue's contributions to the wrangler config. Everything else in the
 		// user's wrangler.jsonc passes through untouched during merge.
 		// Derive the default worker name from outputDir (typically the project
@@ -457,25 +481,8 @@ export default {
 			// `wrangler dev` / `wrangler deploy` time. We don't pre-bundle.
 			main: '_entry.ts',
 			doBindings: flueBindings,
-			migration: {
-				tag: 'flue-v1',
-				new_sqlite_classes: flueSqliteClasses,
-			},
+			migrations: flueMigrations,
 		};
-
-		// Read and validate the user's wrangler config (if any), then merge
-		// Flue's additions in. User's file lives at outputDir and is never
-		// modified; the composed output is written to dist/wrangler.jsonc.
-		// Wrangler's reader normalizes relative paths (e.g. containers[].image)
-		// to absolute paths against the user's config dir, so the merged file
-		// stays correct after we write it to dist/.
-		const { config: userConfig, path: userConfigPath } = await this.getUserConfig(
-			ctx.outputDir,
-		);
-		if (userConfigPath) {
-			console.log(`[flue] Merging with user wrangler config: ${userConfigPath}`);
-		}
-		validateUserWranglerConfig(userConfig);
 
 		// Detect user-declared Sandbox bindings and verify the @cloudflare/sandbox
 		// package is available before esbuild tries to resolve it. Log each
@@ -539,3 +546,4 @@ function agentClassName(name: string): string {
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join('');
 }
+
