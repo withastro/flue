@@ -8,7 +8,7 @@
 	// the generated Worker bundle.
 	"$schema": "https://workers.cloudflare.com/schema/wrangler.json",
 	"name": "assistant",
-	"compatibility_date": "2026-04-17",
+	"compatibility_date": "2025-06-01",
 	"compatibility_flags": ["nodejs_compat"],
 	"durable_objects": {
 		"bindings": [

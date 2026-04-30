@@ -188,7 +188,7 @@ Add the R2 bucket to your project's `wrangler.jsonc` (at the root of your projec
 ```jsonc
 {
   "name": "my-support-agent",
-  "compatibility_date": "2025-06-01",
+  "compatibility_date": "2026-04-29",
   "compatibility_flags": ["nodejs_compat"],
   "r2_buckets": [
     {
@@ -245,7 +245,7 @@ Flue automates one piece: **any DO binding whose `class_name` contains `Sandbox`
 {
   "$schema": "https://workers.cloudflare.com/schema/wrangler.json",
   "name": "my-agent",
-  "compatibility_date": "2025-06-01",
+  "compatibility_date": "2026-04-29",
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
     "bindings": [{ "class_name": "Sandbox", "name": "Sandbox" }]

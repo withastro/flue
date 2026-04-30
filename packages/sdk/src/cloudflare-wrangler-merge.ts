@@ -20,7 +20,7 @@ import { parse as parseJsonc, type ParseError } from 'jsonc-parser';
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 /** Minimum compatibility_date Flue supports. */
-const MIN_COMPATIBILITY_DATE = '2024-09-23';
+const MIN_COMPATIBILITY_DATE = '2026-04-01';
 
 /** compatibility_flag Flue requires for pi-ai's process.env-based API key lookup. */
 const REQUIRED_COMPAT_FLAG = 'nodejs_compat';
