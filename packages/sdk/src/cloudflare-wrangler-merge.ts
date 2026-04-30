@@ -20,7 +20,7 @@ import { parse as parseJsonc, type ParseError } from 'jsonc-parser';
 // ─── Constants ──────────────────────────────────────────────────────────────
 
 /** Minimum compatibility_date Flue supports. */
-const MIN_COMPATIBILITY_DATE = '2024-04-03';
+const MIN_COMPATIBILITY_DATE = '2024-09-23';
 
 /** compatibility_flag Flue requires for pi-ai's process.env-based API key lookup. */
 const REQUIRED_COMPAT_FLAG = 'nodejs_compat';
@@ -158,7 +158,7 @@ export function validateUserWranglerConfig(config: Record<string, unknown>): voi
 		if (userDate < MIN_COMPATIBILITY_DATE) {
 			throw new Error(
 				`[flue] Your wrangler config's "compatibility_date" is "${userDate}". ` +
-					`Flue requires at least "${MIN_COMPATIBILITY_DATE}" for SQLite-backed Durable Object support and nodejs_compat v2. ` +
+					`Flue requires at least "${MIN_COMPATIBILITY_DATE}" for SQLite-backed Durable Object support, nodejs_compat v2, and AsyncLocalStorage. ` +
 					`Bump the date (set it to today unless you have a specific reason).`,
 			);
 		}

@@ -6,5 +6,10 @@ export { cfSandboxToSessionEnv } from './cf-sandbox.ts';
 
 export { store } from './session-store.ts';
 
-export { setCloudflareContext, getCloudflareContext, clearCloudflareContext } from './context.ts';
+export {
+	runWithCloudflareContext,
+	setCloudflareContext,
+	getCloudflareContext,
+	clearCloudflareContext,
+} from './context.ts';
 export type { CloudflareContext } from './context.ts';

@@ -49,6 +49,15 @@ export class CloudflarePlugin implements BuildPlugin {
   async onRequest(request) {
     return handleAgentRequest(request, this, ${JSON.stringify(a.name)}, ${handlerVar});
   }
+
+  async onFiberRecovered(ctx) {
+    if (ctx.name?.startsWith('flue:')) {
+      return handleFlueFiberRecovered(ctx, this, ${JSON.stringify(a.name)});
+    }
+    if (typeof super.onFiberRecovered === 'function') {
+      return super.onFiberRecovered(ctx);
+    }
+  }
 }`;
 			})
 			.join('\n\n');
@@ -69,7 +78,7 @@ import { Agent, routeAgentRequest } from 'agents';
 import { Bash, InMemoryFs } from 'just-bash';
 import { getModel } from '@mariozechner/pi-ai';
 import { createFlueContext, InMemorySessionStore, bashFactoryToSessionEnv } from '@flue/sdk/internal';
-import { setCloudflareContext, clearCloudflareContext, cfSandboxToSessionEnv } from '@flue/sdk/cloudflare';
+import { runWithCloudflareContext, cfSandboxToSessionEnv } from '@flue/sdk/cloudflare';
 
 ${agentImports}
 
@@ -199,6 +208,56 @@ function createContextForRequest(id, payload, doInstance) {
   });
 }
 
+function runWithInstanceContext(doInstance, fn) {
+  return runWithCloudflareContext(
+    { env: doInstance.env, agentInstance: doInstance, storage: doInstance.ctx.storage },
+    fn,
+  );
+}
+
+function runHandlerWithKeepAlive(doInstance, ctx, handler) {
+  return runWithInstanceContext(doInstance, () => {
+    if (typeof doInstance.keepAliveWhile === 'function') {
+      return doInstance.keepAliveWhile(() => handler(ctx));
+    }
+    return handler(ctx);
+  });
+}
+
+function startWebhookFiber(doInstance, requestId, agentName, id, payload, handler) {
+  const run = async (fiber) => {
+    fiber?.stash?.({
+      version: 1,
+      kind: 'webhook',
+      agentName,
+      id,
+      requestId,
+      phase: 'running',
+      startedAt: Date.now(),
+    });
+
+    const ctx = createContextForRequest(id, payload, doInstance);
+    return runWithInstanceContext(doInstance, async () => {
+      try {
+        return await handler(ctx);
+      } finally {
+        ctx.setEventCallback(undefined);
+      }
+    });
+  };
+
+  if (typeof doInstance.runFiber === 'function') {
+    return doInstance.runFiber('flue:webhook:' + requestId, run);
+  }
+
+  return run(undefined);
+}
+
+async function handleFlueFiberRecovered(ctx, _doInstance, agentName) {
+  if (!ctx.name || !ctx.name.startsWith('flue:')) return;
+  console.warn('[flue] Cloudflare fiber interrupted:', agentName, ctx.name, ctx.snapshot ?? null);
+}
+
 // ─── Shared Request Handler ────────────────────────────────────────────────
 
 async function handleAgentRequest(request, doInstance, agentName, handler) {
@@ -213,9 +272,6 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
     payload = {};
   }
 
-  // Set up Cloudflare context for runtime primitives
-  setCloudflareContext({ env: doInstance.env, agentInstance: doInstance, storage: doInstance.ctx.storage });
-
   const accept = request.headers.get('accept') || '';
   const isWebhook = request.headers.get('x-webhook') === 'true';
   const isSSE = accept.includes('text/event-stream') && !isWebhook;
@@ -224,17 +280,12 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
     // Fire-and-forget (webhook mode)
     if (isWebhook) {
       const requestId = crypto.randomUUID();
-      const ctx = createContextForRequest(id, payload, doInstance);
-      handler(ctx).then(
+      startWebhookFiber(doInstance, requestId, agentName, id, payload, handler).then(
         (result) => {
-          ctx.setEventCallback(undefined);
-          clearCloudflareContext();
           console.log('[flue] Webhook handler complete:', agentName,
             result !== undefined ? JSON.stringify(result) : '(no return)');
         },
         (err) => {
-          ctx.setEventCallback(undefined);
-          clearCloudflareContext();
           console.error('[flue] Webhook handler error:', agentName, err);
         },
       );
@@ -269,7 +320,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
 
       (async () => {
         try {
-          const result = await handler(ctx);
+          const result = await runHandlerWithKeepAlive(doInstance, ctx, handler);
           if (!isIdle) {
             await writeSSE({ type: 'idle' }, 'idle');
           }
@@ -287,7 +338,6 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
           }
         } finally {
           ctx.setEventCallback(undefined);
-          clearCloudflareContext();
           await writer.close();
         }
       })();
@@ -303,15 +353,16 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
 
     // Sync mode (default)
     const ctx = createContextForRequest(id, payload, doInstance);
-    const result = await handler(ctx);
-    ctx.setEventCallback(undefined);
-    clearCloudflareContext();
-    return new Response(
-      JSON.stringify({ result: result !== undefined ? result : null }),
-      { headers: { 'content-type': 'application/json' } },
-    );
+    try {
+      const result = await runHandlerWithKeepAlive(doInstance, ctx, handler);
+      return new Response(
+        JSON.stringify({ result: result !== undefined ? result : null }),
+        { headers: { 'content-type': 'application/json' } },
+      );
+    } finally {
+      ctx.setEventCallback(undefined);
+    }
   } catch (err) {
-    clearCloudflareContext();
     console.error('[flue] Agent error:', agentName, err);
     return new Response(
       JSON.stringify({ error: String(err) }),
