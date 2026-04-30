@@ -36,6 +36,7 @@ export const triggers = { webhook: true };
 
 // The agent handler. Where the orchestration of the agent lives.
 export default async function ({ init, payload }: FlueContext) {
+  // `agent` -- Your initialized agent runtime including sandbox, tools, skills, etc.
   const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
   const session = await agent.session();
 
@@ -113,7 +114,7 @@ export default async function ({ init, payload }: FlueContext) {
   // discovered automatically from the workspace directory.
   //
   // `model` sets the default model for every prompt/skill call in this
-  // session. Override per-call with `{ model: '...' }` on prompt()/skill().
+  // agent. Override per-call with `{ model: '...' }` on prompt()/skill().
   const agent = await init({
     sandbox: 'local',
     model: 'anthropic/claude-opus-4-7',
@@ -178,6 +179,8 @@ export default async function ({ init, payload, env }: FlueContext) {
   await setup.shell(`git clone ${payload.repo} /workspace/project`);
   await setup.shell('npm install', { cwd: '/workspace/project' });
 
+  // Start a second agent in the cloned repo. It shares the same sandbox, but
+  // discovers AGENTS.md and skills from /workspace/project.
   const projectAgent = await init({
     id: 'project',
     sandbox: daytona(sandbox),
@@ -191,6 +194,113 @@ export default async function ({ init, payload, env }: FlueContext) {
   // and then stream back the progress and final results.
   return await session.prompt(payload.prompt);
 }
+```
+
+### Remote MCP Tools
+
+MCP is available as a runtime tool adapter. Connect to a remote MCP server in trusted code, pass its tools to `init()`, and keep secrets in `env` instead of filesystem context or prompts.
+
+```ts
+// .flue/agents/assistant.ts
+import { connectMcpServer, type FlueContext } from '@flue/sdk/client';
+
+export const triggers = { webhook: true };
+
+export default async function ({ init, payload, env }: FlueContext) {
+  const github = await connectMcpServer('github', {
+    url: 'https://mcp.github.com/mcp',
+    headers: {
+      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
+    },
+  });
+
+  try {
+    const agent = await init({
+      model: 'anthropic/claude-sonnet-4-6',
+      tools: github.tools,
+    });
+    const session = await agent.session();
+    return await session.prompt(payload.prompt);
+  } finally {
+    await github.close();
+  }
+}
+```
+
+`connectMcpServer()` defaults to modern streamable HTTP. For legacy SSE servers, pass `transport: 'sse'`. Flue does not auto-detect transports, spawn local stdio MCP servers, or handle OAuth callbacks in this first version.
+
+## Agents And Sessions
+
+Every agent invocation runs inside an initialized agent runtime. For HTTP agents, the agent ID is the last path segment:
+
+```txt
+POST /agents/<agent-name>/<id>
+```
+
+By default, `agent.session()` opens the default session for that agent ID. Reuse the same agent ID to continue the same default conversation. Use a new agent ID to start fresh.
+
+```bash
+# Start a conversation
+curl http://localhost:8787/agents/hello/session-abc \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Alice"}'
+
+# Continue that conversation
+curl http://localhost:8787/agents/hello/session-abc \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Alice"}'
+
+# Start a separate conversation
+curl http://localhost:8787/agents/hello/session-xyz \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Alice"}'
+```
+
+Agents own sandbox state such as files written during a run. Sessions persist message history and conversation metadata inside an agent. On Cloudflare, session data is backed by Durable Objects and survives across requests. On Node.js, sessions are stored in memory by default unless you provide a custom store.
+
+In production, generate a stable agent ID for the sandbox/runtime scope you want to preserve. Use `agent.session(threadId)` when you need multiple conversations inside the same agent.
+
+### Tasks
+
+Use `session.task()` to run a focused, one-shot child agent in a detached session. Tasks share the same sandbox/filesystem, but get their own message history and discover `AGENTS.md` plus `.agents/skills/` from their working directory. The same `task` tool is also available to the LLM during `prompt()` and `skill()` calls, so the agent can delegate parallel research or exploration work itself.
+
+```ts
+const session = await agent.session();
+
+const research = await session.task('Research the auth flow and summarize the key files.', {
+  cwd: '/workspace/project',
+  role: 'researcher',
+});
+
+const answer = await session.prompt(
+  `Use this research to draft the implementation plan:\n\n${research.text}`,
+);
+```
+
+Roles can be set at the agent, session, or call level. Precedence is `call role > session role > agent role`. Role instructions are applied as call-scoped system prompt overlays, not injected into the persisted user message history.
+
+```ts
+const agent = await init({ model: 'anthropic/claude-sonnet-4-6', role: 'coder' });
+const session = await agent.session('review-thread', { role: 'reviewer' });
+
+await session.prompt('Review the latest changes.'); // uses reviewer
+await session.task('Research related issues.', { role: 'researcher' }); // uses researcher
+```
+
+### Custom Virtual Sandboxes
+
+For most agents, use the built-in virtual sandbox or `sandbox: 'local'`. If you need to customize just-bash directly, pass a Bash factory. The factory must return a fresh Bash-like runtime each time; share the filesystem object in the closure to persist files across sessions and prompts.
+
+```ts
+import { Bash, InMemoryFs } from 'just-bash';
+
+const fs = new InMemoryFs();
+
+const agent = await init({
+  sandbox: () => new Bash({ fs, cwd: '/workspace', python: true }),
+  model: 'anthropic/claude-sonnet-4-6',
+});
+const session = await agent.session();
 ```
 
 ## Running Agents
