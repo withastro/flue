@@ -104,7 +104,32 @@ npx flue run translate --target node --id test-1 --env .env \
   --payload '{"text": "Hello world", "language": "French"}'
 ```
 
-## Skills and roles
+## Roles
+
+Roles shape agent behavior across prompts. They live alongside your agents — under `./roles/` (or `./.flue/roles/` if you use the `.flue/` layout) — and ship with the deployed server:
+
+`.flue/roles/analyst.md`:
+
+```markdown
+---
+description: A data analyst focused on extracting insights
+---
+
+You are a data analyst. Focus on quantitative insights, trends, and
+actionable takeaways. Be precise with numbers and cite your sources.
+```
+
+Use a role by passing its name to `prompt()`:
+
+```typescript
+const analysis = await session.prompt("Analyze this quarter's metrics", {
+  role: 'analyst',
+});
+```
+
+## Sandbox context
+
+The agent reads `AGENTS.md` and skills from its sandbox at runtime. With `sandbox: 'local'`, that's your real project root, so any files there are visible. With the default virtual sandbox the filesystem starts empty — you'd set up context via `session.shell()` or skip these features for simple prompt-and-response agents.
 
 **Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
 
@@ -120,35 +145,16 @@ Given the text provided in the arguments, produce a concise summary.
 Focus on the key points and keep it to 2-3 sentences.
 ```
 
-**Roles** shape agent behavior across prompts. They live in `.flue/roles/`:
+**`AGENTS.md`** at the root of the sandbox is the agent's system prompt — it provides global context about the project.
 
-`.flue/roles/analyst.md`:
-
-```markdown
----
-description: A data analyst focused on extracting insights
----
-
-You are a data analyst. Focus on quantitative insights, trends, and
-actionable takeaways. Be precise with numbers and cite your sources.
-```
-
-The **`AGENTS.md`** file at the root of your workspace is the agent's system prompt — it provides global context about the project. Flue discovers this file automatically from the sandbox's working directory. With `sandbox: 'local'`, that's your real project root. With the default virtual sandbox, the filesystem starts empty so there's nothing to discover — you'd set up context via `session.shell()` or skip it entirely for simple prompt-and-response agents.
-
-Use skills and roles in your agent:
+Call a skill from your agent:
 
 ```typescript
 import * as v from 'valibot';
 
-// Run a skill with arguments and a typed result
 const summary = await session.skill('summarize', {
   args: { text: document },
   result: v.object({ summary: v.string() }),
-});
-
-// Use a role to shape behavior
-const analysis = await session.prompt("Analyze this quarter's metrics", {
-  role: 'analyst',
 });
 ```
 

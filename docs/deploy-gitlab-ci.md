@@ -202,9 +202,36 @@ export default async function ({ init, payload }: FlueContext) {
 
 The agent can now use `glab` to interact with the GitLab API through the command — but it never has access to the `GITLAB_API_TOKEN` itself. If the agent tries to run `glab` outside of a prompt where it was granted, the command is blocked.
 
-### Skills and roles
+### Roles
 
-**Skills** are reusable agent tasks defined as markdown files. They live in `.agents/skills/` and give the agent a focused instruction set for a specific job:
+Roles are agent personas that shape behavior across prompts. They live alongside your agents under `./.flue/roles/` and ship with the deployed agent:
+
+`.flue/roles/reviewer.md`:
+
+```markdown
+---
+description: A careful code reviewer focused on correctness and security
+---
+
+You are a senior code reviewer. Focus on correctness, security implications,
+and adherence to the project's coding standards. Be direct and specific in
+your feedback.
+```
+
+Use a role by passing its name to `prompt()`:
+
+```typescript
+const review = await session.prompt(`Review this MR:\n${diff}`, {
+  role: 'reviewer',
+  result: v.object({ approved: v.boolean(), comments: v.array(v.string()) }),
+});
+```
+
+### Sandbox context
+
+The agent reads `AGENTS.md` and skills from its sandbox at runtime. CI agents typically use `sandbox: 'local'`, which mounts the runner's checkout — so any files in your repo are visible automatically.
+
+**Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
 
 `.agents/skills/triage/SKILL.md`:
 
@@ -223,32 +250,7 @@ Given the issue IID and project ID in the arguments:
 5. If the fix is straightforward, apply it and push a branch
 ```
 
-**Roles** are agent personas that shape behavior across prompts. They live in `.flue/roles/`:
-
-`.flue/roles/reviewer.md`:
-
-```markdown
----
-description: A careful code reviewer focused on correctness and security
----
-
-You are a senior code reviewer. Focus on correctness, security implications,
-and adherence to the project's coding standards. Be direct and specific in
-your feedback.
-```
-
-Use a role by passing it to `prompt()`:
-
-```typescript
-const review = await session.prompt(`Review this MR:\n${diff}`, {
-  role: 'reviewer',
-  result: v.object({ approved: v.boolean(), comments: v.array(v.string()) }),
-});
-```
-
-### The AGENTS.md file
-
-`AGENTS.md` at the root of your workspace is the agent's system prompt — it provides global context about the project. When using `sandbox: 'local'`, Flue discovers this file automatically from the workspace directory:
+**`AGENTS.md`** at the root of your workspace is the agent's system prompt — it provides global context about the project:
 
 ```markdown
 You are a helpful assistant working on the my-project codebase.

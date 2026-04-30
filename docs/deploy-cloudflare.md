@@ -113,6 +113,30 @@ curl http://localhost:3583/agents/translate/test-1 \
 
 `flue run` starts the generated server in Node.js, so it only supports `--target node`. Cloudflare builds use Worker-only runtime modules — `flue dev --target cloudflare` is the equivalent for testing them locally.
 
+## Roles
+
+Roles shape agent behavior across prompts. They live alongside your agents — under `./roles/` (or `./.flue/roles/` if you use the `.flue/` layout) — and ship with your deployed worker:
+
+`.flue/roles/triager.md`:
+
+```markdown
+---
+description: A support agent that triages customer requests
+---
+
+You are a support triager. Search the knowledge base thoroughly before
+responding. Always cite the specific articles you referenced. Be empathetic
+but concise.
+```
+
+Use a role by passing its name to `prompt()`:
+
+```typescript
+const response = await session.prompt('Help me reset my password', {
+  role: 'triager',
+});
+```
+
 ## Using the sandbox
 
 By default, the virtual sandbox starts empty — no files, no skills, no context. This is fine for stateless prompt-and-response agents like the translator above. But many agents need files to work with.
@@ -344,7 +368,9 @@ When deploying to Cloudflare, Flue uses Durable Objects to automatically persist
 
 This is built in when you deploy with `--target cloudflare`. No extra configuration needed.
 
-## Skills and roles
+## Sandbox context
+
+The agent reads `AGENTS.md` and skills from its sandbox at runtime — they live wherever your sandbox's working directory is.
 
 **Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
 
@@ -360,34 +386,23 @@ Given the name provided in the arguments, generate a warm, personalized
 greeting. Keep it to one or two sentences.
 ```
 
-**Roles** shape agent behavior across prompts. They live in `.flue/roles/`:
-
-`.flue/roles/triager.md`:
+**`AGENTS.md`** at the root of the sandbox is the agent's system prompt — it provides global context about the project.
 
 ```markdown
----
-description: A support agent that triages customer requests
----
-
-You are a support triager. Search the knowledge base thoroughly before
-responding. Always cite the specific articles you referenced. Be empathetic
-but concise.
+You are a helpful assistant working on the my-project codebase.
+Use the project's existing patterns and conventions.
 ```
 
-Use them in your agent:
+Call a skill from your agent:
 
 ```typescript
-// Run a skill with arguments and a typed result
 const greeting = await session.skill('greet', {
   args: { name: 'World' },
   result: v.object({ greeting: v.string() }),
 });
-
-// Use a role to shape behavior
-const response = await session.prompt('Help me reset my password', {
-  role: 'triager',
-});
 ```
+
+The default empty sandbox contains neither — see [Using the sandbox](#using-the-sandbox) and [R2-backed agents](#r2-backed-agents) for sandboxes that do.
 
 ## Building and deploying
 
