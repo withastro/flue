@@ -2,6 +2,7 @@ import { discoverSessionContext } from './context.ts';
 import { createCwdSessionEnv } from './sandbox.ts';
 import { deleteSessionTree, Session, type CreateTaskSessionOptions } from './session.ts';
 import { createScopedEnv, mergeCommands } from './env-utils.ts';
+import { assertRoleExists } from './roles.ts';
 import type {
 	AgentConfig,
 	Command,
@@ -71,7 +72,7 @@ export class AgentClient implements FlueAgent {
 		options?: SessionOptions,
 	): Promise<FlueSession> {
 		this.assertActive();
-		this.assertRoleExists(options?.role);
+		assertRoleExists(this.config.roles, options?.role);
 		const sessionId = normalizeSessionId(id);
 		const open = this.openSessions.get(sessionId);
 		if (open) {
@@ -133,7 +134,7 @@ export class AgentClient implements FlueAgent {
 
 	private async createTaskSession(options: CreateTaskSessionOptions): Promise<Session> {
 		this.assertActive();
-		this.assertRoleExists(options.role);
+		assertRoleExists(this.config.roles, options.role);
 
 		const sessionId = `task:${options.parentSessionId}:${options.taskId}`;
 		const taskEnv = options.cwd
@@ -185,17 +186,6 @@ export class AgentClient implements FlueAgent {
 		if (this.destroyed) {
 			throw new Error(`[flue] Agent "${this.id}" has been destroyed.`);
 		}
-	}
-
-	private assertRoleExists(roleName: string | undefined): void {
-		if (!roleName) return;
-		if (this.config.roles[roleName]) return;
-		const available = Object.keys(this.config.roles);
-		const list = available.length > 0 ? available.join(', ') : '(none defined)';
-		throw new Error(
-			`[flue] Role "${roleName}" not registered. Available roles: ${list}. ` +
-				`Define roles as markdown files under \`.flue/roles/\`.`,
-		);
 	}
 }
 

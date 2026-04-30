@@ -27,6 +27,11 @@ import {
 } from './result.ts';
 import { loadSkillByPath } from './context.ts';
 import { createScopedEnv as scopeSessionEnv, mergeCommands } from './env-utils.ts';
+import {
+	assertRoleExists,
+	resolveEffectiveRole as resolveEffectiveRoleName,
+	resolveRoleModel,
+} from './roles.ts';
 import { SessionHistory, type ContextEntry, type MessageSource } from './session-history.ts';
 import type {
 	AgentConfig,
@@ -156,8 +161,8 @@ export class Session implements FlueSession {
 
 		const systemPrompt = config.systemPrompt;
 
-		this.assertRoleExists(this.config.role);
-		this.assertRoleExists(this.sessionRole);
+		assertRoleExists(this.config.roles, this.config.role);
+		assertRoleExists(this.config.roles, this.sessionRole);
 
 		const tools = this.createBuiltinTools(env, this.agentCommands, []);
 
@@ -360,9 +365,12 @@ export class Session implements FlueSession {
 	}
 
 	private resolveEffectiveRole(callRole?: string): string | undefined {
-		const role = callRole ?? this.sessionRole ?? this.config.role;
-		this.assertRoleExists(role);
-		return role;
+		return resolveEffectiveRoleName({
+			roles: this.config.roles,
+			agentRole: this.config.role,
+			sessionRole: this.sessionRole,
+			callRole,
+		});
 	}
 
 	/** Precedence: call-level > role-level > agent-level default. */
@@ -373,8 +381,9 @@ export class Session implements FlueSession {
 	): Model<any> {
 		let model: Model<any> | undefined = this.config.model;
 
-		if (roleName && this.config.roles[roleName]?.model && this.config.resolveModel) {
-			model = this.config.resolveModel(this.config.roles[roleName].model!);
+		const roleModel = resolveRoleModel(this.config.roles, roleName);
+		if (roleModel && this.config.resolveModel) {
+			model = this.config.resolveModel(roleModel);
 		}
 
 		if (promptModel && this.config.resolveModel) {
@@ -395,22 +404,6 @@ export class Session implements FlueSession {
 			`[flue] No model configured for ${callSite}. ` +
 				`Pass \`{ model: "provider/model-id" }\` to \`init()\` for an agent-wide default, ` +
 				`or to this prompt()/skill() call for a one-off override.`,
-		);
-	}
-
-	/**
-	 * Throws a clear error when a caller references a role that isn't registered.
-	 * Roles are loaded from `.flue/roles/` at build time. Called eagerly at the top
-	 * of prompt()/skill() so typos surface before any LLM work begins.
-	 */
-	private assertRoleExists(roleName: string | undefined): void {
-		if (!roleName) return;
-		if (this.config.roles[roleName]) return;
-		const available = Object.keys(this.config.roles);
-		const list = available.length > 0 ? available.join(', ') : '(none defined)';
-		throw new Error(
-			`[flue] Role "${roleName}" not registered. Available roles: ${list}. ` +
-				`Define roles as markdown files under \`.flue/roles/\`.`,
 		);
 	}
 
@@ -592,7 +585,7 @@ export class Session implements FlueSession {
 			}
 
 			const schema = options?.result as v.GenericSchema | undefined;
-			const roleModel = role ? this.config.roles[role]?.model : undefined;
+			const roleModel = resolveRoleModel(this.config.roles, role);
 			const childOptions: PromptOptions<v.GenericSchema | undefined> = {
 				model: options?.model ?? (roleModel ? undefined : options?.inheritedModel),
 				tools: options?.tools,
