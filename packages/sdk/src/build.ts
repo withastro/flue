@@ -85,6 +85,18 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 		console.warn(warning);
 	}
 
+	// Check if any model is configured anywhere
+	const hasModelConfig = checkModelConfiguration(workspaceDir, roles);
+	if (!hasModelConfig) {
+		console.warn(
+			`[flue] WARNING: No model configured. Agents require a model to run.\n` +
+				`  - Add model to init(): await init({ model: "anthropic/claude-sonnet-4-6" })\n` +
+				`  - Or per-call: await session.prompt("...", { model: "..." })\n` +
+				`  - Or in role frontmatter: model: "anthropic/claude-sonnet-4-6"\n` +
+				`  See: https://flue.ai/docs/models`,
+		);
+	}
+
 	console.log(
 		`[flue] AGENTS.md and .agents/skills/ will be discovered at runtime from session cwd`,
 	);
@@ -363,6 +375,36 @@ function validateCronExpression(cron: string): string | null {
 	}
 
 	return null;
+}
+
+/** Check if any model is configured in agents or roles */
+function checkModelConfiguration(
+	workspaceDir: string,
+	roles: Record<string, Role>,
+): boolean {
+	// Check roles for model in frontmatter
+	for (const role of Object.values(roles)) {
+		if (role.model) return true;
+	}
+
+	// Check agent files for model configuration
+	const agentsDir = path.join(workspaceDir, 'agents');
+	if (!fs.existsSync(agentsDir)) return false;
+
+	const agentFiles = fs.readdirSync(agentsDir).filter((f) => /\.(ts|js|mts|mjs)$/.test(f));
+
+	for (const file of agentFiles) {
+		const filePath = path.join(agentsDir, file);
+		const content = fs.readFileSync(filePath, 'utf-8');
+
+		// Look for model: in init() call or per-call options
+		// Pattern: model: "provider/model-id" or model: 'provider/model-id'
+		if (/model\s*:\s*["'][^"']+["']/.test(content)) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 /** Externalize user's direct deps (bare name + subpath wildcard). */
