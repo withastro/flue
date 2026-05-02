@@ -37,7 +37,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	console.log(`[flue] Target: ${plugin.name}`);
 
 	const roles = discoverRoles(workspaceDir);
-	const agents = discoverAgents(workspaceDir);
+	const { agents, warnings: agentWarnings } = discoverAgents(workspaceDir);
 
 	if (agents.length === 0) {
 		throw new Error(
@@ -71,7 +71,20 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 		console.log(
 			`[flue] CLI-only agents (no HTTP route in deployed build): ${triggerlessAgents.map((a) => a.name).join(', ')}`,
 		);
+		for (const agent of triggerlessAgents) {
+			console.warn(
+				`[flue] WARNING: Agent "${agent.name}" has no triggers export. ` +
+					`It will work with 'flue run' but won't be accessible via HTTP. ` +
+					`Add 'export const triggers = { webhook: true };' to enable webhook access.`,
+			);
+		}
 	}
+
+	// Print any validation warnings from agent discovery
+	for (const warning of agentWarnings) {
+		console.warn(warning);
+	}
+
 	console.log(
 		`[flue] AGENTS.md and .agents/skills/ will be discovered at runtime from session cwd`,
 	);
@@ -257,31 +270,46 @@ function discoverRoles(workspaceRoot: string): Record<string, Role> {
 	return roles;
 }
 
-function discoverAgents(workspaceRoot: string): AgentInfo[] {
-	const agentsDir = path.join(workspaceRoot, 'agents');
-	if (!fs.existsSync(agentsDir)) return [];
+interface AgentDiscoveryResult {
+	agents: AgentInfo[];
+	warnings: string[];
+}
 
-	return fs
+function discoverAgents(workspaceRoot: string): AgentDiscoveryResult {
+	const agentsDir = path.join(workspaceRoot, 'agents');
+	if (!fs.existsSync(agentsDir)) return { agents: [], warnings: [] };
+
+	const warnings: string[] = [];
+
+	const agents = fs
 		.readdirSync(agentsDir)
 		.filter((f) => /\.(ts|js|mts|mjs)$/.test(f))
 		.map((f) => {
 			const filePath = path.join(agentsDir, f);
-			const triggers = parseTriggers(filePath);
+			const { triggers, warnings: agentWarnings } = parseTriggers(filePath);
+			for (const w of agentWarnings) {
+				warnings.push(`[flue] WARNING: Agent "${f.replace(/\.(ts|js|mts|mjs)$/, '')}": ${w}`);
+			}
 			return {
 				name: f.replace(/\.(ts|js|mts|mjs)$/, ''),
 				filePath,
 				triggers,
 			};
 		});
+
+	return { agents, warnings };
 }
 
 /** Extract trigger config via regex. Only triggers are parsed at build time (needed for routing). */
-function parseTriggers(filePath: string): { webhook?: boolean; cron?: string } {
+function parseTriggers(
+	filePath: string,
+): { triggers: { webhook?: boolean; cron?: string }; warnings: string[] } {
 	const source = fs.readFileSync(filePath, 'utf-8');
 	const result: { webhook?: boolean; cron?: string } = {};
+	const warnings: string[] = [];
 
 	const triggersExportMatch = source.match(/export\s+const\s+triggers\s*=\s*\{([^}]*)\}/);
-	if (!triggersExportMatch) return result;
+	if (!triggersExportMatch) return { triggers: result, warnings };
 
 	const triggersBlock = triggersExportMatch[1] ?? '';
 	if (/webhook\s*:\s*true/.test(triggersBlock)) {
@@ -289,10 +317,44 @@ function parseTriggers(filePath: string): { webhook?: boolean; cron?: string } {
 	}
 	const cronMatch = triggersBlock.match(/cron\s*:\s*['"]([^'"]+)['"]/);
 	if (cronMatch?.[1]) {
-		result.cron = cronMatch[1];
+		const cron = cronMatch[1];
+		const validationWarning = validateCronExpression(cron);
+		if (validationWarning) {
+			warnings.push(validationWarning);
+		} else {
+			result.cron = cron;
+		}
 	}
 
-	return result;
+	return { triggers: result, warnings };
+}
+
+/** Basic cron expression validation. Returns warning message if invalid, null if valid. */
+function validateCronExpression(cron: string): string | null {
+	const parts = cron.trim().split(/\s+/);
+	if (parts.length !== 5) {
+		return `Invalid cron "${cron}": expected 5 fields (minute hour day month weekday), got ${parts.length}`;
+	}
+
+	const patterns: RegExp[] = [
+		/^(\d{1,2}|[*])$/, // minute (0-59)
+		/^(\d{1,2}|[*])$/, // hour (0-23)
+		/^(\d{1,2}|[*])$/, // day (1-31)
+		/^(\d{1,2}|[*])$/, // month (1-12)
+		/^(\d{1,2}|[*])$/, // weekday (0-7, 0 and 7 are Sunday)
+	];
+
+	const fieldNames = ['minute', 'hour', 'day', 'month', 'weekday'] as const;
+	for (let i = 0; i < 5; i++) {
+		const part = parts[i];
+		const fieldName = fieldNames[i];
+		if (part === undefined || patterns[i] === undefined || !patterns[i]!.test(part)) {
+			const partValue = part ?? '';
+			return `Invalid cron "${cron}": ${fieldName} field "${partValue}" is not valid`;
+		}
+	}
+
+	return null;
 }
 
 /** Externalize user's direct deps (bare name + subpath wildcard). */
