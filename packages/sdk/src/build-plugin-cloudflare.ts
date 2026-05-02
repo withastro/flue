@@ -108,6 +108,13 @@ import {
   InMemorySessionStore,
   bashFactoryToSessionEnv,
   resolveModel,
+  parseJsonBody,
+  toHttpResponse,
+  toSseData,
+  AgentNotFoundError,
+  MethodNotAllowedError,
+  RouteNotFoundError,
+  InvalidRequestError,
 } from '@flue/sdk/internal';
 import { runWithCloudflareContext, cfSandboxToSessionEnv } from '@flue/sdk/cloudflare';
 
@@ -119,6 +126,12 @@ const roles = ${rolesJson};
 const skills = {};
 const systemPrompt = '';
 const manifest = ${manifest};
+
+// Set of webhook-accessible agent names (raw form, as used in URL segments).
+// Used by the worker fetch handler to pre-route requests and reject unknown
+// agents with a JSON 404 envelope before the request hits the partyserver
+// dispatcher (which would otherwise return text/plain "Invalid request").
+const webhookAgentNames = new Set(${JSON.stringify(webhookAgents.map((a) => a.name))});
 
 // ─── Infrastructure ─────────────────────────────────────────────────────────
 
@@ -300,19 +313,16 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
   // Agent id is the DO "room name" set by routeAgentRequest
   const id = doInstance.name;
 
-  // Parse payload
-  let payload;
   try {
-    payload = await request.json();
-  } catch {
-    payload = {};
-  }
+    // Parse the request body. Throws on invalid Content-Type or malformed
+    // JSON; returns {} for genuinely empty bodies (so no-payload agents
+    // still work).
+    const payload = await parseJsonBody(request);
 
-  const accept = request.headers.get('accept') || '';
-  const isWebhook = request.headers.get('x-webhook') === 'true';
-  const isSSE = accept.includes('text/event-stream') && !isWebhook;
+    const accept = request.headers.get('accept') || '';
+    const isWebhook = request.headers.get('x-webhook') === 'true';
+    const isSSE = accept.includes('text/event-stream') && !isWebhook;
 
-  try {
     // Fire-and-forget (webhook mode)
     if (isWebhook) {
       const requestId = crypto.randomUUID();
@@ -331,7 +341,13 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
       });
     }
 
-    // SSE streaming mode
+    // SSE streaming mode. Two error regimes meet here:
+    //   - Pre-stream errors (body parsing, etc.) have already thrown above
+    //     and are caught by the outer try/catch — rendered as plain HTTP
+    //     responses by toHttpResponse, since headers haven't been sent yet.
+    //   - Errors during agent execution surface as in-stream \`error\`
+    //     events with the canonical envelope (via toSseData), since by
+    //     then the 200 + text/event-stream headers are already on the wire.
     if (isSSE) {
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter();
@@ -343,7 +359,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
         const lines = [];
         if (event) lines.push('event: ' + event);
         lines.push('id: ' + eventId++);
-        lines.push('data: ' + JSON.stringify(data));
+        lines.push('data: ' + (typeof data === 'string' ? data : JSON.stringify(data)));
         lines.push('', '');
         await writer.write(encoder.encode(lines.join('\\n')));
       };
@@ -365,10 +381,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
             'result',
           );
         } catch (err) {
-          await writeSSE(
-            { type: 'error', error: String(err) },
-            'error',
-          );
+          await writeSSE(toSseData(err), 'error');
           if (!isIdle) {
             await writeSSE({ type: 'idle' }, 'idle');
           }
@@ -399,11 +412,10 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
       ctx.setEventCallback(undefined);
     }
   } catch (err) {
-    console.error('[flue] Agent error:', agentName, err);
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { 'content-type': 'application/json' } },
-    );
+    // toHttpResponse logs unknowns via flueLog.error — no extra console.error
+    // needed here. The agentName tag is captured in the wrapped error's
+    // server-side log line via flueLog's prefix.
+    return toHttpResponse(err);
   }
 }
 
@@ -423,28 +435,67 @@ ${sandboxReExports}
 
 export default {
   async fetch(request, env) {
-    const url = new URL(request.url);
+    try {
+      const url = new URL(request.url);
+      const method = request.method;
 
-    // Health check
-    if (url.pathname === '/health') {
-      return new Response(JSON.stringify({ status: 'ok' }), {
-        headers: { 'content-type': 'application/json' },
-      });
+      // Health check
+      if (url.pathname === '/health') {
+        return new Response(JSON.stringify({ status: 'ok' }), {
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+
+      // Agent manifest
+      if (url.pathname === '/agents' && method === 'GET') {
+        return new Response(JSON.stringify(manifest), {
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+
+      // Webhook agent route: /agents/<name>/<id>
+      //
+      // We pre-check method and agent registration here, BEFORE delegating to
+      // routeAgentRequest. Without this, partyserver (the transitive
+      // dispatcher behind routeAgentRequest) returns a text/plain
+      // "Invalid request" 400 for unknown agent namespaces — visibly
+      // inconsistent with the rest of the API and with the Node target.
+      // Pre-routing means every error path in the agent route flows through
+      // the same JSON envelope.
+      const agentRouteMatch = url.pathname.match(/^\\/agents\\/([^/]+)\\/([^/]+)\\/?$/);
+      if (agentRouteMatch) {
+        if (method !== 'POST') {
+          throw new MethodNotAllowedError({ method, allowed: ['POST'] });
+        }
+        const name = decodeURIComponent(agentRouteMatch[1]);
+        const id = decodeURIComponent(agentRouteMatch[2]);
+        if (name.trim() === '' || id.trim() === '') {
+          throw new InvalidRequestError({
+            reason: 'Webhook URLs must have the shape /agents/<name>/<id> with non-empty segments.',
+          });
+        }
+        if (!webhookAgentNames.has(name)) {
+          throw new AgentNotFoundError({
+            name,
+            available: Array.from(webhookAgentNames),
+          });
+        }
+        // All gating passed. Delegate to the Agents SDK / partyserver, which
+        // dispatches into the per-agent DO's onRequest → handleAgentRequest.
+        // routeAgentRequest may still return null for shape mismatches we
+        // didn't anticipate; treat that as a route_not_found with a hint.
+        const response = await routeAgentRequest(request, env);
+        if (response) return response;
+        throw new RouteNotFoundError({ method, path: url.pathname });
+      }
+
+      // Anything else: canonical 404 envelope.
+      throw new RouteNotFoundError({ method, path: url.pathname });
+    } catch (err) {
+      // toHttpResponse logs unknowns via flueLog.error — no extra
+      // console.error needed at this layer.
+      return toHttpResponse(err);
     }
-
-    // Agent manifest
-    if (url.pathname === '/agents' && request.method === 'GET') {
-      return new Response(JSON.stringify(manifest), {
-        headers: { 'content-type': 'application/json' },
-      });
-    }
-
-    // Route to per-agent DOs via the Agents SDK
-    // URL: /agents/<agent-name>/<id>
-    const response = await routeAgentRequest(request, env);
-    if (response) return response;
-
-    return new Response('Not found', { status: 404 });
   },
 };
 `;

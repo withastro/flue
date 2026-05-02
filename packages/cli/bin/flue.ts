@@ -393,7 +393,20 @@ function logEvent(event: any) {
 
 		case 'error':
 			flushTextBuffer();
-			console.error(`[flue] ERROR: ${event.error}`);
+			// Envelope: { type: 'error', error: { type, message, details, dev?, meta? } }
+			// `dev` is only present when the server is in local/dev mode —
+			// `flue run` always is, so we render it whenever it's present.
+			console.error(`[flue] ERROR [${event.error?.type ?? 'unknown'}]: ${event.error?.message ?? ''}`);
+			if (event.error?.details) {
+				for (const line of String(event.error.details).split('\n')) {
+					if (line) console.error(`  ${line}`);
+				}
+			}
+			if (event.error?.dev) {
+				for (const line of String(event.error.dev).split('\n')) {
+					if (line) console.error(`  ${line}`);
+				}
+			}
 			break;
 
 		case 'result':
@@ -418,8 +431,34 @@ async function consumeSSE(
 	});
 
 	if (!res.ok) {
-		const body = await res.text();
-		return { error: `HTTP ${res.status}: ${body}` };
+		// Flue's HTTP layer returns the canonical error envelope:
+		//   { error: { type, message, details, dev?, meta? } }
+		// A non-Flue upstream (CDN, load balancer, proxy) might intercept the
+		// request and return text/plain or some other shape — fall back to
+		// including the raw body in that case so the user still gets
+		// something useful.
+		const rawBody = await res.text();
+		try {
+			const parsed = JSON.parse(rawBody);
+			if (parsed && typeof parsed === 'object' && parsed.error) {
+				const e = parsed.error;
+				const lines: string[] = [`HTTP ${res.status} [${e.type ?? 'unknown'}]: ${e.message ?? ''}`];
+				if (e.details) {
+					for (const line of String(e.details).split('\n')) {
+						if (line) lines.push(`  ${line}`);
+					}
+				}
+				if (e.dev) {
+					for (const line of String(e.dev).split('\n')) {
+						if (line) lines.push(`  ${line}`);
+					}
+				}
+				return { error: lines.join('\n') };
+			}
+		} catch {
+			// fall through to raw-body fallback
+		}
+		return { error: `HTTP ${res.status}: ${rawBody}` };
 	}
 
 	if (!res.body) {
@@ -461,7 +500,14 @@ async function consumeSSE(
 			if (event.type === 'result') {
 				result = event.data;
 			} else if (event.type === 'error') {
-				error = event.error;
+				// Envelope: { type: 'error', error: { type, message, details, dev?, meta? } }
+				const e = event.error ?? {};
+				const messageParts: string[] = [];
+				if (e.type) messageParts.push(`[${e.type}]`);
+				if (e.message) messageParts.push(e.message);
+				error = messageParts.length > 0 ? messageParts.join(' ') : 'Unknown error';
+				if (e.details) error += '\n' + String(e.details);
+				if (e.dev) error += '\n' + String(e.dev);
 				logEvent(event);
 			} else {
 				logEvent(event);

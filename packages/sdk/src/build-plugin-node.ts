@@ -56,6 +56,11 @@ import {
   InMemorySessionStore,
   bashFactoryToSessionEnv,
   resolveModel,
+  parseJsonBody,
+  validateAgentRequest,
+  toHttpResponse,
+  toSseData,
+  RouteNotFoundError,
 } from '@flue/sdk/internal';
 import { randomUUID } from 'node:crypto';
 
@@ -71,7 +76,10 @@ const handlers = {
 ${handlerMapEntries}
 };
 
-const webhookAgents = new Set(${webhookNames});
+// Set of webhook-accessible agent names. Named distinctly from the
+// validateAgentRequest \`webhookAgents\` parameter to keep the call site
+// below readable.
+const webhookAgentSet = new Set(${webhookNames});
 
 // When the CLI starts this server via \`flue run\`, it sets FLUE_MODE=local.
 // In local mode the HTTP route accepts any registered agent (including
@@ -143,31 +151,29 @@ const app = new Hono();
 app.get('/health', (c) => c.json({ status: 'ok' }));
 app.get('/agents', (c) => c.json(manifest));
 
-// Agent id is required in the URL
-app.post('/agents/:name', (c) => {
-  return c.json({
-    error: 'Agent id is required. Use /agents/:name/:id',
-  }, 400);
-});
-
-app.post('/agents/:name/:id', async (c) => {
+// Catch any method on the agent route so non-POSTs become 405 (instead of
+// Hono's default 404 for unmatched method). Throws are translated by the
+// onError handler into the canonical error envelope.
+app.all('/agents/:name/:id', async (c) => {
   const name = c.req.param('name');
   const id = c.req.param('id');
 
-  if (!handlers[name]) {
-    return c.json({ error: 'Agent not found' }, 404);
-  }
-  if (!webhookAgents.has(name) && !isLocalMode) {
-    return c.json({ error: 'Agent "' + name + '" is not web-accessible (no webhook trigger)' }, 404);
-  }
+  // Validate method, name shape, registration, webhook-accessibility.
+  // Throws FlueHttpError on any failure; caught by app.onError below.
+  validateAgentRequest({
+    method: c.req.method,
+    name,
+    id,
+    registeredAgents: Object.keys(handlers),
+    webhookAgents: Array.from(webhookAgentSet),
+    allowNonWebhook: isLocalMode,
+  });
 
   const handler = handlers[name];
-  let payload;
-  try {
-    payload = await c.req.json();
-  } catch {
-    payload = {};
-  }
+
+  // Parse the request body. Throws on invalid Content-Type or malformed JSON;
+  // returns {} for genuinely empty bodies (so no-payload agents still work).
+  const payload = await parseJsonBody(c.req.raw);
 
   const accept = c.req.header('accept') || '';
   const isWebhook = c.req.header('x-webhook') === 'true';
@@ -190,7 +196,13 @@ app.post('/agents/:name/:id', async (c) => {
     return c.json({ status: 'accepted', requestId }, 202);
   }
 
-  // SSE streaming mode
+  // SSE streaming mode. Two error regimes meet here:
+  //   - Pre-stream errors (validation, body parsing, agent lookup) have
+  //     already thrown above and are rendered as plain HTTP responses by
+  //     app.onError — headers haven't been sent yet, so this works.
+  //   - Errors during agent execution surface as in-stream \`error\` events
+  //     with the canonical envelope (via toSseData), since by then the
+  //     200 + text/event-stream headers are already on the wire.
   if (isSSE) {
     return streamSSE(c, async (stream) => {
       let eventId = 0;
@@ -214,7 +226,7 @@ app.post('/agents/:name/:id', async (c) => {
         });
       } catch (err) {
         await stream.writeSSE({
-          data: JSON.stringify({ type: 'error', error: String(err) }),
+          data: toSseData(err),
           event: 'error',
           id: String(eventId++),
         });
@@ -228,17 +240,28 @@ app.post('/agents/:name/:id', async (c) => {
     });
   }
 
-  // Sync mode (default)
+  // Sync mode (default). Errors propagate to app.onError.
+  const ctx = createContextForRequest(id, payload);
   try {
-    const ctx = createContextForRequest(id, payload);
     const result = await handler(ctx);
-    ctx.setEventCallback(undefined);
     return c.json({ result: result !== undefined ? result : null });
-  } catch (err) {
-    console.error('[flue] Agent error:', name, err);
-    return c.json({ error: String(err) }, 500);
+  } finally {
+    ctx.setEventCallback(undefined);
   }
 });
+
+// 404 handler — fires for any URL that didn't match a registered route.
+app.notFound((c) => {
+  // Throw rather than return so the onError handler is the single source of
+  // truth for error-envelope shaping.
+  throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
+});
+
+// Single-source-of-truth error renderer. Every thrown FlueError (and every
+// thrown unknown) is converted to the canonical JSON envelope here.
+// toHttpResponse takes care of logging unknowns — no extra console.error
+// needed at this layer.
+app.onError((err) => toHttpResponse(err));
 
 // ─── Start ──────────────────────────────────────────────────────────────────
 

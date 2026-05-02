@@ -15,6 +15,25 @@ export type { FlueContextConfig, FlueContextInternal } from './client.ts';
 export { InMemorySessionStore } from './session.ts';
 export { bashFactoryToSessionEnv } from './sandbox.ts';
 
+// Error framework. Re-exported here for the build-plugin templates. Trimmed
+// to only the names the templates actually import — anything thrown
+// transitively by the helpers (e.g. UnsupportedMediaTypeError thrown inside
+// parseJsonBody) is bundled via static imports inside error-utils.ts and
+// doesn't need to appear on this surface. If a future template needs more,
+// add it here at that time.
+export {
+	parseJsonBody,
+	toHttpResponse,
+	toSseData,
+	validateAgentRequest,
+} from './error-utils.ts';
+export {
+	AgentNotFoundError,
+	InvalidRequestError,
+	MethodNotAllowedError,
+	RouteNotFoundError,
+} from './errors.ts';
+
 /**
  * Resolve a `provider/model-id` string into a pi-ai `Model` object.
  * Lives here (rather than in the generated entry point) so that user
