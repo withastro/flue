@@ -33,6 +33,7 @@
  * Cloudflare path filters to "structural" changes only.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseEnv } from 'node:util';
@@ -541,6 +542,20 @@ class NodeReloader implements DevReloader {
 // ─── Cloudflare reloader ────────────────────────────────────────────────────
 
 /**
+ * Shape of the error events emitted by wrangler's `DevEnv` (returned as
+ * `worker.raw`). We only consume the user-visible fields. Mirrors wrangler's
+ * `BaseErrorEvent`/`ErrorEvent` types without taking a hard dependency on
+ * those internal type names.
+ */
+interface WranglerErrorEvent {
+	type: 'error';
+	reason: string;
+	cause: Error | { message?: string; stack?: string; name?: string };
+	source: string;
+	data?: unknown;
+}
+
+/**
  * Lazy-import wrangler so users targeting only Node don't need it installed.
  * If the import fails, surface a friendly message pointing at the peer-dep.
  */
@@ -572,6 +587,29 @@ class CloudflareReloader implements DevReloader {
 	private readonly port: number;
 	private readonly configPath: string;
 	private readonly envFiles: string[];
+	/**
+	 * Stable container build ID for the lifetime of this reloader instance.
+	 *
+	 * `unstable_startWorker` does NOT default this field — only wrangler's CLI
+	 * path does, via `generateContainerBuildId()`. When the user's wrangler
+	 * config declares `containers[]` (e.g. via `@cloudflare/sandbox`), the
+	 * first `onBundleComplete` calls `getImageNameFromDOClassName(...)` which
+	 * asserts that `options.containerBuildId` is set; without this, the
+	 * assertion throws, the `ProxyController` never gets `reloadComplete`,
+	 * and every request hangs (including `/health`). See issue #22.
+	 *
+	 * We generate it once per reloader and reuse it across reloads so that
+	 * wrangler's container-prep cache hits when nothing about the image
+	 * changed. Format matches wrangler's own helper: an 8-char UUID slice.
+	 */
+	private readonly containerBuildId: string;
+	/**
+	 * Bound listener for `DevEnv` `'error'` events. Stored so we can detach
+	 * it on `disposeWorker()` — the underlying `EventEmitter` outlives the
+	 * worker handle, so if the listener stayed attached we'd leak (and
+	 * double-fire) across reloads.
+	 */
+	private errorListener: ((event: WranglerErrorEvent) => void) | null = null;
 	url?: string;
 
 	constructor(
@@ -583,6 +621,7 @@ class CloudflareReloader implements DevReloader {
 		this.port = opts.port;
 		this.envFiles = opts.envFiles;
 		this.configPath = path.join(this.outputDir, 'dist', 'wrangler.jsonc');
+		this.containerBuildId = randomUUID().slice(0, 8);
 	}
 
 	async start(): Promise<void> {
@@ -712,8 +751,38 @@ class CloudflareReloader implements DevReloader {
 				// (it's what gives us hot-reload on agent body edits).
 				watch: false,
 				logLevel: 'info',
+				// REQUIRED whenever the merged config has `containers[]`.
+				// `unstable_startWorker` does not default this; the wrangler
+				// CLI path does (via `generateContainerBuildId`). Without it,
+				// `onBundleComplete` → `getImageNameFromDOClassName` asserts,
+				// the proxy controller never gets `reloadComplete`, and every
+				// request hangs forever (issue #22). Stable across reloads so
+				// container-prep cache hits when the image hasn't changed.
+				containerBuildId: this.containerBuildId,
 			},
 		});
+
+		// Surface controller errors that wrangler's own central handler
+		// silently routes to `logger.debug(...)` (suppressed at our `info`
+		// level). Without this, problems like "Docker daemon not running" or
+		// any future runtime-controller assertion produce zero output and a
+		// hung server. We re-emit at `console.error` with a `[flue]` prefix.
+		//
+		// The handler is bound here (not in the constructor) because
+		// `worker.raw` doesn't exist until `unstable_startWorker` resolves.
+		// We keep a reference so `disposeWorker()` can detach it — the
+		// `DevEnv` instance can outlive the worker handle across reloads.
+		this.errorListener = (event: WranglerErrorEvent) => {
+			const reason = event?.reason ?? 'unknown error';
+			const cause = event?.cause;
+			const causeMsg =
+				cause && typeof cause === 'object' && 'message' in cause
+					? (cause as { message?: string }).message
+					: undefined;
+			console.error(`[flue] Wrangler error (${event?.source ?? 'unknown'}): ${reason}`);
+			if (causeMsg) console.error(`[flue]   ${causeMsg}`);
+		};
+		this.worker.raw.on('error', this.errorListener);
 
 		try {
 			const url = await this.worker.url;
@@ -725,8 +794,20 @@ class CloudflareReloader implements DevReloader {
 
 	private async disposeWorker(): Promise<void> {
 		const worker = this.worker;
+		const listener = this.errorListener;
 		this.worker = null;
+		this.errorListener = null;
 		if (!worker) return;
+		// Detach the error listener before disposing. The `DevEnv`
+		// EventEmitter can outlive a single worker handle across reloads;
+		// leaving the old listener attached would compound on each reload.
+		if (listener) {
+			try {
+				worker.raw.off('error', listener);
+			} catch {
+				// Best-effort; never let cleanup throw.
+			}
+		}
 		try {
 			await worker.dispose();
 		} catch (err) {
