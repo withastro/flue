@@ -1,12 +1,6 @@
-FROM node:22-slim
+FROM docker.io/cloudflare/sandbox:0.9.2
 
-# Install common tools for agent sandboxes
-RUN apt-get update && apt-get install -y \
-    git curl wget \
-    python3 python3-pip \
+# The base image already provides node, git, curl, and /workspace.
+# Layer in any extra tools your agent needs.
+RUN apt-get update && apt-get install -y python3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /workspace
-
-# Keep container alive
-CMD ["sleep", "infinity"]

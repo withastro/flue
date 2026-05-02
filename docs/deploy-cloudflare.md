@@ -281,11 +281,10 @@ Flue automates one piece: **any DO binding whose `class_name` contains `Sandbox`
 `Dockerfile` (at the project root):
 
 ```dockerfile
-FROM node:22-slim
-RUN apt-get update && apt-get install -y git curl && rm -rf /var/lib/apt/lists/*
-WORKDIR /workspace
-CMD ["sleep", "infinity"]
+FROM docker.io/cloudflare/sandbox:0.9.2
 ```
+
+The base image is published by Cloudflare and bundles the control-plane HTTP server that `@cloudflare/sandbox` needs to communicate with the container, along with `node`, `git`, `curl`, and a working directory at `/workspace`. Pin the tag to match the `@cloudflare/sandbox` version in your `package.json` — they're versioned together. Add your own `RUN` lines to install extra tools as needed.
 
 `.flue/agents/assistant.ts`:
 
