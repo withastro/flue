@@ -4,11 +4,13 @@
 
 # Flue
 
-Flue is **The Sandbox Agent Framework.** If you know how to use Claude Code (or OpenCode, Codex, Gemini, etc)... then you already know the basics of how to build agents with Flue.
+Flue is **The Agent Harness Framework.** If you know how to use Claude Code (or OpenCode, Codex, Gemini, etc)... then you already know the basics of how to build agents with Flue.
 
-A [Sandbox Agent](https://developers.openai.com/api/docs/guides/agents/sandboxes) pairs an **agent harness** (like Claude Code) with a secure, isolated container workspace. Sandbox Agents can edit files, write and execute code, spin up subagents, run terminal commands, and drive themselves autonomously to solve any given task. This pattern unlocks more powerful, intelligent agents that traditional AI frameworks wouldn't otherwise let you build.
+Flue is a TypeScript framework for building the next generation of agents, designed around a built-in **agent harness**. It's like Claude Code, but 100% headless and programmable. There's no baked-in assumption like requiring a human operator to function. No TUI. No GUI. Just TypeScript.
 
-Our take is that 1) any agent can be represented as a Sandbox Agent, and 2) any agent is _best_ represented as a Sandbox Agent. So we designed Flue to deliver on this vision.
+But using Flue feels like using Claude Code. The agents you build act autonomously to solve problems and complete tasks. They require very little code to run — most of the "logic" lives in Markdown: skills, context, and `AGENTS.md`.
+
+Flue isn't another AI SDK. It's a proper runtime-agnostic framework — think Astro or Next.js, but for agents. Write once, build, and deploy your agents anywhere (Node.js, Cloudflare, GitHub Actions, GitLab CI/CD, etc).
 
 ## Packages
 
