@@ -17,6 +17,10 @@
 			"dependsOn": ["^check:types"],
 			"outputLogs": "errors-only"
 		},
+		"test": {
+			"dependsOn": ["^build"],
+			"outputLogs": "errors-only"
+		},
 		"//#format:lint": {},
 		"//#format:style": {
 			"dependsOn": ["format:lint"]

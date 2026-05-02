@@ -13,6 +13,7 @@
 		"check": "turbo run build check:lint check:types",
 		"check:lint": "biome lint . --error-on-warnings",
 		"check:types": "turbo run check:types",
+		"test": "turbo run test",
 		"format": "turbo run format:lint format:style",
 		"format:lint": "biome check . --write",
 		"format:style": "prettier . --cache --write --list-different"
@@ -26,7 +27,8 @@
 		"prettier": "^3.4.2",
 		"tsx": "^4.19.2",
 		"turbo": "^2.3.3",
-		"typescript": "^5.9.2"
+		"typescript": "^5.9.2",
+		"vitest": "^2.1.8"
 	},
 	"dependencies": {
 		"just-bash": "^2.14.2"
