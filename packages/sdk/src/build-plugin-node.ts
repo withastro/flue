@@ -56,6 +56,9 @@ import {
   InMemorySessionStore,
   bashFactoryToSessionEnv,
   resolveModel,
+  flueHttpError,
+  methodNotAllowedError,
+  readJsonRequestPayload,
 } from '@flue/sdk/internal';
 import { randomUUID } from 'node:crypto';
 
@@ -81,6 +84,13 @@ const webhookAgents = new Set(${webhookNames});
 const isLocalMode = process.env.FLUE_MODE === 'local';
 
 const manifest = ${manifest};
+
+function jsonError(c, error) {
+  for (const [name, value] of Object.entries(error.headers || {})) {
+    c.header(name, value);
+  }
+  return c.json(error.body, error.status);
+}
 
 // ─── Infrastructure ─────────────────────────────────────────────────────────
 
@@ -144,30 +154,46 @@ app.get('/health', (c) => c.json({ status: 'ok' }));
 app.get('/agents', (c) => c.json(manifest));
 
 // Agent id is required in the URL
-app.post('/agents/:name', (c) => {
-  return c.json({
-    error: 'Agent id is required. Use /agents/:name/:id',
-  }, 400);
+app.all('/agents/:name', (c) => {
+  if (c.req.method !== 'POST') {
+    return jsonError(c, methodNotAllowedError('POST'));
+  }
+  return jsonError(c, flueHttpError(
+    400,
+    'missing_agent_id',
+    'Agent id is required. Use /agents/:name/:id.',
+    { agent: c.req.param('name') },
+  ));
 });
 
-app.post('/agents/:name/:id', async (c) => {
+app.all('/agents/:name/:id', async (c) => {
   const name = c.req.param('name');
   const id = c.req.param('id');
 
+  if (c.req.method !== 'POST') {
+    return jsonError(c, methodNotAllowedError('POST'));
+  }
+
   if (!handlers[name]) {
-    return c.json({ error: 'Agent not found' }, 404);
+    return jsonError(c, flueHttpError(404, 'agent_not_found', 'Agent "' + name + '" was not found.', {
+      agent: name,
+    }));
   }
   if (!webhookAgents.has(name) && !isLocalMode) {
-    return c.json({ error: 'Agent "' + name + '" is not web-accessible (no webhook trigger)' }, 404);
+    return jsonError(c, flueHttpError(
+      404,
+      'agent_not_accessible',
+      'Agent "' + name + '" is not web-accessible (no webhook trigger).',
+      { agent: name },
+    ));
   }
 
   const handler = handlers[name];
-  let payload;
-  try {
-    payload = await c.req.json();
-  } catch {
-    payload = {};
+  const payloadResult = await readJsonRequestPayload(c.req.raw);
+  if (!payloadResult.ok) {
+    return jsonError(c, payloadResult.error);
   }
+  const payload = payloadResult.payload;
 
   const accept = c.req.header('accept') || '';
   const isWebhook = c.req.header('x-webhook') === 'true';
@@ -236,8 +262,12 @@ app.post('/agents/:name/:id', async (c) => {
     return c.json({ result: result !== undefined ? result : null });
   } catch (err) {
     console.error('[flue] Agent error:', name, err);
-    return c.json({ error: String(err) }, 500);
+    return jsonError(c, flueHttpError(500, 'agent_error', String(err), { agent: name }));
   }
+});
+
+app.notFound((c) => {
+  return jsonError(c, flueHttpError(404, 'not_found', 'Not found.'));
 });
 
 // ─── Start ──────────────────────────────────────────────────────────────────

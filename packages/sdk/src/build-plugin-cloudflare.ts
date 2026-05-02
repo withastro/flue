@@ -108,6 +108,9 @@ import {
   InMemorySessionStore,
   bashFactoryToSessionEnv,
   resolveModel,
+  flueHttpError,
+  methodNotAllowedError,
+  readJsonRequestPayload,
 } from '@flue/sdk/internal';
 import { runWithCloudflareContext, cfSandboxToSessionEnv } from '@flue/sdk/cloudflare';
 
@@ -119,6 +122,14 @@ const roles = ${rolesJson};
 const skills = {};
 const systemPrompt = '';
 const manifest = ${manifest};
+const webhookAgents = new Set(${JSON.stringify(webhookAgents.map((a) => a.name))});
+
+function jsonErrorResponse(error) {
+  return new Response(JSON.stringify(error.body), {
+    status: error.status,
+    headers: { 'content-type': 'application/json', ...(error.headers || {}) },
+  });
+}
 
 // ─── Infrastructure ─────────────────────────────────────────────────────────
 
@@ -300,13 +311,15 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
   // Agent id is the DO "room name" set by routeAgentRequest
   const id = doInstance.name;
 
-  // Parse payload
-  let payload;
-  try {
-    payload = await request.json();
-  } catch {
-    payload = {};
+  if (request.method !== 'POST') {
+    return jsonErrorResponse(methodNotAllowedError('POST'));
   }
+
+  const payloadResult = await readJsonRequestPayload(request);
+  if (!payloadResult.ok) {
+    return jsonErrorResponse(payloadResult.error);
+  }
+  const payload = payloadResult.payload;
 
   const accept = request.headers.get('accept') || '';
   const isWebhook = request.headers.get('x-webhook') === 'true';
@@ -400,10 +413,9 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
     }
   } catch (err) {
     console.error('[flue] Agent error:', agentName, err);
-    return new Response(
-      JSON.stringify({ error: String(err) }),
-      { status: 500, headers: { 'content-type': 'application/json' } },
-    );
+    return jsonErrorResponse(flueHttpError(500, 'agent_error', String(err), {
+      agent: agentName,
+    }));
   }
 }
 
@@ -433,10 +445,48 @@ export default {
     }
 
     // Agent manifest
-    if (url.pathname === '/agents' && request.method === 'GET') {
+    if (url.pathname === '/agents') {
+      if (request.method !== 'GET') {
+        return jsonErrorResponse(methodNotAllowedError('GET'));
+      }
       return new Response(JSON.stringify(manifest), {
         headers: { 'content-type': 'application/json' },
       });
+    }
+
+    if (url.pathname.startsWith('/agents/')) {
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (parts[0] === 'agents') {
+        if (request.method !== 'POST') {
+          return jsonErrorResponse(methodNotAllowedError('POST'));
+        }
+
+        if (parts.length === 2) {
+          return jsonErrorResponse(flueHttpError(
+            400,
+            'missing_agent_id',
+            'Agent id is required. Use /agents/:name/:id.',
+            { agent: parts[1] },
+          ));
+        }
+
+        if (parts.length !== 3) {
+          return jsonErrorResponse(flueHttpError(404, 'not_found', 'Not found.'));
+        }
+
+        let agentName;
+        try {
+          agentName = decodeURIComponent(parts[1]);
+        } catch {
+          return jsonErrorResponse(flueHttpError(400, 'invalid_path', 'Agent path is not valid URL encoding.'));
+        }
+
+        if (!webhookAgents.has(agentName)) {
+          return jsonErrorResponse(flueHttpError(404, 'agent_not_found', 'Agent "' + agentName + '" was not found.', {
+            agent: agentName,
+          }));
+        }
+      }
     }
 
     // Route to per-agent DOs via the Agents SDK
@@ -444,7 +494,7 @@ export default {
     const response = await routeAgentRequest(request, env);
     if (response) return response;
 
-    return new Response('Not found', { status: 404 });
+    return jsonErrorResponse(flueHttpError(404, 'not_found', 'Not found.'));
   },
 };
 `;
@@ -472,9 +522,7 @@ export default {
 		// relative paths (e.g. containers[].image) to absolute paths against
 		// the user's config dir, so the merged file stays correct after we
 		// write it to dist/.
-		const { config: userConfig, path: userConfigPath } = await this.getUserConfig(
-			ctx.outputDir,
-		);
+		const { config: userConfig, path: userConfigPath } = await this.getUserConfig(ctx.outputDir);
 		if (userConfigPath) {
 			console.log(`[flue] Merging with user wrangler config: ${userConfigPath}`);
 		}
@@ -567,4 +615,3 @@ function agentClassName(name: string): string {
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join('');
 }
-
