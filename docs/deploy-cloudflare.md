@@ -427,6 +427,21 @@ curl https://my-support-agent.<your-subdomain>.workers.dev/agents/support/sessio
   -d '{"message": "How do I reset my password?"}'
 ```
 
+### Runtime logs
+
+Cloudflare builds emit server-side logs from the generated Worker and Durable Object runtime
+for each webhook, SSE, and sync invocation. Logs include the agent name, session id, mode,
+request id, duration, completion status, tool start/end events, task start/end events,
+command events, and compaction events.
+
+The runtime logs intentionally omit request payloads, model text deltas, prompts, and tool
+results. Use the SSE response stream or `flue run --target node` when you need content-level
+local progress output.
+
+```bash
+npx wrangler tail
+```
+
 ### Choosing a sandbox strategy
 
 Here's the progression of sandbox types available on Cloudflare, from simplest to most powerful:

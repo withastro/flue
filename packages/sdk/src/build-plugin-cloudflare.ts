@@ -252,6 +252,228 @@ function createContextForRequest(id, payload, doInstance) {
   });
 }
 
+// ─── Runtime Observability ─────────────────────────────────────────────────
+
+function formatLogValue(value) {
+  if (value === undefined || value === null || value === '') return undefined;
+  const text = typeof value === 'string' ? value : String(value);
+  return /\\s/.test(text) ? JSON.stringify(text) : text;
+}
+
+function formatLogFields(fields) {
+  return Object.entries(fields)
+    .map(([key, value]) => {
+      const formatted = formatLogValue(value);
+      return formatted === undefined ? undefined : key + '=' + formatted;
+    })
+    .filter(Boolean)
+    .join(' ');
+}
+
+function runtimeLog(level, eventName, fields) {
+  const suffix = formatLogFields(fields);
+  const line = suffix ? '[flue] ' + eventName + ' ' + suffix : '[flue] ' + eventName;
+  if (level === 'error') {
+    console.error(line);
+  } else if (level === 'warn') {
+    console.warn(line);
+  } else {
+    console.log(line);
+  }
+}
+
+function createInvocationLog(agentName, id, mode, requestId) {
+  return {
+    agentName,
+    id,
+    mode,
+    requestId,
+    startedAt: Date.now(),
+  };
+}
+
+function invocationFields(invocation, extra = {}) {
+  return {
+    agent: invocation.agentName,
+    id: invocation.id,
+    mode: invocation.mode,
+    requestId: invocation.requestId,
+    ...extra,
+  };
+}
+
+function eventFields(invocation, event, extra = {}) {
+  return invocationFields(invocation, {
+    sessionId: event.sessionId,
+    parentSessionId: event.parentSessionId,
+    taskId: event.taskId,
+    ...extra,
+  });
+}
+
+function errorType(err) {
+  if (err && typeof err === 'object' && 'type' in err) return err.type;
+  if (err instanceof Error) return err.name;
+  return typeof err;
+}
+
+function errorMessage(err) {
+  if (err && typeof err === 'object' && 'message' in err) return err.message;
+  return String(err);
+}
+
+function objectKeys(value) {
+  if (!value || typeof value !== 'object') return undefined;
+  const keys = Object.keys(value);
+  return keys.length > 0 ? keys.join(',') : undefined;
+}
+
+function logInvocationAccepted(invocation) {
+  runtimeLog('info', 'agent:accepted', invocationFields(invocation));
+}
+
+function logInvocationStart(invocation) {
+  runtimeLog('info', 'agent:start', invocationFields(invocation));
+}
+
+function logInvocationComplete(invocation, result) {
+  runtimeLog(
+    'info',
+    'agent:complete',
+    invocationFields(invocation, {
+      durationMs: Date.now() - invocation.startedAt,
+      result: result === undefined ? 'none' : 'present',
+    }),
+  );
+}
+
+function logInvocationError(invocation, err) {
+  runtimeLog(
+    'error',
+    'agent:error',
+    invocationFields(invocation, {
+      durationMs: Date.now() - invocation.startedAt,
+      errorType: errorType(err),
+      errorMessage: errorMessage(err),
+    }),
+  );
+
+  // Background webhook failures do not flow through toHttpResponse/toSseData,
+  // so include the full throwable here. Sync/SSE failures are already logged
+  // by the structured error renderers when appropriate.
+  if (invocation.mode === 'webhook') {
+    console.error(err);
+  }
+}
+
+function logAgentRuntimeEvent(invocation, event) {
+  switch (event.type) {
+    case 'agent_start':
+      runtimeLog('info', 'agent:event', eventFields(invocation, event, { event: 'agent_start' }));
+      break;
+    case 'tool_start':
+      runtimeLog(
+        'info',
+        'agent:tool_start',
+        eventFields(invocation, event, {
+          tool: event.toolName,
+          toolCallId: event.toolCallId,
+          argKeys: objectKeys(event.args),
+        }),
+      );
+      break;
+    case 'tool_end':
+      runtimeLog(
+        event.isError ? 'warn' : 'info',
+        'agent:tool_end',
+        eventFields(invocation, event, {
+          tool: event.toolName,
+          toolCallId: event.toolCallId,
+          status: event.isError ? 'error' : 'done',
+          result: event.result === undefined ? 'none' : 'present',
+        }),
+      );
+      break;
+    case 'command_start':
+      runtimeLog(
+        'info',
+        'agent:command_start',
+        eventFields(invocation, event, {
+          command: event.command,
+          argCount: Array.isArray(event.args) ? event.args.length : undefined,
+        }),
+      );
+      break;
+    case 'command_end':
+      runtimeLog(
+        event.exitCode === 0 ? 'info' : 'warn',
+        'agent:command_end',
+        eventFields(invocation, event, {
+          command: event.command,
+          exitCode: event.exitCode,
+        }),
+      );
+      break;
+    case 'task_start':
+      runtimeLog(
+        'info',
+        'agent:task_start',
+        eventFields(invocation, event, {
+          childTaskId: event.taskId,
+          role: event.role,
+          cwd: event.cwd,
+          promptChars: typeof event.prompt === 'string' ? event.prompt.length : undefined,
+        }),
+      );
+      break;
+    case 'task_end':
+      runtimeLog(
+        event.isError ? 'warn' : 'info',
+        'agent:task_end',
+        eventFields(invocation, event, {
+          childTaskId: event.taskId,
+          status: event.isError ? 'error' : 'done',
+          result: event.result === undefined ? 'none' : 'present',
+        }),
+      );
+      break;
+    case 'compaction_start':
+      runtimeLog(
+        'info',
+        'agent:compaction_start',
+        eventFields(invocation, event, {
+          reason: event.reason,
+          estimatedTokens: event.estimatedTokens,
+        }),
+      );
+      break;
+    case 'compaction_end':
+      runtimeLog(
+        'info',
+        'agent:compaction_end',
+        eventFields(invocation, event, {
+          messagesBefore: event.messagesBefore,
+          messagesAfter: event.messagesAfter,
+        }),
+      );
+      break;
+    case 'error':
+      runtimeLog(
+        'error',
+        'agent:event_error',
+        eventFields(invocation, event, { error: event.error }),
+      );
+      break;
+  }
+}
+
+function attachRuntimeEventLogger(ctx, invocation, forwardEvent) {
+  ctx.setEventCallback((event) => {
+    logAgentRuntimeEvent(invocation, event);
+    forwardEvent?.(event);
+  });
+}
+
 function runWithInstanceContext(doInstance, fn) {
   return runWithCloudflareContext(
     { env: doInstance.env, agentInstance: doInstance, storage: doInstance.ctx.storage },
@@ -276,19 +498,21 @@ function runHandlerWithKeepAlive(doInstance, ctx, handler) {
   });
 }
 
-function startWebhookFiber(doInstance, requestId, agentName, id, payload, handler) {
+function startWebhookFiber(doInstance, invocation, payload, handler) {
   const run = async (fiber) => {
     fiber?.stash?.({
       version: 1,
       kind: 'webhook',
-      agentName,
-      id,
-      requestId,
+      agentName: invocation.agentName,
+      id: invocation.id,
+      requestId: invocation.requestId,
       phase: 'running',
-      startedAt: Date.now(),
+      startedAt: invocation.startedAt,
     });
 
-    const ctx = createContextForRequest(id, payload, doInstance);
+    const ctx = createContextForRequest(invocation.id, payload, doInstance);
+    attachRuntimeEventLogger(ctx, invocation);
+    logInvocationStart(invocation);
     return runWithInstanceContext(doInstance, async () => {
       try {
         return await handler(ctx);
@@ -299,7 +523,7 @@ function startWebhookFiber(doInstance, requestId, agentName, id, payload, handle
   };
 
   assertAgentsDurabilityApi(doInstance, 'runFiber');
-  return doInstance.runFiber('flue:webhook:' + requestId, run);
+  return doInstance.runFiber('flue:webhook:' + invocation.requestId, run);
 }
 
 async function handleFlueFiberRecovered(ctx, _doInstance, agentName) {
@@ -325,17 +549,18 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
 
     // Fire-and-forget (webhook mode)
     if (isWebhook) {
-      const requestId = crypto.randomUUID();
-      startWebhookFiber(doInstance, requestId, agentName, id, payload, handler).then(
+      const invocation = createInvocationLog(agentName, id, 'webhook', crypto.randomUUID());
+      const fiber = startWebhookFiber(doInstance, invocation, payload, handler);
+      logInvocationAccepted(invocation);
+      fiber.then(
         (result) => {
-          console.log('[flue] Webhook handler complete:', agentName,
-            result !== undefined ? JSON.stringify(result) : '(no return)');
+          logInvocationComplete(invocation, result);
         },
         (err) => {
-          console.error('[flue] Webhook handler error:', agentName, err);
+          logInvocationError(invocation, err);
         },
       );
-      return new Response(JSON.stringify({ status: 'accepted', requestId }), {
+      return new Response(JSON.stringify({ status: 'accepted', requestId: invocation.requestId }), {
         status: 202,
         headers: { 'content-type': 'application/json' },
       });
@@ -349,6 +574,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
     //     events with the canonical envelope (via toSseData), since by
     //     then the 200 + text/event-stream headers are already on the wire.
     if (isSSE) {
+      const invocation = createInvocationLog(agentName, id, 'sse', crypto.randomUUID());
       const { readable, writable } = new TransformStream();
       const writer = writable.getWriter();
       const encoder = new TextEncoder();
@@ -365,13 +591,14 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
       };
 
       const ctx = createContextForRequest(id, payload, doInstance);
-      ctx.setEventCallback((event) => {
+      attachRuntimeEventLogger(ctx, invocation, (event) => {
         if (event.type === 'idle') isIdle = true;
         writeSSE(event, event.type).catch(() => {});
       });
 
       (async () => {
         try {
+          logInvocationStart(invocation);
           const result = await runHandlerWithKeepAlive(doInstance, ctx, handler);
           if (!isIdle) {
             await writeSSE({ type: 'idle' }, 'idle');
@@ -380,7 +607,9 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
             { type: 'result', data: result !== undefined ? result : null },
             'result',
           );
+          logInvocationComplete(invocation, result);
         } catch (err) {
+          logInvocationError(invocation, err);
           await writeSSE(toSseData(err), 'error');
           if (!isIdle) {
             await writeSSE({ type: 'idle' }, 'idle');
@@ -401,13 +630,20 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
     }
 
     // Sync mode (default)
+    const invocation = createInvocationLog(agentName, id, 'sync', crypto.randomUUID());
     const ctx = createContextForRequest(id, payload, doInstance);
+    attachRuntimeEventLogger(ctx, invocation);
+    logInvocationStart(invocation);
     try {
       const result = await runHandlerWithKeepAlive(doInstance, ctx, handler);
+      logInvocationComplete(invocation, result);
       return new Response(
         JSON.stringify({ result: result !== undefined ? result : null }),
         { headers: { 'content-type': 'application/json' } },
       );
+    } catch (err) {
+      logInvocationError(invocation, err);
+      throw err;
     } finally {
       ctx.setEventCallback(undefined);
     }
@@ -617,4 +853,3 @@ function agentClassName(name: string): string {
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join('');
 }
-
