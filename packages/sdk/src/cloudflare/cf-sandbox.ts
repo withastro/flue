@@ -90,11 +90,17 @@ export async function cfSandboxToSessionEnv(
 
 		async exec(
 			command: string,
-			execOpts?: { cwd?: string; env?: Record<string, string> },
+			execOpts?: { cwd?: string; env?: Record<string, string>; timeout?: number },
 		): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+			// Flue's `timeout` contract is seconds (matches the bash tool schema
+			// and Daytona). @cloudflare/sandbox's BaseExecOptions.timeout is in
+			// milliseconds — convert at the boundary.
+			const timeoutMs =
+				typeof execOpts?.timeout === 'number' ? execOpts.timeout * 1000 : undefined;
 			const result = await sandbox.exec(command, {
 				cwd: execOpts?.cwd,
 				env: execOpts?.env,
+				timeout: timeoutMs,
 			});
 			return {
 				stdout: result.stdout ?? '',

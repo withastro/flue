@@ -17,7 +17,12 @@ export function createCwdSessionEnv(parentEnv: SessionEnv, cwd: string): Session
 	};
 
 	return {
-		exec: (cmd, opts) => parentEnv.exec(cmd, { cwd: opts?.cwd ?? scopedCwd, env: opts?.env }),
+		exec: (cmd, opts) =>
+			parentEnv.exec(cmd, {
+				cwd: opts?.cwd ?? scopedCwd,
+				env: opts?.env,
+				timeout: opts?.timeout,
+			}),
 		scope: async (options) =>
 			createCwdSessionEnv(await createScopedEnv(parentEnv, options?.commands ?? []), scopedCwd),
 		readFile: (p) => parentEnv.readFile(resolvePath(p)),
@@ -69,7 +74,11 @@ function createBashSessionEnv(
 	const resolve = (p: string) => (p.startsWith('/') ? p : fs.resolvePath(cwd, p));
 
 	return {
-		exec: (cmd, opts) => bash.exec(cmd, opts),
+		// just-bash does not consume `timeout` today; strip it at the boundary
+		// so we don't pass an unknown option through. CF Sandbox and Daytona
+		// adapters consume `timeout` directly via SandboxApi.exec.
+		exec: (cmd, opts) =>
+			bash.exec(cmd, opts ? { cwd: opts.cwd, env: opts.env } : undefined),
 		scope: (options) => createScope(options?.commands ?? []),
 		readFile: (p) => fs.readFile(resolve(p)),
 		readFileBuffer: (p) => fs.readFileBuffer(resolve(p)),
@@ -135,7 +144,7 @@ export interface SandboxApi {
 	rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>;
 	exec(
 		command: string,
-		options?: { cwd?: string; env?: Record<string, string> },
+		options?: { cwd?: string; env?: Record<string, string>; timeout?: number },
 	): Promise<ShellResult>;
 }
 
@@ -154,11 +163,12 @@ export function createSandboxSessionEnv(
 	return {
 		async exec(
 			command: string,
-			options?: { cwd?: string; env?: Record<string, string> },
+			options?: { cwd?: string; env?: Record<string, string>; timeout?: number },
 		): Promise<ShellResult> {
 			return api.exec(command, {
 				cwd: options?.cwd ?? cwd,
 				env: options?.env,
+				timeout: options?.timeout,
 			});
 		},
 

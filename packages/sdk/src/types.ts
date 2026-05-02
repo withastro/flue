@@ -80,7 +80,7 @@ export interface FileStat {
 export interface SessionEnv {
 	exec(
 		command: string,
-		options?: { cwd?: string; env?: Record<string, string> },
+		options?: { cwd?: string; env?: Record<string, string>; timeout?: number },
 	): Promise<ShellResult>;
 
 	/** Create an operation-scoped environment, usually backed by a fresh Bash runtime. */
