@@ -148,6 +148,14 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			// esbuild always writes; we treat this path as "changed" without
 			// trying to compute byte-equality across reloads.
 			anyChanged = true;
+		} catch (err) {
+			const errorMessage = err instanceof Error ? err.message : String(err);
+			const suggestions = getEsbuildErrorSuggestion(errorMessage);
+			throw new Error(
+				`[flue] Build failed\n\n` +
+					`Error: ${errorMessage}\n\n` +
+					`${suggestions}`,
+			);
 		} finally {
 			try {
 				fs.unlinkSync(entryPath);
@@ -394,4 +402,49 @@ function getSDKDir(): string {
 	} catch {
 		return __dirname;
 	}
+}
+
+/** Provide helpful suggestions based on esbuild error messages */
+function getEsbuildErrorSuggestion(errorMessage: string): string {
+	const lowerError = errorMessage.toLowerCase();
+
+	// Missing module/package
+	if (lowerError.includes('could not resolve') || lowerError.includes('could not find')) {
+		const moduleMatch = errorMessage.match(/Could not resolve ["']([^"']+)["']/);
+		if (moduleMatch) {
+			const missingModule = moduleMatch[1];
+			return (
+				`Suggestion: The module "${missingModule}" could not be found.\n` +
+				`- Is it installed? Run: pnpm install\n` +
+				`- Is it a built-in Node module? It should work without importing.\n` +
+				`- Check for typos in the import statement.`
+			);
+		}
+	}
+
+	// TypeScript errors
+	if (lowerError.includes('typeerror') || lowerError.includes('ts2304')) {
+		return (
+			`Suggestion: A TypeScript error occurred.\n` +
+			`- Check for undefined variables or missing exports\n` +
+			`- Run: pnpm run check:types for more details`
+		);
+	}
+
+	// Syntax errors in agent files
+	if (lowerError.includes('syntaxerror') || lowerError.includes('parse error')) {
+		return (
+			`Suggestion: A syntax error was found in your code.\n` +
+			`- Check for unclosed brackets, quotes, or parentheses\n` +
+			`- Review the error location in the file above`
+		);
+	}
+
+	// Default suggestion
+	return (
+		`Suggestions:\n` +
+		`- Check the error location above for the issue\n` +
+		`- Run 'pnpm run check:types' to verify TypeScript compilation\n` +
+		`- Ensure all dependencies are installed: pnpm install`
+	);
 }
