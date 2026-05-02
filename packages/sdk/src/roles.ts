@@ -7,7 +7,7 @@ export function assertRoleExists(roles: Record<string, Role>, roleName: string |
 	const list = available.length > 0 ? available.join(', ') : '(none defined)';
 	throw new Error(
 		`[flue] Role "${roleName}" not registered. Available roles: ${list}. ` +
-			`Define roles as markdown files under \`.flue/roles/\`.`,
+			`Define roles as markdown files in \`roles/\` (or \`.flue/roles/\`).`,
 	);
 }
 
