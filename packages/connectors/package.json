@@ -1,6 +1,6 @@
 {
 	"name": "@flue/connectors",
-	"version": "0.3.5",
+	"version": "0.3.6",
 	"type": "module",
 	"license": "Apache-2.0",
 	"exports": {
