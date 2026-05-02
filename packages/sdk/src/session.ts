@@ -294,8 +294,13 @@ export class Session implements FlueSession {
 
 			if (!registeredSkill) {
 				const available = Object.keys(this.config.skills).join(', ') || '(none)';
+				const cwd = this.env.cwd;
 				throw new Error(
-					`Skill "${name}" not registered. Available: ${available}. ` +
+					`Skill "${name}" not registered. Available: ${available}.\n\n` +
+						`Skills are loaded at init() time from ${cwd}/.agents/skills/<name>/SKILL.md ` +
+						`inside the session's sandbox. If you expected "${name}" to be there, make sure ` +
+						`the file exists in your sandbox at that path before calling init() — the default ` +
+						`empty sandbox starts with no files, so it has no skills unless you put them there.\n\n` +
 						`Skills can also be referenced by relative path under .agents/skills/ ` +
 						`(e.g. "triage/reproduce.md").`,
 				);

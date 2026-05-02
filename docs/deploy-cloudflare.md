@@ -370,7 +370,9 @@ This is built in when you deploy with `--target cloudflare`. No extra configurat
 
 ## Sandbox context
 
-The agent reads `AGENTS.md` and skills from its sandbox at runtime — they live wherever your sandbox's working directory is.
+`AGENTS.md` and skills are optional workspace-context files that the agent reads from its sandbox at `init()` time. They live at conventional paths inside whatever sandbox the agent is using — Flue looks for `<cwd>/AGENTS.md` and `<cwd>/.agents/skills/<name>/SKILL.md`. Whatever's there gets loaded; whatever isn't, doesn't. Most agents don't need either to do useful work.
+
+If you want to use them, put them in your sandbox. How you do that depends on which sandbox you're using: upload to R2 for an R2-backed virtual sandbox, `COPY` them in for a container, or write them in via `session.shell()` on a sandbox you control.
 
 **Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
 
@@ -401,8 +403,6 @@ const greeting = await session.skill('greet', {
   result: v.object({ greeting: v.string() }),
 });
 ```
-
-The default empty sandbox contains neither — see [Using the sandbox](#using-the-sandbox) and [R2-backed agents](#r2-backed-agents) for sandboxes that do.
 
 ## Building and deploying
 
