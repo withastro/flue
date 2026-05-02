@@ -1,6 +1,7 @@
 /** Internal session implementation. Not exported publicly — wrapped by FlueSession. */
-import { Agent } from '@mariozechner/pi-agent-core';
+
 import type { AgentMessage, AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
+import { Agent } from '@mariozechner/pi-agent-core';
 import type { AssistantMessage, Model } from '@mariozechner/pi-ai';
 import type * as v from 'valibot';
 import {
@@ -10,14 +11,24 @@ import {
 	type TaskToolResultDetails,
 } from './agent.ts';
 import {
+	type CompactionSettings,
 	calculateContextTokens,
 	compact,
 	DEFAULT_COMPACTION_SETTINGS,
 	isContextOverflow,
 	prepareCompaction,
 	shouldCompact,
-	type CompactionSettings,
 } from './compaction.ts';
+import { loadSkillByPath } from './context.ts';
+import { mergeCommands, createScopedEnv as scopeSessionEnv } from './env-utils.ts';
+import {
+	OPENAI_CODEX_PROVIDER,
+	type OpenAICodexAuth,
+	openAICodexLoadAuth,
+	openAICodexProtectAuthPath,
+	openAICodexRefreshAuth,
+	openAICodexSaveAuth,
+} from './openai-codex.ts';
 import {
 	buildPromptText,
 	buildResultExtractionPrompt,
@@ -25,14 +36,12 @@ import {
 	extractResult,
 	ResultExtractionError,
 } from './result.ts';
-import { loadSkillByPath } from './context.ts';
-import { createScopedEnv as scopeSessionEnv, mergeCommands } from './env-utils.ts';
 import {
 	assertRoleExists,
 	resolveEffectiveRole as resolveEffectiveRoleName,
 	resolveRoleModel,
 } from './roles.ts';
-import { SessionHistory, type ContextEntry, type MessageSource } from './session-history.ts';
+import { type ContextEntry, type MessageSource, SessionHistory } from './session-history.ts';
 import type {
 	AgentConfig,
 	Command,
@@ -149,6 +158,10 @@ export class Session implements FlueSession {
 	private createTaskSession: CreateTaskSession | undefined;
 	private onDelete: (() => void) | undefined;
 
+	// basic in-memory cache
+	private openAICodexAuth: OpenAICodexAuth | undefined;
+	private openAICodexApiKeyPromise: Promise<string | undefined> | undefined;
+
 	constructor(options: SessionInitOptions) {
 		this.id = options.id;
 		this.storageKey = options.storageKey;
@@ -180,7 +193,9 @@ export class Session implements FlueSession {
 		assertRoleExists(this.config.roles, this.sessionRole);
 
 		const tools = [
-			...this.createBuiltinTools(this.env, this.agentCommands, []),
+			// for least-priviledge/defense-in-depth
+			// wrap tools to block direct read/writes to openai auth file (.flue/auth/openai-codex.json)
+			...this.createBuiltinTools(this.createToolEnv(this.env), this.agentCommands, []),
 			...this.createCustomTools(this.agentTools),
 		];
 
@@ -194,6 +209,7 @@ export class Session implements FlueSession {
 				messages: previousMessages,
 			},
 			toolExecution: 'parallel',
+			getApiKey: (provider) => this.getApiKey(provider),
 		});
 
 		this.eventCallback = options.onAgentEvent;
@@ -492,12 +508,42 @@ export class Session implements FlueSession {
 		});
 	}
 
+	private createToolEnv(env: SessionEnv): SessionEnv {
+		// for least-priviledge/defense-in-depth protection
+		// we block `SessionEnv.read/write/rm` tools access to openai-codex.json auth file
+		return openAICodexProtectAuthPath(env);
+	}
+
+	private async getApiKey(provider: string): Promise<string | undefined> {
+		if (provider !== OPENAI_CODEX_PROVIDER) return undefined;
+
+		if (this.openAICodexApiKeyPromise) return this.openAICodexApiKeyPromise;
+
+		this.openAICodexApiKeyPromise = this.openAICodexResolveApiKey().finally(() => {
+			this.openAICodexApiKeyPromise = undefined;
+		});
+		return this.openAICodexApiKeyPromise;
+	}
+
+	private async openAICodexResolveApiKey(): Promise<string | undefined> {
+		let auth = this.openAICodexAuth ?? (await openAICodexLoadAuth(this.env));
+		if (!auth) return undefined;
+		if (!auth.access_token || !auth.refresh_token) return undefined;
+
+		auth = await openAICodexRefreshAuth(auth);
+
+		await openAICodexSaveAuth(this.env, auth);
+		this.openAICodexAuth = auth;
+		return auth.access_token;
+	}
+
 	private async withScopedRuntime<T>(
 		options: RuntimeScopeOptions,
 		fn: () => Promise<T>,
 	): Promise<T> {
 		const customTools = this.createCustomTools([...this.agentTools, ...options.tools]);
 		const scopedEnv = await scopeSessionEnv(this.env, options.commands);
+		const toolEnv = this.createToolEnv(scopedEnv);
 		const previousTools = this.harness.state.tools;
 		const previousModel = this.harness.state.model;
 		const previousSystemPrompt = this.harness.state.systemPrompt;
@@ -510,7 +556,7 @@ export class Session implements FlueSession {
 		this.harness.state.systemPrompt = this.buildSystemPrompt(options.role);
 		this.harness.state.tools = [
 			...this.createBuiltinTools(
-				scopedEnv,
+				toolEnv,
 				options.commands,
 				options.tools,
 				options.role,
