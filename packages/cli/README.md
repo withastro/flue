@@ -4,7 +4,7 @@
 
 # Flue
 
-Flue is **The Agent Harness Framework.** If you know how to use Claude Code (or OpenCode, Codex, Gemini, etc)... then you already know the basics of how to build agents with Flue.
+Flue is **The Agent Harness Framework.** If you know how to use Claude Code (or OpenCode, Codex, Pi, Gemini, etc)... then you already know the basics of how to build agents with Flue.
 
 Flue is a TypeScript framework for building the next generation of agents, designed around a built-in **agent harness**. It's like Claude Code, but 100% headless and programmable. There's no baked-in assumption like requiring a human operator to function. No TUI. No GUI. Just TypeScript.
 
