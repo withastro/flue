@@ -278,18 +278,20 @@ await session.shell('git status');
 
 Per-call `commands` still work and are merged on top of the agent list. If a per-call command shares a name with an agent command, the per-call version wins for that call only — the agent command is restored afterward.
 
-## Container agents
+## Connecting a remote sandbox
 
-The examples above use either the default virtual sandbox or the local sandbox. But when you need full isolation per session — each user gets their own Linux environment with git, Node.js, Python, etc. — you want a container sandbox.
+The examples above use either the default virtual sandbox or the local sandbox. But when you need full isolation per session — each user gets their own Linux environment with git, Node.js, Python, etc. — you want a remote sandbox.
 
-Flue's `@flue/connectors` package provides integrations with container sandbox providers. Here's an example using [Daytona](https://www.daytona.io/):
+Install a sandbox connector with `flue add <name> | <your-agent>` (e.g. `flue add daytona | claude`). Run `flue add` with no arguments to see what's available, or run `flue add <url> --category sandbox` to have your agent build one for an unsupported provider.
+
+Here's an example using [Daytona](https://www.daytona.io/):
 
 `.flue/agents/code.ts`:
 
 ```typescript
 import type { FlueContext } from '@flue/sdk/client';
 import { Daytona } from '@daytona/sdk';
-import { daytona } from '@flue/connectors/daytona';
+import { daytona } from '../connectors/daytona';
 
 export const triggers = { webhook: true };
 
@@ -317,26 +319,26 @@ export default async function ({ init, payload, env }: FlueContext) {
 }
 ```
 
-Daytona is one of many possible sandbox providers. Any provider that implements Flue's `SandboxFactory` interface works — check `@flue/connectors` for available integrations, or implement your own.
+Daytona is one of many possible sandbox providers. Any provider that implements Flue's `SandboxFactory` interface works — the connector is just an adapter.
 
-### A note on secrets and container security
+### A note on secrets and remote sandbox security
 
-When your agent runs in a container sandbox, be aware that environment variables and mounted secrets are accessible to the LLM. If the agent is compromised or the model behaves unexpectedly, those secrets could be exfiltrated.
+When your agent runs in a remote sandbox, be aware that environment variables and mounted secrets are accessible to the LLM. If the agent is compromised or the model behaves unexpectedly, those secrets could be exfiltrated.
 
-For virtual and local sandboxes, Flue's `defineCommand` pattern already solves this — secrets live in the host process and are never exposed to the sandbox. But for container sandboxes, the agent has a full Linux environment and can make arbitrary network requests.
+For virtual and local sandboxes, Flue's `defineCommand` pattern already solves this — secrets live in the host process and are never exposed to the sandbox. But for remote sandboxes, the agent has a full Linux environment and can make arbitrary network requests.
 
-Some container sandbox providers offer egress proxy features that let you inject credentials at the network level without exposing them to the container (for example, [Cloudflare Sandboxes](https://blog.cloudflare.com/sandbox-auth/) support this natively). If your workload handles sensitive secrets and you need egress protection, look for a provider that supports this. Daytona does not currently offer an equivalent feature.
+Some remote sandbox providers offer egress proxy features that let you inject credentials at the network level without exposing them to the sandbox (for example, [Cloudflare Sandboxes](https://blog.cloudflare.com/sandbox-auth/) support this natively). If your workload handles sensitive secrets and you need egress protection, look for a provider that supports this. Daytona does not currently offer an equivalent feature.
 
-### When to use containers
+### When to use a remote sandbox
 
-| Local / virtual sandbox        | Container sandbox                           |
+| Local / virtual sandbox        | Remote sandbox                              |
 | ------------------------------ | ------------------------------------------- |
 | Millisecond startup            | Seconds to start (cached images are faster) |
 | Shares host filesystem (local) | Fully isolated per session                  |
 | No per-session isolation       | Each user gets their own environment        |
 | Great for single-tenant / CI   | Great for multi-tenant / SaaS               |
 
-Start with the local or virtual sandbox. Move to containers when you need per-session isolation.
+Start with the local or virtual sandbox. Move to a remote sandbox when you need per-session isolation.
 
 ## Session persistence
 
@@ -430,6 +432,6 @@ Here's the progression of sandbox types available on Node.js, from simplest to m
 1. **Empty virtual sandbox** — `init({ model: 'openai/gpt-5.5' })`. Fast, cheap, stateless. Good for prompt-and-response agents.
 2. **Virtual sandbox with shell setup** — Use `session.shell()` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
 3. **Local sandbox** — `init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' })`. Mounts the host filesystem at `/workspace`. Ideal for self-hosted agents, CI tasks, and dev tooling.
-4. **Container sandbox** — Full isolated Linux environment via Daytona or other providers. For multi-tenant agents, coding sandboxes, and anything that needs per-session isolation.
+4. **Remote sandbox** — Full isolated Linux environment via Daytona or other providers. For multi-tenant agents, coding sandboxes, and anything that needs per-session isolation.
 
 Start simple. Move up when you need to.

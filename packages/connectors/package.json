@@ -1,35 +1,7 @@
 {
 	"name": "@flue/connectors",
-	"version": "0.3.6",
+	"version": "0.3.7",
 	"type": "module",
-	"license": "Apache-2.0",
-	"exports": {
-		"./daytona": {
-			"types": "./dist/daytona.d.mts",
-			"import": "./dist/daytona.mjs"
-		}
-	},
-	"files": [
-		"dist"
-	],
-	"scripts": {
-		"build": "tsdown",
-		"check:types": "tsc --noEmit",
-		"prepublishOnly": "cp ../../README.md ."
-	},
-	"dependencies": {
-		"@flue/sdk": "workspace:*"
-	},
-	"peerDependencies": {
-		"@daytona/sdk": "*"
-	},
-	"peerDependenciesMeta": {
-		"@daytona/sdk": {
-			"optional": true
-		}
-	},
-	"devDependencies": {
-		"@daytona/sdk": "*",
-		"tsdown": "^0.20.3"
-	}
+	"private": true,
+	"license": "Apache-2.0"
 }

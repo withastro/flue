@@ -10,6 +10,7 @@ import type {
 	FlueContext,
 	FlueEventCallback,
 	FlueAgent,
+	ProvidersConfig,
 	SandboxFactory,
 	SessionEnv,
 	SessionStore,
@@ -53,33 +54,41 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 		},
 
 		async init(options?: AgentInit): Promise<FlueAgent> {
-			const id = options?.id ?? config.id;
+			if (!options || !('model' in options)) {
+				throw new Error(
+					'[flue] init() requires a model. Pass { model: "provider/model-id" } or { model: false }.',
+				);
+			}
+			if (options.model !== false && typeof options.model !== 'string') {
+				throw new Error('[flue] init({ model }) must be a model string or false.');
+			}
+
+			const id = options.id ?? config.id;
 			if (initializedAgentIds.has(id)) {
 				throw new Error(`[flue] init() has already been called for agent "${id}" in this request.`);
 			}
 			initializedAgentIds.add(id);
 
 			try {
-				assertRoleExists(config.agentConfig.roles, options?.role);
-				const sandbox = options?.sandbox;
-				const baseEnv = await resolveSessionEnv(id, sandbox, config, options?.cwd);
-				const env = options?.cwd ? createCwdSessionEnv(baseEnv, options.cwd) : baseEnv;
-				const store: SessionStore = options?.persist ?? config.defaultStore;
+				assertRoleExists(config.agentConfig.roles, options.role);
+				const sandbox = options.sandbox;
+				const baseEnv = await resolveSessionEnv(id, sandbox, config, options.cwd);
+				const env = options.cwd ? createCwdSessionEnv(baseEnv, options.cwd) : baseEnv;
+				const store: SessionStore = options.persist ?? config.defaultStore;
 				const localContext = await discoverSessionContext(env);
+				const providers = mergeProvidersConfig(config.agentConfig.providers, options.providers);
 
 				// Agent-level model override. Per-call `model` on prompt()/skill() still wins
 				// because resolveModelForCall() applies it on top of this default.
-				const agentModel =
-					options?.model && config.agentConfig.resolveModel
-						? config.agentConfig.resolveModel(options.model)
-						: config.agentConfig.model;
+				const agentModel = config.agentConfig.resolveModel(options.model, providers);
 
 				const agentConfig: AgentConfig = {
 					...config.agentConfig,
 					systemPrompt: localContext.systemPrompt,
 					skills: localContext.skills,
 					model: agentModel,
-					role: options?.role ?? config.agentConfig.role,
+					role: options.role ?? config.agentConfig.role,
+					providers,
 				};
 
 				return new AgentClient(
@@ -88,8 +97,8 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					env,
 					store,
 					currentEventCallback,
-					options?.commands,
-					options?.tools,
+					options.commands,
+					options.tools,
 				);
 			} catch (error) {
 				initializedAgentIds.delete(id);
@@ -166,6 +175,28 @@ async function resolveSessionEnv(
 	throw new Error('[flue] Invalid sandbox option passed to init().');
 }
 
+function mergeProvidersConfig(
+	base: ProvidersConfig | undefined,
+	settings: ProvidersConfig | undefined,
+): ProvidersConfig | undefined {
+	if (!base) return settings;
+	if (!settings) return base;
+
+	const merged: ProvidersConfig = { ...base };
+	for (const [provider, config] of Object.entries(settings)) {
+		const previous = merged[provider];
+		merged[provider] = {
+			...previous,
+			...config,
+			headers:
+				previous?.headers || config.headers
+					? { ...(previous?.headers ?? {}), ...(config.headers ?? {}) }
+					: undefined,
+		};
+	}
+	return merged;
+}
+
 // ─── @flue/sdk/client public API ────────────────────────────────────────────
 
 export { Type } from '@mariozechner/pi-ai';
@@ -179,6 +210,7 @@ export type {
 	FlueSessions,
 	FlueSession,
 	AgentInit,
+	ModelConfig,
 	FlueEvent,
 	FlueEventCallback,
 	SessionData,
@@ -190,6 +222,8 @@ export type {
 	BashLike,
 	SessionEnv,
 	SessionOptions,
+	ProviderSettings,
+	ProvidersConfig,
 	PromptOptions,
 	PromptResponse,
 	SkillOptions,

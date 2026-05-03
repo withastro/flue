@@ -13,8 +13,9 @@
 			"cache": false
 		},
 		"build": {},
+		"//#check:lint": {},
 		"check:types": {
-			"dependsOn": ["^check:types"],
+			"dependsOn": ["build", "^build", "^check:types"],
 			"outputLogs": "errors-only"
 		},
 		"//#format:lint": {},

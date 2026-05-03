@@ -14,11 +14,10 @@ Flue isn't another AI SDK. It's a proper runtime-agnostic framework — think As
 
 ## Packages
 
-| Package                                   | Description                                |
-| ----------------------------------------- | ------------------------------------------ |
-| [`@flue/sdk`](packages/sdk)               | Core SDK: build system, sessions, tools    |
-| [`@flue/cli`](packages/cli)               | CLI for building and running agents        |
-| [`@flue/connectors`](packages/connectors) | Third-party connectors for sandboxes, etc. |
+| Package                       | Description                             |
+| ----------------------------- | --------------------------------------- |
+| [`@flue/sdk`](packages/sdk)   | Core SDK: build system, sessions, tools |
+| [`@flue/cli`](packages/cli)   | CLI for building and running agents     |
 
 ## Examples
 
@@ -146,17 +145,19 @@ export default async function ({ init, payload }: FlueContext) {
 }
 ```
 
-### Coding Agent (Container Sandbox)
+### Coding Agent (Remote Sandbox)
 
 The examples above all run on a lightweight virtual sandbox — no container needed. But for a full coding agent, you want a real Linux environment with git, Node.js, a browser, and a cloned repo ready to go.
 
 Daytona's declarative image builder lets you define the environment in code. The image is cached after the first build, so subsequent sessions start instantly.
 
+Install the Daytona connector with `flue add daytona | <your-agent>` (e.g. `claude`, `opencode`, `codex`, `cursor-agent`). It writes a small `connectors/daytona.ts` adapter into your project that you import directly.
+
 ```ts
 // .flue/agents/code.ts
 import { Type, type FlueContext, type ToolDef } from '@flue/sdk/client';
 import { Daytona } from '@daytona/sdk';
-import { daytona } from '@flue/connectors/daytona';
+import { daytona } from '../connectors/daytona';
 
 export const triggers = { webhook: true };
 
@@ -289,6 +290,34 @@ await session.prompt('Review the latest changes.'); // uses reviewer
 await session.task('Research related issues.', { role: 'researcher' }); // uses researcher
 ```
 
+### Provider Settings
+
+Use `providers` when model traffic needs provider-specific runtime settings,
+such as an enterprise API gateway, provider-compatible proxy, custom endpoint,
+or gateway-specific credentials. This is common for managed credentials, audit
+logging, traffic routing, or self-hosted OpenAI-compatible providers.
+
+Configure these settings in `init()` instead of mutating global model state. They
+are runtime-scoped to that agent and apply to every model it resolves, including
+agent defaults, role-level models, per-call model selections, tasks, and context
+compaction.
+
+```ts
+const agent = await init({
+  model: 'anthropic/claude-sonnet-4-6',
+  providers: {
+    anthropic: {
+      baseUrl: env.ANTHROPIC_BASE_URL,
+      headers: {
+        'X-Custom-Auth': env.GATEWAY_KEY,
+      },
+      // Use this when the proxy expects a synthetic or gateway-specific key.
+      apiKey: 'dummy',
+    },
+  },
+});
+```
+
 ### Custom Virtual Sandboxes
 
 For most agents, use the built-in virtual sandbox or `sandbox: 'local'`. If you need to customize just-bash directly, pass a Bash factory. The factory must return a fresh Bash-like runtime each time; share the filesystem object in the closure to persist files across sessions and prompts.
@@ -304,6 +333,18 @@ const agent = await init({
 });
 const session = await agent.session();
 ```
+
+## Connectors
+
+Connectors adapt third-party services (sandbox providers, etc.) into Flue. They are not an npm package — they are markdown installation instructions hosted at `https://flueframework.com/cli/connectors/` and applied to your project by your AI coding agent.
+
+```bash
+flue add                                            # list available connectors
+flue add daytona | claude                           # pipe to your coding agent (claude, opencode, codex, cursor-agent, ...)
+flue add https://e2b.dev --category sandbox | claude   # build one from scratch — pass the provider's docs URL as the agent's starting point
+```
+
+The CLI fetches the markdown for the named connector and prints it to stdout when run by an agent (or with `--print`), or shows a short copyable `flue add ... | <agent>` recipe when run by a human in a terminal. Your agent reads the markdown and writes a small TypeScript adapter into `./.flue/connectors/<name>.ts` (or `./connectors/<name>.ts` for the root layout).
 
 ## Running Agents
 

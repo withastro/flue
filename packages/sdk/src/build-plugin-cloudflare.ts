@@ -133,13 +133,6 @@ const manifest = ${manifest};
 // dispatcher (which would otherwise return text/plain "Invalid request").
 const webhookAgentNames = new Set(${JSON.stringify(webhookAgents.map((a) => a.name))});
 
-// ─── Infrastructure ─────────────────────────────────────────────────────────
-
-// No build-time model default. The user sets model at runtime via
-// \`init({ model: "provider/model-id" })\` for an agent default, or via
-// \`{ model: "provider/model-id" }\` on any individual prompt/skill/task call.
-const model = undefined;
-
 // ─── Sandbox Environments ───────────────────────────────────────────────────
 
 /**
@@ -243,7 +236,7 @@ function createContextForRequest(id, payload, doInstance) {
     payload,
     env: doInstance?.env ?? {},
     agentConfig: {
-      systemPrompt, skills, roles, model, resolveModel,
+      systemPrompt, skills, roles, model: undefined, resolveModel,
     },
     createDefaultEnv,
     createLocalEnv,
@@ -617,4 +610,3 @@ function agentClassName(name: string): string {
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join('');
 }
-

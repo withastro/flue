@@ -1,6 +1,6 @@
 # Deploy Agents on Cloudflare
 
-Build and deploy Flue agents on Cloudflare Workers. This guide walks you through the different kinds of agents you can build — from simple prompt-and-response endpoints to full coding agents backed by persistent storage and container sandboxes.
+Build and deploy Flue agents on Cloudflare Workers. This guide walks you through the different kinds of agents you can build — from simple prompt-and-response endpoints to full coding agents backed by persistent storage and remote sandboxes.
 
 ## Project layout
 
@@ -24,7 +24,7 @@ npm install @flue/sdk valibot agents
 npm install -D @flue/cli wrangler
 ```
 
-`agents` is Cloudflare's Agents SDK — Flue uses it to route HTTP requests to a per-agent Durable Object. If you also need container sandboxes, additionally install `@cloudflare/sandbox` (see [Container agents](#container-agents) below).
+`agents` is Cloudflare's Agents SDK — Flue uses it to route HTTP requests to a per-agent Durable Object. If you also need a remote sandbox, additionally install `@cloudflare/sandbox` (see [Connecting a remote sandbox](#connecting-a-remote-sandbox) below).
 
 ### 2. Create your first agent
 
@@ -244,9 +244,9 @@ done
 - **Agent-native search** — The agent uses grep and glob to find relevant articles, just like it would in a real filesystem.
 - **Session persistence** — Because this deploys to Cloudflare Workers with Durable Objects, message history and session state are automatically persisted. A customer can revisit a support session days later and pick up where they left off.
 
-## Container agents
+## Connecting a remote sandbox
 
-The examples above all run on virtual sandboxes — no container needed. But for agents that need a full Linux environment — git, Node.js, a browser, system packages — you want a real container.
+The examples above all run on virtual sandboxes — no container needed. But for agents that need a full Linux environment — git, Node.js, a browser, system packages — you want a remote sandbox.
 
 Cloudflare has native container support via [`@cloudflare/sandbox`](https://developers.cloudflare.com/containers/). Each session gets its own isolated container with a persistent filesystem, shell, and full Linux userspace.
 
@@ -350,16 +350,16 @@ This is a zero-trust model — no token is ever granted to the untrusted sandbox
 
 For full details, see the [outbound Workers documentation](https://developers.cloudflare.com/containers/platform-details/outbound-traffic/).
 
-### When to use containers
+### When to use a remote sandbox
 
-| Virtual sandbox                  | Container sandbox                           |
+| Virtual sandbox                  | Remote sandbox                              |
 | -------------------------------- | ------------------------------------------- |
 | Millisecond startup              | Seconds to start (cached images are faster) |
 | Grep, glob, read, basic shell    | Full Linux: git, Node.js, Python, browsers  |
 | R2 or inline files               | Real persistent filesystem                  |
 | High-traffic / high-scale agents | Coding agents, complex dev environments     |
 
-Most agents don't need a container. Start with a virtual sandbox and only move to containers when you need the full environment.
+Most agents don't need a remote sandbox. Start with a virtual sandbox and only move to a remote sandbox when you need the full environment.
 
 ## Session persistence
 

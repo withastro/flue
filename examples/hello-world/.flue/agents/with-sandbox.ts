@@ -1,6 +1,6 @@
 import type { FlueContext } from '@flue/sdk/client';
 import { Daytona } from '@daytona/sdk';
-import { daytona } from '@flue/connectors/daytona';
+import { daytona } from '../connectors/daytona';
 
 export const triggers = { webhook: true };
 

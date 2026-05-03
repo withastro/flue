@@ -8,7 +8,8 @@
  *
  * User agent code should never import from here.
  */
-import { getModel } from '@mariozechner/pi-ai';
+import { getModel, type Api, type Model } from '@mariozechner/pi-ai';
+import type { ModelConfig, ProviderSettings, ProvidersConfig } from './types.ts';
 
 export { createFlueContext } from './client.ts';
 export type { FlueContextConfig, FlueContextInternal } from './client.ts';
@@ -21,12 +22,7 @@ export { bashFactoryToSessionEnv } from './sandbox.ts';
 // parseJsonBody) is bundled via static imports inside error-utils.ts and
 // doesn't need to appear on this surface. If a future template needs more,
 // add it here at that time.
-export {
-	parseJsonBody,
-	toHttpResponse,
-	toSseData,
-	validateAgentRequest,
-} from './error-utils.ts';
+export { parseJsonBody, toHttpResponse, toSseData, validateAgentRequest } from './error-utils.ts';
 export {
 	AgentNotFoundError,
 	InvalidRequestError,
@@ -43,7 +39,13 @@ export {
  * transitive deps. Centralizing the resolver here keeps `_entry.ts`
  * dependency-free apart from `@flue/sdk/*`.
  */
-export function resolveModel(modelString: string): ReturnType<typeof getModel> {
+export function resolveModel(
+	model: ModelConfig | undefined,
+	providers?: ProvidersConfig,
+): ReturnType<typeof getModel> | undefined {
+	if (model === false || model === undefined) return undefined;
+
+	const modelString = model;
 	const slash = modelString.indexOf('/');
 	if (slash === -1) {
 		throw new Error(
@@ -65,5 +67,22 @@ export function resolveModel(modelString: string): ReturnType<typeof getModel> {
 				`is not registered with @mariozechner/pi-ai.`,
 		);
 	}
-	return resolved;
+	return applyProviderSettings(resolved, providers?.[provider]);
+}
+
+function applyProviderSettings<TApi extends Api>(
+	model: Model<TApi>,
+	providerSettings: ProviderSettings | undefined,
+): Model<TApi> {
+	if (!providerSettings) return model;
+
+	const hasBaseUrl = providerSettings.baseUrl !== undefined;
+	const hasHeaders = providerSettings.headers !== undefined;
+	if (!hasBaseUrl && !hasHeaders) return model;
+
+	return {
+		...model,
+		baseUrl: providerSettings.baseUrl ?? model.baseUrl,
+		headers: hasHeaders ? { ...(model.headers ?? {}), ...providerSettings.headers } : model.headers,
+	};
 }

@@ -90,13 +90,6 @@ const isLocalMode = process.env.FLUE_MODE === 'local';
 
 const manifest = ${manifest};
 
-// ─── Infrastructure ─────────────────────────────────────────────────────────
-
-// No build-time model default. The user sets model at runtime via
-// \`init({ model: "provider/model-id" })\` for an agent default, or via
-// \`{ model: "provider/model-id" }\` on any individual prompt/skill/task call.
-const model = undefined;
-
 // ─── Sandbox Environments ───────────────────────────────────────────────────
 
 /**
@@ -136,7 +129,7 @@ function createContextForRequest(id, payload) {
     payload,
     env: process.env,
     agentConfig: {
-      systemPrompt, skills, roles, model, resolveModel,
+      systemPrompt, skills, roles, model: undefined, resolveModel,
     },
     createDefaultEnv,
     createLocalEnv,

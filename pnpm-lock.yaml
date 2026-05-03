@@ -85,9 +85,6 @@ importers:
       '@daytona/sdk':
         specifier: '*'
         version: 0.164.0(ws@8.18.0)
-      '@flue/connectors':
-        specifier: workspace:*
-        version: link:../../packages/connectors
       '@flue/sdk':
         specifier: workspace:*
         version: link:../../packages/sdk
@@ -106,23 +103,18 @@ importers:
       '@flue/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@vercel/detect-agent':
+        specifier: ^1.2.3
+        version: 1.2.3
     devDependencies:
       tsdown:
         specifier: ^0.20.3
         version: 0.20.3(typescript@5.9.3)
+      tsx:
+        specifier: ^4.19.2
+        version: 4.21.0
 
-  packages/connectors:
-    dependencies:
-      '@flue/sdk':
-        specifier: workspace:*
-        version: link:../sdk
-    devDependencies:
-      '@daytona/sdk':
-        specifier: '*'
-        version: 0.164.0(ws@8.18.0)
-      tsdown:
-        specifier: ^0.20.3
-        version: 0.20.3(typescript@5.9.3)
+  packages/connectors: {}
 
   packages/sdk:
     dependencies:
@@ -2228,6 +2220,10 @@ packages:
     resolution: {integrity: sha512-GE7DmSr1C2UCWPiV0upRH6mv0cCPsqYGs819fb6srCS1tWhyXrkGGe+zxUiwzn/L1BOfADH4sNjY/YHCuP8phQ==}
     peerDependencies:
       valibot: ^1.2.0
+
+  '@vercel/detect-agent@1.2.3':
+    resolution: {integrity: sha512-VYNCgUc0nOmC4WJmWw9GkrKdfr8Zl4/rxhC5SvgacBgxiW9W/9NRttUoHHXV8xdII3MaRgkZZVX8Ikzc/Jmjag==}
+    engines: {node: '>=14'}
 
   '@vercel/oidc@3.1.0':
     resolution: {integrity: sha512-Fw28YZpRnA3cAHHDlkt7xQHiJ0fcL+NRcIqsocZQUSmbzeIKRpwttJjik5ZGanXP+vlA4SbTg+AbA3bP363l+w==}
@@ -7317,6 +7313,8 @@ snapshots:
   '@valibot/to-json-schema@1.5.0(valibot@1.2.0(typescript@5.9.3))':
     dependencies:
       valibot: 1.2.0(typescript@5.9.3)
+
+  '@vercel/detect-agent@1.2.3': {}
 
   '@vercel/oidc@3.1.0': {}
 

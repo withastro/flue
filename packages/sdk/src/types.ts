@@ -117,6 +117,29 @@ export interface CompactionConfig {
 	keepRecentTokens?: number;
 }
 
+// ─── Provider Runtime Settings ──────────────────────────────────────────────
+
+export interface ProviderSettings {
+	/**
+	 * Provider endpoint used by built-in models. Useful for API gateways,
+	 * LiteLLM-style proxies, or enterprise-managed provider endpoints.
+	 */
+	baseUrl?: string;
+	/**
+	 * Headers merged into the resolved model's provider-level headers. Values
+	 * here override headers already defined by the built-in model.
+	 */
+	headers?: Record<string, string>;
+	/**
+	 * API key returned to the underlying agent runtime for this provider.
+	 * Useful when the gateway requires a dummy key or when credentials should
+	 * come from the agent's runtime env instead of process-global env vars.
+	 */
+	apiKey?: string;
+}
+
+export type ProvidersConfig = Record<string, ProviderSettings>;
+
 // ─── Agent Config (internal, passed to the harness at runtime) ──────────────
 
 export interface AgentConfig {
@@ -126,17 +149,21 @@ export interface AgentConfig {
 	skills: Record<string, Skill>;
 	roles: Record<string, Role>;
 	/**
-	 * Agent-wide default model. Undefined by default — the user must set it via
-	 * `init({ model: "provider/model-id" })` or pass `{ model }` at each prompt/
-	 * skill/task call site. Calls with no model resolved throw clearly at runtime.
+	 * Agent-wide default model. Undefined when the user explicitly passes
+	 * `init({ model: false })`, so each model-using call must resolve one from a
+	 * role or call-site override.
 	 */
 	model: Model<any> | undefined;
 	/** Agent-wide default role. Per-session and per-call roles override this. */
 	role?: string;
-	/** Resolve a "provider/modelId" string to a Model instance. Throws on invalid input. */
-	resolveModel?: (modelString: string) => Model<any>;
+	/** Provider runtime settings applied when resolving models. */
+	providers?: ProvidersConfig;
+	/** Resolve model config to a Model instance. Throws on invalid model strings. */
+	resolveModel: (model: ModelConfig | undefined, providers?: ProvidersConfig) => Model<any> | undefined;
 	compaction?: CompactionConfig;
 }
+
+export type ModelConfig = string | false;
 
 // ─── Flue Context (passed to agent handlers) ───────────────────────────────
 
@@ -151,10 +178,10 @@ export interface FlueContext<TPayload = any, TEnv = Record<string, any>> {
 	/** Platform env bindings (process.env on Node, Worker env on Cloudflare). */
 	readonly env: TEnv;
 	/** Initialize an agent runtime with sandbox + persistence. */
-	init(options?: AgentInit): Promise<FlueAgent>;
+	init(options: AgentInit): Promise<FlueAgent>;
 }
 
-/** All fields are optional — omitting gives platform defaults (empty sandbox, platform store, build-time model). */
+/** Agent runtime options. A default model is required unless explicitly disabled with `model: false`. */
 export interface AgentInit {
 	/** Agent/sandbox scope id. Defaults to the route/context id. */
 	id?: string;
@@ -174,17 +201,39 @@ export interface AgentInit {
 	persist?: SessionStore;
 
 	/**
-	 * Override the default model for this agent. Applies to all prompt() and skill()
-	 * calls unless overridden at the call site.
+	 * Default model for this agent. Applies to all prompt(), skill(), and task()
+	 * calls unless overridden by a role or at the call site. Pass `false` to require every
+	 * model-using call to resolve a model from a role or call-site override.
 	 *
 	 * Format: `'provider/modelId'` (e.g. `'anthropic/claude-opus-4-20250514'`).
 	 *
-	 * Precedence (highest wins): per-call `model` > role `model` > agent `model` > build-time default.
+	 * Precedence (highest wins): per-call `model` > role `model` > agent `model`.
 	 */
-	model?: string;
+	model: ModelConfig;
 
 	/** Agent-wide default role. Overridden by session-level or per-call roles. */
 	role?: string;
+
+	/**
+	 * Provider runtime settings for every model used by this agent, including
+	 * role-level and per-call model selections.
+	 *
+	 * Example:
+	 *
+	 * ```ts
+	 * await init({
+	 *   model: 'anthropic/claude-sonnet-4-6',
+	 *   providers: {
+	 *     anthropic: {
+	 *       baseUrl: env.ANTHROPIC_BASE_URL,
+	 *       headers: { 'X-Custom-Auth': env.GATEWAY_KEY },
+	 *       apiKey: 'dummy',
+	 *     },
+	 *   },
+	 * });
+	 * ```
+	 */
+	providers?: ProvidersConfig;
 
 	/**
 	 * Agent-wide tools. Every prompt(), skill(), and task() call can use these.

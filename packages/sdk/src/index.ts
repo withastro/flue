@@ -25,6 +25,7 @@ export type {
 	Skill,
 	Role,
 	AgentConfig,
+	ModelConfig,
 	BuildOptions,
 	BuildPlugin,
 	BuildContext,
