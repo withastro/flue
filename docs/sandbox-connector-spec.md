@@ -4,7 +4,7 @@
   This document is the canonical spec for Flue sandbox connectors. It is
   referenced by:
     - connectors/sandbox.md (the generic sandbox connector instructions)
-    - The `flue add --category sandbox` flow in packages/cli/bin/flue.ts
+    - The `flue add <url> --category sandbox` flow in packages/cli/bin/flue.ts
     - Any agent that fetches the raw GitHub URL below to read the spec.
 
   Raw GitHub URL (must remain valid):

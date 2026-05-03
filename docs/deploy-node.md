@@ -282,7 +282,7 @@ Per-call `commands` still work and are merged on top of the agent list. If a per
 
 The examples above use either the default virtual sandbox or the local sandbox. But when you need full isolation per session — each user gets their own Linux environment with git, Node.js, Python, etc. — you want a remote sandbox.
 
-Install a sandbox connector with `flue add <name> | <your-agent>` (e.g. `flue add daytona | claude`). Run `flue add` with no arguments to see what's available, or `flue add --category sandbox` to have your agent build one for an unsupported provider from the published spec.
+Install a sandbox connector with `flue add <name> | <your-agent>` (e.g. `flue add daytona | claude`). Run `flue add` with no arguments to see what's available, or run `flue add <url> --category sandbox` to have your agent build one for an unsupported provider.
 
 Here's an example using [Daytona](https://www.daytona.io/):
 
@@ -319,7 +319,7 @@ export default async function ({ init, payload, env }: FlueContext) {
 }
 ```
 
-Daytona is one of many possible sandbox providers. Any provider that implements Flue's `SandboxFactory` interface works — run `flue add` to see available integrations, or `flue add --category sandbox` to have your agent build one for a provider that isn't on the list yet.
+Daytona is one of many possible sandbox providers. Any provider that implements Flue's `SandboxFactory` interface works — the connector is just an adapter.
 
 ### A note on secrets and remote sandbox security
 

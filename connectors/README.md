@@ -32,7 +32,9 @@ Connectors use a `<category>--<name>.md` filename convention. Category roots
 ```
 connectors/
   sandbox.md                 # Generic instructions for the "sandbox" category.
-                             # Addressable as: flue add --category sandbox
+                             # Addressable as: flue add <url> --category sandbox
+                             # The CLI substitutes the user-provided URL into
+                             # the markdown's {{URL}} placeholder before piping.
   sandbox--daytona.md        # The Daytona sandbox connector.
                              # Addressable as: flue add daytona
 ```
@@ -47,8 +49,8 @@ The CLI's prebuild script (`packages/cli/scripts/generate-connector-index.ts`)
 derives slugs:
 
 - `<category>--<name>.md` → slug `<name>`
-- `<category>.md` (with `"root": true`) → not addressable as a positional
-  slug; only via `flue add --category <category>`
+- `<category>.md` (with `"root": true`) → not addressable as a connector
+  slug; only via `flue add <url> --category <category>`
 
 If two files would resolve to the same slug, the prebuild script errors out.
 

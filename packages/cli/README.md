@@ -340,9 +340,9 @@ const session = await agent.session();
 Connectors adapt third-party services (sandbox providers, etc.) into Flue. They are not an npm package — they are markdown installation instructions hosted at `https://flueframework.com/cli/connectors/` and applied to your project by your AI coding agent.
 
 ```bash
-flue add                       # list available connectors
-flue add daytona | claude      # pipe to your coding agent (claude, opencode, codex, cursor-agent, ...)
-flue add --category sandbox    # generic instructions for building a sandbox connector from scratch
+flue add                                            # list available connectors
+flue add daytona | claude                           # pipe to your coding agent (claude, opencode, codex, cursor-agent, ...)
+flue add https://e2b.dev --category sandbox | claude   # build one from scratch — pass the provider's docs URL as the agent's starting point
 ```
 
 The CLI fetches the markdown for the named connector and prints it to stdout when run by an agent (or with `--print`), or shows a short copyable `flue add ... | <agent>` recipe when run by a human in a terminal. Your agent reads the markdown and writes a small TypeScript adapter into `./.flue/connectors/<name>.ts` (or `./connectors/<name>.ts` for the root layout).

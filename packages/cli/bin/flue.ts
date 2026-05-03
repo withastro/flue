@@ -57,7 +57,7 @@ function printUsage() {
 			'  flue dev   --target <node|cloudflare> [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
 			'  flue run   <agent> --target node --id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
 			'  flue build --target <node|cloudflare> [--workspace <path>] [--output <path>]\n' +
-			'  flue add   [<name>] [--category <category>] [--print]\n' +
+			'  flue add   [<name>|<url>] [--category <category>] [--print]\n' +
 			'\n' +
 			'Commands:\n' +
 			'  dev    Long-running watch-mode dev server. Rebuilds and reloads on file changes.\n' +
@@ -71,7 +71,8 @@ function printUsage() {
 			`  --port <number>      Port for the dev server. Default: ${DEFAULT_DEV_PORT}\n` +
 			'  --env <path>         Load env vars from a .env-format file. Repeatable; later files override earlier on key collision.\n' +
 			'                       Works for both Node and Cloudflare targets. Shell-set env vars win over file values.\n' +
-			'  --category <name>    (flue add) Fetch the generic instructions for a connector category instead of a specific connector.\n' +
+			'  --category <name>    (flue add) Fetch the generic instructions for a connector category. Pair with a positional URL/path that\n' +
+			'                       points the agent at the provider\'s docs (e.g. `flue add https://e2b.dev --category sandbox`).\n' +
 			'  --print              (flue add) Print the raw connector markdown to stdout regardless of whether the caller is an agent.\n' +
 			'\n' +
 			'Examples:\n' +
@@ -84,7 +85,7 @@ function printUsage() {
 			'  flue build --target cloudflare --workspace ./.flue --output ./build\n' +
 			'  flue add\n' +
 			'  flue add daytona | claude\n' +
-			'  flue add --category sandbox\n' +
+			'  flue add https://e2b.dev --category sandbox | claude\n' +
 			'\n' +
 			'Note: set the model inside your agent via `init({ model: "provider/model-id" })` ' +
 			'or per-call `{ model: ... }` on prompt/skill/task.',
@@ -130,11 +131,9 @@ interface DevArgs {
 
 interface AddArgs {
 	command: 'add';
-	/** Positional connector name (e.g. "daytona"). Empty string when no name was passed. */
+	/** Connector slug, or (with --category) the {{URL}} value to substitute into the category root markdown. */
 	name: string;
-	/** --category value (e.g. "sandbox"). Empty string when not passed. Mutually exclusive with `name`. */
 	category: string;
-	/** --print forces raw-markdown-to-stdout regardless of agent detection. */
 	print: boolean;
 }
 
@@ -274,9 +273,12 @@ function parseAddArgs(rest: string[]): AddArgs {
 		}
 	}
 
-	if (name && category) {
+	if (category && !name) {
 		console.error(
-			'`flue add` accepts either a connector name or --category, not both. Got both.',
+			`\`flue add --category ${category}\` requires a URL or path argument — the user-provided ` +
+				`starting point for the agent's research.\n\n` +
+				`Example:\n` +
+				`  flue add https://e2b.dev --category ${category} | claude`,
 		);
 		process.exit(1);
 	}
@@ -820,14 +822,18 @@ function categoryRootHint(): string {
 	const lines: string[] = [];
 	lines.push('');
 	lines.push(`Don't see what you need?`);
-	// Compute the widest "flue add --category <name>" so the right-side text
-	// in subsequent lines aligns under itself instead of under the command.
-	const cmds = CATEGORY_ROOTS.map((r) => `flue add --category ${r.category}`);
-	const cmdW = Math.max(...cmds.map((c) => c.length));
 	for (const root of CATEGORY_ROOTS) {
-		const cmd = `flue add --category ${root.category}`.padEnd(cmdW);
-		lines.push(`  ${cmd}     Generic instructions for building a ${root.category}`);
-		lines.push(`  ${' '.repeat(cmdW)}     connector from scratch. Pipe to your coding agent.`);
+		lines.push('');
+		lines.push(`  flue add <url> --category ${root.category}`);
+		lines.push(
+			`    Build a ${root.category} connector from scratch. Pass a URL pointing at the`,
+		);
+		lines.push(
+			`    provider's docs (homepage, SDK reference, GitHub repo, anything useful) as`,
+		);
+		lines.push(
+			`    the agent's starting point. Pipe to your coding agent.`,
+		);
 	}
 	return lines.join('\n');
 }
@@ -859,7 +865,7 @@ function printUnknownConnector(name: string, stream: NodeJS.WriteStream) {
 	if (CATEGORY_ROOTS.length > 0) {
 		stream.write('\nTo build one from scratch with your coding agent:\n');
 		for (const root of CATEGORY_ROOTS) {
-			stream.write(`  flue add --category ${root.category}\n`);
+			stream.write(`  flue add <url> --category ${root.category}\n`);
 		}
 	}
 }
@@ -884,11 +890,10 @@ async function fetchConnectorMarkdown(slug: string): Promise<{ body: string } | 
 	return { body: await res.text() };
 }
 
-function printHumanInstructions(displaySlug: string, isCategory: boolean) {
-	// Goes to stderr so piping `flue add daytona | <agent>` still produces a
-	// clean stdout in agent-mode. The human-mode message is purely
-	// informational; agents detect themselves and read stdout.
-	const cmd = isCategory ? `flue add --category ${displaySlug}` : `flue add ${displaySlug}`;
+function printHumanInstructions(args: AddArgs) {
+	const cmd = args.category
+		? `flue add ${args.name} --category ${args.category}`
+		: `flue add ${args.name}`;
 	const stream = process.stderr;
 	stream.write(`${cmd}\n\n`);
 	stream.write('To install this connector, pipe it to your coding agent:\n\n');
@@ -901,14 +906,12 @@ function printHumanInstructions(displaySlug: string, isCategory: boolean) {
 }
 
 async function addCommand(args: AddArgs) {
-	// No name, no category → print local list, no network.
 	if (!args.name && !args.category) {
 		printListing(process.stderr);
 		return;
 	}
 
 	if (args.category) {
-		// `flue add --category sandbox` → fetch <category>.md (the category root)
 		const root = CATEGORY_ROOTS.find((r) => r.category === args.category);
 		if (!root) {
 			console.error(
@@ -927,18 +930,19 @@ async function addCommand(args: AddArgs) {
 			process.exit(1);
 		}
 
+		const body = result.body.replaceAll('{{URL}}', args.name);
+
 		const isAgentMode =
 			args.print || (await determineAgent().catch(() => ({ isAgent: false }))).isAgent === true;
 		if (isAgentMode) {
-			process.stdout.write(result.body);
-			if (!result.body.endsWith('\n')) process.stdout.write('\n');
+			process.stdout.write(body);
+			if (!body.endsWith('\n')) process.stdout.write('\n');
 			return;
 		}
-		printHumanInstructions(args.category, true);
+		printHumanInstructions(args);
 		return;
 	}
 
-	// Positional name path.
 	const known = CONNECTORS.find((c) => c.slug === args.name);
 	if (!known) {
 		printUnknownConnector(args.name, process.stderr);
@@ -961,7 +965,7 @@ async function addCommand(args: AddArgs) {
 		if (!result.body.endsWith('\n')) process.stdout.write('\n');
 		return;
 	}
-	printHumanInstructions(args.name, false);
+	printHumanInstructions(args);
 }
 
 // ─── Entry Point ────────────────────────────────────────────────────────────

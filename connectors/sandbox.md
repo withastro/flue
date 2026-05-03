@@ -19,6 +19,18 @@ SDK, multiple packages, HTTP-only, CLI-driven, something else) will dictate
 most of how you implement it. The notes below are the things you can't
 reasonably infer from the spec or the worked example.
 
+## Starting point
+
+The user invoked `flue add <url> --category sandbox` with this argument as
+their starting point for the provider's documentation:
+
+`{{URL}}`
+
+It's user-provided and was passed through verbatim — it might be the docs
+root, an SDK reference, a GitHub repo, a marketing page, or something less
+useful. Treat it as a hint, not a verified docs link, and use your judgment
+on where to go from there to collect the necessary information to complete your goal.
+
 ## References
 
 Read these before writing code.
@@ -28,14 +40,6 @@ Read these before writing code.
 - **Worked example** (the Daytona connector — one example of a finished
   connector; your provider's shape may be quite different):
   `https://flueframework.com/cli/connectors/daytona.md`
-
-## What to ask the user
-
-A reasonable starting point is the provider name and a docs URL. You may
-need more (or less) depending on what you find — feel free to ask follow-up
-questions partway through if research turns up something ambiguous. Just
-avoid peppering the user with questions you could answer yourself by
-reading the docs or the provider's package(s).
 
 ## Flue-specific conventions
 
