@@ -917,9 +917,10 @@ function printHumanInstructions(args: AddArgs) {
 	stream.write(`${cmd}\n\n`);
 	stream.write('To install this connector, pipe it to your coding agent:\n\n');
 	stream.write(`  ${cmd} --print | claude\n`);
-	stream.write(`  ${cmd} --print | opencode\n`);
 	stream.write(`  ${cmd} --print | codex\n`);
 	stream.write(`  ${cmd} --print | cursor-agent\n\n`);
+	stream.write(`  ${cmd} --print | opencode\n`);
+	stream.write(`  ${cmd} --print | pi\n`);
 	stream.write('Or paste this prompt into any agent:\n\n');
 	stream.write(`  Run "${cmd} --print" and follow the instructions.\n`);
 }
