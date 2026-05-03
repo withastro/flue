@@ -7,6 +7,10 @@
 		"./daytona": {
 			"types": "./dist/daytona.d.mts",
 			"import": "./dist/daytona.mjs"
+		},
+		"./vercel": {
+			"types": "./dist/vercel.d.mts",
+			"import": "./dist/vercel.mjs"
 		}
 	},
 	"files": [
@@ -21,15 +25,20 @@
 		"@flue/sdk": "workspace:*"
 	},
 	"peerDependencies": {
-		"@daytona/sdk": "*"
+		"@daytona/sdk": "*",
+		"@vercel/sandbox": "^1.10.0"
 	},
 	"peerDependenciesMeta": {
 		"@daytona/sdk": {
+			"optional": true
+		},
+		"@vercel/sandbox": {
 			"optional": true
 		}
 	},
 	"devDependencies": {
 		"@daytona/sdk": "*",
+		"@vercel/sandbox": "^1.10.0",
 		"tsdown": "^0.20.3"
 	}
 }
