@@ -10,7 +10,7 @@ import type {
 	FlueContext,
 	FlueEventCallback,
 	FlueAgent,
-	ProviderOverrides,
+	ProvidersConfig,
 	SandboxFactory,
 	SessionEnv,
 	SessionStore,
@@ -67,7 +67,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 				const env = options?.cwd ? createCwdSessionEnv(baseEnv, options.cwd) : baseEnv;
 				const store: SessionStore = options?.persist ?? config.defaultStore;
 				const localContext = await discoverSessionContext(env);
-				const providers = mergeProviderOverrides(config.agentConfig.providers, options?.providers);
+				const providers = mergeProvidersConfig(config.agentConfig.providers, options?.providers);
 
 				// Agent-level model override. Per-call `model` on prompt()/skill() still wins
 				// because resolveModelForCall() applies it on top of this default.
@@ -169,15 +169,15 @@ async function resolveSessionEnv(
 	throw new Error('[flue] Invalid sandbox option passed to init().');
 }
 
-function mergeProviderOverrides(
-	base: ProviderOverrides | undefined,
-	override: ProviderOverrides | undefined,
-): ProviderOverrides | undefined {
-	if (!base) return override;
-	if (!override) return base;
+function mergeProvidersConfig(
+	base: ProvidersConfig | undefined,
+	settings: ProvidersConfig | undefined,
+): ProvidersConfig | undefined {
+	if (!base) return settings;
+	if (!settings) return base;
 
-	const merged: ProviderOverrides = { ...base };
-	for (const [provider, config] of Object.entries(override)) {
+	const merged: ProvidersConfig = { ...base };
+	for (const [provider, config] of Object.entries(settings)) {
 		const previous = merged[provider];
 		merged[provider] = {
 			...previous,
@@ -215,8 +215,8 @@ export type {
 	BashLike,
 	SessionEnv,
 	SessionOptions,
-	ProviderConfig,
-	ProviderOverrides,
+	ProviderSettings,
+	ProvidersConfig,
 	PromptOptions,
 	PromptResponse,
 	SkillOptions,

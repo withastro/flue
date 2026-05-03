@@ -117,12 +117,12 @@ export interface CompactionConfig {
 	keepRecentTokens?: number;
 }
 
-// ─── Provider Overrides ─────────────────────────────────────────────────────
+// ─── Provider Runtime Settings ──────────────────────────────────────────────
 
-export interface ProviderConfig {
+export interface ProviderSettings {
 	/**
-	 * Override the provider endpoint used by built-in models. Useful for API
-	 * gateways, LiteLLM-style proxies, or enterprise-managed provider endpoints.
+	 * Provider endpoint used by built-in models. Useful for API gateways,
+	 * LiteLLM-style proxies, or enterprise-managed provider endpoints.
 	 */
 	baseUrl?: string;
 	/**
@@ -138,7 +138,7 @@ export interface ProviderConfig {
 	apiKey?: string;
 }
 
-export type ProviderOverrides = Record<string, ProviderConfig>;
+export type ProvidersConfig = Record<string, ProviderSettings>;
 
 // ─── Agent Config (internal, passed to the harness at runtime) ──────────────
 
@@ -156,10 +156,10 @@ export interface AgentConfig {
 	model: Model<any> | undefined;
 	/** Agent-wide default role. Per-session and per-call roles override this. */
 	role?: string;
-	/** Provider endpoint/header/API-key overrides applied when resolving models. */
-	providers?: ProviderOverrides;
+	/** Provider runtime settings applied when resolving models. */
+	providers?: ProvidersConfig;
 	/** Resolve a "provider/modelId" string to a Model instance. Throws on invalid input. */
-	resolveModel?: (modelString: string, providers?: ProviderOverrides) => Model<any>;
+	resolveModel?: (modelString: string, providers?: ProvidersConfig) => Model<any>;
 	compaction?: CompactionConfig;
 }
 
@@ -212,8 +212,8 @@ export interface AgentInit {
 	role?: string;
 
 	/**
-	 * Provider endpoint/header/API-key overrides for every model used by this
-	 * agent, including role-level and per-call model overrides.
+	 * Provider runtime settings for every model used by this agent, including
+	 * role-level and per-call model selections.
 	 *
 	 * Example:
 	 *
@@ -230,7 +230,7 @@ export interface AgentInit {
 	 * });
 	 * ```
 	 */
-	providers?: ProviderOverrides;
+	providers?: ProvidersConfig;
 
 	/**
 	 * Agent-wide tools. Every prompt(), skill(), and task() call can use these.

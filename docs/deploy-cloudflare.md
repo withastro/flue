@@ -80,26 +80,6 @@ printf '\n.env\n' >> .gitignore
 
 Use the env var name your provider expects — `ANTHROPIC_API_KEY` for Anthropic, `OPENAI_API_KEY` for OpenAI, and so on. Do not commit `.env`.
 
-If your deployment routes model traffic through an enterprise API gateway or
-provider-compatible proxy, configure it in `init()` instead of mutating global
-model state:
-
-```ts
-const agent = await init({
-  model: 'anthropic/claude-sonnet-4-6',
-  providers: {
-    anthropic: {
-      baseUrl: env.ANTHROPIC_BASE_URL,
-      headers: { 'X-Custom-Auth': env.GATEWAY_KEY },
-      apiKey: 'dummy',
-    },
-  },
-});
-```
-
-Provider overrides apply to every model resolved by that agent, including
-role-level and per-call model overrides.
-
 Pass the file explicitly with `--env <path>`. Flue loads it for both `flue dev` and `flue run` (the same flag works for Node and Cloudflare targets):
 
 ```bash

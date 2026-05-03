@@ -9,7 +9,7 @@
  * User agent code should never import from here.
  */
 import { getModel, type Api, type Model } from '@mariozechner/pi-ai';
-import type { ProviderConfig, ProviderOverrides } from './types.ts';
+import type { ProviderSettings, ProvidersConfig } from './types.ts';
 
 export { createFlueContext } from './client.ts';
 export type { FlueContextConfig, FlueContextInternal } from './client.ts';
@@ -41,7 +41,7 @@ export {
  */
 export function resolveModel(
 	modelString: string,
-	providers?: ProviderOverrides,
+	providers?: ProvidersConfig,
 ): ReturnType<typeof getModel> {
 	const slash = modelString.indexOf('/');
 	if (slash === -1) {
@@ -64,22 +64,22 @@ export function resolveModel(
 				`is not registered with @mariozechner/pi-ai.`,
 		);
 	}
-	return applyProviderConfig(resolved, providers?.[provider]);
+	return applyProviderSettings(resolved, providers?.[provider]);
 }
 
-function applyProviderConfig<TApi extends Api>(
+function applyProviderSettings<TApi extends Api>(
 	model: Model<TApi>,
-	providerConfig: ProviderConfig | undefined,
+	providerSettings: ProviderSettings | undefined,
 ): Model<TApi> {
-	if (!providerConfig?.baseUrl && !providerConfig?.headers) {
-		return model;
-	}
+	if (!providerSettings) return model;
+
+	const hasBaseUrl = providerSettings.baseUrl !== undefined;
+	const hasHeaders = providerSettings.headers !== undefined;
+	if (!hasBaseUrl && !hasHeaders) return model;
+
 	return {
 		...model,
-		baseUrl: providerConfig.baseUrl ?? model.baseUrl,
-		headers:
-			model.headers || providerConfig.headers
-				? { ...(model.headers ?? {}), ...(providerConfig.headers ?? {}) }
-				: undefined,
+		baseUrl: providerSettings.baseUrl ?? model.baseUrl,
+		headers: hasHeaders ? { ...(model.headers ?? {}), ...providerSettings.headers } : model.headers,
 	};
 }

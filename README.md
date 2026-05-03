@@ -289,11 +289,17 @@ await session.prompt('Review the latest changes.'); // uses reviewer
 await session.task('Research related issues.', { role: 'researcher' }); // uses researcher
 ```
 
-### Provider Gateways
+### Provider Settings
 
-Use `providers` when model traffic needs to go through an enterprise API gateway,
-proxy, or custom endpoint. Overrides apply to every model resolved by the agent,
-including role-level and per-call model overrides.
+Use `providers` when model traffic needs provider-specific runtime settings,
+such as an enterprise API gateway, provider-compatible proxy, custom endpoint,
+or gateway-specific credentials. This is common for managed credentials, audit
+logging, traffic routing, or self-hosted OpenAI-compatible providers.
+
+Configure these settings in `init()` instead of mutating global model state. They
+are runtime-scoped to that agent and apply to every model it resolves, including
+agent defaults, role-level models, per-call model selections, tasks, and context
+compaction.
 
 ```ts
 const agent = await init({
@@ -304,6 +310,7 @@ const agent = await init({
       headers: {
         'X-Custom-Auth': env.GATEWAY_KEY,
       },
+      // Use this when the proxy expects a synthetic or gateway-specific key.
       apiKey: 'dummy',
     },
   },

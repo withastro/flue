@@ -69,26 +69,6 @@ printf '\n.env\n' >> .gitignore
 
 Use the env var name your provider expects — `OPENAI_API_KEY` for OpenAI, `ANTHROPIC_API_KEY` for Anthropic, and so on. Do not commit `.env`.
 
-If your deployment routes model traffic through an enterprise API gateway or
-provider-compatible proxy, configure it in `init()` instead of mutating global
-model state:
-
-```ts
-const agent = await init({
-  model: 'anthropic/claude-sonnet-4-6',
-  providers: {
-    anthropic: {
-      baseUrl: process.env.ANTHROPIC_BASE_URL,
-      headers: { 'X-Custom-Auth': process.env.GATEWAY_KEY },
-      apiKey: 'dummy',
-    },
-  },
-});
-```
-
-Provider overrides apply to every model resolved by that agent, including
-role-level and per-call model overrides.
-
 ### 4. Build and run
 
 For local development, `flue dev --target node --env .env` is the fastest path. It builds your workspace, loads the env file, starts the server on port 3583, and watches for changes — edit an agent file, the server reloads automatically.
