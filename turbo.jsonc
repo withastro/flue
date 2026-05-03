@@ -15,7 +15,7 @@
 		"build": {},
 		"//#check:lint": {},
 		"check:types": {
-			"dependsOn": ["^build", "^check:types"],
+			"dependsOn": ["build", "^build", "^check:types"],
 			"outputLogs": "errors-only"
 		},
 		"//#format:lint": {},
