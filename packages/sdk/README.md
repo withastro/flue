@@ -289,6 +289,34 @@ await session.prompt('Review the latest changes.'); // uses reviewer
 await session.task('Research related issues.', { role: 'researcher' }); // uses researcher
 ```
 
+### Provider Settings
+
+Use `providers` when model traffic needs provider-specific runtime settings,
+such as an enterprise API gateway, provider-compatible proxy, custom endpoint,
+or gateway-specific credentials. This is common for managed credentials, audit
+logging, traffic routing, or self-hosted OpenAI-compatible providers.
+
+Configure these settings in `init()` instead of mutating global model state. They
+are runtime-scoped to that agent and apply to every model it resolves, including
+agent defaults, role-level models, per-call model selections, tasks, and context
+compaction.
+
+```ts
+const agent = await init({
+  model: 'anthropic/claude-sonnet-4-6',
+  providers: {
+    anthropic: {
+      baseUrl: env.ANTHROPIC_BASE_URL,
+      headers: {
+        'X-Custom-Auth': env.GATEWAY_KEY,
+      },
+      // Use this when the proxy expects a synthetic or gateway-specific key.
+      apiKey: 'dummy',
+    },
+  },
+});
+```
+
 ### Custom Virtual Sandboxes
 
 For most agents, use the built-in virtual sandbox or `sandbox: 'local'`. If you need to customize just-bash directly, pass a Bash factory. The factory must return a fresh Bash-like runtime each time; share the filesystem object in the closure to persist files across sessions and prompts.
