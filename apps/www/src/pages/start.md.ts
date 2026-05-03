@@ -82,9 +82,27 @@ Before implementing, restate the chosen requirements to yourself as an implement
 3. Create or update the project in the requested directory.
 4. Scaffold one minimal Flue agent that matches the user's idea. Keep it closer to "hello world" than production app.
 5. Pass the selected model ID to \`init({ model: '<exact model id>' })\`. Flue does not choose a model automatically.
-6. Add only the dependencies and config required by the selected deploy guide.
-7. Run the most relevant validation command you can, such as build, typecheck, or a local Flue run. If you cannot run it, explain why.
-8. Finish with the exact next commands the user should run, including how to set any required secrets.
+6. Add \`tsconfig.json\` for TypeScript editor/typechecking support.
+   - If no \`tsconfig.json\` exists, create this minimal one:
+     \`\`\`json
+     {
+       "compilerOptions": {
+         "target": "ES2024",
+         "module": "ESNext",
+         "moduleResolution": "Bundler",
+         "strict": true,
+         "skipLibCheck": true
+       },
+       "include": ["agents/**/*.ts", ".flue/**/*.ts"],
+       "exclude": ["dist"]
+     }
+     \`\`\`
+   - If \`tsconfig.json\` already exists, do not replace it. The goal is only to make sure the generated agent files are included in the TypeScript project for editor/typechecking support.
+   - TypeScript may ignore hidden directories by default, so projects using the \`.flue\` layout usually need \`.flue/**/*.ts\` included explicitly.
+   - Make the smallest safe change: append the needed agent glob to an existing \`include\` array, create an \`include\` array only if that clearly preserves the project's existing source coverage, or leave a short note for the user if the existing config is non-trivial.
+7. Add only the dependencies and config required by the selected deploy guide.
+8. Run the most relevant validation command you can, such as build, typecheck, or a local Flue run. If you cannot run it, explain why.
+9. Finish with the exact next commands the user should run, including how to set any required secrets.
 
 ## Step 4: Verify Implementation
 
