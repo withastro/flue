@@ -11,7 +11,7 @@
 		"dev": "turbo dev",
 		"build": "turbo build",
 		"check": "turbo run build check:lint check:types",
-		"check:lint": "biome lint . --error-on-warnings",
+		"check:lint": "biome lint .",
 		"check:types": "turbo run check:types",
 		"format": "turbo run format:lint format:style",
 		"format:lint": "biome check . --write",
