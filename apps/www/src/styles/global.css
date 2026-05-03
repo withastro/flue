@@ -1,7 +1,69 @@
 @import 'tailwindcss';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* === Theme tokens =====================================================
+   Light values are the defaults; the `.dark` block overrides them so all
+   utilities like `bg-app`, `text-fg-muted`, `border-border` swap through
+   CSS-variable cascade — no `dark:` variants needed at usage sites. */
 @theme {
 	--font-heading: system-ui, -apple-system, sans-serif;
+
+	/* Surfaces */
+	--color-app:             white;
+	--color-app-muted:       #f8f9fb;
+	--color-surface:         white;
+	--color-surface-hover:   #f9fafb;          /* gray-50 */
+	--color-chrome:          #f9fafb;          /* gray-50, alpha at use-site */
+	--color-chip:            #e5e7eb;          /* gray-200, alpha at use-site */
+
+	/* Foreground */
+	--color-fg:              #030712;          /* gray-950 */
+	--color-fg-muted:        #4b5563;          /* gray-600 */
+	--color-fg-subtle:       #6b7280;          /* gray-500 */
+	--color-fg-faint:        #9ca3af;          /* gray-400 */
+
+	/* Borders */
+	--color-border:          #d1d5db;          /* gray-300 */
+	--color-border-soft:     #e5e7eb;          /* gray-200, dividers */
+	--color-border-strong:   #9ca3af;          /* gray-400, hover */
+	--color-border-control:  #d1d5db;          /* gray-300, pill/CTA */
+
+	/* Accent */
+	--color-accent:          #1d4ed8;          /* blue-700 */
+
+	/* Inverted (primary CTA) */
+	--color-invert-bg:       #030712;
+	--color-invert-bg-hover: #1f2937;          /* gray-800 */
+	--color-invert-fg:       white;
+}
+
+.dark {
+	--color-app:             #030712;          /* gray-950 */
+	--color-app-muted:       #0f1422;
+	--color-surface:         #111827;          /* gray-900 */
+	--color-surface-hover:   #1f2937;          /* gray-800 */
+	--color-chrome:          #111827;          /* gray-900 */
+	--color-chip:            #1f2937;          /* gray-800 */
+
+	--color-fg:              #f3f4f6;          /* gray-100 */
+	--color-fg-muted:        #d1d5db;          /* gray-300 */
+	--color-fg-subtle:       #9ca3af;          /* gray-400 */
+	--color-fg-faint:        #6b7280;          /* gray-500 */
+
+	--color-border:          #1f2937;          /* gray-800 */
+	--color-border-soft:     #1f2937;          /* gray-800 */
+	--color-border-strong:   #4b5563;          /* gray-600 */
+	--color-border-control:  #374151;          /* gray-700 */
+
+	--color-accent:          #60a5fa;          /* blue-400 */
+
+	--color-invert-bg:       #f3f4f6;
+	--color-invert-bg-hover: white;
+	--color-invert-fg:       #030712;
+
+	/* Native form controls + scrollbars track the active scheme. */
+	color-scheme: dark;
 }
 
 .animated-dash {
@@ -67,6 +129,47 @@
    `stroke="currentColor"` in the SVG subtree picks it up. */
 .floating-square-color {
 	color: #3b82f6; /* blue-500 */
+}
+
+.dark .floating-square-color {
+	color: #60a5fa; /* blue-400 */
+}
+
+/* Construction grid stroke — currentColor on the parent <g> drives both light
+   and dark via Tailwind text-* classes on the wrapper svg. */
+.blueprint-grid-stroke {
+	color: #dddddd;
+}
+.dark .blueprint-grid-stroke {
+	color: #2a3550;
+}
+
+/* Shiki dual-theme: with `defaultColor: false` shiki emits both
+   --shiki-light/--shiki-dark CSS vars on the <pre> and on each <span>, but
+   does NOT inline `color:` — so we provide the mapping here.
+
+   Astro's <Code> component renders with `astro-code` instead of `shiki`,
+   while direct shiki.codeToHtml() output keeps `shiki`. We target both.
+
+   Background is intentionally NOT forced here — each call site sets its
+   own panel bg (e.g. hero uses `bg-gray-900/70` on the wrapper plus
+   `[&_pre]:bg-transparent`). Forcing `--shiki-*-bg` with !important would
+   leak the theme's hardcoded bg (#24292e) and clash with the panel chrome. */
+.shiki,
+.astro-code {
+	color: var(--shiki-light);
+}
+.shiki span,
+.astro-code span {
+	color: var(--shiki-light);
+}
+.dark .shiki,
+.dark .astro-code {
+	color: var(--shiki-dark);
+}
+.dark .shiki span,
+.dark .astro-code span {
+	color: var(--shiki-dark);
 }
 
 @media (prefers-reduced-motion: reduce) {
