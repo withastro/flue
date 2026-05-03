@@ -280,54 +280,11 @@ Per-call `commands` still work and are merged on top of the agent list. If a per
 
 ## Connecting a remote sandbox
 
-The examples above use either the default virtual sandbox or the local sandbox. But when you need full isolation per session — each user gets their own Linux environment with git, Node.js, Python, etc. — you want a remote sandbox.
+The examples above use either the default virtual sandbox or the local sandbox. When you need full isolation per session — each user gets their own Linux environment with git, Node.js, Python, etc. — you want a remote sandbox.
 
-Install a sandbox connector with `flue add <name> | <your-agent>` (e.g. `flue add daytona | claude`). Run `flue add` with no arguments to see what's available, or run `flue add <url> --category sandbox` to have your agent build one for an unsupported provider.
+Flue connects to remote sandboxes through small adapter files called connectors, installed with `flue add`. Run `flue add` with no arguments to see what's currently supported, or `flue add <url> --category sandbox` to have your coding agent build a connector for an unsupported provider against the [sandbox connector spec](./sandbox-connector-spec.md).
 
-Here's an example using [Daytona](https://www.daytona.io/):
-
-`.flue/agents/code.ts`:
-
-```typescript
-import type { FlueContext } from '@flue/sdk/client';
-import { Daytona } from '@daytona/sdk';
-import { daytona } from '../connectors/daytona';
-
-export const triggers = { webhook: true };
-
-export default async function ({ init, payload, env }: FlueContext) {
-  const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
-  const sandbox = await client.create();
-  const setupAgent = await init({
-    sandbox: daytona(sandbox, { cleanup: true }),
-    model: 'openai/gpt-5.5',
-  });
-  const setup = await setupAgent.session();
-
-  await setup.shell(`git clone ${payload.repo} /workspace/project`);
-  await setup.shell('npm install', { cwd: '/workspace/project' });
-
-  const projectAgent = await init({
-    id: 'project',
-    sandbox: daytona(sandbox),
-    cwd: '/workspace/project',
-    model: 'openai/gpt-5.5',
-  });
-  const session = await projectAgent.session();
-
-  return await session.prompt(payload.prompt);
-}
-```
-
-Daytona is one of many possible sandbox providers. Any provider that implements Flue's `SandboxFactory` interface works — the connector is just an adapter.
-
-### A note on secrets and remote sandbox security
-
-When your agent runs in a remote sandbox, be aware that environment variables and mounted secrets are accessible to the LLM. If the agent is compromised or the model behaves unexpectedly, those secrets could be exfiltrated.
-
-For virtual and local sandboxes, Flue's `defineCommand` pattern already solves this — secrets live in the host process and are never exposed to the sandbox. But for remote sandboxes, the agent has a full Linux environment and can make arbitrary network requests.
-
-Some remote sandbox providers offer egress proxy features that let you inject credentials at the network level without exposing them to the sandbox (for example, [Cloudflare Sandboxes](https://blog.cloudflare.com/sandbox-auth/) support this natively). If your workload handles sensitive secrets and you need egress protection, look for a provider that supports this. Daytona does not currently offer an equivalent feature.
+We've written a full walkthrough for one provider — [Connect a Daytona Sandbox](./connect-daytona.md) — that covers installing the connector, wiring it into an agent, and configuring the sandbox. Other connectors follow the same shape.
 
 ### When to use a remote sandbox
 
@@ -432,6 +389,6 @@ Here's the progression of sandbox types available on Node.js, from simplest to m
 1. **Empty virtual sandbox** — `init({ model: 'openai/gpt-5.5' })`. Fast, cheap, stateless. Good for prompt-and-response agents.
 2. **Virtual sandbox with shell setup** — Use `session.shell()` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
 3. **Local sandbox** — `init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' })`. Mounts the host filesystem at `/workspace`. Ideal for self-hosted agents, CI tasks, and dev tooling.
-4. **Remote sandbox** — Full isolated Linux environment via Daytona or other providers. For multi-tenant agents, coding sandboxes, and anything that needs per-session isolation.
+4. **Remote sandbox** — Full isolated Linux environment via a sandbox connector. For multi-tenant agents, coding sandboxes, and anything that needs per-session isolation.
 
 Start simple. Move up when you need to.
