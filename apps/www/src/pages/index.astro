@@ -612,7 +612,6 @@ const floatingSquares = [
           try { localStorage.setItem('theme', isDark ? 'dark' : 'light'); } catch {}
           syncPressed();
         };
-        // @ts-expect-error — View Transitions API is not in lib.dom yet.
         if (document.startViewTransition) document.startViewTransition(apply);
         else apply();
       });
