@@ -204,7 +204,7 @@ npm install @daytona/sdk
 (Use the user's package manager — `pnpm add`, `yarn add`, etc. if their
 lockfile indicates a different one.)
 
-## Required environment variables
+## Authentication
 
 This connector needs `DAYTONA_API_KEY` at runtime. **Never invent a value
 for it** — it must come from the user.
@@ -252,5 +252,6 @@ export default async function ({ init, env }: FlueContext) {
 2. Confirm the import path you used for the connector matches where you
    actually wrote the file.
 3. Tell the user the next steps: install `@daytona/sdk` (if you didn't),
-   make sure `DAYTONA_API_KEY` is available at runtime (per the section
-   above), and run `flue dev` (or `flue run <agent>`) to try it.
+   make sure `DAYTONA_API_KEY` is available at runtime (per the
+   Authentication section above), and run `flue dev` (or
+   `flue run <agent>`) to try it.

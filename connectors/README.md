@@ -94,19 +94,32 @@ see clean content.
 
 ## Body conventions
 
-The body is the prompt an AI coding agent will read and act on. Aim for:
+The body is the prompt an AI coding agent will read and act on. The
+existing connectors (`sandbox--daytona.md` and `sandbox--vercel.md`) are
+the template — match their structure as closely as possible, and only
+diverge where the specifics of the provider you're connecting genuinely
+require it.
+
+For reference, the shape they share:
 
 1. A single sentence framing what the connector is and that the reader is
    an AI agent installing it.
-2. **Where to write the file** — be explicit about the `.flue/` vs root
+2. **What this connector does** — one paragraph, "wraps an
+   already-initialized X into Flue's `SandboxFactory`; user owns the
+   provider lifecycle".
+3. **Where to write the file** — be explicit about the `.flue/` vs root
    layout choice and tell the agent to ask if unsure.
-3. **The full TypeScript file content** in a code block, ready to write
+4. **The full TypeScript file content** in a code block, ready to write
    verbatim. Don't include placeholders the agent has to fill in.
-4. **Required dependencies** — what the agent should `npm install`.
-5. **Required env vars** — what the user must set, and a note never to
-   invent values.
-6. **A usage snippet** for one of the user's agents.
-7. **A verify step** — typecheck + manual next-steps for the user.
+5. **Required dependencies** — what the agent should `npm install`.
+6. **Authentication** — how the provider authenticates (env var, OIDC,
+   OAuth, certs, etc.), where credentials should live, and a note never
+   to invent values. The shape of this section will vary the most between
+   providers; let the provider's actual auth model drive it.
+7. **Wiring it into an agent** — a usage snippet for one of the user's
+   agents.
+8. **Verify** — typecheck + manual next-steps for the user, ending with
+   `flue dev` / `flue run <agent>`.
 
 For category-root files (e.g. `sandbox.md`), instead of a verbatim TS file,
 point the agent at the spec doc on raw GitHub plus a known-good reference
