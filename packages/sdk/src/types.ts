@@ -159,7 +159,10 @@ export interface AgentConfig {
 	/** Provider runtime settings applied when resolving models. */
 	providers?: ProvidersConfig;
 	/** Resolve model config to a Model instance. Throws on invalid model strings. */
-	resolveModel: (model: ModelConfig | undefined, providers?: ProvidersConfig) => Model<any> | undefined;
+	resolveModel: (
+		model: ModelConfig | undefined,
+		providers?: ProvidersConfig,
+	) => Model<any> | undefined;
 	compaction?: CompactionConfig;
 }
 

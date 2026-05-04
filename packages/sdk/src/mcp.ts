@@ -94,7 +94,7 @@ function createMcpTools(serverName: string, client: Client, tools: Tool[]): Tool
 				const result = await client.callTool(
 					{
 						name: tool.name,
-						arguments: args,
+						arguments: objectArgs(args),
 					},
 					undefined,
 					{ signal },
@@ -108,6 +108,12 @@ function createMcpTools(serverName: string, client: Client, tools: Tool[]): Tool
 			},
 		};
 	});
+}
+
+function objectArgs(args: unknown): Record<string, unknown> | undefined {
+	return args && typeof args === 'object' && !Array.isArray(args)
+		? (args as Record<string, unknown>)
+		: undefined;
 }
 
 function mergeRequestInit(requestInit: RequestInit | undefined, headers: HeadersInit | undefined): RequestInit {

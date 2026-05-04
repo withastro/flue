@@ -65,7 +65,8 @@ function createReadTool(env: SessionEnv): AgentTool<any> {
 			offset: Type.Optional(Type.Number({ description: 'Line number to start from (1-indexed)' })),
 			limit: Type.Optional(Type.Number({ description: 'Maximum number of lines to read' })),
 		}),
-		async execute(_toolCallId, params: { path: string; offset?: number; limit?: number }, signal?) {
+		async execute(_toolCallId, input: unknown, signal?) {
+			const params = input as { path: string; offset?: number; limit?: number };
 			throwIfAborted(signal);
 
 			try {
@@ -124,7 +125,8 @@ function createWriteTool(env: SessionEnv): AgentTool<any> {
 			path: Type.String({ description: 'Path to the file to write' }),
 			content: Type.String({ description: 'Content to write to the file' }),
 		}),
-		async execute(_toolCallId, params: { path: string; content: string }, signal?) {
+		async execute(_toolCallId, input: unknown, signal?) {
+			const params = input as { path: string; content: string };
 			throwIfAborted(signal);
 			const resolved = env.resolvePath(params.path);
 			const dir = resolved.replace(/\/[^/]*$/, '');
@@ -157,11 +159,13 @@ function createEditTool(env: SessionEnv): AgentTool<any> {
 			newText: Type.String({ description: 'Replacement text' }),
 			replaceAll: Type.Optional(Type.Boolean({ description: 'Replace all occurrences' })),
 		}),
-		async execute(
-			_toolCallId,
-			params: { path: string; oldText: string; newText: string; replaceAll?: boolean },
-			signal?,
-		) {
+		async execute(_toolCallId, input: unknown, signal?) {
+			const params = input as {
+				path: string;
+				oldText: string;
+				newText: string;
+				replaceAll?: boolean;
+			};
 			throwIfAborted(signal);
 			const content = await env.readFile(params.path);
 
@@ -210,7 +214,8 @@ function createBashTool(env: SessionEnv): AgentTool<any> {
 			command: Type.String({ description: 'Bash command to execute' }),
 			timeout: Type.Optional(Type.Number({ description: 'Timeout in seconds' })),
 		}),
-		async execute(_toolCallId, params: { command: string; timeout?: number }, signal?) {
+		async execute(_toolCallId, input: unknown, signal?) {
+			const params = input as { command: string; timeout?: number };
 			throwIfAborted(signal);
 			const result = await env.exec(params.command, { timeout: params.timeout });
 			return formatBashResult(result, params.command);
@@ -252,7 +257,8 @@ function createTaskTool(
 				}),
 			),
 		}),
-		async execute(_toolCallId, params: TaskToolParams, signal?) {
+		async execute(_toolCallId, input: unknown, signal?) {
+			const params = input as TaskToolParams;
 			throwIfAborted(signal);
 			return runTask(params, signal);
 		},
@@ -287,11 +293,8 @@ function createGrepTool(env: SessionEnv): AgentTool<any> {
 			path: Type.Optional(Type.String({ description: 'Directory or file to search (default: .)' })),
 			include: Type.Optional(Type.String({ description: 'Glob filter, e.g. "*.ts"' })),
 		}),
-		async execute(
-			_toolCallId,
-			params: { pattern: string; path?: string; include?: string },
-			signal?,
-		) {
+		async execute(_toolCallId, input: unknown, signal?) {
+			const params = input as { pattern: string; path?: string; include?: string };
 			throwIfAborted(signal);
 
 			const searchPath = params.path || '.';
@@ -342,7 +345,8 @@ function createGlobTool(env: SessionEnv): AgentTool<any> {
 			pattern: Type.String({ description: 'Glob pattern, e.g. "**/*.ts"' }),
 			path: Type.Optional(Type.String({ description: 'Directory to search in (default: .)' })),
 		}),
-		async execute(_toolCallId, params: { pattern: string; path?: string }, signal?) {
+		async execute(_toolCallId, input: unknown, signal?) {
+			const params = input as { pattern: string; path?: string };
 			throwIfAborted(signal);
 
 			const searchPath = params.path || '.';
