@@ -5,7 +5,28 @@ import { packageUpSync } from 'package-up';
 import { parseFrontmatterFile } from './context.ts';
 import { CloudflarePlugin } from './build-plugin-cloudflare.ts';
 import { NodePlugin } from './build-plugin-node.ts';
-import type { AgentInfo, BuildContext, BuildOptions, BuildPlugin, Role } from './types.ts';
+import type { AgentInfo, BuildContext, BuildOptions, BuildPlugin, FlueConfig, Role } from './types.ts';
+
+const CONFIG_FILENAMES = ['flue.config.ts', 'flue.config.mts', 'flue.config.js', 'flue.config.mjs'];
+
+/**
+ * Find and load a `flue.config.ts` (or .js/.mts/.mjs) from a workspace directory.
+ * Returns the config object, or an empty object if no config file exists.
+ */
+export async function loadConfig(workspaceDir: string): Promise<FlueConfig> {
+	const resolved = path.resolve(workspaceDir);
+	for (const filename of CONFIG_FILENAMES) {
+		const filePath = path.join(resolved, filename);
+		if (fs.existsSync(filePath)) {
+			const fileUrl = `file://${filePath}`;
+			const mod = await import(fileUrl);
+			const config: FlueConfig = mod.default ?? {};
+			console.log(`[flue] Loaded config: ${filePath}`);
+			return config;
+		}
+	}
+	return {};
+}
 
 /**
  * Result returned by {@link build}. `changed` indicates whether any file in
@@ -30,7 +51,11 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	const workspaceDir = path.resolve(options.workspaceDir);
 	const outputDir = path.resolve(options.outputDir);
 
-	const plugin = resolvePlugin(options);
+	// Load project config; CLI flags (in options) override config file values.
+	const config = await loadConfig(workspaceDir);
+	const mergedTarget = options.target ?? config.target;
+	const mergedOptions = { ...options, target: mergedTarget };
+	const plugin = resolvePlugin(mergedOptions);
 
 	console.log(`[flue] Building workspace: ${workspaceDir}`);
 	console.log(`[flue] Output: ${outputDir}/dist`);
@@ -94,7 +119,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 		roles,
 		workspaceDir,
 		outputDir,
-		options,
+		options: mergedOptions,
 	};
 
 	const serverCode = await plugin.generateEntryPoint(ctx);
@@ -195,7 +220,7 @@ function resolvePlugin(options: BuildOptions): BuildPlugin {
 
 	if (!options.target) {
 		throw new Error(
-			'[flue] No build target specified. Use --target to choose a target:\n' +
+			'[flue] No build target specified. Set `target` in flue.config.ts or pass --target:\n' +
 				'  flue build --target node\n' +
 				'  flue build --target cloudflare',
 		);

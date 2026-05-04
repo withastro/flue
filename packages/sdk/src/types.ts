@@ -517,6 +517,29 @@ export interface BuildPlugin {
 	additionalOutputs?(ctx: BuildContext): Record<string, string> | Promise<Record<string, string>>;
 }
 
+// ─── Project Config ─────────────────────────────────────────────────────────
+
+/**
+ * Project-level configuration for a Flue workspace.
+ *
+ * Lives in the workspace directory as `flue.config.ts` (or `.js`/`.mts`/`.mjs`)
+ * and is loaded at build time. CLI flags override values from this file.
+ *
+ * ```ts
+ * import type { FlueConfig } from '@flue/sdk';
+ *
+ * export default {
+ *   target: 'node',
+ * } satisfies FlueConfig;
+ * ```
+ */
+export interface FlueConfig {
+	/** The deploy target. */
+	target?: 'node' | 'cloudflare';
+}
+
+// ─── Build Options ──────────────────────────────────────────────────────────
+
 export interface BuildOptions {
 	/**
 	 * The workspace directory: the directory directly containing agents/ and

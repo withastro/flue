@@ -5,6 +5,7 @@ import { determineAgent } from '@vercel/detect-agent';
 import {
 	build,
 	dev,
+	loadConfig,
 	DEFAULT_DEV_PORT,
 	parseEnvFiles,
 	resolveEnvFiles,
@@ -54,9 +55,9 @@ function resolveOutputDir(explicitOutput: string | undefined): string {
 function printUsage() {
 	console.error(
 		'Usage:\n' +
-			'  flue dev   --target <node|cloudflare> [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
-			'  flue run   <agent> --target node --id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
-			'  flue build --target <node|cloudflare> [--workspace <path>] [--output <path>]\n' +
+			'  flue dev   [--target <node|cloudflare>] [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
+			'  flue run   <agent> [--target node] --id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
+			'  flue build [--target <node|cloudflare>] [--workspace <path>] [--output <path>]\n' +
 			'  flue add   [<name>|<url>] [--category <category>] [--print]\n' +
 			'\n' +
 			'Commands:\n' +
@@ -66,6 +67,7 @@ function printUsage() {
 			'  add    Install a connector. Pipes installation instructions for an AI coding agent to follow.\n' +
 			'\n' +
 			'Flags:\n' +
+			'  --target <target>    Deploy target: node or cloudflare. Overrides flue.config.ts if set.\n' +
 			'  --workspace <path>   Workspace root (containing agents/ and roles/). Default: ./.flue/ if it exists, else ./\n' +
 			'  --output <path>      Where dist/ is written. Default: current working directory\n' +
 			`  --port <number>      Port for the dev server. Default: ${DEFAULT_DEV_PORT}\n` +
@@ -76,12 +78,13 @@ function printUsage() {
 			'  --print              (flue add) Print the raw connector markdown to stdout regardless of whether the caller is an agent.\n' +
 			'\n' +
 			'Examples:\n' +
+			'  flue dev                                       # uses target from flue.config.ts\n' +
 			'  flue dev --target node\n' +
 			'  flue dev --target cloudflare --port 8787\n' +
 			'  flue dev --target node --env .env\n' +
-			'  flue run hello --target node --id test-1\n' +
+			'  flue run hello --id test-1\n' +
 			'  flue run hello --target node --id test-1 --payload \'{"name": "World"}\' --env .env\n' +
-			'  flue build --target node\n' +
+			'  flue build\n' +
 			'  flue build --target cloudflare --workspace ./.flue --output ./build\n' +
 			'  flue add\n' +
 			'  flue add daytona | claude\n' +
@@ -95,7 +98,7 @@ function printUsage() {
 interface RunArgs {
 	command: 'run';
 	agent: string;
-	target: 'node';
+	target?: 'node';
 	id: string;
 	payload: string;
 	/** Explicit --workspace value, or undefined to apply the cwd waterfall. */
@@ -109,7 +112,7 @@ interface RunArgs {
 
 interface BuildArgs {
 	command: 'build';
-	target: 'node' | 'cloudflare';
+	target?: 'node' | 'cloudflare';
 	/** Explicit --workspace value, or undefined to apply the cwd waterfall. */
 	explicitWorkspace: string | undefined;
 	/** Explicit --output value, or undefined to default to cwd. */
@@ -118,7 +121,7 @@ interface BuildArgs {
 
 interface DevArgs {
 	command: 'dev';
-	target: 'node' | 'cloudflare';
+	target?: 'node' | 'cloudflare';
 	/** Explicit --workspace value, or undefined to apply the cwd waterfall. */
 	explicitWorkspace: string | undefined;
 	/** Explicit --output value, or undefined to default to cwd. */
@@ -295,14 +298,9 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 	if (command === 'build') {
 		const flags = parseFlags(rest);
-		if (!flags.target) {
-			console.error('Missing required --target flag. Supported targets: node, cloudflare');
-			printUsage();
-			process.exit(1);
-		}
 		return {
 			command: 'build',
-			target: flags.target as 'node' | 'cloudflare',
+			target: flags.target,
 			explicitWorkspace: flags.explicitWorkspace,
 			explicitOutput: flags.explicitOutput,
 		};
@@ -310,14 +308,9 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 	if (command === 'dev') {
 		const flags = parseFlags(rest);
-		if (!flags.target) {
-			console.error('Missing required --target flag. Supported targets: node, cloudflare');
-			printUsage();
-			process.exit(1);
-		}
 		return {
 			command: 'dev',
-			target: flags.target as 'node' | 'cloudflare',
+			target: flags.target,
 			explicitWorkspace: flags.explicitWorkspace,
 			explicitOutput: flags.explicitOutput,
 			port: flags.port,
@@ -328,12 +321,6 @@ function parseArgs(argv: string[]): ParsedArgs {
 	if (command === 'run' && rest.length > 0) {
 		const agent = rest[0]!;
 		const flags = parseFlags(rest.slice(1));
-
-		if (!flags.target) {
-			console.error('Missing required --target flag. `flue run` only supports --target node');
-			printUsage();
-			process.exit(1);
-		}
 
 		if (!flags.id) {
 			console.error('Missing required --id flag for run command.');
@@ -355,7 +342,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 		return {
 			command: 'run',
 			agent,
-			target: flags.target,
+			target: flags.target as 'node' | undefined,
 			id: flags.id,
 			payload: flags.payload,
 			explicitWorkspace: flags.explicitWorkspace,
@@ -691,6 +678,18 @@ async function run(args: RunArgs) {
 	const outputDir = resolveOutputDir(args.explicitOutput);
 	const serverPath = path.join(outputDir, 'dist', 'server.mjs');
 
+	// Resolve target from config if not passed via CLI.
+	// `flue run` only supports Node — error if config specifies cloudflare.
+	const config = await loadConfig(workspaceDir);
+	const target = args.target ?? config.target;
+	if (target === 'cloudflare') {
+		printCloudflareRunUnsupported(args.agent, args.id, args.payload);
+	}
+	if (target && target !== 'node') {
+		console.error(`[flue] \`flue run\` only supports --target node, got "${target}".`);
+		process.exit(1);
+	}
+
 	// 0. Resolve --env paths up front so a typo errors before we kick
 	//    off a build. Resolves relative to outputDir (the project root).
 	let resolvedEnvFiles: string[];
@@ -705,9 +704,9 @@ async function run(args: RunArgs) {
 	}
 	const fileEnv = parseEnvFiles(resolvedEnvFiles);
 
-	// 1. Build
+	// 1. Build (target defaults to 'node' for `flue run`)
 	try {
-		await build({ workspaceDir, outputDir, target: args.target });
+		await build({ workspaceDir, outputDir, target: target ?? 'node' });
 	} catch (err) {
 		console.error(`[flue] Build failed:`, err instanceof Error ? err.message : String(err));
 		process.exit(1);
