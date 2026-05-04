@@ -32,9 +32,10 @@ export type {
 	AgentInfo,
 	ToolDef,
 	ToolParameters,
+	FlueConfig,
 } from './types.ts';
 
-export { build, resolveWorkspaceFromCwd } from './build.ts';
+export { build, loadConfig, resolveWorkspaceFromCwd } from './build.ts';
 export {
 	dev,
 	DEFAULT_DEV_PORT,

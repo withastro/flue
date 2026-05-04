@@ -37,7 +37,7 @@ import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseEnv } from 'node:util';
-import { build } from './build.ts';
+import { build, loadConfig } from './build.ts';
 import type { BuildOptions } from './types.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ import type { BuildOptions } from './types.ts';
 export interface DevOptions {
 	workspaceDir: string;
 	outputDir: string;
-	target: 'node' | 'cloudflare';
+	target?: 'node' | 'cloudflare';
 	/** Defaults to 3583 ("FLUE" on a phone keypad). */
 	port?: number;
 	/**
@@ -115,6 +115,17 @@ export async function dev(options: DevOptions): Promise<void> {
 	const outputDir = path.resolve(options.outputDir);
 	const port = options.port ?? DEFAULT_DEV_PORT;
 
+	// Load project config; CLI flags (in options) override config file values.
+	const config = await loadConfig(workspaceDir);
+	const target = options.target ?? config.target;
+	if (!target) {
+		throw new Error(
+			'[flue] No build target specified. Set `target` in flue.config.ts or pass --target:\n' +
+				'  flue dev --target node\n' +
+				'  flue dev --target cloudflare',
+		);
+	}
+
 	// Resolve env files up front so a typo errors before we kick off a build.
 	// Resolved against outputDir so relative paths feel natural ("the path
 	// they look like from the project root").
@@ -126,10 +137,10 @@ export async function dev(options: DevOptions): Promise<void> {
 	const buildOptions: BuildOptions = {
 		workspaceDir,
 		outputDir,
-		target: options.target,
+		target,
 	};
 
-	console.error(`[flue] Starting dev server (target: ${options.target})`);
+	console.error(`[flue] Starting dev server (target: ${target})`);
 	console.error(`[flue] Watching: ${workspaceDir}`);
 	console.error(`[flue] Building...`);
 
@@ -144,7 +155,7 @@ export async function dev(options: DevOptions): Promise<void> {
 	console.error(`[flue] Built in ${Date.now() - initialStart}ms`);
 
 	const reloader: DevReloader =
-		options.target === 'node'
+		target === 'node'
 			? new NodeReloader({ outputDir, port, envFiles })
 			: await createCloudflareReloader({ outputDir, port, envFiles });
 
@@ -167,7 +178,7 @@ export async function dev(options: DevOptions): Promise<void> {
 	const watcher = createWatcher({
 		workspaceDir,
 		outputDir,
-		target: options.target,
+		target,
 		envFiles,
 		onChange: (relPath) => {
 			if (!reloader.shouldRebuildOn(relPath)) return;
