@@ -20,7 +20,8 @@
 	"devDependencies": {
 		"@biomejs/biome": "^2.2.0",
 		"@flue/sdk": "workspace:*",
-		"@mariozechner/pi-coding-agent": "^0.66.1",
+		"@mariozechner/pi-ai": "*",
+		"@mariozechner/pi-coding-agent": "*",
 		"@types/node": "^22.10.10",
 		"bgproc": "^0.2.0",
 		"prettier": "^3.4.2",
