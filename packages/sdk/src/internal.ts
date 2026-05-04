@@ -64,7 +64,9 @@ export function resolveModel(
 		throw new Error(
 			`[flue] Unknown model "${modelString}". ` +
 				`Provider "${provider}" / model id "${modelId}" ` +
-				`is not registered with @mariozechner/pi-ai.`,
+				`is not registered with @mariozechner/pi-ai. ` +
+				`Supported providers include: anthropic, openai, openrouter, minimax, minimax-cn, ` +
+				`google, mistral, groq, and more. Check @mariozechner/pi-ai for the full list.`,
 		);
 	}
 	return applyProviderSettings(resolved, providers?.[provider]);
@@ -78,6 +80,10 @@ function applyProviderSettings<TApi extends Api>(
 
 	const hasBaseUrl = providerSettings.baseUrl !== undefined;
 	const hasHeaders = providerSettings.headers !== undefined;
+	// Note: providerSettings.apiKey is intentionally not applied to the model object —
+	// it is surfaced to the agent runtime via the getApiKey() callback in session.ts,
+	// which pi-agent-core uses when making API requests. This keeps credential handling
+	// out of the serialisable model config.
 	if (!hasBaseUrl && !hasHeaders) return model;
 
 	return {

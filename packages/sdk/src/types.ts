@@ -131,9 +131,21 @@ export interface ProviderSettings {
 	 */
 	headers?: Record<string, string>;
 	/**
-	 * API key returned to the underlying agent runtime for this provider.
-	 * Useful when the gateway requires a dummy key or when credentials should
-	 * come from the agent's runtime env instead of process-global env vars.
+	 * API key passed to the underlying agent runtime for this provider.
+	 *
+	 * Use this to supply credentials at runtime instead of relying on a
+	 * process-global environment variable. For example, to use MiniMax without
+	 * setting `MINIMAX_API_KEY` globally:
+	 *
+	 * ```ts
+	 * await init({
+	 *   model: 'minimax/MiniMax-M2.7',
+	 *   providers: { minimax: { apiKey: env.MINIMAX_API_KEY } },
+	 * });
+	 * ```
+	 *
+	 * When routing through a proxy that expects a synthetic key, pass `'dummy'`
+	 * alongside a custom `baseUrl`.
 	 */
 	apiKey?: string;
 }

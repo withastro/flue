@@ -318,6 +318,30 @@ const agent = await init({
 });
 ```
 
+**MiniMax-M2.7** is available as a first-class provider via `minimax/MiniMax-M2.7`
+(and `minimax/MiniMax-M2.7-highspeed` for the faster variant). MiniMax uses an
+Anthropic-compatible messages API, so all Flue features — streaming, tools, tasks,
+context compaction, and roles — work out of the box.
+
+```ts
+// Set MINIMAX_API_KEY in the environment, or pass it via providers:
+const agent = await init({
+  model: 'minimax/MiniMax-M2.7',
+  providers: {
+    minimax: {
+      // Explicit key — useful in Cloudflare Workers where env vars are
+      // request-scoped bindings rather than process-global variables.
+      apiKey: env.MINIMAX_API_KEY,
+    },
+  },
+});
+const session = await agent.session();
+const result = await session.prompt('Explain how large language models work.');
+```
+
+If `MINIMAX_API_KEY` is already set as a process environment variable, the
+`providers` block is optional — omit it and Flue picks up the key automatically.
+
 ### Custom Virtual Sandboxes
 
 For most agents, use the built-in virtual sandbox or `sandbox: 'local'`. If you need to customize just-bash directly, pass a Bash factory. The factory must return a fresh Bash-like runtime each time; share the filesystem object in the closure to persist files across sessions and prompts.
