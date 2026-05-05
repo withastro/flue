@@ -109,21 +109,9 @@ This is the Render side of what the Node guide already covers:
 - `buildCommand` compiles Flue's Node target.
 - `startCommand` runs the generated server, which binds to `PORT` and serves agents at `/agents/<name>/<id>`.
 - `healthCheckPath` lets Render verify each deploy before it shifts traffic.
-- `sync: false` tells Render to prompt for the secret instead of reading it from Git.
+- `sync: false` keeps the secret out of the Blueprint. Render prompts for the value on first deploy and stores it on the service.
 
-If you ever move this setup into a different repo, drop the same `render.yaml` at its root and open the Blueprint flow with that repo's URL:
-
-```txt
-https://dashboard.render.com/blueprint/new?repo=https://github.com/<user>/<repo>
-```
-
-If the Render CLI is installed, you can validate before pushing:
-
-```bash
-render blueprints validate
-```
-
-The snippets in this guide validate against Render's public schema at `https://render.com/schema/render.yaml.json`.
+If you ever move this setup into a different repo, drop the same `render.yaml` at its root, then create a new Blueprint from the Render Dashboard (**New > Blueprint**) and pick that repo.
 
 > You can now read the Blueprint and know what each Render-facing field does.
 
@@ -148,7 +136,7 @@ envVars:
 Once the next deploy goes live, call the translation agent again:
 
 ```bash
-curl https://<service>.onrender.com/agents/translate/model-test \
+curl https://<service>.onrender.com/agents/translate/verify \
   -H "Content-Type: application/json" \
   -d '{"text": "Good morning", "language": "Spanish"}'
 ```
@@ -159,9 +147,7 @@ A successful response means the new env values reached the running service and F
 
 ## 5. Add session persistence
 
-Skip this section if your agents are stateless or if in-memory sessions are enough. Otherwise, jump in.
-
-In-memory sessions disappear on every deploy or restart, and they don't help once you scale beyond one instance. To make conversations durable, implement a Flue `SessionStore` in your app and back it with a Render data store.
+In-memory sessions disappear on every deploy or restart, and they don't help once you scale beyond one instance. If your agents need conversations that survive that, back them with a Render data store by implementing a Flue `SessionStore`.
 
 Render Postgres is the best default for durable session history. Extend the template's `render.yaml` with a database and wire `DATABASE_URL` into the Web Service:
 
@@ -187,21 +173,30 @@ services:
         sync: false
 ```
 
-Once your app reads `DATABASE_URL` in its `SessionStore`, redeploy and replay the assistant test with the same session ID. Trigger a manual deploy and call the same session again. If it remembers the earlier turn, persistence is working.
+To verify persistence end to end, run a fact-recall test that survives a process restart:
+
+1. Commit the updated `render.yaml` and wait for the new database-aware deploy to go live.
+2. Update your `SessionStore` to read `DATABASE_URL`.
+3. Plant a fact in a fresh session:
+
+   ```bash
+   curl https://<service>.onrender.com/agents/assistant/persist-test \
+     -H "Content-Type: application/json" \
+     -d '{"message": "Remember this number for me: 42."}'
+   ```
+
+4. Restart the service from the Render Dashboard (**Manual Deploy > Restart Service**) so the in-memory state of the previous process is gone.
+5. Once the service is healthy, ask for the fact back:
+
+   ```bash
+   curl https://<service>.onrender.com/agents/assistant/persist-test \
+     -H "Content-Type: application/json" \
+     -d '{"message": "What number did I ask you to remember?"}'
+   ```
+
+If the response references `42`, your `SessionStore` is reading and writing through Postgres correctly. If the agent has no idea, persistence isn't being read on session resume.
 
 > Your sessions now survive deploys, restarts, and scale-out.
-
-If you only need lightweight session-style storage, Render Key Value can stand in for Postgres. Replace the `databases` block with a `keyvalue` service and wire `REDIS_URL` into the Web Service via `fromService` (see the [Key Value docs](https://render.com/docs/key-value)).
-
-To verify persistence end to end:
-
-1. Commit the updated `render.yaml` and let Render apply the new data store.
-2. Update your `SessionStore` to read `DATABASE_URL` or `REDIS_URL`.
-3. Call the `assistant` agent with a fresh session ID and ask a question.
-4. Trigger a manual deploy from the Render Dashboard.
-5. Call the same session ID again. The agent should still remember the earlier turn.
-
-If the conversation context survives the redeploy, persistence is wired up correctly.
 
 ## 6. Add a scheduled agent
 
