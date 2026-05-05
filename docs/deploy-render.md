@@ -2,7 +2,7 @@
 
 Run Flue's Node.js build output on Render, starting from the [Flue template](https://render.com/templates/flue). This guide builds on [Deploy Agents on Node.js](./deploy-node.md) and focuses on the Render-specific setup.
 
-By the end, you will have a live Render Web Service running Flue agents, and you will know how to add Render-managed persistence and scheduled agent runs.
+By the end, you will have a live Render web service running Flue agents, and you will know how to add Render-managed persistence and scheduled agent runs.
 
 ## Prerequisites
 
@@ -13,7 +13,7 @@ By the end, you will have a live Render Web Service running Flue agents, and you
 
 Starting from the template, you'll ship a live Flue agent on Render that you can call from any HTTP client:
 
-1. Deploy a Flue Web Service on Render.
+1. Deploy a Flue web service on Render.
 2. Send real requests to the `translate` and `assistant` agents.
 3. Read the `render.yaml` that makes the deploy work.
 4. Add durable sessions or scheduled runs when your agent needs them.
@@ -27,11 +27,13 @@ Open the [Flue template](https://render.com/templates/flue) and click **Deploy t
 3. Returning to Render and creating a free account if you are not signed in.
 4. Opening the Blueprint deploy page for the new repo.
 
-On the deploy page, paste your AI provider API key when prompted, then click **Deploy**. The Blueprint provisions a Node.js Web Service that runs `npm ci && npx flue build --target node`, starts it with `node dist/server.mjs`, and uses `/health` for health checks.
+On the deploy page, paste your AI provider API key when prompted, then click **Deploy**. The Blueprint provisions a Node.js web service that runs `npm ci && npx flue build --target node`, starts it with `node dist/server.mjs`, and uses `/health` for health checks.
+
+The template uses `plan: free` so first-time deploys cost nothing. Free instances spin down after 15 minutes of inactivity, and the next request pays a multi-second cold start while the Node process restarts. For agents that see sporadic traffic in production, bump the service to `starter` or higher in `render.yaml` (or from the Render Dashboard) to keep it warm.
 
 When the deploy finishes, copy your service URL from the Render Dashboard. The rest of this guide uses `https://<service>.onrender.com`.
 
-> You have a live Render Web Service with a Flue server behind it.
+> Your Flue agents are live on Render and ready to take requests.
 
 ## 2. Test the live service
 
@@ -41,7 +43,7 @@ Start with the health endpoint:
 curl https://<service>.onrender.com/health
 ```
 
-A successful response confirms Render is forwarding traffic to the process started by `node dist/server.mjs`.
+A successful response confirms Render is forwarding traffic to the process started by `node dist/server.mjs`. If a call hangs or returns an error, open your service in the Render Dashboard and watch the **Logs** tab while you re-run the request. Every Flue agent invocation prints there.
 
 Now call the `translate` agent:
 
@@ -62,7 +64,7 @@ The response should match the agent's structured output, like:
 
 The translation itself can vary by model. The shape is what matters.
 
-> The Web Service is live, the Flue server started correctly, and your provider key is reaching the model at runtime.
+> The web service is live, the Flue server started correctly, and your provider key is reaching the model at runtime.
 
 Try a short conversation with the `assistant` agent:
 
@@ -82,13 +84,15 @@ curl https://<service>.onrender.com/agents/assistant/session-1 \
 
 Reusing the ID keeps Flue's session scope stable. On Node.js, that session state lives in memory unless you wire up a custom store.
 
+Render closes idle HTTP connections after about 100 seconds. Most prompt-and-response agents finish well inside that window, but if you build agents that run long tool chains or large multi-step prompts, plan for either streamed responses or the cron pattern in section 6 instead of a single blocking request.
+
 > **A conversational session works end to end.**
 >
 > If you only need webhook-triggered agents with in-memory sessions, you can stop here.
 
-## 3. Review the Web Service config
+## 3. Review the web service config
 
-Open the template's `render.yaml`. Its Web Service follows this shape:
+Open the template's `render.yaml`. Its web service follows this shape:
 
 ```yaml
 services:
@@ -147,9 +151,9 @@ A successful response means the new env values reached the running service and F
 
 ## 5. Add session persistence
 
-In-memory sessions disappear on every deploy or restart, and they don't help once you scale beyond one instance. If your agents need conversations that survive that, back them with a Render data store by implementing a Flue `SessionStore`.
+In-memory sessions disappear on every deploy or restart, and they don't help once you scale beyond one instance. If your agents need conversations that survive that, back them with a Render data store by implementing a Flue `SessionStore`. The Node guide's [Session persistence](./deploy-node.md#session-persistence) section covers the `SessionStore` interface (`save`, `load`, `delete`) and how to pass it via `init({ persist })`.
 
-Render Postgres is the best default for durable session history. Extend the template's `render.yaml` with a database and wire `DATABASE_URL` into the Web Service:
+Render Postgres is the best default for durable session history. Extend the template's `render.yaml` with a database and wire `DATABASE_URL` into the web service:
 
 ```yaml
 databases:
@@ -173,11 +177,84 @@ services:
         sync: false
 ```
 
+Add the Postgres client and wire up a `SessionStore` that reads `DATABASE_URL`:
+
+```bash
+npm install pg
+npm install -D @types/pg
+```
+
+`.flue/session-store.ts`:
+
+```typescript
+import type { SessionStore, SessionData } from '@flue/sdk/client';
+import { Pool } from 'pg';
+
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+let ready: Promise<void> | null = null;
+async function ensureTable() {
+  if (!ready) {
+    ready = pool
+      .query(
+        `CREATE TABLE IF NOT EXISTS flue_sessions (
+           id         text PRIMARY KEY,
+           data       jsonb NOT NULL,
+           updated_at timestamptz NOT NULL DEFAULT now()
+         )`,
+      )
+      .then(() => undefined);
+    // Reset on failure so the next call can retry instead of replaying
+    // the original rejection forever.
+    ready.catch(() => {
+      ready = null;
+    });
+  }
+  await ready;
+}
+
+export const sessionStore: SessionStore = {
+  async save(id, data) {
+    await ensureTable();
+    await pool.query(
+      `INSERT INTO flue_sessions (id, data, updated_at)
+       VALUES ($1, $2::jsonb, now())
+       ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
+      [id, JSON.stringify(data)],
+    );
+  },
+  async load(id) {
+    await ensureTable();
+    const { rows } = await pool.query<{ data: SessionData }>(
+      `SELECT data FROM flue_sessions WHERE id = $1`,
+      [id],
+    );
+    return rows[0]?.data ?? null;
+  },
+  async delete(id) {
+    await ensureTable();
+    await pool.query(`DELETE FROM flue_sessions WHERE id = $1`, [id]);
+  },
+};
+```
+
+Pass the store to the `assistant` agent's `init()`:
+
+```typescript
+import { sessionStore } from '../session-store';
+
+const agent = await init({
+  model: 'anthropic/claude-sonnet-4-6',
+  persist: sessionStore,
+});
+```
+
+The `connectionString` from `fromDatabase` is Render's internal Postgres URL, which doesn't require SSL. If you ever swap to the external connection string, add `ssl: { rejectUnauthorized: false }` to the `Pool` config.
+
 To verify persistence end to end, run a fact-recall test that survives a process restart:
 
-1. Commit the updated `render.yaml` and wait for the new database-aware deploy to go live.
-2. Update your `SessionStore` to read `DATABASE_URL`.
-3. Plant a fact in a fresh session:
+1. Commit the updated `render.yaml` and the new `SessionStore`, then wait for the database-aware deploy to go live.
+2. Plant a fact in a fresh session:
 
    ```bash
    curl https://<service>.onrender.com/agents/assistant/persist-test \
@@ -185,8 +262,8 @@ To verify persistence end to end, run a fact-recall test that survives a process
      -d '{"message": "Remember this number for me: 42."}'
    ```
 
-4. Restart the service from the Render Dashboard (**Manual Deploy > Restart Service**) so the in-memory state of the previous process is gone.
-5. Once the service is healthy, ask for the fact back:
+3. Restart the service from the Render Dashboard (**Manual Deploy > Restart Service**) so the in-memory state of the previous process is gone.
+4. Once the service is healthy, ask for the fact back:
 
    ```bash
    curl https://<service>.onrender.com/agents/assistant/persist-test \
@@ -200,9 +277,9 @@ If the response references `42`, your `SessionStore` is reading and writing thro
 
 ## 6. Add a scheduled agent
 
-Some agents shouldn't sit behind an HTTP endpoint. Nightly summaries, weekly reports, periodic audits, API syncs, and cache refreshes work better as scheduled jobs. Render Cron Jobs run a command on a schedule and exit when the work is done, which is a clean fit for agents you invoke with `flue run`.
+Some agents shouldn't sit behind an HTTP endpoint. Nightly summaries, weekly reports, periodic audits, API syncs, and cache refreshes work better as scheduled jobs. Render cron jobs run a command on a schedule and exit when the work is done, which is a clean fit for agents you invoke with `flue run`.
 
-Add a cron service to the template's `render.yaml`:
+Add a cron service to the template's `render.yaml`. The example below assumes a `digest` agent in `.flue/agents/`. Swap in any agent name from your workspace:
 
 ```yaml
 services:
@@ -220,8 +297,8 @@ services:
 
 Two things to remember:
 
-- Cron schedules use UTC. Quote the `schedule` value so YAML doesn't parse `*` as an alias.
-- The cron runs the start command each time it fires. If your install prunes dev dependencies, keep `@flue/cli` available at runtime.
+- Cron schedules use UTC. Quote the `schedule` value so YAML doesn't try to parse a leading `*` as an alias.
+- The cron runs `buildCommand` and then `startCommand` on every fire. If your install prunes dev dependencies, keep `@flue/cli` available at runtime so `npx flue run` can resolve.
 
 To verify the cron without waiting for the schedule:
 
@@ -237,7 +314,7 @@ If the run completes cleanly, your scheduled agent is ready for production.
 
 ## Going further
 
-For continuous, queue-backed agents, reach for a Render Background Worker. A common setup: a Web Service enqueues a job, a Background Worker pulls it from Render Key Value, the worker invokes a Flue agent, and the result lands in your data store. When Key Value is backing a queue, set `maxmemoryPolicy: noeviction` so jobs are never evicted.
+For continuous, queue-backed agents, reach for a Render background worker. A common setup: a web service enqueues a job, a background worker pulls it from Render Key Value, the worker invokes a Flue agent, and the result lands in your data store. When Key Value is backing a queue, set `maxmemoryPolicy: noeviction` so jobs are never evicted.
 
 For more, see Render's [Background Workers](https://render.com/docs/background-workers) docs and the [Blueprint reference](https://render.com/docs/blueprint-spec).
 
@@ -251,5 +328,5 @@ When a step doesn't behave as expected, run through these quick checks:
 | Agent call returns a provider error | Confirm the matching provider key is set in the service's environment variables. |
 | Build can't find `flue` | Make sure `@flue/cli` is installed and available during the build or start command. |
 | Agent forgets context after a deploy | Wire up a custom `SessionStore` backed by Postgres or Key Value. |
-| Cron Job doesn't run when you expect | Re-check the `schedule` value: it must be quoted and is evaluated in UTC. |
+| Cron job doesn't run when you expect | Re-check the `schedule` value: quote it (so YAML doesn't try to alias a leading `*`) and remember it's evaluated in UTC. |
 
