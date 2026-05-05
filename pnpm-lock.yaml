@@ -85,6 +85,9 @@ importers:
 
   examples/hello-world:
     dependencies:
+      '@boxd-sh/sdk':
+        specifier: ^0.1.2
+        version: 0.1.2
       '@daytona/sdk':
         specifier: '*'
         version: 0.171.0(ws@8.20.0)
@@ -596,6 +599,13 @@ packages:
 
   '@borewit/text-codec@0.2.2':
     resolution: {integrity: sha512-DDaRehssg1aNrH4+2hnj1B7vnUGEjU6OIlyRdkMd0aUdIUvKXrJfXsy8LVtXAy7DRvYVluWbMspsRhz2lcW0mQ==}
+
+  '@boxd-sh/sdk@0.1.2':
+    resolution: {integrity: sha512-d1DInvqwQGYktmEobknoOpFLv4ib3E1vssqHafph+8177VL2ggmhu6MaebT4nWlkavXwZSzzD9dNyqMp+kK8Yg==}
+    engines: {node: '>=20'}
+
+  '@bufbuild/protobuf@2.12.0':
+    resolution: {integrity: sha512-B/XlCaFIP8LOwzo+bz5uFzATYokcwCKQcghqnlfwSmM5eX/qTkvDBnDPs+gXtX/RyjxJ4DRikECcPJbyALA8FA==}
 
   '@capsizecss/unpack@4.0.0':
     resolution: {integrity: sha512-VERIM64vtTP1C4mxQ5thVT9fK0apjPFobqybMtA1UdUujWka24ERHbRHFGmpbbhp73MhV+KSsHQH9C6uOTdEQA==}
@@ -5789,6 +5799,13 @@ snapshots:
     optional: true
 
   '@borewit/text-codec@0.2.2': {}
+
+  '@boxd-sh/sdk@0.1.2':
+    dependencies:
+      '@bufbuild/protobuf': 2.12.0
+      '@grpc/grpc-js': 1.14.3
+
+  '@bufbuild/protobuf@2.12.0': {}
 
   '@capsizecss/unpack@4.0.0':
     dependencies:
