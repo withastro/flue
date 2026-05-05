@@ -10,32 +10,19 @@
 
 You are an AI coding agent installing the exe.dev sandbox connector for a
 Flue project. Follow these instructions exactly. Confirm with the user only
-when something is genuinely ambiguous (e.g. an unusual project layout).
+when something is genuinely ambiguous (e.g. an unusual project layout or a
+missing required VM hostname).
 
 ## What this connector does
 
-Wraps an exe.dev VM into Flue's `SandboxFactory` over:
+Wraps an already-available exe.dev VM into Flue's `SandboxFactory` interface
+over SSH + SFTP. The user owns the VM lifecycle; this connector just adapts
+the VM.
 
-- **SSH + SFTP** to `<vmname>.exe.xyz` for shell + file I/O
-- **HTTPS** (`POST https://exe.dev/exec`) for VM lifecycle (`new`, `cp`, `rm`)
-
-VMs are persistent. `cleanup: true` only closes SSH and deletes
-auto-created VMs; it never touches VMs passed via `host`.
-
-For `createVm` and `cloneFrom`, the connector waits up to 90s after the
-HTTPS API returns for DNS to propagate and sshd to come up — no manual
-sleep needed in your agent code.
-
-## Choose a mode
-
-Choose a mode based on the user's request. If they don't specify one, use
-**Existing VM**.
-
-| Mode            | Option             | Use when                                               |
-| --------------- | ------------------ | ------------------------------------------------------ |
-| **Existing VM** | `host: '...'`      | Long-running assistant, dev/build agent. **Default.**  |
-| **Cloned VM**   | `cloneFrom: '...'` | Ephemeral per-run isolation off a pre-configured base. |
-| **Fresh VM**    | `createVm: true`   | Clean slate every time. Rarely the right choice.       |
+exe.dev also exposes an HTTPS API (`POST https://exe.dev/exec`) for VM
+lifecycle commands like `new`, `cp`, and `rm`. This guide includes optional
+helpers for that setup work, but `exedev(...)` itself only wraps a VM that
+already exists.
 
 ## Where to write the file
 
@@ -60,16 +47,12 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
 /**
  * exe.dev connector for Flue.
  *
- * Wraps an exe.dev VM into Flue's SandboxFactory interface using two channels:
+ * Wraps an already-available exe.dev VM into Flue's SandboxFactory interface
+ * using SSH for shell commands and SFTP for file operations.
  *
- *   1. **SSH + SFTP** (to `<vmname>.exe.xyz`) for SandboxApi — running shell
- *      commands and reading/writing files inside the VM.
- *   2. **HTTPS API** (`POST https://exe.dev/exec`) for optional VM lifecycle —
- *      creating/deleting VMs on the fly.
- *
- * The HTTPS API is the SSH CLI shoved into a POST body. It runs exe.dev
- * commands (`new`, `rm`, `ls`, `cp`, `restart`, etc.), not shell commands
- * inside the VM. Auth uses bearer tokens signed with your SSH key.
+ * Optional lifecycle helpers (`createExeVm`, `cloneExeVm`, `deleteExeVm`)
+ * use exe.dev's HTTPS API before/after agent setup. The connector itself
+ * does not create, clone, or delete infrastructure.
  *
  * @example Existing VM (most common)
  * ```typescript
@@ -81,140 +64,90 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * });
  * ```
  *
- * @example Create a fresh VM per session
+ * @example Create a VM before wrapping it
  * ```typescript
- * import { exedev } from './connectors/exedev';
+ * import { createExeVm, deleteExeVm, exedev } from './connectors/exedev';
  *
- * const agent = await init({
- *   sandbox: exedev({
- *     apiToken: process.env.EXE_API_TOKEN!,
- *     createVm: true,   // runs `new` via HTTPS API
- *     cleanup: true,     // runs `rm` on session destroy
- *   }),
- *   model: 'anthropic/claude-sonnet-4-6',
- * });
- * ```
- *
- * @example Clone an existing VM as a sandbox
- * ```typescript
- * import { exedev } from './connectors/exedev';
- *
- * const agent = await init({
- *   sandbox: exedev({
- *     apiToken: process.env.EXE_API_TOKEN!,
- *     cloneFrom: 'my-dev-vm',   // runs `cp my-dev-vm` via HTTPS API
- *     cleanup: true,
- *   }),
- *   model: 'anthropic/claude-sonnet-4-6',
- * });
+ * const vm = await createExeVm({ apiToken: process.env.EXE_API_TOKEN! });
+ * try {
+ *   const agent = await init({
+ *     sandbox: exedev(vm),
+ *     model: 'anthropic/claude-sonnet-4-6',
+ *   });
+ * } finally {
+ *   await deleteExeVm({ apiToken: process.env.EXE_API_TOKEN!, name: vm.name });
+ * }
  * ```
  */
 import { createSandboxSessionEnv } from "@flue/sdk/sandbox";
 import type {
+  FileStat,
   SandboxApi,
   SandboxFactory,
   SessionEnv,
-  FileStat,
 } from "@flue/sdk/sandbox";
-import { Client as SSHClient } from "ssh2";
-import type { ConnectConfig, SFTPWrapper } from "ssh2";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { Client as SSHClient } from "ssh2";
+import type { ConnectConfig, SFTPWrapper } from "ssh2";
 
-// ---------------------------------------------------------------------------
-// Public options
-// ---------------------------------------------------------------------------
-
-export interface ExeDevConnectorOptions {
-  /**
-   * The VM hostname to connect to, e.g. "maple-dune.exe.xyz".
-   * Required unless `createVm` or `cloneFrom` is set.
-   */
-  host?: string;
-
-  /** SSH username on the VM. Defaults to "user" (exeuntu default). */
-  username?: string;
-
+export interface ExeDevVm {
+  /** VM hostname, e.g. "maple-dune.exe.xyz". */
+  host: string;
+  /** VM name, used by lifecycle helpers for deletion. */
+  name?: string;
   /** SSH port. Defaults to 22. */
   port?: number;
+}
 
-  /**
-   * SSH private key as a raw PEM string or Buffer.
-   * If omitted, falls back to `privateKeyPath`, then `$EXE_SSH_KEY`,
-   * then ~/.ssh/id_ed25519, then ~/.ssh/id_rsa.
-   */
+export interface ExeDevConnectorOptions {
+  /** SSH username on the VM. Defaults to "user" (exeuntu default). */
+  username?: string;
+  /** SSH port. Defaults to the VM port, then 22. */
+  port?: number;
+  /** SSH private key as a raw PEM string or Buffer. */
   privateKey?: string | Buffer;
-
-  /**
-   * Path to an SSH private key file. Overrides `$EXE_SSH_KEY` and the
-   * default ~/.ssh lookups, but is overridden by `privateKey`.
-   */
+  /** Path to an SSH private key file. */
   privateKeyPath?: string;
-
-  /**
-   * Path to an SSH agent socket (e.g. 1Password's agent, ssh-agent,
-   * a Yubikey-backed agent). When set, the connector authenticates
-   * via the agent instead of a private key file.
-   *
-   * If unset, the connector still falls back to `$SSH_AUTH_SOCK` when
-   * no private key can be resolved — useful when the key only lives
-   * in an agent (1Password "store-only" SSH keys).
-   */
+  /** SSH agent socket path. Falls back to `$SSH_AUTH_SOCK` when no key resolves. */
   agent?: string;
-
-  /**
-   * exe.dev HTTPS API bearer token (exe0.* or exe1.*).
-   *
-   * Required when `createVm` or `cloneFrom` is set. Generate one by:
-   *
-   *   ssh-keygen -t ed25519 -C api -f ~/.ssh/exe_dev_api
-   *   cat ~/.ssh/exe_dev_api.pub | ssh exe.dev ssh-key add
-   *   # Sign permissions & assemble token (see exe.dev/docs/https-api)
-   *
-   * The token's `cmds` must include "new", "rm", and/or "cp" depending
-   * on which lifecycle features you use.
-   */
-  apiToken?: string;
-
-  /**
-   * Create a fresh VM via `POST https://exe.dev/exec` with command `new`.
-   * Requires `apiToken`.
-   */
-  createVm?: boolean;
-
-  /** VM name when creating. If omitted, exe.dev generates a random name. */
-  vmName?: string;
-
-  /**
-   * Clone an existing VM instead of creating from scratch.
-   * Runs `cp <cloneFrom>` via the HTTPS API. Requires `apiToken`.
-   */
-  cloneFrom?: string;
-
-  /**
-   * Cleanup behavior when the session is destroyed.
-   *
-   * - `false` (default): No cleanup. exe.dev VMs are persistent — the
-   *   user manages the VM lifecycle via `ssh exe.dev` → `rm`.
-   * - `true`: Closes SSH. If the VM was auto-created/cloned, also runs
-   *   `rm <vmname>` via the HTTPS API.
-   * - Function: Calls the provided function, then closes SSH (and
-   *   deletes auto-created VMs).
-   */
+  /** Cleanup behavior when the session is destroyed. */
   cleanup?: boolean | (() => Promise<void>);
 }
 
-// ---------------------------------------------------------------------------
-// Errors
-// ---------------------------------------------------------------------------
+export interface ExeDevLifecycleOptions {
+  /** exe.dev HTTPS API bearer token (exe0.* or exe1.*). */
+  apiToken: string;
+  /** Optional VM name for `new <name>`. Omit to let exe.dev generate one. */
+  name?: string;
+  /** How long to wait for SSH after create/clone. Defaults to 90000ms. */
+  readyTimeoutMs?: number;
+  /** SSH options used for the readiness check. */
+  ssh?: ExeDevConnectorOptions;
+}
 
-/**
- * Error thrown by the exe.dev connector. Use `instanceof ExeDevError` to
- * distinguish connector errors from upstream Flue / ssh2 errors.
- */
+export interface CloneExeVmOptions {
+  /** exe.dev HTTPS API bearer token (exe0.* or exe1.*). */
+  apiToken: string;
+  /** Source VM name to clone with `cp <source>`. */
+  source: string;
+  /** How long to wait for SSH after clone. Defaults to 90000ms. */
+  readyTimeoutMs?: number;
+  /** SSH options used for the readiness check. */
+  ssh?: ExeDevConnectorOptions;
+}
+
+export interface DeleteExeVmOptions {
+  /** exe.dev HTTPS API bearer token (exe0.* or exe1.*). */
+  apiToken: string;
+  /** VM name to delete with `rm <name>`. */
+  name: string;
+}
+
 export class ExeDevError extends Error {
   override name = "ExeDevError";
+
   constructor(message: string) {
     super(message);
     if (typeof Error.captureStackTrace === "function") {
@@ -223,19 +156,12 @@ export class ExeDevError extends Error {
   }
 }
 
-// ---------------------------------------------------------------------------
-// exe.dev HTTPS API client (VM control plane)
-// ---------------------------------------------------------------------------
-
 const EXE_API_URL = "https://exe.dev/exec";
+const DEFAULT_VM_READY_TIMEOUT_MS = 90_000;
+const VM_NAME = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
+const SHELL_ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-/**
- * Run an exe.dev CLI command via the HTTPS API.
- *
- * Body is the command string exactly as you'd type it in the SSH REPL.
- * API limits: 30s timeout (504), 64KB body (413), no stdin, no pty.
- * See: https://exe.dev/docs/https-api
- */
+/** Run an exe.dev CLI command via the HTTPS API. */
 async function exeApi(token: string, command: string): Promise<string> {
   const res = await fetch(EXE_API_URL, {
     method: "POST",
@@ -256,38 +182,20 @@ async function exeApi(token: string, command: string): Promise<string> {
   return body;
 }
 
-/**
- * Resolved VM info from a `new` or `cp` HTTPS API response.
- */
-interface ApiVmInfo {
-  /** VM name (used later for `rm` cleanup). */
-  name: string;
-  /** SSH destination hostname — taken from `ssh_dest` when available. */
-  host: string;
-}
-
-/**
- * Parse the JSON body from a `new` / `cp` HTTPS API call.
- *
- * The exe.dev API returns `{vm_name, ssh_dest, ssh_port, ...}`. We prefer
- * `ssh_dest` over re-deriving `${name}.exe.xyz` so the API stays
- * authoritative for hostname mapping.
- *
- * @internal exported for tests
- */
-export function parseVmResponse(output: string): ApiVmInfo {
+/** Parse the JSON body from a `new` / `cp` HTTPS API call. */
+export function parseVmResponse(output: string): ExeDevVm & { name: string } {
   let data: {
     vm_name?: unknown;
     name?: unknown;
     vm?: unknown;
     ssh_dest?: unknown;
+    ssh_port?: unknown;
   };
   try {
     data = JSON.parse(output);
   } catch {
     throw new ExeDevError(
-      "exe.dev HTTPS API returned non-JSON output:\n" +
-        `  ${output.slice(0, 200)}`,
+      "exe.dev HTTPS API returned non-JSON output:\n" + `  ${output.slice(0, 200)}`,
     );
   }
   const name =
@@ -308,45 +216,55 @@ export function parseVmResponse(output: string): ApiVmInfo {
     typeof data.ssh_dest === "string" && data.ssh_dest
       ? data.ssh_dest
       : `${name}.exe.xyz`;
-  return { name, host };
+  const port =
+    typeof data.ssh_port === "number" && Number.isFinite(data.ssh_port)
+      ? data.ssh_port
+      : undefined;
+  return { name, host, port };
 }
 
-/**
- * Create a VM via HTTPS API (`new [name]`).
- */
-async function apiCreateVm(token: string, name?: string): Promise<ApiVmInfo> {
-  const cmd = name ? `new ${name}` : "new";
-  return parseVmResponse(await exeApi(token, cmd));
+/** Create a VM via exe.dev's HTTPS API, then wait for SSH readiness. */
+export async function createExeVm(options: ExeDevLifecycleOptions): Promise<ExeDevVm & { name: string }> {
+  const cmd = options.name ? `new ${validateVmName(options.name)}` : "new";
+  const vm = parseVmResponse(await exeApi(options.apiToken, cmd));
+  await waitForExeVm(vm, options.ssh, options.readyTimeoutMs);
+  return vm;
 }
 
-/**
- * Clone a VM via HTTPS API (`cp <source>`).
- */
-async function apiCloneVm(token: string, source: string): Promise<ApiVmInfo> {
-  return parseVmResponse(await exeApi(token, `cp ${source}`));
+/** Clone a VM via exe.dev's HTTPS API, then wait for SSH readiness. */
+export async function cloneExeVm(options: CloneExeVmOptions): Promise<ExeDevVm & { name: string }> {
+  const vm = parseVmResponse(await exeApi(options.apiToken, `cp ${validateVmName(options.source)}`));
+  await waitForExeVm(vm, options.ssh, options.readyTimeoutMs);
+  return vm;
 }
 
-/**
- * Delete a VM via HTTPS API (`rm <name>`). Best-effort, logs errors.
- */
-async function apiDeleteVm(token: string, name: string): Promise<void> {
-  try {
-    await exeApi(token, `rm ${name}`);
-  } catch (err) {
-    console.error("[flue:exedev] Failed to delete VM:", err);
+/** Delete a VM via exe.dev's HTTPS API. */
+export async function deleteExeVm(options: DeleteExeVmOptions): Promise<void> {
+  await exeApi(options.apiToken, `rm ${validateVmName(options.name)}`);
+}
+
+/** Wait until an exe.dev VM accepts SSH connections. */
+export async function waitForExeVm(
+  vm: ExeDevVm,
+  options?: ExeDevConnectorOptions,
+  timeoutMs = DEFAULT_VM_READY_TIMEOUT_MS,
+): Promise<void> {
+  if (timeoutMs <= 0) return;
+  const { disconnect } = await sshConnectWithRetry(vm, options ?? {}, timeoutMs);
+  disconnect();
+}
+
+function validateVmName(name: string): string {
+  if (!VM_NAME.test(name)) {
+    throw new ExeDevError(`Invalid exe.dev VM name: ${name}`);
   }
+  return name;
 }
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
 
 /** Escape a string for safe use inside single-quoted shell args. */
 function shellEscape(s: string): string {
   return s.replace(/'/g, "'\\''");
 }
-
-const SHELL_ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 /** Build a shell-safe environment assignment for SSH exec. */
 function shellEnvAssignment(name: string, value: string): string {
@@ -356,22 +274,7 @@ function shellEnvAssignment(name: string, value: string): string {
   return `${name}='${shellEscape(value)}'`;
 }
 
-/**
- * Resolve SSH auth — either a private key (file/buffer) or an agent socket.
- *
- * Order:
- *   1. `privateKey` option (raw PEM)             → key
- *   2. `agent` option                            → agent
- *   3. `privateKeyPath` option (file)            → key
- *   4. `$EXE_SSH_KEY` env var (file)             → key
- *   5. `~/.ssh/id_ed25519` / `~/.ssh/id_rsa`     → key
- *   6. `$SSH_AUTH_SOCK` env var                  → agent (last-resort fallback)
- *
- * Step 6 covers 1Password / ssh-agent / Yubikey users whose private keys
- * never touch the filesystem.
- *
- * @internal exported for tests
- */
+/** Resolve SSH auth — either a private key (file/buffer) or an agent socket. */
 export function resolveAuth(
   opts: ExeDevConnectorOptions,
   env: NodeJS.ProcessEnv = process.env,
@@ -381,10 +284,7 @@ export function resolveAuth(
 
   const tried: { source: string; path: string; reason: string }[] = [];
 
-  const tryPath = (
-    keyPath: string,
-    source: string,
-  ): string | Buffer | undefined => {
+  const tryPath = (keyPath: string, source: string): string | Buffer | undefined => {
     try {
       return fs.readFileSync(keyPath);
     } catch (err) {
@@ -412,15 +312,11 @@ export function resolveAuth(
     if (key) return { privateKey: key };
   }
 
-  // Last resort: if an SSH agent is running, use it. Covers 1Password and
-  // other "key never on disk" setups.
   if (env.SSH_AUTH_SOCK) return { agent: env.SSH_AUTH_SOCK };
 
   const triedLines =
     tried.length > 0
-      ? tried
-          .map((t) => `    - ${t.path} (${t.source}, ${t.reason})`)
-          .join("\n")
+      ? tried.map((t) => `    - ${t.path} (${t.source}, ${t.reason})`).join("\n")
       : "    (none)";
 
   throw new ExeDevError(
@@ -434,15 +330,6 @@ export function resolveAuth(
   );
 }
 
-/**
- * Errors that mean "the VM isn't reachable yet" — DNS hasn't propagated,
- * sshd isn't listening, network not yet routable. Safe to retry.
- *
- * Auth failures, host-key mismatches, and other terminal errors are NOT
- * retryable — those would spin forever.
- *
- * @internal exported for tests
- */
 const RETRYABLE_ERROR_CODES = new Set([
   "ENOTFOUND",
   "EAI_AGAIN",
@@ -453,51 +340,37 @@ const RETRYABLE_ERROR_CODES = new Set([
   "ENETUNREACH",
 ]);
 
-/** @internal exported for tests */
 export function isRetryableSshError(err: unknown): boolean {
   if (!err || typeof err !== "object") return false;
   const e = err as { code?: unknown; errno?: unknown; message?: unknown };
-  if (typeof e.code === "string" && RETRYABLE_ERROR_CODES.has(e.code))
-    return true;
-  if (typeof e.errno === "string" && RETRYABLE_ERROR_CODES.has(e.errno))
-    return true;
-  if (
+  if (typeof e.code === "string" && RETRYABLE_ERROR_CODES.has(e.code)) return true;
+  if (typeof e.errno === "string" && RETRYABLE_ERROR_CODES.has(e.errno)) return true;
+  return (
     typeof e.message === "string" &&
     /\b(ENOTFOUND|EAI_AGAIN|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH)\b/.test(
       e.message,
     )
-  ) {
-    return true;
-  }
-  return false;
+  );
 }
 
-/** Default budget for waiting on a freshly-created VM to become SSH-able. */
-const DEFAULT_VM_READY_TIMEOUT_MS = 90_000;
-
-/**
- * Connect to a VM that may still be coming up. Retries transient errors
- * (DNS, connection refused, ...) on a 1s interval until `deadlineMs` passes.
- */
 async function sshConnectWithRetry(
-  host: string,
+  vm: ExeDevVm,
   opts: ExeDevConnectorOptions,
-  deadlineMs: number,
+  timeoutMs: number,
 ): Promise<{ ssh: SSHClient; disconnect: () => void }> {
   const start = Date.now();
   let lastErr: unknown;
   while (true) {
     try {
-      return await sshConnect(host, opts);
+      return await sshConnect(vm, opts);
     } catch (err) {
       lastErr = err;
       if (!isRetryableSshError(err)) throw err;
-      if (Date.now() - start > deadlineMs) {
+      if (Date.now() - start > timeoutMs) {
         throw new ExeDevError(
           `Timed out after ${Math.round((Date.now() - start) / 1000)}s waiting ` +
-            `for ${host} to become SSH-able.\n` +
-            `  Last error: ${(lastErr as Error)?.message ?? String(lastErr)}\n` +
-            `  The VM may still be booting, or the API token's 'cmds' may be missing 'new'/'cp'.`,
+            `for ${vm.host} to become SSH-able.\n` +
+            `  Last error: ${(lastErr as Error)?.message ?? String(lastErr)}`,
         );
       }
       await new Promise((r) => setTimeout(r, 1000));
@@ -505,21 +378,14 @@ async function sshConnectWithRetry(
   }
 }
 
-/**
- * Open SSH to a VM. Returns the client and a disconnect function.
- *
- * SFTP is opened lazily by ExeDevSandboxApi on first file op — agents that
- * only call `exec`/`shell` never open the SFTP subsystem and can't trip
- * server-side idle-channel termination.
- */
 async function sshConnect(
-  host: string,
+  vm: ExeDevVm,
   opts: ExeDevConnectorOptions,
 ): Promise<{ ssh: SSHClient; disconnect: () => void }> {
   const ssh = new SSHClient();
   const config: ConnectConfig = {
-    host,
-    port: opts.port ?? 22,
+    host: vm.host,
+    port: opts.port ?? vm.port ?? 22,
     username: opts.username ?? "user",
     ...resolveAuth(opts),
   };
@@ -536,16 +402,6 @@ async function sshConnect(
   };
 }
 
-// ---------------------------------------------------------------------------
-// SandboxApi implementation
-// ---------------------------------------------------------------------------
-
-/**
- * Minimal subset of SSHClient that ExeDevSandboxApi actually uses.
- * Lets unit tests pass a fake without depending on ssh2 internals.
- *
- * @internal
- */
 export interface SshLike {
   sftp(cb: (err: Error | undefined, sftp: SFTPWrapper) => void): unknown;
   exec(
@@ -555,7 +411,6 @@ export interface SshLike {
   ): unknown;
 }
 
-/** @internal */
 export interface SshExecStream {
   on(event: "data", listener: (data: Buffer) => void): unknown;
   on(event: "close", listener: (code: number) => void): unknown;
@@ -564,21 +419,6 @@ export interface SshExecStream {
   close(): void;
 }
 
-/**
- * Implements SandboxApi over SSH + SFTP to an exe.dev VM.
- *
- * File operations use SFTP (efficient, binary-safe). Shell operations use
- * SSH exec. Recursive mkdir and rm fall back to shell commands since SFTP
- * doesn't support them natively (same pattern as the Daytona connector).
- *
- * SFTP is opened lazily on first file op. If the server tears down the
- * SFTP channel (e.g. idle timeout), the cache is dropped and the next
- * file op re-opens. Crucially, attaching `error`/`close` listeners on the
- * SFTP wrapper prevents "Received unexpected SFTP session termination"
- * from surfacing as an unhandled error in shell-only or long-idle flows.
- *
- * @internal exported for tests
- */
 export class ExeDevSandboxApi implements SandboxApi {
   private sftpInstance: SFTPWrapper | null = null;
   private sftpPromise: Promise<SFTPWrapper> | null = null;
@@ -608,8 +448,6 @@ export class ExeDevSandboxApi implements SandboxApi {
     return this.sftpPromise;
   }
 
-  // -- File operations (SFTP) ----------------------------------------------
-
   async readFile(filePath: string): Promise<string> {
     const sftp = await this.getSftp();
     return new Promise<string>((resolve, reject) => {
@@ -634,14 +472,8 @@ export class ExeDevSandboxApi implements SandboxApi {
     });
   }
 
-  async writeFile(
-    filePath: string,
-    content: string | Uint8Array,
-  ): Promise<void> {
-    const buf =
-      typeof content === "string"
-        ? Buffer.from(content, "utf-8")
-        : Buffer.from(content);
+  async writeFile(filePath: string, content: string | Uint8Array): Promise<void> {
+    const buf = typeof content === "string" ? Buffer.from(content, "utf-8") : Buffer.from(content);
     const sftp = await this.getSftp();
     return new Promise<void>((resolve, reject) => {
       const stream = sftp.createWriteStream(filePath);
@@ -686,10 +518,7 @@ export class ExeDevSandboxApi implements SandboxApi {
     }
   }
 
-  async mkdir(
-    dirPath: string,
-    options?: { recursive?: boolean },
-  ): Promise<void> {
+  async mkdir(dirPath: string, options?: { recursive?: boolean }): Promise<void> {
     if (options?.recursive) {
       await this.exec(`mkdir -p '${shellEscape(dirPath)}'`);
       return;
@@ -700,10 +529,7 @@ export class ExeDevSandboxApi implements SandboxApi {
     });
   }
 
-  async rm(
-    filePath: string,
-    options?: { recursive?: boolean; force?: boolean },
-  ): Promise<void> {
+  async rm(filePath: string, options?: { recursive?: boolean; force?: boolean }): Promise<void> {
     let flags = "";
     if (options?.recursive) flags += "r";
     if (options?.force) flags += "f";
@@ -715,22 +541,14 @@ export class ExeDevSandboxApi implements SandboxApi {
     return new Promise<void>((resolve, reject) => {
       sftp.unlink(filePath, (unlinkErr) => {
         if (!unlinkErr) return resolve();
-        sftp.rmdir(filePath, (rmdirErr) =>
-          rmdirErr ? reject(rmdirErr) : resolve(),
-        );
+        sftp.rmdir(filePath, (rmdirErr) => (rmdirErr ? reject(rmdirErr) : resolve()));
       });
     });
   }
 
-  // -- Shell execution (SSH) -----------------------------------------------
-
   async exec(
     command: string,
-    options?: {
-      cwd?: string;
-      env?: Record<string, string>;
-      timeout?: number;
-    },
+    options?: { cwd?: string; env?: Record<string, string>; timeout?: number },
   ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
     let cmd = command;
 
@@ -750,13 +568,20 @@ export class ExeDevSandboxApi implements SandboxApi {
 
         let stdout = "";
         let stderr = "";
-        let exitCode = 0;
+        let settled = false;
         let timer: ReturnType<typeof setTimeout> | undefined;
+
+        const finish = (result: { stdout: string; stderr: string; exitCode: number }) => {
+          if (settled) return;
+          settled = true;
+          if (timer) clearTimeout(timer);
+          resolve(result);
+        };
 
         if (options?.timeout) {
           timer = setTimeout(() => {
             stream.close();
-            resolve({
+            finish({
               stdout,
               stderr: `${stderr}\n[flue:exedev] Command timed out after ${options.timeout} seconds.`,
               exitCode: 124,
@@ -771,11 +596,11 @@ export class ExeDevSandboxApi implements SandboxApi {
           stderr += data.toString();
         });
         stream.on("close", (code: number) => {
-          if (timer) clearTimeout(timer);
-          exitCode = code ?? 0;
-          resolve({ stdout, stderr, exitCode });
+          finish({ stdout, stderr, exitCode: code ?? 0 });
         });
         stream.on("error", (streamErr: Error) => {
+          if (settled) return;
+          settled = true;
           if (timer) clearTimeout(timer);
           reject(streamErr);
         });
@@ -784,96 +609,13 @@ export class ExeDevSandboxApi implements SandboxApi {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Factory
-// ---------------------------------------------------------------------------
-
-/**
- * Create a Flue sandbox factory backed by an exe.dev VM.
- *
- * **Existing VM** — pass `host` (e.g. `"maple-dune.exe.xyz"`).
- *
- * **Fresh VM** — pass `apiToken` + `createVm: true`. Runs `new` via
- * `POST https://exe.dev/exec`, then SSHs into the new VM.
- *
- * **Cloned VM** — pass `apiToken` + `cloneFrom: "source-vm"`. Runs
- * `cp source-vm` via the HTTPS API, then SSHs into the clone.
- *
- * exe.dev VMs are persistent by design. `cleanup: true` closes the SSH
- * connection and deletes auto-created/cloned VMs. It never touches VMs
- * passed via `host`.
- */
-export function exedev(options: ExeDevConnectorOptions): SandboxFactory {
+export function exedev(vm: ExeDevVm | string, options?: ExeDevConnectorOptions): SandboxFactory {
+  const resolvedVm = typeof vm === "string" ? { host: vm } : vm;
   return {
-    async createSessionEnv({
-      cwd,
-    }: {
-      id: string;
-      cwd?: string;
-    }): Promise<SessionEnv> {
-      // ---------------------------------------------------------------
-      // 1. Resolve the VM
-      // ---------------------------------------------------------------
-      let vmHost = options.host;
-      let vmName: string | undefined;
-      let wasAutoCreated = false;
-
-      if (options.cloneFrom) {
-        if (!options.apiToken) {
-          throw new ExeDevError(
-            "`cloneFrom` needs an `apiToken`.\n" +
-              "  Generate one: https://exe.dev/docs/https-api\n" +
-              "  Then pass it as `apiToken` to exedev().",
-          );
-        }
-        const info = await apiCloneVm(options.apiToken, options.cloneFrom);
-        vmName = info.name;
-        vmHost = info.host;
-        wasAutoCreated = true;
-      } else if (options.createVm) {
-        if (!options.apiToken) {
-          throw new ExeDevError(
-            "`createVm: true` needs an `apiToken`.\n" +
-              "  Generate one: https://exe.dev/docs/https-api\n" +
-              "  Then pass it as `apiToken` to exedev().",
-          );
-        }
-        const info = await apiCreateVm(options.apiToken, options.vmName);
-        vmName = info.name;
-        vmHost = info.host;
-        wasAutoCreated = true;
-      }
-
-      if (!vmHost) {
-        throw new ExeDevError(
-          "No VM specified.\n" +
-            "  Pass one of:\n" +
-            '    - `host: "<vm>.exe.xyz"` to use an existing VM\n' +
-            "    - `createVm: true` (with `apiToken`) to make a fresh VM\n" +
-            '    - `cloneFrom: "<vm>"` (with `apiToken`) to clone a VM',
-        );
-      }
-
-      // ---------------------------------------------------------------
-      // 2. SSH + SFTP into the VM
-      //
-      // Auto-created/cloned VMs may take a few seconds before DNS resolves
-      // and sshd starts accepting connections. Retry transient errors for
-      // up to 90s. For user-supplied `host:` values we assume the VM is
-      // already up and connect once.
-      // ---------------------------------------------------------------
-      const { ssh, disconnect } = wasAutoCreated
-        ? await sshConnectWithRetry(
-            vmHost,
-            options,
-            DEFAULT_VM_READY_TIMEOUT_MS,
-          )
-        : await sshConnect(vmHost, options);
+    async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
+      const { ssh, disconnect } = await sshConnect(resolvedVm, options ?? {});
       const api = new ExeDevSandboxApi(ssh);
 
-      // ---------------------------------------------------------------
-      // 3. Detect working directory
-      // ---------------------------------------------------------------
       let sandboxCwd = cwd ?? "/home/user";
       if (!cwd) {
         try {
@@ -881,38 +623,22 @@ export function exedev(options: ExeDevConnectorOptions): SandboxFactory {
           const detected = stdout.trim();
           if (detected) sandboxCwd = detected;
         } catch {
-          // fall back to /home/user
+          // Fall back to /home/user.
         }
       }
 
-      // ---------------------------------------------------------------
-      // 4. Wire up cleanup
-      // ---------------------------------------------------------------
       let cleanupFn: (() => Promise<void>) | undefined;
-
-      if (options.cleanup === true) {
+      if (options?.cleanup === true) {
         cleanupFn = async () => {
-          try {
-            disconnect();
-          } catch (err) {
-            console.error("[flue:exedev] SSH disconnect failed:", err);
-          }
-          if (wasAutoCreated && vmName && options.apiToken) {
-            await apiDeleteVm(options.apiToken, vmName);
-          }
+          disconnect();
         };
-      } else if (typeof options.cleanup === "function") {
+      } else if (typeof options?.cleanup === "function") {
         const userCleanup = options.cleanup;
         cleanupFn = async () => {
           try {
             await userCleanup();
-          } catch (err) {
-            console.error("[flue:exedev] cleanup function failed:", err);
           } finally {
             disconnect();
-            if (wasAutoCreated && vmName && options.apiToken) {
-              await apiDeleteVm(options.apiToken, vmName);
-            }
           }
         };
       }
@@ -938,7 +664,7 @@ lockfile indicates a different one.)
 
 ## Authentication
 
-**SSH (always required):** key-based auth or SSH agent. Auto-detected in order:
+SSH is always required. The connector auto-detects SSH auth in this order:
 
 1. `privateKey` option (raw PEM)
 2. `agent` option (socket path)
@@ -948,19 +674,29 @@ lockfile indicates a different one.)
 6. `~/.ssh/id_rsa`
 7. `$SSH_AUTH_SOCK` env var (last-resort agent fallback)
 
-Step 7 covers 1Password / Yubikey users whose private keys never touch
-disk — set nothing and the connector picks up the running agent.
+These should be the same keys the user registered when first running
+`ssh exe.dev`.
 
-Same keys you registered when first running `ssh exe.dev`.
+An exe.dev HTTPS API token is only needed if the user asks you to create,
+clone, or delete VMs with `createExeVm`, `cloneExeVm`, or `deleteExeVm`.
+Do not generate or register API keys unless the user explicitly asks you to.
+If you need a token value, never invent one — it must come from the user or
+from the project's existing secret setup.
 
-**HTTPS API token (only for `createVm` / `cloneFrom`):** generate with:
+To generate a token manually, exe.dev signs compact JSON permissions with an
+SSH key. For lifecycle helpers, the token's `cmds` must include the commands
+the helper uses: `new`, `cp`, and/or `rm`. The default exe.dev token commands
+include `new` but not `cp` or `rm`, so cloning and deletion require explicit
+permissions.
+
+For reference, token generation looks like this:
 
 ```bash
 ssh-keygen -t ed25519 -C api -f ~/.ssh/exe_dev_api
 cat ~/.ssh/exe_dev_api.pub | ssh exe.dev ssh-key add
 
 b64url() { tr -d '\n=' | tr '+/' '-_'; }
-PERMISSIONS='{"cmds":["new","rm","cp","ls","whoami"]}'
+PERMISSIONS='{"cmds":["new","cp","rm","whoami"]}'
 PAYLOAD=$(printf '%s' "$PERMISSIONS" | base64 | b64url)
 SIG=$(printf '%s' "$PERMISSIONS" | ssh-keygen -Y sign -f ~/.ssh/exe_dev_api -n v0@exe.dev)
 SIGBLOB=$(echo "$SIG" | sed '1d;$d' | b64url)
@@ -969,10 +705,12 @@ TOKEN="exe0.$PAYLOAD.$SIGBLOB"
 curl -X POST https://exe.dev/exec -H "Authorization: Bearer $TOKEN" -d 'whoami'
 ```
 
-Default token `cmds` includes `new` but not `rm`/`cp` — override as
-above when you need lifecycle management.
+Use project conventions (`.env`, `.dev.vars`, a secret manager, CI vars,
+etc.) for storing any token or host values. If nothing in the project gives
+you a clear signal, ask the user instead of guessing.
 
-Never invent a token value. It must come from the user.
+For reference: `flue dev --env <file>` and `flue run --env <file>` load
+any `.env`-format file the user points them at.
 
 ## Wiring it into an agent
 
@@ -983,6 +721,10 @@ share the relevant snippet so they can wire it up themselves.
 
 ### Existing VM
 
+Use this by default. If the user did not provide a VM hostname and there is
+no obvious project convention like `EXE_VM_HOST`, ask for the exe.dev VM
+hostname before wiring the connector.
+
 ```ts
 import type { FlueContext } from "@flue/sdk/client";
 import { exedev } from "../connectors/exedev";
@@ -991,75 +733,75 @@ export const triggers = { webhook: true };
 
 export default async function ({ init, env }: FlueContext) {
   const agent = await init({
-    sandbox: exedev({ host: env.EXE_VM_HOST, cleanup: true }),
+    sandbox: exedev({ host: env.EXE_VM_HOST }, { cleanup: true }),
     model: "anthropic/claude-sonnet-4-6",
   });
-  return await (await agent.session()).shell("uname -a");
+  const session = await agent.session();
+
+  return await session.shell("uname -a");
 }
 ```
 
 ### Fresh VM
 
+Only use this when the user explicitly asks to create a VM and provides an
+API token with `new` permission. The VM is created before `init(...)` and
+then passed to `exedev(...)`.
+
 ```ts
-const agent = await init({
-  sandbox: exedev({
-    apiToken: env.EXE_API_TOKEN,
-    createVm: true,
-    cleanup: true,
-  }),
-  model: "anthropic/claude-sonnet-4-6",
-});
+import type { FlueContext } from "@flue/sdk/client";
+import { createExeVm, deleteExeVm, exedev } from "../connectors/exedev";
+
+export const triggers = { webhook: true };
+
+export default async function ({ init, env }: FlueContext) {
+  const vm = await createExeVm({ apiToken: env.EXE_API_TOKEN });
+
+  try {
+    const agent = await init({
+      sandbox: exedev(vm, { cleanup: true }),
+      model: "anthropic/claude-sonnet-4-6",
+    });
+    const session = await agent.session();
+
+    return await session.shell("uname -a");
+  } finally {
+    await deleteExeVm({ apiToken: env.EXE_API_TOKEN, name: vm.name });
+  }
+}
 ```
 
 ### Cloned VM
 
+Only use this when the user explicitly asks to clone a base VM and provides
+an API token with `cp` permission. If you delete the clone afterwards, the
+token also needs `rm` permission.
+
 ```ts
-const agent = await init({
-  sandbox: exedev({
+import type { FlueContext } from "@flue/sdk/client";
+import { cloneExeVm, deleteExeVm, exedev } from "../connectors/exedev";
+
+export const triggers = { webhook: true };
+
+export default async function ({ init, env }: FlueContext) {
+  const vm = await cloneExeVm({
     apiToken: env.EXE_API_TOKEN,
-    cloneFrom: "my-dev-vm",
-    cleanup: true,
-  }),
-  model: "anthropic/claude-sonnet-4-6",
-});
+    source: "my-dev-vm",
+  });
+
+  try {
+    const agent = await init({
+      sandbox: exedev(vm, { cleanup: true }),
+      model: "anthropic/claude-sonnet-4-6",
+    });
+    const session = await agent.session();
+
+    return await session.shell("uname -a");
+  } finally {
+    await deleteExeVm({ apiToken: env.EXE_API_TOKEN, name: vm.name });
+  }
+}
 ```
-
-## All connector options
-
-| Option           | Type                             | Default  | Notes                                                                      |
-| ---------------- | -------------------------------- | -------- | -------------------------------------------------------------------------- |
-| `host`           | `string`                         | —        | VM hostname. Required unless `createVm` or `cloneFrom` is set.             |
-| `username`       | `string`                         | `"user"` | SSH username on the VM (exeuntu default).                                  |
-| `port`           | `number`                         | `22`     | SSH port.                                                                  |
-| `privateKey`     | `string \| Buffer`               | —        | Raw PEM. Highest precedence in the SSH-key resolution chain.               |
-| `privateKeyPath` | `string`                         | —        | Path to a private-key file. Beats `$EXE_SSH_KEY` and `~/.ssh/*`.           |
-| `agent`          | `string`                         | —        | SSH agent socket path. Beats file lookups; falls back to `$SSH_AUTH_SOCK`. |
-| `apiToken`       | `string`                         | —        | exe.dev HTTPS bearer token. Required for `createVm` / `cloneFrom`.         |
-| `createVm`       | `boolean`                        | `false`  | Create a fresh VM via `new`. Needs `apiToken`.                             |
-| `vmName`         | `string`                         | random   | VM name when `createVm: true`. Omit to let exe.dev generate one.           |
-| `cloneFrom`      | `string`                         | —        | Clone a VM via `cp <name>`. Needs `apiToken`.                              |
-| `cleanup`        | `boolean \| () => Promise<void>` | `false`  | See cleanup behavior below.                                                |
-
-### Cleanup behavior
-
-- `false` (default) — no cleanup. exe.dev VMs are persistent; user manages lifecycle via `ssh exe.dev` → `rm`.
-- `true` — closes SSH. Also `rm`s the VM when it was auto-created via `createVm` / `cloneFrom`. Never deletes a VM passed via `host`.
-- function — runs the user function, then closes SSH (and deletes auto-created VMs).
-
-## Environment variables
-
-| Variable        | Required                     | Description                                                                                      |
-| --------------- | ---------------------------- | ------------------------------------------------------------------------------------------------ |
-| `EXE_VM_HOST`   | for existing VM              | e.g. `maple-dune.exe.xyz`. Convention only; passed by user.                                      |
-| `EXE_API_TOKEN` | for `createVm` / `cloneFrom` | bearer token (`exe0.*` / `exe1.*`). Convention only.                                             |
-| `EXE_SSH_KEY`   | optional                     | Path to SSH private key. Used as a fallback by the connector.                                    |
-| `SSH_AUTH_SOCK` | optional                     | SSH agent socket. Picked up automatically when no key file resolves (1Password, ssh-agent, ...). |
-
-Place vars per project conventions (`.env`, `.dev.vars`, `AGENTS.md`).
-Ask if unclear.
-
-For reference: `flue dev --env <file>` and `flue run --env <file>` load
-any `.env`-format file the user points them at.
 
 ## Verify
 
