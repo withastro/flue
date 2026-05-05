@@ -64,13 +64,17 @@ export default async function ({ init, env }: FlueContext) {
     sandbox: daytona(sandbox, { cleanup: true }),
     model: 'anthropic/claude-sonnet-4-6',
   });
-  const session = await agent.session();
 
-  return await session.shell('uname -a');
+  try {
+    const session = await agent.session();
+    return await session.shell('uname -a');
+  } finally {
+    await agent.destroy();
+  }
 }
 ```
 
-`cleanup: true` tells Flue to delete the sandbox when the session ends. The default is `false` (you manage the lifecycle), and you can also pass a function for custom teardown.
+`cleanup: true` tells Flue to delete the sandbox when `agent.destroy()` is called. Wrap the session work in `try/finally` for request-scoped sandboxes so cleanup runs even if something throws. The default is `false` (you manage the lifecycle), and you can also pass a function for custom teardown.
 
 ## Advanced: Sharing a sandbox across sessions
 
@@ -87,29 +91,35 @@ export default async function ({ init, payload, env }: FlueContext) {
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
 
-  // Setup session — clone the repo and install dependencies.
-  const setupAgent = await init({
-    sandbox: daytona(sandbox, { cleanup: true }),
-    model: 'anthropic/claude-sonnet-4-6',
-  });
-  const setup = await setupAgent.session();
-  await setup.shell(`git clone ${payload.repo} /workspace/project`);
-  await setup.shell('npm install', { cwd: '/workspace/project' });
+  try {
+    // Setup session — clone the repo and install dependencies.
+    const setupAgent = await init({
+      sandbox: daytona(sandbox),
+      model: 'anthropic/claude-sonnet-4-6',
+    });
+    const setup = await setupAgent.session();
+    await setup.shell(`git clone ${payload.repo} /workspace/project`);
+    await setup.shell('npm install', { cwd: '/workspace/project' });
 
-  // Working session — same sandbox, but rooted at the project directory.
-  const projectAgent = await init({
-    id: 'project',
-    sandbox: daytona(sandbox),
-    cwd: '/workspace/project',
-    model: 'anthropic/claude-sonnet-4-6',
-  });
-  const session = await projectAgent.session();
+    // Working session — same sandbox, but rooted at the project directory.
+    const projectAgent = await init({
+      id: 'project',
+      sandbox: daytona(sandbox),
+      cwd: '/workspace/project',
+      model: 'anthropic/claude-sonnet-4-6',
+    });
+    const session = await projectAgent.session();
 
-  return await session.prompt(payload.prompt);
+    return await session.prompt(payload.prompt);
+  } finally {
+    // Both `init()` calls share the same sandbox, so we delete it directly
+    // here instead of relying on a per-agent `cleanup` hook.
+    await sandbox.delete();
+  }
 }
 ```
 
-Both `init()` calls share the same Daytona sandbox. Only the first carries `cleanup: true` so the sandbox is torn down when the working session ends. The second passes `cwd` so the agent's tools operate inside the project directory.
+Both `init()` calls share the same Daytona sandbox, with the second passing `cwd` so the agent's tools operate inside the project directory. Because two agents share the sandbox, the cleanest pattern is to manage its lifecycle directly with the Daytona SDK in `finally` rather than attaching `cleanup: true` to one of the agents.
 
 ## Configuring the sandbox
 

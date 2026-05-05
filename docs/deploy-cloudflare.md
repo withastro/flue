@@ -250,6 +250,8 @@ The examples above all run on virtual sandboxes — no container needed. But for
 
 Cloudflare has native container support via [`@cloudflare/sandbox`](https://developers.cloudflare.com/containers/). Each session gets its own isolated container with a persistent filesystem, shell, and full Linux userspace.
 
+If you'd rather connect to an external provider — e.g. Daytona — instead of running the sandbox on Cloudflare, see [Connect a Daytona Sandbox](./connect-daytona.md).
+
 ### Setup
 
 You own the container config. That means three things:
