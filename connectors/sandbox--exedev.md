@@ -19,6 +19,9 @@ Wraps an already-available exe.dev VM into Flue's `SandboxFactory` interface
 over SSH + SFTP. The user owns the VM lifecycle; this connector just adapts
 the VM.
 
+This connector depends on Node.js APIs and the `ssh2` package, so use it with
+Flue's Node target. It is not suitable for Cloudflare Worker-target agents.
+
 exe.dev also exposes an HTTPS API (`POST https://exe.dev/exec`) for VM
 lifecycle commands like `new`, `cp`, and `rm`. This guide includes optional
 helpers for that setup work, but `exedev(...)` itself only wraps a VM that
@@ -49,6 +52,10 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  *
  * Wraps an already-available exe.dev VM into Flue's SandboxFactory interface
  * using SSH for shell commands and SFTP for file operations.
+ *
+ * This connector depends on Node.js APIs and the `ssh2` package, so use it
+ * with Flue's Node target. It is not suitable for Cloudflare Worker-target
+ * agents.
  *
  * Optional lifecycle helpers (`createExeVm`, `cloneExeVm`, `deleteExeVm`)
  * use exe.dev's HTTPS API before/after agent setup. The connector itself
@@ -112,8 +119,8 @@ export interface ExeDevConnectorOptions {
   privateKeyPath?: string;
   /** SSH agent socket path. Falls back to `$SSH_AUTH_SOCK` when no key resolves. */
   agent?: string;
-  /** Cleanup behavior when the session is destroyed. */
-  cleanup?: boolean | (() => Promise<void>);
+  /** Optional user cleanup hook to run before the SSH connection closes. */
+  cleanup?: () => Promise<void>;
 }
 
 export interface ExeDevLifecycleOptions {
@@ -627,21 +634,18 @@ export function exedev(vm: ExeDevVm | string, options?: ExeDevConnectorOptions):
         }
       }
 
-      let cleanupFn: (() => Promise<void>) | undefined;
-      if (options?.cleanup === true) {
-        cleanupFn = async () => {
-          disconnect();
-        };
-      } else if (typeof options?.cleanup === "function") {
-        const userCleanup = options.cleanup;
-        cleanupFn = async () => {
+      const cleanupFn = async () => {
+        const userCleanup = options?.cleanup;
+        if (typeof userCleanup === "function") {
           try {
             await userCleanup();
           } finally {
             disconnect();
           }
-        };
-      }
+          return;
+        }
+        disconnect();
+      };
 
       return createSandboxSessionEnv(api, sandboxCwd, cleanupFn);
     },
@@ -651,8 +655,9 @@ export function exedev(vm: ExeDevVm | string, options?: ExeDevConnectorOptions):
 
 ## Required dependencies
 
-This connector imports from `ssh2`, so the user's project needs to depend on
-it directly. If their `package.json` does not already list it, add it:
+This connector imports from Node.js built-ins and `ssh2`, so it requires
+Flue's Node target and the user's project needs to depend on `ssh2` directly.
+If their `package.json` does not already list it, add it:
 
 ```bash
 npm install ssh2
@@ -733,7 +738,7 @@ export const triggers = { webhook: true };
 
 export default async function ({ init, env }: FlueContext) {
   const agent = await init({
-    sandbox: exedev({ host: env.EXE_VM_HOST }, { cleanup: true }),
+    sandbox: exedev({ host: env.EXE_VM_HOST }),
     model: "anthropic/claude-sonnet-4-6",
   });
   const session = await agent.session();
@@ -759,7 +764,7 @@ export default async function ({ init, env }: FlueContext) {
 
   try {
     const agent = await init({
-      sandbox: exedev(vm, { cleanup: true }),
+      sandbox: exedev(vm),
       model: "anthropic/claude-sonnet-4-6",
     });
     const session = await agent.session();
@@ -791,7 +796,7 @@ export default async function ({ init, env }: FlueContext) {
 
   try {
     const agent = await init({
-      sandbox: exedev(vm, { cleanup: true }),
+      sandbox: exedev(vm),
       model: "anthropic/claude-sonnet-4-6",
     });
     const session = await agent.session();
@@ -812,5 +817,5 @@ export default async function ({ init, env }: FlueContext) {
    actually wrote the file.
 4. Tell the user the next steps: install `ssh2` and `@types/ssh2` (if you
    didn't), make sure the needed exe.dev SSH/API values are available at
-   runtime (per the Authentication section above), and run `flue dev` (or
-   `flue run <agent>`) to try it.
+   runtime (per the Authentication section above), and run `flue dev --target node`
+   (or `flue run <agent> --target node`) to try it.
