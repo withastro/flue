@@ -54,8 +54,8 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * import { Compute } from '@boxd-sh/sdk';
  * import { boxd } from './connectors/boxd';
  *
- * const c = new Compute({ apiKey: process.env.BOXD_API_KEY });
- * const box = await c.box.create({ name: 'my-agent' });
+ * const client = new Compute({ apiKey: process.env.BOXD_API_KEY });
+ * const box = await client.box.create({ name: 'my-agent' });
  * const agent = await init({ sandbox: boxd(box), model: 'anthropic/claude-sonnet-4-6' });
  * const session = await agent.session();
  * ```
@@ -314,8 +314,8 @@ import { boxd } from '../connectors/boxd'; // adjust path to match the user's la
 export const triggers = { webhook: true };
 
 export default async function ({ init, env }: FlueContext) {
-  const c = new Compute({ apiKey: env.BOXD_API_KEY });
-  const box = await c.box.create({ name: `agent-${Date.now()}` });
+  const client = new Compute({ apiKey: env.BOXD_API_KEY });
+  const box = await client.box.create({ name: `agent-${Date.now()}` });
 
   try {
     const agent = await init({
@@ -325,7 +325,7 @@ export default async function ({ init, env }: FlueContext) {
     const session = await agent.session();
     return await session.shell('uname -a');
   } finally {
-    await c.close();
+    await client.close();
   }
 }
 ```
