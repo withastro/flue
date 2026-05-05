@@ -2,7 +2,7 @@
 {
   "category": "sandbox",
   "website": "https://exe.dev",
-  "aliases": ["ssh2"]
+  "aliases": ["exe"]
 }
 ---
 
