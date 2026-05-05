@@ -629,6 +629,7 @@ function stopServer(child: ChildProcess) {
 	if (!child.killed) {
 		child.kill('SIGTERM');
 	}
+	if (serverProcess === child) serverProcess = undefined;
 }
 
 // ─── Find Available Port ────────────────────────────────────────────────────
@@ -719,6 +720,10 @@ async function run(args: RunArgs) {
 	// 3. Start server
 	console.error(`[flue] Starting server on port ${port}...`);
 	const child = startServer(serverPath, port, fileEnv, outputDir);
+	serverProcess = child;
+	child.once('exit', () => {
+		if (serverProcess === child) serverProcess = undefined;
+	});
 
 	// Pipe server stdout/stderr for visibility
 	const pipeServerOutput = (data: Buffer) => {
