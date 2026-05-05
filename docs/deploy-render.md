@@ -11,7 +11,7 @@ By the end, you will have a live Render Web Service running Flue agents, and you
 
 ## What you'll build
 
-You will take the template from one-click deploy to a working Flue service you can call from any HTTP client:
+Starting from the template, you'll ship a live Flue agent on Render that you can call from any HTTP client:
 
 1. Deploy a Flue Web Service on Render.
 2. Send real requests to the `translate` and `assistant` agents.
@@ -20,7 +20,7 @@ You will take the template from one-click deploy to a working Flue service you c
 
 ## 1. Deploy the template
 
-Open the [Flue template](https://render.com/templates/flue) and start the one-click flow. Render walks you through:
+Open the [Flue template](https://render.com/templates/flue) and click **Deploy to Render**. Render walks you through:
 
 1. Authorizing Render's GitHub OAuth app.
 2. Copying the template repo to your GitHub account.
