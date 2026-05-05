@@ -332,7 +332,7 @@ export default async function ({ init, env }: FlueContext) {
 
 Tip: forking is significantly faster than `create()` on boxd. If the user
 runs many short-lived agents off the same base image, point them at
-`c.box.fork(<base>, { name: ... })` and bake their tooling into the source
+`client.box.fork(<base>, { name: ... })` and bake their tooling into the source
 VM once.
 
 ## Verify
