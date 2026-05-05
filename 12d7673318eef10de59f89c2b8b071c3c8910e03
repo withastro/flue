@@ -1,0 +1,23 @@
+docs/connect-daytona.md
+  a00f536dc3de8378 67,69,73,90-108,112
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "12d7673318eef10de59f89c2b8b071c3c8910e03",
+  "prompts": {
+    "a00f536dc3de8378": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_208514ca8ffew35oYECC0YyQrx",
+        "model": "anthropic/claude-opus-4-7"
+      },
+      "human_author": "Fred K. Schott",
+      "messages": [],
+      "total_additions": 23,
+      "total_deletions": 33,
+      "accepted_lines": 23,
+      "overriden_lines": 0
+    }
+  }
+}
