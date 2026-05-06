@@ -2,6 +2,8 @@
 
 Build and deploy Flue agents as a Node.js server. This guide walks you through creating your first agent, running it locally, and deploying it anywhere you can run Node.js — a VPS, Docker, Railway, Fly.io, or any cloud platform.
 
+By the end, you will have a Flue agent running as a Node.js server, and you will know how to add roles, sandbox context, commands, remote sandboxes, and durable session storage when your agent needs them.
+
 ## Project layout
 
 Flue looks for your workspace in one of two places:

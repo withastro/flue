@@ -2,6 +2,8 @@
 
 Build and deploy Flue agents on Cloudflare Workers. This guide walks you through the different kinds of agents you can build — from simple prompt-and-response endpoints to full coding agents backed by persistent storage and remote sandboxes.
 
+By the end, you will have a Flue agent running on Cloudflare Workers, and you will know how to add roles, R2-backed context, Cloudflare sandboxes, and Durable Object-backed sessions.
+
 ## Project layout
 
 Flue looks for your workspace in one of two places:

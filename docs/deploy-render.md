@@ -1,6 +1,6 @@
-# Deploy Flue Agents on Render
+# Deploy Agents on Render
 
-Run Flue's Node.js build output on Render, starting from the [Flue template](https://render.com/templates/flue). This guide builds on [Deploy Agents on Node.js](./deploy-node.md) and focuses on the Render-specific setup.
+Deploy Flue agents to Render as a Node.js web service. This guide starts from the [Flue template](https://render.com/templates/flue), builds on [Deploy Agents on Node.js](./deploy-node.md), and focuses on the Render-specific setup: Blueprints, service configuration, environment variables, and managed persistence.
 
 By the end, you will have a live Render web service running Flue agents, and you will know how to add Render-managed persistence on top.
 
@@ -8,15 +8,6 @@ By the end, you will have a live Render web service running Flue agents, and you
 
 - Familiarity with the [Deploy Agents on Node.js](./deploy-node.md) guide.
 - An API key for your model provider. The template prompts for `ANTHROPIC_API_KEY` by default.
-
-## What you'll build
-
-Starting from the template, you'll ship a live Flue agent on Render that you can call from any HTTP client:
-
-1. Deploy a Flue web service on Render.
-2. Send real requests to the `translate` and `assistant` agents.
-3. Read the `render.yaml` that makes the deploy work.
-4. Add durable sessions when your agent needs them.
 
 ## 1. Deploy the template
 
@@ -32,8 +23,6 @@ On the deploy page, paste your AI provider API key when prompted, then click **D
 The template uses `plan: free` so first-time deploys cost nothing. Free instances spin down after 15 minutes of inactivity, and the next request pays a multi-second cold start while the Node process restarts. For agents that see sporadic traffic in production, bump the service to `starter` or higher in `render.yaml` (or from the Render Dashboard) to keep it warm.
 
 When the deploy finishes, copy your service URL from the Render Dashboard. The rest of this guide uses `https://<service>.onrender.com`.
-
-> Your Flue agents are live on Render and ready to take requests.
 
 ## 2. Test the live service
 
@@ -64,8 +53,6 @@ The response should match the agent's structured output, like:
 
 The translation itself can vary by model. The shape is what matters.
 
-> The web service is live, the Flue server started correctly, and your provider key is reaching the model at runtime.
-
 Try a short conversation with the `assistant` agent:
 
 ```bash
@@ -74,7 +61,7 @@ curl https://<service>.onrender.com/agents/assistant/session-1 \
   -d '{"message": "What is the capital of Japan?"}'
 ```
 
-Then send a follow-up using the same agent ID:
+Then send a follow-up using the same session ID:
 
 ```bash
 curl https://<service>.onrender.com/agents/assistant/session-1 \
@@ -86,9 +73,7 @@ Reusing the ID keeps Flue's session scope stable. On Node.js, that session state
 
 Render closes idle HTTP connections after about 100 seconds. Most prompt-and-response agents finish well inside that window, but if you build agents that run long tool chains or large multi-step prompts, plan for either streamed responses or a scheduled / background runner (see [Going further](#going-further)) instead of a single blocking request.
 
-> **A conversational session works end to end.**
->
-> If you only need webhook-triggered agents with in-memory sessions, you can stop here.
+If you only need webhook-triggered agents with in-memory sessions, you can stop here.
 
 ## 3. Review the web service config
 
@@ -117,8 +102,6 @@ This is the Render side of what the Node guide already covers:
 
 If you ever move this setup into a different repo, drop the same `render.yaml` at its root, then create a new Blueprint from the Render Dashboard (**New > Blueprint**) and pick that repo.
 
-> You can now read the Blueprint and know what each Render-facing field does.
-
 ## 4. Change model configuration
 
 Provider keys belong in environment variables, either in the Render Dashboard or in `render.yaml` with `sync: false`. Common choices:
@@ -146,8 +129,6 @@ curl https://<service>.onrender.com/agents/translate/verify \
 ```
 
 A successful response means the new env values reached the running service and Flue can still talk to the provider.
-
-> You can swap models and providers without touching the rest of the Render setup.
 
 ## 5. Add session persistence
 
@@ -275,8 +256,6 @@ To verify persistence end to end, run a fact-recall test that survives a process
 
 If the response references `42`, your `SessionStore` is reading and writing through Postgres correctly. If the agent has no idea, persistence isn't being read on session resume.
 
-> Your sessions now survive deploys, restarts, and scale-out.
-
 ## Going further
 
 A few patterns this guide doesn't cover yet:
@@ -290,10 +269,9 @@ For more, see Render's [Cron Jobs](https://render.com/docs/cron-jobs), [Backgrou
 
 When a step doesn't behave as expected, run through these quick checks:
 
-| Symptom | Check |
-| --- | --- |
-| Health check fails | Make sure `startCommand` is `node dist/server.mjs` and that the build produced `dist/server.mjs`. |
-| Agent call returns a provider error | Confirm the matching provider key is set in the service's environment variables. |
-| Build can't find `flue` | Make sure `@flue/cli` is installed and available during the build or start command. |
-| Agent forgets context after a deploy | Wire up a custom `SessionStore` backed by Postgres or Key Value. |
-
+| Symptom                              | Check                                                                                             |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------- |
+| Health check fails                   | Make sure `startCommand` is `node dist/server.mjs` and that the build produced `dist/server.mjs`. |
+| Agent call returns a provider error  | Confirm the matching provider key is set in the service's environment variables.                  |
+| Build can't find `flue`              | Make sure `@flue/cli` is installed and available during the build or start command.               |
+| Agent forgets context after a deploy | Wire up a custom `SessionStore` backed by Postgres or Key Value.                                  |

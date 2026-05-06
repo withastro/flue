@@ -2,6 +2,8 @@
 
 Build and run Flue agents in GitHub Actions. This guide walks you through creating your first agent, running it locally with the CLI, and wiring it into a CI workflow.
 
+By the end, you will have a Flue agent running inside GitHub Actions, and you will know how to use local sandbox context, commands, roles, skills, and typed results to build CI workflows.
+
 ## Hello World
 
 A minimal agent that runs in CI whenever an issue is opened.

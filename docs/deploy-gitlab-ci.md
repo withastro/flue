@@ -2,6 +2,8 @@
 
 Build and run Flue agents in GitLab CI/CD pipelines. This guide walks you through creating your first agent, running it locally with the CLI, and wiring it into a pipeline.
 
+By the end, you will have a Flue agent running inside GitLab CI/CD, and you will know how to use local sandbox context, commands, roles, skills, and typed results to build CI workflows.
+
 ## Hello World
 
 A minimal agent that runs in CI whenever an issue is opened.
