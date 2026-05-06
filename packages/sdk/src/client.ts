@@ -97,6 +97,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					systemPrompt: localContext.systemPrompt,
 					skills: localContext.skills,
 					model: agentModel,
+					thinking: options.thinking ?? config.agentConfig.thinking,
 					role: options.role ?? config.agentConfig.role,
 					providers,
 				};
@@ -221,6 +222,7 @@ export type {
 	FlueSession,
 	AgentInit,
 	ModelConfig,
+	ThinkingLevel,
 	FlueEvent,
 	FlueEventCallback,
 	SessionData,

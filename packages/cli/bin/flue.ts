@@ -372,6 +372,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 // ─── SSE Consumer ───────────────────────────────────────────────────────────
 
 let textBuffer = '';
+let thinkingBuffer = '';
 
 function flushTextBuffer() {
 	if (textBuffer) {
@@ -382,6 +383,20 @@ function flushTextBuffer() {
 	}
 }
 
+function flushThinkingBuffer() {
+	if (thinkingBuffer) {
+		for (const line of thinkingBuffer.split('\n')) {
+			if (line) console.error(`  [thinking] ${line}`);
+		}
+		thinkingBuffer = '';
+	}
+}
+
+function flushStreamBuffers() {
+	flushTextBuffer();
+	flushThinkingBuffer();
+}
+
 function logEvent(event: any) {
 	switch (event.type) {
 		case 'agent_start':
@@ -389,6 +404,7 @@ function logEvent(event: any) {
 			break;
 
 		case 'text_delta': {
+			flushThinkingBuffer();
 			const combined = textBuffer + (event.text ?? '');
 			const lines = combined.split('\n');
 			textBuffer = lines.pop() ?? '';
@@ -398,8 +414,19 @@ function logEvent(event: any) {
 			break;
 		}
 
-		case 'tool_start': {
+		case 'thinking_delta': {
 			flushTextBuffer();
+			const combined = thinkingBuffer + (event.text ?? '');
+			const lines = combined.split('\n');
+			thinkingBuffer = lines.pop() ?? '';
+			for (const line of lines) {
+				console.error(`  [thinking] ${line}`);
+			}
+			break;
+		}
+
+		case 'tool_start': {
+			flushStreamBuffers();
 			let toolDetail = event.toolName;
 			if (event.args) {
 				if (event.toolName === 'bash' && event.args.command) {
@@ -436,11 +463,11 @@ function logEvent(event: any) {
 		}
 
 		case 'turn_end':
-			flushTextBuffer();
+			flushStreamBuffers();
 			break;
 
 		case 'compaction_start':
-			flushTextBuffer();
+			flushStreamBuffers();
 			console.error(
 				`[flue] compaction:start  reason=${event.reason} tokens=${event.estimatedTokens}`,
 			);
@@ -453,11 +480,11 @@ function logEvent(event: any) {
 			break;
 
 		case 'idle':
-			flushTextBuffer();
+			flushStreamBuffers();
 			break;
 
 		case 'error':
-			flushTextBuffer();
+			flushStreamBuffers();
 			// Envelope: { type: 'error', error: { type, message, details, dev?, meta? } }
 			// `dev` is only present when the server is in local/dev mode —
 			// `flue run` always is, so we render it whenever it's present.
@@ -580,7 +607,7 @@ async function consumeSSE(
 		}
 	}
 
-	flushTextBuffer();
+	flushStreamBuffers();
 	return error ? { error } : { result };
 }
 
