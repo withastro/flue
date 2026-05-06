@@ -454,9 +454,9 @@ export class Session implements FlueSession {
 			label: toolDef.name,
 			description: toolDef.description,
 			parameters: toolDef.parameters,
-			async execute(_toolCallId: string, params: Record<string, any>, signal?: AbortSignal) {
+			async execute(_toolCallId: string, params: unknown, signal?: AbortSignal) {
 				if (signal?.aborted) throw new Error('Operation aborted');
-				const resultText = await toolDef.execute(params, signal);
+				const resultText = await toolDef.execute(params as Record<string, any>, signal);
 				return {
 					content: [{ type: 'text' as const, text: resultText }],
 					details: { customTool: toolDef.name },
