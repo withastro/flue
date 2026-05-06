@@ -137,6 +137,15 @@ function createContextForRequest(id, payload) {
   });
 }
 
+async function cleanupContext(ctx) {
+  ctx.setEventCallback(undefined);
+  try {
+    await ctx.destroyAgents();
+  } catch (err) {
+    console.error('[flue] Agent cleanup error:', err);
+  }
+}
+
 // ─── Server ─────────────────────────────────────────────────────────────────
 
 const app = new Hono();
@@ -177,12 +186,12 @@ app.all('/agents/:name/:id', async (c) => {
     const requestId = randomUUID();
     const ctx = createContextForRequest(id, payload);
     handler(ctx).then(
-      (result) => {
-        ctx.setEventCallback(undefined);
+      async (result) => {
+        await cleanupContext(ctx);
         console.log('[flue] Webhook handler complete:', name, result !== undefined ? JSON.stringify(result) : '(no return)');
       },
-      (err) => {
-        ctx.setEventCallback(undefined);
+      async (err) => {
+        await cleanupContext(ctx);
         console.error('[flue] Webhook handler error:', name, err);
       },
     );
@@ -228,7 +237,7 @@ app.all('/agents/:name/:id', async (c) => {
           await stream.writeSSE({ data: JSON.stringify(idle), event: 'idle', id: String(eventId++) });
         }
       } finally {
-        ctx.setEventCallback(undefined);
+        await cleanupContext(ctx);
       }
     });
   }
@@ -239,7 +248,7 @@ app.all('/agents/:name/:id', async (c) => {
     const result = await handler(ctx);
     return c.json({ result: result !== undefined ? result : null });
   } finally {
-    ctx.setEventCallback(undefined);
+    await cleanupContext(ctx);
   }
 });
 

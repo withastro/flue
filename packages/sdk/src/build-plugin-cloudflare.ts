@@ -270,6 +270,15 @@ function runHandlerWithKeepAlive(doInstance, ctx, handler) {
   });
 }
 
+async function cleanupContext(ctx) {
+  ctx.setEventCallback(undefined);
+  try {
+    await ctx.destroyAgents();
+  } catch (err) {
+    console.error('[flue] Agent cleanup error:', err);
+  }
+}
+
 function startWebhookFiber(doInstance, requestId, agentName, id, payload, handler) {
   const run = async (fiber) => {
     fiber?.stash?.({
@@ -287,7 +296,7 @@ function startWebhookFiber(doInstance, requestId, agentName, id, payload, handle
       try {
         return await handler(ctx);
       } finally {
-        ctx.setEventCallback(undefined);
+        await cleanupContext(ctx);
       }
     });
   };
@@ -380,7 +389,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
             await writeSSE({ type: 'idle' }, 'idle');
           }
         } finally {
-          ctx.setEventCallback(undefined);
+          await runWithInstanceContext(doInstance, () => cleanupContext(ctx));
           await writer.close();
         }
       })();
@@ -403,7 +412,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
         { headers: { 'content-type': 'application/json' } },
       );
     } finally {
-      ctx.setEventCallback(undefined);
+      await runWithInstanceContext(doInstance, () => cleanupContext(ctx));
     }
   } catch (err) {
     // toHttpResponse logs unknowns via flueLog.error — no extra console.error

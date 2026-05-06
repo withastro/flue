@@ -34,11 +34,13 @@ export interface FlueContextConfig {
 /** Extends FlueContext with server-only methods. Agent handlers only see FlueContext. */
 export interface FlueContextInternal extends FlueContext {
 	setEventCallback(callback: FlueEventCallback | undefined): void;
+	destroyAgents(): Promise<void>;
 }
 
 export function createFlueContext(config: FlueContextConfig): FlueContextInternal {
 	let currentEventCallback: FlueEventCallback | undefined;
 	const initializedAgentIds = new Set<string>();
+	const initializedAgents: FlueAgent[] = [];
 
 	const ctx: FlueContextInternal = {
 		get id() {
@@ -91,7 +93,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					providers,
 				};
 
-				return new AgentClient(
+				const agent = new AgentClient(
 					id,
 					agentConfig,
 					env,
@@ -100,6 +102,8 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					options.commands,
 					options.tools,
 				);
+				initializedAgents.push(agent);
+				return agent;
 			} catch (error) {
 				initializedAgentIds.delete(id);
 				throw error;
@@ -108,6 +112,24 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 
 		setEventCallback(callback: FlueEventCallback | undefined): void {
 			currentEventCallback = callback;
+		},
+
+		async destroyAgents(): Promise<void> {
+			const agents = initializedAgents.splice(0).reverse();
+			const errors: unknown[] = [];
+			for (const agent of agents) {
+				try {
+					await agent.destroy();
+				} catch (error) {
+					errors.push(error);
+				}
+			}
+			initializedAgentIds.clear();
+			if (errors.length > 0) {
+				const [first] = errors;
+				if (first instanceof Error) throw first;
+				throw new Error(String(first));
+			}
 		},
 	};
 
