@@ -123,11 +123,12 @@ async function createLocalEnv() {
 // Default persistence store for Node — in-memory, process lifetime.
 const defaultStore = new InMemorySessionStore();
 
-function createContextForRequest(id, payload) {
+function createContextForRequest(id, payload, req) {
   return createFlueContext({
     id,
     payload,
     env: process.env,
+    req,
     agentConfig: {
       systemPrompt, skills, roles, model: undefined, resolveModel,
     },
@@ -175,7 +176,7 @@ app.all('/agents/:name/:id', async (c) => {
   // Fire-and-forget (webhook mode)
   if (isWebhook) {
     const requestId = randomUUID();
-    const ctx = createContextForRequest(id, payload);
+    const ctx = createContextForRequest(id, payload, c.req.raw);
     handler(ctx).then(
       (result) => {
         ctx.setEventCallback(undefined);
@@ -200,7 +201,7 @@ app.all('/agents/:name/:id', async (c) => {
     return streamSSE(c, async (stream) => {
       let eventId = 0;
       let isIdle = false;
-      const ctx = createContextForRequest(id, payload);
+      const ctx = createContextForRequest(id, payload, c.req.raw);
       ctx.setEventCallback((event) => {
         if (event.type === 'idle') isIdle = true;
         stream.writeSSE({ data: JSON.stringify(event), event: event.type, id: String(eventId++) }).catch(() => {});
@@ -234,7 +235,7 @@ app.all('/agents/:name/:id', async (c) => {
   }
 
   // Sync mode (default). Errors propagate to app.onError.
-  const ctx = createContextForRequest(id, payload);
+  const ctx = createContextForRequest(id, payload, c.req.raw);
   try {
     const result = await handler(ctx);
     return c.json({ result: result !== undefined ? result : null });

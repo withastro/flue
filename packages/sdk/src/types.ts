@@ -177,6 +177,25 @@ export interface FlueContext<TPayload = any, TEnv = Record<string, any>> {
 	readonly payload: TPayload;
 	/** Platform env bindings (process.env on Node, Worker env on Cloudflare). */
 	readonly env: TEnv;
+	/**
+	 * The standard Fetch `Request` for the current invocation. Use it to read
+	 * headers (`req.headers.get('authorization')`), method, URL, etc.
+	 *
+	 * The body has already been consumed by Flue's JSON parser to populate
+	 * `payload` — call `req.clone()` before any body access if you need the
+	 * raw bytes (e.g. HMAC verification).
+	 *
+	 * Undefined when the agent is invoked outside an HTTP context (e.g. future
+	 * cron / queue triggers). Today every trigger is HTTP, so in practice this
+	 * is always defined — the optional type lets the contract hold when other
+	 * trigger types ship.
+	 *
+	 * For client IP, parse the platform header yourself, e.g.
+	 * `req.headers.get('cf-connecting-ip')` on Cloudflare, or
+	 * `req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()` behind a
+	 * trusted proxy on Node. Don't trust headers you don't control.
+	 */
+	readonly req: Request | undefined;
 	/** Initialize an agent runtime with sandbox + persistence. */
 	init(options: AgentInit): Promise<FlueAgent>;
 }

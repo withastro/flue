@@ -29,6 +29,12 @@ export interface FlueContextConfig {
 	 * Returns SessionEnv to use, or null to fall through to default logic.
 	 */
 	resolveSandbox?: (sandbox: unknown) => Promise<SessionEnv> | null;
+	/**
+	 * The current HTTP request, if any. Surfaced to handlers as `ctx.req`.
+	 * Build plugins pass the standard Fetch `Request` through; non-HTTP entry
+	 * points (e.g. future cron triggers) leave it undefined.
+	 */
+	req?: Request;
 }
 
 /** Extends FlueContext with server-only methods. Agent handlers only see FlueContext. */
@@ -51,6 +57,10 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 
 		get env() {
 			return config.env;
+		},
+
+		get req() {
+			return config.req;
 		},
 
 		async init(options?: AgentInit): Promise<FlueAgent> {
