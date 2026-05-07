@@ -23,6 +23,7 @@ export type {
 	ShellOptions,
 	ShellResult,
 	Skill,
+	SkillsPath,
 	Role,
 	AgentConfig,
 	ModelConfig,

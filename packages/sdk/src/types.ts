@@ -11,6 +11,8 @@ export interface Skill {
 	instructions: string;
 }
 
+export type SkillsPath = `./${string}` | `/${string}`;
+
 // ─── Role ───────────────────────────────────────────────────────────────────
 
 export interface Role {
@@ -161,6 +163,7 @@ export interface AgentConfig {
 	/** Resolve model config to a Model instance. Throws on invalid model strings. */
 	resolveModel: (model: ModelConfig | undefined, providers?: ProvidersConfig) => Model<any> | undefined;
 	compaction?: CompactionConfig;
+	skillsPath?: string;
 }
 
 export type ModelConfig = string | false;
@@ -248,6 +251,17 @@ export interface AgentInit {
 	 * call.
 	 */
 	commands?: Command[];
+
+	/**
+	 * Directory to discover skills from. Replaces the default `.agents/skills`
+	 * discovery path entirely — no fallback to the default location.
+	 *
+	 * Accepts relative paths (resolved against `cwd`) or absolute paths.
+	 * The directory must exist at init time; an error is thrown if it doesn't.
+	 *
+	 * @default '.agents/skills'
+	 */
+	skillsPath?: SkillsPath;
 }
 
 // ─── Flue Agent (returned by init()) ────────────────────────────────────────
@@ -392,6 +406,11 @@ export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> 
 	model?: string;
 	/** Working directory for the detached task session. Defaults to the parent session cwd. */
 	cwd?: string;
+	/**
+	 * Skills directory for the detached task session. Overrides the parent's
+	 * `skillsPath`. The directory must exist; an error is thrown if it doesn't.
+	 */
+	skillsPath?: SkillsPath;
 }
 
 export interface ShellOptions {

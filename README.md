@@ -123,7 +123,8 @@ export default async function ({ init, payload }: FlueContext) {
   const session = await agent.session();
 
   // Skills can be referenced either by their frontmatter `name:` (shown below)
-  // or by a relative path under `.agents/skills/` — e.g.
+  // or by a relative path under the skills directory (`.agents/skills/` by
+  // default, configurable via `init({ skillsPath })`) — e.g.
   // `session.skill('triage/reproduce.md', ...)`. Path references are handy for
   // skill packs that group multiple stages under one directory.
   const result = await session.skill('triage', {
@@ -265,7 +266,7 @@ In production, generate a stable agent ID for the sandbox/runtime scope you want
 
 ### Tasks
 
-Use `session.task()` to run a focused, one-shot child agent in a detached session. Tasks share the same sandbox/filesystem, but get their own message history and discover `AGENTS.md` plus `.agents/skills/` from their working directory. The same `task` tool is also available to the LLM during `prompt()` and `skill()` calls, so the agent can delegate parallel research or exploration work itself.
+Use `session.task()` to run a focused, one-shot child agent in a detached session. Tasks share the same sandbox/filesystem, but get their own message history and discover `AGENTS.md` plus skills from their working directory. Tasks inherit the parent agent's `skillsPath` when set, or can override it with `task('...', { skillsPath: './other-skills' })`. The same `task` tool is also available to the LLM during `prompt()` and `skill()` calls, so the agent can delegate parallel research or exploration work itself.
 
 ```ts
 const session = await agent.session();

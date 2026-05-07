@@ -1,8 +1,10 @@
 /**
- * Context discovery: reads AGENTS.md and .agents/skills/ from a session's
- * working directory. Used at runtime by the session initialisation path.
+ * Context discovery: reads AGENTS.md and skills from a session's working
+ * directory. Used at runtime by the session initialisation path.
  */
 import type { SessionEnv, Skill } from './types.ts';
+
+const DEFAULT_SKILLS_DIR = '.agents/skills';
 
 // ─── Frontmatter Parsing ────────────────────────────────────────────────────
 
@@ -56,7 +58,8 @@ export async function readAgentsMd(env: SessionEnv, basePath: string): Promise<s
 }
 
 /**
- * Load a skill directly by relative path under `.agents/skills/`.
+ * Load a skill directly by relative path under the skills directory
+ * (defaults to `.agents/skills/`).
  *
  * The path is taken as-is — no extension is auto-appended. Callers reference
  * the full filename, e.g. `'triage/reproduce.md'`. Returns `null` if the file
@@ -71,11 +74,12 @@ export async function loadSkillByPath(
 	env: SessionEnv,
 	basePath: string,
 	relPath: string,
+	skillsDir?: string,
 ): Promise<Skill | null> {
-	const skillsDir = basePath.endsWith('/')
-		? `${basePath}.agents/skills`
-		: `${basePath}/.agents/skills`;
-	const filePath = `${skillsDir}/${relPath}`;
+	const resolvedSkillsDir =
+		skillsDir ??
+		(basePath.endsWith('/') ? `${basePath}${DEFAULT_SKILLS_DIR}` : `${basePath}/${DEFAULT_SKILLS_DIR}`);
+	const filePath = `${resolvedSkillsDir}/${relPath}`;
 	if (!(await env.exists(filePath))) return null;
 
 	const content = await env.readFile(filePath);
@@ -90,22 +94,23 @@ export async function loadSkillByPath(
 	};
 }
 
-/** Discover skills from .agents/skills/<name>/SKILL.md under basePath. */
+/** Discover skills from <skillsDir>/<name>/SKILL.md under basePath. */
 export async function discoverLocalSkills(
 	env: SessionEnv,
 	basePath: string,
+	skillsDir?: string,
 ): Promise<Record<string, Skill>> {
-	const skillsDir = basePath.endsWith('/')
-		? `${basePath}.agents/skills`
-		: `${basePath}/.agents/skills`;
+	const resolvedSkillsDir =
+		skillsDir ??
+		(basePath.endsWith('/') ? `${basePath}${DEFAULT_SKILLS_DIR}` : `${basePath}/${DEFAULT_SKILLS_DIR}`);
 
-	if (!(await env.exists(skillsDir))) return {};
+	if (!(await env.exists(resolvedSkillsDir))) return {};
 
 	const skills: Record<string, Skill> = {};
-	const entries = await env.readdir(skillsDir);
+	const entries = await env.readdir(resolvedSkillsDir);
 
 	for (const entry of entries) {
-		const skillDir = `${skillsDir}/${entry}`;
+		const skillDir = `${resolvedSkillsDir}/${entry}`;
 
 		try {
 			const s = await env.stat(skillDir);
@@ -167,11 +172,12 @@ export function composeSystemPrompt(
 /** Discover AGENTS.md, local skills, and directory listing from the session's cwd. */
 export async function discoverSessionContext(
 	env: SessionEnv,
+	skillsPath?: string,
 ): Promise<{ systemPrompt: string; skills: Record<string, Skill> }> {
 	const cwd = env.cwd;
 
 	const agentsMd = await readAgentsMd(env, cwd);
-	const skills = await discoverLocalSkills(env, cwd);
+	const skills = await discoverLocalSkills(env, cwd, skillsPath);
 
 	let directoryListing: string[] | undefined;
 	try {

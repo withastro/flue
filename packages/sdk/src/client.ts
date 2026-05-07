@@ -75,7 +75,21 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 				const baseEnv = await resolveSessionEnv(id, sandbox, config, options.cwd);
 				const env = options.cwd ? createCwdSessionEnv(baseEnv, options.cwd) : baseEnv;
 				const store: SessionStore = options.persist ?? config.defaultStore;
-				const localContext = await discoverSessionContext(env);
+
+				let resolvedSkillsPath: string | undefined;
+				if (options.skillsPath !== undefined) {
+					const normalized = options.skillsPath.replace(/\/+$/, '');
+					resolvedSkillsPath = env.resolvePath(normalized);
+					if (!(await env.exists(resolvedSkillsPath))) {
+						throw new Error(
+							`[flue] skillsPath "${options.skillsPath}" does not exist ` +
+								`(resolved to "${resolvedSkillsPath}"). ` +
+								`Create the directory before calling init().`,
+						);
+					}
+				}
+
+				const localContext = await discoverSessionContext(env, resolvedSkillsPath);
 				const providers = mergeProvidersConfig(config.agentConfig.providers, options.providers);
 
 				// Agent-level model override. Per-call `model` on prompt()/skill() still wins
@@ -89,6 +103,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					model: agentModel,
 					role: options.role ?? config.agentConfig.role,
 					providers,
+					skillsPath: resolvedSkillsPath,
 				};
 
 				return new AgentClient(
@@ -227,6 +242,7 @@ export type {
 	PromptOptions,
 	PromptResponse,
 	SkillOptions,
+	SkillsPath,
 	TaskOptions,
 	ShellOptions,
 	ShellResult,

@@ -144,11 +144,13 @@ export class AgentClient implements FlueAgent {
 		const taskEnv = options.cwd
 			? createCwdSessionEnv(options.parentEnv, options.parentEnv.resolvePath(options.cwd))
 			: options.parentEnv;
-		const localContext = await discoverSessionContext(taskEnv);
+		const effectiveSkillsPath = options.skillsPath ?? this.config.skillsPath;
+		const localContext = await discoverSessionContext(taskEnv, effectiveSkillsPath);
 		const taskConfig: AgentConfig = {
 			...this.config,
 			systemPrompt: localContext.systemPrompt,
 			skills: localContext.skills,
+			skillsPath: effectiveSkillsPath,
 		};
 		const storageKey = createSessionStorageKey(this.id, sessionId);
 		const data = createEmptySessionData();

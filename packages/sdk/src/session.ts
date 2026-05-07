@@ -62,6 +62,7 @@ export interface CreateTaskSessionOptions {
 	role?: string;
 	commands: Command[];
 	depth: number;
+	skillsPath?: string;
 }
 
 export type CreateTaskSession = (options: CreateTaskSessionOptions) => Promise<Session>;
@@ -285,24 +286,23 @@ export class Session implements FlueSession {
 
 			let registeredSkill = this.config.skills[name];
 
-			// Fallback: file-path lookup under .agents/skills/. Only attempted when the
-			// name looks like a path (contains `/` or ends in `.md`/`.markdown`) so that
-			// typos of registered skill names still fail fast with a helpful error.
 			if (!registeredSkill && (name.includes('/') || /\.(md|markdown)$/i.test(name))) {
-				const loaded = await loadSkillByPath(this.env, this.env.cwd, name);
+				const loaded = await loadSkillByPath(this.env, this.env.cwd, name, this.config.skillsPath);
 				if (loaded) registeredSkill = loaded;
 			}
 
 			if (!registeredSkill) {
 				const available = Object.keys(this.config.skills).join(', ') || '(none)';
-				const cwd = this.env.cwd;
+				const skillsDir = this.config.skillsPath ?? `${this.env.cwd}/.agents/skills`;
 				throw new Error(
 					`Skill "${name}" not registered. Available: ${available}.\n\n` +
-						`Skills are loaded at init() time from ${cwd}/.agents/skills/<name>/SKILL.md ` +
+						`Skills are loaded at init() time from ${skillsDir}/<name>/SKILL.md ` +
 						`inside the session's sandbox. If you expected "${name}" to be there, make sure ` +
-						`the file exists in your sandbox at that path before calling init() — the default ` +
-						`empty sandbox starts with no files, so it has no skills unless you put them there.\n\n` +
-						`Skills can also be referenced by relative path under .agents/skills/ ` +
+						`the file exists in your sandbox at that path before calling init()` +
+						(this.config.skillsPath
+							? ` — the skills directory was set to "${this.config.skillsPath}" via init({ skillsPath }).`
+							: ` — the default empty sandbox starts with no files, so it has no skills unless you put them there.`) +
+						`\n\nSkills can also be referenced by relative path under ${skillsDir}/ ` +
 						`(e.g. "triage/reproduce.md").`,
 				);
 			}
@@ -597,6 +597,21 @@ export class Session implements FlueSession {
 			const role = this.resolveEffectiveRole(options?.role);
 			const commands = mergeCommands(this.agentCommands, options?.commands);
 
+			let taskSkillsPath: string | undefined;
+			if (options?.skillsPath !== undefined) {
+				const normalized = options.skillsPath.replace(/\/+$/, '');
+				taskSkillsPath = this.env.resolvePath(normalized);
+				if (!(await this.env.exists(taskSkillsPath))) {
+					throw new Error(
+						`[flue] skillsPath "${options.skillsPath}" does not exist ` +
+							`(resolved to "${taskSkillsPath}"). ` +
+							`Create the directory before calling task().`,
+					);
+				}
+			} else {
+				taskSkillsPath = this.config.skillsPath;
+			}
+
 			child = await this.createTaskSession({
 				parentSessionId: this.id,
 				taskId,
@@ -605,6 +620,7 @@ export class Session implements FlueSession {
 				role,
 				commands,
 				depth: this.taskDepth + 1,
+				skillsPath: taskSkillsPath,
 			});
 			await this.recordTaskSession(child.id, child.storageKey, taskId);
 			this.activeTasks.add(child);
