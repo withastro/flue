@@ -25,11 +25,11 @@ import {
 	extractResult,
 	ResultExtractionError,
 } from './result.ts';
-import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 import { loadSkillByPath } from './context.ts';
 import { createScopedEnv as scopeSessionEnv, mergeCommands } from './env-utils.ts';
 import {
 	assertRoleExists,
+	resolveCallReasoning,
 	resolveEffectiveRole as resolveEffectiveRoleName,
 	resolveRoleModel,
 } from './roles.ts';
@@ -40,11 +40,9 @@ import type {
 	FlueEvent,
 	FlueEventCallback,
 	FlueSession,
-	PromptModel,
+	ModelThinkingLevel,
 	PromptOptions,
 	PromptResponse,
-	PromptResultResponse,
-	PromptUsage,
 	SessionData,
 	SessionEnv,
 	SessionStore,
@@ -52,6 +50,7 @@ import type {
 	ShellResult,
 	SkillOptions,
 	TaskOptions,
+	ThinkingLevel,
 	ToolDef,
 } from './types.ts';
 
@@ -64,6 +63,7 @@ export interface CreateTaskSessionOptions {
 	parentEnv: SessionEnv;
 	cwd?: string;
 	role?: string;
+	reasoning?: ModelThinkingLevel;
 	commands: Command[];
 	depth: number;
 }
@@ -81,6 +81,7 @@ interface SessionInitOptions {
 	agentCommands?: Command[];
 	agentTools?: ToolDef[];
 	sessionRole?: string;
+	sessionReasoning?: ModelThinkingLevel;
 	taskDepth?: number;
 	createTaskSession?: CreateTaskSession;
 	onDelete?: () => void;
@@ -91,6 +92,7 @@ interface RuntimeScopeOptions {
 	tools: ToolDef[];
 	role?: string;
 	model?: string;
+	reasoning?: ThinkingLevel;
 	callSite: string;
 }
 
@@ -106,6 +108,7 @@ interface InternalTaskResult<T> {
 
 interface InternalTaskOptions<S extends v.GenericSchema | undefined> extends TaskOptions<S> {
 	inheritedModel?: string;
+	inheritedReasoning?: ModelThinkingLevel;
 }
 
 /** In-memory session store. Sessions persist for the lifetime of the process. */
@@ -149,6 +152,7 @@ export class Session implements FlueSession {
 	private activeOperation: string | undefined;
 	private activeTasks = new Set<Session>();
 	private sessionRole: string | undefined;
+	private sessionReasoning: ModelThinkingLevel | undefined;
 	private taskDepth: number;
 	private createTaskSession: CreateTaskSession | undefined;
 	private onDelete: (() => void) | undefined;
@@ -162,6 +166,7 @@ export class Session implements FlueSession {
 		this.agentCommands = options.agentCommands ?? [];
 		this.agentTools = options.agentTools ?? [];
 		this.sessionRole = options.sessionRole;
+		this.sessionReasoning = options.sessionReasoning;
 		this.taskDepth = options.taskDepth ?? 0;
 		this.createTaskSession = options.createTaskSession;
 		this.onDelete = options.onDelete;
@@ -211,12 +216,6 @@ export class Session implements FlueSession {
 					const aEvent = event.assistantMessageEvent;
 					if (aEvent.type === 'text_delta') {
 						this.emit({ type: 'text_delta', text: aEvent.delta });
-					} else if (aEvent.type === 'thinking_start') {
-						this.emit({ type: 'thinking_start' });
-					} else if (aEvent.type === 'thinking_delta') {
-						this.emit({ type: 'thinking_delta', delta: aEvent.delta });
-					} else if (aEvent.type === 'thinking_end') {
-						this.emit({ type: 'thinking_end', content: aEvent.content });
 					}
 					break;
 				}
@@ -249,7 +248,7 @@ export class Session implements FlueSession {
 	async prompt<S extends v.GenericSchema>(
 		text: string,
 		options: PromptOptions<S> & { result: S },
-	): Promise<PromptResultResponse<v.InferOutput<S>>>;
+	): Promise<v.InferOutput<S>>;
 	async prompt(text: string, options?: PromptOptions): Promise<PromptResponse>;
 	async prompt(text: string, options?: PromptOptions<v.GenericSchema | undefined>): Promise<any> {
 		return this.runOperation('prompt', async () => {
@@ -265,38 +264,21 @@ export class Session implements FlueSession {
 					tools: options?.tools ?? [],
 					role,
 					model: options?.model,
+					reasoning: options?.reasoning,
 					callSite: 'this prompt() call',
 				},
-				async ({ resolvedModel }) => {
-					// Two snapshots, two purposes:
-					//   - `beforeLength` indexes the volatile flat-message array and is
-					//     used by `syncHarnessMessagesSince` to copy newly produced
-					//     harness messages into the durable history tree.
-					//   - `beforeLeafId` anchors a window in that durable tree and is
-					//     used by `aggregateUsageSince` to sum usage across exactly the
-					//     entries this call appended (including any compaction entry).
+				async () => {
 					const beforeLength = this.harness.state.messages.length;
-					const beforeLeafId = this.history.getLeafId();
 					await this.harness.prompt(fullPrompt);
 					await this.harness.waitForIdle();
 					await this.syncHarnessMessagesSince(beforeLength, 'prompt');
 					await this.checkLatestAssistantForCompaction();
 					this.throwIfError('prompt');
 
-					const model: PromptModel = { id: resolvedModel.id };
 					if (schema) {
-						const result = await this.extractResultWithRetry(schema);
-						return {
-							result,
-							usage: this.aggregateUsageSince(beforeLeafId),
-							model,
-						};
+						return this.extractResultWithRetry(schema);
 					}
-					return {
-						text: this.getAssistantText(),
-						usage: this.aggregateUsageSince(beforeLeafId),
-						model,
-					};
+					return { text: this.getAssistantText() };
 				},
 			);
 		});
@@ -305,7 +287,7 @@ export class Session implements FlueSession {
 	async skill<S extends v.GenericSchema>(
 		name: string,
 		options: SkillOptions<S> & { result: S },
-	): Promise<PromptResultResponse<v.InferOutput<S>>>;
+	): Promise<v.InferOutput<S>>;
 	async skill(name: string, options?: SkillOptions): Promise<PromptResponse>;
 	async skill(name: string, options?: SkillOptions<v.GenericSchema | undefined>): Promise<any> {
 		return this.runOperation('skill', async () => {
@@ -345,31 +327,21 @@ export class Session implements FlueSession {
 					tools: options?.tools ?? [],
 					role,
 					model: options?.model,
+					reasoning: options?.reasoning,
 					callSite: `this skill("${name}") call`,
 				},
-				async ({ resolvedModel }) => {
+				async () => {
 					const beforeLength = this.harness.state.messages.length;
-					const beforeLeafId = this.history.getLeafId();
 					await this.harness.prompt(skillPrompt);
 					await this.harness.waitForIdle();
 					await this.syncHarnessMessagesSince(beforeLength, 'skill');
 					await this.checkLatestAssistantForCompaction();
 					this.throwIfError(`skill("${name}")`);
 
-					const model: PromptModel = { id: resolvedModel.id };
 					if (schema) {
-						const result = await this.extractResultWithRetry(schema);
-						return {
-							result,
-							usage: this.aggregateUsageSince(beforeLeafId),
-							model,
-						};
+						return this.extractResultWithRetry(schema);
 					}
-					return {
-						text: this.getAssistantText(),
-						usage: this.aggregateUsageSince(beforeLeafId),
-						model,
-					};
+					return { text: this.getAssistantText() };
 				},
 			);
 		});
@@ -378,7 +350,7 @@ export class Session implements FlueSession {
 	async task<S extends v.GenericSchema>(
 		text: string,
 		options: TaskOptions<S> & { result: S },
-	): Promise<PromptResultResponse<v.InferOutput<S>>>;
+	): Promise<v.InferOutput<S>>;
 	async task(text: string, options?: TaskOptions): Promise<PromptResponse>;
 	async task(text: string, options?: TaskOptions<v.GenericSchema | undefined>): Promise<any> {
 		const result = await this.runTask(text, options, undefined);
@@ -528,47 +500,111 @@ export class Session implements FlueSession {
 		tools: ToolDef[],
 		role?: string,
 		model?: string,
+		reasoning?: ThinkingLevel,
 	): AgentTool<any>[] {
 		return createTools(env, {
 			roles: this.config.roles,
-			task: (params, signal) => this.runTaskForTool(params, commands, tools, role, model, signal),
+			task: (params, signal) =>
+				this.runTaskForTool(
+					params,
+					commands,
+					tools,
+					role,
+					model,
+					// Pass the per-call `reasoning` value (not the resolved
+					// effective level) down to the child task. Rationale:
+					// if the parent call explicitly picked `xhigh`, that's
+					// a signal the orchestrator wants the depth; the child
+					// should honour it unless it picks its own. If the
+					// parent had no per-call value, we propagate
+					// `undefined` and the child's own precedence chain
+					// (role > session > agent) takes over — it may end up
+					// resolving to a completely different level than the
+					// parent, which is intentional: each level reads its
+					// own role/session context.
+					reasoning as ModelThinkingLevel | undefined,
+					signal,
+				),
 		});
 	}
 
 	private async withScopedRuntime<T>(
 		options: RuntimeScopeOptions,
-		fn: (ctx: { resolvedModel: Model<any> }) => Promise<T>,
+		fn: () => Promise<T>,
 	): Promise<T> {
+		// Resolve every value that can throw BEFORE we touch harness state.
+		// If validation fails (non-reasoning model, invalid role, missing
+		// model), the exception propagates with the harness still holding
+		// the caller's previous state untouched. The `try/finally` below
+		// then only handles successful entries that need to be restored on
+		// unwind.
 		const customTools = this.createCustomTools([...this.agentTools, ...options.tools]);
 		const scopedEnv = await scopeSessionEnv(this.env, options.commands);
-		const previousTools = this.harness.state.tools;
-		const previousModel = this.harness.state.model;
-		const previousSystemPrompt = this.harness.state.systemPrompt;
 
 		const resolvedModel = this.resolveModelForCall(
 			options.model,
 			options.role,
 			options.callSite,
 		);
-		this.harness.state.model = resolvedModel;
-		this.harness.state.systemPrompt = this.buildSystemPrompt(options.role);
-		this.harness.state.tools = [
+		const resolvedSystemPrompt = this.buildSystemPrompt(options.role);
+		const resolvedThinkingLevel = this.resolveThinkingLevelForCall(
+			options.reasoning,
+			options.role,
+			resolvedModel,
+			options.callSite,
+		);
+		const resolvedTools = [
 			...this.createBuiltinTools(
 				scopedEnv,
 				options.commands,
 				options.tools,
 				options.role,
 				options.model,
+				options.reasoning,
 			),
 			...customTools,
 		];
+
+		const previousTools = this.harness.state.tools;
+		const previousModel = this.harness.state.model;
+		const previousSystemPrompt = this.harness.state.systemPrompt;
+		const previousThinkingLevel = this.harness.state.thinkingLevel;
+
+		this.harness.state.model = resolvedModel;
+		this.harness.state.systemPrompt = resolvedSystemPrompt;
+		this.harness.state.thinkingLevel = resolvedThinkingLevel;
+		this.harness.state.tools = resolvedTools;
 		try {
-			return await fn({ resolvedModel });
+			return await fn();
 		} finally {
 			this.harness.state.tools = previousTools;
 			this.harness.state.model = previousModel;
 			this.harness.state.systemPrompt = previousSystemPrompt;
+			this.harness.state.thinkingLevel = previousThinkingLevel;
 		}
+	}
+
+	/**
+	 * Resolve the effective reasoning level for a call and return the value to
+	 * assign to `harness.state.thinkingLevel`. Defaults to `"off"` when no
+	 * reasoning is configured at any tier — matches the pi-agent-core default.
+	 */
+	private resolveThinkingLevelForCall(
+		callReasoning: ThinkingLevel | undefined,
+		roleName: string | undefined,
+		model: Model<any>,
+		callSite: string,
+	): ModelThinkingLevel {
+		const resolved = resolveCallReasoning({
+			roles: this.config.roles,
+			agentReasoning: this.config.reasoning,
+			sessionReasoning: this.sessionReasoning,
+			roleName,
+			callReasoning,
+			model,
+			callSite,
+		});
+		return resolved ?? 'off';
 	}
 
 	// ─── Tasks ────────────────────────────────────────────────────────────────
@@ -579,6 +615,7 @@ export class Session implements FlueSession {
 		tools: ToolDef[],
 		inheritedRole: string | undefined,
 		inheritedModel: string | undefined,
+		inheritedReasoning: ModelThinkingLevel | undefined,
 		signal?: AbortSignal,
 	): Promise<AgentToolResult<TaskToolResultDetails>> {
 		const result = await this.runTask(
@@ -586,6 +623,7 @@ export class Session implements FlueSession {
 			{
 				role: params.role ?? inheritedRole,
 				inheritedModel,
+				inheritedReasoning,
 				cwd: params.cwd,
 				commands,
 				tools,
@@ -609,11 +647,7 @@ export class Session implements FlueSession {
 		text: string,
 		options: InternalTaskOptions<S> | undefined,
 		signal: AbortSignal | undefined,
-	): Promise<
-		InternalTaskResult<
-			S extends v.GenericSchema ? PromptResultResponse<v.InferOutput<S>> : PromptResponse
-		>
-	> {
+	): Promise<InternalTaskResult<S extends v.GenericSchema ? v.InferOutput<S> : PromptResponse>> {
 		this.assertActive();
 		if (!this.createTaskSession) {
 			throw new Error('[flue] This session cannot create task sessions.');
@@ -641,12 +675,30 @@ export class Session implements FlueSession {
 			const role = this.resolveEffectiveRole(options?.role);
 			const commands = mergeCommands(this.agentCommands, options?.commands);
 
+			// Default reasoning the child session should carry, before any
+			// per-call override. Precedence matches a direct call:
+			//   1. `inheritedReasoning` (set by the LLM `task` tool to
+			//      propagate the parent *call's* effort level).
+			//   2. Explicit `reasoning` on this task() call (so the default
+			//      still applies to downstream prompts the child makes).
+			//   3. Parent session / agent defaults.
+			//
+			// This only affects what the child treats as its *default*. The
+			// single prompt dispatched below still uses `options?.reasoning`
+			// when provided via the `childOptions.reasoning` override.
+			const inheritedReasoning =
+				options?.inheritedReasoning ??
+				options?.reasoning ??
+				this.sessionReasoning ??
+				this.config.reasoning;
+
 			child = await this.createTaskSession({
 				parentSessionId: this.id,
 				taskId,
 				parentEnv: this.env,
 				cwd: options?.cwd,
 				role,
+				reasoning: inheritedReasoning,
 				commands,
 				depth: this.taskDepth + 1,
 			});
@@ -666,6 +718,13 @@ export class Session implements FlueSession {
 				tools: options?.tools,
 			};
 			if (schema) childOptions.result = schema;
+			// Per-call reasoning wins. Otherwise fall through to role / session /
+			// agent defaults inside the child session. We only forward the
+			// explicit call-level value here; the child session carries its own
+			// session-level default (sourced from `inheritedReasoning`).
+			if (options?.reasoning !== undefined) {
+				childOptions.reasoning = options.reasoning;
+			}
 
 			const output: any = await child.prompt(text, childOptions as any);
 			const taskResult: InternalTaskResult<any> = {
@@ -842,13 +901,6 @@ export class Session implements FlueSession {
 		}
 	}
 
-	/**
-	 * Runs a compaction pass. The summarization cost (1–2 internal LLM
-	 * calls) is persisted on the resulting `CompactionEntry.usage`, which
-	 * `aggregateUsageSince` later folds into the surrounding call's
-	 * `response.usage` — so users see the true cost of the call that
-	 * triggered compaction.
-	 */
 	private async runCompaction(reason: 'threshold' | 'overflow', willRetry: boolean): Promise<void> {
 		this.compactionAbortController = new AbortController();
 		const messagesBefore = this.harness.state.messages.length;
@@ -896,6 +948,14 @@ export class Session implements FlueSession {
 				model,
 				this.getProviderApiKey(model.provider),
 				this.compactionAbortController.signal,
+				// Forward only the agent-level reasoning default. Compaction
+				// is internal work driven by the agent config, not the
+				// current user call; per-call / role / session tiers
+				// intentionally do not flow in here. The only knob the
+				// agent owner gets is `reasoning: 'off'` at init time,
+				// which acts as an explicit opt-out of the hardcoded
+				// `high` default used for summary quality.
+				this.config.reasoning,
 			);
 
 			if (this.compactionAbortController.signal.aborted) return;
@@ -905,7 +965,6 @@ export class Session implements FlueSession {
 				firstKeptEntryId: firstKeptEntry.id,
 				tokensBefore: result.tokensBefore,
 				details: result.details,
-				usage: result.usage,
 			});
 			this.harness.state.messages = this.history.buildContext();
 
@@ -944,32 +1003,6 @@ export class Session implements FlueSession {
 		if (errorMsg) {
 			throw new Error(`[flue] ${context} failed: ${errorMsg}`);
 		}
-	}
-
-	/**
-	 * Sum the usage of every entry the call appended to the active path
-	 * after `beforeLeafId`: assistant messages contribute their per-turn
-	 * `usage` (provider-reported, normalized through `fromProviderUsage`),
-	 * and compaction entries contribute the aggregated cost of the
-	 * summarization call(s) they dispatched. Returns zeros when nothing
-	 * was appended (defensive — `throwIfError` normally fires first).
-	 *
-	 * Walks the durable, parent-linked active path rather than the volatile
-	 * flat `harness.state.messages` array, so the result is robust to
-	 * mid-call mutations (e.g. overflow recovery removing a failed
-	 * assistant turn before retry).
-	 */
-	private aggregateUsageSince(beforeLeafId: string | null): PromptUsage {
-		let totals = emptyUsage();
-		for (const entry of this.history.getActivePathSince(beforeLeafId)) {
-			if (entry.type === 'message' && entry.message.role === 'assistant') {
-				const usage = fromProviderUsage((entry.message as AssistantMessage).usage);
-				if (usage) totals = addUsage(totals, usage);
-			} else if (entry.type === 'compaction' && entry.usage) {
-				totals = addUsage(totals, entry.usage);
-			}
-		}
-		return totals;
 	}
 
 	private getAssistantText(): string {

@@ -18,8 +18,6 @@ import type {
 	Usage,
 	UserMessage,
 } from '@mariozechner/pi-ai';
-import { addUsage, fromProviderUsage } from './usage.ts';
-import type { PromptUsage } from './types.ts';
 
 // ─── Settings ───────────────────────────────────────────────────────────────
 
@@ -442,14 +440,6 @@ export interface CompactionResult {
 	firstKeptIndex: number;
 	tokensBefore: number;
 	details: { readFiles: string[]; modifiedFiles: string[] };
-	/**
-	 * Aggregate token usage from the 1–2 summarization calls that produced
-	 * this result. Undefined when no call reported usage (rare — some
-	 * providers may stream without totals). Already normalized into Flue's
-	 * `PromptUsage` shape so callers can persist it directly on a
-	 * `CompactionEntry`.
-	 */
-	usage?: PromptUsage;
 }
 
 /** Pure function — no I/O. Finds cut point, extracts messages to summarize, tracks file ops. */
@@ -512,7 +502,8 @@ async function generateSummary(
 	apiKey: string | undefined,
 	signal: AbortSignal | undefined,
 	previousSummary?: string,
-): Promise<{ text: string; usage: Usage | undefined }> {
+	reasoning?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh',
+): Promise<string> {
 	const maxTokens = Math.min(Math.floor(0.8 * reserveTokens), 16000);
 	const basePrompt = previousSummary ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
 
@@ -529,7 +520,13 @@ async function generateSummary(
 
 	const completionOptions: SimpleStreamOptions = { maxTokens, signal };
 	if (apiKey) completionOptions.apiKey = apiKey;
-	if (model.reasoning) completionOptions.reasoning = 'high';
+	// Default to `high` for summaries on reasoning-capable models — the summary
+	// feeds every future turn, so we prioritise quality. Callers that want
+	// lower (or no) reasoning for cost control set `reasoning: 'off'` at the
+	// agent level; that intent is honoured here explicitly.
+	if (model.reasoning && reasoning !== 'off') {
+		completionOptions.reasoning = 'high';
+	}
 
 	const response = await completeSimple(
 		model,
@@ -541,11 +538,10 @@ async function generateSummary(
 		throw new Error(`Summarization failed: ${response.errorMessage || 'Unknown error'}`);
 	}
 
-	const text = response.content
+	return response.content
 		.filter((c): c is TextContent => c.type === 'text')
 		.map((c) => c.text)
 		.join('\n');
-	return { text, usage: response.usage };
 }
 
 async function generateTurnPrefixSummary(
@@ -554,7 +550,7 @@ async function generateTurnPrefixSummary(
 	reserveTokens: number,
 	apiKey: string | undefined,
 	signal: AbortSignal | undefined,
-): Promise<{ text: string; usage: Usage | undefined }> {
+): Promise<string> {
 	const maxTokens = Math.min(Math.floor(0.5 * reserveTokens), 16000);
 	const conversationText = serializeConversation(messages);
 	const promptText = `<conversation>\n${conversationText}\n</conversation>\n\n${TURN_PREFIX_SUMMARIZATION_PROMPT}`;
@@ -578,11 +574,10 @@ async function generateTurnPrefixSummary(
 		);
 	}
 
-	const text = response.content
+	return response.content
 		.filter((c): c is TextContent => c.type === 'text')
 		.map((c) => c.text)
 		.join('\n');
-	return { text, usage: response.usage };
 }
 
 // ─── Main Compaction Function ───────────────────────────────────────────────
@@ -592,6 +587,7 @@ export async function compact(
 	model: Model<any>,
 	apiKey: string | undefined,
 	signal?: AbortSignal,
+	reasoning?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh',
 ): Promise<CompactionResult> {
 	const {
 		firstKeptIndex,
@@ -605,19 +601,6 @@ export async function compact(
 	} = preparation;
 
 	let summary: string;
-	// Sum the usage of every summarization call that produced a value.
-	// Split-turn compaction fires two calls; regular compaction fires one.
-	// A call may report `undefined` usage (rare provider behaviour) — those
-	// contribute zero. Normalize from pi-ai's `Usage` to Flue's `PromptUsage`
-	// at this boundary so the result is a persistable shape for the
-	// downstream `CompactionEntry`.
-	let aggregateUsage: PromptUsage | undefined;
-	const addCallUsage = (usage: Usage | undefined): void => {
-		const normalized = fromProviderUsage(usage);
-		if (!normalized) return;
-		aggregateUsage = aggregateUsage ? addUsage(aggregateUsage, normalized) : normalized;
-	};
-
 	if (isSplitTurn && turnPrefixMessages.length > 0) {
 		const [historyResult, turnPrefixResult] = await Promise.all([
 			messagesToSummarize.length > 0
@@ -628,35 +611,27 @@ export async function compact(
 						apiKey,
 						signal,
 						previousSummary,
+						reasoning,
 					)
-				: Promise.resolve({ text: 'No prior history.', usage: undefined }),
+				: Promise.resolve('No prior history.'),
 			generateTurnPrefixSummary(turnPrefixMessages, model, settings.reserveTokens, apiKey, signal),
 		]);
-		addCallUsage(historyResult.usage);
-		addCallUsage(turnPrefixResult.usage);
-		summary = `${historyResult.text}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult.text}`;
+		summary = `${historyResult}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult}`;
 	} else {
-		const historyResult = await generateSummary(
+		summary = await generateSummary(
 			messagesToSummarize,
 			model,
 			settings.reserveTokens,
 			apiKey,
 			signal,
 			previousSummary,
+			reasoning,
 		);
-		addCallUsage(historyResult.usage);
-		summary = historyResult.text;
 	}
 
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 	summary += formatFileOperations(readFiles, modifiedFiles);
 
-	return {
-		summary,
-		firstKeptIndex,
-		tokensBefore,
-		details: { readFiles, modifiedFiles },
-		usage: aggregateUsage,
-	};
+	return { summary, firstKeptIndex, tokensBefore, details: { readFiles, modifiedFiles } };
 }
 export { isContextOverflow };

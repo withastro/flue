@@ -37,6 +37,7 @@
 	"scripts": {
 		"build": "tsdown",
 		"check:types": "tsc --noEmit",
+		"test": "node --experimental-transform-types --no-warnings test/run.ts",
 		"prepublishOnly": "cp ../../README.md ."
 	},
 	"dependencies": {

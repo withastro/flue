@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { packageUpSync } from 'package-up';
 import { parseAgentFile } from './agent-parser.ts';
 import { parseFrontmatterFile } from './context.ts';
+import { parseReasoningFrontmatter } from './roles.ts';
 import { CloudflarePlugin } from './build-plugin-cloudflare.ts';
 import { NodePlugin } from './build-plugin-node.ts';
 import type { AgentInfo, BuildContext, BuildOptions, BuildPlugin, Role } from './types.ts';
@@ -241,11 +242,16 @@ function discoverRoles(workspaceRoot: string): Record<string, Role> {
 		const content = fs.readFileSync(filePath, 'utf-8');
 		const name = entry.replace(/\.(md|markdown)$/i, '');
 		const parsed = parseFrontmatterFile(content, name);
+		const reasoning = parseReasoningFrontmatter(
+			parsed.frontmatter.reasoning,
+			`role "${name}" (${path.relative(workspaceRoot, filePath)})`,
+		);
 		roles[name] = {
 			name,
 			description: parsed.description,
 			instructions: parsed.body,
 			model: parsed.frontmatter.model,
+			reasoning,
 		};
 	}
 

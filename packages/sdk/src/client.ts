@@ -98,6 +98,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					skills: localContext.skills,
 					model: agentModel,
 					role: options.role ?? config.agentConfig.role,
+					reasoning: options.reasoning ?? config.agentConfig.reasoning,
 					providers,
 				};
 
@@ -221,6 +222,7 @@ export type {
 	FlueSession,
 	AgentInit,
 	ModelConfig,
+	ModelThinkingLevel,
 	FlueEvent,
 	FlueEventCallback,
 	SessionData,
@@ -243,6 +245,7 @@ export type {
 	TaskOptions,
 	ShellOptions,
 	ShellResult,
+	ThinkingLevel,
 	ToolDef,
 	ToolParameters,
 } from './types.ts';

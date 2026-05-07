@@ -117,6 +117,7 @@ export class AgentClient implements FlueAgent {
 			agentCommands: this.agentCommands,
 			agentTools: this.agentTools,
 			sessionRole: options?.role,
+			sessionReasoning: options?.reasoning,
 			taskDepth: 0,
 			createTaskSession: (taskOptions) => this.createTaskSession(taskOptions),
 			onDelete: () => this.openSessions.delete(sessionId),
@@ -182,6 +183,7 @@ export class AgentClient implements FlueAgent {
 			agentCommands: options.commands,
 			agentTools: this.agentTools,
 			sessionRole: options.role,
+			sessionReasoning: options.reasoning,
 			taskDepth: options.depth,
 			createTaskSession: (childOptions) => this.createTaskSession(childOptions),
 		});

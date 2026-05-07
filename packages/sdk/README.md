@@ -290,6 +290,46 @@ await session.prompt('Review the latest changes.'); // uses reviewer
 await session.task('Research related issues.', { role: 'researcher' }); // uses researcher
 ```
 
+### Reasoning effort
+
+For models that support extended thinking, set a `reasoning` level per call so
+one deployment can serve multiple reasoning tiers. Use `'minimal' | 'low' |
+'medium' | 'high' | 'xhigh'` at the call site; use `'off'` at the agent or
+role tier to opt out of reasoning even on models that enable it by default.
+
+```ts
+const agent = await init({
+  model: 'anthropic/claude-opus-4-7',
+  reasoning: 'medium', // default for every call
+});
+const session = await agent.session();
+
+await session.prompt('Summarize this thread.'); // medium
+await session.prompt('Audit this diff for subtle bugs.', { reasoning: 'xhigh' });
+await session.task('Research this library and list the edge cases.', {
+  reasoning: 'high',
+});
+```
+
+Precedence (highest wins): per-call `reasoning` > role `reasoning` > session
+`reasoning` > agent `reasoning`. Declare a role default in frontmatter:
+
+```md
+---
+description: Careful, thorough code review.
+model: anthropic/claude-opus-4-7
+reasoning: high
+---
+You are a senior reviewer. ...
+```
+
+Passing `reasoning` against a model that reports `reasoning: false` in pi-ai's
+metadata throws a clear error naming the field and the model, so misconfigured
+routing fails fast rather than silently dropping the effort level. `'xhigh'`
+is only supported by selected model families; pi-ai applies
+`Model.thinkingLevelMap` at the wire boundary, so requesting a level the
+provider doesn't map becomes whichever concrete level the model defines.
+
 ### Provider Settings
 
 Use `providers` when model traffic needs provider-specific runtime settings,
