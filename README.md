@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/withastro-flue-badge.png)](https://mseep.ai/app/withastro-flue)
+
 > **Experimental** — Flue is under active development. APIs may change.
 >
 > Looking for `v0.0.x`? [See here.](https://github.com/withastro/flue/tree/v0.0.x)
