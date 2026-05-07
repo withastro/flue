@@ -1,8 +1,7 @@
 ---
 {
   "category": "sandbox",
-  "website": "https://islo.dev",
-  "aliases": ["islo.dev"]
+  "website": "https://islo.dev"
 }
 ---
 
@@ -21,20 +20,33 @@ the named sandbox so Flue agents can run shell commands and read/write files
 inside it.
 
 islo is CLI-first — there is no npm SDK. The connector shells out to the
-local `islo` binary. It works on any host that has the islo CLI on `PATH`
-(Node servers, GitHub Actions, GitLab CI). It does **not** work in JS-only
-edge runtimes (Cloudflare Workers, Vercel Edge) — there's no child process.
+local `islo` binary via `node:child_process`. **This means it requires a
+Node.js runtime with shell access wherever the agent runs**, including the
+user's deploy target. It works on Node servers, containers, and CI runners
+(GitHub Actions, GitLab CI) where the islo CLI can be installed on `PATH`.
+It does **not** work in JS-only edge runtimes such as Cloudflare Workers or
+Vercel Edge — there's no `child_process` and no way to install a native
+binary. Tell the user this up front if their target is an edge runtime;
+they'll need a different sandbox provider.
 
 ## Where to write the file
 
-- **`.flue/` layout**: `./.flue/connectors/islo.ts`
-- **Root layout**: `./connectors/islo.ts`
+Pick the location based on the user's project layout:
+
+- **`.flue/` layout** (project has files at the root and uses `.flue/agents/`
+  etc.): write to `./.flue/connectors/islo.ts`.
+- **Root layout** (the project root itself contains `agents/` and friends):
+  write to `./connectors/islo.ts`.
+
+If neither feels right (uncommon layout, multiple workspaces, etc.), ask the
+user before writing.
 
 Create any missing parent directories.
 
 ## File contents
 
-Write this file verbatim.
+Write this file verbatim. Do not "improve" it — it conforms to the published
+`SandboxApi` contract, and the shell quoting in particular is load-bearing.
 
 ```ts
 /**
@@ -98,6 +110,14 @@ class IsloSandboxApi implements SandboxApi {
 					.map(([k, v]) => `${k}=${q(v)}`)
 					.join(' ') + ' '
 			: '';
+		// Enforce timeout via GNU coreutils `timeout(1)` inside the sandbox.
+		// islo's API has a `timeout_secs` field but it's currently advisory
+		// only ("Optional client-side timeout hint. Currently accepted for
+		// API compatibility." — islo API docs), so we have to enforce it
+		// remotely. Assumes the sandbox image ships GNU coreutils, which is
+		// true for the default islo runner and almost every standard Linux
+		// image. On exceedance, `timeout` exits 124, which propagates through
+		// the CLI as our exit code.
 		const tmo =
 			typeof options?.timeout === 'number' ? `timeout ${options.timeout} ` : '';
 		const remote = `${tmo}${envPrefix}bash -lc ${q(cd + command)}`;
@@ -228,14 +248,18 @@ Node's built-in `child_process`.
 
 ## Required runtime: the islo CLI
 
-The host must have the islo CLI on `PATH`. Install it once:
+The host must have the islo CLI on `PATH` — both on the user's machine for
+local development and on whatever target they deploy to (a Node server,
+container, or CI runner). The CLI is a native binary distributed for macOS
+and Linux on `x86_64` and `aarch64`.
 
-```bash
-curl -fsSL https://docs.islo.dev/install.sh | sh
-```
+Direct the user to the official install instructions at
+[docs.islo.dev/getting-started/installation](https://docs.islo.dev/getting-started/installation).
+**Don't pipe the install script yourself** — the user should review and run
+it. After install, they can verify with `islo --version`.
 
-See [docs.islo.dev/getting-started/installation](https://docs.islo.dev/getting-started/installation)
-for platform-specific options. Verify with `islo --version`.
+For container or CI deployments, the user will need to add the install step
+to their image build or CI workflow.
 
 ## Authentication
 
@@ -266,26 +290,35 @@ Pause idle sandboxes with `islo pause <name>` to save credit; the next
 
 ## Wiring it into an agent
 
+Here's what using this connector looks like inside a Flue agent. If the
+user is already working on an agent that this connector is meant to plug
+into, you can finish that work by wiring the connector into it. Otherwise,
+share this snippet so they can wire it up themselves.
+
 ```ts
 import type { FlueContext } from '@flue/sdk/client';
-import { islo } from '../connectors/islo';
+import { islo } from '../connectors/islo'; // adjust path to match the user's layout
 
 export const triggers = { webhook: true };
 
-export default async function ({ init, payload }: FlueContext) {
+export default async function ({ init }: FlueContext) {
   const agent = await init({
-    sandbox: islo(payload.sandbox ?? 'my-sandbox'),
+    sandbox: islo('my-sandbox'),
     model: 'anthropic/claude-sonnet-4-6',
   });
   const session = await agent.session();
-  return await session.shell('uname -a; pwd');
+
+  return await session.shell('uname -a');
 }
 ```
 
 ## Verify
 
-1. `npx tsc --noEmit` — connector typechecks.
-2. Confirm the import path matches where you wrote the file.
-3. Tell the user: install the islo CLI if they haven't, run `islo login`
-   (or set `ISLO_API_KEY`), pre-provision a sandbox with `islo use <name>`,
-   then `flue dev` (or `flue run <agent>`).
+1. Run the user's typechecker (`npx tsc --noEmit` is a safe default) and
+   confirm the new file has no errors.
+2. Confirm the import path you used for the connector matches where you
+   actually wrote the file.
+3. Tell the user the next steps: install the islo CLI (if you didn't),
+   run `islo login` (or make `ISLO_API_KEY` available at runtime per the
+   Authentication section above), pre-provision a sandbox with
+   `islo use <name>`, then run `flue dev` (or `flue run <agent>`) to try it.
