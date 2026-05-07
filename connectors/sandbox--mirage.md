@@ -39,6 +39,16 @@ A few things worth knowing about Mirage that shape this connector:
   install it for Flue**. That package adapts Mirage to other agent
   frameworks (OpenAI Agents SDK, Vercel AI SDK, LangChain, Mastra, Pi).
   This Flue connector is the Flue equivalent.
+- Mirage's `Workspace.execute()` doesn't yet accept per-call `cwd` or
+  `env`, and its `AbortSignal` handling only checks `aborted` once at
+  entry. Tracked upstream as
+  [strukto-ai/mirage#4](https://github.com/strukto-ai/mirage/issues/4),
+  [#5](https://github.com/strukto-ai/mirage/issues/5), and
+  [#6](https://github.com/strukto-ai/mirage/issues/6). Until those land,
+  `session.shell(cmd, { env })` is a no-op, `{ cwd }` is wrapped via a
+  `cd <cwd> && cmd` shell-prefix, and `{ timeout }` won't fire mid-flight.
+  The connector code below is structured so that when the upstream fixes
+  ship, removing the workarounds is mechanical.
 
 ## Where to write the file
 
@@ -123,23 +133,39 @@ function shellEnvPrefix(env: Record<string, string>): string {
 /**
  * Implements SandboxApi by wrapping a Mirage Workspace.
  *
+ * Each Flue session maps onto a dedicated Mirage session (created lazily
+ * by id) so that cwd, env, history, and lastExitCode stay isolated when
+ * one Workspace is shared across multiple Flue sessions.
+ *
  * Filesystem operations route through `workspace.fs.*` (Mirage's direct
  * VFS API) for read/write/readdir/stat/exists/single-level mkdir.
  * Recursive `mkdir -p` and `rm -rf` shell out via `workspace.execute()`
  * because `WorkspaceFS` exposes only single-level `mkdir` and
  * `unlink`/`rmdir`.
  *
- * Per-call `cwd`, `env`, and `timeout` aren't first-class options on
- * Mirage's `ExecuteOptions`, so we map them by:
- *   - `cwd`: prefixing the command with `cd <quoted-cwd> && `.
- *   - `env`: prefixing the command with `VAR=value ...`.
- *   - `timeout`: passing an `AbortSignal.timeout(...)` via
- *     `ExecuteOptions.signal`, then materializing a 124-exit-code result
- *     when the abort fires (matching the convention other Flue connectors
- *     like the Vercel one use).
+ * Known limitations awaiting upstream fixes in Mirage:
+ *   - `exec({ env })` is a no-op until per-call env lands upstream
+ *     (https://github.com/strukto-ai/mirage/issues/5). The shell-prefix
+ *     workaround `FOO=bar cmd` doesn't work — Mirage's parser passes the
+ *     assignment as argv rather than honoring it as command-scoped env.
+ *   - `exec({ cwd })` is wrapped via `cd <cwd> && cmd` shell-prefix today,
+ *     pending per-call cwd support upstream
+ *     (https://github.com/strukto-ai/mirage/issues/4).
+ *   - `exec({ timeout })` is plumbed via `AbortSignal.timeout()` into
+ *     `ExecuteOptions.signal`, but Mirage only checks the signal at entry,
+ *     so mid-flight timeouts don't fire today
+ *     (https://github.com/strukto-ai/mirage/issues/6). When that lands,
+ *     the existing wiring will start working without code change.
+ *
+ * Once those issues are resolved, the shell-prefix workarounds and the
+ * 124-exit-code synthesis below should be removed in favor of passing
+ * `cwd`/`env` directly through `ExecuteOptions`.
  */
 class MirageSandboxApi implements SandboxApi {
-	constructor(private workspace: MirageWorkspace) {}
+	constructor(
+		private workspace: MirageWorkspace,
+		private flueSessionId: string,
+	) {}
 
 	async readFile(path: string): Promise<string> {
 		const bytes = await this.workspace.fs.readFile(path);
@@ -245,7 +271,10 @@ class MirageSandboxApi implements SandboxApi {
 				: undefined;
 
 		try {
-			const result = await this.workspace.execute(wrapped, { signal });
+			const result = await this.workspace.execute(wrapped, {
+				sessionId: this.flueSessionId,
+				signal,
+			});
 			return {
 				stdout: result.stdoutText,
 				stderr: result.stderrText,
@@ -279,25 +308,45 @@ export function mirage(
 	options?: MirageConnectorOptions,
 ): SandboxFactory {
 	return {
-		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
+		async createSessionEnv({ id, cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
+			// Map this Flue session to a dedicated Mirage session so cwd, env,
+			// history, and lastExitCode stay isolated across Flue sessions
+			// sharing the same Workspace. createSession throws on duplicate
+			// ids, so fall back to getSession if the id is already registered
+			// (e.g. session resumed after a reload).
+			try {
+				workspace.createSession(id);
+			} catch {
+				workspace.getSession(id);
+			}
+
 			// Mirage workspaces are mount-rooted at `/`. `/` is a safe no-op
 			// prefix for the shell-wrap in exec(); pin via `options.cwd` to
 			// default to a specific writable mount (e.g. `/data`).
 			const sandboxCwd = cwd ?? options?.cwd ?? '/';
-			const api = new MirageSandboxApi(workspace);
+			const api = new MirageSandboxApi(workspace, id);
 
-			let cleanupFn: (() => Promise<void>) | undefined;
-			if (options?.cleanup === true) {
-				cleanupFn = async () => {
+			const cleanupFn = async (): Promise<void> => {
+				// Always release the per-Flue Mirage session (default session
+				// is exempt and refuses to close, so guard against that case).
+				if (id !== 'default') {
+					try {
+						await workspace.closeSession(id);
+					} catch (err) {
+						console.error(`[flue:mirage] Failed to close session ${id}:`, err);
+					}
+				}
+				// Then run user-configured cleanup if any.
+				if (options?.cleanup === true) {
 					try {
 						await workspace.close();
 					} catch (err) {
 						console.error('[flue:mirage] Failed to close workspace:', err);
 					}
-				};
-			} else if (typeof options?.cleanup === 'function') {
-				cleanupFn = options.cleanup;
-			}
+				} else if (typeof options?.cleanup === 'function') {
+					await options.cleanup();
+				}
+			};
 
 			return createSandboxSessionEnv(api, sandboxCwd, cleanupFn);
 		},
