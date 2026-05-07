@@ -211,6 +211,7 @@ export type {
 	FlueSession,
 	AgentInit,
 	ModelConfig,
+	ModelInfo,
 	FlueEvent,
 	FlueEventCallback,
 	SessionData,
@@ -233,3 +234,7 @@ export type {
 	ToolDef,
 	ToolParameters,
 } from './types.ts';
+
+// Re-exported from pi-ai so `turn_end` / `compaction_end` / `PromptResponse`
+// consumers can type their callbacks without a direct pi-ai dependency.
+export type { Usage } from '@mariozechner/pi-ai';

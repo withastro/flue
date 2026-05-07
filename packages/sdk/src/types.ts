@@ -1,4 +1,4 @@
-import type { Model, TSchema } from '@mariozechner/pi-ai';
+import type { Model, TSchema, Usage } from '@mariozechner/pi-ai';
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type * as v from 'valibot';
 
@@ -312,6 +312,39 @@ export interface FlueSession {
 
 export interface PromptResponse {
 	text: string;
+	/**
+	 * Token usage and cost aggregated across every assistant turn produced
+	 * during this call. Summed from each turn's `usage` as reported by the
+	 * provider via pi-ai. `undefined` only when the call produced zero
+	 * assistant turns (a degenerate case — e.g. an internal error before
+	 * the first turn completed).
+	 *
+	 * For per-turn granularity, subscribe to the `turn_end` event on the
+	 * agent's event callback instead; `PromptResponse.usage` is a
+	 * convenience aggregate for the common single-call case.
+	 *
+	 * Calls that pass `result: schema` return `InferOutput<S>` directly, not
+	 * a `PromptResponse` — for those, the `turn_end` events are the way to
+	 * observe usage.
+	 */
+	usage?: Usage;
+	/**
+	 * The model that produced the final assistant turn, if the call dispatched
+	 * at least one. Populated from `AssistantMessage.provider` / `.model`,
+	 * which pi-agent-core fills from the active model.
+	 */
+	model?: ModelInfo;
+}
+
+/**
+ * Lightweight identifier for the model behind an assistant response. Exposed
+ * in `PromptResponse` and emitted alongside `turn_end` so consumers can do
+ * per-provider / per-model analytics without pulling the full pi-ai `Model`
+ * (which carries cost tables, headers, and provider-specific metadata).
+ */
+export interface ModelInfo {
+	provider: string;
+	id: string;
 }
 
 // ─── Session Store ──────────────────────────────────────────────────────────
@@ -446,13 +479,42 @@ export type FlueEvent = (
 	| { type: 'text_delta'; text: string }
 	| { type: 'tool_start'; toolName: string; toolCallId: string; args?: any }
 	| { type: 'tool_end'; toolName: string; toolCallId: string; isError: boolean; result?: any }
-	| { type: 'turn_end' }
+	| {
+			type: 'turn_end';
+			/**
+			 * Token usage and cost for the assistant turn that just finished.
+			 * Populated directly from `AssistantMessage.usage` as reported by
+			 * pi-ai. `undefined` only for non-assistant turns (rare — included
+			 * for forwards compatibility).
+			 */
+			usage?: Usage;
+			/**
+			 * The model that produced the turn. Sourced from
+			 * `AssistantMessage.provider` and `.model`.
+			 */
+			model?: ModelInfo;
+	  }
 	| { type: 'command_start'; command: string; args: string[] }
 	| { type: 'command_end'; command: string; exitCode: number }
 	| { type: 'task_start'; taskId: string; prompt: string; role?: string; cwd?: string }
 	| { type: 'task_end'; taskId: string; isError: boolean; result?: any }
 	| { type: 'compaction_start'; reason: 'threshold' | 'overflow'; estimatedTokens: number }
-	| { type: 'compaction_end'; messagesBefore: number; messagesAfter: number }
+	| {
+			type: 'compaction_end';
+			messagesBefore: number;
+			messagesAfter: number;
+			/**
+			 * Token usage consumed by the internal summarization call(s) that
+			 * produced this compaction. Compaction runs one or two LLM calls
+			 * (a history summary, and optionally a split-turn prefix summary);
+			 * this is the sum of both. `undefined` if no summarization call
+			 * completed successfully.
+			 *
+			 * Surfaced separately from `turn_end` so consumers can distinguish
+			 * user-visible turn cost from internal maintenance cost.
+			 */
+			usage?: Usage;
+	  }
 	| { type: 'idle' }
 	| { type: 'error'; error: string }
 ) & { sessionId?: string; parentSessionId?: string; taskId?: string };

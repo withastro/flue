@@ -26,6 +26,7 @@ export type {
 	Role,
 	AgentConfig,
 	ModelConfig,
+	ModelInfo,
 	BuildOptions,
 	BuildPlugin,
 	BuildContext,
@@ -33,6 +34,8 @@ export type {
 	ToolDef,
 	ToolParameters,
 } from './types.ts';
+
+export type { Usage } from '@mariozechner/pi-ai';
 
 export { build, resolveWorkspaceFromCwd } from './build.ts';
 export {

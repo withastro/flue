@@ -440,6 +440,13 @@ export interface CompactionResult {
 	firstKeptIndex: number;
 	tokensBefore: number;
 	details: { readFiles: string[]; modifiedFiles: string[] };
+	/**
+	 * Token usage consumed by the summarization call(s) that produced this
+	 * result. Sum of the history-summary call and, for split-turn
+	 * compactions, the turn-prefix summary call. `undefined` if neither
+	 * call completed successfully.
+	 */
+	usage?: Usage;
 }
 
 /** Pure function — no I/O. Finds cut point, extracts messages to summarize, tracks file ops. */
@@ -502,7 +509,7 @@ async function generateSummary(
 	apiKey: string | undefined,
 	signal: AbortSignal | undefined,
 	previousSummary?: string,
-): Promise<string> {
+): Promise<{ text: string; usage: Usage | undefined }> {
 	const maxTokens = Math.min(Math.floor(0.8 * reserveTokens), 16000);
 	const basePrompt = previousSummary ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
 
@@ -531,10 +538,11 @@ async function generateSummary(
 		throw new Error(`Summarization failed: ${response.errorMessage || 'Unknown error'}`);
 	}
 
-	return response.content
+	const text = response.content
 		.filter((c): c is TextContent => c.type === 'text')
 		.map((c) => c.text)
 		.join('\n');
+	return { text, usage: response.usage };
 }
 
 async function generateTurnPrefixSummary(
@@ -543,7 +551,7 @@ async function generateTurnPrefixSummary(
 	reserveTokens: number,
 	apiKey: string | undefined,
 	signal: AbortSignal | undefined,
-): Promise<string> {
+): Promise<{ text: string; usage: Usage | undefined }> {
 	const maxTokens = Math.min(Math.floor(0.5 * reserveTokens), 16000);
 	const conversationText = serializeConversation(messages);
 	const promptText = `<conversation>\n${conversationText}\n</conversation>\n\n${TURN_PREFIX_SUMMARIZATION_PROMPT}`;
@@ -567,10 +575,11 @@ async function generateTurnPrefixSummary(
 		);
 	}
 
-	return response.content
+	const text = response.content
 		.filter((c): c is TextContent => c.type === 'text')
 		.map((c) => c.text)
 		.join('\n');
+	return { text, usage: response.usage };
 }
 
 // ─── Main Compaction Function ───────────────────────────────────────────────
@@ -593,6 +602,16 @@ export async function compact(
 	} = preparation;
 
 	let summary: string;
+	// Accumulate usage from every summarization call that produced one. A
+	// split-turn compaction fires two calls; a regular one fires a single
+	// call. If a call returns `undefined` usage (unusual — some providers
+	// stream without reporting totals), it contributes zero.
+	let aggregateUsage: Usage | undefined;
+	const addCallUsage = (usage: Usage | undefined): void => {
+		if (!usage) return;
+		aggregateUsage = aggregateUsage ? addUsageValues(aggregateUsage, usage) : usage;
+	};
+
 	if (isSplitTurn && turnPrefixMessages.length > 0) {
 		const [historyResult, turnPrefixResult] = await Promise.all([
 			messagesToSummarize.length > 0
@@ -604,12 +623,14 @@ export async function compact(
 						signal,
 						previousSummary,
 					)
-				: Promise.resolve('No prior history.'),
+				: Promise.resolve({ text: 'No prior history.', usage: undefined }),
 			generateTurnPrefixSummary(turnPrefixMessages, model, settings.reserveTokens, apiKey, signal),
 		]);
-		summary = `${historyResult}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult}`;
+		addCallUsage(historyResult.usage);
+		addCallUsage(turnPrefixResult.usage);
+		summary = `${historyResult.text}\n\n---\n\n**Turn Context (split turn):**\n\n${turnPrefixResult.text}`;
 	} else {
-		summary = await generateSummary(
+		const historyResult = await generateSummary(
 			messagesToSummarize,
 			model,
 			settings.reserveTokens,
@@ -617,11 +638,41 @@ export async function compact(
 			signal,
 			previousSummary,
 		);
+		addCallUsage(historyResult.usage);
+		summary = historyResult.text;
 	}
 
 	const { readFiles, modifiedFiles } = computeFileLists(fileOps);
 	summary += formatFileOperations(readFiles, modifiedFiles);
 
-	return { summary, firstKeptIndex, tokensBefore, details: { readFiles, modifiedFiles } };
+	return {
+		summary,
+		firstKeptIndex,
+		tokensBefore,
+		details: { readFiles, modifiedFiles },
+		usage: aggregateUsage,
+	};
+}
+
+/**
+ * Field-wise addition of two `Usage` values, including the nested `cost`.
+ * Module-private helper — mirrors the public `addUsage` in session.ts so
+ * compaction can aggregate without depending on the session module.
+ */
+function addUsageValues(a: Usage, b: Usage): Usage {
+	return {
+		input: a.input + b.input,
+		output: a.output + b.output,
+		cacheRead: a.cacheRead + b.cacheRead,
+		cacheWrite: a.cacheWrite + b.cacheWrite,
+		totalTokens: a.totalTokens + b.totalTokens,
+		cost: {
+			input: a.cost.input + b.cost.input,
+			output: a.cost.output + b.cost.output,
+			cacheRead: a.cost.cacheRead + b.cost.cacheRead,
+			cacheWrite: a.cost.cacheWrite + b.cost.cacheWrite,
+			total: a.cost.total + b.cost.total,
+		},
+	};
 }
 export { isContextOverflow };

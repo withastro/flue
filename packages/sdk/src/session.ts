@@ -1,7 +1,7 @@
 /** Internal session implementation. Not exported publicly — wrapped by FlueSession. */
 import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentMessage, AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
-import type { AssistantMessage, Model } from '@mariozechner/pi-ai';
+import type { AssistantMessage, Model, Usage } from '@mariozechner/pi-ai';
 import type * as v from 'valibot';
 import {
 	BUILTIN_TOOL_NAMES,
@@ -39,6 +39,7 @@ import type {
 	FlueEvent,
 	FlueEventCallback,
 	FlueSession,
+	ModelInfo,
 	PromptOptions,
 	PromptResponse,
 	SessionData,
@@ -143,6 +144,14 @@ export class Session implements FlueSession {
 	private agentTools: ToolDef[];
 	private deleted = false;
 	private activeOperation: string | undefined;
+	/**
+	 * Usage accumulator for the currently executing prompt/skill call. The
+	 * `turn_end` listener installed in the constructor adds each assistant
+	 * turn's usage here; `prompt()` / `skill()` read and clear the total
+	 * when building their `PromptResponse`. `undefined` means "no tracked
+	 * call in progress" — `task()` and `shell()` leave it that way.
+	 */
+	private currentCallUsage: Usage | undefined;
 	private activeTasks = new Set<Session>();
 	private sessionRole: string | undefined;
 	private taskDepth: number;
@@ -227,9 +236,24 @@ export class Session implements FlueSession {
 						result: event.result,
 					});
 					break;
-				case 'turn_end':
-					this.emit({ type: 'turn_end' });
+				case 'turn_end': {
+					// `turn_end` always carries the assistant message for the
+					// turn that just finished — we hand its usage and model
+					// straight to subscribers. pi-ai fills `usage.cost` using
+					// the model's cost table, so consumers don't need their
+					// own price tables.
+					const message = event.message as AgentMessage;
+					const usage =
+						message.role === 'assistant'
+							? (message as AssistantMessage).usage
+							: undefined;
+					const model = messageToModelInfo(message);
+					if (usage && this.currentCallUsage) {
+						this.currentCallUsage = addUsage(this.currentCallUsage, usage);
+					}
+					this.emit({ type: 'turn_end', usage, model });
 					break;
+				}
 				case 'agent_end':
 					break;
 			}
@@ -249,27 +273,29 @@ export class Session implements FlueSession {
 			const fullPrompt = buildPromptText(text, schema);
 
 			const effectiveCommands = mergeCommands(this.agentCommands, options?.commands);
-			return this.withScopedRuntime(
-				{
-					commands: effectiveCommands,
-					tools: options?.tools ?? [],
-					role,
-					model: options?.model,
-					callSite: 'this prompt() call',
-				},
-				async () => {
-					const beforeLength = this.harness.state.messages.length;
-					await this.harness.prompt(fullPrompt);
-					await this.harness.waitForIdle();
-					await this.syncHarnessMessagesSince(beforeLength, 'prompt');
-					await this.checkLatestAssistantForCompaction();
-					this.throwIfError('prompt');
+			return this.withCallUsageTracking(() =>
+				this.withScopedRuntime(
+					{
+						commands: effectiveCommands,
+						tools: options?.tools ?? [],
+						role,
+						model: options?.model,
+						callSite: 'this prompt() call',
+					},
+					async () => {
+						const beforeLength = this.harness.state.messages.length;
+						await this.harness.prompt(fullPrompt);
+						await this.harness.waitForIdle();
+						await this.syncHarnessMessagesSince(beforeLength, 'prompt');
+						await this.checkLatestAssistantForCompaction();
+						this.throwIfError('prompt');
 
-					if (schema) {
-						return this.extractResultWithRetry(schema);
-					}
-					return { text: this.getAssistantText() };
-				},
+						if (schema) {
+							return this.extractResultWithRetry(schema);
+						}
+						return { text: this.getAssistantText() };
+					},
+				),
 			);
 		});
 	}
@@ -311,27 +337,29 @@ export class Session implements FlueSession {
 			const skillPrompt = buildSkillPrompt(registeredSkill.instructions, options?.args, schema);
 
 			const effectiveCommands = mergeCommands(this.agentCommands, options?.commands);
-			return this.withScopedRuntime(
-				{
-					commands: effectiveCommands,
-					tools: options?.tools ?? [],
-					role,
-					model: options?.model,
-					callSite: `this skill("${name}") call`,
-				},
-				async () => {
-					const beforeLength = this.harness.state.messages.length;
-					await this.harness.prompt(skillPrompt);
-					await this.harness.waitForIdle();
-					await this.syncHarnessMessagesSince(beforeLength, 'skill');
-					await this.checkLatestAssistantForCompaction();
-					this.throwIfError(`skill("${name}")`);
+			return this.withCallUsageTracking(() =>
+				this.withScopedRuntime(
+					{
+						commands: effectiveCommands,
+						tools: options?.tools ?? [],
+						role,
+						model: options?.model,
+						callSite: `this skill("${name}") call`,
+					},
+					async () => {
+						const beforeLength = this.harness.state.messages.length;
+						await this.harness.prompt(skillPrompt);
+						await this.harness.waitForIdle();
+						await this.syncHarnessMessagesSince(beforeLength, 'skill');
+						await this.checkLatestAssistantForCompaction();
+						this.throwIfError(`skill("${name}")`);
 
-					if (schema) {
-						return this.extractResultWithRetry(schema);
-					}
-					return { text: this.getAssistantText() };
-				},
+						if (schema) {
+							return this.extractResultWithRetry(schema);
+						}
+						return { text: this.getAssistantText() };
+					},
+				),
 			);
 		});
 	}
@@ -863,7 +891,12 @@ export class Session implements FlueSession {
 					`tokens before: ${result.tokensBefore}`,
 			);
 
-			this.emit({ type: 'compaction_end', messagesBefore, messagesAfter });
+			this.emit({
+				type: 'compaction_end',
+				messagesBefore,
+				messagesAfter,
+				usage: result.usage,
+			});
 
 			await this.save();
 
@@ -910,6 +943,61 @@ export class Session implements FlueSession {
 			return textParts.join('\n');
 		}
 		return '';
+	}
+
+	/**
+	 * The model that produced the most recent assistant message in the
+	 * current transcript, or undefined when the transcript is empty or the
+	 * last message is not an assistant turn. Used to fill
+	 * `PromptResponse.model` after `prompt()` / `skill()` settle.
+	 */
+	private getLatestAssistantModel(): ModelInfo | undefined {
+		const messages = this.harness.state.messages;
+		for (let i = messages.length - 1; i >= 0; i--) {
+			const msg = messages[i]!;
+			if (msg.role === 'assistant') {
+				return messageToModelInfo(msg);
+			}
+		}
+		return undefined;
+	}
+
+	/**
+	 * Run `fn` with a fresh call-level usage accumulator.
+	 *
+	 * When the call returns a value that looks like a `PromptResponse`
+	 * (has a `text` string field), we enrich it with the aggregate usage
+	 * and trailing model before returning. Calls that pass `result:
+	 * schema` return an `InferOutput<S>` instead; for those we leave the
+	 * return value untouched (enriching it would force a breaking change
+	 * to the return shape). Schema-callers observe usage via `turn_end`
+	 * events instead.
+	 *
+	 * Nesting behaviour: if a call is already being tracked, we preserve
+	 * the outer accumulator so the outer call still sees its own turns.
+	 */
+	private async withCallUsageTracking<T>(fn: () => Promise<T>): Promise<T> {
+		const previous = this.currentCallUsage;
+		this.currentCallUsage = emptyUsage();
+		try {
+			const result = await fn();
+			const usage = this.currentCallUsage;
+			// Narrow by shape: only enrich `PromptResponse`-shaped returns.
+			// Schema-callers get `InferOutput<S>` which is whatever the user
+			// defined, so we don't touch it.
+			if (
+				usage &&
+				(usage.totalTokens > 0 || usage.input + usage.output > 0) &&
+				isPromptResponseShape(result)
+			) {
+				const model = this.getLatestAssistantModel();
+				result.usage = usage;
+				if (model) result.model = model;
+			}
+			return result;
+		} finally {
+			this.currentCallUsage = previous;
+		}
 	}
 
 	private getLatestAssistantMessageId(): string | undefined {
@@ -1008,4 +1096,70 @@ function truncateShellHistory(text: string): string {
 
 function getErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
+}
+
+// ─── Usage helpers ──────────────────────────────────────────────────────────
+
+/**
+ * Zero-valued `Usage`. Used as the identity element when summing across
+ * turns. Every numeric field defaults to 0 so adding this to a real usage
+ * is a no-op.
+ */
+export function emptyUsage(): Usage {
+	return {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+		totalTokens: 0,
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+	};
+}
+
+/**
+ * Sum two `Usage` values field-by-field, including the nested `cost` sub-object.
+ * Returns a new object; neither argument is mutated.
+ *
+ * Used to aggregate per-turn usage into the `PromptResponse.usage` totals
+ * returned by `prompt()` / `skill()`.
+ */
+export function addUsage(a: Usage, b: Usage): Usage {
+	return {
+		input: a.input + b.input,
+		output: a.output + b.output,
+		cacheRead: a.cacheRead + b.cacheRead,
+		cacheWrite: a.cacheWrite + b.cacheWrite,
+		totalTokens: a.totalTokens + b.totalTokens,
+		cost: {
+			input: a.cost.input + b.cost.input,
+			output: a.cost.output + b.cost.output,
+			cacheRead: a.cost.cacheRead + b.cost.cacheRead,
+			cacheWrite: a.cost.cacheWrite + b.cost.cacheWrite,
+			total: a.cost.total + b.cost.total,
+		},
+	};
+}
+
+/** Extract provider/id from an assistant message. Returns undefined if fields missing. */
+export function messageToModelInfo(message: AgentMessage): ModelInfo | undefined {
+	if (message.role !== 'assistant') return undefined;
+	const assistant = message as AssistantMessage;
+	if (!assistant.provider || !assistant.model) return undefined;
+	return { provider: assistant.provider, id: assistant.model };
+}
+
+/**
+ * Type guard for "does this return value look like a `PromptResponse`?".
+ * Used by `withCallUsageTracking` to decide whether to enrich the return
+ * with usage/model. Schema-callers return `InferOutput<S>` shaped however
+ * the user wants, so we only enrich objects that present a string `text`
+ * field — the core `PromptResponse` contract.
+ */
+function isPromptResponseShape(value: unknown): value is PromptResponse {
+	return (
+		typeof value === 'object' &&
+		value !== null &&
+		'text' in value &&
+		typeof (value as { text: unknown }).text === 'string'
+	);
 }

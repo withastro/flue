@@ -290,6 +290,30 @@ await session.prompt('Review the latest changes.'); // uses reviewer
 await session.task('Research related issues.', { role: 'researcher' }); // uses researcher
 ```
 
+### Usage & cost
+
+Every `prompt()` and `skill()` call returns the token usage and cost produced
+by the provider, aggregated across every assistant turn the call dispatched.
+`cost` values are in USD and come from pi-ai's cost tables — no price list to
+maintain on your side.
+
+```ts
+const response = await session.prompt('Analyze this diff.');
+
+response.text;         // the assistant's reply
+response.usage;        // { input, output, cacheRead, cacheWrite, totalTokens, cost: {...} }
+response.model;        // { provider: 'anthropic', id: 'claude-sonnet-4-6' }
+```
+
+Webhook-exposed agents also stream per-turn usage over SSE via the existing
+event channel: `turn_end` events now carry `{ usage, model }`, and
+`compaction_end` carries `usage` for the internal summarization cost so
+audits can distinguish user-visible work from maintenance work.
+
+Calls that pass `result: schema` return the validated object directly, so
+their return value is not enriched with `usage`/`model` — read usage from
+the streamed `turn_end` events for those calls.
+
 ### Provider Settings
 
 Use `providers` when model traffic needs provider-specific runtime settings,
