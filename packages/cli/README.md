@@ -14,10 +14,10 @@ Flue isn't another AI SDK. It's a proper runtime-agnostic framework — think As
 
 ## Packages
 
-| Package                       | Description                             |
-| ----------------------------- | --------------------------------------- |
-| [`@flue/sdk`](packages/sdk)   | Core SDK: build system, sessions, tools |
-| [`@flue/cli`](packages/cli)   | CLI for building and running agents     |
+| Package                     | Description                             |
+| --------------------------- | --------------------------------------- |
+| [`@flue/sdk`](packages/sdk) | Core SDK: build system, sessions, tools |
+| [`@flue/cli`](packages/cli) | CLI for building and running agents     |
 
 ## Examples
 
@@ -53,6 +53,11 @@ export default async function ({ init, payload }: FlueContext) {
   return result;
 }
 ```
+
+Result schemas can be Valibot schemas, as shown above, or any schema object
+that implements Standard Schema plus Standard JSON Schema on `~standard`.
+Either way, `prompt()`, `skill()`, and `task()` preserve the schema's output
+type.
 
 ### Support Agent
 

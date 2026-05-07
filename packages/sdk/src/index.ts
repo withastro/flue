@@ -16,6 +16,10 @@ export type {
 	BashFactory,
 	BashLike,
 	SessionOptions,
+	StandardSchemaV1,
+	StandardJSONSchemaV1,
+	ResultSchema,
+	InferResult,
 	PromptOptions,
 	PromptResponse,
 	SkillOptions,
@@ -35,13 +39,7 @@ export type {
 } from './types.ts';
 
 export { build, resolveWorkspaceFromCwd } from './build.ts';
-export {
-	dev,
-	DEFAULT_DEV_PORT,
-	resolveEnvFiles,
-	parseEnvFiles,
-	type DevOptions,
-} from './dev.ts';
+export { dev, DEFAULT_DEV_PORT, resolveEnvFiles, parseEnvFiles, type DevOptions } from './dev.ts';
 export { createTools, BUILTIN_TOOL_NAMES } from './agent.ts';
 
 // Note: createFlueContext, InMemorySessionStore, bashFactoryToSessionEnv, and the

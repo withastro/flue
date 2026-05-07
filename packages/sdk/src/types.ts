@@ -2,6 +2,81 @@ import type { Model, TSchema } from '@mariozechner/pi-ai';
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type * as v from 'valibot';
 
+// ─── Result Schemas ─────────────────────────────────────────────────────────
+
+/** Standard Schema v1, inlined to avoid forcing users to install a spec package. */
+export interface StandardSchemaV1<Input = unknown, Output = Input> {
+	readonly '~standard': StandardSchemaV1.Props<Input, Output>;
+}
+
+export namespace StandardSchemaV1 {
+	export interface Props<Input, Output> {
+		readonly version: 1;
+		readonly vendor: string;
+		readonly validate: (value: unknown) => Result<Output> | Promise<Result<Output>>;
+		readonly types?: Types<Input, Output> | undefined;
+	}
+
+	export type Result<Output> = SuccessResult<Output> | FailureResult;
+
+	export interface SuccessResult<Output> {
+		readonly value: Output;
+		readonly issues?: undefined;
+	}
+
+	export interface FailureResult {
+		readonly issues: readonly Issue[];
+	}
+
+	export interface Issue {
+		readonly message: string;
+		readonly path?: readonly (PropertyKey | PathItem)[] | undefined;
+	}
+
+	export interface PathItem {
+		readonly key: PropertyKey;
+	}
+
+	export interface Types<Input, Output> {
+		readonly input: Input;
+		readonly output: Output;
+	}
+}
+
+export interface StandardJSONSchemaV1<Input = unknown, Output = Input> extends StandardSchemaV1<
+	Input,
+	Output
+> {
+	readonly '~standard': StandardJSONSchemaV1.Props<Input, Output>;
+}
+
+export namespace StandardJSONSchemaV1 {
+	export interface Props<Input, Output> extends StandardSchemaV1.Props<Input, Output> {
+		readonly jsonSchema: Converter;
+	}
+
+	export interface Converter {
+		readonly input: (options: Options) => Record<string, unknown>;
+		readonly output: (options: Options) => Record<string, unknown>;
+	}
+
+	export type Target = 'draft-2020-12' | 'draft-07' | 'openapi-3.0' | ({} & string);
+
+	export interface Options {
+		readonly target: Target;
+		readonly libraryOptions?: Record<string, unknown> | undefined;
+	}
+}
+
+export type ResultSchema = v.GenericSchema | StandardJSONSchemaV1;
+
+export type InferResult<S extends ResultSchema> =
+	S extends v.GenericSchema<any, infer Output, any>
+		? Output
+		: S extends StandardSchemaV1<any, infer Output>
+			? Output
+			: never;
+
 // ─── Skill ──────────────────────────────────────────────────────────────────
 
 export interface Skill {
@@ -159,7 +234,10 @@ export interface AgentConfig {
 	/** Provider runtime settings applied when resolving models. */
 	providers?: ProvidersConfig;
 	/** Resolve model config to a Model instance. Throws on invalid model strings. */
-	resolveModel: (model: ModelConfig | undefined, providers?: ProvidersConfig) => Model<any> | undefined;
+	resolveModel: (
+		model: ModelConfig | undefined,
+		providers?: ProvidersConfig,
+	) => Model<any> | undefined;
 	compaction?: CompactionConfig;
 }
 
@@ -287,24 +365,24 @@ export interface SessionOptions {
 export interface FlueSession {
 	readonly id: string;
 
-	prompt<S extends v.GenericSchema>(
+	prompt<S extends ResultSchema>(
 		text: string,
 		options: PromptOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
+	): Promise<InferResult<S>>;
 	prompt(text: string, options?: PromptOptions): Promise<PromptResponse>;
 
 	shell(command: string, options?: ShellOptions): Promise<ShellResult>;
 
-	skill<S extends v.GenericSchema>(
+	skill<S extends ResultSchema>(
 		name: string,
 		options: SkillOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
+	): Promise<InferResult<S>>;
 	skill(name: string, options?: SkillOptions): Promise<PromptResponse>;
 
-	task<S extends v.GenericSchema>(
+	task<S extends ResultSchema>(
 		text: string,
 		options: TaskOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
+	): Promise<InferResult<S>>;
 	task(text: string, options?: TaskOptions): Promise<PromptResponse>;
 
 	delete(): Promise<void>;
@@ -364,7 +442,7 @@ export interface SessionStore {
 // ─── Options ────────────────────────────────────────────────────────────────
 
 /** All option fields are scoped to the duration of the call. */
-export interface PromptOptions<S extends v.GenericSchema | undefined = undefined> {
+export interface PromptOptions<S extends ResultSchema | undefined = undefined> {
 	result?: S;
 	timeout?: number;
 	commands?: Command[];
@@ -374,7 +452,7 @@ export interface PromptOptions<S extends v.GenericSchema | undefined = undefined
 	model?: string;
 }
 
-export interface SkillOptions<S extends v.GenericSchema | undefined = undefined> {
+export interface SkillOptions<S extends ResultSchema | undefined = undefined> {
 	args?: Record<string, unknown>;
 	result?: S;
 	timeout?: number;
@@ -384,7 +462,7 @@ export interface SkillOptions<S extends v.GenericSchema | undefined = undefined>
 	model?: string;
 }
 
-export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> {
+export interface TaskOptions<S extends ResultSchema | undefined = undefined> {
 	result?: S;
 	commands?: Command[];
 	tools?: ToolDef[];

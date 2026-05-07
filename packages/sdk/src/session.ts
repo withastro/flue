@@ -2,7 +2,6 @@
 import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentMessage, AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
 import type { AssistantMessage, Model } from '@mariozechner/pi-ai';
-import type * as v from 'valibot';
 import {
 	BUILTIN_TOOL_NAMES,
 	createTools,
@@ -39,8 +38,10 @@ import type {
 	FlueEvent,
 	FlueEventCallback,
 	FlueSession,
+	InferResult,
 	PromptOptions,
 	PromptResponse,
+	ResultSchema,
 	SessionData,
 	SessionEnv,
 	SessionStore,
@@ -100,7 +101,7 @@ interface InternalTaskResult<T> {
 	cwd?: string;
 }
 
-interface InternalTaskOptions<S extends v.GenericSchema | undefined> extends TaskOptions<S> {
+interface InternalTaskOptions<S extends ResultSchema | undefined> extends TaskOptions<S> {
 	inheritedModel?: string;
 }
 
@@ -236,16 +237,16 @@ export class Session implements FlueSession {
 		});
 	}
 
-	async prompt<S extends v.GenericSchema>(
+	async prompt<S extends ResultSchema>(
 		text: string,
 		options: PromptOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
+	): Promise<InferResult<S>>;
 	async prompt(text: string, options?: PromptOptions): Promise<PromptResponse>;
-	async prompt(text: string, options?: PromptOptions<v.GenericSchema | undefined>): Promise<any> {
+	async prompt(text: string, options?: PromptOptions<ResultSchema | undefined>): Promise<any> {
 		return this.runOperation('prompt', async () => {
 			const role = this.resolveEffectiveRole(options?.role);
 
-			const schema = options?.result as v.GenericSchema | undefined;
+			const schema = options?.result as ResultSchema | undefined;
 			const fullPrompt = buildPromptText(text, schema);
 
 			const effectiveCommands = mergeCommands(this.agentCommands, options?.commands);
@@ -274,12 +275,12 @@ export class Session implements FlueSession {
 		});
 	}
 
-	async skill<S extends v.GenericSchema>(
+	async skill<S extends ResultSchema>(
 		name: string,
 		options: SkillOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
+	): Promise<InferResult<S>>;
 	async skill(name: string, options?: SkillOptions): Promise<PromptResponse>;
-	async skill(name: string, options?: SkillOptions<v.GenericSchema | undefined>): Promise<any> {
+	async skill(name: string, options?: SkillOptions<ResultSchema | undefined>): Promise<any> {
 		return this.runOperation('skill', async () => {
 			const role = this.resolveEffectiveRole(options?.role);
 
@@ -307,7 +308,7 @@ export class Session implements FlueSession {
 				);
 			}
 
-			const schema = options?.result as v.GenericSchema | undefined;
+			const schema = options?.result as ResultSchema | undefined;
 			const skillPrompt = buildSkillPrompt(registeredSkill.instructions, options?.args, schema);
 
 			const effectiveCommands = mergeCommands(this.agentCommands, options?.commands);
@@ -336,12 +337,12 @@ export class Session implements FlueSession {
 		});
 	}
 
-	async task<S extends v.GenericSchema>(
+	async task<S extends ResultSchema>(
 		text: string,
 		options: TaskOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
+	): Promise<InferResult<S>>;
 	async task(text: string, options?: TaskOptions): Promise<PromptResponse>;
-	async task(text: string, options?: TaskOptions<v.GenericSchema | undefined>): Promise<any> {
+	async task(text: string, options?: TaskOptions<ResultSchema | undefined>): Promise<any> {
 		const result = await this.runTask(text, options, undefined);
 		return result.output;
 	}
@@ -565,11 +566,11 @@ export class Session implements FlueSession {
 		};
 	}
 
-	private async runTask<S extends v.GenericSchema | undefined>(
+	private async runTask<S extends ResultSchema | undefined>(
 		text: string,
 		options: InternalTaskOptions<S> | undefined,
 		signal: AbortSignal | undefined,
-	): Promise<InternalTaskResult<S extends v.GenericSchema ? v.InferOutput<S> : PromptResponse>> {
+	): Promise<InternalTaskResult<S extends ResultSchema ? InferResult<S> : PromptResponse>> {
 		this.assertActive();
 		if (!this.createTaskSession) {
 			throw new Error('[flue] This session cannot create task sessions.');
@@ -615,9 +616,9 @@ export class Session implements FlueSession {
 				if (signal.aborted) throw new Error('Operation aborted');
 			}
 
-			const schema = options?.result as v.GenericSchema | undefined;
+			const schema = options?.result as ResultSchema | undefined;
 			const roleModel = resolveRoleModel(this.config.roles, role);
-			const childOptions: PromptOptions<v.GenericSchema | undefined> = {
+			const childOptions: PromptOptions<ResultSchema | undefined> = {
 				model: options?.model ?? (roleModel ? undefined : options?.inheritedModel),
 				tools: options?.tools,
 			};
@@ -923,12 +924,10 @@ export class Session implements FlueSession {
 		return undefined;
 	}
 
-	private async extractResultWithRetry<S extends v.GenericSchema>(
-		schema: S,
-	): Promise<v.InferOutput<S>> {
+	private async extractResultWithRetry<S extends ResultSchema>(schema: S): Promise<InferResult<S>> {
 		const text = this.getAssistantText();
 		try {
-			return extractResult(text, schema);
+			return await extractResult(text, schema);
 		} catch (err) {
 			if (!(err instanceof ResultExtractionError)) throw err;
 			if (!err.message.includes('RESULT_START')) throw err;
