@@ -1,38 +1,8 @@
 import type { Model, TSchema } from '@mariozechner/pi-ai';
-import type { AgentMessage } from '@mariozechner/pi-agent-core';
+import type { AgentMessage, ThinkingLevel } from '@mariozechner/pi-agent-core';
 import type * as v from 'valibot';
 
-// ─── Reasoning ──────────────────────────────────────────────────────────────
-
-/**
- * Reasoning/thinking effort for models that support it.
- *
- * Mirrors pi-ai's `ThinkingLevel`: the set of levels that can be requested at
- * call time. `"off"` is intentionally excluded here — per-call code should
- * pick a concrete effort, not disable reasoning mid-conversation. See
- * {@link ModelThinkingLevel} for the init-time default that also allows
- * `"off"`.
- *
- * Provider support varies. pi-ai clamps the requested level to whichever
- * concrete level the model's `thinkingLevelMap` actually supports, preferring
- * the closest higher level and falling back to the closest lower one. No
- * error is thrown for unsupported levels — in particular `"xhigh"`, which
- * is only defined on a handful of model families, is silently downgraded
- * when the model doesn't map it.
- *
- * Separately, Flue throws when the resolved model reports
- * `Model.reasoning === false` (i.e. the model is not a reasoning model at
- * all, regardless of level). See {@link AgentInit.reasoning} for the full
- * validation contract.
- */
-export type ThinkingLevel = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
-
-/**
- * Init-time reasoning default. Same as {@link ThinkingLevel} plus `"off"` so
- * agents and roles can explicitly opt out of reasoning even on models that
- * have it enabled by default.
- */
-export type ModelThinkingLevel = 'off' | ThinkingLevel;
+export type { ThinkingLevel };
 
 // ─── Skill ──────────────────────────────────────────────────────────────────
 
@@ -52,11 +22,12 @@ export interface Role {
 	instructions: string;
 	model?: string;
 	/**
-	 * Default reasoning effort for calls that resolve this role. Per-call
-	 * `reasoning` still wins. Use `"off"` to explicitly disable reasoning for
-	 * this role on models that have it enabled by default.
+	 * Reasoning effort to apply to model calls performed under this role. Forwarded
+	 * to pi-ai's `SimpleStreamOptions.reasoning`. Models without reasoning support
+	 * silently ignore it. Pi-ai clamps the requested level against
+	 * `Model.thinkingLevelMap` per provider. Use `"off"` to explicitly disable.
 	 */
-	reasoning?: ModelThinkingLevel;
+	thinkingLevel?: ThinkingLevel;
 }
 
 // ─── Commands (per-prompt/shell external CLI access) ────────────────────────
@@ -194,16 +165,15 @@ export interface AgentConfig {
 	model: Model<any> | undefined;
 	/** Agent-wide default role. Per-session and per-call roles override this. */
 	role?: string;
-	/**
-	 * Agent-wide default reasoning effort. Overridden by role-level reasoning
-	 * and per-call reasoning. `"off"` disables reasoning even on models that
-	 * enable it by default.
-	 */
-	reasoning?: ModelThinkingLevel;
 	/** Provider runtime settings applied when resolving models. */
 	providers?: ProvidersConfig;
 	/** Resolve model config to a Model instance. Throws on invalid model strings. */
 	resolveModel: (model: ModelConfig | undefined, providers?: ProvidersConfig) => Model<any> | undefined;
+	/**
+	 * Agent-wide default reasoning effort. Per-call and role-level values override
+	 * this. Defaults to `"off"` (matching pi-agent-core's default) when unset.
+	 */
+	thinkingLevel?: ThinkingLevel;
 	compaction?: CompactionConfig;
 }
 
@@ -281,25 +251,16 @@ export interface AgentInit {
 	role?: string;
 
 	/**
-	 * Default reasoning effort for prompts, skills, and tasks in this agent.
+	 * Default reasoning effort for every prompt(), skill(), and task() call.
+	 * Forwarded to pi-ai's `SimpleStreamOptions.reasoning`. Pi-ai clamps the
+	 * requested level against the model's `thinkingLevelMap`; non-reasoning
+	 * models ignore it.
 	 *
-	 * Precedence (highest wins): per-call `reasoning` > role `reasoning` >
-	 * agent `reasoning`. Per-call values must be a concrete level. Use
-	 * `"off"` here (or in a role) to opt out of reasoning on models that
-	 * have it enabled by default.
-	 *
-	 * Requires a reasoning-capable model (pi-ai `Model.reasoning === true`).
-	 * Passing `reasoning` against a non-reasoning model throws a runtime
-	 * `Error` with a `[flue]` prefix — no special error class.
-	 *
-	 * Compaction (internal summarization that keeps context windows in check)
-	 * is driven by its own default of `'high'` when the model supports
-	 * reasoning. Setting this to `'off'` at the agent level also disables
-	 * reasoning inside compaction; any other value leaves compaction at its
-	 * default, because summary quality feeds every future turn and is
-	 * intentionally orthogonal to per-call effort.
+	 * Precedence (highest wins): per-call `thinkingLevel` > role
+	 * `thinkingLevel` > agent `thinkingLevel`. When nothing is set, the harness
+	 * defaults to `"off"`.
 	 */
-	reasoning?: ModelThinkingLevel;
+	thinkingLevel?: ThinkingLevel;
 
 	/**
 	 * Provider runtime settings for every model used by this agent, including
@@ -367,11 +328,6 @@ export interface FlueSessions {
 export interface SessionOptions {
 	/** Session-wide default role. Per-call roles override this. */
 	role?: string;
-	/**
-	 * Session-wide default reasoning effort. Overridden by role-level
-	 * reasoning (when the role defines one) and per-call `reasoning`.
-	 */
-	reasoning?: ModelThinkingLevel;
 }
 
 // ─── Flue Session ───────────────────────────────────────────────────────────
@@ -521,12 +477,8 @@ export interface PromptOptions<S extends v.GenericSchema | undefined = undefined
 	role?: string;
 	/** e.g., 'anthropic/claude-sonnet-4-20250514' */
 	model?: string;
-	/**
-	 * Reasoning effort for this call. Wins over role and agent defaults.
-	 * Requires a reasoning-capable model — throws a `[flue]`-prefixed
-	 * `Error` otherwise.
-	 */
-	reasoning?: ThinkingLevel;
+	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */
+	thinkingLevel?: ThinkingLevel;
 }
 
 export interface SkillOptions<S extends v.GenericSchema | undefined = undefined> {
@@ -537,12 +489,8 @@ export interface SkillOptions<S extends v.GenericSchema | undefined = undefined>
 	tools?: ToolDef[];
 	role?: string;
 	model?: string;
-	/**
-	 * Reasoning effort for this skill invocation. Wins over role and agent
-	 * defaults. Requires a reasoning-capable model — throws a
-	 * `[flue]`-prefixed `Error` otherwise.
-	 */
-	reasoning?: ThinkingLevel;
+	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */
+	thinkingLevel?: ThinkingLevel;
 }
 
 export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> {
@@ -551,12 +499,8 @@ export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> 
 	tools?: ToolDef[];
 	role?: string;
 	model?: string;
-	/**
-	 * Reasoning effort for this task's child session prompt. Wins over role
-	 * and agent defaults. Requires a reasoning-capable model — throws a
-	 * `[flue]`-prefixed `Error` otherwise.
-	 */
-	reasoning?: ThinkingLevel;
+	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */
+	thinkingLevel?: ThinkingLevel;
 	/** Working directory for the detached task session. Defaults to the parent session cwd. */
 	cwd?: string;
 }

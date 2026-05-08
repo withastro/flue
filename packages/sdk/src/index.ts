@@ -29,14 +29,13 @@ export type {
 	Role,
 	AgentConfig,
 	ModelConfig,
-	ModelThinkingLevel,
-	ThinkingLevel,
 	BuildOptions,
 	BuildPlugin,
 	BuildContext,
 	AgentInfo,
 	ToolDef,
 	ToolParameters,
+	ThinkingLevel,
 } from './types.ts';
 
 export { build, resolveWorkspaceFromCwd } from './build.ts';

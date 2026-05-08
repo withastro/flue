@@ -4,10 +4,41 @@ import * as path from 'node:path';
 import { packageUpSync } from 'package-up';
 import { parseAgentFile } from './agent-parser.ts';
 import { parseFrontmatterFile } from './context.ts';
-import { parseReasoningFrontmatter } from './roles.ts';
 import { CloudflarePlugin } from './build-plugin-cloudflare.ts';
 import { NodePlugin } from './build-plugin-node.ts';
-import type { AgentInfo, BuildContext, BuildOptions, BuildPlugin, Role } from './types.ts';
+import type {
+	AgentInfo,
+	BuildContext,
+	BuildOptions,
+	BuildPlugin,
+	Role,
+	ThinkingLevel,
+} from './types.ts';
+
+// Exhaustive list of valid thinking levels. The `satisfies` clause ensures this
+// stays in lockstep with `ThinkingLevel` from pi-agent-core: if a level is added
+// or removed upstream, this assignment fails to type-check.
+const VALID_THINKING_LEVELS = {
+	off: true,
+	minimal: true,
+	low: true,
+	medium: true,
+	high: true,
+	xhigh: true,
+} as const satisfies Record<ThinkingLevel, true>;
+
+function parseThinkingLevel(value: string | undefined, source: string): ThinkingLevel | undefined {
+	if (value === undefined) return undefined;
+	const normalized = value.trim();
+	if (!normalized) return undefined;
+	if (!(normalized in VALID_THINKING_LEVELS)) {
+		throw new Error(
+			`[flue] Invalid thinkingLevel ${JSON.stringify(value)} in ${source}. ` +
+				`Expected one of: ${Object.keys(VALID_THINKING_LEVELS).join(', ')}.`,
+		);
+	}
+	return normalized as ThinkingLevel;
+}
 
 /**
  * Result returned by {@link build}. `changed` indicates whether any file in
@@ -242,16 +273,16 @@ function discoverRoles(workspaceRoot: string): Record<string, Role> {
 		const content = fs.readFileSync(filePath, 'utf-8');
 		const name = entry.replace(/\.(md|markdown)$/i, '');
 		const parsed = parseFrontmatterFile(content, name);
-		const reasoning = parseReasoningFrontmatter(
-			parsed.frontmatter.reasoning,
-			`role "${name}" (${path.relative(workspaceRoot, filePath)})`,
+		const thinkingLevel = parseThinkingLevel(
+			parsed.frontmatter.thinkingLevel,
+			`role "${name}" frontmatter`,
 		);
 		roles[name] = {
 			name,
 			description: parsed.description,
 			instructions: parsed.body,
 			model: parsed.frontmatter.model,
-			reasoning,
+			thinkingLevel,
 		};
 	}
 

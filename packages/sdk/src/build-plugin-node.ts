@@ -209,7 +209,7 @@ app.all('/agents/:name/:id', async (c) => {
 
       // Keep long-running, otherwise-idle SSE streams alive.
       const heartbeat = setInterval(() => {
-        stream.write(': heartbeat\n\n').catch(() => {});
+        stream.write(': heartbeat\\n\\n').catch(() => {});
       }, 25_000);
 
       try {
