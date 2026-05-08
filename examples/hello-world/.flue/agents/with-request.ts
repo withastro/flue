@@ -5,9 +5,9 @@ export const triggers = { webhook: true };
 /**
  * Demonstrates the request metadata exposed on `FlueContext`.
  *
- * `ctx.req` is the standard Fetch `Request` for the current invocation. Its
- * body has already been consumed by Flue's JSON parser to populate
- * `ctx.payload` — call `ctx.req.clone()` first if you need the raw bytes.
+ * `ctx.req` is the standard Fetch `Request` for the current invocation. Read
+ * headers, method, URL, and the raw body — useful for HMAC signature
+ * verification (Stripe, GitHub, etc.) over the request bytes.
  *
  * `ctx.req` is `undefined` when the agent is invoked outside an HTTP context
  * (e.g. future cron / queue triggers). Today every trigger is HTTP, so in
@@ -17,6 +17,11 @@ export default async function ({ req, init }: FlueContext) {
 	console.log('[with-request] method:', req?.method);
 	console.log('[with-request] url:', req?.url);
 	console.log('[with-request] user-agent:', req?.headers.get('user-agent'));
+
+	// The raw body is also available — `req.clone()` lets us read it without
+	// consuming the original (in case downstream code wants to read it too).
+	const rawBody = await req?.clone().text();
+	console.log('[with-request] raw body:', rawBody);
 
 	// Client IP: parse from the platform's header. On Cloudflare,
 	// `cf-connecting-ip` is set by the platform and safe to trust. On Node

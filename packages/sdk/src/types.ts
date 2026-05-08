@@ -179,11 +179,14 @@ export interface FlueContext<TPayload = any, TEnv = Record<string, any>> {
 	readonly env: TEnv;
 	/**
 	 * The standard Fetch `Request` for the current invocation. Use it to read
-	 * headers (`req.headers.get('authorization')`), method, URL, etc.
+	 * headers (`req.headers.get('authorization')`), method, URL, and the
+	 * raw body (`req.text()` / `req.json()` / `req.arrayBuffer()` /
+	 * `req.formData()`) — useful for things like HMAC signature verification
+	 * over the request bytes.
 	 *
-	 * The body has already been consumed by Flue's JSON parser to populate
-	 * `payload` — call `req.clone()` before any body access if you need the
-	 * raw bytes (e.g. HMAC verification).
+	 * Body access is single-use, like any standard `Request`: once you call a
+	 * body-reading method, calling another will throw. Use `req.clone()` if
+	 * you need to read it more than once.
 	 *
 	 * Undefined when the agent is invoked outside an HTTP context (e.g. future
 	 * cron / queue triggers). Today every trigger is HTTP, so in practice this
