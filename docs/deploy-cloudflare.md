@@ -244,7 +244,7 @@ done
 - **No container** — Still running on a virtual sandbox. Fast startup, low cost.
 - **Persistent data** — The knowledge base lives in R2 and persists across requests.
 - **Agent-native search** — The agent uses grep and glob to find relevant articles, just like it would in a real filesystem.
-- **Session persistence** — Because this deploys to Cloudflare Workers with Durable Objects, message history and session state are automatically persisted. A customer can revisit a support session days later and pick up where they left off.
+- **Session persistence** — Because this deploys to Cloudflare Workers with Durable Objects, message history and session state are automatically persisted. A customer can revisit a support session days later and pick up where they left off. If you need sessions queryable from outside the agent process (admin dashboards, separate Workers, BI exports), see [Persist sessions in D1](./persist-d1.md) for an alternative store.
 
 ## Connecting a remote sandbox
 

@@ -7,6 +7,10 @@
 		"@daytona/sdk": "*",
 		"agents": "*",
 		"just-bash": "^2.14.2",
+		"pg": "^8.13.0",
 		"valibot": "^1.0.0"
+	},
+	"devDependencies": {
+		"@types/pg": "^8.11.0"
 	}
 }

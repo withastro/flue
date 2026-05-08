@@ -332,7 +332,7 @@ export default async function ({ init, payload }: FlueContext) {
 }
 ```
 
-You can back this with any database: SQLite, Postgres, Redis, etc.
+You can back this with any database: SQLite, Postgres, Redis, etc. For a worked Postgres example, see [Persist sessions in Postgres](./persist-postgres.md).
 
 ## Building and deploying
 
