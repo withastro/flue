@@ -206,18 +206,16 @@ app.all('/agents/:name/:id', async (c) => {
         stream.writeSSE({ data: JSON.stringify(event), event: event.type, id: String(eventId++) }).catch(() => {});
       });
 
-      // Heartbeat: emit a no-op SSE event every 25s while the handler is
-      // running. This keeps the stream actively writing bytes so:
+      // Heartbeat: emit an SSE comment every 25s while the handler is running.
+      // This keeps the stream actively writing bytes so:
       //   - undici (the Node fetch client used by \`flue run\`) does not hit
       //     its 300s default \`bodyTimeout\` on an idle response, and
       //   - intermediate proxies/load balancers in self-hosted deploys
       //     don't idle-close the connection.
-      // The \`{ type: 'ping' }\` payload is unhandled by the CLI's logEvent
-      // switch and falls through harmlessly. Withastro/flue#68.
+      // SSE comments are ignored by clients, so this does not become part of
+      // Flue's application-level event protocol. Withastro/flue#68.
       const heartbeat = setInterval(() => {
-        stream
-          .writeSSE({ data: JSON.stringify({ type: 'ping' }), event: 'ping' })
-          .catch(() => {});
+        stream.write(': heartbeat\n\n').catch(() => {});
       }, 25_000);
 
       try {
@@ -278,12 +276,11 @@ const port = parseInt(process.env.PORT || '3000', 10);
 // Disable Node's per-request timeout. Node 18+ defaults requestTimeout to
 // 300s (https://nodejs.org/api/http.html#serverrequesttimeout), which silently
 // aborts long-lived SSE streams when the agent is mid-tool-call and not
-// emitting events. Headers timeout is similarly relaxed because SSE responses
-// stay open well beyond the typical 60s window. Withastro/flue#68.
+// emitting events. Withastro/flue#68.
 const server = serve({
   fetch: app.fetch,
   port,
-  serverOptions: { requestTimeout: 0, headersTimeout: 0 },
+  serverOptions: { requestTimeout: 0 },
 });
 console.log('[flue] Server listening on http://localhost:' + port);
 if (isLocalMode) {
