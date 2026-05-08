@@ -65,35 +65,34 @@ function createReadTool(env: SessionEnv): AgentTool<any> {
 			offset: Type.Optional(Type.Number({ description: 'Line number to start from (1-indexed)' })),
 			limit: Type.Optional(Type.Number({ description: 'Maximum number of lines to read' })),
 		}),
-		async execute(_toolCallId, params, signal?) {
+		async execute(_toolCallId, params: { path: string; offset?: number; limit?: number }, signal?) {
 			throwIfAborted(signal);
-			const args = params as { path: string; offset?: number; limit?: number };
 
 			try {
-				const fileStat = await env.stat(args.path);
+				const fileStat = await env.stat(params.path);
 				if (fileStat.isDirectory) {
-					const entries = await env.readdir(args.path);
+					const entries = await env.readdir(params.path);
 					const listing = entries.join('\n');
 					return {
 						content: [{ type: 'text', text: listing || '(empty directory)' }],
-						details: { path: args.path, isDirectory: true, entries: entries.length },
+						details: { path: params.path, isDirectory: true, entries: entries.length },
 					};
 				}
 			} catch {
 				// stat failed — fall through to readFile
 			}
 
-			const content = await env.readFile(args.path);
+			const content = await env.readFile(params.path);
 			const allLines = content.split('\n');
 
-			const startLine = args.offset ? Math.max(0, args.offset - 1) : 0;
+			const startLine = params.offset ? Math.max(0, params.offset - 1) : 0;
 			if (startLine >= allLines.length) {
 				throw new Error(
-					`Offset ${args.offset} is beyond end of file (${allLines.length} lines total)`,
+					`Offset ${params.offset} is beyond end of file (${allLines.length} lines total)`,
 				);
 			}
 
-			const endLine = args.limit ? startLine + args.limit : allLines.length;
+			const endLine = params.limit ? startLine + params.limit : allLines.length;
 			const lines = allLines.slice(startLine, endLine);
 			const { text: truncatedText, wasTruncated } = truncateHead(
 				lines,
@@ -109,7 +108,7 @@ function createReadTool(env: SessionEnv): AgentTool<any> {
 
 			return {
 				content: [{ type: 'text', text: output }],
-				details: { path: args.path, lines: allLines.length },
+				details: { path: params.path, lines: allLines.length },
 			};
 		},
 	};
@@ -125,23 +124,22 @@ function createWriteTool(env: SessionEnv): AgentTool<any> {
 			path: Type.String({ description: 'Path to the file to write' }),
 			content: Type.String({ description: 'Content to write to the file' }),
 		}),
-		async execute(_toolCallId, params, signal?) {
+		async execute(_toolCallId, params: { path: string; content: string }, signal?) {
 			throwIfAborted(signal);
-			const args = params as { path: string; content: string };
-			const resolved = env.resolvePath(args.path);
+			const resolved = env.resolvePath(params.path);
 			const dir = resolved.replace(/\/[^/]*$/, '');
 			if (dir && dir !== resolved) {
 				await env.mkdir(dir, { recursive: true });
 			}
-			await env.writeFile(resolved, args.content);
+			await env.writeFile(resolved, params.content);
 			return {
 				content: [
 					{
 						type: 'text',
-						text: `Successfully wrote ${args.content.length} bytes to ${args.path}`,
+						text: `Successfully wrote ${params.content.length} bytes to ${params.path}`,
 					},
 				],
-				details: { path: args.path, size: args.content.length },
+				details: { path: params.path, size: params.content.length },
 			};
 		},
 	};
@@ -159,46 +157,44 @@ function createEditTool(env: SessionEnv): AgentTool<any> {
 			newText: Type.String({ description: 'Replacement text' }),
 			replaceAll: Type.Optional(Type.Boolean({ description: 'Replace all occurrences' })),
 		}),
-		async execute(_toolCallId, params, signal?) {
+		async execute(
+			_toolCallId,
+			params: { path: string; oldText: string; newText: string; replaceAll?: boolean },
+			signal?,
+		) {
 			throwIfAborted(signal);
-			const args = params as {
-				path: string;
-				oldText: string;
-				newText: string;
-				replaceAll?: boolean;
-			};
-			const content = await env.readFile(args.path);
+			const content = await env.readFile(params.path);
 
-			if (args.replaceAll) {
-				const newContent = content.replaceAll(args.oldText, args.newText);
+			if (params.replaceAll) {
+				const newContent = content.replaceAll(params.oldText, params.newText);
 				if (newContent === content) {
-					throw new Error(`Could not find the text in ${args.path}. No changes made.`);
+					throw new Error(`Could not find the text in ${params.path}. No changes made.`);
 				}
-				await env.writeFile(args.path, newContent);
-				const count = content.split(args.oldText).length - 1;
+				await env.writeFile(params.path, newContent);
+				const count = content.split(params.oldText).length - 1;
 				return {
-					content: [{ type: 'text', text: `Replaced ${count} occurrences in ${args.path}` }],
-					details: { path: args.path, replacements: count },
+					content: [{ type: 'text', text: `Replaced ${count} occurrences in ${params.path}` }],
+					details: { path: params.path, replacements: count },
 				};
 			}
 
-			const occurrences = countOccurrences(content, args.oldText);
+			const occurrences = countOccurrences(content, params.oldText);
 			if (occurrences === 0) {
 				throw new Error(
-					`Could not find the exact text in ${args.path}. Make sure your oldText matches exactly, including whitespace and indentation.`,
+					`Could not find the exact text in ${params.path}. Make sure your oldText matches exactly, including whitespace and indentation.`,
 				);
 			}
 			if (occurrences > 1) {
 				throw new Error(
-					`Found ${occurrences} occurrences of the text in ${args.path}. Provide more surrounding context to make the match unique, or use replaceAll.`,
+					`Found ${occurrences} occurrences of the text in ${params.path}. Provide more surrounding context to make the match unique, or use replaceAll.`,
 				);
 			}
 
-			const newContent = content.replace(args.oldText, args.newText);
-			await env.writeFile(args.path, newContent);
+			const newContent = content.replace(params.oldText, params.newText);
+			await env.writeFile(params.path, newContent);
 			return {
-				content: [{ type: 'text', text: `Successfully edited ${args.path}` }],
-				details: { path: args.path },
+				content: [{ type: 'text', text: `Successfully edited ${params.path}` }],
+				details: { path: params.path },
 			};
 		},
 	};
@@ -214,11 +210,10 @@ function createBashTool(env: SessionEnv): AgentTool<any> {
 			command: Type.String({ description: 'Bash command to execute' }),
 			timeout: Type.Optional(Type.Number({ description: 'Timeout in seconds' })),
 		}),
-		async execute(_toolCallId, params, signal?) {
+		async execute(_toolCallId, params: { command: string; timeout?: number }, signal?) {
 			throwIfAborted(signal);
-			const args = params as { command: string; timeout?: number };
-			const result = await env.exec(args.command, { timeout: args.timeout });
-			return formatBashResult(result, args.command);
+			const result = await env.exec(params.command, { timeout: params.timeout });
+			return formatBashResult(result, params.command);
 		},
 	};
 }
@@ -257,9 +252,9 @@ function createTaskTool(
 				}),
 			),
 		}),
-		async execute(_toolCallId, params, signal?) {
+		async execute(_toolCallId, params: TaskToolParams, signal?) {
 			throwIfAborted(signal);
-			return runTask(params as TaskToolParams, signal);
+			return runTask(params, signal);
 		},
 	};
 }
@@ -294,14 +289,17 @@ function createGrepTool(env: SessionEnv): AgentTool<any> {
 			path: Type.Optional(Type.String({ description: 'Directory or file to search (default: .)' })),
 			include: Type.Optional(Type.String({ description: 'Glob filter, e.g. "*.ts"' })),
 		}),
-		async execute(_toolCallId, params, signal?) {
+		async execute(
+			_toolCallId,
+			params: { pattern: string; path?: string; include?: string },
+			signal?,
+		) {
 			throwIfAborted(signal);
-			const args = params as { pattern: string; path?: string; include?: string };
 
-			const searchPath = args.path || '.';
-			let cmd = `grep -rn ${shellQuote(args.pattern)} ${shellQuote(searchPath)}`;
-			if (args.include) {
-				cmd = `grep -rn --include=${shellQuote(args.include)} ${shellQuote(args.pattern)} ${shellQuote(searchPath)}`;
+			const searchPath = params.path || '.';
+			let cmd = `grep -rn ${shellQuote(params.pattern)} ${shellQuote(searchPath)}`;
+			if (params.include) {
+				cmd = `grep -rn --include=${shellQuote(params.include)} ${shellQuote(params.pattern)} ${shellQuote(searchPath)}`;
 			}
 
 			const result = await env.exec(cmd);
@@ -347,12 +345,11 @@ function createGlobTool(env: SessionEnv): AgentTool<any> {
 			pattern: Type.String({ description: 'Filename pattern, e.g. "*.ts"' }),
 			path: Type.Optional(Type.String({ description: 'Directory to search in (default: .)' })),
 		}),
-		async execute(_toolCallId, params, signal?) {
+		async execute(_toolCallId, params: { pattern: string; path?: string }, signal?) {
 			throwIfAborted(signal);
-			const args = params as { pattern: string; path?: string };
 
-			const searchPath = args.path || '.';
-			const cmd = `find ${shellQuote(searchPath)} -type f -name ${shellQuote(args.pattern)} 2>/dev/null | head -${MAX_GLOB_RESULTS}`;
+			const searchPath = params.path || '.';
+			const cmd = `find ${shellQuote(searchPath)} -type f -name ${shellQuote(params.pattern)} 2>/dev/null | head -${MAX_GLOB_RESULTS}`;
 			const result = await env.exec(cmd);
 
 			if (result.exitCode !== 0 && !result.stdout.trim()) {

@@ -14,10 +14,10 @@ Flue isn't another AI SDK. It's a proper runtime-agnostic framework — think As
 
 ## Packages
 
-| Package                     | Description                             |
-| --------------------------- | --------------------------------------- |
-| [`@flue/sdk`](packages/sdk) | Core SDK: build system, sessions, tools |
-| [`@flue/cli`](packages/cli) | CLI for building and running agents     |
+| Package                       | Description                             |
+| ----------------------------- | --------------------------------------- |
+| [`@flue/sdk`](packages/sdk)   | Core SDK: build system, sessions, tools |
+| [`@flue/cli`](packages/cli)   | CLI for building and running agents     |
 
 ## Examples
 
@@ -315,25 +315,6 @@ const agent = await init({
       apiKey: 'dummy',
     },
   },
-});
-```
-
-### Thinking Streams
-
-For models that support reasoning, pass `thinking` to enable provider thinking
-or reasoning output. Flue streams those updates as `thinking_delta` events next
-to normal `text_delta` and tool events. `flue run` prints them to stderr with a
-`[thinking]` prefix.
-
-```ts
-const agent = await init({
-  model: 'anthropic/claude-opus-4-7',
-  thinking: 'high',
-});
-
-const session = await agent.session();
-await session.prompt('Plan the migration and summarize the tradeoffs.', {
-  thinking: 'medium',
 });
 ```
 

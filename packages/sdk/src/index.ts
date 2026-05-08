@@ -29,7 +29,6 @@ export type {
 	Role,
 	AgentConfig,
 	ModelConfig,
-	ThinkingLevel,
 	BuildOptions,
 	BuildPlugin,
 	BuildContext,

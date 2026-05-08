@@ -1,4 +1,4 @@
-import type { Model, ModelThinkingLevel, TSchema } from '@mariozechner/pi-ai';
+import type { Model, TSchema } from '@mariozechner/pi-ai';
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
 import type * as v from 'valibot';
 
@@ -140,8 +140,6 @@ export interface ProviderSettings {
 
 export type ProvidersConfig = Record<string, ProviderSettings>;
 
-export type ThinkingLevel = ModelThinkingLevel;
-
 // ─── Agent Config (internal, passed to the harness at runtime) ──────────────
 
 export interface AgentConfig {
@@ -156,8 +154,6 @@ export interface AgentConfig {
 	 * role or call-site override.
 	 */
 	model: Model<any> | undefined;
-	/** Agent-wide default thinking/reasoning level. */
-	thinking?: ThinkingLevel;
 	/** Agent-wide default role. Per-session and per-call roles override this. */
 	role?: string;
 	/** Provider runtime settings applied when resolving models. */
@@ -236,12 +232,6 @@ export interface AgentInit {
 	 * Precedence (highest wins): per-call `model` > role `model` > agent `model`.
 	 */
 	model: ModelConfig;
-
-	/**
-	 * Optional reasoning level for models/providers that support thinking. Applies
-	 * to all prompt(), skill(), and task() calls unless overridden per call.
-	 */
-	thinking?: ThinkingLevel;
 
 	/** Agent-wide default role. Overridden by session-level or per-call roles. */
 	role?: string;
@@ -459,7 +449,6 @@ export interface PromptOptions<S extends v.GenericSchema | undefined = undefined
 	commands?: Command[];
 	tools?: ToolDef[];
 	role?: string;
-	thinking?: ThinkingLevel;
 	/** e.g., 'anthropic/claude-sonnet-4-20250514' */
 	model?: string;
 }
@@ -471,7 +460,6 @@ export interface SkillOptions<S extends v.GenericSchema | undefined = undefined>
 	commands?: Command[];
 	tools?: ToolDef[];
 	role?: string;
-	thinking?: ThinkingLevel;
 	model?: string;
 }
 
@@ -480,7 +468,6 @@ export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> 
 	commands?: Command[];
 	tools?: ToolDef[];
 	role?: string;
-	thinking?: ThinkingLevel;
 	model?: string;
 	/** Working directory for the detached task session. Defaults to the parent session cwd. */
 	cwd?: string;
@@ -536,7 +523,9 @@ export type BashFactory = () => BashLike | Promise<BashLike>;
 export type FlueEvent = (
 	| { type: 'agent_start' }
 	| { type: 'text_delta'; text: string }
-	| { type: 'thinking_delta'; text: string }
+	| { type: 'thinking_start' }
+	| { type: 'thinking_delta'; delta: string }
+	| { type: 'thinking_end'; content: string }
 	| { type: 'tool_start'; toolName: string; toolCallId: string; args?: any }
 	| { type: 'tool_end'; toolName: string; toolCallId: string; isError: boolean; result?: any }
 	| { type: 'turn_end' }
