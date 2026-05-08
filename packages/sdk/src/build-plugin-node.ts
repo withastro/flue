@@ -207,14 +207,7 @@ app.all('/agents/:name/:id', async (c) => {
         stream.writeSSE({ data: JSON.stringify(event), event: event.type, id: String(eventId++) }).catch(() => {});
       });
 
-      // Heartbeat: emit an SSE comment every 25s while the handler is running.
-      // This keeps the stream actively writing bytes so:
-      //   - undici (the Node fetch client used by \`flue run\`) does not hit
-      //     its 300s default \`bodyTimeout\` on an idle response, and
-      //   - intermediate proxies/load balancers in self-hosted deploys
-      //     don't idle-close the connection.
-      // SSE comments are ignored by clients, so this does not become part of
-      // Flue's application-level event protocol. Withastro/flue#68.
+      // Keep long-running, otherwise-idle SSE streams alive.
       const heartbeat = setInterval(() => {
         stream.write(': heartbeat\n\n').catch(() => {});
       }, 25_000);
@@ -274,10 +267,6 @@ app.onError((err) => toHttpResponse(err));
 
 const port = parseInt(process.env.PORT || '3000', 10);
 
-// Disable Node's per-request timeout. Node 18+ defaults requestTimeout to
-// 300s (https://nodejs.org/api/http.html#serverrequesttimeout), which silently
-// aborts long-lived SSE streams when the agent is mid-tool-call and not
-// emitting events. Withastro/flue#68.
 const server = serve({
   fetch: app.fetch,
   port,
