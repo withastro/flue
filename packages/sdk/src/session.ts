@@ -39,8 +39,11 @@ import type {
 	FlueEvent,
 	FlueEventCallback,
 	FlueSession,
+	PromptModel,
 	PromptOptions,
 	PromptResponse,
+	PromptResultResponse,
+	PromptUsage,
 	SessionData,
 	SessionEnv,
 	SessionStore,
@@ -239,7 +242,7 @@ export class Session implements FlueSession {
 	async prompt<S extends v.GenericSchema>(
 		text: string,
 		options: PromptOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
+	): Promise<PromptResultResponse<v.InferOutput<S>>>;
 	async prompt(text: string, options?: PromptOptions): Promise<PromptResponse>;
 	async prompt(text: string, options?: PromptOptions<v.GenericSchema | undefined>): Promise<any> {
 		return this.runOperation('prompt', async () => {
@@ -257,7 +260,7 @@ export class Session implements FlueSession {
 					model: options?.model,
 					callSite: 'this prompt() call',
 				},
-				async () => {
+				async ({ resolvedModel }) => {
 					const beforeLength = this.harness.state.messages.length;
 					await this.harness.prompt(fullPrompt);
 					await this.harness.waitForIdle();
@@ -265,10 +268,20 @@ export class Session implements FlueSession {
 					await this.checkLatestAssistantForCompaction();
 					this.throwIfError('prompt');
 
+					const model: PromptModel = { id: resolvedModel.id };
 					if (schema) {
-						return this.extractResultWithRetry(schema);
+						const result = await this.extractResultWithRetry(schema);
+						return {
+							result,
+							usage: this.aggregateUsageSince(beforeLength),
+							model,
+						};
 					}
-					return { text: this.getAssistantText() };
+					return {
+						text: this.getAssistantText(),
+						usage: this.aggregateUsageSince(beforeLength),
+						model,
+					};
 				},
 			);
 		});
@@ -277,7 +290,7 @@ export class Session implements FlueSession {
 	async skill<S extends v.GenericSchema>(
 		name: string,
 		options: SkillOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
+	): Promise<PromptResultResponse<v.InferOutput<S>>>;
 	async skill(name: string, options?: SkillOptions): Promise<PromptResponse>;
 	async skill(name: string, options?: SkillOptions<v.GenericSchema | undefined>): Promise<any> {
 		return this.runOperation('skill', async () => {
@@ -319,7 +332,7 @@ export class Session implements FlueSession {
 					model: options?.model,
 					callSite: `this skill("${name}") call`,
 				},
-				async () => {
+				async ({ resolvedModel }) => {
 					const beforeLength = this.harness.state.messages.length;
 					await this.harness.prompt(skillPrompt);
 					await this.harness.waitForIdle();
@@ -327,10 +340,20 @@ export class Session implements FlueSession {
 					await this.checkLatestAssistantForCompaction();
 					this.throwIfError(`skill("${name}")`);
 
+					const model: PromptModel = { id: resolvedModel.id };
 					if (schema) {
-						return this.extractResultWithRetry(schema);
+						const result = await this.extractResultWithRetry(schema);
+						return {
+							result,
+							usage: this.aggregateUsageSince(beforeLength),
+							model,
+						};
 					}
-					return { text: this.getAssistantText() };
+					return {
+						text: this.getAssistantText(),
+						usage: this.aggregateUsageSince(beforeLength),
+						model,
+					};
 				},
 			);
 		});
@@ -339,7 +362,7 @@ export class Session implements FlueSession {
 	async task<S extends v.GenericSchema>(
 		text: string,
 		options: TaskOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
+	): Promise<PromptResultResponse<v.InferOutput<S>>>;
 	async task(text: string, options?: TaskOptions): Promise<PromptResponse>;
 	async task(text: string, options?: TaskOptions<v.GenericSchema | undefined>): Promise<any> {
 		const result = await this.runTask(text, options, undefined);
@@ -498,7 +521,7 @@ export class Session implements FlueSession {
 
 	private async withScopedRuntime<T>(
 		options: RuntimeScopeOptions,
-		fn: () => Promise<T>,
+		fn: (ctx: { resolvedModel: Model<any> }) => Promise<T>,
 	): Promise<T> {
 		const customTools = this.createCustomTools([...this.agentTools, ...options.tools]);
 		const scopedEnv = await scopeSessionEnv(this.env, options.commands);
@@ -506,11 +529,12 @@ export class Session implements FlueSession {
 		const previousModel = this.harness.state.model;
 		const previousSystemPrompt = this.harness.state.systemPrompt;
 
-		this.harness.state.model = this.resolveModelForCall(
+		const resolvedModel = this.resolveModelForCall(
 			options.model,
 			options.role,
 			options.callSite,
 		);
+		this.harness.state.model = resolvedModel;
 		this.harness.state.systemPrompt = this.buildSystemPrompt(options.role);
 		this.harness.state.tools = [
 			...this.createBuiltinTools(
@@ -523,7 +547,7 @@ export class Session implements FlueSession {
 			...customTools,
 		];
 		try {
-			return await fn();
+			return await fn({ resolvedModel });
 		} finally {
 			this.harness.state.tools = previousTools;
 			this.harness.state.model = previousModel;
@@ -569,7 +593,11 @@ export class Session implements FlueSession {
 		text: string,
 		options: InternalTaskOptions<S> | undefined,
 		signal: AbortSignal | undefined,
-	): Promise<InternalTaskResult<S extends v.GenericSchema ? v.InferOutput<S> : PromptResponse>> {
+	): Promise<
+		InternalTaskResult<
+			S extends v.GenericSchema ? PromptResultResponse<v.InferOutput<S>> : PromptResponse
+		>
+	> {
 		this.assertActive();
 		if (!this.createTaskSession) {
 			throw new Error('[flue] This session cannot create task sessions.');
@@ -892,6 +920,42 @@ export class Session implements FlueSession {
 		if (errorMsg) {
 			throw new Error(`[flue] ${context} failed: ${errorMsg}`);
 		}
+	}
+
+	/**
+	 * Sum the per-turn `usage` of every assistant message produced since
+	 * `beforeLength`. Returns zeros when no assistant messages were produced
+	 * (defensive — `throwIfError` normally fires first in that case).
+	 */
+	private aggregateUsageSince(beforeLength: number): PromptUsage {
+		const totals: PromptUsage = {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		};
+		const messages = this.harness.state.messages;
+		for (let i = beforeLength; i < messages.length; i++) {
+			const msg = messages[i]!;
+			if (msg.role !== 'assistant') continue;
+			const usage = (msg as AssistantMessage).usage;
+			if (!usage) continue;
+			totals.input += usage.input ?? 0;
+			totals.output += usage.output ?? 0;
+			totals.cacheRead += usage.cacheRead ?? 0;
+			totals.cacheWrite += usage.cacheWrite ?? 0;
+			totals.totalTokens += usage.totalTokens ?? 0;
+			if (usage.cost) {
+				totals.cost.input += usage.cost.input ?? 0;
+				totals.cost.output += usage.cost.output ?? 0;
+				totals.cost.cacheRead += usage.cost.cacheRead ?? 0;
+				totals.cost.cacheWrite += usage.cost.cacheWrite ?? 0;
+				totals.cost.total += usage.cost.total ?? 0;
+			}
+		}
+		return totals;
 	}
 
 	private getAssistantText(): string {

@@ -312,7 +312,7 @@ export interface FlueSession {
 	prompt<S extends v.GenericSchema>(
 		text: string,
 		options: PromptOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
+	): Promise<PromptResultResponse<v.InferOutput<S>>>;
 	prompt(text: string, options?: PromptOptions): Promise<PromptResponse>;
 
 	shell(command: string, options?: ShellOptions): Promise<ShellResult>;
@@ -320,20 +320,59 @@ export interface FlueSession {
 	skill<S extends v.GenericSchema>(
 		name: string,
 		options: SkillOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
+	): Promise<PromptResultResponse<v.InferOutput<S>>>;
 	skill(name: string, options?: SkillOptions): Promise<PromptResponse>;
 
 	task<S extends v.GenericSchema>(
 		text: string,
 		options: TaskOptions<S> & { result: S },
-	): Promise<v.InferOutput<S>>;
+	): Promise<PromptResultResponse<v.InferOutput<S>>>;
 	task(text: string, options?: TaskOptions): Promise<PromptResponse>;
 
 	delete(): Promise<void>;
 }
 
+/**
+ * Token + cost usage aggregated across every turn that a single prompt(),
+ * skill(), or task() call dispatched. Includes any internal turns triggered
+ * by the SDK on the caller's behalf (e.g. result-extraction retries,
+ * compaction-driven retries).
+ */
+export interface PromptUsage {
+	input: number;
+	output: number;
+	cacheRead: number;
+	cacheWrite: number;
+	totalTokens: number;
+	cost: {
+		input: number;
+		output: number;
+		cacheRead: number;
+		cacheWrite: number;
+		total: number;
+	};
+}
+
+/**
+ * Identifies the model that Flue selected for the call (after applying the
+ * call > role > agent precedence). When more than one model runs during the
+ * call (rare; e.g. cross-model flows), this reflects the model in effect for
+ * the call's primary turn.
+ */
+export interface PromptModel {
+	id: string;
+}
+
 export interface PromptResponse {
 	text: string;
+	usage: PromptUsage;
+	model: PromptModel;
+}
+
+export interface PromptResultResponse<T> {
+	result: T;
+	usage: PromptUsage;
+	model: PromptModel;
 }
 
 // ─── Session Store ──────────────────────────────────────────────────────────

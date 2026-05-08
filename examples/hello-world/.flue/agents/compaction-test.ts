@@ -19,7 +19,7 @@ export default async function ({ init }: FlueContext) {
 	// Compaction should have triggered after turn 1. Turn 2 verifies the agent
 	// still knows what it read (via the compaction summary).
 	console.log('[compaction-test] Turn 2: Verifying post-compaction memory...');
-	const result = await session.prompt(
+	const response = await session.prompt(
 		'What Wikipedia article did you just read? What were the key points? Return a structured result.',
 		{
 			result: v.object({
@@ -29,6 +29,7 @@ export default async function ({ init }: FlueContext) {
 		},
 	);
 
+	const result = response.result;
 	console.log(
 		`[compaction-test] Result: ${result.article} — ${result.keyPoints.length} key points`,
 	);

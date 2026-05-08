@@ -8,11 +8,11 @@ export default async function ({ init, payload }: FlueContext) {
 	const session = await agent.session();
 
 	// Test: invoke a named skill with structured result
-	const result = await session.skill('greet', {
+	const response = await session.skill('greet', {
 		args: { name: payload.name ?? 'World' },
 		result: v.object({ greeting: v.string() }),
 	});
-	console.log('[with-skill] greeting:', result.greeting);
+	console.log('[with-skill] greeting:', response.result.greeting);
 
-	return result;
+	return response.result;
 }
