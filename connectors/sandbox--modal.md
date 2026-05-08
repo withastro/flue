@@ -85,14 +85,6 @@ export interface ModalConnectorOptions {
 	 * Defaults to "/".
 	 */
 	cwd?: string;
-	/**
-	 * Cleanup behavior when the session is destroyed.
-	 *
-	 * - `false` (default): No cleanup — user manages the sandbox lifecycle.
-	 * - `true`: Calls `sandbox.terminate()` on session destroy.
-	 * - Function: Calls the provided function on session destroy.
-	 */
-	cleanup?: boolean | (() => Promise<void>);
 }
 
 /**
@@ -261,21 +253,7 @@ export function modal(sandbox: ModalSandbox, options?: ModalConnectorOptions): S
 		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
 			const sandboxCwd = cwd ?? options?.cwd ?? '/';
 			const api = new ModalSandboxApi(sandbox);
-
-			let cleanupFn: (() => Promise<void>) | undefined;
-			if (options?.cleanup === true) {
-				cleanupFn = async () => {
-					try {
-						await sandbox.terminate();
-					} catch (err) {
-						console.error('[flue:modal] Failed to terminate sandbox:', err);
-					}
-				};
-			} else if (typeof options?.cleanup === 'function') {
-				cleanupFn = options.cleanup;
-			}
-
-			return createSandboxSessionEnv(api, sandboxCwd, cleanupFn);
+			return createSandboxSessionEnv(api, sandboxCwd);
 		},
 	};
 }
@@ -344,7 +322,7 @@ export default async function ({ init }: FlueContext) {
   const sandbox = await client.sandboxes.create(app, image);
 
   const agent = await init({
-    sandbox: modal(sandbox, { cleanup: true }),
+    sandbox: modal(sandbox),
     model: 'anthropic/claude-sonnet-4-6',
   });
   const session = await agent.session();

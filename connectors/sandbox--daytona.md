@@ -60,17 +60,6 @@ import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/sdk/sandbox';
 import type { Sandbox as DaytonaSandbox } from '@daytona/sdk';
 
-export interface DaytonaConnectorOptions {
-	/**
-	 * Cleanup behavior when the session is destroyed.
-	 *
-	 * - `false` (default): No cleanup — user manages the sandbox lifecycle.
-	 * - `true`: Calls `sandbox.delete()` on session destroy.
-	 * - Function: Calls the provided function on session destroy.
-	 */
-	cleanup?: boolean | (() => Promise<void>);
-}
-
 /**
  * Implements SandboxApi by wrapping Daytona's TypeScript SDK.
  */
@@ -153,30 +142,12 @@ class DaytonaSandboxApi implements SandboxApi {
  * The user owns the sandbox lifecycle; Flue wraps it into a SessionEnv
  * for agent use.
  */
-export function daytona(
-	sandbox: DaytonaSandbox,
-	options?: DaytonaConnectorOptions,
-): SandboxFactory {
+export function daytona(sandbox: DaytonaSandbox): SandboxFactory {
 	return {
 		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
 			const sandboxCwd = cwd ?? (await sandbox.getWorkDir()) ?? '/home/daytona';
 			const api = new DaytonaSandboxApi(sandbox);
-
-			// Resolve cleanup function
-			let cleanupFn: (() => Promise<void>) | undefined;
-			if (options?.cleanup === true) {
-				cleanupFn = async () => {
-					try {
-						await sandbox.delete();
-					} catch (err) {
-						console.error('[flue:daytona] Failed to delete sandbox:', err);
-					}
-				};
-			} else if (typeof options?.cleanup === 'function') {
-				cleanupFn = options.cleanup;
-			}
-
-			return createSandboxSessionEnv(api, sandboxCwd, cleanupFn);
+			return createSandboxSessionEnv(api, sandboxCwd);
 		},
 	};
 }
@@ -227,7 +198,7 @@ export default async function ({ init, env }: FlueContext) {
   const sandbox = await client.create();
 
   const agent = await init({
-    sandbox: daytona(sandbox, { cleanup: true }),
+    sandbox: daytona(sandbox),
     model: 'anthropic/claude-sonnet-4-6',
   });
   const session = await agent.session();

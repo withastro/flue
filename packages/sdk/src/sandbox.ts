@@ -35,7 +35,6 @@ export function createCwdSessionEnv(parentEnv: SessionEnv, cwd: string): Session
 		rm: (p, o) => parentEnv.rm(resolvePath(p), o),
 		cwd: scopedCwd,
 		resolvePath,
-		cleanup: () => parentEnv.cleanup(),
 	};
 }
 
@@ -129,7 +128,6 @@ function createBashSessionEnv(
 		rm: (p, o) => fs.rm(resolve(p), o),
 		cwd,
 		resolvePath: resolve,
-		cleanup: async () => {},
 	};
 }
 
@@ -177,11 +175,7 @@ export interface SandboxApi {
 }
 
 /** Wrap a SandboxApi into SessionEnv. No just-bash, no intermediate filesystem layer. */
-export function createSandboxSessionEnv(
-	api: SandboxApi,
-	cwd: string,
-	cleanup?: () => Promise<void>,
-): SessionEnv {
+export function createSandboxSessionEnv(api: SandboxApi, cwd: string): SessionEnv {
 	const resolvePath = (p: string): string => {
 		if (p.startsWith('/')) return normalizePath(p);
 		if (cwd === '/') return normalizePath('/' + p);
@@ -235,9 +229,5 @@ export function createSandboxSessionEnv(
 		cwd,
 
 		resolvePath,
-
-		async cleanup(): Promise<void> {
-			if (cleanup) await cleanup();
-		},
 	};
 }

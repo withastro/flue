@@ -46,39 +46,25 @@ import type {
 } from '@flue/sdk/sandbox';
 import type { Sandbox as ProviderSandbox } from '<provider-sdk>';
 
-export interface ProviderConnectorOptions {
-  cleanup?: boolean | (() => Promise<void>);
-}
-
 class ProviderSandboxApi implements SandboxApi {
   constructor(private sandbox: ProviderSandbox) {}
   // ... implement every method on SandboxApi (see "Required SandboxApi Methods" below)
 }
 
-export function provider(
-  sandbox: ProviderSandbox,
-  options?: ProviderConnectorOptions,
-): SandboxFactory {
+export function provider(sandbox: ProviderSandbox): SandboxFactory {
   return {
     async createSessionEnv({ cwd }): Promise<SessionEnv> {
       const sandboxCwd = cwd ?? '/workspace'; // pick a sensible default
       const api = new ProviderSandboxApi(sandbox);
-
-      let cleanupFn: (() => Promise<void>) | undefined;
-      if (options?.cleanup === true) {
-        cleanupFn = async () => {
-          try { await sandbox.delete(); }
-          catch (err) { console.error('[flue:provider] cleanup failed:', err); }
-        };
-      } else if (typeof options?.cleanup === 'function') {
-        cleanupFn = options.cleanup;
-      }
-
-      return createSandboxSessionEnv(api, sandboxCwd, cleanupFn);
+      return createSandboxSessionEnv(api, sandboxCwd);
     },
   };
 }
 ```
+
+Connectors are pure adapters. They map a provider sandbox to `SessionEnv`
+and stop there. They do not manage the sandbox's lifetime — the user owns
+what they create.
 
 ---
 
@@ -86,8 +72,8 @@ export function provider(
 
 All from `@flue/sdk/sandbox`:
 
-- `createSandboxSessionEnv(api, cwd, cleanup?)` — wraps your `SandboxApi` into
-  a `SessionEnv` that Flue can drive.
+- `createSandboxSessionEnv(api, cwd)` — wraps your `SandboxApi` into a
+  `SessionEnv` that Flue can drive.
 - `SandboxApi` — the interface you implement.
 - `SandboxFactory` — what your factory returns.
 - `SessionEnv` — what `createSandboxSessionEnv` returns. You don't construct
@@ -147,8 +133,8 @@ export interface FileStat {
 ### `SessionEnv` (you do **not** implement this)
 
 You return one of these from `createSessionEnv`, but you get it from
-`createSandboxSessionEnv(api, cwd, cleanup?)`. You never write `SessionEnv`
-methods by hand in a connector.
+`createSandboxSessionEnv(api, cwd)`. You never write `SessionEnv` methods by
+hand in a connector.
 
 ---
 
@@ -207,17 +193,17 @@ unavailable, defaulting to `0` only when the call clearly succeeded.
 
 ---
 
-## The `cleanup` Option
+## Sandbox Lifetime
 
-By convention, connector factories accept a `cleanup` option:
+Flue does not manage sandbox lifetime. The user creates the sandbox, the
+user decides when (or whether) to delete it. Connectors must not call
+`sandbox.delete()`, `sandbox.terminate()`, `sandbox.kill()`, or any
+equivalent on the user's behalf.
 
-- `false` (default): Flue does not delete the sandbox. The user manages its
-  lifecycle.
-- `true`: Flue calls a provider-specific delete (e.g. `sandbox.delete()`) when
-  the session is destroyed.
-- A function: Flue calls the function when the session is destroyed.
-
-Wire `cleanup` into the third argument of `createSandboxSessionEnv`.
+This means connector factories take no `cleanup` option, and
+`createSandboxSessionEnv` takes no cleanup callback. If the connector
+itself opens a real socket (e.g. SSH), it can manage that socket
+internally — but it must not assume Flue will trigger teardown.
 
 ---
 
@@ -236,8 +222,8 @@ https://raw.githubusercontent.com/withastro/flue/refs/heads/main/connectors/sand
 ```
 
 It's the cleanest example of the patterns described here: shell-fallback for
-recursive mkdir, try/catch on `exists()`, buffer/string conversion in
-`writeFile`, and `cleanup` wiring.
+recursive mkdir, try/catch on `exists()`, and buffer/string conversion in
+`writeFile`.
 
 ---
 

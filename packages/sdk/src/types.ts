@@ -112,8 +112,6 @@ export interface SessionEnv {
 	 * for your own logic (e.g., extracting the parent directory).
 	 */
 	resolvePath(p: string): string;
-
-	cleanup(): Promise<void>;
 }
 
 // ─── Compaction ─────────────────────────────────────────────────────────────
@@ -311,9 +309,6 @@ export interface FlueAgent {
 
 	/** Run a shell command in the agent sandbox without recording it in a conversation. */
 	shell(command: string, options?: ShellOptions): Promise<ShellResult>;
-
-	/** Destroy the agent runtime and clean up the sandbox resources it owns. */
-	destroy(): Promise<void>;
 }
 
 export interface FlueSessions {

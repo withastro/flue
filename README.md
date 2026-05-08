@@ -171,7 +171,7 @@ export default async function ({ init, payload, env }: FlueContext) {
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
   const setupAgent = await init({
-    sandbox: daytona(sandbox, { cleanup: true }),
+    sandbox: daytona(sandbox),
     model: 'openai/gpt-5.5',
   });
   const setup = await setupAgent.session();

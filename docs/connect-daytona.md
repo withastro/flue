@@ -61,7 +61,7 @@ export default async function ({ init, env }: FlueContext) {
   const sandbox = await client.create();
 
   const agent = await init({
-    sandbox: daytona(sandbox, { cleanup: true }),
+    sandbox: daytona(sandbox),
     model: 'anthropic/claude-sonnet-4-6',
   });
   const session = await agent.session();
@@ -70,7 +70,7 @@ export default async function ({ init, env }: FlueContext) {
 }
 ```
 
-`cleanup: true` tells Flue to delete the sandbox when the request finishes. The default is `false` (you manage the lifecycle), and you can also pass a function for custom teardown.
+You own the sandbox. Flue does not delete it for you — sandboxes persist across requests by default, which is usually what you want for debugging, log inspection, or warm reuse.
 
 ## Advanced: Sharing a sandbox across sessions
 
@@ -89,7 +89,7 @@ export default async function ({ init, payload, env }: FlueContext) {
 
   // Setup session — clone the repo and install dependencies.
   const setupAgent = await init({
-    sandbox: daytona(sandbox, { cleanup: true }),
+    sandbox: daytona(sandbox),
     model: 'anthropic/claude-sonnet-4-6',
   });
   const setup = await setupAgent.session();
@@ -109,7 +109,7 @@ export default async function ({ init, payload, env }: FlueContext) {
 }
 ```
 
-Both `init()` calls share the same Daytona sandbox. Only the first carries `cleanup: true` so the sandbox is torn down when the request finishes. The second passes `cwd` so the agent's tools operate inside the project directory.
+Both `init()` calls share the same Daytona sandbox. The second passes `cwd` so the agent's tools operate inside the project directory.
 
 ## Configuring the sandbox
 

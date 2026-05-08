@@ -78,14 +78,6 @@ export interface BoxdConnectorOptions {
 	 * the probe entirely (useful when reusing a box you know is warm).
 	 */
 	readyTimeoutMs?: number;
-	/**
-	 * Cleanup behavior when the session is destroyed.
-	 *
-	 * - `false` (default): No cleanup — user manages the VM lifecycle.
-	 * - `true`: Calls `box.destroy()` on session destroy.
-	 * - Function: Calls the provided function on session destroy.
-	 */
-	cleanup?: boolean | (() => Promise<void>);
 }
 
 /**
@@ -248,21 +240,7 @@ export function boxd(box: BoxdBox, options?: BoxdConnectorOptions): SandboxFacto
 			readyPromise ??= waitForReady(box, options?.readyTimeoutMs ?? 30_000);
 			await readyPromise;
 			const api = new BoxdSandboxApi(box);
-
-			let cleanupFn: (() => Promise<void>) | undefined;
-			if (options?.cleanup === true) {
-				cleanupFn = async () => {
-					try {
-						await box.destroy();
-					} catch (err) {
-						console.error('[flue:boxd] Failed to destroy box:', err);
-					}
-				};
-			} else if (typeof options?.cleanup === 'function') {
-				cleanupFn = options.cleanup;
-			}
-
-			return createSandboxSessionEnv(api, sandboxCwd, cleanupFn);
+			return createSandboxSessionEnv(api, sandboxCwd);
 		},
 	};
 }
@@ -319,7 +297,7 @@ export default async function ({ init, env }: FlueContext) {
 
   try {
     const agent = await init({
-      sandbox: boxd(box, { cleanup: true }),
+      sandbox: boxd(box),
       model: 'anthropic/claude-sonnet-4-6',
     });
     const session = await agent.session();

@@ -31,7 +31,6 @@ export class AgentClient implements FlueAgent {
 	};
 
 	private openSessions = new Map<string, Session>();
-	private destroyed = false;
 
 	constructor(
 		readonly id: string,
@@ -48,7 +47,6 @@ export class AgentClient implements FlueAgent {
 	}
 
 	async shell(command: string, options?: ShellOptions): Promise<ShellResult> {
-		this.assertActive();
 		const effectiveCommands = mergeCommands(this.agentCommands, options?.commands);
 		const env = await createScopedEnv(this.env, effectiveCommands);
 		const result = await env.exec(command, {
@@ -59,22 +57,11 @@ export class AgentClient implements FlueAgent {
 		return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
 	}
 
-	async destroy(): Promise<void> {
-		if (this.destroyed) return;
-		this.destroyed = true;
-		for (const session of Array.from(this.openSessions.values())) {
-			session.close();
-		}
-		this.openSessions.clear();
-		await this.env.cleanup();
-	}
-
 	private async openSession(
 		id: string | undefined,
 		mode: OpenMode,
 		options?: SessionOptions,
 	): Promise<FlueSession> {
-		this.assertActive();
 		assertRoleExists(this.config.roles, options?.role);
 		const sessionId = normalizeSessionId(id);
 		const open = this.openSessions.get(sessionId);
@@ -126,7 +113,6 @@ export class AgentClient implements FlueAgent {
 	}
 
 	private async deleteSession(id: string | undefined): Promise<void> {
-		this.assertActive();
 		const sessionId = normalizeSessionId(id);
 		const open = this.openSessions.get(sessionId);
 		if (open) {
@@ -137,7 +123,6 @@ export class AgentClient implements FlueAgent {
 	}
 
 	private async createTaskSession(options: CreateTaskSessionOptions): Promise<Session> {
-		this.assertActive();
 		assertRoleExists(this.config.roles, options.role);
 
 		const sessionId = `task:${options.parentSessionId}:${options.taskId}`;
@@ -185,12 +170,6 @@ export class AgentClient implements FlueAgent {
 			taskDepth: options.depth,
 			createTaskSession: (childOptions) => this.createTaskSession(childOptions),
 		});
-	}
-
-	private assertActive(): void {
-		if (this.destroyed) {
-			throw new Error(`[flue] Agent "${this.id}" has been destroyed.`);
-		}
 	}
 }
 

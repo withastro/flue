@@ -119,8 +119,6 @@ export interface ExeDevConnectorOptions {
   privateKeyPath?: string;
   /** SSH agent socket path. Falls back to `$SSH_AUTH_SOCK` when no key resolves. */
   agent?: string;
-  /** Optional user cleanup hook to run before the SSH connection closes. */
-  cleanup?: () => Promise<void>;
 }
 
 export interface ExeDevLifecycleOptions {
@@ -620,7 +618,7 @@ export function exedev(vm: ExeDevVm | string, options?: ExeDevConnectorOptions):
   const resolvedVm = typeof vm === "string" ? { host: vm } : vm;
   return {
     async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-      const { ssh, disconnect } = await sshConnect(resolvedVm, options ?? {});
+      const { ssh } = await sshConnect(resolvedVm, options ?? {});
       const api = new ExeDevSandboxApi(ssh);
 
       let sandboxCwd = cwd ?? "/home/user";
@@ -634,20 +632,7 @@ export function exedev(vm: ExeDevVm | string, options?: ExeDevConnectorOptions):
         }
       }
 
-      const cleanupFn = async () => {
-        const userCleanup = options?.cleanup;
-        if (typeof userCleanup === "function") {
-          try {
-            await userCleanup();
-          } finally {
-            disconnect();
-          }
-          return;
-        }
-        disconnect();
-      };
-
-      return createSandboxSessionEnv(api, sandboxCwd, cleanupFn);
+      return createSandboxSessionEnv(api, sandboxCwd);
     },
   };
 }

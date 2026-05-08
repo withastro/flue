@@ -59,17 +59,6 @@ import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/sdk/sandbox';
 import type { Sandbox as VercelSandbox } from '@vercel/sandbox';
 
-export interface VercelConnectorOptions {
-	/**
-	 * Cleanup behavior when the session is destroyed.
-	 *
-	 * - `false` (default): No cleanup — user manages the sandbox lifecycle.
-	 * - `true`: Calls `sandbox.stop({ blocking: true })` on session destroy.
-	 * - Function: Calls the provided function on session destroy.
-	 */
-	cleanup?: boolean | (() => Promise<void>);
-}
-
 /**
  * Implements SandboxApi by wrapping the Vercel Sandbox SDK.
  */
@@ -160,30 +149,12 @@ class VercelSandboxApi implements SandboxApi {
  * The user owns the sandbox lifecycle; Flue wraps it into a SessionEnv
  * for agent use.
  */
-export function vercel(
-	sandbox: VercelSandbox,
-	options?: VercelConnectorOptions,
-): SandboxFactory {
+export function vercel(sandbox: VercelSandbox): SandboxFactory {
 	return {
 		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
 			const sandboxCwd = cwd ?? '/vercel/sandbox';
 			const api = new VercelSandboxApi(sandbox);
-
-			// Resolve cleanup function
-			let cleanupFn: (() => Promise<void>) | undefined;
-			if (options?.cleanup === true) {
-				cleanupFn = async () => {
-					try {
-						await sandbox.stop({ blocking: true });
-					} catch (err) {
-						console.error('[flue:vercel] Failed to stop sandbox:', err);
-					}
-				};
-			} else if (typeof options?.cleanup === 'function') {
-				cleanupFn = options.cleanup;
-			}
-
-			return createSandboxSessionEnv(api, sandboxCwd, cleanupFn);
+			return createSandboxSessionEnv(api, sandboxCwd);
 		},
 	};
 }
@@ -249,7 +220,7 @@ export default async function ({ init }: FlueContext) {
   const sandbox = await Sandbox.create({ runtime: 'node24' });
 
   const agent = await init({
-    sandbox: vercel(sandbox, { cleanup: true }),
+    sandbox: vercel(sandbox),
     model: 'anthropic/claude-sonnet-4-6',
   });
   const session = await agent.session();

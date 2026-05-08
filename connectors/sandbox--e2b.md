@@ -67,17 +67,6 @@ import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/sdk/sandbox';
 import type { Sandbox as E2BSandbox } from 'e2b';
 
-export interface E2BConnectorOptions {
-	/**
-	 * Cleanup behavior when the session is destroyed.
-	 *
-	 * - `false` (default): No cleanup — user manages the sandbox lifecycle.
-	 * - `true`: Calls `sandbox.kill()` on session destroy.
-	 * - Function: Calls the provided function on session destroy.
-	 */
-	cleanup?: boolean | (() => Promise<void>);
-}
-
 /**
  * Implements SandboxApi by wrapping the E2B v2 TypeScript SDK.
  *
@@ -176,7 +165,7 @@ class E2BSandboxApi implements SandboxApi {
  * The user owns the sandbox lifecycle; Flue wraps it into a SessionEnv
  * for agent use.
  */
-export function e2b(sandbox: E2BSandbox, options?: E2BConnectorOptions): SandboxFactory {
+export function e2b(sandbox: E2BSandbox): SandboxFactory {
 	return {
 		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
 			// The E2B base template's default user is `user` with home
@@ -184,21 +173,7 @@ export function e2b(sandbox: E2BSandbox, options?: E2BConnectorOptions): Sandbox
 			// overrides cwd.
 			const sandboxCwd = cwd ?? '/home/user';
 			const api = new E2BSandboxApi(sandbox);
-
-			let cleanupFn: (() => Promise<void>) | undefined;
-			if (options?.cleanup === true) {
-				cleanupFn = async () => {
-					try {
-						await sandbox.kill();
-					} catch (err) {
-						console.error('[flue:e2b] Failed to kill sandbox:', err);
-					}
-				};
-			} else if (typeof options?.cleanup === 'function') {
-				cleanupFn = options.cleanup;
-			}
-
-			return createSandboxSessionEnv(api, sandboxCwd, cleanupFn);
+			return createSandboxSessionEnv(api, sandboxCwd);
 		},
 	};
 }
@@ -257,7 +232,7 @@ export default async function ({ init }: FlueContext) {
   const sandbox = await Sandbox.create();
 
   const agent = await init({
-    sandbox: e2b(sandbox, { cleanup: true }),
+    sandbox: e2b(sandbox),
     model: 'anthropic/claude-sonnet-4-6',
   });
   const session = await agent.session();

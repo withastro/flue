@@ -72,13 +72,6 @@ export interface IsloConnectorOptions {
 	cwd?: string;
 	/** Path to the islo binary. Defaults to `"islo"` (resolved via PATH). */
 	cliPath?: string;
-	/**
-	 * Cleanup behavior when the session is destroyed.
-	 * - `false` (default): no cleanup, user manages the sandbox.
-	 * - `true`: runs `islo rm <name> --force`.
-	 * - Function: called on destroy.
-	 */
-	cleanup?: boolean | (() => Promise<void>);
 }
 
 const q = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`;
@@ -219,23 +212,7 @@ export function islo(name: string, options?: IsloConnectorOptions): SandboxFacto
 		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
 			const sandboxCwd = cwd ?? options?.cwd ?? '/workspace';
 			const api = new IsloSandboxApi(name, cliPath);
-
-			let cleanupFn: (() => Promise<void>) | undefined;
-			if (options?.cleanup === true) {
-				cleanupFn = () =>
-					new Promise<void>((resolve) => {
-						const c = spawn(cliPath, ['rm', name, '--force'], {
-							env: process.env,
-							stdio: 'ignore',
-						});
-						c.on('error', () => resolve());
-						c.on('close', () => resolve());
-					});
-			} else if (typeof options?.cleanup === 'function') {
-				cleanupFn = options.cleanup;
-			}
-
-			return createSandboxSessionEnv(api, sandboxCwd, cleanupFn);
+			return createSandboxSessionEnv(api, sandboxCwd);
 		},
 	};
 }
