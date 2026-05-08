@@ -466,6 +466,9 @@ export interface SessionStore {
 /** All option fields are scoped to the duration of the call. */
 export interface PromptOptions<S extends v.GenericSchema | undefined = undefined> {
 	result?: S;
+	/** Abort this prompt. Prefer `AbortSignal.timeout(ms)` for timeouts. */
+	signal?: AbortSignal;
+	/** Timeout in seconds. Prefer `signal: AbortSignal.timeout(ms)`. */
 	timeout?: number;
 	commands?: Command[];
 	tools?: ToolDef[];
@@ -479,6 +482,9 @@ export interface PromptOptions<S extends v.GenericSchema | undefined = undefined
 export interface SkillOptions<S extends v.GenericSchema | undefined = undefined> {
 	args?: Record<string, unknown>;
 	result?: S;
+	/** Abort this skill call. Prefer `AbortSignal.timeout(ms)` for timeouts. */
+	signal?: AbortSignal;
+	/** Timeout in seconds. Prefer `signal: AbortSignal.timeout(ms)`. */
 	timeout?: number;
 	commands?: Command[];
 	tools?: ToolDef[];
@@ -490,6 +496,8 @@ export interface SkillOptions<S extends v.GenericSchema | undefined = undefined>
 
 export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> {
 	result?: S;
+	/** Abort this task call. */
+	signal?: AbortSignal;
 	commands?: Command[];
 	tools?: ToolDef[];
 	role?: string;

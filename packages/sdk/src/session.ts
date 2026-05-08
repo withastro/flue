@@ -112,6 +112,11 @@ interface InternalTaskOptions<S extends v.GenericSchema | undefined> extends Tas
 	inheritedThinkingLevel?: ThinkingLevel;
 }
 
+interface AbortSignalOptions {
+	signal?: AbortSignal;
+	timeout?: number;
+}
+
 /** In-memory session store. Sessions persist for the lifetime of the process. */
 export class InMemorySessionStore implements SessionStore {
 	private store = new Map<string, SessionData>();
@@ -257,7 +262,7 @@ export class Session implements FlueSession {
 	): Promise<PromptResultResponse<v.InferOutput<S>>>;
 	async prompt(text: string, options?: PromptOptions): Promise<PromptResponse>;
 	async prompt(text: string, options?: PromptOptions<v.GenericSchema | undefined>): Promise<any> {
-		return this.runOperation('prompt', async () => {
+		return this.runAbortableOperation('prompt', options, async (signal) => {
 			const role = this.resolveEffectiveRole(options?.role);
 
 			const schema = options?.result as v.GenericSchema | undefined;
@@ -274,6 +279,7 @@ export class Session implements FlueSession {
 					callSite: 'this prompt() call',
 				},
 				async ({ resolvedModel }) => {
+					throwIfAborted(signal);
 					// Two snapshots, two purposes:
 					//   - `beforeLength` indexes the volatile flat-message array and is
 					//     used by `syncHarnessMessagesSince` to copy newly produced
@@ -286,12 +292,14 @@ export class Session implements FlueSession {
 					await this.harness.prompt(fullPrompt);
 					await this.harness.waitForIdle();
 					await this.syncHarnessMessagesSince(beforeLength, 'prompt');
+					throwIfAborted(signal);
 					await this.checkLatestAssistantForCompaction();
+					throwIfAborted(signal);
 					this.throwIfError('prompt');
 
 					const model: PromptModel = { id: resolvedModel.id };
 					if (schema) {
-						const result = await this.extractResultWithRetry(schema);
+						const result = await this.extractResultWithRetry(schema, signal);
 						return {
 							result,
 							usage: this.aggregateUsageSince(beforeLeafId),
@@ -314,7 +322,7 @@ export class Session implements FlueSession {
 	): Promise<PromptResultResponse<v.InferOutput<S>>>;
 	async skill(name: string, options?: SkillOptions): Promise<PromptResponse>;
 	async skill(name: string, options?: SkillOptions<v.GenericSchema | undefined>): Promise<any> {
-		return this.runOperation('skill', async () => {
+		return this.runAbortableOperation('skill', options, async (signal) => {
 			const role = this.resolveEffectiveRole(options?.role);
 
 			let registeredSkill = this.config.skills[name];
@@ -355,17 +363,20 @@ export class Session implements FlueSession {
 					callSite: `this skill("${name}") call`,
 				},
 				async ({ resolvedModel }) => {
+					throwIfAborted(signal);
 					const beforeLength = this.harness.state.messages.length;
 					const beforeLeafId = this.history.getLeafId();
 					await this.harness.prompt(skillPrompt);
 					await this.harness.waitForIdle();
 					await this.syncHarnessMessagesSince(beforeLength, 'skill');
+					throwIfAborted(signal);
 					await this.checkLatestAssistantForCompaction();
+					throwIfAborted(signal);
 					this.throwIfError(`skill("${name}")`);
 
 					const model: PromptModel = { id: resolvedModel.id };
 					if (schema) {
-						const result = await this.extractResultWithRetry(schema);
+						const result = await this.extractResultWithRetry(schema, signal);
 						return {
 							result,
 							usage: this.aggregateUsageSince(beforeLeafId),
@@ -388,8 +399,11 @@ export class Session implements FlueSession {
 	): Promise<PromptResultResponse<v.InferOutput<S>>>;
 	async task(text: string, options?: TaskOptions): Promise<PromptResponse>;
 	async task(text: string, options?: TaskOptions<v.GenericSchema | undefined>): Promise<any> {
-		const result = await this.runTask(text, options, undefined);
-		return result.output;
+		return this.withAbortSignal(options, async (signal) => {
+			const result = await this.runTask(text, options, signal);
+			throwIfAborted(signal);
+			return result.output;
+		});
 	}
 
 	async shell(command: string, options?: ShellOptions): Promise<ShellResult> {
@@ -652,7 +666,7 @@ export class Session implements FlueSession {
 		if (this.taskDepth >= MAX_TASK_DEPTH) {
 			throw new Error(`[flue] Maximum task depth (${MAX_TASK_DEPTH}) exceeded.`);
 		}
-		if (signal?.aborted) throw new Error('Operation aborted');
+		throwIfAborted(signal);
 
 		const taskId = crypto.randomUUID();
 		const requestedRole = options?.role ?? this.sessionRole ?? this.config.role;
@@ -687,7 +701,7 @@ export class Session implements FlueSession {
 			if (signal) {
 				abortListener = () => child?.abort();
 				signal.addEventListener('abort', abortListener, { once: true });
-				if (signal.aborted) throw new Error('Operation aborted');
+				throwIfAborted(signal);
 			}
 
 			const schema = options?.result as v.GenericSchema | undefined;
@@ -699,6 +713,7 @@ export class Session implements FlueSession {
 					options?.thinkingLevel ??
 					(roleThinkingLevel !== undefined ? undefined : options?.inheritedThinkingLevel),
 				tools: options?.tools,
+				signal,
 			};
 			if (schema) childOptions.result = schema;
 
@@ -740,6 +755,57 @@ export class Session implements FlueSession {
 	}
 
 	// ─── Internal ────────────────────────────────────────────────────────────
+
+	private async runAbortableOperation<T>(
+		operation: string,
+		options: AbortSignalOptions | undefined,
+		fn: (signal: AbortSignal | undefined) => Promise<T>,
+	): Promise<T> {
+		return this.runOperation(operation, async () => this.withAbortSignal(options, fn));
+	}
+
+	private async withAbortSignal<T>(
+		options: AbortSignalOptions | undefined,
+		fn: (signal: AbortSignal | undefined) => Promise<T>,
+	): Promise<T> {
+		const externalSignal = options?.signal;
+		const timeoutSeconds =
+			typeof options?.timeout === 'number' &&
+			Number.isFinite(options.timeout) &&
+			options.timeout > 0
+				? options.timeout
+				: undefined;
+
+		if (externalSignal?.aborted) throw createAbortError(externalSignal.reason);
+		if (!externalSignal && timeoutSeconds === undefined) return fn(undefined);
+
+		const controller = new AbortController();
+		let timer: ReturnType<typeof setTimeout> | undefined;
+
+		const abort = (reason: unknown) => {
+			if (!controller.signal.aborted) controller.abort(reason);
+			this.abort();
+		};
+		const onExternalAbort = () => abort(externalSignal?.reason);
+
+		if (externalSignal) externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+		if (timeoutSeconds !== undefined) {
+			timer = setTimeout(
+				() => abort(createAbortError(`Operation timed out after ${timeoutSeconds} seconds`)),
+				timeoutSeconds * 1000,
+			);
+		}
+
+		try {
+			throwIfAborted(controller.signal);
+			const result = await fn(controller.signal);
+			throwIfAborted(controller.signal);
+			return result;
+		} finally {
+			if (timer) clearTimeout(timer);
+			if (externalSignal) externalSignal.removeEventListener('abort', onExternalAbort);
+		}
+	}
 
 	private async runOperation<T>(operation: string, fn: () => Promise<T>): Promise<T> {
 		return this.runExclusive(operation, async () => {
@@ -1038,9 +1104,11 @@ export class Session implements FlueSession {
 
 	private async extractResultWithRetry<S extends v.GenericSchema>(
 		schema: S,
+		signal?: AbortSignal,
 	): Promise<v.InferOutput<S>> {
 		const text = this.getAssistantText();
 		try {
+			throwIfAborted(signal);
 			return extractResult(text, schema);
 		} catch (err) {
 			if (!(err instanceof ResultExtractionError)) throw err;
@@ -1048,10 +1116,13 @@ export class Session implements FlueSession {
 
 			const followUpPrompt = buildResultExtractionPrompt(schema);
 			const beforeRetry = this.harness.state.messages.length;
+			throwIfAborted(signal);
 			await this.harness.prompt(followUpPrompt);
 			await this.harness.waitForIdle();
 			await this.syncHarnessMessagesSince(beforeRetry, 'retry');
+			throwIfAborted(signal);
 			await this.checkLatestAssistantForCompaction();
+			throwIfAborted(signal);
 
 			const retryText = this.getAssistantText();
 			return extractResult(retryText, schema);
@@ -1073,6 +1144,27 @@ export function normalizePath(p: string): string {
 		}
 	}
 	return '/' + result.join('/');
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+	if (!signal?.aborted) return;
+	throw createAbortError(signal.reason);
+}
+
+function createAbortError(reason?: unknown): Error {
+	if (reason instanceof Error) return reason;
+	if (reason && typeof reason === 'object') {
+		const maybeName = 'name' in reason ? String(reason.name) : undefined;
+		const maybeMessage = 'message' in reason ? String(reason.message) : undefined;
+		if (maybeName || maybeMessage) {
+			const error = new Error(maybeMessage || 'Operation aborted');
+			error.name = maybeName || 'AbortError';
+			return error;
+		}
+	}
+	const error = new Error(typeof reason === 'string' ? reason : 'Operation aborted');
+	error.name = 'AbortError';
+	return error;
 }
 
 export async function deleteSessionTree(

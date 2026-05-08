@@ -263,6 +263,36 @@ Agents own sandbox state such as files written during a run. Sessions persist me
 
 In production, generate a stable agent ID for the sandbox/runtime scope you want to preserve. Use `agent.session(threadId)` when you need multiple conversations inside the same agent.
 
+### Cancellation
+
+Pass an `AbortSignal` to stop an in-progress `prompt()`, `skill()`, or `task()` call. The signal aborts the active model request, context compaction, and any child tasks started by the call.
+
+```ts
+const controller = new AbortController();
+
+setTimeout(() => controller.abort('timeout'), 10_000);
+
+try {
+  await session.prompt('Audit this repository and summarize the risky files.', {
+    signal: controller.signal,
+  });
+} catch (error) {
+  if (controller.signal.aborted) {
+    // prompt was cancelled
+  }
+}
+```
+
+For simple timeouts, use the platform API:
+
+```ts
+await session.skill('review', {
+  signal: AbortSignal.timeout(10_000),
+});
+```
+
+`prompt()` and `skill()` also accept `timeout` in seconds for compatibility.
+
 ### Tasks
 
 Use `session.task()` to run a focused, one-shot child agent in a detached session. Tasks share the same sandbox/filesystem, but get their own message history and discover `AGENTS.md` plus `.agents/skills/` from their working directory. The same `task` tool is also available to the LLM during `prompt()` and `skill()` calls, so the agent can delegate parallel research or exploration work itself.
