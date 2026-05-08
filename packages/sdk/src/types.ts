@@ -341,8 +341,13 @@ export interface FlueSession {
  *     context approached the model's window during the call,
  *   - the post-compaction retry assistant turn for overflow recovery.
  *
- * `cost` values are USD, computed by pi-ai from the model's cost table —
- * callers don't need to maintain their own price list.
+ * `cost` is computed by pi-ai as `(model.cost.X / 1_000_000) * usage.X`,
+ * where `model.cost.X` is the per-million-token rate from the model's
+ * cost table. The currency of `cost` therefore matches whatever unit that
+ * rate is denominated in. For pi-ai's built-in model registry the rates
+ * mirror each provider's published pricing (USD for the major commercial
+ * providers); custom-registered models or proxied endpoints may use other
+ * units. When in doubt, consult the active model's cost table.
  */
 export interface PromptUsage {
 	input: number;
