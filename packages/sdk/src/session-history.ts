@@ -4,6 +4,7 @@ import type {
 	BranchSummaryEntry,
 	CompactionEntry,
 	MessageEntry,
+	PromptUsage,
 	SessionData,
 	SessionEntry,
 } from './types.ts';
@@ -20,6 +21,7 @@ export interface CompactionAppendInput {
 	firstKeptEntryId: string;
 	tokensBefore: number;
 	details?: { readFiles: string[]; modifiedFiles: string[] };
+	usage?: PromptUsage;
 }
 
 export class SessionHistory {
@@ -54,6 +56,21 @@ export class SessionHistory {
 			current = current.parentId ? this.byId.get(current.parentId) : undefined;
 		}
 		return path.reverse();
+	}
+
+	/**
+	 * Active-path entries appended after `afterLeafId` (exclusive), in order.
+	 * Returns the full active path when `afterLeafId` is null. When the id is
+	 * not on the current active path (e.g. a branch switch happened), falls
+	 * back to the full active path — callers using this for usage aggregation
+	 * over a single call window won't normally trip this case.
+	 */
+	getActivePathSince(afterLeafId: string | null): SessionEntry[] {
+		const path = this.getActivePath();
+		if (afterLeafId === null) return path;
+		const startIndex = path.findIndex((entry) => entry.id === afterLeafId);
+		if (startIndex === -1) return path;
+		return path.slice(startIndex + 1);
 	}
 
 	buildContextEntries(): ContextEntry[] {
@@ -117,6 +134,7 @@ export class SessionHistory {
 			firstKeptEntryId: input.firstKeptEntryId,
 			tokensBefore: input.tokensBefore,
 			details: input.details,
+			usage: input.usage,
 		};
 		this.appendEntry(entry);
 		return entry.id;

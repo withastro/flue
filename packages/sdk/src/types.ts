@@ -407,6 +407,13 @@ export interface CompactionEntry extends SessionEntryBase {
 	firstKeptEntryId: string;
 	tokensBefore: number;
 	details?: { readFiles: string[]; modifiedFiles: string[] };
+	/**
+	 * Token usage consumed by the summarization call(s) that produced this
+	 * compaction. Aggregated across the 1–2 internal LLM calls that
+	 * `compact()` dispatched. Undefined for compactions persisted before
+	 * this field was introduced (treated as zero by aggregators).
+	 */
+	usage?: PromptUsage;
 }
 
 export interface BranchSummaryEntry extends SessionEntryBase {

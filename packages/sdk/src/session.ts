@@ -262,6 +262,7 @@ export class Session implements FlueSession {
 				},
 				async ({ resolvedModel }) => {
 					const beforeLength = this.harness.state.messages.length;
+					const beforeLeafId = this.history.getLeafId();
 					await this.harness.prompt(fullPrompt);
 					await this.harness.waitForIdle();
 					await this.syncHarnessMessagesSince(beforeLength, 'prompt');
@@ -273,13 +274,13 @@ export class Session implements FlueSession {
 						const result = await this.extractResultWithRetry(schema);
 						return {
 							result,
-							usage: this.aggregateUsageSince(beforeLength),
+							usage: this.aggregateUsageSince(beforeLeafId),
 							model,
 						};
 					}
 					return {
 						text: this.getAssistantText(),
-						usage: this.aggregateUsageSince(beforeLength),
+						usage: this.aggregateUsageSince(beforeLeafId),
 						model,
 					};
 				},
@@ -334,6 +335,7 @@ export class Session implements FlueSession {
 				},
 				async ({ resolvedModel }) => {
 					const beforeLength = this.harness.state.messages.length;
+					const beforeLeafId = this.history.getLeafId();
 					await this.harness.prompt(skillPrompt);
 					await this.harness.waitForIdle();
 					await this.syncHarnessMessagesSince(beforeLength, 'skill');
@@ -345,13 +347,13 @@ export class Session implements FlueSession {
 						const result = await this.extractResultWithRetry(schema);
 						return {
 							result,
-							usage: this.aggregateUsageSince(beforeLength),
+							usage: this.aggregateUsageSince(beforeLeafId),
 							model,
 						};
 					}
 					return {
 						text: this.getAssistantText(),
-						usage: this.aggregateUsageSince(beforeLength),
+						usage: this.aggregateUsageSince(beforeLeafId),
 						model,
 					};
 				},
@@ -882,6 +884,7 @@ export class Session implements FlueSession {
 				firstKeptEntryId: firstKeptEntry.id,
 				tokensBefore: result.tokensBefore,
 				details: result.details,
+				usage: result.usage,
 			});
 			this.harness.state.messages = this.history.buildContext();
 
@@ -923,11 +926,18 @@ export class Session implements FlueSession {
 	}
 
 	/**
-	 * Sum the per-turn `usage` of every assistant message produced since
-	 * `beforeLength`. Returns zeros when no assistant messages were produced
-	 * (defensive — `throwIfError` normally fires first in that case).
+	 * Sum the usage of every entry the call appended to the active path
+	 * after `beforeLeafId`: assistant messages contribute their per-turn
+	 * `usage`, and compaction entries contribute the aggregated cost of the
+	 * summarization call(s) they dispatched. Returns zeros when nothing was
+	 * appended (defensive — `throwIfError` normally fires first).
+	 *
+	 * Walks the durable, parent-linked active path rather than the volatile
+	 * flat `harness.state.messages` array, so the result is robust to
+	 * mid-call mutations (e.g. overflow recovery removing a failed
+	 * assistant turn before retry).
 	 */
-	private aggregateUsageSince(beforeLength: number): PromptUsage {
+	private aggregateUsageSince(beforeLeafId: string | null): PromptUsage {
 		const totals: PromptUsage = {
 			input: 0,
 			output: 0,
@@ -936,12 +946,8 @@ export class Session implements FlueSession {
 			totalTokens: 0,
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		};
-		const messages = this.harness.state.messages;
-		for (let i = beforeLength; i < messages.length; i++) {
-			const msg = messages[i]!;
-			if (msg.role !== 'assistant') continue;
-			const usage = (msg as AssistantMessage).usage;
-			if (!usage) continue;
+		const addInto = (usage: PromptUsage | undefined): void => {
+			if (!usage) return;
 			totals.input += usage.input ?? 0;
 			totals.output += usage.output ?? 0;
 			totals.cacheRead += usage.cacheRead ?? 0;
@@ -953,6 +959,13 @@ export class Session implements FlueSession {
 				totals.cost.cacheRead += usage.cost.cacheRead ?? 0;
 				totals.cost.cacheWrite += usage.cost.cacheWrite ?? 0;
 				totals.cost.total += usage.cost.total ?? 0;
+			}
+		};
+		for (const entry of this.history.getActivePathSince(beforeLeafId)) {
+			if (entry.type === 'message' && entry.message.role === 'assistant') {
+				addInto((entry.message as AssistantMessage).usage as PromptUsage | undefined);
+			} else if (entry.type === 'compaction') {
+				addInto(entry.usage);
 			}
 		}
 		return totals;
