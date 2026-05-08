@@ -1,0 +1,33 @@
+labels: []
+body:
+  - type: textarea
+    id: rfc
+    attributes:
+      label: RFC
+      value: |
+        # Summary
+
+        A brief, one or two sentence explanation of the proposal.
+
+        # Background & Motivation
+
+        Include any useful background detail that explains why this RFC is important.
+        What are the problems that this RFC sets out to solve? Why now? Be brief!
+
+        It can be useful to illustrate your RFC as a user problem in this section.
+        (ex: "Users have reported that it is difficult to do X in Flue today.")
+
+        # Goals
+
+        A **concise, bulleted-list** outlining the intended goals of this RFC.
+
+        - What are the exact problems that you are trying to solve with this RFC?
+        - Separate these goals from the solution that you will outline below.
+        - If this RFC isn't approved, these goals can be used to develop alternative solutions.
+
+        # Example
+
+        If the proposal involves a new or changed API, then include a basic code example.
+        Otherwise, omit this section if it's not applicable.
+    validations:
+      required: true

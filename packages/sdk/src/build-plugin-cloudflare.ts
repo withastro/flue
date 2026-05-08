@@ -226,7 +226,7 @@ function createDOStore(sql) {
   };
 }
 
-function createContextForRequest(id, payload, doInstance) {
+function createContextForRequest(id, payload, doInstance, req) {
   // Use DO SQLite storage by default, fall back to in-memory
   const defaultStore = doInstance?.ctx?.storage?.sql
     ? createDOStore(doInstance.ctx.storage.sql)
@@ -236,6 +236,7 @@ function createContextForRequest(id, payload, doInstance) {
     id,
     payload,
     env: doInstance?.env ?? {},
+    req,
     agentConfig: {
       systemPrompt, skills, roles, model: undefined, resolveModel,
     },
@@ -270,7 +271,7 @@ function runHandlerWithKeepAlive(doInstance, ctx, handler) {
   });
 }
 
-function startWebhookFiber(doInstance, requestId, agentName, id, payload, handler) {
+function startWebhookFiber(doInstance, requestId, agentName, id, payload, handler, req) {
   const run = async (fiber) => {
     fiber?.stash?.({
       version: 1,
@@ -282,7 +283,7 @@ function startWebhookFiber(doInstance, requestId, agentName, id, payload, handle
       startedAt: Date.now(),
     });
 
-    const ctx = createContextForRequest(id, payload, doInstance);
+    const ctx = createContextForRequest(id, payload, doInstance, req);
     return runWithInstanceContext(doInstance, async () => {
       try {
         return await handler(ctx);
@@ -320,7 +321,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
     // Fire-and-forget (webhook mode)
     if (isWebhook) {
       const requestId = crypto.randomUUID();
-      startWebhookFiber(doInstance, requestId, agentName, id, payload, handler).then(
+      startWebhookFiber(doInstance, requestId, agentName, id, payload, handler, request).then(
         (result) => {
           console.log('[flue] Webhook handler complete:', agentName,
             result !== undefined ? JSON.stringify(result) : '(no return)');
@@ -358,7 +359,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
         await writer.write(encoder.encode(lines.join('\\n')));
       };
 
-      const ctx = createContextForRequest(id, payload, doInstance);
+      const ctx = createContextForRequest(id, payload, doInstance, request);
       ctx.setEventCallback((event) => {
         if (event.type === 'idle') isIdle = true;
         writeSSE(event, event.type).catch(() => {});
@@ -395,7 +396,7 @@ async function handleAgentRequest(request, doInstance, agentName, handler) {
     }
 
     // Sync mode (default)
-    const ctx = createContextForRequest(id, payload, doInstance);
+    const ctx = createContextForRequest(id, payload, doInstance, request);
     try {
       const result = await runHandlerWithKeepAlive(doInstance, ctx, handler);
       return new Response(
