@@ -270,6 +270,7 @@ const port = parseInt(process.env.PORT || '3000', 10);
 const server = serve({
   fetch: app.fetch,
   port,
+  // SSE requests can outlive Node's default 300s request timeout.
   serverOptions: { requestTimeout: 0 },
 });
 console.log('[flue] Server listening on http://localhost:' + port);
