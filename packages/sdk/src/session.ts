@@ -25,6 +25,7 @@ import {
 	extractResult,
 	ResultExtractionError,
 } from './result.ts';
+import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 import { loadSkillByPath } from './context.ts';
 import { createScopedEnv as scopeSessionEnv, mergeCommands } from './env-utils.ts';
 import {
@@ -261,6 +262,13 @@ export class Session implements FlueSession {
 					callSite: 'this prompt() call',
 				},
 				async ({ resolvedModel }) => {
+					// Two snapshots, two purposes:
+					//   - `beforeLength` indexes the volatile flat-message array and is
+					//     used by `syncHarnessMessagesSince` to copy newly produced
+					//     harness messages into the durable history tree.
+					//   - `beforeLeafId` anchors a window in that durable tree and is
+					//     used by `aggregateUsageSince` to sum usage across exactly the
+					//     entries this call appended (including any compaction entry).
 					const beforeLength = this.harness.state.messages.length;
 					const beforeLeafId = this.history.getLeafId();
 					await this.harness.prompt(fullPrompt);
@@ -828,6 +836,13 @@ export class Session implements FlueSession {
 		}
 	}
 
+	/**
+	 * Runs a compaction pass. The summarization cost (1–2 internal LLM
+	 * calls) is persisted on the resulting `CompactionEntry.usage`, which
+	 * `aggregateUsageSince` later folds into the surrounding call's
+	 * `response.usage` — so users see the true cost of the call that
+	 * triggered compaction.
+	 */
 	private async runCompaction(reason: 'threshold' | 'overflow', willRetry: boolean): Promise<void> {
 		this.compactionAbortController = new AbortController();
 		const messagesBefore = this.harness.state.messages.length;
@@ -928,9 +943,10 @@ export class Session implements FlueSession {
 	/**
 	 * Sum the usage of every entry the call appended to the active path
 	 * after `beforeLeafId`: assistant messages contribute their per-turn
-	 * `usage`, and compaction entries contribute the aggregated cost of the
-	 * summarization call(s) they dispatched. Returns zeros when nothing was
-	 * appended (defensive — `throwIfError` normally fires first).
+	 * `usage` (provider-reported, normalized through `fromProviderUsage`),
+	 * and compaction entries contribute the aggregated cost of the
+	 * summarization call(s) they dispatched. Returns zeros when nothing
+	 * was appended (defensive — `throwIfError` normally fires first).
 	 *
 	 * Walks the durable, parent-linked active path rather than the volatile
 	 * flat `harness.state.messages` array, so the result is robust to
@@ -938,34 +954,13 @@ export class Session implements FlueSession {
 	 * assistant turn before retry).
 	 */
 	private aggregateUsageSince(beforeLeafId: string | null): PromptUsage {
-		const totals: PromptUsage = {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		};
-		const addInto = (usage: PromptUsage | undefined): void => {
-			if (!usage) return;
-			totals.input += usage.input ?? 0;
-			totals.output += usage.output ?? 0;
-			totals.cacheRead += usage.cacheRead ?? 0;
-			totals.cacheWrite += usage.cacheWrite ?? 0;
-			totals.totalTokens += usage.totalTokens ?? 0;
-			if (usage.cost) {
-				totals.cost.input += usage.cost.input ?? 0;
-				totals.cost.output += usage.cost.output ?? 0;
-				totals.cost.cacheRead += usage.cost.cacheRead ?? 0;
-				totals.cost.cacheWrite += usage.cost.cacheWrite ?? 0;
-				totals.cost.total += usage.cost.total ?? 0;
-			}
-		};
+		let totals = emptyUsage();
 		for (const entry of this.history.getActivePathSince(beforeLeafId)) {
 			if (entry.type === 'message' && entry.message.role === 'assistant') {
-				addInto((entry.message as AssistantMessage).usage as PromptUsage | undefined);
-			} else if (entry.type === 'compaction') {
-				addInto(entry.usage);
+				const usage = fromProviderUsage((entry.message as AssistantMessage).usage);
+				if (usage) totals = addUsage(totals, usage);
+			} else if (entry.type === 'compaction' && entry.usage) {
+				totals = addUsage(totals, entry.usage);
 			}
 		}
 		return totals;

@@ -333,10 +333,16 @@ export interface FlueSession {
 }
 
 /**
- * Token + cost usage aggregated across every turn that a single prompt(),
- * skill(), or task() call dispatched. Includes any internal turns triggered
- * by the SDK on the caller's behalf (e.g. result-extraction retries,
- * compaction-driven retries).
+ * Token + cost usage aggregated across every LLM call dispatched by a
+ * single prompt(), skill(), or task() invocation, including:
+ *   - every assistant turn produced by the call,
+ *   - any result-extraction retry triggered by `result: schema` callers,
+ *   - any compaction summarization (1–2 internal calls) triggered when
+ *     context approached the model's window during the call,
+ *   - the post-compaction retry assistant turn for overflow recovery.
+ *
+ * `cost` values are USD, computed by pi-ai from the model's cost table —
+ * callers don't need to maintain their own price list.
  */
 export interface PromptUsage {
 	input: number;

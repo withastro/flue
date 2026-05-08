@@ -18,6 +18,8 @@ import type {
 	Usage,
 	UserMessage,
 } from '@mariozechner/pi-ai';
+import { addUsage, fromProviderUsage } from './usage.ts';
+import type { PromptUsage } from './types.ts';
 
 // ─── Settings ───────────────────────────────────────────────────────────────
 
@@ -443,9 +445,11 @@ export interface CompactionResult {
 	/**
 	 * Aggregate token usage from the 1–2 summarization calls that produced
 	 * this result. Undefined when no call reported usage (rare — some
-	 * providers may stream without totals).
+	 * providers may stream without totals). Already normalized into Flue's
+	 * `PromptUsage` shape so callers can persist it directly on a
+	 * `CompactionEntry`.
 	 */
-	usage?: Usage;
+	usage?: PromptUsage;
 }
 
 /** Pure function — no I/O. Finds cut point, extracts messages to summarize, tracks file ops. */
@@ -604,11 +608,14 @@ export async function compact(
 	// Sum the usage of every summarization call that produced a value.
 	// Split-turn compaction fires two calls; regular compaction fires one.
 	// A call may report `undefined` usage (rare provider behaviour) — those
-	// contribute zero.
-	let aggregateUsage: Usage | undefined;
+	// contribute zero. Normalize from pi-ai's `Usage` to Flue's `PromptUsage`
+	// at this boundary so the result is a persistable shape for the
+	// downstream `CompactionEntry`.
+	let aggregateUsage: PromptUsage | undefined;
 	const addCallUsage = (usage: Usage | undefined): void => {
-		if (!usage) return;
-		aggregateUsage = aggregateUsage ? addUsageValues(aggregateUsage, usage) : usage;
+		const normalized = fromProviderUsage(usage);
+		if (!normalized) return;
+		aggregateUsage = aggregateUsage ? addUsage(aggregateUsage, normalized) : normalized;
 	};
 
 	if (isSplitTurn && turnPrefixMessages.length > 0) {
@@ -650,28 +657,6 @@ export async function compact(
 		tokensBefore,
 		details: { readFiles, modifiedFiles },
 		usage: aggregateUsage,
-	};
-}
-
-/**
- * Field-wise addition of two `Usage` values, including the nested `cost`.
- * Module-private helper used to aggregate the 1–2 summarization calls
- * inside `compact()`.
- */
-function addUsageValues(a: Usage, b: Usage): Usage {
-	return {
-		input: a.input + b.input,
-		output: a.output + b.output,
-		cacheRead: a.cacheRead + b.cacheRead,
-		cacheWrite: a.cacheWrite + b.cacheWrite,
-		totalTokens: a.totalTokens + b.totalTokens,
-		cost: {
-			input: a.cost.input + b.cost.input,
-			output: a.cost.output + b.cost.output,
-			cacheRead: a.cost.cacheRead + b.cost.cacheRead,
-			cacheWrite: a.cost.cacheWrite + b.cost.cacheWrite,
-			total: a.cost.total + b.cost.total,
-		},
 	};
 }
 export { isContextOverflow };
