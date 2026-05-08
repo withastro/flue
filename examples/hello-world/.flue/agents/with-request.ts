@@ -18,9 +18,9 @@ export default async function ({ req, init }: FlueContext) {
 	console.log('[with-request] url:', req?.url);
 	console.log('[with-request] user-agent:', req?.headers.get('user-agent'));
 
-	// The raw body is also available — `req.clone()` lets us read it without
-	// consuming the original (in case downstream code wants to read it too).
-	const rawBody = await req?.clone().text();
+	// The raw body is also available — useful for things like HMAC
+	// signature verification (Stripe, GitHub, etc.) over the request bytes.
+	const rawBody = await req?.text();
 	console.log('[with-request] raw body:', rawBody);
 
 	// Client IP: parse from the platform's header. On Cloudflare,
