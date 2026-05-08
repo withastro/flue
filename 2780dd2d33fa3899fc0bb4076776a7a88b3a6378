@@ -1,0 +1,23 @@
+packages/sdk/src/build-plugin-node.ts
+  5fc49621b99a6061 210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "2780dd2d33fa3899fc0bb4076776a7a88b3a6378",
+  "prompts": {
+    "5fc49621b99a6061": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1f9e41d33ffeBY8YQpYw8FnMC9",
+        "model": "anthropic/claude-opus-4-7"
+      },
+      "human_author": "Fred K. Schott",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 12,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
