@@ -17,6 +17,7 @@ import {
 	defineConfig,
 	findFlueConfigPath,
 	loadFlueConfig,
+	setBuiltinShadowWarner,
 } from '../src/config.ts';
 import { resolveModel } from '../src/internal.ts';
 import { defineOpenAICompletionsModel } from '../src/model-helpers.ts';
@@ -112,6 +113,37 @@ describe('loadFlueConfig', () => {
 		const a = await loadFlueConfig(workspace);
 		const b = await loadFlueConfig(workspace);
 		assert.equal(a, b);
+	});
+
+	it('warns when a user prefix shadows a Flue built-in', async () => {
+		writeConfig(
+			'flue.config.mjs',
+			`export default { models: { 'cloudflare/': () => ({ id: 'x', provider: 'p' }) } };\n`,
+		);
+		const warnings: string[] = [];
+		setBuiltinShadowWarner((m) => warnings.push(m));
+		try {
+			await loadFlueConfig(workspace);
+		} finally {
+			setBuiltinShadowWarner((m) => console.warn(m));
+		}
+		assert.equal(warnings.length, 1);
+		assert.match(warnings[0]!, /shadows Flue's built-in "cloudflare\/"/);
+	});
+
+	it('does not warn for non-shadowing user prefixes', async () => {
+		writeConfig(
+			'flue.config.mjs',
+			`export default { models: { 'ollama/': () => ({ id: 'x', provider: 'p' }) } };\n`,
+		);
+		const warnings: string[] = [];
+		setBuiltinShadowWarner((m) => warnings.push(m));
+		try {
+			await loadFlueConfig(workspace);
+		} finally {
+			setBuiltinShadowWarner((m) => console.warn(m));
+		}
+		assert.equal(warnings.length, 0);
 	});
 });
 

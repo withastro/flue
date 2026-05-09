@@ -31,7 +31,16 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { CLOUDFLARE_MODEL_PREFIX } from './cloudflare-model.ts';
 import type { FlueConfig, ResolvedFlueConfig } from './types.ts';
+
+/**
+ * Prefixes Flue ships internally. User-defined entries with the same key
+ * shadow these (intentional — gives users an escape hatch on the rare day
+ * they need to override Flue's routing) but we emit a warning so the
+ * shadowing is never silent.
+ */
+const BUILTIN_MODEL_PREFIXES: readonly string[] = [CLOUDFLARE_MODEL_PREFIX] as const;
 
 const CONFIG_FILE_BASENAME = 'flue.config';
 const CONFIG_FILE_EXTENSIONS = ['.ts', '.mts', '.js', '.mjs'] as const;
@@ -240,7 +249,35 @@ function validateModels(
 					`must be a factory function (suffix) => Model.`,
 			);
 		}
+		if (BUILTIN_MODEL_PREFIXES.includes(prefix)) {
+			emitBuiltinShadowWarning(prefix, rel);
+		}
 		result[prefix] = factory as (suffix: string) => any;
 	}
 	return result;
+}
+
+/**
+ * Loud-but-not-fatal: a user prefix collides with a Flue built-in. The
+ * user's factory wins (per Fred's resolution-order policy) so this is
+ * intended behaviour, but we warn once at load so the shadowing surfaces
+ * in CI logs and isn't a silent surprise.
+ *
+ * Routed through a function rather than a bare console.warn so tests can
+ * stub `setBuiltinShadowWarner` without touching the global console.
+ */
+let builtinShadowWarner: (message: string) => void = (message) => {
+	console.warn(message);
+};
+
+export function setBuiltinShadowWarner(fn: (message: string) => void): void {
+	builtinShadowWarner = fn;
+}
+
+function emitBuiltinShadowWarning(prefix: string, rel: string): void {
+	builtinShadowWarner(
+		`[flue] Warning: \`models[${JSON.stringify(prefix)}]\` in ${rel} shadows ` +
+			`Flue's built-in "${prefix}" routing. Your factory will run instead. ` +
+			`If unintentional, rename the prefix.`,
+	);
 }
