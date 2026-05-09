@@ -28,30 +28,50 @@ export function buildResultFollowUpPrompt(): string {
 }
 
 /**
- * Build the user-facing prompt text for a `session.skill()` call.
+ * Build the user-facing prompt text for a `session.skill('<name>')` call,
+ * where `<name>` is a name registered in the session's skill registry.
  *
- * Skill bodies are no longer inlined into the prompt — the model reads
- * the SKILL.md file from disk on demand using its filesystem tools.
- * That keeps relative references inside the skill (other markdown files,
- * scripts, etc.) resolvable from where they live, and lets users edit
- * skill files mid-session without re-initialising the agent. The
- * supplementary file-path hint is included only when the caller passed a
- * path-shaped name (i.e. the path-based fallback at the call site
- * resolved a SKILL by relative path) — for normal name-registered
- * skills, the system-prompt's "Available Skills" list is the only
- * registry the model needs to consult.
+ * The system prompt's "Available Skills" list tells the model where the
+ * skill lives (`.agents/skills/<name>/SKILL.md`) and how to run it (read
+ * the file, follow its instructions). The per-call message just names
+ * the skill plus any arguments — no inlined body, no path hint.
  */
-export function buildSkillPrompt(
+export function buildSkillByNamePrompt(
 	name: string,
 	args?: Record<string, unknown>,
 	schema?: v.GenericSchema,
-	path?: string,
 ): string {
 	const parts: string[] = [`Run the skill named "${name}".`];
 
-	if (path) {
-		parts.push('', `The skill is documented at ${path}.`);
+	if (args && Object.keys(args).length > 0) {
+		parts.push('', 'Arguments:', JSON.stringify(args, null, 2));
 	}
+
+	if (schema) {
+		parts.push(buildResultFooter());
+	}
+
+	return parts.join('\n');
+}
+
+/**
+ * Build the user-facing prompt text for a `session.skill('<path>')` call,
+ * where `<path>` is a relative path under `.agents/skills/` (e.g.
+ * `'triage/reproduce.md'`). Path-based references bypass the registry
+ * — the skill isn't named in the system prompt's "Available Skills"
+ * list — so we hand the model the resolved absolute path explicitly.
+ */
+export function buildSkillByPathPrompt(
+	relPath: string,
+	resolvedPath: string,
+	args?: Record<string, unknown>,
+	schema?: v.GenericSchema,
+): string {
+	const parts: string[] = [
+		`Run the skill file \`${relPath}\`.`,
+		'',
+		`The file can be found at ${resolvedPath}.`,
+	];
 
 	if (args && Object.keys(args).length > 0) {
 		parts.push('', 'Arguments:', JSON.stringify(args, null, 2));

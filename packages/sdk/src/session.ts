@@ -23,13 +23,14 @@ import {
 import {
 	buildPromptText,
 	buildResultFollowUpPrompt,
-	buildSkillPrompt,
+	buildSkillByNamePrompt,
+	buildSkillByPathPrompt,
 	createResultTools,
 	ResultUnavailableError,
 	type ResultToolBundle,
 } from './result.ts';
 import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
-import { loadSkillByPath } from './context.ts';
+import { resolveSkillFilePath, skillsDirIn } from './context.ts';
 import { createScopedEnv as scopeSessionEnv, mergeCommands } from './env-utils.ts';
 import {
 	assertRoleExists,
@@ -294,63 +295,55 @@ export class Session implements FlueSession {
 	skill(name: string, options?: SkillOptions<v.GenericSchema | undefined>): CallHandle<any> {
 		return createCallHandle(options?.signal, (signal) =>
 			this.runOperation('skill', signal, async () => {
-				// Skills can be referenced two ways:
+				// Skills can be referenced two ways. The shape determines the
+				// per-call user-message format; the model reads the file
+				// itself in both cases.
 				//
-				//   1. By registered name — looked up in `this.config.skills`,
+				//   1. By registered name. Looked up in `this.config.skills`,
 				//      populated at init time from `.agents/skills/*/SKILL.md`
-				//      frontmatter (or programmatically). This is the spec'd
-				//      shape; the system prompt's "Available Skills" list is
-				//      the registry the model consults.
+				//      frontmatter. The system prompt's "Available Skills"
+				//      list tells the model name + description + convention,
+				//      so the per-call message just identifies the skill.
 				//
 				//   2. By relative path under `.agents/skills/` (e.g.
-				//      `'triage/reproduce.md'`). Convenience for skill packs
-				//      that want sibling markdown files without forcing each
-				//      into its own SKILL.md subdirectory. Only attempted
-				//      when the name looks like a path (contains `/` or ends
-				//      in `.md`/`.markdown`) so that typos of registered
-				//      skill names still fail fast with a helpful error.
-				//
-				// Whichever shape resolved, the model reads the file from
-				// disk at runtime — we don't inline the body. For path-based
-				// references, we surface the path in the prompt so the model
-				// doesn't have to guess the skill's location.
-				let registeredSkill = this.config.skills[name];
-				let referencedPath: string | undefined;
-
-				if (!registeredSkill && (name.includes('/') || /\.(md|markdown)$/i.test(name))) {
-					const loaded = await loadSkillByPath(this.env, this.env.cwd, name);
-					if (loaded) {
-						registeredSkill = loaded;
-						const cwd = this.env.cwd;
-						const skillsDir = cwd.endsWith('/')
-							? `${cwd}.agents/skills`
-							: `${cwd}/.agents/skills`;
-						referencedPath = `${skillsDir}/${name}`;
-					}
-				}
-
-				if (!registeredSkill) {
-					const available = Object.keys(this.config.skills).join(', ') || '(none)';
-					const cwd = this.env.cwd;
-					throw new Error(
-						`Skill "${name}" not registered. Available: ${available}.\n\n` +
-							`Skills are loaded at init() time from ${cwd}/.agents/skills/<name>/SKILL.md ` +
-							`inside the session's sandbox. If you expected "${name}" to be there, make sure ` +
-							`the file exists in your sandbox at that path before calling init() — the default ` +
-							`empty sandbox starts with no files, so it has no skills unless you put them there.\n\n` +
-							`Skills can also be referenced by relative path under .agents/skills/ ` +
-							`(e.g. "triage/reproduce.md").`,
-					);
-				}
-
+				//      `'triage/reproduce.md'`). The skill isn't in the
+				//      registry, so we hand the model the resolved absolute
+				//      path explicitly. Triggered only when `name` looks
+				//      like a path (contains `/` or ends in `.md`/`.markdown`)
+				//      — otherwise typos of registered names fail fast with
+				//      a helpful error rather than silently fall through to
+				//      a path lookup that's also going to miss.
+				const looksLikePath = name.includes('/') || /\.(md|markdown)$/i.test(name);
 				const schema = options?.result as v.GenericSchema | undefined;
+
+				let promptText: string;
+				if (looksLikePath) {
+					const resolvedPath = await resolveSkillFilePath(this.env, this.env.cwd, name);
+					if (!resolvedPath) {
+						throw new Error(
+							`[flue] Skill file "${name}" not found at ${skillsDirIn(this.env.cwd)}/${name} ` +
+								`inside the session's sandbox. Make sure the file exists at that path.`,
+						);
+					}
+					promptText = buildSkillByPathPrompt(name, resolvedPath, options?.args, schema);
+				} else {
+					if (!this.config.skills[name]) {
+						const available = Object.keys(this.config.skills).join(', ') || '(none)';
+						throw new Error(
+							`[flue] Skill "${name}" not registered. Available: ${available}.\n\n` +
+								`Skills are discovered at init() time from ${skillsDirIn(this.env.cwd)}/<name>/SKILL.md ` +
+								`inside the session's sandbox. If you expected "${name}" to be there, make sure ` +
+								`the SKILL.md file exists at that path before calling init() — the default ` +
+								`empty sandbox starts with no files, so it has no skills unless you put them there.\n\n` +
+								`Skills can also be referenced by relative path under .agents/skills/ ` +
+								`(e.g. "triage/reproduce.md").`,
+						);
+					}
+					promptText = buildSkillByNamePrompt(name, options?.args, schema);
+				}
+
 				return this.runPromptCall({
-					promptText: buildSkillPrompt(
-						registeredSkill.name,
-						options?.args,
-						schema,
-						referencedPath,
-					),
+					promptText,
 					schema,
 					tools: options?.tools,
 					commands: options?.commands,
