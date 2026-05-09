@@ -161,6 +161,18 @@ export interface ProviderSettings {
 	 * come from the agent's runtime env instead of process-global env vars.
 	 */
 	apiKey?: string;
+	/**
+	 * Persist OpenAI Responses API calls server-side so that `msg_*` / `fc_*`
+	 * item references emitted on later turns resolve. Required for multi-turn
+	 * `session.task()` flows that rely on item-id linkage (see flue#77). Only
+	 * applied when the resolved model's `api === "openai-responses"`; ignored
+	 * for Codex, Azure, and other provider APIs.
+	 *
+	 * Default unset → pi-ai's current behavior (`store: false`). Note: enabling
+	 * this opts the conversation into OpenAI's server-side storage and its
+	 * retention policy.
+	 */
+	storeResponses?: boolean;
 }
 
 export type ProvidersConfig = Record<string, ProviderSettings>;

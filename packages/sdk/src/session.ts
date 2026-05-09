@@ -51,6 +51,7 @@ import type {
 	PromptResponse,
 	PromptResultResponse,
 	PromptUsage,
+	ProvidersConfig,
 	SessionData,
 	SessionEnv,
 	SessionStore,
@@ -120,6 +121,30 @@ interface InternalTaskResult<T> {
 interface InternalTaskOptions<S extends v.GenericSchema | undefined> extends TaskOptions<S> {
 	inheritedModel?: string;
 	inheritedThinkingLevel?: ThinkingLevel;
+}
+
+/**
+ * Build an `onPayload` hook that injects `store: <bool>` into OpenAI Responses
+ * API request payloads when the user has set
+ * `providers.openai.storeResponses`. Returns undefined when the knob is unset
+ * so pi-ai's default (no hook) keeps applying. The hook is a no-op for any
+ * model whose `api !== 'openai-responses'` (Codex, Azure, Anthropic, etc.).
+ *
+ * Resolves the user-facing 404 reported in flue#77: pi-ai hardcodes
+ * `store: false` on the OpenAI Responses provider, so item references
+ * (`fc_*`, `msg_*`) emitted on subsequent multi-turn calls 404 against items
+ * the server never persisted.
+ */
+function buildOpenAIStorePayloadHook(
+	providers: ProvidersConfig | undefined,
+): ((payload: unknown, model: Model<any>) => unknown) | undefined {
+	const storeResponses = providers?.openai?.storeResponses;
+	if (storeResponses === undefined) return undefined;
+	return (payload, model) => {
+		if (model.api !== 'openai-responses') return undefined;
+		if (typeof payload !== 'object' || payload === null) return undefined;
+		return { ...(payload as Record<string, unknown>), store: storeResponses };
+	};
 }
 
 /** In-memory session store. Sessions persist for the lifetime of the process. */
@@ -214,6 +239,7 @@ export class Session implements FlueSession {
 			},
 			getApiKey: (provider) => this.getProviderApiKey(provider),
 			toolExecution: 'parallel',
+			onPayload: buildOpenAIStorePayloadHook(this.config.providers),
 		});
 
 		this.eventCallback = options.onAgentEvent;
