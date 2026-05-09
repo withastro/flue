@@ -614,10 +614,13 @@ export interface AgentInfo {
 export interface BuildContext {
 	agents: AgentInfo[];
 	roles: Record<string, Role>;
-	/** The workspace root: the directory directly containing agents/ and roles/. */
+	/**
+	 * The workspace root — typically the project's cwd. `dist/` is always
+	 * written to `<workspaceDir>/dist/`. Source files (agents/, roles/) live
+	 * here directly, or under `<workspaceDir>/.flue/` if that directory
+	 * exists (the `.flue/`-as-src layout).
+	 */
 	workspaceDir: string;
-	/** Where dist/ is written. Typically the project root, independent of workspaceDir. */
-	outputDir: string;
 	options: BuildOptions;
 }
 
@@ -663,18 +666,14 @@ export interface BuildPlugin {
 
 export interface BuildOptions {
 	/**
-	 * The workspace directory: the directory directly containing agents/ and
-	 * roles/. Pass an explicit path — no .flue/ waterfall is performed here.
-	 * Callers that want the waterfall behavior (e.g. the CLI when --workspace
-	 * is omitted) should resolve it themselves with `resolveWorkspaceFromCwd`.
+	 * The workspace directory — the project root. Typically the cwd of the
+	 * `flue` invocation. `dist/` is always written to `<workspaceDir>/dist/`.
+	 *
+	 * Source files (agents, roles) are discovered from `<workspaceDir>/.flue/`
+	 * if that directory exists, otherwise from `<workspaceDir>/` directly.
+	 * The two layouts never mix — `.flue/` wins unconditionally if present.
 	 */
 	workspaceDir: string;
-	/**
-	 * Where to write the dist/ directory. Independent of workspaceDir — typically
-	 * the project root, so platform config like wrangler.jsonc ends up where the
-	 * deploy tool expects it.
-	 */
-	outputDir: string;
 	target?: 'node' | 'cloudflare';
 	/** Overrides `target` when provided. */
 	plugin?: BuildPlugin;

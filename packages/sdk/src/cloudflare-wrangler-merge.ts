@@ -105,7 +105,7 @@ interface UserConfigRead {
 }
 
 /**
- * Read and normalize the user's wrangler config from `outputDir`.
+ * Read and normalize the user's wrangler config from `workspaceDir`.
  *
  * Looks for `wrangler.jsonc`, `wrangler.json`, then `wrangler.toml` (jsonc is
  * Cloudflare's recommended format for new projects, but all three work).
@@ -127,11 +127,11 @@ interface UserConfigRead {
  * `dist/wrangler.jsonc` and the benefit is correctness without us reimplementing
  * wrangler's path-resolution logic.
  */
-export async function readUserWranglerConfig(outputDir: string): Promise<UserConfigRead> {
+export async function readUserWranglerConfig(workspaceDir: string): Promise<UserConfigRead> {
 	const candidates = ['wrangler.jsonc', 'wrangler.json', 'wrangler.toml'];
 	let foundPath: string | null = null;
 	for (const name of candidates) {
-		const candidate = path.join(outputDir, name);
+		const candidate = path.join(workspaceDir, name);
 		if (fs.existsSync(candidate)) {
 			foundPath = candidate;
 			break;
@@ -335,7 +335,7 @@ export function mergeFlueAdditions(
 	// should accept this.
 	merged.main = additions.main;
 
-	// name: user wins if set; fall back to the default we derive from outputDir.
+	// name: user wins if set; fall back to the default we derive from workspaceDir.
 	if (typeof merged.name !== 'string' || merged.name.length === 0) {
 		merged.name = additions.defaultName;
 	}
@@ -513,33 +513,31 @@ export function detectSandboxBindings(userConfig: Record<string, unknown>): stri
  */
 export function assertSandboxPackageInstalled(
 	sandboxClassNames: string[],
-	searchDirs: string[],
+	workspaceDir: string,
 ): void {
 	if (sandboxClassNames.length === 0) return;
 
-	for (const dir of searchDirs) {
-		let current = dir;
-		while (current !== path.dirname(current)) {
-			const pkgPath = path.join(current, 'package.json');
-			if (fs.existsSync(pkgPath)) {
-				try {
-					const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-					const allDeps = {
-						...(pkg.dependencies ?? {}),
-						...(pkg.devDependencies ?? {}),
-						...(pkg.peerDependencies ?? {}),
-						...(pkg.optionalDependencies ?? {}),
-					};
-					if ('@cloudflare/sandbox' in allDeps) return;
-					// Found a package.json but no dep — keep walking in case
-					// this is a nested package and the dep is declared higher up
-					// (e.g. pnpm workspace root).
-				} catch {
-					return; // unparseable package.json — give up, let esbuild speak
-				}
+	let current = workspaceDir;
+	while (current !== path.dirname(current)) {
+		const pkgPath = path.join(current, 'package.json');
+		if (fs.existsSync(pkgPath)) {
+			try {
+				const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+				const allDeps = {
+					...(pkg.dependencies ?? {}),
+					...(pkg.devDependencies ?? {}),
+					...(pkg.peerDependencies ?? {}),
+					...(pkg.optionalDependencies ?? {}),
+				};
+				if ('@cloudflare/sandbox' in allDeps) return;
+				// Found a package.json but no dep — keep walking in case this
+				// is a nested package and the dep is declared higher up (e.g.
+				// pnpm workspace root).
+			} catch {
+				return; // unparseable package.json — give up, let esbuild speak
 			}
-			current = path.dirname(current);
 		}
+		current = path.dirname(current);
 	}
 
 	throw new Error(
@@ -552,16 +550,16 @@ export function assertSandboxPackageInstalled(
 // ─── Deploy redirect file ───────────────────────────────────────────────────
 
 /**
- * Write the wrangler deploy-redirect file at `<outputDir>/.wrangler/deploy/config.json`
- * so that `wrangler deploy` run from `outputDir` automatically picks up the
+ * Write the wrangler deploy-redirect file at `<workspaceDir>/.wrangler/deploy/config.json`
+ * so that `wrangler deploy` run from `workspaceDir` automatically picks up the
  * generated `dist/wrangler.jsonc`.
  *
  * This is wrangler's own native redirection mechanism (the same one Astro's
  * Cloudflare adapter uses). We only write the file if one doesn't already
  * exist — if the user has set one up, respect their intent.
  */
-export function writeDeployRedirectIfMissing(outputDir: string): void {
-	const redirectDir = path.join(outputDir, '.wrangler', 'deploy');
+export function writeDeployRedirectIfMissing(workspaceDir: string): void {
+	const redirectDir = path.join(workspaceDir, '.wrangler', 'deploy');
 	const redirectPath = path.join(redirectDir, 'config.json');
 
 	if (fs.existsSync(redirectPath)) {
@@ -569,9 +567,9 @@ export function writeDeployRedirectIfMissing(outputDir: string): void {
 	}
 
 	fs.mkdirSync(redirectDir, { recursive: true });
-	// The redirect file lives at outputDir/.wrangler/deploy/config.json, and
-	// wrangler resolves `configPath` relative to that file's directory. So
-	// `../../dist/wrangler.jsonc` points at outputDir/dist/wrangler.jsonc.
+	// The redirect file lives at workspaceDir/.wrangler/deploy/config.json,
+	// and wrangler resolves `configPath` relative to that file's directory.
+	// So `../../dist/wrangler.jsonc` points at workspaceDir/dist/wrangler.jsonc.
 	fs.writeFileSync(
 		redirectPath,
 		JSON.stringify({ configPath: '../../dist/wrangler.jsonc' }, null, 2) + '\n',

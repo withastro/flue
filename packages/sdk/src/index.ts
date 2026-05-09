@@ -39,7 +39,7 @@ export type {
 	ThinkingLevel,
 } from './types.ts';
 
-export { build, resolveWorkspaceFromCwd } from './build.ts';
+export { build, resolveSourceRoot } from './build.ts';
 export {
 	dev,
 	DEFAULT_DEV_PORT,
