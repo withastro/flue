@@ -10,11 +10,12 @@ agent does the file-writing.
 
 ## Supported categories
 
-Flue currently supports **one** connector category:
+Flue supports the following connector categories:
 
-| Category  | Status     | Notes                                                  |
-| --------- | ---------- | ------------------------------------------------------ |
-| `sandbox` | Supported  | For remote sandbox providers (Daytona, E2B, Modal, etc.). |
+| Category  | Status     | Notes                                                                       |
+| --------- | ---------- | --------------------------------------------------------------------------- |
+| `sandbox` | Supported  | For remote sandbox providers (Daytona, E2B, Modal, etc.).                   |
+| `persist` | Supported  | For session-store backends (Postgres, D1, etc.) — durable agent sessions.   |
 
 > **Please don't open PRs introducing new categories.** Adding a category
 > requires CLI/runtime changes and a long-term maintenance commitment from
@@ -81,6 +82,17 @@ For named connectors:
 ---
 ```
 
+Or, for a persist connector:
+
+```markdown
+---
+{
+  "category": "persist",
+  "website": "https://www.postgresql.org"
+}
+---
+```
+
 Fields:
 
 | Field      | Type     | Required when           | Description                                   |
@@ -116,36 +128,41 @@ casing variants.
 ## Body conventions
 
 The body is the prompt an AI coding agent will read and act on. The
-existing connectors (`sandbox--daytona.md` and `sandbox--vercel.md`) are
-the template — match their structure as closely as possible, and only
-diverge where the specifics of the provider you're connecting genuinely
-require it.
+existing connectors in the same category are the template — match their
+structure as closely as possible, and only diverge where the specifics of
+what you're connecting genuinely require it.
 
 For reference, the shape they share:
 
 1. A single sentence framing what the connector is and that the reader is
    an AI agent installing it.
-2. **What this connector does** — one paragraph, "wraps an
+2. **What this connector does** — one paragraph. For `sandbox`, "wraps an
    already-initialized X into Flue's `SandboxFactory`; user owns the
-   provider lifecycle".
+   provider lifecycle". For `persist`, "wraps a configured X client into
+   Flue's `SessionStore`; user owns the client/binding lifecycle".
 3. **Where to write the file** — be explicit about the source-layout choice
-   (`<root>/.flue/connectors/` vs. `<root>/connectors/`) and tell
-   the agent to ask if unsure.
+   (`<root>/.flue/` vs. `<root>/`) and tell the agent to ask if unsure.
+   `sandbox` connectors land in `connectors/<name>.ts`; `persist` connectors
+   land in `persist/<name>.ts`.
 4. **The full TypeScript file content** in a code block, ready to write
    verbatim. Don't include placeholders the agent has to fill in.
-5. **Required dependencies** — what the agent should `npm install`.
-6. **Authentication** — how the provider authenticates (env var, OIDC,
-   OAuth, certs, etc.), where credentials should live, and a note never
-   to invent values. The shape of this section will vary the most between
-   providers; let the provider's actual auth model drive it.
+5. **Schema or required dependencies** — `persist` connectors include the
+   `CREATE TABLE` (or equivalent) for the backend's session table.
+   `sandbox` connectors list what the agent should `npm install`.
+6. **Authentication / credentials.** How the backend or provider
+   authenticates (env var, OIDC, OAuth, wrangler binding, certs, etc.),
+   where credentials should live, and a note never to invent values. The
+   shape of this section will vary the most between connectors; let the
+   actual auth/binding model drive it.
 7. **Wiring it into an agent** — a usage snippet for one of the user's
-   agents.
+   agents. `sandbox` connectors pass the factory to `init({ sandbox })`;
+   `persist` connectors pass the store to `init({ persist })`.
 8. **Verify** — typecheck + manual next-steps for the user, ending with
    `flue dev` / `flue run <agent>`.
 
-For category-root files (e.g. `sandbox.md`), instead of a verbatim TS file,
-point the agent at the spec doc on raw GitHub plus a known-good reference
-connector (e.g. `daytona`).
+For category-root files (e.g. `sandbox.md`, `persist.md`), instead of a
+verbatim TS file, point the agent at the spec/contract plus a known-good
+reference connector (e.g. `daytona` for sandbox, `postgres` for persist).
 
 ## Adding a new connector
 
