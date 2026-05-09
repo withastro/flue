@@ -35,15 +35,30 @@ Source files (agents, roles) live in one of two places, analogous to Next.js's `
 
 The two layouts never mix — if `.flue/` is present, the bare layout is ignored entirely.
 
+### `flue.config.ts`
+
+A `flue.config.{ts,mts,mjs,js,cjs,cts}` file at the workspace root may set `target`, `workspace`, or `output`. Discovered automatically (or via `--config <path>`). CLI flags always override values from the config file.
+
+```ts
+// flue.config.ts
+import { defineConfig } from '@flue/sdk/config';
+
+export default defineConfig({
+  target: 'node',
+});
+```
+
+Relative `workspace` / `output` values resolve against the directory containing the config file (Vite-style: the config file's dir IS the project root). The config is loaded via Node's native TS support (Node ≥ 23.6) with an esbuild fallback for older runtimes.
+
 ### `flue dev`
 
 Default port: `3583` ("FLUE" on a phone keypad). Override with `--port`.
 
 ```
 cd examples/hello-world
-node ../../packages/cli/dist/flue.js dev --target node
+node ../../packages/cli/bin/flue.mjs dev --target node
 # or:
-node ../../packages/cli/dist/flue.js dev --target cloudflare
+node ../../packages/cli/bin/flue.mjs dev --target cloudflare
 ```
 
 For `--target cloudflare`, the project must have `wrangler` available (it's a peer dependency of `@flue/sdk`).
@@ -51,15 +66,15 @@ For `--target cloudflare`, the project must have `wrangler` available (it's a pe
 ### `flue run`
 
 ```
-node packages/cli/dist/flue.js run <agent-name> --target node --id <id> [--payload '<json>'] [--workspace <path>] [--output <path>]
+node packages/cli/bin/flue.mjs run <agent-name> --target node --id <id> [--payload '<json>'] [--workspace <path>] [--output <path>]
 ```
 
 Examples (run from the `examples/hello-world/` directory so the `./.flue/` source layout is picked up):
 
 ```
 cd examples/hello-world
-node ../../packages/cli/dist/flue.js run hello --target node --id test-1
-node ../../packages/cli/dist/flue.js run with-role --target node --id test-2 --payload '{"name": "Fred"}'
+node ../../packages/cli/bin/flue.mjs run hello --target node --id test-1
+node ../../packages/cli/bin/flue.mjs run with-role --target node --id test-2 --payload '{"name": "Fred"}'
 ```
 
 This builds the workspace, starts a temporary server, invokes the agent via SSE, streams output to stderr, prints the final result to stdout, and shuts down.

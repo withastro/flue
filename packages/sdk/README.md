@@ -334,33 +334,6 @@ const agent = await init({
 const session = await agent.session();
 ```
 
-## Project Config (`flue.config.ts`)
-
-`flue.config.ts` is an optional, project-level config file picked up automatically when present in the workspace (`.flue/flue.config.ts` for the embedded layout, or `flue.config.ts` at the project root). Today it covers three things:
-
-- **`target`** — default build target. Lets you drop `--target` from the CLI. The CLI flag still wins on conflict.
-- **`models`** — declarative `prefix → factory` map for custom or local OpenAI-compatible endpoints (Ollama, vLLM, LM Studio, llama.cpp, LiteLLM, OpenRouter, …). Resolved in front of the built-in catalog, so once registered, `init({ model: 'ollama/llama3.1:8b' })` Just Works everywhere — top-level, role frontmatter, sub-tasks, compaction.
-- **`setup()`** — optional async hook that runs once at boot, before the first request. Reach for it only when you need to register a brand-new pi-ai API; the built-in `openai-completions` provider is enough for any OpenAI-compatible endpoint (use `defineOpenAICompletionsModel` for those).
-
-```ts
-// .flue/flue.config.ts
-import { defineConfig, defineOpenAICompletionsModel } from '@flue/sdk';
-
-export default defineConfig({
-  target: 'node',
-
-  models: {
-    'ollama/': (id) => defineOpenAICompletionsModel({
-      id,
-      baseUrl: 'http://localhost:11434/v1',
-      provider: 'ollama',
-    }),
-  },
-});
-```
-
-`@flue/sdk` exports `defineConfig`, `defineOpenAICompletionsModel`, and the `FlueConfig` type. `.ts` config files are accepted on every Node 22+ release — Flue transforms them with esbuild internally rather than depending on Node's experimental TS strip-types flag. `.js` and `.mjs` are also accepted for projects that prefer plain JavaScript.
-
 ## Connectors
 
 Connectors adapt third-party services (sandbox providers, etc.) into Flue. They are not an npm package — they are markdown installation instructions hosted at `https://flueframework.com/cli/connectors/` and applied to your project by your AI coding agent.

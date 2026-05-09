@@ -27,6 +27,10 @@
 		"./node": {
 			"types": "./dist/node/index.d.mts",
 			"import": "./dist/node/index.mjs"
+		},
+		"./config": {
+			"types": "./dist/config.d.mts",
+			"import": "./dist/config.mjs"
 		}
 	},
 	"main": "./dist/index.mjs",
@@ -34,6 +38,9 @@
 	"files": [
 		"dist"
 	],
+	"engines": {
+		"node": ">=22.18.0"
+	},
 	"scripts": {
 		"build": "tsdown",
 		"check:types": "tsc --noEmit",

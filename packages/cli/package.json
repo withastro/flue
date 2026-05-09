@@ -4,11 +4,15 @@
 	"type": "module",
 	"license": "Apache-2.0",
 	"bin": {
-		"flue": "dist/flue.js"
+		"flue": "bin/flue.mjs"
 	},
 	"files": [
+		"bin/flue.mjs",
 		"dist"
 	],
+	"engines": {
+		"node": ">=22.18.0"
+	},
 	"scripts": {
 		"prebuild": "tsx scripts/generate-connector-index.ts",
 		"build": "tsdown && mv dist/flue.mjs dist/flue.js",

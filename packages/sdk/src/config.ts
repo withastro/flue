@@ -1,289 +1,335 @@
 /**
- * Project-level config loader for `flue.config.ts`.
+ * Flue config file support — `flue.config.{ts,mts,mjs,js,cjs,cts}`.
  *
- * The file is searched in the source root — the same directory that holds
- * `agents/` and `roles/` (either `<workspaceDir>/.flue/` for the embedded
- * layout or `<workspaceDir>/` for the bare layout, resolved by
- * `resolveSourceRoot`). Searched extensions, in order:
+ * Modeled on Vite/Astro:
  *
- *   1. flue.config.ts
- *   2. flue.config.mts
- *   3. flue.config.js
- *   4. flue.config.mjs
+ *   - The config file lives at the project root. Its directory IS the root for
+ *     the purposes of resolving any relative paths it sets (`workspace`,
+ *     `output`).
+ *   - Discovery: `--config <path>` (resolved vs. cwd) wins; otherwise we search
+ *     a starting directory (`--workspace` if given, else cwd) for any of the
+ *     supported extensions, in order.
+ *   - Loading: plain Node dynamic `import()`. We rely on Node's native
+ *     TypeScript type-stripping (Node ≥ 22.18 / ≥ 23.6 by default) to handle
+ *     `.ts` configs. We deliberately do NOT bundle the config — `flue.config`
+ *     is a flat declarative surface, and "what valid TS works" should match
+ *     the same rules the user already absorbed for the rest of the runtime.
+ *     The CLI bin pre-checks the Node version before we ever get here, so
+ *     `ERR_UNKNOWN_FILE_EXTENSION` shouldn't surface in practice.
+ *   - Validation: valibot schema on the user-facing shape.
+ *   - Resolution: CLI inline > config file > built-in defaults. CLI flags
+ *     always win on a per-field basis — only the fields the user actually
+ *     passed get to override the file.
  *
- * `.ts` is canonical. We don't rely on Node's experimental TS strip-types
- * (which requires Node 22.6+ with `--experimental-strip-types` or Node 23+),
- * because Flue users may run any Node 22+ release. Instead, `.ts`/`.mts`
- * files are transformed with esbuild — the same dependency Flue already
- * uses for the build pipeline — written next to the original as a hidden,
- * uniquely-named `.mjs` sibling, imported via `pathToFileURL`, and
- * unlinked. The temp-file detour preserves Node's normal module resolution
- * (bare specifiers resolve against the user's `node_modules`; relative
- * specifiers resolve against the config file's directory) — both of which
- * would break under `data:` URL evaluation. `.js`/`.mjs` files take the
- * fast path and are imported directly.
- *
- * Loading is best-effort: if no file is found, `loadFlueConfig` returns
- * `null`. Callers treat that as "all defaults".
+ * The two public types mirror Astro's `AstroUserConfig` / `AstroConfig`
+ * split: `UserFlueConfig` is what users author (everything optional);
+ * `FlueConfig` is the resolved shape with required defaults filled in.
  */
-import * as esbuild from 'esbuild';
-import { randomUUID } from 'node:crypto';
+
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import * as v from 'valibot';
 
-import { CLOUDFLARE_MODEL_PREFIX } from './cloudflare-model.ts';
-import type { FlueConfig, ResolvedFlueConfig } from './types.ts';
-
-/**
- * Prefixes Flue ships internally. User-defined entries with the same key
- * shadow these (intentional — gives users an escape hatch on the rare day
- * they need to override Flue's routing) but we emit a warning so the
- * shadowing is never silent.
- */
-const BUILTIN_MODEL_PREFIXES: readonly string[] = [CLOUDFLARE_MODEL_PREFIX] as const;
-
-const CONFIG_FILE_BASENAME = 'flue.config';
-const CONFIG_FILE_EXTENSIONS = ['.ts', '.mts', '.js', '.mjs'] as const;
+// ─── Public API ─────────────────────────────────────────────────────────────
 
 /**
- * Marker function — the public alias users import as `defineConfig`. Returns
- * its argument verbatim so the config file's exported value is a plain
- * `FlueConfig`. Exists purely for type inference and editor tooling.
+ * User-facing config shape — everything optional so `defineConfig({})` is
+ * valid. Defaults are filled in at resolution time. Modeled on Astro's
+ * `AstroUserConfig`.
  */
-export function defineConfig(config: FlueConfig): FlueConfig {
+export interface UserFlueConfig {
+	/**
+	 * Build target. Required somewhere — either here or via `--target`.
+	 */
+	target?: 'node' | 'cloudflare';
+	/**
+	 * Workspace dir (project root in Vite parlance — to be renamed `root`
+	 * in a future release). Relative paths are resolved vs. the directory
+	 * containing the config file. Defaults to that directory if unset.
+	 */
+	workspace?: string;
+	/**
+	 * Build output dir. Relative paths are resolved vs. the directory
+	 * containing the config file. Defaults to `<workspace>/dist`.
+	 */
+	output?: string;
+}
+
+/**
+ * Resolved config — what the rest of the SDK consumes. All paths are
+ * absolute; all required fields are present.
+ */
+export interface FlueConfig {
+	target: 'node' | 'cloudflare';
+	/** Absolute path. */
+	workspace: string;
+	/** Absolute path. */
+	output: string;
+}
+
+/**
+ * Identity helper for type inference and editor intellisense, à la Vite's
+ * `defineConfig`. Returns its argument unchanged.
+ *
+ * ```ts
+ * import { defineConfig } from '@flue/sdk/config';
+ * export default defineConfig({ target: 'node' });
+ * ```
+ */
+export function defineConfig(config: UserFlueConfig): UserFlueConfig {
 	return config;
 }
 
+// ─── Validation ─────────────────────────────────────────────────────────────
+
+const TargetSchema = v.picklist(['node', 'cloudflare'] as const);
+
+const UserFlueConfigSchema = v.strictObject({
+	target: v.optional(TargetSchema),
+	workspace: v.optional(v.string()),
+	output: v.optional(v.string()),
+});
+
+// ─── Discovery ──────────────────────────────────────────────────────────────
+
 /**
- * Locate the flue.config file inside `sourceRoot`. Pass the directory that
- * holds `agents/` and `roles/`, not the project root — those differ on the
- * embedded `.flue/` layout. Returns the absolute path of the first match,
- * or `null` when no config exists.
+ * Config file basenames searched, in priority order. TypeScript first because
+ * Flue's audience writes TS agents; the rest mirror Vite's supported set.
  */
-export function findFlueConfigPath(sourceRoot: string): string | null {
-	for (const ext of CONFIG_FILE_EXTENSIONS) {
-		const candidate = path.join(sourceRoot, `${CONFIG_FILE_BASENAME}${ext}`);
+const CONFIG_BASENAMES = Object.freeze([
+	'flue.config.ts',
+	'flue.config.mts',
+	'flue.config.mjs',
+	'flue.config.js',
+	'flue.config.cjs',
+	'flue.config.cts',
+]);
+
+export interface ResolveConfigPathOptions {
+	/** Where to start searching when `configFile` is not set. */
+	cwd: string;
+	/**
+	 * Explicit config-file path (relative to `cwd`, or absolute), or `false`
+	 * to disable config loading entirely. Mirrors Astro's
+	 * `AstroInlineOnlyConfig.configFile`.
+	 */
+	configFile?: string | false;
+}
+
+/**
+ * Resolve the absolute path of the user's `flue.config.*` file, or
+ * `undefined` if none is found and the user didn't ask for one.
+ *
+ * Throws if `configFile` is an explicit path that doesn't exist on disk —
+ * that's a typo, not a "config not configured" situation.
+ */
+export function resolveConfigPath(opts: ResolveConfigPathOptions): string | undefined {
+	if (opts.configFile === false) return undefined;
+
+	if (opts.configFile) {
+		const explicit = path.isAbsolute(opts.configFile)
+			? opts.configFile
+			: path.resolve(opts.cwd, opts.configFile);
+		if (!fs.existsSync(explicit)) {
+			throw new Error(`[flue] Config file not found: ${opts.configFile}`);
+		}
+		return explicit;
+	}
+
+	for (const basename of CONFIG_BASENAMES) {
+		const candidate = path.join(opts.cwd, basename);
 		if (fs.existsSync(candidate)) return candidate;
 	}
-	return null;
+	return undefined;
 }
 
-/**
- * Per-process cache of resolved configs, keyed by absolute source-root path.
- * `flue dev` calls `loadFlueConfig` twice on first build (once to resolve
- * the target, once during the actual build) — the cache makes the second
- * call free, both for I/O and for re-invoking `setup()`-side-effecty
- * factories on subsequent rebuilds. Bypassed by tests via
- * `__resetConfigCacheForTests`.
- */
-const configCache = new Map<string, Promise<ResolvedFlueConfig | null>>();
-
-/** Test-only hook to drop the cache between cases. Not part of the public API. */
-export function __resetConfigCacheForTests(): void {
-	configCache.clear();
-}
+// ─── Loading ────────────────────────────────────────────────────────────────
 
 /**
- * Load and validate `flue.config.{ts,mts,js,mjs}` from `sourceRoot`. Pass
- * the directory that holds `agents/` and `roles/` (use `resolveSourceRoot`
- * to derive it from a workspace dir). Returns `null` when no config file
- * exists. Throws on import failure or shape errors so misconfiguration
- * surfaces immediately at boot.
+ * Load a config file's `default` export. We rely on Node's native dynamic
+ * `import()` for everything: plain JS, ESM, and TypeScript via type-stripping
+ * (Node ≥ 22.18 / ≥ 23.6 enable this by default). The CLI's bin entrypoint
+ * pre-validates the Node version, so by the time we reach this function the
+ * runtime is known to support the formats we accept.
  *
- * Results are memoised per absolute path within a single process. That is
- * intentionally a soft cache: long-running watch-mode tools that mutate
- * `flue.config.ts` should call `__resetConfigCacheForTests` (or spawn a
- * fresh process) to see updates. Today, the only watch-mode caller
- * (`flue dev`) does its own full re-invocation of the build pipeline, and
- * the watcher does not yet observe `flue.config.ts` for changes — that's
- * a follow-up.
+ * Cache-bust via a query param so repeated loads (e.g. a future dev-server
+ * config-watcher) get a fresh module instead of the cached one.
+ *
+ * Errors that come out of strip-mode (`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`)
+ * are repackaged with a hint pointing at the constraint, since the original
+ * Node message is terse.
+ *
+ * Returns the raw module default — caller is responsible for validation.
  */
-export async function loadFlueConfig(
-	sourceRoot: string,
-): Promise<ResolvedFlueConfig | null> {
-	const cacheKey = path.resolve(sourceRoot);
-	const cached = configCache.get(cacheKey);
-	if (cached) return cached;
-
-	const promise = loadFlueConfigUncached(cacheKey);
-	configCache.set(cacheKey, promise);
-	// On rejection, drop the cache entry so the next call retries instead
-	// of spreading the original failure across every dependent code path.
-	promise.catch(() => configCache.delete(cacheKey));
-	return promise;
-}
-
-async function loadFlueConfigUncached(
-	sourceRoot: string,
-): Promise<ResolvedFlueConfig | null> {
-	const configPath = findFlueConfigPath(sourceRoot);
-	if (!configPath) return null;
-
-	const ext = path.extname(configPath);
-	let mod: unknown;
+async function loadConfigModule(absConfigPath: string): Promise<unknown> {
+	const fileUrl = pathToFileURL(absConfigPath).href + `?t=${Date.now()}`;
 	try {
-		if (ext === '.ts' || ext === '.mts') {
-			mod = await importTypeScriptConfig(configPath);
-		} else {
-			mod = await import(pathToFileURL(configPath).href);
-		}
+		const mod = await import(fileUrl);
+		return mod.default ?? mod;
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
-		throw new Error(
-			`[flue] Failed to load ${path.relative(process.cwd(), configPath)}: ${message}`,
-		);
+		const code = (err as { code?: string }).code;
+		if (code === 'ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX') {
+			throw new Error(
+				`[flue] ${path.basename(absConfigPath)} uses TypeScript syntax that Node's ` +
+					`type-stripping loader doesn't support (e.g. \`enum\`, \`namespace\` with ` +
+					`runtime code, parameter properties, decorators). Rewrite using only ` +
+					`erasable types (or move the config to plain JS).\n  Original: ${(err as Error).message}`,
+			);
+		}
+		if (code === 'ERR_UNKNOWN_FILE_EXTENSION') {
+			// Should be unreachable — the CLI bin precheck enforces a Node
+			// version that supports `.ts` natively. Surface a useful hint
+			// anyway in case someone bypasses the bin (e.g. consumes the SDK
+			// directly on an old Node).
+			throw new Error(
+				`[flue] Cannot load ${path.basename(absConfigPath)}: this Node ` +
+					`(v${process.versions.node}) does not support TypeScript natively. ` +
+					`Upgrade to Node ≥ 22.18 or ≥ 23.6.`,
+			);
+		}
+		throw err;
 	}
+}
 
-	const exported = (mod as { default?: unknown }).default;
-	if (exported === undefined) {
-		throw new Error(
-			`[flue] ${path.relative(process.cwd(), configPath)} has no default export. ` +
-				`Use \`export default defineConfig({ ... })\`.`,
-		);
-	}
+// ─── Resolution ─────────────────────────────────────────────────────────────
 
-	return validateAndResolve(exported, configPath);
+export interface ResolveConfigOptions {
+	/** Working directory of the CLI invocation; default search base. */
+	cwd: string;
+	/**
+	 * Optional starting directory to search for the config. If unset, falls
+	 * back to `cwd`. Used when the CLI received `--workspace` and we want to
+	 * look for a config inside that directory rather than cwd. Vite has the
+	 * same behavior with `--root`.
+	 */
+	searchFrom?: string;
+	/** Explicit `--config` value, or `false` to skip loading. */
+	configFile?: string | false;
+	/**
+	 * Inline overrides from the CLI. Only fields the user actually passed
+	 * should be present — `undefined` means "fall through to the config file
+	 * value or the default".
+	 */
+	inline?: UserFlueConfig;
+}
+
+export interface ResolvedConfigResult {
+	/** Absolute path of the loaded config file, or undefined if none. */
+	configPath: string | undefined;
+	/** The merged-but-unresolved user config (config file + inline). */
+	userConfig: UserFlueConfig;
+	/** The fully-resolved config consumed by the rest of the SDK. */
+	flueConfig: FlueConfig;
 }
 
 /**
- * Transform a `.ts`/`.mts` config to ESM with esbuild and evaluate it.
+ * Discover, load, validate, merge, and resolve a Flue config. The single
+ * entry point CLIs and embedders call.
  *
- * The transformed source is written next to the original config as a
- * dotted-prefix sibling (e.g. `flue.config.ts` →
- * `.flue.config.<pid>.<rand>.mjs`) and imported via `pathToFileURL`. This
- * preserves Node's normal module resolution: bare specifiers like
- * `@flue/sdk` resolve against the user's `node_modules`, and relative
- * imports like `./helpers.ts` resolve relative to the config file's
- * directory — both of which would break with `data:` URL evaluation.
+ * Precedence (highest first):
+ *   1. CLI inline values (`opts.inline.*`)
+ *   2. `flue.config.ts`
+ *   3. Built-in defaults
  *
- * The temporary file is unlinked on success and on failure. The dotted
- * prefix and the `.mjs` extension keep it from being picked up by the
- * agent/role discovery walks (which look for `agents/*.{ts,js,mts,mjs}`
- * and ignore dot-files at the workspace root).
+ * Throws if validation fails or if no `target` is supplied anywhere.
  */
-async function importTypeScriptConfig(configPath: string): Promise<unknown> {
-	const source = await fs.promises.readFile(configPath, 'utf-8');
-	const transformed = await esbuild.transform(source, {
-		loader: 'ts',
-		format: 'esm',
-		target: 'node22',
-		sourcefile: configPath,
+export async function resolveConfig(opts: ResolveConfigOptions): Promise<ResolvedConfigResult> {
+	const cwd = path.resolve(opts.cwd);
+	const searchFrom = path.resolve(opts.searchFrom ?? cwd);
+
+	const configPath = resolveConfigPath({ cwd: searchFrom, configFile: opts.configFile });
+
+	let fileConfig: UserFlueConfig = {};
+	if (configPath) {
+		const raw = await loadConfigModule(configPath);
+		if (raw == null || typeof raw !== 'object') {
+			throw new Error(
+				`[flue] ${path.relative(cwd, configPath) || configPath} must export a config object as the default export.`,
+			);
+		}
+		const result = v.safeParse(UserFlueConfigSchema, raw);
+		if (!result.success) {
+			throw new Error(formatValidationError(configPath, result.issues));
+		}
+		fileConfig = result.output;
+	}
+
+	// The "config root" — the directory we resolve relative paths in the config
+	// file against. If there's no config file, this is just the search dir; in
+	// practice it's never observed because relative paths only matter when a
+	// file set them.
+	const configDir = configPath ? path.dirname(configPath) : searchFrom;
+
+	const inline = opts.inline ?? {};
+
+	// Merge: per-field, inline > file. We don't merge nested structures because
+	// the surface is flat today.
+	const merged: UserFlueConfig = {
+		target: inline.target ?? fileConfig.target,
+		workspace: inline.workspace ?? fileConfig.workspace,
+		output: inline.output ?? fileConfig.output,
+	};
+
+	// Resolve target. The one field with no sensible default — surface a clear
+	// error pointing the user at both available knobs.
+	if (!merged.target) {
+		throw new Error(
+			'[flue] Missing required `target`. Set it via `--target <node|cloudflare>` ' +
+				'or in `flue.config.ts` as `target: "node"` (or `"cloudflare"`).',
+		);
+	}
+
+	// Resolve workspace. Inline values were already absolutized by the CLI;
+	// file values are resolved vs. the config dir; default is the config dir
+	// (or searchFrom if no config). All paths emerge absolute.
+	const workspace = resolvePath(merged.workspace, {
+		fromConfig: !!fileConfig.workspace && inline.workspace === undefined,
+		configDir,
+		fallback: configDir,
 	});
 
-	const dir = path.dirname(configPath);
-	const base = path.basename(configPath, path.extname(configPath));
-	// `randomUUID` (CSPRNG) avoids the path being predictable to a hostile
-	// co-tenant on a shared workspace filesystem. The pid prefix keeps the
-	// tmp file easy to attribute when something is left behind after a kill.
-	const unique = `${process.pid}.${randomUUID().replace(/-/g, '').slice(0, 12)}`;
-	const tmpPath = path.join(dir, `.${base}.${unique}.mjs`);
-
-	try {
-		await fs.promises.writeFile(tmpPath, transformed.code, 'utf-8');
-		// Cache-bust the URL so repeated dev-server reloads see the latest
-		// content — Node's ESM loader keys on the resolved URL.
-		const url = `${pathToFileURL(tmpPath).href}?t=${Date.now()}`;
-		return await import(url);
-	} finally {
-		await fs.promises.unlink(tmpPath).catch(() => {
-			/* best-effort cleanup */
-		});
-	}
-}
-
-function validateAndResolve(value: unknown, configPath: string): ResolvedFlueConfig {
-	const rel = path.relative(process.cwd(), configPath);
-
-	if (typeof value !== 'object' || value === null) {
-		throw new Error(
-			`[flue] ${rel} default export must be an object. ` +
-				`Got ${value === null ? 'null' : typeof value}.`,
-		);
-	}
-
-	const config = value as FlueConfig;
-	validateTarget(config.target, rel);
-	validateSetup(config.setup, rel);
-	const models = validateModels(config.models, rel);
+	// Resolve output the same way; default is `<workspace>/dist`.
+	const output = resolvePath(merged.output, {
+		fromConfig: !!fileConfig.output && inline.output === undefined,
+		configDir,
+		fallback: path.join(workspace, 'dist'),
+	});
 
 	return {
-		target: config.target,
-		setup: config.setup,
-		models,
+		configPath,
+		userConfig: merged,
+		flueConfig: { target: merged.target, workspace, output },
 	};
 }
 
-function validateTarget(target: unknown, rel: string): void {
-	if (target !== undefined && target !== 'node' && target !== 'cloudflare') {
-		throw new Error(
-			`[flue] Invalid \`target\` in ${rel}: ${JSON.stringify(target)}. ` +
-				`Expected "node" or "cloudflare".`,
-		);
-	}
-}
-
-function validateSetup(setup: unknown, rel: string): void {
-	if (setup !== undefined && typeof setup !== 'function') {
-		throw new Error(`[flue] Invalid \`setup\` in ${rel}: must be a function or omitted.`);
-	}
-}
-
-function validateModels(
-	models: unknown,
-	rel: string,
-): Record<string, (suffix: string) => any> {
-	const result: Record<string, (suffix: string) => any> = {};
-	if (models === undefined) return result;
-
-	if (typeof models !== 'object' || models === null) {
-		throw new Error(
-			`[flue] Invalid \`models\` in ${rel}: must be an object mapping ` +
-				`prefix strings to factory functions.`,
-		);
-	}
-	for (const [prefix, factory] of Object.entries(models)) {
-		if (!prefix.endsWith('/')) {
-			throw new Error(
-				`[flue] Invalid \`models\` prefix ${JSON.stringify(prefix)} in ${rel}: ` +
-					`must end with "/" (e.g. "ollama/").`,
-			);
-		}
-		if (typeof factory !== 'function') {
-			throw new Error(
-				`[flue] Invalid \`models[${JSON.stringify(prefix)}]\` in ${rel}: ` +
-					`must be a factory function (suffix) => Model.`,
-			);
-		}
-		if (BUILTIN_MODEL_PREFIXES.includes(prefix)) {
-			emitBuiltinShadowWarning(prefix, rel);
-		}
-		result[prefix] = factory as (suffix: string) => any;
-	}
-	return result;
-}
-
 /**
- * Loud-but-not-fatal: a user prefix collides with a Flue built-in. The
- * user's factory wins (per Fred's resolution-order policy) so this is
- * intended behaviour, but we warn once at load so the shadowing surfaces
- * in CI logs and isn't a silent surprise.
+ * Resolve a possibly-relative path to an absolute one.
  *
- * Routed through a function rather than a bare console.warn so tests can
- * stub `setBuiltinShadowWarner` without touching the global console.
+ * - If `value` is undefined, returns `fallback`.
+ * - If `value` is absolute, returns it as-is.
+ * - If `value` is relative AND came from the config file, resolves vs. the
+ *   config dir.
+ * - If `value` is relative AND came from the CLI, the CLI is responsible for
+ *   already having absolutized it (`path.resolve` against cwd at parse time)
+ *   — this branch is defensive and resolves against `process.cwd()`.
  */
-let builtinShadowWarner: (message: string) => void = (message) => {
-	console.warn(message);
-};
-
-export function setBuiltinShadowWarner(fn: (message: string) => void): void {
-	builtinShadowWarner = fn;
+function resolvePath(
+	value: string | undefined,
+	opts: { fromConfig: boolean; configDir: string; fallback: string },
+): string {
+	if (!value) return opts.fallback;
+	if (path.isAbsolute(value)) return value;
+	if (opts.fromConfig) return path.resolve(opts.configDir, value);
+	return path.resolve(value);
 }
 
-function emitBuiltinShadowWarning(prefix: string, rel: string): void {
-	builtinShadowWarner(
-		`[flue] Warning: \`models[${JSON.stringify(prefix)}]\` in ${rel} shadows ` +
-			`Flue's built-in "${prefix}" routing. Your factory will run instead. ` +
-			`If unintentional, rename the prefix.`,
-	);
+function formatValidationError(configPath: string, issues: readonly v.BaseIssue<unknown>[]): string {
+	const lines = [`[flue] Invalid config in ${configPath}:`];
+	for (const issue of issues) {
+		const dotPath = v.getDotPath(issue);
+		const where = dotPath ? `  • ${dotPath}: ` : '  • ';
+		lines.push(`${where}${issue.message}`);
+	}
+	return lines.join('\n');
 }

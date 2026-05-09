@@ -37,17 +37,9 @@ export type {
 	ToolDef,
 	ToolParameters,
 	ThinkingLevel,
-	FlueConfig,
-	ResolvedFlueConfig,
-	ModelFactory,
 } from './types.ts';
 
 export { build, resolveSourceRoot } from './build.ts';
-export { defineConfig, loadFlueConfig, findFlueConfigPath } from './config.ts';
-export {
-	defineOpenAICompletionsModel,
-	type DefineOpenAICompletionsModelOptions,
-} from './model-helpers.ts';
 export {
 	dev,
 	DEFAULT_DEV_PORT,

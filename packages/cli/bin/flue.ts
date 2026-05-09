@@ -3,36 +3,46 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { determineAgent } from '@vercel/detect-agent';
 import { build, dev, DEFAULT_DEV_PORT, parseEnvFiles, resolveEnvFiles } from '@flue/sdk';
+import { resolveConfig, type FlueConfig, type UserFlueConfig } from '@flue/sdk/config';
 import { CONNECTORS, CATEGORY_ROOTS } from './_connectors.generated.ts';
 
 /**
- * Resolve the workspace directory for a CLI command.
+ * Resolve the merged config for a CLI command. The CLI's responsibility is
+ * narrow:
  *
- * - If `--workspace` was passed, trust it as-is (explicit = deliberate).
- * - Otherwise, the workspace is the current working directory.
- *
- * Source files (agents, roles) live at `<workspaceDir>/.flue/` if that
- * directory exists, else at `<workspaceDir>/` directly — analogous to
- * Next.js's `src/` folder.
+ *   1. Build the `inline` overrides from the flags the user actually passed
+ *      (an unset flag means `undefined`, so the config file or default wins).
+ *   2. Tell `resolveConfig` where to start searching for `flue.config.ts`:
+ *      `--workspace` if given (mirrors Vite's `--root`), otherwise cwd.
+ *   3. Hand back a fully-resolved {@link FlueConfig} for the rest of the
+ *      command to consume.
  */
-function resolveWorkspaceDir(explicitWorkspace: string | undefined): string {
-	return explicitWorkspace ?? process.cwd();
-}
+async function resolveCliConfig(args: {
+	target?: 'node' | 'cloudflare';
+	explicitWorkspace: string | undefined;
+	explicitOutput: string | undefined;
+	configFile: string | undefined;
+}): Promise<FlueConfig> {
+	const inline: UserFlueConfig = {};
+	if (args.target) inline.target = args.target;
+	if (args.explicitWorkspace) inline.workspace = args.explicitWorkspace;
+	if (args.explicitOutput) inline.output = args.explicitOutput;
 
-/**
- * Resolve the build output directory.
- *
- * - If `--output` was passed, use it. Resolved against cwd, not the workspace,
- *   so `flue build --workspace ./packages/x --output ./build` writes to the
- *   build dir relative to where the user invoked the CLI.
- * - Otherwise default to `<workspaceDir>/dist`.
- */
-function resolveOutputDir(
-	explicitOutput: string | undefined,
-	workspaceDir: string,
-): string {
-	if (explicitOutput) return path.resolve(explicitOutput);
-	return path.join(workspaceDir, 'dist');
+	try {
+		const { flueConfig, configPath } = await resolveConfig({
+			cwd: process.cwd(),
+			searchFrom: args.explicitWorkspace ?? process.cwd(),
+			configFile: args.configFile,
+			inline,
+		});
+		if (configPath) {
+			console.error(`[flue] Loaded config: ${path.relative(process.cwd(), configPath) || configPath}`);
+		}
+		return flueConfig;
+	} catch (err) {
+		console.error(err instanceof Error ? err.message : String(err));
+		process.exit(1);
+	}
 }
 
 // ─── Arg Parsing ────────────────────────────────────────────────────────────
@@ -40,13 +50,10 @@ function resolveOutputDir(
 function printUsage() {
 	console.error(
 		'Usage:\n' +
-			'  flue dev   [--target <node|cloudflare>] [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
-			'  flue run   <agent> --id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
-			'  flue build [--target <node|cloudflare>] [--workspace <path>] [--output <path>]\n' +
+			'  flue dev   [--target <node|cloudflare>] [--workspace <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]...\n' +
+			'  flue run   <agent> [--target node] --id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]...\n' +
+			'  flue build [--target <node|cloudflare>] [--workspace <path>] [--output <path>] [--config <path>]\n' +
 			'  flue add   [<name>|<url>] [--category <category>] [--print]\n' +
-			'\n' +
-			'`--target` is optional when `flue.config.ts` exports `{ target: ... }`. CLI flag wins on conflict.\n' +
-			'`flue run` is Node-only — Cloudflare deploys use `flue dev --target cloudflare` for local serving.\n' +
 			'\n' +
 			'Commands:\n' +
 			'  dev    Long-running watch-mode dev server. Rebuilds and reloads on file changes.\n' +
@@ -59,6 +66,9 @@ function printUsage() {
 			'                       Source files (agents/, roles/) live at <workspace>/.flue/ if that\n' +
 			'                       directory exists, else at <workspace>/ directly.\n' +
 			'  --output <path>      Where the build artifacts are written. Default: <workspace>/dist.\n' +
+			'  --config <path>      Path to a flue.config.{ts,mts,mjs,js,cjs,cts} file (relative to cwd).\n' +
+			'                       Default: search the workspace dir (or cwd) for `flue.config.*`.\n' +
+			'                       CLI flags always override values set in the config file.\n' +
 			`  --port <number>      Port for the dev server. Default: ${DEFAULT_DEV_PORT}\n` +
 			'  --env <path>         Load env vars from a .env-format file. Repeatable; later files override earlier on key collision.\n' +
 			'                       Works for both Node and Cloudflare targets. Shell-set env vars win over file values.\n' +
@@ -87,13 +97,16 @@ function printUsage() {
 interface RunArgs {
 	command: 'run';
 	agent: string;
-	target: 'node';
+	/** May be undefined if the user is relying on `flue.config.ts` for `target`. */
+	target: 'node' | undefined;
 	id: string;
 	payload: string;
 	/** Explicit --workspace value, or undefined to default to cwd. */
 	explicitWorkspace: string | undefined;
 	/** Explicit --output value, or undefined to default to <workspaceDir>/dist. */
 	explicitOutput: string | undefined;
+	/** Explicit --config value, or undefined to auto-discover. */
+	configFile: string | undefined;
 	port: number;
 	/** Resolved absolute paths from --env flags (repeatable). */
 	envFiles: string[];
@@ -101,22 +114,26 @@ interface RunArgs {
 
 interface BuildArgs {
 	command: 'build';
-	/** Undefined when the user omits --target; the SDK falls back to flue.config.ts. */
+	/** May be undefined if the user is relying on `flue.config.ts` for `target`. */
 	target: 'node' | 'cloudflare' | undefined;
 	/** Explicit --workspace value, or undefined to default to cwd. */
 	explicitWorkspace: string | undefined;
 	/** Explicit --output value, or undefined to default to <workspaceDir>/dist. */
 	explicitOutput: string | undefined;
+	/** Explicit --config value, or undefined to auto-discover. */
+	configFile: string | undefined;
 }
 
 interface DevArgs {
 	command: 'dev';
-	/** Undefined when the user omits --target; the SDK falls back to flue.config.ts. */
+	/** May be undefined if the user is relying on `flue.config.ts` for `target`. */
 	target: 'node' | 'cloudflare' | undefined;
 	/** Explicit --workspace value, or undefined to default to cwd. */
 	explicitWorkspace: string | undefined;
 	/** Explicit --output value, or undefined to default to <workspaceDir>/dist. */
 	explicitOutput: string | undefined;
+	/** Explicit --config value, or undefined to auto-discover. */
+	configFile: string | undefined;
 	/** 0 = use the SDK default (DEFAULT_DEV_PORT). */
 	port: number;
 	/** Raw --env values, in order; resolved/validated by the SDK. */
@@ -138,6 +155,7 @@ function parseFlags(flags: string[]): {
 	id?: string;
 	explicitWorkspace: string | undefined;
 	explicitOutput: string | undefined;
+	configFile: string | undefined;
 	payload: string;
 	port: number;
 	envFiles: string[];
@@ -146,6 +164,7 @@ function parseFlags(flags: string[]): {
 	let id: string | undefined;
 	let explicitWorkspace: string | undefined;
 	let explicitOutput: string | undefined;
+	let configFile: string | undefined;
 	let payload = '{}';
 	let port = 0;
 	const envFiles: string[] = [];
@@ -187,6 +206,12 @@ function parseFlags(flags: string[]): {
 				console.error('Missing value for --output');
 				process.exit(1);
 			}
+		} else if (arg === '--config') {
+			configFile = flags[++i] ?? '';
+			if (!configFile) {
+				console.error('Missing value for --config');
+				process.exit(1);
+			}
 		} else if (arg === '--port') {
 			const portStr = flags[++i];
 			port = parseInt(portStr ?? '', 10);
@@ -213,6 +238,9 @@ function parseFlags(flags: string[]): {
 		id,
 		explicitWorkspace: explicitWorkspace ? path.resolve(explicitWorkspace) : undefined,
 		explicitOutput: explicitOutput ? path.resolve(explicitOutput) : undefined,
+		// `--config` is intentionally NOT pre-resolved: the SDK resolves it
+		// vs. cwd at load time, mirroring how Vite handles `--config`.
+		configFile,
 		payload,
 		port,
 		envFiles,
@@ -287,16 +315,17 @@ function parseArgs(argv: string[]): ParsedArgs {
 		return parseAddArgs(rest);
 	}
 
+	// `--target` is optional at parse time — the config file may supply it.
+	// `resolveCliConfig` enforces it being set somewhere by the time we need it.
+
 	if (command === 'build') {
 		const flags = parseFlags(rest);
-		// --target is optional: when omitted, the SDK falls back to
-		// `target` in `flue.config.ts`. The SDK throws a clear error if
-		// neither is set.
 		return {
 			command: 'build',
 			target: flags.target,
 			explicitWorkspace: flags.explicitWorkspace,
 			explicitOutput: flags.explicitOutput,
+			configFile: flags.configFile,
 		};
 	}
 
@@ -307,6 +336,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 			target: flags.target,
 			explicitWorkspace: flags.explicitWorkspace,
 			explicitOutput: flags.explicitOutput,
+			configFile: flags.configFile,
 			port: flags.port,
 			envFiles: flags.envFiles,
 		};
@@ -315,6 +345,14 @@ function parseArgs(argv: string[]): ParsedArgs {
 	if (command === 'run' && rest.length > 0) {
 		const agent = rest[0]!;
 		const flags = parseFlags(rest.slice(1));
+
+		// `flue run` only supports node. If the user explicitly asked for
+		// cloudflare on the CLI, bail with the usual usage hint. The case
+		// where `flue.config.ts` sets `target: cloudflare` is handled later
+		// in `run()` after config resolution.
+		if (flags.target === 'cloudflare') {
+			printCloudflareRunUnsupported(agent, flags.id ?? '<id>', flags.payload);
+		}
 
 		if (!flags.id) {
 			console.error('Missing required --id flag for run command.');
@@ -329,20 +367,15 @@ function parseArgs(argv: string[]): ParsedArgs {
 			process.exit(1);
 		}
 
-		// `flue run` is a one-shot Node invoker. Cloudflare builds need
-		// `flue dev --target cloudflare`; reject early with a helpful message.
-		if (flags.target === 'cloudflare') {
-			printCloudflareRunUnsupported(agent, flags.id, flags.payload);
-		}
-
 		return {
 			command: 'run',
 			agent,
-			target: 'node',
+			target: flags.target as 'node' | undefined,
 			id: flags.id,
 			payload: flags.payload,
 			explicitWorkspace: flags.explicitWorkspace,
 			explicitOutput: flags.explicitOutput,
+			configFile: flags.configFile,
 			port: flags.port,
 			envFiles: flags.envFiles,
 		};
@@ -675,13 +708,17 @@ async function findPort(): Promise<number> {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function buildCommand(args: BuildArgs) {
-	const workspaceDir = resolveWorkspaceDir(args.explicitWorkspace);
-	const outputDir = resolveOutputDir(args.explicitOutput, workspaceDir);
+	const cfg = await resolveCliConfig({
+		target: args.target,
+		explicitWorkspace: args.explicitWorkspace,
+		explicitOutput: args.explicitOutput,
+		configFile: args.configFile,
+	});
 	try {
 		await build({
-			workspaceDir,
-			outputDir,
-			target: args.target,
+			workspaceDir: cfg.workspace,
+			outputDir: cfg.output,
+			target: cfg.target,
 		});
 	} catch (err) {
 		console.error(`[flue] Build failed:`, err instanceof Error ? err.message : String(err));
@@ -690,15 +727,19 @@ async function buildCommand(args: BuildArgs) {
 }
 
 async function devCommand(args: DevArgs) {
-	const workspaceDir = resolveWorkspaceDir(args.explicitWorkspace);
-	const outputDir = resolveOutputDir(args.explicitOutput, workspaceDir);
+	const cfg = await resolveCliConfig({
+		target: args.target,
+		explicitWorkspace: args.explicitWorkspace,
+		explicitOutput: args.explicitOutput,
+		configFile: args.configFile,
+	});
 	try {
 		// dev() blocks until SIGINT/SIGTERM exits the process. We don't expect
 		// it to return; if it ever does, just exit cleanly.
 		await dev({
-			workspaceDir,
-			outputDir,
-			target: args.target,
+			workspaceDir: cfg.workspace,
+			outputDir: cfg.output,
+			target: cfg.target,
 			port: args.port || undefined,
 			envFiles: args.envFiles,
 		});
@@ -709,8 +750,22 @@ async function devCommand(args: DevArgs) {
 }
 
 async function run(args: RunArgs) {
-	const workspaceDir = resolveWorkspaceDir(args.explicitWorkspace);
-	const outputDir = resolveOutputDir(args.explicitOutput, workspaceDir);
+	const cfg = await resolveCliConfig({
+		target: args.target,
+		explicitWorkspace: args.explicitWorkspace,
+		explicitOutput: args.explicitOutput,
+		configFile: args.configFile,
+	});
+
+	// `flue run` is Node-only. If the resolved target is cloudflare (which
+	// can only happen via `flue.config.ts`, since the CLI flag was already
+	// caught in parseArgs), bail with the same hint.
+	if (cfg.target === 'cloudflare') {
+		printCloudflareRunUnsupported(args.agent, args.id, args.payload);
+	}
+
+	const workspaceDir = cfg.workspace;
+	const outputDir = cfg.output;
 	const serverPath = path.join(outputDir, 'server.mjs');
 
 	// 0. Resolve --env paths up front so a typo errors before we kick
@@ -732,7 +787,7 @@ async function run(args: RunArgs) {
 
 	// 1. Build
 	try {
-		await build({ workspaceDir, outputDir, target: args.target });
+		await build({ workspaceDir, outputDir, target: cfg.target });
 	} catch (err) {
 		console.error(`[flue] Build failed:`, err instanceof Error ? err.message : String(err));
 		process.exit(1);

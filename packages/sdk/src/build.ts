@@ -3,7 +3,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { packageUpSync } from 'package-up';
 import { parseAgentFile } from './agent-parser.ts';
-import { findFlueConfigPath, loadFlueConfig } from './config.ts';
 import { parseFrontmatterFile } from './context.ts';
 import { CloudflarePlugin } from './build-plugin-cloudflare.ts';
 import { NodePlugin } from './build-plugin-node.ts';
@@ -70,23 +69,9 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	const workspaceDir = path.resolve(options.workspaceDir);
 	const outputDir = path.resolve(options.outputDir ?? path.join(workspaceDir, 'dist'));
 
-	// Source root resolves first because `flue.config.ts` lives next to
-	// `agents/` and `roles/`. On the .flue/ layout that's `<workspaceDir>/.flue/`,
-	// not the workspace root itself.
+	const plugin = resolvePlugin(options);
+
 	const sourceRoot = resolveSourceRoot(workspaceDir);
-
-	// Load flue.config.ts (if present) before resolving the build plugin so
-	// `target` from config can fill in for a missing CLI flag. CLI flag wins
-	// when both are set — that's the contract documented on `BuildOptions`
-	// and surfaced through the resolver below.
-	const userConfigPath = findFlueConfigPath(sourceRoot) ?? undefined;
-	const userConfig = userConfigPath ? await loadFlueConfig(sourceRoot) : null;
-	const effectiveOptions: BuildOptions = {
-		...options,
-		target: options.target ?? userConfig?.target,
-	};
-
-	const plugin = resolvePlugin(effectiveOptions);
 
 	console.log(`[flue] Building workspace: ${workspaceDir}`);
 	if (sourceRoot !== workspaceDir) {
@@ -94,9 +79,6 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	}
 	console.log(`[flue] Output: ${outputDir}`);
 	console.log(`[flue] Target: ${plugin.name}`);
-	if (userConfigPath) {
-		console.log(`[flue] Loaded config: ${path.relative(process.cwd(), userConfigPath)}`);
-	}
 
 	const roles = discoverRoles(sourceRoot);
 	const agents = discoverAgents(sourceRoot);
@@ -149,8 +131,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 		roles,
 		workspaceDir,
 		outputDir,
-		options: effectiveOptions,
-		userConfigPath,
+		options,
 	};
 
 	const serverCode = await plugin.generateEntryPoint(ctx);
@@ -251,12 +232,9 @@ function resolvePlugin(options: BuildOptions): BuildPlugin {
 
 	if (!options.target) {
 		throw new Error(
-			'[flue] No build target specified. Pass --target on the CLI or set ' +
-				'`target` in `flue.config.ts`:\n' +
+			'[flue] No build target specified. Use --target to choose a target:\n' +
 				'  flue build --target node\n' +
-				'  flue build --target cloudflare\n\n' +
-				'  // flue.config.ts\n' +
-				'  export default defineConfig({ target: "node" });',
+				'  flue build --target cloudflare',
 		);
 	}
 

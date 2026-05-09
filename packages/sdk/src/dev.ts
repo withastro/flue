@@ -38,7 +38,6 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseEnv } from 'node:util';
 import { build, resolveSourceRoot } from './build.ts';
-import { findFlueConfigPath, loadFlueConfig } from './config.ts';
 import type { BuildOptions } from './types.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -50,11 +49,7 @@ export interface DevOptions {
 	 * See {@link BuildOptions.outputDir} for details.
 	 */
 	outputDir?: string;
-	/**
-	 * Build target. Optional — when omitted, the SDK falls back to `target` in
-	 * `flue.config.ts`. The CLI's --target flag wins when both are set.
-	 */
-	target?: 'node' | 'cloudflare';
+	target: 'node' | 'cloudflare';
 	/** Defaults to 3583 ("FLUE" on a phone keypad). */
 	port?: number;
 	/**
@@ -132,33 +127,13 @@ export async function dev(options: DevOptions): Promise<void> {
 		console.error(`[flue] Loading env from: ${f}`);
 	}
 
-	// Resolve target up front: explicit option > flue.config.ts. The reloader
-	// + watcher both need a concrete target, so we fail fast here with a
-	// helpful error rather than letting `build()` throw later. The config
-	// lives next to agents/ + roles/, so resolve the source root first.
-	const sourceRoot = resolveSourceRoot(workspaceDir);
-	const userConfig = findFlueConfigPath(sourceRoot)
-		? await loadFlueConfig(sourceRoot)
-		: null;
-	const target = options.target ?? userConfig?.target;
-	if (!target) {
-		throw new Error(
-			'[flue] No dev target specified. Pass --target on the CLI or set ' +
-				'`target` in `flue.config.ts`:\n' +
-				'  flue dev --target node\n' +
-				'  flue dev --target cloudflare\n\n' +
-				'  // flue.config.ts\n' +
-				'  export default defineConfig({ target: "node" });',
-		);
-	}
-
 	const buildOptions: BuildOptions = {
 		workspaceDir,
 		outputDir,
-		target,
+		target: options.target,
 	};
 
-	console.error(`[flue] Starting dev server (target: ${target})`);
+	console.error(`[flue] Starting dev server (target: ${options.target})`);
 	console.error(`[flue] Watching: ${workspaceDir}`);
 	console.error(`[flue] Building...`);
 
@@ -173,7 +148,7 @@ export async function dev(options: DevOptions): Promise<void> {
 	console.error(`[flue] Built in ${Date.now() - initialStart}ms`);
 
 	const reloader: DevReloader =
-		target === 'node'
+		options.target === 'node'
 			? new NodeReloader({ workspaceDir, outputDir, port, envFiles })
 			: await createCloudflareReloader({ outputDir, port, envFiles });
 
@@ -196,7 +171,7 @@ export async function dev(options: DevOptions): Promise<void> {
 	const watcher = createWatcher({
 		workspaceDir,
 		outputDir,
-		target,
+		target: options.target,
 		envFiles,
 		onChange: (relPath) => {
 			if (!reloader.shouldRebuildOn(relPath)) return;

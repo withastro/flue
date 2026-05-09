@@ -47,17 +47,9 @@ export class CloudflarePlugin implements BuildPlugin {
 	}
 
 	async generateEntryPoint(ctx: BuildContext): Promise<string> {
-		const { agents, roles, userConfigPath } = ctx;
+		const { agents, roles } = ctx;
 		const rolesJson = JSON.stringify(roles);
 		validateCloudflareAgentNames(ctx);
-
-		// User flue.config.ts (distinct from the wrangler config below). Imported
-		// statically so wrangler's bundler picks it up; emits `{}` when absent.
-		// `JSON.stringify` produces a safely-quoted literal so paths containing
-		// quotes (rare but legal on POSIX) cannot inject code into the entry.
-		const flueUserConfigImport = userConfigPath
-			? `import flueUserConfig from ${JSON.stringify(userConfigPath.replace(/\\/g, '/'))};`
-			: 'const flueUserConfig = {};';
 
 		const webhookAgents = agents.filter((a) => a.triggers.webhook);
 
@@ -122,7 +114,7 @@ import {
   createFlueContext,
   InMemorySessionStore,
   bashFactoryToSessionEnv,
-  resolveModel as baseResolveModel,
+  resolveModel,
   parseJsonBody,
   toHttpResponse,
   toSseData,
@@ -137,36 +129,11 @@ import {
   registerCloudflareAIBindingProvider,
 } from '@flue/sdk/cloudflare';
 
-${flueUserConfigImport}
-
 ${agentImports}
 
 // Must run before any request handler — pi-ai's registry must know about the
 // binding API by the time agent code calls \`init({ model: 'cloudflare/...' })\`.
 registerCloudflareAIBindingProvider();
-
-// User-config–aware model resolver. Project-level prefixes from
-// \`flue.config.ts\` win over the built-in \`cloudflare/\` branch and the pi-ai
-// catalog.
-const flueUserModels = flueUserConfig?.models ?? {};
-function resolveModel(model, providers) {
-  return baseResolveModel(model, providers, flueUserModels);
-}
-
-// Boot-time hook. Runs at most once per worker isolate, before the first
-// request is handled. Stored as a promise so concurrent first requests await
-// the same initialisation.
-let flueSetupPromise;
-function ensureFlueSetup() {
-  if (!flueSetupPromise) {
-    flueSetupPromise = (async () => {
-      if (typeof flueUserConfig?.setup === 'function') {
-        await flueUserConfig.setup();
-      }
-    })();
-  }
-  return flueSetupPromise;
-}
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -478,10 +445,6 @@ ${sandboxReExports}
 export default {
   async fetch(request, env) {
     try {
-      // Run user-config setup() once before the first request. Idempotent
-      // and cached across the isolate's lifetime.
-      await ensureFlueSetup();
-
       const url = new URL(request.url);
       const method = request.method;
 

@@ -83,6 +83,15 @@ importers:
         specifier: ^1.0.0
         version: 1.3.1(typescript@5.9.3)
 
+  examples/cloudflare:
+    dependencies:
+      '@flue/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      agents:
+        specifier: '*'
+        version: 0.12.3(@babel/core@7.29.0)(@babel/runtime@7.29.2)(@cloudflare/codemode@0.3.4(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ai@6.0.175(zod@4.4.3))(zod@4.4.3))(@cloudflare/workers-types@4.20260505.1)(ai@6.0.175(zod@4.4.3))(react@19.2.5)(rolldown@1.0.0-rc.17)(zod@4.4.3)
+
   examples/hello-world:
     dependencies:
       '@daytona/sdk':

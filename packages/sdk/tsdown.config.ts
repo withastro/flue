@@ -8,6 +8,7 @@ export default defineConfig({
 		'src/internal.ts',
 		'src/cloudflare/index.ts',
 		'src/node/index.ts',
+		'src/config.ts',
 	],
 	format: ['esm'],
 	dts: true,
