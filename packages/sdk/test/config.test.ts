@@ -209,6 +209,25 @@ describe('resolveModel + user models map', () => {
 		assert.ok(resolved);
 		assert.equal(resolved!.provider, 'anthropic');
 	});
+
+	it('user prefix shadows the built-in cloudflare/ branch', () => {
+		// Documents the resolution order: user prefixes win, even when they
+		// reuse a name Flue ships internally (here "cloudflare/"). This is
+		// intentional — it lets users override the built-in Workers AI
+		// binding routing on the (unusual) day they need to.
+		const userModels = {
+			'cloudflare/': (suffix: string) =>
+				defineOpenAICompletionsModel({
+					id: suffix,
+					baseUrl: 'https://example.test/v1',
+					provider: 'user-shadowed-cloudflare',
+				}),
+		};
+
+		const resolved = resolveModel('cloudflare/foo', undefined, userModels);
+		assert.equal(resolved!.provider, 'user-shadowed-cloudflare');
+		assert.equal(resolved!.baseUrl, 'https://example.test/v1');
+	});
 });
 
 describe('defineConfig', () => {

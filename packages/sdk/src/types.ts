@@ -756,6 +756,14 @@ export interface BuildOptions {
  * Run once per `resolveModel` call. Synchronous because resolution happens
  * on the agent hot path. Use `setup()` for any async preparation, then
  * close over the prepared resources here.
+ *
+ * v1 contract: a bare function. This is intentionally minimal so common
+ * cases (one prefix → one OpenAI-compatible endpoint) stay a one-liner.
+ * If real-world needs surface for per-model dynamic headers, rate-limiting,
+ * or thinking-level mapping, expect the contract to grow into an object
+ * shape (`{ build(suffix), headers(req), … }`) rather than this signature
+ * being widened. Early adopters who only return `defineOpenAICompletionsModel`
+ * results will not be affected by that evolution.
  */
 export type ModelFactory = (suffix: string) => Model<any>;
 
@@ -782,6 +790,13 @@ export interface FlueConfig {
 	 * Most users do not need this — pi-ai's built-in `openai-completions`
 	 * provider covers any OpenAI-compatible endpoint, so a `models` factory
 	 * built on top of `defineOpenAICompletionsModel` is enough.
+	 *
+	 * Errors thrown from `setup()` are not caught: on Node they reject the
+	 * top-level await before the HTTP server starts (process exits non-zero);
+	 * on Cloudflare they surface as a 500 on every request that races the
+	 * first invocation, with the original error in the canonical envelope.
+	 * In short — if `setup()` throws, the deployment is broken and you'll
+	 * know immediately. There is intentionally no retry.
 	 */
 	setup?(): void | Promise<void>;
 
