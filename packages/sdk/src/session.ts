@@ -1,7 +1,7 @@
 /** Internal session implementation. Not exported publicly — wrapped by FlueSession. */
 import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentMessage, AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
-import type { AssistantMessage, Model, ToolResultMessage } from '@mariozechner/pi-ai';
+import type { AssistantMessage, Model, ToolResultMessage, UserMessage } from '@mariozechner/pi-ai';
 import type * as v from 'valibot';
 import { abortErrorFor, createCallHandle } from './abort.ts';
 import {
@@ -366,53 +366,66 @@ export class Session implements FlueSession {
 				// the one referenced by the toolResult, just like a real
 				// tool-use round.
 				const toolCallId = crypto.randomUUID();
-				const args = { command };
+
+				// Per-call cwd/env, when set, are part of the call's identity
+				// and need to be visible in the transcript. Without them the
+				// model can't tell on a later turn that a command ran with
+				// overrides — making questions like "what cwd was that run
+				// from?" unanswerable from history. The bash tool's own
+				// schema (BashParams) doesn't formally declare these, but
+				// pi-ai's ToolCall.arguments is `Record<string, any>` and
+				// providers forward arguments opaquely, so extending the
+				// shape here is safe.
+				const args: Record<string, unknown> = { command };
+				if (options?.cwd !== undefined) args.cwd = options.cwd;
+				if (options?.env !== undefined) args.env = options.env;
+
 				this.emit({ type: 'tool_start', toolName: 'bash', toolCallId, args });
 
 				const effectiveCommands = mergeCommands(this.agentCommands, options?.commands);
 				const env = await scopeSessionEnv(this.env, effectiveCommands);
 
-				let shellResult: ShellResult | undefined;
-				let toolResult: AgentToolResult<any>;
-				let isError = false;
 				try {
 					const result = await env.exec(command, {
 						env: options?.env,
 						cwd: options?.cwd,
 						signal,
 					});
-					shellResult = {
+					const shellResult: ShellResult = {
 						stdout: result.stdout,
 						stderr: result.stderr,
 						exitCode: result.exitCode,
 					};
-					toolResult = formatBashResult(shellResult, command);
-				} catch (error) {
-					isError = true;
-					toolResult = {
-						content: [{ type: 'text', text: getErrorMessage(error) }],
-						details: { command },
-					};
-					await this.appendShellTriple(command, toolCallId, toolResult, isError);
+					const toolResult = formatBashResult(shellResult, command);
+					await this.appendShellTriple(toolCallId, args, toolResult, false);
 					this.emit({
 						type: 'tool_end',
 						toolName: 'bash',
 						toolCallId,
-						isError,
+						isError: false,
 						result: toolResult,
+					});
+					return shellResult;
+				} catch (error) {
+					// Aligns with formatBashResult's `details: { command, exitCode }`
+					// shape so consumers reading event.result.details.exitCode see a
+					// number on both branches. -1 is the conventional sentinel for
+					// "no exit recorded" (the same one env.exec uses internally for
+					// sandbox-level failures — see sandbox.ts).
+					const errResult: AgentToolResult<any> = {
+						content: [{ type: 'text', text: getErrorMessage(error) }],
+						details: { command, exitCode: -1 },
+					};
+					await this.appendShellTriple(toolCallId, args, errResult, true);
+					this.emit({
+						type: 'tool_end',
+						toolName: 'bash',
+						toolCallId,
+						isError: true,
+						result: errResult,
 					});
 					throw error;
 				}
-
-				await this.appendShellTriple(command, toolCallId, toolResult, isError);
-				this.emit({
-					type: 'tool_end',
-					toolName: 'bash',
-					toolCallId,
-					isError,
-					result: toolResult,
-				});
-				return shellResult;
 			}),
 		);
 	}
@@ -823,25 +836,26 @@ export class Session implements FlueSession {
 	 * LLM-issued bash tool call when later turns read the transcript.
 	 */
 	private async appendShellTriple(
-		command: string,
 		toolCallId: string,
+		args: Record<string, unknown>,
 		toolResult: AgentToolResult<any>,
 		isError: boolean,
 	): Promise<void> {
 		const timestamp = Date.now();
-		const userMessage: AgentMessage = {
+		const command = args.command as string;
+		const userMessage: UserMessage = {
 			role: 'user',
 			content: `Run this shell command:\n\n\`\`\`bash\n${command}\n\`\`\``,
 			timestamp,
-		} as AgentMessage;
-		const assistantMessage: AgentMessage = {
+		};
+		const assistantMessage: AssistantMessage = {
 			role: 'assistant',
 			content: [
 				{
 					type: 'toolCall',
 					id: toolCallId,
 					name: 'bash',
-					arguments: { command },
+					arguments: args as Record<string, any>,
 				},
 			],
 			// Synthetic provider-bookkeeping fields. No real provider was
@@ -862,7 +876,7 @@ export class Session implements FlueSession {
 			},
 			stopReason: 'toolUse',
 			timestamp,
-		} as AgentMessage;
+		};
 		const toolResultMessage: ToolResultMessage = {
 			role: 'toolResult',
 			toolCallId,
@@ -873,7 +887,7 @@ export class Session implements FlueSession {
 			timestamp,
 		};
 		this.history.appendMessages(
-			[userMessage, assistantMessage, toolResultMessage as AgentMessage],
+			[userMessage, assistantMessage, toolResultMessage],
 			'shell',
 		);
 		this.harness.state.messages = this.history.buildContext();
