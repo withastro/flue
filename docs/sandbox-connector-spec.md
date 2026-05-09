@@ -105,7 +105,12 @@ export interface SandboxApi {
   rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>;
   exec(
     command: string,
-    options?: { cwd?: string; env?: Record<string, string>; timeout?: number },
+    options?: {
+      cwd?: string;
+      env?: Record<string, string>;
+      timeout?: number;
+      signal?: AbortSignal;
+    },
   ): Promise<{ stdout: string; stderr: string; exitCode: number }>;
 }
 ```
@@ -187,9 +192,24 @@ Delete a file or directory. Honor `options.recursive` and `options.force`.
 ### `exec(command, options?) → Promise<{ stdout, stderr, exitCode }>`
 
 Run a shell command. Honor `options.cwd`, `options.env`, and
-`options.timeout` if your provider supports them. If `stderr` is not
-separately surfaced, return `''` for it; do the same for `exitCode` if
-unavailable, defaulting to `0` only when the call clearly succeeded.
+`options.timeout` if your provider supports them.
+
+Honor `options.signal` for caller-driven cancellation whenever the provider
+has a real cancellation primitive (`AbortSignal`, process kill, cancel token,
+etc.). If the provider cannot cancel an in-flight command, still check
+`options.signal.aborted` before starting the command and after it returns, and
+throw the abort reason (or an `AbortError`) when already aborted. Do not claim
+that cancellation stops the remote process unless it really does.
+
+`timeout` and `signal` intentionally have different semantics in Flue:
+`timeout` is for the LLM-facing bash tool and should return a normal
+`ShellResult` that the model can recover from; `signal` is caller-driven
+cancellation and should reject/throw instead of returning a successful-looking
+result.
+
+If `stderr` is not separately surfaced, return `''` for it; do the same for
+`exitCode` if unavailable, defaulting to `0` only when the call clearly
+succeeded.
 
 ---
 

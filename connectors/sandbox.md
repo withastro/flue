@@ -50,6 +50,13 @@ These are the things that aren't obvious from the spec or the example.
   the user if their layout is unusual.
 - **Imports.** The published surface is `@flue/sdk/sandbox`. Don't import
   from `@flue/sdk/internal` or any other internal path.
+- **Cancellation.** `SandboxApi.exec()` receives both `timeout` and `signal`.
+  Treat them differently: `timeout` is recoverable command-level timeout
+  behavior, while `signal` is caller-driven cancellation. If the provider has
+  a real cancellation primitive, wire `signal` into it. If it doesn't, check
+  `signal.aborted` before and after the provider call and be explicit about
+  the limitation. Don't pretend a remote command was stopped unless the
+  provider actually stops it.
 - **Credentials.** If the provider needs secrets at runtime, never invent
   values for them. Let the project's conventions (`AGENTS.md`, an existing
   `.env` / `.dev.vars`, a secret manager, CI vars, etc.) decide where they
