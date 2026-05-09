@@ -1,12 +1,13 @@
 /** Internal session implementation. Not exported publicly — wrapped by FlueSession. */
 import { Agent } from '@mariozechner/pi-agent-core';
 import type { AgentMessage, AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
-import type { AssistantMessage, Model } from '@mariozechner/pi-ai';
+import type { AssistantMessage, Model, ToolResultMessage } from '@mariozechner/pi-ai';
 import type * as v from 'valibot';
 import { abortErrorFor, createCallHandle } from './abort.ts';
 import {
 	BUILTIN_TOOL_NAMES,
 	createTools,
+	formatBashResult,
 	type TaskToolParams,
 	type TaskToolResultDetails,
 } from './agent.ts';
@@ -60,7 +61,6 @@ import type {
 	ToolDef,
 } from './types.ts';
 
-const MAX_SHELL_HISTORY_CHARS = 50 * 1024;
 const MAX_TASK_DEPTH = 4;
 
 export interface CreateTaskSessionOptions {
@@ -351,22 +351,67 @@ export class Session implements FlueSession {
 	shell(command: string, options?: ShellOptions): CallHandle<ShellResult> {
 		return createCallHandle(options?.signal, (signal) =>
 			this.runOperation('shell', signal, async () => {
+				// session.shell() is an out-of-band tool invocation: the caller
+				// (agent code) decides to run a bash command, but it should
+				// appear in the message history as if the model itself had
+				// called the bash tool. That keeps the transcript readable for
+				// later turns, lets compaction handle it via the same path as
+				// real tool calls, and removes the synthetic-user-message
+				// shape that earlier versions of this method produced.
+				//
+				// Concretely we emit the same tool_start/tool_end events the
+				// harness emits for LLM-driven tool calls, and we append a
+				// (user request, assistant tool_use, toolResult) message
+				// triple to history. The toolCallId we generate here matches
+				// the one referenced by the toolResult, just like a real
+				// tool-use round.
+				const toolCallId = crypto.randomUUID();
+				const args = { command };
+				this.emit({ type: 'tool_start', toolName: 'bash', toolCallId, args });
+
 				const effectiveCommands = mergeCommands(this.agentCommands, options?.commands);
 				const env = await scopeSessionEnv(this.env, effectiveCommands);
-				const result = await env.exec(command, {
-					env: options?.env,
-					cwd: options?.cwd,
-					signal,
+
+				let shellResult: ShellResult | undefined;
+				let toolResult: AgentToolResult<any>;
+				let isError = false;
+				try {
+					const result = await env.exec(command, {
+						env: options?.env,
+						cwd: options?.cwd,
+						signal,
+					});
+					shellResult = {
+						stdout: result.stdout,
+						stderr: result.stderr,
+						exitCode: result.exitCode,
+					};
+					toolResult = formatBashResult(shellResult, command);
+				} catch (error) {
+					isError = true;
+					toolResult = {
+						content: [{ type: 'text', text: getErrorMessage(error) }],
+						details: { command },
+					};
+					await this.appendShellTriple(command, toolCallId, toolResult, isError);
+					this.emit({
+						type: 'tool_end',
+						toolName: 'bash',
+						toolCallId,
+						isError,
+						result: toolResult,
+					});
+					throw error;
+				}
+
+				await this.appendShellTriple(command, toolCallId, toolResult, isError);
+				this.emit({
+					type: 'tool_end',
+					toolName: 'bash',
+					toolCallId,
+					isError,
+					result: toolResult,
 				});
-				const shellResult = {
-					stdout: result.stdout,
-					stderr: result.stderr,
-					exitCode: result.exitCode,
-				};
-				const message = this.createShellMessage(command, shellResult, options);
-				this.history.appendMessage(message, 'shell');
-				this.harness.state.messages = this.history.buildContext();
-				await this.save();
 				return shellResult;
 			}),
 		);
@@ -764,19 +809,75 @@ export class Session implements FlueSession {
 		}
 	}
 
-	private createShellMessage(
+	/**
+	 * Append the three-message conversational triple that represents a
+	 * `session.shell()` call in the message history:
+	 *
+	 *   1. user        — out-of-band request to run the command
+	 *   2. assistant   — synthetic turn whose content is a single bash
+	 *                    tool_use block (matching the shape pi-ai's
+	 *                    providers produce when the LLM itself calls bash)
+	 *   3. toolResult  — the bash output, keyed to the same toolCallId
+	 *
+	 * This makes a session.shell() call indistinguishable from an
+	 * LLM-issued bash tool call when later turns read the transcript.
+	 */
+	private async appendShellTriple(
 		command: string,
-		result: ShellResult,
-		options?: ShellOptions,
-	): AgentMessage {
-		const cwdLine = options?.cwd ? `\ncwd: ${options.cwd}` : '';
-		const envLine = options?.env ? `\nenv: ${Object.keys(options.env).sort().join(', ')}` : '';
-		const output = formatShellHistory(command, result, cwdLine, envLine);
-		return {
+		toolCallId: string,
+		toolResult: AgentToolResult<any>,
+		isError: boolean,
+	): Promise<void> {
+		const timestamp = Date.now();
+		const userMessage: AgentMessage = {
 			role: 'user',
-			content: [{ type: 'text', text: output }],
-			timestamp: Date.now(),
+			content: `Run this shell command:\n\n\`\`\`bash\n${command}\n\`\`\``,
+			timestamp,
 		} as AgentMessage;
+		const assistantMessage: AgentMessage = {
+			role: 'assistant',
+			content: [
+				{
+					type: 'toolCall',
+					id: toolCallId,
+					name: 'bash',
+					arguments: { command },
+				},
+			],
+			// Synthetic provider-bookkeeping fields. No real provider was
+			// involved in producing this turn; we use sentinel values that
+			// don't pretend otherwise. pi-ai's providers don't read these
+			// fields when transforming history for the next turn — they
+			// only inspect content and stopReason.
+			api: 'flue-shell',
+			provider: 'flue',
+			model: '',
+			usage: {
+				input: 0,
+				output: 0,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 0,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+			stopReason: 'toolUse',
+			timestamp,
+		} as AgentMessage;
+		const toolResultMessage: ToolResultMessage = {
+			role: 'toolResult',
+			toolCallId,
+			toolName: 'bash',
+			content: toolResult.content as ToolResultMessage['content'],
+			details: toolResult.details,
+			isError,
+			timestamp,
+		};
+		this.history.appendMessages(
+			[userMessage, assistantMessage, toolResultMessage as AgentMessage],
+			'shell',
+		);
+		this.harness.state.messages = this.history.buildContext();
+		await this.save();
 	}
 
 	private async syncHarnessMessagesSince(index: number, source: MessageSource): Promise<void> {
@@ -1181,31 +1282,6 @@ export async function deleteSessionTree(
 		}
 	}
 	await store.delete(storageKey);
-}
-
-function formatShellHistory(
-	command: string,
-	result: ShellResult,
-	cwdLine: string,
-	envLine: string,
-): string {
-	const sections = [
-		`<shell_command>\n$ ${command}${cwdLine}${envLine}\n</shell_command>`,
-		`<shell_result exitCode="${result.exitCode}">`,
-	];
-	if (result.stdout) sections.push(`<stdout>\n${result.stdout}\n</stdout>`);
-	if (result.stderr) sections.push(`<stderr>\n${result.stderr}\n</stderr>`);
-	sections.push('</shell_result>');
-	return truncateShellHistory(sections.join('\n'));
-}
-
-function truncateShellHistory(text: string): string {
-	if (text.length <= MAX_SHELL_HISTORY_CHARS) return text;
-	const truncated = text.length - MAX_SHELL_HISTORY_CHARS;
-	return (
-		`[Shell output truncated: ${truncated} leading characters omitted]\n` +
-		text.slice(text.length - MAX_SHELL_HISTORY_CHARS)
-	);
 }
 
 function getErrorMessage(error: unknown): string {

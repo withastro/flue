@@ -265,7 +265,7 @@ function createTaskTool(
 	};
 }
 
-function formatBashResult(
+export function formatBashResult(
 	result: { stdout: string; stderr: string; exitCode: number },
 	command: string,
 ): AgentToolResult<any> {
