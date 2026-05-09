@@ -1,7 +1,14 @@
 /** Internal session implementation. Not exported publicly — wrapped by FlueSession. */
-import { Agent } from '@mariozechner/pi-agent-core';
+
 import type { AgentMessage, AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
-import type { AssistantMessage, Model, ToolResultMessage, UserMessage } from '@mariozechner/pi-ai';
+import { Agent } from '@mariozechner/pi-agent-core';
+import type {
+	AssistantMessage,
+	ImageContent,
+	Model,
+	ToolResultMessage,
+	UserMessage,
+} from '@mariozechner/pi-ai';
 import type * as v from 'valibot';
 import { abortErrorFor, createCallHandle } from './abort.ts';
 import {
@@ -12,33 +19,32 @@ import {
 	type TaskToolResultDetails,
 } from './agent.ts';
 import {
+	type CompactionSettings,
 	calculateContextTokens,
 	compact,
 	DEFAULT_COMPACTION_SETTINGS,
 	isContextOverflow,
 	prepareCompaction,
 	shouldCompact,
-	type CompactionSettings,
 } from './compaction.ts';
+import { resolveSkillFilePath, skillsDirIn } from './context.ts';
+import { mergeCommands, createScopedEnv as scopeSessionEnv } from './env-utils.ts';
 import {
 	buildPromptText,
 	buildResultFollowUpPrompt,
 	buildSkillByNamePrompt,
 	buildSkillByPathPrompt,
 	createResultTools,
-	ResultUnavailableError,
 	type ResultToolBundle,
+	ResultUnavailableError,
 } from './result.ts';
-import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
-import { resolveSkillFilePath, skillsDirIn } from './context.ts';
-import { createScopedEnv as scopeSessionEnv, mergeCommands } from './env-utils.ts';
 import {
 	assertRoleExists,
 	resolveEffectiveRole as resolveEffectiveRoleName,
 	resolveRoleModel,
 	resolveRoleThinkingLevel,
 } from './roles.ts';
-import { SessionHistory, type ContextEntry, type MessageSource } from './session-history.ts';
+import { type ContextEntry, type MessageSource, SessionHistory } from './session-history.ts';
 import type {
 	AgentConfig,
 	CallHandle,
@@ -61,6 +67,7 @@ import type {
 	ThinkingLevel,
 	ToolDef,
 } from './types.ts';
+import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 
 const MAX_TASK_DEPTH = 4;
 
@@ -278,6 +285,7 @@ export class Session implements FlueSession {
 					role: options?.role,
 					model: options?.model,
 					thinkingLevel: options?.thinkingLevel,
+					images: options?.images,
 					source: 'prompt',
 					errorLabel: 'prompt',
 					callSite: 'this prompt() call',
@@ -350,6 +358,7 @@ export class Session implements FlueSession {
 					role: options?.role,
 					model: options?.model,
 					thinkingLevel: options?.thinkingLevel,
+					images: options?.images,
 					source: 'skill',
 					errorLabel: `skill("${name}")`,
 					callSite: `this skill("${name}") call`,
@@ -607,11 +616,7 @@ export class Session implements FlueSession {
 		const previousSystemPrompt = this.harness.state.systemPrompt;
 		const previousThinkingLevel = this.harness.state.thinkingLevel;
 
-		const resolvedModel = this.resolveModelForCall(
-			options.model,
-			options.role,
-			options.callSite,
-		);
+		const resolvedModel = this.resolveModelForCall(options.model, options.role, options.callSite);
 		this.harness.state.model = resolvedModel;
 		this.harness.state.systemPrompt = this.buildSystemPrompt(options.role);
 		this.harness.state.thinkingLevel = this.resolveThinkingLevelForCall(
@@ -740,6 +745,7 @@ export class Session implements FlueSession {
 					options?.thinkingLevel ??
 					(roleThinkingLevel !== undefined ? undefined : options?.inheritedThinkingLevel),
 				tools: options?.tools,
+				images: options?.images,
 				signal,
 			};
 			if (schema) childOptions.result = schema;
@@ -909,10 +915,7 @@ export class Session implements FlueSession {
 			isError,
 			timestamp,
 		};
-		this.history.appendMessages(
-			[userMessage, assistantMessage, toolResultMessage],
-			'shell',
-		);
+		this.history.appendMessages([userMessage, assistantMessage, toolResultMessage], 'shell');
 		this.harness.state.messages = this.history.buildContext();
 		await this.save();
 	}
@@ -1172,6 +1175,7 @@ export class Session implements FlueSession {
 		role: string | undefined;
 		model: string | undefined;
 		thinkingLevel: ThinkingLevel | undefined;
+		images: ImageContent[] | undefined;
 		source: MessageSource;
 		errorLabel: string;
 		callSite: string;
@@ -1211,6 +1215,7 @@ export class Session implements FlueSession {
 						args.source,
 						args.errorLabel,
 						args.signal,
+						args.images,
 					);
 					return {
 						result,
@@ -1219,7 +1224,7 @@ export class Session implements FlueSession {
 					};
 				}
 
-				await this.harness.prompt(args.promptText);
+				await this.harness.prompt(args.promptText, args.images);
 				await this.harness.waitForIdle();
 				await this.syncHarnessMessagesSince(beforeLength, args.source);
 				await this.checkLatestAssistantForCompaction();
@@ -1255,13 +1260,16 @@ export class Session implements FlueSession {
 		source: MessageSource,
 		errorLabel: string,
 		signal: AbortSignal,
+		initialImages?: ImageContent[],
 	): Promise<T> {
 		let nextPrompt: string = initialPrompt;
 		let cursor = beforeLength;
 		const MAX_FOLLOWUPS = 32;
 		for (let attempt = 0; attempt <= MAX_FOLLOWUPS; attempt++) {
 			if (signal.aborted) throw abortErrorFor(signal);
-			await this.harness.prompt(nextPrompt);
+			// Images attach only on the first turn — retry follow-ups carry text
+			// only, so we don't re-bill image bytes on every result-tool retry.
+			await this.harness.prompt(nextPrompt, attempt === 0 ? initialImages : undefined);
 			await this.harness.waitForIdle();
 			await this.syncHarnessMessagesSince(cursor, source);
 			cursor = this.harness.state.messages.length;
