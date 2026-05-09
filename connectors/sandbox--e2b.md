@@ -28,12 +28,11 @@ swap in `@e2b/code-interpreter` — its `Sandbox` class has the same
 
 ## Where to write the file
 
-Pick the location based on the user's project layout:
+Pick the location based on the user's source layout (analogous to Next.js's
+`src/` folder):
 
-- **`.flue/` layout** (project has files at the root and uses `.flue/agents/`
-  etc.): write to `./.flue/connectors/e2b.ts`.
-- **Root layout** (the project root itself contains `agents/` and friends):
-  write to `./connectors/e2b.ts`.
+- **If `<workspace>/.flue/` exists**, write to `./.flue/connectors/e2b.ts`.
+- **Otherwise**, write to `./connectors/e2b.ts` at the workspace root.
 
 If neither feels right (uncommon layout, multiple workspaces, etc.), ask the
 user before writing.

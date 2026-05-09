@@ -31,7 +31,7 @@ flue add daytona --print
 flue add daytona --print | claude
 ```
 
-This drops a `connectors/daytona.ts` file into your workspace (under `.flue/connectors/` if you're using the `.flue/` layout, or `connectors/` at the project root otherwise) and reminds you to install Daytona's TypeScript SDK:
+This drops a `connectors/daytona.ts` file into your workspace (under `.flue/connectors/` if your workspace uses a `.flue/` source folder, otherwise `connectors/` at the workspace root) and reminds you to install Daytona's TypeScript SDK:
 
 ```bash
 npm install @daytona/sdk

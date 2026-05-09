@@ -20,12 +20,11 @@ owns the Vercel Sandbox lifecycle; this connector just adapts the sandbox.
 
 ## Where to write the file
 
-Pick the location based on the user's project layout:
+Pick the location based on the user's source layout (analogous to Next.js's
+`src/` folder):
 
-- **`.flue/` layout** (project has files at the root and uses `.flue/agents/`
-  etc.): write to `./.flue/connectors/vercel.ts`.
-- **Root layout** (the project root itself contains `agents/` and friends):
-  write to `./connectors/vercel.ts`.
+- **If `<workspace>/.flue/` exists**, write to `./.flue/connectors/vercel.ts`.
+- **Otherwise**, write to `./connectors/vercel.ts` at the workspace root.
 
 If neither feels right (uncommon layout, multiple workspaces, etc.), ask the
 user before writing.
