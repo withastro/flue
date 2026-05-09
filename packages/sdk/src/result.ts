@@ -2,9 +2,6 @@ import type { AgentTool } from '@mariozechner/pi-agent-core';
 import { toJsonSchema } from '@valibot/to-json-schema';
 import * as v from 'valibot';
 
-export const HEADLESS_PREAMBLE =
-	'You are running in headless mode with no human operator. Work autonomously — never ask questions, never wait for user input. Make your best judgment and proceed independently.';
-
 /**
  * Names of the SDK-injected tools used to capture schema-typed results.
  * Surfaced for diagnostics and logging; not part of the public API.
@@ -30,15 +27,34 @@ export function buildResultFollowUpPrompt(): string {
 	].join(' ');
 }
 
+/**
+ * Build the user-facing prompt text for a `session.skill()` call.
+ *
+ * Skill bodies are no longer inlined into the prompt — the model reads
+ * the SKILL.md file from disk on demand using its filesystem tools.
+ * That keeps relative references inside the skill (other markdown files,
+ * scripts, etc.) resolvable from where they live, and lets users edit
+ * skill files mid-session without re-initialising the agent. The
+ * supplementary file-path hint is included only when the caller passed a
+ * path-shaped name (i.e. the path-based fallback at the call site
+ * resolved a SKILL by relative path) — for normal name-registered
+ * skills, the system-prompt's "Available Skills" list is the only
+ * registry the model needs to consult.
+ */
 export function buildSkillPrompt(
-	skillInstructions: string,
+	name: string,
 	args?: Record<string, unknown>,
 	schema?: v.GenericSchema,
+	path?: string,
 ): string {
-	const parts: string[] = [HEADLESS_PREAMBLE, '', skillInstructions];
+	const parts: string[] = [`Run the skill named "${name}".`];
+
+	if (path) {
+		parts.push('', `The skill is documented at ${path}.`);
+	}
 
 	if (args && Object.keys(args).length > 0) {
-		parts.push(`\nArguments:\n${JSON.stringify(args, null, 2)}`);
+		parts.push('', 'Arguments:', JSON.stringify(args, null, 2));
 	}
 
 	if (schema) {
@@ -49,7 +65,7 @@ export function buildSkillPrompt(
 }
 
 export function buildPromptText(text: string, schema?: v.GenericSchema): string {
-	const parts: string[] = [HEADLESS_PREAMBLE, '', text];
+	const parts: string[] = [text];
 
 	if (schema) {
 		parts.push(buildResultFooter());

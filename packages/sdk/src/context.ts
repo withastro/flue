@@ -56,7 +56,7 @@ export async function readAgentsMd(env: SessionEnv, basePath: string): Promise<s
 }
 
 /**
- * Load a skill directly by relative path under `.agents/skills/`.
+ * Resolve a skill referenced by relative path under `.agents/skills/`.
  *
  * The path is taken as-is — no extension is auto-appended. Callers reference
  * the full filename, e.g. `'triage/reproduce.md'`. Returns `null` if the file
@@ -66,6 +66,10 @@ export async function readAgentsMd(env: SessionEnv, basePath: string): Promise<s
  * a discovered skill's frontmatter `name:` field. Lets users organise skills as
  * a pack of sibling markdown files under one directory (orchestration SKILL.md
  * + stage files) without forcing each stage into its own `SKILL.md` subdirectory.
+ *
+ * Skill bodies are not cached — at call time the model reads the file from
+ * disk itself. We still parse the frontmatter here to recover the
+ * registered name and description for the system-prompt registry.
  */
 export async function loadSkillByPath(
 	env: SessionEnv,
@@ -86,11 +90,19 @@ export async function loadSkillByPath(
 	return {
 		name: parsed.name,
 		description: parsed.description,
-		instructions: parsed.body,
 	};
 }
 
-/** Discover skills from .agents/skills/<name>/SKILL.md under basePath. */
+/**
+ * Discover skills from `.agents/skills/<name>/SKILL.md` under basePath.
+ *
+ * Skill bodies are intentionally not retained — at call time the model
+ * reads the file from disk itself, which keeps relative references
+ * inside the skill resolvable from where they live and lets users edit
+ * skill files mid-session without re-initialising the agent. We parse
+ * the frontmatter here only to populate the system-prompt's "Available
+ * Skills" registry (name + description).
+ */
 export async function discoverLocalSkills(
 	env: SessionEnv,
 	basePath: string,
@@ -122,27 +134,45 @@ export async function discoverLocalSkills(
 		skills[parsed.name] = {
 			name: parsed.name,
 			description: parsed.description,
-			instructions: parsed.body,
 		};
 	}
 
 	return skills;
 }
 
+/**
+ * Headless-mode preamble. Included once at the top of every session's
+ * system prompt so the model knows it's running without a human operator
+ * before the first turn — and doesn't get reminded of it on every
+ * `prompt()` / `skill()` call. Previously this lived in
+ * `result.ts:buildPromptText` / `buildSkillPrompt` and was inlined into
+ * each per-call user message; that was redundant noise once the harness
+ * gained tool-call shape (it can't ask questions or wait for input
+ * regardless of what the user message says).
+ */
+export const HEADLESS_PREAMBLE =
+	'You are running in headless mode with no human operator. Work autonomously — never ask questions, never wait for user input. Make your best judgment and proceed independently.';
+
 export function composeSystemPrompt(
 	agentsMd: string,
 	skills: Record<string, Skill>,
 	env?: { cwd: string; directoryListing?: string[] },
 ): string {
-	const parts: string[] = [];
+	const parts: string[] = [HEADLESS_PREAMBLE];
 
-	if (agentsMd) parts.push(agentsMd);
+	if (agentsMd) parts.push('', agentsMd);
 
 	const skillEntries = Object.values(skills);
 	if (skillEntries.length > 0) {
-		parts.push('', '## Available Skills', '');
+		parts.push(
+			'',
+			'## Available Skills',
+			'',
+			'Each skill below is documented in a markdown file under `.agents/skills/` (relative to your working directory). The default location is `.agents/skills/<name>/SKILL.md`. When asked to run a skill, read its file from disk and follow the instructions there literally — the skill body is not provided inline.',
+			'',
+		);
 		for (const skill of skillEntries) {
-			const desc = skill.description ? ` - ${skill.description}` : '';
+			const desc = skill.description ? ` — ${skill.description}` : '';
 			parts.push(`- **${skill.name}**${desc}`);
 		}
 	}

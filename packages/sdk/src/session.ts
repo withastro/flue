@@ -294,14 +294,39 @@ export class Session implements FlueSession {
 	skill(name: string, options?: SkillOptions<v.GenericSchema | undefined>): CallHandle<any> {
 		return createCallHandle(options?.signal, (signal) =>
 			this.runOperation('skill', signal, async () => {
+				// Skills can be referenced two ways:
+				//
+				//   1. By registered name — looked up in `this.config.skills`,
+				//      populated at init time from `.agents/skills/*/SKILL.md`
+				//      frontmatter (or programmatically). This is the spec'd
+				//      shape; the system prompt's "Available Skills" list is
+				//      the registry the model consults.
+				//
+				//   2. By relative path under `.agents/skills/` (e.g.
+				//      `'triage/reproduce.md'`). Convenience for skill packs
+				//      that want sibling markdown files without forcing each
+				//      into its own SKILL.md subdirectory. Only attempted
+				//      when the name looks like a path (contains `/` or ends
+				//      in `.md`/`.markdown`) so that typos of registered
+				//      skill names still fail fast with a helpful error.
+				//
+				// Whichever shape resolved, the model reads the file from
+				// disk at runtime — we don't inline the body. For path-based
+				// references, we surface the path in the prompt so the model
+				// doesn't have to guess the skill's location.
 				let registeredSkill = this.config.skills[name];
+				let referencedPath: string | undefined;
 
-				// Fallback: file-path lookup under .agents/skills/. Only attempted when the
-				// name looks like a path (contains `/` or ends in `.md`/`.markdown`) so that
-				// typos of registered skill names still fail fast with a helpful error.
 				if (!registeredSkill && (name.includes('/') || /\.(md|markdown)$/i.test(name))) {
 					const loaded = await loadSkillByPath(this.env, this.env.cwd, name);
-					if (loaded) registeredSkill = loaded;
+					if (loaded) {
+						registeredSkill = loaded;
+						const cwd = this.env.cwd;
+						const skillsDir = cwd.endsWith('/')
+							? `${cwd}.agents/skills`
+							: `${cwd}/.agents/skills`;
+						referencedPath = `${skillsDir}/${name}`;
+					}
 				}
 
 				if (!registeredSkill) {
@@ -320,7 +345,12 @@ export class Session implements FlueSession {
 
 				const schema = options?.result as v.GenericSchema | undefined;
 				return this.runPromptCall({
-					promptText: buildSkillPrompt(registeredSkill.instructions, options?.args, schema),
+					promptText: buildSkillPrompt(
+						registeredSkill.name,
+						options?.args,
+						schema,
+						referencedPath,
+					),
 					schema,
 					tools: options?.tools,
 					commands: options?.commands,
