@@ -606,8 +606,14 @@ export interface AgentInfo {
 	triggers: { webhook?: boolean };
 }
 
+export interface RouteInfo {
+	name: string;
+	filePath: string;
+}
+
 export interface BuildContext {
 	agents: AgentInfo[];
+	routes: RouteInfo[];
 	roles: Record<string, Role>;
 	/** The workspace root: the directory directly containing agents/ and roles/. */
 	workspaceDir: string;

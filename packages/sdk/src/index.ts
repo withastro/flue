@@ -34,6 +34,7 @@ export type {
 	BuildPlugin,
 	BuildContext,
 	AgentInfo,
+	RouteInfo,
 	ToolDef,
 	ToolParameters,
 	ThinkingLevel,

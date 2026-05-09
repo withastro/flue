@@ -11,6 +11,7 @@ import type {
 	BuildContext,
 	BuildOptions,
 	BuildPlugin,
+	RouteInfo,
 	Role,
 	ThinkingLevel,
 } from './types.ts';
@@ -71,6 +72,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 
 	const roles = discoverRoles(workspaceDir);
 	const agents = discoverAgents(workspaceDir);
+	const routes = discoverRoutes(workspaceDir);
 
 	if (agents.length === 0) {
 		throw new Error(
@@ -91,6 +93,11 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 		`[flue] Found ${Object.keys(roles).length} role(s): ${Object.keys(roles).join(', ') || '(none)'}`,
 	);
 	console.log(`[flue] Found ${agents.length} agent(s): ${agents.map((a) => a.name).join(', ')}`);
+	if (routes.length > 0) {
+		console.log(
+			`[flue] Found ${routes.length} custom route(s): ${routes.map((r) => r.name).join(', ')}`,
+		);
+	}
 	if (webhookAgents.length > 0) {
 		console.log(`[flue] Webhook agents: ${webhookAgents.map((a) => a.name).join(', ')}`);
 	}
@@ -118,6 +125,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 
 	const ctx: BuildContext = {
 		agents,
+		routes,
 		roles,
 		workspaceDir,
 		outputDir,
@@ -305,6 +313,20 @@ function discoverAgents(workspaceRoot: string): AgentInfo[] {
 				triggers,
 			};
 		});
+}
+
+function discoverRoutes(workspaceRoot: string): RouteInfo[] {
+	const routesDir = path.join(workspaceRoot, 'routes');
+	if (!fs.existsSync(routesDir)) return [];
+
+	return fs
+		.readdirSync(routesDir)
+		.filter((f) => /\.(ts|js|mts|mjs)$/.test(f))
+		.sort()
+		.map((f) => ({
+			name: f.replace(/\.(ts|js|mts|mjs)$/, ''),
+			filePath: path.join(routesDir, f),
+		}));
 }
 
 /** Externalize user's direct deps (bare name + subpath wildcard). */

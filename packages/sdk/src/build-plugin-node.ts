@@ -8,7 +8,7 @@ export class NodePlugin implements BuildPlugin {
 	bundle = 'esbuild' as const;
 
 	generateEntryPoint(ctx: BuildContext): string {
-		const { agents, roles } = ctx;
+		const { agents, routes, roles } = ctx;
 		const rolesJson = JSON.stringify(roles);
 
 		const webhookAgents = agents.filter((a) => a.triggers.webhook);
@@ -22,6 +22,20 @@ export class NodePlugin implements BuildPlugin {
 				const varName = agentVarName(a.name, index);
 				const filePath = a.filePath.replace(/\\/g, '/');
 				return `import ${varName} from '${filePath}';`;
+			})
+			.join('\n');
+
+		const routeImports = routes
+			.map((route, index) => {
+				const filePath = route.filePath.replace(/\\/g, '/');
+				return `import * as routeModule_${index} from '${filePath}';`;
+			})
+			.join('\n');
+
+		const routeRegistrations = routes
+			.map((route, index) => {
+				const source = JSON.stringify(route.filePath);
+				return `registerCustomRoute(routeModule_${index}, ${source});`;
 			})
 			.join('\n');
 
@@ -65,6 +79,7 @@ import {
 import { randomUUID } from 'node:crypto';
 
 ${agentImports}
+${routeImports}
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -141,6 +156,26 @@ function createContextForRequest(id, payload, req) {
 // ─── Server ─────────────────────────────────────────────────────────────────
 
 const app = new Hono();
+
+function registerCustomRoute(routeModule, source) {
+  const httpMethod = routeModule.httpMethod;
+  const routePath = routeModule.path;
+  const handler = routeModule.handler;
+
+  if (typeof httpMethod !== 'string' || httpMethod.trim() === '') {
+    throw new Error('[flue] Custom route "' + source + '" must export const httpMethod as a non-empty string.');
+  }
+  if (typeof routePath !== 'string' || routePath.trim() === '') {
+    throw new Error('[flue] Custom route "' + source + '" must export const path as a non-empty string.');
+  }
+  if (typeof handler !== 'function') {
+    throw new Error('[flue] Custom route "' + source + '" must export const handler as a Hono route handler.');
+  }
+
+  app.on(httpMethod.toUpperCase(), routePath, handler);
+}
+
+${routeRegistrations}
 
 app.get('/health', (c) => c.json({ status: 'ok' }));
 app.get('/agents', (c) => c.json(manifest));

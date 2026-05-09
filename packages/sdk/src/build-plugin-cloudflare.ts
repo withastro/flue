@@ -43,6 +43,12 @@ export class CloudflarePlugin implements BuildPlugin {
 	async generateEntryPoint(ctx: BuildContext): Promise<string> {
 		const { agents, roles } = ctx;
 		const rolesJson = JSON.stringify(roles);
+		if (ctx.routes.length > 0) {
+			throw new Error(
+				'[flue] Custom routes from routes/ are currently only supported by the Node target. ' +
+					'Remove routes/ or build with --target node.',
+			);
+		}
 		validateCloudflareAgentNames(ctx);
 
 		const webhookAgents = agents.filter((a) => a.triggers.webhook);

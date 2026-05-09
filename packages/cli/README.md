@@ -392,4 +392,23 @@ flue build --target node          # Node.js server (single bundled .mjs)
 flue build --target cloudflare    # Cloudflare Workers + Durable Objects
 ```
 
+#### Custom Routes
+
+For the Node target, add custom Hono routes under `.flue/routes/`. Each route
+file is registered at build time and must export `httpMethod`, `path`, and
+`handler`:
+
+```ts
+// .flue/routes/status.ts
+export const httpMethod = 'GET';
+export const path = '/status';
+
+export const handler = (c) => {
+  return c.json({ status: 'ok' });
+};
+```
+
+Custom routes are bundled into the generated Hono server before Flue's built-in
+routes.
+
 For Cloudflare, `flue build` produces an unbundled TypeScript entry that `wrangler deploy` bundles itself — the same path `flue dev --target cloudflare` uses. Dev and deploy go through the same bundler, so what works in dev will work in production.
