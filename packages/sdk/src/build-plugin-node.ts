@@ -8,8 +8,16 @@ export class NodePlugin implements BuildPlugin {
 	bundle = 'esbuild' as const;
 
 	generateEntryPoint(ctx: BuildContext): string {
-		const { agents, roles } = ctx;
+		const { agents, roles, userConfigPath } = ctx;
 		const rolesJson = JSON.stringify(roles);
+		// `JSON.stringify` of the path produces a safely-quoted JS string
+		// literal — handles forward-slash conversion implicitly on Windows
+		// (esbuild's TS loader is fine with backslashes inside string literals
+		// when they're properly escaped) and protects against paths that
+		// contain quote characters from breaking out of the import statement.
+		const userConfigImport = userConfigPath
+			? `import userConfig from ${JSON.stringify(userConfigPath.replace(/\\/g, '/'))};`
+			: 'const userConfig = {};';
 
 		const webhookAgents = agents.filter((a) => a.triggers.webhook);
 
@@ -55,7 +63,7 @@ import {
   createFlueContext,
   InMemorySessionStore,
   bashFactoryToSessionEnv,
-  resolveModel,
+  resolveModel as baseResolveModel,
   parseJsonBody,
   validateAgentRequest,
   toHttpResponse,
@@ -64,7 +72,25 @@ import {
 } from '@flue/sdk/internal';
 import { randomUUID } from 'node:crypto';
 
+${userConfigImport}
+
 ${agentImports}
+
+// User-config–aware resolver. Falls through to built-in resolution when no
+// matching prefix is registered, so the existing pi-ai catalog and the
+// \`cloudflare/\` branch keep working unchanged.
+const userModels = userConfig?.models ?? {};
+function resolveModel(model, providers) {
+  return baseResolveModel(model, providers, userModels);
+}
+
+// Boot-time hook. Awaited before the HTTP server begins accepting requests.
+// User code typically calls \`registerApiProvider(...)\` here.
+const setupPromise = (async () => {
+  if (typeof userConfig?.setup === 'function') {
+    await userConfig.setup();
+  }
+})();
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -266,6 +292,8 @@ app.onError((err) => toHttpResponse(err));
 // ─── Start ──────────────────────────────────────────────────────────────────
 
 const port = parseInt(process.env.PORT || '3000', 10);
+
+await setupPromise;
 
 const server = serve({
   fetch: app.fetch,
