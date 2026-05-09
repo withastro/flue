@@ -40,10 +40,13 @@ function resolveOutputDir(
 function printUsage() {
 	console.error(
 		'Usage:\n' +
-			'  flue dev   --target <node|cloudflare> [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
-			'  flue run   <agent> --target node --id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
-			'  flue build --target <node|cloudflare> [--workspace <path>] [--output <path>]\n' +
+			'  flue dev   [--target <node|cloudflare>] [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
+			'  flue run   <agent> --id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
+			'  flue build [--target <node|cloudflare>] [--workspace <path>] [--output <path>]\n' +
 			'  flue add   [<name>|<url>] [--category <category>] [--print]\n' +
+			'\n' +
+			'`--target` is optional when `flue.config.ts` exports `{ target: ... }`. CLI flag wins on conflict.\n' +
+			'`flue run` is Node-only — Cloudflare deploys use `flue dev --target cloudflare` for local serving.\n' +
 			'\n' +
 			'Commands:\n' +
 			'  dev    Long-running watch-mode dev server. Rebuilds and reloads on file changes.\n' +
@@ -98,7 +101,8 @@ interface RunArgs {
 
 interface BuildArgs {
 	command: 'build';
-	target: 'node' | 'cloudflare';
+	/** Undefined when the user omits --target; the SDK falls back to flue.config.ts. */
+	target: 'node' | 'cloudflare' | undefined;
 	/** Explicit --workspace value, or undefined to default to cwd. */
 	explicitWorkspace: string | undefined;
 	/** Explicit --output value, or undefined to default to <workspaceDir>/dist. */
@@ -107,7 +111,8 @@ interface BuildArgs {
 
 interface DevArgs {
 	command: 'dev';
-	target: 'node' | 'cloudflare';
+	/** Undefined when the user omits --target; the SDK falls back to flue.config.ts. */
+	target: 'node' | 'cloudflare' | undefined;
 	/** Explicit --workspace value, or undefined to default to cwd. */
 	explicitWorkspace: string | undefined;
 	/** Explicit --output value, or undefined to default to <workspaceDir>/dist. */
@@ -284,14 +289,12 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 	if (command === 'build') {
 		const flags = parseFlags(rest);
-		if (!flags.target) {
-			console.error('Missing required --target flag. Supported targets: node, cloudflare');
-			printUsage();
-			process.exit(1);
-		}
+		// --target is optional: when omitted, the SDK falls back to
+		// `target` in `flue.config.ts`. The SDK throws a clear error if
+		// neither is set.
 		return {
 			command: 'build',
-			target: flags.target as 'node' | 'cloudflare',
+			target: flags.target,
 			explicitWorkspace: flags.explicitWorkspace,
 			explicitOutput: flags.explicitOutput,
 		};
@@ -299,14 +302,9 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 	if (command === 'dev') {
 		const flags = parseFlags(rest);
-		if (!flags.target) {
-			console.error('Missing required --target flag. Supported targets: node, cloudflare');
-			printUsage();
-			process.exit(1);
-		}
 		return {
 			command: 'dev',
-			target: flags.target as 'node' | 'cloudflare',
+			target: flags.target,
 			explicitWorkspace: flags.explicitWorkspace,
 			explicitOutput: flags.explicitOutput,
 			port: flags.port,
@@ -317,12 +315,6 @@ function parseArgs(argv: string[]): ParsedArgs {
 	if (command === 'run' && rest.length > 0) {
 		const agent = rest[0]!;
 		const flags = parseFlags(rest.slice(1));
-
-		if (!flags.target) {
-			console.error('Missing required --target flag. `flue run` only supports --target node');
-			printUsage();
-			process.exit(1);
-		}
 
 		if (!flags.id) {
 			console.error('Missing required --id flag for run command.');
@@ -337,6 +329,8 @@ function parseArgs(argv: string[]): ParsedArgs {
 			process.exit(1);
 		}
 
+		// `flue run` is a one-shot Node invoker. Cloudflare builds need
+		// `flue dev --target cloudflare`; reject early with a helpful message.
 		if (flags.target === 'cloudflare') {
 			printCloudflareRunUnsupported(agent, flags.id, flags.payload);
 		}
@@ -344,7 +338,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 		return {
 			command: 'run',
 			agent,
-			target: flags.target,
+			target: 'node',
 			id: flags.id,
 			payload: flags.payload,
 			explicitWorkspace: flags.explicitWorkspace,
