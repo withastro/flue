@@ -671,6 +671,13 @@ export interface BuildContext {
 	 */
 	outputDir: string;
 	options: BuildOptions;
+	/**
+	 * Absolute path of the user's `flue.config.{ts,mts,js,mjs}` when present in
+	 * `workspaceDir`. Plugins import this from the generated entry so user
+	 * `setup()` and `models` are wired in. Undefined when no config exists —
+	 * the entry then falls back to default resolution.
+	 */
+	userConfigPath?: string;
 }
 
 /**
@@ -738,4 +745,65 @@ export interface BuildOptions {
 	target?: 'node' | 'cloudflare';
 	/** Overrides `target` when provided. */
 	plugin?: BuildPlugin;
+}
+
+// ─── flue.config.ts ────────────────────────────────────────────────────────
+
+/**
+ * Factory function that turns a model-string suffix (e.g. `"llama3.1:8b"`
+ * after the `"ollama/"` prefix) into a fully-formed pi-ai `Model` instance.
+ *
+ * Run once per `resolveModel` call. Synchronous because resolution happens
+ * on the agent hot path. Use `setup()` for any async preparation, then
+ * close over the prepared resources here.
+ */
+export type ModelFactory = (suffix: string) => Model<any>;
+
+/**
+ * Project-level Flue config, loaded from `flue.config.ts` at build/dev/run
+ * time. Replaces a subset of CLI flags and exposes extension points
+ * (`setup`, `models`) that have no flag equivalent.
+ *
+ * Keep declarative. Runtime variation belongs in agent code, not config.
+ */
+export interface FlueConfig {
+	/**
+	 * Default build target. Overridden by `--target` on the CLI when both are
+	 * provided. When unset, `--target` is required.
+	 */
+	target?: 'node' | 'cloudflare';
+
+	/**
+	 * Boot-time hook. Runs exactly once per server process before any agent
+	 * handler is invoked. Use it for `registerApiProvider` calls, custom
+	 * binding setup, or other one-shot initialisation. Awaited if it returns
+	 * a promise.
+	 *
+	 * Most users do not need this — pi-ai's built-in `openai-completions`
+	 * provider covers any OpenAI-compatible endpoint, so a `models` factory
+	 * built on top of `defineOpenAICompletionsModel` is enough.
+	 */
+	setup?(): void | Promise<void>;
+
+	/**
+	 * Declarative map of model-string `prefix → factory`. The prefix must end
+	 * in `/` (e.g. `"ollama/"`). When `init({ model: "<prefix><suffix>" })`
+	 * resolves, the factory is called with the suffix and must return a
+	 * pi-ai `Model`. User-defined entries take precedence over Flue's
+	 * built-in `cloudflare/` branch and the pi-ai catalog lookup.
+	 *
+	 * Use `defineOpenAICompletionsModel` from `@flue/sdk` to avoid hand-
+	 * authoring pi-ai `Model` literals for OpenAI-compatible endpoints.
+	 */
+	models?: Record<string, ModelFactory>;
+}
+
+/**
+ * Resolved config after loading from disk. Mirrors {@link FlueConfig} but
+ * is always present (with sensible defaults filled in) inside the runtime.
+ */
+export interface ResolvedFlueConfig {
+	target?: 'node' | 'cloudflare';
+	setup?: () => void | Promise<void>;
+	models: Record<string, ModelFactory>;
 }
