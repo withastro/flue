@@ -6,12 +6,12 @@ By the end, you will have a Flue agent running as a Node.js server, and you will
 
 ## Project layout
 
-Flue looks for your workspace in one of two places:
+The workspace root is your project directory. Source files (agents, roles, and any other code your agents import) live in one of two places, analogous to Next.js's `src/` folder:
 
-- `./` — agents in `./agents/`, roles in `./roles/`.
-- `./.flue/` — agents in `./.flue/agents/`, roles in `./.flue/roles/`.
+- `./agents/`, `./roles/` — bare layout, source at the workspace root.
+- `./.flue/agents/`, `./.flue/roles/` — `.flue/` source layout. When you opt into this, treat `.flue/` as the home for everything agent-related (connectors, session stores, helpers, …).
 
-If `./.flue/` exists, Flue uses it. Otherwise it uses the project root. Examples in this guide use the `./.flue/` layout — drop the prefix if you prefer the root.
+If `./.flue/` exists, Flue reads sources from there; otherwise it reads from the workspace root. The two layouts never mix. `flue build` always writes to `./dist/` at the workspace root, regardless. Examples in this guide use the `./.flue/` layout — drop the prefix if you prefer the bare layout.
 
 ## Hello World
 
