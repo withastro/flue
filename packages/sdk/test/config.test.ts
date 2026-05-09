@@ -12,6 +12,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
+import { resolveSourceRoot } from '../src/build.ts';
 import {
 	__resetConfigCacheForTests,
 	defineConfig,
@@ -49,6 +50,44 @@ describe('findFlueConfigPath', () => {
 		const found = findFlueConfigPath(workspace);
 		assert.ok(found);
 		assert.equal(path.basename(found!), 'flue.config.ts');
+	});
+});
+
+describe('source-root resolution + config discovery', () => {
+	// Regression: callers must pass the source root (where agents/ lives),
+	// not the workspace root, when those differ on the embedded `.flue/`
+	// layout. Hand-tested earlier and broke when upstream renamed
+	// `resolveWorkspaceFromCwd` -> `resolveSourceRoot`; the test below
+	// would have caught it.
+
+	it('finds .flue/flue.config.ts on the embedded layout via resolveSourceRoot', () => {
+		fs.mkdirSync(path.join(workspace, '.flue', 'agents'), { recursive: true });
+		fs.writeFileSync(
+			path.join(workspace, '.flue', 'flue.config.ts'),
+			'export default { target: "node" as const };\n',
+		);
+
+		const sourceRoot = resolveSourceRoot(workspace);
+		assert.equal(sourceRoot, path.join(workspace, '.flue'));
+
+		const found = findFlueConfigPath(sourceRoot);
+		assert.ok(found, 'config should be located via the source root');
+		assert.equal(path.dirname(found!), path.join(workspace, '.flue'));
+	});
+
+	it('finds flue.config.ts at the workspace root on the bare layout', () => {
+		fs.mkdirSync(path.join(workspace, 'agents'), { recursive: true });
+		fs.writeFileSync(
+			path.join(workspace, 'flue.config.ts'),
+			'export default { target: "node" as const };\n',
+		);
+
+		const sourceRoot = resolveSourceRoot(workspace);
+		assert.equal(sourceRoot, workspace);
+
+		const found = findFlueConfigPath(sourceRoot);
+		assert.ok(found);
+		assert.equal(path.dirname(found!), workspace);
 	});
 });
 

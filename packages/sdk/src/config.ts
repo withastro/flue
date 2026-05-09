@@ -1,9 +1,10 @@
 /**
  * Project-level config loader for `flue.config.ts`.
  *
- * The file is searched in the workspace directory (the same directory that
- * holds `agents/` and `roles/` — i.e. either `<cwd>/.flue/` or `<cwd>/`
- * depending on the layout). Searched extensions, in order:
+ * The file is searched in the source root — the same directory that holds
+ * `agents/` and `roles/` (either `<workspaceDir>/.flue/` for the embedded
+ * layout or `<workspaceDir>/` for the bare layout, resolved by
+ * `resolveSourceRoot`). Searched extensions, in order:
  *
  *   1. flue.config.ts
  *   2. flue.config.mts
@@ -55,23 +56,26 @@ export function defineConfig(config: FlueConfig): FlueConfig {
 }
 
 /**
- * Locate the flue.config file inside `workspaceDir`. Returns the absolute
- * path of the first match, or `null` when no config exists.
+ * Locate the flue.config file inside `sourceRoot`. Pass the directory that
+ * holds `agents/` and `roles/`, not the project root — those differ on the
+ * embedded `.flue/` layout. Returns the absolute path of the first match,
+ * or `null` when no config exists.
  */
-export function findFlueConfigPath(workspaceDir: string): string | null {
+export function findFlueConfigPath(sourceRoot: string): string | null {
 	for (const ext of CONFIG_FILE_EXTENSIONS) {
-		const candidate = path.join(workspaceDir, `${CONFIG_FILE_BASENAME}${ext}`);
+		const candidate = path.join(sourceRoot, `${CONFIG_FILE_BASENAME}${ext}`);
 		if (fs.existsSync(candidate)) return candidate;
 	}
 	return null;
 }
 
 /**
- * Per-process cache of resolved configs, keyed by absolute workspace path.
+ * Per-process cache of resolved configs, keyed by absolute source-root path.
  * `flue dev` calls `loadFlueConfig` twice on first build (once to resolve
  * the target, once during the actual build) — the cache makes the second
  * call free, both for I/O and for re-invoking `setup()`-side-effecty
- * factories on subsequent rebuilds. Bypassed by tests via `__resetForTests`.
+ * factories on subsequent rebuilds. Bypassed by tests via
+ * `__resetConfigCacheForTests`.
  */
 const configCache = new Map<string, Promise<ResolvedFlueConfig | null>>();
 
@@ -81,22 +85,24 @@ export function __resetConfigCacheForTests(): void {
 }
 
 /**
- * Load and validate `flue.config.{ts,mts,js,mjs}` from `workspaceDir`.
- * Returns `null` when no config file exists. Throws on import failure or
- * shape errors so misconfiguration surfaces immediately at boot.
+ * Load and validate `flue.config.{ts,mts,js,mjs}` from `sourceRoot`. Pass
+ * the directory that holds `agents/` and `roles/` (use `resolveSourceRoot`
+ * to derive it from a workspace dir). Returns `null` when no config file
+ * exists. Throws on import failure or shape errors so misconfiguration
+ * surfaces immediately at boot.
  *
- * Results are memoised per absolute workspace path within a single process.
- * That is intentionally a soft cache: long-running watch-mode tools that
- * mutate `flue.config.ts` should call `__resetConfigCacheForTests` (or
- * spawn a fresh process) to see updates. Today, the only watch-mode caller
+ * Results are memoised per absolute path within a single process. That is
+ * intentionally a soft cache: long-running watch-mode tools that mutate
+ * `flue.config.ts` should call `__resetConfigCacheForTests` (or spawn a
+ * fresh process) to see updates. Today, the only watch-mode caller
  * (`flue dev`) does its own full re-invocation of the build pipeline, and
- * the watcher does not yet observe `flue.config.ts` for changes — that's a
- * follow-up.
+ * the watcher does not yet observe `flue.config.ts` for changes — that's
+ * a follow-up.
  */
 export async function loadFlueConfig(
-	workspaceDir: string,
+	sourceRoot: string,
 ): Promise<ResolvedFlueConfig | null> {
-	const cacheKey = path.resolve(workspaceDir);
+	const cacheKey = path.resolve(sourceRoot);
 	const cached = configCache.get(cacheKey);
 	if (cached) return cached;
 
@@ -109,9 +115,9 @@ export async function loadFlueConfig(
 }
 
 async function loadFlueConfigUncached(
-	workspaceDir: string,
+	sourceRoot: string,
 ): Promise<ResolvedFlueConfig | null> {
-	const configPath = findFlueConfigPath(workspaceDir);
+	const configPath = findFlueConfigPath(sourceRoot);
 	if (!configPath) return null;
 
 	const ext = path.extname(configPath);
