@@ -61,12 +61,13 @@ export interface BuildResult {
  *     and `<workspaceDir>/roles/` are ignored entirely (no mixing).
  *   - Otherwise, look at `<workspaceDir>/agents/` and `<workspaceDir>/roles/`.
  *
- * `dist/` is always written to `<workspaceDir>/dist/`.
+ * Build output lands in `options.outputDir` (defaults to `<workspaceDir>/dist`).
  *
  * AGENTS.md and .agents/skills/ are NOT bundled — discovered at runtime from session cwd.
  */
 export async function build(options: BuildOptions): Promise<BuildResult> {
 	const workspaceDir = path.resolve(options.workspaceDir);
+	const outputDir = path.resolve(options.outputDir ?? path.join(workspaceDir, 'dist'));
 
 	const plugin = resolvePlugin(options);
 
@@ -76,7 +77,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	if (sourceRoot !== workspaceDir) {
 		console.log(`[flue] Source root: ${sourceRoot}`);
 	}
-	console.log(`[flue] Output: ${workspaceDir}/dist`);
+	console.log(`[flue] Output: ${outputDir}`);
 	console.log(`[flue] Target: ${plugin.name}`);
 
 	const roles = discoverRoles(sourceRoot);
@@ -113,8 +114,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 		`[flue] AGENTS.md and .agents/skills/ will be discovered at runtime from session cwd`,
 	);
 
-	const distDir = path.join(workspaceDir, 'dist');
-	fs.mkdirSync(distDir, { recursive: true });
+	fs.mkdirSync(outputDir, { recursive: true });
 
 	const manifest = {
 		agents: agents.map((a) => ({
@@ -122,7 +122,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			triggers: a.triggers,
 		})),
 	};
-	const manifestPath = path.join(distDir, 'manifest.json');
+	const manifestPath = path.join(outputDir, 'manifest.json');
 	fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
 	console.log(`[flue] Generated: ${manifestPath}`);
 
@@ -130,6 +130,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 		agents,
 		roles,
 		workspaceDir,
+		outputDir,
 		options,
 	};
 
@@ -139,9 +140,9 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 
 	if (bundleStrategy === 'esbuild') {
 		// Single-bundle mode: the plugin produces a TS entry, esbuild
-		// inlines/externalizes deps, output is dist/server.mjs.
-		const entryPath = path.join(distDir, '_entry_server.ts');
-		const outPath = path.join(distDir, 'server.mjs');
+		// inlines/externalizes deps, output is server.mjs in the build dir.
+		const entryPath = path.join(outputDir, '_entry_server.ts');
+		const outPath = path.join(outputDir, 'server.mjs');
 
 		fs.writeFileSync(entryPath, serverCode, 'utf-8');
 
@@ -186,7 +187,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 				`[flue] Plugin "${plugin.name}" set bundle: 'none' but did not provide entryFilename.`,
 			);
 		}
-		const outPath = path.join(distDir, plugin.entryFilename);
+		const outPath = path.join(outputDir, plugin.entryFilename);
 		// Skip the write if content is byte-identical to what's already on
 		// disk. This matters for `flue dev`, where downstream watchers (like
 		// wrangler's bundler) may key on file mtime and would otherwise reload
@@ -207,7 +208,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	if (plugin.additionalOutputs) {
 		const outputs = await plugin.additionalOutputs(ctx);
 		for (const [filename, content] of Object.entries(outputs)) {
-			const filePath = path.join(distDir, filename);
+			const filePath = path.join(outputDir, filename);
 			fs.mkdirSync(path.dirname(filePath), { recursive: true });
 			// As with the entry above: avoid touching the file if content is
 			// unchanged so downstream watchers (e.g. wrangler) don't see
@@ -222,7 +223,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 		}
 	}
 
-	console.log(`[flue] Build complete. Output: ${distDir}`);
+	console.log(`[flue] Build complete. Output: ${outputDir}`);
 	return { changed: anyChanged };
 }
 
@@ -259,8 +260,8 @@ function resolvePlugin(options: BuildOptions): BuildPlugin {
  * directory also happens to be present).
  *
  * The workspace root (cwd) stays the same in both cases — `.flue/` only
- * shifts where source files are discovered from. `dist/` is always written to
- * `<workspaceDir>/dist/`.
+ * shifts where source files are discovered from. The build output directory
+ * is independent (defaults to `<workspaceDir>/dist`, override with `outputDir`).
  */
 export function resolveSourceRoot(workspaceDir: string): string {
 	const dotFlue = path.join(workspaceDir, '.flue');

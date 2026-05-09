@@ -44,6 +44,11 @@ import type { BuildOptions } from './types.ts';
 
 export interface DevOptions {
 	workspaceDir: string;
+	/**
+	 * Where the build artifacts are written. Defaults to `<workspaceDir>/dist`.
+	 * See {@link BuildOptions.outputDir} for details.
+	 */
+	outputDir?: string;
 	target: 'node' | 'cloudflare';
 	/** Defaults to 3583 ("FLUE" on a phone keypad). */
 	port?: number;
@@ -111,6 +116,7 @@ interface DevReloader {
  */
 export async function dev(options: DevOptions): Promise<void> {
 	const workspaceDir = path.resolve(options.workspaceDir);
+	const outputDir = path.resolve(options.outputDir ?? path.join(workspaceDir, 'dist'));
 	const port = options.port ?? DEFAULT_DEV_PORT;
 
 	// Resolve env files up front so a typo errors before we kick off a build.
@@ -123,6 +129,7 @@ export async function dev(options: DevOptions): Promise<void> {
 
 	const buildOptions: BuildOptions = {
 		workspaceDir,
+		outputDir,
 		target: options.target,
 	};
 
@@ -142,14 +149,14 @@ export async function dev(options: DevOptions): Promise<void> {
 
 	const reloader: DevReloader =
 		options.target === 'node'
-			? new NodeReloader({ workspaceDir, port, envFiles })
-			: await createCloudflareReloader({ workspaceDir, port, envFiles });
+			? new NodeReloader({ workspaceDir, outputDir, port, envFiles })
+			: await createCloudflareReloader({ outputDir, port, envFiles });
 
 	await reloader.start();
 
 	if (reloader.url) {
 		console.error(`[flue] Server: ${reloader.url}`);
-		const exampleAgent = pickExampleAgentName(workspaceDir);
+		const exampleAgent = pickExampleAgentName(outputDir, workspaceDir);
 		if (exampleAgent) {
 			console.error(`[flue] Try: curl -X POST ${reloader.url}/agents/${exampleAgent}/test-1 \\`);
 			console.error(`         -H 'Content-Type: application/json' -d '{}'`);
@@ -163,6 +170,7 @@ export async function dev(options: DevOptions): Promise<void> {
 	const envFileSet = new Set(envFiles);
 	const watcher = createWatcher({
 		workspaceDir,
+		outputDir,
 		target: options.target,
 		envFiles,
 		onChange: (relPath) => {
@@ -283,6 +291,12 @@ function createRebuilder(buildOptions: BuildOptions, reloader: DevReloader): Reb
 
 interface WatcherOptions {
 	workspaceDir: string;
+	/**
+	 * Absolute path to the build output directory. Anything inside this
+	 * directory is ignored by the watcher — otherwise build writes would
+	 * trigger spurious rebuilds (and an infinite loop).
+	 */
+	outputDir: string;
 	target: 'node' | 'cloudflare';
 	/** Absolute paths of env files to watch. Empty means none. */
 	envFiles: string[];
@@ -304,15 +318,26 @@ interface WatcherHandle {
  *     since changes there require a worker restart.
  *
  * Ignored:
- *   - `dist/`, `node_modules/`, `.git/`, `.turbo/`
+ *   - The build output directory (`outputDir`, defaults to `<workspaceDir>/dist`).
+ *     Critical to break the build → file-change → rebuild loop.
+ *   - `node_modules/`, `.git/`, `.turbo/`
  *   - Dotfiles and dotdirs at the workspace root, with one exception: the
  *     `.flue/` source directory and everything inside it is allowed through
  *     (since that's a valid source location under the .flue-as-src layout).
  *   - Editor backup/swap suffixes
  */
 function createWatcher(options: WatcherOptions): WatcherHandle {
-	const { workspaceDir, target, envFiles, onChange } = options;
+	const { workspaceDir, outputDir, target, envFiles, onChange } = options;
 	const watchers: fs.FSWatcher[] = [];
+
+	// Pre-compute the workspace-relative path of outputDir for fast prefix
+	// checks. If outputDir lives outside workspaceDir, the recursive watcher
+	// won't see writes there at all — but we still ignore any path that
+	// resolves into it, just to be safe across platforms.
+	const outputRelToWorkspace = path
+		.relative(workspaceDir, outputDir)
+		.split(path.sep)
+		.join('/');
 
 	const isIgnoredPath = (relPath: string): boolean => {
 		const normalized = relPath.replace(/\\/g, '/');
@@ -321,10 +346,20 @@ function createWatcher(options: WatcherOptions): WatcherHandle {
 		if (normalized === '.flue' || normalized.startsWith('.flue/')) {
 			return false;
 		}
+		// Anything inside the build output dir — even when the user redirects
+		// it via --output to something other than `dist/` — must be ignored,
+		// or the build's own writes would trigger an infinite rebuild loop.
+		if (
+			outputRelToWorkspace &&
+			!outputRelToWorkspace.startsWith('..') &&
+			(normalized === outputRelToWorkspace ||
+				normalized.startsWith(outputRelToWorkspace + '/'))
+		) {
+			return true;
+		}
 		const parts = normalized.split('/');
 		for (const part of parts) {
 			if (part === 'node_modules') return true;
-			if (part === 'dist') return true;
 			if (part === '.git') return true;
 			if (part === '.turbo') return true;
 		}
@@ -403,11 +438,16 @@ class NodeReloader implements DevReloader {
 	private readonly envFiles: string[];
 	url: string;
 
-	constructor(opts: { workspaceDir: string; port: number; envFiles: string[] }) {
+	constructor(opts: {
+		workspaceDir: string;
+		outputDir: string;
+		port: number;
+		envFiles: string[];
+	}) {
 		this.workspaceDir = opts.workspaceDir;
 		this.port = opts.port;
 		this.envFiles = opts.envFiles;
-		this.serverPath = path.join(this.workspaceDir, 'dist', 'server.mjs');
+		this.serverPath = path.join(opts.outputDir, 'server.mjs');
 		this.url = `http://localhost:${this.port}`;
 	}
 
@@ -562,7 +602,7 @@ interface WranglerErrorEvent {
  * If the import fails, surface a friendly message pointing at the peer-dep.
  */
 async function createCloudflareReloader(opts: {
-	workspaceDir: string;
+	outputDir: string;
 	port: number;
 	envFiles: string[];
 }): Promise<DevReloader> {
@@ -585,7 +625,6 @@ class CloudflareReloader implements DevReloader {
 	private worker: Awaited<ReturnType<typeof import('wrangler').unstable_startWorker>> | null =
 		null;
 	private readonly wrangler: typeof import('wrangler');
-	private readonly workspaceDir: string;
 	private readonly port: number;
 	private readonly configPath: string;
 	private readonly envFiles: string[];
@@ -616,13 +655,12 @@ class CloudflareReloader implements DevReloader {
 
 	constructor(
 		wrangler: typeof import('wrangler'),
-		opts: { workspaceDir: string; port: number; envFiles: string[] },
+		opts: { outputDir: string; port: number; envFiles: string[] },
 	) {
 		this.wrangler = wrangler;
-		this.workspaceDir = opts.workspaceDir;
 		this.port = opts.port;
 		this.envFiles = opts.envFiles;
-		this.configPath = path.join(this.workspaceDir, 'dist', 'wrangler.jsonc');
+		this.configPath = path.join(opts.outputDir, 'wrangler.jsonc');
 		this.containerBuildId = randomUUID().slice(0, 8);
 	}
 
@@ -886,15 +924,15 @@ async function waitForHealth(baseUrl: string, timeoutMs: number): Promise<boolea
  * Pick a webhook agent name to print in the friendly curl example. Falls back
  * to any agent if none have webhook triggers (the example would 404 on the
  * dev server in that case, but it's still a hint at the URL shape). Reads the
- * manifest written by the build, with a directory-scan fallback in case the
- * manifest is somehow missing.
+ * manifest written by the build at `<outputDir>/manifest.json`, with a
+ * source-tree scan fallback in case the manifest is somehow missing.
  *
  * Best-effort — silently returns null if anything goes wrong.
  */
-function pickExampleAgentName(workspaceDir: string): string | null {
+function pickExampleAgentName(outputDir: string, workspaceDir: string): string | null {
 	type ManifestEntry = { name: string; triggers?: { webhook?: boolean } };
 	try {
-		const manifestPath = path.join(workspaceDir, 'dist', 'manifest.json');
+		const manifestPath = path.join(outputDir, 'manifest.json');
 		if (fs.existsSync(manifestPath)) {
 			const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as {
 				agents?: ManifestEntry[];

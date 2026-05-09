@@ -11,7 +11,7 @@ The workspace root is your project directory. Source files (agents, roles, and a
 - `./agents/`, `./roles/` — bare layout, source at the workspace root.
 - `./.flue/agents/`, `./.flue/roles/` — `.flue/` source layout. When you opt into this, treat `.flue/` as the home for everything agent-related (connectors, session stores, helpers, …).
 
-If `./.flue/` exists, Flue reads sources from there; otherwise it reads from the workspace root. The two layouts never mix. `flue build` always writes to `./dist/` at the workspace root, regardless. Examples in this guide use the `./.flue/` layout — drop the prefix if you prefer the bare layout.
+If `./.flue/` exists, Flue reads sources from there; otherwise it reads from the workspace root. The two layouts never mix. By default `flue build` writes to `./dist/` at the workspace root; pass `--output <path>` to redirect the build elsewhere. Examples in this guide use the `./.flue/` layout — drop the prefix if you prefer the bare layout.
 
 ## Hello World
 

@@ -615,12 +615,22 @@ export interface BuildContext {
 	agents: AgentInfo[];
 	roles: Record<string, Role>;
 	/**
-	 * The workspace root — typically the project's cwd. `dist/` is always
-	 * written to `<workspaceDir>/dist/`. Source files (agents/, roles/) live
-	 * here directly, or under `<workspaceDir>/.flue/` if that directory
-	 * exists (the `.flue/`-as-src layout).
+	 * The workspace root — typically the project's cwd. Source files
+	 * (agents/, roles/) live here directly, or under `<workspaceDir>/.flue/`
+	 * if that directory exists (the `.flue/`-as-src layout).
 	 */
 	workspaceDir: string;
+	/**
+	 * Absolute path to the directory the build writes its artifacts into.
+	 * Defaults to `<workspaceDir>/dist`; users can override with `--output`
+	 * (CLI) or `outputDir` (programmatic) to redirect the build elsewhere.
+	 *
+	 * Note that this is the literal output directory — `server.mjs`,
+	 * `wrangler.jsonc`, etc. are written directly inside it. The user's
+	 * `wrangler.jsonc` and the wrangler deploy-redirect file still anchor
+	 * on `workspaceDir`, regardless of this value.
+	 */
+	outputDir: string;
 	options: BuildOptions;
 }
 
@@ -660,20 +670,32 @@ export interface BuildPlugin {
 	entryFilename?: string;
 	/** esbuild options. Only consulted when `bundle === 'esbuild'`. */
 	esbuildOptions?(ctx: BuildContext): Record<string, any>;
-	/** Additional files to write to dist/ (e.g., wrangler.jsonc, Dockerfile). May be async. */
+	/**
+	 * Additional files to write to the output directory (`ctx.outputDir`).
+	 * Keys are filenames relative to `outputDir` (e.g. `wrangler.jsonc`,
+	 * `Dockerfile`). Values are file contents. May be async.
+	 */
 	additionalOutputs?(ctx: BuildContext): Record<string, string> | Promise<Record<string, string>>;
 }
 
 export interface BuildOptions {
 	/**
 	 * The workspace directory — the project root. Typically the cwd of the
-	 * `flue` invocation. `dist/` is always written to `<workspaceDir>/dist/`.
+	 * `flue` invocation.
 	 *
 	 * Source files (agents, roles) are discovered from `<workspaceDir>/.flue/`
 	 * if that directory exists, otherwise from `<workspaceDir>/` directly.
 	 * The two layouts never mix — `.flue/` wins unconditionally if present.
 	 */
 	workspaceDir: string;
+	/**
+	 * Where the build artifacts are written. Defaults to `<workspaceDir>/dist`.
+	 * Pass an absolute or workspace-relative path to redirect the build
+	 * somewhere else (e.g. when integrating with another build system that
+	 * expects a specific directory). Resolved relative to the cwd at call
+	 * time, not `workspaceDir`.
+	 */
+	outputDir?: string;
 	target?: 'node' | 'cloudflare';
 	/** Overrides `target` when provided. */
 	plugin?: BuildPlugin;

@@ -26,7 +26,7 @@ Three commands:
 - `flue run` — one-shot, production-style: build, invoke an agent once, exit. Used in CI / scripted invocations.
 - `flue build` — produce a `dist/` deployable artifact (no run).
 
-`--workspace` points at the workspace root — the project directory. Defaults to the current working directory if omitted. `dist/` is always written to `<workspace>/dist/`.
+`--workspace` points at the workspace root — the project directory. Defaults to the current working directory if omitted. By default, the build is written to `<workspace>/dist/`; use `--output <path>` to redirect the build elsewhere.
 
 Source files (agents, roles) live in one of two places, analogous to Next.js's `src/` folder:
 
@@ -51,7 +51,7 @@ For `--target cloudflare`, the project must have `wrangler` available (it's a pe
 ### `flue run`
 
 ```
-node packages/cli/dist/flue.js run <agent-name> --target node --id <id> [--payload '<json>'] [--workspace <path>]
+node packages/cli/dist/flue.js run <agent-name> --target node --id <id> [--payload '<json>'] [--workspace <path>] [--output <path>]
 ```
 
 Examples (run from the `examples/hello-world/` directory so the `./.flue/` source layout is picked up):

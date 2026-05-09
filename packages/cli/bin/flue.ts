@@ -11,12 +11,28 @@ import { CONNECTORS, CATEGORY_ROOTS } from './_connectors.generated.ts';
  * - If `--workspace` was passed, trust it as-is (explicit = deliberate).
  * - Otherwise, the workspace is the current working directory.
  *
- * `dist/` is always written to `<workspaceDir>/dist/`. Source files (agents,
- * roles) live at `<workspaceDir>/.flue/` if that directory exists, else at
- * `<workspaceDir>/` directly — analogous to Next.js's `src/` folder.
+ * Source files (agents, roles) live at `<workspaceDir>/.flue/` if that
+ * directory exists, else at `<workspaceDir>/` directly — analogous to
+ * Next.js's `src/` folder.
  */
 function resolveWorkspaceDir(explicitWorkspace: string | undefined): string {
 	return explicitWorkspace ?? process.cwd();
+}
+
+/**
+ * Resolve the build output directory.
+ *
+ * - If `--output` was passed, use it. Resolved against cwd, not the workspace,
+ *   so `flue build --workspace ./packages/x --output ./build` writes to the
+ *   build dir relative to where the user invoked the CLI.
+ * - Otherwise default to `<workspaceDir>/dist`.
+ */
+function resolveOutputDir(
+	explicitOutput: string | undefined,
+	workspaceDir: string,
+): string {
+	if (explicitOutput) return path.resolve(explicitOutput);
+	return path.join(workspaceDir, 'dist');
 }
 
 // ─── Arg Parsing ────────────────────────────────────────────────────────────
@@ -24,9 +40,9 @@ function resolveWorkspaceDir(explicitWorkspace: string | undefined): string {
 function printUsage() {
 	console.error(
 		'Usage:\n' +
-			'  flue dev   --target <node|cloudflare> [--workspace <path>] [--port <number>] [--env <path>]...\n' +
-			'  flue run   <agent> --target node --id <id> [--payload <json>] [--workspace <path>] [--port <number>] [--env <path>]...\n' +
-			'  flue build --target <node|cloudflare> [--workspace <path>]\n' +
+			'  flue dev   --target <node|cloudflare> [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
+			'  flue run   <agent> --target node --id <id> [--payload <json>] [--workspace <path>] [--output <path>] [--port <number>] [--env <path>]...\n' +
+			'  flue build --target <node|cloudflare> [--workspace <path>] [--output <path>]\n' +
 			'  flue add   [<name>|<url>] [--category <category>] [--print]\n' +
 			'\n' +
 			'Commands:\n' +
@@ -38,8 +54,8 @@ function printUsage() {
 			'Flags:\n' +
 			'  --workspace <path>   Workspace root. Default: current working directory.\n' +
 			'                       Source files (agents/, roles/) live at <workspace>/.flue/ if that\n' +
-			'                       directory exists, else at <workspace>/ directly. dist/ is always\n' +
-			'                       written to <workspace>/dist/.\n' +
+			'                       directory exists, else at <workspace>/ directly.\n' +
+			'  --output <path>      Where the build artifacts are written. Default: <workspace>/dist.\n' +
 			`  --port <number>      Port for the dev server. Default: ${DEFAULT_DEV_PORT}\n` +
 			'  --env <path>         Load env vars from a .env-format file. Repeatable; later files override earlier on key collision.\n' +
 			'                       Works for both Node and Cloudflare targets. Shell-set env vars win over file values.\n' +
@@ -55,6 +71,7 @@ function printUsage() {
 			'  flue run hello --target node --id test-1 --payload \'{"name": "World"}\' --env .env\n' +
 			'  flue build --target node\n' +
 			'  flue build --target cloudflare --workspace ./my-app\n' +
+			'  flue build --target node --output ./build\n' +
 			'  flue add\n' +
 			'  flue add daytona | claude\n' +
 			'  flue add https://e2b.dev --category sandbox | claude\n' +
@@ -72,6 +89,8 @@ interface RunArgs {
 	payload: string;
 	/** Explicit --workspace value, or undefined to default to cwd. */
 	explicitWorkspace: string | undefined;
+	/** Explicit --output value, or undefined to default to <workspaceDir>/dist. */
+	explicitOutput: string | undefined;
 	port: number;
 	/** Resolved absolute paths from --env flags (repeatable). */
 	envFiles: string[];
@@ -82,6 +101,8 @@ interface BuildArgs {
 	target: 'node' | 'cloudflare';
 	/** Explicit --workspace value, or undefined to default to cwd. */
 	explicitWorkspace: string | undefined;
+	/** Explicit --output value, or undefined to default to <workspaceDir>/dist. */
+	explicitOutput: string | undefined;
 }
 
 interface DevArgs {
@@ -89,6 +110,8 @@ interface DevArgs {
 	target: 'node' | 'cloudflare';
 	/** Explicit --workspace value, or undefined to default to cwd. */
 	explicitWorkspace: string | undefined;
+	/** Explicit --output value, or undefined to default to <workspaceDir>/dist. */
+	explicitOutput: string | undefined;
 	/** 0 = use the SDK default (DEFAULT_DEV_PORT). */
 	port: number;
 	/** Raw --env values, in order; resolved/validated by the SDK. */
@@ -109,6 +132,7 @@ function parseFlags(flags: string[]): {
 	target?: 'node' | 'cloudflare';
 	id?: string;
 	explicitWorkspace: string | undefined;
+	explicitOutput: string | undefined;
 	payload: string;
 	port: number;
 	envFiles: string[];
@@ -116,6 +140,7 @@ function parseFlags(flags: string[]): {
 	let target: 'node' | 'cloudflare' | undefined;
 	let id: string | undefined;
 	let explicitWorkspace: string | undefined;
+	let explicitOutput: string | undefined;
 	let payload = '{}';
 	let port = 0;
 	const envFiles: string[] = [];
@@ -151,6 +176,12 @@ function parseFlags(flags: string[]): {
 				console.error('Missing value for --workspace');
 				process.exit(1);
 			}
+		} else if (arg === '--output') {
+			explicitOutput = flags[++i] ?? '';
+			if (!explicitOutput) {
+				console.error('Missing value for --output');
+				process.exit(1);
+			}
 		} else if (arg === '--port') {
 			const portStr = flags[++i];
 			port = parseInt(portStr ?? '', 10);
@@ -176,6 +207,7 @@ function parseFlags(flags: string[]): {
 		target,
 		id,
 		explicitWorkspace: explicitWorkspace ? path.resolve(explicitWorkspace) : undefined,
+		explicitOutput: explicitOutput ? path.resolve(explicitOutput) : undefined,
 		payload,
 		port,
 		envFiles,
@@ -261,6 +293,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 			command: 'build',
 			target: flags.target as 'node' | 'cloudflare',
 			explicitWorkspace: flags.explicitWorkspace,
+			explicitOutput: flags.explicitOutput,
 		};
 	}
 
@@ -275,6 +308,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 			command: 'dev',
 			target: flags.target as 'node' | 'cloudflare',
 			explicitWorkspace: flags.explicitWorkspace,
+			explicitOutput: flags.explicitOutput,
 			port: flags.port,
 			envFiles: flags.envFiles,
 		};
@@ -314,6 +348,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 			id: flags.id,
 			payload: flags.payload,
 			explicitWorkspace: flags.explicitWorkspace,
+			explicitOutput: flags.explicitOutput,
 			port: flags.port,
 			envFiles: flags.envFiles,
 		};
@@ -647,9 +682,11 @@ async function findPort(): Promise<number> {
 
 async function buildCommand(args: BuildArgs) {
 	const workspaceDir = resolveWorkspaceDir(args.explicitWorkspace);
+	const outputDir = resolveOutputDir(args.explicitOutput, workspaceDir);
 	try {
 		await build({
 			workspaceDir,
+			outputDir,
 			target: args.target,
 		});
 	} catch (err) {
@@ -660,11 +697,13 @@ async function buildCommand(args: BuildArgs) {
 
 async function devCommand(args: DevArgs) {
 	const workspaceDir = resolveWorkspaceDir(args.explicitWorkspace);
+	const outputDir = resolveOutputDir(args.explicitOutput, workspaceDir);
 	try {
 		// dev() blocks until SIGINT/SIGTERM exits the process. We don't expect
 		// it to return; if it ever does, just exit cleanly.
 		await dev({
 			workspaceDir,
+			outputDir,
 			target: args.target,
 			port: args.port || undefined,
 			envFiles: args.envFiles,
@@ -677,10 +716,14 @@ async function devCommand(args: DevArgs) {
 
 async function run(args: RunArgs) {
 	const workspaceDir = resolveWorkspaceDir(args.explicitWorkspace);
-	const serverPath = path.join(workspaceDir, 'dist', 'server.mjs');
+	const outputDir = resolveOutputDir(args.explicitOutput, workspaceDir);
+	const serverPath = path.join(outputDir, 'server.mjs');
 
 	// 0. Resolve --env paths up front so a typo errors before we kick
-	//    off a build. Resolves relative to workspaceDir (the project root).
+	//    off a build. Resolves relative to workspaceDir (the project root)
+	//    so users author --env paths the way they think about them, not
+	//    relative to wherever they happened to redirect the build via
+	//    --output.
 	let resolvedEnvFiles: string[];
 	try {
 		resolvedEnvFiles = resolveEnvFiles(args.envFiles, workspaceDir);
@@ -695,7 +738,7 @@ async function run(args: RunArgs) {
 
 	// 1. Build
 	try {
-		await build({ workspaceDir, target: args.target });
+		await build({ workspaceDir, outputDir, target: args.target });
 	} catch (err) {
 		console.error(`[flue] Build failed:`, err instanceof Error ? err.message : String(err));
 		process.exit(1);
@@ -704,7 +747,9 @@ async function run(args: RunArgs) {
 	// 2. Pick a port
 	const port = args.port || (await findPort());
 
-	// 3. Start server
+	// 3. Start server. We launch the child with cwd=workspaceDir so the
+	//    server resolves user dependencies, AGENTS.md, etc. relative to
+	//    the project root regardless of where the build artifacts ended up.
 	console.error(`[flue] Starting server on port ${port}...`);
 	serverProcess = startServer(serverPath, port, fileEnv, workspaceDir);
 

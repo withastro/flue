@@ -550,15 +550,20 @@ export function assertSandboxPackageInstalled(
 // ─── Deploy redirect file ───────────────────────────────────────────────────
 
 /**
- * Write the wrangler deploy-redirect file at `<workspaceDir>/.wrangler/deploy/config.json`
- * so that `wrangler deploy` run from `workspaceDir` automatically picks up the
- * generated `dist/wrangler.jsonc`.
+ * Write the wrangler deploy-redirect file at
+ * `<workspaceDir>/.wrangler/deploy/config.json` so that `wrangler deploy` run
+ * from `workspaceDir` automatically picks up the generated wrangler config at
+ * `<outputDir>/wrangler.jsonc`.
  *
  * This is wrangler's own native redirection mechanism (the same one Astro's
  * Cloudflare adapter uses). We only write the file if one doesn't already
  * exist — if the user has set one up, respect their intent.
+ *
+ * `outputDir` may be anywhere (typically `<workspaceDir>/dist`, but the user
+ * can redirect it via `--output`). We compute a relative path so the
+ * redirect file is portable across machines / repos.
  */
-export function writeDeployRedirectIfMissing(workspaceDir: string): void {
+export function writeDeployRedirectIfMissing(workspaceDir: string, outputDir: string): void {
 	const redirectDir = path.join(workspaceDir, '.wrangler', 'deploy');
 	const redirectPath = path.join(redirectDir, 'config.json');
 
@@ -567,12 +572,14 @@ export function writeDeployRedirectIfMissing(workspaceDir: string): void {
 	}
 
 	fs.mkdirSync(redirectDir, { recursive: true });
-	// The redirect file lives at workspaceDir/.wrangler/deploy/config.json,
-	// and wrangler resolves `configPath` relative to that file's directory.
-	// So `../../dist/wrangler.jsonc` points at workspaceDir/dist/wrangler.jsonc.
+	// `configPath` is resolved relative to the redirect file's own directory.
+	// Compute a relative path from there to the actual generated config so
+	// the redirect tracks `--output` overrides correctly.
+	const targetPath = path.join(outputDir, 'wrangler.jsonc');
+	const relConfigPath = path.relative(redirectDir, targetPath).split(path.sep).join('/');
 	fs.writeFileSync(
 		redirectPath,
-		JSON.stringify({ configPath: '../../dist/wrangler.jsonc' }, null, 2) + '\n',
+		JSON.stringify({ configPath: relConfigPath }, null, 2) + '\n',
 		'utf-8',
 	);
 }

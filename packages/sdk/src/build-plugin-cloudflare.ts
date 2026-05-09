@@ -33,6 +33,12 @@ export class CloudflarePlugin implements BuildPlugin {
 	 */
 	private userConfigCache: Awaited<ReturnType<typeof readUserWranglerConfig>> | undefined;
 
+	/**
+	 * Read the user's wrangler config from `workspaceDir`. The user's config
+	 * always lives at the workspace root, regardless of where the build
+	 * artifacts get written via `outputDir`. We only re-locate the *generated*
+	 * `wrangler.jsonc` (the merged one) — never the source one.
+	 */
 	private async getUserConfig(workspaceDir: string) {
 		if (!this.userConfigCache) {
 			this.userConfigCache = await readUserWranglerConfig(workspaceDir);
@@ -591,11 +597,11 @@ export default {
 		// Side effect: write the wrangler deploy-redirect file at
 		// workspaceDir/.wrangler/deploy/config.json so `wrangler deploy` run
 		// from the workspace automatically picks up our generated
-		// dist/wrangler.jsonc. Only written if not already present, to respect
-		// user intent. This lives outside dist/, so it's handled here rather
-		// than through the additionalOutputs return value (which writes
-		// relative to dist/).
-		writeDeployRedirectIfMissing(ctx.workspaceDir);
+		// `<outputDir>/wrangler.jsonc`. Only written if not already present,
+		// to respect user intent. This lives outside the build output, so
+		// it's handled here rather than through the additionalOutputs return
+		// value (which writes relative to outputDir).
+		writeDeployRedirectIfMissing(ctx.workspaceDir, ctx.outputDir);
 
 		return outputs;
 	}
