@@ -92,13 +92,24 @@ export interface SessionEnv {
 		options?: {
 			cwd?: string;
 			env?: Record<string, string>;
+			/**
+			 * Wall-clock deadline hint in seconds. Forwarded to the underlying
+			 * sandbox connector's native timeout option (E2B `timeoutMs`,
+			 * Daytona `timeout`, etc.) so signal-blind providers still observe
+			 * the deadline with full fidelity.
+			 *
+			 * Independent of `signal`. Callers that have a deadline AND want
+			 * mid-flight cancellation should pass both: `timeout` for
+			 * provider-native enforcement, `signal` for ad-hoc abort. The
+			 * bash tool does this when the model emits a `timeout` parameter.
+			 */
 			timeout?: number;
 			/**
 			 * Cancel the in-flight command. Aborting rejects with an
-			 * `AbortError`. Composes with `timeout`; whichever fires first
-			 * wins. `timeout` and `signal` differ on purpose: `signal`
-			 * throws, `timeout` returns a `ShellResult` whose stderr
-			 * reports the timeout.
+			 * `AbortError`. Connectors that wrap a signal-aware SDK observe
+			 * this mid-flight; others see it only before/after the remote
+			 * call returns. Use `timeout` for guaranteed deadline enforcement
+			 * on signal-blind connectors.
 			 */
 			signal?: AbortSignal;
 		},
@@ -557,7 +568,7 @@ export interface SandboxFactory {
 export interface BashLike {
 	exec(
 		command: string,
-		options?: { cwd?: string; env?: Record<string, string> },
+		options?: { cwd?: string; env?: Record<string, string>; signal?: AbortSignal },
 	): Promise<ShellResult>;
 	getCwd(): string;
 	fs: {

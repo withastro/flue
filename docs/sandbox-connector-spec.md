@@ -105,10 +105,21 @@ export interface SandboxApi {
   rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>;
   exec(
     command: string,
-    options?: { cwd?: string; env?: Record<string, string>; timeout?: number },
+    options?: {
+      cwd?: string;
+      env?: Record<string, string>;
+      timeout?: number;
+      signal?: AbortSignal;
+    },
   ): Promise<{ stdout: string; stderr: string; exitCode: number }>;
 }
 ```
+
+`timeout` is the **primary** cancellation contract — every connector should
+honor it by forwarding to the provider SDK's native timeout option.
+`signal` is an *optional* enhancement: connectors whose provider SDK
+supports mid-flight cancellation (e.g. accepts an `AbortSignal`) should
+forward it; others may ignore it. See "Cancellation" below.
 
 ### `SandboxFactory` (your factory returns this)
 
@@ -187,9 +198,29 @@ Delete a file or directory. Honor `options.recursive` and `options.force`.
 ### `exec(command, options?) → Promise<{ stdout, stderr, exitCode }>`
 
 Run a shell command. Honor `options.cwd`, `options.env`, and
-`options.timeout` if your provider supports them. If `stderr` is not
-separately surfaced, return `''` for it; do the same for `exitCode` if
-unavailable, defaulting to `0` only when the call clearly succeeded.
+`options.timeout`. If your provider's SDK doesn't expose a native timeout
+option, translate `timeout` into an `AbortSignal.timeout(ms)` and pass it
+to whatever the SDK accepts — or, as a last resort, race the call against
+a `setTimeout` and reject. Connectors **must** make a best-effort attempt
+at honoring `timeout`: it's how the LLM bash tool tells the agent "stop
+this command after N seconds and let me retry." Returning a 124-shaped
+`ShellResult` (`exitCode: 124`, `stderr` describing the timeout) on
+deadline expiry matches the convention used by other Flue connectors and
+the `timeout(1)` utility.
+
+If your provider's SDK *also* supports an `AbortSignal`, forward
+`options.signal` too — this gives SDK-level callers (`agent.shell(cmd,
+{ signal })`) true mid-flight cancellation. Connectors whose provider
+SDK can't observe a signal should ignore `signal`: Flue's
+`createSandboxSessionEnv` wrapper performs pre/post `signal.aborted`
+checks for you, so post-completion abort still surfaces correctly without
+any work in the connector. Do not attempt to fake mid-flight cancellation
+with `Promise.race` against the signal — the underlying remote process
+will keep running, which surprises users.
+
+If `stderr` is not separately surfaced, return `''` for it; do the same
+for `exitCode` if unavailable, defaulting to `0` only when the call
+clearly succeeded.
 
 ---
 

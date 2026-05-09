@@ -81,43 +81,27 @@ function createBashSessionEnv(
 				command: string,
 				options?: { cwd?: string; env?: Record<string, string>; signal?: AbortSignal },
 			) => Promise<ShellResult>;
-			const timeout = opts?.timeout;
-			const externalSignal = opts?.signal;
 
-			// Track the timeout signal separately so we can tell which
-			// source aborted after exec returns.
-			let timeoutSignal: AbortSignal | undefined;
-			let timer: ReturnType<typeof setTimeout> | undefined;
-			if (typeof timeout === 'number') {
-				const ctrl = new AbortController();
-				timeoutSignal = ctrl.signal;
-				timer = setTimeout(() => ctrl.abort(), timeout * 1000);
-			}
+			// Just-bash has no native timeout option. Translate `timeout`
+			// into an AbortSignal and compose with the caller's signal so
+			// bash factories observe deadlines with the same fidelity as
+			// signal-aware sandbox connectors.
+			const timeoutSignal =
+				typeof opts?.timeout === 'number'
+					? AbortSignal.timeout(opts.timeout * 1000)
+					: undefined;
 			const mergedSignal =
-				externalSignal && timeoutSignal
-					? AbortSignal.any([externalSignal, timeoutSignal])
-					: (externalSignal ?? timeoutSignal);
+				opts?.signal && timeoutSignal
+					? AbortSignal.any([opts.signal, timeoutSignal])
+					: (opts?.signal ?? timeoutSignal);
 
-			try {
-				const result = await exec.call(
-					bash,
-					cmd,
-					opts ? { cwd: opts.cwd, env: opts.env, signal: mergedSignal } : undefined,
-				);
-				// External signal throws (caller wants cancellation); numeric
-				// timeout returns a ShellResult so the LLM bash tool sees a
-				// recoverable value.
-				if (externalSignal?.aborted) throw abortErrorFor(externalSignal);
-				if (timeoutSignal?.aborted) {
-					return {
-						...result,
-						stderr: result.stderr || `[flue] Command timed out after ${timeout} seconds.`,
-					};
-				}
-				return result;
-			} finally {
-				if (timer) clearTimeout(timer);
-			}
+			const result = await exec.call(
+				bash,
+				cmd,
+				opts ? { cwd: opts.cwd, env: opts.env, signal: mergedSignal } : undefined,
+			);
+			if (opts?.signal?.aborted) throw abortErrorFor(opts.signal);
+			return result;
 		},
 		scope: (options) => createScope(options?.commands ?? []),
 		readFile: (p) => fs.readFile(resolve(p)),
@@ -171,7 +155,25 @@ function assertBashLike(value: unknown): asserts value is BashLike {
 	}
 }
 
-/** Interface that remote sandbox providers must implement. */
+/**
+ * Interface that remote sandbox providers must implement.
+ *
+ * `exec()` cancellation is expressed two ways. Connectors should honor at
+ * least one — preferably `timeout`, since most provider SDKs expose a
+ * native timeout option but few support mid-flight cancellation:
+ *
+ *   - `timeout?: number` (seconds): the **primary** cancellation contract.
+ *     Forward to the provider's native timeout option (E2B `timeoutMs`,
+ *     Daytona `timeout`, Modal `timeout`, etc.). Required for parity with
+ *     the LLM bash tool, which always passes a `timeout` hint when the
+ *     model requests one.
+ *   - `signal?: AbortSignal` (optional): for connectors whose SDK supports
+ *     mid-flight cancellation (Mirage's executor, in-process bash). Lets
+ *     SDK callers do ad-hoc `abort()`. Connectors that can't honor it
+ *     should ignore it; the deadline is still enforced via `timeout`.
+ *
+ * Connectors that support both should observe whichever fires first.
+ */
 export interface SandboxApi {
 	readFile(path: string): Promise<string>;
 	readFileBuffer(path: string): Promise<Uint8Array>;

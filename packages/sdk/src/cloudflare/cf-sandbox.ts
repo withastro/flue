@@ -98,8 +98,9 @@ export async function cfSandboxToSessionEnv(
 				signal?: AbortSignal;
 			},
 		): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-			// The Cloudflare sandbox API has no signal param, so we can
-			// only check before and after the remote call.
+			// The Cloudflare sandbox API has no signal param, so we rely on
+			// `timeout` for deadline enforcement and only observe `signal`
+			// before and after the remote call.
 			const externalSignal = execOpts?.signal;
 			if (externalSignal?.aborted) throw abortErrorFor(externalSignal);
 

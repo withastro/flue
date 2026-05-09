@@ -216,8 +216,61 @@ function createBashTool(env: SessionEnv): AgentTool<typeof BashParams> {
 		parameters: BashParams,
 		async execute(_toolCallId: string, params: Static<typeof BashParams>, signal?: AbortSignal) {
 			throwIfAborted(signal);
-			const result = await env.exec(params.command, { timeout: params.timeout, signal });
-			return formatBashResult(result, params.command);
+
+			// Two layers cooperate to enforce `params.timeout`:
+			//
+			//   1. Pass `timeout` to env.exec as a hint. Sandbox connectors
+			//      forward it to their provider's native timeout option
+			//      (E2B `timeoutMs`, Daytona `timeout`, etc.) so signal-
+			//      blind providers still observe the deadline with full
+			//      fidelity. Bash factories translate it into a signal
+			//      internally.
+			//   2. Compose a local AbortSignal.timeout into `signal` as a
+			//      backstop. Connectors that ignore both fields will at
+			//      least see the merged signal aborted on the way out.
+			//
+			// On timeout we return a 124-shaped ShellResult so the model
+			// can recover. On host abort we rethrow so the outer call
+			// cancels. This timeout-as-recoverable-result behavior lives
+			// here in the LLM-facing tool, not in SessionEnv/SandboxApi:
+			// SDK callers express timeouts via AbortSignal.timeout(...) and
+			// accept abort semantics; the model can only emit JSON, so it
+			// needs `params.timeout` and a recoverable shape on timeout.
+			const timeoutSignal =
+				typeof params.timeout === 'number' ? AbortSignal.timeout(params.timeout * 1000) : undefined;
+			const execSignal =
+				signal && timeoutSignal
+					? AbortSignal.any([signal, timeoutSignal])
+					: (signal ?? timeoutSignal);
+
+			const timedOut = () =>
+				formatBashResult(
+					{
+						stdout: '',
+						stderr: `[flue] Command timed out after ${params.timeout} seconds.`,
+						exitCode: 124,
+					},
+					params.command,
+				);
+			try {
+				const result = await env.exec(params.command, {
+					timeout: params.timeout,
+					signal: execSignal,
+				});
+				// Some connectors don't observe the signal mid-flight and
+				// just return whatever the remote produced. If the timeout
+				// fired during that window and the host signal didn't,
+				// surface it as a recoverable timeout instead of a stale
+				// success.
+				if (timeoutSignal?.aborted && !signal?.aborted) return timedOut();
+				return formatBashResult(result, params.command);
+			} catch (err) {
+				// Same rule on the throwing path: timeout-only → recoverable
+				// 124-shape; host signal involved → rethrow so the caller's
+				// cancellation surfaces as an AbortError.
+				if (timeoutSignal?.aborted && !signal?.aborted) return timedOut();
+				throw err;
+			}
 		},
 	};
 }
