@@ -536,10 +536,53 @@ export interface BranchSummaryEntry extends SessionEntryBase {
 	details?: unknown;
 }
 
+/**
+ * Append-only delta passed to `SessionStore.saveDelta?`. Contains only the
+ * entries appended since the last save, plus the current leaf and metadata
+ * (the latter two are full-overwrite — they're small).
+ *
+ * Compaction is append-only — `appendCompaction` pushes a new
+ * `CompactionEntry` without mutating prior entries (see `session-history.ts`).
+ * That means a `supersedes` field is not needed for v1; the recipe adapter
+ * can recover prior history from its own delta records on `load()`.
+ */
+export interface SessionDelta {
+	/** Entries appended since the last save call (in order). */
+	newEntries: SessionEntry[];
+	/** Current leaf id (full overwrite). */
+	leafId: string | null;
+	/** Current metadata (full overwrite — small object). */
+	metadata: Record<string, any>;
+}
+
 export interface SessionStore {
 	save(id: string, data: SessionData): Promise<void>;
 	load(id: string): Promise<SessionData | null>;
 	delete(id: string): Promise<void>;
+
+	/**
+	 * Optional delta hook. If implemented, it is called *instead of* `save()`
+	 * with only the entries new since the last save. Adapters that implement
+	 * this can persist O(delta) per turn instead of O(history).
+	 *
+	 * Dispatch is checked per call via `typeof store.saveDelta === 'function'`,
+	 * so adapters that implement both methods will only see `saveDelta` invoked
+	 * during normal turns. `save()` remains required for adapters that don't
+	 * opt in.
+	 *
+	 * `load(id)` must still return the full `SessionData` — the adapter is
+	 * responsible for reconstructing it from its delta records (natural for
+	 * append-log shapes: replay rows in insertion order).
+	 *
+	 * If `load()` returns null (new session) and `saveDelta` is implemented,
+	 * the next `saveDelta` call carries `newEntries === <full history>`. After
+	 * that, only newly appended entries are passed.
+	 *
+	 * `newEntries.length === 0` is possible (a `save()` call with nothing to
+	 * append) and adapters should treat it as a no-op or a `leafId`/`metadata`
+	 * refresh — never as "delete prior entries".
+	 */
+	saveDelta?(id: string, delta: SessionDelta): Promise<void>;
 }
 
 // ─── Options ────────────────────────────────────────────────────────────────

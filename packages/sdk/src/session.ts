@@ -221,6 +221,18 @@ export class SessionHistory {
 		return path.reverse();
 	}
 
+	/** Total entry count, used by the SDK to compute the saveDelta slice. */
+	getEntryCount(): number {
+		return this.entries.length;
+	}
+
+	/** Entries appended at indices >= `startIndex`, in order. */
+	getEntriesSince(startIndex: number): SessionEntry[] {
+		if (startIndex <= 0) return [...this.entries];
+		if (startIndex >= this.entries.length) return [];
+		return this.entries.slice(startIndex);
+	}
+
 	/**
 	 * Active-path entries appended after `afterLeafId` (exclusive), in order.
 	 *
@@ -405,6 +417,7 @@ export class Session implements FlueSession {
 	private env: SessionEnv;
 	private store: SessionStore;
 	private history: SessionHistory;
+	private lastSavedEntryCount: number;
 	private createdAt: string | undefined;
 	private compactionSettings: CompactionSettings;
 	private overflowRecoveryAttempted = false;
@@ -439,6 +452,9 @@ export class Session implements FlueSession {
 		this.createdAt = options.existingData?.createdAt;
 
 		this.history = SessionHistory.fromData(options.existingData);
+		// Pre-existing entries are considered "already saved" — adapters that
+		// implement saveDelta? get only entries appended after construction.
+		this.lastSavedEntryCount = this.history.getEntryCount();
 
 		const cc = this.config.compaction;
 		this.compactionSettings = {
@@ -1244,7 +1260,17 @@ export class Session implements FlueSession {
 		const now = new Date().toISOString();
 		const data = this.history.toData(this.metadata, this.createdAt ?? now, now);
 		if (!this.createdAt) this.createdAt = now;
-		await this.store.save(this.storageKey, data);
+		if (typeof this.store.saveDelta === 'function') {
+			const newEntries = this.history.getEntriesSince(this.lastSavedEntryCount);
+			await this.store.saveDelta(this.storageKey, {
+				newEntries,
+				leafId: data.leafId,
+				metadata: data.metadata,
+			});
+			this.lastSavedEntryCount = this.history.getEntryCount();
+		} else {
+			await this.store.save(this.storageKey, data);
+		}
 	}
 
 	private async recordTaskSession(
