@@ -1,7 +1,8 @@
 ---
 {
   "category": "sandbox",
-  "website": "https://docs.mirage.strukto.ai"
+  "website": "https://docs.mirage.strukto.ai",
+  "aliases": ["@struktoai/mirage-node", "@struktoai/mirage-browser"]
 }
 ---
 
@@ -18,12 +19,8 @@ Wraps an already-initialized Mirage `Workspace` (created with the user's own
 `SandboxFactory` interface. The user owns the workspace and its mounts;
 this connector just adapts the workspace.
 
-A few things worth knowing about Mirage that shape this connector:
+Things to know before installing:
 
-- Mirage is an **in-process unified virtual filesystem**, not a remote VM.
-  The user mounts services (RAM, S3, Slack, GitHub, Linear, …) at paths on
-  a single tree, and Mirage's in-process shell executor runs Unix commands
-  across them. There's no remote sandbox to provision.
 - Mirage publishes two runtime packages with the same `Workspace` API:
   `@struktoai/mirage-node` for `--target node`, and
   `@struktoai/mirage-browser` for `--target cloudflare` (Cloudflare Workers
@@ -35,20 +32,8 @@ A few things worth knowing about Mirage that shape this connector:
   `MongoDBResource`, `EmailResource`, FUSE). Importing them from
   `@struktoai/mirage-browser` is a build error, so using any of those
   pins the user to `--target node`.
-- If you've seen `@struktoai/mirage-agents` in Mirage's docs, **don't
-  install it for Flue**. That package adapts Mirage to other agent
-  frameworks (OpenAI Agents SDK, Vercel AI SDK, LangChain, Mastra, Pi).
-  This Flue connector is the Flue equivalent.
-- Mirage's `Workspace.execute()` doesn't yet accept per-call `cwd` or
-  `env`, and its `AbortSignal` handling only checks `aborted` once at
-  entry. Tracked upstream as
-  [strukto-ai/mirage#4](https://github.com/strukto-ai/mirage/issues/4),
-  [#5](https://github.com/strukto-ai/mirage/issues/5), and
-  [#6](https://github.com/strukto-ai/mirage/issues/6). Until those land,
-  `session.shell(cmd, { env })` is a no-op, `{ cwd }` is wrapped via a
-  `cd <cwd> && cmd` shell-prefix, and `{ timeout }` won't fire mid-flight.
-  The connector code below is structured so that when the upstream fixes
-  ship, removing the workarounds is mechanical.
+- If you see `@struktoai/mirage-agents` in Mirage's docs, **don't install
+  it for Flue** — it's an adapter for other agent frameworks, not for Flue.
 
 ## Where to write the file
 
@@ -81,7 +66,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * @example
  * ```typescript
  * import { Workspace, RAMResource, MountMode } from '@struktoai/mirage-node';
- * import { mirage } from './connectors/mirage';
+ * import { mirage } from '../connectors/mirage';
  *
  * const ws = new Workspace({ '/data': new RAMResource() }, { mode: MountMode.WRITE });
  * const agent = await init({ sandbox: mirage(ws), model: 'anthropic/claude-sonnet-4-6' });
@@ -100,14 +85,6 @@ export interface MirageConnectorOptions {
 	 * (e.g. `/data`) if you want the agent to default to working there.
 	 */
 	cwd?: string;
-	/**
-	 * Cleanup behavior when the session is destroyed.
-	 *
-	 * - `false` (default): No cleanup — user manages the workspace lifecycle.
-	 * - `true`: Calls `workspace.close()` on session destroy.
-	 * - Function: Calls the provided function on session destroy.
-	 */
-	cleanup?: boolean | (() => Promise<void>);
 }
 
 /**
@@ -117,17 +94,6 @@ export interface MirageConnectorOptions {
  */
 function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-/**
- * Build a shell-safe `VAR=value VAR2=value2 ...` env prefix.
- * Mirage's executor honors leading assignments the way real shells do, so we
- * can use this to inject per-call env without mutating workspace-level state.
- */
-function shellEnvPrefix(env: Record<string, string>): string {
-	const entries = Object.entries(env);
-	if (entries.length === 0) return '';
-	return entries.map(([k, v]) => `${k}=${shellQuote(v)}`).join(' ') + ' ';
 }
 
 /**
@@ -143,23 +109,10 @@ function shellEnvPrefix(env: Record<string, string>): string {
  * because `WorkspaceFS` exposes only single-level `mkdir` and
  * `unlink`/`rmdir`.
  *
- * Known limitations awaiting upstream fixes in Mirage:
- *   - `exec({ env })` is a no-op until per-call env lands upstream
- *     (https://github.com/strukto-ai/mirage/issues/5). The shell-prefix
- *     workaround `FOO=bar cmd` doesn't work — Mirage's parser passes the
- *     assignment as argv rather than honoring it as command-scoped env.
- *   - `exec({ cwd })` is wrapped via `cd <cwd> && cmd` shell-prefix today,
- *     pending per-call cwd support upstream
- *     (https://github.com/strukto-ai/mirage/issues/4).
- *   - `exec({ timeout })` is plumbed via `AbortSignal.timeout()` into
- *     `ExecuteOptions.signal`, but Mirage only checks the signal at entry,
- *     so mid-flight timeouts don't fire today
- *     (https://github.com/strukto-ai/mirage/issues/6). When that lands,
- *     the existing wiring will start working without code change.
- *
- * Once those issues are resolved, the shell-prefix workarounds and the
- * 124-exit-code synthesis below should be removed in favor of passing
- * `cwd`/`env` directly through `ExecuteOptions`.
+ * `cwd`, `env`, and `signal` (including `AbortSignal.timeout(...)`) all
+ * pass directly through to `ExecuteOptions` — Mirage runs each call in an
+ * isolated session for `cwd`/`env`, and observes the signal cooperatively
+ * at LIST/PIPELINE/loop boundaries. No shell-prefix workarounds.
  */
 class MirageSandboxApi implements SandboxApi {
 	constructor(
@@ -173,7 +126,9 @@ class MirageSandboxApi implements SandboxApi {
 	}
 
 	async readFileBuffer(path: string): Promise<Uint8Array> {
-		return this.workspace.fs.readFile(path);
+		// Defensive copy: Mirage may hand back a view onto an internal buffer.
+		const bytes = await this.workspace.fs.readFile(path);
+		return new Uint8Array(bytes);
 	}
 
 	async writeFile(path: string, content: string | Uint8Array): Promise<void> {
@@ -192,13 +147,18 @@ class MirageSandboxApi implements SandboxApi {
 			isDirectory,
 			isSymbolicLink: false, // Mirage doesn't model symlinks.
 			size: s.size ?? 0,
-			mtime: s.modified ? new Date(s.modified) : new Date(),
+			// Use Unix epoch as the "missing mtime" sentinel so callers
+			// comparing mtimes (e.g. cache layers) can't confuse it with
+			// a real recent modification.
+			mtime: s.modified ? new Date(s.modified) : new Date(0),
 		};
 	}
 
 	async readdir(path: string): Promise<string[]> {
+		// Mirage returns absolute paths; some implementations include a
+		// trailing `/` for directories, which `lastIndexOf('/') + 1` would
+		// turn into an empty string — strip those.
 		const entries = await this.workspace.fs.readdir(path);
-		// Mirage returns full paths; SandboxApi expects entry names.
 		return entries.map((p) => p.slice(p.lastIndexOf('/') + 1)).filter((n) => n.length > 0);
 	}
 
@@ -248,31 +208,44 @@ class MirageSandboxApi implements SandboxApi {
 
 	async exec(
 		command: string,
-		options?: { cwd?: string; env?: Record<string, string>; timeout?: number },
+		options?: {
+			cwd?: string;
+			env?: Record<string, string>;
+			timeout?: number;
+			signal?: AbortSignal;
+		},
 	): Promise<{ stdout: string; stderr: string; exitCode: number }> {
 		return this.runShell(command, options);
 	}
 
 	private async runShell(
 		command: string,
-		options?: { cwd?: string; env?: Record<string, string>; timeout?: number },
+		options?: {
+			cwd?: string;
+			env?: Record<string, string>;
+			timeout?: number;
+			signal?: AbortSignal;
+		},
 	): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-		const envPrefix = options?.env ? shellEnvPrefix(options.env) : '';
-		const wrapped = options?.cwd
-			? `cd ${shellQuote(options.cwd)} && ${envPrefix}${command}`
-			: `${envPrefix}${command}`;
-
-		// Flue passes timeout in seconds (per the connector spec); Mirage takes
-		// an AbortSignal. Build the signal here so we can detect abort on the
-		// way out and synthesize a timeout-shaped result.
-		const signal =
-			typeof options?.timeout === 'number'
-				? AbortSignal.timeout(options.timeout * 1000)
-				: undefined;
+		// Build the AbortSignal: prefer the caller's signal, fall back to a
+		// timeout-derived one, or compose both if both are set.
+		let signal: AbortSignal | undefined;
+		if (typeof options?.timeout === 'number' && options?.signal) {
+			signal = AbortSignal.any([
+				options.signal,
+				AbortSignal.timeout(options.timeout * 1000),
+			]);
+		} else if (typeof options?.timeout === 'number') {
+			signal = AbortSignal.timeout(options.timeout * 1000);
+		} else if (options?.signal) {
+			signal = options.signal;
+		}
 
 		try {
-			const result = await this.workspace.execute(wrapped, {
+			const result = await this.workspace.execute(command, {
 				sessionId: this.flueSessionId,
+				cwd: options?.cwd,
+				env: options?.env,
 				signal,
 			});
 			return {
@@ -281,15 +254,16 @@ class MirageSandboxApi implements SandboxApi {
 				exitCode: result.exitCode,
 			};
 		} catch (err) {
-			const aborted =
-				signal?.aborted &&
-				(err === signal.reason ||
-					(err instanceof Error &&
-						(err.name === 'AbortError' || err.name === 'TimeoutError')));
-			if (aborted) {
+			// On timeout: synthesize a 124-shaped result (matches `timeout(1)`),
+			// matching what other Flue sandbox connectors return.
+			const isTimeout =
+				typeof options?.timeout === 'number' &&
+				err instanceof Error &&
+				(err.name === 'AbortError' || err.name === 'TimeoutError');
+			if (isTimeout) {
 				return {
 					stdout: '',
-					stderr: `[flue:mirage] Command timed out after ${options?.timeout} seconds.`,
+					stderr: `[flue:mirage] Command timed out after ${options.timeout} seconds.`,
 					exitCode: 124,
 				};
 			}
@@ -321,34 +295,11 @@ export function mirage(
 			}
 
 			// Mirage workspaces are mount-rooted at `/`. `/` is a safe no-op
-			// prefix for the shell-wrap in exec(); pin via `options.cwd` to
-			// default to a specific writable mount (e.g. `/data`).
+			// default; pin via `options.cwd` to default to a specific writable
+			// mount (e.g. `/data`).
 			const sandboxCwd = cwd ?? options?.cwd ?? '/';
 			const api = new MirageSandboxApi(workspace, id);
-
-			const cleanupFn = async (): Promise<void> => {
-				// Always release the per-Flue Mirage session (default session
-				// is exempt and refuses to close, so guard against that case).
-				if (id !== 'default') {
-					try {
-						await workspace.closeSession(id);
-					} catch (err) {
-						console.error(`[flue:mirage] Failed to close session ${id}:`, err);
-					}
-				}
-				// Then run user-configured cleanup if any.
-				if (options?.cleanup === true) {
-					try {
-						await workspace.close();
-					} catch (err) {
-						console.error('[flue:mirage] Failed to close workspace:', err);
-					}
-				} else if (typeof options?.cleanup === 'function') {
-					await options.cleanup();
-				}
-			};
-
-			return createSandboxSessionEnv(api, sandboxCwd, cleanupFn);
+			return createSandboxSessionEnv(api, sandboxCwd);
 		},
 	};
 }
@@ -356,22 +307,18 @@ export function mirage(
 
 ## Required dependencies
 
-This connector imports types from `@struktoai/mirage-core`, plus a runtime
-package that provides the `Workspace` class. Pick the runtime package that
-matches the user's Flue build target — `@struktoai/mirage-node` for
-`--target node`, or `@struktoai/mirage-browser` for `--target cloudflare`.
+Pick the runtime package that matches the user's Flue build target. If
+you can't tell which target they're on, check `package.json` scripts for
+`flue dev` / `flue build` invocations and look for a `wrangler.jsonc` (or
+`.toml` / `.json`) at the project root. If still unclear, ask.
 
-If you can't tell which target the user is on, check `package.json` scripts
-for `flue dev` / `flue build` invocations and look for a `wrangler.jsonc`
-(or `.toml` / `.json`) at the project root. If still unclear, ask.
-
-For Node:
+For `--target node`:
 
 ```bash
 npm install @struktoai/mirage-node
 ```
 
-For Cloudflare:
+For `--target cloudflare`:
 
 ```bash
 npm install @struktoai/mirage-browser
@@ -379,9 +326,6 @@ npm install @struktoai/mirage-browser
 
 (Use the user's package manager — `pnpm add`, `yarn add`, etc. if their
 lockfile indicates a different one.)
-
-`@struktoai/mirage-core` is a transitive dependency of both runtime packages
-and doesn't need to be installed separately.
 
 ## Authentication
 
@@ -422,13 +366,10 @@ import { mirage } from '../connectors/mirage'; // adjust path to match the user'
 export const triggers = { webhook: true };
 
 export default async function ({ init }: FlueContext) {
-  const ws = new Workspace(
-    { '/data': new RAMResource() },
-    { mode: MountMode.WRITE },
-  );
+  const ws = new Workspace({ '/data': new RAMResource() }, { mode: MountMode.WRITE });
 
   const agent = await init({
-    sandbox: mirage(ws, { cwd: '/data', cleanup: true }),
+    sandbox: mirage(ws, { cwd: '/data' }),
     model: 'anthropic/claude-sonnet-4-6',
   });
   const session = await agent.session();
@@ -436,11 +377,6 @@ export default async function ({ init }: FlueContext) {
   return await session.shell('echo "hello mirage" > /data/hello.txt && cat /data/hello.txt');
 }
 ```
-
-On `--target cloudflare`, swap the Mirage import to
-`@struktoai/mirage-browser` — everything else stays the same. Once the user
-mounts a real resource (S3, Slack, GitHub, …) they'll set its credentials
-per Mirage's per-resource setup docs.
 
 ## Verify
 
