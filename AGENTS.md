@@ -26,7 +26,14 @@ Three commands:
 - `flue run` — one-shot, production-style: build, invoke an agent once, exit. Used in CI / scripted invocations.
 - `flue build` — produce a `dist/` deployable artifact (no run).
 
-`--workspace` points at the directory containing `agents/` and `roles/`. If omitted, the CLI looks for `./.flue/` first, else falls back to `./`. `--output` controls where `dist/` is written; defaults to the current directory.
+`--workspace` points at the workspace root — the project directory. Defaults to the current working directory if omitted. `dist/` is always written to `<workspace>/dist/`.
+
+Source files (agents, roles) live in one of two places, analogous to Next.js's `src/` folder:
+
+- `<workspace>/.flue/agents/`, `<workspace>/.flue/roles/` if a `.flue/` directory exists.
+- Otherwise `<workspace>/agents/`, `<workspace>/roles/` directly.
+
+The two layouts never mix — if `.flue/` is present, the bare layout is ignored entirely.
 
 ### `flue dev`
 
@@ -44,10 +51,10 @@ For `--target cloudflare`, the project must have `wrangler` available (it's a pe
 ### `flue run`
 
 ```
-node packages/cli/dist/flue.js run <agent-name> --target node --id <id> [--payload '<json>'] [--workspace <path>] [--output <path>]
+node packages/cli/dist/flue.js run <agent-name> --target node --id <id> [--payload '<json>'] [--workspace <path>]
 ```
 
-Examples (run from the `examples/hello-world/` directory so the `./.flue/` waterfall picks it up):
+Examples (run from the `examples/hello-world/` directory so the `./.flue/` source layout is picked up):
 
 ```
 cd examples/hello-world
