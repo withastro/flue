@@ -212,12 +212,24 @@ export function createSandboxSessionEnv(api: SandboxApi, cwd: string): SessionEn
 				signal?: AbortSignal;
 			},
 		): Promise<ShellResult> {
-			return api.exec(command, {
+			// Pre/post abort checks here — not in every connector. Most
+			// provider SDKs (E2B, Daytona, Modal, Boxd, etc.) don't accept
+			// an AbortSignal, so a caller that aborts during a long-running
+			// remote command would otherwise see the call return
+			// successfully and the abort silently dropped. Centralizing the
+			// check means connectors only need to wire `signal` into their
+			// SDK when one supports it (Mirage, Vercel); the rest get
+			// correct abort semantics for free.
+			const signal = options?.signal;
+			if (signal?.aborted) throw abortErrorFor(signal);
+			const result = await api.exec(command, {
 				cwd: options?.cwd ?? cwd,
 				env: options?.env,
 				timeout: options?.timeout,
-				signal: options?.signal,
+				signal,
 			});
+			if (signal?.aborted) throw abortErrorFor(signal);
+			return result;
 		},
 
 		async readFile(path: string): Promise<string> {
