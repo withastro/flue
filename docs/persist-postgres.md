@@ -25,9 +25,25 @@ You also need:
   npm install pg
   ```
 
+## Install the connector
+
+Install the Postgres session-store connector with `flue add`. Always pass `--print` — it's the safe default whether you're a human pasting the output into your coding agent of choice, or an agent running this command yourself:
+
+```bash
+# Print the install instructions and let your agent (or you) handle the rest
+flue add postgres --print
+
+# Or pipe directly to a coding agent
+flue add postgres --print | claude
+```
+
+This drops a `persist/postgres.ts` file into your workspace (under `.flue/persist/` if you're using the `.flue/` layout, or `persist/` at the project root otherwise) and walks the agent through the schema, `pg` install, and agent wiring.
+
+The connector is a small TypeScript adapter (~50 lines) that wraps a configured `pg.Client` or `pg.Pool` into Flue's `SessionStore` interface.
+
 ## Create the table
 
-Run this once against your database:
+The connector instructions include the `CREATE TABLE` to run, but for reference:
 
 ```sql
 CREATE TABLE IF NOT EXISTS flue_sessions (
@@ -38,6 +54,63 @@ CREATE TABLE IF NOT EXISTS flue_sessions (
 ```
 
 That's the whole schema. Treat the `data` column as opaque — Flue manages its shape and may evolve `SessionData` between releases. You can pick a different table name if you prefer; the store accepts it as an option.
+
+## Use the store in your agent
+
+The connector instructions include the agent-wiring snippet, but for reference:
+
+```typescript
+import type { FlueContext } from '@flue/sdk';
+import pg from 'pg';
+import { postgresStore } from '../persist/postgres';
+
+export const triggers = { webhook: true };
+
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+
+export default async function ({ init, payload }: FlueContext) {
+  const agent = await init({
+    model: 'anthropic/claude-sonnet-4-6',
+    persist: postgresStore(pool),
+  });
+  const session = await agent.session(payload.threadId);
+  return await session.prompt(payload.message);
+}
+```
+
+The session id (`payload.threadId` here) is whatever your application uses to identify a conversation thread — typically a customer ID, a chat-room ID, or anything else stable across requests. Flue keys session storage on this id.
+
+## Verify locally
+
+The fastest path to a working setup is `docker-compose` with a throwaway Postgres:
+
+```yaml
+# docker-compose.yml
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: flue
+    ports: ['5432:5432']
+```
+
+```bash
+docker compose up -d
+DATABASE_URL=postgres://postgres:flue@localhost:5432/postgres \
+  npx flue run with-postgres-persist --target node --id thread-1 \
+  --payload '{"threadId":"thread-1","message":"My name is Maya."}'
+
+DATABASE_URL=postgres://postgres:flue@localhost:5432/postgres \
+  npx flue run with-postgres-persist --target node --id thread-1 \
+  --payload '{"threadId":"thread-1","message":"What did I just say my name was?"}'
+```
+
+The second invocation should reference "Maya" — that's the round-trip working. Inspect the row directly to confirm:
+
+```bash
+docker compose exec postgres psql -U postgres \
+  -c "SELECT id, jsonb_array_length(data->'entries') AS entries, updated_at FROM flue_sessions;"
+```
 
 ## Schema choices (and when to revisit them)
 
@@ -96,131 +169,9 @@ A third shape some teams reach for: hot session data in Redis (fast `load`/`save
 
 ### Recommendation
 
-Start with Option 1. Migrate to Option 2 if you hit any of: rows over ~500 KB, sessions where `save()` is the slow path, or operational pressure to query session metadata without going through the agent. Migrate to Option 3 only when Postgres write volume is genuinely the bottleneck — which for most agent workloads, it isn't.
+Start with Option 1 — that's what the connector ships. Migrate to Option 2 if you hit any of: rows over ~500 KB, sessions where `save()` is the slow path, or operational pressure to query session metadata without going through the agent. Migrate to Option 3 only when Postgres write volume is genuinely the bottleneck — which for most agent workloads, it isn't.
 
-The store implementation below is for **Option 1**. If you want a worked Option 2 schema with the diff-on-save adapter, open an issue describing your workload and we'll either point at a community recipe or write one.
-
-## Add the store file
-
-Drop this file into your workspace alongside the existing connectors. Use `.flue/persist/postgres.ts` if you have the `.flue/` layout, or `./persist/postgres.ts` for the root layout. Create the parent directory if it doesn't exist.
-
-```typescript
-import type { SessionStore, SessionData } from '@flue/sdk/client';
-
-/** Structural subset of `pg.Client` and `pg.Pool` — accepts either. */
-interface PgQueryable {
-  query<R = unknown>(sql: string, params?: unknown[]): Promise<{ rows: R[] }>;
-}
-
-export interface PostgresStoreOptions {
-  /** Table name. Defaults to `flue_sessions`. */
-  tableName?: string;
-}
-
-/**
- * Wrap a configured `pg` Client or Pool into a Flue `SessionStore`. The user
- * owns the client lifecycle (credentials, TLS, pool sizing); this adapter
- * just translates `save / load / delete` to SQL.
- */
-export function postgresStore(
-  client: PgQueryable,
-  options?: PostgresStoreOptions,
-): SessionStore {
-  const table = quoteIdent(options?.tableName ?? 'flue_sessions');
-
-  return {
-    async save(id: string, data: SessionData): Promise<void> {
-      await client.query(
-        `INSERT INTO ${table} (id, data, updated_at)
-           VALUES ($1, $2::jsonb, NOW())
-         ON CONFLICT (id) DO UPDATE
-           SET data = EXCLUDED.data,
-               updated_at = NOW()`,
-        [id, JSON.stringify(data)],
-      );
-    },
-
-    async load(id: string): Promise<SessionData | null> {
-      const { rows } = await client.query<{ data: SessionData }>(
-        `SELECT data FROM ${table} WHERE id = $1`,
-        [id],
-      );
-      return rows[0]?.data ?? null;
-    },
-
-    async delete(id: string): Promise<void> {
-      await client.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
-    },
-  };
-}
-
-function quoteIdent(name: string): string {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-    throw new Error(
-      `[flue:postgres] Invalid table name "${name}". ` +
-        'Use only letters, digits, and underscores; must not start with a digit.',
-    );
-  }
-  return `"${name}"`;
-}
-```
-
-## Wire it into your agent
-
-Pass the store via `init({ persist })`:
-
-```typescript
-import type { FlueContext } from '@flue/sdk';
-import pg from 'pg';
-import { postgresStore } from '../persist/postgres';
-
-export const triggers = { webhook: true };
-
-const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
-
-export default async function ({ init, payload }: FlueContext) {
-  const agent = await init({
-    model: 'anthropic/claude-sonnet-4-6',
-    persist: postgresStore(pool),
-  });
-  const session = await agent.session(payload.threadId);
-  return await session.prompt(payload.message);
-}
-```
-
-The session id (`payload.threadId` here) is whatever your application uses to identify a conversation thread — typically a customer ID, a chat-room ID, or anything else stable across requests. Flue keys session storage on this id.
-
-## Verify locally
-
-The fastest path to a working setup is `docker-compose` with a throwaway Postgres:
-
-```yaml
-# docker-compose.yml
-services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_PASSWORD: flue
-    ports: ['5432:5432']
-```
-
-```bash
-docker compose up -d
-DATABASE_URL=postgres://postgres:flue@localhost:5432/postgres \
-  npx flue run with-postgres-persist --target node --id thread-1 \
-  --payload '{"threadId":"thread-1","message":"My name is Maya."}'
-
-DATABASE_URL=postgres://postgres:flue@localhost:5432/postgres \
-  npx flue run with-postgres-persist --target node --id thread-1 \
-  --payload '{"threadId":"thread-1","message":"What did I just say my name was?"}'
-```
-
-The second invocation should reference "Maya" — that's the round-trip working. Inspect the row directly to confirm:
-
-```bash
-docker compose exec postgres psql -U postgres \
-  -c "SELECT id, jsonb_array_length(data->'entries') AS entries, updated_at FROM flue_sessions;"
-```
+If you want a worked Option 2 schema with the diff-on-save adapter, open an issue describing your workload and we'll either point at a community recipe or write one.
 
 ## What Flue manages vs what you manage
 
@@ -256,4 +207,6 @@ The store does not implement optimistic concurrency or distributed locks. If you
 
 ## Other databases
 
-`postgresStore` is a small adapter — about 50 lines of code. Adapting it to MySQL, SQLite, MongoDB, DynamoDB, or Redis is mostly mechanical: implement `save` / `load` / `delete` against your client of choice. The schema-choice trade-offs above carry across — most relational backends fit Option 1 or Option 2, most KV backends fit Option 3 cleanly. If you ship one, consider opening a pull request with a docs guide modeled on this one.
+`postgresStore` is a small adapter — about 50 lines of code. Adapting it to MySQL, SQLite, MongoDB, DynamoDB, or Redis is mostly mechanical: implement `save` / `load` / `delete` against your client of choice. The schema-choice trade-offs above carry across — most relational backends fit Option 1 or Option 2, most KV backends fit Option 3 cleanly.
+
+If Flue doesn't have a built-in connector for your backend yet, `flue add <docs-url> --category persist` will pipe a generic recipe to your agent that walks through the same shape with your backend's docs as the starting point. If you ship one, consider opening a pull request with both the connector (`connectors/persist--<name>.md`) and a docs guide modeled on this one.

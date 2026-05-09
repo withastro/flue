@@ -28,9 +28,25 @@ You also need:
 
   No SDK install is needed — D1 ships with the Workers runtime.
 
+## Install the connector
+
+Install the D1 session-store connector with `flue add`. Always pass `--print` — it's the safe default whether you're a human pasting the output into your coding agent of choice, or an agent running this command yourself:
+
+```bash
+# Print the install instructions and let your agent (or you) handle the rest
+flue add d1 --print
+
+# Or pipe directly to a coding agent
+flue add d1 --print | claude
+```
+
+This drops a `persist/d1.ts` file into your workspace (under `.flue/persist/` if you're using the `.flue/` layout, or `persist/` at the project root otherwise) and walks the agent through the schema, `wrangler.jsonc` binding, and agent wiring.
+
+The connector is a small TypeScript adapter (~50 lines) that wraps a Cloudflare D1 binding into Flue's `SessionStore` interface.
+
 ## Create the table
 
-Run this once against your D1:
+The connector instructions include the schema, but for reference:
 
 ```bash
 npx wrangler d1 execute <name> --remote --command="
@@ -44,89 +60,9 @@ npx wrangler d1 execute <name> --remote --command="
 
 For local development, swap `--remote` for `--local`. The schema intentionally mirrors the table the default DO-SQLite store creates inside each agent's Durable Object — same column names, same types — so a future migration tool could move rows between the two without translation.
 
-## Schema choices (and when to revisit them)
+## Use the store in your agent
 
-The schema above is the simplest shape that satisfies Flue's `SessionStore` contract: one row per session, the entire `SessionData` blob in a TEXT column, rewritten on every `save()`. Same trade-offs as the [Postgres single-blob option](./persist-postgres.md#schema-choices-and-when-to-revisit-them) — see that section for the append-log + index alternative (matches Claude Code, Codex, OpenCode 1.2+) and the hot/cold split. The D1 versions of those alternatives map directly: `JSONB` → `TEXT`, `BIGSERIAL` → `INTEGER PRIMARY KEY AUTOINCREMENT`, `?1, ?2` instead of `$1, $2`.
-
-For most workloads, start with the single-blob shape. Migrate to append-log only when you hit row size pressure or need to query session metadata at scale.
-
-## Add the store file
-
-Drop this file into `.flue/persist/d1.ts` (or `./persist/d1.ts` for the root layout). Create the parent directory if it doesn't exist.
-
-```typescript
-import type { SessionStore, SessionData } from '@flue/sdk/client';
-
-/** Structural subset of Cloudflare's `D1Database`. */
-interface D1Like {
-  prepare(sql: string): {
-    bind(...values: unknown[]): {
-      first<T = unknown>(): Promise<T | null>;
-      run(): Promise<unknown>;
-    };
-  };
-}
-
-export interface D1StoreOptions {
-  /** Table name. Defaults to `flue_sessions`. */
-  tableName?: string;
-}
-
-/**
- * Wrap a Cloudflare D1 binding into a Flue `SessionStore`. Pass `env.DB`
- * (or whatever your binding name is). Typed as `unknown` to match the
- * convention used by `getVirtualSandbox(bucket: unknown)` in the same
- * package — users with `@cloudflare/workers-types` installed pass a
- * `D1Database`, users without it work fine too.
- */
-export function d1Store(db: unknown, options?: D1StoreOptions): SessionStore {
-  const table = quoteIdent(options?.tableName ?? 'flue_sessions');
-  const d1 = db as D1Like;
-
-  return {
-    async save(id: string, data: SessionData): Promise<void> {
-      await d1
-        .prepare(
-          `INSERT INTO ${table} (id, data, updated_at)
-             VALUES (?1, ?2, ?3)
-           ON CONFLICT(id) DO UPDATE SET
-             data = excluded.data,
-             updated_at = excluded.updated_at`,
-        )
-        .bind(id, JSON.stringify(data), Date.now())
-        .run();
-    },
-
-    async load(id: string): Promise<SessionData | null> {
-      const row = await d1
-        .prepare(`SELECT data FROM ${table} WHERE id = ?1`)
-        .bind(id)
-        .first<{ data: string }>();
-      return row ? (JSON.parse(row.data) as SessionData) : null;
-    },
-
-    async delete(id: string): Promise<void> {
-      await d1.prepare(`DELETE FROM ${table} WHERE id = ?1`).bind(id).run();
-    },
-  };
-}
-
-function quoteIdent(name: string): string {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
-    throw new Error(
-      `[flue:d1] Invalid table name "${name}". ` +
-        'Use only letters, digits, and underscores; must not start with a digit.',
-    );
-  }
-  return `"${name}"`;
-}
-```
-
-The `db` parameter is typed as `unknown` to match the convention used elsewhere in Flue's Cloudflare integration (see `getVirtualSandbox`). Users with `@cloudflare/workers-types` installed pass a `D1Database` directly; users without it work fine too.
-
-## Wire it into your agent
-
-Pass the store via `init({ persist })`:
+The connector instructions include the agent-wiring snippet, but for reference:
 
 ```typescript
 import type { FlueContext } from '@flue/sdk';
@@ -185,6 +121,12 @@ npx wrangler d1 execute <name> --local \
   --command="SELECT id, length(data), updated_at FROM flue_sessions;"
 ```
 
+## Schema choices (and when to revisit them)
+
+The schema above is the simplest shape that satisfies Flue's `SessionStore` contract: one row per session, the entire `SessionData` blob in a TEXT column, rewritten on every `save()`. Same trade-offs as the [Postgres single-blob option](./persist-postgres.md#schema-choices-and-when-to-revisit-them) — see that section for the append-log + index alternative (matches Claude Code, Codex, OpenCode 1.2+) and the hot/cold split. The D1 versions of those alternatives map directly: `JSONB` → `TEXT`, `BIGSERIAL` → `INTEGER PRIMARY KEY AUTOINCREMENT`, `?1, ?2` instead of `$1, $2`.
+
+For most workloads, start with the single-blob shape — that's what the connector ships. Migrate to append-log only when you hit row size pressure or need to query session metadata at scale.
+
 ## D1 vs the default DO-SQLite store
 
 The default DO-SQLite store (used automatically when you don't pass `persist`) and `d1Store` solve overlapping problems with different trade-offs:
@@ -229,4 +171,6 @@ Same model as the [Postgres guide](./persist-postgres.md#concurrency): `INSERT .
 
 ## Other databases
 
-`d1Store` is small (~50 lines). Adapting it to a different SQLite-compatible backend (Turso, libSQL, raw `better-sqlite3`) is mostly mechanical: swap `db.prepare(...).bind(...).run()` for the equivalent on your client. The schema-choice trade-offs above carry across. If you ship one, consider opening a pull request with a docs guide modeled on this one or the [Postgres guide](./persist-postgres.md).
+`d1Store` is small (~50 lines). Adapting it to a different SQLite-compatible backend (Turso, libSQL, raw `better-sqlite3`) is mostly mechanical: swap `db.prepare(...).bind(...).run()` for the equivalent on your client. The schema-choice trade-offs above carry across.
+
+If Flue doesn't have a built-in connector for your backend yet, `flue add <docs-url> --category persist` will pipe a generic recipe to your agent. If you ship one, consider opening a pull request with both the connector (`connectors/persist--<name>.md`) and a docs guide modeled on this one or the [Postgres guide](./persist-postgres.md).
