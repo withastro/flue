@@ -593,7 +593,6 @@ export type FlueEvent = (
 	| { type: 'compaction_start'; reason: 'threshold' | 'overflow'; estimatedTokens: number }
 	| { type: 'compaction_end'; messagesBefore: number; messagesAfter: number }
 	| { type: 'idle' }
-	| { type: 'error'; error: string }
 ) & { sessionId?: string; parentSessionId?: string; taskId?: string };
 
 export type FlueEventCallback = (event: FlueEvent) => void;

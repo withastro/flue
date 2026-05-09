@@ -689,7 +689,6 @@ export class Session implements FlueSession {
 				result: getErrorMessage(error),
 				parentSessionId: this.id,
 			});
-			this.emit({ type: 'error', error: getErrorMessage(error) });
 			throw error;
 		} finally {
 			if (signal && abortListener) signal.removeEventListener('abort', abortListener);
@@ -725,9 +724,12 @@ export class Session implements FlueSession {
 			} catch (error) {
 				// After the signal aborts, anything thrown downstream is
 				// post-abort fallout (harness, tools, compaction). Surface
-				// a single AbortError shape to callers.
+				// a single AbortError shape to callers. Failures propagate
+				// to the caller via throw — operation-end events
+				// (task_end isError, tool_end isError) carry the same
+				// information for in-process observers, so we don't emit a
+				// separate 'error' event here.
 				const surfaced = signal?.aborted ? abortErrorFor(signal) : error;
-				this.emit({ type: 'error', error: getErrorMessage(surfaced) });
 				throw surfaced;
 			} finally {
 				signal?.removeEventListener('abort', onAbort);
