@@ -107,12 +107,29 @@ class VercelSandboxApi implements SandboxApi {
 
 	async exec(
 		command: string,
-		options?: { cwd?: string; env?: Record<string, string>; timeout?: number },
+		options?: {
+			cwd?: string;
+			env?: Record<string, string>;
+			timeout?: number;
+			signal?: AbortSignal;
+		},
 	): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-		const signal =
+		// Vercel's SDK accepts an AbortSignal directly, so we forward both
+		// `timeout` (synthesized as a signal) and the caller's `signal`.
+		// Compose them with AbortSignal.any so whichever fires first wins:
+		//   - timeout-only  → recoverable 124-shape ShellResult.
+		//   - caller-only   → rethrow so the host abort propagates.
+		//   - both          → if the caller's signal fired, propagate;
+		//                     otherwise treat as timeout.
+		const timeoutSignal =
 			typeof options?.timeout === 'number'
 				? AbortSignal.timeout(options.timeout * 1000)
 				: undefined;
+		const callerSignal = options?.signal;
+		const signal =
+			callerSignal && timeoutSignal
+				? AbortSignal.any([callerSignal, timeoutSignal])
+				: (callerSignal ?? timeoutSignal);
 
 		try {
 			const response = await this.sandbox.runCommand({
@@ -128,9 +145,11 @@ class VercelSandboxApi implements SandboxApi {
 			]);
 			return { stdout, stderr, exitCode: response.exitCode };
 		} catch (err) {
+			// If the caller's signal fired, rethrow so the host abort wins.
+			if (callerSignal?.aborted) throw err;
 			const aborted =
-				signal?.aborted &&
-				(err === signal.reason ||
+				timeoutSignal?.aborted &&
+				(err === timeoutSignal.reason ||
 					(err instanceof Error && (err.name === 'AbortError' || err.name === 'TimeoutError')));
 			if (aborted) {
 				return {
