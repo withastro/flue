@@ -108,12 +108,18 @@ export interface SandboxApi {
     options?: {
       cwd?: string;
       env?: Record<string, string>;
+      stdin?: string;
       timeout?: number;
       signal?: AbortSignal;
     },
   ): Promise<{ stdout: string; stderr: string; exitCode: number }>;
 }
 ```
+
+`stdin` is the exact standard input string for the command. Connectors should
+forward it to a provider-native stdin option. If the provider cannot attach
+stdin to a process, reject when `stdin` is set instead of silently dropping
+the input.
 
 `timeout` is the **primary** cancellation contract — every connector should
 honor it by forwarding to the provider SDK's native timeout option.
@@ -197,16 +203,23 @@ Delete a file or directory. Honor `options.recursive` and `options.force`.
 
 ### `exec(command, options?) → Promise<{ stdout, stderr, exitCode }>`
 
-Run a shell command. Honor `options.cwd`, `options.env`, and
-`options.timeout`. If your provider's SDK doesn't expose a native timeout
-option, translate `timeout` into an `AbortSignal.timeout(ms)` and pass it
-to whatever the SDK accepts — or, as a last resort, race the call against
-a `setTimeout` and reject. Connectors **must** make a best-effort attempt
-at honoring `timeout`: it's how the LLM bash tool tells the agent "stop
-this command after N seconds and let me retry." Returning a 124-shaped
-`ShellResult` (`exitCode: 124`, `stderr` describing the timeout) on
-deadline expiry matches the convention used by other Flue connectors and
-the `timeout(1)` utility.
+Run a shell command. Honor `options.cwd`, `options.env`,
+`options.stdin`, and `options.timeout`. `stdin` should be passed as
+standard input, not interpolated into `command`; this keeps shell quoting,
+large text bodies, and secret-bearing input separate from the command line.
+If the provider SDK has no way to attach stdin to the spawned process,
+throw a clear unsupported-error when `options.stdin` is present. Never
+silently ignore stdin.
+
+If your provider's SDK doesn't expose a native timeout option, translate
+`timeout` into an `AbortSignal.timeout(ms)` and pass it to whatever the SDK
+accepts — or, as a last resort, race the call against a `setTimeout` and
+reject. Connectors **must** make a best-effort attempt at honoring
+`timeout`: it's how the LLM bash tool tells the agent "stop this command
+after N seconds and let me retry." Returning a 124-shaped `ShellResult`
+(`exitCode: 124`, `stderr` describing the timeout) on deadline expiry
+matches the convention used by other Flue connectors and the `timeout(1)`
+utility.
 
 If your provider's SDK *also* supports an `AbortSignal`, forward
 `options.signal` too — this gives SDK-level callers (`agent.shell(cmd,

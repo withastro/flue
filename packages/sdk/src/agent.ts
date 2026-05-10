@@ -204,6 +204,7 @@ function createEditTool(env: SessionEnv): AgentTool<typeof EditParams> {
 
 const BashParams = Type.Object({
 	command: Type.String({ description: 'Bash command to execute' }),
+	stdin: Type.Optional(Type.String({ description: 'Standard input to pass to the command' })),
 	timeout: Type.Optional(Type.Number({ description: 'Timeout in seconds' })),
 });
 
@@ -254,6 +255,7 @@ function createBashTool(env: SessionEnv): AgentTool<typeof BashParams> {
 				);
 			try {
 				const result = await env.exec(params.command, {
+					stdin: params.stdin,
 					timeout: params.timeout,
 					signal: execSignal,
 				});

@@ -94,6 +94,7 @@ export async function cfSandboxToSessionEnv(
 			execOpts?: {
 				cwd?: string;
 				env?: Record<string, string>;
+				stdin?: string;
 				timeout?: number;
 				signal?: AbortSignal;
 			},
@@ -109,6 +110,7 @@ export async function cfSandboxToSessionEnv(
 			const result = await sandbox.exec(command, {
 				cwd: execOpts?.cwd,
 				env: execOpts?.env,
+				stdin: execOpts?.stdin,
 				timeout: timeoutMs,
 			});
 

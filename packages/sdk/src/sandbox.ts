@@ -22,6 +22,7 @@ export function createCwdSessionEnv(parentEnv: SessionEnv, cwd: string): Session
 			parentEnv.exec(cmd, {
 				cwd: opts?.cwd ?? scopedCwd,
 				env: opts?.env,
+				stdin: opts?.stdin,
 				timeout: opts?.timeout,
 				signal: opts?.signal,
 			}),
@@ -79,7 +80,12 @@ function createBashSessionEnv(
 			const exec = bash.exec as unknown as (
 				this: BashLike,
 				command: string,
-				options?: { cwd?: string; env?: Record<string, string>; signal?: AbortSignal },
+				options?: {
+					cwd?: string;
+					env?: Record<string, string>;
+					stdin?: string;
+					signal?: AbortSignal;
+				},
 			) => Promise<ShellResult>;
 
 			// Just-bash has no native timeout option. Translate `timeout`
@@ -98,7 +104,9 @@ function createBashSessionEnv(
 			const result = await exec.call(
 				bash,
 				cmd,
-				opts ? { cwd: opts.cwd, env: opts.env, signal: mergedSignal } : undefined,
+				opts
+					? { cwd: opts.cwd, env: opts.env, stdin: opts.stdin, signal: mergedSignal }
+					: undefined,
 			);
 			if (opts?.signal?.aborted) throw abortErrorFor(opts.signal);
 			return result;
@@ -173,6 +181,11 @@ function assertBashLike(value: unknown): asserts value is BashLike {
  *     should ignore it; the deadline is still enforced via `timeout`.
  *
  * Connectors that support both should observe whichever fires first.
+ *
+ * `stdin?: string` is the exact standard input for the command. Connectors
+ * should forward it to a provider-native stdin option. If the provider
+ * cannot attach stdin to a process, reject when `stdin` is set rather than
+ * silently dropping input.
  */
 export interface SandboxApi {
 	readFile(path: string): Promise<string>;
@@ -188,6 +201,7 @@ export interface SandboxApi {
 		options?: {
 			cwd?: string;
 			env?: Record<string, string>;
+			stdin?: string;
 			timeout?: number;
 			signal?: AbortSignal;
 		},
@@ -208,6 +222,7 @@ export function createSandboxSessionEnv(api: SandboxApi, cwd: string): SessionEn
 			options?: {
 				cwd?: string;
 				env?: Record<string, string>;
+				stdin?: string;
 				timeout?: number;
 				signal?: AbortSignal;
 			},
@@ -225,6 +240,7 @@ export function createSandboxSessionEnv(api: SandboxApi, cwd: string): SessionEn
 			const result = await api.exec(command, {
 				cwd: options?.cwd ?? cwd,
 				env: options?.env,
+				stdin: options?.stdin,
 				timeout: options?.timeout,
 				signal,
 			});

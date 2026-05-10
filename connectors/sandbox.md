@@ -58,6 +58,11 @@ These are the things that aren't obvious from the spec or the example.
   primitive (`AbortSignal`, process kill, cancel token); otherwise leave
   it alone. The SDK does pre/post `signal.aborted` checks at the
   `SandboxApi` boundary, so you don't need to add them yourself.
+- **Standard input.** `SandboxApi.exec()` also receives `stdin` when the
+  caller uses `agent.shell(cmd, { stdin })` or `session.shell(cmd,
+  { stdin })`. Forward it to the provider's native stdin option. If the
+  provider cannot attach stdin to the process, throw a clear unsupported
+  error when `stdin` is set; never silently drop it.
 - **Credentials.** If the provider needs secrets at runtime, never invent
   values for them. Let the project's conventions (`AGENTS.md`, an existing
   `.env` / `.dev.vars`, a secret manager, CI vars, etc.) decide where they

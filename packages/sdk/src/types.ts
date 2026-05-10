@@ -106,6 +106,7 @@ export interface SessionEnv {
 		options?: {
 			cwd?: string;
 			env?: Record<string, string>;
+			stdin?: string;
 			/**
 			 * Wall-clock deadline hint in seconds. Forwarded to the underlying
 			 * sandbox connector's native timeout option (E2B `timeoutMs`,
@@ -594,6 +595,7 @@ export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> 
 export interface ShellOptions {
 	env?: Record<string, string>;
 	cwd?: string;
+	stdin?: string;
 	commands?: Command[];
 	/** Cancel this call. See `CallHandle`. */
 	signal?: AbortSignal;
@@ -619,7 +621,12 @@ export interface SandboxFactory {
 export interface BashLike {
 	exec(
 		command: string,
-		options?: { cwd?: string; env?: Record<string, string>; signal?: AbortSignal },
+		options?: {
+			cwd?: string;
+			env?: Record<string, string>;
+			stdin?: string;
+			signal?: AbortSignal;
+		},
 	): Promise<ShellResult>;
 	getCwd(): string;
 	fs: {

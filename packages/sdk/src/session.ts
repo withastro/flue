@@ -400,7 +400,7 @@ export class Session implements FlueSession {
 				// tool-use round.
 				const toolCallId = crypto.randomUUID();
 
-				// Per-call cwd/env, when set, are part of the call's identity
+				// Per-call cwd/env/stdin, when set, are part of the call's identity
 				// and need to be visible in the transcript. Without them the
 				// model can't tell on a later turn that a command ran with
 				// overrides — making questions like "what cwd was that run
@@ -412,6 +412,7 @@ export class Session implements FlueSession {
 				const args: Record<string, unknown> = { command };
 				if (options?.cwd !== undefined) args.cwd = options.cwd;
 				if (options?.env !== undefined) args.env = options.env;
+				if (options?.stdin !== undefined) args.stdin = options.stdin;
 
 				this.emit({ type: 'tool_start', toolName: 'bash', toolCallId, args });
 
@@ -422,6 +423,7 @@ export class Session implements FlueSession {
 					const result = await env.exec(command, {
 						env: options?.env,
 						cwd: options?.cwd,
+						stdin: options?.stdin,
 						signal,
 					});
 					const shellResult: ShellResult = {

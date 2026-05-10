@@ -55,6 +55,7 @@ export class AgentClient implements FlueAgent {
 			const result = await env.exec(command, {
 				env: options?.env,
 				cwd: options?.cwd,
+				stdin: options?.stdin,
 				signal,
 			});
 			return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
