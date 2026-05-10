@@ -118,6 +118,16 @@ For this proposal, `task_start`, `task_end`, and `TaskToolResultDetails` should 
 
 Those are natural follow-ups, but this proposal is the first telemetry layer they would build on.
 
+## What Changes From Today
+
+| Today | Proposed |
+| --- | --- |
+| Task events identify the task but not the full work chain. | Task events carry `workId`, `parentWorkId`, `sessionId`, `parentSessionId`, and `taskId`. |
+| Task end events report success or failure with an unstructured result. | Task end events also report timing, model, and usage when available. |
+| Built-in `task` tool results do not expose a stable accounting payload. | `TaskToolResultDetails` becomes the parent-facing receipt for task usage, model, duration, and optional output refs. |
+| Parent prompt usage can hide direct child task usage. | Built-in task tool usage rolls into the enclosing parent prompt or skill response exactly once. |
+| TokenOps and FinOps consumers must infer causality from logs. | Consumers can group work by stable ids and add adapters without changing provider-specific model APIs. |
+
 ## Proposed Event Types
 
 The current task events are:
@@ -316,6 +326,21 @@ The two PRs should not race to create different contracts.
 - If task telemetry lands first, it should add `FlueWorkRef`, event metadata, and task details with `workId`. The `artifacts` field can wait until artifact channels exist.
 - If artifact channels land first, they should add `FlueWorkRef` and `producer.workId` on artifact records. Usage joins can wait until task telemetry exists.
 - If they land together, `FlueWorkRef` should be defined once in the SDK types module and imported by both feature implementations.
+
+## Forward Compatibility and Cost
+
+This should be additive to the current task surface. Existing `taskId`, `sessionId`, and event names stay intact. New metadata fields can be optional on the generic event envelope while becoming required for the new task telemetry variants. That gives older consumers a soft landing and gives new consumers a reliable join key.
+
+The cognitive cost should stay low for ordinary users: they see clearer CLI lines and more accurate `usage`. Advanced consumers learn one new noun, `workId`, when they need tracing, rollups, or artifact joins.
+
+The runtime cost is intentionally small:
+
+- one id allocation and timestamp pair per tracked task;
+- a task-scoped accumulator for direct child usage during built-in `task` tool calls;
+- slightly larger event and tool-detail payloads;
+- no extra model calls, no persistent telemetry index, and no recursive tree walk for rollups.
+
+The feature should not make failed or nested work ambiguous. Failed tasks may omit usage if none is available, but they should still emit timing and work identity. Nested rollups should only add direct child usage at each level so totals do not double count.
 
 ## Acceptance Criteria
 
