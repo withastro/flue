@@ -10,8 +10,8 @@
  */
 import { getModel, type Api, type KnownProvider, type Model } from '@mariozechner/pi-ai';
 import {
-	CLOUDFLARE_MODEL_PREFIX,
-	createCloudflareAIBindingModel,
+	CLOUDFLARE_AI_BINDING_API,
+	CLOUDFLARE_AI_BINDING_PROVIDER,
 } from './cloudflare-model.ts';
 import type { FlueModelDefinition } from './config.ts';
 import type { ModelConfig, ProviderSettings, ProvidersConfig } from './types.ts';
@@ -47,15 +47,16 @@ export {
  * Resolution order (highest priority first):
  *
  *   1. User-defined `models` from `flue.config.ts`. Keyed by bare provider
- *      name (the part of the model string before the first `/`).
- *      Last-write-wins on collision with built-ins — same semantics as
- *      pi-ai's `registerApiProvider`.
- *   2. The reserved `cloudflare/` prefix (Workers AI binding).
- *   3. pi-ai's static catalog via `getModel`.
+ *      name (the part of the model string before the first `/`). On the
+ *      Cloudflare target, the build plugin auto-injects a `cloudflare:`
+ *      entry of kind `'cloudflare-ai-binding'` so `cloudflare/...` routes
+ *      to the Workers AI binding via this same path.
+ *   2. pi-ai's static catalog via `getModel`.
  *
- * `userModels` is undefined for legacy callers and for `flue run --target node`
- * server processes that haven't been re-bundled yet; both fall through to the
- * built-in branches without behavior change.
+ * `userModels` is undefined for legacy callers (e.g. older generated
+ * server entries that haven't been re-bundled); those fall straight through
+ * to pi-ai. After a rebuild the user-models map is always present (`{}` if
+ * the user didn't define any).
  */
 export function resolveModel(
 	model: ModelConfig | undefined,
@@ -76,9 +77,10 @@ export function resolveModel(
 	const provider = modelString.slice(0, slash);
 	const modelId = modelString.slice(slash + 1);
 
-	// 1. User-defined models from flue.config.ts. Consulted first so users
-	//    can shadow built-ins (e.g. register their own "cloudflare" or
-	//    "anthropic" routing) — matches pi-ai's last-write-wins behavior.
+	// 1. User-defined models from flue.config.ts (and build-injected built-ins
+	//    like the Cloudflare AI binding entry). Consulted before pi-ai so
+	//    users can shadow built-ins — matches pi-ai's last-write-wins
+	//    behavior on its own provider registry.
 	const userDef = userModels?.[provider];
 	if (userDef) {
 		if (!modelId) {
@@ -88,34 +90,16 @@ export function resolveModel(
 					`was given. Use "${provider}/<model-id>".`,
 			);
 		}
-		// Resolve the override key once, here. The user can pin a different
-		// `provider` on the definition (e.g. for shared overrides across
-		// multiple prefixes); otherwise it falls back to the map key.
-		// `init({ providers: { ollama: { baseUrl } } })` keys off this.
-		const resolvedProvider = userDef.provider ?? provider;
-		const built = buildUserModel(userDef, resolvedProvider, modelId);
-		return applyProviderSettings(built, providers?.[resolvedProvider]);
+		// `buildUserModel` decides the final `provider` per-kind (some
+		// honor `def.provider`, some hardcode it). Read the override key
+		// off the constructed model so it always matches what surfaces on
+		// AssistantMessage records — `init({ providers: { ... } })` keys
+		// off the same field.
+		const built = buildUserModel(userDef, provider, modelId);
+		return applyProviderSettings(built, providers?.[built.provider]);
 	}
 
-	// 2. Reserved `cloudflare/` prefix. Routes through the Workers AI binding;
-	//    the API handler is only registered on the Cloudflare target, so
-	//    node-target use fails at dispatch time with pi-ai's "no API provider
-	//    registered" error.
-	if (modelString.startsWith(CLOUDFLARE_MODEL_PREFIX)) {
-		const workersAiModelId = modelString.slice(CLOUDFLARE_MODEL_PREFIX.length);
-		if (!workersAiModelId) {
-			throw new Error(
-				`[flue] Invalid model "${modelString}". ` +
-					`Use "cloudflare/<workers-ai-model-id>" (e.g. "cloudflare/@cf/moonshotai/kimi-k2.6").`,
-			);
-		}
-		// `providers.cloudflare` settings are not applied: the binding owns
-		// transport and ignores baseUrl/headers/apiKey. For gateway-based
-		// observability, use pi-ai's `cloudflare-ai-gateway` provider.
-		return createCloudflareAIBindingModel(workersAiModelId);
-	}
-
-	// 3. pi-ai catalog. `getModel` is overloaded on literal provider/modelId;
+	// 2. pi-ai catalog. `getModel` is overloaded on literal provider/modelId;
 	//    we cast through runtime strings and rely on the null-return check
 	//    below for unknowns.
 	const resolved = getModel(provider as KnownProvider, modelId as never);
@@ -131,18 +115,21 @@ export function resolveModel(
 
 /**
  * Construct a pi-ai `Model` literal from a user-supplied `FlueModelDefinition`,
- * the resolved provider name (caller chose between `def.provider` and the
- * map key), and the suffix of the model string (everything after the first
- * `/`).
+ * the map key the entry was registered under, and the suffix of the model
+ * string (everything after the first `/`).
+ *
+ * Each `kind` case decides how to compute the final `provider` field — some
+ * honor an explicit `def.provider` override (with `mapKey` as the fallback);
+ * others hardcode it (the runtime API the binding/handler is registered as
+ * doesn't necessarily match the URL-side prefix users type).
  *
  * Cost / context-window fields are zeroed because no static catalog exists
  * for user-defined providers; Flue features that read those (cost display,
- * overflow detection) degrade gracefully, exactly like the `cloudflare/`
- * branch.
+ * overflow detection) degrade gracefully.
  */
 function buildUserModel(
 	def: FlueModelDefinition,
-	provider: string,
+	mapKey: string,
 	modelId: string,
 ): Model<Api> {
 	switch (def.kind) {
@@ -151,7 +138,7 @@ function buildUserModel(
 				id: modelId,
 				name: modelId,
 				api: 'openai-completions',
-				provider,
+				provider: def.provider ?? mapKey,
 				baseUrl: def.baseUrl,
 				reasoning: false,
 				input: ['text'],
@@ -161,11 +148,32 @@ function buildUserModel(
 				headers: def.headers,
 			};
 		}
+		case 'cloudflare-ai-binding': {
+			// `mapKey` (typically `'cloudflare'`) is intentionally ignored:
+			// every Workers AI binding model surfaces as `provider: 'workers-ai'`
+			// on AssistantMessage records, matching pi-ai's catalog convention.
+			// `baseUrl` is empty because the API handler dispatches through
+			// `env.AI.run()` (binding), not HTTP. See workers-ai-provider.ts.
+			return {
+				id: modelId,
+				name: modelId,
+				api: CLOUDFLARE_AI_BINDING_API,
+				provider: CLOUDFLARE_AI_BINDING_PROVIDER,
+				baseUrl: '',
+				reasoning: false,
+				input: ['text'],
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				contextWindow: 0,
+				maxTokens: 0,
+			};
+		}
 		default: {
 			// Exhaustive check. Adding a new `kind` to the union without a
 			// matching case here is a type error.
-			const _exhaustive: never = def.kind;
-			throw new Error(`[flue] Unknown user model kind: ${String(_exhaustive)}`);
+			const _exhaustive: never = def;
+			throw new Error(
+				`[flue] Unknown user model kind: ${String((_exhaustive as { kind: string }).kind)}`,
+			);
 		}
 	}
 }

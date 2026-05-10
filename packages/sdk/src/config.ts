@@ -43,7 +43,7 @@ import * as v from 'valibot';
  * bump it casually.
  */
 const FLUE_MODEL_DEFINITION_BRAND = '__flueModelDefinition' as const;
-const FLUE_MODEL_DEFINITION_VERSION = 1 as const;
+export const FLUE_MODEL_DEFINITION_VERSION = 1 as const;
 
 /**
  * Discriminated record produced by `defineOpenAICompletionsModel(...)`. The
@@ -67,11 +67,44 @@ export interface OpenAICompletionsModelDefinition {
 }
 
 /**
+ * Internal-only model definition for the Cloudflare Workers AI binding.
+ *
+ * This kind has no public `defineXxxModel(...)` helper — it's not part of
+ * the user-facing config surface. It exists so the cloudflare build plugin
+ * can register `cloudflare/...` as a user model entry at build time, using
+ * the same resolution path as `openai-completions`. This keeps the SDK from
+ * needing a hardcoded reserved-prefix branch in `resolveModel`.
+ *
+ * If a user explicitly puts this kind in their `flue.config.ts`, valibot
+ * will accept it (the schema covers it for symmetry), but they'd need to
+ * construct the literal by hand — not supported, not documented.
+ */
+export interface CloudflareAIBindingModelDefinition {
+	[FLUE_MODEL_DEFINITION_BRAND]: typeof FLUE_MODEL_DEFINITION_VERSION;
+	kind: 'cloudflare-ai-binding';
+}
+
+/**
+ * Construct the internal `cloudflare-ai-binding` definition. Used by the
+ * Cloudflare build plugin to seed the user-models map at build time so
+ * `cloudflare/...` model strings resolve through the same code path as
+ * user-defined providers. Not exported to userland.
+ */
+export function createCloudflareAIBindingDefinition(): CloudflareAIBindingModelDefinition {
+	return {
+		[FLUE_MODEL_DEFINITION_BRAND]: FLUE_MODEL_DEFINITION_VERSION,
+		kind: 'cloudflare-ai-binding',
+	};
+}
+
+/**
  * Union of every shape produced by Flue's model-definition helpers. New
  * helpers (e.g. for Anthropic-compatible custom endpoints) extend this
  * union, and `resolveModel` adds a corresponding branch.
  */
-export type FlueModelDefinition = OpenAICompletionsModelDefinition;
+export type FlueModelDefinition =
+	| OpenAICompletionsModelDefinition
+	| CloudflareAIBindingModelDefinition;
 
 /**
  * User-facing config shape — everything optional so `defineConfig({})` is
@@ -104,11 +137,15 @@ export interface UserFlueConfig {
 	 * the `ollama` key; the part after the first slash is forwarded to the
 	 * underlying provider as the model id.
 	 *
-	 * User-defined entries are consulted before any built-in routing
-	 * (including the reserved `cloudflare/` prefix) and before the pi-ai
-	 * catalog. Last-write-wins on collision — same semantics as pi-ai's
-	 * own `registerApiProvider`. Use that to override a built-in if you
-	 * need to.
+	 * User-defined entries are consulted before the pi-ai catalog.
+	 * Last-write-wins on collision — same semantics as pi-ai's own
+	 * `registerApiProvider`. Use that to override a built-in if you need
+	 * to.
+	 *
+	 * On the Cloudflare target, an internal `cloudflare:` entry is
+	 * auto-injected at build time so that `init({ model: 'cloudflare/...' })`
+	 * routes through the Workers AI binding. A user-supplied `cloudflare:`
+	 * entry shadows that default.
 	 */
 	models?: Record<string, FlueModelDefinition>;
 }
@@ -213,8 +250,14 @@ const OpenAICompletionsModelDefinitionSchema = v.strictObject({
 	headers: v.optional(v.record(v.string(), v.string())),
 });
 
+const CloudflareAIBindingModelDefinitionSchema = v.strictObject({
+	[FLUE_MODEL_DEFINITION_BRAND]: v.literal(FLUE_MODEL_DEFINITION_VERSION),
+	kind: v.literal('cloudflare-ai-binding'),
+});
+
 const FlueModelDefinitionSchema = v.variant('kind', [
 	OpenAICompletionsModelDefinitionSchema,
+	CloudflareAIBindingModelDefinitionSchema,
 ]);
 
 const ModelsSchema = v.pipe(

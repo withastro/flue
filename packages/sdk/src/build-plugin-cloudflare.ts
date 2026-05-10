@@ -1,5 +1,6 @@
 /** Cloudflare build plugin. Produces a Worker + DO entry point with SSE/webhook/sync modes. */
 import * as path from 'node:path';
+import { createCloudflareAIBindingDefinition } from './config.ts';
 import type { BuildContext, BuildPlugin } from './types.ts';
 import {
 	readUserWranglerConfig,
@@ -51,7 +52,16 @@ export class CloudflarePlugin implements BuildPlugin {
 		const rolesJson = JSON.stringify(roles);
 		// Inline the user-defined models map as a JSON literal. See the Node
 		// plugin for the same pattern + rationale.
-		const userModelsJson = JSON.stringify(ctx.options.models ?? {});
+		//
+		// Auto-inject the Cloudflare Workers AI binding entry at the
+		// `cloudflare:` key so `init({ model: 'cloudflare/...' })` resolves
+		// through the same user-models pipeline as user-defined providers.
+		// Spread order means a user-supplied `cloudflare:` entry in
+		// `flue.config.ts` shadows this default (last-write-wins).
+		const userModelsJson = JSON.stringify({
+			cloudflare: createCloudflareAIBindingDefinition(),
+			...(ctx.options.models ?? {}),
+		});
 		validateCloudflareAgentNames(ctx);
 
 		const webhookAgents = agents.filter((a) => a.triggers.webhook);

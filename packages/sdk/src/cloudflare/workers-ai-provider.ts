@@ -28,14 +28,6 @@ import { convertMessages } from '@mariozechner/pi-ai/openai-completions';
 import { CLOUDFLARE_AI_BINDING_API, type CloudflareAIBindingApi } from '../cloudflare-model.ts';
 import { getCloudflareContext } from './context.ts';
 
-export {
-	CLOUDFLARE_AI_BINDING_API,
-	CLOUDFLARE_AI_BINDING_PROVIDER,
-	CLOUDFLARE_MODEL_PREFIX,
-	createCloudflareAIBindingModel,
-} from '../cloudflare-model.ts';
-export type { CloudflareAIBindingApi } from '../cloudflare-model.ts';
-
 // ─── OpenAI-completions compat profile ──────────────────────────────────────
 
 /**

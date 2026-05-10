@@ -4,6 +4,7 @@
 	"type": "module",
 	"dependencies": {
 		"@flue/sdk": "workspace:*",
-		"agents": "*"
+		"agents": "*",
+		"valibot": "^1.0.0"
 	}
 }
