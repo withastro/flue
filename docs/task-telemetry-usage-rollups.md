@@ -28,6 +28,7 @@ multi-agent behavior or trust reported usage.
 - Roll direct child task usage into parent prompt/skill usage when the task was
   invoked through the built-in `task` tool.
 - Render concise task telemetry in `flue run`.
+- Establish the accounting substrate for future TokenOps and FinOps reporting.
 - Keep the implementation small and compatible with the current session model.
 
 ## Non-Goals
@@ -150,6 +151,33 @@ call.
 Nested tasks should roll up one level at a time. If child A invokes child B,
 child A's response usage includes child B once. The parent then adds child A's
 usage once. The parent should not separately walk child B again.
+
+## TokenOps and FinOps
+
+Task telemetry is also the lowest useful accounting unit for TokenOps and
+FinOps.
+
+At the TokenOps layer, enriched task events let users understand token burn by:
+
+- task or subagent;
+- role;
+- model;
+- working directory or workspace;
+- parent session or workflow;
+- success versus failure path.
+
+At the FinOps layer, the same data supports cost attribution and governance:
+
+- cost per delegated task;
+- cost per parent workflow including delegated child work;
+- expensive role/model combinations;
+- failed-task spend;
+- long-running task duration versus token cost;
+- future budget alerts or policy enforcement.
+
+This proposal does not add a FinOps dashboard or budget controls. It makes sure
+the first telemetry contract preserves enough structure for those features to be
+built later without changing the meaning of task usage.
 
 ## CLI Rendering
 
