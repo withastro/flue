@@ -133,7 +133,7 @@ const analysis = await session.prompt("Analyze this quarter's metrics", {
 
 The agent reads `AGENTS.md` and skills from its sandbox at runtime. With `sandbox: 'local'`, that's your real project root, so any files there are visible. With the default virtual sandbox the filesystem starts empty — you'd set up context via `session.shell()` or skip these features for simple prompt-and-response agents.
 
-**Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
+**Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. Flue discovers `SKILL.md` files recursively, so grouped skill packs like `.agents/skills/review/security/SKILL.md` work alongside flat skills. Skills give the agent a focused instruction set for a specific job:
 
 `.agents/skills/summarize/SKILL.md`:
 

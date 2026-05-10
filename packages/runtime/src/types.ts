@@ -25,6 +25,8 @@ export type PromptImage = ImageContent;
 export interface Skill {
 	name: string;
 	description: string;
+	path?: string;
+	relativePath?: string;
 }
 
 // ─── Role ───────────────────────────────────────────────────────────────────
@@ -721,4 +723,3 @@ export type FlueEvent = (
 };
 
 export type FlueEventCallback = (event: FlueEvent) => void | Promise<void>;
-

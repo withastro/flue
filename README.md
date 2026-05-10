@@ -115,10 +115,11 @@ export default async function ({ init, payload }: FlueContext) {
   });
   const session = await harness.session();
 
-  // Skills can be referenced either by their frontmatter `name:` (shown below)
-  // or by a relative path under `.agents/skills/` — e.g.
-  // `session.skill('triage/reproduce.md', ...)`. Path references are handy for
-  // skill packs that group multiple stages under one directory.
+  // Skills can live anywhere under `.agents/skills/` as `SKILL.md` files.
+  // Reference them by frontmatter `name:` (shown below), or by a relative path
+  // under `.agents/skills/` — e.g. `session.skill('triage/reproduce.md', ...)`.
+  // Nested packs work too: `.agents/skills/review/security/SKILL.md` can expose
+  // `name: security-review` while living beside other review skills.
   const { data } = await session.skill('triage', {
     // Pass arguments to any prompt or skill.
     args: { issueNumber: payload.issueNumber },

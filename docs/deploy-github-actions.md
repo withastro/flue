@@ -193,7 +193,7 @@ const { data } = await session.prompt(`Review this PR:\n${diff}`, {
 
 The agent reads `AGENTS.md` and skills from its sandbox at runtime. CI agents typically use `sandbox: 'local'`, which mounts the runner's checkout — so any files in your repo are visible automatically.
 
-**Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
+**Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. Flue discovers `SKILL.md` files recursively, so grouped skill packs like `.agents/skills/review/security/SKILL.md` work alongside flat skills. Skills give the agent a focused instruction set for a specific job:
 
 `.agents/skills/triage/SKILL.md`:
 

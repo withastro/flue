@@ -570,7 +570,23 @@ export class Session implements FlueSession {
 	skill(name: string, options?: SkillOptions<v.GenericSchema | undefined>): CallHandle<any> {
 		return createCallHandle(options?.signal, (signal) =>
 			this.runOperation('skill', signal, async () => {
-				// Registered skill names and relative skill paths use different prompts.
+				// Skills can be referenced two ways. The shape determines the
+				// per-call user-message format; the model reads the file
+				// itself in both cases.
+				//
+				//   1. By registered name. Looked up in `this.config.skills`,
+				//      populated at init time from `.agents/skills/**/SKILL.md`
+				//      frontmatter. The system prompt's "Available Skills"
+				//      list tells the model name + description + path.
+				//
+				//   2. By relative path under `.agents/skills/` (e.g.
+				//      `'triage/reproduce.md'`). The skill isn't in the
+				//      registry, so we hand the model the resolved absolute
+				//      path explicitly. Triggered only when `name` looks
+				//      like a path (contains `/` or ends in `.md`/`.markdown`)
+				//      — otherwise typos of registered names fail fast with
+				//      a helpful error rather than silently fall through to
+				//      a path lookup that's also going to miss.
 				const looksLikePath = name.includes('/') || /\.(md|markdown)$/i.test(name);
 				const schema = resolveSchemaOption(options);
 
@@ -585,11 +601,12 @@ export class Session implements FlueSession {
 					}
 					promptText = buildSkillByPathPrompt(name, resolvedPath, options?.args, schema);
 				} else {
-					if (!this.config.skills[name]) {
+					const skill = this.config.skills[name];
+					if (!skill) {
 						const available = Object.keys(this.config.skills).join(', ') || '(none)';
 						throw new Error(
 							`[flue] Skill "${name}" not registered. Available: ${available}.\n\n` +
-								`Skills are discovered at init() time from ${skillsDirIn(this.env.cwd)}/<name>/SKILL.md ` +
+								`Skills are discovered at init() time from ${skillsDirIn(this.env.cwd)}/**/SKILL.md ` +
 								`inside the session's sandbox. If you expected "${name}" to be there, make sure ` +
 								`the SKILL.md file exists at that path before calling init() — the default ` +
 								`empty sandbox starts with no files, so it has no skills unless you put them there.\n\n` +
@@ -597,7 +614,7 @@ export class Session implements FlueSession {
 								`(e.g. "triage/reproduce.md").`,
 						);
 					}
-					promptText = buildSkillByNamePrompt(name, options?.args, schema);
+					promptText = buildSkillByNamePrompt(skill, options?.args, schema);
 				}
 
 				return this.runPromptCall({

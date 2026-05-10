@@ -373,11 +373,11 @@ This is built in when you deploy with `--target cloudflare`. No extra configurat
 
 ## Sandbox context
 
-`AGENTS.md` and skills are optional workspace-context files that the agent reads from its sandbox at `init()` time. They live at conventional paths inside whatever sandbox the agent is using — Flue looks for `<cwd>/AGENTS.md` and `<cwd>/.agents/skills/<name>/SKILL.md`. Whatever's there gets loaded; whatever isn't, doesn't. Most agents don't need either to do useful work.
+`AGENTS.md` and skills are optional workspace-context files that the agent reads from its sandbox at `init()` time. They live at conventional paths inside whatever sandbox the agent is using — Flue looks for `<cwd>/AGENTS.md` and `SKILL.md` files anywhere under `<cwd>/.agents/skills/`. Whatever's there gets loaded; whatever isn't, doesn't. Most agents don't need either to do useful work.
 
 If you want to use them, put them in your sandbox. How you do that depends on which sandbox you're using: upload to R2 for an R2-backed virtual sandbox, `COPY` them in for a container, or write them in via `session.shell()` on a sandbox you control.
 
-**Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
+**Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. Flue discovers `SKILL.md` files recursively, so grouped skill packs like `.agents/skills/review/security/SKILL.md` work alongside flat skills. Skills give the agent a focused instruction set for a specific job:
 
 `.agents/skills/greet/SKILL.md`:
 

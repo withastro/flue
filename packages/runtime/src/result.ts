@@ -1,6 +1,7 @@
 import type { AgentTool } from '@mariozechner/pi-agent-core';
 import { toJsonSchema } from '@valibot/to-json-schema';
 import * as v from 'valibot';
+import type { Skill } from './types.ts';
 
 /**
  * Names of the framework-injected tools used to capture schema-typed results.
@@ -31,17 +32,20 @@ export function buildResultFollowUpPrompt(): string {
  * Build the user-facing prompt text for a `session.skill('<name>')` call,
  * where `<name>` is a name registered in the session's skill registry.
  *
- * The system prompt's "Available Skills" list tells the model where the
- * skill lives (`.agents/skills/<name>/SKILL.md`) and how to run it (read
- * the file, follow its instructions). The per-call message just names
- * the skill plus any arguments — no inlined body, no path hint.
+ * The system prompt's "Available Skills" list tells the model which skills
+ * exist. The per-call message repeats the exact file path so nested skills
+ * don't rely on the default `.agents/skills/<name>/SKILL.md` convention.
  */
 export function buildSkillByNamePrompt(
-	name: string,
+	skill: Skill,
 	args?: Record<string, unknown>,
 	schema?: v.GenericSchema,
 ): string {
-	const parts: string[] = [`Run the skill named "${name}".`];
+	const parts: string[] = [`Run the skill named "${skill.name}".`];
+
+	if (skill.path) {
+		parts.push('', `The file can be found at ${skill.path}.`);
+	}
 
 	if (args && Object.keys(args).length > 0) {
 		parts.push('', 'Arguments:', JSON.stringify(args, null, 2));

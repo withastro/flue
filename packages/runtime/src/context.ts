@@ -60,6 +60,20 @@ export function skillsDirIn(basePath: string): string {
 	return basePath.endsWith('/') ? `${basePath}.agents/skills` : `${basePath}/.agents/skills`;
 }
 
+function joinPath(base: string, entry: string): string {
+	return base.endsWith('/') ? `${base}${entry}` : `${base}/${entry}`;
+}
+
+function joinRelativePath(base: string, entry: string): string {
+	return base ? `${base}/${entry}` : entry;
+}
+
+function skillFileRelativePath(relativeDir: string): string {
+	return joinRelativePath(relativeDir, 'SKILL.md');
+}
+
+const IGNORED_SKILL_DISCOVERY_DIRS = new Set(['.git', 'node_modules']);
+
 /**
  * Resolve a skill referenced by relative path under `.agents/skills/`,
  * returning the absolute filesystem path or `null` if the file doesn't
@@ -80,13 +94,13 @@ export async function resolveSkillFilePath(
 	basePath: string,
 	relPath: string,
 ): Promise<string | null> {
-	const filePath = `${skillsDirIn(basePath)}/${relPath}`;
+	const filePath = joinPath(skillsDirIn(basePath), relPath);
 	if (!(await env.exists(filePath))) return null;
 	return filePath;
 }
 
 /**
- * Discover skills from `.agents/skills/<name>/SKILL.md` under basePath.
+ * Discover recursive `SKILL.md` files under `.agents/skills/`.
  *
  * Skill bodies are intentionally not retained — at call time the model
  * reads the file from disk itself, which keeps relative references
@@ -104,28 +118,54 @@ export async function discoverLocalSkills(
 	if (!(await env.exists(skillsDir))) return {};
 
 	const skills: Record<string, Skill> = {};
-	const entries = await env.readdir(skillsDir);
 
-	for (const entry of entries) {
-		const skillDir = `${skillsDir}/${entry}`;
+	async function visit(dir: string, relativeDir: string): Promise<void> {
+		const skillMdPath = joinPath(dir, 'SKILL.md');
 
-		try {
-			const s = await env.stat(skillDir);
-			if (!s.isDirectory) continue;
-		} catch {
-			continue;
+		if (relativeDir && (await env.exists(skillMdPath))) {
+			const defaultName = relativeDir.split('/').pop() || relativeDir;
+			const content = await env.readFile(skillMdPath);
+			const parsed = parseFrontmatterFile(content, defaultName);
+			const existing = skills[parsed.name];
+
+			if (existing) {
+				throw new Error(
+					`[flue] Duplicate skill name "${parsed.name}" discovered at:\n` +
+						`- ${existing.path}\n` +
+						`- ${skillMdPath}\n\n` +
+						`Skill names must be unique within a session. Rename one skill, or call one by relative path under .agents/skills/.`,
+				);
+			}
+
+			skills[parsed.name] = {
+				name: parsed.name,
+				description: parsed.description,
+				path: skillMdPath,
+				relativePath: skillFileRelativePath(relativeDir),
+			};
+
+			return;
 		}
 
-		const skillMdPath = `${skillDir}/SKILL.md`;
-		if (!(await env.exists(skillMdPath))) continue;
+		const entries = await env.readdir(dir);
 
-		const content = await env.readFile(skillMdPath);
-		const parsed = parseFrontmatterFile(content, entry);
-		skills[parsed.name] = {
-			name: parsed.name,
-			description: parsed.description,
-		};
+		for (const entry of entries.sort((a, b) => a.localeCompare(b))) {
+			if (IGNORED_SKILL_DISCOVERY_DIRS.has(entry)) continue;
+
+			const entryPath = joinPath(dir, entry);
+
+			try {
+				const s = await env.stat(entryPath);
+				if (!s.isDirectory) continue;
+			} catch {
+				continue;
+			}
+
+			await visit(entryPath, joinRelativePath(relativeDir, entry));
+		}
 	}
+
+	await visit(skillsDir, '');
 
 	return skills;
 }
@@ -158,12 +198,13 @@ export function composeSystemPrompt(
 			'',
 			'## Available Skills',
 			'',
-			'Each skill below is documented in a markdown file under `.agents/skills/` (relative to your working directory). The default location is `.agents/skills/<name>/SKILL.md`. When asked to run a skill, read its file from disk and follow the instructions there literally — the skill body is not provided inline.',
+			'Each skill below is documented in a `SKILL.md` file under `.agents/skills/` (relative to your working directory). When asked to run a skill, read its listed file from disk and follow the instructions there literally — the skill body is not provided inline.',
 			'',
 		);
 		for (const skill of skillEntries) {
 			const desc = skill.description ? ` — ${skill.description}` : '';
-			parts.push(`- **${skill.name}**${desc}`);
+			const skillPath = skill.relativePath ? ` (\`.agents/skills/${skill.relativePath}\`)` : '';
+			parts.push(`- **${skill.name}**${desc}${skillPath}`);
 		}
 	}
 
