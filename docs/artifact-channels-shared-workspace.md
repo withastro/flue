@@ -2,24 +2,33 @@
 
 Status: Draft proposal
 
-## One-Sentence Problem
+## What Hurts
 
-Multi-agent harnesses can pass large work products through prompts, but the
-scalable path is a shared workspace where agents exchange durable artifact
-references instead of copying files, logs, patches, and reports into context.
+Agents often need to hand off big things: source files, diffs, logs, research,
+screenshots, reports. Putting those things into prompts is expensive and noisy.
 
-## Industry Context
+Writing files is better, but then the next agent has to guess which file matters,
+who made it, whether it replaced an older file, and whether it is meant as a
+final output or just scratch work.
 
-Hosted managed-agent systems use shared filesystems as a cost and context lever,
-but that protocol is usually embedded in the hosted runtime. Graph frameworks
-prefer typed state and checkpoints, which is rigorous but can push large
-artifacts back into serialized state. Lightweight agent SDKs often leave shared
-workspace handoff as user convention.
+That is the problem. A shared workspace saves tokens, but without a protocol it
+turns into a pile of files.
 
-Flue can do better from first principles by separating payload from metadata:
-files stay in the sandbox, while artifact records provide identity,
-provenance, channel, status, and a compact reference that can move through
-prompts, events, task results, and future inspection tools.
+## What Other Harnesses Usually Do
+
+Hosted managed-agent systems can give agents a shared filesystem, but the
+protocol belongs to the hosted runtime. Graph frameworks make state explicit,
+but large artifacts do not belong in serialized graph state. Lightweight agent
+SDKs often leave file handoff to prompts and convention.
+
+## What Flue Can Do Better
+
+Flue already owns the sandbox filesystem. The first-principles move is simple:
+keep file bodies in the workspace, and publish small artifact refs that say what
+the file is, who produced it, which channel it belongs to, and what it replaces.
+
+The ref moves through prompts, events, and task results. The large file stays in
+the sandbox until a model actually needs to read it.
 
 ```text
 Architect task
@@ -40,11 +49,11 @@ File bodies stay in /workspace.
 ArtifactRefs move through prompts, events, and task results.
 ```
 
-## Pluggable Shape
+## What Stays Pluggable
 
-The core protocol should be storage-light and sandbox-native: append-only
-artifact records over the existing `SessionEnv` filesystem. That gives Flue a
-portable default, while keeping room for adapters:
+The core protocol stays storage-light and sandbox-native: append-only artifact
+records over the existing `SessionEnv` filesystem. That gives Flue a portable
+default, while keeping room for adapters:
 
 - filesystem records under `.flue-runtime/` for the default implementation;
 - R2, S3, database, or vector-index mirrors for deployed environments;
@@ -56,16 +65,17 @@ portable default, while keeping room for adapters:
 The runtime owns artifact identity and provenance. Blob storage, indexing,
 visualization, and governance stay replaceable.
 
-## Problem
+## Current Gap
 
-Flue already has the important primitive for managed-agent work: every agent and
-task can share a sandbox filesystem. That lets agents pass paths instead of
-copying large code, documents, logs, datasets, or generated reports through the
-model context.
+Flue already has the right base: agents and tasks can share a sandbox
+filesystem. That means they can pass paths instead of stuffing large files into
+the prompt.
 
-Today that shared workspace is powerful but informal. A parent can tell a child
-to write `design.md`, and another child can read it, but Flue does not know that
-`design.md` is an artifact. There is no structured way to answer:
+But the workspace is invisible to Flue as a workflow. A useful report and a
+scratch file look the same. A parent can tell a child to write `design.md`, but
+Flue does not know that `design.md` matters.
+
+There is no simple way to answer:
 
 - Which task produced this file?
 - Which files are the meaningful outputs of this run?
@@ -74,11 +84,9 @@ to write `design.md`, and another child can read it, but Flue does not know that
 - Did a child revise an earlier artifact or create a competing one?
 - Which large context was kept out of the prompt by passing a file reference?
 
-The research spike on managed agents points to the same lesson: a shared
-filesystem is the cost lever for large inter-agent context, but without a
-workspace protocol it turns into convention, prompts, and hope. Flue should keep
-the filesystem advantage while adding enough structure for agents, users, and
-future tooling to reason about artifacts.
+A shared filesystem is the cost lever. The missing piece is a small protocol
+that says which files are real outputs, who made them, and how the next agent
+should find them.
 
 ## Goals
 
