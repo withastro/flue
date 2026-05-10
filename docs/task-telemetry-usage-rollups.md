@@ -2,6 +2,51 @@
 
 Status: Draft proposal
 
+## One-Sentence Problem
+
+Multi-agent harnesses make delegation easy, but they often lose the causal,
+token, model, duration, and cost trail once work moves from a parent agent into a
+child agent.
+
+## Industry Context
+
+Hosted agent runtimes tend to bundle task tracing into the provider dashboard.
+Graph frameworks can model state transitions, but usage attribution is usually
+left to external observability. Lightweight agent SDKs expose handoffs and
+agents-as-tools, but parent-call usage often stops at the parent model turn.
+
+Flue can do better from first principles by treating every delegated task as a
+causal span in the agent runtime: a task starts, runs in a child session, emits
+usage and model metadata, and rolls direct child work into the parent call when
+the parent model caused that delegation.
+
+```mermaid
+flowchart LR
+  user["User / webhook"] --> parent["Parent session prompt() or skill()"]
+  parent --> tool["built-in task tool"]
+  tool --> child["Child task session"]
+  child --> usage["PromptUsage + PromptModel + duration"]
+  usage --> taskEnd["task_end event"]
+  usage --> rollup["Parent response usage rollup"]
+  taskEnd --> sinks["CLI, SSE, OTel, Langfuse, TokenOps, FinOps"]
+  rollup --> caller["Returned PromptResponse"]
+```
+
+## Pluggable Shape
+
+The core contract should stay provider-agnostic: normalized task events,
+`PromptUsage`, `PromptModel`, timing metadata, and parent-child session ids.
+Everything else can plug in around that contract:
+
+- CLI renderer for humans during `flue run`;
+- SSE stream consumers for live dashboards;
+- OpenTelemetry or Langfuse adapters for tracing systems;
+- TokenOps rollups by task, role, model, and workflow;
+- FinOps attribution by delegated task, failed task, or parent workflow.
+
+The runtime owns causality and accounting. Observability vendors, dashboards,
+and budget policies remain replaceable.
+
 ## Problem
 
 Flue already has delegated child agents through `session.task()` and the built-in
