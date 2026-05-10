@@ -12,7 +12,10 @@ That is the problem. A shared workspace saves tokens, but without a protocol it 
 
 ## What Other Harnesses Usually Do
 
-Hosted managed-agent systems can give agents a shared filesystem, but the protocol belongs to the hosted runtime. Graph frameworks make state explicit, but large artifacts do not belong in serialized graph state. Lightweight agent SDKs often leave file handoff to prompts and convention.
+- [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/multi-agent) gives multiagent sessions a shared container and filesystem while each agent keeps its own thread. The [session docs](https://platform.claude.com/docs/en/managed-agents/events-and-streaming) also describe checkpointing the container state when a session goes idle. This proves the filesystem is the right side channel for large work, but the protocol is hosted by Anthropic.
+- [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/persistence) makes state explicit with graph checkpoints, threads, and state history. That is great for replay and durable control flow, but large files do not naturally belong in graph state.
+- [OpenAI Agents SDK](https://platform.openai.com/docs/guides/agents-sdk/) makes agent handoffs and tracing straightforward. It helps agents pass control, but artifact handoff is still something the app or sandbox has to define.
+- [CrewAI](https://docs.crewai.com/en/observability/overview) focuses on Crews, Flows, and observability integrations. It can show what happened, but it does not define a portable shared-workspace artifact protocol.
 
 ## What Flue Can Do Better
 
