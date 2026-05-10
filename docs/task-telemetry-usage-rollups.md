@@ -12,7 +12,10 @@ That is the problem. Delegation looks cheap when the bill is hidden.
 
 ## What Other Harnesses Usually Do
 
-Hosted agent platforms often show this inside their own dashboard. Graph frameworks make the workflow explicit, but usage rollups are usually something you wire up yourself. Lightweight agent SDKs make handoffs easy, but the parent call often reports only the parent model turn.
+- [Claude Managed Agents](https://platform.claude.com/docs/en/managed-agents/observability) shows session traces in the Claude Console and exposes [raw session events](https://platform.claude.com/docs/en/managed-agents/events-and-streaming). It also reports cumulative session usage after the session goes idle. Good visibility, but the contract belongs to Anthropic's hosted runtime.
+- [OpenAI Agents SDK](https://openai.github.io/openai-agents-js/guides/tracing/) has built-in traces and spans for runs, agents, model calls, tool calls, guardrails, and handoffs. It is strong tracing, but it is still the SDK's trace pipeline, not Flue's own usage contract.
+- [LangGraph](https://docs.langchain.com/oss/javascript/langgraph/persistence) makes workflow state explicit with threads and checkpoints. That is excellent for replay and human-in-the-loop flows, but token and cost rollups are not the main primitive.
+- [CrewAI](https://docs.crewai.com/en/observability/overview) points users at AMP and observability integrations like Langfuse, OpenLIT, MLflow, Arize Phoenix, and others. Useful, but again the accounting sits outside the harness core.
 
 ## What Flue Can Do Better
 
