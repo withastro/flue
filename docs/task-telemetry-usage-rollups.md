@@ -49,20 +49,6 @@ The core contract stays small: normalized task events, `PromptUsage`, `PromptMod
 
 Observability vendors, dashboards, and budget policies remain replaceable.
 
-## Current Gap
-
-Flue already has the right primitive: a parent can call `session.task()` or use the built-in `task` tool. That makes child-agent work easy to start.
-
-But the task events are too thin. They tell us "started" and "ended." They do not tell us enough to debug, bill, or trust the work:
-
-- Which task ran, under which role and cwd?
-- How long did the task take?
-- Which model did the child use?
-- How many tokens and dollars did the child spend?
-- Does the parent prompt usage include delegated child work?
-
-If task cost and timing are not first-class, multi-agent work becomes hard to trust. The system did something, but the user cannot see the receipt.
-
 ## Goals
 
 - Make task start/end events useful for humans and machines.
