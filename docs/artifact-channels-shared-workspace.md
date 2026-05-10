@@ -21,16 +21,23 @@ files stay in the sandbox, while artifact records provide identity,
 provenance, channel, status, and a compact reference that can move through
 prompts, events, task results, and future inspection tools.
 
-```mermaid
-flowchart LR
-  childA["Architect task"] --> fileA["/workspace/design.md"]
-  fileA --> recordA["artifact record: channel=design"]
-  recordA --> refA["ArtifactRef art_design"]
-  refA --> childB["Builder task"]
-  childB --> fileB["/workspace/fix.diff"]
-  fileB --> recordB["artifact record: channel=patch"]
-  recordB --> parent["Parent session"]
-  parent --> sinks["CLI, SSE, inspect, TokenOps, FinOps"]
+```text
+Architect task
+  |
+  +-- writes /workspace/design.md
+  +-- publishes ArtifactRef art_design (channel=design)
+        |
+        v
+Builder task reads art_design
+  |
+  +-- writes /workspace/fix.diff
+  +-- publishes ArtifactRef art_patch (channel=patch)
+        |
+        v
+Parent / CLI / inspect / TokenOps / FinOps
+
+File bodies stay in /workspace.
+ArtifactRefs move through prompts, events, and task results.
 ```
 
 ## Pluggable Shape
