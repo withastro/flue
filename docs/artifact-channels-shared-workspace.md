@@ -51,22 +51,6 @@ The core protocol stays simple: append-only artifact records on top of the exist
 
 The runtime owns artifact ids and who-made-this metadata. Blob storage, indexing, visualization, and governance stay replaceable.
 
-## Current Gap
-
-Flue already has the right base: agents and tasks can share a sandbox filesystem. That means they can pass paths instead of stuffing large files into the prompt.
-
-But the workspace is invisible to Flue as a workflow. A useful report and a scratch file look the same. A parent can tell a child to write `design.md`, but Flue does not know that `design.md` matters.
-
-There is no simple way to answer:
-
-- Which task produced this file?
-- Which files are the meaningful outputs of this run?
-- Which artifact should a later task read instead of scanning the whole workspace?
-- Did a child revise an earlier artifact or create a competing one?
-- Which large context was kept out of the prompt by passing a file reference?
-
-A shared filesystem is the cost lever. The missing piece is a small protocol that says which files are real outputs, who made them, and how the next agent should find them.
-
 ## Goals
 
 - Give Flue agents a first-class way to publish and discover artifacts in a shared workspace.
