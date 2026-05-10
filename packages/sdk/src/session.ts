@@ -628,18 +628,17 @@ export class Session implements FlueSession {
 				// tool-use round.
 				const toolCallId = crypto.randomUUID();
 
-				// Per-call cwd/env, when set, are part of the call's identity
-				// and need to be visible in the transcript. Without them the
-				// model can't tell on a later turn that a command ran with
-				// overrides — making questions like "what cwd was that run
-				// from?" unanswerable from history. The bash tool's own
-				// schema (BashParams) doesn't formally declare these, but
-				// pi-ai's ToolCall.arguments is `Record<string, any>` and
-				// providers forward arguments opaquely, so extending the
-				// shape here is safe.
+				// Per-call cwd/env names, when set, are part of the call's
+				// identity and need to be visible in the transcript. Env
+				// values often contain credentials, so transcript/tool events
+				// record only the keys while env.exec receives the real values.
+				// The bash tool's own schema (BashParams) doesn't formally
+				// declare these, but pi-ai's ToolCall.arguments is
+				// `Record<string, any>` and providers forward arguments
+				// opaquely, so extending the shape here is safe.
 				const args: Record<string, unknown> = { command };
 				if (options?.cwd !== undefined) args.cwd = options.cwd;
-				if (options?.env !== undefined) args.env = options.env;
+				if (options?.env !== undefined) args.env = redactEnvValues(options.env);
 
 				this.emit({ type: 'tool_start', toolName: 'bash', toolCallId, args });
 
@@ -1579,4 +1578,8 @@ export async function deleteSessionTree(
 
 function getErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
+}
+
+function redactEnvValues(env: Record<string, string>): Record<string, string> {
+	return Object.fromEntries(Object.keys(env).map((key) => [key, '<redacted>']));
 }
