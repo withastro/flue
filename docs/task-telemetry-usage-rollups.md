@@ -20,16 +20,21 @@ causal span in the agent runtime: a task starts, runs in a child session, emits
 usage and model metadata, and rolls direct child work into the parent call when
 the parent model caused that delegation.
 
-```mermaid
-flowchart LR
-  user["User / webhook"] --> parent["Parent session prompt() or skill()"]
-  parent --> tool["built-in task tool"]
-  tool --> child["Child task session"]
-  child --> usage["PromptUsage + PromptModel + duration"]
-  usage --> taskEnd["task_end event"]
-  usage --> rollup["Parent response usage rollup"]
-  taskEnd --> sinks["CLI, SSE, OTel, Langfuse, TokenOps, FinOps"]
-  rollup --> caller["Returned PromptResponse"]
+```text
+User / webhook
+  |
+  v
+Parent prompt() or skill()
+  |
+  | calls built-in task tool
+  v
+Child task session
+  |
+  | emits usage + model + duration
+  |
+  +--> task_end event --> CLI / SSE / traces / TokenOps / FinOps
+  |
+  +--> usage rollup ----> returned parent PromptResponse
 ```
 
 ## Pluggable Shape
