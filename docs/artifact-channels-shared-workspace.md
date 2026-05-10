@@ -129,6 +129,16 @@ For this proposal, every published artifact should record the `workId` that prod
 
 Those are reasonable follow-ups, but the first step should be a small protocol that makes shared filesystem handoffs explicit.
 
+## What Changes From Today
+
+| Today | Proposed |
+| --- | --- |
+| Agents can write files, but files do not explain why they matter. | Agents explicitly publish meaningful files as artifact records with title, summary, channel, kind, and producer metadata. |
+| Handoffs often copy large content through prompts. | Handoffs can pass compact `ArtifactRef` ids and summaries while file bodies stay in the workspace. |
+| The next task guesses which path to read. | The next task can list or get artifacts by id, channel, task, session, or `workId`. |
+| A replaced file can erase useful history. | Revisions publish new records with `replaces`, keeping old records available for audit and replay. |
+| Cost attribution stops at task logs. | Artifact refs join to task telemetry through `producer.workId`, enabling cost-per-output later. |
+
 ## Vocabulary
 
 **Workspace** is the sandbox filesystem visible to the agent runtime.
@@ -519,6 +529,22 @@ The two PRs should not race to create different contracts.
 - If artifact channels land first, they should add `FlueWorkRef` and `producer.workId` on artifact records. Usage joins can wait until task telemetry exists.
 - If task telemetry lands first, it should add `FlueWorkRef`, event metadata, and task details with `workId`. The `artifacts` field can wait until artifact channels exist.
 - If they land together, `FlueWorkRef` should be defined once in the SDK types module and imported by both feature implementations.
+
+## Forward Compatibility and Cost
+
+This should be additive to the current filesystem model. Existing `SessionEnv` read/write behavior stays unchanged. A file becomes an artifact only when a producer publishes a record for it, so existing agents do not suddenly create indexes, emit new outputs, or change file visibility.
+
+The cognitive cost should stay bounded: users learn `artifact`, `channel`, and `ref` only when they need multi-agent handoff. Simple agents can keep writing and reading files as they do today. The protocol makes the important files discoverable without making every file a workflow object.
+
+The runtime cost is also bounded:
+
+- one small JSON record write per published artifact;
+- path validation and best-effort `stat()` per publish;
+- bounded summaries in events and task details, never file bodies;
+- listing by scanning record files in v1, with `limit` and filters to keep normal use cheap;
+- optional digest calculation that can be skipped for large files or directories.
+
+The main forward risk is record growth. That is why v1 uses append-only records plus query limits and leaves room for a derived manifest or external index later. The protocol should not require locks, a database, automatic indexing of every write, or a new permission model inside one trusted shared workspace.
 
 ## Acceptance Criteria
 
