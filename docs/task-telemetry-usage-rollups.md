@@ -19,9 +19,9 @@ That is the problem. Delegation looks cheap when the bill is hidden.
 
 ## What Flue Can Do Better
 
-Flue is at the right layer to fix this. It is the runtime that creates the child session. It knows the parent, the task id, the role, the cwd, the model, the duration, and the usage.
+Flue is at the right layer to fix this. It is the runtime that creates the child session. It knows the parent, the task id, the role, the cwd, the model, the duration, the usage, and the outputs produced by that work.
 
-So Flue should record that once, in the same shape no matter which model provider is used. The runtime should own causality and accounting. Dashboards and billing tools can plug in later.
+So Flue should record that once, in the same shape no matter which model provider is used. The primitive is not a log line. It is a small work record: identity, parentage, timing, usage, and optional outputs. The runtime should own causality and accounting. Dashboards and billing tools can plug in later.
 
 ```text
 User / webhook
@@ -52,6 +52,53 @@ The core contract stays small: normalized task events, `PromptUsage`, `PromptMod
 
 Observability vendors, dashboards, and budget policies remain replaceable.
 
+## Shared Primitive: Work Records
+
+Task telemetry and artifact channels should meet at one tiny runtime primitive: a work record.
+
+A task is a work unit. A model call is a work unit. A tool call can be a work unit. An artifact is an output of a work unit. Usage and artifacts are therefore facets of the same causality chain, not two separate reporting systems.
+
+```ts
+export type FlueWorkKind =
+  | 'prompt'
+  | 'skill'
+  | 'task'
+  | 'tool'
+  | (string & {});
+
+export interface FlueWorkRef {
+  workId: string;
+  parentWorkId?: string;
+  kind: FlueWorkKind;
+  name?: string;
+  sessionId?: string;
+  parentSessionId?: string;
+  taskId?: string;
+  role?: string;
+  cwd?: string;
+}
+```
+
+The primitive stack stays boring on purpose: `FlueWorkRef` gives identity and causality, task telemetry adds the usage facet, artifact channels add the output facet, and CLI/SSE/tracing/FinOps adapters consume the same normalized facts.
+
+| Primitive | Purpose |
+| --- | --- |
+| `FlueWorkRef` | Common identity and parentage for prompt, skill, task, and tool work |
+| `PromptUsage` | Normalized token and model usage for a completed work unit |
+| `ArtifactRef` | Compact pointer to durable output produced by a work unit |
+| `FlueEventMetadata` | Transport for work identity on runtime events |
+| `TaskToolResultDetails` | Parent-facing summary that can carry usage and output refs together |
+
+For this proposal, `task_start`, `task_end`, and `TaskToolResultDetails` should carry `workId` and `parentWorkId`. That is enough for TokenOps and FinOps to group direct usage, child usage, failed work, and later artifact outputs without inventing a second identity system.
+
+## Primitive Invariants
+
+- `workId` is stable for one runtime operation across events, task details, and any artifacts produced by that operation.
+- `parentWorkId` points to the operation that caused this one. It is a correlation key, not a mandate to build a full tracing backend in v1.
+- `taskId` remains the task-facing id. `workId` is the cross-feature id that can also describe prompt, skill, and tool work.
+- Usage is recorded on completed work once. Parent rollups can add direct child work exactly once without walking the whole tree again.
+- Artifact refs, when present, attach to the work that produced the durable output and never carry file bodies through telemetry events.
+
 ## Goals
 
 - Make task start/end events useful for humans and machines.
@@ -67,7 +114,7 @@ Observability vendors, dashboards, and budget policies remain replaceable.
 - Persistent task telemetry indexes.
 - Budget enforcement.
 - Declarative managed-agent rosters.
-- Artifact-channel protocols.
+- Implementing the artifact-channel protocol in this PR.
 
 Those are natural follow-ups, but this proposal is the first telemetry layer they would build on.
 
@@ -124,8 +171,13 @@ type FlueEventMetadata = {
   sessionId?: string;
   parentSessionId?: string;
   taskId?: string;
+  workId?: string;
+  parentWorkId?: string;
+  workKind?: FlueWorkKind;
 };
 ```
+
+For `task_start` and `task_end`, `workId` and `workKind: 'task'` should be present. The fields stay optional on the generic event envelope only because not every existing event has work identity yet.
 
 ## Task Tool Details
 
@@ -135,16 +187,33 @@ When the built-in `task` tool completes, the tool result should expose the same 
 interface TaskToolResultDetails {
   taskId: string;
   sessionId: string;
+  workId: string;
+  parentWorkId?: string;
   messageId?: string;
   role?: string;
   cwd?: string;
   usage?: PromptUsage;
   model?: PromptModel;
   durationMs: number;
+  artifacts?: ArtifactRef[];
 }
 ```
 
-This gives raw event consumers the information even before the parent prompt finishes.
+This gives raw event consumers the information even before the parent prompt finishes. If artifact channels are enabled, the same details payload can include bounded `ArtifactRef` summaries for files the child task published. The usage rollup says what the delegated work cost; artifact refs say what durable outputs came from it.
+
+## Event Sequence
+
+The useful join is intentionally small:
+
+```text
+prompt_start       work=wrk_parent
+  task_start       task=task_123 work=wrk_child parent=wrk_parent
+  artifact_publish artifact=art_patch producer.work=wrk_child
+  task_end         task=task_123 work=wrk_child usage=12,430 tokens
+prompt_end         work=wrk_parent usage=parent_direct + wrk_child
+```
+
+If artifact channels are not installed yet, the same telemetry sequence still works. The `workId` field is the compatibility anchor for adding artifact outputs later.
 
 ## Usage Rollup Semantics
 
@@ -226,16 +295,38 @@ The CLI should omit unavailable fields rather than printing zero placeholders. D
 Likely change points:
 
 - `packages/sdk/src/types.ts`
+  - Add the shared `FlueWorkRef` identity shape.
   - Enrich `FlueEvent` task event variants.
 - `packages/sdk/src/agent.ts`
   - Extend `TaskToolResultDetails`.
 - `packages/sdk/src/session.ts`
+  - Allocate `workId` and `parentWorkId` for task calls.
   - Time tasks in `runTask()`.
   - Extract child `usage` and `model` from `PromptResponse` and `PromptResultResponse`.
   - Keep a parent-call-scoped direct-child usage accumulator for built-in task tool calls.
+  - Attach artifacts published during the task when artifact channels are present.
   - Add accumulated child usage in `aggregateUsageSince(...)`.
 - `packages/cli/bin/flue.ts`
   - Render `task_start` and `task_end`.
+
+## Landing Order
+
+The two PRs should not race to create different contracts.
+
+- If task telemetry lands first, it should add `FlueWorkRef`, event metadata, and task details with `workId`. The `artifacts` field can wait until artifact channels exist.
+- If artifact channels land first, they should add `FlueWorkRef` and `producer.workId` on artifact records. Usage joins can wait until task telemetry exists.
+- If they land together, `FlueWorkRef` should be defined once in the SDK types module and imported by both feature implementations.
+
+## Acceptance Criteria
+
+A v1 implementation is ready when:
+
+- `task_start` and `task_end` events include work identity, task identity, timing, model, and usage when available;
+- built-in `task` tool results expose the same work identity and telemetry in `TaskToolResultDetails`;
+- parent prompt and skill responses include direct child task usage exactly once;
+- direct `session.task()` calls still return child usage without mutating unrelated parent usage;
+- telemetry remains useful if artifact channels land later, and can include bounded artifact refs if they are already present;
+- `flue run` renders task start/end lines without dumping large results or file contents.
 
 ## Open Questions
 
