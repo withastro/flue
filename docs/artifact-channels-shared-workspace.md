@@ -19,9 +19,9 @@ That is the problem. A shared workspace saves tokens, but without a protocol it 
 
 ## What Flue Can Do Better
 
-Flue already owns the sandbox filesystem. The first-principles move is simple: keep file bodies in the workspace, and publish small artifact refs that say what the file is, who produced it, which channel it belongs to, and what it replaces.
+Flue already owns the sandbox filesystem. The first-principles move is simple: keep file bodies in the workspace, and publish small artifact refs that say what the file is, which work produced it, which channel it belongs to, and what it replaces.
 
-The ref moves through prompts, events, and task results. The large file stays in the sandbox until a model actually needs to read it.
+The ref moves through prompts, events, and task results. The large file stays in the sandbox until a model actually needs to read it. The primitive is not a global file database. It is a publishable output attached to a work record.
 
 ```text
 Architect task
@@ -53,6 +53,53 @@ The core protocol stays simple: append-only artifact records on top of the exist
 - TokenOps and FinOps consumers that correlate artifact refs with task usage.
 
 The runtime owns artifact ids and who-made-this metadata. Blob storage, indexing, visualization, and governance stay replaceable.
+
+## Shared Primitive: Work Records
+
+Artifact channels and task telemetry should meet at one tiny runtime primitive: a work record.
+
+A task is a work unit. A model call is a work unit. A tool call can be a work unit. An artifact is an output of a work unit. Usage and artifacts are therefore facets of the same causality chain, not two separate reporting systems.
+
+```ts
+export type FlueWorkKind =
+  | 'prompt'
+  | 'skill'
+  | 'task'
+  | 'tool'
+  | (string & {});
+
+export interface FlueWorkRef {
+  workId: string;
+  parentWorkId?: string;
+  kind: FlueWorkKind;
+  name?: string;
+  sessionId?: string;
+  parentSessionId?: string;
+  taskId?: string;
+  role?: string;
+  cwd?: string;
+}
+```
+
+The primitive stack stays boring on purpose: `FlueWorkRef` gives identity and causality, task telemetry adds the usage facet, artifact channels add the output facet, and CLI/SSE/tracing/FinOps adapters consume the same normalized facts.
+
+| Primitive | Purpose |
+| --- | --- |
+| `FlueWorkRef` | Common identity and parentage for prompt, skill, task, and tool work |
+| `PromptUsage` | Normalized token and model usage for a completed work unit |
+| `ArtifactRef` | Compact pointer to durable output produced by a work unit |
+| `FlueEventMetadata` | Transport for work identity on runtime events |
+| `TaskToolResultDetails` | Parent-facing summary that can carry usage and output refs together |
+
+For this proposal, every published artifact should record the `workId` that produced it. In v1 that should usually be the enclosing task, prompt, or skill work id, not a separate id for the `artifact_publish` tool call. That lets Flue answer higher-level questions without guessing: what did this task cost, what did it produce, did the failed work still publish something useful, and which artifact revision changed the cost curve?
+
+## Primitive Invariants
+
+- `ArtifactRef.id` identifies the artifact record. `producer.workId` identifies the work that produced the output.
+- `producer.workId` should usually be the enclosing task, prompt, or skill work id. Do not mint a publish-specific work id unless Flue later decides to measure artifact publishing as its own operation.
+- `taskId` remains useful for task-centric filters, but `workId` is the cross-feature join key for telemetry, artifacts, traces, TokenOps, and FinOps.
+- Artifact events and task details carry refs only. File bodies stay in the workspace and are read explicitly through existing file tools.
+- Revisions use `replaces`; they do not mutate the old record or reuse its artifact id.
 
 ## Goals
 
@@ -212,11 +259,7 @@ export type ArtifactKind =
 
 export type ArtifactStatus = 'active' | 'superseded' | 'deleted';
 
-export interface ArtifactProducer {
-  sessionId: string;
-  parentSessionId?: string;
-  taskId?: string;
-  role?: string;
+export interface ArtifactProducer extends FlueWorkRef {
   model?: PromptModel;
 }
 
@@ -263,6 +306,8 @@ export interface ArtifactPublishOptions {
 
 export interface ArtifactListOptions {
   channel?: string;
+  workId?: string;
+  parentWorkId?: string;
   taskId?: string;
   sessionId?: string;
   status?: ArtifactStatus;
@@ -322,6 +367,7 @@ artifact_get({
 
 artifact_list({
   channel?: string;
+  workId?: string;
   taskId?: string;
   status?: 'active' | 'superseded' | 'deleted';
   limit?: number;
@@ -340,6 +386,8 @@ Child tasks should publish meaningful outputs while they work. The parent should
 interface TaskToolResultDetails {
   taskId: string;
   sessionId: string;
+  workId: string;
+  parentWorkId?: string;
   messageId?: string;
   role?: string;
   cwd?: string;
@@ -358,6 +406,8 @@ type FlueArtifactEvent = {
 
 This complements task telemetry. Telemetry explains what the task cost and how long it ran; artifact channels explain what the task produced.
 
+The shared `workId` is what makes that pairing reliable. Without it, consumers have to infer relationships from session ids, task ids, timestamps, or paths. With it, a TokenOps or FinOps adapter can join `task_end.usage` to `artifact_publish.artifact.producer.workId` directly.
+
 Together, the two features give a parent workflow an accounting pair:
 
 ```text
@@ -366,6 +416,18 @@ artifact channel = what durable output came from that work
 ```
 
 That pairing is what later enables cost-per-artifact, failed-work analysis, and managed-agent debugging.
+
+Example sequence:
+
+```text
+prompt_start       work=wrk_parent
+  task_start       task=task_123 work=wrk_child parent=wrk_parent
+  artifact_publish artifact=art_patch producer.work=wrk_child channel=patch
+  task_end         task=task_123 work=wrk_child usage=12,430 tokens
+prompt_end         work=wrk_parent usage=parent_direct + wrk_child
+```
+
+If task telemetry is not installed yet, artifacts still carry producer identity. The same `workId` becomes the join point once usage rollups arrive.
 
 ## Revision Semantics
 
@@ -432,6 +494,7 @@ The protocol should not try to compute token savings in v1. It should preserve e
 Likely change points:
 
 - `packages/sdk/src/types.ts`
+  - Add or reuse the shared `FlueWorkRef` identity shape.
   - Add artifact data types.
   - Add `artifacts` to `FlueAgent` and `FlueSession`.
   - Add `artifact_publish` to `FlueEvent`.
@@ -443,25 +506,36 @@ Likely change points:
 - `packages/sdk/src/session.ts`
   - Construct session-scoped artifact registry with producer metadata.
   - Track artifacts published during a task call.
+  - Attach the active `workId` and `parentWorkId` to each artifact producer.
 - `packages/sdk/src/agent.ts`
   - Add built-in `artifact_publish`, `artifact_get`, and `artifact_list` tools.
 - `packages/cli/bin/flue.ts`
   - Render artifact publication events.
 
+## Landing Order
+
+The two PRs should not race to create different contracts.
+
+- If artifact channels land first, they should add `FlueWorkRef` and `producer.workId` on artifact records. Usage joins can wait until task telemetry exists.
+- If task telemetry lands first, it should add `FlueWorkRef`, event metadata, and task details with `workId`. The `artifacts` field can wait until artifact channels exist.
+- If they land together, `FlueWorkRef` should be defined once in the SDK types module and imported by both feature implementations.
+
 ## Acceptance Criteria
 
 A v1 implementation is ready when:
 
+- every artifact record includes producer work identity;
 - trusted code can publish, list, and get artifact records from an agent or session;
 - model-facing tools can publish, get, and list artifacts without hand-editing JSON;
 - `flue run` renders artifact publication events without printing file contents;
 - task result details include artifacts published during that task;
+- artifacts can be listed by `workId` as well as by channel, task, session, and status;
 - concurrent publishes create independent records without corrupting a shared manifest;
 - tests cover missing paths, superseded artifacts, concurrent publishes, and task attribution.
 
 ## Suggested Rollout
 
-1. Add the data types and trusted-code `FlueArtifacts` helper.
+1. Add or reuse `FlueWorkRef`, then add the artifact data types and trusted-code `FlueArtifacts` helper.
 2. Add `artifact_publish` events and CLI rendering.
 3. Add model-facing `artifact_publish`, `artifact_get`, and `artifact_list` tools.
 4. Attach per-task artifact summaries to task result details.
@@ -472,6 +546,7 @@ A v1 implementation is ready when:
 - Enable artifact tools by default when the `task` tool is available. Artifact handoff is part of the managed-agent story, not a niche extension.
 - Store records under `<cwd>/.flue-runtime/artifacts/records/` for all sandbox modes. Users can override the runtime directory later if real deployments need it.
 - Include full `ArtifactRef` objects in task result details, but keep summaries bounded and omit file contents.
+- Store the producing task, prompt, or skill `workId` on the artifact. Avoid publish-specific work ids in v1 unless measuring the publish operation itself becomes important.
 - Compute `sizeBytes` in v1. Treat SHA-256 digests as best-effort for regular files and skip them for directories until there is demand.
 - Keep publication explicit. Do not infer artifact records from every `write` call.
 
