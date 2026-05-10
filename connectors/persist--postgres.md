@@ -154,9 +154,9 @@ If the user has a long-session workload (50+ turns, embedded tool results,
 hundreds-of-KB rows) and asks about alternatives, point them at the
 `Schema choices` section in the docs guide
 (`https://github.com/withastro/flue/blob/main/docs/persist-postgres.md`) —
-it covers an append-log + index shape (matches Claude Code, Codex,
-OpenCode 1.2+) and a hot/cold split. Don't switch shapes without an
-explicit ask; single-blob is the right default.
+it covers append-log/index and hot/cold alternatives, including the
+reconciliation caveats required by Flue's current `save(id, data)` contract.
+Don't switch shapes without an explicit ask; single-blob is the right default.
 
 ## Wiring it into an agent
 

@@ -24,7 +24,7 @@ export interface D1StoreOptions {
  */
 export function d1Store(db: unknown, options?: D1StoreOptions): SessionStore {
 	const table = quoteIdent(options?.tableName ?? 'flue_sessions');
-	const d1 = db as D1Like;
+	const d1 = asD1Like(db);
 
 	return {
 		async save(id: string, data: SessionData): Promise<void> {
@@ -52,6 +52,20 @@ export function d1Store(db: unknown, options?: D1StoreOptions): SessionStore {
 			await d1.prepare(`DELETE FROM ${table} WHERE id = ?1`).bind(id).run();
 		},
 	};
+}
+
+function asD1Like(db: unknown): D1Like {
+	if (
+		db === null ||
+		typeof db !== 'object' ||
+		typeof (db as { prepare?: unknown }).prepare !== 'function'
+	) {
+		throw new Error(
+			'[flue:d1] Expected a Cloudflare D1 binding. Pass env.DB ' +
+				'(or your configured binding name) to d1Store().',
+		);
+	}
+	return db as D1Like;
 }
 
 // Duplicated in postgres.ts on purpose — these recipes are copied

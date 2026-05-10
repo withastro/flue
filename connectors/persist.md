@@ -82,8 +82,9 @@ These are the things that aren't obvious from the contract or the examples.
   inside the store. Same shape as the sandbox connectors.
 - **Single-blob is the right default.** One row per session, the entire
   `SessionData` blob in one column, rewritten on every `save()`. The
-  Postgres recipe walks through when to switch to an append-log shape;
-  start with single-blob unless the user has specific needs.
+  Postgres recipe walks through append-log and hot/cold alternatives,
+  including the reconciliation caveats. Start with single-blob unless the
+  user has specific needs.
 
 ## Wrapping up
 

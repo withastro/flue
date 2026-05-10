@@ -42,7 +42,7 @@ flue add d1 --print | claude
 
 This drops a `persist/d1.ts` file into your workspace (under `.flue/persist/` if you're using the `.flue/` layout, or `persist/` at the project root otherwise) and walks the agent through the schema, `wrangler.jsonc` binding, and agent wiring.
 
-The connector is a small TypeScript adapter (~50 lines) that wraps a Cloudflare D1 binding into Flue's `SessionStore` interface.
+The connector is a small TypeScript adapter (~70 lines) that wraps a Cloudflare D1 binding into Flue's `SessionStore` interface.
 
 ## Create the table
 
@@ -58,7 +58,22 @@ npx wrangler d1 execute <name> --remote --command="
 "
 ```
 
-For local development, swap `--remote` for `--local`. The schema intentionally mirrors the table the default DO-SQLite store creates inside each agent's Durable Object — same column names, same types — so a future migration tool could move rows between the two without translation.
+For local development, first run `npx flue build --target cloudflare`, then run the local schema command against the generated config that Flue passes to Wrangler:
+
+```bash
+npx flue build --target cloudflare
+(cd dist && npx wrangler d1 execute <name> --local --config wrangler.jsonc --command="
+  CREATE TABLE IF NOT EXISTS flue_sessions (
+    id          TEXT PRIMARY KEY,
+    data        TEXT NOT NULL,
+    updated_at  INTEGER NOT NULL
+  );
+")
+```
+
+Local D1 state is keyed by Wrangler's config path. Flue's Cloudflare dev server uses `dist/wrangler.jsonc`, not the project-root `wrangler.jsonc`, so running the local migration against the root config creates a different local SQLite file.
+
+The schema intentionally mirrors the table the default DO-SQLite store creates inside each agent's Durable Object — same column names, same types — so a future migration tool could move rows between the two without translation.
 
 ## Use the store in your agent
 
@@ -89,27 +104,28 @@ The session id (`payload.threadId` here) is whatever your application uses to id
 
 ## Verify locally
 
-Use `wrangler dev` with the `--local` D1 (default):
+Use Flue's Cloudflare dev server with the local D1 database:
 
 ```bash
-npx wrangler d1 execute <name> --local --command="
+npx flue build --target cloudflare
+(cd dist && npx wrangler d1 execute <name> --local --config wrangler.jsonc --command="
   CREATE TABLE IF NOT EXISTS flue_sessions (
     id TEXT PRIMARY KEY,
     data TEXT NOT NULL,
     updated_at INTEGER NOT NULL
   );
-"
+")
 npx flue dev --target cloudflare
 ```
 
 Then, in another shell:
 
 ```bash
-curl -X POST http://localhost:8787/agents/with-d1-persist/thread-1 \
+curl -X POST http://localhost:3583/agents/with-d1-persist/thread-1 \
   -H 'Content-Type: application/json' \
   -d '{"threadId":"thread-1","message":"My name is Maya."}'
 
-curl -X POST http://localhost:8787/agents/with-d1-persist/thread-1 \
+curl -X POST http://localhost:3583/agents/with-d1-persist/thread-1 \
   -H 'Content-Type: application/json' \
   -d '{"threadId":"thread-1","message":"What did I just say my name was?"}'
 ```
@@ -117,15 +133,15 @@ curl -X POST http://localhost:8787/agents/with-d1-persist/thread-1 \
 The second response should reference "Maya" — that's the round-trip working. Inspect the row directly to confirm:
 
 ```bash
-npx wrangler d1 execute <name> --local \
-  --command="SELECT id, length(data), updated_at FROM flue_sessions;"
+(cd dist && npx wrangler d1 execute <name> --local --config wrangler.jsonc \
+  --command="SELECT id, length(data), updated_at FROM flue_sessions;")
 ```
 
 ## Schema choices (and when to revisit them)
 
-The schema above is the simplest shape that satisfies Flue's `SessionStore` contract: one row per session, the entire `SessionData` blob in a TEXT column, rewritten on every `save()`. Same trade-offs as the [Postgres single-blob option](./persist-postgres.md#schema-choices-and-when-to-revisit-them) — see that section for the append-log + index alternative (matches Claude Code, Codex, OpenCode 1.2+) and the hot/cold split. The D1 versions of those alternatives map directly: `JSONB` → `TEXT`, `BIGSERIAL` → `INTEGER PRIMARY KEY AUTOINCREMENT`, `?1, ?2` instead of `$1, $2`.
+The schema above is the simplest shape that satisfies Flue's `SessionStore` contract: one row per session, the entire `SessionData` blob in a TEXT column, rewritten on every `save()`. Same trade-offs as the [Postgres single-blob option](./persist-postgres.md#schema-choices-and-when-to-revisit-them) — see that section for append-log and hot/cold alternatives. The D1 versions of those alternatives are possible, but they are not a mechanical copy-paste: an append-log adapter still has to treat each `save(id, data)` as the authoritative current session and reconcile entries that disappeared from the latest `SessionData`.
 
-For most workloads, start with the single-blob shape — that's what the connector ships. Migrate to append-log only when you hit row size pressure or need to query session metadata at scale.
+For most workloads, start with the single-blob shape — that's what the connector ships. Revisit append-log only when you hit row size pressure or need to query session metadata at scale, and budget for the extra reconciliation logic.
 
 ## D1 vs the default DO-SQLite store
 
@@ -161,7 +177,7 @@ Same model as the [Postgres guide](./persist-postgres.md#concurrency): `INSERT .
 
 ## Troubleshooting
 
-**`no such table: flue_sessions`** — run the `CREATE TABLE` for your environment. Local DB is separate from remote — you may need both.
+**`no such table: flue_sessions`** — run the `CREATE TABLE` for your environment. Local DB is separate from remote — you may need both. For local `flue dev`, run the local schema command against `dist/wrangler.jsonc` after `npx flue build --target cloudflare`; using the root config writes to a different local D1 database.
 
 **`D1_ERROR: ...`** — D1 errors carry the underlying SQLite error class. Most often it's the missing-table case above; otherwise check the SQL against [D1's SQLite dialect notes](https://developers.cloudflare.com/d1/sql-api/sql-statements/).
 
@@ -171,6 +187,6 @@ Same model as the [Postgres guide](./persist-postgres.md#concurrency): `INSERT .
 
 ## Other databases
 
-`d1Store` is small (~50 lines). Adapting it to a different SQLite-compatible backend (Turso, libSQL, raw `better-sqlite3`) is mostly mechanical: swap `db.prepare(...).bind(...).run()` for the equivalent on your client. The schema-choice trade-offs above carry across.
+`d1Store` is small (~70 lines). Adapting it to a different SQLite-compatible backend (Turso, libSQL, raw `better-sqlite3`) is mostly mechanical: swap `db.prepare(...).bind(...).run()` for the equivalent on your client. The schema-choice trade-offs above carry across.
 
 If Flue doesn't have a built-in connector for your backend yet, `flue add <docs-url> --category persist` will pipe a generic recipe to your agent. If you ship one, consider opening a pull request with both the connector (`connectors/persist--<name>.md`) and a docs guide modeled on this one or the [Postgres guide](./persist-postgres.md).

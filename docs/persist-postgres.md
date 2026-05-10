@@ -109,7 +109,7 @@ The second invocation should reference "Maya" — that's the round-trip working.
 
 ```bash
 docker compose exec postgres psql -U postgres \
-  -c "SELECT id, jsonb_array_length(data->'entries') AS entries, updated_at FROM flue_sessions;"
+  -c "SELECT id, pg_column_size(data) AS bytes, updated_at FROM flue_sessions;"
 ```
 
 ## Schema choices (and when to revisit them)
@@ -126,7 +126,7 @@ What's above. `save(id, data)` does an `INSERT ... ON CONFLICT DO UPDATE`. `load
 
 ### Option 2: append-log + index (matches Claude Code, Codex, OpenCode 1.2+)
 
-Two tables instead of one. The session row holds queryable metadata (id, created/updated, project, last-leaf-id) and the message history lives in an append-only events table. `save()` appends only the new entries; `load()` reconstructs `SessionData` from the rows.
+Two tables instead of one. The session row holds queryable metadata (id, created/updated, project, last-leaf-id) and the message history lives in an entries table. A production adapter can make common saves cheap by inserting newly observed entries, but every `save(id, data)` still has to treat the incoming `SessionData` as the authoritative current state.
 
 ```sql
 CREATE TABLE IF NOT EXISTS flue_sessions (
@@ -153,11 +153,11 @@ CREATE INDEX IF NOT EXISTS flue_session_entries_by_session
 
 This is what Claude Code does with its per-session JSONL files plus a sidecar SQLite index. It's what Codex CLI does. It's what OpenCode shifted to in 1.2.
 
-- Pros: `save()` writes only new entries (`O(delta)` instead of `O(history)`); the metadata table is queryable for admin tooling ("which sessions touched project X this week?"); `ON DELETE CASCADE` makes `delete(id)` clean; you can reconstruct the leaf path by walking `parent_id` without parsing a megabyte of JSONB.
-- Cons: the adapter is more code (~120 lines instead of 50) because `save()` has to diff against the persisted entries. The Flue `SessionStore` interface today gives the adapter the *whole* `SessionData` on every save, so the adapter does the diff itself by comparing entry IDs.
+- Pros: most saves write only new entries (`O(delta)` instead of `O(history)`); the metadata table is queryable for admin tooling ("which sessions touched project X this week?"); `ON DELETE CASCADE` makes `delete(id)` clean; you can reconstruct the leaf path by walking `parent_id` without parsing a megabyte of JSONB.
+- Cons: the adapter is more code (~120 lines instead of 50) because `save()` has to reconcile the full `SessionData` snapshot against persisted rows. The Flue `SessionStore` interface today gives the adapter the *whole* current session on every save, not an explicit event stream.
 - **Use when:** sessions are long (50+ turns), you have many concurrent sessions, or you want metadata queryable from outside the agent process. Most multi-tenant agent SaaS lands here eventually.
 
-The diff strategy in `save()`: pull the existing entry IDs in one query, insert only entries whose IDs aren't there. Flue's entries are immutable once written (compaction creates a *new* entry pointing at a `firstKeptEntryId`), so this is safe.
+The reconciliation strategy in `save()`: pull the existing entry IDs in one query, insert entries whose IDs are new, update the session metadata/leaf pointer, and remove or tombstone any persisted entries that are absent from the latest `SessionData`. Don't blindly append unseen IDs forever. Compaction entries are append-only, but overflow recovery can discard a just-saved leaf entry before retrying, so `load()` must reconstruct the latest authoritative session, not the union of everything ever seen.
 
 ### Option 3: hot/cold split
 

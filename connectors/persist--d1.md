@@ -72,7 +72,7 @@ export interface D1StoreOptions {
  */
 export function d1Store(db: unknown, options?: D1StoreOptions): SessionStore {
 	const table = quoteIdent(options?.tableName ?? 'flue_sessions');
-	const d1 = db as D1Like;
+	const d1 = asD1Like(db);
 
 	return {
 		async save(id: string, data: SessionData): Promise<void> {
@@ -100,6 +100,20 @@ export function d1Store(db: unknown, options?: D1StoreOptions): SessionStore {
 			await d1.prepare(`DELETE FROM ${table} WHERE id = ?1`).bind(id).run();
 		},
 	};
+}
+
+function asD1Like(db: unknown): D1Like {
+	if (
+		db === null ||
+		typeof db !== 'object' ||
+		typeof (db as { prepare?: unknown }).prepare !== 'function'
+	) {
+		throw new Error(
+			'[flue:d1] Expected a Cloudflare D1 binding. Pass env.DB ' +
+				'(or your configured binding name) to d1Store().',
+		);
+	}
+	return db as D1Like;
 }
 
 // Duplicated in postgres.ts on purpose — these recipes are copied
@@ -137,8 +151,9 @@ let the user choose the name. The conventional shape:
 
 The binding name (`DB` here) is what shows up on `env`. If the user picks a
 different name, the agent file's `env.DB` reference must change to match.
-For local dev, `wrangler dev` resolves the same binding against a local
-SQLite file (`--local`, the default).
+For local dev, Flue's Cloudflare dev server resolves the same binding against
+a local SQLite file (`--local`, the default) through the generated
+`dist/wrangler.jsonc`.
 
 ## Schema
 
@@ -155,8 +170,26 @@ npx wrangler d1 execute <name> --remote --command="
 "
 ```
 
-For local development (`wrangler dev`), swap `--remote` for `--local`. The
-schema intentionally mirrors the table the default DO-SQLite store creates
+For local development, first run `npx flue build --target cloudflare`, then
+run the local schema command against the generated config Flue will hand to
+Wrangler:
+
+```bash
+(cd dist && npx wrangler d1 execute <name> --local --config wrangler.jsonc --command="
+  CREATE TABLE IF NOT EXISTS flue_sessions (
+    id          TEXT PRIMARY KEY,
+    data        TEXT NOT NULL,
+    updated_at  INTEGER NOT NULL
+  );
+")
+```
+
+Local D1 state is keyed by Wrangler's config path. Flue's Cloudflare dev
+server uses `dist/wrangler.jsonc`, not the project-root `wrangler.jsonc`, so
+running the local migration against the root config creates a different local
+SQLite file.
+
+The schema intentionally mirrors the table the default DO-SQLite store creates
 inside each agent's Durable Object — same column names, same types — so a
 future migration tool could move rows between the two without translation.
 
@@ -204,8 +237,10 @@ identify a conversation thread.
    in `wrangler.jsonc`.
 3. Tell the user the next steps: run `npx wrangler d1 create <name>` if
    they haven't yet, update the binding in `wrangler.jsonc` with the printed
-   `database_id`, run the `CREATE TABLE` for both `--remote` and `--local`,
-   then `npx flue dev --target cloudflare` to exercise it.
+   `database_id`, run the `CREATE TABLE` for `--remote`, run
+   `npx flue build --target cloudflare`, run the local `CREATE TABLE` against
+   `dist/wrangler.jsonc`, then `npx flue dev --target cloudflare` to exercise
+   it on `http://localhost:3583`.
 
 For deeper reference (D1 vs DO-SQLite trade-offs, schema alternatives,
 troubleshooting), point the user at the docs guide:

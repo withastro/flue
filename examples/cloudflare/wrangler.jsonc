@@ -9,4 +9,8 @@
 	"ai": {
 		"binding": "AI"
 	},
+	// For .flue/agents/with-d1-persist.ts, create a D1 database and uncomment:
+	// "d1_databases": [
+	// 	{ "binding": "DB", "database_name": "<name>", "database_id": "<id>" }
+	// ],
 }
