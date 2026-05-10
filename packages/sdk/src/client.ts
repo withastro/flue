@@ -281,6 +281,7 @@ export type {
 	ProviderSettings,
 	SandboxFactory,
 	SessionData,
+	SessionDelta,
 	SessionEnv,
 	SessionOptions,
 	SessionStore,

@@ -537,22 +537,32 @@ export interface BranchSummaryEntry extends SessionEntryBase {
 }
 
 /**
- * Append-only delta passed to `SessionStore.saveDelta?`. Contains only the
- * entries appended since the last save, plus the current leaf and metadata
- * (the latter two are full-overwrite — they're small).
+ * Delta passed to `SessionStore.saveDelta?`. Contains the entries appended
+ * since the last successful save, any entries removed from the current
+ * `SessionData`, and the current session header fields as full overwrites.
  *
- * Compaction is append-only — `appendCompaction` pushes a new
- * `CompactionEntry` without mutating prior entries (see `session-history.ts`).
- * That means a `supersedes` field is not needed for v1; the recipe adapter
- * can recover prior history from its own delta records on `load()`.
+ * Most history changes are append-only: compaction and branch summaries push
+ * new entries without mutating older ones. Overflow recovery is the exception:
+ * the SDK may remove a failed assistant leaf before retrying. Adapters must
+ * apply `removedEntryIds` before appending `newEntries` so `load()` returns
+ * the latest authoritative `SessionData`, not the union of all entries ever
+ * seen.
  */
 export interface SessionDelta {
+	/** Session data version. Matches `SessionData.version`. */
+	version: SessionData['version'];
 	/** Entries appended since the last save call (in order). */
 	newEntries: SessionEntry[];
+	/** Entry ids removed from the current session since the last save. */
+	removedEntryIds: string[];
 	/** Current leaf id (full overwrite). */
 	leafId: string | null;
 	/** Current metadata (full overwrite — small object). */
 	metadata: Record<string, any>;
+	/** Session creation timestamp (full overwrite). */
+	createdAt: string;
+	/** Session update timestamp for this save (full overwrite). */
+	updatedAt: string;
 }
 
 export interface SessionStore {
@@ -561,26 +571,29 @@ export interface SessionStore {
 	delete(id: string): Promise<void>;
 
 	/**
-	 * Optional delta hook. If implemented, it is called *instead of* `save()`
-	 * with only the entries new since the last save. Adapters that implement
-	 * this can persist O(delta) per turn instead of O(history).
+	 * Optional delta hook. If implemented, it is called by live `Session`
+	 * instances *instead of* `save()` with only the entry changes since the
+	 * last successful save. Adapters that implement this can persist O(delta)
+	 * per turn instead of O(history).
 	 *
 	 * Dispatch is checked per call via `typeof store.saveDelta === 'function'`,
 	 * so adapters that implement both methods will only see `saveDelta` invoked
-	 * during normal turns. `save()` remains required for adapters that don't
-	 * opt in.
+	 * for live session saves. `save()` remains required: Flue still uses it for
+	 * initial empty session creation and for adapters that don't opt in.
 	 *
 	 * `load(id)` must still return the full `SessionData` — the adapter is
-	 * responsible for reconstructing it from its delta records (natural for
-	 * append-log shapes: replay rows in insertion order).
+	 * responsible for reconstructing it from its records.
 	 *
-	 * If `load()` returns null (new session) and `saveDelta` is implemented,
-	 * the next `saveDelta` call carries `newEntries === <full history>`. After
-	 * that, only newly appended entries are passed.
+	 * When a session is resumed from `load()`, pre-existing entries are treated
+	 * as already saved; the first `saveDelta` carries only changes made after
+	 * construction. When `load()` returns null, Flue first writes an empty
+	 * `SessionData` via `save()`, then later `saveDelta` calls carry entries
+	 * appended after that empty snapshot.
 	 *
 	 * `newEntries.length === 0` is possible (a `save()` call with nothing to
-	 * append) and adapters should treat it as a no-op or a `leafId`/`metadata`
-	 * refresh — never as "delete prior entries".
+	 * append) and adapters should still apply `removedEntryIds` plus the
+	 * `leafId`/`metadata`/timestamp refresh. Empty `newEntries` is never a
+	 * signal to delete all prior entries.
 	 */
 	saveDelta?(id: string, delta: SessionDelta): Promise<void>;
 }

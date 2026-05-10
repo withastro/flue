@@ -8,6 +8,7 @@ export type {
 	FlueEvent,
 	FlueEventCallback,
 	SessionData,
+	SessionDelta,
 	SessionStore,
 	SessionEnv,
 	FileStat,

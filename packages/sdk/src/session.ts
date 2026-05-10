@@ -221,16 +221,9 @@ export class SessionHistory {
 		return path.reverse();
 	}
 
-	/** Total entry count, used by the SDK to compute the saveDelta slice. */
-	getEntryCount(): number {
-		return this.entries.length;
-	}
-
-	/** Entries appended at indices >= `startIndex`, in order. */
-	getEntriesSince(startIndex: number): SessionEntry[] {
-		if (startIndex <= 0) return [...this.entries];
-		if (startIndex >= this.entries.length) return [];
-		return this.entries.slice(startIndex);
+	/** Entry ids in storage order, used by the SDK to compute saveDelta removals. */
+	getEntryIds(): string[] {
+		return this.entries.map((entry) => entry.id);
 	}
 
 	/**
@@ -417,7 +410,7 @@ export class Session implements FlueSession {
 	private env: SessionEnv;
 	private store: SessionStore;
 	private history: SessionHistory;
-	private lastSavedEntryCount: number;
+	private lastSavedEntryIds: Set<string>;
 	private createdAt: string | undefined;
 	private compactionSettings: CompactionSettings;
 	private overflowRecoveryAttempted = false;
@@ -453,8 +446,8 @@ export class Session implements FlueSession {
 
 		this.history = SessionHistory.fromData(options.existingData);
 		// Pre-existing entries are considered "already saved" — adapters that
-		// implement saveDelta? get only entries appended after construction.
-		this.lastSavedEntryCount = this.history.getEntryCount();
+		// implement saveDelta? get only changes made after construction.
+		this.lastSavedEntryIds = new Set(this.history.getEntryIds());
 
 		const cc = this.config.compaction;
 		this.compactionSettings = {
@@ -1260,17 +1253,23 @@ export class Session implements FlueSession {
 		const now = new Date().toISOString();
 		const data = this.history.toData(this.metadata, this.createdAt ?? now, now);
 		if (!this.createdAt) this.createdAt = now;
+		const currentEntryIds = new Set(data.entries.map((entry) => entry.id));
 		if (typeof this.store.saveDelta === 'function') {
-			const newEntries = this.history.getEntriesSince(this.lastSavedEntryCount);
+			const newEntries = data.entries.filter((entry) => !this.lastSavedEntryIds.has(entry.id));
+			const removedEntryIds = [...this.lastSavedEntryIds].filter((entryId) => !currentEntryIds.has(entryId));
 			await this.store.saveDelta(this.storageKey, {
+				version: data.version,
 				newEntries,
+				removedEntryIds,
 				leafId: data.leafId,
 				metadata: data.metadata,
+				createdAt: data.createdAt,
+				updatedAt: data.updatedAt,
 			});
-			this.lastSavedEntryCount = this.history.getEntryCount();
 		} else {
 			await this.store.save(this.storageKey, data);
 		}
+		this.lastSavedEntryIds = currentEntryIds;
 	}
 
 	private async recordTaskSession(
