@@ -4,31 +4,21 @@ Status: Draft proposal
 
 ## What Hurts
 
-Agents often need to hand off big things: source files, diffs, logs, research,
-screenshots, reports. Putting those things into prompts is expensive and noisy.
+Agents often need to hand off big things: source files, diffs, logs, research, screenshots, reports. Putting those things into prompts is expensive and noisy.
 
-Writing files is better, but then the next agent has to guess which file matters,
-who made it, whether it replaced an older file, and whether it is meant as a
-final output or just scratch work.
+Writing files is better, but then the next agent has to guess which file matters, who made it, whether it replaced an older file, and whether it is meant as a final output or just scratch work.
 
-That is the problem. A shared workspace saves tokens, but without a protocol it
-turns into a pile of files.
+That is the problem. A shared workspace saves tokens, but without a protocol it turns into a pile of files.
 
 ## What Other Harnesses Usually Do
 
-Hosted managed-agent systems can give agents a shared filesystem, but the
-protocol belongs to the hosted runtime. Graph frameworks make state explicit,
-but large artifacts do not belong in serialized graph state. Lightweight agent
-SDKs often leave file handoff to prompts and convention.
+Hosted managed-agent systems can give agents a shared filesystem, but the protocol belongs to the hosted runtime. Graph frameworks make state explicit, but large artifacts do not belong in serialized graph state. Lightweight agent SDKs often leave file handoff to prompts and convention.
 
 ## What Flue Can Do Better
 
-Flue already owns the sandbox filesystem. The first-principles move is simple:
-keep file bodies in the workspace, and publish small artifact refs that say what
-the file is, who produced it, which channel it belongs to, and what it replaces.
+Flue already owns the sandbox filesystem. The first-principles move is simple: keep file bodies in the workspace, and publish small artifact refs that say what the file is, who produced it, which channel it belongs to, and what it replaces.
 
-The ref moves through prompts, events, and task results. The large file stays in
-the sandbox until a model actually needs to read it.
+The ref moves through prompts, events, and task results. The large file stays in the sandbox until a model actually needs to read it.
 
 ```text
 Architect task
@@ -51,49 +41,36 @@ ArtifactRefs move through prompts, events, and task results.
 
 ## What Stays Pluggable
 
-The core protocol stays storage-light and sandbox-native: append-only artifact
-records over the existing `SessionEnv` filesystem. That gives Flue a portable
-default, while keeping room for adapters:
+The core protocol stays simple: append-only artifact records on top of the existing `SessionEnv` filesystem. That gives Flue a portable default, while keeping room for adapters:
 
 - filesystem records under `.flue-runtime/` for the default implementation;
 - R2, S3, database, or vector-index mirrors for deployed environments;
-- custom channel vocabularies for review, build, research, migration, and
-  verification workflows;
+- custom channel vocabularies for review, build, research, migration, and verification workflows;
 - CLI, SSE, and future `flue inspect` renderers;
 - TokenOps and FinOps consumers that correlate artifact refs with task usage.
 
-The runtime owns artifact identity and provenance. Blob storage, indexing,
-visualization, and governance stay replaceable.
+The runtime owns artifact ids and who-made-this metadata. Blob storage, indexing, visualization, and governance stay replaceable.
 
 ## Current Gap
 
-Flue already has the right base: agents and tasks can share a sandbox
-filesystem. That means they can pass paths instead of stuffing large files into
-the prompt.
+Flue already has the right base: agents and tasks can share a sandbox filesystem. That means they can pass paths instead of stuffing large files into the prompt.
 
-But the workspace is invisible to Flue as a workflow. A useful report and a
-scratch file look the same. A parent can tell a child to write `design.md`, but
-Flue does not know that `design.md` matters.
+But the workspace is invisible to Flue as a workflow. A useful report and a scratch file look the same. A parent can tell a child to write `design.md`, but Flue does not know that `design.md` matters.
 
 There is no simple way to answer:
 
 - Which task produced this file?
 - Which files are the meaningful outputs of this run?
-- Which artifact should a later task read instead of scanning the whole
-  workspace?
+- Which artifact should a later task read instead of scanning the whole workspace?
 - Did a child revise an earlier artifact or create a competing one?
 - Which large context was kept out of the prompt by passing a file reference?
 
-A shared filesystem is the cost lever. The missing piece is a small protocol
-that says which files are real outputs, who made them, and how the next agent
-should find them.
+A shared filesystem is the cost lever. The missing piece is a small protocol that says which files are real outputs, who made them, and how the next agent should find them.
 
 ## Goals
 
-- Give Flue agents a first-class way to publish and discover artifacts in a
-  shared workspace.
-- Preserve the token-saving path: pass small artifact references instead of
-  copying large file contents through prompts.
+- Give Flue agents a first-class way to publish and discover artifacts in a shared workspace.
+- Preserve the token-saving path: pass small artifact references instead of copying large file contents through prompts.
 - Attribute artifacts to the session, task, role, and model that produced them.
 - Make task outputs visible in events, `flue run`, and future inspection tools.
 - Avoid a central mutable manifest as the v1 coordination point.
@@ -101,19 +78,11 @@ should find them.
 
 ## Design Principles
 
-- **Artifacts are pointers, not payloads.** Events and task details carry compact
-  references. File contents stay in the workspace until a model explicitly reads
-  them.
-- **Publishing is explicit.** Writing a file does not automatically make it a
-  workflow artifact. The producer decides which files matter.
-- **Records are append-only.** A new version publishes a new record and links to
-  the previous one. Consumers can hide superseded records without losing audit
-  history.
-- **No new storage substrate.** The protocol uses the existing `SessionEnv`
-  filesystem so it works across virtual, local, and remote sandboxes.
-- **No hidden trust boundary.** Shared workspace agents remain mutually trusted.
-  Artifact records improve coordination and attribution; they are not a sandbox
-  permission layer.
+- **Artifacts are pointers, not payloads.** Events and task details carry compact references. File contents stay in the workspace until a model explicitly reads them.
+- **Publishing is explicit.** Writing a file does not automatically make it a workflow artifact. The producer decides which files matter.
+- **Records are append-only.** A new version publishes a new record and links to the previous one. Consumers can hide superseded records without losing audit history.
+- **No new storage substrate.** The protocol uses the existing `SessionEnv` filesystem so it works across virtual, local, and remote sandboxes.
+- **No hidden trust boundary.** Shared workspace agents remain mutually trusted. Artifact records improve coordination and attribution; they are not a sandbox permission layer.
 
 ## Non-Goals
 
@@ -124,29 +93,23 @@ should find them.
 - Automatic semantic versioning of arbitrary files.
 - Storing binary blobs outside the configured sandbox.
 
-Those are reasonable follow-ups, but the first step should be a small protocol
-that makes shared filesystem handoffs explicit.
+Those are reasonable follow-ups, but the first step should be a small protocol that makes shared filesystem handoffs explicit.
 
 ## Vocabulary
 
 **Workspace** is the sandbox filesystem visible to the agent runtime.
 
-**Artifact** is a meaningful output file or directory that an agent wants other
-agents or users to find.
+**Artifact** is a meaningful output file or directory that an agent wants other agents or users to find.
 
-**Channel** is a named stream of artifacts for a purpose, such as `analysis`,
-`design`, `patch`, `verification`, or `handoff`.
+**Channel** is a named stream of artifacts for a purpose, such as `analysis`, `design`, `patch`, `verification`, or `handoff`.
 
-**Artifact record** is the structured metadata Flue writes when an artifact is
-published.
+**Artifact record** is the structured metadata Flue writes when an artifact is published.
 
-**Artifact ref** is the compact pointer that can safely travel through prompts,
-events, logs, and task results without copying the underlying file content.
+**Artifact ref** is the compact pointer that can safely travel through prompts, events, logs, and task results without copying the underlying file content.
 
 ## Default Channels
 
-Channels should be freeform strings, but Flue can document a small common
-vocabulary so logs and examples converge:
+Channels should be freeform strings, but Flue can document a small common vocabulary so logs and examples converge:
 
 | Channel | Purpose |
 | --- | --- |
@@ -156,14 +119,11 @@ vocabulary so logs and examples converge:
 | `verification` | Test logs, smoke results, review findings |
 | `handoff` | Final task summaries intended for a parent or later task |
 
-Custom channels should use simple lowercase names with dashes, for example
-`security-review` or `migration-plan`.
+Custom channels should use simple lowercase names with dashes, for example `security-review` or `migration-plan`.
 
 ## Protocol Shape
 
-Publishing an artifact should be a metadata operation over the existing
-filesystem. The producer writes the actual file first, then publishes a record
-that points at it.
+Publishing an artifact should be a metadata operation over the existing filesystem. The producer writes the actual file first, then publishes a record that points at it.
 
 ```ts
 await session.fs.writeFile('/workspace/reports/review.md', reviewMarkdown);
@@ -190,36 +150,25 @@ The next task receives a small pointer:
 Read artifact art_01JZ... from channel review, then produce a patch.
 ```
 
-It can call `artifact_list` to resolve the id to a path, then use the existing
-`read` tool to inspect the file.
+It can call `artifact_list` to resolve the id to a path, then use the existing `read` tool to inspect the file.
 
-If the caller already knows the artifact id, `artifact_get` should resolve it
-directly. `artifact_list` is for discovery by channel or producer.
+If the caller already knows the artifact id, `artifact_get` should resolve it directly. `artifact_list` is for discovery by channel or producer.
 
 ## Example Workflow
 
-A parent agent coordinating implementation can pass artifact references through
-the whole workflow without repeatedly copying large context.
+A parent agent coordinating implementation can pass artifact references through the whole workflow without repeatedly copying large context.
 
 1. Parent writes the target source bundle into the workspace.
-2. Architect task reads source files and publishes `design` artifact
-   `art_design`.
-3. Builder task receives `art_design`, reads the referenced path, writes a diff,
-   and publishes `patch` artifact `art_patch`.
-4. Reviewer task receives `art_design` and `art_patch`, reads only those files,
-   and publishes `verification` artifact `art_review`.
-5. Parent receives task results containing artifact ids and returns a final
-   answer that links to `art_patch` and `art_review`.
+2. Architect task reads source files and publishes `design` artifact `art_design`.
+3. Builder task receives `art_design`, reads the referenced path, writes a diff, and publishes `patch` artifact `art_patch`.
+4. Reviewer task receives `art_design` and `art_patch`, reads only those files, and publishes `verification` artifact `art_review`.
+5. Parent receives task results containing artifact ids and returns a final answer that links to `art_patch` and `art_review`.
 
-The prompt traffic carries short ids and summaries. The large design, patch, and
-review bodies remain in the workspace unless the next model turn actually needs
-to read them.
+The prompt traffic carries short ids and summaries. The large design, patch, and review bodies remain in the workspace unless the next model turn actually needs to read them.
 
 ## Storage Layout
 
-The v1 protocol should avoid one shared manifest file because `SessionEnv` does
-not expose locks or compare-and-swap writes. Instead, each publish writes one
-unique record file.
+The v1 protocol should avoid one shared manifest file because `SessionEnv` does not expose locks or compare-and-swap writes. Instead, each publish writes one unique record file.
 
 Default runtime directory:
 
@@ -233,16 +182,11 @@ Default runtime directory:
       output.md
 ```
 
-The runtime directory intentionally uses `.flue-runtime/`, not `.flue/`, so it
-does not collide with Flue's source layout.
+The runtime directory intentionally uses `.flue-runtime/`, not `.flue/`, so it does not collide with Flue's source layout.
 
-Most artifacts will point at files the agent already wrote elsewhere in the
-workspace. The `files/` directory is only for convenience APIs that ask Flue to
-write managed content directly.
+Most artifacts will point at files the agent already wrote elsewhere in the workspace. The `files/` directory is only for convenience APIs that ask Flue to write managed content directly.
 
-Listing artifacts scans `records/` and filters by channel, producer, status, or
-time. A materialized manifest can be derived later without changing the record
-format.
+Listing artifacts scans `records/` and filters by channel, producer, status, or time. A materialized manifest can be derived later without changing the record format.
 
 ## Validation and Safety
 
@@ -254,29 +198,17 @@ Publishing should validate the target before writing the artifact record:
 - record file size from `stat()` when available;
 - keep `title` and `summary` bounded so events and task details stay small.
 
-The protocol does not add a permissions boundary inside a shared sandbox. Agents
-that share a sandbox can already read and write the same files. Artifact records
-make that activity discoverable; they do not make untrusted agents safe to run
-in the same workspace.
+The protocol does not add a permissions boundary inside a shared sandbox. Agents that share a sandbox can already read and write the same files. Artifact records make that activity discoverable; they do not make untrusted agents safe to run in the same workspace.
 
-Artifact summaries should be treated like log/event data. They should not contain
-secrets, full file bodies, or large excerpts. The record points at the file; it
-does not replace the file.
+Artifact summaries should be treated like log/event data. They should not contain secrets, full file bodies, or large excerpts. The record points at the file; it does not replace the file.
 
 ## Failure Semantics
 
-Publishing should fail before writing a record when the target path is missing or
-the sandbox rejects access to it. A failed publish should not create a partial
-record.
+Publishing should fail before writing a record when the target path is missing or the sandbox rejects access to it. A failed publish should not create a partial record.
 
-If the artifact file exists but disappears later, `artifact_get` should still
-return the record and mark the target as unavailable when it checks the path.
-That preserves provenance while making the broken reference explicit.
+If the artifact file exists but disappears later, `artifact_get` should still return the record and mark the target as unavailable when it checks the path. That preserves provenance while making the broken reference explicit.
 
-If two tasks publish records at the same time, both should succeed because their
-record files use unique ids. If both records claim to replace the same prior
-artifact, consumers should treat the result as competing revisions rather than
-attempting last-writer-wins conflict resolution.
+If two tasks publish records at the same time, both should succeed because their record files use unique ids. If both records claim to replace the same prior artifact, consumers should treat the result as competing revisions rather than attempting last-writer-wins conflict resolution.
 
 ## Primary Data Types
 
@@ -379,14 +311,11 @@ interface FlueAgent {
 }
 ```
 
-`FlueAgent.artifacts` and `FlueSession.artifacts` share the same workspace, but
-the session variant automatically fills producer metadata from the active
-session.
+`FlueAgent.artifacts` and `FlueSession.artifacts` share the same workspace, but the session variant automatically fills producer metadata from the active session.
 
 ## Model-Facing Tools
 
-Agents should not need to hand-edit JSON records. Flue can add three built-in
-tools in v1:
+Agents should not need to hand-edit JSON records. Flue can add three built-in tools in v1:
 
 ```ts
 artifact_publish({
@@ -412,17 +341,13 @@ artifact_list({
 }) -> ArtifactRef[]
 ```
 
-There is no separate `artifact_read` in the initial design. Returning paths from
-`artifact_list` keeps reading on the existing `read` tool, which preserves the
-current truncation and offset behavior.
+There is no separate `artifact_read` in the initial design. Returning paths from `artifact_list` keeps reading on the existing `read` tool, which preserves the current truncation and offset behavior.
 
 ## Task Integration
 
-Artifact channels become most useful when paired with `session.task()` and the
-built-in `task` tool.
+Artifact channels become most useful when paired with `session.task()` and the built-in `task` tool.
 
-Child tasks should publish meaningful outputs while they work. The parent should
-then receive artifact ids in the task result details.
+Child tasks should publish meaningful outputs while they work. The parent should then receive artifact ids in the task result details.
 
 ```ts
 interface TaskToolResultDetails {
@@ -444,8 +369,7 @@ type FlueArtifactEvent = {
 };
 ```
 
-This complements task telemetry. Telemetry explains what the task cost and how
-long it ran; artifact channels explain what the task produced.
+This complements task telemetry. Telemetry explains what the task cost and how long it ran; artifact channels explain what the task produced.
 
 Together, the two features give a parent workflow an accounting pair:
 
@@ -454,13 +378,11 @@ task telemetry = what ran, how long, which model, how many tokens
 artifact channel = what durable output came from that work
 ```
 
-That pairing is what later enables cost-per-artifact, failed-work analysis, and
-managed-agent debugging.
+That pairing is what later enables cost-per-artifact, failed-work analysis, and managed-agent debugging.
 
 ## Revision Semantics
 
-Artifact records should be append-only. A revision publishes a new record with
-`replaces` pointing to the prior artifact id.
+Artifact records should be append-only. A revision publishes a new record with `replaces` pointing to the prior artifact id.
 
 ```ts
 await session.artifacts.publish({
@@ -470,11 +392,9 @@ await session.artifacts.publish({
 });
 ```
 
-Consumers that ask for active artifacts can hide superseded records by default,
-but the old records remain available for audit, debugging, and replay.
+Consumers that ask for active artifacts can hide superseded records by default, but the old records remain available for audit, debugging, and replay.
 
-The v1 protocol should not attempt to detect simultaneous edits to the same
-underlying path. Instead, Flue should encourage task-scoped output paths:
+The v1 protocol should not attempt to detect simultaneous edits to the same underlying path. Instead, Flue should encourage task-scoped output paths:
 
 ```text
 /workspace/.flue-runtime/artifacts/files/<artifact-id>/output.md
@@ -498,8 +418,7 @@ For a completed task, the CLI can add a compact artifact count:
 [flue] task:done  8.2s  tokens=9,420  artifacts=2
 ```
 
-The CLI should not print artifact contents. It should print paths and ids so
-users can inspect files directly.
+The CLI should not print artifact contents. It should print paths and ids so users can inspect files directly.
 
 ## TokenOps and FinOps
 
@@ -519,9 +438,7 @@ For FinOps, artifacts help attribute cost to durable outputs:
 - failed-task spend with or without useful artifacts;
 - workflows where shared workspace handoff avoided repeated prompt payloads.
 
-The protocol should not try to compute token savings in v1. It should preserve
-enough structure for later rollups to compare large file sizes, artifact
-references, and task usage.
+The protocol should not try to compute token savings in v1. It should preserve enough structure for later rollups to compare large file sizes, artifact references, and task usage.
 
 ## Implementation Shape
 
@@ -548,45 +465,30 @@ Likely change points:
 
 A v1 implementation is ready when:
 
-- trusted code can publish, list, and get artifact records from an agent or
-  session;
-- model-facing tools can publish, get, and list artifacts without hand-editing
-  JSON;
+- trusted code can publish, list, and get artifact records from an agent or session;
+- model-facing tools can publish, get, and list artifacts without hand-editing JSON;
 - `flue run` renders artifact publication events without printing file contents;
 - task result details include artifacts published during that task;
-- concurrent publishes create independent records without corrupting a shared
-  manifest;
-- tests cover missing paths, superseded artifacts, concurrent publishes, and
-  task attribution.
+- concurrent publishes create independent records without corrupting a shared manifest;
+- tests cover missing paths, superseded artifacts, concurrent publishes, and task attribution.
 
 ## Suggested Rollout
 
 1. Add the data types and trusted-code `FlueArtifacts` helper.
 2. Add `artifact_publish` events and CLI rendering.
-3. Add model-facing `artifact_publish`, `artifact_get`, and `artifact_list`
-   tools.
+3. Add model-facing `artifact_publish`, `artifact_get`, and `artifact_list` tools.
 4. Attach per-task artifact summaries to task result details.
-5. Layer inspection, dashboards, or cost rollups on top after the protocol has
-   real usage.
+5. Layer inspection, dashboards, or cost rollups on top after the protocol has real usage.
 
 ## Recommended V1 Defaults
 
-- Enable artifact tools by default when the `task` tool is available. Artifact
-  handoff is part of the managed-agent story, not a niche extension.
-- Store records under `<cwd>/.flue-runtime/artifacts/records/` for all sandbox
-  modes. Users can override the runtime directory later if real deployments need
-  it.
-- Include full `ArtifactRef` objects in task result details, but keep summaries
-  bounded and omit file contents.
-- Compute `sizeBytes` in v1. Treat SHA-256 digests as best-effort for regular
-  files and skip them for directories until there is demand.
-- Keep publication explicit. Do not infer artifact records from every `write`
-  call.
+- Enable artifact tools by default when the `task` tool is available. Artifact handoff is part of the managed-agent story, not a niche extension.
+- Store records under `<cwd>/.flue-runtime/artifacts/records/` for all sandbox modes. Users can override the runtime directory later if real deployments need it.
+- Include full `ArtifactRef` objects in task result details, but keep summaries bounded and omit file contents.
+- Compute `sizeBytes` in v1. Treat SHA-256 digests as best-effort for regular files and skip them for directories until there is demand.
+- Keep publication explicit. Do not infer artifact records from every `write` call.
 
 ## Open Questions
 
-- What file-size cutoff should Flue use before skipping best-effort SHA-256
-  digest calculation?
-- Should Flue add a convenience API that writes managed artifact content into
-  `.flue-runtime/artifacts/files/<artifact-id>/`, or should v1 only publish
-  existing paths?
+- What file-size cutoff should Flue use before skipping best-effort SHA-256 digest calculation?
+- Should Flue add a convenience API that writes managed artifact content into `.flue-runtime/artifacts/files/<artifact-id>/`, or should v1 only publish existing paths?
