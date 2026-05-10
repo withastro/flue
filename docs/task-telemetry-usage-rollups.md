@@ -2,23 +2,33 @@
 
 Status: Draft proposal
 
-## One-Sentence Problem
+## What Hurts
 
-Multi-agent harnesses make delegation easy, but they often lose the causal,
-token, model, duration, and cost trail once work moves from a parent agent into a
-child agent.
+When a parent agent asks a child agent to do work, Flue should not lose the
+receipt.
 
-## Industry Context
+Today we can see that a task ran. We cannot reliably answer the simple follow-up
+questions: which model did the child use, how long did it take, how many tokens
+did it spend, what did it cost, and does the parent response include that child
+work?
 
-Hosted agent runtimes tend to bundle task tracing into the provider dashboard.
-Graph frameworks can model state transitions, but usage attribution is usually
-left to external observability. Lightweight agent SDKs expose handoffs and
-agents-as-tools, but parent-call usage often stops at the parent model turn.
+That is the problem. Delegation looks cheap when the bill is hidden.
 
-Flue can do better from first principles by treating every delegated task as a
-causal span in the agent runtime: a task starts, runs in a child session, emits
-usage and model metadata, and rolls direct child work into the parent call when
-the parent model caused that delegation.
+## What Other Harnesses Usually Do
+
+Hosted agent platforms often show this inside their own dashboard. Graph
+frameworks make the workflow explicit, but usage rollups are usually something
+you wire up yourself. Lightweight agent SDKs make handoffs easy, but the parent
+call often reports only the parent model turn.
+
+## What Flue Can Do Better
+
+Flue is at the right layer to fix this. It is the runtime that creates the child
+session. It knows the parent, the task id, the role, the cwd, the model, the
+duration, and the usage.
+
+So Flue should record that once, in a provider-neutral shape. The runtime should
+own causality and accounting. Dashboards and billing tools can plug in later.
 
 ```text
 User / webhook
@@ -37,11 +47,11 @@ Child task session
   +--> usage rollup ----> returned parent PromptResponse
 ```
 
-## Pluggable Shape
+## What Stays Pluggable
 
-The core contract should stay provider-agnostic: normalized task events,
-`PromptUsage`, `PromptModel`, timing metadata, and parent-child session ids.
-Everything else can plug in around that contract:
+The core contract stays small: normalized task events, `PromptUsage`,
+`PromptModel`, timing metadata, and parent-child session ids. Everything else can
+plug in around that contract:
 
 - CLI renderer for humans during `flue run`;
 - SSE stream consumers for live dashboards;
@@ -49,17 +59,15 @@ Everything else can plug in around that contract:
 - TokenOps rollups by task, role, model, and workflow;
 - FinOps attribution by delegated task, failed task, or parent workflow.
 
-The runtime owns causality and accounting. Observability vendors, dashboards,
-and budget policies remain replaceable.
+Observability vendors, dashboards, and budget policies remain replaceable.
 
-## Problem
+## Current Gap
 
-Flue already has delegated child agents through `session.task()` and the built-in
-LLM-facing `task` tool. That is the right primitive for managed-agent workflows,
-but delegated work is still too opaque.
+Flue already has the right primitive: a parent can call `session.task()` or use
+the built-in `task` tool. That makes child-agent work easy to start.
 
-Today, a caller can see that a task started or ended, but not enough operational
-detail to answer:
+But the task events are too thin. They tell us "started" and "ended." They do
+not tell us enough to debug, bill, or trust the work:
 
 - Which task ran, under which role and cwd?
 - How long did the task take?
@@ -67,9 +75,8 @@ detail to answer:
 - How many tokens and dollars did the child spend?
 - Does the parent prompt usage include delegated child work?
 
-This matters because task delegation is one of Flue's strongest managed-agent
-building blocks. If task cost and timing are not first-class, users cannot debug
-multi-agent behavior or trust reported usage.
+If task cost and timing are not first-class, multi-agent work becomes hard to
+trust. The system did something, but the user cannot see the receipt.
 
 ## Goals
 
