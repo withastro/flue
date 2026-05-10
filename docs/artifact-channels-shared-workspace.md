@@ -2,6 +2,53 @@
 
 Status: Draft proposal
 
+## One-Sentence Problem
+
+Multi-agent harnesses can pass large work products through prompts, but the
+scalable path is a shared workspace where agents exchange durable artifact
+references instead of copying files, logs, patches, and reports into context.
+
+## Industry Context
+
+Hosted managed-agent systems use shared filesystems as a cost and context lever,
+but that protocol is usually embedded in the hosted runtime. Graph frameworks
+prefer typed state and checkpoints, which is rigorous but can push large
+artifacts back into serialized state. Lightweight agent SDKs often leave shared
+workspace handoff as user convention.
+
+Flue can do better from first principles by separating payload from metadata:
+files stay in the sandbox, while artifact records provide identity,
+provenance, channel, status, and a compact reference that can move through
+prompts, events, task results, and future inspection tools.
+
+```mermaid
+flowchart LR
+  childA["Architect task"] --> fileA["/workspace/design.md"]
+  fileA --> recordA["artifact record: channel=design"]
+  recordA --> refA["ArtifactRef art_design"]
+  refA --> childB["Builder task"]
+  childB --> fileB["/workspace/fix.diff"]
+  fileB --> recordB["artifact record: channel=patch"]
+  recordB --> parent["Parent session"]
+  parent --> sinks["CLI, SSE, inspect, TokenOps, FinOps"]
+```
+
+## Pluggable Shape
+
+The core protocol should be storage-light and sandbox-native: append-only
+artifact records over the existing `SessionEnv` filesystem. That gives Flue a
+portable default, while keeping room for adapters:
+
+- filesystem records under `.flue-runtime/` for the default implementation;
+- R2, S3, database, or vector-index mirrors for deployed environments;
+- custom channel vocabularies for review, build, research, migration, and
+  verification workflows;
+- CLI, SSE, and future `flue inspect` renderers;
+- TokenOps and FinOps consumers that correlate artifact refs with task usage.
+
+The runtime owns artifact identity and provenance. Blob storage, indexing,
+visualization, and governance stay replaceable.
+
 ## Problem
 
 Flue already has the important primitive for managed-agent work: every agent and
