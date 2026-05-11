@@ -28,7 +28,6 @@ import {
 	shouldCompact,
 } from './compaction.ts';
 import { resolveSkillFilePath, skillsDirIn } from './context.ts';
-import { createFlueFs } from './sandbox.ts';
 import {
 	buildPromptText,
 	buildResultFollowUpPrompt,
@@ -38,13 +37,14 @@ import {
 	type ResultToolBundle,
 	ResultUnavailableError,
 } from './result.ts';
-import { getProviderConfiguration, getRegisteredApiKey } from './runtime/providers.ts';
 import {
 	assertRoleExists,
 	resolveEffectiveRole as resolveEffectiveRoleName,
 	resolveRoleModel,
 	resolveRoleThinkingLevel,
 } from './roles.ts';
+import { getProviderConfiguration, getRegisteredApiKey } from './runtime/providers.ts';
+import { createFlueFs } from './sandbox.ts';
 
 import type {
 	AgentConfig,
@@ -55,6 +55,7 @@ import type {
 	FlueEventCallback,
 	FlueFs,
 	FlueSession,
+	FlueWorkKind,
 	MessageEntry,
 	PromptModel,
 	PromptOptions,
@@ -126,9 +127,16 @@ interface InternalTaskResult<T> {
 	text: string;
 	taskId: string;
 	sessionId: string;
+	workId: string;
+	parentWorkId?: string;
 	messageId?: string;
 	role?: string;
 	cwd?: string;
+	usage?: PromptUsage;
+	model?: PromptModel;
+	durationMs: number;
+	startedAt: string;
+	endedAt: string;
 }
 
 /**
@@ -149,6 +157,14 @@ function resolveSchemaOption(
 interface InternalTaskOptions<S extends v.GenericSchema | undefined> extends TaskOptions<S> {
 	inheritedModel?: string;
 	inheritedThinkingLevel?: ThinkingLevel;
+	description?: string;
+	parentWorkId?: string;
+}
+
+interface ActiveWork {
+	workId: string;
+	kind: FlueWorkKind;
+	childUsage: PromptUsage;
 }
 
 /** In-memory session store. Sessions persist for the lifetime of the process. */
@@ -409,6 +425,7 @@ export class Session implements FlueSession {
 	private agentTools: ToolDef[];
 	private deleted = false;
 	private activeOperation: string | undefined;
+	private activeWork: ActiveWork | undefined;
 	private activeTasks = new Set<Session>();
 	private sessionRole: string | undefined;
 	private taskDepth: number;
@@ -913,6 +930,8 @@ export class Session implements FlueSession {
 				role: params.role ?? inheritedRole,
 				inheritedModel,
 				inheritedThinkingLevel,
+				description: params.description,
+				parentWorkId: this.activeWork?.workId,
 				cwd: params.cwd,
 				tools,
 			},
@@ -924,9 +943,16 @@ export class Session implements FlueSession {
 			details: {
 				taskId: result.taskId,
 				sessionId: result.sessionId,
+				workId: result.workId,
+				parentWorkId: result.parentWorkId,
 				messageId: result.messageId,
 				role: result.role,
 				cwd: result.cwd,
+				usage: result.usage,
+				model: result.model,
+				durationMs: result.durationMs,
+				startedAt: result.startedAt,
+				endedAt: result.endedAt,
 			},
 		};
 	}
@@ -950,6 +976,10 @@ export class Session implements FlueSession {
 		if (signal?.aborted) throw abortErrorFor(signal);
 
 		const taskId = crypto.randomUUID();
+		const workId = crypto.randomUUID();
+		const parentWorkId = options?.parentWorkId;
+		const startedAtMs = Date.now();
+		const startedAt = new Date(startedAtMs).toISOString();
 		const requestedRole = options?.role ?? this.sessionRole ?? this.config.role;
 		let child: Session | undefined;
 		let abortListener: (() => void) | undefined;
@@ -957,10 +987,15 @@ export class Session implements FlueSession {
 		this.emit({
 			type: 'task_start',
 			taskId,
+			workId,
+			parentWorkId,
 			prompt: text,
+			description: options?.description,
 			role: requestedRole,
 			cwd: options?.cwd,
+			startedAt,
 			parentSessionId: this.id,
+			workKind: 'task',
 		});
 
 		try {
@@ -999,30 +1034,56 @@ export class Session implements FlueSession {
 			if (schema) childOptions.schema = schema;
 
 			const output: any = await child.prompt(text, childOptions as any);
+			const usage = getPromptUsage(output);
+			const model = getPromptModel(output);
+			if (usage && parentWorkId) this.addChildUsageToActiveWork(parentWorkId, usage);
+			const endedAtMs = Date.now();
+			const endedAt = new Date(endedAtMs).toISOString();
+			const durationMs = endedAtMs - startedAtMs;
 			const taskResult: InternalTaskResult<any> = {
 				output,
 				text: typeof output?.text === 'string' ? output.text : child.getAssistantText(),
 				taskId,
 				sessionId: child.id,
+				workId,
+				parentWorkId,
 				messageId: child.getLatestAssistantMessageId(),
 				role,
 				cwd: options?.cwd,
+				usage,
+				model,
+				durationMs,
+				startedAt,
+				endedAt,
 			};
 			this.emit({
 				type: 'task_end',
 				taskId,
+				workId,
+				parentWorkId,
 				isError: false,
 				result: taskResult.text,
+				usage,
+				model,
+				durationMs,
+				endedAt,
 				parentSessionId: this.id,
+				workKind: 'task',
 			});
 			return taskResult;
 		} catch (error) {
+			const endedAtMs = Date.now();
 			this.emit({
 				type: 'task_end',
 				taskId,
+				workId,
+				parentWorkId,
 				isError: true,
 				result: getErrorMessage(error),
+				durationMs: endedAtMs - startedAtMs,
+				endedAt: new Date(endedAtMs).toISOString(),
 				parentSessionId: this.id,
+				workKind: 'task',
 			});
 			throw error;
 		} finally {
@@ -1037,12 +1098,18 @@ export class Session implements FlueSession {
 	// ─── Internal ────────────────────────────────────────────────────────────
 
 	private async runOperation<T>(
-		operation: string,
+		operation: FlueWorkKind,
 		signal: AbortSignal | undefined,
 		fn: () => Promise<T>,
 	): Promise<T> {
 		return this.runExclusive(operation, async () => {
 			if (signal?.aborted) throw abortErrorFor(signal);
+			const previousWork = this.activeWork;
+			this.activeWork = {
+				workId: crypto.randomUUID(),
+				kind: operation,
+				childUsage: emptyUsage(),
+			};
 
 			// Mirror Session.abort() for the duration of this call.
 			// shell() doesn't use the harness/compaction/tasks — these
@@ -1068,7 +1135,11 @@ export class Session implements FlueSession {
 				throw surfaced;
 			} finally {
 				signal?.removeEventListener('abort', onAbort);
-				this.emit({ type: 'idle' });
+				try {
+					this.emit({ type: 'idle' });
+				} finally {
+					this.activeWork = previousWork;
+				}
 			}
 		});
 	}
@@ -1090,7 +1161,17 @@ export class Session implements FlueSession {
 	}
 
 	private emit(event: FlueEvent): void {
-		this.eventCallback?.({ ...event, sessionId: this.id });
+		const activeWork = this.activeWork;
+		const workEvent =
+			activeWork && event.workId === undefined
+				? { ...event, workId: activeWork.workId, workKind: activeWork.kind }
+				: event;
+		this.eventCallback?.({ ...workEvent, sessionId: this.id });
+	}
+
+	private addChildUsageToActiveWork(parentWorkId: string, usage: PromptUsage): void {
+		if (!this.activeWork || this.activeWork.workId !== parentWorkId) return;
+		this.activeWork.childUsage = addUsage(this.activeWork.childUsage, usage);
 	}
 
 	private assertActive(): void {
@@ -1380,6 +1461,12 @@ export class Session implements FlueSession {
 		return totals;
 	}
 
+	private aggregateUsageWithActiveChildUsage(beforeLeafId: string | null): PromptUsage {
+		const directUsage = this.aggregateUsageSince(beforeLeafId);
+		if (!this.activeWork) return directUsage;
+		return addUsage(directUsage, this.activeWork.childUsage);
+	}
+
 	private getAssistantText(): string {
 		const messages = this.harness.state.messages;
 		for (let i = messages.length - 1; i >= 0; i--) {
@@ -1477,7 +1564,7 @@ export class Session implements FlueSession {
 					return {
 						data: result,
 						result,
-						usage: this.aggregateUsageSince(beforeLeafId),
+						usage: this.aggregateUsageWithActiveChildUsage(beforeLeafId),
 						model,
 					};
 				}
@@ -1490,7 +1577,7 @@ export class Session implements FlueSession {
 
 				return {
 					text: this.getAssistantText(),
-					usage: this.aggregateUsageSince(beforeLeafId),
+					usage: this.aggregateUsageWithActiveChildUsage(beforeLeafId),
 					model,
 				};
 			},
@@ -1589,6 +1676,21 @@ export async function deleteSessionTree(
 
 function getErrorMessage(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
+}
+
+function getPromptUsage(output: unknown): PromptUsage | undefined {
+	if (!output || typeof output !== 'object') return undefined;
+	const usage = (output as { usage?: unknown }).usage;
+	if (!usage || typeof usage !== 'object') return undefined;
+	return usage as PromptUsage;
+}
+
+function getPromptModel(output: unknown): PromptModel | undefined {
+	if (!output || typeof output !== 'object') return undefined;
+	const model = (output as { model?: unknown }).model;
+	if (!model || typeof model !== 'object') return undefined;
+	if (typeof (model as { id?: unknown }).id !== 'string') return undefined;
+	return model as PromptModel;
 }
 
 function redactEnvValues(env: Record<string, string>): Record<string, string> {

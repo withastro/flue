@@ -458,6 +458,26 @@ export interface PromptModel {
 	id: string;
 }
 
+export type FlueWorkKind =
+	| 'prompt'
+	| 'skill'
+	| 'task'
+	| 'tool'
+	| 'shell'
+	| (string & {});
+
+export interface FlueWorkRef {
+	workId: string;
+	parentWorkId?: string;
+	kind: FlueWorkKind;
+	name?: string;
+	sessionId?: string;
+	parentSessionId?: string;
+	taskId?: string;
+	role?: string;
+	cwd?: string;
+}
+
 export interface PromptResponse {
 	text: string;
 	usage: PromptUsage;
@@ -653,12 +673,40 @@ export type FlueEvent = (
 	| { type: 'tool_start'; toolName: string; toolCallId: string; args?: any }
 	| { type: 'tool_end'; toolName: string; toolCallId: string; isError: boolean; result?: any }
 	| { type: 'turn_end' }
-	| { type: 'task_start'; taskId: string; prompt: string; role?: string; cwd?: string }
-	| { type: 'task_end'; taskId: string; isError: boolean; result?: any }
+	| {
+			type: 'task_start';
+			taskId: string;
+			workId: string;
+			parentWorkId?: string;
+			prompt: string;
+			description?: string;
+			role?: string;
+			cwd?: string;
+			startedAt: string;
+	  }
+	| {
+			type: 'task_end';
+			taskId: string;
+			workId: string;
+			parentWorkId?: string;
+			isError: boolean;
+			result?: unknown;
+			usage?: PromptUsage;
+			model?: PromptModel;
+			durationMs: number;
+			endedAt: string;
+	  }
 	| { type: 'compaction_start'; reason: 'threshold' | 'overflow'; estimatedTokens: number }
 	| { type: 'compaction_end'; messagesBefore: number; messagesAfter: number }
 	| { type: 'idle' }
-) & { sessionId?: string; parentSessionId?: string; taskId?: string };
+) & {
+	sessionId?: string;
+	parentSessionId?: string;
+	taskId?: string;
+	workId?: string;
+	parentWorkId?: string;
+	workKind?: FlueWorkKind;
+};
 
 export type FlueEventCallback = (event: FlueEvent) => void;
 

@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
 import { type Static, Type } from '@mariozechner/pi-ai';
-import type { Role, SessionEnv } from './types.ts';
+import type { PromptModel, PromptUsage, Role, SessionEnv } from './types.ts';
 
 const MAX_READ_LINES = 2000;
 const MAX_READ_BYTES = 50 * 1024;
@@ -28,9 +28,16 @@ export interface TaskToolParams {
 export interface TaskToolResultDetails {
 	taskId: string;
 	sessionId: string;
+	workId: string;
+	parentWorkId?: string;
 	messageId?: string;
 	role?: string;
 	cwd?: string;
+	usage?: PromptUsage;
+	model?: PromptModel;
+	durationMs: number;
+	startedAt: string;
+	endedAt: string;
 }
 
 export interface CreateToolsOptions {

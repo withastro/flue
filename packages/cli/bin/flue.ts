@@ -1,16 +1,16 @@
 #!/usr/bin/env node
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import path from 'node:path';
-import { determineAgent } from '@vercel/detect-agent';
-import { build, dev, DEFAULT_DEV_PORT, parseEnvFiles, resolveEnvFiles } from '@flue/sdk';
+import { build, DEFAULT_DEV_PORT, dev, parseEnvFiles, resolveEnvFiles } from '@flue/sdk';
 import {
+	type FlueConfig,
 	resolveConfig,
 	resolveConfigPath,
-	type FlueConfig,
 	type UserFlueConfig,
 } from '@flue/sdk/config';
-import { CONNECTORS, CATEGORY_ROOTS } from './_connectors.generated.ts';
+import { determineAgent } from '@vercel/detect-agent';
+import { CATEGORY_ROOTS, CONNECTORS } from './_connectors.generated.ts';
 
 /**
  * Resolve the merged config for a CLI command. The CLI's responsibility is
@@ -482,6 +482,27 @@ function flushBuffers() {
 	flushThinkingBuffer();
 }
 
+function truncateInline(value: string, max = 120): string {
+	return value.length > max ? `${value.slice(0, max)}...` : value;
+}
+
+function formatDuration(ms: number | undefined): string | undefined {
+	if (typeof ms !== 'number' || !Number.isFinite(ms)) return undefined;
+	if (ms < 1000) return `${ms}ms`;
+	return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}s`;
+}
+
+function formatTaskUsage(usage: unknown): string | undefined {
+	if (!usage || typeof usage !== 'object') return undefined;
+	const promptUsage = usage as { totalTokens?: unknown; cost?: { total?: unknown } };
+	const tokens = typeof promptUsage.totalTokens === 'number' ? promptUsage.totalTokens : undefined;
+	const cost = typeof promptUsage.cost?.total === 'number' ? promptUsage.cost.total : undefined;
+	const parts: string[] = [];
+	if (tokens !== undefined) parts.push(`tokens=${tokens.toLocaleString()}`);
+	if (cost !== undefined && cost > 0) parts.push(`cost=$${cost.toFixed(4)}`);
+	return parts.length > 0 ? parts.join(' ') : undefined;
+}
+
 function logEvent(event: any) {
 	switch (event.type) {
 		case 'agent_start':
@@ -559,6 +580,34 @@ function logEvent(event: any) {
 		case 'turn_end':
 			flushBuffers();
 			break;
+
+		case 'task_start': {
+			flushBuffers();
+			const label = truncateInline(event.description || event.prompt || event.taskId || 'task');
+			const details = [
+				event.role ? `role=${event.role}` : undefined,
+				event.cwd ? `cwd=${event.cwd}` : undefined,
+			].filter(Boolean);
+			console.error(`[flue] task:start  ${label}${details.length ? `  ${details.join(' ')}` : ''}`);
+			break;
+		}
+
+		case 'task_end': {
+			flushBuffers();
+			const status = event.isError ? 'error' : 'done';
+			const details = [
+				formatDuration(event.durationMs),
+				formatTaskUsage(event.usage),
+			].filter(Boolean);
+			const resultPreview =
+				event.isError && typeof event.result === 'string'
+					? `  ${truncateInline(event.result, 180)}`
+					: '';
+			console.error(
+				`[flue] task:${status}   ${details.length ? details.join(' ') : event.taskId}${resultPreview}`,
+			);
+			break;
+		}
 
 		case 'compaction_start':
 			flushBuffers();
