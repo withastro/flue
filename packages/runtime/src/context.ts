@@ -1,8 +1,21 @@
 /**
- * Context discovery: reads AGENTS.md and .agents/skills/ from a session's
- * working directory. Used at runtime by the session initialisation path.
+ * Context discovery: reads AGENTS.md and .agents/skills/ from a read-only
+ * project context source. Used at runtime by the session initialisation path.
  */
-import type { SessionEnv, Skill } from './types.ts';
+import type { FileStat, SessionEnv, Skill } from './types.ts';
+
+export interface ContextSource {
+	cwd: string;
+	readFile(path: string): Promise<string>;
+	stat(path: string): Promise<FileStat>;
+	readdir(path: string): Promise<string[]>;
+	exists(path: string): Promise<boolean>;
+	resolvePath(path: string): string;
+}
+
+export function contextSourceFromSessionEnv(env: SessionEnv): ContextSource {
+	return env;
+}
 
 // ─── Frontmatter Parsing ────────────────────────────────────────────────────
 
@@ -41,13 +54,13 @@ export function parseFrontmatterFile(content: string, defaultName: string): Fron
 // ─── Context Discovery ──────────────────────────────────────────────────────
 
 /** Read AGENTS.md (and CLAUDE.md if present) from a directory. Returns concatenated contents. */
-export async function readAgentsMd(env: SessionEnv, basePath: string): Promise<string> {
+export async function readAgentsMd(source: ContextSource, basePath: string): Promise<string> {
 	const parts: string[] = [];
 
 	for (const filename of ['AGENTS.md', 'CLAUDE.md']) {
 		const filePath = basePath.endsWith('/') ? basePath + filename : `${basePath}/${filename}`;
-		if (await env.exists(filePath)) {
-			const content = await env.readFile(filePath);
+		if (await source.exists(filePath)) {
+			const content = await source.readFile(filePath);
 			parts.push(content.trim());
 		}
 	}
@@ -76,12 +89,12 @@ export function skillsDirIn(basePath: string): string {
  * skills; only the model does, and it reads the file itself.
  */
 export async function resolveSkillFilePath(
-	env: SessionEnv,
+	source: ContextSource,
 	basePath: string,
 	relPath: string,
 ): Promise<string | null> {
 	const filePath = `${skillsDirIn(basePath)}/${relPath}`;
-	if (!(await env.exists(filePath))) return null;
+	if (!(await source.exists(filePath))) return null;
 	return filePath;
 }
 
@@ -96,30 +109,30 @@ export async function resolveSkillFilePath(
  * Skills" registry (name + description).
  */
 export async function discoverLocalSkills(
-	env: SessionEnv,
+	source: ContextSource,
 	basePath: string,
 ): Promise<Record<string, Skill>> {
 	const skillsDir = skillsDirIn(basePath);
 
-	if (!(await env.exists(skillsDir))) return {};
+	if (!(await source.exists(skillsDir))) return {};
 
 	const skills: Record<string, Skill> = {};
-	const entries = await env.readdir(skillsDir);
+	const entries = await source.readdir(skillsDir);
 
 	for (const entry of entries) {
 		const skillDir = `${skillsDir}/${entry}`;
 
 		try {
-			const s = await env.stat(skillDir);
+			const s = await source.stat(skillDir);
 			if (!s.isDirectory) continue;
 		} catch {
 			continue;
 		}
 
 		const skillMdPath = `${skillDir}/SKILL.md`;
-		if (!(await env.exists(skillMdPath))) continue;
+		if (!(await source.exists(skillMdPath))) continue;
 
-		const content = await env.readFile(skillMdPath);
+		const content = await source.readFile(skillMdPath);
 		const parsed = parseFrontmatterFile(content, entry);
 		skills[parsed.name] = {
 			name: parsed.name,
@@ -186,16 +199,16 @@ export function composeSystemPrompt(
 
 /** Discover AGENTS.md, local skills, and directory listing from the session's cwd. */
 export async function discoverSessionContext(
-	env: SessionEnv,
+	source: ContextSource,
 ): Promise<{ systemPrompt: string; skills: Record<string, Skill> }> {
-	const cwd = env.cwd;
+	const cwd = source.cwd;
 
-	const agentsMd = await readAgentsMd(env, cwd);
-	const skills = await discoverLocalSkills(env, cwd);
+	const agentsMd = await readAgentsMd(source, cwd);
+	const skills = await discoverLocalSkills(source, cwd);
 
 	let directoryListing: string[] | undefined;
 	try {
-		directoryListing = await env.readdir(cwd);
+		directoryListing = await source.readdir(cwd);
 	} catch {
 		// readdir failed (e.g., cwd doesn't exist yet) — skip silently
 	}

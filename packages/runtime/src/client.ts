@@ -1,4 +1,4 @@
-import { discoverSessionContext } from './context.ts';
+import { contextSourceFromSessionEnv, discoverSessionContext } from './context.ts';
 import { Harness } from './harness.ts';
 import { assertRoleExists } from './roles.ts';
 import { dispatchGlobalEvent } from './runtime/events.ts';
@@ -133,7 +133,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 				const baseEnv = await resolveSessionEnv(config.id, sandbox, config, options.cwd);
 				const env = options.cwd ? createCwdSessionEnv(baseEnv, options.cwd) : baseEnv;
 				const store: SessionStore = options.persist ?? config.defaultStore;
-				const localContext = await discoverSessionContext(env);
+				const localContext = await discoverSessionContext(contextSourceFromSessionEnv(env));
 
 				// Harness-level model override. Per-call `model` on prompt()/skill() still wins
 				// because resolveModelForCall() applies it on top of this default.

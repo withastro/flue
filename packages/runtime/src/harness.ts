@@ -1,5 +1,5 @@
 import { createCallHandle } from './abort.ts';
-import { discoverSessionContext } from './context.ts';
+import { contextSourceFromSessionEnv, discoverSessionContext } from './context.ts';
 import { assertRoleExists } from './roles.ts';
 import { createCwdSessionEnv, createFlueFs } from './sandbox.ts';
 import { type CreateTaskSessionOptions, deleteSessionTree, Session } from './session.ts';
@@ -135,7 +135,7 @@ export class Harness implements FlueHarness {
 		const taskEnv = options.cwd
 			? createCwdSessionEnv(options.parentEnv, options.parentEnv.resolvePath(options.cwd))
 			: options.parentEnv;
-		const localContext = await discoverSessionContext(taskEnv);
+		const localContext = await discoverSessionContext(contextSourceFromSessionEnv(taskEnv));
 		const taskConfig: AgentConfig = {
 			...this.config,
 			systemPrompt: localContext.systemPrompt,
