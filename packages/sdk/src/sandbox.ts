@@ -121,18 +121,21 @@ function createBashSessionEnv(bash: BashLike): SessionEnv {
 }
 
 function assertBashLike(value: unknown): asserts value is BashLike {
-	if (
-		typeof value !== 'object' ||
-		value === null ||
-		!('exec' in value) ||
-		!('getCwd' in value) ||
-		!('fs' in value) ||
-		typeof (value as any).exec !== 'function' ||
-		typeof (value as any).getCwd !== 'function' ||
-		typeof (value as any).fs !== 'object'
-	) {
+	if (!isBashLike(value)) {
 		throw new Error('[flue] BashFactory must return a Bash-like object.');
 	}
+}
+
+/** Duck-type detection for just-bash Bash instances. */
+export function isBashLike(value: unknown): value is BashLike {
+	if (typeof value !== 'object' || value === null) return false;
+	if (!('exec' in value) || !('getCwd' in value) || !('fs' in value)) return false;
+	return (
+		typeof value.exec === 'function' &&
+		typeof value.getCwd === 'function' &&
+		typeof value.fs === 'object' &&
+		value.fs !== null
+	);
 }
 
 /**

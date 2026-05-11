@@ -1,7 +1,7 @@
 import { discoverSessionContext } from './context.ts';
 import { Harness } from './harness.ts';
 import { assertRoleExists } from './roles.ts';
-import { bashFactoryToSessionEnv, createCwdSessionEnv } from './sandbox.ts';
+import { bashFactoryToSessionEnv, createCwdSessionEnv, isBashLike } from './sandbox.ts';
 import type {
 	AgentConfig,
 	AgentInit,
@@ -195,31 +195,14 @@ function serializeLogError(error: Error): Record<string, unknown> {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/** Duck-type detection for just-bash Bash instances. */
-function isBashLike(value: unknown): value is BashLike {
-	return (
-		typeof value === 'object' &&
-		value !== null &&
-		'exec' in value &&
-		'getCwd' in value &&
-		'fs' in value &&
-		typeof (value as any).exec === 'function' &&
-		typeof (value as any).getCwd === 'function' &&
-		typeof (value as any).fs === 'object'
-	);
-}
-
 function isBashFactory(value: unknown): value is BashFactory {
 	return typeof value === 'function';
 }
 
 function isSandboxFactory(value: unknown): value is SandboxFactory {
-	return (
-		typeof value === 'object' &&
-		value !== null &&
-		'createSessionEnv' in value &&
-		typeof (value as any).createSessionEnv === 'function'
-	);
+	if (typeof value !== 'object' || value === null) return false;
+	if (!('createSessionEnv' in value)) return false;
+	return typeof value.createSessionEnv === 'function';
 }
 
 /** Resolve sandbox option to SessionEnv: empty → local → BashFactory → platform hook → SandboxFactory. */
