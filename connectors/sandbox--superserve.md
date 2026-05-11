@@ -18,11 +18,10 @@ Wraps an already-initialized Superserve sandbox (created with the user's own
 `SandboxFactory` interface. The user owns the sandbox lifecycle; this
 connector just adapts the sandbox.
 
-Superserve runs each sandbox as a Firecracker microVM with hardware-level
-isolation — no shared kernel between tenants, stronger isolation than
-containers. Cold start is sub-second, and paused sandboxes auto-resume on
-the next exec, which makes it a good fit for long-running agent sessions
-that need to persist state across gaps in traffic.
+Superserve runs each sandbox as a Firecracker microVM. Cold start is
+sub-second, and paused sandboxes auto-resume on the next exec, which makes
+it a good fit for long-running agent sessions that need to persist state
+across gaps in traffic.
 
 ## Where to write the file
 
@@ -68,12 +67,6 @@ import type { Sandbox as SuperserveSandbox } from '@superserve/sdk';
 
 export interface SuperserveConnectorOptions {
 	/**
-	 * Default working directory for `exec()` calls when the caller doesn't
-	 * pass one. Defaults to `/home/user` (the Superserve guest agent's
-	 * default user home).
-	 */
-	cwd?: string;
-	/**
 	 * Cleanup behavior when the session is destroyed.
 	 *
 	 * - `false` (default): No cleanup — user manages the sandbox lifecycle.
@@ -100,10 +93,11 @@ function shellQuote(value: string): string {
  *
  * Filesystem operations split across two surfaces:
  *
- *   - `read` / `readFileBuffer` / `write` use Superserve's data-plane file
- *     API (`sandbox.files.*`) directly. Note: paths must be absolute
- *     (start with `/`) and must not contain `..` segments — the SDK
- *     validates this client-side and throws `ValidationError` on bad input.
+ *   - `readFile` / `readFileBuffer` / `writeFile` use Superserve's
+ *     data-plane file API (`sandbox.files.*`) directly. Note: paths must
+ *     be absolute (start with `/`) and must not contain `..` segments —
+ *     the SDK validates this client-side and throws `ValidationError` on
+ *     bad input.
  *   - `stat`, `readdir`, `exists`, `mkdir`, `rm` have no native SDK
  *     analogue, so they shell out via `exec()`. The default Superserve
  *     base image ships GNU coreutils, so the standard `stat -c`, `ls -A1`,
@@ -124,6 +118,9 @@ class SuperserveSandboxApi implements SandboxApi {
 	}
 
 	async writeFile(path: string, content: string | Uint8Array): Promise<void> {
+		// `sandbox.files.write` accepts `string | Uint8Array | ArrayBuffer | Blob`
+		// and copies Uint8Array into a plain ArrayBuffer internally, so we can
+		// pass content straight through.
 		await this.sandbox.files.write(path, content);
 	}
 
@@ -202,7 +199,6 @@ class SuperserveSandboxApi implements SandboxApi {
 		command: string,
 		options?: { cwd?: string; env?: Record<string, string>; timeout?: number },
 	): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-		const startedAt = Date.now();
 		try {
 			const result = await this.sandbox.commands.run(command, {
 				cwd: options?.cwd,
@@ -216,23 +212,14 @@ class SuperserveSandboxApi implements SandboxApi {
 				exitCode: result.exitCode,
 			};
 		} catch (err) {
-			// Map a server error that landed within the timeout window to
-			// exit 124, matching the Flue exec contract.
-			const timeout = options?.timeout;
-			const isServerError =
+			const isTimeout =
 				err !== null &&
 				typeof err === 'object' &&
-				(err as { name?: string }).name === 'ServerError';
-			const elapsed = Date.now() - startedAt;
-			if (
-				isServerError &&
-				typeof timeout === 'number' &&
-				timeout > 0 &&
-				elapsed >= timeout * 1000 * 0.8
-			) {
+				(err as { name?: string }).name === 'TimeoutError';
+			if (isTimeout) {
 				return {
 					stdout: '',
-					stderr: `[flue:superserve] command timed out after ${timeout}s`,
+					stderr: `[flue:superserve] command timed out after ${options?.timeout}s`,
 					exitCode: 124,
 				};
 			}
@@ -252,7 +239,7 @@ export function superserve(
 ): SandboxFactory {
 	return {
 		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? options?.cwd ?? '/home/user';
+			const sandboxCwd = cwd ?? '/home/user';
 			const api = new SuperserveSandboxApi(sandbox);
 
 			let cleanupFn: (() => Promise<void>) | undefined;
