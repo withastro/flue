@@ -32,7 +32,7 @@
  *   - malformed `aliases` (not an array, contains non-strings or empty strings)
  *   - any name (slug or alias) resolving to two different connectors
  */
-import { readdir, readFile, writeFile, mkdir } from 'node:fs/promises';
+import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -76,6 +76,7 @@ function parseFrontmatter(source: string, file: string): Frontmatter {
 		throw new Error(`[connectors] ${file}: frontmatter is not closed (no trailing '---').`);
 	}
 	const json = source.slice(4, end).trim();
+	// biome-ignore lint/suspicious/noExplicitAny: it should be addressed
 	let parsed: any;
 	try {
 		parsed = JSON.parse(json);

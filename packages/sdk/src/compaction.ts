@@ -7,7 +7,6 @@
  * 2. Overflow — LLM returned context overflow. Compact, then auto-retry.
  */
 import type { AgentMessage } from '@mariozechner/pi-agent-core';
-import { completeSimple, isContextOverflow } from '@mariozechner/pi-ai';
 import type {
 	AssistantMessage,
 	Message,
@@ -18,8 +17,9 @@ import type {
 	Usage,
 	UserMessage,
 } from '@mariozechner/pi-ai';
-import { addUsage, fromProviderUsage } from './usage.ts';
+import { completeSimple, isContextOverflow } from '@mariozechner/pi-ai';
 import type { PromptUsage } from './types.ts';
+import { addUsage, fromProviderUsage } from './usage.ts';
 
 // ─── Settings ───────────────────────────────────────────────────────────────
 

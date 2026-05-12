@@ -1,7 +1,7 @@
-import type { APIRoute } from 'astro';
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { APIRoute } from 'astro';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
 const docsDir = join(repoRoot, 'docs');

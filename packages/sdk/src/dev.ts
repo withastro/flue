@@ -32,7 +32,7 @@
  * Node path treats every non-ignored change as a rebuild trigger; the
  * Cloudflare path filters to "structural" changes only.
  */
-import { spawn, type ChildProcess } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import * as fs from 'node:fs';
 import * as path from 'node:path';

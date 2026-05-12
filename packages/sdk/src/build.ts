@@ -1,11 +1,11 @@
-import * as esbuild from 'esbuild';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import * as ts from 'typescript';
+import * as esbuild from 'esbuild';
 import { packageUpSync } from 'package-up';
-import { parseFrontmatterFile } from './context.ts';
+import * as ts from 'typescript';
 import { CloudflarePlugin } from './build-plugin-cloudflare.ts';
 import { NodePlugin } from './build-plugin-node.ts';
+import { parseFrontmatterFile } from './context.ts';
 import type {
 	AgentInfo,
 	BuildContext,

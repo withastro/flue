@@ -3,10 +3,10 @@
  * Without args: empty in-memory. With R2 bucket: persistent files via DO SQLite + R2.
  */
 import {
-	Workspace,
-	WorkspaceFileSystem,
 	type FileSystem as CfFileSystem,
 	type FsStat as CfFsStat,
+	Workspace,
+	WorkspaceFileSystem,
 } from '@cloudflare/shell';
 import { getCloudflareContext } from './context.ts';
 

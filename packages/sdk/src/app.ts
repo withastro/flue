@@ -29,18 +29,19 @@
  *     export default app;
  *
  */
+
+export { type FlueEventSubscriber, observe } from './runtime/events.ts';
 export { flue } from './runtime/flue-app.ts';
 export {
-	registerProvider,
-	registerApiProvider,
-	configureProvider,
-	type ProviderRegistration,
-	type ProviderConfiguration,
-	type HttpProviderRegistration,
-	type CloudflareAIBindingRegistration,
 	type CloudflareAIBinding,
+	type CloudflareAIBindingRegistration,
+	configureProvider,
+	type HttpProviderRegistration,
+	type ProviderConfiguration,
+	type ProviderRegistration,
+	registerApiProvider,
+	registerProvider,
 } from './runtime/providers.ts';
-export { observe, type FlueEventSubscriber } from './runtime/events.ts';
 
 /**
  * Shape contract for a user-authored `app.ts` default export. Any

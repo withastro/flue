@@ -18,7 +18,7 @@
 		"format:style": "prettier . --cache --write --list-different",
 		"changeset": "changeset",
 		"version-packages": "changeset version",
-		"release": "turbo build && changeset publish"
+		"release": "turbo build && changeset publish --provenance"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.2.0",

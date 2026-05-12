@@ -1,9 +1,9 @@
 /** Runtime provider registries consumed by `resolveModel` and Session. */
 
 import {
-	registerApiProvider as piRegisterApiProvider,
 	type Api,
 	type Model,
+	registerApiProvider as piRegisterApiProvider,
 } from '@mariozechner/pi-ai';
 import type { CloudflareGatewayOptions } from '../cloudflare/gateway.ts';
 import {

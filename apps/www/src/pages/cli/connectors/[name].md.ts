@@ -20,10 +20,11 @@
  * `packages/cli/scripts/generate-connector-index.ts`. If you change the
  * filename convention here, update that script too.
  */
-import type { APIRoute, GetStaticPaths } from 'astro';
+
 import { readdir, readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { APIRoute, GetStaticPaths } from 'astro';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../../../..');
 const connectorsDir = join(repoRoot, 'connectors');

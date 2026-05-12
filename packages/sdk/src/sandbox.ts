@@ -1,6 +1,9 @@
 /**
  * Sandbox adapters: wraps BashFactory or SandboxApi into SessionEnv.
  */
+
+import { abortErrorFor } from './abort.ts';
+import { normalizePath } from './session.ts';
 import type {
 	BashFactory,
 	BashLike,
@@ -9,9 +12,8 @@ import type {
 	SessionEnv,
 	ShellResult,
 } from './types.ts';
-import { abortErrorFor } from './abort.ts';
-import { normalizePath } from './session.ts';
-export type { SandboxFactory, SessionEnv, FileStat } from './types.ts';
+
+export type { FileStat, SandboxFactory, SessionEnv } from './types.ts';
 
 /** Adapt a SessionEnv to the public FlueFs surface. */
 export function createFlueFs(env: SessionEnv): FlueFs {

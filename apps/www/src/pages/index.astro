@@ -2,7 +2,7 @@
 import "../styles/global.css";
 import { Code } from "astro:components";
 import { createHighlighter } from "shiki";
-import { HERO, SUPPORT_AGENT, ISSUE_TRIAGE, CODING_AGENT, DATA_AGENT, COPY_PROMPT } from "../code-snippets";
+import { CODING_AGENT, COPY_PROMPT, DATA_AGENT, HERO, ISSUE_TRIAGE, SUPPORT_AGENT } from "../code-snippets.ts";
 
 const replaces: Record<string, string[]> = {
   support: ['Intercom AI', 'Zendesk AI', 'Ada'],

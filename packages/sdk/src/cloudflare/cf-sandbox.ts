@@ -1,7 +1,7 @@
 /** Wraps a @cloudflare/sandbox instance (from getSandbox()) into SessionEnv. */
 import { abortErrorFor } from '../abort.ts';
-import { createSandboxSessionEnv } from '../sandbox.ts';
 import type { SandboxApi } from '../sandbox.ts';
+import { createSandboxSessionEnv } from '../sandbox.ts';
 import type { SessionEnv } from '../types.ts';
 
 export async function cfSandboxToSessionEnv(
