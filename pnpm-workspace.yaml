@@ -1,3 +1,12 @@
 packages: [packages/*, examples/*, apps/*]
-
+allowBuilds:
+  '@google/genai': false
+  '@mongodb-js/zstd': false
+  core-js-pure: false
+  esbuild: false
+  node-liblzma: false
+  protobufjs: false
+  sharp: true
+  workerd: false
 minimumReleaseAge: 1440
+resolutionMode: highest
