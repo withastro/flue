@@ -15,17 +15,23 @@ import * as path from 'node:path';
 import { promisify } from 'node:util';
 
 import { abortErrorFor } from '../abort.ts';
-import type { FileStat, SessionEnv, ShellResult } from '../types.ts';
+import type { FileStat, LocalProcessEnv, SessionEnv, ShellResult } from '../types.ts';
 
 const execAsync = promisify(execCb);
 
 export interface LocalSessionEnvOptions {
 	/** Working directory. Defaults to `process.cwd()`. */
 	cwd?: string;
+	/**
+	 * Base environment inherited by child processes. Defaults to `process.env`.
+	 * Per-call `exec({ env })` values are layered on top of this base.
+	 */
+	processEnv?: LocalProcessEnv;
 }
 
 export function createLocalSessionEnv(options: LocalSessionEnvOptions = {}): SessionEnv {
 	const cwd = path.resolve(options.cwd ?? process.cwd());
+	const baseEnv = resolveLocalProcessEnv(options.processEnv);
 
 	const resolvePath = (p: string): string => (path.isAbsolute(p) ? p : path.resolve(cwd, p));
 
@@ -52,7 +58,7 @@ export function createLocalSessionEnv(options: LocalSessionEnvOptions = {}): Ses
 			try {
 				const { stdout, stderr } = await execAsync(command, {
 					cwd: opts?.cwd ? resolvePath(opts.cwd) : cwd,
-					env: opts?.env ? { ...process.env, ...opts.env } : process.env,
+					env: opts?.env ? { ...baseEnv, ...opts.env } : baseEnv,
 					signal: mergedSignal,
 					// Return strings (not Buffers) and lift the default 1MB cap.
 					encoding: 'utf8',
@@ -136,4 +142,23 @@ export function createLocalSessionEnv(options: LocalSessionEnvOptions = {}): Ses
 		cwd,
 		resolvePath,
 	};
+}
+
+function resolveLocalProcessEnv(policy: LocalProcessEnv | undefined): NodeJS.ProcessEnv {
+	if (policy === undefined || policy === 'inherit') return process.env;
+	if (policy === 'limited') return limitedProcessEnv(process.env);
+	return { ...policy };
+}
+
+function limitedProcessEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+	const limited: NodeJS.ProcessEnv = {};
+	copyEnvValue(limited, env, 'PATH');
+	copyEnvValue(limited, env, 'Path');
+	copyEnvValue(limited, env, 'HOME');
+	return limited;
+}
+
+function copyEnvValue(target: NodeJS.ProcessEnv, source: NodeJS.ProcessEnv, key: string): void {
+	const value = source[key];
+	if (typeof value === 'string') target[key] = value;
 }

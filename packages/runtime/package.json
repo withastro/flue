@@ -43,6 +43,7 @@
 	},
 	"scripts": {
 		"build": "tsdown",
+		"check:local-env": "tsx scripts/local-process-env-smoke.ts",
 		"check:types": "tsc --noEmit",
 		"prepublishOnly": "cp ../../README.md ."
 	},

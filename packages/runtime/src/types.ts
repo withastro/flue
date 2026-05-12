@@ -288,6 +288,15 @@ export interface FlueLogger {
 	error(message: string, attributes?: Record<string, unknown>): void;
 }
 
+/**
+ * Base environment policy for Node's `sandbox: 'local'` child processes.
+ *
+ * - `'inherit'`: pass `process.env` through. Default, preserving current behavior.
+ * - `'limited'`: pass only PATH/Path and HOME from `process.env`.
+ * - object: exact base environment. Per-call `shell({ env })` values are still overlaid.
+ */
+export type LocalProcessEnv = 'inherit' | 'limited' | Record<string, string>;
+
 /** Harness options. A default model is required unless explicitly disabled with `model: false`. */
 export interface AgentInit {
 	/** Harness name. Defaults to `"default"`. */
@@ -306,6 +315,12 @@ export interface AgentInit {
 	 * - `SandboxFactory`: Connector-wrapped external sandbox (Daytona, CF Containers, etc.).
 	 */
 	sandbox?: 'empty' | 'local' | SandboxFactory | BashFactory;
+
+	/**
+	 * Base child-process environment for `sandbox: 'local'` on Node. Ignored for
+	 * every other sandbox mode, where the sandbox connector owns its environment.
+	 */
+	processEnv?: LocalProcessEnv;
 
 	/** Defaults to platform store (in-memory on Node, DO SQLite on Cloudflare). */
 	persist?: SessionStore;
@@ -721,4 +736,3 @@ export type FlueEvent = (
 };
 
 export type FlueEventCallback = (event: FlueEvent) => void | Promise<void>;
-

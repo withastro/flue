@@ -24,7 +24,7 @@ export interface FlueContextConfig {
 	env: Record<string, any>;
 	agentConfig: AgentConfig;
 	createDefaultEnv: () => Promise<SessionEnv>;
-	createLocalEnv: () => Promise<SessionEnv>;
+	createLocalEnv: (options?: { processEnv?: AgentInit['processEnv'] }) => Promise<SessionEnv>;
 	defaultStore: SessionStore;
 	/**
 	 * Platform-specific sandbox resolver hook. Called before default resolution.
@@ -120,6 +120,9 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			if (options.model !== false && typeof options.model !== 'string') {
 				throw new Error('[flue] init({ model }) must be a model string or false.');
 			}
+			if (options.processEnv !== undefined && options.sandbox !== 'local') {
+				throw new Error('[flue] init({ processEnv }) is only supported with sandbox: "local".');
+			}
 
 			const name = options.name ?? 'default';
 			if (initializedHarnessNames.has(name)) {
@@ -130,7 +133,13 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			try {
 				assertRoleExists(config.agentConfig.roles, options.role);
 				const sandbox = options.sandbox;
-				const baseEnv = await resolveSessionEnv(config.id, sandbox, config, options.cwd);
+				const baseEnv = await resolveSessionEnv(
+					config.id,
+					sandbox,
+					config,
+					options.cwd,
+					options.processEnv,
+				);
 				const env = options.cwd ? createCwdSessionEnv(baseEnv, options.cwd) : baseEnv;
 				const store: SessionStore = options.persist ?? config.defaultStore;
 				const localContext = await discoverSessionContext(env);
@@ -235,12 +244,13 @@ async function resolveSessionEnv(
 	sandbox: AgentInit['sandbox'],
 	config: FlueContextConfig,
 	cwd: string | undefined,
+	processEnv: AgentInit['processEnv'],
 ): Promise<SessionEnv> {
 	if (sandbox === undefined || sandbox === 'empty') {
 		return config.createDefaultEnv();
 	}
 	if (sandbox === 'local') {
-		return config.createLocalEnv();
+		return config.createLocalEnv({ processEnv });
 	}
 	if (isBashFactory(sandbox)) {
 		return bashFactoryToSessionEnv(sandbox);

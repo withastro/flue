@@ -107,8 +107,8 @@ async function createDefaultEnv() {
  * when flue itself is running inside an external sandbox / container /
  * CI runner that already provides the isolation boundary.
  */
-async function createLocalEnv() {
-  return createLocalSessionEnv();
+async function createLocalEnv(options) {
+  return createLocalSessionEnv(options);
 }
 
 // Default persistence store for Node — in-memory, process lifetime.
