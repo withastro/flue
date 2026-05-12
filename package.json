@@ -15,10 +15,15 @@
 		"check:types": "turbo run check:types",
 		"format": "turbo run format:lint format:style",
 		"format:lint": "biome check . --write",
-		"format:style": "prettier . --cache --write --list-different"
+		"format:style": "prettier . --cache --write --list-different",
+		"changeset": "changeset",
+		"version-packages": "changeset version",
+		"release": "turbo build && changeset publish"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.2.0",
+		"@changesets/changelog-github": "^0.7.0",
+		"@changesets/cli": "^2.31.0",
 		"@flue/sdk": "workspace:*",
 		"@types/node": "^22.10.10",
 		"bgproc": "^0.2.0",
