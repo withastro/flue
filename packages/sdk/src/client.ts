@@ -123,8 +123,13 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			try {
 				assertRoleExists(config.agentConfig.roles, options.role);
 				const sandbox = options.sandbox;
-				const baseEnv = await resolveSessionEnv(config.id, sandbox, config);
-				const env = options.cwd
+				const { env: baseEnv, cwdHandled } = await resolveSessionEnv(
+					config.id,
+					sandbox,
+					config,
+					options.cwd,
+				);
+				const env = options.cwd && !cwdHandled
 					? createCwdSessionEnv(baseEnv, baseEnv.resolvePath(options.cwd))
 					: baseEnv;
 				const store: SessionStore = options.persist ?? config.defaultStore;
@@ -224,20 +229,26 @@ function isSandboxFactory(value: unknown): value is SandboxFactory {
 	);
 }
 
+interface ResolvedSessionEnv {
+	env: SessionEnv;
+	cwdHandled: boolean;
+}
+
 /** Resolve sandbox option to SessionEnv: empty → local → BashFactory → platform hook → SandboxFactory. */
 async function resolveSessionEnv(
 	id: string,
 	sandbox: AgentInit['sandbox'],
 	config: FlueContextConfig,
-): Promise<SessionEnv> {
+	cwd: string | undefined,
+): Promise<ResolvedSessionEnv> {
 	if (sandbox === undefined || sandbox === 'empty') {
-		return config.createDefaultEnv();
+		return { env: await config.createDefaultEnv(), cwdHandled: false };
 	}
 	if (sandbox === 'local') {
-		return config.createLocalEnv();
+		return { env: await config.createLocalEnv(), cwdHandled: false };
 	}
 	if (isBashFactory(sandbox)) {
-		return bashFactoryToSessionEnv(sandbox);
+		return { env: await bashFactoryToSessionEnv(sandbox), cwdHandled: false };
 	}
 	if (isBashLike(sandbox)) {
 		throw new Error(
@@ -247,10 +258,10 @@ async function resolveSessionEnv(
 	}
 	if (config.resolveSandbox) {
 		const resolved = await config.resolveSandbox(sandbox);
-		if (resolved) return resolved;
+		if (resolved) return { env: resolved, cwdHandled: false };
 	}
 	if (isSandboxFactory(sandbox)) {
-		return sandbox.createSessionEnv({ id });
+		return { env: await sandbox.createSessionEnv({ id, cwd }), cwdHandled: true };
 	}
 	throw new Error('[flue] Invalid sandbox option passed to init().');
 }

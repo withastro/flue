@@ -74,7 +74,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * });
  * ```
  */
-import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
+import { createSandboxSessionEnv, resolveSandboxCwd } from '@flue/sdk/sandbox';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/sdk/sandbox';
 import type { Machine } from 'smolvm-embedded';
 
@@ -172,7 +172,7 @@ class SmolvmSandboxApi implements SandboxApi {
 export function smolvm(machine: Machine): SandboxFactory {
 	return {
 		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? '/workspace';
+			const sandboxCwd = resolveSandboxCwd('/workspace', cwd);
 			const api = new SmolvmSandboxApi(machine);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},

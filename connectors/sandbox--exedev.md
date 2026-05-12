@@ -85,7 +85,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * }
  * ```
  */
-import { createSandboxSessionEnv } from "@flue/sdk/sandbox";
+import { createSandboxSessionEnv, resolveSandboxCwd } from "@flue/sdk/sandbox";
 import type {
   FileStat,
   SandboxApi,
@@ -620,16 +620,17 @@ export function exedev(vm: ExeDevVm | string, options?: ExeDevConnectorOptions):
       const { ssh } = await sshConnect(resolvedVm, options ?? {});
       const api = new ExeDevSandboxApi(ssh);
 
-      let sandboxCwd = cwd ?? "/home/user";
+      let defaultCwd = "/home/user";
       if (!cwd) {
         try {
           const { stdout } = await api.exec("echo $HOME");
           const detected = stdout.trim();
-          if (detected) sandboxCwd = detected;
+          if (detected) defaultCwd = detected;
         } catch {
           // Fall back to /home/user.
         }
       }
+      const sandboxCwd = resolveSandboxCwd(defaultCwd, cwd);
 
       return createSandboxSessionEnv(api, sandboxCwd);
     },

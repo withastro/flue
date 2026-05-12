@@ -54,7 +54,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * const session = await harness.session();
  * ```
  */
-import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
+import { createSandboxSessionEnv, resolveSandboxCwd } from '@flue/sdk/sandbox';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/sdk/sandbox';
 import type { Sandbox as VercelSandbox } from '@vercel/sandbox';
 
@@ -170,7 +170,7 @@ class VercelSandboxApi implements SandboxApi {
 export function vercel(sandbox: VercelSandbox): SandboxFactory {
 	return {
 		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? '/vercel/sandbox';
+			const sandboxCwd = resolveSandboxCwd('/vercel/sandbox', cwd);
 			const api = new VercelSandboxApi(sandbox);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},

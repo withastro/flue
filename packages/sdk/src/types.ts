@@ -626,7 +626,13 @@ export interface ShellResult {
 
 // ─── Sandbox ────────────────────────────────────────────────────────────────
 
-/** Wraps external sandboxes (Daytona, CF Containers, etc.) into Flue's SessionEnv. */
+/**
+ * Wraps external sandboxes (Daytona, CF Containers, etc.) into Flue's SessionEnv.
+ *
+ * Flue passes AgentInit.cwd through as `cwd` when provided. Connector factories
+ * should resolve relative cwd values against their provider's default cwd before
+ * returning a SessionEnv.
+ */
 export interface SandboxFactory {
 	createSessionEnv(options: { id: string; cwd?: string }): Promise<SessionEnv>;
 }

@@ -47,6 +47,7 @@
 	},
 	"scripts": {
 		"build": "tsdown",
+		"check:smoke": "tsx scripts/cwd-contract-smoke.ts",
 		"check:types": "tsc --noEmit",
 		"prepublishOnly": "cp ../../README.md ."
 	},

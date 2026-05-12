@@ -55,7 +55,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * const session = await harness.session();
  * ```
  */
-import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
+import { createSandboxSessionEnv, resolveSandboxCwd } from '@flue/sdk/sandbox';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/sdk/sandbox';
 import type { Sandbox as DaytonaSandbox } from '@daytona/sdk';
 
@@ -144,7 +144,7 @@ class DaytonaSandboxApi implements SandboxApi {
 export function daytona(sandbox: DaytonaSandbox): SandboxFactory {
 	return {
 		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? (await sandbox.getWorkDir()) ?? '/home/daytona';
+			const sandboxCwd = resolveSandboxCwd((await sandbox.getWorkDir()) ?? '/home/daytona', cwd);
 			const api = new DaytonaSandboxApi(sandbox);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},

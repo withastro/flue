@@ -62,7 +62,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * const session = await harness.session();
  * ```
  */
-import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
+import { createSandboxSessionEnv, resolveSandboxCwd } from '@flue/sdk/sandbox';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/sdk/sandbox';
 import type { Sandbox as E2BSandbox } from 'e2b';
 
@@ -170,7 +170,7 @@ export function e2b(sandbox: E2BSandbox): SandboxFactory {
 			// The E2B base template's default user is `user` with home
 			// directory /home/user. Sessions inherit this unless the caller
 			// overrides cwd.
-			const sandboxCwd = cwd ?? '/home/user';
+			const sandboxCwd = resolveSandboxCwd('/home/user', cwd);
 			const api = new E2BSandboxApi(sandbox);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},

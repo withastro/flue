@@ -10,7 +10,7 @@
 	"scripts": {
 		"dev": "turbo dev",
 		"build": "turbo build",
-		"check": "turbo run build check:lint check:types",
+		"check": "turbo run build check:lint check:types check:smoke",
 		"check:lint": "biome lint .",
 		"check:types": "turbo run check:types",
 		"format": "turbo run format:lint format:style",

@@ -33,11 +33,14 @@ a factory function (e.g. `daytona(...)`) returning a `SandboxFactory`.
 A connector is one TypeScript file. It exports a factory function that takes
 an already-initialized provider sandbox plus options, and returns a
 `SandboxFactory`. Flue calls `factory.createSessionEnv({ id, cwd })` once per
-session and uses the returned `SessionEnv` for all shell/file operations.
+session and uses the returned `SessionEnv` for all shell/file operations. The
+`cwd` value is the caller's `init({ cwd })` value when provided. Use
+`resolveSandboxCwd(defaultCwd, cwd)` to resolve relative cwd values against
+your provider's default cwd before creating the `SessionEnv`.
 
 ```ts
 // .flue/connectors/<provider>.ts (or ./connectors/<provider>.ts)
-import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
+import { createSandboxSessionEnv, resolveSandboxCwd } from '@flue/sdk/sandbox';
 import type {
   SandboxApi,
   SandboxFactory,
@@ -54,7 +57,7 @@ class ProviderSandboxApi implements SandboxApi {
 export function provider(sandbox: ProviderSandbox): SandboxFactory {
   return {
     async createSessionEnv({ cwd }): Promise<SessionEnv> {
-      const sandboxCwd = cwd ?? '/workspace'; // pick a sensible default
+      const sandboxCwd = resolveSandboxCwd('/workspace', cwd); // pick a sensible default
       const api = new ProviderSandboxApi(sandbox);
       return createSandboxSessionEnv(api, sandboxCwd);
     },
@@ -74,6 +77,8 @@ All from `@flue/sdk/sandbox`:
 
 - `createSandboxSessionEnv(api, cwd)` — wraps your `SandboxApi` into a
   `SessionEnv` that Flue can drive.
+- `resolveSandboxCwd(defaultCwd, cwd?)` — resolves Flue's optional cwd against
+  your provider's default cwd.
 - `SandboxApi` — the interface you implement.
 - `SandboxFactory` — what your factory returns.
 - `SessionEnv` — what `createSandboxSessionEnv` returns. You don't construct

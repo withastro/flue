@@ -73,7 +73,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * const session = await harness.session();
  * ```
  */
-import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
+import { createSandboxSessionEnv, resolveSandboxCwd } from '@flue/sdk/sandbox';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/sdk/sandbox';
 import type { Workspace as MirageWorkspace } from '@struktoai/mirage-core';
 
@@ -297,7 +297,7 @@ export function mirage(
 			// Mirage workspaces are mount-rooted at `/`. `/` is a safe no-op
 			// default; pin via `options.cwd` to default to a specific writable
 			// mount (e.g. `/data`).
-			const sandboxCwd = cwd ?? options?.cwd ?? '/';
+			const sandboxCwd = resolveSandboxCwd(options?.cwd ?? '/', cwd);
 			const api = new MirageSandboxApi(workspace, id);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},

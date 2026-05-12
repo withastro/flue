@@ -71,7 +71,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * const session = await harness.session();
  * ```
  */
-import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
+import { createSandboxSessionEnv, resolveSandboxCwd } from '@flue/sdk/sandbox';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/sdk/sandbox';
 import type { Sandbox as ModalSandbox } from 'modal';
 
@@ -250,7 +250,7 @@ class ModalSandboxApi implements SandboxApi {
 export function modal(sandbox: ModalSandbox, options?: ModalConnectorOptions): SandboxFactory {
 	return {
 		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? options?.cwd ?? '/';
+			const sandboxCwd = resolveSandboxCwd(options?.cwd ?? '/', cwd);
 			const api = new ModalSandboxApi(sandbox);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},

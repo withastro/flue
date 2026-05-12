@@ -59,7 +59,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * const session = await harness.session();
  * ```
  */
-import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
+import { createSandboxSessionEnv, resolveSandboxCwd } from '@flue/sdk/sandbox';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/sdk/sandbox';
 import type { Box as BoxdBox } from '@boxd-sh/sdk';
 
@@ -234,7 +234,7 @@ export function boxd(box: BoxdBox, options?: BoxdConnectorOptions): SandboxFacto
 	let readyPromise: Promise<void> | undefined;
 	return {
 		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? options?.cwd ?? '/home/boxd';
+			const sandboxCwd = resolveSandboxCwd(options?.cwd ?? '/home/boxd', cwd);
 			// Probe once per box, not once per session.
 			readyPromise ??= waitForReady(box, options?.readyTimeoutMs ?? 30_000);
 			await readyPromise;

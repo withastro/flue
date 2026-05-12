@@ -56,6 +56,18 @@ export function createCwdSessionEnv(parentEnv: SessionEnv, cwd: string): Session
 	};
 }
 
+/**
+ * Resolve an optional user-provided cwd against a sandbox provider's default cwd.
+ * Connector factories should use this before calling createSandboxSessionEnv().
+ */
+export function resolveSandboxCwd(defaultCwd: string, cwd?: string): string {
+	const normalizedDefault = normalizePath(defaultCwd);
+	if (!cwd) return normalizedDefault;
+	if (cwd.startsWith('/')) return normalizePath(cwd);
+	if (normalizedDefault === '/') return normalizePath(`/${cwd}`);
+	return normalizePath(`${normalizedDefault}/${cwd}`);
+}
+
 export async function bashFactoryToSessionEnv(factory: BashFactory): Promise<SessionEnv> {
 	const bash = await factory();
 	assertBashLike(bash);

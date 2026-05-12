@@ -63,7 +63,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * ```
  */
 import { spawn } from 'node:child_process';
-import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
+import { createSandboxSessionEnv, resolveSandboxCwd } from '@flue/sdk/sandbox';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/sdk/sandbox';
 
 export interface IsloConnectorOptions {
@@ -209,7 +209,7 @@ export function islo(name: string, options?: IsloConnectorOptions): SandboxFacto
 	const cliPath = options?.cliPath ?? 'islo';
 	return {
 		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? options?.cwd ?? '/workspace';
+			const sandboxCwd = resolveSandboxCwd(options?.cwd ?? '/workspace', cwd);
 			const api = new IsloSandboxApi(name, cliPath);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},
