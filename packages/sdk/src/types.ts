@@ -304,8 +304,10 @@ export interface AgentInit {
 	 *   / CI runner that already provides the isolation boundary.
 	 * - `BashFactory`: User-configured just-bash factory. Called once to construct the runtime.
 	 * - `SandboxFactory`: Connector-wrapped external sandbox (Daytona, CF Containers, etc.).
+	 * - Platform sandbox object: recognized by the active target's resolver, such as
+	 *   `@cloudflare/sandbox` stubs on the Cloudflare target.
 	 */
-	sandbox?: 'empty' | 'local' | SandboxFactory | BashFactory;
+	sandbox?: 'empty' | 'local' | SandboxFactory | BashFactory | object;
 
 	/** Defaults to platform store (in-memory on Node, DO SQLite on Cloudflare). */
 	persist?: SessionStore;

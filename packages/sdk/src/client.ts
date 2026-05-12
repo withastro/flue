@@ -123,8 +123,10 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			try {
 				assertRoleExists(config.agentConfig.roles, options.role);
 				const sandbox = options.sandbox;
-				const baseEnv = await resolveSessionEnv(config.id, sandbox, config, options.cwd);
-				const env = options.cwd ? createCwdSessionEnv(baseEnv, options.cwd) : baseEnv;
+				const baseEnv = await resolveSessionEnv(config.id, sandbox, config);
+				const env = options.cwd
+					? createCwdSessionEnv(baseEnv, baseEnv.resolvePath(options.cwd))
+					: baseEnv;
 				const store: SessionStore = options.persist ?? config.defaultStore;
 				const localContext = await discoverSessionContext(env);
 
@@ -227,7 +229,6 @@ async function resolveSessionEnv(
 	id: string,
 	sandbox: AgentInit['sandbox'],
 	config: FlueContextConfig,
-	cwd: string | undefined,
 ): Promise<SessionEnv> {
 	if (sandbox === undefined || sandbox === 'empty') {
 		return config.createDefaultEnv();
@@ -249,7 +250,7 @@ async function resolveSessionEnv(
 		if (resolved) return resolved;
 	}
 	if (isSandboxFactory(sandbox)) {
-		return sandbox.createSessionEnv({ id, cwd });
+		return sandbox.createSessionEnv({ id });
 	}
 	throw new Error('[flue] Invalid sandbox option passed to init().');
 }

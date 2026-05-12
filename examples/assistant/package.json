@@ -2,6 +2,9 @@
 	"name": "assistant",
 	"private": true,
 	"type": "module",
+	"scripts": {
+		"check:types": "tsc --noEmit"
+	},
 	"dependencies": {
 		"@flue/sdk": "workspace:*",
 		"@cloudflare/sandbox": "*",

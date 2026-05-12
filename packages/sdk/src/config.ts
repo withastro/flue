@@ -166,7 +166,7 @@ export function resolveConfigPath(opts: ResolveConfigPathOptions): string | unde
  * Returns the raw module default — caller is responsible for validation.
  */
 async function loadConfigModule(absConfigPath: string): Promise<unknown> {
-	const fileUrl = pathToFileURL(absConfigPath).href + `?t=${Date.now()}`;
+	const fileUrl = `${pathToFileURL(absConfigPath).href}?t=${Date.now()}`;
 	try {
 		const mod = await import(fileUrl);
 		return mod.default ?? mod;
@@ -241,7 +241,10 @@ export async function resolveConfig(opts: ResolveConfigOptions): Promise<Resolve
 	const cwd = path.resolve(opts.cwd);
 	const searchFrom = path.resolve(opts.searchFrom ?? cwd);
 
-	const configPath = resolveConfigPath({ cwd: searchFrom, configFile: opts.configFile });
+	const configPath =
+		typeof opts.configFile === 'string'
+			? resolveConfigPath({ cwd, configFile: opts.configFile })
+			: resolveConfigPath({ cwd: searchFrom, configFile: opts.configFile });
 
 	let fileConfig: UserFlueConfig = {};
 	if (configPath) {

@@ -25,5 +25,6 @@
 
 		// DX
 		"preserveWatchOutput": true
-	}
+	},
+	"exclude": ["dist", "node_modules"]
 }

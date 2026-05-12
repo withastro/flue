@@ -195,8 +195,7 @@ async function* iterateSseChunks(body: ReadableStream<Uint8Array>): AsyncIterabl
 	const decoder = new TextDecoder();
 	let buffer = '';
 	try {
-		// biome-ignore lint/suspicious/noConstantCondition: explicit stream loop
-		while (true) {
+		for (;;) {
 			const { done, value } = await reader.read();
 			if (done) {
 				if (buffer.trim().length > 0) {

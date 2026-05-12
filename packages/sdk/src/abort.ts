@@ -53,6 +53,7 @@ export function createCallHandle<T>(
 		abort(reason?: unknown) {
 			controller.abort(reason);
 		},
+		// biome-ignore lint/suspicious/noThenProperty: CallHandle intentionally implements PromiseLike so callers can await it.
 		then(onFulfilled, onRejected) {
 			return promise.then(onFulfilled, onRejected);
 		},

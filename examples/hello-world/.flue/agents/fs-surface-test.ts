@@ -28,8 +28,8 @@ export default async function ({ init }: FlueContext) {
 	check('session.fs writeFile/readFile round-trip', sRead === 'session.fs content');
 
 	// agent.fs round-trip
-	await agent.fs.writeFile('/tmp/agent.txt', 'agent.fs content');
-	const aRead = await agent.fs.readFile('/tmp/agent.txt');
+	await harness.fs.writeFile('/tmp/agent.txt', 'agent.fs content');
+	const aRead = await harness.fs.readFile('/tmp/agent.txt');
 	check('agent.fs writeFile/readFile round-trip', aRead === 'agent.fs content');
 
 	// session.fs writes are visible to session.shell
@@ -38,8 +38,8 @@ export default async function ({ init }: FlueContext) {
 	check('session.fs visible to session.shell', viaShell.stdout.trim() === 'staged by SDK');
 
 	// agent.fs writes are visible to agent.shell
-	await agent.fs.writeFile('/tmp/agent-visible.txt', 'staged by agent.fs');
-	const aViaShell = await agent.shell('cat /tmp/agent-visible.txt');
+	await harness.fs.writeFile('/tmp/agent-visible.txt', 'staged by agent.fs');
+	const aViaShell = await harness.shell('cat /tmp/agent-visible.txt');
 	check('agent.fs visible to agent.shell', aViaShell.stdout.trim() === 'staged by agent.fs');
 
 	// mkdir / readdir / exists / rm
