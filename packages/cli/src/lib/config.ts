@@ -60,7 +60,7 @@ export interface UserFlueConfig {
 }
 
 /**
- * Resolved config — what the rest of the SDK consumes. All paths are
+ * Resolved config — what the rest of the CLI consumes. All paths are
  * absolute; all required fields are present.
  */
 export interface FlueConfig {
@@ -76,7 +76,7 @@ export interface FlueConfig {
  * `defineConfig`. Returns its argument unchanged.
  *
  * ```ts
- * import { defineConfig } from '@flue/sdk/config';
+ * import { defineConfig } from '@flue/cli/config';
  * export default defineConfig({ target: 'node' });
  * ```
  */
@@ -183,8 +183,8 @@ async function loadConfigModule(absConfigPath: string): Promise<unknown> {
 		if (code === 'ERR_UNKNOWN_FILE_EXTENSION') {
 			// Should be unreachable — the CLI bin precheck enforces a Node
 			// version that supports `.ts` natively. Surface a useful hint
-			// anyway in case someone bypasses the bin (e.g. consumes the SDK
-			// directly on an old Node).
+			// anyway in case someone bypasses the bin (e.g. consumes the config
+			// loader directly on an old Node).
 			throw new Error(
 				`[flue] Cannot load ${path.basename(absConfigPath)}: this Node ` +
 					`(v${process.versions.node}) does not support TypeScript natively. ` +
@@ -222,7 +222,7 @@ export interface ResolvedConfigResult {
 	configPath: string | undefined;
 	/** The merged-but-unresolved user config (config file + inline). */
 	userConfig: UserFlueConfig;
-	/** The fully-resolved config consumed by the rest of the SDK. */
+	/** The fully-resolved config consumed by the rest of the CLI. */
 	flueConfig: FlueConfig;
 }
 

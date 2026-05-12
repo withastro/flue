@@ -18,6 +18,11 @@ import type { ModelConfig, ProviderSettings } from './types.ts';
 
 export type { FlueContextConfig, FlueContextInternal } from './client.ts';
 export { createFlueContext } from './client.ts';
+// `parseFrontmatterFile` is used by the CLI's build pipeline (which lives in
+// `@flue/cli/src/lib/build.ts`) to extract role frontmatter at build time. It
+// is otherwise an internal helper of the runtime — exposed here, not on the
+// public root barrel, because it's tooling-facing.
+export { parseFrontmatterFile } from './context.ts';
 export { createDurableRunStore } from './cloudflare/run-store.ts';
 export { InMemoryRunStore } from './node/run-store.ts';
 export type { FlueRuntime } from './runtime/flue-app.ts';
@@ -41,12 +46,12 @@ export type {
 //     before the listener (Node) or `default.fetch` (Cloudflare) takes
 //     traffic.
 //
-//   - `createDefaultFlueApp` is the no-`app.ts` fallback. Lives in the
-//     SDK so the generated entry doesn't have to import `hono` (which
+//   - `createDefaultFlueApp` is the no-`app.ts` fallback. Lives in
+//     @flue/core so the generated entry doesn't have to import `hono` (which
 //     keeps user projects from needing it as a direct dep when they
 //     don't author their own `app.ts`).
 //
-// The user-facing `flue()` itself is re-exported from `@flue/sdk/app`, not here.
+// The user-facing `flue()` itself is re-exported from `@flue/core/app`, not here.
 export { handleAgentRequest } from './runtime/handle-agent.ts';
 export type { HandleRunRouteOptions } from './runtime/handle-run-routes.ts';
 export { handleRunRouteRequest } from './runtime/handle-run-routes.ts';

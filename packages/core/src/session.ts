@@ -118,7 +118,7 @@ interface RuntimeScopeOptions {
 	thinkingLevel?: ThinkingLevel;
 	callSite: string;
 	/**
-	 * SDK-injected pi-agent-core tools spliced in alongside builtins and custom
+	 * Framework-injected pi-agent-core tools spliced in alongside builtins and custom
 	 * tools for the duration of this call. Used by the schema'd-result flow to
 	 * inject `finish` and `give_up`.
 	 */
@@ -1586,7 +1586,7 @@ export class Session implements FlueSession {
 	 * the `finish` tool (success) or the `give_up` tool (typed error).
 	 *
 	 * If a turn ends with neither tool called, we send a brief reminder and
-	 * loop. There is no retry cap from the SDK's perspective: the model has a
+	 * loop. There is no retry cap from the framework's perspective: the model has a
 	 * clear escape hatch via `give_up`, the user has cancellation via `signal`,
 	 * and pi-agent-core has its own iteration limits as the final ceiling.
 	 * `MAX_FOLLOWUPS` is a defense-in-depth ceiling against pathological loops.

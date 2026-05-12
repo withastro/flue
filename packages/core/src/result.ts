@@ -3,7 +3,7 @@ import { toJsonSchema } from '@valibot/to-json-schema';
 import * as v from 'valibot';
 
 /**
- * Names of the SDK-injected tools used to capture schema-typed results.
+ * Names of the framework-injected tools used to capture schema-typed results.
  * Surfaced for diagnostics and logging; not part of the public API.
  */
 export const FINISH_TOOL_NAME = 'finish';

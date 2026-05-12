@@ -9,7 +9,7 @@
  *       registerProvider,
  *       configureProvider,
  *       type Fetchable,
- *     } from '@flue/sdk/app';
+ *     } from '@flue/core/app';
  *     import { Hono } from 'hono';
  *
  *     registerProvider('my-anthropic', {

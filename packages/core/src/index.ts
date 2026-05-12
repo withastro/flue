@@ -29,37 +29,25 @@ export type {
 	Role,
 	AgentConfig,
 	ModelConfig,
-	BuildOptions,
-	BuildPlugin,
-	BuildContext,
-	AgentInfo,
 	ToolDef,
 	ToolParameters,
 	ThinkingLevel,
 } from './types.ts';
 
-export { build, resolveSourceRoot } from './build.ts';
-export {
-	dev,
-	DEFAULT_DEV_PORT,
-	resolveEnvFiles,
-	parseEnvFiles,
-	type DevOptions,
-} from './dev.ts';
 export { createTools, BUILTIN_TOOL_NAMES } from './agent.ts';
 export { ResultUnavailableError } from './result.ts';
 
 // Note: the public Hono sub-app `flue()` and the `Fetchable` interface
-// for user-authored `app.ts` entries live at `@flue/sdk/app`, not on
-// the root barrel. The root re-exports build-time symbols (`build`,
-// `dev`) that transitively pull in heavy dependencies (notably
-// `typescript` for agent-file parsing); bundling those into a deploy
-// target's runtime breaks the build (`__filename is not defined`).
-// `@flue/sdk/app` is the runtime-safe path for user code; the root
-// is for tooling that drives the build.
+// for user-authored `app.ts` entries live at `@flue/core/app`, not on
+// the root barrel.
 //
 // Note: createFlueContext, InMemorySessionStore, bashFactoryToSessionEnv, and the
 // FlueContextConfig/FlueContextInternal types are intentionally NOT re-exported
 // here. They are internal runtime helpers consumed exclusively by the generated
-// server entry point — see `@flue/sdk/internal`. User agent code should not
+// server entry point — see `@flue/core/internal`. User agent code should not
 // need to import any of them directly.
+//
+// Note: `build`, `dev`, and the build/dev/env helpers used to be re-exported
+// from this barrel when the package was `@flue/sdk`. They moved into
+// `@flue/cli` when build tooling was extracted from the runtime. Import them
+// from `@flue/cli` if you're driving the build programmatically.

@@ -1,4 +1,4 @@
-import { defineConfig } from '@flue/sdk/config';
+import { defineConfig } from '@flue/cli/config';
 
 /**
  * `flue.config.ts` is the build-time config surface — it sets `target`,

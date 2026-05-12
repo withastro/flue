@@ -9,12 +9,8 @@ export default defineConfig({
 		'src/internal.ts',
 		'src/cloudflare/index.ts',
 		'src/node/index.ts',
-		'src/config.ts',
 	],
 	format: ['esm'],
 	dts: true,
 	clean: true,
-	// `wrangler` is a heavy peer/optional dep that the dev server lazy-imports
-	// at runtime. Keep it external so the SDK bundle stays small.
-	external: ['wrangler'],
 });

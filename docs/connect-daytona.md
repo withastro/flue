@@ -50,7 +50,7 @@ Instead of letting `init()` spin up a default virtual sandbox, create a Daytona 
 Applied to the Hello World agent from the deploy guides:
 
 ```typescript
-import type { FlueContext } from '@flue/sdk/client';
+import type { FlueContext } from '@flue/core/client';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
@@ -77,7 +77,7 @@ You own the sandbox. Flue does not delete it for you — sandboxes persist acros
 If your agent needs the sandbox in a specific state before prompting — a repo cloned, dependencies installed, config files written — do the setup in one session, then spin up a second `init()` for the working session with the right `cwd`:
 
 ```typescript
-import type { FlueContext } from '@flue/sdk/client';
+import type { FlueContext } from '@flue/core/client';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 

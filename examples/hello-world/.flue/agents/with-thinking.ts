@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/sdk';
+import type { FlueContext } from '@flue/core';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };

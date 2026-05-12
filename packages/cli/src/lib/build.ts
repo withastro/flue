@@ -3,16 +3,15 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as ts from 'typescript';
 import { packageUpSync } from 'package-up';
-import { parseFrontmatterFile } from './context.ts';
+import { parseFrontmatterFile } from '@flue/core/internal';
 import { CloudflarePlugin } from './build-plugin-cloudflare.ts';
 import { NodePlugin } from './build-plugin-node.ts';
+import type { Role, ThinkingLevel } from '@flue/core';
 import type {
 	AgentInfo,
 	BuildContext,
 	BuildOptions,
 	BuildPlugin,
-	Role,
-	ThinkingLevel,
 } from './types.ts';
 
 interface ParsedAgentFile {
@@ -491,7 +490,17 @@ function getUserExternals(root: string): string[] {
 
 function collectNodePaths(root: string): Set<string> {
 	const nodePathsSet = new Set<string>();
-	for (const startDir of [root, getSDKDir()]) {
+	// Walk up from the project root (user's deps), the CLI's own location
+	// (in case the build needs CLI-bundled helpers), and `@flue/core`'s
+	// install location as resolved from the project. The latter is what
+	// surfaces the runtime deps (`@hono/node-server`, `hono`, `pi-ai`,
+	// etc.) that the generated `server.mjs` imports — `@flue/core` is the
+	// package that lists them, so esbuild has to be able to reach its
+	// `node_modules/` subtree.
+	const seeds = [root, getCLIDir()];
+	const coreDir = resolveCoreDir(root);
+	if (coreDir) seeds.push(coreDir);
+	for (const startDir of seeds) {
 		let dir = startDir;
 		while (dir !== path.dirname(dir)) {
 			const nm = path.join(dir, 'node_modules');
@@ -502,10 +511,30 @@ function collectNodePaths(root: string): Set<string> {
 	return nodePathsSet;
 }
 
-function getSDKDir(): string {
+function getCLIDir(): string {
 	try {
 		return path.dirname(new URL(import.meta.url).pathname);
 	} catch {
 		return __dirname;
 	}
+}
+
+/**
+ * Resolve the install directory of `@flue/core` as seen from the project
+ * `root`. We walk up from `root` looking for `node_modules/@flue/core` —
+ * `require.resolve` would be cleaner, but `@flue/core`'s `package.json`
+ * isn't part of the package's `exports` map and its subpaths are
+ * ESM-only, both of which trip up `createRequire`. Walking the
+ * `node_modules` chain is what npm/pnpm/yarn all do internally for
+ * resolution anyway. Returns the package directory, or `undefined` if
+ * the project doesn't have `@flue/core` installed yet.
+ */
+function resolveCoreDir(root: string): string | undefined {
+	let dir = root;
+	while (dir !== path.dirname(dir)) {
+		const candidate = path.join(dir, 'node_modules', '@flue', 'core');
+		if (fs.existsSync(candidate)) return candidate;
+		dir = path.dirname(dir);
+	}
+	return undefined;
 }

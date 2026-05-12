@@ -1,5 +1,5 @@
 // Constants shared between the resolver (`internal.ts`) and the request-path
-// provider (`cloudflare/workers-ai-provider.ts`). Lives at the SDK root, not
+// provider (`cloudflare/workers-ai-provider.ts`). Lives at the package root, not
 // in `cloudflare/`, so `internal.ts` can import it without dragging in
 // `node:async_hooks` (transitive via getCloudflareContext).
 

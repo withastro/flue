@@ -80,11 +80,11 @@ Every event carries the Flue correlation tree (`runId`, `harness`,
 `session`, `operationId`, `taskId`) so any consumer can reconstruct
 what happened.
 
-The `@flue/sdk/app` package exposes a single function for tapping that
+The `@flue/core/app` package exposes a single function for tapping that
 stream globally:
 
 ```ts
-import { observe } from '@flue/sdk/app';
+import { observe } from '@flue/core/app';
 
 observe((event, ctx) => {
   // event is a fully decorated FlueEvent
@@ -142,7 +142,7 @@ From the repo root:
 pnpm install
 ```
 
-This example declares `@flue/sdk` as a workspace dependency and
+This example declares `@flue/core` as a workspace dependency and
 `@sentry/node` as a regular npm dependency. The workspace install picks
 up both.
 

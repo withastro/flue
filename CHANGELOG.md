@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### Breaking Changes
+
+- **`@flue/sdk` has been renamed to `@flue/core`.** The runtime library that user agent code and the generated server depend on is now published as `@flue/core`. All subpath exports are preserved (`@flue/core/app`, `@flue/core/client`, `@flue/core/cloudflare`, `@flue/core/node`, `@flue/core/sandbox`, `@flue/core/internal`). To migrate, replace every `@flue/sdk` import in your agent code with `@flue/core`. Generated `dist/` artifacts must be rebuilt — the new build emits `@flue/core/*` imports in `server.mjs` / `_entry.ts`.
+
+  ```diff
+  - import type { FlueContext } from '@flue/sdk/client';
+  + import type { FlueContext } from '@flue/core/client';
+  ```
+
+- **Build tooling (`build`, `dev`, `parseEnvFiles`, `resolveEnvFiles`, `resolveSourceRoot`, the build plugins, env-file helpers) has moved from `@flue/sdk` to `@flue/cli`.** `@flue/core` is now a pure runtime library with no `esbuild` / `typescript` / `wrangler` baggage. The `wrangler` peer dependency moved with it and is now on `@flue/cli`. If you were driving the build programmatically via `import { build } from '@flue/sdk'`, update to import from `@flue/cli` (currently via internal paths; a stable public API will land separately).
+
+- **`flue.config.ts` now imports `defineConfig` from `@flue/cli/config`.** Update existing configs:
+
+  ```diff
+  - import { defineConfig } from '@flue/sdk/config';
+  + import { defineConfig } from '@flue/cli/config';
+  ```
+
+  This sets up the eventual collapse to `import { defineConfig } from 'flue/config'` (matching Astro/Vite). `flue init` now scaffolds the new import. The `@flue/sdk/config` subpath no longer exists.
+
+- **The `@flue/sdk` package has been removed.** It is reserved for a future client-side SDK for talking to deployed Flue agents (create runs, stream events, etc.) — separate work, not part of this change.
+
 ## 0.5.3
 
 ### New Features

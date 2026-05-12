@@ -1,5 +1,5 @@
 {
-	"name": "@flue/sdk",
+	"name": "@flue/core",
 	"version": "0.5.3",
 	"type": "module",
 	"license": "Apache-2.0",
@@ -31,10 +31,6 @@
 		"./node": {
 			"types": "./dist/node/index.d.mts",
 			"import": "./dist/node/index.mjs"
-		},
-		"./config": {
-			"types": "./dist/config.d.mts",
-			"import": "./dist/config.mjs"
 		}
 	},
 	"main": "./dist/index.mjs",
@@ -57,25 +53,14 @@
 		"@mariozechner/pi-ai": "*",
 		"@modelcontextprotocol/sdk": "^1.29.0",
 		"@valibot/to-json-schema": "^1.0.0",
-		"esbuild": "^0.25.0",
 		"hono": "^4.7.0",
 		"just-bash": "^2.14.2",
-		"package-up": "^5.0.0",
-		"typescript": "^5.9.2",
 		"ulidx": "^2.4.1",
 		"valibot": "^1.0.0"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20250410.0",
 		"tsdown": "^0.20.3",
-		"wrangler": "^4.83.0"
-	},
-	"peerDependencies": {
-		"wrangler": "^4.0.0"
-	},
-	"peerDependenciesMeta": {
-		"wrangler": {
-			"optional": true
-		}
+		"typescript": "^5.9.2"
 	}
 }

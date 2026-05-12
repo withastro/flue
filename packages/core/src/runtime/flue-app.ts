@@ -105,7 +105,7 @@ let runtimeConfig: FlueRuntime | undefined;
  * {@link runtimeConfig} for why timing relative to user `app.ts`
  * evaluation is fine.
  *
- * Not part of the public API — exposed via `@flue/sdk/internal` only
+ * Not part of the public API — exposed via `@flue/core/internal` only
  * because the generated entry imports it from a stable bare specifier.
  */
 export function configureFlueRuntime(cfg: FlueRuntime): void {
@@ -117,7 +117,7 @@ export function configureFlueRuntime(cfg: FlueRuntime): void {
  * compose this into their own Hono via Hono's `app.route(path, subApp)`:
  *
  *     import { Hono } from 'hono';
- *     import { flue } from '@flue/sdk/app';
+ *     import { flue } from '@flue/core/app';
  *
  *     const app = new Hono();
  *     app.use('*', logger());
@@ -130,7 +130,7 @@ export function configureFlueRuntime(cfg: FlueRuntime): void {
  * legal but pointless — both sub-apps read from the same seeded
  * runtime and produce identical responses.
  *
- * Importable from `@flue/sdk/app`.
+ * Importable from `@flue/core/app`.
  */
 export function flue(): Hono {
 	const app = new Hono();
@@ -163,7 +163,7 @@ export function flue(): Hono {
  * present. Mounts `flue()` at root, renders canonical Flue envelopes
  * for unmatched paths and any thrown errors.
  *
- * Lives in the SDK rather than the generated entry so that user
+ * Lives in @flue/core rather than the generated entry so that user
  * projects on the Cloudflare target — whose `node_modules` does not
  * declare `hono` directly — don't have to add it themselves just to
  * keep the no-`app.ts` default behavior working. When a user does

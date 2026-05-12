@@ -3,9 +3,12 @@
 	"private": true,
 	"type": "module",
 	"dependencies": {
-		"@flue/sdk": "workspace:*",
+		"@flue/core": "workspace:*",
 		"@cloudflare/sandbox": "*",
 		"agents": "*",
 		"valibot": "^1.0.0"
+	},
+	"devDependencies": {
+		"@flue/cli": "workspace:*"
 	}
 }

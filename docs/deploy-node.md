@@ -22,7 +22,7 @@ The simplest agent — no container, no storage, just a prompt and a typed resul
 ```bash
 mkdir my-flue-server && cd my-flue-server
 npm init -y
-npm install @flue/sdk valibot
+npm install @flue/core valibot
 npm install -D @flue/cli
 ```
 
@@ -31,7 +31,7 @@ npm install -D @flue/cli
 `.flue/agents/translate.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/sdk/client';
+import type { FlueContext } from '@flue/core/client';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
@@ -169,7 +169,7 @@ Run flue itself inside an isolation boundary you trust — a CI runner, a contai
 `.flue/agents/reviewer.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/sdk/client';
+import type { FlueContext } from '@flue/core/client';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
@@ -238,7 +238,7 @@ On Node.js, session state is stored in memory by default — sessions persist fo
 For durable sessions, pass a custom store via the `persist` option on `init()`. A store implements three methods — `save()`, `load()`, and `delete()` — each operating on a session ID and a `SessionData` object (message history, metadata, compaction state):
 
 ```typescript
-import type { FlueContext, SessionStore, SessionData } from '@flue/sdk/client';
+import type { FlueContext, SessionStore, SessionData } from '@flue/core/client';
 
 // Example: a simple file-backed store. In production, use a database.
 const store: SessionStore = {

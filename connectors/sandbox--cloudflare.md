@@ -107,7 +107,7 @@ The short version, for your reference:
    above) is the key on `env`:
 
    ```ts
-   import type { FlueContext } from '@flue/sdk/client';
+   import type { FlueContext } from '@flue/core/client';
    import { getSandbox } from '@cloudflare/sandbox';
 
    export const triggers = { webhook: true };
@@ -122,7 +122,7 @@ The short version, for your reference:
    ```
 
    Note that `init({ sandbox })` here takes the result of `getSandbox()`
-   directly — there is no factory wrapper to import from `@flue/sdk`,
+   directly — there is no factory wrapper to import from `@flue/core`,
    because Flue's SDK detects and adapts the `@cloudflare/sandbox` shape
    internally on the Cloudflare target.
 
@@ -218,7 +218,7 @@ without first confirming the basics work on `--target cloudflare`.
   version different from the `@cloudflare/sandbox` npm package version
   the user actually installed. They have to match.
 - The published Flue surface for Cloudflare-specific helpers is
-  `@flue/sdk/cloudflare` (e.g. `getVirtualSandbox`). The
+  `@flue/core/cloudflare` (e.g. `getVirtualSandbox`). The
   `@cloudflare/sandbox` package is a separate Cloudflare-published
   dependency the user installs themselves. Don't import from
-  `@flue/sdk/internal`.
+  `@flue/core/internal`.

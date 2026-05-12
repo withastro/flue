@@ -233,7 +233,7 @@ function createBashTool(env: SessionEnv): AgentTool<typeof BashParams> {
 			// can recover. On host abort we rethrow so the outer call
 			// cancels. This timeout-as-recoverable-result behavior lives
 			// here in the LLM-facing tool, not in SessionEnv/SandboxApi:
-			// SDK callers express timeouts via AbortSignal.timeout(...) and
+			// Programmatic callers express timeouts via AbortSignal.timeout(...) and
 			// accept abort semantics; the model can only emit JSON, so it
 			// needs `params.timeout` and a recoverable shape on timeout.
 			const timeoutSignal =

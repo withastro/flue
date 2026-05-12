@@ -2,13 +2,14 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import path from 'node:path';
-import { build, DEFAULT_DEV_PORT, dev, parseEnvFiles, resolveEnvFiles } from '@flue/sdk';
+import { build } from '../src/lib/build.ts';
+import { DEFAULT_DEV_PORT, dev, parseEnvFiles, resolveEnvFiles } from '../src/lib/dev.ts';
 import {
 	type FlueConfig,
 	resolveConfig,
 	resolveConfigPath,
 	type UserFlueConfig,
-} from '@flue/sdk/config';
+} from '../src/lib/config.ts';
 import { determineAgent } from '@vercel/detect-agent';
 import { CATEGORY_ROOTS, CONNECTORS } from './_connectors.generated.ts';
 
@@ -139,9 +140,9 @@ interface DevArgs {
 	explicitOutput: string | undefined;
 	/** Explicit --config value, or undefined to auto-discover. */
 	configFile: string | undefined;
-	/** 0 = use the SDK default (DEFAULT_DEV_PORT). */
+	/** 0 = use the library default (DEFAULT_DEV_PORT). */
 	port: number;
-	/** Raw --env values, in order; resolved/validated by the SDK. */
+	/** Raw --env values, in order; resolved/validated by the dev library. */
 	envFiles: string[];
 }
 
@@ -274,8 +275,8 @@ function parseFlags(flags: string[]): {
 		id,
 		explicitRoot: explicitRoot ? path.resolve(explicitRoot) : undefined,
 		explicitOutput: explicitOutput ? path.resolve(explicitOutput) : undefined,
-		// `--config` is intentionally NOT pre-resolved: the SDK resolves it
-		// vs. cwd at load time, mirroring how Vite handles `--config`.
+		// `--config` is intentionally NOT pre-resolved: the config loader
+		// resolves it vs. cwd at load time, mirroring how Vite handles `--config`.
 		configFile,
 		payload,
 		port,
@@ -1301,7 +1302,7 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 
 function renderConfigTemplate(target: 'node' | 'cloudflare'): string {
 	return (
-		`import { defineConfig } from '@flue/sdk/config';\n` +
+		`import { defineConfig } from '@flue/cli/config';\n` +
 		`\n` +
 		`export default defineConfig({\n` +
 		`\ttarget: '${target}',\n` +

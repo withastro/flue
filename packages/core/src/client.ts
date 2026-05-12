@@ -70,7 +70,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			}
 		}
 		// Fan out to module-scoped subscribers registered via
-		// `observe()` from `@flue/sdk/app`. These run after the
+		// `observe()` from `@flue/core/app`. These run after the
 		// per-context subscribers and receive the originating `ctx` as
 		// a second argument so cross-cutting code (error reporting,
 		// log forwarding) can read `ctx.id`, `ctx.runId`, etc.
@@ -261,7 +261,7 @@ async function resolveSessionEnv(
 	throw new Error('[flue] Invalid sandbox option passed to init().');
 }
 
-// ─── @flue/sdk/client public API ────────────────────────────────────────────
+// ─── @flue/core/client public API ────────────────────────────────────────────
 
 export { Type } from '@mariozechner/pi-ai';
 export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';

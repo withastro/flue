@@ -1,5 +1,5 @@
 /** Example `app.ts`: compose a custom Hono app and runtime providers. */
-import { configureProvider, flue, registerProvider } from '@flue/sdk/app';
+import { configureProvider, flue, registerProvider } from '@flue/core/app';
 import { Hono } from 'hono';
 
 // Brand-new prefixes for local OpenAI-compatible servers.
