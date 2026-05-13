@@ -241,3 +241,58 @@ export const RunEventsQuerySchema = v.object({
 
 export const RunIdParamSchema = v.object({ runId: v.string() });
 export const AgentRouteParamSchema = v.object({ name: v.string(), id: v.string() });
+
+export const AgentManifestEntrySchema = v.object({
+	name: v.string(),
+	triggers: v.object({ webhook: v.optional(v.boolean()) }),
+});
+
+export const InstanceSummarySchema = v.object({
+	agentName: v.string(),
+	instanceId: v.string(),
+});
+
+export const ListAgentsResponseSchema = v.object({
+	items: v.array(AgentManifestEntrySchema),
+	nextCursor: v.optional(v.string()),
+});
+
+export const ListInstancesResponseSchema = v.object({
+	items: v.array(InstanceSummarySchema),
+	nextCursor: v.optional(v.string()),
+});
+
+export const ListRunsResponseSchema = v.object({
+	items: v.array(RunPointerSchema),
+	nextCursor: v.optional(v.string()),
+});
+
+export const AgentNameParamSchema = v.object({ name: v.string() });
+export const AgentInstanceParamSchema = v.object({ name: v.string(), id: v.string() });
+
+const ListLimitSchema = v.optional(
+	v.pipe(
+		integerString('limit must be an integer between 1 and 1000.'),
+		v.transform(Number),
+		v.minValue(1, 'limit must be at least 1.'),
+		v.maxValue(1000, 'limit must be at most 1000.'),
+	),
+);
+
+export const AdminInstancesQuerySchema = v.object({
+	cursor: v.optional(v.string()),
+	limit: ListLimitSchema,
+});
+
+export const AdminInstanceRunsQuerySchema = v.object({
+	status: v.optional(RunStatusSchema),
+	cursor: v.optional(v.string()),
+	limit: ListLimitSchema,
+});
+
+export const AdminRunsQuerySchema = v.object({
+	status: v.optional(RunStatusSchema),
+	agentName: v.optional(v.string()),
+	cursor: v.optional(v.string()),
+	limit: ListLimitSchema,
+});

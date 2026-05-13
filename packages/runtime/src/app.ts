@@ -30,6 +30,7 @@
  *
  */
 export { flue } from './runtime/flue-app.ts';
+export { admin } from './runtime/admin-app.ts';
 export {
 	registerProvider,
 	registerApiProvider,

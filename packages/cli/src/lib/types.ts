@@ -17,6 +17,7 @@ export interface AgentInfo {
 
 export interface BuildContext {
 	agents: AgentInfo[];
+	manifest: { agents: Array<{ name: string; triggers: { webhook?: boolean } }> };
 	roles: Record<string, Role>;
 	/**
 	 * The project root — typically the user's cwd. Source files

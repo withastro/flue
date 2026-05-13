@@ -10,7 +10,7 @@
  */
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
-import { flue } from '../src/app.ts';
+import { admin, flue } from '../src/app.ts';
 import {
 	configureFlueRuntime,
 	createFlueContext,
@@ -385,5 +385,137 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(res.status).toBe(501);
 		const body = (await res.json()) as { error?: { type: string } };
 		expect(body.error?.type).toBe('run_registry_unavailable');
+	});
+});
+
+describe('admin() routes', () => {
+	it('lists agents, instances, runs, and exposes an admin OpenAPI spec', async () => {
+		const runStore = new InMemoryRunStore();
+		const runRegistry = new InMemoryRunRegistry();
+		const runSubscribers = createRunSubscriberRegistry();
+
+		configureFlueRuntime({
+			target: 'node',
+			runtimeVersion: '9.9.9',
+			manifest: {
+				agents: [
+					{ name: 'hello', triggers: { webhook: true } },
+					{ name: 'offline', triggers: {} },
+				],
+			},
+			webhookAgents: ['hello'],
+			allowNonWebhook: false,
+			handlers: { hello: async () => ({ ok: true }) },
+			createContext: (id, runId, payload, req) =>
+				createFlueContext({
+					id,
+					runId,
+					payload,
+					env: {},
+					req,
+					agentConfig: {
+						systemPrompt: '',
+						skills: {},
+						roles: {},
+						model: undefined,
+						resolveModel: () => undefined,
+					},
+					createDefaultEnv: async () => ({}) as never,
+					createLocalEnv: async () => ({}) as never,
+					defaultStore: new InMemorySessionStore(),
+				}),
+			runStore,
+			runRegistry,
+			runSubscribers,
+		});
+
+		const app = new Hono();
+		app.route('/', flue());
+		app.route('/admin', admin());
+
+		const invoke = await app.fetch(
+			new Request('http://localhost/agents/hello/inst-1', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({}),
+			}),
+		);
+		const runId = ((await invoke.json()) as { _meta: { runId: string } })._meta.runId;
+
+		const agents = await app.fetch(new Request('http://localhost/admin/agents'));
+		expect(agents.status).toBe(200);
+		expect(((await agents.json()) as { items: { name: string }[] }).items.map((a) => a.name)).toEqual([
+			'hello',
+			'offline',
+		]);
+
+		const instances = await app.fetch(new Request('http://localhost/admin/agents/hello/instances'));
+		expect(instances.status).toBe(200);
+		expect((await instances.json()) as unknown).toMatchObject({
+			items: [{ agentName: 'hello', instanceId: 'inst-1' }],
+		});
+
+		const instanceRuns = await app.fetch(
+			new Request('http://localhost/admin/agents/hello/instances/inst-1/runs?status=completed'),
+		);
+		expect(instanceRuns.status).toBe(200);
+		expect(((await instanceRuns.json()) as { items: { runId: string }[] }).items[0]?.runId).toBe(runId);
+
+		const runs = await app.fetch(new Request('http://localhost/admin/runs?agentName=hello'));
+		expect(runs.status).toBe(200);
+		expect(((await runs.json()) as { items: { runId: string }[] }).items[0]?.runId).toBe(runId);
+
+		const detail = await app.fetch(new Request(`http://localhost/admin/runs/${runId}`));
+		expect(detail.status).toBe(200);
+		expect(((await detail.json()) as { runId: string }).runId).toBe(runId);
+
+		const badLimit = await app.fetch(new Request('http://localhost/admin/runs?limit=abc'));
+		expect(badLimit.status).toBe(400);
+		expect(((await badLimit.json()) as { error?: { type: string } }).error?.type).toBe(
+			'validation_failed',
+		);
+
+		const spec = await app.fetch(new Request('http://localhost/admin/openapi.json'));
+		expect(spec.status).toBe(200);
+		const specBody = (await spec.json()) as { info: { title: string; version: string }; paths: Record<string, unknown> };
+		expect(specBody.info).toMatchObject({ title: 'Flue Admin API', version: '9.9.9' });
+		expect(specBody.paths['/agents']).toBeDefined();
+		expect(specBody.paths['/runs']).toBeDefined();
+	});
+
+	it('rewrites admin run detail requests to the public run URL before Cloudflare DO forwarding', async () => {
+		configureFlueRuntime({
+			target: 'cloudflare',
+			runtimeVersion: '9.9.9',
+			manifest: { agents: [{ name: 'hello', triggers: { webhook: true } }] },
+			webhookAgents: ['hello'],
+			allowNonWebhook: false,
+			createRunRegistryForRequest: () => ({
+				recordRunStart: async () => {},
+				recordRunEnd: async () => {},
+				lookupRun: async () => ({
+					runId: 'run_cf',
+					agentName: 'hello',
+					instanceId: 'inst-1',
+					status: 'completed',
+					startedAt: '2026-01-01T00:00:00.000Z',
+				}),
+				listRuns: async () => ({ runs: [] }),
+				listInstances: async () => ({ instances: [] }),
+			}),
+			routeAgentRequest: async () => null,
+			routeRunRequest: async (request) => {
+				return new Response(JSON.stringify({ pathname: new URL(request.url).pathname }), {
+					headers: { 'content-type': 'application/json' },
+				});
+			},
+		});
+
+		const app = new Hono();
+		app.route('/admin', admin());
+
+		const res = await app.fetch(new Request('http://localhost/admin/runs/run_cf'));
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ pathname: '/runs/run_cf' });
 	});
 });

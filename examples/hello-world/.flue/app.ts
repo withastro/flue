@@ -37,4 +37,9 @@ app.get('/api/ping', (c) => c.json({ pong: true, at: new Date().toISOString() })
 // Mount Flue's built-in agent route.
 app.route('/', flue());
 
+// To expose admin endpoints, import `admin` from `@flue/runtime/app`, then
+// uncomment this and add your own auth middleware first:
+// app.use('/admin/*', myAuthMiddleware);
+// app.route('/admin', admin());
+
 export default app;

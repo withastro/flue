@@ -49,6 +49,7 @@ export class CloudflarePlugin implements BuildPlugin {
 	async generateEntryPoint(ctx: BuildContext): Promise<string> {
 		const { agents, roles, appEntry } = ctx;
 		const rolesJson = JSON.stringify(roles);
+		const manifestJson = JSON.stringify(ctx.manifest);
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 		validateCloudflareAgentNames(ctx);
 
@@ -441,6 +442,7 @@ ${sandboxReExports}
 configureFlueRuntime({
   target: 'cloudflare',
   runtimeVersion: ${runtimeVersion},
+  manifest: ${manifestJson},
   webhookAgents: webhookAgentNames,
   // Cloudflare deploys never run in local mode — the trigger-less agents
   // simply have no DO class to land in.

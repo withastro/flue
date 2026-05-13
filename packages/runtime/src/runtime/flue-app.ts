@@ -154,6 +154,13 @@ export interface FlueRuntime {
 
 	/** Package version inlined by the generated entry for OpenAPI metadata. */
 	runtimeVersion?: string;
+
+	/** Build manifest inlined by the generated entry for admin listing routes. */
+	manifest?: FlueManifest;
+}
+
+export interface FlueManifest {
+	agents: Array<{ name: string; triggers: { webhook?: boolean } }>;
 }
 
 /**
@@ -186,6 +193,10 @@ let runtimeConfig: FlueRuntime | undefined;
  */
 export function configureFlueRuntime(cfg: FlueRuntime): void {
 	runtimeConfig = cfg;
+}
+
+export function getFlueRuntime(): FlueRuntime | undefined {
+	return runtimeConfig;
 }
 
 /**
@@ -471,7 +482,7 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
  * agent DO via `routeRunRequest`, which owns the run's record + events
  * + live stream.
  */
-function runByIdRouteHandler(action: HandleRunRouteOptions['action']): MiddlewareHandler {
+export function runByIdRouteHandler(action: HandleRunRouteOptions['action']): MiddlewareHandler {
 	return async (c) => {
 		const rt = runtimeConfig;
 		if (!rt) {
@@ -500,54 +511,62 @@ function runByIdRouteHandler(action: HandleRunRouteOptions['action']): Middlewar
 			});
 		}
 
-		if (rt.target === 'cloudflare') {
-			// CF flow: construct a per-request registry client from the
-			// `FLUE_REGISTRY` binding, resolve the run pointer, then forward
-			// to the owning agent DO via the `routeRunRequest` seam. The DO
-			// itself accepts the bare `/runs/:runId` URL shape (decision 8),
-			// so we hand the original request through unchanged.
-			if (!rt.createRunRegistryForRequest || !rt.routeRunRequest) {
-				throw new RunRegistryUnavailableError();
-			}
-			const registry = rt.createRunRegistryForRequest(c.env);
-			// The factory returns `undefined` when the env.FLUE_REGISTRY
-			// binding is absent (older deployment, broken local config).
-			// Surface the canonical 501 envelope rather than letting a
-			// downstream stub throw an unstructured Error that the outer
-			// onError would render as a generic 500. Symmetric with the
-			// Node target's `!rt.runRegistry` check below.
-			if (!registry) throw new RunRegistryUnavailableError();
-			const pointer = await registry.lookupRun(runId);
-			if (!pointer) throw new RunNotFoundError({ runId });
-
-			const response = await rt.routeRunRequest(c.req.raw, c.env, {
-				agentName: pointer.agentName,
-				instanceId: pointer.instanceId,
-			});
-			if (response) return response;
-			throw new RouteNotFoundError({
-				method: c.req.method,
-				path: new URL(c.req.url).pathname,
-			});
-		}
-
-		// Node flow: registry + stores are all module-scoped, so the
-		// lookup is direct and the existing run-routes handler can read
-		// from the in-memory store with the registry-supplied identifiers.
-		if (!rt.runRegistry) throw new RunRegistryUnavailableError();
-		const pointer = await rt.runRegistry.lookupRun(runId);
-		if (!pointer) throw new RunNotFoundError({ runId });
-
-		return handleRunRouteRequest({
+		return handleRunById({
+			rt,
 			request: c.req.raw,
-			runStore: rt.runStore,
-			runSubscribers: rt.runSubscribers,
-			agentName: pointer.agentName,
-			id: pointer.instanceId,
+			env: c.env,
 			runId,
 			action,
 		});
 	};
+}
+
+export async function handleRunById(opts: {
+	rt: FlueRuntime;
+	request: Request;
+	env: unknown;
+	runId: string;
+	action: HandleRunRouteOptions['action'];
+}): Promise<Response> {
+	const { rt, request, env, runId, action } = opts;
+	if (rt.target === 'cloudflare') {
+		// CF flow: construct a per-request registry client from the
+		// `FLUE_REGISTRY` binding, resolve the run pointer, then forward
+		// to the owning agent DO via the `routeRunRequest` seam.
+		if (!rt.createRunRegistryForRequest || !rt.routeRunRequest) {
+			throw new RunRegistryUnavailableError();
+		}
+		const registry = rt.createRunRegistryForRequest(env);
+		if (!registry) throw new RunRegistryUnavailableError();
+		const pointer = await registry.lookupRun(runId);
+		if (!pointer) throw new RunNotFoundError({ runId });
+
+		const response = await rt.routeRunRequest(request, env, {
+			agentName: pointer.agentName,
+			instanceId: pointer.instanceId,
+		});
+		if (response) return response;
+		throw new RouteNotFoundError({
+			method: request.method,
+			path: new URL(request.url).pathname,
+		});
+	}
+
+	// Node flow: registry + stores are all module-scoped, so the lookup is
+	// direct and the existing run-routes handler can read from the store.
+	if (!rt.runRegistry) throw new RunRegistryUnavailableError();
+	const pointer = await rt.runRegistry.lookupRun(runId);
+	if (!pointer) throw new RunNotFoundError({ runId });
+
+	return handleRunRouteRequest({
+		request,
+		runStore: rt.runStore,
+		runSubscribers: rt.runSubscribers,
+		agentName: pointer.agentName,
+		id: pointer.instanceId,
+		runId,
+		action,
+	});
 }
 
 /**

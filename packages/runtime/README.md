@@ -25,6 +25,22 @@ Flue serves its built-in public API spec at `GET /openapi.json` from the mounted
 
 Agent invocation payloads are intentionally user-defined: Flue validates that the request body is parseable JSON, but the payload shape belongs to the target agent rather than the framework.
 
+## Admin API
+
+`@flue/runtime/app` also exports `admin()`, a read-only Hono sub-app for deployment inspection. Mount it yourself behind whatever auth middleware your app uses:
+
+```ts
+import { admin, flue } from '@flue/runtime/app';
+import { Hono } from 'hono';
+
+const app = new Hono();
+app.route('/', flue());
+app.use('/admin/*', myAuthMiddleware);
+app.route('/admin', admin());
+```
+
+The admin spec is served relative to the mount point, e.g. `/admin/openapi.json`.
+
 ## Examples
 
 ### Quickstart

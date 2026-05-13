@@ -264,6 +264,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 
 	const ctx: BuildContext = {
 		agents,
+		manifest,
 		roles,
 		root,
 		output,
