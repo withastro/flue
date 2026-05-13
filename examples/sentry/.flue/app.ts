@@ -70,7 +70,7 @@
  */
 
 import { flue, observe } from '@flue/runtime/app';
-import type { FlueContext, FlueEvent } from '@flue/runtime/client';
+import type { FlueContext, FlueEvent } from '@flue/runtime';
 import * as Sentry from '@sentry/node';
 import { Hono } from 'hono';
 

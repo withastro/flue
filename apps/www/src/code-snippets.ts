@@ -29,7 +29,7 @@ export const HERO = `export default async function ({ init, payload, env }) {
 }`;
 
 export const SUPPORT_AGENT = `import { getVirtualSandbox } from '@flue/runtime/cloudflare';
-import type { FlueContext } from '@flue/runtime/client';
+import type { FlueContext } from '@flue/runtime';
 
 // POST /agents/support/:id
 export const triggers = { webhook: true };
@@ -52,7 +52,7 @@ export default async function ({ init, payload, env }: FlueContext) {
   );
 }`;
 
-export const ISSUE_TRIAGE = `import type { FlueContext } from '@flue/runtime/client';
+export const ISSUE_TRIAGE = `import type { FlueContext } from '@flue/runtime';
 import { Octokit } from '@octokit/core';
 import * as v from 'valibot';
 
@@ -82,7 +82,7 @@ export default async function ({ init, payload, env }: FlueContext) {
   );
 }`;
 
-export const CODING_AGENT = `import type { FlueContext } from '@flue/runtime/client';
+export const CODING_AGENT = `import type { FlueContext } from '@flue/runtime';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
@@ -104,7 +104,7 @@ export default async function ({ init, payload, env }: FlueContext) {
   return await session.prompt(payload.prompt);
 }`;
 
-export const DATA_AGENT = `import type { FlueContext } from '@flue/runtime/client';
+export const DATA_AGENT = `import type { FlueContext } from '@flue/runtime';
 import { Bash, InMemoryFs, MountableFs, ReadWriteFs } from 'just-bash';
 
 // POST /agents/data/:id

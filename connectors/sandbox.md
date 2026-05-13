@@ -49,7 +49,7 @@ These are the things that aren't obvious from the spec or the example.
   Next.js's `src/`: write to `./.flue/connectors/<name>.ts` if
   `<root>/.flue/` exists, otherwise `./connectors/<name>.ts` at the
   project root. Ask the user if their layout is unusual.
-- **Imports.** The published surface is `@flue/runtime/sandbox`. Don't import
+- **Imports.** The published surface is `@flue/runtime`. Don't import
   from `@flue/runtime/internal` or any other internal path.
 - **Cancellation.** `SandboxApi.exec()` receives `timeout` (primary) and
   optionally `signal`. Always forward `timeout` to the provider's native
@@ -79,5 +79,5 @@ These are the things that aren't obvious from the spec or the example.
 - Never invent API keys, tokens, or secrets.
 - Don't modify files outside the connector path you've chosen unless the
   user agreed (e.g. `package.json` to add a dep).
-- The published surface is `@flue/runtime/sandbox`. Don't import from
+- The published surface is `@flue/runtime`. Don't import from
   `@flue/runtime/internal` or anywhere else.

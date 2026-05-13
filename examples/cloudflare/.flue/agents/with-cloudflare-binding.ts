@@ -17,7 +17,7 @@
 //   {}                                       — runs all single-invocation tests
 //
 // Catalog: https://developers.cloudflare.com/workers-ai/models/
-import { Type, type FlueContext, type ToolDef } from '@flue/runtime/client';
+import { Type, type FlueContext, type ToolDef } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };

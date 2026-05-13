@@ -22,7 +22,7 @@ npm install -D @flue/cli
 `.flue/agents/hello.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/runtime/client';
+import type { FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const triggers = {};
@@ -136,7 +136,7 @@ In GitHub Actions, this means you set the secrets you want the agent's CLIs to s
 `.flue/agents/triage.ts`:
 
 ```typescript
-import { type FlueContext } from '@flue/runtime/client';
+import { type FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const triggers = {};
@@ -269,7 +269,7 @@ The `--payload` flag passes JSON data to the agent's `payload` property. `GITHUB
 Schemas aren't just for type safety — they're how you orchestrate multi-step workflows. Because you get typed data back from `prompt()` and `skill()`, you can branch on results within a single agent:
 
 ```typescript
-import { type FlueContext } from '@flue/runtime/client';
+import { type FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export default async function ({ init, payload }: FlueContext) {

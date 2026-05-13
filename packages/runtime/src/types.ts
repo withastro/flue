@@ -51,7 +51,7 @@ export type ToolParameters = TSchema | Record<string, unknown>;
 /**
  * Custom tool passed to init(), prompt(), skill(), or task(). init() tools are
  * available to every session call; prompt/skill/task tools are scoped to that call.
- * Parameters are JSON Schema-compatible. Use `Type` from `@flue/runtime/client` for
+ * Parameters are JSON Schema-compatible. Use `Type` from `@flue/runtime` for
  * hand-written tools, or pass schemas discovered from adapters such as MCP.
  */
 export interface ToolDef<TParams extends ToolParameters = ToolParameters> {

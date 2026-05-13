@@ -107,7 +107,7 @@ The short version, for your reference:
    above) is the key on `env`:
 
    ```ts
-   import type { FlueContext } from '@flue/runtime/client';
+   import type { FlueContext } from '@flue/runtime';
    import { getSandbox } from '@cloudflare/sandbox';
 
    export const triggers = { webhook: true };

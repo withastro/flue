@@ -12,14 +12,6 @@
 			"types": "./dist/app.d.mts",
 			"import": "./dist/app.mjs"
 		},
-		"./client": {
-			"types": "./dist/client.d.mts",
-			"import": "./dist/client.mjs"
-		},
-		"./sandbox": {
-			"types": "./dist/sandbox.d.mts",
-			"import": "./dist/sandbox.mjs"
-		},
 		"./internal": {
 			"types": "./dist/internal.d.mts",
 			"import": "./dist/internal.mjs"

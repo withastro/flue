@@ -32,10 +32,15 @@ export type {
 	ToolDef,
 	ToolParameters,
 	ThinkingLevel,
+	ProviderSettings,
 } from './types.ts';
 
+export { Type } from '@mariozechner/pi-ai';
 export { createTools, BUILTIN_TOOL_NAMES } from './agent.ts';
+export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
+export { connectMcpServer } from './mcp.ts';
 export { ResultUnavailableError } from './result.ts';
+export { createSandboxSessionEnv, type SandboxApi } from './sandbox.ts';
 
 // Note: the public Hono sub-app `flue()` and the `Fetchable` interface
 // for user-authored `app.ts` entries live at `@flue/runtime/app`, not on

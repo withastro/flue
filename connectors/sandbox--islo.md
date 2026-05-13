@@ -63,8 +63,8 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * ```
  */
 import { spawn } from 'node:child_process';
-import { createSandboxSessionEnv } from '@flue/runtime/sandbox';
-import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/runtime/sandbox';
+import { createSandboxSessionEnv } from '@flue/runtime';
+import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/runtime';
 
 export interface IsloConnectorOptions {
 	/** Default cwd inside the sandbox. Defaults to `/workspace`. */
@@ -272,7 +272,7 @@ into, you can finish that work by wiring the connector into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import type { FlueContext } from '@flue/runtime/client';
+import type { FlueContext } from '@flue/runtime';
 import { islo } from '../connectors/islo'; // adjust path to match the user's layout
 
 export const triggers = { webhook: true };

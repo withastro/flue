@@ -33,7 +33,7 @@ npm install -D @flue/cli wrangler
 `.flue/agents/translate.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/runtime/client';
+import type { FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
@@ -146,7 +146,7 @@ By default, the virtual sandbox starts empty — no files, no skills, no context
 Because the agent has shell access, it can set up its own workspace on the fly:
 
 ```typescript
-import type { FlueContext } from '@flue/runtime/client';
+import type { FlueContext } from '@flue/runtime';
 
 export const triggers = { webhook: true };
 
@@ -185,7 +185,7 @@ This is one of the most powerful patterns on Cloudflare: a support agent that se
 
 ```typescript
 import { getVirtualSandbox } from '@flue/runtime/cloudflare';
-import type { FlueContext } from '@flue/runtime/client';
+import type { FlueContext } from '@flue/runtime';
 
 export const triggers = { webhook: true };
 
@@ -293,7 +293,7 @@ The base image is published by Cloudflare and bundles the control-plane HTTP ser
 `.flue/agents/assistant.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/runtime/client';
+import type { FlueContext } from '@flue/runtime';
 import { getSandbox } from '@cloudflare/sandbox';
 
 export const triggers = { webhook: true };
