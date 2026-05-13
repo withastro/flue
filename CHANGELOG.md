@@ -30,6 +30,20 @@
 
 - **`cloudflare/<model>` resolutions now carry real `contextWindow`, `maxTokens`, `cost`, `reasoning`, and `input` metadata.** Previously the binding branch of `buildModelFromRegistration` synthesized a model from scratch with `contextWindow: 0`, which made `shouldCompact` evaluate `contextTokens > 0 - reserveTokens` as true on every turn after the first — spamming `[flue:compaction] Threshold reached — window 0` and running no-op compaction prep on every turn. Resolution now hydrates from pi-ai's `cloudflare-workers-ai` catalog when the model id is known. Uncatalogued ids (embeddings, image-gen, anything outside pi-ai's chat-completion subset of Workers AI) fall back to zero metadata, and `shouldCompact` now treats `contextWindow <= 0` as unknown and skips the threshold check — overflow recovery still runs. Fixes #132.
 
+- **`registerProvider(...)` now accepts `contextWindow`, `maxTokens`, and per-model overrides for HTTP providers.** Registered HTTP providers (litellm, openrouter, vLLM, custom OpenAI-compatible proxies, etc.) had no way to declare model metadata, so resolved models hardcoded `contextWindow: 0` and `maxTokens: 0` — same bug class as #132 on the binding side. Now the registration accepts provider-level defaults (`contextWindow`, `maxTokens`) and a `models: Record<string, { contextWindow?, maxTokens? }>` map for per-model overrides. Per-model overrides win over provider-level defaults; unset stays `0`, which `shouldCompact` treats as unknown.
+
+  ```ts
+  registerProvider('litellm', {
+    api: 'openai-completions',
+    baseUrl: 'http://localhost:4000/v1',
+    contextWindow: 128000,
+    maxTokens: 16000,
+    models: {
+      'gpt-4o-mini': { contextWindow: 128000, maxTokens: 16384 },
+    },
+  });
+  ```
+
 ## 0.5.3
 
 ### New Features

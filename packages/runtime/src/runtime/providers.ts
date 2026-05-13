@@ -53,11 +53,18 @@ export interface HttpProviderRegistration {
 	 * and `configureProvider()` overrides. Defaults to the registry name.
 	 */
 	provider?: string;
-	/** Context window size fallback for any model not listed in {@link models}. Defaults to 0. */
+	/**
+	 * Default `contextWindow` (in tokens) for every model resolved through
+	 * this registration. Overridden per-model via {@link models}. Unset is
+	 * `0`, which the runtime treats as "unknown".
+	 */
 	contextWindow?: number;
-	/** Max output tokens fallback for any model not listed in {@link models}. Defaults to 0. */
+	/**
+	 * Default `maxTokens` for every model resolved through this registration.
+	 * Overridden per-model via {@link models}. Unset is `0`.
+	 */
 	maxTokens?: number;
-	/** Per-model overrides for context window and max tokens. Takes precedence over the provider-level fields. */
+	/** Per-model overrides for {@link contextWindow} and {@link maxTokens}, keyed by model id. */
 	models?: Record<string, { contextWindow?: number; maxTokens?: number }>;
 }
 
@@ -83,12 +90,6 @@ export interface CloudflareAIBindingRegistration {
 	 * See https://developers.cloudflare.com/ai-gateway/integrations/worker-binding-methods/.
 	 */
 	gateway?: CloudflareGatewayOptions | false;
-	/** Context window size fallback for any model not listed in {@link models}. Defaults to 0. */
-	contextWindow?: number;
-	/** Max output tokens fallback for any model not listed in {@link models}. Defaults to 0. */
-	maxTokens?: number;
-	/** Per-model overrides for context window and max tokens. Takes precedence over the provider-level fields. */
-	models?: Record<string, { contextWindow?: number; maxTokens?: number }>;
 }
 
 /**
@@ -259,8 +260,9 @@ export function resolveRegisteredModel(
 
 /**
  * Construct a pi-ai Model from a registered provider template. Binding
- * registrations inherit catalog metadata from `cloudflare-workers-ai`;
- * HTTP registrations have no catalog and default cost/limits to zero.
+ * registrations hydrate metadata from pi-ai's `cloudflare-workers-ai`
+ * catalog; HTTP registrations supply their own metadata, with any unset
+ * fields defaulting to zero.
  */
 function buildModelFromRegistration(
 	name: string,
@@ -284,8 +286,8 @@ function buildModelFromRegistration(
 					reasoning: false,
 					input: ['text'],
 					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-					contextWindow: def.contextWindow ?? 0,
-					maxTokens: def.maxTokens ?? 0,
+					contextWindow: 0,
+					maxTokens: 0,
 				};
 		return attachModelBinding(base, def.binding, def.gateway);
 	}
