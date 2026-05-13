@@ -48,7 +48,7 @@ export function addUsage(a: PromptUsage, b: PromptUsage): PromptUsage {
  * Convert pi-ai's `Usage` into Flue's public `PromptUsage`. The shapes are
  * structurally identical today, but going through this normalizer keeps
  * Flue's public types decoupled from pi-ai's so future divergence in
- * pi-ai (e.g. additional fields) doesn't leak into the SDK's public
+ * pi-ai (e.g. additional fields) doesn't leak into the runtime package's public
  * surface. Returns `undefined` when the input is `undefined`.
  */
 export function fromProviderUsage(usage: Usage | undefined): PromptUsage | undefined {

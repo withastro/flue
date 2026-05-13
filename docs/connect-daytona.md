@@ -135,4 +135,4 @@ If you run into anything specific to the Daytona side of this setup — sandbox 
 - [daytonaio/daytona on GitHub](https://github.com/daytonaio/daytona) — issues and source.
 - [Daytona status](https://status.app.daytona.io/) — service health.
 
-For Flue-specific questions (the connector, the SDK, agent wiring), open an issue on [withastro/flue](https://github.com/withastro/flue).
+For Flue-specific questions (the connector, runtime package, agent wiring), open an issue on [withastro/flue](https://github.com/withastro/flue).

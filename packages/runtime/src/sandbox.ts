@@ -149,7 +149,7 @@ function assertBashLike(value: unknown): asserts value is BashLike {
  *     model requests one.
  *   - `signal?: AbortSignal` (optional): for connectors whose SDK supports
  *     mid-flight cancellation (Mirage's executor, in-process bash). Lets
- *     SDK callers do ad-hoc `abort()`. Connectors that can't honor it
+ *     Programmatic callers do ad-hoc `abort()`. Connectors that can't honor it
  *     should ignore it; the deadline is still enforced via `timeout`.
  *
  * Connectors that support both should observe whichever fires first.
@@ -198,7 +198,7 @@ export function createSandboxSessionEnv(api: SandboxApi, cwd: string): SessionEn
 			// remote command would otherwise see the call return
 			// successfully and the abort silently dropped. Centralizing the
 			// check means connectors only need to wire `signal` into their
-			// SDK when one supports it (Mirage, Vercel); the rest get
+			// provider SDK when one supports it (Mirage, Vercel); the rest get
 			// correct abort semantics for free.
 			const signal = options?.signal;
 			if (signal?.aborted) throw abortErrorFor(signal);

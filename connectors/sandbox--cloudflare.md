@@ -21,7 +21,7 @@ Node.js process. Because of that, Flue treats Cloudflare Sandbox as a
 first-class **build target**, not a drop-in connector file.
 
 If the user is already on `--target cloudflare`: there is no connector to
-install. Flue's SDK already provides the wiring; you just declare the
+install. Flue's runtime package already provides the wiring; you just declare the
 binding in `wrangler.jsonc` and call `getSandbox(env.Sandbox, id)` in the
 agent. Skip to ["Path A"](#path-a-already-on---target-cloudflare) below.
 
@@ -61,7 +61,7 @@ If you can't tell or it's ambiguous: ask the user directly. Don't guess.
 
 ## Path A: Already on `--target cloudflare`
 
-You don't need a connector file. Flue's SDK already exports the wiring,
+You don't need a connector file. Flue's runtime package already exports the wiring,
 and the deploy guide's "Connecting a remote sandbox" section is the
 canonical recipe. Steer the user there:
 

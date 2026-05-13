@@ -80,7 +80,7 @@ All from `@flue/runtime`:
   this yourself.
 - `FileStat` — the return type for `stat()`.
 
-Do **not** import internal SDK paths. `@flue/runtime` is the only public
+Do **not** import internal runtime paths. `@flue/runtime` is the only public
 surface for connector authors.
 
 ---
@@ -89,7 +89,7 @@ surface for connector authors.
 
 These are the exact shapes you must conform to. Always typecheck against the
 real types from `@flue/runtime` — if there's any drift between this
-document and the SDK, **the SDK wins**.
+document and the runtime package, **the runtime package wins**.
 
 ### `SandboxApi` (you implement this)
 
@@ -283,7 +283,7 @@ Before declaring success:
 1. Confirm the file typechecks: `npx tsc --noEmit` (or whatever the user's
    project uses for typechecking).
 2. Confirm the import path is valid: the connector imports from
-   `@flue/runtime` (which is part of `@flue/runtime` already).
+   `@flue/runtime` (which the Flue project already depends on).
 3. If the user's `package.json` does not yet depend on the provider's SDK,
    tell them to install it (e.g. `npm install <provider-sdk>`).
 4. Tell the user which env vars they need to set (e.g.
