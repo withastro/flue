@@ -98,6 +98,35 @@ export interface FlueRuntime {
 	 * consistent with every other miss.
 	 */
 	routeAgentRequest?: (request: Request, env: unknown) => Promise<Response | null>;
+
+	/**
+	 * Forward an incoming bare `/runs/:runId` request to the agent DO
+	 * that owns the run, identified by the registry-resolved pointer.
+	 *
+	 * Cloudflare-only. The main worker first calls
+	 * `runRegistry.lookupRun(runId)` to discover `(agentName, instanceId)`,
+	 * then hands those off to this seam to do the actual DO dispatch.
+	 * The DO accepts the bare `/runs/:runId` URL shape directly (per
+	 * Phase 1 decision 8) so the original request URL is forwarded
+	 * unchanged.
+	 */
+	routeRunRequest?: (
+		request: Request,
+		env: unknown,
+		target: { agentName: string; instanceId: string },
+	) => Promise<Response | null>;
+
+	/**
+	 * Per-request `RunRegistry` factory. On Cloudflare the registry's
+	 * binding (`env.FLUE_REGISTRY`) is only available inside a request
+	 * scope, so the runtime config supplies a factory rather than a
+	 * pre-bound registry. The bare-`/runs/:runId` route handler calls
+	 * this once per request to obtain a client, then issues the
+	 * `lookupRun` against it. The same factory feeds {@link runRegistry}
+	 * on Cloudflare so the `recordRunStart` / `recordRunEnd` writes
+	 * inside `handleAgentRequest` reach the same DO.
+	 */
+	createRunRegistryForRequest?: (env: unknown) => RunRegistry;
 }
 
 const RUN_ROUTES: ReadonlyArray<readonly [string, HandleRunRouteOptions['action']]> = [
@@ -354,15 +383,33 @@ function runByIdRouteHandler(action: HandleRunRouteOptions['action']): Middlewar
 			});
 		}
 
-		// Cloudflare short-circuits before any registry consult during
-		// Commit A — the `FlueRegistry` DO and the `routeRunRequest`
-		// seam both land in Commit B. After Commit B this branch will
-		// resolve the pointer via the registry client and forward to
-		// the owning agent DO (decision 8: bare URL preserved).
 		if (rt.target === 'cloudflare') {
-			throw new RunRegistryUnavailableError();
+			// CF flow: construct a per-request registry client from the
+			// `FLUE_REGISTRY` binding, resolve the run pointer, then forward
+			// to the owning agent DO via the `routeRunRequest` seam. The DO
+			// itself accepts the bare `/runs/:runId` URL shape (decision 8),
+			// so we hand the original request through unchanged.
+			if (!rt.createRunRegistryForRequest || !rt.routeRunRequest) {
+				throw new RunRegistryUnavailableError();
+			}
+			const registry = rt.createRunRegistryForRequest(c.env);
+			const pointer = await registry.lookupRun(runId);
+			if (!pointer) throw new RunNotFoundError({ runId });
+
+			const response = await rt.routeRunRequest(c.req.raw, c.env, {
+				agentName: pointer.agentName,
+				instanceId: pointer.instanceId,
+			});
+			if (response) return response;
+			throw new RouteNotFoundError({
+				method: c.req.method,
+				path: new URL(c.req.url).pathname,
+			});
 		}
 
+		// Node flow: registry + stores are all module-scoped, so the
+		// lookup is direct and the existing run-routes handler can read
+		// from the in-memory store with the registry-supplied identifiers.
 		if (!rt.runRegistry) throw new RunRegistryUnavailableError();
 		const pointer = await rt.runRegistry.lookupRun(runId);
 		if (!pointer) throw new RunNotFoundError({ runId });
