@@ -15,14 +15,18 @@ export const bashFactoryToSessionEnv = throwMigrationError as unknown as (
 ) => Promise<SessionEnv>;
 
 export interface SandboxApi {
-	exec(command: string, options?: { timeout?: number; signal?: AbortSignal }): Promise<ShellResult>;
-	readFile(path: string): Promise<Uint8Array>;
-	writeFile(path: string, data: Uint8Array): Promise<void>;
+	readFile(path: string): Promise<string>;
+	readFileBuffer(path: string): Promise<Uint8Array>;
+	writeFile(path: string, content: string | Uint8Array): Promise<void>;
+	stat(path: string): Promise<FileStat>;
 	readdir(path: string): Promise<string[]>;
+	exists(path: string): Promise<boolean>;
 	mkdir(path: string, options?: { recursive?: boolean }): Promise<void>;
 	rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>;
-	stat(path: string): Promise<FileStat>;
-	exists(path: string): Promise<boolean>;
+	exec(
+		command: string,
+		options?: { cwd?: string; env?: Record<string, string>; timeout?: number; signal?: AbortSignal },
+	): Promise<ShellResult>;
 }
 
 export const createSandboxSessionEnv = throwMigrationError as unknown as (

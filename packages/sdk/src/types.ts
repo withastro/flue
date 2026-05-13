@@ -171,6 +171,14 @@ export interface BuildOptions {
 	plugin?: BuildPlugin;
 }
 
+export interface DevOptions {
+	root: string;
+	output?: string;
+	target: 'node' | 'cloudflare';
+	port?: number;
+	envFiles?: string[];
+}
+
 export interface BuildPlugin {
 	name: string;
 	bundle?: 'esbuild' | 'none';

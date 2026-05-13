@@ -1,9 +1,37 @@
 import { throwMigrationError } from './_migration.ts';
+import type {
+	AgentConfig,
+	FlueContext,
+	FlueEvent,
+	FlueEventCallback,
+	SessionEnv,
+	SessionStore,
+} from './types.ts';
 
 throwMigrationError();
 
 export const Type = new Proxy({}, { get: throwMigrationError, apply: throwMigrationError });
 export const connectMcpServer = throwMigrationError;
+export const createFlueContext = throwMigrationError;
+
+export interface FlueContextConfig {
+	id: string;
+	runId: string;
+	payload: any;
+	env: Record<string, any>;
+	agentConfig: AgentConfig;
+	createDefaultEnv: () => Promise<SessionEnv>;
+	createLocalEnv: () => Promise<SessionEnv>;
+	defaultStore: SessionStore;
+	resolveSandbox?: (sandbox: unknown) => Promise<SessionEnv> | null;
+	req?: Request;
+}
+
+export interface FlueContextInternal extends FlueContext {
+	emitEvent(event: FlueEvent): FlueEvent;
+	subscribeEvent(callback: FlueEventCallback): () => void;
+	setEventCallback(callback: FlueEventCallback | undefined): void;
+}
 
 export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
 export type {

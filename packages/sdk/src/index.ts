@@ -34,6 +34,7 @@ export type {
 	AgentConfig,
 	ModelConfig,
 	BuildOptions,
+	DevOptions,
 	BuildPlugin,
 	BuildContext,
 	AgentInfo,

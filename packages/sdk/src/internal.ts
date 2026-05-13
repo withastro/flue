@@ -32,7 +32,6 @@ export type RunSubscriberListener = (...args: unknown[]) => unknown;
 export interface RunSubscriberRegistry {}
 
 export const createFlueContext = throwMigrationError;
-export const parseFrontmatterFile = throwMigrationError;
 export const createDurableRunStore = throwMigrationError;
 export const InMemoryRunStore = class InMemoryRunStore {
 	constructor() {
