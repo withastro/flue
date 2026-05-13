@@ -968,10 +968,10 @@ async function run(args: RunArgs) {
 	const output = cfg.output;
 	const serverPath = path.join(output, 'server.mjs');
 
-	// Resolve --env paths relative to the project root before building.
+	// Resolve --env paths relative to cwd (where the user invoked flue), not root.
 	let resolvedEnvFiles: string[];
 	try {
-		resolvedEnvFiles = resolveEnvFiles(args.envFiles, root);
+		resolvedEnvFiles = resolveEnvFiles(args.envFiles, process.cwd());
 	} catch (err) {
 		console.error(err instanceof Error ? err.message : String(err));
 		process.exit(1);

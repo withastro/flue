@@ -119,10 +119,8 @@ export async function dev(options: DevOptions): Promise<void> {
 	const output = path.resolve(options.output ?? path.join(root, 'dist'));
 	const port = options.port ?? DEFAULT_DEV_PORT;
 
-	// Resolve env files up front so a typo errors before we kick off a build.
-	// Resolved against root (the project root) so relative paths feel
-	// natural — "the path they look like from where I ran flue".
-	const envFiles = resolveEnvFiles(options.envFiles, root);
+	// Resolve --env paths relative to cwd.
+	const envFiles = resolveEnvFiles(options.envFiles, process.cwd());
 	for (const f of envFiles) {
 		console.error(`[flue] Loading env from: ${f}`);
 	}
