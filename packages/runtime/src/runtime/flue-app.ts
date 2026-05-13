@@ -4,6 +4,8 @@ import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import {
 	RouteNotFoundError,
+	RunNotFoundError,
+	RunRegistryUnavailableError,
 	toHttpResponse,
 	validateAgentRequest,
 	validateAgentRunRequest,
@@ -16,6 +18,7 @@ import {
 	type StartWebhookFn,
 } from './handle-agent.ts';
 import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-routes.ts';
+import type { RunRegistry } from './run-registry.ts';
 import type { RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 
@@ -73,6 +76,17 @@ export interface FlueRuntime {
 	/** Node in-process registry used for live run-stream tailing. */
 	runSubscribers?: RunSubscriberRegistry;
 
+	/**
+	 * Cross-deployment run pointer index used to resolve bare
+	 * `/runs/:runId` lookups. On Node the value is a module-scoped
+	 * `InMemoryRunRegistry`; on Cloudflare it's populated per-request
+	 * from a `FlueRegistry` Durable Object client (Commit B). Optional
+	 * by the same convention as {@link runStore}: routes that strictly
+	 * require it throw a structured `*Unavailable` envelope when it's
+	 * unset.
+	 */
+	runRegistry?: RunRegistry;
+
 	// ─── Cloudflare-only ────────────────────────────────────────────────────
 
 	/**
@@ -83,16 +97,19 @@ export interface FlueRuntime {
 	 * `RouteNotFoundError` envelope so the response shape stays
 	 * consistent with every other miss.
 	 */
-	routeAgentRequest?: (
-		request: Request,
-		env: unknown,
-	) => Promise<Response | null>;
+	routeAgentRequest?: (request: Request, env: unknown) => Promise<Response | null>;
 }
 
 const RUN_ROUTES: ReadonlyArray<readonly [string, HandleRunRouteOptions['action']]> = [
 	['/agents/:name/:id/runs/:runId', 'get'],
 	['/agents/:name/:id/runs/:runId/events', 'events'],
 	['/agents/:name/:id/runs/:runId/stream', 'stream'],
+];
+
+const RUN_ROUTES_BY_ID: ReadonlyArray<readonly [string, HandleRunRouteOptions['action']]> = [
+	['/runs/:runId', 'get'],
+	['/runs/:runId/events', 'events'],
+	['/runs/:runId/stream', 'stream'],
 ];
 
 /** Module-scoped runtime config seeded by the generated server entry. */
@@ -143,6 +160,9 @@ export function flue(): Hono {
 	app.all('/agents/:name/:id', agentRouteHandler);
 	for (const [routePath, action] of RUN_ROUTES) {
 		app.all(routePath, runRouteHandler(action));
+	}
+	for (const [routePath, action] of RUN_ROUTES_BY_ID) {
+		app.all(routePath, runByIdRouteHandler(action));
 	}
 
 	// Sub-app's `onError` catches throws from `agentRouteHandler` and
@@ -226,6 +246,7 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 			runHandler: rt.runHandler,
 			runStore: rt.runStore,
 			runSubscribers: rt.runSubscribers,
+			runRegistry: rt.runRegistry,
 		});
 	}
 
@@ -288,6 +309,72 @@ function runRouteHandler(action: HandleRunRouteOptions['action']): MiddlewareHan
 		throw new RouteNotFoundError({
 			method: c.req.method,
 			path: new URL(c.req.url).pathname,
+		});
+	};
+}
+
+/**
+ * Bare `/runs/:runId` route handler. Resolves the run's owning agent +
+ * instance via the runtime's {@link RunRegistry}, then delegates to
+ * `handleRunRouteRequest` with the registry-supplied identifiers.
+ *
+ * Lookup-and-forward shape rather than direct store access so the Node
+ * and Cloudflare implementations share one route handler. On Node the
+ * registry pointer maps to the module-scoped `runStore` directly; on
+ * Cloudflare (Commit B), the lookup is followed by a DO dispatch to the
+ * owning agent DO that owns the run's record + events + live stream.
+ */
+function runByIdRouteHandler(action: HandleRunRouteOptions['action']): MiddlewareHandler {
+	return async (c) => {
+		const rt = runtimeConfig;
+		if (!rt) {
+			throw new Error(
+				'[flue] flue() route invoked before runtime was configured. ' +
+					'This usually means flue() was used outside a Flue-built server entry.',
+			);
+		}
+
+		// Method check first so a POST/PUT/DELETE to /runs/:runId surfaces
+		// a 405 with the canonical envelope, not Hono's default plain
+		// 404. We can't use `validateAgentRunRequest` here — that helper
+		// validates agent name/id, which we don't have until after the
+		// registry lookup.
+		if (c.req.method !== 'GET') {
+			throw new RouteNotFoundError({
+				method: c.req.method,
+				path: new URL(c.req.url).pathname,
+			});
+		}
+
+		const runId = c.req.param('runId') || undefined;
+		if (!runId) {
+			throw new RouteNotFoundError({
+				method: c.req.method,
+				path: new URL(c.req.url).pathname,
+			});
+		}
+
+		// Cloudflare short-circuits before any registry consult during
+		// Commit A — the `FlueRegistry` DO and the `routeRunRequest`
+		// seam both land in Commit B. After Commit B this branch will
+		// resolve the pointer via the registry client and forward to
+		// the owning agent DO (decision 8: bare URL preserved).
+		if (rt.target === 'cloudflare') {
+			throw new RunRegistryUnavailableError();
+		}
+
+		if (!rt.runRegistry) throw new RunRegistryUnavailableError();
+		const pointer = await rt.runRegistry.lookupRun(runId);
+		if (!pointer) throw new RunNotFoundError({ runId });
+
+		return handleRunRouteRequest({
+			request: c.req.raw,
+			runStore: rt.runStore,
+			runSubscribers: rt.runSubscribers,
+			agentName: pointer.agentName,
+			id: pointer.instanceId,
+			runId,
+			action,
 		});
 	};
 }

@@ -38,9 +38,7 @@ export class NodePlugin implements BuildPlugin {
 		// default export and dispatches all requests through `app.fetch`. When
 		// no app.ts is present, the generated entry constructs a thin default
 		// Hono that mounts `flue()` and renders canonical error envelopes.
-		const userAppImport = appEntry
-			? `import userApp from '${appEntry.replace(/\\/g, '/')}';`
-			: '';
+		const userAppImport = appEntry ? `import userApp from '${appEntry.replace(/\\/g, '/')}';` : '';
 
 		// All HTTP routing, SSE/webhook/sync mode handling, agent dispatch,
 		// and error rendering live in @flue/runtime's runtime modules. The
@@ -54,6 +52,7 @@ import {
   createFlueContext,
   InMemorySessionStore,
   InMemoryRunStore,
+  InMemoryRunRegistry,
   createRunSubscriberRegistry,
   bashFactoryToSessionEnv,
   resolveModel,
@@ -114,6 +113,7 @@ async function createLocalEnv() {
 // Default persistence store for Node — in-memory, process lifetime.
 const defaultStore = new InMemorySessionStore();
 const runStore = new InMemoryRunStore();
+const runRegistry = new InMemoryRunRegistry();
 const runSubscribers = createRunSubscriberRegistry();
 
 function createContextForRequest(id, runId, payload, req) {
@@ -148,6 +148,7 @@ configureFlueRuntime({
   createContext: createContextForRequest,
   runStore,
   runSubscribers,
+  runRegistry,
 });
 
 // ─── App composition ────────────────────────────────────────────────────────

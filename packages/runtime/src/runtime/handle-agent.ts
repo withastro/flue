@@ -4,6 +4,7 @@ import type { FlueContextInternal } from '../client.ts';
 import { parseJsonBody, toHttpResponse } from '../errors.ts';
 import type { FlueEvent } from '../types.ts';
 import { generateRunId } from './ids.ts';
+import type { RunRegistry } from './run-registry.ts';
 import type { RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 
@@ -36,10 +37,7 @@ export type CreateContextFn = (
  * The caller is responsible for any logging on completion/error; this routine
  * just kicks it off and returns the 202.
  */
-export type StartWebhookFn = (
-	runId: string,
-	run: () => Promise<unknown>,
-) => Promise<unknown>;
+export type StartWebhookFn = (runId: string, run: () => Promise<unknown>) => Promise<unknown>;
 
 /**
  * Foreground handler execution wrapper. Wraps the call to `handler(ctx)` so
@@ -90,6 +88,15 @@ export interface HandleAgentOptions {
 	 * see only what's already in the store at the moment they connect.
 	 */
 	runSubscribers?: RunSubscriberRegistry;
+	/**
+	 * Per-target cross-deployment pointer index. Receives a
+	 * `recordRunStart` after every successful `createRun` and a
+	 * `recordRunEnd` after every `endRun`. Optional — if omitted, the
+	 * run still completes; only the bare `/runs/:runId` lookup path
+	 * (which consults the registry to discover the owning instance)
+	 * will be unable to find this run.
+	 */
+	runRegistry?: RunRegistry;
 }
 
 /**
@@ -114,7 +121,8 @@ export interface HandleAgentOptions {
  * already been validated as a POST against a registered agent.
  */
 export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Response> {
-	const { request, agentName, id, handler, createContext, runStore, runSubscribers } = opts;
+	const { request, agentName, id, handler, createContext, runStore, runSubscribers, runRegistry } =
+		opts;
 	const startWebhook = opts.startWebhook ?? defaultStartWebhook;
 	const runHandler = opts.runHandler ?? defaultRunHandler;
 	const runId = generateRunId();
@@ -141,6 +149,7 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 				startWebhook,
 				runStore,
 				runSubscribers,
+				runRegistry,
 			});
 		}
 
@@ -156,6 +165,7 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 				runHandler,
 				runStore,
 				runSubscribers,
+				runRegistry,
 			});
 		}
 
@@ -170,6 +180,7 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 			runHandler,
 			runStore,
 			runSubscribers,
+			runRegistry,
 		});
 	} catch (err) {
 		// toHttpResponse logs unknowns via flueLog.error — no extra console.error
@@ -193,6 +204,7 @@ interface ModeOptions {
 	runHandler: RunHandlerFn;
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
+	runRegistry?: RunRegistry;
 }
 
 interface WebhookOptions {
@@ -206,6 +218,7 @@ interface WebhookOptions {
 	startWebhook: StartWebhookFn;
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
+	runRegistry?: RunRegistry;
 }
 
 async function runWebhookMode(opts: WebhookOptions): Promise<Response> {
@@ -220,6 +233,7 @@ async function runWebhookMode(opts: WebhookOptions): Promise<Response> {
 		startWebhook,
 		runStore,
 		runSubscribers,
+		runRegistry,
 	} = opts;
 
 	// Webhook mode relies on `startWebhook` for target-specific execution
@@ -233,10 +247,10 @@ async function runWebhookMode(opts: WebhookOptions): Promise<Response> {
 		createContext,
 		runStore,
 		runSubscribers,
+		runRegistry,
 	});
 	const { ctx } = lifecycle;
-	const run = async (): Promise<unknown> =>
-		withRunLifecycle(lifecycle, () => handler(ctx));
+	const run = async (): Promise<unknown> => withRunLifecycle(lifecycle, () => handler(ctx));
 
 	startWebhook(runId, run).then(
 		(result) => {
@@ -274,6 +288,7 @@ function runSseMode(opts: ModeOptions): Response {
 		runHandler,
 		runStore,
 		runSubscribers,
+		runRegistry,
 	} = opts;
 
 	const { readable, writable } = new TransformStream();
@@ -322,6 +337,7 @@ function runSseMode(opts: ModeOptions): Response {
 			createContext,
 			runStore,
 			runSubscribers,
+			runRegistry,
 		});
 		const { ctx } = lifecycle;
 		ctx.setEventCallback((event) => {
@@ -374,6 +390,7 @@ async function runSyncMode(opts: ModeOptions): Promise<Response> {
 		runHandler,
 		runStore,
 		runSubscribers,
+		runRegistry,
 	} = opts;
 	const lifecycle = await createRunLifecycle({
 		agentName,
@@ -384,6 +401,7 @@ async function runSyncMode(opts: ModeOptions): Promise<Response> {
 		createContext,
 		runStore,
 		runSubscribers,
+		runRegistry,
 	});
 	const { ctx } = lifecycle;
 	try {
@@ -408,6 +426,7 @@ interface RunLifecycleOptions {
 	createContext: CreateContextFn;
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
+	runRegistry?: RunRegistry;
 }
 
 interface RunLifecycle extends RunLifecycleOptions {
@@ -427,6 +446,19 @@ async function createRunLifecycle(options: RunLifecycleOptions): Promise<RunLife
 			agentName: options.agentName,
 			startedAt,
 			payload: options.payload,
+		}),
+	);
+	// Registry pointer is written after the store row exists so the
+	// per-instance store remains the source of truth: if the store write
+	// failed, we skip the registry write too (the run is observably
+	// degraded either way, and a registry pointer with no backing record
+	// would produce confusing 404s on the bare /runs/:runId path).
+	await safeRegistry('recordRunStart', () =>
+		options.runRegistry?.recordRunStart({
+			runId: options.runId,
+			agentName: options.agentName,
+			instanceId: options.id,
+			startedAt,
 		}),
 	);
 	return { ...options, ctx, startedAt, startedAtMs };
@@ -481,7 +513,7 @@ async function emitRunEnd(
 	const error = input.isError ? serializeError(input.error) : undefined;
 	const normalizedResult = result === undefined ? null : result;
 
-	const { runStore, runSubscribers, runId } = lifecycle;
+	const { runStore, runSubscribers, runRegistry, runId } = lifecycle;
 
 	// Decorate through the shared event path so eventIndex/timestamp stay continuous.
 	const decorated = lifecycle.ctx.emitEvent({
@@ -493,9 +525,7 @@ async function emitRunEnd(
 		durationMs,
 	});
 
-	await safeRunStore('appendEvent(run_end)', () =>
-		runStore?.appendEvent(runId, decorated),
-	);
+	await safeRunStore('appendEvent(run_end)', () => runStore?.appendEvent(runId, decorated));
 
 	runSubscribers?.publish(runId, decorated);
 
@@ -507,6 +537,20 @@ async function emitRunEnd(
 			durationMs,
 			result,
 			error,
+		}),
+	);
+
+	// Registry mirrors the store's terminal state. Failure here is
+	// non-fatal — the run is already finalized in the store and the
+	// subscriber wire has already seen run_end — but it does mean the
+	// registry's pointer will stay in 'active' until the next restart
+	// (in-memory) or until self-healing lands (CF, future phase).
+	await safeRegistry('recordRunEnd', () =>
+		runRegistry?.recordRunEnd({
+			runId,
+			endedAt,
+			durationMs,
+			isError: input.isError,
 		}),
 	);
 
@@ -548,6 +592,18 @@ async function safeRunStore(label: string, fn: () => Promise<void> | undefined):
 		await fn();
 	} catch (error) {
 		console.error(`[flue:run-store] ${label} failed:`, error);
+	}
+}
+
+// Intentionally structurally identical to `safeRunStore` (same shape,
+// same swallow-and-log behavior) so a future consolidation is mechanical.
+// The only difference is the log prefix; sharing via a parameterized
+// helper would obscure call-site intent for one fewer line of code.
+async function safeRegistry(label: string, fn: () => Promise<void> | undefined): Promise<void> {
+	try {
+		await fn();
+	} catch (error) {
+		console.error(`[flue:run-registry] ${label} failed:`, error);
 	}
 }
 

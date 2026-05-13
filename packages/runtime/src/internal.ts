@@ -24,6 +24,7 @@ export { createFlueContext } from './client.ts';
 // public root barrel, because it's tooling-facing.
 export { parseFrontmatterFile } from './context.ts';
 export { createDurableRunStore } from './cloudflare/run-store.ts';
+export { InMemoryRunRegistry } from './node/run-registry.ts';
 export { InMemoryRunStore } from './node/run-store.ts';
 export type { FlueRuntime } from './runtime/flue-app.ts';
 export { configureFlueRuntime, createDefaultFlueApp } from './runtime/flue-app.ts';
@@ -55,6 +56,17 @@ export type {
 export { handleAgentRequest } from './runtime/handle-agent.ts';
 export type { HandleRunRouteOptions } from './runtime/handle-run-routes.ts';
 export { handleRunRouteRequest } from './runtime/handle-run-routes.ts';
+export type {
+	InstancePointer,
+	ListInstancesOpts,
+	ListInstancesResponse,
+	ListRunsOpts,
+	ListRunsResponse,
+	RecordRunEndInput,
+	RecordRunStartInput,
+	RunPointer,
+	RunRegistry,
+} from './runtime/run-registry.ts';
 export type { RunRecord, RunStatus, RunStore } from './runtime/run-store.ts';
 export type { RunSubscriberListener, RunSubscriberRegistry } from './runtime/run-subscribers.ts';
 export { createRunSubscriberRegistry } from './runtime/run-subscribers.ts';
