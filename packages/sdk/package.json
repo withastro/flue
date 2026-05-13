@@ -1,0 +1,58 @@
+{
+	"name": "@flue/sdk",
+	"version": "0.5.3",
+	"type": "module",
+	"license": "Apache-2.0",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"import": "./dist/index.mjs"
+		},
+		"./app": {
+			"types": "./dist/app.d.mts",
+			"import": "./dist/app.mjs"
+		},
+		"./client": {
+			"types": "./dist/client.d.mts",
+			"import": "./dist/client.mjs"
+		},
+		"./sandbox": {
+			"types": "./dist/sandbox.d.mts",
+			"import": "./dist/sandbox.mjs"
+		},
+		"./internal": {
+			"types": "./dist/internal.d.mts",
+			"import": "./dist/internal.mjs"
+		},
+		"./cloudflare": {
+			"types": "./dist/cloudflare/index.d.mts",
+			"import": "./dist/cloudflare/index.mjs"
+		},
+		"./node": {
+			"types": "./dist/node/index.d.mts",
+			"import": "./dist/node/index.mjs"
+		},
+		"./config": {
+			"types": "./dist/config.d.mts",
+			"import": "./dist/config.mjs"
+		}
+	},
+	"main": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"files": [
+		"dist"
+	],
+	"engines": {
+		"node": ">=22.18.0"
+	},
+	"scripts": {
+		"build": "tsdown",
+		"check:types": "tsc --noEmit",
+		"prepublishOnly": "cp ../../README.md ."
+	},
+	"dependencies": {},
+	"devDependencies": {
+		"tsdown": "^0.20.3",
+		"typescript": "^5.9.2"
+	}
+}

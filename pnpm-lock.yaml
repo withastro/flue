@@ -223,6 +223,15 @@ importers:
         specifier: 5.9.3
         version: 5.9.3
 
+  packages/sdk:
+    devDependencies:
+      tsdown:
+        specifier: ^0.20.3
+        version: 0.20.3(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)(typescript@5.9.3)
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
 packages:
 
   '@ai-sdk/gateway@3.0.110':
