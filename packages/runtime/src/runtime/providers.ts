@@ -1,6 +1,8 @@
 /** Runtime provider registries consumed by `resolveModel` and Session. */
 
 import {
+	getModel,
+	type KnownProvider,
 	registerApiProvider as piRegisterApiProvider,
 	type Api,
 	type Model,
@@ -244,9 +246,13 @@ export function resolveRegisteredModel(
 }
 
 /**
- * Construct a pi-ai Model from a registered provider template. User-defined
- * providers do not have catalog metadata, so cost and context limits default
- * to zero. apiKey flows through `getApiKey`; it is not part of pi-ai's Model.
+ * Construct a pi-ai Model from a registered provider template.
+ *
+ * HTTP registrations have no catalog metadata available, so cost and context
+ * limits default to zero. Binding registrations hydrate metadata from pi-ai's
+ * `cloudflare-workers-ai` catalog when the model id is known (same `@cf/...`
+ * id space), falling back to zeros otherwise. apiKey flows through
+ * `getApiKey`; it is not part of pi-ai's Model.
  */
 function buildModelFromRegistration(
 	name: string,
@@ -254,18 +260,33 @@ function buildModelFromRegistration(
 	modelId: string,
 ): Model<Api> {
 	if (isCloudflareBindingRegistration(def)) {
-		const base: Model<Api> = {
-			id: modelId,
-			name: modelId,
-			api: CLOUDFLARE_AI_BINDING_API,
-			provider: def.provider ?? CLOUDFLARE_AI_BINDING_PROVIDER,
-			baseUrl: '',
-			reasoning: false,
-			input: ['text'],
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-			contextWindow: 0,
-			maxTokens: 0,
-		};
+		// Workers AI binding model ids match pi-ai's `cloudflare-workers-ai`
+		// catalog entries (`@cf/<vendor>/<name>`). Inherit `contextWindow`,
+		// `maxTokens`, `cost`, `reasoning`, `input`, `name` from the catalog
+		// so compaction thresholds and usage accounting are accurate; override
+		// the transport-specific fields (`api`, `provider`, `baseUrl`).
+		// `getModel`'s types narrow to a literal id, but at runtime it returns
+		// `undefined` for unknown ids — same pattern used in `resolveModel`.
+		const catalog = getModel('cloudflare-workers-ai' as KnownProvider, modelId as never);
+		const base: Model<Api> = catalog
+			? {
+					...catalog,
+					api: CLOUDFLARE_AI_BINDING_API,
+					provider: def.provider ?? CLOUDFLARE_AI_BINDING_PROVIDER,
+					baseUrl: '',
+				}
+			: {
+					id: modelId,
+					name: modelId,
+					api: CLOUDFLARE_AI_BINDING_API,
+					provider: def.provider ?? CLOUDFLARE_AI_BINDING_PROVIDER,
+					baseUrl: '',
+					reasoning: false,
+					input: ['text'],
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: 0,
+					maxTokens: 0,
+				};
 		return attachModelBinding(base, def.binding, def.gateway);
 	}
 
