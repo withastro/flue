@@ -51,10 +51,12 @@ export interface HttpProviderRegistration {
 	 * and `configureProvider()` overrides. Defaults to the registry name.
 	 */
 	provider?: string;
-	/** Context window size. Used by compaction logic. Defaults to 0 if unset. */
+	/** Context window size fallback for any model not listed in {@link models}. Defaults to 0. */
 	contextWindow?: number;
-	/** Max output tokens. Sent as max_tokens in requests. Defaults to 0 if unset. */
+	/** Max output tokens fallback for any model not listed in {@link models}. Defaults to 0. */
 	maxTokens?: number;
+	/** Per-model overrides for context window and max tokens. Takes precedence over the provider-level fields. */
+	models?: Record<string, { contextWindow?: number; maxTokens?: number }>;
 }
 
 export interface CloudflareAIBindingRegistration {
@@ -79,10 +81,12 @@ export interface CloudflareAIBindingRegistration {
 	 * See https://developers.cloudflare.com/ai-gateway/integrations/worker-binding-methods/.
 	 */
 	gateway?: CloudflareGatewayOptions | false;
-	/** Context window size. Defaults to 0 if unset. */
+	/** Context window size fallback for any model not listed in {@link models}. Defaults to 0. */
 	contextWindow?: number;
-	/** Max output tokens. Defaults to 0 if unset. */
+	/** Max output tokens fallback for any model not listed in {@link models}. Defaults to 0. */
 	maxTokens?: number;
+	/** Per-model overrides for context window and max tokens. Takes precedence over the provider-level fields. */
+	models?: Record<string, { contextWindow?: number; maxTokens?: number }>;
 }
 
 /**
@@ -271,8 +275,8 @@ function buildModelFromRegistration(
 			reasoning: false,
 			input: ['text'],
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-			contextWindow: def.contextWindow ?? 0,
-			maxTokens: def.maxTokens ?? 0,
+			contextWindow: def.models?.[modelId]?.contextWindow ?? def.contextWindow ?? 0,
+			maxTokens: def.models?.[modelId]?.maxTokens ?? def.maxTokens ?? 0,
 		};
 		return attachModelBinding(base, def.binding, def.gateway);
 	}
@@ -286,8 +290,8 @@ function buildModelFromRegistration(
 		reasoning: false,
 		input: ['text'],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: def.contextWindow ?? 0,
-		maxTokens: def.maxTokens ?? 0,
+		contextWindow: def.models?.[modelId]?.contextWindow ?? def.contextWindow ?? 0,
+		maxTokens: def.models?.[modelId]?.maxTokens ?? def.maxTokens ?? 0,
 		headers: def.headers,
 	};
 }
