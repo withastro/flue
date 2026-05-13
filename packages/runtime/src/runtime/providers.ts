@@ -260,8 +260,7 @@ function buildModelFromRegistration(
 		if (!catalog) {
 			throw new Error(
 				`[flue] Unknown Workers AI model "${modelId}". ` +
-					`Not present in @mariozechner/pi-ai's "cloudflare-workers-ai" catalog. ` +
-					`Check the model id, or upgrade pi-ai if Cloudflare recently shipped it.`,
+					`Not present in @mariozechner/pi-ai's "cloudflare-workers-ai" catalog.`,
 			);
 		}
 		return attachModelBinding(
