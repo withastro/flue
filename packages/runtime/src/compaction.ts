@@ -145,10 +145,7 @@ export function shouldCompact(
 	settings: CompactionSettings,
 ): boolean {
 	if (!settings.enabled) return false;
-	// Treat a non-positive window as "unknown" — registered providers without
-	// catalog metadata default to 0, and a literal zero-token window isn't a
-	// real configuration. Skipping the threshold here avoids triggering
-	// compaction every turn for those callers. Overflow recovery still runs.
+	// `contextWindow <= 0` means unknown — skip threshold; overflow recovery still runs.
 	if (contextWindow <= 0) return false;
 	return contextTokens > contextWindow - settings.reserveTokens;
 }
