@@ -6,17 +6,15 @@
  * `InMemoryRunStore`. Restart drops state — same lifetime as the store.
  *
  * Pruning policy mirrors the store's "bounded retention" pattern: after
- * every `recordRunEnd`, completed pointers are pruned per-agent down to
- * {@link DEFAULT_MAX_COMPLETED_RUNS_PER_AGENT}. The bucket is keyed by
- * `agentName` (not `instanceId`) because instance ids can be effectively
- * unique per call in some agent topologies, which would make a
- * per-instance cap behave as no cap at all.
+ * every `recordRunEnd`, completed pointers are pruned per instance down to
+ * {@link DEFAULT_MAX_COMPLETED_RUNS_PER_INSTANCE}. Active runs are never
+ * pruned.
  */
 import {
 	type CursorTuple,
+	DEFAULT_LIST_LIMIT,
 	decodeInstanceCursor,
 	decodeRunCursor,
-	DEFAULT_LIST_LIMIT,
 	encodeInstanceCursor,
 	encodeRunCursor,
 	type InstancePointer,
@@ -33,24 +31,24 @@ import {
 
 export interface InMemoryRunRegistryOptions {
 	/**
-	 * Per-agent cap on retained completed pointers. Defaults to 50,
+	 * Per-instance cap on retained completed pointers. Defaults to 50,
 	 * mirroring `InMemoryRunStore`'s per-instance run cap. Active runs
 	 * are never pruned.
 	 */
-	maxCompletedRunsPerAgent?: number;
+	maxCompletedRunsPerInstance?: number;
 }
 
-export const DEFAULT_MAX_COMPLETED_RUNS_PER_AGENT = 50;
+export const DEFAULT_MAX_COMPLETED_RUNS_PER_INSTANCE = 50;
 
 export class InMemoryRunRegistry implements RunRegistry {
 	private pointers = new Map<string, RunPointer>();
-	private byAgent = new Map<string, Set<string>>();
+	private byInstance = new Map<string, Set<string>>();
 	private instances = new Set<string>();
-	private maxCompletedRunsPerAgent: number;
+	private maxCompletedRunsPerInstance: number;
 
 	constructor(options: InMemoryRunRegistryOptions = {}) {
-		this.maxCompletedRunsPerAgent =
-			options.maxCompletedRunsPerAgent ?? DEFAULT_MAX_COMPLETED_RUNS_PER_AGENT;
+		this.maxCompletedRunsPerInstance =
+			options.maxCompletedRunsPerInstance ?? DEFAULT_MAX_COMPLETED_RUNS_PER_INSTANCE;
 	}
 
 	async recordRunStart(input: RecordRunStartInput): Promise<void> {
@@ -70,14 +68,15 @@ export class InMemoryRunRegistry implements RunRegistry {
 		};
 		this.pointers.set(input.runId, pointer);
 
-		let agentBucket = this.byAgent.get(input.agentName);
-		if (!agentBucket) {
-			agentBucket = new Set();
-			this.byAgent.set(input.agentName, agentBucket);
+		const key = instanceKey(input.agentName, input.instanceId);
+		let instanceBucket = this.byInstance.get(key);
+		if (!instanceBucket) {
+			instanceBucket = new Set();
+			this.byInstance.set(key, instanceBucket);
 		}
-		agentBucket.add(input.runId);
+		instanceBucket.add(input.runId);
 
-		this.instances.add(instanceKey(input.agentName, input.instanceId));
+		this.instances.add(key);
 	}
 
 	async recordRunEnd(input: RecordRunEndInput): Promise<void> {
@@ -94,7 +93,7 @@ export class InMemoryRunRegistry implements RunRegistry {
 			durationMs: input.durationMs,
 			isError: input.isError,
 		});
-		this.pruneCompletedRunsForAgent(pointer.agentName);
+		this.pruneCompletedRunsForInstance(pointer.agentName, pointer.instanceId);
 	}
 
 	async lookupRun(runId: string): Promise<RunPointer | null> {
@@ -107,7 +106,7 @@ export class InMemoryRunRegistry implements RunRegistry {
 
 		// Snapshot once so subsequent writes during pagination don't
 		// shift the result order. The data set is small (bounded by
-		// maxCompletedRunsPerAgent * agentCount + active runs); a full
+		// maxCompletedRunsPerInstance * instanceCount + active runs); a full
 		// sorted scan per call is fine for v1.
 		const all = [...this.pointers.values()]
 			.filter((p) => matchesListFilter(p, opts))
@@ -119,10 +118,8 @@ export class InMemoryRunRegistry implements RunRegistry {
 		}
 
 		const page = all.slice(startIndex, startIndex + limit);
-		const nextCursor =
-			startIndex + limit < all.length && page.length > 0
-				? encodeRunCursor(page[page.length - 1]!)
-				: undefined;
+		const last = page.at(-1);
+		const nextCursor = startIndex + limit < all.length && last ? encodeRunCursor(last) : undefined;
 		return { runs: page, nextCursor };
 	}
 
@@ -146,17 +143,17 @@ export class InMemoryRunRegistry implements RunRegistry {
 		if (startIndex === -1) return { instances: [] };
 
 		const page = all.slice(startIndex, startIndex + limit);
+		const last = page.at(-1);
 		const nextCursor =
-			startIndex + limit < all.length && page.length > 0
-				? encodeInstanceCursor(
-						instanceKey(page[page.length - 1]!.agentName, page[page.length - 1]!.instanceId),
-					)
+			startIndex + limit < all.length && last
+				? encodeInstanceCursor(instanceKey(last.agentName, last.instanceId))
 				: undefined;
 		return { instances: page, nextCursor };
 	}
 
-	private pruneCompletedRunsForAgent(agentName: string): void {
-		const bucket = this.byAgent.get(agentName);
+	private pruneCompletedRunsForInstance(agentName: string, instanceId: string): void {
+		const key = instanceKey(agentName, instanceId);
+		const bucket = this.byInstance.get(key);
 		if (!bucket) return;
 
 		const completed = [...bucket]
@@ -164,14 +161,17 @@ export class InMemoryRunRegistry implements RunRegistry {
 			.filter((p): p is RunPointer => p !== undefined && p.status !== 'active')
 			.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 
-		const deleteCount = completed.length - this.maxCompletedRunsPerAgent;
+		const deleteCount = completed.length - this.maxCompletedRunsPerInstance;
 		if (deleteCount <= 0) return;
 
 		for (const pointer of completed.slice(0, deleteCount)) {
 			this.pointers.delete(pointer.runId);
 			bucket.delete(pointer.runId);
 		}
-		if (bucket.size === 0) this.byAgent.delete(agentName);
+		if (bucket.size === 0) {
+			this.byInstance.delete(key);
+			this.instances.delete(key);
+		}
 	}
 }
 

@@ -18,9 +18,9 @@
  *   GET    /instances?agent=&limit=&cursor=     → ListInstancesResponse
  */
 import {
+	DEFAULT_LIST_LIMIT,
 	decodeInstanceCursor,
 	decodeRunCursor,
-	DEFAULT_LIST_LIMIT,
 	encodeInstanceCursor,
 	encodeRunCursor,
 	type InstancePointer,
@@ -36,14 +36,14 @@ import {
 import type { RunStatus } from '../runtime/run-store.ts';
 
 /**
- * Per-agent retention cap on completed pointers. Matches
- * `InMemoryRunRegistry`'s `DEFAULT_MAX_COMPLETED_RUNS_PER_AGENT` for
- * behavioral consistency between targets — see phase 1, Q5. Duplicated
+ * Per-instance retention cap on completed pointers. Matches
+ * `InMemoryRunRegistry`'s `DEFAULT_MAX_COMPLETED_RUNS_PER_INSTANCE` for
+ * behavioral consistency between targets. Duplicated
  * (small enough that "share one constant module" would itself be the
  * weirder pattern) rather than imported, because `../node/run-registry.ts`
  * has a Node-only orientation we don't want to drag into the CF chunk.
  */
-export const DEFAULT_MAX_COMPLETED_RUNS_PER_AGENT = 50;
+export const DEFAULT_MAX_COMPLETED_RUNS_PER_INSTANCE = 50;
 
 /**
  * Minimal `SqlStorage` shape. Mirrors the one in `../cloudflare/run-store.ts`.
@@ -67,7 +67,7 @@ export interface RegistryOps {
 }
 
 export interface CreateRegistryOpsOptions {
-	maxCompletedRunsPerAgent?: number;
+	maxCompletedRunsPerInstance?: number;
 }
 
 export function createRegistryOps(
@@ -77,7 +77,7 @@ export function createRegistryOps(
 	ensureRegistryTables(sql);
 	return new SqlRegistryOps(
 		sql,
-		options.maxCompletedRunsPerAgent ?? DEFAULT_MAX_COMPLETED_RUNS_PER_AGENT,
+		options.maxCompletedRunsPerInstance ?? DEFAULT_MAX_COMPLETED_RUNS_PER_INSTANCE,
 	);
 }
 
@@ -96,7 +96,8 @@ export async function handleRegistryRequest(
 	try {
 		// GET /pointers/<runId>
 		if (request.method === 'GET' && segments[0] === 'pointers' && segments.length === 2) {
-			const runId = segments[1]!;
+			const runId = segments[1];
+			if (!runId) return new Response('Missing runId.', { status: 404 });
 			const pointer = ops.lookupRun(runId);
 			// Empty 404 body (not `"null"`): the client detects miss via
 			// `response.status === 404` and does not try to parse JSON.
@@ -112,7 +113,8 @@ export async function handleRegistryRequest(
 			segments[2] === 'start' &&
 			segments.length === 3
 		) {
-			const runId = segments[1]!;
+			const runId = segments[1];
+			if (!runId) return new Response('Missing runId.', { status: 404 });
 			const body = (await request.json()) as RecordRunStartInput;
 			ops.recordRunStart({ ...body, runId });
 			return new Response(null, { status: 204 });
@@ -125,7 +127,8 @@ export async function handleRegistryRequest(
 			segments[2] === 'end' &&
 			segments.length === 3
 		) {
-			const runId = segments[1]!;
+			const runId = segments[1];
+			if (!runId) return new Response('Missing runId.', { status: 404 });
 			const body = (await request.json()) as Omit<RecordRunEndInput, 'runId'>;
 			ops.recordRunEnd({ ...body, runId });
 			return new Response(null, { status: 204 });
@@ -159,11 +162,11 @@ export async function handleRegistryRequest(
 
 class SqlRegistryOps implements RegistryOps {
 	private sql: SqlStorage;
-	private maxCompletedRunsPerAgent: number;
+	private maxCompletedRunsPerInstance: number;
 
-	constructor(sql: SqlStorage, maxCompletedRunsPerAgent: number) {
+	constructor(sql: SqlStorage, maxCompletedRunsPerInstance: number) {
 		this.sql = sql;
-		this.maxCompletedRunsPerAgent = maxCompletedRunsPerAgent;
+		this.maxCompletedRunsPerInstance = maxCompletedRunsPerInstance;
 	}
 
 	recordRunStart(input: RecordRunStartInput): void {
@@ -185,12 +188,12 @@ class SqlRegistryOps implements RegistryOps {
 	}
 
 	recordRunEnd(input: RecordRunEndInput): void {
-		// Look up the pointer's agent so we can prune that agent's bucket
+		// Look up the pointer's owner so we can prune that instance's bucket
 		// after the update. If the pointer doesn't exist (shouldn't happen
 		// in normal lifecycle — recordRunEnd always follows recordRunStart),
 		// silently drop the update. Same posture as `InMemoryRunRegistry`.
 		const existing = this.sql
-			.exec('SELECT agent_name FROM flue_registry_runs WHERE run_id = ?', input.runId)
+			.exec('SELECT agent_name, instance_id FROM flue_registry_runs WHERE run_id = ?', input.runId)
 			.toArray();
 		if (existing.length === 0) return;
 
@@ -205,8 +208,11 @@ class SqlRegistryOps implements RegistryOps {
 			input.runId,
 		);
 
-		const agentName = String(existing[0]!.agent_name);
-		this.pruneCompletedRunsForAgent(agentName);
+		const existingPointer = existing[0];
+		if (!existingPointer) return;
+		const agentName = String(existingPointer.agent_name);
+		const instanceId = String(existingPointer.instance_id);
+		this.pruneCompletedRunsForInstance(agentName, instanceId);
 	}
 
 	lookupRun(runId: string): RunPointer | null {
@@ -261,8 +267,8 @@ class SqlRegistryOps implements RegistryOps {
 
 		const hasMore = rows.length > limit;
 		const page = (hasMore ? rows.slice(0, limit) : rows).map(rowToRunPointer);
-		const nextCursor =
-			hasMore && page.length > 0 ? encodeRunCursor(page[page.length - 1]!) : undefined;
+		const last = page.at(-1);
+		const nextCursor = hasMore && last ? encodeRunCursor(last) : undefined;
 		return { runs: page, nextCursor };
 	}
 
@@ -302,32 +308,33 @@ class SqlRegistryOps implements RegistryOps {
 			agentName: String(row.agent_name),
 			instanceId: String(row.instance_id),
 		}));
-		const nextCursor =
-			hasMore && page.length > 0
-				? encodeInstanceCursor(
-						`${page[page.length - 1]!.agentName}\0${page[page.length - 1]!.instanceId}`,
-					)
-				: undefined;
+		const last = page.at(-1);
+		const nextCursor = hasMore && last
+			? encodeInstanceCursor(`${last.agentName}\0${last.instanceId}`)
+			: undefined;
 		return { instances: page, nextCursor };
 	}
 
-	private pruneCompletedRunsForAgent(agentName: string): void {
+	private pruneCompletedRunsForInstance(agentName: string, instanceId: string): void {
 		// One statement: keep the most recent N completed-or-errored
-		// pointers per agent, delete the rest. Active runs are never
+		// pointers per instance, delete the rest. Active runs are never
 		// matched by the outer WHERE so they're untouched.
 		this.sql.exec(
 			`DELETE FROM flue_registry_runs
 			 WHERE agent_name = ?
+			   AND instance_id = ?
 			   AND status != 'active'
 			   AND run_id NOT IN (
 			     SELECT run_id FROM flue_registry_runs
-			     WHERE agent_name = ? AND status != 'active'
+			     WHERE agent_name = ? AND instance_id = ? AND status != 'active'
 			     ORDER BY started_at DESC, run_id DESC
 			     LIMIT ?
 			   )`,
 			agentName,
+			instanceId,
 			agentName,
-			this.maxCompletedRunsPerAgent,
+			instanceId,
+			this.maxCompletedRunsPerInstance,
 		);
 	}
 }
@@ -352,6 +359,9 @@ function ensureRegistryTables(sql: SqlStorage): void {
 	);
 	sql.exec(
 		'CREATE INDEX IF NOT EXISTS flue_registry_agent_instance_idx ON flue_registry_runs (agent_name, instance_id)',
+	);
+	sql.exec(
+		'CREATE INDEX IF NOT EXISTS flue_registry_instance_started_idx ON flue_registry_runs (agent_name, instance_id, started_at DESC)',
 	);
 	sql.exec(
 		'CREATE INDEX IF NOT EXISTS flue_registry_agent_started_idx ON flue_registry_runs (agent_name, started_at DESC)',

@@ -3,10 +3,10 @@
 import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import {
+	type DescribeRouteOptions,
 	describeRoute,
 	openAPIRouteHandler,
 	resolver,
-	type DescribeRouteOptions,
 	validator,
 } from 'hono-openapi';
 import {
@@ -16,14 +16,15 @@ import {
 	toHttpResponse,
 	ValidationError,
 } from '../errors.ts';
+import { type FlueRuntime, getFlueRuntime, handleRunById } from './flue-app.ts';
 import type { ListRunsOpts, RunRegistry } from './run-registry.ts';
 import type { RunStatus } from './run-store.ts';
 import {
-	AgentInstanceParamSchema,
-	AgentNameParamSchema,
 	AdminInstanceRunsQuerySchema,
 	AdminInstancesQuerySchema,
 	AdminRunsQuerySchema,
+	AgentInstanceParamSchema,
+	AgentNameParamSchema,
 	ErrorEnvelopeSchema,
 	ListAgentsResponseSchema,
 	ListInstancesResponseSchema,
@@ -31,12 +32,11 @@ import {
 	RunIdParamSchema,
 	RunRecordSchema,
 } from './schemas.ts';
-import { getFlueRuntime, handleRunById, type FlueRuntime } from './flue-app.ts';
 
 export function admin(): Hono {
 	const app = new Hono();
 
-	app.get('/openapi.json', openAPIRouteHandler(app, adminOpenApiOptions()));
+	app.get('/openapi.json', lazyOpenApiRouteHandler(app, adminOpenApiOptions));
 	app.get('/agents', describeRoute(adminAgentsSpec() as DescribeRouteOptions), listAgentsHandler);
 	app.get(
 		'/agents/:name/instances',
@@ -80,6 +80,10 @@ function adminOpenApiOptions() {
 			servers: [],
 		},
 	};
+}
+
+function lazyOpenApiRouteHandler(app: Hono, getOptions: () => ReturnType<typeof adminOpenApiOptions>): MiddlewareHandler {
+	return (c, next) => openAPIRouteHandler(app, getOptions())(c, next);
 }
 
 function validated(target: 'param' | 'query', schema: Parameters<typeof validator>[1]): MiddlewareHandler {

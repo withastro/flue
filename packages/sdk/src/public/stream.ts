@@ -26,6 +26,7 @@ export async function* streamRunEvents(
 
 	while (!options.signal?.aborted) {
 		try {
+			let sawTerminalEvent = false;
 			const headers = await http.requestHeaders(
 				{
 					accept: 'text/event-stream',
@@ -47,9 +48,17 @@ export async function* streamRunEvents(
 				}
 				const event = JSON.parse(frame.data) as FlueEvent;
 				yield event;
-				if (event.type === 'run_end') return;
+				if (event.type === 'run_end') {
+					sawTerminalEvent = true;
+					return;
+				}
 			}
-			return;
+			if (sawTerminalEvent || options.signal?.aborted) return;
+			if (attempt >= maxRetries) {
+				throw new Error('SSE stream closed before run_end.');
+			}
+			await sleep(initialRetryMs * 2 ** attempt, options.signal);
+			attempt++;
 		} catch (error) {
 			if (options.signal?.aborted) return;
 			if (attempt >= maxRetries) throw error;
@@ -67,7 +76,7 @@ export async function* readSse(body: ReadableStream<Uint8Array>): AsyncIterable<
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
-			buffer += decoder.decode(value, { stream: true });
+			buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
 			let idx = buffer.indexOf('\n\n');
 			while (idx !== -1) {
 				const raw = buffer.slice(0, idx);
@@ -77,7 +86,7 @@ export async function* readSse(body: ReadableStream<Uint8Array>): AsyncIterable<
 				idx = buffer.indexOf('\n\n');
 			}
 		}
-		buffer += decoder.decode();
+		buffer += decoder.decode().replace(/\r\n/g, '\n');
 		const frame = parseFrame(buffer);
 		if (frame) yield frame;
 	} finally {

@@ -1,11 +1,14 @@
 import { HttpClient, type HttpClientOptions, type RequestHeaders } from './http.ts';
 import { invokeAgent, type SyncInvokeResult, type WebhookInvokeResult } from './public/invoke.ts';
-import { streamRunEvents, type StreamOptions } from './public/stream.ts';
+import { type StreamOptions, streamRunEvents } from './public/stream.ts';
 import type { AgentManifestEntry, InstanceSummary, ListResponse, RunPointer, RunRecord, RunStatus } from './types.ts';
 
 export type { RequestHeaders };
 
-export interface CreateFlueClientOptions extends HttpClientOptions {}
+export interface CreateFlueClientOptions extends HttpClientOptions {
+	/** Mount path for `admin()`. Defaults to `/admin`. */
+	adminBasePath?: string;
+}
 
 export interface FlueClient {
 	runs: {
@@ -41,6 +44,7 @@ export interface ListRunsOptions extends ListOptions {
 
 export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 	const http = new HttpClient(options);
+	const adminBasePath = normalizeBasePath(options.adminBasePath ?? '/admin');
 	return {
 		runs: {
 			get: (runId) => http.json({ path: `/runs/${encodeURIComponent(runId)}` }),
@@ -57,26 +61,32 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 		},
 		admin: {
 			agents: {
-				list: () => http.json({ path: '/admin/agents' }),
+				list: () => http.json({ path: `${adminBasePath}/agents` }),
 			},
 			instances: {
 				list: (agentName, opts = {}) =>
 					http.json({
-						path: `/admin/agents/${encodeURIComponent(agentName)}/instances`,
+						path: `${adminBasePath}/agents/${encodeURIComponent(agentName)}/instances`,
 						query: listQuery(opts),
 					}),
 			},
 			runs: {
-				list: (opts = {}) => http.json({ path: '/admin/runs', query: runsQuery(opts) }),
+				list: (opts = {}) => http.json({ path: `${adminBasePath}/runs`, query: runsQuery(opts) }),
 				listForInstance: (agentName, instanceId, opts = {}) =>
 					http.json({
-						path: `/admin/agents/${encodeURIComponent(agentName)}/instances/${encodeURIComponent(instanceId)}/runs`,
+						path: `${adminBasePath}/agents/${encodeURIComponent(agentName)}/instances/${encodeURIComponent(instanceId)}/runs`,
 						query: runsQuery(opts),
 					}),
-				get: (runId) => http.json({ path: `/admin/runs/${encodeURIComponent(runId)}` }),
+				get: (runId) => http.json({ path: `${adminBasePath}/runs/${encodeURIComponent(runId)}` }),
 			},
 		},
 	};
+}
+
+function normalizeBasePath(path: string): string {
+	const trimmed = path.trim();
+	if (!trimmed || trimmed === '/') return '';
+	return `/${trimmed.replace(/^\/+|\/+$/g, '')}`;
 }
 
 function listQuery(opts: ListOptions): Record<string, string | number | undefined> {

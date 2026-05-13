@@ -450,9 +450,10 @@ configureFlueRuntime({
   routeAgentRequest: (request, env) => routeAgentRequest(request, env),
   createRunRegistryForRequest,
   routeRunRequest: async (request, reqEnv, target) => {
-    // Forward the bare /runs/<runId>[...] request to the owning agent DO.
+    // Forward the normalized /runs/<runId>[...] request to the owning agent DO.
     // The DO's parseRunRoute() accepts the bare URL shape directly
-    // (Phase 1 decision 8), so we hand the original URL through unchanged.
+    // (Phase 1 decision 8). The runtime normalizes the path before this
+    // seam so prefix-mounted flue() apps still dispatch correctly.
     //
     // getAgentByName resolves the (binding, name) pair into a DO stub
     // honoring the same id derivation the Agents SDK uses everywhere

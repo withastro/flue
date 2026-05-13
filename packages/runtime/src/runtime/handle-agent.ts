@@ -439,21 +439,24 @@ async function createRunLifecycle(options: RunLifecycleOptions): Promise<RunLife
 	const startedAtMs = Date.now();
 	const startedAt = new Date(startedAtMs).toISOString();
 	const ctx = options.createContext(options.id, options.runId, options.payload, options.request);
-	await safeRunStore('createRun', () =>
-		options.runStore?.createRun({
-			runId: options.runId,
-			instanceId: options.id,
-			agentName: options.agentName,
-			startedAt,
-			payload: options.payload,
-		}),
-	);
+	const runStore = options.runStore;
+	const didCreateRun = runStore
+		? await safeRunStore('createRun', () =>
+			runStore.createRun({
+				runId: options.runId,
+				instanceId: options.id,
+				agentName: options.agentName,
+				startedAt,
+				payload: options.payload,
+			}),
+		)
+		: false;
 	// Registry pointer is written after the store row exists so the
 	// per-instance store remains the source of truth: if the store write
 	// failed, we skip the registry write too (the run is observably
 	// degraded either way, and a registry pointer with no backing record
 	// would produce confusing 404s on the bare /runs/:runId path).
-	await safeRegistry('recordRunStart', () =>
+	if (didCreateRun) await safeRegistry('recordRunStart', () =>
 		options.runRegistry?.recordRunStart({
 			runId: options.runId,
 			agentName: options.agentName,
@@ -529,23 +532,25 @@ async function emitRunEnd(
 
 	runSubscribers?.publish(runId, decorated);
 
-	await safeRunStore('endRun', () =>
-		runStore?.endRun({
-			runId,
-			endedAt,
-			isError: input.isError,
-			durationMs,
-			result,
-			error,
-		}),
-	);
+	const didEndRun = runStore
+		? await safeRunStore('endRun', () =>
+			runStore.endRun({
+				runId,
+				endedAt,
+				isError: input.isError,
+				durationMs,
+				result,
+				error,
+			}),
+		)
+		: false;
 
 	// Registry mirrors the store's terminal state. Failure here is
 	// non-fatal — the run is already finalized in the store and the
 	// subscriber wire has already seen run_end — but it does mean the
 	// registry's pointer will stay in 'active' until the next restart
 	// (in-memory) or until self-healing lands (CF, future phase).
-	await safeRegistry('recordRunEnd', () =>
+	if (didEndRun) await safeRegistry('recordRunEnd', () =>
 		runRegistry?.recordRunEnd({
 			runId,
 			endedAt,
@@ -587,11 +592,13 @@ async function fanOutEvent(
 	runSubscribers?.publish(runId, event);
 }
 
-async function safeRunStore(label: string, fn: () => Promise<void> | undefined): Promise<void> {
+async function safeRunStore(label: string, fn: () => Promise<void> | undefined): Promise<boolean> {
 	try {
 		await fn();
+		return true;
 	} catch (error) {
 		console.error(`[flue:run-store] ${label} failed:`, error);
+		return false;
 	}
 }
 

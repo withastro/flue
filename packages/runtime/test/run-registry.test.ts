@@ -169,8 +169,8 @@ describe('InMemoryRunRegistry', () => {
 		expect(p3.nextCursor).toBeUndefined();
 	});
 
-	it('prunes completed pointers per-agent down to maxCompletedRunsPerAgent', async () => {
-		const registry = new InMemoryRunRegistry({ maxCompletedRunsPerAgent: 3 });
+	it('prunes completed pointers per-instance down to maxCompletedRunsPerInstance', async () => {
+		const registry = new InMemoryRunRegistry({ maxCompletedRunsPerInstance: 3 });
 		for (let i = 0; i < 5; i++) {
 			const id = `run_${i}`;
 			await registry.recordRunStart({
@@ -192,8 +192,35 @@ describe('InMemoryRunRegistry', () => {
 		expect(await registry.lookupRun('run_0')).toBeNull();
 	});
 
+	it('does not prune one instance because another instance completed runs', async () => {
+		const registry = new InMemoryRunRegistry({ maxCompletedRunsPerInstance: 2 });
+		for (let instanceIndex = 1; instanceIndex <= 2; instanceIndex++) {
+			for (let runIndex = 0; runIndex < 2; runIndex++) {
+				const id = `run_i${instanceIndex}_${runIndex}`;
+				await registry.recordRunStart({
+					runId: id,
+					agentName: 'hello',
+					instanceId: `inst-${instanceIndex}`,
+					startedAt: `2026-01-01T00:00:${instanceIndex}${runIndex}.000Z`,
+				});
+				await registry.recordRunEnd({
+					runId: id,
+					endedAt: `2026-01-01T00:00:${instanceIndex}${runIndex}.500Z`,
+					durationMs: 500,
+					isError: false,
+				});
+			}
+		}
+
+		const list = await registry.listRuns({ agentName: 'hello' });
+		// Two retained completed runs per instance means four total for the agent.
+		expect(list.runs).toHaveLength(4);
+		expect(await registry.lookupRun('run_i1_0')).not.toBeNull();
+		expect(await registry.lookupRun('run_i2_0')).not.toBeNull();
+	});
+
 	it('never prunes active runs even when above the cap', async () => {
-		const registry = new InMemoryRunRegistry({ maxCompletedRunsPerAgent: 1 });
+		const registry = new InMemoryRunRegistry({ maxCompletedRunsPerInstance: 1 });
 		for (let i = 0; i < 5; i++) {
 			await registry.recordRunStart({
 				runId: `active_${i}`,
@@ -386,6 +413,46 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		const body = (await res.json()) as { error?: { type: string } };
 		expect(body.error?.type).toBe('run_registry_unavailable');
 	});
+
+	it('computes public OpenAPI metadata lazily after runtime configuration', async () => {
+		const app = new Hono();
+		app.route('/', flue());
+
+		configureFlueRuntime({
+			target: 'node',
+			runtimeVersion: '9.9.9',
+			webhookAgents: [],
+			allowNonWebhook: false,
+			handlers: {},
+			createContext: (() => null) as never,
+			runStore: new InMemoryRunStore(),
+			runRegistry: new InMemoryRunRegistry(),
+			runSubscribers: createRunSubscriberRegistry(),
+		});
+
+		const res = await app.fetch(new Request('http://localhost/openapi.json'));
+		expect(res.status).toBe(200);
+		expect(((await res.json()) as { info: { version: string } }).info.version).toBe('9.9.9');
+	});
+
+	it('returns 405 for non-GET run inspection methods', async () => {
+		configureFlueRuntime({
+			target: 'node',
+			webhookAgents: [],
+			allowNonWebhook: false,
+			handlers: {},
+			createContext: (() => null) as never,
+			runStore: new InMemoryRunStore(),
+			runRegistry: new InMemoryRunRegistry(),
+			runSubscribers: createRunSubscriberRegistry(),
+		});
+
+		const app = new Hono();
+		app.route('/', flue());
+		const res = await app.fetch(new Request('http://localhost/runs/run_anything', { method: 'POST' }));
+		expect(res.status).toBe(405);
+		expect(res.headers.get('allow')).toBe('GET');
+	});
 });
 
 describe('admin() routes', () => {
@@ -517,5 +584,42 @@ describe('admin() routes', () => {
 		const res = await app.fetch(new Request('http://localhost/admin/runs/run_cf'));
 		expect(res.status).toBe(200);
 		expect(await res.json()).toEqual({ pathname: '/runs/run_cf' });
+	});
+
+	it('normalizes prefix-mounted public run requests before Cloudflare DO forwarding', async () => {
+		configureFlueRuntime({
+			target: 'cloudflare',
+			runtimeVersion: '9.9.9',
+			manifest: { agents: [{ name: 'hello', triggers: { webhook: true } }] },
+			webhookAgents: ['hello'],
+			allowNonWebhook: false,
+			createRunRegistryForRequest: () => ({
+				recordRunStart: async () => {},
+				recordRunEnd: async () => {},
+				lookupRun: async () => ({
+					runId: 'run_cf',
+					agentName: 'hello',
+					instanceId: 'inst-1',
+					status: 'completed',
+					startedAt: '2026-01-01T00:00:00.000Z',
+				}),
+				listRuns: async () => ({ runs: [] }),
+				listInstances: async () => ({ instances: [] }),
+			}),
+			routeAgentRequest: async () => null,
+			routeRunRequest: async (request) => {
+				const url = new URL(request.url);
+				return new Response(JSON.stringify({ pathname: url.pathname, search: url.search }), {
+					headers: { 'content-type': 'application/json' },
+				});
+			},
+		});
+
+		const app = new Hono();
+		app.route('/api', flue());
+
+		const res = await app.fetch(new Request('http://localhost/api/runs/run_cf/events?limit=1'));
+		expect(res.status).toBe(200);
+		expect(await res.json()).toEqual({ pathname: '/runs/run_cf/events', search: '?limit=1' });
 	});
 });

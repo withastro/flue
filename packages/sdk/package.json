@@ -20,13 +20,11 @@
 	},
 	"scripts": {
 		"build": "tsdown",
-		"generate": "openapi-ts -f hey-api.config.ts",
 		"check:types": "tsc --noEmit",
 		"test": "vitest run",
 		"prepublishOnly": "cp ../../README.md ."
 	},
 	"devDependencies": {
-		"@hey-api/openapi-ts": "^0.97.1",
 		"tsdown": "^0.20.3",
 		"typescript": "^5.9.2",
 		"vitest": "^4.1.6"

@@ -219,8 +219,8 @@ describe('createRegistryOps (SQL paths)', () => {
 		expect(ops.listInstances({ cursor: 'also-garbage' }).instances).toHaveLength(1);
 	});
 
-	it('pruning: per-agent cap drops oldest completed; active runs kept', () => {
-		const ops = createRegistryOps(makeFakeSql(), { maxCompletedRunsPerAgent: 2 });
+	it('pruning: per-instance cap drops oldest completed; active runs kept', () => {
+		const ops = createRegistryOps(makeFakeSql(), { maxCompletedRunsPerInstance: 2 });
 		// Three completed for 'hello' + one active = 4 total. After
 		// pruning, the oldest completed should be gone; the active is
 		// kept regardless.
@@ -251,6 +251,31 @@ describe('createRegistryOps (SQL paths)', () => {
 		expect(ops.lookupRun('done_2')).not.toBeNull();
 		expect(ops.lookupRun('still_running')).not.toBeNull();
 		expect(ops.listRuns({}).runs).toHaveLength(3);
+	});
+
+	it('pruning: separate instances retain separate completed buckets', () => {
+		const ops = createRegistryOps(makeFakeSql(), { maxCompletedRunsPerInstance: 2 });
+		for (const instanceId of ['inst_a', 'inst_b']) {
+			for (let i = 0; i < 2; i++) {
+				const runId = `${instanceId}_${i}`;
+				ops.recordRunStart({
+					runId,
+					agentName: 'hello',
+					instanceId,
+					startedAt: `2026-05-13T10:0${instanceId === 'inst_a' ? 1 : 2}:${i}0.000Z`,
+				});
+				ops.recordRunEnd({
+					runId,
+					endedAt: `2026-05-13T10:0${instanceId === 'inst_a' ? 1 : 2}:${i}5.000Z`,
+					durationMs: 5_000,
+					isError: false,
+				});
+			}
+		}
+
+		expect(ops.listRuns({ agentName: 'hello' }).runs).toHaveLength(4);
+		expect(ops.lookupRun('inst_a_0')).not.toBeNull();
+		expect(ops.lookupRun('inst_b_0')).not.toBeNull();
 	});
 });
 

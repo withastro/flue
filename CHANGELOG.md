@@ -8,7 +8,7 @@
 
 - **Read-only admin API sub-app.** `admin()` is now exported from `@flue/runtime/app` and can be mounted by user apps with their own auth middleware, e.g. `app.use('/admin/*', myAuthMiddleware); app.route('/admin', admin())`. It serves `GET /openapi.json`, `GET /agents`, `GET /agents/<name>/instances`, `GET /agents/<name>/instances/<id>/runs`, `GET /runs`, and `GET /runs/<runId>` relative to the mount point. Flue ships no auth opinions; middleware order in the user's Hono app controls access.
 
-- **SDK scaffold for public and admin APIs.** The `@flue/sdk` workspace package now contains a private generated-plus-handwritten client scaffold. OpenAPI snapshots live under `packages/sdk/specs/`, hey-api generated types live under `packages/sdk/src/generated/`, and hand-written wrappers cover agent invocation modes plus SSE run streams.
+- **SDK scaffold for public and admin APIs.** The `@flue/sdk` workspace package now contains a private, hand-written typed client scaffold for deployed Flue apps. It covers agent invocation modes, run lookup/events/streams, and read-only admin routes. The runtime still serves OpenAPI specs, but SDK code generation is deferred until a later pass can wire real spec snapshots and generated request methods end-to-end.
 
 ### Breaking Changes
 

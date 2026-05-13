@@ -3,19 +3,20 @@
 import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import {
+	type DescribeRouteOptions,
 	describeRoute,
 	openAPIRouteHandler,
 	resolver,
-	type DescribeRouteOptions,
 	validator,
 } from 'hono-openapi';
 import {
+	MethodNotAllowedError,
 	RouteNotFoundError,
 	RunNotFoundError,
 	RunRegistryUnavailableError,
 	toHttpResponse,
-	validateAgentRequest,
 	ValidationError,
+	validateAgentRequest,
 } from '../errors.ts';
 import {
 	type AgentHandler,
@@ -222,7 +223,7 @@ export function getFlueRuntime(): FlueRuntime | undefined {
 export function flue(): Hono {
 	const app = new Hono();
 
-	app.get('/openapi.json', openAPIRouteHandler(app, publicOpenApiOptions()));
+	app.get('/openapi.json', lazyOpenApiRouteHandler(app, publicOpenApiOptions));
 
 	app.post(
 		'/agents/:name/:id',
@@ -437,13 +438,17 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 	if (rt.target === 'node') {
 		// `validateAgentRequest` above guarantees `name` is in the
 		// registered set, which on Node === Object.keys(handlers).
-		const handler = rt.handlers![name]!;
+		const handler = rt.handlers?.[name];
+		const createContext = rt.createContext;
+		if (!handler || !createContext) {
+			throw new Error('[flue] Node runtime is missing agent handler configuration.');
+		}
 		return handleAgentRequest({
 			request: c.req.raw,
 			agentName: name,
 			id,
 			handler,
-			createContext: rt.createContext!,
+			createContext,
 			startWebhook: rt.startWebhook,
 			runHandler: rt.runHandler,
 			runStore: rt.runStore,
@@ -458,7 +463,10 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 	// keepalive / fiber wrappers. Hono's CF adapter populates
 	// `c.env` with the worker bindings, which is exactly what
 	// `routeAgentRequest` expects.
-	const response = await rt.routeAgentRequest!(c.req.raw, c.env);
+	if (!rt.routeAgentRequest) {
+		throw new Error('[flue] Cloudflare runtime is missing agent route forwarding.');
+	}
+	const response = await rt.routeAgentRequest(c.req.raw, c.env);
 	if (response) return response;
 
 	// `routeAgentRequest` returning null means no DO matched the
@@ -497,10 +505,7 @@ export function runByIdRouteHandler(action: HandleRunRouteOptions['action']): Mi
 		// reuse the agent-route validator here — it validates agent
 		// name/id, which we don't have until after the registry lookup.
 		if (c.req.method !== 'GET') {
-			throw new RouteNotFoundError({
-				method: c.req.method,
-				path: new URL(c.req.url).pathname,
-			});
+			throw new MethodNotAllowedError({ method: c.req.method, allowed: ['GET'] });
 		}
 
 		const runId = c.req.param('runId') || undefined;
@@ -541,7 +546,7 @@ export async function handleRunById(opts: {
 		const pointer = await registry.lookupRun(runId);
 		if (!pointer) throw new RunNotFoundError({ runId });
 
-		const response = await rt.routeRunRequest(request, env, {
+		const response = await rt.routeRunRequest(normalizeRunRequest(request, runId, action), env, {
 			agentName: pointer.agentName,
 			instanceId: pointer.instanceId,
 		});
@@ -567,6 +572,25 @@ export async function handleRunById(opts: {
 		runId,
 		action,
 	});
+}
+
+function lazyOpenApiRouteHandler(app: Hono, getOptions: () => ReturnType<typeof publicOpenApiOptions>): MiddlewareHandler {
+	return (c, next) => openAPIRouteHandler(app, getOptions())(c, next);
+}
+
+function normalizeRunRequest(
+	request: Request,
+	runId: string,
+	action: HandleRunRouteOptions['action'],
+): Request {
+	const url = new URL(request.url);
+	url.pathname =
+		action === 'events'
+			? `/runs/${encodeURIComponent(runId)}/events`
+			: action === 'stream'
+				? `/runs/${encodeURIComponent(runId)}/stream`
+				: `/runs/${encodeURIComponent(runId)}`;
+	return new Request(url, request);
 }
 
 /**

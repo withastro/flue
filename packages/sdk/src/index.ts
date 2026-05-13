@@ -12,5 +12,3 @@ export type {
 	AgentManifestEntry,
 	InstanceSummary,
 } from './types.ts';
-export type * as GeneratedPublic from './generated/public/index.ts';
-export type * as GeneratedAdmin from './generated/admin/index.ts';

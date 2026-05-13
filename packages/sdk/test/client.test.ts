@@ -38,6 +38,49 @@ describe('createFlueClient', () => {
 		expect(parsed.searchParams.get('agentName')).toBe('hello');
 		expect(parsed.searchParams.get('limit')).toBe('10');
 	});
+
+	it('supports admin mounted below a custom path', async () => {
+		let url = '';
+		const client = createFlueClient({
+			baseUrl: 'https://flue.test',
+			adminBasePath: '/internal/admin/',
+			fetch: async (input) => {
+				url = new Request(input).url;
+				return Response.json({ items: [] });
+			},
+		});
+
+		await client.admin.agents.list();
+		expect(new URL(url).pathname).toBe('/internal/admin/agents');
+	});
+
+	it('reconnects run streams after clean EOF before run_end', async () => {
+		const requests: Request[] = [];
+		const client = createFlueClient({
+			baseUrl: 'https://flue.test',
+			fetch: async (input, init) => {
+				const request = new Request(input, init);
+				requests.push(request);
+				if (requests.length === 1) {
+					return new Response(sse('event: run_start\nid: 1\ndata: {"type":"run_start"}\n\n'), {
+						headers: { 'content-type': 'text/event-stream' },
+					});
+				}
+				return new Response(sse('event: run_end\nid: 2\ndata: {"type":"run_end","isError":false,"durationMs":1}\n\n'), {
+					headers: { 'content-type': 'text/event-stream' },
+				});
+			},
+		});
+
+		const events = [];
+		for await (const event of client.runs.stream('run_1', { maxRetries: 1, initialRetryMs: 1 })) {
+			events.push(event.type);
+		}
+
+		expect(events).toEqual(['run_start', 'run_end']);
+		expect(requests).toHaveLength(2);
+		expect(requests[1]?.headers.get('last-event-id')).toBe('1');
+	});
 });
 
 describe('readSse', () => {
@@ -53,4 +96,21 @@ describe('readSse', () => {
 		for await (const frame of readSse(stream)) frames.push(frame);
 		expect(frames).toEqual([{ event: 'run_end', id: '2', data: '{"type":"run_end"}' }]);
 	});
+
+	it('parses CRLF-delimited SSE frames', async () => {
+		const stream = sse('event: run_end\r\nid: 2\r\ndata: {"type":"run_end"}\r\n\r\n');
+
+		const frames = [];
+		for await (const frame of readSse(stream)) frames.push(frame);
+		expect(frames).toEqual([{ event: 'run_end', id: '2', data: '{"type":"run_end"}' }]);
+	});
 });
+
+function sse(text: string): ReadableStream<Uint8Array> {
+	return new ReadableStream<Uint8Array>({
+		start(controller) {
+			controller.enqueue(new TextEncoder().encode(text));
+			controller.close();
+		},
+	});
+}

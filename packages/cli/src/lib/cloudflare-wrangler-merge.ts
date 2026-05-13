@@ -378,6 +378,21 @@ export function mergeFlueAdditions(
 			.map((b) => b.name)
 			.filter((n): n is string => typeof n === 'string'),
 	);
+	for (const binding of additions.doBindings) {
+		if (binding.name !== 'FLUE_REGISTRY' || !existingBindingNames.has(binding.name)) continue;
+		const existing = existingBindings.find(
+			(b): b is Record<string, unknown> => {
+				if (typeof b !== 'object' || b === null) return false;
+				return (b as Record<string, unknown>).name === binding.name;
+			},
+		);
+		if (existing?.class_name !== binding.class_name) {
+			throw new Error(
+				`[flue] wrangler.jsonc durable object binding "FLUE_REGISTRY" is reserved by Flue. ` +
+					`Expected class_name "${binding.class_name}", received "${String(existing?.class_name)}".`,
+			);
+		}
+	}
 	const flueBindingsToAdd = additions.doBindings.filter((b) => !existingBindingNames.has(b.name));
 	merged.durable_objects = {
 		...existingDo,
@@ -579,7 +594,7 @@ export function writeDeployRedirectIfMissing(root: string, output: string): void
 	const relConfigPath = path.relative(redirectDir, targetPath).split(path.sep).join('/');
 	fs.writeFileSync(
 		redirectPath,
-		JSON.stringify({ configPath: relConfigPath }, null, 2) + '\n',
+		`${JSON.stringify({ configPath: relConfigPath }, null, 2)}\n`,
 		'utf-8',
 	);
 }

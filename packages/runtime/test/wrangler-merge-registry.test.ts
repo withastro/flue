@@ -120,6 +120,22 @@ describe('mergeFlueAdditions', () => {
 		expect(merged.durable_objects.bindings).toHaveLength(1);
 	});
 
+	it('rejects user-owned FLUE_REGISTRY binding conflicts', () => {
+		const userConfig = {
+			durable_objects: {
+				bindings: [{ class_name: 'SomethingElse', name: 'FLUE_REGISTRY' }],
+			},
+		};
+		const additions = {
+			defaultName: 'x',
+			main: '_entry.ts',
+			doBindings: [{ class_name: 'FlueRegistry', name: 'FLUE_REGISTRY' }],
+			migrations: [],
+		};
+
+		expect(() => mergeFlueAdditions(userConfig, additions)).toThrow(/FLUE_REGISTRY/);
+	});
+
 	it('appends the registry migration tag without re-declaring existing tags', () => {
 		const userConfig = {
 			migrations: [{ tag: 'flue-class-Hello', new_sqlite_classes: ['Hello'] }],
