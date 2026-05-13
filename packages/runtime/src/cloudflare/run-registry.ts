@@ -38,16 +38,16 @@ interface FlueRegistryNamespace {
  * namespace is what the CF entry pulls from `env.FLUE_REGISTRY`; if the
  * binding is missing (an older deployment that hasn't yet picked up the
  * build's new wrangler entry, or a sufficiently broken local config),
- * the client returns a "no-op + structured failure" surface so the run
- * lifecycle doesn't crash mid-request — the `safeRegistry` helper on
- * the call site logs the failure and the run completes.
+ * returns `undefined` so the caller can render a canonical
+ * `RunRegistryUnavailableError` (501) — the same envelope shape the
+ * Node target produces when `runRegistry` is unset. Symmetric handling
+ * of "registry not available" is the point of distinguishing this from
+ * a stub-that-throws.
  */
 export function createCloudflareRunRegistry(
 	namespace: FlueRegistryNamespace | undefined,
-): RunRegistry {
-	if (!namespace) {
-		return missingBindingRegistry();
-	}
+): RunRegistry | undefined {
+	if (!namespace) return undefined;
 	return new CloudflareRunRegistry(namespace);
 }
 
@@ -149,38 +149,6 @@ class CloudflareRunRegistry implements RunRegistry {
 			);
 		}
 	}
-}
-
-/**
- * Fallback registry returned when `env.FLUE_REGISTRY` is absent — most
- * likely a deployment whose `dist/wrangler.jsonc` predates this Flue
- * version's build. Writes are dropped silently (via `safeRegistry` at
- * the call site); reads throw a clear error so the bare-`/runs/:runId`
- * handler can surface a structured 5xx rather than a stub crash.
- */
-function missingBindingRegistry(): RunRegistry {
-	const missingError = () =>
-		new Error(
-			'[flue] env.FLUE_REGISTRY binding is missing. ' +
-				'Re-run `flue build` to regenerate `dist/wrangler.jsonc` with the registry binding.',
-		);
-	return {
-		async recordRunStart(): Promise<void> {
-			throw missingError();
-		},
-		async recordRunEnd(): Promise<void> {
-			throw missingError();
-		},
-		async lookupRun(): Promise<RunPointer | null> {
-			throw missingError();
-		},
-		async listRuns(): Promise<ListRunsResponse> {
-			throw missingError();
-		},
-		async listInstances(): Promise<ListInstancesResponse> {
-			throw missingError();
-		},
-	};
 }
 
 // Re-export pointer types so consumers of the CF subpath don't have to

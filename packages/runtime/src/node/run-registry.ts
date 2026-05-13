@@ -13,7 +13,12 @@
  * per-instance cap behave as no cap at all.
  */
 import {
+	type CursorTuple,
+	decodeInstanceCursor,
+	decodeRunCursor,
 	DEFAULT_LIST_LIMIT,
+	encodeInstanceCursor,
+	encodeRunCursor,
 	type InstancePointer,
 	type ListInstancesOpts,
 	type ListInstancesResponse,
@@ -49,6 +54,13 @@ export class InMemoryRunRegistry implements RunRegistry {
 	}
 
 	async recordRunStart(input: RecordRunStartInput): Promise<void> {
+		// Idempotent on existing runId. Run ids are server-minted ULIDs
+		// so a real collision is statistically zero, but the
+		// runtime-degraded "registry restart with an in-flight run"
+		// case (where this could fire twice for one run) must not
+		// clobber a row that already terminated.
+		if (this.pointers.has(input.runId)) return;
+
 		const pointer: RunPointer = {
 			runId: input.runId,
 			agentName: input.agentName,
@@ -91,7 +103,7 @@ export class InMemoryRunRegistry implements RunRegistry {
 
 	async listRuns(opts: ListRunsOpts = {}): Promise<ListRunsResponse> {
 		const limit = clampLimit(opts.limit);
-		const cursor = decodeCursor(opts.cursor);
+		const cursor = decodeRunCursor(opts.cursor);
 
 		// Snapshot once so subsequent writes during pagination don't
 		// shift the result order. The data set is small (bounded by
@@ -109,7 +121,7 @@ export class InMemoryRunRegistry implements RunRegistry {
 		const page = all.slice(startIndex, startIndex + limit);
 		const nextCursor =
 			startIndex + limit < all.length && page.length > 0
-				? encodeCursor(page[page.length - 1]!)
+				? encodeRunCursor(page[page.length - 1]!)
 				: undefined;
 		return { runs: page, nextCursor };
 	}
@@ -188,56 +200,12 @@ function comparePointersDesc(a: RunPointer, b: RunPointer): number {
 	return b.runId.localeCompare(a.runId);
 }
 
-interface CursorTuple {
-	startedAt: string;
-	runId: string;
-}
-
 function isAfterCursor(pointer: RunPointer, cursor: CursorTuple): boolean {
 	// "After" in the descending-sort order means strictly older startedAt,
 	// or same startedAt with a strictly smaller runId.
 	if (pointer.startedAt < cursor.startedAt) return true;
 	if (pointer.startedAt > cursor.startedAt) return false;
 	return pointer.runId < cursor.runId;
-}
-
-function encodeCursor(pointer: RunPointer): string {
-	return base64UrlEncode(JSON.stringify({ s: pointer.startedAt, r: pointer.runId }));
-}
-
-function decodeCursor(cursor: string | undefined): CursorTuple | undefined {
-	if (!cursor) return undefined;
-	try {
-		const decoded = JSON.parse(base64UrlDecode(cursor));
-		if (typeof decoded?.s === 'string' && typeof decoded?.r === 'string') {
-			return { startedAt: decoded.s, runId: decoded.r };
-		}
-	} catch {
-		// Malformed cursor: behave as if no cursor was supplied. The
-		// alternative — throwing — would be too brittle for a value
-		// that's meant to be opaque round-tripped from a prior response.
-	}
-	return undefined;
-}
-
-function encodeInstanceCursor(key: string): string {
-	return base64UrlEncode(key);
-}
-
-function decodeInstanceCursor(cursor: string): string | undefined {
-	try {
-		return base64UrlDecode(cursor);
-	} catch {
-		return undefined;
-	}
-}
-
-function base64UrlEncode(value: string): string {
-	return Buffer.from(value, 'utf-8').toString('base64url');
-}
-
-function base64UrlDecode(value: string): string {
-	return Buffer.from(value, 'base64url').toString('utf-8');
 }
 
 function clampLimit(limit: number | undefined): number {

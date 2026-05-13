@@ -124,8 +124,15 @@ export interface FlueRuntime {
 	 * `lookupRun` against it. The same factory feeds {@link runRegistry}
 	 * on Cloudflare so the `recordRunStart` / `recordRunEnd` writes
 	 * inside `handleAgentRequest` reach the same DO.
+	 *
+	 * Returns `undefined` when the `env.FLUE_REGISTRY` binding is
+	 * missing (most likely an older deployment whose `dist/wrangler.jsonc`
+	 * predates this Flue version's build). The route handler renders a
+	 * canonical `RunRegistryUnavailableError` envelope (501) in that
+	 * case, symmetric with the Node target's behavior when `runRegistry`
+	 * is unset.
 	 */
-	createRunRegistryForRequest?: (env: unknown) => RunRegistry;
+	createRunRegistryForRequest?: (env: unknown) => RunRegistry | undefined;
 }
 
 /**
@@ -319,10 +326,9 @@ function runByIdRouteHandler(action: HandleRunRouteOptions['action']): Middlewar
 		}
 
 		// Method check first so a POST/PUT/DELETE to /runs/:runId surfaces
-		// a 405 with the canonical envelope, not Hono's default plain
-		// 404. We can't use `validateAgentRunRequest` here — that helper
-		// validates agent name/id, which we don't have until after the
-		// registry lookup.
+		// a canonical envelope, not Hono's default plain 404. We can't
+		// reuse the agent-route validator here — it validates agent
+		// name/id, which we don't have until after the registry lookup.
 		if (c.req.method !== 'GET') {
 			throw new RouteNotFoundError({
 				method: c.req.method,
@@ -348,6 +354,13 @@ function runByIdRouteHandler(action: HandleRunRouteOptions['action']): Middlewar
 				throw new RunRegistryUnavailableError();
 			}
 			const registry = rt.createRunRegistryForRequest(c.env);
+			// The factory returns `undefined` when the env.FLUE_REGISTRY
+			// binding is absent (older deployment, broken local config).
+			// Surface the canonical 501 envelope rather than letting a
+			// downstream stub throw an unstructured Error that the outer
+			// onError would render as a generic 500. Symmetric with the
+			// Node target's `!rt.runRegistry` check below.
+			if (!registry) throw new RunRegistryUnavailableError();
 			const pointer = await registry.lookupRun(runId);
 			if (!pointer) throw new RunNotFoundError({ runId });
 

@@ -18,7 +18,11 @@
  *   GET    /instances?agent=&limit=&cursor=     → ListInstancesResponse
  */
 import {
+	decodeInstanceCursor,
+	decodeRunCursor,
 	DEFAULT_LIST_LIMIT,
+	encodeInstanceCursor,
+	encodeRunCursor,
 	type InstancePointer,
 	type ListInstancesOpts,
 	type ListInstancesResponse,
@@ -35,9 +39,9 @@ import type { RunStatus } from '../runtime/run-store.ts';
  * Per-agent retention cap on completed pointers. Matches
  * `InMemoryRunRegistry`'s `DEFAULT_MAX_COMPLETED_RUNS_PER_AGENT` for
  * behavioral consistency between targets — see phase 1, Q5. Duplicated
- * here rather than imported from `../node/run-registry.ts` because that
- * module is Node-flavored (uses `Buffer` for cursor codec) and importing
- * it from the CF bundle would drag along the Node-only code path.
+ * (small enough that "share one constant module" would itself be the
+ * weirder pattern) rather than imported, because `../node/run-registry.ts`
+ * has a Node-only orientation we don't want to drag into the CF chunk.
  */
 export const DEFAULT_MAX_COMPLETED_RUNS_PER_AGENT = 50;
 
@@ -94,7 +98,10 @@ export async function handleRegistryRequest(
 		if (request.method === 'GET' && segments[0] === 'pointers' && segments.length === 2) {
 			const runId = segments[1]!;
 			const pointer = ops.lookupRun(runId);
-			if (!pointer) return new Response('null', { status: 404, headers: jsonHeaders() });
+			// Empty 404 body (not `"null"`): the client detects miss via
+			// `response.status === 404` and does not try to parse JSON.
+			// Saves a parser invocation on the hot lookup path.
+			if (!pointer) return new Response(null, { status: 404 });
 			return jsonResponse(pointer);
 		}
 
@@ -160,8 +167,14 @@ class SqlRegistryOps implements RegistryOps {
 	}
 
 	recordRunStart(input: RecordRunStartInput): void {
+		// `OR IGNORE` (not `OR REPLACE`): idempotent on existing runId so
+		// a re-start in the runtime-degraded "registry restart with an
+		// in-flight run" case never clobbers a row that already
+		// terminated. Run ids are server-minted ULIDs, so real collision
+		// is statistically zero — this is purely about not creating data
+		// loss when the lifecycle re-fires.
 		this.sql.exec(
-			`INSERT OR REPLACE INTO flue_registry_runs
+			`INSERT OR IGNORE INTO flue_registry_runs
 			 (run_id, agent_name, instance_id, status, started_at, ended_at, duration_ms, is_error)
 			 VALUES (?, ?, ?, 'active', ?, NULL, NULL, NULL)`,
 			input.runId,
@@ -207,7 +220,7 @@ class SqlRegistryOps implements RegistryOps {
 
 	listRuns(opts: ListRunsOpts): ListRunsResponse {
 		const limit = clampLimit(opts.limit);
-		const cursor = decodeCursor(opts.cursor);
+		const cursor = decodeRunCursor(opts.cursor);
 
 		// Build a parameterized WHERE clause incrementally so we never
 		// interpolate user-supplied values into SQL text. Filters compose:
@@ -249,7 +262,7 @@ class SqlRegistryOps implements RegistryOps {
 		const hasMore = rows.length > limit;
 		const page = (hasMore ? rows.slice(0, limit) : rows).map(rowToRunPointer);
 		const nextCursor =
-			hasMore && page.length > 0 ? encodeCursor(page[page.length - 1]!) : undefined;
+			hasMore && page.length > 0 ? encodeRunCursor(page[page.length - 1]!) : undefined;
 		return { runs: page, nextCursor };
 	}
 
@@ -389,66 +402,6 @@ function parseListInstancesOpts(params: URLSearchParams): ListInstancesOpts {
 	const cursor = params.get('cursor');
 	if (cursor) opts.cursor = cursor;
 	return opts;
-}
-
-// ─── Cursor codec ──────────────────────────────────────────────────────────
-//
-// Independent re-implementation of the codec used by `InMemoryRunRegistry`
-// so the CF DO doesn't import from the Node-flavored module (which uses
-// Node's `Buffer`). The base64url shape on the wire is identical — cursors
-// minted by one target are decodable by the other for free, which keeps
-// the eventual cross-target SDK happy.
-
-interface CursorTuple {
-	startedAt: string;
-	runId: string;
-}
-
-function encodeCursor(pointer: RunPointer): string {
-	return base64UrlEncode(JSON.stringify({ s: pointer.startedAt, r: pointer.runId }));
-}
-
-function decodeCursor(cursor: string | undefined): CursorTuple | undefined {
-	if (!cursor) return undefined;
-	try {
-		const decoded = JSON.parse(base64UrlDecode(cursor));
-		if (typeof decoded?.s === 'string' && typeof decoded?.r === 'string') {
-			return { startedAt: decoded.s, runId: decoded.r };
-		}
-	} catch {
-		// Malformed cursor: behave as if no cursor was supplied. Mirrors
-		// the in-memory implementation's posture.
-	}
-	return undefined;
-}
-
-function encodeInstanceCursor(key: string): string {
-	return base64UrlEncode(key);
-}
-
-function decodeInstanceCursor(cursor: string): string | undefined {
-	try {
-		return base64UrlDecode(cursor);
-	} catch {
-		return undefined;
-	}
-}
-
-/**
- * `btoa` / `atob` for base64url. Both workerd and modern Node have
- * these as globals; we strip trailing `=` padding and translate the
- * alphabet so the result is URL-safe and matches the Node-side codec
- * byte-for-byte.
- */
-function base64UrlEncode(value: string): string {
-	const b64 = btoa(value);
-	return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
-
-function base64UrlDecode(value: string): string {
-	const padded = value + '='.repeat((4 - (value.length % 4)) % 4);
-	const b64 = padded.replace(/-/g, '+').replace(/_/g, '/');
-	return atob(b64);
 }
 
 // ─── Misc helpers ──────────────────────────────────────────────────────────

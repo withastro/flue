@@ -639,17 +639,6 @@ export function validateAgentRequest(opts: ValidateAgentRequestOptions): void {
 	if (opts.method !== 'POST') {
 		throw new MethodNotAllowedError({ method: opts.method, allowed: ['POST'] });
 	}
-	validateAgentIdentity(opts);
-}
-
-export function validateAgentRunRequest(opts: ValidateAgentRequestOptions): void {
-	if (opts.method !== 'GET') {
-		throw new MethodNotAllowedError({ method: opts.method, allowed: ['GET'] });
-	}
-	validateAgentIdentity(opts);
-}
-
-function validateAgentIdentity(opts: ValidateAgentRequestOptions): void {
 	if (opts.name.trim() === '' || opts.id.trim() === '') {
 		throw new InvalidRequestError({
 			reason: 'Webhook URLs must have the shape /agents/<name>/<id> with non-empty segments.',

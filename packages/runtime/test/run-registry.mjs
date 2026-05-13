@@ -4,6 +4,15 @@
  * routes wired into `flue()`. No test framework — just imports the built
  * runtime, exercises the surface, and asserts with `node:assert/strict`.
  *
+ * Imports from `dist/` rather than source (unlike its two siblings
+ * `cf-run-registry.mjs` and `wrangler-merge-registry.mjs`, which read
+ * a single file each from source). The reason is unfortunate but
+ * load-bearing: this test reaches `internal.ts` + `app.ts`, whose
+ * transitive imports widely use TypeScript parameter properties
+ * (`constructor(private x: T)`) — a construct Node's strip-only TS
+ * loader cannot handle. Running against `dist/` sidesteps the issue
+ * via tsdown's full transform.
+ *
  * Run from packages/runtime/ after a fresh build:
  *
  *   pnpm run build && node test/run-registry.mjs
@@ -156,7 +165,56 @@ async function testRegistryListInstances() {
 	const ids = out.instances.map((i) => `${i.agentName}/${i.instanceId}`).sort();
 	assert.deepEqual(ids, ['greet/a', 'hello/a', 'hello/b']);
 
-	console.log('  ✓ listInstances: distinct (agent, instance) tuples');
+	// Cursor pagination across the same set: limit=1 walks through
+	// the three pairs in (agent, instance) lex order, terminating
+	// with an empty nextCursor on the last page.
+	const page1 = await registry.listInstances({ limit: 1 });
+	assert.equal(page1.instances.length, 1);
+	assert.ok(page1.nextCursor);
+	const page2 = await registry.listInstances({ limit: 1, cursor: page1.nextCursor });
+	assert.equal(page2.instances.length, 1);
+	assert.ok(page2.nextCursor);
+	const page3 = await registry.listInstances({ limit: 1, cursor: page2.nextCursor });
+	assert.equal(page3.instances.length, 1);
+	assert.equal(page3.nextCursor, undefined, 'final instance page has no nextCursor');
+	// Pages combined = full set, no dups.
+	const combined = new Set(
+		[...page1.instances, ...page2.instances, ...page3.instances].map(
+			(i) => `${i.agentName}/${i.instanceId}`,
+		),
+	);
+	assert.equal(combined.size, 3);
+
+	console.log('  ✓ listInstances: distinct (agent, instance) tuples + cursor pagination');
+}
+
+async function testRegistryMalformedCursor() {
+	const registry = new InMemoryRunRegistry();
+	for (let i = 0; i < 3; i++) {
+		await registry.recordRunStart({
+			runId: `run_${i}`,
+			agentName: 'hello',
+			instanceId: 'a',
+			startedAt: `2026-01-01T00:00:0${i}.000Z`,
+		});
+	}
+
+	// Garbage cursor on listRuns should behave as no cursor (return
+	// page 1), not error and not return an empty page. The codec
+	// catches parse failures and falls back to "no cursor supplied"
+	// — see the rationale in run-registry.ts.
+	const garbage = await registry.listRuns({ cursor: 'this-is-not-base64-json' });
+	assert.equal(garbage.runs.length, 3, 'malformed run cursor should yield page 1, not empty');
+
+	// Same for listInstances.
+	const instGarbage = await registry.listInstances({ cursor: 'still-garbage' });
+	assert.equal(instGarbage.instances.length, 1);
+
+	// Also empty string — Boolean(cursor) is false; should NOT advance.
+	const empty = await registry.listRuns({ cursor: '' });
+	assert.equal(empty.runs.length, 3, 'empty-string cursor should be treated as absent');
+
+	console.log('  ✓ malformed cursor: falls back to page 1');
 }
 
 async function testRegistryPruning() {
@@ -351,6 +409,7 @@ async function main() {
 	await testRegistryListRuns();
 	await testRegistryListInstances();
 	await testRegistryPruning();
+	await testRegistryMalformedCursor();
 	console.log('Bare /runs/:runId routes:');
 	await testBareRouteIntegration();
 	await testBareRouteWithoutRegistry();

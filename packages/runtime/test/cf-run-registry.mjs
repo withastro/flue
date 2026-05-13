@@ -234,6 +234,42 @@ await test('listInstances: distinct (agent, instance) pairs; agent filter', () =
 	]);
 });
 
+await test('listInstances cursor pagination: walks through pairs, last page has no nextCursor', () => {
+	const ops = createRegistryOps(makeFakeSql());
+	ops.recordRunStart({ runId: 'r1', agentName: 'a', instanceId: 'inst_1', startedAt: STARTED_AT_1 });
+	ops.recordRunStart({ runId: 'r2', agentName: 'a', instanceId: 'inst_2', startedAt: STARTED_AT_2 });
+	ops.recordRunStart({ runId: 'r3', agentName: 'b', instanceId: 'inst_3', startedAt: STARTED_AT_3 });
+
+	const page1 = ops.listInstances({ limit: 1 });
+	assert.equal(page1.instances.length, 1);
+	assert.ok(page1.nextCursor, 'page1 has nextCursor');
+	const page2 = ops.listInstances({ limit: 1, cursor: page1.nextCursor });
+	assert.equal(page2.instances.length, 1);
+	assert.ok(page2.nextCursor, 'page2 has nextCursor');
+	const page3 = ops.listInstances({ limit: 1, cursor: page2.nextCursor });
+	assert.equal(page3.instances.length, 1);
+	assert.equal(page3.nextCursor, undefined, 'page3 (final) has no nextCursor');
+});
+
+await test('malformed cursor: falls back to page 1 (not empty, not error)', () => {
+	const ops = createRegistryOps(makeFakeSql());
+	for (let i = 0; i < 3; i++) {
+		ops.recordRunStart({
+			runId: `run_${i}`,
+			agentName: 'hello',
+			instanceId: 'a',
+			startedAt: `2026-01-01T00:00:0${i}.000Z`,
+		});
+	}
+	// Garbage run cursor → behave as if no cursor was supplied.
+	const garbage = ops.listRuns({ cursor: 'not-valid-base64-json' });
+	assert.equal(garbage.runs.length, 3);
+
+	// Same for listInstances.
+	const instGarbage = ops.listInstances({ cursor: 'also-garbage' });
+	assert.equal(instGarbage.instances.length, 1);
+});
+
 await test('pruning: per-agent cap drops oldest completed; active runs are kept', () => {
 	const ops = createRegistryOps(makeFakeSql(), { maxCompletedRunsPerAgent: 2 });
 	// Three completed for 'hello' + one active = 4 total. After pruning,

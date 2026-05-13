@@ -297,18 +297,13 @@ function createRunRegistryForRequest(reqEnv) {
 
 /**
  * Convert an agent name (URL segment, lower-kebab-case) back to its
- * Durable Object binding name (PascalCase). Mirrors the inverse direction
- * of agentClassName() in the build plugin so the main worker can grab
- * an agent DO stub by name without having to keep its own (name -> class)
- * registry. Inlined into the generated entry so it stays available
- * after the registry-resolved forward path.
+ * Durable Object binding name (PascalCase). This MUST match the
+ * build-time \`agentClassName\` helper byte-for-byte — its source is
+ * inlined directly below via .toString() so the two cannot drift.
+ * Used by the main worker to resolve a runId-derived target agent
+ * back into a DO stub without keeping its own (name -> class) map.
  */
-function agentBindingNameFromAgentName(agentName) {
-  return agentName
-    .split('-')
-    .map((part) => (part.length === 0 ? part : part[0].toUpperCase() + part.slice(1)))
-    .join('');
-}
+const agentBindingNameFromAgentName = ${agentClassName.toString().replace(/agentClassName/g, 'agentBindingNameFromAgentName')};
 
 function runWithInstanceContext(doInstance, fn) {
   return runWithCloudflareContext(

@@ -102,6 +102,75 @@ export interface ListInstancesResponse {
 export const DEFAULT_LIST_LIMIT = 100;
 export const MAX_LIST_LIMIT = 1000;
 
+// ─── Cursor codec ──────────────────────────────────────────────────────────
+//
+// Shared between the Node `InMemoryRunRegistry` and the Cloudflare
+// `SqlRegistryOps` so cursors round-trip across both impls byte-for-byte
+// (a cursor minted by one is decodable by the other). Uses only the
+// `btoa`/`atob` globals — both runtimes have them, and avoiding Node's
+// `Buffer` keeps the CF bundle from pulling in the polyfill chunk.
+
+export interface CursorTuple {
+	startedAt: string;
+	runId: string;
+}
+
+export function encodeRunCursor(pointer: { startedAt: string; runId: string }): string {
+	return base64UrlEncode(JSON.stringify({ s: pointer.startedAt, r: pointer.runId }));
+}
+
+export function decodeRunCursor(cursor: string | undefined): CursorTuple | undefined {
+	if (!cursor) return undefined;
+	try {
+		const decoded = JSON.parse(base64UrlDecode(cursor));
+		if (typeof decoded?.s === 'string' && typeof decoded?.r === 'string') {
+			return { startedAt: decoded.s, runId: decoded.r };
+		}
+	} catch {
+		// Malformed cursor: behave as if no cursor was supplied. The
+		// alternative — throwing — would be too brittle for a value
+		// that's meant to be opaque round-tripped from a prior response.
+	}
+	return undefined;
+}
+
+export function encodeInstanceCursor(key: string): string {
+	return base64UrlEncode(key);
+}
+
+export function decodeInstanceCursor(cursor: string): string | undefined {
+	let decoded: string;
+	try {
+		decoded = base64UrlDecode(cursor);
+	} catch {
+		return undefined;
+	}
+	// Valid instance keys always carry an embedded NUL separator
+	// (`agentName\0instanceId`). Anything else is malformed input —
+	// likely a caller passing a random string or a runs-cursor by
+	// mistake — and we fall back to "no cursor supplied" rather than
+	// using arbitrary bytes as a SQL comparator. The runs codec has
+	// equivalent validation via the JSON shape check above.
+	if (!decoded.includes('\0')) return undefined;
+	return decoded;
+}
+
+/**
+ * `btoa`/`atob` for base64url. Both workerd and Node 16+ expose these as
+ * globals; we strip trailing `=` padding and translate the alphabet so
+ * the result is URL-safe.
+ */
+function base64UrlEncode(value: string): string {
+	const b64 = btoa(value);
+	return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function base64UrlDecode(value: string): string {
+	const padded = value + '='.repeat((4 - (value.length % 4)) % 4);
+	const b64 = padded.replace(/-/g, '+').replace(/_/g, '/');
+	return atob(b64);
+}
+
 /**
  * Cross-deployment run pointer index.
  *
