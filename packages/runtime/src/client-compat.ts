@@ -13,6 +13,7 @@ export type {
 	AgentInit,
 	BashFactory,
 	BashLike,
+	BuiltinToolName,
 	FileStat,
 	FlueContext,
 	FlueEvent,

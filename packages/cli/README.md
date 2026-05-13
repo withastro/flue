@@ -56,7 +56,7 @@ export default async function ({ init, payload }: FlueContext) {
 
 ### Support Agent
 
-A support agent can also run in a virtual sandbox, but we now add a file-system using an R2 bucket. The knowledge base is stored in R2 and mounted directly into the harness filesystem — the agent searches it with its built-in tools (grep, glob, read). Skills are also defined in the bucket that help the agent perform its task.
+A support agent can also run in a virtual sandbox, but we now add a file-system using an R2 bucket. The knowledge base is stored in R2 and mounted directly into the harness filesystem — the agent searches it with a focused built-in tool set (`read`, `grep`, `glob`). Skills are also defined in the bucket that help the agent perform its task.
 
 Because this agent is deployed to Cloudflare, message history and session state are automatically persisted for you. So you (or your customer) can revisit this support session days, weeks, or years later and pick up exactly where you left off.
 
@@ -70,11 +70,13 @@ export const triggers = { webhook: true };
 
 export default async function ({ init, payload, env }: FlueContext) {
   // Mount the R2 knowledge base bucket as the harness filesystem.
-  // The agent can grep, glob, and read articles with bash, but
+  // The agent can grep, glob, and read articles, but
   // without needing to spin up an entire container sandbox.
   const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
   const harness = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
-  const session = await harness.session();
+  const session = await harness.session('support', {
+    builtinTools: ['read', 'grep', 'glob'],
+  });
 
   return await session.prompt(
     `You are a support agent. Search the knowledge base for articles
@@ -188,6 +190,25 @@ export default async function ({ init, payload, env }: FlueContext) {
   // and then stream back the progress and final results.
   return await session.prompt(payload.prompt);
 }
+```
+
+### Built-In Tools
+
+By default, every session can use all built-in tools: `read`, `write`, `edit`, `bash`, `grep`, `glob`, and `task`. Use `builtinTools` to narrow that set at the harness, session, or call level. The nearest option wins.
+
+```ts
+const harness = await init({
+  model: 'anthropic/claude-sonnet-4-6',
+  builtinTools: ['read', 'grep', 'glob'],
+});
+
+const session = await harness.session('planner', {
+  builtinTools: ['read', 'grep', 'glob', 'task'],
+});
+
+await session.prompt('Search the knowledge base for billing docs.', {
+  builtinTools: ['read', 'grep', 'glob'],
+});
 ```
 
 ### Remote MCP Tools

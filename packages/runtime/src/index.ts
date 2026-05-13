@@ -31,6 +31,7 @@ export type {
 	ModelConfig,
 	ToolDef,
 	ToolParameters,
+	BuiltinToolName,
 	ThinkingLevel,
 	ProviderSettings,
 } from './types.ts';

@@ -190,7 +190,7 @@ export default async function ({ init, payload }: FlueContext) {
 }
 ```
 
-If you want a tighter boundary — the agent can call a specific operation but never see the underlying token — wrap the operation as a custom tool with `init({ tools: [...] })`. The tool implementation reads the secret from `process.env`; the agent only sees the tool's parameters and result.
+If you want a tighter boundary — the agent can call a specific operation but never see the underlying token — wrap the operation as a custom tool with `init({ tools: [...] })`. The tool implementation reads the secret from `process.env`; the agent only sees the tool's parameters and result. You can also pass `builtinTools` on `init()`, `harness.session()`, or a single `prompt()` / `skill()` / `task()` call to remove built-ins that workflow does not need.
 
 ### Roles
 

@@ -38,11 +38,13 @@ export const triggers = { webhook: true };
 export default async function ({ init, payload, env }: FlueContext) {
   // Mount your R2 bucket (declared as a binding in wrangler.jsonc) as
   // the agent's filesystem at /workspace, backed by Durable Object
-  // SQLite + R2 under the hood. The agent searches it with bash —
-  // grep, glob, read — without spinning up a container.
+  // SQLite + R2 under the hood. The agent searches it with read,
+  // grep, and glob without spinning up a container.
   const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE_BUCKET);
   const harness = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
-  const session = await harness.session();
+  const session = await harness.session('support', {
+    builtinTools: ['read', 'grep', 'glob'],
+  });
   // Prompt! The agent harness includes your workspace AGENTS.md,
   // skills, and roles (aka subagents) to complete your task as 
   // desired. Use \`session.skill()\` to call a skill directly.

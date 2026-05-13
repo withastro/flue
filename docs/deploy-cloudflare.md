@@ -171,7 +171,7 @@ EOF`);
 }
 ```
 
-The agent can use its built-in tools — grep, glob, read — to search and read these files. This is still running on a virtual sandbox (no container), so it's fast and cheap.
+The agent can use its built-in tools — `grep`, `glob`, `read` — to search and read these files. You can pass `builtinTools: ['read', 'grep', 'glob']` when opening the session to keep this kind of agent read-only. This is still running on a virtual sandbox (no container), so it's fast and cheap.
 
 ## R2-backed agents
 
@@ -179,7 +179,7 @@ Inline files work for small, static content. But for larger datasets — a knowl
 
 ### The support agent pattern
 
-This is one of the most powerful patterns on Cloudflare: a support agent that searches a knowledge base to answer customer questions. The knowledge base lives in R2, and Flue mounts it as the sandbox filesystem — the agent searches it with grep, glob, and read, just like a real filesystem.
+This is one of the most powerful patterns on Cloudflare: a support agent that searches a knowledge base to answer customer questions. The knowledge base lives in R2, and Flue mounts it as the sandbox filesystem — the agent searches it with `grep`, `glob`, and `read`, just like a real filesystem.
 
 `.flue/agents/support.ts`:
 
@@ -192,7 +192,9 @@ export const triggers = { webhook: true };
 export default async function ({ init, payload, env }: FlueContext) {
   const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
   const harness = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
-  const session = await harness.session();
+  const session = await harness.session('support', {
+    builtinTools: ['read', 'grep', 'glob'],
+  });
 
   return await session.prompt(
     `You are a support agent. Search the knowledge base for articles

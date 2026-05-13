@@ -201,7 +201,19 @@ export default async function ({ init, payload }: FlueContext) {
 }
 ```
 
-The agent reads, searches, and modifies files via its built-in tools — read, write, edit, grep, glob, bash. Anything on `$PATH` (`git`, `npm`, `gh`, `docker`) is reachable from the bash tool, and env vars set on the runner are visible to the binaries the agent runs. That's the model: the host environment is the agent's environment.
+The agent reads, searches, and modifies files via its built-in tools — `read`, `write`, `edit`, `grep`, `glob`, `bash`. Anything on `$PATH` (`git`, `npm`, `gh`, `docker`) is reachable from the bash tool, and env vars set on the runner are visible to the binaries the agent runs. That's the model: the host environment is the agent's environment.
+
+Use `builtinTools` when a session or one prompt needs a narrower surface:
+
+```typescript
+const session = await harness.session('reviewer', {
+  builtinTools: ['read', 'grep', 'glob', 'bash'],
+});
+
+await session.prompt('Plan the change without editing files.', {
+  builtinTools: ['read', 'grep', 'glob'],
+});
+```
 
 ### When to use it
 

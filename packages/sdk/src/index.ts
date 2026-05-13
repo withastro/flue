@@ -1,4 +1,5 @@
 import { throwMigrationError } from './_migration.ts';
+import type { BuiltinToolName } from './types.ts';
 
 throwMigrationError();
 
@@ -11,6 +12,7 @@ export type {
 	AgentInit,
 	FlueEvent,
 	FlueEventCallback,
+	BuiltinToolName,
 	SessionData,
 	SessionStore,
 	SessionEnv,
@@ -50,5 +52,13 @@ export const resolveEnvFiles = throwMigrationError;
 export const parseEnvFiles = throwMigrationError;
 export const createTools = throwMigrationError;
 export const ResultUnavailableError = Error;
-export const BUILTIN_TOOL_NAMES: string[] = [];
+export const BUILTIN_TOOL_NAMES = [
+	'read',
+	'write',
+	'edit',
+	'bash',
+	'grep',
+	'glob',
+	'task',
+] as const satisfies readonly BuiltinToolName[];
 export const DEFAULT_DEV_PORT = 3583;

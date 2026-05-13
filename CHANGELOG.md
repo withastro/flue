@@ -28,6 +28,8 @@
 
 ### Fixes & Other Changes
 
+- **Agents can now narrow built-in tools with `builtinTools`.** Pass `builtinTools` to `init()`, `harness.session()`, or a single `prompt()` / `skill()` / `task()` call to expose only selected built-ins (`read`, `write`, `edit`, `bash`, `grep`, `glob`, `task`). Omitting the option preserves the existing full built-in tool set.
+
 - **`cloudflare/<model>` resolutions now carry real `contextWindow`, `maxTokens`, `cost`, `reasoning`, and `input` metadata.** Previously the binding branch of `buildModelFromRegistration` synthesized a model from scratch with `contextWindow: 0`, which made `shouldCompact` evaluate `contextTokens > 0 - reserveTokens` as true on every turn after the first — spamming `[flue:compaction] Threshold reached — window 0` and running no-op compaction prep on every turn. Resolution now hydrates from pi-ai's `cloudflare-workers-ai` catalog when the model id is known. Uncatalogued ids (embeddings, image-gen, anything outside pi-ai's chat-completion subset of Workers AI) fall back to zero metadata, and `shouldCompact` now treats `contextWindow <= 0` as unknown and skips the threshold check — overflow recovery still runs. Fixes #132.
 
 ## 0.5.3

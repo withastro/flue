@@ -50,8 +50,11 @@ export interface AgentInit {
 	cwd?: string;
 	persist?: SessionStore;
 	tools?: ToolDef[];
+	builtinTools?: BuiltinToolName[];
 	thinkingLevel?: ThinkingLevel;
 }
+
+export type BuiltinToolName = 'read' | 'write' | 'edit' | 'bash' | 'grep' | 'glob' | 'task';
 
 export type FlueEvent = Record<string, unknown> & { type: string };
 export type FlueEventCallback = (event: FlueEvent) => void | Promise<void>;
@@ -97,11 +100,13 @@ export interface BashLike {
 export interface SessionOptions {
 	cwd?: string;
 	parentEnv?: SessionEnv;
+	builtinTools?: BuiltinToolName[];
 }
 
 export interface PromptOptions {
 	model?: PromptModel;
 	tools?: ToolDef[];
+	builtinTools?: BuiltinToolName[];
 	signal?: AbortSignal;
 	thinkingLevel?: ThinkingLevel;
 }

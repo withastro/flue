@@ -50,6 +50,7 @@ import { createFlueFs } from './sandbox.ts';
 import type {
 	AgentConfig,
 	BranchSummaryEntry,
+	BuiltinToolName,
 	CallHandle,
 	CompactionEntry,
 	FlueEvent,
@@ -81,6 +82,7 @@ export interface CreateTaskSessionOptions {
 	parentSession: string;
 	taskId: string;
 	parentEnv: SessionEnv;
+	builtinTools?: readonly BuiltinToolName[];
 	cwd?: string;
 	role?: string;
 	depth: number;
@@ -100,6 +102,7 @@ interface SessionInitOptions {
 	existingData: SessionData | null;
 	onAgentEvent?: FlueEventCallback;
 	agentTools?: ToolDef[];
+	sessionBuiltinTools?: readonly BuiltinToolName[];
 	sessionRole?: string;
 	taskDepth?: number;
 	createTaskSession?: CreateTaskSession;
@@ -113,6 +116,7 @@ interface SessionInitOptions {
 // defaults — the name no longer reflects what it does.
 interface RuntimeScopeOptions {
 	tools: ToolDef[];
+	builtinTools?: readonly BuiltinToolName[];
 	role?: string;
 	model?: string;
 	thinkingLevel?: ThinkingLevel;
@@ -398,6 +402,9 @@ export class Session implements FlueSession {
 	get role(): string | undefined {
 		return this.sessionRole;
 	}
+	get builtinTools(): readonly BuiltinToolName[] | undefined {
+		return this.sessionBuiltinTools;
+	}
 
 	private harness: Agent;
 	private storageKey: string;
@@ -411,6 +418,7 @@ export class Session implements FlueSession {
 	private compactionAbortController: AbortController | undefined;
 	private eventCallback: FlueEventCallback | undefined;
 	private agentTools: ToolDef[];
+	private sessionBuiltinTools: readonly BuiltinToolName[] | undefined;
 	private deleted = false;
 	private activeOperation: OperationKind | undefined;
 	private activeOperationId: string | undefined;
@@ -430,6 +438,7 @@ export class Session implements FlueSession {
 		this.fs = createFlueFs(options.env);
 		this.store = options.store;
 		this.agentTools = options.agentTools ?? [];
+		this.sessionBuiltinTools = options.sessionBuiltinTools;
 		this.sessionRole = options.sessionRole;
 		this.taskDepth = options.taskDepth ?? 0;
 		this.createTaskSession = options.createTaskSession;
@@ -453,7 +462,7 @@ export class Session implements FlueSession {
 		assertRoleExists(this.config.roles, this.sessionRole);
 
 		const tools = [
-			...this.createBuiltinTools(this.env, []),
+			...this.createBuiltinTools(this.env, [], this.sessionBuiltinTools),
 			...this.createCustomTools(this.agentTools),
 		];
 
@@ -549,6 +558,7 @@ export class Session implements FlueSession {
 					promptText: buildPromptText(text, schema),
 					schema,
 					tools: options?.tools,
+					builtinTools: options?.builtinTools,
 					role: options?.role,
 					model: options?.model,
 					thinkingLevel: options?.thinkingLevel,
@@ -604,6 +614,7 @@ export class Session implements FlueSession {
 					promptText,
 					schema,
 					tools: options?.tools,
+					builtinTools: options?.builtinTools,
 					role: options?.role,
 					model: options?.model,
 					thinkingLevel: options?.thinkingLevel,
@@ -854,14 +865,16 @@ export class Session implements FlueSession {
 	private createBuiltinTools(
 		env: SessionEnv,
 		tools: ToolDef[],
+		builtinTools: readonly BuiltinToolName[] | undefined,
 		role?: string,
 		model?: string,
 		thinkingLevel?: ThinkingLevel,
 	): AgentTool<any>[] {
 		return createTools(env, {
+			builtinTools,
 			roles: this.config.roles,
 			task: (params, signal) =>
-				this.runTaskForTool(params, tools, role, model, thinkingLevel, signal),
+				this.runTaskForTool(params, tools, builtinTools, role, model, thinkingLevel, signal),
 		});
 	}
 
@@ -876,6 +889,7 @@ export class Session implements FlueSession {
 		const previousThinkingLevel = this.harness.state.thinkingLevel;
 
 		const resolvedModel = this.resolveModelForCall(options.model, options.role, options.callSite);
+		const builtinTools = options.builtinTools ?? this.sessionBuiltinTools;
 		this.harness.state.model = resolvedModel;
 		this.harness.state.systemPrompt = this.buildSystemPrompt(options.role);
 		this.harness.state.thinkingLevel = this.resolveThinkingLevelForCall(
@@ -886,6 +900,7 @@ export class Session implements FlueSession {
 			...this.createBuiltinTools(
 				this.env,
 				options.tools,
+				builtinTools,
 				options.role,
 				options.model,
 				options.thinkingLevel,
@@ -908,6 +923,7 @@ export class Session implements FlueSession {
 	private async runTaskForTool(
 		params: TaskToolParams,
 		tools: ToolDef[],
+		builtinTools: readonly BuiltinToolName[] | undefined,
 		inheritedRole: string | undefined,
 		inheritedModel: string | undefined,
 		inheritedThinkingLevel: ThinkingLevel | undefined,
@@ -921,6 +937,7 @@ export class Session implements FlueSession {
 				inheritedThinkingLevel,
 				cwd: params.cwd,
 				tools,
+				builtinTools: builtinTools ? [...builtinTools] : undefined,
 			},
 			signal,
 		);
@@ -1017,11 +1034,13 @@ export class Session implements FlueSession {
 
 		try {
 			const role = this.resolveEffectiveRole(options?.role);
+			const builtinTools = options?.builtinTools ?? this.sessionBuiltinTools;
 
 			child = await this.createTaskSession({
 				parentSession: this.name,
 				taskId,
 				parentEnv: this.env,
+				builtinTools,
 				cwd: options?.cwd,
 				role,
 				depth: this.taskDepth + 1,
@@ -1045,6 +1064,7 @@ export class Session implements FlueSession {
 					options?.thinkingLevel ??
 					(roleThinkingLevel !== undefined ? undefined : options?.inheritedThinkingLevel),
 				tools: options?.tools,
+				builtinTools: builtinTools ? [...builtinTools] : undefined,
 				images: options?.images,
 				signal,
 			};
@@ -1503,6 +1523,7 @@ export class Session implements FlueSession {
 		promptText: string;
 		schema: v.GenericSchema | undefined;
 		tools: ToolDef[] | undefined;
+		builtinTools: readonly BuiltinToolName[] | undefined;
 		role: string | undefined;
 		model: string | undefined;
 		thinkingLevel: ThinkingLevel | undefined;
@@ -1526,6 +1547,7 @@ export class Session implements FlueSession {
 		return this.withScopedRuntime(
 			{
 				tools: args.tools ?? [],
+				builtinTools: args.builtinTools,
 				role,
 				model: args.model,
 				thinkingLevel: args.thinkingLevel,

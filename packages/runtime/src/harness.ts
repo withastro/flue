@@ -5,6 +5,7 @@ import { createCwdSessionEnv, createFlueFs } from './sandbox.ts';
 import { type CreateTaskSessionOptions, deleteSessionTree, Session } from './session.ts';
 import type {
 	AgentConfig,
+	BuiltinToolName,
 	CallHandle,
 	FlueEventCallback,
 	FlueFs,
@@ -43,6 +44,7 @@ export class Harness implements FlueHarness {
 		private store: SessionStore,
 		private eventCallback?: FlueEventCallback,
 		private agentTools: ToolDef[] = [],
+		private agentBuiltinTools?: readonly BuiltinToolName[],
 	) {
 		this.fs = createFlueFs(env);
 	}
@@ -80,6 +82,16 @@ export class Harness implements FlueHarness {
 						`role ${JSON.stringify(open.role ?? null)}; cannot reopen with role ${JSON.stringify(options.role)}.`,
 				);
 			}
+			if (
+				options?.builtinTools !== undefined &&
+				!sameBuiltinTools(options.builtinTools, open.builtinTools)
+			) {
+				throw new Error(
+					`[flue] Session "${sessionName}" is already open with ` +
+						`built-in tools ${formatBuiltinTools(open.builtinTools)}; cannot reopen with ` +
+						`built-in tools ${formatBuiltinTools(options.builtinTools)}.`,
+				);
+			}
 			return open;
 		}
 
@@ -109,6 +121,7 @@ export class Harness implements FlueHarness {
 			existingData: data,
 			onAgentEvent: this.decorateEventCallback(this.eventCallback),
 			agentTools: this.agentTools,
+			sessionBuiltinTools: options?.builtinTools ?? this.agentBuiltinTools,
 			sessionRole: options?.role,
 			taskDepth: 0,
 			createTaskSession: (taskOptions) => this.createTaskSession(taskOptions),
@@ -174,6 +187,7 @@ export class Harness implements FlueHarness {
 			existingData: data,
 			onAgentEvent: eventCallback,
 			agentTools: this.agentTools,
+			sessionBuiltinTools: options.builtinTools,
 			sessionRole: options.role,
 			taskDepth: options.depth,
 			createTaskSession: (childOptions) => this.createTaskSession(childOptions),
@@ -211,4 +225,22 @@ function createEmptySessionData(): SessionData {
 		createdAt: now,
 		updatedAt: now,
 	};
+}
+
+function sameBuiltinTools(
+	left: readonly BuiltinToolName[] | undefined,
+	right: readonly BuiltinToolName[] | undefined,
+): boolean {
+	if (left === undefined || right === undefined) return left === right;
+	const leftSet = new Set(left);
+	const rightSet = new Set(right);
+	if (leftSet.size !== rightSet.size) return false;
+	for (const name of leftSet) {
+		if (!rightSet.has(name)) return false;
+	}
+	return true;
+}
+
+function formatBuiltinTools(tools: readonly BuiltinToolName[] | undefined): string {
+	return JSON.stringify(tools ?? null);
 }

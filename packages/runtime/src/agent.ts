@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolResult } from '@mariozechner/pi-agent-core';
 import { type Static, Type } from '@mariozechner/pi-ai';
-import type { Role, SessionEnv } from './types.ts';
+import type { BuiltinToolName, Role, SessionEnv } from './types.ts';
 
 const MAX_READ_LINES = 2000;
 const MAX_READ_BYTES = 50 * 1024;
@@ -8,15 +8,29 @@ const MAX_GREP_MATCHES = 100;
 const MAX_GREP_LINE_LENGTH = 500;
 const MAX_GLOB_RESULTS = 1000;
 
-export const BUILTIN_TOOL_NAMES = new Set([
-	'read',
-	'write',
-	'edit',
-	'bash',
-	'grep',
-	'glob',
-	'task',
-]);
+const ALL_BUILTIN_TOOL_NAMES = ['read', 'write', 'edit', 'bash', 'grep', 'glob', 'task'] as const;
+
+export const BUILTIN_TOOL_NAMES = new Set<string>(ALL_BUILTIN_TOOL_NAMES);
+
+const BUILTIN_TOOL_LABELS = [...BUILTIN_TOOL_NAMES].join(', ');
+
+type BuiltinToolSet = Set<BuiltinToolName> | undefined;
+
+const BUILTIN_TOOL_FACTORIES: Record<
+	Exclude<BuiltinToolName, 'task'>,
+	(env: SessionEnv) => AgentTool<any>
+> = {
+	read: createReadTool,
+	write: createWriteTool,
+	edit: createEditTool,
+	bash: createBashTool,
+	grep: createGrepTool,
+	glob: createGlobTool,
+};
+
+const NON_TASK_BUILTIN_TOOL_NAMES = ALL_BUILTIN_TOOL_NAMES.filter(
+	(name): name is Exclude<BuiltinToolName, 'task'> => name !== 'task',
+);
 
 export interface TaskToolParams {
 	prompt: string;
@@ -34,6 +48,7 @@ export interface TaskToolResultDetails {
 }
 
 export interface CreateToolsOptions {
+	builtinTools?: readonly BuiltinToolName[];
 	task?: (
 		params: TaskToolParams,
 		signal?: AbortSignal,
@@ -42,16 +57,32 @@ export interface CreateToolsOptions {
 }
 
 export function createTools(env: SessionEnv, options?: CreateToolsOptions): AgentTool<any>[] {
-	const tools: AgentTool<any>[] = [
-		createReadTool(env),
-		createWriteTool(env),
-		createEditTool(env),
-		createBashTool(env),
-		createGrepTool(env),
-		createGlobTool(env),
-	];
-	if (options?.task) tools.push(createTaskTool(options.task, options.roles ?? {}));
+	const enabledBuiltins = enabledBuiltinTools(options?.builtinTools);
+	const tools = NON_TASK_BUILTIN_TOOL_NAMES.filter((name) =>
+		hasBuiltinTool(enabledBuiltins, name),
+	).map((name) => BUILTIN_TOOL_FACTORIES[name](env));
+	if (options?.task && hasBuiltinTool(enabledBuiltins, 'task')) {
+		tools.push(createTaskTool(options.task, options.roles ?? {}));
+	}
 	return tools;
+}
+
+function enabledBuiltinTools(tools: readonly BuiltinToolName[] | undefined): BuiltinToolSet {
+	if (tools === undefined) return undefined;
+	const enabled = new Set<BuiltinToolName>();
+	for (const name of tools) {
+		if (!BUILTIN_TOOL_NAMES.has(name)) {
+			throw new Error(
+				`[flue] Unknown built-in tool "${name}". Built-in tools: ${BUILTIN_TOOL_LABELS}`,
+			);
+		}
+		enabled.add(name);
+	}
+	return enabled;
+}
+
+function hasBuiltinTool(enabledBuiltins: BuiltinToolSet, name: BuiltinToolName): boolean {
+	return enabledBuiltins === undefined || enabledBuiltins.has(name);
 }
 
 const ReadParams = Type.Object({

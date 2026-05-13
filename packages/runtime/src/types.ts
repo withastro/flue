@@ -65,6 +65,8 @@ export interface ToolDef<TParams extends ToolParameters = ToolParameters> {
 	execute: (args: Record<string, any>, signal?: AbortSignal) => Promise<string>;
 }
 
+export type BuiltinToolName = 'read' | 'write' | 'edit' | 'bash' | 'grep' | 'glob' | 'task';
+
 // ─── File Stat ──────────────────────────────────────────────────────────────
 
 export interface FileStat {
@@ -342,6 +344,12 @@ export interface AgentInit {
 	 * Per-call tools are added on top and must not reuse the same names.
 	 */
 	tools?: ToolDef[];
+
+	/**
+	 * Harness-wide built-in tools. Every prompt(), skill(), and task() call can use
+	 * these unless overridden at the session or call site. Defaults to all built-ins.
+	 */
+	builtinTools?: BuiltinToolName[];
 }
 
 // ─── Flue Harness (returned by init()) ──────────────────────────────────────
@@ -377,6 +385,8 @@ export interface FlueSessions {
 export interface SessionOptions {
 	/** Session-wide default role. Per-call roles override this. */
 	role?: string;
+	/** Session-wide built-in tools. Per-call built-in tools override this. */
+	builtinTools?: BuiltinToolName[];
 }
 
 // ─── Flue Session ───────────────────────────────────────────────────────────
@@ -555,6 +565,8 @@ export interface PromptOptions<S extends v.GenericSchema | undefined = undefined
 	 */
 	result?: never;
 	tools?: ToolDef[];
+	/** Built-in tools for this call. Overrides session and harness defaults. */
+	builtinTools?: BuiltinToolName[];
 	role?: string;
 	/** e.g., 'anthropic/claude-sonnet-4-20250514' */
 	model?: string;
@@ -577,6 +589,8 @@ export interface SkillOptions<S extends v.GenericSchema | undefined = undefined>
 	 */
 	result?: never;
 	tools?: ToolDef[];
+	/** Built-in tools for this call. Overrides session and harness defaults. */
+	builtinTools?: BuiltinToolName[];
 	role?: string;
 	model?: string;
 	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */
@@ -597,6 +611,8 @@ export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> 
 	 */
 	result?: never;
 	tools?: ToolDef[];
+	/** Built-in tools for this call. Overrides session and harness defaults. */
+	builtinTools?: BuiltinToolName[];
 	role?: string;
 	model?: string;
 	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */

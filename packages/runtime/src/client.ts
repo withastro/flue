@@ -158,6 +158,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 						emitEvent(event);
 					},
 					options.tools,
+					options.builtinTools,
 				);
 			} catch (error) {
 				initializedHarnessNames.delete(name);
