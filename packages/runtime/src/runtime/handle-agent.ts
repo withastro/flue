@@ -439,17 +439,17 @@ async function withRunLifecycle<T>(
 	lifecycle: RunLifecycle,
 	body: () => T | Promise<T>,
 ): Promise<T> {
-	const unsubscribeFanout = subscribeRunFanout(lifecycle);
+	const flushFanout = subscribeRunFanout(lifecycle);
 	emitRunStart(lifecycle);
 	try {
 		const result = await body();
+		await flushFanout();
 		await emitRunEnd(lifecycle, { result, isError: false });
 		return result;
 	} catch (error) {
+		await flushFanout();
 		await emitRunEnd(lifecycle, { isError: true, error });
 		throw error;
-	} finally {
-		unsubscribeFanout();
 	}
 }
 
@@ -517,14 +517,18 @@ async function emitRunEnd(
  * Persist non-terminal events before publishing them to live subscribers.
  * `run_end` is handled separately by {@link emitRunEnd}.
  */
-function subscribeRunFanout(lifecycle: RunLifecycle): () => void {
+function subscribeRunFanout(lifecycle: RunLifecycle): () => Promise<void> {
 	const { ctx, runStore, runSubscribers, runId } = lifecycle;
-	if (!runStore && !runSubscribers) return () => {};
+	if (!runStore && !runSubscribers) return async () => {};
 	let chain: Promise<void> = Promise.resolve();
-	return ctx.subscribeEvent((event) => {
+	const unsubscribe = ctx.subscribeEvent((event) => {
 		if (event.type === 'run_end') return;
 		chain = chain.then(() => fanOutEvent(runStore, runSubscribers, runId, event));
 	});
+	return () => {
+		unsubscribe();
+		return chain;
+	};
 }
 
 async function fanOutEvent(

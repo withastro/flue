@@ -43,6 +43,7 @@
 	},
 	"scripts": {
 		"build": "tsdown",
+		"check:http-api": "tsx scripts/http-api-smoke.ts",
 		"check:types": "tsc --noEmit",
 		"prepublishOnly": "cp ../../README.md ."
 	},
