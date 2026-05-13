@@ -8,6 +8,8 @@
 
 - **Read-only admin API sub-app.** `admin()` is now exported from `@flue/runtime/app` and can be mounted by user apps with their own auth middleware, e.g. `app.use('/admin/*', myAuthMiddleware); app.route('/admin', admin())`. It serves `GET /openapi.json`, `GET /agents`, `GET /agents/<name>/instances`, `GET /agents/<name>/instances/<id>/runs`, `GET /runs`, and `GET /runs/<runId>` relative to the mount point. Flue ships no auth opinions; middleware order in the user's Hono app controls access.
 
+- **SDK scaffold for public and admin APIs.** The `@flue/sdk` workspace package now contains a private generated-plus-handwritten client scaffold. OpenAPI snapshots live under `packages/sdk/specs/`, hey-api generated types live under `packages/sdk/src/generated/`, and hand-written wrappers cover agent invocation modes plus SSE run streams.
+
 ### Breaking Changes
 
 - **Malformed run-event query parameters now return structured 400 errors.** `GET /runs/<runId>/events` validates query params before reading run history. `limit` must be an integer in `[1, 1000]`; `after` must be a non-negative integer; `types` must be a comma-separated list of known Flue event type names. Previously malformed `limit` / `after` values were silently defaulted or ignored.

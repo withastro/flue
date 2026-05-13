@@ -2,39 +2,12 @@
 	"name": "@flue/sdk",
 	"version": "0.5.3",
 	"type": "module",
+	"private": true,
 	"license": "Apache-2.0",
 	"exports": {
 		".": {
 			"types": "./dist/index.d.mts",
 			"import": "./dist/index.mjs"
-		},
-		"./app": {
-			"types": "./dist/app.d.mts",
-			"import": "./dist/app.mjs"
-		},
-		"./client": {
-			"types": "./dist/client.d.mts",
-			"import": "./dist/client.mjs"
-		},
-		"./sandbox": {
-			"types": "./dist/sandbox.d.mts",
-			"import": "./dist/sandbox.mjs"
-		},
-		"./internal": {
-			"types": "./dist/internal.d.mts",
-			"import": "./dist/internal.mjs"
-		},
-		"./cloudflare": {
-			"types": "./dist/cloudflare/index.d.mts",
-			"import": "./dist/cloudflare/index.mjs"
-		},
-		"./node": {
-			"types": "./dist/node/index.d.mts",
-			"import": "./dist/node/index.mjs"
-		},
-		"./config": {
-			"types": "./dist/config.d.mts",
-			"import": "./dist/config.mjs"
 		}
 	},
 	"main": "./dist/index.mjs",
@@ -47,12 +20,15 @@
 	},
 	"scripts": {
 		"build": "tsdown",
+		"generate": "openapi-ts -f hey-api.config.ts",
 		"check:types": "tsc --noEmit",
+		"test": "vitest run",
 		"prepublishOnly": "cp ../../README.md ."
 	},
-	"dependencies": {},
 	"devDependencies": {
+		"@hey-api/openapi-ts": "^0.97.1",
 		"tsdown": "^0.20.3",
-		"typescript": "^5.9.2"
+		"typescript": "^5.9.2",
+		"vitest": "^4.1.6"
 	}
 }

@@ -1,0 +1,56 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Flue Public API",
+    "version": "0.5.3",
+    "description": "Public Flue agent invocation and run inspection API."
+  },
+  "paths": {
+    "/agents/{name}/{id}": {
+      "post": {
+        "operationId": "invokeAgent",
+        "x-flue-invocation-modes": ["sync", "webhook", "stream"],
+        "x-flue-user-defined": true,
+        "parameters": [
+          { "name": "name", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": { "application/json": { "schema": { "type": "object", "additionalProperties": true } } }
+        },
+        "responses": {
+          "200": { "description": "Synchronous invocation result." },
+          "202": { "description": "Webhook invocation accepted." }
+        }
+      }
+    },
+    "/runs/{runId}": {
+      "get": {
+        "operationId": "getRun",
+        "parameters": [{ "name": "runId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Run record." } }
+      }
+    },
+    "/runs/{runId}/events": {
+      "get": {
+        "operationId": "listRunEvents",
+        "parameters": [
+          { "name": "runId", "in": "path", "required": true, "schema": { "type": "string" } },
+          { "name": "after", "in": "query", "schema": { "type": "integer", "minimum": 0 } },
+          { "name": "types", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 1000 } }
+        ],
+        "responses": { "200": { "description": "Persisted run event page." } }
+      }
+    },
+    "/runs/{runId}/stream": {
+      "get": {
+        "operationId": "streamRunEvents",
+        "x-flue-streaming": true,
+        "parameters": [{ "name": "runId", "in": "path", "required": true, "schema": { "type": "string" } }],
+        "responses": { "200": { "description": "Server-sent events stream." } }
+      }
+    }
+  }
+}
