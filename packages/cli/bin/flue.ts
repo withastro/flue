@@ -52,7 +52,7 @@ function printUsage() {
 			'  flue build [--target <node|cloudflare>] [--root <path>] [--output <path>] [--config <path>]\n' +
 			'  flue init  --target <node|cloudflare> [--root <path>] [--force]\n' +
 			'  flue add   [<name>|<url>] [--category <category>] [--print]\n' +
-			'  flue logs  <agent> <id> <runId> [--server <url>] [--follow|-f|--no-follow] [--since <eventIndex>] [--types a,b,c] [--limit <n>] [--format pretty|json|ndjson]\n' +
+			'  flue logs  <runId> [--server <url>] [--follow|-f|--no-follow] [--since <eventIndex>] [--types a,b,c] [--limit <n>] [--format pretty|json|ndjson]\n' +
 			'\n' +
 			'Commands:\n' +
 			'  dev    Long-running watch-mode dev server. Rebuilds and reloads on file changes.\n' +
@@ -91,9 +91,9 @@ function printUsage() {
 			'  flue add\n' +
 			'  flue add daytona | claude\n' +
 			'  flue add https://e2b.dev --category sandbox | claude\n' +
-			'  flue logs hello test-1 run_01H...                 # tail a specific run\n' +
-			'  flue logs hello test-1 run_01H... --no-follow     # one-shot replay\n' +
-			'  flue logs hello test-1 run_01H... --types tool_call,log,run_end --format json\n' +
+			'  flue logs run_01H...                              # tail a specific run\n' +
+			'  flue logs run_01H... --no-follow                  # one-shot replay\n' +
+			'  flue logs run_01H... --types tool_call,log,run_end --format json\n' +
 			'\n' +
 			'Note: set the model inside your agent via `init({ model: "provider/model-id" })` ' +
 			'or per-call `{ model: ... }` on prompt/skill/task.',
@@ -164,8 +164,13 @@ interface InitArgs {
 
 interface LogsArgs {
 	command: 'logs';
-	agent: string;
-	id: string;
+	/**
+	 * The run id is globally unique and addresses the run on its own;
+	 * the owning `(agent, instance)` is resolved server-side via the
+	 * run registry. Prior to Phase 1 / Commit C the CLI also required
+	 * `<agent>` and `<id>` positional arguments — these are now dead
+	 * weight and have been removed.
+	 */
 	runId: string;
 	/** Base URL of the running Flue server. */
 	server: string;
@@ -410,22 +415,20 @@ function parseLogsArgs(rest: string[]): LogsArgs {
 		}
 	}
 
-	if (positional.length < 3) {
-		console.error('Missing required arguments for `flue logs`: <agent> <id> <runId>');
+	if (positional.length < 1) {
+		console.error('Missing required argument for `flue logs`: <runId>');
 		printUsage();
 		process.exit(1);
 	}
-	if (positional.length > 3) {
-		console.error(`Unexpected extra arguments for \`flue logs\`: ${positional.slice(3).join(' ')}`);
+	if (positional.length > 1) {
+		console.error(`Unexpected extra arguments for \`flue logs\`: ${positional.slice(1).join(' ')}`);
 		printUsage();
 		process.exit(1);
 	}
 
 	return {
 		command: 'logs',
-		agent: positional[0]!,
-		id: positional[1]!,
-		runId: positional[2]!,
+		runId: positional[0]!,
 		server,
 		follow,
 		since,
@@ -1194,19 +1197,22 @@ function logsRenderPretty(event: Record<string, unknown>): void {
 
 async function logsCommand(args: LogsArgs): Promise<void> {
 	const base = args.server.replace(/\/+$/, '');
-	const agentPath = `${base}/agents/${encodeURIComponent(args.agent)}/${encodeURIComponent(args.id)}`;
+	// runId is globally unique; the owning (agent, instance) is resolved
+	// server-side via the run registry. No agent/instance segments in
+	// the URL — that family was removed in Phase 1 / Commit C.
+	const runPath = `${base}/runs/${encodeURIComponent(args.runId)}`;
 
 	let shouldFollow: boolean;
 	if (args.follow !== undefined) {
 		shouldFollow = args.follow;
 	} else {
-		const run = await fetchJsonOrExit<RunRecord>(`${agentPath}/runs/${args.runId}`);
+		const run = await fetchJsonOrExit<RunRecord>(runPath);
 		shouldFollow = run.status === 'active';
 	}
 
 	// One-shot mode snapshots persisted events and exits immediately.
 	if (!shouldFollow) {
-		const url = new URL(`${agentPath}/runs/${args.runId}/events`);
+		const url = new URL(`${runPath}/events`);
 		if (args.since !== undefined) url.searchParams.set('after', String(args.since));
 		if (args.types) url.searchParams.set('types', [...args.types].join(','));
 		if (args.limit !== undefined) url.searchParams.set('limit', String(args.limit));
@@ -1224,7 +1230,7 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 		process.exit(exitCode);
 	}
 
-	const streamUrl = new URL(`${agentPath}/runs/${args.runId}/stream`);
+	const streamUrl = new URL(`${runPath}/stream`);
 	const headers: Record<string, string> = { accept: 'text/event-stream' };
 	if (args.since !== undefined) headers['last-event-id'] = String(args.since);
 

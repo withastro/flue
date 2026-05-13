@@ -30,8 +30,8 @@ export const triggers = { webhook: true };
 
 export default async function boom(ctx: FlueContext) {
 	// `log.info` is just a normal Flue structured log. It appears in
-	// the run's event stream (and in `flue logs <agent> <id> <runId>`)
-	// but is NOT sent to Sentry — only `log.error` is.
+	// the run's event stream (and in `flue logs <runId>`) but is NOT
+	// sent to Sentry — only `log.error` is.
 	ctx.log.info('boom agent about to explode', { reason: 'demo' });
 
 	throw new Error('intentional explosion for the Sentry demo');

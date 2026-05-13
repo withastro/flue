@@ -110,11 +110,16 @@ observe((event, ctx) => {
 	// capture made from this bridge so an investigator can pivot
 	// from a Sentry issue to a Flue run via:
 	//
-	//   GET /agents/<flue.agent>/<flue.instance_id>/runs/<flue.run_id>
+	//   GET /runs/<flue.run_id>
 	//
 	// or replay the run via the CLI:
 	//
-	//   flue logs <flue.agent> <flue.instance_id> <flue.run_id>
+	//   flue logs <flue.run_id>
+	//
+	// `flue.agent` and `flue.instance_id` are still attached as tags
+	// for filtering / grouping in Sentry, but they are no longer
+	// part of the URL — the run id is globally unique and resolves
+	// to its owner via the run registry server-side.
 	const tags = flueCorrelationTags(event, ctx);
 
 	// ─── Run-fatal: the handler threw or rejected ─────────────────────

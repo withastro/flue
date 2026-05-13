@@ -22,11 +22,11 @@ After running this example with a Sentry DSN configured:
 - Sentry tags use a stable `flue.*` prefix, so pivoting on
   `flue.run_id` in Sentry's search box finds every capture from a
   single Flue run.
-- A failing run in Sentry can be replayed in full by feeding the tags
-  back into the Flue CLI:
+- A failing run in Sentry can be replayed in full by feeding the
+  `flue.run_id` tag back into the Flue CLI:
 
   ```
-  flue logs <flue.agent> <flue.instance_id> <flue.run_id>
+  flue logs <flue.run_id>
   ```
 
 ## What this example does NOT do
@@ -195,7 +195,7 @@ see as the `flue.run_id` tag in Sentry.
 Take a `flue.run_id` from Sentry and feed it back to the CLI:
 
 ```bash
-flue logs boom test1 run_01HX...
+flue logs run_01HX...
 ```
 
 The CLI streams the full event log of that run — including the

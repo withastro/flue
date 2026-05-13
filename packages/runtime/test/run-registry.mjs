@@ -255,20 +255,23 @@ async function testBareRouteIntegration() {
 	const runId = invokeBody._meta?.runId;
 	assert.ok(typeof runId === 'string' && runId.startsWith('run_'), 'invoke response missing runId');
 
-	// Same body via legacy + bare routes.
-	const legacy = await app.fetch(new Request(`http://localhost/agents/hello/inst-1/runs/${runId}`));
-	assert.equal(legacy.status, 200);
-	const legacyBody = await legacy.json();
-
+	// Bare /runs/<runId> is the only run-lookup URL shape after
+	// Phase 1 / Commit C — the legacy prefixed family was removed
+	// in the same commit.
 	const bare = await app.fetch(new Request(`http://localhost/runs/${runId}`));
 	assert.equal(bare.status, 200);
 	const bareBody = await bare.json();
-
-	assert.deepEqual(bareBody, legacyBody);
 	assert.equal(bareBody.runId, runId);
 	assert.equal(bareBody.agentName, 'hello');
 	assert.equal(bareBody.instanceId, 'inst-1');
 	assert.equal(bareBody.status, 'completed');
+
+	// Legacy prefixed shape no longer routes — the outer app falls
+	// through to its own notFound handler (which `createDefaultFlueApp`
+	// would render canonically; here we just mount `flue()` so Hono's
+	// own 404 is what we get). Either way: must not 200.
+	const legacy = await app.fetch(new Request(`http://localhost/agents/hello/inst-1/runs/${runId}`));
+	assert.equal(legacy.status, 404, 'legacy prefixed route should no longer route');
 
 	// Unknown runId via bare route → 404 with canonical envelope.
 	const missing = await app.fetch(new Request('http://localhost/runs/run_does_not_exist'));
@@ -295,6 +298,7 @@ async function testBareRouteIntegration() {
 	assert.match(streamBody, /event: run_end/);
 
 	console.log('  ✓ bare /runs/:runId integration: get / events / stream all OK');
+	console.log('  ✓ legacy /agents/:name/:id/runs/:runId no longer routes (404)');
 }
 
 async function testBareRouteWithoutRegistry() {

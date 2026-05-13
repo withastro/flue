@@ -8,7 +8,6 @@ import {
 	RunRegistryUnavailableError,
 	toHttpResponse,
 	validateAgentRequest,
-	validateAgentRunRequest,
 } from '../errors.ts';
 import {
 	type AgentHandler,
@@ -129,12 +128,15 @@ export interface FlueRuntime {
 	createRunRegistryForRequest?: (env: unknown) => RunRegistry;
 }
 
-const RUN_ROUTES: ReadonlyArray<readonly [string, HandleRunRouteOptions['action']]> = [
-	['/agents/:name/:id/runs/:runId', 'get'],
-	['/agents/:name/:id/runs/:runId/events', 'events'],
-	['/agents/:name/:id/runs/:runId/stream', 'stream'],
-];
-
+/**
+ * Bare run-lookup routes. Identified by `runId` alone — the owning
+ * `(agentName, instanceId)` is resolved at request time via the
+ * runtime's {@link RunRegistry}. Prior to Phase 1 / Commit C these
+ * routes also existed in a prefixed form
+ * (`/agents/<name>/<id>/runs/<runId>{,/events,/stream}`) that has
+ * since been removed; the registry's reverse-lookup is the entire
+ * point of dropping it.
+ */
 const RUN_ROUTES_BY_ID: ReadonlyArray<readonly [string, HandleRunRouteOptions['action']]> = [
 	['/runs/:runId', 'get'],
 	['/runs/:runId/events', 'events'],
@@ -187,9 +189,6 @@ export function flue(): Hono {
 	// what produces the actual 405 / 404 / 400 envelopes; this just
 	// makes sure those paths get reached.
 	app.all('/agents/:name/:id', agentRouteHandler);
-	for (const [routePath, action] of RUN_ROUTES) {
-		app.all(routePath, runRouteHandler(action));
-	}
 	for (const [routePath, action] of RUN_ROUTES_BY_ID) {
 		app.all(routePath, runByIdRouteHandler(action));
 	}
@@ -297,51 +296,6 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 	});
 };
 
-function runRouteHandler(action: HandleRunRouteOptions['action']): MiddlewareHandler {
-	return async (c) => {
-		const rt = runtimeConfig;
-		if (!rt) {
-			throw new Error(
-				'[flue] flue() route invoked before runtime was configured. ' +
-					'This usually means flue() was used outside a Flue-built server entry.',
-			);
-		}
-
-		const name = c.req.param('name') ?? '';
-		const id = c.req.param('id') ?? '';
-		const runId = c.req.param('runId') || undefined;
-
-		validateAgentRunRequest({
-			method: c.req.method,
-			name,
-			id,
-			registeredAgents: registeredAgentsFor(rt),
-			webhookAgents: rt.webhookAgents,
-			allowNonWebhook: rt.allowNonWebhook,
-		});
-
-		if (rt.target === 'node') {
-			return handleRunRouteRequest({
-				request: c.req.raw,
-				runStore: rt.runStore,
-				runSubscribers: rt.runSubscribers,
-				agentName: name,
-				id,
-				runId,
-				action,
-			});
-		}
-
-		const response = await rt.routeAgentRequest!(c.req.raw, c.env);
-		if (response) return response;
-
-		throw new RouteNotFoundError({
-			method: c.req.method,
-			path: new URL(c.req.url).pathname,
-		});
-	};
-}
-
 /**
  * Bare `/runs/:runId` route handler. Resolves the run's owning agent +
  * instance via the runtime's {@link RunRegistry}, then delegates to
@@ -350,8 +304,9 @@ function runRouteHandler(action: HandleRunRouteOptions['action']): MiddlewareHan
  * Lookup-and-forward shape rather than direct store access so the Node
  * and Cloudflare implementations share one route handler. On Node the
  * registry pointer maps to the module-scoped `runStore` directly; on
- * Cloudflare (Commit B), the lookup is followed by a DO dispatch to the
- * owning agent DO that owns the run's record + events + live stream.
+ * Cloudflare the lookup is followed by a DO dispatch to the owning
+ * agent DO via `routeRunRequest`, which owns the run's record + events
+ * + live stream.
  */
 function runByIdRouteHandler(action: HandleRunRouteOptions['action']): MiddlewareHandler {
 	return async (c) => {

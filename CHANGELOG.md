@@ -4,6 +4,22 @@
 
 ### Breaking Changes
 
+- **Run-lookup HTTP routes are now identified by `runId` alone.** The previous `GET /agents/<name>/<id>/runs/<runId>{,/events,/stream}` route family is removed and replaced with `GET /runs/<runId>{,/events,/stream}`. The new routes work end-to-end on both Node and Cloudflare for any run that exists anywhere in the deployment — the server resolves the owning `(agentName, instanceId)` via a new internal run registry, so callers no longer need to know which agent or instance ran a given run id. External consumers hitting the old paths will get a 404; update to the bare form. The `POST /agents/<name>/<id>` invocation route is unchanged.
+
+  ```diff
+  - curl http://localhost:3583/agents/hello/inst-1/runs/run_01H...
+  + curl http://localhost:3583/runs/run_01H...
+  ```
+
+- **`flue logs` now takes only the run id.** The CLI signature simplifies from `flue logs <agent> <id> <runId>` to `flue logs <runId>`, matching the new route shape. The `<agent>` and `<id>` positional arguments are removed.
+
+  ```diff
+  - flue logs hello inst-1 run_01H...
+  + flue logs run_01H...
+  ```
+
+- **Cloudflare deployments gain a new `FlueRegistry` Durable Object class.** Auto-injected into the generated `dist/wrangler.jsonc` as a SQLite-backed DO binding (`FLUE_REGISTRY`) and a migration entry (`flue-class-FlueRegistry`). New deployments include it in their initial migration; existing deployments upgrading get a single appended migration entry. No user action required — the build's wrangler-merge owns the injection.
+
 - **`@flue/sdk` has been renamed to `@flue/runtime`.** The runtime library that user agent code and the generated server depend on is now published as `@flue/runtime`. User-facing agent, connector, MCP, and sandbox helper APIs now import from the root `@flue/runtime` entry; the old `@flue/sdk/client` and `@flue/sdk/sandbox` subpaths are folded into root. Platform/internal subpaths remain (`@flue/runtime/app`, `@flue/runtime/cloudflare`, `@flue/runtime/node`, `@flue/runtime/internal`). To migrate, replace user-code `@flue/sdk` imports with `@flue/runtime`. Generated `dist/` artifacts must be rebuilt — the new build emits `@flue/runtime/*` imports in `server.mjs` / `_entry.ts`.
 
   The transitional `@flue/runtime/client` and `@flue/runtime/sandbox` subpaths still resolve for now, but immediately throw with migration guidance. They will be removed in a later release.

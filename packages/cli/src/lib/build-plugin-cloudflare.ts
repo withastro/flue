@@ -392,38 +392,21 @@ async function dispatchAgent(request, doInstance, agentName, handler) {
 }
 
 /**
- * Parse the URL into a run-route action descriptor. Recognizes both
- * URL shapes the DO may receive:
+ * Parse the URL into a run-route action descriptor for the bare
+ * /runs/<runId>{,/events,/stream} URL shape. This is the only URL
+ * shape the DO accepts for run-history access — the legacy prefixed
+ * /agents/<name>/<id>/runs/... family was removed in Phase 1, Commit C.
  *
- *   - /agents/<name>/<id>/runs/<runId>{,/events,/stream}
- *     The legacy prefixed shape; main worker routes here via
- *     routeAgentRequest(). Removed entirely in Commit C.
- *   - /runs/<runId>{,/events,/stream}
- *     The bare shape; main worker forwards via
- *     getAgentByName(...).fetch() once the registry has resolved the
- *     owning instance (Phase 1 decision 8).
- *
- * Positional, not regex — an instance id of "runs" is intentionally
- * not treated as the runs marker.
+ * Main worker forwards a bare /runs/<runId>... request via
+ * getAgentByName(...).fetch() once the registry has resolved the
+ * owning instance (Phase 1 decision 8); from the DO's perspective the
+ * URL arrives unchanged.
  */
 function parseRunRoute(request) {
   const segments = new URL(request.url).pathname.split('/').filter(Boolean);
-  // Bare shape: /runs/<runId>[/<child>]
-  if (segments.length >= 2 && segments[0] === 'runs') {
-    const runId = segments[1];
-    const child = segments[2];
-    if (!runId) return null;
-    if (!child) return { action: 'get', runId };
-    if (child === 'events') return { action: 'events', runId };
-    if (child === 'stream') return { action: 'stream', runId };
-    return null;
-  }
-  // Legacy prefixed shape: /agents/<name>/<id>/runs/<runId>[/<child>]
-  if (segments.length < 4) return null;
-  if (segments[0] !== 'agents') return null;
-  if (segments[3] !== 'runs') return null;
-  const runId = segments[4];
-  const child = segments[5];
+  if (segments.length < 2 || segments[0] !== 'runs') return null;
+  const runId = segments[1];
+  const child = segments[2];
   if (!runId) return null;
   if (!child) return { action: 'get', runId };
   if (child === 'events') return { action: 'events', runId };
