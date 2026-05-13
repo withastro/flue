@@ -89,6 +89,8 @@ curl http://localhost:3583/agents/translate/test-1 \
 
 Every agent with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/agents/<name>/<id>` — for example, `.flue/agents/translate.ts` becomes `/agents/translate/:id`.
 
+See the [Flue HTTP API](./http-api.md) reference for sync calls, SSE streaming, webhook mode, run ids, and run event replay.
+
 For a one-shot production-style run (no watcher), use `flue build` + the generated server. The built server reads `process.env` directly, so source your env file in your shell or pass values explicitly:
 
 ```bash
@@ -281,11 +283,9 @@ node dist/server.mjs
 PORT=8080 node dist/server.mjs
 ```
 
-The server exposes:
-
-- `GET /health` — Health check
-- `GET /agents` — Agent manifest (lists all agents and their triggers)
-- `POST /agents/:name/:id` — Invoke an agent
+By default, the generated server mounts Flue's agent and run routes at `/`. If
+you add an `app.ts`, your app owns routing and can mount Flue with `flue()`.
+See the [HTTP API reference](./http-api.md) for the built-in route contract.
 
 ### Deploying with Docker
 

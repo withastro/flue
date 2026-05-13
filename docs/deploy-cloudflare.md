@@ -424,6 +424,8 @@ npx wrangler deploy --secrets-file .env
 
 Every agent with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/agents/<name>/<id>` — for example, `.flue/agents/translate.ts` becomes `/agents/translate/:id`.
 
+See the [Flue HTTP API](./http-api.md) reference for sync calls, SSE streaming, webhook mode, run ids, and run event replay.
+
 ```bash
 # Hit your deployed agent
 curl https://my-support-agent.<your-subdomain>.workers.dev/agents/support/session-123 \
