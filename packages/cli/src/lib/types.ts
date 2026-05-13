@@ -47,6 +47,8 @@ export interface BuildContext {
 	 * `app.ts` > `app.mts` > `app.js` > `app.mjs`.
 	 */
 	appEntry?: string;
+	/** Version of @flue/runtime resolved for this build. */
+	runtimeVersion: string;
 	options: BuildOptions;
 }
 

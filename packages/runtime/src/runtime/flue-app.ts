@@ -3,11 +3,19 @@
 import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import {
+	describeRoute,
+	openAPIRouteHandler,
+	resolver,
+	type DescribeRouteOptions,
+	validator,
+} from 'hono-openapi';
+import {
 	RouteNotFoundError,
 	RunNotFoundError,
 	RunRegistryUnavailableError,
 	toHttpResponse,
 	validateAgentRequest,
+	ValidationError,
 } from '../errors.ts';
 import {
 	type AgentHandler,
@@ -20,6 +28,16 @@ import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-
 import type { RunRegistry } from './run-registry.ts';
 import type { RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
+import {
+	AgentInvocationResponseSchema,
+	AgentRouteParamSchema,
+	ErrorEnvelopeSchema,
+	RunEventListResponseSchema,
+	RunEventsQuerySchema,
+	RunIdParamSchema,
+	RunRecordSchema,
+	WebhookInvocationResponseSchema,
+} from './schemas.ts';
 
 /**
  * Runtime configuration for {@link flue}, seeded by the generated server
@@ -133,6 +151,9 @@ export interface FlueRuntime {
 	 * is unset.
 	 */
 	createRunRegistryForRequest?: (env: unknown) => RunRegistry | undefined;
+
+	/** Package version inlined by the generated entry for OpenAPI metadata. */
+	runtimeVersion?: string;
 }
 
 /**
@@ -190,13 +211,34 @@ export function configureFlueRuntime(cfg: FlueRuntime): void {
 export function flue(): Hono {
 	const app = new Hono();
 
-	// `app.all` covers any method on the agent route so non-POSTs
-	// surface as a canonical 405 (instead of Hono's default 404 for
-	// unmatched methods). The `validateAgentRequest` call below is
-	// what produces the actual 405 / 404 / 400 envelopes; this just
-	// makes sure those paths get reached.
+	app.get('/openapi.json', openAPIRouteHandler(app, publicOpenApiOptions()));
+
+	app.post(
+		'/agents/:name/:id',
+		describeRoute(agentRouteSpec() as DescribeRouteOptions),
+		validated('param', AgentRouteParamSchema),
+		agentRouteHandler,
+	);
+	// Non-POSTs still reach the canonical Flue 405 envelope instead of
+	// Hono's default 404 for unmatched methods.
 	app.all('/agents/:name/:id', agentRouteHandler);
 	for (const [routePath, action] of RUN_ROUTES_BY_ID) {
+		if (action === 'events') {
+			app.get(
+				routePath,
+				describeRoute(runRouteSpec(action) as DescribeRouteOptions),
+				validated('param', RunIdParamSchema),
+				validated('query', RunEventsQuerySchema),
+				runByIdRouteHandler(action),
+			);
+		} else {
+			app.get(
+				routePath,
+				describeRoute(runRouteSpec(action) as DescribeRouteOptions),
+				validated('param', RunIdParamSchema),
+				runByIdRouteHandler(action),
+			);
+		}
 		app.all(routePath, runByIdRouteHandler(action));
 	}
 
@@ -236,6 +278,120 @@ export function createDefaultFlueApp(): Hono {
 	});
 	app.onError((err) => toHttpResponse(err));
 	return app;
+}
+
+function publicOpenApiOptions() {
+	return {
+		documentation: {
+			info: {
+				title: 'Flue Public API',
+				version: runtimeConfig?.runtimeVersion ?? '0.0.0',
+				description: 'Public Flue agent invocation and run inspection API.',
+			},
+			servers: [],
+		},
+	};
+}
+
+function validated(
+	target: 'param' | 'query',
+	schema: Parameters<typeof validator>[1],
+): MiddlewareHandler {
+	return validator(target, schema, (result) => {
+		if (result.success) return;
+		throw new ValidationError({
+			details: `Invalid ${target} parameters.`,
+			issues: result.error,
+		});
+	}) as MiddlewareHandler;
+}
+
+function jsonResponse(schema: Parameters<typeof resolver>[0], description: string) {
+	return {
+		description,
+		content: {
+			'application/json': {
+				schema: resolver(schema),
+			},
+		},
+	};
+}
+
+function errorResponses() {
+	return {
+		400: jsonResponse(ErrorEnvelopeSchema, 'Validation or request-shape error.'),
+		404: jsonResponse(ErrorEnvelopeSchema, 'Resource or route not found.'),
+		405: jsonResponse(ErrorEnvelopeSchema, 'HTTP method is not allowed.'),
+		415: jsonResponse(ErrorEnvelopeSchema, 'Request body must be JSON.'),
+		500: jsonResponse(ErrorEnvelopeSchema, 'Internal server error.'),
+		501: jsonResponse(ErrorEnvelopeSchema, 'Runtime feature is not configured.'),
+	};
+}
+
+function agentRouteSpec() {
+	return {
+		tags: ['agents'],
+		operationId: 'invokeAgent',
+		summary: 'Invoke an agent instance',
+		description:
+			'Invokes the named agent instance. The request body is user-defined by the target agent.',
+		requestBody: {
+			required: false,
+			content: {
+				'application/json': {
+					schema: {
+						type: 'object',
+						additionalProperties: true,
+						description: 'Agent-defined payload. Consult the target agent documentation.',
+					},
+				},
+			},
+		},
+		responses: {
+			200: jsonResponse(AgentInvocationResponseSchema, 'Synchronous invocation result.'),
+			202: jsonResponse(WebhookInvocationResponseSchema, 'Webhook invocation accepted.'),
+			...errorResponses(),
+		},
+		'x-flue-invocation-modes': ['sync', 'webhook', 'stream'],
+		'x-flue-user-defined': true,
+	};
+}
+
+function runRouteSpec(action: HandleRunRouteOptions['action']) {
+	if (action === 'stream') {
+		return {
+			tags: ['runs'],
+			operationId: 'streamRunEvents',
+			summary: 'Stream run events',
+			responses: {
+				200: {
+					description: 'Server-sent events stream of run lifecycle and agent events.',
+					content: {
+						'text/event-stream': {
+							schema: {
+								type: 'string',
+								description: 'SSE-framed FlueEvent values.',
+							},
+						},
+					},
+				},
+				...errorResponses(),
+			},
+			'x-flue-streaming': true,
+		};
+	}
+	return {
+		tags: ['runs'],
+		operationId: action === 'get' ? 'getRun' : 'listRunEvents',
+		summary: action === 'get' ? 'Get a run record' : 'List run events',
+		responses: {
+			200: jsonResponse(
+				action === 'get' ? RunRecordSchema : RunEventListResponseSchema,
+				action === 'get' ? 'Run record.' : 'Persisted run event page.',
+			),
+			...errorResponses(),
+		},
+	};
 }
 
 const agentRouteHandler: MiddlewareHandler = async (c) => {

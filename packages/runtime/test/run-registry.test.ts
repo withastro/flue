@@ -312,6 +312,17 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(types.has('run_start')).toBe(true);
 		expect(types.has('run_end')).toBe(true);
 
+		const badLimit = await app.fetch(new Request(`http://localhost/runs/${runId}/events?limit=abc`));
+		expect(badLimit.status).toBe(400);
+		expect(((await badLimit.json()) as { error?: { type: string } }).error?.type).toBe(
+			'validation_failed',
+		);
+
+		const badType = await app.fetch(
+			new Request(`http://localhost/runs/${runId}/events?types=run_start,not_real`),
+		);
+		expect(badType.status).toBe(400);
+
 		// Stream endpoint on a terminal run returns SSE-replay.
 		const streamRes = await app.fetch(new Request(`http://localhost/runs/${runId}/stream`));
 		expect(streamRes.status).toBe(200);
@@ -319,6 +330,23 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		const streamBody = await streamRes.text();
 		expect(streamBody).toMatch(/event: run_start/);
 		expect(streamBody).toMatch(/event: run_end/);
+
+		const specRes = await app.fetch(new Request('http://localhost/openapi.json'));
+		expect(specRes.status).toBe(200);
+		const spec = (await specRes.json()) as {
+			openapi: string;
+			info: { title: string; version: string };
+			paths: Record<string, Record<string, unknown>>;
+		};
+		expect(spec.openapi).toBe('3.1.0');
+		expect(spec.info.title).toBe('Flue Public API');
+		expect(spec.paths['/agents/{name}/{id}']?.post).toBeDefined();
+		expect(spec.paths['/runs/{runId}']?.get).toBeDefined();
+		expect(spec.paths['/runs/{runId}/events']?.get).toBeDefined();
+		const streamOp = spec.paths['/runs/{runId}/stream']?.get as
+			| { 'x-flue-streaming'?: boolean }
+			| undefined;
+		expect(streamOp?.['x-flue-streaming']).toBe(true);
 	});
 
 	it('surfaces a structured 501 envelope when runRegistry is not configured', async () => {

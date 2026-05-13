@@ -368,6 +368,19 @@ export class InvalidRequestError extends FlueHttpError {
 	}
 }
 
+export class ValidationError extends FlueHttpError {
+	constructor({ details, issues }: { details: string; issues: unknown }) {
+		super({
+			type: 'validation_failed',
+			message: 'Request validation failed.',
+			details,
+			dev: '',
+			meta: { issues },
+			status: 400,
+		});
+	}
+}
+
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 // ERROR FRAMEWORK UTILITIES
 // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

@@ -10,6 +10,7 @@ export class NodePlugin implements BuildPlugin {
 	generateEntryPoint(ctx: BuildContext): string {
 		const { agents, roles, appEntry } = ctx;
 		const rolesJson = JSON.stringify(roles);
+		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 
 		const webhookAgents = agents.filter((a) => a.triggers.webhook);
 
@@ -142,6 +143,7 @@ function createContextForRequest(id, runId, payload, req) {
 // only when a request arrives.
 configureFlueRuntime({
   target: 'node',
+  runtimeVersion: ${runtimeVersion},
   webhookAgents: webhookAgentNames,
   allowNonWebhook: isLocalMode,
   handlers,

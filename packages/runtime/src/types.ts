@@ -721,4 +721,3 @@ export type FlueEvent = (
 };
 
 export type FlueEventCallback = (event: FlueEvent) => void | Promise<void>;
-

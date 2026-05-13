@@ -2,7 +2,13 @@
 
 ## Unreleased
 
+### New Features
+
+- **Public OpenAPI spec for Flue's built-in routes.** `GET /openapi.json` now serves an OpenAPI 3.1 document for `POST /agents/<name>/<id>` and `GET /runs/<runId>{,/events,/stream}`. The spec is generated from Valibot schemas via `hono-openapi`, includes Flue's canonical error envelope, documents SSE routes with `x-flue-streaming: true`, and marks agent invocation payloads as user-defined.
+
 ### Breaking Changes
+
+- **Malformed run-event query parameters now return structured 400 errors.** `GET /runs/<runId>/events` validates query params before reading run history. `limit` must be an integer in `[1, 1000]`; `after` must be a non-negative integer; `types` must be a comma-separated list of known Flue event type names. Previously malformed `limit` / `after` values were silently defaulted or ignored.
 
 - **Run-lookup HTTP routes are now identified by `runId` alone.** The previous `GET /agents/<name>/<id>/runs/<runId>{,/events,/stream}` route family is removed and replaced with `GET /runs/<runId>{,/events,/stream}`. The new routes work end-to-end on both Node and Cloudflare for any run that exists anywhere in the deployment — the server resolves the owning `(agentName, instanceId)` via a new internal run registry, so callers no longer need to know which agent or instance ran a given run id. External consumers hitting the old paths will get a 404; update to the bare form. The `POST /agents/<name>/<id>` invocation route is unchanged.
 

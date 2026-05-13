@@ -19,6 +19,12 @@ Flue isn't another AI SDK. It's a proper runtime-agnostic framework — think As
 | [`@flue/runtime`](packages/runtime) | Runtime: harness, sessions, tools, sandbox |
 | [`@flue/cli`](packages/cli)   | CLI + build/dev tooling (`flue` binary)    |
 
+## Public OpenAPI
+
+Flue serves its built-in public API spec at `GET /openapi.json` from the mounted `flue()` app. The spec covers agent invocation and run inspection routes, uses the same Flue error envelope returned at runtime, and marks SSE endpoints with `x-flue-streaming: true` so generated clients can hand-write streaming support.
+
+Agent invocation payloads are intentionally user-defined: Flue validates that the request body is parseable JSON, but the payload shape belongs to the target agent rather than the framework.
+
 ## Examples
 
 ### Quickstart
