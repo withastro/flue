@@ -11,6 +11,9 @@
  * Exits non-zero on any failure. Intended for the Phase 1 Commit A
  * verification pass; consolidated into a real test framework later.
  */
+// biome-ignore-all lint/suspicious/noConsole: test runner output is its UX
+// biome-ignore-all lint/correctness/useImportExtensions: importing from built
+// dist/.mjs files which already carry their extensions in the specifier
 import assert from 'node:assert/strict';
 import { Hono } from 'hono';
 import {

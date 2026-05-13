@@ -1,3 +1,9 @@
+// biome-ignore-all lint/suspicious/noEmptyInterface: this file is a migration
+// shim — the `@flue/sdk` package was renamed to `@flue/runtime`, and these
+// empty interfaces exist solely to provide type-level compatibility for
+// downstream `import type` statements during the deprecation window. Adding
+// arbitrary fields would change the type semantics for any consumer that
+// hasn't yet migrated.
 import { throwMigrationError } from './_migration.ts';
 import type { ModelConfig } from './types.ts';
 
