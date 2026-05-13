@@ -1,5 +1,5 @@
 {
-	"name": "@flue/core",
+	"name": "@flue/runtime",
 	"version": "0.5.3",
 	"type": "module",
 	"license": "Apache-2.0",

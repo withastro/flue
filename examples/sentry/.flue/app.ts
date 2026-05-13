@@ -69,8 +69,8 @@
  *   SENTRY_RELEASE      e.g. a git SHA. Optional.
  */
 
-import { flue, observe } from '@flue/core/app';
-import type { FlueContext, FlueEvent } from '@flue/core/client';
+import { flue, observe } from '@flue/runtime/app';
+import type { FlueContext, FlueEvent } from '@flue/runtime/client';
 import * as Sentry from '@sentry/node';
 import { Hono } from 'hono';
 

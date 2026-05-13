@@ -43,7 +43,7 @@ export class NodePlugin implements BuildPlugin {
 			: '';
 
 		// All HTTP routing, SSE/webhook/sync mode handling, agent dispatch,
-		// and error rendering live in @flue/core's runtime modules. The
+		// and error rendering live in @flue/runtime's runtime modules. The
 		// generated entry's job is now narrow: import handlers, build the
 		// runtime config, instantiate sandboxes, start the listener.
 		return `
@@ -59,8 +59,8 @@ import {
   resolveModel,
   configureFlueRuntime,
   createDefaultFlueApp,
-} from '@flue/core/internal';
-import { createLocalSessionEnv } from '@flue/core/node';
+} from '@flue/runtime/internal';
+import { createLocalSessionEnv } from '@flue/runtime/node';
 
 ${agentImports}
 ${userAppImport}
@@ -164,7 +164,7 @@ if (!app || typeof app.fetch !== 'function') {
     '[flue] app.ts default export must be a Hono app or an object with a fetch(request) method.'
   );
 }`
-		: `// No app.ts: build the default app via @flue/core so the generated entry
+		: `// No app.ts: build the default app via @flue/runtime so the generated entry
 // stays \`hono\`-free (users only need hono in their node_modules when
 // they author their own app.ts). The default mounts \`flue()\` at root
 // and renders canonical Flue envelopes for unmatched paths.

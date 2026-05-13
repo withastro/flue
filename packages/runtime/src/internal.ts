@@ -47,11 +47,11 @@ export type {
 //     traffic.
 //
 //   - `createDefaultFlueApp` is the no-`app.ts` fallback. Lives in
-//     @flue/core so the generated entry doesn't have to import `hono` (which
+//     @flue/runtime so the generated entry doesn't have to import `hono` (which
 //     keeps user projects from needing it as a direct dep when they
 //     don't author their own `app.ts`).
 //
-// The user-facing `flue()` itself is re-exported from `@flue/core/app`, not here.
+// The user-facing `flue()` itself is re-exported from `@flue/runtime/app`, not here.
 export { handleAgentRequest } from './runtime/handle-agent.ts';
 export type { HandleRunRouteOptions } from './runtime/handle-run-routes.ts';
 export { handleRunRouteRequest } from './runtime/handle-run-routes.ts';

@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/core';
+import type { FlueContext } from '@flue/runtime';
 
 export const triggers = { webhook: true };
 

@@ -26,7 +26,7 @@
 		"prepublishOnly": "cp ../../README.md ."
 	},
 	"dependencies": {
-		"@flue/core": "workspace:*",
+		"@flue/runtime": "workspace:*",
 		"@vercel/detect-agent": "^1.2.3",
 		"esbuild": "^0.25.0",
 		"package-up": "^5.0.0",

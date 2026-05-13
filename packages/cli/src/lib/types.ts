@@ -3,11 +3,11 @@
  *
  * These types describe the inputs and outputs of `build()` and the plugin
  * surface that targets (Node, Cloudflare) implement. They are not part of
- * the runtime surface of `@flue/core` — they were extracted here when the
+ * the runtime surface of `@flue/runtime` — they were extracted here when the
  * build/dev tooling moved from `@flue/sdk` into `@flue/cli` so the runtime
  * package would stop carrying tooling types.
  */
-import type { Role } from '@flue/core';
+import type { Role } from '@flue/runtime';
 
 export interface AgentInfo {
 	name: string;

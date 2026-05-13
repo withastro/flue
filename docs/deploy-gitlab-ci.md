@@ -13,7 +13,7 @@ A minimal agent that runs in CI whenever an issue is opened.
 ```bash
 mkdir my-flue-project && cd my-flue-project
 npm init -y
-npm install @flue/core valibot
+npm install @flue/runtime valibot
 npm install -D @flue/cli
 ```
 
@@ -22,7 +22,7 @@ npm install -D @flue/cli
 `.flue/agents/hello.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/core/client';
+import type { FlueContext } from '@flue/runtime/client';
 import * as v from 'valibot';
 
 export const triggers = {};
@@ -160,7 +160,7 @@ In GitLab CI, this means you set the secrets you want the agent's CLIs to see in
 `.flue/agents/triage.ts`:
 
 ```typescript
-import { type FlueContext } from '@flue/core/client';
+import { type FlueContext } from '@flue/runtime/client';
 import * as v from 'valibot';
 
 export const triggers = {};
@@ -287,7 +287,7 @@ Add these as CI/CD variables (**Settings > CI/CD > Variables**, masked):
 Schemas aren't just for type safety — they're how you orchestrate multi-step workflows. Because you get typed data back from `prompt()` and `skill()`, you can branch on results within a single agent:
 
 ```typescript
-import { type FlueContext } from '@flue/core/client';
+import { type FlueContext } from '@flue/runtime/client';
 import * as v from 'valibot';
 
 export default async function ({ init, payload }: FlueContext) {

@@ -3,7 +3,7 @@
 	"private": true,
 	"type": "module",
 	"dependencies": {
-		"@flue/core": "workspace:*",
+		"@flue/runtime": "workspace:*",
 		"agents": "*",
 		"hono": "^4.7.0",
 		"valibot": "^1.0.0"

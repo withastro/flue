@@ -1,6 +1,6 @@
 /**
  * Internal helpers for aggregating `PromptUsage`. Not re-exported from the
- * public @flue/core entry — they're an implementation detail of how prompt(),
+ * public @flue/runtime entry — they're an implementation detail of how prompt(),
  * skill(), task() and compaction roll up token + cost figures.
  *
  * Kept in their own module to share between `session.ts` (per-call

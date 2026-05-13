@@ -37,13 +37,13 @@ session and uses the returned `SessionEnv` for all shell/file operations.
 
 ```ts
 // .flue/connectors/<provider>.ts (or ./connectors/<provider>.ts)
-import { createSandboxSessionEnv } from '@flue/core/sandbox';
+import { createSandboxSessionEnv } from '@flue/runtime/sandbox';
 import type {
   SandboxApi,
   SandboxFactory,
   SessionEnv,
   FileStat,
-} from '@flue/core/sandbox';
+} from '@flue/runtime/sandbox';
 import type { Sandbox as ProviderSandbox } from '<provider-sdk>';
 
 class ProviderSandboxApi implements SandboxApi {
@@ -70,7 +70,7 @@ what they create.
 
 ## Imports You Will Use
 
-All from `@flue/core/sandbox`:
+All from `@flue/runtime/sandbox`:
 
 - `createSandboxSessionEnv(api, cwd)` — wraps your `SandboxApi` into a
   `SessionEnv` that Flue can drive.
@@ -80,7 +80,7 @@ All from `@flue/core/sandbox`:
   this yourself.
 - `FileStat` — the return type for `stat()`.
 
-Do **not** import internal SDK paths. `@flue/core/sandbox` is the only public
+Do **not** import internal SDK paths. `@flue/runtime/sandbox` is the only public
 surface for connector authors.
 
 ---
@@ -88,7 +88,7 @@ surface for connector authors.
 ## TypeScript Contracts (snapshot)
 
 These are the exact shapes you must conform to. Always typecheck against the
-real types from `@flue/core/sandbox` — if there's any drift between this
+real types from `@flue/runtime/sandbox` — if there's any drift between this
 document and the SDK, **the SDK wins**.
 
 ### `SandboxApi` (you implement this)
@@ -283,7 +283,7 @@ Before declaring success:
 1. Confirm the file typechecks: `npx tsc --noEmit` (or whatever the user's
    project uses for typechecking).
 2. Confirm the import path is valid: the connector imports from
-   `@flue/core/sandbox` (which is part of `@flue/core` already).
+   `@flue/runtime/sandbox` (which is part of `@flue/runtime` already).
 3. If the user's `package.json` does not yet depend on the provider's SDK,
    tell them to install it (e.g. `npm install <provider-sdk>`).
 4. Tell the user which env vars they need to set (e.g.

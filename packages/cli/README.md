@@ -16,7 +16,7 @@ Flue isn't another AI SDK. It's a proper runtime-agnostic framework — think As
 
 | Package                       | Description                             |
 | ----------------------------- | --------------------------------------- |
-| [`@flue/core`](packages/core) | Runtime: harness, sessions, tools, sandbox |
+| [`@flue/runtime`](packages/runtime) | Runtime: harness, sessions, tools, sandbox |
 | [`@flue/cli`](packages/cli)   | CLI + build/dev tooling (`flue` binary)    |
 
 ## Examples
@@ -29,7 +29,7 @@ Unless you opt-in to initializing a full container sandbox, Flue will default to
 
 ```ts
 // .flue/agents/hello-world.ts
-import type { FlueContext } from '@flue/core/client';
+import type { FlueContext } from '@flue/runtime/client';
 import * as v from 'valibot';
 
 // Every agent needs a trigger. This agent is invoked as an API endpoint, via HTTP.
@@ -62,8 +62,8 @@ Because this agent is deployed to Cloudflare, message history and session state 
 
 ```ts
 // .flue/agents/support.ts
-import { getVirtualSandbox } from '@flue/core/cloudflare';
-import type { FlueContext } from '@flue/core/client';
+import { getVirtualSandbox } from '@flue/runtime/cloudflare';
+import type { FlueContext } from '@flue/runtime/client';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
@@ -95,7 +95,7 @@ A triage agent that runs in CI whenever an issue is opened on GitHub. The `"loca
 
 ```ts
 // .flue/agents/triage.ts
-import { type FlueContext } from '@flue/core/client';
+import { type FlueContext } from '@flue/runtime/client';
 import * as v from 'valibot';
 
 // Because we are running this in CI, we don't need to expose this as an HTTP endpoint.
@@ -146,7 +146,7 @@ Install the Daytona connector with `flue add daytona | <your-agent>` (e.g. `clau
 
 ```ts
 // .flue/agents/code.ts
-import { Type, type FlueContext, type ToolDef } from '@flue/core/client';
+import { Type, type FlueContext, type ToolDef } from '@flue/runtime/client';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
@@ -196,7 +196,7 @@ MCP is available as a runtime tool adapter. Connect to a remote MCP server in tr
 
 ```ts
 // .flue/agents/assistant.ts
-import { connectMcpServer, type FlueContext } from '@flue/core/client';
+import { connectMcpServer, type FlueContext } from '@flue/runtime/client';
 
 export const triggers = { webhook: true };
 
@@ -295,7 +295,7 @@ apply to every harness and session that resolves models through that provider.
 
 ```ts
 // .flue/app.ts
-import { configureProvider, flue } from '@flue/core/app';
+import { configureProvider, flue } from '@flue/runtime/app';
 
 export default {
   fetch(req, env, ctx) {

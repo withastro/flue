@@ -1,8 +1,8 @@
 /**
- * Node-specific entry point for `@flue/core`. Exports node-only helpers
+ * Node-specific entry point for `@flue/runtime`. Exports node-only helpers
  * such as `createLocalSessionEnv`.
  *
  * Import platform-agnostic types (`FlueContext`, etc.) from
- * `@flue/core/client`.
+ * `@flue/runtime/client`.
  */
 export { createLocalSessionEnv, type LocalSessionEnvOptions } from './local-env.ts';

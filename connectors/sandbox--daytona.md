@@ -55,8 +55,8 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * const session = await harness.session();
  * ```
  */
-import { createSandboxSessionEnv } from '@flue/core/sandbox';
-import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/core/sandbox';
+import { createSandboxSessionEnv } from '@flue/runtime/sandbox';
+import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/runtime/sandbox';
 import type { Sandbox as DaytonaSandbox } from '@daytona/sdk';
 
 /**
@@ -186,7 +186,7 @@ into, you can finish that work by wiring the connector into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import type { FlueContext } from '@flue/core/client';
+import type { FlueContext } from '@flue/runtime/client';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona'; // adjust path to match the user's layout
 

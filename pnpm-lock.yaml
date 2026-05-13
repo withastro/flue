@@ -18,9 +18,9 @@ importers:
       '@biomejs/biome':
         specifier: ^2.2.0
         version: 2.4.14
-      '@flue/core':
+      '@flue/runtime':
         specifier: workspace:*
-        version: link:packages/core
+        version: link:packages/runtime
       '@types/node':
         specifier: ^22.10.10
         version: 22.19.17
@@ -73,9 +73,9 @@ importers:
       '@cloudflare/sandbox':
         specifier: '*'
         version: 0.9.2
-      '@flue/core':
+      '@flue/runtime':
         specifier: workspace:*
-        version: link:../../packages/core
+        version: link:../../packages/runtime
       agents:
         specifier: '*'
         version: 0.12.3(@babel/core@7.29.0)(@babel/runtime@7.29.2)(@cloudflare/codemode@0.3.4(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ai@6.0.175(zod@4.4.3))(zod@4.4.3))(@cloudflare/workers-types@4.20260505.1)(ai@6.0.175(zod@4.4.3))(react@19.2.5)(rolldown@1.0.0-rc.17)(zod@4.4.3)
@@ -89,9 +89,9 @@ importers:
 
   examples/cloudflare:
     dependencies:
-      '@flue/core':
+      '@flue/runtime':
         specifier: workspace:*
-        version: link:../../packages/core
+        version: link:../../packages/runtime
       agents:
         specifier: '*'
         version: 0.12.3(@babel/core@7.29.0)(@babel/runtime@7.29.2)(@cloudflare/codemode@0.3.4(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ai@6.0.175(zod@4.4.3))(zod@4.4.3))(@cloudflare/workers-types@4.20260505.1)(ai@6.0.175(zod@4.4.3))(react@19.2.5)(rolldown@1.0.0-rc.17)(zod@4.4.3)
@@ -111,9 +111,9 @@ importers:
       '@daytona/sdk':
         specifier: '*'
         version: 0.171.0(ws@8.20.0)
-      '@flue/core':
+      '@flue/runtime':
         specifier: workspace:*
-        version: link:../../packages/core
+        version: link:../../packages/runtime
       agents:
         specifier: '*'
         version: 0.12.3(@babel/core@7.29.0)(@babel/runtime@7.29.2)(@cloudflare/codemode@0.3.4(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ai@6.0.175(zod@4.4.3))(zod@4.4.3))(@cloudflare/workers-types@4.20260505.1)(ai@6.0.175(zod@4.4.3))(react@19.2.5)(rolldown@1.0.0-rc.17)(zod@4.4.3)
@@ -133,9 +133,9 @@ importers:
 
   examples/sentry:
     dependencies:
-      '@flue/core':
+      '@flue/runtime':
         specifier: workspace:*
-        version: link:../../packages/core
+        version: link:../../packages/runtime
       '@sentry/node':
         specifier: ^10.0.0
         version: 10.52.0(@opentelemetry/exporter-trace-otlp-http@0.207.0(@opentelemetry/api@1.9.1))
@@ -149,9 +149,9 @@ importers:
 
   packages/cli:
     dependencies:
-      '@flue/core':
+      '@flue/runtime':
         specifier: workspace:*
-        version: link:../core
+        version: link:../runtime
       '@vercel/detect-agent':
         specifier: ^1.2.3
         version: 1.2.3
@@ -180,7 +180,7 @@ importers:
 
   packages/connectors: {}
 
-  packages/core:
+  packages/runtime:
     dependencies:
       '@cloudflare/shell':
         specifier: ^0.3.2

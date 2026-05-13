@@ -24,7 +24,7 @@
  * Flue agent in this project is instrumented for Sentry by virtue of
  * living in this project, without any per-agent boilerplate.
  */
-import type { FlueContext } from '@flue/core/client';
+import type { FlueContext } from '@flue/runtime/client';
 
 export const triggers = { webhook: true };
 

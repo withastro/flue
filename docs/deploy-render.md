@@ -170,7 +170,7 @@ npm install -D @types/pg
 `.flue/session-store.ts`:
 
 ```typescript
-import type { SessionStore, SessionData } from '@flue/core/client';
+import type { SessionStore, SessionData } from '@flue/runtime/client';
 import { Pool } from 'pg';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });

@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/core/client';
+import type { FlueContext } from '@flue/runtime/client';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 

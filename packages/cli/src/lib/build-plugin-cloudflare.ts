@@ -119,13 +119,13 @@ import {
   configureFlueRuntime,
   createDefaultFlueApp,
   hasRegisteredProvider,
-} from '@flue/core/internal';
+} from '@flue/runtime/internal';
 import {
   runWithCloudflareContext,
   cfSandboxToSessionEnv,
   getCloudflareAIBindingApiProvider,
-} from '@flue/core/cloudflare';
-import { registerApiProvider, registerProvider } from '@flue/core/app';
+} from '@flue/runtime/cloudflare';
+import { registerApiProvider, registerProvider } from '@flue/runtime/app';
 
 ${agentImports}
 
@@ -419,7 +419,7 @@ if (!app || typeof app.fetch !== 'function') {
     '[flue] app.ts default export must be a Hono app or an object with a fetch(request, env, ctx) method.'
   );
 }`
-		: `// No app.ts: build the default app via @flue/core so the generated entry
+		: `// No app.ts: build the default app via @flue/runtime so the generated entry
 // stays \`hono\`-free (users only need hono in their node_modules when
 // they author their own app.ts). The default mounts \`flue()\` at root
 // and renders canonical Flue envelopes for unmatched paths.

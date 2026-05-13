@@ -51,7 +51,7 @@ export type ToolParameters = TSchema | Record<string, unknown>;
 /**
  * Custom tool passed to init(), prompt(), skill(), or task(). init() tools are
  * available to every session call; prompt/skill/task tools are scoped to that call.
- * Parameters are JSON Schema-compatible. Use `Type` from `@flue/core/client` for
+ * Parameters are JSON Schema-compatible. Use `Type` from `@flue/runtime/client` for
  * hand-written tools, or pass schemas discovered from adapters such as MCP.
  */
 export interface ToolDef<TParams extends ToolParameters = ToolParameters> {
@@ -195,7 +195,7 @@ export interface CompactionConfig {
 
 // ─── Provider Runtime Settings ──────────────────────────────────────────────
 
-/** Per-provider transport settings configured from `@flue/core/app`. */
+/** Per-provider transport settings configured from `@flue/runtime/app`. */
 export interface ProviderSettings {
 	/** Provider endpoint used by built-in models or registered providers. */
 	baseUrl?: string;
