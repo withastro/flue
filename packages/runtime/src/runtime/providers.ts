@@ -256,23 +256,26 @@ function buildModelFromRegistration(
 	modelId: string,
 ): Model<Api> {
 	if (isCloudflareBindingRegistration(def)) {
+		// pi-ai's catalog covers only the chat-completion subset of Workers AI;
+		// fall back to zero metadata for ids it doesn't know. The `shouldCompact`
+		// guard treats `contextWindow <= 0` as unknown.
 		const catalog = getModel('cloudflare-workers-ai' as KnownProvider, modelId as never);
-		if (!catalog) {
-			throw new Error(
-				`[flue] Unknown Workers AI model "${modelId}". ` +
-					`Not present in @mariozechner/pi-ai's "cloudflare-workers-ai" catalog.`,
-			);
-		}
-		return attachModelBinding(
-			{
-				...catalog,
-				api: CLOUDFLARE_AI_BINDING_API,
-				provider: def.provider ?? CLOUDFLARE_AI_BINDING_PROVIDER,
-				baseUrl: '',
-			},
-			def.binding,
-			def.gateway,
-		);
+		const provider = def.provider ?? CLOUDFLARE_AI_BINDING_PROVIDER;
+		const base: Model<Api> = catalog
+			? { ...catalog, api: CLOUDFLARE_AI_BINDING_API, provider, baseUrl: '' }
+			: {
+					id: modelId,
+					name: modelId,
+					api: CLOUDFLARE_AI_BINDING_API,
+					provider,
+					baseUrl: '',
+					reasoning: false,
+					input: ['text'],
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: 0,
+					maxTokens: 0,
+				};
+		return attachModelBinding(base, def.binding, def.gateway);
 	}
 
 	return {
