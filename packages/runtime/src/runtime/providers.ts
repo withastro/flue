@@ -281,7 +281,7 @@ function buildModelFromRegistration(
 					input: ['text'],
 					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 					contextWindow: def.contextWindow ?? 0,
-			    maxTokens: def.maxTokens ?? 0,
+					maxTokens: def.maxTokens ?? 0,
 				};
 		return attachModelBinding(base, def.binding, def.gateway);
 	}
