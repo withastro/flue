@@ -6,6 +6,8 @@
 
 - **`@flue/sdk` has been renamed to `@flue/runtime`.** The runtime library that user agent code and the generated server depend on is now published as `@flue/runtime`. User-facing agent, connector, MCP, and sandbox helper APIs now import from the root `@flue/runtime` entry; the old `@flue/sdk/client` and `@flue/sdk/sandbox` subpaths are folded into root. Platform/internal subpaths remain (`@flue/runtime/app`, `@flue/runtime/cloudflare`, `@flue/runtime/node`, `@flue/runtime/internal`). To migrate, replace user-code `@flue/sdk` imports with `@flue/runtime`. Generated `dist/` artifacts must be rebuilt — the new build emits `@flue/runtime/*` imports in `server.mjs` / `_entry.ts`.
 
+  The transitional `@flue/runtime/client` and `@flue/runtime/sandbox` subpaths still resolve for now, but immediately throw with migration guidance. They will be removed in a later release.
+
   ```diff
   - import type { FlueContext } from '@flue/sdk/client';
   + import type { FlueContext } from '@flue/runtime';
