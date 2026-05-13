@@ -1,6 +1,8 @@
 /** Runtime provider registries consumed by `resolveModel` and Session. */
 
 import {
+	getModel,
+	type KnownProvider,
 	registerApiProvider as piRegisterApiProvider,
 	type Api,
 	type Model,
@@ -252,9 +254,9 @@ export function resolveRegisteredModel(
 }
 
 /**
- * Construct a pi-ai Model from a registered provider template. User-defined
- * providers do not have catalog metadata, so cost and context limits default
- * to zero. apiKey flows through `getApiKey`; it is not part of pi-ai's Model.
+ * Construct a pi-ai Model from a registered provider template. Binding
+ * registrations inherit catalog metadata from `cloudflare-workers-ai`;
+ * HTTP registrations have no catalog and default cost/limits to zero.
  */
 function buildModelFromRegistration(
 	name: string,
@@ -262,18 +264,25 @@ function buildModelFromRegistration(
 	modelId: string,
 ): Model<Api> {
 	if (isCloudflareBindingRegistration(def)) {
-		const base: Model<Api> = {
-			id: modelId,
-			name: modelId,
-			api: CLOUDFLARE_AI_BINDING_API,
-			provider: def.provider ?? CLOUDFLARE_AI_BINDING_PROVIDER,
-			baseUrl: '',
-			reasoning: false,
-			input: ['text'],
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-			contextWindow: def.contextWindow ?? 0,
-			maxTokens: def.maxTokens ?? 0,
-		};
+		// pi-ai's catalog covers only the chat-completion subset of Workers AI;
+		// fall back to zero metadata for ids it doesn't know. The `shouldCompact`
+		// guard treats `contextWindow <= 0` as unknown.
+		const catalog = getModel('cloudflare-workers-ai' as KnownProvider, modelId as never);
+		const provider = def.provider ?? CLOUDFLARE_AI_BINDING_PROVIDER;
+		const base: Model<Api> = catalog
+			? { ...catalog, api: CLOUDFLARE_AI_BINDING_API, provider, baseUrl: '' }
+			: {
+					id: modelId,
+					name: modelId,
+					api: CLOUDFLARE_AI_BINDING_API,
+					provider,
+					baseUrl: '',
+					reasoning: false,
+					input: ['text'],
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: def.contextWindow ?? 0,
+			    maxTokens: def.maxTokens ?? 0,
+				};
 		return attachModelBinding(base, def.binding, def.gateway);
 	}
 
