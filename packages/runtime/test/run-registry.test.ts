@@ -8,7 +8,10 @@ import {
 	InMemoryRunRegistry,
 	InMemoryRunStore,
 	InMemorySessionStore,
+	type RunRecord,
+	type RunStore,
 } from '../src/internal.ts';
+import type { FlueEvent } from '../src/types.ts';
 
 describe('InMemoryRunRegistry', () => {
 	it('records start, lookup, and end for a single run', async () => {
@@ -430,7 +433,93 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(res.status).toBe(405);
 		expect(res.headers.get('allow')).toBe('GET');
 	});
+
+	it('flushes queued non-terminal events before run_end is persisted', async () => {
+		const runStore = new SlowNonTerminalRunStore();
+		const runRegistry = new InMemoryRunRegistry();
+		const runSubscribers = createRunSubscriberRegistry();
+
+		configureFlueRuntime({
+			target: 'node',
+			webhookAgents: ['hello'],
+			allowNonWebhook: false,
+			handlers: {
+				hello: async (ctx) => {
+					ctx.log.info('before return');
+					return { ok: true };
+				},
+			},
+			createContext: (id, runId, payload, req) =>
+				createFlueContext({
+					id,
+					runId,
+					payload,
+					env: {},
+					req,
+					agentConfig: {
+						systemPrompt: '',
+						skills: {},
+						roles: {},
+						model: undefined,
+						resolveModel: () => undefined,
+					},
+					createDefaultEnv: async () => ({}) as never,
+					createLocalEnv: async () => ({}) as never,
+					defaultStore: new InMemorySessionStore(),
+				}),
+			runStore,
+			runRegistry,
+			runSubscribers,
+		});
+
+		const app = new Hono();
+		app.route('/', flue());
+
+		const invoke = await app.fetch(
+			new Request('http://localhost/agents/hello/inst-1', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({}),
+			}),
+		);
+		const runId = ((await invoke.json()) as { _meta: { runId: string } })._meta.runId;
+
+		const eventsRes = await app.fetch(new Request(`http://localhost/runs/${runId}/events`));
+		const events = ((await eventsRes.json()) as { events: Array<{ type: string }> }).events;
+		const types = events.map((event) => event.type);
+		const logIndex = types.indexOf('log');
+		const endIndex = types.indexOf('run_end');
+
+		expect(types[0]).toBe('run_start');
+		expect(logIndex).toBeGreaterThan(-1);
+		expect(endIndex).toBeGreaterThan(logIndex);
+	});
 });
+
+class SlowNonTerminalRunStore implements RunStore {
+	private inner = new InMemoryRunStore();
+
+	createRun(input: Parameters<RunStore['createRun']>[0]): Promise<void> {
+		return this.inner.createRun(input);
+	}
+
+	endRun(input: Parameters<RunStore['endRun']>[0]): Promise<void> {
+		return this.inner.endRun(input);
+	}
+
+	async appendEvent(runId: string, event: FlueEvent): Promise<void> {
+		if (event.type !== 'run_end') await new Promise((resolve) => setTimeout(resolve, 10));
+		return this.inner.appendEvent(runId, event);
+	}
+
+	getEvents(runId: string, fromIndex?: number): Promise<FlueEvent[]> {
+		return this.inner.getEvents(runId, fromIndex);
+	}
+
+	getRun(runId: string): Promise<RunRecord | null> {
+		return this.inner.getRun(runId);
+	}
+}
 
 describe('admin() routes', () => {
 	it('lists agents, instances, runs, and exposes an admin OpenAPI spec', async () => {
