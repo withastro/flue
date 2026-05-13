@@ -19,11 +19,6 @@
 			"outputLogs": "errors-only"
 		},
 		"test": {
-			// Tests import package source directly via vitest's esbuild
-			// transform — no `dependsOn: ["build"]` needed. Cross-package
-			// type imports still resolve through `^build` so e.g. the
-			// runtime test that imports the CLI's wrangler-merge helpers
-			// works on a clean checkout.
 			"dependsOn": ["^build"],
 			"outputLogs": "new-only"
 		},

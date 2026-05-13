@@ -1,22 +1,4 @@
-/**
- * Pure SQL-backed registry operations and the REST router that sits in
- * front of them.
- *
- * Lives in its own file (separate from `./registry-do.ts`) so the SQL
- * logic can be unit-tested in Node with a fake `SqlStorage`. The DO
- * class itself imports `cloudflare:workers`, which Node can't resolve
- * — keeping the testable surface out of that import path is what makes
- * the test harness possible without spinning up workerd.
- *
- * Wire shape (private to the registry client / DO pair):
- *
- *   GET    /pointers/<runId>                     → RunPointer | 404
- *   POST   /pointers/<runId>/start  { ... }      → 204
- *   POST   /pointers/<runId>/end    { ... }      → 204
- *   GET    /pointers?status=&agent=&instance=&limit=&cursor=
- *                                                → ListRunsResponse
- *   GET    /instances?agent=&limit=&cursor=     → ListInstancesResponse
- */
+/** SQL-backed registry operations and private REST router. */
 import {
 	DEFAULT_LIST_LIMIT,
 	decodeInstanceCursor,
@@ -35,21 +17,8 @@ import {
 } from '../runtime/run-registry.ts';
 import type { RunStatus } from '../runtime/run-store.ts';
 
-/**
- * Per-instance retention cap on completed pointers. Matches
- * `InMemoryRunRegistry`'s `DEFAULT_MAX_COMPLETED_RUNS_PER_INSTANCE` for
- * behavioral consistency between targets. Duplicated
- * (small enough that "share one constant module" would itself be the
- * weirder pattern) rather than imported, because `../node/run-registry.ts`
- * has a Node-only orientation we don't want to drag into the CF chunk.
- */
 export const DEFAULT_MAX_COMPLETED_RUNS_PER_INSTANCE = 50;
 
-/**
- * Minimal `SqlStorage` shape. Mirrors the one in `../cloudflare/run-store.ts`.
- * Typed loosely so the file can be compiled with `@cloudflare/workers-types`
- * present OR absent — the real type only matters inside workerd.
- */
 export interface SqlResult {
 	toArray(): SqlRow[];
 }
@@ -81,11 +50,6 @@ export function createRegistryOps(
 	);
 }
 
-/**
- * Dispatch a registry HTTP request against a `RegistryOps`. Shared
- * between the workerd-loaded `FlueRegistry` DO and the unit test
- * harness.
- */
 export async function handleRegistryRequest(
 	ops: RegistryOps,
 	request: Request,
@@ -99,9 +63,6 @@ export async function handleRegistryRequest(
 			const runId = segments[1];
 			if (!runId) return new Response('Missing runId.', { status: 404 });
 			const pointer = ops.lookupRun(runId);
-			// Empty 404 body (not `"null"`): the client detects miss via
-			// `response.status === 404` and does not try to parse JSON.
-			// Saves a parser invocation on the hot lookup path.
 			if (!pointer) return new Response(null, { status: 404 });
 			return jsonResponse(pointer);
 		}
@@ -170,12 +131,6 @@ class SqlRegistryOps implements RegistryOps {
 	}
 
 	recordRunStart(input: RecordRunStartInput): void {
-		// `OR IGNORE` (not `OR REPLACE`): idempotent on existing runId so
-		// a re-start in the runtime-degraded "registry restart with an
-		// in-flight run" case never clobbers a row that already
-		// terminated. Run ids are server-minted ULIDs, so real collision
-		// is statistically zero — this is purely about not creating data
-		// loss when the lifecycle re-fires.
 		this.sql.exec(
 			`INSERT OR IGNORE INTO flue_registry_runs
 			 (run_id, agent_name, instance_id, status, started_at, ended_at, duration_ms, is_error)
@@ -188,10 +143,6 @@ class SqlRegistryOps implements RegistryOps {
 	}
 
 	recordRunEnd(input: RecordRunEndInput): void {
-		// Look up the pointer's owner so we can prune that instance's bucket
-		// after the update. If the pointer doesn't exist (shouldn't happen
-		// in normal lifecycle — recordRunEnd always follows recordRunStart),
-		// silently drop the update. Same posture as `InMemoryRunRegistry`.
 		const existing = this.sql
 			.exec('SELECT agent_name, instance_id FROM flue_registry_runs WHERE run_id = ?', input.runId)
 			.toArray();
@@ -228,9 +179,6 @@ class SqlRegistryOps implements RegistryOps {
 		const limit = clampLimit(opts.limit);
 		const cursor = decodeRunCursor(opts.cursor);
 
-		// Build a parameterized WHERE clause incrementally so we never
-		// interpolate user-supplied values into SQL text. Filters compose:
-		// status ∧ agent ∧ instance ∧ cursor.
 		const wheres: string[] = [];
 		const bindings: unknown[] = [];
 		if (opts.status) {
@@ -245,16 +193,12 @@ class SqlRegistryOps implements RegistryOps {
 			wheres.push('instance_id = ?');
 			bindings.push(opts.instanceId);
 		}
-		// Keyset pagination: "after" the cursor in the descending sort
-		// order is `(started_at < cursor.startedAt) OR (started_at = cursor.startedAt AND run_id < cursor.runId)`.
 		if (cursor) {
 			wheres.push('(started_at < ? OR (started_at = ? AND run_id < ?))');
 			bindings.push(cursor.startedAt, cursor.startedAt, cursor.runId);
 		}
 
 		const whereClause = wheres.length > 0 ? `WHERE ${wheres.join(' AND ')}` : '';
-		// Fetch `limit + 1` so we can tell whether there's another page
-		// without a separate COUNT.
 		const rows = this.sql
 			.exec(
 				`SELECT * FROM flue_registry_runs ${whereClause}
@@ -282,12 +226,7 @@ class SqlRegistryOps implements RegistryOps {
 			wheres.push('agent_name = ?');
 			bindings.push(opts.agentName);
 		}
-		// Cursor is the literal `agent\0instance` key used as a string
-		// comparator; pagination is "strictly greater than" in lex order.
 		if (cursorKey !== undefined) {
-			// We compare the composed `(agent_name, instance_id)` tuple by
-			// emulating string concat with a NUL byte. SQLite's `||` does
-			// the same conversion as the in-memory `instanceKey` helper.
 			wheres.push(`(agent_name || x'00' || instance_id) > ?`);
 			bindings.push(cursorKey);
 		}
@@ -316,9 +255,6 @@ class SqlRegistryOps implements RegistryOps {
 	}
 
 	private pruneCompletedRunsForInstance(agentName: string, instanceId: string): void {
-		// One statement: keep the most recent N completed-or-errored
-		// pointers per instance, delete the rest. Active runs are never
-		// matched by the outer WHERE so they're untouched.
 		this.sql.exec(
 			`DELETE FROM flue_registry_runs
 			 WHERE agent_name = ?

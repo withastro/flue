@@ -310,7 +310,6 @@ function runSseMode(opts: ModeOptions): Response {
 		try {
 			await writer.write(encoder.encode(lines.join('\n')));
 		} catch {
-			// see writeSSE rationale above
 		}
 	};
 
@@ -319,7 +318,6 @@ function runSseMode(opts: ModeOptions): Response {
 		try {
 			await writer.write(encoder.encode(': heartbeat\n\n'));
 		} catch {
-			// see writeSSE rationale above
 		}
 	};
 
@@ -451,11 +449,6 @@ async function createRunLifecycle(options: RunLifecycleOptions): Promise<RunLife
 			}),
 		)
 		: false;
-	// Registry pointer is written after the store row exists so the
-	// per-instance store remains the source of truth: if the store write
-	// failed, we skip the registry write too (the run is observably
-	// degraded either way, and a registry pointer with no backing record
-	// would produce confusing 404s on the bare /runs/:runId path).
 	if (didCreateRun) await safeRegistry('recordRunStart', () =>
 		options.runRegistry?.recordRunStart({
 			runId: options.runId,
@@ -545,11 +538,6 @@ async function emitRunEnd(
 		)
 		: false;
 
-	// Registry mirrors the store's terminal state. Failure here is
-	// non-fatal — the run is already finalized in the store and the
-	// subscriber wire has already seen run_end — but it does mean the
-	// registry's pointer will stay in 'active' until the next restart
-	// (in-memory) or until self-healing lands (CF, future phase).
 	if (didEndRun) await safeRegistry('recordRunEnd', () =>
 		runRegistry?.recordRunEnd({
 			runId,
@@ -602,10 +590,6 @@ async function safeRunStore(label: string, fn: () => Promise<void> | undefined):
 	}
 }
 
-// Intentionally structurally identical to `safeRunStore` (same shape,
-// same swallow-and-log behavior) so a future consolidation is mechanical.
-// The only difference is the log prefix; sharing via a parameterized
-// helper would obscure call-site intent for one fewer line of code.
 async function safeRegistry(label: string, fn: () => Promise<void> | undefined): Promise<void> {
 	try {
 		await fn();

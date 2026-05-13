@@ -1,5 +1,3 @@
-/** Public Hono sub-app exposing Flue's built-in agent routes. */
-
 import type { MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import {
@@ -40,16 +38,6 @@ import {
 	WebhookInvocationResponseSchema,
 } from './schemas.ts';
 
-/**
- * Runtime configuration for {@link flue}, seeded by the generated server
- * entry before the user's `app.ts` is imported. The shape is internal —
- * users never construct this directly.
- *
- * The Node/Cloudflare branches use different fields. Splitting via a
- * discriminated union would type-check more cleanly, but since the only
- * caller of `configureFlueRuntime` is the build's own generated code,
- * a flat optional-fields shape is simpler to maintain.
- */
 export interface FlueRuntime {
 	target: 'node' | 'cloudflare';
 
@@ -94,15 +82,7 @@ export interface FlueRuntime {
 	/** Node in-process registry used for live run-stream tailing. */
 	runSubscribers?: RunSubscriberRegistry;
 
-	/**
-	 * Cross-deployment run pointer index used to resolve bare
-	 * `/runs/:runId` lookups. On Node the value is a module-scoped
-	 * `InMemoryRunRegistry`; on Cloudflare it's populated per-request
-	 * from a `FlueRegistry` Durable Object client (Commit B). Optional
-	 * by the same convention as {@link runStore}: routes that strictly
-	 * require it throw a structured `*Unavailable` envelope when it's
-	 * unset.
-	 */
+	/** Cross-deployment run pointer index for bare `/runs/:runId` lookups. */
 	runRegistry?: RunRegistry;
 
 	// ─── Cloudflare-only ────────────────────────────────────────────────────
@@ -117,40 +97,14 @@ export interface FlueRuntime {
 	 */
 	routeAgentRequest?: (request: Request, env: unknown) => Promise<Response | null>;
 
-	/**
-	 * Forward an incoming bare `/runs/:runId` request to the agent DO
-	 * that owns the run, identified by the registry-resolved pointer.
-	 *
-	 * Cloudflare-only. The main worker first calls
-	 * `runRegistry.lookupRun(runId)` to discover `(agentName, instanceId)`,
-	 * then hands those off to this seam to do the actual DO dispatch.
-	 * The DO accepts the bare `/runs/:runId` URL shape directly (per
-	 * Phase 1 decision 8) so the original request URL is forwarded
-	 * unchanged.
-	 */
+	/** Cloudflare-only forwarding hook for registry-resolved run requests. */
 	routeRunRequest?: (
 		request: Request,
 		env: unknown,
 		target: { agentName: string; instanceId: string },
 	) => Promise<Response | null>;
 
-	/**
-	 * Per-request `RunRegistry` factory. On Cloudflare the registry's
-	 * binding (`env.FLUE_REGISTRY`) is only available inside a request
-	 * scope, so the runtime config supplies a factory rather than a
-	 * pre-bound registry. The bare-`/runs/:runId` route handler calls
-	 * this once per request to obtain a client, then issues the
-	 * `lookupRun` against it. The same factory feeds {@link runRegistry}
-	 * on Cloudflare so the `recordRunStart` / `recordRunEnd` writes
-	 * inside `handleAgentRequest` reach the same DO.
-	 *
-	 * Returns `undefined` when the `env.FLUE_REGISTRY` binding is
-	 * missing (most likely an older deployment whose `dist/wrangler.jsonc`
-	 * predates this Flue version's build). The route handler renders a
-	 * canonical `RunRegistryUnavailableError` envelope (501) in that
-	 * case, symmetric with the Node target's behavior when `runRegistry`
-	 * is unset.
-	 */
+	/** Cloudflare-only factory for the request-scoped registry client. */
 	createRunRegistryForRequest?: (env: unknown) => RunRegistry | undefined;
 
 	/** Package version inlined by the generated entry for OpenAPI metadata. */
@@ -164,31 +118,15 @@ export interface FlueManifest {
 	agents: Array<{ name: string; triggers: { webhook?: boolean } }>;
 }
 
-/**
- * Bare run-lookup routes. Identified by `runId` alone — the owning
- * `(agentName, instanceId)` is resolved at request time via the
- * runtime's {@link RunRegistry}. Prior to Phase 1 / Commit C these
- * routes also existed in a prefixed form
- * (`/agents/<name>/<id>/runs/<runId>{,/events,/stream}`) that has
- * since been removed; the registry's reverse-lookup is the entire
- * point of dropping it.
- */
 const RUN_ROUTES_BY_ID: ReadonlyArray<readonly [string, HandleRunRouteOptions['action']]> = [
 	['/runs/:runId', 'get'],
 	['/runs/:runId/events', 'events'],
 	['/runs/:runId/stream', 'stream'],
 ];
 
-/** Module-scoped runtime config seeded by the generated server entry. */
 let runtimeConfig: FlueRuntime | undefined;
 
 /**
- * Seed the runtime config consumed by {@link flue}. Called exactly
- * once at module load by the generated server entry. The Hono routes
- * returned by `flue()` read this config lazily — see the comment on
- * {@link runtimeConfig} for why timing relative to user `app.ts`
- * evaluation is fine.
- *
  * Not part of the public API — exposed via `@flue/runtime/internal` only
  * because the generated entry imports it from a stable bare specifier.
  */
@@ -201,23 +139,6 @@ export function getFlueRuntime(): FlueRuntime | undefined {
 }
 
 /**
- * Public Hono sub-app mounting Flue's built-in agent route. Users
- * compose this into their own Hono via Hono's `app.route(path, subApp)`:
- *
- *     import { Hono } from 'hono';
- *     import { flue } from '@flue/runtime/app';
- *
- *     const app = new Hono();
- *     app.use('*', logger());
- *     app.get('/api/ping', (c) => c.json({ pong: true }));
- *     app.route('/', flue());
- *
- *     export default app;
- *
- * Each call to `flue()` returns a fresh Hono. Mounting it twice is
- * legal but pointless — both sub-apps read from the same seeded
- * runtime and produce identical responses.
- *
  * Importable from `@flue/runtime/app`.
  */
 export function flue(): Hono {
@@ -254,14 +175,6 @@ export function flue(): Hono {
 		app.all(routePath, runByIdRouteHandler(action));
 	}
 
-	// Sub-app's `onError` catches throws from `agentRouteHandler` and
-	// renders the canonical Flue envelope. Because Hono mounts treat
-	// the sub-app's `onError` as the inner handler, the user's outer
-	// app.onError(...) only fires for errors thrown in their own
-	// routes — Flue errors stay shaped consistently regardless of how
-	// the user composed their app. Intentionally NO `notFound`
-	// handler: unmatched paths fall through to the outer app, so
-	// users keep control of 404s for non-Flue routes.
 	app.onError((err) => toHttpResponse(err));
 
 	return app;
@@ -409,20 +322,12 @@ function runRouteSpec(action: HandleRunRouteOptions['action']) {
 const agentRouteHandler: MiddlewareHandler = async (c) => {
 	const rt = runtimeConfig;
 	if (!rt) {
-		// `flue()` only works inside a generated server entry.
 		throw new Error(
 			'[flue] flue() route invoked before runtime was configured. ' +
 				'This usually means flue() was used outside a Flue-built server entry.',
 		);
 	}
 
-	// Hono's path param accessor is typed `string | undefined` because
-	// it's generic over arbitrary route patterns. For `/agents/:name/:id`
-	// both segments are always present at this point — Hono wouldn't
-	// have dispatched to this handler otherwise. The empty-string fallback
-	// keeps the call types tight and makes the (unreachable in practice)
-	// missing-param case fall into `validateAgentRequest`'s empty-segment
-	// rejection path so the response stays canonical.
 	const name = c.req.param('name') ?? '';
 	const id = c.req.param('id') ?? '';
 
@@ -436,8 +341,6 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 	});
 
 	if (rt.target === 'node') {
-		// `validateAgentRequest` above guarantees `name` is in the
-		// registered set, which on Node === Object.keys(handlers).
 		const handler = rt.handlers?.[name];
 		const createContext = rt.createContext;
 		if (!handler || !createContext) {
@@ -457,39 +360,18 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 		});
 	}
 
-	// Cloudflare: hand off to the per-agent Durable Object via
-	// Cloudflare's Agents SDK / partyserver. The DO's `onRequest`
-	// then runs `handleAgentRequest` itself with CF-specific
-	// keepalive / fiber wrappers. Hono's CF adapter populates
-	// `c.env` with the worker bindings, which is exactly what
-	// `routeAgentRequest` expects.
 	if (!rt.routeAgentRequest) {
 		throw new Error('[flue] Cloudflare runtime is missing agent route forwarding.');
 	}
 	const response = await rt.routeAgentRequest(c.req.raw, c.env);
 	if (response) return response;
 
-	// `routeAgentRequest` returning null means no DO matched the
-	// request shape — fall through to a canonical 404 so the
-	// envelope stays consistent with the rest of the API.
 	throw new RouteNotFoundError({
 		method: c.req.method,
 		path: new URL(c.req.url).pathname,
 	});
 };
 
-/**
- * Bare `/runs/:runId` route handler. Resolves the run's owning agent +
- * instance via the runtime's {@link RunRegistry}, then delegates to
- * `handleRunRouteRequest` with the registry-supplied identifiers.
- *
- * Lookup-and-forward shape rather than direct store access so the Node
- * and Cloudflare implementations share one route handler. On Node the
- * registry pointer maps to the module-scoped `runStore` directly; on
- * Cloudflare the lookup is followed by a DO dispatch to the owning
- * agent DO via `routeRunRequest`, which owns the run's record + events
- * + live stream.
- */
 export function runByIdRouteHandler(action: HandleRunRouteOptions['action']): MiddlewareHandler {
 	return async (c) => {
 		const rt = runtimeConfig;
@@ -500,10 +382,6 @@ export function runByIdRouteHandler(action: HandleRunRouteOptions['action']): Mi
 			);
 		}
 
-		// Method check first so a POST/PUT/DELETE to /runs/:runId surfaces
-		// a canonical envelope, not Hono's default plain 404. We can't
-		// reuse the agent-route validator here — it validates agent
-		// name/id, which we don't have until after the registry lookup.
 		if (c.req.method !== 'GET') {
 			throw new MethodNotAllowedError({ method: c.req.method, allowed: ['GET'] });
 		}
@@ -535,9 +413,6 @@ export async function handleRunById(opts: {
 }): Promise<Response> {
 	const { rt, request, env, runId, action } = opts;
 	if (rt.target === 'cloudflare') {
-		// CF flow: construct a per-request registry client from the
-		// `FLUE_REGISTRY` binding, resolve the run pointer, then forward
-		// to the owning agent DO via the `routeRunRequest` seam.
 		if (!rt.createRunRegistryForRequest || !rt.routeRunRequest) {
 			throw new RunRegistryUnavailableError();
 		}
@@ -557,8 +432,6 @@ export async function handleRunById(opts: {
 		});
 	}
 
-	// Node flow: registry + stores are all module-scoped, so the lookup is
-	// direct and the existing run-routes handler can read from the store.
 	if (!rt.runRegistry) throw new RunRegistryUnavailableError();
 	const pointer = await rt.runRegistry.lookupRun(runId);
 	if (!pointer) throw new RunNotFoundError({ runId });

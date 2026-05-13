@@ -1,13 +1,3 @@
-/**
- * `InMemoryRunRegistry` (Node target) + the bare `/runs/:runId` routes
- * wired into `flue()`. Mix of direct unit tests against the registry
- * and an integration test that exercises the full request path via
- * Hono.
- *
- * Source imports work directly under vitest (vs. the strip-only Node
- * loader limitation that briefly bit us during the inline-script
- * days) — no `pnpm build` step required before `pnpm test`.
- */
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { admin, flue } from '../src/app.ts';
@@ -87,7 +77,6 @@ describe('InMemoryRunRegistry', () => {
 
 		const all = await registry.listRuns();
 		expect(all.runs).toHaveLength(5);
-		// Descending: run_4 newest, run_0 oldest.
 		expect(all.runs[0]?.runId).toBe('run_4');
 		expect(all.runs[4]?.runId).toBe('run_0');
 
@@ -144,7 +133,6 @@ describe('InMemoryRunRegistry', () => {
 			instanceId: 'a',
 			startedAt: '2026-01-01T00:00:02.000Z',
 		});
-		// Duplicate pair — must not appear twice.
 		await registry.recordRunStart({
 			runId: 'r4',
 			agentName: 'hello',
@@ -160,7 +148,6 @@ describe('InMemoryRunRegistry', () => {
 			'hello/b',
 		]);
 
-		// limit=1 walks all three in lex order; final page has no nextCursor.
 		const p1 = await registry.listInstances({ limit: 1 });
 		expect(p1.instances).toHaveLength(1);
 		expect(p1.nextCursor).toBeDefined();
@@ -213,7 +200,6 @@ describe('InMemoryRunRegistry', () => {
 		}
 
 		const list = await registry.listRuns({ agentName: 'hello' });
-		// Two retained completed runs per instance means four total for the agent.
 		expect(list.runs).toHaveLength(4);
 		expect(await registry.lookupRun('run_i1_0')).not.toBeNull();
 		expect(await registry.lookupRun('run_i2_0')).not.toBeNull();
@@ -245,7 +231,6 @@ describe('InMemoryRunRegistry', () => {
 		}
 		expect((await registry.listRuns({ cursor: 'not-base64-json' })).runs).toHaveLength(3);
 		expect((await registry.listInstances({ cursor: 'still-garbage' })).instances).toHaveLength(1);
-		// Empty-string cursor is treated as absent (Boolean falsy).
 		expect((await registry.listRuns({ cursor: '' })).runs).toHaveLength(3);
 	});
 });
@@ -289,7 +274,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		const app = new Hono();
 		app.route('/', flue());
 
-		// Invoke the agent (sync mode).
 		const invoke = await app.fetch(
 			new Request('http://localhost/agents/hello/inst-1', {
 				method: 'POST',
@@ -303,7 +287,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(typeof runId).toBe('string');
 		expect(runId?.startsWith('run_')).toBe(true);
 
-		// Bare /runs/<runId>: the only run-lookup URL shape after Commit C.
 		const bare = await app.fetch(new Request(`http://localhost/runs/${runId}`));
 		expect(bare.status).toBe(200);
 		const bareBody = (await bare.json()) as {
@@ -317,20 +300,16 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(bareBody.instanceId).toBe('inst-1');
 		expect(bareBody.status).toBe('completed');
 
-		// Legacy prefixed shape no longer routes — falls through to Hono's
-		// default 404.
 		const legacy = await app.fetch(
 			new Request(`http://localhost/agents/hello/inst-1/runs/${runId}`),
 		);
 		expect(legacy.status).toBe(404);
 
-		// Unknown runId via the bare route returns a canonical envelope.
 		const missing = await app.fetch(new Request('http://localhost/runs/run_does_not_exist'));
 		expect(missing.status).toBe(404);
 		const missingBody = (await missing.json()) as { error?: { type: string } };
 		expect(missingBody.error?.type).toBe('run_not_found');
 
-		// Events endpoint.
 		const eventsRes = await app.fetch(new Request(`http://localhost/runs/${runId}/events`));
 		expect(eventsRes.status).toBe(200);
 		const eventsBody = (await eventsRes.json()) as { events: { type: string }[] };
@@ -350,7 +329,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		);
 		expect(badType.status).toBe(400);
 
-		// Stream endpoint on a terminal run returns SSE-replay.
 		const streamRes = await app.fetch(new Request(`http://localhost/runs/${runId}/stream`));
 		expect(streamRes.status).toBe(200);
 		expect(streamRes.headers.get('content-type')).toMatch(/text\/event-stream/);
@@ -402,7 +380,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 				}),
 			runStore: new InMemoryRunStore(),
 			runSubscribers: createRunSubscriberRegistry(),
-			// runRegistry intentionally omitted.
 		});
 
 		const app = new Hono();

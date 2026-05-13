@@ -1,16 +1,3 @@
-/**
- * Cloudflare-side `FlueRegistry` SQL ops + REST router tests.
- *
- * Uses Node's built-in `node:sqlite` (Node 22.5+) as a real SQL engine
- * behind a shim that matches workerd's `SqlStorage` shape
- * (`exec(query, ...bindings).toArray()`). Real SQL — not a stub — so
- * the registry's keyset pagination, prune statement, and filter
- * composition all get exercised end-to-end without spinning up
- * workerd.
- *
- * `node:sqlite` is still flagged experimental and emits a warning on
- * import; vitest silences this by default for non-error stderr.
- */
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
@@ -20,15 +7,6 @@ import {
 	type SqlStorage,
 } from '../src/cloudflare/registry-ops.ts';
 
-/**
- * Wrap a `node:sqlite` `DatabaseSync` in workerd's loose `SqlStorage`
- * shape. workerd's `sql.exec(query, ...bindings)` returns a result
- * with `.toArray()`; `prepare()` + `.all()` matches this exactly.
- *
- * One quirk: SELECTs use `.all()`, INSERT/UPDATE/DELETEs need `.run()`.
- * The cleanest workerd-shape disambiguator: try `.all()` first, fall
- * back to `.run()` if it complains.
- */
 function makeFakeSql(): SqlStorage {
 	const db = new DatabaseSync(':memory:');
 	return {
@@ -171,7 +149,6 @@ describe('createRegistryOps (SQL paths)', () => {
 
 	it('listInstances: distinct (agent, instance) pairs; agent filter', () => {
 		const ops = createRegistryOps(makeFakeSql());
-		// Two runs for (hello, inst_a) — should dedupe to one row.
 		ops.recordRunStart({ runId: 'r1', agentName: 'hello', instanceId: 'inst_a', startedAt: STARTED_AT_1 });
 		ops.recordRunStart({ runId: 'r2', agentName: 'hello', instanceId: 'inst_a', startedAt: STARTED_AT_2 });
 		ops.recordRunStart({ runId: 'r3', agentName: 'hello', instanceId: 'inst_b', startedAt: STARTED_AT_3 });
@@ -221,9 +198,6 @@ describe('createRegistryOps (SQL paths)', () => {
 
 	it('pruning: per-instance cap drops oldest completed; active runs kept', () => {
 		const ops = createRegistryOps(makeFakeSql(), { maxCompletedRunsPerInstance: 2 });
-		// Three completed for 'hello' + one active = 4 total. After
-		// pruning, the oldest completed should be gone; the active is
-		// kept regardless.
 		for (let i = 0; i < 3; i++) {
 			const runId = `done_${i}`;
 			ops.recordRunStart({

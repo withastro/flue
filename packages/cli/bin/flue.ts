@@ -2,15 +2,15 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import path from 'node:path';
+import { determineAgent } from '@vercel/detect-agent';
 import { build } from '../src/lib/build.ts';
-import { DEFAULT_DEV_PORT, dev, parseEnvFiles, resolveEnvFiles } from '../src/lib/dev.ts';
 import {
 	type FlueConfig,
 	resolveConfig,
 	resolveConfigPath,
 	type UserFlueConfig,
 } from '../src/lib/config.ts';
-import { determineAgent } from '@vercel/detect-agent';
+import { DEFAULT_DEV_PORT, dev, parseEnvFiles, resolveEnvFiles } from '../src/lib/dev.ts';
 import { CATEGORY_ROOTS, CONNECTORS } from './_connectors.generated.ts';
 
 /** Resolve CLI flags, config file values, and defaults into one config. */
@@ -164,13 +164,6 @@ interface InitArgs {
 
 interface LogsArgs {
 	command: 'logs';
-	/**
-	 * The run id is globally unique and addresses the run on its own;
-	 * the owning `(agent, instance)` is resolved server-side via the
-	 * run registry. Prior to Phase 1 / Commit C the CLI also required
-	 * `<agent>` and `<id>` positional arguments — these are now dead
-	 * weight and have been removed.
-	 */
 	runId: string;
 	/** Base URL of the running Flue server. */
 	server: string;
@@ -1197,9 +1190,6 @@ function logsRenderPretty(event: Record<string, unknown>): void {
 
 async function logsCommand(args: LogsArgs): Promise<void> {
 	const base = args.server.replace(/\/+$/, '');
-	// runId is globally unique; the owning (agent, instance) is resolved
-	// server-side via the run registry. No agent/instance segments in
-	// the URL — that family was removed in Phase 1 / Commit C.
 	const runPath = `${base}/runs/${encodeURIComponent(args.runId)}`;
 
 	let shouldFollow: boolean;

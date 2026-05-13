@@ -1,19 +1,3 @@
-/**
- * Cloudflare wrangler-merge handling for the framework-owned
- * `FlueRegistry` DO class. Two concerns to lock down, both pure
- * functions:
- *
- *   1. `computeFlueMigrations(['FlueRegistry', ...], userMigrations)`
- *      emits a `flue-class-FlueRegistry` tag when the class is
- *      net-new, and stays a no-op when the migration tag already
- *      exists in the user's history. Mirrors the per-agent-class
- *      tag convention; no special-casing.
- *
- *   2. `mergeFlueAdditions(userConfig, additions)` with
- *      `additions.doBindings` containing the registry binding
- *      preserves the user's bindings, appends Flue's, and de-dupes
- *      on `name` (so a re-run of the build is idempotent).
- */
 import { describe, expect, it } from 'vitest';
 import {
 	computeFlueMigrations,
@@ -23,7 +7,6 @@ import {
 describe('computeFlueMigrations', () => {
 	it('emits flue-class-FlueRegistry on a fresh project alongside agent migrations', () => {
 		const migrations = computeFlueMigrations(['FlueRegistry', 'Hello', 'WithSandbox'], []);
-		// Sorted alphabetically per the function contract.
 		expect(migrations).toEqual([
 			{ tag: 'flue-class-FlueRegistry', new_sqlite_classes: ['FlueRegistry'] },
 			{ tag: 'flue-class-Hello', new_sqlite_classes: ['Hello'] },
@@ -32,8 +15,6 @@ describe('computeFlueMigrations', () => {
 	});
 
 	it('does not re-emit when the registry tag already exists', () => {
-		// Existing deployment with agents already deployed, upgrading to
-		// this Flue version. Only FlueRegistry should produce a new entry.
 		const existing = [
 			{ tag: 'flue-class-Hello', new_sqlite_classes: ['Hello'] },
 			{ tag: 'flue-class-WithSandbox', new_sqlite_classes: ['WithSandbox'] },
@@ -46,9 +27,6 @@ describe('computeFlueMigrations', () => {
 
 	it('treats a registry class declared via renamed_classes as already present', () => {
 		const existing = [
-			// Edge case: someone renamed an existing class to FlueRegistry.
-			// Effectively impossible in practice, but the merge logic supports
-			// rename-on-to so we exercise it.
 			{ tag: 'custom-rename', renamed_classes: [{ from: 'OldRegistry', to: 'FlueRegistry' }] },
 		];
 		const migrations = computeFlueMigrations(['FlueRegistry'], existing);
@@ -102,10 +80,7 @@ describe('mergeFlueAdditions', () => {
 	it('de-dupes FLUE_REGISTRY binding on second build', () => {
 		const userConfig = {
 			durable_objects: {
-				bindings: [
-					// Imagine this got written by a previous Flue build.
-					{ class_name: 'FlueRegistry', name: 'FLUE_REGISTRY' },
-				],
+				bindings: [{ class_name: 'FlueRegistry', name: 'FLUE_REGISTRY' }],
 			},
 		};
 		const additions = {
@@ -145,7 +120,7 @@ describe('mergeFlueAdditions', () => {
 			main: '_entry.ts',
 			doBindings: [],
 			migrations: [
-				{ tag: 'flue-class-Hello', new_sqlite_classes: ['Hello'] }, // already there
+				{ tag: 'flue-class-Hello', new_sqlite_classes: ['Hello'] },
 				{ tag: 'flue-class-FlueRegistry', new_sqlite_classes: ['FlueRegistry'] },
 			],
 		};

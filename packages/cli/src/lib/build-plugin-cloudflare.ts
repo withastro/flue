@@ -55,7 +55,6 @@ export class CloudflarePlugin implements BuildPlugin {
 
 		const webhookAgents = agents.filter((a) => a.triggers.webhook);
 
-		// Generate import statements for all agent handlers
 		const agentImports = agents
 			.map((a, index) => {
 				const varName = agentVarName(a.name, index);
@@ -64,10 +63,6 @@ export class CloudflarePlugin implements BuildPlugin {
 			})
 			.join('\n');
 
-		// Generate one DO class per webhook agent. Each class delegates to
-		// `dispatchAgent` (a small wrapper around the shared
-		// `handleAgentRequest` runtime helper that supplies CF-specific
-		// keepalive / fiber wrappers).
 		const agentClasses = webhookAgents
 			.map((a) => {
 				const className = agentClassName(a.name);
@@ -89,10 +84,6 @@ export class CloudflarePlugin implements BuildPlugin {
 			})
 			.join('\n\n');
 
-		// Inspect the user's wrangler config (if any) for `Sandbox`-named DO
-		// bindings. For each, emit an aliased re-export from `@cloudflare/sandbox`
-		// so the bundle surfaces the class at the top level under the user's
-		// chosen class_name. See `detectSandboxBindings` for the convention.
 		const { config: userConfig } = await this.getUserConfig(ctx.root);
 		const sandboxClassNames = detectSandboxBindings(userConfig);
 		const sandboxReExports = sandboxClassNames
@@ -157,8 +148,6 @@ const roles = ${rolesJson};
 const skills = {};
 const systemPrompt = '';
 
-// Webhook-accessible agent names. Consumed by the seeded flue() runtime
-// for the "is this name registered?" check inside the agent route.
 const webhookAgentNames = ${JSON.stringify(webhookAgents.map((a) => a.name))};
 
 // ─── Sandbox Environments ───────────────────────────────────────────────────
@@ -285,14 +274,6 @@ function createRunStoreForRequest(doInstance) {
     : memoryRunStore;
 }
 
-/**
- * Build a per-request RunRegistry bound to env.FLUE_REGISTRY. Returns a
- * "missing binding" fallback when the binding isn't on env yet (older
- * deployments that haven't redeployed since adding the registry class);
- * the lifecycle's safeRegistry wrapper logs writes that fail because
- * of that, and the bare /runs/:runId handler surfaces a structured 5xx
- * if a lookup is attempted without it.
- */
 function createRunRegistryForRequest(reqEnv) {
   return createCloudflareRunRegistry(reqEnv?.FLUE_REGISTRY);
 }
@@ -331,17 +312,6 @@ async function handleFlueFiberRecovered(ctx, _doInstance, agentName) {
 
 // ─── Per-DO Dispatch ───────────────────────────────────────────────────────
 
-/**
- * Per-DO entry point invoked from each generated agent class's onRequest().
- * Wraps the shared handleAgentRequest with CF-specific bits:
- *
- *   - keepAliveWhile around the foreground handler so the DO doesn't
- *     hibernate mid-stream.
- *   - runFiber for fire-and-forget webhook execution so it survives across
- *     hibernation.
- *   - runWithCloudflareContext for AsyncLocalStorage-based env propagation
- *     (the workers-ai provider reads env.AI through it).
- */
 async function dispatchAgent(request, doInstance, agentName, handler) {
   const id = doInstance.name; // DO room name set by routeAgentRequest
   const runRoute = parseRunRoute(request);
@@ -388,17 +358,6 @@ async function dispatchAgent(request, doInstance, agentName, handler) {
   });
 }
 
-/**
- * Parse the URL into a run-route action descriptor for the bare
- * /runs/<runId>{,/events,/stream} URL shape. This is the only URL
- * shape the DO accepts for run-history access — the legacy prefixed
- * /agents/<name>/<id>/runs/... family was removed in Phase 1, Commit C.
- *
- * Main worker forwards a bare /runs/<runId>... request via
- * getAgentByName(...).fetch() once the registry has resolved the
- * owning instance (Phase 1 decision 8); from the DO's perspective the
- * URL arrives unchanged.
- */
 function parseRunRoute(request) {
   const segments = new URL(request.url).pathname.split('/').filter(Boolean);
   if (segments.length < 2 || segments[0] !== 'runs') return null;
@@ -415,12 +374,6 @@ function parseRunRoute(request) {
 
 ${agentClasses}
 
-// ─── Flue framework-owned Durable Objects ──────────────────────────────────
-// FlueRegistry is the singleton run-pointer index. Every agent DO writes to
-// it on run start/end via the createCloudflareRunRegistry client (above);
-// the main worker reads from it to resolve runId -> owning (agent, instance)
-// for bare /runs/<runId> requests. Auto-injected into wrangler.jsonc as a
-// SQLite-backed DO binding by additionalOutputs() below.
 export { FlueRegistry };
 
 // ─── User-declared Sandbox re-exports ──────────────────────────────────────
@@ -433,12 +386,6 @@ ${sandboxReExports}
 
 // ─── Runtime seed ───────────────────────────────────────────────────────────
 
-// Seed the public flue() sub-app's runtime. On Cloudflare the agent route
-// forwards to routeAgentRequest() (provided by the Agents SDK), which
-// dispatches into the per-agent DO's onRequest → dispatchAgent above.
-// Validation (method, name, id) happens inside flue() before forwarding,
-// which suppresses partyserver's noisy default text/plain "Invalid
-// request" response for unknown / malformed routes.
 configureFlueRuntime({
   target: 'cloudflare',
   runtimeVersion: ${runtimeVersion},
@@ -450,16 +397,6 @@ configureFlueRuntime({
   routeAgentRequest: (request, env) => routeAgentRequest(request, env),
   createRunRegistryForRequest,
   routeRunRequest: async (request, reqEnv, target) => {
-    // Forward the normalized /runs/<runId>[...] request to the owning agent DO.
-    // The DO's parseRunRoute() accepts the bare URL shape directly
-    // (Phase 1 decision 8). The runtime normalizes the path before this
-    // seam so prefix-mounted flue() apps still dispatch correctly.
-    //
-    // getAgentByName resolves the (binding, name) pair into a DO stub
-    // honoring the same id derivation the Agents SDK uses everywhere
-    // else (and that routeAgentRequest uses when an /agents/... request
-    // arrives). If the binding isn't on env (older deployment), fall
-    // through to null so the caller can render a canonical 404 envelope.
     const bindingName = agentBindingNameFromAgentName(target.agentName);
     const binding = reqEnv?.[bindingName];
     if (!binding) return null;
@@ -512,15 +449,6 @@ export default {
 			name: agentClassName(a.name),
 		}));
 
-		// FlueRegistry: framework-owned singleton DO that holds the cross-
-		// deployment run pointer index. Auto-injected as a SQLite-backed
-		// binding the same way per-agent bindings are. The class itself is
-		// re-exported from the generated entry (see generateEntryPoint).
-		// Decision 13's literal "flue-registry-v1" tag was reconsidered:
-		// staying with the uniform flue-class-<ClassName> shape (which
-		// `computeFlueMigrations` already produces) keeps the migration
-		// path consistent across all Flue-owned DO classes. See the
-		// Phase 1 plan's Deviations log for the rationale.
 		const FLUE_REGISTRY_BINDING = { name: 'FLUE_REGISTRY', class_name: 'FlueRegistry' };
 		flueBindings.push(FLUE_REGISTRY_BINDING);
 		const flueSqliteClasses = flueBindings.map((b) => b.class_name);
