@@ -145,6 +145,8 @@ export function shouldCompact(
 	settings: CompactionSettings,
 ): boolean {
 	if (!settings.enabled) return false;
+	// `contextWindow <= 0` means unknown — skip threshold; overflow recovery still runs.
+	if (contextWindow <= 0) return false;
 	return contextTokens > contextWindow - settings.reserveTokens;
 }
 
