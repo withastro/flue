@@ -6,7 +6,7 @@ allowBuilds:
   esbuild: false
   node-liblzma: false
   protobufjs: false
+  # Required by Astro support in apps/www.
   sharp: true
   workerd: false
 minimumReleaseAge: 1440
-resolutionMode: highest
