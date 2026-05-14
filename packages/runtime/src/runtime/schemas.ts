@@ -145,7 +145,7 @@ export const FlueEventSchema = v.union([
 	}),
 	flueEvent({
 		type: v.literal('compaction_start'),
-		reason: v.picklist(['threshold', 'overflow']),
+		reason: v.picklist(['threshold', 'overflow', 'manual']),
 		estimatedTokens: v.number(),
 	}),
 	flueEvent({
@@ -158,12 +158,12 @@ export const FlueEventSchema = v.union([
 	flueEvent({
 		type: v.literal('operation_start'),
 		operationId: v.string(),
-		operationKind: v.picklist(['prompt', 'skill', 'task', 'shell']),
+		operationKind: v.picklist(['prompt', 'skill', 'task', 'shell', 'compact']),
 	}),
 	flueEvent({
 		type: v.literal('operation'),
 		operationId: v.string(),
-		operationKind: v.picklist(['prompt', 'skill', 'task', 'shell']),
+		operationKind: v.picklist(['prompt', 'skill', 'task', 'shell', 'compact']),
 		durationMs: v.number(),
 		isError: v.boolean(),
 		error: v.optional(v.unknown()),

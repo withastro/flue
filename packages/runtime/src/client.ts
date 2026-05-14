@@ -145,6 +145,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					model: agentModel,
 					role: options.role ?? config.agentConfig.role,
 					thinkingLevel: options.thinkingLevel ?? config.agentConfig.thinkingLevel,
+					compaction: options.compaction ?? config.agentConfig.compaction,
 				};
 
 				return new Harness(

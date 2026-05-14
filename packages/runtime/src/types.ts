@@ -186,11 +186,33 @@ export interface FlueFs {
 // ─── Compaction ─────────────────────────────────────────────────────────────
 
 export interface CompactionConfig {
-	enabled?: boolean;
-	/** Token buffer to keep free in the context window. Default: 16384 */
+	/**
+	 * Token headroom to reserve in the context window. Compaction triggers
+	 * when used tokens exceed `contextWindow - reserveTokens`.
+	 *
+	 * Defaults to `min(20000, model.maxTokens || 20000)` — a flat 20k cap,
+	 * shrunk on models that emit fewer output tokens than that. On a 200k
+	 * Sonnet window this triggers compaction near 96% full, matching the
+	 * defaults used by OpenCode, Claude Code, and similar agents.
+	 */
 	reserveTokens?: number;
-	/** Recent tokens to preserve (not summarized). Default: 20000 */
+	/**
+	 * Recent tokens to preserve unsummarized after compaction. Older messages
+	 * are folded into a summary; this many tokens of recent history remain
+	 * verbatim so the model keeps immediate context (file paths, tool
+	 * results, current focus). Defaults to 8000.
+	 *
+	 * Lower values compact more aggressively at the cost of recent-context
+	 * fidelity. Setting above ~10% of the contextWindow is rarely useful.
+	 */
 	keepRecentTokens?: number;
+	/**
+	 * Override the model used for summarization. Defaults to the session's
+	 * model. Useful for cost optimization (cheap summarizer on an expensive
+	 * session model) or quality routing (long-context summarizer on a
+	 * short-context session). Format: `'provider/modelId'`.
+	 */
+	model?: string;
 }
 
 // ─── Provider Runtime Settings ──────────────────────────────────────────────
@@ -234,7 +256,13 @@ export interface AgentConfig {
 	 * `AgentInit.thinkingLevel` for the full precedence rules.
 	 */
 	thinkingLevel?: ThinkingLevel;
-	compaction?: CompactionConfig;
+	/**
+	 * Compaction tuning. `false` disables threshold compaction (overflow
+	 * recovery and explicit `session.compact()` still run). An object
+	 * overrides individual fields against model-aware defaults. Undefined
+	 * uses defaults.
+	 */
+	compaction?: false | CompactionConfig;
 }
 
 export type ModelConfig = string | false;
@@ -341,6 +369,19 @@ export interface AgentInit {
 	 * Per-call tools are added on top and must not reuse the same names.
 	 */
 	tools?: ToolDef[];
+
+	/**
+	 * Compaction tuning. When context approaches the model's window limit,
+	 * older messages are summarized and replaced with a structured summary
+	 * so the session can continue without overflow.
+	 *
+	 * - Omitted: model-aware defaults (~96% trigger, 8k preserved tail).
+	 * - `false`: disable automatic threshold compaction. Overflow recovery
+	 *   and explicit `session.compact()` still run.
+	 * - `CompactionConfig`: override individual fields. See
+	 *   {@link CompactionConfig}.
+	 */
+	compaction?: false | CompactionConfig;
 }
 
 // ─── Flue Harness (returned by init()) ──────────────────────────────────────
@@ -422,6 +463,23 @@ export interface FlueSession {
 		options: TaskOptions<S> & { schema: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
 	task(text: string, options?: TaskOptions): CallHandle<PromptResponse>;
+
+	/**
+	 * Trigger compaction immediately. Equivalent to what automatic
+	 * compaction would run when crossing the configured threshold, but
+	 * on-demand — useful for surfacing a `/compact`-style action in agent
+	 * UIs without waiting for the window to fill.
+	 *
+	 * Resolves successfully (no-op) when there is nothing to compact.
+	 * Throws if another operation (`prompt` / `skill` / `task` / `shell`)
+	 * is in flight on this session — start a separate session for parallel
+	 * branches.
+	 *
+	 * Emits a {@link FlueEvent} `compaction_start` (with `reason: "manual"`)
+	 * followed by `compaction`. The summarization LLM cost is recorded the
+	 * same as automatic compaction.
+	 */
+	compact(): Promise<void>;
 
 	delete(): Promise<void>;
 }
@@ -687,13 +745,21 @@ export type FlueEvent = (
 		}
 	| { type: 'task_start'; taskId: string; prompt: string; role?: string; cwd?: string }
 	| { type: 'task'; taskId: string; isError: boolean; result?: any; durationMs: number }
-	| { type: 'compaction_start'; reason: 'threshold' | 'overflow'; estimatedTokens: number }
+	| {
+			type: 'compaction_start';
+			reason: 'threshold' | 'overflow' | 'manual';
+			estimatedTokens: number;
+		}
 	| { type: 'compaction'; messagesBefore: number; messagesAfter: number; durationMs: number; usage?: PromptUsage }
-	| { type: 'operation_start'; operationId: string; operationKind: 'prompt' | 'skill' | 'task' | 'shell' }
+	| {
+			type: 'operation_start';
+			operationId: string;
+			operationKind: 'prompt' | 'skill' | 'task' | 'shell' | 'compact';
+		}
 	| {
 			type: 'operation';
 			operationId: string;
-			operationKind: 'prompt' | 'skill' | 'task' | 'shell';
+			operationKind: 'prompt' | 'skill' | 'task' | 'shell' | 'compact';
 			durationMs: number;
 			isError: boolean;
 			error?: unknown;

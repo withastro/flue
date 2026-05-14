@@ -29,11 +29,46 @@ export interface CompactionSettings {
 	keepRecentTokens: number;
 }
 
+/**
+ * Defaults applied when no user config and no model metadata are available.
+ * Real sessions construct settings via {@link deriveCompactionDefaults} so
+ * headroom tracks the active model instead of a fixed Sonnet-sized window.
+ */
 export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = {
 	enabled: true,
-	reserveTokens: 16384,
-	keepRecentTokens: 20000,
+	reserveTokens: 20000,
+	keepRecentTokens: 8000,
 };
+
+/**
+ * Compute model-aware defaults. Reserve is capped at the model's max output
+ * because reserving more than the model can emit in one turn wastes context;
+ * the preserved tail stays flat because recent-context fidelity depends on
+ * the active work, not on the model's total window size.
+ *
+ * Caller may override either field after calling this.
+ */
+export function deriveCompactionDefaults(input: {
+	contextWindow: number;
+	maxTokens: number;
+}): CompactionSettings {
+	// When `maxTokens` is unknown (e.g. HTTP providers without declared
+	// metadata), fall back to a flat 20k.
+	const reserveCap = input.maxTokens > 0 ? input.maxTokens : 20000;
+	let reserveTokens = Math.min(20000, reserveCap);
+	// Safety floor for tiny-window models: reserve must leave room for at
+	// least some meaningful context. If reserve would consume half or more
+	// of the window, clamp to a third of the window so threshold compaction
+	// can actually fire usefully instead of triggering on every turn.
+	if (input.contextWindow > 0 && reserveTokens * 2 >= input.contextWindow) {
+		reserveTokens = Math.max(1024, Math.floor(input.contextWindow / 3));
+	}
+	return {
+		enabled: true,
+		reserveTokens,
+		keepRecentTokens: 8000,
+	};
+}
 
 // ─── Token Estimation ───────────────────────────────────────────────────────
 

@@ -4,6 +4,25 @@
 
 ### New Features
 
+- **Compaction tuning on `init({ compaction })` and on-demand `session.compact()`.** Compaction (the mechanism that summarizes older messages when context approaches the window limit) is now configurable from agent code. `init({ compaction: { reserveTokens, keepRecentTokens, model } })` lets agents shape the headroom buffer, the verbatim tail size, and the summarization model. `init({ compaction: false })` disables threshold compaction entirely (overflow recovery still runs). `session.compact()` triggers compaction on demand for Claude-Code-style `/compact` UX — surfaces in the event stream as `compaction_start` with `reason: 'manual'` and as `operation_start` with `operationKind: 'compact'`. Throws if another operation (`prompt`/`skill`/`task`/`shell`) is in flight on the session. Fixes #135, #136.
+
+  ```ts
+  // Smaller models with tighter windows
+  init({
+    model: 'cloudflare/@cf/google/gemma-7b-it',
+    compaction: { reserveTokens: 1024, keepRecentTokens: 2048 },
+  });
+
+  // Cheap summarizer on an expensive session model
+  init({
+    model: 'anthropic/claude-opus-4-5',
+    compaction: { model: 'anthropic/claude-haiku-4-5' },
+  });
+
+  // Manual compact (e.g. wired to a slash command)
+  await session.compact();
+  ```
+
 - **`local()` sandbox factory for host-bound agents on Node.** A new factory exported from `@flue/runtime/node`. `init({ sandbox: local() })` builds a `SessionEnv` that binds directly to the host: `exec` runs through the user's shell, file methods hit the real filesystem, and `cwd` defaults to `process.cwd()`. Env exposure is opt-in by design — only a small allowlist of shell essentials (`PATH`, `HOME`, `USER`, `LOGNAME`, `HOSTNAME`, `SHELL`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `TERM`, `TMPDIR`, `TMP`, `TEMP`) is inherited from `process.env`. Anything else, including API keys and tokens, must be passed explicitly via the `env` option, which keeps host secrets out of the agent's `bash` tool by default. Set a key to `undefined` to drop a default; pass `env: { ...process.env }` to opt into the full host env.
 
   ```ts
@@ -79,6 +98,8 @@
 - **The `@flue/sdk` package is now a migration placeholder.** It keeps publishing with the old export map (`.`, `./app`, `./client`, `./sandbox`, `./internal`, `./cloudflare`, `./node`, `./config`) but has no runtime dependencies and every import throws with migration guidance. This prevents old installs from silently staying on an obsolete package while reserving the name for a future client-side SDK for talking to deployed Flue agents (create runs, stream events, etc.).
 
 ### Fixes & Other Changes
+
+- **Compaction defaults are now model-aware.** Previously every session used flat `reserveTokens: 16384` and `keepRecentTokens: 20000`, which were calibrated for Sonnet-class 200k windows but broke on small-window models (Gemma, Llama-3.1-8B at 8–16k windows): the reserve exceeded the window, so threshold compaction misfired on every turn, and `keepRecentTokens` exceeded the window entirely so `prepareCompaction` could never find a valid cut point. Defaults are now derived from the model's metadata: `reserveTokens = min(20_000, model.maxTokens)` capped further when it would exceed half the contextWindow, and `keepRecentTokens = 8000` (matching the convention used by OpenCode and similar agents — recent-context fidelity doesn't scale with window size). Effect on existing Sonnet/Kimi-class sessions: marginally different trigger points and a smaller verbatim tail (8k vs 20k). Effect on small-window sessions: compaction actually works.
 
 - **`cloudflare/<model>` resolutions now carry real `contextWindow`, `maxTokens`, `cost`, `reasoning`, and `input` metadata.** Previously the binding branch of `buildModelFromRegistration` synthesized a model from scratch with `contextWindow: 0`, which made `shouldCompact` evaluate `contextTokens > 0 - reserveTokens` as true on every turn after the first — spamming `[flue:compaction] Threshold reached — window 0` and running no-op compaction prep on every turn. Resolution now hydrates from pi-ai's `cloudflare-workers-ai` catalog when the model id is known. Uncatalogued ids (embeddings, image-gen, anything outside pi-ai's chat-completion subset of Workers AI) fall back to zero metadata, and `shouldCompact` now treats `contextWindow <= 0` as unknown and skips the threshold check — overflow recovery still runs. Fixes #132.
 

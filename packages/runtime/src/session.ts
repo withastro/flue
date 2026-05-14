@@ -23,6 +23,7 @@ import {
 	calculateContextTokens,
 	compact,
 	DEFAULT_COMPACTION_SETTINGS,
+	deriveCompactionDefaults,
 	isContextOverflow,
 	prepareCompaction,
 	shouldCompact,
@@ -88,7 +89,7 @@ export interface CreateTaskSessionOptions {
 
 export type CreateTaskSession = (options: CreateTaskSessionOptions) => Promise<Session>;
 
-type OperationKind = 'prompt' | 'skill' | 'task' | 'shell';
+type OperationKind = 'prompt' | 'skill' | 'task' | 'shell' | 'compact';
 
 interface SessionInitOptions {
 	name: string;
@@ -406,7 +407,6 @@ export class Session implements FlueSession {
 	private store: SessionStore;
 	private history: SessionHistory;
 	private createdAt: string | undefined;
-	private compactionSettings: CompactionSettings;
 	private overflowRecoveryAttempted = false;
 	private compactionAbortController: AbortController | undefined;
 	private eventCallback: FlueEventCallback | undefined;
@@ -439,13 +439,6 @@ export class Session implements FlueSession {
 		this.createdAt = options.existingData?.createdAt;
 
 		this.history = SessionHistory.fromData(options.existingData);
-
-		const cc = this.config.compaction;
-		this.compactionSettings = {
-			enabled: cc?.enabled ?? DEFAULT_COMPACTION_SETTINGS.enabled,
-			reserveTokens: cc?.reserveTokens ?? DEFAULT_COMPACTION_SETTINGS.reserveTokens,
-			keepRecentTokens: cc?.keepRecentTokens ?? DEFAULT_COMPACTION_SETTINGS.keepRecentTokens,
-		};
 
 		const systemPrompt = this.config.systemPrompt;
 
@@ -534,6 +527,27 @@ export class Session implements FlueSession {
 					break;
 			}
 		});
+	}
+
+	private resolveCompactionSettings(model: Model<any> | undefined): CompactionSettings {
+		const cc = this.config.compaction;
+		const defaults = model
+			? deriveCompactionDefaults({
+					contextWindow: model.contextWindow ?? 0,
+					maxTokens: model.maxTokens ?? 0,
+				})
+			: DEFAULT_COMPACTION_SETTINGS;
+		if (cc === false) {
+			return { ...defaults, enabled: false };
+		}
+		if (!cc) {
+			return defaults;
+		}
+		return {
+			enabled: true,
+			reserveTokens: cc.reserveTokens ?? defaults.reserveTokens,
+			keepRecentTokens: cc.keepRecentTokens ?? defaults.keepRecentTokens,
+		};
 	}
 
 	prompt<S extends v.GenericSchema>(
@@ -702,6 +716,12 @@ export class Session implements FlueSession {
 				}
 			}),
 		);
+	}
+
+	async compact(): Promise<void> {
+		await this.runOperation('compact', undefined, async () => {
+			await this.runCompaction('manual', false);
+		});
 	}
 
 	abort(): void {
@@ -1273,10 +1293,10 @@ export class Session implements FlueSession {
 	}
 
 	private async checkCompaction(assistantMessage: AssistantMessage): Promise<void> {
-		if (!this.compactionSettings.enabled) return;
 		if (assistantMessage.stopReason === 'aborted') return;
 
 		const model = this.harness.state.model;
+		const settings = this.resolveCompactionSettings(model);
 		const contextWindow = model.contextWindow ?? 0;
 		const overflow = isContextOverflow(assistantMessage, contextWindow);
 
@@ -1301,15 +1321,16 @@ export class Session implements FlueSession {
 			}
 			return;
 		}
+		if (!settings.enabled) return;
 		if (assistantMessage.stopReason === 'error') return;
 
 		const contextTokens = calculateContextTokens(assistantMessage.usage);
 
-		if (shouldCompact(contextTokens, contextWindow, this.compactionSettings)) {
+		if (shouldCompact(contextTokens, contextWindow, settings)) {
 			this.internalLog(
 				'info',
 				`[flue:compaction] Threshold reached — ${contextTokens} tokens used, ` +
-					`window ${contextWindow}, reserve ${this.compactionSettings.reserveTokens}, ` +
+					`window ${contextWindow}, reserve ${settings.reserveTokens}, ` +
 					`triggering compaction`,
 			);
 			await this.runCompaction('threshold', false);
@@ -1323,20 +1344,32 @@ export class Session implements FlueSession {
 	 * `response.usage` — so users see the true cost of the call that
 	 * triggered compaction.
 	 */
-	private async runCompaction(reason: 'threshold' | 'overflow', willRetry: boolean): Promise<void> {
+	private async runCompaction(
+		reason: 'threshold' | 'overflow' | 'manual',
+		willRetry: boolean,
+	): Promise<void> {
 		this.compactionAbortController = new AbortController();
 		const messagesBefore = this.harness.state.messages.length;
 		const compactionStartMs = Date.now();
 
 		try {
-			const model = this.harness.state.model;
+			const sessionModel = this.harness.state.model;
+			const settings = this.resolveCompactionSettings(sessionModel);
+			// Summarization may use a cheaper or stronger model than the active
+			// session model, but the cut point still uses the active model's window.
+			const compactionConfig =
+				this.config.compaction === false ? undefined : this.config.compaction;
+			const summarizationModel = compactionConfig?.model
+				? (this.config.resolveModel(compactionConfig.model) ?? sessionModel)
+				: sessionModel;
+
 			const contextEntries = this.history.buildContextEntries();
 			const messages = contextEntries.map((entry) => entry.message);
 			const latestCompaction = this.history.getLatestCompaction();
 
 			const preparation = prepareCompaction(
 				messages,
-				this.compactionSettings,
+				settings,
 				latestCompaction
 					? {
 							summary: latestCompaction.summary,
@@ -1369,8 +1402,8 @@ export class Session implements FlueSession {
 
 			const result = await compact(
 				preparation,
-				model,
-				this.getProviderApiKey(model.provider),
+				summarizationModel,
+				this.getProviderApiKey(summarizationModel.provider),
 				this.compactionAbortController.signal,
 			);
 
