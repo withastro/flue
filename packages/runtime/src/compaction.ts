@@ -53,9 +53,9 @@ export function deriveCompactionDefaults(input: {
 	maxTokens: number;
 }): CompactionSettings {
 	// When `maxTokens` is unknown (e.g. HTTP providers without declared
-	// metadata), fall back to a flat 20k.
-	const reserveCap = input.maxTokens > 0 ? input.maxTokens : 20000;
-	let reserveTokens = Math.min(20000, reserveCap);
+	// metadata), fall back to the static reserve.
+	const reserveCap = input.maxTokens > 0 ? input.maxTokens : DEFAULT_COMPACTION_SETTINGS.reserveTokens;
+	let reserveTokens = Math.min(DEFAULT_COMPACTION_SETTINGS.reserveTokens, reserveCap);
 	// Safety floor for tiny-window models: reserve must leave room for at
 	// least some meaningful context. If reserve would consume half or more
 	// of the window, clamp to a third of the window so threshold compaction
@@ -66,7 +66,7 @@ export function deriveCompactionDefaults(input: {
 	return {
 		enabled: true,
 		reserveTokens,
-		keepRecentTokens: 8000,
+		keepRecentTokens: DEFAULT_COMPACTION_SETTINGS.keepRecentTokens,
 	};
 }
 
