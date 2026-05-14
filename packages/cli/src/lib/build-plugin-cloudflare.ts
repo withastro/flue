@@ -164,18 +164,6 @@ async function createDefaultEnv() {
 }
 
 /**
- * 'local' sandbox is not available on Cloudflare Workers.
- */
-async function createLocalEnv() {
-  throw new Error(
-    "[flue] 'local' sandbox is not supported on Cloudflare Workers. " +
-    "Use the default empty sandbox, pass a BashFactory, " +
-    "or pass a sandbox instance (from any SDK — e.g. @cloudflare/sandbox " +
-    "or a Flue connector) to init({ sandbox })."
-  );
-}
-
-/**
  * Detect and wrap external sandbox instances (e.g. from @cloudflare/sandbox's
  * getSandbox()). Returns SessionEnv if the value looks like a Durable Object
  * RPC stub, null otherwise.
@@ -262,7 +250,6 @@ function createContextForRequest(id, runId, payload, doInstance, req) {
       systemPrompt, skills, roles, model: undefined, resolveModel,
     },
     createDefaultEnv,
-    createLocalEnv,
     defaultStore,
     resolveSandbox,
   });

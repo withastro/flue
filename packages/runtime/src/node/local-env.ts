@@ -1,10 +1,10 @@
 /**
  * Pure-Node `SessionEnv` backed by the host filesystem and `child_process`.
  *
- * Backs the `local()` sandbox factory (see `./local.ts`) and is also
- * exported standalone for users embedding flue in their own runtime.
- * `exec` shells out via `child_process.exec`; file methods call
- * `node:fs/promises` directly.
+ * Internal implementation behind the `local()` sandbox factory (see
+ * `./local.ts`). Not exported from `@flue/runtime/node` — user code reaches
+ * this through `local(...)`. `exec` shells out via `child_process.exec`;
+ * file methods call `node:fs/promises` directly.
  */
 import { exec as execCb } from 'node:child_process';
 import * as fs from 'node:fs/promises';
@@ -54,10 +54,10 @@ export interface LocalSessionEnvOptions {
 	 *
 	 * ```ts
 	 * // Expose one host var.
-	 * createLocalSessionEnv({ env: { GH_TOKEN: process.env.GH_TOKEN } });
+	 * local({ env: { GH_TOKEN: process.env.GH_TOKEN } });
 	 *
 	 * // Inherit everything (exposes host secrets to the model's bash tool).
-	 * createLocalSessionEnv({ env: { ...process.env } });
+	 * local({ env: { ...process.env } });
 	 * ```
 	 */
 	env?: Record<string, string | undefined>;

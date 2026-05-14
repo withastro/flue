@@ -4,7 +4,7 @@
 
 ### New Features
 
-- **`local()` sandbox factory for host-bound agents on Node.** A new factory exported from `@flue/runtime/node`. `init({ sandbox: local() })` builds a `SessionEnv` that binds directly to the host: `exec` runs through the user's shell, file methods hit the real filesystem, and `cwd` defaults to `process.cwd()`. Env exposure is opt-in by design — only a small allowlist of shell essentials (`PATH`, `HOME`, `USER`, `LOGNAME`, `HOSTNAME`, `SHELL`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `TERM`, `TMPDIR`, `TMP`, `TEMP`; exported as `DEFAULT_LOCAL_ENV_ALLOWLIST`) is inherited from `process.env`. Anything else, including API keys and tokens, must be passed explicitly via the `env` option, which keeps host secrets out of the agent's `bash` tool by default. Set a key to `undefined` to drop a default; pass `env: { ...process.env }` to opt into the full host env.
+- **`local()` sandbox factory for host-bound agents on Node.** A new factory exported from `@flue/runtime/node`. `init({ sandbox: local() })` builds a `SessionEnv` that binds directly to the host: `exec` runs through the user's shell, file methods hit the real filesystem, and `cwd` defaults to `process.cwd()`. Env exposure is opt-in by design — only a small allowlist of shell essentials (`PATH`, `HOME`, `USER`, `LOGNAME`, `HOSTNAME`, `SHELL`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `TERM`, `TMPDIR`, `TMP`, `TEMP`) is inherited from `process.env`. Anything else, including API keys and tokens, must be passed explicitly via the `env` option, which keeps host secrets out of the agent's `bash` tool by default. Set a key to `undefined` to drop a default; pass `env: { ...process.env }` to opt into the full host env.
 
   ```ts
   import { local } from '@flue/runtime/node';
@@ -16,8 +16,6 @@
   });
   ```
 
-  The previous `sandbox: 'local'` magic string still works and resolves to `local()` with default options. It now emits a one-time deprecation warning per process and will be removed in a future release. Agents that need to expose specific host env vars to the model's `bash` tool should migrate to the factory form.
-
 - **Public OpenAPI spec for Flue's built-in routes.** `GET /openapi.json` now serves an OpenAPI 3.1 document for `POST /agents/<name>/<id>` and `GET /runs/<runId>{,/events,/stream}`. The spec is generated from Valibot schemas via `hono-openapi`, includes Flue's canonical error envelope, documents SSE routes with `x-flue-streaming: true`, and marks agent invocation payloads as user-defined.
 
 - **Read-only admin API sub-app.** `admin()` is now exported from `@flue/runtime/app` and can be mounted by user apps with their own auth middleware, e.g. `app.use('/admin/*', myAuthMiddleware); app.route('/admin', admin())`. It serves `GET /openapi.json`, `GET /agents`, `GET /agents/<name>/instances`, `GET /agents/<name>/instances/<id>/runs`, `GET /runs`, and `GET /runs/<runId>` relative to the mount point. Flue ships no auth opinions; middleware order in the user's Hono app controls access.
@@ -26,7 +24,19 @@
 
 ### Breaking Changes
 
-- **`createLocalSessionEnv()` no longer inherits all of `process.env`.** The standalone helper exported from `@flue/runtime/node` now applies the same `DEFAULT_LOCAL_ENV_ALLOWLIST` semantics as the new `local()` factory: only shell essentials reach spawned commands by default. Direct callers that relied on the previous full-`process.env` behavior should pass `env: { ...process.env }` to preserve it, or list the specific vars they need (`env: { GH_TOKEN: process.env.GH_TOKEN, ... }`).
+- **`sandbox` magic strings removed.** `init({ sandbox })` no longer accepts the literal strings `'empty'` or `'local'`. The TypeScript union excludes both, and the runtime throws with a migration message for JS callers / `any`-typed inputs.
+
+  - For the default in-memory sandbox, omit the `sandbox` option entirely or pass `false`.
+  - For host-bound agents on Node, use the `local()` factory from `@flue/runtime/node`. It also lets you opt host env vars into the sandbox via `local({ env: { ... } })`.
+
+  ```diff
+  - init({ sandbox: 'empty', model: 'anthropic/claude-sonnet-4-6' });
+  + init({ model: 'anthropic/claude-sonnet-4-6' });
+
+  - init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
+  + import { local } from '@flue/runtime/node';
+  + init({ sandbox: local({ env: { GH_TOKEN: process.env.GH_TOKEN } }), model: 'anthropic/claude-sonnet-4-6' });
+  ```
 
 - **Malformed run-event query parameters now return structured 400 errors.** `GET /runs/<runId>/events` validates query params before reading run history. `limit` must be an integer in `[1, 1000]`; `after` must be a non-negative integer; `types` must be a comma-separated list of known Flue event type names. Previously malformed `limit` / `after` values were silently defaulted or ignored.
 

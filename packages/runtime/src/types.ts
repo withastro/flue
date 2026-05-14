@@ -297,18 +297,14 @@ export interface AgentInit {
 	cwd?: string;
 
 	/**
-	 * - `'empty'` (default): In-memory sandbox, no files, no host access.
-	 * - `'local'` (deprecated): Equivalent to `local()` with no options.
-	 *   Prefer `import { local } from '@flue/runtime/node'` and pass
-	 *   `local({ env: { ... } })` — the factory form lets you opt host env
-	 *   vars into the sandbox. The string form will be removed in a future
-	 *   release.
-	 * - `SandboxFactory`: Connector-wrapped sandbox. Use `local()` for the
-	 *   host-bound Node sandbox, or any remote connector (Daytona, E2B,
-	 *   Cloudflare Containers, etc.).
+	 * - Omitted / `undefined` / `false`: default in-memory sandbox. No
+	 *   files, no host access.
+	 * - `SandboxFactory`: Connector-wrapped sandbox. Use `local()` from
+	 *   `@flue/runtime/node` for the host-bound Node sandbox, or any
+	 *   remote connector (Daytona, E2B, Cloudflare Containers, etc.).
 	 * - `BashFactory`: User-configured just-bash factory. Called once to construct the runtime.
 	 */
-	sandbox?: 'empty' | 'local' | SandboxFactory | BashFactory;
+	sandbox?: false | SandboxFactory | BashFactory;
 
 	/** Defaults to platform store (in-memory on Node, DO SQLite on Cloudflare). */
 	persist?: SessionStore;

@@ -61,8 +61,6 @@ import {
   configureFlueRuntime,
   createDefaultFlueApp,
 } from '@flue/runtime/internal';
-import { createLocalSessionEnv } from '@flue/runtime/node';
-
 ${agentImports}
 ${userAppImport}
 
@@ -101,14 +99,6 @@ async function createDefaultEnv() {
   }));
 }
 
-// TODO(local-string-removal): Drop alongside the \`'local'\` string branch
-// in client.ts. Users on the factory form (\`sandbox: local()\`) reach
-// \`createLocalSessionEnv\` directly via the SandboxFactory path and don't
-// touch this hook.
-async function createLocalEnv() {
-  return createLocalSessionEnv();
-}
-
 // Default persistence store for Node — in-memory, process lifetime.
 const defaultStore = new InMemorySessionStore();
 const runStore = new InMemoryRunStore();
@@ -126,7 +116,6 @@ function createContextForRequest(id, runId, payload, req) {
       systemPrompt, skills, roles, model: undefined, resolveModel,
     },
     createDefaultEnv,
-    createLocalEnv,
     defaultStore,
   });
 }

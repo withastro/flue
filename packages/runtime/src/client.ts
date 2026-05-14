@@ -24,7 +24,6 @@ export interface FlueContextConfig {
 	env: Record<string, any>;
 	agentConfig: AgentConfig;
 	createDefaultEnv: () => Promise<SessionEnv>;
-	createLocalEnv: () => Promise<SessionEnv>;
 	defaultStore: SessionStore;
 	/**
 	 * Platform-specific sandbox resolver hook. Called before default resolution.
@@ -229,36 +228,33 @@ function isSandboxFactory(value: unknown): value is SandboxFactory {
 	);
 }
 
-// TODO(local-string-removal): Drop the `sandbox === 'local'` branch in
-// resolveSessionEnv, this warning helper, and the `'local'` member of the
-// `AgentInit['sandbox']` union once the string form is removed.
-//
-// Module-scoped so the warning fires once per process, not per init().
-let warnedLocalStringDeprecation = false;
-function warnLocalStringDeprecation(): void {
-	if (warnedLocalStringDeprecation) return;
-	warnedLocalStringDeprecation = true;
-	console.warn(
-		"[flue] `sandbox: 'local'` is deprecated and will be removed in a future release. " +
-			"Use the `local()` factory instead: " +
-			"`import { local } from '@flue/runtime/node'; init({ sandbox: local() })`. " +
-			"The factory accepts an `env` option for opting host env vars into the sandbox.",
-	);
-}
-
-/** Resolve sandbox option to SessionEnv: empty → local → BashFactory → platform hook → SandboxFactory. */
+/** Resolve sandbox option to SessionEnv: default → BashFactory → platform hook → SandboxFactory. */
 async function resolveSessionEnv(
 	id: string,
 	sandbox: AgentInit['sandbox'],
 	config: FlueContextConfig,
 	cwd: string | undefined,
 ): Promise<SessionEnv> {
-	if (sandbox === undefined || sandbox === 'empty') {
+	if (sandbox === undefined || sandbox === false) {
 		return config.createDefaultEnv();
 	}
-	if (sandbox === 'local') {
-		warnLocalStringDeprecation();
-		return config.createLocalEnv();
+	// JS-caller / `any`-input fallback for the removed `'empty'` and
+	// `'local'` magic strings. TS callers get compile errors from the
+	// `AgentInit['sandbox']` union. The `as unknown` cast keeps `tsc`
+	// from flagging these branches as dead under the narrowed type.
+	if ((sandbox as unknown) === 'empty') {
+		throw new Error(
+			"[flue] `sandbox: 'empty'` is no longer supported. " +
+				'Omit the `sandbox` option (or pass `false`) for the default in-memory sandbox.',
+		);
+	}
+	if ((sandbox as unknown) === 'local') {
+		throw new Error(
+			"[flue] `sandbox: 'local'` is no longer supported. " +
+				"Use the `local()` factory instead: " +
+				"`import { local } from '@flue/runtime/node'; init({ sandbox: local() })`. " +
+				"The factory accepts an `env` option for opting host env vars into the sandbox.",
+		);
 	}
 	if (isBashFactory(sandbox)) {
 		return bashFactoryToSessionEnv(sandbox);
