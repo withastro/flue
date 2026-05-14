@@ -306,7 +306,7 @@ import { superserve } from '../connectors/superserve'; // adjust path to match t
 
 export const triggers = { webhook: true };
 
-export default async function ({ init, env }: FlueContext) {
+export default async function ({ init }: FlueContext) {
   // The Superserve SDK reads SUPERSERVE_API_KEY from the environment
   // automatically; pass `apiKey` explicitly only if you keep it elsewhere.
   const sandbox = await Sandbox.create({ name: `agent-${Date.now()}` });
