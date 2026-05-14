@@ -229,6 +229,23 @@ function isSandboxFactory(value: unknown): value is SandboxFactory {
 	);
 }
 
+// TODO(local-string-removal): Drop the `sandbox === 'local'` branch in
+// resolveSessionEnv, this warning helper, and the `'local'` member of the
+// `AgentInit['sandbox']` union once the string form is removed.
+//
+// Module-scoped so the warning fires once per process, not per init().
+let warnedLocalStringDeprecation = false;
+function warnLocalStringDeprecation(): void {
+	if (warnedLocalStringDeprecation) return;
+	warnedLocalStringDeprecation = true;
+	console.warn(
+		"[flue] `sandbox: 'local'` is deprecated and will be removed in a future release. " +
+			"Use the `local()` factory instead: " +
+			"`import { local } from '@flue/runtime/node'; init({ sandbox: local() })`. " +
+			"The factory accepts an `env` option for opting host env vars into the sandbox.",
+	);
+}
+
 /** Resolve sandbox option to SessionEnv: empty → local → BashFactory → platform hook → SandboxFactory. */
 async function resolveSessionEnv(
 	id: string,
@@ -240,6 +257,7 @@ async function resolveSessionEnv(
 		return config.createDefaultEnv();
 	}
 	if (sandbox === 'local') {
+		warnLocalStringDeprecation();
 		return config.createLocalEnv();
 	}
 	if (isBashFactory(sandbox)) {

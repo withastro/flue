@@ -131,7 +131,7 @@ const analysis = await session.prompt("Analyze this quarter's metrics", {
 
 ## Sandbox context
 
-The agent reads `AGENTS.md` and skills from its sandbox at runtime. With `sandbox: 'local'`, that's your real project root, so any files there are visible. With the default virtual sandbox the filesystem starts empty — you'd set up context via `session.shell()` or skip these features for simple prompt-and-response agents.
+The agent reads `AGENTS.md` and skills from its sandbox at runtime. With `local()`, that's your real project root, so any files there are visible. With the default virtual sandbox the filesystem starts empty — you'd set up context via `session.shell()` or skip these features for simple prompt-and-response agents.
 
 **Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
 
@@ -162,20 +162,23 @@ const { data } = await session.skill('summarize', {
 
 ## Using the local sandbox
 
-`sandbox: 'local'` is where Node really shines compared to other targets. The agent runs directly against the host filesystem and shell — `cwd` is `process.cwd()`, shell commands go through `child_process` with the host's env, and `AGENTS.md` and skills are discovered from the project root.
+`local()` is where Node really shines compared to other targets. The agent runs directly against the host filesystem and shell — `cwd` is `process.cwd()`, shell commands go through `child_process`, and `AGENTS.md` and skills are discovered from the project root.
 
 Run flue itself inside an isolation boundary you trust — a CI runner, a container, a sandbox VM. There is no second layer of isolation between the agent and the host.
+
+Env exposure is opt-in. By default only shell essentials (`PATH`, `HOME`, locale, etc.) are inherited from `process.env`; anything else — API keys, tokens, deploy credentials — has to be passed explicitly via `local({ env: { ... } })`. That keeps the model's `bash` tool from seeing host secrets by accident.
 
 `.flue/agents/reviewer.ts`:
 
 ```typescript
 import type { FlueContext } from '@flue/runtime';
+import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload }: FlueContext) {
-  const harness = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
+  const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
 
   const { data } = await session.prompt(
@@ -201,7 +204,7 @@ export default async function ({ init, payload }: FlueContext) {
 }
 ```
 
-The agent reads, searches, and modifies files via its built-in tools — read, write, edit, grep, glob, bash. Anything on `$PATH` (`git`, `npm`, `gh`, `docker`) is reachable from the bash tool, and env vars set on the runner are visible to the binaries the agent runs. That's the model: the host environment is the agent's environment.
+The agent reads, searches, and modifies files via its built-in tools — read, write, edit, grep, glob, bash. Anything on `$PATH` (`git`, `npm`, `gh`, `docker`) is reachable from the bash tool. Env vars are opt-in via `local({ env: { ... } })` — pass `process.env.GH_TOKEN`, `process.env.NPM_TOKEN`, etc. into the sandbox for the binaries that need them.
 
 ### When to use it
 
@@ -239,6 +242,7 @@ For durable sessions, pass a custom store via the `persist` option on `init()`. 
 
 ```typescript
 import type { FlueContext, SessionStore, SessionData } from '@flue/runtime';
+import { local } from '@flue/runtime/node';
 
 // Example: a simple file-backed store. In production, use a database.
 const store: SessionStore = {
@@ -255,7 +259,7 @@ const store: SessionStore = {
 
 export default async function ({ init, payload }: FlueContext) {
   const harness = await init({
-    sandbox: 'local',
+    sandbox: local(),
     persist: store,
     model: 'anthropic/claude-sonnet-4-6',
   });
@@ -322,7 +326,7 @@ Here's the progression of sandbox types available on Node.js, from simplest to m
 
 1. **Empty virtual sandbox** — `init({ model: 'openai/gpt-5.5' })`. Fast, cheap, stateless. Good for prompt-and-response agents.
 2. **Virtual sandbox with shell setup** — Use `session.shell()` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
-3. **Local sandbox** — `init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' })`. Direct host filesystem and shell access. Ideal for self-hosted agents, CI tasks, and dev tooling — anywhere the host environment already provides isolation.
+3. **Local sandbox** — `init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' })`. Direct host filesystem and shell access. Ideal for self-hosted agents, CI tasks, and dev tooling — anywhere the host environment already provides isolation. Import `local` from `@flue/runtime/node` and pass `env: { ... }` to expose specific host env vars to the agent's shell.
 4. **Remote sandbox** — Full isolated Linux environment via a sandbox connector. For multi-tenant agents, coding sandboxes, and anything that needs per-session isolation.
 
 Start simple. Move up when you need to.

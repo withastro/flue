@@ -23,12 +23,13 @@ npm install -D @flue/cli
 
 ```typescript
 import type { FlueContext } from '@flue/runtime';
+import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
 export const triggers = {};
 
 export default async function ({ init, payload }: FlueContext) {
-  const harness = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
+  const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
 
   const { data } = await session.prompt(
@@ -49,7 +50,7 @@ A few things to note:
 
 - **`triggers = {}`** — This agent has no HTTP trigger. It's designed to be run from the CLI, which is perfect for CI.
 - **`model`** — Every session needs a model. If you do not pass one to `init()` or a specific `prompt()` / `skill()` call, no model is chosen.
-- **`sandbox: 'local'`** — The `"local"` sandbox runs the agent directly against the host filesystem and shell. In CI, that's the checked-out repo plus whatever binaries are on `$PATH` (`gh`, `git`, `npm`, etc.). Skills and `AGENTS.md` are discovered automatically from the project root. Use `"local"` only when the runner itself provides the isolation boundary.
+- **`local()`** — The `local()` sandbox runs the agent directly against the host filesystem and shell. In CI, that's the checked-out repo plus whatever binaries are on `$PATH` (`gh`, `git`, `npm`, etc.). Skills and `AGENTS.md` are discovered automatically from the project root. By default only shell-essential env vars (`PATH`, `HOME`, locale, etc.) are inherited from `process.env` — pass `local({ env: { GH_TOKEN: process.env.GH_TOKEN } })` to expose more. Use `local()` only when the runner itself provides the isolation boundary.
 - **Schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns it on `response.data`, fully typed.
 
 ### 3. Test it locally
@@ -129,25 +130,37 @@ const { data: diagnosis } = await session.skill('triage', {
 
 ### Connecting external CLIs
 
-Your agent often needs to interact with tools like `gh`, `npm`, or `git`. With `sandbox: 'local'`, the agent's bash tool runs against the host shell directly — anything on `$PATH` is reachable, and any env var set on the runner is visible to the binaries it runs.
+Your agent often needs to interact with tools like `gh`, `npm`, or `git`. With `local()`, the agent's bash tool runs against the host shell directly — anything on `$PATH` is reachable. Host env vars are opt-in: only shell essentials (`PATH`, `HOME`, locale, etc.) are inherited by default, so you pass the specific vars your CLIs need via `local({ env: { ... } })`.
 
-In GitHub Actions, this means you set the secrets you want the agent's CLIs to see in the workflow `env:` block. The runner is your isolation boundary; flue inherits it.
+In GitHub Actions, this means you set the secrets you want the agent's CLIs to see in the workflow `env:` block, then forward them explicitly into the sandbox. The runner is your isolation boundary; flue makes the inner boundary (host → spawned shell) explicit.
 
 `.flue/agents/triage.ts`:
 
 ```typescript
 import { type FlueContext } from '@flue/runtime';
+import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
 export const triggers = {};
 
 export default async function ({ init, payload }: FlueContext) {
-  const harness = await init({ sandbox: 'local', model: 'anthropic/claude-opus-4-7' });
+  const harness = await init({
+    sandbox: local({
+      // Explicitly forward the runner's secrets into the agent's shell.
+      // Anything not listed here (including ANTHROPIC_API_KEY) stays on
+      // the host and is invisible to the model's bash tool.
+      env: {
+        GH_TOKEN: process.env.GH_TOKEN,
+        NPM_TOKEN: process.env.NPM_TOKEN,
+      },
+    }),
+    model: 'anthropic/claude-opus-4-7',
+  });
   const session = await harness.session();
 
   // The agent's bash tool can run `gh issue view`, `npm install`, `git diff`
-  // etc. directly. Whatever GH_TOKEN / NPM_TOKEN you set in the workflow's
-  // `env:` block is visible to those binaries.
+  // etc. directly. Only the env vars you forwarded above are visible to
+  // those binaries.
   const { data } = await session.skill('triage', {
     args: { issueNumber: payload.issueNumber },
     schema: v.object({
@@ -191,7 +204,7 @@ const { data } = await session.prompt(`Review this PR:\n${diff}`, {
 
 ### Sandbox context
 
-The agent reads `AGENTS.md` and skills from its sandbox at runtime. CI agents typically use `sandbox: 'local'`, which mounts the runner's checkout — so any files in your repo are visible automatically.
+The agent reads `AGENTS.md` and skills from its sandbox at runtime. CI agents typically use `local()`, which gives direct access to the runner's checkout — so any files in your repo are visible automatically.
 
 **Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
 
@@ -270,10 +283,11 @@ Schemas aren't just for type safety — they're how you orchestrate multi-step w
 
 ```typescript
 import { type FlueContext } from '@flue/runtime';
+import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
 export default async function ({ init, payload }: FlueContext) {
-  const harness = await init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
+  const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
 
   const { data } = await session.skill('triage', {

@@ -1,13 +1,10 @@
 /**
  * Pure-Node `SessionEnv` backed by the host filesystem and `child_process`.
  *
- * Powers `init({ sandbox: 'local' })` on the Node target. No sandboxing,
- * no virtual filesystem, no just-bash — `exec` shells out via the user's
- * default shell, file methods call `node:fs/promises` directly.
- *
- * Use this when you're running flue inside an external sandbox (Daytona,
- * E2B, a container, a CI runner, etc.) and want flue itself to operate on
- * the host filesystem without an additional layer of isolation.
+ * Backs the `local()` sandbox factory (see `./local.ts`) and is also
+ * exported standalone for users embedding flue in their own runtime.
+ * `exec` shells out via `child_process.exec`; file methods call
+ * `node:fs/promises` directly.
  */
 import { exec as execCb } from 'node:child_process';
 import * as fs from 'node:fs/promises';
@@ -19,13 +16,92 @@ import type { FileStat, SessionEnv, ShellResult } from '../types.ts';
 
 const execAsync = promisify(execCb);
 
+/**
+ * Shell-essential env vars inherited from `process.env` by default. Pulled
+ * once at sandbox construction.
+ *
+ * Invariant: nothing on this list should be sensitive on a typical host.
+ * Adding entries here is a security-relevant decision — secrets, tokens,
+ * cloud-provider creds, and agent sockets MUST NOT appear. To expose
+ * anything else, callers opt in explicitly via `options.env`.
+ */
+export const DEFAULT_LOCAL_ENV_ALLOWLIST = [
+	'PATH',
+	'HOME',
+	'USER',
+	'LOGNAME',
+	'HOSTNAME',
+	'SHELL',
+	'LANG',
+	'LC_ALL',
+	'LC_CTYPE',
+	'TZ',
+	'TERM',
+	'TMPDIR',
+	'TMP',
+	'TEMP',
+] as const;
+
 export interface LocalSessionEnvOptions {
 	/** Working directory. Defaults to `process.cwd()`. */
 	cwd?: string;
+	/**
+	 * Env vars layered on top of `DEFAULT_LOCAL_ENV_ALLOWLIST`. Set a key
+	 * to `undefined` to drop a default. Per-call `opts.env` on `exec()`
+	 * layers on top of this.
+	 *
+	 * Pass-through is intentionally explicit:
+	 *
+	 * ```ts
+	 * // Expose one host var.
+	 * createLocalSessionEnv({ env: { GH_TOKEN: process.env.GH_TOKEN } });
+	 *
+	 * // Inherit everything (exposes host secrets to the model's bash tool).
+	 * createLocalSessionEnv({ env: { ...process.env } });
+	 * ```
+	 */
+	env?: Record<string, string | undefined>;
+}
+
+/**
+ * Snapshot `process.env` through the allowlist, then layer user overrides.
+ * Called once per sandbox; the result is captured in a closure and reused
+ * across every `exec()` so per-call cost stays minimal and the env shape
+ * is stable for the sandbox's lifetime (host mutations to `process.env`
+ * after construction are NOT picked up).
+ */
+function resolveBaseEnv(userEnv: LocalSessionEnvOptions['env']): NodeJS.ProcessEnv {
+	// Reject non-record shapes (notably `true` and arrays) at runtime so
+	// we keep the option's shape open for future shorthands like
+	// `env: true` meaning "pass through all of process.env". The TS type
+	// already forbids these; this guard is for JS callers and accidental
+	// `any`s.
+	if (userEnv !== undefined && (typeof userEnv !== 'object' || Array.isArray(userEnv))) {
+		throw new TypeError(
+			'[flue] local() `env` must be a Record<string, string | undefined>. ' +
+				'To inherit the full host env, pass `env: { ...process.env }`.',
+		);
+	}
+
+	const base: NodeJS.ProcessEnv = {};
+	for (const key of DEFAULT_LOCAL_ENV_ALLOWLIST) {
+		const value = process.env[key];
+		if (value !== undefined) base[key] = value;
+	}
+	if (!userEnv) return base;
+	for (const [key, value] of Object.entries(userEnv)) {
+		if (value === undefined) {
+			delete base[key];
+		} else {
+			base[key] = value;
+		}
+	}
+	return base;
 }
 
 export function createLocalSessionEnv(options: LocalSessionEnvOptions = {}): SessionEnv {
 	const cwd = path.resolve(options.cwd ?? process.cwd());
+	const baseEnv = resolveBaseEnv(options.env);
 
 	const resolvePath = (p: string): string => (path.isAbsolute(p) ? p : path.resolve(cwd, p));
 
@@ -52,7 +128,10 @@ export function createLocalSessionEnv(options: LocalSessionEnvOptions = {}): Ses
 			try {
 				const { stdout, stderr } = await execAsync(command, {
 					cwd: opts?.cwd ? resolvePath(opts.cwd) : cwd,
-					env: opts?.env ? { ...process.env, ...opts.env } : process.env,
+					// Per-call env layers on top of `baseEnv` (allowlist +
+					// sandbox `env` option). `process.env` is intentionally
+					// never read here.
+					env: opts?.env ? { ...baseEnv, ...opts.env } : baseEnv,
 					signal: mergedSignal,
 					// Return strings (not Buffers) and lift the default 1MB cap.
 					encoding: 'utf8',

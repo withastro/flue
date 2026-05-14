@@ -113,11 +113,12 @@ export default async function ({ init, payload, env }: FlueContext) {
 
 ### Issue Triage (CI)
 
-A triage agent that runs in CI whenever an issue is opened on GitHub. The `"local"` sandbox gives the agent direct access to the host filesystem and shell — perfect for CI runners, where `gh`, `git`, and `npm` are already on `$PATH` and the runner itself is your isolation boundary.
+A triage agent that runs in CI whenever an issue is opened on GitHub. The `local()` sandbox gives the agent direct access to the host filesystem and shell — perfect for CI runners, where `gh`, `git`, and `npm` are already on `$PATH` and the runner itself is your isolation boundary.
 
 ```ts
 // .flue/agents/triage.ts
 import { type FlueContext } from '@flue/runtime';
+import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
 // Because we are running this in CI, we don't need to expose this as an HTTP endpoint.
@@ -125,14 +126,20 @@ import * as v from 'valibot';
 export const triggers = {};
 
 export default async function ({ init, payload }: FlueContext) {
-  // 'local' gives the agent direct access to the host filesystem and
+  // `local()` gives the agent direct access to the host filesystem and
   // shell. The agent's bash tool can run `gh`, `git`, `npm` directly.
   // Skills and AGENTS.md are discovered from process.cwd().
+  //
+  // Only a small allowlist of shell-essential env vars (PATH, HOME,
+  // locale, etc.) is inherited from process.env by default. Pass
+  // `env: { GH_TOKEN: process.env.GH_TOKEN }` to expose more.
   //
   // `model` sets the default model for every prompt/skill call in this
   // agent. Override per-call with `{ model: '...' }` on prompt()/skill().
   const harness = await init({
-    sandbox: 'local',
+    sandbox: local({
+      env: { GH_TOKEN: process.env.GH_TOKEN },
+    }),
     model: 'anthropic/claude-opus-4-7',
   });
   const session = await harness.session();
@@ -335,7 +342,7 @@ export default {
 
 ### Custom Virtual Sandboxes
 
-For most agents, use the built-in virtual sandbox or `sandbox: 'local'`. If you need to customize just-bash directly, pass a Bash factory. The factory must return a fresh Bash-like runtime each time; share the filesystem object in the closure to persist files across sessions and prompts.
+For most agents, use the built-in virtual sandbox or `sandbox: local()` (Node target only). If you need to customize just-bash directly, pass a Bash factory. The factory must return a fresh Bash-like runtime each time; share the filesystem object in the closure to persist files across sessions and prompts.
 
 ```ts
 import { Bash, InMemoryFs } from 'just-bash';
