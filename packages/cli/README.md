@@ -16,8 +16,8 @@ Flue isn't another AI SDK. It's a proper runtime-agnostic framework — think As
 
 | Package                       | Description                             |
 | ----------------------------- | --------------------------------------- |
-| [`@flue/sdk`](packages/sdk)   | Core SDK: build system, sessions, tools |
-| [`@flue/cli`](packages/cli)   | CLI for building and running agents     |
+| [`@flue/runtime`](packages/runtime) | Runtime: harness, sessions, tools, sandbox |
+| [`@flue/cli`](packages/cli)   | CLI + build/dev tooling (`flue` binary)    |
 
 ## Examples
 
@@ -29,7 +29,7 @@ Unless you opt-in to initializing a full container sandbox, Flue will default to
 
 ```ts
 // .flue/agents/hello-world.ts
-import type { FlueContext } from '@flue/sdk/client';
+import type { FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 // Every agent needs a trigger. This agent is invoked as an API endpoint, via HTTP.
@@ -43,8 +43,8 @@ export default async function ({ init, payload }: FlueContext) {
 
   // prompt() sends a message in the session, triggering action.
   const { data } = await session.prompt(`Translate this to ${payload.language}: "${payload.text}"`, {
-    // Pass a `schema` to get typed, schema-validated data back from your agent.
-    schema: v.object({
+    // Pass `result` to get typed, schema-validated data back from your agent.
+    result: v.object({
       translation: v.string(),
       confidence: v.picklist(['low', 'medium', 'high']),
     }),
@@ -62,8 +62,8 @@ Because this agent is deployed to Cloudflare, message history and session state 
 
 ```ts
 // .flue/agents/support.ts
-import { getVirtualSandbox } from '@flue/sdk/cloudflare';
-import type { FlueContext } from '@flue/sdk/client';
+import { getVirtualSandbox } from '@flue/runtime/cloudflare';
+import type { FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
@@ -91,11 +91,12 @@ export default async function ({ init, payload, env }: FlueContext) {
 
 ### Issue Triage (CI)
 
-A triage agent that runs in CI whenever an issue is opened on GitHub. The `"local"` sandbox gives the agent direct access to the host filesystem and shell — perfect for CI runners, where `gh`, `git`, and `npm` are already on `$PATH` and the runner itself is your isolation boundary.
+A triage agent that runs in CI whenever an issue is opened on GitHub. The `local()` sandbox gives the agent direct access to the host filesystem and shell — perfect for CI runners, where `gh`, `git`, and `npm` are already on `$PATH` and the runner itself is your isolation boundary.
 
 ```ts
 // .flue/agents/triage.ts
-import { type FlueContext } from '@flue/sdk/client';
+import { type FlueContext } from '@flue/runtime';
+import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
 // Because we are running this in CI, we don't need to expose this as an HTTP endpoint.
@@ -103,14 +104,20 @@ import * as v from 'valibot';
 export const triggers = {};
 
 export default async function ({ init, payload }: FlueContext) {
-  // 'local' gives the agent direct access to the host filesystem and
+  // `local()` gives the agent direct access to the host filesystem and
   // shell. The agent's bash tool can run `gh`, `git`, `npm` directly.
   // Skills and AGENTS.md are discovered from process.cwd().
+  //
+  // Only a small allowlist of shell-essential env vars (PATH, HOME,
+  // locale, etc.) is inherited from process.env by default. Pass
+  // `env: { GH_TOKEN: process.env.GH_TOKEN }` to expose more.
   //
   // `model` sets the default model for every prompt/skill call in this
   // agent. Override per-call with `{ model: '...' }` on prompt()/skill().
   const harness = await init({
-    sandbox: 'local',
+    sandbox: local({
+      env: { GH_TOKEN: process.env.GH_TOKEN },
+    }),
     model: 'anthropic/claude-opus-4-7',
   });
   const session = await harness.session();
@@ -122,9 +129,9 @@ export default async function ({ init, payload }: FlueContext) {
   const { data } = await session.skill('triage', {
     // Pass arguments to any prompt or skill.
     args: { issueNumber: payload.issueNumber },
-    // Schemas are great for being able to act/orchestrate based on
+    // Result schemas are great for being able to act/orchestrate based on
     // the structured `data` returned from your prompt or skill call.
-    schema: v.object({
+    result: v.object({
       severity: v.picklist(['low', 'medium', 'high', 'critical']),
       reproducible: v.boolean(),
       summary: v.string(),
@@ -146,7 +153,7 @@ Install the Daytona connector with `flue add daytona | <your-agent>` (e.g. `clau
 
 ```ts
 // .flue/agents/code.ts
-import { Type, type FlueContext, type ToolDef } from '@flue/sdk/client';
+import { Type, type FlueContext, type ToolDef } from '@flue/runtime';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
@@ -196,7 +203,7 @@ MCP is available as a runtime tool adapter. Connect to a remote MCP server in tr
 
 ```ts
 // .flue/agents/assistant.ts
-import { connectMcpServer, type FlueContext } from '@flue/sdk/client';
+import { connectMcpServer, type FlueContext } from '@flue/runtime';
 
 export const triggers = { webhook: true };
 
@@ -295,7 +302,7 @@ apply to every harness and session that resolves models through that provider.
 
 ```ts
 // .flue/app.ts
-import { configureProvider, flue } from '@flue/sdk/app';
+import { configureProvider, flue } from '@flue/runtime/app';
 
 export default {
   fetch(req, env, ctx) {
@@ -313,7 +320,7 @@ export default {
 
 ### Custom Virtual Sandboxes
 
-For most agents, use the built-in virtual sandbox or `sandbox: 'local'`. If you need to customize just-bash directly, pass a Bash factory. The factory must return a fresh Bash-like runtime each time; share the filesystem object in the closure to persist files across sessions and prompts.
+For most agents, use the built-in virtual sandbox or `sandbox: local()` (Node target only). If you need to customize just-bash directly, pass a Bash factory. The factory must return a fresh Bash-like runtime each time; share the filesystem object in the closure to persist files across sessions and prompts.
 
 ```ts
 import { Bash, InMemoryFs } from 'just-bash';

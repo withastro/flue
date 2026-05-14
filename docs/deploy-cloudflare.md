@@ -22,7 +22,7 @@ The simplest agent — no container, no storage, just a prompt and a typed resul
 ```bash
 mkdir my-flue-worker && cd my-flue-worker
 npm init -y
-npm install @flue/sdk valibot agents
+npm install @flue/runtime valibot agents
 npm install -D @flue/cli wrangler
 ```
 
@@ -33,7 +33,7 @@ npm install -D @flue/cli wrangler
 `.flue/agents/translate.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/sdk/client';
+import type { FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
@@ -43,7 +43,7 @@ export default async function ({ init, payload }: FlueContext) {
   const session = await harness.session();
 
   const { data } = await session.prompt(`Translate this to ${payload.language}: "${payload.text}"`, {
-    schema: v.object({
+    result: v.object({
       translation: v.string(),
       confidence: v.picklist(['low', 'medium', 'high']),
     }),
@@ -146,7 +146,7 @@ By default, the virtual sandbox starts empty — no files, no skills, no context
 Because the agent has shell access, it can set up its own workspace on the fly:
 
 ```typescript
-import type { FlueContext } from '@flue/sdk/client';
+import type { FlueContext } from '@flue/runtime';
 
 export const triggers = { webhook: true };
 
@@ -184,8 +184,8 @@ This is one of the most powerful patterns on Cloudflare: a support agent that se
 `.flue/agents/support.ts`:
 
 ```typescript
-import { getVirtualSandbox } from '@flue/sdk/cloudflare';
-import type { FlueContext } from '@flue/sdk/client';
+import { getVirtualSandbox } from '@flue/runtime/cloudflare';
+import type { FlueContext } from '@flue/runtime';
 
 export const triggers = { webhook: true };
 
@@ -293,7 +293,7 @@ The base image is published by Cloudflare and bundles the control-plane HTTP ser
 `.flue/agents/assistant.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/sdk/client';
+import type { FlueContext } from '@flue/runtime';
 import { getSandbox } from '@cloudflare/sandbox';
 
 export const triggers = { webhook: true };
@@ -403,7 +403,7 @@ Call a skill from your agent:
 ```typescript
 const { data } = await session.skill('greet', {
   args: { name: 'World' },
-  schema: v.object({ greeting: v.string() }),
+  result: v.object({ greeting: v.string() }),
 });
 ```
 

@@ -1,4 +1,4 @@
-import { defineConfig } from '@flue/sdk/config';
+import { defineConfig } from '@flue/cli/config';
 
 /**
  * Build-time config. `target` is intentionally unset so this example

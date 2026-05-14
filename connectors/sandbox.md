@@ -49,14 +49,14 @@ These are the things that aren't obvious from the spec or the example.
   Next.js's `src/`: write to `./.flue/connectors/<name>.ts` if
   `<root>/.flue/` exists, otherwise `./connectors/<name>.ts` at the
   project root. Ask the user if their layout is unusual.
-- **Imports.** The published surface is `@flue/sdk/sandbox`. Don't import
-  from `@flue/sdk/internal` or any other internal path.
+- **Imports.** The published surface is `@flue/runtime`. Don't import
+  from `@flue/runtime/internal` or any other internal path.
 - **Cancellation.** `SandboxApi.exec()` receives `timeout` (primary) and
   optionally `signal`. Always forward `timeout` to the provider's native
   timeout option when one exists — that's how the LLM bash tool stops a
   command. Forward `signal` only if the provider has a real cancellation
   primitive (`AbortSignal`, process kill, cancel token); otherwise leave
-  it alone. The SDK does pre/post `signal.aborted` checks at the
+  it alone. The runtime does pre/post `signal.aborted` checks at the
   `SandboxApi` boundary, so you don't need to add them yourself.
 - **Credentials.** If the provider needs secrets at runtime, never invent
   values for them. Let the project's conventions (`AGENTS.md`, an existing
@@ -79,5 +79,5 @@ These are the things that aren't obvious from the spec or the example.
 - Never invent API keys, tokens, or secrets.
 - Don't modify files outside the connector path you've chosen unless the
   user agreed (e.g. `package.json` to add a dep).
-- The published surface is `@flue/sdk/sandbox`. Don't import from
-  `@flue/sdk/internal` or anywhere else.
+- The published surface is `@flue/runtime`. Don't import from
+  `@flue/runtime/internal` or anywhere else.

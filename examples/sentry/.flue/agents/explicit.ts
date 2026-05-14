@@ -32,7 +32,7 @@
  *   - HTTP 200 with `{ result: { ok: true, ... }, _meta: { runId } }`.
  *   - Two issues in Sentry, both tagged `flue.agent=explicit`.
  */
-import type { FlueContext } from '@flue/sdk/client';
+import type { FlueContext } from '@flue/runtime';
 
 export const triggers = { webhook: true };
 

@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/sdk';
+import type { FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
@@ -22,19 +22,19 @@ export default async function ({ init }: FlueContext) {
 	const Answer = v.object({ answer: v.string() });
 
 	// 1. Harness default applies.
-	const fast = await session.prompt('In one word: capital of France?', { schema: Answer });
+	const fast = await session.prompt('In one word: capital of France?', { result: Answer });
 
 	// 2. Role overrides the harness default.
 	const careful = await session.prompt('Is 1009 prime? Justify briefly.', {
 		role: 'auditor',
-		schema: Answer,
+		result: Answer,
 	});
 
 	// 3. Per-call override beats both harness default and role.
 	const minimal = await session.prompt('Echo back: hello', {
 		role: 'auditor',
 		thinkingLevel: 'minimal',
-		schema: Answer,
+		result: Answer,
 	});
 
 	return { fast, careful, minimal };

@@ -1,8 +1,8 @@
 ---
 {
   "category": "sandbox",
-  "website": "https://developers.cloudflare.com/containers",
-  "aliases": ["@cloudflare/sandbox", "cloudflare-sandbox", "cf-sandbox"]
+  "website": "https://developers.cloudflare.com/sandbox",
+  "aliases": ["@cloudflare/sandbox"]
 }
 ---
 
@@ -21,7 +21,7 @@ Node.js process. Because of that, Flue treats Cloudflare Sandbox as a
 first-class **build target**, not a drop-in connector file.
 
 If the user is already on `--target cloudflare`: there is no connector to
-install. Flue's SDK already provides the wiring; you just declare the
+install. Flue's runtime package already provides the wiring; you just declare the
 binding in `wrangler.jsonc` and call `getSandbox(env.Sandbox, id)` in the
 agent. Skip to ["Path A"](#path-a-already-on---target-cloudflare) below.
 
@@ -61,7 +61,7 @@ If you can't tell or it's ambiguous: ask the user directly. Don't guess.
 
 ## Path A: Already on `--target cloudflare`
 
-You don't need a connector file. Flue's SDK already exports the wiring,
+You don't need a connector file. Flue's runtime package already exports the wiring,
 and the deploy guide's "Connecting a remote sandbox" section is the
 canonical recipe. Steer the user there:
 
@@ -107,7 +107,7 @@ The short version, for your reference:
    above) is the key on `env`:
 
    ```ts
-   import type { FlueContext } from '@flue/sdk/client';
+   import type { FlueContext } from '@flue/runtime';
    import { getSandbox } from '@cloudflare/sandbox';
 
    export const triggers = { webhook: true };
@@ -122,7 +122,7 @@ The short version, for your reference:
    ```
 
    Note that `init({ sandbox })` here takes the result of `getSandbox()`
-   directly — there is no factory wrapper to import from `@flue/sdk`,
+   directly — there is no factory wrapper to import from `@flue/runtime`,
    because Flue's SDK detects and adapts the `@cloudflare/sandbox` shape
    internally on the Cloudflare target.
 
@@ -218,7 +218,7 @@ without first confirming the basics work on `--target cloudflare`.
   version different from the `@cloudflare/sandbox` npm package version
   the user actually installed. They have to match.
 - The published Flue surface for Cloudflare-specific helpers is
-  `@flue/sdk/cloudflare` (e.g. `getVirtualSandbox`). The
+  `@flue/runtime/cloudflare` (e.g. `getVirtualSandbox`). The
   `@cloudflare/sandbox` package is a separate Cloudflare-published
   dependency the user installs themselves. Don't import from
-  `@flue/sdk/internal`.
+  `@flue/runtime/internal`.

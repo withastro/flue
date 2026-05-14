@@ -18,17 +18,17 @@ Use `harness` as the variable name for the return value of `init()`. Agents have
 
 ## Project Structure
 
-- `packages/sdk/` — Core SDK (`@flue/sdk`). Build system, session management, agent harness, tools.
-- `packages/cli/` — CLI (`@flue/cli`). `flue run` command.
-- `examples/hello-world/` — Test root with example agents covering the SDK's surfaces.
+- `packages/runtime/` — Runtime library (`@flue/runtime`). Session management, agent harness, tools, sandbox plumbing. What a built Flue app depends on.
+- `packages/cli/` — CLI + build/dev tooling (`@flue/cli`). Owns `flue dev`/`run`/`build`/`init`/`add`/`logs`, the esbuild plugins, agent-file parsing, env-file loading, and the `flue.config.ts` resolver. Eventually rolls up into the `flue` npm package; for now `defineConfig` is imported via `@flue/cli/config`.
+- `examples/hello-world/` — Test root with example agents covering the runtime's surfaces.
 - `examples/cloudflare/` — Test root for Cloudflare-specific features (Workers AI binding, etc.).
 
 ## Building
 
-SDK must be built before CLI or example agents:
+Runtime must be built before CLI or example agents:
 
 ```
-pnpm run build          # in packages/sdk/
+pnpm run build          # in packages/runtime/
 pnpm run build          # in packages/cli/
 ```
 
@@ -55,7 +55,7 @@ A `flue.config.{ts,mts,mjs,js,cjs,cts}` file at the project root may set `target
 
 ```ts
 // flue.config.ts
-import { defineConfig } from '@flue/sdk/config';
+import { defineConfig } from '@flue/cli/config';
 
 export default defineConfig({
   target: 'node',
@@ -75,7 +75,7 @@ node ../../packages/cli/bin/flue.mjs dev --target node
 node ../../packages/cli/bin/flue.mjs dev --target cloudflare
 ```
 
-For `--target cloudflare`, the project must have `wrangler` available (it's a peer dependency of `@flue/sdk`).
+For `--target cloudflare`, the project must have `wrangler` available (it's a peer dependency of `@flue/cli`).
 
 ### `flue run`
 
@@ -98,7 +98,7 @@ This builds the project, starts a temporary server, invokes the agent via SSE, s
 ## Type Checking
 
 ```
-pnpm run check:types    # in packages/sdk/
+pnpm run check:types    # in packages/runtime/
 ```
 
 ## Models

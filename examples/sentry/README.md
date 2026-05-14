@@ -22,11 +22,11 @@ After running this example with a Sentry DSN configured:
 - Sentry tags use a stable `flue.*` prefix, so pivoting on
   `flue.run_id` in Sentry's search box finds every capture from a
   single Flue run.
-- A failing run in Sentry can be replayed in full by feeding the tags
-  back into the Flue CLI:
+- A failing run in Sentry can be replayed in full by feeding the
+  `flue.run_id` tag back into the Flue CLI:
 
   ```
-  flue logs <flue.agent> <flue.instance_id> <flue.run_id>
+  flue logs <flue.run_id>
   ```
 
 ## What this example does NOT do
@@ -80,11 +80,11 @@ Every event carries the Flue correlation tree (`runId`, `harness`,
 `session`, `operationId`, `taskId`) so any consumer can reconstruct
 what happened.
 
-The `@flue/sdk/app` package exposes a single function for tapping that
+The `@flue/runtime/app` package exposes a single function for tapping that
 stream globally:
 
 ```ts
-import { observe } from '@flue/sdk/app';
+import { observe } from '@flue/runtime/app';
 
 observe((event, ctx) => {
   // event is a fully decorated FlueEvent
@@ -142,7 +142,7 @@ From the repo root:
 pnpm install
 ```
 
-This example declares `@flue/sdk` as a workspace dependency and
+This example declares `@flue/runtime` as a workspace dependency and
 `@sentry/node` as a regular npm dependency. The workspace install picks
 up both.
 
@@ -195,7 +195,7 @@ see as the `flue.run_id` tag in Sentry.
 Take a `flue.run_id` from Sentry and feed it back to the CLI:
 
 ```bash
-flue logs boom test1 run_01HX...
+flue logs run_01HX...
 ```
 
 The CLI streams the full event log of that run — including the

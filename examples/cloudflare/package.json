@@ -3,9 +3,12 @@
 	"private": true,
 	"type": "module",
 	"dependencies": {
-		"@flue/sdk": "workspace:*",
+		"@flue/runtime": "workspace:*",
 		"agents": "*",
 		"hono": "^4.7.0",
 		"valibot": "^1.0.0"
+	},
+	"devDependencies": {
+		"@flue/cli": "workspace:*"
 	}
 }

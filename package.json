@@ -10,7 +10,8 @@
 	"scripts": {
 		"dev": "turbo dev",
 		"build": "turbo build",
-		"check": "turbo run build check:lint check:types",
+		"test": "turbo test",
+		"check": "turbo run build check:lint check:types test",
 		"check:lint": "biome lint .",
 		"check:types": "turbo run check:types",
 		"format": "turbo run format:lint format:style",
@@ -19,7 +20,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.2.0",
-		"@flue/sdk": "workspace:*",
+		"@flue/runtime": "workspace:*",
 		"@types/node": "^22.10.10",
 		"bgproc": "^0.2.0",
 		"prettier": "^3.4.2",

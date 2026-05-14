@@ -11,7 +11,7 @@
  * Delete this file and the build falls back to a default app that
  * mounts `flue()` at root with no extras.
  */
-import { flue } from '@flue/sdk/app';
+import { flue } from '@flue/runtime/app';
 import { Hono } from 'hono';
 
 // ─── Cloudflare AI Gateway (optional) ───────────────────────────────────────
@@ -22,7 +22,7 @@ import { Hono } from 'hono';
 // register `cloudflare` yourself. Your registration wins because user
 // `app.ts` imports run before the auto-registration (ESM hoisting).
 //
-//   import { registerProvider } from '@flue/sdk/app';
+//   import { registerProvider } from '@flue/runtime/app';
 //   import { env } from 'cloudflare:workers';
 //
 //   // Custom gateway with cache + metadata.
@@ -55,5 +55,10 @@ app.get('/api/ping', (c) => c.json({ pong: true, at: new Date().toISOString() })
 // Flue's built-in agent route: `POST /agents/:name/:id`. Forwards into
 // the appropriate per-agent DO via routeAgentRequest().
 app.route('/', flue());
+
+// To expose admin endpoints, import `admin` from `@flue/runtime/app`, then
+// uncomment this and add your own auth middleware first:
+// app.use('/admin/*', myAuthMiddleware);
+// app.route('/admin', admin());
 
 export default app;

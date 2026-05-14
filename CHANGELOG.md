@@ -1,5 +1,124 @@
 # Changelog
 
+## Unreleased
+
+### New Features
+
+- **Compaction tuning on `init({ compaction })` and on-demand `session.compact()`.** Compaction (the mechanism that summarizes older messages when context approaches the window limit) is now configurable from agent code. `init({ compaction: { reserveTokens, keepRecentTokens, model } })` lets agents shape the headroom buffer, the verbatim tail size, and the summarization model. `init({ compaction: false })` disables threshold compaction entirely (overflow recovery still runs). `session.compact()` triggers compaction on demand for Claude-Code-style `/compact` UX — surfaces in the event stream as `compaction_start` with `reason: 'manual'` and as `operation_start` with `operationKind: 'compact'`. Throws if another operation (`prompt`/`skill`/`task`/`shell`) is in flight on the session. Fixes #135, #136.
+
+  ```ts
+  // Smaller models with tighter windows
+  init({
+    model: 'cloudflare/@cf/google/gemma-7b-it',
+    compaction: { reserveTokens: 1024, keepRecentTokens: 2048 },
+  });
+
+  // Cheap summarizer on an expensive session model
+  init({
+    model: 'anthropic/claude-opus-4-5',
+    compaction: { model: 'anthropic/claude-haiku-4-5' },
+  });
+
+  // Manual compact (e.g. wired to a slash command)
+  await session.compact();
+  ```
+
+- **`local()` sandbox factory for host-bound agents on Node.** A new factory exported from `@flue/runtime/node`. `init({ sandbox: local() })` builds a `SessionEnv` that binds directly to the host: `exec` runs through the user's shell, file methods hit the real filesystem, and `cwd` defaults to `process.cwd()`. Env exposure is opt-in by design — only a small allowlist of shell essentials (`PATH`, `HOME`, `USER`, `LOGNAME`, `HOSTNAME`, `SHELL`, `LANG`, `LC_ALL`, `LC_CTYPE`, `TZ`, `TERM`, `TMPDIR`, `TMP`, `TEMP`) is inherited from `process.env`. Anything else, including API keys and tokens, must be passed explicitly via the `env` option, which keeps host secrets out of the agent's `bash` tool by default. Set a key to `undefined` to drop a default; pass `env: { ...process.env }` to opt into the full host env.
+
+  ```ts
+  import { local } from '@flue/runtime/node';
+
+  init({
+    sandbox: local({
+      env: { GH_TOKEN: process.env.GH_TOKEN },
+    }),
+  });
+  ```
+
+- **Public OpenAPI spec for Flue's built-in routes.** `GET /openapi.json` now serves an OpenAPI 3.1 document for `POST /agents/<name>/<id>` and `GET /runs/<runId>{,/events,/stream}`. The spec is generated from Valibot schemas via `hono-openapi`, includes Flue's canonical error envelope, documents SSE routes with `x-flue-streaming: true`, and marks agent invocation payloads as user-defined.
+
+- **Read-only admin API sub-app.** `admin()` is now exported from `@flue/runtime/app` and can be mounted by user apps with their own auth middleware, e.g. `app.use('/admin/*', myAuthMiddleware); app.route('/admin', admin())`. It serves `GET /openapi.json`, `GET /agents`, `GET /agents/<name>/instances`, `GET /agents/<name>/instances/<id>/runs`, `GET /runs`, and `GET /runs/<runId>` relative to the mount point. Flue ships no auth opinions; middleware order in the user's Hono app controls access.
+
+- **SDK scaffold for public and admin APIs.** The `@flue/sdk` workspace package now contains a private, hand-written typed client scaffold for deployed Flue apps. It covers agent invocation modes, run lookup/events/streams, and read-only admin routes. The runtime still serves OpenAPI specs, but SDK code generation is deferred until a later pass can wire real spec snapshots and generated request methods end-to-end.
+
+### Breaking Changes
+
+- **`sandbox` magic strings removed.** `init({ sandbox })` no longer accepts the literal strings `'empty'` or `'local'`. The TypeScript union excludes both, and the runtime throws with a migration message for JS callers / `any`-typed inputs.
+
+  - For the default in-memory sandbox, omit the `sandbox` option entirely or pass `false`.
+  - For host-bound agents on Node, use the `local()` factory from `@flue/runtime/node`. It also lets you opt host env vars into the sandbox via `local({ env: { ... } })`.
+
+  ```diff
+  - init({ sandbox: 'empty', model: 'anthropic/claude-sonnet-4-6' });
+  + init({ model: 'anthropic/claude-sonnet-4-6' });
+
+  - init({ sandbox: 'local', model: 'anthropic/claude-sonnet-4-6' });
+  + import { local } from '@flue/runtime/node';
+  + init({ sandbox: local({ env: { GH_TOKEN: process.env.GH_TOKEN } }), model: 'anthropic/claude-sonnet-4-6' });
+  ```
+
+- **Malformed run-event query parameters now return structured 400 errors.** `GET /runs/<runId>/events` validates query params before reading run history. `limit` must be an integer in `[1, 1000]`; `after` must be a non-negative integer; `types` must be a comma-separated list of known Flue event type names. Previously malformed `limit` / `after` values were silently defaulted or ignored.
+
+- **Run-lookup HTTP routes are now identified by `runId` alone.** The previous `GET /agents/<name>/<id>/runs/<runId>{,/events,/stream}` route family is removed and replaced with `GET /runs/<runId>{,/events,/stream}`. The new routes work end-to-end on both Node and Cloudflare for any run that exists anywhere in the deployment — the server resolves the owning `(agentName, instanceId)` via a new internal run registry, so callers no longer need to know which agent or instance ran a given run id. External consumers hitting the old paths will get a 404; update to the bare form. The `POST /agents/<name>/<id>` invocation route is unchanged.
+
+  ```diff
+  - curl http://localhost:3583/agents/hello/inst-1/runs/run_01H...
+  + curl http://localhost:3583/runs/run_01H...
+  ```
+
+- **`flue logs` now takes only the run id.** The CLI signature simplifies from `flue logs <agent> <id> <runId>` to `flue logs <runId>`, matching the new route shape. The `<agent>` and `<id>` positional arguments are removed.
+
+  ```diff
+  - flue logs hello inst-1 run_01H...
+  + flue logs run_01H...
+  ```
+
+- **Cloudflare deployments gain a new `FlueRegistry` Durable Object class.** Auto-injected into the generated `dist/wrangler.jsonc` as a SQLite-backed DO binding (`FLUE_REGISTRY`) and a migration entry (`flue-class-FlueRegistry`). New deployments include it in their initial migration; existing deployments upgrading get a single appended migration entry. No user action required — the build's wrangler-merge owns the injection.
+
+- **`@flue/sdk` has been renamed to `@flue/runtime`.** The runtime library that user agent code and the generated server depend on is now published as `@flue/runtime`. User-facing agent, connector, MCP, and sandbox helper APIs now import from the root `@flue/runtime` entry; the old `@flue/sdk/client` and `@flue/sdk/sandbox` subpaths are folded into root. Platform/internal subpaths remain (`@flue/runtime/app`, `@flue/runtime/cloudflare`, `@flue/runtime/node`, `@flue/runtime/internal`). To migrate, replace user-code `@flue/sdk` imports with `@flue/runtime`. Generated `dist/` artifacts must be rebuilt — the new build emits `@flue/runtime/*` imports in `server.mjs` / `_entry.ts`.
+
+  The transitional `@flue/runtime/client` and `@flue/runtime/sandbox` subpaths still resolve for now, but immediately throw with migration guidance. They will be removed in a later release.
+
+  ```diff
+  - import type { FlueContext } from '@flue/sdk/client';
+  + import type { FlueContext } from '@flue/runtime';
+  ```
+
+- **Build tooling (`build`, `dev`, `parseEnvFiles`, `resolveEnvFiles`, `resolveSourceRoot`, the build plugins, env-file helpers) has moved from `@flue/sdk` to `@flue/cli`.** `@flue/runtime` is now a pure runtime library with no `esbuild` / `typescript` / `wrangler` baggage. The `wrangler` peer dependency moved with it and is now on `@flue/cli`. If you were driving the build programmatically via `import { build } from '@flue/sdk'`, update to import from `@flue/cli` (currently via internal paths; a stable public API will land separately).
+
+- **`flue.config.ts` now imports `defineConfig` from `@flue/cli/config`.** Update existing configs:
+
+  ```diff
+  - import { defineConfig } from '@flue/sdk/config';
+  + import { defineConfig } from '@flue/cli/config';
+  ```
+
+  This sets up the eventual collapse to `import { defineConfig } from 'flue/config'` (matching Astro/Vite). `flue init` now scaffolds the new import. The `@flue/sdk/config` subpath no longer exists.
+
+- **The `@flue/sdk` package is now a migration placeholder.** It keeps publishing with the old export map (`.`, `./app`, `./client`, `./sandbox`, `./internal`, `./cloudflare`, `./node`, `./config`) but has no runtime dependencies and every import throws with migration guidance. This prevents old installs from silently staying on an obsolete package while reserving the name for a future client-side SDK for talking to deployed Flue agents (create runs, stream events, etc.).
+
+### Fixes & Other Changes
+
+- **Structured output options use `result` again.** The `schema` option on `prompt()` / `skill()` / `task()` made it unclear whether the schema described input or output, especially next to `skill({ args })`. Use `result: <schema>` for structured output going forward. The `schema` option remains accepted at runtime for backwards compatibility, but is deprecated in TypeScript and will be removed in a future release. Structured calls still return `{ data, usage, model }`; the response field alias `{ result }` remains deprecated in favor of `{ data }`.
+
+- **Compaction defaults are now model-aware.** Previously every session used flat `reserveTokens: 16384` and `keepRecentTokens: 20000`, which were calibrated for Sonnet-class 200k windows but broke on small-window models (Gemma, Llama-3.1-8B at 8–16k windows): the reserve exceeded the window, so threshold compaction misfired on every turn, and `keepRecentTokens` exceeded the window entirely so `prepareCompaction` could never find a valid cut point. Defaults are now derived from the model's metadata: `reserveTokens = min(20_000, model.maxTokens)` capped further when it would exceed half the contextWindow, and `keepRecentTokens = 8000` (matching the convention used by OpenCode and similar agents — recent-context fidelity doesn't scale with window size). Effect on existing Sonnet/Kimi-class sessions: marginally different trigger points and a smaller verbatim tail (8k vs 20k). Effect on small-window sessions: compaction actually works.
+
+- **`cloudflare/<model>` resolutions now carry real `contextWindow`, `maxTokens`, `cost`, `reasoning`, and `input` metadata.** Previously the binding branch of `buildModelFromRegistration` synthesized a model from scratch with `contextWindow: 0`, which made `shouldCompact` evaluate `contextTokens > 0 - reserveTokens` as true on every turn after the first — spamming `[flue:compaction] Threshold reached — window 0` and running no-op compaction prep on every turn. Resolution now hydrates from pi-ai's `cloudflare-workers-ai` catalog when the model id is known. Uncatalogued ids (embeddings, image-gen, anything outside pi-ai's chat-completion subset of Workers AI) fall back to zero metadata, and `shouldCompact` now treats `contextWindow <= 0` as unknown and skips the threshold check — overflow recovery still runs. Fixes #132.
+
+- **`registerProvider(...)` now accepts `contextWindow`, `maxTokens`, and per-model overrides for HTTP providers.** Registered HTTP providers (litellm, openrouter, vLLM, custom OpenAI-compatible proxies, etc.) had no way to declare model metadata, so resolved models hardcoded `contextWindow: 0` and `maxTokens: 0` — same bug class as #132 on the binding side. Now the registration accepts provider-level defaults (`contextWindow`, `maxTokens`) and a `models: Record<string, { contextWindow?, maxTokens? }>` map for per-model overrides. Per-model overrides win over provider-level defaults; unset stays `0`, which `shouldCompact` treats as unknown.
+
+  ```ts
+  registerProvider('litellm', {
+    api: 'openai-completions',
+    baseUrl: 'http://localhost:4000/v1',
+    contextWindow: 128000,
+    maxTokens: 16000,
+    models: {
+      'gpt-4o-mini': { contextWindow: 128000, maxTokens: 16384 },
+    },
+  });
+  ```
+
 ## 0.5.3
 
 ### New Features

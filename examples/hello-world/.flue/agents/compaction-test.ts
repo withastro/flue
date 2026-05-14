@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/sdk';
+import type { FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
@@ -22,7 +22,7 @@ export default async function ({ init }: FlueContext) {
 	const { data } = await session.prompt(
 		'What Wikipedia article did you just read? What were the key points? Return a structured result.',
 		{
-			schema: v.object({
+			result: v.object({
 				article: v.string(),
 				keyPoints: v.array(v.string()),
 			}),

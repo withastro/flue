@@ -85,13 +85,13 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * }
  * ```
  */
-import { createSandboxSessionEnv } from "@flue/sdk/sandbox";
+import { createSandboxSessionEnv } from "@flue/runtime";
 import type {
   FileStat,
   SandboxApi,
   SandboxFactory,
   SessionEnv,
-} from "@flue/sdk/sandbox";
+} from "@flue/runtime";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -715,7 +715,7 @@ no obvious project convention like `EXE_VM_HOST`, ask for the exe.dev VM
 hostname before wiring the connector.
 
 ```ts
-import type { FlueContext } from "@flue/sdk/client";
+import type { FlueContext } from "@flue/runtime";
 import { exedev } from "../connectors/exedev";
 
 export const triggers = { webhook: true };
@@ -738,7 +738,7 @@ API token with `new` permission. The VM is created before `init(...)` and
 then passed to `exedev(...)`.
 
 ```ts
-import type { FlueContext } from "@flue/sdk/client";
+import type { FlueContext } from "@flue/runtime";
 import { createExeVm, deleteExeVm, exedev } from "../connectors/exedev";
 
 export const triggers = { webhook: true };
@@ -767,7 +767,7 @@ an API token with `cp` permission. If you delete the clone afterwards, the
 token also needs `rm` permission.
 
 ```ts
-import type { FlueContext } from "@flue/sdk/client";
+import type { FlueContext } from "@flue/runtime";
 import { cloneExeVm, deleteExeVm, exedev } from "../connectors/exedev";
 
 export const triggers = { webhook: true };

@@ -15,7 +15,7 @@
  * Expected: HTTP 200 with `{ result: ..., _meta: { runId } }`.
  *          Zero events in Sentry.
  */
-import type { FlueContext } from '@flue/sdk/client';
+import type { FlueContext } from '@flue/runtime';
 
 export const triggers = { webhook: true };
 

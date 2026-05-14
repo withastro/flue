@@ -1,4 +1,4 @@
-import { type FlueContext } from '@flue/sdk/client';
+import { type FlueContext } from '@flue/runtime';
 import { getSandbox } from '@cloudflare/sandbox';
 
 export const triggers = { webhook: true };

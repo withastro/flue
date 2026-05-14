@@ -1,4 +1,4 @@
-import { Type, type FlueContext, type ToolDef } from '@flue/sdk/client';
+import { Type, type FlueContext, type ToolDef } from '@flue/runtime';
 import { Bash, InMemoryFs } from 'just-bash';
 
 export const triggers = { webhook: true };

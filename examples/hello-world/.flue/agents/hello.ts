@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/sdk';
+import type { FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
@@ -9,7 +9,7 @@ export default async function ({ init, log }: FlueContext) {
 
 	// Test: prompt with structured result
 	const response = await session.prompt('What is 2 + 2? Return only the number.', {
-		schema: v.object({ answer: v.number() }),
+		result: v.object({ answer: v.number() }),
 	});
 	log.info('solved arithmetic prompt', {
 		answer: response.data.answer,
