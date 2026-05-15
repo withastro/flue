@@ -1,11 +1,11 @@
 /** Runtime provider registries consumed by `resolveModel` and Session. */
 
 import {
+	type Api,
 	getModel,
 	type KnownProvider,
-	registerApiProvider as piRegisterApiProvider,
-	type Api,
 	type Model,
+	registerApiProvider as piRegisterApiProvider,
 } from '@earendil-works/pi-ai';
 import type { CloudflareGatewayOptions } from '../cloudflare/gateway.ts';
 import {
@@ -48,6 +48,11 @@ export interface HttpProviderRegistration {
 	apiKey?: string;
 	/** Optional default headers for every outgoing request. */
 	headers?: Record<string, string>;
+	/**
+	 * Input modalities supported by every model resolved through this
+	 * registration. Defaults to text-only.
+	 */
+	input?: Model<Api>['input'];
 	/**
 	 * Override the pi-ai `provider` slug surfaced on AssistantMessage records
 	 * and `configureProvider()` overrides. Defaults to the registry name.
@@ -299,7 +304,7 @@ function buildModelFromRegistration(
 		provider: def.provider ?? name,
 		baseUrl: def.baseUrl,
 		reasoning: false,
-		input: ['text'],
+		input: def.input ?? ['text'],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 		contextWindow: def.models?.[modelId]?.contextWindow ?? def.contextWindow ?? 0,
 		maxTokens: def.models?.[modelId]?.maxTokens ?? def.maxTokens ?? 0,
