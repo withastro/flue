@@ -1,4 +1,8 @@
-import type { AgentMessage, ThinkingLevel } from '@earendil-works/pi-agent-core';
+import type {
+	AgentMessage,
+	AgentToolResult,
+	ThinkingLevel,
+} from '@earendil-works/pi-agent-core';
 import type { ImageContent, Model, TSchema } from '@earendil-works/pi-ai';
 import type * as v from 'valibot';
 
@@ -47,6 +51,9 @@ export interface Role {
 // ─── Custom Tools ───────────────────────────────────────────────────────────
 
 export type ToolParameters = TSchema | Record<string, unknown>;
+export type ToolResultContent = AgentToolResult<any>['content'][number];
+export type ToolResult<TDetails = any> = AgentToolResult<TDetails>;
+export type ToolExecuteResult<TDetails = any> = string | ToolResult<TDetails>;
 
 /**
  * Custom tool passed to init(), prompt(), skill(), or task(). init() tools are
@@ -61,8 +68,8 @@ export interface ToolDef<TParams extends ToolParameters = ToolParameters> {
 	description: string;
 	/** JSON Schema-compatible parameter schema. */
 	parameters: TParams;
-	/** Returns a string result sent back to the LLM. Thrown errors become tool errors. */
-	execute: (args: Record<string, any>, signal?: AbortSignal) => Promise<string>;
+	/** Returns a result sent back to the LLM. Thrown errors become tool errors. */
+	execute: (args: Record<string, any>, signal?: AbortSignal) => Promise<ToolExecuteResult>;
 }
 
 // ─── File Stat ──────────────────────────────────────────────────────────────

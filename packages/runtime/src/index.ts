@@ -30,7 +30,10 @@ export type {
 	AgentConfig,
 	ModelConfig,
 	ToolDef,
+	ToolExecuteResult,
 	ToolParameters,
+	ToolResult,
+	ToolResultContent,
 	ThinkingLevel,
 	ProviderSettings,
 } from './types.ts';

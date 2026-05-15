@@ -39,5 +39,8 @@ export type {
 	TaskOptions,
 	ThinkingLevel,
 	ToolDef,
+	ToolExecuteResult,
 	ToolParameters,
+	ToolResult,
+	ToolResultContent,
 } from './types.ts';

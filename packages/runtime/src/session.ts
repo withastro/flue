@@ -73,10 +73,37 @@ import type {
 	TaskOptions,
 	ThinkingLevel,
 	ToolDef,
+	ToolExecuteResult,
+	ToolResult,
 } from './types.ts';
 import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 
 const MAX_TASK_DEPTH = 4;
+
+function isToolResult(result: ToolExecuteResult): result is ToolResult {
+	return typeof result === 'object' && result !== null && Array.isArray(result.content);
+}
+
+export function toAgentToolResult(
+	toolName: string,
+	result: ToolExecuteResult,
+): AgentToolResult<any> {
+	if (typeof result === 'string') {
+		return {
+			content: [{ type: 'text' as const, text: result }],
+			details: { customTool: toolName },
+		};
+	}
+
+	if (!isToolResult(result)) {
+		throw new Error(
+			`[flue] Custom tool "${toolName}" returned an invalid result. ` +
+				'Return a string or an object with a content array.',
+		);
+	}
+
+	return result;
+}
 
 export interface CreateTaskSessionOptions {
 	parentSession: string;
@@ -852,11 +879,8 @@ export class Session implements FlueSession {
 				parameters: toolDef.parameters as any,
 				async execute(_toolCallId: string, params: unknown, signal?: AbortSignal) {
 					if (signal?.aborted) throw new Error('Operation aborted');
-					const resultText = await toolDef.execute(params as Record<string, any>, signal);
-					return {
-						content: [{ type: 'text' as const, text: resultText }],
-						details: { customTool: toolDef.name },
-					};
+					const result = await toolDef.execute(params as Record<string, any>, signal);
+					return toAgentToolResult(toolDef.name, result);
 				},
 			}),
 		);
