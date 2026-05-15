@@ -7,6 +7,24 @@
 	"compatibility_date": "2026-04-01",
 	"compatibility_flags": ["nodejs_compat"],
 	"ai": {
-		"binding": "AI"
+		"binding": "AI",
 	},
+	// Worker Loader binding (beta) required by the cf-shell `code` tool.
+	// See examples in this directory: skills-from-r2.ts, skills-from-git.ts.
+	// If your account doesn't have Worker Loader access, comment this out
+	// — the agents that use it (skills-from-r2, skills-from-git) will
+	// throw at sandbox-construction with a clear error, but the rest of
+	// the example (with-cloudflare-binding) keeps working.
+	"worker_loaders": [{ "binding": "LOADER" }],
+	// R2 bucket used by skills-from-r2.ts as the hydration source.
+	// `preview_bucket_name` lets wrangler dev (in --remote mode) use a
+	// separate bucket so you don't have to seed prod. Seed the dev bucket
+	// with examples/cloudflare/seed-r2.sh before running.
+	"r2_buckets": [
+		{
+			"binding": "KNOWLEDGE_BASE",
+			"bucket_name": "flue-example-knowledge-base",
+			"preview_bucket_name": "flue-example-knowledge-base-dev",
+		},
+	],
 }

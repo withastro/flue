@@ -1,125 +1,43 @@
-/**
- * In-process just-bash sandbox for Cloudflare Workers (no container).
- * Without args: empty in-memory. With R2 bucket: persistent files via DO SQLite + R2.
- */
-import {
-	Workspace,
-	WorkspaceFileSystem,
-	type FileSystem as CfFileSystem,
-	type FsStat as CfFsStat,
-} from '@cloudflare/shell';
-import { getCloudflareContext } from './context.ts';
+/** Deprecated compatibility stub for the removed virtual Cloudflare sandbox API. */
 
 export interface VirtualSandboxOptions {
-	/** R2 key prefix for session isolation. */
 	prefix?: string;
 }
 
-function adaptStat(cfStat: CfFsStat) {
-	return {
-		isFile: cfStat.type === 'file',
-		isDirectory: cfStat.type === 'directory',
-		isSymbolicLink: cfStat.type === 'symlink',
-		mode: cfStat.mode ?? (cfStat.type === 'directory' ? 0o755 : 0o644),
-		size: cfStat.size,
-		mtime: cfStat.mtime,
-	};
-}
+const MIGRATION_DOC = 'docs/cloudflare-shell.md';
 
-function adaptToJustBash(cfFs: CfFileSystem): any {
-	return {
-		readFile: (path: string, _opts?: any) => cfFs.readFile(path),
-		readFileBuffer: (path: string) => cfFs.readFileBytes(path),
-
-		async writeFile(path: string, content: string | Uint8Array, _opts?: any) {
-			if (typeof content === 'string') {
-				await cfFs.writeFile(path, content);
-			} else {
-				await cfFs.writeFileBytes(path, content);
-			}
-		},
-
-		appendFile: (path: string, content: string, _opts?: any) => cfFs.appendFile(path, content),
-		exists: (path: string) => cfFs.exists(path),
-
-		async stat(path: string) {
-			return adaptStat(await cfFs.stat(path));
-		},
-
-		async lstat(path: string) {
-			return adaptStat(await cfFs.lstat(path));
-		},
-
-		mkdir: (path: string, opts?: any) => cfFs.mkdir(path, opts),
-		readdir: (path: string) => cfFs.readdir(path),
-
-		async readdirWithFileTypes(path: string) {
-			const entries = await cfFs.readdirWithFileTypes(path);
-			return entries.map((e: any) => ({
-				name: e.name,
-				isFile: e.type === 'file',
-				isDirectory: e.type === 'directory',
-				isSymbolicLink: e.type === 'symlink',
-			}));
-		},
-
-		rm: (path: string, opts?: any) => cfFs.rm(path, opts),
-		cp: (src: string, dest: string, opts?: any) => cfFs.cp(src, dest, opts),
-		mv: (src: string, dest: string) => cfFs.mv(src, dest),
-		resolvePath: (base: string, path: string) => cfFs.resolvePath(base, path),
-		getAllPaths: () => [],
-		async chmod(_path: string, _mode: number) {},
-		symlink: (target: string, linkPath: string) => cfFs.symlink(target, linkPath),
-
-		async link(existingPath: string, newPath: string) {
-			const content = await cfFs.readFileBytes(existingPath);
-			await cfFs.writeFileBytes(newPath, content);
-		},
-
-		readlink: (path: string) => cfFs.readlink(path),
-		realpath: (path: string) => cfFs.realpath(path),
-		async utimes(_path: string, _atime: number, _mtime: number) {},
-	};
-}
-
-export async function getVirtualSandbox(): Promise<any>;
-export async function getVirtualSandbox(
-	bucket: unknown,
-	options?: VirtualSandboxOptions,
-): Promise<any>;
-export async function getVirtualSandbox(
-	bucket?: unknown,
-	options?: VirtualSandboxOptions,
-): Promise<any> {
+export function getVirtualSandbox(): never;
+export function getVirtualSandbox(bucket: unknown, options?: VirtualSandboxOptions): never;
+export function getVirtualSandbox(bucket?: unknown, _options?: VirtualSandboxOptions): never {
 	if (bucket === undefined) {
-		const { Bash, InMemoryFs } = await import(/* @vite-ignore */ 'just-bash' as string);
-		const fs = new InMemoryFs();
-		return () => new Bash({
-			fs,
-			network: { dangerouslyAllowFullInternetAccess: true },
-		});
+		throw new Error(
+			'[flue] getVirtualSandbox() has been removed. Flue\'s default in-memory sandbox is already ' +
+				'what you wanted — omit the `sandbox` option from init() (or pass `false`) and you get it. ' +
+				`See ${MIGRATION_DOC} for the full migration story.`,
+		);
 	}
-
-	const { storage } = getCloudflareContext();
-	const prefix = options?.prefix ?? 'default';
-
-	const ws = new Workspace({
-		sql: storage.sql,
-		r2: bucket as any,
-		name: () => prefix,
-	});
-
-	const cfFs: CfFileSystem = new WorkspaceFileSystem(ws);
-	const r2Adapter = adaptToJustBash(cfFs);
-
-	const { Bash, MountableFs, InMemoryFs } = await import(/* @vite-ignore */ 'just-bash' as string);
-
-	const fs = new MountableFs({ base: new InMemoryFs() });
-	fs.mount('/workspace', r2Adapter);
-
-	return () => new Bash({
-		fs,
-		cwd: '/workspace',
-		network: { dangerouslyAllowFullInternetAccess: true },
-	});
+	throw new Error(
+		'[flue] getVirtualSandbox(bucket) has been removed. Its "mount the R2 bucket as the agent ' +
+			'filesystem" framing was never accurate — @cloudflare/shell\'s Workspace is a SQLite-indexed ' +
+			'filesystem, not an R2 mount, and bucket keys uploaded externally were invisible to it.\n\n' +
+			'Migrate to getShellSandbox() + hydrateFromBucket(), which explicitly copies the bucket\'s ' +
+			'objects into a durable Workspace before the agent runs:\n\n' +
+			'  import {\n' +
+			'    getShellSandbox,\n' +
+			'    getDefaultWorkspace,\n' +
+			'    hydrateFromBucket,\n' +
+			'  } from \'@flue/runtime/cloudflare\';\n\n' +
+			'  const workspace = getDefaultWorkspace();\n' +
+			'  if (!(await workspace.exists(\'/.hydrated\'))) {\n' +
+			'    await hydrateFromBucket(workspace, env.KNOWLEDGE_BASE);\n' +
+			'    await workspace.writeFile(\'/.hydrated\', new Date().toISOString());\n' +
+			'  }\n' +
+			'  const harness = await init({\n' +
+			'    sandbox: getShellSandbox({ workspace, loader: env.LOADER }),\n' +
+			'    model: \'anthropic/claude-sonnet-4-6\',\n' +
+			'  });\n\n' +
+			'Requires a `worker_loaders` binding in wrangler.jsonc; see ' +
+			`${MIGRATION_DOC} for the binding setup and the @cloudflare/sandbox + mountBucket alternative ` +
+			'if your account doesn\'t have Worker Loader access.',
+	);
 }

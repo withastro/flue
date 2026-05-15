@@ -3,12 +3,15 @@
 	"private": true,
 	"type": "module",
 	"dependencies": {
+		"@cloudflare/shell": "^0.3.2",
 		"@flue/runtime": "workspace:*",
 		"agents": "*",
 		"hono": "^4.7.0",
 		"valibot": "^1.0.0"
 	},
 	"devDependencies": {
-		"@flue/cli": "workspace:*"
+		"@cloudflare/workers-types": "^4.20260505.1",
+		"@flue/cli": "workspace:*",
+		"wrangler": "^4.87.0"
 	}
 }

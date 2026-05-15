@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### New Features
+
+- **Cloudflare shell sandbox.** Added `getShellSandbox({ workspace, loader })`, `getDefaultWorkspace()`, and `hydrateFromBucket()` from `@flue/runtime/cloudflare`. The new sandbox wires `@cloudflare/shell` Workspaces into Flue through a codemode `code` tool backed by a Worker Loader binding. Agents use `state.*` inside the `code` tool instead of bash/read/write/grep/glob. Use `@cloudflare/shell` directly for primitives like `Workspace`, `WorkspaceFileSystem`, and `createGit`.
+
+### Breaking Changes
+
+- **`getVirtualSandbox()` now throws with a migration message.** The previous API described R2 as if it were mounted directly as the harness filesystem, but `@cloudflare/shell` Workspaces are SQLite-indexed filesystems with optional R2 blob spillover; raw bucket keys uploaded outside Workspace were invisible. Migrate bucket-backed agents to `getShellSandbox({ workspace, loader })` plus `hydrateFromBucket(workspace, env.BUCKET)` before `init()`. If you used zero-arg `getVirtualSandbox()`, remove it and omit `sandbox` from `init()` to use Flue's default in-memory sandbox.
+
 ## 0.6.2 - 2026-05-14
 
 ### Fixes & Other Changes

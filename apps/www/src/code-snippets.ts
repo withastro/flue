@@ -28,20 +28,28 @@ export const HERO = `export default async function ({ init, payload, env }) {
   });
 }`;
 
-export const SUPPORT_AGENT = `import { getVirtualSandbox } from '@flue/runtime/cloudflare';
-import type { FlueContext } from '@flue/runtime';
+export const SUPPORT_AGENT = `import type { FlueContext } from '@flue/runtime';
+import {
+  getDefaultWorkspace,
+  getShellSandbox,
+  hydrateFromBucket,
+} from '@flue/runtime/cloudflare';
 
 // POST /agents/support/:id
 export const triggers = { webhook: true };
 
 // Built for: Cloudflare Workers, R2
 export default async function ({ init, payload, env }: FlueContext) {
-  // Mount your R2 bucket (declared as a binding in wrangler.jsonc) as
-  // the agent's filesystem at /workspace, backed by Durable Object
-  // SQLite + R2 under the hood. The agent searches it with bash —
-  // grep, glob, read — without spinning up a container.
-  const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE_BUCKET);
-  const harness = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
+  const workspace = getDefaultWorkspace();
+  if (!(await workspace.exists('/.hydrated'))) {
+    await hydrateFromBucket(workspace, env.KNOWLEDGE_BASE_BUCKET);
+    await workspace.writeFile('/.hydrated', new Date().toISOString());
+  }
+
+  const harness = await init({
+    sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
+    model: 'openrouter/moonshotai/kimi-k2.6',
+  });
   const session = await harness.session();
   // Prompt! The agent harness includes your workspace AGENTS.md,
   // skills, and roles (aka subagents) to complete your task as 

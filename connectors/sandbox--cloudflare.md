@@ -190,10 +190,11 @@ That document walks through the migration end-to-end:
 
 - Hello-world agent on Cloudflare (`flue dev --target cloudflare`).
 - Adding `wrangler.jsonc`, `.env`, and `--target cloudflare` to scripts.
-- Optionally adding R2-backed storage (`getVirtualSandbox(env.BUCKET)`)
-  if the user only needs a searchable file store and not a full Linux
-  container — this is often the right answer and is much cheaper than
-  containers.
+- Optionally adding a cf-shell Workspace sandbox
+  (`getShellSandbox({ workspace, loader })` plus explicit R2/git
+  hydration) if the user only needs a searchable file store and not a
+  full Linux container — this is often the right answer and is much
+  cheaper than containers.
 - Adding the Cloudflare Sandbox container at the end (which is the same
   recipe as Path A above).
 
@@ -218,7 +219,8 @@ without first confirming the basics work on `--target cloudflare`.
   version different from the `@cloudflare/sandbox` npm package version
   the user actually installed. They have to match.
 - The published Flue surface for Cloudflare-specific helpers is
-  `@flue/runtime/cloudflare` (e.g. `getVirtualSandbox`). The
+  `@flue/runtime/cloudflare` (e.g. `getShellSandbox`,
+  `getDefaultWorkspace`, `hydrateFromBucket`). The
   `@cloudflare/sandbox` package is a separate Cloudflare-published
   dependency the user installs themselves. Don't import from
   `@flue/runtime/internal`.

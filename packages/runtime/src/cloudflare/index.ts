@@ -1,6 +1,14 @@
 export { getVirtualSandbox } from './virtual-sandbox.ts';
 export type { VirtualSandboxOptions } from './virtual-sandbox.ts';
 
+export {
+	getShellSandbox,
+	getDefaultWorkspace,
+} from './shell-sandbox.ts';
+export type { GetShellSandboxOptions } from './shell-sandbox.ts';
+
+export { hydrateFromBucket } from './hydrate.ts';
+
 export { cfSandboxToSessionEnv } from './cf-sandbox.ts';
 
 export { store } from './session-store.ts';

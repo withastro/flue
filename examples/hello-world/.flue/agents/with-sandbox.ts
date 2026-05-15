@@ -10,7 +10,7 @@ export default async function ({ init }: FlueContext) {
 	const sandbox = await client.create();
 
 	const harness = await init({
-		sandbox: daytona(sandbox, { cleanup: true }),
+		sandbox: daytona(sandbox),
 		model: 'anthropic/claude-sonnet-4-6',
 	});
 	const session = await harness.session();

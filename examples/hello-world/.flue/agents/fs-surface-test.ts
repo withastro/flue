@@ -27,20 +27,20 @@ export default async function ({ init }: FlueContext) {
 	const sRead = await session.fs.readFile('/tmp/session.txt');
 	check('session.fs writeFile/readFile round-trip', sRead === 'session.fs content');
 
-	// agent.fs round-trip
-	await agent.fs.writeFile('/tmp/agent.txt', 'agent.fs content');
-	const aRead = await agent.fs.readFile('/tmp/agent.txt');
-	check('agent.fs writeFile/readFile round-trip', aRead === 'agent.fs content');
+	// harness.fs round-trip
+	await harness.fs.writeFile('/tmp/agent.txt', 'agent.fs content');
+	const aRead = await harness.fs.readFile('/tmp/agent.txt');
+	check('harness.fs writeFile/readFile round-trip', aRead === 'agent.fs content');
 
 	// session.fs writes are visible to session.shell
 	await session.fs.writeFile('/tmp/visible.txt', 'staged by SDK');
 	const viaShell = await session.shell('cat /tmp/visible.txt');
 	check('session.fs visible to session.shell', viaShell.stdout.trim() === 'staged by SDK');
 
-	// agent.fs writes are visible to agent.shell
-	await agent.fs.writeFile('/tmp/agent-visible.txt', 'staged by agent.fs');
-	const aViaShell = await agent.shell('cat /tmp/agent-visible.txt');
-	check('agent.fs visible to agent.shell', aViaShell.stdout.trim() === 'staged by agent.fs');
+	// harness.fs writes are visible to harness.shell
+	await harness.fs.writeFile('/tmp/agent-visible.txt', 'staged by harness.fs');
+	const aViaShell = await harness.shell('cat /tmp/agent-visible.txt');
+	check('harness.fs visible to harness.shell', aViaShell.stdout.trim() === 'staged by harness.fs');
 
 	// mkdir / readdir / exists / rm
 	await session.fs.mkdir('/tmp/scratch', { recursive: true });

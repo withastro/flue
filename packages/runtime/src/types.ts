@@ -684,48 +684,21 @@ export interface ShellResult {
 
 // ─── Sandbox ────────────────────────────────────────────────────────────────
 
-/**
- * Inputs given to a connector's `tools()` method when the framework asks it
- * to author the model-facing tool list. Intentionally minimal — the
- * framework still owns the `task` tool and appends it on top of whatever the
- * connector returns, so `tools()` does not receive a `task` runner.
- */
 export interface SessionToolFactoryOptions {
-	/**
-	 * Roles available on the agent. Forwarded for connectors that wish to
-	 * surface role-aware behaviour in their tool descriptions. Most
-	 * connectors can ignore this.
-	 */
+	/** Roles available on the agent. */
 	roles: Record<string, Role>;
 }
 
-/**
- * Optional connector-supplied factory for the model-facing tool list. When a
- * `SandboxFactory` implements `tools()`, the framework uses its return value
- * verbatim as the built-in tools for sessions built from that sandbox — no
- * merging with the default six, no inheritance. The framework still appends
- * the `task` tool unconditionally; connectors must not include it.
- */
+/** Connector-supplied model-facing tools. Flue appends `task` separately. */
 export type SessionToolFactory = (
 	env: SessionEnv,
 	options: SessionToolFactoryOptions,
 ) => AgentTool<any>[];
 
-/**
- * Wraps external sandboxes (Daytona, CF Containers, etc.) into Flue's SessionEnv.
- *
- * Optionally contributes its own model-facing tool list via `tools()`. When
- * present, the connector's tools replace the framework default (read, write,
- * edit, bash, grep, glob); the framework still appends `task` on top. When
- * absent, the framework uses its default six tools — every existing connector
- * keeps working unchanged.
- *
- * Use cases for owning the tool list: a connector with native primitives that
- * make the defaults wasteful or wrong (e.g. cf-shell, which uses a codemode
- * `code` tool instead of `bash` and routes file ops through `state.*`).
- */
+/** Wraps external sandboxes (Daytona, CF Containers, etc.) into Flue's SessionEnv. */
 export interface SandboxFactory {
 	createSessionEnv(options: { id: string; cwd?: string }): Promise<SessionEnv>;
+	/** Replaces the framework default tool list for this sandbox. */
 	tools?: SessionToolFactory;
 }
 

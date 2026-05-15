@@ -227,14 +227,7 @@ function isSandboxFactory(value: unknown): value is SandboxFactory {
 	);
 }
 
-/**
- * Resolve sandbox option to a `SessionEnv` plus an optional connector-supplied
- * `toolFactory`. Resolution order: default → BashFactory → platform hook →
- * SandboxFactory. Only `SandboxFactory` connectors may contribute a
- * `toolFactory`; the default empty sandbox, bash factories, and the platform
- * hook return `toolFactory: undefined`, which makes the framework fall back to
- * its default six built-in tools.
- */
+/** Resolve sandbox option to its session environment and optional tool factory. */
 async function resolveSessionEnv(
 	id: string,
 	sandbox: AgentInit['sandbox'],

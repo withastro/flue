@@ -173,30 +173,45 @@ EOF`);
 
 The agent can use its built-in tools — grep, glob, read — to search and read these files. This is still running on a virtual sandbox (no container), so it's fast and cheap.
 
-## R2-backed agents
+## Workspace-backed agents
 
-Inline files work for small, static content. But for larger datasets — a knowledge base, documentation corpus, product catalog — you want persistent storage. Flue integrates with [Cloudflare R2](https://developers.cloudflare.com/r2/) to mount a bucket directly as the agent's filesystem.
+Inline files work for small, static content. But for larger datasets — a knowledge base, documentation corpus, product catalog — you want persistent storage. On Cloudflare, the lightweight non-container path is [`@cloudflare/shell`](./cloudflare-shell.md): a durable SQLite-indexed `Workspace` plus a `code` tool that runs JavaScript against `state.*` in an isolated Worker.
+
+R2 is a good source for that workspace, but it is not a live filesystem mount. Hydrate the R2 objects you want into the Workspace before `init()`, then the agent operates on the Workspace. The basic R2 flow below uses Flue's Cloudflare helpers; install `@cloudflare/shell` directly if you want to construct custom Workspaces or hydrate from git.
 
 ### The support agent pattern
 
-This is one of the most powerful patterns on Cloudflare: a support agent that searches a knowledge base to answer customer questions. The knowledge base lives in R2, and Flue mounts it as the sandbox filesystem — the agent searches it with grep, glob, and read, just like a real filesystem.
+This is one of the most powerful patterns on Cloudflare: a support agent that searches a knowledge base to answer customer questions. The knowledge base can be stored in R2, hydrated once into the Workspace, and then searched through the `code` tool with `state.searchFiles`, `state.glob`, `state.readFile`, and related APIs.
 
 `.flue/agents/support.ts`:
 
 ```typescript
-import { getVirtualSandbox } from '@flue/runtime/cloudflare';
 import type { FlueContext } from '@flue/runtime';
+import {
+  getDefaultWorkspace,
+  getShellSandbox,
+  hydrateFromBucket,
+} from '@flue/runtime/cloudflare';
 
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload, env }: FlueContext) {
-  const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
-  const harness = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
+  const workspace = getDefaultWorkspace();
+
+  if (!(await workspace.exists('/.hydrated'))) {
+    await hydrateFromBucket(workspace, env.KNOWLEDGE_BASE);
+    await workspace.writeFile('/.hydrated', new Date().toISOString());
+  }
+
+  const harness = await init({
+    sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
+    model: 'openrouter/moonshotai/kimi-k2.6',
+  });
   const session = await harness.session();
 
   return await session.prompt(
-    `You are a support agent. Search the knowledge base for articles
-    relevant to this request, then write a helpful response.
+    `You are a support agent. Use the code tool to search the hydrated
+    workspace for articles relevant to this request, then write a helpful response.
 
     Customer: ${payload.message}`,
     {
@@ -206,15 +221,16 @@ export default async function ({ init, payload, env }: FlueContext) {
 }
 ```
 
-### Adding the R2 binding
+### Adding the bindings
 
-Add the R2 bucket to your project's `wrangler.jsonc` (at the root of your project, alongside `package.json`):
+Add a Worker Loader binding and the R2 bucket to your project's `wrangler.jsonc` (at the root of your project, alongside `package.json`):
 
 ```jsonc
 {
   "name": "my-support-agent",
   "compatibility_date": "2026-04-01",
   "compatibility_flags": ["nodejs_compat"],
+  "worker_loaders": [{ "binding": "LOADER" }],
   "r2_buckets": [
     {
       "binding": "KNOWLEDGE_BASE",
@@ -223,6 +239,8 @@ Add the R2 bucket to your project's `wrangler.jsonc` (at the root of your projec
   ],
 }
 ```
+
+Worker Loader is currently in beta. If `wrangler dev` local mode does not simulate `worker_loaders`, use `wrangler dev --remote` or deploy to a preview environment.
 
 When you run `flue build --target cloudflare`, Flue merges its own Durable Object bindings into this file and writes the composed config to `dist/wrangler.jsonc`. `wrangler deploy` picks that up automatically via a redirect at `.wrangler/deploy/config.json` — so you can keep editing only your root `wrangler.jsonc` and bindings like this R2 binding will flow through to deploy. You don't need to set `main` yourself; Flue owns the bundle entrypoint.
 
@@ -242,9 +260,12 @@ done
 ### Why this works well
 
 - **No container** — Still running on a virtual sandbox. Fast startup, low cost.
-- **Persistent data** — The knowledge base lives in R2 and persists across requests.
-- **Agent-native search** — The agent uses grep and glob to find relevant articles, just like it would in a real filesystem.
+- **Persistent data** — The workspace lives in Durable Object SQLite, with optional R2 spillover for large files.
+- **Explicit sources** — R2, git, or any other source can hydrate the workspace before the agent runs.
+- **Agent-native search** — The agent uses the `code` tool and `state.*` APIs to list, read, search, and edit files.
 - **Session persistence** — Because this deploys to Cloudflare Workers with Durable Objects, message history and session state are automatically persisted. A customer can revisit a support session days later and pick up where they left off.
+
+If you specifically need bucket keys to appear as filesystem paths, use `@cloudflare/sandbox` Containers with [`mountBucket`](https://developers.cloudflare.com/sandbox/guides/mount-buckets/) instead. That is the right tool for Linux shell commands and live bucket-mount semantics.
 
 ## Connecting a remote sandbox
 
@@ -375,7 +396,7 @@ This is built in when you deploy with `--target cloudflare`. No extra configurat
 
 `AGENTS.md` and skills are optional workspace-context files that the agent reads from its sandbox at `init()` time. They live at conventional paths inside whatever sandbox the agent is using — Flue looks for `<cwd>/AGENTS.md` and `<cwd>/.agents/skills/<name>/SKILL.md`. Whatever's there gets loaded; whatever isn't, doesn't. Most agents don't need either to do useful work.
 
-If you want to use them, put them in your sandbox. How you do that depends on which sandbox you're using: upload to R2 for an R2-backed virtual sandbox, `COPY` them in for a container, or write them in via `session.shell()` on a sandbox you control.
+If you want to use them, put them in your sandbox. How you do that depends on which sandbox you're using: hydrate them into a cf-shell Workspace from R2 or git before `init()`, `COPY` them in for a container, or write them in via `session.shell()` on a sandbox that supports shell execution.
 
 **Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
 
@@ -437,7 +458,7 @@ Here's the progression of sandbox types available on Cloudflare, from simplest t
 
 1. **Empty virtual sandbox** — `init({ model: 'anthropic/claude-sonnet-4-6' })`. Fast, cheap, stateless. Good for prompt-and-response agents.
 2. **Virtual sandbox with shell setup** — Use `session.shell()` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
-3. **R2-backed virtual sandbox** — `getVirtualSandbox(env.BUCKET)`. Persistent storage, searchable filesystem. Ideal for knowledge bases, support agents, data processing.
+3. **cf-shell Workspace sandbox** — `getShellSandbox({ workspace, loader })`. Durable SQLite-indexed Workspace, hydrated from R2/git/etc., searched and edited through the `code` tool and `state.*`. Ideal for Cloudflare-native knowledge bases and support agents without Linux dependencies.
 4. **Container sandbox** — Full Linux environment via `@cloudflare/sandbox`. For coding agents, complex dev environments, and anything that needs real system tools.
 
 Start simple. Move up when you need to.

@@ -102,13 +102,6 @@ interface SessionInitOptions {
 	existingData: SessionData | null;
 	onAgentEvent?: FlueEventCallback;
 	agentTools?: ToolDef[];
-	/**
-	 * Optional connector-supplied factory for the model-facing built-in tool
-	 * list. When set, `createBuiltinTools` uses its return value verbatim
-	 * (plus the framework-appended `task` tool) instead of the default six.
-	 * Connectors that omit `tools()` fall through to the default path, so
-	 * adding this is a no-op for them.
-	 */
 	toolFactory?: SessionToolFactory;
 	sessionRole?: string;
 	taskDepth?: number;
@@ -453,12 +446,6 @@ export class Session implements FlueSession {
 		assertRoleExists(this.config.roles, this.config.role);
 		assertRoleExists(this.config.roles, this.sessionRole);
 
-		// Build the built-in tools first so the custom-tool validator can
-		// reject collisions against the connector's actual tool names rather
-		// than re-invoking the connector's `tools()` factory just to read
-		// them. The connector factory is allowed to do real work (e.g.
-		// cf-shell calling into codemode to build state.* providers); calling
-		// it once per Session-open / per prompt is the budget.
 		const builtinTools = this.createBuiltinTools(this.env, []);
 		const tools = [
 			...builtinTools,
@@ -883,24 +870,12 @@ export class Session implements FlueSession {
 		);
 	}
 
-	/**
-	 * Reject user-supplied tools that collide with the framework-reserved
-	 * `task` name, with any of the already-built built-in tool names, or
-	 * with each other.
-	 *
-	 * The reserved-names set is derived from the resolved `builtinTools` list
-	 * — not a static constant — so connectors that author their own tool list
-	 * (cf-shell etc.) reserve only the names they actually expose, while the
-	 * default tool path keeps reserving all six framework defaults.
-	 */
+	/** Reject custom tools that collide with active built-ins or each other. */
 	private validateCustomToolNames(
 		tools: ToolDef[],
 		builtinTools: AgentTool<any>[],
 	): void {
 		const reserved = new Set<string>(builtinTools.map((t) => t.name));
-		// `task` is always appended downstream; reserved even if the connector
-		// chose not to include it (which it shouldn't — `validateConnectorTools`
-		// also rejects connector-supplied `task`).
 		reserved.add('task');
 		const names = new Set<string>();
 		for (const toolDef of tools) {
@@ -919,15 +894,7 @@ export class Session implements FlueSession {
 		}
 	}
 
-	/**
-	 * Build the model-facing built-in tool list for this session.
-	 *
-	 * If the sandbox connector implements `tools()`, its return value replaces
-	 * the framework default (read/write/edit/bash/grep/glob); we still append
-	 * the framework `task` tool on top. Otherwise we fall back to the
-	 * canonical `createTools(env, options)` path, which returns the six
-	 * defaults plus `task` when supported.
-	 */
+	/** Build built-in tools from the connector or the framework defaults. */
 	private createBuiltinTools(
 		env: SessionEnv,
 		tools: ToolDef[],
@@ -940,10 +907,6 @@ export class Session implements FlueSession {
 
 		if (this.toolFactory) {
 			const connectorTools = this.toolFactory(env, { roles: this.config.roles });
-			// Validate the connector's contribution before handing it to
-			// pi-agent-core: duplicate names within the connector list, or a
-			// collision with the framework `task` tool, would otherwise
-			// surface as an opaque pi-agent-core error mid-session.
 			this.validateConnectorTools(connectorTools);
 			return [...connectorTools, createTaskTool(runTask, this.config.roles)];
 		}
@@ -954,12 +917,7 @@ export class Session implements FlueSession {
 		});
 	}
 
-	/**
-	 * Validate a connector-supplied built-in tool list. Connector tools must
-	 * be uniquely-named and must not claim the framework-reserved `task`
-	 * name. Mirrors the `validateCustomToolNames` shape so connector authors
-	 * get the same error story as user-supplied tools.
-	 */
+	/** Validate connector tool names before handing them to the agent loop. */
 	private validateConnectorTools(tools: AgentTool<any>[]): void {
 		const names = new Set<string>();
 		for (const tool of tools) {
@@ -995,9 +953,6 @@ export class Session implements FlueSession {
 			options.thinkingLevel,
 			options.role,
 		);
-		// Build builtins first so the custom-tool validator can read the
-		// reserved-names set directly from the resulting list — avoids
-		// invoking the connector's `tools()` factory twice per call.
 		const builtinTools = this.createBuiltinTools(
 			this.env,
 			options.tools,

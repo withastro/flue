@@ -44,10 +44,6 @@ export class Harness implements FlueHarness {
 		private store: SessionStore,
 		private eventCallback?: FlueEventCallback,
 		private agentTools: ToolDef[] = [],
-		// Optional connector-supplied factory for the model-facing built-in
-		// tool list. When unset, sessions use the framework default six
-		// (read, write, edit, bash, grep, glob). The framework always
-		// appends `task` on top of whatever the connector returns.
 		private toolFactory?: SessionToolFactory,
 	) {
 		this.fs = createFlueFs(env);
