@@ -1,6 +1,8 @@
 /**
  * In-process just-bash sandbox for Cloudflare Workers (no container).
- * Without args: empty in-memory. With R2 bucket: persistent files via DO SQLite + R2.
+ * Without args: empty in-memory. With an R2 bucket: a persistent Workspace
+ * filesystem indexed by Durable Object SQLite with R2 blob storage. Raw R2
+ * objects uploaded outside the Workspace are not imported or listed.
  */
 import {
 	Workspace,

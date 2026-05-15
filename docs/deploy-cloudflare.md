@@ -2,7 +2,7 @@
 
 Build and deploy Flue agents on Cloudflare Workers. This guide walks you through the different kinds of agents you can build — from simple prompt-and-response endpoints to full coding agents backed by persistent storage and remote sandboxes.
 
-By the end, you will have a Flue agent running on Cloudflare Workers, and you will know how to add roles, R2-backed context, Cloudflare sandboxes, and Durable Object-backed sessions.
+By the end, you will have a Flue agent running on Cloudflare Workers, and you will know how to add roles, R2-backed virtual workspaces, Cloudflare sandboxes, and Durable Object-backed sessions.
 
 ## Project layout
 
@@ -175,11 +175,13 @@ The agent can use its built-in tools — grep, glob, read — to search and read
 
 ## R2-backed agents
 
-Inline files work for small, static content. But for larger datasets — a knowledge base, documentation corpus, product catalog — you want persistent storage. Flue integrates with [Cloudflare R2](https://developers.cloudflare.com/r2/) to mount a bucket directly as the agent's filesystem.
+Inline files work for small, static content. But for larger datasets — a knowledge base, documentation corpus, product catalog — you want persistent storage. Flue integrates with [Cloudflare R2](https://developers.cloudflare.com/r2/) through Cloudflare's Workspace filesystem: Durable Object SQLite indexes the files, and R2 stores backing blobs.
+
+That gives the agent a persistent virtual filesystem, but it is not a raw R2 bucket mount. Files become visible to grep, glob, and read after they are written through the sandbox filesystem. Objects uploaded directly to the bucket with `wrangler r2 object put` are not imported automatically.
 
 ### The support agent pattern
 
-This is one of the most powerful patterns on Cloudflare: a support agent that searches a knowledge base to answer customer questions. The knowledge base lives in R2, and Flue mounts it as the sandbox filesystem — the agent searches it with grep, glob, and read, just like a real filesystem.
+This is one of the most powerful patterns on Cloudflare: a support agent that searches a knowledge base to answer customer questions. The knowledge base lives in a virtual workspace backed by Durable Object SQLite and R2 — the agent searches it with grep, glob, and read, just like a real filesystem.
 
 `.flue/agents/support.ts`:
 
@@ -226,23 +228,22 @@ Add the R2 bucket to your project's `wrangler.jsonc` (at the root of your projec
 
 When you run `flue build --target cloudflare`, Flue merges its own Durable Object bindings into this file and writes the composed config to `dist/wrangler.jsonc`. `wrangler deploy` picks that up automatically via a redirect at `.wrangler/deploy/config.json` — so you can keep editing only your root `wrangler.jsonc` and bindings like this R2 binding will flow through to deploy. You don't need to set `main` yourself; Flue owns the bundle entrypoint.
 
-Upload your knowledge base to R2 using Wrangler:
+Seed your knowledge base through the sandbox filesystem. For small examples, write files through `session.fs`:
 
-```bash
-# Upload individual files
-wrangler r2 object put my-knowledge-base/articles/getting-started.md --file ./docs/getting-started.md
-
-# Or upload a directory
-for f in ./docs/**/*.md; do
-  key="articles/${f#./docs/}"
-  wrangler r2 object put "my-knowledge-base/$key" --file "$f"
-done
+```typescript
+await session.fs.mkdir('articles', { recursive: true });
+await session.fs.writeFile(
+  'articles/getting-started.md',
+  '# Getting started\n\nReset your password from the account settings page.\n',
+);
 ```
+
+For larger imports, run your own importer that reads from your source of truth and writes through the same filesystem API. Direct Wrangler uploads create raw bucket objects without Workspace index entries, so the virtual sandbox will not see them until they are imported through the Workspace filesystem.
 
 ### Why this works well
 
 - **No container** — Still running on a virtual sandbox. Fast startup, low cost.
-- **Persistent data** — The knowledge base lives in R2 and persists across requests.
+- **Persistent data** — The knowledge base lives in the Workspace filesystem backed by Durable Object SQLite and R2, and persists across requests.
 - **Agent-native search** — The agent uses grep and glob to find relevant articles, just like it would in a real filesystem.
 - **Session persistence** — Because this deploys to Cloudflare Workers with Durable Objects, message history and session state are automatically persisted. A customer can revisit a support session days later and pick up where they left off.
 
@@ -360,7 +361,7 @@ For full details, see the [outbound Workers documentation](https://developers.cl
 | -------------------------------- | ------------------------------------------- |
 | Millisecond startup              | Seconds to start (cached images are faster) |
 | Grep, glob, read, basic shell    | Full Linux: git, Node.js, Python, browsers  |
-| R2 or inline files               | Real persistent filesystem                  |
+| Workspace-backed or inline files | Real persistent filesystem                  |
 | High-traffic / high-scale agents | Coding agents, complex dev environments     |
 
 Most agents don't need a remote sandbox. Start with a virtual sandbox and only move to a remote sandbox when you need the full environment.
@@ -375,7 +376,7 @@ This is built in when you deploy with `--target cloudflare`. No extra configurat
 
 `AGENTS.md` and skills are optional workspace-context files that the agent reads from its sandbox at `init()` time. They live at conventional paths inside whatever sandbox the agent is using — Flue looks for `<cwd>/AGENTS.md` and `<cwd>/.agents/skills/<name>/SKILL.md`. Whatever's there gets loaded; whatever isn't, doesn't. Most agents don't need either to do useful work.
 
-If you want to use them, put them in your sandbox. How you do that depends on which sandbox you're using: upload to R2 for an R2-backed virtual sandbox, `COPY` them in for a container, or write them in via `session.shell()` on a sandbox you control.
+If you want to use them, put them in your sandbox. How you do that depends on which sandbox you're using: write them through `session.fs` or `session.shell()` for a Workspace-backed virtual sandbox, `COPY` them in for a container, or write them in via whatever setup flow your sandbox controls.
 
 **Skills** are reusable agent tasks defined as markdown files in `.agents/skills/`. They give the agent a focused instruction set for a specific job:
 
@@ -437,7 +438,7 @@ Here's the progression of sandbox types available on Cloudflare, from simplest t
 
 1. **Empty virtual sandbox** — `init({ model: 'anthropic/claude-sonnet-4-6' })`. Fast, cheap, stateless. Good for prompt-and-response agents.
 2. **Virtual sandbox with shell setup** — Use `session.shell()` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
-3. **R2-backed virtual sandbox** — `getVirtualSandbox(env.BUCKET)`. Persistent storage, searchable filesystem. Ideal for knowledge bases, support agents, data processing.
+3. **Workspace-backed virtual sandbox** — `getVirtualSandbox(env.BUCKET)`. Persistent storage, searchable filesystem backed by Durable Object SQLite and R2. Ideal for knowledge bases, support agents, data processing.
 4. **Container sandbox** — Full Linux environment via `@cloudflare/sandbox`. For coding agents, complex dev environments, and anything that needs real system tools.
 
 Start simple. Move up when you need to.

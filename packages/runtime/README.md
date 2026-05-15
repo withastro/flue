@@ -56,7 +56,7 @@ export default async function ({ init, payload }: FlueContext) {
 
 ### Support Agent
 
-A support agent can also run in a virtual sandbox, but we now add a file-system using an R2 bucket. The knowledge base is stored in R2 and mounted directly into the harness filesystem — the agent searches it with its built-in tools (grep, glob, read). Skills are also defined in the bucket that help the agent perform its task.
+A support agent can also run in a virtual sandbox, but we now add a persistent Workspace filesystem backed by an R2 bucket. The knowledge base is written through that filesystem, then the agent searches it with its built-in tools (grep, glob, read). Skills can live there too if you write them into the workspace before the agent initializes.
 
 Because this agent is deployed to Cloudflare, message history and session state are automatically persisted for you. So you (or your customer) can revisit this support session days, weeks, or years later and pick up exactly where you left off.
 
@@ -69,8 +69,8 @@ import * as v from 'valibot';
 export const triggers = { webhook: true };
 
 export default async function ({ init, payload, env }: FlueContext) {
-  // Mount the R2 knowledge base bucket as the harness filesystem.
-  // The agent can grep, glob, and read articles with bash, but
+  // Create a persistent virtual workspace backed by Durable Object SQLite and R2.
+  // Files written through this workspace can be searched with grep, glob, and read
   // without needing to spin up an entire container sandbox.
   const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
   const harness = await init({ sandbox, model: 'openrouter/moonshotai/kimi-k2.6' });
