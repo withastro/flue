@@ -54,6 +54,7 @@ export class CloudflarePlugin implements BuildPlugin {
 		validateCloudflareAgentNames(ctx);
 
 		const webhookAgents = agents.filter((a) => a.triggers.webhook);
+		const cronAgents = agents.filter((a) => a.triggers.cron);
 
 		const agentImports = agents
 			.map((a, index) => {
@@ -63,7 +64,18 @@ export class CloudflarePlugin implements BuildPlugin {
 			})
 			.join('\n');
 
-		const agentClasses = webhookAgents
+		const cronRoutes = JSON.stringify(
+			cronAgents.map((a) => ({
+				name: a.name,
+				cron: a.triggers.cron,
+				className: agentClassName(a.name),
+			})),
+			null,
+			2,
+		);
+
+		const agentClasses = agents
+			.filter((a) => a.triggers.webhook || a.triggers.cron)
 			.map((a) => {
 				const className = agentClassName(a.name);
 				const handlerVar = agentVarName(a.name, agents.indexOf(a));
@@ -297,6 +309,26 @@ async function handleFlueFiberRecovered(ctx, _doInstance, agentName) {
   console.warn('[flue] Cloudflare fiber interrupted:', agentName, ctx.name, ctx.snapshot ?? null);
 }
 
+const cronRoutes = ${cronRoutes};
+
+async function runCronAgents(controller, env, ctx) {
+  const matchingRoutes = cronRoutes.filter((route) => !controller?.cron || route.cron === controller.cron);
+  await Promise.all(matchingRoutes.map(async (route) => {
+    const namespace = env[route.className];
+    if (!namespace) {
+      throw new Error('[flue] Missing Durable Object binding for cron agent ' + route.name + ': ' + route.className);
+    }
+    const stub = await getAgentByName(namespace, 'cron');
+    const request = new Request('https://flue.local/agents/' + route.name + '/cron', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'x-webhook': 'true' },
+      body: JSON.stringify({ trigger: 'cron', cron: controller?.cron, scheduledTime: controller?.scheduledTime }),
+    });
+    const response = await stub.fetch(request);
+    if (!response.ok) throw new Error('[flue] Cron agent failed: ' + route.name + ' HTTP ' + response.status);
+  }));
+}
+
 // ─── Per-DO Dispatch ───────────────────────────────────────────────────────
 
 async function dispatchAgent(request, doInstance, agentName, handler) {
@@ -414,6 +446,10 @@ const app = createDefaultFlueApp();`
 }
 
 export default {
+  scheduled(controller, env, ctx) {
+    ctx.waitUntil(runCronAgents(controller, env, ctx));
+  },
+
   fetch(request, env, ctx) {
     return app.fetch(request, env, ctx);
   },
@@ -423,9 +459,12 @@ export default {
 
 	async additionalOutputs(ctx: BuildContext): Promise<Record<string, string>> {
 		const outputs: Record<string, string> = {};
-		const webhookAgents = ctx.agents.filter((a) => a.triggers.webhook);
+		const webhookAgents = ctx.agents.filter((a) => a.triggers.webhook || a.triggers.cron);
+		const cronSchedules = Array.from(
+			new Set(ctx.agents.map((a) => a.triggers.cron).filter((cron): cron is string => Boolean(cron))),
+		);
 
-		// Per-agent DO bindings: one per webhook agent. Flue no longer forces a
+		// Per-agent DO bindings: one per webhook/cron agent. Flue no longer forces a
 		// `Sandbox` binding, container entry, or Dockerfile — users who want
 		// container sandboxes declare those themselves in their own
 		// wrangler.jsonc (preserved via the merge below). Flue only automates
@@ -473,6 +512,7 @@ export default {
 			// `wrangler dev` / `wrangler deploy` time. We don't pre-bundle.
 			main: '_entry.ts',
 			doBindings: flueBindings,
+			crons: cronSchedules,
 			migrations: flueMigrations,
 		};
 

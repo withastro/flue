@@ -12,12 +12,12 @@ import type { Role } from '@flue/runtime';
 export interface AgentInfo {
 	name: string;
 	filePath: string;
-	triggers: { webhook?: boolean };
+	triggers: { webhook?: boolean; cron?: string };
 }
 
 export interface BuildContext {
 	agents: AgentInfo[];
-	manifest: { agents: Array<{ name: string; triggers: { webhook?: boolean } }> };
+	manifest: { agents: Array<{ name: string; triggers: { webhook?: boolean; cron?: string } }> };
 	roles: Record<string, Role>;
 	/**
 	 * The project root — typically the user's cwd. Source files

@@ -78,6 +78,8 @@ export interface FlueAdditions {
 	main: string;
 	/** Flue's per-agent DO bindings. Merged into durable_objects.bindings by `name`. */
 	doBindings: DoBinding[];
+	/** Cron schedules needed by agents with `triggers.cron`. Merged into triggers.crons. */
+	crons?: string[];
 	/**
 	 * Migrations Flue wants to add for net-new agent classes. Each entry is
 	 * appended to the merged migrations array iff a migration with the same
@@ -421,6 +423,24 @@ export function mergeFlueAdditions(
 		}
 	}
 	merged.migrations = migrationsOut;
+
+	// triggers.crons: union user-owned schedules with schedules required by
+	// agents declaring `triggers.cron`. User schedules are preserved; Flue only
+	// appends missing cron strings.
+	const existingTriggers =
+		typeof merged.triggers === 'object' && merged.triggers !== null
+			? (merged.triggers as Record<string, unknown>)
+			: {};
+	const existingCrons = Array.isArray(existingTriggers.crons)
+		? (existingTriggers.crons as unknown[]).filter((cron): cron is string => typeof cron === 'string')
+		: [];
+	const cronsOut = [...existingCrons];
+	for (const cron of additions.crons ?? []) {
+		if (!cronsOut.includes(cron)) cronsOut.push(cron);
+	}
+	if (cronsOut.length > 0) {
+		merged.triggers = { ...existingTriggers, crons: cronsOut };
+	}
 
 	// containers: user owns the `containers` array entirely. Flue contributes
 	// nothing here — any entries the user declared pass through untouched via

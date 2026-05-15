@@ -17,6 +17,7 @@ import type {
 interface ParsedAgentFile {
 	triggers: {
 		webhook?: boolean;
+		cron?: string;
 	};
 }
 
@@ -86,14 +87,14 @@ function parseTriggersInitializer(
 		}
 		if (ts.isShorthandPropertyAssignment(property)) {
 			const name = property.name.text;
-			if (name === 'webhook') {
+			if (name === 'webhook' || name === 'cron') {
 				throwUnsupportedTriggers(filePath, `"${name}" must use an explicit static value`);
 			}
 			continue;
 		}
 		if (!ts.isPropertyAssignment(property)) {
 			const name = propertyNameText(filePath, property.name);
-			if (name === 'webhook') {
+			if (name === 'webhook' || name === 'cron') {
 				throwUnsupportedTriggers(filePath, `"${name}" must use an explicit static value`);
 			}
 			continue;
@@ -105,6 +106,14 @@ function parseTriggersInitializer(
 			if (value.kind === ts.SyntaxKind.TrueKeyword) result.webhook = true;
 			else if (value.kind === ts.SyntaxKind.FalseKeyword) delete result.webhook;
 			else throwUnsupportedTriggers(filePath, '"webhook" must be true or false');
+		}
+		if (name === 'cron') {
+			const value = unwrapExpression(property.initializer);
+			if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
+				result.cron = value.text;
+			} else {
+				throwUnsupportedTriggers(filePath, '"cron" must be a static string');
+			}
 		}
 	}
 
@@ -232,7 +241,8 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	// locally (see FLUE_MODE=local in the Node plugin). This supports the
 	// "CI-only agent" pattern documented in the README.
 	const webhookAgents = agents.filter((a) => a.triggers.webhook);
-	const triggerlessAgents = agents.filter((a) => !a.triggers.webhook);
+	const cronAgents = agents.filter((a) => a.triggers.cron);
+	const triggerlessAgents = agents.filter((a) => !a.triggers.webhook && !a.triggers.cron);
 
 	console.log(
 		`[flue] Found ${Object.keys(roles).length} role(s): ${Object.keys(roles).join(', ') || '(none)'}`,
@@ -240,6 +250,11 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	console.log(`[flue] Found ${agents.length} agent(s): ${agents.map((a) => a.name).join(', ')}`);
 	if (webhookAgents.length > 0) {
 		console.log(`[flue] Webhook agents: ${webhookAgents.map((a) => a.name).join(', ')}`);
+	}
+	if (cronAgents.length > 0) {
+		console.log(
+			`[flue] Cron agents: ${cronAgents.map((a) => `${a.name} (${a.triggers.cron})`).join(', ')}`,
+		);
 	}
 	if (triggerlessAgents.length > 0) {
 		console.log(
