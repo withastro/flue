@@ -1,0 +1,27 @@
+docs/cloudflare-shell.md
+  d27ccf4435c441c0 68-78
+packages/sdk/src/deprecated.ts
+  d27ccf4435c441c0 67-68,70
+packages/runtime/src/cloudflare/shell-sandbox.ts
+  d27ccf4435c441c0 9-14,56-61,124-128,151-152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.2.8",
+  "base_commit_sha": "b9b508751bcb870df241bc64c2f164ef07b91b7a",
+  "prompts": {
+    "d27ccf4435c441c0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_1d3774787ffexlQ6VDuLeKoRtc",
+        "model": "anthropic/claude-opus-4-7"
+      },
+      "human_author": "Fred K. Schott",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 18,
+      "accepted_lines": 33,
+      "overriden_lines": 0
+    }
+  }
+}
