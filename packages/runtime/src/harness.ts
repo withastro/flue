@@ -15,6 +15,7 @@ import type {
 	SessionEnv,
 	SessionOptions,
 	SessionStore,
+	SessionToolFactory,
 	ShellOptions,
 	ShellResult,
 	ToolDef,
@@ -43,6 +44,11 @@ export class Harness implements FlueHarness {
 		private store: SessionStore,
 		private eventCallback?: FlueEventCallback,
 		private agentTools: ToolDef[] = [],
+		// Optional connector-supplied factory for the model-facing built-in
+		// tool list. When unset, sessions use the framework default six
+		// (read, write, edit, bash, grep, glob). The framework always
+		// appends `task` on top of whatever the connector returns.
+		private toolFactory?: SessionToolFactory,
 	) {
 		this.fs = createFlueFs(env);
 	}
@@ -109,6 +115,7 @@ export class Harness implements FlueHarness {
 			existingData: data,
 			onAgentEvent: this.decorateEventCallback(this.eventCallback),
 			agentTools: this.agentTools,
+			toolFactory: this.toolFactory,
 			sessionRole: options?.role,
 			taskDepth: 0,
 			createTaskSession: (taskOptions) => this.createTaskSession(taskOptions),
@@ -174,6 +181,7 @@ export class Harness implements FlueHarness {
 			existingData: data,
 			onAgentEvent: eventCallback,
 			agentTools: this.agentTools,
+			toolFactory: this.toolFactory,
 			sessionRole: options.role,
 			taskDepth: options.depth,
 			createTaskSession: (childOptions) => this.createTaskSession(childOptions),

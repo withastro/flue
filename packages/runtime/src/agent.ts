@@ -8,6 +8,13 @@ const MAX_GREP_MATCHES = 100;
 const MAX_GREP_LINE_LENGTH = 500;
 const MAX_GLOB_RESULTS = 1000;
 
+/**
+ * Names of the framework's default built-in tools (the six produced by
+ * `createTools` plus the framework-owned `task`). Used by the validator when
+ * a session uses the default tool path. Sessions whose sandbox connector
+ * implements `tools()` derive their reserved set from the connector's actual
+ * tool names plus `task` instead — these are not universally reserved.
+ */
 export const BUILTIN_TOOL_NAMES = new Set([
 	'read',
 	'write',
@@ -289,7 +296,12 @@ const TaskParams = Type.Object({
 	),
 });
 
-function createTaskTool(
+/**
+ * Build the canonical `task` tool. The framework appends this on top of
+ * whatever the connector's `tools()` returns; standalone callers should reach
+ * for {@link createTools} instead.
+ */
+export function createTaskTool(
 	runTask: (
 		params: TaskToolParams,
 		signal?: AbortSignal,

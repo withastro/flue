@@ -14,6 +14,7 @@ import type {
 	SandboxFactory,
 	SessionEnv,
 	SessionStore,
+	SessionToolFactory,
 } from './types.ts';
 
 export interface FlueContextConfig {
@@ -128,7 +129,12 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			try {
 				assertRoleExists(config.agentConfig.roles, options.role);
 				const sandbox = options.sandbox;
-				const baseEnv = await resolveSessionEnv(config.id, sandbox, config, options.cwd);
+				const { env: baseEnv, toolFactory } = await resolveSessionEnv(
+					config.id,
+					sandbox,
+					config,
+					options.cwd,
+				);
 				// Resolve `init({ cwd })` against the sandbox's own cwd so that
 				// relative paths target the sandbox/session filesystem, not the
 				// agent process cwd or `/`. Mirrors the same pattern used for
@@ -163,6 +169,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 						emitEvent(event);
 					},
 					options.tools,
+					toolFactory,
 				);
 			} catch (error) {
 				initializedHarnessNames.delete(name);
@@ -220,15 +227,22 @@ function isSandboxFactory(value: unknown): value is SandboxFactory {
 	);
 }
 
-/** Resolve sandbox option to SessionEnv: default → BashFactory → platform hook → SandboxFactory. */
+/**
+ * Resolve sandbox option to a `SessionEnv` plus an optional connector-supplied
+ * `toolFactory`. Resolution order: default → BashFactory → platform hook →
+ * SandboxFactory. Only `SandboxFactory` connectors may contribute a
+ * `toolFactory`; the default empty sandbox, bash factories, and the platform
+ * hook return `toolFactory: undefined`, which makes the framework fall back to
+ * its default six built-in tools.
+ */
 async function resolveSessionEnv(
 	id: string,
 	sandbox: AgentInit['sandbox'],
 	config: FlueContextConfig,
 	cwd: string | undefined,
-): Promise<SessionEnv> {
+): Promise<{ env: SessionEnv; toolFactory?: SessionToolFactory }> {
 	if (sandbox === undefined || sandbox === false) {
-		return config.createDefaultEnv();
+		return { env: await config.createDefaultEnv() };
 	}
 	// JS-caller / `any`-input fallback for the removed `'empty'` and
 	// `'local'` magic strings. TS callers get compile errors from the
@@ -249,7 +263,7 @@ async function resolveSessionEnv(
 		);
 	}
 	if (isBashFactory(sandbox)) {
-		return bashFactoryToSessionEnv(sandbox);
+		return { env: await bashFactoryToSessionEnv(sandbox) };
 	}
 	if (isBashLike(sandbox)) {
 		throw new Error(
@@ -259,10 +273,11 @@ async function resolveSessionEnv(
 	}
 	if (config.resolveSandbox) {
 		const resolved = await config.resolveSandbox(sandbox);
-		if (resolved) return resolved;
+		if (resolved) return { env: resolved };
 	}
 	if (isSandboxFactory(sandbox)) {
-		return sandbox.createSessionEnv({ id, cwd });
+		const env = await sandbox.createSessionEnv({ id, cwd });
+		return { env, toolFactory: sandbox.tools };
 	}
 	throw new Error('[flue] Invalid sandbox option passed to init().');
 }

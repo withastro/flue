@@ -12,6 +12,8 @@ export type {
 	SessionEnv,
 	FileStat,
 	SandboxFactory,
+	SessionToolFactory,
+	SessionToolFactoryOptions,
 	BashFactory,
 	BashLike,
 	SessionOptions,
