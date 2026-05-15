@@ -65,7 +65,17 @@ async () => {
 }
 ```
 
-Programmatic file access still works through `session.fs` and `harness.fs`, backed by the same Workspace. Paths are Workspace paths such as `/foo.md`; there is no `/workspace` mount prefix.
+## Using `session.fs` from your own code
+
+Programmatic file access still works through `session.fs` and `harness.fs`, backed by the same Workspace as the agent's `code` tool:
+
+```ts
+await harness.fs.writeFile('/notes.md', 'staged before the session starts');
+const session = await harness.session();
+const notes = await session.fs.readFile('/notes.md');
+```
+
+Use these filesystem APIs for setup, post-processing, or any other host-side file access. Paths are Workspace paths such as `/foo.md`; there is no `/workspace` mount prefix.
 
 `session.shell()` and `harness.shell()` throw because cf-shell has no shell. If you need Linux commands, use `@cloudflare/sandbox` Containers instead.
 

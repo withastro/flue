@@ -6,7 +6,12 @@ import {
 	type FsStat as CfFsStat,
 } from '@cloudflare/shell';
 import { stateTools } from '@cloudflare/shell/workers';
-import type { DynamicWorkerExecutorOptions } from '@cloudflare/codemode';
+import {
+	DynamicWorkerExecutor,
+	resolveProvider,
+	type DynamicWorkerExecutorOptions,
+	type ResolvedProvider,
+} from '@cloudflare/codemode';
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { type Static, Type } from '@earendil-works/pi-ai';
 import { normalizePath } from '../session.ts';
@@ -48,9 +53,12 @@ export function getShellSandbox(options: GetShellSandboxOptions): SandboxFactory
 
 	const { workspace, loader, executor: executorOptions } = options;
 	const fs = new WorkspaceFileSystem(workspace);
-	const toolFactory: SessionToolFactory = () => [
-		createCodeTool(workspace, loader, executorOptions),
-	];
+	const executor = new DynamicWorkerExecutor({
+		loader,
+		...executorOptions,
+	});
+	const stateProvider = resolveProvider(stateTools(workspace));
+	const toolFactory: SessionToolFactory = () => [createCodeTool(executor, stateProvider)];
 
 	return {
 		async createSessionEnv() {
@@ -113,10 +121,11 @@ function createWorkspaceSessionEnv(
 }
 
 const EXEC_NOT_SUPPORTED_MESSAGE =
-	'[flue] The cf-shell sandbox does not support exec(). cf-shell agents operate on a structured ' +
-	'workspace via the `code` tool (JavaScript run in an isolated Worker via codemode) and the ' +
-	'`state.*` API exposed inside that sandbox; there is no shell. If you need bash/grep/find, use ' +
-	'`@cloudflare/sandbox` (Containers + mountBucket) instead. See docs/cloudflare-shell.md.';
+	'[flue] The cf-shell sandbox does not support exec(). The agent\'s `code` tool runs JavaScript ' +
+	'in an isolated Worker against the workspace; from your own code, use `session.fs` / `harness.fs` ' +
+	'(readFile, writeFile, stat, readdir, etc.) — they route through the same Workspace. If you ' +
+	'specifically need bash/grep/find or a real Linux environment, use `@cloudflare/sandbox` ' +
+	'(Containers + mountBucket) instead.';
 
 function adaptStat(s: CfFsStat): FileStat {
 	return {
@@ -139,9 +148,8 @@ const CodeParams = Type.Object({
 });
 
 function createCodeTool(
-	workspace: Workspace,
-	loader: WorkerLoader,
-	executorOptions: GetShellSandboxOptions['executor'],
+	executor: DynamicWorkerExecutor,
+	stateProvider: ResolvedProvider,
 ): AgentTool<typeof CodeParams> {
 	return {
 		name: 'code',
@@ -152,12 +160,6 @@ function createCodeTool(
 			_toolCallId: string,
 			params: Static<typeof CodeParams>,
 		): Promise<AgentToolResult<{ logs?: string[]; error?: string }>> {
-			const { DynamicWorkerExecutor, resolveProvider } = await import('@cloudflare/codemode');
-			const executor = new DynamicWorkerExecutor({
-				loader,
-				...executorOptions,
-			});
-			const stateProvider = resolveProvider(stateTools(workspace));
 			const { result, error, logs } = await executor.execute(params.code, [stateProvider]);
 
 			if (error) {

@@ -64,7 +64,10 @@ export {
 	__noop as cfSandboxToSessionEnv,
 	__noop as getCloudflareAIBindingApiProvider,
 	__noop as getCloudflareContext,
+	__noop as getDefaultWorkspace,
+	__noop as getShellSandbox,
 	__noop as getVirtualSandbox,
+	__noop as hydrateFromBucket,
 	__noop as runWithCloudflareContext,
 	__noop as store,
 	// ./config
