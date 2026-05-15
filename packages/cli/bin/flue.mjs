@@ -25,6 +25,12 @@ const MIN_NODE_MINOR = 18;
 const ENGINES_LABEL = '>=22.18';
 
 function checkNodeVersion() {
+	// Bun runs this script with its own runtime and strips TypeScript natively,
+	// so the >=22.18 floor (which exists for Node's native TS config loading)
+	// does not apply. Bypass to avoid showing a misleading "upgrade Node.js"
+	// message to Bun users.
+	if (process.versions.bun) return;
+
 	const v = process.versions.node;
 	const m = /^(\d+)\.(\d+)/.exec(v);
 	if (!m) return; // unparseable; let it through and let the real CLI fail loudly
