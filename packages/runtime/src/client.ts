@@ -1,6 +1,6 @@
-import { discoverSessionContext } from './context.ts';
+import { composeAgentSystemPrompt } from './context.ts';
+import { normalizeAgentDefinition } from './definition.ts';
 import { Harness } from './harness.ts';
-import { assertRoleExists } from './roles.ts';
 import { dispatchGlobalEvent } from './runtime/events.ts';
 import { bashFactoryToSessionEnv, createCwdSessionEnv, isBashLike } from './sandbox.ts';
 import type {
@@ -111,12 +111,10 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 		},
 
 		async init(options?: AgentInit): Promise<FlueHarness> {
-			if (!options || !('model' in options)) {
-				throw new Error(
-					'[flue] init() requires a model. Pass { model: "provider/model-id" } or { model: false }.',
-				);
+			if (!options) {
+				throw new Error('[flue] init() requires an options object. Pass { agent } or inline resources.');
 			}
-			if (options.model !== false && typeof options.model !== 'string') {
+			if (options.model !== undefined && options.model !== false && typeof options.model !== 'string') {
 				throw new Error('[flue] init({ model }) must be a model string or false.');
 			}
 
@@ -127,7 +125,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			initializedHarnessNames.add(name);
 
 			try {
-				assertRoleExists(config.agentConfig.roles, options.role);
+				const normalizedAgent = normalizeAgentDefinition(options);
 				const sandbox = options.sandbox;
 				const { env: baseEnv, toolFactory } = await resolveSessionEnv(
 					config.id,
@@ -143,18 +141,20 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					? createCwdSessionEnv(baseEnv, baseEnv.resolvePath(options.cwd))
 					: baseEnv;
 				const store: SessionStore = options.persist ?? config.defaultStore;
-				const localContext = await discoverSessionContext(env);
-
-				// Harness-level model override. Per-call `model` on prompt()/skill() still wins
-				// because resolveModelForCall() applies it on top of this default.
-				const agentModel = config.agentConfig.resolveModel(options.model);
+				const skills = Object.fromEntries((normalizedAgent.skills ?? []).map((skill) => [skill.name, skill]));
+				const subagents = Object.fromEntries(
+					(normalizedAgent.subagents ?? []).map((agent) => [agent.name, agent]),
+				);
+				const agentModel = config.agentConfig.resolveModel(
+					options.model === false ? false : (options.model ?? normalizedAgent.model),
+				);
 
 				const agentConfig: AgentConfig = {
 					...config.agentConfig,
-					systemPrompt: localContext.systemPrompt,
-					skills: localContext.skills,
+					systemPrompt: composeAgentSystemPrompt(normalizedAgent),
+					skills,
+					subagents,
 					model: agentModel,
-					role: options.role ?? config.agentConfig.role,
 					thinkingLevel: options.thinkingLevel ?? config.agentConfig.thinkingLevel,
 					compaction: options.compaction ?? config.agentConfig.compaction,
 				};
@@ -168,7 +168,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					(event) => {
 						emitEvent(event);
 					},
-					options.tools,
+					[...(normalizedAgent.tools ?? [])],
 					toolFactory,
 				);
 			} catch (error) {

@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/runtime';
+import type { ActionContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
@@ -7,7 +7,7 @@ export const triggers = { webhook: true };
 const TEST_PNG_BASE64 =
 	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
 
-export default async function ({ init }: FlueContext) {
+export default async function ({ init }: ActionContext) {
 	// Sonnet has more reliable vision than Haiku for tiny test images.
 	const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
 	const session = await harness.session();

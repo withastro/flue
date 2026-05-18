@@ -46,7 +46,7 @@ export interface UserFlueConfig {
 	 */
 	target?: 'node' | 'cloudflare';
 	/**
-	 * Project root. Source files (`agents/`, `roles/`) live here directly,
+	 * Project root. Source files (`agents/`) live here directly,
 	 * or under `<root>/.flue/`. Relative paths are resolved vs. the
 	 * directory containing the config file (Vite-style: the config file's
 	 * dir IS the root by default). Defaults to that directory if unset.

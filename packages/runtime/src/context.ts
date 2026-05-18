@@ -2,7 +2,7 @@
  * Context discovery: reads AGENTS.md and .agents/skills/ from a session's
  * working directory. Used at runtime by the session initialisation path.
  */
-import type { SessionEnv, Skill } from './types.ts';
+import type { AgentDefinition, SessionEnv, SkillDefinition } from './types.ts';
 
 // ─── Frontmatter Parsing ────────────────────────────────────────────────────
 
@@ -40,7 +40,7 @@ export function parseFrontmatterFile(content: string, defaultName: string): Fron
 
 // ─── Context Discovery ──────────────────────────────────────────────────────
 
-/** Read AGENTS.md (and CLAUDE.md if present) from a directory. Returns concatenated contents. */
+/** Phase 3: used by `loadFromSandbox` when workspace context discovery returns. */
 export async function readAgentsMd(env: SessionEnv, basePath: string): Promise<string> {
 	const parts: string[] = [];
 
@@ -55,7 +55,7 @@ export async function readAgentsMd(env: SessionEnv, basePath: string): Promise<s
 	return parts.join('\n\n');
 }
 
-/** Path to the skills directory under a given base path. */
+/** Phase 3: used by `loadFromSandbox` skill discovery. */
 export function skillsDirIn(basePath: string): string {
 	return basePath.endsWith('/') ? `${basePath}.agents/skills` : `${basePath}/.agents/skills`;
 }
@@ -75,6 +75,7 @@ export function skillsDirIn(basePath: string): string {
  * because nothing on the server side needs the frontmatter for these
  * skills; only the model does, and it reads the file itself.
  */
+// Phase 3: used by sandbox-loaded path skill activation if that escape hatch remains.
 export async function resolveSkillFilePath(
 	env: SessionEnv,
 	basePath: string,
@@ -95,15 +96,16 @@ export async function resolveSkillFilePath(
  * the frontmatter here only to populate the system-prompt's "Available
  * Skills" registry (name + description).
  */
+// Phase 3: becomes the sandbox skill discovery body behind `loadFromSandbox`.
 export async function discoverLocalSkills(
 	env: SessionEnv,
 	basePath: string,
-): Promise<Record<string, Skill>> {
+): Promise<Record<string, SkillDefinition>> {
 	const skillsDir = skillsDirIn(basePath);
 
 	if (!(await env.exists(skillsDir))) return {};
 
-	const skills: Record<string, Skill> = {};
+	const skills: Record<string, SkillDefinition> = {};
 	const entries = await env.readdir(skillsDir);
 
 	for (const entry of entries) {
@@ -124,6 +126,8 @@ export async function discoverLocalSkills(
 		skills[parsed.name] = {
 			name: parsed.name,
 			description: parsed.description,
+			body: parsed.body,
+			source: { kind: 'local', path: skillMdPath },
 		};
 	}
 
@@ -145,27 +149,14 @@ export const HEADLESS_PREAMBLE =
 
 export function composeSystemPrompt(
 	agentsMd: string,
-	skills: Record<string, Skill>,
+	skills: Record<string, SkillDefinition>,
 	env?: { cwd: string; directoryListing?: string[] },
 ): string {
 	const parts: string[] = [HEADLESS_PREAMBLE];
 
 	if (agentsMd) parts.push('', agentsMd);
 
-	const skillEntries = Object.values(skills);
-	if (skillEntries.length > 0) {
-		parts.push(
-			'',
-			'## Available Skills',
-			'',
-			'Each skill below is documented in a markdown file under `.agents/skills/` (relative to your working directory). The default location is `.agents/skills/<name>/SKILL.md`. When asked to run a skill, read its file from disk and follow the instructions there literally — the skill body is not provided inline.',
-			'',
-		);
-		for (const skill of skillEntries) {
-			const desc = skill.description ? ` — ${skill.description}` : '';
-			parts.push(`- **${skill.name}**${desc}`);
-		}
-	}
+	appendSkillPrompt(parts, Object.values(skills));
 
 	if (env) {
 		const date = new Date().toLocaleDateString('en-US', {
@@ -184,6 +175,31 @@ export function composeSystemPrompt(
 	return parts.join('\n');
 }
 
+export function composeAgentSystemPrompt(agent: AgentDefinition): string {
+	const parts: string[] = [HEADLESS_PREAMBLE];
+	if (agent.instructions) parts.push('', agent.instructions);
+	appendSkillPrompt(parts, agent.skills ?? []);
+	const subagents = agent.subagents ?? [];
+	if (subagents.length > 0) {
+		parts.push('', '<task_agents>');
+		for (const subagent of subagents) {
+			const description = subagent.description ? ` description=${JSON.stringify(subagent.description)}` : '';
+			parts.push(`<agent name=${JSON.stringify(subagent.name)}${description} />`);
+		}
+		parts.push('</task_agents>');
+	}
+	return parts.join('\n');
+}
+
+function appendSkillPrompt(parts: string[], skills: readonly SkillDefinition[]): void {
+	if (skills.length === 0) return;
+	parts.push('', '<skills>', 'Load a skill only when its metadata matches the current task.');
+	for (const skill of skills) {
+		parts.push(`<skill name=${JSON.stringify(skill.name)} description=${JSON.stringify(skill.description)} />`);
+	}
+	parts.push('</skills>');
+}
+
 /**
  * Discover AGENTS.md, local skills, and directory listing from the session's cwd.
  * Phase 3 moves sandbox-backed AGENTS.md and skill discovery behind
@@ -191,7 +207,7 @@ export function composeSystemPrompt(
  */
 export async function discoverSessionContext(
 	env: SessionEnv,
-): Promise<{ systemPrompt: string; skills: Record<string, Skill> }> {
+): Promise<{ systemPrompt: string; skills: Record<string, SkillDefinition> }> {
 	const cwd = env.cwd;
 
 	const agentsMd = await readAgentsMd(env, cwd);

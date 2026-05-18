@@ -1,4 +1,5 @@
 import type { AgentTool } from '@earendil-works/pi-agent-core';
+import type { SkillDefinition } from './types.ts';
 import { toJsonSchema } from '@valibot/to-json-schema';
 import * as v from 'valibot';
 
@@ -27,21 +28,19 @@ export function buildResultFollowUpPrompt(): string {
 	].join(' ');
 }
 
-/**
- * Build the user-facing prompt text for a `session.skill('<name>')` call,
- * where `<name>` is a name registered in the session's skill registry.
- *
- * The system prompt's "Available Skills" list tells the model where the
- * skill lives (`.agents/skills/<name>/SKILL.md`) and how to run it (read
- * the file, follow its instructions). The per-call message just names
- * the skill plus any arguments — no inlined body, no path hint.
- */
+/** Build the user-facing prompt text for a registered skill value or name. */
 export function buildSkillByNamePrompt(
-	name: string,
+	skill: SkillDefinition,
 	args?: Record<string, unknown>,
 	schema?: v.GenericSchema,
 ): string {
-	const parts: string[] = [`Run the skill named "${name}".`];
+	const parts: string[] = [
+		`Run the skill named "${skill.name}".`,
+		'',
+		'<skill_instructions>',
+		skill.body,
+		'</skill_instructions>',
+	];
 
 	if (args && Object.keys(args).length > 0) {
 		parts.push('', 'Arguments:', JSON.stringify(args, null, 2));
@@ -54,13 +53,7 @@ export function buildSkillByNamePrompt(
 	return parts.join('\n');
 }
 
-/**
- * Build the user-facing prompt text for a `session.skill('<path>')` call,
- * where `<path>` is a relative path under `.agents/skills/` (e.g.
- * `'triage/reproduce.md'`). Path-based references bypass the registry
- * — the skill isn't named in the system prompt's "Available Skills"
- * list — so we hand the model the resolved absolute path explicitly.
- */
+// Phase 3: used by sandbox-loaded path skill activation if that escape hatch remains.
 export function buildSkillByPathPrompt(
 	relPath: string,
 	resolvedPath: string,

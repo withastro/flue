@@ -1,4 +1,14 @@
-/**
+import type { ActionContext } from '@flue/runtime';
+
+export const triggers = {};
+
+export default async function (_ctx: ActionContext) {
+	throw new Error('[flue] This example returns in Phase 3 with init({ loadFromSandbox: true }).');
+}
+
+
+
+/*
  * Demonstrates hydrating a cf-shell Workspace from a git repository
  * instead of an R2 bucket. Same pattern, different source.
  *
@@ -14,7 +24,6 @@
  * Local development: see the same caveat in skills-from-r2.ts.
  * `wrangler dev --remote` is the supported local path until Worker
  * Loader is supported in local-mode wrangler dev.
- */
 import type { FlueContext } from '@flue/runtime';
 import { WorkspaceFileSystem } from '@cloudflare/shell';
 import { createGit } from '@cloudflare/shell/git';
@@ -65,3 +74,4 @@ export default async function ({ init, env }: FlueContext<unknown, Env>) {
 
 	return { repo: TARGET_REPO, summary: text };
 }
+*/

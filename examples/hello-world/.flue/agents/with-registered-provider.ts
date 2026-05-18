@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/runtime';
+import type { ActionContext } from '@flue/runtime';
 
 export const triggers = { webhook: true };
 
@@ -13,7 +13,7 @@ export const triggers = { webhook: true };
  * exercise the resolution path and would throw `Unknown model "ollama/..."`
  * if the registration failed to land.
  */
-export default async function ({ init }: FlueContext) {
+export default async function ({ init }: ActionContext) {
 	const harness = await init({ model: 'ollama/llama3.1:8b' });
 	const session = await harness.session();
 	return {

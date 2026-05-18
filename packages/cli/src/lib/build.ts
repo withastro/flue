@@ -3,10 +3,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as ts from 'typescript';
 import { packageUpSync } from 'package-up';
-import { parseFrontmatterFile } from '@flue/runtime/internal';
 import { CloudflarePlugin } from './build-plugin-cloudflare.ts';
 import { NodePlugin } from './build-plugin-node.ts';
-import type { Role, ThinkingLevel } from '@flue/runtime';
+import { bundleSkillImports } from './skill-bundle.ts';
 import type {
 	AgentInfo,
 	BuildContext,
@@ -146,31 +145,6 @@ function throwUnsupportedTriggers(filePath: string, reason: string): never {
 	);
 }
 
-// Exhaustive list of valid thinking levels. The `satisfies` clause ensures this
-// stays in lockstep with `ThinkingLevel` from pi-agent-core: if a level is added
-// or removed upstream, this assignment fails to type-check.
-const VALID_THINKING_LEVELS = {
-	off: true,
-	minimal: true,
-	low: true,
-	medium: true,
-	high: true,
-	xhigh: true,
-} as const satisfies Record<ThinkingLevel, true>;
-
-function parseThinkingLevel(value: string | undefined, source: string): ThinkingLevel | undefined {
-	if (value === undefined) return undefined;
-	const normalized = value.trim();
-	if (!normalized) return undefined;
-	if (!(normalized in VALID_THINKING_LEVELS)) {
-		throw new Error(
-			`[flue] Invalid thinkingLevel ${JSON.stringify(value)} in ${source}. ` +
-				`Expected one of: ${Object.keys(VALID_THINKING_LEVELS).join(', ')}.`,
-		);
-	}
-	return normalized as ThinkingLevel;
-}
-
 /**
  * Result returned by {@link build}. `changed` indicates whether any file in
  * `dist/` was actually modified. Callers (notably the dev server) use this to
@@ -184,13 +158,12 @@ export interface BuildResult {
  * Build a project into a deployable artifact.
  *
  * `options.root` is the project root — typically the user's cwd. Source files
- * (agents, roles) are discovered from one of two locations inside the root,
+ * agent handlers are discovered from one of two locations inside the root,
  * with the same precedence rule the CLI uses:
  *
  *   - If `<root>/.flue/` exists, it is the source root. Look for
- *     `.flue/agents/` and `.flue/roles/`. The bare `<root>/agents/` and
- *     `<root>/roles/` are ignored entirely (no mixing).
- *   - Otherwise, look at `<root>/agents/` and `<root>/roles/`.
+ *     `.flue/agents/`. The bare `<root>/agents/` is ignored entirely.
+ *   - Otherwise, look at `<root>/agents/`.
  *
  * Build output lands in `options.output` (defaults to `<root>/dist`).
  *
@@ -211,7 +184,6 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	console.log(`[flue] Output: ${output}`);
 	console.log(`[flue] Target: ${plugin.name}`);
 
-	const roles = discoverRoles(sourceRoot);
 	const agents = discoverAgents(sourceRoot);
 	const appEntry = discoverAppEntry(sourceRoot);
 
@@ -234,9 +206,6 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	const webhookAgents = agents.filter((a) => a.triggers.webhook);
 	const triggerlessAgents = agents.filter((a) => !a.triggers.webhook);
 
-	console.log(
-		`[flue] Found ${Object.keys(roles).length} role(s): ${Object.keys(roles).join(', ') || '(none)'}`,
-	);
 	console.log(`[flue] Found ${agents.length} agent(s): ${agents.map((a) => a.name).join(', ')}`);
 	if (webhookAgents.length > 0) {
 		console.log(`[flue] Webhook agents: ${webhookAgents.map((a) => a.name).join(', ')}`);
@@ -246,9 +215,6 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			`[flue] CLI-only agents (no HTTP route in deployed build): ${triggerlessAgents.map((a) => a.name).join(', ')}`,
 		);
 	}
-	console.log(
-		`[flue] AGENTS.md and .agents/skills/ will be discovered at runtime from session cwd`,
-	);
 
 	fs.mkdirSync(output, { recursive: true });
 
@@ -265,7 +231,6 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	const ctx: BuildContext = {
 		agents,
 		manifest,
-		roles,
 		root,
 		output,
 		appEntry,
@@ -281,9 +246,11 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 		// Single-bundle mode: the plugin produces a TS entry, esbuild
 		// inlines/externalizes deps, output is server.mjs in the build dir.
 		const entryPath = path.join(output, '_entry_server.ts');
+		const bundledEntryPath = path.join(output, '_entry_server.bundled.js');
 		const outPath = path.join(output, 'server.mjs');
 
 		fs.writeFileSync(entryPath, serverCode, 'utf-8');
+		await bundleSkillImports(entryPath, bundledEntryPath);
 
 		try {
 			const nodePathsSet = collectNodePaths(root);
@@ -295,7 +262,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			const userExternals = getUserExternals(root);
 
 			await esbuild.build({
-				entryPoints: [entryPath],
+				entryPoints: [bundledEntryPath],
 				bundle: true,
 				outfile: outPath,
 				format: 'esm',
@@ -312,10 +279,12 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			// trying to compute byte-equality across reloads.
 			anyChanged = true;
 		} finally {
-			try {
-				fs.unlinkSync(entryPath);
-			} catch {
-				/* ignore */
+			for (const temporaryPath of [entryPath, bundledEntryPath, `${bundledEntryPath}.map`]) {
+				try {
+					fs.unlinkSync(temporaryPath);
+				} catch {
+					/* ignore */
+				}
 			}
 		}
 	} else if (bundleStrategy === 'none') {
@@ -327,6 +296,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			);
 		}
 		const outPath = path.join(output, plugin.entryFilename);
+		const bundledOutPath = path.join(output, plugin.entryFilename.replace(/\.[^.]+$/, '.bundled.js'));
 		// Skip the write if content is byte-identical to what's already on
 		// disk. This matters for `flue dev`, where downstream watchers (like
 		// wrangler's bundler) may key on file mtime and would otherwise reload
@@ -335,10 +305,19 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			!fs.existsSync(outPath) || fs.readFileSync(outPath, 'utf-8') !== serverCode;
 		if (writeIfChanged) {
 			fs.writeFileSync(outPath, serverCode, 'utf-8');
-			console.log(`[flue] Wrote entry: ${outPath} (no bundle — downstream tool handles it)`);
+			console.log(`[flue] Wrote entry: ${outPath} (skill bundling runs before downstream tooling)`);
 			anyChanged = true;
 		} else {
 			console.log(`[flue] Entry unchanged: ${outPath}`);
+		}
+		const previousBundledEntry = fs.existsSync(bundledOutPath)
+			? fs.readFileSync(bundledOutPath, 'utf-8')
+			: undefined;
+		await bundleSkillImports(outPath, bundledOutPath);
+		const nextBundledEntry = fs.readFileSync(bundledOutPath, 'utf-8');
+		if (previousBundledEntry !== nextBundledEntry) {
+			console.log(`[flue] Bundled skill imports: ${bundledOutPath}`);
+			anyChanged = true;
 		}
 	} else {
 		throw new Error(`[flue] Unknown bundle strategy: ${bundleStrategy}`);
@@ -408,35 +387,6 @@ export function resolveSourceRoot(root: string): string {
 	return root;
 }
 
-function discoverRoles(sourceRoot: string): Record<string, Role> {
-	const rolesDir = path.join(sourceRoot, 'roles');
-	if (!fs.existsSync(rolesDir)) return {};
-
-	const roles: Record<string, Role> = {};
-
-	for (const entry of fs.readdirSync(rolesDir)) {
-		if (!/\.(md|markdown)$/i.test(entry)) continue;
-
-		const filePath = path.join(rolesDir, entry);
-		const content = fs.readFileSync(filePath, 'utf-8');
-		const name = entry.replace(/\.(md|markdown)$/i, '');
-		const parsed = parseFrontmatterFile(content, name);
-		const thinkingLevel = parseThinkingLevel(
-			parsed.frontmatter.thinkingLevel,
-			`role "${name}" frontmatter`,
-		);
-		roles[name] = {
-			name,
-			description: parsed.description,
-			instructions: parsed.body,
-			model: parsed.frontmatter.model,
-			thinkingLevel,
-		};
-	}
-
-	return roles;
-}
-
 function discoverAgents(sourceRoot: string): AgentInfo[] {
 	const agentsDir = path.join(sourceRoot, 'agents');
 	if (!fs.existsSync(agentsDir)) return [];
@@ -456,13 +406,13 @@ function discoverAgents(sourceRoot: string): AgentInfo[] {
 }
 
 /**
- * Discover an optional `app.{ts,mts,js,mjs}` entry alongside `agents/`
- * and `roles/`. Returns the absolute path to the first match found, or
+ * Discover an optional `app.{ts,mts,js,mjs}` entry alongside `agents/`.
+ * Returns the absolute path to the first match found, or
  * undefined when no app entry is present.
  *
  * Extension priority matches {@link discoverAgents}: `.ts` > `.mts`
  * > `.js` > `.mjs`. Source-files-only — we don't probe inside the
- * `agents/` or `roles/` subdirs.
+ * `agents/` subdir.
  */
 function discoverAppEntry(sourceRoot: string): string | undefined {
 	for (const ext of ['ts', 'mts', 'js', 'mjs']) {

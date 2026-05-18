@@ -17,14 +17,13 @@
 //   {}                                       — runs all single-invocation tests
 //
 // Catalog: https://developers.cloudflare.com/workers-ai/models/
-import { Type, type FlueContext, type ToolDef } from '@flue/runtime';
+import { Type, defineTool, type ActionContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const triggers = { webhook: true };
 
 const MODEL = 'cloudflare/@cf/moonshotai/kimi-k2.6';
-
-export default async function ({ init, payload, id }: FlueContext) {
+export default async function ({ init, payload, id }: ActionContext) {
 	const action = (payload as { action?: string } | undefined)?.action;
 	const test = (payload as { test?: string } | undefined)?.test;
 
@@ -103,7 +102,7 @@ export default async function ({ init, payload, id }: FlueContext) {
 	// itself out of using the tool does not.
 	if (!test || test === 'tool') {
 		let toolInvocations = 0;
-		const calculator: ToolDef = {
+		const calculator = defineTool({
 			name: 'calculator',
 			description: 'Perform arithmetic. Returns the numeric result as a string.',
 			parameters: Type.Object({
@@ -124,7 +123,7 @@ export default async function ({ init, payload, id }: FlueContext) {
 					m[2] === '+' ? a + b : m[2] === '-' ? a - b : m[2] === '*' ? a * b : a / b;
 				return String(r);
 			},
-		};
+		});
 		try {
 			const toolResponse = await session.prompt(
 				'Compute 17 * 23 by calling the calculator tool. You MUST use the tool — do not compute it yourself. Then tell me the result.',

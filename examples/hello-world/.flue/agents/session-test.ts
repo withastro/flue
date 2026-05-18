@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/runtime';
+import type { ActionContext } from '@flue/runtime';
 
 export const triggers = { webhook: true };
 
@@ -22,7 +22,7 @@ export const triggers = { webhook: true };
  * if you were recently changing code that impacted sessions/persistence, or were doing a larger
  * refactor. Otherwise, this test is safe to skip and not run as part of your regular test suite.
  */
-export default async function ({ init, payload, id }: FlueContext) {
+export default async function ({ init, payload, id }: ActionContext) {
 	const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
 	const session = await harness.session();
 

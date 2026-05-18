@@ -133,7 +133,7 @@ export const FlueEventSchema = v.union([
 		type: v.literal('task_start'),
 		taskId: v.string(),
 		prompt: v.string(),
-		role: v.optional(v.string()),
+		agent: v.optional(v.string()),
 		cwd: v.optional(v.string()),
 	}),
 	flueEvent({
@@ -141,6 +141,7 @@ export const FlueEventSchema = v.union([
 		taskId: v.string(),
 		isError: v.boolean(),
 		result: v.optional(v.unknown()),
+		agent: v.optional(v.string()),
 		durationMs: v.number(),
 	}),
 	flueEvent({

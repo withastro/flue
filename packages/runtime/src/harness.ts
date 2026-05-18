@@ -1,6 +1,5 @@
 import { createCallHandle } from './abort.ts';
-import { discoverSessionContext } from './context.ts';
-import { assertRoleExists } from './roles.ts';
+import { composeAgentSystemPrompt } from './context.ts';
 import { createCwdSessionEnv, createFlueFs } from './sandbox.ts';
 import { type CreateTaskSessionOptions, deleteSessionTree, Session } from './session.ts';
 import type {
@@ -69,18 +68,14 @@ export class Harness implements FlueHarness {
 		mode: OpenMode,
 		options?: SessionOptions,
 	): Promise<FlueSession> {
-		assertRoleExists(this.config.roles, options?.role);
+		if (options && typeof options === 'object' && 'role' in options) {
+			throw new Error('[flue] Roles have been removed. Define a subagent and delegate via task() instead.');
+		}
 		const sessionName = normalizeSessionName(name);
 		const open = this.openSessions.get(sessionName);
 		if (open) {
 			if (mode === 'create') {
 				throw new Error(`[flue] Session "${sessionName}" already exists in harness "${this.name}".`);
-			}
-			if (options?.role !== undefined && options.role !== open.role) {
-				throw new Error(
-					`[flue] Session "${sessionName}" is already open with ` +
-						`role ${JSON.stringify(open.role ?? null)}; cannot reopen with role ${JSON.stringify(options.role)}.`,
-				);
 			}
 			return open;
 		}
@@ -112,7 +107,6 @@ export class Harness implements FlueHarness {
 			onAgentEvent: this.decorateEventCallback(this.eventCallback),
 			agentTools: this.agentTools,
 			toolFactory: this.toolFactory,
-			sessionRole: options?.role,
 			taskDepth: 0,
 			createTaskSession: (taskOptions) => this.createTaskSession(taskOptions),
 			onDelete: () => this.openSessions.delete(sessionName),
@@ -132,18 +126,20 @@ export class Harness implements FlueHarness {
 	}
 
 	private async createTaskSession(options: CreateTaskSessionOptions): Promise<Session> {
-		assertRoleExists(this.config.roles, options.role);
-
 		const sessionName = `task:${options.parentSession}:${options.taskId}`;
 		const taskEnv = options.cwd
 			? createCwdSessionEnv(options.parentEnv, options.parentEnv.resolvePath(options.cwd))
 			: options.parentEnv;
-		const localContext = await discoverSessionContext(taskEnv);
-		const taskConfig: AgentConfig = {
-			...this.config,
-			systemPrompt: localContext.systemPrompt,
-			skills: localContext.skills,
-		};
+		const taskAgent = options.agent;
+		const taskConfig: AgentConfig = taskAgent
+			? {
+					...this.config,
+					systemPrompt: composeAgentSystemPrompt(taskAgent),
+					skills: Object.fromEntries((taskAgent.skills ?? []).map((skill) => [skill.name, skill])),
+					subagents: Object.fromEntries((taskAgent.subagents ?? []).map((agent) => [agent.name, agent])),
+					model: taskAgent.model ? this.config.resolveModel(taskAgent.model) : this.config.model,
+				}
+			: this.config;
 		const storageKey = createSessionStorageKey(this.instanceId, this.name, sessionName);
 		const affinityKey = createSessionAffinityKey(this.instanceId, this.name, sessionName);
 		const data = createEmptySessionData();
@@ -151,7 +147,7 @@ export class Harness implements FlueHarness {
 			parentSession: options.parentSession,
 			taskId: options.taskId,
 			cwd: taskEnv.cwd,
-			role: options.role,
+			agent: options.agent?.name,
 			depth: options.depth,
 		};
 		await this.store.save(storageKey, data);
@@ -178,7 +174,6 @@ export class Harness implements FlueHarness {
 			onAgentEvent: eventCallback,
 			agentTools: this.agentTools,
 			toolFactory: this.toolFactory,
-			sessionRole: options.role,
 			taskDepth: options.depth,
 			createTaskSession: (childOptions) => this.createTaskSession(childOptions),
 		});

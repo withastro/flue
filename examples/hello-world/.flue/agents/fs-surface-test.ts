@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/runtime';
+import type { ActionContext } from '@flue/runtime';
 import { Bash, InMemoryFs } from 'just-bash';
 
 export const triggers = { webhook: true };
@@ -8,7 +8,7 @@ export const triggers = { webhook: true };
  * Exercises only SDK-level fs primitives (no LLM calls), so it runs
  * without provider credentials. Used to verify the new FlueFs wiring.
  */
-export default async function ({ init }: FlueContext) {
+export default async function ({ init }: ActionContext) {
 	const fs = new InMemoryFs();
 	const sandbox = () => new Bash({ fs });
 	// `model` is required by init(), but this test never makes an LLM call

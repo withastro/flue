@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/runtime';
+import type { ActionContext } from '@flue/runtime';
 
 export const triggers = { webhook: true };
 
@@ -13,7 +13,7 @@ export const triggers = { webhook: true };
  * (e.g. future cron / queue triggers). Today every trigger is HTTP, so in
  * practice it's always defined.
  */
-export default async function ({ req, init }: FlueContext) {
+export default async function ({ req, init }: ActionContext) {
 	console.log('[with-request] method:', req?.method);
 	console.log('[with-request] url:', req?.url);
 	console.log('[with-request] user-agent:', req?.headers.get('user-agent'));

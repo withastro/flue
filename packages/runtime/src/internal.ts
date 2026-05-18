@@ -18,9 +18,8 @@ import type { ModelConfig, ProviderSettings } from './types.ts';
 
 export type { FlueContextConfig, FlueContextInternal } from './client.ts';
 export { createFlueContext } from './client.ts';
-// `parseFrontmatterFile` is used by the CLI's build pipeline (which lives in
-// `@flue/cli/src/lib/build.ts`) to extract role frontmatter at build time. It
-// is otherwise an internal helper of the runtime — exposed here, not on the
+// `parseFrontmatterFile` is used by the CLI's build pipeline to extract skill
+// frontmatter at build time. It is otherwise an internal helper of the runtime — exposed here, not on the
 // public root barrel, because it's tooling-facing.
 export { parseFrontmatterFile } from './context.ts';
 // `FlueRegistry` (Durable Object class) and `createCloudflareRunRegistry`

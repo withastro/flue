@@ -1,4 +1,8 @@
+/// <reference path="../types/skill-md.d.ts" />
+/// <reference path="../types/text-md.d.ts" />
+
 export type {
+	ActionContext,
 	FlueContext,
 	FlueHarness,
 	FlueFs,
@@ -27,17 +31,23 @@ export type {
 	TaskOptions,
 	ShellOptions,
 	ShellResult,
+	AgentDefinition,
 	Skill,
-	Role,
+	SkillDefinition,
+	SkillResources,
+	SkillSource,
 	AgentConfig,
 	ModelConfig,
 	ToolDef,
+	ToolDefinition,
 	ToolParameters,
 	ThinkingLevel,
 	ProviderSettings,
 } from './types.ts';
 
 export { Type } from '@earendil-works/pi-ai';
+export { defineAgent } from './definition.ts';
+export { defineTool } from './tool.ts';
 export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
 export { connectMcpServer } from './mcp.ts';
 export { ResultUnavailableError } from './result.ts';

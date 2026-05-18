@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/runtime';
+import type { ActionContext } from '@flue/runtime';
 import { local } from '../connectors/local.ts';
 
 export const triggers = { webhook: true };
@@ -9,7 +9,7 @@ export const triggers = { webhook: true };
  * Exercises every SessionEnv method without invoking a model, plus the
  * env-allowlist semantics: only declared env vars reach the spawned shell.
  */
-export default async function ({ init }: FlueContext) {
+export default async function ({ init }: ActionContext) {
 	// Sentinel host var that the env-allowlist check below confirms does
 	// NOT cross the sandbox boundary. Restored in `finally` for re-runs.
 	const sentinelKey = '__FLUE_LOCAL_SMOKE_SENTINEL__';

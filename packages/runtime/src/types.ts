@@ -12,36 +12,37 @@ export type { ThinkingLevel };
  */
 export type PromptImage = ImageContent;
 
-// ─── Skill ──────────────────────────────────────────────────────────────────
+// ─── Agent Resources ────────────────────────────────────────────────────────
 
-/**
- * A skill registered with the session. The body of the skill (everything
- * below the frontmatter in `SKILL.md`) is intentionally NOT cached in
- * memory — at call time, the model reads the file from disk via its
- * filesystem tools. That keeps relative references inside the skill
- * resolvable from where they live, and lets users edit skill files
- * mid-session without re-initialising the agent.
- */
-export interface Skill {
-	name: string;
-	description: string;
+export type SkillSource = { kind: 'local'; path: string };
+
+export interface SkillResources {
+	scripts?: Record<string, string>;
+	references?: Record<string, string>;
+	assets?: Record<string, string>;
 }
 
-// ─── Role ───────────────────────────────────────────────────────────────────
-
-export interface Role {
+export interface SkillDefinition {
 	name: string;
 	description: string;
-	/** Markdown body of the role file (below the frontmatter). */
-	instructions: string;
+	body: string;
+	resources?: SkillResources;
+	license?: string;
+	compatibility?: string;
+	metadata?: Record<string, string>;
+	source: SkillSource;
+}
+
+export type Skill = SkillDefinition;
+
+export interface AgentDefinition {
+	name: string;
+	description?: string;
 	model?: string;
-	/**
-	 * Reasoning effort to apply to model calls performed under this role. Forwarded
-	 * to pi-ai's `SimpleStreamOptions.reasoning`. Models without reasoning support
-	 * silently ignore it. Pi-ai clamps the requested level against
-	 * `Model.thinkingLevelMap` per provider. Use `"off"` to explicitly disable.
-	 */
-	thinkingLevel?: ThinkingLevel;
+	instructions?: string;
+	skills?: readonly SkillDefinition[];
+	tools?: readonly ToolDefinition[];
+	subagents?: readonly AgentDefinition[];
 }
 
 // ─── Custom Tools ───────────────────────────────────────────────────────────
@@ -54,7 +55,7 @@ export type ToolParameters = TSchema | Record<string, unknown>;
  * Parameters are JSON Schema-compatible. Use `Type` from `@flue/runtime` for
  * hand-written tools, or pass schemas discovered from adapters such as MCP.
  */
-export interface ToolDef<TParams extends ToolParameters = ToolParameters> {
+export interface ToolDefinition<TParams extends ToolParameters = ToolParameters> {
 	/** Must be unique across built-in and custom tools. */
 	name: string;
 	/** Tells the LLM when and how to use this tool. */
@@ -64,6 +65,8 @@ export interface ToolDef<TParams extends ToolParameters = ToolParameters> {
 	/** Returns a string result sent back to the LLM. Thrown errors become tool errors. */
 	execute: (args: Record<string, any>, signal?: AbortSignal) => Promise<string>;
 }
+
+export type ToolDef<TParams extends ToolParameters = ToolParameters> = ToolDefinition<TParams>;
 
 // ─── File Stat ──────────────────────────────────────────────────────────────
 
@@ -235,25 +238,16 @@ export interface ProviderSettings {
 // ─── Agent Config (internal, passed to the harness at runtime) ──────────────
 
 export interface AgentConfig {
-	/** Discovered at runtime from AGENTS.md + .agents/skills/ in the session's cwd. */
 	systemPrompt: string;
-	/** Discovered at runtime from .agents/skills/ in the session's cwd. */
-	skills: Record<string, Skill>;
-	roles: Record<string, Role>;
-	/**
-	 * Agent-wide default model. Undefined when the user explicitly passes
-	 * `init({ model: false })`, so each model-using call must resolve one from a
-	 * role or call-site override.
-	 */
+	skills: Record<string, SkillDefinition>;
+	subagents: Record<string, AgentDefinition>;
+	/** Agent-wide default model. Undefined only when no invocation-level or agent model exists. */
 	model: Model<any> | undefined;
-	/** Agent-wide default role. Per-session and per-call roles override this. */
-	role?: string;
 	/** Resolve model config to a Model instance. Throws on invalid model strings. */
 	resolveModel: (model: ModelConfig | undefined) => Model<any> | undefined;
 	/**
-	 * Agent-wide default reasoning effort. Per-call and role-level values
-	 * override this. The harness substitutes `"medium"` when unset; see
-	 * `AgentInit.thinkingLevel` for the full precedence rules.
+	 * Agent-wide default reasoning effort. Per-call values override this.
+	 * The harness substitutes `"medium"` when unset.
 	 */
 	thinkingLevel?: ThinkingLevel;
 	/**
@@ -267,14 +261,14 @@ export interface AgentConfig {
 
 export type ModelConfig = string | false;
 
-// ─── Flue Context (passed to agent handlers) ───────────────────────────────
+// ─── Action Context (passed to agent handlers) ─────────────────────────────
 
 /**
- * Request context passed to agent handler functions. Pass type parameters
+ * Request context passed to action handler functions. Pass type parameters
  * to type `payload` and `env` (e.g. the `Env` interface generated by
  * `wrangler types`). Compile-time only — no runtime validation of `payload`.
  */
-export interface FlueContext<TPayload = any, TEnv = Record<string, any>> {
+export interface ActionContext<TPayload = any, TEnv = Record<string, any>> {
 	/** Agent instance id from the URL `<id>` segment. */
 	readonly id: string;
 	/** Server-minted id for this HTTP invocation. */
@@ -310,6 +304,9 @@ export interface FlueContext<TPayload = any, TEnv = Record<string, any>> {
 	init(options: AgentInit): Promise<FlueHarness>;
 }
 
+/** @deprecated Use `ActionContext` instead. `FlueContext` is kept as an alias for one minor version and will be removed. */
+export type FlueContext<TPayload = any, TEnv = Record<string, any>> = ActionContext<TPayload, TEnv>;
+
 export interface FlueLogger {
 	info(message: string, attributes?: Record<string, unknown>): void;
 	warn(message: string, attributes?: Record<string, unknown>): void;
@@ -337,38 +334,22 @@ export interface AgentInit {
 	/** Defaults to platform store (in-memory on Node, DO SQLite on Cloudflare). */
 	persist?: SessionStore;
 
+	/** Defined agent to invoke. Inline resources below are additive. */
+	agent?: AgentDefinition;
+
 	/**
-	 * Default model for this harness. Applies to all prompt(), skill(), and task()
-	 * calls unless overridden by a role or at the call site. Pass `false` to require every
-	 * model-using call to resolve a model from a role or call-site override.
-	 *
+	 * Default model for this harness. Defaults to the agent's model when present.
 	 * Format: `'provider/modelId'` (e.g. `'anthropic/claude-opus-4-20250514'`).
-	 *
-	 * Precedence (highest wins): per-call `model` > role `model` > harness `model`.
 	 */
-	model: ModelConfig;
+	model?: ModelConfig;
 
-	/** Harness-wide default role. Overridden by session-level or per-call roles. */
-	role?: string;
-
-	/**
-	 * Default reasoning effort for every prompt(), skill(), and task() call.
-	 * Forwarded to pi-ai's `SimpleStreamOptions.reasoning`. Pi-ai clamps the
-	 * requested level against the model's `thinkingLevelMap`; non-reasoning
-	 * models effectively run with reasoning off after clamping.
-	 *
-	 * Precedence (highest wins): per-call `thinkingLevel` > role
-	 * `thinkingLevel` > harness `thinkingLevel`. When nothing is set, the harness
-	 * defaults to `"medium"`. Use `"off"` to explicitly disable reasoning on
-	 * models that support it.
-	 */
+	/** Default reasoning effort for every prompt(), skill(), and task() call. */
 	thinkingLevel?: ThinkingLevel;
 
-	/**
-	 * Harness-wide tools. Every prompt(), skill(), and task() call can use these.
-	 * Per-call tools are added on top and must not reuse the same names.
-	 */
-	tools?: ToolDef[];
+	/** Agent resources added on top of resources bundled into `agent`. */
+	skills?: SkillDefinition[];
+	tools?: ToolDefinition[];
+	subagents?: AgentDefinition[];
 
 	/**
 	 * Compaction tuning. When context approaches the model's window limit,
@@ -414,10 +395,7 @@ export interface FlueSessions {
 	delete(name?: string): Promise<void>;
 }
 
-export interface SessionOptions {
-	/** Session-wide default role. Per-call roles override this. */
-	role?: string;
-}
+export interface SessionOptions {}
 
 // ─── Flue Session ───────────────────────────────────────────────────────────
 
@@ -457,14 +435,14 @@ export interface FlueSession {
 	readonly fs: FlueFs;
 
 	skill<S extends v.GenericSchema>(
-		name: string,
+		skill: SkillDefinition | string,
 		options: SkillOptions<S> & { result: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
 	skill<S extends v.GenericSchema>(
-		name: string,
+		skill: SkillDefinition | string,
 		options: SkillOptions<S> & { schema: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
-	skill(name: string, options?: SkillOptions): CallHandle<PromptResponse>;
+	skill(skill: SkillDefinition | string, options?: SkillOptions): CallHandle<PromptResponse>;
 
 	task<S extends v.GenericSchema>(
 		text: string,
@@ -530,7 +508,7 @@ export interface PromptUsage {
 
 /**
  * Identifies the model that Flue selected for the call (after applying the
- * call > role > agent precedence). When more than one model runs during the
+ * call > agent precedence). When more than one model runs during the
  * call (rare; e.g. cross-model flows), this reflects the model in effect for
  * the call's primary turn.
  */
@@ -620,8 +598,7 @@ export interface PromptOptions<S extends v.GenericSchema | undefined = undefined
 	 * @deprecated Use `result` for structured output schemas.
 	 */
 	schema?: S;
-	tools?: ToolDef[];
-	role?: string;
+	tools?: ToolDefinition[];
 	/** e.g., 'anthropic/claude-sonnet-4-20250514' */
 	model?: string;
 	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */
@@ -639,8 +616,7 @@ export interface SkillOptions<S extends v.GenericSchema | undefined = undefined>
 	 * @deprecated Use `result` for structured output schemas.
 	 */
 	schema?: S;
-	tools?: ToolDef[];
-	role?: string;
+	tools?: ToolDefinition[];
 	model?: string;
 	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */
 	thinkingLevel?: ThinkingLevel;
@@ -656,8 +632,8 @@ export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> 
 	 * @deprecated Use `result` for structured output schemas.
 	 */
 	schema?: S;
-	tools?: ToolDef[];
-	role?: string;
+	tools?: ToolDefinition[];
+	agent?: AgentDefinition;
 	model?: string;
 	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */
 	thinkingLevel?: ThinkingLevel;
@@ -685,8 +661,7 @@ export interface ShellResult {
 // ─── Sandbox ────────────────────────────────────────────────────────────────
 
 export interface SessionToolFactoryOptions {
-	/** Roles available on the agent. */
-	roles: Record<string, Role>;
+	subagents: Record<string, AgentDefinition>;
 }
 
 /** Connector-supplied model-facing tools. Flue appends `task` separately. */
@@ -759,8 +734,8 @@ export type FlueEvent = (
 			isError: boolean;
 			error?: unknown;
 		}
-	| { type: 'task_start'; taskId: string; prompt: string; role?: string; cwd?: string }
-	| { type: 'task'; taskId: string; isError: boolean; result?: any; durationMs: number }
+	| { type: 'task_start'; taskId: string; prompt: string; agent?: string; cwd?: string }
+	| { type: 'task'; taskId: string; agent?: string; isError: boolean; result?: any; durationMs: number }
 	| {
 			type: 'compaction_start';
 			reason: 'threshold' | 'overflow' | 'manual';

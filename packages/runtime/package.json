@@ -5,7 +5,7 @@
 	"license": "Apache-2.0",
 	"exports": {
 		".": {
-			"types": "./dist/index.d.mts",
+			"types": "./types/index.d.ts",
 			"import": "./dist/index.mjs"
 		},
 		"./app": {
@@ -30,9 +30,10 @@
 		}
 	},
 	"main": "./dist/index.mjs",
-	"types": "./dist/index.d.mts",
+	"types": "./types/index.d.ts",
 	"files": [
-		"dist"
+		"dist",
+		"types"
 	],
 	"engines": {
 		"node": ">=22.18.0"

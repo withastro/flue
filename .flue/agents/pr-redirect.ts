@@ -26,7 +26,7 @@
  * before adding any secret to the sandbox.
  */
 
-import type { FlueContext, FlueSession } from '@flue/runtime';
+import type { ActionContext, FlueSession } from '@flue/runtime';
 import { local } from '../connectors/local.ts';
 import {
 	closePullRequest,
@@ -572,7 +572,7 @@ function extractJson(text: string): unknown {
 
 // ─── Entry point ────────────────────────────────────────────────────────────
 
-export default async function ({ init, payload, log }: FlueContext) {
+export default async function ({ init, payload, log }: ActionContext) {
 	const prNumber = (payload as { prNumber?: number } | undefined)?.prNumber;
 	if (typeof prNumber !== 'number' || !Number.isInteger(prNumber)) {
 		throw new Error(`payload.prNumber required (got: ${JSON.stringify(payload)})`);

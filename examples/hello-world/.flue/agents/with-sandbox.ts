@@ -1,10 +1,10 @@
-import type { FlueContext } from '@flue/runtime';
+import type { ActionContext } from '@flue/runtime';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
 export const triggers = { webhook: true };
 
-export default async function ({ init }: FlueContext) {
+export default async function ({ init }: ActionContext) {
 	// User owns the Daytona SDK relationship — create and configure the sandbox directly
 	const client = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
 	const sandbox = await client.create();

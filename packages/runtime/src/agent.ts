@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { type Static, Type } from '@earendil-works/pi-ai';
-import type { Role, SessionEnv } from './types.ts';
+import type { AgentDefinition, SessionEnv } from './types.ts';
 
 const MAX_READ_LINES = 2000;
 const MAX_READ_BYTES = 50 * 1024;
@@ -22,7 +22,7 @@ export const BUILTIN_TOOL_NAMES = new Set([
 export interface TaskToolParams {
 	prompt: string;
 	description?: string;
-	role?: string;
+	agent?: string;
 	cwd?: string;
 }
 
@@ -30,7 +30,7 @@ export interface TaskToolResultDetails {
 	taskId: string;
 	session: string;
 	messageId?: string;
-	role?: string;
+	agent?: string;
 	cwd?: string;
 }
 
@@ -39,7 +39,7 @@ export interface CreateToolsOptions {
 		params: TaskToolParams,
 		signal?: AbortSignal,
 	) => Promise<AgentToolResult<TaskToolResultDetails>>;
-	roles?: Record<string, Role>;
+	subagents?: Record<string, AgentDefinition>;
 }
 
 export function createTools(env: SessionEnv, options?: CreateToolsOptions): AgentTool<any>[] {
@@ -51,7 +51,7 @@ export function createTools(env: SessionEnv, options?: CreateToolsOptions): Agen
 		createGrepTool(env),
 		createGlobTool(env),
 	];
-	if (options?.task) tools.push(createTaskTool(options.task, options.roles ?? {}));
+	if (options?.task) tools.push(createTaskTool(options.task, options.subagents ?? {}));
 	return tools;
 }
 
@@ -276,19 +276,25 @@ function createBashTool(env: SessionEnv): AgentTool<typeof BashParams> {
 	};
 }
 
-const TaskParams = Type.Object({
-	description: Type.Optional(
-		Type.String({ description: 'Short human-readable label for the delegated work' }),
-	),
-	prompt: Type.String({ description: 'Focused instructions for the child agent' }),
-	role: Type.Optional(Type.String({ description: 'Role to use for the child agent' })),
-	cwd: Type.Optional(
-		Type.String({
-			description:
-				'Working directory for the child agent. AGENTS.md and skills are discovered from here.',
-		}),
-	),
-});
+function createTaskParams(subagentNames: string[]) {
+	return Type.Object({
+		description: Type.Optional(
+			Type.String({ description: 'Short human-readable label for the delegated work' }),
+		),
+		prompt: Type.String({ description: 'Focused instructions for the child agent' }),
+		...(subagentNames.length > 0
+			? {
+					agent: Type.Optional(
+						Type.String({
+							description: 'Declared subagent to run this task with.',
+							enum: subagentNames,
+						}),
+					),
+				}
+			: {}),
+		cwd: Type.Optional(Type.String({ description: 'Working directory for the child agent.' })),
+	});
+}
 
 /** Build Flue's framework-owned `task` tool. */
 export function createTaskTool(
@@ -296,13 +302,14 @@ export function createTaskTool(
 		params: TaskToolParams,
 		signal?: AbortSignal,
 	) => Promise<AgentToolResult<TaskToolResultDetails>>,
-	roles: Record<string, Role>,
-): AgentTool<typeof TaskParams> {
-	const roleNames = Object.keys(roles);
-	const roleDescription =
-		roleNames.length > 0
-			? ` Available roles: ${roleNames.join(', ')}.`
-			: ' No roles are currently defined.';
+	subagents: Record<string, AgentDefinition>,
+): AgentTool<any> {
+	const subagentNames = Object.keys(subagents);
+	const taskParams = createTaskParams(subagentNames);
+	const subagentDescription =
+		subagentNames.length > 0
+			? ` Declared subagents: ${subagentNames.join(', ')}.`
+			: '';
 
 	return {
 		name: 'task',
@@ -311,11 +318,11 @@ export function createTaskTool(
 			'Delegate a focused task to a detached child agent with its own context. ' +
 			'Use this for independent research, file exploration, or parallel work. ' +
 			'The task returns only its final answer to this conversation.' +
-			roleDescription,
-		parameters: TaskParams,
-		async execute(_toolCallId: string, params: Static<typeof TaskParams>, signal?: AbortSignal) {
+			subagentDescription,
+		parameters: taskParams,
+		async execute(_toolCallId: string, params: unknown, signal?: AbortSignal) {
 			throwIfAborted(signal);
-			return runTask(params, signal);
+			return runTask(params as TaskToolParams, signal);
 		},
 	};
 }

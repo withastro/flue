@@ -311,8 +311,8 @@ interface WatcherHandle {
  * Watch the root for changes. Uses `fs.watch` recursive (Node 20+).
  *
  * Watched roots:
- *   - `<root>` — agents/, roles/, AGENTS.md, .agents/skills/, plus
- *     `.flue/agents/` and `.flue/roles/` if the root uses the .flue/
+ *   - `<root>` — agents/, tagged markdown sources, plus
+ *     `.flue/agents/` if the root uses the .flue/
  *     source layout.
  *   - For Cloudflare: also `<root>/wrangler.jsonc` (and `.json`),
  *     since changes there require a worker restart.
@@ -675,7 +675,7 @@ class CloudflareReloader implements DevReloader {
 	 *   - Changes to `agents/*.ts` — these MAY change the exported `triggers`,
 	 *     so we have to re-parse them. (Plain body edits redo a tiny amount
 	 *     of work but the rebuild is cheap and idempotent.)
-	 *   - Changes to `roles/*.md` — roles are baked into the entry as JSON.
+	 *   - Changes to tagged markdown import targets — the shared skill/text bundler regenerates output.
 	 *   - Adds/removes/edits of `app.{ts,mts,js,mjs}` — discovery flips the
 	 *     entry between the user-app form and the default-app fallback,
 	 *     and the import path is baked into `_entry.ts`. Body edits are
@@ -685,9 +685,8 @@ class CloudflareReloader implements DevReloader {
 	 *   - Changes to the user's `wrangler.jsonc` — affects the merged config.
 	 *
 	 * Notes we explicitly DO ignore for rebuild purposes (wrangler handles
-	 * them): edits to imported source files outside of `agents/`/`roles/`/
-	 * `app.*`, AGENTS.md, and `.agents/skills/` (those are runtime-
-	 * discovered, not baked into the entry).
+	 * them): edits to imported source files outside of `agents/`, tagged markdown,
+	 * and `app.*`.
 	 */
 	shouldRebuildOn(relPath: string): boolean {
 		// Env-file changes come through the watcher as absolute paths — match
@@ -708,7 +707,7 @@ class CloudflareReloader implements DevReloader {
 		// only one is ever in use for a given root, so accepting both
 		// is harmless.
 		if (normalized.startsWith('agents/') || normalized.startsWith('.flue/agents/')) return true;
-		if (normalized.startsWith('roles/') || normalized.startsWith('.flue/roles/')) return true;
+		if (/\.(md|markdown)$/i.test(normalized)) return true;
 		if (/^(?:\.flue\/)?app\.(?:ts|mts|js|mjs)$/.test(normalized)) return true;
 		return false;
 	}

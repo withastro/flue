@@ -1,3 +1,13 @@
+import type { ActionContext } from '@flue/runtime';
+
+export const triggers = {};
+
+export default async function (_ctx: ActionContext) {
+	throw new Error('[flue] This example returns in Phase 3 with init({ loadFromSandbox: true }).');
+}
+
+
+
 /**
  * Demonstrates the `getShellSandbox` + `hydrateFromBucket` flow that
  * replaces the old (buggy) `getVirtualSandbox(env.BUCKET)` pattern.
@@ -24,7 +34,6 @@
  *   - `wrangler deploy` to a preview environment.
  * See the example's README.md for the full setup, the seed-r2.sh helper,
  * and the migration / fallback options if you don't have Loader access.
- */
 import type { FlueContext } from '@flue/runtime';
 import {
 	getDefaultWorkspace,
@@ -73,3 +82,4 @@ export default async function ({ init, env }: FlueContext<unknown, Env>) {
 
 	return result.data;
 }
+*/

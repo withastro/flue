@@ -1,4 +1,4 @@
-import type { FlueContext } from '@flue/runtime';
+import type { ActionContext } from '@flue/runtime';
 
 export const triggers = { webhook: true };
 
@@ -11,7 +11,7 @@ export const triggers = { webhook: true };
  * - pre-aborted signals reject before any work
  * - aborts tear down in-flight bash tool commands
  */
-export default async function ({ init }: FlueContext) {
+export default async function ({ init }: ActionContext) {
 	const harness = await init({ model: 'anthropic/claude-haiku-4-5' });
 	const session = await harness.session();
 

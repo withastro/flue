@@ -72,9 +72,9 @@ export type FlueEvent = (
 	| { type: 'tool_start'; toolName: string; toolCallId: string; args?: unknown }
 	| { type: 'tool_call'; toolName: string; toolCallId: string; isError: boolean; result?: unknown; durationMs: number }
 	| { type: 'turn'; durationMs: number; model?: string; usage?: PromptUsage; stopReason?: string; isError: boolean; error?: unknown }
-	| { type: 'task_start'; taskId: string; prompt: string; role?: string; cwd?: string }
-	| { type: 'task'; taskId: string; isError: boolean; result?: unknown; durationMs: number }
-	| { type: 'compaction_start'; reason: 'threshold' | 'overflow'; estimatedTokens: number }
+	| { type: 'task_start'; taskId: string; prompt: string; agent?: string; cwd?: string }
+	| { type: 'task'; taskId: string; agent?: string; isError: boolean; result?: unknown; durationMs: number }
+	| { type: 'compaction_start'; reason: 'threshold' | 'overflow' | 'manual'; estimatedTokens: number }
 	| { type: 'compaction'; messagesBefore: number; messagesAfter: number; durationMs: number; usage?: PromptUsage }
 	| { type: 'operation_start'; operationId: string; operationKind: OperationKind }
 	| { type: 'operation'; operationId: string; operationKind: OperationKind; durationMs: number; isError: boolean; error?: unknown; result?: unknown; usage?: PromptUsage }

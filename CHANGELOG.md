@@ -6,11 +6,15 @@
 
 - **Cloudflare shell sandbox connector.** `flue add cloudflare-shell` now installs the `getShellSandbox({ workspace, loader })`, `getDefaultWorkspace()`, and `hydrateFromBucket()` connector file. The connector wires `@cloudflare/shell` Workspaces into Flue through a codemode `code` tool backed by a Worker Loader binding.
 - **Local host sandbox connector.** `flue add local` now installs the host-bound `local()` sandbox factory for Node targets, including the explicit env allowlist behavior that keeps host secrets out of shell commands unless the agent author opts in.
+- **Agents, tools, and skills are values.** `defineAgent()` and `defineTool()` establish the new agent-as-value authoring model. `init({ agent })` invokes a definition, `session.skill(skillValue)` runs bundled skill values, and declared subagents can be delegated through `session.task({ agent })` or the built-in task tool.
+- **Tagged markdown bundling.** The CLI now inlines `SKILL.md` imports tagged with `with { type: 'skill' }` and prose imports tagged with `with { type: 'text' }` before Node or Wrangler bundling. Skill support files are bundled into `resources`; large single resources warn at build time.
 
 ### Breaking Changes
 
 - **Sandbox factories moved out of `@flue/runtime`.** Replace `import { local } from '@flue/runtime/node'` with a project-local connector installed by `flue add local`. Replace `getShellSandbox`, `getDefaultWorkspace`, and `hydrateFromBucket` imports from `@flue/runtime/cloudflare` with the connector installed by `flue add cloudflare-shell`.
 - **Built-in tool constructors are no longer root exports.** `createTools` and `BUILTIN_TOOL_NAMES` were internal runtime plumbing rather than supported authoring APIs, so they are no longer re-exported from `@flue/runtime`.
+- **Instructions and roles moved to agent definitions.** `init({ instructions })` now errors with a `defineAgent()` migration message. Roles are removed from runtime APIs; use explicit subagents and `task({ agent })` delegation instead. `FlueContext` remains as a deprecated type alias for `ActionContext` for one minor version.
+- **Automatic sandbox skill/context discovery is paused.** Phase 1 no longer discovers sandbox `AGENTS.md` or `.agents/skills/` during init. The opt-in `loadFromSandbox` replacement arrives in Phase 3.
 
 ## 0.7.0 - 2026-05-18
 
