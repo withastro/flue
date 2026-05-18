@@ -53,11 +53,11 @@ export interface HandleAgentOptions {
 	/** Standard Fetch Request. */
 	request: Request;
 	/**
-	 * The agent name (URL segment). Used only in webhook completion / error
+	 * The action name (URL segment). Used only in webhook completion / error
 	 * log lines — routing has already happened by the time we get here.
 	 */
-	agentName: string;
-	/** Agent id (URL segment / DO room name). */
+	actionName: string;
+	/** Action instance id (URL segment / DO room name). */
 	id: string;
 	/** The agent's default-export handler. */
 	handler: AgentHandler;
@@ -118,10 +118,10 @@ export interface HandleAgentOptions {
  * handler) get framed as in-stream `error` events instead.
  *
  * Caller is responsible for routing — this function assumes the request has
- * already been validated as a POST against a registered agent.
+ * already been validated as a POST against a registered action.
  */
 export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Response> {
-	const { request, agentName, id, handler, createContext, runStore, runSubscribers, runRegistry } =
+	const { request, actionName, id, handler, createContext, runStore, runSubscribers, runRegistry } =
 		opts;
 	const startWebhook = opts.startWebhook ?? defaultStartWebhook;
 	const runHandler = opts.runHandler ?? defaultRunHandler;
@@ -139,7 +139,7 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 
 		if (isWebhook) {
 			return runWebhookMode({
-				agentName,
+				actionName,
 				id,
 				runId,
 				handler,
@@ -155,7 +155,7 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 
 		if (isSSE) {
 			return runSseMode({
-				agentName,
+				actionName,
 				id,
 				runId,
 				handler,
@@ -170,7 +170,7 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 		}
 
 		return runSyncMode({
-			agentName,
+			actionName,
 			id,
 			runId,
 			handler,
@@ -194,7 +194,7 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 // ─── Mode implementations ───────────────────────────────────────────────────
 
 interface ModeOptions {
-	agentName: string;
+	actionName: string;
 	id: string;
 	runId: string;
 	handler: AgentHandler;
@@ -208,7 +208,7 @@ interface ModeOptions {
 }
 
 interface WebhookOptions {
-	agentName: string;
+	actionName: string;
 	id: string;
 	runId: string;
 	handler: AgentHandler;
@@ -223,7 +223,7 @@ interface WebhookOptions {
 
 async function runWebhookMode(opts: WebhookOptions): Promise<Response> {
 	const {
-		agentName,
+		actionName,
 		id,
 		runId,
 		handler,
@@ -239,7 +239,7 @@ async function runWebhookMode(opts: WebhookOptions): Promise<Response> {
 	// Webhook mode relies on `startWebhook` for target-specific execution
 	// context (`runFiber` on Cloudflare), so it does not also use `runHandler`.
 	const lifecycle = await createRunLifecycle({
-		agentName,
+		actionName,
 		id,
 		runId,
 		payload,
@@ -256,12 +256,12 @@ async function runWebhookMode(opts: WebhookOptions): Promise<Response> {
 		(result) => {
 			console.log(
 				'[flue] Webhook handler complete:',
-				agentName,
+				actionName,
 				result !== undefined ? JSON.stringify(result) : '(no return)',
 			);
 		},
 		(err) => {
-			console.error('[flue] Webhook handler error:', agentName, err);
+			console.error('[flue] Webhook handler error:', actionName, err);
 		},
 	);
 
@@ -278,7 +278,7 @@ export const SSE_HEARTBEAT_MS = 15_000;
 
 function runSseMode(opts: ModeOptions): Response {
 	const {
-		agentName,
+		actionName,
 		id,
 		runId,
 		handler,
@@ -327,7 +327,7 @@ function runSseMode(opts: ModeOptions): Response {
 
 	(async () => {
 		const lifecycle = await createRunLifecycle({
-			agentName,
+			actionName,
 			id,
 			runId,
 			payload,
@@ -378,7 +378,7 @@ function runSseMode(opts: ModeOptions): Response {
 
 async function runSyncMode(opts: ModeOptions): Promise<Response> {
 	const {
-		agentName,
+		actionName,
 		id,
 		runId,
 		handler,
@@ -391,7 +391,7 @@ async function runSyncMode(opts: ModeOptions): Promise<Response> {
 		runRegistry,
 	} = opts;
 	const lifecycle = await createRunLifecycle({
-		agentName,
+		actionName,
 		id,
 		runId,
 		payload,
@@ -416,7 +416,7 @@ async function runSyncMode(opts: ModeOptions): Promise<Response> {
 // ─── Run lifecycle ──────────────────────────────────────────────────────────
 
 interface RunLifecycleOptions {
-	agentName: string;
+	actionName: string;
 	id: string;
 	runId: string;
 	payload: unknown;
@@ -443,7 +443,7 @@ async function createRunLifecycle(options: RunLifecycleOptions): Promise<RunLife
 			runStore.createRun({
 				runId: options.runId,
 				instanceId: options.id,
-				agentName: options.agentName,
+				actionName: options.actionName,
 				startedAt,
 				payload: options.payload,
 			}),
@@ -452,7 +452,7 @@ async function createRunLifecycle(options: RunLifecycleOptions): Promise<RunLife
 	if (didCreateRun) await safeRegistry('recordRunStart', () =>
 		options.runRegistry?.recordRunStart({
 			runId: options.runId,
-			agentName: options.agentName,
+			actionName: options.actionName,
 			instanceId: options.id,
 			startedAt,
 		}),
@@ -486,7 +486,7 @@ function emitRunStart(lifecycle: RunLifecycle): void {
 		type: 'run_start',
 		runId: lifecycle.runId,
 		instanceId: lifecycle.id,
-		agentName: lifecycle.agentName,
+		actionName: lifecycle.actionName,
 		startedAt: lifecycle.startedAt,
 		payload: lifecycle.payload,
 	});

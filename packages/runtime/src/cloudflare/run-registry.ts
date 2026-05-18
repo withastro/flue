@@ -63,7 +63,7 @@ class CloudflareRunRegistry implements RunRegistry {
 	async listRuns(opts: ListRunsOpts = {}): Promise<ListRunsResponse> {
 		const params = new URLSearchParams();
 		if (opts.status) params.set('status', opts.status);
-		if (opts.agentName) params.set('agent', opts.agentName);
+		if (opts.actionName) params.set('agent', opts.actionName);
 		if (opts.instanceId) params.set('instance', opts.instanceId);
 		if (opts.limit !== undefined) params.set('limit', String(opts.limit));
 		if (opts.cursor) params.set('cursor', opts.cursor);
@@ -80,7 +80,7 @@ class CloudflareRunRegistry implements RunRegistry {
 
 	async listInstances(opts: ListInstancesOpts = {}): Promise<ListInstancesResponse> {
 		const params = new URLSearchParams();
-		if (opts.agentName) params.set('agent', opts.agentName);
+		if (opts.actionName) params.set('agent', opts.actionName);
 		if (opts.limit !== undefined) params.set('limit', String(opts.limit));
 		if (opts.cursor) params.set('cursor', opts.cursor);
 		const qs = params.toString();

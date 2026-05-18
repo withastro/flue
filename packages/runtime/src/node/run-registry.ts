@@ -45,14 +45,14 @@ export class InMemoryRunRegistry implements RunRegistry {
 
 		const pointer: RunPointer = {
 			runId: input.runId,
-			agentName: input.agentName,
+			actionName: input.actionName,
 			instanceId: input.instanceId,
 			status: 'active',
 			startedAt: input.startedAt,
 		};
 		this.pointers.set(input.runId, pointer);
 
-		const key = instanceKey(input.agentName, input.instanceId);
+		const key = instanceKey(input.actionName, input.instanceId);
 		let instanceBucket = this.byInstance.get(key);
 		if (!instanceBucket) {
 			instanceBucket = new Set();
@@ -73,7 +73,7 @@ export class InMemoryRunRegistry implements RunRegistry {
 			durationMs: input.durationMs,
 			isError: input.isError,
 		});
-		this.pruneCompletedRunsForInstance(pointer.agentName, pointer.instanceId);
+		this.pruneCompletedRunsForInstance(pointer.actionName, pointer.instanceId);
 	}
 
 	async lookupRun(runId: string): Promise<RunPointer | null> {
@@ -104,15 +104,15 @@ export class InMemoryRunRegistry implements RunRegistry {
 
 		const all: InstancePointer[] = [...this.instances]
 			.map(parseInstanceKey)
-			.filter((i) => !opts.agentName || i.agentName === opts.agentName)
+			.filter((i) => !opts.actionName || i.actionName === opts.actionName)
 			.sort((a, b) => {
-				const byAgent = a.agentName.localeCompare(b.agentName);
-				return byAgent !== 0 ? byAgent : a.instanceId.localeCompare(b.instanceId);
+				const byAction = a.actionName.localeCompare(b.actionName);
+				return byAction !== 0 ? byAction : a.instanceId.localeCompare(b.instanceId);
 			});
 
 		const cursorKey = opts.cursor ? decodeInstanceCursor(opts.cursor) : undefined;
 		const startIndex = cursorKey
-			? all.findIndex((i) => instanceKey(i.agentName, i.instanceId) > cursorKey)
+			? all.findIndex((i) => instanceKey(i.actionName, i.instanceId) > cursorKey)
 			: 0;
 		if (startIndex === -1) return { instances: [] };
 
@@ -120,13 +120,13 @@ export class InMemoryRunRegistry implements RunRegistry {
 		const last = page.at(-1);
 		const nextCursor =
 			startIndex + limit < all.length && last
-				? encodeInstanceCursor(instanceKey(last.agentName, last.instanceId))
+				? encodeInstanceCursor(instanceKey(last.actionName, last.instanceId))
 				: undefined;
 		return { instances: page, nextCursor };
 	}
 
-	private pruneCompletedRunsForInstance(agentName: string, instanceId: string): void {
-		const key = instanceKey(agentName, instanceId);
+	private pruneCompletedRunsForInstance(actionName: string, instanceId: string): void {
+		const key = instanceKey(actionName, instanceId);
 		const bucket = this.byInstance.get(key);
 		if (!bucket) return;
 
@@ -151,18 +151,18 @@ export class InMemoryRunRegistry implements RunRegistry {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function instanceKey(agentName: string, instanceId: string): string {
-	return `${agentName}\0${instanceId}`;
+function instanceKey(actionName: string, instanceId: string): string {
+	return `${actionName}\0${instanceId}`;
 }
 
 function parseInstanceKey(key: string): InstancePointer {
-	const [agentName, instanceId] = key.split('\0');
-	return { agentName: agentName ?? '', instanceId: instanceId ?? '' };
+	const [actionName, instanceId] = key.split('\0');
+	return { actionName: actionName ?? '', instanceId: instanceId ?? '' };
 }
 
 function matchesListFilter(pointer: RunPointer, opts: ListRunsOpts): boolean {
 	if (opts.status && pointer.status !== opts.status) return false;
-	if (opts.agentName && pointer.agentName !== opts.agentName) return false;
+	if (opts.actionName && pointer.actionName !== opts.actionName) return false;
 	if (opts.instanceId && pointer.instanceId !== opts.instanceId) return false;
 	return true;
 }

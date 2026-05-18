@@ -133,7 +133,7 @@ observe((event, ctx) => {
 			scope.setLevel('error');
 			scope.setContext('flue.run', {
 				durationMs: event.durationMs,
-				agentName: tags['flue.agent'],
+				actionName: tags['flue.action'],
 				instanceId: ctx.id,
 			});
 			Sentry.captureException(reconstructError(event.error));
@@ -210,11 +210,11 @@ function flueCorrelationTags(
 	if (event.parentSession) tags['flue.parent_session'] = event.parentSession;
 	if (event.operationId) tags['flue.operation_id'] = event.operationId;
 	if (event.taskId) tags['flue.task_id'] = event.taskId;
-	// `run_start` carries the agent name; cache it via the most
+	// `run_start` carries the action name; cache it via the most
 	// common shape so other events can pick it up too. (Currently
-	// only `run_start` includes `agentName`, but we don't depend on
+	// only `run_start` includes `actionName`, but we don't depend on
 	// that — we read it defensively.)
-	if (event.type === 'run_start') tags['flue.agent'] = event.agentName;
+	if (event.type === 'run_start') tags['flue.action'] = event.actionName;
 	return tags;
 }
 

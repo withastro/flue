@@ -30,7 +30,7 @@ export class InMemoryRunStore implements RunStore {
 		instance.runs.set(input.runId, {
 			runId: input.runId,
 			instanceId: input.instanceId,
-			agentName: input.agentName,
+			actionName: input.actionName,
 			status: 'active',
 			startedAt: input.startedAt,
 		});

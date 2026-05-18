@@ -3,7 +3,7 @@ export type RunStatus = 'active' | 'completed' | 'errored';
 export interface RunRecord {
 	runId: string;
 	instanceId: string;
-	agentName: string;
+	actionName: string;
 	status: RunStatus;
 	startedAt: string;
 	endedAt?: string;
@@ -15,7 +15,7 @@ export interface RunRecord {
 
 export interface RunPointer {
 	runId: string;
-	agentName: string;
+	actionName: string;
 	instanceId: string;
 	status: RunStatus;
 	startedAt: string;
@@ -30,7 +30,7 @@ export interface AgentManifestEntry {
 }
 
 export interface InstanceSummary {
-	agentName: string;
+	actionName: string;
 	instanceId: string;
 }
 
@@ -61,7 +61,7 @@ export type FlueEvent = (
 			type: 'run_start';
 			runId: string;
 			instanceId: string;
-			agentName: string;
+			actionName: string;
 			startedAt: string;
 			payload: unknown;
 		}

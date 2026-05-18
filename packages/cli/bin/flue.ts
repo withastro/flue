@@ -1056,7 +1056,7 @@ async function run(args: RunArgs) {
 interface RunRecord {
 	runId: string;
 	instanceId: string;
-	agentName: string;
+	actionName: string;
 	status: 'active' | 'completed' | 'errored';
 	startedAt: string;
 	isError?: boolean;
@@ -1159,8 +1159,8 @@ function logsRenderPretty(event: Record<string, unknown>): void {
 	const type = event.type;
 	if (type === 'run_start') {
 		const runId = String(event.runId ?? '');
-		const agent = String(event.agentName ?? '');
-		console.error(`[flue] run:start    ${runId}  agent=${agent}`);
+		const action = String(event.actionName ?? '');
+		console.error(`[flue] run:start    ${runId}  action=${action}`);
 		return;
 	}
 	if (type === 'run_end') {

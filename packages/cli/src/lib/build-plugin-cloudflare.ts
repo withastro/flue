@@ -304,7 +304,7 @@ async function dispatchAgent(request, doInstance, agentName, handler) {
   if (runRoute) {
     return handleRunRouteRequest({
       request,
-      agentName,
+      actionName: agentName,
       id,
       runStore: createRunStoreForRequest(doInstance),
       runSubscribers,
@@ -314,7 +314,7 @@ async function dispatchAgent(request, doInstance, agentName, handler) {
 
   return handleAgentRequest({
     request,
-    agentName,
+    actionName: agentName,
     id,
     handler,
     runStore: createRunStoreForRequest(doInstance),
@@ -383,7 +383,7 @@ configureFlueRuntime({
   routeAgentRequest: (request, env) => routeAgentRequest(request, env),
   createRunRegistryForRequest,
   routeRunRequest: async (request, reqEnv, target) => {
-    const bindingName = agentBindingNameFromAgentName(target.agentName);
+    const bindingName = agentBindingNameFromAgentName(target.actionName);
     const binding = reqEnv?.[bindingName];
     if (!binding) return null;
     const stub = await getAgentByName(binding, target.instanceId);

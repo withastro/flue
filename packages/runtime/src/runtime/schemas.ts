@@ -16,7 +16,7 @@ export const ErrorEnvelopeSchema = v.object({
 export const RunRecordSchema = v.object({
 	runId: v.string(),
 	instanceId: v.string(),
-	agentName: v.string(),
+	actionName: v.string(),
 	status: RunStatusSchema,
 	startedAt: v.string(),
 	endedAt: v.optional(v.string()),
@@ -28,7 +28,7 @@ export const RunRecordSchema = v.object({
 
 export const RunPointerSchema = v.object({
 	runId: v.string(),
-	agentName: v.string(),
+	actionName: v.string(),
 	instanceId: v.string(),
 	status: RunStatusSchema,
 	startedAt: v.string(),
@@ -98,7 +98,7 @@ export const FlueEventSchema = v.union([
 		type: v.literal('run_start'),
 		runId: v.string(),
 		instanceId: v.string(),
-		agentName: v.string(),
+		actionName: v.string(),
 		startedAt: v.string(),
 		payload: v.unknown(),
 	}),
@@ -249,7 +249,7 @@ export const AgentManifestEntrySchema = v.object({
 });
 
 export const InstanceSummarySchema = v.object({
-	agentName: v.string(),
+	actionName: v.string(),
 	instanceId: v.string(),
 });
 
@@ -293,7 +293,7 @@ export const AdminInstanceRunsQuerySchema = v.object({
 
 export const AdminRunsQuerySchema = v.object({
 	status: v.optional(RunStatusSchema),
-	agentName: v.optional(v.string()),
+	actionName: v.optional(v.string()),
 	cursor: v.optional(v.string()),
 	limit: ListLimitSchema,
 });

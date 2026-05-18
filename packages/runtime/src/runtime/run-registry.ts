@@ -3,7 +3,7 @@ import type { RunStatus } from './run-store.ts';
 
 export interface RunPointer {
 	runId: string;
-	agentName: string;
+	actionName: string;
 	instanceId: string;
 	status: RunStatus;
 	startedAt: string;
@@ -14,7 +14,7 @@ export interface RunPointer {
 
 export interface RecordRunStartInput {
 	runId: string;
-	agentName: string;
+	actionName: string;
 	instanceId: string;
 	startedAt: string;
 }
@@ -28,7 +28,7 @@ export interface RecordRunEndInput {
 
 export interface ListRunsOpts {
 	status?: RunStatus;
-	agentName?: string;
+	actionName?: string;
 	instanceId?: string;
 	limit?: number;
 	cursor?: string;
@@ -40,13 +40,13 @@ export interface ListRunsResponse {
 }
 
 export interface ListInstancesOpts {
-	agentName?: string;
+	actionName?: string;
 	limit?: number;
 	cursor?: string;
 }
 
 export interface InstancePointer {
-	agentName: string;
+	actionName: string;
 	instanceId: string;
 }
 

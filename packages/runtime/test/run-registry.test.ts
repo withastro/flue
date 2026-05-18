@@ -19,7 +19,7 @@ describe('InMemoryRunRegistry', () => {
 
 		await registry.recordRunStart({
 			runId: 'run_a',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'inst-1',
 			startedAt: '2026-01-01T00:00:00.000Z',
 		});
@@ -27,7 +27,7 @@ describe('InMemoryRunRegistry', () => {
 		const a = await registry.lookupRun('run_a');
 		expect(a).toMatchObject({
 			runId: 'run_a',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'inst-1',
 			status: 'active',
 		});
@@ -52,7 +52,7 @@ describe('InMemoryRunRegistry', () => {
 		const registry = new InMemoryRunRegistry();
 		await registry.recordRunStart({
 			runId: 'run_err',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'inst-1',
 			startedAt: '2026-01-01T00:00:00.000Z',
 		});
@@ -67,12 +67,12 @@ describe('InMemoryRunRegistry', () => {
 		expect(done?.isError).toBe(true);
 	});
 
-	it('listRuns sorts descending by startedAt and filters by agentName', async () => {
+	it('listRuns sorts descending by startedAt and filters by actionName', async () => {
 		const registry = new InMemoryRunRegistry();
 		for (let i = 0; i < 5; i++) {
 			await registry.recordRunStart({
 				runId: `run_${i}`,
-				agentName: i % 2 === 0 ? 'hello' : 'greet',
+				actionName: i % 2 === 0 ? 'hello' : 'greet',
 				instanceId: `inst-${i}`,
 				startedAt: `2026-01-01T00:00:0${i}.000Z`,
 			});
@@ -83,9 +83,9 @@ describe('InMemoryRunRegistry', () => {
 		expect(all.runs[0]?.runId).toBe('run_4');
 		expect(all.runs[4]?.runId).toBe('run_0');
 
-		const helloOnly = await registry.listRuns({ agentName: 'hello' });
+		const helloOnly = await registry.listRuns({ actionName: 'hello' });
 		expect(helloOnly.runs).toHaveLength(3);
-		expect(helloOnly.runs.every((r) => r.agentName === 'hello')).toBe(true);
+		expect(helloOnly.runs.every((r) => r.actionName === 'hello')).toBe(true);
 	});
 
 	it('listRuns cursor pagination yields the full set with no dups', async () => {
@@ -93,7 +93,7 @@ describe('InMemoryRunRegistry', () => {
 		for (let i = 0; i < 5; i++) {
 			await registry.recordRunStart({
 				runId: `run_${i}`,
-				agentName: 'hello',
+				actionName: 'hello',
 				instanceId: `inst-${i}`,
 				startedAt: `2026-01-01T00:00:0${i}.000Z`,
 			});
@@ -120,32 +120,32 @@ describe('InMemoryRunRegistry', () => {
 		const registry = new InMemoryRunRegistry();
 		await registry.recordRunStart({
 			runId: 'r1',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'a',
 			startedAt: '2026-01-01T00:00:00.000Z',
 		});
 		await registry.recordRunStart({
 			runId: 'r2',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'b',
 			startedAt: '2026-01-01T00:00:01.000Z',
 		});
 		await registry.recordRunStart({
 			runId: 'r3',
-			agentName: 'greet',
+			actionName: 'greet',
 			instanceId: 'a',
 			startedAt: '2026-01-01T00:00:02.000Z',
 		});
 		await registry.recordRunStart({
 			runId: 'r4',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'a',
 			startedAt: '2026-01-01T00:00:03.000Z',
 		});
 
 		const out = await registry.listInstances();
 		expect(out.instances).toHaveLength(3);
-		expect(out.instances.map((i) => `${i.agentName}/${i.instanceId}`).sort()).toEqual([
+		expect(out.instances.map((i) => `${i.actionName}/${i.instanceId}`).sort()).toEqual([
 			'greet/a',
 			'hello/a',
 			'hello/b',
@@ -165,7 +165,7 @@ describe('InMemoryRunRegistry', () => {
 			const id = `run_${i}`;
 			await registry.recordRunStart({
 				runId: id,
-				agentName: 'hello',
+				actionName: 'hello',
 				instanceId: 'inst-1',
 				startedAt: `2026-01-01T00:00:0${i}.000Z`,
 			});
@@ -176,7 +176,7 @@ describe('InMemoryRunRegistry', () => {
 				isError: false,
 			});
 		}
-		const list = await registry.listRuns({ agentName: 'hello' });
+		const list = await registry.listRuns({ actionName: 'hello' });
 		expect(list.runs).toHaveLength(3);
 		expect(list.runs.map((r) => r.runId).sort()).toEqual(['run_2', 'run_3', 'run_4']);
 		expect(await registry.lookupRun('run_0')).toBeNull();
@@ -189,7 +189,7 @@ describe('InMemoryRunRegistry', () => {
 				const id = `run_i${instanceIndex}_${runIndex}`;
 				await registry.recordRunStart({
 					runId: id,
-					agentName: 'hello',
+					actionName: 'hello',
 					instanceId: `inst-${instanceIndex}`,
 					startedAt: `2026-01-01T00:00:${instanceIndex}${runIndex}.000Z`,
 				});
@@ -202,7 +202,7 @@ describe('InMemoryRunRegistry', () => {
 			}
 		}
 
-		const list = await registry.listRuns({ agentName: 'hello' });
+		const list = await registry.listRuns({ actionName: 'hello' });
 		expect(list.runs).toHaveLength(4);
 		expect(await registry.lookupRun('run_i1_0')).not.toBeNull();
 		expect(await registry.lookupRun('run_i2_0')).not.toBeNull();
@@ -213,12 +213,12 @@ describe('InMemoryRunRegistry', () => {
 		for (let i = 0; i < 5; i++) {
 			await registry.recordRunStart({
 				runId: `active_${i}`,
-				agentName: 'hello',
+				actionName: 'hello',
 				instanceId: 'x',
 				startedAt: `2026-01-01T00:00:0${i}.000Z`,
 			});
 		}
-		const stillActive = await registry.listRuns({ agentName: 'hello' });
+		const stillActive = await registry.listRuns({ actionName: 'hello' });
 		expect(stillActive.runs).toHaveLength(5);
 	});
 
@@ -227,7 +227,7 @@ describe('InMemoryRunRegistry', () => {
 		for (let i = 0; i < 3; i++) {
 			await registry.recordRunStart({
 				runId: `run_${i}`,
-				agentName: 'hello',
+				actionName: 'hello',
 				instanceId: 'a',
 				startedAt: `2026-01-01T00:00:0${i}.000Z`,
 			});
@@ -295,12 +295,12 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(bare.status).toBe(200);
 		const bareBody = (await bare.json()) as {
 			runId: string;
-			agentName: string;
+			actionName: string;
 			instanceId: string;
 			status: string;
 		};
 		expect(bareBody.runId).toBe(runId);
-		expect(bareBody.agentName).toBe('hello');
+		expect(bareBody.actionName).toBe('hello');
 		expect(bareBody.instanceId).toBe('inst-1');
 		expect(bareBody.status).toBe('completed');
 
@@ -606,7 +606,7 @@ describe('admin() routes', () => {
 		const instances = await app.fetch(new Request('http://localhost/admin/agents/hello/instances'));
 		expect(instances.status).toBe(200);
 		expect((await instances.json()) as unknown).toMatchObject({
-			items: [{ agentName: 'hello', instanceId: 'inst-1' }],
+			items: [{ actionName: 'hello', instanceId: 'inst-1' }],
 		});
 
 		const instanceRuns = await app.fetch(
@@ -615,7 +615,7 @@ describe('admin() routes', () => {
 		expect(instanceRuns.status).toBe(200);
 		expect(((await instanceRuns.json()) as { items: { runId: string }[] }).items[0]?.runId).toBe(runId);
 
-		const runs = await app.fetch(new Request('http://localhost/admin/runs?agentName=hello'));
+		const runs = await app.fetch(new Request('http://localhost/admin/runs?actionName=hello'));
 		expect(runs.status).toBe(200);
 		expect(((await runs.json()) as { items: { runId: string }[] }).items[0]?.runId).toBe(runId);
 
@@ -649,7 +649,7 @@ describe('admin() routes', () => {
 				recordRunEnd: async () => {},
 				lookupRun: async () => ({
 					runId: 'run_cf',
-					agentName: 'hello',
+					actionName: 'hello',
 					instanceId: 'inst-1',
 					status: 'completed',
 					startedAt: '2026-01-01T00:00:00.000Z',
@@ -685,7 +685,7 @@ describe('admin() routes', () => {
 				recordRunEnd: async () => {},
 				lookupRun: async () => ({
 					runId: 'run_cf',
-					agentName: 'hello',
+					actionName: 'hello',
 					instanceId: 'inst-1',
 					status: 'completed',
 					startedAt: '2026-01-01T00:00:00.000Z',

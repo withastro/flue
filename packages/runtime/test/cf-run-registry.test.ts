@@ -38,13 +38,13 @@ describe('createRegistryOps (SQL paths)', () => {
 		const ops = createRegistryOps(makeFakeSql());
 		ops.recordRunStart({
 			runId: 'run_01',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'inst_a',
 			startedAt: STARTED_AT_1,
 		});
 		expect(ops.lookupRun('run_01')).toEqual({
 			runId: 'run_01',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'inst_a',
 			status: 'active',
 			startedAt: STARTED_AT_1,
@@ -59,7 +59,7 @@ describe('createRegistryOps (SQL paths)', () => {
 		const ops = createRegistryOps(makeFakeSql());
 		ops.recordRunStart({
 			runId: 'run_02',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'inst_a',
 			startedAt: STARTED_AT_1,
 		});
@@ -81,7 +81,7 @@ describe('createRegistryOps (SQL paths)', () => {
 		const ops = createRegistryOps(makeFakeSql());
 		ops.recordRunStart({
 			runId: 'run_err',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'inst_a',
 			startedAt: STARTED_AT_1,
 		});
@@ -110,16 +110,16 @@ describe('createRegistryOps (SQL paths)', () => {
 
 	it('listRuns: descending sort by startedAt; filters compose', () => {
 		const ops = createRegistryOps(makeFakeSql());
-		ops.recordRunStart({ runId: 'a', agentName: 'hello', instanceId: 'inst_a', startedAt: STARTED_AT_1 });
-		ops.recordRunStart({ runId: 'b', agentName: 'hello', instanceId: 'inst_b', startedAt: STARTED_AT_2 });
-		ops.recordRunStart({ runId: 'c', agentName: 'world', instanceId: 'inst_c', startedAt: STARTED_AT_3 });
+		ops.recordRunStart({ runId: 'a', actionName: 'hello', instanceId: 'inst_a', startedAt: STARTED_AT_1 });
+		ops.recordRunStart({ runId: 'b', actionName: 'hello', instanceId: 'inst_b', startedAt: STARTED_AT_2 });
+		ops.recordRunStart({ runId: 'c', actionName: 'world', instanceId: 'inst_c', startedAt: STARTED_AT_3 });
 		ops.recordRunEnd({ runId: 'a', endedAt: ENDED_AT, durationMs: 1, isError: false });
 
 		expect(ops.listRuns({}).runs.map((r) => r.runId)).toEqual(['c', 'b', 'a']);
-		expect(ops.listRuns({ agentName: 'hello' }).runs.map((r) => r.runId)).toEqual(['b', 'a']);
+		expect(ops.listRuns({ actionName: 'hello' }).runs.map((r) => r.runId)).toEqual(['b', 'a']);
 		expect(ops.listRuns({ status: 'active' }).runs.map((r) => r.runId)).toEqual(['c', 'b']);
 		expect(
-			ops.listRuns({ agentName: 'hello', status: 'completed' }).runs.map((r) => r.runId),
+			ops.listRuns({ actionName: 'hello', status: 'completed' }).runs.map((r) => r.runId),
 		).toEqual(['a']);
 		expect(ops.listRuns({ instanceId: 'inst_b' }).runs.map((r) => r.runId)).toEqual(['b']);
 	});
@@ -129,7 +129,7 @@ describe('createRegistryOps (SQL paths)', () => {
 		for (let i = 0; i < 5; i++) {
 			ops.recordRunStart({
 				runId: `run_${String(i).padStart(2, '0')}`,
-				agentName: 'hello',
+				actionName: 'hello',
 				instanceId: 'inst_a',
 				startedAt: `2026-05-13T10:${String(i).padStart(2, '0')}:00.000Z`,
 			});
@@ -149,27 +149,27 @@ describe('createRegistryOps (SQL paths)', () => {
 
 	it('listInstances: distinct (agent, instance) pairs; agent filter', () => {
 		const ops = createRegistryOps(makeFakeSql());
-		ops.recordRunStart({ runId: 'r1', agentName: 'hello', instanceId: 'inst_a', startedAt: STARTED_AT_1 });
-		ops.recordRunStart({ runId: 'r2', agentName: 'hello', instanceId: 'inst_a', startedAt: STARTED_AT_2 });
-		ops.recordRunStart({ runId: 'r3', agentName: 'hello', instanceId: 'inst_b', startedAt: STARTED_AT_3 });
-		ops.recordRunStart({ runId: 'r4', agentName: 'world', instanceId: 'inst_c', startedAt: STARTED_AT_3 });
+		ops.recordRunStart({ runId: 'r1', actionName: 'hello', instanceId: 'inst_a', startedAt: STARTED_AT_1 });
+		ops.recordRunStart({ runId: 'r2', actionName: 'hello', instanceId: 'inst_a', startedAt: STARTED_AT_2 });
+		ops.recordRunStart({ runId: 'r3', actionName: 'hello', instanceId: 'inst_b', startedAt: STARTED_AT_3 });
+		ops.recordRunStart({ runId: 'r4', actionName: 'world', instanceId: 'inst_c', startedAt: STARTED_AT_3 });
 
 		expect(ops.listInstances({}).instances).toEqual([
-			{ agentName: 'hello', instanceId: 'inst_a' },
-			{ agentName: 'hello', instanceId: 'inst_b' },
-			{ agentName: 'world', instanceId: 'inst_c' },
+			{ actionName: 'hello', instanceId: 'inst_a' },
+			{ actionName: 'hello', instanceId: 'inst_b' },
+			{ actionName: 'world', instanceId: 'inst_c' },
 		]);
-		expect(ops.listInstances({ agentName: 'hello' }).instances).toEqual([
-			{ agentName: 'hello', instanceId: 'inst_a' },
-			{ agentName: 'hello', instanceId: 'inst_b' },
+		expect(ops.listInstances({ actionName: 'hello' }).instances).toEqual([
+			{ actionName: 'hello', instanceId: 'inst_a' },
+			{ actionName: 'hello', instanceId: 'inst_b' },
 		]);
 	});
 
 	it('listInstances cursor pagination: walks through pairs; final page has no nextCursor', () => {
 		const ops = createRegistryOps(makeFakeSql());
-		ops.recordRunStart({ runId: 'r1', agentName: 'a', instanceId: 'inst_1', startedAt: STARTED_AT_1 });
-		ops.recordRunStart({ runId: 'r2', agentName: 'a', instanceId: 'inst_2', startedAt: STARTED_AT_2 });
-		ops.recordRunStart({ runId: 'r3', agentName: 'b', instanceId: 'inst_3', startedAt: STARTED_AT_3 });
+		ops.recordRunStart({ runId: 'r1', actionName: 'a', instanceId: 'inst_1', startedAt: STARTED_AT_1 });
+		ops.recordRunStart({ runId: 'r2', actionName: 'a', instanceId: 'inst_2', startedAt: STARTED_AT_2 });
+		ops.recordRunStart({ runId: 'r3', actionName: 'b', instanceId: 'inst_3', startedAt: STARTED_AT_3 });
 
 		const page1 = ops.listInstances({ limit: 1 });
 		expect(page1.instances).toHaveLength(1);
@@ -187,7 +187,7 @@ describe('createRegistryOps (SQL paths)', () => {
 		for (let i = 0; i < 3; i++) {
 			ops.recordRunStart({
 				runId: `run_${i}`,
-				agentName: 'hello',
+				actionName: 'hello',
 				instanceId: 'a',
 				startedAt: `2026-01-01T00:00:0${i}.000Z`,
 			});
@@ -202,7 +202,7 @@ describe('createRegistryOps (SQL paths)', () => {
 			const runId = `done_${i}`;
 			ops.recordRunStart({
 				runId,
-				agentName: 'hello',
+				actionName: 'hello',
 				instanceId: 'inst_a',
 				startedAt: `2026-05-13T10:0${i}:00.000Z`,
 			});
@@ -215,7 +215,7 @@ describe('createRegistryOps (SQL paths)', () => {
 		}
 		ops.recordRunStart({
 			runId: 'still_running',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'inst_a',
 			startedAt: STARTED_AT_3,
 		});
@@ -234,7 +234,7 @@ describe('createRegistryOps (SQL paths)', () => {
 				const runId = `${instanceId}_${i}`;
 				ops.recordRunStart({
 					runId,
-					agentName: 'hello',
+					actionName: 'hello',
 					instanceId,
 					startedAt: `2026-05-13T10:0${instanceId === 'inst_a' ? 1 : 2}:${i}0.000Z`,
 				});
@@ -247,7 +247,7 @@ describe('createRegistryOps (SQL paths)', () => {
 			}
 		}
 
-		expect(ops.listRuns({ agentName: 'hello' }).runs).toHaveLength(4);
+		expect(ops.listRuns({ actionName: 'hello' }).runs).toHaveLength(4);
 		expect(ops.lookupRun('inst_a_0')).not.toBeNull();
 		expect(ops.lookupRun('inst_b_0')).not.toBeNull();
 	});
@@ -258,7 +258,7 @@ describe('handleRegistryRequest (REST router)', () => {
 		const ops = createRegistryOps(makeFakeSql());
 		ops.recordRunStart({
 			runId: 'run_rest_01',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'inst_a',
 			startedAt: STARTED_AT_1,
 		});
@@ -285,7 +285,7 @@ describe('handleRegistryRequest (REST router)', () => {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({
-					agentName: 'hello',
+					actionName: 'hello',
 					instanceId: 'inst_a',
 					startedAt: STARTED_AT_1,
 				}),
@@ -299,7 +299,7 @@ describe('handleRegistryRequest (REST router)', () => {
 		const ops = createRegistryOps(makeFakeSql());
 		ops.recordRunStart({
 			runId: 'run_rest_end',
-			agentName: 'hello',
+			actionName: 'hello',
 			instanceId: 'inst_a',
 			startedAt: STARTED_AT_1,
 		});
@@ -319,8 +319,8 @@ describe('handleRegistryRequest (REST router)', () => {
 
 	it('GET /pointers (list) and /instances respond JSON; honor query params', async () => {
 		const ops = createRegistryOps(makeFakeSql());
-		ops.recordRunStart({ runId: 'L1', agentName: 'hello', instanceId: 'inst_a', startedAt: STARTED_AT_1 });
-		ops.recordRunStart({ runId: 'L2', agentName: 'world', instanceId: 'inst_b', startedAt: STARTED_AT_2 });
+		ops.recordRunStart({ runId: 'L1', actionName: 'hello', instanceId: 'inst_a', startedAt: STARTED_AT_1 });
+		ops.recordRunStart({ runId: 'L2', actionName: 'world', instanceId: 'inst_b', startedAt: STARTED_AT_2 });
 
 		const listAll = await handleRegistryRequest(
 			ops,
@@ -342,7 +342,7 @@ describe('handleRegistryRequest (REST router)', () => {
 		);
 		expect(
 			((await instances.json()) as { instances: unknown[] }).instances,
-		).toEqual([{ agentName: 'hello', instanceId: 'inst_a' }]);
+		).toEqual([{ actionName: 'hello', instanceId: 'inst_a' }]);
 	});
 
 	it('unknown route: 404', async () => {

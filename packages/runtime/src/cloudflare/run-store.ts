@@ -44,7 +44,7 @@ class DurableRunStore implements RunStore {
 			 VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
 			input.runId,
 			input.instanceId,
-			input.agentName,
+			input.actionName,
 			'active',
 			input.startedAt,
 		);
@@ -151,7 +151,7 @@ function rowToRunRecord(row: SqlRow): RunRecord {
 	return {
 		runId: String(row.run_id),
 		instanceId: String(row.instance_id),
-		agentName: String(row.agent_name),
+		actionName: String(row.agent_name),
 		status: row.status as RunRecord['status'],
 		startedAt: String(row.started_at),
 		endedAt: typeof row.ended_at === 'string' ? row.ended_at : undefined,

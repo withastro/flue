@@ -737,7 +737,7 @@ export type FlueEvent = (
 			type: 'run_start';
 			runId: string;
 			instanceId: string;
-			agentName: string;
+			actionName: string;
 			startedAt: string;
 			payload: unknown;
 		}

@@ -31,11 +31,11 @@ describe('createFlueClient', () => {
 			},
 		});
 
-		await client.admin.runs.list({ status: 'active', agentName: 'hello', limit: 10 });
+		await client.admin.runs.list({ status: 'active', actionName: 'hello', limit: 10 });
 		const parsed = new URL(url);
 		expect(parsed.pathname).toBe('/admin/runs');
 		expect(parsed.searchParams.get('status')).toBe('active');
-		expect(parsed.searchParams.get('agentName')).toBe('hello');
+		expect(parsed.searchParams.get('actionName')).toBe('hello');
 		expect(parsed.searchParams.get('limit')).toBe('10');
 	});
 

@@ -185,7 +185,7 @@ const listInstancesHandler: MiddlewareHandler = async (c) => {
 	assertKnownAgent(rt, agentName);
 	const registry = requireRegistry(rt, c.env);
 	const query = parseListQuery(c.req.raw);
-	const out = await registry.listInstances({ agentName, ...query });
+	const out = await registry.listInstances({ actionName: agentName, ...query });
 	return c.json({ items: out.instances, nextCursor: out.nextCursor });
 };
 
@@ -197,7 +197,7 @@ const listInstanceRunsHandler: MiddlewareHandler = async (c) => {
 	const registry = requireRegistry(rt, c.env);
 	const query = parseListQuery(c.req.raw);
 	const status = statusFromRequest(c.req.raw);
-	const out = await registry.listRuns({ agentName, instanceId, status, ...query });
+	const out = await registry.listRuns({ actionName: agentName, instanceId, status, ...query });
 	return c.json({ items: out.runs, nextCursor: out.nextCursor });
 };
 
@@ -209,10 +209,10 @@ const listRunsHandler: MiddlewareHandler = async (c) => {
 		...parseListQuery(c.req.raw),
 		status: statusFromRequest(c.req.raw),
 	};
-	const agentName = url.searchParams.get('agentName');
-	if (agentName) {
-		assertKnownAgent(rt, agentName);
-		opts.agentName = agentName;
+	const actionName = url.searchParams.get('actionName');
+	if (actionName) {
+		assertKnownAgent(rt, actionName);
+		opts.actionName = actionName;
 	}
 	const out = await registry.listRuns(opts);
 	return c.json({ items: out.runs, nextCursor: out.nextCursor });

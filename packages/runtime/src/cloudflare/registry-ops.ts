@@ -136,7 +136,7 @@ class SqlRegistryOps implements RegistryOps {
 			 (run_id, agent_name, instance_id, status, started_at, ended_at, duration_ms, is_error)
 			 VALUES (?, ?, ?, 'active', ?, NULL, NULL, NULL)`,
 			input.runId,
-			input.agentName,
+			input.actionName,
 			input.instanceId,
 			input.startedAt,
 		);
@@ -161,9 +161,9 @@ class SqlRegistryOps implements RegistryOps {
 
 		const existingPointer = existing[0];
 		if (!existingPointer) return;
-		const agentName = String(existingPointer.agent_name);
+		const actionName = String(existingPointer.agent_name);
 		const instanceId = String(existingPointer.instance_id);
-		this.pruneCompletedRunsForInstance(agentName, instanceId);
+		this.pruneCompletedRunsForInstance(actionName, instanceId);
 	}
 
 	lookupRun(runId: string): RunPointer | null {
@@ -185,9 +185,9 @@ class SqlRegistryOps implements RegistryOps {
 			wheres.push('status = ?');
 			bindings.push(opts.status);
 		}
-		if (opts.agentName) {
+		if (opts.actionName) {
 			wheres.push('agent_name = ?');
-			bindings.push(opts.agentName);
+			bindings.push(opts.actionName);
 		}
 		if (opts.instanceId) {
 			wheres.push('instance_id = ?');
@@ -222,9 +222,9 @@ class SqlRegistryOps implements RegistryOps {
 
 		const wheres: string[] = [];
 		const bindings: unknown[] = [];
-		if (opts.agentName) {
+		if (opts.actionName) {
 			wheres.push('agent_name = ?');
-			bindings.push(opts.agentName);
+			bindings.push(opts.actionName);
 		}
 		if (cursorKey !== undefined) {
 			wheres.push(`(agent_name || x'00' || instance_id) > ?`);
@@ -244,17 +244,17 @@ class SqlRegistryOps implements RegistryOps {
 
 		const hasMore = rows.length > limit;
 		const page: InstancePointer[] = (hasMore ? rows.slice(0, limit) : rows).map((row) => ({
-			agentName: String(row.agent_name),
+			actionName: String(row.agent_name),
 			instanceId: String(row.instance_id),
 		}));
 		const last = page.at(-1);
 		const nextCursor = hasMore && last
-			? encodeInstanceCursor(`${last.agentName}\0${last.instanceId}`)
+			? encodeInstanceCursor(`${last.actionName}\0${last.instanceId}`)
 			: undefined;
 		return { instances: page, nextCursor };
 	}
 
-	private pruneCompletedRunsForInstance(agentName: string, instanceId: string): void {
+	private pruneCompletedRunsForInstance(actionName: string, instanceId: string): void {
 		this.sql.exec(
 			`DELETE FROM flue_registry_runs
 			 WHERE agent_name = ?
@@ -266,9 +266,9 @@ class SqlRegistryOps implements RegistryOps {
 			     ORDER BY started_at DESC, run_id DESC
 			     LIMIT ?
 			   )`,
-			agentName,
+			actionName,
 			instanceId,
-			agentName,
+			actionName,
 			instanceId,
 			this.maxCompletedRunsPerInstance,
 		);
@@ -309,7 +309,7 @@ function ensureRegistryTables(sql: SqlStorage): void {
 function rowToRunPointer(row: SqlRow): RunPointer {
 	return {
 		runId: String(row.run_id),
-		agentName: String(row.agent_name),
+		actionName: String(row.agent_name),
 		instanceId: String(row.instance_id),
 		status: String(row.status) as RunStatus,
 		startedAt: String(row.started_at),
@@ -329,7 +329,7 @@ function parseListRunsOpts(params: URLSearchParams): ListRunsOpts {
 		opts.status = status;
 	}
 	const agent = params.get('agent');
-	if (agent) opts.agentName = agent;
+	if (agent) opts.actionName = agent;
 	const instance = params.get('instance');
 	if (instance) opts.instanceId = instance;
 	const limit = params.get('limit');
@@ -342,7 +342,7 @@ function parseListRunsOpts(params: URLSearchParams): ListRunsOpts {
 function parseListInstancesOpts(params: URLSearchParams): ListInstancesOpts {
 	const opts: ListInstancesOpts = {};
 	const agent = params.get('agent');
-	if (agent) opts.agentName = agent;
+	if (agent) opts.actionName = agent;
 	const limit = params.get('limit');
 	if (limit !== null) opts.limit = Number.parseInt(limit, 10);
 	const cursor = params.get('cursor');

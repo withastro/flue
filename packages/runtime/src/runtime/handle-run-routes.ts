@@ -10,7 +10,7 @@ export interface HandleRunRouteOptions {
 	request: Request;
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
-	agentName: string;
+	actionName: string;
 	id: string;
 	runId?: string;
 	action: 'get' | 'events' | 'stream';
@@ -28,16 +28,16 @@ export async function handleRunRouteRequest(opts: HandleRunRouteOptions): Promis
 
 	switch (opts.action) {
 		case 'get':
-			return getRun(store, requireRunId(opts.runId), opts.agentName, opts.id);
+			return getRun(store, requireRunId(opts.runId), opts.actionName, opts.id);
 		case 'events':
-			return getRunEvents(opts.request, store, requireRunId(opts.runId), opts.agentName, opts.id);
+			return getRunEvents(opts.request, store, requireRunId(opts.runId), opts.actionName, opts.id);
 		case 'stream':
 			return streamRunEvents(
 				opts.request,
 				store,
 				opts.runSubscribers,
 				requireRunId(opts.runId),
-				opts.agentName,
+				opts.actionName,
 				opts.id,
 			);
 	}
@@ -46,10 +46,10 @@ export async function handleRunRouteRequest(opts: HandleRunRouteOptions): Promis
 async function getRun(
 	store: RunStore,
 	runId: string,
-	agentName: string,
+	actionName: string,
 	instanceId: string,
 ): Promise<Response> {
-	const run = await getRunForInstance(store, runId, agentName, instanceId);
+	const run = await getRunForInstance(store, runId, actionName, instanceId);
 	return json(run);
 }
 
@@ -57,10 +57,10 @@ async function getRunEvents(
 	request: Request,
 	store: RunStore,
 	runId: string,
-	agentName: string,
+	actionName: string,
 	instanceId: string,
 ): Promise<Response> {
-	await getRunForInstance(store, runId, agentName, instanceId);
+	await getRunForInstance(store, runId, actionName, instanceId);
 	const url = new URL(request.url);
 	const after = parseEventIndex(url.searchParams.get('after'));
 	const types = parseTypes(url.searchParams.get('types'));
@@ -80,10 +80,10 @@ async function streamRunEvents(
 	store: RunStore,
 	subscribers: RunSubscriberRegistry | undefined,
 	runId: string,
-	agentName: string,
+	actionName: string,
 	instanceId: string,
 ): Promise<Response> {
-	const run = await getRunForInstance(store, runId, agentName, instanceId);
+	const run = await getRunForInstance(store, runId, actionName, instanceId);
 
 	const lastEventId = parseLastEventId(request.headers.get('last-event-id'));
 	const fromIndex = lastEventId === undefined ? undefined : lastEventId + 1;
@@ -285,12 +285,12 @@ async function runReplayPhase(opts: ReplayPhaseOptions): Promise<void> {
 async function getRunForInstance(
 	store: RunStore,
 	runId: string,
-	agentName: string,
+	actionName: string,
 	instanceId: string,
 ): Promise<RunRecord> {
 	const run = await store.getRun(runId);
 	if (!run) throw new RunNotFoundError({ runId });
-	if (run.agentName !== agentName || run.instanceId !== instanceId) {
+	if (run.actionName !== actionName || run.instanceId !== instanceId) {
 		throw new RunNotFoundError({ runId });
 	}
 	return run;

@@ -5,7 +5,7 @@ export type RunStatus = 'active' | 'completed' | 'errored';
 export interface RunRecord {
 	runId: string;
 	instanceId: string;
-	agentName: string;
+	actionName: string;
 	status: RunStatus;
 	startedAt: string;
 	endedAt?: string;
@@ -18,7 +18,7 @@ export interface RunRecord {
 export interface CreateRunInput {
 	runId: string;
 	instanceId: string;
-	agentName: string;
+	actionName: string;
 	startedAt: string;
 	payload: unknown;
 }

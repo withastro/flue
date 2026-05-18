@@ -102,7 +102,7 @@ export interface FlueRuntime {
 	routeRunRequest?: (
 		request: Request,
 		env: unknown,
-		target: { agentName: string; instanceId: string },
+		target: { actionName: string; instanceId: string },
 	) => Promise<Response | null>;
 
 	/** Cloudflare-only factory for the request-scoped registry client. */
@@ -350,7 +350,7 @@ const actionRouteHandler: MiddlewareHandler = async (c) => {
 		}
 		return handleAgentRequest({
 			request: c.req.raw,
-			agentName: name,
+			actionName: name,
 			id,
 			handler,
 			createContext,
@@ -428,7 +428,7 @@ export async function handleRunById(opts: {
 		if (!pointer) throw new RunNotFoundError({ runId });
 
 		const response = await rt.routeRunRequest(normalizeRunRequest(request, runId, action), env, {
-			agentName: pointer.agentName,
+			actionName: pointer.actionName,
 			instanceId: pointer.instanceId,
 		});
 		if (response) return response;
@@ -446,7 +446,7 @@ export async function handleRunById(opts: {
 		request,
 		runStore: rt.runStore,
 		runSubscribers: rt.runSubscribers,
-		agentName: pointer.agentName,
+		actionName: pointer.actionName,
 		id: pointer.instanceId,
 		runId,
 		action,
