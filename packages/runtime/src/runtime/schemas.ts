@@ -241,7 +241,7 @@ export const RunEventsQuerySchema = v.object({
 });
 
 export const RunIdParamSchema = v.object({ runId: v.string() });
-export const AgentRouteParamSchema = v.object({ name: v.string(), id: v.string() });
+export const ActionRouteParamSchema = v.object({ name: v.string(), id: v.string() });
 
 export const AgentManifestEntrySchema = v.object({
 	name: v.string(),

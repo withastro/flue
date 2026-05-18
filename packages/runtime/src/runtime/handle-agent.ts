@@ -100,7 +100,7 @@ export interface HandleAgentOptions {
 }
 
 /**
- * Dispatch a single `/agents/:name/:id` request. The mode is chosen by
+ * Dispatch a single `/actions/:name/:id` request. The mode is chosen by
  * inspecting headers:
  *
  *   - `X-Webhook: true` → fire-and-forget. Returns 202 immediately; the

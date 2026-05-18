@@ -293,7 +293,7 @@ function printCloudflareRunUnsupported(agent: string, id: string, payload: strin
 			'For local development of a Cloudflare target, use `flue dev`:\n\n' +
 			`  flue dev --target cloudflare\n\n` +
 			`Then in another terminal:\n\n` +
-			`  curl http://localhost:${DEFAULT_DEV_PORT}/agents/${agent}/${id} \\\n` +
+			`  curl http://localhost:${DEFAULT_DEV_PORT}/actions/${agent}/${id} \\\n` +
 			'    -H "Content-Type: application/json" \\\n' +
 			`    -d ${shellQuote(payload)}`,
 	);
@@ -1017,7 +1017,7 @@ async function run(args: RunArgs) {
 	while (true) {
 		try {
 			outcome = await consumeSSE(
-				`http://localhost:${port}/agents/${args.agent}/${args.id}`,
+				`http://localhost:${port}/actions/${args.agent}/${args.id}`,
 				args.payload,
 				sseAbort.signal,
 			);

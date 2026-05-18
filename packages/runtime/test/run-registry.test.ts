@@ -279,7 +279,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		app.route('/', flue());
 
 		const invoke = await app.fetch(
-			new Request('http://localhost/agents/hello/inst-1', {
+			new Request('http://localhost/actions/hello/inst-1', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({}),
@@ -349,13 +349,30 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		};
 		expect(spec.openapi).toBe('3.1.0');
 		expect(spec.info.title).toBe('Flue Public API');
-		expect(spec.paths['/agents/{name}/{id}']?.post).toBeDefined();
+		expect(spec.paths['/actions/{name}/{id}']?.post).toBeDefined();
 		expect(spec.paths['/runs/{runId}']?.get).toBeDefined();
 		expect(spec.paths['/runs/{runId}/events']?.get).toBeDefined();
 		const streamOp = spec.paths['/runs/{runId}/stream']?.get as
 			| { 'x-flue-streaming'?: boolean }
 			| undefined;
 		expect(streamOp?.['x-flue-streaming']).toBe(true);
+	});
+
+	it('returns a migration 404 from the legacy agent invocation route', async () => {
+		const app = new Hono();
+		app.route('/', flue());
+
+		const res = await app.fetch(
+			new Request('http://localhost/agents/hello/inst-1', { method: 'POST' }),
+		);
+		expect(res.status).toBe(404);
+		expect((await res.json()) as unknown).toMatchObject({
+			error: {
+				type: 'legacy_agent_route',
+				message: 'This route has moved.',
+				details: 'Use POST /actions/<name>/<id>.',
+			},
+		});
 	});
 
 	it('surfaces a structured 501 envelope when runRegistry is not configured', async () => {
@@ -479,7 +496,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		app.route('/', flue());
 
 		const invoke = await app.fetch(
-			new Request('http://localhost/agents/hello/inst-1', {
+			new Request('http://localhost/actions/hello/inst-1', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({}),
@@ -571,7 +588,7 @@ describe('admin() routes', () => {
 		app.route('/admin', admin());
 
 		const invoke = await app.fetch(
-			new Request('http://localhost/agents/hello/inst-1', {
+			new Request('http://localhost/actions/hello/inst-1', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({}),

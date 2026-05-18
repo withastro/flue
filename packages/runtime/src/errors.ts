@@ -303,6 +303,18 @@ export class AgentNotWebhookError extends FlueHttpError {
 	}
 }
 
+export class LegacyAgentRouteError extends FlueHttpError {
+	constructor() {
+		super({
+			type: 'legacy_agent_route',
+			message: 'This route has moved.',
+			details: 'Use POST /actions/<name>/<id>.',
+			dev: '',
+			status: 404,
+		});
+	}
+}
+
 export class RouteNotFoundError extends FlueHttpError {
 	constructor({ method, path }: { method: string; path: string }) {
 		super({
@@ -310,7 +322,7 @@ export class RouteNotFoundError extends FlueHttpError {
 			message: `No route matches ${method} ${path}.`,
 			// The webhook URL shape is part of the public contract, so it's
 			// safe to mention. We do NOT enumerate other registered routes.
-			details: `Webhook agents are served at POST /agents/<name>/<id>.`,
+			details: `Webhook actions are served at POST /actions/<name>/<id>.`,
 			dev: '',
 			status: 404,
 		});
@@ -625,7 +637,7 @@ export async function parseJsonBody(request: Request): Promise<unknown> {
 }
 
 /**
- * Validate that a request targeting `/agents/<name>/<id>` is well-formed:
+ * Validate that a request targeting `/actions/<name>/<id>` is well-formed:
  * method is POST, agent name is registered, and (optionally) the agent is
  * webhook-accessible. Throws the appropriate FlueHttpError on any failure.
  *
@@ -653,7 +665,7 @@ export function validateAgentRequest(opts: ValidateAgentRequestOptions): void {
 	}
 	if (opts.name.trim() === '' || opts.id.trim() === '') {
 		throw new InvalidRequestError({
-			reason: 'Webhook URLs must have the shape /agents/<name>/<id> with non-empty segments.',
+			reason: 'Webhook URLs must have the shape /actions/<name>/<id> with non-empty segments.',
 		});
 	}
 	if (!opts.registeredAgents.includes(opts.name)) {

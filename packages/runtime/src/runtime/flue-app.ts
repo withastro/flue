@@ -8,6 +8,7 @@ import {
 	validator,
 } from 'hono-openapi';
 import {
+	LegacyAgentRouteError,
 	MethodNotAllowedError,
 	RouteNotFoundError,
 	RunNotFoundError,
@@ -28,8 +29,8 @@ import type { RunRegistry } from './run-registry.ts';
 import type { RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 import {
+	ActionRouteParamSchema,
 	AgentInvocationResponseSchema,
-	AgentRouteParamSchema,
 	ErrorEnvelopeSchema,
 	RunEventListResponseSchema,
 	RunEventsQuerySchema,
@@ -147,14 +148,15 @@ export function flue(): Hono {
 	app.get('/openapi.json', lazyOpenApiRouteHandler(app, publicOpenApiOptions));
 
 	app.post(
-		'/agents/:name/:id',
-		describeRoute(agentRouteSpec() as DescribeRouteOptions),
-		validated('param', AgentRouteParamSchema),
-		agentRouteHandler,
+		'/actions/:name/:id',
+		describeRoute(actionRouteSpec() as DescribeRouteOptions),
+		validated('param', ActionRouteParamSchema),
+		actionRouteHandler,
 	);
 	// Non-POSTs still reach the canonical Flue 405 envelope instead of
 	// Hono's default 404 for unmatched methods.
-	app.all('/agents/:name/:id', agentRouteHandler);
+	app.all('/actions/:name/:id', actionRouteHandler);
+	app.all('/agents/:name/:id', legacyAgentRouteHandler);
 	for (const [routePath, action] of RUN_ROUTES_BY_ID) {
 		if (action === 'events') {
 			app.get(
@@ -211,7 +213,7 @@ function publicOpenApiOptions() {
 			info: {
 				title: 'Flue Public API',
 				version: runtimeConfig?.runtimeVersion ?? '0.0.0',
-				description: 'Public Flue agent invocation and run inspection API.',
+				description: 'Public Flue action invocation and run inspection API.',
 			},
 			servers: [],
 		},
@@ -253,13 +255,13 @@ function errorResponses() {
 	};
 }
 
-function agentRouteSpec() {
+function actionRouteSpec() {
 	return {
-		tags: ['agents'],
-		operationId: 'invokeAgent',
-		summary: 'Invoke an agent instance',
+		tags: ['actions'],
+		operationId: 'invokeAction',
+		summary: 'Invoke an action instance',
 		description:
-			'Invokes the named agent instance. The request body is user-defined by the target agent.',
+			'Invokes the named action instance. The request body is user-defined by the target action.',
 		requestBody: {
 			required: false,
 			content: {
@@ -267,7 +269,7 @@ function agentRouteSpec() {
 					schema: {
 						type: 'object',
 						additionalProperties: true,
-						description: 'Agent-defined payload. Consult the target agent documentation.',
+						description: 'Action-defined payload. Consult the target action documentation.',
 					},
 				},
 			},
@@ -319,7 +321,7 @@ function runRouteSpec(action: HandleRunRouteOptions['action']) {
 	};
 }
 
-const agentRouteHandler: MiddlewareHandler = async (c) => {
+const actionRouteHandler: MiddlewareHandler = async (c) => {
 	const rt = runtimeConfig;
 	if (!rt) {
 		throw new Error(
@@ -370,6 +372,10 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 		method: c.req.method,
 		path: new URL(c.req.url).pathname,
 	});
+};
+
+const legacyAgentRouteHandler: MiddlewareHandler = () => {
+	throw new LegacyAgentRouteError();
 };
 
 export function runByIdRouteHandler(action: HandleRunRouteOptions['action']): MiddlewareHandler {

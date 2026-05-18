@@ -158,7 +158,7 @@ export async function dev(options: DevOptions): Promise<void> {
 		console.error(`[flue] Server: ${reloader.url}`);
 		const exampleAgent = pickExampleAgentName(output, root);
 		if (exampleAgent) {
-			console.error(`[flue] Try: curl -X POST ${reloader.url}/agents/${exampleAgent}/test-1 \\`);
+			console.error(`[flue] Try: curl -X POST ${reloader.url}/actions/${exampleAgent}/test-1 \\`);
 			console.error(`         -H 'Content-Type: application/json' -d '{}'`);
 		}
 	}
