@@ -37,6 +37,7 @@ describe('task session sandbox context', () => {
 			delete: async () => {},
 		};
 		const harness = new Harness(
+			'hello',
 			'inst-1',
 			'default',
 			{
@@ -53,7 +54,37 @@ describe('task session sandbox context', () => {
 		);
 
 		await harness.session();
-		expect(keys[0]).toBe('action-session:["inst-1","default","default"]');
+		expect(keys[0]).toBe('action-session:["hello","inst-1","default","default"]');
+	});
+
+	it('keeps same instance ids isolated across actions', async () => {
+		const keys: string[] = [];
+		const store = {
+			load: async () => null,
+			save: async (key: string) => {
+				keys.push(key);
+			},
+			delete: async () => {},
+		};
+		const config: AgentConfig = {
+			systemPrompt: '',
+			skills: {},
+			sandboxSkills: {},
+			sandboxSkillDiscoveryHint: false,
+			subagents: {},
+			model: undefined,
+			resolveModel: () => undefined,
+		};
+		const summarize = new Harness('summarize', 'customer-42', 'default', config, env, store);
+		const chat = new Harness('chat', 'customer-42', 'default', config, env, store);
+
+		await summarize.session();
+		await chat.session();
+
+		expect(keys).toEqual([
+			'action-session:["summarize","customer-42","default","default"]',
+			'action-session:["chat","customer-42","default","default"]',
+		]);
 	});
 
 	it('inherits workspace context and sandbox skills for task agents', async () => {
@@ -67,7 +98,7 @@ describe('task session sandbox context', () => {
 			model: undefined,
 			resolveModel: () => undefined,
 		};
-		const harness = new Harness('agent', 'default', config, env, new InMemorySessionStore());
+		const harness = new Harness('hello', 'agent', 'default', config, env, new InMemorySessionStore());
 		const taskSession = await (harness as unknown as {
 			createTaskSession(options: {
 				parentSession: string;
@@ -111,7 +142,7 @@ describe('task session sandbox context', () => {
 			model: undefined,
 			resolveModel: () => undefined,
 		};
-		const harness = new Harness('agent', 'default', config, env, new InMemorySessionStore(), undefined, [parentTool]);
+		const harness = new Harness('hello', 'agent', 'default', config, env, new InMemorySessionStore(), undefined, [parentTool]);
 		const taskSession = await (harness as unknown as {
 			createTaskSession(options: {
 				parentSession: string;
@@ -146,7 +177,7 @@ describe('task session sandbox context', () => {
 			model: undefined,
 			resolveModel: () => undefined,
 		};
-		const harness = new Harness('agent', 'default', config, env, new InMemorySessionStore(), undefined, [parentTool]);
+		const harness = new Harness('hello', 'agent', 'default', config, env, new InMemorySessionStore(), undefined, [parentTool]);
 		const taskSession = await (harness as unknown as {
 			createTaskSession(options: {
 				parentSession: string;

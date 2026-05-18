@@ -21,6 +21,7 @@ export type AgentHandler = (ctx: FlueContextInternal) => unknown | Promise<unkno
  *   - Cloudflare: env=DO env, defaultStore=DO SQLite, resolveSandbox=cfSandboxToSessionEnv.
  */
 export type CreateContextFn = (
+	actionName: string,
 	id: string,
 	runId: string,
 	payload: unknown,
@@ -436,7 +437,7 @@ interface RunLifecycle extends RunLifecycleOptions {
 async function createRunLifecycle(options: RunLifecycleOptions): Promise<RunLifecycle> {
 	const startedAtMs = Date.now();
 	const startedAt = new Date(startedAtMs).toISOString();
-	const ctx = options.createContext(options.id, options.runId, options.payload, options.request);
+	const ctx = options.createContext(options.actionName, options.id, options.runId, options.payload, options.request);
 	const runStore = options.runStore;
 	const didCreateRun = runStore
 		? await safeRunStore('createRun', () =>

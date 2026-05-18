@@ -26,7 +26,7 @@ export class InMemoryRunStore implements RunStore {
 	}
 
 	async createRun(input: CreateRunInput): Promise<void> {
-		const instance = this.getInstance(input.instanceId);
+		const instance = this.getInstance(input.actionName, input.instanceId);
 		instance.runs.set(input.runId, {
 			runId: input.runId,
 			instanceId: input.instanceId,
@@ -40,7 +40,7 @@ export class InMemoryRunStore implements RunStore {
 	async endRun(input: EndRunInput): Promise<void> {
 		const existing = await this.getRun(input.runId);
 		if (!existing) return;
-		const instance = this.getInstance(existing.instanceId);
+		const instance = this.getInstance(existing.actionName, existing.instanceId);
 		instance.runs.set(input.runId, {
 			...existing,
 			status: input.isError ? 'errored' : 'completed',
@@ -56,7 +56,7 @@ export class InMemoryRunStore implements RunStore {
 	async appendEvent(runId: string, event: FlueEvent): Promise<void> {
 		const run = await this.getRun(runId);
 		if (!run) return;
-		const instance = this.getInstance(run.instanceId);
+		const instance = this.getInstance(run.actionName, run.instanceId);
 		const events = instance.events.get(runId) ?? [];
 		events.push(truncateEventForPersistence(event, this.maxEventBytes));
 		instance.events.set(runId, events);
@@ -65,7 +65,7 @@ export class InMemoryRunStore implements RunStore {
 	async getEvents(runId: string, fromIndex?: number): Promise<FlueEvent[]> {
 		const run = await this.getRun(runId);
 		if (!run) return [];
-		const events = this.getInstance(run.instanceId).events.get(runId) ?? [];
+		const events = this.getInstance(run.actionName, run.instanceId).events.get(runId) ?? [];
 		if (fromIndex === undefined) return [...events];
 		return events.filter((event) => typeof event.eventIndex === 'number' && event.eventIndex >= fromIndex);
 	}
@@ -78,11 +78,12 @@ export class InMemoryRunStore implements RunStore {
 		return null;
 	}
 
-	private getInstance(instanceId: string): InstanceRuns {
-		let instance = this.instances.get(instanceId);
+	private getInstance(actionName: string, instanceId: string): InstanceRuns {
+		const key = `${actionName}\0${instanceId}`;
+		let instance = this.instances.get(key);
 		if (!instance) {
 			instance = { runs: new Map(), events: new Map() };
-			this.instances.set(instanceId, instance);
+			this.instances.set(key, instance);
 		}
 		return instance;
 	}

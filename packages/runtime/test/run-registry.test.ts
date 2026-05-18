@@ -251,8 +251,9 @@ describe('Bare /runs/:runId routes via flue()', () => {
 			handlers: {
 				hello: async (_ctx) => ({ greeting: 'hi' }),
 			},
-			createContext: (id, runId, payload, req) =>
+			createContext: (actionName, id, runId, payload, req) =>
 				createFlueContext({
+					actionName,
 					id,
 					runId,
 					payload,
@@ -381,8 +382,9 @@ describe('Bare /runs/:runId routes via flue()', () => {
 			webhookAgents: ['hello'],
 			allowNonWebhook: false,
 			handlers: { hello: async () => null },
-			createContext: (id, runId, payload, req) =>
+			createContext: (actionName, id, runId, payload, req) =>
 				createFlueContext({
+					actionName,
 					id,
 					runId,
 					payload,
@@ -479,8 +481,9 @@ describe('Bare /runs/:runId routes via flue()', () => {
 					return { ok: true };
 				},
 			},
-			createContext: (id, runId, payload, req) =>
+			createContext: (actionName, id, runId, payload, req) =>
 				createFlueContext({
+					actionName,
 					id,
 					runId,
 					payload,
@@ -553,7 +556,7 @@ class SlowNonTerminalRunStore implements RunStore {
 }
 
 describe('admin() routes', () => {
-	it('lists agents, instances, runs, and exposes an admin OpenAPI spec', async () => {
+	it('lists actions, instances, runs, and exposes an admin OpenAPI spec', async () => {
 		const runStore = new InMemoryRunStore();
 		const runRegistry = new InMemoryRunRegistry();
 		const runSubscribers = createRunSubscriberRegistry();
@@ -570,8 +573,9 @@ describe('admin() routes', () => {
 			webhookAgents: ['hello'],
 			allowNonWebhook: false,
 			handlers: { hello: async () => ({ ok: true }) },
-			createContext: (id, runId, payload, req) =>
+			createContext: (actionName, id, runId, payload, req) =>
 				createFlueContext({
+					actionName,
 					id,
 					runId,
 					payload,
@@ -613,18 +617,6 @@ describe('admin() routes', () => {
 			'hello',
 			'offline',
 		]);
-
-		const instances = await app.fetch(new Request('http://localhost/admin/actions/hello/instances'));
-		expect(instances.status).toBe(200);
-		expect((await instances.json()) as unknown).toMatchObject({
-			items: [{ actionName: 'hello', instanceId: 'inst-1' }],
-		});
-
-		const instanceRuns = await app.fetch(
-			new Request('http://localhost/admin/actions/hello/instances/inst-1/runs?status=completed'),
-		);
-		expect(instanceRuns.status).toBe(200);
-		expect(((await instanceRuns.json()) as { items: { runId: string }[] }).items[0]?.runId).toBe(runId);
 
 		const runs = await app.fetch(new Request('http://localhost/admin/runs?actionName=hello'));
 		expect(runs.status).toBe(200);

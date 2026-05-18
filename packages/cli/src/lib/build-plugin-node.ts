@@ -104,8 +104,9 @@ const runStore = new InMemoryRunStore();
 const runRegistry = new InMemoryRunRegistry();
 const runSubscribers = createRunSubscriberRegistry();
 
-function createContextForRequest(id, runId, payload, req) {
+function createContextForRequest(actionName, id, runId, payload, req) {
   return createFlueContext({
+    actionName,
     id,
     runId,
     payload,
@@ -173,10 +174,10 @@ const server = serve({
 });
 console.log('[flue] Server listening on http://localhost:' + port);
 if (isLocalMode) {
-  console.log('[flue] Mode: local (all agents invokable, including trigger-less)');
-  console.log('[flue] Available agents: ' + ${JSON.stringify(actions.map((a) => a.name).join(', '))});
+  console.log('[flue] Mode: local (all actions invokable, including trigger-less)');
+  console.log('[flue] Available actions: ' + ${JSON.stringify(actions.map((a) => a.name).join(', '))});
 } else {
-  console.log('[flue] Available agents: ' + ${JSON.stringify(webhookAgents.map((a) => a.name).join(', '))});
+  console.log('[flue] Available actions: ' + ${JSON.stringify(webhookAgents.map((a) => a.name).join(', '))});
 }
 
 process.on('SIGINT', () => { server.close(); process.exit(0); });

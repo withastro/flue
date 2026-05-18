@@ -48,8 +48,7 @@
 	"scripts": {
 		"build": "tsdown",
 		"check:types": "tsc --noEmit",
-		"test": "vitest run",
-		"prepublishOnly": "cp ../../README.md ."
+		"test": "vitest run"
 	},
 	"devDependencies": {
 		"tsdown": "^0.20.3",

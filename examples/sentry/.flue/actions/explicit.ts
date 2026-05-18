@@ -30,7 +30,7 @@
  *
  * Expected:
  *   - HTTP 200 with `{ result: { ok: true, ... }, _meta: { runId } }`.
- *   - Two issues in Sentry, both tagged `flue.agent=explicit`.
+ *   - Two issues in Sentry, both tagged `flue.action=explicit`.
  */
 import type { ActionContext } from '@flue/runtime';
 

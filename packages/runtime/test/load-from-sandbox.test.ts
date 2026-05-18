@@ -29,6 +29,7 @@ function createEnv(options: { files?: Record<string, string>; dirs?: Record<stri
 
 function createContext(env: SessionEnv) {
 	return createFlueContext({
+		actionName: 'hello',
 		id: 'agent',
 		runId: 'run',
 		payload: {},

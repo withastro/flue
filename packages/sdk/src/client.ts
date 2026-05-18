@@ -1,7 +1,7 @@
 import { HttpClient, type HttpClientOptions, type RequestHeaders } from './http.ts';
 import { invokeAction, type SyncInvokeResult, type WebhookInvokeResult } from './public/invoke.ts';
 import { type StreamOptions, streamRunEvents } from './public/stream.ts';
-import type { ActionManifestEntry, InstanceSummary, ListResponse, RunPointer, RunRecord, RunStatus } from './types.ts';
+import type { ActionManifestEntry, FlueEvent, ListResponse, RunPointer, RunRecord, RunStatus, StoredFlueEvent } from './types.ts';
 
 export type { RequestHeaders };
 
@@ -13,25 +13,18 @@ export interface CreateFlueClientOptions extends HttpClientOptions {
 export interface FlueClient {
 	runs: {
 		get(runId: string): Promise<RunRecord>;
-		events(runId: string, options?: { after?: number; types?: string[]; limit?: number }): Promise<{ events: unknown[] }>;
-		stream(runId: string, options?: StreamOptions): AsyncIterable<import('./types.ts').FlueEvent>;
+		events(runId: string, options?: { after?: number; types?: string[]; limit?: number }): Promise<{ events: StoredFlueEvent[] }>;
+		stream(runId: string, options?: StreamOptions): AsyncIterable<StoredFlueEvent>;
 	};
 	actions: {
-		invoke(name: string, id: string, options: { mode: 'stream'; payload?: unknown; signal?: AbortSignal }): AsyncIterable<import('./types.ts').FlueEvent>;
-		invoke(name: string, id: string, options: { mode: 'sync'; payload?: unknown; signal?: AbortSignal }): Promise<SyncInvokeResult>;
-		invoke(name: string, id: string, options: { mode: 'webhook'; payload?: unknown; signal?: AbortSignal }): Promise<WebhookInvokeResult>;
-	};
-	agents: {
-		invoke(name: string, id: string, options: { mode: 'stream'; payload?: unknown; signal?: AbortSignal }): AsyncIterable<import('./types.ts').FlueEvent>;
-		invoke(name: string, id: string, options: { mode: 'sync'; payload?: unknown; signal?: AbortSignal }): Promise<SyncInvokeResult>;
-		invoke(name: string, id: string, options: { mode: 'webhook'; payload?: unknown; signal?: AbortSignal }): Promise<WebhookInvokeResult>;
+		invoke(actionName: string, instanceId: string, options: { mode: 'stream'; payload?: unknown; signal?: AbortSignal }): AsyncIterable<FlueEvent>;
+		invoke(actionName: string, instanceId: string, options: { mode: 'sync'; payload?: unknown; signal?: AbortSignal }): Promise<SyncInvokeResult>;
+		invoke(actionName: string, instanceId: string, options: { mode: 'webhook'; payload?: unknown; signal?: AbortSignal }): Promise<WebhookInvokeResult>;
 	};
 	admin: {
 		actions: { list(): Promise<ListResponse<ActionManifestEntry>> };
-		instances: { list(actionName: string, options?: ListOptions): Promise<ListResponse<InstanceSummary>> };
 		runs: {
 			list(options?: ListRunsOptions): Promise<ListResponse<RunPointer>>;
-			listForInstance(actionName: string, instanceId: string, options?: ListRunsOptions): Promise<ListResponse<RunPointer>>;
 			get(runId: string): Promise<RunRecord>;
 		};
 	};
@@ -61,32 +54,15 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 			stream: (runId, opts) => streamRunEvents(http, runId, opts),
 		},
 		actions: {
-			invoke: ((name: string, id: string, opts: Parameters<typeof invokeAction>[3]) =>
-				invokeAction(http, name, id, opts)) as FlueClient['actions']['invoke'],
-		},
-		agents: {
-			invoke: (() => {
-				throw new Error('client.agents.invoke() was renamed to client.actions.invoke().');
-			}) as FlueClient['agents']['invoke'],
+			invoke: ((actionName: string, instanceId: string, opts: Parameters<typeof invokeAction>[3]) =>
+				invokeAction(http, actionName, instanceId, opts)) as FlueClient['actions']['invoke'],
 		},
 		admin: {
 			actions: {
 				list: () => http.json({ path: `${adminBasePath}/actions` }),
 			},
-			instances: {
-				list: (actionName, opts = {}) =>
-					http.json({
-						path: `${adminBasePath}/actions/${encodeURIComponent(actionName)}/instances`,
-						query: listQuery(opts),
-					}),
-			},
 			runs: {
 				list: (opts = {}) => http.json({ path: `${adminBasePath}/runs`, query: runsQuery(opts) }),
-				listForInstance: (actionName, instanceId, opts = {}) =>
-					http.json({
-						path: `${adminBasePath}/actions/${encodeURIComponent(actionName)}/instances/${encodeURIComponent(instanceId)}/runs`,
-						query: runsQuery(opts),
-					}),
 				get: (runId) => http.json({ path: `${adminBasePath}/runs/${encodeURIComponent(runId)}` }),
 			},
 		},

@@ -398,7 +398,7 @@ function discoverActions(sourceRoot: string): ActionInfo[] {
 	const actionsDir = path.join(sourceRoot, 'actions');
 	if (!fs.existsSync(actionsDir)) return [];
 
-	return fs
+	const actions = fs
 		.readdirSync(actionsDir)
 		.filter((f) => /\.(ts|js|mts|mjs)$/.test(f))
 		.map((f) => {
@@ -410,6 +410,20 @@ function discoverActions(sourceRoot: string): ActionInfo[] {
 				triggers,
 			};
 		});
+	const byName = new Map<string, string[]>();
+	for (const action of actions) {
+		const files = byName.get(action.name) ?? [];
+		files.push(action.filePath);
+		byName.set(action.name, files);
+	}
+	const duplicates = [...byName.entries()].filter(([, files]) => files.length > 1);
+	if (duplicates.length > 0) {
+		throw new Error(
+			'[flue] Duplicate action names were found:\n' +
+				duplicates.map(([name, files]) => `  ${name}: ${files.join(', ')}`).join('\n'),
+		);
+	}
+	return actions;
 }
 
 function discoverLegacyAgentHandlerFiles(sourceRoot: string): string[] {

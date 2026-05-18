@@ -514,7 +514,7 @@ class NodeReloader implements DevReloader {
 				if (!line.trim()) continue;
 				if (
 					line.includes('[flue] Server listening') ||
-					line.includes('[flue] Available agents:') ||
+					line.includes('[flue] Available actions:') ||
 					line.includes('[flue] Mode: local')
 				) {
 					continue;

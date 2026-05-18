@@ -57,7 +57,7 @@
  *
  * ──── Conventions for new error classes ───────────────────────────────────
  *
- *   - Class name: PascalCase, suffixed with `Error`. E.g. `AgentNotFoundError`.
+ *   - Class name: PascalCase, suffixed with `Error`. E.g. `ActionNotFoundError`.
  *   - The class owns its `type` constant (snake_case). Set once in the
  *     subclass constructor, never passed by callers. Renaming the wire type
  *     is then a one-line change.
@@ -69,13 +69,13 @@
  *   - For HTTP errors, the class sets its own `status` (and `headers` where
  *     relevant). Callers do not pick HTTP status codes ad-hoc.
  *
- * Worked example (matches `AgentNotFoundError` below):
+ * Worked example (matches `ActionNotFoundError` below):
  *
- *     new AgentNotFoundError({ name, available });
+ *     new ActionNotFoundError({ name, available });
  *     // builds:
  *     //   message: `Agent "foo" is not registered.`
- *     //   details: `Verify the agent name is correct.`
- *     //   dev:     `Available agents: "echo", "greeter". Agent routes are
+ *     //   details: `Verify the action name is correct.`
+ *     //   dev:     `Available actions: "echo", "greeter". Action routes are
  *     //            loaded from action handlers in "actions/" at build time. ...`
  *
  * The wire response in production omits `dev`; in `flue dev` / `flue run`
@@ -84,10 +84,10 @@
  *
  * Counter-example to avoid:
  *
- *     class AgentNotFoundError extends FlueHttpError {
+ *     class ActionNotFoundError extends FlueHttpError {
  *       constructor(message: string) {                       // ✗ free-form
  *         super({                                            // ✗ wrong type
- *           type: 'agent_error',
+ *           type: 'action_error',
  *           message,
  *           details: 'Available: "x", "y", "z"',             // ✗ leaks names
  *           dev: '',                                         // ✗ wasted channel
@@ -267,37 +267,37 @@ export class InvalidJsonError extends FlueHttpError {
 	}
 }
 
-export class AgentNotFoundError extends FlueHttpError {
+export class ActionNotFoundError extends FlueHttpError {
 	constructor({ name, available }: { name: string; available: readonly string[] }) {
 		super({
-			type: 'agent_not_found',
-			message: `Agent "${name}" is not registered.`,
+			type: 'action_not_found',
+			message: `Action "${name}" is not registered.`,
 			// Caller-safe: no enumeration, no framework internals.
-			details: `Verify the agent name is correct.`,
+			details: `Verify the action name is correct.`,
 			// Dev-only: sibling enumeration and project-root mechanics. Useful
 			// for the human running the service; would leak namespace state
 			// or framework details to a public caller.
 			dev:
-				`Available agents: ${formatList(available)}.\n` +
-				`Agent routes are loaded from action handlers in the project root's "actions/" directory at build time. ` +
+				`Available actions: ${formatList(available)}.\n` +
+				`Action routes are loaded from action handlers in the project root's "actions/" directory at build time. ` +
 				`Verify the action file is present in the project root being served.`,
 			status: 404,
 		});
 	}
 }
 
-export class AgentNotWebhookError extends FlueHttpError {
+export class ActionNotWebhookError extends FlueHttpError {
 	constructor({ name }: { name: string }) {
 		super({
-			type: 'agent_not_webhook',
-			message: `Agent "${name}" is not web-accessible.`,
+			type: 'action_not_webhook',
+			message: `Action "${name}" is not web-accessible.`,
 			details: `This endpoint is not exposed over HTTP.`,
 			// Dev-only: source-code-level fix instructions for the agent
 			// author. The HTTP caller can't act on this.
 			dev:
-				`This agent has no webhook trigger configured. ` +
+				`This action has no webhook trigger configured. ` +
 				`To expose it, add a webhook trigger to its definition (\`triggers: { webhook: true }\`). ` +
-				`Trigger-less agents remain invokable via "flue run" in local mode.`,
+				`Trigger-less actions remain invokable via "flue run" in local mode.`,
 			status: 404,
 		});
 	}
@@ -650,7 +650,7 @@ export async function parseJsonBody(request: Request): Promise<unknown> {
 
 /**
  * Validate that a request targeting `/actions/<name>/<id>` is well-formed:
- * method is POST, agent name is registered, and (optionally) the agent is
+ * method is POST, action name is registered, and (optionally) the action is
  * webhook-accessible. Throws the appropriate FlueHttpError on any failure.
  *
  * Path/id validation is light: we reject empty or whitespace-only segments
@@ -662,11 +662,11 @@ export interface ValidateAgentRequestOptions {
 	method: string;
 	name: string;
 	id: string;
-	registeredAgents: readonly string[];
+	registeredActions: readonly string[];
 	webhookAgents: readonly string[];
 	/**
 	 * If true, skip the webhook-accessibility check. Used by `flue run` /
-	 * dev local mode where trigger-less agents are also invokable.
+	 * dev local mode where trigger-less actions are also invokable.
 	 */
 	allowNonWebhook?: boolean;
 }
@@ -680,10 +680,10 @@ export function validateAgentRequest(opts: ValidateAgentRequestOptions): void {
 			reason: 'Webhook URLs must have the shape /actions/<name>/<id> with non-empty segments.',
 		});
 	}
-	if (!opts.registeredAgents.includes(opts.name)) {
-		throw new AgentNotFoundError({ name: opts.name, available: opts.registeredAgents });
+	if (!opts.registeredActions.includes(opts.name)) {
+		throw new ActionNotFoundError({ name: opts.name, available: opts.registeredActions });
 	}
 	if (!opts.allowNonWebhook && !opts.webhookAgents.includes(opts.name)) {
-		throw new AgentNotWebhookError({ name: opts.name });
+		throw new ActionNotWebhookError({ name: opts.name });
 	}
 }

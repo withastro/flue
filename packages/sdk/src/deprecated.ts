@@ -4,7 +4,7 @@
  * The package previously published at `@flue/sdk` was renamed to
  * `@flue/runtime` (build/config helpers moved to `@flue/cli`). The
  * `@flue/sdk` name is now used for a new client-side SDK that talks to
- * deployed Flue agents — only its root export (`@flue/sdk`) carries real
+ * deployed Flue actions — only its root export (`@flue/sdk`) carries real
  * code.
  *
  * Every legacy subpath (`./app`, `./client`, `./sandbox`, `./internal`,

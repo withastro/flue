@@ -37,6 +37,7 @@ export class Harness implements FlueHarness {
 	private openSessions = new Map<string, Session>();
 
 	constructor(
+		private actionName: string,
 		private instanceId: string,
 		readonly name: string,
 		private config: AgentConfig,
@@ -81,8 +82,8 @@ export class Harness implements FlueHarness {
 			return open;
 		}
 
-		const storageKey = createSessionStorageKey(this.instanceId, this.name, sessionName);
-		const affinityKey = createSessionAffinityKey(this.instanceId, this.name, sessionName);
+		const storageKey = createSessionStorageKey(this.actionName, this.instanceId, this.name, sessionName);
+		const affinityKey = createSessionAffinityKey(this.actionName, this.instanceId, this.name, sessionName);
 		const existingData = await this.store.load(storageKey);
 		if (mode === 'get' && !existingData) {
 			throw new Error(`[flue] Session "${sessionName}" does not exist in harness "${this.name}".`);
@@ -123,7 +124,7 @@ export class Harness implements FlueHarness {
 			await open.delete();
 			return;
 		}
-		await deleteSessionTree(this.store, createSessionStorageKey(this.instanceId, this.name, sessionName));
+		await deleteSessionTree(this.store, createSessionStorageKey(this.actionName, this.instanceId, this.name, sessionName));
 	}
 
 	private async createTaskSession(options: CreateTaskSessionOptions): Promise<Session> {
@@ -146,8 +147,8 @@ export class Harness implements FlueHarness {
 					model: taskAgent.model ? this.config.resolveModel(taskAgent.model) : this.config.model,
 				}
 			: this.config;
-		const storageKey = createSessionStorageKey(this.instanceId, this.name, sessionName);
-		const affinityKey = createSessionAffinityKey(this.instanceId, this.name, sessionName);
+		const storageKey = createSessionStorageKey(this.actionName, this.instanceId, this.name, sessionName);
+		const affinityKey = createSessionAffinityKey(this.actionName, this.instanceId, this.name, sessionName);
 		const data = createEmptySessionData();
 		data.metadata = {
 			parentSession: options.parentSession,
@@ -212,12 +213,12 @@ function normalizeSessionName(name: string | undefined): string {
 	return name ?? DEFAULT_SESSION_NAME;
 }
 
-function createSessionStorageKey(instanceId: string, harness: string, sessionName: string): string {
-	return `action-session:${JSON.stringify([instanceId, harness, sessionName])}`;
+function createSessionStorageKey(actionName: string, instanceId: string, harness: string, sessionName: string): string {
+	return `action-session:${JSON.stringify([actionName, instanceId, harness, sessionName])}`;
 }
 
-function createSessionAffinityKey(instanceId: string, harness: string, sessionName: string): string {
-	return `${instanceId}::${harness}::${sessionName}`;
+function createSessionAffinityKey(actionName: string, instanceId: string, harness: string, sessionName: string): string {
+	return `${actionName}::${instanceId}::${harness}::${sessionName}`;
 }
 
 function createEmptySessionData(): SessionData {

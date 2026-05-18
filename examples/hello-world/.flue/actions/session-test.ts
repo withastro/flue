@@ -42,6 +42,6 @@ export default async function ({ init, payload, id }: ActionContext) {
 	}
 
 	return {
-		error: 'Pass payload.action: "set" or "recall". Agent instance id comes from the URL path.',
+		error: 'Pass payload.action: "set" or "recall". Action instance id comes from the URL path.',
 	};
 }

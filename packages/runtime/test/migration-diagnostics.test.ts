@@ -19,6 +19,7 @@ const env: SessionEnv = {
 
 function createContext() {
 	return createFlueContext({
+		actionName: 'hello',
 		id: 'agent',
 		runId: 'run',
 		payload: {},

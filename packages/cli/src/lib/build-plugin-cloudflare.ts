@@ -233,13 +233,14 @@ function createDOStore(sql) {
   };
 }
 
-function createContextForRequest(id, runId, payload, doInstance, req) {
+function createContextForRequest(actionName, id, runId, payload, doInstance, req) {
   // Use DO SQLite storage by default, fall back to in-memory
   const defaultStore = doInstance?.ctx?.storage?.sql
     ? createDOStore(doInstance.ctx.storage.sql)
     : memoryStore;
 
   return createFlueContext({
+    actionName,
     id,
     runId,
     payload,
@@ -320,7 +321,7 @@ async function dispatchAction(request, doInstance, actionName, handler) {
     runStore: createRunStoreForRequest(doInstance),
     runSubscribers,
     runRegistry: createRunRegistryForRequest(doInstance.env),
-    createContext: (id_, runId, payload, req) => createContextForRequest(id_, runId, payload, doInstance, req),
+    createContext: (actionName_, id_, runId, payload, req) => createContextForRequest(actionName_, id_, runId, payload, doInstance, req),
     startWebhook: (runId, run) => {
       const wrapped = (fiber) => {
         fiber?.stash?.({

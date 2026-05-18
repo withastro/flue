@@ -116,7 +116,7 @@ observe((event, ctx) => {
 	//
 	//   flue logs <flue.run_id>
 	//
-	// `flue.agent` and `flue.instance_id` are still attached as tags
+	// `flue.action` and `flue.instance_id` are still attached as tags
 	// for filtering / grouping in Sentry, but they are no longer
 	// part of the URL — the run id is globally unique and resolves
 	// to its owner via the run registry server-side.

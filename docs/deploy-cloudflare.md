@@ -115,6 +115,8 @@ curl http://localhost:3583/actions/translate/test-1 \
   -d '{"text": "Hello world", "language": "French"}'
 ```
 
+`translate` is the Action name; `test-1` is the ActionInstance id. Reusing that id resumes that action instance's persisted harness/session state. Each invocation creates a new Run.
+
 `flue run` starts the generated server in Node.js, so it only supports `--target node`. Cloudflare builds use Worker-only runtime modules — `flue dev --target cloudflare` is the equivalent for testing them locally.
 
 ## Agent definitions

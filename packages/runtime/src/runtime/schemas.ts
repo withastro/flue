@@ -248,18 +248,8 @@ export const ActionManifestEntrySchema = v.object({
 	triggers: v.object({ webhook: v.optional(v.boolean()) }),
 });
 
-export const InstanceSummarySchema = v.object({
-	actionName: v.string(),
-	instanceId: v.string(),
-});
-
 export const ListActionsResponseSchema = v.object({
 	items: v.array(ActionManifestEntrySchema),
-	nextCursor: v.optional(v.string()),
-});
-
-export const ListInstancesResponseSchema = v.object({
-	items: v.array(InstanceSummarySchema),
 	nextCursor: v.optional(v.string()),
 });
 
@@ -267,9 +257,6 @@ export const ListRunsResponseSchema = v.object({
 	items: v.array(RunPointerSchema),
 	nextCursor: v.optional(v.string()),
 });
-
-export const ActionNameParamSchema = v.object({ name: v.string() });
-export const ActionInstanceParamSchema = v.object({ name: v.string(), id: v.string() });
 
 const ListLimitSchema = v.optional(
 	v.pipe(
@@ -279,17 +266,6 @@ const ListLimitSchema = v.optional(
 		v.maxValue(1000, 'limit must be at most 1000.'),
 	),
 );
-
-export const AdminInstancesQuerySchema = v.object({
-	cursor: v.optional(v.string()),
-	limit: ListLimitSchema,
-});
-
-export const AdminInstanceRunsQuerySchema = v.object({
-	status: v.optional(RunStatusSchema),
-	cursor: v.optional(v.string()),
-	limit: ListLimitSchema,
-});
 
 export const AdminRunsQuerySchema = v.object({
 	status: v.optional(RunStatusSchema),

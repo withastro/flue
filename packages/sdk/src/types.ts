@@ -29,11 +29,6 @@ export interface ActionManifestEntry {
 	triggers: { webhook?: boolean };
 }
 
-export interface InstanceSummary {
-	actionName: string;
-	instanceId: string;
-}
-
 export interface ListResponse<T> {
 	items: T[];
 	nextCursor?: string;
@@ -54,7 +49,7 @@ export interface PromptUsage {
 	};
 }
 
-export type OperationKind = 'prompt' | 'skill' | 'task' | 'shell';
+export type OperationKind = 'prompt' | 'skill' | 'task' | 'shell' | 'compact';
 
 export type FlueEvent = (
 	| {
@@ -81,7 +76,6 @@ export type FlueEvent = (
 	| { type: 'log'; level: 'info' | 'warn' | 'error'; message: string; attributes?: Record<string, unknown> }
 	| { type: 'idle' }
 	| { type: 'run_end'; runId: string; result?: unknown; isError: boolean; error?: unknown; durationMs: number }
-	| { type: string; truncated: true; originalSize: number; preview: string }
 ) & {
 	runId?: string;
 	eventIndex?: number;
@@ -92,3 +86,20 @@ export type FlueEvent = (
 	harness?: string;
 	operationId?: string;
 };
+
+export type TruncatedFlueEvent = {
+	type: string;
+	truncated: true;
+	originalSize: number;
+	preview: string;
+	runId?: string;
+	eventIndex?: number;
+	timestamp?: string;
+	session?: string;
+	parentSession?: string;
+	taskId?: string;
+	harness?: string;
+	operationId?: string;
+};
+
+export type StoredFlueEvent = FlueEvent | TruncatedFlueEvent;

@@ -43,8 +43,8 @@ export interface FlueRuntime {
 	target: 'node' | 'cloudflare';
 
 	/**
-	 * Names of agents reachable over HTTP when not in local mode.
-	 * Trigger-less agents are excluded from this list and gate access
+	 * Names of actions reachable over HTTP when not in local mode.
+	 * Trigger-less actions are excluded from this list and gate access
 	 * via {@link FlueRuntime.allowNonWebhook}.
 	 */
 	webhookAgents: ReadonlyArray<string>;
@@ -343,7 +343,7 @@ const actionRouteHandler: MiddlewareHandler = async (c) => {
 		method: c.req.method,
 		name,
 		id,
-		registeredAgents: registeredAgentsFor(rt),
+		registeredActions: registeredActionsFor(rt),
 		webhookAgents: rt.webhookAgents,
 		allowNonWebhook: rt.allowNonWebhook,
 	});
@@ -488,7 +488,7 @@ function normalizeRunRequest(
  *   - Cloudflare: only webhook actions have generated DO classes, so
  *     non-webhook names have no valid landing target.
  */
-function registeredAgentsFor(rt: FlueRuntime): readonly string[] {
+function registeredActionsFor(rt: FlueRuntime): readonly string[] {
 	if (rt.target === 'node') return Object.keys(rt.handlers ?? {});
 	return rt.webhookAgents;
 }

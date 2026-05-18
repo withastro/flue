@@ -10,7 +10,7 @@ import {
 	validator,
 } from 'hono-openapi';
 import {
-	AgentNotFoundError,
+	ActionNotFoundError,
 	LegacyAdminAgentRouteError,
 	RouteNotFoundError,
 	RunRegistryUnavailableError,
@@ -21,14 +21,9 @@ import { type FlueRuntime, getFlueRuntime, handleRunById } from './flue-app.ts';
 import type { ListRunsOpts, RunRegistry } from './run-registry.ts';
 import type { RunStatus } from './run-store.ts';
 import {
-	ActionInstanceParamSchema,
-	ActionNameParamSchema,
-	AdminInstanceRunsQuerySchema,
-	AdminInstancesQuerySchema,
 	AdminRunsQuerySchema,
 	ErrorEnvelopeSchema,
 	ListActionsResponseSchema,
-	ListInstancesResponseSchema,
 	ListRunsResponseSchema,
 	RunIdParamSchema,
 	RunRecordSchema,
@@ -39,20 +34,6 @@ export function admin(): Hono {
 
 	app.get('/openapi.json', lazyOpenApiRouteHandler(app, adminOpenApiOptions));
 	app.get('/actions', describeRoute(adminActionsSpec() as DescribeRouteOptions), listActionsHandler);
-	app.get(
-		'/actions/:name/instances',
-		describeRoute(adminActionInstancesSpec() as DescribeRouteOptions),
-		validated('param', ActionNameParamSchema),
-		validated('query', AdminInstancesQuerySchema),
-		listInstancesHandler,
-	);
-	app.get(
-		'/actions/:name/instances/:id/runs',
-		describeRoute(adminActionInstanceRunsSpec() as DescribeRouteOptions),
-		validated('param', ActionInstanceParamSchema),
-		validated('query', AdminInstanceRunsQuerySchema),
-		listInstanceRunsHandler,
-	);
 	app.all('/agents', legacyAdminAgentRouteHandler);
 	app.all('/agents/:name/instances', legacyAdminAgentRouteHandler);
 	app.all('/agents/:name/instances/:id/runs', legacyAdminAgentRouteHandler);
@@ -130,30 +111,6 @@ function adminActionsSpec() {
 	};
 }
 
-function adminActionInstancesSpec() {
-	return {
-		tags: ['admin'],
-		operationId: 'adminListActionInstances',
-		summary: 'List instances for an action',
-		responses: {
-			200: jsonResponse(ListInstancesResponseSchema, listResponseDescription),
-			...errorResponses(),
-		},
-	};
-}
-
-function adminActionInstanceRunsSpec() {
-	return {
-		tags: ['admin'],
-		operationId: 'adminListActionInstanceRuns',
-		summary: 'List runs for an action instance',
-		responses: {
-			200: jsonResponse(ListRunsResponseSchema, listResponseDescription),
-			...errorResponses(),
-		},
-	};
-}
-
 function adminRunsSpec() {
 	return {
 		tags: ['admin'],
@@ -185,28 +142,6 @@ const listActionsHandler: MiddlewareHandler = async (c) => {
 
 const legacyAdminAgentRouteHandler: MiddlewareHandler = () => {
 	throw new LegacyAdminAgentRouteError();
-};
-
-const listInstancesHandler: MiddlewareHandler = async (c) => {
-	const rt = requireRuntime();
-	const actionName = c.req.param('name') ?? '';
-	assertKnownAction(rt, actionName);
-	const registry = requireRegistry(rt, c.env);
-	const query = parseListQuery(c.req.raw);
-	const out = await registry.listInstances({ actionName, ...query });
-	return c.json({ items: out.instances, nextCursor: out.nextCursor });
-};
-
-const listInstanceRunsHandler: MiddlewareHandler = async (c) => {
-	const rt = requireRuntime();
-	const actionName = c.req.param('name') ?? '';
-	const instanceId = c.req.param('id') ?? '';
-	assertKnownAction(rt, actionName);
-	const registry = requireRegistry(rt, c.env);
-	const query = parseListQuery(c.req.raw);
-	const status = statusFromRequest(c.req.raw);
-	const out = await registry.listRuns({ actionName, instanceId, status, ...query });
-	return c.json({ items: out.runs, nextCursor: out.nextCursor });
 };
 
 const listRunsHandler: MiddlewareHandler = async (c) => {
@@ -270,7 +205,7 @@ function requireRegistry(rt: FlueRuntime, env: unknown): RunRegistry {
 
 function assertKnownAction(rt: FlueRuntime, name: string): void {
 	const available = rt.manifest?.actions.map((action) => action.name) ?? [];
-	if (!available.includes(name)) throw new AgentNotFoundError({ name, available });
+	if (!available.includes(name)) throw new ActionNotFoundError({ name, available });
 }
 
 function parseListQuery(request: Request): { cursor?: string; limit?: number } {

@@ -58,6 +58,8 @@ curl http://localhost:3583/actions/hello/demo \
   -d '{"text":"Hello world","language":"French"}'
 ```
 
+`hello` is the Action name. `demo` is the ActionInstance id; reusing it resumes that action instance's persisted harness/session state. Each invocation creates a new Run, whose run id is used by `flue logs <runId>`.
+
 ## Project layout
 
 Flue scans exactly one directory for handlers:

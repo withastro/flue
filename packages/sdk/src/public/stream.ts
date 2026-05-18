@@ -1,5 +1,5 @@
-import type { HttpClient } from '../http.ts';
-import type { FlueEvent } from '../types.ts';
+import { parseJsonResponse, type HttpClient } from '../http.ts';
+import type { StoredFlueEvent } from '../types.ts';
 
 export interface StreamOptions {
 	lastEventId?: number;
@@ -18,7 +18,7 @@ export async function* streamRunEvents(
 	http: HttpClient,
 	runId: string,
 	options: StreamOptions = {},
-): AsyncIterable<FlueEvent> {
+): AsyncIterable<StoredFlueEvent> {
 	let lastEventId = options.lastEventId;
 	let attempt = 0;
 	const maxRetries = options.maxRetries ?? 3;
@@ -38,7 +38,7 @@ export async function* streamRunEvents(
 				headers,
 				signal: options.signal,
 			});
-			if (!response.ok) throw new Error(`Stream request failed with HTTP ${response.status}.`);
+			if (!response.ok) await parseJsonResponse(response);
 			if (!response.body) throw new Error('Stream response has no body.');
 
 			for await (const frame of readSse(response.body)) {
@@ -46,7 +46,7 @@ export async function* streamRunEvents(
 					const parsed = Number.parseInt(frame.id, 10);
 					if (Number.isFinite(parsed)) lastEventId = parsed;
 				}
-				const event = JSON.parse(frame.data) as FlueEvent;
+				const event = JSON.parse(frame.data) as StoredFlueEvent;
 				yield event;
 				if (event.type === 'run_end') {
 					sawTerminalEvent = true;

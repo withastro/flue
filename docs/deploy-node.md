@@ -89,7 +89,7 @@ curl http://localhost:3583/actions/translate/test-1 \
   -d '{"text": "Hello world", "language": "French"}'
 ```
 
-Every action with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/actions/<name>/<id>` — for example, `.flue/actions/translate.ts` becomes `/actions/translate/:id`.
+Every action with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/actions/<name>/<id>` — for example, `.flue/actions/translate.ts` becomes `/actions/translate/:id`. `translate` is the Action name; `test-1` is the ActionInstance id. Reusing that id resumes that action instance's persisted harness/session state. Each invocation creates a new Run, whose run id is used by `flue logs <runId>`.
 
 For a one-shot production-style run (no watcher), use `flue build` + the generated server. The built server reads `process.env` directly, so source your env file in your shell or pass values explicitly:
 

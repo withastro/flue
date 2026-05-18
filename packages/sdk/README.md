@@ -1,27 +1,51 @@
 > **Experimental** — Flue is under active development. APIs may change.
->
-> Looking for `v0.0.x`? [See here.](https://github.com/withastro/flue/tree/v0.0.x)
 
-# Flue
+# @flue/sdk
 
-Flue is **The Agent Harness Framework**: a TypeScript framework for building headless agents that feel like Claude Code, Codex, OpenCode, or Pi, but run as programmable server actions.
+Typed client for invoking deployed Flue actions and inspecting runs.
 
-An app has three core pieces:
+```bash
+npm install @flue/sdk
+```
 
-- **Actions are handlers.** Flue scans `actions/` or `.flue/actions/` and turns each handler into a runnable action.
-- **Agents are values.** Use `defineAgent()` when instructions, tools, skills, or subagents should travel together as an explicit reusable definition.
-- **Harnesses and sessions run work.** An action calls `init()`, opens a session, then uses `prompt()`, `skill()`, `task()`, or `shell()`.
+```ts
+import { createFlueClient } from '@flue/sdk';
 
-Skills and tools can be bundled into an agent definition at build time. Sandbox files are different: Flue only reads sandbox `AGENTS.md` / `CLAUDE.md` and `.agents/skills/` when an action explicitly opts into `loadFromSandbox`.
+const client = createFlueClient({ baseUrl: 'https://flue.example' });
+const { result, runId } = await client.actions.invoke('hello', 'demo', {
+	mode: 'sync',
+	payload: { name: 'Ada' },
+});
+```
 
-## Packages
+- `hello` is the **Action** name.
+- `demo` is the **ActionInstance** id; reusing it resumes that action instance's persisted harness/session state.
+- Each invocation creates a **Run**, returned as `runId` in sync/webhook modes and emitted in stream mode's `run_start` event.
 
-| Package | Description |
-| --- | --- |
-| [`@flue/runtime`](packages/runtime) | Runtime APIs for actions, agents, harnesses, sessions, tools, and sandboxes |
-| [`@flue/cli`](packages/cli) | Build, dev, run, logs, init, add, and config tooling |
+Modes:
 
-## Getting started
+```ts
+await client.actions.invoke('hello', 'demo', { mode: 'webhook', payload: {} });
+
+for await (const event of client.actions.invoke('hello', 'demo', { mode: 'stream', payload: {} })) {
+	console.log(event.type);
+}
+```
+
+Run and admin helpers:
+
+```ts
+await client.runs.get(runId);
+await client.runs.events(runId);
+for await (const event of client.runs.stream(runId)) console.log(event);
+
+await client.admin.actions.list();
+await client.admin.runs.list({ actionName: 'hello' });
+```
+
+HTTP failures throw `FlueApiError`, which exposes `status` and `body`.
+
+## Framework overview
 
 Install Flue, create a project config, and create an action directory:
 

@@ -48,7 +48,7 @@ function printUsage() {
 	console.error(
 		'Usage:\n' +
 			'  flue dev   [--target <node|cloudflare>] [--root <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]...\n' +
-			'  flue run   <agent> [--target node] --id <id> [--payload <json>] [--root <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]...\n' +
+			'  flue run   <action> [--target node] --id <id> [--payload <json>] [--root <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]...\n' +
 			'  flue build [--target <node|cloudflare>] [--root <path>] [--output <path>] [--config <path>]\n' +
 			'  flue init  --target <node|cloudflare> [--root <path>] [--force]\n' +
 			'  flue add   [<name>|<url>] [--category <category>] [--print]\n' +
@@ -56,11 +56,11 @@ function printUsage() {
 			'\n' +
 			'Commands:\n' +
 			'  dev    Long-running watch-mode dev server. Rebuilds and reloads on file changes.\n' +
-			'  run    One-shot build + invoke an agent (production-style; use for CI / scripted runs).\n' +
+			'  run    One-shot build + invoke an action (production-style; use for CI / scripted runs).\n' +
 			'  build  Build a deployable artifact to ./dist (production deploys).\n' +
 			'  init   Scaffold a starter flue.config.ts in the target directory.\n' +
 			'  add    Install a connector. Pipes installation instructions for an AI coding agent to follow.\n' +
-			'  logs   Tail or replay structured run events from a running Flue server. Read-only — does not invoke the agent.\n' +
+			'  logs   Tail or replay structured run events from a running Flue server. Read-only — does not invoke an action.\n' +
 			'\n' +
 			'Flags:\n' +
 			'  --root <path>        Project root. Default: current working directory.\n' +
@@ -102,7 +102,7 @@ function printUsage() {
 
 interface RunArgs {
 	command: 'run';
-	agent: string;
+	action: string;
 	/** May be undefined if the user is relying on `flue.config.ts` for `target`. */
 	target: 'node' | undefined;
 	id: string;
@@ -286,14 +286,14 @@ function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function printCloudflareRunUnsupported(agent: string, id: string, payload: string): never {
+function printCloudflareRunUnsupported(action: string, id: string, payload: string): never {
 	console.error(
 		'[flue] `flue run --target cloudflare` is not supported.\n\n' +
 			'`flue run` is a one-shot Node.js invoker; Cloudflare builds need a Workers runtime.\n\n' +
 			'For local development of a Cloudflare target, use `flue dev`:\n\n' +
 			`  flue dev --target cloudflare\n\n` +
 			`Then in another terminal:\n\n` +
-			`  curl http://localhost:${DEFAULT_DEV_PORT}/actions/${agent}/${id} \\\n` +
+			`  curl http://localhost:${DEFAULT_DEV_PORT}/actions/${encodeURIComponent(action)}/${encodeURIComponent(id)} \\\n` +
 			'    -H "Content-Type: application/json" \\\n' +
 			`    -d ${shellQuote(payload)}`,
 	);
@@ -498,6 +498,10 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 	if (command === 'build') {
 		const flags = parseFlags(rest);
+		if (flags.id || flags.payload !== '{}' || flags.port !== 0 || flags.envFiles.length > 0) {
+			console.error('`flue build` only accepts --target, --root, --output, and --config.');
+			process.exit(1);
+		}
 		return {
 			command: 'build',
 			target: flags.target,
@@ -509,6 +513,10 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 	if (command === 'dev') {
 		const flags = parseFlags(rest);
+		if (flags.id || flags.payload !== '{}') {
+			console.error('`flue dev` does not accept --id or --payload.');
+			process.exit(1);
+		}
 		return {
 			command: 'dev',
 			target: flags.target,
@@ -521,7 +529,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 	}
 
 	if (command === 'run' && rest.length > 0) {
-		const agent = rest[0]!;
+		const action = rest[0]!;
 		const flags = parseFlags(rest.slice(1));
 
 		// `flue run` only supports node. If the user explicitly asked for
@@ -529,7 +537,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 		// where `flue.config.ts` sets `target: cloudflare` is handled later
 		// in `run()` after config resolution.
 		if (flags.target === 'cloudflare') {
-			printCloudflareRunUnsupported(agent, flags.id ?? '<id>', flags.payload);
+			printCloudflareRunUnsupported(action, flags.id ?? '<id>', flags.payload);
 		}
 
 		if (!flags.id) {
@@ -547,7 +555,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 		return {
 			command: 'run',
-			agent,
+			action,
 			target: flags.target as 'node' | undefined,
 			id: flags.id,
 			payload: flags.payload,
@@ -854,10 +862,10 @@ function startServer(
 		stdio: ['ignore', 'pipe', 'pipe'],
 		cwd,
 		// FLUE_MODE=local signals the generated server to allow invocation of
-		// any registered agent (including trigger-less CI-only agents). Without
+		// any registered action (including trigger-less CI-only actions). Without
 		// this flag, the server enforces the `webhook: true` gate — which is
 		// the correct behavior for production deployments, but would prevent
-		// `flue run` from working with CI-only agents.
+		// `flue run` from working with CI-only actions.
 		//
 		// Merge order: env-file values first, then `process.env` (so shell
 		// vars win on key collision — matches dotenv-cli convention), then
@@ -957,7 +965,7 @@ async function run(args: RunArgs) {
 	// can only happen via `flue.config.ts`, since the CLI flag was already
 	// caught in parseArgs), bail with the same hint.
 	if (cfg.target === 'cloudflare') {
-		printCloudflareRunUnsupported(args.agent, args.id, args.payload);
+		printCloudflareRunUnsupported(args.action, args.id, args.payload);
 	}
 
 	const root = cfg.root;
@@ -995,7 +1003,7 @@ async function run(args: RunArgs) {
 		const text = data.toString().trimEnd();
 		for (const line of text.split('\n')) {
 			// Filter out the server startup logs we already know about
-			if (line.includes('[flue] Server listening') || line.includes('[flue] Available agents'))
+			if (line.includes('[flue] Server listening') || line.includes('[flue] Available actions'))
 				continue;
 			if (line.includes('[flue] Agent-OS VM ready') || line.includes('[flue] Sandbox ready'))
 				continue;
@@ -1007,7 +1015,7 @@ async function run(args: RunArgs) {
 	serverProcess.stderr?.on('data', pipeServerOutput);
 
 	// Retry the real request briefly while the child binds its port.
-	console.error(`[flue] Running agent: ${args.agent}`);
+	console.error(`[flue] Running action: ${args.action}`);
 	const sseAbort = new AbortController();
 	let outcome: { result?: any; error?: string };
 
@@ -1017,7 +1025,7 @@ async function run(args: RunArgs) {
 	while (true) {
 		try {
 			outcome = await consumeSSE(
-				`http://localhost:${port}/actions/${args.agent}/${args.id}`,
+				`http://localhost:${port}/actions/${encodeURIComponent(args.action)}/${encodeURIComponent(args.id)}`,
 				args.payload,
 				sseAbort.signal,
 			);
@@ -1037,7 +1045,7 @@ async function run(args: RunArgs) {
 	}
 
 	if (outcome.error) {
-		console.error(`[flue] Agent error: ${outcome.error}`);
+		console.error(`[flue] Action error: ${outcome.error}`);
 		stopServer();
 		process.exit(1);
 	}

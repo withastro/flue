@@ -26,6 +26,7 @@ import type {
 } from './types.ts';
 
 export interface FlueContextConfig {
+	actionName: string;
 	id: string;
 	runId: string;
 	payload: any;
@@ -185,6 +186,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 				};
 
 				return new Harness(
+					config.actionName,
 					config.id,
 					name,
 					agentConfig,
