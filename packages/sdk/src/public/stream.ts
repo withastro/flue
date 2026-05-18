@@ -48,14 +48,14 @@ export async function* streamRunEvents(
 				}
 				const event = JSON.parse(frame.data) as StoredFlueEvent;
 				yield event;
-				if (event.type === 'run_end') {
+				if (event.type === 'run') {
 					sawTerminalEvent = true;
 					return;
 				}
 			}
 			if (sawTerminalEvent || options.signal?.aborted) return;
 			if (attempt >= maxRetries) {
-				throw new Error('SSE stream closed before run_end.');
+				throw new Error('SSE stream closed before run.');
 			}
 			await sleep(initialRetryMs * 2 ** attempt, options.signal);
 			attempt++;

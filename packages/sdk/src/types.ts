@@ -75,7 +75,7 @@ export type FlueEvent = (
 	| { type: 'operation'; operationId: string; operationKind: OperationKind; durationMs: number; isError: boolean; error?: unknown; result?: unknown; usage?: PromptUsage }
 	| { type: 'log'; level: 'info' | 'warn' | 'error'; message: string; attributes?: Record<string, unknown> }
 	| { type: 'idle' }
-	| { type: 'run_end'; runId: string; result?: unknown; isError: boolean; error?: unknown; durationMs: number }
+	| { type: 'run'; runId: string; result?: unknown; isError: boolean; error?: unknown; durationMs: number }
 ) & {
 	runId?: string;
 	eventIndex?: number;

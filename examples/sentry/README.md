@@ -64,7 +64,7 @@ examples/sentry/
     ├── app.ts                ← Sentry.init + observe(...) bridge
     └── actions/
         ├── hello.ts          ← success case — no Sentry traffic
-        ├── boom.ts           ← run-fatal throw — captures via run_end
+        ├── boom.ts           ← run-fatal throw — captures via run
         └── explicit.ts       ← non-fatal log.error — captures while run continues
 ```
 
@@ -75,7 +75,7 @@ and how the pieces fit together.
 ## How the integration works
 
 Flue emits a structured event for every meaningful boundary in a run —
-`run_start`, `operation`, `tool_call`, `log`, `run_end`, and others.
+`run_start`, `operation`, `tool_call`, `log`, `run`, and others.
 Every event carries the Flue correlation tree (`runId`, `harness`,
 `session`, `operationId`, `taskId`) so any consumer can reconstruct
 what happened.
@@ -100,7 +100,7 @@ two event shapes:
 
 | Flue event | Sentry call | Severity |
 |---|---|---|
-| `run_end` with `isError: true` | `captureException` (reconstructed Error) | `error` |
+| `run` with `isError: true` | `captureException` (reconstructed Error) | `error` |
 | `log` with `level: 'error'` and `attributes.error` | `captureException` (reconstructed Error) | `error` |
 | `log` with `level: 'error'` and no `error` attribute | `captureMessage` | `error` |
 
@@ -199,7 +199,7 @@ flue logs run_01HX...
 ```
 
 The CLI streams the full event log of that run — including the
-`run_end` event that triggered the Sentry capture.
+`run` event that triggered the Sentry capture.
 
 ## Adapting this to your project
 
@@ -225,7 +225,7 @@ carry more:
 - **Breadcrumbs.** Forward `log.info` / `log.warn` to
   `Sentry.addBreadcrumb(...)` so each captured exception has the
   in-run log trail attached.
-- **Spans.** The wide `operation`, `tool_call`, `turn`, and `run_end`
+- **Spans.** The wide `operation`, `tool_call`, `turn`, and `run`
   events all carry `durationMs`. Synthesize Sentry spans from
   `(timestamp - durationMs, timestamp)` to build a flame graph for
   every run. The `gen_ai.*` OpenTelemetry semantic conventions are a

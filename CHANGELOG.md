@@ -177,7 +177,7 @@
   Sentry.init({ dsn: process.env.SENTRY_DSN });
 
   observe((event, ctx) => {
-    if (event.type === 'run_end' && event.isError) {
+    if (event.type === 'run' && event.isError) {
       Sentry.captureException(event.error);
     }
   });
@@ -219,20 +219,20 @@
 - **Session storage keys now include the action instance id, harness name, and session name.** Existing persisted sessions under the old two-part key shape are not migrated. Cloudflare Durable Object session history from earlier builds will not be read by this release.
 - **Webhook responses return `runId` instead of `requestId`.** Every HTTP invocation now gets a generated `run_<ulid>` exposed to handlers as `ctx.runId`. Webhook mode returns `{ status: 'accepted', runId }`.
 - **The event vocabulary changed for run observability.** `tool_end` is now `tool_call`, `operation_end` is now `operation`, and session correlation fields use `harness`, `session`, and `parentSession` instead of the previous id-oriented names. Consumers of the raw `FlueEvent` stream should update event-type checks and field names.
-- **SSE `event: result` was removed.** Terminal result/error state is now delivered by the wide `run_end` event. Sync responses still return `{ result, _meta: { runId } }`.
+- **SSE `event: result` was removed.** Terminal result/error state is now delivered by the wide `run` event. Sync responses still return `{ result, _meta: { runId } }`.
 
 ### New Features
 
-- **Run history and durable event logs.** Every invocation is recorded as a run with `run_start` / `run_end` lifecycle events and a monotonic `eventIndex`. Cloudflare persists run history in the Agent Durable Object SQLite storage; Node keeps an in-memory ring buffer of recent completed runs.
+- **Run history and durable event logs.** Every invocation is recorded as a run with `run_start` / `run` lifecycle events and a monotonic `eventIndex`. Cloudflare persists run history in the Agent Durable Object SQLite storage; Node keeps an in-memory ring buffer of recent completed runs.
 - **Run-scoped HTTP endpoints.** New read-only endpoints expose a known run: `GET /agents/<name>/<id>/runs/<runId>`, `GET /agents/<name>/<id>/runs/<runId>/events`, and `GET /agents/<name>/<id>/runs/<runId>/stream`. There is intentionally no list-runs endpoint yet; broader run discovery remains admin-API territory.
-- **Reconnectable live run streams.** `/runs/<runId>/stream` replays durable history and then tails active runs. It honors standard `Last-Event-ID` resume semantics and closes when `run_end` is observed.
+- **Reconnectable live run streams.** `/runs/<runId>/stream` replays durable history and then tails active runs. It honors standard `Last-Event-ID` resume semantics and closes when `run` is observed.
 - **`flue logs` command.** `flue logs <agent> <id> <runId>` replays or tails a known run from a running Flue dev server. It supports `--follow` / `--no-follow`, `--since`, `--types`, `--limit`, and `--format pretty|json|ndjson`.
 - **Structured handler logs.** Handlers can call `ctx.log.info(...)`, `ctx.log.warn(...)`, and `ctx.log.error(...)` to emit structured `log` events into the run event stream and persisted history.
 - **`flue run` surfaces run ids.** One-shot runs now print the generated run id to stderr and include `_meta.runId` in sync responses, making it easier to inspect the same run with `flue logs`.
 
 ### Fixes & Other Changes
 
-- **Run lifecycle ordering is durable-before-live.** Terminal `run_end` events are appended before live subscribers are notified and before the run is marked terminal, avoiding missed terminal events for clients connecting near completion.
+- **Run lifecycle ordering is durable-before-live.** Terminal `run` events are appended before live subscribers are notified and before the run is marked terminal, avoiding missed terminal events for clients connecting near completion.
 - **Live event fan-out is ordered per run.** Durable writes are serialized before publishing each non-terminal event to live subscribers.
 - **SSE streams now use a shared 15s heartbeat.** Both direct agent SSE responses and run-history streams emit heartbeats to avoid idle proxy/client timeouts.
 - **Cloudflare run-route parsing is positional.** An action instance id of `"runs"` no longer collides with the `/runs` route marker.

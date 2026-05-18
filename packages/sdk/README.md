@@ -45,6 +45,8 @@ await client.admin.runs.list({ actionName: 'hello' });
 
 HTTP failures throw `FlueApiError`, which exposes `status` and `body`.
 
+Event guide: [`docs/events.md`](../../docs/events.md).
+
 ## Framework overview
 
 Install Flue, create a project config, and create an action directory:

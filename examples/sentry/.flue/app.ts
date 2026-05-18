@@ -124,10 +124,10 @@ observe((event, ctx) => {
 
 	// ─── Run-fatal: the handler threw or rejected ─────────────────────
 	//
-	// `run_end` fires exactly once per run. When `isError` is true,
+	// `run` fires exactly once per run. When `isError` is true,
 	// the handler did not return successfully — this is the
 	// canonical "something broke" signal.
-	if (event.type === 'run_end' && event.isError) {
+	if (event.type === 'run' && event.isError) {
 		Sentry.withScope((scope) => {
 			scope.setTags(tags);
 			scope.setLevel('error');
@@ -172,7 +172,7 @@ observe((event, ctx) => {
 	// threw. If the action handler caught and recovered, the run is
 	// still healthy — capturing here would be noise. If the
 	// handler did NOT catch, the same error propagates up to
-	// `run_end` above and is captured there.
+	// `run` above and is captured there.
 	//
 	// `tool_call` events with `isError: true` represent a tool body
 	// that threw or returned an error. The model usually keeps

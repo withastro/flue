@@ -14,6 +14,8 @@ An app has three core pieces:
 
 Skills and tools can be bundled into an agent definition at build time. Sandbox files are different: Flue only reads sandbox `AGENTS.md` / `CLAUDE.md` and `.agents/skills/` when an action explicitly opts into `loadFromSandbox`.
 
+Event guide: [`docs/events.md`](../../docs/events.md).
+
 ## Packages
 
 | Package | Description |

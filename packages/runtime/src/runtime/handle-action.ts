@@ -494,9 +494,9 @@ function emitRunStart(lifecycle: RunLifecycle): void {
 }
 
 /**
- * Emit `run_end` and finalize the run.
+ * Emit `run` and finalize the run.
  *
- * Terminal ordering matters for `/runs/:runId/stream`: append `run_end`
+ * Terminal ordering matters for `/runs/:runId/stream`: append `run`
  * before marking the run terminal, then publish and close subscribers.
  */
 async function emitRunEnd(
@@ -514,7 +514,7 @@ async function emitRunEnd(
 
 	// Decorate through the shared event path so eventIndex/timestamp stay continuous.
 	const decorated = lifecycle.ctx.emitEvent({
-		type: 'run_end',
+		type: 'run',
 		runId,
 		result: normalizedResult,
 		isError: input.isError,
@@ -522,7 +522,7 @@ async function emitRunEnd(
 		durationMs,
 	});
 
-	await safeRunStore('appendEvent(run_end)', () => runStore?.appendEvent(runId, decorated));
+	await safeRunStore('appendEvent(run)', () => runStore?.appendEvent(runId, decorated));
 
 	runSubscribers?.publish(runId, decorated);
 
@@ -553,14 +553,14 @@ async function emitRunEnd(
 
 /**
  * Persist non-terminal events before publishing them to live subscribers.
- * `run_end` is handled separately by {@link emitRunEnd}.
+ * `run` is handled separately by {@link emitRunEnd}.
  */
 function subscribeRunFanout(lifecycle: RunLifecycle): () => Promise<void> {
 	const { ctx, runStore, runSubscribers, runId } = lifecycle;
 	if (!runStore && !runSubscribers) return async () => {};
 	let chain: Promise<void> = Promise.resolve();
 	const unsubscribe = ctx.subscribeEvent((event) => {
-		if (event.type === 'run_end') return;
+		if (event.type === 'run') return;
 		chain = chain.then(() => fanOutEvent(runStore, runSubscribers, runId, event));
 	});
 	return () => {

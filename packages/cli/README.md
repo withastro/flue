@@ -58,7 +58,7 @@ curl http://localhost:3583/actions/hello/demo \
   -d '{"text":"Hello world","language":"French"}'
 ```
 
-`hello` is the Action name. `demo` is the ActionInstance id; reusing it resumes that action instance's persisted harness/session state. Each invocation creates a new Run, whose run id is used by `flue logs <runId>`.
+`hello` is the Action name. `demo` is the ActionInstance id; reusing it resumes that action instance's persisted harness/session state within the backing runtime/store. Each invocation creates a new Run, whose run id is used by `flue logs <runId>`.
 
 ## Project layout
 
@@ -238,7 +238,7 @@ export default defineConfig({ target: 'node' });
 
 ## Cloudflare
 
-Cloudflare builds support Workers AI models such as `cloudflare/@cf/moonshotai/kimi-k2.6`. Add an `AI` binding in `wrangler.jsonc`; no provider API key is needed for that model path.
+Cloudflare builds support Workers AI models such as `cloudflare/@cf/moonshotai/kimi-k2.6`. Add an `AI` binding in `wrangler.jsonc`; no provider API key is needed for that model path. Cloudflare targets require action filenames to use lower-kebab-case so route names and generated Durable Object classes stay portable.
 
 Cloudflare shell workspace examples live in [`examples/cloudflare`](examples/cloudflare). They show R2/git hydration followed by `loadFromSandbox: true` discovery inside the workspace.
 

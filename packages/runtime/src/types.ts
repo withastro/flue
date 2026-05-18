@@ -793,7 +793,7 @@ export type FlueEvent = (
 			attributes?: Record<string, unknown>;
 		}
 	| { type: 'idle' }
-	| { type: 'run_end'; runId: string; result?: unknown; isError: boolean; error?: unknown; durationMs: number }
+	| { type: 'run'; runId: string; result?: unknown; isError: boolean; error?: unknown; durationMs: number }
 ) & {
 	runId?: string;
 	eventIndex?: number;

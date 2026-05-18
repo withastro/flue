@@ -54,7 +54,7 @@ describe('createFlueClient', () => {
 		expect(new URL(url).pathname).toBe('/internal/admin/actions');
 	});
 
-	it('reconnects run streams after clean EOF before run_end', async () => {
+	it('reconnects run streams after clean EOF before run', async () => {
 		const requests: Request[] = [];
 		const client = createFlueClient({
 			baseUrl: 'https://flue.test',
@@ -66,7 +66,7 @@ describe('createFlueClient', () => {
 						headers: { 'content-type': 'text/event-stream' },
 					});
 				}
-				return new Response(sse('event: run_end\nid: 2\ndata: {"type":"run_end","isError":false,"durationMs":1}\n\n'), {
+				return new Response(sse('event: run\nid: 2\ndata: {"type":"run","isError":false,"durationMs":1}\n\n'), {
 					headers: { 'content-type': 'text/event-stream' },
 				});
 			},
@@ -77,7 +77,7 @@ describe('createFlueClient', () => {
 			events.push(event.type);
 		}
 
-		expect(events).toEqual(['run_start', 'run_end']);
+		expect(events).toEqual(['run_start', 'run']);
 		expect(requests).toHaveLength(2);
 		expect(requests[1]?.headers.get('last-event-id')).toBe('1');
 	});
@@ -87,22 +87,22 @@ describe('readSse', () => {
 	it('parses SSE frames', async () => {
 		const stream = new ReadableStream<Uint8Array>({
 			start(controller) {
-				controller.enqueue(new TextEncoder().encode('event: run_end\nid: 2\ndata: {"type":"run_end"}\n\n'));
+				controller.enqueue(new TextEncoder().encode('event: run\nid: 2\ndata: {"type":"run"}\n\n'));
 				controller.close();
 			},
 		});
 
 		const frames = [];
 		for await (const frame of readSse(stream)) frames.push(frame);
-		expect(frames).toEqual([{ event: 'run_end', id: '2', data: '{"type":"run_end"}' }]);
+		expect(frames).toEqual([{ event: 'run', id: '2', data: '{"type":"run"}' }]);
 	});
 
 	it('parses CRLF-delimited SSE frames', async () => {
-		const stream = sse('event: run_end\r\nid: 2\r\ndata: {"type":"run_end"}\r\n\r\n');
+		const stream = sse('event: run\r\nid: 2\r\ndata: {"type":"run"}\r\n\r\n');
 
 		const frames = [];
 		for await (const frame of readSse(stream)) frames.push(frame);
-		expect(frames).toEqual([{ event: 'run_end', id: '2', data: '{"type":"run_end"}' }]);
+		expect(frames).toEqual([{ event: 'run', id: '2', data: '{"type":"run"}' }]);
 	});
 });
 

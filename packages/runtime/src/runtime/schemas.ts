@@ -90,7 +90,7 @@ export const FLUE_EVENT_TYPES = [
 	'operation',
 	'log',
 	'idle',
-	'run_end',
+	'run',
 ] as const;
 
 export const FlueEventSchema = v.union([
@@ -179,7 +179,7 @@ export const FlueEventSchema = v.union([
 	}),
 	flueEvent({ type: v.literal('idle') }),
 	flueEvent({
-		type: v.literal('run_end'),
+		type: v.literal('run'),
 		runId: v.string(),
 		result: v.optional(v.unknown()),
 		isError: v.boolean(),

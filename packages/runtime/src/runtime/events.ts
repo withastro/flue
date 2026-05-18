@@ -40,7 +40,7 @@ const subscribers = new Set<FlueEventSubscriber>();
  *     import { observe } from '@flue/runtime/app';
  *
  *     observe((event, ctx) => {
- *       if (event.type === 'run_end' && event.isError) {
+ *       if (event.type === 'run' && event.isError) {
  *         // ship to your error reporter, metrics sink, etc.
  *       }
  *     });

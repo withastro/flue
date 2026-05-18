@@ -48,7 +48,7 @@ function printUsage() {
 	console.error(
 		'Usage:\n' +
 			'  flue dev   [--target <node|cloudflare>] [--root <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]...\n' +
-			'  flue run   <action> [--target node] --id <id> [--payload <json>] [--root <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]...\n' +
+			'  flue run   <action> [--target node] --id <actionInstanceId> [--payload <json>] [--root <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]...\n' +
 			'  flue build [--target <node|cloudflare>] [--root <path>] [--output <path>] [--config <path>]\n' +
 			'  flue init  --target <node|cloudflare> [--root <path>] [--force]\n' +
 			'  flue add   [<name>|<url>] [--category <category>] [--print]\n' +
@@ -56,11 +56,11 @@ function printUsage() {
 			'\n' +
 			'Commands:\n' +
 			'  dev    Long-running watch-mode dev server. Rebuilds and reloads on file changes.\n' +
-			'  run    One-shot build + invoke an action (production-style; use for CI / scripted runs).\n' +
+			'  run    One-shot build + invoke an action. Each invocation creates a Run.\n' +
 			'  build  Build a deployable artifact to ./dist (production deploys).\n' +
 			'  init   Scaffold a starter flue.config.ts in the target directory.\n' +
 			'  add    Install a connector. Pipes installation instructions for an AI coding agent to follow.\n' +
-			'  logs   Tail or replay structured run events from a running Flue server. Read-only — does not invoke an action.\n' +
+			'  logs   Tail or replay structured events for a Run by run id. Read-only — does not invoke an action.\n' +
 			'\n' +
 			'Flags:\n' +
 			'  --root <path>        Project root. Default: current working directory.\n' +
@@ -71,6 +71,7 @@ function printUsage() {
 			'                       Default: search the root dir (or cwd) for `flue.config.*`.\n' +
 			'                       CLI flags always override values set in the config file.\n' +
 			`  --port <number>      Port for the dev server. Default: ${DEFAULT_DEV_PORT}\n` +
+			'  --id <id>            (flue run) ActionInstance id used for /actions/<name>/<id>.\n' +
 			'  --env <path>         Load env vars from a .env-format file. Repeatable; later files override earlier on key collision.\n' +
 			'                       Works for both Node and Cloudflare targets. Shell-set env vars win over file values.\n' +
 			'  --category <name>    (flue add) Fetch the generic instructions for a connector category. Pair with a positional URL/path that\n' +
@@ -93,7 +94,7 @@ function printUsage() {
 			'  flue add https://e2b.dev --category sandbox | claude\n' +
 			'  flue logs run_01H...                              # tail a specific run\n' +
 			'  flue logs run_01H... --no-follow                  # one-shot replay\n' +
-			'  flue logs run_01H... --types tool_call,log,run_end --format json\n' +
+			'  flue logs run_01H... --types tool_call,log,run --format json\n' +
 			'\n' +
 			'Note: set the model inside your agent via `init({ model: "provider/model-id" })` ' +
 			'or per-call `{ model: ... }` on prompt/skill/task.',
@@ -714,8 +715,8 @@ function logEvent(event: any) {
 			break;
 
 		case 'run_start':
-		case 'run_end':
-			// `flue run` extracts the final result/error from `run_end`
+		case 'run':
+			// `flue run` extracts the final result/error from `run`
 			// in `consumeSSE` before reaching this renderer. `run_start`
 			// is uninteresting in single-run-mode output. Skipped here.
 			break;
@@ -782,7 +783,7 @@ async function consumeSSE(
 	}
 
 	const runId = res.headers.get('x-flue-run-id');
-	if (runId) console.error(`[flue] Run ID: ${runId}`);
+	if (runId) console.error(`[flue] Run ID: ${runId}  Inspect with: flue logs ${runId}`);
 
 	const decoder = new TextDecoder();
 	let buffer = '';
@@ -816,7 +817,7 @@ async function consumeSSE(
 				continue;
 			}
 
-			if (event.type === 'run_end') {
+			if (event.type === 'run') {
 				if (event.isError) {
 					const e = event.error ?? {};
 					if (typeof e === 'object' && e !== null) {
@@ -1168,20 +1169,35 @@ function logsRenderPretty(event: Record<string, unknown>): void {
 	if (type === 'run_start') {
 		const runId = String(event.runId ?? '');
 		const action = String(event.actionName ?? '');
-		console.error(`[flue] run:start    ${runId}  action=${action}`);
+		const instance = String(event.instanceId ?? '');
+		console.error(`[flue] run:start    ${runId}  action=${action}  instance=${instance}`);
 		return;
 	}
-	if (type === 'run_end') {
+	if (type === 'run') {
 		const runId = String(event.runId ?? '');
 		const duration = formatDuration(
 			typeof event.durationMs === 'number' ? event.durationMs : undefined,
 		);
 		if (event.isError) {
 			const err = event.error as { message?: string } | undefined;
-			console.error(`[flue] run:end      ${runId}  ERROR  ${err?.message ?? ''}  (${duration})`);
+			console.error(`[flue] run:done     ${runId}  ERROR  ${err?.message ?? ''}  (${duration})`);
 		} else {
-			console.error(`[flue] run:end      ${runId}  ok  (${duration})`);
+			console.error(`[flue] run:done     ${runId}  ok  (${duration})`);
 		}
+		return;
+	}
+	if (type === 'task_start') {
+		const agent = String(event.agent ?? 'task');
+		console.error(`[flue] task:start   ${agent}`);
+		return;
+	}
+	if (type === 'task') {
+		const agent = String(event.agent ?? 'task');
+		const duration = formatDuration(
+			typeof event.durationMs === 'number' ? event.durationMs : undefined,
+		);
+		const status = event.isError ? 'ERROR' : 'ok';
+		console.error(`[flue] task:done    ${agent}  ${status}${duration ? `  (${duration})` : ''}`);
 		return;
 	}
 	if (type === 'operation_start' || type === 'operation') {
@@ -1222,7 +1238,7 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 			} else {
 				logsRenderPretty(event);
 			}
-			if (event.type === 'run_end' && event.isError === true) exitCode = 2;
+			if (event.type === 'run' && event.isError === true) exitCode = 2;
 		}
 		if (args.format === 'pretty') flushBuffers();
 		process.exit(exitCode);
@@ -1283,7 +1299,7 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 				emittedCount++;
 			}
 
-			if (event.type === 'run_end' && event.isError === true) exitCode = 2;
+			if (event.type === 'run' && event.isError === true) exitCode = 2;
 			if (args.limit !== undefined && emittedCount >= args.limit) break;
 		}
 	} catch (err) {

@@ -174,7 +174,7 @@ function streamReplayThenTail(opts: ReplayThenTailOptions): Response {
 				if (typeof event.eventIndex === 'number') {
 					lastSentIndex = event.eventIndex;
 				}
-				if (event.type === 'run_end') close();
+				if (event.type === 'run') close();
 			};
 
 			onLiveEvent = write;

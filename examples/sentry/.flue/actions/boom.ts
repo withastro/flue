@@ -2,10 +2,10 @@
  * Run-fatal failure agent.
  *
  * This handler throws unconditionally. Flue catches the throw,
- * emits a `run_end` event with `isError: true` and a serialized
+ * emits a `run` event with `isError: true` and a serialized
  * error payload, then returns an HTTP error envelope to the caller.
  *
- * The `observe(...)` subscriber in `app.ts` sees the `run_end`
+ * The `observe(...)` subscriber in `app.ts` sees the `run`
  * event, reconstructs the Error, and calls `Sentry.captureException`
  * with `flue.run_id`, `flue.instance_id`, and friends as tags.
  *

@@ -321,7 +321,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(Array.isArray(eventsBody.events)).toBe(true);
 		const types = new Set(eventsBody.events.map((e) => e.type));
 		expect(types.has('run_start')).toBe(true);
-		expect(types.has('run_end')).toBe(true);
+		expect(types.has('run')).toBe(true);
 
 		const badLimit = await app.fetch(new Request(`http://localhost/runs/${runId}/events?limit=abc`));
 		expect(badLimit.status).toBe(400);
@@ -339,7 +339,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(streamRes.headers.get('content-type')).toMatch(/text\/event-stream/);
 		const streamBody = await streamRes.text();
 		expect(streamBody).toMatch(/event: run_start/);
-		expect(streamBody).toMatch(/event: run_end/);
+		expect(streamBody).toMatch(/event: run/);
 
 		const specRes = await app.fetch(new Request('http://localhost/openapi.json'));
 		expect(specRes.status).toBe(200);
@@ -466,7 +466,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(res.headers.get('allow')).toBe('GET');
 	});
 
-	it('flushes queued non-terminal events before run_end is persisted', async () => {
+	it('flushes queued non-terminal events before run is persisted', async () => {
 		const runStore = new SlowNonTerminalRunStore();
 		const runRegistry = new InMemoryRunRegistry();
 		const runSubscribers = createRunSubscriberRegistry();
@@ -522,7 +522,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		const events = ((await eventsRes.json()) as { events: Array<{ type: string }> }).events;
 		const types = events.map((event) => event.type);
 		const logIndex = types.indexOf('log');
-		const endIndex = types.indexOf('run_end');
+		const endIndex = types.indexOf('run');
 
 		expect(types[0]).toBe('run_start');
 		expect(logIndex).toBeGreaterThan(-1);
@@ -542,7 +542,7 @@ class SlowNonTerminalRunStore implements RunStore {
 	}
 
 	async appendEvent(runId: string, event: FlueEvent): Promise<void> {
-		if (event.type !== 'run_end') await new Promise((resolve) => setTimeout(resolve, 10));
+		if (event.type !== 'run') await new Promise((resolve) => setTimeout(resolve, 10));
 		return this.inner.appendEvent(runId, event);
 	}
 
