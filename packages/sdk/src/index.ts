@@ -9,6 +9,6 @@ export type {
 	RunRecord,
 	RunPointer,
 	ListResponse,
-	AgentManifestEntry,
+	ActionManifestEntry,
 	InstanceSummary,
 } from './types.ts';

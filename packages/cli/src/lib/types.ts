@@ -15,7 +15,7 @@ export interface ActionInfo {
 
 export interface BuildContext {
 	actions: ActionInfo[];
-	manifest: { agents: Array<{ name: string; triggers: { webhook?: boolean } }> };
+	manifest: { actions: Array<{ name: string; triggers: { webhook?: boolean } }> };
 	/**
 	 * The project root — typically the user's cwd. Action files
 	 * (`actions/`) live here directly, or under `<root>/.flue/`

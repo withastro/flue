@@ -24,7 +24,7 @@ export interface RunPointer {
 	isError?: boolean;
 }
 
-export interface AgentManifestEntry {
+export interface ActionManifestEntry {
 	name: string;
 	triggers: { webhook?: boolean };
 }

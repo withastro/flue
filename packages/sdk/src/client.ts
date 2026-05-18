@@ -1,7 +1,7 @@
 import { HttpClient, type HttpClientOptions, type RequestHeaders } from './http.ts';
 import { invokeAgent, type SyncInvokeResult, type WebhookInvokeResult } from './public/invoke.ts';
 import { type StreamOptions, streamRunEvents } from './public/stream.ts';
-import type { AgentManifestEntry, InstanceSummary, ListResponse, RunPointer, RunRecord, RunStatus } from './types.ts';
+import type { ActionManifestEntry, InstanceSummary, ListResponse, RunPointer, RunRecord, RunStatus } from './types.ts';
 
 export type { RequestHeaders };
 
@@ -22,7 +22,7 @@ export interface FlueClient {
 		invoke(name: string, id: string, options: { mode: 'webhook'; payload?: unknown; signal?: AbortSignal }): Promise<WebhookInvokeResult>;
 	};
 	admin: {
-		actions: { list(): Promise<ListResponse<AgentManifestEntry>> };
+		actions: { list(): Promise<ListResponse<ActionManifestEntry>> };
 		instances: { list(actionName: string, options?: ListOptions): Promise<ListResponse<InstanceSummary>> };
 		runs: {
 			list(options?: ListRunsOptions): Promise<ListResponse<RunPointer>>;

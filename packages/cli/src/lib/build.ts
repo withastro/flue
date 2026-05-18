@@ -226,7 +226,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	fs.mkdirSync(output, { recursive: true });
 
 	const manifest = {
-		agents: actions.map((a) => ({
+		actions: actions.map((a) => ({
 			name: a.name,
 			triggers: a.triggers,
 		})),

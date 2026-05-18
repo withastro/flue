@@ -413,6 +413,17 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(body.error?.type).toBe('run_registry_unavailable');
 	});
 
+	it('rejects obsolete generated manifests that still use agents', () => {
+		expect(() =>
+			configureFlueRuntime({
+				target: 'node',
+				manifest: { agents: [] } as never,
+				webhookAgents: [],
+				allowNonWebhook: false,
+			}),
+		).toThrow('Build manifest uses obsolete "agents" entries');
+	});
+
 	it('computes public OpenAPI metadata lazily after runtime configuration', async () => {
 		const app = new Hono();
 		app.route('/', flue());
@@ -551,7 +562,7 @@ describe('admin() routes', () => {
 			target: 'node',
 			runtimeVersion: '9.9.9',
 			manifest: {
-				agents: [
+				actions: [
 					{ name: 'hello', triggers: { webhook: true } },
 					{ name: 'offline', triggers: {} },
 				],
@@ -657,7 +668,7 @@ describe('admin() routes', () => {
 		configureFlueRuntime({
 			target: 'cloudflare',
 			runtimeVersion: '9.9.9',
-			manifest: { agents: [{ name: 'hello', triggers: { webhook: true } }] },
+			manifest: { actions: [{ name: 'hello', triggers: { webhook: true } }] },
 			webhookAgents: ['hello'],
 			allowNonWebhook: false,
 			createRunRegistryForRequest: () => ({
@@ -693,7 +704,7 @@ describe('admin() routes', () => {
 		configureFlueRuntime({
 			target: 'cloudflare',
 			runtimeVersion: '9.9.9',
-			manifest: { agents: [{ name: 'hello', triggers: { webhook: true } }] },
+			manifest: { actions: [{ name: 'hello', triggers: { webhook: true } }] },
 			webhookAgents: ['hello'],
 			allowNonWebhook: false,
 			createRunRegistryForRequest: () => ({

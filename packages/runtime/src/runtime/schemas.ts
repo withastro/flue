@@ -243,7 +243,7 @@ export const RunEventsQuerySchema = v.object({
 export const RunIdParamSchema = v.object({ runId: v.string() });
 export const ActionRouteParamSchema = v.object({ name: v.string(), id: v.string() });
 
-export const AgentManifestEntrySchema = v.object({
+export const ActionManifestEntrySchema = v.object({
 	name: v.string(),
 	triggers: v.object({ webhook: v.optional(v.boolean()) }),
 });
@@ -254,7 +254,7 @@ export const InstanceSummarySchema = v.object({
 });
 
 export const ListActionsResponseSchema = v.object({
-	items: v.array(AgentManifestEntrySchema),
+	items: v.array(ActionManifestEntrySchema),
 	nextCursor: v.optional(v.string()),
 });
 

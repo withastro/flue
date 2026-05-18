@@ -180,7 +180,7 @@ function adminRunDetailSpec() {
 
 const listActionsHandler: MiddlewareHandler = async (c) => {
 	const rt = requireRuntime();
-	return c.json({ items: rt.manifest?.agents ?? [] });
+	return c.json({ items: rt.manifest?.actions ?? [] });
 };
 
 const legacyAdminAgentRouteHandler: MiddlewareHandler = () => {
@@ -269,7 +269,7 @@ function requireRegistry(rt: FlueRuntime, env: unknown): RunRegistry {
 }
 
 function assertKnownAction(rt: FlueRuntime, name: string): void {
-	const available = rt.manifest?.agents.map((agent) => agent.name) ?? [];
+	const available = rt.manifest?.actions.map((action) => action.name) ?? [];
 	if (!available.includes(name)) throw new AgentNotFoundError({ name, available });
 }
 

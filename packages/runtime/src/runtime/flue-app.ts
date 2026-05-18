@@ -116,7 +116,7 @@ export interface FlueRuntime {
 }
 
 export interface FlueManifest {
-	agents: Array<{ name: string; triggers: { webhook?: boolean } }>;
+	actions: Array<{ name: string; triggers: { webhook?: boolean } }>;
 }
 
 const RUN_ROUTES_BY_ID: ReadonlyArray<readonly [string, HandleRunRouteOptions['action']]> = [
@@ -132,6 +132,12 @@ let runtimeConfig: FlueRuntime | undefined;
  * because the generated entry imports it from a stable bare specifier.
  */
 export function configureFlueRuntime(cfg: FlueRuntime): void {
+	const manifest = cfg.manifest as ({ actions?: unknown; agents?: unknown } & object) | undefined;
+	if (manifest && 'agents' in manifest && !('actions' in manifest)) {
+		throw new Error(
+			'[flue] Build manifest uses obsolete "agents" entries. Rebuild with a newer Flue version; manifests now use "actions".',
+		);
+	}
 	runtimeConfig = cfg;
 }
 

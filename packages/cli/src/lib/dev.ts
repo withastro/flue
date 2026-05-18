@@ -156,9 +156,9 @@ export async function dev(options: DevOptions): Promise<void> {
 
 	if (reloader.url) {
 		console.error(`[flue] Server: ${reloader.url}`);
-		const exampleAgent = pickExampleAgentName(output, root);
-		if (exampleAgent) {
-			console.error(`[flue] Try: curl -X POST ${reloader.url}/actions/${exampleAgent}/test-1 \\`);
+		const exampleAction = pickExampleActionName(output, root);
+		if (exampleAction) {
+			console.error(`[flue] Try: curl -X POST ${reloader.url}/actions/${exampleAction}/test-1 \\`);
 			console.error(`         -H 'Content-Type: application/json' -d '{}'`);
 		}
 	}
@@ -915,20 +915,27 @@ export function parseEnvFiles(absolutePaths: string[]): Record<string, string> {
  *
  * Best-effort — silently returns null if anything goes wrong.
  */
-function pickExampleAgentName(output: string, root: string): string | null {
+function pickExampleActionName(output: string, root: string): string | null {
 	type ManifestEntry = { name: string; triggers?: { webhook?: boolean } };
 	try {
 		const manifestPath = path.join(output, 'manifest.json');
 		if (fs.existsSync(manifestPath)) {
 			const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf-8')) as {
+				actions?: ManifestEntry[];
 				agents?: ManifestEntry[];
 			};
-			const agents = manifest.agents ?? [];
-			const webhook = agents.find((a) => a.triggers?.webhook);
+			if (manifest.agents && !manifest.actions) {
+				throw new Error(
+					'[flue] dist/manifest.json uses obsolete "agents" entries. Re-run flue build/dev; manifests now use "actions".',
+				);
+			}
+			const actions = manifest.actions ?? [];
+			const webhook = actions.find((action) => action.triggers?.webhook);
 			if (webhook) return webhook.name;
-			if (agents[0]) return agents[0].name;
+			if (actions[0]) return actions[0].name;
 		}
-	} catch {
+	} catch (err) {
+		if (err instanceof Error && err.message.includes('obsolete "agents" entries')) throw err;
 		// Fall through to filesystem scan.
 	}
 
