@@ -246,7 +246,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
+			webhookActions: ['hello'],
 			allowNonWebhook: false,
 			handlers: {
 				hello: async (_ctx) => ({ greeting: 'hi' }),
@@ -379,7 +379,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 	it('surfaces a structured 501 envelope when runRegistry is not configured', async () => {
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
+			webhookActions: ['hello'],
 			allowNonWebhook: false,
 			handlers: { hello: async () => null },
 			createContext: (actionName, id, runId, payload, req) =>
@@ -420,7 +420,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 			configureFlueRuntime({
 				target: 'node',
 				manifest: { agents: [] } as never,
-				webhookAgents: [],
+				webhookActions: [],
 				allowNonWebhook: false,
 			}),
 		).toThrow('Build manifest uses obsolete "agents" entries');
@@ -433,7 +433,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			runtimeVersion: '9.9.9',
-			webhookAgents: [],
+			webhookActions: [],
 			allowNonWebhook: false,
 			handlers: {},
 			createContext: (() => null) as never,
@@ -450,7 +450,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 	it('returns 405 for non-GET run inspection methods', async () => {
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
+			webhookActions: [],
 			allowNonWebhook: false,
 			handlers: {},
 			createContext: (() => null) as never,
@@ -473,7 +473,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
+			webhookActions: ['hello'],
 			allowNonWebhook: false,
 			handlers: {
 				hello: async (ctx) => {
@@ -570,7 +570,7 @@ describe('admin() routes', () => {
 					{ name: 'offline', triggers: {} },
 				],
 			},
-			webhookAgents: ['hello'],
+			webhookActions: ['hello'],
 			allowNonWebhook: false,
 			handlers: { hello: async () => ({ ok: true }) },
 			createContext: (actionName, id, runId, payload, req) =>
@@ -661,7 +661,7 @@ describe('admin() routes', () => {
 			target: 'cloudflare',
 			runtimeVersion: '9.9.9',
 			manifest: { actions: [{ name: 'hello', triggers: { webhook: true } }] },
-			webhookAgents: ['hello'],
+			webhookActions: ['hello'],
 			allowNonWebhook: false,
 			createRunRegistryForRequest: () => ({
 				recordRunStart: async () => {},
@@ -697,7 +697,7 @@ describe('admin() routes', () => {
 			target: 'cloudflare',
 			runtimeVersion: '9.9.9',
 			manifest: { actions: [{ name: 'hello', triggers: { webhook: true } }] },
-			webhookAgents: ['hello'],
+			webhookActions: ['hello'],
 			allowNonWebhook: false,
 			createRunRegistryForRequest: () => ({
 				recordRunStart: async () => {},

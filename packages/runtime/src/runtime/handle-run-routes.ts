@@ -2,7 +2,7 @@
 
 import { InvalidRequestError, RunNotFoundError, RunStoreUnavailableError } from '../errors.ts';
 import type { FlueEvent } from '../types.ts';
-import { SSE_HEARTBEAT_MS } from './handle-agent.ts';
+import { SSE_HEARTBEAT_MS } from './handle-action.ts';
 import type { RunRecord, RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 

@@ -663,7 +663,7 @@ export interface ValidateAgentRequestOptions {
 	name: string;
 	id: string;
 	registeredActions: readonly string[];
-	webhookAgents: readonly string[];
+	webhookActions: readonly string[];
 	/**
 	 * If true, skip the webhook-accessibility check. Used by `flue run` /
 	 * dev local mode where trigger-less actions are also invokable.
@@ -683,7 +683,7 @@ export function validateAgentRequest(opts: ValidateAgentRequestOptions): void {
 	if (!opts.registeredActions.includes(opts.name)) {
 		throw new ActionNotFoundError({ name: opts.name, available: opts.registeredActions });
 	}
-	if (!opts.allowNonWebhook && !opts.webhookAgents.includes(opts.name)) {
+	if (!opts.allowNonWebhook && !opts.webhookActions.includes(opts.name)) {
 		throw new ActionNotWebhookError({ name: opts.name });
 	}
 }

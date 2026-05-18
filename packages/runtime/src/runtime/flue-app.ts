@@ -18,19 +18,19 @@ import {
 	validateAgentRequest,
 } from '../errors.ts';
 import {
-	type AgentHandler,
+	type ActionHandler,
 	type CreateContextFn,
-	handleAgentRequest,
+	handleActionRequest,
 	type RunHandlerFn,
 	type StartWebhookFn,
-} from './handle-agent.ts';
+} from './handle-action.ts';
 import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-routes.ts';
 import type { RunRegistry } from './run-registry.ts';
 import type { RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 import {
 	ActionRouteParamSchema,
-	AgentInvocationResponseSchema,
+	ActionInvocationResponseSchema,
 	ErrorEnvelopeSchema,
 	RunEventListResponseSchema,
 	RunEventsQuerySchema,
@@ -47,7 +47,7 @@ export interface FlueRuntime {
 	 * Trigger-less actions are excluded from this list and gate access
 	 * via {@link FlueRuntime.allowNonWebhook}.
 	 */
-	webhookAgents: ReadonlyArray<string>;
+	webhookActions: ReadonlyArray<string>;
 
 	/**
 	 * If true, the action route accepts any registered action — including
@@ -61,10 +61,10 @@ export interface FlueRuntime {
 
 	/**
 	 * Map of action name → handler function. Includes ALL actions (webhook
-	 * and trigger-less); {@link webhookAgents} gates HTTP exposure when
+	 * and trigger-less); {@link webhookActions} gates HTTP exposure when
 	 * not in local mode. Required when {@link target} is `'node'`.
 	 */
-	handlers?: Record<string, AgentHandler>;
+	handlers?: Record<string, ActionHandler>;
 
 	/**
 	 * Per-target context factory. Required when {@link target} is `'node'`.
@@ -281,7 +281,7 @@ function actionRouteSpec() {
 			},
 		},
 		responses: {
-			200: jsonResponse(AgentInvocationResponseSchema, 'Synchronous invocation result.'),
+			200: jsonResponse(ActionInvocationResponseSchema, 'Synchronous invocation result.'),
 			202: jsonResponse(WebhookInvocationResponseSchema, 'Webhook invocation accepted.'),
 			...errorResponses(),
 		},
@@ -344,7 +344,7 @@ const actionRouteHandler: MiddlewareHandler = async (c) => {
 		name,
 		id,
 		registeredActions: registeredActionsFor(rt),
-		webhookAgents: rt.webhookAgents,
+		webhookActions: rt.webhookActions,
 		allowNonWebhook: rt.allowNonWebhook,
 	});
 
@@ -354,7 +354,7 @@ const actionRouteHandler: MiddlewareHandler = async (c) => {
 		if (!handler || !createContext) {
 			throw new Error('[flue] Node runtime is missing action handler configuration.');
 		}
-		return handleAgentRequest({
+		return handleActionRequest({
 			request: c.req.raw,
 			actionName: name,
 			id,
@@ -490,5 +490,5 @@ function normalizeRunRequest(
  */
 function registeredActionsFor(rt: FlueRuntime): readonly string[] {
 	if (rt.target === 'node') return Object.keys(rt.handlers ?? {});
-	return rt.webhookAgents;
+	return rt.webhookActions;
 }

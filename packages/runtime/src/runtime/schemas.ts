@@ -205,7 +205,7 @@ export const RunEventListResponseSchema = v.object({
 	events: v.array(FlueEventSchema),
 });
 
-export const AgentInvocationResponseSchema = v.object({
+export const ActionInvocationResponseSchema = v.object({
 	result: v.unknown(),
 	_meta: v.object({ runId: v.string() }),
 });
@@ -215,7 +215,7 @@ export const WebhookInvocationResponseSchema = v.object({
 	runId: v.string(),
 });
 
-export const AgentInvocationBodySchema = v.looseObject({});
+export const ActionInvocationBodySchema = v.looseObject({});
 
 const integerString = (message: string) => v.pipe(v.string(), v.regex(/^\d+$/, message));
 const eventTypesPattern = new RegExp(

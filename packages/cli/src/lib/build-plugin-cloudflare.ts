@@ -106,7 +106,7 @@ import {
   createRunSubscriberRegistry,
   bashFactoryToSessionEnv,
   resolveModel,
-  handleAgentRequest,
+  handleActionRequest,
   handleRunRouteRequest,
   configureFlueRuntime,
   createDefaultFlueApp,
@@ -313,7 +313,7 @@ async function dispatchAction(request, doInstance, actionName, handler) {
     });
   }
 
-  return handleAgentRequest({
+  return handleActionRequest({
     request,
     actionName,
     id,
@@ -377,7 +377,7 @@ configureFlueRuntime({
   target: 'cloudflare',
   runtimeVersion: ${runtimeVersion},
   manifest: ${manifestJson},
-  webhookAgents: webhookActionNames,
+  webhookActions: webhookActionNames,
   // Cloudflare deploys never run in local mode — the trigger-less actions
   // simply have no DO class to land in.
   allowNonWebhook: false,

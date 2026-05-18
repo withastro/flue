@@ -1,4 +1,4 @@
-/** Shared per-agent HTTP dispatcher for the Node and Cloudflare targets. */
+/** Shared per-action HTTP dispatcher for the Node and Cloudflare targets. */
 
 import type { FlueContextInternal } from '../client.ts';
 import { parseJsonBody, toHttpResponse } from '../errors.ts';
@@ -11,9 +11,9 @@ import type { RunSubscriberRegistry } from './run-subscribers.ts';
 /**
  * Action handler signature — the default export of a `.flue/actions/<name>.ts`
  * file. Receives a context, may return any JSON-serializable value (or
- * undefined for fire-and-forget agents).
+ * undefined for fire-and-forget actions).
  */
-export type AgentHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
+export type ActionHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
 
 /**
  * Caller-provided context factory. Differs per-target:
@@ -47,10 +47,10 @@ export type StartWebhookFn = (runId: string, run: () => Promise<unknown>) => Pro
  */
 export type RunHandlerFn = (
 	ctx: FlueContextInternal,
-	handler: AgentHandler,
+	handler: ActionHandler,
 ) => unknown | Promise<unknown>;
 
-export interface HandleAgentOptions {
+export interface HandleActionOptions {
 	/** Standard Fetch Request. */
 	request: Request;
 	/**
@@ -60,8 +60,8 @@ export interface HandleAgentOptions {
 	actionName: string;
 	/** Action instance id (URL segment / DO room name). */
 	id: string;
-	/** The agent's default-export handler. */
-	handler: AgentHandler;
+	/** The action's default-export handler. */
+	handler: ActionHandler;
 	/** Per-target context factory. */
 	createContext: CreateContextFn;
 	/**
@@ -112,16 +112,16 @@ export interface HandleAgentOptions {
  *     surface as `event: error` envelopes.
  *   - Otherwise → sync. Returns 200 + JSON `{ result }`.
  *
- * Errors thrown BEFORE streaming starts (body parse, agent lookup) bubble
+ * Errors thrown BEFORE streaming starts (body parse, action lookup) bubble
  * out as a `Response` via {@link toHttpResponse} — headers haven't been sent
  * yet, so a regular HTTP error is still possible. Errors thrown AFTER the
- * 200 + text/event-stream headers are on the wire (i.e. inside the agent
+ * 200 + text/event-stream headers are on the wire (i.e. inside the action
  * handler) get framed as in-stream `error` events instead.
  *
  * Caller is responsible for routing — this function assumes the request has
  * already been validated as a POST against a registered action.
  */
-export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Response> {
+export async function handleActionRequest(opts: HandleActionOptions): Promise<Response> {
 	const { request, actionName, id, handler, createContext, runStore, runSubscribers, runRegistry } =
 		opts;
 	const startWebhook = opts.startWebhook ?? defaultStartWebhook;
@@ -130,7 +130,7 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 
 	try {
 		// Parse the request body. Throws on invalid Content-Type or malformed
-		// JSON; returns {} for genuinely empty bodies (so no-payload agents
+		// JSON; returns {} for genuinely empty bodies (so no-payload actions
 		// still work).
 		const payload = await parseJsonBody(request);
 
@@ -198,7 +198,7 @@ interface ModeOptions {
 	actionName: string;
 	id: string;
 	runId: string;
-	handler: AgentHandler;
+	handler: ActionHandler;
 	payload: unknown;
 	request: Request;
 	createContext: CreateContextFn;
@@ -212,7 +212,7 @@ interface WebhookOptions {
 	actionName: string;
 	id: string;
 	runId: string;
-	handler: AgentHandler;
+	handler: ActionHandler;
 	payload: unknown;
 	request: Request;
 	createContext: CreateContextFn;

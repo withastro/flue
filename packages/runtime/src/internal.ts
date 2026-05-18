@@ -29,16 +29,16 @@ export { InMemoryRunStore } from './node/run-store.ts';
 export type { FlueRuntime } from './runtime/flue-app.ts';
 export { configureFlueRuntime, createDefaultFlueApp } from './runtime/flue-app.ts';
 export type {
-	AgentHandler,
+	ActionHandler,
 	CreateContextFn,
-	HandleAgentOptions,
+	HandleActionOptions,
 	RunHandlerFn,
 	StartWebhookFn,
-} from './runtime/handle-agent.ts';
+} from './runtime/handle-action.ts';
 // Runtime modules consumed by the generated server entries.
 //
-//   - `handleAgentRequest` is the per-agent dispatcher (webhook / SSE /
-//     sync). Used directly by the Cloudflare entry's `dispatchAgent`
+//   - `handleActionRequest` is the per-action dispatcher (webhook / SSE /
+//     sync). Used directly by the Cloudflare entry's `dispatchAction`
 //     wrapper to layer in DO-specific keepalive / fiber handling. The
 //     Node target reaches the same dispatcher through `flue()`.
 //
@@ -53,7 +53,7 @@ export type {
 //     don't author their own `app.ts`).
 //
 // The user-facing `flue()` itself is re-exported from `@flue/runtime/app`, not here.
-export { handleAgentRequest } from './runtime/handle-agent.ts';
+export { handleActionRequest } from './runtime/handle-action.ts';
 export type { HandleRunRouteOptions } from './runtime/handle-run-routes.ts';
 export { handleRunRouteRequest } from './runtime/handle-run-routes.ts';
 export type {

@@ -12,15 +12,15 @@ export class NodePlugin implements BuildPlugin {
 		const manifestJson = JSON.stringify(ctx.manifest);
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 
-		const webhookAgents = actions.filter((a) => a.triggers.webhook);
+		const webhookActions = actions.filter((a) => a.triggers.webhook);
 
 		// Generate import statements for all action handlers. We register every
 		// action — including trigger-less ones — in the handler map so that the
-		// CLI's `flue run` can invoke them in local mode. The `webhookAgents`
+		// CLI's `flue run` can invoke them in local mode. The `webhookActions`
 		// list below gates which are reachable over public HTTP when deployed.
-		const agentImports = actions
+		const actionImports = actions
 			.map((a, index) => {
-				const varName = agentVarName(a.name, index);
+				const varName = actionVarName(a.name, index);
 				const filePath = a.filePath.replace(/\\/g, '/');
 				return `import ${varName} from '${filePath}';`;
 			})
@@ -28,12 +28,12 @@ export class NodePlugin implements BuildPlugin {
 
 		// Build the handler map — includes ALL actions, not just webhook ones.
 		const handlerMapEntries = actions
-			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)},`)
+			.map((a, index) => `  ${JSON.stringify(a.name)}: ${actionVarName(a.name, index)},`)
 			.join('\n');
 
-		// Webhook agent names. `configureFlueRuntime` snapshots whatever
+		// Webhook action names. `configureFlueRuntime` snapshots whatever
 		// iterable is handed to it, so a plain array literal is fine.
-		const webhookNames = JSON.stringify(webhookAgents.map((a) => a.name));
+		const webhookNames = JSON.stringify(webhookActions.map((a) => a.name));
 
 		// User-supplied app.ts (if any). The generated entry imports the user's
 		// default export and dispatches all requests through `app.fetch`. When
@@ -60,7 +60,7 @@ import {
   configureFlueRuntime,
   createDefaultFlueApp,
 } from '@flue/runtime/internal';
-${agentImports}
+${actionImports}
 ${userAppImport}
 
 // ─── Config ─────────────────────────────────────────────────────────────────
@@ -73,11 +73,11 @@ const handlers = {
 ${handlerMapEntries}
 };
 
-// Webhook-accessible agent names.
-const webhookAgentNames = ${webhookNames};
+// Webhook-accessible action names.
+const webhookActionNames = ${webhookNames};
 
 // When the CLI starts this server via \`flue run\`, it sets FLUE_MODE=local.
-// In local mode the HTTP route accepts any registered agent (including
+// In local mode the HTTP route accepts any registered action (including
 // trigger-less CI-only actions). In any other mode the route is restricted to
 // actions with \`webhook: true\`, preventing accidental public exposure of
 // actions that the user only intended to invoke from their CI pipeline.
@@ -122,7 +122,7 @@ function createContextForRequest(actionName, id, runId, payload, req) {
 
 // ─── Runtime seed ───────────────────────────────────────────────────────────
 
-// Seed the public flue() sub-app with everything it needs to dispatch agent
+// Seed the public flue() sub-app with everything it needs to dispatch action
 // requests in-process. Must run before \`flue()\` handles any request — by
 // virtue of being a top-level statement, it executes before \`serve(...)\`
 // below binds the listener. User app.ts files that call \`flue()\` at top
@@ -132,7 +132,7 @@ configureFlueRuntime({
   target: 'node',
   runtimeVersion: ${runtimeVersion},
   manifest: ${manifestJson},
-  webhookAgents: webhookAgentNames,
+  webhookActions: webhookActionNames,
   allowNonWebhook: isLocalMode,
   handlers,
   createContext: createContextForRequest,
@@ -177,7 +177,7 @@ if (isLocalMode) {
   console.log('[flue] Mode: local (all actions invokable, including trigger-less)');
   console.log('[flue] Available actions: ' + ${JSON.stringify(actions.map((a) => a.name).join(', '))});
 } else {
-  console.log('[flue] Available actions: ' + ${JSON.stringify(webhookAgents.map((a) => a.name).join(', '))});
+  console.log('[flue] Available actions: ' + ${JSON.stringify(webhookActions.map((a) => a.name).join(', '))});
 }
 
 process.on('SIGINT', () => { server.close(); process.exit(0); });
@@ -198,7 +198,7 @@ process.on('SIGTERM', () => { server.close(); process.exit(0); });
 	}
 }
 
-function agentVarName(name: string, index: number): string {
+function actionVarName(name: string, index: number): string {
 	const readableName = name.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'agent';
 	return `handler_${readableName}_${index}`;
 }
