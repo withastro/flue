@@ -366,6 +366,13 @@ export class InstanceBusyError extends FlueHttpError {
 	}
 }
 
+export class AgentBusyError extends Error {
+	constructor({ name, id }: { name: string; id: string }) {
+		super(`[flue] Agent "${name}/${id}" already has a send() operation in flight for this run.`);
+		this.name = 'AgentBusyError';
+	}
+}
+
 export class InvalidRequestError extends FlueHttpError {
 	constructor({ reason }: { reason: string }) {
 		super({

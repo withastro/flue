@@ -1,4 +1,5 @@
 import { discoverSessionContext } from './context.ts';
+import { AgentBusyError } from './errors.ts';
 import { Harness } from './harness.ts';
 import { assertRoleExists } from './roles.ts';
 import type { DefaultWorkspaceScope } from './runtime/default-workspace-store.ts';
@@ -203,9 +204,33 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					definition.tools,
 					toolFactory,
 				);
+				let sendInFlight = false;
 				return {
 					name: config.agentName,
 					id: config.id,
+					send(message, sendOptions) {
+						if (sendInFlight) {
+							throw new AgentBusyError({ name: config.agentName, id: config.id });
+						}
+						if (typeof message !== 'string') {
+							throw new Error('[flue] agent.send(message) requires a string message.');
+						}
+						sendInFlight = true;
+						void harness
+							.session(sendOptions?.session)
+							.then((session) => session.prompt(message))
+							.catch((error) => {
+								emitEvent({
+									type: 'log',
+									level: 'error',
+									message: 'agent.send() failed.',
+									attributes: { error: serializeAgentSendError(error) },
+								});
+							})
+							.finally(() => {
+								sendInFlight = false;
+							});
+					},
 					harness: () => harness,
 				};
 			} catch (error) {
@@ -247,6 +272,10 @@ function serializeLogError(error: Error): Record<string, unknown> {
 		message: error.message,
 		stack: error.stack,
 	};
+}
+
+function serializeAgentSendError(error: unknown): Record<string, unknown> {
+	return error instanceof Error ? serializeLogError(error) : { value: error };
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────

@@ -16,6 +16,8 @@
 
 - **Agent-definition skills in the progressive-disclosure catalog.** `skills` from inherited/init definitions now join the active session skill catalog at prompt construction time, exposing only name and description until activation while keeping skill bodies and resources lazy.
 
+- **Initial `agent.send()` surface.** Live `Agent` values now expose fire-and-forget `send(message, { session? })`, resolve/create the target session, dispatch through the existing prompt pipeline, and throw `AgentBusyError` when a second send starts before the first finishes.
+
 - **Serialized agent-instance admission.** Concurrent requests for the same agent instance are now rejected with a structured `409 instance_busy` response until the active run finishes. Node uses a process-local admission lane; Cloudflare uses Durable Object SQLite state and clears interrupted webhook-fiber leases during recovery.
 
 - **Persistent default virtual workspaces.** The built-in default sandbox now reuses filesystem state across runs for the same agent name, instance id, and harness name. Node keeps this workspace process-local; Cloudflare persists it in Durable Object SQLite storage. Custom sandboxes remain unchanged.

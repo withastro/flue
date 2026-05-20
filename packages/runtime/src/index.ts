@@ -3,6 +3,7 @@
 export type {
 	FlueContext,
 	Agent,
+	SendOptions,
 	FlueHarness,
 	FlueFs,
 	FlueSessions,
@@ -52,6 +53,7 @@ export { defineAgent } from './agent-definition.ts';
 export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
 export { connectMcpServer } from './mcp.ts';
 export { ResultUnavailableError } from './result.ts';
+export { AgentBusyError } from './errors.ts';
 export { createSandboxSessionEnv, type SandboxApi } from './sandbox.ts';
 
 // Note: the public Hono sub-app `flue()` and the `Fetchable` interface

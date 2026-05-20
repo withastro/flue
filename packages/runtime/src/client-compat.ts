@@ -9,9 +9,11 @@ throw new Error(
 export { Type } from '@earendil-works/pi-ai';
 export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
 export { connectMcpServer } from './mcp.ts';
+export { AgentBusyError } from './errors.ts';
 export type {
 	Agent,
 	AgentInit,
+	SendOptions,
 	BashFactory,
 	BashLike,
 	FileStat,

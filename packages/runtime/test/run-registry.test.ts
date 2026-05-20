@@ -16,7 +16,8 @@ import {
 	type RunRecord,
 	type RunStore,
 } from '../src/internal.ts';
-import type { AgentConfig, FlueEvent, ToolDefinition } from '../src/types.ts';
+import { AgentBusyError } from '../src/errors.ts';
+import type { AgentConfig, FlueEvent, FlueHarness, FlueSession, ToolDefinition } from '../src/types.ts';
 
 describe('InMemoryRunRegistry', () => {
 	it('records start, lookup, and end for a single run', async () => {
@@ -508,6 +509,114 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(res.status).toBe(200);
 		expect(routedBodies).toEqual(['{"caseNumber":"02101282"}']);
 		expect(await original.text()).toBe('{"caseNumber":"02101282"}');
+	});
+
+	it('sends fire-and-forget prompts to the selected session and rejects overlapping sends', async () => {
+		const ctx = createFlueContext({
+			agentName: 'hello',
+			id: 'inst-1',
+			runId: 'run-send',
+			payload: {},
+			env: {},
+			createDefaultEnv: async () => bashFactoryToSessionEnv(async () => new Bash()),
+			defaultStore: new InMemorySessionStore(),
+			registrationStore: new InMemoryRegistrationStore(),
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				roles: {},
+				model: undefined,
+				resolveModel: () => undefined,
+			},
+		});
+		const agent = await ctx.init({ model: false });
+		const sent: Array<{ session: string | undefined; message: string }> = [];
+		let releaseSend: (() => void) | undefined;
+		const pendingSend = new Promise<void>((resolve) => {
+			releaseSend = resolve;
+		});
+		const fakeSession = {
+			prompt(message: string) {
+				sent.push({ session: 'inbox', message });
+				return pendingSend as never;
+			},
+		} as unknown as FlueSession;
+		const harness = agent.harness() as FlueHarness;
+		const originalSession = harness.session.bind(harness);
+		(harness as FlueHarness).session = async (name?: string) => {
+			if (name === 'inbox') return fakeSession;
+			return originalSession(name);
+		};
+
+		agent.send('hello', { session: 'inbox' });
+		await Promise.resolve();
+		expect(sent).toEqual([{ session: 'inbox', message: 'hello' }]);
+		expect(() => agent.send('again', { session: 'inbox' })).toThrow(AgentBusyError);
+		releaseSend?.();
+		await pendingSend;
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		agent.send('after-finish', { session: 'inbox' });
+		await Promise.resolve();
+		expect(sent).toEqual([
+			{ session: 'inbox', message: 'hello' },
+			{ session: 'inbox', message: 'after-finish' },
+		]);
+	});
+
+	it('logs detached send failures and clears the busy flag afterward', async () => {
+		const ctx = createFlueContext({
+			agentName: 'hello',
+			id: 'inst-1',
+			runId: 'run-send-error',
+			payload: {},
+			env: {},
+			createDefaultEnv: async () => bashFactoryToSessionEnv(async () => new Bash()),
+			defaultStore: new InMemorySessionStore(),
+			registrationStore: new InMemoryRegistrationStore(),
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				roles: {},
+				model: undefined,
+				resolveModel: () => undefined,
+			},
+		});
+		const events: FlueEvent[] = [];
+		ctx.subscribeEvent((event) => {
+			events.push(event);
+		});
+		const agent = await ctx.init({ model: false });
+		const harness = agent.harness() as FlueHarness;
+		let failSession = true;
+		(harness as FlueHarness).session = async () => {
+			if (failSession) {
+				failSession = false;
+				throw new Error('session failed');
+			}
+			return {
+				prompt() {
+					return Promise.reject(new Error('prompt failed')) as never;
+				},
+			} as unknown as FlueSession;
+		};
+
+		agent.send('session failure');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(events.at(-1)).toMatchObject({
+			type: 'log',
+			level: 'error',
+			message: 'agent.send() failed.',
+			attributes: { error: { message: 'session failed' } },
+		});
+
+		agent.send('prompt failure');
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		expect(events.at(-1)).toMatchObject({
+			type: 'log',
+			level: 'error',
+			message: 'agent.send() failed.',
+			attributes: { error: { message: 'prompt failed' } },
+		});
 	});
 
 	it('applies inherited init fields and replaces them with init-level overrides', async () => {

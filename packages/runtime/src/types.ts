@@ -317,9 +317,14 @@ export interface AgentDefinition {
 
 // ─── Live Agent ────────────────────────────────────────────────────────────
 
+export interface SendOptions {
+	session?: string;
+}
+
 export interface Agent {
 	readonly name: string;
 	readonly id: string;
+	send(message: string, options?: SendOptions): void;
 	harness(): FlueHarness;
 }
 
