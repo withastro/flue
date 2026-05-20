@@ -14,18 +14,50 @@ export type PromptImage = ImageContent;
 
 // ─── Skill ──────────────────────────────────────────────────────────────────
 
-/**
- * A skill registered with the session. The body of the skill (everything
- * below the frontmatter in `SKILL.md`) is intentionally NOT cached in
- * memory — at call time, the model reads the file from disk via its
- * filesystem tools. That keeps relative references inside the skill
- * resolvable from where they live, and lets users edit skill files
- * mid-session without re-initialising the agent.
- */
-export interface Skill {
+export type SkillSource =
+	| { kind: 'local'; path: string }
+	| { kind: 'sandbox'; cwd: string; relativePath: string };
+
+export interface SkillResourceEntry {
+	path: string;
+}
+
+export type SkillResources =
+	| {
+			kind: 'lazy-local';
+			entries: SkillResourceEntry[];
+			contents: Record<string, string>;
+		}
+	| {
+			kind: 'lazy-sandbox';
+			cwd: string;
+			root: string;
+			entries: SkillResourceEntry[];
+		};
+
+/** Bundled skill value produced from `SKILL.md` imports. */
+export interface SkillDefinition {
 	name: string;
 	description: string;
+	body: string;
+	resources?: SkillResources;
+	license?: string;
+	compatibility?: string;
+	metadata?: Record<string, string>;
+	allowedTools?: string[];
+	source: SkillSource;
 }
+
+/**
+ * Skills may be runtime-discovered metadata-only entries or bundled
+ * `SKILL.md` values that carry instructions and lazily readable resources.
+ */
+export type Skill =
+	| SkillDefinition
+	| {
+			name: string;
+			description: string;
+		};
 
 // ─── Role ───────────────────────────────────────────────────────────────────
 
@@ -457,14 +489,14 @@ export interface FlueSession {
 	readonly fs: FlueFs;
 
 	skill<S extends v.GenericSchema>(
-		name: string,
+		skill: SkillDefinition | string,
 		options: SkillOptions<S> & { result: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
 	skill<S extends v.GenericSchema>(
-		name: string,
+		skill: SkillDefinition | string,
 		options: SkillOptions<S> & { schema: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
-	skill(name: string, options?: SkillOptions): CallHandle<PromptResponse>;
+	skill(skill: SkillDefinition | string, options?: SkillOptions): CallHandle<PromptResponse>;
 
 	task<S extends v.GenericSchema>(
 		text: string,

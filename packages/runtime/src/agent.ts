@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { type Static, Type } from '@earendil-works/pi-ai';
-import type { Role, SessionEnv } from './types.ts';
+import type { Role, SessionEnv, SkillDefinition } from './types.ts';
 
 const MAX_READ_LINES = 2000;
 const MAX_READ_BYTES = 50 * 1024;
@@ -40,11 +40,12 @@ export interface CreateToolsOptions {
 		signal?: AbortSignal,
 	) => Promise<AgentToolResult<TaskToolResultDetails>>;
 	roles?: Record<string, Role>;
+	skills?: Record<string, SkillDefinition>;
 }
 
 export function createTools(env: SessionEnv, options?: CreateToolsOptions): AgentTool<any>[] {
 	const tools: AgentTool<any>[] = [
-		createReadTool(env),
+		createReadTool(env, options?.skills ?? {}),
 		createWriteTool(env),
 		createEditTool(env),
 		createBashTool(env),
@@ -61,7 +62,7 @@ const ReadParams = Type.Object({
 	limit: Type.Optional(Type.Number({ description: 'Maximum number of lines to read' })),
 });
 
-function createReadTool(env: SessionEnv): AgentTool<typeof ReadParams> {
+function createReadTool(env: SessionEnv, skills: Record<string, SkillDefinition>): AgentTool<typeof ReadParams> {
 	return {
 		name: 'read',
 		label: 'Read File',
@@ -70,6 +71,11 @@ function createReadTool(env: SessionEnv): AgentTool<typeof ReadParams> {
 		parameters: ReadParams,
 		async execute(_toolCallId: string, params: Static<typeof ReadParams>, signal?: AbortSignal) {
 			throwIfAborted(signal);
+
+			const bundledResource = readBundledSkillResource(skills, params.path);
+			if (bundledResource) {
+				return formatReadContent(params.path, bundledResource, params.offset, params.limit);
+			}
 
 			try {
 				const fileStat = await env.stat(params.path);
@@ -86,33 +92,7 @@ function createReadTool(env: SessionEnv): AgentTool<typeof ReadParams> {
 			}
 
 			const content = await env.readFile(params.path);
-			const allLines = content.split('\n');
-
-			const startLine = params.offset ? Math.max(0, params.offset - 1) : 0;
-			if (startLine >= allLines.length) {
-				throw new Error(
-					`Offset ${params.offset} is beyond end of file (${allLines.length} lines total)`,
-				);
-			}
-
-			const endLine = params.limit ? startLine + params.limit : allLines.length;
-			const lines = allLines.slice(startLine, endLine);
-			const { text: truncatedText, wasTruncated } = truncateHead(
-				lines,
-				MAX_READ_LINES,
-				MAX_READ_BYTES,
-			);
-
-			let output = truncatedText;
-			if (wasTruncated) {
-				const shownEnd = startLine + truncatedText.split('\n').length;
-				output += `\n\n[Showing lines ${startLine + 1}-${shownEnd} of ${allLines.length}. Use offset=${shownEnd + 1} to continue.]`;
-			}
-
-			return {
-				content: [{ type: 'text', text: output }],
-				details: { path: params.path, lines: allLines.length },
-			};
+			return formatReadContent(params.path, content, params.offset, params.limit);
 		},
 	};
 }
@@ -441,6 +421,49 @@ function createGlobTool(env: SessionEnv): AgentTool<typeof GlobParams> {
 
 function throwIfAborted(signal?: AbortSignal): void {
 	if (signal?.aborted) throw new Error('Operation aborted');
+}
+
+function skillResourceReadPath(skillName: string, resourcePath: string): string {
+	return `/.flue/skills/${skillName}/${resourcePath}`;
+}
+
+function readBundledSkillResource(skills: Record<string, SkillDefinition>, path: string): string | undefined {
+	for (const skill of Object.values(skills)) {
+		if (skill.resources?.kind !== 'lazy-local') continue;
+		for (const entry of skill.resources.entries) {
+			if (path === skillResourceReadPath(skill.name, entry.path)) {
+				return skill.resources.contents[entry.path];
+			}
+		}
+	}
+	return undefined;
+}
+
+function formatReadContent(path: string, content: string, offset?: number, limit?: number) {
+	const allLines = content.split('\n');
+	const startLine = offset ? Math.max(0, offset - 1) : 0;
+	if (startLine >= allLines.length) {
+		throw new Error(`Offset ${offset} is beyond end of file (${allLines.length} lines total)`);
+	}
+
+	const endLine = limit ? startLine + limit : allLines.length;
+	const lines = allLines.slice(startLine, endLine);
+	const { text: truncatedText, wasTruncated } = truncateHead(lines, MAX_READ_LINES, MAX_READ_BYTES);
+
+	let output = truncatedText;
+	if (wasTruncated) {
+		const shownEnd = startLine + truncatedText.split('\n').length;
+		output += `\n\n[Showing lines ${startLine + 1}-${shownEnd} of ${allLines.length}. Use offset=${shownEnd + 1} to continue.]`;
+	}
+
+	return {
+		content: [{ type: 'text' as const, text: output }],
+		details: { path, lines: allLines.length },
+	};
+}
+
+export function formatBundledSkillResourcePath(skillName: string, resourcePath: string): string {
+	return skillResourceReadPath(skillName, resourcePath);
 }
 
 function countOccurrences(str: string, substr: string): number {

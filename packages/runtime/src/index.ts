@@ -1,3 +1,5 @@
+/// <reference path="../types/skill-md.d.ts" />
+
 export type {
 	FlueContext,
 	FlueHarness,
@@ -28,6 +30,10 @@ export type {
 	ShellOptions,
 	ShellResult,
 	Skill,
+	SkillDefinition,
+	SkillResources,
+	SkillSource,
+	SkillResourceEntry,
 	Role,
 	AgentConfig,
 	ModelConfig,

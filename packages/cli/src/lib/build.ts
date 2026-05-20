@@ -6,6 +6,7 @@ import { packageUpSync } from 'package-up';
 import { parseFrontmatterFile } from '@flue/runtime/internal';
 import { CloudflarePlugin } from './build-plugin-cloudflare.ts';
 import { NodePlugin } from './build-plugin-node.ts';
+import { bundleSkillImports } from './skill-bundle.ts';
 import type { Role, ThinkingLevel } from '@flue/runtime';
 import type {
 	AgentInfo,
@@ -281,9 +282,11 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 		// Single-bundle mode: the plugin produces a TS entry, esbuild
 		// inlines/externalizes deps, output is server.mjs in the build dir.
 		const entryPath = path.join(output, '_entry_server.ts');
+		const bundledEntryPath = path.join(output, '_entry_server.bundled.js');
 		const outPath = path.join(output, 'server.mjs');
 
 		fs.writeFileSync(entryPath, serverCode, 'utf-8');
+		await bundleSkillImports(entryPath, bundledEntryPath);
 
 		try {
 			const nodePathsSet = collectNodePaths(root);
@@ -295,7 +298,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			const userExternals = getUserExternals(root);
 
 			await esbuild.build({
-				entryPoints: [entryPath],
+				entryPoints: [bundledEntryPath],
 				bundle: true,
 				outfile: outPath,
 				format: 'esm',
@@ -317,6 +320,11 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			} catch {
 				/* ignore */
 			}
+			try {
+				fs.unlinkSync(bundledEntryPath);
+			} catch {
+				/* ignore */
+			}
 		}
 	} else if (bundleStrategy === 'none') {
 		// Pass-through mode: write the entry as-is. A downstream tool (e.g.
@@ -327,6 +335,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			);
 		}
 		const outPath = path.join(output, plugin.entryFilename);
+		const bundledOutPath = outPath.replace(/\.(ts|js|mts|mjs)$/i, '.bundled.js');
 		// Skip the write if content is byte-identical to what's already on
 		// disk. This matters for `flue dev`, where downstream watchers (like
 		// wrangler's bundler) may key on file mtime and would otherwise reload
@@ -340,6 +349,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 		} else {
 			console.log(`[flue] Entry unchanged: ${outPath}`);
 		}
+		await bundleSkillImports(outPath, bundledOutPath);
 	} else {
 		throw new Error(`[flue] Unknown bundle strategy: ${bundleStrategy}`);
 	}

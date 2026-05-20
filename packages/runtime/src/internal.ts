@@ -23,6 +23,7 @@ export { createFlueContext } from './client.ts';
 // is otherwise an internal helper of the runtime — exposed here, not on the
 // public root barrel, because it's tooling-facing.
 export { parseFrontmatterFile } from './context.ts';
+export { parseSkillMarkdown } from './skill-frontmatter.ts';
 // `FlueRegistry` (Durable Object class) and `createCloudflareRunRegistry`
 // (registry client) live in the `@flue/runtime/cloudflare` subpath because
 // they pull in `cloudflare:workers`, a virtual module Node can't resolve.

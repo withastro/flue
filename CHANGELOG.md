@@ -12,6 +12,8 @@
 
 ### New Features
 
+- **Bundled Agent Skills imports.** Agent code can now import spec-compliant `SKILL.md` directories with `with { type: 'skill' }`. Flue validates Agent Skills frontmatter at build time, bundles supporting `scripts/`, `references/`, and `assets/` for deployable Node and Cloudflare artifacts, lets `session.skill(skillValue)` activate imported instructions directly, and exposes supporting files lazily through stable virtual `read` paths only when the model needs them.
+
 - **Cloudflare shell sandbox.** Added `getShellSandbox({ workspace, loader })`, `getDefaultWorkspace()`, and `hydrateFromBucket()` from `@flue/runtime/cloudflare`. The new sandbox wires `@cloudflare/shell` Workspaces into Flue through a codemode `code` tool backed by a Worker Loader binding. Agents use `state.*` inside the `code` tool instead of bash/read/write/grep/glob. Use `@cloudflare/shell` directly for primitives like `Workspace`, `WorkspaceFileSystem`, and `createGit`.
 
 ### Breaking Changes
