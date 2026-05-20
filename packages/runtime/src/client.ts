@@ -137,54 +137,56 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 		},
 
 		async init(options?: AgentInit): Promise<Agent> {
-			if (!options || !('model' in options)) {
+			const definition = resolveInitDefinition(options);
+			if (!hasInitModel(options)) {
 				throw new Error(
-					'[flue] init() requires a model. Pass { model: "provider/model-id" } or { model: false }.',
+					'[flue] init() requires a model. Pass { model: "provider/model-id" }, { model: false }, or inherit a definition with a model.',
 				);
 			}
-			if (options.model !== false && typeof options.model !== 'string') {
+			if (definition.model !== false && typeof definition.model !== 'string') {
 				throw new Error('[flue] init({ model }) must be a model string or false.');
 			}
 
-			const name = options.name ?? 'default';
+			const resolvedOptions = options ?? {};
+			const name = resolvedOptions.name ?? 'default';
 			if (initializedHarnessNames.has(name)) {
 				throw new Error(`[flue] init() has already been called with name "${name}" in this request.`);
 			}
 			initializedHarnessNames.add(name);
 
 			try {
-				assertRoleExists(config.agentConfig.roles, options.role);
-				const sandbox = options.sandbox;
+				assertRoleExists(config.agentConfig.roles, resolvedOptions.role);
+				const sandbox = resolvedOptions.sandbox;
 				const { env: baseEnv, toolFactory } = await resolveSessionEnv(
 					config.agentName,
 					config.id,
 					name,
 					sandbox,
 					config,
-					options.cwd,
+					resolvedOptions.cwd,
 				);
 				// Resolve `init({ cwd })` against the sandbox's own cwd so that
 				// relative paths target the sandbox/session filesystem, not the
 				// agent process cwd or `/`. Mirrors the same pattern used for
 				// task sessions in harness.ts.
-				const env = options.cwd
-					? createCwdSessionEnv(baseEnv, baseEnv.resolvePath(options.cwd))
+				const env = resolvedOptions.cwd
+					? createCwdSessionEnv(baseEnv, baseEnv.resolvePath(resolvedOptions.cwd))
 					: baseEnv;
-				const store: SessionStore = options.persist ?? config.defaultStore;
+				const store: SessionStore = resolvedOptions.persist ?? config.defaultStore;
 				const localContext = await discoverSessionContext(env);
 
 				// Harness-level model override. Per-call `model` on prompt()/skill() still wins
 				// because resolveModelForCall() applies it on top of this default.
-				const agentModel = config.agentConfig.resolveModel(options.model);
+				const agentModel = config.agentConfig.resolveModel(definition.model);
 
 				const agentConfig: AgentConfig = {
 					...config.agentConfig,
 					systemPrompt: localContext.systemPrompt,
 					skills: localContext.skills,
 					model: agentModel,
-					role: options.role ?? config.agentConfig.role,
-					thinkingLevel: options.thinkingLevel ?? config.agentConfig.thinkingLevel,
-					compaction: options.compaction ?? config.agentConfig.compaction,
+					role: resolvedOptions.role ?? config.agentConfig.role,
+					thinkingLevel: definition.thinkingLevel ?? config.agentConfig.thinkingLevel,
+					compaction: definition.compaction ?? config.agentConfig.compaction,
 				};
 
 				const harness: FlueHarness = new Harness(
@@ -196,7 +198,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					(event) => {
 						emitEvent(event);
 					},
-					options.tools,
+					definition.tools,
 					toolFactory,
 				);
 				return {
@@ -246,6 +248,20 @@ function serializeLogError(error: Error): Record<string, unknown> {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
+
+function hasInitModel(options: AgentInit | undefined): boolean {
+	return Boolean(options && ('model' in options || (options.inherit && 'model' in options.inherit)));
+}
+
+function resolveInitDefinition(options: AgentInit | undefined): AgentInit {
+	return {
+		model: options?.inherit?.model,
+		tools: options?.inherit?.tools,
+		thinkingLevel: options?.inherit?.thinkingLevel,
+		compaction: options?.inherit?.compaction,
+		...(options ?? {}),
+	};
+}
 
 function isBashFactory(value: unknown): value is BashFactory {
 	return typeof value === 'function';

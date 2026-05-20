@@ -16,7 +16,7 @@ import {
 	type RunRecord,
 	type RunStore,
 } from '../src/internal.ts';
-import type { FlueEvent } from '../src/types.ts';
+import type { AgentConfig, FlueEvent, ToolDefinition } from '../src/types.ts';
 
 describe('InMemoryRunRegistry', () => {
 	it('records start, lookup, and end for a single run', async () => {
@@ -508,6 +508,133 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(res.status).toBe(200);
 		expect(routedBodies).toEqual(['{"caseNumber":"02101282"}']);
 		expect(await original.text()).toBe('{"caseNumber":"02101282"}');
+	});
+
+	it('applies inherited init fields and replaces them with init-level overrides', async () => {
+		const modelInputs: Array<string | false | undefined> = [];
+		const inheritedTool: ToolDefinition = {
+			name: 'inherited',
+			description: 'Inherited tool.',
+			parameters: {},
+			execute: async () => 'inherited',
+		};
+		const overrideTool: ToolDefinition = {
+			name: 'override',
+			description: 'Override tool.',
+			parameters: {},
+			execute: async () => 'override',
+		};
+		const baseAgentConfig: AgentConfig = {
+			systemPrompt: '',
+			skills: {},
+			roles: {},
+			model: undefined,
+			thinkingLevel: 'medium',
+			compaction: { reserveTokens: 1 },
+			resolveModel: (model) => {
+				modelInputs.push(model);
+				return undefined;
+			},
+		};
+		const ctx = createFlueContext({
+			agentName: 'hello',
+			id: 'inst-1',
+			runId: 'run-1',
+			payload: {},
+			env: {},
+			createDefaultEnv: async () => bashFactoryToSessionEnv(async () => new Bash()),
+			defaultStore: new InMemorySessionStore(),
+			registrationStore: new InMemoryRegistrationStore(),
+			agentConfig: baseAgentConfig,
+		});
+
+		const inherited = await ctx.init({
+			name: 'inherited',
+			inherit: {
+				model: 'anthropic/inherited',
+				tools: [inheritedTool],
+				thinkingLevel: 'high',
+				compaction: false,
+			},
+		});
+		const inheritedHarness = inherited.harness() as unknown as {
+			config: AgentConfig;
+			agentTools: ToolDefinition[];
+		};
+		expect(modelInputs).toEqual(['anthropic/inherited']);
+		expect(inheritedHarness.config.thinkingLevel).toBe('high');
+		expect(inheritedHarness.config.compaction).toBe(false);
+		expect(inheritedHarness.agentTools).toEqual([inheritedTool]);
+
+		const overridden = await ctx.init({
+			name: 'override',
+			inherit: {
+				model: 'anthropic/inherited',
+				tools: [inheritedTool],
+				thinkingLevel: 'high',
+				compaction: false,
+			},
+			model: false,
+			tools: [overrideTool],
+			thinkingLevel: 'low',
+			compaction: { keepRecentTokens: 2 },
+		});
+		const overriddenHarness = overridden.harness() as unknown as {
+			config: AgentConfig;
+			agentTools: ToolDefinition[];
+		};
+		expect(modelInputs).toEqual(['anthropic/inherited', false]);
+		expect(overriddenHarness.config.thinkingLevel).toBe('low');
+		expect(overriddenHarness.config.compaction).toEqual({ keepRecentTokens: 2 });
+		expect(overriddenHarness.agentTools).toEqual([overrideTool]);
+	});
+
+	it('keeps the missing-model error when neither init nor inherit supplies one', async () => {
+		const ctx = createFlueContext({
+			agentName: 'hello',
+			id: 'inst-1',
+			runId: 'run-model-error',
+			payload: {},
+			env: {},
+			createDefaultEnv: async () => bashFactoryToSessionEnv(async () => new Bash()),
+			defaultStore: new InMemorySessionStore(),
+			registrationStore: new InMemoryRegistrationStore(),
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				roles: {},
+				model: undefined,
+				resolveModel: () => undefined,
+			},
+		});
+
+		await expect(ctx.init({})).rejects.toThrow('requires a model');
+		await expect(ctx.init({ inherit: { tools: [] } })).rejects.toThrow('requires a model');
+	});
+
+	it('accepts inherited models when init-level model is omitted', async () => {
+		const ctx = createFlueContext({
+			agentName: 'hello',
+			id: 'inst-1',
+			runId: 'run-2',
+			payload: {},
+			env: {},
+			createDefaultEnv: async () => bashFactoryToSessionEnv(async () => new Bash()),
+			defaultStore: new InMemorySessionStore(),
+			registrationStore: new InMemoryRegistrationStore(),
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				roles: {},
+				model: undefined,
+				resolveModel: () => undefined,
+			},
+		});
+
+		await expect(ctx.init({ inherit: { model: false } })).resolves.toMatchObject({
+			name: 'hello',
+			id: 'inst-1',
+		});
 	});
 
 	it('persists registered default workspace files by instance while harnesses remain isolated', async () => {

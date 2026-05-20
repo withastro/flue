@@ -372,6 +372,9 @@ export interface FlueLogger {
 
 /** Harness options. A default model is required unless explicitly disabled with `model: false`. */
 export interface AgentInit {
+	/** Definition fields inherited before init-level overrides are applied. */
+	inherit?: AgentDefinition;
+
 	/** Harness name. Defaults to `"default"`. */
 	name?: string;
 
@@ -400,7 +403,7 @@ export interface AgentInit {
 	 *
 	 * Precedence (highest wins): per-call `model` > role `model` > harness `model`.
 	 */
-	model: ModelConfig;
+	model?: ModelConfig;
 
 	/** Harness-wide default role. Overridden by session-level or per-call roles. */
 	role?: string;

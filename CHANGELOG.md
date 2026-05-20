@@ -10,6 +10,8 @@
 
 - **`defineAgent()` reusable agent definitions.** `@flue/runtime` now exports `defineAgent()` and the `AgentDefinition` type for validated module-scope agent definitions ahead of the upcoming live-agent API surface.
 
+- **`init({ inherit })` definition defaults.** `init()` can now inherit a module-scope agent definition for the currently live runtime fields: `model`, `tools`, `thinkingLevel`, and `compaction`. Init-level values still replace inherited values field-by-field.
+
 - **Serialized agent-instance admission.** Concurrent requests for the same agent instance are now rejected with a structured `409 instance_busy` response until the active run finishes. Node uses a process-local admission lane; Cloudflare uses Durable Object SQLite state and clears interrupted webhook-fiber leases during recovery.
 
 - **Persistent default virtual workspaces.** The built-in default sandbox now reuses filesystem state across runs for the same agent name, instance id, and harness name. Node keeps this workspace process-local; Cloudflare persists it in Durable Object SQLite storage. Custom sandboxes remain unchanged.
