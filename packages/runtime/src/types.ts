@@ -86,7 +86,7 @@ export type ToolParameters = TSchema | Record<string, unknown>;
  * Parameters are JSON Schema-compatible. Use `Type` from `@flue/runtime` for
  * hand-written tools, or pass schemas discovered from adapters such as MCP.
  */
-export interface ToolDef<TParams extends ToolParameters = ToolParameters> {
+export interface ToolDefinition<TParams extends ToolParameters = ToolParameters> {
 	/** Must be unique across built-in and custom tools. */
 	name: string;
 	/** Tells the LLM when and how to use this tool. */
@@ -400,7 +400,7 @@ export interface AgentInit {
 	 * Harness-wide tools. Every prompt(), skill(), and task() call can use these.
 	 * Per-call tools are added on top and must not reuse the same names.
 	 */
-	tools?: ToolDef[];
+	tools?: ToolDefinition[];
 
 	/**
 	 * Compaction tuning. When context approaches the model's window limit,
@@ -652,7 +652,7 @@ export interface PromptOptions<S extends v.GenericSchema | undefined = undefined
 	 * @deprecated Use `result` for structured output schemas.
 	 */
 	schema?: S;
-	tools?: ToolDef[];
+	tools?: ToolDefinition[];
 	role?: string;
 	/** e.g., 'anthropic/claude-sonnet-4-20250514' */
 	model?: string;
@@ -671,7 +671,7 @@ export interface SkillOptions<S extends v.GenericSchema | undefined = undefined>
 	 * @deprecated Use `result` for structured output schemas.
 	 */
 	schema?: S;
-	tools?: ToolDef[];
+	tools?: ToolDefinition[];
 	role?: string;
 	model?: string;
 	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */
@@ -688,7 +688,7 @@ export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> 
 	 * @deprecated Use `result` for structured output schemas.
 	 */
 	schema?: S;
-	tools?: ToolDef[];
+	tools?: ToolDefinition[];
 	role?: string;
 	model?: string;
 	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */

@@ -38,6 +38,6 @@ export type {
 	SkillOptions,
 	TaskOptions,
 	ThinkingLevel,
-	ToolDef,
+	ToolDefinition,
 	ToolParameters,
 } from './types.ts';

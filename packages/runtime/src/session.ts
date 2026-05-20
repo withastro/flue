@@ -75,7 +75,7 @@ import type {
 	SkillOptions,
 	TaskOptions,
 	ThinkingLevel,
-	ToolDef,
+	ToolDefinition,
 } from './types.ts';
 import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 
@@ -103,7 +103,7 @@ interface SessionInitOptions {
 	store: SessionStore;
 	existingData: SessionData | null;
 	onAgentEvent?: FlueEventCallback;
-	agentTools?: ToolDef[];
+	agentTools?: ToolDefinition[];
 	toolFactory?: SessionToolFactory;
 	sessionRole?: string;
 	taskDepth?: number;
@@ -117,7 +117,7 @@ interface SessionInitOptions {
 // `commands` removed, this is just per-call overrides on top of agent-wide
 // defaults — the name no longer reflects what it does.
 interface RuntimeScopeOptions {
-	tools: ToolDef[];
+	tools: ToolDefinition[];
 	role?: string;
 	model?: string;
 	thinkingLevel?: ThinkingLevel;
@@ -419,7 +419,7 @@ export class Session implements FlueSession {
 	private overflowRecoveryAttempted = false;
 	private compactionAbortController: AbortController | undefined;
 	private eventCallback: FlueEventCallback | undefined;
-	private agentTools: ToolDef[];
+	private agentTools: ToolDefinition[];
 	private toolFactory: SessionToolFactory | undefined;
 	private deleted = false;
 	private activeOperation: OperationKind | undefined;
@@ -869,7 +869,7 @@ export class Session implements FlueSession {
 	// ─── Custom Tools ───────────────────────────────────────────────────────
 
 	private createCustomTools(
-		tools: ToolDef[],
+		tools: ToolDefinition[],
 		builtinTools: AgentTool<any>[],
 	): AgentTool<any>[] {
 		this.validateCustomToolNames(tools, builtinTools);
@@ -894,7 +894,7 @@ export class Session implements FlueSession {
 
 	/** Reject custom tools that collide with active built-ins or each other. */
 	private validateCustomToolNames(
-		tools: ToolDef[],
+		tools: ToolDefinition[],
 		builtinTools: AgentTool<any>[],
 	): void {
 		const reserved = new Set<string>(builtinTools.map((t) => t.name));
@@ -919,7 +919,7 @@ export class Session implements FlueSession {
 	/** Build built-in tools from the connector or the framework defaults. */
 	private createBuiltinTools(
 		env: SessionEnv,
-		tools: ToolDef[],
+		tools: ToolDefinition[],
 		role?: string,
 		model?: string,
 		thinkingLevel?: ThinkingLevel,
@@ -1006,7 +1006,7 @@ export class Session implements FlueSession {
 
 	private async runTaskForTool(
 		params: TaskToolParams,
-		tools: ToolDef[],
+		tools: ToolDefinition[],
 		inheritedRole: string | undefined,
 		inheritedModel: string | undefined,
 		inheritedThinkingLevel: ThinkingLevel | undefined,
@@ -1614,7 +1614,7 @@ export class Session implements FlueSession {
 	private async runPromptCall(args: {
 		promptText: string;
 		schema: v.GenericSchema | undefined;
-		tools: ToolDef[] | undefined;
+		tools: ToolDefinition[] | undefined;
 		role: string | undefined;
 		model: string | undefined;
 		thinkingLevel: ThinkingLevel | undefined;

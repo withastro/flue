@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
-import type { ToolDef, ToolParameters } from './types.ts';
+import type { ToolDefinition, ToolParameters } from './types.ts';
 
 export type McpTransport = 'streamable-http' | 'sse';
 
@@ -18,7 +18,7 @@ export interface McpServerOptions {
 
 export interface McpServerConnection {
 	name: string;
-	tools: ToolDef[];
+	tools: ToolDefinition[];
 	close(): Promise<void>;
 }
 
@@ -73,7 +73,7 @@ async function createTransport(
 	});
 }
 
-function createMcpTools(serverName: string, client: Client, tools: Tool[]): ToolDef[] {
+function createMcpTools(serverName: string, client: Client, tools: Tool[]): ToolDefinition[] {
 	const names = new Set<string>();
 
 	return tools.map((tool) => {

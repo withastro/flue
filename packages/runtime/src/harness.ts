@@ -18,7 +18,7 @@ import type {
 	SessionToolFactory,
 	ShellOptions,
 	ShellResult,
-	ToolDef,
+	ToolDefinition,
 } from './types.ts';
 
 const DEFAULT_SESSION_NAME = 'default';
@@ -43,7 +43,7 @@ export class Harness implements FlueHarness {
 		private env: SessionEnv,
 		private store: SessionStore,
 		private eventCallback?: FlueEventCallback,
-		private agentTools: ToolDef[] = [],
+		private agentTools: ToolDefinition[] = [],
 		private toolFactory?: SessionToolFactory,
 	) {
 		this.fs = createFlueFs(env);

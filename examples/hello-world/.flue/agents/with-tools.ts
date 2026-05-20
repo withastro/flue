@@ -1,4 +1,4 @@
-import { Type, type FlueContext, type ToolDef } from '@flue/runtime';
+import { Type, defineTool, type FlueContext } from '@flue/runtime';
 import { Bash, InMemoryFs } from 'just-bash';
 
 export const triggers = { webhook: true };
@@ -21,7 +21,7 @@ export default async function ({ init }: FlueContext) {
 
 	// ─── Test 1: Simple custom tool ─────────────────────────────────────────
 
-	const calculator: ToolDef = {
+	const calculator = defineTool({
 		name: 'calculator',
 		description: 'Perform arithmetic. Returns the numeric result as a string.',
 		parameters: Type.Object({
@@ -33,7 +33,7 @@ export default async function ({ init }: FlueContext) {
 			const result = Function(`"use strict"; return (${expr})`)();
 			return String(result);
 		},
-	};
+	});
 
 	const { text } = await session.prompt(
 		'Use the calculator tool to compute 7 * 6. Tell me the result.',

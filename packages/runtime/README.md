@@ -166,7 +166,7 @@ Install the Daytona connector with `flue add daytona | <your-agent>` (e.g. `clau
 
 ```ts
 // .flue/agents/code.ts
-import { Type, type FlueContext, type ToolDef } from '@flue/runtime';
+import { Type, defineTool, type FlueContext } from '@flue/runtime';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
