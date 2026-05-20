@@ -1,6 +1,8 @@
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import { toJsonSchema } from '@valibot/to-json-schema';
 import * as v from 'valibot';
+import { formatBundledSkillResourcePath } from './agent.ts';
+import type { SkillDefinition } from './types.ts';
 
 /**
  * Names of the framework-injected tools used to capture structured results.
@@ -27,16 +29,45 @@ export function buildResultFollowUpPrompt(): string {
 	].join(' ');
 }
 
-/**
- * Build the user-facing prompt text for a `session.skill('<name>')` call,
- * where `<name>` is a name registered in the session's skill registry.
- *
- * The system prompt's "Available Skills" list tells the model where the
- * skill lives (`.agents/skills/<name>/SKILL.md`) and how to run it (read
- * the file, follow its instructions). The per-call message just names
- * the skill plus any arguments — no inlined body, no path hint.
- */
+/** Build the user-facing prompt text for a bundled `SKILL.md` skill value. */
 export function buildSkillByNamePrompt(
+	skill: SkillDefinition,
+	args?: Record<string, unknown>,
+	schema?: v.GenericSchema,
+): string {
+	const parts: string[] = [
+		`Run the skill named "${skill.name}".`,
+		'',
+		'<skill_instructions>',
+		skill.body,
+		'</skill_instructions>',
+	];
+
+	if (skill.resources?.entries.length) {
+		parts.push(
+			'',
+			'Supporting skill resources are available but are not loaded into context unless needed:',
+			'<skill_resources>',
+			...skill.resources.entries.map((entry) =>
+				`- ${entry.path} → read ${formatBundledSkillResourcePath(skill.name, entry.path)}`,
+			),
+			'</skill_resources>',
+		);
+	}
+
+	if (args && Object.keys(args).length > 0) {
+		parts.push('', 'Arguments:', JSON.stringify(args, null, 2));
+	}
+
+	if (schema) {
+		parts.push(buildResultFooter());
+	}
+
+	return parts.join('\n');
+}
+
+/** Build the existing name-only prompt for runtime-discovered sandbox skills. */
+export function buildSkillByPathlessNamePrompt(
 	name: string,
 	args?: Record<string, unknown>,
 	schema?: v.GenericSchema,

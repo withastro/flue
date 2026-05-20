@@ -33,6 +33,7 @@ import {
 	buildPromptText,
 	buildResultFollowUpPrompt,
 	buildSkillByNamePrompt,
+	buildSkillByPathlessNamePrompt,
 	buildSkillByPathPrompt,
 	createResultTools,
 	type ResultToolBundle,
@@ -70,6 +71,7 @@ import type {
 	SessionToolFactory,
 	ShellOptions,
 	ShellResult,
+	SkillDefinition,
 	SkillOptions,
 	TaskOptions,
 	ThinkingLevel,
@@ -153,6 +155,14 @@ function resolveResultOption(
 interface InternalTaskOptions<S extends v.GenericSchema | undefined> extends TaskOptions<S> {
 	inheritedModel?: string;
 	inheritedThinkingLevel?: ThinkingLevel;
+}
+
+function getBundledSkills(skills: Record<string, AgentConfig['skills'][string]>): Record<string, SkillDefinition> {
+	const bundled: Record<string, SkillDefinition> = {};
+	for (const [name, skill] of Object.entries(skills)) {
+		if ('body' in skill && 'source' in skill) bundled[name] = skill;
+	}
+	return bundled;
 }
 
 /** In-memory session store. Sessions persist for the lifetime of the process. */
@@ -583,45 +593,44 @@ export class Session implements FlueSession {
 	}
 
 	skill<S extends v.GenericSchema>(
-		name: string,
+		skill: SkillDefinition | string,
 		options: SkillOptions<S> & { result: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
 	skill<S extends v.GenericSchema>(
-		name: string,
+		skill: SkillDefinition | string,
 		options: SkillOptions<S> & { schema: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
-	skill(name: string, options?: SkillOptions): CallHandle<PromptResponse>;
-	skill(name: string, options?: SkillOptions<v.GenericSchema | undefined>): CallHandle<any> {
+	skill(skill: SkillDefinition | string, options?: SkillOptions): CallHandle<PromptResponse>;
+	skill(skill: SkillDefinition | string, options?: SkillOptions<v.GenericSchema | undefined>): CallHandle<any> {
 		return createCallHandle(options?.signal, (signal) =>
 			this.runOperation('skill', signal, async () => {
-				// Registered skill names and relative skill paths use different prompts.
-				const looksLikePath = name.includes('/') || /\.(md|markdown)$/i.test(name);
 				const schema = resolveResultOption(options);
 
 				let promptText: string;
-				if (looksLikePath) {
-					const resolvedPath = await resolveSkillFilePath(this.env, this.env.cwd, name);
+				let skillName: string;
+				if (typeof skill === 'string' && (skill.includes('/') || /\.(md|markdown)$/i.test(skill))) {
+					const resolvedPath = await resolveSkillFilePath(this.env, this.env.cwd, skill);
 					if (!resolvedPath) {
 						throw new Error(
-							`[flue] Skill file "${name}" not found at ${skillsDirIn(this.env.cwd)}/${name} ` +
+							`[flue] Skill file "${skill}" not found at ${skillsDirIn(this.env.cwd)}/${skill} ` +
 								`inside the session's sandbox. Make sure the file exists at that path.`,
 						);
 					}
-					promptText = buildSkillByPathPrompt(name, resolvedPath, options?.args, schema);
-				} else {
-					if (!this.config.skills[name]) {
-						const available = Object.keys(this.config.skills).join(', ') || '(none)';
-						throw new Error(
-							`[flue] Skill "${name}" not registered. Available: ${available}.\n\n` +
-								`Skills are discovered at init() time from ${skillsDirIn(this.env.cwd)}/<name>/SKILL.md ` +
-								`inside the session's sandbox. If you expected "${name}" to be there, make sure ` +
-								`the SKILL.md file exists at that path before calling init() — the default ` +
-								`empty sandbox starts with no files, so it has no skills unless you put them there.\n\n` +
-								`Skills can also be referenced by relative path under .agents/skills/ ` +
-								`(e.g. "triage/reproduce.md").`,
-						);
+					promptText = buildSkillByPathPrompt(skill, resolvedPath, options?.args, schema);
+					skillName = skill;
+				} else if (typeof skill === 'string') {
+					const registered = this.config.skills[skill];
+					if (registered && 'body' in registered && 'source' in registered) {
+						promptText = buildSkillByNamePrompt(registered, options?.args, schema);
+					} else if (registered) {
+						promptText = buildSkillByPathlessNamePrompt(skill, options?.args, schema);
+					} else {
+						this.throwMissingSkill(skill);
 					}
-					promptText = buildSkillByNamePrompt(name, options?.args, schema);
+					skillName = skill;
+				} else {
+					promptText = buildSkillByNamePrompt(skill, options?.args, schema);
+					skillName = skill.name;
 				}
 
 				return this.runPromptCall({
@@ -633,8 +642,8 @@ export class Session implements FlueSession {
 					thinkingLevel: options?.thinkingLevel,
 					images: options?.images,
 					source: 'skill',
-					errorLabel: `skill("${name}")`,
-					callSite: `this skill("${name}") call`,
+					errorLabel: `skill("${skillName}")`,
+					callSite: `this skill("${skillName}") call`,
 					signal,
 				});
 			}),
@@ -844,6 +853,19 @@ export class Session implements FlueSession {
 		return parts.filter(Boolean).join('\n\n');
 	}
 
+	private throwMissingSkill(skill: string): never {
+		const available = Object.keys(this.config.skills).join(', ') || '(none)';
+		throw new Error(
+			`[flue] Skill "${skill}" not registered. Available: ${available}.\n\n` +
+				`Skills are discovered at init() time from ${skillsDirIn(this.env.cwd)}/<name>/SKILL.md ` +
+				`inside the session's sandbox. If you expected "${skill}" to be there, make sure ` +
+				`the SKILL.md file exists at that path before calling init() — the default ` +
+				`empty sandbox starts with no files, so it has no skills unless you put them there.\n\n` +
+				`Bundled skills can be imported from SKILL.md with { type: 'skill' } and passed directly ` +
+				`to session.skill(skillValue).`,
+		);
+	}
+
 	// ─── Custom Tools ───────────────────────────────────────────────────────
 
 	private createCustomTools(
@@ -913,6 +935,7 @@ export class Session implements FlueSession {
 
 		return createTools(env, {
 			roles: this.config.roles,
+			skills: getBundledSkills(this.config.skills),
 			task: runTask,
 		});
 	}
