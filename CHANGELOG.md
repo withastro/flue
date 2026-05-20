@@ -8,6 +8,8 @@
 
 - **`defineTool()` reusable tool values.** `@flue/runtime` now exports `defineTool()` and the `ToolDefinition` type for defining validated, shallow-frozen custom tool values.
 
+- **`defineAgent()` reusable agent definitions.** `@flue/runtime` now exports `defineAgent()` and the `AgentDefinition` type for validated module-scope agent definitions ahead of reusable agent-profile work.
+
 - **Cloudflare shell sandbox.** Added `getShellSandbox({ workspace, loader })`, `getDefaultWorkspace()`, and `hydrateFromBucket()` from `@flue/runtime/cloudflare`. The new sandbox wires `@cloudflare/shell` Workspaces into Flue through a codemode `code` tool backed by a Worker Loader binding. Agents use `state.*` inside the `code` tool instead of bash/read/write/grep/glob. Use `@cloudflare/shell` directly for primitives like `Workspace`, `WorkspaceFileSystem`, and `createGit`.
 
 ### Breaking Changes

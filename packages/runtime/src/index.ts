@@ -7,6 +7,7 @@ export type {
 	FlueSessions,
 	FlueSession,
 	AgentInit,
+	AgentDefinition,
 	FlueEvent,
 	FlueEventCallback,
 	SessionData,
@@ -46,6 +47,7 @@ export type {
 export { Type } from '@earendil-works/pi-ai';
 export { createTools, BUILTIN_TOOL_NAMES } from './agent.ts';
 export { defineTool } from './tool.ts';
+export { defineAgent } from './agent-definition.ts';
 export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
 export { connectMcpServer } from './mcp.ts';
 export { ResultUnavailableError } from './result.ts';

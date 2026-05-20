@@ -299,6 +299,18 @@ export interface AgentConfig {
 
 export type ModelConfig = string | false;
 
+// ─── Agent Definition ──────────────────────────────────────────────────────
+
+export interface AgentDefinition {
+	model?: ModelConfig;
+	instructions?: string;
+	skills?: Skill[];
+	tools?: ToolDefinition[];
+	subagents?: AgentDefinition[];
+	thinkingLevel?: ThinkingLevel;
+	compaction?: false | CompactionConfig;
+}
+
 // ─── Flue Context (passed to agent handlers) ───────────────────────────────
 
 /**
