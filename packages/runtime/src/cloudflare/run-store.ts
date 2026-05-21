@@ -1,12 +1,10 @@
 import {
 	type CreateRunInput,
 	DEFAULT_MAX_COMPLETED_RUNS,
-	DEFAULT_MAX_EVENT_BYTES,
 	type EndRunInput,
 	type RunRecord,
 	type RunStore,
 	type RunStoreOptions,
-	truncateEventForPersistence,
 } from '../runtime/run-store.ts';
 import type { FlueEvent } from '../types.ts';
 
@@ -27,14 +25,12 @@ export function createDurableRunStore(sql: SqlStorage, options: RunStoreOptions 
 
 class DurableRunStore implements RunStore {
 	private maxCompletedRuns: number;
-	private maxEventBytes: number;
 
 	constructor(
 		private sql: SqlStorage,
 		options: RunStoreOptions,
 	) {
 		this.maxCompletedRuns = options.maxCompletedRuns ?? DEFAULT_MAX_COMPLETED_RUNS;
-		this.maxEventBytes = options.maxEventBytes ?? DEFAULT_MAX_EVENT_BYTES;
 	}
 
 	async createRun(input: CreateRunInput): Promise<void> {
@@ -77,16 +73,15 @@ class DurableRunStore implements RunStore {
 	}
 
 	async appendEvent(runId: string, event: FlueEvent): Promise<void> {
-		const storedEvent = truncateEventForPersistence(event, this.maxEventBytes);
 		this.sql.exec(
 			`INSERT OR REPLACE INTO flue_run_events
 			 (run_id, event_index, type, payload, timestamp)
 			 VALUES (?, ?, ?, ?, ?)`,
 			runId,
-			storedEvent.eventIndex ?? 0,
-			storedEvent.type,
-			JSON.stringify(storedEvent),
-			storedEvent.timestamp ?? new Date().toISOString(),
+			event.eventIndex ?? 0,
+			event.type,
+			JSON.stringify(event),
+			event.timestamp ?? new Date().toISOString(),
 		);
 	}
 
