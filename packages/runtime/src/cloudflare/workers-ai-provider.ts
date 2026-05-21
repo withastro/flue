@@ -198,40 +198,54 @@ async function* iterateSseChunks(body: ReadableStream<Uint8Array>): AsyncIterabl
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) {
+				buffer += decoder.decode();
 				if (buffer.trim().length > 0) {
 					yield* parseSseEvents(buffer);
 				}
 				return;
 			}
 			buffer += decoder.decode(value, { stream: true });
-			let separatorIndex = buffer.indexOf('\n\n');
-			while (separatorIndex !== -1) {
-				const block = buffer.slice(0, separatorIndex);
-				buffer = buffer.slice(separatorIndex + 2);
+			let boundary = findSseBoundary(buffer);
+			while (boundary) {
+				const block = buffer.slice(0, boundary.index);
+				buffer = buffer.slice(boundary.index + boundary.width);
 				yield* parseSseEvents(block);
-				separatorIndex = buffer.indexOf('\n\n');
+				boundary = findSseBoundary(buffer);
 			}
 		}
 	} finally {
 		try {
 			reader.releaseLock();
-		} catch {
-			// Reader already errored; nothing to release.
-		}
+		} catch {}
 	}
 }
 
+function findSseBoundary(buffer: string): { index: number; width: number } | null {
+	const lf = buffer.indexOf('\n\n');
+	const crlf = buffer.indexOf('\r\n\r\n');
+	if (lf === -1 && crlf === -1) return null;
+	if (lf === -1) return { index: crlf, width: 4 };
+	if (crlf === -1) return { index: lf, width: 2 };
+	return lf < crlf ? { index: lf, width: 2 } : { index: crlf, width: 4 };
+}
+
 function* parseSseEvents(block: string): IterableIterator<unknown> {
-	for (const rawLine of block.split('\n')) {
-		const line = rawLine.replace(/\r$/, '');
-		if (!line.startsWith('data:')) continue;
-		const data = line.slice(5).trimStart();
-		if (data === '' || data === '[DONE]') continue;
-		try {
-			yield JSON.parse(data);
-		} catch {
-			// Skip malformed lines; don't fail the whole stream.
+	let start = 0;
+	while (start <= block.length) {
+		const newline = block.indexOf('\n', start);
+		const end = newline === -1 ? block.length : newline;
+		const lineEnd = end > start && block.charCodeAt(end - 1) === 13 ? end - 1 : end;
+		const line = block.slice(start, lineEnd);
+		if (line.startsWith('data:')) {
+			const data = line.slice(5).trimStart();
+			if (data !== '' && data !== '[DONE]') {
+				try {
+					yield JSON.parse(data);
+				} catch {}
+			}
 		}
+		if (newline === -1) return;
+		start = newline + 1;
 	}
 }
 
