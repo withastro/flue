@@ -138,7 +138,11 @@ export class Harness implements FlueHarness {
 		const taskEnv = options.cwd
 			? createCwdSessionEnv(options.parentEnv, options.parentEnv.resolvePath(options.cwd))
 			: options.parentEnv;
-		const localContext = await discoverSessionContext(taskEnv);
+		const localContext = await discoverSessionContext(
+			taskEnv,
+			this.config.instructions,
+			this.config.definitionSkills,
+		);
 		const taskConfig: AgentConfig = {
 			...this.config,
 			systemPrompt: localContext.systemPrompt,

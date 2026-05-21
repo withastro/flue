@@ -269,6 +269,10 @@ export interface ProviderSettings {
 export interface AgentConfig {
 	/** Discovered at runtime from AGENTS.md + .agents/skills/ in the session's cwd. */
 	systemPrompt: string;
+	/** Agent instructions prepended ahead of discovered workspace context. */
+	instructions?: string;
+	/** Agent-definition skills merged into each discovered skill catalog. */
+	definitionSkills?: Skill[];
 	/** Discovered at runtime from .agents/skills/ in the session's cwd. */
 	skills: Record<string, Skill>;
 	roles: Record<string, Role>;
@@ -362,8 +366,17 @@ export interface FlueLogger {
 
 /** Harness options. A default model is required unless explicitly disabled with `model: false`. */
 export interface AgentInit {
+	/** Definition fields inherited before init-level overrides are applied. */
+	inherit?: AgentDefinition;
+
 	/** Harness name. Defaults to `"default"`. */
 	name?: string;
+
+	/** Agent instructions prepended ahead of discovered workspace context. */
+	instructions?: string;
+
+	/** Agent-definition skills disclosed in the system-prompt catalog. */
+	skills?: Skill[];
 
 	/** Working directory for context discovery, tools, and shell calls. Defaults to the sandbox cwd. */
 	cwd?: string;
@@ -390,7 +403,7 @@ export interface AgentInit {
 	 *
 	 * Precedence (highest wins): per-call `model` > role `model` > harness `model`.
 	 */
-	model: ModelConfig;
+	model?: ModelConfig;
 
 	/** Harness-wide default role. Overridden by session-level or per-call roles. */
 	role?: string;
