@@ -35,9 +35,8 @@ for current status.
 
 Pick the location based on the user's project layout:
 
-- **`.flue/` layout** (project has files at the root and uses `.flue/agents/`
-  etc.): write to `./.flue/connectors/smolvm.ts`.
-- **Root layout** (the project root itself contains `agents/` and friends):
+- **`.flue/` layout** (project has files at the root and uses `.flue/workflows/` or `.flue/agents/` etc.): write to `./.flue/connectors/smolvm.ts`.
+- **Root layout** (the project root itself contains `workflows/`, `agents/`, and friends):
   write to `./connectors/smolvm.ts`.
 
 If neither feels right (uncommon layout, multiple workspaces, etc.), ask the
@@ -251,13 +250,13 @@ into, you can finish that work by wiring the connector into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 import { Machine } from 'smolvm-embedded';
 import { smolvm } from '../connectors/smolvm'; // adjust path to match the user's layout
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init }: FlueContext) {
+export async function run ({ init }: FlueContext) {
   const machine = await Machine.create({ name: `flue-${Date.now()}` });
 
   const harness = await init({
@@ -284,4 +283,4 @@ so the OCI layer cache stays warm. For one-shot work, `withMachine` from
    actually wrote the file.
 3. Tell the user the next steps: install `smolvm-embedded` (if you didn't),
    confirm they are on a macOS or Linux host with hypervisor support, and
-   run `flue dev` (or `flue run <agent>`) to try it.
+   run `flue dev` (or `flue run <workflow>`) to try it.

@@ -220,13 +220,13 @@ into, you can finish that work by wiring the connector into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 import { Sandbox } from 'e2b';
 import { e2b } from '../connectors/e2b'; // adjust path to match the user's layout
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init }: FlueContext) {
+export async function run ({ init }: FlueContext) {
   // E2B reads E2B_API_KEY from the environment automatically.
   const sandbox = await Sandbox.create();
 
@@ -253,4 +253,4 @@ tooling on every cold start.
    actually wrote the file.
 3. Tell the user the next steps: install `e2b` (if you didn't), make sure
    `E2B_API_KEY` is available at runtime (per the Authentication section
-   above), and run `flue dev` (or `flue run <agent>`) to try it.
+   above), and run `flue dev` (or `flue run <workflow>`) to try it.

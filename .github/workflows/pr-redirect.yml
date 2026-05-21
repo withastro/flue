@@ -68,7 +68,7 @@ jobs:
         # don't need to build.
         run: pnpm --filter @flue/runtime --filter @flue/cli build
 
-      - name: Run pr-redirect agent
+      - name: Run pr-redirect workflow
         env:
           # Read-only token for the agent's in-sandbox `gh` calls.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -83,5 +83,4 @@ jobs:
         run: |
           node packages/cli/bin/flue.mjs run pr-redirect \
             --target node \
-            --id "pr-redirect-$PR_NUMBER" \
             --payload "{\"prNumber\": $PR_NUMBER}"

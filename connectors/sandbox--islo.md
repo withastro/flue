@@ -272,12 +272,12 @@ into, you can finish that work by wiring the connector into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 import { islo } from '../connectors/islo'; // adjust path to match the user's layout
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init }: FlueContext) {
+export async function run ({ init }: FlueContext) {
   const harness = await init({
     sandbox: islo('my-sandbox'),
     model: 'anthropic/claude-sonnet-4-6',
@@ -297,4 +297,4 @@ export default async function ({ init }: FlueContext) {
 3. Tell the user the next steps: install the islo CLI (if you didn't),
    run `islo login` (or make `ISLO_API_KEY` available at runtime per the
    Authentication section above), pre-provision a sandbox with
-   `islo use <name>`, then run `flue dev` (or `flue run <agent>`) to try it.
+   `islo use <name>`, then run `flue dev` (or `flue run <workflow>`) to try it.

@@ -141,7 +141,7 @@ For reference, the shape they share:
 7. **Wiring it into an agent** — a usage snippet for one of the user's
    agents.
 8. **Verify** — typecheck + manual next-steps for the user, ending with
-   `flue dev` / `flue run <agent>`.
+   `flue dev` / `flue run <workflow>`.
 
 For category-root files (e.g. `sandbox.md`), instead of a verbatim TS file,
 point the agent at the spec doc on raw GitHub plus a known-good reference

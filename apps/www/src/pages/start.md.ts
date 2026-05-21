@@ -47,9 +47,9 @@ Then, determine the following. Ask the user only for information you do not alre
    - Confirm with the user that they want to implement there. Mention the inferred layout in that confirmation. For example: "Use the current directory with the \`.flue\` layout because it already has files?"
    - If they choose a different location, inspect that directory instead and infer the layout again using the same layout rules.
    - Project layout rules:
-     - Directory does not exist: create it and use the root layout: \`./agents/\`.
-     - Directory exists and is empty: use the root layout: \`./agents/\`.
-     - Directory exists and already has files: use the \`.flue\` layout: \`./.flue/agents/\`.
+     - Directory does not exist: create it and use the root layout: \`./workflows/\`.
+     - Directory exists and is empty: use the root layout: \`./workflows/\`.
+     - Directory exists and already has files: use the \`.flue\` layout: \`./.flue/workflows/\`.
 3. Where should it deploy? For example: Cloudflare Workers, Node.js, GitHub Actions, GitLab CI/CD, Vercel, Fly.io.
    - Available deploy guides:
 ${await getDeployGuideList()}
@@ -69,7 +69,7 @@ Before implementing, restate the chosen requirements to yourself as an implement
 - Agent purpose: \`<purpose>\`
 - Project directory: \`<absolute or relative path>\`
 - Workspace layout: \`root\` if the target directory is new or empty, otherwise \`.flue\`
-- Agent file path: \`./agents/<name>.ts\` or \`./.flue/agents/<name>.ts\`
+- Agent file path: \`./workflows/<name>.ts\` or \`./.flue/workflows/<name>.ts\`
 - Deploy target: \`<target>\`
 - Provider/model: \`<exact model id>\`
 
@@ -77,8 +77,8 @@ Before implementing, restate the chosen requirements to yourself as an implement
 
 1. Pick the deploy guide that best matches the user's target, fetch it, and follow it.
 2. Prefer the collapsible starter template files near the top of the deploy guide for package and config scaffolding. Adapt paths to the inferred workspace layout.
-   - If the target directory is new or empty and the guide shows \`.flue/agents/hello.ts\`, create \`./agents/hello.ts\` instead.
-   - If the target directory has files and the guide shows \`agents/hello.ts\`, create \`./.flue/agents/hello.ts\` instead.
+   - If the target directory is new or empty and the guide shows \`.flue/workflows/hello.ts\`, create \`./workflows/hello.ts\` instead.
+   - If the target directory has files and the guide shows \`workflows/hello.ts\`, create \`./.flue/workflows/hello.ts\` instead.
 3. Create or update the project in the requested directory.
 4. Scaffold one minimal Flue agent that matches the user's idea. Keep it closer to "hello world" than production app.
 5. Pass the selected model ID to \`init({ model: '<exact model id>' })\`. Flue does not choose a model automatically.
@@ -93,13 +93,13 @@ Before implementing, restate the chosen requirements to yourself as an implement
          "strict": true,
          "skipLibCheck": true
        },
-       "include": ["agents/**/*.ts", ".flue/**/*.ts"],
+       "include": ["workflows/**/*.ts", ".flue/**/*.ts"],
        "exclude": ["dist"]
      }
      \`\`\`
-   - If \`tsconfig.json\` already exists, do not replace it. The goal is only to make sure the generated agent files are included in the TypeScript project for editor/typechecking support.
+   - If \`tsconfig.json\` already exists, do not replace it. The goal is only to make sure the generated workflow files are included in the TypeScript project for editor/typechecking support.
    - TypeScript may ignore hidden directories by default, so projects using the \`.flue\` layout usually need \`.flue/**/*.ts\` included explicitly.
-   - Make the smallest safe change: append the needed agent glob to an existing \`include\` array, create an \`include\` array only if that clearly preserves the project's existing source coverage, or leave a short note for the user if the existing config is non-trivial.
+   - Make the smallest safe change: append the needed workflow glob to an existing \`include\` array, create an \`include\` array only if that clearly preserves the project's existing source coverage, or leave a short note for the user if the existing config is non-trivial.
 7. Add only the dependencies and config required by the selected deploy guide.
 8. Run the most relevant validation command you can, such as build, typecheck, or a local Flue run. If you cannot run it, explain why.
 9. Finish with the exact next commands the user should run, including how to set any required secrets.
@@ -110,8 +110,8 @@ Before finishing, verify that the implementation matches the user's explicit cho
 
 - **Project location**: Files were created in the requested directory.
 - **Workspace layout**: Agent file is in the exact location corresponding to the inferred layout.
-  - New or empty target directory means root layout: \`./agents/<name>.ts\`.
-  - Existing non-empty target directory means \`.flue\` layout: \`./.flue/agents/<name>.ts\`.
+   - New or empty target directory means root layout: \`./workflows/<name>.ts\`.
+   - Existing non-empty target directory means \`.flue\` layout: \`./.flue/workflows/<name>.ts\`.
 - **Deploy target**: Config and commands match the user's selected deploy target.
 - **LLM provider/model**: Model identifier is one of the suggested exact IDs, or an exact value from \`https://flueframework.com/models.json\` if the user requested another model.
 - **Agent initialization**: The selected model ID is passed to \`init({ model })\`, or to individual \`prompt()\` / \`skill()\` calls (not common).

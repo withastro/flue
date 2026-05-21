@@ -715,12 +715,12 @@ no obvious project convention like `EXE_VM_HOST`, ask for the exe.dev VM
 hostname before wiring the connector.
 
 ```ts
-import type { FlueContext } from "@flue/runtime";
+import { http, type FlueContext } from "@flue/runtime";
 import { exedev } from "../connectors/exedev";
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, env }: FlueContext) {
+export async function run ({ init, env }: FlueContext) {
   const harness = await init({
     sandbox: exedev({ host: env.EXE_VM_HOST }),
     model: "anthropic/claude-sonnet-4-6",
@@ -738,12 +738,12 @@ API token with `new` permission. The VM is created before `init(...)` and
 then passed to `exedev(...)`.
 
 ```ts
-import type { FlueContext } from "@flue/runtime";
+import { http, type FlueContext } from "@flue/runtime";
 import { createExeVm, deleteExeVm, exedev } from "../connectors/exedev";
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, env }: FlueContext) {
+export async function run ({ init, env }: FlueContext) {
   const vm = await createExeVm({ apiToken: env.EXE_API_TOKEN });
 
   try {
@@ -767,12 +767,12 @@ an API token with `cp` permission. If you delete the clone afterwards, the
 token also needs `rm` permission.
 
 ```ts
-import type { FlueContext } from "@flue/runtime";
+import { http, type FlueContext } from "@flue/runtime";
 import { cloneExeVm, deleteExeVm, exedev } from "../connectors/exedev";
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, env }: FlueContext) {
+export async function run ({ init, env }: FlueContext) {
   const vm = await cloneExeVm({
     apiToken: env.EXE_API_TOKEN,
     source: "my-dev-vm",
@@ -802,4 +802,4 @@ export default async function ({ init, env }: FlueContext) {
 4. Tell the user the next steps: install `ssh2` and `@types/ssh2` (if you
    didn't), make sure the needed exe.dev SSH/API values are available at
    runtime (per the Authentication section above), and run `flue dev --target node`
-   (or `flue run <agent> --target node`) to try it.
+   (or `flue run <workflow> --target node`) to try it.

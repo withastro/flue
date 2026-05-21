@@ -1,14 +1,14 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 import { Bash, InMemoryFs } from 'just-bash';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 /**
  * Smoke test for the public `agent.fs` / `session.fs` surface.
  * Exercises only SDK-level fs primitives (no LLM calls), so it runs
  * without provider credentials. Used to verify the new FlueFs wiring.
  */
-export default async function ({ init }: FlueContext) {
+export async function run({ init }: FlueContext) {
 	const fs = new InMemoryFs();
 	const sandbox = () => new Bash({ fs });
 	// `model` is required by init(), but this test never makes an LLM call

@@ -107,12 +107,12 @@ The short version, for your reference:
    above) is the key on `env`:
 
    ```ts
-   import type { FlueContext } from '@flue/runtime';
+   import { http, type FlueContext } from '@flue/runtime';
    import { getSandbox } from '@cloudflare/sandbox';
 
-   export const triggers = { webhook: true };
+   export const channels = [http()];
 
-   export default async function ({ init, id, env, payload }: FlueContext) {
+   export async function run ({ init, id, env, payload }: FlueContext) {
      const sandbox = getSandbox(env.Sandbox, id);
      const harness = await init({ sandbox, model: 'anthropic/claude-opus-4-7' });
      const session = await harness.session();

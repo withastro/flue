@@ -34,15 +34,15 @@ curl https://<service>.onrender.com/health
 
 A successful response confirms Render is forwarding traffic to the process started by `node dist/server.mjs`. If a call hangs or returns an error, open your service in the Render Dashboard and watch the **Logs** tab while you re-run the request. Every Flue agent invocation prints there.
 
-Now call the `translate` agent:
+Now call the `translate` workflow:
 
 ```bash
-curl https://<service>.onrender.com/agents/translate/demo \
+curl https://<service>.onrender.com/workflows/translate \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello world", "language": "French"}'
 ```
 
-The response should match the agent's structured output, like:
+The response should match the workflow's structured output, like:
 
 ```json
 {
@@ -96,7 +96,7 @@ services:
 This is the Render side of what the Node guide already covers:
 
 - `buildCommand` compiles Flue's Node target.
-- `startCommand` runs the generated server, which binds to `PORT` and serves agents at `/agents/<name>/<id>`.
+- `startCommand` runs the generated server, which binds to `PORT` and serves workflows at `/workflows/<name>` and agents at `/agents/<name>/<id>`.
 - `healthCheckPath` lets Render verify each deploy before it shifts traffic.
 - `sync: false` keeps the secret out of the Blueprint. Render prompts for the value on first deploy and stores it on the service.
 
@@ -120,10 +120,10 @@ envVars:
     sync: false
 ```
 
-Once the next deploy goes live, call the translation agent again:
+Once the next deploy goes live, call the translation workflow again:
 
 ```bash
-curl https://<service>.onrender.com/agents/translate/verify \
+curl https://<service>.onrender.com/workflows/translate \
   -H "Content-Type: application/json" \
   -d '{"text": "Good morning", "language": "Spanish"}'
 ```
@@ -260,7 +260,7 @@ If the response references `42`, your `SessionStore` is reading and writing thro
 
 A few patterns this guide doesn't cover yet:
 
-- **Scheduled runs.** Some agents work better as periodic jobs than as webhooks (nightly summaries, weekly reports, cache refreshes). Deploy them as a Render cron job whose `startCommand` is `npx flue run <agent> --target node --id <id>`. Each fire builds, runs the agent once, and exits.
+- **Scheduled runs.** Some agents work better as periodic jobs than as webhooks (nightly summaries, weekly reports, cache refreshes). Deploy them as a Render cron job whose `startCommand` is `npx flue run <workflow> --target node`. Each fire builds, runs the workflow once, and exits.
 - **Queue-backed workers.** For continuous, queue-backed agents, reach for a Render background worker. A common setup: a web service enqueues a job, a background worker pulls it from Render Key Value, the worker invokes a Flue agent, and the result lands in your data store. When Key Value is backing a queue, set `maxmemoryPolicy: noeviction` so jobs are never evicted.
 
 For more, see Render's [Cron Jobs](https://render.com/docs/cron-jobs), [Background Workers](https://render.com/docs/background-workers), and the [Blueprint reference](https://render.com/docs/blueprint-spec).

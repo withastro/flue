@@ -5,7 +5,7 @@ for error reporting.
 
 This example is intended to be read top-to-bottom as documentation. The
 entire integration lives in [`.flue/app.ts`](.flue/app.ts) — every agent
-in `.flue/agents/` is a plain Flue handler that doesn't import Sentry,
+in `.flue/workflows/` is a plain Flue handler that doesn't import Sentry,
 doesn't import the bridge, and doesn't know that error reporting is
 happening.
 
@@ -15,7 +15,7 @@ After running this example with a Sentry DSN configured:
 
 - Every run that ends with an unhandled exception (the handler throws
   or rejects) becomes a Sentry issue tagged with the Flue `runId`,
-  `instanceId`, harness name, and session name.
+  `workflow` name, harness name, and session name.
 - Every `ctx.log.error(...)` call from a handler becomes a Sentry
   capture — an exception if the log carries an `error` attribute, a
   message otherwise.
@@ -62,7 +62,7 @@ examples/sentry/
 ├── README.md                 ← you are here
 └── .flue/
     ├── app.ts                ← Sentry.init + observe(...) bridge
-    └── agents/
+    └── workflows/
         ├── hello.ts          ← success case — no Sentry traffic
         ├── boom.ts           ← run-fatal throw — captures via run_end
         └── explicit.ts       ← non-fatal log.error — captures while run continues
@@ -172,17 +172,17 @@ The server starts on port `3583`.
 
 ```bash
 # Success case — no Sentry traffic
-curl -X POST http://localhost:3583/agents/hello/test1 \
+curl -X POST http://localhost:3583/workflows/hello?wait=result \
   -H 'content-type: application/json' \
   -d '{}'
 
 # Run-fatal throw — one Sentry issue
-curl -X POST http://localhost:3583/agents/boom/test1 \
+curl -X POST http://localhost:3583/workflows/boom?wait=result \
   -H 'content-type: application/json' \
   -d '{}'
 
 # Non-fatal handler-reported errors — two Sentry issues, HTTP 200
-curl -X POST http://localhost:3583/agents/explicit/test1 \
+curl -X POST http://localhost:3583/workflows/explicit?wait=result \
   -H 'content-type: application/json' \
   -d '{}'
 ```

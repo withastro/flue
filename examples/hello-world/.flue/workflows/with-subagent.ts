@@ -1,14 +1,14 @@
-import { defineAgent, type FlueContext } from '@flue/runtime';
+import { defineAgent, http, type FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 const greeter = defineAgent({
 	name: 'greeter',
 	instructions: 'Write one warm, concise greeting.',
 });
 
-export default async function ({ init, payload }: FlueContext) {
+export async function run({ init, payload }: FlueContext) {
 	const harness = await init({ model: 'anthropic/claude-sonnet-4-6', subagents: [greeter] });
 	const session = await harness.session();
 

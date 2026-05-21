@@ -1,7 +1,7 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 import { Bash, InMemoryFs } from 'just-bash';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 /**
  * Task tests.
@@ -12,7 +12,7 @@ export const triggers = { webhook: true };
  * - The task returns a PromptResponse with the agent's output
  * - The parent session continues working after the task completes
  */
-export default async function ({ init }: FlueContext) {
+export async function run({ init }: FlueContext) {
 	const fs = new InMemoryFs();
 	const sandbox = () => new Bash({ fs, network: { dangerouslyAllowFullInternetAccess: true } });
 	const harness = await init({ sandbox, model: 'anthropic/claude-sonnet-4-6' });

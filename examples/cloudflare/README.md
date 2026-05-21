@@ -83,10 +83,10 @@ pnpm exec wrangler dev --remote                  # if needed for cf-shell agents
 curl -X POST http://localhost:3583/agents/with-cloudflare-binding/test-1 \
   -H 'Content-Type: application/json' -d '{}'
 
-curl -X POST http://localhost:3583/agents/skills-from-r2/test-1 \
+curl -X POST http://localhost:3583/workflows/skills-from-r2?wait=result \
   -H 'Content-Type: application/json' -d '{}'
 
-curl -X POST http://localhost:3583/agents/skills-from-git/test-1 \
+curl -X POST http://localhost:3583/workflows/skills-from-git?wait=result \
   -H 'Content-Type: application/json' -d '{}'
 ```
 

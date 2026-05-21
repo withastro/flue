@@ -1,6 +1,6 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 /**
  * Cancellation test.
@@ -11,7 +11,7 @@ export const triggers = { webhook: true };
  * - pre-aborted signals reject before any work
  * - aborts tear down in-flight bash tool commands
  */
-export default async function ({ init }: FlueContext) {
+export async function run({ init }: FlueContext) {
 	const harness = await init({ model: 'anthropic/claude-haiku-4-5' });
 	const session = await harness.session();
 

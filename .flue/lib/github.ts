@@ -9,7 +9,7 @@
  *
  * Keeping this module unreachable from inside `session.shell` is what
  * makes the agent's prompt injection blast radius bounded. See the
- * security note in `.flue/agents/pr-redirect.ts`.
+ * security note in `.flue/workflows/pr-redirect.ts`.
  */
 
 const REPO = process.env.GITHUB_REPOSITORY ?? 'withastro/flue';

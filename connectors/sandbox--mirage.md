@@ -39,9 +39,8 @@ Things to know before installing:
 
 Pick the location based on the user's project layout:
 
-- **`.flue/` layout** (project has files at the root and uses `.flue/agents/`
-  etc.): write to `./.flue/connectors/mirage.ts`.
-- **Root layout** (the project root itself contains `agents/` and friends):
+- **`.flue/` layout** (project has files at the root and uses `.flue/workflows/` or `.flue/agents/` etc.): write to `./.flue/connectors/mirage.ts`.
+- **Root layout** (the project root itself contains `workflows/`, `agents/`, and friends):
   write to `./connectors/mirage.ts`.
 
 If neither feels right (uncommon layout, multiple workspaces, etc.), ask the
@@ -359,13 +358,13 @@ into, you can finish that work by wiring the connector into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 import { Workspace, RAMResource, MountMode } from '@struktoai/mirage-node';
 import { mirage } from '../connectors/mirage'; // adjust path to match the user's layout
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init }: FlueContext) {
+export async function run ({ init }: FlueContext) {
   const ws = new Workspace({ '/data': new RAMResource() }, { mode: MountMode.WRITE });
 
   const harness = await init({
@@ -388,4 +387,4 @@ export default async function ({ init }: FlueContext) {
    `@struktoai/mirage-browser` (whichever matches their target), make sure
    any credentials for resources they mount are available at runtime (per
    the Authentication section above), and run `flue dev` (or
-   `flue run <agent>`) to try it.
+   `flue run <workflow>`) to try it.

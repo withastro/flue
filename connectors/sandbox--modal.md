@@ -306,13 +306,13 @@ into, you can finish that work by wiring the connector into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 import { ModalClient } from 'modal';
 import { modal } from '../connectors/modal'; // adjust path to match the user's layout
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init }: FlueContext) {
+export async function run ({ init }: FlueContext) {
   // ModalClient reads MODAL_TOKEN_ID / MODAL_TOKEN_SECRET (or ~/.modal.toml)
   // automatically.
   const client = new ModalClient();
@@ -343,4 +343,4 @@ installing packages on every cold start.
 3. Tell the user the next steps: install `modal` (if you didn't), make sure
    `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` are available at runtime (per
    the Authentication section above), and run `flue dev` (or
-   `flue run <agent>`) to try it.
+   `flue run <workflow>`) to try it.

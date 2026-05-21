@@ -186,13 +186,13 @@ into, you can finish that work by wiring the connector into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona'; // adjust path to match the user's layout
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, env }: FlueContext) {
+export async function run ({ init, env }: FlueContext) {
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
 
@@ -215,4 +215,4 @@ export default async function ({ init, env }: FlueContext) {
 3. Tell the user the next steps: install `@daytona/sdk` (if you didn't),
    make sure `DAYTONA_API_KEY` is available at runtime (per the
    Authentication section above), and run `flue dev` (or
-   `flue run <agent>`) to try it.
+   `flue run <workflow>`) to try it.

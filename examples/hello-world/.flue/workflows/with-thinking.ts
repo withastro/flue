@@ -1,13 +1,13 @@
-import { defineAgent, type FlueContext } from '@flue/runtime';
+import { defineAgent, http, type FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 const auditor = defineAgent({
 	name: 'auditor',
 	thinkingLevel: 'high',
 });
-export default async function ({ init }: FlueContext) {
+export async function run({ init }: FlueContext) {
 	const harness = await init({
 		model: 'anthropic/claude-haiku-4-5',
 		thinkingLevel: 'low',

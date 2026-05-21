@@ -8,18 +8,18 @@
  *
  * Invoke:
  *
- *   curl -X POST http://localhost:3583/agents/hello/test1 \
+ *   curl -X POST http://localhost:3583/workflows/hello?wait=result \
  *     -H 'content-type: application/json' \
  *     -d '{}'
  *
  * Expected: HTTP 200 with `{ result: ..., _meta: { runId } }`.
  *          Zero events in Sentry.
  */
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function hello(ctx: FlueContext) {
+export async function run(ctx: FlueContext) {
 	ctx.log.info('hello agent starting', { instanceId: ctx.id });
 	// No model call needed for the success case — this keeps the
 	// example runnable without an ANTHROPIC_API_KEY when you just

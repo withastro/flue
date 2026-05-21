@@ -1,6 +1,6 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 /**
  * Smoke-test agent for `registerProvider(...)`. Verifies that
@@ -13,7 +13,7 @@ export const triggers = { webhook: true };
  * exercise the resolution path and would throw `Unknown model "ollama/..."`
  * if the registration failed to land.
  */
-export default async function ({ init }: FlueContext) {
+export async function run({ init }: FlueContext) {
 	const harness = await init({ model: 'ollama/llama3.1:8b' });
 	const session = await harness.session();
 	return {

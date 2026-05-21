@@ -37,15 +37,15 @@ pnpm run build          # in packages/cli/
 Three commands:
 
 - `flue dev` — long-running watch-mode dev server. Edits trigger rebuilds + reloads.
-- `flue run` — one-shot, production-style: build, invoke an agent once, exit. Used in CI / scripted invocations.
+- `flue run` — one-shot, production-style: build, invoke a workflow once, exit. Used in CI / scripted invocations.
 - `flue build` — produce a `dist/` deployable artifact (no run).
 
 `--root` points at the project root. Defaults to the current working directory if omitted. By default, the build is written to `<root>/dist/`; use `--output <path>` to redirect the build elsewhere.
 
-Source files (agents) live in one of two places, analogous to Next.js's `src/` folder:
+Source files (agents and workflows) live in one of two places, analogous to Next.js's `src/` folder:
 
-- `<root>/.flue/agents/` if a `.flue/` directory exists.
-- Otherwise `<root>/agents/` directly.
+- `<root>/.flue/agents/` and `<root>/.flue/workflows/` if a `.flue/` directory exists.
+- Otherwise `<root>/agents/` and `<root>/workflows/` directly.
 
 The two layouts never mix — if `.flue/` is present, the bare layout is ignored entirely.
 
@@ -80,18 +80,18 @@ For `--target cloudflare`, the project must have `wrangler` available (it's a pe
 ### `flue run`
 
 ```
-node packages/cli/bin/flue.mjs run <agent-name> --target node --id <id> [--payload '<json>'] [--root <path>] [--output <path>]
+node packages/cli/bin/flue.mjs run <workflow-name> --target node [--payload '<json>'] [--root <path>] [--output <path>]
 ```
 
 Examples (run from the `examples/hello-world/` directory so the `./.flue/` source layout is picked up):
 
 ```
 cd examples/hello-world
-node ../../packages/cli/bin/flue.mjs run hello --target node --id test-1
-node ../../packages/cli/bin/flue.mjs run with-thinking --target node --id test-2
+node ../../packages/cli/bin/flue.mjs run hello --target node
+node ../../packages/cli/bin/flue.mjs run with-thinking --target node
 ```
 
-This builds the project, starts a temporary server, invokes the agent via SSE, streams output to stderr, prints the final result to stdout, and shuts down.
+This builds the project, starts a temporary server, invokes the workflow via SSE, streams output to stderr, prints the final result to stdout, and shuts down.
 
 **Requires `ANTHROPIC_API_KEY` in the environment.** For testing, use `claude-haiku-4-5` (cheapest model).
 

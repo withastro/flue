@@ -46,8 +46,6 @@ type Logger = {
 	error: (msg: string, attrs?: Record<string, unknown>) => void;
 };
 
-export const triggers = {};
-
 const FEATURE_REQUEST_CATEGORY = 'Feature Request';
 
 // Label that, when added to a PR, manually triggers this workflow. The
@@ -572,7 +570,7 @@ function extractJson(text: string): unknown {
 
 // ─── Entry point ────────────────────────────────────────────────────────────
 
-export default async function ({ init, payload, log }: FlueContext) {
+export async function run({ init, payload, log }: FlueContext) {
 	const prNumber = (payload as { prNumber?: number } | undefined)?.prNumber;
 	if (typeof prNumber !== 'number' || !Number.isInteger(prNumber)) {
 		throw new Error(`payload.prNumber required (got: ${JSON.stringify(payload)})`);

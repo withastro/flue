@@ -1,10 +1,10 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, payload }: FlueContext) {
+export async function run({ init, payload }: FlueContext) {
 	const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
 	const session = await harness.session();
 

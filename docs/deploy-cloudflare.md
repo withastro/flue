@@ -6,10 +6,10 @@ By the end, you will have a Flue agent running on Cloudflare Workers, and you wi
 
 ## Project layout
 
-The project root is your project directory. Source files (agents and any other code your agents import) live in one of two places, analogous to Next.js's `src/` folder:
+The project root is your project directory. Source files (workflows, agents, and any other code they import) live in one of two places, analogous to Next.js's `src/` folder:
 
-- `./agents/` — bare layout, source at the project root.
-- `./.flue/agents/` — `.flue/` source layout. When you opt into this, treat `.flue/` as the home for everything agent-related (connectors, session stores, helpers, …).
+- `./workflows/` and `./agents/` — bare layout, source at the project root.
+- `./.flue/workflows/` and `./.flue/agents/` — `.flue/` source layout. When you opt into this, treat `.flue/` as the home for everything agent-related (connectors, session stores, helpers, …).
 
 If `./.flue/` exists, Flue reads sources from there; otherwise it reads from the project root. The two layouts never mix. By default `flue build` writes to `./dist/` at the project root; pass `--output <path>` to redirect the build elsewhere. `wrangler.jsonc` and any `Dockerfile` you ship live at the project root, regardless of where the build lands. Examples in this guide use the `./.flue/` layout — drop the prefix if you prefer the bare layout.
 
@@ -30,15 +30,15 @@ npm install -D @flue/cli wrangler
 
 ### 2. Create your first agent
 
-`.flue/agents/translate.ts`:
+`.flue/workflows/translate.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, payload }: FlueContext) {
+export async function run({ init, payload }: FlueContext) {
   const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
 
@@ -55,7 +55,7 @@ export default async function ({ init, payload }: FlueContext) {
 
 A few things to note:
 
-- **`triggers = { webhook: true }`** — This agent is invoked via HTTP. Flue creates a route for it automatically.
+- **`channels = [http()]`** — This agent is invoked via HTTP. Flue creates a workflow route for it automatically.
 - **`init({ model })`** — Every session needs a model. If you do not pass one, no model is chosen and `prompt()` / `skill()` calls will fail. By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
 - **Schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns it on `response.data`, fully typed.
 
@@ -108,7 +108,7 @@ npx flue dev --target cloudflare --env .env
 Then test it:
 
 ```bash
-curl http://localhost:3583/agents/translate/test-1 \
+curl http://localhost:3583/workflows/translate?wait=result \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello world", "language": "French"}'
 ```
@@ -139,11 +139,11 @@ By default, the virtual sandbox starts empty — no files, no skills, no context
 Because the agent has shell access, it can set up its own workspace on the fly:
 
 ```typescript
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, payload }: FlueContext) {
+export async function run({ init, payload }: FlueContext) {
   const harness = await init({ model: 'openai/gpt-5.5' });
   const session = await harness.session();
 
@@ -434,13 +434,13 @@ npx flue build --target cloudflare
 npx wrangler deploy --secrets-file .env
 ```
 
-Every agent with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/agents/<name>/<id>` — for example, `.flue/agents/translate.ts` becomes `/agents/translate/:id`.
+Every workflow with `channels = [http()]` gets an HTTP endpoint automatically. The route follows the pattern `/workflows/<name>` — for example, `.flue/workflows/translate.ts` becomes `/workflows/translate`.
 
 ```bash
-# Hit your deployed agent
-curl https://my-support-agent.<your-subdomain>.workers.dev/agents/support/session-123 \
+# Hit your deployed workflow
+curl https://my-support-agent.<your-subdomain>.workers.dev/workflows/translate?wait=result \
   -H "Content-Type: application/json" \
-  -d '{"message": "How do I reset my password?"}'
+  -d '{"text": "Hello world", "language": "French"}'
 ```
 
 ### Choosing a sandbox strategy

@@ -19,16 +19,14 @@ npm install -D @flue/cli
 
 ### 2. Create your first agent
 
-`.flue/agents/hello.ts`:
+`.flue/workflows/hello.ts`:
 
 ```typescript
 import type { FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
-export const triggers = {};
-
-export default async function ({ init, payload }: FlueContext) {
+export async function run ({ init, payload }: FlueContext) {
   const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
 
@@ -48,7 +46,7 @@ export default async function ({ init, payload }: FlueContext) {
 
 A few things to note:
 
-- **`triggers = {}`** — This agent has no HTTP trigger. It's designed to be run from the CLI, which is perfect for CI.
+- This workflow omits `channels`, so it is internal-only and designed to be run from the CLI, which is perfect for CI.
 - **`model`** — Every session needs a model. If you do not pass one to `init()` or a specific `prompt()` / `skill()` call, no model is chosen.
 - **`local()`** — The `local()` sandbox runs the agent directly against the host filesystem and shell. In CI, that's the checked-out repo plus whatever binaries are on `$PATH` (`gh`, `git`, `npm`, etc.). Skills and `AGENTS.md` are discovered automatically from the project root. By default only shell-essential env vars (`PATH`, `HOME`, locale, etc.) are inherited from `process.env` — pass `local({ env: { GH_TOKEN: process.env.GH_TOKEN } })` to expose more. Use `local()` only when the runner itself provides the isolation boundary.
 - **Schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns it on `response.data`, fully typed.
@@ -56,11 +54,11 @@ A few things to note:
 ### 3. Test it locally
 
 ```bash
-npx flue run hello --target node --id test-1 \
+npx flue run hello --target node \
   --payload '{"name": "World"}'
 ```
 
-`flue run` builds the project, starts a temporary server, invokes the agent, streams progress to stderr, and prints the final result as JSON to stdout. This is the fastest way to iterate on an agent — no deployment needed.
+`flue run` builds the project, starts a temporary server, invokes the workflow, streams progress to stderr, and prints the final result as JSON to stdout. This is the fastest way to iterate on a workflow — no deployment needed.
 
 ### 4. Wire it into GitHub Actions
 
@@ -88,7 +86,7 @@ jobs:
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
-          npx flue run hello --target node --id "hello-${{ github.event.issue.number }}" \
+          npx flue run hello --target node \
             --payload '{"name": "${{ github.event.issue.user.login }}"}'
 ```
 
@@ -134,16 +132,14 @@ Your agent often needs to interact with tools like `gh`, `npm`, or `git`. With `
 
 In GitHub Actions, this means you set the secrets you want the agent's CLIs to see in the workflow `env:` block, then forward them explicitly into the sandbox. The runner is your isolation boundary; flue makes the inner boundary (host → spawned shell) explicit.
 
-`.flue/agents/triage.ts`:
+`.flue/workflows/triage.ts`:
 
 ```typescript
 import { type FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
-export const triggers = {};
-
-export default async function ({ init, payload }: FlueContext) {
+export async function run ({ init, payload }: FlueContext) {
   const harness = await init({
     sandbox: local({
       // Explicitly forward the runner's secrets into the agent's shell.
@@ -263,11 +259,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx flue run triage --target node \
-            --id "triage-${{ github.event.issue.number }}" \
             --payload '{"issueNumber": ${{ github.event.issue.number }}}'
 ```
 
-The `--payload` flag passes JSON data to the agent's `payload` property. `GITHUB_TOKEN` is provided automatically by GitHub Actions.
+The `--payload` flag passes JSON data to the workflow's `payload` property. `GITHUB_TOKEN` is provided automatically by GitHub Actions.
 
 ## Typed results and orchestration
 
@@ -278,7 +273,7 @@ import { type FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
-export default async function ({ init, payload }: FlueContext) {
+export async function run ({ init, payload }: FlueContext) {
   const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
 
@@ -307,16 +302,16 @@ This pattern — prompt or skill call, check the result, decide what to do next 
 
 ## Running agents locally
 
-During development, `flue run` is your main tool. It builds the project and runs the agent in one step:
+During development, `flue run` is your main tool. It builds the project and runs the workflow in one step:
 
 ```bash
 # Run with a payload
-npx flue run triage --target node --id test-1 \
+npx flue run triage --target node \
   --payload '{"issueNumber": 42}'
 
 # Pipe the result to jq
-npx flue run triage --target node --id test-2 \
+npx flue run triage --target node \
   --payload '{"issueNumber": 42}' | jq '.severity'
 ```
 
-The CLI builds your project root, starts a temporary server, invokes the agent via SSE, streams progress to stderr, and prints the final result to stdout. The `--id` flag identifies the agent instance — use a consistent ID to resume the default harness/session, or a unique one for a fresh start.
+The CLI builds your project root, starts a temporary server, invokes the workflow via SSE, streams progress to stderr, and prints the final result to stdout.

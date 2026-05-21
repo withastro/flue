@@ -28,15 +28,15 @@ The simplest agent — no container, no tools, just a prompt and a typed result.
 Unless you opt-in to initializing a full container sandbox, Flue will default to a virtual sandbox for every agent, powered by [just-bash](https://github.com/vercel-labs/just-bash). A virtual sandbox is going to be dramatically faster, cheaper, and more scalable than running a full container for every agent, which makes it perfect for building high-traffic/high-scale agents.
 
 ```ts
-// .flue/agents/hello-world.ts
-import type { FlueContext } from '@flue/runtime';
+// .flue/workflows/hello-world.ts
+import { http, type FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
-// Every agent needs a trigger. This agent is invoked as an API endpoint, via HTTP.
-export const triggers = { webhook: true };
+// Every HTTP-exposed workflow needs an HTTP channel.
+export const channels = [http()];
 
-// The agent handler. Where the orchestration of the agent lives.
-export default async function ({ init, payload }: FlueContext) {
+// The workflow handler. Where the orchestration of the workflow lives.
+export async function run ({ init, payload }: FlueContext) {
   // `harness` -- Your initialized harness including sandbox, tools, skills, etc.
   const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
@@ -61,8 +61,8 @@ A support agent can also run on Cloudflare without a container by using a cf-she
 Because this agent is deployed to Cloudflare, message history and session state are automatically persisted for you. So you (or your customer) can revisit this support session days, weeks, or years later and pick up exactly where you left off.
 
 ```ts
-// .flue/agents/support.ts
-import type { FlueContext } from '@flue/runtime';
+// .flue/workflows/support.ts
+import { http, type FlueContext } from '@flue/runtime';
 import {
   getDefaultWorkspace,
   getShellSandbox,
@@ -70,9 +70,9 @@ import {
 } from '@flue/runtime/cloudflare';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, payload, env }: FlueContext) {
+export async function run ({ init, payload, env }: FlueContext) {
   const workspace = getDefaultWorkspace();
 
   // Hydrate once per agent instance. R2 is a source, not a live mount.
@@ -104,16 +104,14 @@ This requires a `worker_loaders` binding (`{ "worker_loaders": [{ "binding": "LO
 A triage agent that runs in CI whenever an issue is opened on GitHub. The `local()` sandbox gives the agent direct access to the host filesystem and shell — perfect for CI runners, where `gh`, `git`, and `npm` are already on `$PATH` and the runner itself is your isolation boundary.
 
 ```ts
-// .flue/agents/triage.ts
+// .flue/workflows/triage.ts
 import { type FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
 // Because we are running this in CI, we don't need to expose this as an HTTP endpoint.
-// The CLI can run any agent from the command line, `flue run triage ...`
-export const triggers = {};
-
-export default async function ({ init, payload }: FlueContext) {
+// The CLI can run any workflow from the command line, `flue run triage ...`
+export async function run ({ init, payload }: FlueContext) {
   // `local()` gives the agent direct access to the host filesystem and
   // shell. The agent's bash tool can run `gh`, `git`, `npm` directly.
   // Skills and AGENTS.md are discovered from process.cwd().
@@ -162,14 +160,14 @@ Daytona's declarative image builder lets you define the environment in code. The
 Install the Daytona connector with `flue add daytona | <your-agent>` (e.g. `claude`, `opencode`, `codex`, `cursor-agent`). It writes a small `connectors/daytona.ts` adapter into your project that you import directly.
 
 ```ts
-// .flue/agents/code.ts
-import { Type, defineTool, type FlueContext } from '@flue/runtime';
+// .flue/workflows/code.ts
+import { Type, defineTool, http, type FlueContext } from '@flue/runtime';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, payload, env }: FlueContext) {
+export async function run ({ init, payload, env }: FlueContext) {
   // Each agent gets a real container via Daytona. The container has
   // a full Linux environment with persistent filesystem and shell.
   //
@@ -212,12 +210,12 @@ export default async function ({ init, payload, env }: FlueContext) {
 MCP is available as a runtime tool adapter. Connect to a remote MCP server in trusted code, pass its tools to `init()`, and keep secrets in `env` instead of filesystem context or prompts.
 
 ```ts
-// .flue/agents/assistant.ts
-import { connectMcpServer, type FlueContext } from '@flue/runtime';
+// .flue/workflows/assistant.ts
+import { connectMcpServer, http, type FlueContext } from '@flue/runtime';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, payload, env }: FlueContext) {
+export async function run ({ init, payload, env }: FlueContext) {
   const github = await connectMcpServer('github', {
     url: 'https://mcp.github.com/mcp',
     headers: {
@@ -385,10 +383,10 @@ Repeatable; later files override earlier ones on key collision. Shell-set env va
 
 ### Trigger From the CLI (`flue run`)
 
-Build and run any agent locally, perfect for running in CI or for one-shot scripted invocations. Production-shaped — builds the deployable artifact and starts it once.
+Build and run any workflow locally, perfect for running in CI or for one-shot scripted invocations. Production-shaped — builds the deployable artifact and starts it once.
 
 ```bash
-flue run hello --target node --id test-1 \
+flue run hello --target node \
   --payload '{"text": "Hello world", "language": "French"}'
 ```
 

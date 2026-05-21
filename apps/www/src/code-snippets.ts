@@ -61,10 +61,8 @@ import { Octokit } from '@octokit/core';
 import * as v from 'valibot';
 
 // Triggered in CI via \`flue run\` CLI — no HTTP endpoint needed.
-export const triggers = {};
-
 // Built for: Node, GitHub Actions
-export default async function ({ init, payload, env }: FlueContext) {
+export async function run({ init, payload, env }: FlueContext) {
   const { issueNumber } = payload;
   const harness = await init({ model: 'anthropic/claude-opus-4-7' });
   const session = await harness.session();

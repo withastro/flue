@@ -11,7 +11,7 @@
  *      `Sentry.captureException(...)` calls with Flue correlation tags.
  *
  * Read top-to-bottom — there are no other Sentry-related files in the
- * project. Every agent in `.flue/agents/` is a plain Flue handler;
+ * project. Every agent in `.flue/workflows/` is a plain Flue handler;
  * none of them know that Sentry exists.
  *
  *
@@ -70,7 +70,7 @@
  */
 
 import { flue, observe } from '@flue/runtime/app';
-import type { FlueContext, FlueEvent } from '@flue/runtime';
+import type { FlueEvent } from '@flue/runtime';
 import * as Sentry from '@sentry/node';
 import { Hono } from 'hono';
 
@@ -105,7 +105,9 @@ Sentry.init({
 // so it must be cheap and must not throw. (Sentry's `withScope` and
 // `captureException` are both synchronous JS calls that queue work
 // internally; they will not block the run.)
-observe((event, ctx) => {
+const runOwnerTags = new Map<string, Record<string, string>>();
+
+observe((event) => {
 	// Common Flue correlation tags — attached to every Sentry
 	// capture made from this bridge so an investigator can pivot
 	// from a Sentry issue to a Flue run via:
@@ -116,11 +118,10 @@ observe((event, ctx) => {
 	//
 	//   flue logs <flue.run_id>
 	//
-	// `flue.agent` and `flue.instance_id` are still attached as tags
-	// for filtering / grouping in Sentry, but they are no longer
-	// part of the URL — the run id is globally unique and resolves
-	// to its owner via the run registry server-side.
-	const tags = flueCorrelationTags(event, ctx);
+	// Owner-specific tags are attached when the event carries enough
+	// metadata; the run id is globally unique and resolves to its owner
+	// via the run registry server-side.
+	const tags = flueCorrelationTags(event);
 
 	// ─── Run-fatal: the handler threw or rejected ─────────────────────
 	//
@@ -131,11 +132,12 @@ observe((event, ctx) => {
 		Sentry.withScope((scope) => {
 			scope.setTags(tags);
 			scope.setLevel('error');
-			scope.setContext('flue.run', {
-				durationMs: event.durationMs,
-				agentName: tags['flue.agent'],
-				instanceId: ctx.id,
-			});
+				scope.setContext('flue.run', {
+					durationMs: event.durationMs,
+					agentName: tags['flue.agent'],
+					workflowName: tags['flue.workflow'],
+					instanceId: tags['flue.instance_id'],
+				});
 			Sentry.captureException(reconstructError(event.error));
 		});
 		return;
@@ -197,24 +199,25 @@ observe((event, ctx) => {
  * adds. Pivoting on `flue.run_id` in Sentry's search box is the
  * fastest way to find every issue raised by a single Flue run.
  */
-function flueCorrelationTags(
-	event: FlueEvent,
-	ctx: FlueContext,
-): Record<string, string> {
-	const tags: Record<string, string> = {
-		'flue.instance_id': ctx.id,
-	};
+function flueCorrelationTags(event: FlueEvent): Record<string, string> {
+	const tags: Record<string, string> = event.runId ? { ...runOwnerTags.get(event.runId) } : {};
 	if (event.runId) tags['flue.run_id'] = event.runId;
 	if (event.harness) tags['flue.harness'] = event.harness;
 	if (event.session) tags['flue.session'] = event.session;
 	if (event.parentSession) tags['flue.parent_session'] = event.parentSession;
 	if (event.operationId) tags['flue.operation_id'] = event.operationId;
 	if (event.taskId) tags['flue.task_id'] = event.taskId;
-	// `run_start` carries the agent name; cache it via the most
-	// common shape so other events can pick it up too. (Currently
-	// only `run_start` includes `agentName`, but we don't depend on
-	// that — we read it defensively.)
-	if (event.type === 'run_start') tags['flue.agent'] = event.agentName;
+	if (event.type === 'run_start') {
+		const ownerTags =
+			event.owner.kind === 'agent'
+				? {
+						'flue.agent': event.owner.agentName,
+						'flue.instance_id': event.owner.instanceId,
+					}
+				: { 'flue.workflow': event.owner.workflowName };
+		Object.assign(tags, ownerTags);
+		runOwnerTags.set(event.runId, ownerTags);
+	}
 	return tags;
 }
 

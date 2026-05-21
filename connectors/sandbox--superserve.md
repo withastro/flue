@@ -27,9 +27,8 @@ across gaps in traffic.
 
 Pick the location based on the user's project layout:
 
-- **`.flue/` layout** (project has files at the root and uses `.flue/agents/`
-  etc.): write to `./.flue/connectors/superserve.ts`.
-- **Root layout** (the project root itself contains `agents/` and friends):
+- **`.flue/` layout** (project has files at the root and uses `.flue/workflows/` or `.flue/agents/` etc.): write to `./.flue/connectors/superserve.ts`.
+- **Root layout** (the project root itself contains `workflows/`, `agents/`, and friends):
   write to `./connectors/superserve.ts`.
 
 If neither feels right (uncommon layout, multiple workspaces, etc.), ask the
@@ -300,13 +299,13 @@ into, you can finish that work by wiring the connector into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import type { FlueContext } from '@flue/sdk/client';
+import { http, type FlueContext } from '@flue/runtime';
 import { Sandbox } from '@superserve/sdk';
 import { superserve } from '../connectors/superserve'; // adjust path to match the user's layout
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init }: FlueContext) {
+export async function run ({ init }: FlueContext) {
   // The Superserve SDK reads SUPERSERVE_API_KEY from the environment
   // automatically; pass `apiKey` explicitly only if you keep it elsewhere.
   const sandbox = await Sandbox.create({ name: `agent-${Date.now()}` });
@@ -338,4 +337,4 @@ they're not reinstalling tooling on every cold start.
 3. Tell the user the next steps: install `@superserve/sdk` (if you didn't),
    make sure `SUPERSERVE_API_KEY` is available at runtime (per the
    Authentication section above), and run `flue dev` (or
-   `flue run <agent>`) to try it.
+   `flue run <workflow>`) to try it.

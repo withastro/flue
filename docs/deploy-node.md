@@ -6,10 +6,10 @@ By the end, you will have a Flue agent running as a Node.js server, and you will
 
 ## Project layout
 
-The project root is your project directory. Source files (agents and any other code your agents import) live in one of two places, analogous to Next.js's `src/` folder:
+The project root is your project directory. Source files (agents, workflows, and any other code they import) live in one of two places, analogous to Next.js's `src/` folder:
 
-- `./agents/` — bare layout, source at the project root.
-- `./.flue/agents/` — `.flue/` source layout. When you opt into this, treat `.flue/` as the home for everything agent-related (connectors, session stores, helpers, …).
+- `./agents/` and `./workflows/` — bare layout, source at the project root.
+- `./.flue/agents/` and `./.flue/workflows/` — `.flue/` source layout. When you opt into this, treat `.flue/` as the home for everything agent-related (connectors, session stores, helpers, …).
 
 If `./.flue/` exists, Flue reads sources from there; otherwise it reads from the project root. The two layouts never mix. By default `flue build` writes to `./dist/` at the project root; pass `--output <path>` to redirect the build elsewhere. Examples in this guide use the `./.flue/` layout — drop the prefix if you prefer the bare layout.
 
@@ -28,15 +28,15 @@ npm install -D @flue/cli
 
 ### 2. Create your first agent
 
-`.flue/agents/translate.ts`:
+`.flue/workflows/translate.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, payload }: FlueContext) {
+export async function run ({ init, payload }: FlueContext) {
   const harness = await init({ model: 'openai/gpt-5.5' });
   const session = await harness.session();
 
@@ -53,7 +53,7 @@ export default async function ({ init, payload }: FlueContext) {
 
 A few things to note:
 
-- **`triggers = { webhook: true }`** — This agent is invoked via HTTP. Flue creates a route for it automatically.
+- **`channels = [http()]`** — This workflow is invoked via HTTP. Flue creates a route for it automatically.
 - **`init({ model })`** — Every agent needs a model. If you do not pass one, no model is chosen and `prompt()` / `skill()` calls will fail. By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
 - **Schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns it on `response.data`, fully typed.
 
@@ -82,12 +82,12 @@ npx flue dev --target node --env .env
 Test it:
 
 ```bash
-curl http://localhost:3583/agents/translate/test-1 \
+curl http://localhost:3583/workflows/translate \
   -H "Content-Type: application/json" \
   -d '{"text": "Hello world", "language": "French"}'
 ```
 
-Every agent with `triggers = { webhook: true }` gets an HTTP endpoint automatically. The route follows the pattern `/agents/<name>/<id>` — for example, `.flue/agents/translate.ts` becomes `/agents/translate/:id`.
+Every workflow with `channels = [http()]` gets an HTTP endpoint automatically. The route follows the pattern `/workflows/<name>` — for example, `.flue/workflows/translate.ts` becomes `/workflows/translate`.
 
 For a one-shot production-style run (no watcher), use `flue build` + the generated server. The built server reads `process.env` directly, so source your env file in your shell or pass values explicitly:
 
@@ -99,10 +99,10 @@ node dist/server.mjs
 
 `flue build --target node` compiles your project into a `./dist` directory. The built server uses [Hono](https://hono.dev/) under the hood and listens on port 3000 by default (configurable via the `PORT` environment variable). Your project's `node_modules` are still needed at runtime — the build externalizes your dependencies rather than bundling them.
 
-You can also invoke any agent from the CLI without starting a server. `flue run` accepts the same `--env` flag:
+You can also invoke any workflow from the CLI without starting a server. `flue run` accepts the same `--env` flag:
 
 ```bash
-npx flue run translate --target node --id test-1 --env .env \
+npx flue run translate --target node --env .env \
   --payload '{"text": "Hello world", "language": "French"}'
 ```
 
@@ -162,16 +162,16 @@ Run flue itself inside an isolation boundary you trust — a CI runner, a contai
 
 Env exposure is opt-in. By default only shell essentials (`PATH`, `HOME`, locale, etc.) are inherited from `process.env`; anything else — API keys, tokens, deploy credentials — has to be passed explicitly via `local({ env: { ... } })`. That keeps the model's `bash` tool from seeing host secrets by accident.
 
-`.flue/agents/reviewer.ts`:
+`.flue/workflows/reviewer.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, payload }: FlueContext) {
+export async function run ({ init, payload }: FlueContext) {
   const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
 
@@ -281,8 +281,9 @@ PORT=8080 node dist/server.mjs
 The server exposes:
 
 - `GET /health` — Health check
-- `GET /agents` — Agent manifest (lists all agents and their triggers)
+- `GET /agents` — Agent manifest
 - `POST /agents/:name/:id` — Invoke an agent
+- `POST /workflows/:name` — Invoke an HTTP-exposed workflow
 
 ### Deploying with Docker
 

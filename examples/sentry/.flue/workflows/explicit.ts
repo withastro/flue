@@ -24,19 +24,19 @@
  *
  * Invoke:
  *
- *   curl -X POST http://localhost:3583/agents/explicit/test1 \
+ *   curl -X POST http://localhost:3583/workflows/explicit?wait=result \
  *     -H 'content-type: application/json' \
  *     -d '{}'
  *
  * Expected:
  *   - HTTP 200 with `{ result: { ok: true, ... }, _meta: { runId } }`.
- *   - Two issues in Sentry, both tagged `flue.agent=explicit`.
+ *   - Two issues in Sentry, both tagged `flue.workflow=explicit`.
  */
-import type { FlueContext } from '@flue/runtime';
+import { http, type FlueContext } from '@flue/runtime';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function explicit(ctx: FlueContext) {
+export async function run(ctx: FlueContext) {
 	// Pretend we tried to call a flaky downstream service and it
 	// threw. We catch the error so the run continues, but we still
 	// want it captured in Sentry as an exception.
