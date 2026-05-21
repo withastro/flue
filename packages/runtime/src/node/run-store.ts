@@ -1,12 +1,10 @@
 import {
 	type CreateRunInput,
 	DEFAULT_MAX_COMPLETED_RUNS,
-	DEFAULT_MAX_EVENT_BYTES,
 	type EndRunInput,
 	type RunRecord,
 	type RunStore,
 	type RunStoreOptions,
-	truncateEventForPersistence,
 } from '../runtime/run-store.ts';
 import type { FlueEvent } from '../types.ts';
 
@@ -18,11 +16,9 @@ interface InstanceRuns {
 export class InMemoryRunStore implements RunStore {
 	private instances = new Map<string, InstanceRuns>();
 	private maxCompletedRuns: number;
-	private maxEventBytes: number;
 
 	constructor(options: RunStoreOptions = {}) {
 		this.maxCompletedRuns = options.maxCompletedRuns ?? DEFAULT_MAX_COMPLETED_RUNS;
-		this.maxEventBytes = options.maxEventBytes ?? DEFAULT_MAX_EVENT_BYTES;
 	}
 
 	async createRun(input: CreateRunInput): Promise<void> {
@@ -63,7 +59,7 @@ export class InMemoryRunStore implements RunStore {
 		if (!run) return;
 		const instance = this.getInstance(ownerKey(run.owner));
 		const events = instance.events.get(runId) ?? [];
-		events.push(truncateEventForPersistence(event, this.maxEventBytes));
+		events.push(event);
 		instance.events.set(runId, events);
 	}
 

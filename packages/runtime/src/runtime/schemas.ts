@@ -73,13 +73,6 @@ const PromptUsageSchema = v.object({
 	}),
 });
 
-const TruncatedEventSchema = flueEvent({
-	type: v.string(),
-	truncated: v.literal(true),
-	originalSize: v.number(),
-	preview: v.string(),
-});
-
 export const FLUE_EVENT_TYPES = [
 	'run_start',
 	'text_delta',
@@ -201,19 +194,10 @@ export const FlueEventSchema = v.union([
 		error: v.optional(v.unknown()),
 		durationMs: v.number(),
 	}),
-	TruncatedEventSchema,
 ]);
 
-type NonTruncatedSchemaEvent = Exclude<v.InferOutput<typeof FlueEventSchema>, { truncated: true }>;
-type _NonTruncatedEventSchemaAssignableToRuntime = NonTruncatedSchemaEvent extends FlueEvent
-	? true
-	: never;
-// One-way check: every non-truncated schema variant must stay inside the
-// runtime's published event type. The schema also documents persisted
-// truncation envelopes from `truncateEventForPersistence`; those are runtime
-// artifacts intentionally kept out of the public TypeScript discriminant so
-// user narrowing on `event.type` remains precise.
-const _eventSchemaTypeCheck: _NonTruncatedEventSchemaAssignableToRuntime = true;
+type _EventSchemaAssignableToRuntime = v.InferOutput<typeof FlueEventSchema> extends FlueEvent ? true : never;
+const _eventSchemaTypeCheck: _EventSchemaAssignableToRuntime = true;
 void _eventSchemaTypeCheck;
 
 export const RunEventListResponseSchema = v.object({
