@@ -368,6 +368,13 @@ export class RunStoreUnavailableError extends FlueHttpError {
 	}
 }
 
+export class RunEventTooLargeError extends Error {
+	constructor() {
+		super('[flue:run-store] event payload exceeds the 256 KB persistence limit and will not be persisted.');
+		this.name = 'RunEventTooLargeError';
+	}
+}
+
 export class RunRegistryUnavailableError extends FlueHttpError {
 	constructor() {
 		super({

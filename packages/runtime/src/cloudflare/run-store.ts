@@ -5,6 +5,7 @@ import {
 	type RunRecord,
 	type RunStore,
 	type RunStoreOptions,
+	serializedEventForPersistence,
 } from '../runtime/run-store.ts';
 import type { FlueEvent } from '../types.ts';
 
@@ -73,6 +74,7 @@ class DurableRunStore implements RunStore {
 	}
 
 	async appendEvent(runId: string, event: FlueEvent): Promise<void> {
+		const payload = serializedEventForPersistence(event);
 		this.sql.exec(
 			`INSERT OR REPLACE INTO flue_run_events
 			 (run_id, event_index, type, payload, timestamp)
@@ -80,7 +82,7 @@ class DurableRunStore implements RunStore {
 			runId,
 			event.eventIndex ?? 0,
 			event.type,
-			JSON.stringify(event),
+			payload,
 			event.timestamp ?? new Date().toISOString(),
 		);
 	}

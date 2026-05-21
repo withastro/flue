@@ -1,3 +1,4 @@
+import { RunEventTooLargeError } from '../errors.ts';
 import type { FlueEvent } from '../types.ts';
 
 export type RunStatus = 'active' | 'completed' | 'errored';
@@ -47,3 +48,17 @@ export interface RunStoreOptions {
 }
 
 export const DEFAULT_MAX_COMPLETED_RUNS = 50;
+const MAX_EVENT_BYTES = 256 * 1024;
+const ENCODER = new TextEncoder();
+
+export function serializedEventForPersistence(event: FlueEvent): string {
+	const payload = JSON.stringify(event);
+	if (byteLength(payload) > MAX_EVENT_BYTES) {
+		throw new RunEventTooLargeError();
+	}
+	return payload;
+}
+
+function byteLength(value: string): number {
+	return ENCODER.encode(value).byteLength;
+}

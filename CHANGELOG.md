@@ -14,6 +14,10 @@
 
 - **Cloudflare shell sandbox.** Added `getShellSandbox({ workspace, loader })`, `getDefaultWorkspace()`, and `hydrateFromBucket()` from `@flue/runtime/cloudflare`. The new sandbox wires `@cloudflare/shell` Workspaces into Flue through a codemode `code` tool backed by a Worker Loader binding. Agents use `state.*` inside the `code` tool instead of bash/read/write/grep/glob. Use `@cloudflare/shell` directly for primitives like `Workspace`, `WorkspaceFileSystem`, and `createGit`.
 
+### Bug Fixes
+
+- **Reject oversized persisted run events.** Flue now fails runs that emit event payloads beyond the 256 KB persistence limit instead of attempting to store them, avoiding excessive run-history storage work while preserving lifecycle cleanup.
+
 ### Breaking Changes
 
 - **Legacy roles are removed.** Use named subagents and `task({ agent })` instead of role files or role options.

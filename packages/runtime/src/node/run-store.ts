@@ -5,6 +5,7 @@ import {
 	type RunRecord,
 	type RunStore,
 	type RunStoreOptions,
+	serializedEventForPersistence,
 } from '../runtime/run-store.ts';
 import type { FlueEvent } from '../types.ts';
 
@@ -59,6 +60,7 @@ export class InMemoryRunStore implements RunStore {
 		if (!run) return;
 		const instance = this.getInstance(ownerKey(run.owner));
 		const events = instance.events.get(runId) ?? [];
+		serializedEventForPersistence(event);
 		events.push(event);
 		instance.events.set(runId, events);
 	}

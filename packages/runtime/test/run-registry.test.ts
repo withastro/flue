@@ -281,6 +281,131 @@ describe('InMemoryRunRegistry', () => {
 	});
 });
 
+describe('run store persistence sizing', () => {
+	it('surfaces oversized persisted events to callers', async () => {
+		const runStore = new InMemoryRunStore();
+		const runRegistry = new InMemoryRunRegistry();
+		const runSubscribers = createRunSubscriberRegistry();
+		configureFlueRuntime({
+			target: 'node',
+			webhookAgents: ['hello'],
+			allowNonWebhook: false,
+			handlers: { hello: async () => ({ result: 'x'.repeat(300_000) }) },
+			createContext: (id, runId, payload, req) =>
+				createFlueContext({
+					id,
+					runId,
+					payload,
+					env: {},
+					req,
+					agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
+					createDefaultEnv: async () => ({}) as never,
+					defaultStore: new InMemorySessionStore(),
+				}),
+			runStore,
+			runRegistry,
+			runSubscribers,
+		});
+		const app = new Hono();
+		app.route('/', flue());
+		const res = await app.fetch(
+			new Request('http://localhost/agents/hello/inst-1', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({}),
+			}),
+		);
+		expect(res.status).toBe(500);
+		const runs = await runRegistry.listRuns({});
+		expect(runs.runs[0]?.status).toBe('completed');
+	});
+
+	it('finalizes runs after oversized non-terminal persistence failures', async () => {
+		const runStore = new InMemoryRunStore();
+		const runRegistry = new InMemoryRunRegistry();
+		const runSubscribers = createRunSubscriberRegistry();
+		configureFlueRuntime({
+			target: 'node',
+			webhookAgents: ['hello'],
+			allowNonWebhook: false,
+			handlers: {
+				hello: async (ctx) => {
+					ctx.log.info('x'.repeat(300_000));
+					return { ok: true };
+				},
+			},
+			createContext: (id, runId, payload, req) =>
+				createFlueContext({
+					id,
+					runId,
+					payload,
+					env: {},
+					req,
+					agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
+					createDefaultEnv: async () => ({}) as never,
+					defaultStore: new InMemorySessionStore(),
+				}),
+			runStore,
+			runRegistry,
+			runSubscribers,
+		});
+		const app = new Hono();
+		app.route('/', flue());
+		const res = await app.fetch(
+			new Request('http://localhost/agents/hello/inst-1', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({}),
+			}),
+		);
+		expect(res.status).toBe(500);
+		const runs = await runRegistry.listRuns({});
+		expect(runs.runs[0]?.status).toBe('errored');
+	});
+
+	it('finalizes runs after oversized terminal error persistence failures', async () => {
+		const runStore = new InMemoryRunStore();
+		const runRegistry = new InMemoryRunRegistry();
+		const runSubscribers = createRunSubscriberRegistry();
+		configureFlueRuntime({
+			target: 'node',
+			webhookAgents: ['hello'],
+			allowNonWebhook: false,
+			handlers: {
+				hello: async () => {
+					throw new Error('x'.repeat(300_000));
+				},
+			},
+			createContext: (id, runId, payload, req) =>
+				createFlueContext({
+					id,
+					runId,
+					payload,
+					env: {},
+					req,
+					agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
+					createDefaultEnv: async () => ({}) as never,
+					defaultStore: new InMemorySessionStore(),
+				}),
+			runStore,
+			runRegistry,
+			runSubscribers,
+		});
+		const app = new Hono();
+		app.route('/', flue());
+		const res = await app.fetch(
+			new Request('http://localhost/agents/hello/inst-1', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({}),
+			}),
+		);
+		expect(res.status).toBe(500);
+		const runs = await runRegistry.listRuns({});
+		expect(runs.runs[0]?.status).toBe('errored');
+	});
+});
+
 describe('POST /workflows/:name routes via flue()', () => {
 	it('admits an HTTP workflow, returns a run id, and exposes run inspection', async () => {
 		const runStore = new InMemoryRunStore();
@@ -788,7 +913,7 @@ class SlowNonTerminalRunStore implements RunStore {
 		return this.inner.appendEvent(runId, event);
 	}
 
-	getEvents(runId: string, fromIndex?: number): Promise<FlueEvent[]> {
+	getEvents(runId: string, fromIndex?: number): ReturnType<RunStore['getEvents']> {
 		return this.inner.getEvents(runId, fromIndex);
 	}
 

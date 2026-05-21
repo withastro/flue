@@ -1,7 +1,7 @@
 /** Shared per-agent HTTP dispatcher for the Node and Cloudflare targets. */
 
 import type { FlueContextInternal } from '../client.ts';
-import { parseJsonBody, toHttpResponse } from '../errors.ts';
+import { parseJsonBody, RunEventTooLargeError, toHttpResponse } from '../errors.ts';
 import type { FlueEvent } from '../types.ts';
 import { generateRunId, generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
@@ -570,16 +570,23 @@ async function withRunLifecycle<T>(
 ): Promise<T> {
 	const flushFanout = subscribeRunFanout(lifecycle);
 	emitRunStart(lifecycle);
+	let didFlushFanout = false;
+	let result: T;
 	try {
-		const result = await body();
+		result = await body();
 		await flushFanout();
-		await emitRunEnd(lifecycle, { result, isError: false });
-		return result;
+		didFlushFanout = true;
 	} catch (error) {
-		await flushFanout();
+		if (!didFlushFanout) {
+			try {
+				await flushFanout();
+			} catch {}
+		}
 		await emitRunEnd(lifecycle, { isError: true, error });
 		throw error;
 	}
+	await emitRunEnd(lifecycle, { result, isError: false });
+	return result;
 }
 
 function emitRunStart(lifecycle: RunLifecycle): void {
@@ -633,7 +640,12 @@ async function emitRunEnd(
 		durationMs,
 	});
 
-	await safeRunStore('appendEvent(run_end)', () => runStore?.appendEvent(runId, decorated));
+	let appendError: unknown;
+	try {
+		await persistRunEvent('appendEvent(run_end)', () => runStore?.appendEvent(runId, decorated));
+	} catch (error) {
+		appendError = error;
+	}
 
 	runSubscribers?.publish(runId, decorated);
 
@@ -660,6 +672,7 @@ async function emitRunEnd(
 	);
 
 	runSubscribers?.complete(runId);
+	if (appendError) throw appendError;
 }
 
 /**
@@ -687,13 +700,20 @@ async function fanOutEvent(
 	event: FlueEvent,
 ): Promise<void> {
 	if (runStore) {
-		try {
-			await runStore.appendEvent(runId, event);
-		} catch (error) {
-			console.error('[flue:run-store] appendEvent failed:', error);
-		}
+		await persistRunEvent('appendEvent', () => runStore.appendEvent(runId, event));
 	}
 	runSubscribers?.publish(runId, event);
+}
+
+async function persistRunEvent(label: string, fn: () => Promise<void> | undefined): Promise<boolean> {
+	try {
+		await fn();
+		return true;
+	} catch (error) {
+		if (error instanceof RunEventTooLargeError) throw error;
+		console.error(`[flue:run-store] ${label} failed:`, error);
+		return false;
+	}
 }
 
 async function safeRunStore(label: string, fn: () => Promise<void> | undefined): Promise<boolean> {
