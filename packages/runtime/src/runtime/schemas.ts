@@ -259,6 +259,9 @@ export const RunEventsQuerySchema = v.object({
 
 export const RunIdParamSchema = v.object({ runId: v.string() });
 export const WorkflowRouteParamSchema = v.object({ name: v.string() });
+export const WorkflowInvocationQuerySchema = v.object({
+	wait: v.optional(v.literal('result')),
+});
 export const AgentRouteParamSchema = v.object({ name: v.string(), id: v.string() });
 
 export const AgentManifestEntrySchema = v.object({

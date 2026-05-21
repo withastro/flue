@@ -218,7 +218,25 @@ export async function handleWorkflowRequest(opts: HandleWorkflowOptions): Promis
 		const payload = await parseJsonBody(request);
 		const accept = request.headers.get('accept') || '';
 		const isSSE = accept.includes('text/event-stream');
+		const wait = new URL(request.url).searchParams.get('wait');
 		const owner = { kind: 'workflow' as const, workflowName, runId };
+
+		if (wait === 'result') {
+			return await runSyncMode({
+				label: workflowName,
+				owner,
+				id: runId,
+				runId,
+				handler,
+				payload,
+				request,
+				createContext,
+				runHandler,
+				runStore,
+				runSubscribers,
+				runRegistry,
+			});
+		}
 
 		if (isSSE) {
 			return runSseMode({

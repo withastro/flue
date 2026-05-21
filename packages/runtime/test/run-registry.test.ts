@@ -334,6 +334,74 @@ describe('POST /workflows/:name routes via flue()', () => {
 		});
 	});
 
+	it('waits for workflow results when wait=result is requested', async () => {
+		configureFlueRuntime({
+			target: 'node',
+			manifest: { agents: [], workflows: [{ name: 'daily-report', channels: { http: true } }] },
+			webhookAgents: [],
+			allowNonWebhook: false,
+			handlers: {},
+			workflowHandlers: { 'daily-report': async (ctx) => ({ echoed: ctx.payload }) },
+			createContext: (id, runId, payload, req) =>
+				createFlueContext({
+					id,
+					runId,
+					payload,
+					env: {},
+					req,
+					agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
+					createDefaultEnv: async () => ({}) as never,
+					defaultStore: new InMemorySessionStore(),
+				}),
+			runStore: new InMemoryRunStore(),
+			runRegistry: new InMemoryRunRegistry(),
+			runSubscribers: createRunSubscriberRegistry(),
+		});
+		const app = new Hono();
+		app.route('/', flue());
+		const res = await app.fetch(
+			new Request('http://localhost/workflows/daily-report?wait=result', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ date: '2026-05-21' }),
+			}),
+		);
+		expect(res.status).toBe(200);
+		const body = (await res.json()) as { result: unknown; _meta: { runId: string } };
+		expect(body.result).toEqual({ echoed: { date: '2026-05-21' } });
+		expect(body._meta.runId.startsWith('workflow:daily-report:')).toBe(true);
+	});
+
+	it('returns workflow errors through wait=result while keeping the run id header', async () => {
+		configureFlueRuntime({
+			target: 'node',
+			manifest: { agents: [], workflows: [{ name: 'explode', channels: { http: true } }] },
+			webhookAgents: [],
+			allowNonWebhook: false,
+			handlers: {},
+			workflowHandlers: { explode: async () => { throw new Error('boom'); } },
+			createContext: (id, runId, payload, req) =>
+				createFlueContext({
+					id,
+					runId,
+					payload,
+					env: {},
+					req,
+					agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
+					createDefaultEnv: async () => ({}) as never,
+					defaultStore: new InMemorySessionStore(),
+				}),
+			runStore: new InMemoryRunStore(),
+			runRegistry: new InMemoryRunRegistry(),
+			runSubscribers: createRunSubscriberRegistry(),
+		});
+		const app = new Hono();
+		app.route('/', flue());
+		const res = await app.fetch(new Request('http://localhost/workflows/explode?wait=result', { method: 'POST' }));
+		expect(res.status).toBe(500);
+		expect(res.headers.get('x-flue-run-id')?.startsWith('workflow:explode:')).toBe(true);
+	});
+
 	it('streams workflow execution when SSE is explicitly requested', async () => {
 		configureFlueRuntime({
 			target: 'node',

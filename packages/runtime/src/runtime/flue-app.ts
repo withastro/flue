@@ -34,6 +34,7 @@ import type { RunSubscriberRegistry } from './run-subscribers.ts';
 import {
 	AgentInvocationResponseSchema,
 	AgentRouteParamSchema,
+	WorkflowInvocationQuerySchema,
 	WorkflowRouteParamSchema,
 	ErrorEnvelopeSchema,
 	RunEventListResponseSchema,
@@ -166,6 +167,7 @@ export function flue(): Hono {
 		'/workflows/:name',
 		describeRoute(workflowRouteSpec() as DescribeRouteOptions),
 		validated('param', WorkflowRouteParamSchema),
+		validated('query', WorkflowInvocationQuerySchema),
 		workflowRouteHandler,
 	);
 	app.all('/workflows/:name', workflowRouteHandler);
@@ -299,8 +301,11 @@ function workflowRouteSpec() {
 		responses: {
 			202: jsonResponse(WorkflowAdmissionResponseSchema, 'Workflow run accepted.'),
 			200: {
-				description: 'Server-sent events stream of workflow execution events.',
+				description: 'Workflow result envelope or server-sent events stream, depending on the requested mode.',
 				content: {
+					'application/json': {
+						schema: resolver(AgentInvocationResponseSchema),
+					},
 					'text/event-stream': {
 						schema: { type: 'string', description: 'SSE-framed FlueEvent values.' },
 					},
@@ -308,7 +313,7 @@ function workflowRouteSpec() {
 			},
 			...errorResponses(),
 		},
-		'x-flue-invocation-modes': ['accepted', 'stream'],
+		'x-flue-invocation-modes': ['accepted', 'wait-result', 'stream'],
 		'x-flue-user-defined': true,
 	};
 }
