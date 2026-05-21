@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.3.14/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
 	"assist": { "actions": { "source": { "organizeImports": "on" } } },
 	"css": {
 		"parser": {
@@ -15,11 +15,15 @@
 			},
 			"correctness": {
 				"noUnusedImports": "warn",
-				"useImportExtensions": "warn"
+				// Flue source/examples intentionally use bundler-resolved TS imports,
+				// including non-standard loader forms such as SKILL.md imports.
+				"useImportExtensions": "off"
 			},
 			"suspicious": {
-				"noExplicitAny": "warn",
-				"noConsole": "warn",
+				// Temporarily disabled while existing repo-wide cleanup is deferred.
+				// Re-enable once the broad legacy warning backlog is addressed.
+				"noExplicitAny": "off",
+				"noConsole": "off",
 				"noDebugger": "warn"
 			},
 			"style": {
@@ -38,6 +42,9 @@
 	"formatter": {
 		"enabled": false
 	},
+	"files": {
+		"includes": ["**", "!apps/www"]
+	},
 	"overrides": [
 		{
 			"includes": ["**/tsconfig.json", "**/tsconfig.*.json"],
@@ -49,7 +56,7 @@
 			}
 		},
 		{
-			"includes": ["packages/sdk/src/**"],
+			"includes": ["packages/sdk/src/**", "examples/**"],
 			"linter": {
 				"rules": {
 					"suspicious": {

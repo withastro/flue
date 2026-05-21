@@ -304,7 +304,7 @@ export function formatBashResult(
 	result: { stdout: string; stderr: string; exitCode: number },
 	command: string,
 ): AgentToolResult<any> {
-	const combined = (result.stdout + (result.stderr ? '\n' + result.stderr : '')).trim();
+	const combined = (result.stdout + (result.stderr ? `\n${result.stderr}` : '')).trim();
 	const { text: output } = truncateTail(combined, MAX_READ_LINES, MAX_READ_BYTES);
 	const exitLine = `Command exited with code ${result.exitCode}`;
 
@@ -357,7 +357,7 @@ function createGrepTool(env: SessionEnv): AgentTool<typeof GrepParams> {
 			const truncatedLines = lines.slice(0, MAX_GREP_MATCHES);
 			const output = truncatedLines
 				.map((line) =>
-					line.length > MAX_GREP_LINE_LENGTH ? line.slice(0, MAX_GREP_LINE_LENGTH) + '...' : line,
+					line.length > MAX_GREP_LINE_LENGTH ? `${line.slice(0, MAX_GREP_LINE_LENGTH)}...` : line,
 				)
 				.join('\n');
 
@@ -494,7 +494,7 @@ function truncateHead(
 			wasTruncated = true;
 			break;
 		}
-		const next = lineCount === 0 ? line : '\n' + line;
+		const next = lineCount === 0 ? line : `\n${line}`;
 		if (result.length + next.length > maxBytes) {
 			wasTruncated = true;
 			break;

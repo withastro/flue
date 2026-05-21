@@ -31,8 +31,8 @@ export function createCwdSessionEnv(parentEnv: SessionEnv, cwd: string): Session
 	const scopedCwd = normalizePath(cwd);
 	const resolvePath = (p: string): string => {
 		if (p.startsWith('/')) return normalizePath(p);
-		if (scopedCwd === '/') return normalizePath('/' + p);
-		return normalizePath(scopedCwd + '/' + p);
+		if (scopedCwd === '/') return normalizePath(`/${p}`);
+		return normalizePath(`${scopedCwd}/${p}`);
 	};
 
 	return {
@@ -188,8 +188,8 @@ export interface SandboxApi {
 export function createSandboxSessionEnv(api: SandboxApi, cwd: string): SessionEnv {
 	const resolvePath = (p: string): string => {
 		if (p.startsWith('/')) return normalizePath(p);
-		if (cwd === '/') return normalizePath('/' + p);
-		return normalizePath(cwd + '/' + p);
+		if (cwd === '/') return normalizePath(`/${p}`);
+		return normalizePath(`${cwd}/${p}`);
 	};
 
 	return {

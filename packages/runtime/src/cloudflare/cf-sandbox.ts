@@ -29,8 +29,8 @@ export async function cfSandboxToSessionEnv(
 				await sandbox.writeFile(path, content);
 			} else {
 				let binary = '';
-				for (let i = 0; i < content.length; i++) {
-					binary += String.fromCharCode(content[i]!);
+				for (const byte of content) {
+					binary += String.fromCharCode(byte);
 				}
 				const b64 = btoa(binary);
 				await sandbox.writeFile(path, b64, { encoding: 'base64' });
@@ -52,7 +52,7 @@ export async function cfSandboxToSessionEnv(
 					isFile: !isDir,
 					isDirectory: isDir,
 					isSymbolicLink: false,
-					size: sizeMatch ? parseInt(sizeMatch[1]!, 10) : 0,
+					size: parseInt(sizeMatch?.[1] ?? '0', 10),
 					mtime: new Date(),
 				};
 			} catch {

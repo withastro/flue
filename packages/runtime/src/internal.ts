@@ -11,7 +11,6 @@
 import { type Api, getModel, type KnownProvider, type Model } from '@earendil-works/pi-ai';
 import {
 	getProviderConfiguration,
-	hasRegisteredProvider,
 	resolveRegisteredModel,
 } from './runtime/providers.ts';
 import type { ModelConfig, ProviderSettings } from './types.ts';

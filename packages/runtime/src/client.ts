@@ -5,6 +5,7 @@ import { dispatchGlobalEvent } from './runtime/events.ts';
 import { bashFactoryToSessionEnv, createCwdSessionEnv, isBashLike } from './sandbox.ts';
 import type {
 	AgentConfig,
+	AgentDefinition,
 	AgentInit,
 	BashFactory,
 	FlueContext,
@@ -156,7 +157,11 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					instructions: definition.instructions,
 					definitionSkills: definition.skills,
 					skills: localContext.skills,
-					subagents: Object.fromEntries((definition.subagents ?? []).map((agent) => [agent.name!, agent])),
+					subagents: Object.fromEntries(
+						(definition.subagents ?? [])
+							.filter((agent): agent is AgentDefinition & { name: string } => agent.name !== undefined)
+							.map((agent) => [agent.name, agent]),
+					),
 					model: agentModel,
 					thinkingLevel: definition.thinkingLevel ?? config.agentConfig.thinkingLevel,
 					compaction: definition.compaction ?? config.agentConfig.compaction,

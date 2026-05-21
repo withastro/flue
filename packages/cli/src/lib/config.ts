@@ -166,7 +166,7 @@ export function resolveConfigPath(opts: ResolveConfigPathOptions): string | unde
  * Returns the raw module default — caller is responsible for validation.
  */
 async function loadConfigModule(absConfigPath: string): Promise<unknown> {
-	const fileUrl = pathToFileURL(absConfigPath).href + `?t=${Date.now()}`;
+	const fileUrl = `${pathToFileURL(absConfigPath).href}?t=${Date.now()}`;
 	try {
 		const mod = await import(fileUrl);
 		return mod.default ?? mod;

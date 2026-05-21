@@ -10,7 +10,6 @@ import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import { completeSimple, isContextOverflow } from '@earendil-works/pi-ai';
 import type {
 	AssistantMessage,
-	Message,
 	Model,
 	SimpleStreamOptions,
 	TextContent,
@@ -94,7 +93,8 @@ function getLastAssistantUsageInfo(
 	messages: AgentMessage[],
 ): { usage: Usage; index: number } | undefined {
 	for (let i = messages.length - 1; i >= 0; i--) {
-		const msg = messages[i]!;
+		const msg = messages[i];
+		if (!msg) continue;
 		const usage = getAssistantUsage(msg);
 		if (usage) return { usage, index: i };
 	}
@@ -164,7 +164,8 @@ export function estimateContextTokens(messages: AgentMessage[]): {
 	const usageTokens = calculateContextTokens(usageInfo.usage);
 	let trailingTokens = 0;
 	for (let i = usageInfo.index + 1; i < messages.length; i++) {
-		trailingTokens += estimateTokens(messages[i]!);
+		const message = messages[i];
+		if (message) trailingTokens += estimateTokens(message);
 	}
 	return {
 		tokens: usageTokens + trailingTokens,
@@ -402,7 +403,7 @@ Be concise. Focus on what's needed to understand the kept suffix.`;
 function findValidCutPoints(messages: AgentMessage[], start: number, end: number): number[] {
 	const cutPoints: number[] = [];
 	for (let i = start; i < end; i++) {
-		const role = messages[i]!.role;
+		const role = messages[i]?.role;
 		if (role === 'user' || role === 'assistant') {
 			cutPoints.push(i);
 		}
@@ -412,7 +413,7 @@ function findValidCutPoints(messages: AgentMessage[], start: number, end: number
 
 function findTurnStartIndex(messages: AgentMessage[], index: number, start: number): number {
 	for (let i = index; i >= start; i--) {
-		if (messages[i]!.role === 'user') return i;
+		if (messages[i]?.role === 'user') return i;
 	}
 	return -1;
 }
@@ -435,15 +436,17 @@ function findCutPoint(
 	}
 
 	let accumulatedTokens = 0;
-	let cutIndex = cutPoints[0]!;
+	let cutIndex = cutPoints[0] ?? start;
 
 	for (let i = end - 1; i >= start; i--) {
-		const messageTokens = estimateTokens(messages[i]!);
+		const message = messages[i];
+		if (!message) continue;
+		const messageTokens = estimateTokens(message);
 		accumulatedTokens += messageTokens;
 		if (accumulatedTokens >= keepRecentTokens) {
-			for (let c = 0; c < cutPoints.length; c++) {
-				if (cutPoints[c]! >= i) {
-					cutIndex = cutPoints[c]!;
+			for (const cutPoint of cutPoints) {
+				if (cutPoint >= i) {
+					cutIndex = cutPoint;
 					break;
 				}
 			}
@@ -451,7 +454,7 @@ function findCutPoint(
 		}
 	}
 
-	const isUserMessage = messages[cutIndex]!.role === 'user';
+	const isUserMessage = messages[cutIndex]?.role === 'user';
 	const turnStartIndex = isUserMessage ? -1 : findTurnStartIndex(messages, cutIndex, start);
 
 	return {

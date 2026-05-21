@@ -250,7 +250,7 @@ function parseFlags(flags: string[]): {
 		} else if (arg === '--port') {
 			const portStr = flags[++i];
 			port = parseInt(portStr ?? '', 10);
-			if (isNaN(port)) {
+			if (Number.isNaN(port)) {
 				console.error('Invalid value for --port');
 				process.exit(1);
 			}
@@ -306,7 +306,8 @@ function parseAddArgs(rest: string[]): AddArgs {
 	let print = false;
 
 	for (let i = 0; i < rest.length; i++) {
-		const arg = rest[i]!;
+		const arg = rest[i];
+		if (arg === undefined) continue;
 		if (arg === '--category') {
 			const value = rest[++i];
 			if (!value) {
@@ -353,7 +354,8 @@ function parseLogsArgs(rest: string[]): LogsArgs {
 	let format: LogsArgs['format'] = 'pretty';
 
 	for (let i = 0; i < rest.length; i++) {
-		const arg = rest[i]!;
+		const arg = rest[i];
+		if (arg === undefined) continue;
 		if (arg === '--server') {
 			const value = rest[++i];
 			if (!value) {
@@ -419,9 +421,16 @@ function parseLogsArgs(rest: string[]): LogsArgs {
 		process.exit(1);
 	}
 
+	const runId = positional[0];
+	if (!runId) {
+		console.error('Missing required argument for `flue logs`: <runId>');
+		printUsage();
+		process.exit(1);
+	}
+
 	return {
 		command: 'logs',
-		runId: positional[0]!,
+		runId,
 		server,
 		follow,
 		since,
@@ -437,7 +446,8 @@ function parseInitArgs(rest: string[]): InitArgs {
 	let force = false;
 
 	for (let i = 0; i < rest.length; i++) {
-		const arg = rest[i]!;
+		const arg = rest[i];
+		if (arg === undefined) continue;
 		if (arg === '--target') {
 			const value = rest[++i];
 			if (!value) {
@@ -521,7 +531,12 @@ function parseArgs(argv: string[]): ParsedArgs {
 	}
 
 	if (command === 'run' && rest.length > 0) {
-		const agent = rest[0]!;
+		const agent = rest[0];
+		if (!agent) {
+			console.error('Missing agent name for run command.');
+			printUsage();
+			process.exit(1);
+		}
 		const flags = parseFlags(rest.slice(1));
 
 		// `flue run` only supports node. If the user explicitly asked for
@@ -629,7 +644,7 @@ function logEvent(event: any) {
 			let toolDetail = event.toolName;
 			if (event.args) {
 				if (event.toolName === 'bash' && event.args.command) {
-					toolDetail += `  $ ${event.args.command.length > 120 ? event.args.command.slice(0, 120) + '...' : event.args.command}`;
+					toolDetail += `  $ ${event.args.command.length > 120 ? `${event.args.command.slice(0, 120)}...` : event.args.command}`;
 				} else if (event.toolName === 'read' && event.args.path) {
 					toolDetail += `  ${event.args.path}`;
 				} else if (event.toolName === 'write' && event.args.path) {
@@ -827,8 +842,8 @@ async function consumeSSE(
 				if (e.type) messageParts.push(`[${e.type}]`);
 				if (e.message) messageParts.push(e.message);
 				error = messageParts.length > 0 ? messageParts.join(' ') : 'Unknown error';
-				if (e.details) error += '\n' + String(e.details);
-				if (e.dev) error += '\n' + String(e.dev);
+				if (e.details) error += `\n${String(e.details)}`;
+				if (e.dev) error += `\n${String(e.dev)}`;
 				logEvent(event);
 			} else {
 				logEvent(event);
@@ -1441,7 +1456,7 @@ function printListing(stream: NodeJS.WriteStream) {
 	stream.write(renderConnectorTable(rows));
 	stream.write('\n');
 	const hint = categoryRootHint();
-	if (hint) stream.write(hint + '\n');
+	if (hint) stream.write(`${hint}\n`);
 }
 
 function printUnknownConnector(name: string, stream: NodeJS.WriteStream) {

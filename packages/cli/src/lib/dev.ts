@@ -352,7 +352,7 @@ function createWatcher(options: WatcherOptions): WatcherHandle {
 		if (
 			outputRelToRoot &&
 			!outputRelToRoot.startsWith('..') &&
-			(normalized === outputRelToRoot || normalized.startsWith(outputRelToRoot + '/'))
+			(normalized === outputRelToRoot || normalized.startsWith(`${outputRelToRoot}/`))
 		) {
 			return true;
 		}
@@ -938,7 +938,7 @@ function pickExampleAgentName(output: string, root: string): string | null {
 		if (!fs.existsSync(agentsDir)) return null;
 		for (const e of fs.readdirSync(agentsDir)) {
 			const m = e.match(/^([a-zA-Z0-9_-]+)\.(ts|js|mts|mjs)$/);
-			if (m && m[1]) return m[1];
+			if (m?.[1]) return m[1];
 		}
 		return null;
 	} catch {

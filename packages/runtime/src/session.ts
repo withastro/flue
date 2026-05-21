@@ -270,8 +270,8 @@ export class SessionHistory {
 	getLatestCompaction(): CompactionEntry | undefined {
 		const path = this.getActivePath();
 		for (let i = path.length - 1; i >= 0; i--) {
-			const entry = path[i]!;
-			if (entry.type === 'compaction') return entry;
+			const entry = path[i];
+			if (entry?.type === 'compaction') return entry;
 		}
 		return undefined;
 	}
@@ -368,7 +368,7 @@ function pathToContextEntries(path: SessionEntry[]): ContextEntry[] {
 
 function findLatestCompactionIndex(path: SessionEntry[]): number {
 	for (let i = path.length - 1; i >= 0; i--) {
-		if (path[i]!.type === 'compaction') return i;
+		if (path[i]?.type === 'compaction') return i;
 	}
 	return -1;
 }
@@ -945,7 +945,8 @@ export class Session implements FlueSession {
 
 	private resolveDeclaredSubagent(name: string): AgentDefinition {
 		const subagents = this.config.subagents ?? {};
-		if (Object.hasOwn(subagents, name)) return subagents[name]!;
+		const subagent = subagents[name];
+		if (subagent) return subagent;
 		const available = Object.keys(subagents).join(', ') || '(none)';
 		throw new Error(`[flue] Subagent "${name}" is not declared. Available: ${available}.`);
 	}
@@ -1524,8 +1525,8 @@ export class Session implements FlueSession {
 	private getAssistantText(): string {
 		const messages = this.harness.state.messages;
 		for (let i = messages.length - 1; i >= 0; i--) {
-			const msg = messages[i]!;
-			if (msg.role !== 'assistant') continue;
+			const msg = messages[i];
+			if (msg?.role !== 'assistant') continue;
 			const content = (msg as AssistantMessage).content;
 			if (!Array.isArray(content)) continue;
 			const textParts: string[] = [];
@@ -1542,8 +1543,8 @@ export class Session implements FlueSession {
 	private getLatestAssistantMessageId(): string | undefined {
 		const path = this.history.getActivePath();
 		for (let i = path.length - 1; i >= 0; i--) {
-			const entry = path[i]!;
-			if (entry.type === 'message' && entry.message.role === 'assistant') {
+			const entry = path[i];
+			if (entry?.type === 'message' && entry.message.role === 'assistant') {
 				return entry.id;
 			}
 		}
@@ -1703,7 +1704,7 @@ export function normalizePath(p: string): string {
 			result.push(part);
 		}
 	}
-	return '/' + result.join('/');
+	return `/${result.join('/')}`;
 }
 
 export async function deleteSessionTree(

@@ -1,4 +1,4 @@
-import * as esbuild from 'esbuild';
+import type * as esbuild from 'esbuild';
 import * as path from 'node:path';
 import { buildSkillDefinition } from './skill-frontmatter.ts';
 

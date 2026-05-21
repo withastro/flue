@@ -36,7 +36,7 @@ export interface GetShellSandboxOptions {
  * Requires a Worker Loader binding; cf-shell sandboxes do not support `exec()`.
  */
 export function getShellSandbox(options: GetShellSandboxOptions): SandboxFactory {
-	if (!options || !options.workspace) {
+	if (!options?.workspace) {
 		throw new Error(
 			'[flue] getShellSandbox requires a workspace. Pass `getDefaultWorkspace()` for the common case, ' +
 				'or construct your own with `new Workspace({ sql: ctx.storage.sql, ... })`.',
@@ -76,8 +76,8 @@ function createWorkspaceSessionEnv(
 	const normalizedCwd = normalizePath(cwd);
 	const resolvePath = (p: string): string => {
 		if (p.startsWith('/')) return normalizePath(p);
-		if (normalizedCwd === '/') return normalizePath('/' + p);
-		return normalizePath(normalizedCwd + '/' + p);
+		if (normalizedCwd === '/') return normalizePath(`/${p}`);
+		return normalizePath(`${normalizedCwd}/${p}`);
 	};
 
 	const exec = (): Promise<ShellResult> => {
@@ -163,16 +163,16 @@ function createCodeTool(
 			const { result, error, logs } = await executor.execute(params.code, [stateProvider]);
 
 			if (error) {
-				const logsTail = logs && logs.length ? `\n\nlogs:\n${logs.join('\n')}` : '';
+				const logsTail = logs?.length ? `\n\nlogs:\n${logs.join('\n')}` : '';
 				throw new Error(`code tool failed: ${error}${logsTail}`);
 			}
 
 			const resultText = formatResult(result);
-			const logsText = logs && logs.length ? `\n\n--- logs ---\n${logs.join('\n')}` : '';
+			const logsText = logs?.length ? `\n\n--- logs ---\n${logs.join('\n')}` : '';
 
 			return {
 				content: [{ type: 'text', text: resultText + logsText }],
-				details: logs && logs.length ? { logs } : {},
+				details: logs?.length ? { logs } : {},
 			};
 		},
 	};

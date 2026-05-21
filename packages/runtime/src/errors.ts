@@ -590,7 +590,7 @@ export async function parseJsonBody(request: Request): Promise<unknown> {
 	// purpose — webhook agents have no business receiving form-encoded or
 	// plain-text payloads, and silently accepting them invites the kind of
 	// drift this whole hardening pass is trying to eliminate.
-	if (!contentType || !contentType.toLowerCase().includes('application/json')) {
+	if (!contentType?.toLowerCase().includes('application/json')) {
 		throw new UnsupportedMediaTypeError({ received: contentType });
 	}
 

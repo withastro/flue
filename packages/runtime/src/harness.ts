@@ -4,6 +4,7 @@ import { createCwdSessionEnv, createFlueFs } from './sandbox.ts';
 import { type CreateTaskSessionOptions, deleteSessionTree, Session } from './session.ts';
 import type {
 	AgentConfig,
+	AgentDefinition,
 	CallHandle,
 	FlueEventCallback,
 	FlueFs,
@@ -11,8 +12,8 @@ import type {
 	FlueSession,
 	FlueSessions,
 	SessionData,
-		SessionEnv,
-		SessionStore,
+	SessionEnv,
+	SessionStore,
 	SessionToolFactory,
 	ShellOptions,
 	ShellResult,
@@ -135,7 +136,11 @@ export class Harness implements FlueHarness {
 			definitionSkills: taskAgent?.skills ?? this.config.definitionSkills,
 			skills: localContext.skills,
 			subagents: taskAgent
-				? Object.fromEntries((taskAgent.subagents ?? []).map((agent) => [agent.name!, agent]))
+				? Object.fromEntries(
+						(taskAgent.subagents ?? [])
+							.filter((agent): agent is AgentDefinition & { name: string } => agent.name !== undefined)
+							.map((agent) => [agent.name, agent]),
+					)
 				: this.config.subagents,
 			model:
 				taskAgent?.model !== undefined

@@ -48,5 +48,5 @@ function stripPrefix(key: string, prefix: string | undefined): string {
 }
 
 function absolutize(key: string): string {
-	return key.startsWith('/') ? key : '/' + key;
+	return key.startsWith('/') ? key : `/${key}`;
 }

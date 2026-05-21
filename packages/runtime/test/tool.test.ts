@@ -69,7 +69,8 @@ describe('subagent task selection', () => {
 
 		const taskTool = tools.find((tool) => tool.name === 'task');
 		expect(taskTool).toBeDefined();
-		await taskTool!.execute('tool-1', { prompt: 'Review this.', agent: 'code_review' });
+		if (!taskTool) throw new Error('task tool missing');
+		await taskTool.execute('tool-1', { prompt: 'Review this.', agent: 'code_review' });
 		expect(calls).toEqual(['code_review']);
 	});
 
