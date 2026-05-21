@@ -14,19 +14,15 @@ import type {
 } from './types.ts';
 
 interface ParsedAgentFile {
-	triggers: {
-		webhook?: boolean;
-	};
+	channelNames: string[];
 }
 
 /** Extract static agent metadata at build time without evaluating the agent module. */
 function parseAgentFile(filePath: string): ParsedAgentFile {
-	return {
-		triggers: parseTriggers(filePath),
-	};
+	return { channelNames: parseChannelNames(filePath) };
 }
 
-function parseTriggers(filePath: string): ParsedAgentFile['triggers'] {
+function parseChannelNames(filePath: string): string[] {
 	const source = fs.readFileSync(filePath, 'utf-8');
 	const ast = ts.createSourceFile(
 		filePath,
@@ -35,23 +31,25 @@ function parseTriggers(filePath: string): ParsedAgentFile['triggers'] {
 		true,
 		scriptKindForFile(filePath),
 	);
-	let result: ParsedAgentFile['triggers'] | undefined;
+	let channelNames: string[] | undefined;
 
 	for (const statement of ast.statements) {
-		if (isTriggersReExport(statement)) {
-			throwUnsupportedTriggers(filePath, 're-exported triggers are not supported');
+		if (isTriggersReExport(statement) || hasTriggersExport(statement)) {
+			throwUnsupportedTriggers(filePath, 'triggers are no longer supported; export channels instead');
+		}
+		if (isChannelsReExport(statement)) {
+			throwUnsupportedChannels(filePath, 're-exported channels are not supported');
 		}
 		if (!ts.isVariableStatement(statement) || !hasExportModifier(statement)) continue;
-
 		for (const declaration of statement.declarationList.declarations) {
-			if (!ts.isIdentifier(declaration.name) || declaration.name.text !== 'triggers') continue;
-			if (result) throwUnsupportedTriggers(filePath, 'multiple triggers exports were found');
-			if (!declaration.initializer) throwUnsupportedTriggers(filePath, 'missing initializer');
-			result = parseTriggersInitializer(filePath, declaration.initializer);
+			if (!ts.isIdentifier(declaration.name) || declaration.name.text !== 'channels') continue;
+			if (channelNames) throwUnsupportedChannels(filePath, 'multiple channels exports were found');
+			if (!declaration.initializer) throwUnsupportedChannels(filePath, 'missing initializer');
+			channelNames = parseChannelsInitializer(filePath, declaration.initializer);
 		}
 	}
 
-	return result ?? {};
+	return channelNames ?? [];
 }
 
 function scriptKindForFile(filePath: string): ts.ScriptKind {
@@ -69,45 +67,34 @@ function isTriggersReExport(statement: ts.Statement): boolean {
 	return statement.exportClause.elements.some((element) => element.name.text === 'triggers');
 }
 
-function parseTriggersInitializer(
-	filePath: string,
-	initializer: ts.Expression,
-): ParsedAgentFile['triggers'] {
+function hasTriggersExport(statement: ts.Statement): boolean {
+	if (!ts.isVariableStatement(statement) || !hasExportModifier(statement)) return false;
+	return statement.declarationList.declarations.some(
+		(declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === 'triggers',
+	);
+}
+
+function isChannelsReExport(statement: ts.Statement): boolean {
+	if (!ts.isExportDeclaration(statement) || !statement.exportClause) return false;
+	if (!ts.isNamedExports(statement.exportClause)) return false;
+	return statement.exportClause.elements.some((element) => element.name.text === 'channels');
+}
+
+function parseChannelsInitializer(filePath: string, initializer: ts.Expression): string[] {
 	const expr = unwrapExpression(initializer);
-	if (!ts.isObjectLiteralExpression(expr)) {
-		throwUnsupportedTriggers(filePath, 'expected a static object literal');
+	if (!ts.isArrayLiteralExpression(expr)) {
+		throwUnsupportedChannels(filePath, 'expected a static array literal');
 	}
-
-	const result: ParsedAgentFile['triggers'] = {};
-	for (const property of expr.properties) {
-		if (ts.isSpreadAssignment(property)) {
-			throwUnsupportedTriggers(filePath, 'spread properties are not supported');
-		}
-		if (ts.isShorthandPropertyAssignment(property)) {
-			const name = property.name.text;
-			if (name === 'webhook') {
-				throwUnsupportedTriggers(filePath, `"${name}" must use an explicit static value`);
-			}
-			continue;
-		}
-		if (!ts.isPropertyAssignment(property)) {
-			const name = propertyNameText(filePath, property.name);
-			if (name === 'webhook') {
-				throwUnsupportedTriggers(filePath, `"${name}" must use an explicit static value`);
-			}
-			continue;
-		}
-
-		const name = propertyNameText(filePath, property.name);
-		if (name === 'webhook') {
-			const value = unwrapExpression(property.initializer);
-			if (value.kind === ts.SyntaxKind.TrueKeyword) result.webhook = true;
-			else if (value.kind === ts.SyntaxKind.FalseKeyword) delete result.webhook;
-			else throwUnsupportedTriggers(filePath, '"webhook" must be true or false');
+	const channelNames: string[] = [];
+	for (const element of expr.elements) {
+		const item = unwrapExpression(element);
+		if (!ts.isCallExpression(item)) continue;
+		const callee = unwrapExpression(item.expression);
+		if (ts.isIdentifier(callee) && !channelNames.includes(callee.text)) {
+			channelNames.push(callee.text);
 		}
 	}
-
-	return result;
+	return channelNames;
 }
 
 function unwrapExpression(expr: ts.Expression): ts.Expression {
@@ -122,26 +109,17 @@ function unwrapExpression(expr: ts.Expression): ts.Expression {
 	return expr;
 }
 
-function propertyNameText(filePath: string, name: ts.PropertyName): string | undefined {
-	if (ts.isIdentifier(name) || ts.isStringLiteral(name) || ts.isNumericLiteral(name)) {
-		return name.text;
-	}
-
-	if (ts.isComputedPropertyName(name)) {
-		const expression = unwrapExpression(name.expression);
-		if (ts.isStringLiteral(expression) || ts.isNoSubstitutionTemplateLiteral(expression)) {
-			return expression.text;
-		}
-		throwUnsupportedTriggers(filePath, 'computed property names must be static');
-	}
-
-	return undefined;
-}
-
 function throwUnsupportedTriggers(filePath: string, reason: string): never {
 	throw new Error(
 		`[flue] Unsupported triggers export in ${filePath}: ${reason}. ` +
-			'Use a static object literal, for example: export const triggers = { webhook: true }.',
+			'Use channels instead, for example: export const channels = [http()].',
+	);
+}
+
+function throwUnsupportedChannels(filePath: string, reason: string): never {
+	throw new Error(
+		`[flue] Unsupported channels export in ${filePath}: ${reason}. ` +
+			'Use a static array literal, for example: export const channels = [http()].',
 	);
 }
 
@@ -200,20 +178,18 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 		console.log(`[flue] Custom app entry: ${path.relative(root, appEntry) || appEntry}`);
 	}
 
-	// NOTE: agents without triggers are valid. They aren't exposed as HTTP
-	// routes in deployed builds, but the `flue run` CLI can still invoke them
-	// locally (see FLUE_MODE=local in the Node plugin). This supports the
-	// "CI-only agent" pattern documented in the README.
-	const webhookAgents = agents.filter((a) => a.triggers.webhook);
-	const triggerlessAgents = agents.filter((a) => !a.triggers.webhook);
+	const deployableAgents = agents.filter((a) => a.channelNames.length > 0);
+	const excludedAgents = agents.filter((a) => a.channelNames.length === 0);
 
 	console.log(`[flue] Found ${agents.length} agent(s): ${agents.map((a) => a.name).join(', ')}`);
-	if (webhookAgents.length > 0) {
-		console.log(`[flue] Webhook agents: ${webhookAgents.map((a) => a.name).join(', ')}`);
-	}
-	if (triggerlessAgents.length > 0) {
+	if (deployableAgents.length > 0) {
 		console.log(
-			`[flue] CLI-only agents (no HTTP route in deployed build): ${triggerlessAgents.map((a) => a.name).join(', ')}`,
+			`[flue] Channel agents: ${deployableAgents.map((a) => `${a.name} (${a.channelNames.join(', ')})`).join(', ')}`,
+		);
+	}
+	if (excludedAgents.length > 0) {
+		console.log(
+			`[flue] Excluded agents (no channels export): ${excludedAgents.map((a) => a.name).join(', ')}`,
 		);
 	}
 	console.log(
@@ -223,9 +199,9 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	fs.mkdirSync(output, { recursive: true });
 
 	const manifest = {
-		agents: agents.map((a) => ({
+		agents: deployableAgents.map((a) => ({
 			name: a.name,
-			triggers: a.triggers,
+			channels: a.channelNames,
 		})),
 	};
 	const manifestPath = path.join(output, 'manifest.json');
@@ -395,11 +371,11 @@ function discoverAgents(sourceRoot: string): AgentInfo[] {
 		.filter((f) => /\.(ts|js|mts|mjs)$/.test(f))
 		.map((f) => {
 			const filePath = path.join(agentsDir, f);
-			const { triggers } = parseAgentFile(filePath);
+			const { channelNames } = parseAgentFile(filePath);
 			return {
 				name: f.replace(/\.(ts|js|mts|mjs)$/, ''),
 				filePath,
-				triggers,
+				channelNames,
 			};
 		});
 }

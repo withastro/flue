@@ -1,7 +1,7 @@
-import { type FlueContext } from '@flue/runtime';
+import { http, type Agent, type AgentContext, type InboundMessage } from '@flue/runtime';
 import { getSandbox } from '@cloudflare/sandbox';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 /**
  * Assistant — Internal assistant agent.
@@ -15,12 +15,14 @@ export const triggers = { webhook: true };
  *   { "message": "Clone cloudflare/workers-sdk and fix the failing tests", "userId": "..." }
  *   { "message": "What version of Node.js is installed?", "userId": "..." }
  */
-export default async function ({ init, id, env, payload }: FlueContext) {
+export async function init({ spawn, id, env }: AgentContext): Promise<Agent> {
 	const sandbox = getSandbox(env.Sandbox, id);
-	const agent = await init({ sandbox, model: 'anthropic/claude-sonnet-4-6' });
+	return spawn({ sandbox, model: 'anthropic/claude-sonnet-4-6' });
+}
+
+export async function onMessage(agent: Agent, message: InboundMessage) {
 	const harness = agent.harness();
 	const session = await harness.session();
-	const message = payload.message ?? '';
-	const { text } = await session.prompt(message);
+	const { text } = await session.prompt(message.content);
 	return { reply: text };
 }

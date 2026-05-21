@@ -5,6 +5,7 @@ export type {
 	Agent,
 	AgentContext,
 	AgentMessageHandler,
+	AgentModule,
 	InboundMessage,
 	MessageSender,
 	DeliveryInput,

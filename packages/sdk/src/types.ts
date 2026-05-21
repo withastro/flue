@@ -26,7 +26,7 @@ export interface RunPointer {
 
 export interface AgentManifestEntry {
 	name: string;
-	triggers: { webhook?: boolean };
+	channels: string[];
 }
 
 export interface InstanceSummary {

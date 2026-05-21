@@ -15,7 +15,7 @@
  * `wrangler dev --remote` is the supported local path until Worker
  * Loader is supported in local-mode wrangler dev.
  */
-import type { FlueContext } from '@flue/runtime';
+import { http, type Agent, type AgentContext } from '@flue/runtime';
 import { WorkspaceFileSystem } from '@cloudflare/shell';
 import { createGit } from '@cloudflare/shell/git';
 import {
@@ -23,7 +23,7 @@ import {
 	getShellSandbox,
 } from '@flue/runtime/cloudflare';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 interface Env {
 	LOADER: WorkerLoader;
@@ -33,7 +33,7 @@ const HYDRATION_SENTINEL = '/.hydrated';
 const TARGET_REPO = 'https://github.com/FredKSchott/vinext-starter';
 const CLONE_DIR = '/repo';
 
-export default async function ({ init, env }: FlueContext<unknown, Env>) {
+export async function init({ spawn, env }: AgentContext<Env>): Promise<Agent> {
 	const workspace = getDefaultWorkspace();
 
 	// Clone once per agent instance. createGit() operates on any cf-shell
@@ -49,11 +49,14 @@ export default async function ({ init, env }: FlueContext<unknown, Env>) {
 		await workspace.writeFile(HYDRATION_SENTINEL, new Date().toISOString());
 	}
 
-	const agent = await init({
+	return spawn({
 		sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
 		model: 'cloudflare/@cf/moonshotai/kimi-k2.6',
 		cwd: CLONE_DIR,
 	});
+}
+
+export async function onMessage(agent: Agent) {
 	const harness = agent.harness();
 	const session = await harness.session();
 

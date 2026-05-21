@@ -17,7 +17,7 @@ import {
 import type { ModelConfig, ProviderSettings } from './types.ts';
 
 export type { FlueContextConfig, FlueContextInternal } from './client.ts';
-export { createFlueContext } from './client.ts';
+export { createAgentContext, createFlueContext } from './client.ts';
 export { parseSkillMarkdown } from './skill-frontmatter.ts';
 // `FlueRegistry` (Durable Object class) and `createCloudflareRunRegistry`
 // (registry client) live in the `@flue/runtime/cloudflare` subpath because
@@ -27,6 +27,8 @@ export { createDurableRunStore } from './cloudflare/run-store.ts';
 export { InMemoryDefaultWorkspaceStore } from './node/default-workspace-store.ts';
 export { InMemoryInstanceRunAdmission } from './node/instance-admission.ts';
 export { InMemoryRegistrationStore } from './node/registration-store.ts';
+export { createNodeAgentRequestRouter } from './node/route-agent-request.ts';
+export type { NodeAgentRequestRouterOptions } from './node/route-agent-request.ts';
 export { InMemoryRunRegistry } from './node/run-registry.ts';
 export { InMemoryRunStore } from './node/run-store.ts';
 export type { FlueRuntime } from './runtime/flue-app.ts';

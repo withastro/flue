@@ -17,18 +17,28 @@
 //   {}                                       — runs all single-invocation tests
 //
 // Catalog: https://developers.cloudflare.com/workers-ai/models/
-import { Type, defineTool, type FlueContext } from '@flue/runtime';
+import {
+	http,
+	Type,
+	defineTool,
+	type Agent,
+	type AgentContext,
+	type InboundMessage,
+} from '@flue/runtime';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 const MODEL = 'cloudflare/@cf/moonshotai/kimi-k2.6';
 
-export default async function ({ init, payload, id }: FlueContext) {
-	const action = (payload as { action?: string } | undefined)?.action;
-	const test = (payload as { test?: string } | undefined)?.test;
+export async function init({ spawn }: AgentContext): Promise<Agent> {
+	return spawn({ model: MODEL });
+}
 
-	const agent = await init({ model: MODEL });
+export async function onMessage(agent: Agent, message: InboundMessage) {
+	const action = typeof message.metadata.action === 'string' ? message.metadata.action : undefined;
+	const test = typeof message.metadata.test === 'string' ? message.metadata.test : undefined;
+
 	const harness = agent.harness();
 	const session = await harness.session();
 
@@ -37,11 +47,11 @@ export default async function ({ init, payload, id }: FlueContext) {
 	// Verifies the binding-backed provider doesn't lose context across
 	// process boundaries (DO storage round-trip).
 	if (action === 'set') {
-		const secret = (payload as { secret?: string }).secret ?? 'FLUE-CF-42';
+		const secret = typeof message.metadata.secret === 'string' ? message.metadata.secret : 'FLUE-CF-42';
 		await session.prompt(
 			`Remember this secret code: ${secret}. I will ask you about it later.`,
 		);
-		return { status: 'secret-set', id, sessionName: session.name, secret };
+		return { status: 'secret-set', id: agent.id, sessionName: session.name, secret };
 	}
 	if (action === 'recall') {
 		const { text } = await session.prompt(
@@ -49,7 +59,7 @@ export default async function ({ init, payload, id }: FlueContext) {
 		);
 		return {
 			status: 'recalled',
-			id,
+			id: agent.id,
 			sessionName: session.name,
 			recalled: text.trim(),
 		};

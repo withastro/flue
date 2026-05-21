@@ -245,7 +245,7 @@ export const AgentRouteParamSchema = v.object({ name: v.string(), id: v.string()
 
 export const AgentManifestEntrySchema = v.object({
 	name: v.string(),
-	triggers: v.object({ webhook: v.optional(v.boolean()) }),
+	channels: v.array(v.string()),
 });
 
 export const InstanceSummarySchema = v.object({

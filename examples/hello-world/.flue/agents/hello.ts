@@ -1,10 +1,16 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type Agent, type AgentContext } from '@flue/runtime';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, log }: FlueContext) {
-	const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+let helloLog: AgentContext['log'];
+
+export async function init({ spawn, log }: AgentContext): Promise<Agent> {
+	helloLog = log;
+	return spawn({ model: 'anthropic/claude-sonnet-4-6' });
+}
+
+export async function onMessage(agent: Agent) {
 	const harness = agent.harness();
 	const session = await harness.session();
 
@@ -12,7 +18,7 @@ export default async function ({ init, log }: FlueContext) {
 	const response = await session.prompt('What is 2 + 2? Return only the number.', {
 		result: v.object({ answer: v.number() }),
 	});
-	log.info('solved arithmetic prompt', {
+	helloLog.info('solved arithmetic prompt', {
 		answer: response.data.answer,
 		tokens: response.usage.totalTokens,
 		model: response.model.id,

@@ -1,10 +1,13 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type Agent, type AgentContext } from '@flue/runtime';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init }: FlueContext) {
-	const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+export async function init({ spawn }: AgentContext): Promise<Agent> {
+	return spawn({ model: 'anthropic/claude-sonnet-4-6' });
+}
+
+export async function onMessage(agent: Agent) {
 	const harness = agent.harness();
 	const session = await harness.session();
 

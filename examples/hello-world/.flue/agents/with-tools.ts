@@ -1,7 +1,7 @@
-import { Type, defineTool, type FlueContext } from '@flue/runtime';
+import { Type, defineTool, http, type Agent, type AgentContext } from '@flue/runtime';
 import { Bash, InMemoryFs } from 'just-bash';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 /**
  * Custom tools + delegated agent tool test.
@@ -11,10 +11,13 @@ export const triggers = { webhook: true };
  * - The LLM can call custom tools and receives the result
  * - The built-in task tool can delegate to another agent rooted at a different cwd
  */
-export default async function ({ init }: FlueContext) {
+export async function init({ spawn }: AgentContext): Promise<Agent> {
 	const fs = new InMemoryFs();
 	const sandbox = () => new Bash({ fs, network: { dangerouslyAllowFullInternetAccess: true } });
-	const agent = await init({ sandbox, model: 'anthropic/claude-sonnet-4-6' });
+	return spawn({ sandbox, model: 'anthropic/claude-sonnet-4-6' });
+}
+
+export async function onMessage(agent: Agent) {
 	const harness = agent.harness();
 	const session = await harness.session();
 

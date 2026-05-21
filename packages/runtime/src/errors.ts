@@ -287,31 +287,12 @@ export class AgentNotFoundError extends FlueHttpError {
 	}
 }
 
-export class AgentNotWebhookError extends FlueHttpError {
-	constructor({ name }: { name: string }) {
-		super({
-			type: 'agent_not_webhook',
-			message: `Agent "${name}" is not web-accessible.`,
-			details: `This endpoint is not exposed over HTTP.`,
-			// Dev-only: source-code-level fix instructions for the agent
-			// author. The HTTP caller can't act on this.
-			dev:
-				`This agent has no webhook trigger configured. ` +
-				`To expose it, add a webhook trigger to its definition (\`triggers: { webhook: true }\`). ` +
-				`Trigger-less agents remain invokable via "flue run" in local mode.`,
-			status: 404,
-		});
-	}
-}
-
 export class RouteNotFoundError extends FlueHttpError {
 	constructor({ method, path }: { method: string; path: string }) {
 		super({
 			type: 'route_not_found',
 			message: `No route matches ${method} ${path}.`,
-			// The webhook URL shape is part of the public contract, so it's
-			// safe to mention. We do NOT enumerate other registered routes.
-			details: `Webhook agents are served at POST /agents/<name>/<id>.`,
+			details: `HTTP-channel agents are served at POST /agents/<name>/<id>.`,
 			dev: '',
 			status: 404,
 		});
@@ -370,6 +351,18 @@ export class AgentBusyError extends Error {
 	constructor({ name, id }: { name: string; id: string }) {
 		super(`[flue] Agent "${name}/${id}" already has a send() operation in flight for this run.`);
 		this.name = 'AgentBusyError';
+	}
+}
+
+export class MessageQueueFullHttpError extends FlueHttpError {
+	constructor({ name, id }: { name: string; id: string }) {
+		super({
+			type: 'message_queue_full',
+			message: `Agent instance "${name}/${id}" cannot accept another message right now.`,
+			details: 'Wait for queued work to finish, then retry the request.',
+			dev: '',
+			status: 429,
+		});
 	}
 }
 
@@ -659,12 +652,8 @@ export interface ValidateAgentRequestOptions {
 	name: string;
 	id: string;
 	registeredAgents: readonly string[];
-	webhookAgents: readonly string[];
-	/**
-	 * If true, skip the webhook-accessibility check. Used by `flue run` /
-	 * dev local mode where trigger-less agents are also invokable.
-	 */
-	allowNonWebhook?: boolean;
+	httpAgentNames: readonly string[];
+	allowUnchanneledAgents?: boolean;
 }
 
 export function validateAgentRequest(opts: ValidateAgentRequestOptions): void {
@@ -673,13 +662,13 @@ export function validateAgentRequest(opts: ValidateAgentRequestOptions): void {
 	}
 	if (opts.name.trim() === '' || opts.id.trim() === '') {
 		throw new InvalidRequestError({
-			reason: 'Webhook URLs must have the shape /agents/<name>/<id> with non-empty segments.',
+			reason: 'Agent URLs must have the shape /agents/<name>/<id> with non-empty segments.',
 		});
 	}
 	if (!opts.registeredAgents.includes(opts.name)) {
 		throw new AgentNotFoundError({ name: opts.name, available: opts.registeredAgents });
 	}
-	if (!opts.allowNonWebhook && !opts.webhookAgents.includes(opts.name)) {
-		throw new AgentNotWebhookError({ name: opts.name });
+	if (!opts.allowUnchanneledAgents && !opts.httpAgentNames.includes(opts.name)) {
+		throw new AgentNotFoundError({ name: opts.name, available: opts.registeredAgents });
 	}
 }

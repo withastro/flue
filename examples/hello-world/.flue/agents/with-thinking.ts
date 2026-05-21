@@ -1,7 +1,7 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type Agent, type AgentContext } from '@flue/runtime';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 /**
  * Demonstrates the two layers at which `thinkingLevel` can be set:
@@ -10,12 +10,15 @@ export const triggers = { webhook: true };
  *
  * One deployment, multiple reasoning tiers.
  */
-export default async function ({ init }: FlueContext) {
-	const agent = await init({
+export async function init({ spawn }: AgentContext): Promise<Agent> {
+	return spawn({
 		model: 'anthropic/claude-haiku-4-5',
 		// Harness default: cheap classifier-style calls.
 		thinkingLevel: 'low',
 	});
+}
+
+export async function onMessage(agent: Agent) {
 	const harness = agent.harness();
 	const session = await harness.session();
 

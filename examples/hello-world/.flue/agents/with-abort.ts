@@ -1,6 +1,6 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type Agent, type AgentContext } from '@flue/runtime';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 /**
  * Cancellation test.
@@ -11,8 +11,11 @@ export const triggers = { webhook: true };
  * - pre-aborted signals reject before any work
  * - aborts tear down in-flight bash tool commands
  */
-export default async function ({ init }: FlueContext) {
-	const agent = await init({ model: 'anthropic/claude-haiku-4-5' });
+export async function init({ spawn }: AgentContext): Promise<Agent> {
+	return spawn({ model: 'anthropic/claude-haiku-4-5' });
+}
+
+export async function onMessage(agent: Agent) {
 	const harness = agent.harness();
 	const session = await harness.session();
 

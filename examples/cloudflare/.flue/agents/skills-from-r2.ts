@@ -25,7 +25,7 @@
  * See the example's README.md for the full setup, the seed-r2.sh helper,
  * and the migration / fallback options if you don't have Loader access.
  */
-import type { FlueContext } from '@flue/runtime';
+import { http, type Agent, type AgentContext } from '@flue/runtime';
 import {
 	getDefaultWorkspace,
 	getShellSandbox,
@@ -33,7 +33,7 @@ import {
 } from '@flue/runtime/cloudflare';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 interface Env {
 	KNOWLEDGE_BASE: R2Bucket;
@@ -42,7 +42,7 @@ interface Env {
 
 const HYDRATION_SENTINEL = '/.hydrated';
 
-export default async function ({ init, env }: FlueContext<unknown, Env>) {
+export async function init({ spawn, env }: AgentContext<Env>): Promise<Agent> {
 	const workspace = getDefaultWorkspace();
 
 	// Hydrate once per agent instance. Bump the sentinel key (e.g.
@@ -53,10 +53,13 @@ export default async function ({ init, env }: FlueContext<unknown, Env>) {
 		await hydrateFromBucket(workspace, env.KNOWLEDGE_BASE);
 		await workspace.writeFile(HYDRATION_SENTINEL, new Date().toISOString());
 	}
-	const agent = await init({
+	return spawn({
 		sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
 		model: 'cloudflare/@cf/moonshotai/kimi-k2.6',
 	});
+}
+
+export async function onMessage(agent: Agent) {
 	const harness = agent.harness();
 	const session = await harness.session();
 

@@ -1,6 +1,6 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type Agent, type AgentContext } from '@flue/runtime';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 /**
  * Smoke-test agent for `registerProvider(...)`. Verifies that
@@ -13,14 +13,15 @@ export const triggers = { webhook: true };
  * exercise the resolution path and would throw `Unknown model "ollama/..."`
  * if the registration failed to land.
  */
-export default async function ({ init }: FlueContext) {
-	const agent = await init({ model: 'ollama/llama3.1:8b' });
+export async function init({ spawn }: AgentContext): Promise<Agent> {
+	return spawn({ model: 'ollama/llama3.1:8b' });
+}
+
+export async function onMessage(agent: Agent) {
 	const harness = agent.harness();
 	const session = await harness.session();
 	return {
 		ok: true,
-		// `session.model` isn't a public field, so we just confirm we got
-		// past `init()` and the session was constructed.
 		hasSession: typeof session === 'object',
 	};
 }

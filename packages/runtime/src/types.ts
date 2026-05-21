@@ -384,6 +384,12 @@ export type AgentMessageHandler = (
 	message: InboundMessage,
 ) => unknown | Promise<unknown>;
 
+export interface AgentModule {
+	init(ctx: AgentContext): Promise<Agent>;
+	onMessage?: AgentMessageHandler;
+	channels?: Channel[];
+}
+
 // ─── Flue Context (passed to agent handlers) ───────────────────────────────
 
 /**

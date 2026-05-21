@@ -252,8 +252,8 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			handlers: {
 				hello: async (_ctx) => ({ greeting: 'hi' }),
 			},
@@ -372,8 +372,8 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			handlers: {
 				hello: async (ctx) => {
 					const agent = await ctx.init({ model: false });
@@ -420,8 +420,8 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		const runStore = new InMemoryRunStore();
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			handlers: {
 				hello: async () => ({ bad: 1n }),
 			},
@@ -460,8 +460,8 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			handlers: {
 				hello: async (ctx) => {
 					const agent = await ctx.init({ model: false });
@@ -513,8 +513,8 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			handlers: {
 				hello: async (ctx) => {
 					const agent = await ctx.init({ model: false });
@@ -574,8 +574,8 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			handlers: { hello: async () => wait },
 			createContext: (agentName, id, runId, payload, req) =>
 				createFlueContext({
@@ -609,8 +609,8 @@ describe('Bare /runs/:runId routes via flue()', () => {
 	it('surfaces a structured 501 envelope when runRegistry is not configured', async () => {
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			handlers: { hello: async () => null },
 			createContext: (agentName, id, runId, payload, req) =>
 				createFlueContext({
@@ -650,8 +650,8 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			runtimeVersion: '9.9.9',
-			webhookAgents: [],
-			allowNonWebhook: false,
+			httpAgentNames: [],
+			allowUnchanneledAgents: false,
 			handlers: {},
 			createContext: (() => null) as never,
 			runStore: new InMemoryRunStore(),
@@ -667,8 +667,8 @@ describe('Bare /runs/:runId routes via flue()', () => {
 	it('returns 405 for non-GET run inspection methods', async () => {
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
+			httpAgentNames: [],
+			allowUnchanneledAgents: false,
 			handlers: {},
 			createContext: (() => null) as never,
 			runStore: new InMemoryRunStore(),
@@ -688,9 +688,9 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'cloudflare',
-			manifest: { agents: [{ name: 'hello', triggers: { webhook: true } }] },
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			manifest: { agents: [{ name: 'hello', channels: ['http'] }] },
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			routeAgentRequest: async (request) => {
 				routedBodies.push(await request.text());
 				return Response.json({ ok: true });
@@ -1193,8 +1193,8 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			handlers: {
 				hello: async (ctx) => {
 					const harnessName = String((ctx.payload as { harness?: string }).harness ?? 'default');
@@ -1272,8 +1272,8 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			handlers: {
 				hello: async (ctx) => {
 					await ctx.register(async () => {
@@ -1357,8 +1357,8 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			handlers: {
 				hello: async (ctx) => {
 					ctx.log.info('before return');
@@ -1449,12 +1449,12 @@ describe('admin() routes', () => {
 			runtimeVersion: '9.9.9',
 			manifest: {
 				agents: [
-					{ name: 'hello', triggers: { webhook: true } },
-					{ name: 'offline', triggers: {} },
+					{ name: 'hello', channels: ['http'] },
+					{ name: 'offline', channels: [] },
 				],
 			},
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			handlers: { hello: async () => ({ ok: true }) },
 			createContext: (agentName, id, runId, payload, req) =>
 				createFlueContext({
@@ -1537,9 +1537,9 @@ describe('admin() routes', () => {
 		configureFlueRuntime({
 			target: 'cloudflare',
 			runtimeVersion: '9.9.9',
-			manifest: { agents: [{ name: 'hello', triggers: { webhook: true } }] },
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			manifest: { agents: [{ name: 'hello', channels: ['http'] }] },
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			createRunRegistryForRequest: () => ({
 				recordRunStart: async () => {},
 				recordRunEnd: async () => {},
@@ -1573,9 +1573,9 @@ describe('admin() routes', () => {
 		configureFlueRuntime({
 			target: 'cloudflare',
 			runtimeVersion: '9.9.9',
-			manifest: { agents: [{ name: 'hello', triggers: { webhook: true } }] },
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
+			manifest: { agents: [{ name: 'hello', channels: ['http'] }] },
+			httpAgentNames: ['hello'],
+			allowUnchanneledAgents: false,
 			createRunRegistryForRequest: () => ({
 				recordRunStart: async () => {},
 				recordRunEnd: async () => {},

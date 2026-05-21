@@ -10,12 +10,12 @@
 export interface AgentInfo {
 	name: string;
 	filePath: string;
-	triggers: { webhook?: boolean };
+	channelNames: string[];
 }
 
 export interface BuildContext {
 	agents: AgentInfo[];
-	manifest: { agents: Array<{ name: string; triggers: { webhook?: boolean } }> };
+	manifest: { agents: Array<{ name: string; channels: string[] }> };
 	/**
 	 * The project root — typically the user's cwd. Source files
 	 * (`agents/`) live here directly, or under `<root>/.flue/`

@@ -1,15 +1,18 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type Agent, type AgentContext } from '@flue/runtime';
 import * as v from 'valibot';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 // A 1×1 fully-yellow PNG. The model should describe a tiny solid-yellow image.
 const TEST_PNG_BASE64 =
 	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
 
-export default async function ({ init }: FlueContext) {
+export async function init({ spawn }: AgentContext): Promise<Agent> {
 	// Sonnet has more reliable vision than Haiku for tiny test images.
-	const agent = await init({ model: 'anthropic/claude-sonnet-4-6' });
+	return spawn({ model: 'anthropic/claude-sonnet-4-6' });
+}
+
+export async function onMessage(agent: Agent) {
 	const harness = agent.harness();
 	const session = await harness.session();
 

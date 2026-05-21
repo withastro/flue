@@ -9,6 +9,7 @@ import { bashFactoryToSessionEnv, createCwdSessionEnv, isBashLike } from './sand
 import type {
 	Agent,
 	AgentConfig,
+	AgentContext,
 	AgentInit,
 	BashFactory,
 	FlueContext,
@@ -51,6 +52,30 @@ export interface FlueContextInternal extends FlueContext {
 	subscribeEvent(callback: FlueEventCallback): () => void;
 	setEventCallback(callback: FlueEventCallback | undefined): void;
 	waitForIdle(): Promise<void>;
+}
+
+export function createAgentContext(
+	ctx: FlueContextInternal,
+	metadata: Record<string, unknown>,
+): AgentContext {
+	return {
+		get id() {
+			return ctx.id;
+		},
+		get env() {
+			return ctx.env;
+		},
+		get log() {
+			return ctx.log;
+		},
+		metadata,
+		spawn(options) {
+			return ctx.init(options);
+		},
+		register(callback) {
+			return ctx.register(callback);
+		},
+	};
 }
 
 export function createFlueContext(config: FlueContextConfig): FlueContextInternal {

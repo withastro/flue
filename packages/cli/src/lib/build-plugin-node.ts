@@ -12,28 +12,24 @@ export class NodePlugin implements BuildPlugin {
 		const manifestJson = JSON.stringify(ctx.manifest);
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 
-		const webhookAgents = agents.filter((a) => a.triggers.webhook);
+		const channelAgents = agents.filter((a) => a.channelNames.length > 0);
+		const httpAgents = agents.filter((a) => a.channelNames.includes('http'));
 
-		// Generate import statements for all agent handlers. We register every
-		// agent — including trigger-less ones — in the handler map so that the
-		// CLI's `flue run` can invoke them in local mode. The `webhookAgents`
-		// list below gates which are reachable over public HTTP when deployed.
-		const agentImports = agents
+		// Generate import statements only for channel-backed deployable agents.
+		const agentImports = channelAgents
 			.map((a, index) => {
-				const varName = agentVarName(a.name, index);
+				const moduleVarName = agentModuleVarName(a.name, index);
 				const filePath = a.filePath.replace(/\\/g, '/');
-				return `import ${varName} from '${filePath}';`;
+				return `import * as ${moduleVarName} from '${filePath}';`;
 			})
 			.join('\n');
 
-		// Build the handler map — includes ALL agents, not just webhook ones.
-		const handlerMapEntries = agents
-			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)},`)
+		const handlerMapEntries = '';
+		const agentModuleEntries = channelAgents
+			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentModuleVarName(a.name, index)},`)
 			.join('\n');
 
-		// Webhook agent names. `configureFlueRuntime` snapshots whatever
-		// iterable is handed to it, so a plain array literal is fine.
-		const webhookNames = JSON.stringify(webhookAgents.map((a) => a.name));
+		const httpNames = JSON.stringify(httpAgents.map((a) => a.name));
 
 		// User-supplied app.ts (if any). The generated entry imports the user's
 		// default export and dispatches all requests through `app.fetch`. When
@@ -58,6 +54,7 @@ import {
   InMemoryRunStore,
   InMemoryRunRegistry,
   createRunSubscriberRegistry,
+  createNodeAgentRequestRouter,
   bashFactoryToSessionEnv,
   resolveModel,
   configureFlueRuntime,
@@ -75,14 +72,11 @@ const handlers = {
 ${handlerMapEntries}
 };
 
-// Webhook-accessible agent names.
-const webhookAgentNames = ${webhookNames};
+const agentModules = {
+${agentModuleEntries}
+};
 
-// When the CLI starts this server via \`flue run\`, it sets FLUE_MODE=local.
-// In local mode the HTTP route accepts any registered agent (including
-// trigger-less CI-only agents). In any other mode the route is restricted to
-// agents with \`webhook: true\`, preventing accidental public exposure of
-// agents that the user only intended to invoke from their CI pipeline.
+const httpAgentNames = ${httpNames};
 const isLocalMode = process.env.FLUE_MODE === 'local';
 
 // ─── Sandbox Environments ───────────────────────────────────────────────────
@@ -126,6 +120,26 @@ function createContextForRequest(agentName, id, runId, payload, req) {
   });
 }
 
+const routeNodeAgentRequest = createNodeAgentRequestRouter({
+  agentModules,
+  createContext({ agentName, instanceId, runId, payload, request }) {
+    return {
+      agentName,
+      id: instanceId,
+      runId,
+      payload,
+      env: process.env,
+      req: request,
+      agentConfig: {
+        systemPrompt, skills, model: undefined, resolveModel,
+      },
+      createDefaultEnv,
+      defaultStore,
+      registrationStore,
+    };
+  },
+});
+
 // ─── Runtime seed ───────────────────────────────────────────────────────────
 
 // Seed the public flue() sub-app with everything it needs to dispatch agent
@@ -138,9 +152,11 @@ configureFlueRuntime({
   target: 'node',
   runtimeVersion: ${runtimeVersion},
   manifest: ${manifestJson},
-  webhookAgents: webhookAgentNames,
-  allowNonWebhook: isLocalMode,
+  httpAgentNames,
+  allowUnchanneledAgents: isLocalMode,
   handlers,
+  agentModules,
+  routeNodeAgentRequest,
   createContext: createContextForRequest,
   runStore,
   instanceAdmission,
@@ -181,11 +197,9 @@ const server = serve({
 });
 console.log('[flue] Server listening on http://localhost:' + port);
 if (isLocalMode) {
-  console.log('[flue] Mode: local (all agents invokable, including trigger-less)');
-  console.log('[flue] Available agents: ' + ${JSON.stringify(agents.map((a) => a.name).join(', '))});
-} else {
-  console.log('[flue] Available agents: ' + ${JSON.stringify(webhookAgents.map((a) => a.name).join(', '))});
+  console.log('[flue] Mode: local');
 }
+console.log('[flue] Available agents: ' + ${JSON.stringify(httpAgents.map((a) => a.name).join(', '))});
 
 process.on('SIGINT', () => { server.close(); process.exit(0); });
 process.on('SIGTERM', () => { server.close(); process.exit(0); });
@@ -205,7 +219,7 @@ process.on('SIGTERM', () => { server.close(); process.exit(0); });
 	}
 }
 
-function agentVarName(name: string, index: number): string {
+function agentModuleVarName(name: string, index: number): string {
 	const readableName = name.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'agent';
-	return `handler_${readableName}_${index}`;
+	return `agent_module_${readableName}_${index}`;
 }

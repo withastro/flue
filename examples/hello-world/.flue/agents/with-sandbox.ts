@@ -1,18 +1,21 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type Agent, type AgentContext } from '@flue/runtime';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init }: FlueContext) {
+export async function init({ spawn }: AgentContext): Promise<Agent> {
 	// User owns the Daytona SDK relationship — create and configure the sandbox directly
 	const client = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
 	const sandbox = await client.create();
 
-	const agent = await init({
+	return spawn({
 		sandbox: daytona(sandbox),
 		model: 'anthropic/claude-sonnet-4-6',
 	});
+}
+
+export async function onMessage(agent: Agent) {
 	const harness = agent.harness();
 	const session = await harness.session();
 

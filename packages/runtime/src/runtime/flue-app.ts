@@ -26,6 +26,7 @@ import {
 } from './handle-agent.ts';
 import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-routes.ts';
 import type { InstanceRunAdmission } from './instance-admission.ts';
+import type { AgentModule } from '../types.ts';
 import type { RunRegistry } from './run-registry.ts';
 import type { RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
@@ -43,34 +44,33 @@ import {
 export interface FlueRuntime {
 	target: 'node' | 'cloudflare';
 
-	/**
-	 * Names of agents reachable over HTTP when not in local mode.
-	 * Trigger-less agents are excluded from this list and gate access
-	 * via {@link FlueRuntime.allowNonWebhook}.
-	 */
-	webhookAgents: ReadonlyArray<string>;
+	/** Names of agents exposing an HTTP channel. */
+	httpAgentNames: ReadonlyArray<string>;
 
 	/**
-	 * If true, the agent route accepts any registered agent — including
-	 * trigger-less ones. Used by the Node target when `FLUE_MODE=local`
-	 * (set by `flue run` and `flue dev --target node`). Always false on
-	 * Cloudflare today.
+	 * Local-only escape hatch for routing channel-less agents during development.
 	 */
-	allowNonWebhook: boolean;
+	allowUnchanneledAgents: boolean;
 
 	// ─── Node-only ──────────────────────────────────────────────────────────
 
-	/**
-	 * Map of agent name → handler function. Includes ALL agents (webhook
-	 * and trigger-less); {@link webhookAgents} gates HTTP exposure when
-	 * not in local mode. Required when {@link target} is `'node'`.
-	 */
+	/** Map of agent name → legacy handler function for transitional fallback routing. */
 	handlers?: Record<string, AgentHandler>;
+
+	/** New init/onMessage agent modules. Used by the dispatcher-backed Node path. */
+	agentModules?: Record<string, AgentModule>;
 
 	/**
 	 * Per-target context factory. Required when {@link target} is `'node'`.
 	 */
 	createContext?: CreateContextFn;
+
+	/** Optional dispatcher-backed Node agent request router. */
+	routeNodeAgentRequest?: (input: {
+		request: Request;
+		agentName: string;
+		instanceId: string;
+	}) => Promise<Response>;
 
 	/** Optional Node webhook execution wrapper. Defaults to direct invocation. */
 	startWebhook?: StartWebhookFn;
@@ -121,7 +121,7 @@ export interface FlueRuntime {
 }
 
 export interface FlueManifest {
-	agents: Array<{ name: string; triggers: { webhook?: boolean } }>;
+	agents: Array<{ name: string; channels: string[] }>;
 }
 
 const RUN_ROUTES_BY_ID: ReadonlyArray<readonly [string, HandleRunRouteOptions['action']]> = [
@@ -342,11 +342,18 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 		name,
 		id,
 		registeredAgents: registeredAgentsFor(rt),
-		webhookAgents: rt.webhookAgents,
-		allowNonWebhook: rt.allowNonWebhook,
+		httpAgentNames: rt.httpAgentNames,
+		allowUnchanneledAgents: rt.allowUnchanneledAgents,
 	});
 
 	if (rt.target === 'node') {
+		if (rt.routeNodeAgentRequest && rt.agentModules?.[name]) {
+			return rt.routeNodeAgentRequest({
+				request: c.req.raw,
+				agentName: name,
+				instanceId: id,
+			});
+		}
 		const handler = rt.handlers?.[name];
 		const createContext = rt.createContext;
 		if (!handler || !createContext) {
@@ -478,13 +485,14 @@ function normalizeRunRequest(
  * Compute the set of agent names considered "registered" for purposes
  * of the agent route's name-validity check.
  *
- *   - Node: every entry in the handler map (including trigger-less
- *     agents — `allowNonWebhook` controls whether they're actually
- *     reachable).
+ *   - Node: channel-backed agents, plus any local-only unchanneled agents
+ *     when `allowUnchanneledAgents` is enabled.
  *   - Cloudflare: only webhook agents have generated DO classes, so
  *     non-webhook names have no valid landing target.
  */
 function registeredAgentsFor(rt: FlueRuntime): readonly string[] {
-	if (rt.target === 'node') return Object.keys(rt.handlers ?? {});
-	return rt.webhookAgents;
+	if (rt.target === 'node' && rt.allowUnchanneledAgents) {
+		return [...new Set([...Object.keys(rt.handlers ?? {}), ...Object.keys(rt.agentModules ?? {})])];
+	}
+	return rt.httpAgentNames;
 }

@@ -1,7 +1,7 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type Agent, type AgentContext } from '@flue/runtime';
 import { Bash, InMemoryFs } from 'just-bash';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 /**
  * Filesystem tests.
@@ -12,10 +12,13 @@ export const triggers = { webhook: true };
  * - Writes are visible within the same session (via shell)
  * - Shell can create files (non-LLM path)
  */
-export default async function ({ init }: FlueContext) {
+export async function init({ spawn }: AgentContext): Promise<Agent> {
 	const fs = new InMemoryFs();
 	const sandbox = () => new Bash({ fs });
-	const agent = await init({ sandbox, model: 'anthropic/claude-sonnet-4-6' });
+	return spawn({ sandbox, model: 'anthropic/claude-sonnet-4-6' });
+}
+
+export async function onMessage(agent: Agent) {
 	const harness = agent.harness();
 	const session = await harness.session();
 

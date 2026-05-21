@@ -52,17 +52,17 @@ export class CloudflarePlugin implements BuildPlugin {
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 		validateCloudflareAgentNames(ctx);
 
-		const webhookAgents = agents.filter((a) => a.triggers.webhook);
+		const httpAgents = agents.filter((a) => a.channelNames.includes('http'));
 
-		const agentImports = agents
+		const agentImports = httpAgents
 			.map((a, index) => {
 				const varName = agentVarName(a.name, index);
 				const filePath = a.filePath.replace(/\\/g, '/');
-				return `import ${varName} from '${filePath}';`;
+				return `import * as ${varName} from '${filePath}';`;
 			})
 			.join('\n');
 
-		const agentClasses = webhookAgents
+		const agentClasses = httpAgents
 			.map((a) => {
 				const className = agentClassName(a.name);
 				const handlerVar = agentVarName(a.name, agents.indexOf(a));
@@ -155,7 +155,7 @@ if (!hasRegisteredProvider('cloudflare')) {
 const skills = {};
 const systemPrompt = '';
 
-const webhookAgentNames = ${JSON.stringify(webhookAgents.map((a) => a.name))};
+const httpAgentNames = ${JSON.stringify(httpAgents.map((a) => a.name))};
 
 // ─── Sandbox Environments ───────────────────────────────────────────────────
 
@@ -409,10 +409,8 @@ configureFlueRuntime({
   target: 'cloudflare',
   runtimeVersion: ${runtimeVersion},
   manifest: ${manifestJson},
-  webhookAgents: webhookAgentNames,
-  // Cloudflare deploys never run in local mode — the trigger-less agents
-  // simply have no DO class to land in.
-  allowNonWebhook: false,
+  httpAgentNames,
+  allowUnchanneledAgents: false,
   routeAgentRequest: (request, env) => routeAgentRequest(request, env),
   createRunRegistryForRequest,
   routeRunRequest: async (request, reqEnv, target) => {
@@ -455,7 +453,7 @@ export default {
 
 	async additionalOutputs(ctx: BuildContext): Promise<Record<string, string>> {
 		const outputs: Record<string, string> = {};
-		const webhookAgents = ctx.agents.filter((a) => a.triggers.webhook);
+		const httpAgents = ctx.agents.filter((a) => a.channelNames.includes('http'));
 
 		// Per-agent DO bindings: one per webhook agent. Flue no longer forces a
 		// `Sandbox` binding, container entry, or Dockerfile — users who want
@@ -463,7 +461,7 @@ export default {
 		// wrangler.jsonc (preserved via the merge below). Flue only automates
 		// the `export { Sandbox as ... }` re-export in the bundle (see
 		// generateEntryPoint).
-		const flueBindings = webhookAgents.map((a) => ({
+		const flueBindings = httpAgents.map((a) => ({
 			class_name: agentClassName(a.name),
 			name: agentClassName(a.name),
 		}));

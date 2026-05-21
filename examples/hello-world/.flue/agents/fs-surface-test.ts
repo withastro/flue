@@ -1,19 +1,22 @@
-import type { FlueContext } from '@flue/runtime';
+import { http, type Agent, type AgentContext } from '@flue/runtime';
 import { Bash, InMemoryFs } from 'just-bash';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
 /**
  * Smoke test for the public `agent.fs` / `session.fs` surface.
  * Exercises only SDK-level fs primitives (no LLM calls), so it runs
  * without provider credentials. Used to verify the new FlueFs wiring.
  */
-export default async function ({ init }: FlueContext) {
+export async function init({ spawn }: AgentContext): Promise<Agent> {
 	const fs = new InMemoryFs();
 	const sandbox = () => new Bash({ fs });
 	// `model` is required by init(), but this test never makes an LLM call
 	// — pick the cheapest model so accidental invocation isn't expensive.
-	const agent = await init({ sandbox, model: 'anthropic/claude-haiku-4-5' });
+	return spawn({ sandbox, model: 'anthropic/claude-haiku-4-5' });
+}
+
+export async function onMessage(agent: Agent) {
 	const harness = agent.harness();
 	const session = await harness.session();
 
