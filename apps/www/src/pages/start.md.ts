@@ -47,9 +47,9 @@ Then, determine the following. Ask the user only for information you do not alre
    - Confirm with the user that they want to implement there. Mention the inferred layout in that confirmation. For example: "Use the current directory with the \`.flue\` layout because it already has files?"
    - If they choose a different location, inspect that directory instead and infer the layout again using the same layout rules.
    - Project layout rules:
-     - Directory does not exist: create it and use the root layout: \`./agents/\` and \`./roles/\`.
-     - Directory exists and is empty: use the root layout: \`./agents/\` and \`./roles/\`.
-     - Directory exists and already has files: use the \`.flue\` layout: \`./.flue/agents/\` and \`./.flue/roles/\`.
+     - Directory does not exist: create it and use the root layout: \`./agents/\`.
+     - Directory exists and is empty: use the root layout: \`./agents/\`.
+     - Directory exists and already has files: use the \`.flue\` layout: \`./.flue/agents/\`.
 3. Where should it deploy? For example: Cloudflare Workers, Node.js, GitHub Actions, GitLab CI/CD, Vercel, Fly.io.
    - Available deploy guides:
 ${await getDeployGuideList()}

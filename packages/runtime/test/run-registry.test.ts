@@ -261,7 +261,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 					agentConfig: {
 						systemPrompt: '',
 						skills: {},
-						roles: {},
 						model: undefined,
 						resolveModel: () => undefined,
 					},
@@ -372,7 +371,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 					agentConfig: {
 						systemPrompt: '',
 						skills: {},
-						roles: {},
 						model: undefined,
 						resolveModel: () => undefined,
 					},
@@ -485,7 +483,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 					agentConfig: {
 						systemPrompt: '',
 						skills: {},
-						roles: {},
 						model: undefined,
 						resolveModel: () => undefined,
 					},
@@ -574,7 +571,6 @@ describe('admin() routes', () => {
 					agentConfig: {
 						systemPrompt: '',
 						skills: {},
-						roles: {},
 						model: undefined,
 						resolveModel: () => undefined,
 					},

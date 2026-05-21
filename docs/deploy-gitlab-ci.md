@@ -2,7 +2,7 @@
 
 Build and run Flue agents in GitLab CI/CD pipelines. This guide walks you through creating your first agent, running it locally with the CLI, and wiring it into a pipeline.
 
-By the end, you will have a Flue agent running inside GitLab CI/CD, and you will know how to use local sandbox context, external CLIs, roles, skills, and typed results to build CI workflows.
+By the end, you will have a Flue agent running inside GitLab CI/CD, and you will know how to use local sandbox context, external CLIs, subagents, skills, and typed results to build CI workflows.
 
 ## Hello World
 
@@ -202,27 +202,19 @@ export default async function ({ init, payload }: FlueContext) {
 
 If you want a tighter boundary — the agent can call a specific operation but never see the underlying token — wrap the operation as a custom tool with `init({ tools: [...] })`. The tool implementation reads the secret from `process.env`; the agent only sees the tool's parameters and result.
 
-### Roles
+### Subagents
 
-Roles are agent personas that shape behavior across prompts. They live alongside your agents under `./.flue/roles/` and ship with the deployed agent:
-
-`.flue/roles/reviewer.md`:
-
-```markdown
----
-description: A careful code reviewer focused on correctness and security
----
-
-You are a senior code reviewer. Focus on correctness, security implications,
-and adherence to the project's coding standards. Be direct and specific in
-your feedback.
-```
-
-Use a role by passing its name to `prompt()`:
+Named subagents can run focused detached tasks:
 
 ```typescript
-const { data } = await session.prompt(`Review this MR:\n${diff}`, {
-  role: 'reviewer',
+const reviewer = defineAgent({
+  name: 'reviewer',
+  instructions: 'Focus on correctness, security, and project standards.',
+});
+const harness = await init({ model: 'anthropic/claude-sonnet-4-6', subagents: [reviewer] });
+const session = await harness.session();
+const { data } = await session.task(`Review this MR:\n${diff}`, {
+  agent: 'reviewer',
   result: v.object({ approved: v.boolean(), comments: v.array(v.string()) }),
 });
 ```

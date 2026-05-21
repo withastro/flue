@@ -10,9 +10,13 @@
 
 - **`defineAgent()` reusable agent definitions.** `@flue/runtime` now exports `defineAgent()` and the `AgentDefinition` type for validated module-scope agent definitions ahead of reusable agent-profile work.
 
+- **Named subagent delegation.** Pass named `defineAgent()` values through `init({ subagents })`, then delegate detached work with `task({ agent })`. Task events include the selected agent name and connector tool factories receive declared subagents.
+
 - **Cloudflare shell sandbox.** Added `getShellSandbox({ workspace, loader })`, `getDefaultWorkspace()`, and `hydrateFromBucket()` from `@flue/runtime/cloudflare`. The new sandbox wires `@cloudflare/shell` Workspaces into Flue through a codemode `code` tool backed by a Worker Loader binding. Agents use `state.*` inside the `code` tool instead of bash/read/write/grep/glob. Use `@cloudflare/shell` directly for primitives like `Workspace`, `WorkspaceFileSystem`, and `createGit`.
 
 ### Breaking Changes
+
+- **Legacy roles are removed.** Use named subagents and `task({ agent })` instead of role files or role options.
 
 - **`getVirtualSandbox()` now throws with a migration message.** The previous API described R2 as if it were mounted directly as the harness filesystem, but `@cloudflare/shell` Workspaces are SQLite-indexed filesystems with optional R2 blob spillover; raw bucket keys uploaded outside Workspace were invisible. Migrate bucket-backed agents to `getShellSandbox({ workspace, loader })` plus `hydrateFromBucket(workspace, env.BUCKET)` before `init()`. If you used zero-arg `getVirtualSandbox()`, remove it and omit `sandbox` from `init()` to use Flue's default in-memory sandbox.
 

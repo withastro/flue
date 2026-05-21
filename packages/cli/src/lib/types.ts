@@ -7,8 +7,6 @@
  * build/dev tooling moved from `@flue/sdk` into `@flue/cli` so the runtime
  * package would stop carrying tooling types.
  */
-import type { Role } from '@flue/runtime';
-
 export interface AgentInfo {
 	name: string;
 	filePath: string;
@@ -18,10 +16,9 @@ export interface AgentInfo {
 export interface BuildContext {
 	agents: AgentInfo[];
 	manifest: { agents: Array<{ name: string; triggers: { webhook?: boolean } }> };
-	roles: Record<string, Role>;
 	/**
-	 * The project root — typically the user's cwd. Source files
-	 * (agents/, roles/) live here directly, or under `<root>/.flue/`
+		 * The project root — typically the user's cwd. Source files
+		 * (`agents/`) live here directly, or under `<root>/.flue/`
 	 * if that directory exists (the `.flue/`-as-src layout).
 	 */
 	root: string;
@@ -101,7 +98,7 @@ export interface BuildOptions {
 	/**
 	 * The project root — typically the cwd of the `flue` invocation.
 	 *
-	 * Source files (agents, roles) are discovered from `<root>/.flue/`
+	 * Source files (`agents/`) are discovered from `<root>/.flue/`
 	 * if that directory exists, otherwise from `<root>/` directly.
 	 * The two layouts never mix — `.flue/` wins unconditionally if present.
 	 */

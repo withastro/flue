@@ -51,12 +51,8 @@ export default async function ({ init, payload, env }: FlueContext) {
     model: 'openrouter/moonshotai/kimi-k2.6',
   });
   const session = await harness.session();
-  // Prompt! The agent harness includes your workspace AGENTS.md,
-  // skills, and roles (aka subagents) to complete your task as 
-  // desired. Use \`session.skill()\` to call a skill directly.
   return await session.prompt(
     \`Respond to this customer message: \${payload.message}\`,
-    { role: 'support-agent' },
   );
 }`;
 
@@ -132,11 +128,7 @@ export default async function ({ init, payload }: FlueContext) {
     model: 'anthropic/claude-sonnet-4-6',
   });
   const session = await harness.session();
-  // Prompt! The agent harness includes your workspace AGENTS.md,
-  // skills, and roles (aka subagents) to analyze the data and
-  // complete your task as desired.
   return await session.prompt(
     \`Answer this user question: \${payload.message}\`,
-    { role: 'data-analyst' },
   );
 }`;

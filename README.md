@@ -92,10 +92,7 @@ export default async function ({ init, payload, env }: FlueContext) {
     workspace for articles relevant to this request, then write a helpful response.
 
     Customer: ${payload.message}`,
-    {
-      // Provide roles (aka subagents) to guide your agent. Defined in .flue/roles/
-      role: 'triager',
-    },
+    {},
   );
 }
 ```
@@ -285,7 +282,7 @@ const session = await harness.session();
 
 const research = await session.task('Research the auth flow and summarize the key files.', {
   cwd: '/workspace/project',
-  role: 'researcher',
+  agent: 'researcher',
 });
 
 const answer = await session.prompt(
@@ -293,14 +290,15 @@ const answer = await session.prompt(
 );
 ```
 
-Roles can be set at the harness, session, or call level. Precedence is `call role > session role > harness role`. Role instructions are applied as call-scoped system prompt overlays, not injected into the persisted user message history.
+Declare reusable subagents with `defineAgent()`, pass them to `init({ subagents })`, and select them for detached delegation with `task({ agent })`.
 
 ```ts
-const harness = await init({ model: 'anthropic/claude-sonnet-4-6', role: 'coder' });
-const session = await harness.session('review-thread', { role: 'reviewer' });
+const researcher = defineAgent({ name: 'researcher', instructions: 'Research carefully.' });
+const harness = await init({ model: 'anthropic/claude-sonnet-4-6', subagents: [researcher] });
+const session = await harness.session('review-thread');
 
-await session.prompt('Review the latest changes.'); // uses reviewer
-await session.task('Research related issues.', { role: 'researcher' }); // uses researcher
+await session.prompt('Review the latest changes.');
+await session.task('Research related issues.', { agent: 'researcher' });
 ```
 
 ### Provider Settings

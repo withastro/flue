@@ -64,7 +64,7 @@ function printUsage() {
 			'\n' +
 			'Flags:\n' +
 			'  --root <path>        Project root. Default: current working directory.\n' +
-			'                       Source files (agents/, roles/) live at <root>/.flue/ if that\n' +
+			'                       Source files (agents/) live at <root>/.flue/ if that\n' +
 			'                       directory exists, else at <root>/ directly.\n' +
 			'  --output <path>      Where the build artifacts are written. Default: <root>/dist.\n' +
 			'  --config <path>      Path to a flue.config.{ts,mts,mjs,js,cjs,cts} file (relative to cwd).\n' +

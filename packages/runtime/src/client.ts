@@ -1,6 +1,6 @@
+import { assertResolvedAgentDefinition, resolveAgentDefinition } from './agent-definition.ts';
 import { discoverSessionContext } from './context.ts';
 import { Harness } from './harness.ts';
-import { assertRoleExists } from './roles.ts';
 import { dispatchGlobalEvent } from './runtime/events.ts';
 import { bashFactoryToSessionEnv, createCwdSessionEnv, isBashLike } from './sandbox.ts';
 import type {
@@ -111,7 +111,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 		},
 
 		async init(options?: AgentInit): Promise<FlueHarness> {
-			const definition = resolveInitDefinition(options);
+			const definition = assertResolvedAgentDefinition(resolveAgentDefinition(options), 'init()');
 			if (!hasInitModel(options)) {
 				throw new Error(
 					'[flue] init() requires a model. Pass { model: "provider/model-id" }, { model: false }, or inherit a definition with a model.',
@@ -129,7 +129,6 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			initializedHarnessNames.add(name);
 
 			try {
-				assertRoleExists(config.agentConfig.roles, resolvedOptions.role);
 				const sandbox = resolvedOptions.sandbox;
 				const { env: baseEnv, toolFactory } = await resolveSessionEnv(
 					config.id,
@@ -157,8 +156,8 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					instructions: definition.instructions,
 					definitionSkills: definition.skills,
 					skills: localContext.skills,
+					subagents: Object.fromEntries((definition.subagents ?? []).map((agent) => [agent.name!, agent])),
 					model: agentModel,
-					role: resolvedOptions.role ?? config.agentConfig.role,
 					thinkingLevel: definition.thinkingLevel ?? config.agentConfig.thinkingLevel,
 					compaction: definition.compaction ?? config.agentConfig.compaction,
 				};
@@ -220,18 +219,6 @@ function serializeLogError(error: Error): Record<string, unknown> {
 
 function hasInitModel(options: AgentInit | undefined): boolean {
 	return Boolean(options && ('model' in options || (options.inherit && 'model' in options.inherit)));
-}
-
-function resolveInitDefinition(options: AgentInit | undefined): AgentInit {
-	return {
-		model: options?.inherit?.model,
-		instructions: options?.inherit?.instructions,
-		skills: options?.inherit?.skills,
-		tools: options?.inherit?.tools,
-		thinkingLevel: options?.inherit?.thinkingLevel,
-		compaction: options?.inherit?.compaction,
-		...(options ?? {}),
-	};
 }
 
 function isBashFactory(value: unknown): value is BashFactory {

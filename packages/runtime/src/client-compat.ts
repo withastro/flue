@@ -31,7 +31,6 @@ export type {
 	SandboxFactory,
 	SessionData,
 	SessionEnv,
-	SessionOptions,
 	SessionStore,
 	ShellOptions,
 	ShellResult,

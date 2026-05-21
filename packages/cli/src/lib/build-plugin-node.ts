@@ -8,8 +8,7 @@ export class NodePlugin implements BuildPlugin {
 	bundle = 'esbuild' as const;
 
 	generateEntryPoint(ctx: BuildContext): string {
-		const { agents, roles, appEntry } = ctx;
-		const rolesJson = JSON.stringify(roles);
+		const { agents, appEntry } = ctx;
 		const manifestJson = JSON.stringify(ctx.manifest);
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 
@@ -67,7 +66,6 @@ ${userAppImport}
 // ─── Config ─────────────────────────────────────────────────────────────────
 
 const skills = {};
-const roles = ${rolesJson};
 const systemPrompt = '';
 
 const handlers = {
@@ -113,7 +111,7 @@ function createContextForRequest(id, runId, payload, req) {
     env: process.env,
     req,
     agentConfig: {
-      systemPrompt, skills, roles, model: undefined, resolveModel,
+      systemPrompt, skills, model: undefined, resolveModel,
     },
     createDefaultEnv,
     defaultStore,

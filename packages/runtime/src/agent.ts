@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { type Static, Type } from '@earendil-works/pi-ai';
-import type { Role, SessionEnv, SkillDefinition } from './types.ts';
+import type { AgentDefinition, SessionEnv, SkillDefinition } from './types.ts';
 
 const MAX_READ_LINES = 2000;
 const MAX_READ_BYTES = 50 * 1024;
@@ -22,7 +22,7 @@ export const BUILTIN_TOOL_NAMES = new Set([
 export interface TaskToolParams {
 	prompt: string;
 	description?: string;
-	role?: string;
+	agent?: string;
 	cwd?: string;
 }
 
@@ -30,7 +30,7 @@ export interface TaskToolResultDetails {
 	taskId: string;
 	session: string;
 	messageId?: string;
-	role?: string;
+	agent?: string;
 	cwd?: string;
 }
 
@@ -39,7 +39,7 @@ export interface CreateToolsOptions {
 		params: TaskToolParams,
 		signal?: AbortSignal,
 	) => Promise<AgentToolResult<TaskToolResultDetails>>;
-	roles?: Record<string, Role>;
+	subagents?: Record<string, AgentDefinition>;
 	skills?: Record<string, SkillDefinition>;
 }
 
@@ -52,7 +52,7 @@ export function createTools(env: SessionEnv, options?: CreateToolsOptions): Agen
 		createGrepTool(env),
 		createGlobTool(env),
 	];
-	if (options?.task) tools.push(createTaskTool(options.task, options.roles ?? {}));
+	if (options?.task) tools.push(createTaskTool(options.task, options.subagents ?? {}));
 	return tools;
 }
 
@@ -261,7 +261,7 @@ const TaskParams = Type.Object({
 		Type.String({ description: 'Short human-readable label for the delegated work' }),
 	),
 	prompt: Type.String({ description: 'Focused instructions for the child agent' }),
-	role: Type.Optional(Type.String({ description: 'Role to use for the child agent' })),
+	agent: Type.Optional(Type.String({ description: 'Declared subagent to use for the child agent' })),
 	cwd: Type.Optional(
 		Type.String({
 			description:
@@ -276,13 +276,13 @@ export function createTaskTool(
 		params: TaskToolParams,
 		signal?: AbortSignal,
 	) => Promise<AgentToolResult<TaskToolResultDetails>>,
-	roles: Record<string, Role>,
+	subagents: Record<string, AgentDefinition>,
 ): AgentTool<typeof TaskParams> {
-	const roleNames = Object.keys(roles);
-	const roleDescription =
-		roleNames.length > 0
-			? ` Available roles: ${roleNames.join(', ')}.`
-			: ' No roles are currently defined.';
+	const agentNames = Object.keys(subagents);
+	const agentDescription =
+		agentNames.length > 0
+			? ` Available agents: ${agentNames.join(', ')}.`
+			: ' No subagents are currently defined.';
 
 	return {
 		name: 'task',
@@ -291,7 +291,7 @@ export function createTaskTool(
 			'Delegate a focused task to a detached child agent with its own context. ' +
 			'Use this for independent research, file exploration, or parallel work. ' +
 			'The task returns only its final answer to this conversation.' +
-			roleDescription,
+			agentDescription,
 		parameters: TaskParams,
 		async execute(_toolCallId: string, params: Static<typeof TaskParams>, signal?: AbortSignal) {
 			throwIfAborted(signal);

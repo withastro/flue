@@ -2,14 +2,14 @@
 
 Build and deploy Flue agents on Cloudflare Workers. This guide walks you through the different kinds of agents you can build — from simple prompt-and-response endpoints to full coding agents backed by persistent storage and remote sandboxes.
 
-By the end, you will have a Flue agent running on Cloudflare Workers, and you will know how to add roles, R2-backed context, Cloudflare sandboxes, and Durable Object-backed sessions.
+By the end, you will have a Flue agent running on Cloudflare Workers, and you will know how to add subagents, R2-backed context, Cloudflare sandboxes, and Durable Object-backed sessions.
 
 ## Project layout
 
-The project root is your project directory. Source files (agents, roles, and any other code your agents import) live in one of two places, analogous to Next.js's `src/` folder:
+The project root is your project directory. Source files (agents and any other code your agents import) live in one of two places, analogous to Next.js's `src/` folder:
 
-- `./agents/`, `./roles/` — bare layout, source at the project root.
-- `./.flue/agents/`, `./.flue/roles/` — `.flue/` source layout. When you opt into this, treat `.flue/` as the home for everything agent-related (connectors, session stores, helpers, …).
+- `./agents/` — bare layout, source at the project root.
+- `./.flue/agents/` — `.flue/` source layout. When you opt into this, treat `.flue/` as the home for everything agent-related (connectors, session stores, helpers, …).
 
 If `./.flue/` exists, Flue reads sources from there; otherwise it reads from the project root. The two layouts never mix. By default `flue build` writes to `./dist/` at the project root; pass `--output <path>` to redirect the build elsewhere. `wrangler.jsonc` and any `Dockerfile` you ship live at the project root, regardless of where the build lands. Examples in this guide use the `./.flue/` layout — drop the prefix if you prefer the bare layout.
 
@@ -115,28 +115,21 @@ curl http://localhost:3583/agents/translate/test-1 \
 
 `flue run` starts the generated server in Node.js, so it only supports `--target node`. Cloudflare builds use Worker-only runtime modules — `flue dev --target cloudflare` is the equivalent for testing them locally.
 
-## Roles
+## Subagents
 
-Roles shape agent behavior across prompts. They live alongside your agents — under `./roles/` (or `./.flue/roles/` if you use the `.flue/` layout) — and ship with your deployed worker:
-
-`.flue/roles/triager.md`:
-
-```markdown
----
-description: A support agent that triages customer requests
----
-
-You are a support triager. Search the knowledge base thoroughly before
-responding. Always cite the specific articles you referenced. Be empathetic
-but concise.
-```
-
-Use a role by passing its name to `prompt()`:
+Subagents define named delegates for detached task sessions:
 
 ```typescript
-await session.prompt('Help me reset my password', {
-  role: 'triager',
+import { defineAgent } from '@flue/runtime';
+
+const triager = defineAgent({
+  name: 'triager',
+  instructions: 'Search thoroughly, cite sources, and stay concise.',
 });
+
+const harness = await init({ model: 'anthropic/claude-sonnet-4-6', subagents: [triager] });
+const session = await harness.session();
+await session.task('Help me reset my password', { agent: 'triager' });
 ```
 
 ## Using the sandbox
@@ -214,9 +207,7 @@ export default async function ({ init, payload, env }: FlueContext) {
     workspace for articles relevant to this request, then write a helpful response.
 
     Customer: ${payload.message}`,
-    {
-      role: 'triager',
-    },
+    {},
   );
 }
 ```

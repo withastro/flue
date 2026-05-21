@@ -2,14 +2,14 @@
 
 Build and deploy Flue agents as a Node.js server. This guide walks you through creating your first agent, running it locally, and deploying it anywhere you can run Node.js — a VPS, Docker, Railway, Fly.io, or any cloud platform.
 
-By the end, you will have a Flue agent running as a Node.js server, and you will know how to add roles, sandbox context, external CLIs, remote sandboxes, and durable session storage when your agent needs them.
+By the end, you will have a Flue agent running as a Node.js server, and you will know how to add subagents, sandbox context, external CLIs, remote sandboxes, and durable session storage when your agent needs them.
 
 ## Project layout
 
-The project root is your project directory. Source files (agents, roles, and any other code your agents import) live in one of two places, analogous to Next.js's `src/` folder:
+The project root is your project directory. Source files (agents and any other code your agents import) live in one of two places, analogous to Next.js's `src/` folder:
 
-- `./agents/`, `./roles/` — bare layout, source at the project root.
-- `./.flue/agents/`, `./.flue/roles/` — `.flue/` source layout. When you opt into this, treat `.flue/` as the home for everything agent-related (connectors, session stores, helpers, …).
+- `./agents/` — bare layout, source at the project root.
+- `./.flue/agents/` — `.flue/` source layout. When you opt into this, treat `.flue/` as the home for everything agent-related (connectors, session stores, helpers, …).
 
 If `./.flue/` exists, Flue reads sources from there; otherwise it reads from the project root. The two layouts never mix. By default `flue build` writes to `./dist/` at the project root; pass `--output <path>` to redirect the build elsewhere. Examples in this guide use the `./.flue/` layout — drop the prefix if you prefer the bare layout.
 
@@ -106,27 +106,21 @@ npx flue run translate --target node --id test-1 --env .env \
   --payload '{"text": "Hello world", "language": "French"}'
 ```
 
-## Roles
+## Subagents
 
-Roles shape agent behavior across prompts. They live alongside your agents — under `./roles/` (or `./.flue/roles/` if you use the `.flue/` layout) — and ship with the deployed server:
-
-`.flue/roles/analyst.md`:
-
-```markdown
----
-description: A data analyst focused on extracting insights
----
-
-You are a data analyst. Focus on quantitative insights, trends, and
-actionable takeaways. Be precise with numbers and cite your sources.
-```
-
-Use a role by passing its name to `prompt()`:
+Subagents define named delegates for detached task sessions:
 
 ```typescript
-const analysis = await session.prompt("Analyze this quarter's metrics", {
-  role: 'analyst',
+import { defineAgent } from '@flue/runtime';
+
+const analyst = defineAgent({
+  name: 'analyst',
+  instructions: 'Focus on quantitative insights, trends, and actionable takeaways.',
 });
+
+const harness = await init({ model: 'openai/gpt-5.5', subagents: [analyst] });
+const session = await harness.session();
+const analysis = await session.task("Analyze this quarter's metrics", { agent: 'analyst' });
 ```
 
 ## Sandbox context
@@ -185,7 +179,6 @@ export default async function ({ init, payload }: FlueContext) {
     `Review the codebase and identify potential issues in the area
     related to: ${payload.topic}`,
     {
-      role: 'reviewer',
       result: v.object({
         issues: v.array(
           v.object({

@@ -1,6 +1,6 @@
 import { Type } from '@earendil-works/pi-ai';
 import { describe, expect, it } from 'vitest';
-import { defineAgent } from '../src/agent-definition.ts';
+import { defineAgent, resolveAgentDefinition } from '../src/agent-definition.ts';
 import { defineTool } from '../src/tool.ts';
 
 describe('defineAgent', () => {
@@ -16,7 +16,7 @@ describe('defineAgent', () => {
 			instructions: 'Help the user.',
 			skills: [{ name: 'triage', description: 'Triage requests.' }],
 			tools: [tool],
-			subagents: [{ model: false as const }],
+			subagents: [{ name: 'delegate', model: false as const }],
 		};
 
 		expect(defineAgent(definition)).toBe(definition);
@@ -46,7 +46,8 @@ describe('defineAgent', () => {
 		[{ tools: [{ name: 'tool', parameters: {}, execute: async (): Promise<string> => 'ok' }] }, 'tools[0].description'],
 		[{ tools: [{ name: 'tool', description: 'Desc', execute: async (): Promise<string> => 'ok' }] }, 'tools[0].parameters'],
 		[{ tools: [{ name: 'tool', description: 'Desc', parameters: {} }] }, 'tools[0].execute'],
-		[{ subagents: [{ model: 123 }] }, 'subagents[0]'],
+		[{ subagents: [{ model: 123 }] }, 'subagents[0].name'],
+		[{ subagents: [{ name: '1bad', model: false }] }, 'must start with a letter'],
 	])('rejects invalid definitions %#', (definition, message) => {
 		expect(() => defineAgent(definition as never)).toThrow(String(message));
 	});
@@ -74,9 +75,37 @@ describe('defineAgent', () => {
 	});
 
 	it('rejects circular subagents', () => {
-		const definition = {} as { subagents?: unknown[] };
+		const definition = { name: 'loop' } as { name: string; subagents?: unknown[] };
 		definition.subagents = [definition];
 
 		expect(() => defineAgent(definition as never)).toThrow('circular subagents');
+	});
+});
+
+describe('resolveAgentDefinition', () => {
+	it('inherits definition fields and lets own init fields replace them', () => {
+		const inheritedSkills = [{ name: 'base', description: 'Base skill.' }];
+		const overrideSkills = [{ name: 'override', description: 'Override skill.' }];
+		expect(
+			resolveAgentDefinition({
+				inherit: {
+					model: 'anthropic/claude-sonnet-4-6',
+					instructions: 'Inherited instructions.',
+					skills: inheritedSkills,
+				},
+				instructions: undefined,
+				skills: overrideSkills,
+			}),
+		).toEqual({
+			name: undefined,
+			description: undefined,
+			model: 'anthropic/claude-sonnet-4-6',
+			instructions: undefined,
+			skills: overrideSkills,
+			tools: undefined,
+			subagents: undefined,
+			thinkingLevel: undefined,
+			compaction: undefined,
+		});
 	});
 });
