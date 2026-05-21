@@ -4,6 +4,10 @@ export function generateRunId(): string {
 	return `run_${ulid()}`;
 }
 
+export function generateMessageId(): string {
+	return `msg_${ulid()}`;
+}
+
 export function generateOperationId(): string {
 	return `op_${ulid()}`;
 }

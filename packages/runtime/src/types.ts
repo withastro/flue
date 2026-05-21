@@ -850,6 +850,15 @@ export type BashFactory = () => BashLike | Promise<BashLike>;
 
 export type FlueEvent = (
 	| {
+			type: 'message_start';
+			messageId: string;
+			instanceId: string;
+			agentName: string;
+			channel: string;
+			receivedAt: string;
+			metadata: Record<string, unknown>;
+		}
+	| {
 			type: 'run_start';
 			runId: string;
 			instanceId: string;
@@ -909,8 +918,10 @@ export type FlueEvent = (
 			attributes?: Record<string, unknown>;
 		}
 	| { type: 'idle' }
+	| { type: 'message_end'; messageId: string; result?: unknown; isError: boolean; error?: unknown; durationMs: number }
 	| { type: 'run_end'; runId: string; result?: unknown; isError: boolean; error?: unknown; durationMs: number }
 ) & {
+	messageId?: string;
 	runId?: string;
 	eventIndex?: number;
 	timestamp?: string;

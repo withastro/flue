@@ -87,6 +87,8 @@ export type {
 export type { RunRecord, RunStatus, RunStore } from './runtime/run-store.ts';
 export type { RunSubscriberListener, RunSubscriberRegistry } from './runtime/run-subscribers.ts';
 export { createRunSubscriberRegistry } from './runtime/run-subscribers.ts';
+export { MessageDispatcher, MessageQueueFullError } from './runtime/message-dispatcher.ts';
+export type { MessageDispatcherOptions } from './runtime/message-dispatcher.ts';
 export { bashFactoryToSessionEnv } from './sandbox.ts';
 export { hasRegisteredProvider } from './runtime/providers.ts';
 export { InMemorySessionStore } from './session.ts';
