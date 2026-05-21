@@ -48,7 +48,7 @@ function printUsage() {
 	console.error(
 		'Usage:\n' +
 			'  flue dev   [--target <node|cloudflare>] [--root <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]...\n' +
-			'  flue run   <agent> [--target node] --id <id> [--payload <json>] [--root <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]...\n' +
+			'  flue run   <workflow> [--target node] [--payload <json>] [--root <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]...\n' +
 			'  flue build [--target <node|cloudflare>] [--root <path>] [--output <path>] [--config <path>]\n' +
 			'  flue init  --target <node|cloudflare> [--root <path>] [--force]\n' +
 			'  flue add   [<name>|<url>] [--category <category>] [--print]\n' +
@@ -56,7 +56,7 @@ function printUsage() {
 			'\n' +
 			'Commands:\n' +
 			'  dev    Long-running watch-mode dev server. Rebuilds and reloads on file changes.\n' +
-			'  run    One-shot build + invoke an agent (production-style; use for CI / scripted runs).\n' +
+			'  run    One-shot build + invoke a workflow (production-style; use for CI / scripted runs).\n' +
 			'  build  Build a deployable artifact to ./dist (production deploys).\n' +
 			'  init   Scaffold a starter flue.config.ts in the target directory.\n' +
 			'  add    Install a connector. Pipes installation instructions for an AI coding agent to follow.\n' +
@@ -82,8 +82,8 @@ function printUsage() {
 			'  flue dev --target node\n' +
 			'  flue dev --target cloudflare --port 8787\n' +
 			'  flue dev --target node --env .env\n' +
-			'  flue run hello --target node --id test-1\n' +
-			'  flue run hello --target node --id test-1 --payload \'{"name": "World"}\' --env .env\n' +
+			'  flue run hello --target node\n' +
+			'  flue run hello --target node --payload \'{"name": "World"}\' --env .env\n' +
 			'  flue build --target node\n' +
 			'  flue build --target cloudflare --root ./my-app\n' +
 			'  flue build --target node --output ./build\n' +
@@ -102,10 +102,9 @@ function printUsage() {
 
 interface RunArgs {
 	command: 'run';
-	agent: string;
+	workflow: string;
 	/** May be undefined if the user is relying on `flue.config.ts` for `target`. */
 	target: 'node' | undefined;
-	id: string;
 	payload: string;
 	/** Explicit --root value, or undefined to default to cwd. */
 	explicitRoot: string | undefined;
@@ -187,7 +186,6 @@ type ParsedArgs = RunArgs | BuildArgs | DevArgs | AddArgs | InitArgs | LogsArgs;
 
 function parseFlags(flags: string[]): {
 	target?: 'node' | 'cloudflare';
-	id?: string;
 	explicitRoot: string | undefined;
 	explicitOutput: string | undefined;
 	configFile: string | undefined;
@@ -196,7 +194,6 @@ function parseFlags(flags: string[]): {
 	envFiles: string[];
 } {
 	let target: 'node' | 'cloudflare' | undefined;
-	let id: string | undefined;
 	let explicitRoot: string | undefined;
 	let explicitOutput: string | undefined;
 	let configFile: string | undefined;
@@ -223,12 +220,6 @@ function parseFlags(flags: string[]): {
 				process.exit(1);
 			}
 			target = targetFlag;
-		} else if (arg === '--id') {
-			id = flags[++i];
-			if (!id) {
-				console.error('Missing value for --id');
-				process.exit(1);
-			}
 		} else if (arg === '--root') {
 			explicitRoot = flags[++i] ?? '';
 			if (!explicitRoot) {
@@ -270,7 +261,6 @@ function parseFlags(flags: string[]): {
 
 	return {
 		target,
-		id,
 		explicitRoot: explicitRoot ? path.resolve(explicitRoot) : undefined,
 		explicitOutput: explicitOutput ? path.resolve(explicitOutput) : undefined,
 		// `--config` is intentionally NOT pre-resolved: the config loader
@@ -286,14 +276,14 @@ function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
-function printCloudflareRunUnsupported(agent: string, id: string, payload: string): never {
+function printCloudflareRunUnsupported(workflow: string, payload: string): never {
 	console.error(
 		'[flue] `flue run --target cloudflare` is not supported.\n\n' +
 			'`flue run` is a one-shot Node.js invoker; Cloudflare builds need a Workers runtime.\n\n' +
 			'For local development of a Cloudflare target, use `flue dev`:\n\n' +
 			`  flue dev --target cloudflare\n\n` +
 			`Then in another terminal:\n\n` +
-			`  curl http://localhost:${DEFAULT_DEV_PORT}/agents/${agent}/${id} \\\n` +
+			`  curl http://localhost:${DEFAULT_DEV_PORT}/workflows/${workflow} \\\n` +
 			'    -H "Content-Type: application/json" \\\n' +
 			`    -d ${shellQuote(payload)}`,
 	);
@@ -531,9 +521,9 @@ function parseArgs(argv: string[]): ParsedArgs {
 	}
 
 	if (command === 'run' && rest.length > 0) {
-		const agent = rest[0];
-		if (!agent) {
-			console.error('Missing agent name for run command.');
+		const workflow = rest[0];
+		if (!workflow) {
+			console.error('Missing workflow name for run command.');
 			printUsage();
 			process.exit(1);
 		}
@@ -544,13 +534,7 @@ function parseArgs(argv: string[]): ParsedArgs {
 		// where `flue.config.ts` sets `target: cloudflare` is handled later
 		// in `run()` after config resolution.
 		if (flags.target === 'cloudflare') {
-			printCloudflareRunUnsupported(agent, flags.id ?? '<id>', flags.payload);
-		}
-
-		if (!flags.id) {
-			console.error('Missing required --id flag for run command.');
-			printUsage();
-			process.exit(1);
+			printCloudflareRunUnsupported(workflow, flags.payload);
 		}
 
 		try {
@@ -562,9 +546,8 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 		return {
 			command: 'run',
-			agent,
+			workflow,
 			target: flags.target as 'node' | undefined,
-			id: flags.id,
 			payload: flags.payload,
 			explicitRoot: flags.explicitRoot,
 			explicitOutput: flags.explicitOutput,
@@ -723,7 +706,7 @@ function logEvent(event: any) {
 		case 'run_start':
 		case 'run_end':
 			// `flue run` extracts the final result/error from `run_end`
-			// in `consumeSSE` before reaching this renderer. `run_start`
+			// in the run stream consumer before reaching this renderer. `run_start`
 			// is uninteresting in single-run-mode output. Skipped here.
 			break;
 
@@ -738,18 +721,51 @@ function logEvent(event: any) {
 	}
 }
 
-async function consumeSSE(
+async function admitWorkflow(
 	url: string,
 	payload: string,
 	signal: AbortSignal,
-): Promise<{ result?: any; error?: string }> {
+): Promise<{ runId?: string; error?: string }> {
 	const res = await fetch(url, {
 		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			Accept: 'text/event-stream',
-		},
+		headers: { 'Content-Type': 'application/json' },
 		body: payload,
+		signal,
+	});
+	const rawBody = await res.text();
+	if (!res.ok) {
+		try {
+			const parsed = JSON.parse(rawBody);
+			if (parsed && typeof parsed === 'object' && parsed.error) {
+				const e = parsed.error;
+				const lines: string[] = [`HTTP ${res.status} [${e.type ?? 'unknown'}]: ${e.message ?? ''}`];
+				if (e.details) {
+					for (const line of String(e.details).split('\n')) if (line) lines.push(`  ${line}`);
+				}
+				if (e.dev) {
+					for (const line of String(e.dev).split('\n')) if (line) lines.push(`  ${line}`);
+				}
+				return { error: lines.join('\n') };
+			}
+		} catch {
+		}
+		return { error: `HTTP ${res.status}: ${rawBody}` };
+	}
+	try {
+		const parsed = JSON.parse(rawBody) as { runId?: unknown };
+		if (typeof parsed.runId !== 'string') return { error: 'Workflow admission response omitted runId.' };
+		return { runId: parsed.runId };
+	} catch {
+		return { error: `Failed to parse workflow admission response: ${rawBody.slice(0, 256)}` };
+	}
+}
+
+async function consumeRunStream(
+	url: string,
+	signal: AbortSignal,
+): Promise<{ result?: any; error?: string }> {
+	const res = await fetch(url, {
+		headers: { Accept: 'text/event-stream' },
 		signal,
 	});
 
@@ -788,13 +804,11 @@ async function consumeSSE(
 		return { error: 'No response body' };
 	}
 
-	const runId = res.headers.get('x-flue-run-id');
-	if (runId) console.error(`[flue] Run ID: ${runId}`);
-
 	const decoder = new TextDecoder();
 	let buffer = '';
-	let result: any ;
+	let result: any;
 	let error: string | undefined;
+	let sawRunEnd = false;
 
 	for await (const chunk of res.body as AsyncIterable<Uint8Array>) {
 		if (signal.aborted) break;
@@ -824,6 +838,7 @@ async function consumeSSE(
 			}
 
 			if (event.type === 'run_end') {
+				sawRunEnd = true;
 				if (event.isError) {
 					const e = event.error ?? {};
 					if (typeof e === 'object' && e !== null) {
@@ -835,16 +850,16 @@ async function consumeSSE(
 				} else {
 					result = event.result;
 				}
-			} else if (event.type === 'error') {
+			} else if (event.type === 'error' || (event.message && !event.type)) {
 				// Envelope: { type: 'error', error: { type, message, details, dev?, meta? } }
-				const e = event.error ?? {};
+				const e = event.error ?? event;
 				const messageParts: string[] = [];
 				if (e.type) messageParts.push(`[${e.type}]`);
 				if (e.message) messageParts.push(e.message);
 				error = messageParts.length > 0 ? messageParts.join(' ') : 'Unknown error';
 				if (e.details) error += `\n${String(e.details)}`;
 				if (e.dev) error += `\n${String(e.dev)}`;
-				logEvent(event);
+				if (event.type === 'error') logEvent(event);
 			} else {
 				logEvent(event);
 			}
@@ -852,6 +867,7 @@ async function consumeSSE(
 	}
 
 	flushBuffers();
+	if (!error && !sawRunEnd) return { error: 'Run stream ended before a terminal run_end event.' };
 	return error ? { error } : { result };
 }
 
@@ -972,7 +988,7 @@ async function run(args: RunArgs) {
 	// can only happen via `flue.config.ts`, since the CLI flag was already
 	// caught in parseArgs), bail with the same hint.
 	if (cfg.target === 'cloudflare') {
-		printCloudflareRunUnsupported(args.agent, args.id, args.payload);
+		printCloudflareRunUnsupported(args.workflow, args.payload);
 	}
 
 	const root = cfg.root;
@@ -1021,20 +1037,20 @@ async function run(args: RunArgs) {
 	serverProcess.stdout?.on('data', pipeServerOutput);
 	serverProcess.stderr?.on('data', pipeServerOutput);
 
-	// Retry the real request briefly while the child binds its port.
-	console.error(`[flue] Running agent: ${args.agent}`);
-	const sseAbort = new AbortController();
-	let outcome: { result?: any; error?: string };
+	// Retry admission briefly while the child binds its port.
+	console.error(`[flue] Running workflow: ${args.workflow}`);
+	const streamAbort = new AbortController();
+	let admission: { runId?: string; error?: string };
 
 	const startupBudgetMs = 5000;
 	const startupRetryMs = 100;
 	const startedAt = Date.now();
 	while (true) {
 		try {
-			outcome = await consumeSSE(
-				`http://localhost:${port}/agents/${args.agent}/${args.id}`,
+			admission = await admitWorkflow(
+				`http://localhost:${port}/workflows/${args.workflow}`,
 				args.payload,
-				sseAbort.signal,
+				streamAbort.signal,
 			);
 			break;
 		} catch (err) {
@@ -1046,13 +1062,30 @@ async function run(args: RunArgs) {
 				await new Promise((resolve) => setTimeout(resolve, startupRetryMs));
 				continue;
 			}
-			outcome = { error: err instanceof Error ? err.message : String(err) };
+			admission = { error: err instanceof Error ? err.message : String(err) };
 			break;
 		}
 	}
 
+	if (admission.error || !admission.runId) {
+		console.error(`[flue] Workflow admission error: ${admission.error ?? 'Missing run id.'}`);
+		stopServer();
+		process.exit(1);
+	}
+
+	console.error(`[flue] Run ID: ${admission.runId}`);
+	let outcome: { result?: any; error?: string };
+	try {
+		outcome = await consumeRunStream(
+			`http://localhost:${port}/runs/${encodeURIComponent(admission.runId)}/stream`,
+			streamAbort.signal,
+		);
+	} catch (err) {
+		outcome = { error: err instanceof Error ? err.message : String(err) };
+	}
+
 	if (outcome.error) {
-		console.error(`[flue] Agent error: ${outcome.error}`);
+		console.error(`[flue] Workflow error: ${outcome.error}`);
 		stopServer();
 		process.exit(1);
 	}

@@ -399,9 +399,9 @@ const workflowRouteHandler: MiddlewareHandler = async (c) => {
 		method: c.req.method,
 		name,
 		registeredWorkflows: workflows.map((workflow) => workflow.name),
-		httpWorkflows: workflows
-			.filter((workflow) => workflow.channels.http)
-			.map((workflow) => workflow.name),
+		httpWorkflows: rt.allowNonWebhook
+			? workflows.map((workflow) => workflow.name)
+			: workflows.filter((workflow) => workflow.channels.http).map((workflow) => workflow.name),
 	});
 
 	if (rt.target === 'node') {

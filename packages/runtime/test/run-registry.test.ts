@@ -441,6 +441,37 @@ describe('POST /workflows/:name routes via flue()', () => {
 		expect(text).toMatch(/event: run_end/);
 	});
 
+	it('admits internal-only workflows in local runtime mode for CLI reuse', async () => {
+		configureFlueRuntime({
+			target: 'node',
+			manifest: { agents: [], workflows: [{ name: 'internal', channels: {} }] },
+			webhookAgents: [],
+			allowNonWebhook: true,
+			handlers: {},
+			workflowHandlers: { internal: async () => ({ ok: true }) },
+			createContext: (id, runId, payload, req) =>
+				createFlueContext({
+					id,
+					runId,
+					payload,
+					env: {},
+					req,
+					agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
+					createDefaultEnv: async () => ({}) as never,
+					defaultStore: new InMemorySessionStore(),
+				}),
+			runStore: new InMemoryRunStore(),
+			runRegistry: new InMemoryRunRegistry(),
+			runSubscribers: createRunSubscriberRegistry(),
+		});
+		const app = new Hono();
+		app.route('/', flue());
+		const res = await app.fetch(new Request('http://localhost/workflows/internal', { method: 'POST' }));
+		expect(res.status).toBe(202);
+		const body = (await res.json()) as { runId: string };
+		expect(body.runId.startsWith('workflow:internal:')).toBe(true);
+	});
+
 	it('rejects internal-only workflows and non-POST methods', async () => {
 		configureFlueRuntime({
 			target: 'node',
