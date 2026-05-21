@@ -16,6 +16,8 @@
 
 - **Agent-definition skills in the progressive-disclosure catalog.** `skills` from inherited/init definitions now join the active session skill catalog at prompt construction time, exposing only name and description until activation while keeping skill bodies and resources lazy.
 
+- **Named subagent delegation through `task({ agent })`.** `defineAgent()` and `init()` now accept named `subagents`, and Flue's framework `task` tool exposes those declared delegates through an enum-backed `agent` argument. Delegated task sessions use the selected subagent's model, instructions, skills, tools, compaction, and nested subagents while task events report the chosen agent name.
+
 - **Initial `agent.send()` surface.** Live `Agent` values now expose fire-and-forget `send(message, { session? })`, resolve/create the target session, dispatch through the existing prompt pipeline, and throw `AgentBusyError` when a second send starts before the first finishes.
 
 - **Run finalization waits for detached sends.** Runtime run-end emission and instance-lane release now wait for fire-and-forget `agent.send()` work to settle, keeping run lifetimes truthful before the upcoming POST/stream lifecycle split.

@@ -70,6 +70,7 @@ import type {
 	TaskOptions,
 	ThinkingLevel,
 	ToolDefinition,
+	AgentDefinition,
 } from './types.ts';
 import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 
@@ -80,6 +81,7 @@ export interface CreateTaskSessionOptions {
 	taskId: string;
 	parentEnv: SessionEnv;
 	cwd?: string;
+	agent?: AgentDefinition;
 	depth: number;
 }
 
@@ -127,6 +129,7 @@ interface InternalTaskResult<T> {
 	taskId: string;
 	session: string;
 	messageId?: string;
+	agent?: string;
 	cwd?: string;
 }
 
@@ -870,13 +873,14 @@ export class Session implements FlueSession {
 			this.runTaskForTool(params, tools, model, thinkingLevel, signal);
 
 		if (this.toolFactory) {
-			const connectorTools = this.toolFactory(env);
+			const connectorTools = this.toolFactory(env, { subagents: this.config.subagents ?? {} });
 			this.validateConnectorTools(connectorTools);
-			return [...connectorTools, createTaskTool(runTask)];
+			return [...connectorTools, createTaskTool(runTask, this.config.subagents ?? {})];
 		}
 
 		return createTools(env, {
 			skills: getBundledSkills(this.config.skills),
+			subagents: this.config.subagents ?? {},
 			task: runTask,
 		});
 	}
@@ -887,8 +891,8 @@ export class Session implements FlueSession {
 		for (const tool of tools) {
 			if (tool.name === 'task') {
 				throw new Error(
-					'[flue] Sandbox connector tools() returned a tool named "task", which is ' +
-						'framework-reserved. The framework appends `task` automatically; remove it from the connector.',
+					'[flue] Sandbox connector tools() returned a framework-reserved tool named "task". ' +
+						'The framework appends task automatically; remove it from the connector.',
 				);
 			}
 			if (names.has(tool.name)) {
@@ -940,6 +944,13 @@ export class Session implements FlueSession {
 
 	// ─── Tasks ────────────────────────────────────────────────────────────────
 
+	private resolveDeclaredSubagent(name: string): AgentDefinition {
+		const subagents = this.config.subagents ?? {};
+		if (Object.hasOwn(subagents, name)) return subagents[name]!;
+		const available = Object.keys(subagents).join(', ') || '(none)';
+		throw new Error(`[flue] Subagent "${name}" is not declared. Available: ${available}.`);
+	}
+
 	private async runTaskForTool(
 		params: TaskToolParams,
 		tools: ToolDefinition[],
@@ -950,6 +961,7 @@ export class Session implements FlueSession {
 		const result = await this.runTask(
 			params.prompt,
 			{
+				agent: params.agent,
 				inheritedModel,
 				inheritedThinkingLevel,
 				cwd: params.cwd,
@@ -963,10 +975,10 @@ export class Session implements FlueSession {
 				details: {
 					taskId: result.taskId,
 					session: result.session,
-				messageId: result.messageId,
-				cwd: result.cwd,
-
-			},
+					messageId: result.messageId,
+					agent: result.agent,
+					cwd: result.cwd,
+				},
 		};
 	}
 
@@ -1034,6 +1046,7 @@ export class Session implements FlueSession {
 		if (signal?.aborted) throw abortErrorFor(signal);
 
 		const taskId = crypto.randomUUID();
+		const taskAgent = options?.agent ? this.resolveDeclaredSubagent(options.agent) : undefined;
 		let child: Session | undefined;
 		let abortListener: (() => void) | undefined;
 
@@ -1041,6 +1054,7 @@ export class Session implements FlueSession {
 			type: 'task_start',
 			taskId,
 			prompt: text,
+			agent: taskAgent?.name,
 			cwd: options?.cwd,
 			parentSession: this.name,
 		});
@@ -1052,6 +1066,7 @@ export class Session implements FlueSession {
 				taskId,
 				parentEnv: this.env,
 				cwd: options?.cwd,
+				agent: taskAgent,
 				depth: this.taskDepth + 1,
 			});
 			await this.recordTaskSession(child.name, child.storageKey, taskId);
@@ -1066,8 +1081,12 @@ export class Session implements FlueSession {
 
 			const schema = resolveResultOption(options);
 			const childOptions: PromptOptions<v.GenericSchema | undefined> = {
-				model: options?.model ?? options?.inheritedModel,
-				thinkingLevel: options?.thinkingLevel ?? options?.inheritedThinkingLevel,
+				model:
+					options?.model ??
+					(taskAgent?.model !== undefined ? undefined : options?.inheritedModel),
+				thinkingLevel:
+					options?.thinkingLevel ??
+					(taskAgent?.thinkingLevel !== undefined ? undefined : options?.inheritedThinkingLevel),
 				tools: options?.tools,
 				images: options?.images,
 				signal,
@@ -1081,11 +1100,13 @@ export class Session implements FlueSession {
 				taskId,
 				session: child.name,
 				messageId: child.getLatestAssistantMessageId(),
+				agent: taskAgent?.name,
 				cwd: options?.cwd,
 			};
 			this.emit({
 				type: 'task',
 				taskId,
+				agent: taskAgent?.name,
 				isError: false,
 				result: taskResult.text,
 				durationMs: durationSince(taskStartMs),
@@ -1096,6 +1117,7 @@ export class Session implements FlueSession {
 			this.emit({
 				type: 'task',
 				taskId,
+				agent: taskAgent?.name,
 				isError: true,
 				result: getErrorMessage(error),
 				durationMs: durationSince(taskStartMs),

@@ -258,6 +258,7 @@ export interface AgentConfig {
 	definitionSkills?: Skill[];
 	/** Discovered at runtime from .agents/skills/ in the session's cwd. */
 	skills: Record<string, Skill>;
+	subagents?: Record<string, AgentDefinition>;
 	/**
 	 * Agent-wide default model. Undefined when the user explicitly passes
 	 * `init({ model: false })`, so each model-using call must provide a
@@ -285,10 +286,13 @@ export type ModelConfig = string | false;
 // ─── Agent Definition ──────────────────────────────────────────────────────
 
 export interface AgentDefinition {
+	name?: string;
+	description?: string;
 	model?: ModelConfig;
 	instructions?: string;
 	skills?: Skill[];
 	tools?: ToolDefinition[];
+	subagents?: AgentDefinition[];
 	thinkingLevel?: ThinkingLevel;
 	compaction?: false | CompactionConfig;
 }
@@ -370,6 +374,9 @@ export interface AgentInit {
 
 	/** Agent-definition skills disclosed in the system-prompt catalog. */
 	skills?: Skill[];
+
+	/** Named delegate agents selectable through the framework `task({ agent })` tool. */
+	subagents?: AgentDefinition[];
 
 	/** Working directory for context discovery, tools, and shell calls. Defaults to the sandbox cwd. */
 	cwd?: string;
@@ -692,6 +699,7 @@ export interface SkillOptions<S extends v.GenericSchema | undefined = undefined>
 
 export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> {
 	result?: S;
+	agent?: string;
 	/**
 	 * @deprecated Use `result` for structured output schemas.
 	 */
@@ -723,8 +731,15 @@ export interface ShellResult {
 
 // ─── Sandbox ────────────────────────────────────────────────────────────────
 
-/** Connector-supplied model-facing tools. Flue appends `task` separately. */
-export type SessionToolFactory = (env: SessionEnv) => AgentTool<any>[];
+export interface SessionToolFactoryOptions {
+	subagents: Record<string, AgentDefinition>;
+}
+
+/** Connector-supplied model-facing tools. Flue appends task tools separately. */
+export type SessionToolFactory = (
+	env: SessionEnv,
+	options: SessionToolFactoryOptions,
+) => AgentTool<any>[];
 
 /** Wraps external sandboxes (Daytona, CF Containers, etc.) into Flue's SessionEnv. */
 export interface SandboxFactory {
@@ -790,8 +805,8 @@ export type FlueEvent = (
 			isError: boolean;
 			error?: unknown;
 		}
-	| { type: 'task_start'; taskId: string; prompt: string; cwd?: string }
-	| { type: 'task'; taskId: string; isError: boolean; result?: any; durationMs: number }
+	| { type: 'task_start'; taskId: string; prompt: string; agent?: string; cwd?: string }
+	| { type: 'task'; taskId: string; agent?: string; isError: boolean; result?: any; durationMs: number }
 	| {
 			type: 'compaction_start';
 			reason: 'threshold' | 'overflow' | 'manual';

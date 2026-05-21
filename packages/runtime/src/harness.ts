@@ -122,15 +122,27 @@ export class Harness implements FlueHarness {
 		const taskEnv = options.cwd
 			? createCwdSessionEnv(options.parentEnv, options.parentEnv.resolvePath(options.cwd))
 			: options.parentEnv;
+		const taskAgent = options.agent;
 		const localContext = await discoverSessionContext(
 			taskEnv,
-			this.config.instructions,
-			this.config.definitionSkills,
+			taskAgent?.instructions ?? this.config.instructions,
+			taskAgent?.skills ?? this.config.definitionSkills,
 		);
 		const taskConfig: AgentConfig = {
 			...this.config,
 			systemPrompt: localContext.systemPrompt,
+			instructions: taskAgent?.instructions ?? this.config.instructions,
+			definitionSkills: taskAgent?.skills ?? this.config.definitionSkills,
 			skills: localContext.skills,
+			subagents: taskAgent
+				? Object.fromEntries((taskAgent.subagents ?? []).map((agent) => [agent.name!, agent]))
+				: this.config.subagents,
+			model:
+				taskAgent?.model !== undefined
+					? this.config.resolveModel(taskAgent.model)
+					: this.config.model,
+			thinkingLevel: taskAgent?.thinkingLevel ?? this.config.thinkingLevel,
+			compaction: taskAgent?.compaction ?? this.config.compaction,
 		};
 		const storageKey = createSessionStorageKey(this.instanceId, this.name, sessionName);
 		const affinityKey = createSessionAffinityKey(this.instanceId, this.name, sessionName);
@@ -139,6 +151,7 @@ export class Harness implements FlueHarness {
 			parentSession: options.parentSession,
 			taskId: options.taskId,
 			cwd: taskEnv.cwd,
+			agent: taskAgent?.name,
 			depth: options.depth,
 		};
 		await this.store.save(storageKey, data);
@@ -163,7 +176,7 @@ export class Harness implements FlueHarness {
 			store: this.store,
 			existingData: data,
 			onAgentEvent: eventCallback,
-			agentTools: this.agentTools,
+			agentTools: taskAgent?.tools ?? this.agentTools,
 			toolFactory: this.toolFactory,
 			taskDepth: options.depth,
 			createTaskSession: (childOptions) => this.createTaskSession(childOptions),

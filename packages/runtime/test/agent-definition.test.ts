@@ -72,6 +72,14 @@ describe('defineAgent', () => {
 		).toThrow('duplicate skill name "triage"');
 	});
 
+	it('accepts named nested subagents and rejects duplicate names', () => {
+		const reviewer = defineAgent({ name: 'reviewer', model: false });
+		const writer = defineAgent({ name: 'writer', model: false, subagents: [reviewer] });
+
+		expect(defineAgent({ name: 'triage', model: false, subagents: [writer] }).subagents).toEqual([writer]);
+		expect(() => defineAgent({ subagents: [reviewer, reviewer] })).toThrow('duplicate subagent name "reviewer"');
+	});
+
 });
 
 describe('resolveAgentDefinition', () => {
@@ -89,10 +97,13 @@ describe('resolveAgentDefinition', () => {
 				skills: overrideSkills,
 			}),
 		).toEqual({
+			name: undefined,
+			description: undefined,
 			model: 'anthropic/claude-sonnet-4-6',
 			instructions: undefined,
 			skills: overrideSkills,
 			tools: undefined,
+			subagents: undefined,
 			thinkingLevel: undefined,
 			compaction: undefined,
 		});

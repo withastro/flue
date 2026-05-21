@@ -1,4 +1,4 @@
-import { resolveAgentDefinition } from './agent-definition.ts';
+import { assertResolvedAgentDefinition, resolveAgentDefinition } from './agent-definition.ts';
 import { discoverSessionContext } from './context.ts';
 import { AgentBusyError } from './errors.ts';
 import { Harness } from './harness.ts';
@@ -140,7 +140,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 		},
 
 		async init(options?: AgentInit): Promise<Agent> {
-			const definition = resolveAgentDefinition(options);
+			const definition = assertResolvedAgentDefinition(resolveAgentDefinition(options), 'init()');
 			if (!hasInitModel(options)) {
 				throw new Error(
 					'[flue] init() requires a model. Pass { model: "provider/model-id" }, { model: false }, or inherit a definition with a model.',
@@ -187,6 +187,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					instructions: definition.instructions,
 					definitionSkills: definition.skills,
 					skills: localContext.skills,
+					subagents: Object.fromEntries((definition.subagents ?? []).map((agent) => [agent.name!, agent])),
 					model: agentModel,
 					thinkingLevel: definition.thinkingLevel ?? config.agentConfig.thinkingLevel,
 					compaction: definition.compaction ?? config.agentConfig.compaction,

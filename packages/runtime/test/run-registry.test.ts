@@ -1010,6 +1010,85 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		expect(childContext.config.systemPrompt).not.toContain('Hidden review instructions.');
 	});
 
+	it('rejects invalid init-level subagents', async () => {
+		const ctx = createFlueContext({
+			agentName: 'hello',
+			id: 'inst-1',
+			runId: 'run-subagent-validation',
+			payload: {},
+			env: {},
+			createDefaultEnv: async () => bashFactoryToSessionEnv(async () => new Bash()),
+			defaultStore: new InMemorySessionStore(),
+			registrationStore: new InMemoryRegistrationStore(),
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				model: undefined,
+				resolveModel: () => undefined,
+			},
+		});
+
+		await expect(ctx.init({ model: false, subagents: [{ model: false }] })).rejects.toThrow('subagents[0].name');
+	});
+
+	it('builds subagent task sessions with their own config and nested delegates', async () => {
+		const ctx = createFlueContext({
+			agentName: 'hello',
+			id: 'inst-1',
+			runId: 'run-subagents',
+			payload: {},
+			env: {},
+			createDefaultEnv: async () => bashFactoryToSessionEnv(async () => new Bash()),
+			defaultStore: new InMemorySessionStore(),
+			registrationStore: new InMemoryRegistrationStore(),
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				model: undefined,
+				resolveModel: () => undefined,
+			},
+		});
+
+		const nested = { name: 'writer', model: false as const, instructions: 'Write carefully.' };
+		const reviewer = {
+			name: 'reviewer',
+			model: false as const,
+			instructions: 'Review carefully.',
+			subagents: [nested],
+		};
+		const agent = await ctx.init({ model: false, subagents: [reviewer] });
+		const harness = agent.harness() as unknown as {
+			config: AgentConfig;
+			createTaskSession(options: {
+				parentSession: string;
+				taskId: string;
+				parentEnv: unknown;
+				agent?: typeof reviewer;
+				depth: number;
+			}): Promise<{ config: AgentConfig; agentTools: ToolDefinition[] }>;
+		};
+		expect(harness.config.subagents?.reviewer).toBe(reviewer);
+
+		const child = await harness.createTaskSession({
+			parentSession: 'default',
+			taskId: 'review-child',
+			parentEnv: await bashFactoryToSessionEnv(async () => new Bash()),
+			agent: reviewer,
+			depth: 1,
+		});
+		expect(child.config.instructions).toBe('Review carefully.');
+		expect(child.config.systemPrompt).toContain('Review carefully.');
+		expect(child.config.subagents?.writer).toBe(nested);
+
+		const genericChild = await harness.createTaskSession({
+			parentSession: 'default',
+			taskId: 'generic-child',
+			parentEnv: await bashFactoryToSessionEnv(async () => new Bash()),
+			depth: 1,
+		});
+		expect(genericChild.config.subagents?.reviewer).toBe(reviewer);
+	});
+
 	it('uses inherited instructions and lets init-level instructions replace them', async () => {
 		const ctx = createFlueContext({
 			agentName: 'hello',

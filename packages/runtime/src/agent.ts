@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { type Static, Type } from '@earendil-works/pi-ai';
-import type { SessionEnv, SkillDefinition } from './types.ts';
+import type { AgentDefinition, SessionEnv, SkillDefinition } from './types.ts';
 
 const MAX_READ_LINES = 2000;
 const MAX_READ_BYTES = 50 * 1024;
@@ -22,6 +22,7 @@ export const BUILTIN_TOOL_NAMES = new Set([
 export interface TaskToolParams {
 	prompt: string;
 	description?: string;
+	agent?: string;
 	cwd?: string;
 }
 
@@ -29,6 +30,7 @@ export interface TaskToolResultDetails {
 	taskId: string;
 	session: string;
 	messageId?: string;
+	agent?: string;
 	cwd?: string;
 }
 
@@ -38,6 +40,7 @@ export interface CreateToolsOptions {
 		signal?: AbortSignal,
 	) => Promise<AgentToolResult<TaskToolResultDetails>>;
 	skills?: Record<string, SkillDefinition>;
+	subagents?: Record<string, AgentDefinition>;
 }
 
 export function createTools(env: SessionEnv, options?: CreateToolsOptions): AgentTool<any>[] {
@@ -49,7 +52,9 @@ export function createTools(env: SessionEnv, options?: CreateToolsOptions): Agen
 		createGrepTool(env),
 		createGlobTool(env),
 	];
-	if (options?.task) tools.push(createTaskTool(options.task));
+	if (options?.task) {
+		tools.push(createTaskTool(options.task, options.subagents ?? {}));
+	}
 	return tools;
 }
 
@@ -253,18 +258,31 @@ function createBashTool(env: SessionEnv): AgentTool<typeof BashParams> {
 	};
 }
 
-const TaskParams = Type.Object({
-	description: Type.Optional(
-		Type.String({ description: 'Short human-readable label for the delegated work' }),
-	),
-	prompt: Type.String({ description: 'Focused instructions for the child agent' }),
-	cwd: Type.Optional(
-		Type.String({
-			description:
-				'Working directory for the child agent. AGENTS.md and skills are discovered from here.',
-		}),
-	),
-});
+function createTaskParams(subagents: Record<string, AgentDefinition>) {
+	const agentNames = Object.keys(subagents);
+	return Type.Object({
+		description: Type.Optional(
+			Type.String({ description: 'Short human-readable label for the delegated work' }),
+		),
+		prompt: Type.String({ description: 'Focused instructions for the child agent' }),
+		...(agentNames.length > 0
+			? {
+					agent: Type.Optional(
+						Type.String({
+							description: 'Declared subagent to run this task with.',
+							enum: agentNames,
+						}),
+					),
+				}
+			: {}),
+		cwd: Type.Optional(
+			Type.String({
+				description:
+					'Working directory for the child agent. AGENTS.md and skills are discovered from here.',
+			}),
+		),
+	});
+}
 
 /** Build Flue's framework-owned `task` tool. */
 export function createTaskTool(
@@ -272,18 +290,22 @@ export function createTaskTool(
 		params: TaskToolParams,
 		signal?: AbortSignal,
 	) => Promise<AgentToolResult<TaskToolResultDetails>>,
-): AgentTool<typeof TaskParams> {
+	subagents: Record<string, AgentDefinition> = {},
+): AgentTool<any> {
+	const agentNames = Object.keys(subagents);
+	const suffix = agentNames.length > 0 ? ` Declared subagents: ${agentNames.join(', ')}.` : '';
 	return {
 		name: 'task',
 		label: 'Run Task',
 		description:
 			'Delegate a focused task to a detached child agent with its own context. ' +
 			'Use this for independent research, file exploration, or parallel work. ' +
-			'The task returns only its final answer to this conversation.',
-		parameters: TaskParams,
-		async execute(_toolCallId: string, params: Static<typeof TaskParams>, signal?: AbortSignal) {
+			'The task returns only its final answer to this conversation.' +
+			suffix,
+		parameters: createTaskParams(subagents),
+		async execute(_toolCallId: string, params: unknown, signal?: AbortSignal) {
 			throwIfAborted(signal);
-			return runTask(params, signal);
+			return runTask(params as TaskToolParams, signal);
 		},
 	};
 }

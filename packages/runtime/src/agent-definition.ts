@@ -2,10 +2,13 @@ import * as v from 'valibot';
 import type { AgentDefinition, AgentInit, Skill, ThinkingLevel, ToolDefinition } from './types.ts';
 
 const AGENT_DEFINITION_FIELDS = new Set([
+	'name',
+	'description',
 	'model',
 	'instructions',
 	'skills',
 	'tools',
+	'subagents',
 	'thinkingLevel',
 	'compaction',
 ]);
@@ -20,10 +23,13 @@ const VALID_THINKING_LEVELS = {
 } as const satisfies Record<ThinkingLevel, true>;
 
 const AgentDefinitionSchema = v.looseObject({
+	name: v.optional(v.string()),
+	description: v.optional(v.string()),
 	model: v.optional(v.union([v.string(), v.literal(false)])),
 	instructions: v.optional(v.string()),
 	skills: v.optional(v.array(v.unknown())),
 	tools: v.optional(v.array(v.unknown())),
+	subagents: v.optional(v.array(v.unknown())),
 	thinkingLevel: v.optional(v.string()),
 	compaction: v.optional(v.union([v.literal(false), v.looseObject({})])),
 });
@@ -33,13 +39,21 @@ export function defineAgent(definition: AgentDefinition): AgentDefinition {
 	return definition;
 }
 
+export function assertResolvedAgentDefinition(definition: AgentDefinition, label: string): AgentDefinition {
+	assertAgentDefinition(definition, label);
+	return definition;
+}
+
 export function resolveAgentDefinition(options: AgentInit | undefined): AgentDefinition {
 	const inherited = options?.inherit;
 	return {
+		name: inherited?.name,
+		description: inherited?.description,
 		model: hasOwn(options, 'model') ? options?.model : inherited?.model,
 		instructions: hasOwn(options, 'instructions') ? options?.instructions : inherited?.instructions,
 		skills: hasOwn(options, 'skills') ? options?.skills : inherited?.skills,
 		tools: hasOwn(options, 'tools') ? options?.tools : inherited?.tools,
+		subagents: hasOwn(options, 'subagents') ? options?.subagents : inherited?.subagents,
 		thinkingLevel: hasOwn(options, 'thinkingLevel') ? options?.thinkingLevel : inherited?.thinkingLevel,
 		compaction: hasOwn(options, 'compaction') ? options?.compaction : inherited?.compaction,
 	};
@@ -61,12 +75,16 @@ function assertAgentDefinition(
 	const definition = parsed.output as AgentDefinition;
 
 	assertKnownFields(definition, label);
+	if (definition.name !== undefined) assertAgentName(definition.name, `${label} name`);
+	if (definition.description !== undefined) assertNonEmptyString(definition.description, `${label} description`);
 	assertThinkingLevel(definition.thinkingLevel, label);
 	assertCompaction(definition.compaction, label);
 	assertTools(definition.tools, label);
 	assertSkills(definition.skills, label);
+	assertSubagents(definition.subagents, label);
 	assertUniqueNames(definition.tools, `${label} tools`, 'tool');
 	assertUniqueNames(definition.skills, `${label} skills`, 'skill');
+	assertUniqueNames(definition.subagents, `${label} subagents`, 'subagent');
 }
 
 function assertKnownFields(definition: AgentDefinition, label: string): void {
@@ -139,6 +157,27 @@ function assertSkills(values: unknown[] | undefined, label: string): asserts val
 	}
 }
 
+function assertSubagents(
+	values: unknown[] | undefined,
+	label: string,
+): asserts values is AgentDefinition[] | undefined {
+	for (const [index, value] of values?.entries() ?? []) {
+		if (!value || typeof value !== 'object') {
+			throw new Error(`[flue] ${label} subagents[${index}] must be an agent definition object.`);
+		}
+		const subagent = value as Partial<AgentDefinition>;
+		assertAgentName(subagent.name, `${label} subagents[${index}].name`);
+		assertAgentDefinition(value, `${label} subagents[${index}]`);
+	}
+}
+
+function assertAgentName(value: unknown, label: string): asserts value is string {
+	assertNonEmptyString(value, label);
+	if (!/^[A-Za-z][A-Za-z0-9_-]*$/.test(value)) {
+		throw new Error(`[flue] ${label} must start with a letter and contain only letters, numbers, "_", or "-".`);
+	}
+}
+
 function assertNonEmptyString(value: unknown, label: string): asserts value is string {
 	if (typeof value !== 'string' || value.trim().length === 0) {
 		throw new Error(`[flue] ${label} must be a non-empty string.`);
@@ -146,9 +185,9 @@ function assertNonEmptyString(value: unknown, label: string): asserts value is s
 }
 
 function assertUniqueNames(
-	values: ToolDefinition[] | Skill[] | undefined,
+	values: ToolDefinition[] | Skill[] | AgentDefinition[] | undefined,
 	label: string,
-	kind: 'tool' | 'skill',
+	kind: 'tool' | 'skill' | 'subagent',
 ): void {
 	if (!values) {
 		return;
@@ -156,10 +195,12 @@ function assertUniqueNames(
 
 	const seen = new Set<string>();
 	for (const value of values) {
-		if (seen.has(value.name)) {
-			throw new Error(`[flue] ${label} must not contain duplicate ${kind} name "${value.name}".`);
+		const name = value.name;
+		if (!name) continue;
+		if (seen.has(name)) {
+			throw new Error(`[flue] ${label} must not contain duplicate ${kind} name "${name}".`);
 		}
-		seen.add(value.name);
+		seen.add(name);
 	}
 }
 
