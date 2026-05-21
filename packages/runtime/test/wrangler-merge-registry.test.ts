@@ -95,6 +95,27 @@ describe('mergeFlueAdditions', () => {
 		expect(merged.durable_objects.bindings).toHaveLength(1);
 	});
 
+	it('appends and protects FLUE_WORKFLOW_RUNS bindings', () => {
+		const additions = {
+			defaultName: 'x',
+			main: '_entry.ts',
+			doBindings: [{ class_name: 'WorkflowRunOwner', name: 'FLUE_WORKFLOW_RUNS' }],
+			migrations: [],
+		};
+		const merged = mergeFlueAdditions({}, additions) as {
+			durable_objects: { bindings: Array<{ name: string; class_name: string }> };
+		};
+		expect(merged.durable_objects.bindings).toEqual([
+			{ class_name: 'WorkflowRunOwner', name: 'FLUE_WORKFLOW_RUNS' },
+		]);
+		expect(() =>
+			mergeFlueAdditions(
+				{ durable_objects: { bindings: [{ class_name: 'OtherOwner', name: 'FLUE_WORKFLOW_RUNS' }] } },
+				additions,
+			),
+		).toThrow(/FLUE_WORKFLOW_RUNS/);
+	});
+
 	it('rejects user-owned FLUE_REGISTRY binding conflicts', () => {
 		const userConfig = {
 			durable_objects: {

@@ -304,6 +304,32 @@ export class AgentNotWebhookError extends FlueHttpError {
 	}
 }
 
+export class WorkflowNotFoundError extends FlueHttpError {
+	constructor({ name, available }: { name: string; available: readonly string[] }) {
+		super({
+			type: 'workflow_not_found',
+			message: `Workflow "${name}" is not registered.`,
+			details: `Verify the workflow name is correct.`,
+			dev:
+				`Available workflows: ${formatList(available)}.\n` +
+				`Workflows are loaded from the project root's "workflows/" directory at build time.`,
+			status: 404,
+		});
+	}
+}
+
+export class WorkflowNotHttpError extends FlueHttpError {
+	constructor({ name }: { name: string }) {
+		super({
+			type: 'workflow_not_http',
+			message: `Workflow "${name}" is not web-accessible.`,
+			details: `This endpoint is not exposed over HTTP.`,
+			dev: `To expose it, export channels = [http()] or include http() alongside other workflow channels.`,
+			status: 404,
+		});
+	}
+}
+
 export class RouteNotFoundError extends FlueHttpError {
 	constructor({ method, path }: { method: string; path: string }) {
 		super({
@@ -646,6 +672,30 @@ export interface ValidateAgentRequestOptions {
 	 * dev local mode where trigger-less agents are also invokable.
 	 */
 	allowNonWebhook?: boolean;
+}
+
+export interface ValidateWorkflowRequestOptions {
+	method: string;
+	name: string;
+	registeredWorkflows: readonly string[];
+	httpWorkflows: readonly string[];
+}
+
+export function validateWorkflowRequest(opts: ValidateWorkflowRequestOptions): void {
+	if (opts.method !== 'POST') {
+		throw new MethodNotAllowedError({ method: opts.method, allowed: ['POST'] });
+	}
+	if (opts.name.trim() === '') {
+		throw new InvalidRequestError({
+			reason: 'Workflow URLs must have the shape /workflows/<name> with a non-empty segment.',
+		});
+	}
+	if (!opts.registeredWorkflows.includes(opts.name)) {
+		throw new WorkflowNotFoundError({ name: opts.name, available: opts.registeredWorkflows });
+	}
+	if (!opts.httpWorkflows.includes(opts.name)) {
+		throw new WorkflowNotHttpError({ name: opts.name });
+	}
 }
 
 export function validateAgentRequest(opts: ValidateAgentRequestOptions): void {

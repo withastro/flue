@@ -104,8 +104,16 @@ export const FlueEventSchema = v.union([
 	flueEvent({
 		type: v.literal('run_start'),
 		runId: v.string(),
+		owner: v.object({ kind: v.literal('agent'), agentName: v.string(), instanceId: v.string() }),
 		instanceId: v.string(),
 		agentName: v.string(),
+		startedAt: v.string(),
+		payload: v.unknown(),
+	}),
+	flueEvent({
+		type: v.literal('run_start'),
+		runId: v.string(),
+		owner: v.object({ kind: v.literal('workflow'), workflowName: v.string(), runId: v.string() }),
 		startedAt: v.string(),
 		payload: v.unknown(),
 	}),
@@ -222,6 +230,8 @@ export const WebhookInvocationResponseSchema = v.object({
 	runId: v.string(),
 });
 
+export const WorkflowAdmissionResponseSchema = WebhookInvocationResponseSchema;
+
 export const AgentInvocationBodySchema = v.looseObject({});
 
 const integerString = (message: string) => v.pipe(v.string(), v.regex(/^\d+$/, message));
@@ -248,6 +258,7 @@ export const RunEventsQuerySchema = v.object({
 });
 
 export const RunIdParamSchema = v.object({ runId: v.string() });
+export const WorkflowRouteParamSchema = v.object({ name: v.string() });
 export const AgentRouteParamSchema = v.object({ name: v.string(), id: v.string() });
 
 export const AgentManifestEntrySchema = v.object({

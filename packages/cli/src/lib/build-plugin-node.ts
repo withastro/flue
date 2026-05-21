@@ -8,7 +8,7 @@ export class NodePlugin implements BuildPlugin {
 	bundle = 'esbuild' as const;
 
 	generateEntryPoint(ctx: BuildContext): string {
-		const { agents, appEntry } = ctx;
+		const { agents, appEntry, workflows } = ctx;
 		const manifestJson = JSON.stringify(ctx.manifest);
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 
@@ -26,9 +26,20 @@ export class NodePlugin implements BuildPlugin {
 			})
 			.join('\n');
 
+		const workflowImports = workflows
+			.map((workflow, index) => {
+				const varName = workflowVarName(workflow.name, index);
+				const filePath = workflow.filePath.replace(/\\/g, '/');
+				return `import { run as ${varName} } from '${filePath}';`;
+			})
+			.join('\n');
+
 		// Build the handler map — includes ALL agents, not just webhook ones.
 		const handlerMapEntries = agents
 			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)},`)
+			.join('\n');
+		const workflowHandlerMapEntries = workflows
+			.map((workflow, index) => `  ${JSON.stringify(workflow.name)}: ${workflowVarName(workflow.name, index)},`)
 			.join('\n');
 
 		// Webhook agent names. `configureFlueRuntime` snapshots whatever
@@ -61,6 +72,7 @@ import {
   createDefaultFlueApp,
 } from '@flue/runtime/internal';
 ${agentImports}
+${workflowImports}
 ${userAppImport}
 
 // ─── Config ─────────────────────────────────────────────────────────────────
@@ -70,6 +82,9 @@ const systemPrompt = '';
 
 const handlers = {
 ${handlerMapEntries}
+};
+const workflowHandlers = {
+${workflowHandlerMapEntries}
 };
 
 // Webhook-accessible agent names.
@@ -133,6 +148,7 @@ configureFlueRuntime({
   webhookAgents: webhookAgentNames,
   allowNonWebhook: isLocalMode,
   handlers,
+  workflowHandlers,
   createContext: createContextForRequest,
   runStore,
   runSubscribers,
@@ -199,4 +215,9 @@ process.on('SIGTERM', () => { server.close(); process.exit(0); });
 function agentVarName(name: string, index: number): string {
 	const readableName = name.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'agent';
 	return `handler_${readableName}_${index}`;
+}
+
+function workflowVarName(name: string, index: number): string {
+	const readableName = name.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'workflow';
+	return `workflow_${readableName}_${index}`;
 }

@@ -62,6 +62,17 @@ export class CloudflarePlugin implements BuildPlugin {
 			})
 			.join('\n');
 
+		const workflowImports = workflows
+			.map((workflow, index) => {
+				const varName = workflowVarName(workflow.name, index);
+				const filePath = workflow.filePath.replace(/\\/g, '/');
+				return `import { run as ${varName} } from '${filePath}';`;
+			})
+			.join('\n');
+		const workflowHandlerMapEntries = workflows
+			.map((workflow, index) => `  ${JSON.stringify(workflow.name)}: ${workflowVarName(workflow.name, index)},`)
+			.join('\n');
+
 		const agentClasses = webhookAgents
 			.map((a) => {
 				const className = agentClassName(a.name);
@@ -88,6 +99,15 @@ export class CloudflarePlugin implements BuildPlugin {
 				? `export class WorkflowRunOwner extends Agent {
   async onRequest(request) {
     return dispatchWorkflowRunOwner(request, this);
+  }
+
+  async onFiberRecovered(ctx) {
+    if (ctx.name?.startsWith('flue:workflow:')) {
+      return handleFlueWorkflowFiberRecovered(ctx, this);
+    }
+    if (typeof super.onFiberRecovered === 'function') {
+      return super.onFiberRecovered(ctx);
+    }
   }
 }`
 				: '';
@@ -116,6 +136,7 @@ import {
   bashFactoryToSessionEnv,
   resolveModel,
   handleAgentRequest,
+  handleWorkflowRequest,
   handleRunRouteRequest,
   configureFlueRuntime,
   createDefaultFlueApp,
@@ -132,6 +153,7 @@ import {
 import { registerApiProvider, registerProvider } from '@flue/runtime/app';
 
 ${agentImports}
+${workflowImports}
 
 ${userAppImport}
 
@@ -157,6 +179,9 @@ const skills = {};
 const systemPrompt = '';
 
 const webhookAgentNames = ${JSON.stringify(webhookAgents.map((a) => a.name))};
+const workflowHandlers = {
+${workflowHandlerMapEntries}
+};
 
 // ─── Sandbox Environments ───────────────────────────────────────────────────
 
@@ -305,19 +330,52 @@ async function handleFlueFiberRecovered(ctx, _doInstance, agentName) {
   console.warn('[flue] Cloudflare fiber interrupted:', agentName, ctx.name, ctx.snapshot ?? null);
 }
 
+async function handleFlueWorkflowFiberRecovered(ctx) {
+  if (!ctx.name || !ctx.name.startsWith('flue:workflow:')) return;
+  console.warn('[flue] Cloudflare workflow fiber interrupted:', ctx.name, ctx.snapshot ?? null);
+}
+
 // ─── Per-DO Dispatch ───────────────────────────────────────────────────────
 
 async function dispatchWorkflowRunOwner(request, doInstance) {
   const runRoute = parseRunRoute(request);
-  if (!runRoute) return null;
-  const parsed = parseWorkflowRunId(runRoute.runId);
-  if (!parsed || parsed.workflowName.length === 0) return null;
-  return handleRunRouteRequest({
+  if (runRoute) {
+    const parsed = parseWorkflowRunId(runRoute.runId);
+    if (!parsed || parsed.workflowName.length === 0) return null;
+    return handleRunRouteRequest({
+      request,
+      owner: { kind: 'workflow', workflowName: parsed.workflowName, runId: runRoute.runId },
+      runStore: createRunStoreForRequest(doInstance),
+      runSubscribers,
+      ...runRoute,
+    });
+  }
+
+  const workflowStart = parseWorkflowStart(request);
+  if (!workflowStart) return null;
+  const handler = workflowHandlers[workflowStart.workflowName];
+  if (!handler) return null;
+  return handleWorkflowRequest({
     request,
-    owner: { kind: 'workflow', workflowName: parsed.workflowName, runId: runRoute.runId },
+    workflowName: workflowStart.workflowName,
+    runId: workflowStart.runId,
+    handler,
     runStore: createRunStoreForRequest(doInstance),
     runSubscribers,
-    ...runRoute,
+    runRegistry: createRunRegistryForRequest(doInstance.env),
+    createContext: (id_, runId, payload, req) => createContextForRequest(id_, runId, payload, doInstance, req),
+    startWebhook: (runId, run) => {
+      const wrapped = (fiber) => {
+        fiber?.stash?.({ version: 1, kind: 'workflow', runId, phase: 'running', startedAt: Date.now() });
+        return runWithInstanceContext(doInstance, run);
+      };
+      assertAgentsDurabilityApi(doInstance, 'runFiber');
+      return doInstance.runFiber('flue:workflow:' + runId, wrapped);
+    },
+    runHandler: (ctx, h) => runWithInstanceContext(doInstance, () => {
+      assertAgentsDurabilityApi(doInstance, 'keepAliveWhile');
+      return doInstance.keepAliveWhile(() => h(ctx));
+    }),
   });
 }
 
@@ -366,6 +424,17 @@ async function dispatchAgent(request, doInstance, agentName, handler) {
   });
 }
 
+function parseWorkflowStart(request) {
+  const url = new URL(request.url);
+  const segments = url.pathname.split('/').filter(Boolean);
+  if (segments.length !== 3 || segments[0] !== '_workflow_runs') return null;
+  const workflowName = decodeURIComponent(segments[1] || '');
+  const runId = decodeURIComponent(segments[2] || '');
+  const parsed = parseWorkflowRunId(runId);
+  if (!workflowName || !parsed || parsed.workflowName !== workflowName) return null;
+  return { workflowName, runId };
+}
+
 function parseRunRoute(request) {
   const segments = new URL(request.url).pathname.split('/').filter(Boolean);
   if (segments.length < 2 || segments[0] !== 'runs') return null;
@@ -404,6 +473,14 @@ configureFlueRuntime({
   // simply have no DO class to land in.
   allowNonWebhook: false,
   routeAgentRequest: (request, env) => routeAgentRequest(request, env),
+  routeWorkflowRequest: async (request, reqEnv, target) => {
+    const binding = reqEnv?.FLUE_WORKFLOW_RUNS;
+    if (!binding) return null;
+    const stub = await getAgentByName(binding, target.runId);
+    const url = new URL(request.url);
+    url.pathname = '/_workflow_runs/' + encodeURIComponent(target.workflowName) + '/' + encodeURIComponent(target.runId);
+    return stub.fetch(new Request(url, request));
+  },
   createRunRegistryForRequest,
   routeRunRequest: async (request, reqEnv, target) => {
     if (target.kind === 'workflow') {
@@ -556,6 +633,11 @@ export default {
 function agentVarName(name: string, index: number): string {
 	const readableName = name.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'agent';
 	return `handler_${readableName}_${index}`;
+}
+
+function workflowVarName(name: string, index: number): string {
+	const readableName = name.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'workflow';
+	return `workflow_${readableName}_${index}`;
 }
 
 const CLOUDFLARE_AGENT_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;

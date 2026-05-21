@@ -31,8 +31,10 @@ export type {
 	AgentHandler,
 	CreateContextFn,
 	HandleAgentOptions,
+	HandleWorkflowOptions,
 	RunHandlerFn,
 	StartWebhookFn,
+	WorkflowHandler,
 } from './runtime/handle-agent.ts';
 // Runtime modules consumed by the generated server entries.
 //
@@ -52,7 +54,7 @@ export type {
 //     don't author their own `app.ts`).
 //
 // The user-facing `flue()` itself is re-exported from `@flue/runtime/app`, not here.
-export { handleAgentRequest } from './runtime/handle-agent.ts';
+export { handleAgentRequest, handleWorkflowRequest } from './runtime/handle-agent.ts';
 export { generateWorkflowRunId, parseWorkflowRunId } from './runtime/ids.ts';
 export type { HandleRunRouteOptions } from './runtime/handle-run-routes.ts';
 export { handleRunRouteRequest } from './runtime/handle-run-routes.ts';

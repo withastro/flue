@@ -281,6 +281,118 @@ describe('InMemoryRunRegistry', () => {
 	});
 });
 
+describe('POST /workflows/:name routes via flue()', () => {
+	it('admits an HTTP workflow, returns a run id, and exposes run inspection', async () => {
+		const runStore = new InMemoryRunStore();
+		const runRegistry = new InMemoryRunRegistry();
+		const runSubscribers = createRunSubscriberRegistry();
+		configureFlueRuntime({
+			target: 'node',
+			manifest: { agents: [], workflows: [{ name: 'daily-report', channels: { http: true } }] },
+			webhookAgents: [],
+			allowNonWebhook: false,
+			handlers: {},
+			workflowHandlers: { 'daily-report': async (ctx) => ({ echoed: ctx.payload }) },
+			createContext: (id, runId, payload, req) =>
+				createFlueContext({
+					id,
+					runId,
+					payload,
+					env: {},
+					req,
+					agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
+					createDefaultEnv: async () => ({}) as never,
+					defaultStore: new InMemorySessionStore(),
+				}),
+			runStore,
+			runRegistry,
+			runSubscribers,
+		});
+		const app = new Hono();
+		app.route('/', flue());
+
+		const admitted = await app.fetch(
+			new Request('http://localhost/workflows/daily-report', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ date: '2026-05-21' }),
+			}),
+		);
+		expect(admitted.status).toBe(202);
+		const body = (await admitted.json()) as { runId: string; status: string };
+		expect(body.status).toBe('accepted');
+		expect(body.runId.startsWith('workflow:daily-report:')).toBe(true);
+
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		const runRes = await app.fetch(new Request(`http://localhost/runs/${body.runId}`));
+		expect(runRes.status).toBe(200);
+		expect(await runRes.json()).toMatchObject({
+			runId: body.runId,
+			owner: { kind: 'workflow', workflowName: 'daily-report', runId: body.runId },
+			status: 'completed',
+			result: { echoed: { date: '2026-05-21' } },
+		});
+	});
+
+	it('streams workflow execution when SSE is explicitly requested', async () => {
+		configureFlueRuntime({
+			target: 'node',
+			manifest: { agents: [], workflows: [{ name: 'daily-report', channels: { http: true } }] },
+			webhookAgents: [],
+			allowNonWebhook: false,
+			handlers: {},
+			workflowHandlers: { 'daily-report': async () => ({ ok: true }) },
+			createContext: (id, runId, payload, req) =>
+				createFlueContext({
+					id,
+					runId,
+					payload,
+					env: {},
+					req,
+					agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
+					createDefaultEnv: async () => ({}) as never,
+					defaultStore: new InMemorySessionStore(),
+				}),
+			runStore: new InMemoryRunStore(),
+			runRegistry: new InMemoryRunRegistry(),
+			runSubscribers: createRunSubscriberRegistry(),
+		});
+		const app = new Hono();
+		app.route('/', flue());
+		const res = await app.fetch(
+			new Request('http://localhost/workflows/daily-report', {
+				method: 'POST',
+				headers: { accept: 'text/event-stream', 'content-type': 'application/json' },
+				body: JSON.stringify({}),
+			}),
+		);
+		expect(res.status).toBe(200);
+		expect(res.headers.get('content-type')).toMatch(/text\/event-stream/);
+		const text = await res.text();
+		expect(text).toMatch(/event: run_start/);
+		expect(text).toMatch(/event: run_end/);
+	});
+
+	it('rejects internal-only workflows and non-POST methods', async () => {
+		configureFlueRuntime({
+			target: 'node',
+			manifest: { agents: [], workflows: [{ name: 'internal', channels: {} }] },
+			webhookAgents: [],
+			allowNonWebhook: false,
+			handlers: {},
+			workflowHandlers: { internal: async () => null },
+			createContext: (() => null) as never,
+		});
+		const app = new Hono();
+		app.route('/', flue());
+		const internal = await app.fetch(new Request('http://localhost/workflows/internal', { method: 'POST' }));
+		expect(internal.status).toBe(404);
+		expect(((await internal.json()) as { error?: { type: string } }).error?.type).toBe('workflow_not_http');
+		const badMethod = await app.fetch(new Request('http://localhost/workflows/internal'));
+		expect(badMethod.status).toBe(405);
+	});
+});
+
 describe('Bare /runs/:runId routes via flue()', () => {
 	it('resolves a registry pointer and serves the run record / events / stream', async () => {
 		const runStore = new InMemoryRunStore();

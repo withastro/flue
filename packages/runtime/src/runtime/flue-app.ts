@@ -15,27 +15,33 @@ import {
 	toHttpResponse,
 	ValidationError,
 	validateAgentRequest,
+	validateWorkflowRequest,
 } from '../errors.ts';
 import {
 	type AgentHandler,
 	type CreateContextFn,
 	handleAgentRequest,
+	handleWorkflowRequest,
 	type RunHandlerFn,
 	type StartWebhookFn,
+	type WorkflowHandler,
 } from './handle-agent.ts';
 import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-routes.ts';
+import { generateWorkflowRunId } from './ids.ts';
 import type { RunPointer, RunRegistry } from './run-registry.ts';
 import type { RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 import {
 	AgentInvocationResponseSchema,
 	AgentRouteParamSchema,
+	WorkflowRouteParamSchema,
 	ErrorEnvelopeSchema,
 	RunEventListResponseSchema,
 	RunEventsQuerySchema,
 	RunIdParamSchema,
 	RunRecordSchema,
 	WebhookInvocationResponseSchema,
+	WorkflowAdmissionResponseSchema,
 } from './schemas.ts';
 
 export interface FlueRuntime {
@@ -64,6 +70,7 @@ export interface FlueRuntime {
 	 * not in local mode. Required when {@link target} is `'node'`.
 	 */
 	handlers?: Record<string, AgentHandler>;
+	workflowHandlers?: Record<string, WorkflowHandler>;
 
 	/**
 	 * Per-target context factory. Required when {@link target} is `'node'`.
@@ -96,6 +103,11 @@ export interface FlueRuntime {
 	 * consistent with every other miss.
 	 */
 	routeAgentRequest?: (request: Request, env: unknown) => Promise<Response | null>;
+	routeWorkflowRequest?: (
+		request: Request,
+		env: unknown,
+		target: { workflowName: string; runId: string },
+	) => Promise<Response | null>;
 
 	/** Cloudflare-only forwarding hook for registry-resolved run requests. */
 	routeRunRequest?: (
@@ -149,6 +161,14 @@ export function flue(): Hono {
 	const app = new Hono();
 
 	app.get('/openapi.json', lazyOpenApiRouteHandler(app, publicOpenApiOptions));
+
+	app.post(
+		'/workflows/:name',
+		describeRoute(workflowRouteSpec() as DescribeRouteOptions),
+		validated('param', WorkflowRouteParamSchema),
+		workflowRouteHandler,
+	);
+	app.all('/workflows/:name', workflowRouteHandler);
 
 	app.post(
 		'/agents/:name/:id',
@@ -257,6 +277,42 @@ function errorResponses() {
 	};
 }
 
+function workflowRouteSpec() {
+	return {
+		tags: ['workflows'],
+		operationId: 'invokeWorkflow',
+		summary: 'Start a workflow run',
+		description:
+			'Starts the named HTTP-exposed workflow and returns an accepted run id by default.',
+		requestBody: {
+			required: false,
+			content: {
+				'application/json': {
+					schema: {
+						type: 'object',
+						additionalProperties: true,
+						description: 'Workflow-defined payload. Consult the target workflow documentation.',
+					},
+				},
+			},
+		},
+		responses: {
+			202: jsonResponse(WorkflowAdmissionResponseSchema, 'Workflow run accepted.'),
+			200: {
+				description: 'Server-sent events stream of workflow execution events.',
+				content: {
+					'text/event-stream': {
+						schema: { type: 'string', description: 'SSE-framed FlueEvent values.' },
+					},
+				},
+			},
+			...errorResponses(),
+		},
+		'x-flue-invocation-modes': ['accepted', 'stream'],
+		'x-flue-user-defined': true,
+	};
+}
+
 function agentRouteSpec() {
 	return {
 		tags: ['agents'],
@@ -322,6 +378,56 @@ function runRouteSpec(action: HandleRunRouteOptions['action']) {
 		},
 	};
 }
+
+const workflowRouteHandler: MiddlewareHandler = async (c) => {
+	const rt = runtimeConfig;
+	if (!rt) {
+		throw new Error(
+			'[flue] flue() route invoked before runtime was configured. ' +
+				'This usually means flue() was used outside a Flue-built server entry.',
+		);
+	}
+
+	const name = c.req.param('name') ?? '';
+	const workflows = rt.manifest?.workflows ?? [];
+	validateWorkflowRequest({
+		method: c.req.method,
+		name,
+		registeredWorkflows: workflows.map((workflow) => workflow.name),
+		httpWorkflows: workflows
+			.filter((workflow) => workflow.channels.http)
+			.map((workflow) => workflow.name),
+	});
+
+	if (rt.target === 'node') {
+		const handler = rt.workflowHandlers?.[name];
+		const createContext = rt.createContext;
+		if (!handler || !createContext) {
+			throw new Error('[flue] Node runtime is missing workflow handler configuration.');
+		}
+		return handleWorkflowRequest({
+			request: c.req.raw,
+			workflowName: name,
+			handler,
+			createContext,
+			startWebhook: rt.startWebhook,
+			runHandler: rt.runHandler,
+			runStore: rt.runStore,
+			runSubscribers: rt.runSubscribers,
+			runRegistry: rt.runRegistry,
+		});
+	}
+
+	if (!rt.routeWorkflowRequest) {
+		throw new Error('[flue] Cloudflare runtime is missing workflow route forwarding.');
+	}
+	const response = await rt.routeWorkflowRequest(c.req.raw.clone(), c.env, {
+		workflowName: name,
+		runId: generateWorkflowRunId(name),
+	});
+	if (response) return response;
+	throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
+};
 
 const agentRouteHandler: MiddlewareHandler = async (c) => {
 	const rt = runtimeConfig;

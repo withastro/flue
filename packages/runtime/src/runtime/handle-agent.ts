@@ -3,8 +3,8 @@
 import type { FlueContextInternal } from '../client.ts';
 import { parseJsonBody, toHttpResponse } from '../errors.ts';
 import type { FlueEvent } from '../types.ts';
-import { generateRunId } from './ids.ts';
-import type { RunRegistry } from './run-registry.ts';
+import { generateRunId, generateWorkflowRunId } from './ids.ts';
+import type { RunOwner, RunRegistry } from './run-registry.ts';
 import type { RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 
@@ -14,6 +14,7 @@ import type { RunSubscriberRegistry } from './run-subscribers.ts';
  * undefined for fire-and-forget agents).
  */
 export type AgentHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
+export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
 
 /**
  * Caller-provided context factory. Differs per-target:
@@ -46,7 +47,7 @@ export type StartWebhookFn = (runId: string, run: () => Promise<unknown>) => Pro
  */
 export type RunHandlerFn = (
 	ctx: FlueContextInternal,
-	handler: AgentHandler,
+	handler: AgentHandler | WorkflowHandler,
 ) => unknown | Promise<unknown>;
 
 export interface HandleAgentOptions {
@@ -99,6 +100,19 @@ export interface HandleAgentOptions {
 	runRegistry?: RunRegistry;
 }
 
+export interface HandleWorkflowOptions {
+	request: Request;
+	workflowName: string;
+	handler: WorkflowHandler;
+	createContext: CreateContextFn;
+	startWebhook?: StartWebhookFn;
+	runHandler?: RunHandlerFn;
+	runStore?: RunStore;
+	runSubscribers?: RunSubscriberRegistry;
+	runRegistry?: RunRegistry;
+	runId?: string;
+}
+
 /**
  * Dispatch a single `/agents/:name/:id` request. The mode is chosen by
  * inspecting headers:
@@ -139,7 +153,8 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 
 		if (isWebhook) {
 			return runWebhookMode({
-				agentName,
+				label: agentName,
+				owner: { kind: 'agent', agentName, instanceId: id },
 				id,
 				runId,
 				handler,
@@ -155,7 +170,8 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 
 		if (isSSE) {
 			return runSseMode({
-				agentName,
+				label: agentName,
+				owner: { kind: 'agent', agentName, instanceId: id },
 				id,
 				runId,
 				handler,
@@ -170,7 +186,8 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 		}
 
 		return runSyncMode({
-			agentName,
+			label: agentName,
+			owner: { kind: 'agent', agentName, instanceId: id },
 			id,
 			runId,
 			handler,
@@ -191,13 +208,64 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 	}
 }
 
+export async function handleWorkflowRequest(opts: HandleWorkflowOptions): Promise<Response> {
+	const { request, workflowName, handler, createContext, runStore, runSubscribers, runRegistry } = opts;
+	const startWebhook = opts.startWebhook ?? defaultStartWebhook;
+	const runHandler = opts.runHandler ?? defaultRunHandler;
+	const runId = opts.runId ?? generateWorkflowRunId(workflowName);
+
+	try {
+		const payload = await parseJsonBody(request);
+		const accept = request.headers.get('accept') || '';
+		const isSSE = accept.includes('text/event-stream');
+		const owner = { kind: 'workflow' as const, workflowName, runId };
+
+		if (isSSE) {
+			return runSseMode({
+				label: workflowName,
+				owner,
+				id: runId,
+				runId,
+				handler,
+				payload,
+				request,
+				createContext,
+				runHandler,
+				runStore,
+				runSubscribers,
+				runRegistry,
+			});
+		}
+
+		return runWebhookMode({
+			label: workflowName,
+			owner,
+			id: runId,
+			runId,
+			handler,
+			payload,
+			request,
+			createContext,
+			startWebhook,
+			runStore,
+			runSubscribers,
+			runRegistry,
+		});
+	} catch (err) {
+		const response = toHttpResponse(err);
+		response.headers.set('X-Flue-Run-Id', runId);
+		return response;
+	}
+}
+
 // ─── Mode implementations ───────────────────────────────────────────────────
 
 interface ModeOptions {
-	agentName: string;
+	label: string;
+	owner: RunOwner;
 	id: string;
 	runId: string;
-	handler: AgentHandler;
+	handler: AgentHandler | WorkflowHandler;
 	payload: unknown;
 	request: Request;
 	createContext: CreateContextFn;
@@ -208,10 +276,11 @@ interface ModeOptions {
 }
 
 interface WebhookOptions {
-	agentName: string;
+	label: string;
+	owner: RunOwner;
 	id: string;
 	runId: string;
-	handler: AgentHandler;
+	handler: AgentHandler | WorkflowHandler;
 	payload: unknown;
 	request: Request;
 	createContext: CreateContextFn;
@@ -223,7 +292,8 @@ interface WebhookOptions {
 
 async function runWebhookMode(opts: WebhookOptions): Promise<Response> {
 	const {
-		agentName,
+		label,
+		owner,
 		id,
 		runId,
 		handler,
@@ -239,7 +309,7 @@ async function runWebhookMode(opts: WebhookOptions): Promise<Response> {
 	// Webhook mode relies on `startWebhook` for target-specific execution
 	// context (`runFiber` on Cloudflare), so it does not also use `runHandler`.
 	const lifecycle = await createRunLifecycle({
-		agentName,
+		owner,
 		id,
 		runId,
 		payload,
@@ -250,20 +320,31 @@ async function runWebhookMode(opts: WebhookOptions): Promise<Response> {
 		runRegistry,
 	});
 	const { ctx } = lifecycle;
-	const run = async (): Promise<unknown> => withRunLifecycle(lifecycle, () => handler(ctx));
+	let didRun = false;
+	const run = async (): Promise<unknown> => {
+		didRun = true;
+		return withRunLifecycle(lifecycle, () => handler(ctx));
+	};
 
-	startWebhook(runId, run).then(
-		(result) => {
-			console.log(
-				'[flue] Webhook handler complete:',
-				agentName,
-				result !== undefined ? JSON.stringify(result) : '(no return)',
-			);
-		},
-		(err) => {
-			console.error('[flue] Webhook handler error:', agentName, err);
-		},
-	);
+	try {
+		const scheduled = startWebhook(runId, run);
+		scheduled.then(
+			(result) => {
+				console.log(
+					'[flue] Webhook handler complete:',
+					label,
+					result !== undefined ? JSON.stringify(result) : '(no return)',
+				);
+			},
+			async (err) => {
+				console.error('[flue] Webhook handler error:', label, err);
+				if (!didRun) await emitRunEnd(lifecycle, { isError: true, error: err });
+			},
+		);
+	} catch (error) {
+		await emitRunEnd(lifecycle, { isError: true, error });
+		throw error;
+	}
 
 	return new Response(JSON.stringify({ status: 'accepted', runId }), {
 		status: 202,
@@ -278,7 +359,7 @@ export const SSE_HEARTBEAT_MS = 15_000;
 
 function runSseMode(opts: ModeOptions): Response {
 	const {
-		agentName,
+		owner,
 		id,
 		runId,
 		handler,
@@ -326,42 +407,45 @@ function runSseMode(opts: ModeOptions): Response {
 	}, SSE_HEARTBEAT_MS);
 
 	(async () => {
-		const lifecycle = await createRunLifecycle({
-			agentName,
-			id,
-			runId,
-			payload,
-			request,
-			createContext,
-			runStore,
-			runSubscribers,
-			runRegistry,
-		});
-		const { ctx } = lifecycle;
-		ctx.setEventCallback((event) => {
-			if (event.type === 'idle') isIdle = true;
-			writeSSE(event, event.type).catch(() => {});
-		});
-
+		let ctx: FlueContextInternal | undefined;
 		try {
-			await withRunLifecycle(lifecycle, async () => {
-				try {
-					return await runHandler(ctx, handler);
-				} finally {
-					// Keep idle before the terminal run event on the SSE wire.
-					if (!isIdle) ctx.emitEvent({ type: 'idle' });
-				}
+			const lifecycle = await createRunLifecycle({
+				owner,
+				id,
+				runId,
+				payload,
+				request,
+				createContext,
+				runStore,
+				runSubscribers,
+				runRegistry,
 			});
-		} catch {
-			// The lifecycle wrapper has already emitted the terminal event.
+			ctx = lifecycle.ctx;
+			ctx.setEventCallback((event) => {
+				if (event.type === 'idle') isIdle = true;
+				writeSSE(event, event.type).catch(() => {});
+			});
+
+			try {
+				const activeCtx = ctx;
+				await withRunLifecycle(lifecycle, async () => {
+					try {
+						return await runHandler(activeCtx, handler);
+					} finally {
+						if (!isIdle) activeCtx.emitEvent({ type: 'idle' });
+					}
+				});
+			} catch {
+			}
+		} catch (error) {
+			await writeSSE({ message: error instanceof Error ? error.message : String(error) }, 'error');
 		} finally {
 			clearInterval(heartbeat);
-			ctx.setEventCallback(undefined);
+			ctx?.setEventCallback(undefined);
 			closed = true;
 			try {
 				await writer.close();
 			} catch {
-				// Already closed by the client / runtime — nothing to do.
 			}
 		}
 	})();
@@ -378,7 +462,7 @@ function runSseMode(opts: ModeOptions): Response {
 
 async function runSyncMode(opts: ModeOptions): Promise<Response> {
 	const {
-		agentName,
+		owner,
 		id,
 		runId,
 		handler,
@@ -391,7 +475,7 @@ async function runSyncMode(opts: ModeOptions): Promise<Response> {
 		runRegistry,
 	} = opts;
 	const lifecycle = await createRunLifecycle({
-		agentName,
+		owner,
 		id,
 		runId,
 		payload,
@@ -416,7 +500,7 @@ async function runSyncMode(opts: ModeOptions): Promise<Response> {
 // ─── Run lifecycle ──────────────────────────────────────────────────────────
 
 interface RunLifecycleOptions {
-	agentName: string;
+	owner: RunOwner;
 	id: string;
 	runId: string;
 	payload: unknown;
@@ -438,7 +522,7 @@ async function createRunLifecycle(options: RunLifecycleOptions): Promise<RunLife
 	const startedAt = new Date(startedAtMs).toISOString();
 	const ctx = options.createContext(options.id, options.runId, options.payload, options.request);
 	const runStore = options.runStore;
-	const owner = { kind: 'agent' as const, agentName: options.agentName, instanceId: options.id };
+	const owner = options.owner;
 	const didCreateRun = runStore
 		? await safeRunStore('createRun', () =>
 			runStore.createRun({
@@ -481,11 +565,22 @@ async function withRunLifecycle<T>(
 }
 
 function emitRunStart(lifecycle: RunLifecycle): void {
+	if (lifecycle.owner.kind === 'agent') {
+		lifecycle.ctx.emitEvent({
+			type: 'run_start',
+			runId: lifecycle.runId,
+			owner: lifecycle.owner,
+			instanceId: lifecycle.owner.instanceId,
+			agentName: lifecycle.owner.agentName,
+			startedAt: lifecycle.startedAt,
+			payload: lifecycle.payload,
+		});
+		return;
+	}
 	lifecycle.ctx.emitEvent({
 		type: 'run_start',
 		runId: lifecycle.runId,
-		instanceId: lifecycle.id,
-		agentName: lifecycle.agentName,
+		owner: lifecycle.owner,
 		startedAt: lifecycle.startedAt,
 		payload: lifecycle.payload,
 	});
@@ -622,7 +717,7 @@ function getEventIndex(data: unknown): number | undefined {
  * overrides this with a `runFiber` wrapper for crash-recoverable execution
  * across DO hibernation.
  */
-const defaultStartWebhook: StartWebhookFn = (_runId, run) => run();
+const defaultStartWebhook: StartWebhookFn = (_runId, run) => Promise.resolve().then(run);
 
 /**
  * Default foreground handler runner: invoke directly. Used by the Node
