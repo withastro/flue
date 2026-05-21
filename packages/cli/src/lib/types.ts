@@ -13,9 +13,22 @@ export interface AgentInfo {
 	triggers: { webhook?: boolean };
 }
 
+export interface WorkflowInfo {
+	name: string;
+	filePath: string;
+	channels: { http?: boolean; websocket?: boolean };
+}
+
 export interface BuildContext {
 	agents: AgentInfo[];
-	manifest: { agents: Array<{ name: string; triggers: { webhook?: boolean } }> };
+	workflows: WorkflowInfo[];
+	manifest: {
+		agents: Array<{ name: string; triggers: { webhook?: boolean } }>;
+		workflows: Array<{
+			name: string;
+			channels: { http?: boolean; websocket?: boolean };
+		}>;
+	};
 	/**
 		 * The project root — typically the user's cwd. Source files
 		 * (`agents/`) live here directly, or under `<root>/.flue/`

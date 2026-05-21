@@ -11,6 +11,7 @@ import type {
 	BuildContext,
 	BuildOptions,
 	BuildPlugin,
+	WorkflowInfo,
 } from './types.ts';
 
 interface ParsedAgentFile {
@@ -19,11 +20,207 @@ interface ParsedAgentFile {
 	};
 }
 
+interface ParsedWorkflowFile {
+	channels: {
+		http?: boolean;
+		websocket?: boolean;
+	};
+}
+
 /** Extract static agent metadata at build time without evaluating the agent module. */
 function parseAgentFile(filePath: string): ParsedAgentFile {
 	return {
 		triggers: parseTriggers(filePath),
 	};
+}
+
+function parseWorkflowFile(filePath: string): ParsedWorkflowFile {
+	const source = fs.readFileSync(filePath, 'utf-8');
+	const ast = ts.createSourceFile(
+		filePath,
+		source,
+		ts.ScriptTarget.Latest,
+		true,
+		scriptKindForFile(filePath),
+	);
+	let hasRun = false;
+	let channels: ParsedWorkflowFile['channels'] | undefined;
+
+	for (const statement of ast.statements) {
+		if (isDefaultExport(statement)) {
+			throwUnsupportedWorkflowExports(filePath, 'default exports are not supported');
+		}
+
+		if (ts.isExportDeclaration(statement)) {
+			throwUnsupportedWorkflowExportDeclaration(filePath, statement);
+		}
+
+		if (!isExportedDeclaration(statement)) continue;
+
+		if (ts.isFunctionDeclaration(statement)) {
+			const name = statement.name?.text;
+			if (!name) throwUnsupportedWorkflowExports(filePath, 'anonymous exports are not supported');
+			if (name !== 'run') {
+				throwUnsupportedWorkflowExports(filePath, `unsupported named export "${name}"`);
+			}
+			if (!hasModifier(statement, ts.SyntaxKind.AsyncKeyword)) {
+				throwUnsupportedWorkflowRun(filePath, '"run" must be async');
+			}
+			if (hasRun) throwUnsupportedWorkflowRun(filePath, 'multiple "run" exports were found');
+			hasRun = true;
+			continue;
+		}
+
+		if (!ts.isVariableStatement(statement)) {
+			if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) {
+				throwUnsupportedWorkflowExports(filePath, 'type-only exports are not supported');
+			}
+			const name = declarationName(statement);
+			if (name === 'run') {
+				throwUnsupportedWorkflowRun(filePath, '"run" must be a direct exported async function declaration');
+			}
+			if (name) {
+				throwUnsupportedWorkflowExports(filePath, `unsupported named export "${name}"`);
+			}
+			throwUnsupportedWorkflowExports(filePath, 'unsupported exported declaration');
+		}
+
+		for (const declaration of statement.declarationList.declarations) {
+			if (!ts.isIdentifier(declaration.name)) {
+				throwUnsupportedWorkflowExports(filePath, 'destructured workflow exports are not supported');
+			}
+			const name = declaration.name.text;
+			if (name === 'run') {
+				throwUnsupportedWorkflowRun(filePath, '"run" must be a direct exported async function declaration');
+			}
+			if (name !== 'channels') {
+				throwUnsupportedWorkflowExports(filePath, `unsupported named export "${name}"`);
+			}
+			if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) {
+				throwUnsupportedWorkflowChannels(filePath, 'channels must be declared with export const');
+			}
+			if (channels) throwUnsupportedWorkflowChannels(filePath, 'multiple channels exports were found');
+			if (!declaration.initializer) throwUnsupportedWorkflowChannels(filePath, 'missing initializer');
+			channels = parseWorkflowChannelsInitializer(filePath, declaration.initializer);
+		}
+	}
+
+	if (!hasRun) {
+		throwUnsupportedWorkflowRun(filePath, 'required direct export "export async function run(...)" was not found');
+	}
+	return { channels: channels ?? {} };
+}
+
+function parseWorkflowChannelsInitializer(
+	filePath: string,
+	initializer: ts.Expression,
+): ParsedWorkflowFile['channels'] {
+	const expr = unwrapExpression(initializer);
+	if (!ts.isArrayLiteralExpression(expr)) {
+		throwUnsupportedWorkflowChannels(filePath, 'expected a static factory array');
+	}
+
+	const result: ParsedWorkflowFile['channels'] = {};
+	for (const element of expr.elements) {
+		if (ts.isOmittedExpression(element)) {
+			throwUnsupportedWorkflowChannels(filePath, 'omitted array entries are not supported');
+		}
+
+		const channel = parseWorkflowChannelFactory(filePath, element);
+		result[channel] = true;
+	}
+
+	return result;
+}
+
+function parseWorkflowChannelFactory(
+	filePath: string,
+	element: ts.Expression,
+): keyof ParsedWorkflowFile['channels'] {
+	const expr = unwrapExpression(element);
+	if (!ts.isCallExpression(expr)) {
+		throwUnsupportedWorkflowChannels(filePath, 'channel entries must be direct http() or websocket() calls');
+	}
+	if (expr.arguments.length > 0) {
+		throwUnsupportedWorkflowChannels(filePath, 'channel factory calls must not receive arguments');
+	}
+	if (!ts.isIdentifier(expr.expression)) {
+		throwUnsupportedWorkflowChannels(filePath, 'channel factories must be direct http() or websocket() calls');
+	}
+
+	const name = expr.expression.text;
+	if (name !== 'http' && name !== 'websocket') {
+		throwUnsupportedWorkflowChannels(filePath, `unsupported channel factory "${name}()"`);
+	}
+
+	return name;
+}
+
+function isDefaultExport(statement: ts.Statement): boolean {
+	if (ts.isExportAssignment(statement)) return true;
+	return hasModifier(statement, ts.SyntaxKind.ExportKeyword) && hasModifier(statement, ts.SyntaxKind.DefaultKeyword);
+}
+
+function isExportedDeclaration(statement: ts.Statement): boolean {
+	return hasModifier(statement, ts.SyntaxKind.ExportKeyword);
+}
+
+function hasModifier(statement: ts.Statement, kind: ts.SyntaxKind): boolean {
+	if (!ts.canHaveModifiers(statement)) return false;
+	return ts.getModifiers(statement)?.some((modifier) => modifier.kind === kind) ?? false;
+}
+
+function throwUnsupportedWorkflowExportDeclaration(
+	filePath: string,
+	statement: ts.ExportDeclaration,
+): never {
+	if (statement.isTypeOnly) {
+		throwUnsupportedWorkflowExports(filePath, 'type-only exports are not supported');
+	}
+	if (statement.moduleSpecifier) {
+		throwUnsupportedWorkflowExports(filePath, 're-exported workflow exports are not supported');
+	}
+	if (!statement.exportClause || !ts.isNamedExports(statement.exportClause)) {
+		throwUnsupportedWorkflowExports(filePath, 'namespace and export-star workflow exports are not supported');
+	}
+	const namedExports = statement.exportClause;
+	if (namedExports.elements.some((element) => element.isTypeOnly)) {
+		throwUnsupportedWorkflowExports(filePath, 'type-only exports are not supported');
+	}
+	const names = namedExports.elements.map((element) => element.name.text);
+	if (names.includes('run')) {
+		throwUnsupportedWorkflowRun(filePath, 'export lists for "run" are not supported');
+	}
+	if (names.includes('channels')) {
+		throwUnsupportedWorkflowChannels(filePath, 'export lists for "channels" are not supported');
+	}
+	throwUnsupportedWorkflowExports(filePath, `unsupported export list for "${names.join(', ')}"`);
+}
+
+function declarationName(statement: ts.Statement): string | undefined {
+	if (ts.isClassDeclaration(statement)) return statement.name?.text;
+	return undefined;
+}
+
+function throwUnsupportedWorkflowExports(filePath: string, reason: string): never {
+	throw new Error(
+		`[flue] Unsupported workflow exports in ${filePath}: ${reason}. ` +
+			'Workflow modules must directly export "export async function run(...)"; may export "export const channels = [http(), websocket()]"; and must not export anything else.',
+	);
+}
+
+function throwUnsupportedWorkflowRun(filePath: string, reason: string): never {
+	throw new Error(
+		`[flue] Unsupported workflow run export in ${filePath}: ${reason}. ` +
+			'Use a direct exported async function declaration: export async function run(...).',
+	);
+}
+
+function throwUnsupportedWorkflowChannels(filePath: string, reason: string): never {
+	throw new Error(
+		`[flue] Unsupported workflow channels export in ${filePath}: ${reason}. ` +
+			'Use the direct canonical form: export const channels = [http(), websocket()]. Workflows without channels are internal-only.',
+	);
 }
 
 function parseTriggers(filePath: string): ParsedAgentFile['triggers'] {
@@ -185,13 +382,14 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	console.log(`[flue] Target: ${plugin.name}`);
 
 	const agents = discoverAgents(sourceRoot);
+	const workflows = discoverWorkflows(sourceRoot);
 	const appEntry = discoverAppEntry(sourceRoot);
 
-	if (agents.length === 0) {
+	if (agents.length === 0 && workflows.length === 0) {
 		throw new Error(
-			`[flue] No agent files found.\n\n` +
-				`Expected at: ${path.join(sourceRoot, 'agents')}/\n` +
-				`Add at least one agent file (e.g. hello.ts).`,
+			`[flue] No agent or workflow files found.\n\n` +
+				`Expected at: ${path.join(sourceRoot, 'agents')}/ or ${path.join(sourceRoot, 'workflows')}/\n` +
+				`Add at least one agent or workflow file.`,
 		);
 	}
 
@@ -206,7 +404,14 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	const webhookAgents = agents.filter((a) => a.triggers.webhook);
 	const triggerlessAgents = agents.filter((a) => !a.triggers.webhook);
 
-	console.log(`[flue] Found ${agents.length} agent(s): ${agents.map((a) => a.name).join(', ')}`);
+	if (agents.length > 0) {
+		console.log(`[flue] Found ${agents.length} agent(s): ${agents.map((a) => a.name).join(', ')}`);
+	}
+	if (workflows.length > 0) {
+		console.log(
+			`[flue] Found ${workflows.length} workflow(s): ${workflows.map((workflow) => workflow.name).join(', ')}`,
+		);
+	}
 	if (webhookAgents.length > 0) {
 		console.log(`[flue] Webhook agents: ${webhookAgents.map((a) => a.name).join(', ')}`);
 	}
@@ -226,6 +431,10 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			name: a.name,
 			triggers: a.triggers,
 		})),
+		workflows: workflows.map((workflow) => ({
+			name: workflow.name,
+			channels: workflow.channels,
+		})),
 	};
 	const manifestPath = path.join(output, 'manifest.json');
 	fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8');
@@ -233,6 +442,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 
 	const ctx: BuildContext = {
 		agents,
+		workflows,
 		manifest,
 		root,
 		output,
@@ -401,6 +611,36 @@ function discoverAgents(sourceRoot: string): AgentInfo[] {
 				triggers,
 			};
 		});
+}
+
+function discoverWorkflows(sourceRoot: string): WorkflowInfo[] {
+	const workflowsDir = path.join(sourceRoot, 'workflows');
+	if (!fs.existsSync(workflowsDir)) return [];
+
+	const files = fs
+		.readdirSync(workflowsDir)
+		.filter((file) => !/\.d\.(ts|mts)$/.test(file) && /\.(ts|js|mts|mjs)$/.test(file));
+	const workflowFiles = new Map<string, string>();
+	for (const file of files) {
+		const name = file.replace(/\.(ts|js|mts|mjs)$/, '');
+		const previous = workflowFiles.get(name);
+		if (previous) {
+			throw new Error(
+				`[flue] Duplicate workflow basename "${name}" found: ${previous}, ${file}. Keep only one workflow source file per basename.`,
+			);
+		}
+		workflowFiles.set(name, file);
+	}
+
+	return files.map((file) => {
+		const filePath = path.join(workflowsDir, file);
+		const { channels } = parseWorkflowFile(filePath);
+		return {
+			name: file.replace(/\.(ts|js|mts|mjs)$/, ''),
+			filePath,
+			channels,
+		};
+	});
 }
 
 /**

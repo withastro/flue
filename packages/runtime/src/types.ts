@@ -5,6 +5,10 @@ import type * as v from 'valibot';
 
 export type { ThinkingLevel };
 
+export interface WorkflowChannel<TName extends 'http' | 'websocket' = 'http' | 'websocket'> {
+	readonly type: TName;
+}
+
 /**
  * Inline image content attached to a `prompt()`, `skill()`, or `task()` call.
  * Re-exports pi-ai's `ImageContent` shape: `{ type: 'image', data: base64, mimeType }`.

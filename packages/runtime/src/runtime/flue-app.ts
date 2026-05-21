@@ -116,6 +116,10 @@ export interface FlueRuntime {
 
 export interface FlueManifest {
 	agents: Array<{ name: string; triggers: { webhook?: boolean } }>;
+	workflows?: Array<{
+		name: string;
+		channels: { http?: boolean; websocket?: boolean };
+	}>;
 }
 
 const RUN_ROUTES_BY_ID: ReadonlyArray<readonly [string, HandleRunRouteOptions['action']]> = [
