@@ -623,6 +623,11 @@ function discoverWorkflows(sourceRoot: string): WorkflowInfo[] {
 	const workflowFiles = new Map<string, string>();
 	for (const file of files) {
 		const name = file.replace(/\.(ts|js|mts|mjs)$/, '');
+		if (!name || name.includes(':')) {
+			throw new Error(
+				`[flue] Workflow basename "${name}" is invalid. Workflow names must be non-empty and must not contain ":".`,
+			);
+		}
 		const previous = workflowFiles.get(name);
 		if (previous) {
 			throw new Error(

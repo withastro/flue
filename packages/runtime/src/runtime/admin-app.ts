@@ -214,6 +214,8 @@ const listRunsHandler: MiddlewareHandler = async (c) => {
 		assertKnownAgent(rt, agentName);
 		opts.agentName = agentName;
 	}
+	const workflowName = url.searchParams.get('workflowName');
+	if (workflowName) opts.workflowName = workflowName;
 	const out = await registry.listRuns(opts);
 	return c.json({ items: out.runs, nextCursor: out.nextCursor });
 };

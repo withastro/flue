@@ -3,6 +3,7 @@
 import { InvalidRequestError, RunNotFoundError, RunStoreUnavailableError } from '../errors.ts';
 import type { FlueEvent } from '../types.ts';
 import { SSE_HEARTBEAT_MS } from './handle-agent.ts';
+import type { RunOwner } from './run-registry.ts';
 import type { RunRecord, RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 
@@ -10,8 +11,7 @@ export interface HandleRunRouteOptions {
 	request: Request;
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
-	agentName: string;
-	id: string;
+	owner: RunOwner;
 	runId?: string;
 	action: 'get' | 'events' | 'stream';
 }
@@ -28,28 +28,22 @@ export async function handleRunRouteRequest(opts: HandleRunRouteOptions): Promis
 
 	switch (opts.action) {
 		case 'get':
-			return getRun(store, requireRunId(opts.runId), opts.agentName, opts.id);
+			return getRun(store, requireRunId(opts.runId), opts.owner);
 		case 'events':
-			return getRunEvents(opts.request, store, requireRunId(opts.runId), opts.agentName, opts.id);
+			return getRunEvents(opts.request, store, requireRunId(opts.runId), opts.owner);
 		case 'stream':
 			return streamRunEvents(
 				opts.request,
 				store,
 				opts.runSubscribers,
 				requireRunId(opts.runId),
-				opts.agentName,
-				opts.id,
+				opts.owner,
 			);
 	}
 }
 
-async function getRun(
-	store: RunStore,
-	runId: string,
-	agentName: string,
-	instanceId: string,
-): Promise<Response> {
-	const run = await getRunForInstance(store, runId, agentName, instanceId);
+async function getRun(store: RunStore, runId: string, owner: RunOwner): Promise<Response> {
+	const run = await getRunForOwner(store, runId, owner);
 	return json(run);
 }
 
@@ -57,10 +51,9 @@ async function getRunEvents(
 	request: Request,
 	store: RunStore,
 	runId: string,
-	agentName: string,
-	instanceId: string,
+	owner: RunOwner,
 ): Promise<Response> {
-	await getRunForInstance(store, runId, agentName, instanceId);
+	await getRunForOwner(store, runId, owner);
 	const url = new URL(request.url);
 	const after = parseEventIndex(url.searchParams.get('after'));
 	const types = parseTypes(url.searchParams.get('types'));
@@ -80,10 +73,9 @@ async function streamRunEvents(
 	store: RunStore,
 	subscribers: RunSubscriberRegistry | undefined,
 	runId: string,
-	agentName: string,
-	instanceId: string,
+	owner: RunOwner,
 ): Promise<Response> {
-	const run = await getRunForInstance(store, runId, agentName, instanceId);
+	const run = await getRunForOwner(store, runId, owner);
 
 	const lastEventId = parseLastEventId(request.headers.get('last-event-id'));
 	const fromIndex = lastEventId === undefined ? undefined : lastEventId + 1;
@@ -282,18 +274,24 @@ async function runReplayPhase(opts: ReplayPhaseOptions): Promise<void> {
 	markReplayDone();
 }
 
-async function getRunForInstance(
-	store: RunStore,
-	runId: string,
-	agentName: string,
-	instanceId: string,
-): Promise<RunRecord> {
+async function getRunForOwner(store: RunStore, runId: string, owner: RunOwner): Promise<RunRecord> {
 	const run = await store.getRun(runId);
 	if (!run) throw new RunNotFoundError({ runId });
-	if (run.agentName !== agentName || run.instanceId !== instanceId) {
-		throw new RunNotFoundError({ runId });
-	}
+	if (!sameOwner(run.owner, owner)) throw new RunNotFoundError({ runId });
 	return run;
+}
+
+function sameOwner(left: RunOwner, right: RunOwner): boolean {
+	if (left.kind !== right.kind) return false;
+	if (left.kind === 'agent' && right.kind === 'agent') {
+		return left.agentName === right.agentName && left.instanceId === right.instanceId;
+	}
+	return (
+		left.kind === 'workflow' &&
+		right.kind === 'workflow' &&
+		left.workflowName === right.workflowName &&
+		left.runId === right.runId
+	);
 }
 
 function isTerminal(run: RunRecord): boolean {

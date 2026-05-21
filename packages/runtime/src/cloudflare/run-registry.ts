@@ -65,6 +65,7 @@ class CloudflareRunRegistry implements RunRegistry {
 		if (opts.status) params.set('status', opts.status);
 		if (opts.agentName) params.set('agent', opts.agentName);
 		if (opts.instanceId) params.set('instance', opts.instanceId);
+		if (opts.workflowName) params.set('workflow', opts.workflowName);
 		if (opts.limit !== undefined) params.set('limit', String(opts.limit));
 		if (opts.cursor) params.set('cursor', opts.cursor);
 		const qs = params.toString();

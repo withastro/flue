@@ -26,11 +26,16 @@ export class InMemoryRunStore implements RunStore {
 	}
 
 	async createRun(input: CreateRunInput): Promise<void> {
-		const instance = this.getInstance(input.instanceId);
+		if (input.owner.kind === 'workflow' && input.owner.runId !== input.runId) {
+			throw new Error('[flue] Workflow run owners must use the same runId as the run record.');
+		}
+		const instance = this.getInstance(ownerKey(input.owner));
 		instance.runs.set(input.runId, {
 			runId: input.runId,
-			instanceId: input.instanceId,
-			agentName: input.agentName,
+			owner: input.owner,
+			...(input.owner.kind === 'agent'
+				? { agentName: input.owner.agentName, instanceId: input.owner.instanceId }
+				: {}),
 			status: 'active',
 			startedAt: input.startedAt,
 		});
@@ -40,7 +45,7 @@ export class InMemoryRunStore implements RunStore {
 	async endRun(input: EndRunInput): Promise<void> {
 		const existing = await this.getRun(input.runId);
 		if (!existing) return;
-		const instance = this.getInstance(existing.instanceId);
+		const instance = this.getInstance(ownerKey(existing.owner));
 		instance.runs.set(input.runId, {
 			...existing,
 			status: input.isError ? 'errored' : 'completed',
@@ -56,7 +61,7 @@ export class InMemoryRunStore implements RunStore {
 	async appendEvent(runId: string, event: FlueEvent): Promise<void> {
 		const run = await this.getRun(runId);
 		if (!run) return;
-		const instance = this.getInstance(run.instanceId);
+		const instance = this.getInstance(ownerKey(run.owner));
 		const events = instance.events.get(runId) ?? [];
 		events.push(truncateEventForPersistence(event, this.maxEventBytes));
 		instance.events.set(runId, events);
@@ -65,7 +70,7 @@ export class InMemoryRunStore implements RunStore {
 	async getEvents(runId: string, fromIndex?: number): Promise<FlueEvent[]> {
 		const run = await this.getRun(runId);
 		if (!run) return [];
-		const events = this.getInstance(run.instanceId).events.get(runId) ?? [];
+		const events = this.getInstance(ownerKey(run.owner)).events.get(runId) ?? [];
 		if (fromIndex === undefined) return [...events];
 		return events.filter((event) => typeof event.eventIndex === 'number' && event.eventIndex >= fromIndex);
 	}
@@ -78,11 +83,11 @@ export class InMemoryRunStore implements RunStore {
 		return null;
 	}
 
-	private getInstance(instanceId: string): InstanceRuns {
-		let instance = this.instances.get(instanceId);
+	private getInstance(key: string): InstanceRuns {
+		let instance = this.instances.get(key);
 		if (!instance) {
 			instance = { runs: new Map(), events: new Map() };
-			this.instances.set(instanceId, instance);
+			this.instances.set(key, instance);
 		}
 		return instance;
 	}
@@ -98,4 +103,10 @@ export class InMemoryRunStore implements RunStore {
 			instance.events.delete(run.runId);
 		}
 	}
+}
+
+function ownerKey(owner: CreateRunInput['owner']): string {
+	return owner.kind === 'agent'
+		? `agent\0${owner.agentName}\0${owner.instanceId}`
+		: `workflow\0${owner.workflowName}\0${owner.runId}`;
 }

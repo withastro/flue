@@ -42,25 +42,30 @@ export class InMemoryRunRegistry implements RunRegistry {
 
 	async recordRunStart(input: RecordRunStartInput): Promise<void> {
 		if (this.pointers.has(input.runId)) return;
+		const owner = normalizeRunOwner(input);
 
 		const pointer: RunPointer = {
 			runId: input.runId,
-			agentName: input.agentName,
-			instanceId: input.instanceId,
+			owner,
+			...(owner.kind === 'agent'
+				? { agentName: owner.agentName, instanceId: owner.instanceId }
+				: {}),
 			status: 'active',
 			startedAt: input.startedAt,
 		};
 		this.pointers.set(input.runId, pointer);
 
-		const key = instanceKey(input.agentName, input.instanceId);
-		let instanceBucket = this.byInstance.get(key);
-		if (!instanceBucket) {
-			instanceBucket = new Set();
-			this.byInstance.set(key, instanceBucket);
-		}
-		instanceBucket.add(input.runId);
+		if (owner.kind === 'agent') {
+			const key = instanceKey(owner.agentName, owner.instanceId);
+			let instanceBucket = this.byInstance.get(key);
+			if (!instanceBucket) {
+				instanceBucket = new Set();
+				this.byInstance.set(key, instanceBucket);
+			}
+			instanceBucket.add(input.runId);
 
-		this.instances.add(key);
+			this.instances.add(key);
+		}
 	}
 
 	async recordRunEnd(input: RecordRunEndInput): Promise<void> {
@@ -73,7 +78,9 @@ export class InMemoryRunRegistry implements RunRegistry {
 			durationMs: input.durationMs,
 			isError: input.isError,
 		});
-		this.pruneCompletedRunsForInstance(pointer.agentName, pointer.instanceId);
+		if (pointer.owner.kind === 'agent') {
+			this.pruneCompletedRunsForInstance(pointer.owner.agentName, pointer.owner.instanceId);
+		}
 	}
 
 	async lookupRun(runId: string): Promise<RunPointer | null> {
@@ -151,6 +158,16 @@ export class InMemoryRunRegistry implements RunRegistry {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
+function normalizeRunOwner(input: RecordRunStartInput): RunPointer['owner'] {
+	if ('owner' in input) {
+		if (input.owner.kind === 'workflow' && input.owner.runId !== input.runId) {
+			throw new Error('[flue] Workflow run owners must use the same runId as the pointer.');
+		}
+		return input.owner;
+	}
+	return { kind: 'agent', agentName: input.agentName, instanceId: input.instanceId };
+}
+
 function instanceKey(agentName: string, instanceId: string): string {
 	return `${agentName}\0${instanceId}`;
 }
@@ -162,8 +179,15 @@ function parseInstanceKey(key: string): InstancePointer {
 
 function matchesListFilter(pointer: RunPointer, opts: ListRunsOpts): boolean {
 	if (opts.status && pointer.status !== opts.status) return false;
-	if (opts.agentName && pointer.agentName !== opts.agentName) return false;
-	if (opts.instanceId && pointer.instanceId !== opts.instanceId) return false;
+	if (opts.agentName) {
+		if (pointer.owner.kind !== 'agent' || pointer.owner.agentName !== opts.agentName) return false;
+	}
+	if (opts.instanceId) {
+		if (pointer.owner.kind !== 'agent' || pointer.owner.instanceId !== opts.instanceId) return false;
+	}
+	if (opts.workflowName) {
+		if (pointer.owner.kind !== 'workflow' || pointer.owner.workflowName !== opts.workflowName) return false;
+	}
 	return true;
 }
 

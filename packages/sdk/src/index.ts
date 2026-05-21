@@ -6,6 +6,7 @@ export type {
 } from './client.ts';
 export type {
 	FlueEvent,
+	RunOwner,
 	RunRecord,
 	RunPointer,
 	ListResponse,

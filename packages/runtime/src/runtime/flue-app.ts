@@ -24,7 +24,7 @@ import {
 	type StartWebhookFn,
 } from './handle-agent.ts';
 import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-routes.ts';
-import type { RunRegistry } from './run-registry.ts';
+import type { RunPointer, RunRegistry } from './run-registry.ts';
 import type { RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 import {
@@ -101,7 +101,7 @@ export interface FlueRuntime {
 	routeRunRequest?: (
 		request: Request,
 		env: unknown,
-		target: { agentName: string; instanceId: string },
+		target: RunPointer['owner'],
 	) => Promise<Response | null>;
 
 	/** Cloudflare-only factory for the request-scoped registry client. */
@@ -425,10 +425,11 @@ export async function handleRunById(opts: {
 		const pointer = await registry.lookupRun(runId);
 		if (!pointer) throw new RunNotFoundError({ runId });
 
-		const response = await rt.routeRunRequest(normalizeRunRequest(request, runId, action), env, {
-			agentName: pointer.agentName,
-			instanceId: pointer.instanceId,
-		});
+		const response = await rt.routeRunRequest(
+			normalizeRunRequest(request, runId, action),
+			env,
+			pointer.owner,
+		);
 		if (response) return response;
 		throw new RouteNotFoundError({
 			method: request.method,
@@ -444,8 +445,7 @@ export async function handleRunById(opts: {
 		request,
 		runStore: rt.runStore,
 		runSubscribers: rt.runSubscribers,
-		agentName: pointer.agentName,
-		id: pointer.instanceId,
+		owner: pointer.owner,
 		runId,
 		action,
 	});

@@ -40,6 +40,7 @@ export interface ListOptions {
 export interface ListRunsOptions extends ListOptions {
 	status?: RunStatus;
 	agentName?: string;
+	workflowName?: string;
 }
 
 export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
@@ -94,5 +95,10 @@ function listQuery(opts: ListOptions): Record<string, string | number | undefine
 }
 
 function runsQuery(opts: ListRunsOptions): Record<string, string | number | undefined> {
-	return { ...listQuery(opts), status: opts.status, agentName: opts.agentName };
+	return {
+		...listQuery(opts),
+		status: opts.status,
+		agentName: opts.agentName,
+		workflowName: opts.workflowName,
+	};
 }

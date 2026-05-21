@@ -1070,8 +1070,11 @@ async function run(args: RunArgs) {
 
 interface RunRecord {
 	runId: string;
-	instanceId: string;
-	agentName: string;
+	owner:
+		| { kind: 'agent'; agentName: string; instanceId: string }
+		| { kind: 'workflow'; workflowName: string; runId: string };
+	instanceId?: string;
+	agentName?: string;
 	status: 'active' | 'completed' | 'errored';
 	startedAt: string;
 	isError?: boolean;

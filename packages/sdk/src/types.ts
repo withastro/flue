@@ -1,9 +1,14 @@
 export type RunStatus = 'active' | 'completed' | 'errored';
 
+export type RunOwner =
+	| { kind: 'agent'; agentName: string; instanceId: string }
+	| { kind: 'workflow'; workflowName: string; runId: string };
+
 export interface RunRecord {
 	runId: string;
-	instanceId: string;
-	agentName: string;
+	owner: RunOwner;
+	agentName?: string;
+	instanceId?: string;
 	status: RunStatus;
 	startedAt: string;
 	endedAt?: string;
@@ -15,8 +20,9 @@ export interface RunRecord {
 
 export interface RunPointer {
 	runId: string;
-	agentName: string;
-	instanceId: string;
+	owner: RunOwner;
+	agentName?: string;
+	instanceId?: string;
 	status: RunStatus;
 	startedAt: string;
 	endedAt?: string;

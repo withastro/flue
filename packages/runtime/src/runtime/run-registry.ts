@@ -1,22 +1,33 @@
 /** Cross-deployment pointer index over Flue runs. */
 import type { RunStatus } from './run-store.ts';
 
+export type RunOwner =
+	| { kind: 'agent'; agentName: string; instanceId: string }
+	| { kind: 'workflow'; workflowName: string; runId: string };
+
+export type RecordRunStartInput =
+	| {
+			runId: string;
+			owner: RunOwner;
+			startedAt: string;
+	  }
+	| {
+			runId: string;
+			agentName: string;
+			instanceId: string;
+			startedAt: string;
+	  };
+
 export interface RunPointer {
 	runId: string;
-	agentName: string;
-	instanceId: string;
+	owner: RunOwner;
+	agentName?: string;
+	instanceId?: string;
 	status: RunStatus;
 	startedAt: string;
 	endedAt?: string;
 	durationMs?: number;
 	isError?: boolean;
-}
-
-export interface RecordRunStartInput {
-	runId: string;
-	agentName: string;
-	instanceId: string;
-	startedAt: string;
 }
 
 export interface RecordRunEndInput {
@@ -30,6 +41,7 @@ export interface ListRunsOpts {
 	status?: RunStatus;
 	agentName?: string;
 	instanceId?: string;
+	workflowName?: string;
 	limit?: number;
 	cursor?: string;
 }

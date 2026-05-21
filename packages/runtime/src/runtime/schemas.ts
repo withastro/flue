@@ -13,10 +13,16 @@ export const ErrorEnvelopeSchema = v.object({
 	}),
 });
 
+export const RunOwnerSchema = v.union([
+	v.object({ kind: v.literal('agent'), agentName: v.string(), instanceId: v.string() }),
+	v.object({ kind: v.literal('workflow'), workflowName: v.string(), runId: v.string() }),
+]);
+
 export const RunRecordSchema = v.object({
 	runId: v.string(),
-	instanceId: v.string(),
-	agentName: v.string(),
+	owner: RunOwnerSchema,
+	agentName: v.optional(v.string()),
+	instanceId: v.optional(v.string()),
 	status: RunStatusSchema,
 	startedAt: v.string(),
 	endedAt: v.optional(v.string()),
@@ -28,8 +34,9 @@ export const RunRecordSchema = v.object({
 
 export const RunPointerSchema = v.object({
 	runId: v.string(),
-	agentName: v.string(),
-	instanceId: v.string(),
+	owner: RunOwnerSchema,
+	agentName: v.optional(v.string()),
+	instanceId: v.optional(v.string()),
 	status: RunStatusSchema,
 	startedAt: v.string(),
 	endedAt: v.optional(v.string()),
@@ -294,6 +301,7 @@ export const AdminInstanceRunsQuerySchema = v.object({
 export const AdminRunsQuerySchema = v.object({
 	status: v.optional(RunStatusSchema),
 	agentName: v.optional(v.string()),
+	workflowName: v.optional(v.string()),
 	cursor: v.optional(v.string()),
 	limit: ListLimitSchema,
 });

@@ -38,13 +38,23 @@ class DurableRunStore implements RunStore {
 	}
 
 	async createRun(input: CreateRunInput): Promise<void> {
+		if (input.owner.kind === 'workflow' && input.owner.runId !== input.runId) {
+			throw new Error('[flue] Workflow run owners must use the same runId as the run record.');
+		}
+		const agentName = input.owner.kind === 'agent' ? input.owner.agentName : null;
+		const instanceId = input.owner.kind === 'agent' ? input.owner.instanceId : null;
+		const workflowName = input.owner.kind === 'workflow' ? input.owner.workflowName : null;
+		const ownerRunId = input.owner.kind === 'workflow' ? input.owner.runId : null;
 		this.sql.exec(
 			`INSERT OR REPLACE INTO flue_runs
-			 (run_id, instance_id, agent_name, status, started_at, ended_at, is_error, duration_ms, result, error)
-			 VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
+			 (run_id, owner_kind, instance_id, agent_name, workflow_name, owner_run_id, status, started_at, ended_at, is_error, duration_ms, result, error)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
 			input.runId,
-			input.instanceId,
-			input.agentName,
+			input.owner.kind,
+			instanceId,
+			agentName,
+			workflowName,
+			ownerRunId,
 			'active',
 			input.startedAt,
 		);
@@ -120,8 +130,11 @@ function ensureRunTables(sql: SqlStorage): void {
 	sql.exec(
 		`CREATE TABLE IF NOT EXISTS flue_runs (
 		 run_id TEXT PRIMARY KEY,
-		 instance_id TEXT NOT NULL,
-		 agent_name TEXT NOT NULL,
+		 owner_kind TEXT NOT NULL,
+		 instance_id TEXT,
+		 agent_name TEXT,
+		 workflow_name TEXT,
+		 owner_run_id TEXT,
 		 status TEXT NOT NULL,
 		 started_at TEXT NOT NULL,
 		 ended_at TEXT,
@@ -130,6 +143,14 @@ function ensureRunTables(sql: SqlStorage): void {
 		 result TEXT,
 		 error TEXT
 		)`,
+	);
+	ensureColumn(sql, 'flue_runs', 'owner_kind', "TEXT NOT NULL DEFAULT 'agent'");
+	ensureColumn(sql, 'flue_runs', 'workflow_name', 'TEXT');
+	ensureColumn(sql, 'flue_runs', 'owner_run_id', 'TEXT');
+	sql.exec(
+		`UPDATE flue_runs
+		 SET owner_kind = 'agent'
+		 WHERE owner_kind IS NULL OR owner_kind = ''`,
 	);
 	sql.exec(
 		`CREATE TABLE IF NOT EXISTS flue_run_events (
@@ -141,17 +162,47 @@ function ensureRunTables(sql: SqlStorage): void {
 		 PRIMARY KEY (run_id, event_index)
 		)`,
 	);
-	sql.exec('CREATE INDEX IF NOT EXISTS flue_runs_instance_started_idx ON flue_runs (instance_id, started_at DESC)');
+	sql.exec(
+		'CREATE INDEX IF NOT EXISTS flue_runs_instance_started_idx ON flue_runs (owner_kind, instance_id, started_at DESC)',
+	);
+	sql.exec(
+		'CREATE INDEX IF NOT EXISTS flue_runs_workflow_started_idx ON flue_runs (owner_kind, workflow_name, started_at DESC)',
+	);
 	sql.exec('CREATE INDEX IF NOT EXISTS flue_run_events_run_idx ON flue_run_events (run_id, event_index ASC)');
+}
+
+function ensureColumn(sql: SqlStorage, table: string, column: string, definition: string): void {
+	const columns = new Set(
+		sql
+			.exec(`PRAGMA table_info(${table})`)
+			.toArray()
+			.map((row) => String(row.name)),
+	);
+	if (!columns.has(column)) sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 function rowToRunRecord(row: SqlRow): RunRecord {
 	const result = typeof row.result === 'string' ? JSON.parse(row.result) : undefined;
 	const error = typeof row.error === 'string' ? JSON.parse(row.error) : undefined;
+	const runId = String(row.run_id);
+	const owner =
+		row.owner_kind === 'workflow'
+			? {
+					kind: 'workflow' as const,
+					workflowName: String(row.workflow_name),
+					runId: String(row.owner_run_id ?? runId),
+				}
+			: {
+					kind: 'agent' as const,
+					agentName: String(row.agent_name),
+					instanceId: String(row.instance_id),
+				};
 	return {
-		runId: String(row.run_id),
-		instanceId: String(row.instance_id),
-		agentName: String(row.agent_name),
+		runId,
+		owner,
+		...(owner.kind === 'agent'
+			? { agentName: owner.agentName, instanceId: owner.instanceId }
+			: {}),
 		status: row.status as RunRecord['status'],
 		startedAt: String(row.started_at),
 		endedAt: typeof row.ended_at === 'string' ? row.ended_at : undefined,

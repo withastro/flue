@@ -438,12 +438,12 @@ async function createRunLifecycle(options: RunLifecycleOptions): Promise<RunLife
 	const startedAt = new Date(startedAtMs).toISOString();
 	const ctx = options.createContext(options.id, options.runId, options.payload, options.request);
 	const runStore = options.runStore;
+	const owner = { kind: 'agent' as const, agentName: options.agentName, instanceId: options.id };
 	const didCreateRun = runStore
 		? await safeRunStore('createRun', () =>
 			runStore.createRun({
 				runId: options.runId,
-				instanceId: options.id,
-				agentName: options.agentName,
+				owner,
 				startedAt,
 				payload: options.payload,
 			}),
@@ -452,8 +452,7 @@ async function createRunLifecycle(options: RunLifecycleOptions): Promise<RunLife
 	if (didCreateRun) await safeRegistry('recordRunStart', () =>
 		options.runRegistry?.recordRunStart({
 			runId: options.runId,
-			agentName: options.agentName,
-			instanceId: options.id,
+			owner,
 			startedAt,
 		}),
 	);

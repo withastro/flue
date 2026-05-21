@@ -53,6 +53,7 @@ export type {
 //
 // The user-facing `flue()` itself is re-exported from `@flue/runtime/app`, not here.
 export { handleAgentRequest } from './runtime/handle-agent.ts';
+export { generateWorkflowRunId, parseWorkflowRunId } from './runtime/ids.ts';
 export type { HandleRunRouteOptions } from './runtime/handle-run-routes.ts';
 export { handleRunRouteRequest } from './runtime/handle-run-routes.ts';
 export type {
@@ -63,6 +64,7 @@ export type {
 	ListRunsResponse,
 	RecordRunEndInput,
 	RecordRunStartInput,
+	RunOwner,
 	RunPointer,
 	RunRegistry,
 } from './runtime/run-registry.ts';

@@ -379,7 +379,8 @@ export function mergeFlueAdditions(
 			.filter((n): n is string => typeof n === 'string'),
 	);
 	for (const binding of additions.doBindings) {
-		if (binding.name !== 'FLUE_REGISTRY' || !existingBindingNames.has(binding.name)) continue;
+		if (!['FLUE_REGISTRY', 'FLUE_WORKFLOW_RUNS'].includes(binding.name)) continue;
+		if (!existingBindingNames.has(binding.name)) continue;
 		const existing = existingBindings.find(
 			(b): b is Record<string, unknown> => {
 				if (typeof b !== 'object' || b === null) return false;
@@ -388,7 +389,7 @@ export function mergeFlueAdditions(
 		);
 		if (existing?.class_name !== binding.class_name) {
 			throw new Error(
-				`[flue] wrangler.jsonc durable object binding "FLUE_REGISTRY" is reserved by Flue. ` +
+				`[flue] wrangler.jsonc durable object binding "${binding.name}" is reserved by Flue. ` +
 					`Expected class_name "${binding.class_name}", received "${String(existing?.class_name)}".`,
 			);
 		}

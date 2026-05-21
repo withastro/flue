@@ -47,7 +47,7 @@ export class CloudflarePlugin implements BuildPlugin {
 	}
 
 	async generateEntryPoint(ctx: BuildContext): Promise<string> {
-		const { agents, appEntry } = ctx;
+		const { agents, appEntry, workflows } = ctx;
 		const manifestJson = JSON.stringify(ctx.manifest);
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 		validateCloudflareAgentNames(ctx);
@@ -83,6 +83,15 @@ export class CloudflarePlugin implements BuildPlugin {
 			})
 			.join('\n\n');
 
+		const workflowRunOwnerClass =
+			workflows.length > 0
+				? `export class WorkflowRunOwner extends Agent {
+  async onRequest(request) {
+    return dispatchWorkflowRunOwner(request, this);
+  }
+}`
+				: '';
+
 		const { config: userConfig } = await this.getUserConfig(ctx.root);
 		const sandboxClassNames = detectSandboxBindings(userConfig);
 		const sandboxReExports = sandboxClassNames
@@ -111,6 +120,7 @@ import {
   configureFlueRuntime,
   createDefaultFlueApp,
   hasRegisteredProvider,
+  parseWorkflowRunId,
 } from '@flue/runtime/internal';
 import {
   runWithCloudflareContext,
@@ -297,14 +307,27 @@ async function handleFlueFiberRecovered(ctx, _doInstance, agentName) {
 
 // ─── Per-DO Dispatch ───────────────────────────────────────────────────────
 
+async function dispatchWorkflowRunOwner(request, doInstance) {
+  const runRoute = parseRunRoute(request);
+  if (!runRoute) return null;
+  const parsed = parseWorkflowRunId(runRoute.runId);
+  if (!parsed || parsed.workflowName.length === 0) return null;
+  return handleRunRouteRequest({
+    request,
+    owner: { kind: 'workflow', workflowName: parsed.workflowName, runId: runRoute.runId },
+    runStore: createRunStoreForRequest(doInstance),
+    runSubscribers,
+    ...runRoute,
+  });
+}
+
 async function dispatchAgent(request, doInstance, agentName, handler) {
   const id = doInstance.name; // DO room name set by routeAgentRequest
   const runRoute = parseRunRoute(request);
   if (runRoute) {
     return handleRunRouteRequest({
       request,
-      agentName,
-      id,
+      owner: { kind: 'agent', agentName, instanceId: id },
       runStore: createRunStoreForRequest(doInstance),
       runSubscribers,
       ...runRoute,
@@ -358,6 +381,7 @@ function parseRunRoute(request) {
 // ─── Per-Agent Durable Object Classes ──────────────────────────────────────
 
 ${agentClasses}
+${workflowRunOwnerClass}
 
 export { FlueRegistry };
 
@@ -382,6 +406,12 @@ configureFlueRuntime({
   routeAgentRequest: (request, env) => routeAgentRequest(request, env),
   createRunRegistryForRequest,
   routeRunRequest: async (request, reqEnv, target) => {
+    if (target.kind === 'workflow') {
+      const binding = reqEnv?.FLUE_WORKFLOW_RUNS;
+      if (!binding) return null;
+      const stub = await getAgentByName(binding, target.runId);
+      return stub.fetch(request);
+    }
     const bindingName = agentBindingNameFromAgentName(target.agentName);
     const binding = reqEnv?.[bindingName];
     if (!binding) return null;
@@ -433,6 +463,10 @@ export default {
 			class_name: agentClassName(a.name),
 			name: agentClassName(a.name),
 		}));
+
+		if (ctx.workflows.length > 0) {
+			flueBindings.push({ name: 'FLUE_WORKFLOW_RUNS', class_name: 'WorkflowRunOwner' });
+		}
 
 		const FLUE_REGISTRY_BINDING = { name: 'FLUE_REGISTRY', class_name: 'FlueRegistry' };
 		flueBindings.push(FLUE_REGISTRY_BINDING);

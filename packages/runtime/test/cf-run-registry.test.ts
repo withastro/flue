@@ -44,6 +44,7 @@ describe('createRegistryOps (SQL paths)', () => {
 		});
 		expect(ops.lookupRun('run_01')).toEqual({
 			runId: 'run_01',
+			owner: { kind: 'agent', agentName: 'hello', instanceId: 'inst_a' },
 			agentName: 'hello',
 			instanceId: 'inst_a',
 			status: 'active',
@@ -227,6 +228,32 @@ describe('createRegistryOps (SQL paths)', () => {
 		expect(ops.listRuns({}).runs).toHaveLength(3);
 	});
 
+	it('stores workflow-owned pointers and filters by workflowName', () => {
+		const ops = createRegistryOps(makeFakeSql());
+		const runId = 'workflow:daily-report:01TEST';
+		ops.recordRunStart({
+			runId,
+			owner: { kind: 'workflow', workflowName: 'daily-report', runId },
+			startedAt: STARTED_AT_1,
+		});
+		expect(ops.lookupRun(runId)).toMatchObject({
+			runId,
+			owner: { kind: 'workflow', workflowName: 'daily-report', runId },
+		});
+		expect(ops.listRuns({ workflowName: 'daily-report' }).runs).toHaveLength(1);
+	});
+
+	it('rejects workflow owners whose serialized run id does not match', () => {
+		const ops = createRegistryOps(makeFakeSql());
+		expect(() =>
+			ops.recordRunStart({
+				runId: 'workflow:daily-report:01A',
+				owner: { kind: 'workflow', workflowName: 'daily-report', runId: 'workflow:daily-report:01B' },
+				startedAt: STARTED_AT_1,
+			}),
+		).toThrow(/same runId/);
+	});
+
 	it('pruning: separate instances retain separate completed buckets', () => {
 		const ops = createRegistryOps(makeFakeSql(), { maxCompletedRunsPerInstance: 2 });
 		for (const instanceId of ['inst_a', 'inst_b']) {
@@ -275,6 +302,37 @@ describe('handleRegistryRequest (REST router)', () => {
 			new Request('https://registry/pointers/nope', { method: 'GET' }),
 		);
 		expect(miss.status).toBe(404);
+	});
+
+	it('migrates the legacy registry schema in place', () => {
+		const sql = makeFakeSql();
+		sql.exec(
+			`CREATE TABLE flue_registry_runs (
+			 run_id TEXT PRIMARY KEY,
+			 agent_name TEXT NOT NULL,
+			 instance_id TEXT NOT NULL,
+			 status TEXT NOT NULL,
+			 started_at TEXT NOT NULL,
+			 ended_at TEXT,
+			 duration_ms INTEGER,
+			 is_error INTEGER
+			)`,
+		);
+		sql.exec(
+			`INSERT INTO flue_registry_runs
+			 (run_id, agent_name, instance_id, status, started_at)
+			 VALUES (?, ?, ?, ?, ?)`,
+			'legacy',
+			'hello',
+			'inst_a',
+			'active',
+			STARTED_AT_1,
+		);
+		const ops = createRegistryOps(sql);
+		expect(ops.lookupRun('legacy')).toMatchObject({
+			runId: 'legacy',
+			owner: { kind: 'agent', agentName: 'hello', instanceId: 'inst_a' },
+		});
 	});
 
 	it('POST /pointers/<runId>/start: 204 and pointer is now lookup-able', async () => {

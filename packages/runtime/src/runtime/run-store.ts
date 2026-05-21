@@ -2,10 +2,13 @@ import type { FlueEvent } from '../types.ts';
 
 export type RunStatus = 'active' | 'completed' | 'errored';
 
+import type { RunOwner } from './run-registry.ts';
+
 export interface RunRecord {
 	runId: string;
-	instanceId: string;
-	agentName: string;
+	owner: RunOwner;
+	agentName?: string;
+	instanceId?: string;
 	status: RunStatus;
 	startedAt: string;
 	endedAt?: string;
@@ -17,8 +20,7 @@ export interface RunRecord {
 
 export interface CreateRunInput {
 	runId: string;
-	instanceId: string;
-	agentName: string;
+	owner: RunOwner;
 	startedAt: string;
 	payload: unknown;
 }

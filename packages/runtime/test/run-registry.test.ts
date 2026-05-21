@@ -5,13 +5,29 @@ import {
 	configureFlueRuntime,
 	createFlueContext,
 	createRunSubscriberRegistry,
+	generateWorkflowRunId,
 	InMemoryRunRegistry,
 	InMemoryRunStore,
 	InMemorySessionStore,
+	parseWorkflowRunId,
 	type RunRecord,
 	type RunStore,
 } from '../src/internal.ts';
 import type { FlueEvent } from '../src/types.ts';
+
+describe('workflow run ids', () => {
+	it('round-trips workflow run id parts', () => {
+		const runId = generateWorkflowRunId('daily-report');
+		const parsed = parseWorkflowRunId(runId);
+		expect(runId.startsWith('workflow:daily-report:')).toBe(true);
+		expect(parsed?.workflowName).toBe('daily-report');
+		expect(parsed?.runNonce).toBeTruthy();
+	});
+
+	it('rejects workflow names that cannot round-trip through run ids', () => {
+		expect(() => generateWorkflowRunId('bad:name')).toThrow(/must not contain/);
+	});
+});
 
 describe('InMemoryRunRegistry', () => {
 	it('records start, lookup, and end for a single run', async () => {
@@ -220,6 +236,33 @@ describe('InMemoryRunRegistry', () => {
 		}
 		const stillActive = await registry.listRuns({ agentName: 'hello' });
 		expect(stillActive.runs).toHaveLength(5);
+	});
+
+	it('records workflow owners and filters by workflowName', async () => {
+		const registry = new InMemoryRunRegistry();
+		const runId = 'workflow:daily-report:01TEST';
+		await registry.recordRunStart({
+			runId,
+			owner: { kind: 'workflow', workflowName: 'daily-report', runId },
+			startedAt: '2026-01-01T00:00:00.000Z',
+		});
+		expect(await registry.lookupRun(runId)).toMatchObject({
+			runId,
+			owner: { kind: 'workflow', workflowName: 'daily-report', runId },
+		});
+		expect((await registry.listRuns({ workflowName: 'daily-report' })).runs).toHaveLength(1);
+		expect((await registry.listRuns({ workflowName: 'other' })).runs).toHaveLength(0);
+	});
+
+	it('rejects workflow owner records whose serialized run id does not match', async () => {
+		const registry = new InMemoryRunRegistry();
+		await expect(
+			registry.recordRunStart({
+				runId: 'workflow:daily-report:01A',
+				owner: { kind: 'workflow', workflowName: 'daily-report', runId: 'workflow:daily-report:01B' },
+				startedAt: '2026-01-01T00:00:00.000Z',
+			}),
+		).rejects.toThrow(/same runId/);
 	});
 
 	it('falls back to page 1 on a malformed cursor (rather than empty / error)', async () => {
@@ -648,6 +691,7 @@ describe('admin() routes', () => {
 				recordRunEnd: async () => {},
 				lookupRun: async () => ({
 					runId: 'run_cf',
+					owner: { kind: 'agent', agentName: 'hello', instanceId: 'inst-1' },
 					agentName: 'hello',
 					instanceId: 'inst-1',
 					status: 'completed',
@@ -684,6 +728,7 @@ describe('admin() routes', () => {
 				recordRunEnd: async () => {},
 				lookupRun: async () => ({
 					runId: 'run_cf',
+					owner: { kind: 'agent', agentName: 'hello', instanceId: 'inst-1' },
 					agentName: 'hello',
 					instanceId: 'inst-1',
 					status: 'completed',

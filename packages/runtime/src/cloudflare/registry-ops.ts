@@ -131,20 +131,28 @@ class SqlRegistryOps implements RegistryOps {
 	}
 
 	recordRunStart(input: RecordRunStartInput): void {
+		const owner = normalizeRunOwner(input);
+		const ownerAgentName = owner.kind === 'agent' ? owner.agentName : null;
+		const ownerInstanceId = owner.kind === 'agent' ? owner.instanceId : null;
+		const ownerWorkflowName = owner.kind === 'workflow' ? owner.workflowName : null;
+		const ownerRunId = owner.kind === 'workflow' ? owner.runId : null;
 		this.sql.exec(
 			`INSERT OR IGNORE INTO flue_registry_runs
-			 (run_id, agent_name, instance_id, status, started_at, ended_at, duration_ms, is_error)
-			 VALUES (?, ?, ?, 'active', ?, NULL, NULL, NULL)`,
+			 (run_id, owner_kind, agent_name, instance_id, workflow_name, owner_run_id, status, started_at, ended_at, duration_ms, is_error)
+			 VALUES (?, ?, ?, ?, ?, ?, 'active', ?, NULL, NULL, NULL)`,
 			input.runId,
-			input.agentName,
-			input.instanceId,
+			owner.kind,
+			ownerAgentName,
+			ownerInstanceId,
+			ownerWorkflowName,
+			ownerRunId,
 			input.startedAt,
 		);
 	}
 
 	recordRunEnd(input: RecordRunEndInput): void {
 		const existing = this.sql
-			.exec('SELECT agent_name, instance_id FROM flue_registry_runs WHERE run_id = ?', input.runId)
+			.exec('SELECT owner_kind, agent_name, instance_id FROM flue_registry_runs WHERE run_id = ?', input.runId)
 			.toArray();
 		if (existing.length === 0) return;
 
@@ -160,7 +168,7 @@ class SqlRegistryOps implements RegistryOps {
 		);
 
 		const existingPointer = existing[0];
-		if (!existingPointer) return;
+		if (!existingPointer || existingPointer.owner_kind !== 'agent') return;
 		const agentName = String(existingPointer.agent_name);
 		const instanceId = String(existingPointer.instance_id);
 		this.pruneCompletedRunsForInstance(agentName, instanceId);
@@ -186,12 +194,16 @@ class SqlRegistryOps implements RegistryOps {
 			bindings.push(opts.status);
 		}
 		if (opts.agentName) {
-			wheres.push('agent_name = ?');
+			wheres.push(`owner_kind = 'agent' AND agent_name = ?`);
 			bindings.push(opts.agentName);
 		}
 		if (opts.instanceId) {
-			wheres.push('instance_id = ?');
+			wheres.push(`owner_kind = 'agent' AND instance_id = ?`);
 			bindings.push(opts.instanceId);
+		}
+		if (opts.workflowName) {
+			wheres.push(`owner_kind = 'workflow' AND workflow_name = ?`);
+			bindings.push(opts.workflowName);
 		}
 		if (cursor) {
 			wheres.push('(started_at < ? OR (started_at = ? AND run_id < ?))');
@@ -234,7 +246,8 @@ class SqlRegistryOps implements RegistryOps {
 
 		const rows = this.sql
 			.exec(
-				`SELECT DISTINCT agent_name, instance_id FROM flue_registry_runs ${whereClause}
+				`SELECT DISTINCT agent_name, instance_id FROM flue_registry_runs
+				 ${whereClause ? `${whereClause} AND owner_kind = 'agent'` : `WHERE owner_kind = 'agent'`}
 				 ORDER BY agent_name ASC, instance_id ASC
 				 LIMIT ?`,
 				...bindings,
@@ -281,8 +294,11 @@ function ensureRegistryTables(sql: SqlStorage): void {
 	sql.exec(
 		`CREATE TABLE IF NOT EXISTS flue_registry_runs (
 		 run_id TEXT PRIMARY KEY,
-		 agent_name TEXT NOT NULL,
-		 instance_id TEXT NOT NULL,
+		 owner_kind TEXT NOT NULL,
+		 agent_name TEXT,
+		 instance_id TEXT,
+		 workflow_name TEXT,
+		 owner_run_id TEXT,
 		 status TEXT NOT NULL,
 		 started_at TEXT NOT NULL,
 		 ended_at TEXT,
@@ -290,27 +306,63 @@ function ensureRegistryTables(sql: SqlStorage): void {
 		 is_error INTEGER
 		)`,
 	);
+	ensureColumn(sql, 'flue_registry_runs', 'owner_kind', "TEXT NOT NULL DEFAULT 'agent'");
+	ensureColumn(sql, 'flue_registry_runs', 'workflow_name', 'TEXT');
+	ensureColumn(sql, 'flue_registry_runs', 'owner_run_id', 'TEXT');
+	sql.exec(
+		`UPDATE flue_registry_runs
+		 SET owner_kind = 'agent'
+		 WHERE owner_kind IS NULL OR owner_kind = ''`,
+	);
 	sql.exec(
 		'CREATE INDEX IF NOT EXISTS flue_registry_status_started_idx ON flue_registry_runs (status, started_at DESC)',
 	);
 	sql.exec(
-		'CREATE INDEX IF NOT EXISTS flue_registry_agent_instance_idx ON flue_registry_runs (agent_name, instance_id)',
+		'CREATE INDEX IF NOT EXISTS flue_registry_agent_instance_idx ON flue_registry_runs (owner_kind, agent_name, instance_id)',
 	);
 	sql.exec(
-		'CREATE INDEX IF NOT EXISTS flue_registry_instance_started_idx ON flue_registry_runs (agent_name, instance_id, started_at DESC)',
+		'CREATE INDEX IF NOT EXISTS flue_registry_instance_started_idx ON flue_registry_runs (owner_kind, agent_name, instance_id, started_at DESC)',
 	);
 	sql.exec(
-		'CREATE INDEX IF NOT EXISTS flue_registry_agent_started_idx ON flue_registry_runs (agent_name, started_at DESC)',
+		'CREATE INDEX IF NOT EXISTS flue_registry_agent_started_idx ON flue_registry_runs (owner_kind, agent_name, started_at DESC)',
+	);
+	sql.exec(
+		'CREATE INDEX IF NOT EXISTS flue_registry_workflow_started_idx ON flue_registry_runs (owner_kind, workflow_name, started_at DESC)',
 	);
 }
 
 // ─── Row → pointer ─────────────────────────────────────────────────────────
 
+function normalizeRunOwner(input: RecordRunStartInput): RunPointer['owner'] {
+	if ('owner' in input) {
+		if (input.owner.kind === 'workflow' && input.owner.runId !== input.runId) {
+			throw new Error('[flue] Workflow run owners must use the same runId as the pointer.');
+		}
+		return input.owner;
+	}
+	return { kind: 'agent', agentName: input.agentName, instanceId: input.instanceId };
+}
+
 function rowToRunPointer(row: SqlRow): RunPointer {
+	const runId = String(row.run_id);
+	const owner =
+		row.owner_kind === 'workflow'
+			? {
+					kind: 'workflow' as const,
+					workflowName: String(row.workflow_name),
+					runId: String(row.owner_run_id ?? runId),
+				}
+			: {
+					kind: 'agent' as const,
+					agentName: String(row.agent_name),
+					instanceId: String(row.instance_id),
+				};
 	return {
-		runId: String(row.run_id),
-		agentName: String(row.agent_name),
-		instanceId: String(row.instance_id),
+		runId,
+		owner,
+		...(owner.kind === 'agent'
+			? { agentName: owner.agentName, instanceId: owner.instanceId }
+			: {}),
 		status: String(row.status) as RunStatus,
 		startedAt: String(row.started_at),
 		endedAt: typeof row.ended_at === 'string' ? row.ended_at : undefined,
@@ -332,6 +384,8 @@ function parseListRunsOpts(params: URLSearchParams): ListRunsOpts {
 	if (agent) opts.agentName = agent;
 	const instance = params.get('instance');
 	if (instance) opts.instanceId = instance;
+	const workflow = params.get('workflow');
+	if (workflow) opts.workflowName = workflow;
 	const limit = params.get('limit');
 	if (limit !== null) opts.limit = Number.parseInt(limit, 10);
 	const cursor = params.get('cursor');
@@ -351,6 +405,16 @@ function parseListInstancesOpts(params: URLSearchParams): ListInstancesOpts {
 }
 
 // ─── Misc helpers ──────────────────────────────────────────────────────────
+
+function ensureColumn(sql: SqlStorage, table: string, column: string, definition: string): void {
+	const columns = new Set(
+		sql
+			.exec(`PRAGMA table_info(${table})`)
+			.toArray()
+			.map((row) => String(row.name)),
+	);
+	if (!columns.has(column)) sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+}
 
 function clampLimit(limit: number | undefined): number {
 	if (!limit || !Number.isFinite(limit) || limit <= 0) return DEFAULT_LIST_LIMIT;
