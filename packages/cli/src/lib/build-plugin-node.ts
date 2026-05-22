@@ -122,6 +122,9 @@ const runSubscribers = createRunSubscriberRegistry();
 const dispatchQueue = new InMemoryDispatchQueue(createAgentDispatchProcessor({
   initHandlers,
   createContext: createContextForRequest,
+  runStore,
+  runSubscribers,
+  runRegistry,
 }));
 
 function createContextForRequest(id, runId, payload, req) {

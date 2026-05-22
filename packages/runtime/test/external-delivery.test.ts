@@ -269,6 +269,7 @@ describe('external delivery fan-out', () => {
 	it('processes dispatches by waking the target instance and session', async () => {
 		const processed: DispatchInput[] = [];
 		const sessions: string[] = [];
+		const events: string[] = [];
 		const processor = createAgentDispatchProcessor({
 			initHandlers: {
 				moderator: async ({ id }) => {
@@ -276,7 +277,13 @@ describe('external delivery fan-out', () => {
 					return fakeDispatchHarness(sessions, processed);
 				},
 			},
-			createContext: createTestContext,
+			createContext: (...args) => {
+				const ctx = createTestContext(...args);
+				ctx.subscribeEvent((event) => {
+					events.push(event.type);
+				});
+				return ctx;
+			},
 		});
 
 		await processor.process({
@@ -294,6 +301,7 @@ describe('external delivery fan-out', () => {
 		expect(sessions).toEqual(['case:1']);
 		expect(processed).toHaveLength(1);
 		expect(processed[0]?.input).toEqual({ type: 'flagged' });
+		expect(events).toEqual(['run_start', 'run_end']);
 	});
 
 	it('connects receiveExternalDelivery through dispatch, raw init, target session, and model execution', async () => {

@@ -21,29 +21,40 @@ interface DispatchSession {
 export function createAgentDispatchProcessor(options: {
 	initHandlers: Record<string, AgentInitHandler>;
 	createContext: CreateContextFn;
+	runStore?: RunStore;
+	runSubscribers?: RunSubscriberRegistry;
+	runRegistry?: RunRegistry;
 }): DispatchProcessor {
 	return {
 		async process(input) {
 			const init = options.initHandlers[input.targetAgent];
 			if (!init) throw new Error(`[flue] dispatch target agent "${input.targetAgent}" has no init handler.`);
-			const ctx = options.createContext(
-				input.id,
-				generateRunId(),
-				input,
-				new Request('http://flue.local/_dispatch', { method: 'POST' }),
-			);
-			const harness = await init({
+			const runId = generateRunId();
+			const lifecycle = await createRunLifecycle({
+				owner: { kind: 'agent', agentName: input.targetAgent, instanceId: input.id },
 				id: input.id,
-				spawn: (spawnOptions) => ctx.init(validateAgentSpawnOptions(spawnOptions)),
+				runId,
+				payload: input,
+				request: new Request('http://flue.local/_dispatch', { method: 'POST' }),
+				createContext: options.createContext,
+				runStore: options.runStore,
+				runSubscribers: options.runSubscribers,
+				runRegistry: options.runRegistry,
 			});
-			if (!harness || typeof harness !== 'object' || typeof harness.session !== 'function') {
-				throw new Error('[flue] Agent init() must return spawn(...).');
-			}
-			const session = await harness.session(input.session);
-			if (!isDispatchSession(session)) {
-				throw new Error('[flue] Internal session does not support dispatch input processing.');
-			}
-			await session.processDispatchInput(input);
+			await withRunLifecycle(lifecycle, async () => {
+				const harness = await init({
+					id: input.id,
+					spawn: (spawnOptions) => lifecycle.ctx.init(validateAgentSpawnOptions(spawnOptions)),
+				});
+				if (!harness || typeof harness !== 'object' || typeof harness.session !== 'function') {
+					throw new Error('[flue] Agent init() must return spawn(...).');
+				}
+				const session = await harness.session(input.session);
+				if (!isDispatchSession(session)) {
+					throw new Error('[flue] Internal session does not support dispatch input processing.');
+				}
+				await session.processDispatchInput(input);
+			});
 		},
 	};
 }
