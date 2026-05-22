@@ -65,7 +65,6 @@ export class CloudflarePlugin implements BuildPlugin {
 		const directHandlerMapEntries = agents
 			.map((a, index) => `  ${JSON.stringify(a.name)}: createDirectAgentHandler(${agentVarName(a.name, index)}.init),`)
 			.join('\n');
-
 		const workflowImports = workflows
 			.map((workflow, index) => {
 				const varName = workflowVarName(workflow.name, index);
@@ -246,7 +245,14 @@ function resolveSandbox(sandbox) {
 // Fallback in-memory store (used if no DO storage is available).
 const memoryStore = new InMemorySessionStore();
 const memoryRunStore = new InMemoryRunStore();
-const dispatchQueue = new InMemoryDispatchQueue();
+const dispatchQueue = new InMemoryDispatchQueue({
+  process() {
+    throw new Error(
+      '[flue] Cloudflare external-channel dispatch processing is not supported yet. ' +
+      'Dispatch must route to the target agent Durable Object before it can process session input.'
+    );
+  },
+});
 
 // Module-scoped per-isolate registry; run ids isolate buckets across DOs.
 const runSubscribers = createRunSubscriberRegistry();

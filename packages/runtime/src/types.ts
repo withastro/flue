@@ -668,7 +668,20 @@ export interface SessionEntryBase {
 export interface MessageEntry extends SessionEntryBase {
 	type: 'message';
 	message: AgentMessage;
-	source?: 'prompt' | 'skill' | 'shell' | 'task' | 'retry';
+	source?: 'prompt' | 'skill' | 'shell' | 'task' | 'retry' | 'dispatch';
+	dispatch?: DispatchMessageMetadata;
+}
+
+export interface DispatchMessageMetadata {
+	dispatchId: string;
+	deliveryId?: string;
+	sourceAgent: string;
+	targetAgent: string;
+	agent: string;
+	id: string;
+	session: string;
+	acceptedAt: string;
+	input: unknown;
 }
 
 export interface CompactionEntry extends SessionEntryBase {

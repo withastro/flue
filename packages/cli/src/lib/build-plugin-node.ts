@@ -34,6 +34,9 @@ export class NodePlugin implements BuildPlugin {
 		const directHandlerMapEntries = agents
 			.map((a, index) => `  ${JSON.stringify(a.name)}: createDirectAgentHandler(${agentVarName(a.name, index)}.init),`)
 			.join('\n');
+		const initHandlerMapEntries = agents
+			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)}.init,`)
+			.join('\n');
 		const workflowHandlerMapEntries = workflows
 			.map((workflow, index) => `  ${JSON.stringify(workflow.name)}: ${workflowVarName(workflow.name, index)},`)
 			.join('\n');
@@ -63,6 +66,7 @@ import {
   configureFlueRuntime,
   createDefaultFlueApp,
   createDirectAgentHandler,
+  createAgentDispatchProcessor,
   InMemoryDispatchQueue,
 } from '@flue/runtime/internal';
 ${agentImports}
@@ -79,6 +83,9 @@ ${receiveHandlerMapEntries}
 };
 const directHandlers = {
 ${directHandlerMapEntries}
+};
+const initHandlers = {
+${initHandlerMapEntries}
 };
 const workflowHandlers = {
 ${workflowHandlerMapEntries}
@@ -107,7 +114,10 @@ const defaultStore = new InMemorySessionStore();
 const runStore = new InMemoryRunStore();
 const runRegistry = new InMemoryRunRegistry();
 const runSubscribers = createRunSubscriberRegistry();
-const dispatchQueue = new InMemoryDispatchQueue();
+const dispatchQueue = new InMemoryDispatchQueue(createAgentDispatchProcessor({
+  initHandlers,
+  createContext: createContextForRequest,
+}));
 
 function createContextForRequest(id, runId, payload, req) {
   return createFlueContext({

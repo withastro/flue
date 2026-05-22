@@ -3,6 +3,7 @@
 import type { FlueContextInternal } from '../client.ts';
 import { InvalidRequestError, parseJsonBody, RunEventTooLargeError, toHttpResponse } from '../errors.ts';
 import type { AgentInit, AgentInitContext, AgentSpawnOptions, DirectAgentPayload, FlueEvent, FlueHarness } from '../types.ts';
+import type { DispatchInput, DispatchProcessor } from './dispatch-queue.ts';
 import { generateRunId, generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
 import type { RunStore } from './run-store.ts';
@@ -12,6 +13,44 @@ import type { RunSubscriberRegistry } from './run-subscribers.ts';
 export type AgentHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
 export type AgentInitHandler = (ctx: AgentInitContext) => FlueHarness | Promise<FlueHarness>;
 export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
+
+interface DispatchSession {
+	processDispatchInput(input: DispatchInput): PromiseLike<unknown>;
+}
+
+export function createAgentDispatchProcessor(options: {
+	initHandlers: Record<string, AgentInitHandler>;
+	createContext: CreateContextFn;
+}): DispatchProcessor {
+	return {
+		async process(input) {
+			const init = options.initHandlers[input.targetAgent];
+			if (!init) throw new Error(`[flue] dispatch target agent "${input.targetAgent}" has no init handler.`);
+			const ctx = options.createContext(
+				input.id,
+				generateRunId(),
+				input,
+				new Request('http://flue.local/_dispatch', { method: 'POST' }),
+			);
+			const harness = await init({
+				id: input.id,
+				spawn: (spawnOptions) => ctx.init(validateAgentSpawnOptions(spawnOptions)),
+			});
+			if (!harness || typeof harness !== 'object' || typeof harness.session !== 'function') {
+				throw new Error('[flue] Agent init() must return spawn(...).');
+			}
+			const session = await harness.session(input.session);
+			if (!isDispatchSession(session)) {
+				throw new Error('[flue] Internal session does not support dispatch input processing.');
+			}
+			await session.processDispatchInput(input);
+		},
+	};
+}
+
+function isDispatchSession(value: unknown): value is DispatchSession {
+	return !!value && typeof value === 'object' && typeof (value as DispatchSession).processDispatchInput === 'function';
+}
 
 export function createDirectAgentHandler(init: AgentInitHandler): AgentHandler {
 	return async (ctx) => {

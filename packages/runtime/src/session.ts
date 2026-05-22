@@ -49,6 +49,7 @@ import type {
 	BranchSummaryEntry,
 	CallHandle,
 	CompactionEntry,
+	DispatchMessageMetadata,
 	FlueEvent,
 	FlueEventCallback,
 	FlueFs,
@@ -72,6 +73,7 @@ import type {
 	ThinkingLevel,
 	ToolDefinition,
 } from './types.ts';
+import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 
 const MAX_TASK_DEPTH = 4;
@@ -276,7 +278,7 @@ export class SessionHistory {
 		return undefined;
 	}
 
-	appendMessage(message: AgentMessage, source?: MessageSource): string {
+	appendMessage(message: AgentMessage, source?: MessageSource, dispatch?: DispatchMessageMetadata): string {
 		const entry: MessageEntry = {
 			type: 'message',
 			id: generateEntryId(this.byId),
@@ -285,12 +287,20 @@ export class SessionHistory {
 			message,
 			source,
 		};
+		if (dispatch) entry.dispatch = dispatch;
 		this.appendEntry(entry);
 		return entry.id;
 	}
 
-	appendMessages(messages: AgentMessage[], source?: MessageSource): string[] {
-		return messages.map((message) => this.appendMessage(message, source));
+	appendMessages(messages: AgentMessage[], source?: MessageSource, dispatch?: DispatchMessageMetadata): string[] {
+		let dispatchAttached = false;
+		return messages.map((message) => {
+			const messageDispatch = dispatch && !dispatchAttached && message.role === 'user'
+				? dispatch
+				: undefined;
+			if (messageDispatch) dispatchAttached = true;
+			return this.appendMessage(message, source, messageDispatch);
+		});
 	}
 
 	appendCompaction(input: CompactionAppendInput): string {
@@ -384,6 +394,50 @@ function createUserContextMessage(text: string, timestamp: string): AgentMessage
 		content: [{ type: 'text', text }],
 		timestamp: new Date(timestamp).getTime(),
 	} as UserMessage as AgentMessage;
+}
+
+function renderDispatchInput(input: DispatchInput): string {
+	const lines = [
+		'[External Dispatch Input]',
+		`agent: ${input.agent}`,
+		`id: ${input.id}`,
+		`session: ${input.session}`,
+		`sourceAgent: ${input.sourceAgent}`,
+		`targetAgent: ${input.targetAgent}`,
+		`dispatchId: ${input.dispatchId}`,
+	];
+	if (input.deliveryId) lines.push(`deliveryId: ${input.deliveryId}`);
+	lines.push(`acceptedAt: ${input.acceptedAt}`, '', 'input:', stableStringify(input.input));
+	return lines.join('\n');
+}
+
+function dispatchMetadata(input: DispatchInput): DispatchMessageMetadata {
+	const metadata: DispatchMessageMetadata = {
+		dispatchId: input.dispatchId,
+		sourceAgent: input.sourceAgent,
+		targetAgent: input.targetAgent,
+		agent: input.agent,
+		id: input.id,
+		session: input.session,
+		acceptedAt: input.acceptedAt,
+		input: input.input,
+	};
+	if (input.deliveryId) metadata.deliveryId = input.deliveryId;
+	return metadata;
+}
+
+function stableStringify(value: unknown): string {
+	return JSON.stringify(sortJsonLike(value), null, 2);
+}
+
+function sortJsonLike(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(sortJsonLike);
+	if (!value || typeof value !== 'object') return value;
+	const sorted: Record<string, unknown> = {};
+	for (const key of Object.keys(value).sort()) {
+		sorted[key] = sortJsonLike((value as Record<string, unknown>)[key]);
+	}
+	return sorted;
 }
 
 function generateEntryId(byId: Map<string, SessionEntry>): string {
@@ -573,6 +627,26 @@ export class Session implements FlueSession {
 					signal,
 				});
 			}),
+		);
+	}
+
+	processDispatchInput(input: DispatchInput): CallHandle<PromptResponse> {
+		return createCallHandle(undefined, (signal) =>
+			this.runOperation('prompt', signal, async () =>
+				this.runPromptCall({
+					promptText: renderDispatchInput(input),
+					schema: undefined,
+					tools: undefined,
+					model: undefined,
+					thinkingLevel: undefined,
+					images: undefined,
+					source: 'dispatch',
+					dispatch: dispatchMetadata(input),
+					errorLabel: `dispatch(${input.dispatchId})`,
+					callSite: 'this dispatched input',
+					signal,
+				}) as Promise<PromptResponse>,
+			),
 		);
 	}
 
@@ -1278,10 +1352,14 @@ export class Session implements FlueSession {
 		await this.save();
 	}
 
-	private async syncHarnessMessagesSince(index: number, source: MessageSource): Promise<void> {
+	private async syncHarnessMessagesSince(
+		index: number,
+		source: MessageSource,
+		firstDispatch?: DispatchMessageMetadata,
+	): Promise<void> {
 		const messages = this.harness.state.messages.slice(index) as AgentMessage[];
 		if (messages.length === 0) return;
-		this.history.appendMessages(messages, source);
+		this.history.appendMessages(messages, source, firstDispatch);
 		await this.save();
 	}
 
@@ -1565,6 +1643,7 @@ export class Session implements FlueSession {
 		thinkingLevel: ThinkingLevel | undefined;
 		images: ImageContent[] | undefined;
 		source: MessageSource;
+		dispatch?: DispatchMessageMetadata;
 		errorLabel: string;
 		callSite: string;
 		signal: AbortSignal;
@@ -1623,7 +1702,7 @@ export class Session implements FlueSession {
 
 				await this.harness.prompt(args.promptText, args.images);
 				await this.harness.waitForIdle();
-				await this.syncHarnessMessagesSince(beforeLength, args.source);
+				await this.syncHarnessMessagesSince(beforeLength, args.source, args.dispatch);
 				await this.checkLatestAssistantForCompaction();
 				this.throwIfError(args.errorLabel);
 
