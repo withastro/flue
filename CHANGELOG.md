@@ -4,25 +4,263 @@
 
 ### New Features
 
-- **Bundled Agent Skills imports.** Agent code can now import spec-compliant `SKILL.md` directories with `with { type: 'skill' }`. Flue validates Agent Skills frontmatter at build time, bundles supporting `scripts/`, `references/`, and `assets/` for deployable Node and Cloudflare artifacts, lets `session.skill(skillValue)` activate imported instructions directly, and exposes supporting files lazily through stable virtual `read` paths only when the model needs them.
+- **Flue now separates workflows that return results from agents that receive messages over time.** Files in `workflows/` are finite request/result jobs: they export `run(...)`, can opt into direct HTTP with `channels = [http()]`, and are what `flue run` invokes for one-shot CLI and CI usage. Files in `agents/` are now addressable agent instances: they export `init(...)` to wake an instance and, when subscribed to external channels, `receive(...)` to route inbound deliveries. This gives upgrading users a clearer place to put each kind of logic instead of overloading one agent module shape for both webhook-style jobs and long-lived message-driven actors.
 
-- **`defineTool()` reusable tool values.** `@flue/runtime` now exports `defineTool()` and the `ToolDefinition` type for defining validated, shallow-frozen custom tool values.
+  ```ts
+  // .flue/workflows/translate.ts
+  import { http, type FlueContext } from '@flue/runtime';
 
-- **`defineAgent()` reusable agent definitions.** `@flue/runtime` now exports `defineAgent()` and the `AgentDefinition` type for validated module-scope agent definitions ahead of reusable agent-profile work.
+  export const channels = [http()];
 
-- **Named subagent delegation.** Pass named `defineAgent()` values through `init({ subagents })`, then delegate detached work with `task({ agent })`. Task events include the selected agent name and connector tool factories receive declared subagents.
+  export async function run({ init, payload }: FlueContext) {
+    const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
+    const session = await harness.session();
+    const { data } = await session.prompt(
+      `Translate this to ${payload.language}: ${payload.text}`,
+    );
 
-- **Cloudflare shell sandbox.** Added `getShellSandbox({ workspace, loader })`, `getDefaultWorkspace()`, and `hydrateFromBucket()` from `@flue/runtime/cloudflare`. The new sandbox wires `@cloudflare/shell` Workspaces into Flue through a codemode `code` tool backed by a Worker Loader binding. Agents use `state.*` inside the `code` tool instead of bash/read/write/grep/glob. Use `@cloudflare/shell` directly for primitives like `Workspace`, `WorkspaceFileSystem`, and `createGit`.
+    return data;
+  }
+  ```
 
-### Bug Fixes
+  ```ts
+  // .flue/agents/assistant.ts
+  import { defineAgent, type AgentInitContext } from '@flue/runtime';
+  import { http } from '@flue/runtime/channels';
 
-- **Reject oversized persisted run events.** Flue now fails runs that emit event payloads beyond the 256 KB persistence limit instead of attempting to store them, avoiding excessive run-history storage work while preserving lifecycle cleanup.
+  export const channels = [http()];
+
+  const assistant = defineAgent({
+    instructions: 'You are a helpful assistant for this account.',
+  });
+
+  export async function init({ spawn }: AgentInitContext) {
+    return spawn({ inherit: assistant });
+  }
+  ```
+
+- **Agents can now receive direct messages and external-channel deliveries through the same instance/session model.** Direct HTTP calls to `/agents/:name/:id` wake the named agent instance, select a session, and immediately prompt the model; external-channel deliveries call subscribed modules' `receive(...)` hooks, where user code can filter provider events and `dispatch(...)` structured inputs into any target agent instance/session. Dispatched inputs are persisted into session history with dispatch metadata, rendered deterministically into model-visible context, and now emit normal run lifecycle events when they process.
+
+  ```bash
+  curl http://localhost:3583/agents/assistant/account-123 \
+    -H "Content-Type: application/json" \
+    -d '{"session":"thread:general","message":"Summarize today."}'
+  ```
+
+  ```ts
+  import type { ReceiveContext } from '@flue/runtime';
+  import { discord } from '../channels';
+
+  export const channels = [discord()];
+
+  export async function receive({ delivery, dispatch }: ReceiveContext) {
+    if (delivery.type !== 'message.flagged') return;
+
+    const data = delivery.data as { guildId: string; caseId: string; message: unknown };
+    await dispatch({
+      id: `guild:${data.guildId}`,
+      session: `case:${data.caseId}`,
+      input: {
+        type: 'discord.message.flagged',
+        deliveryId: delivery.id,
+        message: data.message,
+      },
+    });
+  }
+  ```
+
+- **External channels are explicit subscriptions, and provider routers are explicit Hono routes.** Importing or defining a channel no longer creates a hidden endpoint. A channel definition says which deliveries an agent subscribes to; a router in `app.ts` says which URL accepts provider traffic. This makes production routing, auth middleware, and provider-specific paths obvious in user code, and keeps `.flue/channels.ts` as a normal shared module rather than a magic registry scanned by the build.
+
+  ```ts
+  // .flue/channels.ts
+  import { createGitHubChannel } from '@flue/runtime/github';
+
+  export const github = createGitHubChannel();
+  ```
+
+  ```ts
+  // .flue/app.ts
+  import { flue } from '@flue/runtime/app';
+  import { createGitHubChannelRouter } from '@flue/runtime/github';
+  import { Hono } from 'hono';
+
+  const app = new Hono();
+  app.route('/', flue());
+  app.route('/webhooks/github', createGitHubChannelRouter());
+
+  export default app;
+  ```
+
+  ```ts
+  // .flue/agents/github-triage.ts
+  import { defineAgent, type AgentInitContext, type ReceiveContext } from '@flue/runtime';
+  import { github } from '../channels';
+
+  export const channels = [github()];
+
+  const triage = defineAgent({
+    instructions: 'Triage inbound GitHub issue events for this repository.',
+  });
+
+  export async function receive({ delivery, dispatch }: ReceiveContext) {
+    if (delivery.type !== 'issues') return;
+
+    const data = delivery.data as { action?: string; payload?: any };
+    const repo = data.payload?.repository?.full_name;
+    const issue = data.payload?.issue?.number;
+    if (typeof repo !== 'string' || typeof issue !== 'number') return;
+
+    await dispatch({
+      id: `repo:${repo}`,
+      session: `issue:${issue}`,
+      input: {
+        type: 'github.issue',
+        action: data.action,
+        deliveryId: delivery.id,
+        repository: repo,
+        issue,
+      },
+    });
+  }
+
+  export async function init({ spawn }: AgentInitContext) {
+    return spawn({ inherit: triage });
+  }
+  ```
+
+- **GitHub webhooks are the first built-in inbound external channel.** `@flue/runtime/github` now provides `createGitHubChannel()`, `createGitHubChannelRouter()`, and the lower-level `createGitHubWebhook()` normalizer. The router verifies `X-Hub-Signature-256` when `webhookSecret` or `GITHUB_WEBHOOK_SECRET` is configured, normalizes GitHub headers and JSON payloads into Flue `Delivery` objects, and fans out to all agents subscribed to the `github` channel. This support is intentionally inbound-only: Flue admits and processes the webhook, but posting comments, reactions, or status updates should happen through explicit tools that your agent chooses to call.
+
+  ```ts
+  app.route('/webhooks/github', createGitHubChannelRouter({
+    webhookSecret: env.GITHUB_WEBHOOK_SECRET,
+  }));
+  ```
+
+- **Reusable agent definitions, named subagents, and reusable tool values replace the old role-centered delegation model.** `defineAgent(...)` lets you describe a reusable profile once, including instructions, tools, skills, model defaults, subagents, thinking level, and compaction settings. Pass named agent definitions through the parent profile and delegate with `task({ agent })`, so delegation is explicit and type-shaped like the rest of the runtime. `defineTool()` and the `ToolDefinition` type make custom tools reusable module-scope values instead of ad hoc objects assembled at each call site.
+
+  ```ts
+  import { defineAgent, defineTool, Type, type AgentInitContext } from '@flue/runtime';
+
+  const lookupIssue = defineTool({
+    name: 'lookupIssue',
+    description: 'Load issue metadata from the tracker.',
+    parameters: Type.Object({ id: Type.String() }),
+    async execute({ id }) {
+      return { id, priority: 'high' };
+    },
+  });
+
+  const auditor = defineAgent({
+    name: 'auditor',
+    instructions: 'Review decisions for risk and missing evidence.',
+  });
+
+  const triage = defineAgent({
+    instructions: 'Triage incoming support work.',
+    tools: [lookupIssue],
+    subagents: [auditor],
+  });
+
+  export async function init({ spawn }: AgentInitContext) {
+    return spawn({ inherit: triage });
+  }
+  ```
+
+- **Agent Skills can be imported, validated, bundled, and called as first-class values.** Agent code can import spec-compliant `SKILL.md` directories with `with { type: 'skill' }`; the build validates frontmatter, bundles supporting `scripts/`, `references/`, and `assets/` for Node and Cloudflare output, and exposes supporting files lazily through stable virtual `read` paths only when the model needs them. `session.skill(skillValue)` activates the imported instructions directly, which makes skill dependencies explicit in source code and deployable without relying on runtime filesystem layout.
+
+  ```ts
+  import codeReview from '../skills/code-review/SKILL.md' with { type: 'skill' };
+  import type { FlueContext } from '@flue/runtime';
+  import * as v from 'valibot';
+
+  const ReviewResult = v.object({ summary: v.string() });
+
+  export async function run({ init, payload }: FlueContext) {
+    const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
+    const session = await harness.session();
+
+    const { data } = await session.skill(codeReview, {
+      result: ReviewResult,
+      args: { diff: payload.diff },
+    });
+
+    return data;
+  }
+  ```
+
+- **Cloudflare shell workspaces are now the supported bucket-backed sandbox story.** `getShellSandbox({ workspace, loader })`, `getDefaultWorkspace()`, and `hydrateFromBucket()` from `@flue/runtime/cloudflare` wire `@cloudflare/shell` Workspaces into Flue through a codemode `code` tool backed by a Worker Loader binding. This replaces the older mental model that R2 was mounted directly as the agent filesystem; Workspaces are SQLite-indexed filesystems with optional R2 blob spillover, so bucket hydration is now explicit before `init(...)`.
+
+  ```ts
+  import {
+    getDefaultWorkspace,
+    getShellSandbox,
+    hydrateFromBucket,
+  } from '@flue/runtime/cloudflare';
+
+  export async function run({ init, env }: FlueContext) {
+    const workspace = getDefaultWorkspace();
+    await hydrateFromBucket(workspace, env.BUCKET);
+
+    const harness = await init({
+      model: 'cloudflare/@cf/moonshotai/kimi-k2.6',
+      sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
+    });
+
+    const session = await harness.session();
+    return session.prompt('Inspect the hydrated workspace.');
+  }
+  ```
 
 ### Breaking Changes
 
-- **Legacy roles are removed.** Use named subagents and `task({ agent })` instead of role files or role options.
+- **One-shot agents should move to workflows, and agent modules now use explicit `init(...)` / `receive(...)` exports.** Existing request/result files that were previously placed under `agents/` should move to `workflows/` and export `run(...)`. Long-lived agents stay under `agents/`, but default exports and `triggers` are no longer supported; direct HTTP exposure and external-channel subscriptions are declared with `channels`, instance construction happens in `init(...)`, and external delivery routing happens in `receive(...)`.
+
+  ```diff
+  - // .flue/agents/hello.ts
+  - export const triggers = { webhook: true };
+  - export default async function handler({ init, payload }) {
+  + // .flue/workflows/hello.ts
+  + import { http } from '@flue/runtime';
+  + export const channels = [http()];
+  + export async function run({ init, payload }) {
+      const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
+      const session = await harness.session();
+      return session.prompt(payload.message);
+    }
+  ```
+
+- **Workflow and agent exports are intentionally stricter.** Workflow modules must directly export `export async function run(...)` and may export `export const channels = [http(), websocket()]`; agent modules that participate in channels must directly export `channels`, `receive(...)`, and `init(...)`. Re-export lists, default exports, unsupported named exports, duplicate basenames, type-only exports from runtime modules, and non-async handlers now fail during build with targeted errors. This makes generated Node and Cloudflare entries deterministic and avoids runtime surprises from partially analyzable modules.
+
+- **External channel endpoints are no longer created automatically.** Defining `createGitHubChannel()` or exporting `channels = [github()]` only subscribes an agent to normalized `github` deliveries. To accept real GitHub traffic, mount `createGitHubChannelRouter()` yourself in `app.ts`; any previous expectation of an implicit `/channels/github` endpoint should be replaced with an explicit route such as `/webhooks/github`.
+
+  ```diff
+  + import { createGitHubChannelRouter } from '@flue/runtime/github';
+  +
+  + app.route('/webhooks/github', createGitHubChannelRouter());
+  ```
+
+- **Legacy roles are removed in favor of named subagents.** Role markdown files and role options on sessions or calls are no longer part of the runtime model. Use `defineAgent(...)` for reusable delegate profiles and select them with `task({ agent })`; task lifecycle events now report the selected `agent` instead of a `role`.
+
+  ```diff
+  - await session.task('Audit this decision', { role: 'auditor' });
+  + await session.task('Audit this decision', { agent: 'auditor' });
+  ```
+
+- **`spawn(...)` is instance-oriented and no longer accepts dynamic behavior fields.** The `spawn(...)` helper exposed to agent `init(...)` accepts only instance construction concerns: `inherit`, `sandbox`, `cwd`, and `persist`. Put instructions, tools, skills, subagents, model defaults, thinking level, and compaction on a `defineAgent(...)` profile instead; put per-delivery routing decisions in `receive(...)` before calling `dispatch(...)`.
 
 - **`getVirtualSandbox()` now throws with a migration message.** The previous API described R2 as if it were mounted directly as the harness filesystem, but `@cloudflare/shell` Workspaces are SQLite-indexed filesystems with optional R2 blob spillover; raw bucket keys uploaded outside Workspace were invisible. Migrate bucket-backed agents to `getShellSandbox({ workspace, loader })` plus `hydrateFromBucket(workspace, env.BUCKET)` before `init()`. If you used zero-arg `getVirtualSandbox()`, remove it and omit `sandbox` from `init()` to use Flue's default in-memory sandbox.
+
+### Fixes & Other Changes
+
+- **Reject oversized persisted run events.** Flue now fails runs that emit event payloads beyond the 256 KB persistence limit instead of attempting to store them, avoiding excessive run-history storage work while preserving lifecycle cleanup.
+
+- **Direct agent delivery, dispatched inputs, and workflow runs now share more of the run/event infrastructure.** Direct agent HTTP calls still support regular JSON responses and `Accept: text/event-stream`; dispatched external-channel inputs now wake the target agent, append a model-visible dispatch message, run the target session immediately, and emit `run_start` / operation / `run_end` lifecycle events. Workflow HTTP calls now wait for workflow results, while `flue run` uses detached streams so CLI invocations can follow the same run log model as deployed HTTP routes.
+
+- **External delivery handling is safer under fan-out.** A single provider delivery can dispatch zero, one, or many inputs, including cross-agent dispatches. Flue snapshots dispatch input at admission time, passes an isolated clone of the delivery to each subscribed `receive(...)` handler, and records per-agent receive errors without preventing later subscribers from running.
+
+- **Workers AI streaming uses less CPU while parsing SSE responses.** The Cloudflare Workers AI provider now avoids unnecessary parsing overhead in streamed responses, which matters most for long outputs and high-concurrency Worker deployments.
+
+- **Examples and docs were migrated to the new model.** One-shot examples now live under `workflows/`, message-driven examples demonstrate direct agent HTTP delivery and external-channel dispatch, `examples/github-webhook` shows the explicit GitHub router setup, and `examples/cross-channel-routing` shows how one inbound delivery can route work across multiple channel-specific agent sessions.
 
 ## 0.6.2 - 2026-05-14
 
