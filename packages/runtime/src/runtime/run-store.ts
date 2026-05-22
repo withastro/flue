@@ -48,7 +48,7 @@ export interface RunStoreOptions {
 export const DEFAULT_MAX_COMPLETED_RUNS = 50;
 export const DEFAULT_MAX_EVENT_BYTES = 256 * 1024;
 
-const TRUNCATABLE_FIELDS = ['result', 'args', 'text', 'content'] as const;
+const TRUNCATABLE_FIELDS = ['result', 'args', 'text', 'content', 'input', 'output'] as const;
 const PREVIEW_CHARS = 1024;
 const ENCODER = new TextEncoder();
 
@@ -116,6 +116,7 @@ function pickEventIdentity(event: Record<string, unknown>): Record<string, unkno
 		'taskId',
 		'toolCallId',
 		'operationId',
+		'turnId',
 	]) {
 		if (key in event) identity[key] = event[key];
 	}

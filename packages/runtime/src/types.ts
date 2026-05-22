@@ -728,6 +728,59 @@ export interface BashLike {
 /** Factory that constructs the agent's Bash-like runtime. Called once at init. */
 export type BashFactory = () => BashLike | Promise<BashLike>;
 
+type LlmTextContent = {
+	type: 'text';
+	text: string;
+	textSignature?: string;
+};
+
+type LlmThinkingContent = {
+	type: 'thinking';
+	thinking: string;
+	thinkingSignature?: string;
+	redacted?: boolean;
+};
+
+type LlmImageContent = {
+	type: 'image';
+	data: string;
+	mimeType: string;
+};
+
+type LlmToolCall = {
+	type: 'toolCall';
+	id: string;
+	name: string;
+	arguments: Record<string, any>;
+	thoughtSignature?: string;
+};
+
+type LlmUserMessage = {
+	role: 'user';
+	content: string | (LlmTextContent | LlmImageContent)[];
+};
+
+type LlmAssistantMessage = {
+	role: 'assistant';
+	content: (LlmTextContent | LlmThinkingContent | LlmToolCall)[];
+};
+
+type LlmToolResultMessage = {
+	role: 'toolResult';
+	toolCallId: string;
+	toolName: string;
+	content: (LlmTextContent | LlmImageContent)[];
+	isError: boolean;
+};
+
+type LlmMessage = LlmUserMessage | LlmAssistantMessage | LlmToolResultMessage;
+
+type LlmTool = {
+	name: string;
+	description: string;
+	parameters: unknown;
+};
+
 export type FlueEvent = (
 	| {
 			type: 'run_start';
@@ -736,6 +789,19 @@ export type FlueEvent = (
 			agentName: string;
 			startedAt: string;
 			payload: unknown;
+		}
+	| {
+			type: 'turn_start';
+			turnId: string;
+			model?: string;
+			provider?: string;
+			api?: string;
+			input: {
+				systemPrompt?: string;
+				messages: LlmMessage[];
+				tools?: LlmTool[];
+			};
+			reasoning?: string;
 		}
 	| { type: 'text_delta'; text: string }
 	| { type: 'thinking_start' }
@@ -754,6 +820,9 @@ export type FlueEvent = (
 			type: 'turn';
 			durationMs: number;
 			model?: string;
+			provider?: string;
+			api?: string;
+			output?: LlmAssistantMessage;
 			usage?: PromptUsage;
 			stopReason?: string;
 			isError: boolean;
@@ -799,6 +868,7 @@ export type FlueEvent = (
 	taskId?: string;
 	harness?: string;
 	operationId?: string;
+	turnId?: string;
 };
 
 export type FlueEventCallback = (event: FlueEvent) => void | Promise<void>;

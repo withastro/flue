@@ -46,6 +46,7 @@ const EventBaseSchema = {
 	taskId: v.optional(v.string()),
 	harness: v.optional(v.string()),
 	operationId: v.optional(v.string()),
+	turnId: v.optional(v.string()),
 } satisfies v.ObjectEntries;
 
 const flueEvent = <const TEntries extends v.ObjectEntries>(entries: TEntries) =>
@@ -66,6 +67,11 @@ const PromptUsageSchema = v.object({
 	}),
 });
 
+type TurnStartEvent = Extract<FlueEvent, { type: 'turn_start' }>;
+type TurnInputMessage = TurnStartEvent['input']['messages'][number];
+type TurnInputTool = NonNullable<TurnStartEvent['input']['tools']>[number];
+type TurnOutput = NonNullable<Extract<FlueEvent, { type: 'turn' }>['output']>;
+
 const TruncatedEventSchema = flueEvent({
 	type: v.string(),
 	truncated: v.literal(true),
@@ -75,6 +81,7 @@ const TruncatedEventSchema = flueEvent({
 
 export const FLUE_EVENT_TYPES = [
 	'run_start',
+	'turn_start',
 	'text_delta',
 	'thinking_start',
 	'thinking_delta',
@@ -102,6 +109,19 @@ export const FlueEventSchema = v.union([
 		startedAt: v.string(),
 		payload: v.unknown(),
 	}),
+	flueEvent({
+		type: v.literal('turn_start'),
+		turnId: v.string(),
+		model: v.optional(v.string()),
+		provider: v.optional(v.string()),
+		api: v.optional(v.string()),
+		input: v.object({
+			systemPrompt: v.optional(v.string()),
+			messages: v.array(v.custom<TurnInputMessage>(() => true)),
+			tools: v.optional(v.array(v.custom<TurnInputTool>(() => true))),
+		}),
+		reasoning: v.optional(v.string()),
+	}),
 	flueEvent({ type: v.literal('text_delta'), text: v.string() }),
 	flueEvent({ type: v.literal('thinking_start') }),
 	flueEvent({ type: v.literal('thinking_delta'), delta: v.string() }),
@@ -124,6 +144,9 @@ export const FlueEventSchema = v.union([
 		type: v.literal('turn'),
 		durationMs: v.number(),
 		model: v.optional(v.string()),
+		provider: v.optional(v.string()),
+		api: v.optional(v.string()),
+		output: v.optional(v.custom<TurnOutput>(() => true)),
 		usage: v.optional(PromptUsageSchema),
 		stopReason: v.optional(v.string()),
 		isError: v.boolean(),

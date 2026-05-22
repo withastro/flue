@@ -1,10 +1,12 @@
 /** Internal session implementation. Not exported publicly — wrapped by FlueSession. */
 
-import type { AgentMessage, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
+import type { AgentMessage, AgentTool, AgentToolResult, StreamFn } from '@earendil-works/pi-agent-core';
 import { Agent } from '@earendil-works/pi-agent-core';
+import { streamSimple } from '@earendil-works/pi-ai';
 import type {
 	AssistantMessage,
 	ImageContent,
+	Message,
 	Model,
 	ToolResultMessage,
 	UserMessage,
@@ -44,7 +46,7 @@ import {
 	resolveRoleModel,
 	resolveRoleThinkingLevel,
 } from './roles.ts';
-import { generateOperationId } from './runtime/ids.ts';
+import { generateOperationId, generateTurnId } from './runtime/ids.ts';
 import { getProviderConfiguration, getRegisteredApiKey } from './runtime/providers.ts';
 import { createFlueFs } from './sandbox.ts';
 
@@ -78,6 +80,86 @@ import type {
 import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 
 const MAX_TASK_DEPTH = 4;
+
+type TurnStartEvent = Extract<FlueEvent, { type: 'turn_start' }>;
+type TurnInputMessage = TurnStartEvent['input']['messages'][number];
+type TurnInputTool = NonNullable<TurnStartEvent['input']['tools']>[number];
+type TurnOutput = NonNullable<Extract<FlueEvent, { type: 'turn' }>['output']>;
+type ProviderTextOrImageContent = Exclude<UserMessage['content'], string>[number];
+type ProviderContentBlock =
+	| ProviderTextOrImageContent
+	| AssistantMessage['content'][number]
+	| ToolResultMessage['content'][number];
+type TurnUserContent = Exclude<
+	Extract<TurnInputMessage, { role: 'user' }>['content'],
+	string
+>[number];
+type TurnAssistantContent = Extract<TurnInputMessage, { role: 'assistant' }>['content'][number];
+type TurnToolResultContent = Extract<
+	TurnInputMessage,
+	{ role: 'toolResult' }
+>['content'][number];
+type TurnContent = TurnUserContent | TurnAssistantContent | TurnToolResultContent;
+
+function toTurnMessage(message: Message): TurnInputMessage {
+	if (message.role === 'user') {
+		const content =
+			typeof message.content === 'string'
+				? message.content
+				: (message.content.map(toTurnContent) as TurnUserContent[]);
+		return {
+			role: 'user',
+			content,
+		};
+	}
+
+	if (message.role === 'assistant') {
+		return {
+			role: 'assistant',
+			content: message.content.map(toTurnContent) as TurnAssistantContent[],
+		};
+	}
+
+	return {
+		role: 'toolResult',
+		toolCallId: message.toolCallId,
+		toolName: message.toolName,
+		content: message.content.map(toTurnContent) as TurnToolResultContent[],
+		isError: message.isError,
+	};
+}
+
+function toTurnContent(block: ProviderContentBlock): TurnContent {
+	if (block.type === 'text') {
+		return {
+			type: 'text',
+			text: block.text,
+			textSignature: block.textSignature,
+		};
+	}
+	if (block.type === 'image') {
+		return {
+			type: 'image',
+			data: block.data,
+			mimeType: block.mimeType,
+		};
+	}
+	if (block.type === 'thinking') {
+		return {
+			type: 'thinking',
+			thinking: block.thinking,
+			thinkingSignature: block.thinkingSignature,
+			redacted: block.redacted,
+		};
+	}
+	return {
+		type: 'toolCall',
+		id: block.id,
+		name: block.name,
+		arguments: block.arguments,
+		thoughtSignature: block.thoughtSignature,
+	};
+}
 
 export interface CreateTaskSessionOptions {
 	parentSession: string;
@@ -416,11 +498,38 @@ export class Session implements FlueSession {
 	private activeOperationId: string | undefined;
 	private toolStartTimes = new Map<string, number>();
 	private turnStartTime: number | undefined;
+	private activeTurnId: string | undefined;
 	private activeTasks = new Set<Session>();
 	private sessionRole: string | undefined;
 	private taskDepth: number;
 	private createTaskSession: CreateTaskSession | undefined;
 	private onDelete: (() => void) | undefined;
+
+	private emitTurnStartAndStream: StreamFn = (model, context, options) => {
+		const turnId = this.activeTurnId ?? (this.activeTurnId = generateTurnId());
+		const tools = context.tools?.map(
+			(tool): TurnInputTool => ({
+				name: tool.name,
+				description: tool.description,
+				parameters: tool.parameters,
+			}),
+		);
+		this.emit({
+			type: 'turn_start',
+			turnId,
+			model: model.id,
+			provider: model.provider,
+			api: model.api,
+			input: {
+				systemPrompt: context.systemPrompt,
+				messages: context.messages.map(toTurnMessage),
+				tools,
+			},
+			reasoning: options?.reasoning,
+		});
+
+		return streamSimple(model, context, options);
+	};
 
 	constructor(options: SessionInitOptions) {
 		this.name = options.name;
@@ -464,6 +573,7 @@ export class Session implements FlueSession {
 			},
 			getApiKey: (provider) => this.getProviderApiKey(provider),
 			onPayload: (payload, model) => this.applyProviderPayloadOverrides(payload, model),
+			streamFn: this.emitTurnStartAndStream,
 			toolExecution: 'parallel',
 			sessionId: options.affinityKey,
 		});
@@ -513,19 +623,27 @@ export class Session implements FlueSession {
 				case 'turn_end': {
 					const message = event.message;
 					const assistant = message.role === 'assistant' ? (message as AssistantMessage) : undefined;
+					const output = assistant ? (toTurnMessage(assistant) as TurnOutput) : undefined;
 					this.emit({
 						type: 'turn',
+						turnId: this.activeTurnId,
 						durationMs: durationSince(this.turnStartTime),
 						model: assistant?.model,
+						provider: assistant?.provider,
+						api: assistant?.api,
+						output,
 						usage: fromProviderUsage(assistant?.usage),
 						stopReason: assistant?.stopReason,
 						isError: assistant?.stopReason === 'error' || assistant?.stopReason === 'aborted',
 						error: assistant?.errorMessage,
 					});
 					this.turnStartTime = undefined;
+					this.activeTurnId = undefined;
 					break;
 				}
 				case 'agent_end':
+					this.turnStartTime = undefined;
+					this.activeTurnId = undefined;
 					break;
 			}
 		});
@@ -1243,6 +1361,8 @@ export class Session implements FlueSession {
 		};
 		const operationId = event.operationId ?? this.activeOperationId;
 		if (operationId !== undefined) decorated.operationId = operationId;
+		const turnId = event.turnId ?? this.activeTurnId;
+		if (turnId !== undefined) decorated.turnId = turnId;
 		this.eventCallback?.(decorated);
 	}
 

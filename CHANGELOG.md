@@ -4,6 +4,8 @@
 
 ### New Features
 
+- **LLM input/output observability events.** Added a public `turn_start` run event emitted immediately before each provider request. It includes the turn id, resolved model/provider/api, reasoning level, system prompt, LLM-visible messages, and tool definitions. The terminal `turn` event now includes the final assistant message as `output`, so observability tooling can capture exact assistant-turn inputs and outputs through `ctx.subscribeEvent()` / run event streams.
+
 - **Cloudflare shell sandbox.** Added `getShellSandbox({ workspace, loader })`, `getDefaultWorkspace()`, and `hydrateFromBucket()` from `@flue/runtime/cloudflare`. The new sandbox wires `@cloudflare/shell` Workspaces into Flue through a codemode `code` tool backed by a Worker Loader binding. Agents use `state.*` inside the `code` tool instead of bash/read/write/grep/glob. Use `@cloudflare/shell` directly for primitives like `Workspace`, `WorkspaceFileSystem`, and `createGit`.
 
 ### Breaking Changes
@@ -70,7 +72,6 @@
 ### Breaking Changes
 
 - **`sandbox` magic strings removed.** `init({ sandbox })` no longer accepts the literal strings `'empty'` or `'local'`. The TypeScript union excludes both, and the runtime throws with a migration message for JS callers / `any`-typed inputs.
-
   - For the default in-memory sandbox, omit the `sandbox` option entirely or pass `false`.
   - For host-bound agents on Node, use the `local()` factory from `@flue/runtime/node`. It also lets you opt host env vars into the sandbox via `local({ env: { ... } })`.
 
@@ -224,7 +225,7 @@
 
 ### Fixes & Other Changes
 
-- **`session.shell()` now redacts `env` values in transcript history.** When you pass per-call environment variables to `session.shell(cmd, { env })`, the keys still appear in the recorded tool-call arguments — so the model can reason about *which* variables were set on a later turn — but the values are replaced with `<redacted>`. The real values are still passed to `env.exec()`, so the command itself runs with the actual environment. This prevents API keys and other secrets from leaking into session storage.
+- **`session.shell()` now redacts `env` values in transcript history.** When you pass per-call environment variables to `session.shell(cmd, { env })`, the keys still appear in the recorded tool-call arguments — so the model can reason about _which_ variables were set on a later turn — but the values are replaced with `<redacted>`. The real values are still passed to `env.exec()`, so the command itself runs with the actual environment. This prevents API keys and other secrets from leaking into session storage.
 
 ## 0.4.0
 
@@ -233,28 +234,27 @@ Big release! We are working hard to stabilize our APIs and add any missing and e
 ### Breaking Changes
 
 - **New return type for `prompt()` / `skill()` / `task()` / `shell()`.** Two changes folded into one new shape:
-
   1. They now return a `CallHandle<T>` instead of a `Promise<T>`. `await` works exactly as before. The handle is a `PromiseLike` with `.signal: AbortSignal` and `.abort(reason?)` for synchronous cancellation, replacing the removed `PromptOptions.timeout` / `SkillOptions.timeout` / `ShellOptions.timeout` fields. Code that uses these as plain Promises without `await` (e.g. raw `.then()` / `.catch()` chains) may need adjustment.
 
   ```ts
   // Cancel via an AbortSignal on the options bag
-  const result = await session.prompt("…", { signal: AbortSignal.timeout(5000) });
+  const result = await session.prompt('…', { signal: AbortSignal.timeout(5000) });
 
   // Or abort the handle directly
-  const handle = session.prompt("…");
-  setTimeout(() => handle.abort("user cancelled"), 5000);
+  const handle = session.prompt('…');
+  setTimeout(() => handle.abort('user cancelled'), 5000);
   ```
 
   2. The awaited value is now `{ text | data, usage, model }` instead of a bare string or schema value. Schema-typed calls return `PromptResultResponse<T>`; non-schema calls return `PromptResponse` with the new `usage` and `model` fields. To migrate, read `response.text` or `response.data`:
 
   ```ts
   // Before
-  const text = await session.prompt("…");
-  const user = await session.prompt("…", { result: UserSchema });
+  const text = await session.prompt('…');
+  const user = await session.prompt('…', { result: UserSchema });
 
   // After
-  const { text } = await session.prompt("…");
-  const { data: user } = await session.prompt("…", { schema: UserSchema });
+  const { text } = await session.prompt('…');
+  const { data: user } = await session.prompt('…', { schema: UserSchema });
   ```
 
   The schema option was renamed from `result` to `schema`, and the response field from `result` to `data`. The old `result` spellings (both the option and the response field) still work at runtime for backwards compatibility, but are typed as `never` so TypeScript flags new usage. Both names will be removed in a future release.
@@ -265,10 +265,9 @@ Big release! We are working hard to stabilize our APIs and add any missing and e
 
 - **Default `thinkingLevel` changed from `'off'` to `'medium'`.** Reasoning-capable models (e.g. gpt-5, claude-opus-4-7) will now reason by default on every `prompt()` / `skill()` / `task()` call. Non-reasoning models are unaffected (clamped to `'off'` per the model's `thinkingLevelMap`). To restore the old behavior, set `thinkingLevel: 'off'` explicitly on `init()`, your role frontmatter, or the call options.
 
-- **`sandbox: 'local'` now runs locally.** Originally, `'local'` was a half-isolated layer — a `just-bash` subprocess with a `ReadWriteFs` / `MountableFs` overlay mounting `process.cwd()` at `/workspace`. That made sense when every Flue agent ran on a developer laptop, but increasingly people are deploying the agent itself *inside* a real sandbox (a container, a microVM, a Cloudflare Sandbox), where wrapping the host in a second virtual filesystem is pure overhead — and actively confusing, because paths get remapped twice. `sandbox: 'local'` now binds directly to the host: `exec` runs through the user's shell with full `process.env`, file methods hit the real filesystem, default `cwd` is `process.cwd()`, and there are no path remappings or command restrictions. Agents that hard-coded `/workspace` paths must migrate to real host paths. If you want isolation on a developer laptop, reach for a real sandbox connector (Daytona, E2B, Mirage, smolvm, etc.).
+- **`sandbox: 'local'` now runs locally.** Originally, `'local'` was a half-isolated layer — a `just-bash` subprocess with a `ReadWriteFs` / `MountableFs` overlay mounting `process.cwd()` at `/workspace`. That made sense when every Flue agent ran on a developer laptop, but increasingly people are deploying the agent itself _inside_ a real sandbox (a container, a microVM, a Cloudflare Sandbox), where wrapping the host in a second virtual filesystem is pure overhead — and actively confusing, because paths get remapped twice. `sandbox: 'local'` now binds directly to the host: `exec` runs through the user's shell with full `process.env`, file methods hit the real filesystem, default `cwd` is `process.cwd()`, and there are no path remappings or command restrictions. Agents that hard-coded `/workspace` paths must migrate to real host paths. If you want isolation on a developer laptop, reach for a real sandbox connector (Daytona, E2B, Mirage, smolvm, etc.).
 
 - **`commands` / `defineCommand` removed.** The `commands` API let you register user CLIs (`gh`, `npm`, etc.) into a sandbox-scoped `$PATH`, isolating secrets from the model. In practice it only ever worked when the sandbox was a `BashFactory` (the default in-memory sandbox or `getVirtualSandbox` on Cloudflare), and threw a runtime error on `'local'`, every remote connector (Daytona, E2B, Mirage, etc.), and Cloudflare Containers — so the documented "CI agent with `defineCommand('gh', { env: { GH_TOKEN } })`" pattern has been broken for most users since `'local'` was rebuilt. We're collapsing the API:
-
   - With the new `'local'` sandbox, the host shell is exposed directly. The agent's `bash` tool can run `gh issue view`, `npm test`, etc. with whatever's on `$PATH` and whatever env you launched flue with. The runner / container / VM is the isolation boundary.
   - For non-`'local'` sandboxes, install the binaries inside the sandbox image, or wrap the operation as a custom tool with `init({ tools: [...] })`. Tools have a structured parameter schema, are visible to the model directly, and recover the "secrets stay on the host" property — the tool reads `process.env`, the agent only sees the tool's params and result.
 
@@ -306,7 +305,6 @@ Big release! We are working hard to stabilize our APIs and add any missing and e
 - **`flue init` command** scaffolds a starter `flue.config.ts` in the target directory. Flags: `--target <node|cloudflare>` (required), `--root <path>`, `--force` (overwrite existing).
 
 - **`app.ts` runtime entry point.** A new optional `app.ts` (also `.mts` / `.js` / `.mjs`) at the source root lets you take over the request pipeline with custom Hono middleware, routes, auth, etc. Mount Flue's agent handler via `app.route('/', flue())`. New `@flue/sdk/app` subpath export ships:
-
   - `flue()` — Hono sub-app exposing `/agents/:name/:id`.
   - `Fetchable` — type for the user app's default export.
   - `registerProvider(name, def)` — register a new URL-prefix model provider at runtime, with platform `env` in scope. Supports HTTP and Cloudflare AI binding registrations (`HttpProviderRegistration`, `CloudflareAIBindingRegistration`, `CloudflareAIBinding`).
