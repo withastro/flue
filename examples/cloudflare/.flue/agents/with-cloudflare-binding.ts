@@ -1,4 +1,4 @@
-import { defineAgent, type ReceiveContext } from '@flue/runtime';
+import { defineAgent, type AgentInitContext, type ReceiveContext } from '@flue/runtime';
 import { mock } from '../channels/mock';
 
 export const channels = [mock()];
@@ -19,6 +19,6 @@ export async function receive({ delivery, dispatch }: ReceiveContext) {
 	});
 }
 
-export async function init({ spawn }: { spawn: (options: unknown) => unknown }) {
+export async function init({ spawn }: AgentInitContext) {
 	return spawn({ inherit: cloudflareBinding });
 }

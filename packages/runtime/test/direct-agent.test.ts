@@ -12,7 +12,7 @@ import {
 	InMemorySessionStore,
 	type AgentInitHandler,
 } from '../src/internal.ts';
-import type { FlueHarness, FlueSession } from '../src/types.ts';
+import type { FlueHarness, FlueSession, SessionData, SessionEnv, SessionStore } from '../src/types.ts';
 
 describe('direct attached agent delivery', () => {
 	it('routes direct HTTP through init and the default session without receive or dispatch', async () => {
@@ -196,6 +196,86 @@ describe('direct attached agent delivery', () => {
 		expect(res.status).toBe(400);
 		expect((await res.json()) as unknown).toMatchObject({ error: { type: 'invalid_request' } });
 	});
+
+	it('rejects dynamic behavior options passed to spawn', async () => {
+		configureFlueRuntime({
+			target: 'node',
+			manifest: {
+				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
+			},
+			webhookAgents: ['assistant'],
+			allowNonWebhook: false,
+			handlers: {
+				assistant: createDirectAgentHandler(({ spawn }) =>
+					spawn({ inherit: {}, instructions: 'dynamic' } as never),
+				),
+			},
+			createContext: createTestContext,
+		});
+
+		const app = new Hono();
+		app.route('/', flue());
+
+		const res = await app.fetch(
+			new Request('http://localhost/agents/assistant/inst-1', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ message: 'hello' }),
+			}),
+		);
+
+		expect(res.status).toBe(500);
+		expect((await res.json()) as unknown).toMatchObject({
+			error: { type: 'internal_error' },
+		});
+	});
+
+	it('passes the target instance id into spawn sandbox factories', async () => {
+		const sandboxCalls: Array<{ id: string; cwd?: string }> = [];
+		const prompts: Array<{ session: string; message: string }> = [];
+		const store = new RecordingSessionStore();
+
+		configureFlueRuntime({
+			target: 'node',
+			manifest: {
+				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
+			},
+			webhookAgents: ['assistant'],
+			allowNonWebhook: false,
+			handlers: {
+				assistant: createDirectAgentHandler(({ spawn }) =>
+					spawn({
+						inherit: { model: false },
+						cwd: '/workspace',
+						persist: store,
+						sandbox: {
+							async createSessionEnv(options) {
+								sandboxCalls.push(options);
+								return fakeEnv();
+							},
+						},
+					}),
+				),
+			},
+			createContext: createTestContext,
+		});
+
+		const app = new Hono();
+		app.route('/', flue());
+
+		const res = await app.fetch(
+			new Request('http://localhost/agents/assistant/inst-1', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ message: 'hello' }),
+			}),
+		);
+
+		expect(res.status).toBe(500);
+		expect(sandboxCalls).toEqual([{ id: 'inst-1', cwd: '/workspace' }]);
+		expect(store.loadCalls).toContain('agent-session:["inst-1","default","default"]');
+		expect(prompts).toEqual([]);
+	});
 });
 
 function fakeHarness(prompts: Array<{ session: string; message: string }>): FlueHarness {
@@ -240,4 +320,30 @@ function createTestContext(id: string, runId: string, payload: unknown, req: Req
 		createDefaultEnv: async () => ({}) as never,
 		defaultStore: new InMemorySessionStore(),
 	});
+}
+
+function fakeEnv(): SessionEnv {
+	return {
+		exec: async () => ({ stdout: '', stderr: '', exitCode: 0 }),
+		readFile: async () => '',
+		readFileBuffer: async () => new Uint8Array(),
+		writeFile: async () => {},
+		stat: async () => ({ isFile: true, isDirectory: false, isSymbolicLink: false, size: 0, mtime: new Date() }),
+		readdir: async () => [],
+		exists: async () => false,
+		mkdir: async () => {},
+		rm: async () => {},
+		cwd: '/',
+		resolvePath: (path) => path,
+	};
+}
+
+class RecordingSessionStore implements SessionStore {
+	readonly loadCalls: string[] = [];
+	async save(_id: string, _data: SessionData): Promise<void> {}
+	async load(id: string): Promise<SessionData | null> {
+		this.loadCalls.push(id);
+		return null;
+	}
+	async delete(_id: string): Promise<void> {}
 }

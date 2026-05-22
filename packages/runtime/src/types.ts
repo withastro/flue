@@ -42,7 +42,7 @@ export interface AgentInitContext {
 	/** Target agent instance id from `/agents/:name/:id`. */
 	id: string;
 	/** Construct the runtime harness for this agent instance. */
-	spawn(options: AgentInit): Promise<FlueHarness>;
+	spawn(options: AgentSpawnOptions): Promise<FlueHarness>;
 }
 
 /**
@@ -461,6 +461,20 @@ export interface AgentInit {
 	 *   {@link CompactionConfig}.
 	 */
 	compaction?: false | CompactionConfig;
+}
+
+export interface AgentSpawnOptions {
+	/** Reusable agent profile to instantiate for this agent instance. */
+	inherit?: AgentDefinition;
+
+	/** Working directory for context discovery, tools, and shell calls. Defaults to the sandbox cwd. */
+	cwd?: string;
+
+	/** Instance-level sandbox/resource attachment. */
+	sandbox?: false | SandboxFactory | BashFactory;
+
+	/** Instance-level session persistence. Defaults to platform store. */
+	persist?: SessionStore;
 }
 
 // ─── Flue Harness (returned by init()) ──────────────────────────────────────

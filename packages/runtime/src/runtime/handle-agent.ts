@@ -2,7 +2,7 @@
 
 import type { FlueContextInternal } from '../client.ts';
 import { InvalidRequestError, parseJsonBody, RunEventTooLargeError, toHttpResponse } from '../errors.ts';
-import type { AgentInitContext, DirectAgentPayload, FlueEvent, FlueHarness } from '../types.ts';
+import type { AgentInit, AgentInitContext, AgentSpawnOptions, DirectAgentPayload, FlueEvent, FlueHarness } from '../types.ts';
 import { generateRunId, generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
 import type { RunStore } from './run-store.ts';
@@ -18,7 +18,7 @@ export function createDirectAgentHandler(init: AgentInitHandler): AgentHandler {
 		const payload = parseDirectAgentPayload(ctx.payload);
 		const harness = await init({
 			id: ctx.id,
-			spawn: (options) => ctx.init(options),
+			spawn: (options) => ctx.init(validateAgentSpawnOptions(options)),
 		});
 		if (!harness || typeof harness !== 'object' || typeof harness.session !== 'function') {
 			throw new Error('[flue] Agent init() must return spawn(...).');
@@ -26,6 +26,22 @@ export function createDirectAgentHandler(init: AgentInitHandler): AgentHandler {
 		const session = await harness.session(payload.session);
 		return session.prompt(payload.message);
 	};
+}
+
+const ALLOWED_AGENT_SPAWN_FIELDS = new Set(['inherit', 'sandbox', 'cwd', 'persist']);
+
+function validateAgentSpawnOptions(options: AgentSpawnOptions): AgentInit {
+	if (!options || typeof options !== 'object' || Array.isArray(options)) {
+		throw new Error('[flue] spawn() requires an options object.');
+	}
+	const unsupported = Object.keys(options).filter((key) => !ALLOWED_AGENT_SPAWN_FIELDS.has(key));
+	if (unsupported.length > 0) {
+		throw new Error(
+			`[flue] spawn() received unsupported option${unsupported.length === 1 ? '' : 's'}: ${unsupported.map((key) => `"${key}"`).join(', ')}. ` +
+				'spawn() only accepts instance-level options: inherit, sandbox, cwd, persist. Put reusable behavior such as model, instructions, tools, skills, subagents, thinkingLevel, and compaction in defineAgent(...).',
+		);
+	}
+	return options;
 }
 
 function parseDirectAgentPayload(payload: unknown): DirectAgentPayload {

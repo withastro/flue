@@ -7,6 +7,7 @@ export type {
 	FlueSessions,
 	FlueSession,
 	AgentInit,
+	AgentSpawnOptions,
 	AgentDefinition,
 	FlueEvent,
 	FlueEventCallback,
