@@ -1,7 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { OAuthClientProvider } from '@modelcontextprotocol/sdk/client/auth.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
+import { ToolListChangedNotificationSchema, type CallToolResult, type Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { ToolDefinition, ToolParameters } from './types.ts';
 
 // ─── Auth types ─────────────────────────────────────────────────────────────
@@ -143,31 +143,48 @@ export async function connectMcpServer(
 	if (options.auth && options.authProvider) {
 		throw new Error(
 			'[flue] McpServerOptions: `auth` and `authProvider` are mutually exclusive. ' +
-			'Use `auth` for a lightweight header hook or `authProvider` for full MCP-SDK OAuth.',
-		);
-	}
-	if (options.auth) {
-		throw new Error(
-			'[flue] McpServerOptions.auth is not yet implemented. ' +
-			'It will be available in a future release. For now, use `fetch` or `requestInit` ' +
-			'to inject custom auth logic.',
+				'Use `auth` for a lightweight header hook or `authProvider` for full MCP-SDK OAuth.',
 		);
 	}
 	if (options.authProvider) {
 		throw new Error(
 			'[flue] McpServerOptions.authProvider is not yet implemented. ' +
-			'It will be available in a future release. For now, use `fetch` or `requestInit` ' +
-			'to inject custom auth logic.',
+				'It will be available in a future release. For now, use `auth` or `fetch` / `requestInit` ' +
+				'to inject custom auth logic.',
 		);
 	}
 
 	const url = options.url instanceof URL ? options.url : new URL(options.url);
-	const requestInit = mergeRequestInit(options.requestInit, options.headers);
+	const baseRequestInit = mergeRequestInit(options.requestInit, options.headers);
+
+	// Build the fetch function — either plain or wrapped with the auth hook.
+	const fetchImpl = options.auth
+		? createAuthFetch(options.auth, url, baseRequestInit, options.fetch, options.revalidate)
+		: options.fetch;
+
+	// When using the auth hook, perform the initial auth call before creating
+	// the transport so any connect-time failures surface early.
+	let initialAuthHeaders: Headers | undefined;
+	if (options.auth) {
+		const controller = new AbortController();
+		const raw = await options.auth({
+			serverUrl: url,
+			reason: 'connect',
+			signal: controller.signal,
+		});
+		initialAuthHeaders = new Headers(raw);
+	}
+
+	const transportRequestInit = initialAuthHeaders
+		? mergeRequestInit(baseRequestInit, initialAuthHeaders)
+		: baseRequestInit;
+
 	const transport = await createTransport(
 		url,
 		options.transport ?? 'streamable-http',
-		requestInit,
-		options.fetch,
+		transportRequestInit,
+		fetchImpl,
+		options.authProvider,
 	);
 	const client = new Client({
 		name: options.clientName ?? 'flue',
@@ -179,7 +196,7 @@ export async function connectMcpServer(
 		const { tools: rawTools } = await client.listTools();
 		const tools = createMcpTools(name, client, rawTools);
 
-		return {
+		const connection: McpServerConnection = {
 			name,
 			tools,
 			async refreshTools() {
@@ -191,10 +208,113 @@ export async function connectMcpServer(
 			},
 			close: () => client.close(),
 		};
+
+		// Subscribe to tools/list_changed notifications (default: on).
+		if (options.autoRefreshTools !== false) {
+			client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
+				await connection.refreshTools();
+			});
+		}
+
+		return connection;
 	} catch (error) {
 		await client.close().catch(() => undefined);
 		throw error;
 	}
+}
+
+// ─── Auth fetch wrapper ─────────────────────────────────────────────────────
+
+/**
+ * Wraps `fetch` to inject auth headers from the hook, retry once on 401,
+ * and optionally revalidate on a TTL.
+ */
+function createAuthFetch(
+	auth: McpAuthHook,
+	serverUrl: URL,
+	baseRequestInit: RequestInit,
+	baseFetch: typeof fetch | undefined,
+	revalidateMs: number | undefined,
+): typeof fetch {
+	const doFetch = baseFetch ?? globalThis.fetch;
+
+	// Cached auth headers + timestamp.
+	let cachedHeaders: Headers | undefined;
+	let cachedAt = 0;
+
+	// In-flight refresh promise for thundering-herd dedup.
+	let inflightRefresh: Promise<Headers> | undefined;
+
+	async function refreshAuth(
+		reason: McpAuthReason,
+		signal: AbortSignal,
+		wwwAuthenticate?: string,
+	): Promise<Headers> {
+		const raw = await auth({ serverUrl, reason, signal, wwwAuthenticate });
+		cachedHeaders = new Headers(raw);
+		cachedAt = Date.now();
+		return cachedHeaders;
+	}
+
+	async function getHeaders(
+		reason: McpAuthReason,
+		signal: AbortSignal,
+		wwwAuthenticate?: string,
+	): Promise<Headers> {
+		// Dedup concurrent refreshes.
+		if (inflightRefresh && reason !== 'retry-after-401') {
+			return inflightRefresh;
+		}
+		const promise = refreshAuth(reason, signal, wwwAuthenticate);
+		inflightRefresh = promise;
+		try {
+			return await promise;
+		} finally {
+			if (inflightRefresh === promise) inflightRefresh = undefined;
+		}
+	}
+
+	return async function authFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+		const signal = init?.signal ?? new AbortController().signal;
+
+		// Determine if we need to refresh.
+		let authHeaders: Headers;
+		if (!cachedHeaders || (revalidateMs && Date.now() - cachedAt >= revalidateMs)) {
+			const reason: McpAuthReason = cachedHeaders ? 'revalidate' : 'connect';
+			authHeaders = await getHeaders(reason, signal);
+		} else {
+			authHeaders = cachedHeaders;
+		}
+
+		// Merge: base static -> auth hook -> per-request init.
+		const merged = mergeHeaders(baseRequestInit.headers, authHeaders, init?.headers);
+		const response = await doFetch(input, { ...init, headers: merged });
+
+		// Retry once on 401.
+		if (response.status === 401) {
+			const wwwAuthenticate = response.headers.get('www-authenticate') ?? undefined;
+			// Consume the body to free the connection.
+			await response.body?.cancel().catch(() => {});
+
+			authHeaders = await getHeaders('retry-after-401', signal, wwwAuthenticate);
+			const retryMerged = mergeHeaders(baseRequestInit.headers, authHeaders, init?.headers);
+			return doFetch(input, { ...init, headers: retryMerged });
+		}
+
+		return response;
+	};
+}
+
+/** Merge multiple header sources, later sources override earlier on collision. */
+function mergeHeaders(...sources: (HeadersInit | undefined | null)[]): Headers {
+	const merged = new Headers();
+	for (const source of sources) {
+		if (!source) continue;
+		for (const [key, value] of new Headers(source)) {
+			merged.set(key, value);
+		}
+	}
+	return merged;
 }
 
 async function createTransport(
@@ -202,17 +322,20 @@ async function createTransport(
 	transport: McpTransport,
 	requestInit: RequestInit,
 	fetchImpl: typeof fetch | undefined,
+	authProvider: McpOAuthClientProvider | undefined,
 ) {
 	if (transport === 'sse') {
 		const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js');
 		return new SSEClientTransport(url, {
 			requestInit,
 			fetch: fetchImpl,
+			authProvider,
 		});
 	}
 	return new StreamableHTTPClientTransport(url, {
 		requestInit,
 		fetch: fetchImpl,
+		authProvider,
 	});
 }
 
