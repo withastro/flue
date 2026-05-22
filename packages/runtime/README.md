@@ -213,7 +213,11 @@ export async function run({ init, payload, env }: FlueContext) {
 
 ### Remote MCP Tools
 
-MCP is available as a runtime tool adapter. Connect to a remote MCP server in trusted code, pass its tools to `init()`, and keep secrets in `env` instead of filesystem context or prompts.
+MCP is available as a runtime tool adapter. Connect to a remote MCP server in trusted code, pass its tools to the agent, and keep secrets in `env` instead of filesystem context or prompts.
+
+#### Static headers
+
+The simplest case — a fixed bearer token from the environment:
 
 ```ts
 // .flue/workflows/assistant.ts
@@ -224,9 +228,7 @@ export const channels = [http()];
 export async function run({ init, payload, env }: FlueContext) {
   const github = await connectMcpServer('github', {
     url: 'https://mcp.github.com/mcp',
-    headers: {
-      Authorization: `Bearer ${env.GITHUB_TOKEN}`,
-    },
+    headers: { Authorization: `Bearer ${env.GITHUB_TOKEN}` },
   });
 
   try {
@@ -243,7 +245,88 @@ export async function run({ init, payload, env }: FlueContext) {
 }
 ```
 
-`connectMcpServer()` defaults to modern streamable HTTP. For legacy SSE servers, pass `transport: 'sse'`. Flue does not auto-detect transports, spawn local stdio MCP servers, or handle OAuth callbacks in this first version.
+#### Dynamic auth hook
+
+For tokens that expire, rotate, or need to be fetched at runtime, use the `auth` hook. It is called once at connect time and again automatically on 401 retry. Static `headers` compose with `auth` — the hook's headers override on key collision.
+
+```ts
+const server = await connectMcpServer('internal', {
+  url: 'https://mcp.internal.example.com',
+  headers: { 'X-Client-Id': 'flue-agent' }, // static, always sent
+  auth: async ({ reason, wwwAuthenticate }) => {
+    // Fetch a short-lived token from your vault / KV / secret manager.
+    const token = await getTokenFromVault(reason === 'retry-after-401');
+    return { Authorization: `Bearer ${token}` };
+  },
+  revalidate: 50 * 60 * 1000, // optional: refresh proactively at 50 min
+});
+```
+
+The `auth` context includes `serverUrl`, `reason` (`'connect'`, `'retry-after-401'`, or `'revalidate'`), `signal` (aborted when the run is torn down), and `wwwAuthenticate` (the raw header from a 401 response). Concurrent 401 retries are deduplicated — only one hook call is made.
+
+For interactive OAuth flows where a human must authorize in a browser, throw `McpAuthRequiredError` from the hook with the authorization URL. The wrapping workflow can catch this, dispatch the URL to an external channel, and retry once the user has completed the flow.
+
+```ts
+import { McpAuthRequiredError } from '@flue/runtime';
+
+auth: async ({ reason, wwwAuthenticate }) => {
+  const stored = await kv.get(`mcp-token:${userId}`);
+  if (stored) return { Authorization: `Bearer ${stored}` };
+
+  if (reason === 'retry-after-401' || reason === 'connect') {
+    throw new McpAuthRequiredError({
+      authorizationUrl: 'https://auth.example.com/authorize?client_id=...',
+      wwwAuthenticate,
+    });
+  }
+  throw new Error('No credentials available');
+},
+```
+
+#### Full OAuth via authProvider
+
+For spec-compliant OAuth 2.1 flows (PKCE, dynamic client registration, token refresh, RFC 9728 discovery), pass an `authProvider` — the MCP SDK's `OAuthClientProvider` interface. Flue forwards it directly to the transport; no OAuth logic lives in Flue itself.
+
+```ts
+import type { McpOAuthClientProvider } from '@flue/runtime';
+
+const authProvider: McpOAuthClientProvider = {
+  get redirectUrl() { return 'https://my-app.example.com/oauth/callback'; },
+  get clientMetadata() { return { client_name: 'My Agent', /* ... */ }; },
+  async clientInformation() { return await kv.get('oauth-client-info'); },
+  async saveClientInformation(info) { await kv.put('oauth-client-info', info); },
+  async tokens() { return await kv.get('oauth-tokens'); },
+  async saveTokens(tokens) { await kv.put('oauth-tokens', tokens); },
+  async redirectToAuthorization(url) {
+    // In a Flue workflow, dispatch the URL to a channel instead of opening a browser:
+    await dispatch({ agent: 'auth-handler', id: 'oauth', session: 'default', input: { url: url.href } });
+  },
+  async saveCodeVerifier(v) { await kv.put('oauth-verifier', v); },
+  async codeVerifier() { return await kv.get('oauth-verifier'); },
+};
+
+const server = await connectMcpServer('protected', {
+  url: 'https://mcp.protected.example.com',
+  authProvider,
+});
+```
+
+`auth` and `authProvider` are mutually exclusive.
+
+#### Tool refresh
+
+`connectMcpServer` subscribes to the MCP `notifications/tools/list_changed` event by default, automatically calling `connection.refreshTools()` when the server signals changes. Set `autoRefreshTools: false` to manage this manually.
+
+You can also call `refreshTools()` yourself — it re-runs `listTools()` against the server and mutates the `tools` array in place. Note that existing sessions snapshot their tools at creation time; only sessions opened after the refresh see the updated list.
+
+```ts
+const updated = await server.refreshTools();
+// updated === server.tools (same array reference, mutated in place)
+```
+
+#### Transport and other options
+
+`connectMcpServer()` defaults to modern streamable HTTP. For legacy SSE servers, pass `transport: 'sse'`. You can also inject a custom `fetch` for advanced scenarios like request signing or proxy routing — this composes with `auth` (the auth-wrapped fetch delegates to your custom fetch).
 
 ## Agents, Harnesses, And Sessions
 
