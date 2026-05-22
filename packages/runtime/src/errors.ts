@@ -400,6 +400,18 @@ export class InvalidRequestError extends FlueHttpError {
 	}
 }
 
+export class UnauthorizedError extends FlueHttpError {
+	constructor({ reason }: { reason: string }) {
+		super({
+			type: 'unauthorized',
+			message: 'Request is not authorized.',
+			details: reason,
+			dev: '',
+			status: 401,
+		});
+	}
+}
+
 export class ValidationError extends FlueHttpError {
 	constructor({ details, issues }: { details: string; issues: unknown }) {
 		super({

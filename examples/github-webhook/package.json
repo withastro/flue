@@ -1,0 +1,13 @@
+{
+	"name": "github-webhook-example",
+	"private": true,
+	"type": "module",
+	"dependencies": {
+		"@flue/runtime": "workspace:*",
+		"hono": "^4.7.0",
+		"just-bash": "^2.14.2"
+	},
+	"devDependencies": {
+		"@flue/cli": "workspace:*"
+	}
+}

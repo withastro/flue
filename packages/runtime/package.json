@@ -31,6 +31,10 @@
 		"./node": {
 			"types": "./dist/node/index.d.mts",
 			"import": "./dist/node/index.mjs"
+		},
+		"./github": {
+			"types": "./dist/github.d.mts",
+			"import": "./dist/github.mjs"
 		}
 	},
 	"main": "./dist/index.mjs",

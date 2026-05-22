@@ -50,6 +50,7 @@ export class CloudflarePlugin implements BuildPlugin {
 		const { agents, appEntry, workflows } = ctx;
 		const manifestJson = JSON.stringify(ctx.manifest);
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
+		const hasGitHubChannel = agents.some((agent) => agent.channels.github);
 		validateCloudflareAgentNames(ctx);
 
 		const agentImports = agents
@@ -143,6 +144,7 @@ import {
   hasRegisteredProvider,
   parseWorkflowRunId,
   InMemoryDispatchQueue,
+  ${hasGitHubChannel ? 'createGitHubWebhook,' : ''}
 } from '@flue/runtime/internal';
 import {
   runWithCloudflareContext,
@@ -188,6 +190,9 @@ ${directHandlerMapEntries}
 };
 const workflowHandlers = {
 ${workflowHandlerMapEntries}
+};
+const channelHandlers = {
+${hasGitHubChannel ? '  github: createGitHubWebhook(),' : ''}
 };
 
 // ─── Sandbox Environments ───────────────────────────────────────────────────
@@ -487,6 +492,7 @@ configureFlueRuntime({
   allowNonWebhook: false,
   handlers: directHandlers,
   receiveHandlers,
+  channelHandlers,
   dispatchQueue,
   routeAgentRequest: (request, env) => routeAgentRequest(request, env),
   routeWorkflowRequest: async (request, reqEnv, target) => {

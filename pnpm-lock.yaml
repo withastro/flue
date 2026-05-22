@@ -112,6 +112,22 @@ importers:
         specifier: ^4.87.0
         version: 4.87.0(@cloudflare/workers-types@4.20260505.1)
 
+  examples/github-webhook:
+    dependencies:
+      '@flue/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      hono:
+        specifier: ^4.7.0
+        version: 4.12.16
+      just-bash:
+        specifier: ^2.14.2
+        version: 2.14.4
+    devDependencies:
+      '@flue/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+
   examples/hello-world:
     dependencies:
       '@daytona/sdk':

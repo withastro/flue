@@ -80,6 +80,7 @@ export { createRunSubscriberRegistry } from './runtime/run-subscribers.ts';
 export { bashFactoryToSessionEnv } from './sandbox.ts';
 export { hasRegisteredProvider } from './runtime/providers.ts';
 export { InMemorySessionStore } from './session.ts';
+export { createGitHubWebhook } from './github.ts';
 
 /**
  * Resolve `provider/model-id` to a pi-ai Model. Registered URL prefixes win

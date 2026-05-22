@@ -9,6 +9,14 @@ export interface WorkflowChannel<TName extends 'http' | 'websocket' = 'http' | '
 	readonly type: TName;
 }
 
+export interface ChannelDefinition<TName extends string = string> {
+	readonly type: TName;
+}
+
+export interface ChannelWebhookHandler {
+	receive(request: Request, env?: unknown): Promise<Delivery> | Delivery;
+}
+
 export interface Delivery {
 	id: string;
 	channel: string;

@@ -11,6 +11,7 @@ export class NodePlugin implements BuildPlugin {
 		const { agents, appEntry, workflows } = ctx;
 		const manifestJson = JSON.stringify(ctx.manifest);
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
+		const hasGitHubChannel = agents.some((agent) => agent.channels.github);
 
 		const agentImports = agents
 			.map((a, index) => {
@@ -68,6 +69,7 @@ import {
   createDirectAgentHandler,
   createAgentDispatchProcessor,
   InMemoryDispatchQueue,
+  ${hasGitHubChannel ? 'createGitHubWebhook,' : ''}
 } from '@flue/runtime/internal';
 ${agentImports}
 ${workflowImports}
@@ -89,6 +91,9 @@ ${initHandlerMapEntries}
 };
 const workflowHandlers = {
 ${workflowHandlerMapEntries}
+};
+const channelHandlers = {
+${hasGitHubChannel ? '  github: createGitHubWebhook(),' : ''}
 };
 
 // When the CLI starts this server via \`flue run\`, it sets FLUE_MODE=local.
@@ -150,6 +155,7 @@ configureFlueRuntime({
   allowNonWebhook: false,
   handlers: directHandlers,
   receiveHandlers,
+  channelHandlers,
   dispatchQueue,
   workflowHandlers,
   createContext: createContextForRequest,
