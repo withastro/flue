@@ -243,26 +243,26 @@ describe('InMemoryRunRegistry', () => {
 		const runId = 'workflow:daily-report:01TEST';
 		await registry.recordRunStart({
 			runId,
-			owner: { kind: 'workflow', workflowName: 'daily-report', runId },
+			owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: runId },
 			startedAt: '2026-01-01T00:00:00.000Z',
 		});
 		expect(await registry.lookupRun(runId)).toMatchObject({
 			runId,
-			owner: { kind: 'workflow', workflowName: 'daily-report', runId },
+			owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: runId },
 		});
 		expect((await registry.listRuns({ workflowName: 'daily-report' })).runs).toHaveLength(1);
 		expect((await registry.listRuns({ workflowName: 'other' })).runs).toHaveLength(0);
 	});
 
-	it('rejects workflow owner records whose serialized run id does not match', async () => {
+	it('rejects workflow owner records whose serialized instance id does not match the runId', async () => {
 		const registry = new InMemoryRunRegistry();
 		await expect(
 			registry.recordRunStart({
 				runId: 'workflow:daily-report:01A',
-				owner: { kind: 'workflow', workflowName: 'daily-report', runId: 'workflow:daily-report:01B' },
+				owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: 'workflow:daily-report:01B' },
 				startedAt: '2026-01-01T00:00:00.000Z',
 			}),
-		).rejects.toThrow(/same runId/);
+		).rejects.toThrow(/same instanceId/);
 	});
 
 	it('falls back to page 1 on a malformed cursor (rather than empty / error)', async () => {
@@ -445,7 +445,7 @@ describe('POST /workflows/:name routes via flue()', () => {
 		expect(runRes.status).toBe(200);
 		expect(await runRes.json()).toMatchObject({
 			runId: body.runId,
-			owner: { kind: 'workflow', workflowName: 'daily-report', runId: body.runId },
+			owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: body.runId },
 			status: 'completed',
 			result: { echoed: { date: '2026-05-21' } },
 		});

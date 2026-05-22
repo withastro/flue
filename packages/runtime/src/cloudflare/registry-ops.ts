@@ -132,20 +132,21 @@ class SqlRegistryOps implements RegistryOps {
 
 	recordRunStart(input: RecordRunStartInput): void {
 		const owner = normalizeRunOwner(input);
+		// Workflows now have their own `instanceId` (which equals `runId`),
+		// stored in the same column as agent instance ids. The owner_kind
+		// distinguishes the two.
 		const ownerAgentName = owner.kind === 'agent' ? owner.agentName : null;
-		const ownerInstanceId = owner.kind === 'agent' ? owner.instanceId : null;
 		const ownerWorkflowName = owner.kind === 'workflow' ? owner.workflowName : null;
-		const ownerRunId = owner.kind === 'workflow' ? owner.runId : null;
+		const ownerInstanceId = owner.instanceId;
 		this.sql.exec(
 			`INSERT OR IGNORE INTO flue_registry_runs
-			 (run_id, owner_kind, agent_name, instance_id, workflow_name, owner_run_id, status, started_at, ended_at, duration_ms, is_error)
-			 VALUES (?, ?, ?, ?, ?, ?, 'active', ?, NULL, NULL, NULL)`,
+			 (run_id, owner_kind, agent_name, instance_id, workflow_name, status, started_at, ended_at, duration_ms, is_error)
+			 VALUES (?, ?, ?, ?, ?, 'active', ?, NULL, NULL, NULL)`,
 			input.runId,
 			owner.kind,
 			ownerAgentName,
 			ownerInstanceId,
 			ownerWorkflowName,
-			ownerRunId,
 			input.startedAt,
 		);
 	}
@@ -308,11 +309,23 @@ function ensureRegistryTables(sql: SqlStorage): void {
 	);
 	ensureColumn(sql, 'flue_registry_runs', 'owner_kind', "TEXT NOT NULL DEFAULT 'agent'");
 	ensureColumn(sql, 'flue_registry_runs', 'workflow_name', 'TEXT');
+	// Legacy column from 0.8 when workflow runs lived under a shared
+	// `WorkflowRunOwner` DO. Workflows are now per-class DOs keyed by
+	// `instance_id`, but old rows may still carry the run id in
+	// `owner_run_id`. ensureColumn keeps the schema migration idempotent
+	// and the backfill below relocates the value.
 	ensureColumn(sql, 'flue_registry_runs', 'owner_run_id', 'TEXT');
 	sql.exec(
 		`UPDATE flue_registry_runs
 		 SET owner_kind = 'agent'
 		 WHERE owner_kind IS NULL OR owner_kind = ''`,
+	);
+	sql.exec(
+		`UPDATE flue_registry_runs
+		 SET instance_id = owner_run_id
+		 WHERE owner_kind = 'workflow'
+		   AND (instance_id IS NULL OR instance_id = '')
+		   AND owner_run_id IS NOT NULL`,
 	);
 	sql.exec(
 		'CREATE INDEX IF NOT EXISTS flue_registry_status_started_idx ON flue_registry_runs (status, started_at DESC)',
@@ -335,8 +348,8 @@ function ensureRegistryTables(sql: SqlStorage): void {
 
 function normalizeRunOwner(input: RecordRunStartInput): RunPointer['owner'] {
 	if ('owner' in input) {
-		if (input.owner.kind === 'workflow' && input.owner.runId !== input.runId) {
-			throw new Error('[flue] Workflow run owners must use the same runId as the pointer.');
+		if (input.owner.kind === 'workflow' && input.owner.instanceId !== input.runId) {
+			throw new Error('[flue] Workflow run owners must use the same instanceId as the pointer runId.');
 		}
 		return input.owner;
 	}
@@ -345,12 +358,17 @@ function normalizeRunOwner(input: RecordRunStartInput): RunPointer['owner'] {
 
 function rowToRunPointer(row: SqlRow): RunPointer {
 	const runId = String(row.run_id);
+	// Older rows (pre-0.9) stored the workflow `runId` in `owner_run_id`
+	// rather than `instance_id`. Fall back to that column when the
+	// migrated row is read back.
 	const owner =
 		row.owner_kind === 'workflow'
 			? {
 					kind: 'workflow' as const,
 					workflowName: String(row.workflow_name),
-					runId: String(row.owner_run_id ?? runId),
+					instanceId: String(
+						row.instance_id ?? (row as { owner_run_id?: unknown }).owner_run_id ?? runId,
+					),
 				}
 			: {
 					kind: 'agent' as const,

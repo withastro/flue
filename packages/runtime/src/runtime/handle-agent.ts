@@ -306,13 +306,18 @@ export async function handleWorkflowRequest(opts: HandleWorkflowOptions): Promis
 	const startWebhook = opts.startWebhook ?? defaultStartWebhook;
 	const runHandler = opts.runHandler ?? defaultRunHandler;
 	const runId = opts.runId ?? generateWorkflowRunId(workflowName);
+	// Workflows have one instance per run, so the workflow instance id and
+	// the run id are the same value. The owner shape mirrors agents so
+	// per-workflow Durable Object classes route by `instanceId` like agent
+	// DOs do.
+	const instanceId = runId;
 
 	try {
 		const payload = await parseJsonBody(request);
 		const accept = request.headers.get('accept') || '';
 		const isSSE = accept.includes('text/event-stream');
 		const wait = new URL(request.url).searchParams.get('wait');
-		const owner = { kind: 'workflow' as const, workflowName, runId };
+		const owner = { kind: 'workflow' as const, workflowName, instanceId };
 
 		if (wait === 'result') {
 			return await runSyncMode({
@@ -699,6 +704,8 @@ function emitRunStart(lifecycle: RunLifecycle): void {
 		type: 'run_start',
 		runId: lifecycle.runId,
 		owner: lifecycle.owner,
+		instanceId: lifecycle.owner.instanceId,
+		workflowName: lifecycle.owner.workflowName,
 		startedAt: lifecycle.startedAt,
 		payload: lifecycle.payload,
 	});

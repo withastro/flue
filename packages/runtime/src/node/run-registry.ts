@@ -160,8 +160,8 @@ export class InMemoryRunRegistry implements RunRegistry {
 
 function normalizeRunOwner(input: RecordRunStartInput): RunPointer['owner'] {
 	if ('owner' in input) {
-		if (input.owner.kind === 'workflow' && input.owner.runId !== input.runId) {
-			throw new Error('[flue] Workflow run owners must use the same runId as the pointer.');
+		if (input.owner.kind === 'workflow' && input.owner.instanceId !== input.runId) {
+			throw new Error('[flue] Workflow run owners must use the same instanceId as the pointer runId.');
 		}
 		return input.owner;
 	}

@@ -379,7 +379,7 @@ export function mergeFlueAdditions(
 			.filter((n): n is string => typeof n === 'string'),
 	);
 	for (const binding of additions.doBindings) {
-		if (!['FLUE_REGISTRY', 'FLUE_WORKFLOW_RUNS'].includes(binding.name)) continue;
+		if (binding.name !== 'FLUE_REGISTRY') continue;
 		if (!existingBindingNames.has(binding.name)) continue;
 		const existing = existingBindings.find(
 			(b): b is Record<string, unknown> => {

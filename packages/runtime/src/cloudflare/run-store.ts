@@ -35,23 +35,24 @@ class DurableRunStore implements RunStore {
 	}
 
 	async createRun(input: CreateRunInput): Promise<void> {
-		if (input.owner.kind === 'workflow' && input.owner.runId !== input.runId) {
-			throw new Error('[flue] Workflow run owners must use the same runId as the run record.');
+		if (input.owner.kind === 'workflow' && input.owner.instanceId !== input.runId) {
+			throw new Error('[flue] Workflow run owners must use the same instanceId as the run record runId.');
 		}
+		// Both agents and workflows are now keyed by `instance_id`. The
+		// `owner_kind` column distinguishes the two; `agent_name` /
+		// `workflow_name` carry the definition name for filtered queries.
 		const agentName = input.owner.kind === 'agent' ? input.owner.agentName : null;
-		const instanceId = input.owner.kind === 'agent' ? input.owner.instanceId : null;
 		const workflowName = input.owner.kind === 'workflow' ? input.owner.workflowName : null;
-		const ownerRunId = input.owner.kind === 'workflow' ? input.owner.runId : null;
+		const instanceId = input.owner.instanceId;
 		this.sql.exec(
 			`INSERT OR REPLACE INTO flue_runs
-			 (run_id, owner_kind, instance_id, agent_name, workflow_name, owner_run_id, status, started_at, ended_at, is_error, duration_ms, result, error)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
+			 (run_id, owner_kind, instance_id, agent_name, workflow_name, status, started_at, ended_at, is_error, duration_ms, result, error)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
 			input.runId,
 			input.owner.kind,
 			instanceId,
 			agentName,
 			workflowName,
-			ownerRunId,
 			'active',
 			input.startedAt,
 		);
@@ -143,11 +144,21 @@ function ensureRunTables(sql: SqlStorage): void {
 	);
 	ensureColumn(sql, 'flue_runs', 'owner_kind', "TEXT NOT NULL DEFAULT 'agent'");
 	ensureColumn(sql, 'flue_runs', 'workflow_name', 'TEXT');
+	// Legacy column from 0.8 when workflow runs lived under a shared
+	// `WorkflowRunOwner` DO. Workflows are now per-class DOs keyed by
+	// `instance_id`, but old rows may still have the runId in `owner_run_id`.
 	ensureColumn(sql, 'flue_runs', 'owner_run_id', 'TEXT');
 	sql.exec(
 		`UPDATE flue_runs
 		 SET owner_kind = 'agent'
 		 WHERE owner_kind IS NULL OR owner_kind = ''`,
+	);
+	sql.exec(
+		`UPDATE flue_runs
+		 SET instance_id = owner_run_id
+		 WHERE owner_kind = 'workflow'
+		   AND (instance_id IS NULL OR instance_id = '')
+		   AND owner_run_id IS NOT NULL`,
 	);
 	sql.exec(
 		`CREATE TABLE IF NOT EXISTS flue_run_events (
@@ -182,12 +193,18 @@ function rowToRunRecord(row: SqlRow): RunRecord {
 	const result = typeof row.result === 'string' ? JSON.parse(row.result) : undefined;
 	const error = typeof row.error === 'string' ? JSON.parse(row.error) : undefined;
 	const runId = String(row.run_id);
+	// Legacy rows (pre-0.9) stored a workflow's runId in `owner_run_id`.
+	// Newer rows use `instance_id` (== runId), in line with agents. Both
+	// are tolerated on read so the runtime can serve historical runs after
+	// a redeploy.
 	const owner =
 		row.owner_kind === 'workflow'
 			? {
 					kind: 'workflow' as const,
 					workflowName: String(row.workflow_name),
-					runId: String(row.owner_run_id ?? runId),
+					instanceId: String(
+						row.instance_id ?? (row as { owner_run_id?: unknown }).owner_run_id ?? runId,
+					),
 				}
 			: {
 					kind: 'agent' as const,

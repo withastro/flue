@@ -15,7 +15,7 @@ export const ErrorEnvelopeSchema = v.object({
 
 export const RunOwnerSchema = v.union([
 	v.object({ kind: v.literal('agent'), agentName: v.string(), instanceId: v.string() }),
-	v.object({ kind: v.literal('workflow'), workflowName: v.string(), runId: v.string() }),
+	v.object({ kind: v.literal('workflow'), workflowName: v.string(), instanceId: v.string() }),
 ]);
 
 export const RunRecordSchema = v.object({
@@ -106,7 +106,9 @@ export const FlueEventSchema = v.union([
 	flueEvent({
 		type: v.literal('run_start'),
 		runId: v.string(),
-		owner: v.object({ kind: v.literal('workflow'), workflowName: v.string(), runId: v.string() }),
+		owner: v.object({ kind: v.literal('workflow'), workflowName: v.string(), instanceId: v.string() }),
+		instanceId: v.string(),
+		workflowName: v.string(),
 		startedAt: v.string(),
 		payload: v.unknown(),
 	}),

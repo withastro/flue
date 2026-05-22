@@ -3,7 +3,7 @@ import type { RunStatus } from './run-store.ts';
 
 export type RunOwner =
 	| { kind: 'agent'; agentName: string; instanceId: string }
-	| { kind: 'workflow'; workflowName: string; runId: string };
+	| { kind: 'workflow'; workflowName: string; instanceId: string };
 
 export type RecordRunStartInput =
 	| {

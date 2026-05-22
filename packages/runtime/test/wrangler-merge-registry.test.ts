@@ -95,25 +95,27 @@ describe('mergeFlueAdditions', () => {
 		expect(merged.durable_objects.bindings).toHaveLength(1);
 	});
 
-	it('appends and protects FLUE_WORKFLOW_RUNS bindings', () => {
+	it('appends per-workflow DO bindings alongside agent bindings', () => {
+		// Workflows generate one DO binding/class per workflow definition
+		// (e.g. "draft" → FLUE_WORKFLOW_DRAFT / DraftWorkflow), matching the
+		// agent binding shape. The wrangler merge treats them like any other
+		// Flue DO binding — appended verbatim, deduped by name on rebuilds.
 		const additions = {
 			defaultName: 'x',
 			main: '_entry.ts',
-			doBindings: [{ class_name: 'WorkflowRunOwner', name: 'FLUE_WORKFLOW_RUNS' }],
+			doBindings: [
+				{ class_name: 'DraftWorkflow', name: 'FLUE_WORKFLOW_DRAFT' },
+				{ class_name: 'DailyReportWorkflow', name: 'FLUE_WORKFLOW_DAILY_REPORT' },
+			],
 			migrations: [],
 		};
 		const merged = mergeFlueAdditions({}, additions) as {
 			durable_objects: { bindings: Array<{ name: string; class_name: string }> };
 		};
 		expect(merged.durable_objects.bindings).toEqual([
-			{ class_name: 'WorkflowRunOwner', name: 'FLUE_WORKFLOW_RUNS' },
+			{ class_name: 'DraftWorkflow', name: 'FLUE_WORKFLOW_DRAFT' },
+			{ class_name: 'DailyReportWorkflow', name: 'FLUE_WORKFLOW_DAILY_REPORT' },
 		]);
-		expect(() =>
-			mergeFlueAdditions(
-				{ durable_objects: { bindings: [{ class_name: 'OtherOwner', name: 'FLUE_WORKFLOW_RUNS' }] } },
-				additions,
-			),
-		).toThrow(/FLUE_WORKFLOW_RUNS/);
 	});
 
 	it('rejects user-owned FLUE_REGISTRY binding conflicts', () => {

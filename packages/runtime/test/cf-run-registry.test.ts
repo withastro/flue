@@ -233,25 +233,25 @@ describe('createRegistryOps (SQL paths)', () => {
 		const runId = 'workflow:daily-report:01TEST';
 		ops.recordRunStart({
 			runId,
-			owner: { kind: 'workflow', workflowName: 'daily-report', runId },
+			owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: runId },
 			startedAt: STARTED_AT_1,
 		});
 		expect(ops.lookupRun(runId)).toMatchObject({
 			runId,
-			owner: { kind: 'workflow', workflowName: 'daily-report', runId },
+			owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: runId },
 		});
 		expect(ops.listRuns({ workflowName: 'daily-report' }).runs).toHaveLength(1);
 	});
 
-	it('rejects workflow owners whose serialized run id does not match', () => {
+	it('rejects workflow owners whose serialized instance id does not match the run id', () => {
 		const ops = createRegistryOps(makeFakeSql());
 		expect(() =>
 			ops.recordRunStart({
 				runId: 'workflow:daily-report:01A',
-				owner: { kind: 'workflow', workflowName: 'daily-report', runId: 'workflow:daily-report:01B' },
+				owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: 'workflow:daily-report:01B' },
 				startedAt: STARTED_AT_1,
 			}),
-		).toThrow(/same runId/);
+		).toThrow(/same instanceId/);
 	});
 
 	it('pruning: separate instances retain separate completed buckets', () => {

@@ -89,11 +89,10 @@ export class CloudflarePlugin implements BuildPlugin {
 }`)
 			.join('\n\n');
 
-		const workflowRunOwnerClass =
-			workflows.length > 0
-				? `export class WorkflowRunOwner extends Agent {
+		const workflowClasses = workflows
+			.map((workflow) => `export class ${workflowClassName(workflow.name)} extends Agent {
   async onRequest(request) {
-    return dispatchWorkflowRunOwner(request, this);
+    return dispatchWorkflow(request, this, ${JSON.stringify(workflow.name)});
   }
 
   async onFiberRecovered(ctx) {
@@ -104,8 +103,8 @@ export class CloudflarePlugin implements BuildPlugin {
       return super.onFiberRecovered(ctx);
     }
   }
-}`
-				: '';
+}`)
+			.join('\n\n');
 
 		const { config: userConfig } = await this.getUserConfig(ctx.root);
 		const sandboxClassNames = detectSandboxBindings(userConfig);
@@ -137,7 +136,6 @@ import {
   createDefaultFlueApp,
   createDirectAgentHandler,
   hasRegisteredProvider,
-  parseWorkflowRunId,
   InMemoryDispatchQueue,
 } from '@flue/runtime/internal';
 import {
@@ -371,6 +369,13 @@ function createRunRegistryForRequest(reqEnv) {
  */
 const agentBindingNameFromAgentName = ${agentClassName.toString().replace(/agentClassName/g, 'agentBindingNameFromAgentName')};
 
+/**
+ * Per-workflow Durable Object binding name (e.g. "draft" → "FLUE_WORKFLOW_DRAFT").
+ * Workflows have one DO instance per run, with the instanceId equal to the
+ * runId. Inlined from \`workflowBindingName\` so it cannot drift.
+ */
+const workflowBindingNameFromWorkflowName = ${workflowBindingName.toString().replace(/workflowBindingName/g, 'workflowBindingNameFromWorkflowName')};
+
 function runWithInstanceContext(doInstance, fn) {
   return runWithCloudflareContext(
     { env: doInstance.env, agentInstance: doInstance, storage: doInstance.ctx.storage },
@@ -400,28 +405,31 @@ async function handleFlueWorkflowFiberRecovered(ctx) {
 
 // ─── Per-DO Dispatch ───────────────────────────────────────────────────────
 
-async function dispatchWorkflowRunOwner(request, doInstance) {
+async function dispatchWorkflow(request, doInstance, workflowName) {
+  // The DO room name is the workflow instance id. For workflows that
+  // equals the run id (one run per instance), so callers reach this DO
+  // either by starting a new run (POST /workflows/:name → routed by the
+  // outer worker) or by hitting a /runs/:runId subroute on an existing
+  // instance.
+  const instanceId = doInstance.name;
   const runRoute = parseRunRoute(request);
   if (runRoute) {
-    const parsed = parseWorkflowRunId(runRoute.runId);
-    if (!parsed || parsed.workflowName.length === 0) return null;
     return handleRunRouteRequest({
       request,
-      owner: { kind: 'workflow', workflowName: parsed.workflowName, runId: runRoute.runId },
+      owner: { kind: 'workflow', workflowName, instanceId },
       runStore: createRunStoreForRequest(doInstance),
       runSubscribers,
       ...runRoute,
     });
   }
 
-  const workflowStart = parseWorkflowStart(request);
-  if (!workflowStart) return null;
-  const handler = workflowHandlers[workflowStart.workflowName];
+  if (!parseWorkflowStart(request, workflowName)) return null;
+  const handler = workflowHandlers[workflowName];
   if (!handler) return null;
   return handleWorkflowRequest({
     request,
-    workflowName: workflowStart.workflowName,
-    runId: workflowStart.runId,
+    workflowName,
+    runId: instanceId,
     handler,
     runStore: createRunStoreForRequest(doInstance),
     runSubscribers,
@@ -429,7 +437,7 @@ async function dispatchWorkflowRunOwner(request, doInstance) {
     createContext: (id_, runId, payload, req) => createContextForRequest(id_, runId, payload, doInstance, req),
     startWebhook: (runId, run) => {
       const wrapped = (fiber) => {
-        fiber?.stash?.({ version: 1, kind: 'workflow', runId, phase: 'running', startedAt: Date.now() });
+        fiber?.stash?.({ version: 1, kind: 'workflow', workflowName, runId, phase: 'running', startedAt: Date.now() });
         return runWithInstanceContext(doInstance, run);
       };
       assertAgentsDurabilityApi(doInstance, 'runFiber');
@@ -487,15 +495,12 @@ async function dispatchAgent(request, doInstance, agentName, handler) {
   });
 }
 
-function parseWorkflowStart(request) {
+function parseWorkflowStart(request, workflowName) {
+  if (request.method !== 'POST') return false;
   const url = new URL(request.url);
   const segments = url.pathname.split('/').filter(Boolean);
-  if (segments.length !== 3 || segments[0] !== '_workflow_runs') return null;
-  const workflowName = decodeURIComponent(segments[1] || '');
-  const runId = decodeURIComponent(segments[2] || '');
-  const parsed = parseWorkflowRunId(runId);
-  if (!workflowName || !parsed || parsed.workflowName !== workflowName) return null;
-  return { workflowName, runId };
+  if (segments.length !== 2 || segments[0] !== 'workflows') return false;
+  return decodeURIComponent(segments[1] || '') === workflowName;
 }
 
 function parseRunRoute(request) {
@@ -510,10 +515,10 @@ function parseRunRoute(request) {
   return null;
 }
 
-// ─── Per-Agent Durable Object Classes ──────────────────────────────────────
+// ─── Per-Agent / Per-Workflow Durable Object Classes ──────────────────────
 
 ${agentClasses}
-${workflowRunOwnerClass}
+${workflowClasses}
 
 export { FlueRegistry };
 
@@ -536,19 +541,19 @@ configureFlueRuntime({
   dispatchQueue,
   routeAgentRequest: (request, env) => routeAgentRequest(request, env),
   routeWorkflowRequest: async (request, reqEnv, target) => {
-    const binding = reqEnv?.FLUE_WORKFLOW_RUNS;
+    const bindingName = workflowBindingNameFromWorkflowName(target.workflowName);
+    const binding = reqEnv?.[bindingName];
     if (!binding) return null;
-    const stub = await getAgentByName(binding, target.runId);
-    const url = new URL(request.url);
-    url.pathname = '/_workflow_runs/' + encodeURIComponent(target.workflowName) + '/' + encodeURIComponent(target.runId);
-    return stub.fetch(new Request(url, request));
+    const stub = await getAgentByName(binding, target.instanceId);
+    return stub.fetch(request);
   },
   createRunRegistryForRequest,
   routeRunRequest: async (request, reqEnv, target) => {
     if (target.kind === 'workflow') {
-      const binding = reqEnv?.FLUE_WORKFLOW_RUNS;
+      const bindingName = workflowBindingNameFromWorkflowName(target.workflowName);
+      const binding = reqEnv?.[bindingName];
       if (!binding) return null;
-      const stub = await getAgentByName(binding, target.runId);
+      const stub = await getAgentByName(binding, target.instanceId);
       return stub.fetch(request);
     }
     const bindingName = agentBindingNameFromAgentName(target.agentName);
@@ -596,8 +601,18 @@ export default {
 			return { name: className, class_name: className };
 		});
 
-		if (ctx.workflows.length > 0) {
-			flueBindings.push({ name: 'FLUE_WORKFLOW_RUNS', class_name: 'WorkflowRunOwner' });
+		// One DO binding/class per workflow, mirroring agents. The class name
+		// is PascalCase + "Workflow" suffix to keep it lexically distinct from
+		// agent classes when a project happens to define both an agent and a
+		// workflow with the same name. The binding is namespaced under
+		// FLUE_WORKFLOW_<NAME> so the Cloudflare Agents SDK's `routeAgentRequest`
+		// can never accidentally route a public `/agents/<binding-kebab>/...`
+		// URL into a workflow DO.
+		for (const workflow of ctx.workflows) {
+			flueBindings.push({
+				name: workflowBindingName(workflow.name),
+				class_name: workflowClassName(workflow.name),
+			});
 		}
 
 		const FLUE_REGISTRY_BINDING = { name: 'FLUE_REGISTRY', class_name: 'FlueRegistry' };
@@ -699,19 +714,26 @@ function workflowVarName(name: string, index: number): string {
 const CLOUDFLARE_AGENT_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
 function validateCloudflareAgentNames(ctx: BuildContext): void {
+	// Agents and workflows both materialize as per-definition Durable Object
+	// classes and bindings, so both need to round-trip through the kebab-case
+	// → PascalCase converter and through the FLUE_WORKFLOW_<NAME> binding
+	// name. Validate together with a shared message.
 	const invalidAgents = ctx.agents.filter((agent) => !CLOUDFLARE_AGENT_NAME_PATTERN.test(agent.name));
-	if (invalidAgents.length === 0) return;
+	const invalidWorkflows = ctx.workflows.filter(
+		(workflow) => !CLOUDFLARE_AGENT_NAME_PATTERN.test(workflow.name),
+	);
+	if (invalidAgents.length === 0 && invalidWorkflows.length === 0) return;
 
-	const invalidList = invalidAgents
-		.map((agent) => {
-			const relPath = path.relative(ctx.root, agent.filePath);
-			return `${relPath} (${agent.name})`;
-		})
-		.join(', ');
+	const invalidList = [
+		...invalidAgents.map((agent) => `${path.relative(ctx.root, agent.filePath)} (agent: ${agent.name})`),
+		...invalidWorkflows.map(
+			(workflow) => `${path.relative(ctx.root, workflow.filePath)} (workflow: ${workflow.name})`,
+		),
+	].join(', ');
 
 	throw new Error(
-		`[flue] Cloudflare target requires agent filenames to use lower-kebab-case so ` +
-			`Durable Object bindings route correctly. Invalid agent file(s): ${invalidList}. ` +
+		`[flue] Cloudflare target requires agent and workflow filenames to use lower-kebab-case so ` +
+			`Durable Object bindings route correctly. Invalid file(s): ${invalidList}. ` +
 			`Rename them to match ${CLOUDFLARE_AGENT_NAME_PATTERN}.`,
 	);
 }
@@ -728,4 +750,31 @@ function agentClassName(name: string): string {
 		.split(/[-_]/)
 		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
 		.join('');
+}
+
+/**
+ * Convert workflow name to a PascalCase DO class name with a "Workflow"
+ * suffix. "draft" → "DraftWorkflow", "daily-report" → "DailyReportWorkflow".
+ * Suffix avoids collisions when a project defines an agent and a workflow
+ * with the same name.
+ */
+function workflowClassName(name: string): string {
+	const base = name
+		.split(/[-_]/)
+		.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+		.join('');
+	return `${base}Workflow`;
+}
+
+/**
+ * Convert workflow name to its Durable Object binding name.
+ * "draft" → "FLUE_WORKFLOW_DRAFT", "daily-report" → "FLUE_WORKFLOW_DAILY_REPORT".
+ *
+ * Prefixed with FLUE_WORKFLOW_ so it is namespaced away from any user binding
+ * and so the Cloudflare Agents SDK's `routeAgentRequest` (which kebab-cases
+ * binding names into `/agents/<binding>/...` URLs) cannot conflict with the
+ * public `/workflows/:name` route.
+ */
+function workflowBindingName(name: string): string {
+	return `FLUE_WORKFLOW_${name.replace(/-/g, '_').toUpperCase()}`;
 }

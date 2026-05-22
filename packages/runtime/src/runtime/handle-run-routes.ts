@@ -290,7 +290,7 @@ function sameOwner(left: RunOwner, right: RunOwner): boolean {
 		left.kind === 'workflow' &&
 		right.kind === 'workflow' &&
 		left.workflowName === right.workflowName &&
-		left.runId === right.runId
+		left.instanceId === right.instanceId
 	);
 }
 
