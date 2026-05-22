@@ -989,7 +989,7 @@ export class Session implements FlueSession {
 		inheritedThinkingLevel: ThinkingLevel | undefined,
 		signal?: AbortSignal,
 	): Promise<AgentToolResult<TaskToolResultDetails>> {
-		const result = await this.runTask(
+		const result = await this.runTaskExclusive(
 			params.prompt,
 			{
 				role: params.role ?? inheritedRole,
