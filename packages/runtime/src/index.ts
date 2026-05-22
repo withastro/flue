@@ -60,8 +60,16 @@ export { createAgent, defineAgentProfile } from './agent-definition.ts';
 export { defineChannel } from './channels.ts';
 export { createGitHubChannel, createGitHubChannelRouter, createGitHubWebhook, type GitHubWebhookOptions } from './github.ts';
 export { http, websocket } from './workflow-channels.ts';
-export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
-export { connectMcpServer } from './mcp.ts';
+export type {
+	McpServerConnection,
+	McpServerOptions,
+	McpTransport,
+	McpOAuthClientProvider,
+	McpAuthHook,
+	McpAuthContext,
+	McpAuthReason,
+} from './mcp.ts';
+export { connectMcpServer, McpAuthRequiredError } from './mcp.ts';
 export { ResultUnavailableError } from './result.ts';
 export { createSandboxSessionEnv, type SandboxApi } from './sandbox.ts';
 
