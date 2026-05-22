@@ -31,16 +31,18 @@ Unless you opt-in to initializing a full container sandbox, Flue will default to
 
 ```ts
 // .flue/workflows/hello-world.ts
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 // Every HTTP-exposed workflow needs an HTTP channel.
 export const channels = [http()];
 
+const translator = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
+
 // The workflow handler. Where the orchestration of the workflow lives.
 export async function run({ init, payload }: FlueContext) {
   // `harness` -- Your initialized harness including sandbox, tools, skills, etc.
-  const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
+  const harness = await init(translator);
   const session = await harness.session();
 
   // prompt() sends a message in the session, triggering action.
@@ -67,7 +69,7 @@ Because this agent is deployed to Cloudflare, message history and session state 
 
 ```ts
 // .flue/workflows/support.ts
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import { getDefaultWorkspace, getShellSandbox, hydrateFromBucket } from '@flue/runtime/cloudflare';
 import * as v from 'valibot';
 
@@ -82,10 +84,11 @@ export async function run({ init, payload, env }: FlueContext) {
     await workspace.writeFile('/.hydrated', new Date().toISOString());
   }
 
-  const harness = await init({
+  const agent = createAgent(() => ({
     sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
     model: 'openrouter/moonshotai/kimi-k2.6',
-  });
+  }));
+  const harness = await init(agent);
   const session = await harness.session();
 
   return await session.prompt(
@@ -106,7 +109,7 @@ A triage agent that runs in CI whenever an issue is opened on GitHub. The `local
 
 ```ts
 // .flue/workflows/triage.ts
-import { type FlueContext } from '@flue/runtime';
+import { createAgent, type FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
@@ -123,12 +126,13 @@ export async function run({ init, payload }: FlueContext) {
   //
   // `model` sets the default model for every prompt/skill call in this
   // agent. Override per-call with `{ model: '...' }` on prompt()/skill().
-  const harness = await init({
+  const agent = createAgent(() => ({
     sandbox: local({
       env: { GH_TOKEN: process.env.GH_TOKEN },
     }),
     model: 'anthropic/claude-opus-4-7',
-  });
+  }));
+  const harness = await init(agent);
   const session = await harness.session();
 
   // Skills can be referenced either by their frontmatter `name:` (shown below)
@@ -162,7 +166,7 @@ Install the Daytona connector with `flue add daytona | <your-agent>` (e.g. `clau
 
 ```ts
 // .flue/workflows/code.ts
-import { Type, defineTool, http, type FlueContext } from '@flue/runtime';
+import { Type, createAgent, defineTool, http, type FlueContext } from '@flue/runtime';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
@@ -177,10 +181,11 @@ export async function run({ init, payload, env }: FlueContext) {
   // instead to best pick up where you last left off in the conversation.
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
-  const setupHarness = await init({
+  const setupAgent = createAgent(() => ({
     sandbox: daytona(sandbox),
     model: 'openai/gpt-5.5',
-  });
+  }));
+  const setupHarness = await init(setupAgent, { name: 'setup' });
   const setup = await setupHarness.session();
 
   // For simplicity, we clone the target repo into the sandbox here.
@@ -191,12 +196,12 @@ export async function run({ init, payload, env }: FlueContext) {
 
   // Start a second harness in the cloned repo. It shares the same sandbox, but
   // discovers AGENTS.md and skills from /workspace/project.
-  const projectHarness = await init({
-    name: 'project',
+  const projectAgent = createAgent(() => ({
     sandbox: daytona(sandbox),
     cwd: '/workspace/project',
     model: 'openai/gpt-5.5',
-  });
+  }));
+  const projectHarness = await init(projectAgent, { name: 'project' });
   const session = await projectHarness.session();
 
   // Coding agents don't hide the agent DX from the user, so no need to
@@ -212,7 +217,7 @@ MCP is available as a runtime tool adapter. Connect to a remote MCP server in tr
 
 ```ts
 // .flue/workflows/assistant.ts
-import { connectMcpServer, http, type FlueContext } from '@flue/runtime';
+import { connectMcpServer, createAgent, http, type FlueContext } from '@flue/runtime';
 
 export const channels = [http()];
 
@@ -225,10 +230,11 @@ export async function run({ init, payload, env }: FlueContext) {
   });
 
   try {
-    const harness = await init({
+    const agent = createAgent(() => ({
       model: 'anthropic/claude-sonnet-4-6',
       tools: github.tools,
-    });
+    }));
+    const harness = await init(agent);
     const session = await harness.session();
     return await session.prompt(payload.prompt);
   } finally {
@@ -247,7 +253,7 @@ An agent is the source file in `agents/<name>.ts`. For HTTP agents, the URL `<id
 POST /agents/<agent-name>/<id>
 ```
 
-Inside a run, `init()` creates a harness: a configured handle for model defaults, tools, sandbox, filesystem, and sessions. The default harness is named `"default"`; pass `init({ name })` when one run needs multiple isolated harness scopes.
+In workflows, `init(createdAgent)` creates a harness: a configured handle for model defaults, tools, sandbox, filesystem, and sessions. Pass `init(createdAgent, { name })` when one workflow needs multiple isolated harness scopes. In agent modules, the runtime initializes the module's default `createAgent(...)` export when a message arrives.
 
 By default, `harness.session()` opens the default session inside the default harness for that agent instance. Reuse the same URL `<id>` to continue the same agent instance. Use a new URL `<id>` to start fresh.
 
@@ -289,11 +295,12 @@ const answer = await session.prompt(
 );
 ```
 
-Declare reusable subagents with `defineAgent()`, pass them to `init({ subagents })`, and select them for detached delegation with `task({ agent })`.
+Declare reusable subagent profiles with `defineAgentProfile()`, configure them in `createAgent(...)`, and select them for detached delegation with `task({ agent })`.
 
 ```ts
-const researcher = defineAgent({ name: 'researcher', instructions: 'Research carefully.' });
-const harness = await init({ model: 'anthropic/claude-sonnet-4-6', subagents: [researcher] });
+const researcher = defineAgentProfile({ name: 'researcher', instructions: 'Research carefully.' });
+const workflowAgent = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6', subagents: [researcher] }));
+const harness = await init(workflowAgent);
 const session = await harness.session('review-thread');
 
 await session.prompt('Review the latest changes.');
@@ -337,10 +344,11 @@ import { Bash, InMemoryFs } from 'just-bash';
 
 const fs = new InMemoryFs();
 
-const harness = await init({
+const agent = createAgent(() => ({
   sandbox: () => new Bash({ fs, cwd: '/workspace', python: true }),
   model: 'anthropic/claude-sonnet-4-6',
-});
+}));
+const harness = await init(agent);
 const session = await harness.session();
 ```
 

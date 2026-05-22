@@ -9,16 +9,16 @@ This replaces the old `getVirtualSandbox(env.BUCKET)` API. That API described R2
 ## Basic Pattern
 
 ```ts
-import type { FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import {
   getDefaultWorkspace,
   getShellSandbox,
   hydrateFromBucket,
 } from '@flue/runtime/cloudflare';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, env, payload }: FlueContext) {
+export async function run({ init, env, payload }: FlueContext) {
   const workspace = getDefaultWorkspace();
 
   if (!(await workspace.exists('/.hydrated'))) {
@@ -26,10 +26,11 @@ export default async function ({ init, env, payload }: FlueContext) {
     await workspace.writeFile('/.hydrated', new Date().toISOString());
   }
 
-  const harness = await init({
+  const agent = createAgent(() => ({
     sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
     model: 'anthropic/claude-sonnet-4-6',
-  });
+  }));
+  const harness = await init(agent);
   const session = await harness.session();
 
   return session.prompt(`Answer this using the hydrated workspace: ${payload.message}`);
@@ -151,7 +152,8 @@ Old:
 import { getVirtualSandbox } from '@flue/runtime/cloudflare';
 
 const sandbox = await getVirtualSandbox(env.KNOWLEDGE_BASE);
-const harness = await init({ sandbox, model: 'anthropic/claude-sonnet-4-6' });
+const agent = createAgent(() => ({ sandbox, model: 'anthropic/claude-sonnet-4-6' }));
+const harness = await init(agent);
 ```
 
 New:
@@ -169,13 +171,14 @@ if (!(await workspace.exists('/.hydrated'))) {
   await workspace.writeFile('/.hydrated', new Date().toISOString());
 }
 
-const harness = await init({
+const agent = createAgent(() => ({
   sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
   model: 'anthropic/claude-sonnet-4-6',
-});
+}));
+const harness = await init(agent);
 ```
 
-If you used `getVirtualSandbox()` with no bucket, remove the call entirely and omit `sandbox` from `init()`. Flue's default in-memory sandbox is already that behavior.
+If you used `getVirtualSandbox()` with no bucket, remove the call entirely and omit `sandbox` from the created agent config. Flue's default in-memory sandbox is already that behavior.
 
 ## When You Need Bucket-Keys-As-Paths
 

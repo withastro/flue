@@ -45,25 +45,24 @@ Instead of letting `init()` spin up a default virtual sandbox, create a Daytona 
 
 1. Import `Daytona` from `@daytona/sdk` and `daytona` from your connector file.
 2. Create a Daytona client and sandbox.
-3. Pass `sandbox: daytona(sandbox)` to `init()`.
+3. Return `sandbox: daytona(sandbox)` from `createAgent(...)`, then pass that agent to `init(agent)`.
 
 Applied to the Hello World agent from the deploy guides:
 
 ```typescript
-import type { FlueContext } from '@flue/runtime';
+import { createAgent, type FlueContext } from '@flue/runtime';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
-export const triggers = { webhook: true };
-
-export default async function ({ init, env }: FlueContext) {
+export async function run({ init, env }: FlueContext) {
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
 
-  const harness = await init({
+  const agent = createAgent(() => ({
     sandbox: daytona(sandbox),
     model: 'anthropic/claude-sonnet-4-6',
-  });
+  }));
+  const harness = await init(agent);
   const session = await harness.session();
 
   return await session.shell('uname -a');
@@ -77,32 +76,31 @@ You own the sandbox. Flue does not delete it for you — sandboxes persist acros
 If your agent needs the sandbox in a specific state before prompting — a repo cloned, dependencies installed, config files written — do the setup in one session, then spin up a second `init()` for the working session with the right `cwd`:
 
 ```typescript
-import type { FlueContext } from '@flue/runtime';
+import { createAgent, type FlueContext } from '@flue/runtime';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
-export const triggers = { webhook: true };
-
-export default async function ({ init, payload, env }: FlueContext) {
+export async function run({ init, payload, env }: FlueContext) {
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
 
   // Setup session — clone the repo and install dependencies.
-  const setupHarness = await init({
+  const setupAgent = createAgent(() => ({
     sandbox: daytona(sandbox),
     model: 'anthropic/claude-sonnet-4-6',
-  });
+  }));
+  const setupHarness = await init(setupAgent, { name: 'setup' });
   const setup = await setupHarness.session();
   await setup.shell(`git clone ${payload.repo} /workspace/project`);
   await setup.shell('npm install', { cwd: '/workspace/project' });
 
   // Working session — same sandbox, but rooted at the project directory.
-  const projectHarness = await init({
-    id: 'project',
+  const projectAgent = createAgent(() => ({
     sandbox: daytona(sandbox),
     cwd: '/workspace/project',
     model: 'anthropic/claude-sonnet-4-6',
-  });
+  }));
+  const projectHarness = await init(projectAgent, { name: 'project' });
   const session = await projectHarness.session();
 
   return await session.prompt(payload.prompt);

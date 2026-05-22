@@ -1,6 +1,8 @@
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 
 export const channels = [http()];
+
+const agent = createAgent(() => ({ model: 'anthropic/claude-haiku-4-5' }));
 
 /**
  * Cancellation test.
@@ -12,7 +14,7 @@ export const channels = [http()];
  * - aborts tear down in-flight bash tool commands
  */
 export async function run({ init }: FlueContext) {
-	const harness = await init({ model: 'anthropic/claude-haiku-4-5' });
+	const harness = await init(agent);
 	const session = await harness.session();
 
 	// Test 1: prompt() with AbortSignal.timeout

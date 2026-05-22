@@ -9,6 +9,7 @@ import {
 	receiveExternalDelivery,
 	type DispatchInput,
 } from '../src/internal.ts';
+import { createAgent } from '../src/agent-definition.ts';
 import { Harness } from '../src/harness.ts';
 import type { AgentConfig, FlueHarness, FlueSession, SessionEnv } from '../src/types.ts';
 
@@ -26,9 +27,9 @@ describe('external delivery fan-out', () => {
 			},
 			manifest: {
 				agents: [
-					{ name: 'moderator', channels: { discord: true }, receive: true, init: true },
-					{ name: 'audit', channels: { discord: true, gchat: true }, receive: true, init: true },
-					{ name: 'ignored', channels: { gchat: true }, receive: true, init: true },
+					{ name: 'moderator', channels: { discord: true }, receive: true, created: true },
+					{ name: 'audit', channels: { discord: true, gchat: true }, receive: true, created: true },
+					{ name: 'ignored', channels: { gchat: true }, receive: true, created: true },
 				],
 			},
 		});
@@ -64,7 +65,7 @@ describe('external delivery fan-out', () => {
 				},
 			},
 			manifest: {
-				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, init: true }],
+				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, created: true }],
 			},
 		});
 
@@ -108,9 +109,9 @@ describe('external delivery fan-out', () => {
 			},
 			manifest: {
 				agents: [
-					{ name: 'observer', channels: { discord: true }, receive: true, init: true },
-					{ name: 'moderator', channels: { discord: true }, receive: true, init: true },
-					{ name: 'audit', channels: { gchat: true }, receive: true, init: true },
+					{ name: 'observer', channels: { discord: true }, receive: true, created: true },
+					{ name: 'moderator', channels: { discord: true }, receive: true, created: true },
+					{ name: 'audit', channels: { gchat: true }, receive: true, created: true },
 				],
 			},
 		});
@@ -147,7 +148,7 @@ describe('external delivery fan-out', () => {
 				},
 			},
 			manifest: {
-				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, init: true }],
+				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, created: true }],
 			},
 		});
 
@@ -176,8 +177,8 @@ describe('external delivery fan-out', () => {
 			},
 			manifest: {
 				agents: [
-					{ name: 'bad', channels: { discord: true }, receive: true, init: true },
-					{ name: 'good', channels: { discord: true }, receive: true, init: true },
+					{ name: 'bad', channels: { discord: true }, receive: true, created: true },
+					{ name: 'good', channels: { discord: true }, receive: true, created: true },
 				],
 			},
 		});
@@ -212,8 +213,8 @@ describe('external delivery fan-out', () => {
 			},
 			manifest: {
 				agents: [
-					{ name: 'mutator', channels: { discord: true }, receive: true, init: true },
-					{ name: 'observer', channels: { discord: true }, receive: true, init: true },
+					{ name: 'mutator', channels: { discord: true }, receive: true, created: true },
+					{ name: 'observer', channels: { discord: true }, receive: true, created: true },
 				],
 			},
 		});
@@ -238,7 +239,7 @@ describe('external delivery fan-out', () => {
 				},
 			},
 			manifest: {
-				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, init: true }],
+				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, created: true }],
 			},
 		});
 
@@ -264,7 +265,7 @@ describe('external delivery fan-out', () => {
 				},
 			},
 			manifest: {
-				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, init: true }],
+				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, created: true }],
 			},
 		});
 
@@ -295,8 +296,8 @@ describe('external delivery fan-out', () => {
 			},
 			manifest: {
 				agents: [
-					{ name: 'missing', channels: { discord: true }, receive: true, init: true },
-					{ name: 'badInput', channels: { discord: true }, receive: true, init: true },
+					{ name: 'missing', channels: { discord: true }, receive: true, created: true },
+					{ name: 'badInput', channels: { discord: true }, receive: true, created: true },
 				],
 			},
 		});
@@ -317,14 +318,16 @@ describe('external delivery fan-out', () => {
 		const sessions: string[] = [];
 		const events: string[] = [];
 		const processor = createAgentDispatchProcessor({
-			initHandlers: {
-				moderator: async ({ id }) => {
+			agents: {
+				moderator: createAgent(({ id, payload }) => {
 					expect(id).toBe('guild:1');
-					return fakeDispatchHarness(sessions, processed);
-				},
+					expect(payload).toBeUndefined();
+					return { model: false };
+				}),
 			},
 			createContext: (...args) => {
 				const ctx = createTestContext(...args);
+				ctx.initializeCreatedAgent = async () => fakeDispatchHarness(sessions, processed);
 				ctx.subscribeEvent((event) => {
 					events.push(event.type);
 				});
@@ -354,13 +357,18 @@ describe('external delivery fan-out', () => {
 		const processed: DispatchInput[] = [];
 		const sessions: string[] = [];
 		const queue = new InMemoryDispatchQueue(createAgentDispatchProcessor({
-			initHandlers: {
-				moderator: async ({ id }) => {
+			agents: {
+				moderator: createAgent(({ id, payload }) => {
 					expect(id).toBe('guild:1');
-					return fakeDispatchHarness(sessions, processed);
-				},
+					expect(payload).toBeUndefined();
+					return { model: false };
+				}),
 			},
-			createContext: createTestContext,
+			createContext: (...args) => {
+				const ctx = createTestContext(...args);
+				ctx.initializeCreatedAgent = async () => fakeDispatchHarness(sessions, processed);
+				return ctx;
+			},
 		}));
 
 		configureFlueRuntime({
@@ -373,7 +381,7 @@ describe('external delivery fan-out', () => {
 				},
 			},
 			manifest: {
-				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, init: true }],
+				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, created: true }],
 			},
 		});
 

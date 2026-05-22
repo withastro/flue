@@ -56,8 +56,9 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * import { superserve } from './connectors/superserve';
  *
  * const sandbox = await Sandbox.create({ name: 'my-agent' });
- * const agent = await init({ sandbox: superserve(sandbox), model: 'anthropic/claude-sonnet-4-6' });
- * const session = await agent.session();
+ * const agent = createAgent(() => ({ sandbox: superserve(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
+ * const harness = await init(agent);
+ * const session = await harness.session();
  * ```
  */
 import { createSandboxSessionEnv } from '@flue/sdk/sandbox';
@@ -299,7 +300,7 @@ into, you can finish that work by wiring the connector into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import { Sandbox } from '@superserve/sdk';
 import { superserve } from '../connectors/superserve'; // adjust path to match the user's layout
 
@@ -310,11 +311,12 @@ export async function run ({ init }: FlueContext) {
   // automatically; pass `apiKey` explicitly only if you keep it elsewhere.
   const sandbox = await Sandbox.create({ name: `agent-${Date.now()}` });
 
-  const agent = await init({
+  const agent = createAgent(() => ({
     sandbox: superserve(sandbox, { cleanup: true }),
     model: 'anthropic/claude-sonnet-4-6',
-  });
-  const session = await agent.session();
+  }));
+  const harness = await init(agent);
+  const session = await harness.session();
 
   return await session.shell('uname -a');
 }

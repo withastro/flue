@@ -1,4 +1,4 @@
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 
 export const channels = [http()];
@@ -17,14 +17,15 @@ export async function run({ init }: FlueContext) {
 	process.env[sentinelKey] = 'leaked';
 
 	try {
-		const harness = await init({
+		const agent = createAgent(() => ({
 			sandbox: local({
 				// `CUSTOM_VAR` is the only thing past the allowlist; the
 				// sentinel above is intentionally NOT listed.
 				env: { CUSTOM_VAR: 'visible-to-sandbox' },
 			}),
 			model: false,
-		});
+		}));
+		const harness = await init(agent);
 		const session = await harness.session();
 
 		const results: Record<string, boolean> = {};

@@ -1,7 +1,7 @@
 import * as v from 'valibot';
-import type { AgentDefinition, AgentInit, Skill, ThinkingLevel, ToolDefinition } from './types.ts';
+import type { AgentCreateContext, AgentProfile, AgentRuntimeConfig, CreatedAgent, Skill, ThinkingLevel, ToolDefinition } from './types.ts';
 
-const AGENT_DEFINITION_FIELDS = new Set([
+const AGENT_PROFILE_FIELDS = new Set([
 	'name',
 	'description',
 	'model',
@@ -13,6 +13,14 @@ const AGENT_DEFINITION_FIELDS = new Set([
 	'compaction',
 ]);
 
+const AGENT_RUNTIME_FIELDS = new Set([
+	...AGENT_PROFILE_FIELDS,
+	'profile',
+	'cwd',
+	'sandbox',
+	'persist',
+]);
+
 const VALID_THINKING_LEVELS = {
 	off: true,
 	minimal: true,
@@ -22,7 +30,7 @@ const VALID_THINKING_LEVELS = {
 	xhigh: true,
 } as const satisfies Record<ThinkingLevel, true>;
 
-const AgentDefinitionSchema = v.looseObject({
+const AgentProfileSchema = v.looseObject({
 	name: v.optional(v.string()),
 	description: v.optional(v.string()),
 	model: v.optional(v.union([v.string(), v.literal(false)])),
@@ -34,28 +42,42 @@ const AgentDefinitionSchema = v.looseObject({
 	compaction: v.optional(v.union([v.literal(false), v.looseObject({})])),
 });
 
-export function defineAgent(definition: AgentDefinition): AgentDefinition {
-	assertAgentDefinition(definition, 'defineAgent()', new WeakSet());
-	return definition;
+export function defineAgentProfile(profile: AgentProfile): AgentProfile {
+	assertAgentProfile(profile, 'defineAgentProfile()', new WeakSet());
+	return profile;
 }
 
-export function assertResolvedAgentDefinition(definition: AgentDefinition, label: string): AgentDefinition {
-	assertAgentDefinition(definition, label, new WeakSet());
-	return definition;
+export function createAgent<TPayload = unknown, TEnv = Record<string, any>>(
+	initialize: (context: AgentCreateContext<TPayload, TEnv>) => AgentRuntimeConfig | Promise<AgentRuntimeConfig>,
+): CreatedAgent<TPayload, TEnv> {
+	if (typeof initialize !== 'function') {
+		throw new Error('[flue] createAgent() requires an initializer function.');
+	}
+	return Object.freeze({ __flueCreatedAgent: true as const, initialize });
 }
 
-export function resolveAgentDefinition(options: AgentInit | undefined): AgentDefinition {
-	const inherited = options?.inherit;
+export function isCreatedAgent(value: unknown): value is CreatedAgent {
+	return !!value && typeof value === 'object' && (value as CreatedAgent).__flueCreatedAgent === true && typeof (value as CreatedAgent).initialize === 'function';
+}
+
+export function assertResolvedAgentProfile(profile: AgentProfile, label: string): AgentProfile {
+	assertAgentProfile(profile, label, new WeakSet());
+	return profile;
+}
+
+export function resolveAgentProfile(options: AgentRuntimeConfig | undefined): AgentProfile {
+	assertAgentRuntimeConfig(options);
+	const profile = options?.profile;
 	return {
-		name: inherited?.name,
-		description: inherited?.description,
-		model: hasOwn(options, 'model') ? options?.model : inherited?.model,
-		instructions: hasOwn(options, 'instructions') ? options?.instructions : inherited?.instructions,
-		skills: hasOwn(options, 'skills') ? options?.skills : inherited?.skills,
-		tools: hasOwn(options, 'tools') ? options?.tools : inherited?.tools,
-		subagents: hasOwn(options, 'subagents') ? options?.subagents : inherited?.subagents,
-		thinkingLevel: hasOwn(options, 'thinkingLevel') ? options?.thinkingLevel : inherited?.thinkingLevel,
-		compaction: hasOwn(options, 'compaction') ? options?.compaction : inherited?.compaction,
+		name: hasOwn(options, 'name') ? options?.name : profile?.name,
+		description: hasOwn(options, 'description') ? options?.description : profile?.description,
+		model: hasOwn(options, 'model') ? options?.model : profile?.model,
+		instructions: hasOwn(options, 'instructions') ? options?.instructions : profile?.instructions,
+		skills: hasOwn(options, 'skills') ? options?.skills : profile?.skills,
+		tools: hasOwn(options, 'tools') ? options?.tools : profile?.tools,
+		subagents: hasOwn(options, 'subagents') ? options?.subagents : profile?.subagents,
+		thinkingLevel: hasOwn(options, 'thinkingLevel') ? options?.thinkingLevel : profile?.thinkingLevel,
+		compaction: hasOwn(options, 'compaction') ? options?.compaction : profile?.compaction,
 	};
 }
 
@@ -63,17 +85,31 @@ function hasOwn<T extends object, K extends PropertyKey>(value: T | undefined, k
 	return Boolean(value && Object.hasOwn(value, key));
 }
 
-function assertAgentDefinition(
+function assertAgentRuntimeConfig(value: AgentRuntimeConfig | undefined): void {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		throw new Error('[flue] createAgent() initializer must return an agent runtime config object.');
+	}
+	for (const key of Object.keys(value)) {
+		if (!AGENT_RUNTIME_FIELDS.has(key)) {
+			throw new Error(`[flue] createAgent() initializer returned unknown runtime config field "${key}".`);
+		}
+	}
+	if (value.profile !== undefined) {
+		assertAgentProfile(value.profile, 'createAgent() profile', new WeakSet());
+	}
+}
+
+function assertAgentProfile(
 	value: unknown,
 	label: string,
 	activeDefinitions: WeakSet<object>,
-): asserts value is AgentDefinition {
-	const parsed = v.safeParse(AgentDefinitionSchema, value);
+): asserts value is AgentProfile {
+	const parsed = v.safeParse(AgentProfileSchema, value);
 	if (!parsed.success) {
-		throw new Error(`[flue] ${label} requires a valid agent definition: ${formatIssues(parsed.issues)}.`);
+		throw new Error(`[flue] ${label} requires a valid agent profile: ${formatIssues(parsed.issues)}.`);
 	}
 
-	const definition = parsed.output as AgentDefinition;
+	const definition = parsed.output as AgentProfile;
 	const source = value as object;
 	if (activeDefinitions.has(source)) {
 		throw new Error(`[flue] ${label} must not contain circular subagents.`);
@@ -95,10 +131,10 @@ function assertAgentDefinition(
 	activeDefinitions.delete(source);
 }
 
-function assertKnownFields(definition: AgentDefinition, label: string): void {
+function assertKnownFields(definition: AgentProfile, label: string): void {
 	for (const key of Object.keys(definition)) {
-		if (!AGENT_DEFINITION_FIELDS.has(key)) {
-			throw new Error(`[flue] ${label} received unknown agent definition field "${key}".`);
+		if (!AGENT_PROFILE_FIELDS.has(key)) {
+			throw new Error(`[flue] ${label} received unknown agent profile field "${key}".`);
 		}
 	}
 }
@@ -111,7 +147,7 @@ function assertThinkingLevel(value: ThinkingLevel | undefined, label: string): v
 	}
 }
 
-function assertCompaction(definition: AgentDefinition['compaction'], label: string): void {
+function assertCompaction(definition: AgentProfile['compaction'], label: string): void {
 	if (definition === undefined || definition === false) {
 		return;
 	}
@@ -169,14 +205,14 @@ function assertSubagents(
 	values: unknown[] | undefined,
 	label: string,
 	activeDefinitions: WeakSet<object>,
-): asserts values is AgentDefinition[] | undefined {
+): asserts values is AgentProfile[] | undefined {
 	for (const [index, value] of values?.entries() ?? []) {
 		if (!value || typeof value !== 'object') {
 			throw new Error(`[flue] ${label} subagents[${index}] must be an agent definition object.`);
 		}
-		const subagent = value as Partial<AgentDefinition>;
+		const subagent = value as Partial<AgentProfile>;
 		assertAgentName(subagent.name, `${label} subagents[${index}].name`);
-		assertAgentDefinition(value, `${label} subagents[${index}]`, activeDefinitions);
+		assertAgentProfile(value, `${label} subagents[${index}]`, activeDefinitions);
 	}
 }
 
@@ -194,7 +230,7 @@ function assertNonEmptyString(value: unknown, label: string): asserts value is s
 }
 
 function assertUniqueNames(
-	values: ToolDefinition[] | Skill[] | AgentDefinition[] | undefined,
+	values: ToolDefinition[] | Skill[] | AgentProfile[] | undefined,
 	label: string,
 	kind: 'tool' | 'skill' | 'subagent',
 ): void {

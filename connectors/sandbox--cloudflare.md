@@ -107,21 +107,22 @@ The short version, for your reference:
    above) is the key on `env`:
 
    ```ts
-   import { http, type FlueContext } from '@flue/runtime';
+   import { createAgent, http, type FlueContext } from '@flue/runtime';
    import { getSandbox } from '@cloudflare/sandbox';
 
    export const channels = [http()];
 
    export async function run ({ init, id, env, payload }: FlueContext) {
      const sandbox = getSandbox(env.Sandbox, id);
-     const harness = await init({ sandbox, model: 'anthropic/claude-opus-4-7' });
+     const agent = createAgent(() => ({ sandbox, model: 'anthropic/claude-opus-4-7' }));
+     const harness = await init(agent);
      const session = await harness.session();
 
      return await session.prompt(payload.message);
    }
    ```
 
-   Note that `init({ sandbox })` here takes the result of `getSandbox()`
+   Note that `createAgent(() => ({ sandbox }))` here takes the result of `getSandbox()`
    directly — there is no factory wrapper to import from `@flue/runtime`,
    because Flue's SDK detects and adapts the `@cloudflare/sandbox` shape
    internally on the Cloudflare target.

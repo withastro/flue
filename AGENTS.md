@@ -5,16 +5,19 @@ Agent framework where agents are directories compiled into deployable server art
 ## Terminology
 
 ```
-Agent (definition)              — `agents/<name>.ts`; named by its file
-└─ AgentInstance                — URL `<id>`; exposed to handlers as `ctx.id`
-   └─ Run                       — one HTTP invocation; exposed as `ctx.runId`
-      └─ Harness                — one `init({ name })` call; defaults to `"default"`
-         └─ Session             — one `harness.session(name?)`; defaults to `"default"`
-            └─ Operation        — one `session.prompt` / `skill` / `task` / `shell` call
-               └─ Turn          — one LLM round-trip inside pi-agent-core
+Agent profile                 — one reusable `defineAgentProfile(...)` value
+Created agent                 — one runtime initializer from `createAgent(...)`
+Agent module                  — `agents/<name>.ts`; default-exports a created agent
+└─ AgentInstance              — URL `<id>`; provided to `createAgent(({ id }))`
+   └─ Harness                 — runtime-initialized agent environment; defaults to name `"default"`
+      └─ Session              — one `harness.session(name?)`; defaults to `"default"`
+         └─ Operation        — one `session.prompt` / `skill` / `task` / `shell` call
+            └─ Turn          — one LLM round-trip inside pi-agent-core
+Workflow                     — `workflows/<name>.ts`; exports `run(...)`
+└─ Workflow invocation        — unique `ctx.id`; initializes local created agents via `init(agent)` when needed
 ```
 
-Use `harness` as the variable name for the return value of `init()`. Agents have names; agent instances have ids; harnesses and sessions have names; runs and operations have generated ids.
+Use `harness` as the variable name for the return value of `init()`. Agents have names; agent instances have ids; harnesses and sessions have names; operations have generated ids.
 
 ## Project Structure
 
@@ -106,14 +109,14 @@ pnpm run check:types    # in packages/runtime/
 `provider/model-id` strings; providers come from pi-ai's registry. API keys via env (`ANTHROPIC_API_KEY`, etc.) or provider configuration in `app.ts` via `configureProvider()` / `registerProvider()`.
 
 ```ts
-init({ model: 'anthropic/claude-sonnet-4-6' })
-init({ model: 'openai/gpt-4.1-mini' })
+createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }))
+createAgent(() => ({ model: 'openai/gpt-4.1-mini' }))
 ```
 
 `cloudflare/...` routes through `env.AI.run()` on the Cloudflare target — no API keys, just `"ai": { "binding": "AI" }` in `wrangler.jsonc`. Errors clearly on `--target node`.
 
 ```ts
-init({ model: 'cloudflare/@cf/moonshotai/kimi-k2.6' })
+createAgent(() => ({ model: 'cloudflare/@cf/moonshotai/kimi-k2.6' }))
 ```
 
 ## Architecture

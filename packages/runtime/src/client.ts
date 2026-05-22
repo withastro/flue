@@ -1,12 +1,14 @@
-import { assertResolvedAgentDefinition, resolveAgentDefinition } from './agent-definition.ts';
+import { assertResolvedAgentProfile, resolveAgentProfile } from './agent-definition.ts';
 import { discoverSessionContext } from './context.ts';
 import { Harness } from './harness.ts';
 import { dispatchGlobalEvent } from './runtime/events.ts';
 import { bashFactoryToSessionEnv, createCwdSessionEnv, isBashLike } from './sandbox.ts';
 import type {
 	AgentConfig,
-	AgentDefinition,
-	AgentInit,
+	AgentProfile,
+	AgentRuntimeConfig,
+	AgentHarnessOptions,
+	CreatedAgent,
 	BashFactory,
 	FlueContext,
 	FlueEvent,
@@ -41,7 +43,8 @@ export interface FlueContextConfig {
 
 /** Extends FlueContext with server-only methods. Agent handlers only see FlueContext. */
 export interface FlueContextInternal extends FlueContext {
-	/** Decorate and dispatch an event, returning the decorated event. */
+	readonly runId: string;
+	initializeCreatedAgent(agent: CreatedAgent, payload: unknown, options?: AgentHarnessOptions): Promise<FlueHarness>;
 	emitEvent(event: FlueEvent): FlueEvent;
 	subscribeEvent(callback: FlueEventCallback): () => void;
 	setEventCallback(callback: FlueEventCallback | undefined): void;
@@ -73,7 +76,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 		// `observe()` from `@flue/runtime/app`. These run after the
 		// per-context subscribers and receive the originating `ctx` as
 		// a second argument so cross-cutting code (error reporting,
-		// log forwarding) can read `ctx.id`, `ctx.runId`, etc.
+		// log forwarding) can read `ctx.id`, `ctx.payload`, etc.
 		dispatchGlobalEvent(decorated, ctx);
 		return decorated;
 	};
@@ -111,19 +114,26 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			},
 		},
 
-		async init(options?: AgentInit): Promise<FlueHarness> {
-			const definition = assertResolvedAgentDefinition(resolveAgentDefinition(options), 'init()');
-			if (!hasInitModel(options)) {
+		init(agent: CreatedAgent<any, any>, options?: AgentHarnessOptions): Promise<FlueHarness> {
+			return ctx.initializeCreatedAgent(agent, config.payload, options);
+		},
+
+		async initializeCreatedAgent(agent: CreatedAgent, payload: unknown, options?: AgentHarnessOptions): Promise<FlueHarness> {
+			if (!agent || agent.__flueCreatedAgent !== true || typeof agent.initialize !== 'function') {
+				throw new Error('[flue] init() requires an agent created with createAgent(...).');
+			}
+			const resolvedOptions = await agent.initialize({ id: config.id, env: config.env, payload });
+			const definition = assertResolvedAgentProfile(resolveAgentProfile(resolvedOptions), 'createAgent()');
+			if (!hasInitModel(resolvedOptions)) {
 				throw new Error(
-					'[flue] init() requires a model. Pass { model: "provider/model-id" }, { model: false }, or inherit a definition with a model.',
+					'[flue] createAgent() requires a model. Return { model: "provider/model-id" }, { model: false }, or a profile with a model.',
 				);
 			}
 			if (definition.model !== false && typeof definition.model !== 'string') {
-				throw new Error('[flue] init({ model }) must be a model string or false.');
+				throw new Error('[flue] createAgent() model must be a model string or false.');
 			}
 
-			const resolvedOptions = options ?? {};
-			const name = resolvedOptions.name ?? 'default';
+			const name = options?.name ?? 'default';
 			if (initializedHarnessNames.has(name)) {
 				throw new Error(`[flue] init() has already been called with name "${name}" in this request.`);
 			}
@@ -137,7 +147,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					config,
 					resolvedOptions.cwd,
 				);
-				// Resolve `init({ cwd })` against the sandbox's own cwd so that
+				// Resolve created-agent `cwd` against the sandbox's own cwd so that
 				// relative paths target the sandbox/session filesystem, not the
 				// agent process cwd or `/`. Mirrors the same pattern used for
 				// task sessions in harness.ts.
@@ -159,7 +169,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					skills: localContext.skills,
 					subagents: Object.fromEntries(
 						(definition.subagents ?? [])
-							.filter((agent): agent is AgentDefinition & { name: string } => agent.name !== undefined)
+							.filter((agent): agent is AgentProfile & { name: string } => agent.name !== undefined)
 							.map((agent) => [agent.name, agent]),
 					),
 					model: agentModel,
@@ -222,8 +232,8 @@ function serializeLogError(error: Error): Record<string, unknown> {
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function hasInitModel(options: AgentInit | undefined): boolean {
-	return Boolean(options && ('model' in options || (options.inherit && 'model' in options.inherit)));
+function hasInitModel(options: AgentRuntimeConfig | undefined): boolean {
+	return Boolean(options && ('model' in options || (options.profile && 'model' in options.profile)));
 }
 
 function isBashFactory(value: unknown): value is BashFactory {
@@ -242,7 +252,7 @@ function isSandboxFactory(value: unknown): value is SandboxFactory {
 /** Resolve sandbox option to its session environment and optional tool factory. */
 async function resolveSessionEnv(
 	id: string,
-	sandbox: AgentInit['sandbox'],
+	sandbox: AgentRuntimeConfig['sandbox'],
 	config: FlueContextConfig,
 	cwd: string | undefined,
 ): Promise<{ env: SessionEnv; toolFactory?: SessionToolFactory }> {
@@ -251,7 +261,7 @@ async function resolveSessionEnv(
 	}
 	// JS-caller / `any`-input fallback for the removed `'empty'` and
 	// `'local'` magic strings. TS callers get compile errors from the
-	// `AgentInit['sandbox']` union. The `as unknown` cast keeps `tsc`
+	// `AgentRuntimeConfig['sandbox']` union. The `as unknown` cast keeps `tsc`
 	// from flagging these branches as dead under the narrowed type.
 	if ((sandbox as unknown) === 'empty') {
 		throw new Error(
@@ -263,7 +273,7 @@ async function resolveSessionEnv(
 		throw new Error(
 			"[flue] `sandbox: 'local'` is no longer supported. " +
 				"Use the `local()` factory instead: " +
-				"`import { local } from '@flue/runtime/node'; init({ sandbox: local() })`. " +
+				"`import { local } from '@flue/runtime/node'; createAgent(() => ({ sandbox: local(), model: false }))`. " +
 				"The factory accepts an `env` option for opting host env vars into the sandbox.",
 		);
 	}
@@ -272,7 +282,7 @@ async function resolveSessionEnv(
 	}
 	if (isBashLike(sandbox)) {
 		throw new Error(
-			'[flue] init({ sandbox }) no longer accepts a Bash-like object directly. ' +
+			'[flue] createAgent() sandbox no longer accepts a Bash-like object directly. ' +
 				'Pass a BashFactory instead, e.g. `sandbox: () => new Bash({ fs })`.',
 		);
 	}
@@ -284,5 +294,5 @@ async function resolveSessionEnv(
 		const env = await sandbox.createSessionEnv({ id, cwd });
 		return { env, toolFactory: sandbox.tools };
 	}
-	throw new Error('[flue] Invalid sandbox option passed to init().');
+	throw new Error('[flue] Invalid sandbox option returned from createAgent().');
 }

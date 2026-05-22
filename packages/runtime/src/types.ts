@@ -48,11 +48,10 @@ export interface DirectAgentPayload {
 	session?: string;
 }
 
-export interface AgentInitContext {
-	/** Target agent instance id from `/agents/:name/:id`. */
-	id: string;
-	/** Construct the runtime harness for this agent instance. */
-	spawn(options: AgentSpawnOptions): Promise<FlueHarness>;
+export interface AgentCreateContext<TPayload = unknown, TEnv = Record<string, any>> {
+	readonly id: string;
+	readonly env: TEnv;
+	readonly payload: TPayload | undefined;
 }
 
 /**
@@ -209,7 +208,7 @@ export interface SessionEnv {
  * to read the file itself.
  *
  * Paths can be absolute or relative. Relative paths are resolved against
- * the agent's cwd, which comes from `init({ cwd })` if set, otherwise from
+ * the agent's cwd, which comes from `createAgent(() => ({ cwd }))` if set, otherwise from
  * the sandbox connector's default (varies by provider). Use absolute paths
  * for portability across connectors.
  */
@@ -308,10 +307,10 @@ export interface AgentConfig {
 	definitionSkills?: Skill[];
 	/** Discovered at runtime from .agents/skills/ in the session's cwd. */
 	skills: Record<string, Skill>;
-	subagents?: Record<string, AgentDefinition>;
+	subagents?: Record<string, AgentProfile>;
 	/**
 	 * Agent-wide default model. Undefined when the user explicitly passes
-	 * `init({ model: false })`, so each model-using call must provide a
+	 * `createAgent(() => ({ model: false }))`, so each model-using call must provide a
 	 * call-site override.
 	 */
 	model: Model<any> | undefined;
@@ -319,7 +318,7 @@ export interface AgentConfig {
 	resolveModel: (model: ModelConfig | undefined) => Model<any> | undefined;
 	/**
 	 * Agent-wide default reasoning effort. Per-call values override this. The
-	 * harness substitutes `"medium"` when unset; see `AgentInit.thinkingLevel`.
+	 * harness substitutes `"medium"` when unset; see `AgentRuntimeConfig.thinkingLevel`.
 	 */
 	thinkingLevel?: ThinkingLevel;
 	/**
@@ -333,18 +332,45 @@ export interface AgentConfig {
 
 export type ModelConfig = string | false;
 
-// ─── Agent Definition ──────────────────────────────────────────────────────
+// ─── Agent Profile and Runtime Creation ─────────────────────────────────────
 
-export interface AgentDefinition {
+export interface AgentProfile {
 	name?: string;
 	description?: string;
 	model?: ModelConfig;
 	instructions?: string;
 	skills?: Skill[];
 	tools?: ToolDefinition[];
-	subagents?: AgentDefinition[];
+	subagents?: AgentProfile[];
 	thinkingLevel?: ThinkingLevel;
 	compaction?: false | CompactionConfig;
+}
+
+export interface AgentRuntimeConfig {
+	profile?: AgentProfile;
+	name?: string;
+	description?: string;
+	model?: ModelConfig;
+	instructions?: string;
+	skills?: Skill[];
+	tools?: ToolDefinition[];
+	subagents?: AgentProfile[];
+	thinkingLevel?: ThinkingLevel;
+	compaction?: false | CompactionConfig;
+	cwd?: string;
+	sandbox?: false | SandboxFactory | BashFactory;
+	persist?: SessionStore;
+}
+
+export interface AgentHarnessOptions {
+	name?: string;
+}
+
+export interface CreatedAgent<TPayload = unknown, TEnv = any> {
+	readonly __flueCreatedAgent: true;
+	readonly initialize: (
+		context: AgentCreateContext<TPayload, TEnv>,
+	) => AgentRuntimeConfig | Promise<AgentRuntimeConfig>;
 }
 
 // ─── Flue Context (passed to agent handlers) ───────────────────────────────
@@ -357,8 +383,6 @@ export interface AgentDefinition {
 export interface FlueContext<TPayload = any, TEnv = Record<string, any>> {
 	/** Agent instance id from the URL `<id>` segment. */
 	readonly id: string;
-	/** Server-minted id for this HTTP invocation. */
-	readonly runId: string;
 	readonly payload: TPayload;
 	/** Platform env bindings (process.env on Node, Worker env on Cloudflare). */
 	readonly env: TEnv;
@@ -386,8 +410,11 @@ export interface FlueContext<TPayload = any, TEnv = Record<string, any>> {
 	readonly req: Request | undefined;
 	/** Emit structured log events visible in the run event stream. */
 	readonly log: FlueLogger;
-	/** Initialize a harness with sandbox + persistence. */
-	init(options: AgentInit): Promise<FlueHarness>;
+	/** Initialize a created agent for this workflow invocation. */
+	init(
+		agent: CreatedAgent<TPayload, TEnv>,
+		options?: AgentHarnessOptions,
+	): Promise<FlueHarness>;
 }
 
 export interface FlueLogger {
@@ -396,96 +423,6 @@ export interface FlueLogger {
 	error(message: string, attributes?: Record<string, unknown>): void;
 }
 
-/** Harness options. A default model is required unless explicitly disabled with `model: false`. */
-export interface AgentInit {
-	/** Definition fields inherited before init-level overrides are applied. */
-	inherit?: AgentDefinition;
-
-	/** Harness name. Defaults to `"default"`. */
-	name?: string;
-
-	/** Agent instructions prepended ahead of discovered workspace context. */
-	instructions?: string;
-
-	/** Agent-definition skills disclosed in the system-prompt catalog. */
-	skills?: Skill[];
-
-	/** Named delegate agents selectable through the framework `task({ agent })` tool. */
-	subagents?: AgentDefinition[];
-
-	/** Working directory for context discovery, tools, and shell calls. Defaults to the sandbox cwd. */
-	cwd?: string;
-
-	/**
-	 * - Omitted / `undefined` / `false`: default in-memory sandbox. No
-	 *   files, no host access.
-	 * - `SandboxFactory`: Connector-wrapped sandbox. Use `local()` from
-	 *   `@flue/runtime/node` for the host-bound Node sandbox, or any
-	 *   remote connector (Daytona, E2B, Cloudflare Containers, etc.).
-	 * - `BashFactory`: User-configured just-bash factory. Called once to construct the runtime.
-	 */
-	sandbox?: false | SandboxFactory | BashFactory;
-
-	/** Defaults to platform store (in-memory on Node, DO SQLite on Cloudflare). */
-	persist?: SessionStore;
-
-	/**
-	 * Default model for this harness. Applies to all prompt(), skill(), and task()
-	 * calls unless overridden at the call site. Pass `false` to require every
-	 * model-using call to provide a call-site override.
-	 *
-	 * Format: `'provider/modelId'` (e.g. `'anthropic/claude-opus-4-20250514'`).
-	 *
-	 * Precedence (highest wins): per-call `model` > harness `model`.
-	 */
-	model?: ModelConfig;
-
-	/**
-	 * Default reasoning effort for every prompt(), skill(), and task() call.
-	 * Forwarded to pi-ai's `SimpleStreamOptions.reasoning`. Pi-ai clamps the
-	 * requested level against the model's `thinkingLevelMap`; non-reasoning
-	 * models effectively run with reasoning off after clamping.
-	 *
-	 * Precedence (highest wins): per-call `thinkingLevel` > harness
-	 * `thinkingLevel`. When nothing is set, the harness
-	 * defaults to `"medium"`. Use `"off"` to explicitly disable reasoning on
-	 * models that support it.
-	 */
-	thinkingLevel?: ThinkingLevel;
-
-	/**
-	 * Harness-wide tools. Every prompt(), skill(), and task() call can use these.
-	 * Per-call tools are added on top and must not reuse the same names.
-	 */
-	tools?: ToolDefinition[];
-
-	/**
-	 * Compaction tuning. When context approaches the model's window limit,
-	 * older messages are summarized and replaced with a structured summary
-	 * so the session can continue without overflow.
-	 *
-	 * - Omitted: model-aware defaults (~96% trigger, 8k preserved tail).
-	 * - `false`: disable automatic threshold compaction. Overflow recovery
-	 *   and explicit `session.compact()` still run.
-	 * - `CompactionConfig`: override individual fields. See
-	 *   {@link CompactionConfig}.
-	 */
-	compaction?: false | CompactionConfig;
-}
-
-export interface AgentSpawnOptions {
-	/** Reusable agent profile to instantiate for this agent instance. */
-	inherit?: AgentDefinition;
-
-	/** Working directory for context discovery, tools, and shell calls. Defaults to the sandbox cwd. */
-	cwd?: string;
-
-	/** Instance-level sandbox/resource attachment. */
-	sandbox?: false | SandboxFactory | BashFactory;
-
-	/** Instance-level session persistence. Defaults to platform store. */
-	persist?: SessionStore;
-}
 
 // ─── Flue Harness (returned by init()) ──────────────────────────────────────
 
@@ -734,7 +671,7 @@ export interface PromptOptions<S extends v.GenericSchema | undefined = undefined
 	tools?: ToolDefinition[];
 	/** e.g., 'anthropic/claude-sonnet-4-20250514' */
 	model?: string;
-	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */
+	/** Override reasoning effort for this call. See `AgentRuntimeConfig.thinkingLevel`. */
 	thinkingLevel?: ThinkingLevel;
 	/** Cancel this call. See `CallHandle`. */
 	signal?: AbortSignal;
@@ -751,7 +688,7 @@ export interface SkillOptions<S extends v.GenericSchema | undefined = undefined>
 	schema?: S;
 	tools?: ToolDefinition[];
 	model?: string;
-	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */
+	/** Override reasoning effort for this call. See `AgentRuntimeConfig.thinkingLevel`. */
 	thinkingLevel?: ThinkingLevel;
 	/** Cancel this call. See `CallHandle`. */
 	signal?: AbortSignal;
@@ -768,7 +705,7 @@ export interface TaskOptions<S extends v.GenericSchema | undefined = undefined> 
 	schema?: S;
 	tools?: ToolDefinition[];
 	model?: string;
-	/** Override reasoning effort for this call. See `AgentInit.thinkingLevel`. */
+	/** Override reasoning effort for this call. See `AgentRuntimeConfig.thinkingLevel`. */
 	thinkingLevel?: ThinkingLevel;
 	/** Working directory for the detached task session. Defaults to the parent session cwd. */
 	cwd?: string;
@@ -794,7 +731,7 @@ export interface ShellResult {
 // ─── Sandbox ────────────────────────────────────────────────────────────────
 
 export interface SessionToolFactoryOptions {
-	subagents: Record<string, AgentDefinition>;
+	subagents: Record<string, AgentProfile>;
 }
 
 /** Connector-supplied model-facing tools. Flue appends `task` separately. */

@@ -12,7 +12,8 @@
  *
  * const client = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
  * const sandbox = await client.create({ image: 'ubuntu:latest' });
- * const harness = await init({ sandbox: daytona(sandbox), model: 'anthropic/claude-sonnet-4-6' });
+ * const agent = createAgent(() => ({ sandbox: daytona(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
+ * const harness = await init(agent);
  * const session = await harness.session();
  * ```
  */

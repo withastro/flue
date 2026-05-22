@@ -254,7 +254,7 @@ export const AgentManifestEntrySchema = v.object({
 	name: v.string(),
 	channels: v.record(v.string(), v.literal(true)),
 	receive: v.boolean(),
-	init: v.boolean(),
+	created: v.boolean(),
 });
 
 export const InstanceSummarySchema = v.object({

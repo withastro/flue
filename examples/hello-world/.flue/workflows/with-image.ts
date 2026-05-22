@@ -1,4 +1,4 @@
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const channels = [http()];
@@ -7,9 +7,11 @@ export const channels = [http()];
 const TEST_PNG_BASE64 =
 	'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
 
+const agent = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
+
 export async function run({ init }: FlueContext) {
 	// Sonnet has more reliable vision than Haiku for tiny test images.
-	const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
+	const harness = await init(agent);
 	const session = await harness.session();
 
 	const image = { type: 'image' as const, data: TEST_PNG_BASE64, mimeType: 'image/png' };

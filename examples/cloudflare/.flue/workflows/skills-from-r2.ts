@@ -25,7 +25,7 @@
  * See the example's README.md for the full setup, the seed-r2.sh helper,
  * and the migration / fallback options if you don't have Loader access.
  */
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import {
 	getDefaultWorkspace,
 	getShellSandbox,
@@ -53,10 +53,11 @@ export async function run({ init, env }: FlueContext<unknown, Env>) {
 		await hydrateFromBucket(workspace, env.KNOWLEDGE_BASE);
 		await workspace.writeFile(HYDRATION_SENTINEL, new Date().toISOString());
 	}
-	const harness = await init({
+	const agent = createAgent(() => ({
 		sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
 		model: 'cloudflare/@cf/moonshotai/kimi-k2.6',
-	});
+	}));
+	const harness = await init(agent);
 	const session = await harness.session();
 
 	// The skill body lives at `.agents/skills/spam-filter/SKILL.md` in

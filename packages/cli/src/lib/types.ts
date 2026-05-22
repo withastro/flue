@@ -12,7 +12,7 @@ export interface AgentInfo {
 	filePath: string;
 	hasChannels: boolean;
 	hasReceive: boolean;
-	hasInit: boolean;
+	hasDefaultAgent: boolean;
 }
 
 export interface WorkflowInfo {
@@ -29,7 +29,7 @@ export interface BuildContext {
 			name: string;
 			channels: Record<string, true>;
 			receive: boolean;
-			init: boolean;
+			created: boolean;
 		}>;
 		workflows: Array<{
 			name: string;

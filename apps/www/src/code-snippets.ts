@@ -1,10 +1,11 @@
 // Prompt copied to the user's clipboard by the "Copy Prompt" CTA in the hero.
 export const COPY_PROMPT = `fetch https://flueframework.com/start.md to create a new agent`;
 
-export const HERO = `export default async function ({ init, payload, env }) {
-  // Initialize a new agent. 
-  // Provide a hosted sandbox, or use Flue's built-in virtual sandbox.
-  const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
+export const HERO = `const agent = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
+
+export async function run({ init, payload, env }) {
+  // Initialize a created agent using Flue's built-in virtual sandbox.
+  const harness = await init(agent);
   const session = await harness.session();
 
   // Call skills as reusable workflows with structured output:
@@ -28,43 +29,46 @@ export const HERO = `export default async function ({ init, payload, env }) {
   });
 }`;
 
-export const SUPPORT_AGENT = `import type { FlueContext } from '@flue/runtime';
+export const SUPPORT_AGENT = `import { createAgent, http, type FlueContext } from '@flue/runtime';
 import {
   getDefaultWorkspace,
   getShellSandbox,
   hydrateFromBucket,
 } from '@flue/runtime/cloudflare';
 
-// POST /agents/support/:id
-export const triggers = { webhook: true };
+// POST /workflows/support
+export const channels = [http()];
 
 // Built for: Cloudflare Workers, R2
-export default async function ({ init, payload, env }: FlueContext) {
+export async function run({ init, payload, env }: FlueContext) {
   const workspace = getDefaultWorkspace();
   if (!(await workspace.exists('/.hydrated'))) {
     await hydrateFromBucket(workspace, env.KNOWLEDGE_BASE_BUCKET);
     await workspace.writeFile('/.hydrated', new Date().toISOString());
   }
 
-  const harness = await init({
+  const agent = createAgent(() => ({
     sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
     model: 'openrouter/moonshotai/kimi-k2.6',
-  });
+  }));
+  const harness = await init(agent);
   const session = await harness.session();
   return await session.prompt(
     \`Respond to this customer message: \${payload.message}\`,
   );
 }`;
 
-export const ISSUE_TRIAGE = `import type { FlueContext } from '@flue/runtime';
+export const ISSUE_TRIAGE = `import { createAgent, type FlueContext } from '@flue/runtime';
 import { Octokit } from '@octokit/core';
 import * as v from 'valibot';
 
 // Triggered in CI via \`flue run\` CLI — no HTTP endpoint needed.
 // Built for: Node, GitHub Actions
+const agent = createAgent(() => ({ model: 'anthropic/claude-opus-4-7' }));
+
 export async function run({ init, payload, env }: FlueContext) {
   const { issueNumber } = payload;
-  const harness = await init({ model: 'anthropic/claude-opus-4-7' });
+  const harness = await init(agent);
   const session = await harness.session();
   // Run the 'triage' skill to triage the GitHub issue.
   const { data } = await session.skill('triage', {
@@ -84,19 +88,17 @@ export async function run({ init, payload, env }: FlueContext) {
   );
 }`;
 
-export const CODING_AGENT = `import type { FlueContext } from '@flue/runtime';
+export const CODING_AGENT = `import { createAgent, type FlueContext } from '@flue/runtime';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
-// POST /agents/code/:id
-export const triggers = { webhook: true };
-
 // Built for: Node, Daytona
-export default async function ({ init, payload, env }: FlueContext) {
+export async function run({ init, payload, env }: FlueContext) {
   // Each agent gets a real container via Daytona.
   const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
   const sandbox = await client.create();
-  const harness = await init({ sandbox: daytona(sandbox), model: 'openai/gpt-5.5' });
+  const agent = createAgent(() => ({ sandbox: daytona(sandbox), model: 'openai/gpt-5.5' }));
+  const harness = await init(agent);
   const session = await harness.session();
   // Setup the sandbox (for illustrative purposes only). 
   // In production, you'd want to bake setup into the container image,
@@ -106,14 +108,11 @@ export default async function ({ init, payload, env }: FlueContext) {
   return await session.prompt(payload.prompt);
 }`;
 
-export const DATA_AGENT = `import type { FlueContext } from '@flue/runtime';
+export const DATA_AGENT = `import { createAgent, type FlueContext } from '@flue/runtime';
 import { Bash, InMemoryFs, MountableFs, ReadWriteFs } from 'just-bash';
 
-// POST /agents/data/:id
-export const triggers = { webhook: true };
-
 // Built for: Node
-export default async function ({ init, payload }: FlueContext) {
+export async function run({ init, payload }: FlueContext) {
   // Mount the current directory at /workspace, so the agent can read,
   // write, grep, and glob from your project files using bash.
   const fs = new MountableFs({ base: new InMemoryFs() });
@@ -121,10 +120,11 @@ export default async function ({ init, payload }: FlueContext) {
 
   // Create a custom virtual sandbox with 'just-bash'. Enable Python use
   // so the agent can write code to analyze data, generate reports, etc.
-  const harness = await init({
+  const agent = createAgent(() => ({
     sandbox: () => new Bash({ fs, cwd: '/workspace', python: true }),
     model: 'anthropic/claude-sonnet-4-6',
-  });
+  }));
+  const harness = await init(agent);
   const session = await harness.session();
   return await session.prompt(
     \`Answer this user question: \${payload.message}\`,

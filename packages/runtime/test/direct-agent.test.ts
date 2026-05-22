@@ -10,8 +10,8 @@ import {
 	InMemoryRunRegistry,
 	InMemoryRunStore,
 	InMemorySessionStore,
-	type AgentInitHandler,
 } from '../src/internal.ts';
+import { createAgent } from '../src/agent-definition.ts';
 import type { FlueHarness, FlueSession, SessionData, SessionEnv, SessionStore } from '../src/types.ts';
 
 describe('direct attached agent delivery', () => {
@@ -21,17 +21,25 @@ describe('direct attached agent delivery', () => {
 		const receiveCalls: string[] = [];
 		const dispatches: unknown[] = [];
 
-		const init: AgentInitHandler = async ({ id }) => {
-			initCalls.push(id);
-			return fakeHarness(prompts);
+		const agent = createAgent(({ id, payload }) => {
+			initCalls.push(`${id}:${String(payload)}`);
+			return { model: false };
+		});
+		const initialize = (id: string, runId: string, payload: unknown, req: Request) => {
+			const ctx = createTestContext(id, runId, payload, req);
+			ctx.initializeCreatedAgent = async (created, agentPayload) => {
+				await created.initialize({ id: ctx.id, env: {}, payload: agentPayload });
+				return fakeHarness(prompts);
+			};
+			return ctx;
 		};
 
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
+				agents: [{ name: 'assistant', channels: {}, receive: false, created: true }],
 			},
-			handlers: { assistant: createDirectAgentHandler(init) },
+			handlers: { assistant: createDirectAgentHandler(agent) },
 			receiveHandlers: {
 				assistant: async ({ delivery }) => receiveCalls.push(delivery.id),
 			},
@@ -40,7 +48,7 @@ describe('direct attached agent delivery', () => {
 					dispatches.push(input);
 				},
 			}),
-			createContext: createTestContext,
+			createContext: initialize,
 			runStore: new InMemoryRunStore(),
 			runRegistry: new InMemoryRunRegistry(),
 			runSubscribers: createRunSubscriberRegistry(),
@@ -59,7 +67,7 @@ describe('direct attached agent delivery', () => {
 
 		expect(res.status).toBe(200);
 		expect((await res.json()) as unknown).toMatchObject({ result: { text: 'reply:hello' } });
-		expect(initCalls).toEqual(['inst-1']);
+		expect(initCalls).toEqual(['inst-1:undefined']);
 		expect(prompts).toEqual([{ session: 'default', message: 'hello' }]);
 		expect(receiveCalls).toEqual([]);
 		expect(dispatches).toEqual([]);
@@ -71,10 +79,10 @@ describe('direct attached agent delivery', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
+				agents: [{ name: 'assistant', channels: {}, receive: false, created: true }],
 			},
-			handlers: { assistant: createDirectAgentHandler(async () => fakeHarness(prompts)) },
-			createContext: createTestContext,
+			handlers: { assistant: createDirectAgentHandler(createAgent(() => ({ model: false }))) },
+			createContext: createFakeContext(prompts),
 			runStore: new InMemoryRunStore(),
 			runRegistry: new InMemoryRunRegistry(),
 			runSubscribers: createRunSubscriberRegistry(),
@@ -101,15 +109,15 @@ describe('direct attached agent delivery', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, init: true }],
+				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, created: true }],
 			},
-			handlers: { moderator: createDirectAgentHandler(async () => fakeHarness(prompts)) },
+			handlers: { moderator: createDirectAgentHandler(createAgent(() => ({ model: false }))) },
 			receiveHandlers: {
 				moderator: async () => {
 					throw new Error('receive should not run for direct HTTP');
 				},
 			},
-			createContext: createTestContext,
+			createContext: createFakeContext(prompts),
 			runStore: new InMemoryRunStore(),
 			runRegistry: new InMemoryRunRegistry(),
 			runSubscribers: createRunSubscriberRegistry(),
@@ -134,10 +142,10 @@ describe('direct attached agent delivery', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
+				agents: [{ name: 'assistant', channels: {}, receive: false, created: true }],
 			},
-			handlers: { assistant: createDirectAgentHandler(async () => fakeHarness([])) },
-			createContext: createTestContext,
+			handlers: { assistant: createDirectAgentHandler(createAgent(() => ({ model: false }))) },
+			createContext: createFakeContext([]),
 			runStore: new InMemoryRunStore(),
 			runRegistry: new InMemoryRunRegistry(),
 			runSubscribers: createRunSubscriberRegistry(),
@@ -166,9 +174,9 @@ describe('direct attached agent delivery', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
+				agents: [{ name: 'assistant', channels: {}, receive: false, created: true }],
 			},
-			handlers: { assistant: createDirectAgentHandler(async () => fakeHarness([])) },
+			handlers: { assistant: createDirectAgentHandler(createAgent(() => ({ model: false }))) },
 			createContext: createTestContext,
 		});
 
@@ -187,38 +195,7 @@ describe('direct attached agent delivery', () => {
 		expect((await res.json()) as unknown).toMatchObject({ error: { type: 'invalid_request' } });
 	});
 
-	it('rejects dynamic behavior options passed to spawn', async () => {
-		configureFlueRuntime({
-			target: 'node',
-			manifest: {
-				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
-			},
-			handlers: {
-				assistant: createDirectAgentHandler(({ spawn }) =>
-					spawn({ inherit: {}, instructions: 'dynamic' } as never),
-				),
-			},
-			createContext: createTestContext,
-		});
-
-		const app = new Hono();
-		app.route('/', flue());
-
-		const res = await app.fetch(
-			new Request('http://localhost/agents/assistant/inst-1', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ message: 'hello' }),
-			}),
-		);
-
-		expect(res.status).toBe(500);
-		expect((await res.json()) as unknown).toMatchObject({
-			error: { type: 'internal_error' },
-		});
-	});
-
-	it('passes the target instance id into spawn sandbox factories', async () => {
+	it('passes the target instance id into created-agent sandbox factories', async () => {
 		const sandboxCalls: Array<{ id: string; cwd?: string }> = [];
 		const prompts: Array<{ session: string; message: string }> = [];
 		const store = new RecordingSessionStore();
@@ -226,22 +203,20 @@ describe('direct attached agent delivery', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
+				agents: [{ name: 'assistant', channels: {}, receive: false, created: true }],
 			},
 			handlers: {
-				assistant: createDirectAgentHandler(({ spawn }) =>
-					spawn({
-						inherit: { model: false },
-						cwd: '/workspace',
-						persist: store,
-						sandbox: {
-							async createSessionEnv(options) {
-								sandboxCalls.push(options);
-								return fakeEnv();
-							},
+				assistant: createDirectAgentHandler(createAgent(() => ({
+					profile: { model: false },
+					cwd: '/workspace',
+					persist: store,
+					sandbox: {
+						async createSessionEnv(options) {
+							sandboxCalls.push(options);
+							return fakeEnv();
 						},
-					}),
-				),
+					},
+				}))),
 			},
 			createContext: createTestContext,
 		});
@@ -287,6 +262,17 @@ function fakeSession(session: string, prompts: Array<{ session: string; message:
 		task: (() => Promise.resolve({ text: '', usage: {}, model: { id: 'test' } })) as never,
 		compact: async () => {},
 		delete: async () => {},
+	};
+}
+
+function createFakeContext(prompts: Array<{ session: string; message: string }>) {
+	return (id: string, runId: string, payload: unknown, req: Request) => {
+		const ctx = createTestContext(id, runId, payload, req);
+		ctx.initializeCreatedAgent = async (agent, agentPayload) => {
+			await agent.initialize({ id, env: {}, payload: agentPayload });
+			return fakeHarness(prompts);
+		};
+		return ctx;
 	};
 }
 

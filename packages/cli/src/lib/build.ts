@@ -17,7 +17,7 @@ import type {
 interface ParsedAgentFile {
 	hasChannels: boolean;
 	hasReceive: boolean;
-	hasInit: boolean;
+	hasDefaultAgent: boolean;
 }
 
 interface ParsedWorkflowFile {
@@ -37,12 +37,12 @@ function parseAgentFile(filePath: string): ParsedAgentFile {
 	let hasChannels = false;
 	let hasReceive = false;
 	let hasInit = false;
-	let hasDefaultExport = false;
+	let hasDefaultAgent = false;
 	let hasTriggers = false;
 
 	for (const statement of ast.statements) {
 		if (isDefaultExport(statement)) {
-			hasDefaultExport = true;
+			hasDefaultAgent = true;
 			continue;
 		}
 
@@ -89,19 +89,18 @@ function parseAgentFile(filePath: string): ParsedAgentFile {
 		}
 	}
 
-	if (hasDefaultExport) {
-		if (hasTriggers) throwLegacyAgentMigrationError(filePath);
-		throwUnsupportedAgentExports(filePath, 'default exports are not supported');
+	if (hasTriggers) throwLegacyAgentMigrationError(filePath);
+	if (hasInit) {
+		throwUnsupportedAgentExports(filePath, '"init" exports are no longer supported; default-export createAgent(...) instead');
 	}
-
-	if (hasChannels && !hasInit) {
-		throwUnsupportedAgentExports(filePath, 'agents with channels must export "init"');
+	if (!hasDefaultAgent) {
+		throwUnsupportedAgentExports(filePath, 'agents must default-export createAgent(...)');
 	}
 	if (!hasChannels && hasReceive) {
 		throwUnsupportedAgentExports(filePath, '"receive" requires a "channels" export');
 	}
 
-	return { hasChannels, hasReceive, hasInit };
+	return { hasChannels, hasReceive, hasDefaultAgent };
 }
 
 function parseWorkflowFile(filePath: string): ParsedWorkflowFile {
@@ -254,7 +253,7 @@ function throwLegacyAgentMigrationError(filePath: string): never {
 function throwUnsupportedAgentExports(filePath: string, reason: string): never {
 	throw new Error(
 		`[flue] Unsupported agent exports in ${filePath}: ${reason}. ` +
-			'Agent modules with channels must directly export "export const channels = [...]" and "export async function init(...)"; external-channel agents must also directly export "export async function receive(...)". Default exports and triggers are not supported.',
+			'Agent modules must default-export createAgent(...); modules using external channels must also directly export "export const channels = [...]" and "export async function receive(...)".',
 	);
 }
 
@@ -346,7 +345,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			name: a.name,
 			channels: {},
 			receive: a.hasReceive,
-			init: a.hasInit,
+			created: a.hasDefaultAgent,
 		})),
 		workflows: workflows.map((workflow) => ({
 			name: workflow.name,
@@ -539,13 +538,13 @@ function discoverAgents(sourceRoot: string): AgentInfo[] {
 	return files.flatMap((f) => {
 		const filePath = path.join(agentsDir, f);
 		const parsed = parseAgentFile(filePath);
-		if (!parsed.hasChannels && !parsed.hasInit) return [];
+		if (!parsed.hasDefaultAgent) return [];
 		return [{
 			name: f.replace(/\.(ts|js|mts|mjs)$/, ''),
 			filePath,
 			hasChannels: parsed.hasChannels,
 			hasReceive: parsed.hasReceive,
-			hasInit: parsed.hasInit,
+			hasDefaultAgent: parsed.hasDefaultAgent,
 		}];
 	});
 }

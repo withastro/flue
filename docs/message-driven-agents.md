@@ -14,13 +14,14 @@ An agent is a module under `.flue/agents/` or `agents/`.
 The important runtime concepts are:
 
 - **Agent module**: source file such as `.flue/agents/moderator.ts`.
-- **Agent definition**: reusable profile created with `defineAgent(...)`.
+- **Agent profile**: reusable behavior created with `defineAgentProfile(...)`.
+- **Created agent**: runtime initializer created with `createAgent(...)`.
 - **Agent instance**: durable actor identified by `{ agentName, instanceId }`.
 - **Session**: isolated conversation/context stream inside one instance.
 - **Delivery**: normalized inbound event from an external channel.
 - **Dispatch**: one structured input accepted for one target agent instance/session.
 
-Use `init(...)` to wake or construct an agent instance. Use `receive(...)` only for external-channel delivery routing.
+Agent modules default-export `createAgent(...)` so the runtime can initialize an instance when messages arrive. Use `receive(...)` only for external-channel delivery routing.
 
 ## Direct Attached Surfaces
 
@@ -44,25 +45,26 @@ If `session` is omitted, Flue uses the `default` session.
 Direct delivery:
 
 - targets one explicit agent module and instance id
-- wakes the instance through `init(...)`
+- initializes the instance through its default `createAgent(...)` export
 - bypasses `receive(...)`
 - bypasses `dispatch(...)`
 - can stream runtime events with `Accept: text/event-stream`
 
 ```ts
-import { defineAgent, type AgentInitContext } from '@flue/runtime';
+import { createAgent, defineAgentProfile } from '@flue/runtime';
 import { http } from '@flue/runtime/channels';
 
 export const channels = [http()];
 
-const assistant = defineAgent({
+const assistant = defineAgentProfile({
+  model: 'anthropic/claude-haiku-4-5',
   instructions: 'You are a helpful direct chat assistant.',
 });
 
-export async function init({ id, spawn }: AgentInitContext) {
-  // `id` comes from /agents/assistant/:id.
-  return spawn({ inherit: assistant });
-}
+export default createAgent(({ id, env }) => ({
+  profile: assistant,
+  cwd: `/accounts/${id}`,
+}));
 ```
 
 Example request:
@@ -111,12 +113,13 @@ export const github = createGitHubChannel();
 
 ```ts
 // .flue/agents/github-triage.ts
-import { defineAgent, type AgentInitContext, type ReceiveContext } from '@flue/runtime';
+import { createAgent, defineAgentProfile, type ReceiveContext } from '@flue/runtime';
 import { github } from '../channels';
 
 export const channels = [github()];
 
-const triage = defineAgent({
+const triage = defineAgentProfile({
+  model: 'anthropic/claude-haiku-4-5',
   instructions: 'You triage inbound GitHub webhook events.',
 });
 
@@ -144,9 +147,7 @@ export async function receive({ delivery, dispatch }: ReceiveContext) {
   });
 }
 
-export async function init({ spawn }: AgentInitContext) {
-  return spawn({ inherit: triage });
-}
+export default createAgent(() => ({ profile: triage }));
 ```
 
 External-channel delivery:
@@ -204,28 +205,30 @@ Fields:
 
 Flue preserves the structured input in session storage and renders it deterministically into model-visible context.
 
-## `init(...)`
+## `createAgent(...)`
 
-`init(...)` is the instance wake-up hook. It receives the target instance id and a narrow `spawn(...)` helper:
+Agent modules default-export a runtime initializer:
 
 ```ts
-export async function init({ id, spawn }: AgentInitContext) {
-  return spawn({
-    inherit: assistant,
-  });
-}
+export default createAgent(({ id, env }) => ({
+  profile: assistant,
+  sandbox: getAccountSandbox(env, id),
+  cwd: `/accounts/${id}`,
+  persist: getAccountStore(env, id),
+}));
 ```
 
-Keep `init(...)` instance-oriented. It should not receive or branch on the original channel delivery or dispatched input payload.
+For persistent agents, initialization is scoped only by stable `id`; message payloads are not provided to the initializer. Encode stable tenancy or resource scope in ids such as `account:acme` so repeated messages for one instance use consistent resources.
 
-`spawn(...)` accepts instance-construction options such as:
+`createAgent(...)` may return:
 
-- `inherit`: reusable `defineAgent(...)` profile
+- `profile`: one reusable `defineAgentProfile(...)` value
+- inline behavior fields that replace corresponding profile fields
 - `sandbox`: sandbox/resource attachment
 - `cwd`: session context root
 - `persist`: persistence control
 
-Dynamic per-delivery behavior belongs in `receive(...)` or in reusable agent definitions, not in `spawn(...)`.
+Dynamic per-delivery routing belongs in `receive(...)` before calling `dispatch(...)`.
 
 ## GitHub Webhooks
 

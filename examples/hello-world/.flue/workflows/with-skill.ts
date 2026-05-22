@@ -1,11 +1,13 @@
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
 export const channels = [http()];
 
+const agent = createAgent(() => ({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' }));
+
 export async function run({ init, payload }: FlueContext) {
-	const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
+	const harness = await init(agent);
 	const session = await harness.session();
 
 	// Test: invoke a named skill with structured result

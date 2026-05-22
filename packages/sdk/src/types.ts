@@ -34,7 +34,7 @@ export interface AgentManifestEntry {
 	name: string;
 	channels: Record<string, true>;
 	receive: boolean;
-	init: boolean;
+	created: boolean;
 }
 
 export interface InstanceSummary {

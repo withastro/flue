@@ -33,13 +33,15 @@ npm install -D @flue/cli
 `.flue/workflows/translate.ts`:
 
 ```typescript
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const channels = [http()];
 
+const translator = createAgent(() => ({ model: 'openai/gpt-5.5' }));
+
 export async function run({ init, payload }: FlueContext) {
-  const harness = await init({ model: 'openai/gpt-5.5' });
+  const harness = await init(translator);
   const session = await harness.session();
 
   const { data } = await session.prompt(
@@ -59,7 +61,7 @@ export async function run({ init, payload }: FlueContext) {
 A few things to note:
 
 - **`channels = [http()]`** — This workflow is invoked via HTTP. Flue creates a route for it automatically.
-- **`init({ model })`** — Every agent needs a model. If you do not pass one, no model is chosen and `prompt()` / `skill()` calls will fail. By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
+- **`createAgent(...)` + `init(agent)`** — Created agents declare model and sandbox configuration; workflows initialize them when needed. `init(agent)` fails unless its created agent config provides a model, sets `model: false`, or supplies a profile with a model. By default, Flue gives initialized agents a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
 - **Schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns it on `response.data`, fully typed.
 
 ### 3. Add your API key
@@ -116,14 +118,15 @@ npx flue run translate --target node --env .env \
 Subagents define named delegates for detached task sessions:
 
 ```typescript
-import { defineAgent } from '@flue/runtime';
+import { createAgent, defineAgentProfile } from '@flue/runtime';
 
-const analyst = defineAgent({
+const analyst = defineAgentProfile({
   name: 'analyst',
   instructions: 'Focus on quantitative insights, trends, and actionable takeaways.',
 });
+const reportAgent = createAgent(() => ({ model: 'openai/gpt-5.5', subagents: [analyst] }));
 
-const harness = await init({ model: 'openai/gpt-5.5', subagents: [analyst] });
+const harness = await init(reportAgent);
 const session = await harness.session();
 const analysis = await session.task("Analyze this quarter's metrics", { agent: 'analyst' });
 ```
@@ -170,14 +173,16 @@ Env exposure is opt-in. By default only shell essentials (`PATH`, `HOME`, locale
 `.flue/workflows/reviewer.ts`:
 
 ```typescript
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
 export const channels = [http()];
 
+const reviewer = createAgent(() => ({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' }));
+
 export async function run({ init, payload }: FlueContext) {
-  const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
+  const harness = await init(reviewer);
   const session = await harness.session();
 
   const { data } = await session.prompt(
@@ -211,7 +216,7 @@ The agent reads, searches, and modifies files via its built-in tools — read, w
 - **Dev tooling** — analyze project structure, run linters, generate boilerplate.
 - **CI** — issue triage, deploy checks, anything where the runner already provides isolation.
 
-No container startup, real project context, fast iteration. If you need a tighter boundary on a specific operation — agent can call it, never sees the underlying secret — wrap it as a custom tool via `init({ tools: [...] })`. The tool reads `process.env`; the agent only sees the tool's params and result.
+No container startup, real project context, fast iteration. If you need a tighter boundary on a specific operation — agent can call it, never sees the underlying secret — wrap it as a custom tool via `createAgent(() => ({ tools: [...] }))`. The tool reads `process.env`; the agent only sees the tool's params and result.
 
 ## Connecting a remote sandbox
 
@@ -236,10 +241,10 @@ Start with the local or virtual sandbox. Move to a remote sandbox when you need 
 
 On Node.js, session state is stored in memory by default — sessions persist for the lifetime of the process but are lost on restart. This is fine for development and stateless workloads.
 
-For durable sessions, pass a custom store via the `persist` option on `init()`. A store implements three methods — `save()`, `load()`, and `delete()` — each operating on a session ID and a `SessionData` object (message history, metadata, compaction state):
+For durable sessions, return a custom store via the `persist` option from `createAgent(...)`. A store implements three methods — `save()`, `load()`, and `delete()` — each operating on a session ID and a `SessionData` object (message history, metadata, compaction state):
 
 ```typescript
-import type { FlueContext, SessionStore, SessionData } from '@flue/runtime';
+import { createAgent, type FlueContext, type SessionStore, type SessionData } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 
 // Example: a simple file-backed store. In production, use a database.
@@ -255,12 +260,14 @@ const store: SessionStore = {
   },
 };
 
-export default async function ({ init, payload }: FlueContext) {
-  const harness = await init({
-    sandbox: local(),
-    persist: store,
-    model: 'anthropic/claude-sonnet-4-6',
-  });
+const assistant = createAgent(() => ({
+  sandbox: local(),
+  persist: store,
+  model: 'anthropic/claude-sonnet-4-6',
+}));
+
+export async function run({ init, payload }: FlueContext) {
+  const harness = await init(assistant);
   const session = await harness.session();
   // ...
 }
@@ -323,9 +330,9 @@ The output is just a Node.js server, so it runs anywhere:
 
 Here's the progression of sandbox types available on Node.js, from simplest to most powerful:
 
-1. **Empty virtual sandbox** — `init({ model: 'openai/gpt-5.5' })`. Fast, cheap, stateless. Good for prompt-and-response agents.
+1. **Empty virtual sandbox** — `createAgent(() => ({ model: 'openai/gpt-5.5' }))`. Fast, cheap, stateless. Good for prompt-and-response agents.
 2. **Virtual sandbox with shell setup** — Use `session.shell()` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
-3. **Local sandbox** — `init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' })`. Direct host filesystem and shell access. Ideal for self-hosted agents, CI tasks, and dev tooling — anywhere the host environment already provides isolation. Import `local` from `@flue/runtime/node` and pass `env: { ... }` to expose specific host env vars to the agent's shell.
+3. **Local sandbox** — `createAgent(() => ({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' }))`. Direct host filesystem and shell access. Ideal for self-hosted agents, CI tasks, and dev tooling — anywhere the host environment already provides isolation. Import `local` from `@flue/runtime/node` and pass `env: { ... }` to expose specific host env vars to the agent's shell.
 4. **Remote sandbox** — Full isolated Linux environment via a sandbox connector. For multi-tenant agents, coding sandboxes, and anything that needs per-session isolation.
 
 Start simple. Move up when you need to.

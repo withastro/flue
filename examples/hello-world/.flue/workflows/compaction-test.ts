@@ -1,10 +1,12 @@
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const channels = [http()];
 
+const agent = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
+
 export async function run({ init }: FlueContext) {
-	const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
+	const harness = await init(agent);
 	const session = await harness.session();
 
 	// Turn 1: Fetch one Wikipedia article. Raw wikitext truncated to ~50KB by bash tool = ~12k tokens.

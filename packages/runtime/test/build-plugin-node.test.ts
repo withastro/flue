@@ -18,8 +18,8 @@ describe('Node build plugin', () => {
 	it('rejects duplicate agent basenames', async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'flue-duplicate-agents-'));
 		fs.mkdirSync(path.join(root, 'agents'));
-		fs.writeFileSync(path.join(root, 'agents', 'assistant.ts'), 'export async function init() {}\n');
-		fs.writeFileSync(path.join(root, 'agents', 'assistant.js'), 'export async function init() {}\n');
+		fs.writeFileSync(path.join(root, 'agents', 'assistant.ts'), 'export default createAgent(() => ({ model: false }));\n');
+		fs.writeFileSync(path.join(root, 'agents', 'assistant.js'), 'export default createAgent(() => ({ model: false }));\n');
 
 		await expect(build({ root, target: 'node' })).rejects.toThrow('Duplicate agent basename "assistant"');
 	});
@@ -47,7 +47,7 @@ describe('Node build plugin', () => {
 			`export interface AssistantPayload { message: string }\n` +
 				`export const metadata = { owner: 'test' };\n` +
 				`export function helper() { return 'helper'; }\n` +
-				`export async function init() { return { session() { throw new Error('not used'); } }; }\n`,
+				`export default { __flueCreatedAgent: true, initialize: async () => ({ model: false }) };\n`,
 		);
 
 		await expect(build({ root, plugin: parserOnlyPlugin })).resolves.toEqual({ changed: true });
@@ -77,10 +77,10 @@ const parserOnlyPlugin: BuildPlugin = {
 
 function testBuildContext(): BuildContext {
 	return {
-		agents: [{ name: 'triage', filePath: '/tmp/triage.ts', hasChannels: true, hasReceive: true, hasInit: true }],
+		agents: [{ name: 'triage', filePath: '/tmp/triage.ts', hasChannels: true, hasReceive: true, hasDefaultAgent: true }],
 		workflows: [],
 		manifest: {
-			agents: [{ name: 'triage', channels: {}, receive: true, init: true }],
+			agents: [{ name: 'triage', channels: {}, receive: true, created: true }],
 			workflows: [],
 		},
 		root: '/tmp/flue-test',

@@ -1,4 +1,4 @@
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import { Daytona } from '@daytona/sdk';
 import { daytona } from '../connectors/daytona';
 
@@ -9,10 +9,11 @@ export async function run({ init }: FlueContext) {
 	const client = new Daytona({ apiKey: process.env.DAYTONA_API_KEY });
 	const sandbox = await client.create();
 
-	const harness = await init({
+	const agent = createAgent(() => ({
 		sandbox: daytona(sandbox),
 		model: 'anthropic/claude-sonnet-4-6',
-	});
+	}));
+	const harness = await init(agent);
 	const session = await harness.session();
 
 	// Test 1: Run a shell command in the remote sandbox

@@ -2,7 +2,7 @@
 
 import type { FlueContextInternal } from '../client.ts';
 import { InvalidRequestError, parseJsonBody, RunEventTooLargeError, toHttpResponse } from '../errors.ts';
-import type { AgentInit, AgentInitContext, AgentSpawnOptions, DirectAgentPayload, FlueEvent, FlueHarness } from '../types.ts';
+import type { CreatedAgent, DirectAgentPayload, FlueEvent } from '../types.ts';
 import type { DispatchInput, DispatchProcessor } from './dispatch-queue.ts';
 import { generateRunId, generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
@@ -11,7 +11,7 @@ import type { RunSubscriberRegistry } from './run-subscribers.ts';
 
 /** Direct agent handler signature used by HTTP sync/webhook/SSE modes. */
 export type AgentHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
-export type AgentInitHandler = (ctx: AgentInitContext) => FlueHarness | Promise<FlueHarness>;
+export type CreatedAgentHandler = CreatedAgent;
 export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
 
 interface DispatchSession {
@@ -19,7 +19,7 @@ interface DispatchSession {
 }
 
 export function createAgentDispatchProcessor(options: {
-	initHandlers: Record<string, AgentInitHandler>;
+	agents: Record<string, CreatedAgentHandler>;
 	createContext: CreateContextFn;
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
@@ -27,8 +27,8 @@ export function createAgentDispatchProcessor(options: {
 }): DispatchProcessor {
 	return {
 		async process(input) {
-			const init = options.initHandlers[input.targetAgent];
-			if (!init) throw new Error(`[flue] dispatch target agent "${input.targetAgent}" has no init handler.`);
+			const agent = options.agents[input.targetAgent];
+			if (!agent) throw new Error(`[flue] dispatch target agent "${input.targetAgent}" has no created agent.`);
 			const runId = generateRunId();
 			const lifecycle = await createRunLifecycle({
 				owner: { kind: 'agent', agentName: input.targetAgent, instanceId: input.id },
@@ -42,13 +42,7 @@ export function createAgentDispatchProcessor(options: {
 				runRegistry: options.runRegistry,
 			});
 			await withRunLifecycle(lifecycle, async () => {
-				const harness = await init({
-					id: input.id,
-					spawn: (spawnOptions) => lifecycle.ctx.init(validateAgentSpawnOptions(spawnOptions)),
-				});
-				if (!harness || typeof harness !== 'object' || typeof harness.session !== 'function') {
-					throw new Error('[flue] Agent init() must return spawn(...).');
-				}
+				const harness = await lifecycle.ctx.initializeCreatedAgent(agent, undefined);
 				const session = await harness.session(input.session);
 				if (!isDispatchSession(session)) {
 					throw new Error('[flue] Internal session does not support dispatch input processing.');
@@ -63,35 +57,13 @@ function isDispatchSession(value: unknown): value is DispatchSession {
 	return !!value && typeof value === 'object' && typeof (value as DispatchSession).processDispatchInput === 'function';
 }
 
-export function createDirectAgentHandler(init: AgentInitHandler): AgentHandler {
+export function createDirectAgentHandler(agent: CreatedAgentHandler): AgentHandler {
 	return async (ctx) => {
 		const payload = parseDirectAgentPayload(ctx.payload);
-		const harness = await init({
-			id: ctx.id,
-			spawn: (options) => ctx.init(validateAgentSpawnOptions(options)),
-		});
-		if (!harness || typeof harness !== 'object' || typeof harness.session !== 'function') {
-			throw new Error('[flue] Agent init() must return spawn(...).');
-		}
+		const harness = await ctx.initializeCreatedAgent(agent, undefined);
 		const session = await harness.session(payload.session);
 		return session.prompt(payload.message);
 	};
-}
-
-const ALLOWED_AGENT_SPAWN_FIELDS = new Set(['inherit', 'sandbox', 'cwd', 'persist']);
-
-function validateAgentSpawnOptions(options: AgentSpawnOptions): AgentInit {
-	if (!options || typeof options !== 'object' || Array.isArray(options)) {
-		throw new Error('[flue] spawn() requires an options object.');
-	}
-	const unsupported = Object.keys(options).filter((key) => !ALLOWED_AGENT_SPAWN_FIELDS.has(key));
-	if (unsupported.length > 0) {
-		throw new Error(
-			`[flue] spawn() received unsupported option${unsupported.length === 1 ? '' : 's'}: ${unsupported.map((key) => `"${key}"`).join(', ')}. ` +
-				'spawn() only accepts instance-level options: inherit, sandbox, cwd, persist. Put reusable behavior such as model, instructions, tools, skills, subagents, thinkingLevel, and compaction in defineAgent(...).',
-		);
-	}
-	return options;
 }
 
 function parseDirectAgentPayload(payload: unknown): DirectAgentPayload {

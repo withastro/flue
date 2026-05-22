@@ -4,13 +4,16 @@ throw new Error(
 		'See the changelog: https://github.com/withastro/flue/blob/main/CHANGELOG.md#unreleased',
 );
 
-// Preserve the old type surface for one release so TypeScript users get the
-// runtime migration error instead of a less helpful "module has no export".
+// Keep current type exports available on this deprecated path so editors can
+// guide users toward the root export without preserving removed APIs.
 export { Type } from '@earendil-works/pi-ai';
 export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
 export { connectMcpServer } from './mcp.ts';
 export type {
-	AgentInit,
+	AgentProfile,
+	AgentRuntimeConfig,
+	AgentCreateContext,
+	CreatedAgent,
 	BashFactory,
 	BashLike,
 	FileStat,

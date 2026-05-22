@@ -33,7 +33,7 @@ export type { DispatchInput, DispatchProcessor, DispatchQueue, DispatchReceipt }
 export { InMemoryDispatchQueue } from './runtime/dispatch-queue.ts';
 export type {
 	AgentHandler,
-	AgentInitHandler,
+	CreatedAgentHandler,
 	CreateContextFn,
 	HandleAgentOptions,
 	HandleWorkflowOptions,

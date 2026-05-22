@@ -1,4 +1,4 @@
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import { Bash, InMemoryFs } from 'just-bash';
 
 export const channels = [http()];
@@ -11,9 +11,8 @@ export const channels = [http()];
 export async function run({ init }: FlueContext) {
 	const fs = new InMemoryFs();
 	const sandbox = () => new Bash({ fs });
-	// `model` is required by init(), but this test never makes an LLM call
-	// — pick the cheapest model so accidental invocation isn't expensive.
-	const harness = await init({ sandbox, model: 'anthropic/claude-haiku-4-5' });
+	const agent = createAgent(() => ({ sandbox, model: 'anthropic/claude-haiku-4-5' }));
+	const harness = await init(agent);
 	const session = await harness.session();
 
 	const results: Record<string, boolean> = {};

@@ -81,7 +81,7 @@ Before implementing, restate the chosen requirements to yourself as an implement
    - If the target directory has files and the guide shows \`workflows/hello.ts\`, create \`./.flue/workflows/hello.ts\` instead.
 3. Create or update the project in the requested directory.
 4. Scaffold one minimal Flue agent that matches the user's idea. Keep it closer to "hello world" than production app.
-5. Pass the selected model ID to \`init({ model: '<exact model id>' })\`. Flue does not choose a model automatically.
+5. Configure the selected model ID in \`createAgent(() => ({ model: '<exact model id>' }))\`, then initialize it from the workflow with \`init(agent)\`. Flue does not choose a model automatically.
 6. Add \`tsconfig.json\` for TypeScript editor/typechecking support.
    - If no \`tsconfig.json\` exists, create this minimal one:
      \`\`\`json
@@ -114,7 +114,7 @@ Before finishing, verify that the implementation matches the user's explicit cho
    - Existing non-empty target directory means \`.flue\` layout: \`./.flue/workflows/<name>.ts\`.
 - **Deploy target**: Config and commands match the user's selected deploy target.
 - **LLM provider/model**: Model identifier is one of the suggested exact IDs, or an exact value from \`https://flueframework.com/models.json\` if the user requested another model.
-- **Agent initialization**: The selected model ID is passed to \`init({ model })\`, or to individual \`prompt()\` / \`skill()\` calls (not common).
+- **Agent initialization**: The selected model ID is configured in \`createAgent(() => ({ model }))\`, or on individual \`prompt()\` / \`skill()\` calls (not common).
 - **Secrets**: No fake API keys, tokens, or secrets were invented.
 - **Dependencies**: Only dependencies required by the selected deploy guide were added.
 

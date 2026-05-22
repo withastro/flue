@@ -1,10 +1,10 @@
-import { defineAgent, type AgentInitContext, type ReceiveContext } from '@flue/runtime';
+import { createAgent, defineAgentProfile, type ReceiveContext } from '@flue/runtime';
 import { channel as discord } from '../channels/discord';
 import { channel as gchat } from '../channels/gchat';
 
 export const channels = [discord(), gchat()];
 
-const moderator = defineAgent({
+const moderator = defineAgentProfile({
 	model: 'anthropic/claude-haiku-4-5',
 	instructions: `
 You manage inbound moderation cases.
@@ -57,9 +57,7 @@ export async function receive({ delivery, dispatch }: ReceiveContext) {
 	}
 }
 
-export async function init({ spawn }: AgentInitContext) {
-	return spawn({ inherit: moderator });
-}
+export default createAgent(() => ({ profile: moderator }));
 
 function looksFlagged(text: string): boolean {
 	return /\b(flag|abuse|spam)\b/i.test(text);

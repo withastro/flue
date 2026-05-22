@@ -132,9 +132,9 @@ A successful response means the new env values reached the running service and F
 
 ## 5. Add session persistence
 
-In-memory sessions disappear on every deploy or restart, and they don't help once you scale beyond one instance. If your agents need conversations that survive that, back them with a Render data store by implementing a Flue `SessionStore`. The Node guide's [Session persistence](./deploy-node.md#session-persistence) section covers the `SessionStore` interface (`save`, `load`, `delete`) and how to pass it via `init({ persist })`.
+In-memory sessions disappear on every deploy or restart, and they don't help once you scale beyond one instance. If your agents need conversations that survive that, back them with a Render data store by implementing a Flue `SessionStore`. The Node guide's [Session persistence](./deploy-node.md#session-persistence) section covers the `SessionStore` interface (`save`, `load`, `delete`) and how to return it from `createAgent(...)` via `persist`.
 
-> **Starting fresh and want persistence built in?** Deploy the [Flue + Postgres template](https://render.com/templates/flue-with-postgresql) instead of the base template. It ships everything in this section preconfigured: a Render Postgres database wired into the web service via `DATABASE_URL`, a Postgres-backed `SessionStore` at `.flue/session-store.ts`, and the assistant agent already calling `init({ persist })`. The walkthrough below is for adding the same setup to a service you've already deployed from the base template.
+> **Starting fresh and want persistence built in?** Deploy the [Flue + Postgres template](https://render.com/templates/flue-with-postgresql) instead of the base template. It ships everything in this section preconfigured: a Render Postgres database wired into the web service via `DATABASE_URL`, a Postgres-backed `SessionStore` at `.flue/session-store.ts`, and the assistant agent already returning `persist` from `createAgent(...)`. The walkthrough below is for adding the same setup to a service you've already deployed from the base template.
 
 Render Postgres is the best default for durable session history. Extend the template's `render.yaml` with a database and wire `DATABASE_URL` into the web service:
 
@@ -221,15 +221,16 @@ export const sessionStore: SessionStore = {
 };
 ```
 
-Pass the store to the `assistant` agent's `init()`:
+Pass the store from the `assistant` agent's runtime initializer:
 
 ```typescript
+import { createAgent } from '@flue/runtime';
 import { sessionStore } from '../session-store';
 
-const harness = await init({
+export default createAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   persist: sessionStore,
-});
+}));
 ```
 
 The `connectionString` from `fromDatabase` is Render's internal Postgres URL, which doesn't require SSL. If you ever swap to the external connection string, add `ssl: { rejectUnauthorized: false }` to the `Pool` config.

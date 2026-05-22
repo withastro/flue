@@ -1,9 +1,9 @@
 import { Type } from '@earendil-works/pi-ai';
 import { describe, expect, it } from 'vitest';
-import { defineAgent, resolveAgentDefinition } from '../src/agent-definition.ts';
+import { createAgent, defineAgentProfile, resolveAgentProfile } from '../src/agent-definition.ts';
 import { defineTool } from '../src/tool.ts';
 
-describe('defineAgent', () => {
+describe('defineAgentProfile', () => {
 	it('returns the provided agent definition', () => {
 		const tool = defineTool({
 			name: 'lookup',
@@ -19,25 +19,25 @@ describe('defineAgent', () => {
 			subagents: [{ name: 'delegate', model: false as const }],
 		};
 
-		expect(defineAgent(definition)).toBe(definition);
+		expect(defineAgentProfile(definition)).toBe(definition);
 	});
 
 	it('accepts an empty definition', () => {
 		const definition = {};
 
-		expect(defineAgent(definition)).toBe(definition);
+		expect(defineAgentProfile(definition)).toBe(definition);
 	});
 
 	it.each([
-		[{ model: 123 }, 'valid agent definition'],
-		[{ instructions: false }, 'valid agent definition'],
+		[{ model: 123 }, 'valid agent profile'],
+		[{ instructions: false }, 'valid agent profile'],
 		[{ thinkingLevel: 'turbo' }, 'thinkingLevel'],
 		[{ compaction: { reserveTokens: 'lots' } }, 'compaction.reserveTokens'],
 		[{ compaction: { reserveTokens: -1 } }, 'non-negative integer'],
 		[{ compaction: { reserveTokens: Number.NaN } }, 'non-negative integer'],
 		[{ compaction: { keepRecentTokens: Number.POSITIVE_INFINITY } }, 'non-negative integer'],
 		[{ compaction: { keepRecentTokens: 1.5 } }, 'non-negative integer'],
-		[{ instruction: 'Typo.' }, 'unknown agent definition field'],
+		[{ instruction: 'Typo.' }, 'unknown agent profile field'],
 		[{ skills: [{ description: 'Missing name.' }] }, 'skills[0].name'],
 		[{ skills: [{ name: ' ', description: 'Blank name.' }] }, 'skills[0].name'],
 		[{ skills: [{ name: 'triage' }] }, 'skills[0].description'],
@@ -49,7 +49,7 @@ describe('defineAgent', () => {
 		[{ subagents: [{ model: 123 }] }, 'subagents[0].name'],
 		[{ subagents: [{ name: '1bad', model: false }] }, 'must start with a letter'],
 	])('rejects invalid definitions %#', (definition, message) => {
-		expect(() => defineAgent(definition as never)).toThrow(String(message));
+		expect(() => defineAgentProfile(definition as never)).toThrow(String(message));
 	});
 
 	it('rejects duplicate tool names', () => {
@@ -60,12 +60,12 @@ describe('defineAgent', () => {
 			execute: async () => 'ok',
 		};
 
-		expect(() => defineAgent({ tools: [tool, tool] })).toThrow('duplicate tool name "lookup"');
+		expect(() => defineAgentProfile({ tools: [tool, tool] })).toThrow('duplicate tool name "lookup"');
 	});
 
 	it('rejects duplicate skill names', () => {
 		expect(() =>
-			defineAgent({
+			defineAgentProfile({
 				skills: [
 					{ name: 'triage', description: 'Triage requests.' },
 					{ name: 'triage', description: 'Triage other requests.' },
@@ -78,17 +78,27 @@ describe('defineAgent', () => {
 		const definition = { name: 'loop' } as { name: string; subagents?: unknown[] };
 		definition.subagents = [definition];
 
-		expect(() => defineAgent(definition as never)).toThrow('circular subagents');
+		expect(() => defineAgentProfile(definition as never)).toThrow('circular subagents');
+	});
+
+	it('creates an opaque runtime-initializable agent', async () => {
+		const agent = createAgent(({ id, payload }) => ({ model: false, instructions: `${id}:${String(payload)}` }));
+		expect(agent.__flueCreatedAgent).toBe(true);
+		expect(await agent.initialize({ id: 'instance', env: {}, payload: undefined })).toMatchObject({ model: false });
+	});
+
+	it('rejects unknown created-agent runtime config fields during resolution', () => {
+		expect(() => resolveAgentProfile({ model: false, typo: true } as never)).toThrow('unknown runtime config field "typo"');
 	});
 });
 
-describe('resolveAgentDefinition', () => {
+describe('resolveAgentProfile', () => {
 	it('inherits definition fields and lets own init fields replace them', () => {
 		const inheritedSkills = [{ name: 'base', description: 'Base skill.' }];
 		const overrideSkills = [{ name: 'override', description: 'Override skill.' }];
 		expect(
-			resolveAgentDefinition({
-				inherit: {
+			resolveAgentProfile({
+				profile: {
 					model: 'anthropic/claude-sonnet-4-6',
 					instructions: 'Inherited instructions.',
 					skills: inheritedSkills,

@@ -62,7 +62,7 @@ export async function run(ctx: FlueContext) {
 
 	return {
 		ok: true,
-		runId: ctx.runId,
+		id: ctx.id,
 		// In a real handler, this would be the fallback result.
 		fallbackUsed: true,
 	};

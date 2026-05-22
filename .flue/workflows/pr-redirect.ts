@@ -26,7 +26,7 @@
  * before adding any secret to the sandbox.
  */
 
-import type { FlueContext, FlueSession } from '@flue/runtime';
+import { createAgent, type FlueContext, type FlueSession } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import {
 	closePullRequest,
@@ -590,10 +590,11 @@ export async function run({ init, payload, log }: FlueContext) {
 	// Only GH_TOKEN is passed to the sandbox. FREDKBOT_GITHUB_TOKEN
 	// intentionally stays in process.env so only `lib/github.ts` can read
 	// it — see the security note at the top of the file.
-	const harness = await init({
+	const agent = createAgent(() => ({
 		sandbox: local({ env: { GH_TOKEN: ghToken } }),
 		model: 'anthropic/claude-opus-4-6',
-	});
+	}));
+	const harness = await init(agent);
 	const session = await harness.session();
 
 	// ─── LLM phase ──────────────────────────────────────────────────────

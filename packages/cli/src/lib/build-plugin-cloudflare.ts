@@ -185,7 +185,7 @@ function normalizeBuiltModules(agentModules, workflowModules) {
   const directHandlers = {};
   const receiveHandlers = {};
   for (const [name, mod] of Object.entries(agentModules)) {
-    if (typeof mod.init !== 'function') throw new Error('[flue] Agent "' + name + '" must export async function init(...).');
+    if (!mod.default || mod.default.__flueCreatedAgent !== true || typeof mod.default.initialize !== 'function') throw new Error('[flue] Agent "' + name + '" must default-export createAgent(...).');
     const channels = normalizeChannelList(mod.channels, 'agent "' + name + '"');
     const hasExternalChannel = Object.keys(channels).some((channel) => channel !== 'http' && channel !== 'websocket');
     if (hasExternalChannel && typeof mod.receive !== 'function') {
@@ -194,8 +194,8 @@ function normalizeBuiltModules(agentModules, workflowModules) {
     if (typeof mod.receive === 'function' && Object.keys(channels).length === 0) {
       throw new Error('[flue] Agent "' + name + '" exports receive(...) but no channels.');
     }
-    manifest.agents.push({ name, channels, receive: typeof mod.receive === 'function', init: true });
-    if (channels.http) directHandlers[name] = createDirectAgentHandler(mod.init);
+    manifest.agents.push({ name, channels, receive: typeof mod.receive === 'function', created: true });
+    if (channels.http) directHandlers[name] = createDirectAgentHandler(mod.default);
     if (typeof mod.receive === 'function') receiveHandlers[name] = mod.receive;
   }
 
@@ -287,7 +287,7 @@ async function createDefaultEnv() {
  * returns that string. This is a heuristic (it relies on a workerd-internal
  * naming convention, not a contractual API), but it's empirically correct
  * today and will misroute only if a user passes some other DO stub to
- * \`init({ sandbox })\` — in which case \`cfSandboxToSessionEnv\` will fail
+ * \`createAgent(() => ({ sandbox }))\` — in which case \`cfSandboxToSessionEnv\` will fail
  * loudly on first method call.
  */
 function resolveSandbox(sandbox) {

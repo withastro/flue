@@ -1,9 +1,9 @@
-import { defineAgent, type AgentInitContext, type ReceiveContext } from '@flue/runtime';
+import { createAgent, defineAgentProfile, type ReceiveContext } from '@flue/runtime';
 import { mock } from '../channels/mock';
 
 export const channels = [mock()];
 
-const cloudflareBinding = defineAgent({
+const cloudflareBinding = defineAgentProfile({
 	model: 'cloudflare/@cf/moonshotai/kimi-k2.6',
 	instructions: 'You process Cloudflare-target external deliveries.',
 });
@@ -19,6 +19,4 @@ export async function receive({ delivery, dispatch }: ReceiveContext) {
 	});
 }
 
-export async function init({ spawn }: AgentInitContext) {
-	return spawn({ inherit: cloudflareBinding });
-}
+export default createAgent(() => ({ profile: cloudflareBinding }));

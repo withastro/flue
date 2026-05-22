@@ -33,13 +33,15 @@ npm install -D @flue/cli wrangler
 `.flue/workflows/translate.ts`:
 
 ```typescript
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const channels = [http()];
 
+const translator = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
+
 export async function run({ init, payload }: FlueContext) {
-  const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
+  const harness = await init(translator);
   const session = await harness.session();
 
   const { data } = await session.prompt(`Translate this to ${payload.language}: "${payload.text}"`, {
@@ -56,7 +58,7 @@ export async function run({ init, payload }: FlueContext) {
 A few things to note:
 
 - **`channels = [http()]`** — This agent is invoked via HTTP. Flue creates a workflow route for it automatically.
-- **`init({ model })`** — Every session needs a model. If you do not pass one, no model is chosen and `prompt()` / `skill()` calls will fail. By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
+- **`createAgent(...)` + `init(agent)`** — Created agents declare model and sandbox configuration; workflows initialize them only when needed. `init(agent)` fails unless its created agent config provides a model, sets `model: false`, or supplies a profile with a model. By default, Flue gives every agent a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
 - **Schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns it on `response.data`, fully typed.
 
 ### 3. Build and deploy
@@ -120,14 +122,15 @@ curl http://localhost:3583/workflows/translate?wait=result \
 Subagents define named delegates for detached task sessions:
 
 ```typescript
-import { defineAgent } from '@flue/runtime';
+import { createAgent, defineAgentProfile } from '@flue/runtime';
 
-const triager = defineAgent({
+const triager = defineAgentProfile({
   name: 'triager',
   instructions: 'Search thoroughly, cite sources, and stay concise.',
 });
+const support = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6', subagents: [triager] }));
 
-const harness = await init({ model: 'anthropic/claude-sonnet-4-6', subagents: [triager] });
+const harness = await init(support);
 const session = await harness.session();
 await session.task('Help me reset my password', { agent: 'triager' });
 ```
@@ -139,12 +142,14 @@ By default, the virtual sandbox starts empty — no files, no skills, no context
 Because the agent has shell access, it can set up its own workspace on the fly:
 
 ```typescript
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 
 export const channels = [http()];
 
+const reporter = createAgent(() => ({ model: 'openai/gpt-5.5' }));
+
 export async function run({ init, payload }: FlueContext) {
-  const harness = await init({ model: 'openai/gpt-5.5' });
+  const harness = await init(reporter);
   const session = await harness.session();
 
   // The agent has a full virtual filesystem and shell.
@@ -176,19 +181,19 @@ R2 is a good source for that workspace, but it is not a live filesystem mount. H
 
 This is one of the most powerful patterns on Cloudflare: a support agent that searches a knowledge base to answer customer questions. The knowledge base can be stored in R2, hydrated once into the Workspace, and then searched through the `code` tool with `state.searchFiles`, `state.glob`, `state.readFile`, and related APIs.
 
-`.flue/agents/support.ts`:
+`.flue/workflows/support.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 import {
   getDefaultWorkspace,
   getShellSandbox,
   hydrateFromBucket,
 } from '@flue/runtime/cloudflare';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, payload, env }: FlueContext) {
+export async function run({ init, payload, env }: FlueContext) {
   const workspace = getDefaultWorkspace();
 
   if (!(await workspace.exists('/.hydrated'))) {
@@ -196,10 +201,11 @@ export default async function ({ init, payload, env }: FlueContext) {
     await workspace.writeFile('/.hydrated', new Date().toISOString());
   }
 
-  const harness = await init({
+  const agent = createAgent(() => ({
     sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
     model: 'openrouter/moonshotai/kimi-k2.6',
-  });
+  }));
+  const harness = await init(agent);
   const session = await harness.session();
 
   return await session.prompt(
@@ -305,19 +311,15 @@ The base image is published by Cloudflare and bundles the control-plane HTTP ser
 `.flue/agents/assistant.ts`:
 
 ```typescript
-import type { FlueContext } from '@flue/runtime';
+import { createAgent, http } from '@flue/runtime';
 import { getSandbox } from '@cloudflare/sandbox';
 
-export const triggers = { webhook: true };
+export const channels = [http()];
 
-export default async function ({ init, id, env, payload }: FlueContext) {
-  // The binding name you chose in wrangler.jsonc is the key on `env`.
-  const sandbox = getSandbox(env.Sandbox, id);
-  const harness = await init({ sandbox, model: 'anthropic/claude-opus-4-7' });
-  const session = await harness.session();
-
-  return await session.prompt(payload.message);
-}
+export default createAgent(({ id, env }) => ({
+  sandbox: getSandbox(env.Sandbox, id),
+  model: 'anthropic/claude-opus-4-7',
+}));
 ```
 
 ### Multiple sandboxes
@@ -447,7 +449,7 @@ curl https://my-support-agent.<your-subdomain>.workers.dev/workflows/translate?w
 
 Here's the progression of sandbox types available on Cloudflare, from simplest to most powerful:
 
-1. **Empty virtual sandbox** — `init({ model: 'anthropic/claude-sonnet-4-6' })`. Fast, cheap, stateless. Good for prompt-and-response agents.
+1. **Empty virtual sandbox** — `createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }))`. Fast, cheap, stateless. Good for prompt-and-response agents.
 2. **Virtual sandbox with shell setup** — Use `session.shell()` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
 3. **cf-shell Workspace sandbox** — `getShellSandbox({ workspace, loader })`. Durable SQLite-indexed Workspace, hydrated from R2/git/etc., searched and edited through the `code` tool and `state.*`. Ideal for Cloudflare-native knowledge bases and support agents without Linux dependencies.
 4. **Container sandbox** — Full Linux environment via `@cloudflare/sandbox`. For coding agents, complex dev environments, and anything that needs real system tools.

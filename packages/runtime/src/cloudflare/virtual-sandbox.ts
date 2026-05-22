@@ -12,7 +12,7 @@ export function getVirtualSandbox(bucket?: unknown, _options?: VirtualSandboxOpt
 	if (bucket === undefined) {
 		throw new Error(
 			'[flue] getVirtualSandbox() has been removed. Flue\'s default in-memory sandbox is already ' +
-				'what you wanted — omit the `sandbox` option from init() (or pass `false`) and you get it. ' +
+				'what you wanted — omit the `sandbox` field from createAgent(...) (or pass `false`) and you get it. ' +
 				`See ${MIGRATION_DOC} for the full migration story.`,
 		);
 	}
@@ -32,10 +32,11 @@ export function getVirtualSandbox(bucket?: unknown, _options?: VirtualSandboxOpt
 			'    await hydrateFromBucket(workspace, env.KNOWLEDGE_BASE);\n' +
 			'    await workspace.writeFile(\'/.hydrated\', new Date().toISOString());\n' +
 			'  }\n' +
-			'  const harness = await init({\n' +
+			'  const agent = createAgent(() => ({\n' +
 			'    sandbox: getShellSandbox({ workspace, loader: env.LOADER }),\n' +
 			'    model: \'anthropic/claude-sonnet-4-6\',\n' +
-			'  });\n\n' +
+			'  }));\n' +
+			'  const harness = await init(agent);\n\n' +
 			'Requires a `worker_loaders` binding in wrangler.jsonc; see ' +
 			`${MIGRATION_DOC} for the binding setup and the @cloudflare/sandbox + mountBucket alternative ` +
 			'if your account doesn\'t have Worker Loader access.',

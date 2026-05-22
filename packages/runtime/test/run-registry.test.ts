@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { admin, flue } from '../src/app.ts';
+import { createAgent } from '../src/agent-definition.ts';
 import {
 	configureFlueRuntime,
 	createFlueContext,
@@ -552,6 +553,63 @@ describe('POST /workflows/:name routes via flue()', () => {
 		expect(text).toMatch(/event: run_end/);
 	});
 
+	it('initializes a workflow-created agent only when run requests it and passes workflow payload', async () => {
+		const initialized: Array<{ id: string; payload: unknown }> = [];
+		const agent = createAgent(({ id, payload }) => {
+			initialized.push({ id, payload });
+			return { model: false };
+		});
+		configureFlueRuntime({
+			target: 'node',
+			manifest: { agents: [], workflows: [{ name: 'optional-agent', channels: { http: true } }] },
+			handlers: {},
+			workflowHandlers: {
+				'optional-agent': async (ctx) => {
+					if (!(ctx.payload as { useAgent?: boolean }).useAgent) return { initialized: false };
+					await ctx.init(agent);
+					return { initialized: true };
+				},
+			},
+			createContext: (id, runId, payload, req) =>
+				createFlueContext({
+					id,
+					runId,
+					payload,
+					env: {},
+					req,
+					agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
+					createDefaultEnv: async () => ({
+						exec: async () => ({ stdout: '', stderr: '', exitCode: 0 }),
+						readFile: async () => '',
+						readFileBuffer: async () => new Uint8Array(),
+						writeFile: async () => {},
+						stat: async () => ({ isFile: false, isDirectory: false, isSymbolicLink: false, size: 0, mtime: new Date() }),
+						readdir: async () => [],
+						exists: async () => false,
+						mkdir: async () => {},
+						rm: async () => {},
+						cwd: '/',
+						resolvePath: (target: string) => target,
+					}),
+					defaultStore: new InMemorySessionStore(),
+				}),
+		});
+		const app = new Hono();
+		app.route('/', flue());
+		const skipped = await app.fetch(new Request('http://localhost/workflows/optional-agent?wait=result', {
+			method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ useAgent: false }),
+		}));
+		expect((await skipped.json()) as unknown).toMatchObject({ result: { initialized: false } });
+		expect(initialized).toEqual([]);
+		const used = await app.fetch(new Request('http://localhost/workflows/optional-agent?wait=result', {
+			method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ useAgent: true }),
+		}));
+		expect(used.status).toBe(200);
+		expect(initialized).toHaveLength(1);
+		expect(initialized[0]?.payload).toEqual({ useAgent: true });
+		expect(initialized[0]?.id).toMatch(/^workflow:optional-agent:/);
+	});
+
 	it('rejects internal-only workflows and non-POST methods', async () => {
 		configureFlueRuntime({
 			target: 'node',
@@ -759,7 +817,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'cloudflare',
-			manifest: { agents: [{ name: 'hello', channels: { http: true }, receive: false, init: false }] },
+			manifest: { agents: [{ name: 'hello', channels: { http: true }, receive: false, created: false }] },
 			routeAgentRequest: async (request) => {
 				routedBodies.push(await request.text());
 				return Response.json({ ok: true });
@@ -874,8 +932,8 @@ describe('admin() routes', () => {
 			runtimeVersion: '9.9.9',
 			manifest: {
 				agents: [
-					{ name: 'hello', channels: {}, receive: false, init: false },
-					{ name: 'offline', channels: {}, receive: false, init: false },
+					{ name: 'hello', channels: {}, receive: false, created: false },
+					{ name: 'offline', channels: {}, receive: false, created: false },
 				],
 			},
 			handlers: { hello: async () => ({ ok: true }) },
@@ -915,10 +973,12 @@ describe('admin() routes', () => {
 
 		const agents = await app.fetch(new Request('http://localhost/admin/agents'));
 		expect(agents.status).toBe(200);
-		expect(((await agents.json()) as { items: { name: string }[] }).items.map((a) => a.name)).toEqual([
-			'hello',
-			'offline',
-		]);
+		expect((await agents.json()) as unknown).toMatchObject({
+			items: [
+				{ name: 'hello', created: false },
+				{ name: 'offline', created: false },
+			],
+		});
 
 		const instances = await app.fetch(new Request('http://localhost/admin/agents/hello/instances'));
 		expect(instances.status).toBe(200);
@@ -958,7 +1018,7 @@ describe('admin() routes', () => {
 		configureFlueRuntime({
 			target: 'cloudflare',
 			runtimeVersion: '9.9.9',
-			manifest: { agents: [{ name: 'hello', channels: {}, receive: false, init: false }] },
+			manifest: { agents: [{ name: 'hello', channels: {}, receive: false, created: false }] },
 			createRunRegistryForRequest: () => ({
 				recordRunStart: async () => {},
 				recordRunEnd: async () => {},
@@ -993,7 +1053,7 @@ describe('admin() routes', () => {
 		configureFlueRuntime({
 			target: 'cloudflare',
 			runtimeVersion: '9.9.9',
-			manifest: { agents: [{ name: 'hello', channels: {}, receive: false, init: false }] },
+			manifest: { agents: [{ name: 'hello', channels: {}, receive: false, created: false }] },
 			createRunRegistryForRequest: () => ({
 				recordRunStart: async () => {},
 				recordRunEnd: async () => {},

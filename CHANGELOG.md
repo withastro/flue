@@ -4,16 +4,18 @@
 
 ### New Features
 
-- **Flue now separates workflows that return results from agents that receive messages over time.** Files in `workflows/` are finite request/result jobs: they export `run(...)`, can opt into direct HTTP with `channels = [http()]`, and are what `flue run` invokes for one-shot CLI and CI usage. Files in `agents/` are now addressable agent instances: they export `init(...)` to wake an instance and, when subscribed to external channels, `receive(...)` to route inbound deliveries. This gives upgrading users a clearer place to put each kind of logic instead of overloading one agent module shape for both webhook-style jobs and long-lived message-driven actors.
+- **Flue now separates workflows that return results from agents that receive messages over time.** Files in `workflows/` are finite request/result jobs: they export `run(...)`, can opt into direct HTTP with `channels = [http()]`, and initialize local created agents with `init(createdAgent)` only when model or sandbox work is needed. Files in `agents/` are addressable agent instances: they default-export `createAgent(...)` so the runtime can initialize their stable instance resources, and, when subscribed to external channels, export `receive(...)` to route inbound deliveries. This gives upgrading users a clearer place to put each kind of logic instead of overloading one module shape for both webhook-style jobs and long-lived message-driven actors.
 
   ```ts
   // .flue/workflows/translate.ts
-  import { http, type FlueContext } from '@flue/runtime';
+  import { createAgent, http, type FlueContext } from '@flue/runtime';
 
   export const channels = [http()];
 
+  const translator = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
+
   export async function run({ init, payload }: FlueContext) {
-    const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
+    const harness = await init(translator);
     const session = await harness.session();
     const { data } = await session.prompt(
       `Translate this to ${payload.language}: ${payload.text}`,
@@ -25,18 +27,20 @@
 
   ```ts
   // .flue/agents/assistant.ts
-  import { defineAgent, type AgentInitContext } from '@flue/runtime';
+  import { createAgent, defineAgentProfile } from '@flue/runtime';
   import { http } from '@flue/runtime/channels';
 
   export const channels = [http()];
 
-  const assistant = defineAgent({
+  const assistant = defineAgentProfile({
+    model: 'anthropic/claude-haiku-4-5',
     instructions: 'You are a helpful assistant for this account.',
   });
 
-  export async function init({ spawn }: AgentInitContext) {
-    return spawn({ inherit: assistant });
-  }
+  export default createAgent(({ id }) => ({
+    profile: assistant,
+    cwd: `/accounts/${id}`,
+  }));
   ```
 
 - **Agents can now receive direct messages and external-channel deliveries through the same instance/session model.** Direct HTTP calls to `/agents/:name/:id` wake the named agent instance, select a session, and immediately prompt the model; external-channel deliveries call subscribed modules' `receive(...)` hooks, where user code can filter provider events and `dispatch(...)` structured inputs into any target agent instance/session. Dispatched inputs are persisted into session history with dispatch metadata, rendered deterministically into model-visible context, and now emit normal run lifecycle events when they process.
@@ -93,12 +97,13 @@
 
   ```ts
   // .flue/agents/github-triage.ts
-  import { defineAgent, type AgentInitContext, type ReceiveContext } from '@flue/runtime';
+  import { createAgent, defineAgentProfile, type ReceiveContext } from '@flue/runtime';
   import { github } from '../channels';
 
   export const channels = [github()];
 
-  const triage = defineAgent({
+  const triage = defineAgentProfile({
+    model: 'anthropic/claude-haiku-4-5',
     instructions: 'Triage inbound GitHub issue events for this repository.',
   });
 
@@ -123,9 +128,7 @@
     });
   }
 
-  export async function init({ spawn }: AgentInitContext) {
-    return spawn({ inherit: triage });
-  }
+  export default createAgent(() => ({ profile: triage }));
   ```
 
 - **GitHub webhooks are the first built-in inbound external channel.** `@flue/runtime/github` now provides `createGitHubChannel()`, `createGitHubChannelRouter()`, and the lower-level `createGitHubWebhook()` normalizer. The router verifies `X-Hub-Signature-256` when `webhookSecret` or `GITHUB_WEBHOOK_SECRET` is configured, normalizes GitHub headers and JSON payloads into Flue `Delivery` objects, and fans out to all agents subscribed to the `github` channel. This support is intentionally inbound-only: Flue admits and processes the webhook, but posting comments, reactions, or status updates should happen through explicit tools that your agent chooses to call.
@@ -136,10 +139,10 @@
   }));
   ```
 
-- **Reusable agent definitions, named subagents, and reusable tool values replace the old role-centered delegation model.** `defineAgent(...)` lets you describe a reusable profile once, including instructions, tools, skills, model defaults, subagents, thinking level, and compaction settings. Pass named agent definitions through the parent profile and delegate with `task({ agent })`, so delegation is explicit and type-shaped like the rest of the runtime. `defineTool()` and the `ToolDefinition` type make custom tools reusable module-scope values instead of ad hoc objects assembled at each call site.
+- **Reusable agent profiles, runtime-created agents, named subagents, and reusable tool values replace the old role-centered delegation model.** `defineAgentProfile(...)` describes reusable behavior, including instructions, tools, skills, model defaults, subagents, thinking level, and compaction settings. `createAgent(...)` attaches that behavior to runtime initialization such as sandbox, cwd, and persistence. Pass named profiles through the parent profile and delegate with `task({ agent })`, so delegation is explicit and type-shaped like the rest of the runtime. `defineTool()` and the `ToolDefinition` type make custom tools reusable module-scope values instead of ad hoc objects assembled at each call site.
 
   ```ts
-  import { defineAgent, defineTool, Type, type AgentInitContext } from '@flue/runtime';
+  import { createAgent, defineAgentProfile, defineTool, Type } from '@flue/runtime';
 
   const lookupIssue = defineTool({
     name: 'lookupIssue',
@@ -150,33 +153,33 @@
     },
   });
 
-  const auditor = defineAgent({
+  const auditor = defineAgentProfile({
     name: 'auditor',
     instructions: 'Review decisions for risk and missing evidence.',
   });
 
-  const triage = defineAgent({
+  const triage = defineAgentProfile({
+    model: 'anthropic/claude-haiku-4-5',
     instructions: 'Triage incoming support work.',
     tools: [lookupIssue],
     subagents: [auditor],
   });
 
-  export async function init({ spawn }: AgentInitContext) {
-    return spawn({ inherit: triage });
-  }
+  export default createAgent(() => ({ profile: triage }));
   ```
 
 - **Agent Skills can be imported, validated, bundled, and called as first-class values.** Agent code can import spec-compliant `SKILL.md` directories with `with { type: 'skill' }`; the build validates frontmatter, bundles supporting `scripts/`, `references/`, and `assets/` for Node and Cloudflare output, and exposes supporting files lazily through stable virtual `read` paths only when the model needs them. `session.skill(skillValue)` activates the imported instructions directly, which makes skill dependencies explicit in source code and deployable without relying on runtime filesystem layout.
 
   ```ts
   import codeReview from '../skills/code-review/SKILL.md' with { type: 'skill' };
-  import type { FlueContext } from '@flue/runtime';
+  import { createAgent, type FlueContext } from '@flue/runtime';
   import * as v from 'valibot';
 
   const ReviewResult = v.object({ summary: v.string() });
+  const reviewer = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
 
   export async function run({ init, payload }: FlueContext) {
-    const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
+    const harness = await init(reviewer);
     const session = await harness.session();
 
     const { data } = await session.skill(codeReview, {
@@ -191,6 +194,7 @@
 - **Cloudflare shell workspaces are now the supported bucket-backed sandbox story.** `getShellSandbox({ workspace, loader })`, `getDefaultWorkspace()`, and `hydrateFromBucket()` from `@flue/runtime/cloudflare` wire `@cloudflare/shell` Workspaces into Flue through a codemode `code` tool backed by a Worker Loader binding. This replaces the older mental model that R2 was mounted directly as the agent filesystem; Workspaces are SQLite-indexed filesystems with optional R2 blob spillover, so bucket hydration is now explicit before `init(...)`.
 
   ```ts
+  import { createAgent, type FlueContext } from '@flue/runtime';
   import {
     getDefaultWorkspace,
     getShellSandbox,
@@ -201,10 +205,11 @@
     const workspace = getDefaultWorkspace();
     await hydrateFromBucket(workspace, env.BUCKET);
 
-    const harness = await init({
+    const agent = createAgent(() => ({
       model: 'cloudflare/@cf/moonshotai/kimi-k2.6',
       sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
-    });
+    }));
+    const harness = await init(agent);
 
     const session = await harness.session();
     return session.prompt('Inspect the hydrated workspace.');
@@ -215,23 +220,24 @@
 
 - **Each workflow now gets its own Durable Object class and binding on the Cloudflare target.** Workflow runs were previously multiplexed through a single shared `WorkflowRunOwner` class behind the `FLUE_WORKFLOW_RUNS` binding; the build now generates one DO class per workflow definition (`draft` → `DraftWorkflow`) bound under a namespaced binding name (`FLUE_WORKFLOW_DRAFT`). Each workflow run is still its own DO instance, but the instance is keyed by an `instanceId` that equals the `runId`, mirroring how agents are keyed by `:id`. The internal `RunOwner` workflow variant changed from `{ kind: 'workflow', workflowName, runId }` to `{ kind: 'workflow', workflowName, instanceId }`, and `run_start` events for workflows now include `instanceId` and `workflowName` alongside `runId`. The cross-deployment FlueRegistry pointer index migrates forward (the legacy `owner_run_id` column is backfilled into `instance_id`), so `/runs/:runId` lookups for historical workflow runs still resolve. The per-run event/result data stored inside the old `WorkflowRunOwner` DO instances is not migrated — once the shared class is removed from your `wrangler.jsonc`, those events are no longer reachable. Remove the `FLUE_WORKFLOW_RUNS` binding and `WorkflowRunOwner` class from your `wrangler.jsonc` after deploying.
 
-- **One-shot agents should move to workflows, and agent modules now use explicit `init(...)` / `receive(...)` exports.** Existing request/result files that were previously placed under `agents/` should move to `workflows/` and export `run(...)`. Long-lived agents stay under `agents/`, but default exports and `triggers` are no longer supported; direct HTTP exposure and external-channel subscriptions are declared with `channels`, instance construction happens in `init(...)`, and external delivery routing happens in `receive(...)`.
+- **One-shot agents should move to workflows, and long-lived agent modules now default-export `createAgent(...)`.** Existing request/result files that were previously placed under `agents/` should move to `workflows/` and export `run(...)`. Long-lived agents stay under `agents/`, where direct HTTP exposure and external-channel subscriptions are declared with `channels`, instance construction is declared with a default `createAgent(...)` export, and external delivery routing happens in `receive(...)`. Workflows remain in control of lifecycle and call `init(createdAgent)` only when they need a harness.
 
   ```diff
   - // .flue/agents/hello.ts
   - export const triggers = { webhook: true };
   - export default async function handler({ init, payload }) {
   + // .flue/workflows/hello.ts
-  + import { http } from '@flue/runtime';
+  + import { createAgent, http } from '@flue/runtime';
   + export const channels = [http()];
+  + const agent = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
   + export async function run({ init, payload }) {
-      const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
+      const harness = await init(agent);
       const session = await harness.session();
       return session.prompt(payload.message);
     }
   ```
 
-- **Workflow and agent modules now reserve only Flue-owned exports.** Workflow modules must directly export `export async function run(...)` and may export `export const channels = [http(), websocket()]`; agent modules that participate in channels must directly export `channels`, `receive(...)`, and `init(...)`. Other local exports are allowed for schemas, helper functions, and TypeScript-only payload/result types, but Flue-owned exports still need the direct forms so generated Node and Cloudflare entries stay deterministic.
+- **Workflow and agent modules now reserve only Flue-owned exports.** Workflow modules must directly export `export async function run(...)` and may export `export const channels = [http(), websocket()]`; they can initialize locally declared `createAgent(...)` values when needed. Agent modules must default-export `createAgent(...)`, and external-channel agent modules additionally export `channels` and `receive(...)`. Other local exports are allowed for schemas, helper functions, and TypeScript-only payload/result types, but Flue-owned exports still need the direct forms so generated Node and Cloudflare entries stay deterministic.
 
 - **`ToolDef` was renamed to `ToolDefinition`.** Update type imports from `ToolDef` to `ToolDefinition`; no compatibility alias is provided.
 
@@ -243,16 +249,16 @@
   + app.route('/webhooks/github', createGitHubChannelRouter());
   ```
 
-- **Legacy roles are removed in favor of named subagents.** Role markdown files and role options on sessions or calls are no longer part of the runtime model. Use `defineAgent(...)` for reusable delegate profiles and select them with `task({ agent })`; task lifecycle events now report the selected `agent` instead of a `role`.
+- **Legacy roles are removed in favor of named subagents.** Role markdown files and role options on sessions or calls are no longer part of the runtime model. Use `defineAgentProfile(...)` for reusable delegate profiles and select them with `task({ agent })`; task lifecycle events now report the selected `agent` instead of a `role`.
 
   ```diff
   - await session.task('Audit this decision', { role: 'auditor' });
   + await session.task('Audit this decision', { agent: 'auditor' });
   ```
 
-- **`spawn(...)` is instance-oriented and no longer accepts dynamic behavior fields.** The `spawn(...)` helper exposed to agent `init(...)` accepts only instance construction concerns: `inherit`, `sandbox`, `cwd`, and `persist`. Put instructions, tools, skills, subagents, model defaults, thinking level, and compaction on a `defineAgent(...)` profile instead; put per-delivery routing decisions in `receive(...)` before calling `dispatch(...)`.
+- **`init({ spawn })` is replaced with explicit profiles and created agents.** Use `defineAgentProfile(...)` for reusable behavioral configuration and `createAgent(...)` for runtime initialization such as sandbox, cwd, and persistence. Agent modules default-export their created agent; workflows pass a created agent to `init(...)` after any request-level checks. For persistent agents, creation receives stable `id` and never receives an incoming message payload.
 
-- **`getVirtualSandbox()` now throws with a migration message.** The previous API described R2 as if it were mounted directly as the harness filesystem, but `@cloudflare/shell` Workspaces are SQLite-indexed filesystems with optional R2 blob spillover; raw bucket keys uploaded outside Workspace were invisible. Migrate bucket-backed agents to `getShellSandbox({ workspace, loader })` plus `hydrateFromBucket(workspace, env.BUCKET)` before `init()`. If you used zero-arg `getVirtualSandbox()`, remove it and omit `sandbox` from `init()` to use Flue's default in-memory sandbox.
+- **`getVirtualSandbox()` now throws with a migration message.** The previous API described R2 as if it were mounted directly as the harness filesystem, but `@cloudflare/shell` Workspaces are SQLite-indexed filesystems with optional R2 blob spillover; raw bucket keys uploaded outside Workspace were invisible. Migrate bucket-backed workflows to `getShellSandbox({ workspace, loader })` plus `hydrateFromBucket(workspace, env.BUCKET)` before initializing a created agent with `init(agent)`. If you used zero-arg `getVirtualSandbox()`, remove it and omit `sandbox` from the created agent config to use Flue's default in-memory sandbox.
 
 ### Fixes & Other Changes
 

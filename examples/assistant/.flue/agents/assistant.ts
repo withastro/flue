@@ -1,9 +1,9 @@
-import { defineAgent, type AgentInitContext, type ReceiveContext } from '@flue/runtime';
+import { createAgent, defineAgentProfile, type ReceiveContext } from '@flue/runtime';
 import { mock } from '../channels/mock';
 
 export const channels = [mock()];
 
-const assistant = defineAgent({
+const assistant = defineAgentProfile({
 	instructions: 'You complete task requests delivered from external channels.',
 });
 
@@ -30,6 +30,4 @@ export async function receive({ delivery, dispatch }: ReceiveContext) {
 	});
 }
 
-export async function init({ spawn }: AgentInitContext) {
-	return spawn({ inherit: assistant });
-}
+export default createAgent(() => ({ profile: assistant }));

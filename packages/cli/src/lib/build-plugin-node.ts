@@ -75,9 +75,9 @@ function normalizeBuiltModules(agentModules, workflowModules) {
   const manifest = { agents: [], workflows: [] };
   const directHandlers = {};
   const receiveHandlers = {};
-  const initHandlers = {};
+  const createdAgents = {};
   for (const [name, mod] of Object.entries(agentModules)) {
-    if (typeof mod.init !== 'function') throw new Error('[flue] Agent "' + name + '" must export async function init(...).');
+    if (!mod.default || mod.default.__flueCreatedAgent !== true || typeof mod.default.initialize !== 'function') throw new Error('[flue] Agent "' + name + '" must default-export createAgent(...).');
     const channels = normalizeChannelList(mod.channels, 'agent "' + name + '"');
     const hasExternalChannel = Object.keys(channels).some((channel) => channel !== 'http' && channel !== 'websocket');
     if (hasExternalChannel && typeof mod.receive !== 'function') {
@@ -86,9 +86,9 @@ function normalizeBuiltModules(agentModules, workflowModules) {
     if (typeof mod.receive === 'function' && Object.keys(channels).length === 0) {
       throw new Error('[flue] Agent "' + name + '" exports receive(...) but no channels.');
     }
-    manifest.agents.push({ name, channels, receive: typeof mod.receive === 'function', init: true });
-    initHandlers[name] = mod.init;
-    if (channels.http) directHandlers[name] = createDirectAgentHandler(mod.init);
+    manifest.agents.push({ name, channels, receive: typeof mod.receive === 'function', created: true });
+    createdAgents[name] = mod.default;
+    if (channels.http) directHandlers[name] = createDirectAgentHandler(mod.default);
     if (typeof mod.receive === 'function') receiveHandlers[name] = mod.receive;
   }
 
@@ -104,7 +104,7 @@ function normalizeBuiltModules(agentModules, workflowModules) {
     if (channels.http) workflowHandlers[name] = mod.run;
   }
 
-  return { manifest, directHandlers, receiveHandlers, initHandlers, workflowHandlers };
+  return { manifest, directHandlers, receiveHandlers, createdAgents, workflowHandlers };
 }
 
 function normalizeChannelList(value, label) {
@@ -133,7 +133,7 @@ const workflowModules = {
 ${workflowModuleEntries}
 };
 const normalized = normalizeBuiltModules(agentModules, workflowModules);
-const { manifest, directHandlers, receiveHandlers, initHandlers, workflowHandlers } = normalized;
+const { manifest, directHandlers, receiveHandlers, createdAgents, workflowHandlers } = normalized;
 
 // When the CLI starts this server via \`flue run\`, it sets FLUE_MODE=local.
 const isLocalMode = process.env.FLUE_MODE === 'local';
@@ -159,7 +159,7 @@ const runStore = new InMemoryRunStore();
 const runRegistry = new InMemoryRunRegistry();
 const runSubscribers = createRunSubscriberRegistry();
 const dispatchQueue = new InMemoryDispatchQueue(createAgentDispatchProcessor({
-  initHandlers,
+  agents: createdAgents,
   createContext: createContextForRequest,
   runStore,
   runSubscribers,

@@ -1,9 +1,9 @@
-import { defineAgent, type AgentInitContext, type ReceiveContext } from '@flue/runtime';
+import { createAgent, defineAgentProfile, type ReceiveContext } from '@flue/runtime';
 import { mock } from '../channels/mock';
 
 export const channels = [mock()];
 
-const sessionTest = defineAgent({
+const sessionTest = defineAgentProfile({
 	instructions: 'You are a test agent for session-oriented message delivery.',
 });
 
@@ -38,6 +38,4 @@ export async function receive({ delivery, dispatch }: ReceiveContext) {
 	});
 }
 
-export async function init({ spawn }: AgentInitContext) {
-	return spawn({ inherit: sessionTest });
-}
+export default createAgent(() => ({ profile: sessionTest }));

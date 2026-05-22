@@ -131,7 +131,7 @@ export interface FlueManifest {
 		name: string;
 		channels: Record<string, true>;
 		receive: boolean;
-		init: boolean;
+		created: boolean;
 	}>;
 	workflows?: Array<{
 		name: string;

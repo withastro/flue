@@ -1,9 +1,9 @@
-import { defineAgent, type Delivery, type ReceiveContext, type AgentInitContext } from '@flue/runtime';
+import { createAgent, defineAgentProfile, type Delivery, type ReceiveContext } from '@flue/runtime';
 import { github } from '../channels';
 
 export const channels = [github()];
 
-const triage = defineAgent({
+const triage = defineAgentProfile({
 	model: 'anthropic/claude-haiku-4-5',
 	instructions: `
 You triage inbound GitHub webhook events.
@@ -34,12 +34,10 @@ export async function receive({ delivery, dispatch }: ReceiveContext) {
 	});
 }
 
-export async function init({ id, spawn }: AgentInitContext) {
-	console.log(`[github-triage] init ${id}`);
-	return spawn({
-		inherit: triage,
-	});
-}
+export default createAgent(({ id }) => {
+	console.log(`[github-triage] create ${id}`);
+	return { profile: triage };
+});
 
 function githubRefs(delivery: Delivery) {
 	const data = delivery.data as { payload?: Record<string, any>; action?: string };

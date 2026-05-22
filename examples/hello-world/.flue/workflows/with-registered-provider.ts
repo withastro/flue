@@ -1,10 +1,12 @@
-import { http, type FlueContext } from '@flue/runtime';
+import { createAgent, http, type FlueContext } from '@flue/runtime';
 
 export const channels = [http()];
 
+const agent = createAgent(() => ({ model: 'ollama/llama3.1:8b' }));
+
 /**
  * Smoke-test agent for `registerProvider(...)`. Verifies that
- * `init({ model: 'ollama/...' })` resolves through the runtime registry
+ * `createAgent(() => ({ model: 'ollama/...' }))` resolves through the runtime registry
  * populated by the `registerProvider('ollama', ...)` call at the top of
  * `app.ts`, instead of falling through to the pi-ai catalog and erroring.
  *
@@ -14,7 +16,7 @@ export const channels = [http()];
  * if the registration failed to land.
  */
 export async function run({ init }: FlueContext) {
-	const harness = await init({ model: 'ollama/llama3.1:8b' });
+	const harness = await init(agent);
 	const session = await harness.session();
 	return {
 		ok: true,

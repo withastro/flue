@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { type Static, Type } from '@earendil-works/pi-ai';
-import type { AgentDefinition, SessionEnv, SkillDefinition } from './types.ts';
+import type { AgentProfile, SessionEnv, SkillDefinition } from './types.ts';
 
 const MAX_READ_LINES = 2000;
 const MAX_READ_BYTES = 50 * 1024;
@@ -39,7 +39,7 @@ export interface CreateToolsOptions {
 		params: TaskToolParams,
 		signal?: AbortSignal,
 	) => Promise<AgentToolResult<TaskToolResultDetails>>;
-	subagents?: Record<string, AgentDefinition>;
+	subagents?: Record<string, AgentProfile>;
 	skills?: Record<string, SkillDefinition>;
 }
 
@@ -276,7 +276,7 @@ export function createTaskTool(
 		params: TaskToolParams,
 		signal?: AbortSignal,
 	) => Promise<AgentToolResult<TaskToolResultDetails>>,
-	subagents: Record<string, AgentDefinition>,
+	subagents: Record<string, AgentProfile>,
 ): AgentTool<typeof TaskParams> {
 	const agentNames = Object.keys(subagents);
 	const agentDescription =

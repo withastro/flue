@@ -24,5 +24,5 @@ export async function run(ctx: FlueContext) {
 	// No model call needed for the success case — this keeps the
 	// example runnable without an ANTHROPIC_API_KEY when you just
 	// want to verify the Sentry wiring.
-	return { greeting: 'hello from flue', runId: ctx.runId };
+	return { greeting: 'hello from flue', id: ctx.id };
 }

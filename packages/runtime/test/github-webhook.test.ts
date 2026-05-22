@@ -18,7 +18,7 @@ describe('GitHub webhook channel', () => {
 				triage: async ({ delivery }) => received.push(delivery),
 			},
 			manifest: {
-				agents: [{ name: 'triage', channels: { github: true }, receive: true, init: true }],
+				agents: [{ name: 'triage', channels: { github: true }, receive: true, created: true }],
 			},
 		});
 
@@ -101,7 +101,7 @@ describe('GitHub webhook channel', () => {
 				},
 			},
 			manifest: {
-				agents: [{ name: 'triage', channels: { github: true }, receive: true, init: true }],
+				agents: [{ name: 'triage', channels: { github: true }, receive: true, created: true }],
 			},
 		});
 

@@ -45,7 +45,7 @@ import { createFlueFs } from './sandbox.ts';
 
 import type {
 	AgentConfig,
-	AgentDefinition,
+	AgentProfile,
 	BranchSummaryEntry,
 	CallHandle,
 	CompactionEntry,
@@ -83,7 +83,7 @@ export interface CreateTaskSessionOptions {
 	taskId: string;
 	parentEnv: SessionEnv;
 	cwd?: string;
-	agent?: AgentDefinition;
+	agent?: AgentProfile;
 	depth: number;
 }
 
@@ -1017,7 +1017,7 @@ export class Session implements FlueSession {
 
 	// ─── Tasks ────────────────────────────────────────────────────────────────
 
-	private resolveDeclaredSubagent(name: string): AgentDefinition {
+	private resolveDeclaredSubagent(name: string): AgentProfile {
 		const subagents = this.config.subagents ?? {};
 		const subagent = subagents[name];
 		if (subagent) return subagent;
