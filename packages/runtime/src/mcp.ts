@@ -146,14 +146,6 @@ export async function connectMcpServer(
 				'Use `auth` for a lightweight header hook or `authProvider` for full MCP-SDK OAuth.',
 		);
 	}
-	if (options.authProvider) {
-		throw new Error(
-			'[flue] McpServerOptions.authProvider is not yet implemented. ' +
-				'It will be available in a future release. For now, use `auth` or `fetch` / `requestInit` ' +
-				'to inject custom auth logic.',
-		);
-	}
-
 	const url = options.url instanceof URL ? options.url : new URL(options.url);
 	const baseRequestInit = mergeRequestInit(options.requestInit, options.headers);
 

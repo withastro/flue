@@ -25,16 +25,26 @@ vi.mock('@modelcontextprotocol/sdk/client/index.js', () => {
 	};
 });
 
+const capturedTransportOpts: Array<{ type: string; opts: Record<string, unknown> }> = [];
+
 vi.mock('@modelcontextprotocol/sdk/client/streamableHttp.js', () => {
 	return {
-		StreamableHTTPClientTransport: class MockStreamableHTTP {},
+		StreamableHTTPClientTransport: class MockStreamableHTTP {
+			constructor(_url: URL, opts: Record<string, unknown>) {
+				capturedTransportOpts.push({ type: 'streamable-http', opts });
+			}
+		},
 	};
 });
 
 // Dynamic import of SSE transport — mock for transport tests.
 vi.mock('@modelcontextprotocol/sdk/client/sse.js', () => {
 	return {
-		SSEClientTransport: class MockSSE {},
+		SSEClientTransport: class MockSSE {
+			constructor(_url: URL, opts: Record<string, unknown>) {
+				capturedTransportOpts.push({ type: 'sse', opts });
+			}
+		},
 	};
 });
 
@@ -105,16 +115,7 @@ describe('connectMcpServer validation', () => {
 		).rejects.toThrow('mutually exclusive');
 	});
 
-	it('rejects authProvider (not yet implemented)', async () => {
-		await expect(
-			connectMcpServer(
-				'test',
-				baseOptions({
-					authProvider: {} as any,
-				}),
-			),
-		).rejects.toThrow('not yet implemented');
-	});
+
 });
 
 // ─── Static auth (baseline — no regression) ─────────────────────────────────
@@ -410,5 +411,66 @@ describe('abort propagation', () => {
 
 		expect(receivedSignal).toBeInstanceOf(AbortSignal);
 		expect(receivedSignal?.aborted).toBe(false);
+	});
+});
+
+// ─── authProvider pass-through (Tier 3) ─────────────────────────────────────
+
+describe('connectMcpServer authProvider', () => {
+	it('forwards authProvider to StreamableHTTPClientTransport', async () => {
+		const fakeProvider = { redirectUrl: undefined, clientMetadata: {} } as any;
+		capturedTransportOpts.length = 0;
+		mockConnect.mockResolvedValueOnce(undefined);
+		mockListTools.mockResolvedValueOnce({ tools: [] });
+
+		const conn = await connectMcpServer(
+			'oauth-server',
+			baseOptions({ authProvider: fakeProvider }),
+		);
+
+		expect(capturedTransportOpts).toHaveLength(1);
+		expect(capturedTransportOpts[0]?.type).toBe('streamable-http');
+		expect(capturedTransportOpts[0]?.opts.authProvider).toBe(fakeProvider);
+		await conn.close();
+	});
+
+	it('forwards authProvider to SSEClientTransport', async () => {
+		const fakeProvider = { redirectUrl: undefined, clientMetadata: {} } as any;
+		capturedTransportOpts.length = 0;
+		mockConnect.mockResolvedValueOnce(undefined);
+		mockListTools.mockResolvedValueOnce({ tools: [] });
+
+		const conn = await connectMcpServer(
+			'oauth-server-sse',
+			baseOptions({ authProvider: fakeProvider, transport: 'sse' }),
+		);
+
+		expect(capturedTransportOpts).toHaveLength(1);
+		expect(capturedTransportOpts[0]?.type).toBe('sse');
+		expect(capturedTransportOpts[0]?.opts.authProvider).toBe(fakeProvider);
+		await conn.close();
+	});
+
+	it('does not pass authProvider when not provided', async () => {
+		capturedTransportOpts.length = 0;
+		mockConnect.mockResolvedValueOnce(undefined);
+		mockListTools.mockResolvedValueOnce({ tools: [] });
+
+		const conn = await connectMcpServer('plain', baseOptions());
+
+		expect(capturedTransportOpts).toHaveLength(1);
+		expect(capturedTransportOpts[0]?.opts.authProvider).toBeUndefined();
+		await conn.close();
+	});
+
+	it('still subscribes to tools/list_changed with authProvider', async () => {
+		const fakeProvider = { redirectUrl: undefined, clientMetadata: {} } as any;
+		mockConnect.mockResolvedValueOnce(undefined);
+		mockListTools.mockResolvedValueOnce({ tools: [] });
+		mockSetNotificationHandler.mockClear();
+
+		await connectMcpServer('oauth-server', baseOptions({ authProvider: fakeProvider }));
+
+		expect(mockSetNotificationHandler).toHaveBeenCalledTimes(1);
 	});
 });
