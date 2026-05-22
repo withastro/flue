@@ -1,10 +1,4 @@
-import {
-	connectMcpServer,
-	createAgent,
-	McpAuthRequiredError,
-	http,
-	type FlueContext,
-} from '@flue/runtime';
+import { connectMcpServer, createAgent, http, type FlueContext } from '@flue/runtime';
 
 export const channels = [http()];
 
@@ -15,10 +9,14 @@ export const channels = [http()];
  * - Dynamic token fetching via the `auth` hook
  * - Automatic 401 retry (the hook is re-called with reason 'retry-after-401')
  * - Pre-emptive revalidation before token expiry
- * - McpAuthRequiredError for flows that need interactive authorization
+ * - Static headers composing with hook headers (hook overrides on collision)
  *
  * Requires MCP_SERVER_URL and MCP_TOKEN in the environment.
- * In a real setup, the token would come from a vault, KV store, or OAuth flow.
+ * In a real setup, the token would come from a vault, KV store, or token endpoint.
+ *
+ * For interactive OAuth flows requiring user authorization, use the
+ * agent-resident MCP pattern on Cloudflare (ctx.agent.mcp) instead of
+ * the workflow auth hook.
  */
 export async function run({ init, payload, env }: FlueContext) {
 	let tokenVersion = 0;
@@ -32,7 +30,7 @@ export async function run({ init, payload, env }: FlueContext) {
 		auth: async ({ reason, wwwAuthenticate }) => {
 			console.log(`[with-mcp-auth] auth hook called: reason=${reason}`);
 
-			// In a real agent, you'd fetch from KV, Vault, or a token endpoint.
+			// In a real workflow, you'd fetch from KV, Vault, or a token endpoint.
 			// This example simulates a rotating token.
 			if (reason === 'retry-after-401') {
 				console.log('[with-mcp-auth] token rejected, fetching fresh one');
@@ -41,16 +39,6 @@ export async function run({ init, payload, env }: FlueContext) {
 			}
 
 			const token = env.MCP_TOKEN ?? `simulated-token-v${tokenVersion}`;
-			if (!token) {
-				// Signal that interactive auth is needed. A workflow wrapping this
-				// agent would catch McpAuthRequiredError, dispatch the URL to the
-				// user (Slack, email, web UI), and retry after creds are stored.
-				throw new McpAuthRequiredError({
-					authorizationUrl: 'https://auth.example.com/authorize',
-					wwwAuthenticate,
-				});
-			}
-
 			return { Authorization: `Bearer ${token}` };
 		},
 

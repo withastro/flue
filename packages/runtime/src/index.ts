@@ -69,7 +69,7 @@ export type {
 	McpAuthContext,
 	McpAuthReason,
 } from './mcp.ts';
-export { connectMcpServer, McpAuthRequiredError } from './mcp.ts';
+export { connectMcpServer } from './mcp.ts';
 export { ResultUnavailableError } from './result.ts';
 export { createSandboxSessionEnv, type SandboxApi } from './sandbox.ts';
 

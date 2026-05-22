@@ -264,24 +264,7 @@ const server = await connectMcpServer('internal', {
 
 The `auth` context includes `serverUrl`, `reason` (`'connect'`, `'retry-after-401'`, or `'revalidate'`), `signal` (aborted when the run is torn down), and `wwwAuthenticate` (the raw header from a 401 response). Concurrent 401 retries are deduplicated — only one hook call is made.
 
-For interactive OAuth flows where a human must authorize in a browser, throw `McpAuthRequiredError` from the hook with the authorization URL. The wrapping workflow can catch this, dispatch the URL to an external channel, and retry once the user has completed the flow.
-
-```ts
-import { McpAuthRequiredError } from '@flue/runtime';
-
-auth: async ({ reason, wwwAuthenticate }) => {
-  const stored = await kv.get(`mcp-token:${userId}`);
-  if (stored) return { Authorization: `Bearer ${stored}` };
-
-  if (reason === 'retry-after-401' || reason === 'connect') {
-    throw new McpAuthRequiredError({
-      authorizationUrl: 'https://auth.example.com/authorize?client_id=...',
-      wwwAuthenticate,
-    });
-  }
-  throw new Error('No credentials available');
-},
-```
+The `auth` hook is designed for **non-interactive** flows: service tokens, vault-fetched secrets, and rotating credentials. For interactive OAuth flows where a user must authorize in a browser, use the agent-resident MCP pattern on Cloudflare (`ctx.agent.mcp`) or the `authProvider` option below.
 
 #### Full OAuth via authProvider
 

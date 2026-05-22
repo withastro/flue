@@ -37,43 +37,14 @@ export interface McpAuthContext {
  * Dynamic auth hook. Return headers (e.g. `{ Authorization: 'Bearer ...' }`)
  * that will be merged into every outbound MCP request. Called once at connect
  * time and again on 401 retry. The returned promise may perform async work
- * such as fetching a token from a vault.
+ * such as fetching a token from a vault or rotating-secret endpoint.
  *
- * For interactive OAuth flows, throw {@link McpAuthRequiredError} with the
- * authorization URL. The wrapping workflow can then dispatch the URL to a
- * user-facing channel and resume once the callback arrives.
+ * This hook is designed for **non-interactive** auth flows (service tokens,
+ * vault-fetched secrets, rotating credentials). For interactive OAuth flows
+ * requiring user authorization, use `authProvider` (for manual wiring) or
+ * the agent-resident MCP pattern on Cloudflare (recommended).
  */
 export type McpAuthHook = (ctx: McpAuthContext) => HeadersInit | Promise<HeadersInit>;
-
-/**
- * Thrown from an {@link McpAuthHook} to signal that interactive authorization
- * is required. The workflow layer should catch this, present the authorization
- * URL to the user (via an external channel / dispatch), and retry once
- * credentials have been persisted.
- */
-export class McpAuthRequiredError extends Error {
-	override readonly name = 'McpAuthRequiredError';
-	readonly authorizationUrl?: URL;
-	readonly resourceMetadataUrl?: URL;
-	readonly wwwAuthenticate?: string;
-
-	constructor(init: {
-		message?: string;
-		authorizationUrl?: URL | string;
-		resourceMetadataUrl?: URL | string;
-		wwwAuthenticate?: string;
-		cause?: unknown;
-	}) {
-		super(init.message ?? 'MCP server requires interactive authorization', { cause: init.cause });
-		this.authorizationUrl = init.authorizationUrl
-			? init.authorizationUrl instanceof URL ? init.authorizationUrl : new URL(init.authorizationUrl)
-			: undefined;
-		this.resourceMetadataUrl = init.resourceMetadataUrl
-			? init.resourceMetadataUrl instanceof URL ? init.resourceMetadataUrl : new URL(init.resourceMetadataUrl)
-			: undefined;
-		this.wwwAuthenticate = init.wwwAuthenticate;
-	}
-}
 
 // ─── Connection types ───────────────────────────────────────────────────────
 

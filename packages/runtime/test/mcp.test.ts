@@ -1,5 +1,4 @@
 import { describe, expect, it, vi } from 'vitest';
-import { McpAuthRequiredError } from '../src/mcp.ts';
 
 // We test connectMcpServer's validation and the auth fetch wrapper logic.
 // The full MCP SDK transport/client is not started — we mock the underlying
@@ -59,46 +58,6 @@ function baseOptions(overrides: Record<string, unknown> = {}) {
 		...overrides,
 	};
 }
-
-// ─── McpAuthRequiredError ───────────────────────────────────────────────────
-
-describe('McpAuthRequiredError', () => {
-	it('constructs with default message', () => {
-		const err = new McpAuthRequiredError({});
-		expect(err.name).toBe('McpAuthRequiredError');
-		expect(err.message).toBe('MCP server requires interactive authorization');
-		expect(err.authorizationUrl).toBeUndefined();
-		expect(err.resourceMetadataUrl).toBeUndefined();
-		expect(err.wwwAuthenticate).toBeUndefined();
-	});
-
-	it('accepts string URLs and converts to URL objects', () => {
-		const err = new McpAuthRequiredError({
-			message: 'Need auth',
-			authorizationUrl: 'https://auth.example.com/authorize',
-			resourceMetadataUrl: 'https://mcp.example.com/.well-known/oauth-protected-resource',
-			wwwAuthenticate:
-				'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"',
-		});
-		expect(err.message).toBe('Need auth');
-		expect(err.authorizationUrl).toBeInstanceOf(URL);
-		expect(err.authorizationUrl?.href).toBe('https://auth.example.com/authorize');
-		expect(err.resourceMetadataUrl).toBeInstanceOf(URL);
-		expect(err.wwwAuthenticate).toContain('Bearer');
-	});
-
-	it('accepts URL objects directly', () => {
-		const authUrl = new URL('https://auth.example.com/authorize');
-		const err = new McpAuthRequiredError({ authorizationUrl: authUrl });
-		expect(err.authorizationUrl).toBe(authUrl);
-	});
-
-	it('preserves cause', () => {
-		const cause = new Error('upstream');
-		const err = new McpAuthRequiredError({ cause });
-		expect(err.cause).toBe(cause);
-	});
-});
 
 // ─── Validation ─────────────────────────────────────────────────────────────
 
@@ -185,16 +144,7 @@ describe('connectMcpServer auth hook', () => {
 		);
 	});
 
-	it('propagates McpAuthRequiredError from hook', async () => {
-		const authHook = vi.fn().mockRejectedValue(
-			new McpAuthRequiredError({
-				authorizationUrl: 'https://auth.example.com/authorize',
-			}),
-		);
-		await expect(connectMcpServer('test', baseOptions({ auth: authHook }))).rejects.toThrow(
-			McpAuthRequiredError,
-		);
-	});
+
 });
 
 // ─── refreshTools ───────────────────────────────────────────────────────────
