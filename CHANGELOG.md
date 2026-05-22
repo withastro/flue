@@ -231,7 +231,9 @@
     }
   ```
 
-- **Workflow and agent exports are intentionally stricter.** Workflow modules must directly export `export async function run(...)` and may export `export const channels = [http(), websocket()]`; agent modules that participate in channels must directly export `channels`, `receive(...)`, and `init(...)`. Re-export lists, default exports, unsupported named exports, duplicate basenames, type-only exports from runtime modules, and non-async handlers now fail during build with targeted errors. This makes generated Node and Cloudflare entries deterministic and avoids runtime surprises from partially analyzable modules.
+- **Workflow and agent modules now reserve only Flue-owned exports.** Workflow modules must directly export `export async function run(...)` and may export `export const channels = [http(), websocket()]`; agent modules that participate in channels must directly export `channels`, `receive(...)`, and `init(...)`. Other local exports are allowed for schemas, helper functions, and TypeScript-only payload/result types, but Flue-owned exports still need the direct forms so generated Node and Cloudflare entries stay deterministic.
+
+- **`ToolDef` was renamed to `ToolDefinition`.** Update type imports from `ToolDef` to `ToolDefinition`; no compatibility alias is provided.
 
 - **External channel endpoints are no longer created automatically.** Defining `createGitHubChannel()` or exporting `channels = [github()]` only subscribes an agent to normalized `github` deliveries. To accept real GitHub traffic, mount `createGitHubChannelRouter()` yourself in `app.ts`; any previous expectation of an implicit `/channels/github` endpoint should be replaced with an explicit route such as `/webhooks/github`.
 
@@ -256,7 +258,7 @@
 
 - **Reject oversized persisted run events.** Flue now fails runs that emit event payloads beyond the 256 KB persistence limit instead of attempting to store them, avoiding excessive run-history storage work while preserving lifecycle cleanup.
 
-- **Direct agent delivery, dispatched inputs, and workflow runs now share more of the run/event infrastructure.** Direct agent HTTP calls still support regular JSON responses and `Accept: text/event-stream`; dispatched external-channel inputs now wake the target agent, append a model-visible dispatch message, run the target session immediately, and emit `run_start` / operation / `run_end` lifecycle events. Workflow HTTP calls now wait for workflow results, while `flue run` uses detached streams so CLI invocations can follow the same run log model as deployed HTTP routes.
+- **Direct agent delivery, dispatched inputs, and workflow runs now share more of the run/event infrastructure.** Direct agent HTTP calls still support regular JSON responses and `Accept: text/event-stream`; dispatched external-channel inputs now wake the target agent, append a model-visible dispatch message, run the target session immediately, and emit `run_start` / operation / `run_end` lifecycle events. Workflow HTTP calls default to fire-and-forget admission with `202 { status: "accepted", runId }`; use `?wait=result` for a synchronous JSON result envelope or `Accept: text/event-stream` to stream run events. `flue run` uses detached streams so CLI invocations can follow the same run log model as deployed HTTP routes.
 
 - **External delivery handling is safer under fan-out.** A single provider delivery can dispatch zero, one, or many inputs, including cross-agent dispatches. Flue snapshots dispatch input at admission time, passes an isolated clone of the delivery to each subscribed `receive(...)` handler, and records per-agent receive errors without preventing later subscribers from running.
 

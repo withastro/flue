@@ -303,7 +303,7 @@ function workflowRouteSpec() {
 		operationId: 'invokeWorkflow',
 		summary: 'Start a workflow run',
 		description:
-			'Starts the named HTTP-exposed workflow and returns an accepted run id by default.',
+			'Starts the named HTTP-exposed workflow. By default this is fire-and-forget and returns an accepted run id; use ?wait=result for a synchronous JSON result or Accept: text/event-stream to stream run events.',
 		requestBody: {
 			required: false,
 			content: {

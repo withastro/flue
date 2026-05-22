@@ -37,10 +37,13 @@ function parseAgentFile(filePath: string): ParsedAgentFile {
 	let hasChannels = false;
 	let hasReceive = false;
 	let hasInit = false;
+	let hasDefaultExport = false;
+	let hasTriggers = false;
 
 	for (const statement of ast.statements) {
 		if (isDefaultExport(statement)) {
-			throwUnsupportedAgentExports(filePath, 'default exports are not supported');
+			hasDefaultExport = true;
+			continue;
 		}
 
 		if (ts.isExportDeclaration(statement)) {
@@ -51,10 +54,7 @@ function parseAgentFile(filePath: string): ParsedAgentFile {
 
 		if (ts.isFunctionDeclaration(statement)) {
 			const name = statement.name?.text;
-			if (!name) throwUnsupportedAgentExports(filePath, 'anonymous exports are not supported');
-			if (name !== 'receive' && name !== 'init') {
-				throwUnsupportedAgentExports(filePath, `unsupported named export "${name}"`);
-			}
+			if (!name || (name !== 'receive' && name !== 'init')) continue;
 			if (!hasModifier(statement, ts.SyntaxKind.AsyncKeyword)) {
 				throwUnsupportedAgentExports(filePath, `"${name}" must be async`);
 			}
@@ -68,22 +68,17 @@ function parseAgentFile(filePath: string): ParsedAgentFile {
 			continue;
 		}
 
-		if (!ts.isVariableStatement(statement)) {
-			if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) {
-				throwUnsupportedAgentExports(filePath, 'type-only exports are not supported');
-			}
-			const name = declarationName(statement);
-			if (name) throwUnsupportedAgentExports(filePath, `unsupported named export "${name}"`);
-			throwUnsupportedAgentExports(filePath, 'unsupported exported declaration');
-		}
+		if (!ts.isVariableStatement(statement)) continue;
 
 		for (const declaration of statement.declarationList.declarations) {
-			if (!ts.isIdentifier(declaration.name)) {
-				throwUnsupportedAgentExports(filePath, 'destructured agent exports are not supported');
-			}
+			if (!ts.isIdentifier(declaration.name)) continue;
 			const name = declaration.name.text;
+			if (name === 'triggers') {
+				hasTriggers = true;
+				continue;
+			}
 			if (name !== 'channels') {
-				throwUnsupportedAgentExports(filePath, `unsupported named export "${name}"`);
+				continue;
 			}
 			if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) {
 				throwUnsupportedAgentChannels(filePath, 'channels must be declared with export const');
@@ -92,6 +87,11 @@ function parseAgentFile(filePath: string): ParsedAgentFile {
 			if (!declaration.initializer) throwUnsupportedAgentChannels(filePath, 'missing initializer');
 			hasChannels = true;
 		}
+	}
+
+	if (hasDefaultExport) {
+		if (hasTriggers) throwLegacyAgentMigrationError(filePath);
+		throwUnsupportedAgentExports(filePath, 'default exports are not supported');
 	}
 
 	if (hasChannels && !hasInit) {
@@ -129,10 +129,7 @@ function parseWorkflowFile(filePath: string): ParsedWorkflowFile {
 
 		if (ts.isFunctionDeclaration(statement)) {
 			const name = statement.name?.text;
-			if (!name) throwUnsupportedWorkflowExports(filePath, 'anonymous exports are not supported');
-			if (name !== 'run') {
-				throwUnsupportedWorkflowExports(filePath, `unsupported named export "${name}"`);
-			}
+			if (!name || name !== 'run') continue;
 			if (!hasModifier(statement, ts.SyntaxKind.AsyncKeyword)) {
 				throwUnsupportedWorkflowRun(filePath, '"run" must be async');
 			}
@@ -141,30 +138,16 @@ function parseWorkflowFile(filePath: string): ParsedWorkflowFile {
 			continue;
 		}
 
-		if (!ts.isVariableStatement(statement)) {
-			if (ts.isInterfaceDeclaration(statement) || ts.isTypeAliasDeclaration(statement)) {
-				throwUnsupportedWorkflowExports(filePath, 'type-only exports are not supported');
-			}
-			const name = declarationName(statement);
-			if (name === 'run') {
-				throwUnsupportedWorkflowRun(filePath, '"run" must be a direct exported async function declaration');
-			}
-			if (name) {
-				throwUnsupportedWorkflowExports(filePath, `unsupported named export "${name}"`);
-			}
-			throwUnsupportedWorkflowExports(filePath, 'unsupported exported declaration');
-		}
+		if (!ts.isVariableStatement(statement)) continue;
 
 		for (const declaration of statement.declarationList.declarations) {
-			if (!ts.isIdentifier(declaration.name)) {
-				throwUnsupportedWorkflowExports(filePath, 'destructured workflow exports are not supported');
-			}
+			if (!ts.isIdentifier(declaration.name)) continue;
 			const name = declaration.name.text;
 			if (name === 'run') {
 				throwUnsupportedWorkflowRun(filePath, '"run" must be a direct exported async function declaration');
 			}
 			if (name !== 'channels') {
-				throwUnsupportedWorkflowExports(filePath, `unsupported named export "${name}"`);
+				continue;
 			}
 			if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) {
 				throwUnsupportedWorkflowChannels(filePath, 'channels must be declared with export const');
@@ -198,39 +181,30 @@ function hasModifier(statement: ts.Statement, kind: ts.SyntaxKind): boolean {
 function throwUnsupportedWorkflowExportDeclaration(
 	filePath: string,
 	statement: ts.ExportDeclaration,
-): never {
+): void {
 	if (statement.isTypeOnly) {
-		throwUnsupportedWorkflowExports(filePath, 'type-only exports are not supported');
+		return;
 	}
 	if (statement.moduleSpecifier) {
-		throwUnsupportedWorkflowExports(filePath, 're-exported workflow exports are not supported');
+		return;
 	}
 	if (!statement.exportClause || !ts.isNamedExports(statement.exportClause)) {
-		throwUnsupportedWorkflowExports(filePath, 'namespace and export-star workflow exports are not supported');
+		return;
 	}
 	const namedExports = statement.exportClause;
-	if (namedExports.elements.some((element) => element.isTypeOnly)) {
-		throwUnsupportedWorkflowExports(filePath, 'type-only exports are not supported');
-	}
-	const names = namedExports.elements.map((element) => element.name.text);
+	const names = namedExports.elements.filter((element) => !element.isTypeOnly).map((element) => element.name.text);
 	if (names.includes('run')) {
 		throwUnsupportedWorkflowRun(filePath, 'export lists for "run" are not supported');
 	}
 	if (names.includes('channels')) {
 		throwUnsupportedWorkflowChannels(filePath, 'export lists for "channels" are not supported');
 	}
-	throwUnsupportedWorkflowExports(filePath, `unsupported export list for "${names.join(', ')}"`);
-}
-
-function declarationName(statement: ts.Statement): string | undefined {
-	if (ts.isClassDeclaration(statement)) return statement.name?.text;
-	return undefined;
 }
 
 function throwUnsupportedWorkflowExports(filePath: string, reason: string): never {
 	throw new Error(
 		`[flue] Unsupported workflow exports in ${filePath}: ${reason}. ` +
-			'Workflow modules must directly export "export async function run(...)"; may export "export const channels = [http(), websocket()]"; and must not export anything else.',
+			'Workflow modules must directly export "export async function run(...)"; "channels", when present, must use "export const channels = [http(), websocket()]".',
 	);
 }
 
@@ -251,24 +225,36 @@ function throwUnsupportedWorkflowChannels(filePath: string, reason: string): nev
 function throwUnsupportedAgentExportDeclaration(
 	filePath: string,
 	statement: ts.ExportDeclaration,
-): never {
+): void {
 	if (statement.isTypeOnly) {
-		throwUnsupportedAgentExports(filePath, 'type-only exports are not supported');
+		return;
 	}
 	if (statement.moduleSpecifier) {
-		throwUnsupportedAgentExports(filePath, 're-exported agent exports are not supported');
+		return;
 	}
 	if (!statement.exportClause || !ts.isNamedExports(statement.exportClause)) {
-		throwUnsupportedAgentExports(filePath, 'namespace and export-star agent exports are not supported');
+		return;
 	}
-	const names = statement.exportClause.elements.map((element) => element.name.text);
-	throwUnsupportedAgentExports(filePath, `export lists are not supported for "${names.join(', ')}"`);
+	const names = statement.exportClause.elements.filter((element) => !element.isTypeOnly).map((element) => element.name.text);
+	if (names.includes('init') || names.includes('receive')) {
+		throwUnsupportedAgentExports(filePath, 'export lists for "init" and "receive" are not supported');
+	}
+	if (names.includes('channels')) {
+		throwUnsupportedAgentChannels(filePath, 'export lists for "channels" are not supported');
+	}
+}
+
+function throwLegacyAgentMigrationError(filePath: string): never {
+	throw new Error(
+		`[flue] Found legacy 0.7 agent in ${filePath}: default export + triggers. ` +
+			'In Flue 0.8, one-shot HTTP/webhook jobs should move to workflows/<name>.ts and export "export const channels = [http()]" plus "export async function run(...)".',
+	);
 }
 
 function throwUnsupportedAgentExports(filePath: string, reason: string): never {
 	throw new Error(
 		`[flue] Unsupported agent exports in ${filePath}: ${reason}. ` +
-			'Agent modules with external channels must directly export "export const channels = [...]", "export async function receive(...)" and "export async function init(...)"; default exports and triggers are not supported.',
+			'Agent modules with channels must directly export "export const channels = [...]" and "export async function init(...)"; external-channel agents must also directly export "export async function receive(...)". Default exports and triggers are not supported.',
 	);
 }
 
