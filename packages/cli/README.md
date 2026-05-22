@@ -14,12 +14,14 @@ Flue isn't another AI SDK. It's a proper runtime-agnostic framework — think As
 
 ## Packages
 
-| Package                       | Description                             |
-| ----------------------------- | --------------------------------------- |
+| Package                             | Description                                |
+| ----------------------------------- | ------------------------------------------ |
 | [`@flue/runtime`](packages/runtime) | Runtime: harness, sessions, tools, sandbox |
-| [`@flue/cli`](packages/cli)   | CLI + build/dev tooling (`flue` binary)    |
+| [`@flue/cli`](packages/cli)         | CLI + build/dev tooling (`flue` binary)    |
 
 ## Examples
+
+Message-driven agents receive direct messages at `/agents/:name/:id` and inbound external-channel deliveries at `/channels/:channel`. See [Message-Driven Agents](docs/message-driven-agents.md) for direct attached surfaces, `receive(...)`, `dispatch(...)`, `init(...)`, and inbound-only channel examples.
 
 ### Quickstart
 
@@ -36,19 +38,22 @@ import * as v from 'valibot';
 export const channels = [http()];
 
 // The workflow handler. Where the orchestration of the workflow lives.
-export async function run ({ init, payload }: FlueContext) {
+export async function run({ init, payload }: FlueContext) {
   // `harness` -- Your initialized harness including sandbox, tools, skills, etc.
   const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
 
   // prompt() sends a message in the session, triggering action.
-  const { data } = await session.prompt(`Translate this to ${payload.language}: "${payload.text}"`, {
-    // Pass `result` to get typed, schema-validated data back from your agent.
-    result: v.object({
-      translation: v.string(),
-      confidence: v.picklist(['low', 'medium', 'high']),
-    }),
-  });
+  const { data } = await session.prompt(
+    `Translate this to ${payload.language}: "${payload.text}"`,
+    {
+      // Pass `result` to get typed, schema-validated data back from your agent.
+      result: v.object({
+        translation: v.string(),
+        confidence: v.picklist(['low', 'medium', 'high']),
+      }),
+    },
+  );
 
   return data;
 }
@@ -63,16 +68,12 @@ Because this agent is deployed to Cloudflare, message history and session state 
 ```ts
 // .flue/workflows/support.ts
 import { http, type FlueContext } from '@flue/runtime';
-import {
-  getDefaultWorkspace,
-  getShellSandbox,
-  hydrateFromBucket,
-} from '@flue/runtime/cloudflare';
+import { getDefaultWorkspace, getShellSandbox, hydrateFromBucket } from '@flue/runtime/cloudflare';
 import * as v from 'valibot';
 
 export const channels = [http()];
 
-export async function run ({ init, payload, env }: FlueContext) {
+export async function run({ init, payload, env }: FlueContext) {
   const workspace = getDefaultWorkspace();
 
   // Hydrate once per agent instance. R2 is a source, not a live mount.
@@ -111,7 +112,7 @@ import * as v from 'valibot';
 
 // Because we are running this in CI, we don't need to expose this as an HTTP endpoint.
 // The CLI can run any workflow from the command line, `flue run triage ...`
-export async function run ({ init, payload }: FlueContext) {
+export async function run({ init, payload }: FlueContext) {
   // `local()` gives the agent direct access to the host filesystem and
   // shell. The agent's bash tool can run `gh`, `git`, `npm` directly.
   // Skills and AGENTS.md are discovered from process.cwd().
@@ -167,7 +168,7 @@ import { daytona } from '../connectors/daytona';
 
 export const channels = [http()];
 
-export async function run ({ init, payload, env }: FlueContext) {
+export async function run({ init, payload, env }: FlueContext) {
   // Each agent gets a real container via Daytona. The container has
   // a full Linux environment with persistent filesystem and shell.
   //
@@ -215,7 +216,7 @@ import { connectMcpServer, http, type FlueContext } from '@flue/runtime';
 
 export const channels = [http()];
 
-export async function run ({ init, payload, env }: FlueContext) {
+export async function run({ init, payload, env }: FlueContext) {
   const github = await connectMcpServer('github', {
     url: 'https://mcp.github.com/mcp',
     headers: {
