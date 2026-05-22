@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { flue } from '../src/app.ts';
-import { createGitHubWebhook } from '../src/github.ts';
+import { createGitHubChannelRouter, createGitHubWebhook } from '../src/github.ts';
 import {
 	configureFlueRuntime,
 	InMemoryDispatchQueue,
@@ -14,7 +14,6 @@ describe('GitHub webhook channel', () => {
 		configureFlueRuntime({
 			target: 'node',
 			handlers: {},
-			channelHandlers: { github: createGitHubWebhook({ secret: 'secret' }) },
 			receiveHandlers: {
 				triage: async ({ delivery }) => received.push(delivery),
 			},
@@ -26,7 +25,8 @@ describe('GitHub webhook channel', () => {
 		const body = JSON.stringify({ action: 'opened', repository: { full_name: 'flue/test' }, sender: { login: 'octocat' } });
 		const app = new Hono();
 		app.route('/', flue());
-		const res = await app.fetch(new Request('http://localhost/channels/github', {
+		app.route('/webhooks/github', createGitHubChannelRouter({ webhookSecret: 'secret' }));
+		const res = await app.fetch(new Request('http://localhost/webhooks/github', {
 			method: 'POST',
 			headers: {
 				'x-github-delivery': 'delivery-1',
@@ -53,17 +53,10 @@ describe('GitHub webhook channel', () => {
 	});
 
 	it('rejects invalid GitHub webhook signatures', async () => {
-		configureFlueRuntime({
-			target: 'node',
-			handlers: {},
-			channelHandlers: { github: createGitHubWebhook({ secret: 'secret' }) },
-			receiveHandlers: {},
-			manifest: { agents: [] },
-		});
-
 		const app = new Hono();
 		app.route('/', flue());
-		const res = await app.fetch(new Request('http://localhost/channels/github', {
+		app.route('/webhooks/github', createGitHubChannelRouter({ webhookSecret: 'secret' }));
+		const res = await app.fetch(new Request('http://localhost/webhooks/github', {
 			method: 'POST',
 			headers: {
 				'x-github-delivery': 'delivery-1',
@@ -97,7 +90,6 @@ describe('GitHub webhook channel', () => {
 		configureFlueRuntime({
 			target: 'node',
 			handlers: {},
-			channelHandlers: { github: createGitHubWebhook() },
 			dispatchQueue: new InMemoryDispatchQueue({
 				process(input) {
 					dispatches.push(input);
@@ -115,7 +107,8 @@ describe('GitHub webhook channel', () => {
 
 		const app = new Hono();
 		app.route('/', flue());
-		const res = await app.fetch(new Request('http://localhost/channels/github', {
+		app.route('/webhooks/github', createGitHubChannelRouter());
+		const res = await app.fetch(new Request('http://localhost/webhooks/github', {
 			method: 'POST',
 			headers: { 'x-github-delivery': 'delivery-1', 'x-github-event': 'issues' },
 			body: JSON.stringify({ action: 'opened', issue: { number: 123 }, repository: { full_name: 'flue/test' } }),

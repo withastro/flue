@@ -1,4 +1,5 @@
 import { flue, observe } from '@flue/runtime/app';
+import { createGitHubChannelRouter } from '@flue/runtime/github';
 import { Hono } from 'hono';
 
 observe((event) => {
@@ -18,5 +19,6 @@ observe((event) => {
 
 const app = new Hono();
 app.route('/', flue());
+app.route('/webhooks/github', createGitHubChannelRouter());
 
 export default app;

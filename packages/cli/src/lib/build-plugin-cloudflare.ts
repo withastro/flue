@@ -47,7 +47,7 @@ export class CloudflarePlugin implements BuildPlugin {
 	}
 
 	async generateEntryPoint(ctx: BuildContext): Promise<string> {
-		const { agents, appEntry, workflows, channels } = ctx;
+		const { agents, appEntry, workflows } = ctx;
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 		validateCloudflareAgentNames(ctx);
 
@@ -70,16 +70,6 @@ export class CloudflarePlugin implements BuildPlugin {
 			.join('\n');
 		const workflowModuleEntries = workflows
 			.map((workflow, index) => `  ${JSON.stringify(workflow.name)}: ${workflowVarName(workflow.name, index)},`)
-			.join('\n');
-		const channelImports = channels
-			.map((channel, index) => {
-				const varName = channelVarName(channel.name, index);
-				const filePath = channel.filePath.replace(/\\/g, '/');
-				return `import * as ${varName} from '${filePath}';`;
-			})
-			.join('\n');
-		const channelModuleEntries = channels
-			.map((channel, index) => `  ${JSON.stringify(channel.name)}: ${channelVarName(channel.name, index)},`)
 			.join('\n');
 
 		const agentClasses = agents
@@ -161,7 +151,6 @@ import { registerApiProvider, registerProvider } from '@flue/runtime/app';
 
 ${agentImports}
 ${workflowImports}
-${channelImports}
 
 ${userAppImport}
 
@@ -186,13 +175,7 @@ if (!hasRegisteredProvider('cloudflare')) {
 const skills = {};
 const systemPrompt = '';
 
-function normalizeBuiltModules(agentModules, workflowModules, channelModules) {
-  const channelHandlers = {};
-  for (const [name, mod] of Object.entries(channelModules)) {
-    const definition = normalizeChannelExport(mod.channel, 'channel "' + name + '"');
-    if (definition.webhook) channelHandlers[definition.type] = definition.webhook;
-  }
-
+function normalizeBuiltModules(agentModules, workflowModules) {
   const manifest = { agents: [], workflows: [] };
   const directHandlers = {};
   const receiveHandlers = {};
@@ -224,7 +207,7 @@ function normalizeBuiltModules(agentModules, workflowModules, channelModules) {
     if (channels.http) workflowHandlers[name] = mod.run;
   }
 
-  return { manifest, directHandlers, receiveHandlers, workflowHandlers, channelHandlers };
+  return { manifest, directHandlers, receiveHandlers, workflowHandlers };
 }
 
 function normalizeChannelList(value, label) {
@@ -233,14 +216,14 @@ function normalizeChannelList(value, label) {
   const result = {};
   for (const entry of value) {
     const definition = normalizeChannelExport(entry, label + ' channel');
-    result[definition.type] = true;
+    result[definition.name] = true;
   }
   return result;
 }
 
 function normalizeChannelExport(value, label) {
   const definition = typeof value === 'function' ? value() : value;
-  if (!definition || typeof definition !== 'object' || typeof definition.type !== 'string' || definition.type.trim() === '') {
+  if (!definition || typeof definition !== 'object' || definition.__flueChannel !== true || typeof definition.name !== 'string' || definition.name.trim() === '') {
     throw new Error('[flue] Invalid ' + label + ': expected a channel definition or zero-argument channel factory.');
   }
   return definition;
@@ -252,11 +235,8 @@ ${agentModuleEntries}
 const workflowModules = {
 ${workflowModuleEntries}
 };
-const channelModules = {
-${channelModuleEntries}
-};
-const normalized = normalizeBuiltModules(agentModules, workflowModules, channelModules);
-const { manifest, directHandlers, receiveHandlers, workflowHandlers, channelHandlers } = normalized;
+const normalized = normalizeBuiltModules(agentModules, workflowModules);
+const { manifest, directHandlers, receiveHandlers, workflowHandlers } = normalized;
 
 // ─── Sandbox Environments ───────────────────────────────────────────────────
 
@@ -553,7 +533,6 @@ configureFlueRuntime({
   manifest,
   handlers: directHandlers,
   receiveHandlers,
-  channelHandlers,
   dispatchQueue,
   routeAgentRequest: (request, env) => routeAgentRequest(request, env),
   routeWorkflowRequest: async (request, reqEnv, target) => {
@@ -716,10 +695,6 @@ function workflowVarName(name: string, index: number): string {
 	return `workflow_${readableName}_${index}`;
 }
 
-function channelVarName(name: string, index: number): string {
-	const readableName = name.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'channel';
-	return `channel_${readableName}_${index}`;
-}
 
 const CLOUDFLARE_AGENT_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 

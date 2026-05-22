@@ -8,7 +8,7 @@ export class NodePlugin implements BuildPlugin {
 	bundle = 'esbuild' as const;
 
 	generateEntryPoint(ctx: BuildContext): string {
-		const { agents, appEntry, workflows, channels } = ctx;
+		const { agents, appEntry, workflows } = ctx;
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 
 		const agentImports = agents
@@ -26,22 +26,12 @@ export class NodePlugin implements BuildPlugin {
 				return `import * as ${varName} from '${filePath}';`;
 			})
 			.join('\n');
-		const channelImports = channels
-			.map((channel, index) => {
-				const varName = channelVarName(channel.name, index);
-				const filePath = channel.filePath.replace(/\\/g, '/');
-				return `import * as ${varName} from '${filePath}';`;
-			})
-			.join('\n');
 
 		const agentModuleEntries = agents
 			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)},`)
 			.join('\n');
 		const workflowModuleEntries = workflows
 			.map((workflow, index) => `  ${JSON.stringify(workflow.name)}: ${workflowVarName(workflow.name, index)},`)
-			.join('\n');
-		const channelModuleEntries = channels
-			.map((channel, index) => `  ${JSON.stringify(channel.name)}: ${channelVarName(channel.name, index)},`)
 			.join('\n');
 
 		// User-supplied app.ts (if any). The generated entry imports the user's
@@ -74,7 +64,6 @@ import {
 } from '@flue/runtime/internal';
 ${agentImports}
 ${workflowImports}
-${channelImports}
 ${userAppImport}
 
 // ─── Config ─────────────────────────────────────────────────────────────────
@@ -82,15 +71,7 @@ ${userAppImport}
 const skills = {};
 const systemPrompt = '';
 
-function normalizeBuiltModules(agentModules, workflowModules, channelModules) {
-  const channelDefinitions = {};
-  const channelHandlers = {};
-  for (const [name, mod] of Object.entries(channelModules)) {
-    const definition = normalizeChannelExport(mod.channel, 'channel "' + name + '"');
-    channelDefinitions[name] = definition;
-    if (definition.webhook) channelHandlers[definition.type] = definition.webhook;
-  }
-
+function normalizeBuiltModules(agentModules, workflowModules) {
   const manifest = { agents: [], workflows: [] };
   const directHandlers = {};
   const receiveHandlers = {};
@@ -123,7 +104,7 @@ function normalizeBuiltModules(agentModules, workflowModules, channelModules) {
     if (channels.http) workflowHandlers[name] = mod.run;
   }
 
-  return { manifest, directHandlers, receiveHandlers, initHandlers, workflowHandlers, channelHandlers };
+  return { manifest, directHandlers, receiveHandlers, initHandlers, workflowHandlers };
 }
 
 function normalizeChannelList(value, label) {
@@ -132,14 +113,14 @@ function normalizeChannelList(value, label) {
   const result = {};
   for (const entry of value) {
     const definition = normalizeChannelExport(entry, label + ' channel');
-    result[definition.type] = true;
+    result[definition.name] = true;
   }
   return result;
 }
 
 function normalizeChannelExport(value, label) {
   const definition = typeof value === 'function' ? value() : value;
-  if (!definition || typeof definition !== 'object' || typeof definition.type !== 'string' || definition.type.trim() === '') {
+  if (!definition || typeof definition !== 'object' || definition.__flueChannel !== true || typeof definition.name !== 'string' || definition.name.trim() === '') {
     throw new Error('[flue] Invalid ' + label + ': expected a channel definition or zero-argument channel factory.');
   }
   return definition;
@@ -151,11 +132,8 @@ ${agentModuleEntries}
 const workflowModules = {
 ${workflowModuleEntries}
 };
-const channelModules = {
-${channelModuleEntries}
-};
-const normalized = normalizeBuiltModules(agentModules, workflowModules, channelModules);
-const { manifest, directHandlers, receiveHandlers, initHandlers, workflowHandlers, channelHandlers } = normalized;
+const normalized = normalizeBuiltModules(agentModules, workflowModules);
+const { manifest, directHandlers, receiveHandlers, initHandlers, workflowHandlers } = normalized;
 
 // When the CLI starts this server via \`flue run\`, it sets FLUE_MODE=local.
 const isLocalMode = process.env.FLUE_MODE === 'local';
@@ -217,7 +195,6 @@ configureFlueRuntime({
   manifest,
   handlers: directHandlers,
   receiveHandlers,
-  channelHandlers,
   dispatchQueue,
   workflowHandlers,
   createContext: createContextForRequest,
@@ -291,9 +268,4 @@ function agentVarName(name: string, index: number): string {
 function workflowVarName(name: string, index: number): string {
 	const readableName = name.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'workflow';
 	return `workflow_${readableName}_${index}`;
-}
-
-function channelVarName(name: string, index: number): string {
-	const readableName = name.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'channel';
-	return `channel_${readableName}_${index}`;
 }

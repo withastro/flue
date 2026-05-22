@@ -75,16 +75,16 @@ curl http://localhost:3583/agents/assistant/user-123 \
 
 ## External Channels
 
-External channels receive provider events at a shared channel endpoint:
+External channels receive provider events through routers that you mount in `app.ts`:
 
 ```txt
-POST /channels/:channel
+app.route('/webhooks/github', createGitHubChannelRouter())
 ```
 
-For example, GitHub webhooks use:
+For example, GitHub webhooks may use:
 
 ```txt
-POST /channels/github
+POST /webhooks/github
 ```
 
 The connector verifies and normalizes the provider event into a `Delivery`:
@@ -100,19 +100,19 @@ type Delivery = {
 };
 ```
 
-Channel connectors live in `.flue/channels/`, and agent modules subscribe with a `channels` export:
+Channel connectors can live in a normal `.flue/channels.ts` module, and agent modules subscribe with a `channels` export:
 
 ```ts
-// .flue/channels/github.ts
+// .flue/channels.ts
 import { createGitHubChannel } from '@flue/runtime/github';
 
-export const channel = createGitHubChannel();
+export const github = createGitHubChannel();
 ```
 
 ```ts
 // .flue/agents/github-triage.ts
 import { defineAgent, type AgentInitContext, type ReceiveContext } from '@flue/runtime';
-import { channel as github } from '../channels/github';
+import { github } from '../channels';
 
 export const channels = [github()];
 
@@ -229,23 +229,37 @@ Dynamic per-delivery behavior belongs in `receive(...)` or in reusable agent def
 
 ## GitHub Webhooks
 
-Define the GitHub channel in `.flue/channels/github.ts`:
+Define the GitHub channel in `.flue/channels.ts`:
 
 ```ts
 import { createGitHubChannel } from '@flue/runtime/github';
 
-export const channel = createGitHubChannel();
+export const github = createGitHubChannel();
+```
+
+Mount the GitHub router in `.flue/app.ts`:
+
+```ts
+import { flue } from '@flue/runtime/app';
+import { createGitHubChannelRouter } from '@flue/runtime/github';
+import { Hono } from 'hono';
+
+const app = new Hono();
+app.route('/', flue());
+app.route('/webhooks/github', createGitHubChannelRouter());
+
+export default app;
 ```
 
 Then subscribe from an agent:
 
 ```ts
-import { channel as github } from '../channels/github';
+import { github } from '../channels';
 
 export const channels = [github()];
 ```
 
-When a channel module named `github` exports a GitHub channel, the generated runtime wires `/channels/github` to the GitHub webhook handler.
+The route is whatever you mount in `app.ts`; the example above uses `/webhooks/github`.
 
 Set `GITHUB_WEBHOOK_SECRET` to verify `X-Hub-Signature-256` signatures:
 

@@ -6,12 +6,13 @@ import type * as v from 'valibot';
 export type { ThinkingLevel };
 
 export interface WorkflowChannel<TName extends 'http' | 'websocket' = 'http' | 'websocket'> {
-	readonly type: TName;
+	readonly __flueChannel: true;
+	readonly name: TName;
 }
 
 export interface ChannelDefinition<TName extends string = string> {
-	readonly type: TName;
-	readonly webhook?: ChannelWebhookHandler;
+	readonly __flueChannel: true;
+	readonly name: TName;
 }
 
 export interface ChannelWebhookHandler {

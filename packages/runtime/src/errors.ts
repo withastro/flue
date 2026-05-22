@@ -370,18 +370,6 @@ export class RunRegistryUnavailableError extends FlueHttpError {
 	}
 }
 
-export class ExternalChannelUnavailableError extends FlueHttpError {
-	constructor({ reason }: { reason: string }) {
-		super({
-			type: 'external_channel_unavailable',
-			message: 'External channel delivery is not available in this runtime.',
-			details: reason,
-			dev: '',
-			status: 501,
-		});
-	}
-}
-
 export class InvalidRequestError extends FlueHttpError {
 	constructor({ reason }: { reason: string }) {
 		super({

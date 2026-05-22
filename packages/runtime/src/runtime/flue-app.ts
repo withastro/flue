@@ -8,8 +8,6 @@ import {
 	validator,
 } from 'hono-openapi';
 import {
-	ExternalChannelUnavailableError,
-	InvalidRequestError,
 	MethodNotAllowedError,
 	RouteNotFoundError,
 	RunNotFoundError,
@@ -19,7 +17,6 @@ import {
 	validateAgentRequest,
 	validateWorkflowRequest,
 } from '../errors.ts';
-import type { ChannelWebhookHandler } from '../types.ts';
 import {
 	type AgentHandler,
 	type CreateContextFn,
@@ -60,7 +57,6 @@ export interface FlueRuntime {
 	 */
 	handlers?: Record<string, AgentHandler>;
 	receiveHandlers?: Record<string, AgentReceiveHandler>;
-	channelHandlers?: Record<string, ChannelWebhookHandler>;
 	workflowHandlers?: Record<string, WorkflowHandler>;
 
 	/**
@@ -185,12 +181,6 @@ export function flue(): Hono {
 	app.all('/workflows/:name', workflowRouteHandler);
 
 	app.post(
-		'/channels/:channel',
-		externalChannelRouteHandler,
-	);
-	app.all('/channels/:channel', externalChannelRouteHandler);
-
-	app.post(
 		'/agents/:name/:id',
 		describeRoute(agentRouteSpec() as DescribeRouteOptions),
 		validated('param', AgentRouteParamSchema),
@@ -222,35 +212,6 @@ export function flue(): Hono {
 	app.onError((err) => toHttpResponse(err));
 
 	return app;
-}
-
-async function externalChannelRouteHandler(c: any): Promise<Response> {
-	const rt = runtimeConfig;
-	const channel = c.req.param('channel');
-	if (c.req.method !== 'POST') {
-		throw new MethodNotAllowedError({ method: c.req.method, allowed: ['POST'] });
-	}
-	if (!rt) {
-		throw new Error('[flue] Runtime is not configured.');
-	}
-	if (rt.target === 'cloudflare') {
-		throw new ExternalChannelUnavailableError({
-			reason: 'Cloudflare external-channel dispatch processing is not supported yet. Dispatch must route to the target agent Durable Object before it can process session input.',
-		});
-	}
-	const handler = rt.channelHandlers?.[channel];
-	if (!handler) {
-		throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
-	}
-	const delivery = await handler.receive(c.req.raw, c.env);
-	if (delivery.channel !== channel) {
-		throw new InvalidRequestError({ reason: `Channel handler returned delivery for "${delivery.channel}" while handling "${channel}".` });
-	}
-	const result = await receiveExternalDeliveryWithRuntime(delivery, rt);
-	return new Response(JSON.stringify({ accepted: true, ...result }), {
-		status: 202,
-		headers: { 'content-type': 'application/json' },
-	});
 }
 
 /**

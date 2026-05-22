@@ -21,15 +21,9 @@ export interface WorkflowInfo {
 	hasChannels: boolean;
 }
 
-export interface ChannelInfo {
-	name: string;
-	filePath: string;
-}
-
 export interface BuildContext {
 	agents: AgentInfo[];
 	workflows: WorkflowInfo[];
-	channels: ChannelInfo[];
 	manifest: {
 		agents: Array<{
 			name: string;

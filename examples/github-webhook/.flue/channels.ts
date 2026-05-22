@@ -1,3 +1,3 @@
 import { createGitHubChannel } from '@flue/runtime/github';
 
-export const channel = createGitHubChannel();
+export const github = createGitHubChannel();

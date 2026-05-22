@@ -7,12 +7,12 @@ import { NodePlugin } from '../../cli/src/lib/build-plugin-node.ts';
 import type { BuildContext } from '../../cli/src/lib/types.ts';
 
 describe('Node build plugin', () => {
-	it('imports channel modules and derives channel handlers from exports', () => {
+	it('derives route metadata from imported agent and workflow modules', () => {
 		const entry = new NodePlugin().generateEntryPoint(testBuildContext());
 
-		expect(entry).toContain("import * as channel_github_0 from '/tmp/channels/github.ts'");
-		expect(entry).toContain('const normalized = normalizeBuiltModules(agentModules, workflowModules, channelModules);');
-		expect(entry).toContain('channelHandlers,');
+		expect(entry).toContain("import * as handler_triage_0 from '/tmp/triage.ts'");
+		expect(entry).toContain('const normalized = normalizeBuiltModules(agentModules, workflowModules);');
+		expect(entry).not.toContain('channelModules');
 	});
 
 	it('rejects duplicate agent basenames', async () => {
@@ -28,7 +28,6 @@ describe('Node build plugin', () => {
 function testBuildContext(): BuildContext {
 	return {
 		agents: [{ name: 'triage', filePath: '/tmp/triage.ts', hasChannels: true, hasReceive: true, hasInit: true }],
-		channels: [{ name: 'github', filePath: '/tmp/channels/github.ts' }],
 		workflows: [],
 		manifest: {
 			agents: [{ name: 'triage', channels: {}, receive: true, init: true }],

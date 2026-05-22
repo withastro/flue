@@ -1,5 +1,5 @@
 import { defineAgent, type Delivery, type ReceiveContext, type AgentInitContext } from '@flue/runtime';
-import { channel as github } from '../channels/github';
+import { github } from '../channels';
 
 export const channels = [github()];
 

@@ -1,19 +1,28 @@
-import { InvalidRequestError, UnauthorizedError } from './errors.ts';
+import { Hono } from 'hono';
+import { InvalidRequestError, toHttpResponse, UnauthorizedError } from './errors.ts';
+import { receiveExternalDelivery } from './runtime/flue-app.ts';
 import type { ChannelDefinition, ChannelWebhookHandler } from './types.ts';
 import { defineChannel } from './channels.ts';
 
-export const github: ChannelDefinition<'github'> = defineChannel('github');
-
 export interface GitHubWebhookOptions {
 	/** Shared webhook secret. Defaults to env.GITHUB_WEBHOOK_SECRET when omitted. */
-	secret?: string;
+	webhookSecret?: string;
 }
 
-export function createGitHubChannel(options: GitHubWebhookOptions = {}): () => ChannelDefinition<'github'> {
-	return () => ({
-		type: 'github',
-		webhook: createGitHubWebhook(options),
+export function createGitHubChannel(): () => ChannelDefinition<'github'> {
+	return () => defineChannel('github');
+}
+
+export function createGitHubChannelRouter(options: GitHubWebhookOptions = {}): Hono {
+	const app = new Hono();
+	const webhook = createGitHubWebhook(options);
+	app.post('/', async (c) => {
+		const delivery = await webhook.receive(c.req.raw, c.env);
+		const result = await receiveExternalDelivery(delivery);
+		return c.json({ accepted: true, ...result }, 202);
 	});
+	app.onError((error) => toHttpResponse(error));
+	return app;
 }
 
 export function createGitHubWebhook(options: GitHubWebhookOptions = {}): ChannelWebhookHandler {
@@ -26,7 +35,7 @@ export function createGitHubWebhook(options: GitHubWebhookOptions = {}): Channel
 			const event = requiredHeader(request, 'x-github-event');
 			const signature = request.headers.get('x-hub-signature-256');
 			const body = await request.text();
-			const secret = options.secret ?? readEnvString(env, 'GITHUB_WEBHOOK_SECRET') ?? readProcessEnvString('GITHUB_WEBHOOK_SECRET');
+			const secret = options.webhookSecret ?? readEnvString(env, 'GITHUB_WEBHOOK_SECRET') ?? readProcessEnvString('GITHUB_WEBHOOK_SECRET');
 			if (secret) {
 				if (!signature) throw new UnauthorizedError({ reason: 'Missing GitHub webhook signature.' });
 				if (!(await verifyGitHubSignature(body, secret, signature))) {
