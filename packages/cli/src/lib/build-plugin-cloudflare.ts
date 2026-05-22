@@ -60,7 +60,10 @@ export class CloudflarePlugin implements BuildPlugin {
 			})
 			.join('\n');
 		const receiveHandlerMapEntries = agents
-			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)}.receive,`)
+			.flatMap((a, index) => a.hasReceive ? [`  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)}.receive,`] : [])
+			.join('\n');
+		const directHandlerMapEntries = agents
+			.map((a, index) => `  ${JSON.stringify(a.name)}: createDirectAgentHandler(${agentVarName(a.name, index)}.init),`)
 			.join('\n');
 
 		const workflowImports = workflows
@@ -74,7 +77,22 @@ export class CloudflarePlugin implements BuildPlugin {
 			.map((workflow, index) => `  ${JSON.stringify(workflow.name)}: ${workflowVarName(workflow.name, index)},`)
 			.join('\n');
 
-		const agentClasses = '';
+		const agentClasses = agents
+			.map((agent) => `export class ${agentClassName(agent.name)} extends Agent {
+  async onRequest(request) {
+    return dispatchAgent(request, this, ${JSON.stringify(agent.name)}, directHandlers[${JSON.stringify(agent.name)}]);
+  }
+
+  async onFiberRecovered(ctx) {
+    if (ctx.name?.startsWith('flue:')) {
+      return handleFlueFiberRecovered(ctx, this, ${JSON.stringify(agent.name)});
+    }
+    if (typeof super.onFiberRecovered === 'function') {
+      return super.onFiberRecovered(ctx);
+    }
+  }
+}`)
+			.join('\n\n');
 
 		const workflowRunOwnerClass =
 			workflows.length > 0
@@ -122,6 +140,7 @@ import {
   handleRunRouteRequest,
   configureFlueRuntime,
   createDefaultFlueApp,
+  createDirectAgentHandler,
   hasRegisteredProvider,
   parseWorkflowRunId,
   InMemoryDispatchQueue,
@@ -161,9 +180,12 @@ if (!hasRegisteredProvider('cloudflare')) {
 const skills = {};
 const systemPrompt = '';
 
-const webhookAgentNames = [];
+const webhookAgentNames = ${JSON.stringify(agents.map((a) => a.name))};
 const receiveHandlers = {
 ${receiveHandlerMapEntries}
+};
+const directHandlers = {
+${directHandlerMapEntries}
 };
 const workflowHandlers = {
 ${workflowHandlerMapEntries}
@@ -456,10 +478,8 @@ configureFlueRuntime({
   runtimeVersion: ${runtimeVersion},
   manifest: ${manifestJson},
   webhookAgents: webhookAgentNames,
-  // Direct agent HTTP routing is being rebuilt around the new init/session
-  // lifecycle, so Phase 1 exposes no agent DO classes.
   allowNonWebhook: false,
-  handlers: {},
+  handlers: directHandlers,
   receiveHandlers,
   dispatchQueue,
   routeAgentRequest: (request, env) => routeAgentRequest(request, env),
@@ -519,14 +539,10 @@ export default {
 	async additionalOutputs(ctx: BuildContext): Promise<Record<string, string>> {
 		const outputs: Record<string, string> = {};
 
-		// Per-agent DO bindings are deferred while agents move from default HTTP
-		// handlers to the new init/session lifecycle. Flue no longer forces a
-		// `Sandbox` binding, container entry, or Dockerfile — users who want
-		// container sandboxes declare those themselves in their own
-		// wrangler.jsonc (preserved via the merge below). Flue only automates
-		// the `export { Sandbox as ... }` re-export in the bundle (see
-		// generateEntryPoint).
-		const flueBindings: Array<{ name: string; class_name: string }> = [];
+		const flueBindings: Array<{ name: string; class_name: string }> = ctx.agents.map((agent) => {
+			const className = agentClassName(agent.name);
+			return { name: className, class_name: className };
+		});
 
 		if (ctx.workflows.length > 0) {
 			flueBindings.push({ name: 'FLUE_WORKFLOW_RUNS', class_name: 'WorkflowRunOwner' });

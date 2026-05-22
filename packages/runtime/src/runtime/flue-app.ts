@@ -51,22 +51,20 @@ export interface FlueRuntime {
 	target: 'node' | 'cloudflare';
 
 	/**
-	 * Names of agents reachable over direct HTTP. This remains for the legacy
-	 * direct route while the new init/session lifecycle is implemented.
+	 * Names of agents reachable over direct HTTP.
 	 */
 	webhookAgents: ReadonlyArray<string>;
 
 	/**
 	 * If true, the agent route accepts registered agents that are not listed in
-	 * webhookAgents. Phase 1 generated entries keep this false while direct agent
-	 * routing is rebuilt.
+	 * webhookAgents.
 	 */
 	allowNonWebhook: boolean;
 
 	// ─── Node-only ──────────────────────────────────────────────────────────
 
 	/**
-	 * Legacy map of agent name -> direct HTTP handler function.
+	 * Map of agent name -> direct HTTP handler function.
 	 */
 	handlers?: Record<string, AgentHandler>;
 	receiveHandlers?: Record<string, AgentReceiveHandler>;
@@ -733,7 +731,7 @@ function normalizeRunRequest(
  * Compute the set of agent names considered "registered" for purposes
  * of the agent route's name-validity check.
  *
- *   - Node: every entry in the legacy handler map.
+	 *   - Node: every entry in the direct handler map.
  *   - Cloudflare: only direct-route agents have generated DO classes, so
  *     external-channel-only names have no valid landing target.
  */

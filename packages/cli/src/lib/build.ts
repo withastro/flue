@@ -106,9 +106,6 @@ function parseAgentFile(filePath: string): ParsedAgentFile {
 	if (!channels && hasReceive) {
 		throwUnsupportedAgentExports(filePath, '"receive" requires a "channels" export');
 	}
-	if (!channels && hasInit) {
-		throwUnsupportedAgentExports(filePath, '"init" requires a "channels" export in Phase 1');
-	}
 
 	return { channels, hasReceive, hasInit };
 }
@@ -443,7 +440,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 
 	if (agents.length > 0) {
 		console.log(
-			`[flue] Found ${agents.length} external-channel agent(s): ${agents.map((a) => a.name).join(', ')}`,
+			`[flue] Found ${agents.length} agent(s): ${agents.map((a) => a.name).join(', ')}`,
 		);
 	}
 	if (workflows.length > 0) {
@@ -638,11 +635,11 @@ function discoverAgents(sourceRoot: string): AgentInfo[] {
 		.flatMap((f) => {
 			const filePath = path.join(agentsDir, f);
 			const parsed = parseAgentFile(filePath);
-			if (!parsed.channels) return [];
+			if (!parsed.channels && !parsed.hasInit) return [];
 			return [{
 				name: f.replace(/\.(ts|js|mts|mjs)$/, ''),
 				filePath,
-				channels: parsed.channels,
+				channels: parsed.channels ?? {},
 				hasReceive: parsed.hasReceive,
 				hasInit: parsed.hasInit,
 			}];

@@ -1,20 +1,47 @@
 /** Shared per-agent HTTP dispatcher for the Node and Cloudflare targets. */
 
 import type { FlueContextInternal } from '../client.ts';
-import { parseJsonBody, RunEventTooLargeError, toHttpResponse } from '../errors.ts';
-import type { FlueEvent } from '../types.ts';
+import { InvalidRequestError, parseJsonBody, RunEventTooLargeError, toHttpResponse } from '../errors.ts';
+import type { AgentInitContext, DirectAgentPayload, FlueEvent, FlueHarness } from '../types.ts';
 import { generateRunId, generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
 import type { RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 
-/**
- * Legacy direct agent handler signature. The new message-driven agent module
- * shape is being introduced separately; this remains until direct attached
- * surfaces are rebuilt on top of init/session delivery.
- */
+/** Direct agent handler signature used by HTTP sync/webhook/SSE modes. */
 export type AgentHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
+export type AgentInitHandler = (ctx: AgentInitContext) => FlueHarness | Promise<FlueHarness>;
 export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
+
+export function createDirectAgentHandler(init: AgentInitHandler): AgentHandler {
+	return async (ctx) => {
+		const payload = parseDirectAgentPayload(ctx.payload);
+		const harness = await init({
+			id: ctx.id,
+			spawn: (options) => ctx.init(options),
+		});
+		if (!harness || typeof harness !== 'object' || typeof harness.session !== 'function') {
+			throw new Error('[flue] Agent init() must return spawn(...).');
+		}
+		const session = await harness.session(payload.session);
+		return session.prompt(payload.message);
+	};
+}
+
+function parseDirectAgentPayload(payload: unknown): DirectAgentPayload {
+	const expected = 'Direct agent requests must use JSON object body { "message": string, "session"?: string }.';
+	if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+		throw new InvalidRequestError({ reason: expected });
+	}
+	const value = payload as { message?: unknown; session?: unknown };
+	if (typeof value.message !== 'string') {
+		throw new InvalidRequestError({ reason: expected });
+	}
+	if (value.session !== undefined && (typeof value.session !== 'string' || value.session.trim() === '')) {
+		throw new InvalidRequestError({ reason: 'Direct agent request "session" must be a non-empty string when provided.' });
+	}
+	return { message: value.message, session: value.session };
+}
 
 /**
  * Caller-provided context factory. Differs per-target:

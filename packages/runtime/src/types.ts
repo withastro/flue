@@ -32,6 +32,19 @@ export interface ReceiveContext {
 	dispatch: Dispatch;
 }
 
+export interface DirectAgentPayload {
+	message: string;
+	/** Provisional Phase 3 direct HTTP session selector. Defaults to "default". */
+	session?: string;
+}
+
+export interface AgentInitContext {
+	/** Target agent instance id from `/agents/:name/:id`. */
+	id: string;
+	/** Construct the runtime harness for this agent instance. */
+	spawn(options: AgentInit): Promise<FlueHarness>;
+}
+
 /**
  * Inline image content attached to a `prompt()`, `skill()`, or `task()` call.
  * Re-exports pi-ai's `ImageContent` shape: `{ type: 'image', data: base64, mimeType }`.

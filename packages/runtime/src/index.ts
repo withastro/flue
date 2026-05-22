@@ -45,6 +45,8 @@ export type {
 	Dispatch,
 	DispatchRequest,
 	ReceiveContext,
+	DirectAgentPayload,
+	AgentInitContext,
 } from './types.ts';
 
 export { Type } from '@earendil-works/pi-ai';

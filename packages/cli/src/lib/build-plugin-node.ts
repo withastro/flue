@@ -29,7 +29,10 @@ export class NodePlugin implements BuildPlugin {
 			.join('\n');
 
 		const receiveHandlerMapEntries = agents
-			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)}.receive,`)
+			.flatMap((a, index) => a.hasReceive ? [`  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)}.receive,`] : [])
+			.join('\n');
+		const directHandlerMapEntries = agents
+			.map((a, index) => `  ${JSON.stringify(a.name)}: createDirectAgentHandler(${agentVarName(a.name, index)}.init),`)
 			.join('\n');
 		const workflowHandlerMapEntries = workflows
 			.map((workflow, index) => `  ${JSON.stringify(workflow.name)}: ${workflowVarName(workflow.name, index)},`)
@@ -59,6 +62,7 @@ import {
   resolveModel,
   configureFlueRuntime,
   createDefaultFlueApp,
+  createDirectAgentHandler,
   InMemoryDispatchQueue,
 } from '@flue/runtime/internal';
 ${agentImports}
@@ -73,13 +77,14 @@ const systemPrompt = '';
 const receiveHandlers = {
 ${receiveHandlerMapEntries}
 };
+const directHandlers = {
+${directHandlerMapEntries}
+};
 const workflowHandlers = {
 ${workflowHandlerMapEntries}
 };
 
 // When the CLI starts this server via \`flue run\`, it sets FLUE_MODE=local.
-// Agent direct routing is being rebuilt around the new init/session model, so
-// Phase 1 does not expose agent modules as direct HTTP webhook handlers.
 const isLocalMode = process.env.FLUE_MODE === 'local';
 
 // ─── Sandbox Environments ───────────────────────────────────────────────────
@@ -131,9 +136,9 @@ configureFlueRuntime({
   target: 'node',
   runtimeVersion: ${runtimeVersion},
   manifest: ${manifestJson},
-  webhookAgents: [],
+  webhookAgents: ${JSON.stringify(agents.map((a) => a.name))},
   allowNonWebhook: false,
-  handlers: {},
+  handlers: directHandlers,
   receiveHandlers,
   dispatchQueue,
   workflowHandlers,
@@ -177,9 +182,9 @@ const server = serve({
 console.log('[flue] Server listening on http://localhost:' + port);
 if (isLocalMode) {
 	console.log('[flue] Mode: local');
-	console.log('[flue] External-channel agents: ' + ${JSON.stringify(agents.map((a) => a.name).join(', '))});
+	console.log('[flue] Agents: ' + ${JSON.stringify(agents.map((a) => a.name).join(', '))});
 } else {
-	console.log('[flue] External-channel agents: ' + ${JSON.stringify(agents.map((a) => a.name).join(', '))});
+	console.log('[flue] Agents: ' + ${JSON.stringify(agents.map((a) => a.name).join(', '))});
 }
 
 process.on('SIGINT', () => { server.close(); process.exit(0); });

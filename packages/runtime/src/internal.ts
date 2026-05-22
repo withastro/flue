@@ -32,6 +32,7 @@ export type { DispatchInput, DispatchProcessor, DispatchQueue, DispatchReceipt }
 export { InMemoryDispatchQueue } from './runtime/dispatch-queue.ts';
 export type {
 	AgentHandler,
+	AgentInitHandler,
 	CreateContextFn,
 	HandleAgentOptions,
 	HandleWorkflowOptions,
@@ -57,7 +58,7 @@ export type {
 //     don't author their own `app.ts`).
 //
 // The user-facing `flue()` itself is re-exported from `@flue/runtime/app`, not here.
-export { handleAgentRequest, handleWorkflowRequest } from './runtime/handle-agent.ts';
+export { createDirectAgentHandler, handleAgentRequest, handleWorkflowRequest } from './runtime/handle-agent.ts';
 export { generateWorkflowRunId, parseWorkflowRunId } from './runtime/ids.ts';
 export type { HandleRunRouteOptions } from './runtime/handle-run-routes.ts';
 export { handleRunRouteRequest } from './runtime/handle-run-routes.ts';
