@@ -106,6 +106,13 @@ export class CloudflarePlugin implements BuildPlugin {
 }`)
 			.join('\n\n');
 
+		const agentClassMapEntries = agents
+			.map((agent) => `  ${JSON.stringify(agent.name)}: ${JSON.stringify(agentClassName(agent.name))},`)
+			.join('\n');
+		const workflowClassMapEntries = workflows
+			.map((workflow) => `  ${JSON.stringify(workflow.name)}: ${JSON.stringify(workflowClassName(workflow.name))},`)
+			.join('\n');
+
 		const { config: userConfig } = await this.getUserConfig(ctx.root);
 		const sandboxClassNames = detectSandboxBindings(userConfig);
 		const sandboxReExports = sandboxClassNames
@@ -235,6 +242,12 @@ ${workflowModuleEntries}
 };
 const normalized = normalizeBuiltModules(agentModules, workflowModules);
 const { manifest, directHandlers, receiveHandlers, workflowHandlers } = normalized;
+const agentClassNames = {
+${agentClassMapEntries}
+};
+const workflowClassNames = {
+${workflowClassMapEntries}
+};
 
 // ─── Sandbox Environments ───────────────────────────────────────────────────
 
@@ -376,11 +389,25 @@ const agentBindingNameFromAgentName = ${agentClassName.toString().replace(/agent
  */
 const workflowBindingNameFromWorkflowName = ${workflowBindingName.toString().replace(/workflowBindingName/g, 'workflowBindingNameFromWorkflowName')};
 
-function runWithInstanceContext(doInstance, fn) {
+function runWithInstanceContext(doInstance, identity, fn) {
   return runWithCloudflareContext(
-    { env: doInstance.env, agentInstance: doInstance, storage: doInstance.ctx.storage },
+    {
+      env: doInstance.env,
+      agentInstance: doInstance,
+      storage: doInstance.ctx.storage,
+      durableObjectIdentity: createDurableObjectIdentity(doInstance, identity),
+    },
     fn,
   );
+}
+
+function createDurableObjectIdentity(doInstance, identity) {
+  return {
+    bindingName: identity.bindingName,
+    className: identity.className,
+    name: doInstance.name,
+    id: doInstance.ctx.id.toString(),
+  };
 }
 
 function assertAgentsDurabilityApi(doInstance, method) {
@@ -426,28 +453,29 @@ async function dispatchWorkflow(request, doInstance, workflowName) {
   if (!parseWorkflowStart(request, workflowName)) return null;
   const handler = workflowHandlers[workflowName];
   if (!handler) return null;
-  return handleWorkflowRequest({
-    request,
-    workflowName,
-    runId: instanceId,
-    handler,
-    runStore: createRunStoreForRequest(doInstance),
-    runSubscribers,
-    runRegistry: createRunRegistryForRequest(doInstance.env),
-    createContext: (id_, runId, payload, req) => createContextForRequest(id_, runId, payload, doInstance, req),
-    startWebhook: (runId, run) => {
-      const wrapped = (fiber) => {
-        fiber?.stash?.({ version: 1, kind: 'workflow', workflowName, runId, phase: 'running', startedAt: Date.now() });
-        return runWithInstanceContext(doInstance, run);
-      };
-      assertAgentsDurabilityApi(doInstance, 'runFiber');
-      return doInstance.runFiber('flue:workflow:' + runId, wrapped);
-    },
-    runHandler: (ctx, h) => runWithInstanceContext(doInstance, () => {
-      assertAgentsDurabilityApi(doInstance, 'keepAliveWhile');
-      return doInstance.keepAliveWhile(() => h(ctx));
-    }),
-  });
+  const identity = workflowRuntimeIdentity(workflowName);
+  return runWithInstanceContext(doInstance, identity, () => handleWorkflowRequest({
+      request,
+      workflowName,
+      runId: instanceId,
+      handler,
+      runStore: createRunStoreForRequest(doInstance),
+      runSubscribers,
+      runRegistry: createRunRegistryForRequest(doInstance.env),
+      createContext: (id_, runId, payload, req) => createContextForRequest(id_, runId, payload, doInstance, req),
+      startWebhook: (runId, run) => {
+        const wrapped = (fiber) => {
+          fiber?.stash?.({ version: 1, kind: 'workflow', workflowName, runId, phase: 'running', startedAt: Date.now() });
+          return runWithInstanceContext(doInstance, identity, run);
+        };
+        assertAgentsDurabilityApi(doInstance, 'runFiber');
+        return doInstance.runFiber('flue:workflow:' + runId, wrapped);
+      },
+      runHandler: (ctx, h) => {
+        assertAgentsDurabilityApi(doInstance, 'keepAliveWhile');
+        return doInstance.keepAliveWhile(() => h(ctx));
+      },
+    }));
 }
 
 async function dispatchAgent(request, doInstance, agentName, handler) {
@@ -463,36 +491,51 @@ async function dispatchAgent(request, doInstance, agentName, handler) {
     });
   }
 
-  return handleAgentRequest({
-    request,
-    agentName,
-    id,
-    handler,
-    runStore: createRunStoreForRequest(doInstance),
-    runSubscribers,
-    runRegistry: createRunRegistryForRequest(doInstance.env),
-    createContext: (id_, runId, payload, req) => createContextForRequest(id_, runId, payload, doInstance, req),
-    startWebhook: (runId, run) => {
-      const wrapped = (fiber) => {
-        fiber?.stash?.({
-          version: 1,
-          kind: 'webhook',
-          agentName,
-          id,
-          runId,
-          phase: 'running',
-          startedAt: Date.now(),
-        });
-        return runWithInstanceContext(doInstance, run);
-      };
-      assertAgentsDurabilityApi(doInstance, 'runFiber');
-      return doInstance.runFiber('flue:webhook:' + runId, wrapped);
-    },
-    runHandler: (ctx, h) => runWithInstanceContext(doInstance, () => {
-      assertAgentsDurabilityApi(doInstance, 'keepAliveWhile');
-      return doInstance.keepAliveWhile(() => h(ctx));
-    }),
-  });
+  const identity = agentRuntimeIdentity(agentName);
+  return runWithInstanceContext(doInstance, identity, () => handleAgentRequest({
+      request,
+      agentName,
+      id,
+      handler,
+      runStore: createRunStoreForRequest(doInstance),
+      runSubscribers,
+      runRegistry: createRunRegistryForRequest(doInstance.env),
+      createContext: (id_, runId, payload, req) => createContextForRequest(id_, runId, payload, doInstance, req),
+      startWebhook: (runId, run) => {
+        const wrapped = (fiber) => {
+          fiber?.stash?.({
+            version: 1,
+            kind: 'webhook',
+            agentName,
+            id,
+            runId,
+            phase: 'running',
+            startedAt: Date.now(),
+          });
+          return runWithInstanceContext(doInstance, identity, run);
+        };
+        assertAgentsDurabilityApi(doInstance, 'runFiber');
+        return doInstance.runFiber('flue:webhook:' + runId, wrapped);
+      },
+      runHandler: (ctx, h) => {
+        assertAgentsDurabilityApi(doInstance, 'keepAliveWhile');
+        return doInstance.keepAliveWhile(() => h(ctx));
+      },
+    }));
+}
+
+function workflowRuntimeIdentity(workflowName) {
+  return {
+    bindingName: workflowBindingNameFromWorkflowName(workflowName),
+    className: workflowClassNames[workflowName],
+  };
+}
+
+function agentRuntimeIdentity(agentName) {
+  return {
+    bindingName: agentBindingNameFromAgentName(agentName),
+    className: agentClassNames[agentName],
+  };
 }
 
 function parseWorkflowStart(request, workflowName) {

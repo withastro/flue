@@ -13,8 +13,8 @@ export { cfSandboxToSessionEnv } from './cf-sandbox.ts';
 
 export { store } from './session-store.ts';
 
-export { runWithCloudflareContext, getCloudflareContext } from './context.ts';
-export type { CloudflareContext } from './context.ts';
+export { runWithCloudflareContext, getCloudflareContext, getDurableObjectIdentity } from './context.ts';
+export type { CloudflareContext, FlueDurableObjectIdentity } from './context.ts';
 
 export { getCloudflareAIBindingApiProvider } from './workers-ai-provider.ts';
 

@@ -12,15 +12,28 @@ describe('Cloudflare build plugin', () => {
 		expect(entry).not.toContain('createContextForRequest(id, runId, payload, undefined, req)');
 	});
 
+	it('threads generated Durable Object identity through Cloudflare context', async () => {
+		const entry = await new CloudflarePlugin().generateEntryPoint(testBuildContext());
+
+		expect(entry).toContain('const agentClassNames = {');
+		expect(entry).toContain('"moderator": "Moderator"');
+		expect(entry).toContain('const workflowClassNames = {');
+		expect(entry).toContain('"daily-report": "DailyReportWorkflow"');
+		expect(entry).toContain('durableObjectIdentity: createDurableObjectIdentity(doInstance, identity)');
+		expect(entry).toContain('bindingName: workflowBindingNameFromWorkflowName(workflowName)');
+		expect(entry).toContain('bindingName: agentBindingNameFromAgentName(agentName)');
+		expect(entry).not.toContain('createRegistryIdentity');
+	});
+
 });
 
 function testBuildContext(): BuildContext {
 	return {
 		agents: [{ name: 'moderator', filePath: '/tmp/moderator.ts', hasChannels: true, hasReceive: true, hasInit: true }],
-		workflows: [],
+		workflows: [{ name: 'daily-report', filePath: '/tmp/daily-report.ts', hasChannels: true }],
 		manifest: {
 			agents: [{ name: 'moderator', channels: {}, receive: true, init: true }],
-			workflows: [],
+			workflows: [{ name: 'daily-report', channels: {} }],
 		},
 		root: '/tmp/flue-test',
 		output: '/tmp/flue-test/dist',

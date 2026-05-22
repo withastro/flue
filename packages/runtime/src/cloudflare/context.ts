@@ -16,6 +16,18 @@ export interface CloudflareContext {
 	storage: {
 		sql: any;
 	};
+	durableObjectIdentity?: FlueDurableObjectIdentity;
+}
+
+export interface FlueDurableObjectIdentity {
+	/** Wrangler binding name, e.g. "FLUE_WORKFLOW_DRAFT". */
+	bindingName: string;
+	/** Durable Object class name, e.g. "DraftWorkflow". */
+	className: string;
+	/** Instance name passed to idFromName/getAgentByName. */
+	name: string;
+	/** Durable Object id rendered by DurableObjectState.id.toString(). */
+	id: string;
 }
 
 const contextStorage = new AsyncLocalStorage<CloudflareContext>();
@@ -33,4 +45,12 @@ export function getCloudflareContext(): CloudflareContext {
 		);
 	}
 	return ctx;
+}
+
+export function getDurableObjectIdentity(): FlueDurableObjectIdentity {
+	const ctx = getCloudflareContext();
+	if (!ctx.durableObjectIdentity) {
+		throw new Error('[flue:cloudflare] Durable Object identity is not available in this Cloudflare context.');
+	}
+	return ctx.durableObjectIdentity;
 }
