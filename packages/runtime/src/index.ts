@@ -68,8 +68,14 @@ export type {
 	McpAuthHook,
 	McpAuthContext,
 	McpAuthReason,
+	RemoteMcpState,
+	RemoteMcpServer,
+	RemoteMcpTool,
+	RemoteMcpToolResult,
+	RemoteMcpConnectionState,
+	McpToolProxyOptions,
 } from './mcp.ts';
-export { connectMcpServer } from './mcp.ts';
+export { connectMcpServer, createMcpToolProxy } from './mcp.ts';
 export { ResultUnavailableError } from './result.ts';
 export { createSandboxSessionEnv, type SandboxApi } from './sandbox.ts';
 

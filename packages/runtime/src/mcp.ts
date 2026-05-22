@@ -421,3 +421,138 @@ function formatMcpResult(result: CallToolResult): string {
 
 	return parts.filter(Boolean).join('\n\n') || '(MCP tool returned no content)';
 }
+
+// ─── Remote MCP tool proxy ──────────────────────────────────────────────────
+
+/**
+ * Connection state for a remote MCP server. Structurally compatible with the
+ * Cloudflare Agents SDK's `MCPConnectionState` values.
+ */
+export type RemoteMcpConnectionState =
+	| 'authenticating'
+	| 'connecting'
+	| 'connected'
+	| 'discovering'
+	| 'ready'
+	| 'failed';
+
+/** A single remote MCP server's state snapshot. */
+export interface RemoteMcpServer {
+	name: string;
+	server_url: string;
+	auth_url: string | null;
+	state: RemoteMcpConnectionState;
+	error: string | null;
+}
+
+/** A tool exposed by a remote MCP server. */
+export interface RemoteMcpTool {
+	serverId: string;
+	name: string;
+	description?: string;
+	inputSchema: Record<string, unknown>;
+}
+
+/**
+ * State snapshot of remote MCP servers and their tools. Structurally
+ * compatible with the Cloudflare Agents SDK's `MCPServersState` shape
+ * (returned by `Agent.getMcpServers()`).
+ */
+export interface RemoteMcpState {
+	servers: Record<string, RemoteMcpServer>;
+	tools: RemoteMcpTool[];
+}
+
+/**
+ * Result shape returned by the remote `callTool` RPC. Matches the MCP
+ * SDK's `CallToolResult` subset needed for formatting.
+ */
+export interface RemoteMcpToolResult {
+	content?: Array<{
+		type: string;
+		text?: string;
+		data?: string;
+		mimeType?: string;
+		[key: string]: unknown;
+	}>;
+	isError?: boolean;
+	structuredContent?: unknown;
+}
+
+export interface McpToolProxyOptions {
+	/** State snapshot from the remote MCP host (agent DO, identity DO, etc.). */
+	state: RemoteMcpState;
+	/**
+	 * RPC function to call a tool on the remote host. The proxy delegates
+	 * every tool `execute()` to this function.
+	 */
+	callTool: (serverId: string, name: string, args: Record<string, unknown>) => Promise<RemoteMcpToolResult>;
+	/**
+	 * Optional server filter. Defaults to including only servers with
+	 * `state === 'ready'`. Return `true` to include a server's tools.
+	 */
+	include?: (server: RemoteMcpServer) => boolean;
+}
+
+/**
+ * Build `ToolDefinition[]` from a remote MCP state snapshot and a `callTool`
+ * RPC function. The returned tools can be passed to any agent or harness.
+ *
+ * This is the primary way to consume MCP tools whose actual transport
+ * connection lives elsewhere — e.g., on an identity Durable Object or a
+ * separate agent instance.
+ *
+ * ```ts
+ * const state = await identityStub.getMcpServersState();
+ * const tools = createMcpToolProxy({
+ *   state,
+ *   callTool: (serverId, name, args) => identityStub.callMcpTool(serverId, name, args),
+ * });
+ * ```
+ */
+export function createMcpToolProxy(options: McpToolProxyOptions): ToolDefinition[] {
+	const { state, callTool, include } = options;
+	const isIncluded = include ?? ((server: RemoteMcpServer) => server.state === 'ready');
+
+	const readyServerIds = new Set<string>();
+	for (const [id, server] of Object.entries(state.servers)) {
+		if (isIncluded(server)) readyServerIds.add(id);
+	}
+
+	const names = new Set<string>();
+
+	return state.tools
+		.filter((tool) => readyServerIds.has(tool.serverId))
+		.map((tool): ToolDefinition => {
+			const server = state.servers[tool.serverId];
+			const serverName = server?.name ?? tool.serverId;
+			const toolName = createToolName(serverName, tool.name);
+
+			if (names.has(toolName)) {
+				throw new Error(
+					`[flue] MCP proxy tools produced duplicate tool name "${toolName}".`,
+				);
+			}
+			names.add(toolName);
+
+			return {
+				name: toolName,
+				description: tool.description
+					? `MCP tool "${tool.name}" from server "${serverName}". ${tool.description}`
+					: `MCP tool "${tool.name}" from server "${serverName}".`,
+				parameters: normalizeInputSchema(
+					tool.inputSchema as Tool['inputSchema'],
+				),
+				async execute(args, signal) {
+					if (signal?.aborted) throw new Error('Operation aborted');
+					const result = await callTool(tool.serverId, tool.name, args);
+
+					const text = formatMcpResult(result as CallToolResult);
+					if (result.isError) {
+						throw new Error(text);
+					}
+					return text;
+				},
+			};
+		});
+}

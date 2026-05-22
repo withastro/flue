@@ -48,7 +48,7 @@ vi.mock('@modelcontextprotocol/sdk/client/sse.js', () => {
 });
 
 // Import after mocks are set up.
-const { connectMcpServer } = await import('../src/mcp.ts');
+const { connectMcpServer, createMcpToolProxy } = await import('../src/mcp.ts');
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -422,5 +422,160 @@ describe('connectMcpServer authProvider', () => {
 		await connectMcpServer('oauth-server', baseOptions({ authProvider: fakeProvider }));
 
 		expect(mockSetNotificationHandler).toHaveBeenCalledTimes(1);
+	});
+});
+
+// ─── createMcpToolProxy ─────────────────────────────────────────────────────
+
+function makeState(
+	servers: Record<string, { name: string; state: string }>,
+	tools: Array<{ serverId: string; name: string; description?: string }>,
+) {
+	const fullServers: Record<string, any> = {};
+	for (const [id, s] of Object.entries(servers)) {
+		fullServers[id] = {
+			name: s.name,
+			server_url: `https://${s.name}.example.com`,
+			auth_url: null,
+			state: s.state,
+			error: null,
+		};
+	}
+	return {
+		servers: fullServers,
+		tools: tools.map((t) => ({
+			serverId: t.serverId,
+			name: t.name,
+			description: t.description,
+			inputSchema: { type: 'object', properties: {} },
+		})),
+	};
+}
+
+describe('createMcpToolProxy', () => {
+	it('returns tools only from ready servers by default', () => {
+		const state = makeState(
+			{
+				s1: { name: 'github', state: 'ready' },
+				s2: { name: 'gitlab', state: 'authenticating' },
+			},
+			[
+				{ serverId: 's1', name: 'get_repo', description: 'Get a repo' },
+				{ serverId: 's2', name: 'list_mrs', description: 'List MRs' },
+			],
+		);
+
+		const tools = createMcpToolProxy({
+			state,
+			callTool: vi.fn(),
+		});
+
+		expect(tools).toHaveLength(1);
+		expect(tools[0]?.name).toBe('mcp__github__get_repo');
+	});
+
+	it('uses custom include predicate', () => {
+		const state = makeState(
+			{
+				s1: { name: 'github', state: 'ready' },
+				s2: { name: 'gitlab', state: 'authenticating' },
+			},
+			[
+				{ serverId: 's1', name: 'get_repo' },
+				{ serverId: 's2', name: 'list_mrs' },
+			],
+		);
+
+		const tools = createMcpToolProxy({
+			state,
+			callTool: vi.fn(),
+			include: () => true, // include all servers regardless of state
+		});
+
+		expect(tools).toHaveLength(2);
+	});
+
+	it('namespaces and sanitizes tool names', () => {
+		const state = makeState(
+			{ s1: { name: 'my-server', state: 'ready' } },
+			[{ serverId: 's1', name: 'get.user' }],
+		);
+
+		const tools = createMcpToolProxy({
+			state,
+			callTool: vi.fn(),
+		});
+
+		expect(tools[0]?.name).toBe('mcp__my-server__get_user');
+	});
+
+	it('includes description from tool definition', () => {
+		const state = makeState(
+			{ s1: { name: 'github', state: 'ready' } },
+			[{ serverId: 's1', name: 'get_repo', description: 'Fetch a repository by name.' }],
+		);
+
+		const tools = createMcpToolProxy({
+			state,
+			callTool: vi.fn(),
+		});
+
+		expect(tools[0]?.description).toContain('Fetch a repository by name.');
+		expect(tools[0]?.description).toContain('MCP tool "get_repo"');
+	});
+
+	it('delegates execute to callTool', async () => {
+		const callTool = vi.fn().mockResolvedValue({
+			content: [{ type: 'text', text: 'repo data here' }],
+		});
+
+		const state = makeState(
+			{ s1: { name: 'github', state: 'ready' } },
+			[{ serverId: 's1', name: 'get_repo' }],
+		);
+
+		const tools = createMcpToolProxy({ state, callTool });
+		const result = await tools[0]?.execute({ owner: 'cf', repo: 'flue' });
+
+		expect(callTool).toHaveBeenCalledWith('s1', 'get_repo', { owner: 'cf', repo: 'flue' });
+		expect(result).toBe('repo data here');
+	});
+
+	it('throws on isError result', async () => {
+		const callTool = vi.fn().mockResolvedValue({
+			content: [{ type: 'text', text: 'not found' }],
+			isError: true,
+		});
+
+		const state = makeState(
+			{ s1: { name: 'github', state: 'ready' } },
+			[{ serverId: 's1', name: 'get_repo' }],
+		);
+
+		const tools = createMcpToolProxy({ state, callTool });
+		await expect(tools[0]?.execute({})).rejects.toThrow('not found');
+	});
+
+	it('returns empty array for empty state', () => {
+		const tools = createMcpToolProxy({
+			state: { servers: {}, tools: [] },
+			callTool: vi.fn(),
+		});
+
+		expect(tools).toEqual([]);
+	});
+
+	it('throws on duplicate tool names', () => {
+		const state = makeState(
+			{ s1: { name: 'github', state: 'ready' } },
+			[
+				{ serverId: 's1', name: 'get_repo' },
+				{ serverId: 's1', name: 'get_repo' },
+			],
+		);
+
+		expect(() =>
+			createMcpToolProxy({ state, callTool: vi.fn() }),
+		).toThrow('duplicate tool name');
 	});
 });

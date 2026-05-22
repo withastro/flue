@@ -307,6 +307,39 @@ const updated = await server.refreshTools();
 // updated === server.tools (same array reference, mutated in place)
 ```
 
+#### Consuming remote MCP tools (proxy pattern)
+
+When MCP connections live on a separate runtime — an identity Durable Object, a user-scoped agent, or an external service — use `createMcpToolProxy` to build tool definitions from a remote state snapshot and an RPC function:
+
+```ts
+import { createMcpToolProxy, type RemoteMcpState } from '@flue/runtime';
+
+// Fetch state from whatever owns the MCP connections (agent DO, identity DO, etc.)
+const state: RemoteMcpState = await identityStub.getMcpServersState();
+
+const tools = createMcpToolProxy({
+  state,
+  callTool: (serverId, name, args) => identityStub.callMcpTool(serverId, name, args),
+});
+
+const agent = createAgent(() => ({
+  model: 'anthropic/claude-sonnet-4-6',
+  tools,
+}));
+```
+
+By default, only tools from servers with `state === 'ready'` are included. Mid-OAuth or failed servers are invisible to the LLM. Pass a custom `include` to override:
+
+```ts
+const tools = createMcpToolProxy({
+  state,
+  callTool,
+  include: (server) => server.state === 'ready' || server.state === 'discovering',
+});
+```
+
+This is the recommended pattern for interactive OAuth on Cloudflare: the identity DO owns the MCP connections, handles OAuth callbacks, and persists tokens; the workflow or agent consumes tools via proxy. See the `examples/cloudflare/` directory for a worked example.
+
 #### Transport and other options
 
 `connectMcpServer()` defaults to modern streamable HTTP. For legacy SSE servers, pass `transport: 'sse'`. You can also inject a custom `fetch` for advanced scenarios like request signing or proxy routing — this composes with `auth` (the auth-wrapped fetch delegates to your custom fetch).
