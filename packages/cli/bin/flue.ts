@@ -884,11 +884,8 @@ function startServer(
 	return spawn('node', [serverPath], {
 		stdio: ['ignore', 'pipe', 'pipe'],
 		cwd,
-		// FLUE_MODE=local signals the generated server to allow invocation of
-		// any registered agent (including trigger-less CI-only agents). Without
-		// this flag, the server enforces the `webhook: true` gate — which is
-		// the correct behavior for production deployments, but would prevent
-		// `flue run` from working with CI-only agents.
+		// FLUE_MODE=local keeps local CLI error envelopes verbose while the direct
+		// agent route is rebuilt around the new init/session model.
 		//
 		// Merge order: env-file values first, then `process.env` (so shell
 		// vars win on key collision — matches dotenv-cli convention), then

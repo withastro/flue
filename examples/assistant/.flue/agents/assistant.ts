@@ -1,7 +1,11 @@
-import type { FlueContext } from '@flue/runtime';
-import { getSandbox } from '@cloudflare/sandbox';
+import { defineAgent, type ReceiveContext } from '@flue/runtime';
+import { mock } from '../channels/mock';
 
-export const triggers = { webhook: true };
+export const channels = [mock()];
+
+const assistant = defineAgent({
+	instructions: 'You complete task requests delivered from external channels.',
+});
 
 /**
  * Assistant — Internal assistant agent.
@@ -15,11 +19,17 @@ export const triggers = { webhook: true };
  *   { "message": "Clone cloudflare/workers-sdk and fix the failing tests", "userId": "..." }
  *   { "message": "What version of Node.js is installed?", "userId": "..." }
  */
-export default async function ({ init, id, env, payload }: FlueContext) {
-	const sandbox = getSandbox(env.Sandbox, id);
-	const harness = await init({ sandbox, model: 'anthropic/claude-sonnet-4-6' });
-	const session = await harness.session();
-	const message = payload.message ?? '';
-	const { text } = await session.prompt(message);
-	return { reply: text };
+export async function receive({ delivery, dispatch }: ReceiveContext) {
+	await dispatch({
+		id: 'assistant:default',
+		session: `delivery:${delivery.id}`,
+		input: {
+			type: 'mock.task.received',
+			data: delivery.data,
+		},
+	});
+}
+
+export async function init({ spawn }: { spawn: (options: unknown) => unknown }) {
+	return spawn({ inherit: assistant });
 }

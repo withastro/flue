@@ -291,14 +291,13 @@ export class AgentNotWebhookError extends FlueHttpError {
 	constructor({ name }: { name: string }) {
 		super({
 			type: 'agent_not_webhook',
-			message: `Agent "${name}" is not web-accessible.`,
+			message: `Agent "${name}" is not directly web-accessible.`,
 			details: `This endpoint is not exposed over HTTP.`,
 			// Dev-only: source-code-level fix instructions for the agent
 			// author. The HTTP caller can't act on this.
 			dev:
-				`This agent has no webhook trigger configured. ` +
-				`To expose it, add a webhook trigger to its definition (\`triggers: { webhook: true }\`). ` +
-				`Trigger-less agents remain invokable via "flue run" in local mode.`,
+				`This agent is not configured for direct HTTP access. ` +
+				`External-channel agents receive normalized deliveries through receive(...).`,
 			status: 404,
 		});
 	}
@@ -675,8 +674,7 @@ export interface ValidateAgentRequestOptions {
 	registeredAgents: readonly string[];
 	webhookAgents: readonly string[];
 	/**
-	 * If true, skip the webhook-accessibility check. Used by `flue run` /
-	 * dev local mode where trigger-less agents are also invokable.
+	 * If true, skip the direct-accessibility check.
 	 */
 	allowNonWebhook?: boolean;
 }

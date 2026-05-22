@@ -1,6 +1,11 @@
-import type { FlueContext } from '@flue/runtime';
+import { defineAgent, type ReceiveContext } from '@flue/runtime';
+import { mock } from '../channels/mock';
 
-export const triggers = { webhook: true };
+export const channels = [mock()];
+
+const sessionTest = defineAgent({
+	instructions: 'You are a test agent for session-oriented message delivery.',
+});
 
 /**
  * Tests cross-invocation session persistence.
@@ -22,26 +27,17 @@ export const triggers = { webhook: true };
  * if you were recently changing code that impacted sessions/persistence, or were doing a larger
  * refactor. Otherwise, this test is safe to skip and not run as part of your regular test suite.
  */
-export default async function ({ init, payload, id }: FlueContext) {
-	const harness = await init({ model: 'anthropic/claude-sonnet-4-6' });
-	const session = await harness.session();
+export async function receive({ delivery, dispatch }: ReceiveContext) {
+	await dispatch({
+		id: 'example:session-test',
+		session: `delivery:${delivery.id}`,
+		input: {
+			type: 'mock.delivery.received',
+			delivery,
+		},
+	});
+}
 
-	const action = payload.action;
-
-	if (action === 'set') {
-		const secret = payload.secret ?? 'FLUE-42-ALPHA';
-		await session.prompt(`Remember this secret code: ${secret}. I will ask you about it later.`);
-		return { status: 'secret-set', id, sessionName: session.name };
-	}
-
-	if (action === 'recall') {
-		const { text } = await session.prompt(
-			'What was the secret code I told you earlier? Reply with just the code, nothing else.',
-		);
-		return { status: 'recalled', id, sessionName: session.name, recalled: text.trim() };
-	}
-
-	return {
-		error: 'Pass payload.action: "set" or "recall". Agent instance id comes from the URL path.',
-	};
+export async function init({ spawn }: { spawn: (options: unknown) => unknown }) {
+	return spawn({ inherit: sessionTest });
 }

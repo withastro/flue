@@ -25,8 +25,11 @@ export { parseSkillMarkdown } from './skill-frontmatter.ts';
 export { createDurableRunStore } from './cloudflare/run-store.ts';
 export { InMemoryRunRegistry } from './node/run-registry.ts';
 export { InMemoryRunStore } from './node/run-store.ts';
-export type { FlueRuntime } from './runtime/flue-app.ts';
-export { configureFlueRuntime, createDefaultFlueApp } from './runtime/flue-app.ts';
+export type { Delivery, DispatchRequest } from './types.ts';
+export type { AgentReceiveHandler, DispatchFn, FlueRuntime } from './runtime/flue-app.ts';
+export { configureFlueRuntime, createDefaultFlueApp, receiveExternalDelivery } from './runtime/flue-app.ts';
+export type { DispatchInput, DispatchProcessor, DispatchQueue, DispatchReceipt } from './runtime/dispatch-queue.ts';
+export { InMemoryDispatchQueue } from './runtime/dispatch-queue.ts';
 export type {
 	AgentHandler,
 	CreateContextFn,

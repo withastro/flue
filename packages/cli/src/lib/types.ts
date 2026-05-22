@@ -10,7 +10,9 @@
 export interface AgentInfo {
 	name: string;
 	filePath: string;
-	triggers: { webhook?: boolean };
+	channels: Record<string, true>;
+	hasReceive: boolean;
+	hasInit: boolean;
 }
 
 export interface WorkflowInfo {
@@ -23,7 +25,12 @@ export interface BuildContext {
 	agents: AgentInfo[];
 	workflows: WorkflowInfo[];
 	manifest: {
-		agents: Array<{ name: string; triggers: { webhook?: boolean } }>;
+		agents: Array<{
+			name: string;
+			channels: Record<string, true>;
+			receive: boolean;
+			init: boolean;
+		}>;
 		workflows: Array<{
 			name: string;
 			channels: { http?: boolean; websocket?: boolean };

@@ -814,7 +814,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'cloudflare',
-			manifest: { agents: [{ name: 'hello', triggers: { webhook: true } }] },
+			manifest: { agents: [{ name: 'hello', channels: {}, receive: false, init: false }] },
 			webhookAgents: ['hello'],
 			allowNonWebhook: false,
 			routeAgentRequest: async (request) => {
@@ -933,8 +933,8 @@ describe('admin() routes', () => {
 			runtimeVersion: '9.9.9',
 			manifest: {
 				agents: [
-					{ name: 'hello', triggers: { webhook: true } },
-					{ name: 'offline', triggers: {} },
+					{ name: 'hello', channels: {}, receive: false, init: false },
+					{ name: 'offline', channels: {}, receive: false, init: false },
 				],
 			},
 			webhookAgents: ['hello'],
@@ -1019,7 +1019,7 @@ describe('admin() routes', () => {
 		configureFlueRuntime({
 			target: 'cloudflare',
 			runtimeVersion: '9.9.9',
-			manifest: { agents: [{ name: 'hello', triggers: { webhook: true } }] },
+			manifest: { agents: [{ name: 'hello', channels: {}, receive: false, init: false }] },
 			webhookAgents: ['hello'],
 			allowNonWebhook: false,
 			createRunRegistryForRequest: () => ({
@@ -1056,7 +1056,7 @@ describe('admin() routes', () => {
 		configureFlueRuntime({
 			target: 'cloudflare',
 			runtimeVersion: '9.9.9',
-			manifest: { agents: [{ name: 'hello', triggers: { webhook: true } }] },
+			manifest: { agents: [{ name: 'hello', channels: {}, receive: false, init: false }] },
 			webhookAgents: ['hello'],
 			allowNonWebhook: false,
 			createRunRegistryForRequest: () => ({

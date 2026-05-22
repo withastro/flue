@@ -17,6 +17,7 @@ import {
 	validateAgentRequest,
 	validateWorkflowRequest,
 } from '../errors.ts';
+import type { Delivery, Dispatch, DispatchRequest } from '../types.ts';
 import {
 	type AgentHandler,
 	type CreateContextFn,
@@ -26,6 +27,7 @@ import {
 	type StartWebhookFn,
 	type WorkflowHandler,
 } from './handle-agent.ts';
+import { InMemoryDispatchQueue, type DispatchQueue } from './dispatch-queue.ts';
 import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunPointer, RunRegistry } from './run-registry.ts';
@@ -49,28 +51,25 @@ export interface FlueRuntime {
 	target: 'node' | 'cloudflare';
 
 	/**
-	 * Names of agents reachable over HTTP when not in local mode.
-	 * Trigger-less agents are excluded from this list and gate access
-	 * via {@link FlueRuntime.allowNonWebhook}.
+	 * Names of agents reachable over direct HTTP. This remains for the legacy
+	 * direct route while the new init/session lifecycle is implemented.
 	 */
 	webhookAgents: ReadonlyArray<string>;
 
 	/**
-	 * If true, the agent route accepts any registered agent — including
-	 * trigger-less ones. Used by the Node target when `FLUE_MODE=local`
-	 * (set by `flue run` and `flue dev --target node`). Always false on
-	 * Cloudflare today.
+	 * If true, the agent route accepts registered agents that are not listed in
+	 * webhookAgents. Phase 1 generated entries keep this false while direct agent
+	 * routing is rebuilt.
 	 */
 	allowNonWebhook: boolean;
 
 	// ─── Node-only ──────────────────────────────────────────────────────────
 
 	/**
-	 * Map of agent name → handler function. Includes ALL agents (webhook
-	 * and trigger-less); {@link webhookAgents} gates HTTP exposure when
-	 * not in local mode. Required when {@link target} is `'node'`.
+	 * Legacy map of agent name -> direct HTTP handler function.
 	 */
 	handlers?: Record<string, AgentHandler>;
+	receiveHandlers?: Record<string, AgentReceiveHandler>;
 	workflowHandlers?: Record<string, WorkflowHandler>;
 
 	/**
@@ -125,15 +124,29 @@ export interface FlueRuntime {
 
 	/** Build manifest inlined by the generated entry for admin listing routes. */
 	manifest?: FlueManifest;
+
+	/** Internal dispatch admission queue. Defaults to process-lifetime memory. */
+	dispatchQueue?: DispatchQueue;
 }
 
 export interface FlueManifest {
-	agents: Array<{ name: string; triggers: { webhook?: boolean } }>;
+	agents: Array<{
+		name: string;
+		channels: Record<string, true>;
+		receive: boolean;
+		init: boolean;
+	}>;
 	workflows?: Array<{
 		name: string;
 		channels: { http?: boolean; websocket?: boolean };
 	}>;
 }
+
+export type DispatchFn = Dispatch;
+export type AgentReceiveHandler = (ctx: {
+	delivery: Delivery;
+	dispatch: DispatchFn;
+}) => unknown | Promise<unknown>;
 
 const RUN_ROUTES_BY_ID: ReadonlyArray<readonly [string, HandleRunRouteOptions['action']]> = [
 	['/runs/:runId', 'get'],
@@ -153,6 +166,141 @@ export function configureFlueRuntime(cfg: FlueRuntime): void {
 
 export function getFlueRuntime(): FlueRuntime | undefined {
 	return runtimeConfig;
+}
+
+export async function receiveExternalDelivery(
+	delivery: Delivery,
+	options: { dispatchQueue?: DispatchQueue } = {},
+): Promise<{ invoked: string[]; errors: Array<{ agent: string; error: unknown }> }> {
+	const rt = runtimeConfig;
+	if (!rt) {
+		throw new Error(
+			'[flue] receiveExternalDelivery() called before runtime was configured. ' +
+				'This usually means it was used outside a Flue-built server entry.',
+		);
+	}
+
+	const invoked: string[] = [];
+	const errors: Array<{ agent: string; error: unknown }> = [];
+	const dispatchQueue = options.dispatchQueue ?? rt.dispatchQueue ?? defaultDispatchQueue;
+	for (const agent of rt.manifest?.agents ?? []) {
+		if (!agent.channels[delivery.channel]) continue;
+		const receive = rt.receiveHandlers?.[agent.name];
+		if (!receive) {
+			const error = new Error(`[flue] Agent "${agent.name}" is subscribed to "${delivery.channel}" but has no receive handler.`);
+			errors.push({ agent: agent.name, error });
+			console.error(error.message);
+			continue;
+		}
+		invoked.push(agent.name);
+		try {
+			await receive({
+				delivery,
+				dispatch: createDispatchFn({
+					delivery,
+					sourceAgent: agent.name,
+					dispatchQueue,
+					rt,
+				}),
+			});
+		} catch (error) {
+			errors.push({ agent: agent.name, error });
+			console.error(`[flue:receive] Agent "${agent.name}" receive() failed:`, error);
+		}
+	}
+	return { invoked, errors };
+}
+
+const defaultDispatchQueue = new InMemoryDispatchQueue();
+
+function createDispatchFn(options: {
+	delivery: Delivery;
+	sourceAgent: string;
+	dispatchQueue: DispatchQueue;
+	rt: FlueRuntime;
+}): DispatchFn {
+	return async (request) => {
+		const targetAgent = request.agent ?? options.sourceAgent;
+		const input = validateAndCloneDispatchRequest(request, targetAgent, options.rt);
+		await options.dispatchQueue.enqueue({
+			dispatchId: crypto.randomUUID(),
+			deliveryId: options.delivery.id,
+			sourceAgent: options.sourceAgent,
+			targetAgent,
+			agent: targetAgent,
+			id: request.id,
+			session: request.session,
+			input,
+			acceptedAt: new Date().toISOString(),
+		});
+	};
+}
+
+function validateAndCloneDispatchRequest(
+	request: DispatchRequest,
+	targetAgent: string,
+	rt: FlueRuntime,
+): unknown {
+	if (typeof targetAgent !== 'string' || targetAgent.trim() === '') {
+		throw new Error('[flue] dispatch() requires a non-empty target agent.');
+	}
+	if (typeof request.id !== 'string' || request.id.trim() === '') {
+		throw new Error('[flue] dispatch() requires a non-empty "id" target agent instance id.');
+	}
+	if (typeof request.session !== 'string' || request.session.trim() === '') {
+		throw new Error('[flue] dispatch() requires a non-empty "session" target session id.');
+	}
+	if (request.input === undefined) {
+		throw new Error('[flue] dispatch() requires an "input" payload. Use null for an intentional empty payload.');
+	}
+	if (!agentExists(rt, targetAgent)) {
+		throw new Error(`[flue] dispatch() target agent "${targetAgent}" is not registered.`);
+	}
+	return cloneJsonSerializable(request.input, 'dispatch().input');
+}
+
+function agentExists(rt: FlueRuntime, agentName: string): boolean {
+	return (rt.manifest?.agents ?? []).some((agent) => agent.name === agentName);
+}
+
+function cloneJsonSerializable(value: unknown, label: string): unknown {
+	assertJsonLike(value, label, new WeakSet());
+	let json: string;
+	try {
+		json = JSON.stringify(value);
+	} catch (error) {
+		throw new Error(`[flue] ${label} must be JSON-serializable: ${error instanceof Error ? error.message : String(error)}`);
+	}
+	return JSON.parse(json) as unknown;
+}
+
+function assertJsonLike(value: unknown, path: string, seen: WeakSet<object>): void {
+	if (value === null) return;
+	const type = typeof value;
+	if (type === 'string' || type === 'number' || type === 'boolean') {
+		if (type === 'number' && !Number.isFinite(value)) {
+			throw new Error(`[flue] ${path} must not contain non-finite numbers.`);
+		}
+		return;
+	}
+	if (type === 'undefined' || type === 'function' || type === 'symbol' || type === 'bigint') {
+		throw new Error(`[flue] ${path} must not contain ${type} values.`);
+	}
+	if (typeof value !== 'object') return;
+	if (seen.has(value)) throw new Error(`[flue] ${path} must not contain circular references.`);
+	seen.add(value);
+	if (Array.isArray(value)) {
+		for (let i = 0; i < value.length; i++) assertJsonLike(value[i], `${path}[${i}]`, seen);
+		seen.delete(value);
+		return;
+	}
+	if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
+		throw new Error(`[flue] ${path} must contain only plain JSON objects, arrays, strings, numbers, booleans, or null.`);
+	}
+	for (const [key, child] of Object.entries(value)) {
+		assertJsonLike(child, `${path}.${key}`, seen);
+	}
+	seen.delete(value);
 }
 
 /**
@@ -585,11 +733,9 @@ function normalizeRunRequest(
  * Compute the set of agent names considered "registered" for purposes
  * of the agent route's name-validity check.
  *
- *   - Node: every entry in the handler map (including trigger-less
- *     agents — `allowNonWebhook` controls whether they're actually
- *     reachable).
- *   - Cloudflare: only webhook agents have generated DO classes, so
- *     non-webhook names have no valid landing target.
+ *   - Node: every entry in the legacy handler map.
+ *   - Cloudflare: only direct-route agents have generated DO classes, so
+ *     external-channel-only names have no valid landing target.
  */
 function registeredAgentsFor(rt: FlueRuntime): readonly string[] {
 	if (rt.target === 'node') return Object.keys(rt.handlers ?? {});

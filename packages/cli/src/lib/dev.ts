@@ -19,7 +19,7 @@
  *   `wrangler deploy` use). Wrangler watches the entry's transitive import
  *   graph itself and reloads workerd on source edits. So we *don't* need to
  *   rebuild for body edits — wrangler handles it. We only need to act when:
- *     1. The set of agents changes (added / removed / triggers changed) →
+	 *     1. The set of agents changes (added / removed / channels changed) →
  *        regenerate `dist/_entry.ts`. Wrangler picks up the new entry
  *        automatically because it's already watching it.
  *     2. The user's `wrangler.jsonc` changes → re-merge our additions and
@@ -496,9 +496,8 @@ class NodeReloader implements DevReloader {
 		const child = spawn('node', [this.serverPath], {
 			stdio: ['ignore', 'pipe', 'pipe'],
 			cwd: this.root,
-			// FLUE_MODE=local lets the dev server invoke trigger-less agents over
-			// HTTP (useful when iterating on CI-only agents locally). Mirrors
-			// the behavior of `flue run`.
+			// FLUE_MODE=local keeps local/dev error envelopes verbose. Direct agent
+			// HTTP routing is being rebuilt around the new init/session model.
 			env: {
 				...fromFiles,
 				...process.env,
@@ -672,7 +671,7 @@ class CloudflareReloader implements DevReloader {
 	 * Concretely, we trigger a Flue-side rebuild for:
 	 *   - File adds/removes in `agents/` (the agent set determines DO classes
 	 *     and binding declarations).
-	 *   - Changes to `agents/*.ts` — these MAY change the exported `triggers`,
+		 *   - Changes to `agents/*.ts` — these MAY change the exported `channels`,
 	 *     so we have to re-parse them. (Plain body edits redo a tiny amount
 	 *     of work but the rebuild is cheap and idempotent.)
 	 *   - Adds/removes/edits of `app.{ts,mts,js,mjs}` — discovery flips the
@@ -720,7 +719,7 @@ class CloudflareReloader implements DevReloader {
 		//
 		// We only restart the worker when the build actually changed
 		// something — that signals a structural change (new agent, removed
-		// agent, triggers changed, user edited wrangler.jsonc) that
+		// agent, channels changed, user edited wrangler.jsonc) that
 		// wrangler's source watcher can't apply hot.
 		if (!buildChanged) {
 			console.error(`[flue] No structural change — wrangler will hot-reload\n`);
@@ -906,16 +905,14 @@ export function parseEnvFiles(absolutePaths: string[]): Record<string, string> {
 
 
 /**
- * Pick a webhook agent name to print in the friendly curl example. Falls back
- * to any agent if none have webhook triggers (the example would 404 on the
- * dev server in that case, but it's still a hint at the URL shape). Reads the
+ * Pick an agent name to print in the friendly curl example. Reads the
  * manifest written by the build at `<output>/manifest.json`, with a
  * source-tree scan fallback in case the manifest is somehow missing.
  *
  * Best-effort — silently returns null if anything goes wrong.
  */
 function pickExampleAgentName(output: string, root: string): string | null {
-	type ManifestEntry = { name: string; triggers?: { webhook?: boolean } };
+	type ManifestEntry = { name: string };
 	try {
 		const manifestPath = path.join(output, 'manifest.json');
 		if (fs.existsSync(manifestPath)) {
@@ -923,8 +920,6 @@ function pickExampleAgentName(output: string, root: string): string | null {
 				agents?: ManifestEntry[];
 			};
 			const agents = manifest.agents ?? [];
-			const webhook = agents.find((a) => a.triggers?.webhook);
-			if (webhook) return webhook.name;
 			if (agents[0]) return agents[0].name;
 		}
 	} catch {

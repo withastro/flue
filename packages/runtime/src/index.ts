@@ -41,6 +41,10 @@ export type {
 	ThinkingLevel,
 	ProviderSettings,
 	WorkflowChannel,
+	Delivery,
+	Dispatch,
+	DispatchRequest,
+	ReceiveContext,
 } from './types.ts';
 
 export { Type } from '@earendil-works/pi-ai';

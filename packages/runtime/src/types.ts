@@ -9,6 +9,29 @@ export interface WorkflowChannel<TName extends 'http' | 'websocket' = 'http' | '
 	readonly type: TName;
 }
 
+export interface Delivery {
+	id: string;
+	channel: string;
+	type: string;
+	data: unknown;
+	occurredAt?: string;
+	raw?: unknown;
+}
+
+export interface DispatchRequest {
+	agent?: string;
+	id: string;
+	session: string;
+	input: unknown;
+}
+
+export type Dispatch = (request: DispatchRequest) => Promise<void>;
+
+export interface ReceiveContext {
+	delivery: Delivery;
+	dispatch: Dispatch;
+}
+
 /**
  * Inline image content attached to a `prompt()`, `skill()`, or `task()` call.
  * Re-exports pi-ai's `ImageContent` shape: `{ type: 'image', data: base64, mimeType }`.

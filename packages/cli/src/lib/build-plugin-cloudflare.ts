@@ -52,14 +52,15 @@ export class CloudflarePlugin implements BuildPlugin {
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 		validateCloudflareAgentNames(ctx);
 
-		const webhookAgents = agents.filter((a) => a.triggers.webhook);
-
 		const agentImports = agents
 			.map((a, index) => {
 				const varName = agentVarName(a.name, index);
 				const filePath = a.filePath.replace(/\\/g, '/');
-				return `import ${varName} from '${filePath}';`;
+				return `import * as ${varName} from '${filePath}';`;
 			})
+			.join('\n');
+		const receiveHandlerMapEntries = agents
+			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)}.receive,`)
 			.join('\n');
 
 		const workflowImports = workflows
@@ -73,26 +74,7 @@ export class CloudflarePlugin implements BuildPlugin {
 			.map((workflow, index) => `  ${JSON.stringify(workflow.name)}: ${workflowVarName(workflow.name, index)},`)
 			.join('\n');
 
-		const agentClasses = webhookAgents
-			.map((a) => {
-				const className = agentClassName(a.name);
-				const handlerVar = agentVarName(a.name, agents.indexOf(a));
-				return `export class ${className} extends Agent {
-  async onRequest(request) {
-    return dispatchAgent(request, this, ${JSON.stringify(a.name)}, ${handlerVar});
-  }
-
-  async onFiberRecovered(ctx) {
-    if (ctx.name?.startsWith('flue:')) {
-      return handleFlueFiberRecovered(ctx, this, ${JSON.stringify(a.name)});
-    }
-    if (typeof super.onFiberRecovered === 'function') {
-      return super.onFiberRecovered(ctx);
-    }
-  }
-}`;
-			})
-			.join('\n\n');
+		const agentClasses = '';
 
 		const workflowRunOwnerClass =
 			workflows.length > 0
@@ -142,6 +124,7 @@ import {
   createDefaultFlueApp,
   hasRegisteredProvider,
   parseWorkflowRunId,
+  InMemoryDispatchQueue,
 } from '@flue/runtime/internal';
 import {
   runWithCloudflareContext,
@@ -178,7 +161,10 @@ if (!hasRegisteredProvider('cloudflare')) {
 const skills = {};
 const systemPrompt = '';
 
-const webhookAgentNames = ${JSON.stringify(webhookAgents.map((a) => a.name))};
+const webhookAgentNames = [];
+const receiveHandlers = {
+${receiveHandlerMapEntries}
+};
 const workflowHandlers = {
 ${workflowHandlerMapEntries}
 };
@@ -238,6 +224,7 @@ function resolveSandbox(sandbox) {
 // Fallback in-memory store (used if no DO storage is available).
 const memoryStore = new InMemorySessionStore();
 const memoryRunStore = new InMemoryRunStore();
+const dispatchQueue = new InMemoryDispatchQueue();
 
 // Module-scoped per-isolate registry; run ids isolate buckets across DOs.
 const runSubscribers = createRunSubscriberRegistry();
@@ -469,9 +456,12 @@ configureFlueRuntime({
   runtimeVersion: ${runtimeVersion},
   manifest: ${manifestJson},
   webhookAgents: webhookAgentNames,
-  // Cloudflare deploys never run in local mode — the trigger-less agents
-  // simply have no DO class to land in.
+  // Direct agent HTTP routing is being rebuilt around the new init/session
+  // lifecycle, so Phase 1 exposes no agent DO classes.
   allowNonWebhook: false,
+  handlers: {},
+  receiveHandlers,
+  dispatchQueue,
   routeAgentRequest: (request, env) => routeAgentRequest(request, env),
   routeWorkflowRequest: async (request, reqEnv, target) => {
     const binding = reqEnv?.FLUE_WORKFLOW_RUNS;
@@ -528,18 +518,15 @@ export default {
 
 	async additionalOutputs(ctx: BuildContext): Promise<Record<string, string>> {
 		const outputs: Record<string, string> = {};
-		const webhookAgents = ctx.agents.filter((a) => a.triggers.webhook);
 
-		// Per-agent DO bindings: one per webhook agent. Flue no longer forces a
+		// Per-agent DO bindings are deferred while agents move from default HTTP
+		// handlers to the new init/session lifecycle. Flue no longer forces a
 		// `Sandbox` binding, container entry, or Dockerfile — users who want
 		// container sandboxes declare those themselves in their own
 		// wrangler.jsonc (preserved via the merge below). Flue only automates
 		// the `export { Sandbox as ... }` re-export in the bundle (see
 		// generateEntryPoint).
-		const flueBindings = webhookAgents.map((a) => ({
-			class_name: agentClassName(a.name),
-			name: agentClassName(a.name),
-		}));
+		const flueBindings: Array<{ name: string; class_name: string }> = [];
 
 		if (ctx.workflows.length > 0) {
 			flueBindings.push({ name: 'FLUE_WORKFLOW_RUNS', class_name: 'WorkflowRunOwner' });

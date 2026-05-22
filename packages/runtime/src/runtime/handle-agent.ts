@@ -9,9 +9,9 @@ import type { RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 
 /**
- * Agent handler signature — the default export of a `.flue/agents/<name>.ts`
- * file. Receives a context, may return any JSON-serializable value (or
- * undefined for fire-and-forget agents).
+ * Legacy direct agent handler signature. The new message-driven agent module
+ * shape is being introduced separately; this remains until direct attached
+ * surfaces are rebuilt on top of init/session delivery.
  */
 export type AgentHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
 export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
@@ -60,7 +60,7 @@ export interface HandleAgentOptions {
 	agentName: string;
 	/** Agent id (URL segment / DO room name). */
 	id: string;
-	/** The agent's default-export handler. */
+	/** Legacy direct agent handler. */
 	handler: AgentHandler;
 	/** Per-target context factory. */
 	createContext: CreateContextFn;

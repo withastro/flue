@@ -12,17 +12,11 @@ export class NodePlugin implements BuildPlugin {
 		const manifestJson = JSON.stringify(ctx.manifest);
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 
-		const webhookAgents = agents.filter((a) => a.triggers.webhook);
-
-		// Generate import statements for all agent handlers. We register every
-		// agent — including trigger-less ones — in the handler map so that the
-		// CLI's `flue run` can invoke them in local mode. The `webhookAgents`
-		// list below gates which are reachable over public HTTP when deployed.
 		const agentImports = agents
 			.map((a, index) => {
 				const varName = agentVarName(a.name, index);
 				const filePath = a.filePath.replace(/\\/g, '/');
-				return `import ${varName} from '${filePath}';`;
+				return `import * as ${varName} from '${filePath}';`;
 			})
 			.join('\n');
 
@@ -34,17 +28,12 @@ export class NodePlugin implements BuildPlugin {
 			})
 			.join('\n');
 
-		// Build the handler map — includes ALL agents, not just webhook ones.
-		const handlerMapEntries = agents
-			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)},`)
+		const receiveHandlerMapEntries = agents
+			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)}.receive,`)
 			.join('\n');
 		const workflowHandlerMapEntries = workflows
 			.map((workflow, index) => `  ${JSON.stringify(workflow.name)}: ${workflowVarName(workflow.name, index)},`)
 			.join('\n');
-
-		// Webhook agent names. `configureFlueRuntime` snapshots whatever
-		// iterable is handed to it, so a plain array literal is fine.
-		const webhookNames = JSON.stringify(webhookAgents.map((a) => a.name));
 
 		// User-supplied app.ts (if any). The generated entry imports the user's
 		// default export and dispatches all requests through `app.fetch`. When
@@ -70,6 +59,7 @@ import {
   resolveModel,
   configureFlueRuntime,
   createDefaultFlueApp,
+  InMemoryDispatchQueue,
 } from '@flue/runtime/internal';
 ${agentImports}
 ${workflowImports}
@@ -80,21 +70,16 @@ ${userAppImport}
 const skills = {};
 const systemPrompt = '';
 
-const handlers = {
-${handlerMapEntries}
+const receiveHandlers = {
+${receiveHandlerMapEntries}
 };
 const workflowHandlers = {
 ${workflowHandlerMapEntries}
 };
 
-// Webhook-accessible agent names.
-const webhookAgentNames = ${webhookNames};
-
 // When the CLI starts this server via \`flue run\`, it sets FLUE_MODE=local.
-// In local mode the HTTP route accepts any registered agent (including
-// trigger-less CI-only agents). In any other mode the route is restricted to
-// agents with \`webhook: true\`, preventing accidental public exposure of
-// agents that the user only intended to invoke from their CI pipeline.
+// Agent direct routing is being rebuilt around the new init/session model, so
+// Phase 1 does not expose agent modules as direct HTTP webhook handlers.
 const isLocalMode = process.env.FLUE_MODE === 'local';
 
 // ─── Sandbox Environments ───────────────────────────────────────────────────
@@ -117,6 +102,7 @@ const defaultStore = new InMemorySessionStore();
 const runStore = new InMemoryRunStore();
 const runRegistry = new InMemoryRunRegistry();
 const runSubscribers = createRunSubscriberRegistry();
+const dispatchQueue = new InMemoryDispatchQueue();
 
 function createContextForRequest(id, runId, payload, req) {
   return createFlueContext({
@@ -145,9 +131,11 @@ configureFlueRuntime({
   target: 'node',
   runtimeVersion: ${runtimeVersion},
   manifest: ${manifestJson},
-  webhookAgents: webhookAgentNames,
-  allowNonWebhook: isLocalMode,
-  handlers,
+  webhookAgents: [],
+  allowNonWebhook: false,
+  handlers: {},
+  receiveHandlers,
+  dispatchQueue,
   workflowHandlers,
   createContext: createContextForRequest,
   runStore,
@@ -188,10 +176,10 @@ const server = serve({
 });
 console.log('[flue] Server listening on http://localhost:' + port);
 if (isLocalMode) {
-  console.log('[flue] Mode: local (all agents invokable, including trigger-less)');
-  console.log('[flue] Available agents: ' + ${JSON.stringify(agents.map((a) => a.name).join(', '))});
+	console.log('[flue] Mode: local');
+	console.log('[flue] External-channel agents: ' + ${JSON.stringify(agents.map((a) => a.name).join(', '))});
 } else {
-  console.log('[flue] Available agents: ' + ${JSON.stringify(webhookAgents.map((a) => a.name).join(', '))});
+	console.log('[flue] External-channel agents: ' + ${JSON.stringify(agents.map((a) => a.name).join(', '))});
 }
 
 process.on('SIGINT', () => { server.close(); process.exit(0); });
