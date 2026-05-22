@@ -629,21 +629,38 @@ function discoverAgents(sourceRoot: string): AgentInfo[] {
 	const agentsDir = path.join(sourceRoot, 'agents');
 	if (!fs.existsSync(agentsDir)) return [];
 
-	return fs
+	const files = fs
 		.readdirSync(agentsDir)
-		.filter((f) => /\.(ts|js|mts|mjs)$/.test(f))
-		.flatMap((f) => {
-			const filePath = path.join(agentsDir, f);
-			const parsed = parseAgentFile(filePath);
-			if (!parsed.channels && !parsed.hasInit) return [];
-			return [{
-				name: f.replace(/\.(ts|js|mts|mjs)$/, ''),
-				filePath,
-				channels: parsed.channels ?? {},
-				hasReceive: parsed.hasReceive,
-				hasInit: parsed.hasInit,
-			}];
-		});
+		.filter((file) => !/\.d\.(ts|mts)$/.test(file) && /\.(ts|js|mts|mjs)$/.test(file));
+	const agentFiles = new Map<string, string>();
+	for (const file of files) {
+		const name = file.replace(/\.(ts|js|mts|mjs)$/, '');
+		if (!name || name.includes(':')) {
+			throw new Error(
+				`[flue] Agent basename "${name}" is invalid. Agent names must be non-empty and must not contain ":".`,
+			);
+		}
+		const previous = agentFiles.get(name);
+		if (previous) {
+			throw new Error(
+				`[flue] Duplicate agent basename "${name}" found: ${previous}, ${file}. Keep only one agent source file per basename.`,
+			);
+		}
+		agentFiles.set(name, file);
+	}
+
+	return files.flatMap((f) => {
+		const filePath = path.join(agentsDir, f);
+		const parsed = parseAgentFile(filePath);
+		if (!parsed.channels && !parsed.hasInit) return [];
+		return [{
+			name: f.replace(/\.(ts|js|mts|mjs)$/, ''),
+			filePath,
+			channels: parsed.channels ?? {},
+			hasReceive: parsed.hasReceive,
+			hasInit: parsed.hasInit,
+		}];
+	});
 }
 
 function discoverWorkflows(sourceRoot: string): WorkflowInfo[] {

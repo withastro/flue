@@ -8,6 +8,7 @@ import {
 	validator,
 } from 'hono-openapi';
 import {
+	ExternalChannelUnavailableError,
 	InvalidRequestError,
 	MethodNotAllowedError,
 	RouteNotFoundError,
@@ -28,7 +29,7 @@ import {
 	type StartWebhookFn,
 	type WorkflowHandler,
 } from './handle-agent.ts';
-import { InMemoryDispatchQueue, type DispatchQueue } from './dispatch-queue.ts';
+import type { DispatchQueue } from './dispatch-queue.ts';
 import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunPointer, RunRegistry } from './run-registry.ts';
@@ -50,17 +51,6 @@ import {
 
 export interface FlueRuntime {
 	target: 'node' | 'cloudflare';
-
-	/**
-	 * Names of agents reachable over direct HTTP.
-	 */
-	webhookAgents: ReadonlyArray<string>;
-
-	/**
-	 * If true, the agent route accepts registered agents that are not listed in
-	 * webhookAgents.
-	 */
-	allowNonWebhook: boolean;
 
 	// ─── Node-only ──────────────────────────────────────────────────────────
 
@@ -194,10 +184,11 @@ export async function receiveExternalDelivery(
 		}
 		invoked.push(agent.name);
 		try {
+			const deliveryForAgent = cloneJsonSerializable(delivery, 'delivery') as Delivery;
 			await receive({
-				delivery,
+				delivery: deliveryForAgent,
 				dispatch: createDispatchFn({
-					delivery,
+					delivery: deliveryForAgent,
 					sourceAgent: agent.name,
 					dispatchQueue,
 					rt,
@@ -211,7 +202,11 @@ export async function receiveExternalDelivery(
 	return { invoked, errors };
 }
 
-const defaultDispatchQueue = new InMemoryDispatchQueue();
+const defaultDispatchQueue: DispatchQueue = {
+	async enqueue(): Promise<never> {
+		throw new Error('[flue] dispatch() cannot be accepted because no dispatch queue is configured.');
+	},
+};
 
 function createDispatchFn(options: {
 	delivery: Delivery;
@@ -368,6 +363,11 @@ async function externalChannelRouteHandler(c: any): Promise<Response> {
 	}
 	if (!rt) {
 		throw new Error('[flue] Runtime is not configured.');
+	}
+	if (rt.target === 'cloudflare') {
+		throw new ExternalChannelUnavailableError({
+			reason: 'Cloudflare external-channel dispatch processing is not supported yet. Dispatch must route to the target agent Durable Object before it can process session input.',
+		});
 	}
 	const handler = rt.channelHandlers?.[channel];
 	if (!handler) {
@@ -577,9 +577,7 @@ const workflowRouteHandler: MiddlewareHandler = async (c) => {
 		method: c.req.method,
 		name,
 		registeredWorkflows: workflows.map((workflow) => workflow.name),
-		httpWorkflows: rt.allowNonWebhook
-			? workflows.map((workflow) => workflow.name)
-			: workflows.filter((workflow) => workflow.channels.http).map((workflow) => workflow.name),
+		httpWorkflows: workflows.filter((workflow) => workflow.channels.http).map((workflow) => workflow.name),
 	});
 
 	if (rt.target === 'node') {
@@ -629,8 +627,6 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 		name,
 		id,
 		registeredAgents: registeredAgentsFor(rt),
-		webhookAgents: rt.webhookAgents,
-		allowNonWebhook: rt.allowNonWebhook,
 	});
 
 	if (rt.target === 'node') {
@@ -764,10 +760,10 @@ function normalizeRunRequest(
  * of the agent route's name-validity check.
  *
 	 *   - Node: every entry in the direct handler map.
- *   - Cloudflare: only direct-route agents have generated DO classes, so
- *     external-channel-only names have no valid landing target.
- */
+	 *   - Cloudflare: generated DO classes are currently emitted for every
+	 *     discovered agent module.
+	 */
 function registeredAgentsFor(rt: FlueRuntime): readonly string[] {
 	if (rt.target === 'node') return Object.keys(rt.handlers ?? {});
-	return rt.webhookAgents;
+	return (rt.manifest?.agents ?? []).map((agent) => agent.name);
 }

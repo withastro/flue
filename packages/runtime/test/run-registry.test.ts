@@ -288,8 +288,6 @@ describe('run store persistence sizing', () => {
 		const runSubscribers = createRunSubscriberRegistry();
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
 			handlers: { hello: async () => ({ result: 'x'.repeat(300_000) }) },
 			createContext: (id, runId, payload, req) =>
 				createFlueContext({
@@ -326,8 +324,6 @@ describe('run store persistence sizing', () => {
 		const runSubscribers = createRunSubscriberRegistry();
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
 			handlers: {
 				hello: async (ctx) => {
 					ctx.log.info('x'.repeat(300_000));
@@ -369,8 +365,6 @@ describe('run store persistence sizing', () => {
 		const runSubscribers = createRunSubscriberRegistry();
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
 			handlers: {
 				hello: async () => {
 					throw new Error('x'.repeat(300_000));
@@ -414,8 +408,6 @@ describe('POST /workflows/:name routes via flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: { agents: [], workflows: [{ name: 'daily-report', channels: { http: true } }] },
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			workflowHandlers: { 'daily-report': async (ctx) => ({ echoed: ctx.payload }) },
 			createContext: (id, runId, payload, req) =>
@@ -463,8 +455,6 @@ describe('POST /workflows/:name routes via flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: { agents: [], workflows: [{ name: 'daily-report', channels: { http: true } }] },
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			workflowHandlers: { 'daily-report': async (ctx) => ({ echoed: ctx.payload }) },
 			createContext: (id, runId, payload, req) =>
@@ -501,8 +491,6 @@ describe('POST /workflows/:name routes via flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: { agents: [], workflows: [{ name: 'explode', channels: { http: true } }] },
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			workflowHandlers: { explode: async () => { throw new Error('boom'); } },
 			createContext: (id, runId, payload, req) =>
@@ -531,8 +519,6 @@ describe('POST /workflows/:name routes via flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: { agents: [], workflows: [{ name: 'daily-report', channels: { http: true } }] },
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			workflowHandlers: { 'daily-report': async () => ({ ok: true }) },
 			createContext: (id, runId, payload, req) =>
@@ -566,43 +552,10 @@ describe('POST /workflows/:name routes via flue()', () => {
 		expect(text).toMatch(/event: run_end/);
 	});
 
-	it('admits internal-only workflows in local runtime mode for CLI reuse', async () => {
-		configureFlueRuntime({
-			target: 'node',
-			manifest: { agents: [], workflows: [{ name: 'internal', channels: {} }] },
-			webhookAgents: [],
-			allowNonWebhook: true,
-			handlers: {},
-			workflowHandlers: { internal: async () => ({ ok: true }) },
-			createContext: (id, runId, payload, req) =>
-				createFlueContext({
-					id,
-					runId,
-					payload,
-					env: {},
-					req,
-					agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
-					createDefaultEnv: async () => ({}) as never,
-					defaultStore: new InMemorySessionStore(),
-				}),
-			runStore: new InMemoryRunStore(),
-			runRegistry: new InMemoryRunRegistry(),
-			runSubscribers: createRunSubscriberRegistry(),
-		});
-		const app = new Hono();
-		app.route('/', flue());
-		const res = await app.fetch(new Request('http://localhost/workflows/internal', { method: 'POST' }));
-		expect(res.status).toBe(202);
-		const body = (await res.json()) as { runId: string };
-		expect(body.runId.startsWith('workflow:internal:')).toBe(true);
-	});
-
 	it('rejects internal-only workflows and non-POST methods', async () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: { agents: [], workflows: [{ name: 'internal', channels: {} }] },
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			workflowHandlers: { internal: async () => null },
 			createContext: (() => null) as never,
@@ -625,8 +578,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
 			handlers: {
 				hello: async (_ctx) => ({ greeting: 'hi' }),
 			},
@@ -737,8 +688,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 	it('surfaces a structured 501 envelope when runRegistry is not configured', async () => {
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
 			handlers: { hello: async () => null },
 			createContext: (id, runId, payload, req) =>
 				createFlueContext({
@@ -776,8 +725,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			runtimeVersion: '9.9.9',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			createContext: (() => null) as never,
 			runStore: new InMemoryRunStore(),
@@ -793,8 +740,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 	it('returns 405 for non-GET run inspection methods', async () => {
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			createContext: (() => null) as never,
 			runStore: new InMemoryRunStore(),
@@ -815,8 +760,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 		configureFlueRuntime({
 			target: 'cloudflare',
 			manifest: { agents: [{ name: 'hello', channels: {}, receive: false, init: false }] },
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
 			routeAgentRequest: async (request) => {
 				routedBodies.push(await request.text());
 				return Response.json({ ok: true });
@@ -844,8 +787,6 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
 			handlers: {
 				hello: async (ctx) => {
 					ctx.log.info('before return');
@@ -937,8 +878,6 @@ describe('admin() routes', () => {
 					{ name: 'offline', channels: {}, receive: false, init: false },
 				],
 			},
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
 			handlers: { hello: async () => ({ ok: true }) },
 			createContext: (id, runId, payload, req) =>
 				createFlueContext({
@@ -1020,8 +959,6 @@ describe('admin() routes', () => {
 			target: 'cloudflare',
 			runtimeVersion: '9.9.9',
 			manifest: { agents: [{ name: 'hello', channels: {}, receive: false, init: false }] },
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
 			createRunRegistryForRequest: () => ({
 				recordRunStart: async () => {},
 				recordRunEnd: async () => {},
@@ -1057,8 +994,6 @@ describe('admin() routes', () => {
 			target: 'cloudflare',
 			runtimeVersion: '9.9.9',
 			manifest: { agents: [{ name: 'hello', channels: {}, receive: false, init: false }] },
-			webhookAgents: ['hello'],
-			allowNonWebhook: false,
 			createRunRegistryForRequest: () => ({
 				recordRunStart: async () => {},
 				recordRunEnd: async () => {},

@@ -31,8 +31,6 @@ describe('direct attached agent delivery', () => {
 			manifest: {
 				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
 			},
-			webhookAgents: ['assistant'],
-			allowNonWebhook: false,
 			handlers: { assistant: createDirectAgentHandler(init) },
 			receiveHandlers: {
 				assistant: async ({ delivery }) => receiveCalls.push(delivery.id),
@@ -75,8 +73,6 @@ describe('direct attached agent delivery', () => {
 			manifest: {
 				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
 			},
-			webhookAgents: ['assistant'],
-			allowNonWebhook: false,
 			handlers: { assistant: createDirectAgentHandler(async () => fakeHarness(prompts)) },
 			createContext: createTestContext,
 			runStore: new InMemoryRunStore(),
@@ -107,8 +103,6 @@ describe('direct attached agent delivery', () => {
 			manifest: {
 				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, init: true }],
 			},
-			webhookAgents: ['moderator'],
-			allowNonWebhook: false,
 			handlers: { moderator: createDirectAgentHandler(async () => fakeHarness(prompts)) },
 			receiveHandlers: {
 				moderator: async () => {
@@ -142,8 +136,6 @@ describe('direct attached agent delivery', () => {
 			manifest: {
 				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
 			},
-			webhookAgents: ['assistant'],
-			allowNonWebhook: false,
 			handlers: { assistant: createDirectAgentHandler(async () => fakeHarness([])) },
 			createContext: createTestContext,
 			runStore: new InMemoryRunStore(),
@@ -176,8 +168,6 @@ describe('direct attached agent delivery', () => {
 			manifest: {
 				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
 			},
-			webhookAgents: ['assistant'],
-			allowNonWebhook: false,
 			handlers: { assistant: createDirectAgentHandler(async () => fakeHarness([])) },
 			createContext: createTestContext,
 		});
@@ -203,8 +193,6 @@ describe('direct attached agent delivery', () => {
 			manifest: {
 				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
 			},
-			webhookAgents: ['assistant'],
-			allowNonWebhook: false,
 			handlers: {
 				assistant: createDirectAgentHandler(({ spawn }) =>
 					spawn({ inherit: {}, instructions: 'dynamic' } as never),
@@ -240,8 +228,6 @@ describe('direct attached agent delivery', () => {
 			manifest: {
 				agents: [{ name: 'assistant', channels: {}, receive: false, init: true }],
 			},
-			webhookAgents: ['assistant'],
-			allowNonWebhook: false,
 			handlers: {
 				assistant: createDirectAgentHandler(({ spawn }) =>
 					spawn({

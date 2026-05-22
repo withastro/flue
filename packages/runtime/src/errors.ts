@@ -287,22 +287,6 @@ export class AgentNotFoundError extends FlueHttpError {
 	}
 }
 
-export class AgentNotWebhookError extends FlueHttpError {
-	constructor({ name }: { name: string }) {
-		super({
-			type: 'agent_not_webhook',
-			message: `Agent "${name}" is not directly web-accessible.`,
-			details: `This endpoint is not exposed over HTTP.`,
-			// Dev-only: source-code-level fix instructions for the agent
-			// author. The HTTP caller can't act on this.
-			dev:
-				`This agent is not configured for direct HTTP access. ` +
-				`External-channel agents receive normalized deliveries through receive(...).`,
-			status: 404,
-		});
-	}
-}
-
 export class WorkflowNotFoundError extends FlueHttpError {
 	constructor({ name, available }: { name: string; available: readonly string[] }) {
 		super({
@@ -334,9 +318,9 @@ export class RouteNotFoundError extends FlueHttpError {
 		super({
 			type: 'route_not_found',
 			message: `No route matches ${method} ${path}.`,
-			// The webhook URL shape is part of the public contract, so it's
+			// The agent URL shape is part of the public contract, so it's
 			// safe to mention. We do NOT enumerate other registered routes.
-			details: `Webhook agents are served at POST /agents/<name>/<id>.`,
+			details: `Agents are served at POST /agents/<name>/<id>.`,
 			dev: '',
 			status: 404,
 		});
@@ -380,6 +364,18 @@ export class RunRegistryUnavailableError extends FlueHttpError {
 			type: 'run_registry_unavailable',
 			message: 'Run lookup is not available in this runtime.',
 			details: 'This endpoint requires the generated runtime to be configured with a run registry.',
+			dev: '',
+			status: 501,
+		});
+	}
+}
+
+export class ExternalChannelUnavailableError extends FlueHttpError {
+	constructor({ reason }: { reason: string }) {
+		super({
+			type: 'external_channel_unavailable',
+			message: 'External channel delivery is not available in this runtime.',
+			details: reason,
 			dev: '',
 			status: 501,
 		});
@@ -671,8 +667,8 @@ export async function parseJsonBody(request: Request): Promise<unknown> {
 
 /**
  * Validate that a request targeting `/agents/<name>/<id>` is well-formed:
- * method is POST, agent name is registered, and (optionally) the agent is
- * webhook-accessible. Throws the appropriate FlueHttpError on any failure.
+ * method is POST, and agent name is registered. Throws the appropriate
+ * FlueHttpError on any failure.
  *
  * Path/id validation is light: we reject empty or whitespace-only segments
  * but otherwise let the URL parser's segment splitting be the source of
@@ -684,11 +680,6 @@ export interface ValidateAgentRequestOptions {
 	name: string;
 	id: string;
 	registeredAgents: readonly string[];
-	webhookAgents: readonly string[];
-	/**
-	 * If true, skip the direct-accessibility check.
-	 */
-	allowNonWebhook?: boolean;
 }
 
 export interface ValidateWorkflowRequestOptions {
@@ -721,13 +712,10 @@ export function validateAgentRequest(opts: ValidateAgentRequestOptions): void {
 	}
 	if (opts.name.trim() === '' || opts.id.trim() === '') {
 		throw new InvalidRequestError({
-			reason: 'Webhook URLs must have the shape /agents/<name>/<id> with non-empty segments.',
+			reason: 'Agent URLs must have the shape /agents/<name>/<id> with non-empty segments.',
 		});
 	}
 	if (!opts.registeredAgents.includes(opts.name)) {
 		throw new AgentNotFoundError({ name: opts.name, available: opts.registeredAgents });
-	}
-	if (!opts.allowNonWebhook && !opts.webhookAgents.includes(opts.name)) {
-		throw new AgentNotWebhookError({ name: opts.name });
 	}
 }

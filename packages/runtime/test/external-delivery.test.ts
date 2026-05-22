@@ -18,8 +18,6 @@ describe('external delivery fan-out', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			receiveHandlers: {
 				moderator: async ({ delivery }) => calls.push({ agent: 'moderator', deliveryId: delivery.id }),
@@ -59,8 +57,6 @@ describe('external delivery fan-out', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			receiveHandlers: {
 				moderator: async ({ dispatch }) => {
@@ -102,8 +98,6 @@ describe('external delivery fan-out', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			receiveHandlers: {
 				observer: async () => {},
@@ -145,8 +139,6 @@ describe('external delivery fan-out', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			receiveHandlers: {
 				moderator: async ({ dispatch }) => {
@@ -173,8 +165,6 @@ describe('external delivery fan-out', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			receiveHandlers: {
 				bad: async () => {
@@ -205,11 +195,42 @@ describe('external delivery fan-out', () => {
 		expect(calls).toEqual(['good']);
 	});
 
+	it('passes an isolated delivery clone to each subscribed receive handler', async () => {
+		const secondHandlerData: unknown[] = [];
+
+		configureFlueRuntime({
+			target: 'node',
+			handlers: {},
+			receiveHandlers: {
+				mutator: async ({ delivery }) => {
+					(delivery.data as { text: string }).text = 'mutated';
+					delivery.id = 'mutated-id';
+				},
+				observer: async ({ delivery }) => {
+					secondHandlerData.push({ id: delivery.id, data: delivery.data });
+				},
+			},
+			manifest: {
+				agents: [
+					{ name: 'mutator', channels: { discord: true }, receive: true, init: true },
+					{ name: 'observer', channels: { discord: true }, receive: true, init: true },
+				],
+			},
+		});
+
+		await receiveExternalDelivery({
+			id: 'evt-1',
+			channel: 'discord',
+			type: 'message.created',
+			data: { text: 'original' },
+		});
+
+		expect(secondHandlerData).toEqual([{ id: 'evt-1', data: { text: 'original' } }]);
+	});
+
 	it('rejects invalid dispatches inside the current receive handler', async () => {
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			receiveHandlers: {
 				moderator: async ({ dispatch }) => {
@@ -233,11 +254,36 @@ describe('external delivery fan-out', () => {
 		expect(result.errors[0]?.agent).toBe('moderator');
 	});
 
+	it('rejects dispatches when no dispatch queue is configured', async () => {
+		configureFlueRuntime({
+			target: 'node',
+			handlers: {},
+			receiveHandlers: {
+				moderator: async ({ dispatch }) => {
+					await dispatch({ id: 'guild:1', session: 'case:1', input: { type: 'flagged' } });
+				},
+			},
+			manifest: {
+				agents: [{ name: 'moderator', channels: { discord: true }, receive: true, init: true }],
+			},
+		});
+
+		const result = await receiveExternalDelivery({
+			id: 'evt-1',
+			channel: 'discord',
+			type: 'message.created',
+			data: {},
+		});
+
+		expect(result.errors).toHaveLength(1);
+		expect(result.errors[0]?.error).toMatchObject({
+			message: '[flue] dispatch() cannot be accepted because no dispatch queue is configured.',
+		});
+	});
+
 	it('rejects missing target agents and non-serializable dispatch inputs', async () => {
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			receiveHandlers: {
 				missing: async ({ dispatch }) => {
@@ -319,8 +365,6 @@ describe('external delivery fan-out', () => {
 
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			dispatchQueue: queue,
 			receiveHandlers: {
