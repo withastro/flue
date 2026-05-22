@@ -181,7 +181,6 @@ if (!hasRegisteredProvider('cloudflare')) {
 const skills = {};
 const systemPrompt = '';
 
-const webhookAgentNames = ${JSON.stringify(agents.map((a) => a.name))};
 const receiveHandlers = {
 ${receiveHandlerMapEntries}
 };
@@ -488,8 +487,6 @@ configureFlueRuntime({
   target: 'cloudflare',
   runtimeVersion: ${runtimeVersion},
   manifest: ${manifestJson},
-  webhookAgents: webhookAgentNames,
-  allowNonWebhook: false,
   handlers: directHandlers,
   receiveHandlers,
   channelHandlers,

@@ -13,8 +13,6 @@ describe('GitHub webhook channel', () => {
 		const received: unknown[] = [];
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			channelHandlers: { github: createGitHubWebhook({ secret: 'secret' }) },
 			receiveHandlers: {
@@ -57,8 +55,6 @@ describe('GitHub webhook channel', () => {
 	it('rejects invalid GitHub webhook signatures', async () => {
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			channelHandlers: { github: createGitHubWebhook({ secret: 'secret' }) },
 			receiveHandlers: {},
@@ -81,12 +77,25 @@ describe('GitHub webhook channel', () => {
 		expect(await res.json()).toMatchObject({ error: { type: 'unauthorized' } });
 	});
 
+	it('reads GitHub webhook secrets from the runtime env argument', async () => {
+		const body = JSON.stringify({ action: 'opened' });
+		const handler = createGitHubWebhook();
+
+		await expect(handler.receive(new Request('http://localhost/channels/github', {
+			method: 'POST',
+			headers: {
+				'x-github-delivery': 'delivery-1',
+				'x-github-event': 'issues',
+				'x-hub-signature-256': await signature('secret', body),
+			},
+			body,
+		}), { GITHUB_WEBHOOK_SECRET: 'secret' })).resolves.toMatchObject({ id: 'delivery-1' });
+	});
+
 	it('dispatches from a GitHub delivery through the configured queue', async () => {
 		const dispatches: DispatchInput[] = [];
 		configureFlueRuntime({
 			target: 'node',
-			webhookAgents: [],
-			allowNonWebhook: false,
 			handlers: {},
 			channelHandlers: { github: createGitHubWebhook() },
 			dispatchQueue: new InMemoryDispatchQueue({

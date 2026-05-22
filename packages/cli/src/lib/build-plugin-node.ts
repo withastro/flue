@@ -93,7 +93,7 @@ const workflowHandlers = {
 ${workflowHandlerMapEntries}
 };
 const channelHandlers = {
-${hasGitHubChannel ? '  github: createGitHubWebhook(),' : ''}
+${hasGitHubChannel ? '  github: createGitHubWebhook({ secret: process.env.GITHUB_WEBHOOK_SECRET }),' : ''}
 };
 
 // When the CLI starts this server via \`flue run\`, it sets FLUE_MODE=local.
@@ -154,8 +154,6 @@ configureFlueRuntime({
   target: 'node',
   runtimeVersion: ${runtimeVersion},
   manifest: ${manifestJson},
-  webhookAgents: ${JSON.stringify(agents.map((a) => a.name))},
-  allowNonWebhook: false,
   handlers: directHandlers,
   receiveHandlers,
   channelHandlers,
