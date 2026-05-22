@@ -1,0 +1,12 @@
+{
+	"name": "cross-channel-routing-example",
+	"private": true,
+	"type": "module",
+	"dependencies": {
+		"@flue/runtime": "workspace:*",
+		"just-bash": "^2.14.2"
+	},
+	"devDependencies": {
+		"@flue/cli": "workspace:*"
+	}
+}

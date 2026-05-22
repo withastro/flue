@@ -4,6 +4,8 @@ Build and deploy Flue agents as a Node.js server. This guide walks you through c
 
 By the end, you will have a Flue agent running as a Node.js server, and you will know how to add subagents, sandbox context, external CLIs, remote sandboxes, and durable session storage when your agent needs them.
 
+This guide focuses on deploying the generated Node server. For the message-driven agent API model, including direct `/agents/:name/:id` delivery and inbound external-channel `/channels/:channel` webhooks, see [Message-Driven Agents](message-driven-agents.md).
+
 ## Project layout
 
 The project root is your project directory. Source files (agents, workflows, and any other code they import) live in one of two places, analogous to Next.js's `src/` folder:
@@ -36,16 +38,19 @@ import * as v from 'valibot';
 
 export const channels = [http()];
 
-export async function run ({ init, payload }: FlueContext) {
+export async function run({ init, payload }: FlueContext) {
   const harness = await init({ model: 'openai/gpt-5.5' });
   const session = await harness.session();
 
-  const { data } = await session.prompt(`Translate this to ${payload.language}: "${payload.text}"`, {
-    result: v.object({
-      translation: v.string(),
-      confidence: v.picklist(['low', 'medium', 'high']),
-    }),
-  });
+  const { data } = await session.prompt(
+    `Translate this to ${payload.language}: "${payload.text}"`,
+    {
+      result: v.object({
+        translation: v.string(),
+        confidence: v.picklist(['low', 'medium', 'high']),
+      }),
+    },
+  );
 
   return data;
 }
@@ -171,7 +176,7 @@ import * as v from 'valibot';
 
 export const channels = [http()];
 
-export async function run ({ init, payload }: FlueContext) {
+export async function run({ init, payload }: FlueContext) {
   const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
 
