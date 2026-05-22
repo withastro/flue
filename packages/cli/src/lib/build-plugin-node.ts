@@ -8,10 +8,8 @@ export class NodePlugin implements BuildPlugin {
 	bundle = 'esbuild' as const;
 
 	generateEntryPoint(ctx: BuildContext): string {
-		const { agents, appEntry, workflows } = ctx;
-		const manifestJson = JSON.stringify(ctx.manifest);
+		const { agents, appEntry, workflows, channels } = ctx;
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
-		const hasGitHubChannel = agents.some((agent) => agent.channels.github);
 
 		const agentImports = agents
 			.map((a, index) => {
@@ -25,21 +23,25 @@ export class NodePlugin implements BuildPlugin {
 			.map((workflow, index) => {
 				const varName = workflowVarName(workflow.name, index);
 				const filePath = workflow.filePath.replace(/\\/g, '/');
-				return `import { run as ${varName} } from '${filePath}';`;
+				return `import * as ${varName} from '${filePath}';`;
+			})
+			.join('\n');
+		const channelImports = channels
+			.map((channel, index) => {
+				const varName = channelVarName(channel.name, index);
+				const filePath = channel.filePath.replace(/\\/g, '/');
+				return `import * as ${varName} from '${filePath}';`;
 			})
 			.join('\n');
 
-		const receiveHandlerMapEntries = agents
-			.flatMap((a, index) => a.hasReceive ? [`  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)}.receive,`] : [])
+		const agentModuleEntries = agents
+			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)},`)
 			.join('\n');
-		const directHandlerMapEntries = agents
-			.map((a, index) => `  ${JSON.stringify(a.name)}: createDirectAgentHandler(${agentVarName(a.name, index)}.init),`)
-			.join('\n');
-		const initHandlerMapEntries = agents
-			.map((a, index) => `  ${JSON.stringify(a.name)}: ${agentVarName(a.name, index)}.init,`)
-			.join('\n');
-		const workflowHandlerMapEntries = workflows
+		const workflowModuleEntries = workflows
 			.map((workflow, index) => `  ${JSON.stringify(workflow.name)}: ${workflowVarName(workflow.name, index)},`)
+			.join('\n');
+		const channelModuleEntries = channels
+			.map((channel, index) => `  ${JSON.stringify(channel.name)}: ${channelVarName(channel.name, index)},`)
 			.join('\n');
 
 		// User-supplied app.ts (if any). The generated entry imports the user's
@@ -69,10 +71,10 @@ import {
   createDirectAgentHandler,
   createAgentDispatchProcessor,
   InMemoryDispatchQueue,
-  ${hasGitHubChannel ? 'createGitHubWebhook,' : ''}
 } from '@flue/runtime/internal';
 ${agentImports}
 ${workflowImports}
+${channelImports}
 ${userAppImport}
 
 // ─── Config ─────────────────────────────────────────────────────────────────
@@ -80,21 +82,80 @@ ${userAppImport}
 const skills = {};
 const systemPrompt = '';
 
-const receiveHandlers = {
-${receiveHandlerMapEntries}
+function normalizeBuiltModules(agentModules, workflowModules, channelModules) {
+  const channelDefinitions = {};
+  const channelHandlers = {};
+  for (const [name, mod] of Object.entries(channelModules)) {
+    const definition = normalizeChannelExport(mod.channel, 'channel "' + name + '"');
+    channelDefinitions[name] = definition;
+    if (definition.webhook) channelHandlers[definition.type] = definition.webhook;
+  }
+
+  const manifest = { agents: [], workflows: [] };
+  const directHandlers = {};
+  const receiveHandlers = {};
+  const initHandlers = {};
+  for (const [name, mod] of Object.entries(agentModules)) {
+    if (typeof mod.init !== 'function') throw new Error('[flue] Agent "' + name + '" must export async function init(...).');
+    const channels = normalizeChannelList(mod.channels, 'agent "' + name + '"');
+    const hasExternalChannel = Object.keys(channels).some((channel) => channel !== 'http' && channel !== 'websocket');
+    if (hasExternalChannel && typeof mod.receive !== 'function') {
+      throw new Error('[flue] External-channel agent "' + name + '" must export async function receive(...).');
+    }
+    if (typeof mod.receive === 'function' && Object.keys(channels).length === 0) {
+      throw new Error('[flue] Agent "' + name + '" exports receive(...) but no channels.');
+    }
+    manifest.agents.push({ name, channels, receive: typeof mod.receive === 'function', init: true });
+    initHandlers[name] = mod.init;
+    if (channels.http) directHandlers[name] = createDirectAgentHandler(mod.init);
+    if (typeof mod.receive === 'function') receiveHandlers[name] = mod.receive;
+  }
+
+  for (const [name, mod] of Object.entries(workflowModules)) {
+    if (typeof mod.run !== 'function') throw new Error('[flue] Workflow "' + name + '" must export async function run(...).');
+    const channels = normalizeChannelList(mod.channels, 'workflow "' + name + '"');
+    for (const channel of Object.keys(channels)) {
+      if (channel !== 'http' && channel !== 'websocket') {
+        throw new Error('[flue] Workflow "' + name + '" cannot subscribe to external channel "' + channel + '".');
+      }
+    }
+    manifest.workflows.push({ name, channels });
+    if (channels.http) workflowHandlers[name] = mod.run;
+  }
+
+  return { manifest, directHandlers, receiveHandlers, initHandlers, workflowHandlers, channelHandlers };
+}
+
+function normalizeChannelList(value, label) {
+  if (value === undefined) return {};
+  if (!Array.isArray(value)) throw new Error('[flue] channels export for ' + label + ' must be an array.');
+  const result = {};
+  for (const entry of value) {
+    const definition = normalizeChannelExport(entry, label + ' channel');
+    result[definition.type] = true;
+  }
+  return result;
+}
+
+function normalizeChannelExport(value, label) {
+  const definition = typeof value === 'function' ? value() : value;
+  if (!definition || typeof definition !== 'object' || typeof definition.type !== 'string' || definition.type.trim() === '') {
+    throw new Error('[flue] Invalid ' + label + ': expected a channel definition or zero-argument channel factory.');
+  }
+  return definition;
+}
+
+const agentModules = {
+${agentModuleEntries}
 };
-const directHandlers = {
-${directHandlerMapEntries}
+const workflowModules = {
+${workflowModuleEntries}
 };
-const initHandlers = {
-${initHandlerMapEntries}
+const channelModules = {
+${channelModuleEntries}
 };
-const workflowHandlers = {
-${workflowHandlerMapEntries}
-};
-const channelHandlers = {
-${hasGitHubChannel ? '  github: createGitHubWebhook({ secret: process.env.GITHUB_WEBHOOK_SECRET }),' : ''}
-};
+const normalized = normalizeBuiltModules(agentModules, workflowModules, channelModules);
+const { manifest, directHandlers, receiveHandlers, initHandlers, workflowHandlers, channelHandlers } = normalized;
 
 // When the CLI starts this server via \`flue run\`, it sets FLUE_MODE=local.
 const isLocalMode = process.env.FLUE_MODE === 'local';
@@ -153,7 +214,7 @@ function createContextForRequest(id, runId, payload, req) {
 configureFlueRuntime({
   target: 'node',
   runtimeVersion: ${runtimeVersion},
-  manifest: ${manifestJson},
+  manifest,
   handlers: directHandlers,
   receiveHandlers,
   channelHandlers,
@@ -230,4 +291,9 @@ function agentVarName(name: string, index: number): string {
 function workflowVarName(name: string, index: number): string {
 	const readableName = name.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'workflow';
 	return `workflow_${readableName}_${index}`;
+}
+
+function channelVarName(name: string, index: number): string {
+	const readableName = name.replace(/[^a-zA-Z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'channel';
+	return `channel_${readableName}_${index}`;
 }

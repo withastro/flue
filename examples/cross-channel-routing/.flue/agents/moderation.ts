@@ -1,8 +1,8 @@
 import { defineAgent, type AgentInitContext, type ReceiveContext } from '@flue/runtime';
-import { discord } from '../channels/discord';
-import { gchat } from '../channels/gchat';
+import { channel as discord } from '../channels/discord';
+import { channel as gchat } from '../channels/gchat';
 
-export const channels = [discord, gchat];
+export const channels = [discord(), gchat()];
 
 const moderator = defineAgent({
 	model: 'anthropic/claude-haiku-4-5',

@@ -7,11 +7,11 @@ import { NodePlugin } from '../../cli/src/lib/build-plugin-node.ts';
 import type { BuildContext } from '../../cli/src/lib/types.ts';
 
 describe('Node build plugin', () => {
-	it('wires GitHub channel webhooks when an agent subscribes to github', () => {
+	it('imports channel modules and derives channel handlers from exports', () => {
 		const entry = new NodePlugin().generateEntryPoint(testBuildContext());
 
-		expect(entry).toContain('createGitHubWebhook');
-		expect(entry).toContain('github: createGitHubWebhook({ secret: process.env.GITHUB_WEBHOOK_SECRET })');
+		expect(entry).toContain("import * as channel_github_0 from '/tmp/channels/github.ts'");
+		expect(entry).toContain('const normalized = normalizeBuiltModules(agentModules, workflowModules, channelModules);');
 		expect(entry).toContain('channelHandlers,');
 	});
 
@@ -27,10 +27,11 @@ describe('Node build plugin', () => {
 
 function testBuildContext(): BuildContext {
 	return {
-		agents: [{ name: 'triage', filePath: '/tmp/triage.ts', channels: { github: true }, hasReceive: true, hasInit: true }],
+		agents: [{ name: 'triage', filePath: '/tmp/triage.ts', hasChannels: true, hasReceive: true, hasInit: true }],
+		channels: [{ name: 'github', filePath: '/tmp/channels/github.ts' }],
 		workflows: [],
 		manifest: {
-			agents: [{ name: 'triage', channels: { github: true }, receive: true, init: true }],
+			agents: [{ name: 'triage', channels: {}, receive: true, init: true }],
 			workflows: [],
 		},
 		root: '/tmp/flue-test',

@@ -1,3 +1,3 @@
 import { defineChannel } from '@flue/runtime';
 
-export const gchat = defineChannel('gchat');
+export const channel = () => defineChannel('gchat');

@@ -35,6 +35,10 @@
 		"./github": {
 			"types": "./dist/github.d.mts",
 			"import": "./dist/github.mjs"
+		},
+		"./channels": {
+			"types": "./dist/channels.d.mts",
+			"import": "./dist/channels.mjs"
 		}
 	},
 	"main": "./dist/index.mjs",

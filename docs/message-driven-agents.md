@@ -51,6 +51,9 @@ Direct delivery:
 
 ```ts
 import { defineAgent, type AgentInitContext } from '@flue/runtime';
+import { http } from '@flue/runtime/channels';
+
+export const channels = [http()];
 
 const assistant = defineAgent({
   instructions: 'You are a helpful direct chat assistant.',
@@ -97,12 +100,21 @@ type Delivery = {
 };
 ```
 
-Agent modules subscribe with a static `channels` export:
+Channel connectors live in `.flue/channels/`, and agent modules subscribe with a `channels` export:
 
 ```ts
-import { defineAgent, github, type AgentInitContext, type ReceiveContext } from '@flue/runtime';
+// .flue/channels/github.ts
+import { createGitHubChannel } from '@flue/runtime/github';
 
-export const channels = [github];
+export const channel = createGitHubChannel();
+```
+
+```ts
+// .flue/agents/github-triage.ts
+import { defineAgent, type AgentInitContext, type ReceiveContext } from '@flue/runtime';
+import { channel as github } from '../channels/github';
+
+export const channels = [github()];
 
 const triage = defineAgent({
   instructions: 'You triage inbound GitHub webhook events.',
@@ -217,15 +229,23 @@ Dynamic per-delivery behavior belongs in `receive(...)` or in reusable agent def
 
 ## GitHub Webhooks
 
-Import the GitHub channel from `@flue/runtime`:
+Define the GitHub channel in `.flue/channels/github.ts`:
 
 ```ts
-import { github } from '@flue/runtime';
+import { createGitHubChannel } from '@flue/runtime/github';
 
-export const channels = [github];
+export const channel = createGitHubChannel();
 ```
 
-When any agent subscribes to `github`, the generated runtime wires `/channels/github` to the GitHub webhook handler.
+Then subscribe from an agent:
+
+```ts
+import { channel as github } from '../channels/github';
+
+export const channels = [github()];
+```
+
+When a channel module named `github` exports a GitHub channel, the generated runtime wires `/channels/github` to the GitHub webhook handler.
 
 Set `GITHUB_WEBHOOK_SECRET` to verify `X-Hub-Signature-256` signatures:
 

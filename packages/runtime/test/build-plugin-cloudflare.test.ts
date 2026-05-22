@@ -40,10 +40,11 @@ describe('Cloudflare build plugin', () => {
 
 function testBuildContext(): BuildContext {
 	return {
-		agents: [{ name: 'moderator', filePath: '/tmp/moderator.ts', channels: { discord: true }, hasReceive: true, hasInit: true }],
+		agents: [{ name: 'moderator', filePath: '/tmp/moderator.ts', hasChannels: true, hasReceive: true, hasInit: true }],
+		channels: [{ name: 'github', filePath: '/tmp/channels/github.ts' }],
 		workflows: [],
 		manifest: {
-			agents: [{ name: 'moderator', channels: { discord: true }, receive: true, init: true }],
+			agents: [{ name: 'moderator', channels: {}, receive: true, init: true }],
 			workflows: [],
 		},
 		root: '/tmp/flue-test',

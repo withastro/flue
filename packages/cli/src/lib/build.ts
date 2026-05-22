@@ -11,20 +11,18 @@ import type {
 	BuildContext,
 	BuildOptions,
 	BuildPlugin,
+	ChannelInfo,
 	WorkflowInfo,
 } from './types.ts';
 
 interface ParsedAgentFile {
-	channels?: Record<string, true>;
+	hasChannels: boolean;
 	hasReceive: boolean;
 	hasInit: boolean;
 }
 
 interface ParsedWorkflowFile {
-	channels: {
-		http?: boolean;
-		websocket?: boolean;
-	};
+	hasChannels: boolean;
 }
 
 /** Extract static agent metadata at build time without evaluating the agent module. */
@@ -37,7 +35,7 @@ function parseAgentFile(filePath: string): ParsedAgentFile {
 		true,
 		scriptKindForFile(filePath),
 	);
-	let channels: ParsedAgentFile['channels'];
+	let hasChannels = false;
 	let hasReceive = false;
 	let hasInit = false;
 
@@ -91,23 +89,20 @@ function parseAgentFile(filePath: string): ParsedAgentFile {
 			if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) {
 				throwUnsupportedAgentChannels(filePath, 'channels must be declared with export const');
 			}
-			if (channels) throwUnsupportedAgentChannels(filePath, 'multiple channels exports were found');
+			if (hasChannels) throwUnsupportedAgentChannels(filePath, 'multiple channels exports were found');
 			if (!declaration.initializer) throwUnsupportedAgentChannels(filePath, 'missing initializer');
-			channels = parseAgentChannelsInitializer(filePath, declaration.initializer);
+			hasChannels = true;
 		}
 	}
 
-	if (channels && !hasReceive) {
-		throwUnsupportedAgentExports(filePath, 'external-channel agents must export "receive"');
+	if (hasChannels && !hasInit) {
+		throwUnsupportedAgentExports(filePath, 'agents with channels must export "init"');
 	}
-	if (channels && !hasInit) {
-		throwUnsupportedAgentExports(filePath, 'external-channel agents must export "init"');
-	}
-	if (!channels && hasReceive) {
+	if (!hasChannels && hasReceive) {
 		throwUnsupportedAgentExports(filePath, '"receive" requires a "channels" export');
 	}
 
-	return { channels, hasReceive, hasInit };
+	return { hasChannels, hasReceive, hasInit };
 }
 
 function parseWorkflowFile(filePath: string): ParsedWorkflowFile {
@@ -120,7 +115,7 @@ function parseWorkflowFile(filePath: string): ParsedWorkflowFile {
 		scriptKindForFile(filePath),
 	);
 	let hasRun = false;
-	let channels: ParsedWorkflowFile['channels'] | undefined;
+	let hasChannels = false;
 
 	for (const statement of ast.statements) {
 		if (isDefaultExport(statement)) {
@@ -175,61 +170,16 @@ function parseWorkflowFile(filePath: string): ParsedWorkflowFile {
 			if ((statement.declarationList.flags & ts.NodeFlags.Const) === 0) {
 				throwUnsupportedWorkflowChannels(filePath, 'channels must be declared with export const');
 			}
-			if (channels) throwUnsupportedWorkflowChannels(filePath, 'multiple channels exports were found');
+			if (hasChannels) throwUnsupportedWorkflowChannels(filePath, 'multiple channels exports were found');
 			if (!declaration.initializer) throwUnsupportedWorkflowChannels(filePath, 'missing initializer');
-			channels = parseWorkflowChannelsInitializer(filePath, declaration.initializer);
+			hasChannels = true;
 		}
 	}
 
 	if (!hasRun) {
 		throwUnsupportedWorkflowRun(filePath, 'required direct export "export async function run(...)" was not found');
 	}
-	return { channels: channels ?? {} };
-}
-
-function parseWorkflowChannelsInitializer(
-	filePath: string,
-	initializer: ts.Expression,
-): ParsedWorkflowFile['channels'] {
-	const expr = unwrapExpression(initializer);
-	if (!ts.isArrayLiteralExpression(expr)) {
-		throwUnsupportedWorkflowChannels(filePath, 'expected a static factory array');
-	}
-
-	const result: ParsedWorkflowFile['channels'] = {};
-	for (const element of expr.elements) {
-		if (ts.isOmittedExpression(element)) {
-			throwUnsupportedWorkflowChannels(filePath, 'omitted array entries are not supported');
-		}
-
-		const channel = parseWorkflowChannelFactory(filePath, element);
-		result[channel] = true;
-	}
-
-	return result;
-}
-
-function parseWorkflowChannelFactory(
-	filePath: string,
-	element: ts.Expression,
-): keyof ParsedWorkflowFile['channels'] {
-	const expr = unwrapExpression(element);
-	if (!ts.isCallExpression(expr)) {
-		throwUnsupportedWorkflowChannels(filePath, 'channel entries must be direct http() or websocket() calls');
-	}
-	if (expr.arguments.length > 0) {
-		throwUnsupportedWorkflowChannels(filePath, 'channel factory calls must not receive arguments');
-	}
-	if (!ts.isIdentifier(expr.expression)) {
-		throwUnsupportedWorkflowChannels(filePath, 'channel factories must be direct http() or websocket() calls');
-	}
-
-	const name = expr.expression.text;
-	if (name !== 'http' && name !== 'websocket') {
-		throwUnsupportedWorkflowChannels(filePath, `unsupported channel factory "${name}()"`);
-	}
-
-	return name;
+	return { hasChannels };
 }
 
 function isDefaultExport(statement: ts.Statement): boolean {
@@ -299,41 +249,6 @@ function throwUnsupportedWorkflowChannels(filePath: string, reason: string): nev
 	);
 }
 
-function parseAgentChannelsInitializer(
-	filePath: string,
-	initializer: ts.Expression,
-): NonNullable<ParsedAgentFile['channels']> {
-	const expr = unwrapExpression(initializer);
-	if (!ts.isArrayLiteralExpression(expr)) {
-		throwUnsupportedAgentChannels(filePath, 'expected a static channel array');
-	}
-
-	const result: NonNullable<ParsedAgentFile['channels']> = {};
-	for (const element of expr.elements) {
-		if (ts.isOmittedExpression(element)) {
-			throwUnsupportedAgentChannels(filePath, 'omitted array entries are not supported');
-		}
-		const channel = parseAgentChannelEntry(filePath, element);
-		result[channel] = true;
-	}
-	return result;
-}
-
-function parseAgentChannelEntry(filePath: string, element: ts.Expression): string {
-	const expr = unwrapExpression(element);
-	if (ts.isIdentifier(expr)) return expr.text;
-	if (ts.isCallExpression(expr)) {
-		if (expr.arguments.length > 0) {
-			throwUnsupportedAgentChannels(filePath, 'channel factory calls must not receive arguments');
-		}
-		if (!ts.isIdentifier(expr.expression)) {
-			throwUnsupportedAgentChannels(filePath, 'channel factories must be direct identifier calls');
-		}
-		return expr.expression.text;
-	}
-	throwUnsupportedAgentChannels(filePath, 'channel entries must be direct identifiers or zero-argument calls');
-}
-
 function throwUnsupportedAgentExportDeclaration(
 	filePath: string,
 	statement: ts.ExportDeclaration,
@@ -369,19 +284,6 @@ function scriptKindForFile(filePath: string): ts.ScriptKind {
 	if (/\.m?js$/.test(filePath)) return ts.ScriptKind.JS;
 	return ts.ScriptKind.TS;
 }
-
-function unwrapExpression(expr: ts.Expression): ts.Expression {
-	while (
-		ts.isAsExpression(expr) ||
-		ts.isSatisfiesExpression(expr) ||
-		ts.isTypeAssertionExpression(expr) ||
-		ts.isParenthesizedExpression(expr)
-	) {
-		expr = expr.expression;
-	}
-	return expr;
-}
-
 
 /**
  * Result returned by {@link build}. `changed` indicates whether any file in
@@ -424,6 +326,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 
 	const agents = discoverAgents(sourceRoot);
 	const workflows = discoverWorkflows(sourceRoot);
+	const channels = discoverChannels(sourceRoot);
 	const appEntry = discoverAppEntry(sourceRoot);
 
 	if (agents.length === 0 && workflows.length === 0) {
@@ -448,6 +351,11 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 			`[flue] Found ${workflows.length} workflow(s): ${workflows.map((workflow) => workflow.name).join(', ')}`,
 		);
 	}
+	if (channels.length > 0) {
+		console.log(
+			`[flue] Found ${channels.length} channel(s): ${channels.map((channel) => channel.name).join(', ')}`,
+		);
+	}
 	console.log(
 		`[flue] AGENTS.md and .agents/skills/ will be discovered at runtime from session cwd`,
 	);
@@ -457,13 +365,13 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	const manifest = {
 		agents: agents.map((a) => ({
 			name: a.name,
-			channels: a.channels,
+			channels: {},
 			receive: a.hasReceive,
 			init: a.hasInit,
 		})),
 		workflows: workflows.map((workflow) => ({
 			name: workflow.name,
-			channels: workflow.channels,
+			channels: {},
 		})),
 	};
 	const manifestPath = path.join(output, 'manifest.json');
@@ -473,6 +381,7 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 	const ctx: BuildContext = {
 		agents,
 		workflows,
+		channels,
 		manifest,
 		root,
 		output,
@@ -652,11 +561,11 @@ function discoverAgents(sourceRoot: string): AgentInfo[] {
 	return files.flatMap((f) => {
 		const filePath = path.join(agentsDir, f);
 		const parsed = parseAgentFile(filePath);
-		if (!parsed.channels && !parsed.hasInit) return [];
+		if (!parsed.hasChannels && !parsed.hasInit) return [];
 		return [{
 			name: f.replace(/\.(ts|js|mts|mjs)$/, ''),
 			filePath,
-			channels: parsed.channels ?? {},
+			hasChannels: parsed.hasChannels,
 			hasReceive: parsed.hasReceive,
 			hasInit: parsed.hasInit,
 		}];
@@ -689,13 +598,43 @@ function discoverWorkflows(sourceRoot: string): WorkflowInfo[] {
 
 	return files.map((file) => {
 		const filePath = path.join(workflowsDir, file);
-		const { channels } = parseWorkflowFile(filePath);
+		const { hasChannels } = parseWorkflowFile(filePath);
 		return {
 			name: file.replace(/\.(ts|js|mts|mjs)$/, ''),
 			filePath,
-			channels,
+			hasChannels,
 		};
 	});
+}
+
+function discoverChannels(sourceRoot: string): ChannelInfo[] {
+	const channelsDir = path.join(sourceRoot, 'channels');
+	if (!fs.existsSync(channelsDir)) return [];
+
+	const files = fs
+		.readdirSync(channelsDir)
+		.filter((file) => !/\.d\.(ts|mts)$/.test(file) && /\.(ts|js|mts|mjs)$/.test(file));
+	const channelFiles = new Map<string, string>();
+	for (const file of files) {
+		const name = file.replace(/\.(ts|js|mts|mjs)$/, '');
+		if (!name || name.includes(':')) {
+			throw new Error(
+				`[flue] Channel basename "${name}" is invalid. Channel names must be non-empty and must not contain ":".`,
+			);
+		}
+		const previous = channelFiles.get(name);
+		if (previous) {
+			throw new Error(
+				`[flue] Duplicate channel basename "${name}" found: ${previous}, ${file}. Keep only one channel source file per basename.`,
+			);
+		}
+		channelFiles.set(name, file);
+	}
+
+	return files.map((file) => ({
+		name: file.replace(/\.(ts|js|mts|mjs)$/, ''),
+		filePath: path.join(channelsDir, file),
+	}));
 }
 
 /**

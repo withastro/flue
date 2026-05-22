@@ -10,7 +10,7 @@
 export interface AgentInfo {
 	name: string;
 	filePath: string;
-	channels: Record<string, true>;
+	hasChannels: boolean;
 	hasReceive: boolean;
 	hasInit: boolean;
 }
@@ -18,12 +18,18 @@ export interface AgentInfo {
 export interface WorkflowInfo {
 	name: string;
 	filePath: string;
-	channels: { http?: boolean; websocket?: boolean };
+	hasChannels: boolean;
+}
+
+export interface ChannelInfo {
+	name: string;
+	filePath: string;
 }
 
 export interface BuildContext {
 	agents: AgentInfo[];
 	workflows: WorkflowInfo[];
+	channels: ChannelInfo[];
 	manifest: {
 		agents: Array<{
 			name: string;

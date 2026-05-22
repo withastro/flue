@@ -9,6 +9,13 @@ export interface GitHubWebhookOptions {
 	secret?: string;
 }
 
+export function createGitHubChannel(options: GitHubWebhookOptions = {}): () => ChannelDefinition<'github'> {
+	return () => ({
+		type: 'github',
+		webhook: createGitHubWebhook(options),
+	});
+}
+
 export function createGitHubWebhook(options: GitHubWebhookOptions = {}): ChannelWebhookHandler {
 	return {
 		async receive(request, env) {
@@ -19,7 +26,7 @@ export function createGitHubWebhook(options: GitHubWebhookOptions = {}): Channel
 			const event = requiredHeader(request, 'x-github-event');
 			const signature = request.headers.get('x-hub-signature-256');
 			const body = await request.text();
-			const secret = options.secret ?? readEnvString(env, 'GITHUB_WEBHOOK_SECRET');
+			const secret = options.secret ?? readEnvString(env, 'GITHUB_WEBHOOK_SECRET') ?? readProcessEnvString('GITHUB_WEBHOOK_SECRET');
 			if (secret) {
 				if (!signature) throw new UnauthorizedError({ reason: 'Missing GitHub webhook signature.' });
 				if (!(await verifyGitHubSignature(body, secret, signature))) {
@@ -85,6 +92,12 @@ function stringField(value: unknown): string | undefined {
 function readEnvString(env: unknown, key: string): string | undefined {
 	if (!env || typeof env !== 'object') return undefined;
 	const value = (env as Record<string, unknown>)[key];
+	return typeof value === 'string' && value !== '' ? value : undefined;
+}
+
+function readProcessEnvString(key: string): string | undefined {
+	const processLike = globalThis as typeof globalThis & { process?: { env?: Record<string, string | undefined> } };
+	const value = processLike.process?.env?.[key];
 	return typeof value === 'string' && value !== '' ? value : undefined;
 }
 

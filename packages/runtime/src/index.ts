@@ -57,7 +57,7 @@ export { createTools, BUILTIN_TOOL_NAMES } from './agent.ts';
 export { defineTool } from './tool.ts';
 export { defineAgent } from './agent-definition.ts';
 export { defineChannel } from './channels.ts';
-export { github, createGitHubWebhook, type GitHubWebhookOptions } from './github.ts';
+export { github, createGitHubChannel, createGitHubWebhook, type GitHubWebhookOptions } from './github.ts';
 export { http, websocket } from './workflow-channels.ts';
 export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
 export { connectMcpServer } from './mcp.ts';

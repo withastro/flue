@@ -19,7 +19,7 @@ import {
 	validateAgentRequest,
 	validateWorkflowRequest,
 } from '../errors.ts';
-import type { ChannelWebhookHandler, Delivery, Dispatch, DispatchRequest } from '../types.ts';
+import type { ChannelWebhookHandler } from '../types.ts';
 import {
 	type AgentHandler,
 	type CreateContextFn,
@@ -30,6 +30,7 @@ import {
 	type WorkflowHandler,
 } from './handle-agent.ts';
 import type { DispatchQueue } from './dispatch-queue.ts';
+import { receiveExternalDelivery as receiveExternalDeliveryWithRuntime, type AgentReceiveHandler } from './external-channels.ts';
 import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunPointer, RunRegistry } from './run-registry.ts';
@@ -132,17 +133,25 @@ export interface FlueManifest {
 	}>;
 }
 
-export type DispatchFn = Dispatch;
-export type AgentReceiveHandler = (ctx: {
-	delivery: Delivery;
-	dispatch: DispatchFn;
-}) => unknown | Promise<unknown>;
-
 const RUN_ROUTES_BY_ID: ReadonlyArray<readonly [string, HandleRunRouteOptions['action']]> = [
 	['/runs/:runId', 'get'],
 	['/runs/:runId/events', 'events'],
 	['/runs/:runId/stream', 'stream'],
 ];
+
+export async function receiveExternalDelivery(
+	delivery: Parameters<typeof receiveExternalDeliveryWithRuntime>[0],
+	options?: Parameters<typeof receiveExternalDeliveryWithRuntime>[2],
+): ReturnType<typeof receiveExternalDeliveryWithRuntime> {
+	const rt = runtimeConfig;
+	if (!rt) {
+		throw new Error(
+			'[flue] receiveExternalDelivery() called before runtime was configured. ' +
+				'This usually means it was used outside a Flue-built server entry.',
+		);
+	}
+	return receiveExternalDeliveryWithRuntime(delivery, rt, options);
+}
 
 let runtimeConfig: FlueRuntime | undefined;
 
@@ -156,146 +165,6 @@ export function configureFlueRuntime(cfg: FlueRuntime): void {
 
 export function getFlueRuntime(): FlueRuntime | undefined {
 	return runtimeConfig;
-}
-
-export async function receiveExternalDelivery(
-	delivery: Delivery,
-	options: { dispatchQueue?: DispatchQueue } = {},
-): Promise<{ invoked: string[]; errors: Array<{ agent: string; error: unknown }> }> {
-	const rt = runtimeConfig;
-	if (!rt) {
-		throw new Error(
-			'[flue] receiveExternalDelivery() called before runtime was configured. ' +
-				'This usually means it was used outside a Flue-built server entry.',
-		);
-	}
-
-	const invoked: string[] = [];
-	const errors: Array<{ agent: string; error: unknown }> = [];
-	const dispatchQueue = options.dispatchQueue ?? rt.dispatchQueue ?? defaultDispatchQueue;
-	for (const agent of rt.manifest?.agents ?? []) {
-		if (!agent.channels[delivery.channel]) continue;
-		const receive = rt.receiveHandlers?.[agent.name];
-		if (!receive) {
-			const error = new Error(`[flue] Agent "${agent.name}" is subscribed to "${delivery.channel}" but has no receive handler.`);
-			errors.push({ agent: agent.name, error });
-			console.error(error.message);
-			continue;
-		}
-		invoked.push(agent.name);
-		try {
-			const deliveryForAgent = cloneJsonSerializable(delivery, 'delivery') as Delivery;
-			await receive({
-				delivery: deliveryForAgent,
-				dispatch: createDispatchFn({
-					delivery: deliveryForAgent,
-					sourceAgent: agent.name,
-					dispatchQueue,
-					rt,
-				}),
-			});
-		} catch (error) {
-			errors.push({ agent: agent.name, error });
-			console.error(`[flue:receive] Agent "${agent.name}" receive() failed:`, error);
-		}
-	}
-	return { invoked, errors };
-}
-
-const defaultDispatchQueue: DispatchQueue = {
-	async enqueue(): Promise<never> {
-		throw new Error('[flue] dispatch() cannot be accepted because no dispatch queue is configured.');
-	},
-};
-
-function createDispatchFn(options: {
-	delivery: Delivery;
-	sourceAgent: string;
-	dispatchQueue: DispatchQueue;
-	rt: FlueRuntime;
-}): DispatchFn {
-	return async (request) => {
-		const targetAgent = request.agent ?? options.sourceAgent;
-		const input = validateAndCloneDispatchRequest(request, targetAgent, options.rt);
-		await options.dispatchQueue.enqueue({
-			dispatchId: crypto.randomUUID(),
-			deliveryId: options.delivery.id,
-			sourceAgent: options.sourceAgent,
-			targetAgent,
-			agent: targetAgent,
-			id: request.id,
-			session: request.session,
-			input,
-			acceptedAt: new Date().toISOString(),
-		});
-	};
-}
-
-function validateAndCloneDispatchRequest(
-	request: DispatchRequest,
-	targetAgent: string,
-	rt: FlueRuntime,
-): unknown {
-	if (typeof targetAgent !== 'string' || targetAgent.trim() === '') {
-		throw new Error('[flue] dispatch() requires a non-empty target agent.');
-	}
-	if (typeof request.id !== 'string' || request.id.trim() === '') {
-		throw new Error('[flue] dispatch() requires a non-empty "id" target agent instance id.');
-	}
-	if (typeof request.session !== 'string' || request.session.trim() === '') {
-		throw new Error('[flue] dispatch() requires a non-empty "session" target session id.');
-	}
-	if (request.input === undefined) {
-		throw new Error('[flue] dispatch() requires an "input" payload. Use null for an intentional empty payload.');
-	}
-	if (!agentExists(rt, targetAgent)) {
-		throw new Error(`[flue] dispatch() target agent "${targetAgent}" is not registered.`);
-	}
-	return cloneJsonSerializable(request.input, 'dispatch().input');
-}
-
-function agentExists(rt: FlueRuntime, agentName: string): boolean {
-	return (rt.manifest?.agents ?? []).some((agent) => agent.name === agentName);
-}
-
-function cloneJsonSerializable(value: unknown, label: string): unknown {
-	assertJsonLike(value, label, new WeakSet());
-	let json: string;
-	try {
-		json = JSON.stringify(value);
-	} catch (error) {
-		throw new Error(`[flue] ${label} must be JSON-serializable: ${error instanceof Error ? error.message : String(error)}`);
-	}
-	return JSON.parse(json) as unknown;
-}
-
-function assertJsonLike(value: unknown, path: string, seen: WeakSet<object>): void {
-	if (value === null) return;
-	const type = typeof value;
-	if (type === 'string' || type === 'number' || type === 'boolean') {
-		if (type === 'number' && !Number.isFinite(value)) {
-			throw new Error(`[flue] ${path} must not contain non-finite numbers.`);
-		}
-		return;
-	}
-	if (type === 'undefined' || type === 'function' || type === 'symbol' || type === 'bigint') {
-		throw new Error(`[flue] ${path} must not contain ${type} values.`);
-	}
-	if (typeof value !== 'object') return;
-	if (seen.has(value)) throw new Error(`[flue] ${path} must not contain circular references.`);
-	seen.add(value);
-	if (Array.isArray(value)) {
-		for (let i = 0; i < value.length; i++) assertJsonLike(value[i], `${path}[${i}]`, seen);
-		seen.delete(value);
-		return;
-	}
-	if (Object.getPrototypeOf(value) !== Object.prototype && Object.getPrototypeOf(value) !== null) {
-		throw new Error(`[flue] ${path} must contain only plain JSON objects, arrays, strings, numbers, booleans, or null.`);
-	}
-	for (const [key, child] of Object.entries(value)) {
-		assertJsonLike(child, `${path}.${key}`, seen);
-	}
-	seen.delete(value);
 }
 
 /**
@@ -377,7 +246,7 @@ async function externalChannelRouteHandler(c: any): Promise<Response> {
 	if (delivery.channel !== channel) {
 		throw new InvalidRequestError({ reason: `Channel handler returned delivery for "${delivery.channel}" while handling "${channel}".` });
 	}
-	const result = await receiveExternalDelivery(delivery);
+	const result = await receiveExternalDeliveryWithRuntime(delivery, rt);
 	return new Response(JSON.stringify({ accepted: true, ...result }), {
 		status: 202,
 		headers: { 'content-type': 'application/json' },
@@ -765,5 +634,5 @@ function normalizeRunRequest(
 	 */
 function registeredAgentsFor(rt: FlueRuntime): readonly string[] {
 	if (rt.target === 'node') return Object.keys(rt.handlers ?? {});
-	return (rt.manifest?.agents ?? []).map((agent) => agent.name);
+	return (rt.manifest?.agents ?? []).filter((agent) => agent.channels.http).map((agent) => agent.name);
 }

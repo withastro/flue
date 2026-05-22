@@ -25,8 +25,9 @@ export { parseSkillMarkdown } from './skill-frontmatter.ts';
 export { createDurableRunStore } from './cloudflare/run-store.ts';
 export { InMemoryRunRegistry } from './node/run-registry.ts';
 export { InMemoryRunStore } from './node/run-store.ts';
-export type { Delivery, DispatchRequest } from './types.ts';
-export type { AgentReceiveHandler, DispatchFn, FlueRuntime } from './runtime/flue-app.ts';
+export type { Delivery, Dispatch, DispatchRequest } from './types.ts';
+export type { AgentReceiveHandler } from './runtime/external-channels.ts';
+export type { FlueRuntime } from './runtime/flue-app.ts';
 export { configureFlueRuntime, createDefaultFlueApp, receiveExternalDelivery } from './runtime/flue-app.ts';
 export type { DispatchInput, DispatchProcessor, DispatchQueue, DispatchReceipt } from './runtime/dispatch-queue.ts';
 export { InMemoryDispatchQueue } from './runtime/dispatch-queue.ts';
@@ -80,7 +81,7 @@ export { createRunSubscriberRegistry } from './runtime/run-subscribers.ts';
 export { bashFactoryToSessionEnv } from './sandbox.ts';
 export { hasRegisteredProvider } from './runtime/providers.ts';
 export { InMemorySessionStore } from './session.ts';
-export { createGitHubWebhook } from './github.ts';
+export { createGitHubChannel, createGitHubWebhook } from './github.ts';
 
 /**
  * Resolve `provider/model-id` to a pi-ai Model. Registered URL prefixes win

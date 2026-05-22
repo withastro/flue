@@ -11,6 +11,7 @@ export interface WorkflowChannel<TName extends 'http' | 'websocket' = 'http' | '
 
 export interface ChannelDefinition<TName extends string = string> {
 	readonly type: TName;
+	readonly webhook?: ChannelWebhookHandler;
 }
 
 export interface ChannelWebhookHandler {

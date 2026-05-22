@@ -1,6 +1,7 @@
-import { defineAgent, github, type Delivery, type ReceiveContext, type AgentInitContext } from '@flue/runtime';
+import { defineAgent, type Delivery, type ReceiveContext, type AgentInitContext } from '@flue/runtime';
+import { channel as github } from '../channels/github';
 
-export const channels = [github];
+export const channels = [github()];
 
 const triage = defineAgent({
 	model: 'anthropic/claude-haiku-4-5',

@@ -759,7 +759,7 @@ describe('Bare /runs/:runId routes via flue()', () => {
 
 		configureFlueRuntime({
 			target: 'cloudflare',
-			manifest: { agents: [{ name: 'hello', channels: {}, receive: false, init: false }] },
+			manifest: { agents: [{ name: 'hello', channels: { http: true }, receive: false, init: false }] },
 			routeAgentRequest: async (request) => {
 				routedBodies.push(await request.text());
 				return Response.json({ ok: true });
