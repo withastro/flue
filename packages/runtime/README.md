@@ -340,6 +340,40 @@ const tools = createMcpToolProxy({
 
 This is the recommended pattern for interactive OAuth on Cloudflare: the identity DO owns the MCP connections, handles OAuth callbacks, and persists tokens; the workflow or agent consumes tools via proxy. See the `examples/cloudflare/` directory for a worked example.
 
+#### Agent-resident MCP (Cloudflare only)
+
+On Cloudflare, agent Durable Objects inherit `MCPClientManager` from the Agents SDK. Flue surfaces this as `ctx.agent.mcp` — a facade for managing durable MCP connections with full OAuth support. Connections, tokens, and server state persist across dispatches via DO SQLite.
+
+```ts
+// agents/assistant.ts
+import { createAgent } from '@flue/runtime';
+
+export default createAgent(async ({ id, env }) => {
+  const mcp = ctx.agent.mcp;
+
+  // Add a server (idempotent across dispatches)
+  await mcp.addServer({ url: 'https://mcp.github.com/mcp' });
+
+  // Get current state — only 'ready' servers have usable tools
+  const state = mcp.getState();
+
+  // Build tools from the state (uses createMcpToolProxy internally)
+  const tools = createMcpToolProxy({
+    state,
+    callTool: (serverId, name, args) => mcp.callTool(serverId, name, args),
+  });
+
+  return {
+    model: 'anthropic/claude-sonnet-4-6',
+    tools,
+  };
+});
+```
+
+OAuth callbacks are auto-registered on the agent DO — when an MCP server requires authorization, the user is redirected to the auth URL, completes the flow in their browser, and the callback lands on the same DO instance. The server transitions to `ready` and tools become available on the next dispatch.
+
+`ctx.agent.mcp` is not available on workflows or on Node. On workflows, use `connectMcpServer` or proxy tools from an agent DO. On Node, use `connectMcpServer` with static or rotating auth.
+
 #### Transport and other options
 
 `connectMcpServer()` defaults to modern streamable HTTP. For legacy SSE servers, pass `transport: 'sse'`. You can also inject a custom `fetch` for advanced scenarios like request signing or proxy routing — this composes with `auth` (the auth-wrapped fetch delegates to your custom fetch).

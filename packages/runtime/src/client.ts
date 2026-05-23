@@ -39,6 +39,12 @@ export interface FlueContextConfig {
 	 * points (e.g. future cron triggers) leave it undefined.
 	 */
 	req?: Request;
+	/**
+	 * Agent-scoped MCP facade. Set by the Cloudflare build plugin when the
+	 * context is created inside an agent DO (not a workflow). Undefined on
+	 * Node and on workflows.
+	 */
+	agentMcp?: import('./types.ts').FlueAgentMcp;
 }
 
 /** Extends FlueContext with server-only methods. Agent handlers only see FlueContext. */
@@ -100,6 +106,11 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 
 		get req() {
 			return config.req;
+		},
+
+		get agent() {
+			if (!config.agentMcp) return undefined;
+			return { mcp: config.agentMcp };
 		},
 
 		log: {

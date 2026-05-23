@@ -74,6 +74,11 @@ export class CloudflarePlugin implements BuildPlugin {
 
 		const agentClasses = agents
 			.map((agent) => `export class ${agentClassName(agent.name)} extends Agent {
+  constructor(ctx, env) {
+    super(ctx, env);
+    configureMcpOAuthCallback(this.mcp, true);
+  }
+
   async onRequest(request) {
     return dispatchAgent(request, this, ${JSON.stringify(agent.name)}, directHandlers[${JSON.stringify(agent.name)}]);
   }
@@ -151,6 +156,8 @@ import {
   getCloudflareAIBindingApiProvider,
   FlueRegistry,
   createCloudflareRunRegistry,
+  createAgentMcpFacade,
+  configureMcpOAuthCallback,
 } from '@flue/runtime/cloudflare';
 import { registerApiProvider, registerProvider } from '@flue/runtime/app';
 
@@ -341,11 +348,16 @@ function createDOStore(sql) {
   };
 }
 
-function createContextForRequest(id, runId, payload, doInstance, req) {
+function createContextForRequest(id, runId, payload, doInstance, req, options) {
   // Use DO SQLite storage by default, fall back to in-memory
   const defaultStore = doInstance?.ctx?.storage?.sql
     ? createDOStore(doInstance.ctx.storage.sql)
     : memoryStore;
+
+  // Construct agent MCP facade when running inside an agent DO (not a workflow).
+  const agentMcp = options?.isAgent && doInstance?.mcp
+    ? createAgentMcpFacade(doInstance.mcp)
+    : undefined;
 
   return createFlueContext({
     id,
@@ -359,6 +371,7 @@ function createContextForRequest(id, runId, payload, doInstance, req) {
     createDefaultEnv,
     defaultStore,
     resolveSandbox,
+    agentMcp,
   });
 }
 
@@ -500,7 +513,7 @@ async function dispatchAgent(request, doInstance, agentName, handler) {
       runStore: createRunStoreForRequest(doInstance),
       runSubscribers,
       runRegistry: createRunRegistryForRequest(doInstance.env),
-      createContext: (id_, runId, payload, req) => createContextForRequest(id_, runId, payload, doInstance, req),
+      createContext: (id_, runId, payload, req) => createContextForRequest(id_, runId, payload, doInstance, req, { isAgent: true }),
       startWebhook: (runId, run) => {
         const wrapped = (fiber) => {
           fiber?.stash?.({

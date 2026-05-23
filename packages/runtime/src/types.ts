@@ -410,11 +410,80 @@ export interface FlueContext<TPayload = any, TEnv = Record<string, any>> {
 	readonly req: Request | undefined;
 	/** Emit structured log events visible in the run event stream. */
 	readonly log: FlueLogger;
+	/**
+	 * Agent-scoped runtime context. Present only on Cloudflare agent handlers
+	 * (not workflows, not Node). Access `agent.mcp` to manage durable MCP
+	 * server connections with full OAuth support.
+	 *
+	 * Undefined on workflows and Node agents. Accessing `agent.mcp` in those
+	 * contexts throws a descriptive error.
+	 */
+	readonly agent?: FlueAgentContext;
 	/** Initialize a created agent for this workflow invocation. */
 	init(
 		agent: CreatedAgent<TPayload, TEnv>,
 		options?: AgentHarnessOptions,
 	): Promise<FlueHarness>;
+}
+
+// ─── Agent-scoped context (Cloudflare only) ─────────────────────────────────
+
+/**
+ * Agent-scoped runtime context available on Cloudflare agent handlers.
+ * Provides access to the durable agent instance's MCP manager.
+ */
+export interface FlueAgentContext {
+	/** Durable MCP server manager backed by the agent's Durable Object. */
+	readonly mcp: FlueAgentMcp;
+}
+
+/**
+ * Facade over the Cloudflare Agents SDK's `MCPClientManager`. Provides a
+ * stable Flue-typed interface for managing MCP server connections on a
+ * durable agent instance. Connections, OAuth tokens, and server state
+ * persist across dispatches via DO SQLite.
+ */
+export interface FlueAgentMcp {
+	/**
+	 * Add an MCP server connection. Idempotent — recognized on subsequent
+	 * dispatches if the server is already registered. Returns the server id.
+	 */
+	addServer(options: FlueAgentMcpServerOptions): Promise<{ id: string }>;
+	/** Remove a server connection by id. */
+	removeServer(id: string): Promise<void>;
+	/**
+	 * Get the current state of all MCP servers and their tools. The returned
+	 * shape is structurally compatible with `RemoteMcpState` for use with
+	 * `createMcpToolProxy`.
+	 */
+	getState(): FlueAgentMcpState;
+}
+
+export interface FlueAgentMcpServerOptions {
+	/** MCP server URL. */
+	url: string;
+	/** Display name for the server. Defaults to the URL hostname. */
+	name?: string;
+	/** Transport type. Defaults to auto-detection. */
+	transport?: 'sse' | 'streamable-http';
+	/** Optional static headers (e.g. bearer tokens for non-OAuth servers). */
+	headers?: Record<string, string>;
+}
+
+export interface FlueAgentMcpState {
+	servers: Record<string, {
+		name: string;
+		server_url: string;
+		auth_url: string | null;
+		state: string;
+		error: string | null;
+	}>;
+	tools: Array<{
+		serverId: string;
+		name: string;
+		description?: string;
+		inputSchema: Record<string, unknown>;
+	}>;
 }
 
 export interface FlueLogger {

@@ -51,6 +51,10 @@ export type {
 	DispatchRequest,
 	ReceiveContext,
 	DirectAgentPayload,
+	FlueAgentContext,
+	FlueAgentMcp,
+	FlueAgentMcpServerOptions,
+	FlueAgentMcpState,
 } from './types.ts';
 
 export { Type } from '@earendil-works/pi-ai';
