@@ -11,7 +11,7 @@ import type {
 } from './types.ts';
 import { abortErrorFor } from './abort.ts';
 import { normalizePath } from './session.ts';
-export type { SandboxFactory, SessionEnv, FileStat } from './types.ts';
+export type { SessionEnv } from './types.ts';
 
 /** Adapt a SessionEnv to the public FlueFs surface. */
 export function createFlueFs(env: SessionEnv): FlueFs {

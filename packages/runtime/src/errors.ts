@@ -270,7 +270,7 @@ class InvalidJsonError extends FlueHttpError {
 	}
 }
 
-export class AgentNotFoundError extends FlueHttpError {
+class AgentNotFoundError extends FlueHttpError {
 	constructor({ name, available }: { name: string; available: readonly string[] }) {
 		super({
 			type: 'agent_not_found',
@@ -386,17 +386,6 @@ export class InvalidRequestError extends FlueHttpError {
 	}
 }
 
-export class UnauthorizedError extends FlueHttpError {
-	constructor({ reason }: { reason: string }) {
-		super({
-			type: 'unauthorized',
-			message: 'Request is not authorized.',
-			details: reason,
-			dev: '',
-			status: 401,
-		});
-	}
-}
 
 export class ValidationError extends FlueHttpError {
 	constructor({ details, issues }: { details: string; issues: unknown }) {
@@ -578,21 +567,6 @@ export function toHttpResponse(err: unknown): Response {
 	});
 }
 
-/**
- * Render any thrown value into a JSON string suitable for the `data:` line of
- * an SSE `error` event. Same envelope as `toHttpResponse`. Unknown / non-Flue
- * errors are logged and replaced with a generic envelope.
- */
-export function toSseData(err: unknown): string {
-	if (isFlueError(err)) {
-		if (!(err instanceof FlueHttpError)) {
-			flueLog.error(err);
-		}
-		return JSON.stringify({ type: 'error', ...envelope(err) });
-	}
-	flueLog.error(err);
-	return JSON.stringify({ type: 'error', ...GENERIC_INTERNAL });
-}
 
 // These are HTTP-layer helpers that throw the concrete error subclasses defined
 // above. They live here (rather than with the error classes) because they're

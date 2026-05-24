@@ -733,7 +733,7 @@ export interface SessionData {
 
 export type SessionEntry = MessageEntry | CompactionEntry | BranchSummaryEntry;
 
-export interface SessionEntryBase {
+interface SessionEntryBase {
 	type: string;
 	id: string;
 	parentId: string | null;

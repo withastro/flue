@@ -122,12 +122,6 @@ export function registerProvider(
 	userModels.set(name, registration);
 }
 
-/**
- * Internal read accessor. Returns the live map.
- */
-export function getRegisteredProviders(): ReadonlyMap<string, ProviderRegistration> {
-	return userModels;
-}
 
 /** Whether a URL prefix has already been registered. */
 export function hasRegisteredProvider(name: string): boolean {

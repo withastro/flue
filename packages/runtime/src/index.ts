@@ -2,6 +2,7 @@
 
 export type {
 	FlueContext,
+	FlueLogger,
 	FlueHarness,
 	FlueFs,
 	FlueSessions,
@@ -26,6 +27,7 @@ export type {
 	BashFactory,
 	BashLike,
 	PromptOptions,
+	PromptImage,
 	CallHandle,
 	PromptResponse,
 	PromptResultResponse,
@@ -41,6 +43,7 @@ export type {
 	SkillSource,
 	SkillResourceEntry,
 	AgentConfig,
+	CompactionConfig,
 	ModelConfig,
 	ToolDefinition,
 	ToolParameters,

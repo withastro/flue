@@ -56,9 +56,6 @@ export function createAgent<TPayload = unknown, TEnv = Record<string, any>>(
 	return Object.freeze({ __flueCreatedAgent: true as const, initialize });
 }
 
-export function isCreatedAgent(value: unknown): value is CreatedAgent {
-	return !!value && typeof value === 'object' && (value as CreatedAgent).__flueCreatedAgent === true && typeof (value as CreatedAgent).initialize === 'function';
-}
 
 export function assertResolvedAgentProfile(profile: AgentProfile, label: string): AgentProfile {
 	assertAgentProfile(profile, label, new WeakSet());
