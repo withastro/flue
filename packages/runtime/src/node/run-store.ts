@@ -23,16 +23,13 @@ export class InMemoryRunStore implements RunStore {
 	}
 
 	async createRun(input: CreateRunInput): Promise<void> {
-		if (input.owner.kind === 'workflow' && input.owner.instanceId !== input.runId) {
+		if (input.owner.instanceId !== input.runId) {
 			throw new Error('[flue] Workflow run owners must use the same instanceId as the run record runId.');
 		}
 		const instance = this.getInstance(ownerKey(input.owner));
 		instance.runs.set(input.runId, {
 			runId: input.runId,
 			owner: input.owner,
-			...(input.owner.kind === 'agent'
-				? { agentName: input.owner.agentName, instanceId: input.owner.instanceId }
-				: {}),
 			status: 'active',
 			startedAt: input.startedAt,
 			payload: input.payload,
@@ -107,7 +104,5 @@ export class InMemoryRunStore implements RunStore {
 }
 
 function ownerKey(owner: CreateRunInput['owner']): string {
-	return owner.kind === 'agent'
-		? `agent\0${owner.agentName}\0${owner.instanceId}`
-		: `workflow\0${owner.workflowName}\0${owner.instanceId}`;
+	return `workflow\0${owner.workflowName}\0${owner.instanceId}`;
 }

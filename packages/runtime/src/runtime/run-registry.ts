@@ -1,28 +1,17 @@
-/** Cross-deployment pointer index over Flue runs. */
+/** Cross-deployment pointer index over workflow runs. */
 import type { RunStatus } from './run-store.ts';
 
-export type RunOwner =
-	| { kind: 'agent'; agentName: string; instanceId: string }
-	| { kind: 'workflow'; workflowName: string; instanceId: string };
+export type RunOwner = { kind: 'workflow'; workflowName: string; instanceId: string };
 
-export type RecordRunStartInput =
-	| {
-			runId: string;
-			owner: RunOwner;
-			startedAt: string;
-	  }
-	| {
-			runId: string;
-			agentName: string;
-			instanceId: string;
-			startedAt: string;
-	  };
+export interface RecordRunStartInput {
+	runId: string;
+	owner: RunOwner;
+	startedAt: string;
+}
 
 export interface RunPointer {
 	runId: string;
 	owner: RunOwner;
-	agentName?: string;
-	instanceId?: string;
 	status: RunStatus;
 	startedAt: string;
 	endedAt?: string;
@@ -39,8 +28,6 @@ export interface RecordRunEndInput {
 
 export interface ListRunsOpts {
 	status?: RunStatus;
-	agentName?: string;
-	instanceId?: string;
 	workflowName?: string;
 	limit?: number;
 	cursor?: string;
@@ -51,27 +38,8 @@ export interface ListRunsResponse {
 	nextCursor?: string;
 }
 
-export interface ListInstancesOpts {
-	agentName?: string;
-	limit?: number;
-	cursor?: string;
-}
-
-export interface InstancePointer {
-	agentName: string;
-	instanceId: string;
-}
-
-export interface ListInstancesResponse {
-	instances: InstancePointer[];
-	nextCursor?: string;
-}
-
-/** Defaults for {@link ListRunsOpts.limit} / {@link ListInstancesOpts.limit}. */
 export const DEFAULT_LIST_LIMIT = 100;
 export const MAX_LIST_LIMIT = 1000;
-
-// ─── Cursor codec ──────────────────────────────────────────────────────────
 
 export interface CursorTuple {
 	startedAt: string;
@@ -94,21 +62,6 @@ export function decodeRunCursor(cursor: string | undefined): CursorTuple | undef
 	return undefined;
 }
 
-export function encodeInstanceCursor(key: string): string {
-	return base64UrlEncode(key);
-}
-
-export function decodeInstanceCursor(cursor: string): string | undefined {
-	let decoded: string;
-	try {
-		decoded = base64UrlDecode(cursor);
-	} catch {
-		return undefined;
-	}
-	if (!decoded.includes('\0')) return undefined;
-	return decoded;
-}
-
 function base64UrlEncode(value: string): string {
 	const b64 = btoa(value);
 	return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -125,5 +78,4 @@ export interface RunRegistry {
 	recordRunEnd(input: RecordRunEndInput): Promise<void>;
 	lookupRun(runId: string): Promise<RunPointer | null>;
 	listRuns(opts?: ListRunsOpts): Promise<ListRunsResponse>;
-	listInstances(opts?: ListInstancesOpts): Promise<ListInstancesResponse>;
 }

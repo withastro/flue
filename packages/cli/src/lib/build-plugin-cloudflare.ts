@@ -625,9 +625,9 @@ async function processManagedAgentDispatch(input, doInstance, agentName, fiberId
     input,
     createContext: (id_, runId, payload, req, initialEventIndex) => createContextForRequest(id_, runId, payload, doInstance, req, initialEventIndex),
   });
-  const owner = { kind: 'agent', agentName, instanceId: doInstance.name };
+  const target = { agentName, instanceId: doInstance.name };
   await waitForEarlierManagedDispatch(doInstance, input, fiberId);
-  const releaseSessionLock = await reserveDispatchAgentSession(owner, input);
+  const releaseSessionLock = await reserveDispatchAgentSession(target, input);
   const request = new Request('https://flue.invalid' + INTERNAL_DISPATCH_PATH, { method: 'POST' });
   try {
     const ctx = createContextForRequest(doInstance.name, undefined, input, doInstance, request);

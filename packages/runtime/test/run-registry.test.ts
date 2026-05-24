@@ -30,254 +30,71 @@ describe('workflow run ids', () => {
 	});
 });
 
+function workflowOwner(workflowName: string, runId: string) {
+	return { kind: 'workflow' as const, workflowName, instanceId: runId };
+}
+
 describe('InMemoryRunRegistry', () => {
-	it('records start, lookup, and end for a single run', async () => {
+	it('records start, lookup, and end for one workflow run', async () => {
 		const registry = new InMemoryRunRegistry();
-
-		await registry.recordRunStart({
-			runId: 'run_a',
-			agentName: 'hello',
-			instanceId: 'inst-1',
-			startedAt: '2026-01-01T00:00:00.000Z',
-		});
-
-		const a = await registry.lookupRun('run_a');
-		expect(a).toMatchObject({
-			runId: 'run_a',
-			agentName: 'hello',
-			instanceId: 'inst-1',
-			status: 'active',
-		});
-		expect(await registry.lookupRun('run_missing')).toBeNull();
-
-		await registry.recordRunEnd({
-			runId: 'run_a',
-			endedAt: '2026-01-01T00:00:05.000Z',
-			durationMs: 5000,
-			isError: false,
-		});
-		const aDone = await registry.lookupRun('run_a');
-		expect(aDone).toMatchObject({
-			status: 'completed',
-			endedAt: '2026-01-01T00:00:05.000Z',
-			durationMs: 5000,
-			isError: false,
-		});
+		const runId = 'workflow:hello:a';
+		await registry.recordRunStart({ runId, owner: workflowOwner('hello', runId), startedAt: '2026-01-01T00:00:00.000Z' });
+		expect(await registry.lookupRun(runId)).toMatchObject({ runId, owner: workflowOwner('hello', runId), status: 'active' });
+		expect(await registry.lookupRun('workflow:hello:missing')).toBeNull();
+		await registry.recordRunEnd({ runId, endedAt: '2026-01-01T00:00:05.000Z', durationMs: 5000, isError: false });
+		expect(await registry.lookupRun(runId)).toMatchObject({ status: 'completed', endedAt: '2026-01-01T00:00:05.000Z', durationMs: 5000, isError: false });
 	});
 
-	it('marks status="errored" when recordRunEnd has isError=true', async () => {
+	it('marks errored workflow run pointers', async () => {
 		const registry = new InMemoryRunRegistry();
-		await registry.recordRunStart({
-			runId: 'run_err',
-			agentName: 'hello',
-			instanceId: 'inst-1',
-			startedAt: '2026-01-01T00:00:00.000Z',
-		});
-		await registry.recordRunEnd({
-			runId: 'run_err',
-			endedAt: '2026-01-01T00:00:06.000Z',
-			durationMs: 5000,
-			isError: true,
-		});
-		const done = await registry.lookupRun('run_err');
-		expect(done?.status).toBe('errored');
-		expect(done?.isError).toBe(true);
+		const runId = 'workflow:hello:error';
+		await registry.recordRunStart({ runId, owner: workflowOwner('hello', runId), startedAt: '2026-01-01T00:00:00.000Z' });
+		await registry.recordRunEnd({ runId, endedAt: '2026-01-01T00:00:06.000Z', durationMs: 5000, isError: true });
+		expect(await registry.lookupRun(runId)).toMatchObject({ status: 'errored', isError: true });
 	});
 
-	it('listRuns sorts descending by startedAt and filters by agentName', async () => {
+	it('sorts and filters workflow runs by workflowName', async () => {
 		const registry = new InMemoryRunRegistry();
 		for (let i = 0; i < 5; i++) {
-			await registry.recordRunStart({
-				runId: `run_${i}`,
-				agentName: i % 2 === 0 ? 'hello' : 'greet',
-				instanceId: `inst-${i}`,
-				startedAt: `2026-01-01T00:00:0${i}.000Z`,
-			});
+			const name = i % 2 === 0 ? 'hello' : 'greet';
+			const runId = `workflow:${name}:${i}`;
+			await registry.recordRunStart({ runId, owner: workflowOwner(name, runId), startedAt: `2026-01-01T00:00:0${i}.000Z` });
 		}
-
 		const all = await registry.listRuns();
-		expect(all.runs).toHaveLength(5);
-		expect(all.runs[0]?.runId).toBe('run_4');
-		expect(all.runs[4]?.runId).toBe('run_0');
-
-		const helloOnly = await registry.listRuns({ agentName: 'hello' });
+		expect(all.runs.map((run) => run.runId)).toEqual(['workflow:hello:4', 'workflow:greet:3', 'workflow:hello:2', 'workflow:greet:1', 'workflow:hello:0']);
+		const helloOnly = await registry.listRuns({ workflowName: 'hello' });
 		expect(helloOnly.runs).toHaveLength(3);
-		expect(helloOnly.runs.every((r) => r.agentName === 'hello')).toBe(true);
+		expect(helloOnly.runs.every((run) => run.owner.workflowName === 'hello')).toBe(true);
 	});
 
-	it('listRuns cursor pagination yields the full set with no dups', async () => {
+	it('paginates workflow runs without duplicates', async () => {
 		const registry = new InMemoryRunRegistry();
 		for (let i = 0; i < 5; i++) {
-			await registry.recordRunStart({
-				runId: `run_${i}`,
-				agentName: 'hello',
-				instanceId: `inst-${i}`,
-				startedAt: `2026-01-01T00:00:0${i}.000Z`,
-			});
+			const runId = `workflow:hello:${i}`;
+			await registry.recordRunStart({ runId, owner: workflowOwner('hello', runId), startedAt: `2026-01-01T00:00:0${i}.000Z` });
 		}
-
 		const page1 = await registry.listRuns({ limit: 2 });
-		expect(page1.runs).toHaveLength(2);
-		expect(page1.nextCursor).toBeDefined();
 		const page2 = await registry.listRuns({ limit: 2, cursor: page1.nextCursor });
-		expect(page2.runs).toHaveLength(2);
 		const page3 = await registry.listRuns({ limit: 2, cursor: page2.nextCursor });
+		expect(page1.runs).toHaveLength(2);
+		expect(page2.runs).toHaveLength(2);
 		expect(page3.runs).toHaveLength(1);
 		expect(page3.nextCursor).toBeUndefined();
-
-		const collected = new Set([
-			...page1.runs.map((r) => r.runId),
-			...page2.runs.map((r) => r.runId),
-			...page3.runs.map((r) => r.runId),
-		]);
-		expect(collected.size).toBe(5);
+		expect(new Set([...page1.runs, ...page2.runs, ...page3.runs].map((run) => run.runId)).size).toBe(5);
 	});
 
-	it('listInstances returns distinct (agent, instance) pairs and paginates', async () => {
+	it('rejects workflow owner records whose instance id does not match the run id', async () => {
 		const registry = new InMemoryRunRegistry();
-		await registry.recordRunStart({
-			runId: 'r1',
-			agentName: 'hello',
-			instanceId: 'a',
-			startedAt: '2026-01-01T00:00:00.000Z',
-		});
-		await registry.recordRunStart({
-			runId: 'r2',
-			agentName: 'hello',
-			instanceId: 'b',
-			startedAt: '2026-01-01T00:00:01.000Z',
-		});
-		await registry.recordRunStart({
-			runId: 'r3',
-			agentName: 'greet',
-			instanceId: 'a',
-			startedAt: '2026-01-01T00:00:02.000Z',
-		});
-		await registry.recordRunStart({
-			runId: 'r4',
-			agentName: 'hello',
-			instanceId: 'a',
-			startedAt: '2026-01-01T00:00:03.000Z',
-		});
-
-		const out = await registry.listInstances();
-		expect(out.instances).toHaveLength(3);
-		expect(out.instances.map((i) => `${i.agentName}/${i.instanceId}`).sort()).toEqual([
-			'greet/a',
-			'hello/a',
-			'hello/b',
-		]);
-
-		const p1 = await registry.listInstances({ limit: 1 });
-		expect(p1.instances).toHaveLength(1);
-		expect(p1.nextCursor).toBeDefined();
-		const p2 = await registry.listInstances({ limit: 1, cursor: p1.nextCursor });
-		const p3 = await registry.listInstances({ limit: 1, cursor: p2.nextCursor });
-		expect(p3.nextCursor).toBeUndefined();
+		await expect(registry.recordRunStart({ runId: 'workflow:daily-report:01A', owner: workflowOwner('daily-report', 'workflow:daily-report:01B'), startedAt: '2026-01-01T00:00:00.000Z' })).rejects.toThrow(/same instanceId/);
 	});
 
-	it('prunes completed pointers per-instance down to maxCompletedRunsPerInstance', async () => {
-		const registry = new InMemoryRunRegistry({ maxCompletedRunsPerInstance: 3 });
-		for (let i = 0; i < 5; i++) {
-			const id = `run_${i}`;
-			await registry.recordRunStart({
-				runId: id,
-				agentName: 'hello',
-				instanceId: 'inst-1',
-				startedAt: `2026-01-01T00:00:0${i}.000Z`,
-			});
-			await registry.recordRunEnd({
-				runId: id,
-				endedAt: `2026-01-01T00:00:0${i + 1}.000Z`,
-				durationMs: 1000,
-				isError: false,
-			});
-		}
-		const list = await registry.listRuns({ agentName: 'hello' });
-		expect(list.runs).toHaveLength(3);
-		expect(list.runs.map((r) => r.runId).sort()).toEqual(['run_2', 'run_3', 'run_4']);
-		expect(await registry.lookupRun('run_0')).toBeNull();
-	});
-
-	it('does not prune one instance because another instance completed runs', async () => {
-		const registry = new InMemoryRunRegistry({ maxCompletedRunsPerInstance: 2 });
-		for (let instanceIndex = 1; instanceIndex <= 2; instanceIndex++) {
-			for (let runIndex = 0; runIndex < 2; runIndex++) {
-				const id = `run_i${instanceIndex}_${runIndex}`;
-				await registry.recordRunStart({
-					runId: id,
-					agentName: 'hello',
-					instanceId: `inst-${instanceIndex}`,
-					startedAt: `2026-01-01T00:00:${instanceIndex}${runIndex}.000Z`,
-				});
-				await registry.recordRunEnd({
-					runId: id,
-					endedAt: `2026-01-01T00:00:${instanceIndex}${runIndex}.500Z`,
-					durationMs: 500,
-					isError: false,
-				});
-			}
-		}
-
-		const list = await registry.listRuns({ agentName: 'hello' });
-		expect(list.runs).toHaveLength(4);
-		expect(await registry.lookupRun('run_i1_0')).not.toBeNull();
-		expect(await registry.lookupRun('run_i2_0')).not.toBeNull();
-	});
-
-	it('never prunes active runs even when above the cap', async () => {
-		const registry = new InMemoryRunRegistry({ maxCompletedRunsPerInstance: 1 });
-		for (let i = 0; i < 5; i++) {
-			await registry.recordRunStart({
-				runId: `active_${i}`,
-				agentName: 'hello',
-				instanceId: 'x',
-				startedAt: `2026-01-01T00:00:0${i}.000Z`,
-			});
-		}
-		const stillActive = await registry.listRuns({ agentName: 'hello' });
-		expect(stillActive.runs).toHaveLength(5);
-	});
-
-	it('records workflow owners and filters by workflowName', async () => {
-		const registry = new InMemoryRunRegistry();
-		const runId = 'workflow:daily-report:01TEST';
-		await registry.recordRunStart({
-			runId,
-			owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: runId },
-			startedAt: '2026-01-01T00:00:00.000Z',
-		});
-		expect(await registry.lookupRun(runId)).toMatchObject({
-			runId,
-			owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: runId },
-		});
-		expect((await registry.listRuns({ workflowName: 'daily-report' })).runs).toHaveLength(1);
-		expect((await registry.listRuns({ workflowName: 'other' })).runs).toHaveLength(0);
-	});
-
-	it('rejects workflow owner records whose serialized instance id does not match the runId', async () => {
-		const registry = new InMemoryRunRegistry();
-		await expect(
-			registry.recordRunStart({
-				runId: 'workflow:daily-report:01A',
-				owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: 'workflow:daily-report:01B' },
-				startedAt: '2026-01-01T00:00:00.000Z',
-			}),
-		).rejects.toThrow(/same instanceId/);
-	});
-
-	it('falls back to page 1 on a malformed cursor (rather than empty / error)', async () => {
+	it('falls back to page 1 on a malformed cursor', async () => {
 		const registry = new InMemoryRunRegistry();
 		for (let i = 0; i < 3; i++) {
-			await registry.recordRunStart({
-				runId: `run_${i}`,
-				agentName: 'hello',
-				instanceId: 'a',
-				startedAt: `2026-01-01T00:00:0${i}.000Z`,
-			});
+			const runId = `workflow:hello:${i}`;
+			await registry.recordRunStart({ runId, owner: workflowOwner('hello', runId), startedAt: `2026-01-01T00:00:0${i}.000Z` });
 		}
 		expect((await registry.listRuns({ cursor: 'not-base64-json' })).runs).toHaveLength(3);
-		expect((await registry.listInstances({ cursor: 'still-garbage' })).instances).toHaveLength(1);
 		expect((await registry.listRuns({ cursor: '' })).runs).toHaveLength(3);
 	});
 });
@@ -982,8 +799,7 @@ describe('admin() routes', () => {
 		});
 
 		const instances = await app.fetch(new Request('http://localhost/admin/agents/hello/instances'));
-		expect(instances.status).toBe(200);
-		expect((await instances.json()) as unknown).toMatchObject({ items: [] });
+		expect(instances.status).toBe(404);
 
 		const instanceRuns = await app.fetch(
 			new Request('http://localhost/admin/agents/hello/instances/inst-1/runs?status=completed'),
@@ -1023,12 +839,10 @@ describe('admin() routes', () => {
 				lookupRun: async () => ({
 					runId: 'workflow:job:cf',
 					owner: { kind: 'workflow', workflowName: 'job', instanceId: 'workflow:job:cf' },
-					instanceId: 'workflow:job:cf',
 					status: 'completed',
 					startedAt: '2026-01-01T00:00:00.000Z',
 				}),
 				listRuns: async () => ({ runs: [] }),
-				listInstances: async () => ({ instances: [] }),
 			}),
 			routeAgentRequest: async () => null,
 			routeRunRequest: async (request) => {
@@ -1057,12 +871,10 @@ describe('admin() routes', () => {
 				lookupRun: async () => ({
 					runId: 'workflow:job:cf',
 					owner: { kind: 'workflow', workflowName: 'job', instanceId: 'workflow:job:cf' },
-					instanceId: 'workflow:job:cf',
 					status: 'completed',
 					startedAt: '2026-01-01T00:00:00.000Z',
 				}),
 				listRuns: async () => ({ runs: [] }),
-				listInstances: async () => ({ instances: [] }),
 			}),
 			routeAgentRequest: async () => null,
 			routeRunRequest: async (request) => {

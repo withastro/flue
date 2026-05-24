@@ -34,5 +34,4 @@ export type {
 	RunPointer,
 	ListResponse,
 	AgentManifestEntry,
-	InstanceSummary,
 } from './types.ts';

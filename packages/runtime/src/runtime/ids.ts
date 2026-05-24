@@ -5,10 +5,6 @@ export interface WorkflowRunIdParts {
 	runNonce: string;
 }
 
-export function generateRunId(): string {
-	return `run_${ulid()}`;
-}
-
 function generateRunNonce(): string {
 	return ulid();
 }

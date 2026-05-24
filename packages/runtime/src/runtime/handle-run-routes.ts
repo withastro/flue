@@ -282,16 +282,7 @@ async function getRunForOwner(store: RunStore, runId: string, owner: RunOwner): 
 }
 
 function sameOwner(left: RunOwner, right: RunOwner): boolean {
-	if (left.kind !== right.kind) return false;
-	if (left.kind === 'agent' && right.kind === 'agent') {
-		return left.agentName === right.agentName && left.instanceId === right.instanceId;
-	}
-	return (
-		left.kind === 'workflow' &&
-		right.kind === 'workflow' &&
-		left.workflowName === right.workflowName &&
-		left.instanceId === right.instanceId
-	);
+	return left.workflowName === right.workflowName && left.instanceId === right.instanceId;
 }
 
 function isTerminal(run: RunRecord): boolean {

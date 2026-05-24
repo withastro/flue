@@ -1,14 +1,10 @@
 export type RunStatus = 'active' | 'completed' | 'errored';
 
-export type RunOwner =
-	| { kind: 'agent'; agentName: string; instanceId: string }
-	| { kind: 'workflow'; workflowName: string; instanceId: string };
+export type RunOwner = { kind: 'workflow'; workflowName: string; instanceId: string };
 
 export interface RunRecord {
 	runId: string;
 	owner: RunOwner;
-	agentName?: string;
-	instanceId?: string;
 	status: RunStatus;
 	startedAt: string;
 	endedAt?: string;
@@ -21,8 +17,6 @@ export interface RunRecord {
 export interface RunPointer {
 	runId: string;
 	owner: RunOwner;
-	agentName?: string;
-	instanceId?: string;
 	status: RunStatus;
 	startedAt: string;
 	endedAt?: string;
@@ -34,11 +28,6 @@ export interface AgentManifestEntry {
 	name: string;
 	channels: { http?: true; websocket?: true };
 	created: boolean;
-}
-
-export interface InstanceSummary {
-	agentName: string;
-	instanceId: string;
 }
 
 export interface ListResponse<T> {
@@ -173,16 +162,7 @@ export type FlueEvent = (
 	| {
 			type: 'run_start';
 			runId: string;
-			owner: { kind: 'agent'; agentName: string; instanceId: string };
-			instanceId: string;
-			agentName: string;
-			startedAt: string;
-			payload: unknown;
-		}
-	| {
-			type: 'run_start';
-			runId: string;
-			owner: { kind: 'workflow'; workflowName: string; instanceId: string };
+			owner: RunOwner;
 			instanceId: string;
 			workflowName: string;
 			startedAt: string;

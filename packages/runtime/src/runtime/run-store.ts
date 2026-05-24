@@ -8,8 +8,6 @@ import type { RunOwner } from './run-registry.ts';
 export interface RunRecord {
 	runId: string;
 	owner: RunOwner;
-	agentName?: string;
-	instanceId?: string;
 	status: RunStatus;
 	startedAt: string;
 	payload?: unknown;

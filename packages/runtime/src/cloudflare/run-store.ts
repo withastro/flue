@@ -35,24 +35,16 @@ class DurableRunStore implements RunStore {
 	}
 
 	async createRun(input: CreateRunInput): Promise<void> {
-		if (input.owner.kind === 'workflow' && input.owner.instanceId !== input.runId) {
+		if (input.owner.instanceId !== input.runId) {
 			throw new Error('[flue] Workflow run owners must use the same instanceId as the run record runId.');
 		}
-		// Both agents and workflows are now keyed by `instance_id`. The
-		// `owner_kind` column distinguishes the two; `agent_name` /
-		// `workflow_name` carry the definition name for filtered queries.
-		const agentName = input.owner.kind === 'agent' ? input.owner.agentName : null;
-		const workflowName = input.owner.kind === 'workflow' ? input.owner.workflowName : null;
-		const instanceId = input.owner.instanceId;
 		this.sql.exec(
 			`INSERT OR REPLACE INTO flue_runs
 			 (run_id, owner_kind, instance_id, agent_name, workflow_name, status, started_at, payload, restarted_from_run_id, ended_at, is_error, duration_ms, result, error, restarted_as_run_id)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL)`,
+			 VALUES (?, 'workflow', ?, NULL, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, NULL)`,
 			input.runId,
-			input.owner.kind,
-			instanceId,
-			agentName,
-			workflowName,
+			input.owner.instanceId,
+			input.owner.workflowName,
 			'active',
 			input.startedAt,
 			JSON.stringify(input.payload ?? null),
@@ -104,7 +96,7 @@ class DurableRunStore implements RunStore {
 	}
 
 	async getRun(runId: string): Promise<RunRecord | null> {
-		const rows = this.sql.exec('SELECT * FROM flue_runs WHERE run_id = ?', runId).toArray();
+		const rows = this.sql.exec("SELECT * FROM flue_runs WHERE run_id = ? AND owner_kind = 'workflow'", runId).toArray();
 		const row = rows[0];
 		if (!row) return null;
 		return rowToRunRecord(row);
@@ -159,11 +151,6 @@ function ensureRunTables(sql: SqlStorage): void {
 	ensureColumn(sql, 'flue_runs', 'restarted_as_run_id', 'TEXT');
 	sql.exec(
 		`UPDATE flue_runs
-		 SET owner_kind = 'agent'
-		 WHERE owner_kind IS NULL OR owner_kind = ''`,
-	);
-	sql.exec(
-		`UPDATE flue_runs
 		 SET instance_id = owner_run_id
 		 WHERE owner_kind = 'workflow'
 		   AND (instance_id IS NULL OR instance_id = '')
@@ -203,30 +190,14 @@ function rowToRunRecord(row: SqlRow): RunRecord {
 	const result = typeof row.result === 'string' ? JSON.parse(row.result) : undefined;
 	const error = typeof row.error === 'string' ? JSON.parse(row.error) : undefined;
 	const runId = String(row.run_id);
-	// Legacy rows (pre-0.9) stored a workflow's runId in `owner_run_id`.
-	// Newer rows use `instance_id` (== runId), in line with agents. Both
-	// are tolerated on read so the runtime can serve historical runs after
-	// a redeploy.
-	const owner =
-		row.owner_kind === 'workflow'
-			? {
-					kind: 'workflow' as const,
-					workflowName: String(row.workflow_name),
-					instanceId: String(
-						row.instance_id ?? (row as { owner_run_id?: unknown }).owner_run_id ?? runId,
-					),
-				}
-			: {
-					kind: 'agent' as const,
-					agentName: String(row.agent_name),
-					instanceId: String(row.instance_id),
-				};
+	const owner = {
+		kind: 'workflow' as const,
+		workflowName: String(row.workflow_name),
+		instanceId: String(row.instance_id ?? (row as { owner_run_id?: unknown }).owner_run_id ?? runId),
+	};
 	return {
 		runId,
 		owner,
-		...(owner.kind === 'agent'
-			? { agentName: owner.agentName, instanceId: owner.instanceId }
-			: {}),
 		status: row.status as RunRecord['status'],
 		startedAt: String(row.started_at),
 		payload,

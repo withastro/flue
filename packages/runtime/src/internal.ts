@@ -38,6 +38,7 @@ export type { DispatchInput, DispatchProcessor, DispatchQueue } from './runtime/
 export { InMemoryDispatchQueue } from './runtime/dispatch-queue.ts';
 export type {
 	AgentHandler,
+	AgentSessionTarget,
 	AttachedInvocationResult,
 	DirectAttachedOptions,
 	CreatedAgentHandler,
@@ -80,18 +81,14 @@ export {
 	handleWorkflowRequest,
 	invokeAttached,
 	invokeDirectAttached,
-	recoverAgentRun,
+	recoverWorkflowRun,
 	reserveDispatchAgentSession,
-	reserveRecoveredAgentSession,
 } from './runtime/handle-agent.ts';
-export { generateRunId, generateWorkflowRunId, parseWorkflowRunId } from './runtime/ids.ts';
+export { generateWorkflowRunId, parseWorkflowRunId } from './runtime/ids.ts';
 export { createWebSocketErrorMessage, parseAgentWebSocketMessage, parseWorkflowWebSocketMessage } from './runtime/websocket-protocol.ts';
 export type { HandleRunRouteOptions } from './runtime/handle-run-routes.ts';
 export { handleRunRouteRequest } from './runtime/handle-run-routes.ts';
 export type {
-	InstancePointer,
-	ListInstancesOpts,
-	ListInstancesResponse,
 	ListRunsOpts,
 	ListRunsResponse,
 	RecordRunEndInput,

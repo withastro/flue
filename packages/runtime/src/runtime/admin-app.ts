@@ -10,7 +10,6 @@ import {
 	validator,
 } from 'hono-openapi';
 import {
-	AgentNotFoundError,
 	RouteNotFoundError,
 	RunRegistryUnavailableError,
 	toHttpResponse,
@@ -20,12 +19,9 @@ import { type FlueRuntime, getFlueRuntime, handleRunById } from './flue-app.ts';
 import type { ListRunsOpts, RunRegistry } from './run-registry.ts';
 import type { RunStatus } from './run-store.ts';
 import {
-	AdminInstancesQuerySchema,
 	AdminRunsQuerySchema,
-	AgentNameParamSchema,
 	ErrorEnvelopeSchema,
 	ListAgentsResponseSchema,
-	ListInstancesResponseSchema,
 	ListRunsResponseSchema,
 	RunIdParamSchema,
 	RunRecordSchema,
@@ -36,13 +32,6 @@ export function admin(): Hono {
 
 	app.get('/openapi.json', lazyOpenApiRouteHandler(app, adminOpenApiOptions));
 	app.get('/agents', describeRoute(adminAgentsSpec() as DescribeRouteOptions), listAgentsHandler);
-	app.get(
-		'/agents/:name/instances',
-		describeRoute(adminInstancesSpec() as DescribeRouteOptions),
-		validated('param', AgentNameParamSchema),
-		validated('query', AdminInstancesQuerySchema),
-		listInstancesHandler,
-	);
 	app.get(
 		'/runs',
 		describeRoute(adminRunsSpec() as DescribeRouteOptions),
@@ -117,18 +106,6 @@ function adminAgentsSpec() {
 	};
 }
 
-function adminInstancesSpec() {
-	return {
-		tags: ['admin'],
-		operationId: 'adminListAgentInstances',
-		summary: 'List instances for an agent',
-		responses: {
-			200: jsonResponse(ListInstancesResponseSchema, listResponseDescription),
-			...errorResponses(),
-		},
-	};
-}
-
 function adminRunsSpec() {
 	return {
 		tags: ['admin'],
@@ -158,16 +135,6 @@ const listAgentsHandler: MiddlewareHandler = async (c) => {
 	return c.json({ items: rt.manifest?.agents ?? [] });
 };
 
-const listInstancesHandler: MiddlewareHandler = async (c) => {
-	const rt = requireRuntime();
-	const agentName = c.req.param('name') ?? '';
-	assertKnownAgent(rt, agentName);
-	const registry = requireRegistry(rt, c.env);
-	const query = parseListQuery(c.req.raw);
-	const out = await registry.listInstances({ agentName, ...query });
-	return c.json({ items: out.instances, nextCursor: out.nextCursor });
-};
-
 const listRunsHandler: MiddlewareHandler = async (c) => {
 	const rt = requireRuntime();
 	const registry = requireRegistry(rt, c.env);
@@ -176,11 +143,6 @@ const listRunsHandler: MiddlewareHandler = async (c) => {
 		...parseListQuery(c.req.raw),
 		status: statusFromRequest(c.req.raw),
 	};
-	const agentName = url.searchParams.get('agentName');
-	if (agentName) {
-		assertKnownAgent(rt, agentName);
-		opts.agentName = agentName;
-	}
 	const workflowName = url.searchParams.get('workflowName');
 	if (workflowName) opts.workflowName = workflowName;
 	const out = await registry.listRuns(opts);
@@ -227,11 +189,6 @@ function requireRegistry(rt: FlueRuntime, env: unknown): RunRegistry {
 	}
 	if (!rt.runRegistry) throw new RunRegistryUnavailableError();
 	return rt.runRegistry;
-}
-
-function assertKnownAgent(rt: FlueRuntime, name: string): void {
-	const available = rt.manifest?.agents.map((agent) => agent.name) ?? [];
-	if (!available.includes(name)) throw new AgentNotFoundError({ name, available });
 }
 
 function parseListQuery(request: Request): { cursor?: string; limit?: number } {

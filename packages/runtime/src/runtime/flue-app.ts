@@ -83,7 +83,7 @@ export interface FlueRuntime {
 	/** Node in-process registry used for live run-stream tailing. */
 	runSubscribers?: RunSubscriberRegistry;
 
-	/** Cross-deployment run pointer index for bare `/runs/:runId` lookups. */
+	/** Cross-deployment workflow-run pointer index for bare `/runs/:runId` lookups. */
 	runRegistry?: RunRegistry;
 
 	// ─── Cloudflare-only ────────────────────────────────────────────────────
@@ -296,7 +296,7 @@ function publicOpenApiOptions() {
 			info: {
 				title: 'Flue Public API',
 				version: runtimeConfig?.runtimeVersion ?? '0.0.0',
-				description: 'Public Flue agent invocation and run inspection API.',
+				description: 'Public Flue agent invocation and workflow run inspection API.',
 			},
 			servers: [],
 		},
@@ -410,15 +410,15 @@ function runRouteSpec(action: HandleRunRouteOptions['action']) {
 		return {
 			tags: ['runs'],
 			operationId: 'streamRunEvents',
-			summary: 'Stream run events',
+			summary: 'Stream workflow run events',
 			responses: {
 				200: {
-					description: 'Server-sent events stream of run lifecycle and agent events.',
+					description: 'Server-sent events stream of workflow run lifecycle and nested agent events.',
 					content: {
 						'text/event-stream': {
 							schema: {
 								type: 'string',
-								description: 'SSE-framed FlueEvent values.',
+								description: 'SSE-framed workflow run FlueEvent values.',
 							},
 						},
 					},
@@ -431,7 +431,7 @@ function runRouteSpec(action: HandleRunRouteOptions['action']) {
 	return {
 		tags: ['runs'],
 		operationId: action === 'get' ? 'getRun' : 'listRunEvents',
-		summary: action === 'get' ? 'Get a run record' : 'List run events',
+		summary: action === 'get' ? 'Get a workflow run record' : 'List workflow run events',
 		responses: {
 			200: jsonResponse(
 				action === 'get' ? RunRecordSchema : RunEventListResponseSchema,
@@ -578,11 +578,7 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 				id,
 				handler,
 				createContext,
-				startWebhook: rt.startWebhook,
 				runHandler: rt.runHandler,
-				runStore: rt.runStore,
-				runSubscribers: rt.runSubscribers,
-				runRegistry: rt.runRegistry,
 			});
 		}
 

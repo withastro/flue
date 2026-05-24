@@ -10,7 +10,7 @@ import {
 	webSocketUrl,
 	type WorkflowSocket,
 } from './public/websocket.ts';
-import type { AgentManifestEntry, InstanceSummary, ListResponse, RunPointer, RunRecord, RunStatus } from './types.ts';
+import type { AgentManifestEntry, ListResponse, RunPointer, RunRecord, RunStatus } from './types.ts';
 
 export type { RequestHeaders };
 
@@ -36,7 +36,6 @@ export interface FlueClient {
 	};
 	admin: {
 		agents: { list(): Promise<ListResponse<AgentManifestEntry>> };
-		instances: { list(agentName: string, options?: ListOptions): Promise<ListResponse<InstanceSummary>> };
 		runs: {
 			list(options?: ListRunsOptions): Promise<ListResponse<RunPointer>>;
 			get(runId: string): Promise<RunRecord>;
@@ -51,7 +50,6 @@ interface ListOptions {
 
 interface ListRunsOptions extends ListOptions {
 	status?: RunStatus;
-	agentName?: string;
 	workflowName?: string;
 }
 
@@ -88,13 +86,6 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 			agents: {
 				list: () => http.json({ path: `${adminBasePath}/agents` }),
 			},
-			instances: {
-				list: (agentName, opts = {}) =>
-					http.json({
-						path: `${adminBasePath}/agents/${encodeURIComponent(agentName)}/instances`,
-						query: listQuery(opts),
-					}),
-			},
 			runs: {
 				list: (opts = {}) => http.json({ path: `${adminBasePath}/runs`, query: runsQuery(opts) }),
 				get: (runId) => http.json({ path: `${adminBasePath}/runs/${encodeURIComponent(runId)}` }),
@@ -117,7 +108,6 @@ function runsQuery(opts: ListRunsOptions): Record<string, string | number | unde
 	return {
 		...listQuery(opts),
 		status: opts.status,
-		agentName: opts.agentName,
 		workflowName: opts.workflowName,
 	};
 }

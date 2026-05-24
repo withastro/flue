@@ -13,16 +13,11 @@ export const ErrorEnvelopeSchema = v.object({
 	}),
 });
 
-const RunOwnerSchema = v.union([
-	v.object({ kind: v.literal('agent'), agentName: v.string(), instanceId: v.string() }),
-	v.object({ kind: v.literal('workflow'), workflowName: v.string(), instanceId: v.string() }),
-]);
+const RunOwnerSchema = v.object({ kind: v.literal('workflow'), workflowName: v.string(), instanceId: v.string() });
 
 export const RunRecordSchema = v.object({
 	runId: v.string(),
 	owner: RunOwnerSchema,
-	agentName: v.optional(v.string()),
-	instanceId: v.optional(v.string()),
 	status: RunStatusSchema,
 	startedAt: v.string(),
 	payload: v.optional(v.unknown()),
@@ -38,8 +33,6 @@ export const RunRecordSchema = v.object({
 const RunPointerSchema = v.object({
 	runId: v.string(),
 	owner: RunOwnerSchema,
-	agentName: v.optional(v.string()),
-	instanceId: v.optional(v.string()),
 	status: RunStatusSchema,
 	startedAt: v.string(),
 	endedAt: v.optional(v.string()),
@@ -107,15 +100,6 @@ const FLUE_EVENT_TYPES = [
 ] as const;
 
 const FlueEventSchema = v.union([
-	flueEvent({
-		type: v.literal('run_start'),
-		runId: v.string(),
-		owner: v.object({ kind: v.literal('agent'), agentName: v.string(), instanceId: v.string() }),
-		instanceId: v.string(),
-		agentName: v.string(),
-		startedAt: v.string(),
-		payload: v.unknown(),
-	}),
 	flueEvent({
 		type: v.literal('run_start'),
 		runId: v.string(),
@@ -284,18 +268,8 @@ const AgentManifestEntrySchema = v.object({
 	created: v.boolean(),
 });
 
-const InstanceSummarySchema = v.object({
-	agentName: v.string(),
-	instanceId: v.string(),
-});
-
 export const ListAgentsResponseSchema = v.object({
 	items: v.array(AgentManifestEntrySchema),
-	nextCursor: v.optional(v.string()),
-});
-
-export const ListInstancesResponseSchema = v.object({
-	items: v.array(InstanceSummarySchema),
 	nextCursor: v.optional(v.string()),
 });
 
@@ -303,9 +277,6 @@ export const ListRunsResponseSchema = v.object({
 	items: v.array(RunPointerSchema),
 	nextCursor: v.optional(v.string()),
 });
-
-export const AgentNameParamSchema = v.object({ name: v.string() });
-export const AgentInstanceParamSchema = v.object({ name: v.string(), id: v.string() });
 
 const ListLimitSchema = v.optional(
 	v.pipe(
@@ -316,20 +287,8 @@ const ListLimitSchema = v.optional(
 	),
 );
 
-export const AdminInstancesQuerySchema = v.object({
-	cursor: v.optional(v.string()),
-	limit: ListLimitSchema,
-});
-
-export const AdminInstanceRunsQuerySchema = v.object({
-	status: v.optional(RunStatusSchema),
-	cursor: v.optional(v.string()),
-	limit: ListLimitSchema,
-});
-
 export const AdminRunsQuerySchema = v.object({
 	status: v.optional(RunStatusSchema),
-	agentName: v.optional(v.string()),
 	workflowName: v.optional(v.string()),
 	cursor: v.optional(v.string()),
 	limit: ListLimitSchema,

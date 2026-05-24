@@ -22,12 +22,14 @@ interface DispatchSession {
 	processDispatchInput(input: DispatchInput): PromiseLike<unknown>;
 }
 
+export interface AgentSessionTarget {
+	agentName: string;
+	instanceId: string;
+}
+
 export function createAgentDispatchProcessor(options: {
 	agents: Record<string, CreatedAgentHandler>;
 	createContext: CreateContextFn;
-	runStore?: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
-	runRegistry?: RunRegistry;
 }): DispatchProcessor {
 	return {
 		async process(input) {
@@ -42,9 +44,6 @@ export function createAgentDispatchProcessor(options: {
 export interface PersistAgentDispatchAdmissionOptions {
 	input: DispatchInput;
 	createContext: CreateContextFn;
-	runStore?: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
-	runRegistry?: RunRegistry;
 }
 
 export async function persistAgentDispatchAdmission(options: PersistAgentDispatchAdmissionOptions): Promise<DispatchReceipt> {
@@ -58,10 +57,10 @@ export function createDispatchAgentHandler(agent: CreatedAgentHandler, input: Di
 }
 
 export async function reserveDispatchAgentSession(
-	owner: Extract<RunOwner, { kind: 'agent' }>,
+	target: AgentSessionTarget,
 	payload: unknown,
 ): Promise<() => void> {
-	return waitForAgentSessionLock(owner, payload);
+	return waitForAgentSessionLock(target, payload);
 }
 
 async function processAgentDispatch(ctx: FlueContextInternal, agent: CreatedAgentHandler, input: DispatchInput): Promise<unknown> {
@@ -160,53 +159,12 @@ export type RunHandlerFn = (
 ) => unknown | Promise<unknown>;
 
 export interface HandleAgentOptions {
-	/** Standard Fetch Request. */
 	request: Request;
-	/**
-	 * The agent name (URL segment). Used only in webhook completion / error
-	 * log lines — routing has already happened by the time we get here.
-	 */
 	agentName: string;
-	/** Agent id (URL segment / DO room name). */
 	id: string;
-	/** Legacy direct agent handler. */
 	handler: AgentHandler;
-	/** Per-target context factory. */
 	createContext: CreateContextFn;
-	/**
-	 * Per-target webhook runner. If omitted, fire-and-forget executes the
-	 * prepared `run` callback directly (Node default — handler runs in the
-	 * same process as the request handler). On Cloudflare the caller MUST
-	 * provide this with a `runFiber` wrapper so the handler survives DO
-	 * hibernation between the 202 ack and the actual completion.
-	 */
-	startWebhook?: StartWebhookFn;
-	/**
-	 * Per-target foreground handler wrapper. If omitted, the handler is
-	 * invoked directly (Node default). On Cloudflare this is a
-	 * `runWithCloudflareContext` + `keepAliveWhile` wrapper that propagates
-	 * `env` via AsyncLocalStorage and prevents the DO from hibernating
-	 * mid-stream.
-	 */
 	runHandler?: RunHandlerFn;
-	/** Per-target run history store. If omitted, run persistence is disabled. */
-	runStore?: RunStore;
-	/**
-	 * Per-target in-process subscriber registry used by the run-stream
-	 * route to live-tail an active run. Optional — if omitted, the run
-	 * still produces events and is persisted, but live-tail subscribers
-	 * see only what's already in the store at the moment they connect.
-	 */
-	runSubscribers?: RunSubscriberRegistry;
-	/**
-	 * Per-target cross-deployment pointer index. Receives a
-	 * `recordRunStart` after every successful `createRun` and a
-	 * `recordRunEnd` after every `endRun`. Optional — if omitted, the
-	 * run still completes; only the bare `/runs/:runId` lookup path
-	 * (which consults the registry to discover the owning instance)
-	 * will be unable to find this run.
-	 */
-	runRegistry?: RunRegistry;
 }
 
 export interface HandleWorkflowOptions {
@@ -354,7 +312,7 @@ interface ModeOptions {
 	owner: RunOwner;
 	id: string;
 	runId: string;
-	handler: AgentHandler | WorkflowHandler;
+	handler: WorkflowHandler;
 	payload: unknown;
 	request: Request;
 	createContext: CreateContextFn;
@@ -369,7 +327,7 @@ export interface InvokeAttachedOptions {
 	owner: RunOwner;
 	id: string;
 	runId: string;
-	handler: AgentHandler | WorkflowHandler;
+	handler: WorkflowHandler;
 	payload: unknown;
 	request: Request;
 	createContext: CreateContextFn;
@@ -404,11 +362,10 @@ export interface RecoverRunOptions {
 	owner: RunOwner;
 	id: string;
 	runId: string;
-	handler: AgentHandler | WorkflowHandler;
+	handler: WorkflowHandler;
 	payload: unknown;
 	request: Request;
 	createContext: CreateContextFn;
-	releaseSessionLock?: () => void;
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
@@ -427,17 +384,10 @@ export interface RecoveredRunResult {
 
 const activeAttachedAgentSessions = new Map<string, symbol>();
 
-export function reserveRecoveredAgentSession(
-	owner: Extract<RunOwner, { kind: 'agent' }>,
-	payload: unknown,
-): (() => void) | undefined {
-	return acquireAgentSessionLock({ owner, payload });
-}
-
-async function waitForAgentSessionLock(owner: Extract<RunOwner, { kind: 'agent' }>, payload: unknown): Promise<() => void> {
+async function waitForAgentSessionLock(target: AgentSessionTarget, payload: unknown): Promise<() => void> {
 	while (true) {
 		try {
-			return acquireAgentSessionLock({ owner, payload }) ?? (() => {});
+			return acquireDirectAgentSessionLock(target.agentName, target.instanceId, payload) ?? (() => {});
 		} catch (error) {
 			if (!(error instanceof InvalidRequestError) || error.details !== 'This agent session already has an active prompt.') throw error;
 			await new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -450,7 +400,7 @@ interface WebhookOptions {
 	owner: RunOwner;
 	id: string;
 	runId: string;
-	handler: AgentHandler | WorkflowHandler;
+	handler: WorkflowHandler;
 	payload: unknown;
 	request: Request;
 	createContext: CreateContextFn;
@@ -478,43 +428,31 @@ async function runWebhookMode(opts: WebhookOptions): Promise<Response> {
 		restartedFromRunId,
 	} = opts;
 
-	const releaseSessionLock = acquireAgentSessionLock(opts);
 	// Webhook mode relies on `startWebhook` for target-specific execution
 	// context (`runFiber` on Cloudflare), so it does not also use `runHandler`.
-	let lifecycle: RunLifecycle;
-	try {
-		lifecycle = await createRunLifecycle({
-			owner,
-			id,
-			runId,
-			payload,
-			request,
-			createContext,
-			runStore,
-			runSubscribers,
-			runRegistry,
-			restartedFromRunId,
-		});
-	} catch (error) {
-		releaseSessionLock?.();
-		throw error;
-	}
+	const lifecycle = await createRunLifecycle({
+		owner,
+		id,
+		runId,
+		payload,
+		request,
+		createContext,
+		runStore,
+		runSubscribers,
+		runRegistry,
+		restartedFromRunId,
+	});
 	const { ctx } = lifecycle;
 	let didRun = false;
 	const run = async (): Promise<unknown> => {
 		didRun = true;
-		try {
-			return await withRunLifecycle(lifecycle, () => handler(ctx));
-		} finally {
-			releaseSessionLock?.();
-		}
+		return withRunLifecycle(lifecycle, () => handler(ctx));
 	};
 
 	try {
 		const scheduled = startWebhook(runId, run);
 		scheduled.then(
 			(result) => {
-				if (!didRun) releaseSessionLock?.();
 				console.log(
 					'[flue] Webhook handler complete:',
 					label,
@@ -523,14 +461,10 @@ async function runWebhookMode(opts: WebhookOptions): Promise<Response> {
 			},
 			async (err) => {
 				console.error('[flue] Webhook handler error:', label, err);
-				if (!didRun) {
-					releaseSessionLock?.();
-					await emitRunEnd(lifecycle, { isError: true, error: err });
-				}
+				if (!didRun) await emitRunEnd(lifecycle, { isError: true, error: err });
 			},
 		);
 	} catch (error) {
-		releaseSessionLock?.();
 		await emitRunEnd(lifecycle, { isError: true, error });
 		throw error;
 	}
@@ -566,19 +500,7 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 	await emitRunEnd(lifecycle, { isError: true, error: opts.error });
 }
 
-export async function recoverAgentRun(opts: RecoverRunOptions): Promise<RecoveredRunResult> {
-	const releaseSessionLock = opts.releaseSessionLock ?? acquireAgentSessionLock(opts);
-	if (isDispatchInput(opts.payload)) {
-		try {
-			const ctx = opts.createContext(opts.id, undefined, opts.payload, opts.request);
-			const result = await opts.handler(ctx);
-			return { result, isError: false };
-		} catch (error) {
-			return { isError: true, error };
-		} finally {
-			releaseSessionLock?.();
-		}
-	}
+export async function recoverWorkflowRun(opts: RecoverRunOptions): Promise<RecoveredRunResult> {
 	try {
 		const events = opts.runStore ? await opts.runStore.getEvents(opts.runId) : [];
 		const terminalEvent = findTerminalRunEvent(events);
@@ -629,8 +551,6 @@ export async function recoverAgentRun(opts: RecoverRunOptions): Promise<Recovere
 			throw terminalizationError;
 		}
 		return { isError: true, error };
-	} finally {
-		releaseSessionLock?.();
 	}
 }
 
@@ -844,12 +764,7 @@ async function runSyncMode(opts: ModeOptions): Promise<Response> {
 }
 
 export async function invokeAttached(opts: InvokeAttachedOptions): Promise<AttachedInvocationResult> {
-	const sessionLock = acquireAgentSessionLock(opts);
-	try {
-		return await invokeAttachedUnlocked(opts);
-	} finally {
-		sessionLock?.();
-	}
+	return invokeAttachedUnlocked(opts);
 }
 
 async function invokeAttachedUnlocked(opts: InvokeAttachedOptions): Promise<AttachedInvocationResult> {
@@ -886,11 +801,6 @@ async function invokeAttachedUnlocked(opts: InvokeAttachedOptions): Promise<Atta
 	} finally {
 		ctx.setEventCallback(undefined);
 	}
-}
-
-function acquireAgentSessionLock(opts: Pick<InvokeAttachedOptions, 'owner' | 'payload'>): (() => void) | undefined {
-	if (opts.owner.kind !== 'agent') return undefined;
-	return acquireDirectAgentSessionLock(opts.owner.agentName, opts.owner.instanceId, opts.payload);
 }
 
 function acquireDirectAgentSessionLock(agentName: string, instanceId: string, input: unknown): (() => void) | undefined {
@@ -997,18 +907,6 @@ async function invokeRunLifecycle<T>(
 }
 
 function emitRunStart(lifecycle: RunLifecycle): void {
-	if (lifecycle.owner.kind === 'agent') {
-		lifecycle.ctx.emitEvent({
-			type: 'run_start',
-			runId: lifecycle.runId,
-			owner: lifecycle.owner,
-			instanceId: lifecycle.owner.instanceId,
-			agentName: lifecycle.owner.agentName,
-			startedAt: lifecycle.startedAt,
-			payload: lifecycle.payload,
-		});
-		return;
-	}
 	lifecycle.ctx.emitEvent({
 		type: 'run_start',
 		runId: lifecycle.runId,

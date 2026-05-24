@@ -903,15 +903,6 @@ export type FlueEvent = (
 	| {
 			type: 'run_start';
 			runId: string;
-			owner: { kind: 'agent'; agentName: string; instanceId: string };
-			instanceId: string;
-			agentName: string;
-			startedAt: string;
-			payload: unknown;
-		}
-	| {
-			type: 'run_start';
-			runId: string;
 			owner: { kind: 'workflow'; workflowName: string; instanceId: string };
 			instanceId: string;
 			workflowName: string;

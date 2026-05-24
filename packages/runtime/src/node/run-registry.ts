@@ -1,14 +1,9 @@
-/** In-memory `RunRegistry` for the Node target. */
+/** In-memory `RunRegistry` for workflow runs on the Node target. */
 import {
 	type CursorTuple,
 	DEFAULT_LIST_LIMIT,
-	decodeInstanceCursor,
 	decodeRunCursor,
-	encodeInstanceCursor,
 	encodeRunCursor,
-	type InstancePointer,
-	type ListInstancesOpts,
-	type ListInstancesResponse,
 	type ListRunsOpts,
 	type ListRunsResponse,
 	MAX_LIST_LIMIT,
@@ -18,54 +13,20 @@ import {
 	type RunRegistry,
 } from '../runtime/run-registry.ts';
 
-export interface InMemoryRunRegistryOptions {
-	/**
-	 * Per-instance cap on retained completed pointers. Defaults to 50,
-	 * mirroring `InMemoryRunStore`'s per-instance run cap. Active runs
-	 * are never pruned.
-	 */
-	maxCompletedRunsPerInstance?: number;
-}
-
-const DEFAULT_MAX_COMPLETED_RUNS_PER_INSTANCE = 50;
-
 export class InMemoryRunRegistry implements RunRegistry {
 	private pointers = new Map<string, RunPointer>();
-	private byInstance = new Map<string, Set<string>>();
-	private instances = new Set<string>();
-	private maxCompletedRunsPerInstance: number;
-
-	constructor(options: InMemoryRunRegistryOptions = {}) {
-		this.maxCompletedRunsPerInstance =
-			options.maxCompletedRunsPerInstance ?? DEFAULT_MAX_COMPLETED_RUNS_PER_INSTANCE;
-	}
 
 	async recordRunStart(input: RecordRunStartInput): Promise<void> {
 		if (this.pointers.has(input.runId)) return;
-		const owner = normalizeRunOwner(input);
-
-		const pointer: RunPointer = {
+		if (input.owner.instanceId !== input.runId) {
+			throw new Error('[flue] Workflow run owners must use the same instanceId as the pointer runId.');
+		}
+		this.pointers.set(input.runId, {
 			runId: input.runId,
-			owner,
-			...(owner.kind === 'agent'
-				? { agentName: owner.agentName, instanceId: owner.instanceId }
-				: {}),
+			owner: input.owner,
 			status: 'active',
 			startedAt: input.startedAt,
-		};
-		this.pointers.set(input.runId, pointer);
-
-		if (owner.kind === 'agent') {
-			const key = instanceKey(owner.agentName, owner.instanceId);
-			let instanceBucket = this.byInstance.get(key);
-			if (!instanceBucket) {
-				instanceBucket = new Set();
-				this.byInstance.set(key, instanceBucket);
-			}
-			instanceBucket.add(input.runId);
-
-			this.instances.add(key);
-		}
+		});
 	}
 
 	async recordRunEnd(input: RecordRunEndInput): Promise<void> {
@@ -78,9 +39,6 @@ export class InMemoryRunRegistry implements RunRegistry {
 			durationMs: input.durationMs,
 			isError: input.isError,
 		});
-		if (pointer.owner.kind === 'agent') {
-			this.pruneCompletedRunsForInstance(pointer.owner.agentName, pointer.owner.instanceId);
-		}
 	}
 
 	async lookupRun(runId: string): Promise<RunPointer | null> {
@@ -90,108 +48,24 @@ export class InMemoryRunRegistry implements RunRegistry {
 	async listRuns(opts: ListRunsOpts = {}): Promise<ListRunsResponse> {
 		const limit = clampLimit(opts.limit);
 		const cursor = decodeRunCursor(opts.cursor);
-
 		const all = [...this.pointers.values()]
-			.filter((p) => matchesListFilter(p, opts))
+			.filter((pointer) => matchesListFilter(pointer, opts))
 			.sort(comparePointersDesc);
-
-		const startIndex = cursor ? all.findIndex((p) => isAfterCursor(p, cursor)) : 0;
-		if (startIndex === -1) {
-			return { runs: [] };
-		}
-
+		const startIndex = cursor ? all.findIndex((pointer) => isAfterCursor(pointer, cursor)) : 0;
+		if (startIndex === -1) return { runs: [] };
 		const page = all.slice(startIndex, startIndex + limit);
 		const last = page.at(-1);
 		const nextCursor = startIndex + limit < all.length && last ? encodeRunCursor(last) : undefined;
 		return { runs: page, nextCursor };
 	}
-
-	async listInstances(opts: ListInstancesOpts = {}): Promise<ListInstancesResponse> {
-		const limit = clampLimit(opts.limit);
-
-		const all: InstancePointer[] = [...this.instances]
-			.map(parseInstanceKey)
-			.filter((i) => !opts.agentName || i.agentName === opts.agentName)
-			.sort((a, b) => {
-				const byAgent = a.agentName.localeCompare(b.agentName);
-				return byAgent !== 0 ? byAgent : a.instanceId.localeCompare(b.instanceId);
-			});
-
-		const cursorKey = opts.cursor ? decodeInstanceCursor(opts.cursor) : undefined;
-		const startIndex = cursorKey
-			? all.findIndex((i) => instanceKey(i.agentName, i.instanceId) > cursorKey)
-			: 0;
-		if (startIndex === -1) return { instances: [] };
-
-		const page = all.slice(startIndex, startIndex + limit);
-		const last = page.at(-1);
-		const nextCursor =
-			startIndex + limit < all.length && last
-				? encodeInstanceCursor(instanceKey(last.agentName, last.instanceId))
-				: undefined;
-		return { instances: page, nextCursor };
-	}
-
-	private pruneCompletedRunsForInstance(agentName: string, instanceId: string): void {
-		const key = instanceKey(agentName, instanceId);
-		const bucket = this.byInstance.get(key);
-		if (!bucket) return;
-
-		const completed = [...bucket]
-			.map((id) => this.pointers.get(id))
-			.filter((p): p is RunPointer => p !== undefined && p.status !== 'active')
-			.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-
-		const deleteCount = completed.length - this.maxCompletedRunsPerInstance;
-		if (deleteCount <= 0) return;
-
-		for (const pointer of completed.slice(0, deleteCount)) {
-			this.pointers.delete(pointer.runId);
-			bucket.delete(pointer.runId);
-		}
-		if (bucket.size === 0) {
-			this.byInstance.delete(key);
-			this.instances.delete(key);
-		}
-	}
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function normalizeRunOwner(input: RecordRunStartInput): RunPointer['owner'] {
-	if ('owner' in input) {
-		if (input.owner.kind === 'workflow' && input.owner.instanceId !== input.runId) {
-			throw new Error('[flue] Workflow run owners must use the same instanceId as the pointer runId.');
-		}
-		return input.owner;
-	}
-	return { kind: 'agent', agentName: input.agentName, instanceId: input.instanceId };
-}
-
-function instanceKey(agentName: string, instanceId: string): string {
-	return `${agentName}\0${instanceId}`;
-}
-
-function parseInstanceKey(key: string): InstancePointer {
-	const [agentName, instanceId] = key.split('\0');
-	return { agentName: agentName ?? '', instanceId: instanceId ?? '' };
 }
 
 function matchesListFilter(pointer: RunPointer, opts: ListRunsOpts): boolean {
 	if (opts.status && pointer.status !== opts.status) return false;
-	if (opts.agentName) {
-		if (pointer.owner.kind !== 'agent' || pointer.owner.agentName !== opts.agentName) return false;
-	}
-	if (opts.instanceId) {
-		if (pointer.owner.kind !== 'agent' || pointer.owner.instanceId !== opts.instanceId) return false;
-	}
-	if (opts.workflowName) {
-		if (pointer.owner.kind !== 'workflow' || pointer.owner.workflowName !== opts.workflowName) return false;
-	}
+	if (opts.workflowName && pointer.owner.workflowName !== opts.workflowName) return false;
 	return true;
 }
 
-/** Descending sort by `startedAt`, then by `runId` to make ties deterministic. */
 function comparePointersDesc(a: RunPointer, b: RunPointer): number {
 	const byStarted = b.startedAt.localeCompare(a.startedAt);
 	if (byStarted !== 0) return byStarted;
@@ -199,8 +73,6 @@ function comparePointersDesc(a: RunPointer, b: RunPointer): number {
 }
 
 function isAfterCursor(pointer: RunPointer, cursor: CursorTuple): boolean {
-	// "After" in the descending-sort order means strictly older startedAt,
-	// or same startedAt with a strictly smaller runId.
 	if (pointer.startedAt < cursor.startedAt) return true;
 	if (pointer.startedAt > cursor.startedAt) return false;
 	return pointer.runId < cursor.runId;

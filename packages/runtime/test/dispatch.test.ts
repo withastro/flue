@@ -3,7 +3,6 @@ import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import {
 	persistAgentDispatchAdmission,
 	createAgentDispatchProcessor,
-	recoverAgentRun,
 	createFlueContext,
 	configureFlueRuntime,
 	InMemoryDispatchQueue,
@@ -142,7 +141,7 @@ describe('global dispatch', () => {
 			acceptedAt: '2026-05-21T00:00:00.000Z',
 		};
 
-		const receipt = await persistAgentDispatchAdmission({ input, createContext: createTestContext, runStore });
+		const receipt = await persistAgentDispatchAdmission({ input, createContext: createTestContext });
 		expect(receipt).toEqual({ dispatchId: 'dispatch-durable', acceptedAt: '2026-05-21T00:00:00.000Z' });
 		expect(await runStore.getRun('dispatch-durable')).toBeNull();
 	});
@@ -154,21 +153,16 @@ describe('global dispatch', () => {
 			input: { text: 'one' }, acceptedAt: '2026-05-21T00:00:00.000Z',
 		};
 		let contextRunId: string | undefined = 'unread';
-		const result = await recoverAgentRun({
-			label: 'moderator',
-			owner: { kind: 'agent', agentName: 'moderator', instanceId: input.id },
-			id: input.id,
-			runId: input.dispatchId,
-			payload: input,
-			request: new Request('http://flue.local/_dispatch', { method: 'POST' }),
-			runStore,
+		const processor = createAgentDispatchProcessor({
+			agents: { moderator: createAgent(() => ({ model: false })) },
 			createContext: (id, runId, payload, request, initialEventIndex) => {
 				contextRunId = runId;
-				return createTestContext(id, runId, payload, request, initialEventIndex);
+				const ctx = createTestContext(id, runId, payload, request, initialEventIndex);
+				ctx.initializeCreatedAgent = async () => fakeDispatchHarness([], []);
+				return ctx;
 			},
-			handler: async () => ({ ok: true }),
 		});
-		expect(result).toEqual({ result: { ok: true }, isError: false });
+		await processor.process(input);
 		expect(contextRunId).toBeUndefined();
 		expect(await runStore.getRun(input.dispatchId)).toBeNull();
 		expect(await runStore.getEvents(input.dispatchId)).toEqual([]);
