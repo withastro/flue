@@ -1,46 +1,24 @@
 /**
- * Sentry error reporting for Flue.
+ * Sentry observability for Flue.
  *
- * This file is the entire integration. It does two things:
+ * This file is the entire integration. It does three things:
  *
  *   1. Initializes the Sentry Node SDK at module scope so every isolate
  *      that imports `app.ts` has a configured Sentry client.
  *
  *   2. Calls `observe(...)` to register a global Flue event subscriber
- *      that translates run-fatal errors and explicit error logs into
- *      `Sentry.captureException(...)` calls with Flue correlation tags.
+ *      that translates Flue events into:
+ *        - **gen_ai spans** for runs, LLM turns, and tool calls, using
+ *          Sentry's AI Agent Monitoring semantic conventions.
+ *        - **Sentry.logger** calls so handler logs appear in Sentry Logs.
+ *        - **Sentry.captureException** for run-fatal errors and explicit
+ *          `ctx.log.error(...)` calls.
+ *
+ *   3. Mounts the Flue agent routes via Hono.
  *
  * Read top-to-bottom — there are no other Sentry-related files in the
  * project. Every agent in `.flue/agents/` is a plain Flue handler;
  * none of them know that Sentry exists.
- *
- *
- * Scope of this example
- * ─────────────────────
- *
- * This is intentionally focused on **error reporting**:
- *
- *   - run-fatal errors (the handler throws / rejects) → captured as
- *     Sentry exceptions at `error` level.
- *   - `ctx.log.error(...)` calls from handlers → captured as Sentry
- *     exceptions when an `error` attribute is present, otherwise as
- *     messages at `error` level.
- *
- * What this example does NOT do (deliberate, for now):
- *
- *   - It does not emit Sentry spans / traces for runs, operations, or
- *     tool calls. The Flue event stream already carries the data a
- *     future span-based integration would need (`durationMs`, `usage`,
- *     `operationKind`, etc.), so layering spans on top is a follow-up
- *     rather than a redesign.
- *   - It does not forward `ctx.log.info` / `.warn` to Sentry breadcrumbs
- *     or logs. Add `Sentry.addBreadcrumb({ ... })` inside the `observe`
- *     callback if you want that — it's a five-line change.
- *   - It does not capture per-operation or per-tool failures. Those are
- *     usually recoverable (the model handles tool errors and keeps
- *     going), so capturing them tends to be noise. If you want them,
- *     uncomment the `operation` / `tool_call` branches inside the
- *     `observe(...)` callback below.
  *
  *
  * Isolate scoping (read this once, then forget about it)
@@ -61,142 +39,257 @@
  * Environment variables
  * ─────────────────────
  *
- *   SENTRY_DSN          required to send anything. If unset, the SDK
- *                       is initialized in "disabled" mode and your app
- *                       runs unchanged.
- *   SENTRY_ENVIRONMENT  e.g. "production", "staging". Defaults to
- *                       NODE_ENV.
- *   SENTRY_RELEASE      e.g. a git SHA. Optional.
+ *   SENTRY_DSN              required to send anything. If unset, the SDK
+ *                           is initialized in "disabled" mode and your app
+ *                           runs unchanged.
+ *   SENTRY_ENVIRONMENT      e.g. "production", "staging". Defaults to
+ *                           NODE_ENV.
+ *   SENTRY_RELEASE          e.g. a git SHA. Optional.
+ *   SENTRY_AI_RECORD_INPUTS   set to "true" to capture prompt messages
+ *                              as `gen_ai.input.messages` on chat spans.
+ *   SENTRY_AI_RECORD_OUTPUTS  set to "true" to capture model responses
+ *                              as `gen_ai.output.messages` on chat spans.
  */
 
 import { flue, observe } from '@flue/runtime/app';
-import type { FlueContext, FlueEvent } from '@flue/runtime';
+import type { FlueContext, FlueEvent, PromptUsage } from '@flue/runtime';
 import * as Sentry from '@sentry/node';
 import { Hono } from 'hono';
 
 // ─── 1. Sentry init ─────────────────────────────────────────────────────────
 
-// `Sentry.init` is module-scoped: it runs once per isolate, before any
-// HTTP request is served. When SENTRY_DSN is unset (e.g. in local
-// development without a DSN handy), `enabled: false` makes every
-// capture call a no-op. The rest of this file behaves the same either
-// way, so you don't have to gate it.
-//
-// `tracesSampleRate: 0` is explicit: this example does not produce
-// spans, so we disable Sentry's tracing engine entirely. Set this to
-// a positive number only if you add span-emitting code yourself.
 Sentry.init({
 	dsn: process.env.SENTRY_DSN,
 	environment: process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV,
 	release: process.env.SENTRY_RELEASE,
-	tracesSampleRate: 0,
+	tracesSampleRate: 1.0,
+	// Send gen_ai spans as standalone envelopes instead of bundling in
+	// the transaction payload. Prevents large AI spans from being dropped.
+	streamGenAiSpans: true,
+	// Forward Sentry.logger calls to Sentry Logs.
+	enableLogs: true,
 	enabled: Boolean(process.env.SENTRY_DSN),
 });
 
 // ─── 2. The Flue → Sentry event bridge ──────────────────────────────────────
 
-// `observe` is the only Flue API this file uses besides `flue()`
-// itself. It is module-scoped on purpose: register once, fire for
-// every run handled by this isolate, for the lifetime of the
-// isolate. There is no per-agent wiring and no per-request
-// registration.
-//
-// The callback runs synchronously inside the Flue event emit path,
-// so it must be cheap and must not throw. (Sentry's `withScope` and
-// `captureException` are both synchronous JS calls that queue work
-// internally; they will not block the run.)
+const recordInputs = process.env.SENTRY_AI_RECORD_INPUTS === 'true';
+const recordOutputs = process.env.SENTRY_AI_RECORD_OUTPUTS === 'true';
+
+// Per-run state: track the agent-level span so child spans (turns,
+// tool calls) can nest under it. Keyed by runId. Cleaned up on run_end.
+const activeAgentSpans = new Map<string, ReturnType<typeof Sentry.startInactiveSpan>>();
+
+// Track per-run agent name and accumulated usage for the invoke_agent span.
+const runAgentNames = new Map<string, string>();
+const runUsage = new Map<string, { input: number; output: number; cacheRead: number; cacheWrite: number; total: number; model?: string }>();
+
 observe((event, ctx) => {
-	// Common Flue correlation tags — attached to every Sentry
-	// capture made from this bridge so an investigator can pivot
-	// from a Sentry issue to a Flue run via:
-	//
-	//   GET /runs/<flue.run_id>
-	//
-	// or replay the run via the CLI:
-	//
-	//   flue logs <flue.run_id>
-	//
-	// `flue.agent` and `flue.instance_id` are still attached as tags
-	// for filtering / grouping in Sentry, but they are no longer
-	// part of the URL — the run id is globally unique and resolves
-	// to its owner via the run registry server-side.
 	const tags = flueCorrelationTags(event, ctx);
+	const runId = event.runId;
 
-	// ─── Run-fatal: the handler threw or rejected ─────────────────────
+	// ─── Agent span: run_start → run_end ──────────────────────────────
 	//
-	// `run_end` fires exactly once per run. When `isError` is true,
-	// the handler did not return successfully — this is the
-	// canonical "something broke" signal.
-	if (event.type === 'run_end' && event.isError) {
-		Sentry.withScope((scope) => {
-			scope.setTags(tags);
-			scope.setLevel('error');
-			scope.setContext('flue.run', {
-				durationMs: event.durationMs,
-				agentName: tags['flue.agent'],
-				instanceId: ctx.id,
+	// Maps the full agent run to a `gen_ai.invoke_agent` span, which
+	// is the top-level container in Sentry's AI monitoring view.
+	if (event.type === 'run_start' && runId) {
+		runAgentNames.set(runId, event.agentName);
+		runUsage.set(runId, { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 });
+
+		// Link multi-turn sessions via conversation ID (ctx.id is the
+		// agent instance id from the URL, stable across calls).
+		Sentry.setConversationId(ctx.id);
+
+		const attrs: Record<string, string> = {
+			'gen_ai.operation.name': 'invoke_agent',
+			'gen_ai.agent.name': event.agentName,
+			'flue.run_id': runId,
+			'flue.instance_id': event.instanceId,
+		};
+		if (recordInputs && event.payload != null) {
+			attrs['gen_ai.input.messages'] = safeStringify(event.payload);
+		}
+		const span = Sentry.startInactiveSpan({
+			op: 'gen_ai.invoke_agent',
+			name: `invoke_agent ${event.agentName}`,
+			attributes: attrs,
+		});
+		activeAgentSpans.set(runId, span);
+		Sentry.logger.info('Agent run started', {
+			'flue.run_id': runId,
+			'flue.instance_id': event.instanceId,
+			'flue.agent': event.agentName,
+		});
+		return;
+	}
+
+	if (event.type === 'run_end' && runId) {
+		const span = activeAgentSpans.get(runId);
+		const accumulated = runUsage.get(runId);
+		if (span) {
+			// Set aggregated usage on the agent span so it shows totals
+			// in the AI monitoring view.
+			if (accumulated) {
+				span.setAttributes({
+					'gen_ai.usage.input_tokens': accumulated.input,
+					'gen_ai.usage.output_tokens': accumulated.output,
+					'gen_ai.usage.total_tokens': accumulated.total,
+				});
+				if (accumulated.model) {
+					span.setAttribute('gen_ai.request.model', accumulated.model);
+				}
+			}
+			if (recordOutputs && event.result != null) {
+				span.setAttribute('gen_ai.output.messages', safeStringify(event.result));
+			}
+			if (event.isError) {
+				span.setStatus({ code: 2 });
+			}
+			span.end();
+			activeAgentSpans.delete(runId);
+		}
+		runAgentNames.delete(runId);
+		runUsage.delete(runId);
+		Sentry.setConversationId(null);
+
+		if (event.isError) {
+			Sentry.withScope((scope) => {
+				scope.setTags(tags);
+				scope.setLevel('error');
+				scope.setContext('flue.run', {
+					durationMs: event.durationMs,
+					agentName: tags['flue.agent'],
+					instanceId: ctx.id,
+				});
+				Sentry.captureException(reconstructError(event.error));
 			});
-			Sentry.captureException(reconstructError(event.error));
-		});
+			Sentry.logger.error('Agent run failed', {
+				'flue.run_id': runId,
+				'durationMs': event.durationMs,
+			});
+		} else {
+			Sentry.logger.info('Agent run completed', {
+				'flue.run_id': runId,
+				'durationMs': event.durationMs,
+			});
+		}
 		return;
 	}
 
-	// ─── Explicit handler-side error logs ─────────────────────────────
+	// ─── LLM turn → gen_ai.chat span ─────────────────────────────────
 	//
-	// `ctx.log.error(message, { error })` is how handler code says
-	// "I want this in my error reporter without crashing the run."
-	// We mirror Junior's convention: if the log carries an `error`
-	// attribute, capture it as an exception; otherwise capture the
-	// message itself at `error` level.
-	if (event.type === 'log' && event.level === 'error') {
-		Sentry.withScope((scope) => {
-			scope.setTags(tags);
-			scope.setLevel('error');
-			if (event.attributes) {
-				scope.setContext('flue.log_attributes', event.attributes);
-			}
-			const errorAttr = event.attributes?.error;
-			if (errorAttr) {
-				Sentry.captureException(reconstructError(errorAttr));
-			} else {
-				Sentry.captureMessage(event.message, 'error');
-			}
+	// Each `turn` event represents one completed LLM call. It carries
+	// the model name, token usage, and duration. We use
+	// `startInactiveSpan` + manual `end()` so the span's wall-clock
+	// duration matches the actual LLM call time from `durationMs`.
+	if (event.type === 'turn' && runId) {
+		const agentSpan = activeAgentSpans.get(runId);
+		const modelName = event.model ?? 'unknown';
+
+		// Accumulate usage on the parent invoke_agent span.
+		const accumulated = runUsage.get(runId);
+		if (accumulated && event.usage) {
+			accumulated.input += event.usage.input;
+			accumulated.output += event.usage.output;
+			accumulated.cacheRead += event.usage.cacheRead;
+			accumulated.cacheWrite += event.usage.cacheWrite;
+			accumulated.total += event.usage.totalTokens;
+			accumulated.model ??= modelName;
+		}
+
+		const endTimeMs = event.timestamp ? new Date(event.timestamp).getTime() : Date.now();
+		const startTimeMs = endTimeMs - event.durationMs;
+
+		const span = Sentry.withActiveSpan(agentSpan ?? null, () => {
+			return Sentry.startInactiveSpan({
+				op: 'gen_ai.chat',
+				name: `chat ${modelName}`,
+				startTime: startTimeMs / 1000,
+				attributes: {
+					'gen_ai.operation.name': 'chat',
+					'gen_ai.request.model': modelName,
+					'gen_ai.response.model': modelName,
+					...usageAttributes(event.usage),
+				},
+			});
 		});
+		if (event.isError) span.setStatus({ code: 2 });
+		span.end(endTimeMs / 1000);
+
+		if (event.usage) {
+			Sentry.logger.debug('LLM turn completed', {
+				'flue.run_id': runId,
+				'flue.operation_id': event.operationId ?? '',
+				'model': modelName,
+				'input_tokens': event.usage.input,
+				'output_tokens': event.usage.output,
+				'durationMs': event.durationMs,
+			});
+		}
 		return;
 	}
 
-	// ─── Not captured (and why) ───────────────────────────────────────
+	// ─── Tool call → gen_ai.execute_tool span ────────────────────────
+	if (event.type === 'tool_call' && runId) {
+		const agentSpan = activeAgentSpans.get(runId);
+
+		const endTimeMs = event.timestamp ? new Date(event.timestamp).getTime() : Date.now();
+		const startTimeMs = endTimeMs - event.durationMs;
+
+		const span = Sentry.withActiveSpan(agentSpan ?? null, () => {
+			return Sentry.startInactiveSpan({
+				op: 'gen_ai.execute_tool',
+				name: `execute_tool ${event.toolName}`,
+				startTime: startTimeMs / 1000,
+				attributes: {
+					'gen_ai.operation.name': 'execute_tool',
+					'gen_ai.tool.name': event.toolName,
+				},
+			});
+		});
+		if (event.isError) span.setStatus({ code: 2 });
+		span.end(endTimeMs / 1000);
+		return;
+	}
+
+	// ─── Structured logs → Sentry.logger ─────────────────────────────
 	//
-	// `operation` events with `isError: true` represent a single
-	// `prompt()` / `skill()` / `task()` / `shell()` call that
-	// threw. If the agent handler caught and recovered, the run is
-	// still healthy — capturing here would be noise. If the
-	// handler did NOT catch, the same error propagates up to
-	// `run_end` above and is captured there.
-	//
-	// `tool_call` events with `isError: true` represent a tool body
-	// that threw or returned an error. The model usually keeps
-	// going with the error result and recovers. Capturing every
-	// tool error would drown out real incidents. Add a branch here
-	// if your agents do something where tool failures are
-	// catastrophic.
-	//
-	// Uncomment to enable:
-	//
-	//   if (event.type === 'operation' && event.isError) { ... }
-	//   if (event.type === 'tool_call' && event.isError) { ... }
+	// Every ctx.log.info/warn/error is forwarded to Sentry.logger so
+	// they appear in the Sentry Logs view with flue correlation attrs.
+	if (event.type === 'log') {
+		const logAttrs: Record<string, string | number | boolean> = {};
+		if (runId) logAttrs['flue.run_id'] = runId;
+		if (event.operationId) logAttrs['flue.operation_id'] = event.operationId;
+		const agentName = runId ? runAgentNames.get(runId) : undefined;
+		if (agentName) logAttrs['flue.agent'] = agentName;
+
+		if (event.level === 'info') {
+			Sentry.logger.info(event.message, logAttrs);
+		} else if (event.level === 'warn') {
+			Sentry.logger.warn(event.message, logAttrs);
+		} else if (event.level === 'error') {
+			Sentry.logger.error(event.message, logAttrs);
+
+			Sentry.withScope((scope) => {
+				scope.setTags(tags);
+				scope.setLevel('error');
+				if (event.attributes) {
+					scope.setContext('flue.log_attributes', event.attributes);
+				}
+				const errorAttr = event.attributes?.error;
+				if (errorAttr) {
+					Sentry.captureException(reconstructError(errorAttr));
+				} else {
+					Sentry.captureMessage(event.message, 'error');
+				}
+			});
+		}
+		return;
+	}
 });
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-/**
- * Build the Sentry tags attached to every capture from this bridge.
- *
- * Tag keys use the `flue.*` prefix to namespace them away from
- * Sentry's built-in tags and from any application tags the user
- * adds. Pivoting on `flue.run_id` in Sentry's search box is the
- * fastest way to find every issue raised by a single Flue run.
- */
 function flueCorrelationTags(
 	event: FlueEvent,
 	ctx: FlueContext,
@@ -210,24 +303,24 @@ function flueCorrelationTags(
 	if (event.parentSession) tags['flue.parent_session'] = event.parentSession;
 	if (event.operationId) tags['flue.operation_id'] = event.operationId;
 	if (event.taskId) tags['flue.task_id'] = event.taskId;
-	// `run_start` carries the agent name; cache it via the most
-	// common shape so other events can pick it up too. (Currently
-	// only `run_start` includes `agentName`, but we don't depend on
-	// that — we read it defensively.)
 	if (event.type === 'run_start') tags['flue.agent'] = event.agentName;
 	return tags;
 }
 
-/**
- * Reconstruct an `Error` instance from a value that may already be an
- * `Error`, may be the JSON-serialized envelope Flue's run-store uses
- * (`{ name, message }`), or may be something arbitrary a handler
- * threw (a string, a number, a plain object).
- *
- * Sentry's `captureException` does its best with non-Error values,
- * but it produces much better issue grouping when given a real
- * `Error` with a stable `name` and `message`.
- */
+function usageAttributes(usage: PromptUsage | undefined): Record<string, number> {
+	if (!usage) return {};
+	return {
+		'gen_ai.usage.input_tokens': usage.input,
+		'gen_ai.usage.output_tokens': usage.output,
+		'gen_ai.usage.input_tokens.cached': usage.cacheRead,
+		'gen_ai.usage.input_tokens.cache_write': usage.cacheWrite,
+		'gen_ai.usage.total_tokens': usage.totalTokens,
+		'gen_ai.cost.input_tokens': usage.cost.input,
+		'gen_ai.cost.output_tokens': usage.cost.output,
+		'gen_ai.cost.total_tokens': usage.cost.total,
+	};
+}
+
 function reconstructError(raw: unknown): Error {
 	if (raw instanceof Error) return raw;
 	if (raw && typeof raw === 'object') {
