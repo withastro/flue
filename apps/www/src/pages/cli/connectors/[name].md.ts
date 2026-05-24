@@ -22,11 +22,9 @@
  */
 import type { APIRoute, GetStaticPaths } from 'astro';
 import { readdir, readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../../../..');
-const connectorsDir = join(repoRoot, 'connectors');
+const connectorsDir = join(process.cwd(), '../../connectors');
 
 interface ConnectorEntry {
 	slug: string;

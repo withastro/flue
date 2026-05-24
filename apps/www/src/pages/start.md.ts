@@ -1,10 +1,8 @@
 import type { APIRoute } from 'astro';
 import { readdir, readFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
-const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '../../../..');
-const docsDir = join(repoRoot, 'docs');
+const docsDir = join(process.cwd(), '../../docs');
 const rawDocsUrl = 'https://raw.githubusercontent.com/withastro/flue/refs/heads/main/docs';
 
 async function getDeployGuideList() {
