@@ -5,7 +5,7 @@
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
 		"hono": "^4.7.0",
-		"just-bash": "^2.14.2"
+		"just-bash": "^3.0.1"
 	},
 	"devDependencies": {
 		"@flue/cli": "workspace:*"
