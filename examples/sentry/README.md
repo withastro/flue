@@ -77,10 +77,11 @@ and how the pieces fit together.
 ## How the integration works
 
 Flue emits a structured event for every meaningful boundary in a workflow run —
-`run_start`, `operation`, `tool_call`, `log`, `run_end`, and others.
-Events emitted in that workflow run carry its correlation tree (`runId`,
-`harness`, `session`, `operationId`, `taskId`) so any consumer can reconstruct
-what happened.
+`run_start`, `operation`, `turn_request`, `turn`, `tool_call`, `log`, `run_end`,
+and others. Events emitted in that workflow run carry its correlation tree
+(`runId`, `harness`, `session`, `operationId`, `turnId`, `taskId`) so any
+consumer can reconstruct what happened. See [Observability](../../docs/observability.md)
+for the vendor-neutral event contract and its sensitive-content guidance.
 
 The `@flue/runtime/app` package exposes a single function for tapping that
 stream globally:

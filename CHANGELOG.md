@@ -12,6 +12,8 @@
 
 ### New Features
 
+- **Public AI observability events now expose model-turn requests and responses.** The `observe(...)` event stream now assigns a `turnId` to model turns, emits a `turn_request` event at the normalized provider-request boundary with model/provider/API identity and model-visible input, and enriches terminal `turn` events with output and provider identity. Compaction model calls emit the same request/result telemetry with `purpose: 'compaction' | 'compaction_prefix'`, while ordinary agent-loop turns use `purpose: 'agent'`. These content-bearing events are intended for external observability integrations and should be handled as potentially sensitive data. To accommodate full-fidelity model contexts in workflow history, the persisted run-event payload limit is now 1 MB.
+
 - **Flue now separates workflows that return results from agents that receive messages over time.** Files in `workflows/` are finite request/result jobs: they export `run(...)`, can opt into direct HTTP with `channels = [http()]`, and initialize local created agents with `init(agent)` only when model or sandbox work is needed. Deterministic workflows can omit agents entirely and simply return results from `run(...)`. Files in `agents/` are addressable agent instances: they default-export `createAgent(...)` so the runtime can initialize their stable instance resources, may attach direct `http()` / `websocket()` resources, and may register top-level listeners on authored channel applications that explicitly `dispatch(...)` work. This gives upgrading users a clearer place to put each kind of logic instead of overloading one module shape for both request/result jobs and long-lived message-driven actors.
 
   ```ts
@@ -262,7 +264,7 @@
 
 ### Fixes & Other Changes
 
-- **Reject oversized persisted run events.** Flue now fails runs that emit event payloads beyond the 256 KB persistence limit instead of attempting to store them, avoiding excessive run-history storage work while preserving lifecycle cleanup.
+- **Reject oversized persisted run events.** Flue fails runs that emit event payloads beyond the configured persistence limit instead of attempting to store them, avoiding excessive run-history storage work while preserving lifecycle cleanup. The limit was originally 256 KB and is increased to 1 MB in the unreleased observability work above.
 
 - **Workflow runs and agent interactions now have separate lifecycle models.** Workflows retain persisted runs, `runId`, `/runs` inspection, and `run_start` / `run_end`. Direct agent HTTP calls still support regular JSON responses and `Accept: text/event-stream`, but direct and dispatched agent inputs execute inside persistent sessions and emit agent lifecycle events instead of workflow run boundaries. Dispatched delivery is correlated by `dispatchId`. Workflow HTTP calls default to fire-and-forget admission with `202 { status: "accepted", runId }`; use `?wait=result` for a synchronous JSON result envelope or `Accept: text/event-stream` to stream workflow run events. `flue run` and `flue logs` remain workflow-run tooling.
 

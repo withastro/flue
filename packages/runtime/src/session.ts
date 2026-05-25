@@ -1,10 +1,12 @@
 /** Internal session implementation. Not exported publicly — wrapped by FlueSession. */
 
-import type { AgentMessage, AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
+import type { AgentMessage, AgentTool, AgentToolResult, StreamFn } from '@earendil-works/pi-agent-core';
 import { Agent } from '@earendil-works/pi-agent-core';
+import { streamSimple } from '@earendil-works/pi-ai';
 import type {
 	AssistantMessage,
 	ImageContent,
+	Message,
 	Model,
 	ToolResultMessage,
 	UserMessage,
@@ -21,6 +23,7 @@ import {
 } from './agent.ts';
 import {
 	type CompactionSettings,
+	type CompactionTurnHandle,
 	calculateContextTokens,
 	compact,
 	DEFAULT_COMPACTION_SETTINGS,
@@ -39,7 +42,7 @@ import {
 	type ResultToolBundle,
 	ResultUnavailableError,
 } from './result.ts';
-import { generateOperationId } from './runtime/ids.ts';
+import { generateOperationId, generateTurnId } from './runtime/ids.ts';
 import { getProviderConfiguration, getRegisteredApiKey } from './runtime/providers.ts';
 import { createFlueFs } from './sandbox.ts';
 
@@ -78,6 +81,67 @@ import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 
 const MAX_TASK_DEPTH = 4;
+
+type TurnInputMessage = Extract<FlueEvent, { type: 'turn_request' }>['input']['messages'][number];
+type TurnInputTool = NonNullable<Extract<FlueEvent, { type: 'turn_request' }>['input']['tools']>[number];
+type TurnOutput = NonNullable<Extract<FlueEvent, { type: 'turn' }>['output']>;
+type ProviderTextOrImageContent = Exclude<UserMessage['content'], string>[number];
+type ProviderContentBlock =
+	| ProviderTextOrImageContent
+	| AssistantMessage['content'][number]
+	| ToolResultMessage['content'][number];
+type TurnUserContent = Exclude<Extract<TurnInputMessage, { role: 'user' }>['content'], string>[number];
+type TurnAssistantContent = Extract<TurnInputMessage, { role: 'assistant' }>['content'][number];
+type TurnToolResultContent = Extract<TurnInputMessage, { role: 'toolResult' }>['content'][number];
+type TurnContent = TurnUserContent | TurnAssistantContent | TurnToolResultContent;
+
+function toTurnMessage(message: Message): TurnInputMessage {
+	if (message.role === 'user') {
+		return {
+			role: 'user',
+			content: typeof message.content === 'string'
+				? message.content
+				: (message.content.map(toTurnContent) as TurnUserContent[]),
+		};
+	}
+	if (message.role === 'assistant') {
+		return {
+			role: 'assistant',
+			content: message.content.map(toTurnContent) as TurnAssistantContent[],
+		};
+	}
+	return {
+		role: 'toolResult',
+		toolCallId: message.toolCallId,
+		toolName: message.toolName,
+		content: message.content.map(toTurnContent) as TurnToolResultContent[],
+		isError: message.isError,
+	};
+}
+
+function toTurnContent(block: ProviderContentBlock): TurnContent {
+	if (block.type === 'text') {
+		return { type: 'text', text: block.text, textSignature: block.textSignature };
+	}
+	if (block.type === 'image') {
+		return { type: 'image', data: block.data, mimeType: block.mimeType };
+	}
+	if (block.type === 'thinking') {
+		return {
+			type: 'thinking',
+			thinking: block.thinking,
+			thinkingSignature: block.thinkingSignature,
+			redacted: block.redacted,
+		};
+	}
+	return {
+		type: 'toolCall',
+		id: block.id,
+		name: block.name,
+		arguments: block.arguments,
+		thoughtSignature: block.thoughtSignature,
+	};
+}
 
 export interface CreateTaskSessionOptions {
 	parentSession: string;
@@ -481,10 +545,48 @@ export class Session implements FlueSession {
 	private activeOperationId: string | undefined;
 	private toolStartTimes = new Map<string, number>();
 	private turnStartTime: number | undefined;
+	private activeTurnId: string | undefined;
 	private activeTasks = new Set<Session>();
 	private taskDepth: number;
 	private createTaskSession: CreateTaskSession | undefined;
 	private onDelete: (() => void) | undefined;
+
+	private emitTurnRequestAndStream: StreamFn = (model, context, options) => {
+		if (this.activeTurnId === undefined) this.activeTurnId = generateTurnId();
+		const turnId = this.activeTurnId;
+		this.emitTurnRequest(turnId, 'agent', model, context, options?.reasoning);
+		return streamSimple(model, context, options);
+	};
+
+	private emitTurnRequest(
+		turnId: string,
+		purpose: 'agent' | 'compaction' | 'compaction_prefix',
+		model: Model<any>,
+		context: { systemPrompt?: string; messages: Message[]; tools?: Array<{ name: string; description: string; parameters: unknown }> },
+		reasoning: string | undefined,
+	): void {
+		const tools = context.tools?.map(
+			(tool): TurnInputTool => ({
+				name: tool.name,
+				description: tool.description,
+				parameters: tool.parameters,
+			}),
+		);
+		this.emit({
+			type: 'turn_request',
+			turnId,
+			purpose,
+			model: model.id,
+			provider: model.provider,
+			api: model.api,
+			input: {
+				systemPrompt: context.systemPrompt,
+				messages: context.messages.map(toTurnMessage),
+				tools,
+			},
+			reasoning,
+		});
+	}
 
 	constructor(options: SessionInitOptions) {
 		this.name = options.name;
@@ -524,6 +626,7 @@ export class Session implements FlueSession {
 			},
 			getApiKey: (provider) => this.getProviderApiKey(provider),
 			onPayload: (payload, model) => this.applyProviderPayloadOverrides(payload, model),
+			streamFn: this.emitTurnRequestAndStream,
 			toolExecution: 'parallel',
 			sessionId: options.affinityKey,
 		});
@@ -536,7 +639,8 @@ export class Session implements FlueSession {
 					break;
 				case 'turn_start':
 					this.turnStartTime = Date.now();
-					this.emit({ type: 'turn_start' });
+					this.activeTurnId = generateTurnId();
+					this.emit({ type: 'turn_start', turnId: this.activeTurnId, purpose: 'agent' });
 					break;
 				case 'message_start':
 					this.emit({ type: 'message_start', message: event.message });
@@ -579,23 +683,33 @@ export class Session implements FlueSession {
 					this.toolStartTimes.delete(event.toolCallId);
 					break;
 				case 'turn_end': {
-					this.emit({ type: 'turn_end', message: event.message, toolResults: event.toolResults });
+					const turnId = this.activeTurnId ?? generateTurnId();
+					this.emit({ type: 'turn_end', turnId, purpose: 'agent', message: event.message, toolResults: event.toolResults });
 					const message = event.message;
 					const assistant = message.role === 'assistant' ? (message as AssistantMessage) : undefined;
+					const output = assistant ? (toTurnMessage(assistant) as TurnOutput) : undefined;
 					this.emit({
 						type: 'turn',
+						turnId,
+						purpose: 'agent',
 						durationMs: durationSince(this.turnStartTime),
 						model: assistant?.model,
+						provider: assistant?.provider,
+						api: assistant?.api,
+						output,
 						usage: fromProviderUsage(assistant?.usage),
 						stopReason: assistant?.stopReason,
 						isError: assistant?.stopReason === 'error' || assistant?.stopReason === 'aborted',
 						error: assistant?.errorMessage,
 					});
 					this.turnStartTime = undefined;
+					this.activeTurnId = undefined;
 					break;
 				}
 				case 'agent_end':
 					this.emit({ type: 'agent_end', messages: event.messages });
+					this.turnStartTime = undefined;
+					this.activeTurnId = undefined;
 					break;
 			}
 		});
@@ -1335,6 +1449,8 @@ export class Session implements FlueSession {
 		};
 		const operationId = event.operationId ?? this.activeOperationId;
 		if (operationId !== undefined) decorated.operationId = operationId;
+		const turnId = event.turnId ?? this.activeTurnId;
+		if (turnId !== undefined) decorated.turnId = turnId;
 		this.eventCallback?.(decorated);
 	}
 
@@ -1557,6 +1673,30 @@ export class Session implements FlueSession {
 				summarizationModel,
 				this.getProviderApiKey(summarizationModel.provider),
 				this.compactionAbortController.signal,
+				{
+					start: (purpose, model, context, options): CompactionTurnHandle => {
+						const handle = { turnId: generateTurnId(), startedAt: Date.now() };
+						this.emitTurnRequest(handle.turnId, purpose, model, context, options.reasoning);
+						return handle;
+					},
+					end: (purpose, handle, model, response, error): void => {
+						const output = response ? (toTurnMessage(response) as TurnOutput) : undefined;
+						this.emit({
+							type: 'turn',
+							turnId: handle.turnId,
+							purpose,
+							durationMs: durationSince(handle.startedAt),
+							model: response?.model ?? model.id,
+							provider: response?.provider ?? model.provider,
+							api: response?.api ?? model.api,
+							output,
+							usage: fromProviderUsage(response?.usage),
+							stopReason: response?.stopReason,
+							isError: error !== undefined || response?.stopReason === 'error' || response?.stopReason === 'aborted',
+							error: error === undefined ? response?.errorMessage : serializeError(error),
+						});
+					},
+				},
 			);
 
 			if (this.compactionAbortController.signal.aborted) return;

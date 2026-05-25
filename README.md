@@ -23,6 +23,8 @@ Flue isn't another AI SDK. It's a proper runtime-agnostic framework — think As
 
 Message-driven agents receive direct HTTP or WebSocket messages at `/agents/:name/:id`; authored provider channel apps mount beneath `/channels/:channel/*` and agent-owned `channel.on(...)` listeners explicitly `dispatch(...)` work. See [Message-Driven Agents](docs/message-driven-agents.md) for these surfaces and inbound-only channel examples. Runnable WebSocket examples are available for [Node](examples/node-websocket) and [Cloudflare](examples/cloudflare-websocket).
 
+For external tracing, metrics, and error reporting, see [Observability](docs/observability.md) and the public `observe(...)`-based [Sentry example](examples/sentry).
+
 ### Quickstart
 
 The simplest agent — no container, no tools, just a prompt and a typed result.

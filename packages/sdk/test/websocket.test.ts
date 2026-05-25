@@ -94,10 +94,14 @@ describe('WebSocket clients', () => {
 		expect(request).toMatchObject({ version: 1, type: 'prompt', message: 'Hello', session: 'chat' });
 		connection?.socket.message({ version: 1, type: 'started', requestId: request.requestId });
 		connection?.socket.message({ version: 1, type: 'event', requestId: request.requestId, event: { type: 'agent_start', instanceId: 'customer/123', session: 'chat' } });
+		connection?.socket.message({ version: 1, type: 'event', requestId: request.requestId, event: { type: 'turn_request', instanceId: 'customer/123', session: 'chat', turnId: 'turn_1', purpose: 'agent', model: 'model', provider: 'provider', api: 'api', input: { messages: [] } } });
 		connection?.socket.message({ version: 1, type: 'result', requestId: request.requestId, result: 'done' });
 
 		await expect(pending).resolves.toEqual({ result: 'done' });
-		expect(events).toEqual([{ event: { type: 'agent_start', instanceId: 'customer/123', session: 'chat' }, context: { requestId: request.requestId } }]);
+		expect(events).toEqual([
+			{ event: { type: 'agent_start', instanceId: 'customer/123', session: 'chat' }, context: { requestId: request.requestId } },
+			{ event: { type: 'turn_request', instanceId: 'customer/123', session: 'chat', turnId: 'turn_1', purpose: 'agent', model: 'model', provider: 'provider', api: 'api', input: { messages: [] } }, context: { requestId: request.requestId } },
+		]);
 	});
 
 	it('supports sequential agent prompts and ping on one socket', async () => {

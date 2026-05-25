@@ -34,8 +34,24 @@ describe('createFlueClient', () => {
 		for await (const event of client.agents.invoke('hello', 'inst-1', { mode: 'stream', payload: { message: 'Hello', session: 'chat' } })) {
 			events.push(event);
 		}
-		expect(events).toEqual([{ type: 'agent_start', instanceId: 'inst-1', session: 'chat' }, { type: 'idle', instanceId: 'inst-1', session: 'chat' }]);
+			expect(events).toEqual([{ type: 'agent_start', instanceId: 'inst-1', session: 'chat' }, { type: 'idle', instanceId: 'inst-1', session: 'chat' }]);
 	});
+
+	it('streams enriched turn request events for attached agents', async () => {
+		const client = createFlueClient({
+			baseUrl: 'https://flue.test',
+			fetch: async () => new Response(sse('event: turn_request\ndata: {"type":"turn_request","instanceId":"inst-1","session":"chat","turnId":"turn_1","purpose":"agent","model":"model","provider":"provider","api":"api","input":{"messages":[]}}\n\n'), {
+				headers: { 'content-type': 'text/event-stream' },
+			}),
+		});
+
+		const events = [];
+		for await (const event of client.agents.invoke('hello', 'inst-1', { mode: 'stream', payload: { message: 'Hello', session: 'chat' } })) {
+			events.push(event);
+		}
+		expect(events).toEqual([{ type: 'turn_request', instanceId: 'inst-1', session: 'chat', turnId: 'turn_1', purpose: 'agent', model: 'model', provider: 'provider', api: 'api', input: { messages: [] } }]);
+	});
+
 
 	it('rejects invalid attached agent stream events and stream errors', async () => {
 		const invalid = createFlueClient({

@@ -64,7 +64,7 @@ async function* invokeStream(
 }
 
 const ATTACHED_AGENT_EVENT_TYPES = new Set([
-	'agent_start', 'agent_end', 'turn_start', 'turn_end', 'message_start', 'message_update', 'message_end',
+	'agent_start', 'agent_end', 'turn_start', 'turn_request', 'turn_end', 'message_start', 'message_update', 'message_end',
 	'tool_execution_start', 'tool_execution_update', 'tool_execution_end', 'text_delta', 'thinking_start',
 	'thinking_delta', 'thinking_end', 'tool_start', 'tool_call', 'turn', 'task_start', 'task',
 	'compaction_start', 'compaction', 'operation_start', 'operation', 'log', 'idle',

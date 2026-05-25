@@ -10,6 +10,7 @@ import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import { completeSimple, isContextOverflow } from '@earendil-works/pi-ai';
 import type {
 	AssistantMessage,
+	Context,
 	Model,
 	SimpleStreamOptions,
 	TextContent,
@@ -492,6 +493,27 @@ export interface CompactionResult {
 	usage?: PromptUsage;
 }
 
+export interface CompactionTurnHandle {
+	turnId: string;
+	startedAt: number;
+}
+
+export interface CompactionTurnObserver {
+	start(
+		purpose: 'compaction' | 'compaction_prefix',
+		model: Model<any>,
+		context: Context,
+		options: SimpleStreamOptions,
+	): CompactionTurnHandle;
+	end(
+		purpose: 'compaction' | 'compaction_prefix',
+		handle: CompactionTurnHandle,
+		model: Model<any>,
+		response: AssistantMessage | undefined,
+		error: unknown | undefined,
+	): void;
+}
+
 /** Pure function — no I/O. Finds cut point, extracts messages to summarize, tracks file ops. */
 export function prepareCompaction(
 	messages: AgentMessage[],
@@ -551,7 +573,8 @@ async function generateSummary(
 	reserveTokens: number,
 	apiKey: string | undefined,
 	signal: AbortSignal | undefined,
-	previousSummary?: string,
+	previousSummary: string | undefined,
+	observer: CompactionTurnObserver | undefined,
 ): Promise<{ text: string; usage: Usage | undefined }> {
 	const maxTokens = Math.min(Math.floor(0.8 * reserveTokens), 16000);
 	const basePrompt = previousSummary ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
@@ -571,11 +594,16 @@ async function generateSummary(
 	if (apiKey) completionOptions.apiKey = apiKey;
 	if (model.reasoning) completionOptions.reasoning = 'high';
 
-	const response = await completeSimple(
-		model,
-		{ systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages },
-		completionOptions,
-	);
+	const context = { systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages };
+	const handle = observer?.start('compaction', model, context, completionOptions);
+	let response: AssistantMessage | undefined;
+	try {
+		response = await completeSimple(model, context, completionOptions);
+		if (handle) observer?.end('compaction', handle, model, response, undefined);
+	} catch (error) {
+		if (handle) observer?.end('compaction', handle, model, undefined, error);
+		throw error;
+	}
 
 	if (response.stopReason === 'error') {
 		throw new Error(`Summarization failed: ${response.errorMessage || 'Unknown error'}`);
@@ -594,6 +622,7 @@ async function generateTurnPrefixSummary(
 	reserveTokens: number,
 	apiKey: string | undefined,
 	signal: AbortSignal | undefined,
+	observer: CompactionTurnObserver | undefined,
 ): Promise<{ text: string; usage: Usage | undefined }> {
 	const maxTokens = Math.min(Math.floor(0.5 * reserveTokens), 16000);
 	const conversationText = serializeConversation(messages);
@@ -607,11 +636,16 @@ async function generateTurnPrefixSummary(
 	if (apiKey) completionOptions.apiKey = apiKey;
 	if (model.reasoning) completionOptions.reasoning = 'high';
 
-	const response = await completeSimple(
-		model,
-		{ systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages },
-		completionOptions,
-	);
+	const context = { systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages };
+	const handle = observer?.start('compaction_prefix', model, context, completionOptions);
+	let response: AssistantMessage | undefined;
+	try {
+		response = await completeSimple(model, context, completionOptions);
+		if (handle) observer?.end('compaction_prefix', handle, model, response, undefined);
+	} catch (error) {
+		if (handle) observer?.end('compaction_prefix', handle, model, undefined, error);
+		throw error;
+	}
 
 	if (response.stopReason === 'error') {
 		throw new Error(
@@ -633,6 +667,7 @@ export async function compact(
 	model: Model<any>,
 	apiKey: string | undefined,
 	signal?: AbortSignal,
+	observer?: CompactionTurnObserver,
 ): Promise<CompactionResult> {
 	const {
 		firstKeptIndex,
@@ -669,9 +704,10 @@ export async function compact(
 						apiKey,
 						signal,
 						previousSummary,
+						observer,
 					)
 				: Promise.resolve({ text: 'No prior history.', usage: undefined }),
-			generateTurnPrefixSummary(turnPrefixMessages, model, settings.reserveTokens, apiKey, signal),
+			generateTurnPrefixSummary(turnPrefixMessages, model, settings.reserveTokens, apiKey, signal, observer),
 		]);
 		addCallUsage(historyResult.usage);
 		addCallUsage(turnPrefixResult.usage);
@@ -684,6 +720,7 @@ export async function compact(
 			apiKey,
 			signal,
 			previousSummary,
+			observer,
 		);
 		addCallUsage(historyResult.usage);
 		summary = historyResult.text;

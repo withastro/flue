@@ -51,7 +51,7 @@ export interface RunStoreOptions {
 }
 
 export const DEFAULT_MAX_COMPLETED_RUNS = 50;
-const MAX_EVENT_BYTES = 256 * 1024;
+const MAX_EVENT_BYTES = 1024 * 1024;
 const ENCODER = new TextEncoder();
 
 export function serializedEventForPersistence(event: FlueEvent): string {

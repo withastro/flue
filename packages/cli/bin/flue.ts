@@ -659,6 +659,11 @@ function logEvent(event: any) {
 			break;
 		}
 
+		case 'turn_start':
+		case 'turn_request':
+		case 'turn_end':
+			break;
+
 		case 'turn':
 			flushBuffers();
 			break;

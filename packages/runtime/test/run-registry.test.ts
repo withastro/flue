@@ -100,6 +100,33 @@ describe('InMemoryRunRegistry', () => {
 });
 
 describe('run store persistence sizing', () => {
+	it('persists rich model turn requests without reducing their content', async () => {
+		const runStore = new InMemoryRunStore();
+		const runId = 'workflow:trace:rich-turn';
+		await runStore.createRun({
+			runId,
+			owner: workflowOwner('trace', runId),
+			startedAt: '2026-05-24T00:00:00.000Z',
+			payload: {},
+		});
+		const event: FlueEvent = {
+			type: 'turn_request',
+			turnId: 'turn_rich',
+			purpose: 'agent',
+			model: 'model',
+			provider: 'provider',
+			api: 'api',
+			input: {
+				systemPrompt: 'sensitive instructions',
+				messages: [{ role: 'user', content: 'sensitive input' }],
+			},
+			runId,
+		};
+		await runStore.appendEvent(runId, event);
+
+		expect(await runStore.getEvents(runId)).toEqual([event]);
+	});
+
 	it('surfaces oversized persisted events to callers', async () => {
 		const runStore = new InMemoryRunStore();
 		const runRegistry = new InMemoryRunRegistry();
@@ -107,7 +134,7 @@ describe('run store persistence sizing', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: { agents: [], workflows: [{ name: 'hello', channels: { http: true } }] },
-			workflowHandlers: { hello: async () => ({ result: 'x'.repeat(300_000) }) },
+			workflowHandlers: { hello: async () => ({ result: 'x'.repeat(1_100_000) }) },
 			createContext: (id, runId, payload, req) =>
 				createFlueContext({
 					id,
@@ -146,7 +173,7 @@ describe('run store persistence sizing', () => {
 			manifest: { agents: [], workflows: [{ name: 'hello', channels: { http: true } }] },
 			workflowHandlers: {
 				hello: async (ctx) => {
-					ctx.log.info('x'.repeat(300_000));
+					ctx.log.info('x'.repeat(1_100_000));
 					return { ok: true };
 				},
 			},
@@ -188,7 +215,7 @@ describe('run store persistence sizing', () => {
 			manifest: { agents: [], workflows: [{ name: 'hello', channels: { http: true } }] },
 			workflowHandlers: {
 				hello: async () => {
-					throw new Error('x'.repeat(300_000));
+					throw new Error('x'.repeat(1_100_000));
 				},
 			},
 			createContext: (id, runId, payload, req) =>

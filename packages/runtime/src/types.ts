@@ -882,6 +882,61 @@ export interface BashLike {
 /** Factory that constructs the agent's Bash-like runtime. Called once at init. */
 export type BashFactory = () => BashLike | Promise<BashLike>;
 
+export type LlmTextContent = {
+	type: 'text';
+	text: string;
+	textSignature?: string;
+};
+
+export type LlmThinkingContent = {
+	type: 'thinking';
+	thinking: string;
+	thinkingSignature?: string;
+	redacted?: boolean;
+};
+
+export type LlmImageContent = {
+	type: 'image';
+	data: string;
+	mimeType: string;
+};
+
+export type LlmToolCall = {
+	type: 'toolCall';
+	id: string;
+	name: string;
+	arguments: Record<string, any>;
+	thoughtSignature?: string;
+};
+
+export type LlmUserMessage = {
+	role: 'user';
+	content: string | (LlmTextContent | LlmImageContent)[];
+};
+
+export type LlmAssistantMessage = {
+	role: 'assistant';
+	content: (LlmTextContent | LlmThinkingContent | LlmToolCall)[];
+};
+
+export type LlmToolResultMessage = {
+	role: 'toolResult';
+	toolCallId: string;
+	toolName: string;
+	content: (LlmTextContent | LlmImageContent)[];
+	isError: boolean;
+};
+
+export type LlmMessage = LlmUserMessage | LlmAssistantMessage | LlmToolResultMessage;
+
+export type LlmTool = {
+	name: string;
+	description: string;
+	parameters: unknown;
+};
+
+export type LlmTurnPurpose = 'agent' | 'compaction' | 'compaction_prefix';
+
 export type FlueEvent = (
 	| {
 			type: 'run_start';
@@ -894,8 +949,22 @@ export type FlueEvent = (
 		}
 	| { type: 'agent_start' }
 	| { type: 'agent_end'; messages: AgentMessage[] }
-	| { type: 'turn_start' }
-	| { type: 'turn_end'; message: AgentMessage; toolResults: AgentMessage[] }
+	| { type: 'turn_start'; turnId: string; purpose: LlmTurnPurpose }
+	| {
+			type: 'turn_request';
+			turnId: string;
+			purpose: LlmTurnPurpose;
+			model: string;
+			provider: string;
+			api: string;
+			input: {
+				systemPrompt?: string;
+				messages: LlmMessage[];
+				tools?: LlmTool[];
+			};
+			reasoning?: string;
+		}
+	| { type: 'turn_end'; turnId: string; purpose: LlmTurnPurpose; message: AgentMessage; toolResults: AgentMessage[] }
 	| { type: 'message_start'; message: AgentMessage }
 	| { type: 'message_update'; message: AgentMessage; assistantMessageEvent: unknown }
 	| { type: 'message_end'; message: AgentMessage }
@@ -917,8 +986,13 @@ export type FlueEvent = (
 		}
 	| {
 			type: 'turn';
+			turnId: string;
+			purpose: LlmTurnPurpose;
 			durationMs: number;
 			model?: string;
+			provider?: string;
+			api?: string;
+			output?: LlmAssistantMessage;
 			usage?: PromptUsage;
 			stopReason?: string;
 			isError: boolean;
@@ -966,6 +1040,7 @@ export type FlueEvent = (
 	taskId?: string;
 	harness?: string;
 	operationId?: string;
+	turnId?: string;
 };
 
 export type AttachedAgentEvent = Exclude<FlueEvent, { type: 'run_start' } | { type: 'run_end' }> & {

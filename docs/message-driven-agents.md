@@ -195,7 +195,7 @@ Flue preserves the structured input in session storage and renders it determinis
 
 ## Lifecycle and Correlation
 
-Workflows are finite executions and emit `run_start` / `run_end` events correlated by workflow `runId`. Agent prompt and dispatched-input processing emit `agent_start` / `agent_end` with nested Pi-aligned message, turn, and tool lifecycle events. Direct interactions correlate by instance/session and transport request when applicable; dispatched interactions additionally carry `dispatchId`.
+Workflows are finite executions and emit `run_start` / `run_end` events correlated by workflow `runId`. Agent prompt and dispatched-input processing emit finite `operation_start` / `operation` events with nested Pi-aligned `agent_start` / `agent_end`, message, turn, and tool lifecycle events. A session may process more inputs after becoming `idle`; `idle` is not a terminal run boundary. Direct interactions correlate by instance/session and transport request when applicable; dispatched interactions additionally carry `dispatchId`. For external event consumers and model-turn request/output telemetry, see [Observability](observability.md).
 
 ## `createAgent(...)`
 
