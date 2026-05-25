@@ -87,7 +87,7 @@ export interface BuildPlugin {
 	 *     becomes the input for whatever tool will deploy it (e.g. wrangler).
 	 *     The plugin must also implement `entryFilename` to set the file name.
 	 */
-	bundle?: 'esbuild' | 'none';
+	bundle?: 'esbuild' | 'vite' | 'vite-cloudflare' | 'none';
 	/**
 	 * The filename to use for the entry, written under `dist/`. Required when
 	 * `bundle === 'none'`. For `bundle === 'esbuild'` the output is always

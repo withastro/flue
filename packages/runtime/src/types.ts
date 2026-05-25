@@ -211,7 +211,6 @@ export type SkillResources =
 			entries: SkillResourceEntry[];
 		};
 
-/** Bundled skill value produced from `SKILL.md` imports. */
 export interface SkillDefinition {
 	name: string;
 	description: string;
@@ -224,12 +223,28 @@ export interface SkillDefinition {
 	source: SkillSource;
 }
 
-/**
- * Skills may be runtime-discovered metadata-only entries or bundled
- * `SKILL.md` values that carry instructions and lazily readable resources.
- */
+export interface SkillReference {
+	readonly __flueSkillReference: true;
+	readonly id: string;
+	readonly name: string;
+	readonly description: string;
+}
+
+export interface PackagedSkillFile {
+	readonly encoding: 'base64';
+	readonly content: string;
+}
+
+export interface PackagedSkillDirectory {
+	readonly id: string;
+	readonly name: string;
+	readonly description: string;
+	readonly files: Record<string, PackagedSkillFile>;
+}
+
 export type Skill =
 	| SkillDefinition
+	| SkillReference
 	| {
 			name: string;
 			description: string;
@@ -432,6 +447,7 @@ export interface AgentConfig {
 	instructions?: string;
 	/** Agent-definition skills merged into each discovered skill catalog. */
 	definitionSkills?: Skill[];
+	packagedSkills?: Record<string, PackagedSkillDirectory>;
 	/** Discovered at runtime from .agents/skills/ in the session's cwd. */
 	skills: Record<string, Skill>;
 	subagents?: Record<string, AgentProfile>;
@@ -620,14 +636,14 @@ export interface FlueSession {
 	readonly fs: FlueFs;
 
 	skill<S extends v.GenericSchema>(
-		skill: SkillDefinition | string,
+		skill: SkillDefinition | SkillReference | string,
 		options: SkillOptions<S> & { result: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
 	skill<S extends v.GenericSchema>(
-		skill: SkillDefinition | string,
+		skill: SkillDefinition | SkillReference | string,
 		options: SkillOptions<S> & { schema: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
-	skill(skill: SkillDefinition | string, options?: SkillOptions): CallHandle<PromptResponse>;
+	skill(skill: SkillDefinition | SkillReference | string, options?: SkillOptions): CallHandle<PromptResponse>;
 
 	task<S extends v.GenericSchema>(
 		text: string,

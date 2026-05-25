@@ -5,7 +5,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { build } from '../../cli/src/lib/build.ts';
-import { NodePlugin } from '../../cli/src/lib/build-plugin-node.ts';
+import { NodePlugin, ViteNodePlugin } from '../../cli/src/lib/build-plugin-node.ts';
 import type { BuildContext } from '../../cli/src/lib/types.ts';
 import type { WebSocketServerMessage } from '../src/types.ts';
 
@@ -32,6 +32,57 @@ describe('Node build plugin', () => {
 		expect(dispatchQueueBody).not.toContain('runSubscribers');
 		expect(dispatchQueueBody).not.toContain('runRegistry');
 	});
+
+	it('builds and starts a Vite Node server with existing workflow behavior', async () => {
+		const root = createFixtureRoot('flue-vite-node-server-');
+		fs.mkdirSync(path.join(root, 'workflows'));
+		fs.writeFileSync(
+			path.join(root, 'workflows', 'smoke.ts'),
+			`import { http } from '@flue/runtime';\nexport const channels = [http()];\nexport async function run() { return { ok: true }; }\n`,
+		);
+		await build({ root, plugin: new ViteNodePlugin() });
+
+		const { child, port } = await startGeneratedServer(root);
+		try {
+			const response = await fetch(`http://localhost:${port}/workflows/smoke?wait=result`, { method: 'POST' });
+			expect(response.status).toBe(200);
+			expect(await response.json()).toMatchObject({ result: { ok: true } });
+		} finally {
+			child.kill('SIGTERM');
+		}
+	}, 15000);
+
+	it('builds imported Agent Skills as references through the Vite Node graph', async () => {
+		const root = createFixtureRoot('flue-vite-node-skill-');
+		fs.mkdirSync(path.join(root, 'workflows'));
+		fs.mkdirSync(path.join(root, 'skills', 'review', 'references'), { recursive: true });
+		fs.writeFileSync(
+			path.join(root, 'skills', 'review', 'SKILL.md'),
+			`---\nname: review\ndescription: Reviews requested work.\nlicense: LICENSE.txt\n---\nReview the request.\n`,
+		);
+		fs.writeFileSync(path.join(root, 'skills', 'review', 'LICENSE.txt'), 'License terms.\n');
+		fs.writeFileSync(path.join(root, 'skills', 'review', 'references', 'checklist.md'), 'Check the result.\n');
+		fs.writeFileSync(
+			path.join(root, 'workflows', 'inspect.ts'),
+			`import { http } from '@flue/runtime';\nimport review from '../skills/review/SKILL.md' with { type: 'skill' };\nexport const channels = [http()];\nexport async function run() { return { reference: review, hasBody: 'body' in review, hasFiles: 'files' in review }; }\n`,
+		);
+		await build({ root, plugin: new ViteNodePlugin() });
+
+		const { child, port } = await startGeneratedServer(root);
+		try {
+			const response = await fetch(`http://localhost:${port}/workflows/inspect?wait=result`, { method: 'POST' });
+			expect(response.status).toBe(200);
+			expect(await response.json()).toMatchObject({
+				result: {
+					reference: { __flueSkillReference: true, name: 'review', description: 'Reviews requested work.' },
+					hasBody: false,
+					hasFiles: false,
+				},
+			});
+		} finally {
+			child.kill('SIGTERM');
+		}
+	}, 15000);
 
 	it('starts a generated server and invokes an HTTP workflow', async () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), 'flue-workflow-server-'));

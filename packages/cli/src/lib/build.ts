@@ -1,5 +1,6 @@
 import * as esbuild from 'esbuild';
 import * as fs from 'node:fs';
+import { builtinModules, createRequire } from 'node:module';
 import * as path from 'node:path';
 import { packageUpSync } from 'package-up';
 import { CloudflarePlugin } from './build-plugin-cloudflare.ts';
@@ -161,6 +162,52 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 				/* ignore */
 			}
 		}
+	} else if (bundleStrategy === 'vite') {
+		const entryPath = path.join(output, '_entry_server.ts');
+		const outPath = path.join(output, 'server.mjs');
+		fs.writeFileSync(entryPath, serverCode, 'utf-8');
+		try {
+			const { external: pluginExternal = [] } = plugin.esbuildOptions
+				? plugin.esbuildOptions(ctx)
+				: {};
+			const userExternals = getUserExternals(root);
+			const [{ build: viteBuild }, { viteSkillReferencePlugin }] = await Promise.all([
+				import('vite'),
+				import('./vite-skill-reference-plugin.ts'),
+			]);
+			await viteBuild({
+				configFile: false,
+				root,
+				logLevel: 'warn',
+				plugins: [viteGeneratedEntryDependencyResolver(root), viteSkillReferencePlugin()],
+				build: {
+					ssr: entryPath,
+					outDir: output,
+					emptyOutDir: false,
+					sourcemap: true,
+					target: 'node22',
+					rolldownOptions: {
+						external: [...pluginExternal, ...userExternals, ...builtinModules, ...builtinModules.map((name) => `node:${name}`)],
+						output: { entryFileNames: 'server.mjs', format: 'es' },
+					},
+				},
+			});
+			console.log(`[flue] Built: ${outPath}`);
+			anyChanged = true;
+		} finally {
+			try {
+				fs.unlinkSync(entryPath);
+			} catch {
+				/* ignore */
+			}
+		}
+	} else if (bundleStrategy === 'vite-cloudflare') {
+		if (!plugin.entryFilename) {
+			throw new Error(`[flue] Plugin "${plugin.name}" set bundle: 'vite-cloudflare' but did not provide entryFilename.`);
+		}
+		const outPath = path.join(output, plugin.entryFilename);
+		fs.writeFileSync(outPath, serverCode, 'utf-8');
+		anyChanged = true;
 	} else if (bundleStrategy === 'none') {
 		// Pass-through mode: write the entry as-is. A downstream tool (e.g.
 		// wrangler) handles bundling. We don't even glance at `esbuildOptions`.
@@ -376,6 +423,25 @@ function getUserExternals(root: string): string[] {
 	} catch {
 		return [];
 	}
+}
+
+export function viteGeneratedEntryDependencyResolver(root: string) {
+	const resolvers = [...collectNodePaths(root)].map((nodePath) => createRequire(path.join(nodePath, '__flue_vite_resolve__.cjs')));
+	return {
+		name: 'flue-node-dependency-resolver',
+		enforce: 'pre' as const,
+		resolveId(source: string) {
+			if (source.startsWith('.') || source.startsWith('/') || source.startsWith('\0') || source.startsWith('virtual:') || source.startsWith('node:')) return null;
+			for (const resolve of resolvers) {
+				try {
+					return resolve.resolve(source);
+				} catch {
+					continue;
+				}
+			}
+			return null;
+		},
+	};
 }
 
 function collectNodePaths(root: string): Set<string> {

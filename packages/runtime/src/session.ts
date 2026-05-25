@@ -12,6 +12,7 @@ import type {
 import type * as v from 'valibot';
 import { abortErrorFor, createCallHandle } from './abort.ts';
 import {
+	createPackagedSkillReadTool,
 	createTaskTool,
 	createTools,
 	formatBashResult,
@@ -30,6 +31,7 @@ import {
 } from './compaction.ts';
 import { resolveSkillFilePath, skillsDirIn } from './context.ts';
 import {
+	buildPackagedSkillPrompt,
 	buildPromptText,
 	buildResultFollowUpPrompt,
 	buildSkillByNamePrompt,
@@ -67,7 +69,9 @@ import type {
 	SessionToolFactory,
 	ShellOptions,
 	ShellResult,
+	PackagedSkillDirectory,
 	SkillDefinition,
+	SkillReference,
 	SkillOptions,
 	TaskOptions,
 	ThinkingLevel,
@@ -123,6 +127,7 @@ interface RuntimeScopeOptions {
 	 * inject `finish` and `give_up`.
 	 */
 	extraTools?: AgentTool<any>[];
+	activePackagedSkills?: Record<string, PackagedSkillDirectory>;
 }
 
 interface InternalTaskResult<T> {
@@ -158,6 +163,19 @@ function getBundledSkills(skills: Record<string, AgentConfig['skills'][string]>)
 		if ('body' in skill && 'source' in skill) bundled[name] = skill;
 	}
 	return bundled;
+}
+
+function getRegisteredPackagedSkills(
+	skills: Record<string, AgentConfig['skills'][string]>,
+	packagedSkills: Record<string, PackagedSkillDirectory> | undefined,
+): Record<string, PackagedSkillDirectory> {
+	const registered: Record<string, PackagedSkillDirectory> = {};
+	for (const skill of Object.values(skills)) {
+		if (!('__flueSkillReference' in skill)) continue;
+		const packaged = packagedSkills?.[skill.id];
+		if (packaged) registered[skill.id] = packaged;
+	}
+	return registered;
 }
 
 /** In-memory session store. Sessions persist for the lifetime of the process. */
@@ -673,21 +691,22 @@ export class Session implements FlueSession {
 	}
 
 	skill<S extends v.GenericSchema>(
-		skill: SkillDefinition | string,
+		skill: SkillDefinition | SkillReference | string,
 		options: SkillOptions<S> & { result: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
 	skill<S extends v.GenericSchema>(
-		skill: SkillDefinition | string,
+		skill: SkillDefinition | SkillReference | string,
 		options: SkillOptions<S> & { schema: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
-	skill(skill: SkillDefinition | string, options?: SkillOptions): CallHandle<PromptResponse>;
-	skill(skill: SkillDefinition | string, options?: SkillOptions<v.GenericSchema | undefined>): CallHandle<any> {
+	skill(skill: SkillDefinition | SkillReference | string, options?: SkillOptions): CallHandle<PromptResponse>;
+	skill(skill: SkillDefinition | SkillReference | string, options?: SkillOptions<v.GenericSchema | undefined>): CallHandle<any> {
 		return createCallHandle(options?.signal, (signal) =>
 			this.runOperation('skill', signal, async () => {
 				const schema = resolveResultOption(options);
 
 				let promptText: string;
 				let skillName: string;
+				let activePackagedSkills: Record<string, PackagedSkillDirectory> | undefined;
 				if (typeof skill === 'string' && (skill.includes('/') || /\.(md|markdown)$/i.test(skill))) {
 					const resolvedPath = await resolveSkillFilePath(this.env, this.env.cwd, skill);
 					if (!resolvedPath) {
@@ -702,12 +721,21 @@ export class Session implements FlueSession {
 					const registered = this.config.skills[skill];
 					if (registered && 'body' in registered && 'source' in registered) {
 						promptText = buildSkillByNamePrompt(registered, options?.args, schema);
+					} else if (registered && '__flueSkillReference' in registered) {
+						const packaged = this.resolvePackagedSkill(registered);
+						promptText = buildPackagedSkillPrompt(registered, packaged, options?.args, schema);
+						activePackagedSkills = { [registered.id]: packaged };
 					} else if (registered) {
 						promptText = buildSkillByPathlessNamePrompt(skill, options?.args, schema);
 					} else {
 						this.throwMissingSkill(skill);
 					}
 					skillName = skill;
+				} else if ('__flueSkillReference' in skill) {
+					const packaged = this.resolvePackagedSkill(skill);
+					promptText = buildPackagedSkillPrompt(skill, packaged, options?.args, schema);
+					activePackagedSkills = { [skill.id]: packaged };
+					skillName = skill.name;
 				} else {
 					promptText = buildSkillByNamePrompt(skill, options?.args, schema);
 					skillName = skill.name;
@@ -723,6 +751,7 @@ export class Session implements FlueSession {
 					source: 'skill',
 					errorLabel: `skill("${skillName}")`,
 					callSite: `this skill("${skillName}") call`,
+					activePackagedSkills,
 					signal,
 				});
 			}),
@@ -894,6 +923,12 @@ export class Session implements FlueSession {
 		return { ...(payload as Record<string, unknown>), store: true };
 	}
 
+	private resolvePackagedSkill(reference: SkillReference) {
+		const packaged = this.config.packagedSkills?.[reference.id];
+		if (!packaged) throw new Error(`[flue] Packaged skill "${reference.name}" is unavailable for this application build.`);
+		return packaged;
+	}
+
 	private throwMissingSkill(skill: string): never {
 		const available = Object.keys(this.config.skills).join(', ') || '(none)';
 		throw new Error(
@@ -963,12 +998,34 @@ export class Session implements FlueSession {
 		tools: ToolDefinition[],
 		model?: string,
 		thinkingLevel?: ThinkingLevel,
+		activePackagedSkills?: Record<string, PackagedSkillDirectory>,
 	): AgentTool<any>[] {
 		const runTask = (params: TaskToolParams, signal?: AbortSignal) =>
 			this.runTaskForTool(params, tools, model, thinkingLevel, signal);
+		const packagedSkills = {
+			...getRegisteredPackagedSkills(this.config.skills, this.config.packagedSkills),
+			...activePackagedSkills,
+		};
 
 		if (this.toolFactory) {
-			const connectorTools = this.toolFactory(env, { subagents: this.config.subagents ?? {} });
+			let connectorTools = this.toolFactory(env, { subagents: this.config.subagents ?? {} });
+			if (Object.keys(packagedSkills).length > 0) {
+				const packagedRead = createPackagedSkillReadTool(packagedSkills);
+				const connectorRead = connectorTools.find((tool) => tool.name === 'read');
+				if (connectorRead) {
+					connectorTools = connectorTools.map((tool) => tool !== connectorRead ? tool : {
+						...tool,
+						execute: (id, params, signal) => {
+							const resourcePath = typeof params === 'object' && params !== null && 'path' in params ? params.path : undefined;
+							return typeof resourcePath === 'string' && resourcePath.startsWith('/.flue/packaged-skills/')
+								? packagedRead.execute(id, params as { path: string; offset?: number; limit?: number }, signal)
+								: connectorRead.execute(id, params, signal);
+						},
+					});
+				} else {
+					connectorTools = [...connectorTools, packagedRead];
+				}
+			}
 			this.validateConnectorTools(connectorTools);
 			return [...connectorTools, createTaskTool(runTask, this.config.subagents ?? {})];
 		}
@@ -976,6 +1033,7 @@ export class Session implements FlueSession {
 		return createTools(env, {
 			subagents: this.config.subagents ?? {},
 			skills: getBundledSkills(this.config.skills),
+			packagedSkills,
 			task: runTask,
 		});
 	}
@@ -1017,6 +1075,7 @@ export class Session implements FlueSession {
 			options.tools,
 			options.model,
 			options.thinkingLevel,
+			options.activePackagedSkills,
 		);
 		const customTools = this.createCustomTools(
 			[...this.agentTools, ...options.tools],
@@ -1738,6 +1797,7 @@ export class Session implements FlueSession {
 		dispatch?: DispatchMessageMetadata;
 		errorLabel: string;
 		callSite: string;
+		activePackagedSkills?: Record<string, PackagedSkillDirectory>;
 		signal: AbortSignal;
 	}): Promise<
 		| PromptResponse
@@ -1752,6 +1812,7 @@ export class Session implements FlueSession {
 				thinkingLevel: args.thinkingLevel,
 				callSite: args.callSite,
 				extraTools: resultBundle?.tools,
+				activePackagedSkills: args.activePackagedSkills,
 			},
 			async ({ resolvedModel }) => {
 				const beforeLength = this.harness.state.messages.length;

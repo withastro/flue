@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CloudflarePlugin } from '../../cli/src/lib/build-plugin-cloudflare.ts';
+import { CloudflarePlugin, ViteCloudflarePlugin } from '../../cli/src/lib/build-plugin-cloudflare.ts';
 import type { BuildContext } from '../../cli/src/lib/types.ts';
 
 describe('Cloudflare build plugin', () => {
@@ -111,6 +111,15 @@ describe('Cloudflare build plugin', () => {
 		expect(entry).toContain("import userApp from '/tmp/app.ts';");
 		expect(entry).toContain('return app.fetch(request, env, ctx);');
 		expect(entry).not.toContain('Custom app.ts WebSocket mounting is not yet supported.');
+	});
+
+	it('emits packaged skill wiring only for the experimental Vite Worker graph', async () => {
+		const standardEntry = await new CloudflarePlugin().generateEntryPoint(testBuildContext());
+		const viteEntry = await new ViteCloudflarePlugin().generateEntryPoint(testBuildContext());
+		expect(standardEntry).not.toContain('virtual:flue/packaged-skills');
+		expect(viteEntry).toContain("import { getPackagedSkills } from 'virtual:flue/packaged-skills';");
+		expect(viteEntry).toContain('const packagedSkills = getPackagedSkills();');
+		expect(viteEntry).toContain('systemPrompt, skills, packagedSkills, model: undefined, resolveModel');
 	});
 
 });

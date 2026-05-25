@@ -1,12 +1,13 @@
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { type Static, Type } from '@earendil-works/pi-ai';
-import type { AgentProfile, SessionEnv, SkillDefinition } from './types.ts';
+import type { AgentProfile, PackagedSkillDirectory, SessionEnv, SkillDefinition } from './types.ts';
 
 const MAX_READ_LINES = 2000;
 const MAX_READ_BYTES = 50 * 1024;
 const MAX_GREP_MATCHES = 100;
 const MAX_GREP_LINE_LENGTH = 500;
 const MAX_GLOB_RESULTS = 1000;
+const BASE64_READ_LINE_LENGTH = 76;
 
 /** Names reserved by the framework's default tool set. */
 export const BUILTIN_TOOL_NAMES = new Set([
@@ -41,11 +42,12 @@ export interface CreateToolsOptions {
 	) => Promise<AgentToolResult<TaskToolResultDetails>>;
 	subagents?: Record<string, AgentProfile>;
 	skills?: Record<string, SkillDefinition>;
+	packagedSkills?: Record<string, PackagedSkillDirectory>;
 }
 
 export function createTools(env: SessionEnv, options?: CreateToolsOptions): AgentTool<any>[] {
 	const tools: AgentTool<any>[] = [
-		createReadTool(env, options?.skills ?? {}),
+		createReadTool(env, options?.skills ?? {}, options?.packagedSkills ?? {}),
 		createWriteTool(env),
 		createEditTool(env),
 		createBashTool(env),
@@ -62,7 +64,28 @@ const ReadParams = Type.Object({
 	limit: Type.Optional(Type.Number({ description: 'Maximum number of lines to read' })),
 });
 
-function createReadTool(env: SessionEnv, skills: Record<string, SkillDefinition>): AgentTool<typeof ReadParams> {
+export function createPackagedSkillReadTool(
+	packagedSkills: Record<string, PackagedSkillDirectory>,
+): AgentTool<typeof ReadParams> {
+	return {
+		name: 'read',
+		label: 'Read Packaged Skill File',
+		description: 'Read a packaged skill supporting file by its advertised path.',
+		parameters: ReadParams,
+		async execute(_toolCallId: string, params: Static<typeof ReadParams>, signal?: AbortSignal) {
+			throwIfAborted(signal);
+			const content = readPackagedSkillFile(packagedSkills, params.path);
+			if (content === undefined) throw new Error(`[flue] Packaged skill file not found: ${params.path}`);
+			return formatReadContent(params.path, content, params.offset, params.limit);
+		},
+	};
+}
+
+function createReadTool(
+	env: SessionEnv,
+	skills: Record<string, SkillDefinition>,
+	packagedSkills: Record<string, PackagedSkillDirectory>,
+): AgentTool<typeof ReadParams> {
 	return {
 		name: 'read',
 		label: 'Read File',
@@ -72,7 +95,7 @@ function createReadTool(env: SessionEnv, skills: Record<string, SkillDefinition>
 		async execute(_toolCallId: string, params: Static<typeof ReadParams>, signal?: AbortSignal) {
 			throwIfAborted(signal);
 
-			const bundledResource = readBundledSkillResource(skills, params.path);
+			const bundledResource = readBundledSkillResource(skills, params.path) ?? readPackagedSkillFile(packagedSkills, params.path);
 			if (bundledResource) {
 				return formatReadContent(params.path, bundledResource, params.offset, params.limit);
 			}
@@ -439,6 +462,26 @@ function readBundledSkillResource(skills: Record<string, SkillDefinition>, path:
 	return undefined;
 }
 
+function readPackagedSkillFile(skills: Record<string, PackagedSkillDirectory>, path: string): string | undefined {
+	for (const skill of Object.values(skills)) {
+		for (const [filePath, file] of Object.entries(skill.files)) {
+			if (path !== packagedSkillReadPath(skill.id, filePath)) continue;
+			return filePath.startsWith('assets/')
+				? wrapBase64ForReading(file.content)
+				: new TextDecoder().decode(Uint8Array.from(atob(file.content), (character) => character.charCodeAt(0)));
+		}
+	}
+	return undefined;
+}
+
+function wrapBase64ForReading(content: string): string {
+	const lines: string[] = [];
+	for (let offset = 0; offset < content.length; offset += BASE64_READ_LINE_LENGTH) {
+		lines.push(content.slice(offset, offset + BASE64_READ_LINE_LENGTH));
+	}
+	return lines.join('\n');
+}
+
 function formatReadContent(path: string, content: string, offset?: number, limit?: number) {
 	const allLines = content.split('\n');
 	const startLine = offset ? Math.max(0, offset - 1) : 0;
@@ -464,6 +507,14 @@ function formatReadContent(path: string, content: string, offset?: number, limit
 
 export function formatBundledSkillResourcePath(skillName: string, resourcePath: string): string {
 	return skillResourceReadPath(skillName, resourcePath);
+}
+
+export function formatPackagedSkillFilePath(skillId: string, filePath: string): string {
+	return packagedSkillReadPath(skillId, filePath);
+}
+
+function packagedSkillReadPath(skillId: string, filePath: string): string {
+	return `/.flue/packaged-skills/${encodeURIComponent(skillId)}/${filePath}`;
 }
 
 function countOccurrences(str: string, substr: string): number {

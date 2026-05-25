@@ -50,6 +50,7 @@
 		"build": "tsdown",
 		"check:types": "tsc --noEmit",
 		"test": "vitest run",
+		"test:spike:cloudflare": "vitest run --config vitest.spike.config.ts --no-file-parallelism",
 		"test:watch": "vitest",
 		"prepublishOnly": "cp ../../README.md ."
 	},
@@ -75,11 +76,13 @@
 		"ws": "^8.20.0"
 	},
 	"devDependencies": {
+		"@cloudflare/vite-plugin": "^1.38.0",
 		"@cloudflare/workers-types": "^4.20250410.0",
 		"@types/js-yaml": "^4.0.9",
 		"@types/ws": "^8.18.1",
 		"tsdown": "^0.22.0",
 		"typescript": "^6.0.3",
+		"vite": "^8.0.14",
 		"vitest": "^4.1.6"
 	}
 }

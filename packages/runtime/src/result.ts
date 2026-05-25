@@ -1,8 +1,9 @@
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import { toJsonSchema } from '@valibot/to-json-schema';
 import * as v from 'valibot';
-import { formatBundledSkillResourcePath } from './agent.ts';
-import type { SkillDefinition } from './types.ts';
+import { formatBundledSkillResourcePath, formatPackagedSkillFilePath } from './agent.ts';
+import { parseSkillMarkdown } from './skill-frontmatter.ts';
+import type { PackagedSkillDirectory, SkillDefinition, SkillReference } from './types.ts';
 
 /**
  * Names of the framework-injected tools used to capture structured results.
@@ -63,6 +64,38 @@ export function buildSkillByNamePrompt(
 		parts.push(buildResultFooter());
 	}
 
+	return parts.join('\n');
+}
+
+export function buildPackagedSkillPrompt(
+	reference: SkillReference,
+	directory: PackagedSkillDirectory,
+	args?: Record<string, unknown>,
+	schema?: v.GenericSchema,
+): string {
+	const skillFile = directory.files['SKILL.md'];
+	if (!skillFile) throw new Error(`[flue] Packaged skill "${reference.name}" is missing SKILL.md.`);
+	const raw = new TextDecoder().decode(Uint8Array.from(atob(skillFile.content), (character) => character.charCodeAt(0)));
+	const skill = parseSkillMarkdown(raw, { directoryName: reference.name, path: `${reference.name}/SKILL.md` });
+	const parts = [
+		`Run the skill named "${reference.name}".`,
+		'',
+		'<skill_instructions>',
+		skill.body,
+		'</skill_instructions>',
+	];
+	const resources = Object.keys(directory.files).filter((filePath) => filePath !== 'SKILL.md').sort();
+	if (resources.length > 0) {
+		parts.push(
+			'',
+			'Supporting skill resources are available but are not loaded into context unless needed:',
+			'<skill_resources>',
+			...resources.map((filePath) => `- ${filePath} → read ${formatPackagedSkillFilePath(reference.id, filePath)}`),
+			'</skill_resources>',
+		);
+	}
+	if (args && Object.keys(args).length > 0) parts.push('', 'Arguments:', JSON.stringify(args, null, 2));
+	if (schema) parts.push(buildResultFooter());
 	return parts.join('\n');
 }
 
