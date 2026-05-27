@@ -10,6 +10,7 @@
     "astro": "astro"
   },
   "dependencies": {
+    "@paper-design/shaders": "0.0.76",
     "@tailwindcss/vite": "^4.2.0",
     "astro": "^6.3.7",
     "tailwindcss": "^4.2.0"

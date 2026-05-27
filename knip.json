@@ -18,6 +18,9 @@
 			"entry": [".flue/{app,agents/*,workflows/*}.{ts,mts,js,mjs}", "flue.config.ts"],
 			"project": [".flue/**/*.{ts,mts,js,mjs}"],
 			"ignoreDependencies": ["@flue/sdk"]
+		},
+		"apps/www": {
+			"entry": ["src/homepage-shaders.ts"]
 		}
 	}
 }

@@ -1,32 +1,31 @@
 // Prompt copied to the user's clipboard by the "Copy Prompt" CTA in the hero.
 export const COPY_PROMPT = `fetch https://flueframework.com/start.md to create a new agent`;
 
-export const HERO = `import { createAgent, type FlueContext } from '@flue/runtime';
+export const HERO = `import { createAgent, type AgentRouteHandler, type AgentWebSocketHandler } from '@flue/runtime';
+import { local } from '@flue/runtime/node';
 import triage from '../skills/triage/SKILL.md' with { type: 'skill' };
-import { lookupIssue, listRepoLabels } from '../tools/github';
-import * as v from 'valibot';
+import verify from '../skills/verify/SKILL.md' with { type: 'skill' };
+import * as githubTools from '../tools/github.ts';
 
-// Agents maintain context and safely take action inside an isolated sandbox:
-const agent = createAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  instructions: 'Investigate issues, make safe fixes, and clearly report your work.',
-  skills: [triage],
-  tools: [lookupIssue, listRepoLabels],
-}));
+// Give persistent context and autonomy to solve complex tasks:
+const instructions = \`
+Triage a bug report end-to-end: reproduce the bug,
+diagnose the root cause, verify whether the behavior is
+intentional, and attempt a fix.
 
-// Workflows coordinate deterministic execution around agent-driven work:
-export async function run({ init, payload, env }: FlueContext) {
-  const harness = await init(agent);
-  const session = await harness.session();
+...\`;
 
-  // Let the agent use its skills and tools, then return structured output:
-  const { data } = await session.prompt(\`Triage this issue: #\${payload.issueNumber}\`, {
-    result: v.object({ comment: v.string(), labels: v.array(v.string()) }),
-  });
+// Expose (and protect) your agents over HTTP and WebSockets:
+export const route: AgentRouteHandler = async (_c, next) => next();
+export const websocket: AgentWebSocketHandler = async (_c, next) => next();
 
-  // Protect sensitive tokens and API keys with fine-grained control:
-  await session.shell(\`gh issue comment \${Number(payload.issueNumber)} --body \${JSON.stringify(data.comment)}\`, {
-    env: { GITHUB_TOKEN: env.GITHUB_TOKEN },
-  });
-}`;
+// Compose the complete harness your agent needs to do real work,
+// complete with virtual, local, or remote container sandbox.
+export default createAgent(() => ({
+  model:   'anthropic/claude-sonnet-4-6',
+  tools:   [...githubTools],
+  skills:  [triage, verify],
+  sandbox: local(),
+  instructions,
+}));`;
 
