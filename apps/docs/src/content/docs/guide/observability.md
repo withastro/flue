@@ -107,13 +107,13 @@ dispatch(...) ─► { dispatchId, acceptedAt }
       └─► idle { instanceId, dispatchId }
 ```
 
-`run_start` and `run_end` are emitted only for workflows. `idle` means that current operation processing has settled and the session is ready for more input; it is not the end of an agent instance or session.
+`run_start`, `run_resume`, and `run_end` are emitted only for workflows. `run_resume` appears when durable recovery continues an already-started run in a new execution context. `idle` means that current operation processing has settled and the session is ready for more input; it is not the end of an agent instance or session.
 
 ### Root lifecycle by invocation kind
 
 | Invocation kind | Trace root | Opening and closing events | Persisted run history | Observation surface |
 | --- | --- | --- | --- | --- |
-| Workflow invocation | `runId` | `run_start` / `run_end` | Yes | `observe(...)`, run APIs, `flue logs`, workflow streams |
+| Workflow invocation | `runId` | `run_start` or recovery `run_resume` / `run_end` | Yes | `observe(...)`, run APIs, `flue logs`, workflow streams |
 | Direct agent prompt | `operationId`, with `instanceId` | `operation_start` / `operation`, then `idle` | No | `observe(...)` and attached HTTP/WebSocket streams |
 | Dispatched agent input | `operationId`, with `instanceId` and `dispatchId` | `operation_start` / `operation`, then `idle` | No | `observe(...)` |
 
@@ -132,7 +132,7 @@ dispatch(...) ─► { dispatchId, acceptedAt }
 | `turnId` | One normalized model request/output pair within agent or compaction work. |
 | `eventIndex` / `timestamp` | Ordering within one emitted context and event time. |
 
-Use `runId` as the root for a workflow trace. For direct or dispatched agent processing, use `operationId` as the finite trace root and retain `instanceId`, `session`, and `dispatchId` as attributes.
+Use `runId` as the root for a workflow trace. For direct or dispatched agent processing, use `operationId` as the finite trace root and retain `instanceId`, `session`, and `dispatchId` as attributes. When a durable workflow attempt replaces an interrupted attempt, `run_start.restartedFromRunId` carries the prior run identity for trace linking. When the same workflow run is recovered after an interrupted execution context, `run_resume` lets isolate-local exporters begin a resumed workflow segment for the existing `runId`.
 
 ## Event reference
 
@@ -140,7 +140,7 @@ Use `runId` as the root for a workflow trace. For direct or dispatched agent pro
 
 | Category | Events | Emitted when |
 | --- | --- | --- |
-| Workflow envelope | `run_start`, `run_end` | Workflow invocations only. |
+| Workflow envelope | `run_start`, `run_resume`, `run_end` | Workflow invocations only; `run_resume` signals durable recovery continuing in a new execution context. |
 | Operation lifecycle | `operation_start`, `operation`, `idle` | Session operations, including direct and dispatched prompts. |
 | Agent loop | `agent_start`, `agent_end` | Model-driven prompt, skill, or delegated task processing. |
 | Ordinary turn lifecycle | `turn_start`, `turn_end` | Agent-loop model turns only. |
@@ -148,7 +148,7 @@ Use `runId` as the root for a workflow trace. For direct or dispatched agent pro
 | Message streaming | `message_start`, `message_update`, `message_end` | Message activity inside the ordinary agent loop. |
 | Streamed content | `text_delta`, `thinking_start`, `thinking_delta`, `thinking_end` | Assistant text or reasoning projections when present. |
 | Tool execution | `tool_execution_start`, `tool_execution_update`, `tool_execution_end` | Tools invoked from an agent-loop turn. |
-| Normalized tool span | `tool_start`, `tool_call` | Agent-loop tools and `session.shell(...)`. |
+| Normalized tool span | `tool_start`, `tool_call` | Agent-loop tools, `session.shell(...)`, and `harness.shell(...)`. |
 | Delegated task span | `task_start`, `task` | Child-agent work performed through `session.task(...)` or the task tool. |
 | Compaction span | `compaction_start`, `compaction` | Context compaction when compaction work is performed. |
 | Diagnostics | `log` | Application-authored logs and runtime diagnostic logs. |
@@ -195,12 +195,12 @@ turn { purpose: 'agent', turnId, usage, durationMs, isError }
 
 Flue exposes raw agent-loop tool progress and normalized completed tool spans:
 
-| Event family | Use it for | Model-invoked tools | `session.shell(...)` |
-| --- | --- | ---: | ---: |
-| `tool_execution_start` / `tool_execution_update` / `tool_execution_end` | Incremental tool execution activity. | Yes | No |
-| `tool_start` / `tool_call` | Duration, result, and error span mapping. | Yes | Yes |
+| Event family | Use it for | Model-invoked tools | `session.shell(...)` | `harness.shell(...)` |
+| --- | --- | ---: | ---: | ---: |
+| `tool_execution_start` / `tool_execution_update` / `tool_execution_end` | Incremental tool execution activity. | Yes | No | No |
+| `tool_start` / `tool_call` | Duration, result, and error span mapping. | Yes | Yes | Yes |
 
-When an agent invokes several tools concurrently, execution-update and terminal events may interleave. Match tool activity by tool-call identity rather than assuming sequential ordering.
+`harness.shell(...)` emits a harness-correlated bash tool span without a session operation because it intentionally runs outside conversation state. When an agent invokes several tools concurrently, execution-update and terminal events may interleave. Match tool activity by tool-call identity rather than assuming sequential ordering.
 
 ### Delegated tasks
 
@@ -340,7 +340,7 @@ A useful span mapping is:
 
 | Flue lifecycle events | Trace concept |
 | --- | --- |
-| `run_start` / `run_end` | Workflow root span |
+| `run_start` / `run_resume` / `run_end` | Workflow root span or resumed workflow segment |
 | `operation_start` / `operation` | Operation span; root for direct/dispatched input processing |
 | `agent_start` / `agent_end` | Optional agent-loop span |
 | `turn_request` / `turn` | LLM generation span |
@@ -384,14 +384,30 @@ See the [`examples/sentry/`](https://github.com/withastro/flue/tree/main/example
 
 ## Export traces to an observability platform
 
-For full AI traces, translate correlated events into your provider's spans. The [`examples/braintrust/`](https://github.com/withastro/flue/tree/main/examples/braintrust) project demonstrates a public `observe(...)`-only bridge that creates:
+Use the OpenTelemetry adapter when your application already configures an OpenTelemetry SDK and exporter:
+
+```ts title=".flue/app.ts"
+import { createOpenTelemetryObserver } from '@flue/opentelemetry';
+import { flue, observe } from '@flue/runtime/app';
+import { Hono } from 'hono';
+
+observe(createOpenTelemetryObserver());
+
+const app = new Hono();
+app.route('/', flue());
+export default app;
+```
+
+The adapter maps workflow runs, recovered workflow segments, operations, model turns, tools, tasks, compaction, and logs into spans and span events. It exports correlation, latency, terminal error messages, model, and token/cost metadata by default. Set `captureContent: true` only if your exporter should receive payloads, results, prompts, outputs, task content, tool arguments/results, and log attributes.
+
+For a provider-specific integration, translate correlated events into your provider's spans. The [`examples/braintrust/`](https://github.com/withastro/flue/tree/main/examples/braintrust) project demonstrates a public `observe(...)`-only bridge that creates:
 
 - workflow root spans;
 - operation, task, and compaction spans;
 - model-generation spans with request/output and token/cost data;
 - nested tool spans.
 
-The same event model can be mapped to OpenTelemetry, Braintrust, Sentry tracing, or an internal trace store. `observe(...)` gives an adapter the Flue-level execution semantics. A vendor may separately use provider SDK instrumentation or Node-specific wrappers when it needs live async context for provider-native spans; application code does not need to depend on private Flue runtime internals to understand the Flue trace.
+`@flue/opentelemetry` and the Braintrust example both consume only the public `observe(...)` event model. `observe(...)` gives an adapter the Flue-level execution semantics. A vendor may separately use provider SDK instrumentation or Node-specific wrappers when it needs live async context for provider-native spans; application code does not need to depend on private Flue runtime internals to understand the Flue trace.
 
 ## Handle sensitive content carefully
 
@@ -423,6 +439,6 @@ A practical observability setup can grow in stages:
 1. **Local development:** log selected `observe(...)` events to the console and inspect workflows with `flue logs`.
 2. **Production diagnostics:** emit structured `ctx.log` events and forward terminal failures to an error reporter.
 3. **Operational monitoring:** derive latency, token, cost, and error metrics from terminal operation and model-turn events.
-4. **Full tracing:** map operations, turns, tools, tasks, and compactions to spans in Braintrust, OpenTelemetry, Sentry, or another tracing backend.
+4. **Full tracing:** configure an OpenTelemetry exporter with `@flue/opentelemetry`, or map operations, turns, tools, tasks, and compactions to spans in another tracing backend.
 
 Start with the questions your application needs answered, and add telemetry only where it helps you debug, monitor, or improve behavior.

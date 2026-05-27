@@ -127,6 +127,7 @@ const LlmToolSchema = v.object({
 
 const FLUE_EVENT_TYPES = [
 	'run_start',
+	'run_resume',
 	'agent_start',
 	'agent_end',
 	'turn_start',
@@ -164,7 +165,16 @@ const FlueEventSchema = v.union([
 		instanceId: v.string(),
 		workflowName: v.string(),
 		startedAt: v.string(),
+		restartedFromRunId: v.optional(v.string()),
 		payload: v.unknown(),
+	}),
+	flueEvent({
+		type: v.literal('run_resume'),
+		runId: v.string(),
+		owner: v.object({ kind: v.literal('workflow'), workflowName: v.string(), instanceId: v.string() }),
+		instanceId: v.string(),
+		workflowName: v.string(),
+		startedAt: v.string(),
 	}),
 	flueEvent({ type: v.literal('agent_start') }),
 	flueEvent({ type: v.literal('agent_end'), messages: v.array(v.any()) }),

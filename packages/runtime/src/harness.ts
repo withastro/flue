@@ -1,4 +1,6 @@
+import type { AgentToolResult } from '@earendil-works/pi-agent-core';
 import { createCallHandle } from './abort.ts';
+import { formatBashResult } from './agent.ts';
 import { discoverSessionContext } from './context.ts';
 import { createCwdSessionEnv, createFlueFs } from './sandbox.ts';
 import { type CreateTaskSessionOptions, deleteSessionTree, Session } from './session.ts';
@@ -6,6 +8,7 @@ import type {
 	AgentConfig,
 	AgentProfile,
 	CallHandle,
+	FlueEvent,
 	FlueEventCallback,
 	FlueFs,
 	FlueHarness,
@@ -54,12 +57,43 @@ export class Harness implements FlueHarness {
 
 	shell(command: string, options?: ShellOptions): CallHandle<ShellResult> {
 		return createCallHandle(options?.signal, async (signal) => {
-			const result = await this.env.exec(command, {
-				env: options?.env,
-				cwd: options?.cwd,
-				signal,
-			});
-			return { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
+			const toolCallId = crypto.randomUUID();
+			const startedAt = Date.now();
+			const args: Record<string, unknown> = { command };
+			if (options?.cwd !== undefined) args.cwd = options.cwd;
+			if (options?.env !== undefined) args.env = redactEnvValues(options.env);
+			this.emit({ type: 'tool_start', toolName: 'bash', toolCallId, args });
+			try {
+				const result = await this.env.exec(command, {
+					env: options?.env,
+					cwd: options?.cwd,
+					signal,
+				});
+				const shellResult = { stdout: result.stdout, stderr: result.stderr, exitCode: result.exitCode };
+				this.emit({
+					type: 'tool_call',
+					toolName: 'bash',
+					toolCallId,
+					isError: false,
+					result: formatBashResult(shellResult, command),
+					durationMs: Date.now() - startedAt,
+				});
+				return shellResult;
+			} catch (error) {
+				const result: AgentToolResult<any> = {
+					content: [{ type: 'text', text: getErrorMessage(error) }],
+					details: { command, exitCode: -1 },
+				};
+				this.emit({
+					type: 'tool_call',
+					toolName: 'bash',
+					toolCallId,
+					isError: true,
+					result,
+					durationMs: Date.now() - startedAt,
+				});
+				throw error;
+			}
 		});
 	}
 
@@ -188,6 +222,10 @@ export class Harness implements FlueHarness {
 		});
 	}
 
+	private emit(event: FlueEvent): void {
+		this.eventCallback?.({ ...event, harness: event.harness ?? this.name });
+	}
+
 	private decorateEventCallback(callback: FlueEventCallback | undefined): FlueEventCallback | undefined {
 		return callback
 			? (event) => {
@@ -195,6 +233,14 @@ export class Harness implements FlueHarness {
 				}
 			: undefined;
 	}
+}
+
+function getErrorMessage(error: unknown): string {
+	return error instanceof Error ? error.message : String(error);
+}
+
+function redactEnvValues(env: Record<string, string>): Record<string, string> {
+	return Object.fromEntries(Object.keys(env).map((key) => [key, '<redacted>']));
 }
 
 function normalizeSessionName(name: string | undefined): string {

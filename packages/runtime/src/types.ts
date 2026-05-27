@@ -911,7 +911,16 @@ export type FlueEvent = (
 			instanceId: string;
 			workflowName: string;
 			startedAt: string;
+			restartedFromRunId?: string;
 			payload: unknown;
+		}
+	| {
+			type: 'run_resume';
+			runId: string;
+			owner: { kind: 'workflow'; workflowName: string; instanceId: string };
+			instanceId: string;
+			workflowName: string;
+			startedAt: string;
 		}
 	| { type: 'agent_start' }
 	| { type: 'agent_end'; messages: AgentMessage[] }
@@ -1009,7 +1018,7 @@ export type FlueEvent = (
 	turnId?: string;
 };
 
-export type AttachedAgentEvent = Exclude<FlueEvent, { type: 'run_start' } | { type: 'run_end' }> & {
+export type AttachedAgentEvent = Exclude<FlueEvent, { type: 'run_start' } | { type: 'run_resume' } | { type: 'run_end' }> & {
 	runId?: never;
 	instanceId: string;
 };

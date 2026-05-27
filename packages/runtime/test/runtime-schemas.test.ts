@@ -3,6 +3,38 @@ import { describe, expect, it } from 'vitest';
 import { RunEventListResponseSchema } from '../src/runtime/schemas.ts';
 
 describe('rich model-turn event schemas', () => {
+	it('accepts workflow restart linkage on run starts', () => {
+		const result = v.safeParse(RunEventListResponseSchema, {
+			events: [{
+				type: 'run_start',
+				runId: 'workflow:report:replacement',
+				owner: { kind: 'workflow', workflowName: 'report', instanceId: 'workflow:report:replacement' },
+				instanceId: 'workflow:report:replacement',
+				workflowName: 'report',
+				startedAt: '2026-05-27T00:00:00.000Z',
+				restartedFromRunId: 'workflow:report:interrupted',
+				payload: {},
+			}],
+		});
+
+		expect(result.success).toBe(true);
+	});
+
+	it('accepts workflow resume signals', () => {
+		const result = v.safeParse(RunEventListResponseSchema, {
+			events: [{
+				type: 'run_resume',
+				runId: 'workflow:report:run',
+				owner: { kind: 'workflow', workflowName: 'report', instanceId: 'workflow:report:run' },
+				instanceId: 'workflow:report:run',
+				workflowName: 'report',
+				startedAt: '2026-05-27T00:00:00.000Z',
+			}],
+		});
+
+		expect(result.success).toBe(true);
+	});
+
 	it('accepts normalized model-turn request and output content', () => {
 		const result = v.safeParse(RunEventListResponseSchema, {
 			events: [

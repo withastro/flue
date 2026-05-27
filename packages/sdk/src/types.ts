@@ -7,6 +7,8 @@ export interface RunRecord {
 	owner: RunOwner;
 	status: RunStatus;
 	startedAt: string;
+	restartedFromRunId?: string;
+	restartedAsRunId?: string;
 	endedAt?: string;
 	isError?: boolean;
 	durationMs?: number;
@@ -226,7 +228,16 @@ export type FlueEvent = (
 			instanceId: string;
 			workflowName: string;
 			startedAt: string;
+			restartedFromRunId?: string;
 			payload: unknown;
+		}
+	| {
+			type: 'run_resume';
+			runId: string;
+			owner: RunOwner;
+			instanceId: string;
+			workflowName: string;
+			startedAt: string;
 		}
 	| { type: 'agent_start' }
 	| { type: 'agent_end'; messages: unknown[] }
@@ -269,7 +280,7 @@ export type FlueEvent = (
 	turnId?: string;
 };
 
-export type AttachedAgentEvent = Exclude<FlueEvent, { type: 'run_start' } | { type: 'run_end' }> & {
+export type AttachedAgentEvent = Exclude<FlueEvent, { type: 'run_start' } | { type: 'run_resume' } | { type: 'run_end' }> & {
 	runId?: never;
 	instanceId: string;
 };

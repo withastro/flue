@@ -8,6 +8,7 @@ import {
 	InMemoryRunStore,
 	failRecoveredRun,
 	InMemorySessionStore,
+	recoverWorkflowRun,
 	invokeWorkflowAttached,
 	invokeDirectAttached,
 	registeredAgentsForTransport,
@@ -443,6 +444,65 @@ describe('WebSocket transport foundation', () => {
 		expect(await runStore.getRun(runId)).toMatchObject({ status: 'completed', result: { echoed: { day: 'today' } } });
 	});
 
+	it('emits a resume signal when durable terminalization continues an admitted workflow run', async () => {
+		const events: FlueEvent[] = [];
+		const runStore = new InMemoryRunStore();
+		const runId = 'workflow:daily-report:terminal-recover';
+		const owner = { kind: 'workflow' as const, workflowName: 'daily-report', instanceId: runId };
+		await runStore.createRun({ runId, owner, startedAt: '2026-05-27T00:00:00.000Z', payload: { day: 'today' } });
+		await runStore.appendEvent(runId, { type: 'run_start', runId, owner, instanceId: runId, workflowName: 'daily-report', startedAt: '2026-05-27T00:00:00.000Z', payload: { day: 'today' } });
+
+		await failRecoveredRun({
+			label: 'daily-report',
+			owner,
+			id: runId,
+			runId,
+			payload: { day: 'today' },
+			request: new Request('http://localhost/workflows/daily-report'),
+			createContext: (id, currentRunId, payload, request, initialEventIndex) => {
+				const ctx = createContext(id, currentRunId, payload, request, initialEventIndex);
+				ctx.subscribeEvent((event) => { events.push(event); });
+				return ctx;
+			},
+			error: new Error('interrupted'),
+			runStore,
+		});
+
+		expect(events.map((event) => event.type)).toEqual(['run_resume', 'run_end']);
+		expect(events[0]).toMatchObject({ type: 'run_resume', runId, workflowName: 'daily-report' });
+	});
+
+	it('emits a resume signal when durable recovery continues an admitted workflow run', async () => {
+		const events: FlueEvent[] = [];
+		const runStore = new InMemoryRunStore();
+		const runRegistry = new InMemoryRunRegistry();
+		const runId = 'workflow:daily-report:recover';
+		const owner = { kind: 'workflow' as const, workflowName: 'daily-report', instanceId: runId };
+		await runStore.createRun({ runId, owner, startedAt: '2026-05-27T00:00:00.000Z', payload: { day: 'today' } });
+		await runStore.appendEvent(runId, { type: 'run_start', runId, owner, instanceId: runId, workflowName: 'daily-report', startedAt: '2026-05-27T00:00:00.000Z', payload: { day: 'today' } });
+
+		const result = await recoverWorkflowRun({
+			label: 'daily-report',
+			owner,
+			id: runId,
+			runId,
+			payload: { day: 'today' },
+			request: new Request('http://localhost/workflows/daily-report'),
+			createContext: (id, currentRunId, payload, request, initialEventIndex) => {
+				const ctx = createContext(id, currentRunId, payload, request, initialEventIndex);
+				ctx.subscribeEvent((event) => { events.push(event); });
+				return ctx;
+			},
+			handler: async () => ({ ok: true }),
+			runStore,
+			runRegistry,
+		});
+
+		expect(result).toEqual({ result: { ok: true }, isError: false });
+		expect(events.map((event) => event.type)).toEqual(['run_resume', 'run_end']);
+		expect(events[0]).toMatchObject({ type: 'run_resume', runId, workflowName: 'daily-report', startedAt: '2026-05-27T00:00:00.000Z' });
+	});
+
 	it('preserves replacement linkage when a recovered workflow socket attempt is replaced', async () => {
 		const runStore = new InMemoryRunStore();
 		const runRegistry = new InMemoryRunRegistry();
@@ -515,6 +575,7 @@ describe('WebSocket transport foundation', () => {
 		expect(invocation).toEqual({ runId, result: { echoed: { day: 'today' } } });
 		expect(events.map((event) => event.type)).toEqual(['run_start', 'log', 'idle', 'run_end']);
 		expect(events.every((event) => event.runId === runId)).toBe(true);
+		expect(events[0]).toMatchObject({ type: 'run_start', restartedFromRunId: 'workflow:daily-report:previous' });
 		expect(await runStore.getRun(runId)).toMatchObject({ status: 'completed', restartedFromRunId: 'workflow:daily-report:previous', result: { echoed: { day: 'today' } } });
 		expect(await runRegistry.lookupRun(runId)).toMatchObject({ status: 'completed' });
 	});

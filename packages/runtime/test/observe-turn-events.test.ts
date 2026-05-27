@@ -136,6 +136,38 @@ describe('observe model-turn telemetry', () => {
 		}
 	});
 
+	it('emits normalized tool telemetry for harness shell without session operations', async () => {
+		const events: FlueEvent[] = [];
+		const ctx = createFlueContext({
+			id: 'harness-shell-instance',
+			runId: undefined,
+			payload: {},
+			env: {},
+			agentConfig: { systemPrompt: '', skills: {}, model: undefined, resolveModel: () => undefined },
+			createDefaultEnv: async () => ({
+				...createEnv(),
+				exec: async () => ({ stdout: 'prepared', stderr: '', exitCode: 0 }),
+			}),
+			defaultStore: new InMemorySessionStore(),
+		});
+		ctx.subscribeEvent((event) => { events.push(event); });
+		const harness = await ctx.init(createAgent(() => ({ model: false })));
+
+		await harness.shell('prepare workspace', { env: { TOKEN: 'secret' }, cwd: '/work' });
+
+		expect(events.map((event) => event.type)).toEqual(['tool_start', 'tool_call']);
+		expect(events[0]).toMatchObject({
+			type: 'tool_start',
+			instanceId: 'harness-shell-instance',
+			harness: 'default',
+			toolName: 'bash',
+			args: { command: 'prepare workspace', cwd: '/work', env: { TOKEN: '<redacted>' } },
+		});
+		expect(events[0]?.session).toBeUndefined();
+		expect(events[0]?.operationId).toBeUndefined();
+		expect(events[1]).toMatchObject({ type: 'tool_call', toolName: 'bash', isError: false });
+	});
+
 	it('exposes compaction summarization calls as purpose-specific model turns', async () => {
 		const provider = `faux-${crypto.randomUUID()}`;
 		const modelId = 'compact';
