@@ -112,6 +112,9 @@ export class CloudflarePlugin implements BuildPlugin {
     if (ctx.name === 'flue:dispatch') {
       return handleFlueDispatchRecovered(ctx, this, ${JSON.stringify(agent.name)});
     }
+    if (ctx.name === 'flue:direct') {
+      return handleFlueDirectRecovered(ctx, this, ${JSON.stringify(agent.name)});
+    }
     if (typeof super.onFiberRecovered === 'function') {
       return super.onFiberRecovered(ctx);
     }
@@ -261,7 +264,7 @@ const channelModules = {
 ${channelModuleEntries}
 };
 const normalized = normalizeBuiltModules(agentModules, workflowModules, channelModules);
-const { manifest, directHandlers, createdAgents, dispatchAgentNames, websocketAgentHandlers, workflowHandlers, localWorkflowHandlers, websocketWorkflowHandlers, agentRouteMiddleware, agentWebSocketMiddleware, workflowRouteMiddleware, workflowWebSocketMiddleware, channelApps } = normalized;
+const { manifest, directHandlers, localAgentHandlers, createdAgents, dispatchAgentNames, websocketAgentHandlers, workflowHandlers, localWorkflowHandlers, websocketWorkflowHandlers, agentRouteMiddleware, agentWebSocketMiddleware, workflowRouteMiddleware, workflowWebSocketMiddleware, channelApps } = normalized;
 const agentClassNames = {
 ${agentClassMapEntries}
 };
@@ -460,6 +463,28 @@ async function handleFlueDispatchRecovered(ctx, doInstance, agentName) {
   }
 }
 
+async function handleFlueDirectRecovered(ctx, doInstance, agentName) {
+  const payload = ctx.snapshot?.payload;
+  const handler = localAgentHandlers[agentName];
+  if (!handler || !payload || typeof payload !== 'object' || Array.isArray(payload) || typeof payload.message !== 'string') {
+    console.error('[flue:direct-recovery]', { agentName, instanceId: doInstance.name, operation: 'retry', outcome: 'restart_failed' }, new Error('Direct agent recovery input is unavailable; retry was not attempted.'));
+    return;
+  }
+  const identity = agentRuntimeIdentity(agentName);
+  const request = new Request('https://flue.invalid/agents/' + encodeURIComponent(agentName) + '/' + encodeURIComponent(doInstance.name), { method: 'POST' });
+  try {
+    assertAgentsDurabilityApi(doInstance, 'runFiber');
+    await doInstance.runFiber('flue:direct', async (fiberCtx) => {
+      fiberCtx.stash({ payload });
+      const directCtx = createContextForRequest(doInstance.name, undefined, payload, doInstance, request);
+      return runWithInstanceContext(doInstance, identity, () => handler(directCtx));
+    });
+    console.info('[flue:direct-recovery]', { agentName, instanceId: doInstance.name, operation: 'retry', outcome: 'restart_completed' });
+  } catch (error) {
+    console.error('[flue:direct-recovery]', { agentName, instanceId: doInstance.name, operation: 'retry', outcome: 'restart_failed' }, error);
+  }
+}
+
 async function handleFlueWorkflowFiberRecovered(ctx, doInstance, workflowName) {
   if (!ctx.name || ctx.name !== 'flue:workflow:' + doInstance.name) return;
   const interruptedRunId = doInstance.name;
@@ -648,8 +673,11 @@ async function dispatchAgent(request, doInstance, agentName, handler) {
       handler,
       createContext: (id_, runId, payload, req, initialEventIndex, dispatchId) => createContextForRequest(id_, runId, payload, doInstance, req, initialEventIndex, dispatchId),
       runHandler: (ctx, h) => {
-        assertAgentsDurabilityApi(doInstance, 'keepAliveWhile');
-        return doInstance.keepAliveWhile(() => h(ctx));
+        assertAgentsDurabilityApi(doInstance, 'runFiber');
+        return doInstance.runFiber('flue:direct', (fiberCtx) => {
+          fiberCtx.stash({ payload: ctx.payload });
+          return h(ctx);
+        });
       },
     }));
 }
@@ -706,8 +734,11 @@ async function messageAgentSocket(connection, message, doInstance, agentName) {
     beforePrompt: (session) => assertNoPendingDispatchForDirectSession(doInstance, agentName, session),
     createContext: (id_, runId, payload, req) => createContextForRequest(id_, runId, payload, doInstance, req),
     runHandler: (ctx, h) => {
-      assertAgentsDurabilityApi(doInstance, 'keepAliveWhile');
-      return doInstance.keepAliveWhile(() => h(ctx));
+      assertAgentsDurabilityApi(doInstance, 'runFiber');
+      return doInstance.runFiber('flue:direct', (fiberCtx) => {
+        fiberCtx.stash({ payload: ctx.payload });
+        return h(ctx);
+      });
     },
   }));
 }

@@ -44,7 +44,7 @@ describe('Cloudflare build plugin', () => {
 		expect(entry).not.toContain('createRegistryIdentity');
 	});
 
-	it('recovers interrupted Flue workflows without recovering agent prompt runs', async () => {
+	it('recovers interrupted workflows and retries interrupted direct agent prompts', async () => {
 		const entry = await new CloudflarePlugin().generateEntryPoint(testBuildContext());
 
 		expect(entry).toContain('failRecoveredRun');
@@ -70,15 +70,22 @@ describe('Cloudflare build plugin', () => {
 		expect(workflowSocketBody).toContain("doInstance.runFiber('flue:workflow:' + runId");
 		expect(workflowSocketBody).not.toContain('keepAliveWhile');
 		expect(workflowSocketBody).not.toContain('runHandler:');
-		expect(entry).not.toContain('recoverAgentRun');
-		expect(entry).not.toContain('reserveRecoveredAgentSession');
-		expect(entry).not.toContain('flue:webhook:');
+		expect(entry).toContain("if (ctx.name === 'flue:direct') {");
+		expect(entry).toContain('return handleFlueDirectRecovered(ctx, this, "moderator");');
+		expect(entry).toContain('const payload = ctx.snapshot?.payload;');
+		expect(entry).toContain('const handler = localAgentHandlers[agentName];');
+		expect(entry).toContain("await doInstance.runFiber('flue:direct', async (fiberCtx) => {");
+		expect(entry).toContain('fiberCtx.stash({ payload });');
+		expect(entry).toContain('Direct agent recovery input is unavailable; retry was not attempted.');
 		expect(entry).not.toContain("owner: { kind: 'agent', agentName, instanceId: id }");
 		expect(entry).not.toContain('flue_fiber_recovery');
-		expect(entry).not.toContain('fiber?.stash?.');
 		expect(entry).toContain("runId = decodeURIComponent(segments[1] || '');");
 		expect(entry).toContain('createContext: (id_, runId, payload, req, initialEventIndex, dispatchId)');
 		expect(entry).toContain("assertAgentsDurabilityApi(doInstance, 'startFiber');");
+		const agentHttpBody = entry.slice(entry.indexOf('async function dispatchAgent'), entry.indexOf('function isWebSocketUpgrade'));
+		expect(agentHttpBody).toContain("return doInstance.runFiber('flue:direct'");
+		expect(agentHttpBody).toContain('fiberCtx.stash({ payload: ctx.payload });');
+		expect(agentHttpBody).not.toContain('keepAliveWhile');
 	});
 
 	it('generates exclusive hibernating WebSocket handling inside owning Durable Objects', async () => {
@@ -104,7 +111,9 @@ describe('Cloudflare build plugin', () => {
 		expect(entry).toContain("url.search = '';");
 		expect(entry).toContain('request: socketRequest(connection)');
 		const agentSocketBody = entry.slice(entry.indexOf('async function messageAgentSocket'), entry.indexOf('async function messageWorkflowSocket'));
-		expect(agentSocketBody).toContain('keepAliveWhile');
+		expect(agentSocketBody).toContain("return doInstance.runFiber('flue:direct'");
+		expect(agentSocketBody).toContain('fiberCtx.stash({ payload: ctx.payload });');
+		expect(agentSocketBody).not.toContain('keepAliveWhile');
 		expect(agentSocketBody).not.toContain('startWorkflowAdmission:');
 		expect(agentSocketBody).not.toContain('runStore:');
 		expect(agentSocketBody).not.toContain('runSubscribers');
