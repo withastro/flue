@@ -1,0 +1,24 @@
+{
+	"name": "analytics",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"check:types": "tsc --noEmit",
+		"test": "vitest run",
+		"manifest:publish": "node ./scripts/compile-normalize-upload-manifest.mjs",
+		"manifest:preprocess": "node ./scripts/preprocess-manifest.mjs",
+		"sync:oauth": "node ./scripts/sync-oauth-tokens.mjs"
+	},
+	"dependencies": {
+		"@flue/runtime": "workspace:*",
+		"@google-cloud/bigquery": "^8.3.1",
+		"google-auth-library": "^10.6.2",
+		"valibot": "^1.1.0"
+	},
+	"devDependencies": {
+		"@flue/cli": "workspace:*",
+		"@types/node": "^22.10.10",
+		"typescript": "^5.9.2",
+		"vitest": "^4.1.6"
+	}
+}

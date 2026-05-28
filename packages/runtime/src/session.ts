@@ -103,6 +103,7 @@ interface SessionInitOptions {
 	onAgentEvent?: FlueEventCallback;
 	agentTools?: ToolDef[];
 	toolFactory?: SessionToolFactory;
+	disableTaskTool?: boolean;
 	sessionRole?: string;
 	taskDepth?: number;
 	createTaskSession?: CreateTaskSession;
@@ -411,6 +412,7 @@ export class Session implements FlueSession {
 	private eventCallback: FlueEventCallback | undefined;
 	private agentTools: ToolDef[];
 	private toolFactory: SessionToolFactory | undefined;
+	private disableTaskTool: boolean;
 	private deleted = false;
 	private activeOperation: OperationKind | undefined;
 	private activeOperationId: string | undefined;
@@ -431,6 +433,7 @@ export class Session implements FlueSession {
 		this.store = options.store;
 		this.agentTools = options.agentTools ?? [];
 		this.toolFactory = options.toolFactory;
+		this.disableTaskTool = options.disableTaskTool ?? false;
 		this.sessionRole = options.sessionRole;
 		this.taskDepth = options.taskDepth ?? 0;
 		this.createTaskSession = options.createTaskSession;
@@ -908,9 +911,10 @@ export class Session implements FlueSession {
 		if (this.toolFactory) {
 			const connectorTools = this.toolFactory(env, { roles: this.config.roles });
 			this.validateConnectorTools(connectorTools);
-			return [...connectorTools, createTaskTool(runTask, this.config.roles)];
+			return this.disableTaskTool ? connectorTools : [...connectorTools, createTaskTool(runTask, this.config.roles)];
 		}
 
+		if (this.disableTaskTool) return createTools(env);
 		return createTools(env, {
 			roles: this.config.roles,
 			task: runTask,
@@ -989,6 +993,9 @@ export class Session implements FlueSession {
 		inheritedThinkingLevel: ThinkingLevel | undefined,
 		signal?: AbortSignal,
 	): Promise<AgentToolResult<TaskToolResultDetails>> {
+		if (inheritedRole === 'explorer') {
+			throw new Error('[flue] The explorer role cannot delegate with the task tool.');
+		}
 		const result = await this.runTask(
 			params.prompt,
 			{

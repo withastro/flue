@@ -1,0 +1,60 @@
+{
+	"nodes": {
+		"model.test.stg_cases": {
+			"resource_type": "model",
+			"name": "stg_cases",
+			"description": "Raw case records from the source system.",
+			"database": "evenup-bi",
+			"schema": "dbt_prod",
+			"alias": "stg_cases",
+			"original_file_path": "models/staging/stg_cases.sql",
+			"raw_code": "select * from source_cases",
+			"columns": {
+				"case_id": { "description": "Case identifier." },
+				"created_at": { "description": "Case creation timestamp." }
+			}
+		},
+		"model.test.dim_firms": {
+			"resource_type": "model",
+			"name": "dim_firms",
+			"description": "Firm dimension with firm profile details.",
+			"database": "evenup-bi",
+			"schema": "dbt_prod",
+			"alias": "dim_firms",
+			"original_file_path": "models/marts/dim_firms.sql",
+			"columns": {
+				"firm_id": { "description": "Firm identifier." },
+				"firm_name": { "description": "Firm display name." }
+			}
+		},
+		"model.test.fct_case_volume": {
+			"resource_type": "model",
+			"name": "fct_case_volume",
+			"description": "Case volume metrics by month and firm.",
+			"database": "evenup-bi",
+			"schema": "dbt_prod",
+			"alias": "fct_case_volume",
+			"original_file_path": "models/marts/fct_case_volume.sql",
+			"raw_code": "select month, firm_id, count(*) case_count from stg_cases group by 1, 2",
+			"columns": {
+				"month": { "description": "Month of case creation." },
+				"firm_id": { "description": "Firm identifier." },
+				"case_count": { "description": "Number of cases." }
+			}
+		},
+		"source.test.source_cases": {
+			"resource_type": "source",
+			"name": "source_cases"
+		}
+	},
+	"parent_map": {
+		"model.test.stg_cases": [],
+		"model.test.dim_firms": [],
+		"model.test.fct_case_volume": ["model.test.stg_cases", "model.test.dim_firms"]
+	},
+	"child_map": {
+		"model.test.stg_cases": ["model.test.fct_case_volume"],
+		"model.test.dim_firms": ["model.test.fct_case_volume"],
+		"model.test.fct_case_volume": []
+	}
+}

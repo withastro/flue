@@ -1,0 +1,5 @@
+.env.secrets
+dist/
+node_modules/
+tsconfig.tsbuildinfo
+test/tmp/

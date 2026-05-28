@@ -129,7 +129,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			try {
 				assertRoleExists(config.agentConfig.roles, options.role);
 				const sandbox = options.sandbox;
-				const { env: baseEnv, toolFactory } = await resolveSessionEnv(
+				const { env: baseEnv, toolFactory, disableTaskTool } = await resolveSessionEnv(
 					config.id,
 					sandbox,
 					config,
@@ -170,6 +170,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					},
 					options.tools,
 					toolFactory,
+					disableTaskTool,
 				);
 			} catch (error) {
 				initializedHarnessNames.delete(name);
@@ -233,7 +234,7 @@ async function resolveSessionEnv(
 	sandbox: AgentInit['sandbox'],
 	config: FlueContextConfig,
 	cwd: string | undefined,
-): Promise<{ env: SessionEnv; toolFactory?: SessionToolFactory }> {
+): Promise<{ env: SessionEnv; toolFactory?: SessionToolFactory; disableTaskTool?: boolean }> {
 	if (sandbox === undefined || sandbox === false) {
 		return { env: await config.createDefaultEnv() };
 	}
@@ -270,7 +271,7 @@ async function resolveSessionEnv(
 	}
 	if (isSandboxFactory(sandbox)) {
 		const env = await sandbox.createSessionEnv({ id, cwd });
-		return { env, toolFactory: sandbox.tools };
+		return { env, toolFactory: sandbox.tools, disableTaskTool: sandbox.disableTaskTool };
 	}
 	throw new Error('[flue] Invalid sandbox option passed to init().');
 }

@@ -700,6 +700,8 @@ export interface SandboxFactory {
 	createSessionEnv(options: { id: string; cwd?: string }): Promise<SessionEnv>;
 	/** Replaces the framework default tool list for this sandbox. */
 	tools?: SessionToolFactory;
+	/** Disable the framework-injected task tool for this sandbox. */
+	disableTaskTool?: boolean;
 }
 
 /**

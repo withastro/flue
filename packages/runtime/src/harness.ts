@@ -22,6 +22,7 @@ import type {
 } from './types.ts';
 
 const DEFAULT_SESSION_NAME = 'default';
+const MAX_PROVIDER_SESSION_ID_LENGTH = 64;
 
 type OpenMode = 'get-or-create' | 'get' | 'create';
 
@@ -41,11 +42,12 @@ export class Harness implements FlueHarness {
 		readonly name: string,
 		private config: AgentConfig,
 		private env: SessionEnv,
-		private store: SessionStore,
-		private eventCallback?: FlueEventCallback,
-		private agentTools: ToolDef[] = [],
-		private toolFactory?: SessionToolFactory,
-	) {
+	private store: SessionStore,
+	private eventCallback?: FlueEventCallback,
+	private agentTools: ToolDef[] = [],
+	private toolFactory?: SessionToolFactory,
+	private disableTaskTool = false,
+) {
 		this.fs = createFlueFs(env);
 	}
 
@@ -112,6 +114,7 @@ export class Harness implements FlueHarness {
 			onAgentEvent: this.decorateEventCallback(this.eventCallback),
 			agentTools: this.agentTools,
 			toolFactory: this.toolFactory,
+			disableTaskTool: this.disableTaskTool,
 			sessionRole: options?.role,
 			taskDepth: 0,
 			createTaskSession: (taskOptions) => this.createTaskSession(taskOptions),
@@ -178,6 +181,7 @@ export class Harness implements FlueHarness {
 			onAgentEvent: eventCallback,
 			agentTools: this.agentTools,
 			toolFactory: this.toolFactory,
+			disableTaskTool: this.disableTaskTool,
 			sessionRole: options.role,
 			taskDepth: options.depth,
 			createTaskSession: (childOptions) => this.createTaskSession(childOptions),
@@ -201,8 +205,31 @@ function createSessionStorageKey(instanceId: string, harness: string, sessionNam
 	return `agent-session:${JSON.stringify([instanceId, harness, sessionName])}`;
 }
 
-function createSessionAffinityKey(instanceId: string, harness: string, sessionName: string): string {
-	return `${instanceId}::${harness}::${sessionName}`;
+export function createSessionAffinityKey(instanceId: string, harness: string, sessionName: string): string {
+	return normalizeProviderSessionId(`${instanceId}::${harness}::${sessionName}`);
+}
+
+export function normalizeProviderSessionId(value: string): string {
+	if (value.length <= MAX_PROVIDER_SESSION_ID_LENGTH) return value;
+
+	const hash = fnv1a64(value);
+	const separator = ':';
+	const prefixLength = MAX_PROVIDER_SESSION_ID_LENGTH - separator.length - hash.length;
+	const prefix = value
+		.slice(0, prefixLength)
+		.replace(/[^a-zA-Z0-9_.:-]/g, '_');
+	return `${prefix}${separator}${hash}`;
+}
+
+function fnv1a64(value: string): string {
+	let hash = 0xcbf29ce484222325n;
+	const prime = 0x100000001b3n;
+	const mask = 0xffffffffffffffffn;
+	for (let index = 0; index < value.length; index++) {
+		hash ^= BigInt(value.charCodeAt(index));
+		hash = (hash * prime) & mask;
+	}
+	return hash.toString(16).padStart(16, '0');
 }
 
 function createEmptySessionData(): SessionData {

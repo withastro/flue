@@ -1,0 +1,5 @@
+{
+	"extends": "../../tsconfig.base.json",
+	"include": [".flue/**/*.ts", "test/**/*.ts"],
+	"exclude": ["dist"]
+}
