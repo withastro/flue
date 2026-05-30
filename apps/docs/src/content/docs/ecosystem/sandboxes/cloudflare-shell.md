@@ -35,4 +35,4 @@ If the workspace should survive later user interactions, associate it with a sta
 
 You can hydrate content from R2 through the generated connector helper before initializing the consuming harness. Hydration is a copy into Workspace, not a live-mounted bucket.
 
-See [Sandboxes](/docs/guide/sandboxes/#use-a-project-owned-cloudflare-shell-workspace-connector) and [Deploy on Cloudflare](/docs/ecosystem/deploy/cloudflare/).
+See [Sandboxes](/docs/guide/sandboxes/) and [Deploy on Cloudflare](/docs/ecosystem/deploy/cloudflare/).

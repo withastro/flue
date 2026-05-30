@@ -40,4 +40,4 @@ const agent = createAgent(() => ({
 
 Delete an ephemeral sandbox in application code after bounded work completes. If a continuing agent instance should reuse a remote workspace, map instance identity to sandbox identity and implement retention and cleanup deliberately.
 
-See [Sandboxes](/docs/guide/sandboxes/#connect-an-application-owned-remote-sandbox) and [Sandbox Connector API](/docs/api/sandbox-api/).
+See [Sandboxes](/docs/guide/sandboxes/#remote-sandboxes) and [Sandbox Connector API](/docs/api/sandbox-api/).
