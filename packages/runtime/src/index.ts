@@ -67,6 +67,7 @@ export type {
 	NamedAgentDispatchRequest,
 	DispatchReceipt,
 	DirectAgentPayload,
+	DirectAgentToolDeclaration,
 	FluePublicError,
 	AgentWebSocketClientMessage,
 	WorkflowWebSocketClientMessage,

@@ -28,6 +28,20 @@ export interface DispatchReceipt {
 export interface DirectAgentPayload {
 	message: string;
 	session?: string;
+	tools?: DirectAgentToolDeclaration[];
+}
+
+/**
+ * JSON-serializable tool declaration for a single direct-agent interaction.
+ *
+ * These declarations expose caller-scoped tools to the model for the prompt.
+ * They do not provide durable browser/client resume semantics by themselves.
+ */
+export interface DirectAgentToolDeclaration {
+	name: string;
+	description: string;
+	parameters: Record<string, unknown>;
+	kind?: 'client' | 'deferred';
 }
 
 export interface FluePublicError {

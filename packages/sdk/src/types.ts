@@ -42,6 +42,15 @@ export interface DirectAgentPayload {
 	message: string;
 	/** Session name. Defaults to `default`. */
 	session?: string;
+	/** JSON-serializable tools scoped to this prompt. */
+	tools?: DirectAgentToolDeclaration[];
+}
+
+export interface DirectAgentToolDeclaration {
+	name: string;
+	description: string;
+	parameters: Record<string, unknown>;
+	kind?: 'client' | 'deferred';
 }
 
 /** Cursor-paginated list response. */

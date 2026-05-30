@@ -18,6 +18,8 @@ import {
 	validateWorkflowRequest,
 } from '../errors.ts';
 import type { AgentDispatchRequest, CreatedAgent, DispatchReceipt, NamedAgentDispatchRequest } from '../types.ts';
+import { enqueueDispatch } from './dispatch.ts';
+import type { DispatchQueue } from './dispatch-queue.ts';
 import {
 	type AgentHandler,
 	type CreateContextFn,
@@ -27,8 +29,6 @@ import {
 	type StartWorkflowAdmissionFn,
 	type WorkflowHandler,
 } from './handle-agent.ts';
-import type { DispatchQueue } from './dispatch-queue.ts';
-import { enqueueDispatch } from './dispatch.ts';
 import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunPointer, RunRegistry } from './run-registry.ts';
@@ -37,15 +37,15 @@ import type { RunSubscriberRegistry } from './run-subscribers.ts';
 import {
 	AgentInvocationResponseSchema,
 	AgentRouteParamSchema,
-	WorkflowInvocationQuerySchema,
-	WorkflowRouteParamSchema,
 	ErrorEnvelopeSchema,
 	RunEventListResponseSchema,
 	RunEventsQuerySchema,
 	RunIdParamSchema,
 	RunRecordSchema,
 	WorkflowAdmissionResponseSchema,
+	WorkflowInvocationQuerySchema,
 	WorkflowInvocationResponseSchema,
+	WorkflowRouteParamSchema,
 } from './schemas.ts';
 
 export interface FlueRuntime {
@@ -405,6 +405,19 @@ function agentRouteSpec() {
 						properties: {
 							message: { type: 'string' },
 							session: { type: 'string', minLength: 1, pattern: '.*\\S.*' },
+							tools: {
+								type: 'array',
+								items: {
+									type: 'object',
+									required: ['name', 'description', 'parameters'],
+									properties: {
+										name: { type: 'string', minLength: 1 },
+										description: { type: 'string', minLength: 1 },
+										parameters: { type: 'object', additionalProperties: true },
+										kind: { type: 'string', enum: ['client', 'deferred'] },
+									},
+								},
+							},
 						},
 					},
 				},

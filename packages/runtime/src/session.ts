@@ -2,7 +2,6 @@
 
 import type { AgentMessage, AgentTool, AgentToolResult, StreamFn } from '@earendil-works/pi-agent-core';
 import { Agent } from '@earendil-works/pi-agent-core';
-import { streamSimple } from '@earendil-works/pi-ai';
 import type {
 	AssistantMessage,
 	ImageContent,
@@ -11,6 +10,7 @@ import type {
 	ToolResultMessage,
 	UserMessage,
 } from '@earendil-works/pi-ai';
+import { streamSimple } from '@earendil-works/pi-ai';
 import type * as v from 'valibot';
 import { abortErrorFor, createCallHandle } from './abort.ts';
 import {
@@ -42,22 +42,25 @@ import {
 	type ResultToolBundle,
 	ResultUnavailableError,
 } from './result.ts';
+import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import { generateOperationId, generateTurnId } from './runtime/ids.ts';
 import { getProviderConfiguration, getRegisteredApiKey } from './runtime/providers.ts';
 import { createFlueFs } from './sandbox.ts';
-
 import type {
 	AgentConfig,
 	AgentProfile,
 	BranchSummaryEntry,
 	CallHandle,
 	CompactionEntry,
+	DirectAgentPayload,
+	DirectAgentToolDeclaration,
 	DispatchMessageMetadata,
 	FlueEvent,
 	FlueEventCallback,
 	FlueFs,
 	FlueSession,
 	MessageEntry,
+	PackagedSkillDirectory,
 	PromptModel,
 	PromptOptions,
 	PromptResponse,
@@ -70,14 +73,12 @@ import type {
 	SessionToolFactory,
 	ShellOptions,
 	ShellResult,
-	PackagedSkillDirectory,
-	SkillReference,
 	SkillOptions,
+	SkillReference,
 	TaskOptions,
 	ThinkingLevel,
 	ToolDefinition,
 } from './types.ts';
-import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 
 const MAX_TASK_DEPTH = 4;
@@ -206,6 +207,23 @@ function resolveResultOption(
 	if (!options) return undefined;
 	if (options.result !== undefined) return options.result;
 	return options.schema;
+}
+
+function createDirectAgentTools(
+	declarations: DirectAgentToolDeclaration[] | undefined,
+): ToolDefinition[] | undefined {
+	if (declarations === undefined) return undefined;
+	return declarations.map((tool) => ({
+		name: tool.name,
+		description: tool.description,
+		parameters: tool.parameters,
+		async execute() {
+			throw new Error(
+				`[flue] Direct agent tool "${tool.name}" is declaration-only. ` +
+					'Client/deferred tool execution and resume is not implemented for direct-agent payload tools yet.',
+			);
+		},
+	}));
 }
 
 interface InternalTaskOptions<S extends v.GenericSchema | undefined> extends TaskOptions<S> {
@@ -766,12 +784,12 @@ export class Session implements FlueSession {
 		);
 	}
 
-	processDirectInput(input: { message: string }): CallHandle<PromptResponse> {
+	processDirectInput(input: DirectAgentPayload): CallHandle<PromptResponse> {
 		return createCallHandle(undefined, (signal) =>
 			this.runOperation('prompt', signal, () => this.runPromptCall({
 				promptText: input.message,
 				schema: undefined,
-				tools: undefined,
+				tools: createDirectAgentTools(input.tools),
 				model: undefined,
 				thinkingLevel: undefined,
 				images: undefined,

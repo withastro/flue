@@ -1,5 +1,9 @@
+export type {
+	CreateFlueClientOptions,
+	FlueClient,
+	RequestHeaders,
+} from './client.ts';
 export { createFlueClient } from './client.ts';
-export { FlueSocketError } from './public/websocket.ts';
 export type {
 	AgentSocket,
 	AgentSocketEventContext,
@@ -17,36 +21,33 @@ export type {
 	WorkflowSocketEventListener,
 	WorkflowSocketInvokeResult,
 } from './public/websocket.ts';
+export { FlueSocketError } from './public/websocket.ts';
 export type {
-	CreateFlueClientOptions,
-	FlueClient,
-	RequestHeaders,
-} from './client.ts';
-export type {
+	AgentManifestEntry,
 	AgentWebSocketClientMessage,
 	AgentWebSocketServerMessage,
 	AttachedAgentEvent,
 	AttachedAgentStreamError,
 	DirectAgentPayload,
+	DirectAgentToolDeclaration,
 	FlueEvent,
 	FluePublicError,
+	ListResponse,
+	LlmAssistantMessage,
+	LlmImageContent,
+	LlmMessage,
 	LlmTextContent,
 	LlmThinkingContent,
-	LlmImageContent,
-	LlmToolCall,
-	LlmUserMessage,
-	LlmAssistantMessage,
-	LlmToolResultMessage,
-	LlmMessage,
 	LlmTool,
+	LlmToolCall,
+	LlmToolResultMessage,
 	LlmTurnPurpose,
+	LlmUserMessage,
 	RunOwner,
+	RunPointer,
+	RunRecord,
 	WebSocketErrorMessage,
 	WebSocketServerMessage,
 	WorkflowWebSocketClientMessage,
 	WorkflowWebSocketServerMessage,
-	RunRecord,
-	RunPointer,
-	ListResponse,
-	AgentManifestEntry,
 } from './types.ts';

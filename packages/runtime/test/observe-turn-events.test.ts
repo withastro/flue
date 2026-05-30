@@ -2,8 +2,8 @@ import { fauxAssistantMessage, fauxText, fauxThinking, fauxToolCall, registerFau
 import { describe, expect, it } from 'vitest';
 import { createAgent } from '../src/agent-definition.ts';
 import { observe } from '../src/app.ts';
-import { createFlueContext, InMemorySessionStore, type DispatchInput } from '../src/internal.ts';
-import type { FlueEvent, FlueSession, SessionEnv } from '../src/types.ts';
+import { createFlueContext, type DispatchInput, InMemorySessionStore } from '../src/internal.ts';
+import type { DirectAgentToolDeclaration, FlueEvent, FlueSession, SessionEnv } from '../src/types.ts';
 
 function createEnv(): SessionEnv {
 	return {
@@ -248,8 +248,14 @@ describe('observe model-turn telemetry', () => {
 			const directEvents: FlueEvent[] = [];
 			const directCtx = createContext();
 			directCtx.subscribeEvent((event) => { directEvents.push(event); });
-			const directSession = await (await directCtx.init(agent)).session() as FlueSession & { processDirectInput(input: { message: string }): PromiseLike<unknown> };
-			await directSession.processDirectInput({ message: 'direct input' });
+			const directTools: DirectAgentToolDeclaration[] = [{
+				name: 'lookup',
+				description: 'Look up direct-agent data.',
+				parameters: { type: 'object', properties: { query: { type: 'string' } } },
+				kind: 'client',
+			}];
+			const directSession = await (await directCtx.init(agent)).session() as FlueSession & { processDirectInput(input: { message: string; tools?: DirectAgentToolDeclaration[] }): PromiseLike<unknown> };
+			await directSession.processDirectInput({ message: 'direct input', tools: directTools });
 
 			const dispatchEvents: FlueEvent[] = [];
 			const dispatchCtx = createContext('dispatch-1');
@@ -272,6 +278,11 @@ describe('observe model-turn telemetry', () => {
 				expect(events.every((event) => event.runId === undefined)).toBe(true);
 			}
 			expect(directEvents.find((event) => event.type === 'turn_request')?.instanceId).toBe('persistent-instance');
+			expect(directEvents.find((event): event is Extract<FlueEvent, { type: 'turn_request' }> => event.type === 'turn_request')?.input.tools?.find((tool) => tool.name === 'lookup')).toMatchObject({
+				name: 'lookup',
+				description: 'Look up direct-agent data.',
+				parameters: directTools[0]?.parameters,
+			});
 			expect(dispatchEvents.find((event) => event.type === 'turn_request')?.dispatchId).toBe('dispatch-1');
 		} finally {
 			registration.unregister();

@@ -2,7 +2,7 @@
 
 import type { FlueContextInternal } from '../client.ts';
 import { InvalidRequestError, parseJsonBody, RunEventTooLargeError, RunStoreUnavailableError, toHttpResponse, toPublicError } from '../errors.ts';
-import type { AttachedAgentEvent, AttachedAgentEventCallback, CreatedAgent, DirectAgentPayload, DispatchReceipt, FlueEvent, FlueEventCallback } from '../types.ts';
+import type { AttachedAgentEvent, AttachedAgentEventCallback, CreatedAgent, DirectAgentPayload, DirectAgentToolDeclaration, DispatchReceipt, FlueEvent, FlueEventCallback } from '../types.ts';
 import type { DispatchInput, DispatchProcessor } from './dispatch-queue.ts';
 import { streamActiveRunEvents } from './handle-run-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
@@ -16,7 +16,7 @@ export type CreatedAgentHandler = CreatedAgent;
 export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
 
 interface DirectRequestSession {
-	processDirectInput(input: { message: string }): PromiseLike<unknown>;
+	processDirectInput(input: DirectAgentPayload): PromiseLike<unknown>;
 }
 
 interface DispatchSession {
@@ -105,7 +105,7 @@ export function createDirectAgentHandler(agent: CreatedAgentHandler): AgentHandl
 		if (!isDirectRequestSession(session)) {
 			throw new Error('[flue] Internal session does not support direct input processing.');
 		}
-		return session.processDirectInput({ message: payload.message });
+		return session.processDirectInput(payload);
 	};
 }
 
@@ -114,18 +114,52 @@ function isDirectRequestSession(value: unknown): value is DirectRequestSession {
 }
 
 function parseDirectAgentPayload(payload: unknown): DirectAgentPayload {
-	const expected = 'Direct agent requests must use JSON object body { "message": string, "session"?: string }.';
+	const expected = 'Direct agent requests must use JSON object body { "message": string, "session"?: string, "tools"?: DirectAgentToolDeclaration[] }.';
 	if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
 		throw new InvalidRequestError({ reason: expected });
 	}
-	const value = payload as { message?: unknown; session?: unknown };
+	const value = payload as { message?: unknown; session?: unknown; tools?: unknown };
 	if (typeof value.message !== 'string') {
 		throw new InvalidRequestError({ reason: expected });
 	}
 	if (value.session !== undefined && (typeof value.session !== 'string' || value.session.trim() === '')) {
 		throw new InvalidRequestError({ reason: 'Direct agent request "session" must be a non-empty string when provided.' });
 	}
-	return { message: value.message, session: value.session };
+	const tools = parseDirectAgentTools(value.tools);
+	return tools === undefined
+		? { message: value.message, session: value.session }
+		: { message: value.message, session: value.session, tools };
+}
+
+function parseDirectAgentTools(rawTools: unknown): DirectAgentToolDeclaration[] | undefined {
+	if (rawTools === undefined) return undefined;
+	if (!Array.isArray(rawTools)) {
+		throw new InvalidRequestError({ reason: 'Direct agent request "tools" must be an array when provided.' });
+	}
+	return rawTools.map((rawTool, index) => {
+		if (!rawTool || typeof rawTool !== 'object' || Array.isArray(rawTool)) {
+			throw new InvalidRequestError({ reason: `Direct agent request tools[${index}] must be a tool declaration object.` });
+		}
+		const tool = rawTool as Record<string, unknown>;
+		if (typeof tool.name !== 'string' || tool.name.trim() === '') {
+			throw new InvalidRequestError({ reason: `Direct agent request tools[${index}].name must be a non-empty string.` });
+		}
+		if (typeof tool.description !== 'string' || tool.description.trim() === '') {
+			throw new InvalidRequestError({ reason: `Direct agent request tools[${index}].description must be a non-empty string.` });
+		}
+		if (!tool.parameters || typeof tool.parameters !== 'object' || Array.isArray(tool.parameters)) {
+			throw new InvalidRequestError({ reason: `Direct agent request tools[${index}].parameters must be a JSON Schema object.` });
+		}
+		if (tool.kind !== undefined && tool.kind !== 'client' && tool.kind !== 'deferred') {
+			throw new InvalidRequestError({ reason: `Direct agent request tools[${index}].kind must be "client" or "deferred" when provided.` });
+		}
+		return {
+			name: tool.name,
+			description: tool.description,
+			parameters: tool.parameters as Record<string, unknown>,
+			kind: tool.kind as DirectAgentToolDeclaration['kind'],
+		};
+	});
 }
 
 /**

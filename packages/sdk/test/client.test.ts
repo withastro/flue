@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createFlueClient, type AttachedAgentEvent, type LlmAssistantMessage, type LlmMessage } from '../src/index.ts';
+import { type AttachedAgentEvent, createFlueClient, type LlmAssistantMessage, type LlmMessage } from '../src/index.ts';
 import { readSse } from '../src/public/stream.ts';
 
 describe('createFlueClient', () => {
@@ -12,14 +12,20 @@ describe('createFlueClient', () => {
 				return Response.json({ result: { ok: true } });
 			},
 		});
+		const tools = [{
+			name: 'lookup',
+			description: 'Look up client-visible data.',
+			parameters: { type: 'object', properties: { query: { type: 'string' } } },
+			kind: 'client' as const,
+		}];
 
 		await expect(
-			client.agents.invoke('hello', 'inst-1', { mode: 'sync', payload: { message: 'Hello', session: 'chat' } }),
+			client.agents.invoke('hello', 'inst-1', { mode: 'sync', payload: { message: 'Hello', session: 'chat', tools } }),
 		).resolves.toEqual({ result: { ok: true } });
 		expect(seen).toHaveLength(1);
 		expect(new URL(seen[0]?.url ?? '').pathname).toBe('/agents/hello/inst-1');
 		expect(seen[0]?.method).toBe('POST');
-		expect(await seen[0]?.json()).toEqual({ message: 'Hello', session: 'chat' });
+		expect(await seen[0]?.json()).toEqual({ message: 'Hello', session: 'chat', tools });
 	});
 
 	it('streams attached agent events without workflow identity', async () => {
