@@ -1,6 +1,6 @@
 ---
 title: Events Reference
-description: Reference runtime activity, attached-agent streams, public errors, WebSocket messages, and global observation APIs.
+description: Reference runtime activity, attached-agent streams, WebSocket messages, and global observation APIs.
 lastReviewedAt: 2026-05-30
 ---
 
@@ -159,36 +159,7 @@ Receives the decorated event and its originating context. Synchronous subscriber
 
 ## Public errors
 
-#### `FluePublicError`
-
-```ts
-interface FluePublicError {
-  type: string;
-  message: string;
-  details: string;
-  dev?: string;
-  meta?: Record<string, unknown>;
-}
-```
-
-Caller-safe error details exposed by Flue transports. Unknown failures become a generic `internal_error` payload without leaking their original message.
-
-| Field     | Meaning                                               |
-| --------- | ----------------------------------------------------- |
-| `type`    | Stable machine-readable error category.               |
-| `message` | Short caller-facing summary.                          |
-| `details` | Caller-facing explanation.                            |
-| `dev`     | Additional local-development guidance when available. |
-| `meta`    | Structured error-specific metadata when available.    |
-
-| Surface                               | Envelope                                                    |
-| ------------------------------------- | ----------------------------------------------------------- |
-| HTTP error response                   | `{ error: FluePublicError }`                                |
-| Attached-agent SSE terminal error     | `AttachedAgentStreamError`                                  |
-| WebSocket connection or request error | `WebSocketErrorMessage`                                     |
-| Workflow WebSocket run-scoped error   | `WorkflowWebSocketServerMessage` error variant with `runId` |
-
-Workflow-run SSE history can also terminate with a stream-infrastructure error frame. Its payload is not part of the shared `FluePublicError` contract.
+Transport errors use the shared `FluePublicError` shape. See [Errors Reference](/docs/api/errors-reference/) for its fields, stable categories, transport envelopes, and the distinction between transport errors and open-ended workflow failure records.
 
 ## WebSocket protocol messages
 

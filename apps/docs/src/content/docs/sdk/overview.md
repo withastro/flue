@@ -246,7 +246,7 @@ Streams workflow-run events over server-sent events until `run_end`, cancellatio
 
 ## Admin
 
-Admin APIs use the read-only mount path configured with `adminBasePath`. This option only tells the SDK where an already-mounted `admin()` sub-app lives. The application must [mount `admin()` explicitly and protect that mount with application-owned authorization](/docs/api/application-api/#admin).
+Admin APIs use the read-only mount path configured with `adminBasePath`. This option only tells the SDK where an already-mounted `admin()` sub-app lives. The application must [mount `admin()` explicitly and protect that mount with application-owned authorization](/docs/api/routing-api/#admin).
 
 ### `client.admin.agents.list()`
 
@@ -353,6 +353,8 @@ Minimal socket interface required by the client SDK.
 | `LlmTurnPurpose` | Model-turn purpose: `'agent'`, `'compaction'`, or `'compaction_prefix'`. |
 
 ## Errors
+
+See [Errors Reference](/docs/api/errors-reference/) for shared transport envelopes and stable public error categories.
 
 ### `FlueSocketError`
 

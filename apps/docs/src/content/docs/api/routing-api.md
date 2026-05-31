@@ -1,5 +1,5 @@
 ---
-title: Application API
+title: Routing API
 description: Compose Flue routes in an authored application entrypoint.
 lastReviewedAt: 2026-05-30
 ---

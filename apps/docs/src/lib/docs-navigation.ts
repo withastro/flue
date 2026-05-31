@@ -63,8 +63,9 @@ export const docsSections: DocsSection[] = [
 				title: 'Runtime',
 				items: [
 					{ title: 'Configuration', slug: 'reference/configuration' },
+					{ title: 'Errors Reference', slug: 'api/errors-reference' },
 					{ title: 'Agent API', slug: 'api/agent-api' },
-					{ title: 'Application API', slug: 'api/application-api' },
+					{ title: 'Routing API', slug: 'api/routing-api' },
 					{ title: 'Events Reference', slug: 'api/events-reference' },
 				],
 			},
