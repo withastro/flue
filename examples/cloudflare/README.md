@@ -32,7 +32,7 @@ pnpm run build -F @flue/runtime -F @flue/cli
 The agents in this example use the Workers AI binding, so no provider API
 keys are required. If you switch them to a non-Cloudflare model, put the
 matching provider key in `.env` at the project root (see
-`../../docs/deploy-cloudflare.md` for the full story).
+[the Cloudflare deployment guide](https://flueframework.com/docs/ecosystem/deploy/cloudflare/) for the full story).
 
 ## Worker Loader requirement (skills-from-r2, skills-from-git)
 

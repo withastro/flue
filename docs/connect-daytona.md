@@ -6,10 +6,10 @@ This guide takes a working Flue agent and connects it to a [Daytona](https://www
 
 You should already have a Flue project that builds and runs. If you don't yet, start with one of the deploy guides — whichever target you're using or prefer:
 
-- [Deploy on Node.js](./deploy-node.md)
-- [Deploy on GitHub Actions](./deploy-github-actions.md)
-- [Deploy on GitLab CI/CD](./deploy-gitlab-ci.md)
-- [Deploy on Cloudflare](./deploy-cloudflare.md)
+- [Deploy on Node.js](https://flueframework.com/docs/ecosystem/deploy/node/)
+- [Deploy on GitHub Actions](https://flueframework.com/docs/ecosystem/deploy/github-actions/)
+- [Deploy on GitLab CI/CD](https://flueframework.com/docs/ecosystem/deploy/gitlab-ci/)
+- [Deploy on Cloudflare](https://flueframework.com/docs/ecosystem/deploy/cloudflare/)
 
 Each leaves you with a working Hello World agent, a verified run loop, and no remote sandbox wired up yet. That's the starting point.
 

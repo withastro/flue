@@ -65,7 +65,7 @@ You don't need a connector file. Flue's runtime package already exports the wiri
 and the deploy guide's "Connecting a remote sandbox" section is the
 canonical recipe. Steer the user there:
 
-> https://github.com/withastro/flue/blob/main/docs/deploy-cloudflare.md#connecting-a-remote-sandbox
+> https://flueframework.com/docs/ecosystem/deploy/cloudflare/#connecting-a-remote-sandbox
 
 The short version, for your reference:
 
@@ -185,7 +185,7 @@ platform migration.
 If the user does say yes to migrating, **do not try to do the whole
 migration in one shot**. Direct them at the canonical guide instead:
 
-> https://github.com/withastro/flue/blob/main/docs/deploy-cloudflare.md
+> https://flueframework.com/docs/ecosystem/deploy/cloudflare/
 
 That document walks through the migration end-to-end:
 
