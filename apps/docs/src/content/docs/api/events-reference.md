@@ -136,8 +136,6 @@ interface AttachedAgentStreamError {
 
 Terminal error frame emitted after an attached-agent SSE stream has started.
 
-`FlueEventCallback` and `AttachedAgentEventCallback` remain package-visible low-level callback aliases, but their supported public role is deferred pending an API decision.
-
 ## Global observation
 
 ### `observe(...)`

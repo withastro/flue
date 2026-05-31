@@ -1220,6 +1220,5 @@ export interface AttachedAgentStreamError {
 	error: FluePublicError;
 }
 
-// TODO: Decide whether these callback exports are supported public API or internal transport plumbing.
 export type FlueEventCallback = (event: FlueEvent) => void | Promise<void>;
 export type AttachedAgentEventCallback = (event: AttachedAgentEvent) => void | Promise<void>;

@@ -20,7 +20,6 @@ export type {
 	FlueContext,
 	FlueLogger,
 	FlueEvent,
-	FlueEventCallback,
 	FlueFs,
 	FlueHarness,
 	FlueSession,
