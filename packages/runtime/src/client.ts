@@ -5,11 +5,11 @@ import { dispatchGlobalEvent } from './runtime/events.ts';
 import { bashFactoryToSessionEnv, createCwdSessionEnv, isBashLike } from './sandbox.ts';
 import type {
 	AgentConfig,
+	AgentHarnessOptions,
 	AgentProfile,
 	AgentRuntimeConfig,
-	AgentHarnessOptions,
-	CreatedAgent,
 	BashFactory,
+	CreatedAgent,
 	FlueContext,
 	FlueEvent,
 	FlueEventCallback,
@@ -185,6 +185,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					model: agentModel,
 					thinkingLevel: definition.thinkingLevel ?? config.agentConfig.thinkingLevel,
 					compaction: definition.compaction ?? config.agentConfig.compaction,
+					modelRetries: definition.modelRetries ?? config.agentConfig.modelRetries,
 				};
 
 				return new Harness(

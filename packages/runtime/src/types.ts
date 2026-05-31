@@ -395,6 +395,19 @@ export interface CompactionConfig {
 	model?: string;
 }
 
+// ─── Model Retries ──────────────────────────────────────────────────────────
+
+export interface ModelRetryConfig {
+	/** Number of retry attempts after the initial failed provider turn. Defaults to 2. */
+	maxRetries?: number;
+	/** Delay before the first retry. Defaults to 500ms. */
+	initialDelayMs?: number;
+	/** Maximum delay between retries. Defaults to 8000ms. */
+	maxDelayMs?: number;
+	/** Multiplier applied after each retry. Defaults to 2. */
+	backoffFactor?: number;
+}
+
 // ─── Provider Runtime Settings ──────────────────────────────────────────────
 
 /** Per-provider transport settings configured from `@flue/runtime`. */
@@ -445,6 +458,11 @@ export interface AgentConfig {
 	 * uses defaults.
 	 */
 	compaction?: false | CompactionConfig;
+	/**
+	 * Retry transient provider failures such as overloaded APIs, rate limits,
+	 * temporary outages, and network timeouts. Set to `false` to disable.
+	 */
+	modelRetries?: false | ModelRetryConfig;
 }
 
 /** Model specifier, or `false` to require call-level model selection. */
@@ -475,6 +493,11 @@ export interface AgentProfile {
 	 * calls still compact when needed.
 	 */
 	compaction?: false | CompactionConfig;
+	/**
+	 * Retry transient provider failures such as overloaded APIs, rate limits,
+	 * temporary outages, and network timeouts. Set to `false` to disable.
+	 */
+	modelRetries?: false | ModelRetryConfig;
 }
 
 /** Configuration returned by a {@link createAgent} initializer. */
@@ -501,6 +524,11 @@ export interface AgentRuntimeConfig {
 	 * calls still compact when needed.
 	 */
 	compaction?: false | CompactionConfig;
+	/**
+	 * Retry transient provider failures such as overloaded APIs, rate limits,
+	 * temporary outages, and network timeouts. Set to `false` to disable.
+	 */
+	modelRetries?: false | ModelRetryConfig;
 	/** Working directory inside the initialized sandbox. */
 	cwd?: string;
 	/** Sandbox factory used to construct the initialized environment. */

@@ -2,7 +2,6 @@
 
 import type { AgentMessage, AgentTool, AgentToolResult, StreamFn } from '@earendil-works/pi-agent-core';
 import { Agent } from '@earendil-works/pi-agent-core';
-import { streamSimple } from '@earendil-works/pi-ai';
 import type {
 	AssistantMessage,
 	ImageContent,
@@ -11,6 +10,7 @@ import type {
 	ToolResultMessage,
 	UserMessage,
 } from '@earendil-works/pi-ai';
+import { streamSimple } from '@earendil-works/pi-ai';
 import type * as v from 'valibot';
 import { abortErrorFor, createCallHandle } from './abort.ts';
 import {
@@ -42,10 +42,10 @@ import {
 	type ResultToolBundle,
 	ResultUnavailableError,
 } from './result.ts';
+import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import { generateOperationId, generateTurnId } from './runtime/ids.ts';
 import { getProviderConfiguration, getRegisteredApiKey } from './runtime/providers.ts';
 import { createFlueFs } from './sandbox.ts';
-
 import type {
 	AgentConfig,
 	AgentProfile,
@@ -58,6 +58,7 @@ import type {
 	FlueFs,
 	FlueSession,
 	MessageEntry,
+	PackagedSkillDirectory,
 	PromptModel,
 	PromptOptions,
 	PromptResponse,
@@ -70,17 +71,21 @@ import type {
 	SessionToolFactory,
 	ShellOptions,
 	ShellResult,
-	PackagedSkillDirectory,
-	SkillReference,
 	SkillOptions,
+	SkillReference,
 	TaskOptions,
 	ThinkingLevel,
 	ToolDefinition,
 } from './types.ts';
-import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 
 const MAX_TASK_DEPTH = 4;
+const DEFAULT_MODEL_RETRY_SETTINGS = {
+	maxRetries: 2,
+	initialDelayMs: 500,
+	maxDelayMs: 8000,
+	backoffFactor: 2,
+};
 
 type TurnInputMessage = Extract<FlueEvent, { type: 'turn_request' }>['input']['messages'][number];
 type TurnInputTool = NonNullable<Extract<FlueEvent, { type: 'turn_request' }>['input']['tools']>[number];
@@ -194,6 +199,22 @@ interface InternalTaskResult<T> {
 	messageId?: string;
 	agent?: string;
 	cwd?: string;
+}
+
+interface ModelRetrySettings {
+	maxRetries: number;
+	initialDelayMs: number;
+	maxDelayMs: number;
+	backoffFactor: number;
+}
+
+interface ModelTurnRetryOptions {
+	errorLabel: string;
+	source: MessageSource;
+	cursor: number;
+	signal?: AbortSignal;
+	dispatch?: DispatchMessageMetadata;
+	start: () => Promise<void>;
 }
 
 /**
@@ -1757,11 +1778,71 @@ export class Session implements FlueSession {
 		this.emit({ type: 'log', level, message, attributes: normalizeLogAttributes(attributes) });
 	}
 
-	private throwIfError(context: string): void {
-		const errorMsg = this.harness.state.errorMessage;
-		if (errorMsg) {
-			throw new Error(`[flue] ${context} failed: ${errorMsg}`);
+	private resolveModelRetrySettings(): ModelRetrySettings | undefined {
+		const config = this.config.modelRetries;
+		if (config === false) {
+			return undefined;
 		}
+		return {
+			maxRetries: config?.maxRetries ?? DEFAULT_MODEL_RETRY_SETTINGS.maxRetries,
+			initialDelayMs: config?.initialDelayMs ?? DEFAULT_MODEL_RETRY_SETTINGS.initialDelayMs,
+			maxDelayMs: config?.maxDelayMs ?? DEFAULT_MODEL_RETRY_SETTINGS.maxDelayMs,
+			backoffFactor: config?.backoffFactor ?? DEFAULT_MODEL_RETRY_SETTINGS.backoffFactor,
+		};
+	}
+
+	private async runModelTurnWithRetries(options: ModelTurnRetryOptions): Promise<number> {
+		const retry = this.resolveModelRetrySettings();
+		let cursor = options.cursor;
+		let delayMs = retry?.initialDelayMs ?? 0;
+		let lastError: string | undefined;
+
+		for (let attempt = 0; ; attempt++) {
+			if (options.signal?.aborted) throw abortErrorFor(options.signal);
+			if (attempt === 0) {
+				await options.start();
+			} else {
+				await this.harness.continue();
+			}
+			await this.harness.waitForIdle();
+			await this.syncHarnessMessagesSince(cursor, options.source, attempt === 0 ? options.dispatch : undefined);
+			cursor = this.harness.state.messages.length;
+			await this.checkLatestAssistantForCompaction();
+
+			const errorMsg = this.harness.state.errorMessage;
+			if (!errorMsg) {
+				return cursor;
+			}
+
+			lastError = errorMsg;
+			if (!retry || attempt >= retry.maxRetries || !isRetryableModelError(errorMsg)) {
+				break;
+			}
+
+			const retryNumber = attempt + 1;
+			this.removeLatestAssistantErrorTurn();
+			cursor = this.harness.state.messages.length;
+			await this.save();
+			this.internalLog('warn', `[flue:model-retry] Retrying ${options.errorLabel} after transient provider error (${retryNumber}/${retry.maxRetries}).`, {
+				attempt: retryNumber,
+				maxRetries: retry.maxRetries,
+				error: errorMsg,
+			});
+			await waitForRetryDelay(Math.min(delayMs, retry.maxDelayMs), options.signal);
+			delayMs = Math.min(Math.max(delayMs * retry.backoffFactor, delayMs), retry.maxDelayMs);
+		}
+
+		throw new Error(`[flue] ${options.errorLabel} failed: ${lastError}`);
+	}
+
+	private removeLatestAssistantErrorTurn(): void {
+		const messages = this.harness.state.messages;
+		const lastMsg = messages[messages.length - 1];
+		if (lastMsg?.role === 'assistant' && (lastMsg as AssistantMessage).stopReason === 'error') {
+			this.harness.state.messages = messages.slice(0, -1);
+			this.history.removeLeafMessage(lastMsg as AgentMessage);
+		}
+		(this.harness.state as { errorMessage?: string }).errorMessage = undefined;
 	}
 
 	/**
@@ -1869,11 +1950,12 @@ export class Session implements FlueSession {
 				);
 				if (!persistedAssistant) {
 					const beforeLength = this.harness.state.messages.length;
-					await this.harness.continue();
-					await this.harness.waitForIdle();
-					await this.syncHarnessMessagesSince(beforeLength, options.outputSource);
-					await this.checkLatestAssistantForCompaction();
-					this.throwIfError(options.errorLabel);
+					await this.runModelTurnWithRetries({
+						errorLabel: options.errorLabel,
+						source: options.outputSource,
+						cursor: beforeLength,
+						start: () => this.harness.continue(),
+					});
 				} else {
 					const assistant = persistedAssistant.message as AssistantMessage;
 					if (assistant.stopReason === 'error' || assistant.stopReason === 'aborted') {
@@ -1946,11 +2028,14 @@ export class Session implements FlueSession {
 					};
 				}
 
-				await this.harness.prompt(args.promptText, args.images);
-				await this.harness.waitForIdle();
-				await this.syncHarnessMessagesSince(beforeLength, args.source, args.dispatch);
-				await this.checkLatestAssistantForCompaction();
-				this.throwIfError(args.errorLabel);
+				await this.runModelTurnWithRetries({
+					errorLabel: args.errorLabel,
+					source: args.source,
+					cursor: beforeLength,
+					signal: args.signal,
+					dispatch: args.dispatch,
+					start: () => this.harness.prompt(args.promptText, args.images),
+				});
 
 				return {
 					text: this.getAssistantText(),
@@ -1991,12 +2076,13 @@ export class Session implements FlueSession {
 			if (signal.aborted) throw abortErrorFor(signal);
 			// Images attach only on the first turn — retry follow-ups carry text
 			// only, so we don't re-bill image bytes on every result-tool retry.
-			await this.harness.prompt(nextPrompt, attempt === 0 ? initialImages : undefined);
-			await this.harness.waitForIdle();
-			await this.syncHarnessMessagesSince(cursor, source);
-			cursor = this.harness.state.messages.length;
-			await this.checkLatestAssistantForCompaction();
-			this.throwIfError(errorLabel);
+			cursor = await this.runModelTurnWithRetries({
+				errorLabel,
+				source,
+				cursor,
+				signal,
+				start: () => this.harness.prompt(nextPrompt, attempt === 0 ? initialImages : undefined),
+			});
 
 			const outcome = bundle.getOutcome();
 			if (outcome.type === 'finished') {
@@ -2030,6 +2116,56 @@ export function normalizePath(p: string): string {
 		}
 	}
 	return `/${result.join('/')}`;
+}
+
+function isRetryableModelError(message: string): boolean {
+	const lower = message.toLowerCase();
+	if (
+		lower.includes('usage limits') ||
+		lower.includes('invalid_request_error') ||
+		lower.includes('insufficient_quota') ||
+		lower.includes('authentication') ||
+		lower.includes('api key') ||
+		lower.includes('permission') ||
+		lower.includes('content filter') ||
+		lower.includes('aborted') ||
+		lower.includes('request was aborted')
+	) {
+		return false;
+	}
+	return (
+		lower.includes('overloaded_error') ||
+		lower.includes('overloaded') ||
+		lower.includes('rate limit') ||
+		lower.includes('temporarily unavailable') ||
+		lower.includes('timeout') ||
+		lower.includes('timed out') ||
+		lower.includes('econnreset') ||
+		lower.includes('etimedout') ||
+		lower.includes('socket hang up') ||
+		/\b(?:429|500|502|503|504)\b/.test(lower)
+	);
+}
+
+async function waitForRetryDelay(delayMs: number, signal: AbortSignal | undefined): Promise<void> {
+	if (delayMs <= 0) {
+		return;
+	}
+	await new Promise<void>((resolve, reject) => {
+		if (signal?.aborted) {
+			reject(abortErrorFor(signal));
+			return;
+		}
+		const timeout = setTimeout(resolve, delayMs);
+		signal?.addEventListener(
+			'abort',
+			() => {
+				clearTimeout(timeout);
+				reject(abortErrorFor(signal));
+			},
+			{ once: true },
+		);
+	});
 }
 
 export async function deleteSessionTree(

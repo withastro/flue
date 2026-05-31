@@ -182,6 +182,7 @@ export class Harness implements FlueHarness {
 					: this.config.model,
 			thinkingLevel: taskAgent?.thinkingLevel ?? this.config.thinkingLevel,
 			compaction: taskAgent?.compaction ?? this.config.compaction,
+			modelRetries: taskAgent?.modelRetries ?? this.config.modelRetries,
 		};
 		const storageKey = createSessionStorageKey(this.instanceId, this.name, sessionName);
 		const affinityKey = createSessionAffinityKey(this.instanceId, this.name, sessionName);

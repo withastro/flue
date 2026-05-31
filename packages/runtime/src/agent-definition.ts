@@ -19,6 +19,7 @@ const AGENT_PROFILE_FIELDS = new Set([
 	'subagents',
 	'thinkingLevel',
 	'compaction',
+	'modelRetries',
 ]);
 
 const AGENT_RUNTIME_FIELDS = new Set([
@@ -48,6 +49,7 @@ const AgentProfileSchema = v.looseObject({
 	subagents: v.optional(v.array(v.unknown())),
 	thinkingLevel: v.optional(v.string()),
 	compaction: v.optional(v.union([v.literal(false), v.looseObject({})])),
+	modelRetries: v.optional(v.union([v.literal(false), v.looseObject({})])),
 });
 
 /**
@@ -105,6 +107,7 @@ export function resolveAgentProfile(options: AgentRuntimeConfig | undefined): Ag
 			? options?.thinkingLevel
 			: profile?.thinkingLevel,
 		compaction: hasOwn(options, 'compaction') ? options?.compaction : profile?.compaction,
+		modelRetries: hasOwn(options, 'modelRetries') ? options?.modelRetries : profile?.modelRetries,
 	};
 }
 
@@ -173,6 +176,7 @@ function assertAgentProfile(
 		assertNonEmptyString(definition.description, `${label} description`);
 	assertThinkingLevel(definition.thinkingLevel, label);
 	assertCompaction(definition.compaction, label);
+	assertModelRetries(definition.modelRetries, label);
 	assertTools(definition.tools, label);
 	assertSkills(definition.skills, label);
 	assertSubagents(definition.subagents, label, activeDefinitions);
@@ -213,6 +217,45 @@ function assertCompaction(definition: AgentProfile['compaction'], label: string)
 	assertTokenCount(definition.keepRecentTokens, `${label} compaction.keepRecentTokens`);
 	if (definition.model !== undefined && typeof definition.model !== 'string') {
 		throw new Error(`[flue] ${label} compaction.model must be a string.`);
+	}
+}
+
+function assertModelRetries(definition: AgentProfile['modelRetries'], label: string): void {
+	if (definition === undefined || definition === false) {
+		return;
+	}
+
+	for (const key of Object.keys(definition)) {
+		if (key !== 'maxRetries' && key !== 'initialDelayMs' && key !== 'maxDelayMs' && key !== 'backoffFactor') {
+			throw new Error(`[flue] ${label} modelRetries received unknown field "${key}".`);
+		}
+	}
+	assertRetryCount(definition.maxRetries, `${label} modelRetries.maxRetries`);
+	assertRetryDelay(definition.initialDelayMs, `${label} modelRetries.initialDelayMs`);
+	assertRetryDelay(definition.maxDelayMs, `${label} modelRetries.maxDelayMs`);
+	if (
+		definition.backoffFactor !== undefined &&
+		(!Number.isFinite(definition.backoffFactor) || definition.backoffFactor < 1)
+	) {
+		throw new Error(`[flue] ${label} modelRetries.backoffFactor must be a finite number greater than or equal to 1.`);
+	}
+}
+
+function assertRetryCount(value: number | undefined, label: string): void {
+	if (value === undefined) {
+		return;
+	}
+	if (!Number.isInteger(value) || value < 0) {
+		throw new Error(`[flue] ${label} must be a non-negative integer.`);
+	}
+}
+
+function assertRetryDelay(value: number | undefined, label: string): void {
+	if (value === undefined) {
+		return;
+	}
+	if (!Number.isFinite(value) || value < 0) {
+		throw new Error(`[flue] ${label} must be a finite non-negative number.`);
 	}
 }
 
