@@ -32,7 +32,7 @@ Build and development target. This option is required unless `--target` is passe
 - **Type:** `string`
 - **Default:** directory containing the selected `flue.config.*` file, or the selected search directory when no configuration file is loaded
 
-Project root. Relative values loaded from a configuration file resolve from the directory containing that file.
+Project root. Must not be empty. Relative values loaded from a configuration file resolve from the directory containing that file.
 
 Flue uses the first matching source location:
 
@@ -45,7 +45,7 @@ Flue uses the first matching source location:
 - **Type:** `string`
 - **Default:** `<root>/dist`
 
-Build output directory. Relative values loaded from a configuration file resolve from the directory containing that file, not from `root`.
+Build output directory. Must not be empty. Relative values loaded from a configuration file resolve from the directory containing that file, not from `root`.
 
 ## `defineConfig()`
 

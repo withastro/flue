@@ -27,18 +27,19 @@ export interface UserFlueConfig {
 	 */
 	target?: 'node' | 'cloudflare';
 	/**
-	 * Project root. Relative values loaded from a configuration file resolve
-	 * from the directory containing that file. Defaults to that directory, or
-	 * to the search directory when no configuration file is loaded.
+	 * Project root. Must not be empty. Relative values loaded from a
+	 * configuration file resolve from the directory containing that file.
+	 * Defaults to that directory, or to the search directory when no
+	 * configuration file is loaded.
 	 *
 	 * Flue uses `<root>/.flue` when it exists as a directory, otherwise
 	 * `<root>/src` when it exists as a directory, otherwise `<root>`.
 	 */
 	root?: string;
 	/**
-	 * Build output directory. Relative values loaded from a configuration file
-	 * resolve from the directory containing that file, not from
-	 * {@link UserFlueConfig.root}. Defaults to `<root>/dist`.
+	 * Build output directory. Must not be empty. Relative values loaded from a
+	 * configuration file resolve from the directory containing that file, not
+	 * from {@link UserFlueConfig.root}. Defaults to `<root>/dist`.
 	 */
 	output?: string;
 }
@@ -75,13 +76,12 @@ export function defineConfig(config: UserFlueConfig): UserFlueConfig {
 
 const TargetSchema = v.picklist(['node', 'cloudflare'] as const);
 
-// TODO: Decide whether empty `root` and `output` strings should be rejected or
-// resolved as relative paths. They currently pass validation but fall back as
-// though unset during path resolution.
+const NonEmptyPathSchema = v.pipe(v.string(), v.minLength(1, 'Path must not be empty.'));
+
 const UserFlueConfigSchema = v.strictObject({
 	target: v.optional(TargetSchema),
-	root: v.optional(v.string()),
-	output: v.optional(v.string()),
+	root: v.optional(NonEmptyPathSchema),
+	output: v.optional(NonEmptyPathSchema),
 });
 
 // ─── Discovery ──────────────────────────────────────────────────────────────
