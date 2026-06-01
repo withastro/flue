@@ -35,6 +35,10 @@
 		"./node": {
 			"types": "./dist/node/index.d.mts",
 			"import": "./dist/node/index.mjs"
+		},
+		"./node/bedrock": {
+			"types": "./dist/node/bedrock.d.mts",
+			"import": "./dist/node/bedrock.mjs"
 		}
 	},
 	"main": "./dist/index.mjs",
@@ -44,7 +48,7 @@
 		"types"
 	],
 	"engines": {
-		"node": ">=22.18.0"
+		"node": ">=22.19.0"
 	},
 	"scripts": {
 		"build": "tsdown",
@@ -56,8 +60,8 @@
 		"prepublishOnly": "cp ../../README.md ."
 	},
 	"dependencies": {
-		"@earendil-works/pi-agent-core": "*",
-		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-agent-core": "0.75.4",
+		"@earendil-works/pi-ai": "0.75.4",
 		"@hono/node-server": "^2.0.3",
 		"@hono/standard-validator": "^0.2.0",
 		"@modelcontextprotocol/sdk": "^1.29.0",

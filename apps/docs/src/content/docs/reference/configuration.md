@@ -3,13 +3,14 @@ title: Configuration
 description: Reference for flue.config.ts options.
 ---
 
-Use `flue.config.ts` to select the build target, project root, and build output directory. Import `defineConfig()` from `@flue/cli/config` for type checking and editor completion:
+Use `flue.config.ts` to select the build target, project root, build output directory, and built-in provider transports included in the artifact. Import `defineConfig()` from `@flue/cli/config` for type checking and editor completion:
 
 ```ts title="flue.config.ts"
 import { defineConfig } from '@flue/cli/config';
 
 export default defineConfig({
   target: 'node',
+  providers: ['anthropic'],
 });
 ```
 
@@ -46,6 +47,17 @@ Flue uses the first matching source location:
 - **Default:** `<root>/dist`
 
 Build output directory. Must not be empty. Relative values loaded from a configuration file resolve from the directory containing that file, not from `root`.
+
+## `providers`
+
+- **Type:** `BuiltInProvider[]`
+- **Default:** `[]`
+
+Built-in model providers whose SDK-backed transports are included in the artifact. Add every catalog-backed provider ID used by your application, such as `'anthropic'`, `'openai'`, or `'openrouter'`. Cloudflare builds include Flue's binding-backed `cloudflare/...` provider automatically.
+
+Runtime provider registration remains separate. When `registerProvider(...)` uses a built-in API such as `openai-completions`, include a built-in provider that enables that transport, such as `'openai'`.
+
+`'amazon-bedrock'` is supported only by Node builds. Selecting it includes Pi's Bedrock adapter and the AWS SDK in the generated artifact.
 
 ## `defineConfig()`
 

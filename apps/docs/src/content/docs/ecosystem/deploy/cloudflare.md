@@ -30,6 +30,14 @@ npm install -D @flue/cli wrangler
 
 ### 2. Create your first agent
 
+`flue.config.ts`:
+
+```ts
+import { defineConfig } from '@flue/cli/config';
+
+export default defineConfig({ providers: ['anthropic'] });
+```
+
 `.flue/workflows/translate.ts`:
 
 ```typescript
@@ -172,6 +180,8 @@ await session.task('Help me reset my password', { agent: 'triager' });
 
 ## Using the sandbox
 
+The example below uses OpenAI. Add `'openai'` to `providers` in `flue.config.ts` before running it.
+
 By default, the virtual sandbox starts empty — no files, no skills, no context. This is fine for stateless prompt-and-response agents like the translator above. But many agents need files to work with.
 
 Because the agent has shell access, it can set up its own workspace on the fly:
@@ -207,6 +217,8 @@ EOF`);
 The agent can use its built-in tools — grep, glob, read — to search and read these files. This is still running on a virtual sandbox (no container), so it's fast and cheap.
 
 ## Support agents with context files
+
+The example below uses OpenRouter. Add `'openrouter'` to `providers` in `flue.config.ts` before running it.
 
 For support agents, you can seed Flue's default virtual sandbox with the knowledge required for a request. The agent can search and read these files using its built-in `grep`, `glob`, and `read` tools without provisioning a container or installing a connector.
 

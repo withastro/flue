@@ -22,6 +22,14 @@ npm install -D @flue/cli
 
 ### 2. Create your first agent
 
+`flue.config.ts`:
+
+```ts
+import { defineConfig } from '@flue/cli/config';
+
+export default defineConfig({ providers: ['anthropic'] });
+```
+
 `.flue/workflows/hello.ts`:
 
 ```typescript

@@ -11,6 +11,10 @@ import { pathToFileURL } from 'node:url';
 import * as v from 'valibot';
 import { CONFIG_BASENAMES } from './config-paths.ts';
 import { resolveSourceRoot } from './source-root.ts';
+import {
+	BUILT_IN_PROVIDERS,
+	type BuiltInProvider,
+} from './vite-pi-ai-provider-allowlist-plugin.ts';
 
 // ─── Public API ─────────────────────────────────────────────────────────────
 
@@ -45,6 +49,12 @@ export interface UserFlueConfig {
 	 * do not resolve from {@link UserFlueConfig.root}. Defaults to `<root>/dist`.
 	 */
 	output?: string;
+	/**
+	 * Built-in model providers whose SDK-backed transports are included in the
+	 * artifact. Defaults to `[]`. Cloudflare builds include Flue's binding-backed
+	 * `cloudflare/...` provider separately.
+	 */
+	providers?: BuiltInProvider[];
 }
 
 /** Fully resolved configuration returned by {@link resolveConfig}. */
@@ -57,6 +67,8 @@ export interface FlueConfig {
 	sourceRoot: string;
 	/** Absolute build-output path. */
 	output: string;
+	/** Built-in model providers whose SDK-backed transports are included in the build. */
+	providers: BuiltInProvider[];
 }
 
 /**
@@ -79,12 +91,15 @@ export function defineConfig(config: UserFlueConfig): UserFlueConfig {
 
 const TargetSchema = v.picklist(['node', 'cloudflare'] as const);
 
+const BuiltInProviderSchema = v.picklist(BUILT_IN_PROVIDERS);
+
 const NonEmptyPathSchema = v.pipe(v.string(), v.minLength(1, 'Path must not be empty.'));
 
 const UserFlueConfigSchema = v.strictObject({
 	target: v.optional(TargetSchema),
 	root: v.optional(NonEmptyPathSchema),
 	output: v.optional(NonEmptyPathSchema),
+	providers: v.optional(v.array(BuiltInProviderSchema)),
 });
 
 // ─── Discovery ──────────────────────────────────────────────────────────────
@@ -137,7 +152,7 @@ export function resolveConfigPath(opts: ResolveConfigPathOptions): string | unde
 /**
  * Load a config file's `default` export. We rely on Node's native dynamic
  * `import()` for everything: plain JS, ESM, and TypeScript via type-stripping
- * (Node ≥ 22.18 / ≥ 23.6 enable this by default). The CLI's bin entrypoint
+ * (Node ≥ 22.19 enables this by default). The CLI's bin entrypoint
  * pre-validates the Node version, so by the time we reach this function the
  * runtime is known to support the formats we accept.
  *
@@ -173,7 +188,7 @@ async function loadConfigModule(absConfigPath: string): Promise<unknown> {
 			throw new Error(
 				`[flue] Cannot load ${path.basename(absConfigPath)}: this Node ` +
 					`(v${process.versions.node}) does not support TypeScript natively. ` +
-					`Upgrade to Node ≥ 22.18 or ≥ 23.6.`,
+					`Upgrade to Node ≥ 22.19.`,
 			);
 		}
 		throw err;
@@ -266,6 +281,7 @@ export async function resolveConfig(opts: ResolveConfigOptions): Promise<Resolve
 		target: inline.target ?? fileConfig.target,
 		root: inline.root ?? fileConfig.root,
 		output: inline.output ?? fileConfig.output,
+		providers: inline.providers ?? fileConfig.providers,
 	};
 
 	// Resolve target. The one field with no sensible default — surface a clear
@@ -300,6 +316,7 @@ export async function resolveConfig(opts: ResolveConfigOptions): Promise<Resolve
 			root,
 			sourceRoot,
 			output,
+			providers: merged.providers ?? [],
 		},
 	};
 }

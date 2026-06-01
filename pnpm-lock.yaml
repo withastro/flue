@@ -140,7 +140,7 @@ importers:
         specifier: ^4.29.0
         version: 4.29.0(ai@6.0.191(zod@4.4.3))(zod@4.4.3)
       '@earendil-works/pi-ai':
-        specifier: '*'
+        specifier: 0.75.4
         version: 0.75.4(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
       '@flue/runtime':
         specifier: workspace:*
@@ -355,10 +355,10 @@ importers:
   packages/runtime:
     dependencies:
       '@earendil-works/pi-agent-core':
-        specifier: '*'
+        specifier: 0.75.4
         version: 0.75.4(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
       '@earendil-works/pi-ai':
-        specifier: '*'
+        specifier: 0.75.4
         version: 0.75.4(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
       '@hono/node-server':
         specifier: ^2.0.3

@@ -42,6 +42,18 @@ describe('Node build plugin', () => {
 		expect(dispatchQueueBody).not.toContain('runRegistry');
 	});
 
+	it('injects the public Pi Bedrock provider module when configured', () => {
+		const entry = new NodePlugin().generateEntryPoint({
+			...testBuildContext(),
+			options: {
+				...testBuildContext().options,
+				providers: ['amazon-bedrock'],
+			},
+		});
+
+		expect(entry).toContain("import '@flue/runtime/node/bedrock';");
+	});
+
 	it('builds and starts a Node server through the production Vite graph', async () => {
 		const root = createFixtureRoot('flue-vite-node-server-');
 		fs.mkdirSync(path.join(root, 'workflows'));
@@ -61,6 +73,55 @@ describe('Node build plugin', () => {
 		} finally {
 			child.kill('SIGTERM');
 		}
+	}, 15000);
+
+	it('bundles the AWS SDK when Amazon Bedrock is configured', async () => {
+		const root = createFixtureRoot('flue-vite-node-bedrock-provider-');
+		fs.mkdirSync(path.join(root, 'workflows'));
+		fs.writeFileSync(
+			path.join(root, 'workflows', 'smoke.ts'),
+			`export const route = async (_c, next) => next();\nexport async function run() { return { ok: true }; }\n`,
+		);
+		await build({ root, sourceRoot: root, target: 'node', providers: ['amazon-bedrock'] });
+		const emittedJavaScript = readEmittedJavaScript(path.join(root, 'dist'));
+		expect(emittedJavaScript).toContain('BedrockRuntimeClient');
+		expect(emittedJavaScript).not.toContain('importNodeOnlyProvider("./amazon-bedrock.ts")');
+	}, 15000);
+
+	it('reports when a built-in provider was not included in the build', async () => {
+		const root = createFixtureRoot('flue-vite-node-provider-allowlist-');
+		fs.mkdirSync(path.join(root, 'workflows'));
+		fs.writeFileSync(
+			path.join(root, 'workflows', 'prompt.ts'),
+			`import { createAgent, type FlueContext } from '@flue/runtime';\nexport const route = async (_c, next) => next();\nconst agent = createAgent(() => ({ model: 'anthropic/claude-haiku-4-5' }));\nexport async function run({ init }: FlueContext) { const harness = await init(agent); const session = await harness.session(); return session.prompt('hello'); }\n`,
+		);
+		await build({ root, sourceRoot: root, target: 'node' });
+		const emittedJavaScript = readEmittedJavaScript(path.join(root, 'dist'));
+		expect(emittedJavaScript).toContain('is not included in this build. Add "anthropic"');
+		expect(emittedJavaScript).toContain('to providers in flue.config.ts.');
+
+		const { child, port } = await startGeneratedServer(root);
+		try {
+			const response = await fetch(`http://localhost:${port}/workflows/prompt?wait=result`, {
+				method: 'POST',
+			});
+			expect(response.status).toBe(500);
+			expect(await response.json()).toMatchObject({ error: { type: 'internal_error' } });
+		} finally {
+			child.kill('SIGTERM');
+		}
+	}, 15000);
+
+	it('recommends a built-in transport when a custom provider transport was omitted', async () => {
+		const root = createFixtureRoot('flue-vite-node-custom-provider-allowlist-');
+		fs.mkdirSync(path.join(root, 'workflows'));
+		fs.writeFileSync(
+			path.join(root, 'workflows', 'prompt.ts'),
+			`import { createAgent, registerProvider, type FlueContext } from '@flue/runtime';\nregisterProvider('ollama', { api: 'openai-completions', baseUrl: 'http://localhost:11434/v1' });\nexport const route = async (_c, next) => next();\nconst agent = createAgent(() => ({ model: 'ollama/llama3.1:8b' }));\nexport async function run({ init }: FlueContext) { const harness = await init(agent); const session = await harness.session(); return session.prompt('hello'); }\n`,
+		);
+		await build({ root, sourceRoot: root, target: 'node' });
+		const emittedJavaScript = readEmittedJavaScript(path.join(root, 'dist'));
+		expect(emittedJavaScript).toContain('is not included in this build. Add "openai"');
 	}, 15000);
 
 	it('builds attributed Markdown imports as text through the production Node graph', async () => {
@@ -686,6 +747,14 @@ describe('Node build plugin', () => {
 		}
 	});
 });
+
+function readEmittedJavaScript(output: string): string {
+	return fs
+		.readdirSync(output, { recursive: true })
+		.filter((entry) => /\.[cm]?js$/.test(String(entry)))
+		.map((entry) => fs.readFileSync(path.join(output, String(entry)), 'utf8'))
+		.join('\n');
+}
 
 function createFixtureRoot(prefix: string): string {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));

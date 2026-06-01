@@ -49,7 +49,7 @@ describe('packed example release shape', () => {
 		);
 		fs.writeFileSync(
 			path.join(root, 'flue.config.ts'),
-			`import { defineConfig } from '@flue/cli/config';\nexport default defineConfig({ target: process.env.RELEASE_TARGET === 'node' ? 'node' : undefined, output: process.env.RELEASE_OUTPUT });\n`,
+			`import { defineConfig } from '@flue/cli/config';\nexport default defineConfig({ target: process.env.RELEASE_TARGET === 'node' ? 'node' : undefined, output: process.env.RELEASE_OUTPUT, providers: ['anthropic'] });\n`,
 		);
 		const wranglerConfig = JSON.parse(
 			fs.readFileSync(path.join(root, 'wrangler.jsonc'), 'utf8'),
@@ -152,7 +152,7 @@ function createPackedExample(name: string, keepCustomBash: boolean): string {
 		dependencies: Record<string, string>;
 		devDependencies: Record<string, string>;
 	};
-	packageJson.dependencies['@earendil-works/pi-ai'] = '*';
+	packageJson.dependencies['@earendil-works/pi-ai'] = '0.75.4';
 	packageJson.dependencies['@flue/runtime'] = `file:${runtimeTarball}`;
 	packageJson.devDependencies['@flue/cli'] = `file:${cliTarball}`;
 	const wranglerPath = path.join(root, 'wrangler.jsonc');

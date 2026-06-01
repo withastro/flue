@@ -23,6 +23,7 @@ import {
 } from './build.ts';
 import { createEnvLoader, type EnvLoader, selectEnvFile } from './env.ts';
 import type { BuildOptions } from './types.ts';
+import type { BuiltInProvider } from './vite-pi-ai-provider-allowlist-plugin.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -35,6 +36,7 @@ export interface DevOptions {
 	 */
 	output?: string;
 	target: 'node' | 'cloudflare';
+	providers?: readonly BuiltInProvider[];
 	/** Defaults to 3583 ("FLUE" on a phone keypad). */
 	port?: number;
 	envFile?: string;
@@ -100,6 +102,7 @@ export async function dev(options: DevOptions): Promise<void> {
 		sourceRoot,
 		output,
 		target: options.target,
+		providers: options.providers,
 		mode: options.target === 'cloudflare' ? 'development' : 'build',
 	};
 
@@ -125,7 +128,7 @@ export async function dev(options: DevOptions): Promise<void> {
 	const reloader: DevReloader =
 		options.target === 'node'
 			? new NodeReloader({ root, output, port })
-			: await createCloudflareReloader({ root, sourceRoot, port });
+			: await createCloudflareReloader({ root, sourceRoot, port, providers: options.providers });
 
 	await reloader.start();
 
@@ -528,6 +531,7 @@ async function createCloudflareReloader(opts: {
 	root: string;
 	sourceRoot: string;
 	port: number;
+	providers?: readonly BuiltInProvider[];
 }): Promise<DevReloader> {
 	return new CloudflareReloader(opts);
 }
@@ -537,14 +541,21 @@ class CloudflareReloader implements DevReloader {
 	private readonly root: string;
 	private readonly sourceRoot: string;
 	private readonly port: number;
+	private readonly providers?: readonly BuiltInProvider[];
 	private readonly configPath: string;
 	private readonly entryPath: string;
 	url?: string;
 
-	constructor(opts: { root: string; sourceRoot: string; port: number }) {
+	constructor(opts: {
+		root: string;
+		sourceRoot: string;
+		port: number;
+		providers?: readonly BuiltInProvider[];
+	}) {
 		this.root = opts.root;
 		this.sourceRoot = opts.sourceRoot;
 		this.port = opts.port;
+		this.providers = opts.providers;
 		const inputDir = cloudflareViteInputDir(opts.root);
 		this.configPath = cloudflareViteConfigPath(opts.root);
 		this.entryPath = path.join(inputDir, '_entry.ts');
@@ -553,7 +564,9 @@ class CloudflareReloader implements DevReloader {
 	async start(): Promise<void> {
 		const { createServer } = await import('vite');
 		this.server = await createServer({
-			...createCloudflareViteConfig(this.root, this.configPath, [this.entryPath]),
+			...createCloudflareViteConfig(this.root, this.configPath, [this.entryPath], {
+				providers: this.providers,
+			}),
 			logLevel: 'info',
 			server: { host: '127.0.0.1', port: this.port, strictPort: true },
 		});

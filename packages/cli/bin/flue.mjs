@@ -21,8 +21,8 @@
 // (that's a recent feature) and don't want to fall back to fs+JSON.parse for
 // what's essentially a build-time constant.
 const MIN_NODE_MAJOR = 22;
-const MIN_NODE_MINOR = 18;
-const ENGINES_LABEL = '>=22.18';
+const MIN_NODE_MINOR = 19;
+const ENGINES_LABEL = '>=22.19';
 
 function checkNodeVersion() {
 	const v = process.versions.node;

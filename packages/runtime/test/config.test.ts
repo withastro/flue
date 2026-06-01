@@ -30,6 +30,23 @@ describe('authored config paths', () => {
 
 		expect(flueConfig.root).toBe(root);
 		expect(flueConfig.output).toBe(path.join(root, 'dist'));
+		expect(flueConfig.providers).toEqual([]);
+	});
+
+	it('resolves built-in provider allowlists', async () => {
+		const root = createFixtureRoot();
+		writeConfig(root, `export default { target: 'node', providers: ['anthropic', 'openai'] };\n`);
+
+		const { flueConfig } = await resolveConfig({ cwd: root });
+
+		expect(flueConfig.providers).toEqual(['anthropic', 'openai']);
+	});
+
+	it('rejects unsupported built-in providers', async () => {
+		const root = createFixtureRoot();
+		writeConfig(root, `export default { target: 'node', providers: ['unsupported'] };\n`);
+
+		await expect(resolveConfig({ cwd: root })).rejects.toThrow(/Invalid config[\s\S]*providers\.0:/);
 	});
 
 	it('resolves relative paths from the config directory', async () => {

@@ -1,3 +1,3 @@
 import { defineConfig } from '@flue/cli/config';
 
-export default defineConfig({});
+export default defineConfig({ providers: ['anthropic'] });

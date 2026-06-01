@@ -1042,6 +1042,7 @@ async function buildCommand(args: BuildArgs) {
 			sourceRoot: cfg.sourceRoot,
 			output: cfg.output,
 			target: cfg.target,
+			providers: cfg.providers,
 		});
 	} catch (err) {
 		console.error(`[flue] Build failed:`, err instanceof Error ? err.message : String(err));
@@ -1071,6 +1072,7 @@ async function devCommand(args: DevArgs) {
 			sourceRoot: cfg.sourceRoot,
 			output: cfg.output,
 			target: cfg.target,
+			providers: cfg.providers,
 			port: args.port || undefined,
 			envFile: envLoader.file,
 			envLoader,
@@ -1220,6 +1222,7 @@ async function buildLocalTarget(
 			sourceRoot: cfg.sourceRoot,
 			output: cfg.output,
 			target: cfg.target,
+			providers: cfg.providers,
 		});
 	} catch (err) {
 		console.error(`[flue] Build failed:`, err instanceof Error ? err.message : String(err));

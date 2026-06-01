@@ -51,6 +51,14 @@ describe('Cloudflare Vite production Worker', () => {
 		);
 		expect(outputEntry).toContain('devMode: false,');
 		expect(outputEntry).not.toContain('devMode: true,');
+		const emittedJavaScript = fs
+			.readdirSync(path.dirname(outputConfigPath), { recursive: true })
+			.filter((entry) => /\.[cm]?js$/.test(String(entry)))
+			.map((entry) => fs.readFileSync(path.join(path.dirname(outputConfigPath), String(entry)), 'utf8'))
+			.join('\n');
+		expect(emittedJavaScript).not.toContain('@anthropic-ai/sdk');
+		expect(emittedJavaScript).not.toContain('@google/genai');
+		expect(emittedJavaScript).not.toContain('@mistralai/mistralai');
 		expect(JSON.stringify(outputConfig.migrations)).not.toContain('flue-class-');
 		const deployRedirect = JSON.parse(
 			fs.readFileSync(path.join(root, '.wrangler', 'deploy', 'config.json'), 'utf8'),

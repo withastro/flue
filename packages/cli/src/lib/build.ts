@@ -7,6 +7,7 @@ import { CloudflarePlugin } from './build-plugin-cloudflare.ts';
 import { NodePlugin } from './build-plugin-node.ts';
 import type { AgentInfo, BuildContext, BuildOptions, BuildPlugin, WorkflowInfo } from './types.ts';
 import { markdownImportPlugin } from './vite-markdown-import-plugin.ts';
+import { piAiProviderAllowlistPlugin } from './vite-pi-ai-provider-allowlist-plugin.ts';
 import { skillReferencePlugin } from './vite-skill-reference-plugin.ts';
 
 /**
@@ -104,7 +105,7 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 			const pluginExternal = plugin.external ?? [];
 			const userExternals = getUserExternals(root);
 			const { build: viteBuild } = await import('vite');
-			const sharedViteConfig = createSharedViteConfig(root, [entryPath]);
+			const sharedViteConfig = createSharedViteConfig(root, [entryPath], options.providers);
 			await viteBuild({
 				...sharedViteConfig,
 				logLevel: 'warn',
@@ -164,7 +165,9 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 		}
 		const generatedConfigPath = cloudflareViteConfigPath(root);
 		const { createBuilder } = await import('vite');
-		const viteConfig = createCloudflareViteConfig(root, generatedConfigPath, [entryPath]);
+		const viteConfig = createCloudflareViteConfig(root, generatedConfigPath, [entryPath], {
+			providers: options.providers,
+		});
 		await withTemporaryProcessEnv({ NODE_ENV: 'production' }, async () => {
 			const builder = await createBuilder({
 				...viteConfig,
@@ -328,7 +331,12 @@ function getUserExternals(root: string): string[] {
 			...pkg.dependencies,
 			...pkg.devDependencies,
 			...pkg.peerDependencies,
-		}).filter((name) => name !== '@flue/runtime');
+		}).filter(
+			(name) =>
+				name !== '@flue/runtime' &&
+				name !== '@earendil-works/pi-ai' &&
+				name !== '@earendil-works/pi-agent-core',
+		);
 		return deps.flatMap((name) => [name, `${name}/*`]);
 	} catch {
 		return [];
@@ -343,11 +351,19 @@ export function cloudflareViteConfigPath(root: string): string {
 	return path.join(root, '.flue-vite.wrangler.jsonc');
 }
 
-function createSharedViteConfig(root: string, bootstrapEntries: readonly string[] = []) {
+function createSharedViteConfig(
+	root: string,
+	bootstrapEntries: readonly string[] = [],
+	providers: BuildOptions['providers'] = [],
+) {
 	return {
 		configFile: false as const,
 		root,
-		plugins: [markdownImportPlugin(), skillReferencePlugin({ root, bootstrapEntries })],
+		plugins: [
+			markdownImportPlugin(),
+			piAiProviderAllowlistPlugin(providers),
+			skillReferencePlugin({ root, bootstrapEntries }),
+		],
 	};
 }
 
@@ -355,9 +371,9 @@ export function createCloudflareViteConfig(
 	root: string,
 	configPath: string,
 	bootstrapEntries: readonly string[] = [],
-	options: { persistState?: boolean } = {},
+	options: { persistState?: boolean; providers?: BuildOptions['providers'] } = {},
 ) {
-	const sharedConfig = createSharedViteConfig(root, bootstrapEntries);
+	const sharedConfig = createSharedViteConfig(root, bootstrapEntries, options.providers);
 	return {
 		...sharedConfig,
 		plugins: [

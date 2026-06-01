@@ -41,6 +41,9 @@ export class CloudflarePlugin implements BuildPlugin {
 	async generateEntryPoint(ctx: BuildContext): Promise<string> {
 		const { agents, appEntry, workflows } = ctx;
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
+		if (ctx.options.providers?.includes('amazon-bedrock')) {
+			throw new Error('[flue] Provider "amazon-bedrock" is supported only by the Node target.');
+		}
 		validateCloudflareAgentNames(ctx);
 
 		const agentImports = agents

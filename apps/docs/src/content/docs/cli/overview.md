@@ -11,7 +11,7 @@ npm install --save-dev @flue/cli
 npx flue dev
 ```
 
-The CLI requires Node.js `>=22.18.0`. Cloudflare development and deployment also require `wrangler` as a development dependency.
+The CLI requires Node.js `>=22.19.0`. Cloudflare development and deployment also require `wrangler` as a development dependency.
 
 ## Commands
 

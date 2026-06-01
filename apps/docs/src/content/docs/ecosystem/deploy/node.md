@@ -30,6 +30,14 @@ npm install -D @flue/cli
 
 ### 2. Create your first agent
 
+`flue.config.ts`:
+
+```ts
+import { defineConfig } from '@flue/cli/config';
+
+export default defineConfig({ providers: ['openai'] });
+```
+
 `.flue/workflows/translate.ts`:
 
 ```typescript
@@ -185,6 +193,8 @@ const { data } = await session.skill('summarize', {
 ```
 
 ## Using the local sandbox
+
+The example below uses Anthropic. Add `'anthropic'` to `providers` in `flue.config.ts` before running it.
 
 `local()` is where Node really shines compared to other targets. The agent runs directly against the host filesystem and shell — `cwd` is `process.cwd()`, shell commands go through `child_process`, and `AGENTS.md` and skills are discovered from the project root.
 

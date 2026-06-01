@@ -55,7 +55,7 @@ function registerProvider(providerId: string, registration: ProviderRegistration
 
 Registers a model provider keyed by the provider ID used in model specifiers. Re-registering the same provider ID replaces its previous registration.
 
-For example, registering `ollama` makes model specifiers such as `ollama/llama3.1:8b` available to agents and operations.
+For example, registering `ollama` makes model specifiers such as `ollama/llama3.1:8b` available to agents and operations. Include `'openai'` in the `providers` array in `flue.config.ts` so the build contains the OpenAI-compatible transport used below.
 
 ```ts
 registerProvider('ollama', {

@@ -10,6 +10,7 @@ export default defineConfig({
 		'src/internal.ts',
 		'src/cloudflare/index.ts',
 		'src/node/index.ts',
+		'src/node/bedrock.ts',
 	],
 	format: ['esm'],
 	dts: true,

@@ -65,7 +65,7 @@ A provider is the service through which Flue reaches a model. A model may be ava
 
 ### Authentication
 
-Most hosted providers require credentials before they will accept model requests. Flue uses the provider integrations from [Pi](https://pi.dev/docs/latest/providers), including their standard environment-variable conventions. For built-in providers, making the expected credential available to your running application is normally all that is required:
+Most hosted providers require credentials before they will accept model requests. Flue uses the provider integrations from [Pi](https://pi.dev/docs/latest/providers), including their standard environment-variable conventions. Include each built-in provider transport in `flue.config.ts`, then make its expected credential available to your running application:
 
 | Provider ID  | Environment variable |
 | ------------ | -------------------- |
@@ -79,7 +79,18 @@ Some provider paths authenticate through their platform integration instead of a
 
 ### Built-in providers
 
-Flue includes Pi's catalog-backed providers and models. To use a built-in provider, choose one of its supported model specifiers and make its required credentials available at runtime; you do not need to register the provider in application code.
+Flue includes Pi's catalog-backed providers and models. Their SDK-backed transports are opt-in so builds only include providers the application uses. Add each built-in provider ID to `providers` in `flue.config.ts`:
+
+```ts title="flue.config.ts"
+import { defineConfig } from '@flue/cli/config';
+
+export default defineConfig({
+  target: 'node',
+  providers: ['anthropic'],
+});
+```
+
+Then choose one of that provider's model specifiers and make its required credentials available at runtime. You do not need to register built-in providers in application code. Cloudflare builds include Flue's binding-backed `cloudflare/...` provider automatically. Amazon Bedrock is available only on Node; selecting `'amazon-bedrock'` includes Pi's Bedrock adapter and the AWS SDK in the generated artifact. Bedrock uses the standard AWS credential chain and region configuration, such as `AWS_REGION` and `AWS_PROFILE`, rather than a single provider API key.
 
 See Pi's [provider documentation](https://pi.dev/docs/latest/providers) for the built-in providers, their supported authentication variables, and their model catalog.
 
@@ -113,7 +124,7 @@ app.route('/', flue());
 export default app;
 ```
 
-A provider override can change its endpoint, API key, or headers without changing the provider ID used in your model specifiers. It can also opt into hosted response persistence for supported OpenAI Responses API providers. Keep this runtime setup in `app.ts` rather than repeating it in agents or individual operations.
+A provider override can change its endpoint, API key, or headers without changing the provider ID used in your model specifiers. It can also opt into hosted response persistence for supported OpenAI Responses API providers. Keep this runtime setup in `app.ts` rather than repeating it in agents or individual operations. Include the built-in provider in `flue.config.ts` as described above.
 
 ### Custom providers
 
@@ -135,6 +146,16 @@ const app = new Hono();
 app.route('/', flue());
 
 export default app;
+```
+
+Include the built-in OpenAI-compatible transport in `flue.config.ts`:
+
+```ts title="flue.config.ts"
+import { defineConfig } from '@flue/cli/config';
+
+export default defineConfig({
+  providers: ['openai'],
+});
 ```
 
 The registered provider ID is now available anywhere you select a model:

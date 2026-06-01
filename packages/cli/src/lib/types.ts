@@ -7,6 +7,8 @@
  * build/dev tooling moved from `@flue/sdk` into `@flue/cli` so the runtime
  * package would stop carrying tooling types.
  */
+import type { BuiltInProvider } from './vite-pi-ai-provider-allowlist-plugin.ts';
+
 export interface AgentInfo {
 	name: string;
 	filePath: string;
@@ -102,6 +104,8 @@ export interface BuildOptions {
 	 */
 	output?: string;
 	target?: 'node' | 'cloudflare';
+	/** Built-in model providers whose SDK-backed transports are included in the build. */
+	providers?: readonly BuiltInProvider[];
 	mode?: 'build' | 'development';
 	/** Overrides `target` when provided. */
 	plugin?: BuildPlugin;

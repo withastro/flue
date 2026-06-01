@@ -168,6 +168,15 @@ describe('Cloudflare build plugin', () => {
 		expect(entry).not.toContain('Custom app.ts WebSocket mounting is not yet supported.');
 	});
 
+	it('rejects the Node-only Amazon Bedrock provider', async () => {
+		await expect(
+			new CloudflarePlugin().generateEntryPoint({
+				...testBuildContext(),
+				options: { ...testBuildContext().options, providers: ['amazon-bedrock'] },
+			}),
+		).rejects.toThrow('Provider "amazon-bedrock" is supported only by the Node target.');
+	});
+
 	it('emits packaged skill wiring for the production Worker graph', async () => {
 		const entry = await new CloudflarePlugin().generateEntryPoint(testBuildContext());
 		expect(entry).toContain("import { getPackagedSkills } from 'virtual:flue/packaged-skills';");
