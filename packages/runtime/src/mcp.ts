@@ -61,7 +61,12 @@ export async function connectMcpServer(
 
 	try {
 		await client.connect(transport);
-		const { tools } = await client.listTools();
+		let page = await client.listTools();
+		const tools = [...page.tools];
+		while (page.nextCursor !== undefined) {
+			page = await client.listTools({ cursor: page.nextCursor });
+			tools.push(...page.tools);
+		}
 
 		return {
 			name,
