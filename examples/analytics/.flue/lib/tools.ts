@@ -42,9 +42,9 @@ import { readSlackThread, searchSlack } from './slack.ts';
 const execFileAsync = promisify(execFile);
 
 export const DEFAULT_BQ_EXPLORE_SCRIPT =
-	'/Users/billgu/Workspace/evenup-internal-tools/apps/dbt-explorer-api/claude-copy/scripts/bq_explore/bq_explore.py';
+	'resources/scripts/bq_explore/bq_explore.py';
 export const DEFAULT_METABASE_CLI_SCRIPT =
-	'/Users/billgu/Workspace/evenup-internal-tools/apps/dbt-explorer-api/claude-copy/scripts/metabase/metabase-cli.py';
+	'resources/scripts/metabase/metabase-cli.py';
 
 export interface AnalyticsToolConfig {
 	manifestPath?: string;
@@ -66,7 +66,7 @@ export interface AnalyticsToolConfig {
 }
 
 export function createManifestTools(config: AnalyticsToolConfig = {}): ToolDef[] {
-	const manifestPath = config.manifestPath || process.env.DBT_MANIFEST_PATH || DEFAULT_MANIFEST_PATH;
+	const manifestPath = resolveRuntimePath(config.manifestPath || process.env.DBT_MANIFEST_PATH || DEFAULT_MANIFEST_PATH);
 
 	const searchManifestTool: ToolDef = {
 		name: 'search_manifest',
@@ -144,10 +144,95 @@ export function createManifestTools(config: AnalyticsToolConfig = {}): ToolDef[]
 	return [searchManifestTool, lineageTool, modelDetailsTool];
 }
 
+export function createMetabaseReadTools(config: AnalyticsToolConfig = {}): ToolDef[] {
+	const metabaseCliScript = resolveRuntimePath(
+		config.metabaseCliScript || process.env.METABASE_CLI_SCRIPT || DEFAULT_METABASE_CLI_SCRIPT,
+	);
+
+	const metabaseResearchTool: ToolDef = {
+		name: 'metabase_research',
+		description: 'Research existing Metabase cards by dbt model name or card id/name. Returns JSON.',
+		parameters: Type.Object({
+			model: Type.Optional(Type.String({ description: 'dbt model name to find cards for.' })),
+			card: Type.Optional(Type.String({ description: 'Metabase card ID or case-insensitive name.' })),
+			top: Type.Optional(Type.Number({ description: 'Maximum number of model results to return.' })),
+			includeSql: Type.Optional(Type.Boolean({ description: 'Include native SQL in results.' })),
+			refType: Type.Optional(
+				Type.String({ description: 'Optional filter: bookmarked_card or frequently_run_card.' }),
+			),
+		}),
+		execute: async (args, signal) => {
+			const model = optionalString(args.model, 'model');
+			const card = optionalString(args.card, 'card');
+			if ((!model && !card) || (model && card)) {
+				throw new Error('Provide exactly one of model or card.');
+			}
+			const refType = enumValue(args.refType, ['bookmarked_card', 'frequently_run_card'], 'refType');
+
+			if ((config.metabaseHarness || process.env.METABASE_HARNESS) === 'python') {
+				const commandArgs = [metabaseCliScript, 'research'];
+				if (model) commandArgs.push('--model', model);
+				if (card) commandArgs.push('--card', card);
+				if (args.top !== undefined) commandArgs.push('--top', String(boundedInteger(args.top, 'top', 1, 50, 10)));
+				if (args.includeSql) commandArgs.push('--sql');
+				if (refType) commandArgs.push('--ref-type', refType);
+				const result = await runPythonScript('python3', commandArgs, { signal });
+				return result.stdout.trim() || json({ ok: true });
+			}
+
+			return json(
+				await researchMetabase({
+					model,
+					card,
+					top: args.top === undefined ? undefined : boundedInteger(args.top, 'top', 1, 50, 10),
+					includeSql: Boolean(args.includeSql),
+					refType,
+					credentialMode: config.credentials?.bigQueryMode ?? 'service_account',
+					userAccessToken: process.env.GOOGLE_USER_ACCESS_TOKEN,
+				}),
+			);
+		},
+	};
+
+	const metabaseHelpTool: ToolDef = {
+		name: 'metabase_help',
+		description:
+			'Progressively disclose compact Metabase card creation help. Use before non-table charts, field filters, or unfamiliar vizSettings.',
+		parameters: Type.Object({
+			topic: Type.Optional(
+				Type.String({ description: 'Help topic: overview, viz_type, field_filters, or examples. Defaults to overview.' }),
+			),
+			vizType: Type.Optional(
+				Type.String({
+					description: 'Visualization type for topic=viz_type: table, bar, line, area, stacked-bar, stacked-area, or stacked-line.',
+				}),
+			),
+		}),
+		execute: async (args) =>
+			json(
+				getMetabaseHelp({
+					topic: enumValue(args.topic, ['overview', 'viz_type', 'field_filters', 'examples'], 'topic') as
+						| MetabaseHelpTopic
+						| undefined,
+					vizType: enumValue(
+						args.vizType,
+						['table', 'bar', 'line', 'area', 'stacked-bar', 'stacked-area', 'stacked-line'],
+						'vizType',
+					) as MetabaseVizType | undefined,
+				}),
+			),
+	};
+
+	return [metabaseHelpTool, metabaseResearchTool];
+}
+
 export function createAnalyticsTools(config: AnalyticsToolConfig = {}): ToolDef[] {
-	const bqExploreScript = config.bqExploreScript || process.env.BQ_EXPLORE_SCRIPT || DEFAULT_BQ_EXPLORE_SCRIPT;
-	const metabaseCliScript =
-		config.metabaseCliScript || process.env.METABASE_CLI_SCRIPT || DEFAULT_METABASE_CLI_SCRIPT;
+	const bqExploreScript = resolveRuntimePath(
+		config.bqExploreScript || process.env.BQ_EXPLORE_SCRIPT || DEFAULT_BQ_EXPLORE_SCRIPT,
+	);
+	const metabaseCliScript = resolveRuntimePath(
+		config.metabaseCliScript || process.env.METABASE_CLI_SCRIPT || DEFAULT_METABASE_CLI_SCRIPT,
+	);
 	const defaultMaxGb = config.maxGb ?? 1;
 
 	const runBigQueryTool: ToolDef = {
@@ -949,6 +1034,10 @@ function pushOptional(args: string[], flag: string, value: string | undefined) {
 
 function json(value: unknown): string {
 	return JSON.stringify(value, null, 2);
+}
+
+function resolveRuntimePath(value: string): string {
+	return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
 }
 
 export type { LineageDirection, ManifestSearchLogic, ManifestSearchType };

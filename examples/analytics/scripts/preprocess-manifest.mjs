@@ -2,8 +2,10 @@
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const DEFAULT_INPUT = '/Users/billgu/Workspace/dbt/target/manifest.json';
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_INPUT = path.resolve(SCRIPT_DIR, '../../../..', 'dbt/target/manifest.json');
 const DEFAULT_SCHEMA = 'dbt_prod';
 
 async function main() {
@@ -106,12 +108,17 @@ function printHelp() {
   node scripts/preprocess-manifest.mjs [options]
 
 Options:
-  --input <path>      Source manifest. Defaults to ${DEFAULT_INPUT}
+  --input <path>      Source manifest. Defaults to ${displayPath(DEFAULT_INPUT)}
   --output <path>     Destination manifest. Defaults to manifest.<schema>.json next to input
   --in-place          Overwrite the input manifest
   --schema <schema>   Target dbt schema. Defaults to DBT_MANIFEST_QUERY_SCHEMA or ${DEFAULT_SCHEMA}
   --upload <gs://...> Upload the normalized manifest with gcloud storage cp
 `);
+}
+
+function displayPath(value) {
+	const relative = path.relative(process.cwd(), value);
+	return relative || '.';
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

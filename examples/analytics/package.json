@@ -5,9 +5,11 @@
 	"scripts": {
 		"check:types": "tsc --noEmit",
 		"test": "vitest run",
+		"test:e2e-fixtures": "ANALYTICS_E2E_FIXTURES=1 vitest run waiter-kitchen-fixtures.e2e.test.ts",
 		"manifest:publish": "node ./scripts/compile-normalize-upload-manifest.mjs",
 		"manifest:preprocess": "node ./scripts/preprocess-manifest.mjs",
-		"sync:oauth": "node ./scripts/sync-oauth-tokens.mjs"
+		"sync:oauth": "node ./scripts/sync-oauth-tokens.mjs",
+		"test:tools:explorer": "tsx ./scripts/explorer-tool-smoke.ts"
 	},
 	"dependencies": {
 		"@flue/runtime": "workspace:*",

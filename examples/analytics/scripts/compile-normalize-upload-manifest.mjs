@@ -2,10 +2,12 @@
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { normalizeManifestSchemas } from './preprocess-manifest.mjs';
 
-const DEFAULT_DBT_DIR = '/Users/billgu/Workspace/dbt';
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
+const DEFAULT_DBT_DIR = path.resolve(SCRIPT_DIR, '../../../..', 'dbt');
 const DEFAULT_SCHEMA = 'dbt_prod';
 const DEFAULT_BUCKET = 'evenup-internal-tools-dev-dbt-explorer-api';
 const DEFAULT_OBJECT = 'dbt-explorer/manifest/manifest.json';
@@ -101,7 +103,7 @@ Runs locally:
   4. upload normalized manifest to GCS
 
 Options:
-  --dbt-dir <path>    dbt repo path. Defaults to ${DEFAULT_DBT_DIR}
+  --dbt-dir <path>    dbt repo path. Defaults to ${displayPath(DEFAULT_DBT_DIR)}
   --manifest <path>   Manifest path, relative to dbt dir unless absolute. Defaults to target/manifest.json
   --output <path>     Normalized output path. Defaults to target/manifest.<schema>.json
   --schema <schema>   Target dbt schema. Defaults to DBT_MANIFEST_QUERY_SCHEMA or ${DEFAULT_SCHEMA}
@@ -110,6 +112,11 @@ Options:
   --skip-compile      Normalize/upload existing manifest without running dbt compile
   --no-upload         Compile and normalize only
 `);
+}
+
+function displayPath(value) {
+	const relative = path.relative(process.cwd(), value);
+	return relative || '.';
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 
-export const DEFAULT_MANIFEST_PATH = '/Users/billgu/Workspace/dbt/target/manifest.json';
+export const DEFAULT_MANIFEST_PATH = 'resources/manifest/manifest.json';
 
 export type ManifestSearchType = 'name' | 'column' | 'description' | 'all';
 export type ManifestSearchLogic = 'and' | 'or';

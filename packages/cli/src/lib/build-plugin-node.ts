@@ -53,6 +53,7 @@ import { Bash, InMemoryFs } from 'just-bash';
 import {
   createFlueContext,
   InMemorySessionStore,
+  createNodeSessionStoreFromEnv,
   InMemoryRunStore,
   InMemoryRunRegistry,
   createRunSubscriberRegistry,
@@ -99,8 +100,11 @@ async function createDefaultEnv() {
   }));
 }
 
-// Default persistence store for Node — in-memory, process lifetime.
-const defaultStore = new InMemorySessionStore();
+// Default persistence store for Node. In-memory remains the default for simple
+// examples; deployed agents can opt into local write-through GCS persistence.
+const defaultStore = process.env.FLUE_SESSION_STORE === 'gcs'
+  ? createNodeSessionStoreFromEnv()
+  : new InMemorySessionStore();
 const runStore = new InMemoryRunStore();
 const runRegistry = new InMemoryRunRegistry();
 const runSubscribers = createRunSubscriberRegistry();

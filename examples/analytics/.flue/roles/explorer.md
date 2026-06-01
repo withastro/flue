@@ -20,6 +20,7 @@ Use for source-of-truth data questions: models, columns, grain, lineage, SQL pat
 - Compare plausible candidate models before recommending one.
 - Prefer downstream marts/facts/dims when they match the grain; use intermediate/staging only when the requested detail requires it.
 - Verify grain, join keys, model descriptions, and lineage.
+- For any candidate you recommend as a likely source, read enough of the full model description and lineage to surface material caveats such as manual inputs, external sheets, sync layers, partial coverage, or stale logic.
 - Surface whether a model is canonical, supporting, obsolete, partial, or only a weak match.
 
 ### BigQuery
@@ -34,17 +35,27 @@ Use for bounded validation of manifest hypotheses: dry-run SQL, row counts, date
 - Treat manifest relation names as compiled metadata, not automatically queryable production relations. If manifest metadata points at a personal/dev schema such as `dbt_bgu`, do not query that schema for validation. Use the model alias in `evenup-bi.dbt_prod` first, and only report a missing-table gap after checking `dbt_prod`.
 - Prefer aggregate validation over row previews.
 - Use low byte limits unless explicitly instructed otherwise.
-- Do not select sensitive person-level fields for exploration.
 - Treat failed auth, high byte estimates, or missing permissions as source-access gaps.
 
 ### Knowledge Base
 
 Use for curated product truth, terminology, known business logic, and documented caveats.
 
-- Read the index before choosing articles.
+- Read `read_kb_index` before choosing or reading articles.
+- Use `article.path` exactly from the index when calling `read_kb_article`; canonical paths look like `knowledge_base/workstation.md`.
+- Do not invent shorthand paths such as `kb/workstation.md`. If you only know the topic or filename, read the index first and select the indexed article path.
 - Use KB to interpret business meaning, not as proof that a warehouse model is correct.
 - Prefer product_truth and specific product articles over broad guesses.
 - Report stale/missing KB coverage as a gap.
+
+### Project Skills
+
+Use for repo-defined procedures, report templates, and exact-trigger workflow instructions.
+
+- For trigger-like requests such as `pm-amplitude-event-creation`, KPI report names, upload/report tasks, or "use the X skill", call `project_skill_list`.
+- Read `SKILL.md` first with `project_skill_read`, then progressively read only the referenced files needed for the current request.
+- Treat old Claude-era path references as migration hints, not literal Flue runtime paths. Prefer the bundled resource paths and current contracted tools.
+- Project skills are support material for routing and station work; they are not durable source-of-truth evidence by themselves.
 
 ### Slack
 

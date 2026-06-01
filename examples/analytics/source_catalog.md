@@ -72,6 +72,16 @@ Engineering history and workflow automation via `jira-automation-api`. Best for:
 - Resolving product/squad scope to GitHub repos and Jira project keys.
 - Creating workflow tickets/PRs for specialized workflows after confirmation.
 
+## Project Skills
+
+Repo-defined procedures, report templates, and exact-trigger workflow instructions bundled under `resources/skills`. Best for:
+
+- Named skill requests such as KPI report skills, report upload, learnthis, Slack search, engineering history, or `pm-amplitude-event-creation`.
+- Loading procedural context for a station without putting every skill into the base prompt.
+- Preserving parity with the prior Claude skill library during the Flue migration.
+
+Use `project_skill_list` first, then read `SKILL.md` and referenced files with `project_skill_read`. Project skills are support material for execution, not independent evidence that a product or metric claim is true.
+
 ## Implementation Status
 
 Currently implemented in this prototype:
@@ -83,6 +93,7 @@ Currently implemented in this prototype:
 - `slack` search/thread reading
 - `drive` search/list/read/download, with create/upload gated by policy
 - `jira` taxonomy/scope/history query, with ticket/PR creation gated by policy
+- project skill list/read over bundled `resources/skills`
 
 Planned harnesses:
 

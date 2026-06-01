@@ -205,9 +205,12 @@ export async function researchMetabase(input: MetabaseResearchInput) {
 	}
 	const projectId = input.projectId || process.env.GOOGLE_CLOUD_PROJECT || DEFAULT_PROJECT;
 	const dataset = input.dataset || DEFAULT_DATASET;
+	const credentialMode = input.credentialMode ?? (input.userAccessToken || process.env.GOOGLE_USER_ACCESS_TOKEN
+		? 'user_oauth'
+		: 'service_account');
 	const client = input.client ?? createBigQueryClient({
 		projectId,
-		credentialMode: input.credentialMode ?? 'service_account',
+		credentialMode,
 		userAccessToken: input.userAccessToken,
 	});
 	const rows = input.model

@@ -1,8 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
-export const DEFAULT_DBT_SKILL_ROOT =
-	'/Users/billgu/Workspace/evenup-internal-tools/apps/dbt-explorer-api/claude-copy/skills/dbt';
+export const DEFAULT_DBT_SKILL_ROOT = 'resources/skills/dbt';
 
 const defaultReferenceFiles = [
 	'references/consultation.md',
@@ -12,7 +11,7 @@ const defaultReferenceFiles = [
 ];
 
 export async function loadDbtSkillInstructions(input: { skillRoot?: string } = {}): Promise<string> {
-	const skillRoot = path.resolve(input.skillRoot || process.env.DBT_SKILL_ROOT || DEFAULT_DBT_SKILL_ROOT);
+	const skillRoot = resolveRuntimePath(input.skillRoot || process.env.DBT_SKILL_ROOT || DEFAULT_DBT_SKILL_ROOT);
 	const parts = [await readSkillFile(skillRoot, 'SKILL.md')];
 	for (const relPath of defaultReferenceFiles) {
 		parts.push(await readSkillFile(skillRoot, relPath));
@@ -27,4 +26,8 @@ async function readSkillFile(root: string, relPath: string): Promise<string> {
 	}
 	const raw = await fs.readFile(resolved, 'utf8');
 	return `<dbt-skill-file path="${relPath}">\n${raw}\n</dbt-skill-file>`;
+}
+
+function resolveRuntimePath(value: string): string {
+	return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
 }

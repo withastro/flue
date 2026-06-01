@@ -48,9 +48,12 @@ import { dbtExplorerToolset } from '../.flue/toolsets/dbt-explorer.ts';
 import { explorerToolset } from '../.flue/toolsets/explorer.ts';
 import { createToolPolicy } from '../.flue/tools/policy.ts';
 import { createArtifactPersistenceTools, createContextPersistenceTools } from '../.flue/tools/persistence.ts';
-import { createKitchenOrder } from '../.flue/agents/waiter.ts';
+import { createKitchenOrder, summarizeExplorerPreflightForWaiter } from '../.flue/agents/waiter.ts';
 import { createSessionPlan, resolveTurnContext, shouldInvokeWaiter } from '../.flue/lib/session-plan.ts';
-import { createWaiterDocsTools, selectKbArticles } from '../.flue/tools/waiter-docs.ts';
+import { createKbTools, selectKbArticles } from '../.flue/tools/kb.ts';
+import { createSourceCatalogTools } from '../.flue/tools/source-catalog.ts';
+import { createWorkflowTemplateTools } from '../.flue/tools/workflow-templates.ts';
+import { createProjectSkillTools } from '../.flue/tools/project-skills.ts';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const manifestPath = path.join(testDir, 'fixtures/manifest.json');
@@ -222,6 +225,7 @@ describe('manifest search', () => {
 			}),
 		]);
 	});
+
 });
 
 describe('dbt lineage', () => {
@@ -308,8 +312,28 @@ describe('bigquery helpers', () => {
 			rows: [{ id: 1, name: 'Ada, Esq.', payload: { ok: true } }],
 		});
 
-		expect(csvPath).toMatch(/^\/tmp\/bq_result_\d{8}_\d{6}\.csv$/);
+		expect(csvPath).toMatch(/^\/tmp\/bq_result_\d{8}_\d{6}_\d+_\d{6}\.csv$/);
 		await expect(fs.readFile(csvPath, 'utf8')).resolves.toContain('1,"Ada, Esq.","{""ok"":true}"');
+	});
+
+	it('does not overwrite same-second BigQuery CSV outputs', async () => {
+		const now = new Date('2026-05-21T15:30:05Z');
+		const firstPath = await writeBigQueryCsv({
+			outputDir: '/tmp',
+			now,
+			columns: ['value'],
+			rows: [{ value: 'first' }],
+		});
+		const secondPath = await writeBigQueryCsv({
+			outputDir: '/tmp',
+			now,
+			columns: ['value'],
+			rows: [{ value: 'second' }],
+		});
+
+		expect(firstPath).not.toBe(secondPath);
+		await expect(fs.readFile(firstPath, 'utf8')).resolves.toContain('first');
+		await expect(fs.readFile(secondPath, 'utf8')).resolves.toContain('second');
 	});
 
 	it('runs BigQuery through dry-run, byte guard, execution, and CSV writing with a fake client', async () => {
@@ -1011,13 +1035,25 @@ describe('tool policies and toolsets', () => {
 		expect(policy.permissions.allowContextWrite).toBe(false);
 	});
 
-	it('allows web policy to represent user credential access', () => {
+	it('uses service-account BigQuery access for web policy when no user token is present', () => {
 		const policy = createToolPolicy({ source: 'web', allowMetabaseCreate: true, maxGb: 2 });
 
-		expect(policy.credentials.bigQueryMode).toBe('user_oauth');
+		expect(policy.credentials.bigQueryMode).toBe('service_account');
 		expect(policy.permissions.allowSensitiveBigQuery).toBe(true);
 		expect(policy.permissions.allowMetabaseCreate).toBe(true);
 		expect(policy.limits.maxBigQueryGb).toBe(2);
+	});
+
+	it('uses user BigQuery access for web policy when a user token is present', () => {
+		const original = process.env.GOOGLE_USER_ACCESS_TOKEN;
+		process.env.GOOGLE_USER_ACCESS_TOKEN = 'token';
+		try {
+			const policy = createToolPolicy({ source: 'web' });
+			expect(policy.credentials.bigQueryMode).toBe('user_oauth');
+		} finally {
+			if (original === undefined) delete process.env.GOOGLE_USER_ACCESS_TOKEN;
+			else process.env.GOOGLE_USER_ACCESS_TOKEN = original;
+		}
 	});
 
 	it('allows explicit workflow mutation override for omni-style runs', () => {
@@ -1037,10 +1073,14 @@ describe('tool policies and toolsets', () => {
 			'read_source_catalog',
 			'read_kb_index',
 			'read_kb_article',
+			'project_skill_list',
+			'project_skill_read',
 			'bq_validate_query',
 			'bq_row_count',
 			'bq_date_range',
 			'bq_top_values',
+			'metabase_help',
+			'metabase_research',
 			'slack_search',
 			'slack_read_thread',
 			'gdrive_search',
@@ -1115,6 +1155,10 @@ describe('tool policies and toolsets', () => {
 			'read_source_catalog',
 			'read_kb_index',
 			'read_kb_article',
+			'project_skill_list',
+			'project_skill_read',
+			'workflow_template_list',
+			'workflow_template_read',
 			'slack_search',
 			'slack_read_thread',
 			'gdrive_search',
@@ -1357,6 +1401,75 @@ describe('waiter routing', () => {
 		);
 	});
 
+	it('preserves deterministic project skill commands in the work order', () => {
+		expect(
+			createKitchenOrder(
+				'create tracking for task completion',
+				false,
+				undefined,
+				undefined,
+				'pm-amplitude-event-creation',
+				'workflow',
+			),
+		).toEqual(
+			expect.objectContaining({
+				route: 'workflow',
+				skillId: 'pm-amplitude-event-creation',
+				sources: expect.arrayContaining(['project_skill']),
+			}),
+		);
+	});
+
+	it('routes forced analytics skills without relying on message heuristics', () => {
+		expect(
+			createKitchenOrder('', false, undefined, undefined, 'ai_drafts_kpi_report', 'analytics'),
+		).toEqual(
+			expect.objectContaining({
+				route: 'analytics',
+				skillId: 'ai_drafts_kpi_report',
+				sources: expect.arrayContaining(['project_skill']),
+				intent: expect.stringContaining('/ai_drafts_kpi_report'),
+			}),
+		);
+	});
+
+	it('summarizes explorer preflight before sending it back to waiter phases', () => {
+		const longEvidence = 'x'.repeat(600);
+		const summary = summarizeExplorerPreflightForWaiter({
+			status: 'ready_for_analytics',
+			confidence: 'medium',
+			recommendedRoute: 'analytics',
+			suggestedSources: ['manifest', 'bigquery'],
+			summary: 'y'.repeat(1500),
+			candidateModels: [
+				{
+					name: 'model_a',
+					relationName: 'project.dataset.model_a',
+					evidence: [longEvidence, 'short evidence', 'extra evidence'],
+					concerns: ['concern 1', 'concern 2', 'concern 3'],
+				},
+				{ name: 'model_b', evidence: ['ok'], concerns: [] },
+				{ name: 'model_c', evidence: ['ok'], concerns: [] },
+				{ name: 'model_d', evidence: ['ok'], concerns: [] },
+				{ name: 'model_e', evidence: ['ok'], concerns: [] },
+				{ name: 'model_f', evidence: ['ok'], concerns: [] },
+			],
+			recommendedNextStep: 'z'.repeat(900),
+			gaps: ['gap 1', 'gap 2', 'gap 3', 'gap 4', 'gap 5', 'gap 6', 'gap 7'],
+		});
+
+		expect(summary.summary).toHaveLength(1200);
+		expect(summary.recommendedNextStep).toHaveLength(800);
+		expect(summary.candidateModels).toHaveLength(5);
+		const firstCandidate = summary.candidateModels[0];
+		expect(firstCandidate).toBeDefined();
+		expect(firstCandidate?.evidence).toHaveLength(2);
+		expect(firstCandidate?.evidence[0]).toHaveLength(350);
+		expect(firstCandidate?.omittedEvidenceCount).toBe(1);
+		expect(summary.omittedCandidateCount).toBe(1);
+		expect(summary.omittedGapCount).toBe(1);
+	});
+
 	it('uses explicit turn type instead of inferring side questions from message text', () => {
 		expect(resolveTurnContext({ turnType: 'side_question' })).toEqual(
 			expect.objectContaining({
@@ -1436,29 +1549,68 @@ describe('waiter routing', () => {
 	});
 });
 
-describe('waiter docs tools', () => {
-	it('lists and reads only scoped markdown docs', async () => {
-		const tools = createWaiterDocsTools({
+describe('source catalog and kb tools', () => {
+	it('reads the source catalog and scoped KB markdown docs', async () => {
+		const sourceTools = createSourceCatalogTools();
+		const kbTools = createKbTools({
 			docsRoot: path.join(testDir, 'fixtures/waiter-docs'),
 		});
-		const catalog = await tools[0]!.execute({});
+		const catalog = await sourceTools[0]!.execute({});
 		expect(catalog).toContain('# Source Catalog');
 
-		const list = await tools[1]!.execute({});
+		const list = await kbTools[0]!.execute({});
 		expect(JSON.parse(list)).toEqual(
 			expect.objectContaining({
 				path: 'knowledge_base/INDEX.md',
-				articles: [{ path: 'knowledge_base/guide.md', title: 'guide.md', description: 'Snapshot files guide' }],
+				path_contract: expect.stringContaining('article.path'),
+				valid_paths: ['knowledge_base/guide.md'],
+				articles: [
+					{
+						path: 'knowledge_base/guide.md',
+						title: 'guide.md',
+						description: 'Snapshot files guide',
+						aliases: expect.arrayContaining(['guide.md', 'kb/guide.md']),
+					},
+				],
 			}),
 		);
 
-		const read = await tools[2]!.execute({ path: 'knowledge_base/guide.md', pattern: 'snapshot', limit: 5 });
+		const read = await kbTools[1]!.execute({ path: 'knowledge_base/guide.md', pattern: 'snapshot', limit: 5 });
 		expect(JSON.parse(read)).toEqual(
 			expect.objectContaining({
 				path: 'knowledge_base/guide.md',
+				resolved_via_index: true,
 				pattern: 'snapshot',
 				content: expect.stringContaining('snapshot files'),
 			}),
+		);
+	});
+
+	it('resolves common KB path aliases through the index', async () => {
+		const tools = createKbTools({
+			docsRoot: path.join(testDir, 'fixtures/waiter-docs'),
+		});
+
+		const read = await tools[1]!.execute({ path: 'kb/guide.md', limit: 2 });
+
+		expect(JSON.parse(read)).toEqual(
+			expect.objectContaining({
+				path: 'knowledge_base/guide.md',
+				requested_path: 'kb/guide.md',
+				resolved_via_index: true,
+				used_alias: true,
+				valid_path: 'knowledge_base/guide.md',
+			}),
+		);
+	});
+
+	it('rejects unknown KB paths with valid index paths', async () => {
+		const tools = createKbTools({
+			docsRoot: path.join(testDir, 'fixtures/waiter-docs'),
+		});
+
+		await expect(tools[1]!.execute({ path: 'kb/missing.md' })).rejects.toThrow(
+			'Valid paths: knowledge_base/guide.md',
 		);
 	});
 
@@ -1468,5 +1620,69 @@ describe('waiter docs tools', () => {
 				docsRoot: path.join(testDir, 'fixtures/waiter-docs'),
 			}),
 		).resolves.toEqual([{ path: 'knowledge_base/guide.md', title: 'guide.md', description: 'Snapshot files guide' }]);
+	});
+});
+
+describe('workflow template tools', () => {
+	it('lists and reads repo-defined workflow templates', async () => {
+		const tools = createWorkflowTemplateTools({
+			root: path.join(testDir, '..', 'resources', 'workflow_templates'),
+		});
+
+		const list = JSON.parse(await tools[0]!.execute({}));
+		expect(list.templates).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: 'pm-amplitude-event-creation',
+					trigger: 'pm-amplitude-event-creation',
+					files: expect.arrayContaining(['SKILL.md', 'references/interview.md']),
+				}),
+			]),
+		);
+
+		const main = JSON.parse(
+			await tools[1]!.execute({
+				templateId: 'pm-amplitude-event-creation',
+				path: 'SKILL.md',
+				maxBytes: 2000,
+			}),
+		);
+		expect(main.content).toContain('PM Amplitude Event Creation');
+		expect(main.content).toContain('Only invoke this skill when the user types the exact phrase');
+	});
+});
+
+describe('project skill tools', () => {
+	it('lists and reads repo-defined project skills', async () => {
+		const tools = createProjectSkillTools({
+			root: path.join(testDir, '..', 'resources', 'skills'),
+		});
+
+		const list = JSON.parse(await tools[0]!.execute({}));
+		expect(list.skills).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					id: 'dbt',
+					alwaysLoaded: true,
+					files: expect.arrayContaining(['SKILL.md', 'references/consultation.md']),
+				}),
+				expect.objectContaining({
+					id: 'pm-amplitude-event-creation',
+					name: 'pm-amplitude-event-creation',
+					trigger: 'pm-amplitude-event-creation',
+					files: expect.arrayContaining(['SKILL.md', 'references/interview.md']),
+				}),
+			]),
+		);
+
+		const main = JSON.parse(
+			await tools[1]!.execute({
+				skillId: 'pm-amplitude-event-creation',
+				path: 'SKILL.md',
+				maxBytes: 2000,
+			}),
+		);
+		expect(main.content).toContain('PM Amplitude Event Creation');
+		expect(main.content).toContain('Only invoke this skill when the user types the exact phrase');
 	});
 });

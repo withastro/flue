@@ -1,13 +1,15 @@
 import { execFile } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
+const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const sourceRoot =
 	process.env.DBT_EXPLORER_API_ROOT ||
-	'/Users/billgu/Workspace/evenup-internal-tools/apps/dbt-explorer-api';
+	path.resolve(SCRIPT_DIR, '../../../..', 'evenup-internal-tools/apps/dbt-explorer-api');
 const targetEnvPath =
 	process.env.TARGET_ENV_PATH || path.join(process.cwd(), '.env.secrets');
 

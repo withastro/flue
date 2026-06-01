@@ -362,7 +362,7 @@ Escalation policy is intentionally tabled. The architecture should leave room fo
 
 ## Reference From Prior Two-Agent Branch
 
-The prior branch at `/Users/billgu/Workspace/evenup-internal-tools-wt/two-agent-arch` is reference material, not gospel. Its decisions were made under Claude Code SDK constraints. Flue gives us more flexible native tools, typed results, sessions, roles, and runtime orchestration, so the current architecture should be redesigned around Flue rather than porting that branch directly.
+The prior `evenup-internal-tools-wt/two-agent-arch` branch is reference material, not gospel. Its decisions were made under Claude Code SDK constraints. Flue gives us more flexible native tools, typed results, sessions, roles, and runtime orchestration, so the current architecture should be redesigned around Flue rather than porting that branch directly.
 
 Ideas worth preserving as design inputs:
 

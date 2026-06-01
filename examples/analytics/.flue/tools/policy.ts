@@ -47,6 +47,7 @@ export function createToolPolicy(input: {
 } = {}): ToolPolicy {
 	const source = input.source ?? 'cli';
 	const webCanUseUserCredentials = source === 'web';
+	const hasGoogleUserToken = Boolean(process.env.GOOGLE_USER_ACCESS_TOKEN);
 	const maxBigQueryGb = input.maxGb ?? 1;
 
 	return {
@@ -64,7 +65,7 @@ export function createToolPolicy(input: {
 		allowMetabaseCreate: input.allowMetabaseCreate ?? false,
 		allowGoogleDriveWrite: input.allowGoogleDriveWrite ?? (source !== 'slack'),
 		credentials: {
-			bigQueryMode: webCanUseUserCredentials ? 'user_oauth' : 'service_account',
+			bigQueryMode: webCanUseUserCredentials && hasGoogleUserToken ? 'user_oauth' : 'service_account',
 			googleDriveMode: webCanUseUserCredentials ? 'user_oauth' : 'service_account',
 		},
 		permissions: {

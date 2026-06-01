@@ -7,13 +7,19 @@ import {
 	createTracePersistenceTools,
 	createWorkflowPersistenceTools,
 } from '../tools/persistence.ts';
-import { createWaiterDocsTools } from '../tools/waiter-docs.ts';
+import { createKbTools } from '../tools/kb.ts';
+import { createProjectSkillTools } from '../tools/project-skills.ts';
+import { createWorkflowTemplateTools } from '../tools/workflow-templates.ts';
 import type { ToolPolicy } from '../tools/policy.ts';
+import { createSourceCatalogTools } from '../tools/source-catalog.ts';
 
 export function dbtExplorerToolset(policy: ToolPolicy): ToolDef[] {
 	return [
 		...analyticsToolset(policy),
-		...createWaiterDocsTools(),
+		...createSourceCatalogTools(),
+		...createKbTools(),
+		...createProjectSkillTools(),
+		...createWorkflowTemplateTools(),
 		...createExternalKnowledgeTools({
 			allowGoogleDriveWrite: policy.permissions.allowGoogleDriveWrite,
 			limits: {

@@ -3,33 +3,33 @@ import * as path from 'node:path';
 
 import { Type, type ToolDef } from '@flue/runtime';
 
-export const DEFAULT_WAITER_DOCS_ROOT =
-	'/Users/billgu/Workspace/evenup-internal-tools/apps/dbt-explorer-api/claude-copy/docs';
-export const DEFAULT_SOURCE_CATALOG_PATH =
-	'/Users/billgu/Workspace/flue/examples/analytics/source_catalog.md';
+export const DEFAULT_DOCS_ROOT = 'resources/docs';
 export const DEFAULT_KB_INDEX_PATH = 'knowledge_base/INDEX.md';
 
-export function createWaiterDocsTools(input: { docsRoot?: string } = {}): ToolDef[] {
-	const docsRoot = path.resolve(input.docsRoot || process.env.WAITER_DOCS_ROOT || DEFAULT_WAITER_DOCS_ROOT);
-	const sourceCatalogPath = path.resolve(process.env.SOURCE_CATALOG_PATH || DEFAULT_SOURCE_CATALOG_PATH);
+type KbArticle = {
+	path: string;
+	title: string;
+	description: string;
+	aliases: string[];
+};
 
-	const readSourceCatalog: ToolDef = {
-		name: 'read_source_catalog',
-		description: 'Read the source catalog that explains which sources should be searched for which user intents.',
-		parameters: Type.Object({}),
-		execute: async () => readSourceCatalogText({ sourceCatalogPath }),
-	};
+export function createKbTools(input: { docsRoot?: string } = {}): ToolDef[] {
+	const docsRoot = resolveRuntimePath(input.docsRoot || process.env.WAITER_DOCS_ROOT || DEFAULT_DOCS_ROOT);
 
 	const readIndex: ToolDef = {
 		name: 'read_kb_index',
 		description:
-			'Read the knowledge-base index. Use this first to choose the specific KB article to inspect.',
+			'Read the knowledge-base index. Use this before any KB article read; article paths must come from this index.',
 		parameters: Type.Object({}),
 		execute: async () => {
 			const raw = await readRelativeFile(docsRoot, DEFAULT_KB_INDEX_PATH);
+			const articles = parseKbIndex(raw);
 			return json({
 				path: DEFAULT_KB_INDEX_PATH,
-				articles: parseKbIndex(raw),
+				path_contract:
+					'Use article.path exactly with read_kb_article. Do not invent kb/... paths; aliases are accepted only as a fallback.',
+				valid_paths: articles.map((article) => article.path),
+				articles,
 				content: raw,
 			});
 		},
@@ -38,14 +38,19 @@ export function createWaiterDocsTools(input: { docsRoot?: string } = {}): ToolDe
 	const readArticle: ToolDef = {
 		name: 'read_kb_article',
 		description:
-			'Read a bounded KB article selected from read_kb_index. Use exact relative article paths from the index.',
+			'Read a bounded KB article selected from read_kb_index. Use article.path exactly from the index, e.g. knowledge_base/workstation.md.',
 		parameters: Type.Object({
-			path: Type.String({ description: 'Relative markdown path returned by read_kb_index.' }),
+			path: Type.String({
+				description:
+					'Canonical article.path returned by read_kb_index. Preferred form: knowledge_base/<article>.md. Do not use kb/<article>.md.',
+			}),
 			pattern: Type.Optional(Type.String({ description: 'Optional case-insensitive substring filter.' })),
 			limit: Type.Optional(Type.Number({ description: 'Maximum matching lines or full-document lines. Defaults to 120.' })),
 		}),
 		execute: async (args) => {
-			const relPath = asRelativePath(args.path);
+			const requestedPath = asRelativePath(args.path);
+			const resolved = await resolveKbArticlePath(docsRoot, requestedPath);
+			const relPath = resolved.article.path;
 			const limit = boundedInteger(args.limit, 'limit', 1, 300, 120);
 			const raw = await readRelativeFile(docsRoot, relPath);
 			const lines = raw.split('\n');
@@ -62,6 +67,10 @@ export function createWaiterDocsTools(input: { docsRoot?: string } = {}): ToolDe
 
 			return json({
 				path: relPath,
+				requested_path: requestedPath,
+				resolved_via_index: true,
+				used_alias: resolved.usedAlias,
+				valid_path: relPath,
 				pattern,
 				returned_lines: selected.length,
 				truncated: pattern ? selected.length === limit : lines.length > limit,
@@ -70,21 +79,14 @@ export function createWaiterDocsTools(input: { docsRoot?: string } = {}): ToolDe
 		},
 	};
 
-	return [readSourceCatalog, readIndex, readArticle];
-}
-
-export async function readSourceCatalogText(input: { sourceCatalogPath?: string } = {}): Promise<string> {
-	const sourceCatalogPath = path.resolve(
-		input.sourceCatalogPath || process.env.SOURCE_CATALOG_PATH || DEFAULT_SOURCE_CATALOG_PATH,
-	);
-	return fs.readFile(sourceCatalogPath, 'utf8');
+	return [readIndex, readArticle];
 }
 
 export async function selectKbArticles(
 	query: string,
 	input: { docsRoot?: string; limit?: number } = {},
 ): Promise<Array<{ path: string; title: string; description: string }>> {
-	const docsRoot = path.resolve(input.docsRoot || process.env.WAITER_DOCS_ROOT || DEFAULT_WAITER_DOCS_ROOT);
+	const docsRoot = resolveRuntimePath(input.docsRoot || process.env.WAITER_DOCS_ROOT || DEFAULT_DOCS_ROOT);
 	const raw = await readRelativeFile(docsRoot, DEFAULT_KB_INDEX_PATH);
 	const articles = parseKbIndex(raw);
 	const queryTerms = terms(query);
@@ -97,22 +99,57 @@ export async function selectKbArticles(
 		}))
 		.filter(({ score }) => score > 0)
 		.sort((a, b) => b.score - a.score || a.article.path.localeCompare(b.article.path))
-		.map(({ article }) => article);
+		.map(({ article }) => ({
+			path: article.path,
+			title: article.title,
+			description: article.description,
+		}));
 	return scored.slice(0, input.limit ?? 3);
 }
 
-function parseKbIndex(raw: string): Array<{ path: string; title: string; description: string }> {
-	const articles = [];
+function parseKbIndex(raw: string): KbArticle[] {
+	const articles: KbArticle[] = [];
 	const itemPattern = /^-\s+\[([^\]]+)\]\(([^)]+)\)\s+—\s+(.+)$/gm;
 	let match: RegExpExecArray | null;
 	while ((match = itemPattern.exec(raw))) {
+		const title = match[1]!;
+		const linkedPath = match[2]!;
+		const canonicalPath = `knowledge_base/${linkedPath}`;
+		const basename = path.posix.basename(linkedPath);
 		articles.push({
-			title: match[1]!,
-			path: `knowledge_base/${match[2]!}`,
+			title,
+			path: canonicalPath,
 			description: match[3]!,
+			aliases: [...new Set([linkedPath, basename, `kb/${basename}`, title])],
 		});
 	}
 	return articles;
+}
+
+async function resolveKbArticlePath(
+	docsRoot: string,
+	requestedPath: string,
+): Promise<{ article: KbArticle; usedAlias: boolean }> {
+	const raw = await readRelativeFile(docsRoot, DEFAULT_KB_INDEX_PATH);
+	const articles = parseKbIndex(raw);
+	const normalized = normalizeArticleHandle(requestedPath);
+	for (const article of articles) {
+		const handles = [article.path, ...article.aliases].map(normalizeArticleHandle);
+		if (handles.includes(normalized)) {
+			return {
+				article,
+				usedAlias: normalizeArticleHandle(article.path) !== normalized,
+			};
+		}
+	}
+	const valid = articles.map((article) => article.path).join(', ');
+	throw new Error(
+		`Unknown KB article path "${requestedPath}". Call read_kb_index first and use one of article.path exactly. Valid paths: ${valid}`,
+	);
+}
+
+function normalizeArticleHandle(value: string): string {
+	return value.trim().replace(/^\/+/, '').replace(/\\/g, '/').toLowerCase();
 }
 
 async function readRelativeFile(root: string, relPath: string): Promise<string> {
@@ -153,4 +190,8 @@ function terms(text: string): Set<string> {
 
 function json(value: unknown): string {
 	return JSON.stringify(value, null, 2);
+}
+
+function resolveRuntimePath(value: string): string {
+	return path.isAbsolute(value) ? value : path.resolve(process.cwd(), value);
 }

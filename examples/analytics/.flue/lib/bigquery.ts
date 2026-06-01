@@ -113,49 +113,52 @@ const forbiddenSql = [
 	'load',
 ];
 
+let csvOutputSequence = 0;
+
 export async function runBigQuery(input: BigQueryRunInput): Promise<BigQueryRunResult> {
 	const sql = normalizeReadOnlySql(input.sql);
 	const maxRows = input.maxRows ?? 10_000;
 	const maxBytes = Math.floor(input.maxGb * 1024 ** 3);
 	const projectId = input.projectId || process.env.GOOGLE_CLOUD_PROJECT || 'evenup-bi';
 	const credentialMode = input.credentialMode ?? 'service_account';
-	const client =
-		input.client ??
-		(createBigQueryClient({ projectId, credentialMode, userAccessToken: input.userAccessToken }) as BigQueryLike);
+	return withBigQueryClient(
+		{ projectId, credentialMode, userAccessToken: input.userAccessToken, client: input.client },
+		async (client, authMode) => {
+			const bytesProcessed = await dryRunQuery(client, sql);
+			if (bytesProcessed > maxBytes) {
+				throw new Error(
+					`QUERY TOO LARGE: estimated ${formatBytes(bytesProcessed)} exceeds ${input.maxGb.toFixed(2)} GB limit. ` +
+						'Add a more restrictive WHERE clause or increase maxGb after review.',
+				);
+			}
 
-	const bytesProcessed = await dryRunQuery(client, sql);
-	if (bytesProcessed > maxBytes) {
-		throw new Error(
-			`QUERY TOO LARGE: estimated ${formatBytes(bytesProcessed)} exceeds ${input.maxGb.toFixed(2)} GB limit. ` +
-				'Add a more restrictive WHERE clause or increase maxGb after review.',
-		);
-	}
+			const job = await createExecutableQueryJob(client, sql, maxBytes);
+			const [metadata] = await job.getMetadata();
+			const rows = await readRows(job, maxRows + 1);
+			const truncated = rows.length > maxRows;
+			const boundedRows = truncated ? rows.slice(0, maxRows) : rows;
+			const columns = columnsFromMetadata(metadata, boundedRows);
+			const resultPath = await writeBigQueryCsv({
+				rows: boundedRows,
+				columns,
+				outputDir: input.outputDir ?? '/tmp',
+				now: input.now ?? new Date(),
+			});
 
-	const job = await createExecutableQueryJob(client, sql, maxBytes);
-	const [metadata] = await job.getMetadata();
-	const rows = await readRows(job, maxRows + 1);
-	const truncated = rows.length > maxRows;
-	const boundedRows = truncated ? rows.slice(0, maxRows) : rows;
-	const columns = columnsFromMetadata(metadata, boundedRows);
-	const resultPath = await writeBigQueryCsv({
-		rows: boundedRows,
-		columns,
-		outputDir: input.outputDir ?? '/tmp',
-		now: input.now ?? new Date(),
-	});
-
-	return {
-		ok: true,
-		rows: boundedRows.length,
-		bytes_processed: bytesProcessed,
-		bytes_billed: formatBytes(bytesProcessed),
-		columns,
-		result_path: resultPath,
-		truncated,
-		max_rows: maxRows,
-		auth_mode: credentialMode,
-		project_id: projectId,
-	};
+			return {
+				ok: true,
+				rows: boundedRows.length,
+				bytes_processed: bytesProcessed,
+				bytes_billed: formatBytes(bytesProcessed),
+				columns,
+				result_path: resultPath,
+				truncated,
+				max_rows: maxRows,
+				auth_mode: authMode,
+				project_id: projectId,
+			};
+		},
+	);
 }
 
 export async function getDistinctValues(
@@ -187,34 +190,36 @@ export async function getDistinctValues(
 	const maxBytes = Math.floor(input.maxGb * 1024 ** 3);
 	const projectId = input.projectId || process.env.GOOGLE_CLOUD_PROJECT || 'evenup-bi';
 	const credentialMode = input.credentialMode ?? 'service_account';
-	const client =
-		input.client ??
-		(createBigQueryClient({ projectId, credentialMode, userAccessToken: input.userAccessToken }) as BigQueryLike);
-	const bytesProcessed = await dryRunQuery(client, sql, params);
-	if (bytesProcessed > maxBytes) {
-		throw new Error(
-			`QUERY TOO LARGE: estimated ${formatBytes(bytesProcessed)} exceeds ${input.maxGb.toFixed(2)} GB limit. ` +
-				'Add a narrower whereSql filter or increase maxGb after review.',
-		);
-	}
+	return withBigQueryClient(
+		{ projectId, credentialMode, userAccessToken: input.userAccessToken, client: input.client },
+		async (client, authMode) => {
+			const bytesProcessed = await dryRunQuery(client, sql, params);
+			if (bytesProcessed > maxBytes) {
+				throw new Error(
+					`QUERY TOO LARGE: estimated ${formatBytes(bytesProcessed)} exceeds ${input.maxGb.toFixed(2)} GB limit. ` +
+						'Add a narrower whereSql filter or increase maxGb after review.',
+				);
+			}
 
-	const job = await createExecutableQueryJob(client, sql, maxBytes, params);
-	const rows = await readRows(job, limit);
-	return {
-		ok: true,
-		relation: input.relation,
-		column: input.column,
-		values: rows.map((row) => ({
-			value: row.value === null || row.value === undefined ? '' : String(row.value),
-			row_count: Number(row.row_count) || 0,
-		})),
-		bytes_processed: bytesProcessed,
-		bytes_billed: formatBytes(bytesProcessed),
-		limit,
-		auth_mode: credentialMode,
-		project_id: projectId,
-		sql,
-	};
+			const job = await createExecutableQueryJob(client, sql, maxBytes, params);
+			const rows = await readRows(job, limit);
+			return {
+				ok: true,
+				relation: input.relation,
+				column: input.column,
+				values: rows.map((row) => ({
+					value: row.value === null || row.value === undefined ? '' : String(row.value),
+					row_count: Number(row.row_count) || 0,
+				})),
+				bytes_processed: bytesProcessed,
+				bytes_billed: formatBytes(bytesProcessed),
+				limit,
+				auth_mode: authMode,
+				project_id: projectId,
+				sql,
+			};
+		},
+	);
 }
 
 export async function validateBigQuery(input: BigQueryValidationInput): Promise<BigQueryValidationResult> {
@@ -222,25 +227,27 @@ export async function validateBigQuery(input: BigQueryValidationInput): Promise<
 	const maxBytes = Math.floor(input.maxGb * 1024 ** 3);
 	const projectId = input.projectId || process.env.GOOGLE_CLOUD_PROJECT || 'evenup-bi';
 	const credentialMode = input.credentialMode ?? 'service_account';
-	const client =
-		input.client ??
-		(createBigQueryClient({ projectId, credentialMode, userAccessToken: input.userAccessToken }) as BigQueryLike);
-	const { bytesProcessed, metadata } = await dryRunQueryWithMetadata(client, sql);
-	if (bytesProcessed > maxBytes) {
-		throw new Error(
-			`QUERY TOO LARGE: estimated ${formatBytes(bytesProcessed)} exceeds ${input.maxGb.toFixed(2)} GB limit. ` +
-				'Add a narrower WHERE clause or increase maxGb after review.',
-		);
-	}
-	return {
-		ok: true,
-		bytes_processed: bytesProcessed,
-		bytes_billed: formatBytes(bytesProcessed),
-		columns: columnsFromMetadata(metadata, []),
-		auth_mode: credentialMode,
-		project_id: projectId,
-		sql,
-	};
+	return withBigQueryClient(
+		{ projectId, credentialMode, userAccessToken: input.userAccessToken, client: input.client },
+		async (client, authMode) => {
+			const { bytesProcessed, metadata } = await dryRunQueryWithMetadata(client, sql);
+			if (bytesProcessed > maxBytes) {
+				throw new Error(
+					`QUERY TOO LARGE: estimated ${formatBytes(bytesProcessed)} exceeds ${input.maxGb.toFixed(2)} GB limit. ` +
+						'Add a narrower WHERE clause or increase maxGb after review.',
+				);
+			}
+			return {
+				ok: true,
+				bytes_processed: bytesProcessed,
+				bytes_billed: formatBytes(bytesProcessed),
+				columns: columnsFromMetadata(metadata, []),
+				auth_mode: authMode,
+				project_id: projectId,
+				sql,
+			};
+		},
+	);
 }
 
 export async function getRowCount(input: BigQueryAggregateInput) {
@@ -343,13 +350,18 @@ export async function writeBigQueryCsv(input: {
 	now: Date;
 }): Promise<string> {
 	const timestamp = toTimestamp(input.now);
-	const outputPath = path.join(input.outputDir, `bq_result_${timestamp}.csv`);
+	const outputPath = path.join(input.outputDir, `bq_result_${timestamp}_${nextCsvOutputId()}.csv`);
 	const lines = [
 		input.columns.map(csvEscape).join(','),
 		...input.rows.map((row) => input.columns.map((column) => csvEscape(serializeCell(row[column]))).join(',')),
 	];
 	await fs.writeFile(outputPath, `${lines.join('\n')}\n`, 'utf8');
 	return outputPath;
+}
+
+function nextCsvOutputId(): string {
+	csvOutputSequence = (csvOutputSequence + 1) % 1_000_000;
+	return `${process.pid}_${csvOutputSequence.toString().padStart(6, '0')}`;
 }
 
 function createBigQueryClient(input: {
@@ -367,6 +379,26 @@ function createBigQueryClient(input: {
 		return new BigQuery({ projectId: input.projectId, authClient });
 	}
 	return new BigQuery({ projectId: input.projectId });
+}
+
+async function withBigQueryClient<T>(
+	input: {
+		projectId: string;
+		credentialMode: 'service_account' | 'user_oauth';
+		userAccessToken?: string;
+		client?: BigQueryLike;
+	},
+	operation: (client: BigQueryLike, authMode: 'service_account' | 'user_oauth') => Promise<T>,
+): Promise<T> {
+	if (input.client) return operation(input.client, input.credentialMode);
+	return operation(
+		createBigQueryClient({
+			projectId: input.projectId,
+			credentialMode: input.credentialMode,
+			userAccessToken: input.userAccessToken,
+		}) as BigQueryLike,
+		input.credentialMode,
+	);
 }
 
 async function dryRunQuery(client: BigQueryLike, sql: string, params?: Record<string, unknown>): Promise<number> {
@@ -415,24 +447,26 @@ async function runSingleRowQuery(input: BigQueryAggregateInput, sql: string) {
 	const maxBytes = Math.floor(input.maxGb * 1024 ** 3);
 	const projectId = input.projectId || process.env.GOOGLE_CLOUD_PROJECT || 'evenup-bi';
 	const credentialMode = input.credentialMode ?? 'service_account';
-	const client =
-		input.client ??
-		(createBigQueryClient({ projectId, credentialMode, userAccessToken: input.userAccessToken }) as BigQueryLike);
-	const bytesProcessed = await dryRunQuery(client, sql);
-	if (bytesProcessed > maxBytes) {
-		throw new Error(
-			`QUERY TOO LARGE: estimated ${formatBytes(bytesProcessed)} exceeds ${input.maxGb.toFixed(2)} GB limit. ` +
-				'Add a narrower whereSql filter or increase maxGb after review.',
-		);
-	}
-	const job = await createExecutableQueryJob(client, sql, maxBytes);
-	const rows = await readRows(job, 1);
-	return {
-		row: rows[0] ?? {},
-		bytesProcessed,
-		projectId,
-		credentialMode,
-	};
+	return withBigQueryClient(
+		{ projectId, credentialMode, userAccessToken: input.userAccessToken, client: input.client },
+		async (client, authMode) => {
+			const bytesProcessed = await dryRunQuery(client, sql);
+			if (bytesProcessed > maxBytes) {
+				throw new Error(
+					`QUERY TOO LARGE: estimated ${formatBytes(bytesProcessed)} exceeds ${input.maxGb.toFixed(2)} GB limit. ` +
+						'Add a narrower whereSql filter or increase maxGb after review.',
+				);
+			}
+			const job = await createExecutableQueryJob(client, sql, maxBytes);
+			const rows = await readRows(job, 1);
+			return {
+				row: rows[0] ?? {},
+				bytesProcessed,
+				projectId,
+				credentialMode: authMode,
+			};
+		},
+	);
 }
 
 function columnsFromMetadata(metadata: any, rows: Record<string, unknown>[]): string[] {

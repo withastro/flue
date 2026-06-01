@@ -21,7 +21,7 @@ const PayloadSchema = v.object({
 
 export default async function ({ init, payload, id, runId }: FlueContext) {
 	const parsed = v.parse(PayloadSchema, payload);
-	const model = parsed.model || process.env.ANALYTICS_MODEL || 'openai/gpt-4.1-mini';
+	const model = parsed.model || process.env.ANALYTICS_MODEL || 'openai/gpt-5.4';
 	const policy = createToolPolicy({
 		source: parsed.source,
 		userId: parsed.userId,

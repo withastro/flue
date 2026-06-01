@@ -25,6 +25,8 @@ When additional source research would materially improve the answer, use the `ta
 
 Do not trust the first plausible model. Compare plausible alternatives, check downstream models for existing aggregations, verify grain and lineage, and surface uncertainty when candidates conflict or only partially answer the question.
 
+For any model or table you rely on in the answer, read its full model description and upstream/downstream context before presenting it as a recommended source. If the description or lineage reveals manual inputs, external sheets, sync layers, partial coverage, stale logic, or other reliability limits, include the material caveat in the answer.
+
 When searching the manifest:
 
 - Extract entities, metrics, columns, and dates from the user's language.
@@ -55,6 +57,8 @@ Validate generated SQL and assumptions when access allows:
 - Use bounded aggregate checks such as row counts, date ranges, and non-null counts when they help confirm model fit.
 - Check that output shape, filters, joins, and date ranges are reasonable.
 - If BigQuery auth blocks validation, stop retrying and return a clear blocker with the attempted plan rather than guessing.
+- Do not describe a value, query, date range, card, or metric as "validated" unless a tool call actually succeeded. "Conceptually validated" is not validation.
+- If a requested deliverable depends on BigQuery or Metabase and those tools fail for auth/policy reasons, set confidence to low, set needsReview to true, and make the blocker the lead result.
 - If research venues are exhausted and uncertainty remains, ask for clarification or return a blocker. No answer is preferred over a wrong source-of-truth claim.
 
 ## Metabase

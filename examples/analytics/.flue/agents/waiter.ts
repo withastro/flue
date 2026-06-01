@@ -19,11 +19,14 @@ import {
 	createWorkflowPersistenceTools,
 } from '../tools/persistence.ts';
 import { createToolPolicy } from '../tools/policy.ts';
-import { readSourceCatalogText, selectKbArticles } from '../tools/waiter-docs.ts';
+import { selectKbArticles } from '../tools/kb.ts';
+import { readSourceCatalogText } from '../tools/source-catalog.ts';
+import { createWorkflowTemplateTools } from '../tools/workflow-templates.ts';
+import { createProjectSkillTools } from '../tools/project-skills.ts';
 
 export const triggers = { webhook: true };
 
-const SourceSchema = v.picklist(['kb', 'manifest', 'bigquery', 'metabase', 'slack', 'drive', 'repo', 'jira']);
+const SourceSchema = v.picklist(['kb', 'manifest', 'bigquery', 'metabase', 'slack', 'drive', 'repo', 'jira', 'project_skill']);
 const RouteSchema = StationRouteSchema;
 
 const PayloadSchema = v.object({
@@ -43,6 +46,8 @@ const PayloadSchema = v.object({
 	allowWorkflowMutation: v.optional(v.boolean(), false),
 	waiterModel: v.optional(v.string()),
 	kitchenModel: v.optional(v.string()),
+	forcedSkillId: v.optional(v.string()),
+	forcedRoute: v.optional(RouteSchema),
 	rework: v.optional(v.boolean(), false),
 	priorAnswer: v.optional(v.string()),
 });
@@ -51,6 +56,7 @@ type Route = v.InferOutput<typeof RouteSchema>;
 
 const KitchenOrderSchema = v.object({
 	route: RouteSchema,
+	skillId: v.optional(v.string()),
 	intent: v.string(),
 	rewrittenTask: v.string(),
 	sources: v.array(SourceSchema),
@@ -91,6 +97,8 @@ const ExplorerPreflightSchema = v.object({
 	gaps: v.array(v.string()),
 });
 
+type ExplorerPreflight = v.InferOutput<typeof ExplorerPreflightSchema>;
+
 const KitchenResultSchema = v.object({
 	answer: v.string(),
 	confidence: v.picklist(['low', 'medium', 'high']),
@@ -128,12 +136,12 @@ const FinalResponseSchema = v.object({
 
 export default async function ({ init, payload, id, runId }: FlueContext) {
 	const parsed = v.parse(PayloadSchema, payload);
-	const waiterModel = parsed.waiterModel || process.env.WAITER_MODEL || 'openai/gpt-4.1';
-	const kitchenModel = parsed.kitchenModel || process.env.ANALYTICS_MODEL || 'openai/gpt-4.1-mini';
 	const turn = resolveTurnContext({
 		turnType: parsed.turnType,
 		rework: parsed.rework,
 	});
+	const waiterModel = resolveWaiterModel(parsed.waiterModel, turn.isRework);
+	const kitchenModel = parsed.kitchenModel || process.env.ANALYTICS_MODEL || 'openai/gpt-5.4';
 	const preflightSessionPlan = createSessionPlan({
 		sessionName: parsed.sessionName,
 		streamName: parsed.streamName,
@@ -166,18 +174,26 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 	});
 	const waiterSession = await waiterHarness.session(preflightSessionPlan.waiterSessionName);
 
-	const decisionResult = await decideWaiterAction({
-		waiterSession,
-		message: parsed.message,
-		turn,
-		activeRoute: parsed.activeRoute,
-		streamName: preflightSessionPlan.streamName,
-		stationSessionName: parsed.stationSessionName,
-		priorAnswer: parsed.priorAnswer,
-	});
-	const decision = decisionResult.decision;
+	const decisionResult = parsed.forcedSkillId
+		? undefined
+		: await decideWaiterAction({
+				waiterSession,
+				message: parsed.message,
+				turn,
+				activeRoute: parsed.activeRoute,
+				streamName: preflightSessionPlan.streamName,
+				stationSessionName: parsed.stationSessionName,
+				priorAnswer: parsed.priorAnswer,
+			});
+	const decision: WaiterDecision = parsed.forcedSkillId
+		? {
+				action: 'run_preflight' as const,
+				route: parsed.forcedRoute || 'workflow',
+				rationale: `Deterministic project skill command: /${parsed.forcedSkillId}.`,
+			}
+		: decisionResult!.decision;
 	const activeRoute = parsed.activeRoute;
-	const canContinueStation = decision.action === 'continue_station' && activeRoute !== undefined && turn.type === 'mainline';
+	const canContinueStation = !parsed.forcedSkillId && decision.action === 'continue_station' && activeRoute !== undefined && turn.type === 'mainline';
 	if (canContinueStation) {
 		const sessionPlan = createSessionPlan({
 			sessionName: parsed.sessionName,
@@ -211,7 +227,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 				stationSessionName,
 			},
 			usage: {
-				waiter: { decision: decisionResult.usage },
+				waiter: { decision: decisionResult?.usage },
 				station: stationResult.usage,
 			},
 		};
@@ -225,7 +241,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 			turn,
 			decision,
 			sessionPlan: preflightSessionPlan,
-			usage: { waiter: { decision: decisionResult.usage } },
+			usage: { waiter: { decision: decisionResult?.usage } },
 		};
 	}
 
@@ -240,6 +256,9 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 		sessionPlan: preflightSessionPlan,
 		sourceCatalog,
 		selectedKbArticles,
+		forcedSkillId: parsed.forcedSkillId,
+		forcedRoute: parsed.forcedRoute,
+		priorAnswer: parsed.priorAnswer,
 	});
 	const explorerData = applyPreflightQualityGate(explorerResult.data);
 	const orderResult = await draftKitchenOrder({
@@ -250,6 +269,8 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 		turn,
 		explorerData,
 		sourceCatalog,
+		forcedSkillId: parsed.forcedSkillId,
+		forcedRoute: parsed.forcedRoute,
 	});
 	const order = orderResult.order;
 	const sessionPlan = createSessionPlan({
@@ -270,7 +291,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 			sessionPlan,
 			order,
 			explorer: explorerData,
-			usage: { waiter: { decision: decisionResult.usage, order: orderResult.usage }, explorer: explorerResult.usage },
+			usage: { waiter: { decision: decisionResult?.usage, order: orderResult.usage }, explorer: explorerResult.usage },
 		};
 	}
 
@@ -288,7 +309,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 				`Turn context:\n${JSON.stringify(turn, null, 2)}`,
 				`Session plan:\n${JSON.stringify(sessionPlan, null, 2)}`,
 				`Draft work order:\n${JSON.stringify(order, null, 2)}`,
-				`Explorer preflight:\n${JSON.stringify(explorerData, null, 2)}`,
+				`Explorer summary:\n${formatExplorerPreflightForWaiter(explorerData)}`,
 			].join('\n\n'),
 			{ result: FinalResponseSchema },
 		);
@@ -301,7 +322,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 			sessionPlan,
 			order,
 			explorer: explorerData,
-			usage: { waiter: { decision: decisionResult.usage, order: orderResult.usage, final: clarification.usage }, explorer: explorerResult.usage },
+			usage: { waiter: { decision: decisionResult?.usage, order: orderResult.usage, final: clarification.usage }, explorer: explorerResult.usage },
 		};
 	}
 
@@ -327,7 +348,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 				`Turn context:\n${JSON.stringify(turn, null, 2)}`,
 				`Session plan:\n${JSON.stringify(sessionPlan, null, 2)}`,
 				`Work order:\n${JSON.stringify(order, null, 2)}`,
-				`Explorer preflight:\n${JSON.stringify(explorerData, null, 2)}`,
+				`Explorer summary:\n${formatExplorerPreflightForWaiter(explorerData)}`,
 				`Station error:\n${error instanceof Error ? error.message : String(error)}`,
 			].join('\n\n'),
 			{ result: FinalResponseSchema },
@@ -343,7 +364,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 			explorer: explorerData,
 			kitchenError: error instanceof Error ? error.message : String(error),
 			usage: {
-				waiter: { decision: decisionResult.usage, order: orderResult.usage, final: blockerResult.usage },
+				waiter: { decision: decisionResult?.usage, order: orderResult.usage, final: blockerResult.usage },
 				explorer: explorerResult.usage,
 			},
 		};
@@ -377,7 +398,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 			postflight: postflightReviews.map((entry) => entry.review),
 			usage: {
 				waiter: {
-					decision: decisionResult.usage,
+					decision: decisionResult?.usage,
 					order: orderResult.usage,
 					postflight: postflightReviews.map((entry) => entry.usage),
 				},
@@ -421,10 +442,10 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 				kitchen: finalKitchenResult.data,
 				postflight: postflightReviews.map((entry) => entry.review),
 				usage: {
-					waiter: {
-						decision: decisionResult.usage,
-						order: orderResult.usage,
-						postflight: postflightReviews.map((entry) => entry.usage),
+						waiter: {
+							decision: decisionResult?.usage,
+							order: orderResult.usage,
+							postflight: postflightReviews.map((entry) => entry.usage),
 					},
 					explorer: explorerResult.usage,
 					kitchen: kitchenResult.usage,
@@ -440,13 +461,14 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 			[
 				'Mode: final_review.',
 				'Review this station result and write the final user-facing response.',
+				'This is postflight presentation. The postflight gate has already evaluated station quality; synthesize the accepted result or explain the clarified blocker.',
 				'Do not emit the station answer verbatim if it needs caveats, clarification, or formatting.',
 				'If the station result is blocked, explain the blocker and the attempted plan.',
 				`Original user request:\n${parsed.message}`,
 				`Turn context:\n${JSON.stringify(turn, null, 2)}`,
 				`Session plan:\n${JSON.stringify(sessionPlan, null, 2)}`,
 				`Work order:\n${JSON.stringify(order, null, 2)}`,
-				`Explorer preflight:\n${JSON.stringify(explorerData, null, 2)}`,
+				`Explorer summary:\n${formatExplorerPreflightForWaiter(explorerData)}`,
 				`Postflight reviews:\n${JSON.stringify(postflightReviews.map((entry) => entry.review), null, 2)}`,
 				`Station result:\n${JSON.stringify(finalKitchenResult.data, null, 2)}`,
 			].join('\n\n'),
@@ -472,7 +494,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 			finalError: error instanceof Error ? error.message : String(error),
 			usage: {
 				waiter: {
-					decision: decisionResult.usage,
+					decision: decisionResult?.usage,
 					order: orderResult.usage,
 					postflight: postflightReviews.map((entry) => entry.usage),
 				},
@@ -496,7 +518,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 		postflight: postflightReviews.map((entry) => entry.review),
 		usage: {
 			waiter: {
-				decision: decisionResult.usage,
+				decision: decisionResult?.usage,
 				order: orderResult.usage,
 				postflight: postflightReviews.map((entry) => entry.usage),
 				final: finalResult.usage,
@@ -512,9 +534,65 @@ export function createKitchenOrder(
 	message: string,
 	rework = false,
 	priorAnswer?: string,
-	preflight?: v.InferOutput<typeof ExplorerPreflightSchema>,
+	preflight?: ExplorerPreflight,
+	forcedSkillId?: string,
+	forcedRoute?: Route,
 ): KitchenOrder {
-	return createKitchenOrderFromPreflight(message, rework, priorAnswer, preflight);
+	return createKitchenOrderFromPreflight(message, rework, priorAnswer, preflight, forcedSkillId, forcedRoute);
+}
+
+export function summarizeExplorerPreflightForWaiter(preflight: ExplorerPreflight) {
+	const candidateLimit = 5;
+	const detailLimit = 2;
+	return {
+		status: preflight.status,
+		confidence: preflight.confidence,
+		recommendedRoute: preflight.recommendedRoute,
+		suggestedSources: preflight.suggestedSources,
+		summary: limitText(preflight.summary, 1200),
+		recommendedNextStep: limitText(preflight.recommendedNextStep, 800),
+		gaps: preflight.gaps.slice(0, 6).map((gap) => limitText(gap, 300)),
+		omittedGapCount: Math.max(0, preflight.gaps.length - 6),
+		candidateModels: preflight.candidateModels.slice(0, candidateLimit).map((model) => ({
+			name: model.name,
+			relationName: model.relationName,
+			evidence: model.evidence.slice(0, detailLimit).map((item) => limitText(item, 350)),
+			concerns: model.concerns.slice(0, detailLimit).map((item) => limitText(item, 350)),
+			omittedEvidenceCount: Math.max(0, model.evidence.length - detailLimit),
+			omittedConcernCount: Math.max(0, model.concerns.length - detailLimit),
+		})),
+		omittedCandidateCount: Math.max(0, preflight.candidateModels.length - candidateLimit),
+	};
+}
+
+function formatExplorerPreflightForWaiter(preflight: ExplorerPreflight): string {
+	return JSON.stringify(summarizeExplorerPreflightForWaiter(preflight), null, 2);
+}
+
+function limitText(value: string, maxLength: number): string {
+	if (value.length <= maxLength) return value;
+	return `${value.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+function resolveWaiterModel(payloadModel: string | undefined, isRework: boolean): string {
+	if (payloadModel) return payloadModel;
+	if (isRework) {
+		return process.env.REWORK_WAITER_MODEL ||
+			process.env.WAITER_ESCALATION_MODEL ||
+			process.env.WAITER_MODEL ||
+			'anthropic/claude-opus-4-7';
+	}
+	return process.env.WAITER_MODEL || 'anthropic/claude-opus-4-7';
+}
+
+function reworkPromptAddendum(priorAnswer?: string): string {
+	return [
+		'Rework addendum: the user rejected the prior result or sent it back to kitchen.',
+		'Do a complete rethink of what the user is asking. Do not locally patch the previous answer.',
+		'Reconsider intent, source selection, route, assumptions, missing validation, and whether the previous station solved the wrong problem.',
+		'Use the prior answer only as evidence of what may have failed.',
+		priorAnswer ? `Rejected prior answer:\n${priorAnswer}` : '',
+	].filter(Boolean).join('\n');
 }
 
 async function decideWaiterAction(input: {
@@ -531,6 +609,7 @@ async function decideWaiterAction(input: {
 			[
 				'Mode: intake_decision.',
 				'Every user-initiated message reaches this role first.',
+				'This is preflight intake only. Do not judge station output and do not write the final answer.',
 				'Decide the next action. Do not answer the user from this step.',
 				'Choose continue_station only when all are true:',
 				'- this is a mainline turn',
@@ -539,6 +618,7 @@ async function decideWaiterAction(input: {
 				'- no new source selection, preflight research, re-routing, user clarification, or final-review gate is needed',
 				'Choose run_preflight for side questions, rework, topic switches, ambiguous source-of-truth questions, route changes, or anything requiring new research before a station should work.',
 				'Choose clarify only when the next useful step cannot be chosen without user input.',
+				input.turn.isRework ? reworkPromptAddendum(input.priorAnswer) : '',
 				`Turn context:\n${JSON.stringify(input.turn, null, 2)}`,
 				`Active route: ${input.activeRoute || 'none'}.`,
 				`Active stream: ${input.streamName}.`,
@@ -615,7 +695,9 @@ function createKitchenOrderFromPreflight(
 	message: string,
 	rework = false,
 	priorAnswer?: string,
-	preflight?: v.InferOutput<typeof ExplorerPreflightSchema>,
+	preflight?: ExplorerPreflight,
+	forcedSkillId?: string,
+	forcedRoute?: Route,
 ): KitchenOrder {
 	const lower = message.toLowerCase();
 	const analyticsSignals = [
@@ -638,19 +720,25 @@ function createKitchenOrderFromPreflight(
 		'firm',
 		'month',
 	];
-	const route = preflight?.recommendedRoute ??
+	const route = (forcedRoute || preflight?.recommendedRoute) ??
 		(analyticsSignals.some((signal) => lower.includes(signal)) ? 'analytics' : 'knowledge');
 	const sources = preflight?.suggestedSources?.length ? preflight.suggestedSources : selectSources(lower, route);
+	if (forcedSkillId && !sources.includes('project_skill')) sources.unshift('project_skill');
 	const reworkPrefix = rework ? 'Rework request after rejected answer. ' : '';
+	const skillPrefix = forcedSkillId ? `Deterministic project skill /${forcedSkillId}. ` : '';
 	const priorContext = priorAnswer ? ` Prior rejected answer: ${priorAnswer}` : '';
+	const rethinkContext = rework
+		? ' Complete rethink required: reconsider intent, source choice, route, assumptions, and validation from first principles.'
+		: '';
 	const preflightContext = preflight
 		? ` Explorer preflight summary: ${preflight.summary} Recommended next step: ${preflight.recommendedNextStep}`
 		: '';
 
 	return {
 		route,
-		intent: `${reworkPrefix}${message}`,
-		rewrittenTask: `${message}${priorContext}${preflightContext}`,
+		skillId: forcedSkillId,
+		intent: `${skillPrefix}${reworkPrefix}${message || 'Run the requested project skill.'}`,
+		rewrittenTask: `${skillPrefix}${message || 'Run the requested project skill.'}${priorContext}${rethinkContext}${preflightContext}`,
 		sources,
 		constraints: [
 			'Do not create persistent artifacts unless the requested action is explicit and the matching tool policy enables it.',
@@ -681,29 +769,36 @@ async function draftKitchenOrder(input: {
 	rework?: boolean;
 	priorAnswer?: string;
 	turn: TurnContext;
-	explorerData: v.InferOutput<typeof ExplorerPreflightSchema>;
+	explorerData: ExplorerPreflight;
 	sourceCatalog: string;
+	forcedSkillId?: string;
+	forcedRoute?: Route;
 }): Promise<{ order: KitchenOrder; usage?: unknown }> {
 	try {
 		const result = await input.waiterSession.prompt(
 			[
 				'Mode: draft_work_order.',
 				'Create a domain work order, not a final answer.',
+				'This is preflight ordering. Use research to route and frame the work; leave domain execution and validation to the station.',
 				'Use the explorer preflight as supporting context. Do not answer the user directly from this step.',
 				'Choose route:',
 				'- analytics: metrics, SQL, dbt, BigQuery, dashboards, distributions.',
 				'- knowledge: product/internal explanation from KB, Slack, Drive, Jira history, or repo context.',
 				'- workflow: specialized execution such as event creation, ticket/PR automation, or cross-system action.',
 				'- documentation: writing/updating project or user context.',
+				input.forcedSkillId
+					? `Deterministic project skill command: /${input.forcedSkillId}. Set skillId to "${input.forcedSkillId}", include "project_skill" in sources, and route to ${input.forcedRoute || 'workflow'} unless policy requires clarification. Do not reinterpret whether the skill should run.`
+					: '',
 				'If the user request is too ambiguous, set clarifyingQuestion.',
-				'For rework, explicitly address why the prior answer may have failed.',
+				'For rework, explicitly address why the prior answer may have failed and create a fresh work order from first principles.',
+				input.rework ? reworkPromptAddendum(input.priorAnswer) : '',
 				'For side_question, produce a bounded branch work order that does not rely on station memory from the current mainline unless the user explicitly asks for it.',
 				'For topic_switch, treat the request as a fresh stream under the same user conversation.',
 				`Turn context:\n${JSON.stringify(input.turn, null, 2)}`,
 				`Rework: ${input.rework ? 'yes' : 'no'}`,
 				input.priorAnswer ? `Prior rejected answer:\n${input.priorAnswer}` : '',
 				input.sourceCatalog ? `Source catalog:\n${input.sourceCatalog}` : '',
-				`Explorer preflight:\n${JSON.stringify(input.explorerData, null, 2)}`,
+				`Explorer summary:\n${formatExplorerPreflightForWaiter(input.explorerData)}`,
 				`User request:\n${input.message}`,
 			].filter(Boolean).join('\n\n'),
 			{ result: KitchenOrderSchema },
@@ -711,7 +806,14 @@ async function draftKitchenOrder(input: {
 		return { order: result.data, usage: result.usage };
 	} catch {
 		return {
-			order: createKitchenOrder(input.message, input.rework, input.priorAnswer, input.explorerData),
+			order: createKitchenOrder(
+				input.message,
+				input.rework,
+				input.priorAnswer,
+				input.explorerData,
+				input.forcedSkillId,
+				input.forcedRoute,
+			),
 		};
 	}
 }
@@ -723,7 +825,7 @@ async function runKitchenStation(input: {
 	sessionPlan: SessionPlan;
 	turn: TurnContext;
 	order: KitchenOrder;
-	explorerData: v.InferOutput<typeof ExplorerPreflightSchema>;
+	explorerData: ExplorerPreflight;
 }): Promise<{ data: KitchenResult; usage?: unknown; session: FlueSession }> {
 	if (!input.sessionPlan.stationSessionName) {
 		throw new Error('Station session name is required after routing.');
@@ -771,6 +873,7 @@ async function runKitchenStation(input: {
 		[
 			`Mode: ${input.order.route}_station.`,
 			'Return a schema-valid station result for orchestrator review.',
+			projectSkillStationInstruction(input.order),
 			`Turn context:\n${JSON.stringify(input.turn, null, 2)}`,
 			`Session plan:\n${JSON.stringify(input.sessionPlan, null, 2)}`,
 			`Kitchen order:\n${JSON.stringify(input.order, null, 2)}`,
@@ -787,7 +890,7 @@ async function reviewKitchenDelivery(input: {
 	turn: TurnContext;
 	sessionPlan: SessionPlan;
 	order: KitchenOrder;
-	explorerData: v.InferOutput<typeof ExplorerPreflightSchema>;
+	explorerData: ExplorerPreflight;
 	kitchenResult: KitchenResult;
 	attempt: number;
 }): Promise<{ review: PostflightReview; usage?: unknown }> {
@@ -796,18 +899,23 @@ async function reviewKitchenDelivery(input: {
 			[
 				'Mode: postflight_gate.',
 				'Review the station delivery before any user-facing final response.',
+				'This is postflight review only. Compare the delivery to the original request, work order, evidence, and acceptance criteria.',
 				'Return accept only when final response editing can handle remaining issues.',
 				'Return revise when the station should correct incomplete work, weak evidence, wrong source choice, missing artifacts, or unsupported claims.',
 				'Return clarify when the user must answer a question before further station work can be useful.',
 				'Return block when policy, access, or tool failure prevents completion.',
+				'For analytics, failed BigQuery or Metabase auth is a blocker when validation, query execution, or card creation is part of the requested deliverable.',
+				'Do not accept claims that filters, SQL, date ranges, or cards were validated when the station only inferred them after a tool failure.',
+				'On attempt 2, prefer block over accept if the same auth/tool failure still prevents a requested persistent action or required validation.',
 				'Do not answer the user from this step.',
+				'Do not run a new preflight loop. If more research or validation is needed, send concrete feedback back to the station.',
 				'The loop is bounded: attempt 1 may send work back; attempt 2 should usually accept, clarify, or block.',
 				`Postflight attempt: ${input.attempt}`,
 				`Original user request:\n${input.message}`,
 				`Turn context:\n${JSON.stringify(input.turn, null, 2)}`,
 				`Session plan:\n${JSON.stringify(input.sessionPlan, null, 2)}`,
 				`Work order:\n${JSON.stringify(input.order, null, 2)}`,
-				`Explorer preflight:\n${JSON.stringify(input.explorerData, null, 2)}`,
+				`Explorer summary:\n${formatExplorerPreflightForWaiter(input.explorerData)}`,
 				`Station result:\n${JSON.stringify(input.kitchenResult, null, 2)}`,
 			].join('\n\n'),
 			{ result: PostflightReviewSchema },
@@ -840,7 +948,7 @@ async function reviseKitchenStation(input: {
 	turn: TurnContext;
 	sessionPlan: SessionPlan;
 	order: KitchenOrder;
-	explorerData: v.InferOutput<typeof ExplorerPreflightSchema>;
+	explorerData: ExplorerPreflight;
 	previousResult: KitchenResult;
 	review: PostflightReview;
 }): Promise<{ data: KitchenResult; usage?: unknown; session: FlueSession }> {
@@ -864,7 +972,7 @@ async function reviseKitchenStation(input: {
 
 function buildAnalyticsKitchenPrompt(
 	order: KitchenOrder,
-	explorerData: v.InferOutput<typeof ExplorerPreflightSchema>,
+	explorerData: ExplorerPreflight,
 	turn: TurnContext,
 	sessionPlan: SessionPlan,
 ): string {
@@ -872,6 +980,7 @@ function buildAnalyticsKitchenPrompt(
 		'Mode: analytics_station.',
 		'Follow the work order exactly and return a schema-valid station result for orchestrator review.',
 		'Use explorer preflight as planning evidence, not as ground truth.',
+		projectSkillStationInstruction(order),
 		`Turn context:\n${JSON.stringify(turn, null, 2)}`,
 		`Session plan:\n${JSON.stringify(sessionPlan, null, 2)}`,
 		`Kitchen order:\n${JSON.stringify(order, null, 2)}`,
@@ -881,18 +990,29 @@ function buildAnalyticsKitchenPrompt(
 
 function buildKnowledgeKitchenPrompt(
 	order: KitchenOrder,
-	explorerData: v.InferOutput<typeof ExplorerPreflightSchema>,
+	explorerData: ExplorerPreflight,
 	turn: TurnContext,
 	sessionPlan: SessionPlan,
 ): string {
 	return [
 		'Mode: knowledge_station.',
 		'Follow the work order exactly and return a schema-valid station result for orchestrator review.',
+		projectSkillStationInstruction(order),
 		`Turn context:\n${JSON.stringify(turn, null, 2)}`,
 		`Session plan:\n${JSON.stringify(sessionPlan, null, 2)}`,
 		`Kitchen order:\n${JSON.stringify(order, null, 2)}`,
 		`Explorer preflight:\n${JSON.stringify(explorerData, null, 2)}`,
 	].join('\n\n');
+}
+
+function projectSkillStationInstruction(order: KitchenOrder): string {
+	if (!order.skillId) return '';
+	return [
+		`Deterministic project skill command: /${order.skillId}.`,
+		'Before doing substantive work, call project_skill_read for this exact skillId and path "SKILL.md".',
+		'Then progressively read only referenced files needed for this request.',
+		'Do not fuzzy-match or substitute a different skill.',
+	].join(' ');
 }
 
 function stationToolsForRoute(
@@ -911,6 +1031,8 @@ function stationToolsForRoute(
 	}
 	if (route === 'workflow') {
 		return dedupeToolsByName([
+			...createWorkflowTemplateTools(),
+			...createProjectSkillTools(),
 			...explorerToolset(policy),
 			...createWorkflowPersistenceTools(policy),
 			...createArtifactPersistenceTools(policy),
@@ -939,11 +1061,14 @@ async function runExplorerPreflight(input: {
 	sessionPlan: SessionPlan;
 	sourceCatalog: string;
 	selectedKbArticles: Array<{ path: string; title: string; description: string }>;
+	forcedSkillId?: string;
+	forcedRoute?: Route;
+	priorAnswer?: string;
 }) {
 	const explorerHarness = await input.init({
 		name: 'explorer-tasker',
 		sandbox: localWithoutBuiltinTools({ disableTaskTool: true }),
-		model: process.env.EXPLORER_MODEL || 'openai/gpt-4.1-mini',
+		model: process.env.EXPLORER_MODEL || 'openai/gpt-5.4-nano',
 		role: 'explorer',
 		tools: explorerToolset(input.policy),
 	});
@@ -952,8 +1077,10 @@ async function runExplorerPreflight(input: {
 		[
 			'Mode: preflight.',
 			'Every waiter-mediated request starts with this preflight. Gather enough context for the orchestrator to create a domain work order.',
+			'Do not solve the full domain task. Stop at route, source framing, candidate evidence, unresolved gaps, and the next station step.',
 			'Identify likely intent, recommended route, source domains, candidate sources/models, uncertainty, and the next station step.',
 			'This is a detached per-run research session. Do not assume continuity from prior explorer runs.',
+			input.turn.isRework ? reworkPromptAddendum(input.priorAnswer) : '',
 			'For side_question, gather only the evidence needed for the branch question without polluting the mainline station context.',
 			'For topic_switch, treat this as a fresh topic stream under the same user conversation.',
 			'Return status "ready_for_analytics" only when analytics kitchen can proceed with a concrete plan and known caveats.',
@@ -961,6 +1088,9 @@ async function runExplorerPreflight(input: {
 			'If the remaining work is SQL validation or model comparison that analytics station can perform, return ready_for_analytics with those gaps rather than stopping preflight.',
 			'Set recommendedRoute to analytics for quantitative data questions, metrics, distributions, SQL, dashboards, or BigQuery work.',
 			'Set recommendedRoute to knowledge for product/internal explanations that do not require data execution.',
+			input.forcedSkillId
+				? `Deterministic project skill command: /${input.forcedSkillId}. Use project_skill as a source, read that skill by id, and set recommendedRoute to ${input.forcedRoute || 'workflow'} unless user clarification is required.`
+				: '',
 			`Turn context:\n${JSON.stringify(input.turn, null, 2)}`,
 			`Session plan:\n${JSON.stringify(input.sessionPlan, null, 2)}`,
 			input.sourceCatalog ? `Source catalog:\n${input.sourceCatalog}` : '',
@@ -976,8 +1106,8 @@ async function runExplorerPreflight(input: {
 }
 
 function applyPreflightQualityGate(
-	preflight: v.InferOutput<typeof ExplorerPreflightSchema>,
-): v.InferOutput<typeof ExplorerPreflightSchema> {
+	preflight: ExplorerPreflight,
+): ExplorerPreflight {
 	if (preflight.status !== 'ready_for_analytics') return preflight;
 	const hasCandidate = preflight.candidateModels.length > 0;
 	const candidatesHaveEvidence = hasCandidate && preflight.candidateModels.some((model) => model.evidence.length > 0);
@@ -1006,7 +1136,7 @@ function applyPreflightQualityGate(
 }
 
 function shouldDispatchForStationValidation(
-	preflight: v.InferOutput<typeof ExplorerPreflightSchema>,
+	preflight: ExplorerPreflight,
 	order: KitchenOrder,
 ): boolean {
 	if (preflight.recommendedRoute !== 'analytics' || order.route !== 'analytics') return false;

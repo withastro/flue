@@ -5,18 +5,29 @@ import {
 	createExternalKnowledgeTools,
 	createJiraAutomationTools,
 	createManifestTools,
+	createMetabaseReadTools,
 } from '../lib/tools.ts';
-import { createWaiterDocsTools } from '../tools/waiter-docs.ts';
+import { createKbTools } from '../tools/kb.ts';
+import { createProjectSkillTools } from '../tools/project-skills.ts';
 import type { ToolPolicy } from '../tools/policy.ts';
+import { createSourceCatalogTools } from '../tools/source-catalog.ts';
 
 export function explorerToolset(policy: ToolPolicy): ToolDef[] {
 	return [
 		...createManifestTools({
 			manifestPath: policy.manifestPath,
 		}),
-		...createWaiterDocsTools(),
+		...createSourceCatalogTools(),
+		...createKbTools(),
+		...createProjectSkillTools(),
 		...createBigQueryValidationTools({
 			maxGb: policy.limits.maxBigQueryGb,
+			credentials: {
+				bigQueryMode: policy.credentials.bigQueryMode,
+			},
+		}),
+		...createMetabaseReadTools({
+			metabaseCliScript: policy.metabaseCliScript,
 			credentials: {
 				bigQueryMode: policy.credentials.bigQueryMode,
 			},
