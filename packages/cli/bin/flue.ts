@@ -1439,7 +1439,7 @@ function initCommand(args: InitArgs) {
 	if (existing && !args.force) {
 		const rel = path.relative(process.cwd(), existing) || existing;
 		console.error(
-			`[flue] A Flue config already exists at ${rel}.\n` + `  Re-run with --force to overwrite.`,
+			`[flue] A Flue config already exists at ${rel}.\n  Re-run with --force to overwrite.`,
 		);
 		process.exit(1);
 	}
