@@ -1052,7 +1052,6 @@ export type FlueEvent = (
 			instanceId: string;
 			workflowName: string;
 			startedAt: string;
-			restartedFromRunId?: string;
 			payload: unknown;
 	  }
 	| {

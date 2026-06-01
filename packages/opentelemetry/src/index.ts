@@ -40,9 +40,6 @@ export function createOpenTelemetryObserver(
 					attributes: {
 						...identifiers(event),
 						'flue.workflow.name': event.workflowName,
-						...(event.restartedFromRunId
-							? { 'flue.workflow.restarted_from_run_id': event.restartedFromRunId }
-							: {}),
 						...(captureContent ? contentAttribute('flue.workflow.payload', event.payload) : {}),
 					},
 				}),
@@ -69,7 +66,6 @@ export function createOpenTelemetryObserver(
 						...identifiers(event),
 						'flue.workflow.name': event.workflowName,
 						'flue.workflow.recovery_handling': true,
-						'flue.workflow.resumed': true,
 						'flue.workflow.started_at': event.startedAt,
 					},
 				}),

@@ -39,7 +39,8 @@ function owner(workflowName: string, runId: string) {
 
 describe('createRegistryOps (SQL paths)', () => {
 	it('round-trips a workflow pointer through recordRunStart and lookupRun', () => {
-		const ops = createRegistryOps(makeFakeSql());
+		const sql = makeFakeSql();
+		const ops = createRegistryOps(sql);
 		const runId = 'workflow:hello:01';
 		ops.recordRunStart({ runId, owner: owner('hello', runId), startedAt: STARTED_AT_1 });
 		expect(ops.lookupRun(runId)).toEqual({
@@ -52,6 +53,12 @@ describe('createRegistryOps (SQL paths)', () => {
 			isError: undefined,
 		});
 		expect(ops.lookupRun('workflow:hello:missing')).toBeNull();
+		expect(
+			sql
+				.exec('PRAGMA table_info(flue_registry_runs)')
+				.toArray()
+				.map((row) => row.name),
+		).not.toContain('agent_name');
 	});
 
 	it('records terminal state for workflow pointers', () => {
@@ -155,9 +162,8 @@ describe('createRegistryOps (SQL paths)', () => {
 		const sql = makeFakeSql();
 		const ops = createRegistryOps(sql);
 		sql.exec(
-			`INSERT INTO flue_registry_runs (run_id, owner_kind, agent_name, instance_id, status, started_at) VALUES (?, 'agent', ?, ?, 'active', ?)`,
+			`INSERT INTO flue_registry_runs (run_id, owner_kind, instance_id, status, started_at) VALUES (?, 'agent', ?, 'active', ?)`,
 			'legacy-agent',
-			'hello',
 			'inst_a',
 			STARTED_AT_1,
 		);
@@ -165,12 +171,14 @@ describe('createRegistryOps (SQL paths)', () => {
 		expect(ops.listRuns({}).runs).toEqual([]);
 	});
 
-	it('keeps rows from the pre-owner schema out of workflow run lookup while admitting new workflows', () => {
+	it('tolerates inert columns in supported historical tables while admitting new workflows', () => {
 		const sql = makeFakeSql();
 		sql.exec(`CREATE TABLE flue_registry_runs (
 			run_id TEXT PRIMARY KEY,
-			agent_name TEXT NOT NULL,
-			instance_id TEXT NOT NULL,
+			owner_kind TEXT NOT NULL,
+			agent_name TEXT,
+			instance_id TEXT,
+			workflow_name TEXT,
 			status TEXT NOT NULL,
 			started_at TEXT NOT NULL,
 			ended_at TEXT,
@@ -178,17 +186,17 @@ describe('createRegistryOps (SQL paths)', () => {
 			is_error INTEGER
 		)`);
 		sql.exec(
-			`INSERT INTO flue_registry_runs (run_id, agent_name, instance_id, status, started_at) VALUES (?, ?, ?, ?, ?)`,
-			'pre-owner-agent',
+			`INSERT INTO flue_registry_runs (run_id, owner_kind, agent_name, instance_id, status, started_at) VALUES (?, 'agent', ?, ?, ?, ?)`,
+			'historical-agent',
 			'hello',
 			'inst_a',
 			'active',
 			STARTED_AT_1,
 		);
 		const ops = createRegistryOps(sql);
-		const runId = 'workflow:hello:after-upgrade';
+		const runId = 'workflow:hello:current';
 		ops.recordRunStart({ runId, owner: owner('hello', runId), startedAt: STARTED_AT_2 });
-		expect(ops.lookupRun('pre-owner-agent')).toBeNull();
+		expect(ops.lookupRun('historical-agent')).toBeNull();
 		expect(ops.lookupRun(runId)).toEqual({
 			runId,
 			owner: owner('hello', runId),

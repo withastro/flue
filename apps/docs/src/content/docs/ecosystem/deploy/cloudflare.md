@@ -385,6 +385,10 @@ Flue persists workflow invocation payloads with workflow run records before admi
 
 Flue workflows do not resume from checkpointed durable steps after Durable Object interruption. For jobs that require durable step-level continuation, implement those steps with [Cloudflare Workflows](https://developers.cloudflare.com/workflows/).
 
+### Beta persisted-schema boundary
+
+Flue supports Cloudflare Durable Object SQL state created by `v0.8.0` or newer. Earlier beta schemas are not supported; clear or separately migrate that persisted state before upgrading. Existing supported databases may retain unused historical columns. They do not require table rebuilds.
+
 ## Sandbox context
 
 `AGENTS.md` and skills are optional workspace-context files that the agent reads from its sandbox at `init()` time. They live at conventional paths inside whatever sandbox the agent is using — Flue looks for `<cwd>/AGENTS.md` and `<cwd>/.agents/skills/<name>/SKILL.md`. Whatever's there gets loaded; whatever isn't, doesn't. Most agents don't need either to do useful work.

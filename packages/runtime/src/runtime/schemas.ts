@@ -25,8 +25,6 @@ export const RunRecordSchema = v.object({
 	status: RunStatusSchema,
 	startedAt: v.string(),
 	payload: v.optional(v.unknown()),
-	restartedFromRunId: v.optional(v.string()),
-	restartedAsRunId: v.optional(v.string()),
 	endedAt: v.optional(v.string()),
 	isError: v.optional(v.boolean()),
 	durationMs: v.optional(v.number()),
@@ -177,7 +175,6 @@ const FlueEventSchema = v.union([
 		instanceId: v.string(),
 		workflowName: v.string(),
 		startedAt: v.string(),
-		restartedFromRunId: v.optional(v.string()),
 		payload: v.unknown(),
 	}),
 	flueEvent({

@@ -11,8 +11,6 @@ export interface RunRecord {
 	status: RunStatus;
 	startedAt: string;
 	payload?: unknown;
-	restartedFromRunId?: string;
-	restartedAsRunId?: string;
 	endedAt?: string;
 	isError?: boolean;
 	durationMs?: number;

@@ -9,8 +9,6 @@ export interface RunRecord {
 	owner: RunOwner;
 	status: RunStatus;
 	startedAt: string;
-	restartedFromRunId?: string;
-	restartedAsRunId?: string;
 	endedAt?: string;
 	isError?: boolean;
 	durationMs?: number;
@@ -253,7 +251,6 @@ export type FlueEvent = (
 			instanceId: string;
 			workflowName: string;
 			startedAt: string;
-			restartedFromRunId?: string;
 			payload: unknown;
 	  }
 	| {

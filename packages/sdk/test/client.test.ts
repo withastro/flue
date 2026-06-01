@@ -196,27 +196,6 @@ describe('createFlueClient', () => {
 		expect(parsed.searchParams.get('limit')).toBe('10');
 	});
 
-	it('exposes legacy workflow restart linkage in historical run records', async () => {
-		const record = {
-			runId: 'run-next',
-			owner: { kind: 'workflow' as const, workflowName: 'report', instanceId: 'run-next' },
-			status: 'completed' as const,
-			startedAt: '2026-05-27T00:00:00.000Z',
-			restartedFromRunId: 'run-before',
-			restartedAsRunId: 'run-after',
-		};
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test',
-			fetch: async () => Response.json(record),
-		});
-
-		const run = await client.runs.get('run-next');
-		const adminRun = await client.admin.runs.get('run-next');
-
-		expect(run.restartedFromRunId).toBe('run-before');
-		expect(adminRun.restartedAsRunId).toBe('run-after');
-	});
-
 	it('supports admin mounted below a custom path', async () => {
 		let url = '';
 		const client = createFlueClient({

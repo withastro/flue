@@ -328,13 +328,13 @@ Minimal socket interface required by the client SDK.
 
 ### Run and discovery types
 
-| Type                 | Description                                                                                                                      |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| `RunOwner`           | Workflow identity recorded for a run.                                                                                            |
-| `RunRecord`          | Persisted workflow-run record, including status, timestamps, optional legacy restart linkage, payload, result, and error fields. |
-| `RunPointer`         | Workflow-run summary returned by admin listing routes.                                                                           |
-| `AgentManifestEntry` | Agent discovery metadata returned by the read-only admin route.                                                                  |
-| `ListResponse<T>`    | Cursor-paginated response with `items` and optional `nextCursor`.                                                                |
+| Type                 | Description                                                                                     |
+| -------------------- | ----------------------------------------------------------------------------------------------- |
+| `RunOwner`           | Workflow identity recorded for a run.                                                           |
+| `RunRecord`          | Persisted workflow-run record, including status, timestamps, payload, result, and error fields. |
+| `RunPointer`         | Workflow-run summary returned by admin listing routes.                                          |
+| `AgentManifestEntry` | Agent discovery metadata returned by the read-only admin route.                                 |
+| `ListResponse<T>`    | Cursor-paginated response with `items` and optional `nextCursor`.                               |
 
 ### Normalized model-turn types
 

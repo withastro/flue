@@ -42,8 +42,8 @@ class DurableRunStore implements RunStore {
 		}
 		this.sql.exec(
 			`INSERT OR REPLACE INTO flue_runs
-			 (run_id, owner_kind, instance_id, agent_name, workflow_name, status, started_at, payload, ended_at, is_error, duration_ms, result, error)
-			 VALUES (?, 'workflow', ?, '', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
+			 (run_id, owner_kind, instance_id, workflow_name, status, started_at, payload, ended_at, is_error, duration_ms, result, error)
+			 VALUES (?, 'workflow', ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL)`,
 			input.runId,
 			input.owner.instanceId,
 			input.owner.workflowName,
@@ -129,7 +129,6 @@ function ensureRunTables(sql: SqlStorage): void {
 		 run_id TEXT PRIMARY KEY,
 		 owner_kind TEXT NOT NULL,
 		 instance_id TEXT,
-		 agent_name TEXT,
 		 workflow_name TEXT,
 			 status TEXT NOT NULL,
 			 started_at TEXT NOT NULL,
@@ -141,9 +140,6 @@ function ensureRunTables(sql: SqlStorage): void {
 			 error TEXT
 		)`,
 	);
-	ensureColumn(sql, 'flue_runs', 'owner_kind', "TEXT NOT NULL DEFAULT 'agent'");
-	ensureColumn(sql, 'flue_runs', 'workflow_name', 'TEXT');
-	ensureColumn(sql, 'flue_runs', 'payload', 'TEXT');
 	sql.exec(
 		`CREATE TABLE IF NOT EXISTS flue_run_events (
 		 run_id TEXT NOT NULL,
@@ -165,16 +161,6 @@ function ensureRunTables(sql: SqlStorage): void {
 	);
 }
 
-function ensureColumn(sql: SqlStorage, table: string, column: string, definition: string): void {
-	const columns = new Set(
-		sql
-			.exec(`PRAGMA table_info(${table})`)
-			.toArray()
-			.map((row) => String(row.name)),
-	);
-	if (!columns.has(column)) sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-}
-
 function rowToRunRecord(row: SqlRow): RunRecord {
 	const payload = typeof row.payload === 'string' ? JSON.parse(row.payload) : undefined;
 	const result = typeof row.result === 'string' ? JSON.parse(row.result) : undefined;
@@ -191,10 +177,6 @@ function rowToRunRecord(row: SqlRow): RunRecord {
 		status: row.status as RunRecord['status'],
 		startedAt: String(row.started_at),
 		payload,
-		restartedFromRunId:
-			typeof row.restarted_from_run_id === 'string' ? row.restarted_from_run_id : undefined,
-		restartedAsRunId:
-			typeof row.restarted_as_run_id === 'string' ? row.restarted_as_run_id : undefined,
 		endedAt: typeof row.ended_at === 'string' ? row.ended_at : undefined,
 		isError:
 			row.is_error === null || row.is_error === undefined ? undefined : Boolean(row.is_error),

@@ -55,7 +55,12 @@ describe('createDurableRunStore', () => {
 				.all()
 				.map((row) => row.name),
 		).not.toEqual(
-			expect.arrayContaining(['owner_run_id', 'restarted_from_run_id', 'restarted_as_run_id']),
+			expect.arrayContaining([
+				'agent_name',
+				'owner_run_id',
+				'restarted_from_run_id',
+				'restarted_as_run_id',
+			]),
 		);
 		expect(await store.getRun(runId)).toMatchObject({
 			runId,
@@ -66,7 +71,7 @@ describe('createDurableRunStore', () => {
 		});
 	});
 
-	it('reads historical restart linkage without provisioning it for new tables', async () => {
+	it('tolerates inert columns in supported historical tables without surfacing restart linkage', async () => {
 		const { db, sql } = makeFakeSql();
 		db.exec(`CREATE TABLE flue_runs (
 			run_id TEXT PRIMARY KEY,
@@ -89,10 +94,18 @@ describe('createDurableRunStore', () => {
 			VALUES ('workflow:hello:historical', 'workflow', NULL, 'hello', 'errored', '2026-05-31T00:00:00.000Z', '{}', 'workflow:hello:before', 'workflow:hello:after')`);
 
 		const store = createDurableRunStore(sql);
-		expect(await store.getRun('workflow:hello:historical')).toMatchObject({
-			owner: owner('workflow:hello:historical'),
-			restartedFromRunId: 'workflow:hello:before',
-			restartedAsRunId: 'workflow:hello:after',
+		const historical = await store.getRun('workflow:hello:historical');
+		expect(historical).toMatchObject({ owner: owner('workflow:hello:historical') });
+		expect(historical).not.toHaveProperty('restartedFromRunId');
+		expect(historical).not.toHaveProperty('restartedAsRunId');
+
+		const runId = 'workflow:hello:current';
+		await store.createRun({
+			runId,
+			owner: owner(runId),
+			startedAt: '2026-05-31T00:00:01.000Z',
+			payload: {},
 		});
+		expect(await store.getRun(runId)).toMatchObject({ runId, owner: owner(runId) });
 	});
 });

@@ -93,8 +93,8 @@ class SqlRegistryOps implements RegistryOps {
 		}
 		this.sql.exec(
 			`INSERT OR IGNORE INTO flue_registry_runs
-			 (run_id, owner_kind, agent_name, instance_id, workflow_name, status, started_at, ended_at, duration_ms, is_error)
-			 VALUES (?, 'workflow', '', ?, ?, 'active', ?, NULL, NULL, NULL)`,
+			 (run_id, owner_kind, instance_id, workflow_name, status, started_at, ended_at, duration_ms, is_error)
+			 VALUES (?, 'workflow', ?, ?, 'active', ?, NULL, NULL, NULL)`,
 			input.runId,
 			input.owner.instanceId,
 			input.owner.workflowName,
@@ -159,7 +159,6 @@ function ensureRegistryTables(sql: SqlStorage): void {
 		`CREATE TABLE IF NOT EXISTS flue_registry_runs (
 		 run_id TEXT PRIMARY KEY,
 		 owner_kind TEXT NOT NULL,
-		 agent_name TEXT,
 		 instance_id TEXT,
 		 workflow_name TEXT,
 		 status TEXT NOT NULL,
@@ -169,8 +168,6 @@ function ensureRegistryTables(sql: SqlStorage): void {
 		 is_error INTEGER
 		)`,
 	);
-	ensureColumn(sql, 'flue_registry_runs', 'owner_kind', "TEXT NOT NULL DEFAULT 'agent'");
-	ensureColumn(sql, 'flue_registry_runs', 'workflow_name', 'TEXT');
 	sql.exec(
 		'CREATE INDEX IF NOT EXISTS flue_registry_status_started_idx ON flue_registry_runs (status, started_at DESC)',
 	);
@@ -208,16 +205,6 @@ function parseListRunsOpts(params: URLSearchParams): ListRunsOpts {
 	const cursor = params.get('cursor');
 	if (cursor) opts.cursor = cursor;
 	return opts;
-}
-
-function ensureColumn(sql: SqlStorage, table: string, column: string, definition: string): void {
-	const columns = new Set(
-		sql
-			.exec(`PRAGMA table_info(${table})`)
-			.toArray()
-			.map((row) => String(row.name)),
-	);
-	if (!columns.has(column)) sql.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
 function clampLimit(limit: number | undefined): number {
