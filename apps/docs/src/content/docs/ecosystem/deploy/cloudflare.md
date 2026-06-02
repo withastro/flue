@@ -185,7 +185,7 @@ Add an optional `.flue/cloudflare.ts` module when your deployment needs native C
 import { DurableObject } from 'cloudflare:workers';
 
 export class SalesforceAuthCache extends DurableObject {
-  async getToken() {
+  async refreshIfNeeded() {
     return await this.ctx.storage.get('token');
   }
 }

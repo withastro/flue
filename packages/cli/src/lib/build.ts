@@ -150,11 +150,11 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 		}
 		const inputDir = cloudflareViteInputDir(root);
 		const entryPath = path.join(inputDir, plugin.entryFilename);
+		const inputs = await plugin.additionalOutputs(ctx);
 		let generatedChanged =
 			!fs.existsSync(entryPath) || fs.readFileSync(entryPath, 'utf-8') !== serverCode;
 		fs.mkdirSync(inputDir, { recursive: true });
 		if (generatedChanged) fs.writeFileSync(entryPath, serverCode, 'utf-8');
-		const inputs = await plugin.additionalOutputs(ctx);
 		for (const [filename, content] of Object.entries(inputs)) {
 			const filePath =
 				filename === 'wrangler.jsonc'

@@ -21,19 +21,27 @@ export class Counter extends DurableObject {
     return count;
   }
 }
-export default { async scheduled() {} };
+export default {
+  async scheduled(_controller, env) {
+    await env.Counter.getByName('default').increment();
+  },
+};
 `,
 		);
-		const server = await startServer(root);
+		let server: Awaited<ReturnType<typeof startServer>> | undefined;
 		try {
+			server = await startServer(root);
 			const response = await fetch(new URL('/counter', server.url));
 			expect(response.status).toBe(200);
 			expect(await response.json()).toEqual({ count: 1 });
-			const entry = fs.readFileSync(path.join(cloudflareViteInputDir(root), '_entry.ts'), 'utf8');
-			expect(entry).toContain(`export * from '${path.join(root, 'src', 'cloudflare.ts')}';`);
-			expect(entry).toContain('...cloudflareHandlers,');
+			const scheduled = await fetch(new URL('/cdn-cgi/handler/scheduled', server.url));
+			expect(scheduled.status).toBe(200);
+			expect(await scheduled.text()).toBe('ok');
+			const afterScheduled = await fetch(new URL('/counter', server.url));
+			expect(afterScheduled.status).toBe(200);
+			expect(await afterScheduled.json()).toEqual({ count: 3 });
 		} finally {
-			await server.close();
+			await server?.close();
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	}, 90000);
@@ -89,6 +97,38 @@ export default { async scheduled() {} };
 			'wrangler.jsonc durable object binding "Assistant" is reserved by Flue. Expected class_name "Assistant", received "Counter".',
 		);
 	}, 90000);
+
+	it('does not update generated deployment inputs when Wrangler validation fails', async () => {
+		const root = await createGeneratedFixture(`export class Counter {}\n`);
+		const entryPath = path.join(cloudflareViteInputDir(root), '_entry.ts');
+		const entry = fs.readFileSync(entryPath, 'utf8');
+		try {
+			fs.writeFileSync(
+				path.join(root, 'src', 'agents', 'reviewer.ts'),
+				`import { createAgent } from '@flue/runtime';\nexport default createAgent(() => ({ model: false }));\n`,
+			);
+			fs.writeFileSync(
+				path.join(root, 'wrangler.jsonc'),
+				JSON.stringify({
+					compatibility_date: '2026-04-01',
+					compatibility_flags: ['nodejs_compat'],
+					durable_objects: { bindings: [{ name: 'Assistant', class_name: 'Counter' }] },
+				}),
+			);
+			await expect(
+				build({
+					root,
+					sourceRoot: path.join(root, 'src'),
+					output: path.join(root, 'generated'),
+					target: 'cloudflare',
+					mode: 'development',
+				}),
+			).rejects.toThrow('durable object binding "Assistant" is reserved by Flue');
+			expect(fs.readFileSync(entryPath, 'utf8')).toBe(entry);
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	}, 90000);
 });
 
 async function expectRuntimeFailure(cloudflareSource: string, expected: string): Promise<void> {
@@ -143,8 +183,19 @@ async function createGeneratedFixture(
 		path.join(root, 'src', 'app.ts'),
 		`export default {\n  async fetch(_request, env) {\n    const count = await env.Counter.getByName('default').increment();\n    return Response.json({ count });\n  },\n};\n`,
 	);
-	await build({ root, sourceRoot: path.join(root, 'src'), output, target: 'cloudflare', mode: 'development' });
-	return root;
+	try {
+		await build({
+			root,
+			sourceRoot: path.join(root, 'src'),
+			output,
+			target: 'cloudflare',
+			mode: 'development',
+		});
+		return root;
+	} catch (error) {
+		fs.rmSync(root, { recursive: true, force: true });
+		throw error;
+	}
 }
 
 async function startServer(root: string): Promise<{ url: string; close(): Promise<void> }> {
