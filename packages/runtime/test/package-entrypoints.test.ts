@@ -68,6 +68,7 @@ describe('package entrypoints', () => {
 			connectCloudflareAgentWebSocket: expect.any(Function),
 			connectCloudflareWorkflowWebSocket: expect.any(Function),
 			createCloudflareRunRegistry: expect.any(Function),
+			extend: expect.any(Function),
 			FlueRegistry: expect.any(Function),
 			getCloudflareAIBindingApiProvider: expect.any(Function),
 			messageCloudflareAgentWebSocket: expect.any(Function),

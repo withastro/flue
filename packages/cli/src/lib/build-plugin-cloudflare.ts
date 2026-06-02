@@ -18,6 +18,7 @@ export class CloudflarePlugin implements BuildPlugin {
 		const { agents, appEntry, cloudflareEntry, workflows } = ctx;
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 		validateCloudflareAgentNames(ctx);
+		validateCloudflareExportNames(ctx);
 
 		const agentImports = agents
 			.map((a, index) => {
@@ -45,7 +46,8 @@ export class CloudflarePlugin implements BuildPlugin {
 
 		const agentClasses = agents
 			.map(
-				(agent) => `export class ${agentClassName(agent.name)} extends resolveCloudflareAgentBase(agentModules[${JSON.stringify(agent.name)}], ${JSON.stringify(agent.name)}) {
+				(agent, index) => `const agentExtension${index} = resolveCloudflareAgentExtension(agentModules[${JSON.stringify(agent.name)}], ${JSON.stringify(agent.name)});
+const GeneratedAgent${index} = class ${agentClassName(agent.name)} extends agentExtension${index}.base(Agent) {
   async onRequest(request) {
     return dispatchAgent(request, this, ${JSON.stringify(agent.name)}, directHandlers[${JSON.stringify(agent.name)}]);
   }
@@ -87,13 +89,15 @@ export class CloudflarePlugin implements BuildPlugin {
       return super.onFiberRecovered(ctx);
     }
   }
-}`,
+};
+const WrappedAgent${index} = agentExtension${index}.wrap(GeneratedAgent${index});
+export { WrappedAgent${index} as ${agentClassName(agent.name)} };`,
 			)
 			.join('\n\n');
 
 		const workflowClasses = workflows
 			.map(
-				(workflow) => `export class ${workflowClassName(workflow.name)} extends Agent {
+				(workflow, index) => `const GeneratedWorkflow${index} = class ${workflowClassName(workflow.name)} extends Agent {
   async onRequest(request) {
     return dispatchWorkflow(request, this, ${JSON.stringify(workflow.name)});
   }
@@ -132,7 +136,8 @@ export class CloudflarePlugin implements BuildPlugin {
       return super.onFiberRecovered(ctx);
     }
   }
-}`,
+};
+export { GeneratedWorkflow${index} as ${workflowClassName(workflow.name)} };`,
 			)
 			.join('\n\n');
 
@@ -205,6 +210,7 @@ import {
   connectCloudflareWorkflowWebSocket,
   messageCloudflareAgentWebSocket,
   messageCloudflareWorkflowWebSocket,
+  resolveCloudflareAgentExtension,
 } from '@flue/runtime/cloudflare';
 import { registerApiProvider, registerProvider } from '@flue/runtime';
 
@@ -251,14 +257,6 @@ ${agentClassMapEntries}
 const workflowClassNames = {
 ${workflowClassMapEntries}
 };
-
-function resolveCloudflareAgentBase(mod, name) {
-  const Base = mod.CloudflareAgent === undefined ? Agent : mod.CloudflareAgent;
-  if (typeof Base !== 'function' || (Base !== Agent && !(Base.prototype instanceof Agent))) {
-    throw new Error('[flue] Agent "' + name + '" CloudflareAgent export must extend Agent from "agents".');
-  }
-  return Base;
-}
 
 const userCloudflare = ${userCloudflareValue};
 const reservedCloudflareExportNames = new Set(${JSON.stringify(reservedCloudflareExportNames)});
@@ -919,6 +917,31 @@ function workflowVarName(name: string, index: number): string {
 }
 
 const CLOUDFLARE_AGENT_NAME_PATTERN = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+
+function validateCloudflareExportNames(ctx: BuildContext): void {
+	const entries = [
+		...ctx.agents.map((agent) => ({ name: agentClassName(agent.name), source: `agent "${agent.name}"` })),
+		...ctx.workflows.map((workflow) => ({
+			name: workflowClassName(workflow.name),
+			source: `workflow "${workflow.name}"`,
+		})),
+		{ name: 'FlueRegistry', source: 'Flue registry' },
+	];
+	const sourcesByName = new Map<string, string[]>();
+	for (const entry of entries) {
+		const sources = sourcesByName.get(entry.name) ?? [];
+		sources.push(entry.source);
+		sourcesByName.set(entry.name, sources);
+	}
+	const conflicts = [...sourcesByName]
+		.filter(([, sources]) => sources.length > 1)
+		.map(([name, sources]) => `"${name}" (${sources.join(', ')})`)
+		.join(', ');
+	if (!conflicts) return;
+	throw new Error(
+		`[flue] Cloudflare target generated conflicting Worker export name(s): ${conflicts}. Rename the conflicting agent or workflow file.`,
+	);
+}
 
 function validateCloudflareAgentNames(ctx: BuildContext): void {
 	// Agents and workflows both materialize as per-definition Durable Object

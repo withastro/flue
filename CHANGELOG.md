@@ -14,7 +14,7 @@
 - Agent and workflow WebSocket frames reject blank or whitespace-only `requestId` values, including optional agent ping IDs.
 - Published the Message-Driven Agents guide, Sandbox Connector API, and Daytona integration guide on the documentation site. Replace saved root-guide or raw GitHub links with [Message-Driven Agents](https://flueframework.com/docs/guide/message-driven-agents/), [Sandbox Connector API](https://flueframework.com/docs/api/sandbox-api/), and [Daytona](https://flueframework.com/docs/ecosystem/sandboxes/daytona/).
 - Refreshed homepage and documentation canonical URLs and social-preview metadata.
-- Cloudflare addressable agent modules may export a `CloudflareAgent extends Agent` base class to add native Agents SDK lifecycle hooks and methods while retaining Flue-owned routing and durability wrappers.
+- Cloudflare addressable agent modules may export `cloudflare = extend({ base, wrap })` to add native Agents SDK lifecycle hooks beneath Flue-owned routing or apply integrations such as Sentry to the final generated Durable Object class.
 - **Cloudflare Sandbox exports are now explicit.** Cloudflare applications may add a `cloudflare.ts` deployment module whose named exports become Worker exports and whose optional default export contributes non-HTTP Worker handlers. Export Cloudflare Sandbox aliases from this module instead of relying on the removed `Sandbox`-suffix auto-wiring.
 
 ## 0.9.0 - 2026-06-02

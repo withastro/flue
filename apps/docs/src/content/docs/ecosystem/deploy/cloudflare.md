@@ -154,28 +154,45 @@ An exported `websocket` middleware can authenticate its own agent or workflow so
 
 ### Extending an addressable Cloudflare agent
 
-Flue normally owns each generated agent Durable Object class. When an addressable agent needs native Cloudflare Agents SDK capabilities such as `onStart()`, `schedule()`, `scheduleEvery()`, or `queue()`, its module may additionally export a `CloudflareAgent` base class:
+Flue normally owns each generated agent Durable Object class. When an addressable agent needs native Cloudflare Agents SDK capabilities such as `onStart()`, `schedule()`, `scheduleEvery()`, or `queue()`, export a `cloudflare` extension descriptor from its module:
 
 ```ts
 import { createAgent } from '@flue/runtime';
-import { Agent } from 'agents';
+import { extend } from '@flue/runtime/cloudflare';
 
 export default createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
 
-export class CloudflareAgent extends Agent {
-  async onStart() {
-    await this.scheduleEvery(60, 'heartbeat');
-  }
+export const cloudflare = extend({
+  base: (Base) =>
+    class extends Base {
+      async onStart() {
+        await this.scheduleEvery(60, 'heartbeat');
+      }
 
-  async heartbeat() {
-    this.setState({ ...this.state, lastHeartbeatAt: Date.now() });
-  }
-}
+      async heartbeat() {
+        this.setState({ ...this.state, lastHeartbeatAt: Date.now() });
+      }
+    },
+});
 ```
 
-This is an advanced Cloudflare-only extension point. Flue generates the final Durable Object class as a subclass of the exported base, preserving the filename-derived binding and migration name. Use `onStart()` and additional named methods for native SDK behavior. Do not override `fetch()`, `onRequest()`, WebSocket hooks, `onFiberRecovered()`, or `alarm()`: Flue and the Agents SDK use those methods for routing, hibernating connections, interruption recovery, and alarm multiplexing.
+This is an advanced Cloudflare-only extension point. Flue applies `base` first, then defines its own Durable Object subclass while preserving the filename-derived binding and migration name. Use `base` for native SDK lifecycle hooks and additional named methods. Do not override `fetch()`, `onRequest()`, WebSocket hooks, `onFiberRecovered()`, or `alarm()`: Flue and the Agents SDK use those methods for routing, hibernating connections, interruption recovery, and alarm multiplexing.
 
-Native SDK callbacks run as agent-instance activity. They do not receive a Flue workflow context, do not create workflow runs, and do not automatically initialize a Flue harness or session.
+Use `wrap` when an integration needs to wrap the final Flue-generated Durable Object class:
+
+```ts
+import * as Sentry from '@sentry/cloudflare';
+
+export const cloudflare = extend({
+  wrap: (Final) =>
+    Sentry.instrumentDurableObjectWithSentry(
+      (env: Env) => ({ dsn: env.SENTRY_DSN }),
+      Final,
+    ),
+});
+```
+
+Both `base` and `wrap` are optional. This agent-module export is distinct from the optional source-root `.flue/cloudflare.ts` deployment module below. Native SDK callbacks run as agent-instance activity: they do not receive a Flue workflow context, create workflow runs, or automatically initialize a Flue harness or session.
 
 ### Extending the Worker
 
