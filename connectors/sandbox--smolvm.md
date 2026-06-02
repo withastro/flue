@@ -168,8 +168,8 @@ class SmolvmSandboxApi implements SandboxApi {
  */
 export function smolvm(machine: Machine): SandboxFactory {
 	return {
-		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? '/workspace';
+		async createSessionEnv(): Promise<SessionEnv> {
+			const sandboxCwd = '/workspace';
 			const api = new SmolvmSandboxApi(machine);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},

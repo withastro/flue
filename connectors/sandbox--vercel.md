@@ -167,8 +167,8 @@ class VercelSandboxApi implements SandboxApi {
  */
 export function vercel(sandbox: VercelSandbox): SandboxFactory {
 	return {
-		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? '/vercel/sandbox';
+		async createSessionEnv(): Promise<SessionEnv> {
+			const sandboxCwd = '/vercel/sandbox';
 			const api = new VercelSandboxApi(sandbox);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},

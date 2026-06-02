@@ -235,8 +235,8 @@ export function superserve(
 	options?: SuperserveConnectorOptions,
 ): SandboxFactory {
 	return {
-		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? '/home/user';
+		async createSessionEnv(): Promise<SessionEnv> {
+			const sandboxCwd = '/home/user';
 			const api = new SuperserveSandboxApi(sandbox);
 
 			let cleanupFn: (() => Promise<void>) | undefined;

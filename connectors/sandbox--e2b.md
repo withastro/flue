@@ -164,11 +164,10 @@ class E2BSandboxApi implements SandboxApi {
  */
 export function e2b(sandbox: E2BSandbox): SandboxFactory {
 	return {
-		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
+		async createSessionEnv(): Promise<SessionEnv> {
 			// The E2B base template's default user is `user` with home
-			// directory /home/user. Sessions inherit this unless the caller
-			// overrides cwd.
-			const sandboxCwd = cwd ?? '/home/user';
+			// directory /home/user.
+			const sandboxCwd = '/home/user';
 			const api = new E2BSandboxApi(sandbox);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},

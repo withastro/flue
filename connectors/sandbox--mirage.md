@@ -96,9 +96,10 @@ function shellQuote(value: string): string {
 /**
  * Implements SandboxApi by wrapping a Mirage Workspace.
  *
- * Each Flue session maps onto a dedicated Mirage session (created lazily
- * by id) so that cwd, env, history, and lastExitCode stay isolated when
- * one Workspace is shared across multiple Flue sessions.
+ * Each Flue context maps onto a Mirage session (created lazily by id) so
+ * that cwd, env, history, and lastExitCode stay isolated across agent
+ * instances and workflow invocations. Harnesses initialized within the same
+ * context intentionally reuse that Mirage session.
  *
  * Filesystem operations route through `workspace.fs.*` (Mirage's direct
  * VFS API) for read/write/readdir/stat/exists/single-level mkdir.
@@ -114,7 +115,7 @@ function shellQuote(value: string): string {
 class MirageSandboxApi implements SandboxApi {
 	constructor(
 		private workspace: MirageWorkspace,
-		private flueSessionId: string,
+		private flueContextId: string,
 	) {}
 
 	async readFile(path: string): Promise<string> {
@@ -240,7 +241,7 @@ class MirageSandboxApi implements SandboxApi {
 
 		try {
 			const result = await this.workspace.execute(command, {
-				sessionId: this.flueSessionId,
+				sessionId: this.flueContextId,
 				cwd: options?.cwd,
 				env: options?.env,
 				signal,
@@ -279,12 +280,12 @@ export function mirage(
 	options?: MirageConnectorOptions,
 ): SandboxFactory {
 	return {
-		async createSessionEnv({ id, cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			// Map this Flue session to a dedicated Mirage session so cwd, env,
-			// history, and lastExitCode stay isolated across Flue sessions
-			// sharing the same Workspace. createSession throws on duplicate
-			// ids, so fall back to getSession if the id is already registered
-			// (e.g. session resumed after a reload).
+		async createSessionEnv({ id }: { id: string }): Promise<SessionEnv> {
+			// Map this Flue context to a Mirage session so cwd, env, history,
+			// and lastExitCode stay isolated across contexts sharing the same
+			// Workspace. createSession throws on duplicate ids, so fall back to
+			// getSession if the id is already registered (e.g. another harness
+			// in this context or a context resumed after a reload).
 			try {
 				workspace.createSession(id);
 			} catch {
@@ -294,7 +295,7 @@ export function mirage(
 			// Mirage workspaces are mount-rooted at `/`. `/` is a safe no-op
 			// default; pin via `options.cwd` to default to a specific writable
 			// mount (e.g. `/data`).
-			const sandboxCwd = cwd ?? options?.cwd ?? '/';
+			const sandboxCwd = options?.cwd ?? '/';
 			const api = new MirageSandboxApi(workspace, id);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},

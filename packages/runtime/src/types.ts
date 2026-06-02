@@ -912,7 +912,7 @@ export type SessionToolFactory = (
 
 /** Wraps external sandboxes (Daytona, CF Containers, etc.) into Flue's SessionEnv. */
 export interface SandboxFactory {
-	createSessionEnv(options: { id: string; cwd?: string }): Promise<SessionEnv>;
+	createSessionEnv(options: { id: string }): Promise<SessionEnv>;
 	/** Replaces the framework default tool list for this sandbox. */
 	tools?: SessionToolFactory;
 }

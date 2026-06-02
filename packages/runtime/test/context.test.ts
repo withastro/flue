@@ -444,4 +444,53 @@ describe('session context discovery', () => {
 		expect(systemPrompt).toContain('Working directory: /repo/workspace');
 		expect(systemPrompt).not.toContain('Root workspace guidance.');
 	});
+
+	it('scopes a custom sandbox cwd once when a relative created-agent cwd is configured', async () => {
+		const provider = createProvider();
+		provider.setResponses([fauxAssistantMessage('Reviewed.')]);
+		const events: FlueEvent[] = [];
+		const factoryOptions: { id: string }[] = [];
+		const ctx = createContext({
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				model: undefined,
+				resolveModel: () => provider.getModel(),
+			},
+		});
+		ctx.setEventCallback((event) => {
+			events.push(event);
+		});
+		const harness = await ctx.init(
+			createAgent(() => ({
+				model: `${provider.getModel().provider}/${provider.getModel().id}`,
+				cwd: 'workspace',
+				sandbox: {
+					createSessionEnv: async (options) => {
+						factoryOptions.push(options);
+						return createEnv({
+							cwd: '/sandbox',
+							files: {
+								'/sandbox/AGENTS.md': 'Sandbox root guidance.',
+								'/sandbox/workspace/AGENTS.md': 'Sandbox workspace guidance.',
+							},
+						});
+					},
+				},
+			})),
+		);
+		const session = await harness.session();
+
+		await session.prompt('Review this workspace.');
+
+		const request = events.find(
+			(event): event is Extract<FlueEvent, { type: 'turn_request' }> =>
+				event.type === 'turn_request',
+		);
+		const systemPrompt = request?.input.systemPrompt ?? '';
+		expect(factoryOptions).toEqual([{ id: 'context-instance' }]);
+		expect(systemPrompt).toContain('Sandbox workspace guidance.');
+		expect(systemPrompt).toContain('Working directory: /sandbox/workspace');
+		expect(systemPrompt).not.toContain('Sandbox root guidance.');
+	});
 });

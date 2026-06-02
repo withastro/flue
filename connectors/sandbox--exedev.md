@@ -615,19 +615,17 @@ export class ExeDevSandboxApi implements SandboxApi {
 export function exedev(vm: ExeDevVm | string, options?: ExeDevConnectorOptions): SandboxFactory {
   const resolvedVm = typeof vm === "string" ? { host: vm } : vm;
   return {
-    async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
+    async createSessionEnv(): Promise<SessionEnv> {
       const { ssh } = await sshConnect(resolvedVm, options ?? {});
       const api = new ExeDevSandboxApi(ssh);
 
-      let sandboxCwd = cwd ?? "/home/user";
-      if (!cwd) {
-        try {
-          const { stdout } = await api.exec("echo $HOME");
-          const detected = stdout.trim();
-          if (detected) sandboxCwd = detected;
-        } catch {
-          // Fall back to /home/user.
-        }
+      let sandboxCwd = "/home/user";
+      try {
+        const { stdout } = await api.exec("echo $HOME");
+        const detected = stdout.trim();
+        if (detected) sandboxCwd = detected;
+      } catch {
+        // Fall back to /home/user.
       }
 
       return createSandboxSessionEnv(api, sandboxCwd);

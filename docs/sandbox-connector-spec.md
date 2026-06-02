@@ -32,8 +32,8 @@ a factory function (e.g. `daytona(...)`) returning a `SandboxFactory`.
 
 A connector is one TypeScript file. It exports a factory function that takes
 an already-initialized provider sandbox plus options, and returns a
-`SandboxFactory`. Flue calls `factory.createSessionEnv({ id, cwd })` once per
-session and uses the returned `SessionEnv` for all shell/file operations.
+`SandboxFactory`. Flue calls `factory.createSessionEnv({ id })` once per
+initialized harness and uses the returned `SessionEnv` for all shell/file operations.
 
 ```ts
 // <source-dir>/connectors/<provider>.ts
@@ -48,8 +48,8 @@ class ProviderSandboxApi implements SandboxApi {
 
 export function provider(sandbox: ProviderSandbox): SandboxFactory {
   return {
-    async createSessionEnv({ cwd }): Promise<SessionEnv> {
-      const sandboxCwd = cwd ?? '/workspace'; // pick a sensible default
+    async createSessionEnv(): Promise<SessionEnv> {
+      const sandboxCwd = '/workspace'; // pick a sensible default
       const api = new ProviderSandboxApi(sandbox);
       return createSandboxSessionEnv(api, sandboxCwd);
     },
@@ -57,9 +57,11 @@ export function provider(sandbox: ProviderSandbox): SandboxFactory {
 }
 ```
 
-Connectors are pure adapters. They map a provider sandbox to `SessionEnv`
-and stop there. They do not manage the sandbox's lifetime — the user owns
-what they create.
+Connectors are pure adapters. They map a provider sandbox to a `SessionEnv`
+rooted at the provider-owned base cwd and stop there. They must not apply a
+created agent's `cwd`: Flue resolves that value once against the connector's
+base cwd during `init()`. Connectors do not manage the sandbox's lifetime — the
+user owns what they create.
 
 ---
 
@@ -68,7 +70,8 @@ what they create.
 All from `@flue/runtime`:
 
 - `createSandboxSessionEnv(api, cwd)` — wraps your `SandboxApi` into a
-  `SessionEnv` that Flue can drive.
+  `SessionEnv` that Flue can drive. Pass the provider-owned base cwd, not a
+  created agent's cwd.
 - `SandboxApi` — the interface you implement.
 - `SandboxFactory` — what your factory returns.
 - `SessionEnv` — what `createSandboxSessionEnv` returns. You don't construct
@@ -120,7 +123,7 @@ forward it; others may ignore it. See "Cancellation" below.
 
 ```ts
 export interface SandboxFactory {
-  createSessionEnv(options: { id: string; cwd?: string }): Promise<SessionEnv>;
+  createSessionEnv(options: { id: string }): Promise<SessionEnv>;
 }
 ```
 

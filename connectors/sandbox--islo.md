@@ -206,8 +206,8 @@ class IsloSandboxApi implements SandboxApi {
 export function islo(name: string, options?: IsloConnectorOptions): SandboxFactory {
 	const cliPath = options?.cliPath ?? 'islo';
 	return {
-		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? options?.cwd ?? '/workspace';
+		async createSessionEnv(): Promise<SessionEnv> {
+			const sandboxCwd = options?.cwd ?? '/workspace';
 			const api = new IsloSandboxApi(name, cliPath);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},

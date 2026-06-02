@@ -247,8 +247,8 @@ class ModalSandboxApi implements SandboxApi {
  */
 export function modal(sandbox: ModalSandbox, options?: ModalConnectorOptions): SandboxFactory {
 	return {
-		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? options?.cwd ?? '/';
+		async createSessionEnv(): Promise<SessionEnv> {
+			const sandboxCwd = options?.cwd ?? '/';
 			const api = new ModalSandboxApi(sandbox);
 			return createSandboxSessionEnv(api, sandboxCwd);
 		},

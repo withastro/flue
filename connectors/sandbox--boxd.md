@@ -231,8 +231,8 @@ class BoxdSandboxApi implements SandboxApi {
 export function boxd(box: BoxdBox, options?: BoxdConnectorOptions): SandboxFactory {
 	let readyPromise: Promise<void> | undefined;
 	return {
-		async createSessionEnv({ cwd }: { id: string; cwd?: string }): Promise<SessionEnv> {
-			const sandboxCwd = cwd ?? options?.cwd ?? '/home/boxd';
+		async createSessionEnv(): Promise<SessionEnv> {
+			const sandboxCwd = options?.cwd ?? '/home/boxd';
 			// Probe once per box, not once per session.
 			readyPromise ??= waitForReady(box, options?.readyTimeoutMs ?? 30_000);
 			await readyPromise;

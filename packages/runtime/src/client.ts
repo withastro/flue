@@ -184,7 +184,6 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					config.id,
 					sandbox,
 					config,
-					resolvedOptions.cwd,
 				);
 				// Resolve created-agent `cwd` against the sandbox's own cwd so that
 				// relative paths target the sandbox/session filesystem, not the
@@ -299,7 +298,6 @@ async function resolveSessionEnv(
 	id: string,
 	sandbox: AgentRuntimeConfig['sandbox'],
 	config: FlueContextConfig,
-	cwd: string | undefined,
 ): Promise<{ env: SessionEnv; toolFactory?: SessionToolFactory }> {
 	if (sandbox === undefined || sandbox === false) {
 		return { env: await config.createDefaultEnv() };
@@ -336,7 +334,7 @@ async function resolveSessionEnv(
 		if (resolved) return { env: resolved };
 	}
 	if (isSandboxFactory(sandbox)) {
-		const env = await sandbox.createSessionEnv({ id, cwd });
+		const env = await sandbox.createSessionEnv({ id });
 		return { env, toolFactory: sandbox.tools };
 	}
 	throw new Error('[flue] Invalid sandbox option returned from createAgent().');
