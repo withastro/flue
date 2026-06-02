@@ -1,0 +1,40 @@
+{
+	"name": "@flue/vite",
+	"version": "0.9.1",
+	"type": "module",
+	"license": "Apache-2.0",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"import": "./dist/index.mjs"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"engines": {
+		"node": ">=22.18.0"
+	},
+	"scripts": {
+		"build": "tsdown",
+		"check:types": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@cloudflare/vite-plugin": "^1.38.0",
+		"@flue/cli": "workspace:*",
+		"vite": "^8.0.14"
+	},
+	"devDependencies": {
+		"tsdown": "^0.22.0",
+		"typescript": "^6.0.3",
+		"wrangler": "^4.94.0"
+	},
+	"peerDependencies": {
+		"wrangler": "^4.94.0"
+	},
+	"peerDependenciesMeta": {
+		"wrangler": {
+			"optional": true
+		}
+	}
+}

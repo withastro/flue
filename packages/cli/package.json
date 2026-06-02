@@ -10,6 +10,10 @@
 		"./config": {
 			"types": "./dist/config.d.mts",
 			"import": "./dist/config.mjs"
+		},
+		"./internal/vite": {
+			"types": "./dist/internal-vite.d.mts",
+			"import": "./dist/internal-vite.mjs"
 		}
 	},
 	"files": [

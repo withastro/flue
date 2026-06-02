@@ -1,0 +1,13 @@
+{
+	"name": "vite-node",
+	"private": true,
+	"type": "module",
+	"dependencies": {
+		"@flue/runtime": "workspace:*"
+	},
+	"devDependencies": {
+		"@flue/cli": "workspace:*",
+		"@flue/vite": "workspace:*",
+		"vite": "^8.0.14"
+	}
+}

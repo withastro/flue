@@ -1,0 +1,15 @@
+{
+	"name": "vite-cloudflare",
+	"compatibility_date": "2026-04-01",
+	"compatibility_flags": ["nodejs_compat"],
+	"migrations": [
+		{
+			"tag": "flue-class-FlueRegistry",
+			"new_sqlite_classes": ["FlueRegistry"]
+		},
+		{
+			"tag": "flue-class-SmokeWorkflow",
+			"new_sqlite_classes": ["SmokeWorkflow"]
+		}
+	]
+}

@@ -6,6 +6,7 @@ export default defineConfig({
 		flue: 'bin/flue.ts',
 		// `@flue/cli/config` subpath, written to dist/config.mjs.
 		config: 'src/lib/config.ts',
+		'internal-vite': 'src/lib/vite-integration.ts',
 	},
 	format: ['esm'],
 	// tsdown emits `.d.mts` for every entry. We only need one for the

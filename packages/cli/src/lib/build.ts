@@ -198,7 +198,7 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 	return { changed: anyChanged };
 }
 
-async function withTemporaryProcessEnv<T>(
+export async function withTemporaryProcessEnv<T>(
 	env: Record<string, string>,
 	fn: () => Promise<T>,
 ): Promise<T> {
@@ -217,7 +217,7 @@ async function withTemporaryProcessEnv<T>(
 	}
 }
 
-function resolvePlugin(options: BuildOptions): BuildPlugin {
+export function resolvePlugin(options: BuildOptions): BuildPlugin {
 	if (options.plugin) return options.plugin;
 
 	if (!options.target) {
@@ -240,7 +240,7 @@ function resolvePlugin(options: BuildOptions): BuildPlugin {
 	}
 }
 
-function discoverAgents(sourceRoot: string): AgentInfo[] {
+export function discoverAgents(sourceRoot: string): AgentInfo[] {
 	const agentsDir = path.join(sourceRoot, 'agents');
 	if (!fs.existsSync(agentsDir)) return [];
 
@@ -270,7 +270,7 @@ function discoverAgents(sourceRoot: string): AgentInfo[] {
 	}));
 }
 
-function discoverWorkflows(sourceRoot: string): WorkflowInfo[] {
+export function discoverWorkflows(sourceRoot: string): WorkflowInfo[] {
 	const workflowsDir = path.join(sourceRoot, 'workflows');
 	if (!fs.existsSync(workflowsDir)) return [];
 
@@ -309,7 +309,7 @@ function discoverWorkflows(sourceRoot: string): WorkflowInfo[] {
  * > `.js` > `.mjs`. Source-files-only — we don't probe inside the
  * `agents/` subdir.
  */
-function discoverAppEntry(sourceRoot: string): string | undefined {
+export function discoverAppEntry(sourceRoot: string): string | undefined {
 	for (const ext of ['ts', 'mts', 'js', 'mjs']) {
 		const candidate = path.join(sourceRoot, `app.${ext}`);
 		if (fs.existsSync(candidate)) return candidate;
@@ -318,7 +318,7 @@ function discoverAppEntry(sourceRoot: string): string | undefined {
 }
 
 /** Externalize user's direct deps (bare name + subpath wildcard). */
-function getUserExternals(root: string): string[] {
+export function getUserExternals(root: string): string[] {
 	const pkgPath = packageUpSync({ cwd: root });
 	if (!pkgPath) return [];
 
@@ -343,7 +343,7 @@ export function cloudflareViteConfigPath(root: string): string {
 	return path.join(root, '.flue-vite.wrangler.jsonc');
 }
 
-function createSharedViteConfig(root: string, bootstrapEntries: readonly string[] = []) {
+export function createSharedViteConfig(root: string, bootstrapEntries: readonly string[] = []) {
 	return {
 		configFile: false as const,
 		root,
@@ -371,7 +371,7 @@ export function createCloudflareViteConfig(
 	};
 }
 
-function viteGeneratedEntryDependencyResolver(root: string) {
+export function viteGeneratedEntryDependencyResolver(root: string) {
 	const resolvers = [...collectNodePaths(root)].map((nodePath) =>
 		createRequire(path.join(nodePath, '__flue_vite_resolve__.cjs')),
 	);
@@ -420,7 +420,7 @@ function collectNodePaths(root: string): Set<string> {
 	return nodePathsSet;
 }
 
-function readRuntimeVersion(root: string): string {
+export function readRuntimeVersion(root: string): string {
 	const runtimeDir = resolveRuntimeDir(root);
 	if (!runtimeDir) return '0.0.0';
 	try {
