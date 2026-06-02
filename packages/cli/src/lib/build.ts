@@ -53,7 +53,8 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 
 	const agents = discoverAgents(sourceRoot);
 	const workflows = discoverWorkflows(sourceRoot);
-	const appEntry = discoverAppEntry(sourceRoot);
+	const appEntry = discoverOptionalEntry(sourceRoot, 'app');
+	const cloudflareEntry = discoverOptionalEntry(sourceRoot, 'cloudflare');
 
 	if (agents.length === 0 && workflows.length === 0) {
 		throw new Error(
@@ -65,6 +66,11 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 
 	if (appEntry) {
 		console.log(`[flue] Custom app entry: ${path.relative(root, appEntry) || appEntry}`);
+	}
+	if (cloudflareEntry && plugin.name === 'cloudflare') {
+		console.log(
+			`[flue] Custom Cloudflare entry: ${path.relative(root, cloudflareEntry) || cloudflareEntry}`,
+		);
 	}
 
 	if (agents.length > 0) {
@@ -89,6 +95,7 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 		root,
 		output,
 		appEntry,
+		cloudflareEntry,
 		runtimeVersion: readRuntimeVersion(root),
 		options,
 	};
@@ -300,18 +307,9 @@ function discoverWorkflows(sourceRoot: string): WorkflowInfo[] {
 	}));
 }
 
-/**
- * Discover an optional `app.{ts,mts,js,mjs}` entry alongside `agents/`.
- * Returns the absolute path to the first match found, or
- * undefined when no app entry is present.
- *
- * Extension priority matches {@link discoverAgents}: `.ts` > `.mts`
- * > `.js` > `.mjs`. Source-files-only — we don't probe inside the
- * `agents/` subdir.
- */
-function discoverAppEntry(sourceRoot: string): string | undefined {
+function discoverOptionalEntry(sourceRoot: string, basename: string): string | undefined {
 	for (const ext of ['ts', 'mts', 'js', 'mjs']) {
-		const candidate = path.join(sourceRoot, `app.${ext}`);
+		const candidate = path.join(sourceRoot, `${basename}.${ext}`);
 		if (fs.existsSync(candidate)) return candidate;
 	}
 	return undefined;

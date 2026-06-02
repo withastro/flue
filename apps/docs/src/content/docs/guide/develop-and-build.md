@@ -10,7 +10,7 @@ This guide covers that lifecycle. For source files and discovery conventions, se
 
 ## Develop
 
-`flue dev` is the local development server for a Flue application. It builds the discovered agents, workflows, and optional `app.ts`, serves the application locally, and rebuilds as source files change.
+`flue dev` is the local development server for a Flue application. It builds the discovered agents, workflows, optional `app.ts`, and optional Cloudflare-only `cloudflare.ts`, serves the application locally, and rebuilds as source files change.
 
 After selecting your normal runtime target in `flue.config.ts`, start the development server:
 
@@ -54,7 +54,7 @@ pnpm exec flue build
 
 The build uses that configured target, or a one-time `--target` override, to produce deployable output in `dist/` by default. See [Configuration](/docs/reference/configuration/) to change the output directory.
 
-A build packages the application for its runtime environment. It does not choose a model, add provider credentials, expose additional routes, or configure platform-owned bindings. Keep those concerns in your authored application modules, secrets configuration, and deployment-platform configuration.
+A build packages the application for its runtime environment. It does not choose a model, add provider credentials, expose additional routes, or configure platform-owned bindings. Keep those concerns in your authored application modules, secrets configuration, and deployment-platform configuration. Cloudflare applications may add platform-specific Worker exports and non-HTTP handlers in `cloudflare.ts`; see [Deploy on Cloudflare](/docs/ecosystem/deploy/cloudflare/#extending-the-worker).
 
 ## Deploy
 

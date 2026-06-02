@@ -2,10 +2,7 @@
 	// User-owned wrangler config for this Flue app. Flue reads this file,
 	// merges its own contributions into an ignored Vite input config, and the
 	// official Cloudflare Vite integration emits the deployable Worker output.
-	//
-	// The DO binding whose class_name ends with "Sandbox" triggers Flue's
-	// automatic re-export of the Sandbox class from @cloudflare/sandbox in
-	// the generated Worker bundle.
+	// src/cloudflare.ts explicitly exports the Sandbox class from @cloudflare/sandbox.
 	"$schema": "https://workers.cloudflare.com/schema/wrangler.json",
 	"name": "assistant",
 	"compatibility_date": "2026-04-01",

@@ -1,22 +1,22 @@
 {
 	"$schema": "https://unpkg.com/knip@6/schema.json",
 	"ignore": ["packages/runtime/test-legacy/**"],
-	"ignoreDependencies": ["@cloudflare/sandbox", "@flue/cli", "agents", "wrangler"],
+	"ignoreDependencies": ["@flue/cli", "agents", "wrangler"],
 	"ignoreIssues": {
 		"packages/runtime/src/runtime/schemas.ts": ["duplicates"]
 	},
 	"workspaces": {
 		".": {
-			"entry": [".flue/{app,agents/*,workflows/*}.{ts,mts,js,mjs}"],
+			"entry": [".flue/{app,cloudflare,agents/*,workflows/*}.{ts,mts,js,mjs}"],
 			"project": [".flue/**/*.{ts,mts,js,mjs}"],
 			"ignoreDependencies": ["bgproc", "just-bash"]
 		},
 		"examples/*": {
-			"entry": ["{src/{app,agents/*,workflows/*},flue.config}.{ts,mts,js,mjs}"],
+			"entry": ["{src/{app,cloudflare,agents/*,workflows/*},flue.config}.{ts,mts,js,mjs}"],
 			"project": ["src/**/*.{ts,mts,js,mjs}"]
 		},
 		"examples/node-websocket": {
-			"entry": ["{src/{app,agents/*,workflows/*},flue.config}.{ts,mts,js,mjs}"],
+			"entry": ["{src/{app,cloudflare,agents/*,workflows/*},flue.config}.{ts,mts,js,mjs}"],
 			"project": ["src/**/*.{ts,mts,js,mjs}"],
 			"ignoreDependencies": ["@flue/sdk"]
 		},

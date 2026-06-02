@@ -7,7 +7,14 @@ Cloudflare Sandbox uses `@cloudflare/sandbox` to provide a container-backed Linu
 
 ## Use the Cloudflare target
 
-Cloudflare Sandbox requires a Worker deployment, Durable Object/container configuration, and a container image. Add the dependency to a Cloudflare-targeted project, declare the sandbox binding in Wrangler configuration, and pass the RPC stub returned by `getSandbox(...)` to an agent:
+Cloudflare Sandbox requires a Worker deployment, Durable Object/container configuration, and a container image. Add the dependency to a Cloudflare-targeted project and export its Durable Object class from your Cloudflare deployment module:
+
+```ts
+// <source-root>/cloudflare.ts
+export { Sandbox } from '@cloudflare/sandbox';
+```
+
+Declare the sandbox binding in Wrangler configuration, then pass the RPC stub returned by `getSandbox(...)` to an agent:
 
 ```ts
 import { getSandbox } from '@cloudflare/sandbox';

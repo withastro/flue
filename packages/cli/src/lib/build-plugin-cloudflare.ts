@@ -1,8 +1,6 @@
 /** Cloudflare build plugin. Produces a Worker + DO entry point for workflow runs and agent interactions. */
 import * as path from 'node:path';
 import {
-	assertSandboxPackageInstalled,
-	detectSandboxBindings,
 	type FlueAdditions,
 	mergeFlueAdditions,
 	readUserWranglerConfig,
@@ -16,30 +14,8 @@ export class CloudflarePlugin implements BuildPlugin {
 	bundle: BuildPlugin['bundle'] = 'vite-cloudflare';
 	entryFilename = '_entry.ts';
 
-	/**
-	 * Per-build cache of the user's wrangler config. Both `generateEntryPoint`
-	 * and `additionalOutputs` need it (for sandbox detection + the merge), and
-	 * a fresh `CloudflarePlugin` instance is constructed for each build (see
-	 * `resolvePlugin` in build.ts), so the cache is implicitly scoped to a
-	 * single build.
-	 */
-	private userConfigCache: Awaited<ReturnType<typeof readUserWranglerConfig>> | undefined;
-
-	/**
-	 * Read the user's wrangler config from `root`. The user's config always
-	 * lives at the project root, regardless of where the build artifacts get
-	 * written via `output`. We generate an internal merged Vite input config
-	 * without modifying the user's source configuration.
-	 */
-	private async getUserConfig(root: string) {
-		if (!this.userConfigCache) {
-			this.userConfigCache = await readUserWranglerConfig(root);
-		}
-		return this.userConfigCache;
-	}
-
 	async generateEntryPoint(ctx: BuildContext): Promise<string> {
-		const { agents, appEntry, workflows } = ctx;
+		const { agents, appEntry, cloudflareEntry, workflows } = ctx;
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
 		validateCloudflareAgentNames(ctx);
 
@@ -173,13 +149,20 @@ export class CloudflarePlugin implements BuildPlugin {
 			)
 			.join('\n');
 
-		const { effectiveConfig } = await this.getUserConfig(ctx.root);
-		const sandboxClassNames = detectSandboxBindings(effectiveConfig);
-		const sandboxReExports = sandboxClassNames
-			.map((name) => `export { Sandbox as ${name} } from '@cloudflare/sandbox';`)
-			.join('\n');
-
 		const userAppImport = appEntry ? `import userApp from '${appEntry.replace(/\\/g, '/')}';` : '';
+		const userCloudflareImport = cloudflareEntry
+			? `import * as userCloudflareModule from '${cloudflareEntry.replace(/\\/g, '/')}';`
+			: '';
+		const userCloudflareReExport = cloudflareEntry
+			? `export * from '${cloudflareEntry.replace(/\\/g, '/')}';`
+			: '';
+		const userCloudflareValue = cloudflareEntry ? 'userCloudflareModule' : '{}';
+		const reservedCloudflareExportNames = [
+			...agents.map((agent) => agentClassName(agent.name)),
+			...workflows.map((workflow) => workflowClassName(workflow.name)),
+			'FlueRegistry',
+		];
+
 		const packagedSkillsImport = `import { getPackagedSkills } from 'virtual:flue/packaged-skills';`;
 		const packagedSkillsValue = 'getPackagedSkills()';
 		const builtModuleNormalizationSource = generateBuiltModuleNormalizationSource();
@@ -228,6 +211,8 @@ import { registerApiProvider, registerProvider } from '@flue/runtime';
 ${agentImports}
 ${workflowImports}
 ${userAppImport}
+${userCloudflareImport}
+${userCloudflareReExport}
 
 // ─── Internal provider registrations ────────────────────────────────────────
 // User \`app.ts\` imports are hoisted above this body, so a user-supplied
@@ -273,6 +258,22 @@ function resolveCloudflareAgentBase(mod, name) {
     throw new Error('[flue] Agent "' + name + '" CloudflareAgent export must extend Agent from "agents".');
   }
   return Base;
+}
+
+const userCloudflare = ${userCloudflareValue};
+const reservedCloudflareExportNames = new Set(${JSON.stringify(reservedCloudflareExportNames)});
+for (const name of Object.keys(userCloudflare)) {
+  if (name === 'default') continue;
+  if (reservedCloudflareExportNames.has(name)) {
+    throw new Error('[flue] cloudflare.ts export "' + name + '" conflicts with a Flue-generated Worker export. Rename the authored export.');
+  }
+}
+const cloudflareHandlers = 'default' in userCloudflare ? userCloudflare.default : {};
+if (typeof cloudflareHandlers !== 'object' || cloudflareHandlers === null || Array.isArray(cloudflareHandlers)) {
+  throw new Error('[flue] cloudflare.ts default export must be an object containing non-HTTP Worker handlers.');
+}
+if ('fetch' in cloudflareHandlers) {
+  throw new Error('[flue] cloudflare.ts default export must not define fetch. Use app.ts for custom HTTP handling.');
 }
 
 // ─── Sandbox Environments ───────────────────────────────────────────────────
@@ -776,14 +777,6 @@ ${workflowClasses}
 
 export { FlueRegistry };
 
-// ─── User-declared Sandbox re-exports ──────────────────────────────────────
-// One line per DO binding in the user's wrangler.jsonc whose class_name
-// ends with "Sandbox". Flue aliases the single \`Sandbox\` class shipped by
-// \`@cloudflare/sandbox\` so each user-chosen class_name resolves at the
-// bundle's top level. The binding + container image configuration is owned
-// by the user's wrangler.jsonc.
-${sandboxReExports}
-
 // ─── Runtime seed ───────────────────────────────────────────────────────────
 
 configureFlueRuntime({
@@ -840,6 +833,7 @@ const app = createDefaultFlueApp();`
 }
 
 export default {
+  ...cloudflareHandlers,
   fetch(request, env, ctx) {
     return app.fetch(request, env, ctx);
   },
@@ -880,7 +874,7 @@ export default {
 			config: userConfig,
 			effectiveConfig,
 			path: userConfigPath,
-		} = await this.getUserConfig(ctx.root);
+		} = await readUserWranglerConfig(ctx.root);
 		if (userConfigPath) {
 			console.log(`[flue] Merging with user wrangler config: ${userConfigPath}`);
 		}
@@ -895,19 +889,6 @@ export default {
 			main: '.flue-vite/_entry.ts',
 			doBindings: flueBindings,
 		};
-
-		// Detect user-declared Sandbox bindings and verify the @cloudflare/sandbox
-		// package is available before the Vite build tries to resolve it. Log each
-		// binding we've auto-wired so users can see what Flue did on their behalf.
-		const sandboxClassNames = detectSandboxBindings(effectiveConfig);
-		if (sandboxClassNames.length > 0) {
-			assertSandboxPackageInstalled(sandboxClassNames, ctx.root);
-			for (const className of sandboxClassNames) {
-				console.log(
-					`[flue] Auto-wiring DO binding "${className}" to @cloudflare/sandbox's Sandbox class.`,
-				);
-			}
-		}
 
 		const merged = mergeFlueAdditions(userConfig, additions);
 

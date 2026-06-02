@@ -21,9 +21,10 @@ Node.js process. Because of that, Flue treats Cloudflare Sandbox as a
 first-class **build target**, not a drop-in connector file.
 
 If the user is already on `--target cloudflare`: there is no connector to
-install. Flue's runtime package already provides the wiring; you just declare the
-binding in `wrangler.jsonc` and call `getSandbox(env.Sandbox, id)` in the
-agent. Skip to ["Path A"](#path-a-already-on---target-cloudflare) below.
+install. Export the Sandbox class from the selected Flue source root's
+`cloudflare.ts`, declare the binding in `wrangler.jsonc`, and call
+`getSandbox(env.Sandbox, id)` in the agent. Skip to
+["Path A"](#path-a-already-on---target-cloudflare) below.
 
 If the user is on `--target node` (or hasn't picked yet): adding Cloudflare
 Sandbox means **migrating the entire project to deploy on Cloudflare
@@ -77,10 +78,17 @@ The short version, for your reference:
 
    (Use the user's package manager — `pnpm add`, `yarn add`, etc.)
 
-2. Add a Durable Object binding for the sandbox to the user's
-   `wrangler.jsonc` (at the project root). **The `class_name` must end
-   with `Sandbox`** — Flue's build step auto-wires any DO whose class name
-   ends in `Sandbox` to `@cloudflare/sandbox`'s `Sandbox` class:
+2. Export the Sandbox class from the user's Cloudflare deployment module.
+   Put `cloudflare.ts` in the selected Flue source root: `.flue/cloudflare.ts`
+   when `.flue/` exists, otherwise `src/cloudflare.ts` when `src/` exists,
+   otherwise `<root>/cloudflare.ts`:
+
+   ```ts
+   export { Sandbox } from '@cloudflare/sandbox';
+   ```
+
+3. Add a Durable Object binding for the sandbox to the user's
+   `wrangler.jsonc` at the project root:
 
    ```jsonc
    {
@@ -96,7 +104,7 @@ The short version, for your reference:
    uniquely tagged entry. Do not replace deployed agent, workflow, or
    `FlueRegistry` migrations.
 
-3. Add a `Dockerfile` at the project root pinned to the matching
+4. Add a `Dockerfile` at the project root pinned to the matching
    `@cloudflare/sandbox` version:
 
    ```dockerfile
@@ -107,7 +115,7 @@ The short version, for your reference:
    1 — Cloudflare publishes the base image with the same version tag as
    the npm package.)
 
-4. Use it in an agent. The binding name from `wrangler.jsonc` (`Sandbox`
+5. Use it in an agent. The binding name from `wrangler.jsonc` (`Sandbox`
    above) is the key on `env`:
 
    ```ts
@@ -131,7 +139,7 @@ The short version, for your reference:
    because Flue's SDK detects and adapts the `@cloudflare/sandbox` shape
    internally on the Cloudflare target.
 
-5. Tell the user to put local variables in `.dev.vars` or `.env` and run
+6. Tell the user to put local variables in `.dev.vars` or `.env` and run
    `flue dev --target cloudflare`, then `flue build --target cloudflare &&
    wrangler deploy --secrets-file .env` to deploy. No new env vars are required just for
    the sandbox itself; auth is the user's normal Cloudflare account auth

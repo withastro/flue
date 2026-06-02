@@ -216,7 +216,6 @@ export function mergeFlueAdditions(
 				.filter((n): n is string => typeof n === 'string'),
 		);
 		for (const binding of additions.doBindings) {
-			if (binding.name !== 'FLUE_REGISTRY') continue;
 			if (!existingBindingNames.has(binding.name)) continue;
 			const existing = existingBindings.find((b): b is Record<string, unknown> => {
 				if (typeof b !== 'object' || b === null) return false;
@@ -254,93 +253,4 @@ export function mergeFlueAdditions(
 	// the shallow `{ ...userConfig }` clone above. Nothing to merge.
 
 	return merged;
-}
-
-// ─── Sandbox binding detection ──────────────────────────────────────────────
-
-/**
- * Return the list of `class_name`s declared in the user's wrangler
- * `durable_objects.bindings` that end with the literal suffix `Sandbox`
- * (case-sensitive).
- *
- * This is Flue's convention for wiring `@cloudflare/sandbox`: any DO binding
- * whose class name ends with `Sandbox` triggers an automatic re-export in the
- * generated Worker entry:
- *
- *   export { Sandbox as <class_name> } from '@cloudflare/sandbox';
- *
- * The alias lets users pick arbitrary class names (e.g. `PyBoxSandbox`,
- * `SupportSandbox`) while still pointing at the single class shipped by the
- * `@cloudflare/sandbox` package. Each distinct `class_name` can be paired with
- * a different container image in the user's `containers[]` config.
- *
- * The match is intentionally a suffix (not substring) so that user-defined
- * classes whose names merely contain "Sandbox" mid-word — e.g. `MySandboxV2`,
- * `MySandboxedAgent`, `LegacySandboxedThing` — are not silently overridden
- * by the `@cloudflare/sandbox` re-export. Note that classes whose names
- * still end in `Sandbox` (e.g. `MockSandbox`, `NotASandbox`) will match;
- * to opt out, rename the class to not end in `Sandbox`.
- *
- * Returns unique, sorted class names. Non-object bindings or bindings without
- * a string `class_name` are ignored.
- */
-export function detectSandboxBindings(userConfig: Record<string, unknown>): string[] {
-	const doObj = userConfig.durable_objects;
-	if (typeof doObj !== 'object' || doObj === null) return [];
-	const bindings = (doObj as Record<string, unknown>).bindings;
-	if (!Array.isArray(bindings)) return [];
-
-	const found = new Set<string>();
-	for (const entry of bindings) {
-		if (typeof entry !== 'object' || entry === null) continue;
-		const className = (entry as Record<string, unknown>).class_name;
-		if (typeof className !== 'string') continue;
-		if (className.endsWith('Sandbox')) found.add(className);
-	}
-	return Array.from(found).sort();
-}
-
-// ─── @cloudflare/sandbox install check ──────────────────────────────────────
-
-/**
- * When the user has declared one or more `Sandbox`-named DO bindings, verify
- * that `@cloudflare/sandbox` is declared in the nearest package.json. Surfaces
- * a friendly, actionable error at build time rather than letting the bundler
- * emit a confusing module-resolution failure.
- *
- * The check is lenient: if no package.json can be located or parsed, we skip
- * silently and let the bundler's own error path take over. This avoids false
- * positives in unusual project layouts.
- */
-export function assertSandboxPackageInstalled(sandboxClassNames: string[], root: string): void {
-	if (sandboxClassNames.length === 0) return;
-
-	let current = root;
-	while (current !== path.dirname(current)) {
-		const pkgPath = path.join(current, 'package.json');
-		if (fs.existsSync(pkgPath)) {
-			try {
-				const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-				const allDeps = {
-					...(pkg.dependencies ?? {}),
-					...(pkg.devDependencies ?? {}),
-					...(pkg.peerDependencies ?? {}),
-					...(pkg.optionalDependencies ?? {}),
-				};
-				if ('@cloudflare/sandbox' in allDeps) return;
-				// Found a package.json but no dep — keep walking in case this
-				// is a nested package and the dep is declared higher up (e.g.
-				// pnpm workspace root).
-			} catch {
-				return; // unparseable package.json — give up, let the bundler report it
-			}
-		}
-		current = path.dirname(current);
-	}
-
-	throw new Error(
-		`[flue] Your wrangler config declares DO binding(s) whose class_name ends with "Sandbox" ` +
-			`(${sandboxClassNames.join(', ')}), but @cloudflare/sandbox is not in your package.json. ` +
-			`Install it: \`npm install @cloudflare/sandbox\`.`,
-	);
 }

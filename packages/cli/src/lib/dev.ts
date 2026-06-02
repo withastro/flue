@@ -594,7 +594,7 @@ function isSourceStructurePath(root: string, sourceRoot: string, relPath: string
 		: relPath;
 	if (sourceRelative === null) return false;
 	if (sourceRelative.startsWith('agents/') || sourceRelative.startsWith('workflows/')) return true;
-	return /^app\.(?:ts|mts|js|mjs)$/.test(sourceRelative);
+	return /^(?:app|cloudflare)\.(?:ts|mts|js|mjs)$/.test(sourceRelative);
 }
 
 function pickExampleAgentName(sourceRoot: string): string | null {

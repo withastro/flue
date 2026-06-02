@@ -177,6 +177,45 @@ This is an advanced Cloudflare-only extension point. Flue generates the final Du
 
 Native SDK callbacks run as agent-instance activity. They do not receive a Flue workflow context, do not create workflow runs, and do not automatically initialize a Flue harness or session.
 
+### Extending the Worker
+
+Add an optional `.flue/cloudflare.ts` module when your deployment needs native Cloudflare capabilities outside Flue's generated classes. Named exports become top-level Worker exports, which lets the same Worker define application-owned Durable Objects:
+
+```ts
+import { DurableObject } from 'cloudflare:workers';
+
+export class SalesforceAuthCache extends DurableObject {
+  async getToken() {
+    return await this.ctx.storage.get('token');
+  }
+}
+```
+
+Declare the corresponding binding and migration in your project-root `wrangler.jsonc`:
+
+```jsonc
+{
+  "durable_objects": {
+    "bindings": [{ "name": "SALESFORCE_AUTH_CACHE", "class_name": "SalesforceAuthCache" }],
+  },
+  "migrations": [{ "tag": "v2", "new_sqlite_classes": ["SalesforceAuthCache"] }],
+}
+```
+
+Your agents and workflows receive the namespace through `env.SALESFORCE_AUTH_CACHE`. Keep bindings, containers, and ordered migration history in Wrangler configuration; `cloudflare.ts` provides the Worker code exports but does not infer deployment topology.
+
+An optional default export adds non-HTTP Worker handlers:
+
+```ts
+export default {
+  async scheduled(_controller, env) {
+    await env.SALESFORCE_AUTH_CACHE.getByName('default').refreshIfNeeded();
+  },
+};
+```
+
+Use `.flue/app.ts` for custom HTTP routes and middleware. `cloudflare.ts` must not export a default `fetch` handler because Flue keeps HTTP composition in `app.ts`.
+
 ## Subagents
 
 Subagents define named delegates for detached task sessions:
@@ -273,15 +312,22 @@ If you'd rather connect to an external provider — e.g. Daytona — instead of 
 
 ### Setup
 
-You own the container config. That means three things:
+You own the container config. That means four things:
 
 1. Install `@cloudflare/sandbox`: `npm install @cloudflare/sandbox`.
-2. Declare the Durable Object binding, migration, and container image in your `wrangler.jsonc` at the project root.
-3. Commit a `Dockerfile` at the path your `containers[].image` points to.
+2. Export the Sandbox class from `.flue/cloudflare.ts`.
+3. Declare the Durable Object binding, migration, and container image in your `wrangler.jsonc` at the project root.
+4. Commit a `Dockerfile` at the path your `containers[].image` points to.
 
-Flue automates one piece: **any DO binding whose `class_name` ends with `Sandbox` is automatically wired up as `@cloudflare/sandbox`'s `Sandbox` class in the generated Worker bundle.** Pick any name you want (`Sandbox`, `PyBoxSandbox`, `SupportSandbox`, …) and Flue handles the re-export. Append its migration to the same top-level history you use for generated Flue classes; do not replace migrations that have already been deployed.
+Append the Sandbox migration to the same top-level history you use for generated Flue classes; do not replace migrations that have already been deployed.
 
 ### Example
+
+`.flue/cloudflare.ts`:
+
+```ts
+export { Sandbox } from '@cloudflare/sandbox';
+```
 
 `wrangler.jsonc` (at the project root, alongside `package.json`):
 
@@ -326,7 +372,13 @@ export default createAgent(({ id, env }) => ({
 
 ### Multiple sandboxes
 
-Different agents can use different container images. Declare a separate binding for each (each `class_name` must end with `Sandbox`), and give each its own container entry:
+Different agents can use different container images. Export a separate alias for each Sandbox class, then declare each binding and container entry:
+
+```ts
+// .flue/cloudflare.ts
+export { Sandbox as PyBoxSandbox } from '@cloudflare/sandbox';
+export { Sandbox as NodeSandbox } from '@cloudflare/sandbox';
+```
 
 ```jsonc
 {
@@ -356,7 +408,9 @@ When your agent runs in a container, it may need to call external APIs — GitHu
 Cloudflare Sandboxes solve this with [outbound Workers](https://blog.cloudflare.com/sandbox-auth/) — a programmable egress proxy that intercepts outgoing HTTP/HTTPS requests from the container. Secrets are injected at the proxy layer, so the container never sees them. This is configured on the Cloudflare Sandbox class, outside of your Flue agent code:
 
 ```typescript
-class MySandbox extends Sandbox {
+import { Sandbox } from '@cloudflare/sandbox';
+
+export class MySandbox extends Sandbox {
   static outboundByHost = {
     'api.github.com': (request, env, ctx) => {
       const headers = new Headers(request.headers);
