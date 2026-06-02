@@ -69,7 +69,7 @@ export class CloudflarePlugin implements BuildPlugin {
 
 		const agentClasses = agents
 			.map(
-				(agent) => `export class ${agentClassName(agent.name)} extends Agent {
+				(agent) => `export class ${agentClassName(agent.name)} extends resolveCloudflareAgentBase(agentModules[${JSON.stringify(agent.name)}], ${JSON.stringify(agent.name)}) {
   async onRequest(request) {
     return dispatchAgent(request, this, ${JSON.stringify(agent.name)}, directHandlers[${JSON.stringify(agent.name)}]);
   }
@@ -266,6 +266,14 @@ ${agentClassMapEntries}
 const workflowClassNames = {
 ${workflowClassMapEntries}
 };
+
+function resolveCloudflareAgentBase(mod, name) {
+  const Base = mod.CloudflareAgent === undefined ? Agent : mod.CloudflareAgent;
+  if (typeof Base !== 'function' || (Base !== Agent && !(Base.prototype instanceof Agent))) {
+    throw new Error('[flue] Agent "' + name + '" CloudflareAgent export must extend Agent from "agents".');
+  }
+  return Base;
+}
 
 // ─── Sandbox Environments ───────────────────────────────────────────────────
 

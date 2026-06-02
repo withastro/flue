@@ -152,6 +152,31 @@ chat.close();
 
 An exported `websocket` middleware can authenticate its own agent or workflow socket endpoint. Custom `.flue/app.ts` applications provide centralized authentication and mounted prefixes: for example, apply `app.use('/api/agents/*', authenticate)` and `app.use('/api/workflows/*', authenticate)` before `app.route('/api', flue())` to cover both socket surfaces before Flue forwards accepted upgrades into their owning Durable Objects. SDK clients can connect through that mount with `baseUrl: 'https://example.com/api'` and attach query-token or signed handshake context with `websocketUrl: (url) => { url.searchParams.set('token', socketToken); return url; }`. HTTP `token` and `headers` options do not automatically apply to WebSocket upgrades; browsers should use cookies or application-designed URL authentication, while Node clients requiring implementation-specific headers can provide a custom `websocket` factory. Cloudflare socket authentication is established during the handshake: query parameters and original upgrade headers are not restored into operation-time request context after Durable Object forwarding. Avoid header-mutating middleware such as CORS wrapping WebSocket upgrade routes, because WebSocket upgrade responses may have immutable headers.
 
+### Extending an addressable Cloudflare agent
+
+Flue normally owns each generated agent Durable Object class. When an addressable agent needs native Cloudflare Agents SDK capabilities such as `onStart()`, `schedule()`, `scheduleEvery()`, or `queue()`, its module may additionally export a `CloudflareAgent` base class:
+
+```ts
+import { createAgent } from '@flue/runtime';
+import { Agent } from 'agents';
+
+export default createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
+
+export class CloudflareAgent extends Agent {
+  async onStart() {
+    await this.scheduleEvery(60, 'heartbeat');
+  }
+
+  async heartbeat() {
+    this.setState({ ...this.state, lastHeartbeatAt: Date.now() });
+  }
+}
+```
+
+This is an advanced Cloudflare-only extension point. Flue generates the final Durable Object class as a subclass of the exported base, preserving the filename-derived binding and migration name. Use `onStart()` and additional named methods for native SDK behavior. Do not override `fetch()`, `onRequest()`, WebSocket hooks, `onFiberRecovered()`, or `alarm()`: Flue and the Agents SDK use those methods for routing, hibernating connections, interruption recovery, and alarm multiplexing.
+
+Native SDK callbacks run as agent-instance activity. They do not receive a Flue workflow context, do not create workflow runs, and do not automatically initialize a Flue harness or session.
+
 ## Subagents
 
 Subagents define named delegates for detached task sessions:
