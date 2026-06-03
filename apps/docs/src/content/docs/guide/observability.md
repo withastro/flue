@@ -1,7 +1,7 @@
 ---
 title: Observability
 description: Inspect workflow runs, monitor agent activity, and export telemetry from your application.
-lastReviewedAt: 2026-05-30
+lastReviewedAt: 2026-06-03
 ---
 
 Observability helps you understand whether Flue work completed, failed, became slow, or used more model resources than expected. Inspect workflow run history for bounded jobs, and use `observe(...)` to monitor workflows and continuing agents across your application.
@@ -44,7 +44,9 @@ When a workflow invoked through a running application reports its `runId`, use t
 pnpm exec flue logs <runId> --server http://localhost:3583
 ```
 
-`flue logs` applies only to workflows. A direct prompt to an agent, or input accepted through `dispatch(...)`, is work in a continuing agent session rather than a workflow run.
+`flue logs` applies only to workflows. A direct prompt to an agent, or input accepted through `dispatch(...)`, is work in a continuing agent session rather than a workflow run. Dispatched inputs use `dispatchId` as their delivery identity.
+
+A workflow's `startedAt` timestamp is captured before durable admission finishes. Live observers receive `run_start` after admission setup, immediately before workflow code begins. This distinction matters when admission itself takes time: `startedAt` describes the admitted invocation's full lifetime, while `run_start` marks the beginning of live workflow execution.
 
 ## Observe application activity
 
@@ -101,7 +103,39 @@ export default app;
 
 The adapter turns workflow runs, agent operations, model turns, tools, delegated tasks, compaction, and logs into trace activity. You can also consume `observe(...)` directly to send terminal failures to an error reporter or derive metrics such as operation latency, workflow failures, and model usage or cost.
 
-Workflow and standalone operation spans start as independent roots by default. To attach them beneath application-owned spans, pass `resolveRootContext` to `createOpenTelemetryObserver(...)`. The resolver runs only when a Flue span has no tracked Flue parent; return `undefined` to preserve root behavior selectively. Dispatched input does not carry trace context automatically, so resolve any dispatched parent from application-owned correlation state.
+### Attach application trace context
+
+Workflow and standalone operation spans start as independent roots by default. To attach them beneath application-owned spans, pass `resolveRootContext` to `createOpenTelemetryObserver(...)`. The resolver runs only when a Flue span has no tracked Flue parent; return `undefined` to preserve root behavior selectively.
+
+For an ordinary inbound HTTP request, extract its carrier in application code:
+
+```ts title="src/app.ts"
+import { context, propagation } from '@opentelemetry/api';
+import { createOpenTelemetryObserver } from '@flue/opentelemetry';
+import { observe } from '@flue/runtime';
+
+observe(
+  createOpenTelemetryObserver({
+    resolveRootContext(_event, ctx) {
+      if (!ctx.req) return undefined;
+
+      return propagation.extract(context.active(), Object.fromEntries(ctx.req.headers));
+    },
+  }),
+);
+```
+
+This is an application-owned extraction policy, not automatic Flue propagation. On Cloudflare, the initial Worker request keeps its ordinary HTTP headers when Flue forwards it into a Durable Object. Flue does not automatically propagate a trace carrier with dispatched input or restore one when retrying an interrupted direct prompt. Resolve dispatched parents from application-owned correlation state when needed. See [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/#interruption-and-recovery-semantics) for the platform-specific transport boundaries.
+
+Flue spans describe semantic work such as workflows, operations, turns, and tools. The adapter does not activate OpenTelemetry context around provider SDK calls, so spans created by separate provider auto-instrumentation may require application-owned instrumentation or composition to appear beneath the intended Flue span.
+
+### Interpret workflow recovery
+
+A recovered Cloudflare workflow does not continue or retry workflow code. For an admitted interrupted run that still needs terminalization, Flue emits `run_resume` before the terminal `run_end`. This also applies when interruption occurred after admission but before live observers received `run_start`.
+
+The OpenTelemetry adapter represents that recovery handling as a separate workflow segment. It closes interrupted descendant spans still tracked in the current application context and links the new segment to a predecessor workflow span only when that span context remains locally available. The link is opportunistic correlation, not durable trace propagation across isolate resets.
+
+### Export and interpret telemetry safely
 
 The adapter exports metadata and generic failure messages by default. To export content, pass an application-owned `sanitize(event)` callback. It receives a shallow event copy; return a sanitized event to export its supported content values, or return `undefined` to omit content from that event. Passing `sanitize: (event) => event` intentionally exports unsanitized content and is useful only when the configured exporter is appropriate for that data.
 
