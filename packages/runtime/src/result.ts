@@ -72,6 +72,28 @@ export function buildPackagedSkillPrompt(
 	return parts.join('\n');
 }
 
+export function buildWorkspaceSkillPrompt(
+	name: string,
+	directory: string,
+	skillMdPath: string,
+	raw: string,
+): string {
+	const skill = parseSkillMarkdown(raw, { directoryName: name, path: skillMdPath });
+	return [
+		`Run the skill named "${name}".`,
+		'',
+		'<skill_instructions>',
+		skill.body,
+		'</skill_instructions>',
+		'',
+		'Supporting skill resources are available relative to this workspace skill directory but are not loaded into context unless needed:',
+		'<skill_resources>',
+		`- Base directory: ${directory}`,
+		'- Resolve relative resource paths from this directory and read only the files you need.',
+		'</skill_resources>',
+	].join('\n');
+}
+
 /** Build the existing name-only prompt for runtime-discovered sandbox skills. */
 export function buildSkillByPathlessNamePrompt(
 	name: string,

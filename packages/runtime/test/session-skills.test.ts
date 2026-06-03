@@ -562,4 +562,245 @@ describe('session.skill()', () => {
 			'[flue] Skill name "review" appears in both agent definition and workspace discovery.',
 		);
 	});
+
+	it('does not expose activate_skill when the session has no available skills', async () => {
+		const provider = createProvider();
+		let activeToolNames: string[] = [];
+		provider.setResponses([
+			(context) => {
+				activeToolNames = (context.tools ?? []).map((tool) => tool.name);
+				return fauxAssistantMessage('No skills available.');
+			},
+		]);
+		const ctx = createFlueContext({
+			id: 'no-autonomous-skills-instance',
+			payload: {},
+			env: {},
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				model: undefined,
+				resolveModel: () => provider.getModel(),
+			},
+			createDefaultEnv: async () => createEnv(),
+			defaultStore: new InMemorySessionStore(),
+		});
+		const harness = await ctx.init(
+			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+		);
+		const session = await harness.session();
+
+		await session.prompt('Complete the task.');
+
+		expect(activeToolNames).not.toContain('activate_skill');
+	});
+
+	it('loads current workspace instructions when the model activates an available skill', async () => {
+		const provider = createProvider();
+		const files = {
+			'/repo/.agents/skills/review/SKILL.md':
+				'---\nname: review\ndescription: Review workspace changes.\n---\nRead the old checklist.',
+			'/repo/.agents/skills/review/references/checklist.md': 'Check every changed file.',
+		};
+		let activateSkillTool: unknown;
+		let modelToolResult: unknown;
+		provider.setResponses([
+			(context) => {
+				activateSkillTool = (context.tools ?? []).find((tool) => tool.name === 'activate_skill');
+				return fauxAssistantMessage(fauxToolCall('activate_skill', { name: 'review' }), {
+					stopReason: 'toolUse',
+				});
+			},
+			(context) => {
+				modelToolResult = context.messages.at(-1);
+				return fauxAssistantMessage('Workspace skill loaded.');
+			},
+		]);
+		const ctx = createFlueContext({
+			id: 'autonomous-workspace-skill-instance',
+			payload: {},
+			env: {},
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				model: undefined,
+				resolveModel: () => provider.getModel(),
+			},
+			createDefaultEnv: async () => createEnv({ files }),
+			defaultStore: new InMemorySessionStore(),
+		});
+		const harness = await ctx.init(
+			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+		);
+		files['/repo/.agents/skills/review/SKILL.md'] =
+			'---\nname: review\ndescription: Review workspace changes.\n---\nRead the current checklist.';
+		const session = await harness.session();
+
+		const result = await session.prompt('Review the workspace.');
+
+		expect(activateSkillTool).toMatchObject({
+			name: 'activate_skill',
+			parameters: {
+				properties: { name: { const: 'review' } },
+			},
+		});
+		expect(modelToolResult).toMatchObject({
+			role: 'toolResult',
+			toolName: 'activate_skill',
+			content: [
+				{
+					type: 'text',
+					text: expect.stringContaining('Read the current checklist.'),
+				},
+			],
+			isError: false,
+		});
+		expect(modelToolResult).toMatchObject({
+			content: [{ text: expect.stringContaining('- Base directory: /repo/.agents/skills/review') }],
+		});
+		expect(modelToolResult).toMatchObject({
+			content: [{ text: expect.not.stringContaining('Check every changed file.') }],
+		});
+		expect(result.text).toBe('Workspace skill loaded.');
+	});
+
+	it('uses the name-only prompt when the model activates a metadata-only skill', async () => {
+		const provider = createProvider();
+		let modelToolResult: unknown;
+		provider.setResponses([
+			fauxAssistantMessage(fauxToolCall('activate_skill', { name: 'review' }), {
+				stopReason: 'toolUse',
+			}),
+			(context) => {
+				modelToolResult = context.messages.at(-1);
+				return fauxAssistantMessage('Metadata-only skill activated.');
+			},
+		]);
+		const ctx = createFlueContext({
+			id: 'autonomous-metadata-skill-instance',
+			payload: {},
+			env: {},
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				model: undefined,
+				resolveModel: () => provider.getModel(),
+			},
+			createDefaultEnv: async () => createEnv(),
+			defaultStore: new InMemorySessionStore(),
+		});
+		const harness = await ctx.init(
+			createAgent(() => ({
+				model: `${provider.getModel().provider}/${provider.getModel().id}`,
+				skills: [{ name: 'review', description: 'Review changes.' }],
+			})),
+		);
+		const session = await harness.session();
+
+		const result = await session.prompt('Review the patch.');
+
+		expect(modelToolResult).toMatchObject({
+			role: 'toolResult',
+			toolName: 'activate_skill',
+			content: [{ type: 'text', text: 'Run the skill named "review".' }],
+			isError: false,
+		});
+		expect(result.text).toBe('Metadata-only skill activated.');
+	});
+
+	it('keeps packaged resources lazy and readable when the model activates a registered packaged skill', async () => {
+		const provider = createProvider();
+		let activateSkillResult: unknown;
+		let readResult: unknown;
+		provider.setResponses([
+			fauxAssistantMessage(fauxToolCall('activate_skill', { name: 'review' }), {
+				stopReason: 'toolUse',
+			}),
+			(context) => {
+				activateSkillResult = context.messages.at(-1);
+				return fauxAssistantMessage(
+					fauxToolCall('read', {
+						path: '/.flue/packaged-skills/skill%3Areview%3Afixture/references/checklist.md',
+					}),
+					{ stopReason: 'toolUse' },
+				);
+			},
+			(context) => {
+				readResult = context.messages.at(-1);
+				return fauxAssistantMessage('Packaged skill loaded.');
+			},
+		]);
+		const reference: SkillReference = {
+			__flueSkillReference: true,
+			id: 'skill:review:fixture',
+			name: 'review',
+			description: 'Review changes.',
+		};
+		const directory: PackagedSkillDirectory = {
+			id: 'skill:review:fixture',
+			name: 'review',
+			description: 'Review changes.',
+			files: {
+				'SKILL.md': {
+					encoding: 'base64',
+					kind: 'text',
+					content: Buffer.from(
+						'---\nname: review\ndescription: Review changes.\n---\nRead the checklist.',
+					).toString('base64'),
+				},
+				'references/checklist.md': {
+					encoding: 'base64',
+					kind: 'text',
+					content: Buffer.from('Check every changed file.').toString('base64'),
+				},
+			},
+		};
+		const ctx = createFlueContext({
+			id: 'autonomous-packaged-skill-instance',
+			payload: {},
+			env: {},
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				packagedSkills: { [reference.id]: directory },
+				model: undefined,
+				resolveModel: () => provider.getModel(),
+			},
+			createDefaultEnv: async () => createEnv(),
+			defaultStore: new InMemorySessionStore(),
+		});
+		const harness = await ctx.init(
+			createAgent(() => ({
+				model: `${provider.getModel().provider}/${provider.getModel().id}`,
+				skills: [reference],
+			})),
+		);
+		const session = await harness.session();
+
+		const result = await session.prompt('Review the patch.');
+
+		expect(activateSkillResult).toMatchObject({
+			role: 'toolResult',
+			toolName: 'activate_skill',
+			content: [
+				{
+					type: 'text',
+					text: expect.stringContaining(
+						'references/checklist.md → read /.flue/packaged-skills/skill%3Areview%3Afixture/references/checklist.md',
+					),
+				},
+			],
+			isError: false,
+		});
+		expect(activateSkillResult).toMatchObject({
+			content: [{ text: expect.not.stringContaining('Check every changed file.') }],
+		});
+		expect(readResult).toMatchObject({
+			role: 'toolResult',
+			toolName: 'read',
+			content: [{ type: 'text', text: 'Check every changed file.' }],
+			isError: false,
+		});
+		expect(result.text).toBe('Packaged skill loaded.');
+	});
 });

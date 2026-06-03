@@ -106,6 +106,23 @@ describe('custom tools', () => {
 		).rejects.toThrow('conflicts with a built-in tool');
 	});
 
+	it('rejects a custom activate_skill tool because its name is framework-reserved', async () => {
+		const session = await createSession(createProvider());
+
+		await expect(
+			session.prompt('Use the tool.', {
+				tools: [
+					defineTool({
+						name: 'activate_skill',
+						description: 'Activate a skill.',
+						parameters: Type.Object({}),
+						execute: async () => 'ok',
+					}),
+				],
+			}),
+		).rejects.toThrow('conflicts with a built-in tool');
+	});
+
 	it('rejects duplicate custom tool names when an operation assembles its active tools', async () => {
 		const provider = createProvider();
 		const harness = await createContext(provider).init(

@@ -25,6 +25,10 @@ export interface TaskToolResultDetails {
 	cwd?: string;
 }
 
+export interface ActivateSkillToolParams {
+	name: string;
+}
+
 export interface CreateToolsOptions {
 	task?: (
 		params: TaskToolParams,
@@ -313,6 +317,42 @@ export function createTaskTool(
 		async execute(_toolCallId: string, params: Static<typeof TaskParams>, signal?: AbortSignal) {
 			throwIfAborted(signal);
 			return runTask(params, signal);
+		},
+	};
+}
+
+export function createActivateSkillTool(
+	skillNames: string[],
+	activate: (name: string, signal?: AbortSignal) => Promise<string>,
+): AgentTool<any> {
+	const sortedNames = [...skillNames].sort();
+	const NameSchema =
+		sortedNames.length === 1
+			? Type.Literal(sortedNames[0]!)
+			: Type.Union(sortedNames.map((name) => Type.Literal(name)));
+	const ActivateSkillParams = Type.Object({
+		name: NameSchema,
+	});
+
+	return {
+		name: 'activate_skill',
+		label: 'Activate Skill',
+		description:
+			'Load the full instructions for one available skill before performing work that matches its description. Supporting resources remain lazy until explicitly read.',
+		parameters: ActivateSkillParams,
+		async execute(_toolCallId: string, params: unknown, signal?: AbortSignal) {
+			throwIfAborted(signal);
+			const name =
+				typeof params === 'object' &&
+				params !== null &&
+				'name' in params &&
+				typeof params.name === 'string'
+					? params.name
+					: '';
+			return {
+				content: [{ type: 'text', text: await activate(name, signal) }],
+				details: { skill: name },
+			};
 		},
 	};
 }

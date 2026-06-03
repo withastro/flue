@@ -5,6 +5,23 @@
 import { parseSkillMarkdown } from './skill-frontmatter.ts';
 import type { SessionEnv, Skill } from './types.ts';
 
+export interface WorkspaceSkill {
+	readonly __flueWorkspaceSkill: true;
+	readonly name: string;
+	readonly description: string;
+	readonly directory: string;
+	readonly skillMdPath: string;
+}
+
+export function isWorkspaceSkill(skill: Skill): skill is Skill & WorkspaceSkill {
+	const candidate = skill as Partial<WorkspaceSkill>;
+	return (
+		candidate.__flueWorkspaceSkill === true &&
+		typeof candidate.directory === 'string' &&
+		typeof candidate.skillMdPath === 'string'
+	);
+}
+
 // ─── Context Discovery ──────────────────────────────────────────────────────
 
 /** Read AGENTS.md (and CLAUDE.md if present) from a directory. Returns concatenated contents. */
@@ -30,12 +47,12 @@ export function skillsDirIn(basePath: string): string {
 /**
  * Discover skills from `.agents/skills/<name>/SKILL.md` under basePath.
  *
- * Skill bodies are intentionally not retained — at call time the model
- * reads the file from disk itself, which keeps relative references
- * inside the skill resolvable from where they live and lets users edit
- * skill files mid-session without re-initialising the agent. We parse
- * the frontmatter here only to populate the system-prompt's "Available
- * Skills" registry (name + description).
+ * Skill bodies are intentionally not retained. Autonomous activation
+ * rereads SKILL.md before injecting its instructions, while direct name
+ * invocation lets the model read workspace files itself. This keeps
+ * relative references resolvable and picks up mid-session edits without
+ * re-initialising the agent. We parse the frontmatter here only to
+ * populate the system-prompt's "Available Skills" registry.
  */
 async function discoverLocalSkills(
 	env: SessionEnv,
@@ -63,10 +80,14 @@ async function discoverLocalSkills(
 
 		const content = await env.readFile(skillMdPath);
 		const parsed = parseSkillMarkdown(content, { directoryName: entry, path: skillMdPath });
-		skills[parsed.name] = {
+		const workspaceSkill: WorkspaceSkill = {
+			__flueWorkspaceSkill: true,
 			name: parsed.name,
 			description: parsed.description,
+			directory: skillDir,
+			skillMdPath,
 		};
+		skills[parsed.name] = workspaceSkill;
 	}
 
 	return skills;
@@ -121,7 +142,7 @@ function composeSystemPrompt(
 			'',
 			'## Available Skills',
 			'',
-			'The following skills provide specialized instructions for specific tasks. When a task matches a skill description, activate that skill before proceeding so its full instructions are loaded. Skill instructions and supporting resources stay lazy until activation or explicit file reads.',
+			'The following skills provide specialized instructions for specific tasks. When a task matches a skill description, call the `activate_skill` tool with that skill name before proceeding so its full instructions are loaded. Skill instructions and supporting resources stay lazy until activation or explicit file reads.',
 			'',
 		);
 		for (const skill of skillEntries) {

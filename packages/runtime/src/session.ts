@@ -19,6 +19,7 @@ import { streamSimple } from '@earendil-works/pi-ai';
 import type * as v from 'valibot';
 import { abortErrorFor, createCallHandle } from './abort.ts';
 import {
+	createActivateSkillTool,
 	createPackagedSkillReadTool,
 	createTaskTool,
 	createTools,
@@ -37,12 +38,13 @@ import {
 	prepareCompaction,
 	shouldCompact,
 } from './compaction.ts';
-import { skillsDirIn } from './context.ts';
+import { isWorkspaceSkill, skillsDirIn } from './context.ts';
 import {
 	buildPackagedSkillPrompt,
 	buildPromptText,
 	buildResultFollowUpPrompt,
 	buildSkillByPathlessNamePrompt,
+	buildWorkspaceSkillPrompt,
 	createResultTools,
 	type ResultToolBundle,
 	ResultUnavailableError,
@@ -1072,6 +1074,23 @@ export class Session implements FlueSession {
 		return packaged;
 	}
 
+	private async activateSkillForTool(name: string): Promise<string> {
+		const registered = this.config.skills[name];
+		if (!registered) this.throwMissingSkill(name);
+		if ('__flueSkillReference' in registered) {
+			return buildPackagedSkillPrompt(registered, this.resolvePackagedSkill(registered));
+		}
+		if (isWorkspaceSkill(registered)) {
+			return buildWorkspaceSkillPrompt(
+				registered.name,
+				registered.directory,
+				registered.skillMdPath,
+				await this.env.readFile(registered.skillMdPath),
+			);
+		}
+		return buildSkillByPathlessNamePrompt(name);
+	}
+
 	private throwMissingSkill(skill: string): never {
 		const available = Object.keys(this.config.skills).join(', ') || '(none)';
 		throw new Error(
@@ -1115,6 +1134,7 @@ export class Session implements FlueSession {
 	private validateCustomToolNames(tools: ToolDefinition[], builtinTools: AgentTool<any>[]): void {
 		const reserved = new Set<string>(builtinTools.map((t) => t.name));
 		reserved.add('task');
+		reserved.add('activate_skill');
 		const names = new Set<string>();
 		for (const toolDef of tools) {
 			if (reserved.has(toolDef.name)) {
@@ -1146,6 +1166,13 @@ export class Session implements FlueSession {
 			...getRegisteredPackagedSkills(this.config.skills, this.config.packagedSkills),
 			...activePackagedSkills,
 		};
+		const skillNames = Object.keys(this.config.skills);
+		const activateSkillTool =
+			skillNames.length > 0
+				? createActivateSkillTool(skillNames, (name) => this.activateSkillForTool(name))
+				: undefined;
+		const appendActivateSkillTool = (builtinTools: AgentTool<any>[]) =>
+			activateSkillTool ? [...builtinTools, activateSkillTool] : builtinTools;
 
 		if (this.toolFactory) {
 			let connectorTools = this.toolFactory(env, { subagents: this.config.subagents ?? {} });
@@ -1179,24 +1206,29 @@ export class Session implements FlueSession {
 				}
 			}
 			this.validateConnectorTools(connectorTools);
-			return [...connectorTools, createTaskTool(runTask, this.config.subagents ?? {})];
+			return appendActivateSkillTool([
+				...connectorTools,
+				createTaskTool(runTask, this.config.subagents ?? {}),
+			]);
 		}
 
-		return createTools(env, {
-			subagents: this.config.subagents ?? {},
-			packagedSkills,
-			task: runTask,
-		});
+		return appendActivateSkillTool(
+			createTools(env, {
+				subagents: this.config.subagents ?? {},
+				packagedSkills,
+				task: runTask,
+			}),
+		);
 	}
 
 	/** Validate connector tool names before handing them to the agent loop. */
 	private validateConnectorTools(tools: AgentTool<any>[]): void {
 		const names = new Set<string>();
 		for (const tool of tools) {
-			if (tool.name === 'task') {
+			if (tool.name === 'task' || tool.name === 'activate_skill') {
 				throw new Error(
-					'[flue] Sandbox connector tools() returned a tool named "task", which is ' +
-						'framework-reserved. The framework appends `task` automatically; remove it from the connector.',
+					`[flue] Sandbox connector tools() returned a tool named "${tool.name}", which is ` +
+						`framework-reserved. The framework appends \`${tool.name}\` automatically when appropriate; remove it from the connector.`,
 				);
 			}
 			if (names.has(tool.name)) {
