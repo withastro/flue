@@ -83,13 +83,22 @@ test('watches an explicit config outside the project root', async () => {
 function createFixtureRoot() {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'flue-cli-dev-'));
 	fixtureRoots.push(root);
-	const scope = path.join(root, 'node_modules', '@flue');
+	const nodeModules = path.join(root, 'node_modules');
+	const scope = path.join(nodeModules, '@flue');
 	fs.mkdirSync(scope, { recursive: true });
 	fs.symlinkSync(
 		path.join(repositoryRoot, 'packages', 'runtime'),
 		path.join(scope, 'runtime'),
 		'dir',
 	);
+	const runtimeNm = path.join(repositoryRoot, 'packages', 'runtime', 'node_modules');
+	fs.mkdirSync(path.join(nodeModules, '@hono'), { recursive: true });
+	fs.symlinkSync(
+		path.join(runtimeNm, '@hono', 'node-server'),
+		path.join(nodeModules, '@hono', 'node-server'),
+		'dir',
+	);
+	fs.symlinkSync(path.join(runtimeNm, 'ws'), path.join(nodeModules, 'ws'), 'dir');
 	return root;
 }
 

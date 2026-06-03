@@ -5,6 +5,7 @@
  * Import platform-agnostic types (`FlueContext`, etc.) from
  * `@flue/runtime`.
  */
+export { serve } from '@hono/node-server';
 export { type LocalSandboxOptions, local } from './local.ts';
 export {
 	createNodeWebSocketTransport,
