@@ -10,14 +10,14 @@
 		"@chat-adapter/state-memory": "^4.29.0",
 		"@earendil-works/pi-ai": "*",
 		"@flue/runtime": "workspace:*",
-		"agents": "*",
+		"agents": "^0.14.0",
 		"chat": "^4.29.0",
 		"hono": "^4.8.3",
 		"just-bash": "^3.0.1"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260505.1",
+		"@cloudflare/workers-types": "^4.20260602.1",
 		"@flue/cli": "workspace:*",
-		"wrangler": "^4.87.0"
+		"wrangler": "^4.97.0"
 	}
 }

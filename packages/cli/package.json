@@ -28,7 +28,7 @@
 		"prepublishOnly": "cp ../../README.md ."
 	},
 	"dependencies": {
-		"@cloudflare/vite-plugin": "^1.38.0",
+		"@cloudflare/vite-plugin": "^1.39.2",
 		"@flue/runtime": "workspace:*",
 		"@vercel/detect-agent": "^1.2.3",
 		"package-up": "^5.0.0",
@@ -38,15 +38,6 @@
 	"devDependencies": {
 		"tsdown": "^0.22.0",
 		"tsx": "^4.19.2",
-		"typescript": "^6.0.3",
-		"wrangler": "^4.94.0"
-	},
-	"peerDependencies": {
-		"wrangler": "^4.94.0"
-	},
-	"peerDependenciesMeta": {
-		"wrangler": {
-			"optional": true
-		}
+		"typescript": "^6.0.3"
 	}
 }

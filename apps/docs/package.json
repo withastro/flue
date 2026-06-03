@@ -24,6 +24,6 @@
 		"pagefind": "^1.5.2",
 		"typescript": "^6.0.3",
 		"vite": "^7.3.3",
-		"wrangler": "^4.59.3"
+		"wrangler": "^4.97.0"
 	}
 }

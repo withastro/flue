@@ -14,8 +14,8 @@
  * entirely user-authored.
  */
 import * as fs from 'node:fs';
+import { createRequire } from 'node:module';
 import * as path from 'node:path';
-import type { Unstable_Config, Unstable_RawConfig } from 'wrangler';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -74,20 +74,23 @@ export async function readUserWranglerConfig(root: string): Promise<UserConfigRe
 		return { config: {}, effectiveConfig: {}, path: null };
 	}
 
-	let wrangler: typeof import('wrangler');
+	let wrangler: {
+		experimental_readRawConfig(options: { config: string }): { rawConfig: unknown };
+		unstable_readConfig(options: { config: string }, behavior: { hideWarnings: boolean }): unknown;
+	};
 	try {
-		wrangler = (await import('wrangler')) as typeof import('wrangler');
+		const cloudflareViteRequire = createRequire(import.meta.resolve('@cloudflare/vite-plugin'));
+		const wranglerPath = cloudflareViteRequire.resolve('wrangler');
+		wrangler = (await import(wranglerPath)) as typeof wrangler;
 	} catch (err) {
 		throw new Error(
-			`[flue] Reading the Cloudflare wrangler config requires the "wrangler" package as a peer dependency.\n` +
-				`Install it in your project:\n\n` +
-				`  npm install --save-dev wrangler\n\n` +
+			`[flue] Reading the Cloudflare wrangler config requires the Wrangler version provided by "@cloudflare/vite-plugin".\n` +
 				`Underlying error: ${err instanceof Error ? err.message : String(err)}`,
 		);
 	}
 
-	let raw: Unstable_RawConfig;
-	let effective: Unstable_Config;
+	let raw: unknown;
+	let effective: unknown;
 	try {
 		raw = wrangler.experimental_readRawConfig({ config: foundPath }).rawConfig;
 		effective = wrangler.unstable_readConfig({ config: foundPath }, { hideWarnings: true });

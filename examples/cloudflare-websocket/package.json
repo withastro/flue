@@ -7,13 +7,13 @@
 	},
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
-		"agents": "*",
+		"agents": "^0.14.0",
 		"hono": "^4.7.0"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260505.1",
+		"@cloudflare/workers-types": "^4.20260602.1",
 		"@flue/cli": "workspace:*",
 		"@flue/sdk": "workspace:*",
-		"wrangler": "^4.87.0"
+		"wrangler": "^4.97.0"
 	}
 }

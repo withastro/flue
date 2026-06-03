@@ -3,16 +3,16 @@
 	"private": true,
 	"type": "module",
 	"dependencies": {
-		"@cloudflare/codemode": "^0.3.4",
-		"@cloudflare/shell": "^0.3.2",
+		"@cloudflare/codemode": "^0.3.8",
+		"@cloudflare/shell": "^0.3.8",
 		"@flue/runtime": "workspace:*",
-		"agents": "*",
+		"agents": "^0.14.0",
 		"hono": "^4.7.0",
 		"valibot": "^1.0.0"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260505.1",
+		"@cloudflare/workers-types": "^4.20260602.1",
 		"@flue/cli": "workspace:*",
-		"wrangler": "^4.87.0"
+		"wrangler": "^4.97.0"
 	}
 }

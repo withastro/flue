@@ -4,11 +4,11 @@
 	"type": "module",
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
-		"agents": "*",
+		"agents": "^0.14.0",
 		"just-bash": "^3.0.1"
 	},
 	"devDependencies": {
 		"@flue/cli": "workspace:*",
-		"wrangler": "^4.94.0"
+		"wrangler": "^4.97.0"
 	}
 }

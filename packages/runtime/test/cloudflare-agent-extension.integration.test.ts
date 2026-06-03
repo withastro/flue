@@ -3,6 +3,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { createServer, type ViteDevServer } from 'vite';
 import { describe, expect, it } from 'vitest';
+import { WebSocket } from 'ws';
 import {
 	build,
 	cloudflareViteConfigPath,
@@ -56,10 +57,34 @@ describe('Cloudflare agent extension', () => {
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ prompt: 'Hello' }),
 			});
-			expect(response.status).not.toBe(500);
+			expect(response.status, await response.text()).not.toBe(500);
 			const heartbeat = await fetch(new URL('/heartbeat', server.url));
 			expect(heartbeat.status).toBe(200);
 		} finally {
+			await server?.close();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	}, 90000);
+
+	it('bootstraps the inherited PartyServer name before accepting an agent WebSocket', async () => {
+		const root = await createGeneratedFixture();
+		let server: Awaited<ReturnType<typeof startServer>> | undefined;
+		let socket: WebSocket | undefined;
+		try {
+			server = await startServer(root);
+			const url = new URL('/agents/assistant/socket-instance', server.url);
+			url.protocol = 'ws:';
+			socket = new WebSocket(url.toString());
+			const firstMessage = await waitForSocketMessage(socket);
+			expect(JSON.parse(firstMessage)).toMatchObject({
+				version: 1,
+				type: 'ready',
+				target: 'agent',
+				name: 'assistant',
+				instanceId: 'socket-instance',
+			});
+		} finally {
+			socket?.close();
 			await server?.close();
 			fs.rmSync(root, { recursive: true, force: true });
 		}
@@ -136,6 +161,20 @@ async function startServer(root: string): Promise<{ url: string; close(): Promis
 	}
 }
 
+async function waitForSocketMessage(socket: WebSocket): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const timeout = setTimeout(() => reject(new Error('Timed out waiting for WebSocket message.')), 10_000);
+		socket.once('message', (data) => {
+			clearTimeout(timeout);
+			resolve(data.toString());
+		});
+		socket.once('error', (error) => {
+			clearTimeout(timeout);
+			reject(error);
+		});
+	});
+}
+
 async function waitFor(
 	predicate: () => Promise<{ done: boolean; detail: unknown }>,
 ): Promise<void> {
@@ -156,6 +195,7 @@ const defaultAgentSource = `import { createAgent } from '@flue/runtime';
 import { extend } from '@flue/runtime/cloudflare';
 export default createAgent(() => ({ model: false }));
 export const route = async (_c, next) => next();
+export const websocket = async (_c, next) => next();
 export const cloudflare = extend({
   base: (Base) => class extends Base {
     async startHeartbeat() { return this.scheduleEvery(1, 'heartbeat'); }

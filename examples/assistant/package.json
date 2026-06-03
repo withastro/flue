@@ -3,9 +3,9 @@
 	"private": true,
 	"type": "module",
 	"dependencies": {
-		"@cloudflare/sandbox": "*",
+		"@cloudflare/sandbox": "^0.11.0",
 		"@flue/runtime": "workspace:*",
-		"agents": "*"
+		"agents": "^0.14.0"
 	},
 	"devDependencies": {
 		"@flue/cli": "workspace:*"

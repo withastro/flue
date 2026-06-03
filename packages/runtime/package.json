@@ -75,7 +75,7 @@
 		"ws": "^8.20.0"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20250410.0",
+		"@cloudflare/workers-types": "^4.20260602.1",
 		"@types/js-yaml": "^4.0.9",
 		"@types/ws": "^8.18.1",
 		"tsdown": "^0.22.0",

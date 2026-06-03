@@ -57,6 +57,7 @@ describe('createCloudflareRunRegistry()', () => {
 		);
 		expect(fake.requests[0]?.method).toBe('POST');
 		expect(fake.requests[0]?.headers.get('content-type')).toBe('application/json');
+		expect(fake.requests[0]?.headers.get('x-partykit-room')).toBeNull();
 		expect(await fake.requests[0]?.json()).toEqual({
 			owner: {
 				kind: 'workflow',
