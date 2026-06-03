@@ -31,11 +31,6 @@ export default {
 			return env.ASSETS.fetch(request);
 		}
 
-		if (url.pathname === '/docs/api/harness-api/index.md') {
-			url.pathname = '/docs/api/agent-api/index.md';
-			return Response.redirect(url, 302);
-		}
-
 		url.pathname = url.pathname.slice(0, -'index.md'.length);
 		const page = await env.ASSETS.fetch(new Request(url));
 
