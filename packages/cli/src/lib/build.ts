@@ -40,7 +40,8 @@ export async function build(options: BuildOptions): Promise<BuildResult> {
 async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 	const root = path.resolve(options.root);
 	const output = path.resolve(options.output ?? path.join(root, 'dist'));
-	const plugin = resolvePlugin(options);
+	const plugin: BuildPlugin = resolvePlugin(options);
+	if (!options.plugin && options.target === 'cloudflare') assertCloudflareAgentsSdkFloor(root);
 
 	const sourceRoot = path.resolve(options.sourceRoot);
 
@@ -427,6 +428,42 @@ function readRuntimeVersion(root: string): string {
 	} catch {
 		return '0.0.0';
 	}
+}
+
+function assertCloudflareAgentsSdkFloor(root: string): void {
+	const minimum = [0, 14, 1] as const;
+	let entry: string;
+	try {
+		entry = createRequire(path.join(root, '__flue_resolve__.cjs')).resolve('agents');
+	} catch {
+		throw new Error(
+			'[flue] Cloudflare target requires the installed "agents" package to be at least 0.14.1. Install or upgrade "agents" in this project.',
+		);
+	}
+	const pkgPath = packageUpSync({ cwd: path.dirname(entry) });
+	if (!pkgPath) throw new Error('[flue] Could not inspect the installed "agents" package version.');
+	let version: unknown;
+	try {
+		version = JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version;
+	} catch {
+		throw new Error('[flue] Could not inspect the installed "agents" package version.');
+	}
+	const match = typeof version === 'string' ? /^(\d+)\.(\d+)\.(\d+)$/.exec(version) : null;
+	const current = match?.slice(1).map(Number);
+	if (!current || isVersionBelow(current, minimum)) {
+		throw new Error(
+			`[flue] Cloudflare target requires the installed "agents" package to be at least 0.14.1. Found ${String(version)}. Install or upgrade "agents" in this project.`,
+		);
+	}
+}
+
+function isVersionBelow(current: readonly number[], minimum: readonly number[]): boolean {
+	for (let index = 0; index < minimum.length; index++) {
+		const currentPart = current[index] ?? 0;
+		const minimumPart = minimum[index] ?? 0;
+		if (currentPart !== minimumPart) return currentPart < minimumPart;
+	}
+	return false;
 }
 
 function getCLIDir(): string {

@@ -4,6 +4,7 @@ import {
 	createSqlAgentExecutionStore,
 	createSqlSessionStore,
 } from '../src/cloudflare/agent-execution-store.ts';
+import type { DispatchInput } from '../src/runtime/dispatch-queue.ts';
 import type { SessionData } from '../src/types.ts';
 
 function makeFakeSql() {
@@ -27,6 +28,18 @@ function makeFakeSql() {
 				};
 			},
 		},
+	};
+}
+
+function dispatchInput(overrides: Partial<DispatchInput> = {}): DispatchInput {
+	return {
+		dispatchId: 'dispatch-1',
+		agent: 'assistant',
+		id: 'agent-1',
+		session: 'default',
+		input: { text: 'Hello' },
+		acceptedAt: '2026-06-03T00:00:00.000Z',
+		...overrides,
 	};
 }
 
@@ -96,6 +109,98 @@ describe('createSqlAgentExecutionStore()', () => {
 			{ name: 'flue_agent_submissions_status_sequence_idx' },
 			{ name: 'sqlite_autoindex_flue_agent_submissions_1' },
 		]);
+	});
+
+	it('admits one queued dispatch row when the same submission is replayed', () => {
+		const { db, sql } = makeFakeSql();
+		const store = createSqlAgentExecutionStore({ sql }, 'FlueAssistantAgent');
+
+		const first = store.submissions.admitDispatch(dispatchInput());
+		const replay = store.submissions.admitDispatch(dispatchInput());
+
+		expect(replay).toEqual(first);
+		expect(db.prepare('SELECT COUNT(*) AS count FROM flue_agent_submissions').get()).toEqual({
+			count: 1,
+		});
+		expect(first).toMatchObject({
+			submissionId: 'dispatch-1',
+			session: 'default',
+			sessionKey: 'agent-session:["agent-1","default","default"]',
+			status: 'queued',
+		});
+	});
+
+	it('rejects conflicting replay when one dispatch id is reused with another payload', () => {
+		const { sql } = makeFakeSql();
+		const store = createSqlAgentExecutionStore({ sql }, 'FlueAssistantAgent');
+		store.submissions.admitDispatch(dispatchInput());
+
+		expect(() =>
+			store.submissions.admitDispatch(dispatchInput({ input: { text: 'Different' } })),
+		).toThrow('[flue] Conflicting internal dispatch replay.');
+	});
+
+	it('lists queued dispatches in admission order and selects one runnable head per session', () => {
+		const { sql } = makeFakeSql();
+		const store = createSqlAgentExecutionStore({ sql }, 'FlueAssistantAgent');
+		const first = store.submissions.admitDispatch(dispatchInput());
+		const second = store.submissions.admitDispatch(dispatchInput({ dispatchId: 'dispatch-2' }));
+		const other = store.submissions.admitDispatch(
+			dispatchInput({ dispatchId: 'dispatch-3', session: 'other' }),
+		);
+
+		expect(store.submissions.listQueuedDispatches()).toEqual([first, second, other]);
+		expect(store.submissions.listRunnableDispatches()).toEqual([first, other]);
+		expect(store.submissions.hasEarlierQueuedDispatch(first)).toBe(false);
+		expect(store.submissions.hasEarlierQueuedDispatch(second)).toBe(true);
+		expect(store.submissions.hasEarlierQueuedDispatch(other)).toBe(false);
+	});
+
+	it('terminalizes malformed queued payloads while returning healthy runnable rows', () => {
+		const { db, sql } = makeFakeSql();
+		const store = createSqlAgentExecutionStore({ sql }, 'FlueAssistantAgent');
+		store.submissions.admitDispatch(dispatchInput({ dispatchId: 'healthy' }));
+		db.prepare(
+			`INSERT INTO flue_agent_submissions
+			 (submission_id, session, session_key, kind, payload, status, accepted_at)
+			 VALUES (?, ?, ?, 'dispatch', ?, 'queued', ?)`,
+		).run('malformed', 'other', 'agent-session:["agent-1","default","other"]', '{', 1);
+
+		expect(store.submissions.listRunnableDispatches()).toEqual([
+			expect.objectContaining({ submissionId: 'healthy' }),
+		]);
+		expect(
+			db
+				.prepare('SELECT status, error FROM flue_agent_submissions WHERE submission_id = ?')
+				.get('malformed'),
+		).toMatchObject({ status: 'error', error: expect.any(String) });
+	});
+
+	it('reports queued session visibility until a dispatch completes', () => {
+		const { sql } = makeFakeSql();
+		const store = createSqlAgentExecutionStore({ sql }, 'FlueAssistantAgent');
+		store.submissions.admitDispatch(dispatchInput({ session: 'case-1' }));
+
+		expect(store.submissions.hasQueuedDispatchForSession('agent-1', 'case-1')).toBe(true);
+		expect(store.submissions.hasQueuedDispatchForSession('agent-1', 'case-2')).toBe(false);
+		store.submissions.completeDispatch('dispatch-1');
+		expect(store.submissions.hasQueuedDispatchForSession('agent-1', 'case-1')).toBe(false);
+		expect(store.submissions.getDispatch('dispatch-1')).toMatchObject({ status: 'completed' });
+	});
+
+	it('keeps the first terminal dispatch state when a later settlement races it', () => {
+		const { sql } = makeFakeSql();
+		const store = createSqlAgentExecutionStore({ sql }, 'FlueAssistantAgent');
+		store.submissions.admitDispatch(dispatchInput());
+
+		store.submissions.failDispatch('dispatch-1', new Error('first failure'));
+		store.submissions.completeDispatch('dispatch-1');
+		store.submissions.failDispatch('dispatch-1', new Error('later failure'));
+
+		expect(store.submissions.getDispatch('dispatch-1')).toMatchObject({
+			status: 'error',
+			error: 'first failure',
+		});
 	});
 
 	it('rejects missing Durable Object SQLite with migration guidance', () => {

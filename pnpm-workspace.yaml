@@ -12,6 +12,7 @@ allowBuilds:
 minimumReleaseAge: 1440
 resolutionMode: highest
 minimumReleaseAgeExclude:
+  - agents
   - '@aws-sdk/*'
   - '@smithy/*'
   - protobufjs

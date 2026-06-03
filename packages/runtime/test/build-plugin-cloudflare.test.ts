@@ -46,6 +46,33 @@ describe('CloudflarePlugin', () => {
 		expect(entry).not.toContain('CREATE TABLE IF NOT EXISTS flue_sessions');
 	});
 
+	it('pre-arms SQL-backed dispatch admission and reconciles runnable rows through managed Fibers', async () => {
+		const entry = await new CloudflarePlugin().generateEntryPoint(
+			testBuildContext({
+				agents: [{ name: 'assistant', filePath: '/fixture/agents/assistant.ts' }],
+			}),
+		);
+
+		expect(entry).toContain(
+			`async onStart(props) {
+    if (typeof super.onStart === 'function') await super.onStart(props);
+    await reconcileFlueAgentSubmissions(this, "assistant", { preserveSuccessor: true });
+  }
+
+  async __flueWakeAgentSubmissions(wake) {
+    await reconcileFlueAgentSubmissions(this, "assistant", { preserveSuccessor: true, executingWake: wake });
+  }`,
+		);
+		expect(entry).toContain("const FLUE_AGENT_SUBMISSION_WAKE_CALLBACK = '__flueWakeAgentSubmissions';");
+		expect(entry).toContain("await armFlueAgentSubmissionAdmissionWakes(doInstance);\n    let submission;");
+		expect(entry).toContain('submission = getAgentExecutionStore(doInstance).submissions.admitDispatch(input);');
+		expect(entry).toContain('const runnable = submissions.listRunnableDispatches();');
+		expect(entry).toContain('metadata: { input: submission.input, submissionSequence: submission.sequence },');
+		expect(entry).toContain('submissions.hasQueuedDispatchForSession(doInstance.name, session)');
+		expect(entry).toContain('async function waitForEarlierLegacyManagedDispatch');
+		expect(entry).not.toContain('ctx.storage.setAlarm');
+	});
+
 	it('uses explicit Flue routing instead of the Agents SDK router', async () => {
 		const entry = await new CloudflarePlugin().generateEntryPoint(
 			testBuildContext({

@@ -57,6 +57,15 @@ const ${agentClassName(agent.name)} = class ${agentClassName(agent.name)} extend
     this[FLUE_AGENT_EXECUTION_STORE] = executionStore;
   }
 
+  async onStart(props) {
+    if (typeof super.onStart === 'function') await super.onStart(props);
+    await reconcileFlueAgentSubmissions(this, ${JSON.stringify(agent.name)}, { preserveSuccessor: true });
+  }
+
+  async __flueWakeAgentSubmissions(wake) {
+    await reconcileFlueAgentSubmissions(this, ${JSON.stringify(agent.name)}, { preserveSuccessor: true, executingWake: wake });
+  }
+
   async onRequest(request) {
     return dispatchAgent(request, this, ${JSON.stringify(agent.name)}, directHandlers[${JSON.stringify(agent.name)}]);
   }
@@ -195,6 +204,7 @@ import {
   createDurableRunStore,
   createSqlAgentExecutionStore,
   createSqlSessionStore,
+  SqlAgentSubmissionConflictError,
   createRunSubscriberRegistry,
   bashFactoryToSessionEnv,
   resolveModel,
@@ -340,6 +350,8 @@ function resolveSandbox(sandbox) {
 const memoryWorkflowSessionStore = new InMemorySessionStore();
 const memoryRunStore = new InMemoryRunStore();
 const FLUE_AGENT_EXECUTION_STORE = Symbol('flueAgentExecutionStore');
+const FLUE_AGENT_SUBMISSION_WAKE_CALLBACK = '__flueWakeAgentSubmissions';
+const FLUE_AGENT_SUBMISSION_RETRY_SECONDS = 30;
 const INTERNAL_DISPATCH_PATH = '/__flue/internal/dispatch';
 const dispatchQueue = {
   async enqueue(input) {
@@ -451,8 +463,11 @@ async function handleFlueDispatchRecovered(ctx, doInstance, agentName) {
   const input = ctx.metadata?.input;
   assertCurrentDispatchInput(input);
   if (!input || input.agent !== agentName || input.id !== doInstance.name) return { status: 'error', error: 'Dispatch recovery metadata is invalid.' };
+  const submissions = getAgentExecutionStore(doInstance).submissions;
+  const submission = submissions.getDispatch(input.dispatchId);
+  if (submission && submission.status !== 'queued') return { status: submission.status === 'completed' ? 'completed' : 'error', error: submission.error };
   try {
-    await processManagedAgentDispatch(input, doInstance, agentName, ctx.id);
+    await processManagedAgentDispatch(submission ?? { input }, doInstance, agentName, ctx.id);
     return { status: 'completed' };
   } catch (error) {
     return { status: 'error', error: error instanceof Error ? error.message : String(error) };
@@ -500,50 +515,182 @@ async function handleFlueWorkflowFiberRecovered(ctx, doInstance, workflowName) {
 
 // ─── Per-DO Dispatch ───────────────────────────────────────────────────────
 
-async function waitForEarlierManagedDispatch(doInstance, input, fiberId) {
-  if (typeof doInstance.listFibers !== 'function') return;
+function armFlueAgentSubmissionWake(doInstance, options = {}) {
+  assertAgentsDurabilityApi(doInstance, 'schedule');
+  return doInstance.schedule(
+    options.delaySeconds ?? 0,
+    FLUE_AGENT_SUBMISSION_WAKE_CALLBACK,
+    { generation: options.generation ?? 0 },
+    { idempotent: true },
+  );
+}
+
+function armFlueAgentSubmissionAdmissionWakes(doInstance) {
+  return Promise.all([
+    armFlueAgentSubmissionWake(doInstance, { generation: 0 }),
+    armFlueAgentSubmissionWake(doInstance, { generation: 1 }),
+  ]);
+}
+
+async function reconcileFlueAgentSubmissions(doInstance, agentName, options = {}) {
+  const submissions = getAgentExecutionStore(doInstance).submissions;
+  if (!submissions.hasQueuedDispatches()) return;
+  if (options.preserveSuccessor) {
+    if (options.executingWake) {
+      await armFlueAgentSubmissionWake(doInstance, {
+        delaySeconds: FLUE_AGENT_SUBMISSION_RETRY_SECONDS,
+        generation: options.executingWake.generation === 0 ? 1 : 0,
+      });
+    } else {
+      await Promise.all([
+        armFlueAgentSubmissionWake(doInstance, { delaySeconds: FLUE_AGENT_SUBMISSION_RETRY_SECONDS, generation: 0 }),
+        armFlueAgentSubmissionWake(doInstance, { delaySeconds: FLUE_AGENT_SUBMISSION_RETRY_SECONDS, generation: 1 }),
+      ]);
+    }
+  }
+  try {
+    while (true) {
+      const runnable = submissions.listRunnableDispatches();
+      let repairedTerminal = false;
+      for (const submission of runnable) {
+        if (await ensureManagedDispatchFiber(submission, doInstance, agentName)) repairedTerminal = true;
+      }
+      if (!repairedTerminal) break;
+    }
+  } catch (error) {
+    console.error('[flue:dispatch-reconciliation]', { agentName, instanceId: doInstance.name, operation: 'reconcile', outcome: 'deferred_to_scheduled_wake' }, error);
+    return;
+  }
+}
+
+async function ensureManagedDispatchFiber(submission, doInstance, agentName) {
+  assertAgentsDurabilityApi(doInstance, 'inspectFiberByKey');
+  assertAgentsDurabilityApi(doInstance, 'startFiber');
+  const idempotencyKey = 'flue:dispatch:' + submission.submissionId;
+  const prior = await doInstance.inspectFiberByKey(idempotencyKey);
+  if (prior) {
+    try {
+      await validateAgentDispatchAdmission({ input: prior.metadata?.input });
+    } catch {
+      getAgentExecutionStore(doInstance).submissions.failDispatch(submission.submissionId, new Error('[flue] Persisted dispatch Fiber metadata is malformed.'));
+      return true;
+    }
+    if (JSON.stringify(prior.metadata.input) !== JSON.stringify(submission.input)) {
+      getAgentExecutionStore(doInstance).submissions.failDispatch(submission.submissionId, new Error('[flue] Persisted dispatch Fiber conflicts with SQL submission.'));
+      return true;
+    }
+  }
+  if (prior?.status === 'completed') {
+    getAgentExecutionStore(doInstance).submissions.completeDispatch(submission.submissionId);
+    return true;
+  }
+  if (prior?.status === 'error' || prior?.status === 'aborted' || prior?.status === 'interrupted') {
+    getAgentExecutionStore(doInstance).submissions.failDispatch(submission.submissionId, prior.error ?? 'Managed dispatch Fiber did not complete.');
+    return true;
+  }
+  if (prior) return false;
+  await doInstance.startFiber('flue:dispatch', async (fiberCtx) => processManagedAgentDispatch(submission, doInstance, agentName, fiberCtx.id), {
+    idempotencyKey,
+    metadata: { input: submission.input, submissionSequence: submission.sequence },
+  });
+  return false;
+}
+
+function isPersistedDispatchInput(input) {
+  return !!input && typeof input === 'object' && !Array.isArray(input) &&
+    typeof input.dispatchId === 'string' && input.dispatchId.trim() !== '' &&
+    typeof input.agent === 'string' && input.agent.trim() !== '' &&
+    typeof input.id === 'string' && input.id.trim() !== '' &&
+    typeof input.session === 'string' && input.session.trim() !== '' &&
+    input.input !== undefined && typeof input.acceptedAt === 'string' && input.acceptedAt.trim() !== '';
+}
+
+function listActiveLegacyManagedDispatches(doInstance) {
+  const rows = doInstance.ctx.storage.sql.exec(
+    'SELECT fiber_id, metadata_json, created_at FROM cf_agents_fibers ' +
+    "WHERE name = 'flue:dispatch' AND (status IN ('pending', 'running') OR " +
+    "(status = 'interrupted' AND EXISTS (SELECT 1 FROM cf_agents_runs WHERE id = fiber_id))) " +
+    'ORDER BY created_at ASC, fiber_id ASC',
+  ).toArray();
+  return rows.flatMap((row) => {
+    if (typeof row.fiber_id !== 'string' || typeof row.created_at !== 'number') {
+      throw new Error('[flue] Persisted dispatch Fiber row is malformed.');
+    }
+    let metadata;
+    try {
+      metadata = typeof row.metadata_json === 'string' ? JSON.parse(row.metadata_json) : null;
+    } catch {
+      throw new Error('[flue] Persisted dispatch Fiber metadata is malformed.');
+    }
+    if (typeof metadata?.submissionSequence === 'number') return [];
+    const input = metadata?.input;
+    assertCurrentDispatchInput(input);
+    if (!isPersistedDispatchInput(input)) throw new Error('[flue] Persisted dispatch Fiber metadata is malformed.');
+    return [{ fiberId: row.fiber_id, createdAt: row.created_at, input }];
+  });
+}
+
+async function waitForEarlierLegacyManagedDispatch(doInstance, input, fiberId) {
   while (true) {
-    const fibers = await doInstance.listFibers({ name: 'flue:dispatch' });
-    for (const fiber of fibers) assertCurrentDispatchInput(fiber.metadata?.input);
-    const current = fibers.find((fiber) => fiber.id === fiberId);
-    if (!current) return;
+    const fibers = listActiveLegacyManagedDispatches(doInstance);
+    const current = fibers.find((fiber) => fiber.fiberId === fiberId);
     const blocked = fibers.some((fiber) => {
-      if (fiber.id === fiberId || fiber.status === 'completed' || fiber.status === 'error' || fiber.status === 'aborted') return false;
-      const other = fiber.metadata?.input;
-      if (!other || other.agent !== input.agent || other.id !== input.id || other.session !== input.session) return false;
-      return fiber.createdAt < current.createdAt || (fiber.createdAt === current.createdAt && fiber.id < fiberId);
+      if (fiber.fiberId === fiberId) return false;
+      const other = fiber.input;
+      if (other.agent !== input.agent || other.id !== input.id || other.session !== input.session) return false;
+      if (!current) return true;
+      return fiber.createdAt < current.createdAt || (fiber.createdAt === current.createdAt && fiber.fiberId < current.fiberId);
     });
     if (!blocked) return;
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 }
 
-async function processManagedAgentDispatch(input, doInstance, agentName, fiberId) {
+async function processManagedAgentDispatch(submission, doInstance, agentName, fiberId) {
+  const input = submission.input;
+  const submissions = getAgentExecutionStore(doInstance).submissions;
+  const persisted = submissions.getDispatch(input.dispatchId);
+  if (persisted && persisted.status !== 'queued') return;
   const agent = createdAgents[agentName];
   if (!agent) throw new Error('[flue] Dispatch target unavailable during durable processing.');
   await validateAgentDispatchAdmission({ input });
   const target = { agentName, instanceId: doInstance.name };
-  await waitForEarlierManagedDispatch(doInstance, input, fiberId);
+  if (typeof submission.sequence === 'number') {
+    while (submissions.hasEarlierQueuedDispatch(submission)) await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  await waitForEarlierLegacyManagedDispatch(doInstance, input, fiberId);
   const releaseSessionLock = await reserveDispatchAgentSession(target, input);
   const request = new Request('https://flue.invalid' + INTERNAL_DISPATCH_PATH, { method: 'POST' });
   try {
     const ctx = createAgentContextForRequest(doInstance.name, input, doInstance, request, undefined, input.dispatchId);
     await runWithInstanceContext(doInstance, agentRuntimeIdentity(agentName), () => createDispatchAgentHandler(agent, input)(ctx));
+    if (persisted) submissions.completeDispatch(input.dispatchId);
+  } catch (error) {
+    if (persisted) submissions.failDispatch(input.dispatchId, error);
+    throw error;
   } finally {
     releaseSessionLock?.();
+    if (persisted) void reconcileFlueAgentSubmissions(doInstance, agentName, { preserveSuccessor: true }).catch((error) => {
+      console.error('[flue:dispatch-reconciliation]', { agentName, instanceId: doInstance.name, operation: 'settlement', outcome: 'reconcile_failed' }, error);
+    });
+  }
+}
+
+async function assertNoLegacyPendingDispatchFiberForDirectSession(doInstance, agentName, session) {
+  const fibers = listActiveLegacyManagedDispatches(doInstance);
+  if (fibers.some((fiber) => {
+    const input = fiber.input;
+    return input.agent === agentName && input.id === doInstance.name && input.session === session;
+  })) {
+    throw new Error('[flue] This agent session has pending dispatched input and cannot accept direct input yet.');
   }
 }
 
 async function assertNoPendingDispatchForDirectSession(doInstance, agentName, session) {
-  if (typeof doInstance.listFibers !== 'function') return;
-  const fibers = await doInstance.listFibers({ name: 'flue:dispatch' });
-  for (const fiber of fibers) assertCurrentDispatchInput(fiber.metadata?.input);
-  if (fibers.some((fiber) => {
-    const input = fiber.metadata?.input;
-    return fiber.status !== 'completed' && fiber.status !== 'error' && fiber.status !== 'aborted' && input?.agent === agentName && input.id === doInstance.name && input.session === session;
-  })) {
+  if (getAgentExecutionStore(doInstance).submissions.hasQueuedDispatchForSession(doInstance.name, session)) {
     throw new Error('[flue] This agent session has pending dispatched input and cannot accept direct input yet.');
   }
+  await assertNoLegacyPendingDispatchFiberForDirectSession(doInstance, agentName, session);
 }
 
 async function dispatchWorkflow(request, doInstance, workflowName) {
@@ -592,19 +739,16 @@ async function dispatchAgent(request, doInstance, agentName, handler) {
     if (input.agent !== agentName || input.id !== id) return new Response('Invalid internal dispatch target.', { status: 400 });
     if (!createdAgents[agentName]) return new Response('Dispatch target unavailable.', { status: 404 });
     await validateAgentDispatchAdmission({ input });
-    assertAgentsDurabilityApi(doInstance, 'startFiber');
-    assertAgentsDurabilityApi(doInstance, 'inspectFiberByKey');
-    const idempotencyKey = 'flue:dispatch:' + input.dispatchId;
-    const prior = await doInstance.inspectFiberByKey(idempotencyKey);
-    assertCurrentDispatchInput(prior?.metadata?.input);
-    if (prior?.metadata?.input && JSON.stringify(prior.metadata.input) !== JSON.stringify(input)) {
-      return new Response('Conflicting internal dispatch replay.', { status: 409 });
+    await armFlueAgentSubmissionAdmissionWakes(doInstance);
+    let submission;
+    try {
+      submission = getAgentExecutionStore(doInstance).submissions.admitDispatch(input);
+    } catch (error) {
+      if (error instanceof SqlAgentSubmissionConflictError) return new Response('Conflicting internal dispatch replay.', { status: 409 });
+      throw error;
     }
-    await doInstance.startFiber('flue:dispatch', async (fiberCtx) => processManagedAgentDispatch(input, doInstance, agentName, fiberCtx.id), {
-      idempotencyKey,
-      metadata: { input },
-    });
-    return Response.json({ dispatchId: input.dispatchId, acceptedAt: input.acceptedAt });
+    await reconcileFlueAgentSubmissions(doInstance, agentName);
+    return Response.json({ dispatchId: submission.submissionId, acceptedAt: submission.input.acceptedAt });
   }
   const payload = await request.clone().json().catch(() => null);
   const session = typeof payload?.session === 'string' && payload.session.trim() !== '' ? payload.session : 'default';

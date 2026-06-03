@@ -21,10 +21,15 @@ export { createFlueContext } from './client.ts';
 // (registry client) live in the `@flue/runtime/cloudflare` subpath because
 // they pull in `cloudflare:workers`, a virtual module Node can't resolve.
 // The generated CF entry imports them from there directly.
-export type { SqlAgentExecutionStore } from './cloudflare/agent-execution-store.ts';
+export type {
+	SqlAgentDispatchSubmission,
+	SqlAgentExecutionStore,
+	SqlAgentSubmissionStore,
+} from './cloudflare/agent-execution-store.ts';
 export {
 	createSqlAgentExecutionStore,
 	createSqlSessionStore,
+	SqlAgentSubmissionConflictError,
 } from './cloudflare/agent-execution-store.ts';
 export { createDurableRunStore } from './cloudflare/run-store.ts';
 export { InMemoryRunRegistry } from './node/run-registry.ts';

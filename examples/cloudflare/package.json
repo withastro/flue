@@ -6,7 +6,7 @@
 		"@cloudflare/codemode": "^0.3.8",
 		"@cloudflare/shell": "^0.3.8",
 		"@flue/runtime": "workspace:*",
-		"agents": "^0.14.0",
+		"agents": "^0.14.1",
 		"hono": "^4.7.0",
 		"valibot": "^1.0.0"
 	},
