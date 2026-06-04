@@ -17,6 +17,40 @@ export {
 } from './runtime/providers.ts';
 export { createSandboxSessionEnv, type SandboxApi } from './sandbox.ts';
 export { defineTool } from './tool.ts';
+
+// ─── Orchestration primitives ─────────────────────────────────────────────
+
+export {
+	parallel,
+	pipeline,
+	phase,
+	log,
+	registerWorkflow,
+	resolveWorkflow,
+	listWorkflows,
+} from './orchestrate.ts';
+
+export type {
+	TaskDescriptor,
+	ParallelOptions,
+	PipelineOptions,
+	PipelineStage,
+	OrchestrationResult,
+	NamedWorkflow,
+} from './orchestrate.ts';
+
+// ─── Tool approval middleware ─────────────────────────────────────────────
+
+export { createApprovalGate, withApproval } from './approval.ts';
+
+export type {
+	ApprovalDecision,
+	ApprovalGate,
+	ApprovalGateOptions,
+	ApprovalRequest,
+	WithApprovalOptions,
+} from './approval.ts';
+
 export type {
 	AgentConfig,
 	AgentCreateContext,
