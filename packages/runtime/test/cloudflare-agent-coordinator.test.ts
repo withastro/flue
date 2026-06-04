@@ -15,8 +15,8 @@ function makeFakeSql(events: string[] = []) {
 				exec(query: string, ...bindings: unknown[]) {
 					if (query.includes('SET recovery_requested_at')) events.push('request-recovery');
 					if (query.includes("SET status = 'queued'")) events.push('requeue');
-					if (query.includes("SET status = 'terminalizing'")) events.push('begin-terminalization');
-					if (query.includes("SET status = 'error', completed_at")) events.push('finish-terminalization');
+					if (query.includes("SET status = 'recording_interruption'")) events.push('begin-interruption-recording');
+					if (query.includes("SET status = 'failed', completed_at")) events.push('finish-interruption-recording');
 					const stmt = db.prepare(query);
 					let rows: unknown[];
 					try {
@@ -196,7 +196,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage, events);
 		const executionStore = prepare(runtime, instance);
 		executionStore.submissions.admitDirect(directInput());
-		executionStore.submissions.claimSubmission('direct-1', 'attempt-1');
+		executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1' });
 
 		await runtime.onFiberRecovered(
 			instance,
@@ -252,7 +252,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		executionStore.submissions.admitDirect(directInput());
-		executionStore.submissions.claimSubmission('direct-1', 'attempt-1');
+		executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1' });
 
 		await runtime.onStart(instance, () => {});
 
@@ -275,17 +275,17 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		executionStore.submissions.admitDirect(directInput());
-		executionStore.submissions.claimSubmission('direct-1', 'attempt-1');
-		executionStore.submissions.markSubmissionInputApplied('direct-1', 'attempt-1');
+		executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1' });
+		executionStore.submissions.markSubmissionInputApplied({ submissionId: 'direct-1', attemptId: 'attempt-1' });
 
 		await runtime.onStart(instance, () => {});
 
-		expect(events).toEqual(['begin-terminalization', 'record-terminal', 'finish-terminalization']);
+		expect(events).toEqual(['begin-interruption-recording', 'record-terminal', 'finish-interruption-recording']);
 		expect(payloads).toEqual([directInput(), directInput().payload]);
-		expect(executionStore.submissions.getSubmission('direct-1')).toMatchObject({ status: 'error' });
+		expect(executionStore.submissions.getSubmission('direct-1')).toMatchObject({ status: 'failed' });
 	});
 
-	it('resumes terminalizing rows by recording interruption before final SQL settlement', async () => {
+	it('resumes recording interruption rows by recording interruption before final SQL settlement', async () => {
 		const events: string[] = [];
 		const { storage } = makeFakeSql(events);
 		const recovery = makeRecoveryContext({ events });
@@ -296,14 +296,17 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		executionStore.submissions.admitDirect(directInput());
-		executionStore.submissions.claimSubmission('direct-1', 'attempt-1');
-		executionStore.submissions.beginSubmissionTerminalization('direct-1', 'attempt-1');
+		executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1' });
+			executionStore.submissions.beginSubmissionInterruptionRecording({
+				submissionId: 'direct-1',
+				attemptId: 'attempt-1',
+			});
 		events.splice(0);
 
 		await runtime.onStart(instance, () => {});
 
-		expect(events).toEqual(['record-terminal', 'finish-terminalization']);
-		expect(executionStore.submissions.getSubmission('direct-1')).toMatchObject({ status: 'error' });
+		expect(events).toEqual(['record-terminal', 'finish-interruption-recording']);
+		expect(executionStore.submissions.getSubmission('direct-1')).toMatchObject({ status: 'failed' });
 	});
 
 	it('settles interrupted attempts when canonical completion is already persisted', async () => {
@@ -316,8 +319,8 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		executionStore.submissions.admitDirect(directInput());
-		executionStore.submissions.claimSubmission('direct-1', 'attempt-1');
-		executionStore.submissions.markSubmissionInputApplied('direct-1', 'attempt-1');
+		executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1' });
+		executionStore.submissions.markSubmissionInputApplied({ submissionId: 'direct-1', attemptId: 'attempt-1' });
 
 		await runtime.onStart(instance, () => {});
 
@@ -378,8 +381,8 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		executionStore.submissions.admitDispatch(dispatchInput());
-		executionStore.submissions.claimSubmission('dispatch-1', 'attempt-1');
-		executionStore.submissions.markSubmissionInputApplied('dispatch-1', 'attempt-1');
+		executionStore.submissions.claimSubmission({ submissionId: 'dispatch-1', attemptId: 'attempt-1' });
+		executionStore.submissions.markSubmissionInputApplied({ submissionId: 'dispatch-1', attemptId: 'attempt-1' });
 
 		await runtime.onStart(instance, () => {});
 

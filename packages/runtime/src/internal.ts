@@ -25,7 +25,6 @@ export { CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH, createCloudflareAgentRuntime }
 export {
 	createSqlAgentExecutionStore,
 	createSqlSessionStore,
-	SqlAgentDispatchReceiptRetainedError,
 	SqlAgentSubmissionConflictError,
 } from './cloudflare/agent-execution-store.ts';
 export { createDurableRunStore } from './cloudflare/run-store.ts';

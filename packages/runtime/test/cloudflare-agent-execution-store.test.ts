@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
 	createSqlAgentExecutionStore,
 	createSqlSessionStore,
-	SqlAgentDispatchReceiptRetainedError,
 } from '../src/cloudflare/agent-execution-store.ts';
 import type { DirectAgentSubmissionInput } from '../src/runtime/agent-submissions.ts';
 import type { DispatchInput } from '../src/runtime/dispatch-queue.ts';
@@ -67,6 +66,10 @@ function directInput(overrides: Partial<DirectAgentSubmissionInput> = {}): Direc
 		acceptedAt: '2026-06-03T00:00:00.000Z',
 		...overrides,
 	};
+}
+
+function attempt(submissionId: string, attemptId: string) {
+	return { submissionId, attemptId };
 }
 
 function sessionData(): SessionData {
@@ -159,10 +162,13 @@ describe('createSqlAgentExecutionStore()', () => {
 			count: 1,
 		});
 		expect(first).toMatchObject({
-			submissionId: 'dispatch-1',
-			session: 'default',
-			sessionKey: 'agent-session:["agent-1","default","default"]',
-			status: 'queued',
+			kind: 'submission',
+			submission: {
+				submissionId: 'dispatch-1',
+				session: 'default',
+				sessionKey: 'agent-session:["agent-1","default","default"]',
+				status: 'queued',
+			},
 		});
 	});
 
@@ -184,8 +190,8 @@ describe('createSqlAgentExecutionStore()', () => {
 		const other = store.submissions.admitDirect(directInput({ submissionId: 'direct-2', session: 'other' }));
 
 		expect(store.submissions.listRunnableSubmissions()).toEqual([direct, other]);
-		expect(store.submissions.claimSubmission('dispatch-1', 'attempt-blocked')).toBeNull();
-		expect(store.submissions.claimSubmission('direct-1', 'attempt-direct')).toMatchObject({
+		expect(store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-blocked'))).toBeNull();
+		expect(store.submissions.claimSubmission(attempt('direct-1', 'attempt-direct'))).toMatchObject({
 			kind: 'direct',
 			status: 'running',
 		});
@@ -194,13 +200,14 @@ describe('createSqlAgentExecutionStore()', () => {
 	it('lists queued dispatches in admission order and selects one runnable head per session', () => {
 		const { sql, transactionSync } = makeFakeSql();
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
-		const first = store.submissions.admitDispatch(dispatchInput());
+		store.submissions.admitDispatch(dispatchInput());
 		store.submissions.admitDispatch(dispatchInput({ dispatchId: 'dispatch-2' }));
-		const other = store.submissions.admitDispatch(
-			dispatchInput({ dispatchId: 'dispatch-3', session: 'other' }),
-		);
+		store.submissions.admitDispatch(dispatchInput({ dispatchId: 'dispatch-3', session: 'other' }));
 
-		expect(store.submissions.listRunnableSubmissions()).toEqual([first, other]);
+		expect(store.submissions.listRunnableSubmissions()).toEqual([
+			expect.objectContaining({ submissionId: 'dispatch-1' }),
+			expect.objectContaining({ submissionId: 'dispatch-3' }),
+		]);
 	});
 
 	it('claims only runnable session heads while allowing separate sessions to claim independently', () => {
@@ -210,9 +217,9 @@ describe('createSqlAgentExecutionStore()', () => {
 		store.submissions.admitDispatch(dispatchInput({ dispatchId: 'dispatch-2' }));
 		store.submissions.admitDispatch(dispatchInput({ dispatchId: 'dispatch-3', session: 'other' }));
 
-		const first = store.submissions.claimSubmission('dispatch-1', 'attempt-1');
-		const blocked = store.submissions.claimSubmission('dispatch-2', 'attempt-2');
-		const other = store.submissions.claimSubmission('dispatch-3', 'attempt-3');
+		const first = store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+		const blocked = store.submissions.claimSubmission(attempt('dispatch-2', 'attempt-2'));
+		const other = store.submissions.claimSubmission(attempt('dispatch-3', 'attempt-3'));
 
 		expect(first).toMatchObject({
 			submissionId: 'dispatch-1',
@@ -247,7 +254,7 @@ describe('createSqlAgentExecutionStore()', () => {
 			db
 				.prepare('SELECT status, error FROM flue_agent_submissions WHERE submission_id = ?')
 				.get('malformed'),
-		).toMatchObject({ status: 'error', error: expect.any(String) });
+		).toMatchObject({ status: 'failed', error: expect.any(String) });
 	});
 
 	it('terminalizes impossible queued input markers instead of replaying them', () => {
@@ -261,7 +268,7 @@ describe('createSqlAgentExecutionStore()', () => {
 
 		expect(store.submissions.listRunnableSubmissions()).toEqual([]);
 		expect(store.submissions.getSubmission('dispatch-1')).toMatchObject({
-			status: 'error',
+			status: 'failed',
 			error: expect.any(String),
 		});
 	});
@@ -270,23 +277,22 @@ describe('createSqlAgentExecutionStore()', () => {
 		const { sql, transactionSync } = makeFakeSql();
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		store.submissions.admitDispatch(dispatchInput());
-		store.submissions.claimSubmission('dispatch-1', 'attempt-1');
+		store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
 
-		const applied = store.submissions.markSubmissionInputApplied('dispatch-1', 'attempt-1');
-		const replay = store.submissions.markSubmissionInputApplied('dispatch-1', 'attempt-1');
-		const staleApplied = store.submissions.markSubmissionInputApplied('dispatch-1', 'stale-attempt');
-		const recovery = store.submissions.requestSubmissionRecovery('dispatch-1', 'attempt-1');
-		const staleRecovery = store.submissions.requestSubmissionRecovery('dispatch-1', 'stale-attempt');
+		expect(store.submissions.markSubmissionInputApplied(attempt('dispatch-1', 'attempt-1'))).toBe(true);
+		const appliedAt = store.submissions.getSubmission('dispatch-1')?.inputAppliedAt;
+		expect(store.submissions.markSubmissionInputApplied(attempt('dispatch-1', 'attempt-1'))).toBe(true);
+		expect(store.submissions.markSubmissionInputApplied(attempt('dispatch-1', 'stale-attempt'))).toBe(false);
+		expect(store.submissions.requestSubmissionRecovery(attempt('dispatch-1', 'attempt-1'))).toBe(true);
+		expect(store.submissions.requestSubmissionRecovery(attempt('dispatch-1', 'stale-attempt'))).toBe(false);
 
-		expect(applied).toMatchObject({
+		expect(appliedAt).toEqual(expect.any(Number));
+		expect(store.submissions.getSubmission('dispatch-1')).toMatchObject({
 			status: 'running',
 			attemptId: 'attempt-1',
-			inputAppliedAt: expect.any(Number),
+			inputAppliedAt: appliedAt,
+			recoveryRequestedAt: expect.any(Number),
 		});
-		expect(replay?.inputAppliedAt).toBe(applied?.inputAppliedAt);
-		expect(staleApplied).toBeNull();
-		expect(recovery).toMatchObject({ recoveryRequestedAt: expect.any(Number) });
-		expect(staleRecovery).toBeNull();
 	});
 
 	it('requeues interrupted attempts only before canonical input application', () => {
@@ -294,16 +300,17 @@ describe('createSqlAgentExecutionStore()', () => {
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		store.submissions.admitDispatch(dispatchInput({ dispatchId: 'requeue-safe' }));
 		store.submissions.admitDispatch(dispatchInput({ dispatchId: 'requeue-unsafe', session: 'other' }));
-		store.submissions.claimSubmission('requeue-safe', 'attempt-safe');
-		store.submissions.claimSubmission('requeue-unsafe', 'attempt-unsafe');
-		store.submissions.markSubmissionInputApplied('requeue-unsafe', 'attempt-unsafe');
+		store.submissions.claimSubmission(attempt('requeue-safe', 'attempt-safe'));
+		store.submissions.claimSubmission(attempt('requeue-unsafe', 'attempt-unsafe'));
+		store.submissions.markSubmissionInputApplied(attempt('requeue-unsafe', 'attempt-unsafe'));
 
-		const safe = store.submissions.requeueSubmissionBeforeInputApplied('requeue-safe', 'attempt-safe');
-		const unsafe = store.submissions.requeueSubmissionBeforeInputApplied('requeue-unsafe', 'attempt-unsafe');
+		const safe = store.submissions.requeueSubmissionBeforeInputApplied(attempt('requeue-safe', 'attempt-safe'));
+		const unsafe = store.submissions.requeueSubmissionBeforeInputApplied(attempt('requeue-unsafe', 'attempt-unsafe'));
 
-		expect(safe).toMatchObject({ status: 'queued' });
-		expect(safe).not.toHaveProperty('attemptId');
-		expect(unsafe).toBeNull();
+		expect(safe).toBe(true);
+		expect(unsafe).toBe(false);
+		expect(store.submissions.getSubmission('requeue-safe')).toMatchObject({ status: 'queued' });
+		expect(store.submissions.getSubmission('requeue-safe')).not.toHaveProperty('attemptId');
 		expect(store.submissions.getSubmission('requeue-unsafe')).toMatchObject({ status: 'running' });
 	});
 
@@ -314,9 +321,9 @@ describe('createSqlAgentExecutionStore()', () => {
 
 		expect(store.submissions.hasUnsettledSubmissions()).toBe(true);
 		expect(store.submissions.listRunnableSubmissions()).toHaveLength(1);
-		store.submissions.claimSubmission('dispatch-1', 'attempt-1');
+		store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
 		expect(store.submissions.listRunningSubmissions()).toHaveLength(1);
-		store.submissions.completeSubmission('dispatch-1', 'attempt-1');
+		store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
 		expect(store.submissions.hasUnsettledSubmissions()).toBe(false);
 		expect(store.submissions.listRunningSubmissions()).toEqual([]);
 		expect(store.submissions.getSubmission('dispatch-1')).toMatchObject({ status: 'completed' });
@@ -326,34 +333,40 @@ describe('createSqlAgentExecutionStore()', () => {
 		const { sql, transactionSync } = makeFakeSql();
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		store.submissions.admitDispatch(dispatchInput());
-		store.submissions.claimSubmission('dispatch-1', 'attempt-1');
+		store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
 
-		store.submissions.completeSubmission('dispatch-1', 'stale-attempt');
-		store.submissions.failSubmission('dispatch-1', 'attempt-1', new Error('first failure'));
-		store.submissions.completeSubmission('dispatch-1', 'attempt-1');
-		store.submissions.failSubmission('dispatch-1', 'attempt-1', new Error('later failure'));
+		store.submissions.completeSubmission(attempt('dispatch-1', 'stale-attempt'));
+		store.submissions.failSubmission(attempt('dispatch-1', 'attempt-1'), new Error('first failure'));
+		store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
+		store.submissions.failSubmission(attempt('dispatch-1', 'attempt-1'), new Error('later failure'));
 
 		expect(store.submissions.getSubmission('dispatch-1')).toMatchObject({
-			status: 'error',
+			status: 'failed',
 			error: 'first failure',
 		});
 	});
 
-	it('fences ordinary completion after interrupted terminalization begins', () => {
+	it('fences ordinary completion while an interrupted submission records its advisory', () => {
 		const { sql, transactionSync } = makeFakeSql();
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		store.submissions.admitDispatch(dispatchInput());
-		store.submissions.claimSubmission('dispatch-1', 'attempt-1');
+		store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
 
-		expect(store.submissions.beginSubmissionTerminalization('dispatch-1', 'attempt-1')).toMatchObject({
-			status: 'terminalizing',
+		expect(store.submissions.beginSubmissionInterruptionRecording(attempt('dispatch-1', 'attempt-1'))).toBe(
+			true,
+		);
+		expect(store.submissions.getSubmission('dispatch-1')).toMatchObject({
+			status: 'recording_interruption',
 		});
-		expect(store.submissions.completeSubmission('dispatch-1', 'attempt-1')).toBe(false);
+		expect(store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'))).toBe(false);
 		expect(
-			store.submissions.finalizeSubmissionTerminalization('dispatch-1', 'attempt-1', new Error('interrupted')),
+			store.submissions.finishSubmissionInterruptionRecording(
+				attempt('dispatch-1', 'attempt-1'),
+				new Error('interrupted'),
+			),
 		).toBe(true);
 		expect(store.submissions.getSubmission('dispatch-1')).toMatchObject({
-			status: 'error',
+			status: 'failed',
 			error: 'interrupted',
 		});
 	});
@@ -367,7 +380,7 @@ describe('createSqlAgentExecutionStore()', () => {
 			store.submissions.deleteSession('agent-session:["agent-1","default","default"]', async () => {}),
 		).rejects.toThrow('Session cannot be deleted while durable agent submissions are queued or running.');
 
-		store.submissions.claimSubmission('dispatch-1', 'attempt-1');
+		store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
 		await expect(
 			store.submissions.deleteSession('agent-session:["agent-1","default","default"]', async () => {}),
 		).rejects.toThrow('Session cannot be deleted while durable agent submissions are queued or running.');
@@ -388,7 +401,7 @@ describe('createSqlAgentExecutionStore()', () => {
 		);
 		releaseDeletion();
 		await deletion;
-		expect(store.submissions.admitDispatch(dispatchInput())).toMatchObject({ status: 'queued' });
+		expect(store.submissions.admitDispatch(dispatchInput())).toMatchObject({ kind: 'submission', submission: { status: 'queued' } });
 	});
 
 	it('shares session deletion work while snapshot deletion is in progress', async () => {
@@ -416,7 +429,7 @@ describe('createSqlAgentExecutionStore()', () => {
 		);
 		releaseDeletion();
 		await Promise.all([first, second]);
-		expect(store.submissions.admitDispatch(dispatchInput())).toMatchObject({ status: 'queued' });
+		expect(store.submissions.admitDispatch(dispatchInput())).toMatchObject({ kind: 'submission', submission: { status: 'queued' } });
 	});
 
 	it('keeps new submissions blocked when session snapshot deletion fails', async () => {
@@ -433,7 +446,7 @@ describe('createSqlAgentExecutionStore()', () => {
 			'Durable agent submission admission is unavailable while this session is being deleted.',
 		);
 		await expect(store.submissions.deleteSession(sessionKey, async () => {})).resolves.toBeUndefined();
-		expect(store.submissions.admitDispatch(dispatchInput())).toMatchObject({ status: 'queued' });
+		expect(store.submissions.admitDispatch(dispatchInput())).toMatchObject({ kind: 'submission', submission: { status: 'queued' } });
 	});
 
 	it('clears terminal rows when a settled session is deleted', async () => {
@@ -441,8 +454,8 @@ describe('createSqlAgentExecutionStore()', () => {
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		const sessionKey = 'agent-session:["agent-1","default","default"]';
 		store.submissions.admitDispatch(dispatchInput());
-		store.submissions.claimSubmission('dispatch-1', 'attempt-1');
-		store.submissions.completeSubmission('dispatch-1', 'attempt-1');
+		store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+		store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
 
 		await store.submissions.deleteSession(sessionKey, async () => {});
 
@@ -457,25 +470,22 @@ describe('createSqlAgentExecutionStore()', () => {
 		});
 	});
 
-	it('rejects replay admission transactionally when deletion retained the dispatch receipt', async () => {
+	it('returns retained receipt admission transactionally when deletion removed the settled dispatch row', async () => {
 		const { sql, transactionSync } = makeFakeSql();
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		const sessionKey = 'agent-session:["agent-1","default","default"]';
 		store.submissions.admitDispatch(dispatchInput());
-		store.submissions.claimSubmission('dispatch-1', 'attempt-1');
-		store.submissions.completeSubmission('dispatch-1', 'attempt-1');
+		store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+		store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
 		await store.submissions.deleteSession(sessionKey, async () => {});
 
-		try {
-			store.submissions.admitDispatch(dispatchInput());
-			throw new Error('Expected dispatch replay to be retained.');
-		} catch (error) {
-			expect(error).toBeInstanceOf(SqlAgentDispatchReceiptRetainedError);
-			expect((error as SqlAgentDispatchReceiptRetainedError).receipt).toEqual({
+		expect(store.submissions.admitDispatch(dispatchInput())).toEqual({
+			kind: 'retained_receipt',
+			receipt: {
 				submissionId: 'dispatch-1',
 				acceptedAt: Date.parse('2026-06-03T00:00:00.000Z'),
-			});
-		}
+			},
+		});
 		expect(store.submissions.getSubmission('dispatch-1')).toBeNull();
 	});
 
@@ -485,11 +495,11 @@ describe('createSqlAgentExecutionStore()', () => {
 		store.submissions.admitDispatch(dispatchInput({ dispatchId: 'expired-1' }));
 		store.submissions.admitDispatch(dispatchInput({ dispatchId: 'expired-2', session: 'other' }));
 		store.submissions.admitDispatch(dispatchInput({ dispatchId: 'active', session: 'active' }));
-		store.submissions.claimSubmission('expired-1', 'attempt-1');
-		store.submissions.claimSubmission('expired-2', 'attempt-2');
-		store.submissions.completeSubmission('expired-1', 'attempt-1');
-		store.submissions.failSubmission('expired-2', 'attempt-2', new Error('failed'));
-		db.prepare("UPDATE flue_agent_submissions SET completed_at = 1 WHERE status IN ('completed', 'error')").run();
+		store.submissions.claimSubmission(attempt('expired-1', 'attempt-1'));
+		store.submissions.claimSubmission(attempt('expired-2', 'attempt-2'));
+		store.submissions.completeSubmission(attempt('expired-1', 'attempt-1'));
+		store.submissions.failSubmission(attempt('expired-2', 'attempt-2'), new Error('failed'));
+		db.prepare("UPDATE flue_agent_submissions SET completed_at = 1 WHERE status IN ('completed', 'failed')").run();
 
 		expect(store.submissions.cleanupTerminalSubmissions(2, 1)).toBe(1);
 		expect(store.submissions.cleanupTerminalSubmissions(2, 1)).toBe(1);

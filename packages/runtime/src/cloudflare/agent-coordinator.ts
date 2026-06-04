@@ -14,11 +14,11 @@ import { type AgentHandler, handleAgentRequest, validateAgentDispatchAdmission }
 import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import {
 	createSqlAgentExecutionStore,
-	SqlAgentDispatchReceiptRetainedError,
 	type SqlAgentExecutionStore,
 	type SqlAgentSubmission,
 	SqlAgentSubmissionConflictError,
 	type SqlAgentSubmissionStore,
+	type SubmissionAttemptRef,
 } from './agent-execution-store.ts';
 import {
 	type CloudflareWebSocketConnection,
@@ -289,7 +289,7 @@ class CloudflareAgentCoordinator {
 		const attemptId = ctx.snapshot?.attemptId;
 		if (typeof submissionId !== 'string' || typeof attemptId !== 'string') return;
 		await this.restoreSubmissionWake();
-		this.submissions.requestSubmissionRecovery(submissionId, attemptId);
+		this.submissions.requestSubmissionRecovery({ submissionId, attemptId });
 	}
 
 	private get agentName(): string {
@@ -365,7 +365,7 @@ class CloudflareAgentCoordinator {
 			for (const submission of this.submissions.listRunningSubmissions()) {
 				if (this.activeAttempts.has(this.submissionAttemptLocalKey(submission))) continue;
 				if (
-					submission.status !== 'terminalizing' &&
+					submission.status !== 'recording_interruption' &&
 					attemptMarkers.keys.has(submissionAttemptMarkerKey(submission)) &&
 					submission.recoveryRequestedAt === undefined
 				)
@@ -373,7 +373,10 @@ class CloudflareAgentCoordinator {
 				await this.reconcileInterruptedSubmission(submission);
 			}
 			for (const submission of this.submissions.listRunnableSubmissions()) {
-				const claimed = this.submissions.claimSubmission(submission.submissionId, crypto.randomUUID());
+				const claimed = this.submissions.claimSubmission({
+					submissionId: submission.submissionId,
+					attemptId: crypto.randomUUID(),
+				});
 				if (claimed) this.startSubmissionAttempt(claimed);
 			}
 		} catch (error) {
@@ -393,9 +396,10 @@ class CloudflareAgentCoordinator {
 	}
 
 	private async reconcileInterruptedSubmission(submission: SqlAgentSubmission): Promise<void> {
-		const { attemptId, input } = submission;
-		if (!attemptId) return;
-		if (submission.status === 'terminalizing') {
+		const { input } = submission;
+		const attempt = submissionAttemptRef(submission);
+		if (!attempt) return;
+		if (submission.status === 'recording_interruption') {
 			await this.failInterruptedSubmission(
 				submission,
 				submission.inputAppliedAt === undefined
@@ -425,7 +429,7 @@ class CloudflareAgentCoordinator {
 		);
 		if (submission.inputAppliedAt === undefined) {
 			if (state === 'absent') {
-				this.submissions.requeueSubmissionBeforeInputApplied(submission.submissionId, attemptId);
+				this.submissions.requeueSubmissionBeforeInputApplied(attempt);
 				return;
 			}
 			await this.failInterruptedSubmission(
@@ -438,7 +442,7 @@ class CloudflareAgentCoordinator {
 			return;
 		}
 		if (state === 'completed') {
-			this.submissions.completeSubmission(submission.submissionId, attemptId);
+			this.submissions.completeSubmission(attempt);
 			return;
 		}
 		await this.failInterruptedSubmission(
@@ -455,11 +459,12 @@ class CloudflareAgentCoordinator {
 		reason: 'interrupted_before_input_marker' | 'interrupted_after_input_application',
 		error: Error,
 	): Promise<void> {
-		const { attemptId, input } = submission;
-		if (!attemptId) return;
+		const { input } = submission;
+		const attempt = submissionAttemptRef(submission);
+		if (!attempt) return;
 		if (
-			submission.status !== 'terminalizing' &&
-			!this.submissions.beginSubmissionTerminalization(submission.submissionId, attemptId)
+			submission.status !== 'recording_interruption' &&
+			!this.submissions.beginSubmissionInterruptionRecording(attempt)
 		)
 			return;
 		const agent = this.options.createdAgents[this.agentName];
@@ -481,11 +486,7 @@ class CloudflareAgentCoordinator {
 				message: error.message,
 			})(ctx),
 		);
-		const failed = this.submissions.finalizeSubmissionTerminalization(
-			submission.submissionId,
-			attemptId,
-			error,
-		);
+		const failed = this.submissions.finishSubmissionInterruptionRecording(attempt, error);
 		if (failed && submission.kind === 'direct') this.observers.fail(submission.submissionId, error);
 	}
 
@@ -565,10 +566,11 @@ class CloudflareAgentCoordinator {
 	}
 
 	private async processSubmission(submission: SqlAgentSubmission): Promise<void> {
-		const { attemptId, input } = submission;
-		if (!attemptId) return;
+		const { input } = submission;
+		const attempt = submissionAttemptRef(submission);
+		if (!attempt) return;
 		const persisted = this.submissions.getSubmission(submission.submissionId);
-		if (persisted?.status !== 'running' || persisted.attemptId !== attemptId) return;
+		if (persisted?.status !== 'running' || persisted.attemptId !== attempt.attemptId) return;
 		let ctx: FlueContextInternal | undefined;
 		try {
 			const agent = this.options.createdAgents[this.agentName];
@@ -602,13 +604,13 @@ class CloudflareAgentCoordinator {
 			}
 			const result = await this.runWithInstanceContext(() =>
 				createAgentSubmissionHandler(agent, input, {
-					onInputApplied: () => this.markInputApplied(submission, attemptId),
+					onInputApplied: () => this.markInputApplied(attempt),
 				})(operationCtx),
 			);
-			const completed = this.submissions.completeSubmission(submission.submissionId, attemptId);
+			const completed = this.submissions.completeSubmission(attempt);
 			if (completed && submission.kind === 'direct') this.observers.complete(submission.submissionId, result);
 		} catch (error) {
-			const failed = this.submissions.failSubmission(submission.submissionId, attemptId, error);
+			const failed = this.submissions.failSubmission(attempt, error);
 			if (failed && submission.kind === 'direct') this.observers.fail(submission.submissionId, error);
 			throw error;
 		} finally {
@@ -628,8 +630,8 @@ class CloudflareAgentCoordinator {
 		}
 	}
 
-	private markInputApplied(submission: SqlAgentSubmission, attemptId: string): void {
-		if (!this.submissions.markSubmissionInputApplied(submission.submissionId, attemptId)) {
+	private markInputApplied(attempt: SubmissionAttemptRef): void {
+		if (!this.submissions.markSubmissionInputApplied(attempt)) {
 			throw new Error('[flue] Agent submission attempt lost ownership before input application.');
 		}
 	}
@@ -673,23 +675,22 @@ class CloudflareAgentCoordinator {
 		}
 		this.cleanupTerminalState();
 		await this.armSubmissionWake();
-		let submission: SqlAgentSubmission;
 		try {
-			submission = this.submissions.admitDispatch(input);
-		} catch (error) {
-			if (error instanceof SqlAgentDispatchReceiptRetainedError) {
+			const admission = this.submissions.admitDispatch(input);
+			if (admission.kind === 'retained_receipt') {
 				return Response.json({
-					dispatchId: error.receipt.submissionId,
-					acceptedAt: new Date(error.receipt.acceptedAt).toISOString(),
+					dispatchId: admission.receipt.submissionId,
+					acceptedAt: new Date(admission.receipt.acceptedAt).toISOString(),
 				});
 			}
+			await this.reconcileSubmissions({ driverAlreadyArmed: true });
+			return Response.json({ dispatchId: admission.submission.submissionId, acceptedAt: input.acceptedAt });
+		} catch (error) {
 			if (error instanceof SqlAgentSubmissionConflictError) {
 				return new Response('Conflicting internal dispatch replay.', { status: 409 });
 			}
 			throw error;
 		}
-		await this.reconcileSubmissions({ driverAlreadyArmed: true });
-		return Response.json({ dispatchId: submission.submissionId, acceptedAt: input.acceptedAt });
 	}
 
 	private acceptSocket(request: Request): Response {
@@ -722,6 +723,12 @@ function isDispatchInput(value: unknown): value is DispatchInput {
 		typeof input.session === 'string' &&
 		typeof input.acceptedAt === 'string'
 	);
+}
+
+function submissionAttemptRef(submission: SqlAgentSubmission): SubmissionAttemptRef | undefined {
+	return submission.attemptId
+		? { submissionId: submission.submissionId, attemptId: submission.attemptId }
+		: undefined;
 }
 
 function submissionAttemptMarkerKey(submission: SqlAgentSubmission): string {
