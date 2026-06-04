@@ -51,14 +51,14 @@ import {
 	ResultUnavailableError,
 } from './result.ts';
 import type {
-	AgentSubmissionInputInspection,
-	AgentSubmissionTerminalInput,
-	DirectSubmissionInput,
-	DispatchInput,
-	DispatchInputInspection,
-	ProcessAgentSubmissionInputOptions,
-	ProcessDispatchInputOptions,
-} from './runtime/dispatch-queue.ts';
+	AgentSubmissionInput,
+	AgentSubmissionInspection,
+	AgentSubmissionInterruption,
+	DirectAgentSubmissionInput,
+	ProcessAgentSubmissionOptions,
+} from './runtime/agent-submissions.ts';
+import { agentSubmissionDispatchInput } from './runtime/agent-submissions.ts';
+import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import { generateOperationId, generateTurnId } from './runtime/ids.ts';
 import { getProviderConfiguration, getRegisteredApiKey } from './runtime/providers.ts';
 import { createFlueFs } from './sandbox.ts';
@@ -915,37 +915,28 @@ export class Session implements FlueSession {
 		);
 	}
 
-	inspectDispatchInput(input: DispatchInput): DispatchInputInspection {
-		return this.inspectPersistedInput(this.history.findDispatchInput(input.dispatchId));
+	inspectSubmissionInput(input: AgentSubmissionInput): AgentSubmissionInspection {
+		return this.inspectPersistedInput(
+			input.kind === 'dispatch'
+				? this.history.findDispatchInput(input.dispatchId)
+				: this.history.findDirectSubmissionInput(input.submissionId),
+		);
 	}
 
-	inspectDirectSubmissionInput(input: DirectSubmissionInput): AgentSubmissionInputInspection {
-		return this.inspectPersistedInput(this.history.findDirectSubmissionInput(input.submissionId));
-	}
-
-	processDispatchInput(
-		input: DispatchInput,
-		options?: ProcessDispatchInputOptions,
+	processSubmissionInput(
+		input: AgentSubmissionInput,
+		options?: ProcessAgentSubmissionOptions,
 	): CallHandle<PromptResponse> {
 		return createCallHandle(undefined, (signal) =>
 			this.runOperation('prompt', signal, () =>
-				this.runPersistedDispatchInput(input, signal, options),
+				input.kind === 'dispatch'
+					? this.runPersistedDispatchInput(agentSubmissionDispatchInput(input), signal, options)
+					: this.runPersistedDirectSubmissionInput(input, signal, options),
 			),
 		);
 	}
 
-	processDirectSubmissionInput(
-		input: DirectSubmissionInput,
-		options?: ProcessAgentSubmissionInputOptions,
-	): CallHandle<PromptResponse> {
-		return createCallHandle(undefined, (signal) =>
-			this.runOperation('prompt', signal, () =>
-				this.runPersistedDirectSubmissionInput(input, signal, options),
-			),
-		);
-	}
-
-	async recordSubmissionTerminal(input: AgentSubmissionTerminalInput): Promise<void> {
+	async recordSubmissionTerminal(input: AgentSubmissionInterruption): Promise<void> {
 		if (this.history.findSubmissionTerminal(input.submissionId)) return;
 		this.history.appendMessage(
 			createUserContextMessage(
@@ -2093,7 +2084,7 @@ export class Session implements FlueSession {
 		return undefined;
 	}
 
-	private inspectPersistedInput(inputEntry: MessageEntry | undefined): AgentSubmissionInputInspection {
+	private inspectPersistedInput(inputEntry: MessageEntry | undefined): AgentSubmissionInspection {
 		if (!inputEntry) return 'absent';
 		const following = this.history.getActivePathSince(inputEntry.id);
 		if (following.some((entry) => entry.type === 'message' && entry.message.role === 'user')) {
@@ -2108,7 +2099,7 @@ export class Session implements FlueSession {
 	private async runPersistedDispatchInput(
 		input: DispatchInput,
 		signal: AbortSignal,
-		options?: ProcessDispatchInputOptions,
+		options?: ProcessAgentSubmissionOptions,
 	): Promise<PromptResponse> {
 		return this.runPersistedContextInput({
 			findInput: () => this.history.findDispatchInput(input.dispatchId),
@@ -2129,9 +2120,9 @@ export class Session implements FlueSession {
 	}
 
 	private async runPersistedDirectSubmissionInput(
-		input: DirectSubmissionInput,
+		input: DirectAgentSubmissionInput,
 		signal: AbortSignal,
-		options?: ProcessAgentSubmissionInputOptions,
+		options?: ProcessAgentSubmissionOptions,
 	): Promise<PromptResponse> {
 		return this.runPersistedContextInput({
 			findInput: () => this.history.findDirectSubmissionInput(input.submissionId),

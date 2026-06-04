@@ -1,9 +1,10 @@
-import type {
-	AgentSubmissionInput,
-	DirectSubmissionInput,
-	DispatchInput,
-} from '../runtime/dispatch-queue.ts';
-import { isDispatchSubmissionInput } from '../runtime/dispatch-queue.ts';
+import {
+	type AgentSubmissionInput,
+	createDispatchAgentSubmissionInput,
+	type DirectAgentSubmissionInput,
+	type DispatchAgentSubmissionInput,
+} from '../runtime/agent-submissions.ts';
+import type { DispatchInput } from '../runtime/dispatch-queue.ts';
 import { createSessionStorageKey } from '../session-identity.ts';
 import type { SessionData, SessionStore } from '../types.ts';
 
@@ -49,7 +50,7 @@ export interface SqlAgentSubmission {
 export interface SqlAgentSubmissionStore {
 	getSubmission(submissionId: string): SqlAgentSubmission | null;
 	admitDispatch(input: DispatchInput): SqlAgentSubmission;
-	admitDirect(input: DirectSubmissionInput): SqlAgentSubmission;
+	admitDirect(input: DirectAgentSubmissionInput): SqlAgentSubmission;
 	hasUnsettledSubmissions(): boolean;
 	listRunnableSubmissions(): SqlAgentSubmission[];
 	listRunningSubmissions(): SqlAgentSubmission[];
@@ -170,11 +171,11 @@ class SqlAgentSubmissionStoreImpl implements SqlAgentSubmissionStore {
 	}
 
 	admitDispatch(input: DispatchInput): SqlAgentSubmission {
-		return this.admitSubmission('dispatch', input.dispatchId, input);
+		return this.admitSubmission(createDispatchAgentSubmissionInput(input));
 	}
 
-	admitDirect(input: DirectSubmissionInput): SqlAgentSubmission {
-		return this.admitSubmission('direct', input.submissionId, input);
+	admitDirect(input: DirectAgentSubmissionInput): SqlAgentSubmission {
+		return this.admitSubmission(input);
 	}
 
 	hasUnsettledSubmissions(): boolean {
@@ -412,11 +413,8 @@ class SqlAgentSubmissionStoreImpl implements SqlAgentSubmissionStore {
 		return submission?.status === 'error' && submission.attemptId === attemptId;
 	}
 
-	private admitSubmission(
-		kind: SqlAgentSubmission['kind'],
-		submissionId: string,
-		input: AgentSubmissionInput,
-	): SqlAgentSubmission {
+	private admitSubmission(input: AgentSubmissionInput): SqlAgentSubmission {
+		const { kind, submissionId } = input;
 		const payload = JSON.stringify(input);
 		const acceptedAt = parseAcceptedAt(input.acceptedAt, `${kind} admission`);
 		const sessionKey = createSessionStorageKey(input.id, 'default', input.session);
@@ -570,33 +568,33 @@ function parseSubmission(row: SqlRow): SqlAgentSubmission {
 function isSubmissionPayload(input: unknown, row: SqlRow): input is AgentSubmissionInput {
 	if (!input || typeof input !== 'object') return false;
 	const value = input as Partial<AgentSubmissionInput>;
-	if (
-		typeof value.agent !== 'string' ||
-		typeof value.id !== 'string' ||
-		typeof value.session !== 'string' ||
-		typeof value.acceptedAt !== 'string' ||
-		value.session !== row.session ||
-		createSessionStorageKey(value.id, 'default', value.session) !== row.session_key ||
-		Date.parse(value.acceptedAt) !== row.accepted_at
-	) {
-		return false;
-	}
-	if (row.kind === 'dispatch') {
+	if (value.kind !== row.kind || value.submissionId !== row.submission_id) return false;
+	if (value.kind === 'dispatch') {
+		const dispatch = value as Partial<DispatchAgentSubmissionInput>;
 		return (
-		'dispatchId' in value &&
-		typeof value.dispatchId === 'string' &&
-		value.dispatchId === row.submission_id &&
-		'input' in value &&
-		value.input !== undefined
+			typeof dispatch.dispatchId === 'string' &&
+			dispatch.dispatchId === value.submissionId &&
+			typeof dispatch.agent === 'string' &&
+			typeof dispatch.id === 'string' &&
+			typeof dispatch.session === 'string' &&
+			dispatch.session === row.session &&
+			createSessionStorageKey(dispatch.id, 'default', dispatch.session) === row.session_key &&
+			typeof dispatch.acceptedAt === 'string' &&
+			Date.parse(dispatch.acceptedAt) === row.accepted_at &&
+			'input' in dispatch &&
+			dispatch.input !== undefined
 		);
 	}
+	const direct = value as Partial<DirectAgentSubmissionInput>;
 	return (
-		'submissionId' in value &&
-		typeof value.submissionId === 'string' &&
-		value.submissionId === row.submission_id &&
-		'payload' in value &&
-		isDirectPayload(value.payload) &&
-		!isDispatchSubmissionInput(value as AgentSubmissionInput)
+		typeof direct.agent === 'string' &&
+		typeof direct.id === 'string' &&
+		typeof direct.session === 'string' &&
+		direct.session === row.session &&
+		createSessionStorageKey(direct.id, 'default', direct.session) === row.session_key &&
+		typeof direct.acceptedAt === 'string' &&
+		Date.parse(direct.acceptedAt) === row.accepted_at &&
+		isDirectPayload(direct.payload)
 	);
 }
 

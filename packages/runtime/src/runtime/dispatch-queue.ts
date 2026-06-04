@@ -1,4 +1,4 @@
-import type { AttachedAgentEvent, DirectAgentPayload, DispatchReceipt } from '../types.ts';
+import type { DispatchReceipt } from '../types.ts';
 
 export interface DispatchInput {
 	dispatchId: string;
@@ -7,99 +7,6 @@ export interface DispatchInput {
 	session: string;
 	input: unknown;
 	acceptedAt: string;
-}
-
-export interface DirectSubmissionInput {
-	submissionId: string;
-	agent: string;
-	id: string;
-	session: string;
-	payload: DirectAgentPayload;
-	acceptedAt: string;
-}
-
-export type AgentSubmissionInput = DispatchInput | DirectSubmissionInput;
-
-export interface AgentSubmissionTerminalInput {
-	submissionId: string;
-	kind: 'dispatch' | 'direct';
-	reason: 'interrupted_before_input_marker' | 'interrupted_after_input_application';
-	message: string;
-}
-
-export type AgentSubmissionInputInspection = 'absent' | 'applied' | 'completed' | 'advanced';
-export type DispatchInputInspection = AgentSubmissionInputInspection;
-
-export interface ProcessAgentSubmissionInputOptions {
-	onInputApplied?: () => Promise<void> | void;
-}
-
-export type ProcessDispatchInputOptions = ProcessAgentSubmissionInputOptions;
-
-export function isDispatchSubmissionInput(input: AgentSubmissionInput): input is DispatchInput {
-	return 'dispatchId' in input;
-}
-
-interface AgentSubmissionObserver {
-	onEvent?: (event: AttachedAgentEvent) => Promise<void> | void;
-}
-
-interface AgentSubmissionAttachment {
-	readonly completion: Promise<unknown>;
-	detach(): void;
-}
-
-interface AgentSubmissionObserverRegistry {
-	attach(submissionId: string, observer: AgentSubmissionObserver): AgentSubmissionAttachment;
-	publish(submissionId: string, event: AttachedAgentEvent): Promise<void>;
-	complete(submissionId: string, result: unknown): void;
-	fail(submissionId: string, error: unknown): void;
-}
-
-export type AttachedAgentSubmissionAdmission = (
-	payload: DirectAgentPayload,
-	request: Request,
-	onEvent?: (event: AttachedAgentEvent) => Promise<void> | void,
-) => Promise<unknown>;
-
-export function createAgentSubmissionObserverRegistry(): AgentSubmissionObserverRegistry {
-	const observers = new Map<string, Set<AgentSubmissionObserver & { resolve(value: unknown): void; reject(error: unknown): void }>>();
-	return {
-		attach(submissionId, observer) {
-			let resolve!: (value: unknown) => void;
-			let reject!: (error: unknown) => void;
-			const completion = new Promise<unknown>((resolve_, reject_) => {
-				resolve = resolve_;
-				reject = reject_;
-			});
-			const attached = { ...observer, resolve, reject };
-			const bucket = observers.get(submissionId) ?? new Set();
-			bucket.add(attached);
-			observers.set(submissionId, bucket);
-			return {
-				completion,
-				detach() {
-					bucket.delete(attached);
-					if (bucket.size === 0) observers.delete(submissionId);
-				},
-			};
-		},
-		async publish(submissionId, event) {
-			for (const observer of observers.get(submissionId) ?? []) {
-				try {
-					await observer.onEvent?.(event);
-				} catch {}
-			}
-		},
-		complete(submissionId, result) {
-			for (const observer of observers.get(submissionId) ?? []) observer.resolve(result);
-			observers.delete(submissionId);
-		},
-		fail(submissionId, error) {
-			for (const observer of observers.get(submissionId) ?? []) observer.reject(error);
-			observers.delete(submissionId);
-		},
-	};
 }
 
 export interface DispatchProcessor {

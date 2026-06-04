@@ -5,7 +5,8 @@ import {
 	createSqlSessionStore,
 	SqlAgentDispatchReceiptRetainedError,
 } from '../src/cloudflare/agent-execution-store.ts';
-import type { DirectSubmissionInput, DispatchInput } from '../src/runtime/dispatch-queue.ts';
+import type { DirectAgentSubmissionInput } from '../src/runtime/agent-submissions.ts';
+import type { DispatchInput } from '../src/runtime/dispatch-queue.ts';
 import type { SessionData } from '../src/types.ts';
 
 function makeFakeSql() {
@@ -55,8 +56,9 @@ function dispatchInput(overrides: Partial<DispatchInput> = {}): DispatchInput {
 	};
 }
 
-function directInput(overrides: Partial<DirectSubmissionInput> = {}): DirectSubmissionInput {
+function directInput(overrides: Partial<DirectAgentSubmissionInput> = {}): DirectAgentSubmissionInput {
 	return {
+		kind: 'direct',
 		submissionId: 'direct-1',
 		agent: 'assistant',
 		id: 'agent-1',

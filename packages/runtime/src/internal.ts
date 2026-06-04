@@ -31,13 +31,8 @@ export {
 export { createDurableRunStore } from './cloudflare/run-store.ts';
 export { InMemoryRunRegistry } from './node/run-registry.ts';
 export { InMemoryRunStore } from './node/run-store.ts';
-export type {
-	DirectSubmissionInput,
-	DispatchInput,
-	DispatchProcessor,
-	DispatchQueue,
-} from './runtime/dispatch-queue.ts';
-export { createAgentSubmissionObserverRegistry, InMemoryDispatchQueue } from './runtime/dispatch-queue.ts';
+export type { DispatchInput, DispatchProcessor, DispatchQueue } from './runtime/dispatch-queue.ts';
+export { InMemoryDispatchQueue } from './runtime/dispatch-queue.ts';
 export type { ExposedTransport, FlueRuntime } from './runtime/flue-app.ts';
 export {
 	configureFlueRuntime,
@@ -82,11 +77,6 @@ export type {
 export {
 	createAgentDispatchProcessor,
 	createDirectAgentHandler,
-	createDirectSubmissionAgentHandler,
-	createDirectSubmissionInputInspectionHandler,
-	createDispatchAgentHandler,
-	createDispatchInputInspectionHandler,
-	createSubmissionTerminalHandler,
 	failRecoveredRun,
 	handleAgentRequest,
 	handleWorkflowRequest,

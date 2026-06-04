@@ -19,17 +19,9 @@ import type {
 	FlueEvent,
 	FlueEventCallback,
 } from '../types.ts';
-import type {
-	AgentSubmissionInputInspection,
-	AgentSubmissionTerminalInput,
-	AttachedAgentSubmissionAdmission,
-	DirectSubmissionInput,
-	DispatchInput,
-	DispatchInputInspection,
-	DispatchProcessor,
-	ProcessAgentSubmissionInputOptions,
-	ProcessDispatchInputOptions,
-} from './dispatch-queue.ts';
+import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
+import { createAgentSubmissionHandler, createDispatchAgentSubmissionInput } from './agent-submissions.ts';
+import type { DispatchInput, DispatchProcessor } from './dispatch-queue.ts';
 import { streamActiveRunEvents } from './handle-run-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
@@ -43,23 +35,6 @@ export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<un
 
 interface DirectRequestSession {
 	processDirectInput(input: { message: string }): PromiseLike<unknown>;
-}
-
-interface DispatchSession {
-	inspectDispatchInput?(input: DispatchInput): DispatchInputInspection;
-	processDispatchInput(input: DispatchInput, options?: ProcessDispatchInputOptions): PromiseLike<unknown>;
-}
-
-interface DirectSubmissionSession {
-	inspectDirectSubmissionInput?(input: DirectSubmissionInput): AgentSubmissionInputInspection;
-	processDirectSubmissionInput(
-		input: DirectSubmissionInput,
-		options?: ProcessAgentSubmissionInputOptions,
-	): PromiseLike<unknown>;
-}
-
-interface SubmissionTerminalSession {
-	recordSubmissionTerminal(input: AgentSubmissionTerminalInput): Promise<void>;
 }
 
 interface AgentSessionTarget {
@@ -89,7 +64,7 @@ export function createAgentDispatchProcessor(options: {
 					undefined,
 					input.dispatchId,
 				);
-				await createDispatchAgentHandler(agent, input)(ctx);
+				await createAgentSubmissionHandler(agent, createDispatchAgentSubmissionInput(input))(ctx);
 			} finally {
 				releaseSessionLock();
 			}
@@ -115,126 +90,11 @@ export async function validateAgentDispatchAdmission(
 	return { dispatchId: input.dispatchId, acceptedAt: input.acceptedAt };
 }
 
-export function createDispatchAgentHandler(
-	agent: CreatedAgentHandler,
-	input: DispatchInput,
-	options?: ProcessDispatchInputOptions,
-): AgentHandler {
-	return (ctx) => processAgentDispatch(ctx, agent, input, options);
-}
-
-export function createDispatchInputInspectionHandler(
-	agent: CreatedAgentHandler,
-	input: DispatchInput,
-): AgentHandler {
-	return (ctx) => inspectAgentDispatchInput(ctx, agent, input);
-}
-
-export function createDirectSubmissionAgentHandler(
-	agent: CreatedAgentHandler,
-	input: DirectSubmissionInput,
-	options?: ProcessAgentSubmissionInputOptions,
-): AgentHandler {
-	return (ctx) => processAgentDirectSubmission(ctx, agent, input, options);
-}
-
-export function createDirectSubmissionInputInspectionHandler(
-	agent: CreatedAgentHandler,
-	input: DirectSubmissionInput,
-): AgentHandler {
-	return (ctx) => inspectAgentDirectSubmissionInput(ctx, agent, input);
-}
-
-export function createSubmissionTerminalHandler(
-	agent: CreatedAgentHandler,
-	input: DispatchInput | DirectSubmissionInput,
-	terminal: AgentSubmissionTerminalInput,
-): AgentHandler {
-	return async (ctx) => {
-		const harness = await ctx.initializeCreatedAgent(agent, undefined);
-		const session = await harness.session(input.session);
-		if (!isSubmissionTerminalSession(session)) {
-			throw new Error('[flue] Internal session does not support submission terminal persistence.');
-		}
-		await session.recordSubmissionTerminal(terminal);
-	};
-}
-
 async function reserveDispatchAgentSession(
 	target: AgentSessionTarget,
 	payload: unknown,
 ): Promise<() => void> {
 	return waitForAgentSessionLock(target, payload);
-}
-
-async function processAgentDispatch(
-	ctx: FlueContextInternal,
-	agent: CreatedAgentHandler,
-	input: DispatchInput,
-	options?: ProcessDispatchInputOptions,
-): Promise<unknown> {
-	const session = await openAgentDispatchSession(ctx, agent, input);
-	return session.processDispatchInput(input, options);
-}
-
-async function inspectAgentDispatchInput(
-	ctx: FlueContextInternal,
-	agent: CreatedAgentHandler,
-	input: DispatchInput,
-): Promise<DispatchInputInspection> {
-	const session = await openAgentDispatchSession(ctx, agent, input);
-	if (!session.inspectDispatchInput) {
-		throw new Error('[flue] Internal session does not support dispatch input inspection.');
-	}
-	return session.inspectDispatchInput(input);
-}
-
-async function processAgentDirectSubmission(
-	ctx: FlueContextInternal,
-	agent: CreatedAgentHandler,
-	input: DirectSubmissionInput,
-	options?: ProcessAgentSubmissionInputOptions,
-): Promise<unknown> {
-	const session = await openAgentDirectSubmissionSession(ctx, agent, input);
-	return session.processDirectSubmissionInput(input, options);
-}
-
-async function inspectAgentDirectSubmissionInput(
-	ctx: FlueContextInternal,
-	agent: CreatedAgentHandler,
-	input: DirectSubmissionInput,
-): Promise<AgentSubmissionInputInspection> {
-	const session = await openAgentDirectSubmissionSession(ctx, agent, input);
-	if (!session.inspectDirectSubmissionInput) {
-		throw new Error('[flue] Internal session does not support direct input inspection.');
-	}
-	return session.inspectDirectSubmissionInput(input);
-}
-
-async function openAgentDispatchSession(
-	ctx: FlueContextInternal,
-	agent: CreatedAgentHandler,
-	input: DispatchInput,
-): Promise<DispatchSession> {
-	const harness = await ctx.initializeCreatedAgent(agent, undefined);
-	const session = await harness.session(input.session);
-	if (!isDispatchSession(session)) {
-		throw new Error('[flue] Internal session does not support dispatch input processing.');
-	}
-	return session;
-}
-
-async function openAgentDirectSubmissionSession(
-	ctx: FlueContextInternal,
-	agent: CreatedAgentHandler,
-	input: DirectSubmissionInput,
-): Promise<DirectSubmissionSession> {
-	const harness = await ctx.initializeCreatedAgent(agent, undefined);
-	const session = await harness.session(input.session);
-	if (!isDirectSubmissionSession(session)) {
-		throw new Error('[flue] Internal session does not support direct input processing.');
-	}
-	return session;
 }
 
 function isDispatchInput(value: unknown): value is DispatchInput {
@@ -257,30 +117,6 @@ function isDispatchInput(value: unknown): value is DispatchInput {
 
 function dispatchRequest(): Request {
 	return new Request('http://flue.local/_dispatch', { method: 'POST' });
-}
-
-function isDispatchSession(value: unknown): value is DispatchSession {
-	return (
-		!!value &&
-		typeof value === 'object' &&
-		typeof (value as DispatchSession).processDispatchInput === 'function'
-	);
-}
-
-function isDirectSubmissionSession(value: unknown): value is DirectSubmissionSession {
-	return (
-		!!value &&
-		typeof value === 'object' &&
-		typeof (value as DirectSubmissionSession).processDirectSubmissionInput === 'function'
-	);
-}
-
-function isSubmissionTerminalSession(value: unknown): value is SubmissionTerminalSession {
-	return (
-		!!value &&
-		typeof value === 'object' &&
-		typeof (value as SubmissionTerminalSession).recordSubmissionTerminal === 'function'
-	);
 }
 
 export function createDirectAgentHandler(agent: CreatedAgentHandler): AgentHandler {

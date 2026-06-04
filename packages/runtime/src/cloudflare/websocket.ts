@@ -1,5 +1,5 @@
 import { InvalidRequestError } from '../errors.ts';
-import type { AttachedAgentSubmissionAdmission } from '../runtime/dispatch-queue.ts';
+import type { AttachedAgentSubmissionAdmission } from '../runtime/agent-submissions.ts';
 import type {
 	AgentHandler,
 	CreateContextFn,

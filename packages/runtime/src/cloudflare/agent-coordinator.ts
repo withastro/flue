@@ -1,19 +1,16 @@
 import type { FlueContextInternal } from '../client.ts';
 import {
+	agentSubmissionContextPayload,
+	agentSubmissionDispatchId,
+	agentSubmissionInspectionContextPayload,
+	createAgentSubmissionHandler,
+	createAgentSubmissionInspectionHandler,
 	createAgentSubmissionObserverRegistry,
-	type DirectSubmissionInput,
-	type DispatchInput,
-} from '../runtime/dispatch-queue.ts';
-import {
-	type AgentHandler,
-	createDirectSubmissionAgentHandler,
-	createDirectSubmissionInputInspectionHandler,
-	createDispatchAgentHandler,
-	createDispatchInputInspectionHandler,
-	createSubmissionTerminalHandler,
-	handleAgentRequest,
-	validateAgentDispatchAdmission,
-} from '../runtime/handle-agent.ts';
+	createAgentSubmissionTerminalHandler,
+	type DirectAgentSubmissionInput,
+} from '../runtime/agent-submissions.ts';
+import type { DispatchInput } from '../runtime/dispatch-queue.ts';
+import { type AgentHandler, handleAgentRequest, validateAgentDispatchAdmission } from '../runtime/handle-agent.ts';
 import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import {
 	createSqlAgentExecutionStore,
@@ -80,7 +77,7 @@ interface CloudflareAgentPreparedCoordinator {
 }
 
 interface CloudflareAgentRuntimeOptions {
-	readonly createdAgents: Record<string, Parameters<typeof createDispatchAgentHandler>[0]>;
+	readonly createdAgents: Record<string, Parameters<typeof createAgentSubmissionHandler>[0]>;
 	readonly directHandlers: Record<string, AgentHandler>;
 	readonly websocketAgentHandlers: Record<string, AgentHandler>;
 	readonly createContext: (options: {
@@ -417,11 +414,14 @@ class CloudflareAgentCoordinator {
 		const request = new Request(`https://flue.invalid${CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH}`, {
 			method: 'POST',
 		});
-		const ctx = this.createContext(input, request, undefined, dispatchIdFor(input));
+		const ctx = this.createContext(
+			agentSubmissionInspectionContextPayload(input),
+			request,
+			undefined,
+			agentSubmissionDispatchId(input),
+		);
 		const state = await this.runWithInstanceContext(() =>
-			submission.kind === 'dispatch'
-				? createDispatchInputInspectionHandler(agent, input as DispatchInput)(ctx)
-				: createDirectSubmissionInputInspectionHandler(agent, input as DirectSubmissionInput)(ctx),
+			createAgentSubmissionInspectionHandler(agent, input)(ctx),
 		);
 		if (submission.inputAppliedAt === undefined) {
 			if (state === 'absent') {
@@ -468,13 +468,13 @@ class CloudflareAgentCoordinator {
 			method: 'POST',
 		});
 		const ctx = this.createContext(
-			submission.kind === 'direct' ? (input as DirectSubmissionInput).payload : input,
+			agentSubmissionContextPayload(input),
 			request,
 			undefined,
-			dispatchIdFor(input),
+			agentSubmissionDispatchId(input),
 		);
 		await this.runWithInstanceContext(() =>
-			createSubmissionTerminalHandler(agent, input, {
+			createAgentSubmissionTerminalHandler(agent, input, {
 				submissionId: submission.submissionId,
 				kind: submission.kind,
 				reason,
@@ -573,9 +573,9 @@ class CloudflareAgentCoordinator {
 		try {
 			const agent = this.options.createdAgents[this.agentName];
 			if (!agent) throw new Error('[flue] Agent target unavailable during durable processing.');
-			if (submission.kind === 'dispatch') await validateAgentDispatchAdmission({ input: input as DispatchInput });
+			if (input.kind === 'dispatch') await validateAgentDispatchAdmission({ input });
 			const request =
-				submission.kind === 'direct'
+				input.kind === 'direct'
 					? new Request(
 							`https://flue.invalid/agents/${encodeURIComponent(this.agentName)}/${encodeURIComponent(this.instance.name)}`,
 							{ method: 'POST' },
@@ -584,10 +584,10 @@ class CloudflareAgentCoordinator {
 							method: 'POST',
 						});
 			ctx = this.createContext(
-				submission.kind === 'direct' ? (input as DirectSubmissionInput).payload : input,
+				agentSubmissionContextPayload(input),
 				request,
 				undefined,
-				dispatchIdFor(input),
+				agentSubmissionDispatchId(input),
 			);
 			const operationCtx = ctx;
 			if (submission.kind === 'direct') {
@@ -601,13 +601,9 @@ class CloudflareAgentCoordinator {
 				});
 			}
 			const result = await this.runWithInstanceContext(() =>
-				submission.kind === 'dispatch'
-					? createDispatchAgentHandler(agent, input as DispatchInput, {
-							onInputApplied: () => this.markInputApplied(submission, attemptId),
-						})(operationCtx)
-					: createDirectSubmissionAgentHandler(agent, input as DirectSubmissionInput, {
-							onInputApplied: () => this.markInputApplied(submission, attemptId),
-						})(operationCtx),
+				createAgentSubmissionHandler(agent, input, {
+					onInputApplied: () => this.markInputApplied(submission, attemptId),
+				})(operationCtx),
 			);
 			const completed = this.submissions.completeSubmission(submission.submissionId, attemptId);
 			if (completed && submission.kind === 'direct') this.observers.complete(submission.submissionId, result);
@@ -643,7 +639,8 @@ class CloudflareAgentCoordinator {
 		onEvent?: (event: AttachedAgentEvent) => Promise<void> | void,
 	): Promise<unknown> {
 		const submissionId = crypto.randomUUID();
-		const input: DirectSubmissionInput = {
+		const input: DirectAgentSubmissionInput = {
+			kind: 'direct',
 			submissionId,
 			agent: this.agentName,
 			id: this.instance.name,
@@ -692,7 +689,7 @@ class CloudflareAgentCoordinator {
 			throw error;
 		}
 		await this.reconcileSubmissions({ driverAlreadyArmed: true });
-		return Response.json({ dispatchId: submission.submissionId, acceptedAt: submission.input.acceptedAt });
+		return Response.json({ dispatchId: submission.submissionId, acceptedAt: input.acceptedAt });
 	}
 
 	private acceptSocket(request: Request): Response {
@@ -707,10 +704,6 @@ class CloudflareAgentCoordinator {
 		});
 		return new Response(null, { status: 101, webSocket: client } as ResponseInit);
 	}
-}
-
-function dispatchIdFor(input: DispatchInput | DirectSubmissionInput): string | undefined {
-	return 'dispatchId' in input ? input.dispatchId : undefined;
 }
 
 function isAttemptMarkerSnapshot(value: unknown): value is { submissionId: string; attemptId: string } {

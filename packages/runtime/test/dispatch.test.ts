@@ -9,20 +9,21 @@ import { dispatch, observe } from '../src/index.ts';
 import {
 	configureFlueRuntime,
 	createAgentDispatchProcessor,
-	createAgentSubmissionObserverRegistry,
-	createDirectSubmissionAgentHandler,
-	createDirectSubmissionInputInspectionHandler,
-	createDispatchAgentHandler,
-	createDispatchInputInspectionHandler,
 	createFlueContext,
-	createSubmissionTerminalHandler,
-	type DirectSubmissionInput,
 	type DispatchInput,
 	InMemoryDispatchQueue,
 	InMemorySessionStore,
 	resetFlueRuntimeForTests,
 	validateAgentDispatchAdmission,
 } from '../src/internal.ts';
+import {
+	createAgentSubmissionHandler,
+	createAgentSubmissionInspectionHandler,
+	createAgentSubmissionObserverRegistry,
+	createAgentSubmissionTerminalHandler,
+	createDispatchAgentSubmissionInput,
+	type DirectAgentSubmissionInput,
+} from '../src/runtime/agent-submissions.ts';
 import type { AgentConfig, FlueHarness, FlueSession } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
 
@@ -394,12 +395,11 @@ describe('dispatched session processing', () => {
 						session: async (name?: string) =>
 							({
 								name: name ?? 'default',
-								processDispatchInput: async () => {
+								processSubmissionInput: async () => {
 									ctx.emitEvent({ type: 'idle' });
 								},
-							}) as unknown as FlueSession & {
-								processDispatchInput(input: DispatchInput): Promise<void>;
-							},
+								recordSubmissionTerminal: async () => {},
+							}) as unknown as FlueSession,
 						sessions: {} as never,
 						shell: (() => Promise.resolve({ stdout: '', stderr: '', exitCode: 0 })) as never,
 						fs: {} as never,
@@ -448,10 +448,9 @@ describe('dispatched session processing', () => {
 						session: async (name?: string) =>
 							({
 								name: name ?? 'default',
-								processDispatchInput: async () => {},
-							}) as unknown as FlueSession & {
-								processDispatchInput(input: DispatchInput): Promise<void>;
-							},
+								processSubmissionInput: async () => {},
+								recordSubmissionTerminal: async () => {},
+							}) as unknown as FlueSession,
 						sessions: {} as never,
 						shell: (() => Promise.resolve({ stdout: '', stderr: '', exitCode: 0 })) as never,
 						fs: {} as never,
@@ -579,7 +578,7 @@ describe('dispatched session processing', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 
-		await createDispatchAgentHandler(agent, input, {
+		await createAgentSubmissionHandler(agent, createDispatchAgentSubmissionInput(input), {
 			onInputApplied: () => {
 				order.push('input-applied');
 			},
@@ -610,7 +609,8 @@ describe('dispatched session processing', () => {
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 			persist: store,
 		}));
-		const input: DirectSubmissionInput = {
+		const input: DirectAgentSubmissionInput = {
+			kind: 'direct',
 			submissionId: 'direct:input-marker-order',
 			agent: 'moderator',
 			id: 'guild:direct-input-marker-order',
@@ -634,7 +634,7 @@ describe('dispatched session processing', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 
-		await createDirectSubmissionAgentHandler(agent, input, {
+		await createAgentSubmissionHandler(agent, input, {
 			onInputApplied: () => {
 				order.push('input-applied');
 			},
@@ -654,7 +654,8 @@ describe('dispatched session processing', () => {
 	it('persists one provider-visible terminal advisory when an interrupted submission cannot replay safely', async () => {
 		const provider = createProvider();
 		const store = new InMemorySessionStore();
-		const input: DirectSubmissionInput = {
+		const input: DirectAgentSubmissionInput = {
+			kind: 'direct',
 			submissionId: 'direct:terminal-advisory',
 			agent: 'moderator',
 			id: 'guild:terminal-advisory',
@@ -683,8 +684,8 @@ describe('dispatched session processing', () => {
 			message: 'Provider replay was not attempted because prior execution could not be proven safe.',
 		};
 
-		await createSubmissionTerminalHandler(agent, input, terminal)(createContext());
-		await createSubmissionTerminalHandler(agent, input, terminal)(createContext());
+		await createAgentSubmissionTerminalHandler(agent, input, terminal)(createContext());
+		await createAgentSubmissionTerminalHandler(agent, input, terminal)(createContext());
 
 		const data = await store.load(`agent-session:${JSON.stringify([input.id, 'default', input.session])}`);
 		expect(data?.entries).toHaveLength(1);
@@ -709,7 +710,8 @@ describe('dispatched session processing', () => {
 	it('classifies a completed canonical direct response without model replay', async () => {
 		const provider = createProvider();
 		const store = new InMemorySessionStore();
-		const input: DirectSubmissionInput = {
+		const input: DirectAgentSubmissionInput = {
+			kind: 'direct',
 			submissionId: 'direct:inspect-completed',
 			agent: 'moderator',
 			id: 'guild:direct-inspect-completed',
@@ -759,7 +761,7 @@ describe('dispatched session processing', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 
-		await expect(createDirectSubmissionInputInspectionHandler(agent, input)(ctx)).resolves.toBe('completed');
+		await expect(createAgentSubmissionInspectionHandler(agent, input)(ctx)).resolves.toBe('completed');
 		expect(provider.state.callCount).toBe(0);
 	});
 
@@ -817,7 +819,7 @@ describe('dispatched session processing', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 
-		await expect(createDispatchInputInspectionHandler(agent, input)(ctx)).resolves.toBe('completed');
+		await expect(createAgentSubmissionInspectionHandler(agent, createDispatchAgentSubmissionInput(input))(ctx)).resolves.toBe('completed');
 		expect(provider.state.callCount).toBe(0);
 	});
 
@@ -867,7 +869,7 @@ describe('dispatched session processing', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 
-		await expect(createDispatchInputInspectionHandler(agent, input)(ctx)).resolves.toBe('applied');
+		await expect(createAgentSubmissionInspectionHandler(agent, createDispatchAgentSubmissionInput(input))(ctx)).resolves.toBe('applied');
 		expect(provider.state.callCount).toBe(0);
 	});
 

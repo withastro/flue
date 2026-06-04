@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { FlueContextInternal } from '../src/client.ts';
 import { createCloudflareAgentRuntime } from '../src/cloudflare/agent-coordinator.ts';
 import type { SqlAgentExecutionStore } from '../src/cloudflare/agent-execution-store.ts';
-import type { AgentSubmissionInputInspection, AgentSubmissionTerminalInput } from '../src/runtime/dispatch-queue.ts';
+import type { AgentSubmissionInspection, AgentSubmissionInterruption } from '../src/runtime/agent-submissions.ts';
 
 function makeFakeSql(events: string[] = []) {
 	const db = new DatabaseSync(':memory:');
@@ -83,29 +83,23 @@ function makeInstance(
 		async schedule(_delaySeconds: number, _callback: string, _payload: undefined, options: { idempotent: boolean }) {
 			events.push(options.idempotent ? 'schedule-idempotent' : 'schedule-successor');
 		},
-		async runFiber() {},
+		async runFiber(_name: string, _callback: (ctx: { stash(snapshot: unknown): void }) => Promise<void>) {},
 	};
 }
 
 function makeRecoveryContext(options: {
-	inspection?: AgentSubmissionInputInspection;
+	inspection?: AgentSubmissionInspection;
 	events?: string[];
 }) {
-	const terminalRecords: AgentSubmissionTerminalInput[] = [];
+	const terminalRecords: AgentSubmissionInterruption[] = [];
 	const session = {
-		processDispatchInput() {
-			throw new Error('Unexpected dispatch processing.');
+		processSubmissionInput() {
+			throw new Error('Unexpected submission processing.');
 		},
-		processDirectSubmissionInput() {
-			throw new Error('Unexpected direct processing.');
-		},
-		inspectDispatchInput() {
+		inspectSubmissionInput() {
 			return options.inspection ?? 'applied';
 		},
-		inspectDirectSubmissionInput() {
-			return options.inspection ?? 'applied';
-		},
-		async recordSubmissionTerminal(input: AgentSubmissionTerminalInput) {
+		async recordSubmissionTerminal(input: AgentSubmissionInterruption) {
 			options.events?.push('record-terminal');
 			terminalRecords.push(input);
 		},
@@ -124,6 +118,7 @@ function makeRecoveryContext(options: {
 
 function directInput() {
 	return {
+		kind: 'direct' as const,
 		submissionId: 'direct-1',
 		agent: 'assistant',
 		id: 'agent-1',
@@ -172,14 +167,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		const runtime = makeRuntime();
 		const instance = makeInstance(storage, events);
 		const executionStore = prepare(runtime, instance);
-		executionStore.submissions.admitDirect({
-			submissionId: 'direct-1',
-			agent: 'assistant',
-			id: 'agent-1',
-			session: 'default',
-			payload: { message: 'Hello' },
-			acceptedAt: '2026-06-03T00:00:00.000Z',
-		});
+		executionStore.submissions.admitDirect(directInput());
 
 		await runtime.onStart(instance, () => {
 			events.push('inherited-start');
@@ -194,14 +182,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		const runtime = makeRuntime();
 		const instance = makeInstance(storage, events);
 		const executionStore = prepare(runtime, instance);
-		executionStore.submissions.admitDirect({
-			submissionId: 'direct-1',
-			agent: 'assistant',
-			id: 'agent-1',
-			session: 'default',
-			payload: { message: 'Hello' },
-			acceptedAt: '2026-06-03T00:00:00.000Z',
-		});
+		executionStore.submissions.admitDirect(directInput());
 
 		await runtime.wakeSubmissions(instance);
 
@@ -214,14 +195,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		const runtime = makeRuntime();
 		const instance = makeInstance(storage, events);
 		const executionStore = prepare(runtime, instance);
-		executionStore.submissions.admitDirect({
-			submissionId: 'direct-1',
-			agent: 'assistant',
-			id: 'agent-1',
-			session: 'default',
-			payload: { message: 'Hello' },
-			acceptedAt: '2026-06-03T00:00:00.000Z',
-		});
+		executionStore.submissions.admitDirect(directInput());
 		executionStore.submissions.claimSubmission('direct-1', 'attempt-1');
 
 		await runtime.onFiberRecovered(
@@ -243,14 +217,7 @@ describe('createCloudflareAgentRuntime()', () => {
 			null,
 			Date.now(),
 		);
-		executionStore.submissions.admitDirect({
-			submissionId: 'direct-1',
-			agent: 'assistant',
-			id: 'agent-1',
-			session: 'default',
-			payload: { message: 'Hello' },
-			acceptedAt: '2026-06-03T00:00:00.000Z',
-		});
+		executionStore.submissions.admitDirect(directInput());
 
 		await runtime.onStart(instance, () => {});
 
@@ -355,6 +322,46 @@ describe('createCloudflareAgentRuntime()', () => {
 		await runtime.onStart(instance, () => {});
 
 		expect(executionStore.submissions.getSubmission('direct-1')).toMatchObject({ status: 'completed' });
+	});
+
+	it('uses the public dispatch input as processing context payload without internal envelope fields', async () => {
+		const { storage } = makeFakeSql();
+		const payloads: unknown[] = [];
+		let resolveProcessed!: () => void;
+		const processed = new Promise<void>((resolve) => {
+			resolveProcessed = resolve;
+		});
+		const session = {
+			async processSubmissionInput() {
+				resolveProcessed();
+			},
+			async recordSubmissionTerminal() {},
+		};
+		const runtime = makeRuntime({
+			createdAgent: {} as never,
+			createContext: ({ payload }) => {
+				payloads.push(payload);
+				return {
+					async initializeCreatedAgent() {
+						return {
+							async session() {
+								return session;
+							},
+						};
+					},
+					setEventCallback() {},
+				} as unknown as FlueContextInternal;
+			},
+		});
+		const instance = makeInstance(storage);
+		instance.runFiber = async (_name, callback) => callback({ stash() {} });
+		const executionStore = prepare(runtime, instance);
+		executionStore.submissions.admitDispatch(dispatchInput());
+
+		await runtime.onStart(instance, () => {});
+		await processed;
+
+		expect(payloads).toEqual([dispatchInput()]);
 	});
 
 	it('uses the full dispatch input when constructing detached recovery context', async () => {
