@@ -29,6 +29,7 @@ export type {
 export {
 	createSqlAgentExecutionStore,
 	createSqlSessionStore,
+	SqlAgentDispatchReceiptRetainedError,
 	SqlAgentSubmissionConflictError,
 } from './cloudflare/agent-execution-store.ts';
 export { createDurableRunStore } from './cloudflare/run-store.ts';
@@ -90,6 +91,8 @@ export {
 	createDirectSubmissionInputInspectionHandler,
 	createDispatchAgentHandler,
 	createDispatchInputInspectionHandler,
+	createLegacyDirectSubmissionTerminalHandler,
+	createSubmissionTerminalHandler,
 	failRecoveredRun,
 	handleAgentRequest,
 	handleWorkflowRequest,

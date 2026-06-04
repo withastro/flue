@@ -432,12 +432,13 @@ function readRuntimeVersion(root: string): string {
 
 function assertCloudflareAgentsSdkFloor(root: string): void {
 	const minimum = [0, 14, 1] as const;
+	const nextBreaking = [0, 15, 0] as const;
 	let entry: string;
 	try {
 		entry = createRequire(path.join(root, '__flue_resolve__.cjs')).resolve('agents');
 	} catch {
 		throw new Error(
-			'[flue] Cloudflare target requires the installed "agents" package to be at least 0.14.1. Install or upgrade "agents" in this project.',
+			'[flue] Cloudflare target requires the installed "agents" package to satisfy >=0.14.1 <0.15.0. Install a compatible "agents" version in this project.',
 		);
 	}
 	const pkgPath = packageUpSync({ cwd: path.dirname(entry) });
@@ -450,9 +451,9 @@ function assertCloudflareAgentsSdkFloor(root: string): void {
 	}
 	const match = typeof version === 'string' ? /^(\d+)\.(\d+)\.(\d+)$/.exec(version) : null;
 	const current = match?.slice(1).map(Number);
-	if (!current || isVersionBelow(current, minimum)) {
+	if (!current || isVersionBelow(current, minimum) || !isVersionBelow(current, nextBreaking)) {
 		throw new Error(
-			`[flue] Cloudflare target requires the installed "agents" package to be at least 0.14.1. Found ${String(version)}. Install or upgrade "agents" in this project.`,
+			`[flue] Cloudflare target requires the installed "agents" package to satisfy >=0.14.1 <0.15.0. Found ${String(version)}. Install a compatible "agents" version in this project.`,
 		);
 	}
 }

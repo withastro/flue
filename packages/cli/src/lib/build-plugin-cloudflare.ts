@@ -58,19 +58,16 @@ const ${agentClassName(agent.name)} = class ${agentClassName(agent.name)} extend
   }
 
   async onStart(props) {
+    await restoreFlueAgentSubmissionWake(this);
     if (typeof super.onStart === 'function') await super.onStart(props);
-    await armFlueAgentSubmissionRetry(this);
-    await reconcileFlueAgentSubmissions(this, ${JSON.stringify(agent.name)}, { preserveSuccessor: true });
+    await reconcileFlueAgentSubmissions(this, ${JSON.stringify(agent.name)}, { driverAlreadyArmed: true });
   }
 
-  async __flueWakeAgentSubmissions(wake) {
-    await reconcileFlueAgentSubmissions(this, ${JSON.stringify(agent.name)}, { preserveSuccessor: true, executingWake: wake });
-  }
-
-  async __flueRetryAgentSubmissions(_payload, schedule) {
-    if (!(await reconcileFlueAgentSubmissions(this, ${JSON.stringify(agent.name)}))) {
-      await this.cancelSchedule(schedule.id);
-    }
+  async __flueWakeAgentSubmissions() {
+    const submissions = getAgentExecutionStore(this).submissions;
+    if (!submissions.hasUnsettledSubmissions()) return;
+    await armFlueAgentSubmissionWake(this, { idempotent: false });
+    await reconcileFlueAgentSubmissions(this, ${JSON.stringify(agent.name)}, { driverAlreadyArmed: true });
   }
 
   async onRequest(request) {
@@ -107,7 +104,7 @@ const ${agentClassName(agent.name)} = class ${agentClassName(agent.name)} extend
     if (ctx.name === 'flue:dispatch') {
       return handleFlueDispatchRecovered(ctx, this, ${JSON.stringify(agent.name)});
     }
-    if (ctx.name === 'flue:dispatch-attempt') {
+    if (ctx.name === 'flue:submission-attempt') {
       return handleFlueDispatchAttemptRecovered(ctx, this);
     }
     if (ctx.name === 'flue:direct') {
@@ -214,6 +211,7 @@ import {
   createDurableRunStore,
   createSqlAgentExecutionStore,
   createSqlSessionStore,
+  SqlAgentDispatchReceiptRetainedError,
   SqlAgentSubmissionConflictError,
   createRunSubscriberRegistry,
   bashFactoryToSessionEnv,
@@ -225,8 +223,10 @@ import {
   assertCurrentDispatchInput,
   createDispatchAgentHandler,
   createDispatchInputInspectionHandler,
+  createLegacyDirectSubmissionTerminalHandler,
   createDirectSubmissionAgentHandler,
   createDirectSubmissionInputInspectionHandler,
+  createSubmissionTerminalHandler,
   createAgentSubmissionObserverRegistry,
   failRecoveredRun,
   configureFlueRuntime,
@@ -284,7 +284,7 @@ const workflowModules = {
 ${workflowModuleEntries}
 };
 const normalized = normalizeBuiltModules(agentModules, workflowModules);
-const { manifest, directHandlers, localAgentHandlers, createdAgents, dispatchAgentNames, websocketAgentHandlers, workflowHandlers, websocketWorkflowHandlers, agentRouteMiddleware, agentWebSocketMiddleware, workflowRouteMiddleware, workflowWebSocketMiddleware } = normalized;
+const { manifest, directHandlers, createdAgents, dispatchAgentNames, websocketAgentHandlers, workflowHandlers, websocketWorkflowHandlers, agentRouteMiddleware, agentWebSocketMiddleware, workflowRouteMiddleware, workflowWebSocketMiddleware } = normalized;
 const agentIdentities = {
 ${agentIdentityEntries}
 };
@@ -364,9 +364,9 @@ const memoryWorkflowSessionStore = new InMemorySessionStore();
 const memoryRunStore = new InMemoryRunStore();
 const FLUE_AGENT_EXECUTION_STORE = Symbol('flueAgentExecutionStore');
 const FLUE_AGENT_SUBMISSION_WAKE_CALLBACK = '__flueWakeAgentSubmissions';
-const FLUE_AGENT_SUBMISSION_RETRY_CALLBACK = '__flueRetryAgentSubmissions';
-const FLUE_AGENT_SUBMISSION_RETRY_SECONDS = 30;
+const FLUE_AGENT_SUBMISSION_WAKE_SECONDS = 30;
 const FLUE_AGENT_SUBMISSION_ATTEMPT_STALE_MS = 15 * 60 * 1000;
+const FLUE_AGENT_SUBMISSION_TERMINAL_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const INTERNAL_DISPATCH_PATH = '/__flue/internal/dispatch';
 const dispatchQueue = {
   async enqueue(input) {
@@ -413,16 +413,25 @@ function createContextForRequest(id, runId, payload, doInstance, req, defaultSto
 }
 
 function createAgentContextForRequest(id, payload, doInstance, req, initialEventIndex, dispatchId) {
-  return createContextForRequest(
+  const executionStore = getAgentExecutionStore(doInstance);
+  return createFlueContext({
     id,
-    undefined,
     payload,
-    doInstance,
+    env: doInstance?.env ?? {},
     req,
-    getAgentExecutionStore(doInstance).sessions,
     initialEventIndex,
     dispatchId,
-  );
+    agentConfig: {
+      systemPrompt, skills, packagedSkills, model: undefined, resolveModel,
+    },
+    createDefaultEnv,
+    defaultStore: executionStore.sessions,
+    resolveSandbox,
+    sessionDeletionCoordinator: {
+      begin: (sessionKey) => executionStore.submissions.beginSessionDeletion(sessionKey),
+      finish: (sessionKey) => executionStore.submissions.finishSessionDeletion(sessionKey),
+    },
+  });
 }
 
 function createWorkflowContextForRequest(id, runId, payload, doInstance, req, initialEventIndex, dispatchId) {
@@ -482,13 +491,13 @@ async function handleFlueDispatchRecovered(ctx, doInstance, agentName) {
   if (!input || input.agent !== agentName || input.id !== doInstance.name) return { status: 'error', error: 'Dispatch recovery metadata is invalid.' };
   try {
     await validateAgentDispatchAdmission({ input });
-    await armFlueAgentSubmissionAdmissionWakes(doInstance);
+    await armFlueAgentSubmissionAdmissionWake(doInstance);
     const submissions = getAgentExecutionStore(doInstance).submissions;
     const legacy = listActiveLegacyManagedDispatches(doInstance, agentName);
     legacy.push({ fiberId: ctx.id, createdAt: ctx.createdAt, input });
     legacy.sort(compareLegacyManagedDispatches);
     submissions.adoptLegacyDispatches(legacy.map((dispatch) => dispatch.input));
-    await reconcileFlueAgentSubmissions(doInstance, agentName, { preserveSuccessor: true });
+    await reconcileFlueAgentSubmissions(doInstance, agentName, { driverAlreadyArmed: true });
     return { status: 'completed' };
   } catch (error) {
     return { status: 'error', error: error instanceof Error ? error.message : String(error) };
@@ -499,14 +508,38 @@ async function handleFlueDispatchAttemptRecovered(ctx, doInstance) {
   const submissionId = ctx.snapshot?.submissionId;
   const attemptId = ctx.snapshot?.attemptId;
   if (typeof submissionId !== 'string' || typeof attemptId !== 'string') return;
+  await restoreFlueAgentSubmissionWake(doInstance);
   const submissions = getAgentExecutionStore(doInstance).submissions;
-  const submission = submissions.requestSubmissionRecovery(submissionId, attemptId);
-  if (!submission) return;
-  await armFlueAgentSubmissionAdmissionWakes(doInstance);
+  submissions.requestSubmissionRecovery(submissionId, attemptId);
 }
 
-async function handleFlueDirectRecovered(_ctx, doInstance, agentName) {
-  console.error('[flue:direct-recovery]', { agentName, instanceId: doInstance.name, operation: 'legacy_handoff', outcome: 'terminal_uncertainty' }, new Error('A pre-upgrade direct prompt was interrupted. Provider replay was not attempted.'));
+async function handleFlueDirectRecovered(ctx, doInstance, agentName) {
+  const payload = ctx.snapshot?.payload;
+  const message = 'A pre-upgrade direct prompt was interrupted. Provider replay was not attempted.';
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) || typeof payload.message !== 'string' || (payload.session !== undefined && (typeof payload.session !== 'string' || payload.session.trim() === '' || payload.session.startsWith('task:')))) {
+    console.error('[flue:direct-recovery]', { agentName, instanceId: doInstance.name, operation: 'legacy_handoff', outcome: 'terminal_uncertainty' }, new Error(message));
+    return;
+  }
+  const agent = createdAgents[agentName];
+  if (!agent) throw new Error('[flue] Agent target unavailable during legacy direct terminalization.');
+  const input = {
+    submissionId: 'legacy-direct:' + ctx.id,
+    agent: agentName,
+    id: doInstance.name,
+    session: typeof payload.session === 'string' && payload.session.trim() !== '' ? payload.session : 'default',
+    payload,
+    acceptedAt: new Date(ctx.createdAt).toISOString(),
+  };
+  const request = new Request('https://flue.invalid/agents/' + encodeURIComponent(agentName) + '/' + encodeURIComponent(doInstance.name), { method: 'POST' });
+  const directCtx = createAgentContextForRequest(doInstance.name, payload, doInstance, request);
+  await runWithInstanceContext(doInstance, agentRuntimeIdentity(agentName), () =>
+    createLegacyDirectSubmissionTerminalHandler(agent, input, {
+      submissionId: input.submissionId,
+      kind: 'direct',
+      reason: 'interrupted_after_input_application',
+      message,
+    })(directCtx),
+  );
 }
 
 async function handleFlueWorkflowFiberRecovered(ctx, doInstance, workflowName) {
@@ -531,50 +564,43 @@ async function handleFlueWorkflowFiberRecovered(ctx, doInstance, workflowName) {
 function armFlueAgentSubmissionWake(doInstance, options = {}) {
   assertAgentsDurabilityApi(doInstance, 'schedule');
   return doInstance.schedule(
-    options.delaySeconds ?? 0,
+    options.delaySeconds ?? FLUE_AGENT_SUBMISSION_WAKE_SECONDS,
     FLUE_AGENT_SUBMISSION_WAKE_CALLBACK,
-    { generation: options.generation ?? 0 },
-    { idempotent: true },
+    undefined,
+    { idempotent: options.idempotent ?? true },
   );
 }
 
-function armFlueAgentSubmissionAdmissionWakes(doInstance) {
-  return Promise.all([
-    armFlueAgentSubmissionWake(doInstance, { generation: 0 }),
-    armFlueAgentSubmissionWake(doInstance, { generation: 1 }),
-    armFlueAgentSubmissionRetry(doInstance),
-  ]);
+function armFlueAgentSubmissionAdmissionWake(doInstance) {
+  return armFlueAgentSubmissionWake(doInstance);
 }
 
-function armFlueAgentSubmissionRetry(doInstance) {
-  assertAgentsDurabilityApi(doInstance, 'scheduleEvery');
-  return doInstance.scheduleEvery(FLUE_AGENT_SUBMISSION_RETRY_SECONDS, FLUE_AGENT_SUBMISSION_RETRY_CALLBACK);
+function cleanupFlueAgentSubmissionTerminalState(doInstance) {
+  return getAgentExecutionStore(doInstance).submissions.cleanupTerminalSubmissions(
+    Date.now() - FLUE_AGENT_SUBMISSION_TERMINAL_RETENTION_MS,
+  );
+}
+
+async function restoreFlueAgentSubmissionWake(doInstance) {
+  const submissions = getAgentExecutionStore(doInstance).submissions;
+  if (!submissions.hasUnsettledSubmissions()) return false;
+  await armFlueAgentSubmissionWake(doInstance);
+  return true;
 }
 
 async function reconcileFlueAgentSubmissions(doInstance, agentName, options = {}) {
   const submissions = getAgentExecutionStore(doInstance).submissions;
+  cleanupFlueAgentSubmissionTerminalState(doInstance);
+  if (!submissions.hasUnsettledSubmissions()) return false;
+  if (!options.driverAlreadyArmed) await restoreFlueAgentSubmissionWake(doInstance);
   const legacySessions = await adoptLegacyManagedDispatches(doInstance, agentName);
   if (!submissions.hasUnsettledSubmissions()) return false;
-  await armFlueAgentSubmissionRetry(doInstance);
-  if (options.preserveSuccessor) {
-    if (options.executingWake) {
-      await armFlueAgentSubmissionWake(doInstance, {
-        delaySeconds: FLUE_AGENT_SUBMISSION_RETRY_SECONDS,
-        generation: options.executingWake.generation === 0 ? 1 : 0,
-      });
-    } else {
-      await Promise.all([
-        armFlueAgentSubmissionWake(doInstance, { delaySeconds: FLUE_AGENT_SUBMISSION_RETRY_SECONDS, generation: 0 }),
-        armFlueAgentSubmissionWake(doInstance, { delaySeconds: FLUE_AGENT_SUBMISSION_RETRY_SECONDS, generation: 1 }),
-      ]);
-    }
-  }
   try {
     const attemptMarkers = listActiveSqlAgentSubmissionAttemptMarkers(doInstance);
     if (attemptMarkers.blockAll) return true;
     for (const submission of submissions.listRunningSubmissions()) {
       if (activeFlueAgentSubmissionAttempts.has(submissionAttemptLocalKey(doInstance, submission))) continue;
-      if (attemptMarkers.keys.has(submissionAttemptMarkerKey(submission)) && submission.recoveryRequestedAt === undefined) continue;
+      if (submission.status !== 'terminalizing' && attemptMarkers.keys.has(submissionAttemptMarkerKey(submission)) && submission.recoveryRequestedAt === undefined) continue;
       if (legacySessions.has(submission.session)) continue;
       await reconcileInterruptedSqlAgentSubmission(submission, doInstance, agentName);
     }
@@ -594,6 +620,18 @@ async function reconcileInterruptedSqlAgentSubmission(submission, doInstance, ag
   const { attemptId, input } = submission;
   if (!attemptId) return;
   const submissions = getAgentExecutionStore(doInstance).submissions;
+  if (submission.status === 'terminalizing') {
+    await failInterruptedSqlAgentSubmission(
+      submission,
+      doInstance,
+      agentName,
+      submission.inputAppliedAt === undefined ? 'interrupted_before_input_marker' : 'interrupted_after_input_application',
+      new Error(submission.inputAppliedAt === undefined
+        ? '[flue] Agent submission attempt was interrupted after canonical input persistence but before the input-application marker was recorded. Provider replay was not attempted.'
+        : '[flue] Agent submission attempt was interrupted after input application without a completed canonical response. Provider replay was not attempted.'),
+    );
+    return;
+  }
   const agent = createdAgents[agentName];
   if (!agent) throw new Error('[flue] Agent target unavailable during durable reconciliation.');
   const request = new Request('https://flue.invalid' + INTERNAL_DISPATCH_PATH, { method: 'POST' });
@@ -608,14 +646,47 @@ async function reconcileInterruptedSqlAgentSubmission(submission, doInstance, ag
       submissions.requeueSubmissionBeforeInputApplied(submission.submissionId, attemptId);
       return;
     }
-    submissions.failSubmission(submission.submissionId, attemptId, new Error('[flue] Agent submission attempt was interrupted after canonical input persistence but before the input-application marker was recorded. Provider replay was not attempted.'));
+    await failInterruptedSqlAgentSubmission(
+      submission,
+      doInstance,
+      agentName,
+      'interrupted_before_input_marker',
+      new Error('[flue] Agent submission attempt was interrupted after canonical input persistence but before the input-application marker was recorded. Provider replay was not attempted.'),
+    );
     return;
   }
   if (state === 'completed') {
     submissions.completeSubmission(submission.submissionId, attemptId);
     return;
   }
-  submissions.failSubmission(submission.submissionId, attemptId, new Error('[flue] Agent submission attempt was interrupted after input application without a completed canonical response. Provider replay was not attempted.'));
+  await failInterruptedSqlAgentSubmission(
+    submission,
+    doInstance,
+    agentName,
+    'interrupted_after_input_application',
+    new Error('[flue] Agent submission attempt was interrupted after input application without a completed canonical response. Provider replay was not attempted.'),
+  );
+}
+
+async function failInterruptedSqlAgentSubmission(submission, doInstance, agentName, reason, error) {
+  const { attemptId, input } = submission;
+  if (!attemptId) return;
+  const submissions = getAgentExecutionStore(doInstance).submissions;
+  if (submission.status !== 'terminalizing' && !submissions.beginSubmissionTerminalization(submission.submissionId, attemptId)) return;
+  const agent = createdAgents[agentName];
+  if (!agent) throw new Error('[flue] Agent target unavailable during durable terminalization.');
+  const request = new Request('https://flue.invalid' + INTERNAL_DISPATCH_PATH, { method: 'POST' });
+  const ctx = createAgentContextForRequest(doInstance.name, submission.kind === 'direct' ? input.payload : input, doInstance, request, undefined, input.dispatchId);
+  await runWithInstanceContext(doInstance, agentRuntimeIdentity(agentName), () =>
+    createSubmissionTerminalHandler(agent, input, {
+      submissionId: submission.submissionId,
+      kind: submission.kind,
+      reason,
+      message: error.message,
+    })(ctx),
+  );
+  const failed = submissions.finalizeSubmissionTerminalization(submission.submissionId, attemptId, error);
+  if (failed && submission.kind === 'direct') agentSubmissionObservers.fail(submission.submissionId, error);
 }
 
 function startSqlAgentSubmissionAttempt(submission, doInstance, agentName) {
@@ -626,7 +697,7 @@ function startSqlAgentSubmissionAttempt(submission, doInstance, agentName) {
   activeFlueAgentSubmissionAttempts.add(attemptKey);
   let running;
   try {
-    running = doInstance.runFiber('flue:dispatch-attempt', async (fiberCtx) => {
+    running = doInstance.runFiber('flue:submission-attempt', async (fiberCtx) => {
       fiberCtx.stash({ submissionId: submission.submissionId, attemptId: submission.attemptId });
       await processSqlAgentSubmission(submission, doInstance, agentName);
     });
@@ -653,7 +724,7 @@ function listActiveSqlAgentSubmissionAttemptMarkers(doInstance) {
   const keys = new Set();
   let blockAll = false;
   const rows = doInstance.ctx.storage.sql.exec(
-    "SELECT snapshot, created_at FROM cf_agents_runs WHERE name = 'flue:dispatch-attempt'",
+    "SELECT snapshot, created_at FROM cf_agents_runs WHERE name = 'flue:submission-attempt'",
   ).toArray();
   for (const row of rows) {
     if (typeof row.created_at !== 'number') {
@@ -755,7 +826,7 @@ async function processSqlAgentSubmission(submission, doInstance, agentName) {
     throw error;
   } finally {
     if (submission.kind === 'direct') ctx?.setEventCallback(undefined);
-    void reconcileFlueAgentSubmissions(doInstance, agentName, { preserveSuccessor: true }).catch((error) => {
+    void reconcileFlueAgentSubmissions(doInstance, agentName).catch((error) => {
       console.error('[flue:submission-reconciliation]', { agentName, instanceId: doInstance.name, operation: 'settlement', outcome: 'reconcile_failed' }, error);
     });
   }
@@ -779,9 +850,9 @@ async function admitAttachedAgentSubmission(doInstance, agentName, payload, _req
   };
   const attachment = agentSubmissionObservers.attach(submissionId, { onEvent });
   try {
-    await armFlueAgentSubmissionAdmissionWakes(doInstance);
+    await armFlueAgentSubmissionAdmissionWake(doInstance);
     getAgentExecutionStore(doInstance).submissions.admitDirect(input);
-    await reconcileFlueAgentSubmissions(doInstance, agentName);
+    await reconcileFlueAgentSubmissions(doInstance, agentName, { driverAlreadyArmed: true });
     return await attachment.completion;
   } finally {
     attachment.detach();
@@ -834,15 +905,21 @@ async function dispatchAgent(request, doInstance, agentName, handler) {
     if (input.agent !== agentName || input.id !== id) return new Response('Invalid internal dispatch target.', { status: 400 });
     if (!createdAgents[agentName]) return new Response('Dispatch target unavailable.', { status: 404 });
     await validateAgentDispatchAdmission({ input });
-    await armFlueAgentSubmissionAdmissionWakes(doInstance);
+    const submissions = getAgentExecutionStore(doInstance).submissions;
+    cleanupFlueAgentSubmissionTerminalState(doInstance);
+    submissions.cleanupDispatchReceipt(input.dispatchId, Date.now() - FLUE_AGENT_SUBMISSION_TERMINAL_RETENTION_MS);
+    const priorReceipt = submissions.getDispatchReceipt(input.dispatchId);
+    if (priorReceipt) return Response.json({ dispatchId: priorReceipt.submissionId, acceptedAt: new Date(priorReceipt.acceptedAt).toISOString() });
+    await armFlueAgentSubmissionAdmissionWake(doInstance);
     let submission;
     try {
-      submission = getAgentExecutionStore(doInstance).submissions.admitDispatch(input);
+      submission = submissions.admitDispatch(input);
     } catch (error) {
+      if (error instanceof SqlAgentDispatchReceiptRetainedError) return Response.json({ dispatchId: error.receipt.submissionId, acceptedAt: new Date(error.receipt.acceptedAt).toISOString() });
       if (error instanceof SqlAgentSubmissionConflictError) return new Response('Conflicting internal dispatch replay.', { status: 409 });
       throw error;
     }
-    await reconcileFlueAgentSubmissions(doInstance, agentName);
+    await reconcileFlueAgentSubmissions(doInstance, agentName, { driverAlreadyArmed: true });
     return Response.json({ dispatchId: submission.submissionId, acceptedAt: submission.input.acceptedAt });
   }
   const identity = agentRuntimeIdentity(agentName);

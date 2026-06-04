@@ -552,10 +552,11 @@ export interface FlueContext<TPayload = any, TEnv = Record<string, any>> {
 	 * body-reading method, calling another will throw. Use `req.clone()` if
 	 * you need to read it more than once.
 	 *
-	 * Undefined when the agent is invoked outside an HTTP context (e.g. future
-	 * cron / queue triggers). Today every trigger is HTTP, so in practice this
-	 * is always defined — the optional type lets the contract hold when other
-	 * trigger types ship.
+	 * Undefined when the agent is invoked outside an HTTP context. Durable or
+	 * recovered processing may receive a synthetic internal request instead of
+	 * the original caller request. Authenticate and capture required transport
+	 * metadata before durable admission; do not assume later processing retains
+	 * original headers, cookies, query parameters, URL, or body.
 	 *
 	 * For client IP, parse the platform header yourself, e.g.
 	 * `req.headers.get('cf-connecting-ip')` on Cloudflare, or
@@ -615,7 +616,8 @@ export interface FlueSessions {
 	create(name?: string): Promise<FlueSession>;
 	/**
 	 * Delete a session's stored conversation state. Defaults to `'default'`.
-	 * No-op when missing. Rejects if the open session has an active operation.
+	 * No-op when missing. Rejects if the open session has an active operation or
+	 * the target runtime still has accepted durable submissions for that session.
 	 * Session-management requests for one name are applied in request order.
 	 */
 	delete(name?: string): Promise<void>;
@@ -701,7 +703,8 @@ export interface FlueSession {
 
 	/**
 	 * Delete this session's stored conversation state. Rejects while an
-	 * operation is active. Once deletion starts, the session is unusable and
+	 * operation or accepted durable submission is active. Once deletion starts,
+	 * the session is unusable and
 	 * concurrent calls share the same deletion work.
 	 */
 	delete(): Promise<void>;
@@ -796,6 +799,13 @@ export interface MessageEntry extends SessionEntryBase {
 	source?: 'prompt' | 'skill' | 'shell' | 'task' | 'retry' | 'dispatch';
 	dispatch?: DispatchMessageMetadata;
 	directSubmissionId?: string;
+	submissionTerminal?: SubmissionTerminalMetadata;
+}
+
+interface SubmissionTerminalMetadata {
+	submissionId: string;
+	kind: 'dispatch' | 'direct';
+	reason: 'interrupted_before_input_marker' | 'interrupted_after_input_application';
 }
 
 export interface DispatchMessageMetadata {

@@ -95,15 +95,16 @@ Treat `SessionData` as potentially sensitive. It can include model-visible text,
 | State category                                                 | Controlled by                                          |
 | -------------------------------------------------------------- | ------------------------------------------------------ |
 | Agent session messages and compaction state                    | `SessionStore` / `persist` or the target default       |
+| Cloudflare agent submission admission, ordering, and terminal inspection rows | The owning agent Durable Object SQLite store           |
 | Sandbox files, installed dependencies, and workspace artifacts | The configured sandbox or connector                    |
 | Workflow run records and persisted run events                  | Workflow-run runtime storage, not `SessionStore` alone |
 | Mutations performed through tools or external APIs             | The external system and application idempotency policy |
 
-A persisted conversation does not make sandbox files durable. A durable workspace does not retain conversation history unless session persistence does as well.
+A persisted conversation does not make sandbox files durable. A durable workspace does not retain conversation history unless session persistence does as well. On Cloudflare, a created agent's `persist` override replaces canonical session snapshots only: Flue still stores operational submission rows locally in the owning Durable Object SQLite database. Those rows can contain submitted payloads while queued and running. Terminal rows become eligible for bounded lazy cleanup after seven days and are removed during later agent activity; an entirely idle Durable Object may retain eligible rows longer. The same eligibility horizon bounds duplicate-delivery protection for repeated forwarding of one `dispatchId`; it does not create a public submission lookup API.
 
 ## Identity and deletion
 
-Session data is stored under keys derived from Flue identity boundaries: agent instance or workflow invocation ownership, harness name, and session name. The stored record contains a separate opaque provider-affinity key. Delegated `task(...)` calls use internal child sessions whose retained history remains parent-owned; names beginning with `task:` are reserved for those children and cannot be selected as ordinary sessions. Deleting a parent session removes its stored conversation data and retained child task-session tree; application-owned stores may apply broader retention separately. Deletion does not undo external effects or remove sandbox files.
+Session data is stored under keys derived from Flue identity boundaries: agent instance or workflow invocation ownership, harness name, and session name. The stored record contains a separate opaque provider-affinity key. Delegated `task(...)` calls use internal child sessions whose retained history remains parent-owned; names beginning with `task:` are reserved for those children and cannot be selected as ordinary sessions. Deleting a parent session removes its stored conversation data and retained child task-session tree; application-owned stores may apply broader retention separately. On Cloudflare, deletion rejects while the session still has queued or running durable submissions and removes settled operational payload copies after snapshot deletion succeeds. Deletion does not undo external effects or remove sandbox files.
 
 ## Implementing a store
 

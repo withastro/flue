@@ -27,6 +27,7 @@ import {
 	type TaskToolParams,
 	type TaskToolResultDetails,
 } from './agent.ts';
+import type { SessionDeletionCoordinator } from './client.ts';
 import {
 	type CompactionSettings,
 	type CompactionTurnHandle,
@@ -51,6 +52,7 @@ import {
 } from './result.ts';
 import type {
 	AgentSubmissionInputInspection,
+	AgentSubmissionTerminalInput,
 	DirectSubmissionInput,
 	DispatchInput,
 	DispatchInputInspection,
@@ -192,6 +194,7 @@ interface SessionInitOptions {
 	taskDepth?: number;
 	createTaskSession?: CreateTaskSession;
 	onDelete?: () => void;
+	sessionDeletionCoordinator?: SessionDeletionCoordinator;
 }
 
 interface CallOverrides {
@@ -373,7 +376,11 @@ export class SessionHistory {
 	appendMessage(
 		message: AgentMessage,
 		source?: MessageSource,
-		metadata?: { dispatch?: DispatchMessageMetadata; directSubmissionId?: string },
+		metadata?: {
+			dispatch?: DispatchMessageMetadata;
+			directSubmissionId?: string;
+			submissionTerminal?: MessageEntry['submissionTerminal'];
+		},
 	): string {
 		const entry: MessageEntry = {
 			type: 'message',
@@ -385,6 +392,7 @@ export class SessionHistory {
 		};
 		if (metadata?.dispatch) entry.dispatch = metadata.dispatch;
 		if (metadata?.directSubmissionId) entry.directSubmissionId = metadata.directSubmissionId;
+		if (metadata?.submissionTerminal) entry.submissionTerminal = metadata.submissionTerminal;
 		this.appendEntry(entry);
 		return entry.id;
 	}
@@ -400,6 +408,13 @@ export class SessionHistory {
 		return this.getActivePath().find(
 			(entry): entry is MessageEntry =>
 				entry.type === 'message' && entry.directSubmissionId === submissionId,
+		);
+	}
+
+	findSubmissionTerminal(submissionId: string): MessageEntry | undefined {
+		return this.getActivePath().find(
+			(entry): entry is MessageEntry =>
+				entry.type === 'message' && entry.submissionTerminal?.submissionId === submissionId,
 		);
 	}
 
@@ -628,6 +643,7 @@ export class Session implements FlueSession {
 	private taskDepth: number;
 	private createTaskSession: CreateTaskSession | undefined;
 	private onDelete: (() => void) | undefined;
+	private sessionDeletionCoordinator: SessionDeletionCoordinator | undefined;
 	private pendingSave: Promise<void> = Promise.resolve();
 
 	private emitTurnRequestAndStream: StreamFn = (model, context, options) => {
@@ -684,6 +700,7 @@ export class Session implements FlueSession {
 		this.taskDepth = options.taskDepth ?? 0;
 		this.createTaskSession = options.createTaskSession;
 		this.onDelete = options.onDelete;
+		this.sessionDeletionCoordinator = options.sessionDeletionCoordinator;
 
 		this.metadata = options.existingData?.metadata ?? {};
 		this.createdAt = options.existingData?.createdAt;
@@ -928,6 +945,40 @@ export class Session implements FlueSession {
 		);
 	}
 
+	async recordLegacyDirectSubmissionTerminal(
+		input: DirectSubmissionInput,
+		terminal: AgentSubmissionTerminalInput,
+	): Promise<void> {
+		if (!this.history.findDirectSubmissionInput(input.submissionId)) {
+			this.history.appendMessage(
+				createUserContextMessage(input.payload.message, new Date().toISOString()),
+				'prompt',
+				{ directSubmissionId: input.submissionId },
+			);
+		}
+		await this.recordSubmissionTerminal(terminal);
+	}
+
+	async recordSubmissionTerminal(input: AgentSubmissionTerminalInput): Promise<void> {
+		if (this.history.findSubmissionTerminal(input.submissionId)) return;
+		this.history.appendMessage(
+			createUserContextMessage(
+				`[Flue Submission Interrupted]\n\n${input.message}`,
+				new Date().toISOString(),
+			),
+			undefined,
+			{
+				submissionTerminal: {
+					submissionId: input.submissionId,
+					kind: input.kind,
+					reason: input.reason,
+				},
+			},
+		);
+		this.harness.state.messages = this.history.buildContext();
+		await this.save();
+	}
+
 	skill<S extends v.GenericSchema>(
 		skill: SkillReference | string,
 		options: SkillOptions<S> & { result: S },
@@ -1100,9 +1151,16 @@ export class Session implements FlueSession {
 		}
 		this.deleted = true;
 		this.deletionPromise = Promise.resolve()
+			.then(() => this.sessionDeletionCoordinator?.begin(this.storageKey))
 			.then(() => deleteSessionTree(this.store, this.storageKey))
 			.then(() => {
+				this.sessionDeletionCoordinator?.finish(this.storageKey);
 				this.onDelete?.();
+			})
+			.catch((error) => {
+				this.deleted = false;
+				this.deletionPromise = undefined;
+				throw error;
 			});
 		return this.deletionPromise;
 	}

@@ -18,7 +18,7 @@ describe('Cloudflare agent extension', () => {
 			await expect(
 				build({ root, sourceRoot: path.join(root, 'src'), target: 'cloudflare', mode: 'development' }),
 			).rejects.toThrow(
-				'[flue] Cloudflare target requires the installed "agents" package to be at least 0.14.1. Found 0.14.0. Install or upgrade "agents" in this project.',
+				'[flue] Cloudflare target requires the installed "agents" package to satisfy >=0.14.1 <0.15.0. Found 0.14.0. Install a compatible "agents" version in this project.',
 			);
 		} finally {
 			fs.rmSync(root, { recursive: true, force: true });

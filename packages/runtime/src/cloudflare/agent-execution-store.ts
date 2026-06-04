@@ -22,7 +22,12 @@ interface DurableObjectStorage {
 	transactionSync?<T>(closure: () => T): T;
 }
 
-type SqlAgentSubmissionStatus = 'queued' | 'running' | 'completed' | 'error';
+type SqlAgentSubmissionStatus = 'queued' | 'running' | 'terminalizing' | 'completed' | 'error';
+
+export interface SqlAgentDispatchReceipt {
+	readonly submissionId: string;
+	readonly acceptedAt: number;
+}
 
 export interface SqlAgentSubmission {
 	readonly sequence: number;
@@ -43,13 +48,17 @@ export interface SqlAgentSubmission {
 
 export interface SqlAgentSubmissionStore {
 	getSubmission(submissionId: string): SqlAgentSubmission | null;
+	getDispatchReceipt(submissionId: string): SqlAgentDispatchReceipt | null;
 	admitDispatch(input: DispatchInput): SqlAgentSubmission;
 	admitDirect(input: DirectSubmissionInput): SqlAgentSubmission;
 	adoptLegacyDispatches(inputs: readonly DispatchInput[]): SqlAgentSubmission[];
 	hasUnsettledSubmissions(): boolean;
-	listQueuedSubmissions(): SqlAgentSubmission[];
 	listRunnableSubmissions(): SqlAgentSubmission[];
 	listRunningSubmissions(): SqlAgentSubmission[];
+	beginSessionDeletion(sessionKey: string): void;
+	finishSessionDeletion(sessionKey: string): void;
+	cleanupTerminalSubmissions(completedBefore: number, limit?: number): number;
+	cleanupDispatchReceipt(submissionId: string, settledBefore: number): void;
 	claimSubmission(submissionId: string, attemptId: string): SqlAgentSubmission | null;
 	markSubmissionInputApplied(submissionId: string, attemptId: string): SqlAgentSubmission | null;
 	requestSubmissionRecovery(submissionId: string, attemptId: string): SqlAgentSubmission | null;
@@ -57,8 +66,10 @@ export interface SqlAgentSubmissionStore {
 		submissionId: string,
 		attemptId: string,
 	): SqlAgentSubmission | null;
+	beginSubmissionTerminalization(submissionId: string, attemptId: string): SqlAgentSubmission | null;
 	completeSubmission(submissionId: string, attemptId: string): boolean;
 	failSubmission(submissionId: string, attemptId: string, error: unknown): boolean;
+	finalizeSubmissionTerminalization(submissionId: string, attemptId: string, error: unknown): boolean;
 }
 
 export interface SqlAgentExecutionStore {
@@ -67,6 +78,12 @@ export interface SqlAgentExecutionStore {
 }
 
 export class SqlAgentSubmissionConflictError extends Error {}
+
+export class SqlAgentDispatchReceiptRetainedError extends Error {
+	constructor(readonly receipt: SqlAgentDispatchReceipt) {
+		super('[flue] Internal dispatch replay is already settled.');
+	}
+}
 
 export function createSqlSessionStore(sql: SqlStorage): SessionStore {
 	ensureSessionTable(sql);
@@ -141,6 +158,20 @@ class SqlAgentSubmissionStoreImpl implements SqlAgentSubmissionStore {
 		return row ? parseSubmission(row) : null;
 	}
 
+	getDispatchReceipt(submissionId: string): SqlAgentDispatchReceipt | null {
+		const row = this.sql
+			.exec(
+				'SELECT dispatch_id, accepted_at FROM flue_agent_dispatch_receipts WHERE dispatch_id = ? LIMIT 1',
+				submissionId,
+			)
+			.toArray()[0];
+		if (!row) return null;
+		if (typeof row.dispatch_id !== 'string' || typeof row.accepted_at !== 'number') {
+			throw new Error('[flue] Persisted dispatch receipt row is malformed.');
+		}
+		return { submissionId: row.dispatch_id, acceptedAt: row.accepted_at };
+	}
+
 	admitDispatch(input: DispatchInput): SqlAgentSubmission {
 		return this.admitSubmission('dispatch', input.dispatchId, input);
 	}
@@ -207,24 +238,10 @@ class SqlAgentSubmissionStoreImpl implements SqlAgentSubmissionStore {
 				.exec(
 					`SELECT 1
 					 FROM flue_agent_submissions
-					 WHERE status IN ('queued', 'running')
+					 WHERE status IN ('queued', 'running', 'terminalizing')
 					 LIMIT 1`,
 				)
 				.toArray().length > 0
-		);
-	}
-
-	listQueuedSubmissions(): SqlAgentSubmission[] {
-		return this.parseOperationalRows(
-			this.sql
-				.exec(
-					`SELECT ${submissionColumns}
-					 FROM flue_agent_submissions
-					 WHERE status = 'queued'
-					 ORDER BY sequence ASC`,
-				)
-				.toArray(),
-			'queued',
 		);
 	}
 
@@ -238,7 +255,7 @@ class SqlAgentSubmissionStoreImpl implements SqlAgentSubmissionStore {
 				     SELECT 1
 				     FROM flue_agent_submissions AS earlier
 				     WHERE earlier.session_key = current.session_key
-				       AND earlier.status IN ('queued', 'running')
+				       AND earlier.status IN ('queued', 'running', 'terminalizing')
 				       AND earlier.sequence < current.sequence
 				   )
 				 ORDER BY current.sequence ASC`,
@@ -253,11 +270,91 @@ class SqlAgentSubmissionStoreImpl implements SqlAgentSubmissionStore {
 				.exec(
 					`SELECT ${submissionColumns}
 					 FROM flue_agent_submissions
-					 WHERE status = 'running'
+					 WHERE status IN ('running', 'terminalizing')
 					 ORDER BY sequence ASC`,
 				)
 				.toArray(),
-			'running',
+			'active',
+		);
+	}
+
+	beginSessionDeletion(sessionKey: string): void {
+		this.transactionSync(() => {
+			const active = this.sql
+				.exec(
+					`SELECT 1
+					 FROM flue_agent_submissions
+					 WHERE session_key = ? AND status IN ('queued', 'running', 'terminalizing')
+					 LIMIT 1`,
+					sessionKey,
+				)
+				.toArray();
+			if (active.length > 0) {
+				throw new Error(
+					'[flue] Session cannot be deleted while durable agent submissions are queued or running. Wait for accepted work to settle, then retry deletion.',
+				);
+			}
+			this.sql.exec(
+				'INSERT OR IGNORE INTO flue_agent_session_deletions (session_key, started_at) VALUES (?, ?)',
+				sessionKey,
+				Date.now(),
+			);
+		});
+	}
+
+	finishSessionDeletion(sessionKey: string): void {
+		this.transactionSync(() => {
+			this.sql.exec(
+				`INSERT OR IGNORE INTO flue_agent_dispatch_receipts (dispatch_id, accepted_at, settled_at)
+				 SELECT submission_id, accepted_at, completed_at
+				 FROM flue_agent_submissions
+				 WHERE session_key = ? AND kind = 'dispatch' AND status IN ('completed', 'error')`,
+				sessionKey,
+			);
+			this.sql.exec(
+				`DELETE FROM flue_agent_submissions
+				 WHERE session_key = ? AND status IN ('completed', 'error')`,
+				sessionKey,
+			);
+			this.sql.exec('DELETE FROM flue_agent_session_deletions WHERE session_key = ?', sessionKey);
+		});
+	}
+
+	cleanupTerminalSubmissions(completedBefore: number, limit = 100): number {
+		if (!Number.isInteger(limit) || limit <= 0) {
+			throw new Error('[flue] Terminal submission cleanup limit must be a positive integer.');
+		}
+		const rows = this.sql
+			.exec(
+				`SELECT sequence
+				 FROM flue_agent_submissions
+				 WHERE status IN ('completed', 'error') AND completed_at < ?
+				 ORDER BY completed_at ASC, sequence ASC
+				 LIMIT ?`,
+				completedBefore,
+				limit,
+			)
+			.toArray();
+		for (const row of rows) {
+			if (typeof row.sequence !== 'number') {
+				throw new Error('[flue] Persisted terminal submission row is malformed.');
+			}
+			this.sql.exec(
+				`DELETE FROM flue_agent_submissions
+				 WHERE sequence = ? AND status IN ('completed', 'error') AND completed_at < ?`,
+				row.sequence,
+				completedBefore,
+			);
+		}
+		this.sql.exec('DELETE FROM flue_agent_dispatch_receipts WHERE settled_at < ?', completedBefore);
+		return rows.length;
+	}
+
+	cleanupDispatchReceipt(submissionId: string, settledBefore: number): void {
+		this.sql.exec(
+			'DELETE FROM flue_agent_dispatch_receipts WHERE dispatch_id = ? AND settled_at < ?',
+			submissionId,
+			settledBefore,
 		);
 	}
 
@@ -270,7 +367,7 @@ class SqlAgentSubmissionStoreImpl implements SqlAgentSubmissionStore {
 			     SELECT 1
 			     FROM flue_agent_submissions AS earlier
 			     WHERE earlier.session_key = current.session_key
-			       AND earlier.status IN ('queued', 'running')
+			       AND earlier.status IN ('queued', 'running', 'terminalizing')
 			       AND earlier.sequence < current.sequence
 			   )`,
 			attemptId,
@@ -323,6 +420,20 @@ class SqlAgentSubmissionStoreImpl implements SqlAgentSubmissionStore {
 		return submission?.status === 'queued' ? submission : null;
 	}
 
+	beginSubmissionTerminalization(submissionId: string, attemptId: string): SqlAgentSubmission | null {
+		this.sql.exec(
+			`UPDATE flue_agent_submissions
+			 SET status = 'terminalizing'
+			 WHERE submission_id = ? AND status = 'running' AND attempt_id = ?`,
+			submissionId,
+			attemptId,
+		);
+		const submission = this.getSubmission(submissionId);
+		return submission?.status === 'terminalizing' && submission.attemptId === attemptId
+			? submission
+			: null;
+	}
+
 	completeSubmission(submissionId: string, attemptId: string): boolean {
 		this.sql.exec(
 			`UPDATE flue_agent_submissions
@@ -350,6 +461,20 @@ class SqlAgentSubmissionStoreImpl implements SqlAgentSubmissionStore {
 		return submission?.status === 'error' && submission.attemptId === attemptId;
 	}
 
+	finalizeSubmissionTerminalization(submissionId: string, attemptId: string, error: unknown): boolean {
+		this.sql.exec(
+			`UPDATE flue_agent_submissions
+			 SET status = 'error', completed_at = ?, error = ?
+			 WHERE submission_id = ? AND status = 'terminalizing' AND attempt_id = ?`,
+			Date.now(),
+			error instanceof Error ? error.message : String(error),
+			submissionId,
+			attemptId,
+		);
+		const submission = this.getSubmission(submissionId);
+		return submission?.status === 'error' && submission.attemptId === attemptId;
+	}
+
 	private admitSubmission(
 		kind: SqlAgentSubmission['kind'],
 		submissionId: string,
@@ -357,23 +482,36 @@ class SqlAgentSubmissionStoreImpl implements SqlAgentSubmissionStore {
 	): SqlAgentSubmission {
 		const payload = JSON.stringify(input);
 		const acceptedAt = parseAcceptedAt(input.acceptedAt, `${kind} admission`);
-		this.sql.exec(
-			`INSERT OR IGNORE INTO flue_agent_submissions
-			 (submission_id, session, session_key, kind, payload, status, accepted_at)
-			 VALUES (?, ?, ?, ?, ?, 'queued', ?)`,
-			submissionId,
-			input.session,
-			createSessionStorageKey(input.id, 'default', input.session),
-			kind,
-			payload,
-			acceptedAt,
-		);
-		const row = this.readSubmissionRow(submissionId);
-		if (!row) throw new Error(`[flue] Durable ${kind} admission did not create a submission row.`);
-		if (row.kind !== kind || row.payload !== payload) {
-			throw new SqlAgentSubmissionConflictError(`[flue] Conflicting internal ${kind} replay.`);
-		}
-		return parseSubmission(row);
+		const sessionKey = createSessionStorageKey(input.id, 'default', input.session);
+		return this.transactionSync(() => {
+			if (kind === 'dispatch') {
+				const receipt = this.getDispatchReceipt(submissionId);
+				if (receipt) throw new SqlAgentDispatchReceiptRetainedError(receipt);
+			}
+			const deleting = this.sql
+				.exec('SELECT 1 FROM flue_agent_session_deletions WHERE session_key = ? LIMIT 1', sessionKey)
+				.toArray();
+			if (deleting.length > 0) {
+				throw new Error('[flue] Durable agent submission admission is unavailable while this session is being deleted. Retry after deletion completes.');
+			}
+			this.sql.exec(
+				`INSERT OR IGNORE INTO flue_agent_submissions
+				 (submission_id, session, session_key, kind, payload, status, accepted_at)
+				 VALUES (?, ?, ?, ?, ?, 'queued', ?)`,
+				submissionId,
+				input.session,
+				sessionKey,
+				kind,
+				payload,
+				acceptedAt,
+			);
+			const row = this.readSubmissionRow(submissionId);
+			if (!row) throw new Error(`[flue] Durable ${kind} admission did not create a submission row.`);
+			if (row.kind !== kind || row.payload !== payload) {
+				throw new SqlAgentSubmissionConflictError(`[flue] Conflicting internal ${kind} replay.`);
+			}
+			return parseSubmission(row);
+		});
 	}
 
 	private getOwnedRunningSubmission(
@@ -388,7 +526,7 @@ class SqlAgentSubmissionStoreImpl implements SqlAgentSubmissionStore {
 
 	private parseOperationalRows(
 		rows: SqlRow[],
-		status: Extract<SqlAgentSubmissionStatus, 'queued' | 'running'>,
+		status: 'queued' | 'active',
 	): SqlAgentSubmission[] {
 		const submissions: SqlAgentSubmission[] = [];
 		for (const row of rows) {
@@ -402,19 +540,14 @@ class SqlAgentSubmissionStoreImpl implements SqlAgentSubmissionStore {
 		return submissions;
 	}
 
-	private failSubmissionSequence(
-		sequence: number,
-		status: Extract<SqlAgentSubmissionStatus, 'queued' | 'running'>,
-		error: unknown,
-	): void {
+	private failSubmissionSequence(sequence: number, status: 'queued' | 'active', error: unknown): void {
 		this.sql.exec(
 			`UPDATE flue_agent_submissions
 			 SET status = 'error', completed_at = ?, error = ?
-			 WHERE sequence = ? AND status = ?`,
+			 WHERE sequence = ? AND ${status === 'queued' ? "status = 'queued'" : "status IN ('running', 'terminalizing')"}`,
 			Date.now(),
 			error instanceof Error ? error.message : String(error),
 			sequence,
-			status,
 		);
 	}
 
@@ -451,6 +584,7 @@ function parseSubmission(row: SqlRow): SqlAgentSubmission {
 		typeof row.payload !== 'string' ||
 		(row.status !== 'queued' &&
 			row.status !== 'running' &&
+			row.status !== 'terminalizing' &&
 			row.status !== 'completed' &&
 			row.status !== 'error') ||
 		typeof row.accepted_at !== 'number' ||
@@ -467,7 +601,7 @@ function parseSubmission(row: SqlRow): SqlAgentSubmission {
 				row.input_applied_at !== null ||
 				row.recovery_requested_at !== null ||
 				row.started_at !== null)) ||
-		(row.status === 'running' &&
+		((row.status === 'running' || row.status === 'terminalizing') &&
 			(typeof row.attempt_id !== 'string' || typeof row.started_at !== 'number'))
 	) {
 		throw new Error('[flue] Persisted agent submission row is malformed.');
@@ -577,6 +711,19 @@ function ensureSubmissionTable(sql: SqlStorage): void {
 	);
 	ensureSubmissionColumn(sql, 'input_applied_at', 'INTEGER');
 	ensureSubmissionColumn(sql, 'recovery_requested_at', 'INTEGER');
+	sql.exec(
+		`CREATE TABLE IF NOT EXISTS flue_agent_session_deletions (
+		 session_key TEXT PRIMARY KEY,
+		 started_at INTEGER NOT NULL
+		)`,
+	);
+	sql.exec(
+		`CREATE TABLE IF NOT EXISTS flue_agent_dispatch_receipts (
+		 dispatch_id TEXT PRIMARY KEY,
+		 accepted_at INTEGER NOT NULL,
+		 settled_at INTEGER NOT NULL
+		)`,
+	);
 	sql.exec(
 		'CREATE INDEX IF NOT EXISTS flue_agent_submissions_status_sequence_idx ON flue_agent_submissions (status, sequence ASC)',
 	);

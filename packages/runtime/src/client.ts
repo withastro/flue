@@ -45,6 +45,12 @@ export interface FlueContextConfig {
 	 */
 	req?: Request;
 	initialEventIndex?: number;
+	sessionDeletionCoordinator?: SessionDeletionCoordinator;
+}
+
+export interface SessionDeletionCoordinator {
+	begin(storageKey: string): void;
+	finish(storageKey: string): void;
 }
 
 /** Extends FlueContext with server-only methods. Agent handlers only see FlueContext. */
@@ -226,6 +232,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 					},
 					definition.tools,
 					toolFactory,
+					config.sessionDeletionCoordinator,
 				);
 			} catch (error) {
 				initializedHarnessNames.delete(name);

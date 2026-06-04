@@ -9,11 +9,14 @@ import { dispatch, observe } from '../src/index.ts';
 import {
 	configureFlueRuntime,
 	createAgentDispatchProcessor,
+	createAgentSubmissionObserverRegistry,
 	createDirectSubmissionAgentHandler,
 	createDirectSubmissionInputInspectionHandler,
 	createDispatchAgentHandler,
 	createDispatchInputInspectionHandler,
 	createFlueContext,
+	createLegacyDirectSubmissionTerminalHandler,
+	createSubmissionTerminalHandler,
 	type DirectSubmissionInput,
 	type DispatchInput,
 	InMemoryDispatchQueue,
@@ -29,6 +32,24 @@ const providers: FauxProviderRegistration[] = [];
 afterEach(() => {
 	resetFlueRuntimeForTests();
 	for (const provider of providers.splice(0)) provider.unregister();
+});
+
+describe('createAgentSubmissionObserverRegistry()', () => {
+	it('settles attached observers when event callbacks fail', async () => {
+		const registry = createAgentSubmissionObserverRegistry();
+		const attachment = registry.attach('direct:observer-failure', {
+			onEvent: async () => {
+				throw new Error('Socket disconnected');
+			},
+		});
+
+		await expect(
+			registry.publish('direct:observer-failure', { type: 'idle', instanceId: 'agent-1' }),
+		).resolves.toBeUndefined();
+		registry.complete('direct:observer-failure', 'done');
+
+		await expect(attachment.completion).resolves.toBe('done');
+	});
 });
 
 describe('dispatch()', () => {
@@ -629,6 +650,112 @@ describe('dispatched session processing', () => {
 			message: { role: 'user', content: [{ type: 'text', text: 'Hello directly' }] },
 		});
 		expect(data?.entries[0]).not.toHaveProperty('dispatch');
+	});
+
+	it('persists one provider-visible terminal advisory when an interrupted submission cannot replay safely', async () => {
+		const provider = createProvider();
+		const store = new InMemorySessionStore();
+		const input: DirectSubmissionInput = {
+			submissionId: 'direct:terminal-advisory',
+			agent: 'moderator',
+			id: 'guild:terminal-advisory',
+			session: 'case:terminal-advisory',
+			payload: { message: 'Hello directly' },
+			acceptedAt: '2026-06-01T00:00:00.000Z',
+		};
+		const agent = createAgent(() => ({
+			model: `${provider.getModel().provider}/${provider.getModel().id}`,
+			persist: store,
+		}));
+		const createContext = () =>
+			createFlueContext({
+				id: input.id,
+				payload: input.payload,
+				env: {},
+				req: new Request('http://flue.local/agents/moderator/guild:terminal-advisory', { method: 'POST' }),
+				agentConfig: testAgentConfig(),
+				createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
+				defaultStore: new InMemorySessionStore(),
+			});
+		const terminal = {
+			submissionId: input.submissionId,
+			kind: 'direct' as const,
+			reason: 'interrupted_after_input_application' as const,
+			message: 'Provider replay was not attempted because prior execution could not be proven safe.',
+		};
+
+		await createSubmissionTerminalHandler(agent, input, terminal)(createContext());
+		await createSubmissionTerminalHandler(agent, input, terminal)(createContext());
+
+		const data = await store.load(`agent-session:${JSON.stringify([input.id, 'default', input.session])}`);
+		expect(data?.entries).toHaveLength(1);
+		expect(data?.entries[0]).toMatchObject({
+			submissionTerminal: {
+				submissionId: input.submissionId,
+				kind: 'direct',
+				reason: 'interrupted_after_input_application',
+			},
+			message: {
+				role: 'user',
+				content: [
+					{
+						type: 'text',
+						text: '[Flue Submission Interrupted]\n\nProvider replay was not attempted because prior execution could not be proven safe.',
+					},
+				],
+			},
+		});
+	});
+
+	it('persists captured input and one terminal advisory for an interrupted legacy direct prompt', async () => {
+		const provider = createProvider();
+		const store = new InMemorySessionStore();
+		const input: DirectSubmissionInput = {
+			submissionId: 'legacy-direct:fiber-1',
+			agent: 'moderator',
+			id: 'guild:legacy-terminal',
+			session: 'case:legacy-terminal',
+			payload: { message: 'Captured legacy prompt' },
+			acceptedAt: '2026-06-01T00:00:00.000Z',
+		};
+		const agent = createAgent(() => ({
+			model: `${provider.getModel().provider}/${provider.getModel().id}`,
+			persist: store,
+		}));
+		const createContext = () =>
+			createFlueContext({
+				id: input.id,
+				payload: input.payload,
+				env: {},
+				req: new Request('http://flue.local/agents/moderator/guild:legacy-terminal', { method: 'POST' }),
+				agentConfig: testAgentConfig(),
+				createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
+				defaultStore: new InMemorySessionStore(),
+			});
+		const terminal = {
+			submissionId: input.submissionId,
+			kind: 'direct' as const,
+			reason: 'interrupted_after_input_application' as const,
+			message: 'A pre-upgrade direct prompt was interrupted. Provider replay was not attempted.',
+		};
+
+		await createLegacyDirectSubmissionTerminalHandler(agent, input, terminal)(createContext());
+		await createLegacyDirectSubmissionTerminalHandler(agent, input, terminal)(createContext());
+
+		const data = await store.load(`agent-session:${JSON.stringify([input.id, 'default', input.session])}`);
+		expect(data?.entries).toHaveLength(2);
+		expect(data?.entries[0]).toMatchObject({
+			directSubmissionId: input.submissionId,
+			message: { role: 'user', content: [{ type: 'text', text: 'Captured legacy prompt' }] },
+		});
+		expect(data?.entries[1]).toMatchObject({
+			submissionTerminal: {
+				submissionId: input.submissionId,
+				kind: 'direct',
+				reason: 'interrupted_after_input_application',
+			},
+		});
+		expect(provider.state.callCount).toBe(0);
 	});
 
 	it('classifies a completed canonical direct response without model replay', async () => {

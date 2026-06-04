@@ -246,7 +246,7 @@ Accepts input for asynchronous delivery to a continuing agent session. The creat
 
 `await dispatch(...)` resolves when the current runtime accepts and queues the input. It does not wait for model processing, tool calls, or an agent reply. Dispatched activity belongs to the continuing agent session: it does not create workflow-run history and does not appear in `/runs` or `flue logs`.
 
-Delivery durability depends on the generated target. Node uses a process-lifetime in-memory queue by default. Cloudflare durably admits delivery to the target agent Durable Object and may retry processing after an interruption. Design external side effects to be idempotent. See [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) and [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/).
+Delivery durability depends on the generated target. Node uses a process-lifetime in-memory queue by default. Cloudflare durably admits delivery to the target agent Durable Object, orders it with direct prompts for the same session, and reconciles interruptions conservatively. It retries only when replay safety is provable; external effects still require application-level idempotency. See [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) and [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/).
 
 ## `init(...)`
 
@@ -319,7 +319,7 @@ Creates a new session. Defaults to `'default'`. Throws if it already exists.
 delete(name?: string): Promise<void>;
 ```
 
-Deletes a session's stored conversation state. Defaults to `'default'`. No-op when missing. Rejects if the open session has an active operation. Session-management requests for one name are applied in request order.
+Deletes a session's stored conversation state. Defaults to `'default'`. No-op when missing. Rejects if the open session has an active operation. On Cloudflare, it also rejects while the session has accepted durable submissions queued or running. Session-management requests for one name are applied in request order.
 
 ### `harness.shell(...)`
 
@@ -526,7 +526,7 @@ Triggers conversation compaction immediately. Resolves without work when there i
 delete(): Promise<void>;
 ```
 
-Deletes this session's stored conversation state. Rejects while an operation is active. Once deletion starts, the session is unusable and concurrent calls share the same deletion work.
+Deletes this session's stored conversation state. Rejects while an operation is active. On Cloudflare, it also rejects while accepted durable submissions are queued or running for the session. Once deletion starts, the session is unusable and concurrent calls share the same deletion work.
 
 #### `CallHandle<T>`
 

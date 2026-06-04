@@ -167,7 +167,7 @@ Fields:
 
 `await dispatch(...)` means the input was accepted and queued for the target session according to the current runtime's guarantees. It does not mean the model finished processing, produced a reply, or completed tool calls. The returned `dispatchId` identifies asynchronous delivery and any delivery recovery or idempotency behavior; it is not a run ID.
 
-Flue preserves the structured input in session storage and renders it deterministically into model-visible context. Dispatched inputs emit agent lifecycle events correlated by instance, session, and `dispatchId`; they do not enter `/runs` or `flue logs`.
+On Cloudflare, direct prompts and dispatched input enter the same durable per-session order. Flue preserves structured dispatch input in session storage and renders it deterministically into model-visible context. Dispatched inputs emit agent lifecycle events correlated by instance, session, and `dispatchId`; they do not enter `/runs` or `flue logs`. Design external effects to be idempotent: interruption reconciliation avoids blind replay, but an explicit caller retry can still repeat effects whose prior outcome is unknown.
 
 ## Lifecycle and correlation
 

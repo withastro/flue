@@ -143,6 +143,31 @@ describe('Cloudflare agent WebSockets', () => {
 		]);
 	});
 
+	it('allows durable attached admission to complete when the Cloudflare agent socket disconnects', async () => {
+		const connection = new ThrowingConnection();
+		const calls: string[] = [];
+
+		await messageCloudflareAgentWebSocket(
+			connection,
+			JSON.stringify({ version: 1, type: 'prompt', requestId: 'prompt-disconnected', message: 'Hello' }),
+			{
+				name: 'assistant',
+				id: 'agent-instance-1',
+				request: new Request('https://example.com/flue/agents/assistant/agent-instance-1'),
+				handler: async () => null,
+				createContext,
+				admitAttachedSubmission: async (_payload, _request, onEvent) => {
+					calls.push('admitted');
+					await onEvent?.({ type: 'idle', instanceId: 'agent-instance-1' });
+					calls.push('completed');
+					return 'done';
+				},
+			},
+		);
+
+		expect(calls).toEqual(['admitted', 'completed']);
+	});
+
 	it('rejects oversized messages when a Cloudflare agent socket exceeds the byte limit', async () => {
 		const connection = new TestConnection();
 		let invocations = 0;
@@ -526,6 +551,20 @@ describe('Cloudflare workflow WebSockets', () => {
 		expect(connection.closed).toEqual({ code: 1011, reason: 'Workflow failed' });
 	});
 });
+
+class ThrowingConnection implements CloudflareWebSocketConnection {
+	serializeAttachment(): void {}
+
+	deserializeAttachment(): CloudflareWebSocketAttachment | null {
+		return null;
+	}
+
+	send(): void {
+		throw new Error('Socket disconnected');
+	}
+
+	close(): void {}
+}
 
 class TestConnection implements CloudflareWebSocketConnection {
 	attachment: CloudflareWebSocketAttachment | null = null;

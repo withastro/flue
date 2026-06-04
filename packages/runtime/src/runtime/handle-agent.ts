@@ -21,6 +21,7 @@ import type {
 } from '../types.ts';
 import {
 	type AgentSubmissionInputInspection,
+	type AgentSubmissionTerminalInput,
 	type AttachedAgentSubmissionAdmission,
 	assertCurrentDispatchInput,
 	type DirectSubmissionInput,
@@ -56,6 +57,14 @@ interface DirectSubmissionSession {
 		input: DirectSubmissionInput,
 		options?: ProcessAgentSubmissionInputOptions,
 	): PromiseLike<unknown>;
+}
+
+interface SubmissionTerminalSession {
+	recordSubmissionTerminal(input: AgentSubmissionTerminalInput): Promise<void>;
+	recordLegacyDirectSubmissionTerminal(
+		input: DirectSubmissionInput,
+		terminal: AgentSubmissionTerminalInput,
+	): Promise<void>;
 }
 
 export interface AgentSessionTarget {
@@ -141,6 +150,36 @@ export function createDirectSubmissionInputInspectionHandler(
 	input: DirectSubmissionInput,
 ): AgentHandler {
 	return (ctx) => inspectAgentDirectSubmissionInput(ctx, agent, input);
+}
+
+export function createSubmissionTerminalHandler(
+	agent: CreatedAgentHandler,
+	input: DispatchInput | DirectSubmissionInput,
+	terminal: AgentSubmissionTerminalInput,
+): AgentHandler {
+	return async (ctx) => {
+		const harness = await ctx.initializeCreatedAgent(agent, undefined);
+		const session = await harness.session(input.session);
+		if (!isSubmissionTerminalSession(session)) {
+			throw new Error('[flue] Internal session does not support submission terminal persistence.');
+		}
+		await session.recordSubmissionTerminal(terminal);
+	};
+}
+
+export function createLegacyDirectSubmissionTerminalHandler(
+	agent: CreatedAgentHandler,
+	input: DirectSubmissionInput,
+	terminal: AgentSubmissionTerminalInput,
+): AgentHandler {
+	return async (ctx) => {
+		const harness = await ctx.initializeCreatedAgent(agent, undefined);
+		const session = await harness.session(input.session);
+		if (!isSubmissionTerminalSession(session)) {
+			throw new Error('[flue] Internal session does not support submission terminal persistence.');
+		}
+		await session.recordLegacyDirectSubmissionTerminal(input, terminal);
+	};
 }
 
 export async function reserveDispatchAgentSession(
@@ -255,6 +294,14 @@ function isDirectSubmissionSession(value: unknown): value is DirectSubmissionSes
 		!!value &&
 		typeof value === 'object' &&
 		typeof (value as DirectSubmissionSession).processDirectSubmissionInput === 'function'
+	);
+}
+
+function isSubmissionTerminalSession(value: unknown): value is SubmissionTerminalSession {
+	return (
+		!!value &&
+		typeof value === 'object' &&
+		typeof (value as SubmissionTerminalSession).recordSubmissionTerminal === 'function'
 	);
 }
 

@@ -67,7 +67,7 @@ export async function run({ init, payload }: FlueContext) {
 
 A support agent can also run on Cloudflare without a container by using Flue's default virtual sandbox. Populate its filesystem with the context the agent needs, then it can search that content with its built-in `grep`, `glob`, and `read` tools.
 
-Because this agent is deployed to Cloudflare, message history and session state are automatically persisted for you. So you (or your customer) can revisit this support session days, weeks, or years later and pick up exactly where you left off.
+Cloudflare Durable Objects persist stored conversation history across later requests. The default virtual sandbox remains in memory, so seed any files each time you need them or choose a durable sandbox connector for long-lived workspace state.
 
 ```ts
 // .flue/workflows/support.ts
@@ -281,7 +281,7 @@ curl http://localhost:3583/agents/hello/session-xyz \
   -d '{"message": "Hello from another conversation"}'
 ```
 
-Agent instances own sandbox state such as files written across prompt and dispatched-input interactions. Harnesses group related session state within an instance. Sessions persist message history and conversation metadata inside a harness. On Cloudflare, session data is backed by Durable Objects and survives across requests. On Node.js, sessions are stored in memory by default unless you provide a custom store.
+Agent instances provide a stable identity boundary for prompt and dispatched-input interactions. Harnesses group related session state within an instance. Sessions persist message history and conversation metadata inside a harness. Sandbox-file durability depends on the configured sandbox or connector; the default virtual filesystem is in memory. On Cloudflare, session conversation data is backed by Durable Objects and survives across requests. On Node.js, sessions are stored in memory by default unless you provide a custom store.
 
 In production, generate a stable URL `<id>` for the agent instance you want to preserve. Use `harness.session(threadName)` when you need multiple conversations inside the same harness.
 
@@ -418,7 +418,7 @@ await job.ready;
 await job.invoke({ text: 'Summarize me' });
 ```
 
-An exported `websocket` middleware can authenticate its own agent or workflow socket endpoint. Use a custom `app.ts` for centralized authentication or mounted prefixes, applying ordinary Hono middleware before `app.route('/api', flue())`; the same routing model works on Node and Cloudflare. Include the custom mount in `baseUrl: 'https://example.com/api'` and use `websocketUrl: (url) => { url.searchParams.set('token', socketToken); return url; }` for URL-carried or signed handshake authentication. HTTP `token` and `headers` options do not automatically apply to WebSocket upgrades; browsers should use cookies or application-designed URL authentication, while Node clients needing implementation-specific headers can provide a custom `websocket` factory. Avoid header-mutating middleware around WebSocket upgrade routes. `flue dev --target cloudflare` requires `wrangler` as a peer dependency in your project (`npm install --save-dev wrangler`).
+An exported `websocket` middleware can authenticate its own agent or workflow socket endpoint. Use a custom `app.ts` for centralized authentication or mounted prefixes, applying ordinary Hono middleware before `app.route('/api', flue())`; the same routing model works on Node and Cloudflare. Include the custom mount in `baseUrl: 'https://example.com/api'` and use `websocketUrl: (url) => { url.searchParams.set('token', socketToken); return url; }` for URL-carried or signed handshake authentication. HTTP `token` and `headers` options do not automatically apply to WebSocket upgrades; browsers should use cookies or application-designed URL authentication, while Node clients needing implementation-specific headers can provide a custom `websocket` factory. Avoid header-mutating middleware around WebSocket upgrade routes. Install `wrangler` in Cloudflare projects that use Wrangler commands such as `wrangler deploy` or secret management; `flue dev --target cloudflare` no longer requires it as an `@flue/cli` peer dependency.
 
 #### Loading environment variables
 

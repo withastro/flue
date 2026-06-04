@@ -20,6 +20,13 @@ export interface DirectSubmissionInput {
 
 export type AgentSubmissionInput = DispatchInput | DirectSubmissionInput;
 
+export interface AgentSubmissionTerminalInput {
+	submissionId: string;
+	kind: 'dispatch' | 'direct';
+	reason: 'interrupted_before_input_marker' | 'interrupted_after_input_application';
+	message: string;
+}
+
 export function assertCurrentDispatchInput(value: unknown): asserts value is DispatchInput {
 	if (value && typeof value === 'object' && 'targetAgent' in value) {
 		throw new Error(

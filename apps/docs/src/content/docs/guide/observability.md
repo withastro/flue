@@ -125,7 +125,7 @@ observe(
 );
 ```
 
-This is an application-owned extraction policy, not automatic Flue propagation. On Cloudflare, the initial Worker request keeps its ordinary HTTP headers when Flue forwards it into a Durable Object. Flue does not automatically propagate a trace carrier with dispatched input or restore one when retrying an interrupted direct prompt. Resolve dispatched parents from application-owned correlation state when needed. See [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/#interruption-and-recovery-semantics) for the platform-specific transport boundaries.
+This is an application-owned extraction policy, not automatic Flue propagation. On Cloudflare, route middleware sees the original inbound request before durable admission. Later SQL-backed direct-agent processing uses a synthetic internal request, and dispatched work does not carry an HTTP trace carrier automatically. Capture correlation before admission and resolve later parents from application-owned state when needed. See [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/#interruption-and-recovery-semantics) for the platform-specific transport boundaries.
 
 Flue spans describe semantic work such as workflows, operations, turns, and tools. The adapter does not activate OpenTelemetry context around provider SDK calls, so spans created by separate provider auto-instrumentation may require application-owned instrumentation or composition to appear beneath the intended Flue span.
 
