@@ -1231,7 +1231,7 @@ describe('repairInterruptedToolCalls()', () => {
 		sessionName: string,
 		toolCalls: Array<{ id: string; name: string }>,
 		settledToolCallIds: string[] = [],
-	): { data: import('../src/types.ts').SessionData; storageKey: string; toolCalls: typeof toolCalls } {
+	): { data: import('../src/types.ts').SessionData; storageKey: string } {
 		const now = new Date().toISOString();
 		const entries: import('../src/types.ts').SessionEntry[] = [];
 		let leafId: string | null = null;
@@ -1313,7 +1313,6 @@ describe('repairInterruptedToolCalls()', () => {
 				updatedAt: now,
 			},
 			storageKey: createSessionStorageKey(instanceId, 'default', sessionName),
-			toolCalls,
 		};
 	}
 
@@ -1358,19 +1357,30 @@ describe('repairInterruptedToolCalls()', () => {
 
 		expect(repairedLeafId).toBeTruthy();
 
+		// Walk the active path to find tool results in order.
 		const sessionData = await store.sessions.load(storageKey);
-		const results = sessionData!.entries.filter(
-			(e) => e.type === 'message' && (e as any).message.role === 'toolResult',
-		);
-		expect(results).toHaveLength(2);
-		for (const r of results) {
-			const msg = (r as any).message;
-			expect(msg.isError).toBe(true);
-			expect(JSON.parse(msg.content[0].text)).toMatchObject({ type: 'interrupted' });
+		const activeResults: Array<{ toolCallId: string; isError: boolean; text: string }> = [];
+		let currentId = sessionData!.leafId;
+		while (currentId) {
+			const entry = sessionData!.entries.find((e) => e.id === currentId);
+			if (!entry) break;
+			if (entry.type === 'message' && (entry as any).message.role === 'toolResult') {
+				activeResults.unshift({
+					toolCallId: (entry as any).message.toolCallId,
+					isError: (entry as any).message.isError,
+					text: (entry as any).message.content[0]?.text ?? '',
+				});
+			}
+			currentId = entry.parentId;
 		}
-		expect(results.map((r) => (r as any).message.toolCallId).sort()).toEqual(
-			[tc1.id, tc2.id].sort(),
-		);
+
+		expect(activeResults).toHaveLength(2);
+		// Both are synthetic interrupted results in original tool-call order.
+		expect(activeResults.map((r) => r.toolCallId)).toEqual([tc1.id, tc2.id]);
+		for (const r of activeResults) {
+			expect(r.isError).toBe(true);
+			expect(JSON.parse(r.text)).toMatchObject({ type: 'interrupted' });
+		}
 	});
 
 	it('preserves already-settled results and only repairs missing ones', async () => {
@@ -1414,20 +1424,98 @@ describe('repairInterruptedToolCalls()', () => {
 
 		expect(repairedLeafId).toBeTruthy();
 
+		// Walk the active path to find tool results in order.
 		const sessionData = await store.sessions.load(storageKey);
-		const results = sessionData!.entries.filter(
-			(e) => e.type === 'message' && (e as any).message.role === 'toolResult',
+		const activeResults: Array<{ toolCallId: string; isError: boolean }> = [];
+		let currentId = sessionData!.leafId;
+		while (currentId) {
+			const entry = sessionData!.entries.find((e) => e.id === currentId);
+			if (!entry) break;
+			if (entry.type === 'message' && (entry as any).message.role === 'toolResult') {
+				activeResults.unshift({
+					toolCallId: (entry as any).message.toolCallId,
+					isError: (entry as any).message.isError,
+				});
+			}
+			currentId = entry.parentId;
+		}
+
+		// Two results in original tool-call order.
+		expect(activeResults).toHaveLength(2);
+		expect(activeResults[0]?.toolCallId).toBe(tc1.id);
+		expect(activeResults[0]?.isError).toBe(false); // Settled result preserved.
+		expect(activeResults[1]?.toolCallId).toBe(tc2.id);
+		expect(activeResults[1]?.isError).toBe(true); // Synthetic interrupted.
+	});
+
+	it('produces correctly ordered results when a non-first tool is the only settled one', async () => {
+		const { createNodeAgentExecutionStore } = await import('../src/node/agent-execution-store.ts');
+		const store = createNodeAgentExecutionStore();
+		const provider = createProvider();
+		const tc1 = { id: `tc:first-${crypto.randomUUID()}`, name: 'tool_a' };
+		const tc2 = { id: `tc:second-${crypto.randomUUID()}`, name: 'tool_b' };
+		const tc3 = { id: `tc:third-${crypto.randomUUID()}`, name: 'tool_c' };
+
+		// Pre-populate: only tc2 (the middle tool) has a settled result.
+		const { data, storageKey } = interruptedSessionData(
+			'dispatch:repair-order', 'guild:repair', 'case:repair',
+			[tc1, tc2, tc3], [tc2.id],
 		);
-		expect(results).toHaveLength(2);
+		await store.sessions.save(storageKey, data);
 
-		const settledResult = results.find((r) => (r as any).message.toolCallId === tc1.id);
-		expect((settledResult as any).message.isError).toBe(false);
-
-		const repairedResult = results.find((r) => (r as any).message.toolCallId === tc2.id);
-		expect((repairedResult as any).message.isError).toBe(true);
-		expect(JSON.parse((repairedResult as any).message.content[0].text)).toMatchObject({
-			type: 'interrupted',
+		const submissionInput = {
+			dispatchId: 'dispatch:repair-order',
+			kind: 'dispatch' as const,
+			submissionId: 'dispatch:repair-order',
+			agent: 'moderator',
+			id: 'guild:repair',
+			session: 'case:repair',
+			input: { type: 'flagged' },
+			acceptedAt: '2026-06-01T00:00:00.000Z',
+		};
+		const agent = createAgent(() => ({
+			model: `${provider.getModel().provider}/${provider.getModel().id}`,
+		}));
+		const ctx = createFlueContext({
+			id: submissionInput.id, dispatchId: submissionInput.dispatchId, payload: submissionInput,
+			env: {}, req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
+			agentConfig: { systemPrompt: '', skills: {}, subagents: {}, model: undefined, resolveModel: () => provider.getModel() },
+			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
+			defaultStore: store.sessions,
+			submissionStore: store.submissions,
 		});
+
+		const repairedLeafId = await createAgentSubmissionRepairHandler(
+			agent,
+			submissionInput,
+			{ toolCalls: [{ type: 'toolCall', ...tc1 }, { type: 'toolCall', ...tc2 }, { type: 'toolCall', ...tc3 }] },
+		)(ctx);
+
+		expect(repairedLeafId).toBeTruthy();
+
+		const sessionData = await store.sessions.load(storageKey);
+		const path = sessionData!.entries;
+		// Walk from the leaf backwards to find the tool results in the active path.
+		const resultEntries: Array<{ toolCallId: string; isError: boolean }> = [];
+		let currentId = sessionData!.leafId;
+		while (currentId) {
+			const entry = path.find((e) => e.id === currentId);
+			if (!entry) break;
+			if (entry.type === 'message' && (entry as any).message.role === 'toolResult') {
+				resultEntries.unshift({
+					toolCallId: (entry as any).message.toolCallId,
+					isError: (entry as any).message.isError,
+				});
+			}
+			currentId = entry.parentId;
+		}
+
+		// Results must be in original tool-call order: [tc1, tc2, tc3].
+		expect(resultEntries.map((r) => r.toolCallId)).toEqual([tc1.id, tc2.id, tc3.id]);
+		// tc1 and tc3 are synthetic (interrupted), tc2 is the original settled result.
+		expect(resultEntries[0]?.isError).toBe(true);
+		expect(resultEntries[1]?.isError).toBe(false);
+		expect(resultEntries[2]?.isError).toBe(true);
 	});
 
 	it('returns undefined when all tool calls already have results', async () => {

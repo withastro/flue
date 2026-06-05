@@ -472,6 +472,18 @@ export class SessionHistory {
 		};
 	}
 
+	/**
+	 * Rewind the active path to a specific entry. Used during interrupted-tool
+	 * repair to branch from the assistant message when partial out-of-order
+	 * results need to be replaced with a correctly ordered complete batch.
+	 */
+	setLeaf(entryId: string): void {
+		if (!this.byId.has(entryId)) {
+			throw new Error(`[flue] Cannot set leaf: entry "${entryId}" does not exist.`);
+		}
+		this.leafId = entryId;
+	}
+
 	private appendEntry(entry: SessionEntry): void {
 		this.entries.push(entry);
 		this.byId.set(entry.id, entry);
@@ -1009,9 +1021,12 @@ export class Session implements FlueSession {
 	}
 
 	/**
-	 * Repair interrupted tool calls by appending synthetic error results for any
-	 * tool calls in the journal's toolRequest that lack persisted results.
-	 * Already-settled results are preserved (first-write-wins).
+	 * Repair interrupted tool calls by building a complete ordered result batch
+	 * for all tool calls in the journal's toolRequest. Already-settled results
+	 * are preserved (first-write-wins); unresolved tools get synthetic error
+	 * results. Results are appended in original tool-call order so
+	 * `isCompleteToolResultBatch` positional matching succeeds.
+	 *
 	 * Returns the new leaf ID after repair, or undefined if no repair was needed.
 	 */
 	async repairInterruptedToolCalls(
@@ -1029,34 +1044,45 @@ export class Session implements FlueSession {
 		);
 		if (!assistant || (assistant.message as AssistantMessage).stopReason !== 'toolUse') return undefined;
 
-		const settledIds = new Set<string>();
+		const settledByCallId = new Map<string, ToolResultMessage>();
 		for (const entry of following) {
 			if (entry.type === 'message' && entry.message.role === 'toolResult') {
-				settledIds.add((entry.message as ToolResultMessage).toolCallId);
+				const result = entry.message as ToolResultMessage;
+				if (!settledByCallId.has(result.toolCallId)) {
+					settledByCallId.set(result.toolCallId, result);
+				}
 			}
 		}
 
-		const unsettled = toolRequest.toolCalls.filter((tc) => !settledIds.has(tc.id));
-		if (unsettled.length === 0) return undefined;
+		const hasUnsettled = toolRequest.toolCalls.some((tc) => !settledByCallId.has(tc.id));
+		if (!hasUnsettled) return undefined;
 
 		const now = Date.now();
-		const syntheticResults: ToolResultMessage[] = unsettled.map((tc) => ({
-			role: 'toolResult' as const,
-			toolCallId: tc.id,
-			toolName: tc.name,
-			content: [
-				{
-					type: 'text' as const,
-					text: JSON.stringify({
-						type: 'interrupted',
-						message: 'Tool execution was interrupted before completion. The outcome is unknown.',
-					}),
-				},
-			],
-			isError: true,
-			timestamp: now,
-		}));
-		this.history.appendMessages(syntheticResults, undefined);
+		const orderedResults: ToolResultMessage[] = toolRequest.toolCalls.map((tc) => {
+			const settled = settledByCallId.get(tc.id);
+			if (settled) return settled;
+			return {
+				role: 'toolResult' as const,
+				toolCallId: tc.id,
+				toolName: tc.name,
+				content: [
+					{
+						type: 'text' as const,
+						text: JSON.stringify({
+							type: 'interrupted',
+							message: 'Tool execution was interrupted before completion. The outcome is unknown.',
+						}),
+					},
+				],
+				isError: true,
+				timestamp: now,
+			};
+		});
+
+		// Branch from the assistant entry so results are in correct positional
+		// order regardless of which partial results were previously persisted.
+		this.history.setLeaf(assistant.id);
+		this.history.appendMessages(orderedResults, undefined);
 		this.rebuildHarnessContext();
 		await this.save();
 		return this.history.getLeafId() ?? undefined;

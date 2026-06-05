@@ -456,9 +456,12 @@ class CloudflareAgentCoordinator {
 			createAgentSubmissionInspectionHandler(agent, input)(ctx),
 		);
 		const journal = this.submissions.getTurnJournal(submission.submissionId);
-		const safeRetryPhase =
-			journal?.phase === 'before_provider' || journal?.phase === 'provider_started';
-		if (safeRetryPhase && journal.committed === false && state === 'continuable') {
+		if (
+			journal &&
+			(journal.phase === 'before_provider' || journal.phase === 'provider_started') &&
+			!journal.committed &&
+			state === 'continuable'
+		) {
 			const replacement = this.submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID());
 			if (replacement) {
 				this.startSubmissionAttempt(replacement);
