@@ -341,6 +341,112 @@ describe('NodeAgentCoordinator', () => {
 	});
 
 	describe('tool repair across restart', () => {
+		it('continues from canonical tool results when the journal is still tool_request_recorded after restart', async () => {
+			const dbPath = createTempDbPath();
+			const provider = createFauxProvider();
+			provider.setResponses([fauxAssistantMessage('Completed after preserved tool result.')]);
+			const store = createNodeAgentExecutionStore(dbPath);
+			const input = makeDispatchInput({ session: 'tool-result-session' });
+			store.submissions.admitDispatch(input);
+			const claimed = store.submissions.claimSubmission({
+				submissionId: input.dispatchId,
+				attemptId: 'attempt-tool-result',
+			});
+			expect(claimed).toBeTruthy();
+			store.submissions.markSubmissionInputApplied({
+				submissionId: input.dispatchId,
+				attemptId: 'attempt-tool-result',
+			});
+			store.submissions.beginTurnJournal({
+				submissionId: input.dispatchId,
+				sessionKey: claimed!.sessionKey,
+				kind: 'dispatch',
+				attemptId: 'attempt-tool-result',
+				operationId: 'op-1',
+				turnId: 'turn-1',
+				phase: 'before_provider',
+			});
+			store.submissions.updateTurnJournalPhase(
+				{ submissionId: input.dispatchId, attemptId: 'attempt-tool-result' },
+				'tool_request_recorded',
+				{
+					toolRequest: {
+						toolCalls: [{ type: 'toolCall', id: 'tc-1', name: 'lookup' }],
+					},
+				},
+			);
+			const storageKey = createSessionStorageKey('instance-1', 'default', 'tool-result-session');
+			const now = new Date().toISOString();
+			store.sessions.save(storageKey, {
+				version: 5,
+				affinityKey: generateSessionAffinityKey(),
+				entries: [
+					{
+						type: 'message',
+						id: 'e1',
+						parentId: null,
+						timestamp: now,
+						message: { role: 'user', content: 'Run the tool.', timestamp: Date.now() } as any,
+						source: 'dispatch',
+						dispatch: {
+							dispatchId: input.dispatchId,
+							agent: 'assistant',
+							id: 'instance-1',
+							session: 'tool-result-session',
+							acceptedAt: now,
+							input: { message: 'Hello' },
+						},
+					},
+					{
+						type: 'message',
+						id: 'e2',
+						parentId: 'e1',
+						timestamp: now,
+						message: {
+							role: 'assistant',
+							content: [{ type: 'toolCall', id: 'tc-1', name: 'lookup', arguments: {} }],
+							stopReason: 'toolUse',
+							api: 'test',
+							provider: 'test',
+							model: 'test',
+							usage: {
+								input: 0,
+								output: 0,
+								totalTokens: 0,
+								cost: { input: 0, output: 0, total: 0 },
+							},
+							timestamp: Date.now(),
+						} as any,
+					},
+					{
+						type: 'message',
+						id: 'e3',
+						parentId: 'e2',
+						timestamp: now,
+						message: {
+							role: 'toolResult',
+							toolCallId: 'tc-1',
+							toolName: 'lookup',
+							content: [{ type: 'text', text: 'found it' }],
+							isError: false,
+							timestamp: Date.now(),
+						} as any,
+					},
+				],
+				leafId: 'e3',
+				metadata: {},
+				createdAt: now,
+				updatedAt: now,
+			});
+
+			const { coordinator, executionStore } = createFauxCoordinator(dbPath, provider);
+			await coordinator.reconcileSubmissions();
+
+			const submission = executionStore.submissions.getSubmission(input.dispatchId);
+			expect(submission).toMatchObject({ status: 'settled' });
+			expect(submission?.error).toBeUndefined();
+		});
+
 		it('repairs interrupted tool calls and completes the submission after restart', async () => {
 			const dbPath = createTempDbPath();
 			const provider = createFauxProvider();

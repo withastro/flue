@@ -37,6 +37,8 @@ export interface AgentSubmissionInterruption {
 		| 'exhausted_retry_budget'
 		| 'exceeded_timeout';
 	readonly message: string;
+	/** Tool calls that were requested but whose outcomes could not be confirmed. */
+	readonly interruptedTools?: ReadonlyArray<{ readonly name: string; readonly id: string }>;
 }
 
 export type AgentSubmissionInspection = 'absent' | 'completed' | 'continuable' | 'uncertain';
@@ -362,6 +364,10 @@ export async function reconcileInterruptedSubmission(
 			const replacement = submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID());
 			if (replacement) return { replacement, failedError: null };
 		}
+		if (state === 'continuable') {
+			const replacement = submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID());
+			if (replacement) return { replacement, failedError: null };
+		}
 	}
 
 	// Pre-input-application interruption.
@@ -386,13 +392,20 @@ export async function reconcileInterruptedSubmission(
 		return { replacement: null, failedError: null };
 	}
 
+	// Collect interrupted tool metadata from the journal when available.
+	const interruptedTools = journal?.toolRequest
+		? (journal.toolRequest as AgentSubmissionToolRequest).toolCalls.map((tc) => ({ name: tc.name, id: tc.id }))
+		: undefined;
+
 	// Post-input-application interruption without completion.
 	const error = new Error(
-		'[flue] Agent submission attempt was interrupted after input application without a completed canonical response. Provider replay was not attempted.',
+		interruptedTools
+			? `[flue] Agent submission was interrupted with pending tool call(s): ${interruptedTools.map((t) => t.name).join(', ')}. The tool outcome could not be confirmed. The tool was not automatically retried.`
+			: '[flue] Agent submission attempt was interrupted after input application without a completed canonical response. Provider replay was not attempted.',
 	);
 	const failed = await failInterruptedSubmission(
 		submissions, submission, attempt, agent,
-		'interrupted_after_input_application', error, createContext,
+		'interrupted_after_input_application', error, createContext, interruptedTools,
 	);
 	return { replacement: null, failedError: failed ? error : null };
 }
@@ -410,6 +423,7 @@ async function failInterruptedSubmission(
 	reason: AgentSubmissionInterruption['reason'],
 	error: Error,
 	createContext: (payload: unknown, dispatchId: string | undefined) => FlueContextInternal,
+	interruptedTools?: ReadonlyArray<{ readonly name: string; readonly id: string }>,
 ): Promise<boolean> {
 	const { input } = submission;
 	const processingPayload = agentSubmissionProcessingPayload(input);
@@ -420,6 +434,7 @@ async function failInterruptedSubmission(
 		kind: submission.kind,
 		reason,
 		message: error.message,
+		interruptedTools,
 	})(ctx);
 	return submissions.failSubmission(attempt, error);
 }

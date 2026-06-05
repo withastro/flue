@@ -835,6 +835,7 @@ export class Session implements FlueSession {
 					if (event.message.role === 'assistant') {
 						const toolCalls = event.message.content.filter((content) => content.type === 'toolCall');
 						if (toolCalls.length > 0) {
+							await this.checkpointHarnessMessages();
 							await this.activeJournalCallbacks?.toolRequestRecorded?.({
 								operationId: this.activeOperationId ?? generateOperationId(),
 								turnId: this.activeTurnId ?? generateTurnId(),
@@ -1091,9 +1092,14 @@ export class Session implements FlueSession {
 
 	async recordSubmissionTerminal(input: AgentSubmissionInterruption): Promise<void> {
 		if (this.history.findSubmissionTerminal(input.submissionId)) return;
+		let body = input.message;
+		if (input.interruptedTools && input.interruptedTools.length > 0) {
+			const toolList = input.interruptedTools.map((t) => `  - ${t.name} (${t.id})`).join('\n');
+			body += `\n\nInterrupted tool call(s):\n${toolList}`;
+		}
 		this.history.appendMessage(
 			createUserContextMessage(
-				`[Flue Submission Interrupted]\n\n${input.message}`,
+				`[Flue Submission Interrupted]\n\n${body}`,
 				new Date().toISOString(),
 			),
 			undefined,

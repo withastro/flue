@@ -1559,6 +1559,80 @@ describe('repairInterruptedToolCalls()', () => {
 		expect(repairedLeafId).toBeUndefined();
 	});
 
+	it('persists assistant tool request before recording tool_request_recorded when a turn invokes a tool', async () => {
+		const { createNodeAgentExecutionStore } = await import('../src/node/agent-execution-store.ts');
+		const executionStore = createNodeAgentExecutionStore();
+		const provider = createProvider();
+		const toolCallId = `tool:journal-order-${crypto.randomUUID()}`;
+		provider.setResponses([
+			fauxAssistantMessage(fauxToolCall('lookup', { q: 'x' }, { id: toolCallId }), {
+				stopReason: 'toolUse',
+			}),
+			fauxAssistantMessage('Done.'),
+		]);
+		const lookup = defineTool({
+			name: 'lookup',
+			description: 'Look up.',
+			parameters: Type.Object({ q: Type.String() }),
+			execute: async () => 'found it',
+		});
+		const events: Array<
+			| { type: 'save'; data: import('../src/types.ts').SessionData }
+			| { type: 'phase'; phase: string }
+		> = [];
+		const originalSave = executionStore.sessions.save.bind(executionStore.sessions);
+		executionStore.sessions.save = async (id, data) => {
+			events.push({ type: 'save', data });
+			return originalSave(id, data);
+		};
+		const dispatchInput: DispatchInput = {
+			dispatchId: 'dispatch:journal-order',
+			agent: 'moderator',
+			id: 'guild:journal-order',
+			session: 'case:journal-order',
+			input: { type: 'flagged' },
+			acceptedAt: '2026-06-01T00:00:00.000Z',
+		};
+		const processor = createAgentDispatchProcessor({
+			agents: {
+				moderator: createAgent(() => ({
+					model: `${provider.getModel().provider}/${provider.getModel().id}`,
+					tools: [lookup],
+				})),
+			},
+			submissions: executionStore.submissions,
+			createContext: (id, runId, payload, req, initialEventIndex, dispatchId) =>
+				createFlueContext({
+					id, runId, dispatchId, payload, env: {}, req, initialEventIndex,
+					agentConfig: { systemPrompt: '', skills: {}, subagents: {}, model: undefined, resolveModel: () => provider.getModel() },
+					createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
+					defaultStore: executionStore.sessions,
+					submissionStore: executionStore.submissions,
+				}),
+		});
+		const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(executionStore.submissions);
+		executionStore.submissions.updateTurnJournalPhase = (attempt, phase, options) => {
+			events.push({ type: 'phase', phase });
+			return originalUpdate(attempt, phase, options);
+		};
+
+		await processor.process(dispatchInput);
+
+		const toolRequestIndex = events.findIndex(
+			(event) => event.type === 'phase' && event.phase === 'tool_request_recorded',
+		);
+		expect(toolRequestIndex).toBeGreaterThan(0);
+		const precedingSave = events
+			.slice(0, toolRequestIndex)
+			.reverse()
+			.find((event): event is { type: 'save'; data: import('../src/types.ts').SessionData } => event.type === 'save');
+		expect(precedingSave?.data.entries.some((entry) =>
+			entry.type === 'message' &&
+			entry.message.role === 'assistant' &&
+			entry.message.content.some((content) => content.type === 'toolCall' && content.id === toolCallId),
+		)).toBe(true);
+	});
+
 	it('records journal phase transitions through tool_request_recorded during a tool-use turn', async () => {
 		const { createNodeAgentExecutionStore } = await import('../src/node/agent-execution-store.ts');
 		const executionStore = createNodeAgentExecutionStore();
