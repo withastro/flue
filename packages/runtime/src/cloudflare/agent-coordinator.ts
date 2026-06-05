@@ -19,8 +19,11 @@ import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import { createSqlAgentExecutionStore } from './agent-execution-store.ts';
 import {
 	type CloudflareWebSocketConnection,
+	closeFlueSocket,
 	connectCloudflareAgentWebSocket,
+	isFlueSocket,
 	messageCloudflareAgentWebSocket,
+	socketRequestUrl,
 } from './websocket.ts';
 
 export const CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH = '/__flue/internal/dispatch';
@@ -240,7 +243,7 @@ class CloudflareAgentCoordinator {
 		message: string | ArrayBuffer | ArrayBufferView,
 		inherited: () => Promise<unknown> | unknown,
 	): Promise<unknown> {
-		if (!isFlueAgentSocket(connection, this.agentName)) return inherited();
+		if (!isFlueSocket(connection, 'agent', this.agentName)) return inherited();
 		await this.instance.__unsafe_ensureInitialized();
 		const handler = this.options.websocketAgentHandlers[this.agentName];
 		if (!handler) return;
@@ -262,16 +265,16 @@ class CloudflareAgentCoordinator {
 		reason: string,
 		inherited: () => Promise<unknown> | unknown,
 	): Promise<unknown> | unknown {
-		if (!isFlueAgentSocket(connection, this.agentName)) return inherited();
-		return closeSocket(connection, code, reason);
+		if (!isFlueSocket(connection, 'agent', this.agentName)) return inherited();
+		return closeFlueSocket(connection, code, reason);
 	}
 
 	webSocketError(
 		connection: CloudflareWebSocketConnection,
 		inherited: () => Promise<unknown> | unknown,
 	): Promise<unknown> | unknown {
-		if (!isFlueAgentSocket(connection, this.agentName)) return inherited();
-		return closeSocket(connection, 1011, 'WebSocket error');
+		if (!isFlueSocket(connection, 'agent', this.agentName)) return inherited();
+		return closeFlueSocket(connection, 1011, 'WebSocket error');
 	}
 
 	async onFiberRecovered(
@@ -667,28 +670,7 @@ function isWebSocketUpgrade(request: Request): boolean {
 	return request.method === 'GET' && request.headers.get('upgrade')?.toLowerCase() === 'websocket';
 }
 
-function isFlueAgentSocket(connection: CloudflareWebSocketConnection, agentName: string): boolean {
-	const attachment = connection.deserializeAttachment?.();
-	return attachment?.version === 1 && attachment.target === 'agent' && attachment.name === agentName;
-}
-
-function closeSocket(connection: CloudflareWebSocketConnection, code: number, reason: string): void {
-	if (code === 1005 || code === 1006 || code === 1015) return;
-	try {
-		connection.close(code, reason);
-	} catch {
-		return;
-	}
-}
-
 function socketRequest(connection: CloudflareWebSocketConnection): Request {
 	const attachment = connection.deserializeAttachment?.();
 	return new Request(attachment?.requestUrl || 'https://flue.invalid/');
-}
-
-function socketRequestUrl(request: Request): string {
-	const url = new URL(request.url);
-	url.search = '';
-	url.hash = '';
-	return url.toString();
 }

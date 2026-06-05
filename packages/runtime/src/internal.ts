@@ -93,6 +93,7 @@ export {
 	parseAgentWebSocketMessage,
 	parseWorkflowWebSocketMessage,
 } from './runtime/websocket-protocol.ts';
+export { closeFlueSocket, isFlueSocket, socketRequestUrl } from './cloudflare/websocket.ts';
 export { bashFactoryToSessionEnv } from './sandbox.ts';
 export { InMemorySessionStore } from './session.ts';
 export { parseSkillMarkdown } from './skill-frontmatter.ts';

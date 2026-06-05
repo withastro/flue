@@ -196,6 +196,9 @@ import {
   createDefaultFlueApp,
   createDirectAgentHandler,
   hasRegisteredProvider,
+  isFlueSocket,
+  closeFlueSocket,
+  socketRequestUrl,
 } from '@flue/runtime/internal';
 import {
   runWithCloudflareContext,
@@ -501,20 +504,6 @@ function isWebSocketUpgrade(request) {
   return request.method === 'GET' && request.headers.get('upgrade')?.toLowerCase() === 'websocket';
 }
 
-function isFlueSocket(socket, target, name) {
-  const attachment = socket.deserializeAttachment?.();
-  return attachment?.version === 1 && attachment.target === target && attachment.name === name;
-}
-
-function closeFlueSocket(socket, code, reason) {
-  if (code === 1005 || code === 1006 || code === 1015) return;
-  try {
-    socket.close(code, reason);
-  } catch {
-    return;
-  }
-}
-
 function acceptWorkflowSocket(request, doInstance, workflowName) {
   const handler = websocketWorkflowHandlers[workflowName];
   if (!handler) return new Response(null, { status: 404 });
@@ -551,12 +540,6 @@ function socketRequest(connection) {
   return new Request(attachment?.requestUrl || 'https://flue.invalid/');
 }
 
-function socketRequestUrl(request) {
-  const url = new URL(request.url);
-  url.search = '';
-  url.hash = '';
-  return url.toString();
-}
 
 function workflowRuntimeIdentity(workflowName) {
   return workflowIdentities[workflowName];

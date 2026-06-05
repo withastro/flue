@@ -39,6 +39,38 @@ export interface CloudflareWebSocketConnection {
 	close(code?: number, reason?: string): void;
 }
 
+/** Check whether a WebSocket connection belongs to a Flue-managed target. */
+export function isFlueSocket(
+	connection: CloudflareWebSocketConnection,
+	target: string,
+	name: string,
+): boolean {
+	const attachment = connection.deserializeAttachment?.();
+	return attachment?.version === 1 && attachment.target === target && attachment.name === name;
+}
+
+/** Close a WebSocket connection, ignoring protocol-reserved close codes. */
+export function closeFlueSocket(
+	connection: CloudflareWebSocketConnection,
+	code: number,
+	reason: string,
+): void {
+	if (code === 1005 || code === 1006 || code === 1015) return;
+	try {
+		connection.close(code, reason);
+	} catch {
+		return;
+	}
+}
+
+/** Strip search/hash from a request URL for WebSocket attachment storage. */
+export function socketRequestUrl(request: Request): string {
+	const url = new URL(request.url);
+	url.search = '';
+	url.hash = '';
+	return url.toString();
+}
+
 interface CloudflareAttachedOptions {
 	request: Request;
 	createContext: CreateContextFn;

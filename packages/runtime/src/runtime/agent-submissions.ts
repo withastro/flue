@@ -412,7 +412,7 @@ export async function reconcileInterruptedSubmission(
 
 /** Synthetic dispatch request for reconciliation and Node dispatch contexts. */
 export function submissionDispatchRequest(): Request {
-	return new Request('http://flue.local/_dispatch', { method: 'POST' });
+	return new Request('https://flue.invalid/_dispatch', { method: 'POST' });
 }
 
 async function failInterruptedSubmission(

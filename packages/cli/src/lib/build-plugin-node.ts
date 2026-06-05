@@ -222,7 +222,7 @@ function sendLocalMessage(message, done) {
 }
 
 function localRequest() {
-  return new Request('http://flue.local/_cli', { method: 'POST' });
+  return new Request('https://flue.invalid/_cli', { method: 'POST' });
 }
 
 function localErrorMessage(reason, requestId) {
