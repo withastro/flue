@@ -43,7 +43,6 @@ export const docsSections: DocsSection[] = [
 					{ title: 'Project Layout', slug: 'guide/project-layout' },
 					{ title: 'Models & Providers', slug: 'guide/models' },
 					{ title: 'Agents', slug: 'guide/building-agents' },
-					{ title: 'Message-Driven Agents', slug: 'guide/message-driven-agents' },
 					{ title: 'Workflows', slug: 'guide/workflows' },
 					{ title: 'Skills', slug: 'guide/skills' },
 					{ title: 'Tools', slug: 'guide/tools' },
@@ -53,6 +52,13 @@ export const docsSections: DocsSection[] = [
 					{ title: 'Develop & Build', slug: 'guide/develop-and-build' },
 					{ title: 'Chat', slug: 'guide/chat' },
 					{ title: 'Observability', slug: 'guide/observability' },
+				],
+			},
+			{
+				title: 'Targets',
+				items: [
+					{ title: 'Node.js', slug: 'guide/targets/node' },
+					{ title: 'Cloudflare', slug: 'guide/targets/cloudflare' },
 				],
 			},
 		],
