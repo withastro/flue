@@ -1,0 +1,35 @@
+{
+	"name": "@flue/lmdb",
+	"version": "0.0.0",
+	"private": true,
+	"type": "module",
+	"license": "Apache-2.0",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.mts",
+			"import": "./dist/index.mjs"
+		}
+	},
+	"main": "./dist/index.mjs",
+	"types": "./dist/index.d.mts",
+	"files": [
+		"dist"
+	],
+	"engines": {
+		"node": ">=22.18.0"
+	},
+	"scripts": {
+		"build": "tsdown",
+		"check:types": "tsc --noEmit",
+		"test": "vitest run"
+	},
+	"dependencies": {
+		"@flue/runtime": "workspace:*",
+		"lmdb": "^3.5.5"
+	},
+	"devDependencies": {
+		"tsdown": "^0.22.0",
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.6"
+	}
+}
