@@ -19,6 +19,7 @@
 - **Cloudflare: Preserve workflow-run history parity.** Cloudflare workflow storage now ignores events for unknown runs, resets same-ID event history when a run is initialized, preserves absent optional fields separately from explicit `null`, and retains explicit terminal `null` results during recovery.
 - **Harden persisted workflow-event identity.** Workflow history now treats `(runId, eventIndex)` as one immutable append-only event identity and SSE resume cursor across Node and Cloudflare. Malformed or duplicate persisted events fail instead of producing ambiguous history, and pre-event stream failures no longer fabricate cursor `0`.
 - **Cloudflare: Own Durable Object routing.** Flue now resolves generated agent and workflow bindings explicitly instead of deriving public routes from the Agents SDK environment scanner, then forwards requests through the Agents SDK custom-routing helper. Public routes remain independent from generated Durable Object identities.
+- **Cloudflare: Extend generated workflow Durable Objects.** Workflow modules may now export `cloudflare = extend({ base, wrap })` from `@flue/runtime/cloudflare` to add native Agents SDK lifecycle hooks beneath Flue-owned routing or wrap the final generated workflow Durable Object class with integrations such as Sentry.
 
 ## 0.9.2 - 2026-06-03
 

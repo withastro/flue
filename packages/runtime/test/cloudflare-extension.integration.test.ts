@@ -10,7 +10,7 @@ import {
 	createCloudflareViteConfig,
 } from '../../cli/src/lib/build.ts';
 
-describe('Cloudflare agent extension', () => {
+describe('Cloudflare extensions', () => {
 	it('runs inherited scheduled callbacks when an agent module extends its base class', async () => {
 		const root = await createGeneratedFixture();
 		let server: Awaited<ReturnType<typeof startServer>> | undefined;
@@ -64,13 +64,31 @@ describe('Cloudflare agent extension', () => {
 			fs.rmSync(root, { recursive: true, force: true });
 		}
 	}, 90000);
+
+	it('wraps the final generated workflow class without bypassing Flue-owned request handling', async () => {
+		const root = await createGeneratedFixture(defaultAgentSource, '', defaultWorkflowSource);
+		let server: Awaited<ReturnType<typeof startServer>> | undefined;
+		try {
+			server = await startServer(root);
+			const response = await fetch(new URL('/workflows/reviewer', server.url), {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({}),
+			});
+			expect(response.status).toBe(202);
+		} finally {
+			await server?.close();
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	}, 90000);
 });
 
 async function createGeneratedFixture(
 	agentSource = defaultAgentSource,
 	mount = '',
+	workflowSource?: string,
 ): Promise<string> {
-	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'flue-cloudflare-agent-extension-'));
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'flue-cloudflare-extension-'));
 	const output = path.join(root, 'generated');
 	fs.mkdirSync(path.join(root, 'node_modules', '@earendil-works'), { recursive: true });
 	fs.mkdirSync(path.join(root, 'node_modules', '@flue'), { recursive: true });
@@ -86,16 +104,29 @@ async function createGeneratedFixture(
 		'dir',
 	);
 	fs.mkdirSync(path.join(root, 'src', 'agents'), { recursive: true });
+	if (workflowSource) fs.mkdirSync(path.join(root, 'src', 'workflows'), { recursive: true });
 	fs.writeFileSync(
 		path.join(root, 'wrangler.jsonc'),
 		JSON.stringify({
-			name: 'cloudflare-agent-extension',
+			name: 'cloudflare-extension',
 			compatibility_date: '2026-04-01',
 			compatibility_flags: ['nodejs_compat'],
-			migrations: [{ tag: 'v1', new_sqlite_classes: ['FlueAssistantAgent', 'FlueRegistry'] }],
+			migrations: [
+				{
+					tag: 'v1',
+					new_sqlite_classes: [
+						'FlueAssistantAgent',
+						...(workflowSource ? ['FlueReviewerWorkflow'] : []),
+						'FlueRegistry',
+					],
+				},
+			],
 		}),
 	);
 	fs.writeFileSync(path.join(root, 'src', 'agents', 'assistant.ts'), agentSource);
+	if (workflowSource) {
+		fs.writeFileSync(path.join(root, 'src', 'workflows', 'reviewer.ts'), workflowSource);
+	}
 	fs.writeFileSync(
 		path.join(root, 'src', 'app.ts'),
 		`import { Hono } from 'hono';\nimport { getAgentByName } from 'agents';\nimport { flue } from '@flue/runtime/routing';\nlet started = false;\nconst app = new Hono();\napp.route('${mount}', flue());\napp.get('${mount}/heartbeat', async (c) => {\n  const agent = await getAgentByName(c.env.FLUE_ASSISTANT_AGENT, 'scheduled');\n  if (!started) { await agent.startHeartbeat(); started = true; }\n  return c.json({ count: await agent.getHeartbeatCount() });\n});\nexport default app;\n`,
@@ -168,6 +199,24 @@ export const cloudflare = extend({
       for (const method of ['onRequest', 'fetch', 'webSocketMessage', 'webSocketClose', 'webSocketError', 'onFiberRecovered']) {
         if (!Object.prototype.hasOwnProperty.call(target.prototype, method)) {
           throw new Error('wrapper did not receive generated Flue class');
+        }
+      }
+      return new target(...args);
+    },
+  }),
+});
+`;
+
+const defaultWorkflowSource = `import { extend } from '@flue/runtime/cloudflare';
+export async function run() { return { ok: true }; }
+export const route = async (_c, next) => next();
+export const cloudflare = extend({
+  wrap: (Final) => new Proxy(Final, {
+    construct(target, args) {
+      if (target.name !== 'FlueReviewerWorkflow') throw new Error('wrapper did not receive stable workflow class identity');
+      for (const method of ['onRequest', 'fetch', 'webSocketMessage', 'webSocketClose', 'webSocketError', 'onFiberRecovered']) {
+        if (!Object.prototype.hasOwnProperty.call(target.prototype, method)) {
+          throw new Error('wrapper did not receive generated Flue workflow class');
         }
       }
       return new target(...args);

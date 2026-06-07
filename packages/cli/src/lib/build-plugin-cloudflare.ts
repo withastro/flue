@@ -49,7 +49,7 @@ export class CloudflarePlugin implements BuildPlugin {
 				(
 					agent,
 					index,
-				) => `const agentExtension${index} = resolveCloudflareAgentExtension(agentModules[${JSON.stringify(agent.name)}], ${JSON.stringify(agent.name)});
+				) => `const agentExtension${index} = resolveCloudflareExtension(agentModules[${JSON.stringify(agent.name)}], ${JSON.stringify(agent.name)}, 'Agent');
 const ${agentClassName(agent.name)} = class ${agentClassName(agent.name)} extends agentExtension${index}.base(Agent) {
   async onRequest(request) {
     return dispatchAgent(request, this, ${JSON.stringify(agent.name)}, directHandlers[${JSON.stringify(agent.name)}]);
@@ -100,7 +100,11 @@ export { Wrapped${agentClassName(agent.name)} as ${agentClassName(agent.name)} }
 
 		const workflowClasses = workflows
 			.map(
-				(workflow) => `class ${workflowClassName(workflow.name)} extends Agent {
+				(
+					workflow,
+					index,
+				) => `const workflowExtension${index} = resolveCloudflareExtension(workflowModules[${JSON.stringify(workflow.name)}], ${JSON.stringify(workflow.name)}, 'Workflow');
+const ${workflowClassName(workflow.name)} = class ${workflowClassName(workflow.name)} extends workflowExtension${index}.base(Agent) {
   async onRequest(request) {
     return dispatchWorkflow(request, this, ${JSON.stringify(workflow.name)});
   }
@@ -140,7 +144,8 @@ export { Wrapped${agentClassName(agent.name)} as ${agentClassName(agent.name)} }
     }
   }
 };
-export { ${workflowClassName(workflow.name)} };`,
+const Wrapped${workflowClassName(workflow.name)} = workflowExtension${index}.wrap(${workflowClassName(workflow.name)});
+export { Wrapped${workflowClassName(workflow.name)} as ${workflowClassName(workflow.name)} };`,
 			)
 			.join('\n\n');
 
@@ -213,7 +218,7 @@ import {
   connectCloudflareWorkflowWebSocket,
   messageCloudflareAgentWebSocket,
   messageCloudflareWorkflowWebSocket,
-  resolveCloudflareAgentExtension,
+  resolveCloudflareExtension,
 } from '@flue/runtime/cloudflare';
 import { registerApiProvider, registerProvider } from '@flue/runtime';
 
