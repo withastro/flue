@@ -77,7 +77,7 @@ The sandbox controls workspace and command access. It does not determine whether
 
 | Decision                                                            | Controlled by                                                            |
 | ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Conversation history available in a later session interaction       | Session persistence configuration, including `persist` where configured. |
+| Conversation history available in a later session interaction       | Session persistence via `db.ts` adapter or the target default.           |
 | Files, installed packages, and generated artifacts available later  | The sandbox or workspace lifecycle you choose.                           |
 | Access to repositories, APIs, credentials, and network destinations | The sandbox environment, tools, and application authorization policy.    |
 

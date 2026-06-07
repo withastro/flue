@@ -547,20 +547,20 @@ export class Session implements FlueSession {
 					if (event.message.role === 'user') await this.checkpointHarnessMessages();
 					this.emit({ type: 'message_end', message: event.message });
 					break;
-			case 'tool_execution_start':
-				this.toolStartTimes.set(event.toolCallId, Date.now());
-				this.emit({
-					type: 'tool_start',
+				case 'tool_execution_start':
+					this.toolStartTimes.set(event.toolCallId, Date.now());
+					this.emit({
+						type: 'tool_start',
 						toolName: event.toolName,
 						toolCallId: event.toolCallId,
 						args: event.args,
 					});
 					break;
-			case 'tool_execution_update':
-				break;
-			case 'tool_execution_end':
-				this.emit({
-					type: 'tool_call',
+				case 'tool_execution_update':
+					break;
+				case 'tool_execution_end':
+					this.emit({
+						type: 'tool_call',
 						toolName: event.toolName,
 						toolCallId: event.toolCallId,
 						isError: event.isError,
@@ -1691,6 +1691,10 @@ export class Session implements FlueSession {
 
 		while (true) {
 			if (options.signal.aborted) throw abortErrorFor(options.signal);
+			// Cooperative timeout: checked between turns, not during provider calls.
+			// A hung provider or long tool execution can exceed the deadline. That case
+			// is covered by DO eviction + the attempt budget (Capability K), not this check.
+			// Preemptive in-turn watchdog is deferred to Capability L.
 			if (this.activeTimeoutAt !== undefined && Date.now() >= this.activeTimeoutAt) {
 				throw new Error('[flue] Submission exceeded configured timeout.');
 			}
@@ -1699,10 +1703,10 @@ export class Session implements FlueSession {
 				await start();
 				await this.harness.waitForIdle();
 				await this.checkpointHarnessMessages();
-		} catch (error) {
-			await this.activeStreamChunkWriter?.flush();
-			this.rebuildHarnessContext();
-			throw error;
+			} catch (error) {
+				await this.activeStreamChunkWriter?.flush();
+				this.rebuildHarnessContext();
+				throw error;
 			} finally {
 				this.activeCheckpointSource = undefined;
 			}

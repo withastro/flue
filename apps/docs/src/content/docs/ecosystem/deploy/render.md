@@ -135,9 +135,9 @@ A successful response means the new env values reached the running service and F
 
 ## 5. Add session persistence
 
-In-memory sessions disappear on every deploy or restart, and they don't help once you scale beyond one instance. If your agents need conversations that survive that, back them with a Render data store by implementing a Flue `SessionStore`. The Node guide's [Session persistence](/docs/ecosystem/deploy/node/#session-persistence) section covers the `SessionStore` interface (`save`, `load`, `delete`) and how to return it from `createAgent(...)` via `persist`.
+In-memory sessions disappear on every deploy or restart, and they don't help once you scale beyond one instance. If your agents need conversations that survive that, back them with a Render data store using a `PersistenceAdapter`. The Node guide's [Session persistence](/docs/ecosystem/deploy/node/#session-persistence) section covers the `db.ts` file and available adapters.
 
-> **Starting fresh and want persistence built in?** Deploy the [Flue + Postgres template](https://render.com/templates/flue-with-postgresql) instead of the base template. It ships everything in this section preconfigured: a Render Postgres database wired into the web service via `DATABASE_URL`, a Postgres-backed `SessionStore` at `.flue/session-store.ts`, and the assistant agent already returning `persist` from `createAgent(...)`. The walkthrough below is for adding the same setup to a service you've already deployed from the base template.
+> **Starting fresh and want persistence built in?** Deploy the [Flue + Postgres template](https://render.com/templates/flue-with-postgresql) instead of the base template. It ships everything in this section preconfigured: a Render Postgres database wired into the web service via `DATABASE_URL` and a `db.ts` using `@flue/postgres`. The walkthrough below is for adding the same setup to a service you've already deployed from the base template.
 
 Render Postgres is the best default for durable session history. Extend the template's `render.yaml` with a database and wire `DATABASE_URL` into the web service:
 
@@ -163,78 +163,21 @@ services:
         sync: false
 ```
 
-Add the Postgres client and wire up a `SessionStore` that reads `DATABASE_URL`:
+Install the `@flue/postgres` adapter:
 
 ```bash
-npm install pg
-npm install -D @types/pg
+npm install @flue/postgres
 ```
 
-`.flue/session-store.ts`:
+Create a `db.ts` that reads `DATABASE_URL`:
 
-```typescript
-import type { SessionStore, SessionData } from '@flue/runtime';
-import { Pool } from 'pg';
+```typescript title=".flue/db.ts"
+import { postgres } from '@flue/postgres';
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-let ready: Promise<void> | null = null;
-async function ensureTable() {
-  if (!ready) {
-    ready = pool
-      .query(
-        `CREATE TABLE IF NOT EXISTS flue_sessions (
-           id         text PRIMARY KEY,
-           data       jsonb NOT NULL,
-           updated_at timestamptz NOT NULL DEFAULT now()
-         )`,
-      )
-      .then(() => undefined);
-    // Reset on failure so the next call can retry instead of replaying
-    // the original rejection forever.
-    ready.catch(() => {
-      ready = null;
-    });
-  }
-  await ready;
-}
-
-export const sessionStore: SessionStore = {
-  async save(id, data) {
-    await ensureTable();
-    await pool.query(
-      `INSERT INTO flue_sessions (id, data, updated_at)
-       VALUES ($1, $2::jsonb, now())
-       ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
-      [id, JSON.stringify(data)],
-    );
-  },
-  async load(id) {
-    await ensureTable();
-    const { rows } = await pool.query<{ data: SessionData }>(
-      `SELECT data FROM flue_sessions WHERE id = $1`,
-      [id],
-    );
-    return rows[0]?.data ?? null;
-  },
-  async delete(id) {
-    await ensureTable();
-    await pool.query(`DELETE FROM flue_sessions WHERE id = $1`, [id]);
-  },
-};
+export default postgres(process.env.DATABASE_URL);
 ```
 
-Pass the store from the `assistant` agent's runtime initializer:
-
-```typescript
-import { createAgent } from '@flue/runtime';
-import { sessionStore } from '../session-store';
-
-export default createAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  persist: sessionStore,
-}));
-```
+Flue discovers `db.ts` at build time and wires it into the generated server entry. The adapter handles schema creation, session snapshots, and durable submission state automatically.
 
 The `connectionString` from `fromDatabase` is Render's internal Postgres URL, which doesn't require SSL. If you ever swap to the external connection string, add `ssl: { rejectUnauthorized: false }` to the `Pool` config.
 

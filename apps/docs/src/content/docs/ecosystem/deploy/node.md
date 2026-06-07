@@ -263,37 +263,23 @@ Start with the local or virtual sandbox. Move to a remote sandbox when you need 
 
 On Node.js, session state is stored in memory by default — sessions persist for the lifetime of the process but are lost on restart. This is fine for development and stateless workloads.
 
-For durable sessions, return a custom store via the `persist` option from `createAgent(...)`. A store implements three methods — `save()`, `load()`, and `delete()` — each operating on a session ID and a complete `SessionData` record, including message history, metadata, compaction state, and provider affinity:
+For durable sessions, create a `src/db.ts` (or `.flue/db.ts`) file that default-exports a `PersistenceAdapter`. Flue discovers it at build time and wires it into the generated server entry. The adapter provides both a `SessionStore` for conversation snapshots and an `AgentSubmissionStore` for durable submissions:
 
-```typescript
-import { createAgent, type FlueContext, type SessionStore, type SessionData } from '@flue/runtime';
-import { local } from '@flue/runtime/node';
+```typescript title="src/db.ts"
+import { sqlite } from '@flue/runtime/node';
 
-// Example: a simple file-backed store. In production, use a database.
-const store: SessionStore = {
-  async save(id: string, data: SessionData) {
-    /* write to DB */
-  },
-  async load(id: string) {
-    /* read from DB, return null if not found */
-  },
-  async delete(id: string) {
-    /* delete from DB */
-  },
-};
-
-const assistant = createAgent(() => ({
-  sandbox: local(),
-  persist: store,
-  model: 'anthropic/claude-sonnet-4-6',
-}));
-
-export async function run({ init, payload }: FlueContext) {
-  const harness = await init(assistant);
-  const session = await harness.session();
-  // ...
-}
+export default sqlite('./data/flue.db');
 ```
+
+For Postgres, use the `@flue/postgres` adapter:
+
+```typescript title="src/db.ts"
+import { postgres } from '@flue/postgres';
+
+export default postgres(process.env.DATABASE_URL);
+```
+
+See the [Data Persistence API](/docs/api/data-persistence-api/) for the `SessionStore` interface and details on implementing a custom adapter.
 
 You can back this with any database: SQLite, Postgres, Redis, etc.
 

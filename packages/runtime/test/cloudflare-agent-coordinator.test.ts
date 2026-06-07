@@ -13,6 +13,13 @@ afterEach(() => {
 	vi.restoreAllMocks();
 });
 
+function queryExpectsRows(query: string): boolean {
+	const trimmed = query.trimStart().toUpperCase();
+	if (trimmed.startsWith('SELECT') || trimmed.startsWith('WITH')) return true;
+	if (/\bRETURNING\b/i.test(query)) return true;
+	return false;
+}
+
 function makeFakeSql(events: string[] = []) {
 	const db = new DatabaseSync(':memory:');
 	db.exec('CREATE TABLE cf_agents_runs (name TEXT NOT NULL, snapshot TEXT, created_at INTEGER NOT NULL)');
@@ -26,9 +33,9 @@ function makeFakeSql(events: string[] = []) {
 					if (query.includes("SET status = 'settled', settled_at")) events.push('settle');
 					const stmt = db.prepare(query);
 					let rows: unknown[];
-					try {
+					if (queryExpectsRows(query)) {
 						rows = stmt.all(...(bindings as never[]));
-					} catch {
+					} else {
 						stmt.run(...(bindings as never[]));
 						rows = [];
 					}

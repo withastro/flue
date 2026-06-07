@@ -317,6 +317,7 @@ function messageBytes(message: string): number {
 	return new TextEncoder().encode(message).byteLength;
 }
 
+/** Strip search/hash from a URL string. Equivalent to socketRequestUrl but takes a string. */
 function operationRequestUrl(requestUrl: string): string {
 	const url = new URL(requestUrl);
 	url.search = '';

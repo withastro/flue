@@ -4,7 +4,6 @@ allowBuilds:
   '@mongodb-js/zstd': false
   core-js-pure: false
   esbuild: false
-  lmdb: true
   msgpackr-extract: true
   node-liblzma: false
   protobufjs: false

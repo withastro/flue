@@ -2,8 +2,8 @@
  * Shared helpers for persistence adapter implementations.
  *
  * These pure functions are consumed by the built-in SQLite adapter, the
- * Postgres adapter (`@flue/postgres`), the LMDB adapter (`@flue/lmdb`),
- * and any future community adapters via `@flue/runtime/internal`.
+ * Postgres adapter (`@flue/postgres`), and any future community adapters
+ * via `@flue/runtime/adapter`.
  *
  * All functions operate on plain values — no database driver types.
  */

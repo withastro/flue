@@ -46,7 +46,7 @@ function createNodeSqlStorage(db: DatabaseSync): SqlStorage {
 /** Check whether a SQL query is expected to return result rows. */
 function queryExpectsRows(query: string): boolean {
 	const trimmed = query.trimStart().toUpperCase();
-	if (trimmed.startsWith('SELECT')) return true;
+	if (trimmed.startsWith('SELECT') || trimmed.startsWith('WITH')) return true;
 	if (/\bRETURNING\b/i.test(query)) return true;
 	return false;
 }

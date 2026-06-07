@@ -420,6 +420,28 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				sessionKey,
 				startedAt,
 			);
+			// Clean up orphaned stream chunks for journals belonging to deleted submissions.
+			this.sql.exec(
+				`DELETE FROM flue_agent_stream_chunks
+				 WHERE stream_key IN (
+				   SELECT j.stream_key FROM flue_agent_turn_journals j
+				   INNER JOIN flue_agent_submissions s ON j.submission_id = s.submission_id
+				   WHERE s.session_key = ? AND s.status = 'settled' AND s.accepted_at <= ?
+				     AND j.stream_key IS NOT NULL
+				 )`,
+				sessionKey,
+				startedAt,
+			);
+			// Clean up orphaned turn journals for deleted submissions.
+			this.sql.exec(
+				`DELETE FROM flue_agent_turn_journals
+				 WHERE submission_id IN (
+				   SELECT submission_id FROM flue_agent_submissions
+				   WHERE session_key = ? AND status = 'settled' AND accepted_at <= ?
+				 )`,
+				sessionKey,
+				startedAt,
+			);
 			this.sql.exec(
 				`DELETE FROM flue_agent_submissions
 				 WHERE session_key = ? AND status = 'settled' AND accepted_at <= ?`,
@@ -576,6 +598,7 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				submissions.push(parseSubmission(row));
 			} catch (error) {
 				if (typeof row.sequence !== 'number') throw error;
+				console.error('[flue] Terminating malformed submission (sequence %d):', row.sequence, error);
 				this.failSubmissionSequence(row.sequence, status, error);
 			}
 		}

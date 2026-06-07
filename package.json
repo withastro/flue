@@ -12,7 +12,7 @@
 		"dev": "turbo dev",
 		"build": "turbo build",
 		"test": "turbo test",
-		"test:integration": "pnpm --dir packages/runtime run test:integration:cloudflare && pnpm --dir packages/runtime run test:integration:release",
+		"test:integration": "pnpm --dir packages/runtime run test:integration:cloudflare",
 		"check": "turbo run build check:lint check:types test",
 		"check:lint": "biome lint . && knip",
 		"check:knip": "knip",

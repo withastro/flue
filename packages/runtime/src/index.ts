@@ -19,7 +19,6 @@ export {
 export { createSandboxSessionEnv, type SandboxApi } from './sandbox.ts';
 export { defineTool } from './tool.ts';
 export type {
-	AgentConfig,
 	AgentCreateContext,
 	AgentDispatchRequest,
 	DurabilityConfig,
@@ -37,11 +36,11 @@ export type {
 	CallHandle,
 	CompactionConfig,
 	CreatedAgent,
-	DirectAgentPayload,
 	DispatchReceipt,
 	FileStat,
 	FlueContext,
 	FlueEvent,
+	FlueEventCallback,
 	FlueFs,
 	FlueHarness,
 	FlueLogger,

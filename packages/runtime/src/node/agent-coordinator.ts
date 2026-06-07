@@ -13,7 +13,7 @@ import {
 	reconcileInterruptedSubmission,
 	submissionDispatchRequest,
 } from '../runtime/agent-submissions.ts';
-import type { CreateContextFn } from '../runtime/handle-agent.ts';
+import { type CreateContextFn, assertAgentDispatchAdmissionInput } from '../runtime/handle-agent.ts';
 import type { DispatchInput, DispatchQueue } from '../runtime/dispatch-queue.ts';
 
 export interface NodeAgentCoordinator {
@@ -62,6 +62,7 @@ export function createNodeAgentCoordinator(options: {
 	async function processSubmission(submission: AgentSubmission): Promise<void> {
 		const { input } = submission;
 		if (!submission.attemptId) return;
+		if (input.kind === 'dispatch') assertAgentDispatchAdmissionInput(input);
 		const attempt: SubmissionAttemptRef = {
 			submissionId: submission.submissionId,
 			attemptId: submission.attemptId,

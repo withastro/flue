@@ -8,21 +8,13 @@
 			"types": "./types/index.d.ts",
 			"import": "./dist/index.mjs"
 		},
-		"./app": {
-			"types": "./dist/app.d.mts",
-			"import": "./dist/app.mjs"
+		"./adapter": {
+			"types": "./dist/adapter.d.mts",
+			"import": "./dist/adapter.mjs"
 		},
 		"./routing": {
 			"types": "./dist/routing.d.mts",
 			"import": "./dist/routing.mjs"
-		},
-		"./client": {
-			"types": "./dist/client-compat.d.mts",
-			"import": "./dist/client-compat.mjs"
-		},
-		"./sandbox": {
-			"types": "./dist/sandbox-compat.d.mts",
-			"import": "./dist/sandbox-compat.mjs"
 		},
 		"./internal": {
 			"types": "./dist/internal.d.mts",
@@ -45,8 +37,7 @@
 	"types": "./types/index.d.ts",
 	"files": [
 		"dist",
-		"types",
-		"src/test-utils"
+		"types"
 	],
 	"engines": {
 		"node": ">=22.18.0"

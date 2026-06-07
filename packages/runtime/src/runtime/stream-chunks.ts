@@ -25,8 +25,9 @@ export class StreamChunkWriter {
 		if (!this.timer) {
 			this.timer = setTimeout(() => {
 				this.timer = undefined;
-				void this.flush().catch(() => {
+				void this.flush().catch((err) => {
 					this.failed = true;
+					console.warn('[flue:stream-chunks] Throttled flush failed:', err);
 				});
 			}, STREAM_FLUSH_INTERVAL_MS);
 		}
@@ -57,11 +58,13 @@ export class StreamChunkWriter {
 		} finally {
 			this.flushing = undefined;
 		}
-		if (this.pending.length > 0 && !this.timer && !this.failed) {
+		// Only re-schedule if the writer is still active (not closed).
+		if (this.active && this.pending.length > 0 && !this.timer && !this.failed) {
 			this.timer = setTimeout(() => {
 				this.timer = undefined;
-				void this.flush().catch(() => {
+				void this.flush().catch((err) => {
 					this.failed = true;
+					console.warn('[flue:stream-chunks] Throttled flush failed:', err);
 				});
 			}, STREAM_FLUSH_INTERVAL_MS);
 		}
@@ -121,6 +124,12 @@ export function reconstructInterruptedStream(
 		}
 	}
 	if (sawToolCall || !partial) return null;
+	// Reconstructed blocks intentionally omit provider signature metadata
+	// (textSignature, thinkingSignature) because stream deltas don't carry them.
+	// This is safe: recovered content is rendered as signal messages (XML) for the
+	// model, not sent back as provider-facing assistant blocks. If the architecture
+	// changes to feed recovered content directly to the provider, signatures must
+	// be preserved from the original partial AssistantMessage.
 	const content = blocks.filter((block): block is AssistantMessage['content'][number] => {
 		if (!block) return false;
 		return block.type === 'text' ? block.text.length > 0 : block.type === 'thinking' && block.thinking.length > 0;

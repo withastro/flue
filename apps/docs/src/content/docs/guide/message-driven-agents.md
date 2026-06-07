@@ -182,7 +182,6 @@ export default createAgent(({ id, env }) => ({
   profile: assistant,
   sandbox: getAccountSandbox(env, id),
   cwd: `/accounts/${id}`,
-  persist: getAccountStore(env, id),
 }));
 ```
 
@@ -193,8 +192,9 @@ For persistent agents, initialization is scoped only by stable `id`; message pay
 - `profile`: one reusable `defineAgentProfile(...)` value;
 - inline behavior fields that replace corresponding profile fields;
 - `sandbox`: sandbox or resource attachment;
-- `cwd`: session context root;
-- `persist`: persistence control.
+- `cwd`: session context root.
+
+Session persistence is configured project-wide via `src/db.ts` rather than per-agent. See [Data Persistence API](/docs/api/data-persistence-api/).
 
 Dynamic per-event routing belongs in application ingress logic before calling `dispatch(...)`.
 

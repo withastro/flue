@@ -8,7 +8,6 @@
  * that tests can substitute PGlite without pulling in a real Postgres server.
  */
 
-import type { SessionData, SessionStore } from '@flue/runtime';
 import type {
 	AgentDispatchAdmission,
 	AgentExecutionStore,
@@ -18,10 +17,13 @@ import type {
 	AgentTurnJournalPhase,
 	CreateTurnJournalInput,
 	DirectAgentSubmissionInput,
+	DispatchAgentSubmissionInput,
 	DispatchInput,
 	PersistenceAdapter,
+	SessionData,
+	SessionStore,
 	SubmissionAttemptRef,
-} from '@flue/runtime/internal';
+} from '@flue/runtime/adapter';
 import {
 	createDispatchAgentSubmissionInput,
 	createSessionStorageKey,
@@ -31,8 +33,7 @@ import {
 	isSubmissionPayload,
 	parseAcceptedAt,
 	SUBMISSION_HARNESS_NAME,
-} from '@flue/runtime/internal';
-import type { DispatchAgentSubmissionInput } from '@flue/runtime/internal';
+} from '@flue/runtime/adapter';
 import pgDriver from 'postgres';
 
 // ─── Generic async SQL runner ───────────────────────────────────────────────
@@ -45,6 +46,8 @@ type SqlRow = Record<string, unknown>;
  *
  * Both the `postgres` driver and PGlite implement this shape, allowing the
  * store to be tested against an embedded Postgres instance without a server.
+ *
+ * @internal Not part of the public API. Exported for test access only.
  */
 export interface PgRunner {
 	query(text: string, params?: unknown[]): Promise<SqlRow[]>;
@@ -105,6 +108,8 @@ export function postgres(urlOrOptions?: string | PostgresOptions): PersistenceAd
 /**
  * Create a {@link PersistenceAdapter} from a pre-built {@link PgRunner}.
  * Used internally for testing with PGlite.
+ *
+ * @internal Not part of the public API. Exported for test access only.
  */
 export function postgresFromRunner(runner: PgRunner): PersistenceAdapter {
 	let closed = false;
@@ -512,8 +517,10 @@ class PgSubmissionStore implements AgentSubmissionStore {
 
 		// Postgres does not support `UPDATE ... AS alias` with a self-referencing
 		// NOT EXISTS subquery the way SQLite does. Use a CTE to identify the
-		// candidate, then update by primary key. The RETURNING clause must
-		// qualify column names to avoid ambiguity with the CTE join.
+		// candidate, then update by primary key. The outer WHERE re-checks
+		// status = 'queued' so that a concurrent claim that committed between
+		// the CTE snapshot and the UPDATE cannot double-claim the same row
+		// under READ COMMITTED isolation.
 		const rows = await this.runner.query(
 			`WITH candidate AS (
 			   SELECT s.sequence FROM flue_agent_submissions s
@@ -530,6 +537,7 @@ class PgSubmissionStore implements AgentSubmissionStore {
 			     max_retry = $3, timeout_at = $4
 			 FROM candidate
 			 WHERE flue_agent_submissions.sequence = candidate.sequence
+			   AND flue_agent_submissions.status = 'queued'
 			 RETURNING ${prefixed('flue_agent_submissions')}`,
 			[attempt.attemptId, now, DURABILITY_DEFAULT_MAX_RETRY, timeoutAt, attempt.submissionId],
 		);
@@ -644,8 +652,11 @@ class PgSubmissionStore implements AgentSubmissionStore {
 				}
 			}
 
+			// Lock the deletion marker row (if any) so a concurrent deletion
+			// that has inserted the marker but not yet committed will block
+			// this admission until the deletion transaction completes.
 			const deletingRows = await tx.query(
-				'SELECT 1 FROM flue_agent_session_deletions WHERE session_key = $1 LIMIT 1',
+				'SELECT 1 FROM flue_agent_session_deletions WHERE session_key = $1 FOR UPDATE LIMIT 1',
 				[sessionKey],
 			);
 			if (deletingRows.length > 0) {
@@ -678,11 +689,15 @@ class PgSubmissionStore implements AgentSubmissionStore {
 		deleteSessionTree: () => Promise<void>,
 	): Promise<void> {
 		// Phase 1: check for active submissions and mark deletion.
+		// Lock active submission rows so a concurrent admission that has
+		// inserted a queued row but not yet committed will block this
+		// deletion until the admission transaction completes.
 		const deletionStartedAt = Date.now();
 		await this.runner.transaction(async (tx) => {
 			const active = await tx.query(
 				`SELECT 1 FROM flue_agent_submissions
-				 WHERE session_key = $1 AND status IN ('queued', 'running') LIMIT 1`,
+				 WHERE session_key = $1 AND status IN ('queued', 'running')
+				 FOR UPDATE LIMIT 1`,
 				[sessionKey],
 			);
 			if (active.length > 0) {
@@ -713,6 +728,26 @@ class PgSubmissionStore implements AgentSubmissionStore {
 				 ON CONFLICT (dispatch_id) DO NOTHING`,
 				[sessionKey, deletionStartedAt],
 			);
+			// Clean up orphaned stream chunks for journals belonging to deleted submissions.
+			await tx.query(
+				`DELETE FROM flue_agent_stream_chunks
+				 WHERE stream_key IN (
+				   SELECT j.stream_key FROM flue_agent_turn_journals j
+				   INNER JOIN flue_agent_submissions s ON j.submission_id = s.submission_id
+				   WHERE s.session_key = $1 AND s.status = 'settled' AND s.accepted_at <= $2
+				     AND j.stream_key IS NOT NULL
+				 )`,
+				[sessionKey, deletionStartedAt],
+			);
+			// Clean up orphaned turn journals for deleted submissions.
+			await tx.query(
+				`DELETE FROM flue_agent_turn_journals
+				 WHERE submission_id IN (
+				   SELECT submission_id FROM flue_agent_submissions
+				   WHERE session_key = $1 AND status = 'settled' AND accepted_at <= $2
+				 )`,
+				[sessionKey, deletionStartedAt],
+			);
 			await tx.query(
 				`DELETE FROM flue_agent_submissions
 				 WHERE session_key = $1 AND status = 'settled' AND accepted_at <= $2`,
@@ -733,6 +768,7 @@ class PgSubmissionStore implements AgentSubmissionStore {
 			} catch (error) {
 				const seq = Number(row.sequence);
 				if (!Number.isFinite(seq)) throw error;
+				console.error('[flue] Terminating malformed submission (sequence %d):', seq, error);
 				await this.failSubmissionSequence(seq, status, error);
 			}
 		}

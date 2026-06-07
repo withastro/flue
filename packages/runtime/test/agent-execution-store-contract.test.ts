@@ -23,15 +23,22 @@ import { defineStoreContractTests } from '../src/test-utils/define-store-contrac
 
 // ─── Backend factories ──────────────────────────────────────────────────────
 
+function queryExpectsRows(query: string): boolean {
+	const trimmed = query.trimStart().toUpperCase();
+	if (trimmed.startsWith('SELECT') || trimmed.startsWith('WITH')) return true;
+	if (/\bRETURNING\b/i.test(query)) return true;
+	return false;
+}
+
 function createCloudflareSqlBackend(): AgentExecutionStore {
 	const db = new DatabaseSync(':memory:');
 	const sql: SqlStorage = {
 		exec(query: string, ...bindings: unknown[]) {
 			const stmt = db.prepare(query);
 			let rows: Record<string, unknown>[];
-			try {
+			if (queryExpectsRows(query)) {
 				rows = stmt.all(...(bindings as never[])) as Record<string, unknown>[];
-			} catch {
+			} else {
 				stmt.run(...(bindings as never[]));
 				rows = [];
 			}

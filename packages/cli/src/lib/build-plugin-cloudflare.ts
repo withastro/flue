@@ -20,9 +20,10 @@ export class CloudflarePlugin implements BuildPlugin {
 		validateCloudflareAgentNames(ctx);
 		validateCloudflareExportNames(ctx);
 		if (ctx.dbEntry) {
-			console.warn(
-				`[flue] Custom persistence (db.ts) is not yet supported on the Cloudflare target. ` +
-					`The file will be ignored; agents will use Durable Object SQLite.`,
+			throw new Error(
+				`[flue] Custom persistence (db.ts) is not supported on the Cloudflare target. ` +
+					`Cloudflare agents use Durable Object SQLite automatically. ` +
+					`Remove the db.ts file or move it outside the source root.`,
 			);
 		}
 
