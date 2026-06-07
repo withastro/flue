@@ -547,40 +547,20 @@ export class Session implements FlueSession {
 					if (event.message.role === 'user') await this.checkpointHarnessMessages();
 					this.emit({ type: 'message_end', message: event.message });
 					break;
-				case 'tool_execution_start':
-					this.toolStartTimes.set(event.toolCallId, Date.now());
-					this.emit({
-						type: 'tool_execution_start',
-						toolName: event.toolName,
-						toolCallId: event.toolCallId,
-						args: event.args,
-					});
-					this.emit({
-						type: 'tool_start',
+			case 'tool_execution_start':
+				this.toolStartTimes.set(event.toolCallId, Date.now());
+				this.emit({
+					type: 'tool_start',
 						toolName: event.toolName,
 						toolCallId: event.toolCallId,
 						args: event.args,
 					});
 					break;
-				case 'tool_execution_update':
-					this.emit({
-						type: 'tool_execution_update',
-						toolName: event.toolName,
-						toolCallId: event.toolCallId,
-						args: event.args,
-						partialResult: event.partialResult,
-					});
-					break;
-				case 'tool_execution_end':
-					this.emit({
-						type: 'tool_execution_end',
-						toolName: event.toolName,
-						toolCallId: event.toolCallId,
-						result: event.result,
-						isError: event.isError,
-					});
-					this.emit({
-						type: 'tool_call',
+			case 'tool_execution_update':
+				break;
+			case 'tool_execution_end':
+				this.emit({
+					type: 'tool_call',
 						toolName: event.toolName,
 						toolCallId: event.toolCallId,
 						isError: event.isError,

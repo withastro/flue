@@ -12,6 +12,7 @@
 - **Cloudflare: Upgrade Cloudflare Agents SDK within the audited range.** Install `agents >=0.14.1 <0.15.0` for the published scheduling and Fiber behavior audited by this release.
 - **Cloudflare: Capture request metadata before durable direct admission.** Route middleware sees the original inbound request, but SQL-backed direct processing uses a deterministic internal `Request`. Do not rely on later operation-time `ctx.req` to preserve original headers, cookies, query parameters, URL, or body.
 - **Cloudflare: Remove public agent WebSocket adapters.** `CloudflareAgentWebSocketOptions`, `connectCloudflareAgentWebSocket(...)`, and `messageCloudflareAgentWebSocket(...)` are now internal generated-agent coordinator details. Use generated Flue agent routing instead of importing these helpers from `@flue/runtime/cloudflare`.
+- **Events: Remove `tool_execution_*` event types.** `tool_execution_start`, `tool_execution_update`, and `tool_execution_end` are removed from `FlueEvent`. Use `tool_start` and `tool_call` instead, which carry the same data plus `durationMs`.
 
 ### Fixes & Other Changes
 

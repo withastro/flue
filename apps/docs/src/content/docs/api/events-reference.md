@@ -70,15 +70,12 @@ Operations, turns, task ids, and tool-call ids are generated correlation boundar
 
 ### Tool calls
 
-| Event                   | Meaning                                                                |
-| ----------------------- | ---------------------------------------------------------------------- |
-| `tool_execution_start`  | Detailed tool execution started.                                       |
-| `tool_execution_update` | Detailed partial tool result.                                          |
-| `tool_execution_end`    | Detailed tool execution ended.                                         |
-| `tool_start`            | Normalized tool telemetry started.                                     |
-| `tool_call`             | Normalized terminal tool telemetry. Includes duration and error state. |
+| Event        | Meaning                                                                |
+| ------------ | ---------------------------------------------------------------------- |
+| `tool_start` | Tool execution started. Includes tool name and arguments.              |
+| `tool_call`  | Tool execution ended. Includes duration, error state, and result.      |
 
-Detailed and normalized events overlap for model-driven tool execution. Programmatic shell activity emits normalized tool telemetry but not necessarily detailed execution events. Use `toolCallId` to correlate related events.
+Both model-driven and programmatic (`shell()`) tool activity emit `tool_start` and `tool_call`. Use `toolCallId` to correlate related events.
 
 ### Compaction
 

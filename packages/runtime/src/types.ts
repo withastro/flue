@@ -1126,21 +1126,6 @@ export type FlueEvent = (
 	| { type: 'message_start'; message: AgentMessage }
 	| { type: 'message_update'; message: AgentMessage; assistantMessageEvent: unknown }
 	| { type: 'message_end'; message: AgentMessage }
-	| { type: 'tool_execution_start'; toolCallId: string; toolName: string; args: unknown }
-	| {
-			type: 'tool_execution_update';
-			toolCallId: string;
-			toolName: string;
-			args: unknown;
-			partialResult: unknown;
-	  }
-	| {
-			type: 'tool_execution_end';
-			toolCallId: string;
-			toolName: string;
-			result: unknown;
-			isError: boolean;
-	  }
 	| { type: 'text_delta'; text: string }
 	| { type: 'thinking_start' }
 	| { type: 'thinking_delta'; delta: string }
