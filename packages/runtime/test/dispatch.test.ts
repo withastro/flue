@@ -18,11 +18,8 @@ import {
 	resetFlueRuntimeForTests,
 } from '../src/internal.ts';
 import {
-	createAgentSubmissionHandler,
-	createAgentSubmissionInspectionHandler,
+	createAgentSubmissionSessionHandler,
 	createAgentSubmissionObserverRegistry,
-	createAgentSubmissionRepairHandler,
-	createAgentSubmissionTerminalHandler,
 	createDispatchAgentSubmissionInput,
 	type DirectAgentSubmissionInput,
 } from '../src/runtime/agent-submissions.ts';
@@ -377,11 +374,14 @@ describe('dispatched session processing', () => {
 			defaultStore: store,
 		});
 
-		await createAgentSubmissionHandler(agent, createDispatchAgentSubmissionInput(input), {
-			onInputApplied: () => {
-				order.push('input-applied');
-			},
-		})(ctx);
+		const submissionInput = createDispatchAgentSubmissionInput(input);
+		await createAgentSubmissionSessionHandler(agent, submissionInput, (s) =>
+			s.processSubmissionInput(submissionInput, {
+				onInputApplied: () => {
+					order.push('input-applied');
+				},
+			}),
+		)(ctx);
 
 		expect(order.indexOf('persist-input')).toBeLessThan(order.indexOf('input-applied'));
 		expect(order.indexOf('input-applied')).toBeLessThan(order.indexOf('provider'));
@@ -432,11 +432,13 @@ describe('dispatched session processing', () => {
 			defaultStore: store,
 		});
 
-		await createAgentSubmissionHandler(agent, input, {
-			onInputApplied: () => {
-				order.push('input-applied');
-			},
-		})(ctx);
+		await createAgentSubmissionSessionHandler(agent, input, (s) =>
+			s.processSubmissionInput(input, {
+				onInputApplied: () => {
+					order.push('input-applied');
+				},
+			}),
+		)(ctx);
 
 		const data = await store.load(`agent-session:${JSON.stringify([input.id, 'default', input.session])}`);
 		expect(order.indexOf('persist-input')).toBeLessThan(order.indexOf('input-applied'));
@@ -481,8 +483,8 @@ describe('dispatched session processing', () => {
 			message: 'Provider replay was not attempted because prior execution could not be proven safe.',
 		};
 
-		await createAgentSubmissionTerminalHandler(agent, input, terminal)(createContext());
-		await createAgentSubmissionTerminalHandler(agent, input, terminal)(createContext());
+		await createAgentSubmissionSessionHandler(agent, input, (s) => s.recordSubmissionTerminal(terminal))(createContext());
+		await createAgentSubmissionSessionHandler(agent, input, (s) => s.recordSubmissionTerminal(terminal))(createContext());
 
 		const data = await store.load(`agent-session:${JSON.stringify([input.id, 'default', input.session])}`);
 		expect(data?.entries).toHaveLength(1);
@@ -557,7 +559,7 @@ describe('dispatched session processing', () => {
 			defaultStore: store,
 		});
 
-		await expect(createAgentSubmissionInspectionHandler(agent, input)(ctx)).resolves.toBe('completed');
+		await expect(createAgentSubmissionSessionHandler(agent, input, (s) => s.inspectSubmissionInput(input))(ctx)).resolves.toBe('completed');
 		expect(provider.state.callCount).toBe(0);
 	});
 
@@ -614,7 +616,7 @@ describe('dispatched session processing', () => {
 			defaultStore: store,
 		});
 
-		await expect(createAgentSubmissionInspectionHandler(agent, createDispatchAgentSubmissionInput(input))(ctx)).resolves.toBe('completed');
+		await expect(createAgentSubmissionSessionHandler(agent, createDispatchAgentSubmissionInput(input), (s) => s.inspectSubmissionInput(createDispatchAgentSubmissionInput(input)))(ctx)).resolves.toBe('completed');
 		expect(provider.state.callCount).toBe(0);
 	});
 
@@ -663,7 +665,7 @@ describe('dispatched session processing', () => {
 			defaultStore: store,
 		});
 
-		await expect(createAgentSubmissionInspectionHandler(agent, createDispatchAgentSubmissionInput(input))(ctx)).resolves.toBe('uncertain');
+		await expect(createAgentSubmissionSessionHandler(agent, createDispatchAgentSubmissionInput(input), (s) => s.inspectSubmissionInput(createDispatchAgentSubmissionInput(input)))(ctx)).resolves.toBe('uncertain');
 		expect(provider.state.callCount).toBe(0);
 	});
 });
@@ -793,10 +795,10 @@ describe('repairInterruptedToolCalls()', () => {
 			submissionStore: store.submissions,
 		});
 
-		const repairedLeafId = await createAgentSubmissionRepairHandler(
+		const repairedLeafId = await createAgentSubmissionSessionHandler(
 			agent,
 			submissionInput,
-			{ toolCalls: [{ type: 'toolCall', ...tc1 }, { type: 'toolCall', ...tc2 }] },
+			(s) => s.repairInterruptedToolCalls(submissionInput, { toolCalls: [{ type: 'toolCall', ...tc1 }, { type: 'toolCall', ...tc2 }] }),
 		)(ctx);
 
 		expect(repairedLeafId).toBeTruthy();
@@ -860,10 +862,10 @@ describe('repairInterruptedToolCalls()', () => {
 			submissionStore: store.submissions,
 		});
 
-		const repairedLeafId = await createAgentSubmissionRepairHandler(
+		const repairedLeafId = await createAgentSubmissionSessionHandler(
 			agent,
 			submissionInput,
-			{ toolCalls: [{ type: 'toolCall', ...tc1 }, { type: 'toolCall', ...tc2 }] },
+			(s) => s.repairInterruptedToolCalls(submissionInput, { toolCalls: [{ type: 'toolCall', ...tc1 }, { type: 'toolCall', ...tc2 }] }),
 		)(ctx);
 
 		expect(repairedLeafId).toBeTruthy();
@@ -929,10 +931,10 @@ describe('repairInterruptedToolCalls()', () => {
 			submissionStore: store.submissions,
 		});
 
-		const repairedLeafId = await createAgentSubmissionRepairHandler(
+		const repairedLeafId = await createAgentSubmissionSessionHandler(
 			agent,
 			submissionInput,
-			{ toolCalls: [{ type: 'toolCall', ...tc1 }, { type: 'toolCall', ...tc2 }, { type: 'toolCall', ...tc3 }] },
+			(s) => s.repairInterruptedToolCalls(submissionInput, { toolCalls: [{ type: 'toolCall', ...tc1 }, { type: 'toolCall', ...tc2 }, { type: 'toolCall', ...tc3 }] }),
 		)(ctx);
 
 		expect(repairedLeafId).toBeTruthy();
@@ -994,10 +996,10 @@ describe('repairInterruptedToolCalls()', () => {
 			submissionStore: store.submissions,
 		});
 
-		const repairedLeafId = await createAgentSubmissionRepairHandler(
+		const repairedLeafId = await createAgentSubmissionSessionHandler(
 			agent,
 			submissionInput,
-			{ toolCalls: [{ type: 'toolCall', ...tc1 }] },
+			(s) => s.repairInterruptedToolCalls(submissionInput, { toolCalls: [{ type: 'toolCall', ...tc1 }] }),
 		)(ctx);
 
 		expect(repairedLeafId).toBeUndefined();

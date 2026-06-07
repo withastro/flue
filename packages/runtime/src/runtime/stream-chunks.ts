@@ -39,7 +39,8 @@ export class StreamChunkWriter {
 		}
 		if (this.flushing) await this.flushing;
 		if (this.failed || this.pending.length === 0) return;
-		const events = [...this.pending];
+		const events = this.pending;
+		this.pending = [];
 		const segmentIndex = this.segmentIndex++;
 		this.flushing = this.store.appendStreamChunkSegment(
 			this.streamKey,
@@ -47,7 +48,6 @@ export class StreamChunkWriter {
 			JSON.stringify(events),
 		).then((inserted) => {
 			if (!inserted) this.failed = true;
-			else this.pending.splice(0, events.length);
 		});
 		try {
 			await this.flushing;

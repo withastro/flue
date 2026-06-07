@@ -8,7 +8,7 @@ import type { CreatedAgent, DispatchReceipt } from '../types.ts';
 import {
 	agentSubmissionDispatchId,
 	agentSubmissionProcessingPayload,
-	createAgentSubmissionHandler,
+	createAgentSubmissionSessionHandler,
 	createSubmissionJournalCallbacks,
 	reconcileInterruptedSubmission,
 	submissionDispatchRequest,
@@ -83,20 +83,22 @@ export function createNodeAgentCoordinator(options: {
 		);
 
 		try {
-			await createAgentSubmissionHandler(agent, input, {
-				onInputApplied: async (durability: SubmissionDurability) => {
-					if (!(await submissions.markSubmissionInputApplied(attempt, durability))) {
-						throw new Error('[flue] Agent submission attempt lost ownership before input application.');
-					}
-				},
-				startedAt: submission.startedAt,
-				timeoutAt:
-					submission.inputAppliedAt !== undefined && submission.timeoutAt > 0
-						? submission.timeoutAt
-						: undefined,
-				submissionAttempt: attempt,
-				journal: createSubmissionJournalCallbacks(submissions, submission, attempt),
-			})(ctx);
+			await createAgentSubmissionSessionHandler(agent, input, (session) =>
+				session.processSubmissionInput(input, {
+					onInputApplied: async (durability: SubmissionDurability) => {
+						if (!(await submissions.markSubmissionInputApplied(attempt, durability))) {
+							throw new Error('[flue] Agent submission attempt lost ownership before input application.');
+						}
+					},
+					startedAt: submission.startedAt,
+					timeoutAt:
+						submission.inputAppliedAt !== undefined && submission.timeoutAt > 0
+							? submission.timeoutAt
+							: undefined,
+					submissionAttempt: attempt,
+					journal: createSubmissionJournalCallbacks(submissions, submission, attempt),
+				}),
+			)(ctx);
 			await submissions.completeSubmission(attempt);
 		} catch (error) {
 			await submissions.failSubmission(attempt, error);

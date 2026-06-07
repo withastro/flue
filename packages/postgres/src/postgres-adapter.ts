@@ -8,6 +8,7 @@
  * that tests can substitute PGlite without pulling in a real Postgres server.
  */
 
+import type { SessionData, SessionStore } from '@flue/runtime';
 import type {
 	AgentDispatchAdmission,
 	AgentExecutionStore,
@@ -16,10 +17,11 @@ import type {
 	AgentTurnJournal,
 	AgentTurnJournalPhase,
 	CreateTurnJournalInput,
+	DirectAgentSubmissionInput,
+	DispatchInput,
 	PersistenceAdapter,
 	SubmissionAttemptRef,
-} from '@flue/runtime';
-import type { DirectAgentSubmissionInput, DispatchInput, SessionData, SessionStore } from '@flue/runtime';
+} from '@flue/runtime/internal';
 import {
 	createDispatchAgentSubmissionInput,
 	createSessionStorageKey,
@@ -28,6 +30,7 @@ import {
 	DURABILITY_DEFAULT_TIMEOUT_MINUTES,
 	isSubmissionPayload,
 	parseAcceptedAt,
+	SUBMISSION_HARNESS_NAME,
 } from '@flue/runtime/internal';
 import type { DispatchAgentSubmissionInput } from '@flue/runtime/internal';
 import pgDriver from 'postgres';
@@ -537,6 +540,7 @@ class PgSubmissionStore implements AgentSubmissionStore {
 		attempt: SubmissionAttemptRef,
 		durability?: { maxRetry: number; timeoutAt: number },
 	): Promise<boolean> {
+		const now = Date.now();
 		const rows = await this.runner.query(
 			`UPDATE flue_agent_submissions
 			 SET input_applied_at = COALESCE(input_applied_at, $1),
@@ -545,9 +549,9 @@ class PgSubmissionStore implements AgentSubmissionStore {
 			 WHERE submission_id = $4 AND status = 'running' AND attempt_id = $5
 			 RETURNING submission_id`,
 			[
-				Date.now(),
+				now,
 				durability?.maxRetry ?? DURABILITY_DEFAULT_MAX_RETRY,
-				durability?.timeoutAt ?? Date.now() + DURABILITY_DEFAULT_TIMEOUT_MINUTES * 60_000,
+				durability?.timeoutAt ?? now + DURABILITY_DEFAULT_TIMEOUT_MINUTES * 60_000,
 				attempt.submissionId,
 				attempt.attemptId,
 			],
@@ -620,7 +624,7 @@ class PgSubmissionStore implements AgentSubmissionStore {
 		const { kind, submissionId } = input;
 		const payload = JSON.stringify(input);
 		const acceptedAt = parseAcceptedAt(input.acceptedAt, `${kind} admission`);
-		const sessionKey = createSessionStorageKey(input.id, 'default', input.session);
+		const sessionKey = createSessionStorageKey(input.id, SUBMISSION_HARNESS_NAME, input.session);
 
 		return this.runner.transaction(async (tx) => {
 			if (kind === 'dispatch') {
@@ -758,9 +762,9 @@ function parseSubmission(row: SqlRow): AgentSubmission {
 	// Postgres returns BIGINT as string; coerce to number.
 	const sequence = Number(row.sequence);
 	const acceptedAt = Number(row.accepted_at);
-	const attemptCount = Number(row.attempt_count ?? 0);
-	const maxRetry = Number(row.max_retry ?? DURABILITY_DEFAULT_MAX_RETRY);
-	const timeoutAt = Number(row.timeout_at ?? 0);
+	const attemptCount = Number(row.attempt_count);
+	const maxRetry = Number(row.max_retry);
+	const timeoutAt = Number(row.timeout_at);
 
 	const attemptId = row.attempt_id != null ? String(row.attempt_id) : undefined;
 	const inputAppliedAt = row.input_applied_at != null ? Number(row.input_applied_at) : undefined;
@@ -781,7 +785,10 @@ function parseSubmission(row: SqlRow): AgentSubmission {
 			(attemptId !== undefined || inputAppliedAt !== undefined ||
 			 recoveryRequestedAt !== undefined || startedAt !== undefined)) ||
 		(row.status === 'running' &&
-			(attemptId === undefined || startedAt === undefined))
+			(attemptId === undefined || startedAt === undefined)) ||
+		!Number.isFinite(attemptCount) ||
+		!Number.isFinite(maxRetry) ||
+		!Number.isFinite(timeoutAt)
 	) {
 		throw new Error('[flue] Persisted agent submission row is malformed.');
 	}

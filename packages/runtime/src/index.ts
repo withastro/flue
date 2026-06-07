@@ -2,23 +2,10 @@
 /// <reference path="../types/markdown-md.d.ts" />
 
 export { Type } from '@earendil-works/pi-ai';
-export type {
-	AgentDispatchAdmission,
-	AgentDispatchReceipt,
-	AgentExecutionStore,
-	AgentSubmission,
-	AgentSubmissionStore,
-	AgentTurnJournal,
-	AgentTurnJournalPhase,
-	CreateTurnJournalInput,
-	PersistenceAdapter,
-	SubmissionAttemptRef,
-} from './agent-execution-store.ts';
+export type { PersistenceAdapter } from './agent-execution-store.ts';
 export { createAgent, defineAgentProfile } from './agent-definition.ts';
 export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
 export { connectMcpServer } from './mcp.ts';
-export type { DirectAgentSubmissionInput } from './runtime/agent-submissions.ts';
-export type { DispatchInput } from './runtime/dispatch-queue.ts';
 export { ResultUnavailableError } from './result.ts';
 export { type FlueEventSubscriber, observe } from './runtime/events.ts';
 export { dispatch } from './runtime/flue-app.ts';
@@ -35,6 +22,7 @@ export type {
 	AgentConfig,
 	AgentCreateContext,
 	AgentDispatchRequest,
+	DurabilityConfig,
 	AgentHarnessOptions,
 	AgentProfile,
 	AgentRouteHandler,
@@ -85,7 +73,6 @@ export type {
 	SessionData,
 	SessionEnv,
 	SessionStore,
-	SignalMessage,
 	SessionToolFactory,
 	SessionToolFactoryOptions,
 	ShellOptions,

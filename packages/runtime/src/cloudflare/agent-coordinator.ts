@@ -9,7 +9,7 @@ import type { FlueContextInternal } from '../client.ts';
 import {
 	agentSubmissionDispatchId,
 	agentSubmissionProcessingPayload,
-	createAgentSubmissionHandler,
+	createAgentSubmissionSessionHandler,
 	createAgentSubmissionObserverRegistry,
 	createSubmissionJournalCallbacks,
 	reconcileInterruptedSubmission,
@@ -73,7 +73,7 @@ interface CloudflareAgentPreparedCoordinator {
 }
 
 interface CloudflareAgentRuntimeOptions {
-	readonly createdAgents: Record<string, Parameters<typeof createAgentSubmissionHandler>[0]>;
+	readonly createdAgents: Record<string, Parameters<typeof createAgentSubmissionSessionHandler>[0]>;
 	readonly directHandlers: Record<string, AgentHandler>;
 	readonly websocketAgentHandlers: Record<string, AgentHandler>;
 	readonly createContext: (options: {
@@ -550,16 +550,18 @@ class CloudflareAgentCoordinator {
 				});
 			}
 			const result = await this.runWithInstanceContext(() =>
-				createAgentSubmissionHandler(agent, input, {
-					onInputApplied: (durability: SubmissionDurability) => this.markInputApplied(attempt, durability),
-					startedAt: submission.startedAt,
-					timeoutAt:
-						submission.inputAppliedAt !== undefined && submission.timeoutAt > 0
-							? submission.timeoutAt
-							: undefined,
-					submissionAttempt: attempt,
-					journal: createSubmissionJournalCallbacks(this.submissions, submission, attempt),
-				})(operationCtx),
+				createAgentSubmissionSessionHandler(agent, input, (session) =>
+					session.processSubmissionInput(input, {
+						onInputApplied: (durability: SubmissionDurability) => this.markInputApplied(attempt, durability),
+						startedAt: submission.startedAt,
+						timeoutAt:
+							submission.inputAppliedAt !== undefined && submission.timeoutAt > 0
+								? submission.timeoutAt
+								: undefined,
+						submissionAttempt: attempt,
+						journal: createSubmissionJournalCallbacks(this.submissions, submission, attempt),
+					}),
+				)(operationCtx),
 			);
 			const completed = await this.submissions.completeSubmission(attempt);
 			if (completed && submission.kind === 'direct') this.observers.complete(submission.submissionId, result);

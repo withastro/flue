@@ -11,7 +11,7 @@ import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { AgentExecutionStore, PersistenceAdapter } from '../agent-execution-store.ts';
 import type { SqlStorage } from '../sql-storage.ts';
-import { createSqlAgentExecutionStoreFromSql, ensureSqlAgentExecutionTables } from '../cloudflare/agent-execution-store.ts';
+import { createSqlAgentExecutionStoreFromSql, ensureSqlAgentExecutionTables } from '../sql-agent-execution-store.ts';
 
 /**
  * Adapt `node:sqlite` {@link DatabaseSync} to the Cloudflare {@link SqlStorage}

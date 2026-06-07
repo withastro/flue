@@ -31,23 +31,19 @@ interface SessionStore {
 
 Choose a store with consistency, retention, access control, and tenant-isolation properties appropriate to the conversation content your application retains.
 
-## Configure `persist`
+## Configure persistence
 
-Return a `SessionStore` in created-agent runtime configuration:
+Create a `src/db.ts` (or `.flue/db.ts`) file that default-exports a `PersistenceAdapter`:
 
-```ts title=".flue/agents/support.ts"
-import { createAgent, type SessionStore } from '@flue/runtime';
-import { sessionStore } from '../storage/session-store.ts';
+```ts title="src/db.ts"
+import { sqlite } from '@flue/runtime/node';
 
-const persist: SessionStore = sessionStore;
-
-export default createAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  persist,
-}));
+export default sqlite('./data/flue.db');
 ```
 
-`persist` applies to sessions initialized from that created agent. It is not an `init(...)` option because it determines the agent environment's conversation-state boundary.
+The `PersistenceAdapter` provides a `connect()` method that returns an `AgentExecutionStore` with both a `SessionStore` (for conversation snapshots) and an `AgentSubmissionStore` (for durable submissions). The build discovers `db.ts` automatically and wires it into the generated server entry.
+
+For Cloudflare targets, the Durable Object SQLite store is the default and no `db.ts` is needed. Community adapters like `@flue/postgres` implement `PersistenceAdapter` for external databases.
 
 ## `SessionData`
 
@@ -86,21 +82,21 @@ Treat `SessionData` as potentially sensitive. It can include model-visible text,
 
 | Runtime path                                                                              | Default conversation-state behavior                                                                         |
 | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Generated Node.js application with no `persist` override                                  | Uses process-memory storage; state is lost on restart and is not shared between replicas.                   |
-| Generated Cloudflare Durable Object-backed agent/workflow path with no `persist` override | Uses Durable Object SQLite-backed session storage by default when the durable storage context is available. |
-| Created agent returning `persist`                                                         | Uses the supplied `SessionStore` instead of the target default for its sessions.                            |
+| Generated Node.js application with no `db.ts`                                            | Uses process-memory storage; state is lost on restart and is not shared between replicas.                   |
+| Generated Node.js application with `db.ts`                                               | Uses the adapter's `SessionStore` and `AgentSubmissionStore` for durable sessions and submissions.          |
+| Generated Cloudflare Durable Object-backed agent/workflow path                           | Uses Durable Object SQLite-backed session storage by default when the durable storage context is available. |
 
 ## Separate persistence responsibilities
 
 | State category                                                 | Controlled by                                          |
 | -------------------------------------------------------------- | ------------------------------------------------------ |
-| Agent session messages and compaction state                    | `SessionStore` / `persist` or the target default       |
+| Agent session messages and compaction state                    | `SessionStore` via `db.ts` adapter or the target default |
 | Cloudflare agent submission admission, ordering, and terminal inspection rows | The owning agent Durable Object SQLite store           |
 | Sandbox files, installed dependencies, and workspace artifacts | The configured sandbox or connector                    |
 | Workflow run records and persisted run events                  | Workflow-run runtime storage, not `SessionStore` alone |
 | Mutations performed through tools or external APIs             | The external system and application idempotency policy |
 
-A persisted conversation does not make sandbox files durable. A durable workspace does not retain conversation history unless session persistence does as well. On Cloudflare, a created agent's `persist` override replaces canonical session snapshots only: Flue still stores operational submission rows locally in the owning Durable Object SQLite database. Those rows can contain submitted payloads while queued and running. Terminal rows become eligible for bounded lazy cleanup after seven days and are removed during later agent activity; an entirely idle Durable Object may retain eligible rows longer. The same eligibility horizon bounds duplicate-delivery protection for repeated forwarding of one `dispatchId`; it does not create a public submission lookup API.
+A persisted conversation does not make sandbox files durable. A durable workspace does not retain conversation history unless session persistence does as well. On Cloudflare, the Durable Object SQLite store provides both session snapshots and operational submission rows. A custom `PersistenceAdapter` via `db.ts` replaces canonical session snapshots; Flue still stores operational submission rows locally in the owning Durable Object SQLite database on Cloudflare targets. Those rows can contain submitted payloads while queued and running. Settled submission data is retained indefinitely in this beta release. Dispatch receipt rows also persist indefinitely, providing duplicate-delivery protection for repeated forwarding of one `dispatchId`; there is no public submission lookup API.
 
 ## Identity and deletion
 

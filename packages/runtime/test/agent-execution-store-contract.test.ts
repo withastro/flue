@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
 import type { SqlStorage } from '../src/sql-storage.ts';
-import { createSqlAgentExecutionStoreFromSql, ensureSqlAgentExecutionTables } from '../src/cloudflare/agent-execution-store.ts';
+import { createSqlAgentExecutionStoreFromSql, ensureSqlAgentExecutionTables } from '../src/sql-agent-execution-store.ts';
 import { createNodeAgentExecutionStore, sqlite } from '../src/node/agent-execution-store.ts';
 import type { SessionData } from '../src/types.ts';
 import { defineStoreContractTests } from '../src/test-utils/define-store-contract-tests.ts';

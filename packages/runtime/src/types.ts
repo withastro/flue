@@ -411,7 +411,7 @@ export interface CompactionConfig {
 
 // ─── Durability ─────────────────────────────────────────────────────────────
 
-interface DurabilityConfig {
+export interface DurabilityConfig {
 	/**
 	 * Maximum recovery attempts before the submission is terminalized as
 	 * failed. Each DO reset or deploy that interrupts a running submission

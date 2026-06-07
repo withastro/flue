@@ -11,6 +11,16 @@
 import type { AgentSubmission } from './agent-execution-store.ts';
 import { createSessionStorageKey } from './session-identity.ts';
 
+/**
+ * Agent-mode submissions (HTTP, WebSocket, dispatch) always target the
+ * default harness. Named harnesses exist for multi-harness workflows
+ * (`ctx.init(agent, { name: 'setup' })`), but external submissions do
+ * not select a harness — they implicitly use `'default'`.
+ *
+ * Exported for adapter implementations that construct session storage keys.
+ */
+export const SUBMISSION_HARNESS_NAME = 'default';
+
 // ─── Payload validation ─────────────────────────────────────────────────────
 
 /**
@@ -49,7 +59,7 @@ export function isSubmissionPayload(
 			typeof value.session === 'string' &&
 			createSessionStorageKey(
 				value.id as string,
-				'default',
+				SUBMISSION_HARNESS_NAME,
 				value.session as string,
 			) === ctx.sessionKey &&
 			typeof value.acceptedAt === 'string' &&
@@ -64,7 +74,7 @@ export function isSubmissionPayload(
 		typeof value.session === 'string' &&
 		createSessionStorageKey(
 			value.id as string,
-			'default',
+			SUBMISSION_HARNESS_NAME,
 			value.session as string,
 		) === ctx.sessionKey &&
 		typeof value.acceptedAt === 'string' &&

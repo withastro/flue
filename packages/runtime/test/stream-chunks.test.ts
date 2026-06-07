@@ -142,17 +142,22 @@ describe('StreamChunkWriter', () => {
 	});
 
 	it('marks itself failed on insert rejection and stops writing', async () => {
+		let callCount = 0;
 		const store = {
-			appendStreamChunkSegment: async () => false,
+			appendStreamChunkSegment: async () => {
+				callCount++;
+				return false;
+			},
 		};
 		const writer = new StreamChunkWriter(store, 'fail-key');
 		writer.write(textDelta(0, 'a'));
 		await writer.flush();
+		expect(callCount).toBe(1);
 
 		writer.write(textDelta(0, 'b'));
 		await writer.flush();
-
-		// Second flush should be a no-op since failed
+		// Second flush should be a no-op since failed — call count stays at 1
+		expect(callCount).toBe(1);
 	});
 
 	it('cancel() stops the timer without flushing', async () => {

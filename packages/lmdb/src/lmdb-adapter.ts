@@ -14,9 +14,11 @@
  * - `journals`: key = submissionId, value = journal document
  * - `receipts`: key = dispatchId, value = { acceptedAt, settledAt }
  * - `deletions`: key = sessionKey, value = { startedAt }
+ * - `streamChunks`: key = `${streamKey}:${segmentIndex}`, value = body string
  */
 
 import { open, type Database, type RootDatabase } from 'lmdb';
+import type { SessionData, SessionStore } from '@flue/runtime';
 import type {
 	AgentDispatchAdmission,
 	AgentExecutionStore,
@@ -25,10 +27,11 @@ import type {
 	AgentTurnJournal,
 	AgentTurnJournalPhase,
 	CreateTurnJournalInput,
+	DirectAgentSubmissionInput,
+	DispatchInput,
 	PersistenceAdapter,
 	SubmissionAttemptRef,
-} from '@flue/runtime';
-import type { DirectAgentSubmissionInput, DispatchInput, SessionData, SessionStore } from '@flue/runtime';
+} from '@flue/runtime/internal';
 import {
 	createDispatchAgentSubmissionInput,
 	createSessionStorageKey,
@@ -37,6 +40,7 @@ import {
 	DURABILITY_DEFAULT_TIMEOUT_MINUTES,
 	isSubmissionPayload,
 	parseAcceptedAt,
+	SUBMISSION_HARNESS_NAME,
 } from '@flue/runtime/internal';
 import type { DispatchAgentSubmissionInput } from '@flue/runtime/internal';
 
@@ -78,6 +82,8 @@ interface JournalDoc {
 	toolRequestJson: string | null;
 	committed: boolean;
 	committedLeafId: string | null;
+	streamKey: string | null;
+	streamConsumedAt: number | null;
 }
 
 interface ReceiptDoc {
@@ -125,6 +131,7 @@ function createLmdbExecutionStore(env: RootDatabase): AgentExecutionStore {
 	const journals = env.openDB<JournalDoc, string>('journals', { encoding: 'json' });
 	const receipts = env.openDB<ReceiptDoc, string>('receipts', { encoding: 'json' });
 	const deletions = env.openDB<DeletionDoc, string>('deletions', { encoding: 'json' });
+	const streamChunks = env.openDB<string, string>('streamChunks', { encoding: 'string' });
 
 	// Initialize the in-memory sequence counter from existing data.
 	let maxSequence = 0;
@@ -134,7 +141,7 @@ function createLmdbExecutionStore(env: RootDatabase): AgentExecutionStore {
 
 	return {
 		sessions: new LmdbSessionStore(sessions),
-		submissions: new LmdbSubmissionStore(env, submissions, journals, receipts, deletions, maxSequence),
+		submissions: new LmdbSubmissionStore(env, submissions, journals, receipts, deletions, streamChunks, maxSequence),
 	};
 }
 
@@ -168,6 +175,7 @@ class LmdbSubmissionStore implements AgentSubmissionStore {
 		private journals: Database<JournalDoc, string>,
 		private receipts: Database<ReceiptDoc, string>,
 		private deletions: Database<DeletionDoc, string>,
+		private streamChunksDb: Database<string, string>,
 		initialSequence: number,
 	) {
 		this.sequenceCounter = initialSequence;
@@ -258,6 +266,8 @@ class LmdbSubmissionStore implements AgentSubmissionStore {
 			toolRequestJson: input.toolRequest === undefined ? null : JSON.stringify(input.toolRequest),
 			committed: false,
 			committedLeafId: null,
+			streamKey: null,
+			streamConsumedAt: null,
 		};
 		await this.journals.put(input.submissionId, doc);
 		return true;
@@ -266,7 +276,7 @@ class LmdbSubmissionStore implements AgentSubmissionStore {
 	async updateTurnJournalPhase(
 		attempt: SubmissionAttemptRef,
 		phase: AgentTurnJournalPhase,
-		options: { checkpointLeafId?: string; toolRequest?: unknown } = {},
+		options: { checkpointLeafId?: string; toolRequest?: unknown; streamKey?: string } = {},
 	): Promise<boolean> {
 		const doc = this.journals.get(attempt.submissionId);
 		if (!doc || doc.attemptId !== attempt.attemptId || doc.committed) return false;
@@ -279,6 +289,7 @@ class LmdbSubmissionStore implements AgentSubmissionStore {
 			toolRequestJson: options.toolRequest === undefined
 				? doc.toolRequestJson
 				: JSON.stringify(options.toolRequest),
+			streamKey: options.streamKey ?? doc.streamKey,
 		};
 		await this.journals.put(attempt.submissionId, updated);
 		return true;
@@ -297,6 +308,61 @@ class LmdbSubmissionStore implements AgentSubmissionStore {
 		};
 		await this.journals.put(attempt.submissionId, updated);
 		return true;
+	}
+
+	async markStreamConsumed(attempt: SubmissionAttemptRef, streamKey: string): Promise<boolean> {
+		const doc = this.journals.get(attempt.submissionId);
+		if (
+			!doc ||
+			doc.attemptId !== attempt.attemptId ||
+			doc.committed ||
+			doc.streamKey !== streamKey ||
+			doc.streamConsumedAt !== null
+		) {
+			return false;
+		}
+		const updated: JournalDoc = {
+			...doc,
+			revision: doc.revision + 1,
+			updatedAt: Date.now(),
+			streamConsumedAt: Date.now(),
+		};
+		await this.journals.put(attempt.submissionId, updated);
+		return true;
+	}
+
+	// ── Stream chunks ───────────────────────────────────────────────────
+
+	async appendStreamChunkSegment(streamKey: string, segmentIndex: number, body: string): Promise<boolean> {
+		const key = `${streamKey}:${segmentIndex}`;
+		const existing = this.streamChunksDb.get(key);
+		if (existing !== undefined) return false;
+		await this.streamChunksDb.put(key, body);
+		return true;
+	}
+
+	async getStreamChunkSegments(streamKey: string): Promise<Array<{ segmentIndex: number; body: string }>> {
+		const prefix = `${streamKey}:`;
+		const results: Array<{ segmentIndex: number; body: string }> = [];
+		for (const { key, value } of this.streamChunksDb.getRange({ start: prefix })) {
+			if (!key.startsWith(prefix)) break;
+			const segmentIndex = parseInt(key.slice(prefix.length), 10);
+			results.push({ segmentIndex, body: value });
+		}
+		results.sort((a, b) => a.segmentIndex - b.segmentIndex);
+		return results;
+	}
+
+	async deleteStreamChunkSegments(streamKey: string): Promise<void> {
+		const prefix = `${streamKey}:`;
+		const keysToDelete: string[] = [];
+		for (const { key } of this.streamChunksDb.getRange({ start: prefix })) {
+			if (!key.startsWith(prefix)) break;
+			keysToDelete.push(key);
+		}
+		for (const key of keysToDelete) {
+			await this.streamChunksDb.remove(key);
+		}
 	}
 
 	async replaceTurnJournalAttempt(
@@ -479,7 +545,7 @@ class LmdbSubmissionStore implements AgentSubmissionStore {
 		const { kind, submissionId } = input;
 		const payload = JSON.stringify(input);
 		const acceptedAt = parseAcceptedAt(input.acceptedAt, `${kind} admission`);
-		const sessionKey = createSessionStorageKey(input.id, 'default', input.session);
+		const sessionKey = createSessionStorageKey(input.id, SUBMISSION_HARNESS_NAME, input.session);
 
 		return this.env.transaction(() => {
 			// Check for retained receipt (dispatch replay after session deletion).
@@ -648,6 +714,8 @@ function docToJournal(doc: JournalDoc): AgentTurnJournal {
 		updatedAt: doc.updatedAt,
 		...(doc.checkpointLeafId !== null ? { checkpointLeafId: doc.checkpointLeafId } : {}),
 		...(doc.toolRequestJson !== null ? { toolRequest: JSON.parse(doc.toolRequestJson) as unknown } : {}),
+		...(doc.streamKey !== null ? { streamKey: doc.streamKey } : {}),
+		...(doc.streamConsumedAt !== null ? { streamConsumedAt: doc.streamConsumedAt } : {}),
 		committed: doc.committed,
 		...(doc.committedLeafId !== null ? { committedLeafId: doc.committedLeafId } : {}),
 	};

@@ -28,9 +28,25 @@ export { createNodeAgentCoordinator, createNodeDispatchQueue } from './node/agen
 export { createNodeAgentExecutionStore } from './node/agent-execution-store.ts';
 export { InMemoryRunRegistry } from './node/run-registry.ts';
 export { InMemoryRunStore } from './node/run-store.ts';
-export { DURABILITY_DEFAULT_MAX_RETRY, DURABILITY_DEFAULT_TIMEOUT_MINUTES } from './agent-execution-store.ts';
-export type { PersistenceAdapter } from './agent-execution-store.ts';
 export {
+	DURABILITY_DEFAULT_MAX_RETRY,
+	DURABILITY_DEFAULT_TIMEOUT_MINUTES,
+} from './agent-execution-store.ts';
+export type {
+	AgentDispatchAdmission,
+	AgentDispatchReceipt,
+	AgentExecutionStore,
+	AgentSubmission,
+	AgentSubmissionStore,
+	AgentTurnJournal,
+	AgentTurnJournalPhase,
+	CreateTurnJournalInput,
+	PersistenceAdapter,
+	SubmissionAttemptRef,
+	SubmissionDurability,
+} from './agent-execution-store.ts';
+export {
+	SUBMISSION_HARNESS_NAME,
 	deduplicateSessionDeletion,
 	isSubmissionPayload,
 	parseAcceptedAt,
@@ -104,7 +120,7 @@ export {
 export { closeFlueSocket, isFlueSocket, socketRequestUrl } from './cloudflare/websocket.ts';
 export { bashFactoryToSessionEnv } from './sandbox.ts';
 export { createDispatchAgentSubmissionInput } from './runtime/agent-submissions.ts';
-export type { DispatchAgentSubmissionInput } from './runtime/agent-submissions.ts';
+export type { DirectAgentSubmissionInput, DispatchAgentSubmissionInput } from './runtime/agent-submissions.ts';
 export { createSessionStorageKey } from './session-identity.ts';
 export { InMemorySessionStore } from './session.ts';
 export { parseSkillMarkdown } from './skill-frontmatter.ts';

@@ -202,9 +202,9 @@ The initializer runs whenever the runtime initializes a harness from the created
 | `subagents`     | `AgentProfile[]`                         | Additional named profiles available for delegated `session.task()` operations.                                                                                              |
 | `thinkingLevel` | `ThinkingLevel`                          | Default reasoning effort. Individual operations may override this value.                                                                                                    |
 | `compaction`    | `false \| CompactionConfig`              | Automatic conversation-compaction configuration. `false` disables threshold compaction; overflow recovery and explicit `session.compact()` calls still compact when needed. |
+| `durability`    | `DurabilityConfig`                       | Durability configuration for durable agent submissions. Controls recovery attempt limits and submission timeouts.                                                           |
 | `cwd`           | `string`                                 | Working directory inside the initialized sandbox.                                                                                                                           |
 | `sandbox`       | `false \| SandboxFactory \| BashFactory` | Sandbox factory used to construct the initialized environment. See [Sandboxes](/docs/guide/sandboxes/).                                                                     |
-| `persist`       | `SessionStore`                           | Conversation-state store used by initialized sessions. See [Data Persistence API](/docs/api/data-persistence-api/).                                                         |
 
 #### `CreatedAgent`
 

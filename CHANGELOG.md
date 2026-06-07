@@ -23,7 +23,13 @@
 - **Cloudflare: Preserve workflow-run history parity.** Cloudflare workflow storage now ignores events for unknown runs, resets same-ID event history when a run is initialized, preserves absent optional fields separately from explicit `null`, and retains explicit terminal `null` results during recovery.
 - **Harden persisted workflow-event identity.** Workflow history now treats `(runId, eventIndex)` as one immutable append-only event identity and SSE resume cursor across Node and Cloudflare. Malformed or duplicate persisted events fail instead of producing ambiguous history, and pre-event stream failures no longer fabricate cursor `0`.
 - **Cloudflare: Own Durable Object routing.** Flue now resolves generated agent and workflow bindings explicitly instead of deriving public routes from the Agents SDK environment scanner, then forwards requests through the Agents SDK custom-routing helper. Public routes remain independent from generated Durable Object identities.
-- **Cloudflare: Queue direct and dispatched agent input through one durable lifecycle.** Direct HTTP, SSE, WebSocket, and `dispatch(...)` submissions now share SQLite-backed same-session ordering. Transport loss does not cancel accepted backend work. Interrupted attempts reconcile conservatively: Flue requeues only when safe, recognizes persisted completion, and otherwise records a visible session interruption instead of blindly replaying provider work. Terminal operational payload copies become eligible for bounded lazy cleanup after a seven-day internal inspection and duplicate-forwarding horizon, and session deletion rejects while durable submissions remain queued or running.
+- **Cloudflare: Queue direct and dispatched agent input through one durable lifecycle.** Direct HTTP, SSE, WebSocket, and `dispatch(...)` submissions now share SQLite-backed same-session ordering. Transport loss does not cancel accepted backend work. Interrupted attempts reconcile conservatively: Flue requeues only when safe, recognizes persisted completion, and otherwise records a visible session interruption instead of blindly replaying provider work. Settled submission data is retained indefinitely in this beta release; session deletion rejects while durable submissions remain queued or running.
+
+## 0.9.2 - 2026-06-03
+
+### Fixes & Other Changes
+
+- Fixed agents' ability to activate skills autonomously with the `activate_skill` tool.
 
 ## 0.9.1 - 2026-06-02
 

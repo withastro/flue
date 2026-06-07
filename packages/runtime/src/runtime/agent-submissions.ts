@@ -78,17 +78,17 @@ export interface AgentSubmissionToolRequest {
 }
 
 interface AgentSubmissionSession {
-	inspectSubmissionInput?(input: AgentSubmissionInput): AgentSubmissionInspection;
-	processSubmissionInput?(
+	inspectSubmissionInput(input: AgentSubmissionInput): AgentSubmissionInspection;
+	processSubmissionInput(
 		input: AgentSubmissionInput,
 		options?: ProcessAgentSubmissionOptions,
 	): PromiseLike<unknown>;
-	repairInterruptedToolCalls?(
+	repairInterruptedToolCalls(
 		input: AgentSubmissionInput,
 		toolRequest: AgentSubmissionToolRequest,
 	): Promise<string | undefined>;
-	recoverInterruptedStream?(streamKey: string): Promise<boolean>;
-	recordSubmissionTerminal?(input: AgentSubmissionInterruption): Promise<void>;
+	recoverInterruptedStream(streamKey: string): Promise<boolean>;
+	recordSubmissionTerminal(input: AgentSubmissionInterruption): Promise<void>;
 }
 
 type AgentSubmissionHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
@@ -118,72 +118,14 @@ export function createDispatchAgentSubmissionInput(input: DispatchInput): Dispat
 	return { ...input, kind: 'dispatch', submissionId: input.dispatchId };
 }
 
-export function createAgentSubmissionHandler(
+export function createAgentSubmissionSessionHandler(
 	agent: CreatedAgent,
 	input: AgentSubmissionInput,
-	options?: ProcessAgentSubmissionOptions,
+	execute: (session: AgentSubmissionSession) => Promise<unknown> | unknown,
 ): AgentSubmissionHandler {
 	return async (ctx) => {
 		const session = await openAgentSubmissionSession(ctx, agent, input);
-		if (typeof session.processSubmissionInput !== 'function') {
-			throw new Error('[flue] Internal session does not support submission input processing.');
-		}
-		return session.processSubmissionInput(input, options);
-	};
-}
-
-export function createAgentSubmissionInspectionHandler(
-	agent: CreatedAgent,
-	input: AgentSubmissionInput,
-): AgentSubmissionHandler {
-	return async (ctx) => {
-		const session = await openAgentSubmissionSession(ctx, agent, input);
-		if (typeof session.inspectSubmissionInput !== 'function') {
-			throw new Error('[flue] Internal session does not support submission input inspection.');
-		}
-		return session.inspectSubmissionInput(input);
-	};
-}
-
-export function createAgentSubmissionRepairHandler(
-	agent: CreatedAgent,
-	input: AgentSubmissionInput,
-	toolRequest: AgentSubmissionToolRequest,
-): AgentSubmissionHandler {
-	return async (ctx) => {
-		const session = await openAgentSubmissionSession(ctx, agent, input);
-		if (typeof session.repairInterruptedToolCalls !== 'function') {
-			throw new Error('[flue] Internal session does not support interrupted-tool repair.');
-		}
-		return session.repairInterruptedToolCalls(input, toolRequest);
-	};
-}
-
-export function createAgentSubmissionStreamRecoveryHandler(
-	agent: CreatedAgent,
-	input: AgentSubmissionInput,
-	streamKey: string,
-): AgentSubmissionHandler {
-	return async (ctx) => {
-		const session = await openAgentSubmissionSession(ctx, agent, input);
-		if (typeof session.recoverInterruptedStream !== 'function') {
-			throw new Error('[flue] Internal session does not support stream recovery.');
-		}
-		return session.recoverInterruptedStream(streamKey);
-	};
-}
-
-export function createAgentSubmissionTerminalHandler(
-	agent: CreatedAgent,
-	input: AgentSubmissionInput,
-	terminal: AgentSubmissionInterruption,
-): AgentSubmissionHandler {
-	return async (ctx) => {
-		const session = await openAgentSubmissionSession(ctx, agent, input);
-		if (typeof session.recordSubmissionTerminal !== 'function') {
-			throw new Error('[flue] Internal session does not support submission terminal persistence.');
-		}
-		await session.recordSubmissionTerminal(terminal);
+		return execute(session);
 	};
 }
 
@@ -354,7 +296,7 @@ export async function reconcileInterruptedSubmission(
 	const readPayload = agentSubmissionReadPayload(input);
 	const dispatchId = agentSubmissionDispatchId(input);
 	const ctx = createContext(readPayload, dispatchId);
-	const state = await createAgentSubmissionInspectionHandler(agent, input)(ctx);
+	const state = await createAgentSubmissionSessionHandler(agent, input, (s) => s.inspectSubmissionInput(input))(ctx);
 
 	// Check turn journal for pre-commit interruption that can be retried.
 	const journal = await submissions.getTurnJournal(submission.submissionId);
@@ -365,11 +307,12 @@ export async function reconcileInterruptedSubmission(
 		journal.streamKey &&
 		journal.streamConsumedAt === undefined
 	) {
+		const streamKey = journal.streamKey;
 		const recoveryCtx = createContext(readPayload, dispatchId);
-		const recovered = (await createAgentSubmissionStreamRecoveryHandler(
+		const recovered = (await createAgentSubmissionSessionHandler(
 			agent,
 			input,
-			journal.streamKey,
+			(s) => s.recoverInterruptedStream(streamKey),
 		)(recoveryCtx)) as boolean;
 		if (recovered) {
 			await submissions.markStreamConsumed(attempt, journal.streamKey);
@@ -395,10 +338,10 @@ export async function reconcileInterruptedSubmission(
 		journal.toolRequest
 	) {
 		const repairCtx = createContext(readPayload, dispatchId);
-		const repairedLeafId = (await createAgentSubmissionRepairHandler(
+		const repairedLeafId = (await createAgentSubmissionSessionHandler(
 			agent,
 			input,
-			journal.toolRequest as AgentSubmissionToolRequest,
+			(s) => s.repairInterruptedToolCalls(input, journal.toolRequest as AgentSubmissionToolRequest),
 		)(repairCtx)) as string | undefined;
 		if (repairedLeafId) {
 			await submissions.updateTurnJournalPhase(attempt, 'before_provider', {
@@ -472,13 +415,15 @@ async function failInterruptedSubmission(
 	const processingPayload = agentSubmissionProcessingPayload(input);
 	const dispatchId = agentSubmissionDispatchId(input);
 	const ctx = createContext(processingPayload, dispatchId);
-	await createAgentSubmissionTerminalHandler(agent, input, {
-		submissionId: submission.submissionId,
-		kind: submission.kind,
-		reason,
-		message: error.message,
-		interruptedTools,
-	})(ctx);
+	await createAgentSubmissionSessionHandler(agent, input, (s) =>
+		s.recordSubmissionTerminal({
+			submissionId: submission.submissionId,
+			kind: submission.kind,
+			reason,
+			message: error.message,
+			interruptedTools,
+		}),
+	)(ctx);
 	return await submissions.failSubmission(attempt, error);
 }
 
@@ -497,5 +442,5 @@ async function openAgentSubmissionSession(
 	if (!session || typeof session !== 'object') {
 		throw new Error('[flue] Internal session is unavailable for submission processing.');
 	}
-	return session as AgentSubmissionSession;
+	return session as unknown as AgentSubmissionSession;
 }
