@@ -16,6 +16,32 @@
 - **Cloudflare: Capture request metadata before durable direct admission.** Route middleware sees the original inbound request, but SQL-backed direct processing uses a deterministic internal `Request`. Do not rely on later operation-time `ctx.req` to preserve original headers, cookies, query parameters, URL, or body.
 - **Cloudflare: Remove public agent WebSocket adapters.** `CloudflareAgentWebSocketOptions`, `connectCloudflareAgentWebSocket(...)`, and `messageCloudflareAgentWebSocket(...)` are now internal generated-agent coordinator details. Use generated Flue agent routing instead of importing these helpers from `@flue/runtime/cloudflare`.
 - **Events: Remove `tool_execution_*` event types.** `tool_execution_start`, `tool_execution_update`, and `tool_execution_end` are removed from `FlueEvent`. Use `tool_start` and `tool_call` instead, which carry the same data plus `durationMs`.
+- **Runtime: Remove `@flue/runtime/app`, `@flue/runtime/client`, and `@flue/runtime/sandbox` subpaths.** These transitional compat shims (announced in 0.9.0) are now removed entirely. Import routing helpers from `@flue/runtime/routing`, and all other APIs from `@flue/runtime` directly.
+- **Runtime: Remove `AgentConfig` and `DirectAgentPayload` from public type exports.** These types are no longer exported from `@flue/runtime`. Use `AgentRuntimeConfig` for created-agent initializer return types and `AgentProfile` for reusable agent configuration.
+- **Cloudflare: Remove `store()` from `@flue/runtime/cloudflare`.** The DO-setState-based session store is replaced by SQL-backed session persistence. Remove `store()` calls; generated agents use Durable Object SQLite automatically.
+- **Cloudflare: Remove `getShellSandbox()`, `getDefaultWorkspace()`, and `hydrateFromBucket()` from `@flue/runtime/cloudflare`.** These migration stubs that threw with guidance since 0.7.0 are now removed. Use the `@cloudflare/shell` connector package directly.
+
+### New Features
+
+- **Custom persistence via `db.ts`.** Place a `db.ts` file in your source root that default-exports a `PersistenceAdapter`. The Node build calls `migrate()` at startup and `connect()` to initialize the execution store. Cloudflare targets reject `db.ts` with a build error — Cloudflare agents use Durable Object SQLite automatically.
+- **Node: Built-in `sqlite()` persistence adapter.** `@flue/runtime/node` exports `sqlite(path?)` for file-backed or in-memory SQLite persistence. Pass a file path for data that survives restarts, or omit for an ephemeral in-memory database.
+
+  ```ts
+  // src/db.ts
+  import { sqlite } from '@flue/runtime/node';
+  export default sqlite('./data/flue.db');
+  ```
+
+- **New `@flue/postgres` package for Postgres persistence.** Install `@flue/postgres` and export `postgres(connectionString)` from `db.ts` for production deployments backed by PostgreSQL. Includes automatic schema migration.
+
+  ```ts
+  // src/db.ts
+  import { postgres } from '@flue/postgres';
+  export default postgres(process.env.DATABASE_URL!);
+  ```
+
+- **New `@flue/runtime/adapter` subpath for custom persistence backends.** Adapter authors can import store interfaces (`AgentExecutionStore`, `AgentSubmissionStore`, `PersistenceAdapter`), vocabulary types, and helper functions from `@flue/runtime/adapter` when building a persistence backend for a database not covered by the built-in adapters.
+- **Runtime: Export `PersistenceAdapter`, `DurabilityConfig`, and `FlueEventCallback` types.** These types are now available from the `@flue/runtime` root barrel.
 
 ### Fixes & Other Changes
 
@@ -32,7 +58,7 @@
 - **Cloudflare: Preserve workflow-run history parity.** Cloudflare workflow storage now ignores events for unknown runs, resets same-ID event history when a run is initialized, preserves absent optional fields separately from explicit `null`, and retains explicit terminal `null` results during recovery.
 - **Harden persisted workflow-event identity.** Workflow history now treats `(runId, eventIndex)` as one immutable append-only event identity and SSE resume cursor across Node and Cloudflare. Malformed or duplicate persisted events fail instead of producing ambiguous history, and pre-event stream failures no longer fabricate cursor `0`.
 - **Cloudflare: Own Durable Object routing.** Flue now resolves generated agent and workflow bindings explicitly instead of deriving public routes from the Agents SDK environment scanner, then forwards requests through the Agents SDK custom-routing helper. Public routes remain independent from generated Durable Object identities.
-- **Cloudflare: Queue direct and dispatched agent input through one durable lifecycle.** Direct HTTP, SSE, WebSocket, and `dispatch(...)` submissions now share SQLite-backed same-session ordering. Transport loss does not cancel accepted backend work. Interrupted attempts reconcile conservatively: Flue requeues only when safe, recognizes persisted completion, and otherwise records a visible session interruption instead of blindly replaying provider work. Settled submission data is retained indefinitely in this beta release; session deletion rejects while durable submissions remain queued or running.
+- **Queue direct and dispatched agent input through one durable lifecycle.** Direct HTTP, SSE, WebSocket, and `dispatch(...)` submissions now share SQL-backed same-session ordering on both Node and Cloudflare. Transport loss does not cancel accepted backend work. Interrupted attempts reconcile conservatively: Flue requeues only when safe, recognizes persisted completion, and otherwise records a visible session interruption instead of blindly replaying provider work. Settled submission data is retained indefinitely in this beta release; session deletion rejects while durable submissions remain queued or running.
 
 ## 0.9.2 - 2026-06-03
 
