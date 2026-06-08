@@ -30,8 +30,7 @@ export class CloudflarePlugin implements BuildPlugin {
 		const agentImports = agents
 			.map((a, index) => {
 				const varName = agentVarName(a.name, index);
-				const filePath = a.filePath.replace(/\\/g, '/');
-				return `import * as ${varName} from '${filePath}';`;
+				return `import * as ${varName} from ${JSON.stringify(a.filePath.replace(/\\/g, '/'))};`;
 			})
 			.join('\n');
 		const agentModuleEntries = agents
@@ -40,8 +39,7 @@ export class CloudflarePlugin implements BuildPlugin {
 		const workflowImports = workflows
 			.map((workflow, index) => {
 				const varName = workflowVarName(workflow.name, index);
-				const filePath = workflow.filePath.replace(/\\/g, '/');
-				return `import * as ${varName} from '${filePath}';`;
+				return `import * as ${varName} from ${JSON.stringify(workflow.filePath.replace(/\\/g, '/'))};`;
 			})
 			.join('\n');
 		const workflowModuleEntries = workflows
@@ -160,12 +158,12 @@ export { ${workflowClassName(workflow.name)} };`,
 			)
 			.join('\n');
 
-		const userAppImport = appEntry ? `import userApp from '${appEntry.replace(/\\/g, '/')}';` : '';
+		const userAppImport = appEntry ? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};` : '';
 		const userCloudflareImport = cloudflareEntry
-			? `import * as userCloudflareModule from '${cloudflareEntry.replace(/\\/g, '/')}';`
+			? `import * as userCloudflareModule from ${JSON.stringify(cloudflareEntry.replace(/\\/g, '/'))};`
 			: '';
 		const userCloudflareReExport = cloudflareEntry
-			? `export * from '${cloudflareEntry.replace(/\\/g, '/')}';`
+			? `export * from ${JSON.stringify(cloudflareEntry.replace(/\\/g, '/'))};`
 			: '';
 		const userCloudflareValue = cloudflareEntry ? 'userCloudflareModule' : '{}';
 		const reservedCloudflareExportNames = [

@@ -1570,7 +1570,7 @@ export class Session implements FlueSession {
 					type: 'toolCall',
 					id: toolCallId,
 					name: 'bash',
-					arguments: args as Record<string, any>,
+					arguments: args as Record<string, unknown>,
 				},
 			],
 			// Synthetic provider-bookkeeping fields. No real provider was

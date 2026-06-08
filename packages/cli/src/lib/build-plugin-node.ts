@@ -13,16 +13,14 @@ export class NodePlugin implements BuildPlugin {
 		const agentImports = agents
 			.map((a, index) => {
 				const varName = agentVarName(a.name, index);
-				const filePath = a.filePath.replace(/\\/g, '/');
-				return `import * as ${varName} from '${filePath}';`;
+				return `import * as ${varName} from ${JSON.stringify(a.filePath.replace(/\\/g, '/'))};`;
 			})
 			.join('\n');
 
 		const workflowImports = workflows
 			.map((workflow, index) => {
 				const varName = workflowVarName(workflow.name, index);
-				const filePath = workflow.filePath.replace(/\\/g, '/');
-				return `import * as ${varName} from '${filePath}';`;
+				return `import * as ${varName} from ${JSON.stringify(workflow.filePath.replace(/\\/g, '/'))};`;
 			})
 			.join('\n');
 
@@ -40,8 +38,8 @@ export class NodePlugin implements BuildPlugin {
 		// default export and dispatches all requests through `app.fetch`. When
 		// no app.ts is present, the generated entry constructs a thin default
 		// Hono that mounts `flue()` and renders canonical error envelopes.
-		const userAppImport = appEntry ? `import userApp from '${appEntry.replace(/\\/g, '/')}';` : '';
-		const userDbImport = dbEntry ? `import userPersistenceAdapter from '${dbEntry.replace(/\\/g, '/')}';` : '';
+		const userAppImport = appEntry ? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};` : '';
+		const userDbImport = dbEntry ? `import userPersistenceAdapter from ${JSON.stringify(dbEntry.replace(/\\/g, '/'))};` : '';
 
 		// All HTTP routing, workflow admission/SSE/sync handling, agent dispatch,
 		// and error rendering live in @flue/runtime's runtime modules. The

@@ -69,6 +69,7 @@ Throws when the profile contains unknown fields, invalid capabilities, duplicate
 | Field           | Type                        | Description                                                                                                                                                                 |
 | --------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`          | `string`                    | Profile name. Required when selecting this profile with `session.task()`.                                                                                                   |
+| `description`   | `string`                    | Human-readable profile description.                                                                                                                                         |
 | `model`         | `string \| false`           | Default model specifier. Set to `false` to require call-level model selection.                                                                                              |
 | `instructions`  | `string`                    | Instructions prepended to discovered workspace context.                                                                                                                     |
 | `skills`        | `Skill[]`                   | Registered skills available to initialized sessions.                                                                                                                        |
@@ -202,6 +203,8 @@ The initializer runs whenever the runtime initializes a harness from the created
 
 | Field           | Type                                     | Description                                                                                                                                                                 |
 | --------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`          | `string`                                 | Agent name. Overrides the profile name when set.                                                                                                                            |
+| `description`   | `string`                                 | Human-readable agent description. Overrides the profile description when set.                                                                                               |
 | `profile`       | `AgentProfile`                           | Reusable baseline profile. Created-agent fields replace or extend profile values.                                                                                           |
 | `model`         | `string \| false`                        | Default model specifier. Set to `false` to require call-level model selection.                                                                                              |
 | `instructions`  | `string`                                 | Instructions prepended to discovered workspace context.                                                                                                                     |
@@ -254,7 +257,7 @@ Accepts input for asynchronous delivery to a continuing agent session. The creat
 
 `await dispatch(...)` resolves when the current runtime accepts and queues the input. It does not wait for model processing, tool calls, or an agent reply. Dispatched activity belongs to the continuing agent session: it does not create workflow-run history and does not appear in `/runs` or `flue logs`.
 
-Delivery durability depends on the generated target. Node uses a process-lifetime in-memory queue by default. Cloudflare durably admits delivery to the target agent Durable Object, orders it with direct prompts for the same session, and reconciles interruptions conservatively. It retries only when replay safety is provable; external effects still require application-level idempotency. See [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) and [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/).
+Delivery durability depends on the generated target. Node uses a process-lifetime in-memory queue by default; with a durable `db.ts` adapter, dispatches survive restarts and are reconciled on the replacement process. Cloudflare durably admits delivery to the target agent Durable Object, orders it with direct prompts for the same session, and reconciles interruptions conservatively. Both targets retry only when replay safety is provable; external effects still require application-level idempotency. See [Durable Execution](/docs/guide/durable-execution/) for recovery details, and [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) and [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/) for target-specific setup.
 
 ## `init(...)`
 

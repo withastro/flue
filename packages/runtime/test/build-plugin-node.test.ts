@@ -11,8 +11,8 @@ describe('NodePlugin', () => {
 			}),
 		);
 
-		expect(entry).toContain("import * as handler_assistant_0 from '/fixture/agents/assistant.ts';");
-		expect(entry).toContain("import * as workflow_translate_0 from '/fixture/workflows/translate.ts';");
+		expect(entry).toContain('import * as handler_assistant_0 from "/fixture/agents/assistant.ts";');
+		expect(entry).toContain('import * as workflow_translate_0 from "/fixture/workflows/translate.ts";');
 		expect(entry).toContain('"assistant": handler_assistant_0,');
 		expect(entry).toContain('"translate": workflow_translate_0,');
 	});
@@ -36,7 +36,7 @@ describe('NodePlugin', () => {
 			}),
 		);
 
-		expect(entry).toContain("import userPersistenceAdapter from '/fixture/db.ts';");
+		expect(entry).toContain('import userPersistenceAdapter from "/fixture/db.ts";');
 		expect(entry).toContain("typeof userPersistenceAdapter.connect !== 'function'");
 		expect(entry).toContain('userPersistenceAdapter.migrate');
 		expect(entry).toContain('userPersistenceAdapter.connect()');
@@ -64,7 +64,7 @@ describe('NodePlugin', () => {
 			}),
 		);
 
-		expect(withApp).toContain("import userApp from '/fixture/app.ts';");
+		expect(withApp).toContain('import userApp from "/fixture/app.ts";');
 		expect(withApp).toContain('const app = userApp;');
 		expect(withApp).not.toContain('createDefaultFlueApp()');
 
