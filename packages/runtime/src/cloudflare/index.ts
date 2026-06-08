@@ -1,9 +1,9 @@
 export type {
-	CloudflareAgentClass,
-	CloudflareAgentExtension,
-	ResolvedCloudflareAgentExtension,
-} from './agent-extension.ts';
-export { extend, resolveCloudflareAgentExtension } from './agent-extension.ts';
+	ExtensionClass,
+	CloudflareExtension,
+	ResolvedCloudflareExtension,
+} from './extension.ts';
+export { extend, resolveCloudflareExtension } from './extension.ts';
 export type { VirtualSandboxOptions } from './virtual-sandbox.ts';
 export { getVirtualSandbox } from './virtual-sandbox.ts';
 

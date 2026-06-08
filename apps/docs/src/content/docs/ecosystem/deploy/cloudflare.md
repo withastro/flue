@@ -154,9 +154,9 @@ An exported `websocket` middleware can authenticate its own agent or workflow so
 
 Route middleware sees the original inbound HTTP request before Flue forwards accepted work into its Durable Object. Durable direct-agent processing is a later boundary: after admission, Flue uses a deterministic internal request and does not persist or reconstruct the caller's original headers, cookies, query parameters, URL, or body as operation-time `ctx.req`. Authenticate before admission and carry any non-secret correlation you need later in application-owned input or storage. WebSocket hibernation has the same limitation for original upgrade metadata. Avoid header-mutating middleware such as CORS wrapping WebSocket upgrade routes, because WebSocket upgrade responses may have immutable headers.
 
-### Extending an addressable Cloudflare agent
+### Extending generated Cloudflare Durable Objects
 
-Flue normally owns each generated agent Durable Object class. When an addressable agent needs native Cloudflare Agents SDK capabilities such as `onStart()`, `schedule()`, `scheduleEvery()`, or `queue()`, export a `cloudflare` extension descriptor from its module:
+Flue normally owns each generated agent and workflow Durable Object class. When an addressable agent or workflow needs native Cloudflare Agents SDK capabilities such as `onStart()`, `schedule()`, `scheduleEvery()`, or `queue()`, export a `cloudflare` extension descriptor from its module:
 
 ```ts
 import { createAgent } from '@flue/runtime';
@@ -178,7 +178,7 @@ export const cloudflare = extend({
 });
 ```
 
-This is an advanced Cloudflare-only extension point. Flue applies `base` first, then defines its own Durable Object subclass with the generated Flue binding and class identity. For `.flue/agents/support-chat.ts`, authored Worker code can access the namespace as `env.FLUE_SUPPORT_CHAT_AGENT`, and Wrangler binds that name to `FlueSupportChatAgent`. Use `base` for native SDK lifecycle hooks and additional named methods. Do not override `fetch()`, `onRequest()`, WebSocket hooks, `onFiberRecovered()`, or `alarm()`: Flue and the Agents SDK use those methods for routing, hibernating connections, interruption recovery, and alarm multiplexing.
+This is an advanced Cloudflare-only extension point. Flue applies `base` first, then defines its own Durable Object subclass with the generated Flue binding and class identity. For `.flue/agents/support-chat.ts`, authored Worker code can access the namespace as `env.FLUE_SUPPORT_CHAT_AGENT`, and Wrangler binds that name to `FlueSupportChatAgent`. For `.flue/workflows/translate.ts`, the corresponding names are `env.FLUE_TRANSLATE_WORKFLOW` and `FlueTranslateWorkflow`. Use `base` for native SDK lifecycle hooks and additional named methods. Do not override `fetch()`, `onRequest()`, WebSocket hooks, `onFiberRecovered()`, or `alarm()`: Flue and the Agents SDK use those methods for routing, hibernating connections, interruption recovery, and alarm multiplexing.
 
 Use `wrap` when an integration needs to wrap the final Flue-generated Durable Object class:
 
@@ -191,7 +191,7 @@ export const cloudflare = extend({
 });
 ```
 
-Both `base` and `wrap` are optional. This agent-module export is distinct from the optional source-root `.flue/cloudflare.ts` deployment module below. Native SDK callbacks run as agent-instance activity: they do not receive a Flue workflow context, create workflow runs, or automatically initialize a Flue harness or session.
+Both `base` and `wrap` are optional. This module-local export is distinct from the optional source-root `.flue/cloudflare.ts` deployment module below. Native SDK callbacks run as Durable Object activity: they do not receive a Flue workflow context, create workflow runs, or automatically initialize a Flue harness or session.
 
 ### Extending the Worker
 

@@ -91,13 +91,12 @@ export function setupDocsCoverShaders() {
 	updateMode();
 	reducedMotion.addEventListener('change', updateMode);
 	smallViewport.addEventListener('change', updateMode);
-	window.addEventListener(
-		'pagehide',
-		() => {
-			reducedMotion.removeEventListener('change', updateMode);
-			smallViewport.removeEventListener('change', updateMode);
-			mount?.dispose();
-		},
-		{ once: true },
-	);
+	const dispose = (event: PageTransitionEvent) => {
+		if (event.persisted) return;
+		reducedMotion.removeEventListener('change', updateMode);
+		smallViewport.removeEventListener('change', updateMode);
+		mount?.dispose();
+		window.removeEventListener('pagehide', dispose);
+	};
+	window.addEventListener('pagehide', dispose);
 }

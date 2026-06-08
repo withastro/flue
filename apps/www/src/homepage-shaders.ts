@@ -140,15 +140,14 @@ export function setupHomepageShaders() {
 	reducedMotion.addEventListener('change', updateMode);
 	smallViewport.addEventListener('change', updateMode);
 
-	window.addEventListener(
-		'pagehide',
-		() => {
-			mountObserver.disconnect();
-			motionObserver.disconnect();
-			reducedMotion.removeEventListener('change', updateMode);
-			smallViewport.removeEventListener('change', updateMode);
-			ambientStates.forEach((state) => disposeState(state));
-		},
-		{ once: true },
-	);
+	const dispose = (event: PageTransitionEvent) => {
+		if (event.persisted) return;
+		mountObserver.disconnect();
+		motionObserver.disconnect();
+		reducedMotion.removeEventListener('change', updateMode);
+		smallViewport.removeEventListener('change', updateMode);
+		ambientStates.forEach((state) => disposeState(state));
+		window.removeEventListener('pagehide', dispose);
+	};
+	window.addEventListener('pagehide', dispose);
 }
