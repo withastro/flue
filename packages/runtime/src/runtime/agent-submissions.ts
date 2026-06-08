@@ -346,7 +346,13 @@ export async function reconcileInterruptedSubmission(
 		journal &&
 		(journal.phase === 'before_provider' || journal.phase === 'provider_started') &&
 		!journal.committed &&
-		state === 'continuable'
+		// 'continuable': session has partial progress that can resume.
+		// 'uncertain' with before_provider: the provider hasn't started, so
+		// a retry is safe — the journal is the authoritative record of what
+		// happened, and it says we never reached the provider. Without this,
+		// a crash after input application but before any provider response
+		// would terminally fail the submission instead of retrying.
+		(state === 'continuable' || (state === 'uncertain' && journal.phase === 'before_provider'))
 	) {
 		const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
 		if (replacement) return { replacement, failedError: null };
@@ -466,15 +472,27 @@ async function failInterruptedSubmission(
 	const processingPayload = agentSubmissionProcessingPayload(input);
 	const dispatchId = agentSubmissionDispatchId(input);
 	const ctx = createContext(processingPayload, dispatchId);
-	await createAgentSubmissionSessionHandler(agent, input, (s) =>
-		s.recordSubmissionTerminal({
-			submissionId: submission.submissionId,
-			kind: submission.kind,
-			reason,
-			message: error.message,
-			interruptedTools,
-		}),
-	)(ctx);
+	// The terminal message is a best-effort diagnostic recorded in the
+	// session. If it fails (e.g., disk full, SQLite corruption), proceed
+	// to settle the submission anyway — a persistent save failure must
+	// not leave the submission in an infinite reconciliation loop.
+	try {
+		await createAgentSubmissionSessionHandler(agent, input, (s) =>
+			s.recordSubmissionTerminal({
+				submissionId: submission.submissionId,
+				kind: submission.kind,
+				reason,
+				message: error.message,
+				interruptedTools,
+			}),
+		)(ctx);
+	} catch (terminalError) {
+		console.error(
+			'[flue:submission-reconciliation] Failed to record terminal message for submission',
+			submission.submissionId,
+			terminalError,
+		);
+	}
 	return await submissions.failSubmission(attempt, error);
 }
 

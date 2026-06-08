@@ -45,27 +45,37 @@ See [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/) for Durabl
 
 On Node.js, sessions and accepted input live in process memory by default. Restarting the process loses all in-flight work and session history.
 
-Asynchronous `dispatch(...)` inputs go through an ordered submission lifecycle with SQL admission, per-session FIFO ordering, and journal tracking. Dispatches queue behind earlier same-session work, and separate sessions progress independently. Direct prompts are processed inline while the connection is open.
+Both direct prompts (HTTP, SSE, WebSocket) and asynchronous `dispatch(...)` inputs go through the same ordered submission lifecycle with SQL admission, per-session FIFO ordering, and journal tracking. Inputs for one session keep their accepted order, while separate sessions progress independently. The connection that submitted a direct prompt observes the work but does not own it — accepted backend work continues through the durable lifecycle regardless of transport state.
+
+```txt
+direct HTTP, SSE, or WebSocket prompt ─┐
+                                       ├→ durable per-session queue → stored session history
+dispatch(...) input ────────────────────┘
+```
 
 Because the default backing store is in-memory SQLite, this lifecycle tracking protects against concurrent access within a running process but does not survive a restart. To persist session history and submission state across restarts, create a `src/db.ts` that exports a `PersistenceAdapter` such as `sqlite()` (file-backed) or `postgres()`.
 
-With a durable adapter, Node can recover interrupted dispatched input with the same conservative reconciliation rules as Cloudflare: it requeues only when canonical input is provably absent, recognizes already-completed canonical output, and terminalizes uncertain work instead of replaying it blindly. Node does not get Cloudflare's automatic Durable Object wake and Fiber recovery. A replacement Node process must start successfully and run startup reconciliation before interrupted dispatch work is examined. Direct HTTP, SSE, and WebSocket prompts remain attached inline work on Node, so a server restart drops them rather than preserving them as queued submissions. A file-backed SQLite adapter protects against process restart on the same host; surviving host loss requires storage outside that host, such as Postgres or another durable shared database.
+With a durable adapter, Node can recover interrupted work with the same conservative reconciliation rules as Cloudflare: it requeues only when canonical input is provably absent, recognizes already-completed canonical output, and terminalizes uncertain work instead of replaying it blindly. Node does not get Cloudflare's automatic Durable Object wake and Fiber recovery. A replacement Node process must start successfully and run startup reconciliation before interrupted work is examined. The coordinator also scans for expired leases periodically, so submissions stranded by a fast restart are eventually reclaimed even if the replacement process started before the old lease expired.
+
+On graceful shutdown (SIGINT/SIGTERM), active submissions are aborted at the turn boundary and left in a reclaimable state — they are not permanently settled. Their leases expire naturally and are reclaimed on next startup. Flue does not reconstruct lost SSE or WebSocket connections or replay missed direct-agent stream events after a restart.
+
+A file-backed SQLite adapter protects against process restart on the same host; surviving host loss requires storage outside that host, such as Postgres or another durable shared database.
 
 See [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) for session persistence setup and deployment guidance.
 
 ### Cloudflare and Node recovery compared
 
-A Cloudflare Durable Object reset and a Node server restart are not equivalent by default. Cloudflare stores accepted direct prompts and dispatched inputs in the owning Durable Object's SQLite queue, restores a wake, and reconciles interrupted work when the object resumes. Node only gets comparable recovery after an application supplies durable storage, and only for dispatched inputs that entered its submission lifecycle.
+A Cloudflare Durable Object reset and a Node server restart are not equivalent by default. Cloudflare stores accepted submissions in the owning Durable Object's SQLite queue, restores a wake, and reconciles interrupted work when the object resumes. Node gets comparable recovery after an application supplies durable storage via `db.ts`.
 
 | Failure case | Cloudflare | Node without `db.ts` | Node with durable `db.ts` |
 | --- | --- | --- | --- |
 | Machine or runtime process disappears while work is running | Durable Object SQLite retains accepted direct and dispatched submissions. | In-memory session and submission state disappear. | Persisted session and submission rows remain available. |
 | Interrupted dispatch input | Reconciled after Durable Object recovery with conservative replay rules. | Lost with process memory. | Reconciled on replacement-process startup with the same shared replay rules. |
-| Interrupted direct HTTP, SSE, or WebSocket prompt | Remains queued after admission; the transport may disconnect, but backend work is still reconciled. | Lost when the server process exits. | Still lost: direct prompts are not admitted into Node's durable submission queue. |
-| Recovery trigger | Durable Object startup, scheduled wake, and recovered Fiber callbacks. | None after restart. | Best-effort startup reconciliation after the new server begins listening. |
+| Interrupted direct HTTP, SSE, or WebSocket prompt | Remains queued after admission; the transport may disconnect, but backend work is still reconciled. | Lost when the server process exits. | Reconciled on replacement-process startup. The transport disconnects, but persisted submission state is recovered. |
+| Recovery trigger | Durable Object startup, scheduled wake, and recovered Fiber callbacks. | None after restart. | Startup reconciliation when the new server begins listening, plus periodic expired-lease scans. |
 | Multi-replica continuity | Per-agent Durable Object ownership gives one durable queue per agent instance. | Process-local only. | Depends on the adapter and deployment topology; use a shared durable store when another host must recover the work. |
 
-The remaining gap is therefore not the replay decision tree itself; both targets use the same reconciliation code for durable submissions. The gap is admission and recovery ownership: Cloudflare makes accepted direct and dispatched work durable by default inside the owning Durable Object, while Node requires an explicit durable adapter and still only recovers dispatched work. In both targets, a completed or uncertain model/tool action is never assumed safe to replay, so application-owned idempotency keys remain necessary for external effects.
+Both targets use the same reconciliation code and conservative replay rules for durable submissions. The remaining difference is recovery ownership: Cloudflare makes accepted work durable by default inside the owning Durable Object with automatic wake and Fiber recovery, while Node requires an explicit durable adapter and relies on process startup and periodic lease scanning for recovery. In both targets, a completed or uncertain model/tool action is never assumed safe to replay, so application-owned idempotency keys remain necessary for external effects.
 
 ### Keep workspace state separate
 

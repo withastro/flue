@@ -127,20 +127,24 @@ if (!userPersistenceAdapter || typeof userPersistenceAdapter.connect !== 'functi
   throw new Error('[flue] db.ts must default-export a PersistenceAdapter with a connect() method.');
 }
 let executionStore;
+let runStore;
+let runRegistry;
 try {
   if (userPersistenceAdapter.migrate) await userPersistenceAdapter.migrate();
   executionStore = userPersistenceAdapter.connect();
   if (!executionStore || typeof executionStore.sessions?.save !== 'function' || typeof executionStore.submissions?.getSubmission !== 'function') {
     throw new Error('connect() must return an AgentExecutionStore with sessions and submissions.');
   }
+  runStore = userPersistenceAdapter.connectRunStore();
+  runRegistry = userPersistenceAdapter.connectRunRegistry();
 } catch (error) {
   throw new Error('[flue] Failed to initialize persistence from db.ts: ' + (error instanceof Error ? error.message : error), { cause: error });
 }`
 				: `// Default persistence for Node — in-memory SQLite, process lifetime.
-const executionStore = createNodeAgentExecutionStore();`
+const executionStore = createNodeAgentExecutionStore();
+const runStore = new InMemoryRunStore();
+const runRegistry = new InMemoryRunRegistry();`
 		}
-const runStore = ${dbEntry ? 'userPersistenceAdapter.connectRunStore()' : 'new InMemoryRunStore()'};
-const runRegistry = ${dbEntry ? 'userPersistenceAdapter.connectRunRegistry()' : 'new InMemoryRunRegistry()'};
 const runSubscribers = createRunSubscriberRegistry();
 const agentCoordinator = createNodeAgentCoordinator({
   submissions: executionStore.submissions,

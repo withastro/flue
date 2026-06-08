@@ -208,6 +208,16 @@ export function createNodeAgentCoordinator(options: {
 			const completed = await submissions.completeSubmission(attempt);
 			if (completed && submission.kind === 'direct') observers.complete(submission.submissionId, result);
 		} catch (error) {
+			// During shutdown, the coordinator aborts active submissions at the
+			// turn boundary. Don't permanently settle the submission — leave it
+			// in 'running' so its expired lease triggers reclamation on restart.
+			// Still notify the observer so the direct prompt caller's completion
+			// promise rejects instead of hanging (the transport is being torn
+			// down anyway, but a clean rejection avoids dangling promises).
+			if (stopping && error instanceof DOMException && error.name === 'AbortError') {
+				if (submission.kind === 'direct') observers.fail(submission.submissionId, error);
+				throw error;
+			}
 			const failed = await submissions.failSubmission(attempt, error);
 			if (failed && submission.kind === 'direct') observers.fail(submission.submissionId, error);
 			throw error;
@@ -253,6 +263,8 @@ export function createNodeAgentCoordinator(options: {
 	 * Returns whether any progress was made.
 	 */
 	async function runClaimPass(): Promise<boolean> {
+		// Periodically scan for expired leases from other coordinators.
+		await periodicLeaseScan();
 		const runnable = await submissions.listRunnableSubmissions();
 		let progressed = false;
 		for (const submission of runnable) {
@@ -301,9 +313,12 @@ export function createNodeAgentCoordinator(options: {
 			} catch (error) {
 				// A transient DB error in listRunnableSubmissions or
 				// claimSubmission should not kill the entire loop. Log,
-				// back off briefly, and retry.
+				// back off briefly, and retry. Setting wakeRequested ensures
+				// the loop retries immediately after the backoff instead of
+				// sleeping indefinitely waiting for an external wake.
 				console.error('[flue:claim-loop] Error in claim pass, retrying:', error);
 				await new Promise<void>((r) => setTimeout(r, 1000));
+				wakeRequested = true;
 			} finally {
 				// Reset the sleep promise BEFORE clearing claimPassRunning.
 				// This ensures any wake() arriving in the gap between
@@ -354,6 +369,25 @@ export function createNodeAgentCoordinator(options: {
 	}
 
 	// ── Reconciliation ───────────────────────────────────────────────────
+
+	/** Interval (ms) between periodic expired-lease scans in the claim loop. */
+	const LEASE_SCAN_INTERVAL_MS = 60_000;
+	/** Timestamp of the last expired-lease scan. */
+	let lastLeaseScanAt = 0;
+
+	/**
+	 * Check for expired leases periodically during the claim loop. This
+	 * catches submissions stranded when a replacement process starts before
+	 * the old process's 30s lease expires. Without this, `reconcileSubmissions`
+	 * at startup would miss still-leased submissions and they'd be stranded
+	 * until the next full restart after the lease expires.
+	 */
+	async function periodicLeaseScan(): Promise<void> {
+		const now = Date.now();
+		if (now - lastLeaseScanAt < LEASE_SCAN_INTERVAL_MS) return;
+		lastLeaseScanAt = now;
+		await reconcileRunningSubmissions();
+	}
 
 	async function reconcileRunningSubmissions(): Promise<void> {
 		for (const submission of await submissions.listExpiredSubmissions()) {
@@ -486,21 +520,23 @@ export function createNodeAgentCoordinator(options: {
 			if (stopping) return;
 			stopping = true;
 
-			// Stop the heartbeat.
-			if (heartbeatInterval) {
-				clearInterval(heartbeatInterval);
-				heartbeatInterval = null;
-			}
-
 			// Wake the claim loop so it exits (checks `stopping` flag).
 			wake();
 
-			// Abort all active submissions at the turn boundary.
+			// Abort all active submissions at the turn boundary. The abort
+			// signal propagates into the session, which finishes the current
+			// turn and throws AbortError. processSubmission's catch block
+			// skips failSubmission during shutdown so the submission stays
+			// in 'running' — its expired lease will trigger reclamation on
+			// next startup.
 			for (const { abort } of activeSubmissions.values()) {
 				abort.abort(new DOMException('Coordinator shutting down.', 'AbortError'));
 			}
 
-			// Wait for active submissions to settle within the timeout.
+			// Wait for active submissions to reach the turn boundary within
+			// the timeout. The heartbeat keeps running so leases stay valid
+			// while work is still settling — this prevents a concurrent
+			// coordinator from reclaiming submissions that are still active.
 			if (activeSubmissions.size > 0) {
 				const settlement = Promise.allSettled([...activeSubmissions.values()].map((s) => s.task));
 				let timer: ReturnType<typeof setTimeout>;
@@ -510,8 +546,14 @@ export function createNodeAgentCoordinator(options: {
 				await Promise.race([settlement.finally(() => clearTimeout(timer!)), timeout]);
 			}
 
-			// Log any submissions that didn't settle — their leases will
-			// expire and be reclaimed on next startup.
+			// Stop the heartbeat after settlement (or timeout). Submissions
+			// that didn't settle will have their leases expire naturally,
+			// making them eligible for reclamation on next startup.
+			if (heartbeatInterval) {
+				clearInterval(heartbeatInterval);
+				heartbeatInterval = null;
+			}
+
 			if (activeSubmissions.size > 0) {
 				const abandoned = [...activeSubmissions.keys()];
 				console.error(

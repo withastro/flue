@@ -606,6 +606,12 @@ class CloudflareAgentCoordinator {
 			await this.submissions.admitDirect(input);
 			await this.reconcileSubmissions({ driverAlreadyArmed: true });
 			return await attachment.completion;
+		} catch (error) {
+			// If admission or reconciliation fails before the claim loop
+			// could pick up this submission, fail the observer so the
+			// caller's completion promise rejects instead of hanging.
+			this.observers.fail(input.submissionId, error);
+			throw error;
 		} finally {
 			attachment.detach();
 		}
