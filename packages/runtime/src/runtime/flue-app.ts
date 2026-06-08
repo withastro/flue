@@ -28,7 +28,6 @@ import { enqueueDispatch } from './dispatch.ts';
 import type { DispatchQueue } from './dispatch-queue.ts';
 import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
 import {
-	type AgentHandler,
 	type CreateContextFn,
 	handleAgentRequest,
 	handleWorkflowRequest,
@@ -60,10 +59,6 @@ export interface FlueRuntime {
 
 	// ─── Node-only ──────────────────────────────────────────────────────────
 
-	/**
-	 * Map of agent name -> direct HTTP handler function.
-	 */
-	handlers?: Record<string, AgentHandler>;
 	workflowHandlers?: Record<string, WorkflowHandler>;
 	agentRouteMiddleware?: Record<string, MiddlewareHandler>;
 	agentWebSocketMiddleware?: Record<string, MiddlewareHandler>;

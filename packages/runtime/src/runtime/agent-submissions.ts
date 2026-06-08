@@ -321,6 +321,20 @@ export async function reconcileInterruptedSubmission(
 	const state = await createAgentSubmissionSessionHandler(agent, input, (s) => s.inspectSubmissionInput(input))(ctx);
 
 	// Check turn journal for pre-commit interruption that can be retried.
+	//
+	// TODO(multi-process): The stream recovery and tool repair branches below
+	// mutate session state (appending messages via recoverInterruptedStream /
+	// repairInterruptedToolCalls) *before* calling replaceTurnJournalAttempt,
+	// which is the atomic CAS that acquires ownership of the next attempt. In
+	// a multi-process Node deployment sharing Postgres, two coordinators could
+	// both observe the same expired-lease submission, both append recovery
+	// messages, and then only one wins the CAS. recoverInterruptedStream has
+	// a partial idempotency guard (alreadyRecovered check), but
+	// repairInterruptedToolCalls does not. When multi-process is supported,
+	// either move replaceTurnJournalAttempt before the mutations or add an
+	// idempotency guard to repairInterruptedToolCalls. This is safe today
+	// because Cloudflare DOs are single-threaded and multi-process Node is
+	// not a supported configuration.
 	const journal = await submissions.getTurnJournal(submission.submissionId);
 	if (
 		state !== 'completed' &&

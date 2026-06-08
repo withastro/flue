@@ -1,5 +1,4 @@
 import type { AgentExecutionStore, AgentSubmission, AgentSubmissionStore } from '../agent-execution-store.ts';
-import { LEASE_DURATION_MS } from '../agent-execution-store.ts';
 import type { FlueContextInternal } from '../client.ts';
 import {
 	createAgentSubmissionObserverRegistry,
@@ -351,11 +350,15 @@ class CloudflareAgentCoordinator {
 				}
 			}
 			for (const submission of await this.submissions.listRunnableSubmissions()) {
+			// Cloudflare DOs are single-threaded per instance — leases are
+			// advisory-only. Set to 0 so reconciliation never misidentifies
+			// an active submission as expired. The Node coordinator uses real
+			// lease expiry with heartbeat renewal for multi-process safety.
 			const claimed = await this.submissions.claimSubmission({
 				submissionId: submission.submissionId,
 				attemptId: crypto.randomUUID(),
 				ownerId: this.instance.ctx.id.toString(),
-				leaseExpiresAt: Date.now() + LEASE_DURATION_MS,
+				leaseExpiresAt: 0,
 			});
 				if (!claimed) continue;
 				try {
@@ -410,7 +413,7 @@ class CloudflareAgentCoordinator {
 				agent,
 				(payload, dispatchId) =>
 					this.createContext(payload, submissionSyntheticRequest(submission.input), undefined, dispatchId),
-				{ ownerId: this.instance.ctx.id.toString(), leaseExpiresAt: Date.now() + LEASE_DURATION_MS },
+				{ ownerId: this.instance.ctx.id.toString(), leaseExpiresAt: 0 },
 			),
 		);
 		if (replacement) {

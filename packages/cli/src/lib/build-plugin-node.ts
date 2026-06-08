@@ -95,7 +95,7 @@ const workflowModules = {
 ${workflowModuleEntries}
 };
 const normalized = normalizeBuiltModules(agentModules, workflowModules);
-const { manifest, directHandlers, localAgentHandlers, createdAgents, dispatchAgentNames, workflowHandlers, localWorkflowHandlers, websocketAgentHandlers, websocketWorkflowHandlers, agentRouteMiddleware, agentWebSocketMiddleware, workflowRouteMiddleware, workflowWebSocketMiddleware } = normalized;
+const { manifest, localAgentHandlers, createdAgents, dispatchAgentNames, workflowHandlers, localWorkflowHandlers, websocketAgentHandlers, websocketWorkflowHandlers, agentRouteMiddleware, agentWebSocketMiddleware, workflowRouteMiddleware, workflowWebSocketMiddleware } = normalized;
 
 const isLocalMode = process.env.FLUE_MODE === 'local';
 const localCliTarget = process.env.FLUE_CLI_TARGET;
@@ -202,7 +202,6 @@ configureFlueRuntime({
   devMode: isLocalMode,
   runtimeVersion: ${runtimeVersion},
   manifest,
-  handlers: directHandlers,
   createAdmission,
   dispatchQueue,
   resolveDispatchAgentName: (agent) => dispatchAgentNames.get(agent),
