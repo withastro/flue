@@ -29,8 +29,8 @@
 			"import": "./dist/node/index.mjs"
 		},
 		"./test-utils": {
-			"types": "./src/test-utils/define-store-contract-tests.ts",
-			"import": "./src/test-utils/define-store-contract-tests.ts"
+			"types": "./dist/test-utils/define-store-contract-tests.d.mts",
+			"import": "./dist/test-utils/define-store-contract-tests.mjs"
 		}
 	},
 	"main": "./dist/index.mjs",

@@ -9,8 +9,8 @@ import {
 	InMemoryRunRegistry,
 	InMemoryRunStore,
 	InMemorySessionStore,
-	resetFlueRuntimeForTests,
 } from '../src/internal.ts';
+import { resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import { flue } from '../src/routing.ts';
 
 afterEach(() => {

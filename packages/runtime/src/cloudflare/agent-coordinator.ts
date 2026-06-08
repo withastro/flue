@@ -1,20 +1,11 @@
-import type {
-	AgentExecutionStore,
-	AgentSubmission,
-	AgentSubmissionStore,
-	SubmissionAttemptRef,
-	SubmissionDurability,
-} from '../agent-execution-store.ts';
+import type { AgentExecutionStore, AgentSubmission, AgentSubmissionStore } from '../agent-execution-store.ts';
 import { LEASE_DURATION_MS } from '../agent-execution-store.ts';
 import type { FlueContextInternal } from '../client.ts';
 import {
-	agentSubmissionDispatchId,
-	agentSubmissionProcessingPayload,
-	createAgentSubmissionSessionHandler,
 	createAgentSubmissionObserverRegistry,
+	createAgentSubmissionSessionHandler,
 	createDirectAgentSubmissionInput,
-	createSubmissionEventCallback,
-	createSubmissionJournalCallbacks,
+	processSubmission,
 	reconcileInterruptedSubmission,
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
@@ -222,11 +213,7 @@ class CloudflareAgentCoordinator {
 		return this.runWithInstanceContext(() =>
 			handleAgentRequest({
 				request,
-				agentName: this.agentName,
 				id: this.instance.name,
-				handler,
-				createContext: (_id, _runId, payload, req, initialEventIndex, dispatchId) =>
-					this.createContext(payload, req, initialEventIndex, dispatchId),
 				admitAttachedSubmission: (payload, onEvent) => this.admitAttachedSubmission(payload, onEvent),
 			}),
 		);
@@ -252,7 +239,6 @@ class CloudflareAgentCoordinator {
 				name: this.agentName,
 				id: this.instance.name,
 				request: socketRequest(connection),
-				handler,
 				createContext: (_id, _runId, payload, req) => this.createContext(payload, req),
 				admitAttachedSubmission: (payload, onEvent) => this.admitAttachedSubmission(payload, onEvent),
 			}),
@@ -444,7 +430,7 @@ class CloudflareAgentCoordinator {
 		try {
 			running = this.instance.runFiber(FLUE_AGENT_SUBMISSION_ATTEMPT_FIBER, async (fiberCtx) => {
 				fiberCtx.stash({ submissionId: submission.submissionId, attemptId: submission.attemptId });
-				await this.processSubmission(submission);
+				await this.processSubmissionEntry(submission);
 			});
 		} catch (error) {
 			this.activeAttempts.delete(attemptKey);
@@ -509,78 +495,34 @@ class CloudflareAgentCoordinator {
 		return keys;
 	}
 
-	private async processSubmission(submission: AgentSubmission): Promise<void> {
-		const { input } = submission;
-		if (!submission.attemptId) return;
-		const attempt: SubmissionAttemptRef = {
-			submissionId: submission.submissionId,
-			attemptId: submission.attemptId,
-		};
-		const persisted = await this.submissions.getSubmission(submission.submissionId);
-		if (persisted?.status !== 'running' || persisted.attemptId !== attempt.attemptId) return;
-		let ctx: FlueContextInternal | undefined;
-		try {
-			const agent = this.options.createdAgents[this.agentName];
-			if (!agent) throw new Error('[flue] Agent target unavailable during durable processing.');
-			if (input.kind === 'dispatch') assertAgentDispatchAdmissionInput(input);
-			ctx = this.createContext(
-				agentSubmissionProcessingPayload(input),
-				submissionSyntheticRequest(input),
-				undefined,
-				agentSubmissionDispatchId(input),
-			);
-			const operationCtx = ctx;
-			if (submission.kind === 'direct') {
-				operationCtx.setEventCallback(
-					createSubmissionEventCallback(submission.submissionId, this.instance.name, (sid, event) =>
-						this.observers.publish(sid, event),
-					),
-				);
-			}
-			const result = await this.runWithInstanceContext(() =>
-				createAgentSubmissionSessionHandler(agent, input, (session) =>
-					session.processSubmissionInput(input, {
-						onInputApplied: (durability: SubmissionDurability) => this.markInputApplied(attempt, durability),
-						startedAt: submission.startedAt,
-						timeoutAt:
-							submission.inputAppliedAt !== undefined && submission.timeoutAt > 0
-								? submission.timeoutAt
-								: undefined,
-						submissionAttempt: attempt,
-						journal: createSubmissionJournalCallbacks(this.submissions, submission, attempt),
-					}),
-				)(operationCtx),
-			);
-			const completed = await this.submissions.completeSubmission(attempt);
-			if (completed && submission.kind === 'direct') this.observers.complete(submission.submissionId, result);
-		} catch (error) {
-			const failed = await this.submissions.failSubmission(attempt, error);
-			if (failed && submission.kind === 'direct') this.observers.fail(submission.submissionId, error);
-			throw error;
-		} finally {
-			if (submission.kind === 'direct') ctx?.setEventCallback(undefined);
-			void this.reconcileSubmissions().catch((error) => {
-				console.error(
-					'[flue:submission-reconciliation]',
-					{
-						agentName: this.agentName,
-						instanceId: this.instance.name,
-						operation: 'settlement',
-						outcome: 'reconcile_failed',
-					},
-					error,
-				);
-			});
-		}
-	}
-
-	private async markInputApplied(
-		attempt: SubmissionAttemptRef,
-		durability: SubmissionDurability,
-	): Promise<void> {
-		if (!(await this.submissions.markSubmissionInputApplied(attempt, durability))) {
-			throw new Error('[flue] Agent submission attempt lost ownership before input application.');
-		}
+	private async processSubmissionEntry(submission: AgentSubmission): Promise<void> {
+		await processSubmission({
+			submissions: this.submissions,
+			submission,
+			resolveAgent: (name) => {
+				const agent = this.options.createdAgents[name];
+				if (!agent) throw new Error('[flue] Agent target unavailable during durable processing.');
+				return agent;
+			},
+			createContext: (payload, dispatchId) =>
+				this.createContext(payload, submissionSyntheticRequest(submission.input), undefined, dispatchId),
+			observers: this.observers,
+			wrapExecution: (fn) => this.runWithInstanceContext(fn),
+			onSettled: () => {
+				void this.reconcileSubmissions().catch((error) => {
+					console.error(
+						'[flue:submission-reconciliation]',
+						{
+							agentName: this.agentName,
+							instanceId: this.instance.name,
+							operation: 'settlement',
+							outcome: 'reconcile_failed',
+						},
+						error,
+					);
+				});
+			},
+		});
 	}
 
 	private async admitAttachedSubmission(

@@ -661,18 +661,13 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 
 	return runAttachedMiddleware(c, rt.agentRouteMiddleware?.[name], async () => {
 		if (rt.target === 'node') {
-			const handler = rt.handlers?.[name];
-			const createContext = rt.createContext;
 			const admitAttachedSubmission = rt.createAdmission?.[name]?.(id);
-			if (!handler || !createContext || !admitAttachedSubmission) {
-				throw new Error('[flue] Node runtime is missing agent handler configuration.');
+			if (!admitAttachedSubmission) {
+				throw new Error('[flue] Node runtime is missing agent admission configuration.');
 			}
 			return handleAgentRequest({
 				request,
-				agentName: name,
 				id,
-				handler,
-				createContext,
 				admitAttachedSubmission,
 			});
 		}

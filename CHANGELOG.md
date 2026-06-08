@@ -7,6 +7,7 @@
 - **Adapters: `PersistenceAdapter` requires `connectRunStore()` and `connectRunRegistry()`.** Custom persistence adapters must implement these two new methods. `connectRunStore()` returns a `RunStore` for workflow run data and events. `connectRunRegistry()` returns a `RunRegistry` for run indexing and listing. The built-in SQLite adapter returns in-memory implementations; the Postgres adapter returns SQL-backed implementations.
 - **Adapters: `claimSubmission()` takes `SubmissionClaimRef` instead of `SubmissionAttemptRef`.** The new type extends `SubmissionAttemptRef` with required `ownerId: string` and `leaseExpiresAt: number` fields. Custom adapters must update their `claimSubmission` implementation to accept and persist these fields.
 - **Adapters: `AgentSubmissionStore` requires `renewLeases()` and `listExpiredSubmissions()`.** Custom adapters must implement `renewLeases(ownerId, submissionIds)` to extend lease timestamps for owned running submissions, and `listExpiredSubmissions()` to return running submissions with expired leases.
+- **Adapters: `AgentSubmissionStore` requires `deleteSession()`.** Custom adapters must implement `deleteSession(sessionKey, deleteSessionTree)` for coordinated session deletion that blocks new admission while snapshot cleanup runs. The method marks the session for deletion, delegates tree cleanup to the provided callback, copies settled submission data into dispatch receipts, and removes associated submissions, journals, and stream chunks.
 - **OpenTelemetry: Replace `captureContent` with explicit sanitization.** `createOpenTelemetryObserver(...)` now exports metadata and generic failure messages by default. To export content, replace `captureContent: true` with an application-owned `sanitize(event)` callback that returns a sanitized event, or intentionally return the original event for unsanitized local debugging.
 - **Agents: Rename ordinary sessions beginning with `task:`.** Session names with that prefix are now reserved for framework-owned delegated-task history. Flue retains detached child history until parent deletion or application-owned retention cleanup, and no stored records are deleted automatically during upgrade.
 - **Agents: Clear or migrate persisted beta session state before upgrading.** Session records now persist one opaque `aff_<ULID>` provider-affinity key instead of deriving affinity from agent instance, harness, and session names. This keeps prompt-cache and routing-affinity identifiers bounded and distinct for nested tasks. Existing version-4 beta session records are rejected; storage keys are unchanged.
@@ -41,7 +42,7 @@
   ```
 
 - **New `@flue/runtime/adapter` subpath for custom persistence backends.** Adapter authors can import store interfaces (`AgentExecutionStore`, `AgentSubmissionStore`, `PersistenceAdapter`), vocabulary types, and helper functions from `@flue/runtime/adapter` when building a persistence backend for a database not covered by the built-in adapters.
-- **Runtime: Export `PersistenceAdapter`, `DurabilityConfig`, and `FlueEventCallback` types.** These types are now available from the `@flue/runtime` root barrel.
+- **Runtime: Export `PersistenceAdapter` and `DurabilityConfig` types.** These types are now available from the `@flue/runtime` root barrel.
 
 ### Fixes & Other Changes
 

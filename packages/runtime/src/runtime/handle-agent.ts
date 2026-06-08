@@ -145,10 +145,7 @@ export type StartWorkflowAdmissionFn = (
  */
 export interface HandleAgentOptions {
 	request: Request;
-	agentName: string;
 	id: string;
-	handler: AgentHandler;
-	createContext: CreateContextFn;
 	admitAttachedSubmission: AttachedAgentSubmissionAdmission;
 }
 
@@ -175,7 +172,7 @@ export interface HandleWorkflowOptions {
  * responses; errors thrown after SSE begins are framed as stream errors.
  */
 export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Response> {
-	const { request, agentName, id, handler, createContext } = opts;
+	const { request, id } = opts;
 
 	try {
 		const rawPayload = await parseJsonBody(request);
@@ -187,12 +184,8 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 		}
 		const payload = parseDirectAgentPayload(rawPayload);
 		const directOptions: DirectAttachedOptions = {
-			agentName,
 			id,
-			handler,
 			payload,
-			request,
-			createContext,
 			admitAttachedSubmission: opts.admitAttachedSubmission,
 		};
 		if ((request.headers.get('accept') || '').includes('text/event-stream')) {
@@ -264,12 +257,8 @@ export interface InvokeWorkflowAttachedOptions {
 }
 
 export interface DirectAttachedOptions {
-	agentName: string;
 	id: string;
-	handler: AgentHandler;
 	payload: DirectAgentPayload;
-	request: Request;
-	createContext: CreateContextFn;
 	admitAttachedSubmission: AttachedAgentSubmissionAdmission;
 	onEvent?: AttachedAgentEventCallback;
 	emitIdleOnComplete?: boolean;

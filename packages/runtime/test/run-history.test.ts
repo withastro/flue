@@ -1,11 +1,10 @@
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { resetFlueRuntimeForTests } from '../src/internal.ts';
 import { InMemoryRunRegistry } from '../src/node/run-registry.ts';
 import { InMemoryRunStore } from '../src/node/run-store.ts';
 import { flue } from '../src/routing.ts';
-import { configureFlueRuntime } from '../src/runtime/flue-app.ts';
+import { configureFlueRuntime, resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import type { RunRegistry } from '../src/runtime/run-registry.ts';
 import type { RunRecord, RunStore } from '../src/runtime/run-store.ts';
 import {

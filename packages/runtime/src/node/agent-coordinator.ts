@@ -1,25 +1,16 @@
-import type {
-	AgentSubmission,
-	AgentSubmissionStore,
-	SubmissionAttemptRef,
-	SubmissionDurability,
-} from '../agent-execution-store.ts';
+import type { AgentSubmission, AgentSubmissionStore } from '../agent-execution-store.ts';
 import { LEASE_DURATION_MS } from '../agent-execution-store.ts';
 import type { AttachedAgentEvent, CreatedAgent, DirectAgentPayload, DispatchReceipt } from '../types.ts';
 import {
-	agentSubmissionDispatchId,
 	type AgentSubmissionInput,
-	agentSubmissionProcessingPayload,
 	type AttachedAgentSubmissionAdmission,
 	createAgentSubmissionObserverRegistry,
-	createAgentSubmissionSessionHandler,
 	createDirectAgentSubmissionInput,
-	createSubmissionEventCallback,
-	createSubmissionJournalCallbacks,
+	processSubmission,
 	reconcileInterruptedSubmission,
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
-import { type CreateContextFn, assertAgentDispatchAdmissionInput } from '../runtime/handle-agent.ts';
+import type { CreateContextFn } from '../runtime/handle-agent.ts';
 import type { DispatchInput, DispatchQueue } from '../runtime/dispatch-queue.ts';
 
 export interface NodeAgentCoordinator {
@@ -89,6 +80,10 @@ export function createNodeAgentCoordinator(options: {
 	/** Heartbeat interval handle; started with the claim loop. */
 	let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
 
+	/** Periodic lease-scan wake timer; wakes the claim loop so expired
+	 *  leases are discovered even when no new work arrives. */
+	let leaseScanInterval: ReturnType<typeof setInterval> | null = null;
+
 	// ── Concurrent claim loop state ──────────────────────────────────────
 
 	/** Submissions currently being processed, keyed by submissionId. */
@@ -137,97 +132,15 @@ export function createNodeAgentCoordinator(options: {
 
 	// ── Helpers ──────────────────────────────────────────────────────────
 
-	function makeReconciliationContext(input: AgentSubmissionInput) {
+	function makeSubmissionContext(input: AgentSubmissionInput) {
 		return (payload: unknown, dispatchId: string | undefined) =>
 			createContext(input.id, undefined, payload, submissionSyntheticRequest(input), undefined, dispatchId);
 	}
 
-	async function processSubmission(submission: AgentSubmission, signal?: AbortSignal): Promise<void> {
-		const { input } = submission;
-		if (!submission.attemptId) return;
-		if (input.kind === 'dispatch') assertAgentDispatchAdmissionInput(input);
-		const attempt: SubmissionAttemptRef = {
-			submissionId: submission.submissionId,
-			attemptId: submission.attemptId,
-		};
-		const persisted = await submissions.getSubmission(submission.submissionId);
-		if (persisted?.status !== 'running' || persisted.attemptId !== attempt.attemptId) return;
-
-		const agentName = input.agent;
-		const agent = agents[agentName];
-		if (!agent) throw new Error(`[flue] submission target agent "${agentName}" has no created agent.`);
-
-		const ctx = createContext(
-			input.id,
-			undefined,
-			agentSubmissionProcessingPayload(input),
-			submissionSyntheticRequest(input),
-			undefined,
-			agentSubmissionDispatchId(input),
-		);
-
-		// Forward events to attached observers for direct submissions so that
-		// SSE and WebSocket callers see streaming events while the durable
-		// submission runs.
-		if (submission.kind === 'direct') {
-			ctx.setEventCallback(
-				createSubmissionEventCallback(submission.submissionId, input.id, (sid, event) =>
-					observers.publish(sid, event),
-				),
-			);
-		}
-
-		try {
-			const result = await createAgentSubmissionSessionHandler(agent, input, (session) => {
-				const handle = session.processSubmissionInput(input, {
-					onInputApplied: async (durability: SubmissionDurability) => {
-						if (!(await submissions.markSubmissionInputApplied(attempt, durability))) {
-							throw new Error('[flue] Agent submission attempt lost ownership before input application.');
-						}
-					},
-					startedAt: submission.startedAt,
-					timeoutAt:
-						submission.inputAppliedAt !== undefined && submission.timeoutAt > 0
-							? submission.timeoutAt
-							: undefined,
-					submissionAttempt: attempt,
-					journal: createSubmissionJournalCallbacks(submissions, submission, attempt),
-				});
-				// Wire the coordinator's abort signal so shutdown can cancel
-				// in-flight work at the turn boundary.
-				if (signal && !signal.aborted) {
-					const onAbort = () => handle.abort(signal.reason);
-					signal.addEventListener('abort', onAbort, { once: true });
-					// Clean up listener when the handle settles naturally.
-					handle.then(() => signal.removeEventListener('abort', onAbort), () => signal.removeEventListener('abort', onAbort));
-				} else if (signal?.aborted) {
-					handle.abort(signal.reason);
-				}
-				return handle;
-			})(ctx);
-			const completed = await submissions.completeSubmission(attempt);
-			if (completed && submission.kind === 'direct') observers.complete(submission.submissionId, result);
-		} catch (error) {
-			// During shutdown, the coordinator aborts active submissions at the
-			// turn boundary. Don't permanently settle the submission — leave it
-			// in 'running' so its expired lease triggers reclamation on restart.
-			// Still notify the observer so the direct prompt caller's completion
-			// promise rejects instead of hanging (the transport is being torn
-			// down anyway, but a clean rejection avoids dangling promises).
-			if (stopping && error instanceof DOMException && error.name === 'AbortError') {
-				if (submission.kind === 'direct') observers.fail(submission.submissionId, error);
-				throw error;
-			}
-			const failed = await submissions.failSubmission(attempt, error);
-			// Always notify the observer for direct submissions so the
-			// caller's completion promise rejects. When failSubmission
-			// returns false (stale attempt, superseded by another
-			// coordinator), the observer would otherwise hang forever.
-			if (submission.kind === 'direct') observers.fail(submission.submissionId, error);
-			throw error;
-		} finally {
-			if (submission.kind === 'direct') ctx.setEventCallback(undefined);
-		}
+	function resolveAgent(name: string): CreatedAgent {
+		const agent = agents[name];
+		if (!agent) throw new Error(`[flue] submission target agent "${name}" has no created agent.`);
+		return agent;
 	}
 
 	/**
@@ -238,7 +151,15 @@ export function createNodeAgentCoordinator(options: {
 	 */
 	function spawnSubmissionTask(claimed: AgentSubmission): void {
 		const controller = new AbortController();
-		const task = processSubmission(claimed, controller.signal)
+		const task = processSubmission({
+				submissions,
+				submission: claimed,
+				resolveAgent,
+				createContext: makeSubmissionContext(claimed.input),
+				observers,
+				signal: controller.signal,
+				isShutdownAbort: (error) => stopping && error instanceof DOMException && error.name === 'AbortError',
+			})
 			.catch((error) => {
 				// AbortErrors during shutdown are expected — don't log them.
 				if (error instanceof DOMException && error.name === 'AbortError') return;
@@ -370,12 +291,22 @@ export function createNodeAgentCoordinator(options: {
 				heartbeatInterval.unref();
 			}
 		}
+		// Start periodic lease-scan wake: ensures the claim loop wakes up
+		// to discover expired leases even when no new work is being admitted.
+		// Without this, a sleeping claim loop would never check for stale
+		// submissions left by a crashed previous process.
+		if (!leaseScanInterval) {
+			leaseScanInterval = setInterval(() => wake(), LEASE_SCAN_INTERVAL_MS);
+			if (typeof leaseScanInterval === 'object' && 'unref' in leaseScanInterval) {
+				leaseScanInterval.unref();
+			}
+		}
 	}
 
 	// ── Reconciliation ───────────────────────────────────────────────────
 
 	/** Interval (ms) between periodic expired-lease scans in the claim loop. */
-	const LEASE_SCAN_INTERVAL_MS = 60_000;
+	const LEASE_SCAN_INTERVAL_MS = 15_000;
 	/** Timestamp of the last expired-lease scan. */
 	let lastLeaseScanAt = 0;
 
@@ -413,7 +344,7 @@ export function createNodeAgentCoordinator(options: {
 					submissions,
 					submission,
 					agent,
-					makeReconciliationContext(submission.input),
+					makeSubmissionContext(submission.input),
 					{ ownerId, leaseExpiresAt: Date.now() + LEASE_DURATION_MS },
 				);
 				if (replacement) {
@@ -502,9 +433,11 @@ export function createNodeAgentCoordinator(options: {
 			// Wait for all active submissions to settle, then verify no new
 			// runnable work appeared (e.g. from session-head advancement).
 			while (true) {
+				if (stopping) return;
 				if (activeSubmissions.size > 0) {
 					await Promise.allSettled([...activeSubmissions.values()].map((s) => s.task));
 				}
+				if (stopping) return;
 				// Give the claim loop a chance to pick up any newly-runnable
 				// work that appeared from settlement (session-head advancement).
 				// A short yield lets the claim loop's wake() → runClaimPass()
@@ -514,6 +447,7 @@ export function createNodeAgentCoordinator(options: {
 					// Double-check no runnable work exists.
 					const runnable = await submissions.listRunnableSubmissions();
 					if (runnable.length === 0) break;
+					if (stopping) return;
 					// Runnable work exists — wake the loop and wait again.
 					wake();
 				}
@@ -550,12 +484,17 @@ export function createNodeAgentCoordinator(options: {
 				await Promise.race([settlement.finally(() => clearTimeout(timer!)), timeout]);
 			}
 
-			// Stop the heartbeat after settlement (or timeout). Submissions
-			// that didn't settle will have their leases expire naturally,
-			// making them eligible for reclamation on next startup.
+			// Stop the heartbeat and lease-scan timer after settlement (or
+			// timeout). Submissions that didn't settle will have their leases
+			// expire naturally, making them eligible for reclamation on next
+			// startup.
 			if (heartbeatInterval) {
 				clearInterval(heartbeatInterval);
 				heartbeatInterval = null;
+			}
+			if (leaseScanInterval) {
+				clearInterval(leaseScanInterval);
+				leaseScanInterval = null;
 			}
 
 			if (activeSubmissions.size > 0) {

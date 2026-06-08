@@ -1,8 +1,8 @@
 import type { AssistantMessageEvent, Model } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { getCloudflareAIBindingApiProvider } from '../src/cloudflare/workers-ai-provider.ts';
-import { resetProvidersForTests, resolveModel } from '../src/internal.ts';
-import { registerProvider } from '../src/runtime/providers.ts';
+import { resolveModel } from '../src/internal.ts';
+import { registerProvider, resetProvidersForTests } from '../src/runtime/providers.ts';
 
 afterEach(() => {
 	resetProvidersForTests();

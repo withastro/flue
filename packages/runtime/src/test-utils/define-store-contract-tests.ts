@@ -619,6 +619,101 @@ export function defineStoreContractTests(
 			});
 		});
 
+		// ── Lease management ────────────────────────────────────────────────
+
+		describe('renewLeases()', () => {
+			it('extends lease timestamp for owned running submissions', async () => {
+				const store = await create();
+				await store.submissions.admitDispatch(dispatchInput());
+				const expiry = Date.now() + 5_000;
+				await store.submissions.claimSubmission({
+					submissionId: 'dispatch-1',
+					attemptId: 'attempt-1',
+					ownerId: 'owner-a',
+					leaseExpiresAt: expiry,
+				});
+				const newExpiry = Date.now() + 60_000;
+				await store.submissions.renewLeases('owner-a', ['dispatch-1']);
+				const submission = await store.submissions.getSubmission('dispatch-1');
+				expect(submission).not.toBeNull();
+				expect(submission!.leaseExpiresAt).toBeGreaterThan(expiry);
+			});
+
+			it('ignores submissions owned by a different coordinator', async () => {
+				const store = await create();
+				await store.submissions.admitDispatch(dispatchInput());
+				const expiry = Date.now() + 5_000;
+				await store.submissions.claimSubmission({
+					submissionId: 'dispatch-1',
+					attemptId: 'attempt-1',
+					ownerId: 'owner-a',
+					leaseExpiresAt: expiry,
+				});
+				await store.submissions.renewLeases('owner-b', ['dispatch-1']);
+				const submission = await store.submissions.getSubmission('dispatch-1');
+				expect(submission).not.toBeNull();
+				expect(submission!.leaseExpiresAt).toBe(expiry);
+			});
+
+			it('ignores settled submissions', async () => {
+				const store = await create();
+				await store.submissions.admitDispatch(dispatchInput());
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
+				await store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
+				// Should not throw — settled submissions are silently skipped.
+				await store.submissions.renewLeases('test-owner', ['dispatch-1']);
+			});
+		});
+
+		describe('listExpiredSubmissions()', () => {
+			it('returns running submissions with expired leases', async () => {
+				const store = await create();
+				await store.submissions.admitDispatch(dispatchInput());
+				await store.submissions.claimSubmission({
+					submissionId: 'dispatch-1',
+					attemptId: 'attempt-1',
+					ownerId: 'owner-a',
+					leaseExpiresAt: 1, // expired in the past
+				});
+				const expired = await store.submissions.listExpiredSubmissions();
+				expect(expired).toHaveLength(1);
+				expect(expired[0]!.submissionId).toBe('dispatch-1');
+			});
+
+			it('excludes submissions with future lease expiry', async () => {
+				const store = await create();
+				await store.submissions.admitDispatch(dispatchInput());
+				await store.submissions.claimSubmission({
+					submissionId: 'dispatch-1',
+					attemptId: 'attempt-1',
+					ownerId: 'owner-a',
+					leaseExpiresAt: Date.now() + 60_000,
+				});
+				const expired = await store.submissions.listExpiredSubmissions();
+				expect(expired).toHaveLength(0);
+			});
+
+			it('excludes settled submissions', async () => {
+				const store = await create();
+				await store.submissions.admitDispatch(dispatchInput());
+				await store.submissions.claimSubmission({
+					submissionId: 'dispatch-1',
+					attemptId: 'attempt-1',
+					ownerId: 'owner-a',
+					leaseExpiresAt: 1,
+				});
+				await store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
+				const expired = await store.submissions.listExpiredSubmissions();
+				expect(expired).toHaveLength(0);
+			});
+
+			it('returns empty when no submissions exist', async () => {
+				const store = await create();
+				const expired = await store.submissions.listExpiredSubmissions();
+				expect(expired).toHaveLength(0);
+			});
+		});
+
 		// ── Edge cases ──────────────────────────────────────────────────────
 
 		describe('edge cases', () => {

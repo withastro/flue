@@ -200,12 +200,8 @@ async function invokeAgentPrompt(
 			throw new Error(`[flue] No admission factory registered for agent "${target.name}".`);
 		}
 		const result = await invokeDirectAttached({
-			agentName: target.name,
 			id: target.id,
 			payload: { message: message.message, session: message.session },
-			request,
-			handler: target.handler,
-			createContext: options.createContext,
 			admitAttachedSubmission: admissionFactory(target.id),
 			onEvent: (event) => {
 				if (!didStart) {

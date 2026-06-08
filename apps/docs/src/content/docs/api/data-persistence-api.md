@@ -3,7 +3,7 @@ title: Data Persistence API
 description: Store Flue session conversation state through the public persistence contract.
 ---
 
-The data persistence API controls **session conversation state**: recorded messages, task relationships, compaction summaries, provider affinity, and metadata needed to reopen a session. It does not store sandbox files or create workflow run history.
+The data persistence API controls **session conversation state** and **durable submission lifecycle**: recorded messages, task relationships, compaction summaries, provider affinity, submission admission/ordering, and workflow run history. It does not store sandbox files.
 
 For deciding what must survive deployment, see [Agents](/docs/guide/building-agents/) and [Sandboxes](/docs/guide/sandboxes/). For build output and the deployment handoff, see [Develop & Build](/docs/guide/develop-and-build/).
 
@@ -91,35 +91,45 @@ Treat `SessionData` as potentially sensitive. It can include model-visible text,
 | State category                                                 | Controlled by                                          |
 | -------------------------------------------------------------- | ------------------------------------------------------ |
 | Agent session messages and compaction state                    | `SessionStore` via `db.ts` adapter or the target default |
-| Cloudflare agent submission admission, ordering, and terminal inspection rows | The owning agent Durable Object SQLite store           |
+| Agent submission admission, ordering, and terminal inspection rows | `AgentSubmissionStore` via `db.ts` adapter on Node; the owning Durable Object SQLite store on Cloudflare |
 | Sandbox files, installed dependencies, and workspace artifacts | The configured sandbox or connector                    |
-| Workflow run records and persisted run events                  | Workflow-run runtime storage, not `SessionStore` alone |
+| Workflow run records and persisted run events                  | `RunStore` and `RunRegistry` via `db.ts` adapter. The Postgres adapter persists these durably; the built-in SQLite adapter uses in-memory storage (lost on restart). |
 | Mutations performed through tools or external APIs             | The external system and application idempotency policy |
 
-A persisted conversation does not make sandbox files durable. A durable workspace does not retain conversation history unless session persistence does as well. On Cloudflare, the Durable Object SQLite store provides both session snapshots and operational submission rows. A custom `PersistenceAdapter` via `db.ts` replaces canonical session snapshots; Flue still stores operational submission rows locally in the owning Durable Object SQLite database on Cloudflare targets. Those rows can contain submitted payloads while queued and running. Settled submission data is retained indefinitely in this beta release. Dispatch receipt rows also persist indefinitely, providing duplicate-delivery protection for repeated forwarding of one `dispatchId`; there is no public submission lookup API.
+A persisted conversation does not make sandbox files durable. A durable workspace does not retain conversation history unless session persistence does as well. On Cloudflare, the Durable Object SQLite store provides both session snapshots and operational submission rows. On Node, the `db.ts` adapter provides both. A custom `PersistenceAdapter` via `db.ts` replaces canonical session snapshots and operational submission rows together. Those rows can contain submitted payloads while queued and running. Settled submission data is retained indefinitely in this beta release. Dispatch receipt rows also persist indefinitely, providing duplicate-delivery protection for repeated forwarding of one `dispatchId`; there is no public submission lookup API.
 
 ## Identity and deletion
 
-Session data is stored under keys derived from Flue identity boundaries: agent instance or workflow invocation ownership, harness name, and session name. The stored record contains a separate opaque provider-affinity key. Delegated `task(...)` calls use internal child sessions whose retained history remains parent-owned; names beginning with `task:` are reserved for those children and cannot be selected as ordinary sessions. Deleting a parent session removes its stored conversation data and retained child task-session tree; application-owned stores may apply broader retention separately. On Cloudflare, deletion rejects while the session still has queued or running durable submissions and removes settled operational payload copies after snapshot deletion succeeds. Deletion does not undo external effects or remove sandbox files.
+Session data is stored under keys derived from Flue identity boundaries: agent instance or workflow invocation ownership, harness name, and session name. The stored record contains a separate opaque provider-affinity key. Delegated `task(...)` calls use internal child sessions whose retained history remains parent-owned; names beginning with `task:` are reserved for those children and cannot be selected as ordinary sessions. Deleting a parent session removes its stored conversation data and retained child task-session tree; application-owned stores may apply broader retention separately. When backed by a durable submission store, deletion rejects while the session still has queued or running durable submissions and removes settled operational payload copies after snapshot deletion succeeds. Deletion does not undo external effects or remove sandbox files.
 
-## Implementing a store
+## Implementing a custom adapter
 
-A custom store can use any application-controlled durable backend, such as Postgres, SQLite, Redis, or another database. Implement complete record replacement or suitable atomic behavior for your backend, since Flue calls `save(...)` with the current `SessionData` representation.
+A custom adapter implements `PersistenceAdapter` and is default-exported from `db.ts`. The adapter provides four stores: `SessionStore` and `AgentSubmissionStore` (via `connect()`), plus `RunStore` and `RunRegistry` (via `connectRunStore()` and `connectRunRegistry()`). Import store interfaces and helper types from `@flue/runtime/adapter`.
+
+The built-in adapters (`sqlite()` and `@flue/postgres`) cover common backends. Build a custom adapter when you need a different database or hosting strategy. Use the shared contract test suite from `@flue/runtime/test-utils` to validate your implementation against the same behavioral assertions used by the built-in adapters.
 
 ```ts
-import type { SessionData, SessionStore } from '@flue/runtime';
+import type { PersistenceAdapter } from '@flue/runtime/adapter';
 
-export const sessionStore: SessionStore = {
-  async save(id: string, data: SessionData) {
-    await database.sessions.upsert(id, data);
+const adapter: PersistenceAdapter = {
+  async migrate() {
+    // Run idempotent DDL (CREATE TABLE IF NOT EXISTS, etc.)
   },
-  async load(id: string) {
-    return await database.sessions.get(id);
+  connect() {
+    // Return { sessions: SessionStore, submissions: AgentSubmissionStore }
+    return myExecutionStore;
   },
-  async delete(id: string) {
-    await database.sessions.delete(id);
+  connectRunStore() {
+    return myRunStore;
+  },
+  connectRunRegistry() {
+    return myRunRegistry;
+  },
+  async close() {
+    // Clean up connections
   },
 };
+export default adapter;
 ```
 
 Keep database credentials in trusted runtime configuration, enforce access control around routes that reopen sessions, and verify restart behavior in the deployment environment where continuity matters.

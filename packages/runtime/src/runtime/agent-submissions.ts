@@ -12,6 +12,7 @@ import type {
 	DirectAgentPayload,
 } from '../types.ts';
 import type { DispatchInput } from './dispatch-queue.ts';
+import { assertAgentDispatchAdmissionInput } from './handle-agent.ts';
 
 export interface DispatchAgentSubmissionInput extends DispatchInput {
 	readonly kind: 'dispatch';
@@ -452,6 +453,132 @@ export function submissionSyntheticRequest(input: AgentSubmissionInput): Request
 	}
 	return new Request('https://flue.invalid/_dispatch', { method: 'POST' });
 }
+
+// ─── Shared submission processing ────────────────────────────────────────────
+
+export interface ProcessSubmissionOptions {
+	/** The submission store for state queries and settlement. */
+	submissions: AgentSubmissionStore;
+	/** The claimed submission to process. */
+	submission: AgentSubmission;
+	/** Resolve a created agent by name. Must throw if absent. */
+	resolveAgent: (name: string) => CreatedAgent;
+	/** Build a context for this submission. */
+	createContext: (payload: unknown, dispatchId: string | undefined) => FlueContextInternal;
+	/** Observer registry for direct submission events and settlement. */
+	observers: Pick<AgentSubmissionObserverRegistry, 'publish' | 'complete' | 'fail'>;
+	/**
+	 * Optional abort signal. When aborted, the session finishes the current
+	 * turn and throws AbortError. Used by the Node coordinator for graceful
+	 * shutdown.
+	 */
+	signal?: AbortSignal;
+	/**
+	 * Called when the signal is an AbortError and should be treated as a
+	 * shutdown — the submission is not settled (stays in 'running'), only the
+	 * observer is notified. Return `true` to suppress normal settlement.
+	 */
+	isShutdownAbort?: (error: unknown) => boolean;
+	/**
+	 * Optional wrapper around the execution call. Used by the Cloudflare
+	 * coordinator to run within `runWithInstanceContext`.
+	 */
+	wrapExecution?: <T>(fn: () => Promise<T>) => Promise<T>;
+	/**
+	 * Called in the finally block after settlement. Used by the Cloudflare
+	 * coordinator to trigger post-settlement reconciliation.
+	 */
+	onSettled?: () => void;
+}
+
+/**
+ * Shared submission processing logic used by both Node and Cloudflare
+ * coordinators. Validates the submission, creates a context, wires event
+ * forwarding for direct submissions, runs the agent handler, and settles
+ * the submission on success or failure.
+ */
+export async function processSubmission(opts: ProcessSubmissionOptions): Promise<void> {
+	const { submissions, submission, observers } = opts;
+	const { input } = submission;
+	if (!submission.attemptId) return;
+	if (input.kind === 'dispatch') assertAgentDispatchAdmissionInput(input);
+	const attempt: SubmissionAttemptRef = {
+		submissionId: submission.submissionId,
+		attemptId: submission.attemptId,
+	};
+	const persisted = await submissions.getSubmission(submission.submissionId);
+	if (persisted?.status !== 'running' || persisted.attemptId !== attempt.attemptId) return;
+
+	const agent = opts.resolveAgent(input.agent);
+	const ctx = opts.createContext(agentSubmissionProcessingPayload(input), agentSubmissionDispatchId(input));
+
+	if (submission.kind === 'direct') {
+		ctx.setEventCallback(
+			createSubmissionEventCallback(submission.submissionId, input.id, (sid, event) =>
+				observers.publish(sid, event),
+			),
+		);
+	}
+
+	const execute = () =>
+		createAgentSubmissionSessionHandler(agent, input, (session) => {
+			const handle = session.processSubmissionInput(input, {
+				onInputApplied: async (durability: SubmissionDurability) => {
+					if (!(await submissions.markSubmissionInputApplied(attempt, durability))) {
+						throw new Error('[flue] Agent submission attempt lost ownership before input application.');
+					}
+				},
+				startedAt: submission.startedAt,
+				timeoutAt:
+					submission.inputAppliedAt !== undefined && submission.timeoutAt > 0
+						? submission.timeoutAt
+						: undefined,
+				submissionAttempt: attempt,
+				journal: createSubmissionJournalCallbacks(submissions, submission, attempt),
+			});
+			// Wire the coordinator's abort signal so shutdown can cancel
+			// in-flight work at the turn boundary.
+			if (opts.signal && !opts.signal.aborted) {
+				const onAbort = () => handle.abort(opts.signal!.reason);
+				opts.signal.addEventListener('abort', onAbort, { once: true });
+				handle.then(
+					() => opts.signal!.removeEventListener('abort', onAbort),
+					() => opts.signal!.removeEventListener('abort', onAbort),
+				);
+			} else if (opts.signal?.aborted) {
+				handle.abort(opts.signal.reason);
+			}
+			return handle;
+		})(ctx);
+
+	try {
+		const result = opts.wrapExecution ? await opts.wrapExecution(execute) : await execute();
+		const completed = await submissions.completeSubmission(attempt);
+		if (completed && submission.kind === 'direct') observers.complete(submission.submissionId, result);
+	} catch (error) {
+		// During shutdown, the coordinator aborts active submissions at the
+		// turn boundary. Don't permanently settle the submission — leave it
+		// in 'running' so its expired lease triggers reclamation on restart.
+		// Still notify the observer so the direct prompt caller's completion
+		// promise rejects instead of hanging.
+		if (opts.isShutdownAbort?.(error)) {
+			if (submission.kind === 'direct') observers.fail(submission.submissionId, error);
+			throw error;
+		}
+		await submissions.failSubmission(attempt, error);
+		// Always notify the observer for direct submissions so the caller's
+		// completion promise rejects. When failSubmission returns false
+		// (stale attempt, superseded by another coordinator), the observer
+		// would otherwise hang forever.
+		if (submission.kind === 'direct') observers.fail(submission.submissionId, error);
+		throw error;
+	} finally {
+		if (submission.kind === 'direct') ctx.setEventCallback(undefined);
+		opts.onSettled?.();
+	}
+}
+
+// ─── Reconciliation internals ────────────────────────────────────────────────
 
 async function failInterruptedSubmission(
 	submissions: AgentSubmissionStore,

@@ -47,8 +47,6 @@ describe('package entrypoints', () => {
 		expect(internal).toMatchObject({
 			configureFlueRuntime: expect.any(Function),
 			createDefaultFlueApp: expect.any(Function),
-			resetFlueRuntimeForTests: expect.any(Function),
-			resetProvidersForTests: expect.any(Function),
 			resolveModel: expect.any(Function),
 		});
 	});

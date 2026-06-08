@@ -370,7 +370,8 @@ if (isLocalCliMode) {
   } else {
     startLocalAgent(localCliName, localCliId);
   }
-  process.on('disconnect', async () => {${dbEntry ? "\n    if (userPersistenceAdapter.close) await userPersistenceAdapter.close();" : ''}
+  process.on('disconnect', async () => {
+    await agentCoordinator.shutdown();${dbEntry ? "\n    if (userPersistenceAdapter.close) await userPersistenceAdapter.close();" : ''}
     process.exit(0);
   });
 } else {

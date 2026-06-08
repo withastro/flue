@@ -40,7 +40,6 @@ export type {
 	FileStat,
 	FlueContext,
 	FlueEvent,
-	FlueEventCallback,
 	FlueFs,
 	FlueHarness,
 	FlueLogger,

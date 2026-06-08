@@ -62,8 +62,7 @@ describe('Cloudflare agent WebSockets', () => {
 				name: 'assistant',
 				id: 'agent-instance-1',
 				request: new Request('https://example.com/flue/agents/assistant/agent-instance-1'),
-				handler: async () => null,
-				createContext,
+							createContext,
 				admitAttachedSubmission: async () => null,
 			},
 		);
@@ -87,10 +86,6 @@ describe('Cloudflare agent WebSockets', () => {
 				name: 'assistant',
 				id: 'agent-instance-1',
 				request: new Request('https://example.com/flue/agents/assistant/agent-instance-1'),
-				handler: async () => {
-					calls.push('handler');
-					return null;
-				},
 				createContext,
 				admitAttachedSubmission: async (payload, onEvent) => {
 					calls.push(`admit:${payload.message}`);
@@ -124,8 +119,7 @@ describe('Cloudflare agent WebSockets', () => {
 				name: 'assistant',
 				id: 'agent-instance-1',
 				request: new Request('https://example.com/flue/agents/assistant/agent-instance-1'),
-				handler: async () => null,
-				createContext,
+							createContext,
 				admitAttachedSubmission: async (_payload, onEvent) => {
 					calls.push('admitted');
 					await onEvent?.({ type: 'idle', instanceId: 'agent-instance-1' });
@@ -154,10 +148,6 @@ describe('Cloudflare agent WebSockets', () => {
 				name: 'assistant',
 				id: 'agent-instance-1',
 				request: new Request('https://example.com/flue/agents/assistant/agent-instance-1'),
-				handler: async () => {
-					invocations++;
-					return null;
-				},
 				createContext,
 				admitAttachedSubmission: async () => null,
 			},
@@ -186,10 +176,6 @@ describe('Cloudflare agent WebSockets', () => {
 			name: 'assistant',
 			id: 'agent-instance-1',
 			request: new Request('https://example.com/flue/agents/assistant/agent-instance-1'),
-			handler: async () => {
-				invocations++;
-				return null;
-			},
 			createContext,
 			admitAttachedSubmission: async () => null,
 		});

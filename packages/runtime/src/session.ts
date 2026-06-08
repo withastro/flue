@@ -789,9 +789,7 @@ export class Session implements FlueSession {
 				entry.message.attributes?.streamKey === streamKey,
 		);
 		if (alreadyRecovered) return true;
-		this.history.appendMessage(recovered.partial, 'retry');
-		this.history.appendMessage(recovered.interrupted, 'retry');
-		this.history.appendMessage(recovered.continued, 'retry');
+		this.history.appendMessages([recovered.partial, recovered.interrupted, recovered.continued], 'retry');
 		this.rebuildHarnessContext();
 		await this.save();
 		return true;
@@ -974,6 +972,12 @@ export class Session implements FlueSession {
 		for (const task of this.activeTasks) task.abort();
 	}
 
+	/**
+	 * Detach a child task session after its task completes. Aborts pending
+	 * work and fires the onDelete callback but does NOT delete stored data —
+	 * child session storage is parent-owned and cleaned up when the parent
+	 * session is deleted via the session-tree cascade.
+	 */
 	close(): void {
 		if (this.deleted) return;
 		this.deleted = true;
@@ -1624,13 +1628,17 @@ export class Session implements FlueSession {
 		this.harnessMessageCheckpointCursor = this.harness.state.messages.length;
 		await this.save();
 		if (this.activeTurnCanCommitJournal) {
+			const leafId = this.history.getLeafId();
+			if (!leafId) {
+				throw new Error('[flue] Invariant: checkpoint leaf ID is null after saving messages.');
+			}
 			const latest = messages.at(-1);
 			const turnEndedWithToolResult = latest?.role === 'toolResult';
 			if (turnEndedWithToolResult) {
 				await this.activeJournalCallbacks?.checkpointReady?.({
 					operationId: this.activeOperationId ?? generateOperationId(),
 					turnId: this.activeTurnId ?? generateTurnId(),
-					checkpointLeafId: this.history.getLeafId() ?? '',
+					checkpointLeafId: leafId,
 				});
 				if (this.activeStreamChunkWriter) {
 					await this.submissionStore?.deleteStreamChunkSegments(this.activeStreamChunkWriter.streamKey);
@@ -1639,8 +1647,8 @@ export class Session implements FlueSession {
 				await this.activeJournalCallbacks?.committed?.({
 					operationId: this.activeOperationId ?? generateOperationId(),
 					turnId: this.activeTurnId ?? generateTurnId(),
-					checkpointLeafId: this.history.getLeafId() ?? undefined,
-					committedLeafId: this.history.getLeafId() ?? '',
+					checkpointLeafId: leafId,
+					committedLeafId: leafId,
 				});
 				if (this.activeStreamChunkWriter) {
 					await this.submissionStore?.deleteStreamChunkSegments(this.activeStreamChunkWriter.streamKey);

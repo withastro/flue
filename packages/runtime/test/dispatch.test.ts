@@ -15,8 +15,8 @@ import {
 	type DispatchInput,
 	type DispatchQueue,
 	InMemorySessionStore,
-	resetFlueRuntimeForTests,
 } from '../src/internal.ts';
+import { resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import {
 	createAgentSubmissionSessionHandler,
 	createAgentSubmissionObserverRegistry,
