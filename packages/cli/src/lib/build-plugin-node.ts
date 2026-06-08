@@ -149,6 +149,15 @@ const agentCoordinator = createNodeAgentCoordinator({
 });
 const dispatchQueue = createNodeDispatchQueue(agentCoordinator);
 
+// Build per-agent durable admission factories so HTTP and WebSocket
+// prompts enter the same durable submission lifecycle as dispatches.
+const createAdmission = Object.fromEntries(
+  Object.keys(createdAgents).map((name) => [
+    name,
+    (instanceId) => agentCoordinator.createAdmission(name, instanceId),
+  ]),
+);
+
 function createContextForRequest(id, runId, payload, req, initialEventIndex, dispatchId) {
   return createFlueContext({
     id,
@@ -174,6 +183,7 @@ const websocketTransport = isLocalCliMode ? undefined : createNodeWebSocketTrans
   agentHandlers: websocketAgentHandlers,
   workflowHandlers: websocketWorkflowHandlers,
   createContext: createContextForRequest,
+  createAdmission,
   runStore,
   runSubscribers,
   runRegistry,
@@ -191,6 +201,7 @@ configureFlueRuntime({
   runtimeVersion: ${runtimeVersion},
   manifest,
   handlers: directHandlers,
+  createAdmission,
   dispatchQueue,
   resolveDispatchAgentName: (agent) => dispatchAgentNames.get(agent),
   workflowHandlers,

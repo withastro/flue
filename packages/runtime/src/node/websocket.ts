@@ -8,6 +8,7 @@ import {
 	registeredAgentsForTransport,
 	registeredWorkflowsForTransport,
 } from '../runtime/flue-app.ts';
+import type { AttachedAgentSubmissionAdmission } from '../runtime/agent-submissions.ts';
 import type {
 	AgentHandler,
 	CreateContextFn,
@@ -43,6 +44,13 @@ export interface NodeWebSocketTransportOptions {
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
+	/**
+	 * Per-agent durable admission factory, keyed by agent name. When provided,
+	 * WebSocket agent prompts are persisted as durable submissions instead of
+	 * executing inline. Each factory receives the instance ID and returns the
+	 * admission hook for that specific agent instance.
+	 */
+	createAdmission?: Record<string, (instanceId: string) => AttachedAgentSubmissionAdmission>;
 }
 
 export interface NodeWebSocketTransport {
@@ -197,6 +205,7 @@ async function invokeAgentPrompt(
 			handler: target.handler,
 			createContext: options.createContext,
 			runHandler: options.runHandler,
+			admitAttachedSubmission: options.createAdmission?.[target.name]?.(target.id),
 			onEvent: (event) => {
 				if (!didStart) {
 					didStart = true;

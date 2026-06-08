@@ -652,4 +652,213 @@ describe('NodeAgentCoordinator', () => {
 			expect(subOld?.error).toBeUndefined();
 		}, 60_000);
 	});
+
+	// ─── Direct prompt admission ────────────────────────────────────────────
+
+	describe('direct prompt admission', () => {
+		it('processes a direct prompt through the durable submission lifecycle', async () => {
+			const dbPath = createTempDbPath();
+			const provider = createFauxProvider();
+			provider.setResponses([fauxAssistantMessage('Direct reply.')]);
+			const { coordinator, executionStore } = createFauxCoordinator(dbPath, provider);
+
+			const admit = coordinator.createAdmission('assistant', 'instance-1');
+			const result = await admit({ message: 'Hello from direct prompt' });
+
+			expect(result).toBeDefined();
+			// The submission should be settled in the store.
+			expect(await executionStore.submissions.hasUnsettledSubmissions()).toBe(false);
+		});
+
+		it('persists direct prompt submission across store reopens', async () => {
+			const dbPath = createTempDbPath();
+			const provider = createFauxProvider();
+			provider.setResponses([fauxAssistantMessage('Persisted direct reply.')]);
+			const { coordinator } = createFauxCoordinator(dbPath, provider);
+
+			const admit = coordinator.createAdmission('assistant', 'instance-1');
+			await admit({ message: 'Hello persisted' });
+
+			// "Restart": open the same file with a fresh store and verify settled.
+			const reopened = createNodeAgentExecutionStore(dbPath);
+			expect(await reopened.submissions.hasUnsettledSubmissions()).toBe(false);
+		});
+
+		it('forwards events to the attached observer during processing', async () => {
+			const dbPath = createTempDbPath();
+			const provider = createFauxProvider();
+			provider.setResponses([fauxAssistantMessage('Event test reply.')]);
+			const { coordinator } = createFauxCoordinator(dbPath, provider);
+
+			const events: unknown[] = [];
+			const admit = coordinator.createAdmission('assistant', 'instance-1');
+			await admit({ message: 'Hello events' }, (event) => { events.push(event); });
+
+			// Should have received at least one event during processing.
+			expect(events.length).toBeGreaterThan(0);
+			// Events should have instanceId set and no runId.
+			for (const event of events) {
+				const e = event as Record<string, unknown>;
+				expect(e.instanceId).toBe('instance-1');
+				expect(e).not.toHaveProperty('runId');
+			}
+		});
+
+		it('queues concurrent same-session direct prompts instead of rejecting', async () => {
+			const dbPath = createTempDbPath();
+			const provider = createFauxProvider();
+			// Need two responses since both prompts will be processed.
+			provider.setResponses([
+				fauxAssistantMessage('First reply.'),
+				fauxAssistantMessage('Second reply.'),
+			]);
+			const { coordinator, executionStore } = createFauxCoordinator(dbPath, provider);
+
+			const admit = coordinator.createAdmission('assistant', 'instance-1');
+			// Fire both concurrently to the same session.
+			const [result1, result2] = await Promise.all([
+				admit({ message: 'First', session: 'concurrent-session' }),
+				admit({ message: 'Second', session: 'concurrent-session' }),
+			]);
+
+			// Both should resolve (not reject).
+			expect(result1).toBeDefined();
+			expect(result2).toBeDefined();
+			expect(await executionStore.submissions.hasUnsettledSubmissions()).toBe(false);
+		});
+	});
+
+	describe('direct prompt interrupt and recover', () => {
+		it('requeues an interrupted direct prompt when canonical input is absent', async () => {
+			const dbPath = createTempDbPath();
+			const provider = createFauxProvider();
+			provider.setResponses([fauxAssistantMessage('Recovered direct reply.')]);
+			const store = createNodeAgentExecutionStore(dbPath);
+
+			// Manually admit a direct submission and claim it without processing.
+			await store.submissions.admitDirect({
+				kind: 'direct',
+				submissionId: 'direct-interrupted',
+				agent: 'assistant',
+				id: 'instance-1',
+				session: 'default',
+				payload: { message: 'Hello interrupted' },
+				acceptedAt: new Date().toISOString(),
+			});
+			await store.submissions.claimSubmission({
+				submissionId: 'direct-interrupted',
+				attemptId: 'attempt-crashed',
+			});
+			// Submission is running with no canonical input — simulates crash before input applied.
+
+			// "Restart": new coordinator reconciles.
+			const { coordinator, executionStore } = createFauxCoordinator(dbPath, provider);
+			await coordinator.reconcileSubmissions();
+
+			const submission = await executionStore.submissions.getSubmission('direct-interrupted');
+			expect(submission).toMatchObject({ status: 'settled' });
+			expect(submission?.error).toBeUndefined();
+		});
+
+		it('terminalizes an interrupted direct prompt when input was applied but no response completed', async () => {
+			const dbPath = createTempDbPath();
+			const provider = createFauxProvider();
+			provider.setResponses([fauxAssistantMessage('Should not run.')]);
+			const store = createNodeAgentExecutionStore(dbPath);
+
+			// Admit, claim, and mark input applied — then "crash."
+			await store.submissions.admitDirect({
+				kind: 'direct',
+				submissionId: 'direct-terminalized',
+				agent: 'assistant',
+				id: 'instance-1',
+				session: 'default',
+				payload: { message: 'Hello terminalized' },
+				acceptedAt: new Date().toISOString(),
+			});
+			await store.submissions.claimSubmission({
+				submissionId: 'direct-terminalized',
+				attemptId: 'attempt-applied',
+			});
+			await store.submissions.markSubmissionInputApplied({
+				submissionId: 'direct-terminalized',
+				attemptId: 'attempt-applied',
+			});
+
+			// "Restart": should terminalize because input was applied but no completed response.
+			const { coordinator, executionStore } = createFauxCoordinator(dbPath, provider);
+			await coordinator.reconcileSubmissions();
+
+			const submission = await executionStore.submissions.getSubmission('direct-terminalized');
+			expect(submission).toMatchObject({ status: 'settled' });
+			expect(submission?.error).toBeDefined();
+		});
+
+		it('silently recovers a direct prompt after restart with no attached observer', async () => {
+			const dbPath = createTempDbPath();
+			const provider = createFauxProvider();
+			provider.setResponses([fauxAssistantMessage('Recovered without observer.')]);
+			const store = createNodeAgentExecutionStore(dbPath);
+
+			// Admit and claim without processing — simulates crash.
+			await store.submissions.admitDirect({
+				kind: 'direct',
+				submissionId: 'direct-no-observer',
+				agent: 'assistant',
+				id: 'instance-1',
+				session: 'silent-session',
+				payload: { message: 'Hello silent' },
+				acceptedAt: new Date().toISOString(),
+			});
+			await store.submissions.claimSubmission({
+				submissionId: 'direct-no-observer',
+				attemptId: 'attempt-silent',
+			});
+
+			// "Restart": no observer attached. Should still reconcile and settle.
+			const { coordinator, executionStore } = createFauxCoordinator(dbPath, provider);
+			await coordinator.reconcileSubmissions();
+
+			const submission = await executionStore.submissions.getSubmission('direct-no-observer');
+			expect(submission).toMatchObject({ status: 'settled' });
+			expect(submission?.error).toBeUndefined();
+		});
+	});
+
+	describe('direct and dispatch same-session ordering', () => {
+		it('queues a dispatch behind a same-session direct prompt until the direct settles', async () => {
+			const dbPath = createTempDbPath();
+			const store = createNodeAgentExecutionStore(dbPath);
+
+			// Manually admit a direct submission and claim it to simulate an in-progress direct prompt.
+			await store.submissions.admitDirect({
+				kind: 'direct',
+				submissionId: 'direct-head',
+				agent: 'assistant',
+				id: 'instance-1',
+				session: 'ordered-mixed',
+				payload: { message: 'Direct first' },
+				acceptedAt: new Date().toISOString(),
+			});
+			await store.submissions.claimSubmission({
+				submissionId: 'direct-head',
+				attemptId: 'attempt-running',
+			});
+
+			// Admit a dispatch to the same session.
+			const dispatchInput = makeDispatchInput({
+				dispatchId: 'dispatch-queued-behind',
+				session: 'ordered-mixed',
+			});
+			await store.submissions.admitDispatch(dispatchInput);
+
+			// The dispatch should be queued because the direct is the session head.
+			const dispatch = await store.submissions.getSubmission(dispatchInput.dispatchId);
+			expect(dispatch?.status).toBe('queued');
+
+			// The direct is running — listRunnableSubmissions should NOT return the dispatch.
+			const runnable = await store.submissions.listRunnableSubmissions();
+			expect(runnable.find((s) => s.submissionId === 'dispatch-queued-behind')).toBeUndefined();
+		});
+	});
 });

@@ -118,6 +118,25 @@ export function createDispatchAgentSubmissionInput(input: DispatchInput): Dispat
 	return { ...input, kind: 'dispatch', submissionId: input.dispatchId };
 }
 
+export function createDirectAgentSubmissionInput(options: {
+	agent: string;
+	id: string;
+	payload: DirectAgentPayload;
+}): DirectAgentSubmissionInput {
+	return {
+		kind: 'direct',
+		submissionId: crypto.randomUUID(),
+		agent: options.agent,
+		id: options.id,
+		session:
+			typeof options.payload.session === 'string' && options.payload.session.trim() !== ''
+				? options.payload.session
+				: 'default',
+		payload: options.payload,
+		acceptedAt: new Date().toISOString(),
+	};
+}
+
 export function createAgentSubmissionSessionHandler(
 	agent: CreatedAgent,
 	input: AgentSubmissionInput,
@@ -396,9 +415,39 @@ export async function reconcileInterruptedSubmission(
 	return { replacement: null, failedError: failed ? error : null };
 }
 
+/**
+ * Create the event callback that forwards submission events to attached
+ * observers. Filters `run_start`/`run_end`, strips `runId`, and sets
+ * `instanceId`. Used by both Node and Cloudflare coordinators for direct
+ * submissions.
+ */
+export function createSubmissionEventCallback(
+	submissionId: string,
+	instanceId: string,
+	publish: (submissionId: string, event: AttachedAgentEvent) => Promise<void>,
+): (event: Record<string, unknown>) => Promise<void> | void {
+	return (event) => {
+		if (event.type === 'run_start' || event.type === 'run_end') return;
+		const attachedEvent = { ...event, instanceId } as AttachedAgentEvent & { runId?: string };
+		delete attachedEvent.runId;
+		return publish(submissionId, attachedEvent);
+	};
+}
+
 /** Synthetic dispatch request for reconciliation and Node dispatch contexts. */
 export function submissionDispatchRequest(): Request {
 	return new Request('https://flue.invalid/_dispatch', { method: 'POST' });
+}
+
+/** Synthetic request for the submission's kind: an agent route for direct prompts, the dispatch path for dispatches. */
+export function submissionSyntheticRequest(input: AgentSubmissionInput): Request {
+	if (input.kind === 'direct') {
+		return new Request(
+			`https://flue.invalid/agents/${encodeURIComponent(input.agent)}/${encodeURIComponent(input.id)}`,
+			{ method: 'POST' },
+		);
+	}
+	return submissionDispatchRequest();
 }
 
 async function failInterruptedSubmission(

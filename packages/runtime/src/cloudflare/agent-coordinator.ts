@@ -11,9 +11,11 @@ import {
 	agentSubmissionProcessingPayload,
 	createAgentSubmissionSessionHandler,
 	createAgentSubmissionObserverRegistry,
+	createDirectAgentSubmissionInput,
+	createSubmissionEventCallback,
 	createSubmissionJournalCallbacks,
 	reconcileInterruptedSubmission,
-	type DirectAgentSubmissionInput,
+	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
 import { type AgentHandler, assertAgentDispatchAdmissionInput, handleAgentRequest } from '../runtime/handle-agent.ts';
 import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
@@ -525,10 +527,7 @@ class CloudflareAgentCoordinator {
 			if (input.kind === 'dispatch') assertAgentDispatchAdmissionInput(input);
 			const request =
 				input.kind === 'direct'
-					? new Request(
-							`https://flue.invalid/agents/${encodeURIComponent(this.agentName)}/${encodeURIComponent(this.instance.name)}`,
-							{ method: 'POST' },
-						)
+					? submissionSyntheticRequest(input)
 					: new Request(`https://flue.invalid${CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH}`, {
 							method: 'POST',
 						});
@@ -540,14 +539,11 @@ class CloudflareAgentCoordinator {
 			);
 			const operationCtx = ctx;
 			if (submission.kind === 'direct') {
-				operationCtx.setEventCallback((event) => {
-					if (event.type === 'run_start' || event.type === 'run_end') return;
-					const attachedEvent = { ...event, instanceId: this.instance.name } as AttachedAgentEvent & {
-						runId?: string;
-					};
-					delete attachedEvent.runId;
-					return this.observers.publish(submission.submissionId, attachedEvent);
-				});
+				operationCtx.setEventCallback(
+					createSubmissionEventCallback(submission.submissionId, this.instance.name, (sid, event) =>
+						this.observers.publish(sid, event),
+					),
+				);
 			}
 			const result = await this.runWithInstanceContext(() =>
 				createAgentSubmissionSessionHandler(agent, input, (session) =>
@@ -599,17 +595,8 @@ class CloudflareAgentCoordinator {
 		payload: DirectAgentPayload,
 		onEvent?: (event: AttachedAgentEvent) => Promise<void> | void,
 	): Promise<unknown> {
-		const submissionId = crypto.randomUUID();
-		const input: DirectAgentSubmissionInput = {
-			kind: 'direct',
-			submissionId,
-			agent: this.agentName,
-			id: this.instance.name,
-			session: typeof payload.session === 'string' && payload.session.trim() !== '' ? payload.session : 'default',
-			payload,
-			acceptedAt: new Date().toISOString(),
-		};
-		const attachment = this.observers.attach(submissionId, { onEvent });
+		const input = createDirectAgentSubmissionInput({ agent: this.agentName, id: this.instance.name, payload });
+		const attachment = this.observers.attach(input.submissionId, { onEvent });
 		try {
 			await this.armSubmissionWake();
 			await this.submissions.admitDirect(input);

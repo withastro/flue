@@ -26,6 +26,7 @@ import type {
 } from '../types.ts';
 import { enqueueDispatch } from './dispatch.ts';
 import type { DispatchQueue } from './dispatch-queue.ts';
+import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
 import {
 	type AgentHandler,
 	type CreateContextFn,
@@ -79,6 +80,15 @@ export interface FlueRuntime {
 
 	/** Optional Node HTTP workflow admitted execution wrapper. Defaults to direct invocation. */
 	startWorkflowAdmission?: StartWorkflowAdmissionFn;
+
+	/**
+	 * Per-agent durable admission factory, keyed by agent name. When provided,
+	 * direct HTTP, SSE, and WebSocket prompts are persisted as durable submissions
+	 * instead of executing inline. Each factory receives the instance ID from the
+	 * route and returns the admission hook for that specific agent instance.
+	 * Created by the Node coordinator's `createAdmission()`.
+	 */
+	createAdmission?: Record<string, (instanceId: string) => AttachedAgentSubmissionAdmission>;
 
 	/** Optional Node direct-agent foreground handler wrapper. Defaults to direct invocation. */
 	runHandler?: RunHandlerFn;
@@ -667,6 +677,7 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 				handler,
 				createContext,
 				runHandler: rt.runHandler,
+				admitAttachedSubmission: rt.createAdmission?.[name]?.(id),
 			});
 		}
 
