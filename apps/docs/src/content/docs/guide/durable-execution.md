@@ -9,7 +9,7 @@ Durable execution is about recovering safely when running work is disrupted by a
 
 Agents are continuing, stateful contexts. An agent instance can own named sessions, and each session records conversation history so later operations can continue from where earlier work ended. The next message may arrive immediately or months later.
 
-Direct prompts and asynchronous `dispatch(...)` inputs are operations inside these continuing sessions. They are not workflow runs. When you need to send application-owned events such as webhooks or chat messages to an agent, see [Message-Driven Agents](/docs/guide/message-driven-agents/).
+Direct prompts and asynchronous `dispatch(...)` inputs are operations inside these continuing sessions. They are not workflow runs. When you need to send application-owned events such as webhooks or chat messages to an agent, see [Routing](/docs/guide/routing/) for application-owned ingress.
 
 ```txt
 agent input → stored session history → operation completes
@@ -21,7 +21,7 @@ later input → reopens the same session → continues with earlier context
 
 A stored session includes messages and compacted context needed to reopen the conversation later. This makes the session history the durable record that lets an agent continue working after an earlier operation has finished.
 
-To store session history in an application-controlled database, create a `src/db.ts` (or `.flue/db.ts`) file that default-exports a `PersistenceAdapter`. Flue discovers it at build time and wires it into the generated server entry. See the [Data Persistence API](/docs/api/data-persistence-api/) for the public storage contract.
+To store session history in an application-controlled database, create a `src/db.ts` (or `.flue/db.ts`) file that default-exports a `PersistenceAdapter`. See [Database](/docs/guide/database/) for setup and [Data Persistence API](/docs/api/data-persistence-api/) for the public storage contract.
 
 ### Durable Agents on Cloudflare
 
@@ -61,7 +61,7 @@ On graceful shutdown (SIGINT/SIGTERM), active submissions are aborted at the tur
 
 A file-backed SQLite adapter protects against process restart on the same host; surviving host loss requires storage outside that host, such as Postgres or another durable shared database.
 
-See [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) for session persistence setup and deployment guidance.
+See [Database](/docs/guide/database/) for session persistence setup and [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) for deployment guidance.
 
 ### Cloudflare and Node recovery compared
 

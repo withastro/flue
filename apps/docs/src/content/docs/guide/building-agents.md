@@ -53,7 +53,7 @@ export default createAgent(() => ({
 }));
 ```
 
-For more details, see [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), [Sandboxes](/docs/guide/sandboxes/), and [Data Persistence API](/docs/api/data-persistence-api/).
+For more details, see [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), [Sandboxes](/docs/guide/sandboxes/), and [Database](/docs/guide/database/).
 
 ## Agent ID
 

@@ -261,27 +261,9 @@ Start with the local or virtual sandbox. Move to a remote sandbox when you need 
 
 ## Session persistence
 
-On Node.js, session state is stored in memory by default — sessions persist for the lifetime of the process but are lost on restart. This is fine for development and stateless workloads.
+On Node.js, agent sessions and accepted submissions use in-memory SQLite by default, so they persist for the lifetime of one process but are lost on restart. Add `db.ts` when that state must survive restart or be shared outside one process.
 
-For durable sessions, create a `src/db.ts` (or `.flue/db.ts`) file that default-exports a `PersistenceAdapter`. Flue discovers it at build time and wires it into the generated server entry. The adapter provides both a `SessionStore` for conversation snapshots and an `AgentSubmissionStore` for durable submissions:
-
-```typescript title="src/db.ts"
-import { sqlite } from '@flue/runtime/node';
-
-export default sqlite('./data/flue.db');
-```
-
-For Postgres, use the `@flue/postgres` adapter:
-
-```typescript title="src/db.ts"
-import { postgres } from '@flue/postgres';
-
-export default postgres(process.env.DATABASE_URL);
-```
-
-See the [Data Persistence API](/docs/api/data-persistence-api/) for the `SessionStore` interface and details on implementing a custom adapter.
-
-You can back this with any database: SQLite, Postgres, Redis, etc.
+See [Database](/docs/guide/database/) for `db.ts`, SQLite, Postgres, and custom adapter setup. See [Data Persistence API](/docs/api/data-persistence-api/) for the adapter contract.
 
 ## Building and deploying
 

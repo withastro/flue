@@ -330,7 +330,7 @@ Creates a new session. Defaults to `'default'`. Throws if it already exists.
 delete(name?: string): Promise<void>;
 ```
 
-Deletes a session's stored conversation state. Defaults to `'default'`. No-op when missing. Rejects if the open session has an active operation. On Cloudflare, it also rejects while the session has accepted durable submissions queued or running. Session-management requests for one name are applied in request order.
+Deletes a session's stored conversation state. Defaults to `'default'`. No-op when missing. Rejects if the open session has an active operation. It also rejects while the session has accepted durable submissions queued or running. Session-management requests for one name are applied in request order.
 
 ### `harness.shell(...)`
 
@@ -537,7 +537,7 @@ Triggers conversation compaction immediately. Resolves without work when there i
 delete(): Promise<void>;
 ```
 
-Deletes this session's stored conversation state. Rejects while an operation is active. On Cloudflare, it also rejects while accepted durable submissions are queued or running for the session. Once deletion starts, the session is unusable and concurrent calls share the same deletion work.
+Deletes this session's stored conversation state. Rejects while an operation is active. It also rejects while accepted durable submissions are queued or running for the session. Once deletion starts, the session is unusable and concurrent calls share the same deletion work.
 
 #### `CallHandle<T>`
 

@@ -135,7 +135,7 @@ A successful response means the new env values reached the running service and F
 
 ## 5. Add session persistence
 
-In-memory sessions disappear on every deploy or restart, and they don't help once you scale beyond one instance. If your agents need conversations that survive that, back them with a Render data store using a `PersistenceAdapter`. The Node guide's [Session persistence](/docs/ecosystem/deploy/node/#session-persistence) section covers the `db.ts` file and available adapters.
+In-memory sessions disappear on every deploy or restart, and they don't help once you scale beyond one instance. If your agents need conversations that survive that, back them with a Render data store using a `PersistenceAdapter`. See [Database](/docs/guide/database/) for `db.ts` and available adapters.
 
 > **Starting fresh and want persistence built in?** Deploy the [Flue + Postgres template](https://render.com/templates/flue-with-postgresql) instead of the base template. It ships everything in this section preconfigured: a Render Postgres database wired into the web service via `DATABASE_URL` and a `db.ts` using `@flue/postgres`. The walkthrough below is for adding the same setup to a service you've already deployed from the base template.
 
