@@ -466,12 +466,39 @@ describe('readSse', () => {
 		for await (const frame of readSse(stream)) frames.push(frame);
 		expect(frames).toEqual([{ event: 'run_end', id: '2', data: '{"type":"run_end"}' }]);
 	});
+
+	it('parses CRLF-delimited SSE frames split across chunks', async () => {
+		const stream = sseChunks([
+			'event: run_end\r',
+			'\nid: 2\r',
+			'\ndata: {"type":"run_end"}\r',
+			'\n\r',
+			'\n',
+		]);
+
+		const frames = [];
+		for await (const frame of readSse(stream)) frames.push(frame);
+		expect(frames).toEqual([{ event: 'run_end', id: '2', data: '{"type":"run_end"}' }]);
+	});
+
+	it('parses CR-delimited SSE frames', async () => {
+		const stream = sse('event: run_end\rid: 2\rdata: {"type":"run_end"}\r\r');
+
+		const frames = [];
+		for await (const frame of readSse(stream)) frames.push(frame);
+		expect(frames).toEqual([{ event: 'run_end', id: '2', data: '{"type":"run_end"}' }]);
+	});
 });
 
 function sse(text: string): ReadableStream<Uint8Array> {
+	return sseChunks([text]);
+}
+
+function sseChunks(chunks: string[]): ReadableStream<Uint8Array> {
 	return new ReadableStream<Uint8Array>({
 		start(controller) {
-			controller.enqueue(new TextEncoder().encode(text));
+			const encoder = new TextEncoder();
+			for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
 			controller.close();
 		},
 	});

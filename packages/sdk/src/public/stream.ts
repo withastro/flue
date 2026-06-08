@@ -78,17 +78,17 @@ export async function* readSse(body: ReadableStream<Uint8Array>): AsyncIterable<
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
-			buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n');
-			let idx = buffer.indexOf('\n\n');
-			while (idx !== -1) {
-				const raw = buffer.slice(0, idx);
-				buffer = buffer.slice(idx + 2);
+			buffer += decoder.decode(value, { stream: true });
+			let boundary = findFrameBoundary(buffer);
+			while (boundary) {
+				const raw = buffer.slice(0, boundary.index);
+				buffer = buffer.slice(boundary.index + boundary.length);
 				const frame = parseFrame(raw);
 				if (frame) yield frame;
-				idx = buffer.indexOf('\n\n');
+				boundary = findFrameBoundary(buffer);
 			}
 		}
-		buffer += decoder.decode().replace(/\r\n/g, '\n');
+		buffer += decoder.decode();
 		const frame = parseFrame(buffer);
 		if (frame) yield frame;
 	} finally {
@@ -99,11 +99,21 @@ export async function* readSse(body: ReadableStream<Uint8Array>): AsyncIterable<
 	}
 }
 
+function findFrameBoundary(buffer: string): { index: number; length: number } | undefined {
+	const candidates = [
+		{ index: buffer.indexOf('\r\n\r\n'), length: 4 },
+		{ index: buffer.indexOf('\n\n'), length: 2 },
+		{ index: buffer.indexOf('\r\r'), length: 2 },
+	].filter((candidate) => candidate.index !== -1);
+
+	return candidates.sort((a, b) => a.index - b.index)[0];
+}
+
 function parseFrame(raw: string): SseFrame | undefined {
 	if (!raw.trim() || raw.startsWith(':')) return undefined;
 	const frame: SseFrame = { data: '' };
 	const data: string[] = [];
-	for (const line of raw.split('\n')) {
+	for (const line of raw.split(/\r\n|\n|\r/)) {
 		if (line.startsWith(':')) continue;
 		const colon = line.indexOf(':');
 		const field = colon === -1 ? line : line.slice(0, colon);
