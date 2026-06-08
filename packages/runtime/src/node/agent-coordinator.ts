@@ -219,7 +219,11 @@ export function createNodeAgentCoordinator(options: {
 				throw error;
 			}
 			const failed = await submissions.failSubmission(attempt, error);
-			if (failed && submission.kind === 'direct') observers.fail(submission.submissionId, error);
+			// Always notify the observer for direct submissions so the
+			// caller's completion promise rejects. When failSubmission
+			// returns false (stale attempt, superseded by another
+			// coordinator), the observer would otherwise hang forever.
+			if (submission.kind === 'direct') observers.fail(submission.submissionId, error);
 			throw error;
 		} finally {
 			if (submission.kind === 'direct') ctx.setEventCallback(undefined);

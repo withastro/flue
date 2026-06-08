@@ -284,9 +284,10 @@ class CloudflareAgentCoordinator {
 		if (ctx.name !== FLUE_AGENT_SUBMISSION_ATTEMPT_FIBER) return inherited();
 		const submissionId = ctx.snapshot?.submissionId;
 		const attemptId = ctx.snapshot?.attemptId;
-		if (typeof submissionId !== 'string' || typeof attemptId !== 'string') return;
+		if (typeof submissionId !== 'string' || typeof attemptId !== 'string') return inherited();
 		await this.restoreSubmissionWake();
 		await this.submissions.requestSubmissionRecovery({ submissionId, attemptId });
+		await this.reconcileSubmissions({ driverAlreadyArmed: true });
 	}
 
 	private get agentName(): string {

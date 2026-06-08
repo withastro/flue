@@ -771,11 +771,14 @@ class PgSubmissionStore implements AgentSubmissionStore {
 				}
 			}
 
-			// Lock the deletion marker row (if any) so a concurrent deletion
-			// that has inserted the marker but not yet committed will block
-			// this admission until the deletion transaction completes.
+			// Serialize admission against concurrent session deletion using an
+			// advisory lock keyed on the session name. SELECT ... FOR UPDATE on
+			// an empty result acquires no row-level lock, so a concurrent deletion
+			// with no existing marker rows could proceed simultaneously. The
+			// advisory lock guarantees mutual exclusion regardless of row existence.
+			await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [sessionKey]);
 			const deletingRows = await tx.query(
-				'SELECT 1 FROM flue_agent_session_deletions WHERE session_key = $1 FOR UPDATE LIMIT 1',
+				'SELECT 1 FROM flue_agent_session_deletions WHERE session_key = $1 LIMIT 1',
 				[sessionKey],
 			);
 			if (deletingRows.length > 0) {
@@ -808,15 +811,17 @@ class PgSubmissionStore implements AgentSubmissionStore {
 		deleteSessionTree: () => Promise<void>,
 	): Promise<void> {
 		// Phase 1: check for active submissions and mark deletion.
-		// Lock active submission rows so a concurrent admission that has
-		// inserted a queued row but not yet committed will block this
-		// deletion until the admission transaction completes.
+		// Use an advisory lock keyed on the session name to serialize against
+		// concurrent admissions. SELECT ... FOR UPDATE on an empty result
+		// acquires no row-level lock, so without the advisory lock a concurrent
+		// admission could slip in when no rows exist for this session key.
 		const deletionStartedAt = Date.now();
 		await this.runner.transaction(async (tx) => {
+			await tx.query('SELECT pg_advisory_xact_lock(hashtext($1))', [sessionKey]);
 			const active = await tx.query(
 				`SELECT 1 FROM flue_agent_submissions
 				 WHERE session_key = $1 AND status IN ('queued', 'running')
-				 FOR UPDATE LIMIT 1`,
+				 LIMIT 1`,
 				[sessionKey],
 			);
 			if (active.length > 0) {
@@ -832,7 +837,15 @@ class PgSubmissionStore implements AgentSubmissionStore {
 		});
 
 		// Phase 2: delete the session tree (async, outside transaction).
-		await deleteSessionTree();
+		try {
+			await deleteSessionTree();
+		} catch (error) {
+			// Remove the deletion marker so the session returns to a usable
+			// state. A persistent deleteSessionTree failure must not leave the
+			// marker indefinitely blocking future admissions.
+			await this.runner.query('DELETE FROM flue_agent_session_deletions WHERE session_key = $1', [sessionKey]);
+			throw error;
+		}
 
 		// Phase 3: clean up settled submission rows and deletion marker.
 		// Scope to submissions accepted before deletion started to avoid racing

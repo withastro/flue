@@ -2163,8 +2163,15 @@ export class Session implements FlueSession {
 						(assistant.stopReason === 'toolUse' &&
 							following.some((entry) => entry.type === 'message' && entry.message.role === 'toolResult'))
 					) {
-						const transientRetries = countConsecutiveRetryableModelErrors(following);
-						if (assistant && overflow) {
+				const transientRetries = countConsecutiveRetryableModelErrors(following);
+					// Check timeout before entering the preamble (compaction, transient
+					// retry backoff) which can add significant time. The main timeout
+					// check lives in runModelTurnWithRecovery, but these preamble paths
+					// run before that loop is entered.
+					if (this.activeTimeoutAt !== undefined && Date.now() >= this.activeTimeoutAt) {
+						throw new Error('[flue] Submission exceeded configured timeout.');
+					}
+					if (assistant && overflow) {
 							this.rebuildHarnessContext();
 							this.internalLog(
 								'info',

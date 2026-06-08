@@ -572,7 +572,7 @@ export function defineStoreContractTests(
 				await Promise.all([first, second]);
 			});
 
-			it('keeps new submissions blocked when snapshot deletion fails', async () => {
+			it('cleans up deletion marker when snapshot deletion fails', async () => {
 				const store = await create();
 				const sessionKey = 'agent-session:["agent-1","default","default"]';
 
@@ -581,10 +581,8 @@ export function defineStoreContractTests(
 						throw new Error('snapshot deletion failed');
 					}),
 				).rejects.toThrow('snapshot deletion failed');
-				await expect(store.submissions.admitDispatch(dispatchInput())).rejects.toThrow(
-					'Durable agent submission admission is unavailable while this session is being deleted.',
-				);
-				await expect(store.submissions.deleteSession(sessionKey, async () => {})).resolves.toBeUndefined();
+				// The deletion marker is removed on failure so the session
+				// returns to a usable state — admissions are not blocked.
 				expect(await store.submissions.admitDispatch(dispatchInput())).toMatchObject({
 					kind: 'submission',
 					submission: { status: 'queued' },

@@ -441,7 +441,15 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				Date.now(),
 			);
 		});
-		await deleteSessionTree();
+		try {
+			await deleteSessionTree();
+		} catch (error) {
+			// Remove the deletion marker so the session returns to a usable
+			// state. A persistent deleteSessionTree failure must not leave the
+			// marker indefinitely blocking future admissions.
+			this.sql.exec('DELETE FROM flue_agent_session_deletions WHERE session_key = ?', sessionKey);
+			throw error;
+		}
 		this.transactionSync(() => {
 			const deletionRows = this.sql
 				.exec(
