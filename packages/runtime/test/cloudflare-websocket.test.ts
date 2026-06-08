@@ -64,6 +64,7 @@ describe('Cloudflare agent WebSockets', () => {
 				request: new Request('https://example.com/flue/agents/assistant/agent-instance-1'),
 				handler: async () => null,
 				createContext,
+				admitAttachedSubmission: async () => null,
 			},
 		);
 
@@ -71,40 +72,9 @@ describe('Cloudflare agent WebSockets', () => {
 		expect(connection.closed).toBeUndefined();
 	});
 
-	it('restores the requested session before invoking a prompt when a Cloudflare agent socket receives a message', async () => {
-		const connection = new TestConnection();
-		const calls: string[] = [];
-
-		await messageCloudflareAgentWebSocket(
-			connection,
-			JSON.stringify({
-				version: 1,
-				type: 'prompt',
-				requestId: 'prompt-1',
-				message: 'Hello',
-				session: 'support',
-			}),
-			{
-				name: 'assistant',
-				id: 'agent-instance-1',
-				request: new Request('https://example.com/flue/agents/assistant/agent-instance-1'),
-				handler: async (ctx) => {
-					calls.push('invoke');
-					return ctx.payload;
-				},
-				createContext,
-			},
-		);
-
-		expect(calls).toEqual(['invoke']);
-		expect(connection.messages).toContainEqual({
-			version: 1,
-			type: 'result',
-			requestId: 'prompt-1',
-			result: { message: 'Hello', session: 'support' },
-		});
-		expect(connection.closed).toBeUndefined();
-	});
+	// The inline handler invocation test was removed because agent prompts now
+	// always go through the durable admission hook. Handler execution is covered
+	// by the coordinator test suite.
 
 	it('uses attached durable submission admission when configured for a Cloudflare agent socket', async () => {
 		const connection = new TestConnection();
@@ -189,6 +159,7 @@ describe('Cloudflare agent WebSockets', () => {
 					return null;
 				},
 				createContext,
+				admitAttachedSubmission: async () => null,
 			},
 		);
 
@@ -220,6 +191,7 @@ describe('Cloudflare agent WebSockets', () => {
 				return null;
 			},
 			createContext,
+			admitAttachedSubmission: async () => null,
 		});
 
 		expect(connection.messages).toEqual([
@@ -237,44 +209,9 @@ describe('Cloudflare agent WebSockets', () => {
 		expect(invocations).toBe(0);
 	});
 
-	it('includes the prompt request id when an attached agent invocation fails', async () => {
-		const connection = new TestConnection();
-		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-		try {
-			await messageCloudflareAgentWebSocket(
-				connection,
-				JSON.stringify({
-					version: 1,
-					type: 'prompt',
-					requestId: 'prompt-failure',
-					message: 'Hello',
-				}),
-				{
-					name: 'assistant',
-					id: 'agent-instance-1',
-					request: new Request('https://example.com/flue/agents/assistant/agent-instance-1'),
-					handler: async () => {
-						throw new Error('database password leaked');
-					},
-					createContext,
-				},
-			);
-		} finally {
-			consoleError.mockRestore();
-		}
-
-		expect(connection.messages).toContainEqual({
-			version: 1,
-			type: 'error',
-			requestId: 'prompt-failure',
-			error: {
-				type: 'internal_error',
-				message: 'An internal error occurred.',
-				details: 'The server encountered an unexpected error while handling this request.',
-			},
-		});
-		expect(connection.closed).toBeUndefined();
-	});
+	// The error propagation test was removed because agent prompts now always
+	// go through the durable admission hook. Error handling through the
+	// submission lifecycle is covered by the coordinator test suite.
 });
 
 describe('Cloudflare workflow WebSockets', () => {

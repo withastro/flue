@@ -139,8 +139,8 @@ try {
 				: `// Default persistence for Node — in-memory SQLite, process lifetime.
 const executionStore = createNodeAgentExecutionStore();`
 		}
-const runStore = new InMemoryRunStore();
-const runRegistry = new InMemoryRunRegistry();
+const runStore = ${dbEntry ? 'userPersistenceAdapter.connectRunStore()' : 'new InMemoryRunStore()'};
+const runRegistry = ${dbEntry ? 'userPersistenceAdapter.connectRunRegistry()' : 'new InMemoryRunRegistry()'};
 const runSubscribers = createRunSubscriberRegistry();
 const agentCoordinator = createNodeAgentCoordinator({
   submissions: executionStore.submissions,
@@ -316,6 +316,10 @@ function startLocalAgent(name, id) {
     failLocalStartup('Local agent connection requires an instance id.');
     return;
   }
+  if (!createAdmission[name]) {
+    failLocalStartup('Unknown agent for admission: ' + name);
+    return;
+  }
   sendLocalMessage({ version: 1, type: 'ready', target: 'agent', name, instanceId: id });
   process.on('message', (raw) => {
     let message;
@@ -337,6 +341,7 @@ function startLocalAgent(name, id) {
       request: localRequest(),
       handler,
       createContext: createContextForRequest,
+      admitAttachedSubmission: createAdmission[name](id),
       onEvent: (event) => {
         if (!didStart) {
           didStart = true;
@@ -381,13 +386,23 @@ if (isLocalCliMode) {
   } else {
     console.log('[flue] Agents: ' + ${JSON.stringify(agents.map((a) => a.name).join(', '))});
   }
-  async function stop() {
-    await websocketTransport.close();${dbEntry ? "\n    if (userPersistenceAdapter.close) await userPersistenceAdapter.close();" : ''}
-    server.close();
-    process.exit(0);
+  let shuttingDown = false;
+  async function stop(signal, exitCode) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.error('[flue] Received ' + signal + ', shutting down...');
+    // 1. Drain active submissions (abort at turn boundary, wait with timeout).
+    await agentCoordinator.shutdown();
+    // 2. Close WebSocket connections with Going Away frame.
+    if (websocketTransport) await websocketTransport.close();
+    // 3. Close persistence adapter.${dbEntry ? "\n    if (userPersistenceAdapter.close) await userPersistenceAdapter.close();" : ''}
+    // 4. Close HTTP server.
+    await new Promise((resolve) => server.close(resolve));
+    console.error('[flue] Stopped.');
+    process.exit(exitCode);
   }
-  process.on('SIGINT', () => { void stop(); });
-  process.on('SIGTERM', () => { void stop(); });
+  process.on('SIGINT', () => { void stop('SIGINT', 130); });
+  process.on('SIGTERM', () => { void stop('SIGTERM', 143); });
 }
 `;
 	}

@@ -85,6 +85,8 @@ describe('createSqlAgentExecutionStore()', () => {
 			{ name: 'attempt_count' },
 			{ name: 'max_retry' },
 			{ name: 'timeout_at' },
+			{ name: 'owner_id' },
+			{ name: 'lease_expires_at' },
 		]);
 		expect(
 			db.prepare("SELECT name FROM pragma_table_info('flue_agent_turn_journals') ORDER BY cid").all(),
@@ -204,7 +206,7 @@ describe('createSqlAgentExecutionStore()', () => {
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		const sessionKey = 'agent-session:["agent-1","default","default"]';
 		await store.submissions.admitDispatch(dispatchInput());
-		await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+		await store.submissions.claimSubmission({ ...attempt('dispatch-1', 'attempt-1'), ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
 		await store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
 
 		await store.submissions.deleteSession(sessionKey, async () => {});

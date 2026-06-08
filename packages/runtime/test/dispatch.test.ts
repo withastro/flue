@@ -1064,6 +1064,7 @@ describe('repairInterruptedToolCalls()', () => {
 		};
 
 		await coordinator.admitDispatch(dispatchInput);
+		await coordinator.waitForIdle();
 
 		const toolRequestIndex = events.findIndex(
 			(event) => event.type === 'phase' && event.phase === 'tool_request_recorded',
@@ -1132,6 +1133,7 @@ describe('repairInterruptedToolCalls()', () => {
 		};
 
 		await coordinator.admitDispatch(dispatchInput);
+		await coordinator.waitForIdle();
 
 		expect(phases).toContain('provider_started');
 		expect(phases).toContain('tool_request_recorded');

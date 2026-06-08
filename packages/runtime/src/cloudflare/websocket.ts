@@ -83,7 +83,7 @@ export interface CloudflareAgentWebSocketOptions extends CloudflareAttachedOptio
 	name: string;
 	id: string;
 	handler: AgentHandler;
-	admitAttachedSubmission?: AttachedAgentSubmissionAdmission;
+	admitAttachedSubmission: AttachedAgentSubmissionAdmission;
 }
 
 export interface CloudflareWorkflowWebSocketOptions extends CloudflareAttachedOptions {

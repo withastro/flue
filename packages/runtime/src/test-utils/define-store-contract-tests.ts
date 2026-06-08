@@ -51,7 +51,11 @@ function directInput(overrides: Partial<DirectAgentSubmissionInput> = {}): Direc
 }
 
 function attempt(submissionId: string, attemptId: string) {
-	return { submissionId, attemptId };
+	return { submissionId, attemptId } as const;
+}
+
+function claim(submissionId: string, attemptId: string, ownerId = 'test-owner') {
+	return { submissionId, attemptId, ownerId, leaseExpiresAt: Date.now() + 30_000 };
 }
 
 function sessionData(): SessionData {
@@ -169,7 +173,7 @@ export function defineStoreContractTests(
 					directInput({ submissionId: 'direct-2', session: 'other' }),
 				);
 				expect(await store.submissions.listRunnableSubmissions()).toEqual([direct, other]);
-				expect(await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-blocked'))).toBeNull();
+				expect(await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-blocked'))).toBeNull();
 			});
 
 			it('lists queued dispatches in admission order and selects one runnable head per session', async () => {
@@ -194,9 +198,9 @@ export function defineStoreContractTests(
 				await store.submissions.admitDispatch(dispatchInput({ dispatchId: 'dispatch-2' }));
 				await store.submissions.admitDispatch(dispatchInput({ dispatchId: 'dispatch-3', session: 'other' }));
 
-				const first = await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
-				const blocked = await store.submissions.claimSubmission(attempt('dispatch-2', 'attempt-2'));
-				const other = await store.submissions.claimSubmission(attempt('dispatch-3', 'attempt-3'));
+				const first = await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
+				const blocked = await store.submissions.claimSubmission(claim('dispatch-2', 'attempt-2'));
+				const other = await store.submissions.claimSubmission(claim('dispatch-3', 'attempt-3'));
 
 				expect(first).toMatchObject({
 					submissionId: 'dispatch-1',
@@ -221,7 +225,7 @@ export function defineStoreContractTests(
 			it('records input application and recovery requests only for the owning attempt', async () => {
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 
 				expect(await store.submissions.markSubmissionInputApplied(attempt('dispatch-1', 'attempt-1'))).toBe(true);
 				expect(await store.submissions.markSubmissionInputApplied(attempt('dispatch-1', 'stale-attempt'))).toBe(false);
@@ -240,8 +244,8 @@ export function defineStoreContractTests(
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput({ dispatchId: 'requeue-safe' }));
 				await store.submissions.admitDispatch(dispatchInput({ dispatchId: 'requeue-unsafe', session: 'other' }));
-				await store.submissions.claimSubmission(attempt('requeue-safe', 'attempt-safe'));
-				await store.submissions.claimSubmission(attempt('requeue-unsafe', 'attempt-unsafe'));
+				await store.submissions.claimSubmission(claim('requeue-safe', 'attempt-safe'));
+				await store.submissions.claimSubmission(claim('requeue-unsafe', 'attempt-unsafe'));
 				await store.submissions.markSubmissionInputApplied(attempt('requeue-unsafe', 'attempt-unsafe'));
 
 				expect(await store.submissions.requeueSubmissionBeforeInputApplied(attempt('requeue-safe', 'attempt-safe'))).toBe(true);
@@ -254,7 +258,7 @@ export function defineStoreContractTests(
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
 				expect(await store.submissions.hasUnsettledSubmissions()).toBe(true);
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 				expect(await store.submissions.listRunningSubmissions()).toHaveLength(1);
 				await store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
 				expect(await store.submissions.hasUnsettledSubmissions()).toBe(false);
@@ -264,7 +268,7 @@ export function defineStoreContractTests(
 			it('ignores stale-attempt settlement and keeps the first owning terminal state', async () => {
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 
 				await store.submissions.completeSubmission(attempt('dispatch-1', 'stale-attempt'));
 				await store.submissions.failSubmission(attempt('dispatch-1', 'attempt-1'), new Error('first failure'));
@@ -296,7 +300,7 @@ export function defineStoreContractTests(
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
 				const before = Date.now();
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 				const claimed = (await store.submissions.getSubmission('dispatch-1'))!;
 				expect(claimed.attemptCount).toBe(1);
 				expect(claimed.maxRetry).toBe(10);
@@ -307,7 +311,7 @@ export function defineStoreContractTests(
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
 				const customTimeout = Date.now() + 6 * 60 * 60_000;
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 				await store.submissions.markSubmissionInputApplied(attempt('dispatch-1', 'attempt-1'), {
 					maxRetry: 5,
 					timeoutAt: customTimeout,
@@ -322,7 +326,7 @@ export function defineStoreContractTests(
 			it('increments attempt_count on recovery via replaceTurnJournalAttempt', async () => {
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 				expect(await store.submissions.getSubmission('dispatch-1')).toMatchObject({ attemptCount: 1 });
 
 				await store.submissions.beginTurnJournal({
@@ -374,7 +378,7 @@ export function defineStoreContractTests(
 			it('creates, advances, and commits a turn journal through all phases', async () => {
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 
 				expect(
 					await store.submissions.beginTurnJournal({
@@ -410,7 +414,7 @@ export function defineStoreContractTests(
 			it('marks a stream as consumed once', async () => {
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 				await store.submissions.beginTurnJournal({
 					submissionId: 'dispatch-1',
 					sessionKey: 'agent-session:["agent-1","default","default"]',
@@ -433,7 +437,7 @@ export function defineStoreContractTests(
 			it('double-commit returns false', async () => {
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 				await store.submissions.beginTurnJournal({
 					submissionId: 'dispatch-1',
 					sessionKey: 'agent-session:["agent-1","default","default"]',
@@ -450,7 +454,7 @@ export function defineStoreContractTests(
 			it('resets journal on new turn after commit', async () => {
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 				await store.submissions.beginTurnJournal({
 					submissionId: 'dispatch-1',
 					sessionKey: 'agent-session:["agent-1","default","default"]',
@@ -483,7 +487,7 @@ export function defineStoreContractTests(
 			it('replaces the journal attempt and returns the updated submission', async () => {
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 				await store.submissions.beginTurnJournal({
 					submissionId: 'dispatch-1',
 					sessionKey: 'agent-session:["agent-1","default","default"]',
@@ -591,7 +595,7 @@ export function defineStoreContractTests(
 				const store = await create();
 				const sessionKey = 'agent-session:["agent-1","default","default"]';
 				await store.submissions.admitDispatch(dispatchInput());
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 				await store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
 
 				await store.submissions.deleteSession(sessionKey, async () => {});
@@ -603,7 +607,7 @@ export function defineStoreContractTests(
 				const store = await create();
 				const sessionKey = 'agent-session:["agent-1","default","default"]';
 				await store.submissions.admitDispatch(dispatchInput());
-				await store.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 				await store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
 				await store.submissions.deleteSession(sessionKey, async () => {});
 

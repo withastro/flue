@@ -45,12 +45,12 @@ export interface NodeWebSocketTransportOptions {
 	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
 	/**
-	 * Per-agent durable admission factory, keyed by agent name. When provided,
-	 * WebSocket agent prompts are persisted as durable submissions instead of
-	 * executing inline. Each factory receives the instance ID and returns the
-	 * admission hook for that specific agent instance.
+	 * Per-agent durable admission factory, keyed by agent name. WebSocket
+	 * agent prompts are persisted as durable submissions. Each factory
+	 * receives the instance ID and returns the admission hook for that
+	 * specific agent instance.
 	 */
-	createAdmission?: Record<string, (instanceId: string) => AttachedAgentSubmissionAdmission>;
+	createAdmission: Record<string, (instanceId: string) => AttachedAgentSubmissionAdmission>;
 }
 
 export interface NodeWebSocketTransport {
@@ -140,7 +140,7 @@ export function createNodeWebSocketTransport(
 		agentRoute,
 		workflowRoute,
 		async close() {
-			for (const socket of server.clients) socket.terminate();
+			for (const socket of server.clients) socket.close(1001, 'Server shutting down');
 			await new Promise<void>((resolve) => server.close(() => resolve()));
 		},
 	};
@@ -197,6 +197,10 @@ async function invokeAgentPrompt(
 ): Promise<void> {
 	let didStart = false;
 	try {
+		const admissionFactory = options.createAdmission[target.name];
+		if (!admissionFactory) {
+			throw new Error(`[flue] No admission factory registered for agent "${target.name}".`);
+		}
 		const result = await invokeDirectAttached({
 			agentName: target.name,
 			id: target.id,
@@ -205,7 +209,7 @@ async function invokeAgentPrompt(
 			handler: target.handler,
 			createContext: options.createContext,
 			runHandler: options.runHandler,
-			admitAttachedSubmission: options.createAdmission?.[target.name]?.(target.id),
+			admitAttachedSubmission: admissionFactory(target.id),
 			onEvent: (event) => {
 				if (!didStart) {
 					didStart = true;

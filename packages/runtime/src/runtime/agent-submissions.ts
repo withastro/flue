@@ -7,6 +7,7 @@ import type {
 import type { FlueContextInternal } from '../client.ts';
 import type {
 	AttachedAgentEvent,
+	CallHandle,
 	CreatedAgent,
 	DirectAgentPayload,
 } from '../types.ts';
@@ -82,7 +83,7 @@ interface AgentSubmissionSession {
 	processSubmissionInput(
 		input: AgentSubmissionInput,
 		options?: ProcessAgentSubmissionOptions,
-	): PromiseLike<unknown>;
+	): CallHandle<unknown>;
 	repairInterruptedToolCalls(
 		input: AgentSubmissionInput,
 		toolRequest: AgentSubmissionToolRequest,
@@ -286,6 +287,7 @@ export async function reconcileInterruptedSubmission(
 	submission: AgentSubmission,
 	agent: CreatedAgent,
 	createContext: (payload: unknown, dispatchId: string | undefined) => FlueContextInternal,
+	lease?: { ownerId: string; leaseExpiresAt: number },
 ): Promise<ReconciliationResult> {
 	const { input } = submission;
 	const attempt = submissionAttemptRef(submission);
@@ -336,7 +338,7 @@ export async function reconcileInterruptedSubmission(
 		if (recovered) {
 			await submissions.markStreamConsumed(attempt, journal.streamKey);
 			await submissions.deleteStreamChunkSegments(journal.streamKey);
-			const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID());
+			const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
 			if (replacement) return { replacement, failedError: null };
 		}
 	}
@@ -346,7 +348,7 @@ export async function reconcileInterruptedSubmission(
 		!journal.committed &&
 		state === 'continuable'
 	) {
-		const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID());
+		const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
 		if (replacement) return { replacement, failedError: null };
 	}
 
@@ -366,11 +368,11 @@ export async function reconcileInterruptedSubmission(
 			await submissions.updateTurnJournalPhase(attempt, 'before_provider', {
 				checkpointLeafId: repairedLeafId,
 			});
-			const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID());
+			const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
 			if (replacement) return { replacement, failedError: null };
 		}
 		if (state === 'continuable') {
-			const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID());
+			const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
 			if (replacement) return { replacement, failedError: null };
 		}
 	}

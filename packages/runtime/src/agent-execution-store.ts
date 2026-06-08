@@ -9,6 +9,8 @@
 
 import type { AgentSubmissionInput, DirectAgentSubmissionInput } from './runtime/agent-submissions.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
+import type { RunRegistry } from './runtime/run-registry.ts';
+import type { RunStore } from './runtime/run-store.ts';
 import type { SessionData, SessionStore } from './types.ts';
 
 // ─── Durability defaults ────────────────────────────────────────────────────
@@ -17,6 +19,8 @@ import type { SessionData, SessionStore } from './types.ts';
 export const DURABILITY_DEFAULT_MAX_RETRY = 10;
 /** Default submission timeout in minutes. */
 export const DURABILITY_DEFAULT_TIMEOUT_MINUTES = 60;
+/** Default lease duration for submission ownership in milliseconds (30 seconds). */
+export const LEASE_DURATION_MS = 30_000;
 
 // ─── Submission ─────────────────────────────────────────────────────────────
 
@@ -38,11 +42,18 @@ export interface AgentSubmission {
 	readonly attemptCount: number;
 	readonly maxRetry: number;
 	readonly timeoutAt: number;
+	readonly ownerId?: string;
+	readonly leaseExpiresAt: number;
 }
 
 export interface SubmissionAttemptRef {
 	readonly submissionId: string;
 	readonly attemptId: string;
+}
+
+export interface SubmissionClaimRef extends SubmissionAttemptRef {
+	readonly ownerId: string;
+	readonly leaseExpiresAt: number;
 }
 
 export interface SubmissionDurability {
@@ -124,7 +135,11 @@ export interface AgentSubmissionStore {
 	): Promise<boolean>;
 	commitTurnJournal(attempt: SubmissionAttemptRef, committedLeafId: string): Promise<boolean>;
 	markStreamConsumed(attempt: SubmissionAttemptRef, streamKey: string): Promise<boolean>;
-	replaceTurnJournalAttempt(attempt: SubmissionAttemptRef, nextAttemptId: string): Promise<AgentSubmission | null>;
+	replaceTurnJournalAttempt(
+		attempt: SubmissionAttemptRef,
+		nextAttemptId: string,
+		lease?: { ownerId: string; leaseExpiresAt: number },
+	): Promise<AgentSubmission | null>;
 
 	// Stream chunks
 	appendStreamChunkSegment(streamKey: string, segmentIndex: number, body: string): Promise<boolean>;
@@ -136,12 +151,16 @@ export interface AgentSubmissionStore {
 	admitDirect(input: DirectAgentSubmissionInput): Promise<AgentSubmission>;
 
 	// Submission lifecycle
-	claimSubmission(attempt: SubmissionAttemptRef): Promise<AgentSubmission | null>;
+	claimSubmission(claim: SubmissionClaimRef): Promise<AgentSubmission | null>;
 	markSubmissionInputApplied(attempt: SubmissionAttemptRef, durability?: SubmissionDurability): Promise<boolean>;
 	requestSubmissionRecovery(attempt: SubmissionAttemptRef): Promise<boolean>;
 	requeueSubmissionBeforeInputApplied(attempt: SubmissionAttemptRef): Promise<boolean>;
 	completeSubmission(attempt: SubmissionAttemptRef): Promise<boolean>;
 	failSubmission(attempt: SubmissionAttemptRef, error: unknown): Promise<boolean>;
+
+	// Lease management
+	renewLeases(ownerId: string, submissionIds: string[]): Promise<void>;
+	listExpiredSubmissions(): Promise<AgentSubmission[]>;
 
 	// Deletion
 	deleteSession(sessionKey: string, deleteSessionTree: () => Promise<void>): Promise<void>;
@@ -171,6 +190,10 @@ export interface AgentExecutionStore {
 export interface PersistenceAdapter {
 	/** Open the database connection and return the execution store. */
 	connect(): AgentExecutionStore;
+	/** Return a {@link RunStore} for workflow run data and events. */
+	connectRunStore(): RunStore;
+	/** Return a {@link RunRegistry} for workflow run indexing and listing. */
+	connectRunRegistry(): RunRegistry;
 	/**
 	 * Run idempotent schema setup (CREATE TABLE IF NOT EXISTS, etc.).
 	 * Called once at startup before {@link connect}. Adapters that create

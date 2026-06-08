@@ -20,11 +20,13 @@ import type {
 	AgentTurnJournalPhase,
 	CreateTurnJournalInput,
 	SubmissionAttemptRef,
+	SubmissionClaimRef,
 } from './agent-execution-store.ts';
 import type { SqlStorage } from './sql-storage.ts';
 import {
 	DURABILITY_DEFAULT_MAX_RETRY,
 	DURABILITY_DEFAULT_TIMEOUT_MINUTES,
+	LEASE_DURATION_MS,
 } from './agent-execution-store.ts';
 import {
 	SUBMISSION_HARNESS_NAME,
@@ -271,18 +273,24 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		this.sql.exec('DELETE FROM flue_agent_stream_chunks WHERE stream_key = ?', streamKey);
 	}
 
-	async replaceTurnJournalAttempt(attempt: SubmissionAttemptRef, nextAttemptId: string): Promise<AgentSubmission | null> {
+	async replaceTurnJournalAttempt(
+		attempt: SubmissionAttemptRef,
+		nextAttemptId: string,
+		lease?: { ownerId: string; leaseExpiresAt: number },
+	): Promise<AgentSubmission | null> {
 		return this.transactionSync(() => {
+			const now = Date.now();
 			const row = this.sql
 				.exec(
 					`UPDATE flue_agent_submissions
-					 SET attempt_id = ?, recovery_requested_at = NULL, started_at = ?, attempt_count = attempt_count + 1
+					 SET attempt_id = ?, recovery_requested_at = NULL, started_at = ?, attempt_count = attempt_count + 1${
+						lease ? ', owner_id = ?, lease_expires_at = ?' : ''
+					 }
 					 WHERE submission_id = ? AND status = 'running' AND attempt_id = ?
 					 RETURNING ${submissionColumns}`,
-					nextAttemptId,
-					Date.now(),
-					attempt.submissionId,
-					attempt.attemptId,
+					...(lease
+						? [nextAttemptId, now, lease.ownerId, lease.leaseExpiresAt, attempt.submissionId, attempt.attemptId]
+						: [nextAttemptId, now, attempt.submissionId, attempt.attemptId]),
 				)
 				.toArray()[0];
 			if (!row) return null;
@@ -291,7 +299,7 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				 SET attempt_id = ?, revision = revision + 1, updated_at = ?
 				 WHERE submission_id = ? AND attempt_id = ? AND committed = 0`,
 				nextAttemptId,
-				Date.now(),
+				now,
 				attempt.submissionId,
 				attempt.attemptId,
 			);
@@ -365,6 +373,40 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 					 FROM flue_agent_submissions
 					 WHERE status = 'running'
 					 ORDER BY sequence ASC`,
+				)
+				.toArray(),
+			'active',
+		);
+	}
+
+	// ── Lease management ────────────────────────────────────────────────
+
+	async renewLeases(ownerId: string, submissionIds: string[]): Promise<void> {
+		if (submissionIds.length === 0) return;
+		const now = Date.now();
+		const leaseExpiresAt = now + LEASE_DURATION_MS;
+		const placeholders = submissionIds.map(() => '?').join(', ');
+		this.sql.exec(
+			`UPDATE flue_agent_submissions
+			 SET lease_expires_at = ?
+			 WHERE owner_id = ? AND status = 'running'
+			   AND submission_id IN (${placeholders})`,
+			leaseExpiresAt,
+			ownerId,
+			...submissionIds,
+		);
+	}
+
+	async listExpiredSubmissions(): Promise<AgentSubmission[]> {
+		const now = Date.now();
+		return this.parseOperationalRows(
+			this.sql
+				.exec(
+					`SELECT ${submissionColumns}
+					 FROM flue_agent_submissions
+					 WHERE status = 'running' AND lease_expires_at > 0 AND lease_expires_at < ?
+					 ORDER BY sequence ASC`,
+					now,
 				)
 				.toArray(),
 			'active',
@@ -452,14 +494,14 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		});
 	}
 
-	async claimSubmission(attempt: SubmissionAttemptRef): Promise<AgentSubmission | null> {
+	async claimSubmission(claim: SubmissionClaimRef): Promise<AgentSubmission | null> {
 		const now = Date.now();
 		const timeoutAt = now + DURABILITY_DEFAULT_TIMEOUT_MINUTES * 60_000;
 		const row = this.sql
 			.exec(
 				`UPDATE flue_agent_submissions AS current
 				 SET status = 'running', attempt_id = ?, started_at = ?, attempt_count = 1,
-				     max_retry = ?, timeout_at = ?
+				     max_retry = ?, timeout_at = ?, owner_id = ?, lease_expires_at = ?
 				 WHERE current.submission_id = ? AND current.status = 'queued'
 				   AND NOT EXISTS (
 				     SELECT 1
@@ -469,11 +511,13 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				       AND earlier.sequence < current.sequence
 				   )
 				 RETURNING ${submissionColumns}`,
-				attempt.attemptId,
+				claim.attemptId,
 				now,
 				DURABILITY_DEFAULT_MAX_RETRY,
 				timeoutAt,
-				attempt.submissionId,
+				claim.ownerId,
+				claim.leaseExpiresAt,
+				claim.submissionId,
 			)
 			.toArray()[0];
 		return row ? parseSubmission(row) : null;
@@ -515,7 +559,7 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 			this.sql
 				.exec(
 					`UPDATE flue_agent_submissions
-					 SET status = 'queued', attempt_id = NULL, recovery_requested_at = NULL, started_at = NULL
+					 SET status = 'queued', attempt_id = NULL, recovery_requested_at = NULL, started_at = NULL, owner_id = NULL, lease_expires_at = 0
 					 WHERE submission_id = ? AND status = 'running'
 					   AND attempt_id = ? AND input_applied_at IS NULL
 					 RETURNING submission_id`,
@@ -630,7 +674,7 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 }
 
 const submissionColumns =
-	'sequence, submission_id, session_key, kind, payload, status, accepted_at, attempt_id, input_applied_at, recovery_requested_at, started_at, error, attempt_count, max_retry, timeout_at';
+	'sequence, submission_id, session_key, kind, payload, status, accepted_at, attempt_id, input_applied_at, recovery_requested_at, started_at, error, attempt_count, max_retry, timeout_at, owner_id, lease_expires_at';
 
 function submissionColumnsFor(table: string): string {
 	return submissionColumns
@@ -746,6 +790,8 @@ function parseSubmission(row: SqlRow): AgentSubmission {
 		attemptCount: row.attempt_count,
 		maxRetry: row.max_retry,
 		timeoutAt: row.timeout_at,
+		...(typeof row.owner_id === 'string' ? { ownerId: row.owner_id } : {}),
+		leaseExpiresAt: typeof row.lease_expires_at === 'number' ? row.lease_expires_at : 0,
 	};
 }
 
@@ -809,7 +855,9 @@ function ensureSubmissionTable(sql: SqlStorage): void {
 		 error TEXT,
 		 attempt_count INTEGER NOT NULL DEFAULT 0,
 		 max_retry INTEGER NOT NULL DEFAULT ${DURABILITY_DEFAULT_MAX_RETRY},
-		 timeout_at INTEGER NOT NULL DEFAULT 0
+		 timeout_at INTEGER NOT NULL DEFAULT 0,
+		 owner_id TEXT,
+		 lease_expires_at INTEGER NOT NULL DEFAULT 0
 		)`,
 	);
 	sql.exec(

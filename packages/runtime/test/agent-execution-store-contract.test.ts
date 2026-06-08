@@ -150,7 +150,7 @@ describe('sqlite() PersistenceAdapter', () => {
 		const store1 = adapter.connect() as AgentExecutionStore;
 		await store1.sessions.save('s1', sessionData());
 		await store1.submissions.admitDispatch(dispatchInput());
-		await store1.submissions.claimSubmission(attempt('dispatch-1', 'attempt-1'));
+		await store1.submissions.claimSubmission({ ...attempt('dispatch-1', 'attempt-1'), ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
 		await store1.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
 		adapter.close?.();
 

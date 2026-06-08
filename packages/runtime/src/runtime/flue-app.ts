@@ -82,11 +82,11 @@ export interface FlueRuntime {
 	startWorkflowAdmission?: StartWorkflowAdmissionFn;
 
 	/**
-	 * Per-agent durable admission factory, keyed by agent name. When provided,
-	 * direct HTTP, SSE, and WebSocket prompts are persisted as durable submissions
-	 * instead of executing inline. Each factory receives the instance ID from the
-	 * route and returns the admission hook for that specific agent instance.
-	 * Created by the Node coordinator's `createAdmission()`.
+	 * Per-agent durable admission factory, keyed by agent name. Direct HTTP,
+	 * SSE, and WebSocket prompts are persisted as durable submissions. Each
+	 * factory receives the instance ID from the route and returns the admission
+	 * hook for that specific agent instance. Created by the Node coordinator's
+	 * `createAdmission()`.
 	 */
 	createAdmission?: Record<string, (instanceId: string) => AttachedAgentSubmissionAdmission>;
 
@@ -667,7 +667,8 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 		if (rt.target === 'node') {
 			const handler = rt.handlers?.[name];
 			const createContext = rt.createContext;
-			if (!handler || !createContext) {
+			const admitAttachedSubmission = rt.createAdmission?.[name]?.(id);
+			if (!handler || !createContext || !admitAttachedSubmission) {
 				throw new Error('[flue] Node runtime is missing agent handler configuration.');
 			}
 			return handleAgentRequest({
@@ -677,7 +678,7 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 				handler,
 				createContext,
 				runHandler: rt.runHandler,
-				admitAttachedSubmission: rt.createAdmission?.[name]?.(id),
+				admitAttachedSubmission,
 			});
 		}
 

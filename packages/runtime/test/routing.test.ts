@@ -56,6 +56,9 @@ describe('flue()', () => {
 			handlers: {
 				assistant: (ctx) => ({ instanceId: ctx.id, payload: ctx.payload }),
 			},
+			createAdmission: {
+				assistant: (id) => async (payload) => ({ instanceId: id, payload }),
+			},
 			createContext: createTestContext,
 		});
 		const app = new Hono();
@@ -187,6 +190,9 @@ describe('flue()', () => {
 			handlers: {
 				assistant: (ctx) => ({ payload: ctx.payload }),
 			},
+			createAdmission: {
+				assistant: (_id) => async (payload) => ({ payload }),
+			},
 			agentRouteMiddleware: {
 				assistant: async (c, next) => {
 					inspected = `${c.req.header('authorization')}:${new URL(c.req.url).pathname}`;
@@ -295,6 +301,9 @@ describe('flue()', () => {
 				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
 			},
 			handlers: { assistant: () => ({ shouldNotRun: true }) },
+			createAdmission: {
+				assistant: (_id) => async (payload) => ({ message: payload.message }),
+			},
 			createContext: createTestContext,
 		});
 		const app = new Hono();
@@ -326,6 +335,9 @@ describe('flue()', () => {
 				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
 			},
 			handlers: { assistant: () => ({ shouldNotRun: true }) },
+			createAdmission: {
+				assistant: (_id) => async (payload) => ({ message: payload.message }),
+			},
 			createContext: createTestContext,
 		});
 		const app = new Hono();
@@ -385,6 +397,9 @@ describe('flue()', () => {
 				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
 			},
 			handlers: { assistant: () => ({ shouldNotRun: true }) },
+			createAdmission: {
+				assistant: (_id) => async (payload) => ({ message: payload.message }),
+			},
 			createContext: createTestContext,
 		});
 		const app = new Hono();
@@ -416,6 +431,9 @@ describe('flue()', () => {
 				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
 			},
 			handlers: { assistant: () => ({ shouldNotRun: true }) },
+			createAdmission: {
+				assistant: (_id) => async (payload) => ({ message: payload.message }),
+			},
 			createContext: createTestContext,
 		});
 		const app = new Hono();
@@ -474,6 +492,9 @@ describe('createDefaultFlueApp()', () => {
 				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
 			},
 			handlers: { assistant: (ctx) => ({ instanceId: ctx.id, payload: ctx.payload }) },
+			createAdmission: {
+				assistant: (id) => async (payload) => ({ instanceId: id, payload }),
+			},
 			createContext: createTestContext,
 		});
 		const app = createDefaultFlueApp();

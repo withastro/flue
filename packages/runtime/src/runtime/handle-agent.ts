@@ -156,7 +156,7 @@ export interface HandleAgentOptions {
 	handler: AgentHandler;
 	createContext: CreateContextFn;
 	runHandler?: RunHandlerFn;
-	admitAttachedSubmission?: AttachedAgentSubmissionAdmission;
+	admitAttachedSubmission: AttachedAgentSubmissionAdmission;
 }
 
 export interface HandleWorkflowOptions {
@@ -280,7 +280,7 @@ export interface DirectAttachedOptions {
 	request: Request;
 	createContext: CreateContextFn;
 	runHandler?: RunHandlerFn;
-	admitAttachedSubmission?: AttachedAgentSubmissionAdmission;
+	admitAttachedSubmission: AttachedAgentSubmissionAdmission;
 	onEvent?: AttachedAgentEventCallback;
 	emitIdleOnComplete?: boolean;
 }
@@ -301,8 +301,6 @@ export interface FailRecoveredRunOptions {
 	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
 }
-
-const activeAttachedAgentSessions = new Map<string, symbol>();
 
 interface WorkflowAdmissionOptions {
 	owner: RunOwner;
@@ -608,37 +606,7 @@ async function runDirectSyncMode(opts: DirectAttachedOptions): Promise<Response>
 }
 
 export async function invokeDirectAttached(opts: DirectAttachedOptions): Promise<unknown> {
-	if (opts.admitAttachedSubmission) {
-		return opts.admitAttachedSubmission(opts.payload, opts.onEvent);
-	}
-	const sessionLock = acquireDirectAgentSessionLock(opts.agentName, opts.id, opts.payload);
-	try {
-		const ctx = opts.createContext(opts.id, undefined, opts.payload, opts.request);
-		const runHandler = opts.runHandler ?? defaultRunHandler;
-		let didEmitIdle = false;
-		if (opts.onEvent || opts.emitIdleOnComplete) {
-			ctx.setEventCallback((event) => {
-				if (event.type === 'run_start' || event.type === 'run_end') return;
-				if (event.type === 'idle') didEmitIdle = true;
-				const attachedEvent = { ...event, instanceId: opts.id };
-				delete attachedEvent.runId;
-				return opts.onEvent?.(attachedEvent as AttachedAgentEvent);
-			});
-		}
-		try {
-			return await runHandler(ctx, async (innerCtx) => {
-				try {
-					return await opts.handler(innerCtx);
-				} finally {
-					if (opts.emitIdleOnComplete && !didEmitIdle) innerCtx.emitEvent({ type: 'idle' });
-				}
-			});
-		} finally {
-			ctx.setEventCallback(undefined);
-		}
-	} finally {
-		sessionLock?.();
-	}
+	return opts.admitAttachedSubmission(opts.payload, opts.onEvent);
 }
 
 async function runSseMode(execution: AdmittedWorkflowExecution): Promise<Response> {
@@ -741,27 +709,6 @@ async function invokeWorkflowAttachedUnlocked(
 	} finally {
 		ctx.setEventCallback(undefined);
 	}
-}
-
-function acquireDirectAgentSessionLock(
-	agentName: string,
-	instanceId: string,
-	input: unknown,
-): (() => void) | undefined {
-	const payload = input as { session?: unknown } | null;
-	const session =
-		typeof payload?.session === 'string' && payload.session.trim() !== ''
-			? payload.session
-			: 'default';
-	const key = `${agentName}\0${instanceId}\0${session}`;
-	if (activeAttachedAgentSessions.has(key)) {
-		throw new InvalidRequestError({ reason: 'This agent session already has an active prompt.' });
-	}
-	const token = Symbol(key);
-	activeAttachedAgentSessions.set(key, token);
-	return () => {
-		if (activeAttachedAgentSessions.get(key) === token) activeAttachedAgentSessions.delete(key);
-	};
 }
 
 // ─── Workflow run lifecycle ─────────────────────────────────────────────────

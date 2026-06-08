@@ -5,6 +5,7 @@ import type {
 	SubmissionAttemptRef,
 	SubmissionDurability,
 } from '../agent-execution-store.ts';
+import { LEASE_DURATION_MS } from '../agent-execution-store.ts';
 import type { FlueContextInternal } from '../client.ts';
 import {
 	agentSubmissionDispatchId,
@@ -363,10 +364,12 @@ class CloudflareAgentCoordinator {
 				}
 			}
 			for (const submission of await this.submissions.listRunnableSubmissions()) {
-				const claimed = await this.submissions.claimSubmission({
-					submissionId: submission.submissionId,
-					attemptId: crypto.randomUUID(),
-				});
+			const claimed = await this.submissions.claimSubmission({
+				submissionId: submission.submissionId,
+				attemptId: crypto.randomUUID(),
+				ownerId: this.instance.ctx.id.toString(),
+				leaseExpiresAt: Date.now() + LEASE_DURATION_MS,
+			});
 				if (!claimed) continue;
 				try {
 					this.startSubmissionAttempt(claimed);
@@ -427,6 +430,7 @@ class CloudflareAgentCoordinator {
 						undefined,
 						dispatchId,
 					),
+				{ ownerId: this.instance.ctx.id.toString(), leaseExpiresAt: Date.now() + LEASE_DURATION_MS },
 			),
 		);
 		if (replacement) {

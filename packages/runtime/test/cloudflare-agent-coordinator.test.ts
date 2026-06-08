@@ -211,7 +211,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage, events);
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDirect(directInput());
-		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1' });
+		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1', ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
 
 		await runtime.onFiberRecovered(
 			instance,
@@ -268,7 +268,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDirect(directInput());
-		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1' });
+		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1', ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
 
 		await runtime.onStart(instance, () => {});
 
@@ -291,7 +291,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDirect(directInput());
-		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1' });
+		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1', ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
 		await executionStore.submissions.markSubmissionInputApplied({ submissionId: 'direct-1', attemptId: 'attempt-1' });
 
 		await runtime.onStart(instance, () => {});
@@ -311,7 +311,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDirect(directInput());
-		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1' });
+		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1', ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
 		await executionStore.submissions.markSubmissionInputApplied({ submissionId: 'direct-1', attemptId: 'attempt-1' });
 
 		await runtime.onStart(instance, () => {});
@@ -352,7 +352,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		instance.runFiber = async (_name, callback) => callback({ stash() {} });
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDirect(directInput());
-		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1' });
+		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1', ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
 		await executionStore.submissions.admitDirect(directInput({ submissionId: 'direct-2', session: 'healthy' }));
 
 		await runtime.onStart(instance, () => {});
@@ -490,7 +490,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDispatch(dispatchInput());
-		await executionStore.submissions.claimSubmission({ submissionId: 'dispatch-1', attemptId: 'attempt-1' });
+		await executionStore.submissions.claimSubmission({ submissionId: 'dispatch-1', attemptId: 'attempt-1', ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
 		await executionStore.submissions.markSubmissionInputApplied({ submissionId: 'dispatch-1', attemptId: 'attempt-1' });
 
 		await runtime.onStart(instance, () => {});

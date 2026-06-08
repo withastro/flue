@@ -168,6 +168,7 @@ describe('NodeAgentCoordinator', () => {
 
 			const input = makeDispatchInput();
 			await coordinator.admitDispatch(input);
+			await coordinator.waitForIdle();
 
 			const submission = await executionStore.submissions.getSubmission(input.dispatchId);
 			expect(submission).toMatchObject({ status: 'settled', kind: 'dispatch' });
@@ -180,6 +181,7 @@ describe('NodeAgentCoordinator', () => {
 
 			const input = makeDispatchInput();
 			await coordinator.admitDispatch(input);
+			await coordinator.waitForIdle();
 
 			// "Restart": open the same file with a fresh store.
 			const reopened = createNodeAgentExecutionStore(dbPath);
@@ -197,13 +199,15 @@ describe('NodeAgentCoordinator', () => {
 			const store1 = createNodeAgentExecutionStore(dbPath);
 			const input = makeDispatchInput();
 			await store1.submissions.admitDispatch(input);
-			await store1.submissions.claimSubmission({
-				submissionId: input.dispatchId,
-				attemptId: 'attempt-interrupted',
-			});
+		await store1.submissions.claimSubmission({
+			submissionId: input.dispatchId,
+			attemptId: 'attempt-interrupted',
+			ownerId: 'test-owner',
+leaseExpiresAt: 1,
+		});
 			// Submission is now running with no canonical input — simulates crash before input applied.
 
-			// "Restart": new coordinator reconciles with a real LLM.
+		// "Restart": new coordinator reconciles with a real LLM.
 			const { coordinator, executionStore } = createRealCoordinator(dbPath);
 			await coordinator.reconcileSubmissions();
 
@@ -221,15 +225,18 @@ describe('NodeAgentCoordinator', () => {
 			const { coordinator: coord1, executionStore: store1 } = createFauxCoordinator(dbPath, provider);
 			const input1 = makeDispatchInput({ dispatchId: 'dispatch-first', session: 'sess-1' });
 			await coord1.admitDispatch(input1);
+			await coord1.waitForIdle();
 
 			// Now manually admit+claim a second dispatch without processing — leave running.
 			const input2 = makeDispatchInput({ dispatchId: 'dispatch-second', session: 'sess-1' });
 			await store1.submissions.admitDispatch(input2);
-			await store1.submissions.claimSubmission({
-				submissionId: input2.dispatchId,
-				attemptId: 'attempt-interrupted',
-			});
-			// Mark input applied to simulate crash after input was persisted.
+		await store1.submissions.claimSubmission({
+			submissionId: input2.dispatchId,
+			attemptId: 'attempt-interrupted',
+			ownerId: 'test-owner',
+			leaseExpiresAt: 1,
+		});
+		// Mark input applied to simulate crash after input was persisted.
 			await store1.submissions.markSubmissionInputApplied({
 				submissionId: input2.dispatchId,
 				attemptId: 'attempt-interrupted',
@@ -259,11 +266,13 @@ describe('NodeAgentCoordinator', () => {
 
 			// Simulate repeated interruptions until retry budget is exhausted.
 			// Default maxRetry is 10. We claim, then replace the attempt to increment count.
-			const claimed = await store.submissions.claimSubmission({
-				submissionId: input.dispatchId,
-				attemptId: 'attempt-0',
-			});
-			expect(claimed).toBeTruthy();
+		const claimed = await store.submissions.claimSubmission({
+			submissionId: input.dispatchId,
+			attemptId: 'attempt-0',
+			ownerId: 'test-owner',
+			leaseExpiresAt: 1,
+		});
+		expect(claimed).toBeTruthy();
 
 			// Create a journal so replaceTurnJournalAttempt can work.
 			await store.submissions.beginTurnJournal({
@@ -327,6 +336,7 @@ describe('NodeAgentCoordinator', () => {
 
 			const input = makeDispatchInput();
 			await coordinator.admitDispatch(input);
+			await coordinator.waitForIdle();
 
 			const submission = await executionStore.submissions.getSubmission(input.dispatchId);
 			expect(submission?.maxRetry).toBe(3);
@@ -343,8 +353,8 @@ describe('NodeAgentCoordinator', () => {
 
 			// Claim with a timeout that's already expired.
 			const pastTimeout = Date.now() - 1000;
-			await store.submissions.claimSubmission({ submissionId: input.dispatchId, attemptId: 'attempt-timeout' });
-			await store.submissions.markSubmissionInputApplied(
+		await store.submissions.claimSubmission({ submissionId: input.dispatchId, attemptId: 'attempt-timeout', ownerId: 'test-owner', leaseExpiresAt: 1 });
+		await store.submissions.markSubmissionInputApplied(
 				{ submissionId: input.dispatchId, attemptId: 'attempt-timeout' },
 				{ maxRetry: 10, timeoutAt: pastTimeout },
 			);
@@ -368,15 +378,17 @@ describe('NodeAgentCoordinator', () => {
 			const store = createNodeAgentExecutionStore(dbPath);
 			const input = makeDispatchInput({ session: 'tool-result-session' });
 			await store.submissions.admitDispatch(input);
-			const claimed = await store.submissions.claimSubmission({
-				submissionId: input.dispatchId,
-				attemptId: 'attempt-tool-result',
-			});
-			expect(claimed).toBeTruthy();
-			await store.submissions.markSubmissionInputApplied({
-				submissionId: input.dispatchId,
-				attemptId: 'attempt-tool-result',
-			});
+		const claimed = await store.submissions.claimSubmission({
+			submissionId: input.dispatchId,
+			attemptId: 'attempt-tool-result',
+			ownerId: 'test-owner',
+			leaseExpiresAt: 1,
+		});
+		expect(claimed).toBeTruthy();
+		await store.submissions.markSubmissionInputApplied({
+			submissionId: input.dispatchId,
+			attemptId: 'attempt-tool-result',
+		});
 			await store.submissions.beginTurnJournal({
 				submissionId: input.dispatchId,
 				sessionKey: claimed!.sessionKey,
@@ -481,13 +493,15 @@ describe('NodeAgentCoordinator', () => {
 			const store = createNodeAgentExecutionStore(dbPath);
 			const input = makeDispatchInput({ session: 'tool-repair-session' });
 			await store.submissions.admitDispatch(input);
-			const claimed = await store.submissions.claimSubmission({
-				submissionId: input.dispatchId,
-				attemptId: 'attempt-tool-repair',
-			});
-			expect(claimed).toBeTruthy();
+		const claimed = await store.submissions.claimSubmission({
+			submissionId: input.dispatchId,
+			attemptId: 'attempt-tool-repair',
+			ownerId: 'test-owner',
+			leaseExpiresAt: 1,
+		});
+		expect(claimed).toBeTruthy();
 
-			// Mark input applied (the submission got past input application).
+		// Mark input applied (the submission got past input application).
 			await store.submissions.markSubmissionInputApplied({
 				submissionId: input.dispatchId,
 				attemptId: 'attempt-tool-repair',
@@ -588,17 +602,20 @@ describe('NodeAgentCoordinator', () => {
 			await store.submissions.admitDispatch(inputA);
 			await store.submissions.admitDispatch(inputB);
 
-			// Claim A (the session head), leave B queued.
-			await store.submissions.claimSubmission({
-				submissionId: inputA.dispatchId,
-				attemptId: 'attempt-A',
-			});
-			// A is now running but unprocessed (simulates crash).
+		// Claim A (the session head), leave B queued.
+		await store.submissions.claimSubmission({
+			submissionId: inputA.dispatchId,
+			attemptId: 'attempt-A',
+			ownerId: 'test-owner',
+			leaseExpiresAt: 1,
+		});
+		// A is now running but unprocessed (simulates crash).
 
 			// "Restart": reconcile should handle A (requeue since no input applied),
 			// then process A, then drain B. Both use a real LLM.
 			const { coordinator, executionStore } = createRealCoordinator(dbPath);
 			await coordinator.reconcileSubmissions();
+			await coordinator.waitForIdle();
 
 			const subA = await executionStore.submissions.getSubmission(inputA.dispatchId);
 			const subB = await executionStore.submissions.getSubmission(inputB.dispatchId);
@@ -618,6 +635,7 @@ describe('NodeAgentCoordinator', () => {
 
 			await coordinator.admitDispatch(inputA);
 			await coordinator.admitDispatch(inputB);
+			await coordinator.waitForIdle();
 
 			const subA = await executionStore.submissions.getSubmission(inputA.dispatchId);
 			const subB = await executionStore.submissions.getSubmission(inputB.dispatchId);
@@ -642,6 +660,7 @@ describe('NodeAgentCoordinator', () => {
 
 			const inputNew = makeDispatchInput({ dispatchId: 'dispatch-new', session: 'other-session' });
 			await coordinator.admitDispatch(inputNew);
+			await coordinator.waitForIdle();
 
 			// Both should be settled: the new one from direct processing, the old one from drain.
 			const subOld = await executionStore.submissions.getSubmission(inputOld.dispatchId);
@@ -745,11 +764,13 @@ describe('NodeAgentCoordinator', () => {
 				payload: { message: 'Hello interrupted' },
 				acceptedAt: new Date().toISOString(),
 			});
-			await store.submissions.claimSubmission({
-				submissionId: 'direct-interrupted',
-				attemptId: 'attempt-crashed',
-			});
-			// Submission is running with no canonical input — simulates crash before input applied.
+		await store.submissions.claimSubmission({
+			submissionId: 'direct-interrupted',
+			attemptId: 'attempt-crashed',
+			ownerId: 'test-owner',
+			leaseExpiresAt: 1,
+		});
+		// Submission is running with no canonical input — simulates crash before input applied.
 
 			// "Restart": new coordinator reconciles.
 			const { coordinator, executionStore } = createFauxCoordinator(dbPath, provider);
@@ -776,14 +797,16 @@ describe('NodeAgentCoordinator', () => {
 				payload: { message: 'Hello terminalized' },
 				acceptedAt: new Date().toISOString(),
 			});
-			await store.submissions.claimSubmission({
-				submissionId: 'direct-terminalized',
-				attemptId: 'attempt-applied',
-			});
-			await store.submissions.markSubmissionInputApplied({
-				submissionId: 'direct-terminalized',
-				attemptId: 'attempt-applied',
-			});
+		await store.submissions.claimSubmission({
+			submissionId: 'direct-terminalized',
+			attemptId: 'attempt-applied',
+			ownerId: 'test-owner',
+			leaseExpiresAt: 1,
+		});
+		await store.submissions.markSubmissionInputApplied({
+			submissionId: 'direct-terminalized',
+			attemptId: 'attempt-applied',
+		});
 
 			// "Restart": should terminalize because input was applied but no completed response.
 			const { coordinator, executionStore } = createFauxCoordinator(dbPath, provider);
@@ -810,10 +833,12 @@ describe('NodeAgentCoordinator', () => {
 				payload: { message: 'Hello silent' },
 				acceptedAt: new Date().toISOString(),
 			});
-			await store.submissions.claimSubmission({
-				submissionId: 'direct-no-observer',
-				attemptId: 'attempt-silent',
-			});
+		await store.submissions.claimSubmission({
+			submissionId: 'direct-no-observer',
+			attemptId: 'attempt-silent',
+			ownerId: 'test-owner',
+			leaseExpiresAt: 1,
+		});
 
 			// "Restart": no observer attached. Should still reconcile and settle.
 			const { coordinator, executionStore } = createFauxCoordinator(dbPath, provider);
@@ -840,10 +865,12 @@ describe('NodeAgentCoordinator', () => {
 				payload: { message: 'Direct first' },
 				acceptedAt: new Date().toISOString(),
 			});
-			await store.submissions.claimSubmission({
-				submissionId: 'direct-head',
-				attemptId: 'attempt-running',
-			});
+		await store.submissions.claimSubmission({
+			submissionId: 'direct-head',
+			attemptId: 'attempt-running',
+			ownerId: 'test-owner',
+			leaseExpiresAt: 1,
+		});
 
 			// Admit a dispatch to the same session.
 			const dispatchInput = makeDispatchInput({

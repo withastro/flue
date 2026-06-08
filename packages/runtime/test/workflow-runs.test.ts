@@ -1,6 +1,5 @@
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { observe } from '../src/index.ts';
 import type { FlueRuntime } from '../src/internal.ts';
 import {
 	configureFlueRuntime,
@@ -603,57 +602,5 @@ describe('workflow run lifecycle', () => {
 			},
 		]);
 		expect(events.at(-1)).toMatchObject({ event: 'run_end', data: { type: 'run_end', runId } });
-	});
-
-	it('keeps direct agent prompts outside workflow run history when an attached agent executes', async () => {
-		const events: unknown[] = [];
-		const stopObserving = observe((event, ctx) => {
-			if (ctx.id === 'support-instance') events.push(event);
-		});
-		const runStore = new InMemoryRunStore();
-		const runRegistry = new InMemoryRunRegistry();
-		try {
-			const app = createApp({
-				target: 'node',
-				manifest: { agents: [{ name: 'support', transports: { http: true }, created: true }] },
-				handlers: {
-					support: async (ctx) => {
-						ctx.log.info('answering request');
-						return { instanceId: ctx.id, runId: ctx.runId, payload: ctx.payload };
-					},
-				},
-				createContext,
-				runStore,
-				runRegistry,
-			});
-
-			const response = await app.fetch(
-				new Request('http://localhost/flue/agents/support/support-instance', {
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({ message: 'Help me', session: 'priority' }),
-				}),
-			);
-
-			expect(response.status).toBe(200);
-			expect(await response.json()).toEqual({
-				result: {
-					instanceId: 'support-instance',
-					payload: { message: 'Help me', session: 'priority' },
-				},
-			});
-			expect(await runRegistry.listRuns()).toEqual({ runs: [] });
-			expect(events).toMatchObject([
-				{
-					type: 'log',
-					instanceId: 'support-instance',
-					level: 'info',
-					message: 'answering request',
-				},
-			]);
-			expect(events).not.toMatchObject([{ runId: expect.anything() }]);
-		} finally {
-			stopObserving();
-		}
 	});
 });
