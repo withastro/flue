@@ -495,13 +495,9 @@ describe('dispatched session processing', () => {
 				reason: 'interrupted_after_input_application',
 			},
 			message: {
-				role: 'user',
-				content: [
-					{
-						type: 'text',
-						text: '[Flue Submission Interrupted]\n\nProvider replay was not attempted because prior execution could not be proven safe.',
-					},
-				],
+				role: 'signal',
+				type: 'submission_interrupted',
+				content: 'Provider replay was not attempted because prior execution could not be proven safe.',
 			},
 		});
 	});

@@ -369,8 +369,14 @@ describe('session.prompt()', () => {
 					parentId: 'assistant-1',
 					timestamp,
 					message: {
-						role: 'user',
-						content: [{ type: 'text', text: '[Flue Submission Interrupted]\n\nProvider replay was not attempted.' }],
+						role: 'signal',
+						type: 'submission_interrupted',
+						content: 'Provider replay was not attempted.',
+						attributes: {
+							submissionId: 'sub-1',
+							kind: 'direct',
+							reason: 'interrupted_after_input_application',
+						},
 						timestamp: 0,
 					},
 				},
@@ -394,7 +400,12 @@ describe('session.prompt()', () => {
 			expect.objectContaining({ role: 'user', content: [{ type: 'text', text: 'Use the tool.' }] }),
 			expect.objectContaining({
 				role: 'user',
-				content: [{ type: 'text', text: '[Flue Submission Interrupted]\n\nProvider replay was not attempted.' }],
+				content: [
+					{
+						type: 'text',
+						text: expect.stringContaining('submission_interrupted'),
+					},
+				],
 			}),
 			expect.objectContaining({ role: 'user', content: [{ type: 'text', text: 'Try again.' }] }),
 		]);

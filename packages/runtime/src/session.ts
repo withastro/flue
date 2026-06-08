@@ -94,6 +94,7 @@ import type {
 	SessionToolFactory,
 	ShellOptions,
 	ShellResult,
+	SignalMessage,
 	SkillOptions,
 	SkillReference,
 	TaskOptions,
@@ -274,19 +275,22 @@ export class InMemorySessionStore implements SessionStore {
 	}
 }
 
-function renderDispatchInput(input: DispatchInput): string {
-	const lines = [
-		'[Dispatch Input]',
-		`agent: ${input.agent}`,
-		`id: ${input.id}`,
-		`session: ${input.session}`,
-		`dispatchId: ${input.dispatchId}`,
-		`acceptedAt: ${input.acceptedAt}`,
-		'',
-		'input:',
-		stableStringify(input.input),
-	];
-	return lines.join('\n');
+function createDispatchInputSignal(input: DispatchInput): SignalMessage {
+	return {
+		role: 'signal',
+		type: 'dispatch_input',
+		tagName: 'dispatch',
+		content: stableStringify(input.input),
+		attributes: {
+			agent: input.agent,
+			id: input.id,
+			session: input.session,
+			dispatchId: input.dispatchId,
+			acceptedAt: input.acceptedAt,
+		},
+		data: { input: input.input },
+		timestamp: Date.now(),
+	};
 }
 
 function dispatchMetadata(input: DispatchInput): DispatchMessageMetadata {
@@ -802,20 +806,24 @@ export class Session implements FlueSession {
 			const toolList = input.interruptedTools.map((t) => `  - ${t.name} (${t.id})`).join('\n');
 			body += `\n\nInterrupted tool call(s):\n${toolList}`;
 		}
-		this.history.appendMessage(
-			createUserContextMessage(
-				`[Flue Submission Interrupted]\n\n${body}`,
-				new Date().toISOString(),
-			),
-			undefined,
-			{
-				submissionTerminal: {
-					submissionId: input.submissionId,
-					kind: input.kind,
-					reason: input.reason,
-				},
+		const signal: SignalMessage = {
+			role: 'signal',
+			type: 'submission_interrupted',
+			content: body,
+			attributes: {
+				submissionId: input.submissionId,
+				kind: input.kind,
+				reason: input.reason,
 			},
-		);
+			timestamp: Date.now(),
+		};
+		this.history.appendMessage(signal, undefined, {
+			submissionTerminal: {
+				submissionId: input.submissionId,
+				kind: input.kind,
+				reason: input.reason,
+			},
+		});
 		this.rebuildHarnessContext();
 		await this.save();
 	}
@@ -2050,7 +2058,7 @@ export class Session implements FlueSession {
 			findInput: () => this.history.findDispatchInput(input.dispatchId),
 			persistInput: () =>
 				this.history.appendMessage(
-					createUserContextMessage(renderDispatchInput(input), new Date().toISOString()),
+					createDispatchInputSignal(input),
 					'dispatch',
 					{ dispatch: dispatchMetadata(input) },
 				),
