@@ -65,13 +65,11 @@ export {
 export type {
 	AgentHandler,
 	CreateContextFn,
-	CreatedAgentHandler,
 	DirectAttachedOptions,
 	FailRecoveredRunOptions,
 	HandleAgentOptions,
 	HandleWorkflowOptions,
 	InvokeWorkflowAttachedOptions,
-	RunHandlerFn,
 	StartWorkflowAdmissionFn,
 	WorkflowAttachedInvocationResult,
 	WorkflowHandler,

@@ -28,7 +28,6 @@ import type { RunSubscriberRegistry } from './run-subscribers.ts';
 
 /** Direct agent handler signature used by attached HTTP and WebSocket prompts. */
 export type AgentHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
-export type CreatedAgentHandler = CreatedAgent;
 export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
 
 interface DirectRequestSession {
@@ -63,7 +62,7 @@ function isDispatchInput(value: unknown): value is DispatchInput {
 	);
 }
 
-export function createDirectAgentHandler(agent: CreatedAgentHandler): AgentHandler {
+export function createDirectAgentHandler(agent: CreatedAgent): AgentHandler {
 	return async (ctx) => {
 		const payload = parseDirectAgentPayload(ctx.payload);
 		const harness = await ctx.initializeCreatedAgent(agent, undefined);
@@ -144,18 +143,12 @@ export type StartWorkflowAdmissionFn = (
  * so targets can layer in keepalive / context propagation. Defaults to direct
  * invocation when omitted.
  */
-export type RunHandlerFn = (
-	ctx: FlueContextInternal,
-	handler: AgentHandler,
-) => unknown | Promise<unknown>;
-
 export interface HandleAgentOptions {
 	request: Request;
 	agentName: string;
 	id: string;
 	handler: AgentHandler;
 	createContext: CreateContextFn;
-	runHandler?: RunHandlerFn;
 	admitAttachedSubmission: AttachedAgentSubmissionAdmission;
 }
 
@@ -183,7 +176,6 @@ export interface HandleWorkflowOptions {
  */
 export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Response> {
 	const { request, agentName, id, handler, createContext } = opts;
-	const runHandler = opts.runHandler ?? defaultRunHandler;
 
 	try {
 		const rawPayload = await parseJsonBody(request);
@@ -201,7 +193,6 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 			payload,
 			request,
 			createContext,
-			runHandler,
 			admitAttachedSubmission: opts.admitAttachedSubmission,
 		};
 		if ((request.headers.get('accept') || '').includes('text/event-stream')) {
@@ -279,7 +270,6 @@ export interface DirectAttachedOptions {
 	payload: DirectAgentPayload;
 	request: Request;
 	createContext: CreateContextFn;
-	runHandler?: RunHandlerFn;
 	admitAttachedSubmission: AttachedAgentSubmissionAdmission;
 	onEvent?: AttachedAgentEventCallback;
 	emitIdleOnComplete?: boolean;
@@ -987,8 +977,4 @@ function getEventIndex(data: unknown): number | undefined {
 const defaultStartWorkflowAdmission: StartWorkflowAdmissionFn = (_runId, run) =>
 	Promise.resolve().then(run);
 
-/**
- * Default direct-agent foreground handler runner: invoke directly. Used by the
- * Node target. The Cloudflare target overrides this with a `runFiber` wrapper.
- */
-const defaultRunHandler: RunHandlerFn = (ctx, handler) => handler(ctx);
+

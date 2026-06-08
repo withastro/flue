@@ -74,7 +74,7 @@ export interface ProcessAgentSubmissionOptions {
 	};
 }
 
-export interface AgentSubmissionToolRequest {
+interface AgentSubmissionToolRequest {
 	readonly toolCalls: ReadonlyArray<{ type: 'toolCall'; id: string; name: string }>;
 }
 
@@ -92,7 +92,7 @@ interface AgentSubmissionSession {
 	recordSubmissionTerminal(input: AgentSubmissionInterruption): Promise<void>;
 }
 
-type AgentSubmissionHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
+
 
 interface AgentSubmissionObserver {
 	onEvent?: (event: AttachedAgentEvent) => Promise<void> | void;
@@ -142,7 +142,7 @@ export function createAgentSubmissionSessionHandler(
 	agent: CreatedAgent,
 	input: AgentSubmissionInput,
 	execute: (session: AgentSubmissionSession) => Promise<unknown> | unknown,
-): AgentSubmissionHandler {
+): (ctx: FlueContextInternal) => Promise<unknown> {
 	return async (ctx) => {
 		const session = await openAgentSubmissionSession(ctx, agent, input);
 		return execute(session);
@@ -269,7 +269,7 @@ export function createSubmissionJournalCallbacks(
  * a restart is needed. `failedError` is set when the submission was
  * terminalized — the caller can use it for observer notification.
  */
-export interface ReconciliationResult {
+interface ReconciliationResult {
 	readonly replacement: AgentSubmission | null;
 	readonly failedError: Error | null;
 }
@@ -442,11 +442,6 @@ export function createSubmissionEventCallback(
 	};
 }
 
-/** Synthetic dispatch request for reconciliation and Node dispatch contexts. */
-export function submissionDispatchRequest(): Request {
-	return new Request('https://flue.invalid/_dispatch', { method: 'POST' });
-}
-
 /** Synthetic request for the submission's kind: an agent route for direct prompts, the dispatch path for dispatches. */
 export function submissionSyntheticRequest(input: AgentSubmissionInput): Request {
 	if (input.kind === 'direct') {
@@ -455,7 +450,7 @@ export function submissionSyntheticRequest(input: AgentSubmissionInput): Request
 			{ method: 'POST' },
 		);
 	}
-	return submissionDispatchRequest();
+	return new Request('https://flue.invalid/_dispatch', { method: 'POST' });
 }
 
 async function failInterruptedSubmission(

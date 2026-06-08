@@ -12,7 +12,6 @@ import type { AttachedAgentSubmissionAdmission } from '../runtime/agent-submissi
 import type {
 	AgentHandler,
 	CreateContextFn,
-	RunHandlerFn,
 	StartWorkflowAdmissionFn,
 	WorkflowHandler,
 } from '../runtime/handle-agent.ts';
@@ -40,7 +39,6 @@ export interface NodeWebSocketTransportOptions {
 	maxPayload?: number;
 	createContext: CreateContextFn;
 	startWorkflowAdmission?: StartWorkflowAdmissionFn;
-	runHandler?: RunHandlerFn;
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
@@ -208,7 +206,6 @@ async function invokeAgentPrompt(
 			request,
 			handler: target.handler,
 			createContext: options.createContext,
-			runHandler: options.runHandler,
 			admitAttachedSubmission: admissionFactory(target.id),
 			onEvent: (event) => {
 				if (!didStart) {

@@ -32,7 +32,6 @@ import {
 	type CreateContextFn,
 	handleAgentRequest,
 	handleWorkflowRequest,
-	type RunHandlerFn,
 	type StartWorkflowAdmissionFn,
 	type WorkflowHandler,
 } from './handle-agent.ts';
@@ -89,9 +88,6 @@ export interface FlueRuntime {
 	 * `createAdmission()`.
 	 */
 	createAdmission?: Record<string, (instanceId: string) => AttachedAgentSubmissionAdmission>;
-
-	/** Optional Node direct-agent foreground handler wrapper. Defaults to direct invocation. */
-	runHandler?: RunHandlerFn;
 
 	/** Node workflow-run history store. */
 	runStore?: RunStore;
@@ -677,7 +673,6 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 				id,
 				handler,
 				createContext,
-				runHandler: rt.runHandler,
 				admitAttachedSubmission,
 			});
 		}

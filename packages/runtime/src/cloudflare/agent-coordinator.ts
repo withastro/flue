@@ -423,14 +423,7 @@ class CloudflareAgentCoordinator {
 				submission,
 				agent,
 				(payload, dispatchId) =>
-					this.createContext(
-						payload,
-						new Request(`https://flue.invalid${CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH}`, {
-							method: 'POST',
-						}),
-						undefined,
-						dispatchId,
-					),
+					this.createContext(payload, submissionSyntheticRequest(submission.input), undefined, dispatchId),
 				{ ownerId: this.instance.ctx.id.toString(), leaseExpiresAt: Date.now() + LEASE_DURATION_MS },
 			),
 		);
@@ -530,15 +523,9 @@ class CloudflareAgentCoordinator {
 			const agent = this.options.createdAgents[this.agentName];
 			if (!agent) throw new Error('[flue] Agent target unavailable during durable processing.');
 			if (input.kind === 'dispatch') assertAgentDispatchAdmissionInput(input);
-			const request =
-				input.kind === 'direct'
-					? submissionSyntheticRequest(input)
-					: new Request(`https://flue.invalid${CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH}`, {
-							method: 'POST',
-						});
 			ctx = this.createContext(
 				agentSubmissionProcessingPayload(input),
-				request,
+				submissionSyntheticRequest(input),
 				undefined,
 				agentSubmissionDispatchId(input),
 			);
