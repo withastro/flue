@@ -59,7 +59,7 @@ import SearchIcon from './SearchIcon.astro';
 		};
 		const closeSearch = () => dialog.close();
 		const openSearch = () => {
-			dialog.showModal();
+			if (!dialog.open) dialog.showModal();
 			input.focus();
 			void loadPagefind().catch(() => undefined);
 		};
