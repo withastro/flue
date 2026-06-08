@@ -306,8 +306,14 @@ function pathToContextEntries(path: SessionEntry[]): ContextEntry[] {
 				context.push({ message: entry.message, entry });
 			}
 		} else if (entry?.type === 'branch_summary') {
+			const signal: SignalMessage = {
+				role: 'signal',
+				type: 'branch_summary',
+				content: entry.summary,
+				timestamp: new Date(entry.timestamp).getTime(),
+			};
 			context.push({
-				message: createUserContextMessage(`[Branch Summary]\n\n${entry.summary}`, entry.timestamp),
+				message: createUserContextMessage(renderSignalMessage(signal), entry.timestamp),
 				entry,
 			});
 		}
@@ -341,10 +347,19 @@ function findLatestCompactionIndex(path: SessionEntry[]): number {
 }
 
 function createContextSummaryMessage(summary: string, timestamp: string): AgentMessage {
-	const text = summary.startsWith('[Context Summary]')
-		? summary
-		: `[Context Summary]\n\n${summary}`;
-	return createUserContextMessage(text, timestamp);
+	// Strip legacy '[Context Summary]' prefix if the LLM included it in
+	// the stored summary text — the signal XML tag replaces the prefix.
+	const content = summary.startsWith('[Context Summary]')
+		? summary.slice('[Context Summary]'.length).replace(/^\n+/, '')
+		: summary;
+	const signal: SignalMessage = {
+		role: 'signal',
+		type: 'context_summary',
+		tagName: 'compaction',
+		content,
+		timestamp: new Date(timestamp).getTime(),
+	};
+	return createUserContextMessage(renderSignalMessage(signal), timestamp);
 }
 
 export function createUserContextMessage(text: string, timestamp: string): AgentMessage {
