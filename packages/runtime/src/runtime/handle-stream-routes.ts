@@ -20,6 +20,10 @@ const STREAM_NEXT_OFFSET = 'Stream-Next-Offset';
 const STREAM_UP_TO_DATE = 'Stream-Up-To-Date';
 const STREAM_CLOSED = 'Stream-Closed';
 const STREAM_CURSOR = 'Stream-Cursor';
+const SECURITY_HEADERS = {
+	'X-Content-Type-Options': 'nosniff',
+	'Cross-Origin-Resource-Policy': 'cross-origin',
+};
 
 // SSE control event field names (camelCase per DS protocol Section 5.8).
 const SSE_OFFSET_FIELD = 'streamNextOffset';
@@ -74,11 +78,12 @@ function encodeSseData(payload: string): string {
 export async function handleStreamHead(store: EventStreamStore, path: string): Promise<Response> {
 	const meta = await store.getStreamMeta(path);
 	if (!meta) {
-		return new Response(null, { status: 404 });
+		return new Response(null, { status: 404, headers: SECURITY_HEADERS });
 	}
 
 	const headers: Record<string, string> = {
 		'content-type': 'application/json',
+		...SECURITY_HEADERS,
 		[STREAM_NEXT_OFFSET]: meta.nextOffset,
 		[STREAM_UP_TO_DATE]: 'true',
 		'cache-control': 'no-store',
@@ -108,48 +113,60 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 	const { store, path, request } = opts;
 	const url = new URL(request.url);
 
-	const offsetParam = url.searchParams.get('offset') ?? '-1';
+	const offsetValues = url.searchParams.getAll('offset');
+	const offsetParam = offsetValues[0] ?? '-1';
 	const liveRaw = url.searchParams.get('live');
 	const cursor = url.searchParams.get('cursor') ?? undefined;
 
+	if (offsetValues.length > 1) {
+		return badRequest('Duplicate offset parameters are not allowed.');
+	}
+
+	if (liveRaw !== null && offsetValues.length === 0) {
+		return badRequest('Offset is required for live mode.');
+	}
+
 	// Validate live mode.
 	if (liveRaw !== null && liveRaw !== 'long-poll' && liveRaw !== 'sse') {
-		return new Response(JSON.stringify({ error: 'Invalid live mode. Use "long-poll" or "sse".' }), {
-			status: 400,
-			headers: { 'content-type': 'application/json' },
-		});
+		return badRequest('Invalid live mode. Use "long-poll" or "sse".');
 	}
 	const live = liveRaw as 'long-poll' | 'sse' | null;
 
 	// Validate offset format: "-1", "now", or digits_digits (DS reference format).
 	if (offsetParam !== '-1' && offsetParam !== 'now' && !/^\d+_\d+$/.test(offsetParam)) {
-		return new Response(JSON.stringify({ error: 'Invalid offset format.' }), {
-			status: 400,
-			headers: { 'content-type': 'application/json' },
-		});
+		return badRequest('Invalid offset format.');
 	}
 
 	// Stream must exist.
 	const meta = await store.getStreamMeta(path);
 	if (!meta) {
-		return new Response(null, { status: 404 });
+		return new Response(null, { status: 404, headers: SECURITY_HEADERS });
 	}
 
+	const readOffset = offsetParam === 'now' && live !== null ? meta.nextOffset : offsetParam;
+
 	if (live === 'sse') {
-		return handleSseMode(store, path, offsetParam, request.signal);
+		return handleSseMode(store, path, readOffset, request.signal);
 	}
 
 	// Read events from the store.
-	const result = await store.readEvents(path, { offset: offsetParam });
+	const result = await store.readEvents(path, { offset: readOffset });
 
 	if (live === 'long-poll') {
-		return handleLongPollMode(store, path, offsetParam, cursor, result, request.signal);
+		return handleLongPollMode(store, path, readOffset, offsetParam, cursor, result, request.signal);
 	}
 
 	return handleCatchUpMode(request, path, offsetParam, result);
 }
 
 // ─── Catch-up mode ──────────────────────────────────────────────────────────
+
+function badRequest(message: string): Response {
+	return new Response(JSON.stringify({ error: message }), {
+		status: 400,
+		headers: { 'content-type': 'application/json', ...SECURITY_HEADERS },
+	});
+}
 
 function handleCatchUpMode(
 	request: Request,
@@ -159,56 +176,49 @@ function handleCatchUpMode(
 ): Response {
 	const startOffset = offsetParam === 'now' ? 'now' : offsetParam;
 	const isClosed = result.closed && result.upToDate;
-	const etag = generateETag(path, startOffset, result.nextOffset, isClosed);
+	const etag = startOffset === 'now' ? undefined : generateETag(path, startOffset, result.nextOffset, isClosed);
 
-	// Handle conditional request.
-	const conditional = checkConditional(request, etag);
+	const conditional = etag ? checkConditional(request, etag) : null;
 	if (conditional) return conditional;
 
 	const body = JSON.stringify(result.events.map((e) => e.data));
-
 	const headers: Record<string, string> = {
 		'content-type': 'application/json',
 		[STREAM_NEXT_OFFSET]: result.nextOffset,
 		'cache-control': 'no-store',
-		'etag': etag,
+		...SECURITY_HEADERS,
 	};
-
-	if (result.upToDate) {
-		headers[STREAM_UP_TO_DATE] = 'true';
-	}
-	if (isClosed) {
-		headers[STREAM_CLOSED] = 'true';
-	}
+	if (etag) headers.etag = etag;
+	if (result.upToDate) headers[STREAM_UP_TO_DATE] = 'true';
+	if (isClosed) headers[STREAM_CLOSED] = 'true';
 
 	return new Response(body, { status: 200, headers });
 }
 
-// ─── Long-poll mode ─────────────────────────────────────────────────────────
-
 async function handleLongPollMode(
 	store: EventStreamStore,
 	path: string,
-	offsetParam: string,
+	readOffset: string,
+	requestOffset: string,
 	clientCursor: string | undefined,
 	result: EventStreamReadResult,
 	signal: AbortSignal,
 ): Promise<Response> {
-	// Data already available — return immediately.
 	if (result.events.length > 0) {
-		return longPollDataResponse(result, path, offsetParam, clientCursor);
+		return longPollDataResponse(result, path, requestOffset, clientCursor);
 	}
 
-	// At tail, stream is closed — nothing more will arrive.
 	if (result.closed && result.upToDate) {
 		return longPollEmptyResponse(result.nextOffset, clientCursor, true);
 	}
 
-	// Wait for new data or timeout.
-	const waitResult = await waitForStreamData(store, path, signal);
+	const waitResult = await waitForStreamData(store, path, signal, async () => {
+		const reread = await store.readEvents(path, { offset: readOffset });
+		return reread.events.length > 0 || (reread.closed && reread.upToDate);
+	});
 
 	if (waitResult === 'aborted') {
-		return new Response(null, { status: 499 });
+		return new Response(null, { status: 499, headers: SECURITY_HEADERS });
 	}
 
 	if (waitResult === 'timeout') {
@@ -216,13 +226,11 @@ async function handleLongPollMode(
 		return longPollEmptyResponse(result.nextOffset, clientCursor, closed);
 	}
 
-	// Notified — re-read from the store.
-	const freshResult = await store.readEvents(path, { offset: offsetParam });
+	const freshResult = await store.readEvents(path, { offset: readOffset });
 	if (freshResult.events.length > 0) {
-		return longPollDataResponse(freshResult, path, offsetParam, clientCursor);
+		return longPollDataResponse(freshResult, path, requestOffset, clientCursor);
 	}
 
-	// Notified but no new events (likely stream closed).
 	const closed = (await store.getStreamMeta(path))?.closed ?? false;
 	return longPollEmptyResponse(result.nextOffset, clientCursor, closed);
 }
@@ -238,13 +246,14 @@ function longPollDataResponse(
 	const headers: Record<string, string> = {
 		'content-type': 'application/json',
 		'cache-control': 'no-store',
+		...SECURITY_HEADERS,
 		[STREAM_NEXT_OFFSET]: result.nextOffset,
 		[STREAM_CURSOR]: generateCursor(clientCursor),
 	};
 	if (result.upToDate) headers[STREAM_UP_TO_DATE] = 'true';
 	if (isClosed) headers[STREAM_CLOSED] = 'true';
 	const startOffset = offsetParam === 'now' ? 'now' : offsetParam;
-	headers['etag'] = generateETag(path, startOffset, result.nextOffset, isClosed);
+	if (startOffset !== 'now') headers.etag = generateETag(path, startOffset, result.nextOffset, isClosed);
 	return new Response(JSON.stringify(result.events.map((e) => e.data)), { status: 200, headers });
 }
 
@@ -255,6 +264,7 @@ function longPollEmptyResponse(
 	closed: boolean,
 ): Response {
 	const headers: Record<string, string> = {
+		...SECURITY_HEADERS,
 		[STREAM_NEXT_OFFSET]: nextOffset,
 		[STREAM_UP_TO_DATE]: 'true',
 		[STREAM_CURSOR]: generateCursor(clientCursor),
@@ -267,6 +277,7 @@ function waitForStreamData(
 	store: EventStreamStore,
 	path: string,
 	signal: AbortSignal,
+	recheck?: () => Promise<boolean>,
 ): Promise<'data' | 'timeout' | 'aborted'> {
 	return new Promise<'data' | 'timeout' | 'aborted'>((resolve) => {
 		if (signal.aborted) {
@@ -284,6 +295,13 @@ function waitForStreamData(
 
 		const unsub = store.subscribe(path, () => settle('data'));
 		const timer = setTimeout(() => settle('timeout'), LONG_POLL_TIMEOUT_MS);
+		if (recheck) {
+			void recheck()
+				.then((hasData) => {
+					if (hasData) settle('data');
+				})
+				.catch(() => {});
+		}
 		const onAbort = () => settle('aborted');
 		signal.addEventListener('abort', onAbort, { once: true });
 
@@ -359,6 +377,7 @@ function handleSseMode(
 		headers: {
 			'content-type': 'text/event-stream',
 			'cache-control': 'no-cache',
+			...SECURITY_HEADERS,
 		},
 	});
 }
@@ -426,7 +445,10 @@ async function runSseLoop(
 		}
 
 		// At tail, stream is open. Wait for new data.
-		const waitResult = await waitForStreamData(store, path, signal);
+		const waitResult = await waitForStreamData(store, path, signal, async () => {
+			const reread = await store.readEvents(path, { offset: currentOffset });
+			return reread.events.length > 0 || (reread.closed && reread.upToDate);
+		});
 		if (waitResult === 'aborted') {
 			return;
 		}
@@ -457,7 +479,7 @@ async function runSseLoop(
 function checkConditional(request: Request, etag: string): Response | null {
 	const ifNoneMatch = request.headers.get('if-none-match');
 	if (ifNoneMatch && ifNoneMatch === etag) {
-		return new Response(null, { status: 304, headers: { etag } });
+		return new Response(null, { status: 304, headers: { etag, ...SECURITY_HEADERS } });
 	}
 	return null;
 }

@@ -218,22 +218,23 @@ export class SqliteEventStreamStore implements EventStreamStore {
 		const rows = this.sql
 			.exec(
 				`SELECT seq, data FROM flue_event_stream_entries
-				 WHERE path = ? AND seq > ?
-				 ORDER BY seq ASC
-				 LIMIT ?`,
+					 WHERE path = ? AND seq > ?
+					 ORDER BY seq ASC
+					 LIMIT ?`,
 				path,
 				startAfter,
-				limit,
+				limit + 1,
 			)
 			.toArray();
+		const page = rows.slice(0, limit);
 
-		const events = rows.map((row) => ({
+		const events = page.map((row) => ({
 			data: JSON.parse(row.data as string) as unknown,
 			offset: formatOffset(row.seq as number),
 		}));
 
-		const lastSeq = events.length > 0 ? (rows[rows.length - 1]!.seq as number) : -1;
-		const upToDate = events.length < limit;
+		const lastSeq = events.length > 0 ? (page[page.length - 1]!.seq as number) : -1;
+		const upToDate = rows.length <= limit;
 
 		const nextOffset = events.length > 0
 			? formatOffset(lastSeq)
