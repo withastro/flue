@@ -50,10 +50,10 @@ export interface StreamConnectionOptions {
  * Creates a {@link FlueEventStream} that yields individual {@link FlueEvent}
  * values from a Durable Streams endpoint.
  *
- * Uses the DS client's `subscribeJson` callback API to bridge batches into an
- * async iterator. The subscription is registered synchronously after the
- * DS `stream()` promise resolves, before any data can be consumed, ensuring
- * no events are lost.
+ * Pulls events directly from the DS client's `jsonStream()` ReadableStream
+ * reader in each `next()` call. This provides natural backpressure — the DS
+ * client only fetches the next batch when the consumer is ready — and avoids
+ * unbounded memory growth for slow consumers.
  */
 export function createFlueEventStream<T = FlueEvent>(
 	streamOpts: FlueStreamOptions,
@@ -105,81 +105,46 @@ export function createFlueEventStream<T = FlueEvent>(
 
 	const cancel = (reason?: unknown) => abortController.abort(reason);
 
-	// Async iterator state, initialized lazily in the first next() call.
-	let initialized = false;
-	let initError: unknown;
-	const queue: T[] = [];
-	let notify: (() => void) | undefined;
-	let done = false;
-
-	async function ensureInitialized(): Promise<void> {
-		if (initialized) return;
-		initialized = true;
-		try {
-			const res = await responsePromise;
-
-			// Use the json() accumulator + jsonStream() approach:
-			// jsonStream() returns a ReadableStream<T> that yields individual items.
-			// We read from it in a background task, pushing items to the queue.
-			// This avoids the subscribeJson/closed race: jsonStream() is a pull-based
-			// ReadableStream that the DS client fills from its internal response
-			// pipeline. When the pipeline completes, the stream closes.
-			const readable = res.jsonStream();
-			const reader = readable.getReader();
-
-			// Read in the background — push items to queue and notify the iterator.
-			(async () => {
-				try {
-					while (true) {
-						const { value, done: readerDone } = await reader.read();
-						if (readerDone) break;
-						queue.push(value);
-						notify?.();
-						notify = undefined;
-					}
-				} catch (err) {
-					if (!isAbortError(err)) {
-						initError = err;
-					}
-				} finally {
-					done = true;
-					notify?.();
-					notify = undefined;
-				}
-			})();
-		} catch (err) {
-			if (!isAbortError(err)) {
-				initError = err;
-			}
-			done = true;
-		}
-	}
+	// Reader is initialized lazily on the first next() call.
+	let reader: ReadableStreamDefaultReader<T> | undefined;
+	let readerDone = false;
 
 	const iterator: AsyncIterator<T> = {
 		async next(): Promise<IteratorResult<T>> {
-			await ensureInitialized();
-
-			while (queue.length === 0 && !done) {
-				await new Promise<void>((r) => {
-					notify = r;
-				});
+			if (!reader) {
+				try {
+					const res = await responsePromise;
+					reader = res.jsonStream().getReader();
+				} catch (err) {
+					if (isAbortError(err)) {
+						return { value: undefined as T, done: true };
+					}
+					throw err;
+				}
 			}
 
-			if (queue.length > 0) {
-				return { value: queue.shift()!, done: false };
+			if (readerDone) {
+				return { value: undefined as T, done: true };
 			}
 
-			if (initError) {
-				throw initError;
+			try {
+				const { value, done } = await reader.read();
+				if (done) {
+					readerDone = true;
+					return { value: undefined as T, done: true };
+				}
+				return { value, done: false };
+			} catch (err) {
+				readerDone = true;
+				if (isAbortError(err)) {
+					return { value: undefined as T, done: true };
+				}
+				throw err;
 			}
-
-			return { value: undefined as T, done: true };
 		},
 		async return(): Promise<IteratorResult<T>> {
+			readerDone = true;
 			cancel();
-			done = true;
-			notify?.();
-			notify = undefined;
 			return { value: undefined as T, done: true };
 		},
 	};

@@ -450,6 +450,10 @@ async function reconcileTerminalRun(
 			error,
 		});
 	}
+	// Ensure the event stream is closed so DS readers see EOF. A crash
+	// between appendEvent(run_end) and closeStream() can leave the stream
+	// permanently open without this repair.
+	opts.eventStreamStore?.closeStream(`runs/${opts.runId}`);
 	await safeRegistry('recordRunStart(recovery)', () =>
 		opts.runRegistry?.recordRunStart({
 			runId: opts.runId,

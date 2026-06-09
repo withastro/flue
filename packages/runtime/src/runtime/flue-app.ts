@@ -520,32 +520,34 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 	});
 	const request = c.req.raw.clone();
 
-	// DS stream read (GET/HEAD) — served directly for Node, forwarded for CF.
-	if (c.req.method === 'GET' || c.req.method === 'HEAD') {
-		const streamPath = `agents/${name}/${id}`;
-		if (rt.target === 'node') {
-			if (!rt.eventStreamStore) {
-				return new Response(null, { status: 404 });
-			}
-			if (c.req.method === 'HEAD') {
-				return handleStreamHead(rt.eventStreamStore, streamPath);
-			}
-			return handleStreamRead({ store: rt.eventStreamStore, path: streamPath, request });
-		}
-
-		// Cloudflare: forward to the agent DO.
-		if (!rt.routeAgentRequest) {
-			throw new Error('[flue] Cloudflare runtime is missing agent route forwarding.');
-		}
-		const response = await rt.routeAgentRequest(request, c.env, {
-			agentName: name,
-			instanceId: id,
-		});
-		if (response) return response;
-		throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
-	}
-
+	// All agent routes (POST, GET, HEAD) go through attached middleware so
+	// user-defined auth/rate-limiting applies to stream reads too.
 	return runAttachedMiddleware(c, rt.agentRouteMiddleware?.[name], async () => {
+		// DS stream read (GET/HEAD) — served directly for Node, forwarded for CF.
+		if (c.req.method === 'GET' || c.req.method === 'HEAD') {
+			const streamPath = `agents/${name}/${id}`;
+			if (rt.target === 'node') {
+				if (!rt.eventStreamStore) {
+					return new Response(null, { status: 404 });
+				}
+				if (c.req.method === 'HEAD') {
+					return handleStreamHead(rt.eventStreamStore, streamPath);
+				}
+				return handleStreamRead({ store: rt.eventStreamStore, path: streamPath, request });
+			}
+
+			// Cloudflare: forward to the agent DO.
+			if (!rt.routeAgentRequest) {
+				throw new Error('[flue] Cloudflare runtime is missing agent route forwarding.');
+			}
+			const response = await rt.routeAgentRequest(request, c.env, {
+				agentName: name,
+				instanceId: id,
+			});
+			if (response) return response;
+			throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
+		}
+
 		if (rt.target === 'node') {
 			const admitAttachedSubmission = rt.createAdmission?.[name]?.(id);
 			if (!admitAttachedSubmission) {

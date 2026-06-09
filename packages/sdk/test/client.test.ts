@@ -206,7 +206,7 @@ describe('createFlueClient', () => {
 
 			expect(requests.map(({ url }) => new URL(url).pathname)).toEqual([
 				'/api/agents/hello/inst-1',
-				'/api/runs/run-1',
+				'/admin/runs/run-1',
 			]);
 		});
 	});

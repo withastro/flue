@@ -154,7 +154,8 @@ import {
   CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
   createCloudflareAgentRuntime,
   createSqlSessionStore,
-  SqlEventStreamStore,
+   SqlEventStreamStore,
+   ensureEventStreamTables,
   bashFactoryToSessionEnv,
   resolveModel,
   handleWorkflowRequest,
@@ -387,6 +388,7 @@ function createDurableObjectIdentity(doInstance, identity) {
 function createEventStreamStoreForInstance(doInstance) {
   const sql = doInstance?.ctx?.storage?.sql;
   if (!sql) return undefined;
+  ensureEventStreamTables(sql);
   return new SqlEventStreamStore(sql);
 }
 

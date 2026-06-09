@@ -91,7 +91,7 @@ export type {
 	RunRegistry,
 } from './runtime/run-registry.ts';
 export type { EventStreamStore } from './runtime/event-stream-store.ts';
-export { SqlEventStreamStore } from './runtime/event-stream-store.ts';
+export { SqlEventStreamStore, ensureEventStreamTables } from './runtime/event-stream-store.ts';
 export type { RunRecord, RunStatus, RunStore } from './runtime/run-store.ts';
 
 export { bashFactoryToSessionEnv } from './sandbox.ts';

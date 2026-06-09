@@ -108,7 +108,7 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 				}),
 		},
 		runs: {
-			get: (runId) => http.json({ path: `/runs/${encodeURIComponent(runId)}` }),
+			get: (runId) => adminHttp.json({ path: `/runs/${encodeURIComponent(runId)}` }),
 			stream: (runId, opts = {}) =>
 				createFlueEventStream<FlueEvent>(opts, {
 					url: http.url(`/runs/${encodeURIComponent(runId)}`),

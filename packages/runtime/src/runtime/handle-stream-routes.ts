@@ -109,8 +109,17 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 	const url = new URL(request.url);
 
 	const offsetParam = url.searchParams.get('offset') ?? '-1';
-	const live = url.searchParams.get('live') as 'long-poll' | 'sse' | null;
+	const liveRaw = url.searchParams.get('live');
 	const cursor = url.searchParams.get('cursor') ?? undefined;
+
+	// Validate live mode.
+	if (liveRaw !== null && liveRaw !== 'long-poll' && liveRaw !== 'sse') {
+		return new Response(JSON.stringify({ error: 'Invalid live mode. Use "long-poll" or "sse".' }), {
+			status: 400,
+			headers: { 'content-type': 'application/json' },
+		});
+	}
+	const live = liveRaw as 'long-poll' | 'sse' | null;
 
 	// Validate offset format: "-1", "now", or a zero-padded numeric string.
 	if (offsetParam !== '-1' && offsetParam !== 'now' && !/^\d+$/.test(offsetParam)) {

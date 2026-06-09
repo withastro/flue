@@ -74,7 +74,7 @@ export interface EventStreamStore {
 const CREATE_STREAMS_TABLE = `
 CREATE TABLE IF NOT EXISTS flue_event_streams (
   path         TEXT PRIMARY KEY,
-  next_offset  INTEGER NOT NULL DEFAULT 0,
+  next_offset  INTEGER NOT NULL DEFAULT 1,
   closed       INTEGER NOT NULL DEFAULT 0,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 )`;
@@ -165,7 +165,6 @@ export class SqlEventStreamStore implements EventStreamStore {
 
 		const rawOffset = opts?.offset ?? '-1';
 		const limit = Math.min(opts?.limit ?? DEFAULT_READ_LIMIT, 1000);
-		const nextOffsetInt = parseOffset(meta.nextOffset);
 
 		let startAfter: number;
 		if (rawOffset === '-1') {
@@ -198,13 +197,26 @@ export class SqlEventStreamStore implements EventStreamStore {
 			offset: formatOffset(row.seq as number),
 		}));
 
-		const lastSeq = events.length > 0 ? (rows[rows.length - 1]!.seq as number) : startAfter;
-		const resultNextOffset = lastSeq + 1;
-		const upToDate = resultNextOffset >= nextOffsetInt;
+		// DS protocol: Stream-Next-Offset is the offset of the last returned
+		// event (or the stream's tail when no events are returned). The client
+		// passes it back as ?offset= and the server returns everything AFTER it
+		// via `seq > offset`.
+		const lastSeq = events.length > 0 ? (rows[rows.length - 1]!.seq as number) : -1;
+		// Up-to-date when we returned fewer events than the limit (no more data
+		// available). When no events are returned, we're trivially up to date.
+		const upToDate = events.length < limit;
+
+		// When events were returned, nextOffset is the last event's offset.
+		// When no events were returned, echo the requested offset so the
+		// client re-polls from the same position. Event offsets start at 1,
+		// so formatOffset(0) is the "before first event" sentinel.
+		const nextOffset = events.length > 0
+			? formatOffset(lastSeq)
+			: formatOffset(Math.max(0, startAfter));
 
 		return {
 			events,
-			nextOffset: formatOffset(resultNextOffset),
+			nextOffset,
 			upToDate,
 			closed: meta.closed,
 		};
@@ -215,6 +227,18 @@ export class SqlEventStreamStore implements EventStreamStore {
 			`UPDATE flue_event_streams SET closed = 1 WHERE path = ?`,
 			path,
 		);
+		// Notify live subscribers so long-poll/SSE readers wake immediately
+		// on stream closure (DS protocol Section 5.7 MUST requirement).
+		const bucket = this.listeners.get(path);
+		if (bucket) {
+			for (const listener of [...bucket]) {
+				try {
+					listener();
+				} catch {
+					// Listener errors are silently dropped.
+				}
+			}
+		}
 	}
 
 	getStreamMeta(path: string): EventStreamMeta | null {
@@ -227,8 +251,12 @@ export class SqlEventStreamStore implements EventStreamStore {
 
 		if (rows.length === 0) return null;
 		const row = rows[0]!;
+		const writeHead = row.next_offset as number;
+		// Tail offset is the last appended event's offset. Event offsets
+		// start at 1 so writeHead - 1 gives the last event, and 0 is the
+		// "before first event" sentinel for empty streams.
 		return {
-			nextOffset: formatOffset(row.next_offset as number),
+			nextOffset: formatOffset(Math.max(0, writeHead - 1)),
 			closed: (row.closed as number) === 1,
 		};
 	}
