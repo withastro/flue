@@ -42,7 +42,7 @@ async function withServer(handler, callback) {
 function dsJsonEmpty(response) {
 	response.writeHead(200, {
 		'content-type': 'application/json',
-		'stream-offset': '0000000000000000_0000000000000000',
+		'Stream-Next-Offset': '0000000000000000_0000000000000000',
 		'stream-up-to-date': 'true',
 		'stream-closed': 'true',
 	});
@@ -109,7 +109,7 @@ test('forwards authentication headers to follow-mode streams', async () => {
 				// Return a run_end event in the catch-up response so the stream closes.
 				response.writeHead(200, {
 					'content-type': 'application/json',
-					'stream-offset': '0000000000000000_0000000000000000',
+					'Stream-Next-Offset': '0000000000000000_0000000000000000',
 					'stream-up-to-date': 'true',
 					'stream-closed': 'true',
 				});
@@ -152,7 +152,7 @@ test('forwards authentication headers to follow-mode streams', async () => {
 	assert.equal(firstUrl.searchParams.get('offset'), '0000000000000000_0000000000000025');
 });
 
-test('rejects redirects instead of forwarding credentials', async () => {
+test('handles redirects without crashing', async () => {
 	// The SDK follows redirects by default (no redirect: 'error').
 	// This test verifies that even with redirects, the redirect target
 	// receives the request. The security guidance is to use the final

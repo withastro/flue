@@ -1367,7 +1367,7 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 	} else {
 		let run: RunRecord;
 		try {
-			run = await client.admin.runs.get(args.runId);
+			run = await client.runs.get(args.runId);
 		} catch (err) {
 			console.error(
 				`[flue] Failed to fetch run ${args.runId}: ${err instanceof Error ? err.message : String(err)}`,

@@ -14,7 +14,7 @@ import type { FlueEvent } from '../types.ts';
 export interface FlueStreamOptions {
 	/** Starting offset. Defaults to `'-1'` (full history). */
 	offset?: string;
-	/** Live tailing mode. Defaults to `true` (auto SSE/long-poll). */
+	/** Live tailing mode. Defaults to `true` (long-poll). */
 	live?: LiveMode;
 	/** Abort signal to cancel the stream. */
 	signal?: AbortSignal;
@@ -41,8 +41,6 @@ export interface StreamConnectionOptions {
 	url: string;
 	/** Custom fetch implementation. */
 	fetch?: typeof globalThis.fetch;
-	/** Async header factory called per-request (supports token refresh on reconnection). */
-	resolveHeaders?: () => Promise<Record<string, string>>;
 }
 
 /**
@@ -74,24 +72,7 @@ export function createFlueEventStream<T = FlueEvent>(
 		}
 	}
 
-	// Wrap fetch to inject auth headers per-request. This ensures tokens
-	// refresh on SSE reconnection (long-lived connections). We intercept
-	// at the fetch level rather than using DS HeadersRecord because our
-	// HttpClient produces a flat Record<string, string> from an async
-	// factory — we don't know the keys upfront.
-	const baseFetch = connectionOpts.fetch ?? globalThis.fetch;
-	const resolveHeaders = connectionOpts.resolveHeaders;
-
-	const wrappedFetch: typeof globalThis.fetch = resolveHeaders
-		? async (input, init) => {
-				const resolved = await resolveHeaders();
-				const mergedHeaders = {
-					...resolved,
-					...(init?.headers as Record<string, string> | undefined),
-				};
-				return baseFetch(input, { ...init, headers: mergedHeaders });
-			}
-		: baseFetch;
+	const fetch = connectionOpts.fetch ?? globalThis.fetch;
 
 	let responsePromise: Promise<Awaited<ReturnType<typeof stream<T>>>> | undefined;
 	const connect = (): Promise<Awaited<ReturnType<typeof stream<T>>>> => {
@@ -105,7 +86,7 @@ export function createFlueEventStream<T = FlueEvent>(
 			live: streamOpts.live ?? true,
 			json: true,
 			signal: abortController.signal,
-			fetch: wrappedFetch,
+			fetch,
 			backoffOptions: streamOpts.backoffOptions,
 			warnOnHttp: false,
 		});

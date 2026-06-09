@@ -45,7 +45,7 @@ for await (const event of client.runs.stream(run.runId, { live: true })) {
 | Option   | Type                                    | Default | Description                                              |
 | -------- | --------------------------------------- | ------- | -------------------------------------------------------- |
 | `offset` | `string`                                | `"-1"`  | Starting offset. `"-1"` for full history, `"now"` for future events only, or an opaque offset from a previous read. |
-| `live`   | `boolean \| 'sse' \| 'long-poll'`      | `true`  | Enable live tailing. `true` selects the best mode automatically. |
+| `live`   | `boolean \\| 'sse' \\| 'long-poll'`      | `true`  | Enable live tailing. `true` uses long-poll; pass `'sse'` explicitly for SSE. |
 | `signal` | `AbortSignal`                           | —       | Stop consuming events when aborted.                      |
 
 ### `FlueEventStream<T>`

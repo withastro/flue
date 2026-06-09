@@ -1,5 +1,6 @@
 import { stream as dsStream } from '@durable-streams/client';
 import { HttpClient, type HttpClientOptions, type RequestHeaders } from './http.ts';
+export type { HttpClientOptions } from './http.ts';
 import {
 	type AgentPromptOptions,
 	promptAgent,
@@ -100,6 +101,7 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 		...options,
 		baseUrl: new URL(`${adminBasePath}/`, http.baseUrl).toString(),
 	});
+	const getRun = (runId: string) => adminHttp.json<RunRecord>({ path: `/runs/${encodeURIComponent(runId)}` });
 	return {
 		agents: {
 			prompt: (name, id, opts) => promptAgent(http, name, id, opts),
@@ -107,17 +109,15 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 			stream: (name, id, opts = {}) =>
 				createFlueEventStream<AttachedAgentEvent>(opts, {
 					url: http.url(`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`),
-					fetch: http.fetchImpl,
-					resolveHeaders: () => http.resolveStreamHeaders(),
+					fetch: http.fetchWithHeaders.bind(http),
 				}),
 		},
 		runs: {
-			get: (runId) => adminHttp.json({ path: `/runs/${encodeURIComponent(runId)}` }),
+			get: getRun,
 			stream: (runId, opts = {}) =>
 				createFlueEventStream<FlueEvent>(opts, {
 					url: http.url(`/runs/${encodeURIComponent(runId)}`),
-					fetch: http.fetchImpl,
-					resolveHeaders: () => http.resolveStreamHeaders(),
+					fetch: http.fetchWithHeaders.bind(http),
 				}),
 			events: async (runId, opts) => {
 				const res = await dsStream<FlueEvent>({
@@ -127,11 +127,12 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 					json: true,
 					signal: opts?.signal,
 					backoffOptions: opts?.backoffOptions,
-					fetch: wrapFetchWithHeaders(http),
+					fetch: http.fetchWithHeaders.bind(http),
 					warnOnHttp: false,
 				});
-				return res.json();
+				return readJsonWithAbort<FlueEvent[]>(res, opts?.signal);
 			},
+
 		},
 		workflows: {
 			invoke: async (name, opts) => {
@@ -153,26 +154,18 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 			},
 			runs: {
 				list: (opts = {}) => adminHttp.json({ path: '/runs', query: runsQuery(opts) }),
-				get: (runId) => adminHttp.json({ path: `/runs/${encodeURIComponent(runId)}` }),
+				get: getRun,
 			},
 		},
 	};
 }
 
-/**
- * Wrap an HttpClient's fetch with per-request header resolution.
- * Used for one-shot DS reads (e.g. `runs.events()`) where the stream()
- * function manages its own lifecycle.
- */
-function wrapFetchWithHeaders(http: HttpClient): typeof globalThis.fetch {
-	return async (input, init) => {
-		const resolved = await http.resolveStreamHeaders();
-		const mergedHeaders = {
-			...resolved,
-			...(init?.headers as Record<string, string> | undefined),
-		};
-		return http.fetchImpl(input, { ...init, headers: mergedHeaders });
-	};
+async function readJsonWithAbort<T>(response: { json(): Promise<T> }, signal?: AbortSignal): Promise<T> {
+	const result = await response.json();
+	if (signal?.aborted) {
+		throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+	}
+	return result;
 }
 
 function normalizeBasePath(path: string): string {

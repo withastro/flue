@@ -2,6 +2,7 @@ export type {
 	CreateFlueClientOptions,
 	FlueClient,
 	ListRunsOptions,
+	HttpClientOptions,
 	RequestHeaders,
 	WorkflowInvokeOptions,
 	WorkflowInvokeResult,
@@ -12,6 +13,14 @@ export type {
 	AgentPromptOptions,
 	AgentPromptResult,
 } from './public/invoke.ts';
+export {
+	DurableStreamError,
+	FetchBackoffAbortError,
+	FetchError,
+	InvalidSignalError,
+	MissingStreamUrlError,
+	StreamClosedError,
+} from '@durable-streams/client';
 export type { BackoffOptions, LiveMode } from '@durable-streams/client';
 export type {
 	FlueEventStream,

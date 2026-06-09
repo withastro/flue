@@ -74,7 +74,7 @@ export class HttpClient {
 	 * so that async header factories (e.g. token refresh) are re-evaluated.
 	 * Used by the DS stream wrapper to inject headers on every reconnection.
 	 */
-	async resolveStreamHeaders(): Promise<Record<string, string>> {
+	async resolveHeaders(): Promise<Record<string, string>> {
 		const headers =
 			typeof this.headers === 'function' ? await this.headers() : (this.headers ?? {});
 		return {
@@ -83,11 +83,20 @@ export class HttpClient {
 		};
 	}
 
+	async fetchWithHeaders(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+		const resolved = await this.resolveHeaders();
+		const mergedHeaders = {
+			...resolved,
+			...(init?.headers as Record<string, string> | undefined),
+		};
+		return this.fetchImpl(input, { ...init, headers: mergedHeaders });
+	}
+
 	async requestHeaders(
 		extra: Record<string, string> | undefined,
 		hasBody: boolean,
 	): Promise<Record<string, string>> {
-		const base = await this.resolveStreamHeaders();
+		const base = await this.resolveHeaders();
 		return {
 			...(hasBody ? { 'content-type': 'application/json' } : {}),
 			...base,
