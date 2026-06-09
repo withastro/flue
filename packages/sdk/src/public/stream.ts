@@ -91,15 +91,23 @@ export function createFlueEventStream<T = FlueEvent>(
 			}
 		: baseFetch;
 
-	const responsePromise = stream<T>({
-		url: connectionOpts.url,
-		offset: streamOpts.offset ?? '-1',
-		live: streamOpts.live ?? true,
-		json: true,
-		signal: abortController.signal,
-		fetch: wrappedFetch,
-		warnOnHttp: false,
-	});
+	let responsePromise: Promise<Awaited<ReturnType<typeof stream<T>>>> | undefined;
+	const connect = (): Promise<Awaited<ReturnType<typeof stream<T>>>> => {
+		if (responsePromise) return responsePromise;
+		if (abortController.signal.aborted) {
+			return Promise.reject(abortController.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+		}
+		responsePromise = stream<T>({
+			url: connectionOpts.url,
+			offset: streamOpts.offset ?? '-1',
+			live: streamOpts.live ?? true,
+			json: true,
+			signal: abortController.signal,
+			fetch: wrappedFetch,
+			warnOnHttp: false,
+		});
+		return responsePromise;
+	};
 
 	const cancel = (reason?: unknown) => abortController.abort(reason);
 
@@ -109,12 +117,20 @@ export function createFlueEventStream<T = FlueEvent>(
 
 	const iterator: AsyncIterator<T> = {
 		async next(): Promise<IteratorResult<T>> {
+			if (abortController.signal.aborted) {
+				readerDone = true;
+				removeExternalAbortListener?.();
+				return { value: undefined as T, done: true };
+			}
+
 			if (!reader) {
 				try {
-					const res = await responsePromise;
+					const res = await connect();
 					reader = res.jsonStream().getReader();
 				} catch (err) {
-					if (isAbortError(err)) {
+					if (abortController.signal.aborted || isAbortError(err)) {
+						readerDone = true;
+						removeExternalAbortListener?.();
 						return { value: undefined as T, done: true };
 					}
 					throw err;
@@ -136,7 +152,7 @@ export function createFlueEventStream<T = FlueEvent>(
 			} catch (err) {
 				readerDone = true;
 				removeExternalAbortListener?.();
-				if (isAbortError(err)) {
+				if (abortController.signal.aborted || isAbortError(err)) {
 					return { value: undefined as T, done: true };
 				}
 				throw err;

@@ -84,6 +84,44 @@ describe('createFlueClient', () => {
 			});
 		});
 
+		it('cancel() before iteration does not start a connection', async () => {
+			let fetchCount = 0;
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async () => {
+					fetchCount++;
+					return dsJsonResponse([]);
+				},
+			});
+
+			const eventStream = client.agents.stream('agent', 'id', { live: false });
+			eventStream.cancel();
+			const events = [];
+			for await (const event of eventStream) {
+				events.push(event);
+			}
+
+			expect(events).toEqual([]);
+			expect(fetchCount).toBe(0);
+		});
+
+		it('stops cleanly when canceled during initial connection', async () => {
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async (_input, init) =>
+					await new Promise<Response>((_resolve, reject) => {
+						init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+					}),
+			});
+
+			const eventStream = client.agents.stream('agent', 'id', { live: false });
+			const next = eventStream[Symbol.asyncIterator]().next();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			eventStream.cancel();
+
+			await expect(next).resolves.toEqual({ value: undefined, done: true });
+		});
+
 		it('cancel() stops iteration and aborts the underlying connection', async () => {
 			let fetchCount = 0;
 			let lastSignal: AbortSignal | undefined;
