@@ -239,22 +239,20 @@ export function getFlueRuntime(): FlueRuntime | undefined {
 }
 
 /**
- * Creates a mountable Hono sub-app for Flue's public HTTP and WebSocket API.
+ * Creates a mountable Hono sub-app for Flue's public HTTP API.
  * Routes are relative to the application-chosen mount prefix.
  *
  * The mounted sub-app exposes:
  *
  * - `GET /openapi.json`
- * - `POST /agents/:name/:id` and `GET /agents/:name/:id` WebSocket upgrades
- * - `POST /workflows/:name` and `GET /workflows/:name` WebSocket upgrades
- * - `GET /runs/:runId`
- * - `GET /runs/:runId/events`
- * - `GET /runs/:runId/stream`
+ * - `POST /agents/:name/:id` — send a prompt (sync JSON response)
+ * - `GET/HEAD /agents/:name/:id` — DS event stream read
+ * - `POST /workflows/:name` — start a workflow run
+ * - `GET/HEAD /runs/:runId` — DS run event stream read
  *
  * Agent and workflow routes are available only when the corresponding module
- * opts into that transport. Run routes inspect workflow runs only and may
- * expose payloads, results, errors, and events; applications publishing them
- * should authorize access to the selected run.
+ * opts into HTTP transport. Event streams use the Durable Streams protocol
+ * (catch-up, long-poll, SSE) and are read-only.
  */
 export function flue(): Hono {
 	const app = new Hono();
@@ -368,7 +366,7 @@ function workflowRouteSpec() {
 		operationId: 'invokeWorkflow',
 		summary: 'Start a workflow run',
 		description:
-			'Starts the named HTTP-exposed workflow through one admitted execution path. By default it returns an accepted run id; use ?wait=result for a synchronous JSON observation or Accept: text/event-stream to observe live run events while the connection remains available.',
+			'Starts the named HTTP-exposed workflow. By default returns an accepted run id (202); use ?wait=result for a synchronous JSON result. Observe run events via the Durable Streams GET endpoint at /runs/:runId.',
 		requestBody: {
 			required: false,
 			content: {
@@ -384,24 +382,16 @@ function workflowRouteSpec() {
 		responses: {
 			202: jsonResponse(WorkflowAdmissionResponseSchema, 'Workflow run accepted.'),
 			200: {
-				description:
-					'Workflow result envelope or server-sent events stream, depending on the requested mode.',
+				description: 'Synchronous workflow result (?wait=result).',
 				content: {
 					'application/json': {
 						schema: resolver(WorkflowInvocationResponseSchema),
-					},
-					'text/event-stream': {
-						schema: {
-							type: 'string',
-							description:
-								'SSE-framed FlueEvent values. A terminal stream-infrastructure event: error frame has data { error: { type, message, details, dev?, meta? } }.',
-						},
 					},
 				},
 			},
 			...errorResponses(),
 		},
-		'x-flue-invocation-modes': ['accepted', 'wait-result', 'stream'],
+		'x-flue-invocation-modes': ['accepted', 'wait-result'],
 		'x-flue-user-defined': true,
 	};
 }
@@ -458,7 +448,7 @@ const workflowRouteHandler: MiddlewareHandler = async (c) => {
 		method: c.req.method,
 		name,
 		registeredWorkflows: workflows.map((workflow) => workflow.name),
-		httpWorkflows: registeredWorkflowsForTransport(rt, 'http'),
+		httpWorkflows: registeredWorkflowsForTransport(rt),
 	});
 	const request = c.req.raw.clone();
 
@@ -516,7 +506,7 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 		method: c.req.method,
 		name,
 		id,
-		registeredAgents: registeredAgentsForTransport(rt, 'http'),
+		registeredAgents: registeredAgentsForTransport(rt),
 	});
 	const request = c.req.raw.clone();
 
@@ -711,18 +701,16 @@ function normalizeAttachedRequest(request: Request, pathname: string): Request {
 
 export function registeredAgentsForTransport(
 	rt: FlueRuntime,
-	transport: 'http',
 ): readonly string[] {
 	return (rt.manifest?.agents ?? [])
-		.filter((agent) => agent.transports[transport] === true)
+		.filter((agent) => agent.transports.http === true)
 		.map((agent) => agent.name);
 }
 
 export function registeredWorkflowsForTransport(
 	rt: FlueRuntime,
-	transport: 'http',
 ): readonly string[] {
 	return (rt.manifest?.workflows ?? [])
-		.filter((workflow) => workflow.transports[transport] === true)
+		.filter((workflow) => workflow.transports.http === true)
 		.map((workflow) => workflow.name);
 }

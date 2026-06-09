@@ -22,9 +22,7 @@ import type * as v from 'valibot';
 export type { ThinkingLevel };
 
 export type AgentRouteHandler = MiddlewareHandler;
-export type AgentWebSocketHandler = MiddlewareHandler;
 export type WorkflowRouteHandler = MiddlewareHandler;
-export type WorkflowWebSocketHandler = MiddlewareHandler;
 
 /** Input accepted by the created-agent overload of `dispatch(...)`. */
 export interface AgentDispatchRequest {
@@ -72,118 +70,6 @@ export interface FluePublicError {
 	/** Structured error-specific metadata when available. */
 	meta?: Record<string, unknown>;
 }
-
-/**
- * Protocol version 1 messages accepted by an attached-agent WebSocket. Agent
- * sockets can process sequential prompts. Use `requestId` to correlate
- * prompt-scoped messages.
- */
-export type AgentWebSocketClientMessage =
-	| {
-			version: 1;
-			type: 'prompt';
-			requestId: string;
-			message: string;
-	  }
-	| {
-			version: 1;
-			type: 'ping';
-			requestId?: string;
-	  };
-
-/**
- * Protocol version 1 invocation accepted by a workflow WebSocket. Workflow
- * sockets accept one invocation and close after completion or failure.
- */
-export interface WorkflowWebSocketClientMessage {
-	version: 1;
-	type: 'invoke';
-	requestId: string;
-	payload?: unknown;
-}
-
-/** Connection- or request-scoped WebSocket failure. */
-export type WebSocketErrorMessage = {
-	version: 1;
-	type: 'error';
-	requestId?: string;
-	error: FluePublicError;
-};
-
-/** Workflow-run-scoped WebSocket failure after a run id has been allocated. */
-export type WorkflowRunWebSocketErrorMessage = WebSocketErrorMessage & {
-	runId: string;
-};
-
-/** Protocol version 1 messages emitted by an attached-agent WebSocket. */
-export type AgentWebSocketServerMessage =
-	| {
-			version: 1;
-			type: 'ready';
-			target: 'agent';
-			name: string;
-			instanceId: string;
-	  }
-	| {
-			version: 1;
-			type: 'started';
-			requestId: string;
-	  }
-	| {
-			version: 1;
-			type: 'event';
-			requestId: string;
-			event: AttachedAgentEvent;
-	  }
-	| {
-			version: 1;
-			type: 'result';
-			requestId: string;
-			result: unknown;
-	  }
-	| WebSocketErrorMessage
-	| {
-			version: 1;
-			type: 'pong';
-			requestId?: string;
-	  };
-
-/**
- * Protocol version 1 messages emitted by a workflow WebSocket. `started`
- * reports an admitted workflow invocation before workflow events are delivered.
- */
-export type WorkflowWebSocketServerMessage =
-	| {
-			version: 1;
-			type: 'ready';
-			target: 'workflow';
-			name: string;
-	  }
-	| {
-			version: 1;
-			type: 'started';
-			requestId: string;
-			runId: string;
-	  }
-	| {
-			version: 1;
-			type: 'event';
-			requestId: string;
-			runId: string;
-			event: FlueEvent;
-	  }
-	| {
-			version: 1;
-			type: 'result';
-			requestId: string;
-			runId: string;
-			result: unknown;
-	  }
-	| WebSocketErrorMessage
-	| WorkflowRunWebSocketErrorMessage;
-
-/** Any protocol version 1 message emitted by a Flue WebSocket. */
-export type WebSocketServerMessage = AgentWebSocketServerMessage | WorkflowWebSocketServerMessage;
 
 /** Context passed to a {@link createAgent} initializer. */
 export interface AgentCreateContext<TPayload = unknown, TEnv = Record<string, any>> {
@@ -1226,13 +1112,6 @@ export type AttachedAgentEvent = Exclude<
 	runId?: never;
 	instanceId: string;
 };
-
-/** Terminal error frame emitted after an attached-agent SSE stream has started. */
-export interface AttachedAgentStreamError {
-	type: 'error';
-	instanceId: string;
-	error: FluePublicError;
-}
 
 export type FlueEventCallback = (event: FlueEvent) => void | Promise<void>;
 export type AttachedAgentEventCallback = (event: AttachedAgentEvent) => void | Promise<void>;

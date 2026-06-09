@@ -131,35 +131,6 @@ const LlmToolSchema = v.object({
 	parameters: v.unknown(),
 });
 
-const FLUE_EVENT_TYPES = [
-	'run_start',
-	'run_resume',
-	'agent_start',
-	'agent_end',
-	'turn_start',
-	'turn_request',
-	'turn_end',
-	'message_start',
-	'message_update',
-	'message_end',
-	'text_delta',
-	'thinking_start',
-	'thinking_delta',
-	'thinking_end',
-	'tool_start',
-	'tool_call',
-	'turn',
-	'task_start',
-	'task',
-	'compaction_start',
-	'compaction',
-	'operation_start',
-	'operation',
-	'log',
-	'idle',
-	'run_end',
-] as const;
-
 const FlueEventSchema = v.union([
 	flueEvent({
 		type: v.literal('run_start'),
@@ -317,18 +288,6 @@ type _EventSchemaAssignableToRuntime =
 const _eventSchemaTypeCheck: _EventSchemaAssignableToRuntime = true;
 void _eventSchemaTypeCheck;
 
-const PersistedWorkflowEventSchema = v.intersect([
-	FlueEventSchema,
-	v.object({
-		runId: v.string(),
-		eventIndex: v.pipe(v.number(), v.safeInteger(), v.minValue(0)),
-	}),
-]);
-
-export const RunEventListResponseSchema = v.object({
-	events: v.array(PersistedWorkflowEventSchema),
-});
-
 export const AgentInvocationResponseSchema = v.object({
 	result: v.unknown(),
 });
@@ -344,27 +303,6 @@ export const WorkflowAdmissionResponseSchema = v.object({
 });
 
 const integerString = (message: string) => v.pipe(v.string(), v.regex(/^\d+$/, message));
-const eventTypesPattern = new RegExp(
-	`^(${FLUE_EVENT_TYPES.join('|')})(,(${FLUE_EVENT_TYPES.join('|')}))*$`,
-);
-
-export const RunEventsQuerySchema = v.object({
-	after: v.optional(integerString('after must be a non-negative integer.')),
-	types: v.optional(
-		v.pipe(
-			v.string(),
-			v.regex(eventTypesPattern, 'types must be a comma-separated list of known event type names.'),
-		),
-	),
-	limit: v.optional(
-		v.pipe(
-			integerString('limit must be an integer between 1 and 1000.'),
-			v.transform(Number),
-			v.minValue(1, 'limit must be at least 1.'),
-			v.maxValue(1000, 'limit must be at most 1000.'),
-		),
-	),
-});
 
 export const RunIdParamSchema = v.object({ runId: v.string() });
 export const WorkflowRouteParamSchema = v.object({ name: v.string() });
@@ -377,7 +315,6 @@ const AgentManifestEntrySchema = v.object({
 	name: v.string(),
 	transports: v.object({
 		http: v.optional(v.literal(true)),
-		websocket: v.optional(v.literal(true)),
 	}),
 	created: v.boolean(),
 });

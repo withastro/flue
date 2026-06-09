@@ -168,7 +168,7 @@ describe('createFlueClient', () => {
 				payload: { key: 'value' },
 			});
 			expect(result.runId).toBe('wf_abc123');
-			expect(result.streamUrl).toBe('/runs/wf_abc123');
+			expect(result.streamUrl).toBe('https://flue.test/runs/wf_abc123');
 			expect(seen).toHaveLength(1);
 			expect(new URL(seen[0]!.url).pathname).toBe('/workflows/my-workflow');
 			expect(seen[0]!.method).toBe('POST');
@@ -184,7 +184,7 @@ describe('createFlueClient', () => {
 
 			const result = await client.workflows.invoke('simple-workflow');
 			expect(result.runId).toBe('wf_xyz');
-			expect(result.streamUrl).toBe('/runs/wf_xyz');
+			expect(result.streamUrl).toBe('https://flue.test/runs/wf_xyz');
 		});
 	});
 

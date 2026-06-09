@@ -23,7 +23,7 @@ import type { RunOwner, RunRegistry } from './run-registry.ts';
 import { assertPersistedWorkflowEvent, type RunStore } from './run-store.ts';
 
 
-/** Direct agent handler signature used by attached HTTP and WebSocket prompts. */
+/** Direct agent handler signature used by attached HTTP prompts. */
 export type AgentHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
 export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
 

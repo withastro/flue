@@ -86,8 +86,7 @@ export function handleStreamHead(store: EventStreamStore, path: string): Respons
 		headers[STREAM_CLOSED] = 'true';
 	}
 
-	const closedSuffix = meta.closed ? ':c' : '';
-	headers['etag'] = `"${typeof btoa === 'function' ? btoa(path) : Buffer.from(path).toString('base64')}:-1:${meta.nextOffset}${closedSuffix}"`;
+	headers['etag'] = generateETag(path, '-1', meta.nextOffset, meta.closed);
 
 	return new Response(null, { status: 200, headers });
 }
@@ -199,6 +198,7 @@ async function handleLongPollMode(
 		const body = JSON.stringify(result.events.map((e) => e.data));
 		const headers: Record<string, string> = {
 			'content-type': 'application/json',
+			'cache-control': 'no-store',
 			[STREAM_NEXT_OFFSET]: result.nextOffset,
 			[STREAM_CURSOR]: generateCursor(clientCursor),
 		};
@@ -252,6 +252,7 @@ async function handleLongPollMode(
 		const body = JSON.stringify(freshResult.events.map((e) => e.data));
 		const headers: Record<string, string> = {
 			'content-type': 'application/json',
+			'cache-control': 'no-store',
 			[STREAM_NEXT_OFFSET]: freshResult.nextOffset,
 			[STREAM_CURSOR]: generateCursor(clientCursor),
 		};
@@ -375,7 +376,6 @@ function handleSseMode(
 		headers: {
 			'content-type': 'text/event-stream',
 			'cache-control': 'no-cache',
-			'connection': 'keep-alive',
 		},
 	});
 }

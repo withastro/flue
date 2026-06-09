@@ -276,9 +276,4 @@ export type AttachedAgentEvent = Exclude<
 	instanceId: string;
 };
 
-/** Structured error envelope received while streaming a direct agent interaction. Streams throw the error message rather than yielding this envelope. */
-export interface AttachedAgentStreamError {
-	type: 'error';
-	instanceId: string;
-	error: FluePublicError;
-}
+

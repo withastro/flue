@@ -9,7 +9,6 @@
 import {
 	stream,
 	type LiveMode,
-	type StreamResponse,
 } from '@durable-streams/client';
 import type { FlueEvent } from '../types.ts';
 
@@ -30,8 +29,6 @@ export interface FlueStreamOptions {
  * `for await` loop automatically cleans up the underlying connection.
  */
 export interface FlueEventStream<T = FlueEvent> extends AsyncIterable<T> {
-	/** The underlying DS client response. Exposes `offset`, `upToDate`, `streamClosed`, etc. */
-	readonly response: Promise<StreamResponse<T>>;
 	/** Cancel the stream and abort the underlying connection. */
 	cancel(reason?: unknown): void;
 }
@@ -150,7 +147,6 @@ export function createFlueEventStream<T = FlueEvent>(
 	};
 
 	return {
-		response: responsePromise,
 		cancel,
 		[Symbol.asyncIterator]() {
 			return iterator;

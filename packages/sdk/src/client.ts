@@ -41,7 +41,7 @@ export interface WorkflowInvokeOptions {
 export interface WorkflowInvokeResult {
 	/** The workflow run ID. */
 	runId: string;
-	/** The DS-compatible stream URL for observing run events. */
+	/** Fully resolved DS-compatible stream URL for observing run events. */
 	streamUrl: string;
 }
 
@@ -138,7 +138,7 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 				});
 				return {
 					runId: body.runId,
-					streamUrl: `/runs/${encodeURIComponent(body.runId)}`,
+					streamUrl: http.url(`/runs/${encodeURIComponent(body.runId)}`),
 				};
 			},
 		},

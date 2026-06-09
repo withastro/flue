@@ -109,13 +109,30 @@ export class SqlEventStreamStore implements EventStreamStore {
 	}
 
 	appendEvent(path: string, event: unknown): string {
+		// Serialize before any mutation so a JSON.stringify failure cannot
+		// leave the offset counter advanced without a stored event.
+		const data = JSON.stringify(event);
+
+		// Atomic increment-and-insert via CTE: the UPDATE advances the
+		// write cursor and the INSERT stores the event at the old cursor
+		// position, all in a single SQL statement. A crash between the
+		// two would be impossible because SQLite executes a single
+		// statement atomically.
 		const rows = this.sql
 			.exec(
-				`UPDATE flue_event_streams
-				 SET next_offset = next_offset + 1
-				 WHERE path = ? AND closed = 0
-				 RETURNING next_offset`,
+				`WITH upd AS (
+				   UPDATE flue_event_streams
+				   SET next_offset = next_offset + 1
+				   WHERE path = ? AND closed = 0
+				   RETURNING next_offset
+				 )
+				 INSERT INTO flue_event_stream_entries (path, seq, data)
+				 SELECT ?, upd.next_offset - 1, ?
+				 FROM upd
+				 RETURNING seq`,
 				path,
+				path,
+				data,
 			)
 			.toArray();
 
@@ -128,16 +145,7 @@ export class SqlEventStreamStore implements EventStreamStore {
 			throw new Error(`[flue] Event stream "${path}" is closed.`);
 		}
 
-		// next_offset was already incremented, so the event's offset is next_offset - 1.
-		const offset = (rows[0]!.next_offset as number) - 1;
-		const data = JSON.stringify(event);
-
-		this.sql.exec(
-			`INSERT INTO flue_event_stream_entries (path, seq, data) VALUES (?, ?, ?)`,
-			path,
-			offset,
-			data,
-		);
+		const offset = rows[0]!.seq as number;
 
 		// Notify live subscribers.
 		const bucket = this.listeners.get(path);
