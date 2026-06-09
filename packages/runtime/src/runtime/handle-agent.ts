@@ -393,7 +393,7 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 	const terminalEvent = findTerminalRunEvent(events);
 	const run = await opts.runStore?.getRun(opts.runId);
 	if (terminalEvent || (run && run.status !== 'active')) {
-		await reconcileTerminalRun(opts, run, terminalEvent, events);
+		await reconcileTerminalRun(opts, run, terminalEvent);
 		return;
 	}
 	if (run)
@@ -409,6 +409,9 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 	const startedAtMs = Date.parse(startedAt);
 	const startEvent = events.find((event) => event.type === 'run_start');
 	const payload = run?.payload !== undefined ? run.payload : startEvent?.payload;
+	// Ensure the event stream exists — the original workflow may have crashed
+	// before createWorkflowRunLifecycle called createStream. Idempotent.
+	opts.eventStreamStore?.createStream(`runs/${opts.runId}`);
 	const lifecycle: WorkflowRunLifecycle = {
 		...opts,
 		payload,
@@ -425,15 +428,25 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 function readRecoveryEvents(opts: FailRecoveredRunOptions): FlueEvent[] {
 	if (!opts.eventStreamStore) return [];
 	const streamPath = `runs/${opts.runId}`;
-	const result = opts.eventStreamStore.readEvents(streamPath, { offset: '-1' });
-	return result.events.map((e) => e.data as FlueEvent);
+	// Read all events — recovery needs the full history to find the
+	// terminal event and compute the next event index.
+	const events: FlueEvent[] = [];
+	let offset = '-1';
+	while (true) {
+		const result = opts.eventStreamStore.readEvents(streamPath, { offset });
+		for (const e of result.events) {
+			events.push(e.data as FlueEvent);
+		}
+		if (result.upToDate || result.events.length === 0) break;
+		offset = result.nextOffset;
+	}
+	return events;
 }
 
 async function reconcileTerminalRun(
 	opts: FailRecoveredRunOptions,
 	run: Awaited<ReturnType<RunStore['getRun']>> | undefined,
 	terminalEvent: Extract<FlueEvent, { type: 'run_end' }> | undefined,
-	events: FlueEvent[],
 ): Promise<void> {
 	const isError = terminalEvent?.isError ?? run?.isError ?? false;
 	const result = terminalEvent?.result !== undefined ? terminalEvent.result : run?.result;
@@ -734,8 +747,12 @@ async function emitRunEnd(
 	});
 
 	// Append run_end to the durable event stream, then close it.
-	eventStreamStore?.appendEvent(`runs/${runId}`, decorated);
-	eventStreamStore?.closeStream(`runs/${runId}`);
+	// Each operation is individually guarded so a store failure cannot
+	// prevent RunStore/RunRegistry finalization below.
+	try { eventStreamStore?.appendEvent(`runs/${runId}`, decorated); }
+	catch (e) { console.error('[flue:event-stream] appendEvent(run_end) failed:', e); }
+	try { eventStreamStore?.closeStream(`runs/${runId}`); }
+	catch (e) { console.error('[flue:event-stream] closeStream failed:', e); }
 
 	const didEndRun = runStore
 		? await safeRunStore('endRun', () =>

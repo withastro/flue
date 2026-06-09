@@ -58,16 +58,17 @@ export function createFlueEventStream<T = FlueEvent>(
 ): FlueEventStream<T> {
 	const abortController = new AbortController();
 
-	// Link external signal to our controller.
+	// Link external signal to our controller. Store the handler so we can
+	// remove it when the stream completes naturally (avoids retaining the
+	// closure scope on long-lived AbortSignals).
+	let removeExternalAbortListener: (() => void) | undefined;
 	if (streamOpts.signal) {
 		if (streamOpts.signal.aborted) {
 			abortController.abort(streamOpts.signal.reason);
 		} else {
-			streamOpts.signal.addEventListener(
-				'abort',
-				() => abortController.abort(streamOpts.signal!.reason),
-				{ once: true },
-			);
+			const onAbort = () => abortController.abort(streamOpts.signal!.reason);
+			streamOpts.signal.addEventListener('abort', onAbort, { once: true });
+			removeExternalAbortListener = () => streamOpts.signal!.removeEventListener('abort', onAbort);
 		}
 	}
 
@@ -128,11 +129,13 @@ export function createFlueEventStream<T = FlueEvent>(
 				const { value, done } = await reader.read();
 				if (done) {
 					readerDone = true;
+					removeExternalAbortListener?.();
 					return { value: undefined as T, done: true };
 				}
 				return { value, done: false };
 			} catch (err) {
 				readerDone = true;
+				removeExternalAbortListener?.();
 				if (isAbortError(err)) {
 					return { value: undefined as T, done: true };
 				}
@@ -141,6 +144,8 @@ export function createFlueEventStream<T = FlueEvent>(
 		},
 		async return(): Promise<IteratorResult<T>> {
 			readerDone = true;
+			try { reader?.cancel(); } catch { /* ignore */ }
+			removeExternalAbortListener?.();
 			cancel();
 			return { value: undefined as T, done: true };
 		},

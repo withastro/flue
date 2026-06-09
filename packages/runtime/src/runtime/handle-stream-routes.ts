@@ -80,6 +80,7 @@ export function handleStreamHead(store: EventStreamStore, path: string): Respons
 	const headers: Record<string, string> = {
 		'content-type': 'application/json',
 		[STREAM_NEXT_OFFSET]: meta.nextOffset,
+		[STREAM_UP_TO_DATE]: 'true',
 		'cache-control': 'no-store',
 	};
 	if (meta.closed) {
@@ -193,36 +194,14 @@ async function handleLongPollMode(
 	result: ReturnType<EventStreamStore['readEvents']>,
 	signal: AbortSignal,
 ): Promise<Response> {
-	// If we already have data, return it immediately (same as catch-up + cursor).
+	// Data already available — return immediately.
 	if (result.events.length > 0) {
-		const body = JSON.stringify(result.events.map((e) => e.data));
-		const headers: Record<string, string> = {
-			'content-type': 'application/json',
-			'cache-control': 'no-store',
-			[STREAM_NEXT_OFFSET]: result.nextOffset,
-			[STREAM_CURSOR]: generateCursor(clientCursor),
-		};
-		if (result.upToDate) {
-			headers[STREAM_UP_TO_DATE] = 'true';
-		}
-		if (result.closed && result.upToDate) {
-			headers[STREAM_CLOSED] = 'true';
-		}
-		const startOffset = offsetParam === 'now' ? 'now' : offsetParam;
-		headers['etag'] = generateETag(path, startOffset, result.nextOffset, result.closed && result.upToDate);
-		return new Response(body, { status: 200, headers });
+		return longPollDataResponse(result, path, offsetParam, clientCursor);
 	}
 
-	// At tail with no data. If stream is closed, return 204 immediately.
+	// At tail, stream is closed — nothing more will arrive.
 	if (result.closed && result.upToDate) {
-		return new Response(null, {
-			status: 204,
-			headers: {
-				[STREAM_NEXT_OFFSET]: result.nextOffset,
-				[STREAM_UP_TO_DATE]: 'true',
-				[STREAM_CLOSED]: 'true',
-			},
-		});
+		return longPollEmptyResponse(result.nextOffset, clientCursor, true);
 	}
 
 	// Wait for new data or timeout.
@@ -233,51 +212,55 @@ async function handleLongPollMode(
 	}
 
 	if (waitResult === 'timeout') {
-		// Re-check closed status in case the stream closed during wait.
-		const currentMeta = store.getStreamMeta(path);
-		const headers: Record<string, string> = {
-			[STREAM_NEXT_OFFSET]: result.nextOffset,
-			[STREAM_UP_TO_DATE]: 'true',
-			[STREAM_CURSOR]: generateCursor(clientCursor),
-		};
-		if (currentMeta?.closed) {
-			headers[STREAM_CLOSED] = 'true';
-		}
-		return new Response(null, { status: 204, headers });
+		const closed = store.getStreamMeta(path)?.closed ?? false;
+		return longPollEmptyResponse(result.nextOffset, clientCursor, closed);
 	}
 
-	// 'data' — new data available. Re-read from the store.
+	// Notified — re-read from the store.
 	const freshResult = store.readEvents(path, { offset: offsetParam });
 	if (freshResult.events.length > 0) {
-		const body = JSON.stringify(freshResult.events.map((e) => e.data));
-		const headers: Record<string, string> = {
-			'content-type': 'application/json',
-			'cache-control': 'no-store',
-			[STREAM_NEXT_OFFSET]: freshResult.nextOffset,
-			[STREAM_CURSOR]: generateCursor(clientCursor),
-		};
-		if (freshResult.upToDate) {
-			headers[STREAM_UP_TO_DATE] = 'true';
-		}
-		if (freshResult.closed && freshResult.upToDate) {
-			headers[STREAM_CLOSED] = 'true';
-		}
-		const startOffset = offsetParam === 'now' ? 'now' : offsetParam;
-		headers['etag'] = generateETag(path, startOffset, freshResult.nextOffset, freshResult.closed && freshResult.upToDate);
-		return new Response(body, { status: 200, headers });
+		return longPollDataResponse(freshResult, path, offsetParam, clientCursor);
 	}
 
-	// Stream was notified (likely closed) but no new events.
-	const closedMeta = store.getStreamMeta(path);
-	const headers204: Record<string, string> = {
+	// Notified but no new events (likely stream closed).
+	const closed = store.getStreamMeta(path)?.closed ?? false;
+	return longPollEmptyResponse(result.nextOffset, clientCursor, closed);
+}
+
+/** Build a 200 long-poll response with event data. */
+function longPollDataResponse(
+	result: ReturnType<EventStreamStore['readEvents']>,
+	path: string,
+	offsetParam: string,
+	clientCursor: string | undefined,
+): Response {
+	const isClosed = result.closed && result.upToDate;
+	const headers: Record<string, string> = {
+		'content-type': 'application/json',
+		'cache-control': 'no-store',
 		[STREAM_NEXT_OFFSET]: result.nextOffset,
+		[STREAM_CURSOR]: generateCursor(clientCursor),
+	};
+	if (result.upToDate) headers[STREAM_UP_TO_DATE] = 'true';
+	if (isClosed) headers[STREAM_CLOSED] = 'true';
+	const startOffset = offsetParam === 'now' ? 'now' : offsetParam;
+	headers['etag'] = generateETag(path, startOffset, result.nextOffset, isClosed);
+	return new Response(JSON.stringify(result.events.map((e) => e.data)), { status: 200, headers });
+}
+
+/** Build a 204 long-poll response (no new data). */
+function longPollEmptyResponse(
+	nextOffset: string,
+	clientCursor: string | undefined,
+	closed: boolean,
+): Response {
+	const headers: Record<string, string> = {
+		[STREAM_NEXT_OFFSET]: nextOffset,
 		[STREAM_UP_TO_DATE]: 'true',
 		[STREAM_CURSOR]: generateCursor(clientCursor),
 	};
-	if (closedMeta?.closed) {
-		headers204[STREAM_CLOSED] = 'true';
-	}
-	return new Response(null, { status: 204, headers: headers204 });
+	if (closed) headers[STREAM_CLOSED] = 'true';
+	return new Response(null, { status: 204, headers });
 }
 
 function waitForStreamData(

@@ -525,10 +525,8 @@ configureFlueRuntime({
   devMode: import.meta.env.DEV,
   runtimeVersion: ${runtimeVersion},
   manifest,
-  handlers: directHandlers,
   dispatchQueue,
   resolveDispatchAgentName: (agent) => dispatchAgentNames.get(agent),
-  workflowHandlers,
   agentRouteMiddleware,
   workflowRouteMiddleware,
   routeAgentRequest: async (request, reqEnv, target) => {

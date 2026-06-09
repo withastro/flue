@@ -129,30 +129,23 @@ export class SqlEventStreamStore implements EventStreamStore {
 		// leave the offset counter advanced without a stored event.
 		const data = JSON.stringify(event);
 
-		// Atomic increment-and-insert via CTE: the UPDATE advances the
-		// write cursor and the INSERT stores the event at the old cursor
-		// position, all in a single SQL statement. A crash between the
-		// two would be impossible because SQLite executes a single
-		// statement atomically.
-		const rows = this.sql
+		// Two sequential statements: advance the write cursor, then insert
+		// the event at the old cursor position. Both targets (node:sqlite
+		// and CF DO SQLite) are single-threaded synchronous writers, so no
+		// other write can interleave. A process crash between the two
+		// leaves a gap in the sequence, which is harmless — readEvents
+		// uses `seq > ?` and naturally skips missing numbers.
+		const updated = this.sql
 			.exec(
-				`WITH upd AS (
-				   UPDATE flue_event_streams
-				   SET next_offset = next_offset + 1
-				   WHERE path = ? AND closed = 0
-				   RETURNING next_offset
-				 )
-				 INSERT INTO flue_event_stream_entries (path, seq, data)
-				 SELECT ?, upd.next_offset - 1, ?
-				 FROM upd
-				 RETURNING seq`,
+				`UPDATE flue_event_streams
+				 SET next_offset = next_offset + 1
+				 WHERE path = ? AND closed = 0
+				 RETURNING next_offset`,
 				path,
-				path,
-				data,
 			)
 			.toArray();
 
-		if (rows.length === 0) {
+		if (updated.length === 0) {
 			// Either the stream doesn't exist or it's closed.
 			const meta = this.getStreamMeta(path);
 			if (!meta) {
@@ -161,7 +154,14 @@ export class SqlEventStreamStore implements EventStreamStore {
 			throw new Error(`[flue] Event stream "${path}" is closed.`);
 		}
 
-		const offset = rows[0]!.seq as number;
+		const offset = (updated[0]!.next_offset as number) - 1;
+
+		this.sql.exec(
+			`INSERT INTO flue_event_stream_entries (path, seq, data) VALUES (?, ?, ?)`,
+			path,
+			offset,
+			data,
+		);
 
 		// Notify live subscribers.
 		const bucket = this.listeners.get(path);
@@ -303,6 +303,14 @@ export class SqlEventStreamStore implements EventStreamStore {
 	deleteStream(path: string): void {
 		this.sql.exec(`DELETE FROM flue_event_stream_entries WHERE path = ?`, path);
 		this.sql.exec(`DELETE FROM flue_event_streams WHERE path = ?`, path);
+		// Notify subscribers before removing them so long-poll/SSE readers
+		// wake immediately rather than hanging until timeout.
+		const bucket = this.listeners.get(path);
+		if (bucket) {
+			for (const listener of [...bucket]) {
+				try { listener(); } catch { /* silently dropped */ }
+			}
+		}
 		this.listeners.delete(path);
 	}
 }

@@ -600,7 +600,11 @@ const runStreamReadHandler: MiddlewareHandler = async (c) => {
 	const pointer = await registry.lookupRun(runId);
 	if (!pointer) throw new RunNotFoundError({ runId });
 
-	const response = await rt.routeRunRequest(c.req.raw, c.env, pointer.owner);
+	const response = await rt.routeRunRequest(
+		normalizeRunRequest(c.req.raw, runId),
+		c.env,
+		pointer.owner,
+	);
 	if (response) return response;
 	throw new RouteNotFoundError({ method, path: new URL(c.req.url).pathname });
 };
