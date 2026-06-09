@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { FlueRuntime } from '../src/internal.ts';
+import type { FlueContextInternal, FlueRuntime } from '../src/internal.ts';
 import {
 	configureFlueRuntime,
 	createFlueContext,
@@ -10,8 +10,9 @@ import {
 	InMemoryRunStore,
 	InMemorySessionStore,
 } from '../src/internal.ts';
-import { resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import { flue } from '../src/routing.ts';
+import { resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
+import type { FlueEvent } from '../src/types.ts';
 
 afterEach(() => {
 	resetFlueRuntimeForTests();
@@ -172,6 +173,62 @@ describe('workflow invocation', () => {
 				id: '2',
 				data: { type: 'run_end', runId, result: { delivered: true }, isError: false },
 			},
+		]);
+	});
+
+	it('streams per-chunk delta events live without persisting them to the run journal', async () => {
+		const runStore = new InMemoryRunStore();
+		const app = createApp({
+			target: 'node',
+			manifest: { agents: [], workflows: [{ name: 'daily-report', transports: { http: true } }] },
+			workflowHandlers: {
+				'daily-report': async (ctx) => {
+					const internal = ctx as FlueContextInternal;
+					internal.emitEvent({
+						type: 'message_update',
+						message: { role: 'assistant', content: [{ type: 'text', text: 'He' }] },
+						assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'He' },
+					} as FlueEvent);
+					internal.emitEvent({ type: 'text_delta', text: 'He' } as FlueEvent);
+					internal.emitEvent({ type: 'thinking_delta', delta: 'hm' } as FlueEvent);
+					return { delivered: true };
+				},
+			},
+			createContext,
+			runStore,
+			runRegistry: new InMemoryRunRegistry(),
+			runSubscribers: createRunSubscriberRegistry(),
+		});
+
+		const response = await app.fetch(
+			new Request('http://localhost/flue/workflows/daily-report', {
+				method: 'POST',
+				headers: { accept: 'text/event-stream' },
+			}),
+		);
+		const runId = response.headers.get('x-flue-run-id');
+		const streamed = parseSseEvents(await response.text());
+
+		expect(streamed.map((frame) => frame.event)).toEqual([
+			'run_start',
+			'message_update',
+			'text_delta',
+			'thinking_delta',
+			'run_end',
+		]);
+
+		const eventsResponse = await app.fetch(
+			new Request(`http://localhost/flue/runs/${encodeURIComponent(runId ?? '')}/events`),
+		);
+		const eventsBody = (await eventsResponse.json()) as {
+			events: Array<{ type: string; eventIndex: number }>;
+		};
+		expect(eventsResponse.status).toBe(200);
+		// Delta events still consume event indexes (the live SSE resume cursor),
+		// so the persisted journal keeps a gap where the stream chunks were.
+		expect(eventsBody.events).toMatchObject([
+			{ type: 'run_start', eventIndex: 0 },
+			{ type: 'run_end', eventIndex: 4 },
 		]);
 	});
 

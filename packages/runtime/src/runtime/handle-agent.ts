@@ -22,7 +22,7 @@ import type { DispatchInput } from './dispatch-queue.ts';
 import { streamActiveRunEvents } from './handle-run-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
-import { assertPersistedWorkflowEvent, type RunStore } from './run-store.ts';
+import { assertPersistedWorkflowEvent, isEphemeralRunEvent, type RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 
 /** Direct agent handler signature used by attached HTTP and WebSocket prompts. */
@@ -872,7 +872,9 @@ async function emitRunEnd(
 
 /**
  * Persist non-terminal events before publishing them to live subscribers.
- * `run_end` is handled separately by {@link emitRunEnd}.
+ * Per-chunk streaming events are published live but skipped by persistence
+ * (see {@link isEphemeralRunEvent}); `run_end` is handled separately by
+ * {@link emitRunEnd}.
  */
 function subscribeRunFanout(lifecycle: WorkflowRunLifecycle): () => Promise<void> {
 	const { ctx, runStore, runSubscribers, runId } = lifecycle;
@@ -894,7 +896,7 @@ async function fanOutEvent(
 	runId: string,
 	event: FlueEvent,
 ): Promise<void> {
-	if (runStore) {
+	if (runStore && !isEphemeralRunEvent(event)) {
 		await persistRunEvent('appendEvent', () => runStore.appendEvent(runId, event));
 	}
 	runSubscribers?.publish(runId, event);
