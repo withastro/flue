@@ -1,8 +1,11 @@
+import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createFlueContext } from '../src/client.ts';
+import { InMemoryRunRegistry } from '../src/node/run-registry.ts';
 import { InMemoryRunStore } from '../src/node/run-store.ts';
+import { SqliteEventStreamStore } from '../src/runtime/event-stream-store.ts';
 import { configureFlueRuntime, createDefaultFlueApp, flue, resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import { InMemorySessionStore } from '../src/session.ts';
 
@@ -204,6 +207,43 @@ describe('flue()', () => {
 		expect(response.headers.get('x-authored-middleware')).toBe('ran');
 		expect(await response.json()).toEqual({ result: { payload: { message: 'hello' } } });
 		expect(inspected).toBe('Bearer test-token:/api/agents/assistant/customer-123');
+	});
+
+	it('applies workflow middleware to run stream reads', async () => {
+		const runRegistry = new InMemoryRunRegistry();
+		await runRegistry.recordRunStart({
+			runId: 'workflow:daily-report:01',
+			owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: 'workflow:daily-report:01' },
+			startedAt: '2026-06-01T10:00:00.000Z',
+		});
+		const db = new DatabaseSync(':memory:');
+		const store = new SqliteEventStreamStore({
+			exec(query: string, ...bindings: unknown[]) {
+				const stmt = db.prepare(query);
+				if (/^\s*(SELECT|WITH)/i.test(query) || /\bRETURNING\b/i.test(query)) {
+					return { toArray: () => stmt.all(...(bindings as never[])) as Record<string, unknown>[] };
+				}
+				stmt.run(...(bindings as never[]));
+				return { toArray: () => [] as Record<string, unknown>[] };
+			},
+		});
+		await store.createStream('runs/workflow:daily-report:01');
+		configureFlueRuntime({
+			target: 'node',
+			manifest: { agents: [], workflows: [{ name: 'daily-report', transports: { http: true } }] },
+			runRegistry,
+			eventStreamStore: store,
+			workflowRouteMiddleware: {
+				'daily-report': async (c) => c.json({ blocked: true }, 401),
+			},
+		});
+		const app = new Hono();
+		app.route('/api', flue());
+
+		const response = await app.fetch(new Request('http://localhost/api/runs/workflow%3Adaily-report%3A01'));
+
+		expect(response.status).toBe(401);
+		expect(await response.json()).toEqual({ blocked: true });
 	});
 
 	it('returns an authored middleware response without invoking the handler when middleware short-circuits', async () => {

@@ -580,33 +580,23 @@ const runStreamReadHandler: MiddlewareHandler = async (c) => {
 	}
 
 	const streamPath = `runs/${runId}`;
+	const pointer = await lookupRunPointer(rt, c.env, runId);
 
-	if (rt.target === 'node') {
-		if (!rt.eventStreamStore) {
-			return new Response(null, { status: 404 });
+	return runAttachedMiddleware(c, rt.workflowRouteMiddleware?.[pointer.owner.workflowName], async () => {
+		if (rt.target === 'node') {
+			if (!rt.eventStreamStore) {
+				throw new RunNotFoundError({ runId });
+			}
+			if (method === 'HEAD') {
+				return await handleStreamHead(rt.eventStreamStore, streamPath);
+			}
+			return handleStreamRead({ store: rt.eventStreamStore, path: streamPath, request: c.req.raw });
 		}
-		if (method === 'HEAD') {
-			return await handleStreamHead(rt.eventStreamStore, streamPath);
-		}
-		return handleStreamRead({ store: rt.eventStreamStore, path: streamPath, request: c.req.raw });
-	}
 
-	// Cloudflare: look up the run in the registry and forward to the owning DO.
-	if (!rt.createRunRegistryForRequest || !rt.routeRunRequest) {
-		throw new RunRegistryUnavailableError();
-	}
-	const registry = rt.createRunRegistryForRequest(c.env);
-	if (!registry) throw new RunRegistryUnavailableError();
-	const pointer = await registry.lookupRun(runId);
-	if (!pointer) throw new RunNotFoundError({ runId });
-
-	const response = await rt.routeRunRequest(
-		c.req.raw,
-		c.env,
-		pointer.owner,
-	);
-	if (response) return response;
-	throw new RouteNotFoundError({ method, path: new URL(c.req.url).pathname });
+		const response = await rt.routeRunRequest?.(c.req.raw, c.env, pointer.owner);
+		if (response) return response;
+		throw new RouteNotFoundError({ method, path: new URL(c.req.url).pathname });
+	});
 };
 
 const runStreamHeadHandler: MiddlewareHandler = runStreamReadHandler;
@@ -656,6 +646,23 @@ function lazyOpenApiRouteHandler(
 	getOptions: () => ReturnType<typeof publicOpenApiOptions>,
 ): MiddlewareHandler {
 	return (c, next) => openAPIRouteHandler(app, getOptions())(c, next);
+}
+
+async function lookupRunPointer(rt: FlueRuntime, env: unknown, runId: string): Promise<RunPointer> {
+	if (rt.target === 'cloudflare') {
+		if (!rt.createRunRegistryForRequest || !rt.routeRunRequest) {
+			throw new RunRegistryUnavailableError();
+		}
+		const registry = rt.createRunRegistryForRequest(env);
+		if (!registry) throw new RunRegistryUnavailableError();
+		const pointer = await registry.lookupRun(runId);
+		if (!pointer) throw new RunNotFoundError({ runId });
+		return pointer;
+	}
+	if (!rt.runRegistry) throw new RunRegistryUnavailableError();
+	const pointer = await rt.runRegistry.lookupRun(runId);
+	if (!pointer) throw new RunNotFoundError({ runId });
+	return pointer;
 }
 
 function normalizeRunMetadataRequest(request: Request): Request {

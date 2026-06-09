@@ -30,6 +30,7 @@ describe('handleStreamRead()', () => {
 		});
 
 		expect(response.status).toBe(400);
+		expect((await response.json()).error.type).toBe('invalid_request');
 	});
 
 	it('rejects duplicate offset parameters', async () => {
@@ -43,6 +44,7 @@ describe('handleStreamRead()', () => {
 		});
 
 		expect(response.status).toBe(400);
+		expect((await response.json()).error.type).toBe('invalid_request');
 	});
 
 	it('omits ETag for offset=now catch-up reads', async () => {

@@ -8,6 +8,7 @@
  * @see https://github.com/durable-streams/durable-streams/blob/main/PROTOCOL.md
  */
 
+import { InvalidRequestError, RunNotFoundError, toHttpResponse } from '../errors.ts';
 import type { EventStreamReadResult, EventStreamStore } from './event-stream-store.ts';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -78,7 +79,7 @@ function encodeSseData(payload: string): string {
 export async function handleStreamHead(store: EventStreamStore, path: string): Promise<Response> {
 	const meta = await store.getStreamMeta(path);
 	if (!meta) {
-		return new Response(null, { status: 404, headers: SECURITY_HEADERS });
+		return streamErrorResponse(new RunNotFoundError({ runId: path }));
 	}
 
 	const headers: Record<string, string> = {
@@ -119,28 +120,28 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 	const cursor = url.searchParams.get('cursor') ?? undefined;
 
 	if (offsetValues.length > 1) {
-		return badRequest('Duplicate offset parameters are not allowed.');
+		return streamErrorResponse(new InvalidRequestError({ reason: 'Duplicate offset parameters are not allowed.' }));
 	}
 
 	if (liveRaw !== null && offsetValues.length === 0) {
-		return badRequest('Offset is required for live mode.');
+		return streamErrorResponse(new InvalidRequestError({ reason: 'Offset is required for live mode.' }));
 	}
 
 	// Validate live mode.
 	if (liveRaw !== null && liveRaw !== 'long-poll' && liveRaw !== 'sse') {
-		return badRequest('Invalid live mode. Use "long-poll" or "sse".');
+		return streamErrorResponse(new InvalidRequestError({ reason: 'Invalid live mode. Use "long-poll" or "sse".' }));
 	}
 	const live = liveRaw as 'long-poll' | 'sse' | null;
 
 	// Validate offset format: "-1", "now", or digits_digits (DS reference format).
 	if (offsetParam !== '-1' && offsetParam !== 'now' && !/^\d+_\d+$/.test(offsetParam)) {
-		return badRequest('Invalid offset format.');
+		return streamErrorResponse(new InvalidRequestError({ reason: 'Invalid offset format.' }));
 	}
 
 	// Stream must exist.
 	const meta = await store.getStreamMeta(path);
 	if (!meta) {
-		return new Response(null, { status: 404, headers: SECURITY_HEADERS });
+		return streamErrorResponse(new RunNotFoundError({ runId: path }));
 	}
 
 	const readOffset = offsetParam === 'now' && live !== null ? meta.nextOffset : offsetParam;
@@ -161,11 +162,11 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 
 // ─── Catch-up mode ──────────────────────────────────────────────────────────
 
-function badRequest(message: string): Response {
-	return new Response(JSON.stringify({ error: message }), {
-		status: 400,
-		headers: { 'content-type': 'application/json', ...SECURITY_HEADERS },
-	});
+function streamErrorResponse(error: InvalidRequestError | RunNotFoundError): Response {
+	const response = toHttpResponse(error);
+	response.headers.set('X-Content-Type-Options', SECURITY_HEADERS['X-Content-Type-Options']);
+	response.headers.set('Cross-Origin-Resource-Policy', SECURITY_HEADERS['Cross-Origin-Resource-Policy']);
+	return response;
 }
 
 function handleCatchUpMode(
