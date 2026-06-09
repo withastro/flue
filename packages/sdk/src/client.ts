@@ -70,7 +70,7 @@ export interface FlueClient {
 		/** Stream events from a workflow run via the Durable Streams protocol. */
 		stream(runId: string, options?: FlueStreamOptions): FlueEventStream<FlueEvent>;
 		/** Get all events from a workflow run as an array (catch-up read, no live tailing). */
-		events(runId: string, options?: { offset?: string; signal?: AbortSignal }): Promise<FlueEvent[]>;
+		events(runId: string, options?: { offset?: string; signal?: AbortSignal; backoffOptions?: import('@durable-streams/client').BackoffOptions }): Promise<FlueEvent[]>;
 	};
 	/** Start workflow runs. */
 	workflows: {
@@ -126,6 +126,7 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 					live: false,
 					json: true,
 					signal: opts?.signal,
+					backoffOptions: opts?.backoffOptions,
 					fetch: wrapFetchWithHeaders(http),
 					warnOnHttp: false,
 				});

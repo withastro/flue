@@ -12,6 +12,7 @@ export type {
 	AgentPromptOptions,
 	AgentPromptResult,
 } from './public/invoke.ts';
+export type { BackoffOptions, LiveMode } from '@durable-streams/client';
 export type {
 	FlueEventStream,
 	FlueStreamOptions,

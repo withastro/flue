@@ -7,7 +7,7 @@
  */
 
 import { stream } from '@durable-streams/client';
-import type { LiveMode } from '@durable-streams/client';
+import type { BackoffOptions, LiveMode } from '@durable-streams/client';
 import type { FlueEvent } from '../types.ts';
 
 /** Options for streaming Flue events from an agent instance or workflow run. */
@@ -18,6 +18,8 @@ export interface FlueStreamOptions {
 	live?: LiveMode;
 	/** Abort signal to cancel the stream. */
 	signal?: AbortSignal;
+	/** Retry behavior for stream connection attempts. */
+	backoffOptions?: BackoffOptions;
 }
 
 /**
@@ -104,6 +106,7 @@ export function createFlueEventStream<T = FlueEvent>(
 			json: true,
 			signal: abortController.signal,
 			fetch: wrappedFetch,
+			backoffOptions: streamOpts.backoffOptions,
 			warnOnHttp: false,
 		});
 		return responsePromise;

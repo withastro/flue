@@ -1381,7 +1381,15 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 	if (!shouldFollow) {
 		let events: FlueEvent[];
 		try {
-			events = await client.runs.events(args.runId, { offset: args.since ?? '-1' });
+			events = await client.runs.events(args.runId, {
+				offset: args.since ?? '-1',
+				backoffOptions: {
+					initialDelay: 100,
+					maxDelay: 60_000,
+					multiplier: 1.3,
+					maxRetries: 3,
+				},
+			});
 		} catch (err) {
 			console.error(
 				`[flue] Failed to read events for run ${args.runId}: ${err instanceof Error ? err.message : String(err)}`,
