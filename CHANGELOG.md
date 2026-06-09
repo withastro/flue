@@ -8,6 +8,28 @@
 
 - Fixed workflow run-event persistence issuing one durable storage write per streamed chunk. Per-chunk streaming events (`message_update`, `text_delta`, `thinking_start`, `thinking_delta`, `thinking_end`) are still delivered to live subscribers but are no longer written to the run-event journal; history replay uses `message_end` events and interrupted-stream recovery uses the throttled stream-chunk segments.
 
+### Breaking Changes
+
+- **Durable Streams protocol replaces WebSocket and SSE transports.** Agent instances and workflow runs are now URL-addressable durable event streams. Clients consume events via DS-compliant `GET` (catch-up, long-poll, SSE) with automatic offset-based reconnection. `POST /agents/:name/:id` sends a prompt synchronously; `GET /agents/:name/:id` reads the event stream. `GET /runs/:runId` replaces both `/runs/:runId/events` and `/runs/:runId/stream`. WebSocket transport, `AgentSocket`, `WorkflowSocket`, and all socket-related types are removed from `@flue/runtime` and `@flue/sdk`.
+- **Named sessions removed from agent public API.** The `session` parameter is removed from prompt submission, dispatch, SDK, and CLI. Agent instances always use the `"default"` session internally. An agent instance is now a single conversation with a single event stream.
+- **SDK rewritten with `@durable-streams/client`.** `@flue/sdk` now exports `agents.invoke()`, `agents.stream()`, `runs.stream()`, `runs.events()`, and `workflows.invoke()`. The `mode: 'sync'` discriminant is removed; invoke is always synchronous. `FlueEventStream<T>` wraps the DS client's `jsonStream()` as an async iterable with `cancel()` support.
+- **`connectEventStreamStore()` is now required on `PersistenceAdapter`.** Custom adapters must implement this method. The built-in `sqlite()` and `@flue/postgres` adapters provide implementations.
+- **`SqlEventStreamStore` renamed to `SqliteEventStreamStore`.** The class is SQLite-specific; the name now reflects this. Import from `@flue/runtime/internal`.
+- **`EventStreamStore` interface is fully async.** All methods except `subscribe()` return Promises. Existing synchronous SQLite implementations resolve immediately; the async interface enables Postgres, MongoDB, and other async-backed adapters.
+
+### New Features
+
+- **`@flue/postgres` supports durable event streams.** `PgEventStreamStore` provides a Postgres-backed implementation of `EventStreamStore` with transactional `appendEvent`, `LISTEN/NOTIFY`-ready subscriber hooks, and full DDL in the existing migration transaction. Postgres deployments now have working `GET` stream endpoints for agents and workflow runs.
+- **DS protocol read endpoints.** `GET` supports catch-up (JSON array), long-poll (30s timeout with `Stream-Cursor`), and SSE (with 15s heartbeat and control events). `HEAD` returns stream metadata. Responses include `Stream-Next-Offset`, `Stream-Up-To-Date`, `Stream-Closed`, `ETag`, and `Cache-Control` headers per the DS protocol spec.
+
+### Fixes & Other Changes
+
+- **`RunStore` reduced to metadata only.** `appendEvent()` and `getEvents()` removed; events are exclusively in `EventStreamStore`. `RunSubscriberRegistry` deleted.
+- **Agent `POST` is always synchronous.** No SSE streaming from POST responses. Event observation is decoupled via the DS stream read path.
+- **`SqliteEventStreamStore` creates its own tables in the constructor.** No separate `ensureEventStreamTables()` call required; removed from `ensureSqlAgentExecutionTables()` and `@flue/runtime/internal` exports.
+- **`flue logs` rewritten to use `@flue/sdk` DS streaming.** Removed dead `--session` flag.
+- Fixed stale WebSocket references in documentation, README, and generated entry code.
+
 ## 0.10.1 - 2026-06-08
 
 ### Fixes & Other Changes
