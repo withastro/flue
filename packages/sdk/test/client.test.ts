@@ -45,7 +45,7 @@ describe('createFlueClient', () => {
 			});
 
 			const eventStream = client.agents.stream('my-agent', 'inst-1', {
-				offset: '0000000000000042',
+				offset: '0000000000000000_0000000000000042',
 				live: false,
 			});
 			const events = [];
@@ -56,7 +56,7 @@ describe('createFlueClient', () => {
 			expect(urls.length).toBeGreaterThanOrEqual(1);
 			const parsed = new URL(urls[0]!);
 			expect(parsed.pathname).toBe('/api/agents/my-agent/inst-1');
-			expect(parsed.searchParams.get('offset')).toBe('0000000000000042');
+			expect(parsed.searchParams.get('offset')).toBe('0000000000000000_0000000000000042');
 		});
 
 		it('passes auth headers to the DS stream via fetch wrapper', async () => {

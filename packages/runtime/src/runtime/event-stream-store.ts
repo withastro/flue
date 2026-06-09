@@ -3,23 +3,39 @@
  *
  * Stores append-only JSON event streams backed by SQLite. Each stream is
  * identified by a path (e.g. `agents/my-agent/instance-1` or `runs/wf_abc123`).
- * Events get monotonically increasing integer offsets formatted as zero-padded
- * 16-character strings for DS protocol compatibility.
+ * Events get monotonically increasing integer offsets formatted as
+ * `<readSeq>_<seq>` — two 16-digit zero-padded integers separated by an
+ * underscore, matching the DS reference server's offset format. The first
+ * component is always `0` (Flue has no file segments); the second is the
+ * SQLite row sequence number.
  */
 
 import type { SqlStorage } from '../sql-storage.ts';
 
-const OFFSET_PAD_LENGTH = 16;
+const COMPONENT_PAD = 16;
+const ZERO_COMPONENT = '0'.repeat(COMPONENT_PAD);
 
-/** Format an integer offset as a zero-padded string for DS protocol compatibility. */
-export function formatOffset(offset: number): string {
-	return String(offset).padStart(OFFSET_PAD_LENGTH, '0');
+/**
+ * Format an integer sequence number as a DS-compatible offset string.
+ *
+ * Produces `<readSeq>_<seq>` with both components zero-padded to 16 digits,
+ * matching the DS reference server's offset format. The first component is
+ * always `0` (Flue uses SQLite, not segmented files).
+ */
+export function formatOffset(seq: number): string {
+	return `${ZERO_COMPONENT}_${String(seq).padStart(COMPONENT_PAD, '0')}`;
 }
 
-/** Parse a DS offset string back to an integer. Returns -1 for the sentinel "-1". */
+/**
+ * Parse a DS offset string back to an integer sequence number.
+ * Accepts the `<readSeq>_<seq>` format and extracts the second component.
+ * Returns -1 for the sentinel `"-1"`.
+ */
 export function parseOffset(offset: string): number {
 	if (offset === '-1') return -1;
-	const n = parseInt(offset, 10);
+	const underscore = offset.indexOf('_');
+	const raw = underscore >= 0 ? offset.slice(underscore + 1) : offset;
+	const n = parseInt(raw, 10);
 	if (!Number.isFinite(n) || n < 0) {
 		throw new Error(`[flue] Invalid stream offset: "${offset}".`);
 	}

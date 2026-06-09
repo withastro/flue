@@ -120,8 +120,8 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 	}
 	const live = liveRaw as 'long-poll' | 'sse' | null;
 
-	// Validate offset format: "-1", "now", or a zero-padded numeric string.
-	if (offsetParam !== '-1' && offsetParam !== 'now' && !/^\d+$/.test(offsetParam)) {
+	// Validate offset format: "-1", "now", or digits_digits (DS reference format).
+	if (offsetParam !== '-1' && offsetParam !== 'now' && !/^\d+_\d+$/.test(offsetParam)) {
 		return new Response(JSON.stringify({ error: 'Invalid offset format.' }), {
 			status: 400,
 			headers: { 'content-type': 'application/json' },
