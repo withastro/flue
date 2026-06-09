@@ -31,7 +31,6 @@ import {
 	type CreateContextFn,
 	handleAgentRequest,
 	handleWorkflowRequest,
-	type StartWorkflowAdmissionFn,
 	type WorkflowHandler,
 } from './handle-agent.ts';
 import { handleRunRouteRequest } from './handle-run-routes.ts';
@@ -65,9 +64,6 @@ export interface FlueRuntime {
 	 * Per-target context factory. Required when {@link target} is `'node'`.
 	 */
 	createContext?: CreateContextFn;
-
-	/** Optional Node HTTP workflow admitted execution wrapper. Defaults to direct invocation. */
-	startWorkflowAdmission?: StartWorkflowAdmissionFn;
 
 	/**
 	 * Per-agent durable admission factory, keyed by agent name. Direct HTTP
@@ -278,8 +274,6 @@ export function flue(): Hono {
 	// Hono's default 404 for unmatched methods.
 	app.all('/agents/:name/:id', agentRouteHandler);
 	// DS stream endpoints for run events.
-	app.get('/runs/:runId', runStreamReadHandler);
-	app.on('HEAD', '/runs/:runId', runStreamHeadHandler);
 	app.all('/runs/:runId', runStreamReadHandler);
 
 	app.onError((err) => toHttpResponse(err));
@@ -464,7 +458,6 @@ const workflowRouteHandler: MiddlewareHandler = async (c) => {
 				workflowName: name,
 				handler,
 				createContext,
-				startWorkflowAdmission: rt.startWorkflowAdmission,
 				runStore: rt.runStore,
 				runRegistry: rt.runRegistry,
 				eventStreamStore: rt.eventStreamStore,
@@ -600,8 +593,6 @@ const runStreamReadHandler: MiddlewareHandler = async (c) => {
 		throw new RouteNotFoundError({ method, path: new URL(c.req.url).pathname });
 	});
 };
-
-const runStreamHeadHandler: MiddlewareHandler = runStreamReadHandler;
 
 export async function handleRunById(opts: {
 	rt: FlueRuntime;

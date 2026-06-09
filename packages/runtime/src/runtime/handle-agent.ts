@@ -116,9 +116,9 @@ export interface HandleWorkflowOptions {
 /**
  * Handle one attached `/agents/:name/:id` prompt interaction.
  *
- * Returns synchronous JSON `{ result }`. Former `X-Webhook: true` agent
- * requests are rejected because asynchronous delivery uses `dispatch(...)`.
- * Events are available via the DS stream read endpoint (GET on the same URL).
+	 * Returns accepted stream coordinates by default, or a synchronous JSON
+	 * result when `?wait=result` is requested. Events are available via the DS
+	 * stream read endpoint (GET on the same URL).
  */
 export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Response> {
 	const { request, id } = opts;

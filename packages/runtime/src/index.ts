@@ -39,7 +39,6 @@ export type {
 	FlueFs,
 	FlueHarness,
 	FlueLogger,
-	FluePublicError,
 	FlueSession,
 	FlueSessions,
 	LlmAssistantMessage,

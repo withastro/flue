@@ -1,5 +1,3 @@
-import type { FluePublicError } from './types.ts';
-
 /**
  * Complete error framework for Flue.
  *
@@ -508,15 +506,6 @@ const GENERIC_INTERNAL: WireEnvelope = {
 		details: 'The server encountered an unexpected error while handling this request.',
 	},
 };
-
-export function toPublicError(err: unknown): FluePublicError {
-	if (isFlueError(err)) {
-		if (!(err instanceof FlueHttpError)) flueLog.error(err);
-		return envelope(err).error;
-	}
-	flueLog.error(err);
-	return GENERIC_INTERNAL.error;
-}
 
 /**
  * Render any thrown value into a `Response` with the canonical Flue error
