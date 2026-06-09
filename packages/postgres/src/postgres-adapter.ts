@@ -49,11 +49,8 @@ import {
 	LEASE_DURATION_MS,
 	MAX_LIST_LIMIT,
 	parseAcceptedAt,
-	parsePersistedWorkflowEvent,
-	serializedEventForPersistence,
 	SUBMISSION_HARNESS_NAME,
 } from '@flue/runtime/adapter';
-import type { FlueEvent } from '@flue/runtime';
 import pgDriver from 'postgres';
 
 // ─── Generic async SQL runner ───────────────────────────────────────────────
@@ -1030,26 +1027,6 @@ class PgRunStore implements RunStore {
 				input.error !== undefined ? JSON.stringify(input.error) : null,
 				input.runId,
 			],
-		);
-	}
-
-	async appendEvent(runId: string, event: FlueEvent): Promise<void> {
-		const payload = serializedEventForPersistence(runId, event);
-		await this.runner.query(
-			`INSERT INTO flue_run_events (run_id, event_index, payload) VALUES ($1, $2, $3)`,
-			[runId, event.eventIndex as number, payload],
-		);
-	}
-
-	async getEvents(runId: string, fromIndex?: number): Promise<FlueEvent[]> {
-		const rows = await this.runner.query(
-			`SELECT event_index, payload FROM flue_run_events
-			 WHERE run_id = $1 AND event_index >= $2
-			 ORDER BY event_index ASC`,
-			[runId, fromIndex ?? 0],
-		);
-		return rows.map((row) =>
-			parsePersistedWorkflowEvent(runId, String(row.payload), Number(row.event_index)),
 		);
 	}
 

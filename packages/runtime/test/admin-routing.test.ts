@@ -99,7 +99,7 @@ describe('admin()', () => {
 			target: 'node',
 			manifest: {
 				agents: [
-					{ name: 'support', transports: { http: true, websocket: true }, created: true },
+				{ name: 'support', transports: { http: true }, created: true },
 					{ name: 'offline', transports: {}, created: false },
 				],
 			},
@@ -112,7 +112,7 @@ describe('admin()', () => {
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({
 			items: [
-				{ name: 'support', transports: { http: true, websocket: true }, created: true },
+				{ name: 'support', transports: { http: true }, created: true },
 				{ name: 'offline', transports: {}, created: false },
 			],
 		});

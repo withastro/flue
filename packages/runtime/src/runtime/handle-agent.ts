@@ -4,10 +4,8 @@ import type { FlueContextInternal } from '../client.ts';
 import {
 	InvalidRequestError,
 	parseJsonBody,
-	RunEventTooLargeError,
 	RunStoreUnavailableError,
 	toHttpResponse,
-	toPublicError,
 } from '../errors.ts';
 import type {
 	AttachedAgentEventCallback,
@@ -19,11 +17,11 @@ import type {
 import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
 import type { DispatchInput } from './dispatch-queue.ts';
 import type { EventStreamStore } from './event-stream-store.ts';
-import { streamActiveRunEvents } from './handle-run-routes.ts';
+
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
 import { assertPersistedWorkflowEvent, type RunStore } from './run-store.ts';
-import type { RunSubscriberRegistry } from './run-subscribers.ts';
+
 
 /** Direct agent handler signature used by attached HTTP and WebSocket prompts. */
 export type AgentHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
@@ -135,7 +133,6 @@ export interface HandleWorkflowOptions {
 	createContext: CreateContextFn;
 	startWorkflowAdmission?: StartWorkflowAdmissionFn;
 	runStore?: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
 	eventStreamStore?: EventStreamStore;
 	runId?: string;
@@ -144,12 +141,9 @@ export interface HandleWorkflowOptions {
 /**
  * Handle one attached `/agents/:name/:id` prompt interaction.
  *
- * `Accept: text/event-stream` returns attached event streaming; otherwise the
- * response is synchronous JSON `{ result }`. Former `X-Webhook: true` agent
+ * Returns synchronous JSON `{ result }`. Former `X-Webhook: true` agent
  * requests are rejected because asynchronous delivery uses `dispatch(...)`.
- *
- * Errors thrown before streaming starts are returned as regular HTTP error
- * responses; errors thrown after SSE begins are framed as stream errors.
+ * Events are available via the DS stream read endpoint (GET on the same URL).
  */
 export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Response> {
 	const { request, id } = opts;
@@ -168,9 +162,6 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 			payload,
 			admitAttachedSubmission: opts.admitAttachedSubmission,
 		};
-		if ((request.headers.get('accept') || '').includes('text/event-stream')) {
-			return runDirectSseMode(directOptions);
-		}
 		return runDirectSyncMode(directOptions);
 	} catch (err) {
 		return toHttpResponse(err);
@@ -184,7 +175,6 @@ export async function handleWorkflowRequest(opts: HandleWorkflowOptions): Promis
 		handler,
 		createContext,
 		runStore,
-		runSubscribers,
 		runRegistry,
 		eventStreamStore,
 	} = opts;
@@ -194,12 +184,8 @@ export async function handleWorkflowRequest(opts: HandleWorkflowOptions): Promis
 
 	try {
 		const payload = await parseJsonBody(request);
-		const accept = request.headers.get('accept') || '';
-		const isSSE = accept.includes('text/event-stream');
 		const wait = new URL(request.url).searchParams.get('wait');
 		const owner = { kind: 'workflow' as const, workflowName, instanceId };
-		if (isSSE && wait !== 'result' && !runSubscribers)
-			throw new Error('[flue] Workflow SSE requires a run subscriber registry.');
 
 		const execution = await prepareWorkflowExecution({
 			owner,
@@ -211,12 +197,10 @@ export async function handleWorkflowRequest(opts: HandleWorkflowOptions): Promis
 			createContext,
 			startWorkflowAdmission,
 			runStore,
-			runSubscribers,
 			runRegistry,
 			eventStreamStore,
 		});
 
-		if (isSSE && wait !== 'result') return await runSseMode(execution);
 		if (wait === 'result') return await runSyncMode(execution);
 		return await runWorkflowAdmissionMode(execution);
 	} catch (err) {
@@ -241,7 +225,6 @@ export interface InvokeWorkflowAttachedOptions {
 	onEvent?: FlueEventCallback;
 	emitIdleOnComplete?: boolean;
 	runStore?: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
 	eventStreamStore?: EventStreamStore;
 }
@@ -267,7 +250,6 @@ export interface FailRecoveredRunOptions {
 	createContext: CreateContextFn;
 	error: unknown;
 	runStore?: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
 	eventStreamStore?: EventStreamStore;
 }
@@ -282,7 +264,6 @@ interface WorkflowAdmissionOptions {
 	createContext: CreateContextFn;
 	startWorkflowAdmission: StartWorkflowAdmissionFn;
 	runStore?: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
 	eventStreamStore?: EventStreamStore;
 	onAdmitted?: (runId: string) => void;
@@ -293,7 +274,6 @@ interface WorkflowAdmissionOptions {
 interface AdmittedWorkflowExecution {
 	runId: string;
 	runStore: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
 	lifecycle: WorkflowRunLifecycle;
 	startWorkflowAdmission: StartWorkflowAdmissionFn;
 	handler: WorkflowHandler;
@@ -316,7 +296,6 @@ async function prepareWorkflowExecution(
 		createContext,
 		startWorkflowAdmission,
 		runStore,
-		runSubscribers,
 		runRegistry,
 		eventStreamStore,
 		onAdmitted,
@@ -332,7 +311,6 @@ async function prepareWorkflowExecution(
 		request,
 		createContext,
 		runStore,
-		runSubscribers,
 		runRegistry,
 		eventStreamStore,
 		requirePersistedAdmission: true,
@@ -340,7 +318,6 @@ async function prepareWorkflowExecution(
 	return {
 		runId,
 		runStore,
-		runSubscribers,
 		lifecycle,
 		startWorkflowAdmission,
 		handler,
@@ -412,7 +389,7 @@ async function runWorkflowAdmissionMode(execution: AdmittedWorkflowExecution): P
 }
 
 export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<void> {
-	const events = opts.runStore ? await opts.runStore.getEvents(opts.runId) : [];
+	const events = readRecoveryEvents(opts);
 	const terminalEvent = findTerminalRunEvent(events);
 	const run = await opts.runStore?.getRun(opts.runId);
 	if (terminalEvent || (run && run.status !== 'active')) {
@@ -445,6 +422,13 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 	await emitRunEnd(lifecycle, { isError: true, error: opts.error });
 }
 
+function readRecoveryEvents(opts: FailRecoveredRunOptions): FlueEvent[] {
+	if (!opts.eventStreamStore) return [];
+	const streamPath = `runs/${opts.runId}`;
+	const result = opts.eventStreamStore.readEvents(streamPath, { offset: '-1' });
+	return result.events.map((e) => e.data as FlueEvent);
+}
+
 async function reconcileTerminalRun(
 	opts: FailRecoveredRunOptions,
 	run: Awaited<ReturnType<RunStore['getRun']>> | undefined,
@@ -456,22 +440,6 @@ async function reconcileTerminalRun(
 	const error = terminalEvent?.error !== undefined ? terminalEvent.error : run?.error;
 	const endedAt = terminalEvent?.timestamp ?? run?.endedAt ?? new Date().toISOString();
 	const durationMs = terminalEvent?.durationMs ?? run?.durationMs ?? 0;
-	if (!terminalEvent && run && run.status !== 'active') {
-		try {
-			await opts.runStore?.appendEvent(opts.runId, {
-				type: 'run_end',
-				runId: opts.runId,
-				result: result === undefined ? null : result,
-				isError,
-				error,
-				durationMs,
-				eventIndex: nextEventIndex(opts.runId, events),
-				timestamp: endedAt,
-			});
-		} catch (eventError) {
-			console.error('[flue:run-store] appendEvent(run_end recovery) failed:', eventError);
-		}
-	}
 	if (terminalEvent && (!run || run.status === 'active')) {
 		await opts.runStore?.endRun({
 			runId: opts.runId,
@@ -497,7 +465,6 @@ async function reconcileTerminalRun(
 			isError,
 		}),
 	);
-	opts.runSubscribers?.complete(opts.runId);
 }
 
 function findTerminalRunEvent(
@@ -521,56 +488,6 @@ function nextEventIndex(runId: string, events: FlueEvent[]): number {
 	return next;
 }
 
-const SSE_HEARTBEAT_MS = 15_000;
-
-function runDirectSseMode(opts: DirectAttachedOptions): Response {
-	const { readable, writable } = new TransformStream();
-	const writer = writable.getWriter();
-	const encoder = new TextEncoder();
-	let closed = false;
-	const writeSSE = async (data: unknown, eventType: string): Promise<void> => {
-		if (closed) return;
-		const eventIndex = getEventIndex(data) ?? 0;
-		const lines = [
-			`event: ${eventType}`,
-			`id: ${eventIndex}`,
-			`data: ${typeof data === 'string' ? data : JSON.stringify(data)}`,
-			'',
-			'',
-		];
-		try {
-			await writer.write(encoder.encode(lines.join('\n')));
-		} catch {}
-	};
-	const heartbeat = setInterval(() => {
-		if (!closed) writer.write(encoder.encode(': heartbeat\n\n')).catch(() => {});
-	}, SSE_HEARTBEAT_MS);
-	(async () => {
-		try {
-			await invokeDirectAttached({
-				...opts,
-				onEvent: (event) => writeSSE(event, event.type),
-				emitIdleOnComplete: true,
-			});
-		} catch (error) {
-			await writeSSE({ type: 'error', instanceId: opts.id, error: toPublicError(error) }, 'error');
-		} finally {
-			clearInterval(heartbeat);
-			closed = true;
-			try {
-				await writer.close();
-			} catch {}
-		}
-	})();
-	return new Response(readable, {
-		headers: {
-			'content-type': 'text/event-stream',
-			'cache-control': 'no-cache',
-			connection: 'keep-alive',
-		},
-	});
-}
-
 async function runDirectSyncMode(opts: DirectAttachedOptions): Promise<Response> {
 	const result = await invokeDirectAttached(opts);
 	return new Response(JSON.stringify({ result: result === undefined ? null : result }), {
@@ -580,25 +497,6 @@ async function runDirectSyncMode(opts: DirectAttachedOptions): Promise<Response>
 
 export async function invokeDirectAttached(opts: DirectAttachedOptions): Promise<unknown> {
 	return opts.admitAttachedSubmission(opts.payload, opts.onEvent);
-}
-
-async function runSseMode(execution: AdmittedWorkflowExecution): Promise<Response> {
-	if (!execution.runSubscribers)
-		throw new Error('[flue] Workflow SSE requires a run subscriber registry.');
-	const response = streamActiveRunEvents(
-		execution.runStore,
-		execution.runSubscribers,
-		execution.runId,
-	);
-	response.headers.set('X-Flue-Run-Id', execution.runId);
-	try {
-		startWorkflowExecution(execution);
-	} catch (error) {
-		await execution.completion?.catch(() => undefined);
-		await response.body?.cancel();
-		throw error;
-	}
-	return response;
 }
 
 async function runSyncMode(execution: AdmittedWorkflowExecution): Promise<Response> {
@@ -632,7 +530,6 @@ export async function invokeWorkflowAttached(
 		createContext: opts.createContext,
 		startWorkflowAdmission: opts.startWorkflowAdmission,
 		runStore: opts.runStore,
-		runSubscribers: opts.runSubscribers,
 		runRegistry: opts.runRegistry,
 		eventStreamStore: opts.eventStreamStore,
 		onAdmitted: opts.onAdmitted,
@@ -660,7 +557,6 @@ async function invokeWorkflowAttachedUnlocked(
 		request: opts.request,
 		createContext: opts.createContext,
 		runStore: opts.runStore,
-		runSubscribers: opts.runSubscribers,
 		runRegistry: opts.runRegistry,
 		eventStreamStore: opts.eventStreamStore,
 	});
@@ -696,7 +592,6 @@ interface WorkflowRunLifecycleOptions {
 	request: Request;
 	createContext: CreateContextFn;
 	runStore?: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
 	eventStreamStore?: EventStreamStore;
 	requirePersistedAdmission?: boolean;
@@ -808,8 +703,8 @@ function emitRunResume(lifecycle: WorkflowRunLifecycle): void {
 /**
  * Emit `run_end` and finalize the run.
  *
- * Terminal ordering matters for `/runs/:runId/stream`: append `run_end`
- * before marking the run terminal, then publish and close subscribers.
+ * Terminal ordering: append `run_end` to the event stream store and close it,
+ * then persist to the run store and record in the registry.
  */
 async function emitRunEnd(
 	lifecycle: WorkflowRunLifecycle,
@@ -822,7 +717,7 @@ async function emitRunEnd(
 	const error = input.isError ? serializeError(input.error) : undefined;
 	const normalizedResult = result === undefined ? null : result;
 
-	const { runStore, runSubscribers, runRegistry, eventStreamStore, runId } = lifecycle;
+	const { runStore, runRegistry, eventStreamStore, runId } = lifecycle;
 
 	// Decorate through the shared event path so eventIndex/timestamp stay continuous.
 	const decorated = lifecycle.ctx.emitEvent({
@@ -837,15 +732,6 @@ async function emitRunEnd(
 	// Append run_end to the durable event stream, then close it.
 	eventStreamStore?.appendEvent(`runs/${runId}`, decorated);
 	eventStreamStore?.closeStream(`runs/${runId}`);
-
-	let appendError: unknown;
-	try {
-		await persistRunEvent('appendEvent(run_end)', () => runStore?.appendEvent(runId, decorated));
-	} catch (error) {
-		appendError = error;
-	}
-
-	runSubscribers?.publish(runId, decorated);
 
 	const didEndRun = runStore
 		? await safeRunStore('endRun', () =>
@@ -870,56 +756,27 @@ async function emitRunEnd(
 			}),
 		);
 
-	runSubscribers?.complete(runId);
-	if (appendError) throw appendError;
 }
 
 /**
- * Persist non-terminal events before publishing them to live subscribers.
+ * Persist non-terminal events to the event stream store.
  * `run_end` is handled separately by {@link emitRunEnd}.
  */
 function subscribeRunFanout(lifecycle: WorkflowRunLifecycle): () => Promise<void> {
-	const { ctx, runStore, runSubscribers, eventStreamStore, runId } = lifecycle;
-	if (!runStore && !runSubscribers && !eventStreamStore) return async () => {};
-	let chain: Promise<void> = Promise.resolve();
+	const { ctx, eventStreamStore, runId } = lifecycle;
+	if (!eventStreamStore) return async () => {};
 	const unsubscribe = ctx.subscribeEvent((event) => {
 		if (event.type === 'run_end') return;
-		chain = chain.then(() =>
-			fanOutEvent(runStore, runSubscribers, eventStreamStore, runId, event),
-		);
+		try {
+			eventStreamStore.appendEvent(`runs/${runId}`, event);
+		} catch (error) {
+			console.error('[flue:event-stream] appendEvent failed:', error);
+		}
 	});
 	return () => {
 		unsubscribe();
-		return chain;
+		return Promise.resolve();
 	};
-}
-
-async function fanOutEvent(
-	runStore: RunStore | undefined,
-	runSubscribers: RunSubscriberRegistry | undefined,
-	eventStreamStore: EventStreamStore | undefined,
-	runId: string,
-	event: FlueEvent,
-): Promise<void> {
-	eventStreamStore?.appendEvent(`runs/${runId}`, event);
-	if (runStore) {
-		await persistRunEvent('appendEvent', () => runStore.appendEvent(runId, event));
-	}
-	runSubscribers?.publish(runId, event);
-}
-
-async function persistRunEvent(
-	label: string,
-	fn: () => Promise<void> | undefined,
-): Promise<boolean> {
-	try {
-		await fn();
-		return true;
-	} catch (error) {
-		if (error instanceof RunEventTooLargeError) throw error;
-		console.error(`[flue:run-store] ${label} failed:`, error);
-		return false;
-	}
 }
 
 async function persistRunAdmission(
@@ -954,12 +811,6 @@ function serializeError(error: unknown): unknown {
 		return { name: error.name, message: error.message };
 	}
 	return error;
-}
-
-function getEventIndex(data: unknown): number | undefined {
-	if (typeof data !== 'object' || data === null) return undefined;
-	const value = (data as { eventIndex?: unknown }).eventIndex;
-	return typeof value === 'number' ? value : undefined;
 }
 
 // ─── Defaults ───────────────────────────────────────────────────────────────

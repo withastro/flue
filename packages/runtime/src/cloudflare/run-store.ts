@@ -1,13 +1,10 @@
 import {
 	type CreateRunInput,
 	type EndRunInput,
-	parsePersistedWorkflowEvent,
 	type RunRecord,
 	type RunStore,
-	serializedEventForPersistence,
 } from '../runtime/run-store.ts';
 import type { SqlStorage } from '../sql-storage.ts';
-import type { FlueEvent } from '../types.ts';
 
 type SqlRow = Record<string, unknown>;
 
@@ -51,43 +48,6 @@ class DurableRunStore implements RunStore {
 			serializeSqlJson(input.error),
 			input.runId,
 		);
-	}
-
-	async appendEvent(runId: string, event: FlueEvent): Promise<void> {
-		const payload = serializedEventForPersistence(runId, event);
-		this.sql.exec(
-			`INSERT INTO flue_run_events
-			 (run_id, event_index, type, payload, timestamp)
-			 SELECT ?, ?, ?, ?, ?
-			 WHERE EXISTS (
-			  SELECT 1
-			  FROM flue_runs
-			  WHERE run_id = ? AND owner_kind = 'workflow'
-			 )`,
-			runId,
-			event.eventIndex,
-			event.type,
-			payload,
-			event.timestamp ?? new Date().toISOString(),
-			runId,
-		);
-	}
-
-	async getEvents(runId: string, fromIndex?: number): Promise<FlueEvent[]> {
-		const rows = this.sql
-			.exec(
-				fromIndex === undefined
-					? 'SELECT event_index, payload FROM flue_run_events WHERE run_id = ? ORDER BY event_index ASC'
-					: 'SELECT event_index, payload FROM flue_run_events WHERE run_id = ? AND event_index >= ? ORDER BY event_index ASC',
-				...(fromIndex === undefined ? [runId] : [runId, fromIndex]),
-			)
-			.toArray();
-		return rows.map((row) => {
-			if (typeof row.payload !== 'string' || typeof row.event_index !== 'number') {
-				throw new Error('[flue:run-store] persisted workflow event row is malformed.');
-			}
-			return parsePersistedWorkflowEvent(runId, row.payload, row.event_index);
-		});
 	}
 
 	async getRun(runId: string): Promise<RunRecord | null> {

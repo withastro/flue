@@ -18,11 +18,4 @@ export {
 export type { CloudflareGatewayOptions } from './gateway.ts';
 export { FlueRegistry } from './registry-do.ts';
 export { createCloudflareRunRegistry } from './run-registry.ts';
-export type {
-	CloudflareWebSocketAttachment,
-	CloudflareWebSocketConnection,
-	CloudflareWorkflowWebSocketOptions,
-} from './websocket.ts';
-
-export { connectCloudflareWorkflowWebSocket, messageCloudflareWorkflowWebSocket } from './websocket.ts';
 export { getCloudflareAIBindingApiProvider } from './workers-ai-provider.ts';

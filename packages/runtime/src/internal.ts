@@ -42,7 +42,7 @@ export type {
 	SubmissionDurability,
 } from './agent-execution-store.ts';
 export type { DispatchInput, DispatchQueue } from './runtime/dispatch-queue.ts';
-export type { ExposedTransport, FlueRuntime } from './runtime/flue-app.ts';
+export type { FlueRuntime } from './runtime/flue-app.ts';
 export { configureFlueRuntime, createDefaultFlueApp } from './runtime/flue-app.ts';
 export type {
 	AgentHandler,
@@ -93,14 +93,7 @@ export type {
 export type { EventStreamStore } from './runtime/event-stream-store.ts';
 export { SqlEventStreamStore } from './runtime/event-stream-store.ts';
 export type { RunRecord, RunStatus, RunStore } from './runtime/run-store.ts';
-export type { RunSubscriberListener, RunSubscriberRegistry } from './runtime/run-subscribers.ts';
-export { createRunSubscriberRegistry } from './runtime/run-subscribers.ts';
-export {
-	createWebSocketErrorMessage,
-	parseAgentWebSocketMessage,
-	parseWorkflowWebSocketMessage,
-} from './runtime/websocket-protocol.ts';
-export { closeFlueSocket, isFlueSocket, socketRequestUrl } from './cloudflare/websocket.ts';
+
 export { bashFactoryToSessionEnv } from './sandbox.ts';
 export type { DirectAgentSubmissionInput, DispatchAgentSubmissionInput } from './runtime/agent-submissions.ts';
 export { InMemorySessionStore } from './session.ts';

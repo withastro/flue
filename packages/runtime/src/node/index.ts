@@ -8,8 +8,3 @@
  */
 export { sqlite } from './agent-execution-store.ts';
 export { type LocalSandboxOptions, local } from './local.ts';
-export {
-	createNodeWebSocketTransport,
-	type NodeWebSocketTransport,
-	type NodeWebSocketTransportOptions,
-} from './websocket.ts';

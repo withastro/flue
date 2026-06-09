@@ -63,9 +63,11 @@ describe('CloudflarePlugin', () => {
 		expect(entry).toContain("return cloudflareAgents.onStart(this, () => typeof super.onStart === 'function' ? super.onStart(props) : undefined);");
 		expect(entry).toContain('return cloudflareAgents.wakeSubmissions(this);');
 		expect(entry).toContain('return cloudflareAgents.onRequest(this, request);');
-		expect(entry).toContain('return cloudflareAgents.fetch(this, request, () => super.fetch(request));');
-		expect(entry).toContain('return cloudflareAgents.webSocketMessage(this, socket, message, () => super.webSocketMessage(socket, message));');
 		expect(entry).toContain('return cloudflareAgents.onFiberRecovered(this, ctx, () => typeof super.onFiberRecovered === \'function\' ? super.onFiberRecovered(ctx) : undefined);');
+		expect(entry).not.toContain('cloudflareAgents.fetch');
+		expect(entry).not.toContain('webSocketMessage');
+		expect(entry).not.toContain('webSocketClose');
+		expect(entry).not.toContain('webSocketError');
 		expect(entry).not.toContain('reconcileFlueAgentSubmissions');
 		expect(entry).not.toContain('cf_agents_runs');
 		expect(entry).not.toContain('cf_agents_fibers');

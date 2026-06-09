@@ -12,14 +12,6 @@ import { type AgentHandler, assertAgentDispatchAdmissionInput, handleAgentReques
 import { handleStreamHead, handleStreamRead } from '../runtime/handle-stream-routes.ts';
 import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import { createSqlAgentExecutionStore } from './agent-execution-store.ts';
-import {
-	type CloudflareWebSocketConnection,
-	closeFlueSocket,
-	connectCloudflareAgentWebSocket,
-	isFlueSocket,
-	messageCloudflareAgentWebSocket,
-	socketRequestUrl,
-} from './websocket.ts';
 
 export const CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH = '/__flue/internal/dispatch';
 
@@ -41,7 +33,6 @@ interface CloudflareAgentInstance {
 	readonly ctx: {
 		readonly id: { toString(): string };
 		readonly storage: CloudflareAgentStorage;
-		acceptWebSocket(connection: CloudflareWebSocketConnection): void;
 	};
 	__unsafe_ensureInitialized(): Promise<void>;
 	schedule(
@@ -69,7 +60,6 @@ interface CloudflareAgentPreparedCoordinator {
 interface CloudflareAgentRuntimeOptions {
 	readonly createdAgents: Record<string, Parameters<typeof createAgentSubmissionSessionHandler>[0]>;
 	readonly directHandlers: Record<string, AgentHandler>;
-	readonly websocketAgentHandlers: Record<string, AgentHandler>;
 	readonly createContext: (options: {
 		readonly executionStore: AgentExecutionStore;
 		readonly instance: CloudflareAgentInstance;
@@ -83,10 +73,6 @@ interface CloudflareAgentRuntimeOptions {
 		agentName: string,
 		callback: () => T,
 	) => T;
-	readonly createWebSocketPair: () => {
-		readonly client: unknown;
-		readonly server: CloudflareWebSocketConnection;
-	};
 	readonly createEventStreamStore?: (instance: CloudflareAgentInstance) => import('../runtime/event-stream-store.ts').EventStreamStore | undefined;
 }
 
@@ -103,29 +89,6 @@ export interface CloudflareAgentRuntime {
 	): Promise<void>;
 	wakeSubmissions(instance: CloudflareAgentInstance): Promise<void>;
 	onRequest(instance: CloudflareAgentInstance, request: Request): Promise<Response | null>;
-	fetch(
-		instance: CloudflareAgentInstance,
-		request: Request,
-		inherited: () => Promise<Response> | Response,
-	): Promise<Response>;
-	webSocketMessage(
-		instance: CloudflareAgentInstance,
-		connection: CloudflareWebSocketConnection,
-		message: string | ArrayBuffer | ArrayBufferView,
-		inherited: () => Promise<unknown> | unknown,
-	): Promise<unknown>;
-	webSocketClose(
-		instance: CloudflareAgentInstance,
-		connection: CloudflareWebSocketConnection,
-		code: number,
-		reason: string,
-		inherited: () => Promise<unknown> | unknown,
-	): Promise<unknown> | unknown;
-	webSocketError(
-		instance: CloudflareAgentInstance,
-		connection: CloudflareWebSocketConnection,
-		inherited: () => Promise<unknown> | unknown,
-	): Promise<unknown> | unknown;
 	onFiberRecovered(
 		instance: CloudflareAgentInstance,
 		ctx: CloudflareAgentRecoveredFiberContext,
@@ -167,18 +130,6 @@ export function createCloudflareAgentRuntime(options: CloudflareAgentRuntimeOpti
 		},
 		onRequest(instance, request) {
 			return getCoordinator(instance).onRequest(request);
-		},
-		fetch(instance, request, inherited) {
-			return getCoordinator(instance).fetch(request, inherited);
-		},
-		webSocketMessage(instance, connection, message, inherited) {
-			return getCoordinator(instance).webSocketMessage(connection, message, inherited);
-		},
-		webSocketClose(instance, connection, code, reason, inherited) {
-			return getCoordinator(instance).webSocketClose(connection, code, reason, inherited);
-		},
-		webSocketError(instance, connection, inherited) {
-			return getCoordinator(instance).webSocketError(connection, inherited);
 		},
 		onFiberRecovered(instance, ctx, inherited) {
 			return getCoordinator(instance).onFiberRecovered(ctx, inherited);
@@ -229,50 +180,6 @@ class CloudflareAgentCoordinator {
 				admitAttachedSubmission: (payload, onEvent) => this.admitAttachedSubmission(payload, onEvent),
 			}),
 		);
-	}
-
-	async fetch(request: Request, inherited: () => Promise<Response> | Response): Promise<Response> {
-		if (!isWebSocketUpgrade(request)) return inherited();
-		await this.instance.__unsafe_ensureInitialized();
-		return this.acceptSocket(request);
-	}
-
-	async webSocketMessage(
-		connection: CloudflareWebSocketConnection,
-		message: string | ArrayBuffer | ArrayBufferView,
-		inherited: () => Promise<unknown> | unknown,
-	): Promise<unknown> {
-		if (!isFlueSocket(connection, 'agent', this.agentName)) return inherited();
-		await this.instance.__unsafe_ensureInitialized();
-		const handler = this.options.websocketAgentHandlers[this.agentName];
-		if (!handler) return;
-		return this.runWithInstanceContext(() =>
-			messageCloudflareAgentWebSocket(connection, message, {
-				name: this.agentName,
-				id: this.instance.name,
-				request: socketRequest(connection),
-				createContext: (_id, _runId, payload, req) => this.createContext(payload, req),
-				admitAttachedSubmission: (payload, onEvent) => this.admitAttachedSubmission(payload, onEvent),
-			}),
-		);
-	}
-
-	webSocketClose(
-		connection: CloudflareWebSocketConnection,
-		code: number,
-		reason: string,
-		inherited: () => Promise<unknown> | unknown,
-	): Promise<unknown> | unknown {
-		if (!isFlueSocket(connection, 'agent', this.agentName)) return inherited();
-		return closeFlueSocket(connection, code, reason);
-	}
-
-	webSocketError(
-		connection: CloudflareWebSocketConnection,
-		inherited: () => Promise<unknown> | unknown,
-	): Promise<unknown> | unknown {
-		if (!isFlueSocket(connection, 'agent', this.agentName)) return inherited();
-		return closeFlueSocket(connection, 1011, 'WebSocket error');
 	}
 
 	async onFiberRecovered(
@@ -601,18 +508,6 @@ class CloudflareAgentCoordinator {
 		return Response.json({ dispatchId: admission.submission.submissionId, acceptedAt: input.acceptedAt });
 	}
 
-	private acceptSocket(request: Request): Response {
-		const handler = this.options.websocketAgentHandlers[this.agentName];
-		if (!handler) return new Response(null, { status: 404 });
-		const { client, server } = this.options.createWebSocketPair();
-		this.instance.ctx.acceptWebSocket(server);
-		connectCloudflareAgentWebSocket(server, {
-			name: this.agentName,
-			id: this.instance.name,
-			requestUrl: socketRequestUrl(request),
-		});
-		return new Response(null, { status: 101, webSocket: client } as ResponseInit);
-	}
 }
 
 function isAttemptMarkerSnapshot(value: unknown): value is { submissionId: string; attemptId: string } {
@@ -629,11 +524,4 @@ function isInternalDispatchRequest(request: Request): boolean {
 	return request.method === 'POST' && new URL(request.url).pathname === CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH;
 }
 
-function isWebSocketUpgrade(request: Request): boolean {
-	return request.method === 'GET' && request.headers.get('upgrade')?.toLowerCase() === 'websocket';
-}
 
-function socketRequest(connection: CloudflareWebSocketConnection): Request {
-	const attachment = connection.deserializeAttachment?.();
-	return new Request(attachment?.requestUrl || 'https://flue.invalid/');
-}

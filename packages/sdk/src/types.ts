@@ -31,7 +31,7 @@ export interface RunPointer {
 /** Agent discovery metadata returned by the read-only admin route. */
 export interface AgentManifestEntry {
 	name: string;
-	transports: { http?: true; websocket?: true };
+	transports: { http?: true };
 	created: boolean;
 }
 
@@ -136,108 +136,6 @@ export interface FluePublicError {
 	dev?: string;
 	meta?: Record<string, unknown>;
 }
-
-/** Low-level protocol messages sent over an agent WebSocket. */
-export type AgentWebSocketClientMessage =
-	| {
-			version: 1;
-			type: 'prompt';
-			requestId: string;
-			message: string;
-	  }
-	| {
-			version: 1;
-			type: 'ping';
-			requestId?: string;
-	  };
-
-/** Low-level protocol message sent over a workflow WebSocket. */
-export interface WorkflowWebSocketClientMessage {
-	version: 1;
-	type: 'invoke';
-	requestId: string;
-	payload?: unknown;
-}
-
-/** Low-level structured WebSocket error message. */
-export type WebSocketErrorMessage = {
-	version: 1;
-	type: 'error';
-	requestId?: string;
-	error: FluePublicError;
-};
-
-/** Workflow-run-scoped WebSocket failure after a run id has been allocated. */
-export type WorkflowRunWebSocketErrorMessage = WebSocketErrorMessage & {
-	runId: string;
-};
-
-/** Low-level protocol messages received from an agent WebSocket. */
-export type AgentWebSocketServerMessage =
-	| {
-			version: 1;
-			type: 'ready';
-			target: 'agent';
-			name: string;
-			instanceId: string;
-	  }
-	| {
-			version: 1;
-			type: 'started';
-			requestId: string;
-	  }
-	| {
-			version: 1;
-			type: 'event';
-			requestId: string;
-			event: AttachedAgentEvent;
-	  }
-	| {
-			version: 1;
-			type: 'result';
-			requestId: string;
-			result: unknown;
-	  }
-	| WebSocketErrorMessage
-	| {
-			version: 1;
-			type: 'pong';
-			requestId?: string;
-	  };
-
-/** Low-level protocol messages received from a workflow WebSocket. */
-export type WorkflowWebSocketServerMessage =
-	| {
-			version: 1;
-			type: 'ready';
-			target: 'workflow';
-			name: string;
-	  }
-	| {
-			version: 1;
-			type: 'started';
-			requestId: string;
-			runId: string;
-	  }
-	| {
-			version: 1;
-			type: 'event';
-			requestId: string;
-			runId: string;
-			event: FlueEvent;
-	  }
-	| {
-			version: 1;
-			type: 'result';
-			requestId: string;
-			runId: string;
-			result: unknown;
-	  }
-	| WebSocketErrorMessage
-	| WorkflowRunWebSocketErrorMessage;
-
-/** Low-level protocol message received from an agent or workflow WebSocket. */
-export type WebSocketServerMessage = AgentWebSocketServerMessage | WorkflowWebSocketServerMessage;
 
 /** Observable workflow-run event. */
 export type FlueEvent = (

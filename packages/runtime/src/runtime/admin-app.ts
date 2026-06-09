@@ -174,7 +174,6 @@ const runDetailHandler: MiddlewareHandler = async (c) => {
 		request: rewriteToPublicRunRequest(c.req.raw, runId),
 		env: c.env,
 		runId,
-		action: 'get',
 	});
 };
 

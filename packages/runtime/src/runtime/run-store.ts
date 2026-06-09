@@ -37,8 +37,6 @@ export interface EndRunInput {
 export interface RunStore {
 	createRun(input: CreateRunInput): Promise<void>;
 	endRun(input: EndRunInput): Promise<void>;
-	appendEvent(runId: string, event: FlueEvent): Promise<void>;
-	getEvents(runId: string, fromIndex?: number): Promise<FlueEvent[]>;
 	getRun(runId: string): Promise<RunRecord | null>;
 }
 

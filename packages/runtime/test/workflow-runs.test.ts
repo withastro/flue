@@ -4,8 +4,6 @@ import type { FlueRuntime } from '../src/internal.ts';
 import {
 	configureFlueRuntime,
 	createFlueContext,
-	createRunSubscriberRegistry,
-	failRecoveredRun,
 	InMemoryRunRegistry,
 	InMemoryRunStore,
 	InMemorySessionStore,
@@ -51,20 +49,6 @@ function createApp(runtime: FlueRuntime): Hono {
 	const app = new Hono();
 	app.route('/flue', flue());
 	return app;
-}
-
-function parseSseEvents(text: string): Array<{ event: string; id: string; data: unknown }> {
-	return text
-		.split('\n\n')
-		.filter((frame) => frame.startsWith('event: '))
-		.map((frame) => {
-			const lines = frame.split('\n');
-			return {
-				event: lines[0]?.slice('event: '.length) ?? '',
-				id: lines[1]?.slice('id: '.length) ?? '',
-				data: JSON.parse(lines[2]?.slice('data: '.length) ?? 'null'),
-			};
-		});
 }
 
 describe('workflow invocation', () => {
@@ -127,52 +111,6 @@ describe('workflow invocation', () => {
 		expect(body).toEqual({ result: { delivered: true }, _meta: { runId: expect.any(String) } });
 		expect(body._meta.runId).toMatch(/^workflow:daily-report:[^:]+$/);
 		expect(response.headers.get('x-flue-run-id')).toBe(body._meta.runId);
-	});
-
-	it('returns an event stream when a workflow request accepts server-sent events', async () => {
-		const app = createApp({
-			target: 'node',
-			manifest: { agents: [], workflows: [{ name: 'daily-report', transports: { http: true } }] },
-			workflowHandlers: {
-				'daily-report': async (ctx) => {
-					ctx.log.info('report started');
-					return { delivered: true };
-				},
-			},
-			createContext,
-			runStore: new InMemoryRunStore(),
-			runSubscribers: createRunSubscriberRegistry(),
-		});
-
-		const response = await app.fetch(
-			new Request('http://localhost/flue/workflows/daily-report', {
-				method: 'POST',
-				headers: { accept: 'text/event-stream' },
-			}),
-		);
-		const runId = response.headers.get('x-flue-run-id');
-		const events = parseSseEvents(await response.text());
-
-		expect(response.status).toBe(200);
-		expect(response.headers.get('content-type')).toBe('text/event-stream');
-		expect(runId).toMatch(/^workflow:daily-report:[^:]+$/);
-		expect(events).toMatchObject([
-			{
-				event: 'run_start',
-				id: '0',
-				data: { type: 'run_start', runId, payload: {} },
-			},
-			{
-				event: 'log',
-				id: '1',
-				data: { type: 'log', runId, level: 'info', message: 'report started' },
-			},
-			{
-				event: 'run_end',
-				id: '2',
-				data: { type: 'run_end', runId, result: { delivered: true }, isError: false },
-			},
-		]);
 	});
 
 	it('rejects workflow admission before executing the handler when run-store persistence is unavailable', async () => {
@@ -322,48 +260,6 @@ describe('workflow invocation', () => {
 });
 
 describe('workflow run lifecycle', () => {
-	it('persists run_start before and run_end after nested workflow activity when a workflow completes', async () => {
-		const runStore = new InMemoryRunStore();
-		const runRegistry = new InMemoryRunRegistry();
-		const app = createApp({
-			target: 'node',
-			manifest: { agents: [], workflows: [{ name: 'daily-report', transports: { http: true } }] },
-			workflowHandlers: {
-				'daily-report': async (ctx) => {
-					ctx.log.info('building report');
-					return { delivered: true };
-				},
-			},
-			createContext,
-			runStore,
-			runRegistry,
-		});
-
-		const response = await app.fetch(
-			new Request('http://localhost/flue/workflows/daily-report?wait=result', { method: 'POST' }),
-		);
-		const body = (await response.json()) as { result: unknown; _meta: { runId: string } };
-		const events = await runStore.getEvents(body._meta.runId);
-
-		expect(events).toMatchObject([
-			{ type: 'run_start', runId: body._meta.runId, eventIndex: 0, payload: {} },
-			{
-				type: 'log',
-				runId: body._meta.runId,
-				eventIndex: 1,
-				level: 'info',
-				message: 'building report',
-			},
-			{
-				type: 'run_end',
-				runId: body._meta.runId,
-				eventIndex: 2,
-				result: { delivered: true },
-				isError: false,
-			},
-		]);
-	});
-
 	it('records an errored terminal run when a workflow handler throws', async () => {
 		const runStore = new InMemoryRunStore();
 		const runRegistry = new InMemoryRunRegistry();
@@ -411,179 +307,9 @@ describe('workflow run lifecycle', () => {
 				durationMs: expect.any(Number),
 				error: { name: 'Error', message: 'report generation failed' },
 			});
-			const events = await runStore.getEvents(runId!);
-			expect(events).toMatchObject([
-				{ type: 'run_start', runId, eventIndex: 0 },
-				{
-					type: 'run_end',
-					runId,
-					eventIndex: 1,
-					isError: true,
-					error: { name: 'Error', message: 'report generation failed' },
-				},
-			]);
 		} finally {
 			consoleError.mockRestore();
 		}
 	});
 
-	it('preserves an explicit null terminal result when recovery finalizes an active workflow run', async () => {
-		const runStore = new InMemoryRunStore();
-		const runRegistry = new InMemoryRunRegistry();
-		const runId = 'workflow:daily-report:recovered';
-		const owner = { kind: 'workflow' as const, workflowName: 'daily-report', instanceId: runId };
-		await runStore.createRun({
-			runId,
-			owner,
-			startedAt: '2026-06-02T00:00:00.000Z',
-			payload: {},
-		});
-		await runStore.appendEvent(runId, {
-			type: 'run_end',
-			runId,
-			result: null,
-			isError: false,
-			durationMs: 1000,
-			eventIndex: 0,
-			timestamp: '2026-06-02T00:00:01.000Z',
-		});
-
-		await failRecoveredRun({
-			owner,
-			id: runId,
-			runId,
-			request: new Request('http://localhost/flue/workflows/daily-report'),
-			createContext,
-			error: new Error('interrupted'),
-			runStore,
-			runRegistry,
-		});
-
-		expect(await runStore.getRun(runId)).toMatchObject({
-			status: 'completed',
-			result: null,
-		});
-	});
-
-	it('emits recovery handling before terminalizing an admitted workflow without a persisted start event', async () => {
-		const runStore = new InMemoryRunStore();
-		const runId = 'workflow:daily-report:recovery-before-start';
-		const owner = { kind: 'workflow' as const, workflowName: 'daily-report', instanceId: runId };
-		await runStore.createRun({
-			runId,
-			owner,
-			startedAt: '2026-06-02T00:00:00.000Z',
-			payload: {},
-		});
-
-		await failRecoveredRun({
-			owner,
-			id: runId,
-			runId,
-			request: new Request('http://localhost/flue/workflows/daily-report'),
-			createContext,
-			error: new Error('interrupted'),
-			runStore,
-		});
-
-		expect(
-			(await runStore.getEvents(runId)).map((event) => [event.type, event.eventIndex]),
-		).toEqual([
-			['run_resume', 0],
-			['run_end', 1],
-		]);
-	});
-
-	it('continues recovery event indexes after the maximum persisted workflow index', async () => {
-		const runStore = new InMemoryRunStore();
-		const runId = 'workflow:daily-report:recovery-index';
-		const owner = { kind: 'workflow' as const, workflowName: 'daily-report', instanceId: runId };
-		await runStore.createRun({
-			runId,
-			owner,
-			startedAt: '2026-06-02T00:00:00.000Z',
-			payload: undefined,
-		});
-		await runStore.appendEvent(runId, {
-			type: 'run_start',
-			runId,
-			owner,
-			instanceId: runId,
-			workflowName: 'daily-report',
-			startedAt: '2026-06-02T00:00:00.000Z',
-			payload: {},
-			eventIndex: 4,
-		});
-
-		await failRecoveredRun({
-			owner,
-			id: runId,
-			runId,
-			request: new Request('http://localhost/flue/workflows/daily-report'),
-			createContext,
-			error: new Error('interrupted'),
-			runStore,
-		});
-
-		expect(
-			(await runStore.getEvents(runId)).map((event) => [event.type, event.eventIndex]),
-		).toEqual([
-			['run_start', 4],
-			['run_resume', 5],
-			['run_end', 6],
-		]);
-	});
-
-	it('delivers run_end before closing an active workflow event stream when execution completes', async () => {
-		let release!: () => void;
-		const completionGate = new Promise<void>((resolve) => {
-			release = resolve;
-		});
-		const runStore = new InMemoryRunStore();
-		const app = createApp({
-			target: 'node',
-			manifest: { agents: [], workflows: [{ name: 'daily-report', transports: { http: true } }] },
-			workflowHandlers: {
-				'daily-report': async (ctx) => {
-					ctx.log.info('waiting for report');
-					await completionGate;
-					return { delivered: true };
-				},
-			},
-			createContext,
-			runStore,
-			runSubscribers: createRunSubscriberRegistry(),
-		});
-
-		const response = await app.fetch(
-			new Request('http://localhost/flue/workflows/daily-report', {
-				method: 'POST',
-				headers: { accept: 'text/event-stream' },
-			}),
-		);
-		try {
-			await vi.waitFor(() => {
-				expect(response.headers.get('x-flue-run-id')).toMatch(/^workflow:daily-report:[^:]+$/);
-			});
-		} finally {
-			release();
-		}
-		const events = parseSseEvents(await response.text());
-		const runId = response.headers.get('x-flue-run-id');
-
-		expect(events).toMatchObject([
-			{ event: 'run_start', id: '0', data: { type: 'run_start', runId } },
-			{
-				event: 'log',
-				id: '1',
-				data: { type: 'log', runId, level: 'info', message: 'waiting for report' },
-			},
-			{
-				event: 'run_end',
-				id: '2',
-				data: { type: 'run_end', runId, result: { delivered: true }, isError: false },
-			},
-		]);
-		expect(events.at(-1)).toMatchObject({ event: 'run_end', data: { type: 'run_end', runId } });
-	});
 });

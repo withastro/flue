@@ -406,7 +406,7 @@ describe('flue()', () => {
 			target: 'node',
 			manifest: {
 				agents: [],
-				workflows: [{ name: 'internal-report', transports: { websocket: true } }],
+				workflows: [{ name: 'internal-report', transports: {} }],
 			},
 		});
 		const app = new Hono();

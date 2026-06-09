@@ -8,19 +8,13 @@ function normalizeBuiltModules(agentModules, workflowModules) {
   const dispatchAgentNames = new Map();
   const workflowHandlers = {};
   const localWorkflowHandlers = {};
-  const websocketAgentHandlers = {};
-  const websocketWorkflowHandlers = {};
   const agentRouteMiddleware = {};
-  const agentWebSocketMiddleware = {};
   const workflowRouteMiddleware = {};
-  const workflowWebSocketMiddleware = {};
   for (const [name, mod] of Object.entries(agentModules)) {
     if (!mod.default || mod.default.__flueCreatedAgent !== true || typeof mod.default.initialize !== 'function') throw new Error('[flue] Agent "' + name + '" must default-export createAgent(...).');
     if (mod.route !== undefined && typeof mod.route !== 'function') throw new Error('[flue] Agent "' + name + '" route export must be a callable Hono middleware value.');
-    if (mod.websocket !== undefined && typeof mod.websocket !== 'function') throw new Error('[flue] Agent "' + name + '" websocket export must be a callable Hono middleware value.');
     const transports = {};
     if (typeof mod.route === 'function') transports.http = true;
-    if (typeof mod.websocket === 'function') transports.websocket = true;
     manifest.agents.push({ name, transports, created: true });
     createdAgents[name] = mod.default;
     const previousDispatchName = dispatchAgentNames.get(mod.default);
@@ -28,27 +22,21 @@ function normalizeBuiltModules(agentModules, workflowModules) {
     dispatchAgentNames.set(mod.default, name);
     localAgentHandlers[name] = createDirectAgentHandler(mod.default);
     if (transports.http) directHandlers[name] = localAgentHandlers[name];
-    if (transports.websocket) websocketAgentHandlers[name] = localAgentHandlers[name];
     if (typeof mod.route === 'function') agentRouteMiddleware[name] = mod.route;
-    if (typeof mod.websocket === 'function') agentWebSocketMiddleware[name] = mod.websocket;
   }
 
   for (const [name, mod] of Object.entries(workflowModules)) {
     if (typeof mod.run !== 'function') throw new Error('[flue] Workflow "' + name + '" must export a callable run value.');
     if (mod.route !== undefined && typeof mod.route !== 'function') throw new Error('[flue] Workflow "' + name + '" route export must be a callable Hono middleware value.');
-    if (mod.websocket !== undefined && typeof mod.websocket !== 'function') throw new Error('[flue] Workflow "' + name + '" websocket export must be a callable Hono middleware value.');
     const transports = {};
     if (typeof mod.route === 'function') transports.http = true;
-    if (typeof mod.websocket === 'function') transports.websocket = true;
     manifest.workflows.push({ name, transports });
     localWorkflowHandlers[name] = mod.run;
     if (transports.http) workflowHandlers[name] = mod.run;
-    if (transports.websocket) websocketWorkflowHandlers[name] = mod.run;
     if (typeof mod.route === 'function') workflowRouteMiddleware[name] = mod.route;
-    if (typeof mod.websocket === 'function') workflowWebSocketMiddleware[name] = mod.websocket;
   }
 
-  return { manifest, directHandlers, localAgentHandlers, createdAgents, dispatchAgentNames, workflowHandlers, localWorkflowHandlers, websocketAgentHandlers, websocketWorkflowHandlers, agentRouteMiddleware, agentWebSocketMiddleware, workflowRouteMiddleware, workflowWebSocketMiddleware };
+  return { manifest, directHandlers, localAgentHandlers, createdAgents, dispatchAgentNames, workflowHandlers, localWorkflowHandlers, agentRouteMiddleware, workflowRouteMiddleware };
 }
 
 `;

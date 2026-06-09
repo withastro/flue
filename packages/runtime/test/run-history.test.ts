@@ -7,7 +7,7 @@ import { flue } from '../src/routing.ts';
 import { configureFlueRuntime, resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import type { RunRegistry } from '../src/runtime/run-registry.ts';
 import type { RunStore } from '../src/runtime/run-store.ts';
-import type { RunSubscriberRegistry } from '../src/runtime/run-subscribers.ts';
+
 
 afterEach(() => {
 	resetFlueRuntimeForTests();
@@ -16,14 +16,12 @@ afterEach(() => {
 function createRunApp(
 	runStore: RunStore,
 	runRegistry: RunRegistry,
-	runSubscribers?: RunSubscriberRegistry,
 ) {
 	configureFlueRuntime({
 		target: 'node',
 		manifest: { agents: [] },
 		runStore,
 		runRegistry,
-		runSubscribers,
 	});
 	const app = new Hono();
 	app.route('/', flue());
@@ -132,224 +130,6 @@ describe('workflow run store', () => {
 			result: undefined,
 			error: { message: 'delivery failed' },
 		});
-	});
-
-	it('preserves event order when workflow events are appended', async () => {
-		const store: RunStore = new InMemoryRunStore();
-		await store.createRun({
-			runId: 'workflow:daily-report:01',
-			owner: {
-				kind: 'workflow',
-				workflowName: 'daily-report',
-				instanceId: 'workflow:daily-report:01',
-			},
-			startedAt: '2026-06-01T10:00:00.000Z',
-			payload: {},
-		});
-		await store.appendEvent('workflow:daily-report:01', {
-			type: 'log',
-			level: 'info',
-			message: 'first',
-			runId: 'workflow:daily-report:01',
-			eventIndex: 0,
-		});
-		await store.appendEvent('workflow:daily-report:01', {
-			type: 'log',
-			level: 'info',
-			message: 'second',
-			runId: 'workflow:daily-report:01',
-			eventIndex: 1,
-		});
-
-		expect(await store.getEvents('workflow:daily-report:01')).toEqual([
-			{
-				type: 'log',
-				level: 'info',
-				message: 'first',
-				runId: 'workflow:daily-report:01',
-				eventIndex: 0,
-			},
-			{
-				type: 'log',
-				level: 'info',
-				message: 'second',
-				runId: 'workflow:daily-report:01',
-				eventIndex: 1,
-			},
-		]);
-	});
-
-	it('returns workflow events in index order when appends arrive out of order', async () => {
-		const store: RunStore = new InMemoryRunStore();
-		await store.createRun({
-			runId: 'workflow:daily-report:01',
-			owner: {
-				kind: 'workflow',
-				workflowName: 'daily-report',
-				instanceId: 'workflow:daily-report:01',
-			},
-			startedAt: '2026-06-01T10:00:00.000Z',
-			payload: {},
-		});
-		await store.appendEvent('workflow:daily-report:01', {
-			type: 'log',
-			level: 'info',
-			message: 'second',
-			runId: 'workflow:daily-report:01',
-			eventIndex: 1,
-		});
-		await store.appendEvent('workflow:daily-report:01', {
-			type: 'log',
-			level: 'info',
-			message: 'first',
-			runId: 'workflow:daily-report:01',
-			eventIndex: 0,
-		});
-
-		expect(
-			(await store.getEvents('workflow:daily-report:01')).map((event) => event.eventIndex),
-		).toEqual([0, 1]);
-	});
-
-	it('rejects duplicate workflow event indexes when events are appended', async () => {
-		const store: RunStore = new InMemoryRunStore();
-		await store.createRun({
-			runId: 'workflow:daily-report:01',
-			owner: {
-				kind: 'workflow',
-				workflowName: 'daily-report',
-				instanceId: 'workflow:daily-report:01',
-			},
-			startedAt: '2026-06-01T10:00:00.000Z',
-			payload: {},
-		});
-		await store.appendEvent('workflow:daily-report:01', {
-			type: 'log',
-			level: 'info',
-			message: 'first',
-			runId: 'workflow:daily-report:01',
-			eventIndex: 0,
-		});
-
-		await expect(
-			store.appendEvent('workflow:daily-report:01', {
-				type: 'log',
-				level: 'info',
-				message: 'replacement',
-				runId: 'workflow:daily-report:01',
-				eventIndex: 0,
-			}),
-		).rejects.toThrow('duplicate persisted workflow event index');
-		expect(await store.getEvents('workflow:daily-report:01')).toMatchObject([{ message: 'first' }]);
-	});
-
-	it('rejects malformed workflow events when persistence identity is missing or mismatched', async () => {
-		const store: RunStore = new InMemoryRunStore();
-		await store.createRun({
-			runId: 'workflow:daily-report:01',
-			owner: {
-				kind: 'workflow',
-				workflowName: 'daily-report',
-				instanceId: 'workflow:daily-report:01',
-			},
-			startedAt: '2026-06-01T10:00:00.000Z',
-			payload: {},
-		});
-
-		await expect(
-			store.appendEvent('workflow:daily-report:01', {
-				type: 'log',
-				level: 'info',
-				message: 'missing index',
-				runId: 'workflow:daily-report:01',
-			}),
-		).rejects.toThrow('index must be a non-negative integer');
-		await expect(
-			store.appendEvent('workflow:daily-report:01', {
-				type: 'log',
-				level: 'info',
-				message: 'wrong run',
-				runId: 'workflow:daily-report:02',
-				eventIndex: 0,
-			}),
-		).rejects.toThrow('runId does not match its run');
-	});
-
-	it('returns events from a requested index when run events are paged', async () => {
-		const store: RunStore = new InMemoryRunStore();
-		await store.createRun({
-			runId: 'workflow:daily-report:01',
-			owner: {
-				kind: 'workflow',
-				workflowName: 'daily-report',
-				instanceId: 'workflow:daily-report:01',
-			},
-			startedAt: '2026-06-01T10:00:00.000Z',
-			payload: {},
-		});
-		await store.appendEvent('workflow:daily-report:01', {
-			type: 'log',
-			level: 'info',
-			message: 'first',
-			runId: 'workflow:daily-report:01',
-			eventIndex: 0,
-		});
-		await store.appendEvent('workflow:daily-report:01', {
-			type: 'log',
-			level: 'info',
-			message: 'second',
-			runId: 'workflow:daily-report:01',
-			eventIndex: 1,
-		});
-		await store.appendEvent('workflow:daily-report:01', {
-			type: 'log',
-			level: 'info',
-			message: 'third',
-			runId: 'workflow:daily-report:01',
-			eventIndex: 2,
-		});
-
-		expect(await store.getEvents('workflow:daily-report:01', 1)).toEqual([
-			{
-				type: 'log',
-				level: 'info',
-				message: 'second',
-				runId: 'workflow:daily-report:01',
-				eventIndex: 1,
-			},
-			{
-				type: 'log',
-				level: 'info',
-				message: 'third',
-				runId: 'workflow:daily-report:01',
-				eventIndex: 2,
-			},
-		]);
-	});
-
-	it('rejects oversized events when serialized persistence exceeds the supported limit', async () => {
-		const store: RunStore = new InMemoryRunStore();
-		await store.createRun({
-			runId: 'workflow:daily-report:01',
-			owner: {
-				kind: 'workflow',
-				workflowName: 'daily-report',
-				instanceId: 'workflow:daily-report:01',
-			},
-			startedAt: '2026-06-01T10:00:00.000Z',
-			payload: {},
-		});
-
-		await expect(
-			store.appendEvent('workflow:daily-report:01', {
-				type: 'log',
-				level: 'info',
-				message: 'x'.repeat(1_100_000),
-				runId: 'workflow:daily-report:01',
-				eventIndex: 0,
-			}),
-		).rejects.toThrow('event payload exceeds the 1 MB persistence limit');
-		expect(await store.getEvents('workflow:daily-report:01')).toEqual([]);
 	});
 
 	it('rejects workflow run admission when owner instanceId differs from runId', async () => {

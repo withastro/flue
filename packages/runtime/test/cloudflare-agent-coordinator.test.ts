@@ -68,15 +68,11 @@ function makeRuntime(options: {
 	return createCloudflareAgentRuntime({
 		createdAgents: options.createdAgent ? { assistant: options.createdAgent } : {},
 		directHandlers: {},
-		websocketAgentHandlers: {},
 		createContext: options.createContext ?? (() => {
 			throw new Error('Unexpected context creation.');
 		}),
 		runWithInstanceContext(_instance, _agentName, callback) {
 			return callback();
-		},
-		createWebSocketPair() {
-			throw new Error('Unexpected WebSocket pair creation.');
 		},
 	});
 }
@@ -91,7 +87,6 @@ function makeInstance(
 		ctx: {
 			id: { toString: () => 'do-1' },
 			storage,
-			acceptWebSocket() {},
 		},
 		async __unsafe_ensureInitialized() {},
 		async schedule(_delaySeconds: number, _callback: string, _payload: undefined, options: { idempotent: boolean }) {

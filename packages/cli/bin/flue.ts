@@ -1249,7 +1249,6 @@ async function run(args: RunArgs) {
 		const result = await sendLocalRequest(
 			child,
 			{
-				version: 1,
 				type: 'invoke',
 				requestId: `req_${crypto.randomUUID()}`,
 				payload: JSON.parse(args.payload),
@@ -1308,11 +1307,9 @@ async function connectCommand(args: ConnectArgs) {
 		if (!line.trim()) continue;
 		try {
 			const result = await sendLocalRequest(child, {
-				version: 1,
 				type: 'prompt',
 				requestId: `req_${crypto.randomUUID()}`,
 				message: line,
-				...(args.session === undefined ? {} : { session: args.session }),
 			});
 			if (result !== undefined && result !== null) console.log(JSON.stringify(result, null, 2));
 		} catch (err) {
