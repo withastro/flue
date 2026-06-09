@@ -108,6 +108,7 @@ export type { MessageSource } from './session-history.ts';
 const MAX_TASK_DEPTH = 4;
 const MAX_TRANSIENT_MODEL_RETRIES = 3;
 const TRANSIENT_MODEL_RETRY_BASE_DELAY_MS = 2_000;
+const EVENT_IMAGE_DATA_OMITTED = '[image bytes omitted from event]';
 
 type TurnInputMessage = Extract<FlueEvent, { type: 'turn_request' }>['input']['messages'][number];
 type TurnInputTool = NonNullable<
@@ -166,7 +167,7 @@ function toTurnContent(block: ProviderContentBlock): TurnContent {
 		return { type: 'text', text: block.text, textSignature: block.textSignature };
 	}
 	if (block.type === 'image') {
-		return { type: 'image', data: block.data, mimeType: block.mimeType };
+		return { type: 'image', data: EVENT_IMAGE_DATA_OMITTED, mimeType: block.mimeType };
 	}
 	if (block.type === 'thinking') {
 		return {
@@ -182,6 +183,37 @@ function toTurnContent(block: ProviderContentBlock): TurnContent {
 		name: block.name,
 		arguments: block.arguments,
 		thoughtSignature: block.thoughtSignature,
+	};
+}
+
+function toEventMessage(message: AgentMessage): AgentMessage {
+	if (message.role === 'user') {
+		if (typeof message.content === 'string') return message;
+		return {
+			...message,
+			content: message.content.map(toTurnContent) as UserMessage['content'],
+		};
+	}
+	if (message.role === 'assistant') {
+		return {
+			...message,
+			content: message.content.map(toTurnContent) as AssistantMessage['content'],
+		};
+	}
+	if (message.role === 'toolResult') {
+		return {
+			...message,
+			content: message.content.map(toTurnContent) as ToolResultMessage['content'],
+		};
+	}
+	return message;
+}
+
+function toEventToolResult<T>(result: AgentToolResult<T>): AgentToolResult<T> {
+	if (!Array.isArray(result?.content)) return result;
+	return {
+		...result,
+		content: result.content.map(toTurnContent) as AgentToolResult<T>['content'],
 	};
 }
 
@@ -513,13 +545,13 @@ export class Session implements FlueSession {
 					this.emit({ type: 'turn_start', turnId: this.activeTurnId, purpose: 'agent' });
 					break;
 				case 'message_start':
-					this.emit({ type: 'message_start', message: event.message });
+					this.emit({ type: 'message_start', message: toEventMessage(event.message) });
 					break;
 				case 'message_update': {
 					this.activeStreamChunkWriter?.write(event.assistantMessageEvent);
 					this.emit({
 						type: 'message_update',
-						message: event.message,
+						message: toEventMessage(event.message),
 						assistantMessageEvent: event.assistantMessageEvent,
 					});
 					const aEvent = event.assistantMessageEvent;
@@ -548,7 +580,7 @@ export class Session implements FlueSession {
 						}
 					}
 					if (event.message.role === 'user') await this.checkpointHarnessMessages();
-					this.emit({ type: 'message_end', message: event.message });
+					this.emit({ type: 'message_end', message: toEventMessage(event.message) });
 					break;
 				case 'tool_execution_start':
 					this.toolStartTimes.set(event.toolCallId, Date.now());
@@ -567,7 +599,7 @@ export class Session implements FlueSession {
 						toolName: event.toolName,
 						toolCallId: event.toolCallId,
 						isError: event.isError,
-						result: event.result,
+						result: toEventToolResult(event.result),
 						durationMs: durationSince(this.toolStartTimes.get(event.toolCallId)),
 					});
 					this.toolStartTimes.delete(event.toolCallId);
@@ -581,8 +613,8 @@ export class Session implements FlueSession {
 						type: 'turn_end',
 						turnId,
 						purpose: 'agent',
-						message: event.message,
-						toolResults: event.toolResults,
+						message: toEventMessage(event.message),
+						toolResults: event.toolResults.map(toEventMessage),
 					});
 					const message = event.message;
 					const assistant =
@@ -612,7 +644,7 @@ export class Session implements FlueSession {
 				case 'agent_end':
 					await this.activeStreamChunkWriter?.flush();
 					await this.checkpointHarnessMessages();
-					this.emit({ type: 'agent_end', messages: event.messages });
+					this.emit({ type: 'agent_end', messages: event.messages.map(toEventMessage) });
 					this.turnStartTime = undefined;
 					this.activeTurnId = undefined;
 					await this.activeStreamChunkWriter?.close();
