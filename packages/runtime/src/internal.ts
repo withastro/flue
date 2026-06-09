@@ -78,6 +78,7 @@ export {
 } from './runtime/handle-agent.ts';
 export type { HandleRunRouteOptions } from './runtime/handle-run-routes.ts';
 export { handleRunRouteRequest } from './runtime/handle-run-routes.ts';
+export { handleStreamHead, handleStreamRead } from './runtime/handle-stream-routes.ts';
 export { generateWorkflowRunId } from './runtime/ids.ts';
 export { hasRegisteredProvider } from './runtime/providers.ts';
 export type {

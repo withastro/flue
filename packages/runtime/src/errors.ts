@@ -669,8 +669,8 @@ export function validateWorkflowRequest(opts: ValidateWorkflowRequestOptions): v
 }
 
 export function validateAgentRequest(opts: ValidateAgentRequestOptions): void {
-	if (opts.method !== 'POST') {
-		throw new MethodNotAllowedError({ method: opts.method, allowed: ['POST'] });
+	if (opts.method !== 'POST' && opts.method !== 'GET' && opts.method !== 'HEAD') {
+		throw new MethodNotAllowedError({ method: opts.method, allowed: ['GET', 'HEAD', 'POST'] });
 	}
 	if (opts.name.trim() === '' || opts.id.trim() === '') {
 		throw new InvalidRequestError({

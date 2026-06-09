@@ -202,6 +202,8 @@ import {
   resolveModel,
   handleWorkflowRequest,
   handleRunRouteRequest,
+  handleStreamRead,
+  handleStreamHead,
   failRecoveredRun,
   configureFlueRuntime,
   createDefaultFlueApp,
@@ -490,6 +492,14 @@ async function dispatchWorkflow(request, doInstance, workflowName) {
   const instanceId = doInstance.name;
   const runRoute = parseRunRoute(request);
   if (runRoute) {
+    // DS stream read (GET/HEAD on /runs/:runId) — use EventStreamStore.
+    if (runRoute.action === 'ds-stream') {
+      const store = createEventStreamStoreForInstance(doInstance);
+      if (!store) return new Response(null, { status: 404 });
+      const streamPath = 'runs/' + runRoute.runId;
+      if (request.method === 'HEAD') return handleStreamHead(store, streamPath);
+      return handleStreamRead({ store, path: streamPath, request });
+    }
     return handleRunRouteRequest({
       request,
       owner: { kind: 'workflow', workflowName, instanceId },
@@ -589,9 +599,12 @@ function parseRunRoute(request) {
   }
   const child = segments[2];
   if (!runId) return null;
-  if (!child) return { action: 'get', runId };
-  if (child === 'events') return { action: 'events', runId };
-  if (child === 'stream') return { action: 'stream', runId };
+  if (!child) {
+    const method = request.method;
+    // GET/HEAD on /runs/:runId → DS stream read.
+    if (method === 'GET' || method === 'HEAD') return { action: 'ds-stream', runId };
+    return { action: 'get', runId };
+  }
   return null;
 }
 

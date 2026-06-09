@@ -9,6 +9,7 @@ import {
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
 import { type AgentHandler, assertAgentDispatchAdmissionInput, handleAgentRequest } from '../runtime/handle-agent.ts';
+import { handleStreamHead, handleStreamRead } from '../runtime/handle-stream-routes.ts';
 import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import { createSqlAgentExecutionStore } from './agent-execution-store.ts';
 import {
@@ -208,6 +209,17 @@ class CloudflareAgentCoordinator {
 
 	async onRequest(request: Request): Promise<Response | null> {
 		if (isInternalDispatchRequest(request)) return this.admitDispatch(request);
+
+		// DS stream read (GET/HEAD) — served from the event stream store.
+		const method = request.method;
+		if (method === 'GET' || method === 'HEAD') {
+			const store = this.options.createEventStreamStore?.(this.instance);
+			if (!store) return new Response(null, { status: 404 });
+			const streamPath = `agents/${this.agentName}/${this.instance.name}`;
+			if (method === 'HEAD') return handleStreamHead(store, streamPath);
+			return handleStreamRead({ store, path: streamPath, request });
+		}
+
 		const handler = this.options.directHandlers[this.agentName];
 		if (!handler) throw new Error('[flue] Agent direct handler is unavailable.');
 		return this.runWithInstanceContext(() =>

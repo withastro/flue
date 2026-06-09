@@ -299,14 +299,11 @@ describe('workflow invocation', () => {
 			new Request('http://localhost/flue/workflows/daily-report?wait=result', { method: 'POST' }),
 		);
 		const body = (await response.json()) as { result: unknown; _meta: { runId: string } };
-		const runResponse = await app.fetch(
-			new Request(`http://localhost/flue/runs/${encodeURIComponent(body._meta.runId)}`),
-		);
 
 		expect(response.status).toBe(200);
 		expect(body).toEqual({ result: null, _meta: { runId: expect.any(String) } });
-		expect(runResponse.status).toBe(200);
-		expect(await runResponse.json()).toEqual({
+		const runRecord = await runStore.getRun(body._meta.runId);
+		expect(runRecord).toEqual({
 			runId: body._meta.runId,
 			owner: {
 				kind: 'workflow',
@@ -346,31 +343,25 @@ describe('workflow run lifecycle', () => {
 			new Request('http://localhost/flue/workflows/daily-report?wait=result', { method: 'POST' }),
 		);
 		const body = (await response.json()) as { result: unknown; _meta: { runId: string } };
-		const eventsResponse = await app.fetch(
-			new Request(`http://localhost/flue/runs/${encodeURIComponent(body._meta.runId)}/events`),
-		);
-		const eventsBody = (await eventsResponse.json()) as { events: unknown[] };
+		const events = await runStore.getEvents(body._meta.runId);
 
-		expect(eventsResponse.status).toBe(200);
-		expect(eventsBody).toMatchObject({
-			events: [
-				{ type: 'run_start', runId: body._meta.runId, eventIndex: 0, payload: {} },
-				{
-					type: 'log',
-					runId: body._meta.runId,
-					eventIndex: 1,
-					level: 'info',
-					message: 'building report',
-				},
-				{
-					type: 'run_end',
-					runId: body._meta.runId,
-					eventIndex: 2,
-					result: { delivered: true },
-					isError: false,
-				},
-			],
-		});
+		expect(events).toMatchObject([
+			{ type: 'run_start', runId: body._meta.runId, eventIndex: 0, payload: {} },
+			{
+				type: 'log',
+				runId: body._meta.runId,
+				eventIndex: 1,
+				level: 'info',
+				message: 'building report',
+			},
+			{
+				type: 'run_end',
+				runId: body._meta.runId,
+				eventIndex: 2,
+				result: { delivered: true },
+				isError: false,
+			},
+		]);
 	});
 
 	it('records an errored terminal run when a workflow handler throws', async () => {
@@ -398,12 +389,6 @@ describe('workflow run lifecycle', () => {
 				new Request('http://localhost/flue/workflows/daily-report?wait=result', { method: 'POST' }),
 			);
 			const runId = response.headers.get('x-flue-run-id');
-			const runResponse = await app.fetch(
-				new Request(`http://localhost/flue/runs/${encodeURIComponent(runId ?? '')}`),
-			);
-			const eventsResponse = await app.fetch(
-				new Request(`http://localhost/flue/runs/${encodeURIComponent(runId ?? '')}/events`),
-			);
 
 			expect(response.status).toBe(500);
 			expect(await response.json()).toEqual({
@@ -414,8 +399,8 @@ describe('workflow run lifecycle', () => {
 				},
 			});
 			expect(runId).toMatch(/^workflow:daily-report:[^:]+$/);
-			expect(runResponse.status).toBe(200);
-			expect(await runResponse.json()).toEqual({
+			const runRecord = await runStore.getRun(runId!);
+			expect(runRecord).toEqual({
 				runId,
 				owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: runId },
 				status: 'errored',
@@ -426,19 +411,17 @@ describe('workflow run lifecycle', () => {
 				durationMs: expect.any(Number),
 				error: { name: 'Error', message: 'report generation failed' },
 			});
-			expect(eventsResponse.status).toBe(200);
-			expect(await eventsResponse.json()).toMatchObject({
-				events: [
-					{ type: 'run_start', runId, eventIndex: 0 },
-					{
-						type: 'run_end',
-						runId,
-						eventIndex: 1,
-						isError: true,
-						error: { name: 'Error', message: 'report generation failed' },
-					},
-				],
-			});
+			const events = await runStore.getEvents(runId!);
+			expect(events).toMatchObject([
+				{ type: 'run_start', runId, eventIndex: 0 },
+				{
+					type: 'run_end',
+					runId,
+					eventIndex: 1,
+					isError: true,
+					error: { name: 'Error', message: 'report generation failed' },
+				},
+			]);
 		} finally {
 			consoleError.mockRestore();
 		}

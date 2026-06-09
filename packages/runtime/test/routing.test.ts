@@ -31,19 +31,13 @@ describe('flue()', () => {
 			paths: Record<string, Record<string, unknown>>;
 		};
 		expect(body.info).toMatchObject({ title: 'Flue Public API', version: '9.9.9' });
-		expect(Object.keys(body.paths)).toHaveLength(5);
+		expect(Object.keys(body.paths)).toHaveLength(2);
 		expect(body.paths).toMatchObject({
 			'/workflows/{name}': { post: expect.any(Object) },
 			'/agents/{name}/{id}': { post: expect.any(Object) },
-			'/runs/{runId}': { get: expect.any(Object) },
-			'/runs/{runId}/events': { get: expect.any(Object) },
-			'/runs/{runId}/stream': { get: expect.any(Object) },
 		});
 		expect(Object.keys(body.paths['/workflows/{name}'] ?? {})).toEqual(['post']);
 		expect(Object.keys(body.paths['/agents/{name}/{id}'] ?? {})).toEqual(['post']);
-		expect(Object.keys(body.paths['/runs/{runId}'] ?? {})).toEqual(['get']);
-		expect(Object.keys(body.paths['/runs/{runId}/events'] ?? {})).toEqual(['get']);
-		expect(Object.keys(body.paths['/runs/{runId}/stream'] ?? {})).toEqual(['get']);
 	});
 
 	it('invokes an HTTP-exposed agent when the mounted app receives a valid agent POST', async () => {
@@ -89,12 +83,12 @@ describe('flue()', () => {
 		);
 
 		expect(response.status).toBe(405);
-		expect(response.headers.get('allow')).toBe('POST');
+		expect(response.headers.get('allow')).toBe('GET, HEAD, POST');
 		expect(await response.json()).toEqual({
 			error: {
 				type: 'method_not_allowed',
 				message: 'HTTP method DELETE is not allowed on this endpoint.',
-				details: 'This endpoint accepts "POST" only.',
+				details: 'This endpoint accepts "GET", "HEAD", "POST" only.',
 			},
 		});
 	});
