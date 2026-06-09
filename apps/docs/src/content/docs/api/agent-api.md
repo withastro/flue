@@ -81,9 +81,9 @@ Throws when the profile contains unknown fields, invalid capabilities, duplicate
 
 #### `DurabilityConfig`
 
-| Field     | Type     | Default | Description                                                                                                                                      |
-| --------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `retry`   | `number` | `10`    | Maximum recovery attempts before the submission is terminalized as failed. Each interruption that requires a new attempt counts toward this limit. |
+| Field     | Type     | Default | Description                                                                                                                                                                                                                                                                                  |
+| --------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `retry`   | `number` | `10`    | Maximum recovery attempts before the submission is terminalized as failed. Each interruption that requires a new attempt counts toward this limit.                                                                                                                                           |
 | `timeout` | `number` | `60`    | Maximum wall-clock minutes for a single submission. Submissions exceeding this limit are aborted and settled as failed. Set higher for long-running agents (e.g. `360` for a 6-hour agent). The timeout is checked cooperatively at turn boundaries, not preemptively during provider calls. |
 
 #### `CompactionConfig`

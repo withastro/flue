@@ -9,34 +9,28 @@
 		"pnpm": ">=11 <12"
 	},
 	"scripts": {
-		"dev": "turbo dev",
-		"build": "turbo build",
-		"test": "turbo test",
-		"test:integration": "pnpm --dir packages/runtime run test:integration:cloudflare",
-		"check": "turbo run build check:lint check:types test",
-		"check:lint": "biome lint . && knip",
+		"build": "pnpm --filter './packages/*' --filter './apps/*' --if-present run build",
+		"check": "pnpm run build && pnpm run check:lint && pnpm run check:types && pnpm run test",
 		"check:knip": "knip",
-		"check:types": "turbo run check:types --filter=!apps-www",
-		"format": "turbo run format:lint format:style",
-		"format:lint": "biome check . --write",
-		"format:style": "prettier . --cache --write --list-different"
+		"check:lint": "vp check --no-fmt && knip",
+		"check:types": "pnpm --filter './packages/*' --filter './apps/docs' --if-present run check:types",
+		"dev": "pnpm --filter './apps/*' --parallel --if-present run dev",
+		"format": "vp check --fix",
+		"format:lint": "vp check --fix --no-fmt",
+		"format:style": "vp fmt . --check",
+		"prepare": "vp config",
+		"test": "pnpm --dir packages/runtime run test && pnpm --dir packages/sdk run test && pnpm --dir packages/opentelemetry run test && pnpm --dir packages/postgres run test && pnpm --dir packages/cli run test",
+		"test:integration": "pnpm --filter @flue/runtime run build && pnpm --dir packages/runtime run test:integration:cloudflare"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "^2.2.0",
 		"@flue/runtime": "workspace:*",
 		"@types/node": "^22.10.10",
 		"bgproc": "^0.3.0",
 		"knip": "^6.14.2",
-		"prettier": "^3.4.2",
-		"turbo": "^2.3.3",
-		"typescript": "^6.0.3"
+		"typescript": "^6.0.3",
+		"vite-plus": "catalog:"
 	},
 	"dependencies": {
 		"just-bash": "^3.0.1"
-	},
-	"pnpm": {
-		"overrides": {
-			"typescript": "6.0.3"
-		}
 	}
 }

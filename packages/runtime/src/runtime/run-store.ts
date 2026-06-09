@@ -60,15 +60,3 @@ const EPHEMERAL_RUN_EVENT_TYPES: ReadonlySet<FlueEvent['type']> = new Set([
 export function isEphemeralRunEvent(event: FlueEvent): boolean {
 	return EPHEMERAL_RUN_EVENT_TYPES.has(event.type);
 }
-
-export function assertPersistedWorkflowEvent(runId: string, event: FlueEvent): number {
-	if (event.runId !== runId) {
-		throw new Error('[flue:run-store] persisted workflow event runId does not match its run.');
-	}
-	if (!Number.isSafeInteger(event.eventIndex) || (event.eventIndex ?? -1) < 0) {
-		throw new Error(
-			'[flue:run-store] persisted workflow event index must be a non-negative integer.',
-		);
-	}
-	return event.eventIndex as number;
-}

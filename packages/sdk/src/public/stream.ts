@@ -87,7 +87,9 @@ export function createFlueEventStream<T = FlueEvent>(
 	const connect = (): Promise<Awaited<ReturnType<typeof stream<T>>>> => {
 		if (responsePromise) return responsePromise;
 		if (abortController.signal.aborted) {
-			return Promise.reject(abortController.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+			return Promise.reject(
+				abortController.signal.reason ?? new DOMException('Aborted', 'AbortError'),
+			);
 		}
 		responsePromise = stream<T>({
 			url: connectionOpts.url,
@@ -162,7 +164,11 @@ export function createFlueEventStream<T = FlueEvent>(
 			// cancel() on an errored stream returns a rejected promise — swallow
 			// it so a consumer breaking out of the loop can't trigger an
 			// unhandled rejection.
-			try { void reader?.cancel().catch(() => {}); } catch { /* ignore */ }
+			try {
+				void reader?.cancel().catch(() => {});
+			} catch {
+				/* ignore */
+			}
 			cancel();
 			return { value: undefined as T, done: true };
 		},

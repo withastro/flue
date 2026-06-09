@@ -27,11 +27,9 @@
 		"node": ">=22.18.0"
 	},
 	"scripts": {
-		"prebuild": "tsx scripts/generate-connector-index.ts",
-		"build": "tsdown && mv dist/flue.mjs dist/flue.js",
-		"check:types": "tsc --noEmit",
-		"pretest": "pnpm run build",
-		"test": "node --test"
+		"build": "tsx scripts/generate-connector-index.ts && vp pack && mv dist/flue.mjs dist/flue.js",
+		"check:types": "pnpm --filter @flue/runtime run build && tsc --noEmit",
+		"test": "pnpm run build && node --test"
 	},
 	"dependencies": {
 		"@cloudflare/vite-plugin": "^1.39.2",
@@ -40,11 +38,11 @@
 		"@vercel/detect-agent": "^1.2.3",
 		"package-up": "^5.0.0",
 		"valibot": "^1.0.0",
-		"vite": "^8.0.14"
+		"vite": "catalog:"
 	},
 	"devDependencies": {
-		"tsdown": "^0.22.0",
 		"tsx": "^4.19.2",
-		"typescript": "^6.0.3"
+		"typescript": "^6.0.3",
+		"vite-plus": "catalog:"
 	}
 }

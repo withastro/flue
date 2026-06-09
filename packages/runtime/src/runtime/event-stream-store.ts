@@ -147,10 +147,7 @@ export class SqliteEventStreamStore implements EventStreamStore {
 	}
 
 	async createStream(path: string): Promise<void> {
-		this.sql.exec(
-			`INSERT OR IGNORE INTO flue_event_streams (path) VALUES (?)`,
-			path,
-		);
+		this.sql.exec(`INSERT OR IGNORE INTO flue_event_streams (path) VALUES (?)`, path);
 	}
 
 	async appendEvent(path: string, event: unknown): Promise<string> {
@@ -246,9 +243,7 @@ export class SqliteEventStreamStore implements EventStreamStore {
 		const lastSeq = events.length > 0 ? (page[page.length - 1]!.seq as number) : -1;
 		const upToDate = rows.length <= limit;
 
-		const nextOffset = events.length > 0
-			? formatOffset(lastSeq)
-			: formatOffset(startAfter);
+		const nextOffset = events.length > 0 ? formatOffset(lastSeq) : formatOffset(startAfter);
 
 		return {
 			events,
@@ -259,10 +254,7 @@ export class SqliteEventStreamStore implements EventStreamStore {
 	}
 
 	async closeStream(path: string): Promise<void> {
-		this.sql.exec(
-			`UPDATE flue_event_streams SET closed = 1 WHERE path = ?`,
-			path,
-		);
+		this.sql.exec(`UPDATE flue_event_streams SET closed = 1 WHERE path = ?`, path);
 		// Notify live subscribers so long-poll/SSE readers wake immediately
 		// on stream closure (DS protocol Section 5.7 MUST requirement).
 		this.notifyListeners(path);
@@ -270,10 +262,7 @@ export class SqliteEventStreamStore implements EventStreamStore {
 
 	async getStreamMeta(path: string): Promise<EventStreamMeta | null> {
 		const rows = this.sql
-			.exec(
-				`SELECT next_offset, closed FROM flue_event_streams WHERE path = ?`,
-				path,
-			)
+			.exec(`SELECT next_offset, closed FROM flue_event_streams WHERE path = ?`, path)
 			.toArray();
 
 		if (rows.length === 0) return null;

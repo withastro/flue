@@ -13,10 +13,13 @@ import { DatabaseSync } from 'node:sqlite';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vite-plus/test';
 import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
 import type { SqlStorage } from '../src/sql-storage.ts';
-import { createSqlAgentExecutionStoreFromSql, ensureSqlAgentExecutionTables } from '../src/sql-agent-execution-store.ts';
+import {
+	createSqlAgentExecutionStoreFromSql,
+	ensureSqlAgentExecutionTables,
+} from '../src/sql-agent-execution-store.ts';
 import { createNodeAgentExecutionStore, sqlite } from '../src/node/agent-execution-store.ts';
 import type { SessionData } from '../src/types.ts';
 import { defineStoreContractTests } from '../src/test-utils/define-store-contract-tests.ts';
@@ -108,7 +111,9 @@ describe('sqlite() PersistenceAdapter', () => {
 
 	afterEach(() => {
 		for (const dir of tempDirs.splice(0)) {
-			try { rmSync(dir, { recursive: true }); } catch {}
+			try {
+				rmSync(dir, { recursive: true });
+			} catch {}
 		}
 	});
 
@@ -150,7 +155,11 @@ describe('sqlite() PersistenceAdapter', () => {
 		const store1 = adapter.connect() as AgentExecutionStore;
 		await store1.sessions.save('s1', sessionData());
 		await store1.submissions.admitDispatch(dispatchInput());
-		await store1.submissions.claimSubmission({ ...attempt('dispatch-1', 'attempt-1'), ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
+		await store1.submissions.claimSubmission({
+			...attempt('dispatch-1', 'attempt-1'),
+			ownerId: 'test-owner',
+			leaseExpiresAt: Date.now() + 30_000,
+		});
 		await store1.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
 		adapter.close?.();
 

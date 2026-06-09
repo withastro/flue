@@ -38,8 +38,12 @@ export class NodePlugin implements BuildPlugin {
 		// default export and dispatches all requests through `app.fetch`. When
 		// no app.ts is present, the generated entry constructs a thin default
 		// Hono that mounts `flue()` and renders canonical error envelopes.
-		const userAppImport = appEntry ? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};` : '';
-		const userDbImport = dbEntry ? `import userPersistenceAdapter from ${JSON.stringify(dbEntry.replace(/\\/g, '/'))};` : '';
+		const userAppImport = appEntry
+			? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};`
+			: '';
+		const userDbImport = dbEntry
+			? `import userPersistenceAdapter from ${JSON.stringify(dbEntry.replace(/\\/g, '/'))};`
+			: '';
 
 		// All HTTP routing, workflow admission, agent dispatch, and error
 		// rendering live in @flue/runtime's runtime modules. The generated
@@ -110,8 +114,8 @@ async function createDefaultEnv() {
 }
 
 ${
-			dbEntry
-				? `// Custom persistence from db.ts.
+	dbEntry
+		? `// Custom persistence from db.ts.
 if (!userPersistenceAdapter || typeof userPersistenceAdapter.connect !== 'function') {
   throw new Error('[flue] db.ts must default-export a PersistenceAdapter with a connect() method.');
 }
@@ -137,14 +141,14 @@ try {
 } catch (error) {
   throw new Error('[flue] Failed to initialize persistence from db.ts: ' + (error instanceof Error ? error.message : error), { cause: error });
 }`
-				: `// Default persistence for Node — in-memory SQLite, process lifetime.
+		: `// Default persistence for Node — in-memory SQLite, process lifetime.
 const defaultAdapter = sqlite();
 if (defaultAdapter.migrate) defaultAdapter.migrate();
 const executionStore = defaultAdapter.connect();
 const runStore = defaultAdapter.connectRunStore();
 const runRegistry = defaultAdapter.connectRunRegistry();
 const eventStreamStore = defaultAdapter.connectEventStreamStore();`
-		}
+}
 const persistenceAdapter = ${dbEntry ? `userPersistenceAdapter` : `defaultAdapter`};
 const agentCoordinator = createNodeAgentCoordinator({
   submissions: executionStore.submissions,

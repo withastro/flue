@@ -68,23 +68,23 @@ Cloudflare Durable Objects also provide the ownership boundary for agent executi
 
 A Flue database stores runtime state, not your whole application.
 
-| Stored by Flue | Not stored by Flue |
-| --- | --- |
-| Agent session messages and compaction state | Sandbox files and installed dependencies |
-| Accepted direct prompts and `dispatch(...)` submissions | External API side effects |
-| Workflow-run records and persisted events | Application-owned business data unless your own tools store it |
-| Run indexing for `/runs` and admin listing | Provider credentials or secrets |
+| Stored by Flue                                          | Not stored by Flue                                             |
+| ------------------------------------------------------- | -------------------------------------------------------------- |
+| Agent session messages and compaction state             | Sandbox files and installed dependencies                       |
+| Accepted direct prompts and `dispatch(...)` submissions | External API side effects                                      |
+| Workflow-run records and persisted events               | Application-owned business data unless your own tools store it |
+| Run indexing for `/runs` and admin listing              | Provider credentials or secrets                                |
 
 A persisted session does not make a sandbox durable. A durable workspace does not preserve conversation history by itself. Keep customer records, payments, tickets, and other business data in your own application database or external system.
 
 ## Choosing an adapter
 
-| Use case | Recommended adapter |
-| --- | --- |
-| Local development | `sqlite()` with a file path, or no `db.ts` when restart persistence is unnecessary |
-| Single-host Node deployment | File-backed `sqlite()` |
-| Multi-replica Node deployment | `@flue/postgres` |
-| Cloudflare deployment | Built-in Durable Object SQLite |
-| Another database backend | Custom `PersistenceAdapter` |
+| Use case                      | Recommended adapter                                                                |
+| ----------------------------- | ---------------------------------------------------------------------------------- |
+| Local development             | `sqlite()` with a file path, or no `db.ts` when restart persistence is unnecessary |
+| Single-host Node deployment   | File-backed `sqlite()`                                                             |
+| Multi-replica Node deployment | `@flue/postgres`                                                                   |
+| Cloudflare deployment         | Built-in Durable Object SQLite                                                     |
+| Another database backend      | Custom `PersistenceAdapter`                                                        |
 
 A custom adapter can implement another database or hosting strategy through `@flue/runtime/adapter`. Use this when the built-in SQLite and Postgres adapters do not fit your deployment.

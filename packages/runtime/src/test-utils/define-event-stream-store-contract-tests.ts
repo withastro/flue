@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vite-plus/test';
 import type { EventStreamStore } from '../runtime/event-stream-store.ts';
 
 export interface EventStreamStoreContractBackend {
@@ -83,7 +83,10 @@ export function defineEventStreamStoreContractTests(
 				nextOffset: '0000000000000000_0000000000000001',
 				upToDate: false,
 			});
-			const secondPage = await store.readEvents('runs/test', { offset: firstPage.nextOffset, limit: 2 });
+			const secondPage = await store.readEvents('runs/test', {
+				offset: firstPage.nextOffset,
+				limit: 2,
+			});
 			expect(secondPage).toMatchObject({
 				events: [{ data: { index: 2 } }],
 				nextOffset: '0000000000000000_0000000000000002',

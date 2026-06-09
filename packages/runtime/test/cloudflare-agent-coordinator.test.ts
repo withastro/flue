@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import type { FlueContextInternal } from '../src/client.ts';
 import { createCloudflareAgentRuntime } from '../src/cloudflare/agent-coordinator.ts';
 import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
@@ -23,7 +23,9 @@ function queryExpectsRows(query: string): boolean {
 
 function makeFakeSql(events: string[] = []) {
 	const db = new DatabaseSync(':memory:');
-	db.exec('CREATE TABLE cf_agents_runs (name TEXT NOT NULL, snapshot TEXT, created_at INTEGER NOT NULL)');
+	db.exec(
+		'CREATE TABLE cf_agents_runs (name TEXT NOT NULL, snapshot TEXT, created_at INTEGER NOT NULL)',
+	);
 	return {
 		db,
 		storage: {
@@ -62,16 +64,22 @@ function makeFakeSql(events: string[] = []) {
 	};
 }
 
-function makeRuntime(options: {
-	createdAgent?: Parameters<typeof createCloudflareAgentRuntime>[0]['createdAgents'][string];
-	createContext?: Parameters<typeof createCloudflareAgentRuntime>[0]['createContext'];
-	createEventStreamStore?: Parameters<typeof createCloudflareAgentRuntime>[0]['createEventStreamStore'];
-} = {}) {
+function makeRuntime(
+	options: {
+		createdAgent?: Parameters<typeof createCloudflareAgentRuntime>[0]['createdAgents'][string];
+		createContext?: Parameters<typeof createCloudflareAgentRuntime>[0]['createContext'];
+		createEventStreamStore?: Parameters<
+			typeof createCloudflareAgentRuntime
+		>[0]['createEventStreamStore'];
+	} = {},
+) {
 	return createCloudflareAgentRuntime({
 		createdAgents: options.createdAgent ? { assistant: options.createdAgent } : {},
-		createContext: options.createContext ?? (() => {
-			throw new Error('Unexpected context creation.');
-		}),
+		createContext:
+			options.createContext ??
+			(() => {
+				throw new Error('Unexpected context creation.');
+			}),
 		runWithInstanceContext(_instance, _agentName, callback) {
 			return callback();
 		},
@@ -79,10 +87,7 @@ function makeRuntime(options: {
 	});
 }
 
-function makeInstance(
-	storage: ReturnType<typeof makeFakeSql>['storage'],
-	events: string[] = [],
-) {
+function makeInstance(storage: ReturnType<typeof makeFakeSql>['storage'], events: string[] = []) {
 	return {
 		name: 'agent-1',
 		env: {},
@@ -91,10 +96,18 @@ function makeInstance(
 			storage,
 		},
 		async __unsafe_ensureInitialized() {},
-		async schedule(_delaySeconds: number, _callback: string, _payload: undefined, options: { idempotent: boolean }) {
+		async schedule(
+			_delaySeconds: number,
+			_callback: string,
+			_payload: undefined,
+			options: { idempotent: boolean },
+		) {
 			events.push(options.idempotent ? 'schedule-idempotent' : 'schedule-successor');
 		},
-		async runFiber(_name: string, _callback: (ctx: { stash(snapshot: unknown): void }) => Promise<void>) {},
+		async runFiber(
+			_name: string,
+			_callback: (ctx: { stash(snapshot: unknown): void }) => Promise<void>,
+		) {},
 	};
 }
 
@@ -127,7 +140,9 @@ function makeRecoveryContext(options: {
 	return { ctx, terminalRecords };
 }
 
-function directInput(overrides: Partial<DirectAgentSubmissionInput> = {}): DirectAgentSubmissionInput {
+function directInput(
+	overrides: Partial<DirectAgentSubmissionInput> = {},
+): DirectAgentSubmissionInput {
 	return {
 		kind: 'direct',
 		submissionId: 'direct-1',
@@ -191,7 +206,9 @@ describe('createCloudflareAgentRuntime()', () => {
 
 		expect(() =>
 			runtime.prepare({ storage: {}, className: 'FlueAssistantAgent', agentName: 'assistant' }),
-		).toThrow('Cloudflare durable agent class "FlueAssistantAgent" requires Durable Object SQLite.');
+		).toThrow(
+			'Cloudflare durable agent class "FlueAssistantAgent" requires Durable Object SQLite.',
+		);
 	});
 
 	it('restores a pending wake before inherited startup when unsettled work exists', async () => {
@@ -229,11 +246,19 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage, events);
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDirect(directInput());
-		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1', ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
+		await executionStore.submissions.claimSubmission({
+			submissionId: 'direct-1',
+			attemptId: 'attempt-1',
+			ownerId: 'test-owner',
+			leaseExpiresAt: Date.now() + 30_000,
+		});
 
 		await runtime.onFiberRecovered(
 			instance,
-			{ name: 'flue:submission-attempt', snapshot: { submissionId: 'direct-1', attemptId: 'attempt-1' } },
+			{
+				name: 'flue:submission-attempt',
+				snapshot: { submissionId: 'direct-1', attemptId: 'attempt-1' },
+			},
 			() => {},
 		);
 
@@ -254,7 +279,9 @@ describe('createCloudflareAgentRuntime()', () => {
 
 		await runtime.onStart(instance, () => {});
 
-		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({ status: 'running' });
+		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
+			status: 'running',
+		});
 	});
 
 	it('skips malformed raw Fiber markers and continues reconciliation', async () => {
@@ -272,7 +299,9 @@ describe('createCloudflareAgentRuntime()', () => {
 		await runtime.onStart(instance, () => {});
 
 		// Malformed marker is skipped; the queued submission is claimed and processed.
-		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({ status: 'running' });
+		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
+			status: 'running',
+		});
 	});
 
 	it('requeues interrupted attempts when canonical input is absent', async () => {
@@ -286,12 +315,19 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDirect(directInput());
-		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1', ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
+		await executionStore.submissions.claimSubmission({
+			submissionId: 'direct-1',
+			attemptId: 'attempt-1',
+			ownerId: 'test-owner',
+			leaseExpiresAt: Date.now() + 30_000,
+		});
 
 		await runtime.onStart(instance, () => {});
 
 		expect(events).toContain('requeue');
-		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({ status: 'running' });
+		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
+			status: 'running',
+		});
 	});
 
 	it('records interruption before settling applied incomplete canonical input as error', async () => {
@@ -309,14 +345,24 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDirect(directInput());
-		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1', ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
-		await executionStore.submissions.markSubmissionInputApplied({ submissionId: 'direct-1', attemptId: 'attempt-1' });
+		await executionStore.submissions.claimSubmission({
+			submissionId: 'direct-1',
+			attemptId: 'attempt-1',
+			ownerId: 'test-owner',
+			leaseExpiresAt: Date.now() + 30_000,
+		});
+		await executionStore.submissions.markSubmissionInputApplied({
+			submissionId: 'direct-1',
+			attemptId: 'attempt-1',
+		});
 
 		await runtime.onStart(instance, () => {});
 
 		expect(events).toEqual(['record-terminal', 'settle']);
 		expect(payloads).toEqual([directInput(), directInput().payload]);
-		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({ status: 'settled' });
+		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
+			status: 'settled',
+		});
 	});
 
 	it('settles interrupted attempts when canonical completion is already persisted', async () => {
@@ -329,12 +375,22 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDirect(directInput());
-		await executionStore.submissions.claimSubmission({ submissionId: 'direct-1', attemptId: 'attempt-1', ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
-		await executionStore.submissions.markSubmissionInputApplied({ submissionId: 'direct-1', attemptId: 'attempt-1' });
+		await executionStore.submissions.claimSubmission({
+			submissionId: 'direct-1',
+			attemptId: 'attempt-1',
+			ownerId: 'test-owner',
+			leaseExpiresAt: Date.now() + 30_000,
+		});
+		await executionStore.submissions.markSubmissionInputApplied({
+			submissionId: 'direct-1',
+			attemptId: 'attempt-1',
+		});
 
 		await runtime.onStart(instance, () => {});
 
-		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({ status: 'settled' });
+		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
+			status: 'settled',
+		});
 	});
 
 	it('claims queued submissions when another attempt fails to start synchronously', async () => {
@@ -354,7 +410,9 @@ describe('createCloudflareAgentRuntime()', () => {
 		await runtime.onStart(instance, () => {});
 
 		expect(startCalls).toBe(1);
-		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({ status: 'running' });
+		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
+			status: 'running',
+		});
 		expect(consoleError).toHaveBeenCalledWith(
 			'[flue:submission-reconciliation]',
 			expect.objectContaining({
@@ -395,7 +453,9 @@ describe('createCloudflareAgentRuntime()', () => {
 			status: 'running',
 			attemptId: expect.any(String),
 		});
-		expect((await executionStore.submissions.getSubmission('direct-1'))?.attemptId).not.toBe(failedAttempt);
+		expect((await executionStore.submissions.getSubmission('direct-1'))?.attemptId).not.toBe(
+			failedAttempt,
+		);
 	});
 
 	it('uses the public dispatch input as processing context payload without internal envelope fields', async () => {
@@ -455,12 +515,22 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDispatch(dispatchInput());
-		await executionStore.submissions.claimSubmission({ submissionId: 'dispatch-1', attemptId: 'attempt-1', ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
-		await executionStore.submissions.markSubmissionInputApplied({ submissionId: 'dispatch-1', attemptId: 'attempt-1' });
+		await executionStore.submissions.claimSubmission({
+			submissionId: 'dispatch-1',
+			attemptId: 'attempt-1',
+			ownerId: 'test-owner',
+			leaseExpiresAt: Date.now() + 30_000,
+		});
+		await executionStore.submissions.markSubmissionInputApplied({
+			submissionId: 'dispatch-1',
+			attemptId: 'attempt-1',
+		});
 
 		await runtime.onStart(instance, () => {});
 
 		expect(payloads).toEqual([dispatchInput()]);
-		expect(await executionStore.submissions.getSubmission('dispatch-1')).toMatchObject({ status: 'settled' });
+		expect(await executionStore.submissions.getSubmission('dispatch-1')).toMatchObject({
+			status: 'settled',
+		});
 	});
 });

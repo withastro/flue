@@ -69,7 +69,12 @@ import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import { generateOperationId, generateTurnId } from './runtime/ids.ts';
 import { getProviderConfiguration, getRegisteredApiKey } from './runtime/providers.ts';
 import { createFlueFs } from './sandbox.ts';
-import { SessionHistory, createUserContextMessage, renderSignalMessage, type MessageSource } from './session-history.ts';
+import {
+	SessionHistory,
+	createUserContextMessage,
+	renderSignalMessage,
+	type MessageSource,
+} from './session-history.ts';
 import { childTaskSessionStorageKey } from './session-identity.ts';
 import type {
 	AgentConfig,
@@ -538,7 +543,9 @@ export class Session implements FlueSession {
 				}
 				case 'message_end':
 					if (event.message.role === 'assistant') {
-						const toolCalls = event.message.content.filter((content) => content.type === 'toolCall');
+						const toolCalls = event.message.content.filter(
+							(content) => content.type === 'toolCall',
+						);
 						if (toolCalls.length > 0) {
 							await this.checkpointHarnessMessages();
 							await this.activeJournalCallbacks?.toolRequestRecorded?.({
@@ -711,9 +718,11 @@ export class Session implements FlueSession {
 		if (!inputEntry) return undefined;
 		const following = this.history.getActivePathSince(inputEntry.id);
 		const assistant = following.findLast(
-			(entry): entry is MessageEntry => entry.type === 'message' && entry.message.role === 'assistant',
+			(entry): entry is MessageEntry =>
+				entry.type === 'message' && entry.message.role === 'assistant',
 		);
-		if (!assistant || (assistant.message as AssistantMessage).stopReason !== 'toolUse') return undefined;
+		if (!assistant || (assistant.message as AssistantMessage).stopReason !== 'toolUse')
+			return undefined;
 
 		const settledByCallId = new Map<string, ToolResultMessage>();
 		for (const entry of following) {
@@ -764,15 +773,20 @@ export class Session implements FlueSession {
 		const segments = await this.submissionStore.getStreamChunkSegments(streamKey);
 		const recovered = reconstructInterruptedStream(segments, streamKey);
 		if (!recovered) return false;
-		const alreadyRecovered = this.history.getActivePath().some(
-			(entry) =>
-				entry.type === 'message' &&
-				entry.message.role === 'signal' &&
-				entry.message.type === 'stream_continued' &&
-				entry.message.attributes?.streamKey === streamKey,
-		);
+		const alreadyRecovered = this.history
+			.getActivePath()
+			.some(
+				(entry) =>
+					entry.type === 'message' &&
+					entry.message.role === 'signal' &&
+					entry.message.type === 'stream_continued' &&
+					entry.message.attributes?.streamKey === streamKey,
+			);
 		if (alreadyRecovered) return true;
-		this.history.appendMessages([recovered.partial, recovered.interrupted, recovered.continued], 'retry');
+		this.history.appendMessages(
+			[recovered.partial, recovered.interrupted, recovered.continued],
+			'retry',
+		);
 		this.rebuildHarnessContext();
 		await this.save();
 		return true;
@@ -1628,7 +1642,9 @@ export class Session implements FlueSession {
 					checkpointLeafId: leafId,
 				});
 				if (this.activeStreamChunkWriter) {
-					await this.submissionStore?.deleteStreamChunkSegments(this.activeStreamChunkWriter.streamKey);
+					await this.submissionStore?.deleteStreamChunkSegments(
+						this.activeStreamChunkWriter.streamKey,
+					);
 				}
 			} else {
 				await this.activeJournalCallbacks?.committed?.({
@@ -1638,7 +1654,9 @@ export class Session implements FlueSession {
 					committedLeafId: leafId,
 				});
 				if (this.activeStreamChunkWriter) {
-					await this.submissionStore?.deleteStreamChunkSegments(this.activeStreamChunkWriter.streamKey);
+					await this.submissionStore?.deleteStreamChunkSegments(
+						this.activeStreamChunkWriter.streamKey,
+					);
 				}
 			}
 			this.activeTurnCanCommitJournal = false;
@@ -2005,7 +2023,8 @@ export class Session implements FlueSession {
 			return 'uncertain';
 		}
 		const assistant = following.findLast(
-			(entry): entry is MessageEntry => entry.type === 'message' && entry.message.role === 'assistant',
+			(entry): entry is MessageEntry =>
+				entry.type === 'message' && entry.message.role === 'assistant',
 		)?.message as AssistantMessage | undefined;
 		if (assistant && isCompletedAssistantResponse(assistant)) return 'completed';
 		if (
@@ -2036,11 +2055,9 @@ export class Session implements FlueSession {
 		return this.runPersistedContextInput({
 			findInput: () => this.history.findDispatchInput(input.dispatchId),
 			persistInput: () =>
-				this.history.appendMessage(
-					createDispatchInputSignal(input),
-					'dispatch',
-					{ dispatch: dispatchMetadata(input) },
-				),
+				this.history.appendMessage(createDispatchInputSignal(input), 'dispatch', {
+					dispatch: dispatchMetadata(input),
+				}),
 			errorLabel: `dispatch(${input.dispatchId})`,
 			outputSource: 'dispatch',
 			callSite: 'this dispatched input',
@@ -2082,7 +2099,10 @@ export class Session implements FlueSession {
 		});
 	}
 
-	private resolveSubmissionDurability(startedAt?: number, timeoutAt?: number): SubmissionDurability {
+	private resolveSubmissionDurability(
+		startedAt?: number,
+		timeoutAt?: number,
+	): SubmissionDurability {
 		return {
 			maxRetry: this.config.durability?.retry ?? DURABILITY_DEFAULT_MAX_RETRY,
 			timeoutAt:
@@ -2131,7 +2151,9 @@ export class Session implements FlueSession {
 					if (!inputEntry) throw new Error(options.persistenceError);
 					await options.onInputApplied?.(durability);
 					const following = this.history.getActivePathSince(inputEntry.id);
-					if (following.some((entry) => entry.type === 'message' && entry.message.role === 'user')) {
+					if (
+						following.some((entry) => entry.type === 'message' && entry.message.role === 'user')
+					) {
 						throw new Error(options.recoveryError);
 					}
 					const persistedAssistants = following.filter(
@@ -2141,7 +2163,9 @@ export class Session implements FlueSession {
 					const persistedAssistant = persistedAssistants.at(-1);
 					const assistant = persistedAssistant?.message as AssistantMessage | undefined;
 					const model = this.harness.state.model;
-					const overflow = assistant ? isContextOverflow(assistant, model.contextWindow ?? 0) : false;
+					const overflow = assistant
+						? isContextOverflow(assistant, model.contextWindow ?? 0)
+						: false;
 					const streamContinuation =
 						assistant?.stopReason === 'aborted' &&
 						following.some(
@@ -2156,17 +2180,19 @@ export class Session implements FlueSession {
 						isRetryableModelError(assistant) ||
 						streamContinuation ||
 						(assistant.stopReason === 'toolUse' &&
-							following.some((entry) => entry.type === 'message' && entry.message.role === 'toolResult'))
+							following.some(
+								(entry) => entry.type === 'message' && entry.message.role === 'toolResult',
+							))
 					) {
-				const transientRetries = countConsecutiveRetryableModelErrors(following);
-					// Check timeout before entering the preamble (compaction, transient
-					// retry backoff) which can add significant time. The main timeout
-					// check lives in runModelTurnWithRecovery, but these preamble paths
-					// run before that loop is entered.
-					if (this.activeTimeoutAt !== undefined && Date.now() >= this.activeTimeoutAt) {
-						throw new Error('[flue] Submission exceeded configured timeout.');
-					}
-					if (assistant && overflow) {
+						const transientRetries = countConsecutiveRetryableModelErrors(following);
+						// Check timeout before entering the preamble (compaction, transient
+						// retry backoff) which can add significant time. The main timeout
+						// check lives in runModelTurnWithRecovery, but these preamble paths
+						// run before that loop is entered.
+						if (this.activeTimeoutAt !== undefined && Date.now() >= this.activeTimeoutAt) {
+							throw new Error('[flue] Submission exceeded configured timeout.');
+						}
+						if (assistant && overflow) {
 							this.rebuildHarnessContext();
 							this.internalLog(
 								'info',

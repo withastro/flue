@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
 import { InMemoryRunRegistry } from '../src/node/run-registry.ts';
 import { InMemoryRunStore } from '../src/node/run-store.ts';
@@ -99,7 +99,7 @@ describe('admin()', () => {
 			target: 'node',
 			manifest: {
 				agents: [
-				{ name: 'support', transports: { http: true }, created: true },
+					{ name: 'support', transports: { http: true }, created: true },
 					{ name: 'offline', transports: {}, created: false },
 				],
 			},
@@ -275,7 +275,10 @@ describe('admin()', () => {
 		);
 
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ runId: 'workflow:daily-report:01', status: 'completed' });
+		expect(await response.json()).toEqual({
+			runId: 'workflow:daily-report:01',
+			status: 'completed',
+		});
 		expect(routeRunRequest).toHaveBeenCalledOnce();
 	});
 

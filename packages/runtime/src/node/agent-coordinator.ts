@@ -1,6 +1,11 @@
 import type { AgentSubmission, AgentSubmissionStore } from '../agent-execution-store.ts';
 import { LEASE_DURATION_MS } from '../agent-execution-store.ts';
-import type { AttachedAgentEvent, CreatedAgent, DirectAgentPayload, DispatchReceipt } from '../types.ts';
+import type {
+	AttachedAgentEvent,
+	CreatedAgent,
+	DirectAgentPayload,
+	DispatchReceipt,
+} from '../types.ts';
 import {
 	type AgentSubmissionInput,
 	type AttachedAgentSubmissionAdmission,
@@ -136,7 +141,14 @@ export function createNodeAgentCoordinator(options: {
 
 	function makeSubmissionContext(input: AgentSubmissionInput) {
 		return (payload: unknown, dispatchId: string | undefined) => {
-			const ctx = createContext(input.id, undefined, payload, submissionSyntheticRequest(input), undefined, dispatchId);
+			const ctx = createContext(
+				input.id,
+				undefined,
+				payload,
+				submissionSyntheticRequest(input),
+				undefined,
+				dispatchId,
+			);
 			// Subscribe to events for durable agent event persistence.
 			// createStream is called before processSubmission (see spawnSubmissionTask).
 			const streamPath = agentStreamPath(input.agent, input.id);
@@ -176,7 +188,8 @@ export function createNodeAgentCoordinator(options: {
 				createContext: makeSubmissionContext(claimed.input),
 				observers,
 				signal: controller.signal,
-				isShutdownAbort: (error) => stopping && error instanceof DOMException && error.name === 'AbortError',
+				isShutdownAbort: (error) =>
+					stopping && error instanceof DOMException && error.name === 'AbortError',
 			});
 		})()
 			.catch((error) => {
@@ -348,14 +361,11 @@ export function createNodeAgentCoordinator(options: {
 			const agentName = submission.input.agent;
 			const agent = agents[agentName];
 			if (!agent) {
-				console.error(
-					'[flue:submission-reconciliation]',
-					{
-						submissionId: submission.submissionId,
-						operation: 'reconcile_submission',
-						outcome: 'agent_unavailable',
-					},
-				);
+				console.error('[flue:submission-reconciliation]', {
+					submissionId: submission.submissionId,
+					operation: 'reconcile_submission',
+					outcome: 'agent_unavailable',
+				});
 				continue;
 			}
 			try {
@@ -428,7 +438,11 @@ export function createNodeAgentCoordinator(options: {
 					throw new Error(`[flue] direct prompt target agent "${agentName}" has no created agent.`);
 				}
 
-				const input = createDirectAgentSubmissionInput({ agent: agentName, id: instanceId, payload });
+				const input = createDirectAgentSubmissionInput({
+					agent: agentName,
+					id: instanceId,
+					payload,
+				});
 
 				const attachment = observers.attach(input.submissionId, { onEvent });
 				try {

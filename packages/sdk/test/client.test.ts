@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import {
 	type AgentPromptOptions,
 	createFlueClient,
@@ -110,7 +110,9 @@ describe('createFlueClient', () => {
 				baseUrl: 'https://flue.test',
 				fetch: async (_input, init) =>
 					await new Promise<Response>((_resolve, reject) => {
-						init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+						init?.signal?.addEventListener('abort', () =>
+							reject(new DOMException('Aborted', 'AbortError')),
+						);
 					}),
 			});
 
@@ -172,7 +174,10 @@ describe('createFlueClient', () => {
 				baseUrl: 'https://flue.test',
 				fetch: async (input) => {
 					urls.push(typeof input === 'string' ? input : new Request(input).url);
-					return dsJsonResponse([{ type: 'run_end', runId: 'run-1', isError: false, durationMs: 100 }], { closed: true });
+					return dsJsonResponse(
+						[{ type: 'run_end', runId: 'run-1', isError: false, durationMs: 100 }],
+						{ closed: true },
+					);
 				},
 			});
 
@@ -233,8 +238,7 @@ describe('createFlueClient', () => {
 		it('works without a payload', async () => {
 			const client = createFlueClient({
 				baseUrl: 'https://flue.test',
-				fetch: async () =>
-					Response.json({ status: 'accepted', runId: 'wf_xyz' }, { status: 202 }),
+				fetch: async () => Response.json({ status: 'accepted', runId: 'wf_xyz' }, { status: 202 }),
 			});
 
 			const result = await client.workflows.invoke('simple-workflow');

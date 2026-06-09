@@ -103,7 +103,10 @@ export function postgres(urlOrOptions?: string | PostgresOptions): PersistenceAd
 
 	function getRunner(): PgRunner {
 		if (!runner) {
-			const opts = typeof urlOrOptions === 'string' ? { connectionString: urlOrOptions } : (urlOrOptions ?? {});
+			const opts =
+				typeof urlOrOptions === 'string'
+					? { connectionString: urlOrOptions }
+					: (urlOrOptions ?? {});
 			runner = createPgDriverRunner(opts);
 		}
 		return runner;
@@ -370,7 +373,9 @@ class PgSessionStore implements SessionStore {
 	}
 
 	async load(id: string): Promise<SessionData | null> {
-		const rows = await this.runner.query('SELECT data FROM flue_sessions WHERE id = $1 LIMIT 1', [id]);
+		const rows = await this.runner.query('SELECT data FROM flue_sessions WHERE id = $1 LIMIT 1', [
+			id,
+		]);
 		const row = rows[0];
 		if (!row) return null;
 		if (typeof row.data !== 'string') throw new Error('[flue] Persisted session row is malformed.');
@@ -385,14 +390,30 @@ class PgSessionStore implements SessionStore {
 // ─── Submission store ───────────────────────────────────────────────────────
 
 const submissionColumns = [
-	'sequence', 'submission_id', 'session_key', 'kind', 'payload', 'status',
-	'accepted_at', 'attempt_id', 'input_applied_at', 'recovery_requested_at',
-	'started_at', 'error', 'attempt_count', 'max_retry', 'timeout_at',
-	'owner_id', 'lease_expires_at',
+	'sequence',
+	'submission_id',
+	'session_key',
+	'kind',
+	'payload',
+	'status',
+	'accepted_at',
+	'attempt_id',
+	'input_applied_at',
+	'recovery_requested_at',
+	'started_at',
+	'error',
+	'attempt_count',
+	'max_retry',
+	'timeout_at',
+	'owner_id',
+	'lease_expires_at',
 ].join(', ');
 
 function prefixed(table: string): string {
-	return submissionColumns.split(', ').map((c) => `${table}.${c}`).join(', ');
+	return submissionColumns
+		.split(', ')
+		.map((c) => `${table}.${c}`)
+		.join(', ');
 }
 
 class PgSubmissionStore implements AgentSubmissionStore {
@@ -461,7 +482,8 @@ class PgSubmissionStore implements AgentSubmissionStore {
 
 	async beginTurnJournal(input: CreateTurnJournalInput): Promise<boolean> {
 		const now = Date.now();
-		const toolRequestJson = input.toolRequest === undefined ? null : JSON.stringify(input.toolRequest);
+		const toolRequestJson =
+			input.toolRequest === undefined ? null : JSON.stringify(input.toolRequest);
 		const rows = await this.runner.query(
 			`INSERT INTO flue_agent_turn_journals
 			 (submission_id, session_key, kind, attempt_id, operation_id, turn_id,
@@ -483,9 +505,17 @@ class PgSubmissionStore implements AgentSubmissionStore {
 			   committed_leaf_id = NULL
 			 RETURNING submission_id`,
 			[
-				input.submissionId, input.sessionKey, input.kind, input.attemptId,
-				input.operationId, input.turnId, input.phase, now, now,
-				input.checkpointLeafId ?? null, toolRequestJson,
+				input.submissionId,
+				input.sessionKey,
+				input.kind,
+				input.attemptId,
+				input.operationId,
+				input.turnId,
+				input.phase,
+				now,
+				now,
+				input.checkpointLeafId ?? null,
+				toolRequestJson,
 			],
 		);
 		return rows.length > 0;
@@ -506,17 +536,22 @@ class PgSubmissionStore implements AgentSubmissionStore {
 			 WHERE submission_id = $6 AND attempt_id = $7 AND committed = 0
 			 RETURNING submission_id`,
 			[
-				phase, now,
+				phase,
+				now,
 				options.checkpointLeafId ?? null,
 				options.toolRequest === undefined ? null : JSON.stringify(options.toolRequest),
 				options.streamKey ?? null,
-				attempt.submissionId, attempt.attemptId,
+				attempt.submissionId,
+				attempt.attemptId,
 			],
 		);
 		return rows.length > 0;
 	}
 
-	async commitTurnJournal(attempt: SubmissionAttemptRef, committedLeafId: string): Promise<boolean> {
+	async commitTurnJournal(
+		attempt: SubmissionAttemptRef,
+		committedLeafId: string,
+	): Promise<boolean> {
 		const now = Date.now();
 		const rows = await this.runner.query(
 			`UPDATE flue_agent_turn_journals
@@ -542,7 +577,11 @@ class PgSubmissionStore implements AgentSubmissionStore {
 		return rows.length > 0;
 	}
 
-	async appendStreamChunkSegment(streamKey: string, segmentIndex: number, body: string): Promise<boolean> {
+	async appendStreamChunkSegment(
+		streamKey: string,
+		segmentIndex: number,
+		body: string,
+	): Promise<boolean> {
 		const rows = await this.runner.query(
 			`INSERT INTO flue_agent_stream_chunks (stream_key, segment_index, body, created_at)
 			 VALUES ($1, $2, $3, $4)
@@ -553,7 +592,9 @@ class PgSubmissionStore implements AgentSubmissionStore {
 		return rows.length > 0;
 	}
 
-	async getStreamChunkSegments(streamKey: string): Promise<Array<{ segmentIndex: number; body: string }>> {
+	async getStreamChunkSegments(
+		streamKey: string,
+	): Promise<Array<{ segmentIndex: number; body: string }>> {
 		const rows = await this.runner.query(
 			`SELECT segment_index, body
 			 FROM flue_agent_stream_chunks
@@ -565,7 +606,9 @@ class PgSubmissionStore implements AgentSubmissionStore {
 	}
 
 	async deleteStreamChunkSegments(streamKey: string): Promise<void> {
-		await this.runner.query('DELETE FROM flue_agent_stream_chunks WHERE stream_key = $1', [streamKey]);
+		await this.runner.query('DELETE FROM flue_agent_stream_chunks WHERE stream_key = $1', [
+			streamKey,
+		]);
 	}
 
 	async replaceTurnJournalAttempt(
@@ -577,20 +620,27 @@ class PgSubmissionStore implements AgentSubmissionStore {
 			const now = Date.now();
 			const subRows = lease
 				? await tx.query(
-					`UPDATE flue_agent_submissions
+						`UPDATE flue_agent_submissions
 					 SET attempt_id = $1, recovery_requested_at = NULL, started_at = $2, attempt_count = attempt_count + 1,
 					     owner_id = $5, lease_expires_at = $6
 					 WHERE submission_id = $3 AND status = 'running' AND attempt_id = $4
 					 RETURNING ${submissionColumns}`,
-					[nextAttemptId, now, attempt.submissionId, attempt.attemptId, lease.ownerId, lease.leaseExpiresAt],
-				)
+						[
+							nextAttemptId,
+							now,
+							attempt.submissionId,
+							attempt.attemptId,
+							lease.ownerId,
+							lease.leaseExpiresAt,
+						],
+					)
 				: await tx.query(
-					`UPDATE flue_agent_submissions
+						`UPDATE flue_agent_submissions
 					 SET attempt_id = $1, recovery_requested_at = NULL, started_at = $2, attempt_count = attempt_count + 1
 					 WHERE submission_id = $3 AND status = 'running' AND attempt_id = $4
 					 RETURNING ${submissionColumns}`,
-					[nextAttemptId, now, attempt.submissionId, attempt.attemptId],
-				);
+						[nextAttemptId, now, attempt.submissionId, attempt.attemptId],
+					);
 			if (!subRows[0]) return null;
 			await tx.query(
 				`UPDATE flue_agent_turn_journals
@@ -646,7 +696,15 @@ class PgSubmissionStore implements AgentSubmissionStore {
 			 WHERE flue_agent_submissions.sequence = candidate.sequence
 			   AND flue_agent_submissions.status = 'queued'
 			 RETURNING ${prefixed('flue_agent_submissions')}`,
-			[claim.attemptId, now, DURABILITY_DEFAULT_MAX_RETRY, timeoutAt, claim.ownerId, claim.leaseExpiresAt, claim.submissionId],
+			[
+				claim.attemptId,
+				now,
+				DURABILITY_DEFAULT_MAX_RETRY,
+				timeoutAt,
+				claim.ownerId,
+				claim.leaseExpiresAt,
+				claim.submissionId,
+			],
 		);
 		return rows[0] ? parseSubmission(rows[0]) : null;
 	}
@@ -717,7 +775,8 @@ class PgSubmissionStore implements AgentSubmissionStore {
 			[
 				Date.now(),
 				error instanceof Error ? error.message : String(error),
-				attempt.submissionId, attempt.attemptId,
+				attempt.submissionId,
+				attempt.attemptId,
 			],
 		);
 		return rows.length > 0;
@@ -816,7 +875,8 @@ class PgSubmissionStore implements AgentSubmissionStore {
 				[submissionId],
 			);
 			const row = readRows[0];
-			if (!row) throw new Error(`[flue] Durable ${kind} admission did not create a submission row.`);
+			if (!row)
+				throw new Error(`[flue] Durable ${kind} admission did not create a submission row.`);
 			if (row.kind !== kind || row.payload !== payload) return { kind: 'conflict' as const };
 			return { kind: 'submission' as const, submission: parseSubmission(row) };
 		});
@@ -859,7 +919,9 @@ class PgSubmissionStore implements AgentSubmissionStore {
 			// Remove the deletion marker so the session returns to a usable
 			// state. A persistent deleteSessionTree failure must not leave the
 			// marker indefinitely blocking future admissions.
-			await this.runner.query('DELETE FROM flue_agent_session_deletions WHERE session_key = $1', [sessionKey]);
+			await this.runner.query('DELETE FROM flue_agent_session_deletions WHERE session_key = $1', [
+				sessionKey,
+			]);
 			throw error;
 		}
 
@@ -901,7 +963,9 @@ class PgSubmissionStore implements AgentSubmissionStore {
 				 WHERE session_key = $1 AND status = 'settled' AND accepted_at <= $2`,
 				[sessionKey, deletionStartedAt],
 			);
-			await tx.query('DELETE FROM flue_agent_session_deletions WHERE session_key = $1', [sessionKey]);
+			await tx.query('DELETE FROM flue_agent_session_deletions WHERE session_key = $1', [
+				sessionKey,
+			]);
 		});
 	}
 
@@ -952,7 +1016,8 @@ function parseSubmission(row: SqlRow): AgentSubmission {
 
 	const attemptId = row.attempt_id != null ? String(row.attempt_id) : undefined;
 	const inputAppliedAt = row.input_applied_at != null ? Number(row.input_applied_at) : undefined;
-	const recoveryRequestedAt = row.recovery_requested_at != null ? Number(row.recovery_requested_at) : undefined;
+	const recoveryRequestedAt =
+		row.recovery_requested_at != null ? Number(row.recovery_requested_at) : undefined;
 	const startedAt = row.started_at != null ? Number(row.started_at) : undefined;
 	const ownerId = row.owner_id != null ? String(row.owner_id) : undefined;
 	const leaseExpiresAt = Number(row.lease_expires_at);
@@ -968,10 +1033,11 @@ function parseSubmission(row: SqlRow): AgentSubmission {
 		// Status-specific invariants: queued rows must not have running fields,
 		// running rows must have attemptId and startedAt.
 		(row.status === 'queued' &&
-			(attemptId !== undefined || inputAppliedAt !== undefined ||
-			 recoveryRequestedAt !== undefined || startedAt !== undefined)) ||
-		(row.status === 'running' &&
-			(attemptId === undefined || startedAt === undefined)) ||
+			(attemptId !== undefined ||
+				inputAppliedAt !== undefined ||
+				recoveryRequestedAt !== undefined ||
+				startedAt !== undefined)) ||
+		(row.status === 'running' && (attemptId === undefined || startedAt === undefined)) ||
 		!Number.isFinite(attemptCount) ||
 		!Number.isFinite(maxRetry) ||
 		!Number.isFinite(timeoutAt) ||
@@ -981,12 +1047,14 @@ function parseSubmission(row: SqlRow): AgentSubmission {
 	}
 
 	const input = JSON.parse(row.payload) as unknown;
-	if (!isSubmissionPayload(input, {
-		kind: row.kind as string,
-		submissionId: row.submission_id as string,
-		sessionKey: row.session_key as string,
-		acceptedAt,
-	})) {
+	if (
+		!isSubmissionPayload(input, {
+			kind: row.kind as string,
+			submissionId: row.submission_id as string,
+			sessionKey: row.session_key as string,
+			acceptedAt,
+		})
+	) {
 		throw new Error('[flue] Persisted agent submission payload is malformed.');
 	}
 
@@ -1061,7 +1129,11 @@ class PgRunStore implements RunStore {
 		if (!row) return null;
 		return {
 			runId: String(row.run_id),
-			owner: { kind: row.owner_kind, workflowName: row.workflow_name, instanceId: row.instance_id } as RunOwner,
+			owner: {
+				kind: row.owner_kind,
+				workflowName: row.workflow_name,
+				instanceId: row.instance_id,
+			} as RunOwner,
 			status: row.status as RunStatus,
 			startedAt: String(row.started_at),
 			...(row.payload != null ? { payload: JSON.parse(String(row.payload)) } : {}),
@@ -1084,7 +1156,13 @@ class PgRunRegistry implements RunRegistry {
 			`INSERT INTO flue_run_registry (run_id, owner_kind, workflow_name, instance_id, status, started_at)
 			 VALUES ($1, $2, $3, $4, 'active', $5)
 			 ON CONFLICT (run_id) DO NOTHING`,
-			[input.runId, input.owner.kind, input.owner.workflowName, input.owner.instanceId, input.startedAt],
+			[
+				input.runId,
+				input.owner.kind,
+				input.owner.workflowName,
+				input.owner.instanceId,
+				input.startedAt,
+			],
 		);
 	}
 
@@ -1163,7 +1241,11 @@ class PgRunRegistry implements RunRegistry {
 function parseRunPointer(row: SqlRow): RunPointer {
 	return {
 		runId: String(row.run_id),
-		owner: { kind: row.owner_kind, workflowName: row.workflow_name, instanceId: row.instance_id } as RunOwner,
+		owner: {
+			kind: row.owner_kind,
+			workflowName: row.workflow_name,
+			instanceId: row.instance_id,
+		} as RunOwner,
 		status: row.status as RunStatus,
 		startedAt: String(row.started_at),
 		...(row.ended_at != null ? { endedAt: String(row.ended_at) } : {}),
@@ -1227,7 +1309,10 @@ class PgEventStreamStore implements EventStreamStore {
 			this.notifyListeners(path);
 			return formatOffset(offset);
 		});
-		const settled = append.then(() => undefined, () => undefined);
+		const settled = append.then(
+			() => undefined,
+			() => undefined,
+		);
 		this.pendingAppends.set(path, settled);
 		try {
 			return await append;
@@ -1283,9 +1368,7 @@ class PgEventStreamStore implements EventStreamStore {
 		const lastSeq = events.length > 0 ? Number(page[page.length - 1]!.seq) : -1;
 		const upToDate = rows.length <= limit;
 
-		const nextOffset = events.length > 0
-			? formatOffset(lastSeq)
-			: formatOffset(startAfter);
+		const nextOffset = events.length > 0 ? formatOffset(lastSeq) : formatOffset(startAfter);
 
 		return {
 			events,
@@ -1296,10 +1379,7 @@ class PgEventStreamStore implements EventStreamStore {
 	}
 
 	async closeStream(path: string): Promise<void> {
-		await this.runner.query(
-			`UPDATE flue_event_streams SET closed = TRUE WHERE path = $1`,
-			[path],
-		);
+		await this.runner.query(`UPDATE flue_event_streams SET closed = TRUE WHERE path = $1`, [path]);
 		this.notifyListeners(path);
 	}
 
@@ -1307,7 +1387,10 @@ class PgEventStreamStore implements EventStreamStore {
 		return this.getStreamMetaFromRunner(this.runner, path);
 	}
 
-	private async getStreamMetaFromRunner(runner: PgRunner, path: string): Promise<EventStreamMeta | null> {
+	private async getStreamMetaFromRunner(
+		runner: PgRunner,
+		path: string,
+	): Promise<EventStreamMeta | null> {
 		const rows = await runner.query(
 			`SELECT next_offset, closed FROM flue_event_streams WHERE path = $1`,
 			[path],
@@ -1397,12 +1480,12 @@ function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 		createdAt,
 		updatedAt,
 		...(row.checkpoint_leaf_id != null ? { checkpointLeafId: String(row.checkpoint_leaf_id) } : {}),
-		...(typeof row.tool_request_json === 'string' ? { toolRequest: JSON.parse(row.tool_request_json) as unknown } : {}),
+		...(typeof row.tool_request_json === 'string'
+			? { toolRequest: JSON.parse(row.tool_request_json) as unknown }
+			: {}),
 		...(typeof row.stream_key === 'string' ? { streamKey: row.stream_key } : {}),
 		...(row.stream_consumed_at != null ? { streamConsumedAt: Number(row.stream_consumed_at) } : {}),
 		committed: committed === 1,
 		...(row.committed_leaf_id != null ? { committedLeafId: String(row.committed_leaf_id) } : {}),
 	};
 }
-
-

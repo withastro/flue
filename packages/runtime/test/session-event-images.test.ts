@@ -5,7 +5,7 @@ import {
 	fauxToolCall,
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vite-plus/test';
 import { createAgent, IMAGE_DATA_OMITTED, Type } from '../src/index.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 import type { FlueEvent, SessionData, SessionStore } from '../src/types.ts';
@@ -88,7 +88,9 @@ describe('session event image redaction', () => {
 					event.type === 'message_end',
 			)
 			.map((event) => event.message)
-			.find((message): message is Extract<AgentMessage, { role: 'user' }> => message.role === 'user');
+			.find(
+				(message): message is Extract<AgentMessage, { role: 'user' }> => message.role === 'user',
+			);
 		expect(userMessageEnd?.content).toContainEqual(
 			expect.objectContaining({ type: 'image', data: IMAGE_DATA_OMITTED, mimeType: 'image/png' }),
 		);

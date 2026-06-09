@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import type { AssistantMessage, AssistantMessageEvent } from '@earendil-works/pi-ai';
 import { reconstructInterruptedStream, StreamChunkWriter } from '../src/runtime/stream-chunks.ts';
 
@@ -11,7 +11,14 @@ function fakePartial(content: AssistantMessage['content'] = []): AssistantMessag
 		api: 'openai-chat-completions' as any,
 		provider: 'test',
 		model: 'test-model',
-		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+		usage: {
+			input: 0,
+			output: 0,
+			cacheRead: 0,
+			cacheWrite: 0,
+			totalTokens: 0,
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		},
 		stopReason: 'stop',
 		timestamp: Date.now(),
 	};

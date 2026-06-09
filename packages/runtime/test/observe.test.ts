@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 import { observe } from '../src/index.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 
@@ -65,7 +65,8 @@ describe('observe()', () => {
 		const stopMutating = observe((event, ctx) => {
 			if (ctx.id !== 'observe-isolated-snapshot' || event.type !== 'log') return;
 			event.message = 'mutated';
-			(event.attributes?.nested as { value: string }).value = 'mutated';
+			const nested = event.attributes?.nested as { value: string };
+			nested.value = 'mutated';
 		});
 		const stopRecording = observe((event, ctx) => {
 			if (ctx.id === 'observe-isolated-snapshot') events.push(event);

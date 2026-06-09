@@ -104,9 +104,9 @@ Apply middleware to the mounted paths your application publishes, such as `/api/
 Mounting `flue()` does not make every discovered agent or workflow directly invocable. Each module opts into its public transports:
 
 | Module export    | Available through the mounted Flue application                                                                  |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------- |
+| ---------------- | --------------------------------------------------------------------------------------------------------------- |
 | Agent `route`    | HTTP prompts at `POST /agents/:name/:id` and event streaming at `GET /agents/:name/:id` beneath the mount path. |
-| Workflow `route` | HTTP invocation at `POST /workflows/:name` beneath the mount path.                                               |
+| Workflow `route` | HTTP invocation at `POST /workflows/:name` beneath the mount path.                                              |
 
 Run event streaming at `GET /runs/:runId` is not gated by any module export: it is registered unconditionally beneath the mount path and serves events for any admitted workflow run, however it was invoked. Unknown run IDs return `404`.
 

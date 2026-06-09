@@ -64,7 +64,7 @@ export function dispatchGlobalEvent(event: FlueEvent, ctx: FlueContext): void {
 	}
 	// Snapshot to a local array so subscribers that unsubscribe
 	// themselves mid-dispatch don't perturb the iteration.
-	for (const subscriber of [...subscribers]) {
+	for (const subscriber of Array.from(subscribers)) {
 		try {
 			Promise.resolve(subscriber(JSON.parse(serializedEvent) as FlueEvent, ctx)).catch(
 				reportSubscriberFailure,

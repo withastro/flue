@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { createCloudflareRunRegistry } from '../src/cloudflare/run-registry.ts';
 
 function createNamespace(fetch: (request: Request) => Response | Promise<Response>) {

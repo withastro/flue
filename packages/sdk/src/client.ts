@@ -60,9 +60,17 @@ export interface FlueClient {
 	agents: {
 		/** Resolves the terminal result for one agent prompt. */
 		prompt(name: string, id: string, options: AgentPromptOptions): Promise<AgentPromptResult>;
-		send(name: string, id: string, options: AgentPromptOptions): Promise<{ streamUrl: string; offset: string }>;
+		send(
+			name: string,
+			id: string,
+			options: AgentPromptOptions,
+		): Promise<{ streamUrl: string; offset: string }>;
 		/** Stream events from an agent instance via the Durable Streams protocol. */
-		stream(name: string, id: string, options?: FlueStreamOptions): FlueEventStream<AttachedAgentEvent>;
+		stream(
+			name: string,
+			id: string,
+			options?: FlueStreamOptions,
+		): FlueEventStream<AttachedAgentEvent>;
 	};
 	/** Workflow-run inspection and streaming APIs. */
 	runs: {
@@ -71,7 +79,14 @@ export interface FlueClient {
 		/** Stream events from a workflow run via the Durable Streams protocol. */
 		stream(runId: string, options?: FlueStreamOptions): FlueEventStream<FlueEvent>;
 		/** Get all events from a workflow run as an array (catch-up read, no live tailing). */
-		events(runId: string, options?: { offset?: string; signal?: AbortSignal; backoffOptions?: import('@durable-streams/client').BackoffOptions }): Promise<FlueEvent[]>;
+		events(
+			runId: string,
+			options?: {
+				offset?: string;
+				signal?: AbortSignal;
+				backoffOptions?: import('@durable-streams/client').BackoffOptions;
+			},
+		): Promise<FlueEvent[]>;
 	};
 	/** Start workflow runs. */
 	workflows: {
@@ -99,7 +114,8 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 		...options,
 		baseUrl: new URL(`${adminBasePath}/`, http.baseUrl).toString(),
 	});
-	const getRun = (runId: string) => adminHttp.json<RunRecord>({ path: `/runs/${encodeURIComponent(runId)}` });
+	const getRun = (runId: string) =>
+		adminHttp.json<RunRecord>({ path: `/runs/${encodeURIComponent(runId)}` });
 	return {
 		agents: {
 			prompt: (name, id, opts) => promptAgent(http, name, id, opts),
@@ -130,7 +146,6 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 				});
 				return readJsonWithAbort<FlueEvent[]>(res, opts?.signal);
 			},
-
 		},
 		workflows: {
 			invoke: async (name, opts) => {
@@ -157,7 +172,10 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 	};
 }
 
-async function readJsonWithAbort<T>(response: { json(): Promise<T> }, signal?: AbortSignal): Promise<T> {
+async function readJsonWithAbort<T>(
+	response: { json(): Promise<T> },
+	signal?: AbortSignal,
+): Promise<T> {
 	const result = await response.json();
 	if (signal?.aborted) {
 		throw signal.reason ?? new DOMException('Aborted', 'AbortError');

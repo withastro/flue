@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import type { FlueRuntime } from '../src/internal.ts';
 import {
 	configureFlueRuntime,
@@ -348,16 +348,24 @@ describe('workflow run lifecycle', () => {
 
 		const result = await eventStreamStore.readEvents(streamPath, { offset: '-1' });
 		const recovered = result.events
-			.map((entry) => ({ offset: entry.offset, data: entry.data as { type: string; eventIndex?: number } }))
+			.map((entry) => ({
+				offset: entry.offset,
+				data: entry.data as { type: string; eventIndex?: number },
+			}))
 			.filter((entry) => entry.data.type === 'run_resume' || entry.data.type === 'run_end');
 
 		// Counting events would restart at index 3 and mint duplicates; the
 		// head-derived index continues after the gap, keeping seq == eventIndex.
 		expect(recovered).toEqual([
-			{ offset: formatOffset(7), data: expect.objectContaining({ type: 'run_resume', eventIndex: 7 }) },
-			{ offset: formatOffset(8), data: expect.objectContaining({ type: 'run_end', eventIndex: 8, isError: true }) },
+			{
+				offset: formatOffset(7),
+				data: expect.objectContaining({ type: 'run_resume', eventIndex: 7 }),
+			},
+			{
+				offset: formatOffset(8),
+				data: expect.objectContaining({ type: 'run_end', eventIndex: 8, isError: true }),
+			},
 		]);
 		expect(result.closed).toBe(true);
 	});
-
 });

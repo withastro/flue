@@ -5,7 +5,7 @@ import {
 	fauxToolCall,
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createAgent, defineAgentProfile } from '../src/index.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 import type { SessionData, SessionEnv, SessionStore } from '../src/types.ts';
@@ -73,8 +73,8 @@ describe('session.prompt()', () => {
 				const data = [...store.records.values()][0];
 				expect(data?.entries).toEqual([
 					expect.objectContaining({
-					message: expect.objectContaining({ role: 'user' }),
-				}),
+						message: expect.objectContaining({ role: 'user' }),
+					}),
 				]);
 				expect(context.messages).toEqual([expect.objectContaining({ role: 'user' })]);
 				return fauxAssistantMessage('Reviewed workspace.');
@@ -116,7 +116,10 @@ describe('session.prompt()', () => {
 		const save = store.save.bind(store);
 		let failed = false;
 		store.save = async (id, data) => {
-			if (!failed && data.entries.some((entry) => entry.type === 'message' && entry.message.role === 'user')) {
+			if (
+				!failed &&
+				data.entries.some((entry) => entry.type === 'message' && entry.message.role === 'user')
+			) {
 				failed = true;
 				throw new Error('persist failed');
 			}
@@ -135,7 +138,9 @@ describe('session.prompt()', () => {
 			data?.entries.filter((entry) => entry.type === 'message' && entry.message.role === 'user'),
 		).toHaveLength(1);
 		expect(
-			data?.entries.filter((entry) => entry.type === 'message' && entry.message.role === 'assistant'),
+			data?.entries.filter(
+				(entry) => entry.type === 'message' && entry.message.role === 'assistant',
+			),
 		).toHaveLength(1);
 		expect(provider.state.callCount).toBe(0);
 	});
@@ -318,7 +323,9 @@ describe('session.prompt()', () => {
 			data?.entries.filter(
 				(entry) => entry.type === 'message' && entry.message.role === 'assistant',
 			),
-		).toEqual([expect.objectContaining({ message: expect.objectContaining({ stopReason: 'error' }) })]);
+		).toEqual([
+			expect.objectContaining({ message: expect.objectContaining({ stopReason: 'error' }) }),
+		]);
 
 		await expect(session.prompt('Try after configuration update.')).resolves.toMatchObject({
 			text: 'Recovered after configuration update.',
@@ -350,7 +357,11 @@ describe('session.prompt()', () => {
 					id: 'user-1',
 					parentId: null,
 					timestamp,
-					message: { role: 'user', content: [{ type: 'text', text: 'Use the tool.' }], timestamp: 0 },
+					message: {
+						role: 'user',
+						content: [{ type: 'text', text: 'Use the tool.' }],
+						timestamp: 0,
+					},
 					source: 'prompt',
 				},
 				{

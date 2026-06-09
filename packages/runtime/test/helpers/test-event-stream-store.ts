@@ -6,7 +6,9 @@ import { SqliteEventStreamStore } from '../../src/runtime/event-stream-store.ts'
  * `node:sqlite` DatabaseSync in the minimal SqlStorage surface that
  * SqliteEventStreamStore expects.
  */
-export function createTestEventStreamStore(db = new DatabaseSync(':memory:')): SqliteEventStreamStore {
+export function createTestEventStreamStore(
+	db = new DatabaseSync(':memory:'),
+): SqliteEventStreamStore {
 	return new SqliteEventStreamStore({
 		exec(query: string, ...bindings: unknown[]) {
 			const stmt = db.prepare(query);

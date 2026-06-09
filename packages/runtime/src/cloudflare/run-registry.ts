@@ -72,11 +72,7 @@ class CloudflareRunRegistry implements RunRegistry {
 			.fetch(request);
 	}
 
-	private async callExpectingNoContent(
-		path: string,
-		method: 'POST' | 'GET',
-		body: unknown,
-	): Promise<void> {
+	private async callExpectingNoContent(path: string, method: 'POST', body: unknown): Promise<void> {
 		const response = await this.fetch(
 			new Request(`${SYNTHETIC_BASE}${path}`, {
 				method,

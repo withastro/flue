@@ -1,10 +1,6 @@
 {
 	"$schema": "https://unpkg.com/knip@6/schema.json",
-	"ignore": [],
-	"ignoreDependencies": ["@flue/cli", "agents", "wrangler"],
-	"ignoreIssues": {
-		"packages/runtime/src/runtime/schemas.ts": ["duplicates"]
-	},
+	"ignoreDependencies": ["@flue/cli", "agents", "vite", "vitest", "wrangler"],
 	"workspaces": {
 		".": {
 			"entry": [".flue/{app,cloudflare,agents/*,workflows/*}.{ts,mts,js,mjs}"],
@@ -15,9 +11,27 @@
 			"entry": ["{src/{app,cloudflare,agents/*,workflows/*},flue.config}.{ts,mts,js,mjs}"],
 			"project": ["src/**/*.{ts,mts,js,mjs}"]
 		},
-
 		"apps/www": {
 			"entry": ["src/homepage-shaders.ts"]
+		},
+		"packages/cli": {
+			"entry": ["bin/flue.ts", "scripts/*.ts", "src/lib/config.ts", "test/*.mjs"]
+		},
+		"packages/runtime": {
+			"entry": [
+				"src/{index,adapter,routing,internal}.ts",
+				"src/{cloudflare,node}/index.ts",
+				"src/test-utils/define-store-contract-tests.ts",
+				"test/**/*.test.ts",
+				"vitest*.config.ts"
+			],
+			"ignoreDependencies": ["@hono/node-server"]
+		},
+		"packages/sdk": {
+			"entry": ["src/index.ts", "test/**/*.ts"]
+		},
+		"packages/{postgres,opentelemetry}": {
+			"entry": ["src/index.ts", "test/**/*.ts"]
 		}
 	}
 }

@@ -40,14 +40,14 @@ interface PersistenceAdapter {
 
 A persistence adapter provides the database-backed stores used by a generated Node server. Flue calls `migrate()` once at startup when present, then calls `connect()`, `connectRunStore()`, `connectRunRegistry()`, and `connectEventStreamStore()`. On shutdown, Flue calls `close()` when present.
 
-| Method | Contract |
-| --- | --- |
-| `connect()` | Return agent session and submission storage. |
-| `connectRunStore()` | Return workflow-run records and metadata. |
-| `connectRunRegistry()` | Return workflow-run indexing and listing storage. |
+| Method                      | Contract                                                           |
+| --------------------------- | ------------------------------------------------------------------ |
+| `connect()`                 | Return agent session and submission storage.                       |
+| `connectRunStore()`         | Return workflow-run records and metadata.                          |
+| `connectRunRegistry()`      | Return workflow-run indexing and listing storage.                  |
 | `connectEventStreamStore()` | Return durable event-stream storage for agent and workflow events. |
-| `migrate?()` | Run idempotent schema setup before connecting. |
-| `close?()` | Release connections, pools, or file handles during shutdown. |
+| `migrate?()`                | Run idempotent schema setup before connecting.                     |
+| `close?()`                  | Release connections, pools, or file handles during shutdown.       |
 
 ## `AgentExecutionStore`
 
@@ -70,11 +70,11 @@ interface SessionStore {
 }
 ```
 
-| Method | Contract |
-| --- | --- |
+| Method           | Contract                                                                         |
+| ---------------- | -------------------------------------------------------------------------------- |
 | `save(id, data)` | Persist the complete current session record under the supplied Flue storage key. |
-| `load(id)` | Return the saved session record, or `null` when none exists. |
-| `delete(id)` | Delete the stored session record for that key. |
+| `load(id)`       | Return the saved session record, or `null` when none exists.                     |
+| `delete(id)`     | Delete the stored session record for that key.                                   |
 
 ## `AgentSubmissionStore`
 
@@ -108,7 +108,10 @@ interface AgentSubmissionStore {
   admitDispatch(input: DispatchInput): Promise<AgentDispatchAdmission>;
   admitDirect(input: DirectAgentSubmissionInput): Promise<AgentSubmission>;
   claimSubmission(claim: SubmissionClaimRef): Promise<AgentSubmission | null>;
-  markSubmissionInputApplied(attempt: SubmissionAttemptRef, durability?: SubmissionDurability): Promise<boolean>;
+  markSubmissionInputApplied(
+    attempt: SubmissionAttemptRef,
+    durability?: SubmissionDurability,
+  ): Promise<boolean>;
   requestSubmissionRecovery(attempt: SubmissionAttemptRef): Promise<boolean>;
   requeueSubmissionBeforeInputApplied(attempt: SubmissionAttemptRef): Promise<boolean>;
   completeSubmission(attempt: SubmissionAttemptRef): Promise<boolean>;
@@ -181,15 +184,15 @@ interface SessionData {
 
 `SessionData` is the complete persisted conversation record for one session.
 
-| Field | Contract |
-| --- | --- |
-| `version` | Storage format version. Flue rejects unsupported versions. |
+| Field         | Contract                                                           |
+| ------------- | ------------------------------------------------------------------ |
+| `version`     | Storage format version. Flue rejects unsupported versions.         |
 | `affinityKey` | Opaque Flue-generated provider-affinity key. Persist it unchanged. |
-| `entries` | Stored message, compaction, and branch-summary history. |
-| `leafId` | Current active leaf in the session history tree, or `null`. |
-| `metadata` | Application-visible session metadata. |
-| `createdAt` | ISO timestamp for session creation. |
-| `updatedAt` | ISO timestamp for the last persisted update. |
+| `entries`     | Stored message, compaction, and branch-summary history.            |
+| `leafId`      | Current active leaf in the session history tree, or `null`.        |
+| `metadata`    | Application-visible session metadata.                              |
+| `createdAt`   | ISO timestamp for session creation.                                |
+| `updatedAt`   | ISO timestamp for the last persisted update.                       |
 
 `SessionData` may contain model-visible text, tool output, dispatch snapshots, and summaries derived from earlier content. Treat it as potentially sensitive.
 

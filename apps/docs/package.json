@@ -4,12 +4,12 @@
 	"version": "0.0.1",
 	"private": true,
 	"scripts": {
-		"dev": "astro dev",
-		"build": "rm -rf ./dist && astro build && mv ./dist/docs/_redirects ./dist/_redirects && pagefind --site ./dist/docs",
-		"preview": "astro preview",
-		"deploy": "pnpm run build && pnpm exec wrangler deploy",
 		"astro": "astro",
-		"check:types": "astro check"
+		"build": "rm -rf ./dist && astro build && mv ./dist/docs/_redirects ./dist/_redirects && pagefind --site ./dist/docs",
+		"check:types": "astro check",
+		"deploy": "pnpm run build && wrangler deploy",
+		"dev": "astro dev",
+		"preview": "astro preview"
 	},
 	"dependencies": {
 		"@astrojs/mdx": "^5.0.6",
@@ -24,7 +24,7 @@
 		"@astrojs/check": "^0.9.9",
 		"pagefind": "^1.5.2",
 		"typescript": "^6.0.3",
-		"vite": "^7.3.3",
+		"vite": "catalog:",
 		"wrangler": "^4.97.0"
 	}
 }

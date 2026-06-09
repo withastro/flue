@@ -135,7 +135,7 @@ export interface FlueRuntime {
 	resolveDispatchAgentName?: (agent: CreatedAgent) => string | undefined;
 }
 
-export interface FlueManifest {
+interface FlueManifest {
 	agents: Array<{
 		name: string;
 		transports: { http?: true };
@@ -146,8 +146,6 @@ export interface FlueManifest {
 		transports: { http?: boolean };
 	}>;
 }
-
-
 
 /**
  * Accepts input for asynchronous delivery to a continuing agent session.
@@ -431,7 +429,6 @@ function agentRouteSpec() {
 	};
 }
 
-
 const workflowRouteHandler: MiddlewareHandler = async (c) => {
 	const rt = runtimeConfig;
 	if (!rt) {
@@ -576,15 +573,19 @@ const runStreamReadHandler: MiddlewareHandler = async (c) => {
 	const streamPath = runStreamPath(runId);
 	const pointer = await lookupRunPointer(rt, c.env, runId);
 
-	return runAttachedMiddleware(c, rt.workflowRouteMiddleware?.[pointer.owner.workflowName], async () => {
-		if (rt.target === 'node') {
-			return nodeStreamReadResponse(rt, method, streamPath, c.req.raw);
-		}
+	return runAttachedMiddleware(
+		c,
+		rt.workflowRouteMiddleware?.[pointer.owner.workflowName],
+		async () => {
+			if (rt.target === 'node') {
+				return nodeStreamReadResponse(rt, method, streamPath, c.req.raw);
+			}
 
-		const response = await rt.routeRunRequest?.(c.req.raw, c.env, pointer.owner);
-		if (response) return response;
-		throw new RouteNotFoundError({ method, path: new URL(c.req.url).pathname });
-	});
+			const response = await rt.routeRunRequest?.(c.req.raw, c.env, pointer.owner);
+			if (response) return response;
+			throw new RouteNotFoundError({ method, path: new URL(c.req.url).pathname });
+		},
+	);
 };
 
 export async function handleRunById(opts: {
@@ -740,17 +741,13 @@ function normalizeAttachedRequest(request: Request, pathname: string): Request {
 	return new Request(url, request);
 }
 
-export function registeredAgentsForTransport(
-	rt: FlueRuntime,
-): readonly string[] {
+function registeredAgentsForTransport(rt: FlueRuntime): readonly string[] {
 	return (rt.manifest?.agents ?? [])
 		.filter((agent) => agent.transports.http === true)
 		.map((agent) => agent.name);
 }
 
-export function registeredWorkflowsForTransport(
-	rt: FlueRuntime,
-): readonly string[] {
+function registeredWorkflowsForTransport(rt: FlueRuntime): readonly string[] {
 	return (rt.manifest?.workflows ?? [])
 		.filter((workflow) => workflow.transports.http === true)
 		.map((workflow) => workflow.name);

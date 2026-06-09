@@ -28,16 +28,16 @@ Runs are workflow-only. Direct HTTP agent prompts and dispatched agent inputs ar
 
 ## Options
 
-| Option                            | Default                          | Description                                                                                                               |
-| --------------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `--server <url>`                  | `http://127.0.0.1:3583`          | Select the running Flue server base URL beneath which `/runs/<runId>` is published. May include an authored mount prefix. |
-| `--header 'Name: value'`          | None                             | Forward a curl-style HTTP header to every request. Repeat to send multiple distinct headers.                              |
-| `--follow`, `-f`                  | Automatic                        | Force live event streaming.                                                                                               |
-| `--no-follow`                     | Automatic                        | Replay persisted events once and exit.                                                                                    |
-| `--since <offset>`                | Beginning of history             | Resume strictly after a stream offset. Accepts integer event indices (legacy) or opaque Durable Streams offset strings.   |
-| `--types <a,b,c>`                 | All event types                  | Emit only the selected comma-separated event types. Filtering is applied client-side.                                     |
-| `--limit <n>`                     | Unlimited                        | Limit emitted events. Applied client-side in both replay and follow modes.                                                |
-| `--format <pretty\|json\|ndjson>` | `pretty`                         | Select human-readable or line-delimited JSON output.                                                                      |
+| Option                            | Default                 | Description                                                                                                               |
+| --------------------------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `--server <url>`                  | `http://127.0.0.1:3583` | Select the running Flue server base URL beneath which `/runs/<runId>` is published. May include an authored mount prefix. |
+| `--header 'Name: value'`          | None                    | Forward a curl-style HTTP header to every request. Repeat to send multiple distinct headers.                              |
+| `--follow`, `-f`                  | Automatic               | Force live event streaming.                                                                                               |
+| `--no-follow`                     | Automatic               | Replay persisted events once and exit.                                                                                    |
+| `--since <offset>`                | Beginning of history    | Resume strictly after a stream offset. Accepts integer event indices (legacy) or opaque Durable Streams offset strings.   |
+| `--types <a,b,c>`                 | All event types         | Emit only the selected comma-separated event types. Filtering is applied client-side.                                     |
+| `--limit <n>`                     | Unlimited               | Limit emitted events. Applied client-side in both replay and follow modes.                                                |
+| `--format <pretty\|json\|ndjson>` | `pretty`                | Select human-readable or line-delimited JSON output.                                                                      |
 
 When neither follow option is passed, `flue logs` queries the admin endpoint to determine run status: active runs are followed, terminal runs are replayed once. The selected server must publish the admin mount used by the CLI, usually `/admin`; otherwise automatic follow selection fails before reading the stream. Use `--follow` or `--no-follow` when only the public `flue()` mount is available.
 

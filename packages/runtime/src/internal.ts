@@ -95,7 +95,10 @@ export { SqliteEventStreamStore } from './runtime/event-stream-store.ts';
 export type { RunRecord, RunStatus, RunStore } from './runtime/run-store.ts';
 
 export { bashFactoryToSessionEnv } from './sandbox.ts';
-export type { DirectAgentSubmissionInput, DispatchAgentSubmissionInput } from './runtime/agent-submissions.ts';
+export type {
+	DirectAgentSubmissionInput,
+	DispatchAgentSubmissionInput,
+} from './runtime/agent-submissions.ts';
 export { InMemorySessionStore } from './session.ts';
 export { parseSkillMarkdown } from './skill-frontmatter.ts';
 
@@ -157,6 +160,6 @@ function applyProviderSettings<TApi extends Api>(
 	return {
 		...model,
 		baseUrl: providerSettings.baseUrl ?? model.baseUrl,
-		headers: hasHeaders ? { ...(model.headers ?? {}), ...providerSettings.headers } : model.headers,
+		headers: hasHeaders ? { ...model.headers, ...providerSettings.headers } : model.headers,
 	};
 }

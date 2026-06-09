@@ -167,7 +167,7 @@ export const docsSections: DocsSection[] = [
 						],
 					},
 					{ title: 'Events and records', slug: 'sdk/events' },
-				{ title: 'Errors', slug: 'sdk/errors' },
+					{ title: 'Errors', slug: 'sdk/errors' },
 				],
 			},
 		],

@@ -7,7 +7,7 @@ interface SessionStorageIdentity {
 	session: string;
 }
 
-export function isTaskSessionName(name: string): boolean {
+function isTaskSessionName(name: string): boolean {
 	return name.startsWith(TASK_SESSION_PREFIX);
 }
 

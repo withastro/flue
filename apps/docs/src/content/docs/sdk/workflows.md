@@ -16,7 +16,7 @@ const run = await client.workflows.invoke('summarize', {
   payload: { text: 'Summarize this document.' },
 });
 
-console.log(run.runId);     // "workflow:summarize:01JX..."
+console.log(run.runId); // "workflow:summarize:01JX..."
 console.log(run.streamUrl); // "https://example.com/api/runs/workflow%3Asummarize%3A01JX..."
 ```
 
@@ -24,10 +24,10 @@ Use the returned `runId` with [`client.runs`](/docs/sdk/runs/) to stream events,
 
 ### `WorkflowInvokeOptions`
 
-| Field     | Type          | Default | Description              |
-| --------- | ------------- | ------- | ------------------------ |
+| Field     | Type          | Default | Description               |
+| --------- | ------------- | ------- | ------------------------- |
 | `payload` | `unknown`     | —       | Workflow-defined payload. |
-| `signal`  | `AbortSignal` | —       | Cancel the HTTP request. |
+| `signal`  | `AbortSignal` | —       | Cancel the HTTP request.  |
 
 ### `WorkflowInvokeResult`
 
@@ -38,7 +38,7 @@ interface WorkflowInvokeResult {
 }
 ```
 
-| Field       | Description                                                      |
-| ----------- | ---------------------------------------------------------------- |
-| `runId`     | The workflow run ID.                                             |
-| `streamUrl` | Fully resolved Durable Streams URL for observing run events.     |
+| Field       | Description                                                  |
+| ----------- | ------------------------------------------------------------ |
+| `runId`     | The workflow run ID.                                         |
+| `streamUrl` | Fully resolved Durable Streams URL for observing run events. |

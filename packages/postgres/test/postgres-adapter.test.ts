@@ -7,10 +7,13 @@
  */
 
 import { PGlite } from '@electric-sql/pglite';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import type { SessionData } from '@flue/runtime';
 import { postgresFromRunner, type PgRunner } from '../src/postgres-adapter.ts';
-import { defineEventStreamStoreContractTests, defineStoreContractTests } from '@flue/runtime/test-utils';
+import {
+	defineEventStreamStoreContractTests,
+	defineStoreContractTests,
+} from '@flue/runtime/test-utils';
 
 // ─── PGlite → PgRunner adapter ─────────────────────────────────────────────
 

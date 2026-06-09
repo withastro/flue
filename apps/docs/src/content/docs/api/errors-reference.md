@@ -54,9 +54,9 @@ The following categories are stable for framework-owned transport failures. HTTP
 
 ## Transport envelopes
 
-| Surface | Envelope |
-| --- | --- |
-| Framework HTTP error response | `{ error: FluePublicError }` |
+| Surface                                                  | Envelope                     |
+| -------------------------------------------------------- | ---------------------------- |
+| Framework HTTP error response                            | `{ error: FluePublicError }` |
 | Durable Streams invalid-query or missing-stream response | `{ error: FluePublicError }` |
 
 Durable Streams reads use the same framework envelope for invalid query parameters and missing streams. A stream may still terminate through transport behavior rather than a JSON error body, such as a client disconnect during SSE.

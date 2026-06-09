@@ -7,7 +7,10 @@
  * implement it directly.
  */
 
-import type { AgentSubmissionInput, DirectAgentSubmissionInput } from './runtime/agent-submissions.ts';
+import type {
+	AgentSubmissionInput,
+	DirectAgentSubmissionInput,
+} from './runtime/agent-submissions.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import type { RunRegistry } from './runtime/run-registry.ts';
 import type { RunStore } from './runtime/run-store.ts';
@@ -152,7 +155,10 @@ export interface AgentSubmissionStore {
 
 	// Submission lifecycle
 	claimSubmission(claim: SubmissionClaimRef): Promise<AgentSubmission | null>;
-	markSubmissionInputApplied(attempt: SubmissionAttemptRef, durability?: SubmissionDurability): Promise<boolean>;
+	markSubmissionInputApplied(
+		attempt: SubmissionAttemptRef,
+		durability?: SubmissionDurability,
+	): Promise<boolean>;
 	requestSubmissionRecovery(attempt: SubmissionAttemptRef): Promise<boolean>;
 	requeueSubmissionBeforeInputApplied(attempt: SubmissionAttemptRef): Promise<boolean>;
 	completeSubmission(attempt: SubmissionAttemptRef): Promise<boolean>;

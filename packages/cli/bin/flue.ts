@@ -1317,7 +1317,9 @@ function logsRenderPretty(event: FlueEvent): void {
 		const duration = formatDuration(event.durationMs);
 		if (event.isError) {
 			const err = event.error as { message?: string } | undefined;
-			console.error(`[flue] run:end      ${event.runId}  ERROR  ${err?.message ?? ''}  (${duration})`);
+			console.error(
+				`[flue] run:end      ${event.runId}  ERROR  ${err?.message ?? ''}  (${duration})`,
+			);
 		} else {
 			console.error(`[flue] run:end      ${event.runId}  ok  (${duration})`);
 		}
@@ -1360,9 +1362,10 @@ function logsEmitEvent(event: FlueEvent, format: LogsArgs['format']): void {
 		// (on run streams, event index == stream sequence; flue logs reads
 		// runs only). The stream's own offset getter is batch-granular and
 		// would skip events if used as a mid-batch checkpoint.
-		const offset = format === 'ndjson' && typeof event.eventIndex === 'number'
-			? formatEventOffset(event.eventIndex)
-			: undefined;
+		const offset =
+			format === 'ndjson' && typeof event.eventIndex === 'number'
+				? formatEventOffset(event.eventIndex)
+				: undefined;
 		const output = offset ? { ...event, offset } : event;
 		process.stdout.write(`${JSON.stringify(output)}\n`);
 	} else {

@@ -1,5 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { createDurableRunStore } from '../src/cloudflare/run-store.ts';
 
 function makeFakeSql() {
@@ -12,7 +12,9 @@ function makeFakeSql() {
 				let rows: unknown[];
 				const trimmed = query.trimStart().toUpperCase();
 				const expectsRows =
-					trimmed.startsWith('SELECT') || trimmed.startsWith('WITH') || /\bRETURNING\b/i.test(query);
+					trimmed.startsWith('SELECT') ||
+					trimmed.startsWith('WITH') ||
+					/\bRETURNING\b/i.test(query);
 				if (expectsRows) {
 					rows = stmt.all(...(bindings as never[]));
 				} else {

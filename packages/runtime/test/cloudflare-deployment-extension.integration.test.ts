@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createServer, type ViteDevServer } from 'vite';
-import { describe, expect, it } from 'vitest';
+import { createServer, type ViteDevServer } from 'vite-plus';
+import { describe, expect, it } from 'vite-plus/test';
 import {
 	build,
 	cloudflareViteConfigPath,

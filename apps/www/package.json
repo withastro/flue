@@ -4,11 +4,11 @@
 	"version": "0.0.1",
 	"private": true,
 	"scripts": {
-		"dev": "astro dev",
+		"astro": "astro",
 		"build": "astro build",
-		"deploy": "pnpm run build && pnpm exec wrangler deploy",
-		"preview": "astro preview",
-		"astro": "astro"
+		"deploy": "pnpm run build && wrangler deploy",
+		"dev": "astro dev",
+		"preview": "astro preview"
 	},
 	"dependencies": {
 		"@paper-design/shaders": "0.0.76",
@@ -18,7 +18,7 @@
 	},
 	"devDependencies": {
 		"typescript": "^6.0.3",
-		"vite": "^7.3.3",
+		"vite": "catalog:",
 		"wrangler": "^4.97.0"
 	}
 }

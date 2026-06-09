@@ -1,4 +1,4 @@
-packages: [ packages/*, examples/*, apps/* ]
+packages: [packages/*, examples/*, apps/*]
 allowBuilds:
   '@google/genai': false
   '@mongodb-js/zstd': false
@@ -14,5 +14,30 @@ minimumReleaseAge: 1440
 resolutionMode: highest
 minimumReleaseAgeExclude:
   - '@aws-sdk/*'
+  - '@cloudflare/*'
   - '@smithy/*'
   - protobufjs
+  - react
+  - vite-plus
+  - '@voidzero-dev/*'
+  - oxlint
+  - '@oxlint/*'
+  - oxlint-tsgolint
+  - '@oxlint-tsgolint/*'
+  - oxfmt
+  - '@oxfmt/*'
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@0.1.24
+  vitest: npm:@voidzero-dev/vite-plus-test@0.1.24
+  vite-plus: 0.1.24
+overrides:
+  vite: 'catalog:'
+  vitest: 'catalog:'
+  typescript: 6.0.3
+peerDependencyRules:
+  allowAny:
+    - vite
+    - vitest
+  allowedVersions:
+    vite: '*'
+    vitest: '*'

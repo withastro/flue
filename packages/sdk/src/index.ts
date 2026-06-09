@@ -9,10 +9,7 @@ export type {
 } from './client.ts';
 export { createFlueClient } from './client.ts';
 export { FlueApiError } from './http.ts';
-export type {
-	AgentPromptOptions,
-	AgentPromptResult,
-} from './public/invoke.ts';
+export type { AgentPromptOptions, AgentPromptResult } from './public/invoke.ts';
 export {
 	DurableStreamError,
 	FetchBackoffAbortError,
@@ -22,14 +19,10 @@ export {
 	StreamClosedError,
 } from '@durable-streams/client';
 export type { BackoffOptions, LiveMode } from '@durable-streams/client';
-export type {
-	FlueEventStream,
-	FlueStreamOptions,
-} from './public/stream.ts';
+export type { FlueEventStream, FlueStreamOptions } from './public/stream.ts';
 export type {
 	AgentManifestEntry,
 	AttachedAgentEvent,
-
 	FlueEvent,
 	FluePublicError,
 	ListResponse,

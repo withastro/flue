@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 import { createAgent, defineAgentProfile, defineTool } from '../src/index.ts';
 import type { FlueContextConfig } from '../src/internal.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
@@ -177,9 +177,9 @@ describe('defineAgentProfile()', () => {
 	});
 
 	it('rejects durability config with unknown fields', () => {
-		expect(() =>
-			defineAgentProfile({ durability: { retry: 5, unknown: true } } as never),
-		).toThrow('unknown field "unknown"');
+		expect(() => defineAgentProfile({ durability: { retry: 5, unknown: true } } as never)).toThrow(
+			'unknown field "unknown"',
+		);
 	});
 
 	it('rejects durability config with non-positive retry', () => {

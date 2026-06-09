@@ -155,12 +155,12 @@ Use structured results when later application code depends on specific fields, i
 
 When a workflow is invoked through a running application, its `runId` lets you inspect the run independently of the HTTP request that started it. This is useful for background work, live progress, debugging, and operational tooling.
 
-| Surface                                           | Use it for                                                              |
-| ------------------------------------------------- | ----------------------------------------------------------------------- |
-| `flue logs <runId>`                               | Inspect or follow events for a workflow run from the command line.      |
-| `GET /runs/<runId>`                               | Stream run events via the Durable Streams protocol.                     |
+| Surface                                           | Use it for                                                                                    |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `flue logs <runId>`                               | Inspect or follow events for a workflow run from the command line.                            |
+| `GET /runs/<runId>`                               | Stream run events via the Durable Streams protocol.                                           |
 | `client.runs.get()`, `.events()`, and `.stream()` | Build application tooling around a known workflow run. `runs.get()` requires the admin mount. |
-| `client.admin.runs.list()`                        | List workflow runs for protected administrative tooling.                |
+| `client.admin.runs.list()`                        | List workflow runs for protected administrative tooling.                                      |
 
 Administrative run listing can reveal workflow payloads, results, model activity, and application logs. Only publish an administrative listing surface behind an authorization boundary appropriate for that data.
 
