@@ -24,7 +24,8 @@ describe('NodePlugin', () => {
 			}),
 		);
 
-		expect(entry).toContain('createNodeAgentExecutionStore()');
+		expect(entry).toContain('sqlite()');
+		expect(entry).toContain('defaultAdapter.connect()');
 		expect(entry).not.toContain('userPersistenceAdapter');
 	});
 
@@ -86,7 +87,7 @@ describe('NodePlugin', () => {
 			}),
 		);
 
-		expect(entry).toContain('userPersistenceAdapter.close');
+		expect(entry).toContain('persistenceAdapter.close');
 		expect(entry).toContain("process.on('SIGINT'");
 		expect(entry).toContain("process.on('SIGTERM'");
 	});

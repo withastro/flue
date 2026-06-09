@@ -145,8 +145,8 @@ import { createFlueClient } from '@flue/sdk';
 const client = createFlueClient({ baseUrl: 'http://localhost:3583' });
 const chat = client.agents.connect('chat', 'customer-123');
 await chat.ready;
-console.log(await chat.prompt('Hello', { session: 'support' }));
-console.log(await chat.prompt('Continue', { session: 'support' }));
+console.log(await chat.prompt('Hello'));
+console.log(await chat.prompt('Continue'));
 chat.close();
 ```
 

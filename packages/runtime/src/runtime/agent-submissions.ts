@@ -130,10 +130,7 @@ export function createDirectAgentSubmissionInput(options: {
 		submissionId: crypto.randomUUID(),
 		agent: options.agent,
 		id: options.id,
-		session:
-			typeof options.payload.session === 'string' && options.payload.session.trim() !== ''
-				? options.payload.session
-				: 'default',
+		session: 'default',
 		payload: options.payload,
 		acceptedAt: new Date().toISOString(),
 	};

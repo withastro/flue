@@ -28,7 +28,7 @@ describe('createFlueClient', () => {
 
 		const options: AgentSyncInvokeOptions = {
 			mode: 'sync',
-			payload: { message: 'Hello', session: 'chat' },
+			payload: { message: 'Hello' },
 		};
 
 		await expect(client.agents.invoke('hello', 'inst-1', options)).resolves.toEqual({
@@ -37,7 +37,7 @@ describe('createFlueClient', () => {
 		expect(seen).toHaveLength(1);
 		expect(new URL(seen[0]?.url ?? '').pathname).toBe('/agents/hello/inst-1');
 		expect(seen[0]?.method).toBe('POST');
-		expect(await seen[0]?.json()).toEqual({ message: 'Hello', session: 'chat' });
+		expect(await seen[0]?.json()).toEqual({ message: 'Hello' });
 	});
 
 	it('resolves public HTTP and SSE routes beneath the base URL pathname', async () => {
@@ -145,7 +145,7 @@ describe('createFlueClient', () => {
 		const events = [];
 		const options: AgentStreamInvokeOptions = {
 			mode: 'stream',
-			payload: { message: 'Hello', session: 'chat' },
+			payload: { message: 'Hello' },
 		};
 		const invoke = (options: AgentInvokeOptions) =>
 			client.agents.invoke('hello', 'inst-1', options);
@@ -207,7 +207,7 @@ describe('createFlueClient', () => {
 		const events: AttachedAgentEvent[] = [];
 		for await (const event of client.agents.invoke('hello', 'inst-1', {
 			mode: 'stream',
-			payload: { message: 'Hello', session: 'chat' },
+			payload: { message: 'Hello' },
 		})) {
 			events.push(event);
 		}

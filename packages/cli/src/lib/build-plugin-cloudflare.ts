@@ -196,6 +196,7 @@ import {
   CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
   createCloudflareAgentRuntime,
   createSqlSessionStore,
+  SqlEventStreamStore,
   createRunSubscriberRegistry,
   bashFactoryToSessionEnv,
   resolveModel,
@@ -432,6 +433,12 @@ function createDurableObjectIdentity(doInstance, identity) {
   };
 }
 
+function createEventStreamStoreForInstance(doInstance) {
+  const sql = doInstance?.ctx?.storage?.sql;
+  if (!sql) return undefined;
+  return new SqlEventStreamStore(sql);
+}
+
 const cloudflareAgents = createCloudflareAgentRuntime({
   createdAgents,
   directHandlers,
@@ -443,6 +450,7 @@ const cloudflareAgents = createCloudflareAgentRuntime({
     const pair = new WebSocketPair();
     return { client: pair[0], server: pair[1] };
   },
+  createEventStreamStore: (instance) => createEventStreamStoreForInstance(instance),
 });
 
 function assertAgentsDurabilityApi(doInstance, method) {
@@ -468,6 +476,7 @@ async function handleFlueWorkflowFiberRecovered(ctx, doInstance, workflowName) {
     runStore,
     runSubscribers,
     runRegistry: createRunRegistryForRequest(doInstance.env),
+    eventStreamStore: createEventStreamStoreForInstance(doInstance),
     createContext: (id_, recoveredRunId, payload, req, initialEventIndex) => createWorkflowContextForRequest(id_, recoveredRunId, payload, doInstance, req, initialEventIndex),
   });
 }
@@ -502,6 +511,7 @@ async function dispatchWorkflow(request, doInstance, workflowName) {
       runStore: createRunStoreForRequest(doInstance),
       runSubscribers,
       runRegistry: createRunRegistryForRequest(doInstance.env),
+      eventStreamStore: createEventStreamStoreForInstance(doInstance),
       createContext: (id_, runId, payload, req, initialEventIndex, dispatchId) => createWorkflowContextForRequest(id_, runId, payload, doInstance, req, initialEventIndex, dispatchId),
       startWorkflowAdmission: (runId, run) => {
         assertAgentsDurabilityApi(doInstance, 'runFiber');
@@ -537,6 +547,7 @@ async function messageWorkflowSocket(connection, message, doInstance, workflowNa
     runStore: createRunStoreForRequest(doInstance),
     runSubscribers,
     runRegistry: createRunRegistryForRequest(doInstance.env),
+    eventStreamStore: createEventStreamStoreForInstance(doInstance),
     createContext: (id_, runId, payload, req) => createWorkflowContextForRequest(id_, runId, payload, doInstance, req),
     startWorkflowAdmission: (runId, run) => {
       assertAgentsDurabilityApi(doInstance, 'runFiber');

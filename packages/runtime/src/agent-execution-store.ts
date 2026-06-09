@@ -195,6 +195,12 @@ export interface PersistenceAdapter {
 	/** Return a {@link RunRegistry} for workflow run indexing and listing. */
 	connectRunRegistry(): RunRegistry;
 	/**
+	 * Return an {@link EventStreamStore} for durable event stream persistence.
+	 * Optional — when omitted, agent and workflow events are not durably
+	 * streamed (existing RunStore event persistence is unaffected).
+	 */
+	connectEventStreamStore?(): import('./runtime/event-stream-store.ts').EventStreamStore;
+	/**
 	 * Run idempotent schema setup (CREATE TABLE IF NOT EXISTS, etc.).
 	 * Called once at startup before {@link connect}. Adapters that create
 	 * schema implicitly (e.g. LMDB) may omit this method.

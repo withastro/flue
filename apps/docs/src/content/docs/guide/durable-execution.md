@@ -7,9 +7,9 @@ Durable execution is about recovering safely when running work is disrupted by a
 
 ## Durable Agents
 
-Agents are continuing, stateful contexts. An agent instance can own named sessions, and each session records conversation history so later operations can continue from where earlier work ended. The next message may arrive immediately or months later.
+Agents are continuing, stateful contexts. Each agent instance is a single conversation that records history so later operations can continue from where earlier work ended. The next message may arrive immediately or months later.
 
-Direct prompts and asynchronous `dispatch(...)` inputs are operations inside these continuing sessions. They are not workflow runs. When you need to send application-owned events such as webhooks or chat messages to an agent, see [Routing](/docs/guide/routing/) for application-owned ingress.
+Direct prompts and asynchronous `dispatch(...)` inputs are operations inside the continuing agent instance. They are not workflow runs. When you need to send application-owned events such as webhooks or chat messages to an agent, see [Routing](/docs/guide/routing/) for application-owned ingress.
 
 ```txt
 agent input → stored session history → operation completes
@@ -25,7 +25,7 @@ To store session history in an application-controlled database, create a `src/db
 
 ### Durable Agents on Cloudflare
 
-On Cloudflare, generated Durable Object-backed agents store session history in SQLite by default. They also protect accepted agent input while it is being processed. Direct HTTP, SSE, and WebSocket prompts and asynchronous `dispatch(...)` inputs enter the same durable queue for their session. Inputs for one session keep their accepted order, while separate sessions can progress independently.
+On Cloudflare, generated Durable Object-backed agents store session history in SQLite by default. They also protect accepted agent input while it is being processed. Direct HTTP, SSE, and WebSocket prompts and asynchronous `dispatch(...)` inputs enter the same durable queue. Inputs keep their accepted order.
 
 ```txt
 direct HTTP, SSE, or WebSocket prompt ─┐
@@ -45,7 +45,7 @@ See [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/) for Durabl
 
 On Node.js, sessions and accepted input live in process memory by default. Restarting the process loses all in-flight work and session history.
 
-Both direct prompts (HTTP, SSE, WebSocket) and asynchronous `dispatch(...)` inputs go through the same ordered submission lifecycle with SQL admission, per-session FIFO ordering, and journal tracking. Inputs for one session keep their accepted order, while separate sessions progress independently. The connection that submitted a direct prompt observes the work but does not own it — accepted backend work continues through the durable lifecycle regardless of transport state.
+Both direct prompts (HTTP, SSE, WebSocket) and asynchronous `dispatch(...)` inputs go through the same ordered submission lifecycle with SQL admission, FIFO ordering, and journal tracking. Inputs keep their accepted order. The connection that submitted a direct prompt observes the work but does not own it — accepted backend work continues through the durable lifecycle regardless of transport state.
 
 ```txt
 direct HTTP, SSE, or WebSocket prompt ─┐

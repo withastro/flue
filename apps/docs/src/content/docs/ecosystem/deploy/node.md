@@ -118,7 +118,7 @@ import { createFlueClient } from '@flue/sdk';
 const client = createFlueClient({ baseUrl: 'http://localhost:3000' });
 const chat = client.agents.connect('chat', 'customer-123');
 await chat.ready;
-console.log(await chat.prompt('Hello', { session: 'support' }));
+console.log(await chat.prompt('Hello'));
 chat.close();
 
 const job = client.workflows.connect('translate');

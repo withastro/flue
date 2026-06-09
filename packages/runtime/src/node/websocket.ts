@@ -201,7 +201,7 @@ async function invokeAgentPrompt(
 		}
 		const result = await invokeDirectAttached({
 			id: target.id,
-			payload: { message: message.message, session: message.session },
+			payload: { message: message.message },
 			admitAttachedSubmission: admissionFactory(target.id),
 			onEvent: (event) => {
 				if (!didStart) {

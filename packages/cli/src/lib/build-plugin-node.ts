@@ -53,16 +53,13 @@ export class NodePlugin implements BuildPlugin {
 ${packagedSkillsImport}
 import { serve } from '@hono/node-server';
 import { WebSocketServer } from 'ws';
-import { createNodeWebSocketTransport } from '@flue/runtime/node';
+import { createNodeWebSocketTransport, sqlite } from '@flue/runtime/node';
 import {
   Bash,
   InMemoryFs,
   createFlueContext,
-  createNodeAgentExecutionStore,
   createNodeAgentCoordinator,
   createNodeDispatchQueue,
-  InMemoryRunStore,
-  InMemoryRunRegistry,
   createRunSubscriberRegistry,
   bashFactoryToSessionEnv,
   resolveModel,
@@ -139,15 +136,20 @@ try {
   throw new Error('[flue] Failed to initialize persistence from db.ts: ' + (error instanceof Error ? error.message : error), { cause: error });
 }`
 				: `// Default persistence for Node — in-memory SQLite, process lifetime.
-const executionStore = createNodeAgentExecutionStore();
-const runStore = new InMemoryRunStore();
-const runRegistry = new InMemoryRunRegistry();`
+const defaultAdapter = sqlite();
+if (defaultAdapter.migrate) defaultAdapter.migrate();
+const executionStore = defaultAdapter.connect();
+const runStore = defaultAdapter.connectRunStore();
+const runRegistry = defaultAdapter.connectRunRegistry();`
 		}
 const runSubscribers = createRunSubscriberRegistry();
+const persistenceAdapter = ${dbEntry ? `userPersistenceAdapter` : `defaultAdapter`};
+const eventStreamStore = persistenceAdapter.connectEventStreamStore?.();
 const agentCoordinator = createNodeAgentCoordinator({
   submissions: executionStore.submissions,
   agents: createdAgents,
   createContext: createContextForRequest,
+  eventStreamStore,
 });
 const dispatchQueue = createNodeDispatchQueue(agentCoordinator);
 
@@ -216,6 +218,7 @@ configureFlueRuntime({
   runStore,
   runSubscribers,
   runRegistry,
+  eventStreamStore,
 });
 
 // Reconcile any interrupted submissions from a previous process.
@@ -338,7 +341,7 @@ function startLocalAgent(name, id) {
     void invokeDirectAttached({
       agentName: name,
       id,
-      payload: { message: message.message, session: message.session },
+      payload: { message: message.message },
       request: localRequest(),
       handler,
       createContext: createContextForRequest,
@@ -370,7 +373,8 @@ if (isLocalCliMode) {
     startLocalAgent(localCliName, localCliId);
   }
   process.on('disconnect', async () => {
-    await agentCoordinator.shutdown();${dbEntry ? "\n    if (userPersistenceAdapter.close) await userPersistenceAdapter.close();" : ''}
+    await agentCoordinator.shutdown();
+    if (persistenceAdapter.close) await persistenceAdapter.close();
     process.exit(0);
   });
 } else {
@@ -397,7 +401,8 @@ if (isLocalCliMode) {
     await agentCoordinator.shutdown();
     // 2. Close WebSocket connections with Going Away frame.
     if (websocketTransport) await websocketTransport.close();
-    // 3. Close persistence adapter.${dbEntry ? "\n    if (userPersistenceAdapter.close) await userPersistenceAdapter.close();" : ''}
+    // 3. Close persistence adapter.
+    if (persistenceAdapter.close) await persistenceAdapter.close();
     // 4. Close HTTP server.
     await new Promise((resolve) => server.close(resolve));
     console.error('[flue] Stopped.');

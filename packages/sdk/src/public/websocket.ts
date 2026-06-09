@@ -68,10 +68,7 @@ export type WorkflowSocketEventListener = (
 export type SocketEventListener = AgentSocketEventListener | WorkflowSocketEventListener;
 
 /** Options for one prompt sent over a reusable agent socket. */
-export interface AgentSocketPromptOptions {
-	/** Session name. Defaults to `default`. */
-	session?: string;
-}
+export interface AgentSocketPromptOptions {}
 
 /** Reusable WebSocket connection to one persistent agent instance. */
 export interface AgentSocket {
@@ -371,14 +368,13 @@ class AgentSocketClient implements AgentSocket {
 
 	prompt(
 		message: string,
-		options: AgentSocketPromptOptions = {},
+		_options: AgentSocketPromptOptions = {},
 	): Promise<AgentSocketInvokeResult> {
 		return this.connection.request({
 			version: 1,
 			type: 'prompt',
 			requestId: this.connection.requestId(),
 			message,
-			...(options.session === undefined ? {} : { session: options.session }),
 		});
 	}
 

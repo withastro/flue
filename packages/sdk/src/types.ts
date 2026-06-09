@@ -38,8 +38,6 @@ export interface AgentManifestEntry {
 /** Payload for a direct interaction with a persistent agent instance. */
 export interface DirectAgentPayload {
 	message: string;
-	/** Session name. Defaults to `default`. */
-	session?: string;
 }
 
 /** Cursor-paginated list response. */
@@ -146,7 +144,6 @@ export type AgentWebSocketClientMessage =
 			type: 'prompt';
 			requestId: string;
 			message: string;
-			session?: string;
 	  }
 	| {
 			version: 1;

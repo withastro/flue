@@ -62,7 +62,6 @@ app.post('/webhooks/support-comments', async (c) => {
   const event = await parseVerifiedSupportComment(c.req.raw);
   const receipt = await dispatch(supportAssistant, {
     id: event.ticketId,
-    session: 'customer-follow-up',
     input: {
       type: 'support.comment.created',
       commentId: event.commentId,

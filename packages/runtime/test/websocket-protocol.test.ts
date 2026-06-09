@@ -16,7 +16,6 @@ describe('agent WebSocket protocol', () => {
 					type: 'prompt',
 					requestId: 'request-1',
 					message: 'Hello',
-					session: 'support',
 				}),
 			),
 		).toEqual({
@@ -24,7 +23,6 @@ describe('agent WebSocket protocol', () => {
 			type: 'prompt',
 			requestId: 'request-1',
 			message: 'Hello',
-			session: 'support',
 		});
 	});
 
@@ -148,55 +146,6 @@ describe('agent WebSocket protocol', () => {
 			type: 'invalid_request',
 			message: 'Request is malformed.',
 			details: 'Agent WebSocket prompt messages require string requestId and message values.',
-			status: 400,
-		});
-	});
-
-	it('rejects an empty session when an agent WebSocket prompt supplies a blank session', () => {
-		let thrown: unknown;
-		try {
-			parseAgentWebSocketMessage(
-				JSON.stringify({
-					version: 1,
-					type: 'prompt',
-					requestId: 'request-1',
-					message: 'Hello',
-					session: '   ',
-				}),
-			);
-		} catch (error) {
-			thrown = error;
-		}
-
-		expect(thrown).toMatchObject({
-			type: 'invalid_request',
-			message: 'Request is malformed.',
-			details: 'Agent WebSocket prompt session must be a non-empty string when provided.',
-			status: 400,
-		});
-	});
-
-	it('rejects a reserved task session name when an agent WebSocket prompt supplies a session', () => {
-		let thrown: unknown;
-		try {
-			parseAgentWebSocketMessage(
-				JSON.stringify({
-					version: 1,
-					type: 'prompt',
-					requestId: 'request-1',
-					message: 'Hello',
-					session: 'task:default:child',
-				}),
-			);
-		} catch (error) {
-			thrown = error;
-		}
-
-		expect(thrown).toMatchObject({
-			type: 'invalid_request',
-			message: 'Request is malformed.',
-			details:
-				'Agent WebSocket prompt session names beginning with "task:" are reserved for delegated tasks.',
 			status: 400,
 		});
 	});

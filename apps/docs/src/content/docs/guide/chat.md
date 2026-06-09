@@ -34,7 +34,6 @@ app.post('/webhooks/chat', async (c) => {
 
   await dispatch(assistant, {
     id: message.threadId,
-    session: message.threadId,
     input: {
       type: 'chat.message',
       messageId: message.id,
@@ -78,7 +77,6 @@ export function connectChat(agent: CreatedAgent) {
   bot.onNewMention(async (thread, message) => {
     await dispatch(agent, {
       id: thread.id,
-      session: thread.id,
       input: {
         type: 'chat.message',
         messageId: message.id,
@@ -111,15 +109,13 @@ The provider still calls your application webhook. Chat SDK interprets the provi
 
 On targets with background request lifecycles, such as Cloudflare Workers, attach asynchronous adapter work to the platform lifecycle when required. The Chat SDK example in `examples/chat-sdk/` demonstrates this integration.
 
-## Choose instance and session identity
+## Choose instance identity
 
-A chat thread is a useful default boundary for a conversational agent. In the examples above, `thread.id` or `message.threadId` is used for both dispatch fields.
+A chat thread is a useful default boundary for a conversational agent. In the examples above, `thread.id` or `message.threadId` is used as the agent instance `id`. Each thread gets its own agent instance with its own conversation history.
 
-`id` selects the continuing agent instance. `session` selects the conversation history inside that instance. When both identify the chat thread, each thread receives its own context and the agent instance can be configured with capabilities scoped to that thread.
+An application with an account, workspace, or repository boundary may use that boundary as the instance `id` instead. In that design, store or verify the permitted destination before any outbound action; a model-selected thread identifier is not an authorization boundary.
 
-An application with an account, workspace, or repository boundary may instead use that boundary as `id` and use the thread as `session`. In that design, store or verify the permitted destination before any outbound action; a model-selected thread identifier is not an authorization boundary.
-
-A dispatched chat message is an operation in an agent session, not a workflow run. Use agent and operation observation for chat-triggered activity rather than workflow run history.
+A dispatched chat message is an operation in an agent instance, not a workflow run. Use agent and operation observation for chat-triggered activity rather than workflow run history.
 
 ## Let an agent reply through tools
 

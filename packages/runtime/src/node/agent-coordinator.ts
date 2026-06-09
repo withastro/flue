@@ -67,8 +67,9 @@ export function createNodeAgentCoordinator(options: {
 	submissions: AgentSubmissionStore;
 	agents: Record<string, CreatedAgent>;
 	createContext: CreateContextFn;
+	eventStreamStore?: import('../runtime/event-stream-store.ts').EventStreamStore;
 }): NodeAgentCoordinator {
-	const { submissions, agents, createContext } = options;
+	const { submissions, agents, createContext, eventStreamStore } = options;
 	const observers = createAgentSubmissionObserverRegistry();
 
 	// ── Lease ownership ──────────────────────────────────────────────────
@@ -133,8 +134,22 @@ export function createNodeAgentCoordinator(options: {
 	// ── Helpers ──────────────────────────────────────────────────────────
 
 	function makeSubmissionContext(input: AgentSubmissionInput) {
-		return (payload: unknown, dispatchId: string | undefined) =>
-			createContext(input.id, undefined, payload, submissionSyntheticRequest(input), undefined, dispatchId);
+		return (payload: unknown, dispatchId: string | undefined) => {
+			const ctx = createContext(input.id, undefined, payload, submissionSyntheticRequest(input), undefined, dispatchId);
+			// Inject the event stream store for durable agent event persistence.
+			if (eventStreamStore) {
+				const streamPath = `agents/${input.agent}/${input.id}`;
+				eventStreamStore.createStream(streamPath);
+				ctx.subscribeEvent((event) => {
+					try {
+						eventStreamStore.appendEvent(streamPath, event);
+					} catch (error) {
+						console.error('[flue:event-stream] appendEvent failed:', error);
+					}
+				});
+			}
+			return ctx;
+		};
 	}
 
 	function resolveAgent(name: string): CreatedAgent {

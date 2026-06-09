@@ -102,7 +102,7 @@ describe('WebSocket clients', () => {
 
 		const events: unknown[] = [];
 		agent.onEvent((event, context) => events.push({ event, context }));
-		const options: AgentSocketPromptOptions = { session: 'chat' };
+		const options: AgentSocketPromptOptions = {};
 		const pending = agent.prompt('Hello', options);
 		await Promise.resolve();
 		const request = JSON.parse(connection?.socket.sent[0] ?? '{}') as { requestId: string };
@@ -110,7 +110,6 @@ describe('WebSocket clients', () => {
 			version: 1,
 			type: 'prompt',
 			message: 'Hello',
-			session: 'chat',
 		});
 		const message: LlmMessage = { role: 'user', content: [{ type: 'text', text: 'Hello' }] };
 		const output: LlmAssistantMessage = {

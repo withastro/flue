@@ -13,6 +13,7 @@ import type { AgentExecutionStore, PersistenceAdapter } from '../agent-execution
 import { InMemoryRunRegistry } from './run-registry.ts';
 import { InMemoryRunStore } from './run-store.ts';
 import type { SqlStorage } from '../sql-storage.ts';
+import { SqlEventStreamStore } from '../runtime/event-stream-store.ts';
 import { createSqlAgentExecutionStoreFromSql, ensureSqlAgentExecutionTables } from '../sql-agent-execution-store.ts';
 
 /**
@@ -140,6 +141,9 @@ export function sqlite(path?: string): PersistenceAdapter {
 		},
 		connectRunRegistry() {
 			return new InMemoryRunRegistry();
+		},
+		connectEventStreamStore() {
+			return new SqlEventStreamStore(ensureOpen().sql);
 		},
 		close() {
 			state?.db.close();

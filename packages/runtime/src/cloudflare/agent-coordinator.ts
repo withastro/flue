@@ -86,6 +86,7 @@ interface CloudflareAgentRuntimeOptions {
 		readonly client: unknown;
 		readonly server: CloudflareWebSocketConnection;
 	};
+	readonly createEventStreamStore?: (instance: CloudflareAgentInstance) => import('../runtime/event-stream-store.ts').EventStreamStore | undefined;
 }
 
 export interface CloudflareAgentRuntime {
@@ -499,6 +500,7 @@ class CloudflareAgentCoordinator {
 	}
 
 	private async processSubmissionEntry(submission: AgentSubmission): Promise<void> {
+		const eventStreamStore = this.options.createEventStreamStore?.(this.instance);
 		await processSubmission({
 			submissions: this.submissions,
 			submission,
@@ -507,8 +509,21 @@ class CloudflareAgentCoordinator {
 				if (!agent) throw new Error('[flue] Agent target unavailable during durable processing.');
 				return agent;
 			},
-			createContext: (payload, dispatchId) =>
-				this.createContext(payload, submissionSyntheticRequest(submission.input), undefined, dispatchId),
+			createContext: (payload, dispatchId) => {
+				const ctx = this.createContext(payload, submissionSyntheticRequest(submission.input), undefined, dispatchId);
+				if (eventStreamStore) {
+					const streamPath = `agents/${this.agentName}/${this.instance.name}`;
+					eventStreamStore.createStream(streamPath);
+					ctx.subscribeEvent((event) => {
+						try {
+							eventStreamStore.appendEvent(streamPath, event);
+						} catch (error) {
+							console.error('[flue:event-stream] appendEvent failed:', error);
+						}
+					});
+				}
+				return ctx;
+			},
 			observers: this.observers,
 			wrapExecution: (fn) => this.runWithInstanceContext(fn),
 			onSettled: () => {

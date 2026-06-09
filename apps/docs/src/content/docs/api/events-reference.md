@@ -168,7 +168,7 @@ These exports describe low-level protocol version 1 messages. For high-level ext
 
 ```ts
 type AgentWebSocketClientMessage =
-  | { version: 1; type: 'prompt'; requestId: string; message: string; session?: string }
+  | { version: 1; type: 'prompt'; requestId: string; message: string }
   | { version: 1; type: 'ping'; requestId?: string };
 ```
 

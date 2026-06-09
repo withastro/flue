@@ -86,11 +86,8 @@ export function isSubmissionPayload(
 /** Validate that a value is a well-formed direct submission payload. */
 function isDirectPayload(value: unknown): boolean {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-	const payload = value as { message?: unknown; session?: unknown };
-	return (
-		typeof payload.message === 'string' &&
-		(payload.session === undefined || typeof payload.session === 'string')
-	);
+	const payload = value as { message?: unknown };
+	return typeof payload.message === 'string';
 }
 
 // ─── Timestamp parsing ──────────────────────────────────────────────────────

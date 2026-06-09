@@ -30,8 +30,6 @@ export type WorkflowWebSocketHandler = MiddlewareHandler;
 export interface AgentDispatchRequest {
 	/** Target agent instance id. Must be a non-empty string. */
 	id: string;
-	/** Target session name. Defaults to `'default'`. */
-	session?: string;
 	/**
 	 * JSON-like input delivered to the session. Required; use `null` for an
 	 * intentional empty payload. Flue snapshots the value at admission time.
@@ -55,7 +53,6 @@ export interface DispatchReceipt {
 
 export interface DirectAgentPayload {
 	message: string;
-	session?: string;
 }
 
 /**
@@ -87,7 +84,6 @@ export type AgentWebSocketClientMessage =
 			type: 'prompt';
 			requestId: string;
 			message: string;
-			session?: string;
 	  }
 	| {
 			version: 1;

@@ -37,6 +37,7 @@ import {
 import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunPointer, RunRegistry } from './run-registry.ts';
+import type { EventStreamStore } from './event-stream-store.ts';
 import type { RunStore } from './run-store.ts';
 import type { RunSubscriberRegistry } from './run-subscribers.ts';
 import {
@@ -89,6 +90,9 @@ export interface FlueRuntime {
 
 	/** Node in-process registry used for live run-stream tailing. */
 	runSubscribers?: RunSubscriberRegistry;
+
+	/** Durable event stream store for DS-compatible event persistence. */
+	eventStreamStore?: EventStreamStore;
 
 	/** Cross-deployment workflow-run pointer index for bare `/runs/:runId` lookups. */
 	runRegistry?: RunRegistry;
@@ -227,7 +231,7 @@ function resolveCreatedAgentDispatchRequest(
 			'[flue] dispatch() target created agent is not a discovered default-exported agent in this built application.',
 		);
 	}
-	return { agent: name, id: request.id, session: request.session, input: request.input };
+	return { agent: name, id: request.id, input: request.input };
 }
 
 let runtimeConfig: FlueRuntime | undefined;
@@ -451,7 +455,6 @@ function agentRouteSpec() {
 						required: ['message'],
 						properties: {
 							message: { type: 'string' },
-							session: { type: 'string', minLength: 1, pattern: '.*\\S.*' },
 						},
 					},
 				},
@@ -612,6 +615,7 @@ const workflowRouteHandler: MiddlewareHandler = async (c) => {
 				runStore: rt.runStore,
 				runSubscribers: rt.runSubscribers,
 				runRegistry: rt.runRegistry,
+				eventStreamStore: rt.eventStreamStore,
 			});
 		}
 

@@ -137,7 +137,7 @@ Users can interact directly with an agent over HTTP or WebSocket. In either case
 
 ### HTTP
 
-An agent with a `route` export accepts HTTP messages at `POST /agents/<name>/<id>`. The body contains a message and may select a named session:
+An agent with a `route` export accepts HTTP messages at `POST /agents/<name>/<id>`. The body contains a message:
 
 ```http title="Prompt a support agent instance"
 POST /agents/support-assistant/ticket-8472 HTTP/1.1
@@ -145,8 +145,7 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "message": "Can you summarize the open issues in my case?",
-  "session": "customer-follow-up"
+  "message": "Can you summarize the open issues in my case?"
 }
 ```
 
@@ -214,7 +213,6 @@ app.post('/webhooks/support-comments', async (c) => {
   const event = await verifySupportWebhook(c.req.raw);
   const receipt = await dispatch(supportAssistant, {
     id: event.ticketId,
-    session: 'customer-follow-up',
     input: {
       type: 'support.comment.created',
       commentId: event.commentId,
@@ -230,7 +228,7 @@ app.route('/', flue());
 export default app;
 ```
 
-Your application chooses the agent instance and session before dispatching the event. `dispatch(...)` accepts it for asynchronous processing rather than waiting for an agent response. For a complete chat integration pattern, see [Chat](/docs/guide/chat/).
+Your application chooses the agent instance before dispatching the event. `dispatch(...)` accepts it for asynchronous processing rather than waiting for an agent response. For a complete chat integration pattern, see [Chat](/docs/guide/chat/).
 
 ## Next steps
 

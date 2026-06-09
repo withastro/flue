@@ -223,12 +223,12 @@ leaseExpiresAt: 1,
 
 			// Process fully, then simulate an interrupted second dispatch to same session.
 			const { coordinator: coord1, executionStore: store1 } = createFauxCoordinator(dbPath, provider);
-			const input1 = makeDispatchInput({ dispatchId: 'dispatch-first', session: 'sess-1' });
+			const input1 = makeDispatchInput({ dispatchId: 'dispatch-first' });
 			await coord1.admitDispatch(input1);
 			await coord1.waitForIdle();
 
 			// Now manually admit+claim a second dispatch without processing — leave running.
-			const input2 = makeDispatchInput({ dispatchId: 'dispatch-second', session: 'sess-1' });
+			const input2 = makeDispatchInput({ dispatchId: 'dispatch-second' });
 			await store1.submissions.admitDispatch(input2);
 		await store1.submissions.claimSubmission({
 			submissionId: input2.dispatchId,
@@ -377,7 +377,7 @@ leaseExpiresAt: 1,
 			const provider = createFauxProvider();
 			provider.setResponses([fauxAssistantMessage('Completed after preserved tool result.')]);
 			const store = createNodeAgentExecutionStore(dbPath);
-			const input = makeDispatchInput({ session: 'tool-result-session' });
+			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
 		const claimed = await store.submissions.claimSubmission({
 			submissionId: input.dispatchId,
@@ -409,7 +409,7 @@ leaseExpiresAt: 1,
 					},
 				},
 			);
-			const storageKey = createSessionStorageKey('instance-1', 'default', 'tool-result-session');
+			const storageKey = createSessionStorageKey('instance-1', 'default', 'default');
 			const now = new Date().toISOString();
 			await store.sessions.save(storageKey, {
 				version: 5,
@@ -426,7 +426,7 @@ leaseExpiresAt: 1,
 							dispatchId: input.dispatchId,
 							agent: 'assistant',
 							id: 'instance-1',
-							session: 'tool-result-session',
+							session: 'default',
 							acceptedAt: now,
 							input: { message: 'Hello' },
 						},
@@ -493,7 +493,7 @@ leaseExpiresAt: 1,
 
 			// Manually build the interrupted session state in the store.
 			const store = createNodeAgentExecutionStore(dbPath);
-			const input = makeDispatchInput({ session: 'tool-repair-session' });
+			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
 		const claimed = await store.submissions.claimSubmission({
 			submissionId: input.dispatchId,
@@ -527,7 +527,7 @@ leaseExpiresAt: 1,
 			);
 
 			// Also persist the session history up to the tool calls (user msg + assistant msg).
-			const storageKey = createSessionStorageKey('instance-1', 'default', 'tool-repair-session');
+			const storageKey = createSessionStorageKey('instance-1', 'default', 'default');
 			const now = new Date().toISOString();
 			await store.sessions.save(storageKey, {
 				version: 5,
@@ -544,7 +544,7 @@ leaseExpiresAt: 1,
 							dispatchId: input.dispatchId,
 							agent: 'assistant',
 							id: 'instance-1',
-							session: 'tool-repair-session',
+							session: 'default',
 							acceptedAt: now,
 							input: { message: 'Hello' },
 						},
@@ -600,8 +600,8 @@ leaseExpiresAt: 1,
 			const store = createNodeAgentExecutionStore(dbPath);
 
 			// Admit two dispatches to the same session.
-			const inputA = makeDispatchInput({ dispatchId: 'dispatch-A', session: 'ordered-session' });
-			const inputB = makeDispatchInput({ dispatchId: 'dispatch-B', session: 'ordered-session' });
+			const inputA = makeDispatchInput({ dispatchId: 'dispatch-A' });
+			const inputB = makeDispatchInput({ dispatchId: 'dispatch-B' });
 			await store.submissions.admitDispatch(inputA);
 			await store.submissions.admitDispatch(inputB);
 
@@ -629,12 +629,12 @@ leaseExpiresAt: 1,
 			expect(await executionStore.submissions.hasUnsettledSubmissions()).toBe(false);
 		}, 60_000);
 
-		it.skipIf(!hasApiKey)('processes queued submissions from different sessions independently', async () => {
+		it.skipIf(!hasApiKey)('processes multiple queued submissions to the same instance', async () => {
 			const dbPath = createTempDbPath();
 			const { coordinator, executionStore } = createRealCoordinator(dbPath);
 
-			const inputA = makeDispatchInput({ dispatchId: 'dispatch-sessA', session: 'session-A' });
-			const inputB = makeDispatchInput({ dispatchId: 'dispatch-sessB', session: 'session-B' });
+			const inputA = makeDispatchInput({ dispatchId: 'dispatch-sessA' });
+			const inputB = makeDispatchInput({ dispatchId: 'dispatch-sessB' });
 
 			await coordinator.admitDispatch(inputA);
 			await coordinator.admitDispatch(inputB);
@@ -655,13 +655,13 @@ leaseExpiresAt: 1,
 			const store = createNodeAgentExecutionStore(dbPath);
 
 			// Pre-queue a submission from a "previous process" that was never claimed.
-			const inputOld = makeDispatchInput({ dispatchId: 'dispatch-old', session: 'drain-session' });
+			const inputOld = makeDispatchInput({ dispatchId: 'dispatch-old' });
 			await store.submissions.admitDispatch(inputOld);
 
-			// Now create a fresh coordinator and dispatch a new submission to a different session.
+			// Now create a fresh coordinator and dispatch a new submission.
 			const { coordinator, executionStore } = createRealCoordinator(dbPath);
 
-			const inputNew = makeDispatchInput({ dispatchId: 'dispatch-new', session: 'other-session' });
+			const inputNew = makeDispatchInput({ dispatchId: 'dispatch-new' });
 			await coordinator.admitDispatch(inputNew);
 			await coordinator.waitForIdle();
 
@@ -739,8 +739,8 @@ leaseExpiresAt: 1,
 			const admit = coordinator.createAdmission('assistant', 'instance-1');
 			// Fire both concurrently to the same session.
 			const [result1, result2] = await Promise.all([
-				admit({ message: 'First', session: 'concurrent-session' }),
-				admit({ message: 'Second', session: 'concurrent-session' }),
+				admit({ message: 'First' }),
+				admit({ message: 'Second' }),
 			]);
 
 			// Both should resolve (not reject).
@@ -832,7 +832,7 @@ leaseExpiresAt: 1,
 				submissionId: 'direct-no-observer',
 				agent: 'assistant',
 				id: 'instance-1',
-				session: 'silent-session',
+				session: 'default',
 				payload: { message: 'Hello silent' },
 				acceptedAt: new Date().toISOString(),
 			});
@@ -864,7 +864,7 @@ leaseExpiresAt: 1,
 				submissionId: 'direct-head',
 				agent: 'assistant',
 				id: 'instance-1',
-				session: 'ordered-mixed',
+				session: 'default',
 				payload: { message: 'Direct first' },
 				acceptedAt: new Date().toISOString(),
 			});
@@ -878,7 +878,7 @@ leaseExpiresAt: 1,
 			// Admit a dispatch to the same session.
 			const dispatchInput = makeDispatchInput({
 				dispatchId: 'dispatch-queued-behind',
-				session: 'ordered-mixed',
+				session: 'default',
 			});
 			await store.submissions.admitDispatch(dispatchInput);
 

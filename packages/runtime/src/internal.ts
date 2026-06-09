@@ -89,6 +89,8 @@ export type {
 	RunPointer,
 	RunRegistry,
 } from './runtime/run-registry.ts';
+export type { EventStreamStore } from './runtime/event-stream-store.ts';
+export { SqlEventStreamStore } from './runtime/event-stream-store.ts';
 export type { RunRecord, RunStatus, RunStore } from './runtime/run-store.ts';
 export type { RunSubscriberListener, RunSubscriberRegistry } from './runtime/run-subscribers.ts';
 export { createRunSubscriberRegistry } from './runtime/run-subscribers.ts';

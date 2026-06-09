@@ -9,7 +9,6 @@ import {
 	toHttpResponse,
 	toPublicError,
 } from '../errors.ts';
-import { isTaskSessionName } from '../session-identity.ts';
 import type {
 	AttachedAgentEventCallback,
 	CreatedAgent,
@@ -19,6 +18,7 @@ import type {
 } from '../types.ts';
 import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
 import type { DispatchInput } from './dispatch-queue.ts';
+import type { EventStreamStore } from './event-stream-store.ts';
 import { streamActiveRunEvents } from './handle-run-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
@@ -36,11 +36,6 @@ interface DirectRequestSession {
 export function assertAgentDispatchAdmissionInput(input: unknown): asserts input is DispatchInput {
 	if (!isDispatchInput(input))
 		throw new Error('[flue] Internal dispatch admission received an invalid payload.');
-	if (isTaskSessionName(input.session)) {
-		throw new Error(
-			'[flue] Internal dispatch admission session names beginning with "task:" are reserved for delegated tasks.',
-		);
-	}
 }
 
 function isDispatchInput(value: unknown): value is DispatchInput {
@@ -65,7 +60,7 @@ export function createDirectAgentHandler(agent: CreatedAgent): AgentHandler {
 	return async (ctx) => {
 		const payload = parseDirectAgentPayload(ctx.payload);
 		const harness = await ctx.initializeCreatedAgent(agent, undefined);
-		const session = await harness.session(payload.session);
+		const session = await harness.session();
 		if (!isDirectRequestSession(session)) {
 			throw new Error('[flue] Internal session does not support direct input processing.');
 		}
@@ -82,30 +77,15 @@ function isDirectRequestSession(value: unknown): value is DirectRequestSession {
 }
 
 function parseDirectAgentPayload(payload: unknown): DirectAgentPayload {
-	const expected =
-		'Direct agent requests must use JSON object body { "message": string, "session"?: string }.';
+	const expected = 'Direct agent requests must use JSON object body { "message": string }.';
 	if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
 		throw new InvalidRequestError({ reason: expected });
 	}
-	const value = payload as { message?: unknown; session?: unknown };
+	const value = payload as { message?: unknown };
 	if (typeof value.message !== 'string') {
 		throw new InvalidRequestError({ reason: expected });
 	}
-	if (
-		value.session !== undefined &&
-		(typeof value.session !== 'string' || value.session.trim() === '')
-	) {
-		throw new InvalidRequestError({
-			reason: 'Direct agent request "session" must be a non-empty string when provided.',
-		});
-	}
-	if (typeof value.session === 'string' && isTaskSessionName(value.session)) {
-		throw new InvalidRequestError({
-			reason:
-				'Direct agent request "session" names beginning with "task:" are reserved for delegated tasks.',
-		});
-	}
-	return { message: value.message, session: value.session };
+	return { message: value.message };
 }
 
 /**
@@ -157,6 +137,7 @@ export interface HandleWorkflowOptions {
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
+	eventStreamStore?: EventStreamStore;
 	runId?: string;
 }
 
@@ -197,8 +178,16 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 }
 
 export async function handleWorkflowRequest(opts: HandleWorkflowOptions): Promise<Response> {
-	const { request, workflowName, handler, createContext, runStore, runSubscribers, runRegistry } =
-		opts;
+	const {
+		request,
+		workflowName,
+		handler,
+		createContext,
+		runStore,
+		runSubscribers,
+		runRegistry,
+		eventStreamStore,
+	} = opts;
 	const startWorkflowAdmission = opts.startWorkflowAdmission ?? defaultStartWorkflowAdmission;
 	const runId = opts.runId ?? generateWorkflowRunId(workflowName);
 	const instanceId = runId;
@@ -224,6 +213,7 @@ export async function handleWorkflowRequest(opts: HandleWorkflowOptions): Promis
 			runStore,
 			runSubscribers,
 			runRegistry,
+			eventStreamStore,
 		});
 
 		if (isSSE && wait !== 'result') return await runSseMode(execution);
@@ -253,6 +243,7 @@ export interface InvokeWorkflowAttachedOptions {
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
+	eventStreamStore?: EventStreamStore;
 }
 
 export interface DirectAttachedOptions {
@@ -278,6 +269,7 @@ export interface FailRecoveredRunOptions {
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
+	eventStreamStore?: EventStreamStore;
 }
 
 interface WorkflowAdmissionOptions {
@@ -292,6 +284,7 @@ interface WorkflowAdmissionOptions {
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
+	eventStreamStore?: EventStreamStore;
 	onAdmitted?: (runId: string) => void;
 	onEvent?: FlueEventCallback;
 	emitIdleOnComplete?: boolean;
@@ -325,6 +318,7 @@ async function prepareWorkflowExecution(
 		runStore,
 		runSubscribers,
 		runRegistry,
+		eventStreamStore,
 		onAdmitted,
 		onEvent,
 		emitIdleOnComplete,
@@ -340,6 +334,7 @@ async function prepareWorkflowExecution(
 		runStore,
 		runSubscribers,
 		runRegistry,
+		eventStreamStore,
 		requirePersistedAdmission: true,
 	});
 	return {
@@ -639,6 +634,7 @@ export async function invokeWorkflowAttached(
 		runStore: opts.runStore,
 		runSubscribers: opts.runSubscribers,
 		runRegistry: opts.runRegistry,
+		eventStreamStore: opts.eventStreamStore,
 		onAdmitted: opts.onAdmitted,
 		onEvent: opts.onEvent,
 		emitIdleOnComplete: opts.emitIdleOnComplete,
@@ -666,6 +662,7 @@ async function invokeWorkflowAttachedUnlocked(
 		runStore: opts.runStore,
 		runSubscribers: opts.runSubscribers,
 		runRegistry: opts.runRegistry,
+		eventStreamStore: opts.eventStreamStore,
 	});
 	const { ctx } = lifecycle;
 	let didEmitIdle = false;
@@ -701,6 +698,7 @@ interface WorkflowRunLifecycleOptions {
 	runStore?: RunStore;
 	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
+	eventStreamStore?: EventStreamStore;
 	requirePersistedAdmission?: boolean;
 }
 
@@ -751,6 +749,8 @@ async function createWorkflowRunLifecycle(
 				startedAt,
 			}),
 		);
+	// Create the durable event stream for this workflow run.
+	options.eventStreamStore?.createStream(`runs/${options.runId}`);
 	return { ...options, ctx, startedAt, startedAtMs };
 }
 
@@ -822,7 +822,7 @@ async function emitRunEnd(
 	const error = input.isError ? serializeError(input.error) : undefined;
 	const normalizedResult = result === undefined ? null : result;
 
-	const { runStore, runSubscribers, runRegistry, runId } = lifecycle;
+	const { runStore, runSubscribers, runRegistry, eventStreamStore, runId } = lifecycle;
 
 	// Decorate through the shared event path so eventIndex/timestamp stay continuous.
 	const decorated = lifecycle.ctx.emitEvent({
@@ -833,6 +833,10 @@ async function emitRunEnd(
 		error,
 		durationMs,
 	});
+
+	// Append run_end to the durable event stream, then close it.
+	eventStreamStore?.appendEvent(`runs/${runId}`, decorated);
+	eventStreamStore?.closeStream(`runs/${runId}`);
 
 	let appendError: unknown;
 	try {
@@ -875,12 +879,14 @@ async function emitRunEnd(
  * `run_end` is handled separately by {@link emitRunEnd}.
  */
 function subscribeRunFanout(lifecycle: WorkflowRunLifecycle): () => Promise<void> {
-	const { ctx, runStore, runSubscribers, runId } = lifecycle;
-	if (!runStore && !runSubscribers) return async () => {};
+	const { ctx, runStore, runSubscribers, eventStreamStore, runId } = lifecycle;
+	if (!runStore && !runSubscribers && !eventStreamStore) return async () => {};
 	let chain: Promise<void> = Promise.resolve();
 	const unsubscribe = ctx.subscribeEvent((event) => {
 		if (event.type === 'run_end') return;
-		chain = chain.then(() => fanOutEvent(runStore, runSubscribers, runId, event));
+		chain = chain.then(() =>
+			fanOutEvent(runStore, runSubscribers, eventStreamStore, runId, event),
+		);
 	});
 	return () => {
 		unsubscribe();
@@ -891,9 +897,11 @@ function subscribeRunFanout(lifecycle: WorkflowRunLifecycle): () => Promise<void
 async function fanOutEvent(
 	runStore: RunStore | undefined,
 	runSubscribers: RunSubscriberRegistry | undefined,
+	eventStreamStore: EventStreamStore | undefined,
 	runId: string,
 	event: FlueEvent,
 ): Promise<void> {
+	eventStreamStore?.appendEvent(`runs/${runId}`, event);
 	if (runStore) {
 		await persistRunEvent('appendEvent', () => runStore.appendEvent(runId, event));
 	}

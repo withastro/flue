@@ -402,40 +402,7 @@ describe('flue()', () => {
 				type: 'invalid_request',
 				message: 'Request is malformed.',
 				details:
-					'Direct agent requests must use JSON object body { "message": string, "session"?: string }.',
-			},
-		});
-	});
-
-	it('rejects a direct agent body when it targets a reserved task session name', async () => {
-		configureFlueRuntime({
-			target: 'node',
-			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
-			},
-			createAdmission: {
-				assistant: (_id) => async (payload) => ({ message: payload.message }),
-			},
-			createContext: createTestContext,
-		});
-		const app = new Hono();
-		app.route('/api', flue());
-
-		const response = await app.fetch(
-			new Request('http://localhost/api/agents/assistant/customer-123', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ message: 'Hello', session: 'task:default:child' }),
-			}),
-		);
-
-		expect(response.status).toBe(400);
-		expect(await response.json()).toEqual({
-			error: {
-				type: 'invalid_request',
-				message: 'Request is malformed.',
-				details:
-					'Direct agent request "session" names beginning with "task:" are reserved for delegated tasks.',
+					'Direct agent requests must use JSON object body { "message": string }.',
 			},
 		});
 	});
