@@ -259,9 +259,8 @@ function parseIpcAgentMessage(raw) {
   if (!raw || typeof raw !== 'object' || typeof raw.requestId !== 'string') {
     throw new Error('IPC agent messages must have a string requestId.');
   }
-  if (raw.type === 'ping') return { type: 'ping', requestId: raw.requestId };
   if (raw.type !== 'prompt' || typeof raw.message !== 'string') {
-    throw new Error('IPC agent messages must have type "prompt" with a string message, or type "ping".');
+    throw new Error('IPC agent messages must have type "prompt" with a string message.');
   }
   return { type: 'prompt', requestId: raw.requestId, message: raw.message };
 }
@@ -338,10 +337,6 @@ function startLocalAgent(name, id) {
       message = parseIpcAgentMessage(raw);
     } catch (error) {
       sendLocalMessage(ipcErrorMessage(error));
-      return;
-    }
-    if (message.type === 'ping') {
-      sendLocalMessage({ type: 'pong', requestId: message.requestId });
       return;
     }
     let didStart = false;

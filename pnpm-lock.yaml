@@ -199,31 +199,6 @@ importers:
         specifier: ^4.97.0
         version: 4.97.0(@cloudflare/workers-types@4.20260602.1)
 
-  examples/cloudflare-websocket:
-    dependencies:
-      '@flue/runtime':
-        specifier: workspace:*
-        version: link:../../packages/runtime
-      agents:
-        specifier: ^0.14.1
-        version: 0.14.1(@babel/core@7.29.0)(@babel/runtime@7.29.7)(@cloudflare/codemode@0.3.8(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ai@6.0.191(zod@4.4.3))(zod@4.4.3))(@cloudflare/workers-types@4.20260602.1)(ai@6.0.191(zod@4.4.3))(chat@4.29.0(ai@6.0.191(zod@4.4.3))(zod@4.4.3))(just-bash@3.0.1)(react@19.2.6)(rolldown@1.0.2)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))(zod@4.4.3)
-      hono:
-        specifier: ^4.7.0
-        version: 4.12.22
-    devDependencies:
-      '@cloudflare/workers-types':
-        specifier: ^4.20260602.1
-        version: 4.20260602.1
-      '@flue/cli':
-        specifier: workspace:*
-        version: link:../../packages/cli
-      '@flue/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      wrangler:
-        specifier: ^4.97.0
-        version: 4.97.0(@cloudflare/workers-types@4.20260602.1)
-
   examples/hello-world:
     dependencies:
       '@daytona/sdk':
@@ -267,19 +242,6 @@ importers:
       wrangler:
         specifier: ^4.97.0
         version: 4.97.0(@cloudflare/workers-types@4.20260602.1)
-
-  examples/node-websocket:
-    dependencies:
-      '@flue/runtime':
-        specifier: workspace:*
-        version: link:../../packages/runtime
-    devDependencies:
-      '@flue/cli':
-        specifier: workspace:*
-        version: link:../../packages/cli
-      '@flue/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
 
   examples/sentry:
     dependencies:
