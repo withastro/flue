@@ -51,7 +51,7 @@ export async function run({ init, payload }: FlueContext) {
 
 A few things to note:
 
-- This workflow omits public `route` and `websocket` middleware, so it is internal-only and designed to be run from the CLI, which is perfect for CI.
+- This workflow omits a public `route` handler, so it is internal-only and designed to be run from the CLI, which is perfect for CI.
 - **`model`** — `init(agent)` fails unless the created agent config provides a model, sets `model: false`, or supplies a profile with a model.
 - **`local()`** — The `local()` sandbox runs the agent directly against the host filesystem and shell. In CI, that's the checked-out repo plus whatever binaries are on `$PATH` (`gh`, `git`, `npm`, etc.). Skills and `AGENTS.md` are discovered automatically from the project root. By default only shell-essential env vars (`PATH`, `HOME`, locale, etc.) are inherited from `process.env` — pass `local({ env: { GH_TOKEN: process.env.GH_TOKEN } })` to expose more. Use `local()` only when the runner itself provides the isolation boundary.
 - **Schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns it on `response.data`, fully typed.

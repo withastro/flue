@@ -24,7 +24,7 @@ Keep local credentials and platform values in environment configuration rather t
 
 ## Run
 
-The CLI can invoke discovered agents and workflows directly through a local Node build. This is useful when you want to exercise application behavior without first exposing or calling an HTTP or WebSocket route.
+The CLI can invoke discovered agents and workflows directly through a local Node build. This is useful when you want to exercise application behavior without first exposing or calling an HTTP route.
 
 Use `flue connect` to open an interactive connection to one agent instance:
 

@@ -14,7 +14,7 @@ flue logs <workflowRunId> [--server <url>] [--header 'Name: value'] [--follow|-f
 
 `flue logs` replays or follows events for one workflow run from a running Flue server. It is read-only and does not invoke work.
 
-Runs are workflow-only. Direct HTTP or WebSocket agent prompts and dispatched agent inputs are persistent session interactions, not runs.
+Runs are workflow-only. Direct HTTP agent prompts and dispatched agent inputs are persistent session interactions, not runs.
 
 `flue logs` inspects runs owned by the selected running server. It cannot inspect the private child process used by `flue run`: that one-shot process streams events directly to its command and does not publish run-inspection routes.
 

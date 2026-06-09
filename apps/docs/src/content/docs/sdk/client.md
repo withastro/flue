@@ -1,7 +1,6 @@
 ---
 title: createFlueClient(...)
 description: Configure an SDK client for a deployed Flue application.
-lastReviewedAt: 2026-06-02
 ---
 
 ```ts
@@ -23,15 +22,13 @@ Creates a client for the public and read-only admin routes of a deployed Flue ap
 
 ## `CreateFlueClientOptions`
 
-| Field           | Type                    | Default                        | Description                                                                                                |
-| --------------- | ----------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `baseUrl`       | `string`                | —                              | URL where the public `flue()` sub-app is mounted, including any pathname.                                  |
-| `fetch`         | `typeof fetch`          | global `fetch`                 | Custom HTTP implementation.                                                                                |
-| `headers`       | `RequestHeaders`        | —                              | Headers merged into each HTTP request.                                                                     |
-| `token`         | `string`                | —                              | Bearer token added to HTTP requests.                                                                       |
-| `adminBasePath` | `string`                | `'/admin'`                     | Origin-relative mount path for read-only admin routes.                                                     |
-| `websocket`     | `WebSocketFactory`      | global `WebSocket` constructor | Custom WebSocket implementation.                                                                           |
-| `websocketUrl`  | `WebSocketUrlTransform` | —                              | Transforms each WebSocket URL after HTTP protocol conversion, for example to add handshake authentication. |
+| Field           | Type             | Default        | Description                                                                                                |
+| --------------- | ---------------- | -------------- | ---------------------------------------------------------------------------------------------------------- |
+| `baseUrl`       | `string`         | —              | URL where the public `flue()` sub-app is mounted, including any pathname.                                  |
+| `fetch`         | `typeof fetch`   | global `fetch` | Custom HTTP implementation. Also used for Durable Streams event streaming.                                 |
+| `headers`       | `RequestHeaders` | —              | Headers merged into each HTTP and stream request.                                                          |
+| `token`         | `string`         | —              | Bearer token added to HTTP and stream requests.                                                            |
+| `adminBasePath` | `string`         | `'/admin'`     | Origin-relative mount path for read-only admin routes.                                                     |
 
 ## `RequestHeaders`
 
@@ -41,4 +38,4 @@ type RequestHeaders =
   | (() => Record<string, string> | Promise<Record<string, string>>);
 ```
 
-Use a function to resolve headers separately for each HTTP request.
+Use a function to resolve headers separately for each HTTP request and stream reconnection.

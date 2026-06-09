@@ -25,15 +25,15 @@ To store session history in an application-controlled database, create a `src/db
 
 ### Durable Agents on Cloudflare
 
-On Cloudflare, generated Durable Object-backed agents store session history in SQLite by default. They also protect accepted agent input while it is being processed. Direct HTTP, SSE, and WebSocket prompts and asynchronous `dispatch(...)` inputs enter the same durable queue. Inputs keep their accepted order.
+On Cloudflare, generated Durable Object-backed agents store session history in SQLite by default. They also protect accepted agent input while it is being processed. Direct HTTP prompts and asynchronous `dispatch(...)` inputs enter the same durable queue. Inputs keep their accepted order.
 
 ```txt
-direct HTTP, SSE, or WebSocket prompt ─┐
-                                       ├→ durable per-session queue → stored session history
+direct HTTP prompt ─────────────────────┐
+                                        ├→ durable per-session queue → stored session history
 dispatch(...) input ────────────────────┘
 ```
 
-The connection that submitted a prompt observes the work but does not own it. If an HTTP response, SSE stream, or WebSocket closes after Cloudflare accepts the prompt, the backend work can continue. Flue does not reconstruct the lost connection or replay missed direct-agent stream events.
+The connection that submitted a prompt observes the work but does not own it. If an HTTP response closes after Cloudflare accepts the prompt, the backend work can continue. Agent events are durably stored and can be replayed from any offset via the Durable Streams protocol.
 
 When the Cloudflare runtime is interrupted, Flue checks the stored input and session history before deciding what to do next. It starts work again only when it can prove that the input was not applied. If a completed response was already stored, Flue recognizes that completion. When the outcome is uncertain, Flue records a visible interruption message in the session instead of blindly repeating model or tool activity.
 
@@ -45,11 +45,11 @@ See [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/) for Durabl
 
 On Node.js, sessions and accepted input live in process memory by default. Restarting the process loses all in-flight work and session history.
 
-Both direct prompts (HTTP, SSE, WebSocket) and asynchronous `dispatch(...)` inputs go through the same ordered submission lifecycle with SQL admission, FIFO ordering, and journal tracking. Inputs keep their accepted order. The connection that submitted a direct prompt observes the work but does not own it — accepted backend work continues through the durable lifecycle regardless of transport state.
+Both direct HTTP prompts and asynchronous `dispatch(...)` inputs go through the same ordered submission lifecycle with SQL admission, FIFO ordering, and journal tracking. Inputs keep their accepted order. The connection that submitted a direct prompt observes the work but does not own it — accepted backend work continues through the durable lifecycle regardless of transport state.
 
 ```txt
-direct HTTP, SSE, or WebSocket prompt ─┐
-                                       ├→ durable per-session queue → stored session history
+direct HTTP prompt ─────────────────────┐
+                                        ├→ durable per-session queue → stored session history
 dispatch(...) input ────────────────────┘
 ```
 
@@ -57,7 +57,7 @@ Because the default backing store is in-memory SQLite, this lifecycle tracking p
 
 With a durable adapter, Node can recover interrupted work with the same conservative reconciliation rules as Cloudflare: it requeues only when canonical input is provably absent, recognizes already-completed canonical output, and terminalizes uncertain work instead of replaying it blindly. Node does not get Cloudflare's automatic Durable Object wake and Fiber recovery. A replacement Node process must start successfully and run startup reconciliation before interrupted work is examined. The coordinator also scans for expired leases periodically, so submissions stranded by a fast restart are eventually reclaimed even if the replacement process started before the old lease expired.
 
-On graceful shutdown (SIGINT/SIGTERM), active submissions are aborted at the turn boundary and left in a reclaimable state — they are not permanently settled. Their leases expire naturally and are reclaimed on next startup. Flue does not reconstruct lost SSE or WebSocket connections or replay missed direct-agent stream events after a restart.
+On graceful shutdown (SIGINT/SIGTERM), active submissions are aborted at the turn boundary and left in a reclaimable state — they are not permanently settled. Their leases expire naturally and are reclaimed on next startup. Agent events are durably stored and can be replayed from any offset via the Durable Streams protocol after a restart.
 
 A file-backed SQLite adapter protects against process restart on the same host; surviving host loss requires storage outside that host, such as Postgres or another durable shared database.
 
@@ -71,7 +71,7 @@ A Cloudflare Durable Object reset and a Node server restart are not equivalent b
 | --- | --- | --- | --- |
 | Machine or runtime process disappears while work is running | Durable Object SQLite retains accepted direct and dispatched submissions. | In-memory session and submission state disappear. | Persisted session and submission rows remain available. |
 | Interrupted dispatch input | Reconciled after Durable Object recovery with conservative replay rules. | Lost with process memory. | Reconciled on replacement-process startup with the same shared replay rules. |
-| Interrupted direct HTTP, SSE, or WebSocket prompt | Remains queued after admission; the transport may disconnect, but backend work is still reconciled. | Lost when the server process exits. | Reconciled on replacement-process startup. The transport disconnects, but persisted submission state is recovered. |
+| Interrupted direct HTTP prompt | Remains queued after admission; the transport may disconnect, but backend work is still reconciled. | Lost when the server process exits. | Reconciled on replacement-process startup. The transport disconnects, but persisted submission state is recovered. |
 | Recovery trigger | Durable Object startup, scheduled wake, and recovered Fiber callbacks. | None after restart. | Startup reconciliation when the new server begins listening, plus periodic expired-lease scans. |
 | Multi-replica continuity | Per-agent Durable Object ownership gives one durable queue per agent instance. | Process-local only. | Depends on the adapter and deployment topology; use a shared durable store when another host must recover the work. |
 

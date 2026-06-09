@@ -12,7 +12,7 @@ flue dev [--target <node|cloudflare>] [--root <path>] [--output <path>] [--confi
 
 ## Description
 
-`flue dev` builds the selected project, starts a local server, watches project files, and reloads after relevant changes. Editing, creating, or deleting an auto-discovered `flue.config.*` file restarts the local development session with freshly resolved configuration. Explicit `--config <path>` files are watched even when they live outside the project root. A configuration restart interrupts active local requests and WebSocket connections. When an edited configuration is invalid, the command waits for the next configuration change and starts a new session after the error is corrected.
+`flue dev` builds the selected project, starts a local server, watches project files, and reloads after relevant changes. Editing, creating, or deleting an auto-discovered `flue.config.*` file restarts the local development session with freshly resolved configuration. Explicit `--config <path>` files are watched even when they live outside the project root. A configuration restart interrupts active local requests and streaming connections. When an edited configuration is invalid, the command waits for the next configuration change and starts a new session after the error is corrected.
 
 ## Options
 

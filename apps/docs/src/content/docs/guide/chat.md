@@ -51,7 +51,7 @@ export default app;
 
 `parseVerifiedChatMessage(...)` represents application code written against the platform integration you choose. It should reject untrusted requests, ignore trusted events that should not become agent input, and return only the information the agent needs.
 
-This is different from exposing a direct agent prompt route. The chat platform does not select `/agents/<name>/<id>` or supply a conversation identity to an agent endpoint. Your webhook handler makes that mapping after accepting the platform event. An agent that only receives chat input through `dispatch(...)` does not need to export an HTTP or WebSocket transport.
+This is different from exposing a direct agent prompt route. The chat platform does not select `/agents/<name>/<id>` or supply a conversation identity to an agent endpoint. Your webhook handler makes that mapping after accepting the platform event. An agent that only receives chat input through `dispatch(...)` does not need to export an HTTP route.
 
 `dispatch(...)` accepts the message for asynchronous processing. It does not wait for the agent to compose or post a reply.
 
@@ -144,7 +144,7 @@ export default createAgent(({ id }) => ({
 
 The model chooses the reply text, but trusted application code chooses where it can be sent. Apply the same rule to reactions, edits, attachments, or provider-native actions: keep credentials and authorized destinations outside model-selected tool arguments.
 
-If you separately expose this agent through a direct HTTP or WebSocket route, that route must verify that its caller may select the requested agent instance. See [Tools](/docs/guide/tools/) for capability boundaries and [Routing](/docs/guide/routing/) for protecting public application surfaces.
+If you separately expose this agent through a direct HTTP route, that route must verify that its caller may select the requested agent instance. See [Tools](/docs/guide/tools/) for capability boundaries and [Routing](/docs/guide/routing/) for protecting public application surfaces.
 
 ## Keep chat-side state and agent state separate
 

@@ -103,14 +103,12 @@ Apply middleware to the mounted paths your application publishes, such as `/api/
 
 Mounting `flue()` does not make every discovered agent or workflow directly invocable. Each module opts into its public transports:
 
-| Module export        | Available through the mounted Flue application                           |
-| -------------------- | ------------------------------------------------------------------------ |
-| Agent `route`        | HTTP prompts at `POST /agents/:name/:id` beneath the mount path.         |
-| Agent `websocket`    | WebSocket connections at `GET /agents/:name/:id` beneath the mount path. |
-| Workflow `route`     | HTTP invocation at `POST /workflows/:name` beneath the mount path.       |
-| Workflow `websocket` | WebSocket invocation at `GET /workflows/:name` beneath the mount path.   |
+| Module export    | Available through the mounted Flue application                                                                                         |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Agent `route`    | HTTP prompts at `POST /agents/:name/:id` and event streaming at `GET /agents/:name/:id` beneath the mount path.                        |
+| Workflow `route` | HTTP invocation at `POST /workflows/:name` beneath the mount path. Run event streaming at `GET /runs/:runId` beneath the mount path.   |
 
-HTTP and WebSocket exposure are independent. An agent used only through application-owned `dispatch(...)` calls does not need either public transport export.
+An agent used only through application-owned `dispatch(...)` calls does not need a public transport export.
 
 See [Agents](/docs/guide/building-agents/) for creating and exposing continuing agent instances, and [Workflows](/docs/guide/workflows/) for exposing finite operations and inspecting their runs.
 

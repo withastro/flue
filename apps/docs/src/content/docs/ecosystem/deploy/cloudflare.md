@@ -135,24 +135,7 @@ curl http://localhost:3583/workflows/translate?wait=result \
 
 `flue run` starts the generated server in Node.js, so it only supports `--target node`. Cloudflare builds use Worker-only runtime modules — `flue dev --target cloudflare` is the equivalent for testing them locally.
 
-### WebSocket connections
-
-In an agent module, import `type AgentWebSocketHandler` and export `const websocket: AgentWebSocketHandler = async (_c, next) => next();` to expose a created agent at `GET /agents/:name/:id` with a WebSocket upgrade. It may authenticate the upgrade before calling `next()`. The stable `:id` selects the owning Durable Object-backed agent instance, and a socket may issue sequential prompts. Workflow sockets are available at `GET /workflows/:name`, accept one invocation, and close after their terminal result.
-
-```ts
-import { createFlueClient } from '@flue/sdk';
-
-const client = createFlueClient({ baseUrl: 'http://localhost:3583' });
-const chat = client.agents.connect('chat', 'customer-123');
-await chat.ready;
-console.log(await chat.prompt('Hello'));
-console.log(await chat.prompt('Continue'));
-chat.close();
-```
-
-An exported `websocket` middleware can authenticate its own agent or workflow socket endpoint. Custom `.flue/app.ts` applications provide centralized authentication and mounted prefixes: for example, apply `app.use('/api/agents/*', authenticate)` and `app.use('/api/workflows/*', authenticate)` before `app.route('/api', flue())` to cover both socket surfaces before Flue forwards accepted upgrades into their owning Durable Objects. SDK clients can connect through that mount with `baseUrl: 'https://example.com/api'` and attach query-token or signed handshake context with `websocketUrl: (url) => { url.searchParams.set('token', socketToken); return url; }`. HTTP `token` and `headers` options do not automatically apply to WebSocket upgrades; browsers should use cookies or application-designed URL authentication, while Node clients requiring implementation-specific headers can provide a custom `websocket` factory.
-
-Route middleware sees the original inbound HTTP request before Flue forwards accepted work into its Durable Object. Durable direct-agent processing is a later boundary: after admission, Flue uses a deterministic internal request and does not persist or reconstruct the caller's original headers, cookies, query parameters, URL, or body as operation-time `ctx.req`. Authenticate before admission and carry any non-secret correlation you need later in application-owned input or storage. WebSocket hibernation has the same limitation for original upgrade metadata. Avoid header-mutating middleware such as CORS wrapping WebSocket upgrade routes, because WebSocket upgrade responses may have immutable headers.
+Route middleware sees the original inbound HTTP request before Flue forwards accepted work into its Durable Object. Durable direct-agent processing is a later boundary: after admission, Flue uses a deterministic internal request and does not persist or reconstruct the caller's original headers, cookies, query parameters, URL, or body as operation-time `ctx.req`. Authenticate before admission and carry any non-secret correlation you need later in application-owned input or storage.
 
 ### Extending generated Cloudflare Durable Objects
 
@@ -178,7 +161,7 @@ export const cloudflare = extend({
 });
 ```
 
-This is an advanced Cloudflare-only extension point. Flue applies `base` first, then defines its own Durable Object subclass with the generated Flue binding and class identity. For `.flue/agents/support-chat.ts`, authored Worker code can access the namespace as `env.FLUE_SUPPORT_CHAT_AGENT`, and Wrangler binds that name to `FlueSupportChatAgent`. For `.flue/workflows/translate.ts`, the corresponding names are `env.FLUE_TRANSLATE_WORKFLOW` and `FlueTranslateWorkflow`. Use `base` for native SDK lifecycle hooks and additional named methods. Do not override `fetch()`, `onRequest()`, WebSocket hooks, `onFiberRecovered()`, or `alarm()`: Flue and the Agents SDK use those methods for routing, hibernating connections, interruption recovery, and alarm multiplexing.
+This is an advanced Cloudflare-only extension point. Flue applies `base` first, then defines its own Durable Object subclass with the generated Flue binding and class identity. For `.flue/agents/support-chat.ts`, authored Worker code can access the namespace as `env.FLUE_SUPPORT_CHAT_AGENT`, and Wrangler binds that name to `FlueSupportChatAgent`. For `.flue/workflows/translate.ts`, the corresponding names are `env.FLUE_TRANSLATE_WORKFLOW` and `FlueTranslateWorkflow`. Use `base` for native SDK lifecycle hooks and additional named methods. Do not override `fetch()`, `onRequest()`, `onFiberRecovered()`, or `alarm()`: Flue and the Agents SDK use those methods for routing, interruption recovery, and alarm multiplexing.
 
 Use `wrap` when an integration needs to wrap the final Flue-generated Durable Object class:
 
@@ -191,7 +174,7 @@ export const cloudflare = extend({
 });
 ```
 
-Both `base` and `wrap` are optional. This module-local export is distinct from the optional source-root `.flue/cloudflare.ts` deployment module below. Native SDK callbacks run as Durable Object activity: they do not receive a Flue workflow context, create workflow runs, or automatically initialize a Flue harness or session.
+Both `base` and `wrap` are optional. Do not override Flue-owned `fetch()`, `onRequest()`, `onFiberRecovered()`, or `alarm()` methods. This module-local export is distinct from the optional source-root `.flue/cloudflare.ts` deployment module below. Native SDK callbacks run as Durable Object activity: they do not receive a Flue workflow context, create workflow runs, or automatically initialize a Flue harness or session.
 
 ### Extending the Worker
 
@@ -458,7 +441,7 @@ When a generated Cloudflare application handles agent or workflow work through i
 
 Filesystem durability remains a separate decision. The default lightweight sandbox uses an in-memory filesystem and must not be treated as durable merely because conversation state is stored in a Durable Object. Use a durable workspace or container-backed integration when files or installed artifacts must survive later activity. Workflow run history is likewise stored through the workflow durable-runtime path and is distinct from agent session storage.
 
-WebSocket-exposed created agents use the same owning Durable Object scope. Flue's generated Cloudflare transport accepts hibernation-compatible sockets in that Durable Object so long-lived interactive connections retain the correct instance identity.
+Agent events are durably stored and can be replayed from any offset via the Durable Streams protocol at `GET /agents/:name/:id`.
 
 ## Interruption and recovery semantics
 
@@ -466,15 +449,15 @@ A deployment or code update can reset a Durable Object while an operation is run
 
 | Operation                                                                    | After interruption                                                                                                                                                                                                                                                                   |
 | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Direct attached agent HTTP/SSE/WebSocket prompt                              | The accepted prompt remains queued independently of its transport. Flue requeues only when canonical input is provably absent, recognizes provably completed canonical output, and otherwise records a visible terminal interruption without blindly replaying provider work. No public agent run exists. |
+| Direct attached agent HTTP prompt                                            | The accepted prompt remains queued independently of its transport. Flue requeues only when canonical input is provably absent, recognizes provably completed canonical output, and otherwise records a visible terminal interruption without blindly replaying provider work. No public agent run exists. |
 | Dispatched agent input                                                       | Durable delivery and internal deduplication are keyed by `dispatchId` and persisted submission state, not by a run. Direct and dispatched inputs share one same-session order. Reconciliation uses the same conservative replay rules.                                                   |
-| Flue workflow invocation (`202`, SSE, `?wait=result`, or workflow WebSocket) | Flue terminalizes the interrupted run as errored. An attached SSE, synchronous response, or WebSocket may fail. Flue does not automatically start a replacement run.                                                                                                                   |
+| Flue workflow invocation (`202` or `?wait=result`)                           | Flue terminalizes the interrupted run as errored. An attached synchronous response may fail. Flue does not automatically start a replacement run.                                                                                                                                      |
 
-Cloudflare direct prompts and dispatched inputs enter one SQLite-backed submission queue owned by the target agent Durable Object. The attached transport observes accepted backend work but does not own it: losing an HTTP response, SSE stream, or WebSocket does not cancel the accepted submission. Flue does not recreate a lost live subscription, expose direct-submission lookup, or replay missed stream events.
+Cloudflare direct prompts and dispatched inputs enter one SQLite-backed submission queue owned by the target agent Durable Object. The attached transport observes accepted backend work but does not own it: losing an HTTP response does not cancel the accepted submission. Agent events are durably stored and can be replayed from any offset via the Durable Streams protocol.
 
 Before provider processing starts, Flue persists canonical submitted input and records an operational input-application boundary. After interruption, Flue retries only when it can prove provider work did not cross that boundary. If replay safety is uncertain, it appends a framework interruption advisory to canonical session history and terminalizes the operational submission instead of risking duplicate model work or external effects. Later same-session prompts can see that factual advisory.
 
-All Cloudflare workflow invocation transports use the same Fiber-backed durable admission path. The transport controls only how the initiating caller observes the admitted run: immediate `202`, live SSE, a synchronous result, or workflow WebSocket events while the connection remains available.
+All Cloudflare workflow invocations use the same Fiber-backed durable admission path. The transport controls only how the initiating caller observes the admitted run: immediate `202` or a synchronous result. Run events are durably stored and can be streamed independently via `GET /runs/:runId`.
 
 External effects remain application-owned. An interruption can leave the outcome of already-started model or tool activity uncertain, and an explicit caller retry can repeat effects. For dispatched agent work, correlate effects with `dispatchId` or an application-level idempotency key. Direct attached prompts do not expose a public receipt or replay API.
 
@@ -549,7 +532,7 @@ curl https://my-support-agent.<your-subdomain>.workers.dev/workflows/translate?w
   -d '{"text": "Hello world", "language": "French"}'
 ```
 
-A deployed WebSocket-exposed agent is reached at `wss://my-support-agent.<your-subdomain>.workers.dev/agents/chat/customer-123` using the same SDK client shown above.
+Stream events from a deployed agent with `GET https://my-support-agent.<your-subdomain>.workers.dev/agents/chat/customer-123?live=sse`.
 
 ### Choosing a sandbox strategy
 

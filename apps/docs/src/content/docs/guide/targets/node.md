@@ -11,7 +11,7 @@ For a deployment walkthrough, see [Deploy Agents on Node.js](/docs/ecosystem/dep
 
 Flue discovers agents from `src/agents/` and workflows from `src/workflows/` and generates a single server entry at `dist/server.mjs`. See [Project Layout](/docs/guide/project-layout/) for supported source directories.
 
-The server owns HTTP, WebSocket, agent dispatch, workflow admission, and workflow-run inspection routes. Build and start it with:
+The server owns HTTP, agent dispatch, workflow admission, and event streaming routes. Build and start it with:
 
 ```bash
 npx flue build --target node
@@ -113,14 +113,4 @@ function sqlite(path?: string): PersistenceAdapter;
 
 Creates the built-in Node SQLite persistence adapter. Omit `path` for in-memory storage, or pass a file path for persistence across process restarts.
 
-### `createNodeWebSocketTransport(...)`
 
-```ts
-import { createNodeWebSocketTransport } from '@flue/runtime/node';
-
-function createNodeWebSocketTransport(
-  options: NodeWebSocketTransportOptions,
-): NodeWebSocketTransport;
-```
-
-Creates Flue's Node WebSocket transport for agent and workflow connections. This is generated-runtime plumbing used by the generated server entry. Ordinary applications should export `websocket` middleware from their agent and workflow modules instead of calling this directly.

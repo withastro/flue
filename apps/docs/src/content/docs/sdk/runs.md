@@ -1,7 +1,6 @@
 ---
 title: client.runs
 description: Inspect and stream workflow runs.
-lastReviewedAt: 2026-06-02
 ---
 
 Run APIs inspect workflow runs only. Direct agent prompts and dispatched agent inputs are not runs.
@@ -12,29 +11,49 @@ Run APIs inspect workflow runs only. Direct agent prompts and dispatched agent i
 get(runId: string): Promise<RunRecord>;
 ```
 
-Retrieves one workflow-run record.
+Retrieves one workflow-run record from the admin mount path.
 
 ## `client.runs.events(...)`
 
 ```ts
-events(runId: string, options?: RunEventsOptions): Promise<{ events: FlueEvent[] }>;
+events(runId: string, options?: { signal?: AbortSignal }): Promise<FlueEvent[]>;
 ```
 
-Retrieves recorded workflow-run events. Each recorded event carries `runId` and `eventIndex`; together they identify one immutable persisted event. `after` returns events strictly after one event index. `limit` defaults to `100` and accepts `1..1000`. Use `types` to select event types.
+Retrieves all events from a workflow run as an array. This is a Durable Streams catch-up read with no live tailing — it returns all persisted events and resolves.
 
 ## `client.runs.stream(...)`
 
 ```ts
-stream(runId: string, options?: RunStreamOptions): AsyncIterable<FlueEvent>;
+stream(runId: string, options?: FlueStreamOptions): FlueEventStream<FlueEvent>;
 ```
 
-Streams workflow-run events over server-sent events until `run_end`, cancellation, or an unrecoverable error. Interrupted streams resume after the latest received event index. A stream-infrastructure `event: error` frame carries `{ error: FluePublicError }`; the SDK rejects iteration with `error.message` rather than yielding the envelope as a workflow event.
+Streams workflow-run events via the [Durable Streams](https://durablestreams.com) protocol. Returns an async iterable of typed `FlueEvent` objects. When `live` is enabled, the stream tails the run until `run_end`, cancellation, or disconnection. Interrupted streams resume automatically from the last received offset.
 
-### `RunStreamOptions`
+```ts
+const run = await client.workflows.invoke('summarize', {
+  payload: { text: 'Hello' },
+});
 
-| Option           | Type          | Default | Description                                                |
-| ---------------- | ------------- | ------- | ---------------------------------------------------------- |
-| `lastEventId`    | `number`      | —       | Resume after this event index.                             |
-| `signal`         | `AbortSignal` | —       | Stop consuming events when aborted.                        |
-| `maxRetries`     | `number`      | `3`     | Maximum reconnection attempts after an interrupted stream. |
-| `initialRetryMs` | `number`      | `250`   | Initial reconnection delay in milliseconds.                |
+for await (const event of client.runs.stream(run.runId, { live: true })) {
+  console.log(event.type);
+  if (event.type === 'run_end') break;
+}
+```
+
+### `FlueStreamOptions`
+
+| Option   | Type                                    | Default | Description                                              |
+| -------- | --------------------------------------- | ------- | -------------------------------------------------------- |
+| `offset` | `string`                                | `"-1"`  | Starting offset. `"-1"` for full history, `"now"` for future events only, or an opaque offset from a previous read. |
+| `live`   | `boolean \| 'sse' \| 'long-poll'`      | `false` | Enable live tailing. `true` selects the best mode automatically. |
+| `signal` | `AbortSignal`                           | —       | Stop consuming events when aborted.                      |
+
+### `FlueEventStream<T>`
+
+An async iterable that yields typed events. Use `for await` to consume events.
+
+```ts
+interface FlueEventStream<T> {
+  [Symbol.asyncIterator](): AsyncIterator<T>;
+}
+```

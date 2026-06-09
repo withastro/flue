@@ -16,4 +16,4 @@ pnpm exec flue run hello --target node --payload '{"name":"Ada"}'
 pnpm exec flue build --target node
 ```
 
-Use stable agent instance identifiers while testing attached agent sessions. Workflow invocations are runs; direct HTTP or WebSocket agent prompts are persistent session interactions rather than runs.
+Use stable agent instance identifiers while testing attached agent sessions. Workflow invocations are runs; direct HTTP agent prompts are persistent session interactions rather than runs.

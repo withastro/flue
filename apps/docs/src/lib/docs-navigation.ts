@@ -131,21 +131,21 @@ export const docsSections: DocsSection[] = [
 							{ title: 'RequestHeaders', slug: 'sdk/client', anchor: 'requestheaders' },
 						],
 					},
-					{
-						title: 'client.agents',
-						slug: 'sdk/agents',
-						items: [
-							{ title: 'invoke(...)', slug: 'sdk/agents', anchor: 'clientagentsinvoke' },
-							{ title: 'connect(...)', slug: 'sdk/agents', anchor: 'clientagentsconnect' },
-						],
-					},
-					{
-						title: 'client.workflows',
-						slug: 'sdk/workflows',
-						items: [
-							{ title: 'connect(...)', slug: 'sdk/workflows', anchor: 'clientworkflowsconnect' },
-						],
-					},
+				{
+					title: 'client.agents',
+					slug: 'sdk/agents',
+					items: [
+						{ title: 'invoke(...)', slug: 'sdk/agents', anchor: 'clientagentsinvoke' },
+						{ title: 'stream(...)', slug: 'sdk/agents', anchor: 'clientagentsstream' },
+					],
+				},
+				{
+					title: 'client.workflows',
+					slug: 'sdk/workflows',
+					items: [
+						{ title: 'invoke(...)', slug: 'sdk/workflows', anchor: 'clientworkflowsinvoke' },
+					],
+				},
 					{
 						title: 'client.runs',
 						slug: 'sdk/runs',
@@ -165,8 +165,7 @@ export const docsSections: DocsSection[] = [
 						],
 					},
 					{ title: 'Events and records', slug: 'sdk/events' },
-					{ title: 'Errors', slug: 'sdk/errors' },
-					{ title: 'WebSocket protocol', slug: 'sdk/websockets' },
+				{ title: 'Errors', slug: 'sdk/errors' },
 				],
 			},
 		],
