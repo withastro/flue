@@ -162,7 +162,16 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 			payload,
 			admitAttachedSubmission: opts.admitAttachedSubmission,
 		};
-		return runDirectSyncMode(directOptions);
+		const streamUrl = new URL(request.url).toString();
+		const offset = '-1';
+		if (new URL(request.url).searchParams.get('wait') === 'result') {
+			return runDirectSyncMode(directOptions, streamUrl, offset);
+		}
+		void opts.admitAttachedSubmission(payload);
+		return new Response(JSON.stringify({ streamUrl, offset }), {
+			status: 202,
+			headers: { 'content-type': 'application/json' },
+		});
 	} catch (err) {
 		return toHttpResponse(err);
 	}
@@ -505,9 +514,9 @@ function nextEventIndex(runId: string, events: FlueEvent[]): number {
 	return next;
 }
 
-async function runDirectSyncMode(opts: DirectAttachedOptions): Promise<Response> {
+async function runDirectSyncMode(opts: DirectAttachedOptions, streamUrl: string, offset: string): Promise<Response> {
 	const result = await invokeDirectAttached(opts);
-	return new Response(JSON.stringify({ result: result === undefined ? null : result }), {
+	return new Response(JSON.stringify({ result: result === undefined ? null : result, streamUrl, offset }), {
 		headers: { 'content-type': 'application/json' },
 	});
 }

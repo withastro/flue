@@ -1,9 +1,10 @@
 import { stream as dsStream } from '@durable-streams/client';
 import { HttpClient, type HttpClientOptions, type RequestHeaders } from './http.ts';
 import {
-	type AgentInvokeOptions,
-	invokeAgent,
-	type SyncInvokeResult,
+	type AgentPromptOptions,
+	promptAgent,
+	sendAgent,
+	type AgentPromptResult,
 } from './public/invoke.ts';
 import {
 	createFlueEventStream,
@@ -56,7 +57,8 @@ export interface FlueClient {
 	/** Direct interactions with persistent agent instances. */
 	agents: {
 		/** Resolves the terminal result for one agent prompt. */
-		invoke(name: string, id: string, options: AgentInvokeOptions): Promise<SyncInvokeResult>;
+		prompt(name: string, id: string, options: AgentPromptOptions): Promise<AgentPromptResult>;
+		send(name: string, id: string, options: AgentPromptOptions): Promise<{ streamUrl: string; offset: string }>;
 		/** Stream events from an agent instance via the Durable Streams protocol. */
 		stream(name: string, id: string, options?: FlueStreamOptions): FlueEventStream<FlueEvent>;
 	};
@@ -99,7 +101,8 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 	});
 	return {
 		agents: {
-			invoke: (name, id, opts) => invokeAgent(http, name, id, opts),
+			prompt: (name, id, opts) => promptAgent(http, name, id, opts),
+			send: (name, id, opts) => sendAgent(http, name, id, opts),
 			stream: (name, id, opts = {}) =>
 				createFlueEventStream<FlueEvent>(opts, {
 					url: http.url(`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`),

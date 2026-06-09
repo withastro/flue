@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-	type AgentInvokeOptions,
+	type AgentPromptOptions,
 	createFlueClient,
 	FlueApiError,
 	type ListRunsOptions,
@@ -8,7 +8,7 @@ import {
 } from '../src/index.ts';
 
 describe('createFlueClient', () => {
-	describe('agents.invoke()', () => {
+	describe('agents.prompt()', () => {
 		it('sends agent prompt requests as POST with JSON body', async () => {
 			const seen: Request[] = [];
 			const client = createFlueClient({
@@ -19,11 +19,11 @@ describe('createFlueClient', () => {
 				},
 			});
 
-			const options: AgentInvokeOptions = {
-				payload: { message: 'Hello' },
+			const options: AgentPromptOptions = {
+				message: 'Hello',
 			};
 
-			await expect(client.agents.invoke('hello', 'inst-1', options)).resolves.toEqual({
+			await expect(client.agents.prompt('hello', 'inst-1', options)).resolves.toEqual({
 				result: { ok: true },
 			});
 			expect(seen).toHaveLength(1);
@@ -256,7 +256,7 @@ describe('createFlueClient', () => {
 				},
 			});
 
-			await client.agents.invoke('hello', 'inst-1', { payload: { message: 'Hello' } });
+			await client.agents.prompt('hello', 'inst-1', { message: 'Hello' });
 			await client.runs.get('run-1');
 
 			expect(requests.map(({ url }) => new URL(url).pathname)).toEqual([
@@ -281,7 +281,7 @@ describe('createFlueClient', () => {
 			});
 
 			const error = await client.agents
-				.invoke('hello', 'inst-1', { payload: { message: 'Hello' } })
+				.prompt('hello', 'inst-1', { message: 'Hello' })
 				.catch((error: unknown) => error);
 
 			expect(error).toBeInstanceOf(FlueApiError);

@@ -65,9 +65,10 @@ describe('flue()', () => {
 			}),
 		);
 
-		expect(response.status).toBe(200);
+		expect(response.status).toBe(202);
 		expect(await response.json()).toEqual({
-			result: { instanceId: 'customer-123', payload: { message: 'hello' } },
+			streamUrl: 'http://localhost/api/agents/assistant/customer-123',
+			offset: '-1',
 		});
 	});
 
@@ -203,9 +204,12 @@ describe('flue()', () => {
 			}),
 		);
 
-		expect(response.status).toBe(200);
+		expect(response.status).toBe(202);
 		expect(response.headers.get('x-authored-middleware')).toBe('ran');
-		expect(await response.json()).toEqual({ result: { payload: { message: 'hello' } } });
+		expect(await response.json()).toEqual({
+			streamUrl: 'http://localhost/api/agents/assistant/customer-123',
+			offset: '-1',
+		});
 		expect(inspected).toBe('Bearer test-token:/api/agents/assistant/customer-123');
 	});
 
@@ -489,9 +493,10 @@ describe('createDefaultFlueApp()', () => {
 			}),
 		);
 
-		expect(response.status).toBe(200);
+		expect(response.status).toBe(202);
 		expect(await response.json()).toEqual({
-			result: { instanceId: 'customer-123', payload: { message: 'hello' } },
+			streamUrl: 'http://localhost/agents/assistant/customer-123',
+			offset: '-1',
 		});
 	});
 

@@ -9,8 +9,8 @@ export type {
 export { createFlueClient } from './client.ts';
 export { FlueApiError } from './http.ts';
 export type {
-	AgentInvokeOptions,
-	SyncInvokeResult,
+	AgentPromptOptions,
+	AgentPromptResult,
 } from './public/invoke.ts';
 export type {
 	FlueEventStream,
@@ -19,7 +19,7 @@ export type {
 export type {
 	AgentManifestEntry,
 	AttachedAgentEvent,
-	DirectAgentPayload,
+
 	FlueEvent,
 	FluePublicError,
 	ListResponse,

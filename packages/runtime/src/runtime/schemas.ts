@@ -290,6 +290,8 @@ void _eventSchemaTypeCheck;
 
 export const AgentInvocationResponseSchema = v.object({
 	result: v.unknown(),
+	streamUrl: v.string(),
+	offset: v.string(),
 });
 
 export const WorkflowInvocationResponseSchema = v.object({

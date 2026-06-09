@@ -1,27 +1,37 @@
 import type { HttpClient } from '../http.ts';
-import type { DirectAgentPayload } from '../types.ts';
-
-/** Options for one synchronous direct-agent invocation. */
-export interface AgentInvokeOptions {
-	payload: DirectAgentPayload;
+/** Options for one direct-agent prompt. */
+export interface AgentPromptOptions {
+	message: string;
 	signal?: AbortSignal;
 }
 
-export type SyncInvokeResult = { result: unknown };
+export type AgentPromptResult = { result: unknown; streamUrl: string; offset: string };
 
-export async function invokeAgent(
+export async function promptAgent(
 	http: HttpClient,
 	name: string,
 	id: string,
-	options: AgentInvokeOptions,
-): Promise<SyncInvokeResult> {
-	const path = `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`;
-	return http
-		.json<{ result?: unknown }>({
-			method: 'POST',
-			path,
-			body: options.payload,
-			signal: options.signal,
-		})
-		.then((body) => ({ result: body.result }));
+	options: AgentPromptOptions,
+): Promise<AgentPromptResult> {
+	const path = `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}?wait=result`;
+	return http.json<AgentPromptResult>({
+		method: 'POST',
+		path,
+		body: { message: options.message },
+		signal: options.signal,
+	});
+}
+
+export async function sendAgent(
+	http: HttpClient,
+	name: string,
+	id: string,
+	options: AgentPromptOptions,
+): Promise<{ streamUrl: string; offset: string }> {
+	return http.json({
+		method: 'POST',
+		path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
+		body: { message: options.message },
+		signal: options.signal,
+	});
 }

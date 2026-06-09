@@ -5,39 +5,43 @@ description: Invoke persistent agent instances and stream their events.
 
 Direct agent APIs interact with persistent agent instances. They use an agent name and instance id. Each agent instance is a single conversation. Direct agent interactions do not create workflow runs and do not emit `runId`.
 
-## `client.agents.invoke(...)`
+## `client.agents.prompt(...)`
 
 ```ts
-invoke(name: string, id: string, options: AgentInvokeOptions): Promise<SyncInvokeResult>;
+prompt(name: string, id: string, options: AgentPromptOptions): Promise<AgentPromptResult>;
 ```
 
 Sends one prompt to a persistent agent instance and waits for the terminal result.
 
-### `AgentInvokeOptions`
+### `AgentPromptOptions`
 
-| Field     | Type                 | Description                        |
-| --------- | -------------------- | ---------------------------------- |
-| `payload` | `DirectAgentPayload` | Prompt payload.                    |
-| `signal`  | `AbortSignal`        | Cancel the in-flight HTTP request. |
+| Field     | Type          | Description                        |
+| --------- | ------------- | ---------------------------------- |
+| `message` | `string`      | Prompt sent to the agent instance. |
+| `signal`  | `AbortSignal` | Cancel the in-flight HTTP request. |
 
-### `DirectAgentPayload`
-
-| Field     | Type     | Description                        |
-| --------- | -------- | ---------------------------------- |
-| `message` | `string` | Prompt sent to the agent instance. |
-
-### `SyncInvokeResult`
+### `AgentPromptResult`
 
 ```ts
-interface SyncInvokeResult {
+interface AgentPromptResult {
   result: unknown;
+  streamUrl: string;
+  offset: string;
 }
 ```
+
+## `client.agents.send(...)`
+
+```ts
+send(name: string, id: string, options: AgentPromptOptions): Promise<{ streamUrl: string; offset: string }>;
+```
+
+Starts one prompt without waiting for completion. Use the returned `offset` with `agents.stream()` to read exactly that prompt's events.
 
 ## `client.agents.stream(...)`
 
 ```ts
-stream(name: string, id: string, options?: FlueStreamOptions): FlueEventStream<FlueEvent>;
+stream(name: string, id: string, options?: FlueStreamOptions): FlueEventStream<AttachedAgentEvent>;
 ```
 
 Streams events from an agent instance via the [Durable Streams](https://durablestreams.com) protocol. Returns an async iterable of typed `FlueEvent` objects.
