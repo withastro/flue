@@ -1,86 +1,65 @@
-# OpenTelemetry for Flue
+# Flue — The Agent Harness Framework
 
-`@flue/opentelemetry` converts Flue's public `observe(...)` event stream into OpenTelemetry spans. It does not instrument Flue internals or configure an exporter.
-
-## Usage
-
-Configure your OpenTelemetry SDK and exporter in your application, then register the observer in `.flue/app.ts`:
+Not another SDK. Build autonomous agents and powerful AI workflows with Flue's programmable TypeScript harness.
 
 ```ts
-import { createOpenTelemetryObserver } from '@flue/opentelemetry';
-import { observe } from '@flue/runtime';
-import { flue } from '@flue/runtime/routing';
-import { Hono } from 'hono';
+// agents/triage.ts
+import { createAgent, type AgentRouteHandler } from '@flue/runtime';
+import { local } from '@flue/runtime/node';
+import triage from '../skills/triage/SKILL.md' with { type: 'skill' };
+import verify from '../skills/verify/SKILL.md' with { type: 'skill' };
+import * as githubTools from '../tools/github.ts';
 
-observe(createOpenTelemetryObserver());
+// Give agents the context and autonomy to solve complex tasks:
+const instructions = `
+Triage a bug report end-to-end: reproduce the bug,
+diagnose the root cause, verify whether the behavior is
+intentional, and attempt a fix.
 
-const app = new Hono();
-app.route('/', flue());
-export default app;
+...`;
+
+// Expose (and protect) your agents over HTTP:
+export const route: AgentRouteHandler = async (_c, next) => next();
+
+// Compose the complete harness your agent needs to do real work,
+// complete with virtual, local, or remote container sandbox.
+export default createAgent(() => ({
+  model:   'anthropic/claude-sonnet-4-6',
+  tools:   [...githubTools],
+  skills:  [triage, verify],
+  sandbox: local(),
+  instructions,
+}));
 ```
 
-Pass a tracer when the application already owns a configured tracer instance:
+## The framework for building the next generation of agents.
 
-```ts
-observe(createOpenTelemetryObserver({ tracer }));
-```
+The first agents were built with raw LLM API calls. This worked for simple chatbots and scripted tasks, but not much else.
 
-Workflow and standalone operation spans start as independent roots by default. To attach them to an application-owned span, explicitly resolve an OpenTelemetry parent context:
+Agents like Claude Code and Codex broke the mold. These were *real agents.* Autonomous. You give them a task — not a pre-defined series of steps — and trust them to complete it using the context and tools that you provide.
 
-```ts
-import { context } from '@opentelemetry/api';
+**Flue unlocks this new architecture for agents.** Its built-in TypeScript harness gives any model the context and environment it needs for truly autonomous work: sessions, tools, skills, instructions, filesystem access, and a secure sandbox to run in. Run your agents locally via CLI or deploy them to your hosted runtime of choice.
 
-observe(
-  createOpenTelemetryObserver({
-    resolveRootContext: () => context.active(),
-  }),
-);
-```
+## Features
 
-The resolver runs only when a Flue span has no tracked Flue parent. Return `undefined` to preserve root behavior selectively. Dispatched input does not carry trace context automatically; resolve any dispatched parent from application-owned correlation state.
+Build agents that can safely take action, maintain continuity, and connect to the systems where work already happens.
 
-## Span mapping
+- **[Agents](https://flueframework.com/docs/guide/building-agents/)** — Build agents that can keep context across conversations and events as they autonomously work toward a goal.
+- **[Workflows](https://flueframework.com/docs/guide/workflows/)** — Run structured automations where your code guides agent reasoning from a clear input to a finished result.
+- **[Sandboxes](https://flueframework.com/docs/guide/sandboxes/)** — Give agents a secure environment where they can use tools, modify files, and autonomously complete real work.
+- **[Durable Execution](https://flueframework.com/docs/guide/durable-execution/)** — Learn how agents preserve progress through failures and restarts with durable recovery for accepted work.
+- **[Subagents](https://flueframework.com/docs/guide/subagents/)** — Define specialized roles for different tasks, then let your agent delegate work to the right expert.
+- **[Tools](https://flueframework.com/docs/guide/tools/)** — Give agents typed actions for calling APIs, querying data, and making controlled changes through your application.
+- **[Skills](https://flueframework.com/docs/guide/skills/)** — Package reusable expertise and workflows that agents can load whenever a task needs specialized guidance.
+- **[MCP Servers](https://flueframework.com/docs/guide/tools/#connect-mcp-tools)** — Connect agents to authenticated tools and services through the open Model Context Protocol ecosystem.
+- **[Observability](https://flueframework.com/docs/guide/observability/)** — Monitor your agents and export traces to OpenTelemetry, Braintrust, Sentry, or your own telemetry stack.
+- **[Chat](https://flueframework.com/docs/guide/chat/)** — Connect agents to where your work happens across Slack, Teams, Discord, GitHub, and more.
 
-| Flue events                            | Span                                                                                                      |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| `run_start` / `run_resume` / `run_end` | Workflow root span or recovered run-handling segment; `run_resume` adds `flue.workflow.recovery_handling` |
-| `operation_start` / `operation`        | Operation span; root for direct or dispatched processing                                                  |
-| `turn_request` / `turn`                | Model-generation span                                                                                     |
-| `tool_start` / `tool_call`             | Tool span, including `harness.shell(...)`                                                                 |
-| `task_start` / `task`                  | Delegated-task span                                                                                       |
-| `compaction_start` / `compaction`      | Compaction span                                                                                           |
-| `log`                                  | Span event                                                                                                |
+## Deploy Anywhere
 
-A recovered workflow handling segment represents terminal processing after interruption, not resumed workflow code. If the interrupted workflow span still exists in the same isolate, the recovery segment links to it and closes any still-open descendants as interrupted. After an isolate reset, correlate segments through `flue.run_id` and event indexes when available; Flue does not persist trace context automatically.
-
-## Identity and accounting
-
-Spans include `flue.event.start_index` and `flue.event.end_index` when the corresponding Flue lifecycle events carry indexes. Log span events include `flue.event.index`. For successfully persisted workflow events, combine an index with `flue.run_id` to correlate trace activity with workflow history and SSE resume positions. The adapter receives live events, so the presence of an index does not prove persistence succeeded. For direct and dispatched agent activity, indexes are live per-context ordering values only; `flue.dispatch_id` remains the delivery identity for dispatched work.
-
-Model-turn leaf spans export `gen_ai.usage.*`. Compaction spans and operation spans may also export `flue.compaction.usage.*` and `flue.operation.usage.*` roll-ups for inspection. Do not sum roll-ups together with their nested model-turn leaf usage. Likewise, `flue.duration_ms` values are elapsed durations for nested boundaries and can overlap. A recovered workflow handling span reports the run-level total as `flue.workflow.total_duration_ms`, not the recovery segment's elapsed time.
-
-## Sensitive content
-
-By default, spans contain identifiers, durations, model/provider attributes, token/cost metadata, log levels, and generic failure messages only. They do not contain detailed terminal errors, workflow payloads/results, model input/output, tool arguments/results, task prompts/results, or log content.
-
-To export content, provide an application-owned sanitizer. It receives a shallow copy of each content-bearing Flue event. Return a sanitized event to export its supported content values, or return `undefined` to omit content from that event:
-
-```ts
-observe(
-  createOpenTelemetryObserver({
-    sanitize(event) {
-      if (event.type !== 'log') return undefined;
-
-      return {
-        ...event,
-        message: redactLogMessage(event.message),
-        attributes: redactLogAttributes(event.attributes),
-      };
-    },
-  }),
-);
-```
-
-The adapter retains the original event for span lifecycle correlation. If you modify nested values, clone the paths you change rather than mutating the original nested objects.
-
-For local debugging with intentionally unsanitized data, pass `sanitize: (event) => event`. This can export workflow payloads/results, detailed errors, model-visible messages including system prompts, reasoning-bearing content and image bytes, log content, tool arguments/results, task prompts/results, and task working directories. Review exporter retention and access requirements before enabling it. Metadata such as ids and session names may also be sensitive if your application embeds customer data in them.
+- **[Node.js](https://flueframework.com/docs/ecosystem/deploy/node/)**
+- **[Cloudflare Workers](https://flueframework.com/docs/ecosystem/deploy/cloudflare/)**
+- **[GitHub Actions](https://flueframework.com/docs/ecosystem/deploy/github-actions/)**
+- **[GitLab CI/CD](https://flueframework.com/docs/ecosystem/deploy/gitlab-ci/)**
+- **[Daytona](https://flueframework.com/docs/ecosystem/sandboxes/daytona/)**
+- **[Render](https://flueframework.com/docs/ecosystem/deploy/render/)**
