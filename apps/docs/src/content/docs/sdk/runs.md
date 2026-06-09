@@ -45,15 +45,15 @@ for await (const event of client.runs.stream(run.runId, { live: true })) {
 | Option   | Type                                    | Default | Description                                              |
 | -------- | --------------------------------------- | ------- | -------------------------------------------------------- |
 | `offset` | `string`                                | `"-1"`  | Starting offset. `"-1"` for full history, `"now"` for future events only, or an opaque offset from a previous read. |
-| `live`   | `boolean \| 'sse' \| 'long-poll'`      | `false` | Enable live tailing. `true` selects the best mode automatically. |
+| `live`   | `boolean \| 'sse' \| 'long-poll'`      | `true`  | Enable live tailing. `true` selects the best mode automatically. |
 | `signal` | `AbortSignal`                           | —       | Stop consuming events when aborted.                      |
 
 ### `FlueEventStream<T>`
 
-An async iterable that yields typed events. Use `for await` to consume events.
+An async iterable that yields typed events. Use `for await` to consume events. Call `cancel()` to stop the stream explicitly.
 
 ```ts
-interface FlueEventStream<T> {
-  [Symbol.asyncIterator](): AsyncIterator<T>;
+interface FlueEventStream<T> extends AsyncIterable<T> {
+  cancel(reason?: unknown): void;
 }
 ```

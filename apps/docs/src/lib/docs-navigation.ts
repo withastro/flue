@@ -131,21 +131,21 @@ export const docsSections: DocsSection[] = [
 							{ title: 'RequestHeaders', slug: 'sdk/client', anchor: 'requestheaders' },
 						],
 					},
-				{
-					title: 'client.agents',
-					slug: 'sdk/agents',
-					items: [
-						{ title: 'invoke(...)', slug: 'sdk/agents', anchor: 'clientagentsinvoke' },
-						{ title: 'stream(...)', slug: 'sdk/agents', anchor: 'clientagentsstream' },
-					],
-				},
-				{
-					title: 'client.workflows',
-					slug: 'sdk/workflows',
-					items: [
-						{ title: 'invoke(...)', slug: 'sdk/workflows', anchor: 'clientworkflowsinvoke' },
-					],
-				},
+					{
+						title: 'client.agents',
+						slug: 'sdk/agents',
+						items: [
+							{ title: 'invoke(...)', slug: 'sdk/agents', anchor: 'clientagentsinvoke' },
+							{ title: 'stream(...)', slug: 'sdk/agents', anchor: 'clientagentsstream' },
+						],
+					},
+					{
+						title: 'client.workflows',
+						slug: 'sdk/workflows',
+						items: [
+							{ title: 'invoke(...)', slug: 'sdk/workflows', anchor: 'clientworkflowsinvoke' },
+						],
+					},
 					{
 						title: 'client.runs',
 						slug: 'sdk/runs',

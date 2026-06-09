@@ -76,11 +76,11 @@ Before implementing, restate the chosen requirements to yourself as an implement
 3. Always create one minimal **agent module** matching the user's idea, keeping it closer to "hello world" than a production app.
    - Put it in the selected layout's immediate \`agents/\` directory, using a lower-kebab-case filename such as \`src/agents/hello-world.ts\`.
    - It must default-export \`createAgent(() => ({ model: '<exact model specifier>', instructions: '<short purpose-specific instruction>' }))\`.
-   - Do not export \`route\` or \`websocket\` unless the user needs direct HTTP or WebSocket access. For a basic local starter, use \`flue connect <agent-name> local\` instead.
+   - Do not export \`route\` unless the user needs direct HTTP access. For a basic local starter, use \`flue connect <agent-name> local\` instead.
 4. If the selected shape is **agent + workflow**, create one minimal **workflow module** for the finite job.
    - Put it in the selected layout's immediate \`workflows/\` directory, using a lower-kebab-case filename.
    - Import the created agent from the new agent module, export \`run(...)\`, initialize it with \`const harness = await init(agent)\`, open a session, perform one purpose-specific operation, and return its result.
-   - Export workflow \`route\` or \`websocket\` only if the user needs that invocation surface.
+   - Export workflow \`route\` only if the user needs that invocation surface.
 5. Add \`tsconfig.json\` for TypeScript editor/typechecking support.
    - If no \`tsconfig.json\` exists, create this minimal one:
      \`\`\`json
@@ -127,7 +127,7 @@ In your final response, include a short checklist with the project directory, so
 - Important: For local development, prefer \`flue dev --target node\` or \`flue dev --target cloudflare\`. The dev server defaults to port 3583, watches for file changes, and rebuilds + reloads on edits.
   - Instead of: combining \`flue build\` with \`wrangler dev\` (the previous workflow). \`flue dev --target cloudflare\` covers that case directly and stays in sync with what \`wrangler deploy\` will bundle.
 - Important: \`flue run --target cloudflare\` is not supported.
-  - Instead: \`flue run\` only supports \`--target node\`. To exercise a Cloudflare HTTP or WebSocket endpoint locally, use \`flue dev --target cloudflare\` and call the exposed endpoint. For deployed Cloudflare invocations, build with \`flue build --target cloudflare\` and call the deployed endpoint after \`wrangler deploy\`.
+  - Instead: \`flue run\` only supports \`--target node\`. To exercise a Cloudflare HTTP endpoint locally, use \`flue dev --target cloudflare\` and call the exposed endpoint. For deployed Cloudflare invocations, build with \`flue build --target cloudflare\` and call the deployed endpoint after \`wrangler deploy\`.
 `;
 
 export const GET: APIRoute = () => {
