@@ -69,16 +69,28 @@ export class HttpClient {
 		return url.toString();
 	}
 
+	/**
+	 * Resolve auth/custom headers for a non-body request. Called per-request
+	 * so that async header factories (e.g. token refresh) are re-evaluated.
+	 * Used by the DS stream wrapper to inject headers on every reconnection.
+	 */
+	async resolveStreamHeaders(): Promise<Record<string, string>> {
+		const headers =
+			typeof this.headers === 'function' ? await this.headers() : (this.headers ?? {});
+		return {
+			...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
+			...headers,
+		};
+	}
+
 	async requestHeaders(
 		extra: Record<string, string> | undefined,
 		hasBody: boolean,
 	): Promise<Record<string, string>> {
-		const headers =
-			typeof this.headers === 'function' ? await this.headers() : (this.headers ?? {});
+		const base = await this.resolveStreamHeaders();
 		return {
 			...(hasBody ? { 'content-type': 'application/json' } : {}),
-			...(this.token ? { authorization: `Bearer ${this.token}` } : {}),
-			...headers,
+			...base,
 			...extra,
 		};
 	}

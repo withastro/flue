@@ -448,6 +448,10 @@ importers:
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.12.4)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
 
   packages/sdk:
+    dependencies:
+      '@durable-streams/client':
+        specifier: ^0.2.6
+        version: 0.2.6
     devDependencies:
       tsdown:
         specifier: ^0.22.0
@@ -1108,6 +1112,11 @@ packages:
 
   '@daytona/toolbox-api-client@0.179.0':
     resolution: {integrity: sha512-CgfoVrksH+WRjf4ZPcNZfE6vhEOmqkGN5JRJ6rqbcfWVNLwpl46/s8qw/Zz8H/37i0c1enNl+QokLyW5fCxS3w==}
+
+  '@durable-streams/client@0.2.6':
+    resolution: {integrity: sha512-uHKKbWpsKLhFMeGjG0PgM6LXE3oEIi7FHKlJZkmYGxcqd4Yjjd/QEvnQnDzteRP4Av1uJVM8qjTL7kfKsgeS/w==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
 
   '@earendil-works/pi-agent-core@0.79.0':
     resolution: {integrity: sha512-jQOtYjRGZ7+XC/olw9euLd2V03vkAPO8u0sSnQoLbyOQZz66dEBZrklTESk34Sf3AaeBSua28wjZR48ch1aXJQ==}
@@ -1882,6 +1891,9 @@ packages:
 
   '@mdx-js/mdx@3.1.1':
     resolution: {integrity: sha512-f6ZO2ifpwAQIpzGWaBQT2TXxPv6z3RBzQKpVftEWN78Vl/YweF1uwussDx8ECAXVtr3Rs89fKyG9YlzUs9DyGQ==}
+
+  '@microsoft/fetch-event-source@2.0.1':
+    resolution: {integrity: sha512-W6CLUJ2eBMw3Rec70qrsEW0jOm/3twwJv21mrmj2yORiaVmVYGS4sSS5yUwvQc1ZlDLYGPnClVWmUUMagKNsfA==}
 
   '@mistralai/mistralai@2.2.1':
     resolution: {integrity: sha512-uKU8CZmL2RzYKmplsU01hii4p3pe4HqJefpWNRWXm1Tcm0Sm4xXfwSLIy4k7ZCPlbETCGcp69E7hZs+WOJ5itQ==}
@@ -7592,6 +7604,11 @@ snapshots:
       - debug
       - supports-color
 
+  '@durable-streams/client@0.2.6':
+    dependencies:
+      '@microsoft/fetch-event-source': 2.0.1
+      fastq: 1.20.1
+
   '@earendil-works/pi-agent-core@0.79.0(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)':
     dependencies:
       '@earendil-works/pi-ai': 0.79.0(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)
@@ -8177,6 +8194,8 @@ snapshots:
       vfile: 6.0.3
     transitivePeerDependencies:
       - supports-color
+
+  '@microsoft/fetch-event-source@2.0.1': {}
 
   '@mistralai/mistralai@2.2.1':
     dependencies:

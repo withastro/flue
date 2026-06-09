@@ -54,7 +54,6 @@ export {
 	__noop as configureFlueRuntime,
 	__noop as createDefaultFlueApp,
 	__noop as createDurableRunStore,
-	__noop as createRunSubscriberRegistry,
 	__noop as handleAgentRequest,
 	__noop as handleRunRouteRequest,
 	__noop as hasRegisteredProvider,

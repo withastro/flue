@@ -1,171 +1,200 @@
-import type { HttpClient } from '../http.ts';
+/**
+ * Typed Durable Streams wrapper for Flue event consumption.
+ *
+ * Wraps `@durable-streams/client` to provide an {@link AsyncIterable} of
+ * {@link FlueEvent} values with automatic reconnection, offset-based replay,
+ * and SSE live tailing.
+ */
+
+import {
+	stream,
+	type LiveMode,
+	type StreamResponse,
+} from '@durable-streams/client';
 import type { FlueEvent } from '../types.ts';
 
-/** Options for streaming workflow-run events over server-sent events. */
-export interface RunStreamOptions {
-	/** Resume after this event index. */
-	lastEventId?: number;
-	/** Stop consuming events when aborted. */
+/** Options for streaming Flue events from an agent instance or workflow run. */
+export interface FlueStreamOptions {
+	/** Starting offset. Defaults to `'-1'` (full history). */
+	offset?: string;
+	/** Live tailing mode. Defaults to `true` (auto SSE/long-poll). */
+	live?: LiveMode;
+	/** Abort signal to cancel the stream. */
 	signal?: AbortSignal;
-	/** Maximum reconnection attempts after an interrupted stream. Defaults to `3`. */
-	maxRetries?: number;
-	/** Initial reconnection delay in milliseconds. Defaults to `250`. */
-	initialRetryMs?: number;
 }
 
-export interface SseFrame {
-	event?: string;
-	id?: string;
-	data: string;
+/**
+ * Async iterable of Flue events backed by a Durable Streams connection.
+ *
+ * Supports `for await...of` and explicit {@link cancel}. Breaking out of a
+ * `for await` loop automatically cleans up the underlying connection.
+ */
+export interface FlueEventStream<T = FlueEvent> extends AsyncIterable<T> {
+	/** The underlying DS client response. Exposes `offset`, `upToDate`, `streamClosed`, etc. */
+	readonly response: Promise<StreamResponse<T>>;
+	/** Cancel the stream and abort the underlying connection. */
+	cancel(reason?: unknown): void;
 }
 
-export async function* streamRunEvents(
-	http: HttpClient,
-	runId: string,
-	options: RunStreamOptions = {},
-): AsyncIterable<FlueEvent> {
-	let lastEventId = options.lastEventId;
-	let attempt = 0;
-	const maxRetries = options.maxRetries ?? 3;
-	const initialRetryMs = options.initialRetryMs ?? 250;
-
-	while (!options.signal?.aborted) {
-		try {
-			const headers = await http.requestHeaders(
-				{
-					accept: 'text/event-stream',
-					...(lastEventId !== undefined ? { 'last-event-id': String(lastEventId) } : {}),
-				},
-				false,
-			);
-			const response = await http.fetchImpl(http.url(`/runs/${encodeURIComponent(runId)}/stream`), {
-				headers,
-				signal: options.signal,
-			});
-			if (!response.ok) throw new Error(`Stream request failed with HTTP ${response.status}.`);
-			if (!response.body) throw new Error('Stream response has no body.');
-
-			for await (const frame of readSse(response.body)) {
-				if (frame.id !== undefined && /^\d+$/.test(frame.id)) {
-					const parsed = Number(frame.id);
-					if (Number.isSafeInteger(parsed)) lastEventId = parsed;
-				}
-				if (frame.event === 'error') throw new Error(parseSseErrorMessage(frame.data));
-				const event = JSON.parse(frame.data) as FlueEvent;
-				yield event;
-				if (event.type === 'run_end') return;
-			}
-			if (options.signal?.aborted) return;
-			if (attempt >= maxRetries) {
-				throw new Error('SSE stream closed before run_end.');
-			}
-			await sleep(initialRetryMs * 2 ** attempt, options.signal);
-			attempt++;
-		} catch (error) {
-			if (options.signal?.aborted) return;
-			if (attempt >= maxRetries) throw error;
-			await sleep(initialRetryMs * 2 ** attempt, options.signal);
-			attempt++;
-		}
-	}
+/** Internal options passed by the FlueClient to configure the DS connection. */
+export interface StreamConnectionOptions {
+	/** Full URL of the stream endpoint. */
+	url: string;
+	/** Custom fetch implementation. */
+	fetch?: typeof globalThis.fetch;
+	/** Async header factory called per-request (supports token refresh on reconnection). */
+	resolveHeaders?: () => Promise<Record<string, string>>;
 }
 
-export async function* readSse(body: ReadableStream<Uint8Array>): AsyncIterable<SseFrame> {
-	const reader = body.getReader();
-	const decoder = new TextDecoder();
-	let buffer = '';
-	try {
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-			buffer += decoder.decode(value, { stream: true });
-			yield* drainFrames(false);
-		}
-		buffer += decoder.decode();
-		yield* drainFrames(true);
-		const frame = parseFrame(buffer);
-		if (frame) yield frame;
-	} finally {
-		try {
-			await reader.cancel();
-		} catch {}
-		reader.releaseLock();
-	}
+/**
+ * Creates a {@link FlueEventStream} that yields individual {@link FlueEvent}
+ * values from a Durable Streams endpoint.
+ *
+ * Uses the DS client's `subscribeJson` callback API to bridge batches into an
+ * async iterator. The subscription is registered synchronously after the
+ * DS `stream()` promise resolves, before any data can be consumed, ensuring
+ * no events are lost.
+ */
+export function createFlueEventStream<T = FlueEvent>(
+	streamOpts: FlueStreamOptions,
+	connectionOpts: StreamConnectionOptions,
+): FlueEventStream<T> {
+	const abortController = new AbortController();
 
-	function* drainFrames(final: boolean): Iterable<SseFrame> {
-		// Normalize line endings in the buffer, but when not final, keep a
-		// trailing \r that may be the start of a \r\n split across chunks.
-		const trailingCr = !final && buffer.endsWith('\r');
-		const normalizable = trailingCr ? buffer.slice(0, -1) : buffer;
-		buffer = normalizeEndings(normalizable) + (trailingCr ? '\r' : '');
-
-		let idx = buffer.indexOf('\n\n');
-		while (idx !== -1) {
-			const raw = buffer.slice(0, idx);
-			buffer = buffer.slice(idx + 2);
-			const frame = parseFrame(raw);
-			if (frame) yield frame;
-			idx = buffer.indexOf('\n\n');
-		}
-	}
-}
-
-function normalizeEndings(text: string): string {
-	return text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-}
-
-function parseFrame(raw: string): SseFrame | undefined {
-	if (!raw.trim() || raw.startsWith(':')) return undefined;
-	const frame: SseFrame = { data: '' };
-	const data: string[] = [];
-	for (const line of raw.split('\n')) {
-		if (line.startsWith(':')) continue;
-		const colon = line.indexOf(':');
-		const field = colon === -1 ? line : line.slice(0, colon);
-		const value = colon === -1 ? '' : line.slice(colon + 1).replace(/^ /, '');
-		if (field === 'event') frame.event = value;
-		else if (field === 'id') frame.id = value;
-		else if (field === 'data') data.push(value);
-	}
-	if (data.length === 0) return undefined;
-	frame.data = data.join('\n');
-	return frame;
-}
-
-function parseSseErrorMessage(data: string): string {
-	try {
-		const value = JSON.parse(data) as unknown;
-		if (typeof value !== 'object' || value === null || !('error' in value)) throw new Error();
-		const error = value.error;
-		if (
-			typeof error !== 'object' ||
-			error === null ||
-			!('type' in error) ||
-			typeof error.type !== 'string' ||
-			!('message' in error) ||
-			typeof error.message !== 'string' ||
-			!('details' in error) ||
-			typeof error.details !== 'string'
-		)
-			throw new Error();
-		return error.message;
-	} catch {
-		return 'SSE stream failed.';
-	}
-}
-
-function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const timeout = setTimeout(resolve, ms);
-		if (signal) {
-			signal.addEventListener(
+	// Link external signal to our controller.
+	if (streamOpts.signal) {
+		if (streamOpts.signal.aborted) {
+			abortController.abort(streamOpts.signal.reason);
+		} else {
+			streamOpts.signal.addEventListener(
 				'abort',
-				() => {
-					clearTimeout(timeout);
-					reject(signal.reason ?? new Error('aborted'));
-				},
+				() => abortController.abort(streamOpts.signal!.reason),
 				{ once: true },
 			);
 		}
+	}
+
+	// Wrap fetch to inject auth headers per-request. This ensures tokens
+	// refresh on SSE reconnection (long-lived connections). We intercept
+	// at the fetch level rather than using DS HeadersRecord because our
+	// HttpClient produces a flat Record<string, string> from an async
+	// factory — we don't know the keys upfront.
+	const baseFetch = connectionOpts.fetch ?? globalThis.fetch;
+	const resolveHeaders = connectionOpts.resolveHeaders;
+
+	const wrappedFetch: typeof globalThis.fetch = resolveHeaders
+		? async (input, init) => {
+				const resolved = await resolveHeaders();
+				const mergedHeaders = {
+					...resolved,
+					...(init?.headers as Record<string, string> | undefined),
+				};
+				return baseFetch(input, { ...init, headers: mergedHeaders });
+			}
+		: baseFetch;
+
+	const responsePromise = stream<T>({
+		url: connectionOpts.url,
+		offset: streamOpts.offset ?? '-1',
+		live: streamOpts.live ?? true,
+		json: true,
+		signal: abortController.signal,
+		fetch: wrappedFetch,
+		warnOnHttp: false,
 	});
+
+	const cancel = (reason?: unknown) => abortController.abort(reason);
+
+	// Async iterator state, initialized lazily in the first next() call.
+	let initialized = false;
+	let initError: unknown;
+	const queue: T[] = [];
+	let notify: (() => void) | undefined;
+	let done = false;
+
+	async function ensureInitialized(): Promise<void> {
+		if (initialized) return;
+		initialized = true;
+		try {
+			const res = await responsePromise;
+
+			// Use the json() accumulator + jsonStream() approach:
+			// jsonStream() returns a ReadableStream<T> that yields individual items.
+			// We read from it in a background task, pushing items to the queue.
+			// This avoids the subscribeJson/closed race: jsonStream() is a pull-based
+			// ReadableStream that the DS client fills from its internal response
+			// pipeline. When the pipeline completes, the stream closes.
+			const readable = res.jsonStream();
+			const reader = readable.getReader();
+
+			// Read in the background — push items to queue and notify the iterator.
+			(async () => {
+				try {
+					while (true) {
+						const { value, done: readerDone } = await reader.read();
+						if (readerDone) break;
+						queue.push(value);
+						notify?.();
+						notify = undefined;
+					}
+				} catch (err) {
+					if (!isAbortError(err)) {
+						initError = err;
+					}
+				} finally {
+					done = true;
+					notify?.();
+					notify = undefined;
+				}
+			})();
+		} catch (err) {
+			if (!isAbortError(err)) {
+				initError = err;
+			}
+			done = true;
+		}
+	}
+
+	const iterator: AsyncIterator<T> = {
+		async next(): Promise<IteratorResult<T>> {
+			await ensureInitialized();
+
+			while (queue.length === 0 && !done) {
+				await new Promise<void>((r) => {
+					notify = r;
+				});
+			}
+
+			if (queue.length > 0) {
+				return { value: queue.shift()!, done: false };
+			}
+
+			if (initError) {
+				throw initError;
+			}
+
+			return { value: undefined as T, done: true };
+		},
+		async return(): Promise<IteratorResult<T>> {
+			cancel();
+			done = true;
+			notify?.();
+			notify = undefined;
+			return { value: undefined as T, done: true };
+		},
+	};
+
+	return {
+		response: responsePromise,
+		cancel,
+		[Symbol.asyncIterator]() {
+			return iterator;
+		},
+	};
+}
+
+function isAbortError(err: unknown): boolean {
+	if (err instanceof DOMException && err.name === 'AbortError') return true;
+	if (err instanceof Error && err.name === 'AbortError') return true;
+	return false;
 }
