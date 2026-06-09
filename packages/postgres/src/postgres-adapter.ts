@@ -1183,6 +1183,7 @@ const DEFAULT_READ_LIMIT = 100;
 
 class PgEventStreamStore implements EventStreamStore {
 	private listeners = new Map<string, Set<() => void>>();
+	private pendingAppends = new Map<string, Promise<void>>();
 
 	constructor(private runner: PgRunner) {}
 
@@ -1195,45 +1196,46 @@ class PgEventStreamStore implements EventStreamStore {
 	}
 
 	async appendEvent(path: string, event: unknown): Promise<string> {
-		const data = JSON.stringify(event);
+		const previous = this.pendingAppends.get(path) ?? Promise.resolve();
+		const append = previous.then(async () => {
+			const data = JSON.stringify(event);
+			const offset = await this.runner.transaction(async (tx) => {
+				const updated = await tx.query(
+					`UPDATE flue_event_streams
+					 SET next_offset = next_offset + 1
+					 WHERE path = $1 AND closed = FALSE
+					 RETURNING next_offset`,
+					[path],
+				);
 
-		// Wrap in a transaction so the offset advance and event insert are
-		// atomic. Without this, concurrent appends could interleave: call A
-		// advances to offset 5, call B advances to 6, B inserts and notifies,
-		// a reader sees event 6 but not 5 (not yet inserted), advancing past
-		// 5 permanently. The transaction's row-level lock on the UPDATE
-		// serializes concurrent writers.
-		const offset = await this.runner.transaction(async (tx) => {
-			const updated = await tx.query(
-				`UPDATE flue_event_streams
-				 SET next_offset = next_offset + 1
-				 WHERE path = $1 AND closed = FALSE
-				 RETURNING next_offset`,
-				[path],
-			);
-
-			if (updated.length === 0) {
-				const meta = await this.getStreamMeta(path);
-				if (!meta) {
-					throw new Error(`[flue] Event stream "${path}" does not exist.`);
+				if (updated.length === 0) {
+					const meta = await this.getStreamMetaFromRunner(tx, path);
+					if (!meta) {
+						throw new Error(`[flue] Event stream "${path}" does not exist.`);
+					}
+					throw new Error(`[flue] Event stream "${path}" is closed.`);
 				}
-				throw new Error(`[flue] Event stream "${path}" is closed.`);
-			}
 
-			const seq = Number(updated[0]!.next_offset) - 1;
+				const seq = Number(updated[0]!.next_offset) - 1;
+				await tx.query(
+					`INSERT INTO flue_event_stream_entries (path, seq, data) VALUES ($1, $2, $3)`,
+					[path, seq, data],
+				);
+				return seq;
+			});
 
-			await tx.query(
-				`INSERT INTO flue_event_stream_entries (path, seq, data) VALUES ($1, $2, $3)`,
-				[path, seq, data],
-			);
-
-			return seq;
+			this.notifyListeners(path);
+			return formatOffset(offset);
 		});
-
-		// Notify after the transaction commits so readers see the data.
-		this.notifyListeners(path);
-
-		return formatOffset(offset);
+		const settled = append.then(() => undefined, () => undefined);
+		this.pendingAppends.set(path, settled);
+		try {
+			return await append;
+		} finally {
+			if (this.pendingAppends.get(path) === settled) {
+				this.pendingAppends.delete(path);
+			}
+		}
 	}
 
 	async readEvents(
@@ -1299,7 +1301,11 @@ class PgEventStreamStore implements EventStreamStore {
 	}
 
 	async getStreamMeta(path: string): Promise<EventStreamMeta | null> {
-		const rows = await this.runner.query(
+		return this.getStreamMetaFromRunner(this.runner, path);
+	}
+
+	private async getStreamMetaFromRunner(runner: PgRunner, path: string): Promise<EventStreamMeta | null> {
+		const rows = await runner.query(
 			`SELECT next_offset, closed FROM flue_event_streams WHERE path = $1`,
 			[path],
 		);

@@ -19,7 +19,7 @@
 
 ### New Features
 
-- **`@flue/postgres` supports durable event streams.** `PgEventStreamStore` provides a Postgres-backed implementation of `EventStreamStore` with transactional `appendEvent`, `LISTEN/NOTIFY`-ready subscriber hooks, and full DDL in the existing migration transaction. Postgres deployments now have working `GET` stream endpoints for agents and workflow runs.
+- **`@flue/postgres` supports durable event streams.** `PgEventStreamStore` provides a Postgres-backed implementation of `EventStreamStore` with transactional `appendEvent`, in-process subscriber hooks, and full DDL in the existing migration transaction. Postgres deployments now have working `GET` stream endpoints for agents and workflow runs.
 - **DS protocol read endpoints.** `GET` supports catch-up (JSON array), long-poll (30s timeout with `Stream-Cursor`), and SSE (with 15s heartbeat and control events). `HEAD` returns stream metadata. Responses include `Stream-Next-Offset`, `Stream-Up-To-Date`, `Stream-Closed`, `ETag`, and `Cache-Control` headers per the DS protocol spec.
 
 ### Fixes & Other Changes

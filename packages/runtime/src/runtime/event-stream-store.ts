@@ -89,9 +89,9 @@ export interface EventStreamStore {
 	/**
 	 * Register a listener for new events on a stream path. Returns unsubscribe.
 	 *
-	 * This is always synchronous — it registers an in-memory callback. The
-	 * notification mechanism itself (e.g. Postgres LISTEN/NOTIFY triggering
-	 * these callbacks) is adapter-internal.
+	 * This is always synchronous — it registers an in-memory callback. Listeners
+	 * fire for appends made through this store instance; cross-process delivery
+	 * is adapter-dependent and not part of the current contract.
 	 */
 	subscribe(path: string, listener: () => void): () => void;
 
