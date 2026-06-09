@@ -13,6 +13,7 @@ import {
 } from './public/stream.ts';
 import type {
 	AgentManifestEntry,
+	AttachedAgentEvent,
 	FlueEvent,
 	ListResponse,
 	RunPointer,
@@ -60,7 +61,7 @@ export interface FlueClient {
 		prompt(name: string, id: string, options: AgentPromptOptions): Promise<AgentPromptResult>;
 		send(name: string, id: string, options: AgentPromptOptions): Promise<{ streamUrl: string; offset: string }>;
 		/** Stream events from an agent instance via the Durable Streams protocol. */
-		stream(name: string, id: string, options?: FlueStreamOptions): FlueEventStream<FlueEvent>;
+		stream(name: string, id: string, options?: FlueStreamOptions): FlueEventStream<AttachedAgentEvent>;
 	};
 	/** Workflow-run inspection and streaming APIs. */
 	runs: {
@@ -104,7 +105,7 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 			prompt: (name, id, opts) => promptAgent(http, name, id, opts),
 			send: (name, id, opts) => sendAgent(http, name, id, opts),
 			stream: (name, id, opts = {}) =>
-				createFlueEventStream<FlueEvent>(opts, {
+				createFlueEventStream<AttachedAgentEvent>(opts, {
 					url: http.url(`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`),
 					fetch: http.fetchImpl,
 					resolveHeaders: () => http.resolveStreamHeaders(),

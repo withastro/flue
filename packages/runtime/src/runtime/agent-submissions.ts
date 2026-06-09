@@ -114,6 +114,7 @@ interface AgentSubmissionObserverRegistry {
 export type AttachedAgentSubmissionAdmission = (
 	payload: DirectAgentPayload,
 	onEvent?: (event: AttachedAgentEvent) => Promise<void> | void,
+	waitForResult?: boolean,
 ) => Promise<unknown>;
 
 export function createDispatchAgentSubmissionInput(input: DispatchInput): DispatchAgentSubmissionInput {

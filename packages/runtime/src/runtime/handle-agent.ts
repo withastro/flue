@@ -123,6 +123,8 @@ export type StartWorkflowAdmissionFn = (
 export interface HandleAgentOptions {
 	request: Request;
 	id: string;
+	agentName?: string;
+	eventStreamStore?: EventStreamStore;
 	admitAttachedSubmission: AttachedAgentSubmissionAdmission;
 }
 
@@ -162,12 +164,18 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 			payload,
 			admitAttachedSubmission: opts.admitAttachedSubmission,
 		};
-		const streamUrl = new URL(request.url).toString();
-		const offset = '-1';
+		const streamUrlUrl = new URL(request.url);
+		streamUrlUrl.search = '';
+		const streamUrl = streamUrlUrl.toString();
+		const streamPath = opts.agentName ? `agents/${opts.agentName}/${id}` : undefined;
+		if (streamPath && opts.eventStreamStore) await opts.eventStreamStore.createStream(streamPath);
+		const offset = streamPath && opts.eventStreamStore
+			? (await opts.eventStreamStore.getStreamMeta(streamPath))?.nextOffset ?? '-1'
+			: '-1';
 		if (new URL(request.url).searchParams.get('wait') === 'result') {
 			return runDirectSyncMode(directOptions, streamUrl, offset);
 		}
-		void opts.admitAttachedSubmission(payload);
+		await opts.admitAttachedSubmission(payload, undefined, false);
 		return new Response(JSON.stringify({ streamUrl, offset }), {
 			status: 202,
 			headers: { 'content-type': 'application/json' },

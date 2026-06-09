@@ -424,6 +424,7 @@ export function createNodeAgentCoordinator(options: {
 			return async (
 				payload: DirectAgentPayload,
 				onEvent?: (event: AttachedAgentEvent) => Promise<void> | void,
+				waitForResult = true,
 			): Promise<unknown> => {
 				if (stopping) throw new Error('[flue] Coordinator is shutting down.');
 				const agent = agents[agentName];
@@ -440,6 +441,7 @@ export function createNodeAgentCoordinator(options: {
 					// resolves when processSubmission settles or fails this submission.
 					ensureClaimLoop();
 					wake();
+					if (!waitForResult) return undefined;
 					return await attachment.completion;
 				} catch (error) {
 					// If admission itself fails (before the claim loop could

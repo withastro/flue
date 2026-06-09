@@ -546,6 +546,8 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 			return handleAgentRequest({
 				request,
 				id,
+				agentName: name,
+				eventStreamStore: rt.eventStreamStore,
 				admitAttachedSubmission,
 			});
 		}

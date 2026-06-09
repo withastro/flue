@@ -186,7 +186,9 @@ class CloudflareAgentCoordinator {
 			handleAgentRequest({
 				request,
 				id: this.instance.name,
-				admitAttachedSubmission: (payload, onEvent) => this.admitAttachedSubmission(payload, onEvent),
+				agentName: this.agentName,
+				eventStreamStore: this.eventStreamStore,
+				admitAttachedSubmission: (payload, onEvent, waitForResult) => this.admitAttachedSubmission(payload, onEvent, waitForResult),
 			}),
 		);
 	}
@@ -477,6 +479,7 @@ class CloudflareAgentCoordinator {
 	private async admitAttachedSubmission(
 		payload: DirectAgentPayload,
 		onEvent?: (event: AttachedAgentEvent) => Promise<void> | void,
+		waitForResult = true,
 	): Promise<unknown> {
 		const input = createDirectAgentSubmissionInput({ agent: this.agentName, id: this.instance.name, payload });
 		const attachment = this.observers.attach(input.submissionId, { onEvent });
@@ -484,6 +487,7 @@ class CloudflareAgentCoordinator {
 			await this.armSubmissionWake();
 			await this.submissions.admitDirect(input);
 			await this.reconcileSubmissions({ driverAlreadyArmed: true });
+			if (!waitForResult) return undefined;
 			return await attachment.completion;
 		} catch (error) {
 			// If admission or reconciliation fails before the claim loop
