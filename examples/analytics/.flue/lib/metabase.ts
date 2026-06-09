@@ -2,7 +2,7 @@ import { BigQuery } from '@google-cloud/bigquery';
 import { OAuth2Client } from 'google-auth-library';
 import { randomUUID } from 'node:crypto';
 
-import { normalizeReadOnlySql } from './bigquery.ts';
+import { normalizeReadOnlySql, type BigQueryAuthMode, type BigQueryCredentialMode } from './bigquery.ts';
 import { readJsonResponse, requireEnvToken, type FetchLike } from './http.ts';
 
 export type MetabaseVizType = 'table' | 'bar' | 'line' | 'area' | 'stacked-bar' | 'stacked-area' | 'stacked-line';
@@ -17,7 +17,7 @@ export interface MetabaseResearchInput {
 	refType?: MetabaseRefType;
 	projectId?: string;
 	dataset?: string;
-	credentialMode?: 'service_account' | 'user_oauth';
+	credentialMode?: BigQueryCredentialMode;
 	userAccessToken?: string;
 	client?: BigQueryLike;
 }
@@ -208,13 +208,13 @@ export async function researchMetabase(input: MetabaseResearchInput) {
 	const credentialMode = input.credentialMode ?? (input.userAccessToken || process.env.GOOGLE_USER_ACCESS_TOKEN
 		? 'user_oauth'
 		: 'service_account');
-	const client = input.client ?? createBigQueryClient({
+	const rows = await withMetabaseBigQueryClient({
 		projectId,
 		credentialMode,
 		userAccessToken: input.userAccessToken,
-	});
-	const rows = input.model
-		? await researchModel(client, {
+		client: input.client,
+	}, async (client) => input.model
+		? researchModel(client, {
 				projectId,
 				dataset,
 				modelName: input.model,
@@ -222,12 +222,12 @@ export async function researchMetabase(input: MetabaseResearchInput) {
 				includeSql: Boolean(input.includeSql),
 				refType: input.refType,
 			})
-		: await researchCard(client, {
+		: researchCard(client, {
 				projectId,
 				dataset,
 				card: input.card!,
 				includeSql: Boolean(input.includeSql),
-			});
+			}));
 	return {
 		ok: true,
 		mode: input.model ? 'model' : 'card',
@@ -458,7 +458,7 @@ async function queryRows(client: BigQueryLike, query: string, params: Record<str
 
 function createBigQueryClient(input: {
 	projectId: string;
-	credentialMode: 'service_account' | 'user_oauth';
+	credentialMode: BigQueryAuthMode;
 	userAccessToken?: string;
 }): BigQueryLike {
 	if (input.credentialMode === 'user_oauth') {
@@ -469,6 +469,44 @@ function createBigQueryClient(input: {
 		return new BigQuery({ projectId: input.projectId, authClient });
 	}
 	return new BigQuery({ projectId: input.projectId });
+}
+
+async function withMetabaseBigQueryClient<T>(
+	input: {
+		projectId: string;
+		credentialMode: BigQueryCredentialMode;
+		userAccessToken?: string;
+		client?: BigQueryLike;
+	},
+	operation: (client: BigQueryLike) => Promise<T>,
+): Promise<T> {
+	if (input.client) return operation(input.client);
+	if (input.credentialMode !== 'service_account_then_user_oauth') {
+		return operation(createBigQueryClient({
+			projectId: input.projectId,
+			credentialMode: input.credentialMode,
+			userAccessToken: input.userAccessToken,
+		}));
+	}
+	try {
+		return await operation(createBigQueryClient({
+			projectId: input.projectId,
+			credentialMode: 'service_account',
+			userAccessToken: input.userAccessToken,
+		}));
+	} catch (error) {
+		if (!isPermissionError(error) || !(input.userAccessToken || process.env.GOOGLE_USER_ACCESS_TOKEN)) throw error;
+		return operation(createBigQueryClient({
+			projectId: input.projectId,
+			credentialMode: 'user_oauth',
+			userAccessToken: input.userAccessToken,
+		}));
+	}
+}
+
+function isPermissionError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return /\b(403|permission|access denied|bigquery\.jobs\.create|forbidden)\b/i.test(message);
 }
 
 function jsonSafeValue(value: any): any {

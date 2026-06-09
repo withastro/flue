@@ -3,16 +3,21 @@ import { OAuth2Client } from 'google-auth-library';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
+export type BigQueryAuthMode = 'service_account' | 'user_oauth';
+export type BigQueryCredentialMode = BigQueryAuthMode | 'service_account_then_user_oauth';
+export type BigQueryClientFactory = (mode: BigQueryAuthMode) => BigQueryLike;
+
 export interface BigQueryRunInput {
 	sql: string;
 	maxGb: number;
 	maxRows?: number;
 	projectId?: string;
-	credentialMode?: 'service_account' | 'user_oauth';
+	credentialMode?: BigQueryCredentialMode;
 	userAccessToken?: string;
 	outputDir?: string;
 	now?: Date;
 	client?: BigQueryLike;
+	clientFactory?: BigQueryClientFactory;
 }
 
 export interface BigQueryRunResult {
@@ -24,7 +29,7 @@ export interface BigQueryRunResult {
 	result_path: string;
 	truncated: boolean;
 	max_rows: number;
-	auth_mode: 'service_account' | 'user_oauth';
+	auth_mode: BigQueryAuthMode;
 	project_id: string;
 }
 
@@ -36,9 +41,10 @@ export interface BigQueryDistinctValuesInput {
 	whereSql?: string;
 	caseInsensitiveLike?: string;
 	projectId?: string;
-	credentialMode?: 'service_account' | 'user_oauth';
+	credentialMode?: BigQueryCredentialMode;
 	userAccessToken?: string;
 	client?: BigQueryLike;
+	clientFactory?: BigQueryClientFactory;
 }
 
 export interface BigQueryDistinctValuesResult {
@@ -49,7 +55,7 @@ export interface BigQueryDistinctValuesResult {
 	bytes_processed: number;
 	bytes_billed: string;
 	limit: number;
-	auth_mode: 'service_account' | 'user_oauth';
+	auth_mode: BigQueryAuthMode;
 	project_id: string;
 	sql: string;
 }
@@ -58,9 +64,10 @@ export interface BigQueryValidationInput {
 	sql: string;
 	maxGb: number;
 	projectId?: string;
-	credentialMode?: 'service_account' | 'user_oauth';
+	credentialMode?: BigQueryCredentialMode;
 	userAccessToken?: string;
 	client?: BigQueryLike;
+	clientFactory?: BigQueryClientFactory;
 }
 
 export interface BigQueryValidationResult {
@@ -68,7 +75,7 @@ export interface BigQueryValidationResult {
 	bytes_processed: number;
 	bytes_billed: string;
 	columns: string[];
-	auth_mode: 'service_account' | 'user_oauth';
+	auth_mode: BigQueryAuthMode;
 	project_id: string;
 	sql: string;
 }
@@ -78,9 +85,10 @@ export interface BigQueryAggregateInput {
 	maxGb: number;
 	whereSql?: string;
 	projectId?: string;
-	credentialMode?: 'service_account' | 'user_oauth';
+	credentialMode?: BigQueryCredentialMode;
 	userAccessToken?: string;
 	client?: BigQueryLike;
+	clientFactory?: BigQueryClientFactory;
 }
 
 export interface BigQueryDateRangeInput extends BigQueryAggregateInput {
@@ -122,7 +130,7 @@ export async function runBigQuery(input: BigQueryRunInput): Promise<BigQueryRunR
 	const projectId = input.projectId || process.env.GOOGLE_CLOUD_PROJECT || 'evenup-bi';
 	const credentialMode = input.credentialMode ?? 'service_account';
 	return withBigQueryClient(
-		{ projectId, credentialMode, userAccessToken: input.userAccessToken, client: input.client },
+		{ projectId, credentialMode, userAccessToken: input.userAccessToken, client: input.client, clientFactory: input.clientFactory },
 		async (client, authMode) => {
 			const bytesProcessed = await dryRunQuery(client, sql);
 			if (bytesProcessed > maxBytes) {
@@ -191,7 +199,7 @@ export async function getDistinctValues(
 	const projectId = input.projectId || process.env.GOOGLE_CLOUD_PROJECT || 'evenup-bi';
 	const credentialMode = input.credentialMode ?? 'service_account';
 	return withBigQueryClient(
-		{ projectId, credentialMode, userAccessToken: input.userAccessToken, client: input.client },
+		{ projectId, credentialMode, userAccessToken: input.userAccessToken, client: input.client, clientFactory: input.clientFactory },
 		async (client, authMode) => {
 			const bytesProcessed = await dryRunQuery(client, sql, params);
 			if (bytesProcessed > maxBytes) {
@@ -228,7 +236,7 @@ export async function validateBigQuery(input: BigQueryValidationInput): Promise<
 	const projectId = input.projectId || process.env.GOOGLE_CLOUD_PROJECT || 'evenup-bi';
 	const credentialMode = input.credentialMode ?? 'service_account';
 	return withBigQueryClient(
-		{ projectId, credentialMode, userAccessToken: input.userAccessToken, client: input.client },
+		{ projectId, credentialMode, userAccessToken: input.userAccessToken, client: input.client, clientFactory: input.clientFactory },
 		async (client, authMode) => {
 			const { bytesProcessed, metadata } = await dryRunQueryWithMetadata(client, sql);
 			if (bytesProcessed > maxBytes) {
@@ -366,7 +374,7 @@ function nextCsvOutputId(): string {
 
 function createBigQueryClient(input: {
 	projectId: string;
-	credentialMode: 'service_account' | 'user_oauth';
+	credentialMode: BigQueryAuthMode;
 	userAccessToken?: string;
 }): BigQuery {
 	if (input.credentialMode === 'user_oauth') {
@@ -384,21 +392,53 @@ function createBigQueryClient(input: {
 async function withBigQueryClient<T>(
 	input: {
 		projectId: string;
-		credentialMode: 'service_account' | 'user_oauth';
+		credentialMode: BigQueryCredentialMode;
 		userAccessToken?: string;
 		client?: BigQueryLike;
+		clientFactory?: BigQueryClientFactory;
 	},
-	operation: (client: BigQueryLike, authMode: 'service_account' | 'user_oauth') => Promise<T>,
+	operation: (client: BigQueryLike, authMode: BigQueryAuthMode) => Promise<T>,
 ): Promise<T> {
-	if (input.client) return operation(input.client, input.credentialMode);
-	return operation(
+	if (input.client) return operation(input.client, normalizeConcreteAuthMode(input.credentialMode));
+	if (input.credentialMode !== 'service_account_then_user_oauth') {
+		return operation(createClient(input, input.credentialMode), input.credentialMode);
+	}
+
+	try {
+		return await operation(createClient(input, 'service_account'), 'service_account');
+	} catch (error) {
+		if (!isBigQueryPermissionError(error) || !canUseUserOAuth(input)) throw error;
+		return operation(createClient(input, 'user_oauth'), 'user_oauth');
+	}
+}
+
+function createClient(
+	input: {
+		projectId: string;
+		userAccessToken?: string;
+		clientFactory?: BigQueryClientFactory;
+	},
+	mode: BigQueryAuthMode,
+): BigQueryLike {
+	return input.clientFactory?.(mode) ??
 		createBigQueryClient({
 			projectId: input.projectId,
-			credentialMode: input.credentialMode,
+			credentialMode: mode,
 			userAccessToken: input.userAccessToken,
-		}) as BigQueryLike,
-		input.credentialMode,
-	);
+		}) as BigQueryLike;
+}
+
+function normalizeConcreteAuthMode(mode: BigQueryCredentialMode): BigQueryAuthMode {
+	return mode === 'service_account_then_user_oauth' ? 'service_account' : mode;
+}
+
+function canUseUserOAuth(input: { userAccessToken?: string; clientFactory?: BigQueryClientFactory }): boolean {
+	return Boolean(input.clientFactory || input.userAccessToken || process.env.GOOGLE_USER_ACCESS_TOKEN);
+}
+
+function isBigQueryPermissionError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return /\b(403|permission|access denied|bigquery\.jobs\.create|storage\.objects\.create|forbidden)\b/i.test(message);
 }
 
 async function dryRunQuery(client: BigQueryLike, sql: string, params?: Record<string, unknown>): Promise<number> {
@@ -448,7 +488,7 @@ async function runSingleRowQuery(input: BigQueryAggregateInput, sql: string) {
 	const projectId = input.projectId || process.env.GOOGLE_CLOUD_PROJECT || 'evenup-bi';
 	const credentialMode = input.credentialMode ?? 'service_account';
 	return withBigQueryClient(
-		{ projectId, credentialMode, userAccessToken: input.userAccessToken, client: input.client },
+		{ projectId, credentialMode, userAccessToken: input.userAccessToken, client: input.client, clientFactory: input.clientFactory },
 		async (client, authMode) => {
 			const bytesProcessed = await dryRunQuery(client, sql);
 			if (bytesProcessed > maxBytes) {

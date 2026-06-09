@@ -20,6 +20,9 @@ What can be deterministic should be deterministic. Use code, schemas, explicit p
   - Preflight explorer uses detached per-run sessions.
   - Station sessions are routed and named deterministically.
   - User "send back to kitchen" is modeled as rework with higher-scrutiny waiter behavior.
+  - Waiter cannot call Flue's built-in task tool; all explorer/station calls are explicit runtime branches.
+  - Forced workflow commands run shallowly when workflow mutation is disabled, instead of starting a full workflow station.
+  - Requests the waiter cannot map to analytics, knowledge, workflow, or documentation can be rejected before explorer or station work.
 - Skill invocation:
   - Project skills are bundled under `resources/skills`.
   - `project_skill_list` and `project_skill_read` expose skills progressively to agents.
@@ -49,7 +52,7 @@ What can be deterministic should be deterministic. Use code, schemas, explicit p
 
 ## Validation
 
-- Flue analytics tool tests pass: `62 passed | 2 skipped`.
+- Flue analytics tool tests pass: `84 passed`.
 - Flue node build passes for `examples/analytics`.
 - FastAPI bridge Python compile passes.
 - Targeted FastAPI tests pass for forced skill payload and deterministic skill command parsing.
@@ -70,13 +73,21 @@ Merge-worthy behavior:
 Known caveats that should not block the first merge:
 
 - Some migrated skills still contain Claude-era procedural assumptions and should be incrementally rewritten as native Flue workflow templates, station skills, or dedicated workflow agents.
-- Repo/code mutation workflows need stricter production-grade sandbox/workspace policy before broad rollout.
+- Repo/code mutation workflows currently keep relatively loose local-tool access, similar to the existing Claude Code agent. This is acceptable for the first parity release, but needs stricter production-grade sandbox/workspace policy before broad rollout.
 - Scheduler substrate is not implemented.
 - Cost optimization is intentionally deferred until behavior stabilizes.
 - More end-to-end elective tests should be added around representative analytics, Metabase, and named-skill flows.
 
 ## Next After Merge
 
+- Consider the first-principles redesign direction in
+  `FIRST_PRINCIPLES_REDESIGN.md`: move more state-machine control, capability
+  policy, persistence, and user-facing message boundaries into deterministic app
+  orchestration; keep LLMs focused on interpretation, synthesis, domain work,
+  and final response writing.
+- Preserve durable architectural decisions in `DECISIONS.md`; use
+  `FIRST_PRINCIPLES_REDESIGN.md` for forward-looking redesign notes and this
+  file for task/readiness tracking.
 - Fast-follow cleanup from merge review:
   - Split `waiter.ts` into clearer modules: contracts, orchestration, station runner, postflight, and prompt builders.
   - Consolidate `project_skill_*` and `workflow_template_*` surfaces, or remove the transitional workflow-template path once project skills are the single invocation substrate.
@@ -87,6 +98,10 @@ Known caveats that should not block the first merge:
 - Run a local web end-to-end pass with a small set of smoke prompts.
 - Port the highest-value migrated skills from parity form into native Flue patterns.
 - Add scheduler substrate for recurring reports and workflow follow-ups.
-- Tighten sandbox/workspace policy for repo mutation workflows.
+- Add conversation continuation by id: when a user includes a production conversation id in the message, deterministically resolve the GCS-backed conversation history, load the prior context, and continue from that state instead of treating the request as a fresh thread.
+- Tighten sandbox/workspace policy for repo mutation workflows:
+  - Give workflow stations a per-conversation workspace root such as `/tmp/agi-workspaces/{conversationId}`.
+  - Confine local file tools to that root and sync the workspace to GCS under the same conversation id.
+  - Keep this release loose for parity with the Claude agent, but move toward contracted repo tools or containerized bash so stations operate only inside the conversation workspace.
 - Add LLM-judged elective e2e tests for the employee-growth Metabase card and PLAAS caveat questions.
 - Optimize model choices/caching after usage traces show stable behavior.

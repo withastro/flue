@@ -10,6 +10,8 @@ Treat old Claude-era path references inside migrated skills as migration hints, 
 
 Use bounded research first when the requested workflow is ambiguous. Take mutating actions only when the user explicitly requested the action and the run policy enables the matching tool.
 
+For repo workflows, use the native `bash`, `grep`, `glob`, `read`, `write`, and `edit` tools directly. Clone or use the target repo, create branches, inspect files, edit, run focused validation, and push/open PRs when credentials allow it. Do not report that repo mutation is unavailable unless you attempted the relevant bash/git/gh command and captured the concrete blocker.
+
 When workflow context needs source research, use the `task` tool with role `explorer` for a focused evidence request. Keep the task scoped to the missing term, product area, Jira/repo/KB context, or source gap.
 
 For workflow requests, identify the target system, required inputs, missing inputs, permissions, side effects, and rollback or cleanup needs. If mutation is disabled or required inputs are missing, return a blocker and an execution plan rather than improvising.

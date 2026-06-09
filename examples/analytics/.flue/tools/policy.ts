@@ -7,6 +7,7 @@ import { DEFAULT_MANIFEST_PATH } from '../lib/manifest.ts';
 
 export type AgentSource = 'web' | 'slack' | 'cli';
 export type CredentialMode = 'service_account' | 'user_oauth';
+export type BigQueryCredentialMode = CredentialMode | 'service_account_then_user_oauth';
 
 export interface ToolPolicy extends AnalyticsToolConfig {
 	source: AgentSource;
@@ -17,7 +18,7 @@ export interface ToolPolicy extends AnalyticsToolConfig {
 	conversationId?: string;
 	runId?: string;
 	credentials: {
-		bigQueryMode: CredentialMode;
+		bigQueryMode: BigQueryCredentialMode;
 		googleDriveMode: CredentialMode;
 	};
 	permissions: {
@@ -65,7 +66,7 @@ export function createToolPolicy(input: {
 		allowMetabaseCreate: input.allowMetabaseCreate ?? false,
 		allowGoogleDriveWrite: input.allowGoogleDriveWrite ?? (source !== 'slack'),
 		credentials: {
-			bigQueryMode: webCanUseUserCredentials && hasGoogleUserToken ? 'user_oauth' : 'service_account',
+			bigQueryMode: webCanUseUserCredentials && hasGoogleUserToken ? 'service_account_then_user_oauth' : 'service_account',
 			googleDriveMode: webCanUseUserCredentials ? 'user_oauth' : 'service_account',
 		},
 		permissions: {

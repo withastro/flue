@@ -1,4 +1,5 @@
 import { type FlueContext, type FlueSession } from '@flue/runtime';
+import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
 import { localWithoutBuiltinTools } from '../lib/sandbox.ts';
@@ -23,6 +24,16 @@ import { selectKbArticles } from '../tools/kb.ts';
 import { readSourceCatalogText } from '../tools/source-catalog.ts';
 import { createWorkflowTemplateTools } from '../tools/workflow-templates.ts';
 import { createProjectSkillTools } from '../tools/project-skills.ts';
+import { createLocalWorkspaceTools } from '../tools/local.ts';
+import { createJiraAutomationTools } from '../lib/tools.ts';
+import {
+	createWaiterExplorationRequest,
+	ExplorationBriefSchema,
+	formatExplorationRequest,
+	type ExplorationRequest,
+	type ExplorationSource,
+} from '../lib/exploration.ts';
+import { buildConversationLedger } from '../lib/conversation-ledger.ts';
 
 export const triggers = { webhook: true };
 
@@ -50,8 +61,17 @@ const PayloadSchema = v.object({
 	forcedRoute: v.optional(RouteSchema),
 	rework: v.optional(v.boolean(), false),
 	priorAnswer: v.optional(v.string()),
+	priorWorkSummary: v.optional(v.string()),
+	testFollowupQuestion: v.optional(v.string()),
+	testScenario: v.optional(v.picklist([
+		'pass_through',
+		'preflight_blocker',
+		'postflight_followup',
+		'revise_then_block',
+	])),
 });
 
+type WaiterPayload = v.InferOutput<typeof PayloadSchema>;
 type Route = v.InferOutput<typeof RouteSchema>;
 
 const KitchenOrderSchema = v.object({
@@ -65,26 +85,38 @@ const KitchenOrderSchema = v.object({
 	allowedActions: v.array(v.string()),
 	requestedOutput: v.string(),
 	clarifyingQuestion: v.optional(v.string()),
+	blockerMessage: v.optional(v.string()),
+	priorWorkSummary: v.optional(v.string()),
 });
 
 type KitchenOrder = v.InferOutput<typeof KitchenOrderSchema>;
 
 const WaiterDecisionSchema = v.object({
-	action: v.picklist(['continue_station', 'run_preflight', 'clarify']),
+	action: v.picklist(['continue_station', 'run_preflight', 'ask_user', 'reject']),
 	route: v.optional(RouteSchema),
 	rationale: v.string(),
+	resolvedTask: v.optional(v.string()),
+	priorWorkSummary: v.optional(v.string()),
 	stationInstruction: v.optional(v.string()),
+	explorationBrief: v.optional(ExplorationBriefSchema),
 	clarifyingQuestion: v.optional(v.string()),
+	userMessage: v.optional(v.string()),
 });
 
 type WaiterDecision = v.InferOutput<typeof WaiterDecisionSchema>;
 
+const ExplorerFindingSchema = v.object({
+	source: SourceSchema,
+	title: v.string(),
+	reference: v.string(),
+	evidence: v.array(v.string()),
+});
+
 const ExplorerPreflightSchema = v.object({
-	status: v.picklist(['ready_for_analytics', 'needs_more_exploration', 'needs_user_clarification', 'blocked']),
-	confidence: v.picklist(['low', 'medium', 'high']),
-	recommendedRoute: RouteSchema,
-	suggestedSources: v.array(SourceSchema),
 	summary: v.string(),
+	searchedSources: v.optional(v.array(SourceSchema), []),
+	queryVariantsTried: v.optional(v.array(v.string()), []),
+	findings: v.optional(v.array(ExplorerFindingSchema), []),
 	candidateModels: v.optional(v.array(
 		v.object({
 			name: v.string(),
@@ -93,7 +125,6 @@ const ExplorerPreflightSchema = v.object({
 			concerns: v.array(v.string()),
 		}),
 	), []),
-	recommendedNextStep: v.string(),
 	gaps: v.array(v.string()),
 });
 
@@ -117,13 +148,14 @@ const KitchenResultSchema = v.object({
 
 type KitchenResult = v.InferOutput<typeof KitchenResultSchema>;
 
+type UserReplyType = 'final' | 'followup_question';
+
 const PostflightReviewSchema = v.object({
-	verdict: v.picklist(['accept', 'revise', 'clarify', 'block']),
+	verdict: v.picklist(['accept', 'revise', 'ask_user', 'block']),
 	rationale: v.string(),
 	issues: v.array(v.string()),
 	feedbackToStation: v.optional(v.string()),
-	userClarifyingQuestion: v.optional(v.string()),
-	finalResponseGuidance: v.optional(v.string()),
+	userMessage: v.optional(v.string()),
 });
 
 type PostflightReview = v.InferOutput<typeof PostflightReviewSchema>;
@@ -142,6 +174,51 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 	});
 	const waiterModel = resolveWaiterModel(parsed.waiterModel, turn.isRework);
 	const kitchenModel = parsed.kitchenModel || process.env.ANALYTICS_MODEL || 'openai/gpt-5.4';
+	if (parsed.testScenario !== undefined) {
+		if (process.env.ANALYTICS_ENABLE_TEST_HOOKS !== '1') {
+			throw new Error('testScenario requires ANALYTICS_ENABLE_TEST_HOOKS=1.');
+		}
+		return withConversationLedger(buildForcedTestScenario({
+			scenario: parsed.testScenario,
+			message: parsed.message,
+			sessionName: parsed.sessionName,
+			streamName: parsed.streamName,
+			branchName: parsed.branchName,
+			activeRoute: parsed.activeRoute,
+			runId,
+			turn,
+			waiterModel,
+			kitchenModel,
+		}), { rawUserMessage: parsed.message, resolvedTask: parsed.message, runId });
+	}
+	if (parsed.testFollowupQuestion !== undefined) {
+		if (process.env.ANALYTICS_ENABLE_TEST_HOOKS !== '1') {
+			throw new Error('testFollowupQuestion requires ANALYTICS_ENABLE_TEST_HOOKS=1.');
+		}
+		return withConversationLedger({
+			reply: userVisibleOrFallback(
+				parsed.testFollowupQuestion,
+				'I need one clarification before I can continue.',
+			),
+			replyType: 'followup_question' satisfies UserReplyType,
+			waiterModel,
+			kitchenModel,
+			turn,
+			decision: {
+				action: 'ask_user' as const,
+				rationale: 'Deterministic test hook forced a user-facing follow-up question.',
+				clarifyingQuestion: parsed.testFollowupQuestion,
+			},
+			sessionPlan: createSessionPlan({
+				sessionName: parsed.sessionName,
+				streamName: parsed.streamName,
+				branchName: parsed.branchName,
+				turnType: turn.type,
+				runId,
+			}),
+			usage: { waiter: { testHook: true } },
+		}, { rawUserMessage: parsed.message, resolvedTask: parsed.message, runId });
+	}
 	const preflightSessionPlan = createSessionPlan({
 		sessionName: parsed.sessionName,
 		streamName: parsed.streamName,
@@ -163,7 +240,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 
 	const waiterHarness = await init({
 		name: 'waiter',
-		sandbox: localWithoutBuiltinTools(),
+		sandbox: localWithoutBuiltinTools({ disableTaskTool: true }),
 		model: waiterModel,
 		role: 'waiter',
 		tools: [
@@ -184,6 +261,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 				streamName: preflightSessionPlan.streamName,
 				stationSessionName: parsed.stationSessionName,
 				priorAnswer: parsed.priorAnswer,
+				priorWorkSummary: parsed.priorWorkSummary,
 			});
 	const decision: WaiterDecision = parsed.forcedSkillId
 		? {
@@ -192,6 +270,12 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 				rationale: `Deterministic project skill command: /${parsed.forcedSkillId}.`,
 			}
 		: decisionResult!.decision;
+	const resolvedTask = resolveTaskForHandoff(parsed.message, decision);
+	const priorWorkSummary = resolvePriorWorkSummary({
+		payloadPriorWorkSummary: parsed.priorWorkSummary,
+		priorAnswer: parsed.priorAnswer,
+		decision,
+	});
 	const activeRoute = parsed.activeRoute;
 	const canContinueStation = !parsed.forcedSkillId && decision.action === 'continue_station' && activeRoute !== undefined && turn.type === 'mainline';
 	if (canContinueStation) {
@@ -212,67 +296,140 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 			route: activeRoute,
 			sessionName: stationSessionName,
 			message: parsed.message,
+			resolvedTask,
+			priorWorkSummary,
 			decision,
 			maxGb: parsed.maxGb,
 			allowMetabaseCreate: parsed.allowMetabaseCreate,
 		});
-		return {
-			reply: stationResult.text,
+		const activeSessionPlan = { ...sessionPlan, stationSessionName };
+		const order = createContinuationOrder(resolvedTask, activeRoute, decision, priorWorkSummary);
+		const explorerData = createContinuationExplorer(activeRoute, decision);
+		const postflightReviews: Array<{ review: PostflightReview; usage?: unknown }> = [];
+		const postflightResult = await reviewKitchenDelivery({
+			waiterSession,
+			message: resolvedTask,
+			turn,
+			sessionPlan: activeSessionPlan,
+			order,
+			explorerData,
+			kitchenResult: stationResult.data,
+			attempt: 1,
+		});
+		postflightReviews.push(postflightResult);
+		let finalStationResult = stationResult;
+		if (postflightResult.review.verdict === 'revise' && postflightResult.review.feedbackToStation) {
+			finalStationResult = await reviseKitchenStation({
+				session: stationResult.session,
+				turn,
+				sessionPlan: activeSessionPlan,
+				order,
+				explorerData,
+				previousResult: stationResult.data,
+				review: postflightResult.review,
+			});
+			const secondPostflight = await reviewKitchenDelivery({
+				waiterSession,
+				message: resolvedTask,
+				turn,
+				sessionPlan: activeSessionPlan,
+				order,
+				explorerData,
+				kitchenResult: finalStationResult.data,
+				attempt: 2,
+			});
+			postflightReviews.push(secondPostflight);
+		}
+		const finalPostflight = postflightReviews[postflightReviews.length - 1]!.review;
+		return withConversationLedger({
+			...buildPostflightUserReply(finalPostflight, finalStationResult.data),
 			waiterModel,
 			kitchenModel,
 			turn,
 			decision,
-			sessionPlan: {
-				...sessionPlan,
-				stationSessionName,
-			},
+			sessionPlan: activeSessionPlan,
+			order,
+			kitchen: finalStationResult.data,
+			postflight: postflightReviews.map((entry) => entry.review),
 			usage: {
-				waiter: { decision: decisionResult?.usage },
+				waiter: {
+					decision: decisionResult?.usage,
+					postflight: postflightReviews.map((entry) => entry.usage),
+				},
 				station: stationResult.usage,
+				...(finalStationResult !== stationResult ? { stationRevision: finalStationResult.usage } : {}),
 			},
-		};
+		}, { rawUserMessage: parsed.message, resolvedTask, runId });
 	}
 
-	if (decision.action === 'clarify' && decision.clarifyingQuestion) {
-		return {
+	if (decision.action === 'ask_user' && decision.clarifyingQuestion) {
+		return withConversationLedger({
 			reply: decision.clarifyingQuestion,
+			replyType: 'followup_question' satisfies UserReplyType,
 			waiterModel,
 			kitchenModel,
 			turn,
 			decision,
 			sessionPlan: preflightSessionPlan,
 			usage: { waiter: { decision: decisionResult?.usage } },
-		};
+		}, { rawUserMessage: parsed.message, resolvedTask, runId });
+	}
+	if (decision.action === 'reject') {
+		return withConversationLedger({
+			reply: userVisibleOrFallback(
+				decision.userMessage,
+				'I cannot help with that request because it does not fit the available analytics, knowledge, workflow, or documentation capabilities.',
+			),
+			replyType: 'final' satisfies UserReplyType,
+			waiterModel,
+			kitchenModel,
+			turn,
+			decision,
+			sessionPlan: preflightSessionPlan,
+			usage: { waiter: { decision: decisionResult?.usage } },
+		}, { rawUserMessage: parsed.message, resolvedTask, runId });
 	}
 
 	const sourceCatalog = await readOptionalSourceCatalog();
-	const selectedKbArticles = await selectKbArticles(parsed.message, { limit: 2 });
+	const selectedKbArticles = await selectKbArticles(resolvedTask, { limit: 2 });
+	const explorationRequest = createWaiterExplorationRequest({
+		message: parsed.message,
+		resolvedTask,
+		route: parsed.forcedRoute,
+		turn,
+		forcedSkillId: parsed.forcedSkillId,
+		selectedKbArticles,
+		brief: decision.explorationBrief,
+	});
 	const explorerResult = await runExplorerPreflight({
 		init,
 		policy,
 		sessionName: preflightSessionPlan.preflightSessionName,
-		message: parsed.message,
+		message: resolvedTask,
 		turn,
 		sessionPlan: preflightSessionPlan,
+		explorationRequest,
 		sourceCatalog,
 		selectedKbArticles,
 		forcedSkillId: parsed.forcedSkillId,
 		forcedRoute: parsed.forcedRoute,
 		priorAnswer: parsed.priorAnswer,
+		priorWorkSummary,
 	});
 	const explorerData = applyPreflightQualityGate(explorerResult.data);
 	const orderResult = await draftKitchenOrder({
 		waiterSession,
-		message: parsed.message,
+		message: resolvedTask,
 		rework: turn.isRework,
 		priorAnswer: parsed.priorAnswer,
+		priorWorkSummary,
 		turn,
 		explorerData,
 		sourceCatalog,
 		forcedSkillId: parsed.forcedSkillId,
 		forcedRoute: parsed.forcedRoute,
 	});
-	const order = orderResult.order;
+	const order = withPriorWorkSummary(orderResult.order, priorWorkSummary);
 	const sessionPlan = createSessionPlan({
 		sessionName: parsed.sessionName,
 		streamName: preflightSessionPlan.streamName,
@@ -282,48 +439,56 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 		route: order.route,
 	});
 	if (order.clarifyingQuestion) {
-		return {
-			reply: order.clarifyingQuestion,
+		return withConversationLedger({
+			reply: buildPreStationFollowup(explorerData, order),
+			replyType: 'followup_question' satisfies UserReplyType,
 			waiterModel,
 			kitchenModel,
 			turn,
 			decision,
 			sessionPlan,
 			order,
+			explorationRequest,
 			explorer: explorerData,
 			usage: { waiter: { decision: decisionResult?.usage, order: orderResult.usage }, explorer: explorerResult.usage },
-		};
+		}, { rawUserMessage: parsed.message, resolvedTask, runId });
 	}
 
-	if (
-		explorerData.status === 'needs_user_clarification' ||
-		explorerData.status === 'blocked' ||
-		(explorerData.status === 'needs_more_exploration' && !shouldDispatchForStationValidation(explorerData, order))
-	) {
-		const clarification = await waiterSession.prompt(
-			[
-				'Mode: clarify_or_block.',
-				'The explorer utility could not produce a ready domain work order.',
-				'Ask the user one concise clarifying question, explain the blocker, or state that more source research is required before domain work.',
-				`Original user request:\n${parsed.message}`,
-				`Turn context:\n${JSON.stringify(turn, null, 2)}`,
-				`Session plan:\n${JSON.stringify(sessionPlan, null, 2)}`,
-				`Draft work order:\n${JSON.stringify(order, null, 2)}`,
-				`Explorer summary:\n${formatExplorerPreflightForWaiter(explorerData)}`,
-			].join('\n\n'),
-			{ result: FinalResponseSchema },
-		);
-		return {
-			reply: clarification.data.finalResponse,
+	if (shouldReturnBeforeStation(explorerData, order)) {
+		return withConversationLedger({
+			reply: buildPreStationFollowup(explorerData, order),
+			replyType: replyTypeForPreStation(explorerData, order),
 			waiterModel,
 			kitchenModel,
 			turn,
 			decision,
 			sessionPlan,
 			order,
+			explorationRequest,
 			explorer: explorerData,
-			usage: { waiter: { decision: decisionResult?.usage, order: orderResult.usage, final: clarification.usage }, explorer: explorerResult.usage },
-		};
+			usage: { waiter: { decision: decisionResult?.usage, order: orderResult.usage }, explorer: explorerResult.usage },
+		}, { rawUserMessage: parsed.message, resolvedTask, runId });
+	}
+
+	if (shouldUseShallowWorkflowEval(parsed, order)) {
+		const { kitchen, review } = buildShallowWorkflowEvaluation(order);
+		return withConversationLedger({
+			...buildPostflightUserReply(review, kitchen),
+			waiterModel,
+			kitchenModel,
+			turn,
+			decision,
+			sessionPlan,
+			order,
+			explorationRequest,
+			explorer: explorerData,
+			kitchen,
+			postflight: [review],
+			usage: {
+				waiter: { decision: decisionResult?.usage, order: orderResult.usage, deterministicPostflight: true },
+				explorer: explorerResult.usage,
+			},
+		}, { rawUserMessage: parsed.message, resolvedTask, runId });
 	}
 
 	let kitchenResult;
@@ -338,13 +503,15 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 			explorerData,
 		});
 	} catch (error) {
+		const stationLabel = `${order.route} station`;
 		const blockerResult = await waiterSession.prompt(
 			[
 				'Mode: station_failure_response.',
-				'The analytics station failed before returning a schema result.',
-				'Write a concise user-facing blocker response. Include what the explorer found, what analytics attempted, and what must be fixed next.',
+				`The ${stationLabel} failed before returning a schema result.`,
+				`Write a concise user-facing blocker response. Include what the explorer found, what the ${stationLabel} attempted, and what must be fixed next.`,
 				'Do not pretend the analysis was completed.',
-				`Original user request:\n${parsed.message}`,
+				`Original user request:\n${resolvedTask}`,
+				resolvedTask === parsed.message ? '' : `Latest user message:\n${parsed.message}`,
 				`Turn context:\n${JSON.stringify(turn, null, 2)}`,
 				`Session plan:\n${JSON.stringify(sessionPlan, null, 2)}`,
 				`Work order:\n${JSON.stringify(order, null, 2)}`,
@@ -353,27 +520,32 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 			].join('\n\n'),
 			{ result: FinalResponseSchema },
 		);
-		return {
-			reply: blockerResult.data.finalResponse,
+		return withConversationLedger({
+			reply: userVisibleOrFallback(
+				blockerResult.data.finalResponse,
+				'I could not complete this yet. The run failed before the domain work returned a structured result.',
+			),
+			replyType: 'final' satisfies UserReplyType,
 			waiterModel,
 			kitchenModel,
 			turn,
 			decision,
 			sessionPlan,
 			order,
+			explorationRequest,
 			explorer: explorerData,
 			kitchenError: error instanceof Error ? error.message : String(error),
 			usage: {
 				waiter: { decision: decisionResult?.usage, order: orderResult.usage, final: blockerResult.usage },
 				explorer: explorerResult.usage,
 			},
-		};
+		}, { rawUserMessage: parsed.message, resolvedTask, runId });
 	}
 
 	const postflightReviews: Array<{ review: PostflightReview; usage?: unknown }> = [];
 	const postflightResult = await reviewKitchenDelivery({
 		waiterSession,
-		message: parsed.message,
+		message: resolvedTask,
 		turn,
 		sessionPlan,
 		order,
@@ -384,30 +556,6 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 	postflightReviews.push(postflightResult);
 
 	let finalKitchenResult = kitchenResult;
-	if (postflightResult.review.verdict === 'clarify' && postflightResult.review.userClarifyingQuestion) {
-		return {
-			reply: postflightResult.review.userClarifyingQuestion,
-			waiterModel,
-			kitchenModel,
-			turn,
-			decision,
-			sessionPlan,
-			order,
-			explorer: explorerData,
-			kitchen: kitchenResult.data,
-			postflight: postflightReviews.map((entry) => entry.review),
-			usage: {
-				waiter: {
-					decision: decisionResult?.usage,
-					order: orderResult.usage,
-					postflight: postflightReviews.map((entry) => entry.usage),
-				},
-				explorer: explorerResult.usage,
-				kitchen: kitchenResult.usage,
-			},
-		};
-	}
-
 	if (postflightResult.review.verdict === 'revise' && postflightResult.review.feedbackToStation) {
 		finalKitchenResult = await reviseKitchenStation({
 			session: kitchenResult.session,
@@ -420,7 +568,7 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 		});
 		const secondPostflight = await reviewKitchenDelivery({
 			waiterSession,
-			message: parsed.message,
+			message: resolvedTask,
 			turn,
 			sessionPlan,
 			order,
@@ -429,90 +577,18 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 			attempt: 2,
 		});
 		postflightReviews.push(secondPostflight);
-		if (secondPostflight.review.verdict === 'clarify' && secondPostflight.review.userClarifyingQuestion) {
-			return {
-				reply: secondPostflight.review.userClarifyingQuestion,
-				waiterModel,
-				kitchenModel,
-				turn,
-				decision,
-				sessionPlan,
-				order,
-				explorer: explorerData,
-				kitchen: finalKitchenResult.data,
-				postflight: postflightReviews.map((entry) => entry.review),
-				usage: {
-						waiter: {
-							decision: decisionResult?.usage,
-							order: orderResult.usage,
-							postflight: postflightReviews.map((entry) => entry.usage),
-					},
-					explorer: explorerResult.usage,
-					kitchen: kitchenResult.usage,
-					kitchenRevision: finalKitchenResult.usage,
-				},
-			};
-		}
 	}
 
-	let finalResult;
-	try {
-		finalResult = await waiterSession.prompt(
-			[
-				'Mode: final_review.',
-				'Review this station result and write the final user-facing response.',
-				'This is postflight presentation. The postflight gate has already evaluated station quality; synthesize the accepted result or explain the clarified blocker.',
-				'Do not emit the station answer verbatim if it needs caveats, clarification, or formatting.',
-				'If the station result is blocked, explain the blocker and the attempted plan.',
-				`Original user request:\n${parsed.message}`,
-				`Turn context:\n${JSON.stringify(turn, null, 2)}`,
-				`Session plan:\n${JSON.stringify(sessionPlan, null, 2)}`,
-				`Work order:\n${JSON.stringify(order, null, 2)}`,
-				`Explorer summary:\n${formatExplorerPreflightForWaiter(explorerData)}`,
-				`Postflight reviews:\n${JSON.stringify(postflightReviews.map((entry) => entry.review), null, 2)}`,
-				`Station result:\n${JSON.stringify(finalKitchenResult.data, null, 2)}`,
-			].join('\n\n'),
-			{ result: FinalResponseSchema },
-		);
-	} catch (error) {
-		return {
-			reply: [
-				'I could not complete the analysis because the final review step failed after the analytics station returned.',
-				`Explorer preflight: ${explorerData.summary}`,
-				`Station summary: ${finalKitchenResult.data.kitchenSummary}`,
-				`Error: ${error instanceof Error ? error.message : String(error)}`,
-			].join('\n\n'),
-			waiterModel,
-			kitchenModel,
-			turn,
-			decision,
-			sessionPlan,
-			order,
-			explorer: explorerData,
-			kitchen: finalKitchenResult.data,
-			postflight: postflightReviews.map((entry) => entry.review),
-			finalError: error instanceof Error ? error.message : String(error),
-			usage: {
-				waiter: {
-					decision: decisionResult?.usage,
-					order: orderResult.usage,
-					postflight: postflightReviews.map((entry) => entry.usage),
-				},
-				explorer: explorerResult.usage,
-				kitchen: kitchenResult.usage,
-				...(finalKitchenResult !== kitchenResult ? { kitchenRevision: finalKitchenResult.usage } : {}),
-			},
-		};
-	}
-
-	return {
-		reply: finalResult.data.finalResponse,
+	const finalPostflight = postflightReviews[postflightReviews.length - 1]!.review;
+	return withConversationLedger({
+		...buildPostflightUserReply(finalPostflight, finalKitchenResult.data),
 		waiterModel,
 		kitchenModel,
 		turn,
 		decision,
 		sessionPlan,
 		order,
+		explorationRequest,
 		explorer: explorerData,
 		kitchen: finalKitchenResult.data,
 		postflight: postflightReviews.map((entry) => entry.review),
@@ -521,12 +597,49 @@ export default async function ({ init, payload, id, runId }: FlueContext) {
 				decision: decisionResult?.usage,
 				order: orderResult.usage,
 				postflight: postflightReviews.map((entry) => entry.usage),
-				final: finalResult.usage,
 			},
 			explorer: explorerResult.usage,
 			kitchen: kitchenResult.usage,
 			...(finalKitchenResult !== kitchenResult ? { kitchenRevision: finalKitchenResult.usage } : {}),
 		},
+	}, { rawUserMessage: parsed.message, resolvedTask, runId });
+}
+
+function withConversationLedger<T extends {
+	reply: string;
+	replyType: UserReplyType;
+	turn: TurnContext;
+	sessionPlan?: SessionPlan;
+	decision?: unknown;
+	explorationRequest?: ExplorationRequest;
+	explorer?: unknown;
+	order?: unknown;
+	kitchen?: unknown;
+	postflight?: unknown;
+	usage?: unknown;
+}>(response: T, input: {
+	rawUserMessage: string;
+	resolvedTask?: string;
+	runId?: string;
+}): T & { ledger: ReturnType<typeof buildConversationLedger> } {
+	return {
+		...response,
+		ledger: buildConversationLedger({
+			rawUserMessage: input.rawUserMessage,
+			resolvedTask: input.resolvedTask,
+			runId: input.runId,
+			turn: response.turn,
+			sessionPlan: response.sessionPlan,
+			decision: response.decision,
+			explorationRequest: response.explorationRequest,
+			explorer: response.explorer,
+			order: response.order,
+			kitchen: response.kitchen,
+			postflight: response.postflight,
+			reply: response.reply,
+			replyType: response.replyType,
+			usage: response.usage,
+		}),
 	};
 }
 
@@ -537,20 +650,30 @@ export function createKitchenOrder(
 	preflight?: ExplorerPreflight,
 	forcedSkillId?: string,
 	forcedRoute?: Route,
+	priorWorkSummary?: string,
 ): KitchenOrder {
-	return createKitchenOrderFromPreflight(message, rework, priorAnswer, preflight, forcedSkillId, forcedRoute);
+	return createKitchenOrderFromPreflight(message, rework, priorAnswer, preflight, forcedSkillId, forcedRoute, priorWorkSummary);
 }
 
 export function summarizeExplorerPreflightForWaiter(preflight: ExplorerPreflight) {
 	const candidateLimit = 5;
 	const detailLimit = 2;
+	const findingLimit = 5;
+	const searchedSources = preflight.searchedSources ?? [];
+	const queryVariantsTried = preflight.queryVariantsTried ?? [];
+	const findings = preflight.findings ?? [];
 	return {
-		status: preflight.status,
-		confidence: preflight.confidence,
-		recommendedRoute: preflight.recommendedRoute,
-		suggestedSources: preflight.suggestedSources,
 		summary: limitText(preflight.summary, 1200),
-		recommendedNextStep: limitText(preflight.recommendedNextStep, 800),
+		searchedSources,
+		queryVariantsTried: queryVariantsTried.slice(0, 8).map((query) => limitText(query, 180)),
+		findings: findings.slice(0, findingLimit).map((finding) => ({
+			source: finding.source,
+			title: limitText(finding.title, 180),
+			reference: limitText(finding.reference, 240),
+			evidence: finding.evidence.slice(0, detailLimit).map((item) => limitText(item, 300)),
+			omittedEvidenceCount: Math.max(0, finding.evidence.length - detailLimit),
+		})),
+		omittedFindingCount: Math.max(0, findings.length - findingLimit),
 		gaps: preflight.gaps.slice(0, 6).map((gap) => limitText(gap, 300)),
 		omittedGapCount: Math.max(0, preflight.gaps.length - 6),
 		candidateModels: preflight.candidateModels.slice(0, candidateLimit).map((model) => ({
@@ -565,8 +688,46 @@ export function summarizeExplorerPreflightForWaiter(preflight: ExplorerPreflight
 	};
 }
 
+function shouldUseShallowWorkflowEval(payload: WaiterPayload, order: KitchenOrder): boolean {
+	return order.route === 'workflow' && Boolean(payload.forcedSkillId) && payload.allowWorkflowMutation !== true;
+}
+
+function buildShallowWorkflowEvaluation(order: KitchenOrder): { kitchen: KitchenResult; review: PostflightReview } {
+	const skillName = order.skillId ? `/${order.skillId}` : 'the requested workflow';
+	const answer = [
+		`I did not execute ${skillName} because workflow mutation is disabled for this run.`,
+		'The request is recognized as a workflow request. To run it, enable workflow mutation for the session; otherwise I can only review the requested scope and return a non-mutating plan or blocker.',
+	].join(' ');
+	const kitchen: KitchenResult = {
+		answer,
+		confidence: 'medium',
+		artifacts: [],
+		followupQuestions: [],
+		kitchenSummary: 'Deterministic shallow workflow evaluation; no station execution or mutating action was run.',
+		needsReview: false,
+	};
+	const review: PostflightReview = {
+		verdict: 'block',
+		rationale: 'Forced workflow command was recognized, but mutation is disabled and shallow evaluation prevents full workflow execution.',
+		issues: ['Workflow mutation is disabled for this run.'],
+		userMessage: answer,
+	};
+	return { kitchen, review };
+}
+
 function formatExplorerPreflightForWaiter(preflight: ExplorerPreflight): string {
 	return JSON.stringify(summarizeExplorerPreflightForWaiter(preflight), null, 2);
+}
+
+function formatKitchenResultForWaiter(result: KitchenResult): string {
+	return JSON.stringify({
+		answer: limitText(result.answer, 4000),
+		confidence: result.confidence,
+		artifacts: result.artifacts,
+		followupQuestions: result.followupQuestions,
+		kitchenSummary: limitText(result.kitchenSummary, 1000),
+		needsReview: result.needsReview,
+	}, null, 2);
 }
 
 function limitText(value: string, maxLength: number): string {
@@ -580,9 +741,160 @@ function resolveWaiterModel(payloadModel: string | undefined, isRework: boolean)
 		return process.env.REWORK_WAITER_MODEL ||
 			process.env.WAITER_ESCALATION_MODEL ||
 			process.env.WAITER_MODEL ||
-			'anthropic/claude-opus-4-7';
+			'anthropic/claude-sonnet-4-6';
 	}
-	return process.env.WAITER_MODEL || 'anthropic/claude-opus-4-7';
+	return process.env.WAITER_MODEL || 'anthropic/claude-sonnet-4-6';
+}
+
+function buildForcedTestScenario(input: {
+	scenario: 'pass_through' | 'preflight_blocker' | 'postflight_followup' | 'revise_then_block';
+	message: string;
+	sessionName?: string;
+	streamName?: string;
+	branchName?: string;
+	activeRoute?: Route;
+	runId: string;
+	turn: TurnContext;
+	waiterModel: string;
+	kitchenModel: string;
+}) {
+	const route = input.activeRoute || 'analytics';
+	const sessionPlan = createSessionPlan({
+		sessionName: input.sessionName,
+		streamName: input.streamName,
+		branchName: input.branchName,
+		turnType: input.turn.type,
+		runId: input.runId,
+		route,
+	});
+	const base = {
+		waiterModel: input.waiterModel,
+		kitchenModel: input.kitchenModel,
+		turn: input.turn,
+		sessionPlan,
+		usage: { waiter: { testHook: true, scenario: input.scenario } },
+	};
+
+	if (input.scenario === 'pass_through') {
+		const decision: WaiterDecision = {
+			action: 'continue_station',
+			route,
+			rationale: 'Deterministic test hook forced pass-through continuation.',
+			stationInstruction: 'This instruction must not replace the original user message.',
+		};
+		const order = createContinuationOrder(input.message, route, decision);
+		const kitchen: KitchenResult = {
+			answer: `Handled continuation: ${input.message}`,
+			confidence: 'high',
+			artifacts: [],
+			followupQuestions: [],
+			kitchenSummary: 'Forced pass-through continuation.',
+			needsReview: false,
+		};
+		const review: PostflightReview = {
+			verdict: 'accept',
+			rationale: 'Forced pass-through result is accepted.',
+			issues: [],
+			userMessage: `Handled continuation: ${input.message}`,
+		};
+		return {
+			...buildPostflightUserReply(review, kitchen),
+			...base,
+			decision,
+			order,
+			kitchen,
+			postflight: [review],
+		};
+	}
+
+	if (input.scenario === 'preflight_blocker') {
+		const explorer: ExplorerPreflight = {
+			summary: 'Required warehouse access is unavailable.',
+			searchedSources: ['bigquery'],
+			queryVariantsTried: ['original request'],
+			findings: [],
+			candidateModels: [],
+			gaps: ['BigQuery job creation is not available for this test run.'],
+		};
+		const order = {
+			...createKitchenOrder(input.message, false, undefined, explorer, undefined, route),
+			blockerMessage: 'I cannot complete this yet because BigQuery job creation is not available for this test run.',
+		};
+		return {
+			reply: buildPreStationFollowup(explorer, order),
+			replyType: replyTypeForPreStation(explorer, order),
+			...base,
+			decision: {
+				action: 'run_preflight' as const,
+				route,
+				rationale: 'Deterministic test hook forced a pre-station blocker.',
+			},
+			order,
+			explorer,
+		};
+	}
+
+	if (input.scenario === 'postflight_followup') {
+		const kitchen: KitchenResult = {
+			answer: 'Cannot choose the correct scope without one clarification.',
+			confidence: 'medium',
+			artifacts: [],
+			followupQuestions: ['Which time window should I use?'],
+			kitchenSummary: 'Station needs user scope clarification.',
+			needsReview: true,
+		};
+		const review: PostflightReview = {
+			verdict: 'ask_user',
+			rationale: 'The station cannot proceed usefully without the missing scope.',
+			issues: ['Missing time window.'],
+			userMessage: 'Which time window should I use?',
+		};
+		return {
+			...buildPostflightUserReply(review, kitchen),
+			...base,
+			decision: {
+				action: 'run_preflight' as const,
+				route,
+				rationale: 'Deterministic test hook forced postflight follow-up.',
+			},
+			kitchen,
+			postflight: [review],
+		};
+	}
+
+	const kitchen: KitchenResult = {
+		answer: 'Still blocked after revision: Jira mutation is not enabled.',
+		confidence: 'low',
+		artifacts: [],
+		followupQuestions: [],
+		kitchenSummary: 'Revision confirmed the same blocker.',
+		needsReview: true,
+	};
+	const postflight: PostflightReview[] = [
+		{
+			verdict: 'revise',
+			rationale: 'Initial station output lacked evidence.',
+			issues: ['Missing verification.'],
+			feedbackToStation: 'Verify the blocker and return a concrete completed/blocker answer.',
+		},
+		{
+			verdict: 'block',
+			rationale: 'The same blocker remains after revision.',
+			issues: ['Jira mutation is not enabled.'],
+			userMessage: 'I could not complete this because Jira mutation is not enabled for this run.',
+		},
+	];
+	return {
+		...buildPostflightUserReply(postflight[1]!, kitchen),
+		...base,
+		decision: {
+			action: 'run_preflight' as const,
+			route,
+			rationale: 'Deterministic test hook forced revise-then-block.',
+		},
+		kitchen,
+		postflight,
+	};
 }
 
 function reworkPromptAddendum(priorAnswer?: string): string {
@@ -603,6 +915,7 @@ async function decideWaiterAction(input: {
 	streamName: string;
 	stationSessionName?: string;
 	priorAnswer?: string;
+	priorWorkSummary?: string;
 }): Promise<{ decision: WaiterDecision; usage?: unknown }> {
 	try {
 		const result = await input.waiterSession.prompt(
@@ -610,19 +923,34 @@ async function decideWaiterAction(input: {
 				'Mode: intake_decision.',
 				'Every user-initiated message reaches this role first.',
 				'This is preflight intake only. Do not judge station output and do not write the final answer.',
-				'Decide the next action. Do not answer the user from this step.',
+				'Resolve the latest user message against the current conversation context, then decide the next action. Do not answer the user from this step.',
+				'Use resolvedTask for the complete task the next worker should receive when the latest message depends on prior context, answers a previous follow-up question, changes direction, or is too terse on its own.',
+				'For a follow-up answer like "Ontario and California", resolvedTask must restate the full task implied by the prior waiter session context.',
+				'For a natural continuation, resolvedTask may refine the task, but the station will also see the latest user message.',
+				'If useful prior work exists, set priorWorkSummary to a compact factual summary of what was already attempted, found, created, or blocked. Keep it separate from resolvedTask.',
 				'Choose continue_station only when all are true:',
 				'- this is a mainline turn',
 				'- an active station route exists',
 				'- the message is a natural continuation that the active station can answer from its session and tools',
-				'- no new source selection, preflight research, re-routing, user clarification, or final-review gate is needed',
+				'- no new source selection, preflight research, re-routing, user clarification, or postflight gate is needed',
 				'Choose run_preflight for side questions, rework, topic switches, ambiguous source-of-truth questions, route changes, or anything requiring new research before a station should work.',
-				'Choose clarify only when the next useful step cannot be chosen without user input.',
+				'Choose ask_user only when the next useful step cannot be chosen without user input.',
+				'Choose reject only when the request cannot be sent to any available station even after reasonable interpretation.',
+				'The question is not whether one specific term looks unfamiliar. The question is whether you understand the request well enough to choose the next useful step.',
+				'When action is run_preflight, also fill explorationBrief as a bounded retrieval brief for explorer.',
+				'explorationBrief must include objective, searchMode, unresolvedTerms, allowedSources, entityHints, candidateKeywords, evidenceNeeded, and stopWhen.',
+				'searchMode must be one of: definition_lookup, artifact_lookup, entity_lookup, source_of_truth_lookup, metric_mapping, workflow_lookup, documentation_lookup.',
+				'Choose allowedSources because they are plausible places to resolve the actual uncertainty, not because nearby business words vaguely resemble a source.',
+				'Explorer is not a decision-maker. It will search only within the brief you provide and report evidence, misses, and gaps.',
+				'Available stations are analytics, knowledge, workflow, and documentation.',
+				'Do not choose reject when a clarification could make the request routable; choose ask_user instead.',
+				'For reject, write userMessage as a concise user-facing explanation of the available AGI scope.',
 				input.turn.isRework ? reworkPromptAddendum(input.priorAnswer) : '',
 				`Turn context:\n${JSON.stringify(input.turn, null, 2)}`,
 				`Active route: ${input.activeRoute || 'none'}.`,
 				`Active stream: ${input.streamName}.`,
 				`Known station session: ${input.stationSessionName || 'derived from session plan when needed'}.`,
+				input.priorWorkSummary ? `Prior work summary supplied by app:\n${input.priorWorkSummary}` : '',
 				input.priorAnswer ? `Prior rejected answer:\n${input.priorAnswer}` : '',
 				`User message:\n${input.message}`,
 			].filter(Boolean).join('\n\n'),
@@ -641,18 +969,10 @@ function fallbackWaiterDecision(input: {
 	turn: TurnContext;
 	activeRoute?: Route;
 }): WaiterDecision {
-	if (input.turn.type === 'mainline' && input.activeRoute) {
-		return {
-			action: 'continue_station',
-			route: input.activeRoute,
-			rationale: 'Fallback: mainline turn with an active route can continue in the station.',
-			stationInstruction: input.message,
-		};
-	}
 	return {
 		action: 'run_preflight',
 		route: input.activeRoute,
-		rationale: 'Fallback: no active mainline station or explicit turn flag requires orchestration.',
+		rationale: 'Fallback: intake decision failed, so run preflight instead of assuming station continuation.',
 	};
 }
 
@@ -663,32 +983,90 @@ async function runStationContinuation(input: {
 	route: Route;
 	sessionName: string;
 	message: string;
+	resolvedTask: string;
+	priorWorkSummary?: string;
 	decision: WaiterDecision;
 	maxGb: number;
 	allowMetabaseCreate: boolean;
-}) {
+}): Promise<{ data: KitchenResult; usage?: unknown; session: FlueSession }> {
 	const harness = await input.init({
 		name: `station-${input.route}`,
-		sandbox: localWithoutBuiltinTools(),
+		sandbox: stationSandboxForRoute(input.route),
 		model: input.kitchenModel,
 		role: input.route,
 		tools: stationToolsForRoute(input.route, input.policy),
 	});
 	const session = await harness.session(input.sessionName);
-	return session.prompt(
+	const result = await session.prompt(
 		[
 			'Mode: station_continuation.',
-			'Continue the active user thread directly. Answer the user without broad re-triage.',
+			'Continue the active user thread without broad re-triage.',
+			'Return a schema-valid station result for postflight review. This is not the user-facing message.',
 			'Use this station session history for continuity.',
 			'Use tools only when needed for an accurate answer.',
 			`Active route: ${input.route}.`,
 			`Default BigQuery dry-run limit: ${input.maxGb} GB.`,
 			`Metabase creation enabled: ${input.allowMetabaseCreate ? 'yes' : 'no'}.`,
 			`Waiter pass-through rationale:\n${input.decision.rationale}`,
-			input.decision.stationInstruction ? `Waiter station instruction:\n${input.decision.stationInstruction}` : '',
-			`User message:\n${input.message}`,
+			input.priorWorkSummary ? `Prior work context:\n${input.priorWorkSummary}` : '',
+			input.resolvedTask === input.message ? '' : `Resolved task:\n${input.resolvedTask}`,
+			`Latest user message:\n${input.message}`,
 		].filter(Boolean).join('\n\n'),
+		{ result: KitchenResultSchema },
 	);
+	return { data: result.data, usage: result.usage, session };
+}
+
+function resolveTaskForHandoff(message: string, decision: WaiterDecision): string {
+	const resolved = decision.resolvedTask?.trim();
+	return resolved || message;
+}
+
+function resolvePriorWorkSummary(input: {
+	payloadPriorWorkSummary?: string;
+	priorAnswer?: string;
+	decision: WaiterDecision;
+}): string | undefined {
+	const parts = [
+		input.payloadPriorWorkSummary?.trim(),
+		input.decision.priorWorkSummary?.trim(),
+		input.priorAnswer?.trim() ? `Prior rejected answer: ${input.priorAnswer.trim()}` : undefined,
+	].filter((part): part is string => Boolean(part));
+	return parts.length > 0 ? parts.join('\n\n') : undefined;
+}
+
+function withPriorWorkSummary(order: KitchenOrder, priorWorkSummary?: string): KitchenOrder {
+	if (!priorWorkSummary?.trim() || order.priorWorkSummary?.trim()) return order;
+	return { ...order, priorWorkSummary: priorWorkSummary.trim() };
+}
+
+function createContinuationOrder(message: string, route: Route, decision: WaiterDecision, priorWorkSummary?: string): KitchenOrder {
+	return {
+		route,
+		intent: message,
+		rewrittenTask: message,
+		sources: [],
+		constraints: ['Continue the active station thread; do not broaden scope unless the user asked for it.'],
+		acceptanceCriteria: [
+			'Answer the user request directly.',
+			'Use the active station session and tools as needed.',
+			'Surface concrete blockers instead of guessing.',
+		],
+		allowedActions: ['Continue the active station session and use route-appropriate tools.'],
+		requestedOutput: 'Schema-valid station result for postflight review.',
+		...(priorWorkSummary?.trim() ? { priorWorkSummary: priorWorkSummary.trim() } : {}),
+	};
+}
+
+function createContinuationExplorer(route: Route, decision: WaiterDecision): ExplorerPreflight {
+	return {
+		summary: `Continuation approved by intake. ${decision.rationale}`,
+		searchedSources: [],
+		queryVariantsTried: [],
+		findings: [],
+		candidateModels: [],
+		gaps: [],
+	};
 }
 
 function createKitchenOrderFromPreflight(
@@ -698,31 +1076,15 @@ function createKitchenOrderFromPreflight(
 	preflight?: ExplorerPreflight,
 	forcedSkillId?: string,
 	forcedRoute?: Route,
+	priorWorkSummary?: string,
 ): KitchenOrder {
-	const lower = message.toLowerCase();
-	const analyticsSignals = [
-		'bigquery',
-		'bq',
-		'dbt',
-		'metabase',
-		'sql',
-		'model',
-		'metric',
-		'count',
-		'volume',
-		'trend',
-		'cohort',
-		'dashboard',
-		'distribution',
-		'cases by',
-		'case creation',
-		'incident',
-		'firm',
-		'month',
-	];
-	const route = (forcedRoute || preflight?.recommendedRoute) ??
-		(analyticsSignals.some((signal) => lower.includes(signal)) ? 'analytics' : 'knowledge');
-	const sources = preflight?.suggestedSources?.length ? preflight.suggestedSources : selectSources(lower, route);
+	const route = forcedRoute ?? inferFallbackOrderRoute(message, forcedSkillId, preflight);
+	const sources = deriveFallbackOrderSources({
+		message,
+		route,
+		forcedSkillId,
+		preflight,
+	});
 	if (forcedSkillId && !sources.includes('project_skill')) sources.unshift('project_skill');
 	const reworkPrefix = rework ? 'Rework request after rejected answer. ' : '';
 	const skillPrefix = forcedSkillId ? `Deterministic project skill /${forcedSkillId}. ` : '';
@@ -730,9 +1092,7 @@ function createKitchenOrderFromPreflight(
 	const rethinkContext = rework
 		? ' Complete rethink required: reconsider intent, source choice, route, assumptions, and validation from first principles.'
 		: '';
-	const preflightContext = preflight
-		? ` Explorer preflight summary: ${preflight.summary} Recommended next step: ${preflight.recommendedNextStep}`
-		: '';
+	const preflightContext = preflight ? ` Explorer evidence summary: ${preflight.summary}` : '';
 
 	return {
 		route,
@@ -760,6 +1120,7 @@ function createKitchenOrderFromPreflight(
 				: route === 'knowledge'
 					? 'A concise answer grounded in the knowledge evidence.'
 					: 'A concise station report with completed actions, blockers, and next steps.',
+		...(priorWorkSummary?.trim() ? { priorWorkSummary: priorWorkSummary.trim() } : {}),
 	};
 }
 
@@ -768,6 +1129,7 @@ async function draftKitchenOrder(input: {
 	message: string;
 	rework?: boolean;
 	priorAnswer?: string;
+	priorWorkSummary?: string;
 	turn: TurnContext;
 	explorerData: ExplorerPreflight;
 	sourceCatalog: string;
@@ -778,8 +1140,13 @@ async function draftKitchenOrder(input: {
 		const result = await input.waiterSession.prompt(
 			[
 				'Mode: draft_work_order.',
+				'This is the second waiter judgment after explorer evidence was gathered.',
+				'First decide whether you have enough to write a coherent domain work order.',
+				'If yes, create the work order and leave both clarifyingQuestion and blockerMessage empty.',
+				'If no because the user must resolve missing meaning, scope, definition, success criteria, or intended output, set clarifyingQuestion.',
+				'If no because access, policy, or missing sources prevent useful work right now, set blockerMessage.',
 				'Create a domain work order, not a final answer.',
-				'This is preflight ordering. Use research to route and frame the work; leave domain execution and validation to the station.',
+				'Use explorer evidence to route and frame the work; leave domain execution and validation to the station.',
 				'Use the explorer preflight as supporting context. Do not answer the user directly from this step.',
 				'Choose route:',
 				'- analytics: metrics, SQL, dbt, BigQuery, dashboards, distributions.',
@@ -790,12 +1157,17 @@ async function draftKitchenOrder(input: {
 					? `Deterministic project skill command: /${input.forcedSkillId}. Set skillId to "${input.forcedSkillId}", include "project_skill" in sources, and route to ${input.forcedRoute || 'workflow'} unless policy requires clarification. Do not reinterpret whether the skill should run.`
 					: '',
 				'If the user request is too ambiguous, set clarifyingQuestion.',
+				'If the request cannot proceed because required evidence is inaccessible or missing in the available sources, set blockerMessage instead of pretending a station can resolve it.',
+				'The question is whether you understand the request well enough to write a coherent station order, not whether one narrow phrase can be patched with nearby evidence.',
+				'Be skeptical when first-pass exploration and your own context do not produce enough evidence to understand the user request. Use your judgment: if the missing context changes what work should be done, what definition applies, what scope is valid, or what success means, set clarifyingQuestion instead of drafting a proxy work order.',
+				'Do not invent missing meaning just because nearby data exists. Nearby evidence is not enough when the user intent itself remains underdefined.',
 				'For rework, explicitly address why the prior answer may have failed and create a fresh work order from first principles.',
 				input.rework ? reworkPromptAddendum(input.priorAnswer) : '',
 				'For side_question, produce a bounded branch work order that does not rely on station memory from the current mainline unless the user explicitly asks for it.',
 				'For topic_switch, treat the request as a fresh stream under the same user conversation.',
 				`Turn context:\n${JSON.stringify(input.turn, null, 2)}`,
 				`Rework: ${input.rework ? 'yes' : 'no'}`,
+				input.priorWorkSummary ? `Prior work context:\n${input.priorWorkSummary}` : '',
 				input.priorAnswer ? `Prior rejected answer:\n${input.priorAnswer}` : '',
 				input.sourceCatalog ? `Source catalog:\n${input.sourceCatalog}` : '',
 				`Explorer summary:\n${formatExplorerPreflightForWaiter(input.explorerData)}`,
@@ -813,6 +1185,7 @@ async function draftKitchenOrder(input: {
 				input.explorerData,
 				input.forcedSkillId,
 				input.forcedRoute,
+				input.priorWorkSummary,
 			),
 		};
 	}
@@ -834,7 +1207,7 @@ async function runKitchenStation(input: {
 	if (input.order.route === 'analytics') {
 		const kitchenHarness = await input.init({
 			name: 'kitchen-analytics',
-			sandbox: localWithoutBuiltinTools(),
+			sandbox: stationSandboxForRoute('analytics'),
 			model: input.kitchenModel,
 			role: 'analytics',
 			tools: stationToolsForRoute('analytics', input.policy),
@@ -849,7 +1222,7 @@ async function runKitchenStation(input: {
 	if (input.order.route === 'knowledge') {
 		const kitchenHarness = await input.init({
 			name: 'kitchen-knowledge',
-			sandbox: localWithoutBuiltinTools(),
+			sandbox: stationSandboxForRoute('knowledge'),
 			model: input.kitchenModel,
 			role: 'knowledge',
 			tools: stationToolsForRoute('knowledge', input.policy),
@@ -863,7 +1236,7 @@ async function runKitchenStation(input: {
 
 	const kitchenHarness = await input.init({
 		name: `kitchen-${input.order.route}`,
-		sandbox: localWithoutBuiltinTools(),
+		sandbox: stationSandboxForRoute(input.order.route),
 		model: input.kitchenModel,
 		role: input.order.route,
 		tools: stationToolsForRoute(input.order.route, input.policy),
@@ -898,25 +1271,27 @@ async function reviewKitchenDelivery(input: {
 		const result = await input.waiterSession.prompt(
 			[
 				'Mode: postflight_gate.',
-				'Review the station delivery before any user-facing final response.',
-				'This is postflight review only. Compare the delivery to the original request, work order, evidence, and acceptance criteria.',
-				'Return accept only when final response editing can handle remaining issues.',
+				'Review the station delivery and produce the only user-facing assistant message unless the station must revise.',
+				'Compare the delivery to the original request, work order, evidence, and acceptance criteria.',
+				'Return accept only when the station result is ready to present to the user.',
 				'Return revise when the station should correct incomplete work, weak evidence, wrong source choice, missing artifacts, or unsupported claims.',
-				'Return clarify when the user must answer a question before further station work can be useful.',
+				'Return ask_user when the user must answer a question before further station work can be useful.',
 				'Return block when policy, access, or tool failure prevents completion.',
+				'For accept, ask_user, and block, write userMessage as the final user-facing message.',
+				'For revise, write feedbackToStation and do not write userMessage.',
 				'For analytics, failed BigQuery or Metabase auth is a blocker when validation, query execution, or card creation is part of the requested deliverable.',
 				'Do not accept claims that filters, SQL, date ranges, or cards were validated when the station only inferred them after a tool failure.',
 				'On attempt 2, prefer block over accept if the same auth/tool failure still prevents a requested persistent action or required validation.',
-				'Do not answer the user from this step.',
 				'Do not run a new preflight loop. If more research or validation is needed, send concrete feedback back to the station.',
-				'The loop is bounded: attempt 1 may send work back; attempt 2 should usually accept, clarify, or block.',
+				'The loop is bounded: attempt 1 may send work back; attempt 2 should usually accept, ask_user, or block.',
+				'The userMessage must not expose routing, station names, work orders, preflight, or orchestration details.',
 				`Postflight attempt: ${input.attempt}`,
 				`Original user request:\n${input.message}`,
 				`Turn context:\n${JSON.stringify(input.turn, null, 2)}`,
 				`Session plan:\n${JSON.stringify(input.sessionPlan, null, 2)}`,
 				`Work order:\n${JSON.stringify(input.order, null, 2)}`,
 				`Explorer summary:\n${formatExplorerPreflightForWaiter(input.explorerData)}`,
-				`Station result:\n${JSON.stringify(input.kitchenResult, null, 2)}`,
+				`Station result:\n${formatKitchenResultForWaiter(input.kitchenResult)}`,
 			].join('\n\n'),
 			{ result: PostflightReviewSchema },
 		);
@@ -940,6 +1315,7 @@ function fallbackPostflightReview(kitchenResult: KitchenResult, attempt: number)
 		verdict: 'accept',
 		rationale: 'Fallback postflight: no blocking structured issue detected.',
 		issues: [],
+		userMessage: buildSafeStationFallbackReply(kitchenResult),
 	};
 }
 
@@ -1033,12 +1409,29 @@ function stationToolsForRoute(
 		return dedupeToolsByName([
 			...createWorkflowTemplateTools(),
 			...createProjectSkillTools(),
+			...createJiraAutomationTools({
+				allowWorkflowMutation: policy.permissions.allowWorkflowMutation,
+			}),
 			...explorerToolset(policy),
+			...createLocalWorkspaceTools(policy),
 			...createWorkflowPersistenceTools(policy),
 			...createArtifactPersistenceTools(policy),
 		]);
 	}
 	return dedupeToolsByName([...explorerToolset(policy), ...createArtifactPersistenceTools(policy)]);
+}
+
+function stationSandboxForRoute(route: v.InferOutput<typeof RouteSchema>) {
+	if (route === 'workflow') {
+		return local({
+			env: {
+				SSH_AUTH_SOCK: process.env.SSH_AUTH_SOCK,
+				GH_TOKEN: process.env.GH_TOKEN || process.env.GITHUB_PAT,
+				GITHUB_TOKEN: process.env.GITHUB_TOKEN || process.env.GITHUB_PAT,
+			},
+		});
+	}
+	return localWithoutBuiltinTools();
 }
 
 function dedupeToolsByName<T extends { name: string }>(tools: T[]): T[] {
@@ -1059,11 +1452,13 @@ async function runExplorerPreflight(input: {
 	message: string;
 	turn: TurnContext;
 	sessionPlan: SessionPlan;
+	explorationRequest: ExplorationRequest;
 	sourceCatalog: string;
 	selectedKbArticles: Array<{ path: string; title: string; description: string }>;
 	forcedSkillId?: string;
 	forcedRoute?: Route;
 	priorAnswer?: string;
+	priorWorkSummary?: string;
 }) {
 	const explorerHarness = await input.init({
 		name: 'explorer-tasker',
@@ -1076,23 +1471,26 @@ async function runExplorerPreflight(input: {
 	return explorerSession.prompt(
 		[
 			'Mode: preflight.',
-			'Every waiter-mediated request starts with this preflight. Gather enough context for the orchestrator to create a domain work order.',
-			'Do not solve the full domain task. Stop at route, source framing, candidate evidence, unresolved gaps, and the next station step.',
-			'Identify likely intent, recommended route, source domains, candidate sources/models, uncertainty, and the next station step.',
+			'Every waiter-mediated request starts with this preflight. Execute the caller-directed exploration brief below.',
+			'Act like a bounded retrieval worker, not a planner.',
+			'The caller already chose the uncertainty to resolve and the allowed sources. Search only within that boundary.',
+			'Generate a small set of query variants from unresolvedTerms, entityHints, and candidateKeywords in the brief. Return the variants you actually tried.',
+			'If the brief is insufficient, report the gap plainly. Do not broaden the agenda silently.',
+			'Do not solve the full domain task. Stop at evidence, candidate sources/models, and unresolved gaps.',
+			'You are not a decision-maker. Do not decide whether the system should proceed, ask the user, block, route to a station, or recommend a next step.',
+			'Identify searched sources, query variants tried, findings, candidate sources/models, and uncertainty only.',
+			'If no direct evidence is found, say so plainly and keep the concept unresolved instead of backfilling meaning from adjacent data or plausible proxies.',
 			'This is a detached per-run research session. Do not assume continuity from prior explorer runs.',
 			input.turn.isRework ? reworkPromptAddendum(input.priorAnswer) : '',
+			input.priorWorkSummary ? `Prior work context:\n${input.priorWorkSummary}` : '',
 			'For side_question, gather only the evidence needed for the branch question without polluting the mainline station context.',
 			'For topic_switch, treat this as a fresh topic stream under the same user conversation.',
-			'Return status "ready_for_analytics" only when analytics kitchen can proceed with a concrete plan and known caveats.',
-			'Return "needs_more_exploration" when candidate model choice is uncertain after bounded exploration.',
-			'If the remaining work is SQL validation or model comparison that analytics station can perform, return ready_for_analytics with those gaps rather than stopping preflight.',
-			'Set recommendedRoute to analytics for quantitative data questions, metrics, distributions, SQL, dashboards, or BigQuery work.',
-			'Set recommendedRoute to knowledge for product/internal explanations that do not require data execution.',
 			input.forcedSkillId
-				? `Deterministic project skill command: /${input.forcedSkillId}. Use project_skill as a source, read that skill by id, and set recommendedRoute to ${input.forcedRoute || 'workflow'} unless user clarification is required.`
+				? `Deterministic project skill command: /${input.forcedSkillId}. Use project_skill as a source and read that skill by id when requested.`
 				: '',
 			`Turn context:\n${JSON.stringify(input.turn, null, 2)}`,
 			`Session plan:\n${JSON.stringify(input.sessionPlan, null, 2)}`,
+			`Caller-directed exploration brief:\n${formatExplorationRequest(input.explorationRequest)}`,
 			input.sourceCatalog ? `Source catalog:\n${input.sourceCatalog}` : '',
 			input.selectedKbArticles.length > 0
 				? `Potential KB articles:\n${input.selectedKbArticles
@@ -1108,71 +1506,103 @@ async function runExplorerPreflight(input: {
 function applyPreflightQualityGate(
 	preflight: ExplorerPreflight,
 ): ExplorerPreflight {
-	if (preflight.status !== 'ready_for_analytics') return preflight;
-	const hasCandidate = preflight.candidateModels.length > 0;
-	const candidatesHaveEvidence = hasCandidate && preflight.candidateModels.some((model) => model.evidence.length > 0);
-	if (preflight.recommendedRoute === 'analytics' && preflight.confidence !== 'low' && hasCandidate && candidatesHaveEvidence) {
-		return preflight;
-	}
-	if (preflight.recommendedRoute !== 'analytics' && preflight.confidence !== 'low') return preflight;
-
-	return {
-		...preflight,
-		status: 'needs_more_exploration',
-		confidence: preflight.confidence === 'high' ? 'medium' : preflight.confidence,
-		summary: [
-			preflight.summary,
-			'Quality gate applied: preflight is not ready because candidate evidence is incomplete or unresolved gaps remain.',
-		].join(' '),
-		recommendedNextStep:
-			!candidatesHaveEvidence
-				? 'Continue source research and compare alternatives before kitchen execution.'
-				: preflight.recommendedNextStep,
-		gaps: [
-			...preflight.gaps,
-			'Need stronger source-of-truth evidence before dispatching analytics kitchen.',
-		],
-	};
+	return preflight;
 }
 
-function shouldDispatchForStationValidation(
+export function shouldReturnBeforeStation(
 	preflight: ExplorerPreflight,
 	order: KitchenOrder,
 ): boolean {
-	if (preflight.recommendedRoute !== 'analytics' || order.route !== 'analytics') return false;
-	if (preflight.confidence === 'low' || preflight.candidateModels.length === 0) return false;
-	const hasEvidence = preflight.candidateModels.some((model) => model.evidence.length > 0);
-	if (!hasEvidence) return false;
-	const nextStep = `${preflight.recommendedNextStep} ${order.rewrittenTask}`.toLowerCase();
-	return /\b(sql|bigquery|query|validation|validate|join|compare|count|distinct|schema)\b/.test(nextStep);
+	void preflight;
+	return Boolean(order.clarifyingQuestion || order.blockerMessage);
 }
 
-function selectSources(lowerMessage: string, route: v.InferOutput<typeof RouteSchema>): Array<v.InferOutput<typeof SourceSchema>> {
-	const sources = new Set<v.InferOutput<typeof SourceSchema>>();
-	if (route === 'analytics') {
-		sources.add('manifest');
-		sources.add('bigquery');
+export function buildPreStationFollowup(
+	preflight: ExplorerPreflight,
+	order: KitchenOrder,
+): string {
+	void preflight;
+	if (order.clarifyingQuestion?.trim()) return order.clarifyingQuestion.trim();
+	if (order.blockerMessage?.trim()) return order.blockerMessage.trim();
+	return 'I need one clarification before I can continue.';
+}
+
+export function buildFinalUserReply(candidate: string, kitchenResult: KitchenResult): string {
+	return userVisibleOrFallback(candidate, buildUnsafeFinalFallback(kitchenResult));
+}
+
+export function buildSafeStationFallbackReply(kitchenResult: KitchenResult): string {
+	return userVisibleOrFallback(
+		kitchenResult.answer,
+		userVisibleOrFallback(
+			kitchenResult.kitchenSummary,
+			'I could not complete this yet. The domain work returned, but it was not safe to present directly.',
+		),
+	);
+}
+
+export function buildPostflightUserReply(
+	review: PostflightReview,
+	kitchenResult: KitchenResult,
+): { reply: string; replyType: UserReplyType } {
+	if (review.verdict === 'ask_user') {
+		return {
+			reply: userVisibleOrFallback(
+				review.userMessage || kitchenResult.followupQuestions[0],
+				'I need one clarification before I can continue.',
+			),
+			replyType: 'followup_question',
+		};
 	}
-	if (/(dashboard|card|metabase|chart|existing metric|prior metric)/.test(lowerMessage)) sources.add('metabase');
-	if (/(dbt|manifest|model|column|table|warehouse|bigquery|sql|metric)/.test(lowerMessage)) {
-		sources.add('manifest');
-		sources.add('bigquery');
+	return {
+		reply: userVisibleOrFallback(review.userMessage, buildSafeStationFallbackReply(kitchenResult)),
+		replyType: 'final',
+	};
+}
+
+function replyTypeForPreStation(preflight: ExplorerPreflight, order: KitchenOrder): UserReplyType {
+	void preflight;
+	return Boolean(order.clarifyingQuestion)
+		? 'followup_question'
+		: 'final';
+}
+
+function buildUnsafeFinalFallback(kitchenResult: KitchenResult): string {
+	const safeAnswer = userSafeParagraph(kitchenResult.answer);
+	if (safeAnswer && kitchenResult.confidence !== 'low' && !kitchenResult.needsReview) return safeAnswer;
+	const safeSummary = userSafeParagraph(kitchenResult.kitchenSummary);
+	if (safeSummary && kitchenResult.confidence !== 'low' && !kitchenResult.needsReview) return safeSummary;
+	return 'I could not complete this yet. This run did not produce verified completed actions or a concrete blocker.';
+}
+
+function userVisibleOrFallback(candidate: string | undefined, fallback: string): string {
+	const clean = candidate?.trim();
+	if (clean && isUserVisibleReplySafe(clean)) return clean;
+	return fallback;
+}
+
+export function isUserVisibleReplySafe(reply: string): boolean {
+	const clean = reply.trim();
+	if (!clean) return false;
+	return !/\b(headless|waiter|kitchen|station|workflow station|analytics station|knowledge station|orchestrator|explorer|preflight|work\s*order|routing|dispatch|source research queue|re-run orchestration|should attempt|should run|should inspect|proceeding without user clarification)\b/i.test(clean);
+}
+
+function userSafeSentence(value?: string): string | undefined {
+	const clean = value?.replace(/\s+/g, ' ').trim().replace(/[.。]+$/, '');
+	if (!clean) return undefined;
+	if (/\b(waiter|kitchen|station|explorer|preflight|work\s*order|routing|dispatch|orchestration|source research queue|re-run)\b/i.test(clean)) {
+		return undefined;
 	}
-	if (/(distribution|count|cases by|case creation|incident|firm|month|date|distinct|top values|date range)/.test(lowerMessage)) {
-		sources.add('manifest');
-		sources.add('bigquery');
-	}
-	if (/(what is|what are|how do i find|how does|explain|clp|flp|snapshot|product|workflow)/.test(lowerMessage)) {
-		sources.add('kb');
-	}
-	if (/(slack|thread|decision|decide|decided|owner|owns|ownership|recent|discussion)/.test(lowerMessage)) {
-		sources.add('slack');
-	}
-	if (/(drive|gdrive|prd|spec|launch plan|project plan)/.test(lowerMessage)) sources.add('drive');
-	if (/(repo|code|implementation|implemented|event|api|service)/.test(lowerMessage)) sources.add('repo');
-	if (/(jira|ticket|issue|pr|pull request|engineering history|what changed|shipped)/.test(lowerMessage)) sources.add('jira');
-	if (sources.size === 0) sources.add('kb');
-	return [...sources];
+	if (clean.length > 220) return `${clean.slice(0, 217).trim()}...`;
+	return clean;
+}
+
+function userSafeParagraph(value?: string): string | undefined {
+	const clean = value?.replace(/\s+/g, ' ').trim();
+	if (!clean) return undefined;
+	if (!isUserVisibleReplySafe(clean)) return undefined;
+	if (clean.length > 1200) return `${clean.slice(0, 1197).trim()}...`;
+	return clean;
 }
 
 async function readOptionalSourceCatalog(): Promise<string> {
@@ -1183,20 +1613,54 @@ async function readOptionalSourceCatalog(): Promise<string> {
 	}
 }
 
-function isProductKnowledgeQuestion(message: string): boolean {
+function inferFallbackOrderRoute(message: string, forcedSkillId?: string, preflight?: ExplorerPreflight): Route {
+	if (forcedSkillId) return 'workflow';
+	if ((preflight?.candidateModels.length ?? 0) > 0) return 'analytics';
 	const lower = message.toLowerCase();
-	const productTerms = [
-		'what is',
-		'what are',
-		'how do i find',
-		'how does',
-		'explain',
-		'clp',
-		'flp',
-		'snapshot',
-		'product',
-		'workflow',
-	];
-	const analyticsTerms = ['query', 'sql', 'bigquery', 'metabase', 'dashboard', 'chart', 'count of', 'how many'];
-	return productTerms.some((term) => lower.includes(term)) && !analyticsTerms.some((term) => lower.includes(term));
+	if (/\b(sql|dbt|bigquery|metabase|metric|dashboard|chart|count|how many|trend|distribution|field|flag|model)\b/.test(lower)) {
+		return 'analytics';
+	}
+	if (/\b(create ticket|open pr|clone|branch|workflow|skill|automation)\b/.test(lower)) return 'workflow';
+	if (/\b(write|document|add context|update docs|note)\b/.test(lower)) return 'documentation';
+	return 'knowledge';
+}
+
+function deriveFallbackOrderSources(input: {
+	message: string;
+	route: Route;
+	forcedSkillId?: string;
+	preflight?: ExplorerPreflight;
+}): Array<v.InferOutput<typeof SourceSchema>> {
+	const sources = new Set<v.InferOutput<typeof SourceSchema>>();
+	for (const source of defaultOrderSourcesForRoute(input.route, input.forcedSkillId)) sources.add(source);
+	for (const source of input.preflight?.searchedSources ?? []) sources.add(source);
+	for (const source of explicitSourceMentions(input.message, input.forcedSkillId)) sources.add(source);
+	return [...sources];
+}
+
+function defaultOrderSourcesForRoute(
+	route: Route,
+	forcedSkillId?: string,
+): Array<v.InferOutput<typeof SourceSchema>> {
+	if (forcedSkillId || route === 'workflow') return ['project_skill', 'kb'];
+	if (route === 'analytics') return ['manifest', 'bigquery'];
+	if (route === 'documentation') return ['kb', 'project_skill'];
+	return ['kb'];
+}
+
+function explicitSourceMentions(
+	message: string,
+	forcedSkillId?: string,
+): ExplorationSource[] {
+	const lower = message.toLowerCase();
+	const sources = new Set<ExplorationSource>();
+	if (/\bslack\b/.test(lower)) sources.add('slack');
+	if (/\b(drive|gdrive)\b/.test(lower)) sources.add('drive');
+	if (/\bjira\b/.test(lower)) sources.add('jira');
+	if (/\b(repo|github|git)\b/.test(lower)) sources.add('repo');
+	if (/\bmetabase\b/.test(lower)) sources.add('metabase');
+	if (/\bbigquery\b/.test(lower)) sources.add('bigquery');
+	if (/\b(dbt|manifest)\b/.test(lower)) sources.add('manifest');
+	if (forcedSkillId) sources.add('project_skill');
+	return [...sources];
 }

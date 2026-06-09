@@ -119,12 +119,11 @@ describeE2E('elective waiter-kitchen e2e fixtures', () => {
 		]));
 
 		const order = createKitchenOrder(employeeGrowthFixture.query, false, undefined, {
-			status: 'ready_for_analytics',
-			confidence: 'high',
-			recommendedRoute: 'analytics',
-			suggestedSources: ['manifest', 'bigquery', 'metabase'],
 			summary:
 				"Use dim_employees_history; Ontario is geo_country='CA' + geo_state_province='ON', California is geo_country='US' + geo_state_province='CA'.",
+			searchedSources: ['manifest', 'bigquery', 'metabase'],
+			queryVariantsTried: ['employee growth ontario california'],
+			findings: [],
 			candidateModels: [
 				{
 					name: 'dim_employees_history',
@@ -133,7 +132,6 @@ describeE2E('elective waiter-kitchen e2e fixtures', () => {
 					concerns: ['Growth means monthly active headcount snapshot in this fixture.'],
 				},
 			],
-			recommendedNextStep: 'Validate SQL and create the Metabase line card.',
 			gaps: [],
 		});
 		expect(order).toEqual(expect.objectContaining({
@@ -217,11 +215,10 @@ describeE2E('elective waiter-kitchen e2e fixtures', () => {
 		]));
 
 		const order = createKitchenOrder(plaasMattersFixture.query, false, undefined, {
-			status: 'ready_for_analytics',
-			confidence: 'high',
-			recommendedRoute: 'analytics',
-			suggestedSources: ['manifest', 'bigquery'],
 			summary: 'Core matter dims have no direct PLAAS field; use dim_plaas_case membership.',
+			searchedSources: ['manifest', 'bigquery'],
+			queryVariantsTried: ['plaas case field matter'],
+			findings: [],
 			candidateModels: [
 				{
 					name: 'dim_plaas_case',
@@ -230,7 +227,6 @@ describeE2E('elective waiter-kitchen e2e fixtures', () => {
 					concerns: ['Weekly grain requires dedupe before joining.'],
 				},
 			],
-			recommendedNextStep: 'Validate no labeled_case_type PLAAS values, then provide SQL for derived is_plaas.',
 			gaps: [],
 		});
 		expect(order).toEqual(expect.objectContaining({

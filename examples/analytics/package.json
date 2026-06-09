@@ -6,10 +6,16 @@
 		"check:types": "tsc --noEmit",
 		"test": "vitest run",
 		"test:e2e-fixtures": "ANALYTICS_E2E_FIXTURES=1 vitest run waiter-kitchen-fixtures.e2e.test.ts",
+		"test:e2e-followup": "ANALYTICS_ENABLE_TEST_HOOKS=1 EXPLORER_MODEL=openai/gpt-5.4-nano ANALYTICS_MODEL=openai/gpt-5.4-nano node ../../packages/cli/bin/flue.mjs run waiter --target node --id e2e_followup --env .env --env .env.secrets --payload '{\"message\":\"force followup smoke test\",\"sessionName\":\"e2e_followup\",\"streamName\":\"main\",\"source\":\"cli\",\"waiterModel\":\"anthropic/claude-haiku-4-5\",\"kitchenModel\":\"openai/gpt-5.4-nano\",\"testFollowupQuestion\":\"Which dashboard should I update?\"}'",
+		"test:e2e-pass-through": "ANALYTICS_ENABLE_TEST_HOOKS=1 EXPLORER_MODEL=openai/gpt-5.4-nano ANALYTICS_MODEL=openai/gpt-5.4-nano node ../../packages/cli/bin/flue.mjs run waiter --target node --id e2e_pass_through --env .env --env .env.secrets --payload '{\"message\":\"show the same result by week\",\"sessionName\":\"e2e_pass_through\",\"streamName\":\"main\",\"activeRoute\":\"analytics\",\"source\":\"cli\",\"waiterModel\":\"anthropic/claude-haiku-4-5\",\"kitchenModel\":\"openai/gpt-5.4-nano\",\"testScenario\":\"pass_through\"}'",
+		"test:e2e-preflight-blocker": "ANALYTICS_ENABLE_TEST_HOOKS=1 EXPLORER_MODEL=openai/gpt-5.4-nano ANALYTICS_MODEL=openai/gpt-5.4-nano node ../../packages/cli/bin/flue.mjs run waiter --target node --id e2e_preflight_blocker --env .env --env .env.secrets --payload '{\"message\":\"validate the dashboard SQL\",\"sessionName\":\"e2e_preflight_blocker\",\"streamName\":\"main\",\"source\":\"cli\",\"waiterModel\":\"anthropic/claude-haiku-4-5\",\"kitchenModel\":\"openai/gpt-5.4-nano\",\"testScenario\":\"preflight_blocker\"}'",
+		"test:e2e-postflight-followup": "ANALYTICS_ENABLE_TEST_HOOKS=1 EXPLORER_MODEL=openai/gpt-5.4-nano ANALYTICS_MODEL=openai/gpt-5.4-nano node ../../packages/cli/bin/flue.mjs run waiter --target node --id e2e_postflight_followup --env .env --env .env.secrets --payload '{\"message\":\"make the report\",\"sessionName\":\"e2e_postflight_followup\",\"streamName\":\"main\",\"source\":\"cli\",\"waiterModel\":\"anthropic/claude-haiku-4-5\",\"kitchenModel\":\"openai/gpt-5.4-nano\",\"testScenario\":\"postflight_followup\"}'",
+		"test:e2e-revise-block": "ANALYTICS_ENABLE_TEST_HOOKS=1 EXPLORER_MODEL=openai/gpt-5.4-nano ANALYTICS_MODEL=openai/gpt-5.4-nano node ../../packages/cli/bin/flue.mjs run waiter --target node --id e2e_revise_block --env .env --env .env.secrets --payload '{\"message\":\"try again and create the ticket\",\"sessionName\":\"e2e_revise_block\",\"streamName\":\"main\",\"turnType\":\"rework\",\"source\":\"cli\",\"waiterModel\":\"anthropic/claude-haiku-4-5\",\"kitchenModel\":\"openai/gpt-5.4-nano\",\"testScenario\":\"revise_then_block\"}'",
 		"manifest:publish": "node ./scripts/compile-normalize-upload-manifest.mjs",
 		"manifest:preprocess": "node ./scripts/preprocess-manifest.mjs",
 		"sync:oauth": "node ./scripts/sync-oauth-tokens.mjs",
-		"test:tools:explorer": "tsx ./scripts/explorer-tool-smoke.ts"
+		"test:tools:explorer": "tsx ./scripts/explorer-tool-smoke.ts",
+		"eval:live": "tsx ./scripts/live-evals.ts"
 	},
 	"dependencies": {
 		"@flue/runtime": "workspace:*",

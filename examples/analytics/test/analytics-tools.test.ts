@@ -43,20 +43,63 @@ import {
 } from '../.flue/lib/jira.ts';
 import { readSlackThread, searchSlack } from '../.flue/lib/slack.ts';
 import { parseBigQueryOutput, previewBigQueryCsv } from '../.flue/lib/tools.ts';
+import { createWaiterExplorationRequest } from '../.flue/lib/exploration.ts';
+import { buildConversationLedger } from '../.flue/lib/conversation-ledger.ts';
 import { analyticsToolset } from '../.flue/toolsets/analytics.ts';
 import { dbtExplorerToolset } from '../.flue/toolsets/dbt-explorer.ts';
 import { explorerToolset } from '../.flue/toolsets/explorer.ts';
 import { createToolPolicy } from '../.flue/tools/policy.ts';
 import { createArtifactPersistenceTools, createContextPersistenceTools } from '../.flue/tools/persistence.ts';
-import { createKitchenOrder, summarizeExplorerPreflightForWaiter } from '../.flue/agents/waiter.ts';
+import {
+	default as waiterAgent,
+	buildFinalUserReply,
+	buildPostflightUserReply,
+	buildPreStationFollowup,
+	createKitchenOrder,
+	isUserVisibleReplySafe,
+	shouldReturnBeforeStation,
+	summarizeExplorerPreflightForWaiter,
+} from '../.flue/agents/waiter.ts';
 import { createSessionPlan, resolveTurnContext, shouldInvokeWaiter } from '../.flue/lib/session-plan.ts';
 import { createKbTools, selectKbArticles } from '../.flue/tools/kb.ts';
 import { createSourceCatalogTools } from '../.flue/tools/source-catalog.ts';
 import { createWorkflowTemplateTools } from '../.flue/tools/workflow-templates.ts';
 import { createProjectSkillTools } from '../.flue/tools/project-skills.ts';
+import { evaluateLiveEvalResult, LIVE_EVAL_CASES } from '../scripts/live-evals.ts';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 const manifestPath = path.join(testDir, 'fixtures/manifest.json');
+
+type FakePromptCall = {
+	harnessName: string;
+	sessionName: string;
+	prompt: string;
+};
+
+function createFakeFlueInit(
+	responder: (call: FakePromptCall) => unknown,
+): { init: any; calls: FakePromptCall[]; harnessNames: string[]; harnessOptions: Array<{ name: string; sandbox?: { disableTaskTool?: boolean } }> } {
+	const calls: FakePromptCall[] = [];
+	const harnessNames: string[] = [];
+	const harnessOptions: Array<{ name: string; sandbox?: { disableTaskTool?: boolean } }> = [];
+	const init = async (options: { name: string; sandbox?: { disableTaskTool?: boolean } }) => {
+		harnessNames.push(options.name);
+		harnessOptions.push(options);
+		return {
+			session: async (sessionName: string) => ({
+				prompt: async (prompt: string) => {
+					const call = { harnessName: options.name, sessionName, prompt };
+					calls.push(call);
+					return {
+						data: responder(call),
+						usage: { fake: true, harnessName: options.name },
+					};
+				},
+			}),
+		};
+	};
+	return { init, calls, harnessNames, harnessOptions };
+}
 
 describe('manifest search', () => {
 	it('finds models by column and returns compact relation metadata', async () => {
@@ -388,6 +431,75 @@ describe('bigquery helpers', () => {
 			}),
 		);
 		await expect(fs.readFile(result.result_path, 'utf8')).resolves.toContain('42');
+	});
+
+	it('falls back from service account to user OAuth only on permission errors', async () => {
+		const authModes: string[] = [];
+		const makeClient = (mode: 'service_account' | 'user_oauth') => ({
+			async createQueryJob(options: Record<string, unknown>) {
+				authModes.push(mode);
+				if (mode === 'service_account') {
+					throw new Error('Access Denied: Project test-project: User does not have bigquery.jobs.create permission.');
+				}
+				if (options.dryRun) {
+					return [
+						{
+							metadata: { statistics: { totalBytesProcessed: 512 } },
+							async getMetadata() {
+								return [this.metadata];
+							},
+							async getQueryResults() {
+								return [[]];
+							},
+						},
+					];
+				}
+				return [
+					{
+						metadata: { statistics: { query: { schema: { fields: [{ name: 'ok' }] } } } },
+						async getMetadata() {
+							return [this.metadata];
+						},
+						async getQueryResults() {
+							return [[{ ok: true }]];
+						},
+					},
+				];
+			},
+		});
+
+		const result = await runBigQuery({
+			sql: 'SELECT TRUE AS ok',
+			maxGb: 1,
+			projectId: 'test-project',
+			outputDir: '/tmp',
+			credentialMode: 'service_account_then_user_oauth',
+			clientFactory: makeClient,
+		});
+
+		expect(authModes).toEqual(['service_account', 'user_oauth', 'user_oauth']);
+		expect(result.auth_mode).toBe('user_oauth');
+	});
+
+	it('does not fall back to user OAuth on non-permission BigQuery errors', async () => {
+		const authModes: string[] = [];
+		const makeClient = (mode: 'service_account' | 'user_oauth') => ({
+			async createQueryJob() {
+				authModes.push(mode);
+				throw new Error('Syntax error: Unexpected identifier');
+			},
+		});
+
+		await expect(
+			validateBigQuery({
+				sql: 'SELECT bad FROM `evenup-bi.dbt_prod.table`',
+				maxGb: 1,
+				projectId: 'test-project',
+				credentialMode: 'service_account_then_user_oauth',
+				clientFactory: makeClient,
+			}),
+		).rejects.toThrow('Syntax error');
+		expect(authModes).toEqual(['service_account']);
 	});
 
 	it('rejects BigQuery queries over maxGb before execution', async () => {
@@ -1044,12 +1156,12 @@ describe('tool policies and toolsets', () => {
 		expect(policy.limits.maxBigQueryGb).toBe(2);
 	});
 
-	it('uses user BigQuery access for web policy when a user token is present', () => {
+	it('tries service account before user BigQuery access for web policy when a user token is present', () => {
 		const original = process.env.GOOGLE_USER_ACCESS_TOKEN;
 		process.env.GOOGLE_USER_ACCESS_TOKEN = 'token';
 		try {
 			const policy = createToolPolicy({ source: 'web' });
-			expect(policy.credentials.bigQueryMode).toBe('user_oauth');
+			expect(policy.credentials.bigQueryMode).toBe('service_account_then_user_oauth');
 		} finally {
 			if (original === undefined) delete process.env.GOOGLE_USER_ACCESS_TOKEN;
 			else process.env.GOOGLE_USER_ACCESS_TOKEN = original;
@@ -1373,6 +1485,168 @@ describe('persistence helpers', () => {
 	});
 });
 
+describe('directed exploration requests', () => {
+	it('turns analytics intent into a bounded manifest and BigQuery brief', () => {
+		const request = createWaiterExplorationRequest({
+			message: 'For matters, is there a field indicating if it is a PLAAS case?',
+			turn: resolveTurnContext({}),
+			route: 'analytics',
+		});
+
+		expect(request.requestedBy).toBe('waiter');
+		expect(request.brief.allowedSources).toEqual(expect.arrayContaining(['manifest', 'bigquery']));
+		expect(request.brief.allowedSources).not.toEqual(expect.arrayContaining(['repo', 'jira']));
+		expect(request.brief.searchMode).toBe('source_of_truth_lookup');
+		expect(request.brief.stopWhen).toContain('source-of-truth models');
+	});
+
+	it('preserves exact deterministic skill requests as caller-directed exploration', () => {
+		const request = createWaiterExplorationRequest({
+			message: 'create tracking for task completion',
+			turn: resolveTurnContext({ turnType: 'mainline' }),
+			route: 'workflow',
+			forcedSkillId: 'pm-amplitude-event-creation',
+		});
+
+		expect(request.brief.allowedSources).toEqual(expect.arrayContaining(['project_skill']));
+		expect(request.brief.searchMode).toBe('workflow_lookup');
+		expect(request.brief.evidenceNeeded.join(' ')).toContain('workflow');
+	});
+
+	it('keeps vague product questions scoped to knowledge evidence by default', () => {
+		const request = createWaiterExplorationRequest({
+			message: 'what evenup knowledge base do you have access to?',
+			turn: resolveTurnContext({}),
+		});
+
+		expect(request.brief.searchMode).toBe('definition_lookup');
+		expect(request.brief.allowedSources).toContain('kb');
+	});
+
+	it('treats named artifact discovery as context lookup before warehouse profiling', () => {
+		const request = createWaiterExplorationRequest({
+			message: 'can you give me a Pre-Day 1 Readiness Report for the firm Buckeye Law Group Inc.',
+			turn: resolveTurnContext({}),
+			route: 'analytics',
+		});
+
+		expect(request.brief.searchMode).toBe('artifact_lookup');
+		expect(request.brief.allowedSources).toEqual(expect.arrayContaining(['kb']));
+		expect(request.brief.allowedSources).not.toEqual(expect.arrayContaining(['manifest', 'bigquery']));
+		expect(request.brief.unresolvedTerms).toEqual(expect.arrayContaining(['Pre-Day 1 Readiness Report']));
+	});
+});
+
+describe('conversation ledger', () => {
+	it('records the orchestration phases as an app-persistable object', () => {
+		const turn = resolveTurnContext({});
+		const sessionPlan = createSessionPlan({
+			sessionName: 'conv-1',
+			streamName: 'main',
+			turnType: turn.type,
+			runId: 'run-1',
+			route: 'analytics',
+		});
+		const explorationRequest = createWaiterExplorationRequest({
+			message: 'For matters, is there a field indicating if it is a PLAAS case?',
+			turn,
+			route: 'analytics',
+		});
+		const ledger = buildConversationLedger({
+			rawUserMessage: 'PLAAS?',
+			resolvedTask: 'For matters, is there a field indicating if it is a PLAAS case?',
+			runId: 'run-1',
+			turn,
+			sessionPlan,
+			decision: { action: 'run_preflight' },
+			explorationRequest,
+			order: { route: 'analytics' },
+			kitchen: { confidence: 'medium' },
+			postflight: [{ verdict: 'accept' }],
+			reply: 'There is no direct PLAAS flag.',
+			replyType: 'final',
+			usage: { waiter: { tokens: 1 } },
+		});
+
+		expect(ledger).toEqual(
+			expect.objectContaining({
+				version: 1,
+				conversationId: 'conv-1',
+				streamName: 'main',
+				runId: 'run-1',
+				reply: { type: 'final', text: 'There is no direct PLAAS flag.' },
+			}),
+		);
+		expect(ledger.events.map((event) => event.phase)).toEqual([
+			'intake',
+			'exploration',
+			'order',
+			'station',
+			'postflight',
+			'reply',
+		]);
+	});
+});
+
+describe('live eval definitions', () => {
+	it('keeps live LLM evals separate from the normal test runner', () => {
+		expect(LIVE_EVAL_CASES.map((testCase) => testCase.id)).toEqual([
+			'plaas-matter-flag-caveat',
+			'employee-growth-metabase-nonmutating',
+			'buckeye-pre-day-1-readiness-followup',
+			'irrelevant-out-of-scope-reject',
+		]);
+		expect(LIVE_EVAL_CASES.find((testCase) => testCase.id === 'employee-growth-metabase-nonmutating')?.payload)
+			.toEqual(expect.objectContaining({ allowMetabaseCreate: false }));
+		expect(LIVE_EVAL_CASES.every((testCase) => testCase.passCriteria.length > 0)).toBe(true);
+		expect(LIVE_EVAL_CASES.every((testCase) => testCase.agentsInScope.length > 0)).toBe(true);
+		expect(LIVE_EVAL_CASES.every((testCase) => testCase.runCommand.includes('node ../../packages/cli/bin/flue.mjs run'))).toBe(true);
+		expect(LIVE_EVAL_CASES.find((testCase) => testCase.id === 'buckeye-pre-day-1-readiness-followup')).toEqual(
+			expect.objectContaining({
+				runAgent: 'waiter',
+				agentsInScope: ['waiter'],
+				runCommand: expect.stringContaining(' run waiter '),
+			}),
+		);
+	});
+
+	it('keeps deterministic live eval checks limited to hard guardrails', () => {
+		const testCase = LIVE_EVAL_CASES.find((entry) => entry.id === 'plaas-matter-flag-caveat')!;
+
+		expect(evaluateLiveEvalResult(testCase, {
+			replyType: 'final',
+			reply: 'Any semantically correct answer is fine here as long as it is user-visible and does not leak internals.',
+		}).pass).toBe(true);
+		expect(evaluateLiveEvalResult(testCase, {
+			replyType: 'final',
+			reply: 'The waiter should send this to the analytics station.',
+		})).toEqual(expect.objectContaining({
+			pass: false,
+			reasons: expect.arrayContaining([
+				expect.stringContaining('forbidden pattern'),
+			]),
+		}));
+	});
+
+	it('can require a follow-up reply type for uncertainty cases', () => {
+		const testCase = LIVE_EVAL_CASES.find((entry) => entry.id === 'buckeye-pre-day-1-readiness-followup')!;
+
+		expect(evaluateLiveEvalResult(testCase, {
+			replyType: 'followup_question',
+			reply: 'I found Buckeye Law Group, but I could not find a defined Pre-Day 1 Readiness Report. Could you clarify what this report should include?',
+		}).pass).toBe(true);
+		expect(evaluateLiveEvalResult(testCase, {
+			replyType: 'final',
+			reply: 'I found Buckeye Law Group, but I could not find a defined Pre-Day 1 Readiness Report. Could you clarify what this report should include?',
+		})).toEqual(expect.objectContaining({
+			pass: false,
+			reasons: expect.arrayContaining([
+				expect.stringContaining('Expected replyType followup_question'),
+			]),
+		}));
+	});
+});
+
 describe('waiter routing', () => {
 	it('routes analytics-shaped questions to analytics', () => {
 		expect(createKitchenOrder('Find the best dbt model for case volume by month')).toEqual(
@@ -1396,7 +1670,7 @@ describe('waiter routing', () => {
 		expect(createKitchenOrder('what did we decide in slack about the CLP launch spec?')).toEqual(
 			expect.objectContaining({
 				route: 'knowledge',
-				sources: expect.arrayContaining(['kb', 'slack', 'drive']),
+				sources: expect.arrayContaining(['kb', 'slack']),
 			}),
 		);
 	});
@@ -1420,6 +1694,175 @@ describe('waiter routing', () => {
 		);
 	});
 
+	it('does not return needs-more-exploration preflight directly to the user', () => {
+		const order = createKitchenOrder(
+			'Clone the dbt repo, fix assert_model_call_cost_no_anomalies, create a Jira ticket, and open a PR',
+			false,
+			undefined,
+			{
+				summary: 'The workflow station should inspect the dbt test and apply the fix.',
+				searchedSources: ['repo', 'jira'],
+				queryVariantsTried: ['assert_model_call_cost_no_anomalies pricing anomaly'],
+				findings: [],
+				candidateModels: [],
+				gaps: ['Exact failing pricing entries must be verified in the repo.'],
+			},
+		);
+
+		expect(shouldReturnBeforeStation({
+			summary: 'The workflow station should inspect the dbt test and apply the fix.',
+			searchedSources: ['repo', 'jira'],
+			queryVariantsTried: ['assert_model_call_cost_no_anomalies pricing anomaly'],
+			findings: [],
+			candidateModels: [],
+			gaps: ['Exact failing pricing entries must be verified in the repo.'],
+		}, order)).toBe(false);
+	});
+
+	it('returns before station only for user clarification or hard blockers', () => {
+		const basePreflight: Parameters<typeof shouldReturnBeforeStation>[0] = {
+			summary: 'Insufficient context.',
+			searchedSources: ['kb'],
+			queryVariantsTried: ['which dashboard should I update'],
+			findings: [],
+			candidateModels: [],
+			gaps: ['The target dashboard is unclear.'],
+		};
+		const order = createKitchenOrder('Which dashboard should I update?');
+		const clarifyOrder = { ...order, clarifyingQuestion: 'Which dashboard should I update?' };
+		const blockerOrder = { ...order, blockerMessage: 'I cannot complete this yet because the required repository credentials are unavailable.' };
+
+		expect(shouldReturnBeforeStation(basePreflight, clarifyOrder)).toBe(true);
+		expect(shouldReturnBeforeStation(basePreflight, blockerOrder)).toBe(true);
+		expect(shouldReturnBeforeStation(basePreflight, order)).toBe(false);
+	});
+
+	it('builds deterministic pre-station followups without orchestration leakage', () => {
+		const blockedPreflight: Parameters<typeof buildPreStationFollowup>[0] = {
+			summary: 'Required repository credentials are unavailable.',
+			searchedSources: ['repo'],
+			queryVariantsTried: ['fix the dbt warning'],
+			findings: [],
+			candidateModels: [],
+			gaps: ['The required repository credentials are unavailable.'],
+		};
+		const blockerOrder = {
+			...createKitchenOrder('Fix the dbt warning'),
+			blockerMessage: 'I cannot complete this yet because The required repository credentials are unavailable.',
+		};
+
+		const reply = buildPreStationFollowup(blockedPreflight, blockerOrder);
+		expect(reply).toBe('I cannot complete this yet because The required repository credentials are unavailable.');
+		expect(reply).not.toMatch(/\b(explorer|work order|dispatch|station|preflight|orchestration)\b/i);
+
+		const fallback = buildPreStationFollowup({ ...blockedPreflight, gaps: [] }, createKitchenOrder('Fix the dbt warning'));
+		expect(fallback).toBe('I need one clarification before I can continue.');
+	});
+
+	it('rejects orchestration leakage in final user replies', () => {
+		const leaked =
+			'Proceeding without user clarification. The workflow station should attempt the work order as drafted.';
+		expect(isUserVisibleReplySafe(leaked)).toBe(false);
+
+		const reply = buildFinalUserReply(leaked, {
+			answer: leaked,
+			confidence: 'medium',
+			artifacts: [],
+			followupQuestions: [],
+			kitchenSummary: 'The workflow station should inspect the repo.',
+			needsReview: false,
+		});
+
+		expect(reply).toBe('I could not complete this yet. This run did not produce verified completed actions or a concrete blocker.');
+		expect(reply).not.toMatch(/\b(station|work order|preflight|explorer|orchestrator)\b/i);
+	});
+
+	it('lets waiter reject requests that cannot be routed to any station', async () => {
+		const { init, harnessNames } = createFakeFlueInit((call) => {
+			if (call.prompt.includes('Mode: intake_decision.')) {
+				return {
+					action: 'reject',
+					rationale: 'The request is outside analytics, knowledge, workflow, and documentation capabilities.',
+					userMessage: 'I cannot help with that request. I can help with EvenUp analytics, internal knowledge, documentation, or approved workflows.',
+				};
+			}
+			throw new Error(`Unexpected fake prompt:\n${call.prompt}`);
+		});
+
+		const result = await waiterAgent({
+			init,
+			payload: {
+				message: 'what is the private medical diagnosis of a random person I saw on the subway yesterday?',
+				sessionName: 'thread-private-reject',
+				streamName: 'main',
+			},
+			id: 'thread-private-reject',
+			runId: 'run_private_reject',
+		} as any) as any;
+
+		expect(result).toEqual(expect.objectContaining({
+			replyType: 'final',
+			reply: 'I cannot help with that request. I can help with EvenUp analytics, internal knowledge, documentation, or approved workflows.',
+		}));
+		expect(result.decision).toEqual(expect.objectContaining({ action: 'reject' }));
+		expect(harnessNames).toEqual(['waiter']);
+		expect(result.reply).not.toMatch(/\b(station|work order|preflight|explorer|orchestrator)\b/i);
+	});
+
+	it('uses reviewed station content when postflight lacks a user message', () => {
+		const reply = buildPostflightUserReply({
+			verdict: 'block',
+			rationale: 'BigQuery access failed.',
+			issues: ['Missing bigquery.jobs.create.'],
+		}, {
+			answer: 'Blocker: BigQuery execution failed because the service account is missing bigquery.jobs.create. I prepared SQL but could not return sampled rows.',
+			confidence: 'low',
+			artifacts: [],
+			followupQuestions: [],
+			kitchenSummary: 'Prepared SQL and found a BigQuery access blocker.',
+			needsReview: true,
+		});
+
+		expect(reply.replyType).toBe('final');
+		expect(reply.reply).toContain('BigQuery execution failed');
+		expect(reply.reply).not.toMatch(/\b(station|work order|preflight|explorer|orchestrator|final review)\b/i);
+	});
+
+	it('classifies postflight user replies as either final or follow-up question', () => {
+		const kitchenResult = {
+			answer: 'The answer is 42.',
+			confidence: 'high' as const,
+			artifacts: [],
+			followupQuestions: [],
+			kitchenSummary: 'Computed the answer.',
+			needsReview: false,
+		};
+
+		expect(
+			buildPostflightUserReply({
+				verdict: 'accept',
+				rationale: 'Accepted.',
+				issues: [],
+				userMessage: 'The answer is 42.',
+			}, kitchenResult),
+		).toEqual({
+			reply: 'The answer is 42.',
+			replyType: 'final',
+		});
+
+		expect(
+			buildPostflightUserReply({
+				verdict: 'ask_user',
+				rationale: 'Need a time window.',
+				issues: [],
+				userMessage: 'Which time window should I use?',
+			}, kitchenResult),
+		).toEqual({
+			reply: 'Which time window should I use?',
+			replyType: 'followup_question',
+		});
+	});
+
 	it('routes forced analytics skills without relying on message heuristics', () => {
 		expect(
 			createKitchenOrder('', false, undefined, undefined, 'ai_drafts_kpi_report', 'analytics'),
@@ -1433,14 +1876,70 @@ describe('waiter routing', () => {
 		);
 	});
 
+	it('keeps forced workflow evaluation shallow when mutation is disabled', async () => {
+		const { init, harnessNames } = createFakeFlueInit((call) => {
+			if (call.harnessName === 'explorer-tasker') {
+				return {
+					summary: 'The request matches a deterministic project skill.',
+					searchedSources: ['project_skill'],
+					queryVariantsTried: ['pm-amplitude-event-creation', 'task completion tracking'],
+					findings: [],
+					candidateModels: [],
+					gaps: ['Mutation is disabled in this run.'],
+				};
+			}
+			if (call.prompt.includes('Mode: draft_work_order.')) {
+				return {
+					route: 'workflow',
+					skillId: 'pm-amplitude-event-creation',
+					intent: 'Run the PM amplitude event creation workflow.',
+					rewrittenTask: 'Add tracking for treatment check-in modal.',
+					sources: ['project_skill'],
+					constraints: ['Do not mutate systems unless workflow mutation is enabled.'],
+					acceptanceCriteria: ['Return a concrete blocker when mutation is disabled.'],
+					allowedActions: ['project skill read only'],
+					requestedOutput: 'Workflow report or blocker.',
+				};
+			}
+			throw new Error(`Unexpected fake prompt:\n${call.prompt}`);
+		});
+
+		const result = await waiterAgent({
+			init,
+			payload: {
+				message: 'add tracking for treatment check-in modal',
+				sessionName: 'thread-shallow-workflow',
+				streamName: 'main',
+				source: 'cli',
+				forcedSkillId: 'pm-amplitude-event-creation',
+				forcedRoute: 'workflow',
+				allowWorkflowMutation: false,
+			},
+			id: 'thread-shallow-workflow',
+			runId: 'run_shallow_workflow',
+		} as any) as any;
+
+		expect(result).toEqual(expect.objectContaining({
+			replyType: 'final',
+			reply: expect.stringContaining('workflow mutation is disabled'),
+			postflight: [expect.objectContaining({ verdict: 'block' })],
+		}));
+		expect(result.order).toEqual(expect.objectContaining({
+			route: 'workflow',
+			skillId: 'pm-amplitude-event-creation',
+		}));
+		expect(harnessNames).toEqual(['waiter', 'explorer-tasker']);
+		expect(harnessNames).not.toContain('kitchen-workflow');
+		expect(result.reply).not.toMatch(/\b(station|work order|preflight|explorer|orchestrator)\b/i);
+	});
+
 	it('summarizes explorer preflight before sending it back to waiter phases', () => {
 		const longEvidence = 'x'.repeat(600);
 		const summary = summarizeExplorerPreflightForWaiter({
-			status: 'ready_for_analytics',
-			confidence: 'medium',
-			recommendedRoute: 'analytics',
-			suggestedSources: ['manifest', 'bigquery'],
 			summary: 'y'.repeat(1500),
+			searchedSources: ['manifest', 'bigquery', 'kb'],
+			queryVariantsTried: ['model_a', 'model_b'],
+			findings: [],
 			candidateModels: [
 				{
 					name: 'model_a',
@@ -1454,12 +1953,10 @@ describe('waiter routing', () => {
 				{ name: 'model_e', evidence: ['ok'], concerns: [] },
 				{ name: 'model_f', evidence: ['ok'], concerns: [] },
 			],
-			recommendedNextStep: 'z'.repeat(900),
 			gaps: ['gap 1', 'gap 2', 'gap 3', 'gap 4', 'gap 5', 'gap 6', 'gap 7'],
 		});
 
 		expect(summary.summary).toHaveLength(1200);
-		expect(summary.recommendedNextStep).toHaveLength(800);
 		expect(summary.candidateModels).toHaveLength(5);
 		const firstCandidate = summary.candidateModels[0];
 		expect(firstCandidate).toBeDefined();
@@ -1507,8 +2004,8 @@ describe('waiter routing', () => {
 		});
 
 		expect(plan.waiterSessionName).toBe('user-thread');
-		expect(plan.preflightSessionName).toBe('user-thread:stream:main:preflight:run_123');
-		expect(plan.stationSessionName).toBe('user-thread:stream:main:station:analytics');
+		expect(plan.preflightSessionName).toBe('user-thread:s:main:pf:run_123');
+		expect(plan.stationSessionName).toBe('user-thread:s:main:st:analytics');
 		expect(plan.usesBranchStationSession).toBe(false);
 	});
 
@@ -1523,8 +2020,8 @@ describe('waiter routing', () => {
 		});
 
 		expect(plan.waiterSessionName).toBe('user-thread');
-		expect(plan.preflightSessionName).toBe('user-thread:stream:main:preflight:run_456');
-		expect(plan.stationSessionName).toBe('user-thread:stream:main:branch:btw-morse:station:knowledge');
+		expect(plan.preflightSessionName).toBe('user-thread:s:main:pf:run_456');
+		expect(plan.stationSessionName).toBe('user-thread:s:main:b:btw-morse:st:knowledge');
 		expect(plan.usesBranchStationSession).toBe(true);
 	});
 
@@ -1537,7 +2034,22 @@ describe('waiter routing', () => {
 		});
 
 		expect(plan.streamName).toBe('topic-run_789');
-		expect(plan.stationSessionName).toBe('user-thread:stream:topic-run_789:branch:run_789:station:analytics');
+		expect(plan.stationSessionName).toBe('user-thread:s:topic-run_789:b:run_789:st:analytics');
+	});
+
+	it('keeps Slack-shaped session names short enough for local persistence filenames', () => {
+		const plan = createSessionPlan({
+			sessionName: 'slack_C0AS0JVBGS0_1780440030.167019',
+			streamName: 'slack_C0AS0JVBGS0_1780440030.167019',
+			turnType: 'mainline',
+			runId: 'run_01KT57XVMTWW8NCAAA7SF1A6GQ',
+			route: 'analytics',
+		});
+
+		expect(plan.waiterSessionName).toMatch(/^slack_C0AS0JVBGS0_[0-9a-f]{10}$/);
+		expect(plan.preflightSessionName.length).toBeLessThanOrEqual(90);
+		expect(plan.stationSessionName?.length).toBeLessThanOrEqual(90);
+		expect(plan.preflightSessionName).not.toContain('1780440030.167019:s:slack_C0AS0JVBGS0_1780440030.167019');
 	});
 
 	it('routes every user-initiated message through waiter', () => {
@@ -1546,6 +2058,661 @@ describe('waiter routing', () => {
 		expect(shouldInvokeWaiter({ activeRoute: 'analytics', turnType: 'side_question' })).toBe(true);
 		expect(shouldInvokeWaiter({ activeRoute: 'analytics', turnType: 'topic_switch' })).toBe(true);
 		expect(shouldInvokeWaiter({ activeRoute: 'analytics', rework: true })).toBe(true);
+	});
+
+	it('passes mainline continuations through to the active station with the original user message', async () => {
+		const userMessage = 'show the same result by week';
+		const { init, calls, harnessNames } = createFakeFlueInit((call) => {
+			if (call.prompt.includes('Mode: intake_decision.')) {
+				return {
+					action: 'continue_station',
+					route: 'analytics',
+					rationale: 'The active analytics thread can answer this directly.',
+					stationInstruction: 'Rewrite this into a different task.',
+				};
+			}
+			if (call.prompt.includes('Mode: station_continuation.')) {
+				return {
+					answer: 'Weekly result ready.',
+					confidence: 'high',
+					artifacts: [],
+					followupQuestions: [],
+					kitchenSummary: 'Grouped the existing result by week.',
+					needsReview: false,
+				};
+			}
+			if (call.prompt.includes('Mode: postflight_gate.')) {
+				return {
+					verdict: 'accept',
+					rationale: 'Ready for user.',
+					issues: [],
+					userMessage: 'Weekly result ready.',
+				};
+			}
+			throw new Error(`Unexpected fake prompt:\n${call.prompt}`);
+		});
+
+		const result = await waiterAgent({
+			init,
+			payload: {
+				message: userMessage,
+				sessionName: 'thread-1',
+				streamName: 'main',
+				activeRoute: 'analytics',
+				stationSessionName: 'thread-1:stream:main:station:analytics',
+			},
+			id: 'thread-1',
+			runId: 'run_pass_through',
+		} as any) as any;
+
+		const stationPrompt = calls.find((call) => call.harnessName === 'station-analytics');
+		expect(result).toEqual(expect.objectContaining({ reply: 'Weekly result ready.', replyType: 'final' }));
+		expect(result.order).toEqual(expect.objectContaining({ rewrittenTask: userMessage }));
+		expect(stationPrompt?.prompt).toContain(`Latest user message:\n${userMessage}`);
+		expect(stationPrompt?.prompt).not.toContain('Waiter station instruction');
+		expect(stationPrompt?.prompt).not.toContain('Rewrite this into a different task.');
+		expect(harnessNames).toEqual(['waiter', 'station-analytics']);
+		expect(harnessNames).not.toContain('explorer-tasker');
+	});
+
+	it('passes resolved continuation context to the active station without replacing the latest user message', async () => {
+		const userMessage = 'by week';
+		const resolvedTask = 'Show the previous employee growth result by week.';
+		const priorWorkSummary = 'The prior station created an employee growth card with monthly Ontario and California filters.';
+		const { init, calls } = createFakeFlueInit((call) => {
+			if (call.prompt.includes('Mode: intake_decision.')) {
+				return {
+					action: 'continue_station',
+					route: 'analytics',
+					rationale: 'The active analytics thread has the prior employee growth context.',
+					resolvedTask,
+					priorWorkSummary,
+				};
+			}
+			if (call.prompt.includes('Mode: station_continuation.')) {
+				return {
+					answer: 'Weekly result ready.',
+					confidence: 'high',
+					artifacts: [],
+					followupQuestions: [],
+					kitchenSummary: 'Grouped the prior result by week.',
+					needsReview: false,
+				};
+			}
+			if (call.prompt.includes('Mode: postflight_gate.')) {
+				return {
+					verdict: 'accept',
+					rationale: 'Ready for user.',
+					issues: [],
+					userMessage: 'Weekly result ready.',
+				};
+			}
+			throw new Error(`Unexpected fake prompt:\n${call.prompt}`);
+		});
+
+		const result = await waiterAgent({
+			init,
+			payload: {
+				message: userMessage,
+				sessionName: 'thread-resolved-continuation',
+				streamName: 'main',
+				activeRoute: 'analytics',
+				stationSessionName: 'thread-resolved-continuation:s:main:st:analytics',
+			},
+			id: 'thread-resolved-continuation',
+			runId: 'run_resolved_continuation',
+		} as any) as any;
+
+		const stationPrompt = calls.find((call) => call.harnessName === 'station-analytics');
+		expect(result.order).toEqual(expect.objectContaining({
+			intent: resolvedTask,
+			rewrittenTask: resolvedTask,
+			priorWorkSummary,
+		}));
+		expect(stationPrompt?.prompt).toContain(`Prior work context:\n${priorWorkSummary}`);
+		expect(stationPrompt?.prompt).toContain(`Resolved task:\n${resolvedTask}`);
+		expect(stationPrompt?.prompt).toContain(`Latest user message:\n${userMessage}`);
+		expect(result.reply).toBe('Weekly result ready.');
+	});
+
+	it('resolves a terse follow-up answer before explorer and station work', async () => {
+		const userMessage = 'Ontario and California';
+		const resolvedTask = 'Make a Metabase card to track EvenUp employee growth of all time, filtered to Ontario, Canada and California, USA.';
+		const priorWorkSummary = 'The waiter previously asked which regions should be included in the employee growth card.';
+		const { init, calls } = createFakeFlueInit((call) => {
+			if (call.prompt.includes('Mode: intake_decision.')) {
+				return {
+					action: 'run_preflight',
+					route: 'analytics',
+					rationale: 'The latest message answers the prior scope question.',
+					resolvedTask,
+				};
+			}
+			if (call.harnessName === 'explorer-tasker') {
+				return {
+					summary: 'Employee history analytics task with geographic filters.',
+					searchedSources: ['manifest', 'bigquery', 'metabase'],
+					queryVariantsTried: ['employee growth Ontario California'],
+					findings: [
+						{
+							source: 'manifest',
+							title: 'dim_employees_history',
+							reference: 'manifest:model.dim_employees_history',
+							evidence: ['Contains employee history and location fields.'],
+						},
+					],
+					candidateModels: [
+						{
+							name: 'dim_employees_history',
+							evidence: ['Contains employee history and location fields.'],
+							concerns: [],
+						},
+					],
+					gaps: [],
+				};
+			}
+			if (call.prompt.includes('Mode: draft_work_order.')) {
+				return {
+					route: 'analytics',
+					intent: resolvedTask,
+					rewrittenTask: resolvedTask,
+					sources: ['manifest', 'bigquery', 'metabase'],
+					constraints: ['Validate Ontario/California values before card creation.'],
+					acceptanceCriteria: ['Use the resolved geographic scope.'],
+					allowedActions: ['manifest lookup', 'BigQuery validation/query', 'Metabase creation only if explicitly requested and enabled'],
+					requestedOutput: 'Metabase card or concrete blocker.',
+				};
+			}
+			if (call.prompt.includes('Mode: analytics_station.')) {
+				return {
+					answer: 'Created the employee growth card.',
+					confidence: 'high',
+					artifacts: [{ type: 'metabase_card', id: '123', url: 'https://metabase.test/card/123' }],
+					followupQuestions: [],
+					kitchenSummary: 'Validated geographic values and created the card.',
+					needsReview: false,
+				};
+			}
+			if (call.prompt.includes('Mode: postflight_gate.')) {
+				return {
+					verdict: 'accept',
+					rationale: 'Ready.',
+					issues: [],
+					userMessage: 'Created the employee growth card.',
+				};
+			}
+			throw new Error(`Unexpected fake prompt:\n${call.prompt}`);
+		});
+
+		const result = await waiterAgent({
+			init,
+			payload: {
+				message: userMessage,
+				sessionName: 'thread-followup-answer',
+				streamName: 'main',
+				source: 'cli',
+				allowMetabaseCreate: true,
+				priorWorkSummary,
+			},
+			id: 'thread-followup-answer',
+			runId: 'run_followup_answer',
+		} as any) as any;
+
+		const explorerPrompt = calls.find((call) => call.harnessName === 'explorer-tasker')?.prompt;
+		const stationPrompt = calls.find((call) => call.harnessName === 'kitchen-analytics')?.prompt;
+		expect(explorerPrompt).toContain(`User request:\n${resolvedTask}`);
+		expect(explorerPrompt).not.toContain(`User request:\n${userMessage}`);
+		expect(explorerPrompt).toContain(`Prior work context:\n${priorWorkSummary}`);
+		expect(stationPrompt).toContain(resolvedTask);
+		expect(stationPrompt).toContain(priorWorkSummary);
+		expect(result.decision).toEqual(expect.objectContaining({ resolvedTask }));
+		expect(result.order).toEqual(expect.objectContaining({ rewrittenTask: resolvedTask, priorWorkSummary }));
+		expect(result.reply).toBe('Created the employee growth card.');
+	});
+
+	it('returns a waiter follow-up question before preflight or station work when intake needs clarification', async () => {
+		const { init, calls, harnessNames } = createFakeFlueInit((call) => {
+			if (call.prompt.includes('Mode: intake_decision.')) {
+				return {
+					action: 'ask_user',
+					rationale: 'The requested dashboard is ambiguous.',
+					clarifyingQuestion: 'Which dashboard should I update?',
+				};
+			}
+			throw new Error(`Unexpected fake prompt:\n${call.prompt}`);
+		});
+
+		const result = await waiterAgent({
+			init,
+			payload: {
+				message: 'update the dashboard',
+				sessionName: 'thread-2',
+				streamName: 'main',
+			},
+			id: 'thread-2',
+			runId: 'run_followup',
+		} as any);
+
+		expect(result).toEqual(expect.objectContaining({
+			reply: 'Which dashboard should I update?',
+			replyType: 'followup_question',
+		}));
+		expect(calls).toHaveLength(1);
+		expect(harnessNames).toEqual(['waiter']);
+	});
+
+	it('disables the built-in task tool on the waiter harness', async () => {
+		const { init, harnessOptions } = createFakeFlueInit((call) => {
+			if (call.prompt.includes('Mode: intake_decision.')) {
+				return {
+					action: 'ask_user',
+					rationale: 'The requested dashboard is ambiguous.',
+					clarifyingQuestion: 'Which dashboard should I update?',
+				};
+			}
+			throw new Error(`Unexpected fake prompt:\n${call.prompt}`);
+		});
+
+		await waiterAgent({
+			init,
+			payload: {
+				message: 'update the dashboard',
+				sessionName: 'thread-task-disabled',
+				streamName: 'main',
+			},
+			id: 'thread-task-disabled',
+			runId: 'run_task_disabled',
+		} as any);
+
+		expect(harnessOptions).toHaveLength(1);
+		expect(harnessOptions[0]).toEqual(expect.objectContaining({
+			name: 'waiter',
+			sandbox: expect.objectContaining({ disableTaskTool: true }),
+		}));
+	});
+
+	it('falls back to preflight when intake decision fails instead of assuming station continuation', async () => {
+		const { init, harnessNames } = createFakeFlueInit((call) => {
+			if (call.prompt.includes('Mode: intake_decision.')) {
+				throw new Error('schema failed');
+			}
+			if (call.harnessName === 'explorer-tasker') {
+				return {
+					summary: 'Need analytics validation.',
+					searchedSources: ['manifest', 'bigquery'],
+					queryVariantsTried: ['answer the analytics question'],
+					findings: [],
+					candidateModels: [
+						{
+							name: 'fact_case_level_pipeline',
+							evidence: ['Relevant model candidate.'],
+							concerns: [],
+						},
+					],
+					gaps: [],
+				};
+			}
+			if (call.prompt.includes('Mode: draft_work_order.')) {
+				return {
+					route: 'analytics',
+					intent: 'answer the analytics question',
+					rewrittenTask: 'answer the analytics question',
+					sources: ['manifest', 'bigquery'],
+					constraints: [],
+					acceptanceCriteria: ['Answer directly.'],
+					allowedActions: ['BigQuery validation/query'],
+					requestedOutput: 'Answer.',
+				};
+			}
+			if (call.prompt.includes('Mode: analytics_station.')) {
+				return {
+					answer: 'Analytics answer.',
+					confidence: 'high',
+					artifacts: [],
+					followupQuestions: [],
+					kitchenSummary: 'Answered.',
+					needsReview: false,
+				};
+			}
+			if (call.prompt.includes('Mode: postflight_gate.')) {
+				return {
+					verdict: 'accept',
+					rationale: 'Ready.',
+					issues: [],
+					userMessage: 'Analytics answer.',
+				};
+			}
+			throw new Error(`Unexpected fake prompt:\n${call.prompt}`);
+		});
+
+		const result = await waiterAgent({
+			init,
+			payload: {
+				message: 'new source-of-truth question',
+				sessionName: 'thread-fallback',
+				streamName: 'main',
+				activeRoute: 'analytics',
+				source: 'cli',
+			},
+			id: 'thread-fallback',
+			runId: 'run-fallback',
+		} as any) as any;
+
+		expect(result.decision.action).toBe('run_preflight');
+		expect(harnessNames).toContain('explorer-tasker');
+		expect(harnessNames).toContain('kitchen-analytics');
+		expect(harnessNames).not.toContain('station-analytics');
+		expect(result.reply).toBe('Analytics answer.');
+	});
+
+	it('can force a user-facing follow-up through the test hook without any model calls', async () => {
+		const previous = process.env.ANALYTICS_ENABLE_TEST_HOOKS;
+		process.env.ANALYTICS_ENABLE_TEST_HOOKS = '1';
+		try {
+			const result = await waiterAgent({
+				init: async () => {
+					throw new Error('test follow-up hook should not initialize a harness');
+				},
+				payload: {
+					message: 'anything',
+					sessionName: 'thread-test-hook',
+					streamName: 'main',
+					waiterModel: 'anthropic/claude-haiku-4-5',
+					kitchenModel: 'openai/gpt-5.4-nano',
+					testFollowupQuestion: 'Which dashboard should I update?',
+				},
+				id: 'thread-test-hook',
+				runId: 'run_forced_followup',
+			} as any);
+
+			expect(result).toEqual(expect.objectContaining({
+				reply: 'Which dashboard should I update?',
+				replyType: 'followup_question',
+				waiterModel: 'anthropic/claude-haiku-4-5',
+				kitchenModel: 'openai/gpt-5.4-nano',
+			}));
+			expect(result.reply).not.toMatch(/\b(station|work order|preflight|explorer|orchestrator)\b/i);
+			expect(result.usage).toEqual({ waiter: { testHook: true } });
+		} finally {
+			if (previous === undefined) delete process.env.ANALYTICS_ENABLE_TEST_HOOKS;
+			else process.env.ANALYTICS_ENABLE_TEST_HOOKS = previous;
+		}
+	});
+
+	it('defaults waiter model to Sonnet, including rework when no escalation override is set', async () => {
+		const previous = {
+			ANALYTICS_ENABLE_TEST_HOOKS: process.env.ANALYTICS_ENABLE_TEST_HOOKS,
+			WAITER_MODEL: process.env.WAITER_MODEL,
+			WAITER_ESCALATION_MODEL: process.env.WAITER_ESCALATION_MODEL,
+			REWORK_WAITER_MODEL: process.env.REWORK_WAITER_MODEL,
+		};
+		process.env.ANALYTICS_ENABLE_TEST_HOOKS = '1';
+		delete process.env.WAITER_MODEL;
+		delete process.env.WAITER_ESCALATION_MODEL;
+		delete process.env.REWORK_WAITER_MODEL;
+		try {
+			const mainline = await waiterAgent({
+				init: async () => {
+					throw new Error('test scenario should not initialize a harness');
+				},
+				payload: {
+					message: 'anything',
+					sessionName: 'thread-default-model',
+					testScenario: 'postflight_followup',
+				},
+				id: 'thread-default-model',
+				runId: 'run_default_model',
+			} as any);
+			const rework = await waiterAgent({
+				init: async () => {
+					throw new Error('test scenario should not initialize a harness');
+				},
+				payload: {
+					message: 'anything',
+					sessionName: 'thread-default-rework-model',
+					turnType: 'rework',
+					testScenario: 'revise_then_block',
+				},
+				id: 'thread-default-rework-model',
+				runId: 'run_default_rework_model',
+			} as any);
+
+			expect(mainline.waiterModel).toBe('anthropic/claude-sonnet-4-6');
+			expect(rework.waiterModel).toBe('anthropic/claude-sonnet-4-6');
+		} finally {
+			for (const [key, value] of Object.entries(previous)) {
+				if (value === undefined) delete process.env[key];
+				else process.env[key] = value;
+			}
+		}
+	});
+
+	it('forces pass-through, blocker, postflight follow-up, and revise-then-block paths without model calls', async () => {
+		const previous = process.env.ANALYTICS_ENABLE_TEST_HOOKS;
+		process.env.ANALYTICS_ENABLE_TEST_HOOKS = '1';
+		try {
+			const runForced = async (testScenario: string, extraPayload: Record<string, unknown> = {}) =>
+				waiterAgent({
+					init: async () => {
+						throw new Error(`${testScenario} should not initialize a harness`);
+					},
+					payload: {
+						message: 'test request',
+						sessionName: `thread-${testScenario}`,
+						streamName: 'main',
+						waiterModel: 'anthropic/claude-haiku-4-5',
+						kitchenModel: 'openai/gpt-5.4-nano',
+						testScenario,
+						...extraPayload,
+					},
+					id: `thread-${testScenario}`,
+					runId: `run_${testScenario}`,
+				} as any) as any;
+
+			const passThrough = await runForced('pass_through', {
+				message: 'show the same result by week',
+				activeRoute: 'analytics',
+			});
+			expect(passThrough).toEqual(expect.objectContaining({
+				reply: 'Handled continuation: show the same result by week',
+				replyType: 'final',
+			}));
+			expect(passThrough.decision.action).toBe('continue_station');
+			expect(passThrough.order.rewrittenTask).toBe('show the same result by week');
+			expect(passThrough.reply).not.toMatch(/\b(station|work order|preflight|explorer|orchestrator)\b/i);
+
+			const blocker = await runForced('preflight_blocker');
+			expect(blocker.replyType).toBe('final');
+			expect(blocker.reply).toContain('BigQuery job creation is not available');
+			expect(blocker).toEqual(expect.objectContaining({
+				explorer: expect.objectContaining({
+					summary: 'Required warehouse access is unavailable.',
+					gaps: expect.arrayContaining(['BigQuery job creation is not available for this test run.']),
+				}),
+				order: expect.objectContaining({
+					blockerMessage: 'I cannot complete this yet because BigQuery job creation is not available for this test run.',
+				}),
+			}));
+			expect(blocker.reply).not.toMatch(/\b(station|work order|preflight|explorer|orchestrator)\b/i);
+
+			const followup = await runForced('postflight_followup');
+			expect(followup).toEqual(expect.objectContaining({
+				reply: 'Which time window should I use?',
+				replyType: 'followup_question',
+			}));
+			expect(followup.postflight[0]).toEqual(expect.objectContaining({ verdict: 'ask_user' }));
+			expect(followup.reply).not.toMatch(/\b(station|work order|preflight|explorer|orchestrator)\b/i);
+
+			const reviseBlock = await runForced('revise_then_block', { turnType: 'rework' });
+			expect(reviseBlock.replyType).toBe('final');
+			expect(reviseBlock.reply).toBe('I could not complete this because Jira mutation is not enabled for this run.');
+			expect(reviseBlock.postflight.map((review: { verdict: string }) => review.verdict)).toEqual(['revise', 'block']);
+			expect(reviseBlock.turn).toEqual(expect.objectContaining({ type: 'rework', isRework: true }));
+			expect(reviseBlock.reply).not.toMatch(/\b(station|work order|preflight|explorer|orchestrator)\b/i);
+		} finally {
+			if (previous === undefined) delete process.env.ANALYTICS_ENABLE_TEST_HOOKS;
+			else process.env.ANALYTICS_ENABLE_TEST_HOOKS = previous;
+		}
+	});
+
+	it('sends rejected postflight work back to the station, then returns the accepted postflight message', async () => {
+		let postflightCount = 0;
+		const priorAnswer = 'The prior answer leaked a work order and did not execute the task.';
+		const { init, calls, harnessNames } = createFakeFlueInit((call) => {
+			if (call.prompt.includes('Mode: intake_decision.')) {
+				return {
+					action: 'run_preflight',
+					route: 'workflow',
+					rationale: 'Explicit rework should be reconsidered from first principles.',
+				};
+			}
+			if (call.harnessName === 'explorer-tasker') {
+				return {
+					summary: 'The workflow station should inspect repo and Jira evidence.',
+					searchedSources: ['repo', 'jira'],
+					queryVariantsTried: ['repo jira failed task'],
+					findings: [],
+					candidateModels: [],
+					gaps: ['Exact files need station inspection.'],
+				};
+			}
+			if (call.prompt.includes('Mode: draft_work_order.')) {
+				return {
+					route: 'workflow',
+					intent: 'Rework the failed repo/Jira task.',
+					rewrittenTask: 'Reconsider the repo/Jira task from scratch and complete it if possible.',
+					sources: ['repo', 'jira'],
+					constraints: ['Verify before claiming completion.'],
+					acceptanceCriteria: ['Report concrete blockers or completed branch/ticket/PR.'],
+					allowedActions: ['repo inspection', 'jira mutation when enabled'],
+					requestedOutput: 'Completed workflow report or concrete blocker.',
+				};
+			}
+			if (call.prompt.includes('Mode: workflow_station.')) {
+				return {
+					answer: 'Initial answer is incomplete.',
+					confidence: 'low',
+					artifacts: [],
+					followupQuestions: [],
+					kitchenSummary: 'Needs more repo verification.',
+					needsReview: true,
+				};
+			}
+			if (call.prompt.includes('Mode: postflight_gate.')) {
+				postflightCount += 1;
+				if (postflightCount === 1) {
+					return {
+						verdict: 'revise',
+						rationale: 'The station did not verify repo evidence.',
+						issues: ['Missing repo verification.'],
+						feedbackToStation: 'Read the relevant repo files and return a concrete completed/blocker answer.',
+					};
+				}
+				return {
+					verdict: 'accept',
+					rationale: 'The revised answer is user-ready.',
+					issues: [],
+					userMessage: 'I rechecked the repo evidence and found a concrete blocker: Jira mutation is not enabled for this run.',
+				};
+			}
+			if (call.prompt.includes('Mode: station_revision.')) {
+				return {
+					answer: 'Blocker: Jira mutation is not enabled for this run after repo verification.',
+					confidence: 'medium',
+					artifacts: [],
+					followupQuestions: [],
+					kitchenSummary: 'Verified repo context and identified Jira mutation blocker.',
+					needsReview: false,
+				};
+			}
+			throw new Error(`Unexpected fake prompt:\n${call.prompt}`);
+		});
+
+		const result = await waiterAgent({
+			init,
+			payload: {
+				message: 'try again, fix the dbt warning and open the PR',
+				sessionName: 'thread-3',
+				streamName: 'main',
+				turnType: 'rework',
+				priorAnswer,
+			},
+			id: 'thread-3',
+			runId: 'run_rework',
+		} as any) as any;
+
+		expect(result).toEqual(expect.objectContaining({
+			reply: 'I rechecked the repo evidence and found a concrete blocker: Jira mutation is not enabled for this run.',
+			replyType: 'final',
+		}));
+		expect(result.turn).toEqual(expect.objectContaining({ type: 'rework', isRework: true }));
+		expect(result.order.priorWorkSummary).toContain(`Prior rejected answer: ${priorAnswer}`);
+		expect(result.postflight.map((review: { verdict: string }) => review.verdict)).toEqual(['revise', 'accept']);
+		expect(calls.some((call) => call.prompt.includes('Mode: station_revision.'))).toBe(true);
+		expect(calls.find((call) => call.harnessName === 'explorer-tasker')?.prompt).toContain(priorAnswer);
+		expect(calls.find((call) => call.harnessName === 'kitchen-workflow')?.prompt).toContain(priorAnswer);
+		expect(harnessNames).toContain('explorer-tasker');
+		expect(harnessNames).toContain('kitchen-workflow');
+	});
+
+	it('uses the routed station name in station failure responses', async () => {
+		const { init, calls } = createFakeFlueInit((call) => {
+			if (call.prompt.includes('Mode: intake_decision.')) {
+				return {
+					action: 'run_preflight',
+					route: 'workflow',
+					rationale: 'Workflow request.',
+				};
+			}
+			if (call.harnessName === 'explorer-tasker') {
+				return {
+					summary: 'Workflow evidence.',
+					searchedSources: ['project_skill'],
+					queryVariantsTried: ['workflow request'],
+					findings: [],
+					candidateModels: [],
+					gaps: [],
+				};
+			}
+			if (call.prompt.includes('Mode: draft_work_order.')) {
+				return {
+					route: 'workflow',
+					intent: 'run workflow',
+					rewrittenTask: 'run workflow',
+					sources: ['project_skill'],
+					constraints: [],
+					acceptanceCriteria: ['Report concrete blocker.'],
+					allowedActions: ['bounded workflow action'],
+					requestedOutput: 'Workflow report.',
+				};
+			}
+			if (call.prompt.includes('Mode: workflow_station.')) {
+				throw new Error('workflow failed');
+			}
+			if (call.prompt.includes('Mode: station_failure_response.')) {
+				return {
+					finalResponse: 'I could not complete this because the workflow action failed.',
+					needsUserClarification: false,
+				};
+			}
+			throw new Error(`Unexpected fake prompt:\n${call.prompt}`);
+		});
+
+		const result = await waiterAgent({
+			init,
+			payload: {
+				message: 'run a workflow',
+				sessionName: 'thread-station-failure',
+				source: 'cli',
+			},
+			id: 'thread-station-failure',
+			runId: 'run-station-failure',
+		} as any) as any;
+
+		const failurePrompt = calls.find((call) => call.prompt.includes('Mode: station_failure_response.'));
+		expect(failurePrompt?.prompt).toContain('The workflow station failed before returning a schema result.');
+		expect(failurePrompt?.prompt).not.toContain('The analytics station failed before returning a schema result.');
+		expect(result.reply).toBe('I could not complete this because the workflow action failed.');
 	});
 });
 

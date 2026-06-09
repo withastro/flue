@@ -5,7 +5,14 @@ import { promisify } from 'node:util';
 
 import { Type, type ToolDef } from '@flue/runtime';
 
-import { getDateRange, getDistinctValues, getRowCount, runBigQuery, validateBigQuery } from './bigquery.ts';
+import {
+	getDateRange,
+	getDistinctValues,
+	getRowCount,
+	runBigQuery,
+	validateBigQuery,
+	type BigQueryCredentialMode,
+} from './bigquery.ts';
 import {
 	createDriveFile,
 	downloadDriveFile,
@@ -57,7 +64,7 @@ export interface AnalyticsToolConfig {
 	allowWorkflowMutation?: boolean;
 	bigQueryHarness?: 'native' | 'python';
 	credentials?: {
-		bigQueryMode?: 'service_account' | 'user_oauth';
+		bigQueryMode?: BigQueryCredentialMode;
 		googleDriveMode?: 'service_account' | 'user_oauth';
 	};
 	limits?: {

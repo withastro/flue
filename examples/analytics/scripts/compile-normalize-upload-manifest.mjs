@@ -9,8 +9,11 @@ import { normalizeManifestSchemas } from './preprocess-manifest.mjs';
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_DBT_DIR = path.resolve(SCRIPT_DIR, '../../../..', 'dbt');
 const DEFAULT_SCHEMA = 'dbt_prod';
-const DEFAULT_BUCKET = 'evenup-internal-tools-dev-dbt-explorer-api';
 const DEFAULT_OBJECT = 'dbt-explorer/manifest/manifest.json';
+const DEFAULT_GCS_URIS = [
+	`gs://evenup-internal-tools-dev-dbt-explorer-api/${DEFAULT_OBJECT}`,
+	`gs://evenup-internal-tools-dbt-explorer-api/${DEFAULT_OBJECT}`,
+];
 
 async function main() {
 	const args = parseArgs(process.argv.slice(2));
@@ -23,7 +26,7 @@ async function main() {
 	const schema = args.schema || process.env.DBT_MANIFEST_QUERY_SCHEMA || DEFAULT_SCHEMA;
 	const manifestPath = resolveAgainst(dbtDir, args.manifest || 'target/manifest.json');
 	const outputPath = resolveAgainst(dbtDir, args.output || `target/manifest.${schema}.json`);
-	const gcsUri = args.gcsUri || process.env.DBT_MANIFEST_GCS_URI || defaultGcsUri();
+	const gcsUris = resolveGcsUris(args);
 
 	if (!args.skipGitSync) {
 		run('git', ['checkout', 'main'], { cwd: dbtDir });
@@ -43,10 +46,15 @@ async function main() {
 		outputPath,
 		targetSchema: schema,
 		replacedSchemas: [...schemas].sort(),
-		gcsUri: args.noUpload ? undefined : gcsUri,
+		upload: !args.noUpload,
+		gcsUris,
 	}, null, 2));
 
-	if (!args.noUpload) run('gcloud', ['storage', 'cp', outputPath, gcsUri]);
+	if (!args.noUpload) {
+		for (const gcsUri of gcsUris) {
+			run('gcloud', ['storage', 'cp', outputPath, gcsUri]);
+		}
+	}
 }
 
 function parseArgs(argv) {
@@ -58,7 +66,10 @@ function parseArgs(argv) {
 		else if (arg === '--manifest') args.manifest = requiredValue(argv, ++index, arg);
 		else if (arg === '--output') args.output = requiredValue(argv, ++index, arg);
 		else if (arg === '--schema') args.schema = requiredValue(argv, ++index, arg);
-		else if (arg === '--gcs-uri') args.gcsUri = requiredValue(argv, ++index, arg);
+		else if (arg === '--gcs-uri') {
+			args.gcsUris ??= [];
+			args.gcsUris.push(requiredValue(argv, ++index, arg));
+		}
 		else if (arg === '--skip-git-sync') args.skipGitSync = true;
 		else if (arg === '--skip-compile') args.skipCompile = true;
 		else if (arg === '--no-upload') args.noUpload = true;
@@ -77,9 +88,21 @@ function resolveAgainst(root, value) {
 	return path.isAbsolute(value) ? value : path.resolve(root, value);
 }
 
-function defaultGcsUri() {
-	const bucket = process.env.GCS_BUCKET || process.env.FLUE_ARTIFACT_BUCKET || DEFAULT_BUCKET;
-	return `gs://${bucket}/${DEFAULT_OBJECT}`;
+function resolveGcsUris(args) {
+	const explicit = args.gcsUris?.length ? args.gcsUris : splitUris(process.env.DBT_MANIFEST_GCS_URIS);
+	if (explicit.length > 0) return explicit;
+
+	const legacySingle = process.env.DBT_MANIFEST_GCS_URI?.trim();
+	if (legacySingle) return [legacySingle];
+
+	return DEFAULT_GCS_URIS;
+}
+
+function splitUris(value) {
+	return (value || '')
+		.split(',')
+		.map((uri) => uri.trim())
+		.filter(Boolean);
 }
 
 function run(command, args, options = {}) {
@@ -100,17 +123,21 @@ Runs locally:
   1. git checkout main && git pull
   2. dbt compile
   3. normalize target/manifest.json schemas to dbt_prod
-  4. upload normalized manifest to GCS
+  4. upload normalized manifest to dev and prod GCS by default
 
 Options:
   --dbt-dir <path>    dbt repo path. Defaults to ${displayPath(DEFAULT_DBT_DIR)}
   --manifest <path>   Manifest path, relative to dbt dir unless absolute. Defaults to target/manifest.json
   --output <path>     Normalized output path. Defaults to target/manifest.<schema>.json
   --schema <schema>   Target dbt schema. Defaults to DBT_MANIFEST_QUERY_SCHEMA or ${DEFAULT_SCHEMA}
-  --gcs-uri <uri>     Upload destination. Defaults to gs://$GCS_BUCKET/${DEFAULT_OBJECT}
+  --gcs-uri <uri>     Upload destination. Repeatable. Defaults to dev + prod manifest paths
   --skip-git-sync     Do not run git checkout main or git pull
   --skip-compile      Normalize/upload existing manifest without running dbt compile
   --no-upload         Compile and normalize only
+
+Environment:
+  DBT_MANIFEST_GCS_URIS  Comma-separated upload destinations.
+  DBT_MANIFEST_GCS_URI   Legacy single upload destination.
 `);
 }
 

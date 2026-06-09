@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { createHash } from 'node:crypto';
 
 export const TurnTypeSchema = v.picklist(['mainline', 'side_question', 'rework', 'topic_switch']);
 export const StationRouteSchema = v.picklist(['analytics', 'knowledge', 'workflow', 'documentation']);
@@ -49,27 +50,28 @@ export function createSessionPlan(input: {
 	runId?: string;
 	route?: StationRoute;
 }): SessionPlan {
-	const conversationSessionName = input.sessionName || 'default';
-	const runPart = safeSessionPart(input.runId || String(Date.now()));
+	const conversationSessionName = safeSessionPart(input.sessionName || 'default', 28);
+	const runPart = safeSessionPart(input.runId || String(Date.now()), 24);
 	const streamName = safeSessionPart(
 		input.turnType === 'topic_switch' && !input.streamName
 			? `topic-${runPart}`
 			: input.streamName || 'main',
+		20,
 	);
-	const branchName = safeSessionPart(input.branchName || runPart);
+	const branchName = safeSessionPart(input.branchName || runPart, 20);
 	const usesBranchStationSession = input.turnType === 'side_question' || input.turnType === 'topic_switch';
-	const streamPrefix = `${conversationSessionName}:stream:${streamName}`;
+	const streamPrefix = `${conversationSessionName}:s:${streamName}`;
 	const stationSessionName = input.route
 		? usesBranchStationSession
-			? `${streamPrefix}:branch:${branchName}:station:${safeSessionPart(input.route)}`
-			: `${streamPrefix}:station:${safeSessionPart(input.route)}`
+			? `${streamPrefix}:b:${branchName}:st:${safeSessionPart(input.route, 16)}`
+			: `${streamPrefix}:st:${safeSessionPart(input.route, 16)}`
 		: undefined;
 
 	return {
 		conversationSessionName,
 		streamName,
 		waiterSessionName: conversationSessionName,
-		preflightSessionName: `${streamPrefix}:preflight:${runPart}`,
+		preflightSessionName: `${streamPrefix}:pf:${runPart}`,
 		stationSessionName,
 		usesBranchStationSession,
 		runPart,
@@ -85,7 +87,12 @@ export function shouldInvokeWaiter(input: {
 	return true;
 }
 
-function safeSessionPart(value: string): string {
+function safeSessionPart(value: string, maxLength = 48): string {
 	const cleaned = value.trim().replace(/[^A-Za-z0-9_.:-]+/g, '_').replace(/^_+|_+$/g, '');
-	return cleaned.slice(0, 80) || 'default';
+	if (!cleaned) return 'default';
+	if (cleaned.length <= maxLength) return cleaned;
+	const hash = createHash('sha256').update(cleaned).digest('hex').slice(0, 10);
+	const prefixLength = Math.max(1, maxLength - hash.length - 1);
+	const prefix = cleaned.slice(0, prefixLength).replace(/[_:.:-]+$/g, '') || 'x';
+	return `${prefix}_${hash}`;
 }

@@ -15,7 +15,7 @@ flowchart TD
     PF1 -->|accept| Final[Final user response]
     PF1 -->|revise| S2[Send back to station with concrete feedback]
     S2 --> PF2[Second postflight gate]
-    PF2 -->|accept / clarify / block| Final
+    PF2 -->|accept / ask_user / block| Final
 
     Final -->|user clicks send back to kitchen| Rework[Rework turn]
     Rework --> W3[Waiter intake with higher model]
@@ -37,15 +37,21 @@ The Flue agent is organized as a waiter-kitchen system:
 - **Waiter** owns user experience, intent framing, routing, work-order creation, and postflight quality gates.
 - **Explorer** is a cheap shared research utility. It gathers enough context for routing and planning, then returns one structured preflight result. The waiter receives a summarized version of that result, not an individual review per candidate.
 - **Kitchen stations** do the actual domain work. Current stations cover analytics, knowledge, workflow, and documentation; analytics is the central station.
-- **Postflight** is deterministic orchestration around an LLM gate: accept, revise once, clarify, or block.
+- **Postflight** is deterministic orchestration around an LLM gate: accept, revise once, ask_user, or block.
 
 The normal path is:
 
 1. Waiter decides whether the message can continue an active station session or needs fresh preflight.
-2. Explorer gathers bounded context from selected sources.
-3. Waiter turns the summarized explorer result into one work order.
-4. The selected kitchen station executes the work.
-5. Waiter reviews the station delivery before writing the final response.
+2. Waiter builds a typed exploration request that names the sources and checks to run.
+3. Explorer executes that bounded request and returns a compact result.
+4. Waiter turns the summarized explorer result into one work order.
+5. The selected kitchen station executes the work.
+6. Waiter reviews the station delivery before writing the final response.
+
+Every waiter response includes a `ledger` object with the intake, exploration,
+work order, station, postflight, final reply, and usage fields available for app
+persistence. The agent returns this ledger; the API layer owns whether it is
+stored locally, in GCS, or in another durable store.
 
 ## Substrates And Skills
 
@@ -56,22 +62,22 @@ substrates into work a domain station can reason about.
 
 ```mermaid
 flowchart BT
-    GCS[(GCS artifacts\nreports, exports, large objects)]
-    Firestore[(Firestore state\npersonal context, skills, run metadata)]
-    Local[(Local workdir\nscratch files, drafts, staged edits)]
-    OAuth[(Credential boundary\nservice account / user OAuth)]
-    APIs[(External APIs\nBigQuery, Metabase, Slack, Drive, Jira)]
+    GCS[(GCS artifacts<br/>reports, exports, large objects)]
+    Firestore[(Firestore state<br/>personal context, skills, run metadata)]
+    Local[(Local workdir<br/>scratch files, drafts, staged edits)]
+    OAuth[(Credential boundary<br/>service account / user OAuth)]
+    APIs[(External APIs<br/>BigQuery, Metabase, Slack, Drive, Jira)]
 
-    GCS --> Substrate[Substrate utilities\npersistence, auth, file operations, API clients]
+    GCS --> Substrate[Substrate utilities<br/>persistence, auth, file operations, API clients]
     Firestore --> Substrate
     Local --> Substrate
     OAuth --> Substrate
     APIs --> Substrate
 
-    Substrate --> Tools[Contracted tools\nsmall schemas, scoped actions, policy checks]
-    Tools --> Skills[Higher-level skills\nanalytics research, KB exploration, report writing, workflow automation]
-    Skills --> Stations[Kitchen stations\nanalytics, knowledge, workflow, documentation]
-    Stations --> Orchestration[Waiter orchestration\nroute, order, gate, rework]
+    Substrate --> Tools[Contracted tools<br/>small schemas, scoped actions, policy checks]
+    Tools --> Skills[Higher-level skills<br/>analytics research, KB exploration, report writing, workflow automation]
+    Skills --> Stations[Kitchen stations<br/>analytics, knowledge, workflow, documentation]
+    Stations --> Orchestration[Waiter orchestration<br/>route, order, gate, rework]
 ```
 
 Conceptually:
@@ -97,10 +103,10 @@ implemented at the same layer.
 flowchart TD
     User[User request] --> Workflow{Workflow shape}
 
-    Workflow -->|single station domain\nsafe tools\nprocedure + templates| Template[Workflow template / skill]
-    Workflow -->|cross-system mutation\nhard gates\nphase state\npermission escalation| Agent[Dedicated workflow agent]
+    Workflow -->|single station domain<br/>safe tools<br/>procedure + templates| Template[Workflow template / skill]
+    Workflow -->|cross-system mutation<br/>hard gates<br/>phase state<br/>permission escalation| Agent[Dedicated workflow agent]
 
-    Template --> Station[Loaded by a station\nanalytics, knowledge, documentation]
+    Template --> Station[Loaded by a station<br/>analytics, knowledge, documentation]
     Station --> Tools[Existing contracted tools]
     Tools --> Artifacts[Artifacts / answers / reports]
 
@@ -201,8 +207,13 @@ pnpm manifest:publish
 
 By default this runs in `../../../dbt` relative to `examples/analytics`, reads
 `target/manifest.json`, writes `target/manifest.dbt_prod.json`, and uploads to
-`gs://$GCS_BUCKET/dbt-explorer/manifest/manifest.json`. Override with
-`--dbt-dir`, `--schema`, or `--gcs-uri`.
+both:
+
+- `gs://evenup-internal-tools-dev-dbt-explorer-api/dbt-explorer/manifest/manifest.json`
+- `gs://evenup-internal-tools-dbt-explorer-api/dbt-explorer/manifest/manifest.json`
+
+Override with `--dbt-dir`, `--schema`, repeatable `--gcs-uri`, or
+comma-separated `DBT_MANIFEST_GCS_URIS`.
 
 The Python script locations default to:
 
@@ -215,7 +226,7 @@ Standalone analytics defaults to `openai/gpt-5.4`. Override it with `ANALYTICS_M
 
 Waiter-kitchen defaults:
 
-- waiter: `anthropic/claude-opus-4-7`
+- waiter: `anthropic/claude-sonnet-4-6`
 - explorer: `openai/gpt-5.4-nano`
 - kitchen/station: `openai/gpt-5.4`
 
@@ -226,6 +237,12 @@ Persistence defaults are aligned to `dbt-explorer-api` local dev:
 - `GCS_BUCKET=evenup-internal-tools-dev-dbt-explorer-api`
 
 In GKE, the internal-tools chart injects the production values from the app namespace. Set `FLUE_PERSISTENCE_MODE=local` to force local filesystem persistence under `/tmp/flue-analytics-persistence`.
+
+BigQuery auth is deterministic. Slack and CLI default to service account
+credentials. Web sessions with `GOOGLE_USER_ACCESS_TOKEN` use
+`service_account_then_user_oauth`: try the service account first, retry with
+user OAuth only for permission/access failures, and report the auth mode that
+actually succeeded in the tool result.
 
 Report workflows can draft files locally, edit them, then upload the final artifact:
 
@@ -308,3 +325,21 @@ node ../../packages/cli/bin/flue.mjs run analytics --target node --id local \
   --env .env.secrets \
   --payload '{"message":"Create a Metabase line chart for monthly case volume","allowMetabaseCreate":true}'
 ```
+
+Elective live evals are separate from unit tests:
+
+```bash
+pnpm eval:live
+pnpm eval:live -- --case=plaas-matter-flag-caveat
+```
+
+The runner writes a JSON report under `artifacts/`. These calls invoke live LLMs
+and tools, so use them only when explicitly validating agent quality or cost.
+The case definitions describe semantic pass criteria; Codex judges those manually.
+The script-level evaluation is only for hard guardrails like reply type and
+orchestration leakage.
+Each case also declares `runAgent` and `agentsInScope`: the first is the agent
+the runner invokes, and the second is the set of agents Codex should treat as
+in-scope for judging that case.
+Each case also carries an exact `runCommand` string so the artifact records the
+canonical manual invocation for that case.
