@@ -8,7 +8,7 @@
  * @see https://github.com/durable-streams/durable-streams/blob/main/PROTOCOL.md
  */
 
-import type { EventStreamStore } from './event-stream-store.ts';
+import type { EventStreamReadResult, EventStreamStore } from './event-stream-store.ts';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -71,8 +71,8 @@ function encodeSseData(payload: string): string {
  * DS-compliant HEAD: returns stream metadata without a body.
  * 404 if the stream does not exist.
  */
-export function handleStreamHead(store: EventStreamStore, path: string): Response {
-	const meta = store.getStreamMeta(path);
+export async function handleStreamHead(store: EventStreamStore, path: string): Promise<Response> {
+	const meta = await store.getStreamMeta(path);
 	if (!meta) {
 		return new Response(null, { status: 404 });
 	}
@@ -130,7 +130,7 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 	}
 
 	// Stream must exist.
-	const meta = store.getStreamMeta(path);
+	const meta = await store.getStreamMeta(path);
 	if (!meta) {
 		return new Response(null, { status: 404 });
 	}
@@ -140,7 +140,7 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 	}
 
 	// Read events from the store.
-	const result = store.readEvents(path, { offset: offsetParam });
+	const result = await store.readEvents(path, { offset: offsetParam });
 
 	if (live === 'long-poll') {
 		return handleLongPollMode(store, path, offsetParam, cursor, result, request.signal);
@@ -155,7 +155,7 @@ function handleCatchUpMode(
 	request: Request,
 	path: string,
 	offsetParam: string,
-	result: ReturnType<EventStreamStore['readEvents']>,
+	result: EventStreamReadResult,
 ): Response {
 	const startOffset = offsetParam === 'now' ? 'now' : offsetParam;
 	const isClosed = result.closed && result.upToDate;
@@ -191,7 +191,7 @@ async function handleLongPollMode(
 	path: string,
 	offsetParam: string,
 	clientCursor: string | undefined,
-	result: ReturnType<EventStreamStore['readEvents']>,
+	result: EventStreamReadResult,
 	signal: AbortSignal,
 ): Promise<Response> {
 	// Data already available — return immediately.
@@ -212,24 +212,24 @@ async function handleLongPollMode(
 	}
 
 	if (waitResult === 'timeout') {
-		const closed = store.getStreamMeta(path)?.closed ?? false;
+		const closed = (await store.getStreamMeta(path))?.closed ?? false;
 		return longPollEmptyResponse(result.nextOffset, clientCursor, closed);
 	}
 
 	// Notified — re-read from the store.
-	const freshResult = store.readEvents(path, { offset: offsetParam });
+	const freshResult = await store.readEvents(path, { offset: offsetParam });
 	if (freshResult.events.length > 0) {
 		return longPollDataResponse(freshResult, path, offsetParam, clientCursor);
 	}
 
 	// Notified but no new events (likely stream closed).
-	const closed = store.getStreamMeta(path)?.closed ?? false;
+	const closed = (await store.getStreamMeta(path))?.closed ?? false;
 	return longPollEmptyResponse(result.nextOffset, clientCursor, closed);
 }
 
 /** Build a 200 long-poll response with event data. */
 function longPollDataResponse(
-	result: ReturnType<EventStreamStore['readEvents']>,
+	result: EventStreamReadResult,
 	path: string,
 	offsetParam: string,
 	clientCursor: string | undefined,
@@ -375,7 +375,7 @@ async function runSseLoop(
 	let currentOffset = offsetParam;
 
 	while (isConnected()) {
-		const result = store.readEvents(path, { offset: currentOffset });
+		const result = await store.readEvents(path, { offset: currentOffset });
 
 		// Emit data events.
 		if (result.events.length > 0) {

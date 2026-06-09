@@ -68,6 +68,11 @@ export type { RunRegistry, RunOwner, RunPointer, ListRunsOpts, ListRunsResponse,
 export { DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, encodeRunCursor, decodeRunCursor } from './runtime/run-registry.ts';
 export type { RunStore, RunRecord, RunStatus, CreateRunInput, EndRunInput } from './runtime/run-store.ts';
 
+// ─── Event stream store ─────────────────────────────────────────────────────
+
+export type { EventStreamStore, EventStreamMeta, EventStreamReadResult } from './runtime/event-stream-store.ts';
+export { formatOffset, parseOffset } from './runtime/event-stream-store.ts';
+
 // ─── Re-export session types needed for SessionStore implementations ────────
 
 export type { SessionData, SessionStore } from './types.ts';

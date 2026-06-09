@@ -389,7 +389,7 @@ async function runWorkflowAdmissionMode(execution: AdmittedWorkflowExecution): P
 }
 
 export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<void> {
-	const events = readRecoveryEvents(opts);
+	const events = await readRecoveryEvents(opts);
 	const terminalEvent = findTerminalRunEvent(events);
 	const run = await opts.runStore?.getRun(opts.runId);
 	if (terminalEvent || (run && run.status !== 'active')) {
@@ -411,7 +411,7 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 	const payload = run?.payload !== undefined ? run.payload : startEvent?.payload;
 	// Ensure the event stream exists — the original workflow may have crashed
 	// before createWorkflowRunLifecycle called createStream. Idempotent.
-	opts.eventStreamStore?.createStream(`runs/${opts.runId}`);
+	await opts.eventStreamStore?.createStream(`runs/${opts.runId}`);
 	const lifecycle: WorkflowRunLifecycle = {
 		...opts,
 		payload,
@@ -425,7 +425,7 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 	await emitRunEnd(lifecycle, { isError: true, error: opts.error });
 }
 
-function readRecoveryEvents(opts: FailRecoveredRunOptions): FlueEvent[] {
+async function readRecoveryEvents(opts: FailRecoveredRunOptions): Promise<FlueEvent[]> {
 	if (!opts.eventStreamStore) return [];
 	const streamPath = `runs/${opts.runId}`;
 	// Read all events — recovery needs the full history to find the
@@ -433,7 +433,7 @@ function readRecoveryEvents(opts: FailRecoveredRunOptions): FlueEvent[] {
 	const events: FlueEvent[] = [];
 	let offset = '-1';
 	while (true) {
-		const result = opts.eventStreamStore.readEvents(streamPath, { offset });
+		const result = await opts.eventStreamStore.readEvents(streamPath, { offset });
 		for (const e of result.events) {
 			events.push(e.data as FlueEvent);
 		}
@@ -466,7 +466,7 @@ async function reconcileTerminalRun(
 	// Ensure the event stream is closed so DS readers see EOF. A crash
 	// between appendEvent(run_end) and closeStream() can leave the stream
 	// permanently open without this repair.
-	opts.eventStreamStore?.closeStream(`runs/${opts.runId}`);
+	await opts.eventStreamStore?.closeStream(`runs/${opts.runId}`);
 	await safeRegistry('recordRunStart(recovery)', () =>
 		opts.runRegistry?.recordRunStart({
 			runId: opts.runId,
@@ -662,7 +662,7 @@ async function createWorkflowRunLifecycle(
 			}),
 		);
 	// Create the durable event stream for this workflow run.
-	options.eventStreamStore?.createStream(`runs/${options.runId}`);
+	await options.eventStreamStore?.createStream(`runs/${options.runId}`);
 	return { ...options, ctx, startedAt, startedAtMs };
 }
 
@@ -749,9 +749,9 @@ async function emitRunEnd(
 	// Append run_end to the durable event stream, then close it.
 	// Each operation is individually guarded so a store failure cannot
 	// prevent RunStore/RunRegistry finalization below.
-	try { eventStreamStore?.appendEvent(`runs/${runId}`, decorated); }
+	try { await eventStreamStore?.appendEvent(`runs/${runId}`, decorated); }
 	catch (e) { console.error('[flue:event-stream] appendEvent(run_end) failed:', e); }
-	try { eventStreamStore?.closeStream(`runs/${runId}`); }
+	try { await eventStreamStore?.closeStream(`runs/${runId}`); }
 	catch (e) { console.error('[flue:event-stream] closeStream failed:', e); }
 
 	const didEndRun = runStore
@@ -782,21 +782,28 @@ async function emitRunEnd(
 /**
  * Persist non-terminal events to the event stream store.
  * `run_end` is handled separately by {@link emitRunEnd}.
+ *
+ * Because `emitEvent` dispatches to subscribers synchronously (fire-and-forget),
+ * async `appendEvent` calls produce floating promises. We collect them in a
+ * buffer and drain at the returned flush function, which is awaited by
+ * {@link withWorkflowRunLifecycle} after the workflow body completes.
  */
 function subscribeRunFanout(lifecycle: WorkflowRunLifecycle): () => Promise<void> {
 	const { ctx, eventStreamStore, runId } = lifecycle;
 	if (!eventStreamStore) return async () => {};
+	const pending: Promise<void>[] = [];
 	const unsubscribe = ctx.subscribeEvent((event) => {
 		if (event.type === 'run_end') return;
-		try {
-			eventStreamStore.appendEvent(`runs/${runId}`, event);
-		} catch (error) {
-			console.error('[flue:event-stream] appendEvent failed:', error);
-		}
+		pending.push(
+			eventStreamStore.appendEvent(`runs/${runId}`, event).then(
+				() => {},
+				(error) => { console.error('[flue:event-stream] appendEvent failed:', error); },
+			),
+		);
 	});
-	return () => {
+	return async () => {
 		unsubscribe();
-		return Promise.resolve();
+		await Promise.all(pending);
 	};
 }
 

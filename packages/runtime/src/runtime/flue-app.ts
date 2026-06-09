@@ -521,7 +521,7 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 					return new Response(null, { status: 404 });
 				}
 				if (c.req.method === 'HEAD') {
-					return handleStreamHead(rt.eventStreamStore, streamPath);
+					return await handleStreamHead(rt.eventStreamStore, streamPath);
 				}
 				return handleStreamRead({ store: rt.eventStreamStore, path: streamPath, request });
 			}
@@ -586,7 +586,7 @@ const runStreamReadHandler: MiddlewareHandler = async (c) => {
 			return new Response(null, { status: 404 });
 		}
 		if (method === 'HEAD') {
-			return handleStreamHead(rt.eventStreamStore, streamPath);
+			return await handleStreamHead(rt.eventStreamStore, streamPath);
 		}
 		return handleStreamRead({ store: rt.eventStreamStore, path: streamPath, request: c.req.raw });
 	}

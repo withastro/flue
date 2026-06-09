@@ -136,16 +136,14 @@ export function createNodeAgentCoordinator(options: {
 	function makeSubmissionContext(input: AgentSubmissionInput) {
 		return (payload: unknown, dispatchId: string | undefined) => {
 			const ctx = createContext(input.id, undefined, payload, submissionSyntheticRequest(input), undefined, dispatchId);
-			// Inject the event stream store for durable agent event persistence.
+			// Subscribe to events for durable agent event persistence.
+			// createStream is called before processSubmission (see spawnSubmissionTask).
 			if (eventStreamStore) {
 				const streamPath = `agents/${input.agent}/${input.id}`;
-				eventStreamStore.createStream(streamPath);
 				ctx.subscribeEvent((event) => {
-					try {
-						eventStreamStore.appendEvent(streamPath, event);
-					} catch (error) {
+					eventStreamStore.appendEvent(streamPath, event).catch((error) => {
 						console.error('[flue:event-stream] appendEvent failed:', error);
-					}
+					});
 				});
 			}
 			return ctx;
@@ -166,7 +164,16 @@ export function createNodeAgentCoordinator(options: {
 	 */
 	function spawnSubmissionTask(claimed: AgentSubmission): void {
 		const controller = new AbortController();
-		const task = processSubmission({
+		const task = (async () => {
+			// Ensure the agent event stream exists before processing.
+			// createStream is idempotent — safe to call on every submission.
+			// Must complete before processSubmission so appendEvent calls
+			// in the subscribeEvent callback don't hit a missing stream.
+			if (eventStreamStore) {
+				const streamPath = `agents/${claimed.input.agent}/${claimed.input.id}`;
+				await eventStreamStore.createStream(streamPath);
+			}
+			return processSubmission({
 				submissions,
 				submission: claimed,
 				resolveAgent,
@@ -174,7 +181,8 @@ export function createNodeAgentCoordinator(options: {
 				observers,
 				signal: controller.signal,
 				isShutdownAbort: (error) => stopping && error instanceof DOMException && error.name === 'AbortError',
-			})
+			});
+		})()
 			.catch((error) => {
 				// AbortErrors during shutdown are expected — don't log them.
 				if (error instanceof DOMException && error.name === 'AbortError') return;

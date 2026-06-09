@@ -138,7 +138,7 @@ const runStore = defaultAdapter.connectRunStore();
 const runRegistry = defaultAdapter.connectRunRegistry();`
 		}
 const persistenceAdapter = ${dbEntry ? `userPersistenceAdapter` : `defaultAdapter`};
-const eventStreamStore = persistenceAdapter.connectEventStreamStore?.();
+const eventStreamStore = persistenceAdapter.connectEventStreamStore();
 const agentCoordinator = createNodeAgentCoordinator({
   submissions: executionStore.submissions,
   agents: createdAgents,

@@ -118,8 +118,6 @@ describe('createSqlAgentExecutionStore()', () => {
 			{ name: 'flue_agent_stream_chunks' },
 			{ name: 'flue_agent_submissions' },
 			{ name: 'flue_agent_turn_journals' },
-			{ name: 'flue_event_stream_entries' },
-			{ name: 'flue_event_streams' },
 			{ name: 'flue_sessions' },
 			{ name: 'sqlite_sequence' },
 		]);

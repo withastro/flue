@@ -42,7 +42,6 @@ import {
 	type DirectAgentSubmissionInput,
 } from './runtime/agent-submissions.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
-import { ensureEventStreamTables } from './runtime/event-stream-store.ts';
 import { createSessionStorageKey } from './session-identity.ts';
 import type { SessionData, SessionStore } from './types.ts';
 
@@ -55,7 +54,6 @@ export function ensureSqlAgentExecutionTables(sql: SqlStorage): void {
 	ensureSessionTable(sql);
 	ensureSubmissionTable(sql);
 	ensureTurnJournalTable(sql);
-	ensureEventStreamTables(sql);
 }
 
 /**

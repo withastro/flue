@@ -167,7 +167,7 @@ class CloudflareAgentCoordinator {
 			const store = this.options.createEventStreamStore?.(this.instance);
 			if (!store) return new Response(null, { status: 404 });
 			const streamPath = `agents/${this.agentName}/${this.instance.name}`;
-			if (method === 'HEAD') return handleStreamHead(store, streamPath);
+			if (method === 'HEAD') return await handleStreamHead(store, streamPath);
 			return handleStreamRead({ store, path: streamPath, request });
 		}
 
@@ -420,6 +420,12 @@ class CloudflareAgentCoordinator {
 
 	private async processSubmissionEntry(submission: AgentSubmission): Promise<void> {
 		const eventStreamStore = this.options.createEventStreamStore?.(this.instance);
+		// Ensure the agent event stream exists before processing. createStream
+		// is idempotent — safe to call on every submission.
+		if (eventStreamStore) {
+			const streamPath = `agents/${this.agentName}/${this.instance.name}`;
+			await eventStreamStore.createStream(streamPath);
+		}
 		await processSubmission({
 			submissions: this.submissions,
 			submission,
@@ -432,13 +438,10 @@ class CloudflareAgentCoordinator {
 				const ctx = this.createContext(payload, submissionSyntheticRequest(submission.input), undefined, dispatchId);
 				if (eventStreamStore) {
 					const streamPath = `agents/${this.agentName}/${this.instance.name}`;
-					eventStreamStore.createStream(streamPath);
 					ctx.subscribeEvent((event) => {
-						try {
-							eventStreamStore.appendEvent(streamPath, event);
-						} catch (error) {
+						eventStreamStore.appendEvent(streamPath, event).catch((error) => {
 							console.error('[flue:event-stream] appendEvent failed:', error);
-						}
+						});
 					});
 				}
 				return ctx;

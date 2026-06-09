@@ -154,8 +154,7 @@ import {
   CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
   createCloudflareAgentRuntime,
   createSqlSessionStore,
-   SqlEventStreamStore,
-   ensureEventStreamTables,
+   SqliteEventStreamStore,
   bashFactoryToSessionEnv,
   resolveModel,
   handleWorkflowRequest,
@@ -388,8 +387,7 @@ function createDurableObjectIdentity(doInstance, identity) {
 function createEventStreamStoreForInstance(doInstance) {
   const sql = doInstance?.ctx?.storage?.sql;
   if (!sql) return undefined;
-  ensureEventStreamTables(sql);
-  return new SqlEventStreamStore(sql);
+  return new SqliteEventStreamStore(sql);
 }
 
 const cloudflareAgents = createCloudflareAgentRuntime({
@@ -442,7 +440,7 @@ async function dispatchWorkflow(request, doInstance, workflowName) {
       const store = createEventStreamStoreForInstance(doInstance);
       if (!store) return new Response(null, { status: 404 });
       const streamPath = 'runs/' + runRoute.runId;
-      if (request.method === 'HEAD') return handleStreamHead(store, streamPath);
+      if (request.method === 'HEAD') return await handleStreamHead(store, streamPath);
       return handleStreamRead({ store, path: streamPath, request });
     }
     return handleRunRouteRequest({

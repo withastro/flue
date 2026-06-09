@@ -35,9 +35,14 @@ import type {
 	SessionStore,
 	SubmissionAttemptRef,
 	SubmissionClaimRef,
+	EventStreamMeta,
+	EventStreamReadResult,
+	EventStreamStore,
 } from '@flue/runtime/adapter';
 import {
 	createDispatchAgentSubmissionInput,
+	formatOffset,
+	parseOffset,
 	createSessionStorageKey,
 	decodeRunCursor,
 	deduplicateSessionDeletion,
@@ -121,6 +126,9 @@ export function postgres(urlOrOptions?: string | PostgresOptions): PersistenceAd
 		connectRunRegistry() {
 			return new PgRunRegistry(getRunner());
 		},
+		connectEventStreamStore() {
+			return new PgEventStreamStore(getRunner());
+		},
 		async close() {
 			await runner?.close();
 			runner = undefined;
@@ -151,6 +159,9 @@ export function postgresFromRunner(runner: PgRunner): PersistenceAdapter {
 		},
 		connectRunRegistry() {
 			return new PgRunRegistry(runner);
+		},
+		connectEventStreamStore() {
+			return new PgEventStreamStore(runner);
 		},
 		async close() {
 			if (closed) return;
@@ -323,6 +334,24 @@ async function ensureTables(runner: PgRunner): Promise<void> {
 		await tx.query(`
 			CREATE INDEX IF NOT EXISTS flue_run_registry_status_started_idx
 			ON flue_run_registry (status, started_at DESC, run_id DESC)
+		`);
+
+		await tx.query(`
+			CREATE TABLE IF NOT EXISTS flue_event_streams (
+				path         TEXT PRIMARY KEY,
+				next_offset  INTEGER NOT NULL DEFAULT 1,
+				closed       BOOLEAN NOT NULL DEFAULT FALSE,
+				created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+			)
+		`);
+
+		await tx.query(`
+			CREATE TABLE IF NOT EXISTS flue_event_stream_entries (
+				path    TEXT NOT NULL,
+				seq     INTEGER NOT NULL,
+				data    TEXT NOT NULL,
+				PRIMARY KEY (path, seq)
+			)
 		`);
 	});
 }
@@ -1148,9 +1177,179 @@ function clampRunLimit(limit: number | undefined): number {
 	return Math.min(limit, MAX_LIST_LIMIT);
 }
 
+// ─── Event stream store ─────────────────────────────────────────────────────
+
+const DEFAULT_READ_LIMIT = 100;
+
+class PgEventStreamStore implements EventStreamStore {
+	private listeners = new Map<string, Set<() => void>>();
+
+	constructor(private runner: PgRunner) {}
+
+	async createStream(path: string): Promise<void> {
+		await this.runner.query(
+			`INSERT INTO flue_event_streams (path) VALUES ($1)
+			 ON CONFLICT (path) DO NOTHING`,
+			[path],
+		);
+	}
+
+	async appendEvent(path: string, event: unknown): Promise<string> {
+		const data = JSON.stringify(event);
+
+		// Wrap in a transaction so the offset advance and event insert are
+		// atomic. Without this, concurrent appends could interleave: call A
+		// advances to offset 5, call B advances to 6, B inserts and notifies,
+		// a reader sees event 6 but not 5 (not yet inserted), advancing past
+		// 5 permanently. The transaction's row-level lock on the UPDATE
+		// serializes concurrent writers.
+		const offset = await this.runner.transaction(async (tx) => {
+			const updated = await tx.query(
+				`UPDATE flue_event_streams
+				 SET next_offset = next_offset + 1
+				 WHERE path = $1 AND closed = FALSE
+				 RETURNING next_offset`,
+				[path],
+			);
+
+			if (updated.length === 0) {
+				const meta = await this.getStreamMeta(path);
+				if (!meta) {
+					throw new Error(`[flue] Event stream "${path}" does not exist.`);
+				}
+				throw new Error(`[flue] Event stream "${path}" is closed.`);
+			}
+
+			const seq = Number(updated[0]!.next_offset) - 1;
+
+			await tx.query(
+				`INSERT INTO flue_event_stream_entries (path, seq, data) VALUES ($1, $2, $3)`,
+				[path, seq, data],
+			);
+
+			return seq;
+		});
+
+		// Notify after the transaction commits so readers see the data.
+		this.notifyListeners(path);
+
+		return formatOffset(offset);
+	}
+
+	async readEvents(
+		path: string,
+		opts?: { offset?: string; limit?: number },
+	): Promise<EventStreamReadResult> {
+		const meta = await this.getStreamMeta(path);
+		if (!meta) {
+			return { events: [], nextOffset: formatOffset(0), upToDate: true, closed: false };
+		}
+
+		const rawOffset = opts?.offset ?? '-1';
+		const limit = Math.min(opts?.limit ?? DEFAULT_READ_LIMIT, 1000);
+
+		let startAfter: number;
+		if (rawOffset === '-1') {
+			startAfter = -1;
+		} else if (rawOffset === 'now') {
+			return {
+				events: [],
+				nextOffset: meta.nextOffset,
+				upToDate: true,
+				closed: meta.closed,
+			};
+		} else {
+			startAfter = parseOffset(rawOffset);
+		}
+
+		const rows = await this.runner.query(
+			`SELECT seq, data FROM flue_event_stream_entries
+			 WHERE path = $1 AND seq > $2
+			 ORDER BY seq ASC
+			 LIMIT $3`,
+			[path, startAfter, limit],
+		);
+
+		const events = rows.map((row) => ({
+			data: JSON.parse(row.data as string) as unknown,
+			offset: formatOffset(Number(row.seq)),
+		}));
+
+		const lastSeq = events.length > 0 ? Number(rows[rows.length - 1]!.seq) : -1;
+		const upToDate = events.length < limit;
+
+		const nextOffset = events.length > 0
+			? formatOffset(lastSeq)
+			: formatOffset(Math.max(0, startAfter));
+
+		return {
+			events,
+			nextOffset,
+			upToDate,
+			closed: meta.closed,
+		};
+	}
+
+	async closeStream(path: string): Promise<void> {
+		await this.runner.query(
+			`UPDATE flue_event_streams SET closed = TRUE WHERE path = $1`,
+			[path],
+		);
+		this.notifyListeners(path);
+	}
+
+	async getStreamMeta(path: string): Promise<EventStreamMeta | null> {
+		const rows = await this.runner.query(
+			`SELECT next_offset, closed FROM flue_event_streams WHERE path = $1`,
+			[path],
+		);
+
+		if (rows.length === 0) return null;
+		const row = rows[0]!;
+		const writeHead = Number(row.next_offset);
+		return {
+			nextOffset: formatOffset(Math.max(0, writeHead - 1)),
+			closed: Boolean(row.closed),
+		};
+	}
+
+	subscribe(path: string, listener: () => void): () => void {
+		let bucket = this.listeners.get(path);
+		if (!bucket) {
+			bucket = new Set();
+			this.listeners.set(path, bucket);
+		}
+		bucket.add(listener);
+		return () => {
+			bucket!.delete(listener);
+			if (bucket!.size === 0) {
+				this.listeners.delete(path);
+			}
+		};
+	}
+
+	async deleteStream(path: string): Promise<void> {
+		await this.runner.query(`DELETE FROM flue_event_stream_entries WHERE path = $1`, [path]);
+		await this.runner.query(`DELETE FROM flue_event_streams WHERE path = $1`, [path]);
+		this.notifyListeners(path);
+		this.listeners.delete(path);
+	}
+
+	private notifyListeners(path: string): void {
+		const bucket = this.listeners.get(path);
+		if (bucket) {
+			for (const listener of [...bucket]) {
+				try {
+					listener();
+				} catch {
+					// Listener errors are silently dropped.
+				}
+			}
+		}
+	}
+}
+
 // ─── Row parsers ────────────────────────────────────────────────────────────
-// Intentionally adapter-specific: each backend has its own column types,
-// coercion rules (e.g. Postgres BIGINT → string), and storage representation.
 
 function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 	const revision = Number(row.revision);
