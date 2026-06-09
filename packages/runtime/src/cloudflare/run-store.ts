@@ -78,30 +78,10 @@ function ensureRunTables(sql: SqlStorage): void {
 		)`,
 	);
 	sql.exec(
-		`CREATE TABLE IF NOT EXISTS flue_run_events (
-		 run_id TEXT NOT NULL,
-		 event_index INTEGER NOT NULL,
-		 type TEXT NOT NULL,
-		 payload TEXT NOT NULL,
-		 timestamp TEXT NOT NULL,
-		 PRIMARY KEY (run_id, event_index)
-		)`,
-	);
-	sql.exec(
-		`CREATE TRIGGER IF NOT EXISTS flue_runs_reset_events
-		 BEFORE INSERT ON flue_runs
-		 BEGIN
-		  DELETE FROM flue_run_events WHERE run_id = NEW.run_id;
-		 END`,
-	);
-	sql.exec(
 		'CREATE INDEX IF NOT EXISTS flue_runs_instance_started_idx ON flue_runs (owner_kind, instance_id, started_at DESC)',
 	);
 	sql.exec(
 		'CREATE INDEX IF NOT EXISTS flue_runs_workflow_started_idx ON flue_runs (owner_kind, workflow_name, started_at DESC)',
-	);
-	sql.exec(
-		'CREATE INDEX IF NOT EXISTS flue_run_events_run_idx ON flue_run_events (run_id, event_index ASC)',
 	);
 }
 

@@ -22,8 +22,8 @@ export interface NodeAgentCoordinator {
 	 * Create a durable admission hook for a specific agent instance. The returned
 	 * function accepts a direct prompt payload, persists it as a durable submission,
 	 * and resolves when the submission settles. Pass the result as the
-	 * `admitAttachedSubmission` option to `handleAgentRequest()` or the WebSocket
-	 * transport so that direct prompts enter the same durable lifecycle as dispatches.
+	 * `admitAttachedSubmission` option to `handleAgentRequest()` so that direct
+	 * prompts enter the same durable lifecycle as dispatches.
 	 */
 	createAdmission(agentName: string, instanceId: string): AttachedAgentSubmissionAdmission;
 	/**

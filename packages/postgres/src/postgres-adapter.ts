@@ -307,15 +307,6 @@ async function ensureTables(runner: PgRunner): Promise<void> {
 		`);
 
 		await tx.query(`
-			CREATE TABLE IF NOT EXISTS flue_run_events (
-				run_id TEXT NOT NULL REFERENCES flue_runs(run_id),
-				event_index INTEGER NOT NULL,
-				payload TEXT NOT NULL,
-				PRIMARY KEY (run_id, event_index)
-			)
-		`);
-
-		await tx.query(`
 			CREATE TABLE IF NOT EXISTS flue_run_registry (
 				run_id TEXT PRIMARY KEY,
 				owner_kind TEXT NOT NULL,
