@@ -149,7 +149,7 @@ test('forwards authentication headers to follow-mode streams', async () => {
 	}
 	// Verify the DS offset query param includes the converted --since value.
 	const firstUrl = new URL(requests[0].url, 'http://localhost');
-	assert.equal(firstUrl.searchParams.get('offset'), '0000000000000000_0000000000000025');
+	assert.equal(firstUrl.searchParams.get('offset'), '0000000000000000_0000000000000026');
 });
 
 test('rejects redirects instead of forwarding credentials', async () => {

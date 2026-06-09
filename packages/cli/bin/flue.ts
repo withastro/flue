@@ -464,14 +464,7 @@ function parseLogsArgs(rest: string[]): LogsArgs {
 				console.error('Missing value for --since');
 				process.exit(1);
 			}
-			// Accept integer event indices (legacy) or opaque DS offset strings.
-			const asInt = Number.parseInt(value, 10);
-			if (String(asInt) === value && Number.isFinite(asInt) && asInt >= 0) {
-				// Convert legacy integer to DS offset format: <readSeq>_<seq>
-				since = `${'0'.repeat(16)}_${String(asInt).padStart(16, '0')}`;
-			} else {
-				since = value;
-			}
+			since = normalizeSinceOffset(value);
 		} else if (arg === '--types') {
 			const value = rest[++i];
 			if (!value) {
@@ -1349,9 +1342,17 @@ function createLogsClient(args: LogsArgs) {
 	});
 }
 
-function logsEmitEvent(event: FlueEvent, format: LogsArgs['format']): void {
+function normalizeSinceOffset(value: string): string {
+	if (/^\d+$/.test(value)) {
+		return `${'0'.repeat(16)}_${String(Number(value) + 1).padStart(16, '0')}`;
+	}
+	return value;
+}
+
+function logsEmitEvent(event: FlueEvent, format: LogsArgs['format'], offset?: string): void {
 	if (format === 'json' || format === 'ndjson') {
-		process.stdout.write(`${JSON.stringify(event)}\n`);
+		const output = format === 'ndjson' && offset ? { ...event, offset } : event;
+		process.stdout.write(`${JSON.stringify(output)}\n`);
 	} else {
 		logsRenderPretty(event);
 	}
@@ -1380,7 +1381,7 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 	if (!shouldFollow) {
 		let events: FlueEvent[];
 		try {
-			events = await client.runs.events(args.runId);
+			events = await client.runs.events(args.runId, { offset: args.since ?? '-1' });
 		} catch (err) {
 			console.error(
 				`[flue] Failed to read events for run ${args.runId}: ${err instanceof Error ? err.message : String(err)}`,
@@ -1391,13 +1392,6 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 		let exitCode = 0;
 		let emittedCount = 0;
 		for (const event of events) {
-			// Apply --since filter: skip events at or before the requested offset.
-			// DS offsets are <readSeq>_<seq>; extract the seq (second component).
-			if (args.since !== undefined && event.eventIndex !== undefined) {
-				const parts = args.since.split('_');
-				const sinceSeq = Number.parseInt(parts[1] ?? parts[0] ?? '', 10);
-				if (Number.isFinite(sinceSeq) && event.eventIndex <= sinceSeq) continue;
-			}
 			if (args.types && !args.types.has(event.type)) continue;
 
 			logsEmitEvent(event, args.format);
@@ -1431,7 +1425,7 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 		for await (const event of stream) {
 			if (args.types && !args.types.has(event.type)) continue;
 
-			logsEmitEvent(event, args.format);
+			logsEmitEvent(event, args.format, args.format === 'ndjson' ? stream.offset : undefined);
 			emittedCount++;
 
 			if (event.type === 'run_end') {

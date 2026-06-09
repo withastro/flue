@@ -122,6 +122,23 @@ describe('createFlueClient', () => {
 			await expect(next).resolves.toEqual({ value: undefined, done: true });
 		});
 
+		it('tracks the latest stream offset after reading an event', async () => {
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async () =>
+					dsJsonResponse([{ type: 'agent_start' }], {
+						nextOffset: '0000000000000000_0000000000000001',
+						closed: true,
+					}),
+			});
+
+			const eventStream = client.agents.stream('agent', 'id', { live: false });
+			expect(eventStream.offset).toBe('-1');
+			const iterator = eventStream[Symbol.asyncIterator]();
+			await iterator.next();
+			expect(eventStream.offset).toBe('0000000000000000_0000000000000001');
+		});
+
 		it('cancel() stops iteration and aborts the underlying connection', async () => {
 			let fetchCount = 0;
 			let lastSignal: AbortSignal | undefined;

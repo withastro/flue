@@ -31,6 +31,8 @@ export interface FlueStreamOptions {
 export interface FlueEventStream<T = FlueEvent> extends AsyncIterable<T> {
 	/** Cancel the stream and abort the underlying connection. */
 	cancel(reason?: unknown): void;
+	/** Most recently delivered event offset, or the current stream offset before delivery. */
+	readonly offset: string;
 }
 
 /** Internal options passed by the FlueClient to configure the DS connection. */
@@ -114,6 +116,7 @@ export function createFlueEventStream<T = FlueEvent>(
 	// Reader is initialized lazily on the first next() call.
 	let reader: ReadableStreamDefaultReader<T> | undefined;
 	let readerDone = false;
+	let currentOffset = streamOpts.offset ?? '-1';
 
 	const iterator: AsyncIterator<T> = {
 		async next(): Promise<IteratorResult<T>> {
@@ -126,6 +129,7 @@ export function createFlueEventStream<T = FlueEvent>(
 			if (!reader) {
 				try {
 					const res = await connect();
+					currentOffset = res.offset;
 					reader = res.jsonStream().getReader();
 				} catch (err) {
 					if (abortController.signal.aborted || isAbortError(err)) {
@@ -143,6 +147,7 @@ export function createFlueEventStream<T = FlueEvent>(
 
 			try {
 				const { value, done } = await reader.read();
+				if (responsePromise) currentOffset = (await responsePromise).offset;
 				if (done) {
 					readerDone = true;
 					removeExternalAbortListener?.();
@@ -169,6 +174,9 @@ export function createFlueEventStream<T = FlueEvent>(
 
 	return {
 		cancel,
+		get offset() {
+			return currentOffset;
+		},
 		[Symbol.asyncIterator]() {
 			return iterator;
 		},

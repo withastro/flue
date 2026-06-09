@@ -67,7 +67,7 @@ export interface FlueClient {
 		/** Stream events from a workflow run via the Durable Streams protocol. */
 		stream(runId: string, options?: FlueStreamOptions): FlueEventStream<FlueEvent>;
 		/** Get all events from a workflow run as an array (catch-up read, no live tailing). */
-		events(runId: string, options?: { signal?: AbortSignal }): Promise<FlueEvent[]>;
+		events(runId: string, options?: { offset?: string; signal?: AbortSignal }): Promise<FlueEvent[]>;
 	};
 	/** Start workflow runs. */
 	workflows: {
@@ -118,7 +118,7 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 			events: async (runId, opts) => {
 				const res = await dsStream<FlueEvent>({
 					url: http.url(`/runs/${encodeURIComponent(runId)}`),
-					offset: '-1',
+					offset: opts?.offset ?? '-1',
 					live: false,
 					json: true,
 					signal: opts?.signal,
