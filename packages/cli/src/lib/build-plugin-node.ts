@@ -41,10 +41,10 @@ export class NodePlugin implements BuildPlugin {
 		const userAppImport = appEntry ? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};` : '';
 		const userDbImport = dbEntry ? `import userPersistenceAdapter from ${JSON.stringify(dbEntry.replace(/\\/g, '/'))};` : '';
 
-		// All HTTP routing, workflow admission/SSE/sync handling, agent dispatch,
-		// and error rendering live in @flue/runtime's runtime modules. The
-		// generated entry's job is now narrow: import handlers, build the
-		// runtime config, instantiate sandboxes, start the listener.
+		// All HTTP routing, workflow admission, agent dispatch, and error
+		// rendering live in @flue/runtime's runtime modules. The generated
+		// entry's job is narrow: import handlers, build the runtime config,
+		// instantiate sandboxes, start the listener.
 		const packagedSkillsImport = `import { getPackagedSkills } from 'virtual:flue/packaged-skills';`;
 		const packagedSkillsValue = 'getPackagedSkills()';
 		const builtModuleNormalizationSource = generateBuiltModuleNormalizationSource();
