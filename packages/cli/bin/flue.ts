@@ -1344,7 +1344,7 @@ function createLogsClient(args: LogsArgs) {
 
 function normalizeSinceOffset(value: string): string {
 	if (/^\d+$/.test(value)) {
-		return `${'0'.repeat(16)}_${String(Number(value) + 1).padStart(16, '0')}`;
+		return `${'0'.repeat(16)}_${String(Number(value)).padStart(16, '0')}`;
 	}
 	return value;
 }

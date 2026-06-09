@@ -339,7 +339,7 @@ async function ensureTables(runner: PgRunner): Promise<void> {
 		await tx.query(`
 			CREATE TABLE IF NOT EXISTS flue_event_streams (
 				path         TEXT PRIMARY KEY,
-				next_offset  INTEGER NOT NULL DEFAULT 1,
+				next_offset  INTEGER NOT NULL DEFAULT 0,
 				closed       BOOLEAN NOT NULL DEFAULT FALSE,
 				created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 			)
@@ -1244,7 +1244,7 @@ class PgEventStreamStore implements EventStreamStore {
 	): Promise<EventStreamReadResult> {
 		const meta = await this.getStreamMeta(path);
 		if (!meta) {
-			return { events: [], nextOffset: formatOffset(0), upToDate: true, closed: false };
+			return { events: [], nextOffset: formatOffset(-1), upToDate: true, closed: false };
 		}
 
 		const rawOffset = opts?.offset ?? '-1';
@@ -1282,7 +1282,7 @@ class PgEventStreamStore implements EventStreamStore {
 
 		const nextOffset = events.length > 0
 			? formatOffset(lastSeq)
-			: formatOffset(Math.max(0, startAfter));
+			: formatOffset(startAfter);
 
 		return {
 			events,
@@ -1314,7 +1314,7 @@ class PgEventStreamStore implements EventStreamStore {
 		const row = rows[0]!;
 		const writeHead = Number(row.next_offset);
 		return {
-			nextOffset: formatOffset(Math.max(0, writeHead - 1)),
+			nextOffset: formatOffset(writeHead - 1),
 			closed: Boolean(row.closed),
 		};
 	}

@@ -9,6 +9,7 @@ export default defineConfig({
 		'src/cloudflare/index.ts',
 		'src/node/index.ts',
 		'src/test-utils/define-store-contract-tests.ts',
+		'src/test-utils/define-event-stream-store-contract-tests.ts',
 	],
 	format: ['esm'],
 	dts: true,

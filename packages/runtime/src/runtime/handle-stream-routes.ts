@@ -327,12 +327,15 @@ function handleSseMode(
 	const encoder = new TextEncoder();
 	let isConnected = true;
 	let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+	let resolveCapacity: (() => void) | undefined;
 
 	const stream = new ReadableStream<Uint8Array>({
 		start(controller) {
 			// Track client disconnects.
 			signal.addEventListener('abort', () => {
 				isConnected = false;
+				resolveCapacity?.();
+				resolveCapacity = undefined;
 				cleanup();
 				try {
 					controller.close();
@@ -353,7 +356,12 @@ function handleSseMode(
 			}, SSE_HEARTBEAT_MS);
 
 			// Run the SSE loop asynchronously.
-			runSseLoop(store, path, offsetParam, controller, encoder, signal, () => isConnected).finally(() => {
+			runSseLoop(store, path, offsetParam, controller, encoder, signal, () => isConnected, () => {
+				if (controller.desiredSize === null || controller.desiredSize > 0) return Promise.resolve();
+				return new Promise<void>((resolve) => {
+					resolveCapacity = resolve;
+				});
+			}).finally(() => {
 				cleanup();
 				try {
 					controller.close();
@@ -362,8 +370,14 @@ function handleSseMode(
 				}
 			});
 		},
+		pull() {
+			resolveCapacity?.();
+			resolveCapacity = undefined;
+		},
 		cancel() {
 			isConnected = false;
+			resolveCapacity?.();
+			resolveCapacity = undefined;
 			cleanup();
 		},
 	});
@@ -393,10 +407,13 @@ async function runSseLoop(
 	encoder: TextEncoder,
 	signal: AbortSignal,
 	isConnected: () => boolean,
+	waitForCapacity: () => Promise<void>,
 ): Promise<void> {
 	let currentOffset = offsetParam;
 
 	while (isConnected()) {
+		await waitForCapacity();
+		if (!isConnected()) return;
 		const result = await store.readEvents(path, { offset: currentOffset });
 
 		// Emit data events.

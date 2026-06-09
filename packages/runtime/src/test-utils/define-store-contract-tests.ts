@@ -23,6 +23,8 @@ import type { DirectAgentSubmissionInput } from '../runtime/agent-submissions.ts
 import type { DispatchInput } from '../runtime/dispatch-queue.ts';
 import type { SessionData } from '../types.ts';
 
+export { defineEventStreamStoreContractTests } from './define-event-stream-store-contract-tests.ts';
+
 // ─── Fixtures ───────────────────────────────────────────────────────────────
 
 function dispatchInput(overrides: Partial<DispatchInput> = {}): DispatchInput {

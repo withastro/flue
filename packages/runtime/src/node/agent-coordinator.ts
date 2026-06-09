@@ -11,6 +11,7 @@ import {
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
 import type { CreateContextFn } from '../runtime/handle-agent.ts';
+import { agentStreamPath } from '../runtime/event-stream-store.ts';
 import type { DispatchInput, DispatchQueue } from '../runtime/dispatch-queue.ts';
 
 export interface NodeAgentCoordinator {
@@ -139,7 +140,7 @@ export function createNodeAgentCoordinator(options: {
 			// Subscribe to events for durable agent event persistence.
 			// createStream is called before processSubmission (see spawnSubmissionTask).
 			if (eventStreamStore) {
-				const streamPath = `agents/${input.agent}/${input.id}`;
+				const streamPath = agentStreamPath(input.agent, input.id);
 				ctx.subscribeEvent((event) => {
 					eventStreamStore.appendEvent(streamPath, event).catch((error) => {
 						console.error('[flue:event-stream] appendEvent failed:', error);
@@ -170,7 +171,7 @@ export function createNodeAgentCoordinator(options: {
 			// Must complete before processSubmission so appendEvent calls
 			// in the subscribeEvent callback don't hit a missing stream.
 			if (eventStreamStore) {
-				const streamPath = `agents/${claimed.input.agent}/${claimed.input.id}`;
+				const streamPath = agentStreamPath(claimed.input.agent, claimed.input.id);
 				await eventStreamStore.createStream(streamPath);
 			}
 			return processSubmission({

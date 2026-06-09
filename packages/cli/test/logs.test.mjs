@@ -109,7 +109,7 @@ test('forwards authentication headers to follow-mode streams', async () => {
 				// Return a run_end event in the catch-up response so the stream closes.
 				response.writeHead(200, {
 					'content-type': 'application/json',
-					'stream-offset': '0000000000000000_0000000000000001',
+					'stream-offset': '0000000000000000_0000000000000000',
 					'stream-up-to-date': 'true',
 					'stream-closed': 'true',
 				});
@@ -149,7 +149,7 @@ test('forwards authentication headers to follow-mode streams', async () => {
 	}
 	// Verify the DS offset query param includes the converted --since value.
 	const firstUrl = new URL(requests[0].url, 'http://localhost');
-	assert.equal(firstUrl.searchParams.get('offset'), '0000000000000000_0000000000000026');
+	assert.equal(firstUrl.searchParams.get('offset'), '0000000000000000_0000000000000025');
 });
 
 test('rejects redirects instead of forwarding credentials', async () => {

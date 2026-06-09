@@ -37,7 +37,7 @@ import { handleRunRouteRequest } from './handle-run-routes.ts';
 import { handleStreamHead, handleStreamRead } from './handle-stream-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunPointer, RunRegistry } from './run-registry.ts';
-import type { EventStreamStore } from './event-stream-store.ts';
+import { agentStreamPath, runStreamPath, type EventStreamStore } from './event-stream-store.ts';
 import type { RunStore } from './run-store.ts';
 
 import {
@@ -508,7 +508,7 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 	return runAttachedMiddleware(c, rt.agentRouteMiddleware?.[name], async () => {
 		// DS stream read (GET/HEAD) — served directly for Node, forwarded for CF.
 		if (c.req.method === 'GET' || c.req.method === 'HEAD') {
-			const streamPath = `agents/${name}/${id}`;
+			const streamPath = agentStreamPath(name, id);
 			if (rt.target === 'node') {
 				if (!rt.eventStreamStore) {
 					return new Response(null, { status: 404 });
@@ -574,7 +574,7 @@ const runStreamReadHandler: MiddlewareHandler = async (c) => {
 		throw new RouteNotFoundError({ method, path: new URL(c.req.url).pathname });
 	}
 
-	const streamPath = `runs/${runId}`;
+	const streamPath = runStreamPath(runId);
 	const pointer = await lookupRunPointer(rt, c.env, runId);
 
 	return runAttachedMiddleware(c, rt.workflowRouteMiddleware?.[pointer.owner.workflowName], async () => {

@@ -9,6 +9,7 @@ import {
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
 import { assertAgentDispatchAdmissionInput, handleAgentRequest } from '../runtime/handle-agent.ts';
+import { agentStreamPath } from '../runtime/event-stream-store.ts';
 import { handleStreamHead, handleStreamRead } from '../runtime/handle-stream-routes.ts';
 import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import { createSqlAgentExecutionStore } from './agent-execution-store.ts';
@@ -174,7 +175,7 @@ class CloudflareAgentCoordinator {
 		if (method === 'GET' || method === 'HEAD') {
 			const store = this.eventStreamStore;
 			if (!store) return new Response(null, { status: 404 });
-			const streamPath = `agents/${this.agentName}/${this.instance.name}`;
+			const streamPath = agentStreamPath(this.agentName, this.instance.name);
 			if (method === 'HEAD') return await handleStreamHead(store, streamPath);
 			return handleStreamRead({ store, path: streamPath, request });
 		}
@@ -431,7 +432,7 @@ class CloudflareAgentCoordinator {
 		// Ensure the agent event stream exists before processing. createStream
 		// is idempotent — safe to call on every submission.
 		if (eventStreamStore) {
-			const streamPath = `agents/${this.agentName}/${this.instance.name}`;
+			const streamPath = agentStreamPath(this.agentName, this.instance.name);
 			await eventStreamStore.createStream(streamPath);
 		}
 		await processSubmission({
@@ -445,7 +446,7 @@ class CloudflareAgentCoordinator {
 			createContext: (payload, dispatchId) => {
 				const ctx = this.createContext(payload, submissionSyntheticRequest(submission.input), undefined, dispatchId);
 				if (eventStreamStore) {
-					const streamPath = `agents/${this.agentName}/${this.instance.name}`;
+					const streamPath = agentStreamPath(this.agentName, this.instance.name);
 					ctx.subscribeEvent((event) => {
 						eventStreamStore.appendEvent(streamPath, event).catch((error) => {
 							console.error('[flue:event-stream] appendEvent failed:', error);

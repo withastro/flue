@@ -29,6 +29,7 @@ const ZERO_COMPONENT = '0'.repeat(COMPONENT_PAD);
  * always `0` (Flue uses integer sequences, not segmented files).
  */
 export function formatOffset(seq: number): string {
+	if (seq === -1) return '-1';
 	return `${ZERO_COMPONENT}_${String(seq).padStart(COMPONENT_PAD, '0')}`;
 }
 
@@ -46,6 +47,14 @@ export function parseOffset(offset: string): number {
 		throw new Error(`[flue] Invalid stream offset: "${offset}".`);
 	}
 	return n;
+}
+
+export function agentStreamPath(agentName: string, instanceId: string): string {
+	return `agents/${agentName}/${instanceId}`;
+}
+
+export function runStreamPath(runId: string): string {
+	return `runs/${runId}`;
 }
 
 // ─── Interface ──────────────────────────────────────────────────────────────
@@ -104,7 +113,7 @@ export interface EventStreamStore {
 const CREATE_STREAMS_TABLE = `
 CREATE TABLE IF NOT EXISTS flue_event_streams (
   path         TEXT PRIMARY KEY,
-  next_offset  INTEGER NOT NULL DEFAULT 1,
+  next_offset  INTEGER NOT NULL DEFAULT 0,
   closed       INTEGER NOT NULL DEFAULT 0,
   created_at   TEXT NOT NULL DEFAULT (datetime('now'))
 )`;
@@ -150,11 +159,12 @@ export class SqliteEventStreamStore implements EventStreamStore {
 		const data = JSON.stringify(event);
 
 		// Two sequential statements: advance the write cursor, then insert
-		// the event at the old cursor position. Both targets (node:sqlite
-		// and CF DO SQLite) are single-threaded synchronous writers, so no
-		// other write can interleave. A process crash between the two
-		// leaves a gap in the sequence, which is harmless — readEvents
-		// uses `seq > ?` and naturally skips missing numbers.
+		// the event at the old cursor position. This is safe for the
+		// single-process SQLite configurations Flue currently supports. A
+		// process crash between the two leaves a gap in the sequence,
+		// which is harmless — readEvents uses `seq > ?` and naturally
+		// skips missing numbers. Shared SQLite files across Node processes
+		// need a transactional append implementation before being supported.
 		const updated = this.sql
 			.exec(
 				`UPDATE flue_event_streams
@@ -195,7 +205,7 @@ export class SqliteEventStreamStore implements EventStreamStore {
 	): Promise<EventStreamReadResult> {
 		const meta = await this.getStreamMeta(path);
 		if (!meta) {
-			return { events: [], nextOffset: formatOffset(0), upToDate: true, closed: false };
+			return { events: [], nextOffset: formatOffset(-1), upToDate: true, closed: false };
 		}
 
 		const rawOffset = opts?.offset ?? '-1';
@@ -238,7 +248,7 @@ export class SqliteEventStreamStore implements EventStreamStore {
 
 		const nextOffset = events.length > 0
 			? formatOffset(lastSeq)
-			: formatOffset(Math.max(0, startAfter));
+			: formatOffset(startAfter);
 
 		return {
 			events,
@@ -270,7 +280,7 @@ export class SqliteEventStreamStore implements EventStreamStore {
 		const row = rows[0]!;
 		const writeHead = row.next_offset as number;
 		return {
-			nextOffset: formatOffset(Math.max(0, writeHead - 1)),
+			nextOffset: formatOffset(writeHead - 1),
 			closed: (row.closed as number) === 1,
 		};
 	}
