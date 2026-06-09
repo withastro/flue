@@ -9,7 +9,6 @@ export interface HandleRunRouteOptions {
 	runStore?: RunStore;
 	owner: RunOwner;
 	runId?: string;
-	action: 'get';
 }
 
 export async function handleRunRouteRequest(opts: HandleRunRouteOptions): Promise<Response> {

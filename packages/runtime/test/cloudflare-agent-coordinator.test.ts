@@ -64,6 +64,7 @@ function makeFakeSql(events: string[] = []) {
 function makeRuntime(options: {
 	createdAgent?: Parameters<typeof createCloudflareAgentRuntime>[0]['createdAgents'][string];
 	createContext?: Parameters<typeof createCloudflareAgentRuntime>[0]['createContext'];
+	createEventStreamStore?: Parameters<typeof createCloudflareAgentRuntime>[0]['createEventStreamStore'];
 } = {}) {
 	return createCloudflareAgentRuntime({
 		createdAgents: options.createdAgent ? { assistant: options.createdAgent } : {},
@@ -74,6 +75,7 @@ function makeRuntime(options: {
 		runWithInstanceContext(_instance, _agentName, callback) {
 			return callback();
 		},
+		createEventStreamStore: options.createEventStreamStore,
 	});
 }
 
@@ -163,6 +165,27 @@ function prepare(
 }
 
 describe('createCloudflareAgentRuntime()', () => {
+	it('reuses one event stream store for reads and writes on an instance', async () => {
+		const store = {
+			getStreamMeta: vi.fn(),
+			readEvents: vi.fn(),
+			createStream: vi.fn(),
+			appendEvent: vi.fn(),
+			closeStream: vi.fn(),
+			subscribe: vi.fn(),
+			deleteStream: vi.fn(),
+		};
+		const createEventStreamStore = vi.fn(() => store);
+		const runtime = makeRuntime({ createEventStreamStore });
+		const { storage } = makeFakeSql();
+		const instance = makeInstance(storage);
+		prepare(runtime, instance);
+
+		await runtime.onRequest(instance, new Request('http://localhost/agents/assistant/agent-1'));
+
+		expect(createEventStreamStore).toHaveBeenCalledOnce();
+	});
+
 	it('initializes SQLite during preparation before instance attachment', () => {
 		const runtime = makeRuntime();
 

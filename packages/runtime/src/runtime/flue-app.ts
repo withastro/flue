@@ -34,7 +34,7 @@ import {
 	type StartWorkflowAdmissionFn,
 	type WorkflowHandler,
 } from './handle-agent.ts';
-import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-routes.ts';
+import { handleRunRouteRequest } from './handle-run-routes.ts';
 import { handleStreamHead, handleStreamRead } from './handle-stream-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunPointer, RunRegistry } from './run-registry.ts';
@@ -601,7 +601,7 @@ const runStreamReadHandler: MiddlewareHandler = async (c) => {
 	if (!pointer) throw new RunNotFoundError({ runId });
 
 	const response = await rt.routeRunRequest(
-		normalizeRunRequest(c.req.raw, runId),
+		c.req.raw,
 		c.env,
 		pointer.owner,
 	);
@@ -628,7 +628,7 @@ export async function handleRunById(opts: {
 		if (!pointer) throw new RunNotFoundError({ runId });
 
 		const response = await rt.routeRunRequest(
-			normalizeRunRequest(request, runId),
+			normalizeRunMetadataRequest(request),
 			env,
 			pointer.owner,
 		);
@@ -648,7 +648,6 @@ export async function handleRunById(opts: {
 		runStore: rt.runStore,
 		owner: pointer.owner,
 		runId,
-		action: 'get',
 	});
 }
 
@@ -659,9 +658,9 @@ function lazyOpenApiRouteHandler(
 	return (c, next) => openAPIRouteHandler(app, getOptions())(c, next);
 }
 
-function normalizeRunRequest(request: Request, runId: string): Request {
+function normalizeRunMetadataRequest(request: Request): Request {
 	const url = new URL(request.url);
-	url.pathname = `/runs/${encodeURIComponent(runId)}`;
+	url.pathname = '/__flue/internal/run-metadata';
 	return new Request(url, request);
 }
 

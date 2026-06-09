@@ -14,6 +14,7 @@ import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import { createSqlAgentExecutionStore } from './agent-execution-store.ts';
 
 export const CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH = '/__flue/internal/dispatch';
+export const CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH = '/__flue/internal/run-metadata';
 
 const FLUE_AGENT_SUBMISSION_WAKE_CALLBACK = '__flueWakeAgentSubmissions';
 const FLUE_AGENT_SUBMISSION_WAKE_SECONDS = 30;
@@ -119,7 +120,14 @@ export function createCloudflareAgentRuntime(options: CloudflareAgentRuntimeOpti
 		attach(instance, prepared) {
 			coordinators.set(
 				instance,
-				new CloudflareAgentCoordinator(instance, prepared, options, observers, activeAttempts),
+				new CloudflareAgentCoordinator(
+					instance,
+					prepared,
+					options,
+					options.createEventStreamStore?.(instance),
+					observers,
+					activeAttempts,
+				),
 			);
 		},
 		onStart(instance, inherited) {
@@ -142,6 +150,7 @@ class CloudflareAgentCoordinator {
 		private readonly instance: CloudflareAgentInstance,
 		private readonly prepared: CloudflareAgentPreparedCoordinator,
 		private readonly options: CloudflareAgentRuntimeOptions,
+		private readonly eventStreamStore: import('../runtime/event-stream-store.ts').EventStreamStore | undefined,
 		private readonly observers: ReturnType<typeof createAgentSubmissionObserverRegistry>,
 		private readonly activeAttempts: Set<string>,
 	) {}
@@ -164,7 +173,7 @@ class CloudflareAgentCoordinator {
 		// DS stream read (GET/HEAD) — served from the event stream store.
 		const method = request.method;
 		if (method === 'GET' || method === 'HEAD') {
-			const store = this.options.createEventStreamStore?.(this.instance);
+			const store = this.eventStreamStore;
 			if (!store) return new Response(null, { status: 404 });
 			const streamPath = `agents/${this.agentName}/${this.instance.name}`;
 			if (method === 'HEAD') return await handleStreamHead(store, streamPath);
@@ -419,7 +428,7 @@ class CloudflareAgentCoordinator {
 	}
 
 	private async processSubmissionEntry(submission: AgentSubmission): Promise<void> {
-		const eventStreamStore = this.options.createEventStreamStore?.(this.instance);
+		const eventStreamStore = this.eventStreamStore;
 		// Ensure the agent event stream exists before processing. createStream
 		// is idempotent — safe to call on every submission.
 		if (eventStreamStore) {

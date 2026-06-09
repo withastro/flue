@@ -246,6 +246,39 @@ describe('admin()', () => {
 		});
 	});
 
+	it('forwards Cloudflare admin run detail requests through the internal metadata path', async () => {
+		const runRegistry = new InMemoryRunRegistry();
+		await runRegistry.recordRunStart({
+			runId: 'workflow:daily-report:01',
+			owner: {
+				kind: 'workflow',
+				workflowName: 'daily-report',
+				instanceId: 'workflow:daily-report:01',
+			},
+			startedAt: '2026-06-01T10:00:00.000Z',
+		});
+		const routeRunRequest = vi.fn(async (request: Request) => {
+			expect(new URL(request.url).pathname).toBe('/__flue/internal/run-metadata');
+			return Response.json({ runId: 'workflow:daily-report:01', status: 'completed' });
+		});
+		configureFlueRuntime({
+			target: 'cloudflare',
+			manifest: { agents: [] },
+			createRunRegistryForRequest: () => runRegistry,
+			routeRunRequest,
+		});
+		const app = new Hono();
+		app.route('/inspection', admin());
+
+		const response = await app.fetch(
+			new Request('http://localhost/inspection/runs/workflow%3Adaily-report%3A01'),
+		);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({ runId: 'workflow:daily-report:01', status: 'completed' });
+		expect(routeRunRequest).toHaveBeenCalledOnce();
+	});
+
 	it('rejects run listing when the runtime has no run registry', async () => {
 		configureFlueRuntime({ target: 'node', manifest: { agents: [] } });
 		const app = new Hono();

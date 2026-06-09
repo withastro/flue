@@ -45,6 +45,8 @@ describe('CloudflarePlugin', () => {
 		);
 		expect(entry).toContain('createDurableRunStore(doInstance.ctx.storage.sql)');
 		expect(entry).toContain(': memoryRunStore;');
+		expect(entry).toContain('const eventStreamStores = new WeakMap();');
+		expect(entry).toContain('const INTERNAL_RUN_METADATA_PATH = CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH;');
 		expect(entry).not.toContain('function createDOStore(sql)');
 		expect(entry).not.toContain('const memoryStore = new InMemorySessionStore();');
 		expect(entry).not.toContain('CREATE TABLE IF NOT EXISTS flue_sessions');
@@ -64,6 +66,7 @@ describe('CloudflarePlugin', () => {
 		expect(entry).toContain('return cloudflareAgents.wakeSubmissions(this);');
 		expect(entry).toContain('return cloudflareAgents.onRequest(this, request);');
 		expect(entry).toContain('return cloudflareAgents.onFiberRecovered(this, ctx, () => typeof super.onFiberRecovered === \'function\' ? super.onFiberRecovered(ctx) : undefined);');
+		expect(entry).toContain("if (url.pathname === INTERNAL_RUN_METADATA_PATH) return { action: 'get' };");
 		expect(entry).not.toContain('cloudflareAgents.fetch');
 		expect(entry).not.toContain('webSocketMessage');
 		expect(entry).not.toContain('webSocketClose');
