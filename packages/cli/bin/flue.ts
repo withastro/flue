@@ -1392,16 +1392,17 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 		let exitCode = 0;
 		let emittedCount = 0;
 		for (const event of events) {
+			if (event.type === 'run_end' && event.isError) exitCode = 2;
 			if (args.types && !args.types.has(event.type)) continue;
 
 			logsEmitEvent(event, args.format);
 			emittedCount++;
 
-			if (event.type === 'run_end' && event.isError) exitCode = 2;
 			if (args.limit !== undefined && emittedCount >= args.limit) break;
 		}
 		if (args.format === 'pretty') flushBuffers();
-		process.exit(exitCode);
+		process.exitCode = exitCode;
+		return;
 	}
 
 	// Follow mode: stream via DS protocol with live tailing.
@@ -1423,13 +1424,13 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 
 	try {
 		for await (const event of stream) {
+			if (event.type === 'run_end' && event.isError) exitCode = 2;
 			if (args.types && !args.types.has(event.type)) continue;
 
 			logsEmitEvent(event, args.format, args.format === 'ndjson' ? stream.offset : undefined);
 			emittedCount++;
 
 			if (event.type === 'run_end') {
-				if (event.isError) exitCode = 2;
 				break;
 			}
 			if (args.limit !== undefined && emittedCount >= args.limit) break;
@@ -1452,7 +1453,7 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 	// the catch block. Check the flag to set the correct exit code.
 	if (signalled) exitCode = 130;
 
-	process.exit(exitCode);
+	process.exitCode = exitCode;
 }
 
 // ─── `flue init` ────────────────────────────────────────────────────────────

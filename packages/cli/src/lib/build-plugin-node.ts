@@ -127,6 +127,9 @@ try {
   }
   runStore = userPersistenceAdapter.connectRunStore();
   runRegistry = userPersistenceAdapter.connectRunRegistry();
+  if (typeof userPersistenceAdapter.connectEventStreamStore !== 'function') {
+    throw new Error('connectEventStreamStore() must be defined on the PersistenceAdapter.');
+  }
 } catch (error) {
   throw new Error('[flue] Failed to initialize persistence from db.ts: ' + (error instanceof Error ? error.message : error), { cause: error });
 }`

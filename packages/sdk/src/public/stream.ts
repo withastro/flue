@@ -6,10 +6,8 @@
  * and SSE live tailing.
  */
 
-import {
-	stream,
-	type LiveMode,
-} from '@durable-streams/client';
+import { stream } from '@durable-streams/client';
+import type { LiveMode } from '@durable-streams/client';
 import type { FlueEvent } from '../types.ts';
 
 /** Options for streaming Flue events from an agent instance or workflow run. */

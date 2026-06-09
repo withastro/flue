@@ -58,7 +58,9 @@ function generateETag(
 	endOffset: string,
 	closed: boolean,
 ): string {
-	const pathEncoded = typeof btoa === 'function' ? btoa(path) : Buffer.from(path).toString('base64');
+	const pathEncoded = typeof Buffer !== 'undefined'
+		? Buffer.from(path).toString('base64')
+		: btoa(String.fromCharCode(...new TextEncoder().encode(path)));
 	const closedSuffix = closed ? ':c' : '';
 	return `"${pathEncoded}:${startOffset}:${endOffset}${closedSuffix}"`;
 }
