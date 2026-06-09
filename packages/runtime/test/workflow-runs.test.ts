@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { FlueRuntime } from '../src/internal.ts';
+import type { FlueContextInternal, FlueRuntime } from '../src/internal.ts';
 import {
 	configureFlueRuntime,
 	createFlueContext,
@@ -13,6 +13,7 @@ import { InMemoryRunRegistry } from '../src/node/run-registry.ts';
 import { formatOffset } from '../src/runtime/event-stream-store.ts';
 import { resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import { flue } from '../src/routing.ts';
+import type { FlueEvent } from '../src/types.ts';
 import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 afterEach(() => {
@@ -115,6 +116,45 @@ describe('workflow invocation', () => {
 		expect(body).toEqual({ result: { delivered: true }, _meta: { runId: expect.any(String) } });
 		expect(body._meta.runId).toMatch(/^workflow:daily-report:[^:]+$/);
 		expect(response.headers.get('x-flue-run-id')).toBe(body._meta.runId);
+	});
+
+	it('does not persist per-chunk delta events to the run stream', async () => {
+		const app = createApp({
+			target: 'node',
+			manifest: { agents: [], workflows: [{ name: 'daily-report', transports: { http: true } }] },
+			workflowHandlers: {
+				'daily-report': async (ctx) => {
+					const internal = ctx as FlueContextInternal;
+					internal.emitEvent({
+						type: 'message_update',
+						message: { role: 'assistant', content: [{ type: 'text', text: 'He' }] },
+						assistantMessageEvent: { type: 'text_delta', contentIndex: 0, delta: 'He' },
+					} as FlueEvent);
+					internal.emitEvent({ type: 'text_delta', text: 'He' } as FlueEvent);
+					internal.emitEvent({ type: 'thinking_delta', delta: 'hm' } as FlueEvent);
+					return { delivered: true };
+				},
+			},
+			createContext,
+			runStore: new InMemoryRunStore(),
+			runRegistry: new InMemoryRunRegistry(),
+		});
+
+		const response = await app.fetch(
+			new Request('http://localhost/flue/workflows/daily-report', { method: 'POST' }),
+		);
+		expect(response.status).toBe(202);
+		const { runId } = (await response.json()) as { runId: string };
+		const streamResponse = await app.fetch(
+			new Request(`http://localhost/flue/runs/${encodeURIComponent(runId)}`),
+		);
+		const events = (await streamResponse.json()) as Array<{ type: string; eventIndex: number }>;
+
+		expect(events.map((event) => event.type)).toEqual(['run_start', 'run_end']);
+		expect(events).toMatchObject([
+			{ type: 'run_start', eventIndex: 0 },
+			{ type: 'run_end', eventIndex: 4 },
+		]);
 	});
 
 	it('rejects workflow admission before executing the handler when run-store persistence is unavailable', async () => {
