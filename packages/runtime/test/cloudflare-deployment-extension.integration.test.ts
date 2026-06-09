@@ -173,7 +173,7 @@ async function createGeneratedFixture(
 	);
 	fs.symlinkSync(process.cwd(), path.join(root, 'node_modules', '@flue', 'runtime'), 'dir');
 	fs.symlinkSync(
-		path.resolve(process.cwd(), '../../examples/cloudflare-websocket/node_modules/agents'),
+		path.resolve(process.cwd(), '../../examples/cloudflare/node_modules/agents'),
 		path.join(root, 'node_modules', 'agents'),
 		'dir',
 	);

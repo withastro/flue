@@ -2,8 +2,6 @@ export function generateBuiltModuleNormalizationSource(): string {
 	return `
 function normalizeBuiltModules(agentModules, workflowModules) {
   const manifest = { agents: [], workflows: [] };
-  const directHandlers = {};
-  const localAgentHandlers = {};
   const createdAgents = {};
   const dispatchAgentNames = new Map();
   const workflowHandlers = {};
@@ -20,8 +18,6 @@ function normalizeBuiltModules(agentModules, workflowModules) {
     const previousDispatchName = dispatchAgentNames.get(mod.default);
     if (previousDispatchName !== undefined) throw new Error('[flue] Agents "' + previousDispatchName + '" and "' + name + '" default-export the same created agent value. Use distinct createAgent(...) values for dispatchable agent modules.');
     dispatchAgentNames.set(mod.default, name);
-    localAgentHandlers[name] = createDirectAgentHandler(mod.default);
-    if (transports.http) directHandlers[name] = localAgentHandlers[name];
     if (typeof mod.route === 'function') agentRouteMiddleware[name] = mod.route;
   }
 
@@ -36,7 +32,7 @@ function normalizeBuiltModules(agentModules, workflowModules) {
     if (typeof mod.route === 'function') workflowRouteMiddleware[name] = mod.route;
   }
 
-  return { manifest, directHandlers, localAgentHandlers, createdAgents, dispatchAgentNames, workflowHandlers, localWorkflowHandlers, agentRouteMiddleware, workflowRouteMiddleware };
+  return { manifest, createdAgents, dispatchAgentNames, workflowHandlers, localWorkflowHandlers, agentRouteMiddleware, workflowRouteMiddleware };
 }
 
 `;

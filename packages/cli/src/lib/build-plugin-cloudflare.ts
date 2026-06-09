@@ -165,7 +165,6 @@ import {
   failRecoveredRun,
   configureFlueRuntime,
   createDefaultFlueApp,
-  createDirectAgentHandler,
   hasRegisteredProvider,
 } from '@flue/runtime/internal';
 import {
@@ -214,7 +213,7 @@ const workflowModules = {
 ${workflowModuleEntries}
 };
 const normalized = normalizeBuiltModules(agentModules, workflowModules);
-const { manifest, directHandlers, createdAgents, dispatchAgentNames, workflowHandlers, agentRouteMiddleware, workflowRouteMiddleware } = normalized;
+const { manifest, createdAgents, dispatchAgentNames, workflowHandlers, agentRouteMiddleware, workflowRouteMiddleware } = normalized;
 const agentIdentities = {
 ${agentIdentityEntries}
 };
@@ -400,7 +399,6 @@ function createEventStreamStoreForInstance(doInstance) {
 
 const cloudflareAgents = createCloudflareAgentRuntime({
   createdAgents,
-  directHandlers,
   createContext: ({ executionStore, instance, payload, request, initialEventIndex, dispatchId }) =>
     createAgentContextForRequest(executionStore, instance.name, payload, instance, request, initialEventIndex, dispatchId),
   runWithInstanceContext: (instance, agentName, fn) => runWithInstanceContext(instance, agentRuntimeIdentity(agentName), fn),

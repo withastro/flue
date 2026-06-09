@@ -68,7 +68,6 @@ function makeRuntime(options: {
 } = {}) {
 	return createCloudflareAgentRuntime({
 		createdAgents: options.createdAgent ? { assistant: options.createdAgent } : {},
-		directHandlers: {},
 		createContext: options.createContext ?? (() => {
 			throw new Error('Unexpected context creation.');
 		}),

@@ -63,7 +63,6 @@ import {
   resolveModel,
   configureFlueRuntime,
   createDefaultFlueApp,
-  createDirectAgentHandler,
   invokeWorkflowAttached,
   invokeDirectAttached,
   generateWorkflowRunId,
@@ -87,7 +86,7 @@ const workflowModules = {
 ${workflowModuleEntries}
 };
 const normalized = normalizeBuiltModules(agentModules, workflowModules);
-const { manifest, localAgentHandlers, createdAgents, dispatchAgentNames, workflowHandlers, localWorkflowHandlers, agentRouteMiddleware, workflowRouteMiddleware } = normalized;
+const { manifest, createdAgents, dispatchAgentNames, workflowHandlers, localWorkflowHandlers, agentRouteMiddleware, workflowRouteMiddleware } = normalized;
 
 const isLocalMode = process.env.FLUE_MODE === 'local';
 const localCliTarget = process.env.FLUE_CLI_TARGET;
@@ -317,11 +316,6 @@ function startLocalWorkflow(name) {
 }
 
 function startLocalAgent(name, id) {
-  const handler = localAgentHandlers[name];
-  if (!handler) {
-    failLocalStartup('Unknown agent: ' + name);
-    return;
-  }
   if (!id) {
     failLocalStartup('Local agent connection requires an instance id.');
     return;

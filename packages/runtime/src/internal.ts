@@ -49,7 +49,6 @@ export type { DispatchInput, DispatchQueue } from './runtime/dispatch-queue.ts';
 export type { FlueRuntime } from './runtime/flue-app.ts';
 export { configureFlueRuntime, createDefaultFlueApp } from './runtime/flue-app.ts';
 export type {
-	AgentHandler,
 	CreateContextFn,
 	DirectAttachedOptions,
 	FailRecoveredRunOptions,
@@ -74,7 +73,6 @@ export type {
 //
 // The user-facing `flue()` itself is re-exported from `@flue/runtime/routing`, not here.
 export {
-	createDirectAgentHandler,
 	failRecoveredRun,
 	handleWorkflowRequest,
 	invokeDirectAttached,

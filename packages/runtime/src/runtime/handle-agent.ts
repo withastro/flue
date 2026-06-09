@@ -9,7 +9,6 @@ import {
 } from '../errors.ts';
 import type {
 	AttachedAgentEventCallback,
-	CreatedAgent,
 	DirectAgentPayload,
 	FlueEvent,
 	FlueEventCallback,
@@ -23,13 +22,7 @@ import type { RunOwner, RunRegistry } from './run-registry.ts';
 import { assertPersistedWorkflowEvent, type RunStore } from './run-store.ts';
 
 
-/** Direct agent handler signature used by attached HTTP prompts. */
-export type AgentHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
 export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
-
-interface DirectRequestSession {
-	processDirectInput(input: { message: string }): PromiseLike<unknown>;
-}
 
 export function assertAgentDispatchAdmissionInput(input: unknown): asserts input is DispatchInput {
 	if (!isDispatchInput(input))
@@ -51,26 +44,6 @@ function isDispatchInput(value: unknown): value is DispatchInput {
 		input.input !== undefined &&
 		typeof input.acceptedAt === 'string' &&
 		input.acceptedAt.trim() !== ''
-	);
-}
-
-export function createDirectAgentHandler(agent: CreatedAgent): AgentHandler {
-	return async (ctx) => {
-		const payload = parseDirectAgentPayload(ctx.payload);
-		const harness = await ctx.initializeCreatedAgent(agent, undefined);
-		const session = await harness.session();
-		if (!isDirectRequestSession(session)) {
-			throw new Error('[flue] Internal session does not support direct input processing.');
-		}
-		return session.processDirectInput({ message: payload.message });
-	};
-}
-
-function isDirectRequestSession(value: unknown): value is DirectRequestSession {
-	return (
-		!!value &&
-		typeof value === 'object' &&
-		typeof (value as DirectRequestSession).processDirectInput === 'function'
 	);
 }
 
@@ -152,12 +125,6 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 
 	try {
 		const rawPayload = await parseJsonBody(request);
-		if (request.headers.get('x-webhook') === 'true') {
-			throw new InvalidRequestError({
-				reason:
-					'Direct agent prompts are attached interactions. Use dispatch(...) for asynchronous delivery.',
-			});
-		}
 		const payload = parseDirectAgentPayload(rawPayload);
 		const directOptions: DirectAttachedOptions = {
 			id,

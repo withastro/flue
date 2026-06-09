@@ -8,7 +8,7 @@ import {
 	reconcileInterruptedSubmission,
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
-import { type AgentHandler, assertAgentDispatchAdmissionInput, handleAgentRequest } from '../runtime/handle-agent.ts';
+import { assertAgentDispatchAdmissionInput, handleAgentRequest } from '../runtime/handle-agent.ts';
 import { handleStreamHead, handleStreamRead } from '../runtime/handle-stream-routes.ts';
 import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import { createSqlAgentExecutionStore } from './agent-execution-store.ts';
@@ -60,7 +60,6 @@ interface CloudflareAgentPreparedCoordinator {
 
 interface CloudflareAgentRuntimeOptions {
 	readonly createdAgents: Record<string, Parameters<typeof createAgentSubmissionSessionHandler>[0]>;
-	readonly directHandlers: Record<string, AgentHandler>;
 	readonly createContext: (options: {
 		readonly executionStore: AgentExecutionStore;
 		readonly instance: CloudflareAgentInstance;
@@ -180,8 +179,6 @@ class CloudflareAgentCoordinator {
 			return handleStreamRead({ store, path: streamPath, request });
 		}
 
-		const handler = this.options.directHandlers[this.agentName];
-		if (!handler) throw new Error('[flue] Agent direct handler is unavailable.');
 		return this.runWithInstanceContext(() =>
 			handleAgentRequest({
 				request,
