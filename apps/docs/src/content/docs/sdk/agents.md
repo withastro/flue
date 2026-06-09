@@ -11,7 +11,7 @@ Direct agent APIs interact with persistent agent instances. They use an agent na
 prompt(name: string, id: string, options: AgentPromptOptions): Promise<AgentPromptResult>;
 ```
 
-Sends one prompt to a persistent agent instance and waits for the terminal result.
+Sends one prompt to a persistent agent instance and waits for the terminal result. This uses `POST /agents/:name/:id?wait=result`.
 
 ### `AgentPromptOptions`
 
@@ -36,7 +36,7 @@ interface AgentPromptResult {
 send(name: string, id: string, options: AgentPromptOptions): Promise<{ streamUrl: string; offset: string }>;
 ```
 
-Starts one prompt without waiting for completion. Use the returned `offset` with `agents.stream()` to read exactly that prompt's events.
+Starts one prompt without waiting for completion. This uses the default `POST /agents/:name/:id` response, which returns `202`. Use the returned `offset` with `agents.stream()` to read exactly that prompt's events.
 
 ## `client.agents.stream(...)`
 
@@ -44,9 +44,9 @@ Starts one prompt without waiting for completion. Use the returned `offset` with
 stream(name: string, id: string, options?: FlueStreamOptions): FlueEventStream<AttachedAgentEvent>;
 ```
 
-Streams events from an agent instance via the [Durable Streams](https://durablestreams.com) protocol. Returns an async iterable of typed `FlueEvent` objects.
+Streams events from an agent instance via the [Durable Streams](https://durablestreams.com) protocol. See [Streaming Protocol](/docs/api/streaming-protocol/) for the raw HTTP contract. Returns an async iterable of typed `FlueEvent` objects.
 
-Use `offset` to control where reading begins. Pass `"-1"` for full history, `"now"` for future events only, or an offset returned by a previous read to resume from that position.
+Use `offset` to control where reading begins. Pass `"-1"` for full history, `"now"` for future events only, or an offset returned by a previous read to resume from that position. A stream created before the first admitted prompt can return `404` because agent streams are created on first prompt admission.
 
 ```ts
 for await (const event of client.agents.stream('support', 'ticket-42', {

@@ -10,7 +10,6 @@ Observable runtime types and global observation APIs are exported from `@flue/ru
 import {
   type AttachedAgentEvent,
   type FlueEvent,
-  type FluePublicError,
   observe,
   type FlueEventSubscriber,
 } from '@flue/runtime';

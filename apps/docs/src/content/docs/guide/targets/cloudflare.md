@@ -92,7 +92,7 @@ Similarly, use `renamed_classes` when a deployed class changes its name, such as
 
 ## Durable agent execution
 
-Cloudflare agents durably admit direct HTTP prompts together with `dispatch(...)` inputs. All accepted input for one session enters the same per-session queue, while separate sessions can progress independently.
+Cloudflare agents durably admit direct HTTP prompts together with `dispatch(...)` inputs. All accepted input for one agent instance enters the same queue.
 
 ```txt
 direct HTTP prompt ─────────────────────┐

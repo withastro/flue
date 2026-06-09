@@ -106,7 +106,7 @@ Mounting `flue()` does not make every discovered agent or workflow directly invo
 | Module export    | Available through the mounted Flue application                                                                                         |
 | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
 | Agent `route`    | HTTP prompts at `POST /agents/:name/:id` and event streaming at `GET /agents/:name/:id` beneath the mount path.                        |
-| Workflow `route` | HTTP invocation at `POST /workflows/:name` beneath the mount path. Run event streaming at `GET /runs/:runId` beneath the mount path.   |
+| Workflow `route` | HTTP invocation at `POST /workflows/:name` beneath the mount path. Run event streaming at `GET /runs/:runId` is available for admitted workflow runs beneath the mount path.   |
 
 An agent used only through application-owned `dispatch(...)` calls does not need a public transport export.
 

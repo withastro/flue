@@ -78,6 +78,7 @@ export const docsSections: DocsSection[] = [
 					{ title: 'Agent API', slug: 'api/agent-api' },
 					{ title: 'Provider API', slug: 'api/provider-api' },
 					{ title: 'Routing API', slug: 'api/routing-api' },
+					{ title: 'Streaming Protocol', slug: 'api/streaming-protocol' },
 					{ title: 'Events Reference', slug: 'api/events-reference' },
 				],
 			},
@@ -135,7 +136,8 @@ export const docsSections: DocsSection[] = [
 						title: 'client.agents',
 						slug: 'sdk/agents',
 						items: [
-							{ title: 'invoke(...)', slug: 'sdk/agents', anchor: 'clientagentsinvoke' },
+							{ title: 'prompt(...)', slug: 'sdk/agents', anchor: 'clientagentsprompt' },
+							{ title: 'send(...)', slug: 'sdk/agents', anchor: 'clientagentssend' },
 							{ title: 'stream(...)', slug: 'sdk/agents', anchor: 'clientagentsstream' },
 						],
 					},

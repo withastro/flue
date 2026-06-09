@@ -9,12 +9,16 @@ Adapter authors implement these contracts to back a custom database. Import them
 import type {
   AgentExecutionStore,
   AgentSubmissionStore,
+  EventStreamMeta,
+  EventStreamReadResult,
+  EventStreamStore,
   PersistenceAdapter,
   RunRegistry,
   RunStore,
   SessionData,
   SessionStore,
 } from '@flue/runtime/adapter';
+import { formatOffset, parseOffset } from '@flue/runtime/adapter';
 ```
 
 Application code usually configures an adapter through `db.ts` rather than implementing one; see [Database](/docs/guide/database/) for setup and target behavior. Most applications use the built-in `sqlite()` adapter or `@flue/postgres`.
@@ -28,18 +32,20 @@ interface PersistenceAdapter {
   connect(): AgentExecutionStore;
   connectRunStore(): RunStore;
   connectRunRegistry(): RunRegistry;
+  connectEventStreamStore(): EventStreamStore;
   migrate?(): void | Promise<void>;
   close?(): void | Promise<void>;
 }
 ```
 
-A persistence adapter provides the database-backed stores used by a generated Node server. Flue calls `migrate()` once at startup when present, then calls `connect()`, `connectRunStore()`, and `connectRunRegistry()`. On shutdown, Flue calls `close()` when present.
+A persistence adapter provides the database-backed stores used by a generated Node server. Flue calls `migrate()` once at startup when present, then calls `connect()`, `connectRunStore()`, `connectRunRegistry()`, and `connectEventStreamStore()`. On shutdown, Flue calls `close()` when present.
 
 | Method | Contract |
 | --- | --- |
 | `connect()` | Return agent session and submission storage. |
-| `connectRunStore()` | Return workflow-run records and event storage. |
+| `connectRunStore()` | Return workflow-run records and metadata. |
 | `connectRunRegistry()` | Return workflow-run indexing and listing storage. |
+| `connectEventStreamStore()` | Return durable event-stream storage for agent and workflow events. |
 | `migrate?()` | Run idempotent schema setup before connecting. |
 | `close?()` | Release connections, pools, or file handles during shutdown. |
 
@@ -121,13 +127,30 @@ The submission store owns ordered admission, claim ownership, turn journals, str
 interface RunStore {
   createRun(input: CreateRunInput): Promise<void>;
   endRun(input: EndRunInput): Promise<void>;
-  appendEvent(runId: string, event: FlueEvent): Promise<void>;
-  getEvents(runId: string, fromIndex?: number): Promise<FlueEvent[]>;
   getRun(runId: string): Promise<RunRecord | null>;
 }
 ```
 
-The run store persists workflow-run records and workflow events. Agent prompts and dispatched agent input do not create workflow runs.
+The run store persists workflow-run records and metadata only. Event payloads live in `EventStreamStore`. Agent prompts and dispatched agent input do not create workflow runs.
+
+## `EventStreamStore`
+
+```ts
+interface EventStreamStore {
+  createStream(path: string): Promise<void>;
+  appendEvent(path: string, event: unknown): Promise<string>;
+  readEvents(
+    path: string,
+    opts?: { offset?: string; limit?: number },
+  ): Promise<EventStreamReadResult>;
+  closeStream(path: string): Promise<void>;
+  getStreamMeta(path: string): Promise<EventStreamMeta | null>;
+  subscribe(path: string, listener: () => void): () => void;
+  deleteStream(path: string): Promise<void>;
+}
+```
+
+`EventStreamStore` owns append-only event streams for agent instances and workflow runs. A path is typically `agents/<name>/<id>` or `runs/<runId>`. `appendEvent()` returns the new Durable Streams offset. `readEvents()` reads events strictly after `offset`; `"-1"` starts at the beginning and `"now"` starts at the current tail. `subscribe()` registers an in-process listener for appends or closure on that store instance; it is not a cross-process notification contract.
 
 ## `RunRegistry`
 
@@ -140,7 +163,7 @@ interface RunRegistry {
 }
 ```
 
-The run registry indexes workflow runs for `/runs`, `flue logs`, and administrative run listing.
+The run registry indexes workflow runs for `/runs`, `flue logs`, and administrative run listing. It does not store event payloads.
 
 ## `SessionData`
 
@@ -182,7 +205,7 @@ interface SessionData {
 - `MAX_LIST_LIMIT`
 - `encodeRunCursor(...)`
 - `decodeRunCursor(...)`
-- `serializedEventForPersistence(...)`
-- `parsePersistedWorkflowEvent(...)`
+- `formatOffset(...)`
+- `parseOffset(...)`
 
-Use these helpers when implementing a backend that needs to preserve Flue's storage-key, timestamp, payload-validation, cursor, or workflow-event semantics.
+Use these helpers when implementing a backend that needs to preserve Flue's storage-key, timestamp, payload-validation, cursor, or event-stream offset semantics.

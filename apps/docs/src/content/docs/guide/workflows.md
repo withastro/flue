@@ -66,7 +66,7 @@ export const route: WorkflowRouteHandler = async (_c, next) => next();
 
 An exposed `summarize` workflow accepts requests at `POST /workflows/summarize`. The route middleware is also the boundary where your application can authenticate or reject an incoming request before starting a run.
 
-For HTTP response modes, authentication, and custom application mounts, see [Routing](/docs/guide/routing/).
+By default, `POST /workflows/summarize` returns `202 { runId }` after admission. Add `?wait=result` to wait for the completed result in the same request. For HTTP response modes, authentication, and custom application mounts, see [Routing](/docs/guide/routing/).
 
 ## Working with the harness
 
@@ -159,7 +159,7 @@ When a workflow is invoked through a running application, its `runId` lets you i
 | ------------------------------------------------- | ----------------------------------------------------------------------- |
 | `flue logs <runId>`                               | Inspect or follow events for a workflow run from the command line.      |
 | `GET /runs/<runId>`                               | Stream run events via the Durable Streams protocol.                     |
-| `client.runs.get()`, `.events()`, and `.stream()` | Build application tooling around a known workflow run.                  |
+| `client.runs.get()`, `.events()`, and `.stream()` | Build application tooling around a known workflow run. `runs.get()` requires the admin mount. |
 | `client.admin.runs.list()`                        | List workflow runs for protected administrative tooling.                |
 
 Administrative run listing can reveal workflow payloads, results, model activity, and application logs. Only publish an administrative listing surface behind an authorization boundary appropriate for that data.

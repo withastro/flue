@@ -16,7 +16,7 @@ flue logs <workflowRunId> [--server <url>] [--header 'Name: value'] [--follow|-f
 
 Runs are workflow-only. Direct HTTP agent prompts and dispatched agent inputs are persistent session interactions, not runs.
 
-`flue logs` reads run events via the [Durable Streams](https://durablestreams.com/) protocol. Follow mode uses live SSE tailing with automatic reconnection and offset-based replay. Replay mode performs a single catch-up read and exits.
+`flue logs` reads run events via the [Durable Streams](https://durablestreams.com/) protocol. Follow mode uses live SSE tailing with automatic reconnection and offset-based replay. Replay mode performs a single catch-up read and exits. See [Streaming Protocol](/docs/api/streaming-protocol/) for the raw HTTP contract.
 
 `flue logs` inspects runs owned by the selected running server. It cannot inspect the private child process used by `flue run`: that one-shot process streams events directly to its command and does not publish run-inspection routes.
 
@@ -39,14 +39,14 @@ Runs are workflow-only. Direct HTTP agent prompts and dispatched agent inputs ar
 | `--limit <n>`                     | Unlimited                        | Limit emitted events. Applied client-side in both replay and follow modes.                                                |
 | `--format <pretty\|json\|ndjson>` | `pretty`                         | Select human-readable or line-delimited JSON output.                                                                      |
 
-When neither follow option is passed, `flue logs` queries the admin endpoint to determine run status: active runs are followed, terminal runs are replayed once.
+When neither follow option is passed, `flue logs` queries the admin endpoint to determine run status: active runs are followed, terminal runs are replayed once. The selected server must publish the admin mount used by the CLI, usually `/admin`; otherwise automatic follow selection fails before reading the stream. Use `--follow` or `--no-follow` when only the public `flue()` mount is available.
 
 Run routes may expose sensitive payloads, results, errors, and events. Use repeatable `--header 'Name: value'` options to forward credentials required by application-owned middleware. Use the final HTTPS URL for remote servers to avoid credential exposure via redirects. `flue logs` rejects duplicate header names and the protocol-reserved `Accept` header.
 
 Shell expansion keeps a literal token out of history:
 
 ```bash
-flue logs run_01H... --server https://example.com --header "Authorization: Bearer $TOKEN"
+flue logs workflow:summarize:01JX... --server https://example.com --header "Authorization: Bearer $TOKEN"
 ```
 
 The expanded token may still be visible in process arguments while the command runs. Use short-lived, least-privilege credentials and masked CI variables where appropriate.
@@ -60,10 +60,10 @@ Request failures exit with status `1`. A failed workflow exits with status `2` o
 ## Examples
 
 ```bash
-flue logs run_01H...
-flue logs run_01H... --no-follow
-flue logs run_01H... --since 25
-flue logs run_01H... --types operation_start,operation,tool_call,log,run_end --format ndjson
+flue logs workflow:summarize:01JX...
+flue logs workflow:summarize:01JX... --no-follow
+flue logs workflow:summarize:01JX... --since 25
+flue logs workflow:summarize:01JX... --types operation_start,operation,tool_call,log,run_end --format ndjson
 ```
 
 See [Observability](/docs/guide/observability/) for workflow-run inspection and telemetry guidance.
