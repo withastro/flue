@@ -3,13 +3,6 @@
 	"type": "module",
 	"version": "0.0.1",
 	"private": true,
-	"scripts": {
-		"dev": "astro dev",
-		"build": "astro build",
-		"deploy": "pnpm run build && pnpm exec wrangler deploy",
-		"preview": "astro preview",
-		"astro": "astro"
-	},
 	"dependencies": {
 		"@paper-design/shaders": "0.0.76",
 		"@tailwindcss/vite": "^4.2.0",
@@ -18,7 +11,8 @@
 	},
 	"devDependencies": {
 		"typescript": "^6.0.3",
-		"vite": "^7.3.3",
-		"wrangler": "^4.97.0"
+		"vite": "catalog:",
+		"wrangler": "^4.97.0",
+		"vite-plus": "catalog:"
 	}
 }

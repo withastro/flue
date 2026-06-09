@@ -23,5 +23,5 @@ Cloudflare builds and local development use the official Vite/workerd integratio
 From the repository root, run the slow production-path integration gate with:
 
 ```bash
-pnpm run test:integration
+vp run test:integration
 ```

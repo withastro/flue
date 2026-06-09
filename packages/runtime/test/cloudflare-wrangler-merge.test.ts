@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { mergeFlueAdditions } from '../../cli/src/lib/cloudflare-wrangler-merge.ts';
 
 const additions = {

@@ -1,7 +1,16 @@
 {
 	"$schema": "https://unpkg.com/knip@6/schema.json",
 	"ignore": [],
-	"ignoreDependencies": ["@flue/cli", "agents", "wrangler"],
+	"ignoreDependencies": [
+		"@astrojs/check",
+		"@flue/cli",
+		"@flue/sdk",
+		"agents",
+		"pagefind",
+		"vite",
+		"vitest",
+		"wrangler"
+	],
 	"ignoreIssues": {
 		"packages/runtime/src/runtime/schemas.ts": ["duplicates"]
 	},
@@ -22,6 +31,41 @@
 		},
 		"apps/www": {
 			"entry": ["src/homepage-shaders.ts"]
+		},
+		"packages/cli": {
+			"entry": [
+				"bin/flue.ts",
+				"scripts/generate-connector-index.ts",
+				"src/lib/config.ts",
+				"test/*.mjs"
+			],
+			"project": ["bin/**/*.ts", "scripts/**/*.ts", "src/**/*.ts", "test/**/*.mjs"]
+		},
+		"packages/runtime": {
+			"entry": [
+				"src/index.ts",
+				"src/adapter.ts",
+				"src/routing.ts",
+				"src/internal.ts",
+				"src/cloudflare/index.ts",
+				"src/node/index.ts",
+				"src/test-utils/define-store-contract-tests.ts",
+				"test/**/*.test.ts",
+				"vitest.integration.cloudflare.config.ts"
+			],
+			"project": ["src/**/*.ts", "test/**/*.ts", "types/**/*.d.ts"]
+		},
+		"packages/sdk": {
+			"entry": ["src/index.ts", "src/deprecated.ts", "test/**/*.ts"],
+			"project": ["src/**/*.ts", "test/**/*.ts"]
+		},
+		"packages/postgres": {
+			"entry": ["src/index.ts", "test/**/*.ts"],
+			"project": ["src/**/*.ts", "test/**/*.ts"]
+		},
+		"packages/opentelemetry": {
+			"entry": ["src/index.ts", "test/**/*.ts"],
+			"project": ["src/**/*.ts", "test/**/*.ts"]
 		}
 	}
 }

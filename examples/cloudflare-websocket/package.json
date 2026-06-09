@@ -2,9 +2,6 @@
 	"name": "cloudflare-websocket-example",
 	"private": true,
 	"type": "module",
-	"scripts": {
-		"test:live": "node ./test/live-websocket.mjs"
-	},
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
 		"agents": "^0.14.1",

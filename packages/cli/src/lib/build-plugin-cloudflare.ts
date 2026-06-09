@@ -163,7 +163,9 @@ export { Wrapped${workflowClassName(workflow.name)} as ${workflowClassName(workf
 			)
 			.join('\n');
 
-		const userAppImport = appEntry ? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};` : '';
+		const userAppImport = appEntry
+			? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};`
+			: '';
 		const userCloudflareImport = cloudflareEntry
 			? `import * as userCloudflareModule from ${JSON.stringify(cloudflareEntry.replace(/\\/g, '/'))};`
 			: '';

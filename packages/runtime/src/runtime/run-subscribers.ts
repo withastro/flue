@@ -34,7 +34,7 @@ export function createRunSubscriberRegistry(): RunSubscriberRegistry {
 			if (!bucket || bucket.size === 0) return;
 			// Snapshot to a local array so listeners that unsubscribe
 			// themselves during dispatch don't perturb the iteration.
-			for (const listener of [...bucket]) {
+			for (const listener of Array.from(bucket)) {
 				try {
 					listener(event);
 				} catch (error) {

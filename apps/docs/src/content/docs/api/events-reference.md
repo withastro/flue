@@ -34,14 +34,14 @@ Runtime events can contain payloads, prompts, system instructions, reasoning-bea
 
 ### Lifecycle events
 
-| Event         | Meaning                                                                                                         |
-| ------------- | --------------------------------------------------------------------------------------------------------------- |
-| `run_start`   | Workflow run started. Includes workflow ownership and payload.                                                  |
+| Event         | Meaning                                                                                                                                                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `run_start`   | Workflow run started. Includes workflow ownership and payload.                                                                                                                                                                 |
 | `run_resume`  | Recovery continued handling an admitted workflow run after interruption. Workflow code did not resume or retry. It can be the first persisted lifecycle event when interruption occurs after admission but before `run_start`. |
-| `run_end`     | Workflow run ended. Includes result or error state and duration.                                                |
-| `agent_start` | Agent loop started.                                                                                             |
-| `agent_end`   | Agent loop ended.                                                                                               |
-| `idle`        | Agent activity became idle.                                                                                     |
+| `run_end`     | Workflow run ended. Includes result or error state and duration.                                                                                                                                                               |
+| `agent_start` | Agent loop started.                                                                                                                                                                                                            |
+| `agent_end`   | Agent loop ended.                                                                                                                                                                                                              |
+| `idle`        | Agent activity became idle.                                                                                                                                                                                                    |
 
 ### Agent operations
 
@@ -70,10 +70,10 @@ Operations, turns, task ids, and tool-call ids are generated correlation boundar
 
 ### Tool calls
 
-| Event        | Meaning                                                                |
-| ------------ | ---------------------------------------------------------------------- |
-| `tool_start` | Tool execution started. Includes tool name and arguments.              |
-| `tool_call`  | Tool execution ended. Includes duration, error state, and result.      |
+| Event        | Meaning                                                           |
+| ------------ | ----------------------------------------------------------------- |
+| `tool_start` | Tool execution started. Includes tool name and arguments.         |
+| `tool_call`  | Tool execution ended. Includes duration, error state, and result. |
 
 Both model-driven and programmatic (`shell()`) tool activity emit `tool_start` and `tool_call`. Use `toolCallId` to correlate related events.
 

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 import { createAgent } from '../src/index.ts';
 import { createFlueContext, type FlueContextConfig } from '../src/internal.ts';
 import type { FlueEvent, SessionData, SessionEnv, SessionStore } from '../src/types.ts';
@@ -577,7 +577,11 @@ describe('FlueSession', () => {
 	});
 });
 
-function createContext(env: SessionEnv, store: SessionStore, overrides: Partial<FlueContextConfig> = {}) {
+function createContext(
+	env: SessionEnv,
+	store: SessionStore,
+	overrides: Partial<FlueContextConfig> = {},
+) {
 	return createFlueContext({
 		id: 'agent-instance',
 		payload: undefined,

@@ -49,11 +49,6 @@
 		"node": ">=22.18.0"
 	},
 	"scripts": {
-		"build": "tsdown",
-		"check:types": "tsc --noEmit",
-		"test": "vitest run",
-		"test:integration:cloudflare": "vitest run --config vitest.integration.cloudflare.config.ts --no-file-parallelism",
-		"test:watch": "vitest",
 		"prepublishOnly": "cp ../../README.md ."
 	},
 	"dependencies": {
@@ -79,9 +74,9 @@
 		"@cloudflare/workers-types": "^4.20260602.1",
 		"@types/js-yaml": "^4.0.9",
 		"@types/ws": "^8.18.1",
-		"tsdown": "^0.22.0",
 		"typescript": "^6.0.3",
-		"vite": "^8.0.14",
-		"vitest": "^4.1.6"
+		"vite": "catalog:",
+		"vitest": "catalog:",
+		"vite-plus": "catalog:"
 	}
 }

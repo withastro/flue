@@ -2,9 +2,6 @@
 	"name": "chat-sdk-example",
 	"private": true,
 	"type": "module",
-	"scripts": {
-		"test:e2e": "node ./test/e2e.mjs"
-	},
 	"dependencies": {
 		"@chat-adapter/github": "^4.29.0",
 		"@chat-adapter/state-memory": "^4.29.0",

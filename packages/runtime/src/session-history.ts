@@ -372,10 +372,11 @@ export function createUserContextMessage(text: string, timestamp: string): Agent
 
 export function renderSignalMessage(message: SignalMessage): string {
 	const tagName = message.tagName ?? 'signal';
-	const attributes = [
-		['type', message.type],
-		...Object.entries(message.attributes ?? {}),
-	].map(([name, value]) => ` ${escapeXmlAttribute(name ?? '')}="${escapeXmlAttribute(value ?? '')}"`).join('');
+	const attributes = [['type', message.type], ...Object.entries(message.attributes ?? {})]
+		.map(
+			([name, value]) => ` ${escapeXmlAttribute(name ?? '')}="${escapeXmlAttribute(value ?? '')}"`,
+		)
+		.join('');
 	return `<${tagName}${attributes}>\n${escapeXmlText(message.content)}\n</${tagName}>`;
 }
 

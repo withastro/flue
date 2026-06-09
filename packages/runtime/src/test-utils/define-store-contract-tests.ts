@@ -17,7 +17,7 @@
  * ```
  */
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vite-plus/test';
 import type { AgentExecutionStore } from '../agent-execution-store.ts';
 import type { DirectAgentSubmissionInput } from '../runtime/agent-submissions.ts';
 import type { DispatchInput } from '../runtime/dispatch-queue.ts';
@@ -37,7 +37,9 @@ function dispatchInput(overrides: Partial<DispatchInput> = {}): DispatchInput {
 	};
 }
 
-function directInput(overrides: Partial<DirectAgentSubmissionInput> = {}): DirectAgentSubmissionInput {
+function directInput(
+	overrides: Partial<DirectAgentSubmissionInput> = {},
+): DirectAgentSubmissionInput {
 	return {
 		kind: 'direct',
 		submissionId: 'direct-1',
@@ -83,10 +85,7 @@ export interface StoreContractTestBackend {
  * Register the standard AgentExecutionStore contract tests under the given
  * describe label. Each test gets a fresh store from `backend.create()`.
  */
-export function defineStoreContractTests(
-	label: string,
-	backend: StoreContractTestBackend,
-): void {
+export function defineStoreContractTests(label: string, backend: StoreContractTestBackend): void {
 	describe(label, () => {
 		let _cleanup: (() => void | Promise<void>) | undefined;
 
@@ -156,7 +155,9 @@ export function defineStoreContractTests(
 			it('returns conflict when one dispatch id is reused with another payload', async () => {
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
-				expect(await store.submissions.admitDispatch(dispatchInput({ input: { text: 'Different' } }))).toEqual({
+				expect(
+					await store.submissions.admitDispatch(dispatchInput({ input: { text: 'Different' } })),
+				).toEqual({
 					kind: 'conflict',
 				});
 			});
@@ -173,14 +174,18 @@ export function defineStoreContractTests(
 					directInput({ submissionId: 'direct-2', session: 'other' }),
 				);
 				expect(await store.submissions.listRunnableSubmissions()).toEqual([direct, other]);
-				expect(await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-blocked'))).toBeNull();
+				expect(
+					await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-blocked')),
+				).toBeNull();
 			});
 
 			it('lists queued dispatches in admission order and selects one runnable head per session', async () => {
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
 				await store.submissions.admitDispatch(dispatchInput({ dispatchId: 'dispatch-2' }));
-				await store.submissions.admitDispatch(dispatchInput({ dispatchId: 'dispatch-3', session: 'other' }));
+				await store.submissions.admitDispatch(
+					dispatchInput({ dispatchId: 'dispatch-3', session: 'other' }),
+				);
 
 				expect(await store.submissions.listRunnableSubmissions()).toEqual([
 					expect.objectContaining({ submissionId: 'dispatch-1' }),
@@ -196,7 +201,9 @@ export function defineStoreContractTests(
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
 				await store.submissions.admitDispatch(dispatchInput({ dispatchId: 'dispatch-2' }));
-				await store.submissions.admitDispatch(dispatchInput({ dispatchId: 'dispatch-3', session: 'other' }));
+				await store.submissions.admitDispatch(
+					dispatchInput({ dispatchId: 'dispatch-3', session: 'other' }),
+				);
 
 				const first = await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 				const blocked = await store.submissions.claimSubmission(claim('dispatch-2', 'attempt-2'));
@@ -227,10 +234,20 @@ export function defineStoreContractTests(
 				await store.submissions.admitDispatch(dispatchInput());
 				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 
-				expect(await store.submissions.markSubmissionInputApplied(attempt('dispatch-1', 'attempt-1'))).toBe(true);
-				expect(await store.submissions.markSubmissionInputApplied(attempt('dispatch-1', 'stale-attempt'))).toBe(false);
-				expect(await store.submissions.requestSubmissionRecovery(attempt('dispatch-1', 'attempt-1'))).toBe(true);
-				expect(await store.submissions.requestSubmissionRecovery(attempt('dispatch-1', 'stale-attempt'))).toBe(false);
+				expect(
+					await store.submissions.markSubmissionInputApplied(attempt('dispatch-1', 'attempt-1')),
+				).toBe(true);
+				expect(
+					await store.submissions.markSubmissionInputApplied(
+						attempt('dispatch-1', 'stale-attempt'),
+					),
+				).toBe(false);
+				expect(
+					await store.submissions.requestSubmissionRecovery(attempt('dispatch-1', 'attempt-1')),
+				).toBe(true);
+				expect(
+					await store.submissions.requestSubmissionRecovery(attempt('dispatch-1', 'stale-attempt')),
+				).toBe(false);
 
 				expect(await store.submissions.getSubmission('dispatch-1')).toMatchObject({
 					status: 'running',
@@ -243,15 +260,31 @@ export function defineStoreContractTests(
 			it('requeues interrupted attempts only before canonical input application', async () => {
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput({ dispatchId: 'requeue-safe' }));
-				await store.submissions.admitDispatch(dispatchInput({ dispatchId: 'requeue-unsafe', session: 'other' }));
+				await store.submissions.admitDispatch(
+					dispatchInput({ dispatchId: 'requeue-unsafe', session: 'other' }),
+				);
 				await store.submissions.claimSubmission(claim('requeue-safe', 'attempt-safe'));
 				await store.submissions.claimSubmission(claim('requeue-unsafe', 'attempt-unsafe'));
-				await store.submissions.markSubmissionInputApplied(attempt('requeue-unsafe', 'attempt-unsafe'));
+				await store.submissions.markSubmissionInputApplied(
+					attempt('requeue-unsafe', 'attempt-unsafe'),
+				);
 
-				expect(await store.submissions.requeueSubmissionBeforeInputApplied(attempt('requeue-safe', 'attempt-safe'))).toBe(true);
-				expect(await store.submissions.requeueSubmissionBeforeInputApplied(attempt('requeue-unsafe', 'attempt-unsafe'))).toBe(false);
-				expect(await store.submissions.getSubmission('requeue-safe')).toMatchObject({ status: 'queued' });
-				expect(await store.submissions.getSubmission('requeue-unsafe')).toMatchObject({ status: 'running' });
+				expect(
+					await store.submissions.requeueSubmissionBeforeInputApplied(
+						attempt('requeue-safe', 'attempt-safe'),
+					),
+				).toBe(true);
+				expect(
+					await store.submissions.requeueSubmissionBeforeInputApplied(
+						attempt('requeue-unsafe', 'attempt-unsafe'),
+					),
+				).toBe(false);
+				expect(await store.submissions.getSubmission('requeue-safe')).toMatchObject({
+					status: 'queued',
+				});
+				expect(await store.submissions.getSubmission('requeue-unsafe')).toMatchObject({
+					status: 'running',
+				});
 			});
 
 			it('reports unsettled visibility until a claimed dispatch completes', async () => {
@@ -262,7 +295,9 @@ export function defineStoreContractTests(
 				expect(await store.submissions.listRunningSubmissions()).toHaveLength(1);
 				await store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
 				expect(await store.submissions.hasUnsettledSubmissions()).toBe(false);
-				expect(await store.submissions.getSubmission('dispatch-1')).toMatchObject({ status: 'settled' });
+				expect(await store.submissions.getSubmission('dispatch-1')).toMatchObject({
+					status: 'settled',
+				});
 			});
 
 			it('ignores stale-attempt settlement and keeps the first owning terminal state', async () => {
@@ -271,9 +306,15 @@ export function defineStoreContractTests(
 				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
 
 				await store.submissions.completeSubmission(attempt('dispatch-1', 'stale-attempt'));
-				await store.submissions.failSubmission(attempt('dispatch-1', 'attempt-1'), new Error('first failure'));
+				await store.submissions.failSubmission(
+					attempt('dispatch-1', 'attempt-1'),
+					new Error('first failure'),
+				);
 				await store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
-				await store.submissions.failSubmission(attempt('dispatch-1', 'attempt-1'), new Error('later failure'));
+				await store.submissions.failSubmission(
+					attempt('dispatch-1', 'attempt-1'),
+					new Error('later failure'),
+				);
 
 				expect(await store.submissions.getSubmission('dispatch-1')).toMatchObject({
 					status: 'settled',
@@ -328,7 +369,9 @@ export function defineStoreContractTests(
 				const store = await create();
 				await store.submissions.admitDispatch(dispatchInput());
 				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
-				expect(await store.submissions.getSubmission('dispatch-1')).toMatchObject({ attemptCount: 1 });
+				expect(await store.submissions.getSubmission('dispatch-1')).toMatchObject({
+					attemptCount: 1,
+				});
 
 				await store.submissions.beginTurnJournal({
 					submissionId: 'dispatch-1',
@@ -366,7 +409,9 @@ export function defineStoreContractTests(
 			it('rejects duplicate stream segment indexes', async () => {
 				const store = await create();
 				expect(await store.submissions.appendStreamChunkSegment('stream-1', 0, '["a"]')).toBe(true);
-				expect(await store.submissions.appendStreamChunkSegment('stream-1', 0, '["b"]')).toBe(false);
+				expect(await store.submissions.appendStreamChunkSegment('stream-1', 0, '["b"]')).toBe(
+					false,
+				);
 				expect(await store.submissions.getStreamChunkSegments('stream-1')).toEqual([
 					{ segmentIndex: 0, body: '["a"]' },
 				]);
@@ -392,19 +437,33 @@ export function defineStoreContractTests(
 						phase: 'before_provider',
 					}),
 				).toBe(true);
-				expect(await store.submissions.updateTurnJournalPhase(attempt('dispatch-1', 'attempt-1'), 'provider_started', {
-					streamKey: 'dispatch-1:turn-1:attempt-1',
-				})).toBe(true);
-				expect(await store.submissions.updateTurnJournalPhase(attempt('dispatch-1', 'attempt-1'), 'tool_request_recorded', {
-					toolRequest: { toolCalls: ['lookup'] },
-				})).toBe(true);
-					expect(await store.submissions.getTurnJournal('dispatch-1')).toMatchObject({
+				expect(
+					await store.submissions.updateTurnJournalPhase(
+						attempt('dispatch-1', 'attempt-1'),
+						'provider_started',
+						{
+							streamKey: 'dispatch-1:turn-1:attempt-1',
+						},
+					),
+				).toBe(true);
+				expect(
+					await store.submissions.updateTurnJournalPhase(
+						attempt('dispatch-1', 'attempt-1'),
+						'tool_request_recorded',
+						{
+							toolRequest: { toolCalls: ['lookup'] },
+						},
+					),
+				).toBe(true);
+				expect(await store.submissions.getTurnJournal('dispatch-1')).toMatchObject({
 					phase: 'tool_request_recorded',
 					committed: false,
 					streamKey: 'dispatch-1:turn-1:attempt-1',
 					toolRequest: { toolCalls: ['lookup'] },
 				});
-				expect(await store.submissions.commitTurnJournal(attempt('dispatch-1', 'attempt-1'), 'leaf-1')).toBe(true);
+				expect(
+					await store.submissions.commitTurnJournal(attempt('dispatch-1', 'attempt-1'), 'leaf-1'),
+				).toBe(true);
 				expect(await store.submissions.getTurnJournal('dispatch-1')).toMatchObject({
 					phase: 'committed',
 					committed: true,
@@ -425,11 +484,25 @@ export function defineStoreContractTests(
 					turnId: 'turn-1',
 					phase: 'before_provider',
 				});
-				await store.submissions.updateTurnJournalPhase(attempt('dispatch-1', 'attempt-1'), 'provider_started', {
-					streamKey: 'dispatch-1:turn-1:attempt-1',
-				});
-				expect(await store.submissions.markStreamConsumed(attempt('dispatch-1', 'attempt-1'), 'dispatch-1:turn-1:attempt-1')).toBe(true);
-				expect(await store.submissions.markStreamConsumed(attempt('dispatch-1', 'attempt-1'), 'dispatch-1:turn-1:attempt-1')).toBe(false);
+				await store.submissions.updateTurnJournalPhase(
+					attempt('dispatch-1', 'attempt-1'),
+					'provider_started',
+					{
+						streamKey: 'dispatch-1:turn-1:attempt-1',
+					},
+				);
+				expect(
+					await store.submissions.markStreamConsumed(
+						attempt('dispatch-1', 'attempt-1'),
+						'dispatch-1:turn-1:attempt-1',
+					),
+				).toBe(true);
+				expect(
+					await store.submissions.markStreamConsumed(
+						attempt('dispatch-1', 'attempt-1'),
+						'dispatch-1:turn-1:attempt-1',
+					),
+				).toBe(false);
 				expect(await store.submissions.getTurnJournal('dispatch-1')).toMatchObject({
 					streamConsumedAt: expect.any(Number),
 				});
@@ -449,7 +522,9 @@ export function defineStoreContractTests(
 					phase: 'before_provider',
 				});
 				await store.submissions.commitTurnJournal(attempt('dispatch-1', 'attempt-1'), 'leaf-1');
-				expect(await store.submissions.commitTurnJournal(attempt('dispatch-1', 'attempt-1'), 'leaf-1')).toBe(false);
+				expect(
+					await store.submissions.commitTurnJournal(attempt('dispatch-1', 'attempt-1'), 'leaf-1'),
+				).toBe(false);
 			});
 
 			it('resets journal on new turn after commit', async () => {
@@ -523,9 +598,9 @@ export function defineStoreContractTests(
 				await store.submissions.admitDispatch(dispatchInput());
 				const sessionKey = 'agent-session:["agent-1","default","default"]';
 
-				await expect(
-					store.submissions.deleteSession(sessionKey, async () => {}),
-				).rejects.toThrow('Session cannot be deleted while durable agent submissions are queued or running.');
+				await expect(store.submissions.deleteSession(sessionKey, async () => {})).rejects.toThrow(
+					'Session cannot be deleted while durable agent submissions are queued or running.',
+				);
 			});
 
 			it('blocks new submissions until session deletion completes', async () => {

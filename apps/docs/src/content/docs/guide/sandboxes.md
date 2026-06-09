@@ -75,11 +75,11 @@ A sandbox integration may expose different model-facing capabilities than the vi
 
 The sandbox controls workspace and command access. It does not determine whether a session retains conversation history. Keep these decisions separate:
 
-| Decision                                                            | Controlled by                                                            |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| Conversation history available in a later session interaction       | Session persistence via `db.ts` adapter or the target default.           |
-| Files, installed packages, and generated artifacts available later  | The sandbox or workspace lifecycle you choose.                           |
-| Access to repositories, APIs, credentials, and network destinations | The sandbox environment, tools, and application authorization policy.    |
+| Decision                                                            | Controlled by                                                         |
+| ------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Conversation history available in a later session interaction       | Session persistence via `db.ts` adapter or the target default.        |
+| Files, installed packages, and generated artifacts available later  | The sandbox or workspace lifecycle you choose.                        |
+| Access to repositories, APIs, credentials, and network destinations | The sandbox environment, tools, and application authorization policy. |
 
 A persisted session does not make the virtual sandbox durable. Likewise, a durable remote workspace does not by itself preserve a session conversation.
 

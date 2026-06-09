@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { CloudflarePlugin } from '../../cli/src/lib/build-plugin-cloudflare.ts';
 import type { BuildContext } from '../../cli/src/lib/types.ts';
 
@@ -58,14 +58,24 @@ describe('CloudflarePlugin', () => {
 		);
 
 		expect(entry).toContain('const cloudflareAgents = createCloudflareAgentRuntime({');
-		expect(entry).toContain('const prepared = cloudflareAgents.prepare({ storage: ctx.storage, className: "FlueAssistantAgent", agentName: "assistant" });');
+		expect(entry).toContain(
+			'const prepared = cloudflareAgents.prepare({ storage: ctx.storage, className: "FlueAssistantAgent", agentName: "assistant" });',
+		);
 		expect(entry).toContain('cloudflareAgents.attach(this, prepared);');
-		expect(entry).toContain("return cloudflareAgents.onStart(this, () => typeof super.onStart === 'function' ? super.onStart(props) : undefined);");
+		expect(entry).toContain(
+			"return cloudflareAgents.onStart(this, () => typeof super.onStart === 'function' ? super.onStart(props) : undefined);",
+		);
 		expect(entry).toContain('return cloudflareAgents.wakeSubmissions(this);');
 		expect(entry).toContain('return cloudflareAgents.onRequest(this, request);');
-		expect(entry).toContain('return cloudflareAgents.fetch(this, request, () => super.fetch(request));');
-		expect(entry).toContain('return cloudflareAgents.webSocketMessage(this, socket, message, () => super.webSocketMessage(socket, message));');
-		expect(entry).toContain('return cloudflareAgents.onFiberRecovered(this, ctx, () => typeof super.onFiberRecovered === \'function\' ? super.onFiberRecovered(ctx) : undefined);');
+		expect(entry).toContain(
+			'return cloudflareAgents.fetch(this, request, () => super.fetch(request));',
+		);
+		expect(entry).toContain(
+			'return cloudflareAgents.webSocketMessage(this, socket, message, () => super.webSocketMessage(socket, message));',
+		);
+		expect(entry).toContain(
+			"return cloudflareAgents.onFiberRecovered(this, ctx, () => typeof super.onFiberRecovered === 'function' ? super.onFiberRecovered(ctx) : undefined);",
+		);
 		expect(entry).not.toContain('reconcileFlueAgentSubmissions');
 		expect(entry).not.toContain('cf_agents_runs');
 		expect(entry).not.toContain('cf_agents_fibers');

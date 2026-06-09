@@ -12,7 +12,7 @@ import {
 	type TimeInput,
 	trace,
 } from '@opentelemetry/api';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 import { createOpenTelemetryObserver } from '../src/index.ts';
 
 class RecordingSpan implements Span {
@@ -617,9 +617,9 @@ describe('createOpenTelemetryObserver', () => {
 			'flue.workflow report',
 		]);
 		expect(tracer.spans.slice(0, 4).every((span) => span.ended)).toBe(true);
-		expect(tracer.spans.slice(1, 4).every((span) => span.status?.code === SpanStatusCode.ERROR)).toBe(
-			true,
-		);
+		expect(
+			tracer.spans.slice(1, 4).every((span) => span.status?.code === SpanStatusCode.ERROR),
+		).toBe(true);
 		expect(tracer.spans[4]?.ended).toBe(false);
 	});
 

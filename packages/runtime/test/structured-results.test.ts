@@ -6,7 +6,7 @@ import {
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
 import * as v from 'valibot';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createAgent, ResultUnavailableError } from '../src/index.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 import type { FlueEvent, FlueSession, Skill } from '../src/types.ts';

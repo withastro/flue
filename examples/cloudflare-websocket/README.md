@@ -7,9 +7,7 @@ This example is the live Cloudflare WebSocket fixture. It mounts `flue()` below 
 From the repository root:
 
 ```bash
-pnpm --filter @flue/runtime build
-pnpm --filter @flue/sdk build
-pnpm --filter @flue/cli build
+vp run @flue/runtime#build @flue/sdk#build @flue/cli#build
 pnpm exec bgproc start -n flue-cf-ws-live --wait-for-port 10 --force -- \
   pnpm --dir ./examples/cloudflare-websocket exec flue dev --target cloudflare --port 3584
 FLUE_WS_BASE_URL=http://localhost:3584 \

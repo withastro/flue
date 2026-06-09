@@ -56,7 +56,6 @@ export function createCallHandle<T>(
 		// CallHandle is intentionally thenable so callers can `await handle`
 		// directly. Defining `then` is the standard way to do this in
 		// TypeScript without subclassing Promise.
-		// biome-ignore lint/suspicious/noThenProperty: intentional thenable
 		then(onFulfilled, onRejected) {
 			return promise.then(onFulfilled, onRejected);
 		},

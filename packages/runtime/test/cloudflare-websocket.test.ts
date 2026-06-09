@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vite-plus/test';
 
 import { createFlueContext } from '../src/client.ts';
 import {
@@ -62,7 +62,7 @@ describe('Cloudflare agent WebSockets', () => {
 				name: 'assistant',
 				id: 'agent-instance-1',
 				request: new Request('https://example.com/flue/agents/assistant/agent-instance-1'),
-							createContext,
+				createContext,
 				admitAttachedSubmission: async () => null,
 			},
 		);
@@ -114,12 +114,17 @@ describe('Cloudflare agent WebSockets', () => {
 
 		await messageCloudflareAgentWebSocket(
 			connection,
-			JSON.stringify({ version: 1, type: 'prompt', requestId: 'prompt-disconnected', message: 'Hello' }),
+			JSON.stringify({
+				version: 1,
+				type: 'prompt',
+				requestId: 'prompt-disconnected',
+				message: 'Hello',
+			}),
 			{
 				name: 'assistant',
 				id: 'agent-instance-1',
 				request: new Request('https://example.com/flue/agents/assistant/agent-instance-1'),
-							createContext,
+				createContext,
 				admitAttachedSubmission: async (_payload, onEvent) => {
 					calls.push('admitted');
 					await onEvent?.({ type: 'idle', instanceId: 'agent-instance-1' });

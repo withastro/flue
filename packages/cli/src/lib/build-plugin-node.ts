@@ -38,8 +38,12 @@ export class NodePlugin implements BuildPlugin {
 		// default export and dispatches all requests through `app.fetch`. When
 		// no app.ts is present, the generated entry constructs a thin default
 		// Hono that mounts `flue()` and renders canonical error envelopes.
-		const userAppImport = appEntry ? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};` : '';
-		const userDbImport = dbEntry ? `import userPersistenceAdapter from ${JSON.stringify(dbEntry.replace(/\\/g, '/'))};` : '';
+		const userAppImport = appEntry
+			? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};`
+			: '';
+		const userDbImport = dbEntry
+			? `import userPersistenceAdapter from ${JSON.stringify(dbEntry.replace(/\\/g, '/'))};`
+			: '';
 
 		// All HTTP routing, workflow admission/SSE/sync handling, agent dispatch,
 		// and error rendering live in @flue/runtime's runtime modules. The
@@ -119,8 +123,8 @@ async function createDefaultEnv() {
 }
 
 ${
-			dbEntry
-				? `// Custom persistence from db.ts.
+	dbEntry
+		? `// Custom persistence from db.ts.
 if (!userPersistenceAdapter || typeof userPersistenceAdapter.connect !== 'function') {
   throw new Error('[flue] db.ts must default-export a PersistenceAdapter with a connect() method.');
 }
@@ -138,11 +142,11 @@ try {
 } catch (error) {
   throw new Error('[flue] Failed to initialize persistence from db.ts: ' + (error instanceof Error ? error.message : error), { cause: error });
 }`
-				: `// Default persistence for Node — in-memory SQLite, process lifetime.
+		: `// Default persistence for Node — in-memory SQLite, process lifetime.
 const executionStore = createNodeAgentExecutionStore();
 const runStore = new InMemoryRunStore();
 const runRegistry = new InMemoryRunRegistry();`
-		}
+}
 const runSubscribers = createRunSubscriberRegistry();
 const agentCoordinator = createNodeAgentCoordinator({
   submissions: executionStore.submissions,
@@ -370,7 +374,7 @@ if (isLocalCliMode) {
     startLocalAgent(localCliName, localCliId);
   }
   process.on('disconnect', async () => {
-    await agentCoordinator.shutdown();${dbEntry ? "\n    if (userPersistenceAdapter.close) await userPersistenceAdapter.close();" : ''}
+    await agentCoordinator.shutdown();${dbEntry ? '\n    if (userPersistenceAdapter.close) await userPersistenceAdapter.close();' : ''}
     process.exit(0);
   });
 } else {
@@ -397,7 +401,7 @@ if (isLocalCliMode) {
     await agentCoordinator.shutdown();
     // 2. Close WebSocket connections with Going Away frame.
     if (websocketTransport) await websocketTransport.close();
-    // 3. Close persistence adapter.${dbEntry ? "\n    if (userPersistenceAdapter.close) await userPersistenceAdapter.close();" : ''}
+    // 3. Close persistence adapter.${dbEntry ? '\n    if (userPersistenceAdapter.close) await userPersistenceAdapter.close();' : ''}
     // 4. Close HTTP server.
     await new Promise((resolve) => server.close(resolve));
     console.error('[flue] Stopped.');

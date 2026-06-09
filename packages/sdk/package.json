@@ -52,14 +52,11 @@
 		"node": ">=22.18.0"
 	},
 	"scripts": {
-		"build": "tsdown",
-		"check:types": "tsc --noEmit",
-		"test": "vitest run",
 		"prepublishOnly": "cp ../../README.md ."
 	},
 	"devDependencies": {
-		"tsdown": "^0.22.0",
 		"typescript": "^6.0.3",
-		"vitest": "^4.1.6"
+		"vitest": "catalog:",
+		"vite-plus": "catalog:"
 	}
 }

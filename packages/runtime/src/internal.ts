@@ -21,7 +21,10 @@ export { createFlueContext } from './client.ts';
 // (registry client) live in the `@flue/runtime/cloudflare` subpath because
 // they pull in `cloudflare:workers`, a virtual module Node can't resolve.
 // The generated CF entry imports them from there directly.
-export { CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH, createCloudflareAgentRuntime } from './cloudflare/agent-coordinator.ts';
+export {
+	CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
+	createCloudflareAgentRuntime,
+} from './cloudflare/agent-coordinator.ts';
 export { createSqlSessionStore } from './cloudflare/agent-execution-store.ts';
 export { createDurableRunStore } from './cloudflare/run-store.ts';
 export { createNodeAgentCoordinator, createNodeDispatchQueue } from './node/agent-coordinator.ts';
@@ -99,7 +102,10 @@ export {
 } from './runtime/websocket-protocol.ts';
 export { closeFlueSocket, isFlueSocket, socketRequestUrl } from './cloudflare/websocket.ts';
 export { bashFactoryToSessionEnv } from './sandbox.ts';
-export type { DirectAgentSubmissionInput, DispatchAgentSubmissionInput } from './runtime/agent-submissions.ts';
+export type {
+	DirectAgentSubmissionInput,
+	DispatchAgentSubmissionInput,
+} from './runtime/agent-submissions.ts';
 export { InMemorySessionStore } from './session.ts';
 export { parseSkillMarkdown } from './skill-frontmatter.ts';
 
@@ -161,6 +167,6 @@ function applyProviderSettings<TApi extends Api>(
 	return {
 		...model,
 		baseUrl: providerSettings.baseUrl ?? model.baseUrl,
-		headers: hasHeaders ? { ...(model.headers ?? {}), ...providerSettings.headers } : model.headers,
+		headers: hasHeaders ? { ...model.headers, ...providerSettings.headers } : model.headers,
 	};
 }

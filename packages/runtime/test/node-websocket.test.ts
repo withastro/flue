@@ -1,6 +1,6 @@
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { WebSocket } from 'ws';
 import {
 	createFlueContext,

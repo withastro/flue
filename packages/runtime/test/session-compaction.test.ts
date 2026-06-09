@@ -3,7 +3,7 @@ import {
 	fauxAssistantMessage,
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 import { createAgent } from '../src/index.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 import type { FlueEvent } from '../src/types.ts';
