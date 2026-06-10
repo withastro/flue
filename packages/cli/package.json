@@ -20,7 +20,8 @@
 	},
 	"files": [
 		"bin/flue.mjs",
-		"dist"
+		"dist",
+		"docs"
 	],
 	"engines": {
 		"node": ">=22.18.0"
@@ -31,7 +32,7 @@
 		"check:types": "tsc --noEmit",
 		"pretest": "pnpm run build",
 		"test": "node --test",
-		"prepublishOnly": "cp ../../README.md ."
+		"prepublishOnly": "node scripts/prepare-publish.mjs"
 	},
 	"dependencies": {
 		"@cloudflare/vite-plugin": "^1.39.2",
