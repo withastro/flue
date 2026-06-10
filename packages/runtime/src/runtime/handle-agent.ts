@@ -15,7 +15,7 @@ import type {
 } from '../types.ts';
 import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
 import type { DispatchInput } from './dispatch-queue.ts';
-import { agentStreamPath, runStreamPath, type EventStreamStore } from './event-stream-store.ts';
+import { agentStreamPath, parseOffset, runStreamPath, type EventStreamStore } from './event-stream-store.ts';
 
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
@@ -373,7 +373,12 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 				startedAt: run.startedAt,
 			}),
 		);
-	const initialEventIndex = events.length;
+	// Derive the next event index from the stream head, not the event count —
+	// the count undercounts when the stream has gaps (a dropped append or a
+	// crash mid-append), which would mint duplicate eventIndex values and
+	// break seq == eventIndex for the recovery events.
+	const meta = await opts.eventStreamStore.getStreamMeta(runStreamPath(opts.runId));
+	const initialEventIndex = meta ? parseOffset(meta.nextOffset) + 1 : 0;
 	const startedAt = run?.startedAt ?? new Date().toISOString();
 	const startedAtMs = Date.parse(startedAt);
 	const startEvent = events.find((event) => event.type === 'run_start');
@@ -396,8 +401,9 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 
 async function readRecoveryEvents(opts: FailRecoveredRunOptions): Promise<FlueEvent[]> {
 	const streamPath = runStreamPath(opts.runId);
-	// Read all events — recovery needs the full history to find the
-	// terminal event and compute the next event index.
+	// Read all events — recovery needs the history to find a terminal
+	// run_end and the run_start payload fallback. The next event index is
+	// derived from the stream head instead (gap-proof).
 	const events: FlueEvent[] = [];
 	let offset = '-1';
 	while (true) {

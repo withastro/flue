@@ -1,13 +1,16 @@
+import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FlueRuntime } from '../src/internal.ts';
 import {
 	configureFlueRuntime,
 	createFlueContext,
+	failRecoveredRun,
 	InMemoryRunStore,
 	InMemorySessionStore,
 } from '../src/internal.ts';
 import { InMemoryRunRegistry } from '../src/node/run-registry.ts';
+import { formatOffset } from '../src/runtime/event-stream-store.ts';
 import { resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import { flue } from '../src/routing.ts';
 import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
@@ -311,6 +314,50 @@ describe('workflow run lifecycle', () => {
 		} finally {
 			consoleError.mockRestore();
 		}
+	});
+
+	it('derives recovery event indexes from the stream head, not the event count', async () => {
+		const db = new DatabaseSync(':memory:');
+		const eventStreamStore = createTestEventStreamStore(db);
+		const runId = 'workflow:report:01TESTRECOVERY';
+		const streamPath = `runs/${runId}`;
+		await eventStreamStore.createStream(streamPath);
+		for (let index = 0; index < 3; index++) {
+			await eventStreamStore.appendEvent(streamPath, {
+				type: 'log',
+				level: 'info',
+				message: `m${index}`,
+				runId,
+				eventIndex: index,
+			});
+		}
+		// Simulate a crash-induced gap: the head counter advanced past the
+		// stored rows (UPDATE committed, INSERT lost) — four appends never
+		// landed, so the stream holds 3 events but its head sits at seq 6.
+		db.prepare('UPDATE flue_event_streams SET next_offset = 7 WHERE path = ?').run(streamPath);
+
+		await failRecoveredRun({
+			owner: { kind: 'workflow', workflowName: 'report', instanceId: runId },
+			id: runId,
+			runId,
+			request: new Request('http://localhost/recovery'),
+			createContext,
+			error: new Error('interrupted'),
+			eventStreamStore,
+		});
+
+		const result = await eventStreamStore.readEvents(streamPath, { offset: '-1' });
+		const recovered = result.events
+			.map((entry) => ({ offset: entry.offset, data: entry.data as { type: string; eventIndex?: number } }))
+			.filter((entry) => entry.data.type === 'run_resume' || entry.data.type === 'run_end');
+
+		// Counting events would restart at index 3 and mint duplicates; the
+		// head-derived index continues after the gap, keeping seq == eventIndex.
+		expect(recovered).toEqual([
+			{ offset: formatOffset(7), data: expect.objectContaining({ type: 'run_resume', eventIndex: 7 }) },
+			{ offset: formatOffset(8), data: expect.objectContaining({ type: 'run_end', eventIndex: 8, isError: true }) },
+		]);
+		expect(result.closed).toBe(true);
 	});
 
 });

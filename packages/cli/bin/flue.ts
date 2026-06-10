@@ -1357,8 +1357,9 @@ function normalizeSinceOffset(value: string): string {
 function logsEmitEvent(event: FlueEvent, format: LogsArgs['format']): void {
 	if (format === 'json' || format === 'ndjson') {
 		// ndjson lines carry a per-event resume offset derived from eventIndex
-		// (event index == stream sequence). The stream's own offset getter is
-		// batch-granular and would skip events if used as a mid-batch checkpoint.
+		// (on run streams, event index == stream sequence; flue logs reads
+		// runs only). The stream's own offset getter is batch-granular and
+		// would skip events if used as a mid-batch checkpoint.
 		const offset = format === 'ndjson' && typeof event.eventIndex === 'number'
 			? formatEventOffset(event.eventIndex)
 			: undefined;

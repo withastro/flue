@@ -45,7 +45,7 @@ Offsets are opaque Durable Streams coordinates. Flue currently formats them as t
 | `now` | Read from the current tail. In live mode, wait for events appended after the current tail. |
 | Returned offset | Resume strictly after that event. |
 
-The SDK exposes a resume offset as `stream.offset`. It is batch-granular: it reflects the `Stream-Next-Offset` of the most recently fetched HTTP response, not the last delivered event, so checkpointing it mid-batch and resuming from it skips the rest of that batch. For per-event checkpoints use the event's `eventIndex` (event index equals stream sequence); `flue logs --format ndjson` prints a per-event `offset` derived from it. `agents.send()` and `agents.prompt()` return an offset captured before that prompt is admitted, so reading from that offset yields that prompt's events. `workflows.invoke()` returns a run ID and stream URL, not an initial stream offset.
+The SDK exposes a resume offset as `stream.offset`. It is batch-granular: it reflects the `Stream-Next-Offset` of the most recently fetched HTTP response, not the last delivered event, so checkpointing it mid-batch and resuming from it skips the rest of that batch. For per-event checkpoints on workflow-run streams use the event's `eventIndex` (there it equals the stream sequence; agent streams restart `eventIndex` per prompt, so it is not an offset there); `flue logs --format ndjson` prints a per-event `offset` derived from it. `agents.send()` and `agents.prompt()` return an offset captured before that prompt is admitted, so reading from that offset yields that prompt's events. `workflows.invoke()` returns a run ID and stream URL, not an initial stream offset.
 
 ## Response headers
 

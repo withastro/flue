@@ -36,8 +36,10 @@ export interface FlueEventStream<T = FlueEvent> extends AsyncIterable<T> {
 	 * `Stream-Next-Offset`). Advances per HTTP response, not per delivered
 	 * event — every event in a batch observes the batch's final offset, so
 	 * checkpointing this value mid-batch and resuming from it skips the rest
-	 * of that batch. For per-event checkpoints use the event's `eventIndex`
-	 * (event index == stream sequence).
+	 * of that batch. On workflow-run streams the event's `eventIndex` equals
+	 * the stream sequence and can serve as a per-event checkpoint instead.
+	 * Agent streams restart `eventIndex` per prompt, so there it is not an
+	 * offset.
 	 */
 	readonly offset: string;
 }
