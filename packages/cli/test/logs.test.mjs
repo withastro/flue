@@ -152,6 +152,47 @@ test('forwards authentication headers to follow-mode streams', async () => {
 	assert.equal(firstUrl.searchParams.get('offset'), '0000000000000000_0000000000000025');
 });
 
+test('exits with code 2 and filters output when --types excludes the failing run_end', async () => {
+	await withServer(
+		(request, response) => {
+			// One-shot replay: DS catch-up read on /runs/run-1 (no admin lookup
+			// because --no-follow skips the metadata request).
+			assert.equal(request.url.split('?')[0], '/runs/run-1');
+			response.writeHead(200, {
+				'content-type': 'application/json',
+				'Stream-Next-Offset': '0000000000000000_0000000000000001',
+				'Stream-Up-To-Date': 'true',
+				'Stream-Closed': 'true',
+			});
+			response.end(
+				JSON.stringify([
+					{ type: 'log', runId: 'run-1', level: 'info', message: 'hello', eventIndex: 0 },
+					{ type: 'run_end', runId: 'run-1', isError: true, durationMs: 5, eventIndex: 1 },
+				]),
+			);
+		},
+		async (server) => {
+			const result = await runCli([
+				'logs',
+				'run-1',
+				'--server',
+				server,
+				'--no-follow',
+				'--types',
+				'log',
+				'--format',
+				'json',
+			]);
+			// run_end.isError drives the exit code even when filtered from output.
+			assert.equal(result.code, 2, result.stderr);
+			const lines = result.stdout.split('\n').filter((line) => line.trim() !== '');
+			assert.equal(lines.length, 1);
+			assert.equal(JSON.parse(lines[0]).type, 'log');
+			assert.ok(!result.stdout.includes('run_end'));
+		},
+	);
+});
+
 test('handles redirects without crashing', async () => {
 	// The SDK follows redirects by default (no redirect: 'error').
 	// This test verifies that even with redirects, the redirect target

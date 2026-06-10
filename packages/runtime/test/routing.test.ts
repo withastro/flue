@@ -73,6 +73,37 @@ describe('flue()', () => {
 		});
 	});
 
+	it('returns the synchronous result envelope when an agent POST requests wait=result', async () => {
+		configureFlueRuntime({
+			target: 'node',
+			manifest: {
+				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+			},
+			createAdmission: {
+				assistant: (id) => async (payload) => ({ instanceId: id, payload }),
+			},
+			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
+		});
+		const app = new Hono();
+		app.route('/api', flue());
+
+		const response = await app.fetch(
+			new Request('http://localhost/api/agents/assistant/customer-123?wait=result', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ message: 'hello' }),
+			}),
+		);
+
+		expect(response.status).toBe(200);
+		expect(await response.json()).toEqual({
+			result: { instanceId: 'customer-123', payload: { message: 'hello' } },
+			streamUrl: 'http://localhost/api/agents/assistant/customer-123',
+			offset: '-1',
+		});
+	});
+
 	it('captures the prompt tail offset and serves exactly that prompt\'s events from it', async () => {
 		const store = createTestEventStreamStore();
 		configureFlueRuntime({
