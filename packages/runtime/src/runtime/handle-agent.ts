@@ -19,7 +19,8 @@ import { agentStreamPath, parseOffset, runStreamPath, type EventStreamStore } fr
 
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
-import { isEphemeralRunEvent, type RunStore } from './run-store.ts';
+import type { RunStore } from './run-store.ts';
+
 
 export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
 
@@ -732,9 +733,7 @@ async function emitRunEnd(
 
 /**
  * Persist non-terminal events to the event stream store.
- * Per-chunk streaming events are published live by the stream read path but
- * skipped by persistence (see {@link isEphemeralRunEvent}); `run_end` is
- * handled separately by {@link emitRunEnd}.
+ * `run_end` is handled separately by {@link emitRunEnd}.
  *
  * Because `emitEvent` dispatches to subscribers synchronously (fire-and-forget),
  * async `appendEvent` calls produce floating promises. We collect them in a
@@ -745,7 +744,7 @@ function subscribeRunFanout(lifecycle: WorkflowRunLifecycle): () => Promise<void
 	const { ctx, eventStreamStore, runId } = lifecycle;
 	const pending: Promise<void>[] = [];
 	const unsubscribe = ctx.subscribeEvent((event) => {
-		if (event.type === 'run_end' || isEphemeralRunEvent(event)) return;
+		if (event.type === 'run_end') return;
 		pending.push(
 			eventStreamStore.appendEvent(runStreamPath(runId), event).then(
 				() => {},
