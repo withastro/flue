@@ -515,11 +515,7 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 		if (c.req.method === 'GET' || c.req.method === 'HEAD') {
 			const streamPath = agentStreamPath(name, id);
 			if (rt.target === 'node') {
-				const store = requireNodeEventStreamStore(rt);
-				if (c.req.method === 'HEAD') {
-					return await handleStreamHead(store, streamPath);
-				}
-				return handleStreamRead({ store, path: streamPath, request });
+				return nodeStreamReadResponse(rt, c.req.method, streamPath, request);
 			}
 
 			// Cloudflare: forward to the agent DO.
@@ -582,11 +578,7 @@ const runStreamReadHandler: MiddlewareHandler = async (c) => {
 
 	return runAttachedMiddleware(c, rt.workflowRouteMiddleware?.[pointer.owner.workflowName], async () => {
 		if (rt.target === 'node') {
-			const store = requireNodeEventStreamStore(rt);
-			if (method === 'HEAD') {
-				return await handleStreamHead(store, streamPath);
-			}
-			return handleStreamRead({ store, path: streamPath, request: c.req.raw });
+			return nodeStreamReadResponse(rt, method, streamPath, c.req.raw);
 		}
 
 		const response = await rt.routeRunRequest?.(c.req.raw, c.env, pointer.owner);
@@ -664,6 +656,20 @@ function requireNodeEventStreamStore(rt: FlueRuntime): EventStreamStore {
 		);
 	}
 	return rt.eventStreamStore;
+}
+
+/** Serve a DS stream HEAD/GET from the Node runtime's store. */
+function nodeStreamReadResponse(
+	rt: FlueRuntime,
+	method: string,
+	streamPath: string,
+	request: Request,
+): Promise<Response> {
+	const store = requireNodeEventStreamStore(rt);
+	if (method === 'HEAD') {
+		return handleStreamHead(store, streamPath);
+	}
+	return handleStreamRead({ store, path: streamPath, request });
 }
 
 async function lookupRunPointer(rt: FlueRuntime, env: unknown, runId: string): Promise<RunPointer> {

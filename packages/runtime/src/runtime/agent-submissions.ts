@@ -183,6 +183,10 @@ export function createAgentSubmissionObserverRegistry(): AgentSubmissionObserver
 				resolve = resolve_;
 				reject = reject_;
 			});
+			// Callers may never await completion (fire-and-forget admission, or
+			// a failure before the await attaches) — keep a rejection from
+			// surfacing as an unhandled-rejection crash.
+			completion.catch(() => {});
 			const attached = { ...observer, resolve, reject };
 			observers.set(submissionId, attached);
 			return {

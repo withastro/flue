@@ -8,7 +8,7 @@
  * @see https://github.com/durable-streams/durable-streams/blob/main/PROTOCOL.md
  */
 
-import { InvalidRequestError, RunNotFoundError, toHttpResponse } from '../errors.ts';
+import { InvalidRequestError, RunNotFoundError, StreamNotFoundError, toHttpResponse } from '../errors.ts';
 import type { EventStreamReadResult, EventStreamStore } from './event-stream-store.ts';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
@@ -83,7 +83,7 @@ export async function handleStreamHead(store: EventStreamStore, path: string): P
 	if (!meta) {
 		// HEAD responses must not carry a body — keep the envelope's status
 		// and headers only.
-		const error = streamErrorResponse(new RunNotFoundError({ runId: path }));
+		const error = streamErrorResponse(streamNotFoundError(path));
 		return new Response(null, { status: error.status, headers: error.headers });
 	}
 
@@ -146,7 +146,7 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 	// Stream must exist.
 	const meta = await store.getStreamMeta(path);
 	if (!meta) {
-		return streamErrorResponse(new RunNotFoundError({ runId: path }));
+		return streamErrorResponse(streamNotFoundError(path));
 	}
 
 	const readOffset = offsetParam === 'now' && live !== null ? meta.nextOffset : offsetParam;
@@ -167,9 +167,16 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 
 // ─── Catch-up mode ──────────────────────────────────────────────────────────
 
-function streamErrorResponse(error: InvalidRequestError | RunNotFoundError): Response {
+function streamErrorResponse(error: InvalidRequestError | RunNotFoundError | StreamNotFoundError): Response {
 	// toHttpResponse sets the §12.7 security headers on every error response.
 	return toHttpResponse(error);
+}
+
+/** Run streams 404 as "run not found"; agent streams get the accurate label. */
+function streamNotFoundError(path: string): RunNotFoundError | StreamNotFoundError {
+	return path.startsWith('runs/')
+		? new RunNotFoundError({ runId: path.slice('runs/'.length) })
+		: new StreamNotFoundError({ path });
 }
 
 function handleCatchUpMode(

@@ -35,11 +35,6 @@ export interface AgentManifestEntry {
 	created: boolean;
 }
 
-/** Payload for a direct interaction with a persistent agent instance. */
-export interface DirectAgentPayload {
-	message: string;
-}
-
 /** Cursor-paginated list response. */
 export interface ListResponse<T> {
 	items: T[];

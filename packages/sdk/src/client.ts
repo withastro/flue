@@ -87,8 +87,6 @@ export interface FlueClient {
 		runs: {
 			/** Lists workflow-run summaries. */
 			list(options?: ListRunsOptions): Promise<ListResponse<RunPointer>>;
-			/** Retrieves one workflow-run record from the admin mount path. */
-			get(runId: string): Promise<RunRecord>;
 		};
 	};
 }
@@ -154,7 +152,6 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 			},
 			runs: {
 				list: (opts = {}) => adminHttp.json({ path: '/runs', query: runsQuery(opts) }),
-				get: getRun,
 			},
 		},
 	};

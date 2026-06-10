@@ -668,28 +668,6 @@ export class Session implements FlueSession {
 		);
 	}
 
-	processDirectInput(input: { message: string }): CallHandle<PromptResponse> {
-		return createCallHandle(undefined, (signal) =>
-			this.runOperation(
-				'prompt',
-				signal,
-				() =>
-					this.runPromptCall({
-						promptText: input.message,
-						schema: undefined,
-						tools: undefined,
-						model: undefined,
-						thinkingLevel: undefined,
-						images: undefined,
-						source: 'prompt',
-						errorLabel: 'prompt',
-						callSite: 'this direct input',
-						signal,
-					}) as Promise<PromptResponse>,
-			),
-		);
-	}
-
 	inspectSubmissionInput(input: AgentSubmissionInput): AgentSubmissionInspection {
 		return this.inspectPersistedInput(
 			input.kind === 'dispatch'

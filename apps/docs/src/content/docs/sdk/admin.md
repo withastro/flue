@@ -31,10 +31,4 @@ Lists workflow-run summaries. Direct agent interactions and dispatches are not i
 | `status`       | `'active' \| 'completed' \| 'errored'` | —       | Select workflow-run statuses.              |
 | `workflowName` | `string`                               | —       | Select one workflow name.                  |
 
-## `client.admin.runs.get(...)`
-
-```ts
-get(runId: string): Promise<RunRecord>;
-```
-
-Retrieves one workflow-run record from the admin mount path.
+To retrieve one workflow-run record, use [`client.runs.get()`](/sdk/runs/) — it reads from the same admin mount path.

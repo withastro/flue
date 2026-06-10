@@ -310,7 +310,6 @@ function startLocalWorkflow(name) {
       handler,
       createContext: createContextForRequest,
       onEvent: (event) => sendLocalMessage({ type: 'event', requestId: message.requestId, runId, event }),
-      emitIdleOnComplete: true,
       runStore,
       runRegistry,
       eventStreamStore,
@@ -351,7 +350,6 @@ function startLocalAgent(name, id) {
         }
         sendLocalMessage({ type: 'event', requestId: message.requestId, event });
       },
-      emitIdleOnComplete: true,
     }).then(
       (result) => sendLocalMessage({ type: 'result', requestId: message.requestId, result: result ?? null }),
       (error) => sendLocalMessage(ipcErrorMessage(error, message.requestId)),

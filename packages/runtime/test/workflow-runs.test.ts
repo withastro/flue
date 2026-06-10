@@ -4,10 +4,10 @@ import type { FlueRuntime } from '../src/internal.ts';
 import {
 	configureFlueRuntime,
 	createFlueContext,
-	InMemoryRunRegistry,
 	InMemoryRunStore,
 	InMemorySessionStore,
 } from '../src/internal.ts';
+import { InMemoryRunRegistry } from '../src/node/run-registry.ts';
 import { resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import { flue } from '../src/routing.ts';
 import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';

@@ -33,6 +33,7 @@
 		"@durable-streams/client": "^0.2.6"
 	},
 	"devDependencies": {
+		"@flue/runtime": "workspace:*",
 		"tsdown": "^0.22.0",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.6"

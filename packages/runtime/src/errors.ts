@@ -339,6 +339,19 @@ export class RunNotFoundError extends FlueHttpError {
 	}
 }
 
+export class StreamNotFoundError extends FlueHttpError {
+	constructor({ path }: { path: string }) {
+		super({
+			type: 'stream_not_found',
+			message: `Event stream "${path}" was not found.`,
+			details:
+				'Streams are created when their agent instance receives its first prompt or their workflow run starts.',
+			dev: '',
+			status: 404,
+		});
+	}
+}
+
 export class RunStoreUnavailableError extends FlueHttpError {
 	constructor() {
 		super({

@@ -53,24 +53,6 @@ export interface DirectAgentPayload {
 	message: string;
 }
 
-/**
- * Caller-safe error details exposed by Flue transports. Unknown failures are
- * converted to a generic `internal_error` payload without leaking their
- * original message.
- */
-export interface FluePublicError {
-	/** Stable machine-readable error category. */
-	type: string;
-	/** Short caller-facing summary. */
-	message: string;
-	/** Caller-facing explanation. */
-	details: string;
-	/** Additional local-development guidance when available. */
-	dev?: string;
-	/** Structured error-specific metadata when available. */
-	meta?: Record<string, unknown>;
-}
-
 /** Context passed to a {@link createAgent} initializer. */
 export interface AgentCreateContext<TPayload = unknown, TEnv = Record<string, any>> {
 	/** Agent instance id, or workflow run id when initialized with `ctx.init()`. */
