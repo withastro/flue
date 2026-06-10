@@ -5,7 +5,7 @@ import {
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgent } from '../src/index.ts';
+import { createAgent, withSkillName } from '../src/index.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 import type { PackagedSkillDirectory, SessionEnv, SkillReference } from '../src/types.ts';
 
@@ -802,5 +802,83 @@ describe('session.skill()', () => {
 			isError: false,
 		});
 		expect(result.text).toBe('Packaged skill loaded.');
+	});
+
+	it('allows a packaged skill to be aliased to avoid collision with a workspace skill', async () => {
+		const provider = createProvider();
+		const reference: SkillReference = {
+			__flueSkillReference: true,
+			id: 'skill:review:fixture',
+			name: 'review',
+			description: 'Review packaged changes.',
+		};
+		const directory: PackagedSkillDirectory = {
+			id: 'skill:review:fixture',
+			name: 'review',
+			description: 'Review packaged changes.',
+			files: {
+				'SKILL.md': {
+					encoding: 'base64',
+					kind: 'text',
+					content: Buffer.from(
+						'---\nname: review\ndescription: Review packaged changes.\n---\nInspect the packaged patch.',
+					).toString('base64'),
+				},
+			},
+		};
+
+		let modelToolResult: unknown;
+		provider.setResponses([
+			fauxAssistantMessage(fauxToolCall('activate_skill', { name: 'vendor-review' }), {
+				stopReason: 'toolUse',
+			}),
+			(context) => {
+				modelToolResult = context.messages.at(-1);
+				return fauxAssistantMessage('Aliased packaged skill loaded.');
+			},
+		]);
+
+		const ctx = createFlueContext({
+			id: 'aliased-skill-instance',
+			payload: {},
+			env: {},
+			agentConfig: {
+				systemPrompt: '',
+				skills: {},
+				packagedSkills: { [reference.id]: directory },
+				model: undefined,
+				resolveModel: () => provider.getModel(),
+			},
+			createDefaultEnv: async () =>
+				createEnv({
+					files: {
+						'/repo/.agents/skills/review/SKILL.md':
+							'---\nname: review\ndescription: Review workspace changes.\n---\nInspect the workspace patch.',
+					},
+				}),
+			defaultStore: new InMemorySessionStore(),
+		});
+
+		const harness = await ctx.init(
+			createAgent(() => ({
+				model: `${provider.getModel().provider}/${provider.getModel().id}`,
+				skills: [withSkillName(reference, 'vendor-review')],
+			})),
+		);
+		const session = await harness.session();
+		const result = await session.prompt('Review the vendor patch.');
+
+		expect(modelToolResult).toMatchObject({
+			role: 'toolResult',
+			toolName: 'activate_skill',
+			content: [
+				{
+					type: 'text',
+					text: expect.stringContaining('Inspect the packaged patch.'),
+				},
+			],
+			isError: false,
+		});
+		expect(result.text).toBe('Aliased packaged skill loaded.');
 	});
 });

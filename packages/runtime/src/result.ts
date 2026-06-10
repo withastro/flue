@@ -42,8 +42,8 @@ export function buildPackagedSkillPrompt(
 		Uint8Array.from(atob(skillFile.content), (character) => character.charCodeAt(0)),
 	);
 	const skill = parseSkillMarkdown(raw, {
-		directoryName: reference.name,
-		path: `${reference.name}/SKILL.md`,
+		directoryName: directory.name,
+		path: `${directory.name}/SKILL.md`,
 	});
 	const parts = [
 		`Run the skill named "${reference.name}".`,

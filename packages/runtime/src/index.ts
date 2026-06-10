@@ -3,7 +3,7 @@
 
 export { Type } from '@earendil-works/pi-ai';
 export type { PersistenceAdapter } from './agent-execution-store.ts';
-export { createAgent, defineAgentProfile } from './agent-definition.ts';
+export { createAgent, defineAgentProfile, withSkillName } from './agent-definition.ts';
 export { IMAGE_DATA_OMITTED } from './event-redaction.ts';
 export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
 export { connectMcpServer } from './mcp.ts';

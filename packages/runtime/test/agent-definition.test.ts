@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createAgent, defineAgentProfile, defineTool } from '../src/index.ts';
+import { createAgent, defineAgentProfile, defineTool, withSkillName } from '../src/index.ts';
 import type { FlueContextConfig } from '../src/internal.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 import type { AgentProfile, ToolDefinition } from '../src/types.ts';
@@ -198,5 +198,24 @@ describe('defineAgentProfile()', () => {
 			createAgent(() => ({ model: false, durability: { retry: 3, timeout: 120 } })),
 		);
 		expect(harness).toBeDefined();
+	});
+});
+
+describe('withSkillName()', () => {
+	it('creates an alias for a skill while preserving other properties', () => {
+		const original = {
+			name: 'original_name',
+			description: 'A test skill',
+			__flueSkillReference: true as const,
+			id: 'pkg-id',
+		};
+		const aliased = defineAgentProfile({
+			skills: [withSkillName(original, 'new_name')],
+		});
+
+		expect(aliased.skills?.[0]).toEqual({
+			...original,
+			name: 'new_name',
+		});
 	});
 });

@@ -122,6 +122,14 @@ export function extendAgentProfile(
 	};
 }
 
+/**
+ * Creates an alias for a registered skill. Useful when an imported packaged skill
+ * name collides with a workspace skill name.
+ */
+export function withSkillName<T extends Skill>(skill: T, name: string): T {
+	return { ...skill, name };
+}
+
 function hasOwn<T extends object, K extends PropertyKey>(
 	value: T | undefined,
 	key: K,
