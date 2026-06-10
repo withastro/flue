@@ -6,7 +6,7 @@
 
 ### Fixes & Other Changes
 
-- Fixed workflow run-event persistence issuing one durable storage write per streamed chunk. Per-chunk streaming events (`message_update`, `text_delta`, `thinking_start`, `thinking_delta`, `thinking_end`) are still delivered to live subscribers but are no longer written to the run-event journal; history replay uses `message_end` events and interrupted-stream recovery uses the throttled stream-chunk segments.
+- Fixed workflow run-event persistence issuing one durable storage write per streamed chunk. Per-chunk streaming events (`message_update`, `text_delta`, `thinking_start`, `thinking_delta`, `thinking_end`) are now throttle-batched and flushed to the event stream store at most once every 3 seconds instead of on every chunk. Live stream readers still see deltas; history replay and interrupted-stream recovery are unaffected.
 
 ### Breaking Changes
 

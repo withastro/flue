@@ -19,7 +19,7 @@ import { agentStreamPath, parseOffset, runStreamPath, type EventStreamStore } fr
 
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
-import type { RunStore } from './run-store.ts';
+import { isEphemeralRunEvent, type RunStore } from './run-store.ts';
 
 
 export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
@@ -731,9 +731,16 @@ async function emitRunEnd(
 
 }
 
+const EPHEMERAL_FLUSH_INTERVAL_MS = 3_000;
+
 /**
  * Persist non-terminal events to the event stream store.
  * `run_end` is handled separately by {@link emitRunEnd}.
+ *
+ * Non-ephemeral events are appended immediately. Ephemeral per-chunk
+ * streaming events (see {@link isEphemeralRunEvent}) are batched and
+ * flushed at most once per {@link EPHEMERAL_FLUSH_INTERVAL_MS} to avoid
+ * issuing one durable storage write per streamed chunk.
  *
  * Because `emitEvent` dispatches to subscribers synchronously (fire-and-forget),
  * async `appendEvent` calls produce floating promises. We collect them in a
@@ -742,18 +749,61 @@ async function emitRunEnd(
  */
 function subscribeRunFanout(lifecycle: WorkflowRunLifecycle): () => Promise<void> {
 	const { ctx, eventStreamStore, runId } = lifecycle;
+	const streamPath = runStreamPath(runId);
 	const pending: Promise<void>[] = [];
+
+	// ── Ephemeral event throttle ────────────────────────────────────────
+	let ephemeralBatch: FlueEvent[] = [];
+	let ephemeralTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function flushEphemeralBatch(): void {
+		if (ephemeralBatch.length === 0) return;
+		const batch = ephemeralBatch;
+		ephemeralBatch = [];
+		for (const event of batch) {
+			pending.push(
+				eventStreamStore.appendEvent(streamPath, event).then(
+					() => {},
+					(error) => { console.error('[flue:event-stream] appendEvent failed:', error); },
+				),
+			);
+		}
+	}
+
+	function scheduleEphemeralFlush(): void {
+		if (ephemeralTimer !== undefined) return;
+		ephemeralTimer = setTimeout(() => {
+			ephemeralTimer = undefined;
+			flushEphemeralBatch();
+		}, EPHEMERAL_FLUSH_INTERVAL_MS);
+	}
+
+	// ── Subscription ────────────────────────────────────────────────────
 	const unsubscribe = ctx.subscribeEvent((event) => {
 		if (event.type === 'run_end') return;
+		if (isEphemeralRunEvent(event)) {
+			ephemeralBatch.push(event);
+			scheduleEphemeralFlush();
+			return;
+		}
+		// Flush any buffered ephemeral events before a non-ephemeral event
+		// so stream readers see them in emission order.
+		flushEphemeralBatch();
 		pending.push(
-			eventStreamStore.appendEvent(runStreamPath(runId), event).then(
+			eventStreamStore.appendEvent(streamPath, event).then(
 				() => {},
 				(error) => { console.error('[flue:event-stream] appendEvent failed:', error); },
 			),
 		);
 	});
+
 	return async () => {
 		unsubscribe();
+		if (ephemeralTimer !== undefined) {
+			clearTimeout(ephemeralTimer);
+			ephemeralTimer = undefined;
+		}
+		flushEphemeralBatch();
 		await Promise.all(pending);
 	};
 }
