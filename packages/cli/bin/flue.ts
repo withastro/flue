@@ -1342,16 +1342,27 @@ function createLogsClient(args: LogsArgs) {
 	});
 }
 
-function normalizeSinceOffset(value: string): string {
-	if (/^\d+$/.test(value)) {
-		return `${'0'.repeat(16)}_${String(Number(value)).padStart(16, '0')}`;
-	}
-	return value;
+const OFFSET_COMPONENT_PAD = 16;
+
+/** Format an event index as a DS offset (`<zeros>_<index>`, both 16 digits). */
+function formatEventOffset(index: number | string): string {
+	const digits = String(index).replace(/^0+(?=\d)/, '');
+	return `${'0'.repeat(OFFSET_COMPONENT_PAD)}_${digits.padStart(OFFSET_COMPONENT_PAD, '0')}`;
 }
 
-function logsEmitEvent(event: FlueEvent, format: LogsArgs['format'], offset?: string): void {
+function normalizeSinceOffset(value: string): string {
+	return /^\d+$/.test(value) ? formatEventOffset(value) : value;
+}
+
+function logsEmitEvent(event: FlueEvent, format: LogsArgs['format']): void {
 	if (format === 'json' || format === 'ndjson') {
-		const output = format === 'ndjson' && offset ? { ...event, offset } : event;
+		// ndjson lines carry a per-event resume offset derived from eventIndex
+		// (event index == stream sequence). The stream's own offset getter is
+		// batch-granular and would skip events if used as a mid-batch checkpoint.
+		const offset = format === 'ndjson' && typeof event.eventIndex === 'number'
+			? formatEventOffset(event.eventIndex)
+			: undefined;
+		const output = offset ? { ...event, offset } : event;
 		process.stdout.write(`${JSON.stringify(output)}\n`);
 	} else {
 		logsRenderPretty(event);
@@ -1435,7 +1446,7 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 			if (event.type === 'run_end' && event.isError) exitCode = 2;
 			if (args.types && !args.types.has(event.type)) continue;
 
-			logsEmitEvent(event, args.format, args.format === 'ndjson' ? stream.offset : undefined);
+			logsEmitEvent(event, args.format);
 			emittedCount++;
 
 			if (event.type === 'run_end') {

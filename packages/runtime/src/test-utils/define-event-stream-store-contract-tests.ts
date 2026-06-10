@@ -91,6 +91,24 @@ export function defineEventStreamStoreContractTests(
 			});
 		});
 
+		it('marks an exactly-limit page ending at the tail as up to date', async () => {
+			const store = await create();
+			await store.createStream('runs/test');
+			for (let index = 0; index < 4; index++) {
+				await store.appendEvent('runs/test', { index });
+			}
+
+			const partial = await store.readEvents('runs/test', { offset: '-1', limit: 2 });
+			expect(partial.upToDate).toBe(false);
+
+			const exact = await store.readEvents('runs/test', { offset: partial.nextOffset, limit: 2 });
+			expect(exact).toMatchObject({
+				events: [{ data: { index: 2 } }, { data: { index: 3 } }],
+				nextOffset: '0000000000000000_0000000000000003',
+				upToDate: true,
+			});
+		});
+
 		it('returns null metadata for missing streams', async () => {
 			const store = await create();
 			expect(await store.getStreamMeta('runs/missing')).toBeNull();

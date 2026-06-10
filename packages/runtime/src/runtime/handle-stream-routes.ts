@@ -361,10 +361,20 @@ function handleSseMode(
 				return new Promise<void>((resolve) => {
 					resolveCapacity = resolve;
 				});
-			}).finally(() => {
+			}).then(() => {
 				cleanup();
 				try {
 					controller.close();
+				} catch {
+					// Already closed.
+				}
+			}, (error) => {
+				// A rejected loop (e.g. a failing store read) must not escape as an
+				// unhandled rejection — that would take down the whole process.
+				console.error(`[flue] SSE stream read failed for ${path}:`, error);
+				cleanup();
+				try {
+					controller.error(error);
 				} catch {
 					// Already closed.
 				}

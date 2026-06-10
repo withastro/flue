@@ -31,7 +31,14 @@ export interface FlueStreamOptions {
 export interface FlueEventStream<T = FlueEvent> extends AsyncIterable<T> {
 	/** Cancel the stream and abort the underlying connection. */
 	cancel(reason?: unknown): void;
-	/** Most recently delivered event offset, or the current stream offset before delivery. */
+	/**
+	 * Resume offset of the most recently fetched batch (the server's
+	 * `Stream-Next-Offset`). Advances per HTTP response, not per delivered
+	 * event — every event in a batch observes the batch's final offset, so
+	 * checkpointing this value mid-batch and resuming from it skips the rest
+	 * of that batch. For per-event checkpoints use the event's `eventIndex`
+	 * (event index == stream sequence).
+	 */
 	readonly offset: string;
 }
 
@@ -93,7 +100,10 @@ export function createFlueEventStream<T = FlueEvent>(
 		return responsePromise;
 	};
 
-	const cancel = (reason?: unknown) => abortController.abort(reason);
+	const cancel = (reason?: unknown) => {
+		abortController.abort(reason);
+		removeExternalAbortListener?.();
+	};
 
 	// Reader is initialized lazily on the first next() call.
 	let reader: ReadableStreamDefaultReader<T> | undefined;
@@ -147,8 +157,10 @@ export function createFlueEventStream<T = FlueEvent>(
 		},
 		async return(): Promise<IteratorResult<T>> {
 			readerDone = true;
-			try { reader?.cancel(); } catch { /* ignore */ }
-			removeExternalAbortListener?.();
+			// cancel() on an errored stream returns a rejected promise — swallow
+			// it so a consumer breaking out of the loop can't trigger an
+			// unhandled rejection.
+			try { void reader?.cancel().catch(() => {}); } catch { /* ignore */ }
 			cancel();
 			return { value: undefined as T, done: true };
 		},

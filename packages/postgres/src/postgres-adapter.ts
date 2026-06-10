@@ -1264,21 +1264,24 @@ class PgEventStreamStore implements EventStreamStore {
 			startAfter = parseOffset(rawOffset);
 		}
 
+		// Fetch one extra row so an exactly-limit page at the tail still
+		// reports up-to-date (mirrors SqliteEventStreamStore).
 		const rows = await this.runner.query(
 			`SELECT seq, data FROM flue_event_stream_entries
 			 WHERE path = $1 AND seq > $2
 			 ORDER BY seq ASC
 			 LIMIT $3`,
-			[path, startAfter, limit],
+			[path, startAfter, limit + 1],
 		);
+		const page = rows.slice(0, limit);
 
-		const events = rows.map((row) => ({
+		const events = page.map((row) => ({
 			data: JSON.parse(row.data as string) as unknown,
 			offset: formatOffset(Number(row.seq)),
 		}));
 
-		const lastSeq = events.length > 0 ? Number(rows[rows.length - 1]!.seq) : -1;
-		const upToDate = events.length < limit;
+		const lastSeq = events.length > 0 ? Number(page[page.length - 1]!.seq) : -1;
+		const upToDate = rows.length <= limit;
 
 		const nextOffset = events.length > 0
 			? formatOffset(lastSeq)
