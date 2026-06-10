@@ -1,519 +1,374 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import {
-	type AgentInvokeOptions,
-	type AgentStreamInvokeOptions,
-	type AgentSyncInvokeOptions,
-	type AttachedAgentEvent,
+	type AgentPromptOptions,
 	createFlueClient,
 	FlueApiError,
 	type ListRunsOptions,
-	type LlmAssistantMessage,
-	type LlmMessage,
-	type RunEventsOptions,
 	type RunStatus,
-	type RunStreamOptions,
 } from '../src/index.ts';
-import { readSse } from '../src/public/stream.ts';
 
 describe('createFlueClient', () => {
-	it('sends sync agent prompt requests without run identity', async () => {
-		const seen: Request[] = [];
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test',
-			fetch: async (input, init) => {
-				seen.push(new Request(input, init));
-				return Response.json({ result: { ok: true } });
-			},
-		});
-
-		const options: AgentSyncInvokeOptions = {
-			mode: 'sync',
-			payload: { message: 'Hello', session: 'chat' },
-		};
-
-		await expect(client.agents.invoke('hello', 'inst-1', options)).resolves.toEqual({
-			result: { ok: true },
-		});
-		expect(seen).toHaveLength(1);
-		expect(new URL(seen[0]?.url ?? '').pathname).toBe('/agents/hello/inst-1');
-		expect(seen[0]?.method).toBe('POST');
-		expect(await seen[0]?.json()).toEqual({ message: 'Hello', session: 'chat' });
-	});
-
-	it('resolves public HTTP and SSE routes beneath the base URL pathname', async () => {
-		const requests: Request[] = [];
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test/api/',
-			fetch: async (input, init) => {
-				const request = new Request(input, init);
-				requests.push(request);
-				if (request.url.endsWith('/stream')) {
-					return new Response(
-						sse('event: run_end\ndata: {"type":"run_end","isError":false,"durationMs":1}\n\n'),
-						{
-							headers: { 'content-type': 'text/event-stream' },
-						},
-					);
-				}
-				if (request.headers.get('accept') === 'text/event-stream') {
-					return new Response(sse('event: idle\ndata: {"type":"idle","instanceId":"inst-1"}\n\n'), {
-						headers: { 'content-type': 'text/event-stream' },
-					});
-				}
-				if (request.url.endsWith('/events')) return Response.json({ events: [] });
-				if (request.method === 'POST') return Response.json({ result: { ok: true } });
-				return Response.json({ runId: 'run-1' });
-			},
-		});
-
-		await client.agents.invoke('hello', 'inst-1', { mode: 'sync', payload: { message: 'Hello' } });
-		const agentEvents = [];
-		for await (const event of client.agents.invoke('hello', 'inst-1', {
-			mode: 'stream',
-			payload: { message: 'Hello' },
-		}))
-			agentEvents.push(event);
-		await client.runs.get('run-1');
-		const runEventOptions: RunEventsOptions = {};
-		await client.runs.events('run-1', runEventOptions);
-		const runEvents = [];
-		for await (const event of client.runs.stream('run-1')) runEvents.push(event);
-
-		expect(agentEvents).toEqual([{ type: 'idle', instanceId: 'inst-1' }]);
-		expect(runEvents).toEqual([{ type: 'run_end', isError: false, durationMs: 1 }]);
-		expect(requests.map(({ url }) => new URL(url).pathname)).toEqual([
-			'/api/agents/hello/inst-1',
-			'/api/agents/hello/inst-1',
-			'/api/runs/run-1',
-			'/api/runs/run-1/events',
-			'/api/runs/run-1/stream',
-		]);
-	});
-
-	it('exposes structured HTTP API errors', async () => {
-		const body = {
-			error: {
-				type: 'agent_not_found',
-				message: 'Agent not found.',
-				details: 'No exposed agent named hello exists.',
-			},
-		};
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test',
-			fetch: async () => Response.json(body, { status: 404 }),
-		});
-
-		const error = await client.agents
-			.invoke('hello', 'inst-1', { mode: 'sync', payload: { message: 'Hello' } })
-			.catch((error: unknown) => error);
-
-		expect(error).toBeInstanceOf(FlueApiError);
-		if (!(error instanceof FlueApiError)) throw error;
-		expect(error.name).toBe('FlueApiError');
-		expect(error.status).toBe(404);
-		expect(error.body).toEqual(body);
-		expect(error.message).toBe('Flue API error 404 [agent_not_found]: Agent not found.');
-	});
-
-	it('preserves parsed null HTTP API error bodies', async () => {
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test',
-			fetch: async () => Response.json(null, { status: 500 }),
-		});
-
-		const error = await client.runs.get('run-1').catch((error: unknown) => error);
-
-		expect(error).toBeInstanceOf(FlueApiError);
-		if (!(error instanceof FlueApiError)) throw error;
-		expect(error.body).toBeNull();
-	});
-
-	it('streams attached agent events without workflow identity', async () => {
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test',
-			fetch: async () =>
-				new Response(
-					sse(
-						'event: agent_start\ndata: {"type":"agent_start","instanceId":"inst-1","session":"chat"}\n\nevent: idle\ndata: {"type":"idle","instanceId":"inst-1","session":"chat"}\n\n',
-					),
-					{
-						headers: { 'content-type': 'text/event-stream' },
-					},
-				),
-		});
-
-		const events = [];
-		const options: AgentStreamInvokeOptions = {
-			mode: 'stream',
-			payload: { message: 'Hello', session: 'chat' },
-		};
-		const invoke = (options: AgentInvokeOptions) =>
-			client.agents.invoke('hello', 'inst-1', options);
-		for await (const event of invoke(options) as AsyncIterable<AttachedAgentEvent>) {
-			events.push(event);
-		}
-		expect(events).toEqual([
-			{ type: 'agent_start', instanceId: 'inst-1', session: 'chat' },
-			{ type: 'idle', instanceId: 'inst-1', session: 'chat' },
-		]);
-	});
-
-	it('streams normalized model-turn content for attached agents', async () => {
-		const userMessage: LlmMessage = { role: 'user', content: [{ type: 'text', text: 'Hello' }] };
-		const output: LlmAssistantMessage = {
-			role: 'assistant',
-			content: [
-				{ type: 'thinking', thinking: 'checking' },
-				{ type: 'toolCall', id: 'call_1', name: 'lookup', arguments: { query: 'hello' } },
-			],
-		};
-		const request: AttachedAgentEvent = {
-			type: 'turn_request',
-			instanceId: 'inst-1',
-			session: 'chat',
-			turnId: 'turn_1',
-			purpose: 'agent',
-			model: 'model',
-			provider: 'provider',
-			api: 'api',
-			input: {
-				messages: [userMessage],
-				tools: [{ name: 'lookup', description: 'Lookup', parameters: { type: 'object' } }],
-			},
-		};
-		const turn: AttachedAgentEvent = {
-			type: 'turn',
-			instanceId: 'inst-1',
-			session: 'chat',
-			turnId: 'turn_1',
-			purpose: 'agent',
-			durationMs: 1,
-			output,
-			isError: false,
-		};
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test',
-			fetch: async () =>
-				new Response(
-					sse(
-						`event: turn_request\ndata: ${JSON.stringify(request)}\n\nevent: turn\ndata: ${JSON.stringify(turn)}\n\n`,
-					),
-					{
-						headers: { 'content-type': 'text/event-stream' },
-					},
-				),
-		});
-
-		const events: AttachedAgentEvent[] = [];
-		for await (const event of client.agents.invoke('hello', 'inst-1', {
-			mode: 'stream',
-			payload: { message: 'Hello', session: 'chat' },
-		})) {
-			events.push(event);
-		}
-		expect(events).toEqual([request, turn]);
-		expect(events[0]?.type === 'turn_request' && events[0].input.messages[0]).toEqual(userMessage);
-		expect(events[1]?.type === 'turn' && events[1].output).toEqual(output);
-	});
-
-	it('rejects invalid attached agent stream events and stream errors', async () => {
-		const invalid = createFlueClient({
-			baseUrl: 'https://flue.test',
-			fetch: async () =>
-				new Response(sse('event: run_start\ndata: {"type":"run_start","runId":"run_stale"}\n\n'), {
-					headers: { 'content-type': 'text/event-stream' },
-				}),
-		});
-		const invalidEvents = invalid.agents.invoke('hello', 'inst-1', {
-			mode: 'stream',
-			payload: { message: 'Hello' },
-		});
-		await expect(
-			(async () => {
-				for await (const _event of invalidEvents) return;
-			})(),
-		).rejects.toThrow('invalid event');
-
-		for (const data of [
-			'{"type":"agent_start","instanceId":"inst-2"}',
-			'{"type":"not_real","instanceId":"inst-1"}',
-		]) {
-			const mismatch = createFlueClient({
+	describe('agents.prompt()', () => {
+		it('sends agent prompt requests as POST with JSON body', async () => {
+			const seen: Request[] = [];
+			const client = createFlueClient({
 				baseUrl: 'https://flue.test',
-				fetch: async () =>
-					new Response(sse(`event: agent_start\ndata: ${data}\n\n`), {
-						headers: { 'content-type': 'text/event-stream' },
+				fetch: async (input, init) => {
+					seen.push(new Request(input, init));
+					return Response.json({ result: { ok: true } });
+				},
+			});
+
+			const options: AgentPromptOptions = {
+				message: 'Hello',
+			};
+
+			await expect(client.agents.prompt('hello', 'inst-1', options)).resolves.toEqual({
+				result: { ok: true },
+			});
+			expect(seen).toHaveLength(1);
+			expect(new URL(seen[0]?.url ?? '').pathname).toBe('/agents/hello/inst-1');
+			expect(seen[0]?.method).toBe('POST');
+			expect(await seen[0]?.json()).toEqual({ message: 'Hello' });
+		});
+	});
+
+	describe('agents.stream()', () => {
+		it('constructs the correct stream URL from agent name and id', async () => {
+			const urls: string[] = [];
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test/api/',
+				fetch: async (input) => {
+					urls.push(typeof input === 'string' ? input : new Request(input).url);
+					return dsJsonResponse([{ type: 'idle' }]);
+				},
+			});
+
+			const eventStream = client.agents.stream('my-agent', 'inst-1', {
+				offset: '0000000000000000_0000000000000042',
+				live: false,
+			});
+			const events = [];
+			for await (const event of eventStream) {
+				events.push(event);
+			}
+			expect(events).toEqual([{ type: 'idle' }]);
+			expect(urls.length).toBeGreaterThanOrEqual(1);
+			const parsed = new URL(urls[0]!);
+			expect(parsed.pathname).toBe('/api/agents/my-agent/inst-1');
+			expect(parsed.searchParams.get('offset')).toBe('0000000000000000_0000000000000042');
+		});
+
+		it('passes auth headers to the DS stream via fetch wrapper', async () => {
+			const seenHeaders: Record<string, string>[] = [];
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				token: 'test-token-123',
+				headers: { 'x-custom': 'value' },
+				fetch: async (input, init) => {
+					const h = init?.headers as Record<string, string> | undefined;
+					if (h) seenHeaders.push({ ...h });
+					return dsJsonResponse([]);
+				},
+			});
+
+			const eventStream = client.agents.stream('agent', 'id', { live: false });
+			// Consume the stream to trigger the fetch.
+			for await (const _ of eventStream) {
+				// empty
+			}
+			expect(seenHeaders.length).toBeGreaterThanOrEqual(1);
+			expect(seenHeaders[0]).toMatchObject({
+				authorization: 'Bearer test-token-123',
+				'x-custom': 'value',
+			});
+		});
+
+		it('cancel() before iteration does not start a connection', async () => {
+			let fetchCount = 0;
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async () => {
+					fetchCount++;
+					return dsJsonResponse([]);
+				},
+			});
+
+			const eventStream = client.agents.stream('agent', 'id', { live: false });
+			eventStream.cancel();
+			const events = [];
+			for await (const event of eventStream) {
+				events.push(event);
+			}
+
+			expect(events).toEqual([]);
+			expect(fetchCount).toBe(0);
+		});
+
+		it('stops cleanly when canceled during initial connection', async () => {
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async (_input, init) =>
+					await new Promise<Response>((_resolve, reject) => {
+						init?.signal?.addEventListener('abort', () =>
+							reject(new DOMException('Aborted', 'AbortError')),
+						);
 					}),
 			});
-			const events = mismatch.agents.invoke('hello', 'inst-1', {
-				mode: 'stream',
-				payload: { message: 'Hello' },
-			});
-			await expect(
-				(async () => {
-					for await (const _event of events) return;
-				})(),
-			).rejects.toThrow('invalid event');
-		}
 
-		const failed = createFlueClient({
-			baseUrl: 'https://flue.test',
-			fetch: async () =>
-				new Response(
-					sse(
-						'event: error\ndata: {"type":"error","instanceId":"inst-1","error":{"type":"internal_error","message":"agent failed","details":"failed"}}\n\n',
-					),
-					{
-						headers: { 'content-type': 'text/event-stream' },
-					},
-				),
-		});
-		const failedEvents = failed.agents.invoke('hello', 'inst-1', {
-			mode: 'stream',
-			payload: { message: 'Hello' },
-		});
-		await expect(
-			(async () => {
-				for await (const _event of failedEvents) return;
-			})(),
-		).rejects.toThrow('agent failed');
-	});
+			const eventStream = client.agents.stream('agent', 'id', { live: false });
+			const next = eventStream[Symbol.asyncIterator]().next();
+			await new Promise((resolve) => setTimeout(resolve, 0));
+			eventStream.cancel();
 
-	it('builds origin-relative admin list queries independently from the public mount', async () => {
-		let url = '';
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test/api/',
-			fetch: async (input) => {
-				url = new Request(input).url;
-				return Response.json({ items: [] });
-			},
+			await expect(next).resolves.toEqual({ value: undefined, done: true });
 		});
 
-		const status: RunStatus = 'active';
-		const options: ListRunsOptions = { status, workflowName: 'hello', limit: 10 };
-
-		await client.admin.runs.list(options);
-		const parsed = new URL(url);
-		expect(parsed.pathname).toBe('/admin/runs');
-		expect(parsed.searchParams.get('status')).toBe('active');
-		expect(parsed.searchParams.get('workflowName')).toBe('hello');
-		expect(parsed.searchParams.get('limit')).toBe('10');
-	});
-
-	it('supports admin mounted below a custom path', async () => {
-		let url = '';
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test/api/',
-			adminBasePath: '/internal/admin/',
-			fetch: async (input) => {
-				url = new Request(input).url;
-				return Response.json({ items: [] });
-			},
-		});
-
-		await client.admin.agents.list();
-		expect(new URL(url).pathname).toBe('/internal/admin/agents');
-	});
-
-	it('rejects run-stream SSE error frames instead of yielding them as events', async () => {
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test',
-			fetch: async () =>
-				new Response(
-					sse(
-						'event: error\nid: 1\ndata: {"error":{"type":"internal_error","message":"stream failed","details":"failed"}}\n\n',
-					),
-					{
-						headers: { 'content-type': 'text/event-stream' },
-					},
-				),
-		});
-		const events: unknown[] = [];
-		const options: RunStreamOptions = { maxRetries: 0 };
-		await expect(
-			(async () => {
-				for await (const event of client.runs.stream('run_1', options)) events.push(event);
-			})(),
-		).rejects.toThrow('stream failed');
-		expect(events).toEqual([]);
-	});
-
-	it('uses a fallback error for run-stream SSE error frames without messages', async () => {
-		for (const data of ['null', '{}']) {
+		it('tracks the latest stream offset after reading an event', async () => {
 			const client = createFlueClient({
 				baseUrl: 'https://flue.test',
 				fetch: async () =>
-					new Response(sse(`event: error\nid: 1\ndata: ${data}\n\n`), {
-						headers: { 'content-type': 'text/event-stream' },
+					dsJsonResponse([{ type: 'agent_start' }], {
+						nextOffset: '0000000000000000_0000000000000001',
+						closed: true,
 					}),
 			});
-			await expect(
-				(async () => {
-					for await (const _event of client.runs.stream('run_1', { maxRetries: 0 })) return;
-				})(),
-			).rejects.toThrow('SSE stream failed.');
-		}
-	});
 
-	it('ignores malformed SSE ids when reconnecting workflow-run streams', async () => {
-		const requests: Request[] = [];
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test',
-			fetch: async (input, init) => {
-				const request = new Request(input, init);
-				requests.push(request);
-				if (requests.length === 1) {
-					return new Response(sse('event: run_start\nid: 1junk\ndata: {"type":"run_start"}\n\n'), {
-						headers: { 'content-type': 'text/event-stream' },
-					});
-				}
-				return new Response(
-					sse('event: run_end\nid: 2\ndata: {"type":"run_end","isError":false,"durationMs":1}\n\n'),
-					{
-						headers: { 'content-type': 'text/event-stream' },
-					},
-				);
-			},
+			const eventStream = client.agents.stream('agent', 'id', { live: false });
+			expect(eventStream.offset).toBe('-1');
+			const iterator = eventStream[Symbol.asyncIterator]();
+			await iterator.next();
+			expect(eventStream.offset).toBe('0000000000000000_0000000000000001');
 		});
 
-		// Exhaust the iterator so the stream reconnects; this test only inspects the resumed request header.
-		for await (const _event of client.runs.stream('run_1', { maxRetries: 1, initialRetryMs: 1 })) {
-		}
+		it('cancel() stops iteration and aborts the underlying connection', async () => {
+			let fetchCount = 0;
+			let lastSignal: AbortSignal | undefined;
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async (_input, init) => {
+					fetchCount++;
+					lastSignal = init?.signal as AbortSignal | undefined;
+					return dsJsonResponse([{ type: 'agent_start' }]);
+				},
+			});
 
-		expect(requests).toHaveLength(2);
-		expect(requests[1]?.headers.get('last-event-id')).toBeNull();
+			const eventStream = client.agents.stream('agent', 'id', { live: false });
+			const events = [];
+			for await (const event of eventStream) {
+				events.push(event);
+				// Cancel after receiving the first event.
+				eventStream.cancel();
+			}
+			expect(events).toHaveLength(1);
+			expect(events[0]).toMatchObject({ type: 'agent_start' });
+			expect(fetchCount).toBe(1);
+			expect(lastSignal?.aborted).toBe(true);
+		});
 	});
 
-	it('cancels the workflow-run SSE response when iteration stops before run_end', async () => {
-		let cancellations = 0;
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test',
-			fetch: async () =>
-				new Response(
-					new ReadableStream<Uint8Array>({
-						start(controller) {
-							controller.enqueue(
-								new TextEncoder().encode('event: run_start\nid: 1\ndata: {"type":"run_start"}\n\n'),
-							);
-						},
-						cancel() {
-							cancellations++;
-						},
-					}),
-					{
-						headers: { 'content-type': 'text/event-stream' },
-					},
-				),
+	describe('runs.stream()', () => {
+		it('constructs the correct stream URL from run ID', async () => {
+			const urls: string[] = [];
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async (input) => {
+					urls.push(typeof input === 'string' ? input : new Request(input).url);
+					return dsJsonResponse(
+						[{ type: 'run_end', runId: 'run-1', isError: false, durationMs: 100 }],
+						{ closed: true },
+					);
+				},
+			});
+
+			const events = [];
+			for await (const event of client.runs.stream('run-1', { live: false })) {
+				events.push(event);
+			}
+			expect(events).toHaveLength(1);
+			expect(events[0]).toMatchObject({ type: 'run_end' });
+			const parsed = new URL(urls[0]!);
+			expect(parsed.pathname).toBe('/runs/run-1');
 		});
-
-		for await (const _event of client.runs.stream('run_1')) break;
-
-		expect(cancellations).toBe(1);
 	});
 
-	it('reconnects run streams after clean EOF before run_end', async () => {
-		const requests: Request[] = [];
-		const client = createFlueClient({
-			baseUrl: 'https://flue.test',
-			fetch: async (input, init) => {
-				const request = new Request(input, init);
-				requests.push(request);
-				if (requests.length === 1) {
-					return new Response(sse('event: run_start\nid: 1\ndata: {"type":"run_start"}\n\n'), {
-						headers: { 'content-type': 'text/event-stream' },
-					});
-				}
-				return new Response(
-					sse('event: run_end\nid: 2\ndata: {"type":"run_end","isError":false,"durationMs":1}\n\n'),
-					{
-						headers: { 'content-type': 'text/event-stream' },
-					},
-				);
-			},
+	describe('runs.events()', () => {
+		it('returns all run events as an array', async () => {
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async () =>
+					dsJsonResponse(
+						[
+							{ type: 'run_start', runId: 'r1' },
+							{ type: 'run_end', runId: 'r1', isError: false, durationMs: 50 },
+						],
+						{ closed: true },
+					),
+			});
+
+			const events = await client.runs.events('r1');
+			expect(events).toHaveLength(2);
+			expect(events[0]).toMatchObject({ type: 'run_start' });
+			expect(events[1]).toMatchObject({ type: 'run_end' });
+		});
+	});
+
+	describe('workflows.invoke()', () => {
+		it('POSTs to workflow route and returns runId + streamUrl', async () => {
+			const seen: Request[] = [];
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async (input, init) => {
+					seen.push(new Request(input, init));
+					return Response.json({ status: 'accepted', runId: 'wf_abc123' }, { status: 202 });
+				},
+			});
+
+			const result = await client.workflows.invoke('my-workflow', {
+				payload: { key: 'value' },
+			});
+			expect(result.runId).toBe('wf_abc123');
+			expect(result.streamUrl).toBe('https://flue.test/runs/wf_abc123');
+			expect(seen).toHaveLength(1);
+			expect(new URL(seen[0]!.url).pathname).toBe('/workflows/my-workflow');
+			expect(seen[0]!.method).toBe('POST');
+			expect(await seen[0]!.json()).toEqual({ key: 'value' });
 		});
 
-		const events = [];
-		for await (const event of client.runs.stream('run_1', { maxRetries: 1, initialRetryMs: 1 })) {
-			events.push(event.type);
-		}
+		it('works without a payload', async () => {
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async () => Response.json({ status: 'accepted', runId: 'wf_xyz' }, { status: 202 }),
+			});
 
-		expect(events).toEqual(['run_start', 'run_end']);
-		expect(requests).toHaveLength(2);
-		expect(requests[1]?.headers.get('last-event-id')).toBe('1');
+			const result = await client.workflows.invoke('simple-workflow');
+			expect(result.runId).toBe('wf_xyz');
+			expect(result.streamUrl).toBe('https://flue.test/runs/wf_xyz');
+		});
+	});
+
+	describe('URL resolution', () => {
+		it('resolves public HTTP routes beneath the base URL pathname', async () => {
+			const requests: Request[] = [];
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test/api/',
+				fetch: async (input, init) => {
+					const request = new Request(input, init);
+					requests.push(request);
+					if (request.method === 'POST') return Response.json({ result: { ok: true } });
+					return Response.json({ runId: 'run-1' });
+				},
+			});
+
+			await client.agents.prompt('hello', 'inst-1', { message: 'Hello' });
+			await client.runs.get('run-1');
+
+			expect(requests.map(({ url }) => new URL(url).pathname)).toEqual([
+				'/api/agents/hello/inst-1',
+				'/admin/runs/run-1',
+			]);
+		});
+	});
+
+	describe('error handling', () => {
+		it('exposes structured HTTP API errors', async () => {
+			const body = {
+				error: {
+					type: 'agent_not_found',
+					message: 'Agent not found.',
+					details: 'No exposed agent named hello exists.',
+				},
+			};
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async () => Response.json(body, { status: 404 }),
+			});
+
+			const error = await client.agents
+				.prompt('hello', 'inst-1', { message: 'Hello' })
+				.catch((error: unknown) => error);
+
+			expect(error).toBeInstanceOf(FlueApiError);
+			if (!(error instanceof FlueApiError)) throw error;
+			expect(error.name).toBe('FlueApiError');
+			expect(error.status).toBe(404);
+			expect(error.body).toEqual(body);
+			expect(error.message).toBe('Flue API error 404 [agent_not_found]: Agent not found.');
+		});
+
+		it('preserves parsed null HTTP API error bodies', async () => {
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async () => Response.json(null, { status: 500 }),
+			});
+
+			const error = await client.runs.get('run-1').catch((error: unknown) => error);
+
+			expect(error).toBeInstanceOf(FlueApiError);
+			if (!(error instanceof FlueApiError)) throw error;
+			expect(error.body).toBeNull();
+		});
+	});
+
+	describe('admin routes', () => {
+		it('builds origin-relative admin list queries independently from the public mount', async () => {
+			let url = '';
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test/api/',
+				fetch: async (input) => {
+					url = new Request(input).url;
+					return Response.json({ items: [] });
+				},
+			});
+
+			const status: RunStatus = 'active';
+			const options: ListRunsOptions = { status, workflowName: 'hello', limit: 10 };
+
+			await client.admin.runs.list(options);
+			const parsed = new URL(url);
+			expect(parsed.pathname).toBe('/admin/runs');
+			expect(parsed.searchParams.get('status')).toBe('active');
+			expect(parsed.searchParams.get('workflowName')).toBe('hello');
+			expect(parsed.searchParams.get('limit')).toBe('10');
+		});
+
+		it('supports admin mounted below a custom path', async () => {
+			let url = '';
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test/api/',
+				adminBasePath: '/internal/admin/',
+				fetch: async (input) => {
+					url = new Request(input).url;
+					return Response.json({ items: [] });
+				},
+			});
+
+			await client.admin.agents.list();
+			expect(new URL(url).pathname).toBe('/internal/admin/agents');
+		});
 	});
 });
 
-describe('readSse', () => {
-	it('parses SSE frames', async () => {
-		const stream = new ReadableStream<Uint8Array>({
-			start(controller) {
-				controller.enqueue(
-					new TextEncoder().encode('event: run_end\nid: 2\ndata: {"type":"run_end"}\n\n'),
-				);
-				controller.close();
-			},
-		});
+// ─── Test helpers ───────────────────────────────────────────────────────────
 
-		const frames = [];
-		for await (const frame of readSse(stream)) frames.push(frame);
-		expect(frames).toEqual([{ event: 'run_end', id: '2', data: '{"type":"run_end"}' }]);
-	});
-
-	it('parses CRLF-delimited SSE frames', async () => {
-		const stream = sse('event: run_end\r\nid: 2\r\ndata: {"type":"run_end"}\r\n\r\n');
-
-		const frames = [];
-		for await (const frame of readSse(stream)) frames.push(frame);
-		expect(frames).toEqual([{ event: 'run_end', id: '2', data: '{"type":"run_end"}' }]);
-	});
-
-	it('parses CR-only line endings', async () => {
-		const stream = sse('event: run_end\rid: 2\rdata: {"type":"run_end"}\r\r');
-
-		const frames = [];
-		for await (const frame of readSse(stream)) frames.push(frame);
-		expect(frames).toEqual([{ event: 'run_end', id: '2', data: '{"type":"run_end"}' }]);
-	});
-
-	it('handles CRLF split across chunks', async () => {
-		const encoder = new TextEncoder();
-		const stream = new ReadableStream<Uint8Array>({
-			start(controller) {
-				// First chunk ends with \r, second chunk starts with \n
-				controller.enqueue(encoder.encode('data: {"type":"a"}\r'));
-				controller.enqueue(encoder.encode('\ndata: {"type":"b"}\r'));
-				controller.enqueue(encoder.encode('\n\r\n'));
-				controller.close();
-			},
-		});
-
-		const frames = [];
-		for await (const frame of readSse(stream)) frames.push(frame);
-		expect(frames).toEqual([{ data: '{"type":"a"}\n{"type":"b"}' }]);
-	});
-
-	it('handles multiple frames across many small chunks', async () => {
-		const encoder = new TextEncoder();
-		const stream = new ReadableStream<Uint8Array>({
-			start(controller) {
-				controller.enqueue(encoder.encode('data: {"n":1}\r\n'));
-				controller.enqueue(encoder.encode('\r\ndata:'));
-				controller.enqueue(encoder.encode(' {"n":2}\r\n\r\n'));
-				controller.close();
-			},
-		});
-
-		const frames = [];
-		for await (const frame of readSse(stream)) frames.push(frame);
-		expect(frames).toEqual([{ data: '{"n":1}' }, { data: '{"n":2}' }]);
-	});
-});
-
-function sse(text: string): ReadableStream<Uint8Array> {
-	return new ReadableStream<Uint8Array>({
-		start(controller) {
-			controller.enqueue(new TextEncoder().encode(text));
-			controller.close();
-		},
-	});
+/**
+ * Build a DS-compliant JSON catch-up response. Used by stream tests to
+ * simulate the server without a real DS server.
+ */
+function dsJsonResponse(
+	events: unknown[],
+	opts: { closed?: boolean; upToDate?: boolean; nextOffset?: string } = {},
+): Response {
+	const nextOffset = opts.nextOffset ?? String(events.length).padStart(16, '0');
+	const headers: Record<string, string> = {
+		'content-type': 'application/json',
+		'stream-next-offset': nextOffset,
+	};
+	if (opts.upToDate !== false) {
+		headers['stream-up-to-date'] = 'true';
+	}
+	if (opts.closed) {
+		headers['stream-closed'] = 'true';
+	}
+	return new Response(JSON.stringify(events), { status: 200, headers });
 }

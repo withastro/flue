@@ -13,10 +13,9 @@ For the underlying mental model, start with [What is an agent?](/docs/concepts/a
 In a Flue project, an agent is a file in `src/agents/` whose default export is created with `createAgent(...)`:
 
 ```ts title="src/agents/joke-teller.ts"
-import { createAgent, type AgentRouteHandler, type AgentWebSocketHandler } from '@flue/runtime';
+import { createAgent, type AgentRouteHandler } from '@flue/runtime';
 
 export const route: AgentRouteHandler = async (_c, next) => next();
-export const websocket: AgentWebSocketHandler = async (_c, next) => next();
 
 export default createAgent(() => ({
   model: 'anthropic/claude-haiku-4-5',
@@ -27,8 +26,7 @@ export default createAgent(() => ({
 In this example:
 
 - **The filename:** This gives the agent its name: `joke-teller`.
-- `route`: This exposes the agent over HTTP at `POST /agents/joke-teller/:id`.
-- `websocket`: This exposes the agent over WebSocket at `GET /agents/joke-teller/:id`.
+- `route`: This exposes the agent over HTTP at `POST /agents/joke-teller/:id`. Event streaming is available at `GET /agents/joke-teller/:id`.
 - `createAgent(...)`: This defines the agent's behavior and environment.
 
 See [Project Layout](/docs/guide/project-layout/) and [Models & Providers](/docs/guide/models/) for more information.
@@ -133,11 +131,11 @@ For more information, see [Subagents](/docs/guide/subagents/).
 
 ## Interacting with your agent
 
-Users can interact directly with an agent over HTTP or WebSocket. In either case, your application must verify that the caller can access the selected agent `id`.
+Users can interact directly with an agent over HTTP. Your application must verify that the caller can access the selected agent `id`.
 
 ### HTTP
 
-An agent with a `route` export accepts HTTP messages at `POST /agents/<name>/<id>`. The body contains a message and may select a named session:
+An agent with a `route` export accepts HTTP messages at `POST /agents/<name>/<id>`. The body contains a message:
 
 ```http title="Prompt a support agent instance"
 POST /agents/support-assistant/ticket-8472 HTTP/1.1
@@ -145,8 +143,7 @@ Authorization: Bearer <token>
 Content-Type: application/json
 
 {
-  "message": "Can you summarize the open issues in my case?",
-  "session": "customer-follow-up"
+  "message": "Can you summarize the open issues in my case?"
 }
 ```
 
@@ -172,29 +169,6 @@ export default createAgent(({ id }) => ({
 }));
 ```
 
-### WebSocket
-
-Export `websocket` when an interactive client should send multiple messages to the same agent instance over one connection:
-
-```ts title="src/agents/support-assistant.ts"
-import { createAgent, type AgentWebSocketHandler } from '@flue/runtime';
-import { authenticate } from '../auth.ts';
-
-export const websocket: AgentWebSocketHandler = async (c, next) => {
-  const principal = await authenticate(c.req.header('authorization'));
-  const ticketId = c.req.param('id');
-
-  if (!principal) return c.json({ error: 'Unauthorized' }, 401);
-  if (!principal.supportTicketIds.includes(ticketId)) return c.notFound();
-
-  await next();
-};
-
-export default createAgent(() => ({
-  model: 'anthropic/claude-haiku-4-5',
-}));
-```
-
 For more information, see [Routing](/docs/guide/routing/) and [SDK](/docs/sdk/overview/).
 
 ## `dispatch()`
@@ -214,7 +188,6 @@ app.post('/webhooks/support-comments', async (c) => {
   const event = await verifySupportWebhook(c.req.raw);
   const receipt = await dispatch(supportAssistant, {
     id: event.ticketId,
-    session: 'customer-follow-up',
     input: {
       type: 'support.comment.created',
       commentId: event.commentId,
@@ -230,13 +203,14 @@ app.route('/', flue());
 export default app;
 ```
 
-Your application chooses the agent instance and session before dispatching the event. `dispatch(...)` accepts it for asynchronous processing rather than waiting for an agent response. For a complete chat integration pattern, see [Chat](/docs/guide/chat/).
+Your application chooses the agent instance before dispatching the event. `dispatch(...)` accepts it for asynchronous processing rather than waiting for an agent response. For a complete chat integration pattern, see [Chat](/docs/guide/chat/).
 
 ## Next steps
 
 - [Agent API](/docs/api/agent-api/) — look up session operations and their results.
 - [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), and [Sandboxes](/docs/guide/sandboxes/) — configure what an agent can do and where it works.
 - [Subagents](/docs/guide/subagents/) — delegate focused work to specialist profiles.
-- [Routing](/docs/guide/routing/) — expose agent HTTP and WebSocket surfaces inside an authenticated application.
+- [Routing](/docs/guide/routing/) — expose agent HTTP surfaces inside an authenticated application.
 - [Workflows](/docs/guide/workflows/) — run single-use or background agent work.
-- [Chat](/docs/guide/chat/) and [Observability](/docs/guide/observability/) — deliver asynchronous messages and inspect agent activity.
+- [Chat](/docs/guide/chat/) — deliver asynchronous messages from conversational platforms.
+- [Observability](/docs/guide/observability/) — inspect agent activity.

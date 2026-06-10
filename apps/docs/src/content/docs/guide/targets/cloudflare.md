@@ -41,13 +41,9 @@ Flue generates the Durable Object classes and bindings, but your `wrangler.jsonc
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": [
-        "FlueRegistry",
-        "FlueSupportChatAgent",
-        "FlueTranslateWorkflow"
-      ]
-    }
-  ]
+      "new_sqlite_classes": ["FlueRegistry", "FlueSupportChatAgent", "FlueTranslateWorkflow"],
+    },
+  ],
 }
 ```
 
@@ -61,8 +57,8 @@ Cloudflare requires an ordered migration history that accounts for every Durable
 {
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["FlueRegistry", "FlueSupportChatAgent"] },
-    { "tag": "v2", "new_sqlite_classes": ["FlueTranslateWorkflow"] }
-  ]
+    { "tag": "v2", "new_sqlite_classes": ["FlueTranslateWorkflow"] },
+  ],
 }
 ```
 
@@ -73,9 +69,12 @@ For example, if you remove an agent or workflow that was previously deployed, ap
 ```jsonc
 {
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["FlueRegistry", "FlueSupportChatAgent", "FlueTranslateWorkflow"] },
-    { "tag": "v2", "deleted_classes": ["FlueSupportChatAgent"] }
-  ]
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["FlueRegistry", "FlueSupportChatAgent", "FlueTranslateWorkflow"],
+    },
+    { "tag": "v2", "deleted_classes": ["FlueSupportChatAgent"] },
+  ],
 }
 ```
 
@@ -85,22 +84,25 @@ Similarly, use `renamed_classes` when a deployed class changes its name, such as
 {
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["FlueRegistry", "FlueSupportChatAgent"] },
-    { "tag": "v2", "renamed_classes": [{ "from": "FlueSupportChatAgent", "to": "FlueSupportAssistantAgent" }] }
-  ]
+    {
+      "tag": "v2",
+      "renamed_classes": [{ "from": "FlueSupportChatAgent", "to": "FlueSupportAssistantAgent" }],
+    },
+  ],
 }
 ```
 
 ## Durable agent execution
 
-Cloudflare agents durably admit direct HTTP, SSE, and WebSocket prompts together with `dispatch(...)` inputs. All accepted input for one session enters the same per-session queue, while separate sessions can progress independently.
+Cloudflare agents durably admit direct HTTP prompts together with `dispatch(...)` inputs. All accepted input for one agent instance enters the same queue.
 
 ```txt
-direct HTTP, SSE, or WebSocket prompt ─┐
-                                       ├→ durable per-session queue → stored session history
-dispatch(...) input ───────────────────┘
+direct HTTP prompt ─────────────────────┐
+                                        ├→ durable per-session queue → stored session history
+dispatch(...) input ────────────────────┘
 ```
 
-The submitting connection observes the work but does not own it. If a client disconnects after admission, backend work can continue. Flue does not reconstruct the lost transport or replay missed direct-agent stream events.
+The submitting connection observes the work but does not own it. If a client disconnects after admission, backend work can continue. Agent events are durably stored and can be replayed from any offset via the Durable Streams protocol.
 
 When a Durable Object resumes after interruption, Flue checks stored input and session history before deciding what to do next. It requeues only when it can prove the input was not applied, recognizes already-completed output, and records an interruption instead of blindly repeating uncertain model or tool work.
 
@@ -194,14 +196,11 @@ export const cloudflare = extend({
 ```ts
 export const cloudflare = extend({
   wrap: (Final) =>
-    Sentry.instrumentDurableObjectWithSentry(
-      (env) => ({ dsn: env.SENTRY_DSN }),
-      Final,
-    ),
+    Sentry.instrumentDurableObjectWithSentry((env) => ({ dsn: env.SENTRY_DSN }), Final),
 });
 ```
 
-Both `base` and `wrap` are optional. Do not override Flue-owned `fetch()`, `onRequest()`, WebSocket hooks, `onFiberRecovered()`, or `alarm()` methods.
+Both `base` and `wrap` are optional. Do not override Flue-owned `fetch()`, `onRequest()`, `onFiberRecovered()`, or `alarm()` methods.
 
 ## Extending `cloudflare.ts` Entrypoint
 

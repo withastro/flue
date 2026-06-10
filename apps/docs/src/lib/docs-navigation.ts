@@ -78,6 +78,7 @@ export const docsSections: DocsSection[] = [
 					{ title: 'Agent API', slug: 'api/agent-api' },
 					{ title: 'Provider API', slug: 'api/provider-api' },
 					{ title: 'Routing API', slug: 'api/routing-api' },
+					{ title: 'Streaming Protocol', slug: 'api/streaming-protocol' },
 					{ title: 'Events Reference', slug: 'api/events-reference' },
 				],
 			},
@@ -135,15 +136,16 @@ export const docsSections: DocsSection[] = [
 						title: 'client.agents',
 						slug: 'sdk/agents',
 						items: [
-							{ title: 'invoke(...)', slug: 'sdk/agents', anchor: 'clientagentsinvoke' },
-							{ title: 'connect(...)', slug: 'sdk/agents', anchor: 'clientagentsconnect' },
+							{ title: 'prompt(...)', slug: 'sdk/agents', anchor: 'clientagentsprompt' },
+							{ title: 'send(...)', slug: 'sdk/agents', anchor: 'clientagentssend' },
+							{ title: 'stream(...)', slug: 'sdk/agents', anchor: 'clientagentsstream' },
 						],
 					},
 					{
 						title: 'client.workflows',
 						slug: 'sdk/workflows',
 						items: [
-							{ title: 'connect(...)', slug: 'sdk/workflows', anchor: 'clientworkflowsconnect' },
+							{ title: 'invoke(...)', slug: 'sdk/workflows', anchor: 'clientworkflowsinvoke' },
 						],
 					},
 					{
@@ -166,7 +168,6 @@ export const docsSections: DocsSection[] = [
 					},
 					{ title: 'Events and records', slug: 'sdk/events' },
 					{ title: 'Errors', slug: 'sdk/errors' },
-					{ title: 'WebSocket protocol', slug: 'sdk/websockets' },
 				],
 			},
 		],

@@ -13,6 +13,7 @@ import {
 	RouteNotFoundError,
 	RunNotFoundError,
 	RunRegistryUnavailableError,
+	RunStoreUnavailableError,
 	toHttpResponse,
 	ValidationError,
 	validateAgentRequest,
@@ -31,22 +32,18 @@ import {
 	type CreateContextFn,
 	handleAgentRequest,
 	handleWorkflowRequest,
-	type StartWorkflowAdmissionFn,
 	type WorkflowHandler,
 } from './handle-agent.ts';
-import { type HandleRunRouteOptions, handleRunRouteRequest } from './handle-run-routes.ts';
+import { handleStreamHead, handleStreamRead } from './handle-stream-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
-import type { RunPointer, RunRegistry } from './run-registry.ts';
+import type { RunOwner, RunPointer, RunRegistry } from './run-registry.ts';
+import { agentStreamPath, runStreamPath, type EventStreamStore } from './event-stream-store.ts';
 import type { RunStore } from './run-store.ts';
-import type { RunSubscriberRegistry } from './run-subscribers.ts';
+
 import {
 	AgentInvocationResponseSchema,
 	AgentRouteParamSchema,
 	ErrorEnvelopeSchema,
-	RunEventListResponseSchema,
-	RunEventsQuerySchema,
-	RunIdParamSchema,
-	RunRecordSchema,
 	WorkflowAdmissionResponseSchema,
 	WorkflowInvocationQuerySchema,
 	WorkflowInvocationResponseSchema,
@@ -61,25 +58,18 @@ export interface FlueRuntime {
 
 	workflowHandlers?: Record<string, WorkflowHandler>;
 	agentRouteMiddleware?: Record<string, MiddlewareHandler>;
-	agentWebSocketMiddleware?: Record<string, MiddlewareHandler>;
 	workflowRouteMiddleware?: Record<string, MiddlewareHandler>;
-	workflowWebSocketMiddleware?: Record<string, MiddlewareHandler>;
-	nodeWebSocketAgentRoute?: MiddlewareHandler;
-	nodeWebSocketWorkflowRoute?: MiddlewareHandler;
 
 	/**
 	 * Per-target context factory. Required when {@link target} is `'node'`.
 	 */
 	createContext?: CreateContextFn;
 
-	/** Optional Node HTTP workflow admitted execution wrapper. Defaults to direct invocation. */
-	startWorkflowAdmission?: StartWorkflowAdmissionFn;
-
 	/**
-	 * Per-agent durable admission factory, keyed by agent name. Direct HTTP,
-	 * SSE, and WebSocket prompts are persisted as durable submissions. Each
-	 * factory receives the instance ID from the route and returns the admission
-	 * hook for that specific agent instance. Created by the Node coordinator's
+	 * Per-agent durable admission factory, keyed by agent name. Direct HTTP
+	 * prompts are persisted as durable submissions. Each factory receives the
+	 * instance ID from the route and returns the admission hook for that
+	 * specific agent instance. Created by the Node coordinator's
 	 * `createAdmission()`.
 	 */
 	createAdmission?: Record<string, (instanceId: string) => AttachedAgentSubmissionAdmission>;
@@ -87,8 +77,13 @@ export interface FlueRuntime {
 	/** Node workflow-run history store. */
 	runStore?: RunStore;
 
-	/** Node in-process registry used for live run-stream tailing. */
-	runSubscribers?: RunSubscriberRegistry;
+	/**
+	 * Durable event stream store for DS-compatible event persistence.
+	 * Required when {@link target} is `'node'` — the generated Node entry
+	 * always provides one. On Cloudflare, streams live in per-instance
+	 * Durable Object stores instead, so the worker-level runtime has none.
+	 */
+	eventStreamStore?: EventStreamStore;
 
 	/** Cross-deployment workflow-run pointer index for bare `/runs/:runId` lookups. */
 	runRegistry?: RunRegistry;
@@ -143,22 +138,14 @@ export interface FlueRuntime {
 export interface FlueManifest {
 	agents: Array<{
 		name: string;
-		transports: { http?: true; websocket?: true };
+		transports: { http?: true };
 		created: boolean;
 	}>;
 	workflows?: Array<{
 		name: string;
-		transports: { http?: boolean; websocket?: boolean };
+		transports: { http?: boolean };
 	}>;
 }
-
-export type ExposedTransport = 'http' | 'websocket';
-
-const RUN_ROUTES_BY_ID: ReadonlyArray<readonly [string, HandleRunRouteOptions['action']]> = [
-	['/runs/:runId', 'get'],
-	['/runs/:runId/events', 'events'],
-	['/runs/:runId/stream', 'stream'],
-];
 
 /**
  * Accepts input for asynchronous delivery to a continuing agent session.
@@ -227,7 +214,7 @@ function resolveCreatedAgentDispatchRequest(
 			'[flue] dispatch() target created agent is not a discovered default-exported agent in this built application.',
 		);
 	}
-	return { agent: name, id: request.id, session: request.session, input: request.input };
+	return { agent: name, id: request.id, input: request.input };
 }
 
 let runtimeConfig: FlueRuntime | undefined;
@@ -251,22 +238,20 @@ export function getFlueRuntime(): FlueRuntime | undefined {
 }
 
 /**
- * Creates a mountable Hono sub-app for Flue's public HTTP and WebSocket API.
+ * Creates a mountable Hono sub-app for Flue's public HTTP API.
  * Routes are relative to the application-chosen mount prefix.
  *
  * The mounted sub-app exposes:
  *
  * - `GET /openapi.json`
- * - `POST /agents/:name/:id` and `GET /agents/:name/:id` WebSocket upgrades
- * - `POST /workflows/:name` and `GET /workflows/:name` WebSocket upgrades
- * - `GET /runs/:runId`
- * - `GET /runs/:runId/events`
- * - `GET /runs/:runId/stream`
+ * - `POST /agents/:name/:id` — send a prompt (sync JSON response)
+ * - `GET/HEAD /agents/:name/:id` — DS event stream read
+ * - `POST /workflows/:name` — start a workflow run
+ * - `GET/HEAD /runs/:runId` — DS run event stream read
  *
  * Agent and workflow routes are available only when the corresponding module
- * opts into that transport. Run routes inspect workflow runs only and may
- * expose payloads, results, errors, and events; applications publishing them
- * should authorize access to the selected run.
+ * opts into HTTP transport. Event streams use the Durable Streams protocol
+ * (catch-up, long-poll, SSE) and are read-only.
  */
 export function flue(): Hono {
 	const app = new Hono();
@@ -280,7 +265,6 @@ export function flue(): Hono {
 		validated('query', WorkflowInvocationQuerySchema),
 		workflowRouteHandler,
 	);
-	app.get('/workflows/:name', workflowSocketRouteHandler);
 	app.all('/workflows/:name', workflowRouteHandler);
 
 	app.post(
@@ -289,29 +273,11 @@ export function flue(): Hono {
 		validated('param', AgentRouteParamSchema),
 		agentRouteHandler,
 	);
-	app.get('/agents/:name/:id', agentSocketRouteHandler);
 	// Non-POSTs still reach the canonical Flue 405 envelope instead of
 	// Hono's default 404 for unmatched methods.
 	app.all('/agents/:name/:id', agentRouteHandler);
-	for (const [routePath, action] of RUN_ROUTES_BY_ID) {
-		if (action === 'events') {
-			app.get(
-				routePath,
-				describeRoute(runRouteSpec(action) as DescribeRouteOptions),
-				validated('param', RunIdParamSchema),
-				validated('query', RunEventsQuerySchema),
-				runByIdRouteHandler(action),
-			);
-		} else {
-			app.get(
-				routePath,
-				describeRoute(runRouteSpec(action) as DescribeRouteOptions),
-				validated('param', RunIdParamSchema),
-				runByIdRouteHandler(action),
-			);
-		}
-		app.all(routePath, runByIdRouteHandler(action));
-	}
+	// DS stream endpoints for run events.
+	app.all('/runs/:runId', runStreamReadHandler);
 
 	app.onError((err) => toHttpResponse(err));
 
@@ -397,7 +363,7 @@ function workflowRouteSpec() {
 		operationId: 'invokeWorkflow',
 		summary: 'Start a workflow run',
 		description:
-			'Starts the named HTTP-exposed workflow through one admitted execution path. By default it returns an accepted run id; use ?wait=result for a synchronous JSON observation or Accept: text/event-stream to observe live run events while the connection remains available.',
+			'Starts the named HTTP-exposed workflow. By default returns an accepted run id (202); use ?wait=result for a synchronous JSON result. Observe run events via the Durable Streams GET endpoint at /runs/:runId.',
 		requestBody: {
 			required: false,
 			content: {
@@ -413,24 +379,16 @@ function workflowRouteSpec() {
 		responses: {
 			202: jsonResponse(WorkflowAdmissionResponseSchema, 'Workflow run accepted.'),
 			200: {
-				description:
-					'Workflow result envelope or server-sent events stream, depending on the requested mode.',
+				description: 'Synchronous workflow result (?wait=result).',
 				content: {
 					'application/json': {
 						schema: resolver(WorkflowInvocationResponseSchema),
-					},
-					'text/event-stream': {
-						schema: {
-							type: 'string',
-							description:
-								'SSE-framed FlueEvent values. A terminal stream-infrastructure event: error frame has data { error: { type, message, details, dev?, meta? } }.',
-						},
 					},
 				},
 			},
 			...errorResponses(),
 		},
-		'x-flue-invocation-modes': ['accepted', 'wait-result', 'stream'],
+		'x-flue-invocation-modes': ['accepted', 'wait-result'],
 		'x-flue-user-defined': true,
 	};
 }
@@ -451,7 +409,6 @@ function agentRouteSpec() {
 						required: ['message'],
 						properties: {
 							message: { type: 'string' },
-							session: { type: 'string', minLength: 1, pattern: '.*\\S.*' },
 						},
 					},
 				},
@@ -459,123 +416,18 @@ function agentRouteSpec() {
 		},
 		responses: {
 			200: {
-				description:
-					'Attached prompt result or server-sent events stream, depending on the requested mode.',
+				description: 'Attached prompt result.',
 				content: {
 					'application/json': {
 						schema: resolver(AgentInvocationResponseSchema),
 					},
-					'text/event-stream': {
-						schema: {
-							type: 'string',
-							description:
-								'SSE frames for attached agent events correlated by instanceId without workflow run identity. A terminal event: error frame has data { type: "error", instanceId, error: { type, message, details, dev?, meta? } }.',
-						},
-					},
 				},
 			},
 			...errorResponses(),
 		},
-		'x-flue-invocation-modes': ['sync', 'stream'],
 		'x-flue-user-defined': true,
 	};
 }
-
-function runRouteSpec(action: HandleRunRouteOptions['action']) {
-	if (action === 'stream') {
-		return {
-			tags: ['runs'],
-			operationId: 'streamRunEvents',
-			summary: 'Stream workflow run events',
-			responses: {
-				200: {
-					description:
-						'Server-sent events stream of workflow run lifecycle and nested agent events.',
-					content: {
-						'text/event-stream': {
-							schema: {
-								type: 'string',
-								description:
-									'SSE-framed workflow run FlueEvent values. A terminal stream-infrastructure event: error frame has data { error: { type, message, details, dev?, meta? } }.',
-							},
-						},
-					},
-				},
-				...errorResponses(),
-			},
-			'x-flue-streaming': true,
-		};
-	}
-	return {
-		tags: ['runs'],
-		operationId: action === 'get' ? 'getRun' : 'listRunEvents',
-		summary: action === 'get' ? 'Get a workflow run record' : 'List workflow run events',
-		responses: {
-			200: jsonResponse(
-				action === 'get' ? RunRecordSchema : RunEventListResponseSchema,
-				action === 'get' ? 'Run record.' : 'Persisted run event page.',
-			),
-			...errorResponses(),
-		},
-	};
-}
-
-const workflowSocketRouteHandler: MiddlewareHandler = async (c, next) => {
-	if (!isWebSocketUpgrade(c.req.raw)) return next();
-	const rt = requiredRuntime();
-	const name = c.req.param('name') ?? '';
-	if (!registeredWorkflowsForTransport(rt, 'websocket').includes(name)) {
-		throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
-	}
-	return runAttachedMiddleware(c, rt.workflowWebSocketMiddleware?.[name], async () => {
-		if (rt.target === 'node') {
-			if (!rt.nodeWebSocketWorkflowRoute)
-				throw new Error('[flue] Node runtime is missing WebSocket workflow routing.');
-			return (await rt.nodeWebSocketWorkflowRoute(c, next)) ?? undefined;
-		}
-		if (!rt.routeWorkflowRequest)
-			throw new Error('[flue] Cloudflare runtime is missing workflow route forwarding.');
-		const response = await rt.routeWorkflowRequest(
-			normalizeAttachedRequest(c.req.raw, `/workflows/${encodeURIComponent(name)}`),
-			c.env,
-			{
-				workflowName: name,
-				instanceId: generateWorkflowRunId(name),
-			},
-		);
-		if (response) return response;
-		throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
-	});
-};
-
-const agentSocketRouteHandler: MiddlewareHandler = async (c, next) => {
-	if (!isWebSocketUpgrade(c.req.raw)) return next();
-	const rt = requiredRuntime();
-	const name = c.req.param('name') ?? '';
-	const id = c.req.param('id') ?? '';
-	if (!registeredAgentsForTransport(rt, 'websocket').includes(name) || id.trim() === '') {
-		throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
-	}
-	return runAttachedMiddleware(c, rt.agentWebSocketMiddleware?.[name], async () => {
-		if (rt.target === 'node') {
-			if (!rt.nodeWebSocketAgentRoute)
-				throw new Error('[flue] Node runtime is missing WebSocket agent routing.');
-			return (await rt.nodeWebSocketAgentRoute(c, next)) ?? undefined;
-		}
-		if (!rt.routeAgentRequest)
-			throw new Error('[flue] Cloudflare runtime is missing agent route forwarding.');
-		const response = await rt.routeAgentRequest(
-			normalizeAttachedRequest(
-				c.req.raw,
-				`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
-			),
-			c.env,
-			{ agentName: name, instanceId: id },
-		);
-		if (response) return response;
-		throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
-	});
-};
 
 const workflowRouteHandler: MiddlewareHandler = async (c) => {
 	const rt = runtimeConfig;
@@ -592,7 +444,7 @@ const workflowRouteHandler: MiddlewareHandler = async (c) => {
 		method: c.req.method,
 		name,
 		registeredWorkflows: workflows.map((workflow) => workflow.name),
-		httpWorkflows: registeredWorkflowsForTransport(rt, 'http'),
+		httpWorkflows: registeredWorkflowsForTransport(rt),
 	});
 	const request = c.req.raw.clone();
 
@@ -608,10 +460,9 @@ const workflowRouteHandler: MiddlewareHandler = async (c) => {
 				workflowName: name,
 				handler,
 				createContext,
-				startWorkflowAdmission: rt.startWorkflowAdmission,
 				runStore: rt.runStore,
-				runSubscribers: rt.runSubscribers,
 				runRegistry: rt.runRegistry,
+				eventStreamStore: requireNodeEventStreamStore(rt),
 			});
 		}
 
@@ -650,11 +501,32 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 		method: c.req.method,
 		name,
 		id,
-		registeredAgents: registeredAgentsForTransport(rt, 'http'),
+		registeredAgents: registeredAgentsForTransport(rt),
 	});
 	const request = c.req.raw.clone();
 
+	// All agent routes (POST, GET, HEAD) go through attached middleware so
+	// user-defined auth/rate-limiting applies to stream reads too.
 	return runAttachedMiddleware(c, rt.agentRouteMiddleware?.[name], async () => {
+		// DS stream read (GET/HEAD) — served directly for Node, forwarded for CF.
+		if (c.req.method === 'GET' || c.req.method === 'HEAD') {
+			const streamPath = agentStreamPath(name, id);
+			if (rt.target === 'node') {
+				return nodeStreamReadResponse(rt, c.req.method, streamPath, request);
+			}
+
+			// Cloudflare: forward to the agent DO.
+			if (!rt.routeAgentRequest) {
+				throw new Error('[flue] Cloudflare runtime is missing agent route forwarding.');
+			}
+			const response = await rt.routeAgentRequest(request, c.env, {
+				agentName: name,
+				instanceId: id,
+			});
+			if (response) return response;
+			throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
+		}
+
 		if (rt.target === 'node') {
 			const admitAttachedSubmission = rt.createAdmission?.[name]?.(id);
 			if (!admitAttachedSubmission) {
@@ -663,6 +535,8 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 			return handleAgentRequest({
 				request,
 				id,
+				agentName: name,
+				eventStreamStore: requireNodeEventStreamStore(rt),
 				admitAttachedSubmission,
 			});
 		}
@@ -683,57 +557,49 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 	});
 };
 
-function runByIdRouteHandler(action: HandleRunRouteOptions['action']): MiddlewareHandler {
-	return async (c) => {
-		const rt = runtimeConfig;
-		if (!rt) {
-			throw new Error(
-				'[flue] flue() route invoked before runtime was configured. ' +
-					'This usually means flue() was used outside a Flue-built server entry.',
-			);
-		}
+const runStreamReadHandler: MiddlewareHandler = async (c) => {
+	const rt = requiredRuntime();
+	const method = c.req.method;
 
-		if (c.req.method !== 'GET') {
-			throw new MethodNotAllowedError({ method: c.req.method, allowed: ['GET'] });
-		}
+	if (method !== 'GET' && method !== 'HEAD') {
+		throw new MethodNotAllowedError({ method, allowed: ['GET', 'HEAD'] });
+	}
 
-		const runId = c.req.param('runId') || undefined;
-		if (!runId) {
-			throw new RouteNotFoundError({
-				method: c.req.method,
-				path: new URL(c.req.url).pathname,
-			});
-		}
+	const runId = c.req.param('runId') || undefined;
+	if (!runId) {
+		throw new RouteNotFoundError({ method, path: new URL(c.req.url).pathname });
+	}
 
-		return handleRunById({
-			rt,
-			request: c.req.raw,
-			env: c.env,
-			runId,
-			action,
-		});
-	};
-}
+	const streamPath = runStreamPath(runId);
+	const pointer = await lookupRunPointer(rt, c.env, runId);
+
+	return runAttachedMiddleware(
+		c,
+		rt.workflowRouteMiddleware?.[pointer.owner.workflowName],
+		async () => {
+			if (rt.target === 'node') {
+				return nodeStreamReadResponse(rt, method, streamPath, c.req.raw);
+			}
+
+			const response = await rt.routeRunRequest?.(c.req.raw, c.env, pointer.owner);
+			if (response) return response;
+			throw new RouteNotFoundError({ method, path: new URL(c.req.url).pathname });
+		},
+	);
+};
 
 export async function handleRunById(opts: {
 	rt: FlueRuntime;
 	request: Request;
 	env: unknown;
 	runId: string;
-	action: HandleRunRouteOptions['action'];
 }): Promise<Response> {
-	const { rt, request, env, runId, action } = opts;
-	if (rt.target === 'cloudflare') {
-		if (!rt.createRunRegistryForRequest || !rt.routeRunRequest) {
-			throw new RunRegistryUnavailableError();
-		}
-		const registry = rt.createRunRegistryForRequest(env);
-		if (!registry) throw new RunRegistryUnavailableError();
-		const pointer = await registry.lookupRun(runId);
-		if (!pointer) throw new RunNotFoundError({ runId });
+	const { rt, request, env, runId } = opts;
+	const pointer = await lookupRunPointer(rt, env, runId);
 
-		const response = await rt.routeRunRequest(
-			normalizeRunRequest(request, runId, action),
+	if (rt.target === 'cloudflare') {
+		const response = await rt.routeRunRequest!(
+			normalizeRunMetadataRequest(request),
 			env,
 			pointer.owner,
 		);
@@ -744,18 +610,31 @@ export async function handleRunById(opts: {
 		});
 	}
 
-	if (!rt.runRegistry) throw new RunRegistryUnavailableError();
-	const pointer = await rt.runRegistry.lookupRun(runId);
-	if (!pointer) throw new RunNotFoundError({ runId });
-
 	return handleRunRouteRequest({
-		request,
 		runStore: rt.runStore,
-		runSubscribers: rt.runSubscribers,
 		owner: pointer.owner,
 		runId,
-		action,
 	});
+}
+
+export interface HandleRunRouteOptions {
+	runStore?: RunStore;
+	owner: RunOwner;
+	runId: string;
+}
+
+/** Serve run metadata (`RunRecord`) for an owner-scoped run lookup. */
+export async function handleRunRouteRequest(opts: HandleRunRouteOptions): Promise<Response> {
+	if (!opts.runStore) throw new RunStoreUnavailableError();
+	const run = await opts.runStore.getRun(opts.runId);
+	if (!run || !sameRunOwner(run.owner, opts.owner)) {
+		throw new RunNotFoundError({ runId: opts.runId });
+	}
+	return new Response(JSON.stringify(run), { headers: { 'content-type': 'application/json' } });
+}
+
+function sameRunOwner(left: RunOwner, right: RunOwner): boolean {
+	return left.workflowName === right.workflowName && left.instanceId === right.instanceId;
 }
 
 function lazyOpenApiRouteHandler(
@@ -765,18 +644,62 @@ function lazyOpenApiRouteHandler(
 	return (c, next) => openAPIRouteHandler(app, getOptions())(c, next);
 }
 
-function normalizeRunRequest(
+/**
+ * Resolve the event stream store on a Node-target runtime. The generated
+ * Node entry always constructs one, so a missing store is a wiring bug —
+ * fail loudly instead of masquerading as a missing stream/run.
+ */
+function requireNodeEventStreamStore(rt: FlueRuntime): EventStreamStore {
+	if (!rt.eventStreamStore) {
+		throw new Error(
+			'[flue] Node runtime configured without an event stream store. ' +
+				'The generated Node entry always provides one — this indicates a misconfigured runtime.',
+		);
+	}
+	return rt.eventStreamStore;
+}
+
+/** Serve a DS stream HEAD/GET from the Node runtime's store. */
+function nodeStreamReadResponse(
+	rt: FlueRuntime,
+	method: string,
+	streamPath: string,
 	request: Request,
-	runId: string,
-	action: HandleRunRouteOptions['action'],
-): Request {
+): Promise<Response> {
+	const store = requireNodeEventStreamStore(rt);
+	if (method === 'HEAD') {
+		return handleStreamHead(store, streamPath);
+	}
+	return handleStreamRead({ store, path: streamPath, request });
+}
+
+async function lookupRunPointer(rt: FlueRuntime, env: unknown, runId: string): Promise<RunPointer> {
+	if (rt.target === 'cloudflare') {
+		if (!rt.createRunRegistryForRequest || !rt.routeRunRequest) {
+			throw new RunRegistryUnavailableError();
+		}
+		const registry = rt.createRunRegistryForRequest(env);
+		if (!registry) throw new RunRegistryUnavailableError();
+		const pointer = await registry.lookupRun(runId);
+		if (!pointer) throw new RunNotFoundError({ runId });
+		return pointer;
+	}
+	if (!rt.runRegistry) throw new RunRegistryUnavailableError();
+	const pointer = await rt.runRegistry.lookupRun(runId);
+	if (!pointer) throw new RunNotFoundError({ runId });
+	return pointer;
+}
+
+/**
+ * Internal path the CF workflow DO uses to distinguish admin metadata
+ * fetches from public DS stream reads on `/runs/:runId`. Cannot collide
+ * with user traffic (follows the agent internal-dispatch-path precedent).
+ */
+export const CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH = '/__flue/internal/run-metadata';
+
+function normalizeRunMetadataRequest(request: Request): Request {
 	const url = new URL(request.url);
-	url.pathname =
-		action === 'events'
-			? `/runs/${encodeURIComponent(runId)}/events`
-			: action === 'stream'
-				? `/runs/${encodeURIComponent(runId)}/stream`
-				: `/runs/${encodeURIComponent(runId)}`;
+	url.pathname = CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH;
 	return new Request(url, request);
 }
 
@@ -812,30 +735,20 @@ async function runAttachedMiddleware(
 	);
 }
 
-function isWebSocketUpgrade(request: Request): boolean {
-	return request.method === 'GET' && request.headers.get('upgrade')?.toLowerCase() === 'websocket';
-}
-
 function normalizeAttachedRequest(request: Request, pathname: string): Request {
 	const url = new URL(request.url);
 	url.pathname = pathname;
 	return new Request(url, request);
 }
 
-export function registeredAgentsForTransport(
-	rt: FlueRuntime,
-	transport: ExposedTransport,
-): readonly string[] {
+export function registeredAgentsForTransport(rt: FlueRuntime): readonly string[] {
 	return (rt.manifest?.agents ?? [])
-		.filter((agent) => agent.transports[transport] === true)
+		.filter((agent) => agent.transports.http === true)
 		.map((agent) => agent.name);
 }
 
-export function registeredWorkflowsForTransport(
-	rt: FlueRuntime,
-	transport: ExposedTransport,
-): readonly string[] {
+export function registeredWorkflowsForTransport(rt: FlueRuntime): readonly string[] {
 	return (rt.manifest?.workflows ?? [])
-		.filter((workflow) => workflow.transports[transport] === true)
+		.filter((workflow) => workflow.transports.http === true)
 		.map((workflow) => workflow.name);
 }

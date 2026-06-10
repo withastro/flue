@@ -1,8 +1,8 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { createServer, type ViteDevServer } from 'vite';
-import { describe, expect, it } from 'vitest';
+import { createServer, type ViteDevServer } from 'vite-plus';
+import { describe, expect, it } from 'vite-plus/test';
 import {
 	build,
 	cloudflareViteConfigPath,
@@ -173,7 +173,7 @@ async function createGeneratedFixture(
 	);
 	fs.symlinkSync(process.cwd(), path.join(root, 'node_modules', '@flue', 'runtime'), 'dir');
 	fs.symlinkSync(
-		path.resolve(process.cwd(), '../../examples/cloudflare-websocket/node_modules/agents'),
+		path.resolve(process.cwd(), '../../examples/cloudflare/node_modules/agents'),
 		path.join(root, 'node_modules', 'agents'),
 		'dir',
 	);

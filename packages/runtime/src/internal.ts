@@ -21,12 +21,14 @@ export { createFlueContext } from './client.ts';
 // (registry client) live in the `@flue/runtime/cloudflare` subpath because
 // they pull in `cloudflare:workers`, a virtual module Node can't resolve.
 // The generated CF entry imports them from there directly.
-export { CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH, createCloudflareAgentRuntime } from './cloudflare/agent-coordinator.ts';
+export {
+	CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
+	createCloudflareAgentRuntime,
+} from './cloudflare/agent-coordinator.ts';
+export { CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH } from './runtime/flue-app.ts';
 export { createSqlSessionStore } from './cloudflare/agent-execution-store.ts';
 export { createDurableRunStore } from './cloudflare/run-store.ts';
 export { createNodeAgentCoordinator, createNodeDispatchQueue } from './node/agent-coordinator.ts';
-export { createNodeAgentExecutionStore } from './node/agent-execution-store.ts';
-export { InMemoryRunRegistry } from './node/run-registry.ts';
 export { InMemoryRunStore } from './node/run-store.ts';
 export type {
 	AgentDispatchAdmission,
@@ -42,10 +44,9 @@ export type {
 	SubmissionDurability,
 } from './agent-execution-store.ts';
 export type { DispatchInput, DispatchQueue } from './runtime/dispatch-queue.ts';
-export type { ExposedTransport, FlueRuntime } from './runtime/flue-app.ts';
+export type { FlueRuntime } from './runtime/flue-app.ts';
 export { configureFlueRuntime, createDefaultFlueApp } from './runtime/flue-app.ts';
 export type {
-	AgentHandler,
 	CreateContextFn,
 	DirectAttachedOptions,
 	FailRecoveredRunOptions,
@@ -70,14 +71,14 @@ export type {
 //
 // The user-facing `flue()` itself is re-exported from `@flue/runtime/routing`, not here.
 export {
-	createDirectAgentHandler,
 	failRecoveredRun,
 	handleWorkflowRequest,
 	invokeDirectAttached,
 	invokeWorkflowAttached,
 } from './runtime/handle-agent.ts';
-export type { HandleRunRouteOptions } from './runtime/handle-run-routes.ts';
-export { handleRunRouteRequest } from './runtime/handle-run-routes.ts';
+export type { HandleRunRouteOptions } from './runtime/flue-app.ts';
+export { handleRunRouteRequest } from './runtime/flue-app.ts';
+export { handleStreamHead, handleStreamRead } from './runtime/handle-stream-routes.ts';
 export { generateWorkflowRunId } from './runtime/ids.ts';
 export { hasRegisteredProvider } from './runtime/providers.ts';
 export type {
@@ -89,17 +90,15 @@ export type {
 	RunPointer,
 	RunRegistry,
 } from './runtime/run-registry.ts';
+export type { EventStreamStore } from './runtime/event-stream-store.ts';
+export { SqliteEventStreamStore } from './runtime/event-stream-store.ts';
 export type { RunRecord, RunStatus, RunStore } from './runtime/run-store.ts';
-export type { RunSubscriberListener, RunSubscriberRegistry } from './runtime/run-subscribers.ts';
-export { createRunSubscriberRegistry } from './runtime/run-subscribers.ts';
-export {
-	createWebSocketErrorMessage,
-	parseAgentWebSocketMessage,
-	parseWorkflowWebSocketMessage,
-} from './runtime/websocket-protocol.ts';
-export { closeFlueSocket, isFlueSocket, socketRequestUrl } from './cloudflare/websocket.ts';
+
 export { bashFactoryToSessionEnv } from './sandbox.ts';
-export type { DirectAgentSubmissionInput, DispatchAgentSubmissionInput } from './runtime/agent-submissions.ts';
+export type {
+	DirectAgentSubmissionInput,
+	DispatchAgentSubmissionInput,
+} from './runtime/agent-submissions.ts';
 export { InMemorySessionStore } from './session.ts';
 export { parseSkillMarkdown } from './skill-frontmatter.ts';
 
@@ -161,6 +160,6 @@ function applyProviderSettings<TApi extends Api>(
 	return {
 		...model,
 		baseUrl: providerSettings.baseUrl ?? model.baseUrl,
-		headers: hasHeaders ? { ...(model.headers ?? {}), ...providerSettings.headers } : model.headers,
+		headers: hasHeaders ? { ...model.headers, ...providerSettings.headers } : model.headers,
 	};
 }

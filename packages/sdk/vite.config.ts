@@ -2,7 +2,7 @@ import { defineConfig } from 'vite-plus';
 
 export default defineConfig({
 	pack: {
-		entry: ['src/index.ts', 'src/deprecated.ts'],
+		entry: ['src/index.ts'],
 		format: ['esm'],
 		dts: true,
 		clean: true,

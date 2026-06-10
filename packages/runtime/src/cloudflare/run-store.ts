@@ -1,13 +1,10 @@
 import {
 	type CreateRunInput,
 	type EndRunInput,
-	parsePersistedWorkflowEvent,
 	type RunRecord,
 	type RunStore,
-	serializedEventForPersistence,
 } from '../runtime/run-store.ts';
 import type { SqlStorage } from '../sql-storage.ts';
-import type { FlueEvent } from '../types.ts';
 
 type SqlRow = Record<string, unknown>;
 
@@ -53,43 +50,6 @@ class DurableRunStore implements RunStore {
 		);
 	}
 
-	async appendEvent(runId: string, event: FlueEvent): Promise<void> {
-		const payload = serializedEventForPersistence(runId, event);
-		this.sql.exec(
-			`INSERT INTO flue_run_events
-			 (run_id, event_index, type, payload, timestamp)
-			 SELECT ?, ?, ?, ?, ?
-			 WHERE EXISTS (
-			  SELECT 1
-			  FROM flue_runs
-			  WHERE run_id = ? AND owner_kind = 'workflow'
-			 )`,
-			runId,
-			event.eventIndex,
-			event.type,
-			payload,
-			event.timestamp ?? new Date().toISOString(),
-			runId,
-		);
-	}
-
-	async getEvents(runId: string, fromIndex?: number): Promise<FlueEvent[]> {
-		const rows = this.sql
-			.exec(
-				fromIndex === undefined
-					? 'SELECT event_index, payload FROM flue_run_events WHERE run_id = ? ORDER BY event_index ASC'
-					: 'SELECT event_index, payload FROM flue_run_events WHERE run_id = ? AND event_index >= ? ORDER BY event_index ASC',
-				...(fromIndex === undefined ? [runId] : [runId, fromIndex]),
-			)
-			.toArray();
-		return rows.map((row) => {
-			if (typeof row.payload !== 'string' || typeof row.event_index !== 'number') {
-				throw new Error('[flue:run-store] persisted workflow event row is malformed.');
-			}
-			return parsePersistedWorkflowEvent(runId, row.payload, row.event_index);
-		});
-	}
-
 	async getRun(runId: string): Promise<RunRecord | null> {
 		const rows = this.sql
 			.exec("SELECT * FROM flue_runs WHERE run_id = ? AND owner_kind = 'workflow'", runId)
@@ -118,30 +78,10 @@ function ensureRunTables(sql: SqlStorage): void {
 		)`,
 	);
 	sql.exec(
-		`CREATE TABLE IF NOT EXISTS flue_run_events (
-		 run_id TEXT NOT NULL,
-		 event_index INTEGER NOT NULL,
-		 type TEXT NOT NULL,
-		 payload TEXT NOT NULL,
-		 timestamp TEXT NOT NULL,
-		 PRIMARY KEY (run_id, event_index)
-		)`,
-	);
-	sql.exec(
-		`CREATE TRIGGER IF NOT EXISTS flue_runs_reset_events
-		 BEFORE INSERT ON flue_runs
-		 BEGIN
-		  DELETE FROM flue_run_events WHERE run_id = NEW.run_id;
-		 END`,
-	);
-	sql.exec(
 		'CREATE INDEX IF NOT EXISTS flue_runs_instance_started_idx ON flue_runs (owner_kind, instance_id, started_at DESC)',
 	);
 	sql.exec(
 		'CREATE INDEX IF NOT EXISTS flue_runs_workflow_started_idx ON flue_runs (owner_kind, workflow_name, started_at DESC)',
-	);
-	sql.exec(
-		'CREATE INDEX IF NOT EXISTS flue_run_events_run_idx ON flue_run_events (run_id, event_index ASC)',
 	);
 }
 

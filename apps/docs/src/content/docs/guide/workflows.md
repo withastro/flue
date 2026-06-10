@@ -46,7 +46,7 @@ Each time a workflow is invoked, Flue creates a **workflow run** with a unique `
 
 ### Local execution
 
-Use `flue run` to execute a discovered workflow locally or from CI. The workflow does not need to be exposed over HTTP or WebSockets:
+Use `flue run` to execute a discovered workflow locally or from CI. The workflow does not need to be exposed over HTTP:
 
 ```bash
 pnpm exec flue run summarize --target node --payload '{"text":"Flue workflows complete finite agent-backed operations."}'
@@ -66,19 +66,7 @@ export const route: WorkflowRouteHandler = async (_c, next) => next();
 
 An exposed `summarize` workflow accepts requests at `POST /workflows/summarize`. The route middleware is also the boundary where your application can authenticate or reject an incoming request before starting a run.
 
-### WebSocket
-
-Export `websocket` when a caller should receive live activity for one workflow invocation over a socket:
-
-```ts title="src/workflows/summarize.ts"
-import type { WorkflowWebSocketHandler } from '@flue/runtime';
-
-export const websocket: WorkflowWebSocketHandler = async (_c, next) => next();
-```
-
-A workflow WebSocket carries one finite invocation and completes with that run. It is not a continuing conversation with an agent instance.
-
-For HTTP response modes, WebSocket invocation, authentication, and custom application mounts, see [Routing](/docs/guide/routing/).
+By default, `POST /workflows/summarize` returns `202 { runId }` after admission. Add `?wait=result` to wait for the completed result in the same request. For HTTP response modes, authentication, and custom application mounts, see [Routing](/docs/guide/routing/).
 
 ## Working with the harness
 
@@ -165,20 +153,18 @@ Use structured results when later application code depends on specific fields, i
 
 ## Managing workflow runs
 
-When a workflow is invoked through a running application, its `runId` lets you inspect the run independently of the HTTP request or WebSocket connection that started it. This is useful for background work, live progress, debugging, and operational tooling.
+When a workflow is invoked through a running application, its `runId` lets you inspect the run independently of the HTTP request that started it. This is useful for background work, live progress, debugging, and operational tooling.
 
-| Surface                                           | Use it for                                                              |
-| ------------------------------------------------- | ----------------------------------------------------------------------- |
-| `flue logs <runId>`                               | Inspect or follow events for a workflow run from the command line.      |
-| `GET /runs/<runId>`                               | Read one run's status and its completed result or error when available. |
-| `GET /runs/<runId>/events`                        | Read persisted lifecycle, log, and nested agent-operation events.       |
-| `GET /runs/<runId>/stream`                        | Replay persisted events and follow an active run through completion.    |
-| `client.runs.get()`, `.events()`, and `.stream()` | Build application tooling around a known workflow run.                  |
-| `client.admin.runs.list()`                        | List workflow runs for protected administrative tooling.                |
+| Surface                                           | Use it for                                                                                    |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `flue logs <runId>`                               | Inspect or follow events for a workflow run from the command line.                            |
+| `GET /runs/<runId>`                               | Stream run events via the Durable Streams protocol.                                           |
+| `client.runs.get()`, `.events()`, and `.stream()` | Build application tooling around a known workflow run. `runs.get()` requires the admin mount. |
+| `client.admin.runs.list()`                        | List workflow runs for protected administrative tooling.                                      |
 
 Administrative run listing can reveal workflow payloads, results, model activity, and application logs. Only publish an administrative listing surface behind an authorization boundary appropriate for that data.
 
-Only workflows create workflow runs. Direct HTTP or WebSocket prompts to an agent instance, and asynchronous input delivered through `dispatch(...)`, are operations in persistent agent sessions; they are not queried through workflow run history or `flue logs`.
+Only workflows create workflow runs. Direct HTTP prompts to an agent instance, and asynchronous input delivered through `dispatch(...)`, are operations in persistent agent sessions; they are not queried through workflow run history or `flue logs`.
 
 For event contents, structured logging, filtering, and telemetry export, see [Observability](/docs/guide/observability/). For securing workflow invocation and run endpoints, see [Routing](/docs/guide/routing/).
 
@@ -187,5 +173,5 @@ For event contents, structured logging, filtering, and telemetry export, see [Ob
 - [Agents](/docs/guide/building-agents/) — create and configure continuing agent instances.
 - [Agent API](/docs/api/agent-api/) — look up session operations, structured results, and workspace methods.
 - [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), and [Sandboxes](/docs/guide/sandboxes/) — configure what the agent in a workflow can do and where it works.
-- [Routing](/docs/guide/routing/) — expose workflows over HTTP or WebSockets and protect their endpoints.
+- [Routing](/docs/guide/routing/) — expose workflows over HTTP and protect their endpoints.
 - [Observability](/docs/guide/observability/) — inspect run events and connect execution to monitoring and tracing tools.

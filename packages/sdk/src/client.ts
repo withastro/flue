@@ -1,23 +1,17 @@
+import { stream as dsStream } from '@durable-streams/client';
 import { HttpClient, type HttpClientOptions, type RequestHeaders } from './http.ts';
+export type { HttpClientOptions } from './http.ts';
 import {
-	type AgentInvokeOptions,
-	type AgentStreamInvokeOptions,
-	type AgentSyncInvokeOptions,
-	invokeAgent,
-	type SyncInvokeResult,
+	type AgentPromptOptions,
+	promptAgent,
+	sendAgent,
+	type AgentPromptResult,
 } from './public/invoke.ts';
-import { type RunStreamOptions, streamRunEvents } from './public/stream.ts';
 import {
-	type AgentSocket,
-	connectAgentSocket,
-	connectWorkflowSocket,
-	defaultWebSocketFactory,
-	type WebSocketFactory,
-	type WebSocketTarget,
-	type WebSocketUrlTransform,
-	type WorkflowSocket,
-	webSocketUrl,
-} from './public/websocket.ts';
+	createFlueEventStream,
+	type FlueEventStream,
+	type FlueStreamOptions,
+} from './public/stream.ts';
 import type {
 	AgentManifestEntry,
 	AttachedAgentEvent,
@@ -30,16 +24,6 @@ import type {
 
 export type { RequestHeaders };
 
-/** Options for retrieving recorded workflow-run events. */
-export interface RunEventsOptions {
-	/** Return events strictly after this event index. */
-	after?: number;
-	/** Select event types. */
-	types?: string[];
-	/** Maximum number of events to return. Defaults to `100`; accepts `1..1000`. */
-	limit?: number;
-}
-
 /** Options for listing workflow-run summaries. */
 export interface ListRunsOptions {
 	cursor?: string;
@@ -49,53 +33,65 @@ export interface ListRunsOptions {
 	workflowName?: string;
 }
 
+/** Options for starting a workflow run. */
+export interface WorkflowInvokeOptions {
+	/** Workflow-defined payload. */
+	payload?: unknown;
+	signal?: AbortSignal;
+}
+
+/** Result of starting a workflow run. */
+export interface WorkflowInvokeResult {
+	/** The workflow run ID. */
+	runId: string;
+	/** Fully resolved DS-compatible stream URL for observing run events. */
+	streamUrl: string;
+}
+
 /** Options for creating a client for deployed Flue application routes. */
 export interface CreateFlueClientOptions extends HttpClientOptions {
 	/** Origin-relative mount path for read-only admin routes. Defaults to `/admin`. */
 	adminBasePath?: string;
-	/** Custom WebSocket implementation. Defaults to the global `WebSocket` constructor. */
-	websocket?: WebSocketFactory;
-	/** Transforms each WebSocket URL after HTTP protocol conversion, for example to add handshake authentication. */
-	websocketUrl?: WebSocketUrlTransform;
 }
 
 /** Client for invoking deployed agents and workflows and inspecting workflow runs. */
 export interface FlueClient {
-	/** Workflow-run inspection APIs. Direct agent interactions and dispatched agent inputs are not runs. */
+	/** Direct interactions with persistent agent instances. */
+	agents: {
+		/** Resolves the terminal result for one agent prompt. */
+		prompt(name: string, id: string, options: AgentPromptOptions): Promise<AgentPromptResult>;
+		send(
+			name: string,
+			id: string,
+			options: AgentPromptOptions,
+		): Promise<{ streamUrl: string; offset: string }>;
+		/** Stream events from an agent instance via the Durable Streams protocol. */
+		stream(
+			name: string,
+			id: string,
+			options?: FlueStreamOptions,
+		): FlueEventStream<AttachedAgentEvent>;
+	};
+	/** Workflow-run inspection and streaming APIs. */
 	runs: {
 		/** Retrieves one workflow-run record. */
 		get(runId: string): Promise<RunRecord>;
-		/** Retrieves recorded workflow-run events. */
-		events(runId: string, options?: RunEventsOptions): Promise<{ events: FlueEvent[] }>;
-		/** Streams workflow-run events until `run_end`, cancellation, or an unrecoverable error. */
-		stream(
+		/** Stream events from a workflow run via the Durable Streams protocol. */
+		stream(runId: string, options?: FlueStreamOptions): FlueEventStream<FlueEvent>;
+		/** Get all events from a workflow run as an array (catch-up read, no live tailing). */
+		events(
 			runId: string,
-			options?: RunStreamOptions,
-		): AsyncIterable<import('./types.ts').FlueEvent>;
+			options?: {
+				offset?: string;
+				signal?: AbortSignal;
+				backoffOptions?: import('@durable-streams/client').BackoffOptions;
+			},
+		): Promise<FlueEvent[]>;
 	};
-	/** Direct interactions with persistent agent instances. */
-	agents: {
-		/** Streams events for one agent prompt. */
-		invoke(
-			name: string,
-			id: string,
-			options: AgentStreamInvokeOptions,
-		): AsyncIterable<AttachedAgentEvent>;
-		/** Resolves the terminal result for one agent prompt. */
-		invoke(name: string, id: string, options: AgentSyncInvokeOptions): Promise<SyncInvokeResult>;
-		/** Sends one direct-agent prompt using either invocation mode. */
-		invoke(
-			name: string,
-			id: string,
-			options: AgentInvokeOptions,
-		): Promise<SyncInvokeResult> | AsyncIterable<AttachedAgentEvent>;
-		/** Opens a reusable WebSocket connection to an agent instance. */
-		connect(name: string, id: string): AgentSocket;
-	};
-	/** Workflow invocation APIs. */
+	/** Start workflow runs. */
 	workflows: {
-		/** Opens a WebSocket connection for one workflow invocation. */
-		connect(name: string): WorkflowSocket;
+		/** Start a workflow run. Returns the run ID and stream URL. */
+		invoke(name: string, options?: WorkflowInvokeOptions): Promise<WorkflowInvokeResult>;
 	};
 	/** Read-only APIs exposed by the configured admin mount path. */
 	admin: {
@@ -106,8 +102,6 @@ export interface FlueClient {
 		runs: {
 			/** Lists workflow-run summaries. */
 			list(options?: ListRunsOptions): Promise<ListResponse<RunPointer>>;
-			/** Retrieves one workflow-run record from the admin mount path. */
-			get(runId: string): Promise<RunRecord>;
 		};
 	};
 }
@@ -115,45 +109,57 @@ export interface FlueClient {
 /** Creates a client for the public and read-only admin routes of a deployed Flue application. */
 export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 	const http = new HttpClient(options);
-	const websocket = options.websocket ?? defaultWebSocketFactory;
-	const websocketEndpoint = createWebSocketEndpoint(http, options.websocketUrl);
 	const adminBasePath = normalizeBasePath(options.adminBasePath ?? '/admin');
 	const adminHttp = new HttpClient({
 		...options,
 		baseUrl: new URL(`${adminBasePath}/`, http.baseUrl).toString(),
 	});
+	const getRun = (runId: string) =>
+		adminHttp.json<RunRecord>({ path: `/runs/${encodeURIComponent(runId)}` });
 	return {
-		runs: {
-			get: (runId) => http.json({ path: `/runs/${encodeURIComponent(runId)}` }),
-			events: (runId, opts = {}) =>
-				http.json({
-					path: `/runs/${encodeURIComponent(runId)}/events`,
-					query: { after: opts.after, types: opts.types?.join(','), limit: opts.limit },
-				}),
-			stream: (runId, opts) => streamRunEvents(http, runId, opts),
-		},
 		agents: {
-			invoke: ((name: string, id: string, opts: Parameters<typeof invokeAgent>[3]) =>
-				invokeAgent(http, name, id, opts)) as FlueClient['agents']['invoke'],
-			connect: (name, id) =>
-				connectAgentSocket(
-					websocket,
-					websocketEndpoint(`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`, {
-						target: 'agent',
-						name,
-						instanceId: id,
-					}),
-					name,
-					id,
-				),
+			prompt: (name, id, opts) => promptAgent(http, name, id, opts),
+			send: (name, id, opts) => sendAgent(http, name, id, opts),
+			stream: (name, id, opts = {}) =>
+				createFlueEventStream<AttachedAgentEvent>(opts, {
+					url: http.url(`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`),
+					fetch: http.fetchWithHeaders.bind(http),
+				}),
+		},
+		runs: {
+			get: getRun,
+			stream: (runId, opts = {}) =>
+				createFlueEventStream<FlueEvent>(opts, {
+					url: http.url(`/runs/${encodeURIComponent(runId)}`),
+					fetch: http.fetchWithHeaders.bind(http),
+				}),
+			events: async (runId, opts) => {
+				const res = await dsStream<FlueEvent>({
+					url: http.url(`/runs/${encodeURIComponent(runId)}`),
+					offset: opts?.offset ?? '-1',
+					live: false,
+					json: true,
+					signal: opts?.signal,
+					backoffOptions: opts?.backoffOptions,
+					fetch: http.fetchWithHeaders.bind(http),
+					warnOnHttp: false,
+				});
+				return readJsonWithAbort<FlueEvent[]>(res, opts?.signal);
+			},
 		},
 		workflows: {
-			connect: (name) =>
-				connectWorkflowSocket(
-					websocket,
-					websocketEndpoint(`/workflows/${encodeURIComponent(name)}`, { target: 'workflow', name }),
-					name,
-				),
+			invoke: async (name, opts) => {
+				const body = await http.json<{ status: string; runId: string }>({
+					method: 'POST',
+					path: `/workflows/${encodeURIComponent(name)}`,
+					body: opts?.payload,
+					signal: opts?.signal,
+				});
+				return {
+					runId: body.runId,
+					streamUrl: http.url(`/runs/${encodeURIComponent(body.runId)}`),
+				};
+			},
 		},
 		admin: {
 			agents: {
@@ -161,23 +167,26 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 			},
 			runs: {
 				list: (opts = {}) => adminHttp.json({ path: '/runs', query: runsQuery(opts) }),
-				get: (runId) => adminHttp.json({ path: `/runs/${encodeURIComponent(runId)}` }),
 			},
 		},
 	};
+}
+
+async function readJsonWithAbort<T>(
+	response: { json(): Promise<T> },
+	signal?: AbortSignal,
+): Promise<T> {
+	const result = await response.json();
+	if (signal?.aborted) {
+		throw signal.reason ?? new DOMException('Aborted', 'AbortError');
+	}
+	return result;
 }
 
 function normalizeBasePath(path: string): string {
 	const trimmed = path.trim();
 	if (!trimmed || trimmed === '/') return '';
 	return `/${trimmed.replace(/^\/+|\/+$/g, '')}`;
-}
-
-function createWebSocketEndpoint(http: HttpClient, transform: WebSocketUrlTransform | undefined) {
-	return (path: string, target: WebSocketTarget): string => {
-		const url = new URL(webSocketUrl(http.url(path)));
-		return String(transform?.(url, target) ?? url);
-	};
 }
 
 function runsQuery(opts: ListRunsOptions): Record<string, string | number | undefined> {

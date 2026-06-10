@@ -4,43 +4,33 @@ import type { FlueContextInternal } from '../client.ts';
 import {
 	InvalidRequestError,
 	parseJsonBody,
-	RunEventTooLargeError,
 	RunStoreUnavailableError,
 	toHttpResponse,
-	toPublicError,
 } from '../errors.ts';
-import { isTaskSessionName } from '../session-identity.ts';
 import type {
 	AttachedAgentEventCallback,
-	CreatedAgent,
 	DirectAgentPayload,
 	FlueEvent,
 	FlueEventCallback,
 } from '../types.ts';
 import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
 import type { DispatchInput } from './dispatch-queue.ts';
-import { streamActiveRunEvents } from './handle-run-routes.ts';
+import {
+	agentStreamPath,
+	parseOffset,
+	runStreamPath,
+	type EventStreamStore,
+} from './event-stream-store.ts';
+
 import { generateWorkflowRunId } from './ids.ts';
 import type { RunOwner, RunRegistry } from './run-registry.ts';
-import { assertPersistedWorkflowEvent, type RunStore } from './run-store.ts';
-import type { RunSubscriberRegistry } from './run-subscribers.ts';
+import { isEphemeralRunEvent, type RunStore } from './run-store.ts';
 
-/** Direct agent handler signature used by attached HTTP and WebSocket prompts. */
-export type AgentHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
 export type WorkflowHandler = (ctx: FlueContextInternal) => unknown | Promise<unknown>;
-
-interface DirectRequestSession {
-	processDirectInput(input: { message: string }): PromiseLike<unknown>;
-}
 
 export function assertAgentDispatchAdmissionInput(input: unknown): asserts input is DispatchInput {
 	if (!isDispatchInput(input))
 		throw new Error('[flue] Internal dispatch admission received an invalid payload.');
-	if (isTaskSessionName(input.session)) {
-		throw new Error(
-			'[flue] Internal dispatch admission session names beginning with "task:" are reserved for delegated tasks.',
-		);
-	}
 }
 
 function isDispatchInput(value: unknown): value is DispatchInput {
@@ -61,51 +51,16 @@ function isDispatchInput(value: unknown): value is DispatchInput {
 	);
 }
 
-export function createDirectAgentHandler(agent: CreatedAgent): AgentHandler {
-	return async (ctx) => {
-		const payload = parseDirectAgentPayload(ctx.payload);
-		const harness = await ctx.initializeCreatedAgent(agent, undefined);
-		const session = await harness.session(payload.session);
-		if (!isDirectRequestSession(session)) {
-			throw new Error('[flue] Internal session does not support direct input processing.');
-		}
-		return session.processDirectInput({ message: payload.message });
-	};
-}
-
-function isDirectRequestSession(value: unknown): value is DirectRequestSession {
-	return (
-		!!value &&
-		typeof value === 'object' &&
-		typeof (value as DirectRequestSession).processDirectInput === 'function'
-	);
-}
-
 function parseDirectAgentPayload(payload: unknown): DirectAgentPayload {
-	const expected =
-		'Direct agent requests must use JSON object body { "message": string, "session"?: string }.';
+	const expected = 'Direct agent requests must use JSON object body { "message": string }.';
 	if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
 		throw new InvalidRequestError({ reason: expected });
 	}
-	const value = payload as { message?: unknown; session?: unknown };
+	const value = payload as { message?: unknown };
 	if (typeof value.message !== 'string') {
 		throw new InvalidRequestError({ reason: expected });
 	}
-	if (
-		value.session !== undefined &&
-		(typeof value.session !== 'string' || value.session.trim() === '')
-	) {
-		throw new InvalidRequestError({
-			reason: 'Direct agent request "session" must be a non-empty string when provided.',
-		});
-	}
-	if (typeof value.session === 'string' && isTaskSessionName(value.session)) {
-		throw new InvalidRequestError({
-			reason:
-				'Direct agent request "session" names beginning with "task:" are reserved for delegated tasks.',
-		});
-	}
-	return { message: value.message, session: value.session };
+	return { message: value.message };
 }
 
 /**
@@ -145,6 +100,8 @@ export type StartWorkflowAdmissionFn = (
 export interface HandleAgentOptions {
 	request: Request;
 	id: string;
+	agentName?: string;
+	eventStreamStore: EventStreamStore;
 	admitAttachedSubmission: AttachedAgentSubmissionAdmission;
 }
 
@@ -155,49 +112,52 @@ export interface HandleWorkflowOptions {
 	createContext: CreateContextFn;
 	startWorkflowAdmission?: StartWorkflowAdmissionFn;
 	runStore?: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
+	eventStreamStore: EventStreamStore;
 	runId?: string;
 }
 
 /**
  * Handle one attached `/agents/:name/:id` prompt interaction.
  *
- * `Accept: text/event-stream` returns attached event streaming; otherwise the
- * response is synchronous JSON `{ result }`. Former `X-Webhook: true` agent
- * requests are rejected because asynchronous delivery uses `dispatch(...)`.
- *
- * Errors thrown before streaming starts are returned as regular HTTP error
- * responses; errors thrown after SSE begins are framed as stream errors.
+ * Returns accepted stream coordinates by default, or a synchronous JSON
+ * result when `?wait=result` is requested. Events are available via the DS
+ * stream read endpoint (GET on the same URL).
  */
 export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Response> {
 	const { request, id } = opts;
 
 	try {
 		const rawPayload = await parseJsonBody(request);
-		if (request.headers.get('x-webhook') === 'true') {
-			throw new InvalidRequestError({
-				reason:
-					'Direct agent prompts are attached interactions. Use dispatch(...) for asynchronous delivery.',
-			});
-		}
 		const payload = parseDirectAgentPayload(rawPayload);
 		const directOptions: DirectAttachedOptions = {
 			id,
 			payload,
 			admitAttachedSubmission: opts.admitAttachedSubmission,
 		};
-		if ((request.headers.get('accept') || '').includes('text/event-stream')) {
-			return runDirectSseMode(directOptions);
+		const streamUrlUrl = new URL(request.url);
+		streamUrlUrl.search = '';
+		const streamUrl = streamUrlUrl.toString();
+		const streamPath = opts.agentName ? agentStreamPath(opts.agentName, id) : undefined;
+		if (streamPath) await opts.eventStreamStore.createStream(streamPath);
+		const offset = streamPath
+			? ((await opts.eventStreamStore.getStreamMeta(streamPath))?.nextOffset ?? '-1')
+			: '-1';
+		if (new URL(request.url).searchParams.get('wait') === 'result') {
+			return runDirectSyncMode(directOptions, streamUrl, offset);
 		}
-		return runDirectSyncMode(directOptions);
+		await opts.admitAttachedSubmission(payload, undefined, false);
+		return new Response(JSON.stringify({ streamUrl, offset }), {
+			status: 202,
+			headers: { 'content-type': 'application/json' },
+		});
 	} catch (err) {
 		return toHttpResponse(err);
 	}
 }
 
 export async function handleWorkflowRequest(opts: HandleWorkflowOptions): Promise<Response> {
-	const { request, workflowName, handler, createContext, runStore, runSubscribers, runRegistry } =
+	const { request, workflowName, handler, createContext, runStore, runRegistry, eventStreamStore } =
 		opts;
 	const startWorkflowAdmission = opts.startWorkflowAdmission ?? defaultStartWorkflowAdmission;
 	const runId = opts.runId ?? generateWorkflowRunId(workflowName);
@@ -205,12 +165,8 @@ export async function handleWorkflowRequest(opts: HandleWorkflowOptions): Promis
 
 	try {
 		const payload = await parseJsonBody(request);
-		const accept = request.headers.get('accept') || '';
-		const isSSE = accept.includes('text/event-stream');
 		const wait = new URL(request.url).searchParams.get('wait');
 		const owner = { kind: 'workflow' as const, workflowName, instanceId };
-		if (isSSE && wait !== 'result' && !runSubscribers)
-			throw new Error('[flue] Workflow SSE requires a run subscriber registry.');
 
 		const execution = await prepareWorkflowExecution({
 			owner,
@@ -222,11 +178,10 @@ export async function handleWorkflowRequest(opts: HandleWorkflowOptions): Promis
 			createContext,
 			startWorkflowAdmission,
 			runStore,
-			runSubscribers,
 			runRegistry,
+			eventStreamStore,
 		});
 
-		if (isSSE && wait !== 'result') return await runSseMode(execution);
 		if (wait === 'result') return await runSyncMode(execution);
 		return await runWorkflowAdmissionMode(execution);
 	} catch (err) {
@@ -249,10 +204,9 @@ export interface InvokeWorkflowAttachedOptions {
 	startWorkflowAdmission?: StartWorkflowAdmissionFn;
 	onAdmitted?: (runId: string) => void;
 	onEvent?: FlueEventCallback;
-	emitIdleOnComplete?: boolean;
 	runStore?: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
+	eventStreamStore: EventStreamStore;
 }
 
 export interface DirectAttachedOptions {
@@ -260,7 +214,6 @@ export interface DirectAttachedOptions {
 	payload: DirectAgentPayload;
 	admitAttachedSubmission: AttachedAgentSubmissionAdmission;
 	onEvent?: AttachedAgentEventCallback;
-	emitIdleOnComplete?: boolean;
 }
 
 export interface WorkflowAttachedInvocationResult {
@@ -276,8 +229,8 @@ export interface FailRecoveredRunOptions {
 	createContext: CreateContextFn;
 	error: unknown;
 	runStore?: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
+	eventStreamStore: EventStreamStore;
 }
 
 interface WorkflowAdmissionOptions {
@@ -290,23 +243,20 @@ interface WorkflowAdmissionOptions {
 	createContext: CreateContextFn;
 	startWorkflowAdmission: StartWorkflowAdmissionFn;
 	runStore?: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
+	eventStreamStore: EventStreamStore;
 	onAdmitted?: (runId: string) => void;
 	onEvent?: FlueEventCallback;
-	emitIdleOnComplete?: boolean;
 }
 
 interface AdmittedWorkflowExecution {
 	runId: string;
 	runStore: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
 	lifecycle: WorkflowRunLifecycle;
 	startWorkflowAdmission: StartWorkflowAdmissionFn;
 	handler: WorkflowHandler;
 	onAdmitted?: (runId: string) => void;
 	onEvent?: FlueEventCallback;
-	emitIdleOnComplete?: boolean;
 	completion?: Promise<unknown>;
 }
 
@@ -323,11 +273,10 @@ async function prepareWorkflowExecution(
 		createContext,
 		startWorkflowAdmission,
 		runStore,
-		runSubscribers,
 		runRegistry,
+		eventStreamStore,
 		onAdmitted,
 		onEvent,
-		emitIdleOnComplete,
 	} = opts;
 	if (!runStore) throw new RunStoreUnavailableError();
 	const lifecycle = await createWorkflowRunLifecycle({
@@ -338,45 +287,34 @@ async function prepareWorkflowExecution(
 		request,
 		createContext,
 		runStore,
-		runSubscribers,
 		runRegistry,
+		eventStreamStore,
 		requirePersistedAdmission: true,
 	});
 	return {
 		runId,
 		runStore,
-		runSubscribers,
 		lifecycle,
 		startWorkflowAdmission,
 		handler,
 		onAdmitted,
 		onEvent,
-		emitIdleOnComplete,
 	};
 }
 
 function startWorkflowExecution(execution: AdmittedWorkflowExecution): Promise<unknown> {
 	if (execution.completion) return execution.completion;
-	const { runId, lifecycle, handler, startWorkflowAdmission, onEvent, emitIdleOnComplete } =
-		execution;
+	const { runId, lifecycle, handler, startWorkflowAdmission, onEvent } = execution;
 	let didRun = false;
-	let didEmitIdle = false;
-	if (onEvent || emitIdleOnComplete) {
-		lifecycle.ctx.setEventCallback((event) => {
-			if (event.type === 'idle') didEmitIdle = true;
-			return onEvent?.(event);
-		});
+	if (onEvent) {
+		lifecycle.ctx.setEventCallback(onEvent);
 	}
 	const run = async (): Promise<unknown> => {
 		didRun = true;
 		try {
 			return await withWorkflowRunLifecycle(lifecycle, async () => {
 				execution.onAdmitted?.(runId);
-				try {
-					return await handler(lifecycle.ctx);
-				} finally {
-					if (emitIdleOnComplete && !didEmitIdle) lifecycle.ctx.emitEvent({ type: 'idle' });
-				}
+				return await handler(lifecycle.ctx);
 			});
 		} finally {
 			lifecycle.ctx.setEventCallback(undefined);
@@ -417,11 +355,11 @@ async function runWorkflowAdmissionMode(execution: AdmittedWorkflowExecution): P
 }
 
 export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<void> {
-	const events = opts.runStore ? await opts.runStore.getEvents(opts.runId) : [];
+	const events = await readRecoveryEvents(opts);
 	const terminalEvent = findTerminalRunEvent(events);
 	const run = await opts.runStore?.getRun(opts.runId);
 	if (terminalEvent || (run && run.status !== 'active')) {
-		await reconcileTerminalRun(opts, run, terminalEvent, events);
+		await reconcileTerminalRun(opts, run, terminalEvent);
 		return;
 	}
 	if (run)
@@ -432,11 +370,19 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 				startedAt: run.startedAt,
 			}),
 		);
-	const initialEventIndex = nextEventIndex(opts.runId, events);
+	// Derive the next event index from the stream head, not the event count —
+	// the count undercounts when the stream has gaps (a dropped append or a
+	// crash mid-append), which would mint duplicate eventIndex values and
+	// break seq == eventIndex for the recovery events.
+	const meta = await opts.eventStreamStore.getStreamMeta(runStreamPath(opts.runId));
+	const initialEventIndex = meta ? parseOffset(meta.nextOffset) + 1 : 0;
 	const startedAt = run?.startedAt ?? new Date().toISOString();
 	const startedAtMs = Date.parse(startedAt);
 	const startEvent = events.find((event) => event.type === 'run_start');
 	const payload = run?.payload !== undefined ? run.payload : startEvent?.payload;
+	// Ensure the event stream exists — the original workflow may have crashed
+	// before createWorkflowRunLifecycle called createStream. Idempotent.
+	await opts.eventStreamStore.createStream(runStreamPath(opts.runId));
 	const lifecycle: WorkflowRunLifecycle = {
 		...opts,
 		payload,
@@ -450,33 +396,34 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 	await emitRunEnd(lifecycle, { isError: true, error: opts.error });
 }
 
+async function readRecoveryEvents(opts: FailRecoveredRunOptions): Promise<FlueEvent[]> {
+	const streamPath = runStreamPath(opts.runId);
+	// Read all events — recovery needs the history to find a terminal
+	// run_end and the run_start payload fallback. The next event index is
+	// derived from the stream head instead (gap-proof).
+	const events: FlueEvent[] = [];
+	let offset = '-1';
+	while (true) {
+		const result = await opts.eventStreamStore.readEvents(streamPath, { offset });
+		for (const e of result.events) {
+			events.push(e.data as FlueEvent);
+		}
+		if (result.upToDate || result.events.length === 0) break;
+		offset = result.nextOffset;
+	}
+	return events;
+}
+
 async function reconcileTerminalRun(
 	opts: FailRecoveredRunOptions,
 	run: Awaited<ReturnType<RunStore['getRun']>> | undefined,
 	terminalEvent: Extract<FlueEvent, { type: 'run_end' }> | undefined,
-	events: FlueEvent[],
 ): Promise<void> {
 	const isError = terminalEvent?.isError ?? run?.isError ?? false;
 	const result = terminalEvent?.result !== undefined ? terminalEvent.result : run?.result;
 	const error = terminalEvent?.error !== undefined ? terminalEvent.error : run?.error;
 	const endedAt = terminalEvent?.timestamp ?? run?.endedAt ?? new Date().toISOString();
 	const durationMs = terminalEvent?.durationMs ?? run?.durationMs ?? 0;
-	if (!terminalEvent && run && run.status !== 'active') {
-		try {
-			await opts.runStore?.appendEvent(opts.runId, {
-				type: 'run_end',
-				runId: opts.runId,
-				result: result === undefined ? null : result,
-				isError,
-				error,
-				durationMs,
-				eventIndex: nextEventIndex(opts.runId, events),
-				timestamp: endedAt,
-			});
-		} catch (eventError) {
-			console.error('[flue:run-store] appendEvent(run_end recovery) failed:', eventError);
-		}
-	}
 	if (terminalEvent && (!run || run.status === 'active')) {
 		await opts.runStore?.endRun({
 			runId: opts.runId,
@@ -487,6 +434,10 @@ async function reconcileTerminalRun(
 			error,
 		});
 	}
+	// Ensure the event stream is closed so DS readers see EOF. A crash
+	// between appendEvent(run_end) and closeStream() can leave the stream
+	// permanently open without this repair.
+	await opts.eventStreamStore.closeStream(runStreamPath(opts.runId));
 	await safeRegistry('recordRunStart(recovery)', () =>
 		opts.runRegistry?.recordRunStart({
 			runId: opts.runId,
@@ -502,7 +453,6 @@ async function reconcileTerminalRun(
 			isError,
 		}),
 	);
-	opts.runSubscribers?.complete(opts.runId);
 }
 
 function findTerminalRunEvent(
@@ -513,97 +463,22 @@ function findTerminalRunEvent(
 		.find((event): event is Extract<FlueEvent, { type: 'run_end' }> => event.type === 'run_end');
 }
 
-function nextEventIndex(runId: string, events: FlueEvent[]): number {
-	const next = events.reduce(
-		(index, event) => Math.max(index, assertPersistedWorkflowEvent(runId, event) + 1),
-		0,
-	);
-	if (!Number.isSafeInteger(next)) {
-		throw new Error(
-			'[flue:run-store] persisted workflow event index exhausted the safe integer range.',
-		);
-	}
-	return next;
-}
-
-const SSE_HEARTBEAT_MS = 15_000;
-
-function runDirectSseMode(opts: DirectAttachedOptions): Response {
-	const { readable, writable } = new TransformStream();
-	const writer = writable.getWriter();
-	const encoder = new TextEncoder();
-	let closed = false;
-	const writeSSE = async (data: unknown, eventType: string): Promise<void> => {
-		if (closed) return;
-		const eventIndex = getEventIndex(data) ?? 0;
-		const lines = [
-			`event: ${eventType}`,
-			`id: ${eventIndex}`,
-			`data: ${typeof data === 'string' ? data : JSON.stringify(data)}`,
-			'',
-			'',
-		];
-		try {
-			await writer.write(encoder.encode(lines.join('\n')));
-		} catch {}
-	};
-	const heartbeat = setInterval(() => {
-		if (!closed) writer.write(encoder.encode(': heartbeat\n\n')).catch(() => {});
-	}, SSE_HEARTBEAT_MS);
-	(async () => {
-		try {
-			await invokeDirectAttached({
-				...opts,
-				onEvent: (event) => writeSSE(event, event.type),
-				emitIdleOnComplete: true,
-			});
-		} catch (error) {
-			await writeSSE({ type: 'error', instanceId: opts.id, error: toPublicError(error) }, 'error');
-		} finally {
-			clearInterval(heartbeat);
-			closed = true;
-			try {
-				await writer.close();
-			} catch {}
-		}
-	})();
-	return new Response(readable, {
-		headers: {
-			'content-type': 'text/event-stream',
-			'cache-control': 'no-cache',
-			connection: 'keep-alive',
-		},
-	});
-}
-
-async function runDirectSyncMode(opts: DirectAttachedOptions): Promise<Response> {
+async function runDirectSyncMode(
+	opts: DirectAttachedOptions,
+	streamUrl: string,
+	offset: string,
+): Promise<Response> {
 	const result = await invokeDirectAttached(opts);
-	return new Response(JSON.stringify({ result: result === undefined ? null : result }), {
-		headers: { 'content-type': 'application/json' },
-	});
+	return new Response(
+		JSON.stringify({ result: result === undefined ? null : result, streamUrl, offset }),
+		{
+			headers: { 'content-type': 'application/json' },
+		},
+	);
 }
 
 export async function invokeDirectAttached(opts: DirectAttachedOptions): Promise<unknown> {
 	return opts.admitAttachedSubmission(opts.payload, opts.onEvent);
-}
-
-async function runSseMode(execution: AdmittedWorkflowExecution): Promise<Response> {
-	if (!execution.runSubscribers)
-		throw new Error('[flue] Workflow SSE requires a run subscriber registry.');
-	const response = streamActiveRunEvents(
-		execution.runStore,
-		execution.runSubscribers,
-		execution.runId,
-	);
-	response.headers.set('X-Flue-Run-Id', execution.runId);
-	try {
-		startWorkflowExecution(execution);
-	} catch (error) {
-		await execution.completion?.catch(() => undefined);
-		await response.body?.cancel();
-		throw error;
-	}
-	return response;
 }
 
 async function runSyncMode(execution: AdmittedWorkflowExecution): Promise<Response> {
@@ -637,11 +512,10 @@ export async function invokeWorkflowAttached(
 		createContext: opts.createContext,
 		startWorkflowAdmission: opts.startWorkflowAdmission,
 		runStore: opts.runStore,
-		runSubscribers: opts.runSubscribers,
 		runRegistry: opts.runRegistry,
+		eventStreamStore: opts.eventStreamStore,
 		onAdmitted: opts.onAdmitted,
 		onEvent: opts.onEvent,
-		emitIdleOnComplete: opts.emitIdleOnComplete,
 	});
 	let result: unknown;
 	try {
@@ -664,24 +538,16 @@ async function invokeWorkflowAttachedUnlocked(
 		request: opts.request,
 		createContext: opts.createContext,
 		runStore: opts.runStore,
-		runSubscribers: opts.runSubscribers,
 		runRegistry: opts.runRegistry,
+		eventStreamStore: opts.eventStreamStore,
 	});
 	const { ctx } = lifecycle;
-	let didEmitIdle = false;
-	if (opts.onEvent || opts.emitIdleOnComplete) {
-		ctx.setEventCallback((event) => {
-			if (event.type === 'idle') didEmitIdle = true;
-			return opts.onEvent?.(event);
-		});
+	if (opts.onEvent) {
+		ctx.setEventCallback(opts.onEvent);
 	}
 	try {
 		const result = await withWorkflowRunLifecycle(lifecycle, async () => {
-			try {
-				return await opts.handler(ctx);
-			} finally {
-				if (opts.emitIdleOnComplete && !didEmitIdle) ctx.emitEvent({ type: 'idle' });
-			}
+			return await opts.handler(ctx);
 		});
 		return { runId: opts.runId, result };
 	} finally {
@@ -699,8 +565,8 @@ interface WorkflowRunLifecycleOptions {
 	request: Request;
 	createContext: CreateContextFn;
 	runStore?: RunStore;
-	runSubscribers?: RunSubscriberRegistry;
 	runRegistry?: RunRegistry;
+	eventStreamStore: EventStreamStore;
 	requirePersistedAdmission?: boolean;
 }
 
@@ -751,6 +617,8 @@ async function createWorkflowRunLifecycle(
 				startedAt,
 			}),
 		);
+	// Create the durable event stream for this workflow run.
+	await options.eventStreamStore.createStream(runStreamPath(options.runId));
 	return { ...options, ctx, startedAt, startedAtMs };
 }
 
@@ -808,8 +676,8 @@ function emitRunResume(lifecycle: WorkflowRunLifecycle): void {
 /**
  * Emit `run_end` and finalize the run.
  *
- * Terminal ordering matters for `/runs/:runId/stream`: append `run_end`
- * before marking the run terminal, then publish and close subscribers.
+ * Terminal ordering: append `run_end` to the event stream store and close it,
+ * then persist to the run store and record in the registry.
  */
 async function emitRunEnd(
 	lifecycle: WorkflowRunLifecycle,
@@ -822,7 +690,7 @@ async function emitRunEnd(
 	const error = input.isError ? serializeError(input.error) : undefined;
 	const normalizedResult = result === undefined ? null : result;
 
-	const { runStore, runSubscribers, runRegistry, runId } = lifecycle;
+	const { runStore, runRegistry, eventStreamStore, runId } = lifecycle;
 
 	// Decorate through the shared event path so eventIndex/timestamp stay continuous.
 	const decorated = lifecycle.ctx.emitEvent({
@@ -834,14 +702,19 @@ async function emitRunEnd(
 		durationMs,
 	});
 
-	let appendError: unknown;
+	// Append run_end to the durable event stream, then close it.
+	// Each operation is individually guarded so a store failure cannot
+	// prevent RunStore/RunRegistry finalization below.
 	try {
-		await persistRunEvent('appendEvent(run_end)', () => runStore?.appendEvent(runId, decorated));
-	} catch (error) {
-		appendError = error;
+		await eventStreamStore.appendEvent(runStreamPath(runId), decorated);
+	} catch (e) {
+		console.error('[flue:event-stream] appendEvent(run_end) failed:', e);
 	}
-
-	runSubscribers?.publish(runId, decorated);
+	try {
+		await eventStreamStore.closeStream(runStreamPath(runId));
+	} catch (e) {
+		console.error('[flue:event-stream] closeStream failed:', e);
+	}
 
 	const didEndRun = runStore
 		? await safeRunStore('endRun', () =>
@@ -865,53 +738,87 @@ async function emitRunEnd(
 				isError: input.isError,
 			}),
 		);
-
-	runSubscribers?.complete(runId);
-	if (appendError) throw appendError;
 }
+
+const EPHEMERAL_FLUSH_INTERVAL_MS = 3_000;
 
 /**
- * Persist non-terminal events before publishing them to live subscribers.
+ * Persist non-terminal events to the event stream store.
  * `run_end` is handled separately by {@link emitRunEnd}.
+ *
+ * Non-ephemeral events are appended immediately. Ephemeral per-chunk
+ * streaming events (see {@link isEphemeralRunEvent}) are batched and
+ * flushed at most once per {@link EPHEMERAL_FLUSH_INTERVAL_MS} to avoid
+ * issuing one durable storage write per streamed chunk.
+ *
+ * Because `emitEvent` dispatches to subscribers synchronously (fire-and-forget),
+ * async `appendEvent` calls produce floating promises. We collect them in a
+ * buffer and drain at the returned flush function, which is awaited by
+ * {@link withWorkflowRunLifecycle} after the workflow body completes.
  */
 function subscribeRunFanout(lifecycle: WorkflowRunLifecycle): () => Promise<void> {
-	const { ctx, runStore, runSubscribers, runId } = lifecycle;
-	if (!runStore && !runSubscribers) return async () => {};
-	let chain: Promise<void> = Promise.resolve();
+	const { ctx, eventStreamStore, runId } = lifecycle;
+	const streamPath = runStreamPath(runId);
+	const pending: Promise<void>[] = [];
+
+	// ── Ephemeral event throttle ────────────────────────────────────────
+	let ephemeralBatch: FlueEvent[] = [];
+	let ephemeralTimer: ReturnType<typeof setTimeout> | undefined;
+
+	function flushEphemeralBatch(): void {
+		if (ephemeralBatch.length === 0) return;
+		const batch = ephemeralBatch;
+		ephemeralBatch = [];
+		for (const event of batch) {
+			pending.push(
+				eventStreamStore.appendEvent(streamPath, event).then(
+					() => {},
+					(error) => {
+						console.error('[flue:event-stream] appendEvent failed:', error);
+					},
+				),
+			);
+		}
+	}
+
+	function scheduleEphemeralFlush(): void {
+		if (ephemeralTimer !== undefined) return;
+		ephemeralTimer = setTimeout(() => {
+			ephemeralTimer = undefined;
+			flushEphemeralBatch();
+		}, EPHEMERAL_FLUSH_INTERVAL_MS);
+	}
+
+	// ── Subscription ────────────────────────────────────────────────────
 	const unsubscribe = ctx.subscribeEvent((event) => {
 		if (event.type === 'run_end') return;
-		chain = chain.then(() => fanOutEvent(runStore, runSubscribers, runId, event));
+		if (isEphemeralRunEvent(event)) {
+			ephemeralBatch.push(event);
+			scheduleEphemeralFlush();
+			return;
+		}
+		// Flush any buffered ephemeral events before a non-ephemeral event
+		// so stream readers see them in emission order.
+		flushEphemeralBatch();
+		pending.push(
+			eventStreamStore.appendEvent(streamPath, event).then(
+				() => {},
+				(error) => {
+					console.error('[flue:event-stream] appendEvent failed:', error);
+				},
+			),
+		);
 	});
-	return () => {
+
+	return async () => {
 		unsubscribe();
-		return chain;
+		if (ephemeralTimer !== undefined) {
+			clearTimeout(ephemeralTimer);
+			ephemeralTimer = undefined;
+		}
+		flushEphemeralBatch();
+		await Promise.all(pending);
 	};
-}
-
-async function fanOutEvent(
-	runStore: RunStore | undefined,
-	runSubscribers: RunSubscriberRegistry | undefined,
-	runId: string,
-	event: FlueEvent,
-): Promise<void> {
-	if (runStore) {
-		await persistRunEvent('appendEvent', () => runStore.appendEvent(runId, event));
-	}
-	runSubscribers?.publish(runId, event);
-}
-
-async function persistRunEvent(
-	label: string,
-	fn: () => Promise<void> | undefined,
-): Promise<boolean> {
-	try {
-		await fn();
-		return true;
-	} catch (error) {
-		if (error instanceof RunEventTooLargeError) throw error;
-		console.error(`[flue:run-store] ${label} failed:`, error);
-		return false;
-	}
 }
 
 async function persistRunAdmission(
@@ -948,12 +855,6 @@ function serializeError(error: unknown): unknown {
 	return error;
 }
 
-function getEventIndex(data: unknown): number | undefined {
-	if (typeof data !== 'object' || data === null) return undefined;
-	const value = (data as { eventIndex?: unknown }).eventIndex;
-	return typeof value === 'number' ? value : undefined;
-}
-
 // ─── Defaults ───────────────────────────────────────────────────────────────
 
 /**
@@ -964,5 +865,3 @@ function getEventIndex(data: unknown): number | undefined {
  */
 const defaultStartWorkflowAdmission: StartWorkflowAdmissionFn = (_runId, run) =>
 	Promise.resolve().then(run);
-
-

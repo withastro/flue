@@ -81,9 +81,9 @@ Throws when the profile contains unknown fields, invalid capabilities, duplicate
 
 #### `DurabilityConfig`
 
-| Field     | Type     | Default | Description                                                                                                                                      |
-| --------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `retry`   | `number` | `10`    | Maximum recovery attempts before the submission is terminalized as failed. Each interruption that requires a new attempt counts toward this limit. |
+| Field     | Type     | Default | Description                                                                                                                                                                                                                                                                                  |
+| --------- | -------- | ------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `retry`   | `number` | `10`    | Maximum recovery attempts before the submission is terminalized as failed. Each interruption that requires a new attempt counts toward this limit.                                                                                                                                           |
 | `timeout` | `number` | `60`    | Maximum wall-clock minutes for a single submission. Submissions exceeding this limit are aborted and settled as failed. Set higher for long-running agents (e.g. `360` for a 6-hour agent). The timeout is checked cooperatively at turn boundaries, not preemptively during provider calls. |
 
 #### `CompactionConfig`
@@ -230,7 +230,6 @@ function dispatch(request: NamedAgentDispatchRequest): Promise<DispatchReceipt>;
 
 interface AgentDispatchRequest {
   id: string;
-  session?: string;
   input: unknown;
 }
 
@@ -244,20 +243,19 @@ interface DispatchReceipt {
 }
 ```
 
-Accepts input for asynchronous delivery to a continuing agent session. The created-agent overload requires a value default-exported by one discovered `agents/<name>.ts` module. The named overload selects a discovered agent module by name.
+Accepts input for asynchronous delivery to a continuing agent instance. The created-agent overload requires a value default-exported by one discovered `agents/<name>.ts` module. The named overload selects a discovered agent module by name.
 
 | Field        | Description                                                                                               |
 | ------------ | --------------------------------------------------------------------------------------------------------- |
 | `agent`      | Discovered agent module name for the named overload.                                                      |
 | `id`         | Target agent instance id.                                                                                 |
-| `session`    | Target session name. Defaults to `'default'`.                                                             |
 | `input`      | Required JSON-like payload. Use `null` for an intentional empty payload. Flue snapshots it when accepted. |
 | `dispatchId` | Generated delivery identifier returned in the receipt. This is not a workflow `runId`.                    |
 | `acceptedAt` | ISO timestamp assigned when dispatch admission begins.                                                    |
 
-`await dispatch(...)` resolves when the current runtime accepts and queues the input. It does not wait for model processing, tool calls, or an agent reply. Dispatched activity belongs to the continuing agent session: it does not create workflow-run history and does not appear in `/runs` or `flue logs`.
+`await dispatch(...)` resolves when the current runtime accepts and queues the input. It does not wait for model processing, tool calls, or an agent reply. Dispatched activity belongs to the continuing agent instance: it does not create workflow-run history and does not appear in `/runs` or `flue logs`.
 
-Delivery durability depends on the generated target. Node uses a process-lifetime in-memory queue by default; with a durable `db.ts` adapter, dispatches survive restarts and are reconciled on the replacement process. Cloudflare durably admits delivery to the target agent Durable Object, orders it with direct prompts for the same session, and reconciles interruptions conservatively. Both targets retry only when replay safety is provable; external effects still require application-level idempotency. See [Durable Execution](/docs/guide/durable-execution/) for recovery details, and [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) and [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/) for target-specific setup.
+Delivery durability depends on the generated target. Node uses a process-lifetime in-memory queue by default; with a durable `db.ts` adapter, dispatches survive restarts and are reconciled on the replacement process. Cloudflare durably admits delivery to the target agent Durable Object, orders it with direct prompts, and reconciles interruptions conservatively. Both targets retry only when replay safety is provable; external effects still require application-level idempotency. See [Durable Execution](/docs/guide/durable-execution/) for recovery details, and [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) and [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/) for target-specific setup.
 
 ## `init(...)`
 

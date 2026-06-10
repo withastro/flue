@@ -5,12 +5,7 @@ import type {
 	SubmissionDurability,
 } from '../agent-execution-store.ts';
 import type { FlueContextInternal } from '../client.ts';
-import type {
-	AttachedAgentEvent,
-	CallHandle,
-	CreatedAgent,
-	DirectAgentPayload,
-} from '../types.ts';
+import type { AttachedAgentEvent, CallHandle, CreatedAgent, DirectAgentPayload } from '../types.ts';
 import type { DispatchInput } from './dispatch-queue.ts';
 import { assertAgentDispatchAdmissionInput } from './handle-agent.ts';
 
@@ -93,8 +88,6 @@ interface AgentSubmissionSession {
 	recordSubmissionTerminal(input: AgentSubmissionInterruption): Promise<void>;
 }
 
-
-
 interface AgentSubmissionObserver {
 	onEvent?: (event: AttachedAgentEvent) => Promise<void> | void;
 }
@@ -114,9 +107,12 @@ interface AgentSubmissionObserverRegistry {
 export type AttachedAgentSubmissionAdmission = (
 	payload: DirectAgentPayload,
 	onEvent?: (event: AttachedAgentEvent) => Promise<void> | void,
+	waitForResult?: boolean,
 ) => Promise<unknown>;
 
-export function createDispatchAgentSubmissionInput(input: DispatchInput): DispatchAgentSubmissionInput {
+export function createDispatchAgentSubmissionInput(
+	input: DispatchInput,
+): DispatchAgentSubmissionInput {
 	return { ...input, kind: 'dispatch', submissionId: input.dispatchId };
 }
 
@@ -130,10 +126,7 @@ export function createDirectAgentSubmissionInput(options: {
 		submissionId: crypto.randomUUID(),
 		agent: options.agent,
 		id: options.id,
-		session:
-			typeof options.payload.session === 'string' && options.payload.session.trim() !== ''
-				? options.payload.session
-				: 'default',
+		session: 'default',
 		payload: options.payload,
 		acceptedAt: new Date().toISOString(),
 	};
@@ -185,6 +178,10 @@ export function createAgentSubmissionObserverRegistry(): AgentSubmissionObserver
 				resolve = resolve_;
 				reject = reject_;
 			});
+			// Callers may never await completion (fire-and-forget admission, or
+			// a failure before the await attaches) — keep a rejection from
+			// surfacing as an unhandled-rejection crash.
+			completion.catch(() => {});
 			const attached = { ...observer, resolve, reject };
 			observers.set(submissionId, attached);
 			return {
@@ -300,7 +297,13 @@ export async function reconcileInterruptedSubmission(
 			`[flue] Agent submission exceeded maximum recovery attempts (${submission.attemptCount}/${submission.maxRetry}).`,
 		);
 		const failed = await failInterruptedSubmission(
-			submissions, submission, attempt, agent, 'exhausted_retry_budget', error, createContext,
+			submissions,
+			submission,
+			attempt,
+			agent,
+			'exhausted_retry_budget',
+			error,
+			createContext,
 		);
 		return { replacement: null, failedError: failed ? error : null };
 	}
@@ -309,7 +312,13 @@ export async function reconcileInterruptedSubmission(
 	if (submission.timeoutAt > 0 && Date.now() >= submission.timeoutAt) {
 		const error = new Error('[flue] Agent submission exceeded configured timeout.');
 		const failed = await failInterruptedSubmission(
-			submissions, submission, attempt, agent, 'exceeded_timeout', error, createContext,
+			submissions,
+			submission,
+			attempt,
+			agent,
+			'exceeded_timeout',
+			error,
+			createContext,
 		);
 		return { replacement: null, failedError: failed ? error : null };
 	}
@@ -318,7 +327,9 @@ export async function reconcileInterruptedSubmission(
 	const readPayload = agentSubmissionReadPayload(input);
 	const dispatchId = agentSubmissionDispatchId(input);
 	const ctx = createContext(readPayload, dispatchId);
-	const state = await createAgentSubmissionSessionHandler(agent, input, (s) => s.inspectSubmissionInput(input))(ctx);
+	const state = await createAgentSubmissionSessionHandler(agent, input, (s) =>
+		s.inspectSubmissionInput(input),
+	)(ctx);
 
 	// Check turn journal for pre-commit interruption that can be retried.
 	//
@@ -345,15 +356,17 @@ export async function reconcileInterruptedSubmission(
 	) {
 		const streamKey = journal.streamKey;
 		const recoveryCtx = createContext(readPayload, dispatchId);
-		const recovered = (await createAgentSubmissionSessionHandler(
-			agent,
-			input,
-			(s) => s.recoverInterruptedStream(streamKey),
+		const recovered = (await createAgentSubmissionSessionHandler(agent, input, (s) =>
+			s.recoverInterruptedStream(streamKey),
 		)(recoveryCtx)) as boolean;
 		if (recovered) {
 			await submissions.markStreamConsumed(attempt, journal.streamKey);
 			await submissions.deleteStreamChunkSegments(journal.streamKey);
-			const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
+			const replacement = await submissions.replaceTurnJournalAttempt(
+				attempt,
+				crypto.randomUUID(),
+				lease,
+			);
 			if (replacement) return { replacement, failedError: null };
 		}
 	}
@@ -369,7 +382,11 @@ export async function reconcileInterruptedSubmission(
 		// would terminally fail the submission instead of retrying.
 		(state === 'continuable' || (state === 'uncertain' && journal.phase === 'before_provider'))
 	) {
-		const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
+		const replacement = await submissions.replaceTurnJournalAttempt(
+			attempt,
+			crypto.randomUUID(),
+			lease,
+		);
 		if (replacement) return { replacement, failedError: null };
 	}
 
@@ -380,20 +397,26 @@ export async function reconcileInterruptedSubmission(
 		journal.toolRequest
 	) {
 		const repairCtx = createContext(readPayload, dispatchId);
-		const repairedLeafId = (await createAgentSubmissionSessionHandler(
-			agent,
-			input,
-			(s) => s.repairInterruptedToolCalls(input, journal.toolRequest as AgentSubmissionToolRequest),
+		const repairedLeafId = (await createAgentSubmissionSessionHandler(agent, input, (s) =>
+			s.repairInterruptedToolCalls(input, journal.toolRequest as AgentSubmissionToolRequest),
 		)(repairCtx)) as string | undefined;
 		if (repairedLeafId) {
 			await submissions.updateTurnJournalPhase(attempt, 'before_provider', {
 				checkpointLeafId: repairedLeafId,
 			});
-			const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
+			const replacement = await submissions.replaceTurnJournalAttempt(
+				attempt,
+				crypto.randomUUID(),
+				lease,
+			);
 			if (replacement) return { replacement, failedError: null };
 		}
 		if (state === 'continuable') {
-			const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
+			const replacement = await submissions.replaceTurnJournalAttempt(
+				attempt,
+				crypto.randomUUID(),
+				lease,
+			);
 			if (replacement) return { replacement, failedError: null };
 		}
 	}
@@ -408,8 +431,13 @@ export async function reconcileInterruptedSubmission(
 			'[flue] Agent submission attempt was interrupted after canonical input persistence but before the input-application marker was recorded. Provider replay was not attempted.',
 		);
 		const failed = await failInterruptedSubmission(
-			submissions, submission, attempt, agent,
-			'interrupted_before_input_marker', error, createContext,
+			submissions,
+			submission,
+			attempt,
+			agent,
+			'interrupted_before_input_marker',
+			error,
+			createContext,
 		);
 		return { replacement: null, failedError: failed ? error : null };
 	}
@@ -422,7 +450,10 @@ export async function reconcileInterruptedSubmission(
 
 	// Collect interrupted tool metadata from the journal when available.
 	const interruptedTools = journal?.toolRequest
-		? (journal.toolRequest as AgentSubmissionToolRequest).toolCalls.map((tc) => ({ name: tc.name, id: tc.id }))
+		? (journal.toolRequest as AgentSubmissionToolRequest).toolCalls.map((tc) => ({
+				name: tc.name,
+				id: tc.id,
+			}))
 		: undefined;
 
 	// Post-input-application interruption without completion.
@@ -432,8 +463,14 @@ export async function reconcileInterruptedSubmission(
 			: '[flue] Agent submission attempt was interrupted after input application without a completed canonical response. Provider replay was not attempted.',
 	);
 	const failed = await failInterruptedSubmission(
-		submissions, submission, attempt, agent,
-		'interrupted_after_input_application', error, createContext, interruptedTools,
+		submissions,
+		submission,
+		attempt,
+		agent,
+		'interrupted_after_input_application',
+		error,
+		createContext,
+		interruptedTools,
 	);
 	return { replacement: null, failedError: failed ? error : null };
 }
@@ -524,7 +561,10 @@ export async function processSubmission(opts: ProcessSubmissionOptions): Promise
 	if (persisted?.status !== 'running' || persisted.attemptId !== attempt.attemptId) return;
 
 	const agent = opts.resolveAgent(input.agent);
-	const ctx = opts.createContext(agentSubmissionProcessingPayload(input), agentSubmissionDispatchId(input));
+	const ctx = opts.createContext(
+		agentSubmissionProcessingPayload(input),
+		agentSubmissionDispatchId(input),
+	);
 
 	if (submission.kind === 'direct') {
 		ctx.setEventCallback(
@@ -539,7 +579,9 @@ export async function processSubmission(opts: ProcessSubmissionOptions): Promise
 			const handle = session.processSubmissionInput(input, {
 				onInputApplied: async (durability: SubmissionDurability) => {
 					if (!(await submissions.markSubmissionInputApplied(attempt, durability))) {
-						throw new Error('[flue] Agent submission attempt lost ownership before input application.');
+						throw new Error(
+							'[flue] Agent submission attempt lost ownership before input application.',
+						);
 					}
 				},
 				startedAt: submission.startedAt,
@@ -569,7 +611,8 @@ export async function processSubmission(opts: ProcessSubmissionOptions): Promise
 	try {
 		const result = opts.wrapExecution ? await opts.wrapExecution(execute) : await execute();
 		const completed = await submissions.completeSubmission(attempt);
-		if (completed && submission.kind === 'direct') observers.complete(submission.submissionId, result);
+		if (completed && submission.kind === 'direct')
+			observers.complete(submission.submissionId, result);
 	} catch (error) {
 		// During shutdown, the coordinator aborts active submissions at the
 		// turn boundary. Don't permanently settle the submission — leave it

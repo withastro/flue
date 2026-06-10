@@ -12,7 +12,7 @@ import type { AgentSubmission } from './agent-execution-store.ts';
 import { createSessionStorageKey } from './session-identity.ts';
 
 /**
- * Agent-mode submissions (HTTP, WebSocket, dispatch) always target the
+ * Agent-mode submissions (HTTP and dispatch) always target the
  * default harness. Named harnesses exist for multi-harness workflows
  * (`ctx.init(agent, { name: 'setup' })`), but external submissions do
  * not select a harness — they implicitly use `'default'`.
@@ -86,11 +86,8 @@ export function isSubmissionPayload(
 /** Validate that a value is a well-formed direct submission payload. */
 function isDirectPayload(value: unknown): boolean {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-	const payload = value as { message?: unknown; session?: unknown };
-	return (
-		typeof payload.message === 'string' &&
-		(payload.session === undefined || typeof payload.session === 'string')
-	);
+	const payload = value as { message?: unknown };
+	return typeof payload.message === 'string';
 }
 
 // ─── Timestamp parsing ──────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vite-plus/test';
 import { NodePlugin } from '../../cli/src/lib/build-plugin-node.ts';
 import type { BuildContext } from '../../cli/src/lib/types.ts';
 
@@ -12,7 +12,9 @@ describe('NodePlugin', () => {
 		);
 
 		expect(entry).toContain('import * as handler_assistant_0 from "/fixture/agents/assistant.ts";');
-		expect(entry).toContain('import * as workflow_translate_0 from "/fixture/workflows/translate.ts";');
+		expect(entry).toContain(
+			'import * as workflow_translate_0 from "/fixture/workflows/translate.ts";',
+		);
 		expect(entry).toContain('"assistant": handler_assistant_0,');
 		expect(entry).toContain('"translate": workflow_translate_0,');
 	});
@@ -24,7 +26,8 @@ describe('NodePlugin', () => {
 			}),
 		);
 
-		expect(entry).toContain('createNodeAgentExecutionStore()');
+		expect(entry).toContain('sqlite()');
+		expect(entry).toContain('defaultAdapter.connect()');
 		expect(entry).not.toContain('userPersistenceAdapter');
 	});
 
@@ -86,7 +89,7 @@ describe('NodePlugin', () => {
 			}),
 		);
 
-		expect(entry).toContain('userPersistenceAdapter.close');
+		expect(entry).toContain('persistenceAdapter.close');
 		expect(entry).toContain("process.on('SIGINT'");
 		expect(entry).toContain("process.on('SIGTERM'");
 	});

@@ -14,6 +14,8 @@ import {
 import { resolveConfigCandidates } from '../src/lib/config-paths.ts';
 import { DEFAULT_DEV_PORT, dev } from '../src/lib/dev.ts';
 import { createEnvLoader, type EnvLoader, selectEnvFile } from '../src/lib/env.ts';
+import { createFlueClient, type FlueEventStream } from '@flue/sdk';
+import type { FlueEvent, RunRecord } from '@flue/sdk';
 import { CATEGORY_ROOTS, CONNECTORS } from './_connectors.generated.ts';
 
 interface ApplicationConfigArgs {
@@ -89,11 +91,11 @@ function printUsage() {
 		'Usage:\n' +
 			'  flue dev   [--target <node|cloudflare>] [--root <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]\n' +
 			'  flue run     <workflow> [--target node] [--payload <json>] [--root <path>] [--output <path>] [--config <path>] [--env <path>]\n' +
-			'  flue connect <agent> <instance-id> [--target node] [--session <name>] [--root <path>] [--output <path>] [--config <path>] [--env <path>]\n' +
+			'  flue connect <agent> <instance-id> [--target node] [--root <path>] [--output <path>] [--config <path>] [--env <path>]\n' +
 			'  flue build   [--target <node|cloudflare>] [--root <path>] [--output <path>] [--config <path>] [--env <path>]\n' +
 			'  flue init  --target <node|cloudflare> [--root <path>] [--force]\n' +
 			'  flue add   [<name>|<url>] [--category <category>] [--print]\n' +
-			"  flue logs  <workflowRunId> [--server <url>] [--header 'Name: value'] [--follow|-f|--no-follow] [--since <eventIndex>] [--types a,b,c] [--limit <n>] [--format pretty|json|ndjson]\n" +
+			"  flue logs  <workflowRunId> [--server <url>] [--header 'Name: value'] [--follow|-f|--no-follow] [--since <offset>] [--types a,b,c] [--limit <n>] [--format pretty|json|ndjson]\n" +
 			'\n' +
 			'Commands:\n' +
 			'  dev    Long-running watch-mode dev server. Rebuilds and reloads on file changes.\n' +
@@ -113,8 +115,6 @@ function printUsage() {
 			`  --port <number>      Port for the dev server. Default: ${DEFAULT_DEV_PORT}\n` +
 			'  --env <path>         Select one alternate .env-format file for build/dev/run/connect before config loads.\n' +
 			'                       Without --env, these commands load <project>/.env when present. Shell values win.\n' +
-			'  --session <name>     (flue connect) Session name used for agent prompts. Default: default.\n' +
-			'                       Cloudflare runtime bindings still use official .dev.vars/.env and CLOUDFLARE_ENV conventions.\n' +
 			'  --category <name>    (flue add) Fetch the generic instructions for a connector category. Pair with a positional URL/path that\n' +
 			"                       points the agent at the provider's docs (e.g. `flue add https://e2b.dev --category sandbox`).\n" +
 			'  --print              (flue add) Print the raw connector markdown to stdout regardless of whether the caller is an agent.\n' +
@@ -168,7 +168,6 @@ interface ConnectArgs {
 	explicitOutput: string | undefined;
 	configFile: string | undefined;
 	envFile: string | undefined;
-	session: string | undefined;
 }
 
 interface BuildArgs {
@@ -229,11 +228,11 @@ interface LogsArgs {
 	 * terminal. CLI flags `--follow` / `--no-follow` set it explicitly.
 	 */
 	follow: boolean | undefined;
-	/** When set, treated as `Last-Event-ID` on the stream request. */
-	since: number | undefined;
+	/** DS offset to resume after. Accepts integers (legacy) or opaque offset strings. */
+	since: string | undefined;
 	/** Filter to a specific set of event types (comma-separated on the CLI). */
 	types: ReadonlySet<string> | undefined;
-	/** Cap event count for one-shot mode. Server applies it via `?limit=`. */
+	/** Cap emitted event count. Applied client-side. */
 	limit: number | undefined;
 	format: 'pretty' | 'json' | 'ndjson';
 }
@@ -248,7 +247,6 @@ function parseFlags(flags: string[]): {
 	payload: string;
 	port: number;
 	envFile: string | undefined;
-	session: string | undefined;
 } {
 	let target: 'node' | 'cloudflare' | undefined;
 	let explicitRoot: string | undefined;
@@ -256,7 +254,6 @@ function parseFlags(flags: string[]): {
 	let configFile: string | undefined;
 	let payload = '{}';
 	let port = 0;
-	let session: string | undefined;
 	let envFile: string | undefined;
 
 	for (let i = 0; i < flags.length; i++) {
@@ -316,12 +313,6 @@ function parseFlags(flags: string[]): {
 				process.exit(1);
 			}
 			envFile = value;
-		} else if (arg === '--session') {
-			session = flags[++i];
-			if (!session || session.trim() === '') {
-				console.error('Missing value for --session');
-				process.exit(1);
-			}
 		} else {
 			console.error(`Unknown argument: ${arg}`);
 			printUsage();
@@ -339,7 +330,6 @@ function parseFlags(flags: string[]): {
 		payload,
 		port,
 		envFile,
-		session,
 	};
 }
 
@@ -426,7 +416,7 @@ function parseLogsHeader(value: string | undefined, headers: Headers): void {
 	const name = value.slice(0, separator).trim();
 	const headerValue = value.slice(separator + 1).trim();
 	const normalizedName = name.toLowerCase();
-	if (normalizedName === 'accept' || normalizedName === 'last-event-id') {
+	if (normalizedName === 'accept') {
 		console.error(`Cannot set reserved \`flue logs\` header: ${name}`);
 		process.exit(1);
 	}
@@ -447,7 +437,7 @@ function parseLogsArgs(rest: string[]): LogsArgs {
 	let server = `http://127.0.0.1:${DEFAULT_DEV_PORT}`;
 	const headers = new Headers();
 	let follow: boolean | undefined;
-	let since: number | undefined;
+	let since: string | undefined;
 	let types: ReadonlySet<string> | undefined;
 	let limit: number | undefined;
 	let format: LogsArgs['format'] = 'pretty';
@@ -470,12 +460,11 @@ function parseLogsArgs(rest: string[]): LogsArgs {
 			follow = false;
 		} else if (arg === '--since') {
 			const value = rest[++i];
-			const parsed = Number.parseInt(value ?? '', 10);
-			if (!Number.isFinite(parsed) || parsed < 0) {
-				console.error('Invalid value for --since (expected a non-negative integer eventIndex)');
+			if (!value) {
+				console.error('Missing value for --since');
 				process.exit(1);
 			}
-			since = parsed;
+			since = normalizeSinceOffset(value);
 		} else if (arg === '--types') {
 			const value = rest[++i];
 			if (!value) {
@@ -610,10 +599,6 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 	if (command === 'build') {
 		const flags = parseFlags(rest);
-		if (flags.session !== undefined) {
-			console.error('`flue build` does not accept --session.');
-			process.exit(1);
-		}
 		return {
 			command: 'build',
 			target: flags.target,
@@ -626,10 +611,6 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 	if (command === 'dev') {
 		const flags = parseFlags(rest);
-		if (flags.session !== undefined) {
-			console.error('`flue dev` does not accept --session.');
-			process.exit(1);
-		}
 		return {
 			command: 'dev',
 			target: flags.target,
@@ -668,7 +649,6 @@ function parseArgs(argv: string[]): ParsedArgs {
 			explicitOutput: flags.explicitOutput,
 			configFile: flags.configFile,
 			envFile: flags.envFile,
-			session: flags.session,
 		};
 	}
 
@@ -692,11 +672,6 @@ function parseArgs(argv: string[]): ParsedArgs {
 			console.error('`flue run` does not accept --port.');
 			process.exit(1);
 		}
-		if (flags.session !== undefined) {
-			console.error('`flue run` does not accept --session.');
-			process.exit(1);
-		}
-
 		try {
 			JSON.parse(flags.payload);
 		} catch {
@@ -1249,7 +1224,6 @@ async function run(args: RunArgs) {
 		const result = await sendLocalRequest(
 			child,
 			{
-				version: 1,
 				type: 'invoke',
 				requestId: `req_${crypto.randomUUID()}`,
 				payload: JSON.parse(args.payload),
@@ -1308,11 +1282,9 @@ async function connectCommand(args: ConnectArgs) {
 		if (!line.trim()) continue;
 		try {
 			const result = await sendLocalRequest(child, {
-				version: 1,
 				type: 'prompt',
 				requestId: `req_${crypto.randomUUID()}`,
 				message: line,
-				...(args.session === undefined ? {} : { session: args.session }),
 			});
 			if (result !== undefined && result !== null) console.log(JSON.stringify(result, null, 2));
 		} catch (err) {
@@ -1325,54 +1297,6 @@ async function connectCommand(args: ConnectArgs) {
 
 // ─── `flue logs` ────────────────────────────────────────────────────────────
 
-interface RunRecord {
-	runId: string;
-	owner: { kind: 'workflow'; workflowName: string; instanceId: string };
-	status: 'active' | 'completed' | 'errored';
-	startedAt: string;
-	isError?: boolean;
-	durationMs?: number;
-}
-
-async function fetchLogsOrExit(url: string | URL, init?: RequestInit): Promise<Response> {
-	let res: Response;
-	try {
-		res = await fetch(url, { ...init, redirect: 'error' });
-	} catch (err) {
-		console.error(
-			`[flue] Failed to reach Flue server at ${url}: ${err instanceof Error ? err.message : String(err)}`,
-		);
-		process.exit(1);
-	}
-	if (res.ok) return res;
-	const rawBody = await res.text();
-	try {
-		const parsed = JSON.parse(rawBody);
-		if (parsed && typeof parsed === 'object' && parsed.error) {
-			const e = parsed.error;
-			console.error(`HTTP ${res.status} [${e.type ?? 'unknown'}]: ${e.message ?? ''}`);
-			if (e.details) {
-				for (const line of String(e.details).split('\n')) {
-					if (line) console.error(`  ${line}`);
-				}
-			}
-			process.exit(1);
-		}
-	} catch {}
-	console.error(`HTTP ${res.status}: ${rawBody}`);
-	process.exit(1);
-}
-
-async function fetchJsonOrExit<T>(url: string, headers: Record<string, string>): Promise<T> {
-	const rawBody = await (await fetchLogsOrExit(url, { headers })).text();
-	try {
-		return JSON.parse(rawBody) as T;
-	} catch {
-		console.error(`[flue] Failed to parse JSON from ${url}: ${rawBody.slice(0, 256)}`);
-		process.exit(1);
-	}
-}
-
 function formatDuration(ms: number | undefined): string {
 	if (ms === undefined) return '';
 	if (ms < 1000) return `${ms}ms`;
@@ -1382,122 +1306,139 @@ function formatDuration(ms: number | undefined): string {
 	return `${m}m${s}s`;
 }
 
-/** Minimal SSE parser for Flue's JSON event stream. */
-async function* iterateSse(res: Response): AsyncIterableIterator<{
-	type: string;
-	id: string | null;
-	data: unknown;
-}> {
-	if (!res.body) return;
-	const decoder = new TextDecoder();
-	let buffer = '';
-	let pendingEvent: string | null = null;
-	let pendingId: string | null = null;
-	let pendingData = '';
-	for await (const chunk of res.body as AsyncIterable<Uint8Array>) {
-		buffer += decoder.decode(chunk, { stream: true });
-		const lines = buffer.split('\n');
-		buffer = lines.pop() ?? '';
-		for (const line of lines) {
-			if (line === '') {
-				if (pendingEvent && pendingData) {
-					let data: unknown;
-					try {
-						data = JSON.parse(pendingData);
-					} catch {
-						data = pendingData;
-					}
-					yield { type: pendingEvent, id: pendingId, data };
-				}
-				pendingEvent = null;
-				pendingId = null;
-				pendingData = '';
-				continue;
-			}
-			if (line.startsWith(':')) continue;
-			if (line.startsWith('event:')) pendingEvent = line.slice(6).trim();
-			else if (line.startsWith('id:')) pendingId = line.slice(3).trim();
-			else if (line.startsWith('data:')) pendingData += line.slice(5).trim();
-		}
-	}
-}
-
 /** Render a single event for `flue logs --format pretty`. */
-function logsRenderPretty(event: Record<string, unknown>): void {
-	const type = event.type;
+function logsRenderPretty(event: FlueEvent): void {
+	const { type } = event;
 	if (type === 'run_start') {
-		const runId = String(event.runId ?? '');
-		const workflow = String(event.workflowName ?? '');
-		console.error(`[flue] run:start    ${runId}  workflow=${workflow}`);
+		console.error(`[flue] run:start    ${event.runId}  workflow=${event.workflowName}`);
 		return;
 	}
 	if (type === 'run_end') {
-		const runId = String(event.runId ?? '');
-		const duration = formatDuration(
-			typeof event.durationMs === 'number' ? event.durationMs : undefined,
-		);
+		const duration = formatDuration(event.durationMs);
 		if (event.isError) {
 			const err = event.error as { message?: string } | undefined;
-			console.error(`[flue] run:end      ${runId}  ERROR  ${err?.message ?? ''}  (${duration})`);
+			console.error(
+				`[flue] run:end      ${event.runId}  ERROR  ${err?.message ?? ''}  (${duration})`,
+			);
 		} else {
-			console.error(`[flue] run:end      ${runId}  ok  (${duration})`);
+			console.error(`[flue] run:end      ${event.runId}  ok  (${duration})`);
 		}
 		return;
 	}
-	if (type === 'operation_start' || type === 'operation') {
-		const kind = String(event.operationKind ?? event.kind ?? '');
-		const duration = formatDuration(
-			typeof event.durationMs === 'number' ? event.durationMs : undefined,
-		);
-		const tag = type === 'operation_start' ? 'op:start' : 'op:done';
-		console.error(`[flue] ${tag}      ${kind}${duration ? `  (${duration})` : ''}`);
+	if (type === 'operation_start') {
+		console.error(`[flue] op:start      ${event.operationKind}`);
+		return;
+	}
+	if (type === 'operation') {
+		const duration = formatDuration(event.durationMs);
+		console.error(`[flue] op:done      ${event.operationKind}${duration ? `  (${duration})` : ''}`);
 		return;
 	}
 	logEvent(event);
 }
 
+function createLogsClient(args: LogsArgs) {
+	return createFlueClient({
+		baseUrl: args.server,
+		headers: args.headers,
+	});
+}
+
+const OFFSET_COMPONENT_PAD = 16;
+
+/** Format an event index as a DS offset (`<zeros>_<index>`, both 16 digits). */
+function formatEventOffset(index: number | string): string {
+	const digits = String(index).replace(/^0+(?=\d)/, '');
+	return `${'0'.repeat(OFFSET_COMPONENT_PAD)}_${digits.padStart(OFFSET_COMPONENT_PAD, '0')}`;
+}
+
+function normalizeSinceOffset(value: string): string {
+	return /^\d+$/.test(value) ? formatEventOffset(value) : value;
+}
+
+function logsEmitEvent(event: FlueEvent, format: LogsArgs['format']): void {
+	if (format === 'json' || format === 'ndjson') {
+		// ndjson lines carry a per-event resume offset derived from eventIndex
+		// (on run streams, event index == stream sequence; flue logs reads
+		// runs only). The stream's own offset getter is batch-granular and
+		// would skip events if used as a mid-batch checkpoint.
+		const offset =
+			format === 'ndjson' && typeof event.eventIndex === 'number'
+				? formatEventOffset(event.eventIndex)
+				: undefined;
+		const output = offset ? { ...event, offset } : event;
+		process.stdout.write(`${JSON.stringify(output)}\n`);
+	} else {
+		logsRenderPretty(event);
+	}
+}
+
 async function logsCommand(args: LogsArgs): Promise<void> {
-	const base = args.server.replace(/\/+$/, '');
-	const runPath = `${base}/runs/${encodeURIComponent(args.runId)}`;
+	const client = createLogsClient(args);
 
 	let shouldFollow: boolean;
 	if (args.follow !== undefined) {
 		shouldFollow = args.follow;
 	} else {
-		const run = await fetchJsonOrExit<RunRecord>(runPath, args.headers);
+		let run: RunRecord;
+		try {
+			run = await client.runs.get(args.runId);
+		} catch (err) {
+			console.error(
+				`[flue] Failed to fetch run ${args.runId}: ${err instanceof Error ? err.message : String(err)}`,
+			);
+			process.exit(1);
+		}
 		shouldFollow = run.status === 'active';
 	}
 
-	// One-shot mode snapshots persisted events and exits immediately.
+	// One-shot mode: catch-up read via DS, then exit.
 	if (!shouldFollow) {
-		const url = new URL(`${runPath}/events`);
-		if (args.since !== undefined) url.searchParams.set('after', String(args.since));
-		if (args.types) url.searchParams.set('types', [...args.types].join(','));
-		if (args.limit !== undefined) url.searchParams.set('limit', String(args.limit));
-		const body = await fetchJsonOrExit<{ events: Array<Record<string, unknown>> }>(
-			url.toString(),
-			args.headers,
-		);
+		let events: FlueEvent[];
+		try {
+			events = await client.runs.events(args.runId, {
+				offset: args.since ?? '-1',
+				backoffOptions: {
+					initialDelay: 100,
+					maxDelay: 60_000,
+					multiplier: 1.3,
+					maxRetries: 3,
+				},
+			});
+		} catch (err) {
+			console.error(
+				`[flue] Failed to read events for run ${args.runId}: ${err instanceof Error ? err.message : String(err)}`,
+			);
+			process.exit(1);
+		}
+
 		let exitCode = 0;
-		for (const event of body.events) {
-			if (args.format === 'json' || args.format === 'ndjson') {
-				process.stdout.write(`${JSON.stringify(event)}\n`);
-			} else {
-				logsRenderPretty(event);
-			}
-			if (event.type === 'run_end' && event.isError === true) exitCode = 2;
+		let emittedCount = 0;
+		for (const event of events) {
+			if (event.type === 'run_end' && event.isError) exitCode = 2;
+			if (args.types && !args.types.has(event.type)) continue;
+
+			logsEmitEvent(event, args.format);
+			emittedCount++;
+
+			if (args.limit !== undefined && emittedCount >= args.limit) break;
 		}
 		if (args.format === 'pretty') flushBuffers();
-		process.exit(exitCode);
+		process.exitCode = exitCode;
+		return;
 	}
 
-	const streamUrl = new URL(`${runPath}/stream`);
-	const headers: Record<string, string> = { ...args.headers, accept: 'text/event-stream' };
-	if (args.since !== undefined) headers['last-event-id'] = String(args.since);
-	const res = await fetchLogsOrExit(streamUrl, { headers });
+	// Follow mode: stream via DS protocol with live tailing.
+	const stream: FlueEventStream<FlueEvent> = client.runs.stream(args.runId, {
+		offset: args.since ?? '-1',
+		live: true,
+	});
 
-	const ac = new AbortController();
-	const onSignal = () => ac.abort();
+	let signalled = false;
+	const onSignal = () => {
+		signalled = true;
+		stream.cancel();
+	};
 	process.on('SIGINT', onSignal);
 	process.on('SIGTERM', onSignal);
 
@@ -1505,30 +1446,20 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 	let exitCode = 0;
 
 	try {
-		for await (const frame of iterateSse(res)) {
-			if (ac.signal.aborted) break;
-			const event = frame.data as Record<string, unknown> | undefined;
-			if (!event || typeof event !== 'object') continue;
+		for await (const event of stream) {
+			if (event.type === 'run_end' && event.isError) exitCode = 2;
+			if (args.types && !args.types.has(event.type)) continue;
 
-			const passesFilter =
-				!args.types || (typeof event.type === 'string' && args.types.has(event.type));
+			logsEmitEvent(event, args.format);
+			emittedCount++;
 
-			if (passesFilter) {
-				if (args.format === 'json' || args.format === 'ndjson') {
-					process.stdout.write(`${JSON.stringify(event)}\n`);
-				} else {
-					logsRenderPretty(event);
-				}
-				emittedCount++;
+			if (event.type === 'run_end') {
+				break;
 			}
-
-			if (event.type === 'run_end' && event.isError === true) exitCode = 2;
 			if (args.limit !== undefined && emittedCount >= args.limit) break;
 		}
 	} catch (err) {
-		if (ac.signal.aborted) {
-			exitCode = 130;
-		} else {
+		if (!signalled) {
 			console.error(
 				`[flue] Stream interrupted: ${err instanceof Error ? err.message : String(err)}`,
 			);
@@ -1540,7 +1471,12 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 		if (args.format === 'pretty') flushBuffers();
 	}
 
-	process.exit(exitCode);
+	// The SDK's FlueEventStream swallows abort errors and returns done:true,
+	// so signal-driven cancellation exits the loop cleanly rather than via
+	// the catch block. Check the flag to set the correct exit code.
+	if (signalled) exitCode = 130;
+
+	process.exitCode = exitCode;
 }
 
 // ─── `flue init` ────────────────────────────────────────────────────────────

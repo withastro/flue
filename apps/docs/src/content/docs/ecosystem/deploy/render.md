@@ -74,7 +74,7 @@ curl https://<service>.onrender.com/agents/assistant/session-1 \
 
 Reusing the ID keeps Flue's session scope stable. On Node.js, that session state lives in memory unless you wire up a custom store. These HTTP prompts remain attached until they complete; they advance an agent session and do not create workflow runs or return `runId`.
 
-Render closes idle HTTP connections after about 100 seconds. Most prompt-and-response agents finish well inside that window, but if you build agents that run long tool chains or large multi-step prompts, plan for either streamed responses or a scheduled / background runner (see [Going further](#going-further)) instead of a single blocking request.
+Render closes idle HTTP connections after about 100 seconds. Most prompt-and-response agents finish well inside that window, but if you build agents that run long tool chains or large multi-step prompts, use `POST /agents/:name/:id` without `?wait=result` and read the returned stream coordinates, or use a scheduled / background runner (see [Going further](#going-further)) instead of a single blocking request.
 
 If you only need direct attached agent prompts or application webhook routes that dispatch inputs into in-memory sessions, you can stop here.
 

@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vite-plus/test';
 
 // Node-based export-map smoke tests cannot load the Cloudflare virtual module; real Cloudflare runtime behavior is covered by explicit boundary and integration suites.
 vi.mock('cloudflare:workers', () => ({
@@ -51,11 +51,10 @@ describe('package entrypoints', () => {
 		});
 	});
 
-	it('exposes local() and createNodeWebSocketTransport() when a consumer imports @flue/runtime/node', async () => {
+	it('exposes local() when a consumer imports @flue/runtime/node', async () => {
 		const node = await import('@flue/runtime/node');
 
 		expect(node.local).toEqual(expect.any(Function));
-		expect(node.createNodeWebSocketTransport).toEqual(expect.any(Function));
 	});
 
 	it('exposes generated Worker adapters when generated code imports @flue/runtime/cloudflare', async () => {
@@ -63,12 +62,10 @@ describe('package entrypoints', () => {
 
 		expect(cloudflare).toMatchObject({
 			cfSandboxToSessionEnv: expect.any(Function),
-			connectCloudflareWorkflowWebSocket: expect.any(Function),
 			createCloudflareRunRegistry: expect.any(Function),
 			extend: expect.any(Function),
 			FlueRegistry: expect.any(Function),
 			getCloudflareAIBindingApiProvider: expect.any(Function),
-			messageCloudflareWorkflowWebSocket: expect.any(Function),
 			runWithCloudflareContext: expect.any(Function),
 		});
 	});

@@ -7,7 +7,7 @@ Build and deploy Flue agents as a Node.js server. This guide walks you through c
 
 By the end, you will have a Flue agent running as a Node.js server, and you will know how to add subagents, sandbox context, external CLIs, remote sandboxes, and durable session storage when your agent needs them.
 
-This guide focuses on deploying the generated Node server. First review [Develop & Build](/docs/guide/develop-and-build/) for the CLI lifecycle and build output, then see [Routing](/docs/guide/routing/) for direct HTTP/WebSocket agent delivery, workflow endpoints, and asynchronous `dispatch(...)` from application-owned routes.
+This guide focuses on deploying the generated Node server. First review [Develop & Build](/docs/guide/develop-and-build/) for the CLI lifecycle and build output, then see [Routing](/docs/guide/routing/) for direct HTTP agent delivery, workflow endpoints, and asynchronous `dispatch(...)` from application-owned routes.
 
 ## Project layout
 
@@ -107,26 +107,6 @@ node dist/server.mjs
 ```
 
 `flue build --target node` compiles your project into a `./dist` directory without packaging `.env` credentials into the server. The built server uses [Hono](https://hono.dev/) under the hood and listens on port 3000 by default (configurable via `PORT`). Your project's `node_modules` are still needed at runtime — the build externalizes your dependencies rather than bundling them.
-
-### WebSocket endpoints
-
-Export WebSocket middleware to expose an agent or workflow through the generated server's WebSocket upgrade handling. For a workflow, import `type WorkflowWebSocketHandler` and export `const websocket: WorkflowWebSocketHandler = async (_c, next) => next();`; use `AgentWebSocketHandler` in an agent module. The middleware may authenticate the upgrade before calling `next()`. Agents use `GET /agents/:name/:id` and remain connected for sequential prompts; workflows use `GET /workflows/:name`, accept one invocation, return a result, and close.
-
-```ts
-import { createFlueClient } from '@flue/sdk';
-
-const client = createFlueClient({ baseUrl: 'http://localhost:3000' });
-const chat = client.agents.connect('chat', 'customer-123');
-await chat.ready;
-console.log(await chat.prompt('Hello', { session: 'support' }));
-chat.close();
-
-const job = client.workflows.connect('translate');
-await job.ready;
-console.log(await job.invoke({ text: 'Hello', language: 'French' }));
-```
-
-An exported `websocket` middleware can authenticate its own agent or workflow socket endpoint. Custom `.flue/app.ts` applications provide centralized authentication and mounted prefixes: for example, apply `app.use('/api/agents/*', authenticate)` and `app.use('/api/workflows/*', authenticate)` before `app.route('/api', flue())` to cover both socket surfaces. SDK clients can connect through that mount with `baseUrl: 'https://example.com/api'` and can attach query-token or signed handshake context with `websocketUrl: (url) => { url.searchParams.set('token', socketToken); return url; }`. HTTP `token` and `headers` options do not automatically apply to WebSocket upgrades; browsers should use cookies or application-designed URL authentication, while Node clients requiring implementation-specific headers can supply a custom `websocket` factory. Avoid header-mutating middleware such as CORS wrapping WebSocket upgrade routes, because WebSocket upgrade responses may have immutable headers.
 
 You can also invoke any workflow from the CLI without starting a server. `flue run` loads project-root `.env` automatically; pass `--env` only to select one alternate file:
 
@@ -283,10 +263,9 @@ PORT=8080 node dist/server.mjs
 The default root-mounted Flue application can expose:
 
 - `POST /agents/:name/:id` — send an attached prompt to an agent module that exports `route`;
+- `GET /agents/:name/:id` — stream agent events via the Durable Streams protocol;
 - `POST /workflows/:name` — invoke a workflow module that exports `route`;
-- `WS /agents/:name/:id` — connect to an agent module that exports `websocket`;
-- `WS /workflows/:name` — invoke a workflow module that exports `websocket` once;
-- `GET /runs/:runId` and related event/stream paths — inspect workflow runs.
+- `GET /runs/:runId` — stream workflow-run events via the Durable Streams protocol.
 
 Flue does not add a health endpoint or administrative agent listing by default. Define a host-required health route in `app.ts`, and mount `admin()` separately behind operator authorization if deployment-wide inspection is required. Agent prompt routes advance sessions without creating runs; workflow invocations are the executions represented by workflow run IDs and inspectable through run tooling.
 

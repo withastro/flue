@@ -1,4 +1,3 @@
-import { RunEventTooLargeError } from '../errors.ts';
 import type { FlueEvent } from '../types.ts';
 
 export type RunStatus = 'active' | 'completed' | 'errored';
@@ -37,34 +36,29 @@ export interface EndRunInput {
 export interface RunStore {
 	createRun(input: CreateRunInput): Promise<void>;
 	endRun(input: EndRunInput): Promise<void>;
-	appendEvent(runId: string, event: FlueEvent): Promise<void>;
-	getEvents(runId: string, fromIndex?: number): Promise<FlueEvent[]>;
 	getRun(runId: string): Promise<RunRecord | null>;
 }
 
-const MAX_EVENT_BYTES = 1024 * 1024;
-const ENCODER = new TextEncoder();
+/**
+ * Per-chunk streaming events that are throttle-batched before persistence.
+ * These events are delivered to live stream readers but appended to the
+ * durable event stream at most once per flush interval (~3 s) to avoid
+ * issuing one storage write per streamed chunk.
+ *
+ * Durability is unaffected: interrupted-stream recovery reads the throttled
+ * StreamChunkWriter segments, and `message_end` carries the complete message
+ * for history replay.
+ */
+const EPHEMERAL_RUN_EVENT_TYPES: ReadonlySet<FlueEvent['type']> = new Set([
+	'message_update',
+	'text_delta',
+	'thinking_start',
+	'thinking_delta',
+	'thinking_end',
+]);
 
-export function serializedEventForPersistence(runId: string, event: FlueEvent): string {
-	assertPersistedWorkflowEvent(runId, event);
-	const payload = JSON.stringify(event);
-	if (byteLength(payload) > MAX_EVENT_BYTES) {
-		throw new RunEventTooLargeError();
-	}
-	return payload;
-}
-
-export function parsePersistedWorkflowEvent(
-	runId: string,
-	payload: string,
-	storedEventIndex: number,
-): FlueEvent {
-	const event = JSON.parse(payload) as FlueEvent;
-	const eventIndex = assertPersistedWorkflowEvent(runId, event);
-	if (eventIndex !== storedEventIndex) {
-		throw new Error('[flue:run-store] persisted workflow event index does not match storage.');
-	}
-	return event;
+export function isEphemeralRunEvent(event: FlueEvent): boolean {
+	return EPHEMERAL_RUN_EVENT_TYPES.has(event.type);
 }
 
 export function assertPersistedWorkflowEvent(runId: string, event: FlueEvent): number {
@@ -77,8 +71,4 @@ export function assertPersistedWorkflowEvent(runId: string, event: FlueEvent): n
 		);
 	}
 	return event.eventIndex as number;
-}
-
-function byteLength(value: string): number {
-	return ENCODER.encode(value).byteLength;
 }

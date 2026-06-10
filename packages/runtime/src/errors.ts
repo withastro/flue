@@ -1,5 +1,3 @@
-import type { FluePublicError } from './types.ts';
-
 /**
  * Complete error framework for Flue.
  *
@@ -341,6 +339,19 @@ export class RunNotFoundError extends FlueHttpError {
 	}
 }
 
+export class StreamNotFoundError extends FlueHttpError {
+	constructor({ path }: { path: string }) {
+		super({
+			type: 'stream_not_found',
+			message: `Event stream "${path}" was not found.`,
+			details:
+				'Streams are created when their agent instance receives its first prompt or their workflow run starts.',
+			dev: '',
+			status: 404,
+		});
+	}
+}
+
 export class RunStoreUnavailableError extends FlueHttpError {
 	constructor() {
 		super({
@@ -350,15 +361,6 @@ export class RunStoreUnavailableError extends FlueHttpError {
 			dev: '',
 			status: 501,
 		});
-	}
-}
-
-export class RunEventTooLargeError extends Error {
-	constructor() {
-		super(
-			'[flue:run-store] event payload exceeds the 1 MB persistence limit and will not be persisted.',
-		);
-		this.name = 'RunEventTooLargeError';
 	}
 }
 
@@ -518,27 +520,24 @@ const GENERIC_INTERNAL: WireEnvelope = {
 	},
 };
 
-export function toPublicError(err: unknown): FluePublicError {
-	if (isFlueError(err)) {
-		if (!(err instanceof FlueHttpError)) flueLog.error(err);
-		return envelope(err).error;
-	}
-	flueLog.error(err);
-	return GENERIC_INTERNAL.error;
-}
-
 /**
  * Render any thrown value into a `Response` with the canonical Flue error
  * envelope. Unknown / non-Flue errors are logged in full and rendered as a
  * generic 500 with no message leaked.
  */
 export function toHttpResponse(err: unknown): Response {
+	// Browser security headers (DS protocol §12.7) — set on every error
+	// response so stream-endpoint errors thrown before the protocol layer
+	// (e.g. run lookups) still carry them.
+	const baseHeaders: Record<string, string> = {
+		'content-type': 'application/json',
+		'x-content-type-options': 'nosniff',
+		'cross-origin-resource-policy': 'cross-origin',
+	};
 	if (isFlueError(err)) {
 		const isHttp = err instanceof FlueHttpError;
 		const status = isHttp ? err.status : 500;
-		const headers: Record<string, string> = {
-			'content-type': 'application/json',
-		};
+		const headers = { ...baseHeaders };
 		if (isHttp && err.headers) {
 			Object.assign(headers, err.headers);
 		}
@@ -554,7 +553,7 @@ export function toHttpResponse(err: unknown): Response {
 	flueLog.error(err);
 	return new Response(JSON.stringify(GENERIC_INTERNAL), {
 		status: 500,
-		headers: { 'content-type': 'application/json' },
+		headers: baseHeaders,
 	});
 }
 
@@ -669,8 +668,8 @@ export function validateWorkflowRequest(opts: ValidateWorkflowRequestOptions): v
 }
 
 export function validateAgentRequest(opts: ValidateAgentRequestOptions): void {
-	if (opts.method !== 'POST') {
-		throw new MethodNotAllowedError({ method: opts.method, allowed: ['POST'] });
+	if (opts.method !== 'POST' && opts.method !== 'GET' && opts.method !== 'HEAD') {
+		throw new MethodNotAllowedError({ method: opts.method, allowed: ['GET', 'HEAD', 'POST'] });
 	}
 	if (opts.name.trim() === '' || opts.id.trim() === '') {
 		throw new InvalidRequestError({

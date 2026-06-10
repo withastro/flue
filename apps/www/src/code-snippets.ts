@@ -1,7 +1,7 @@
 // Prompt copied to the user's clipboard by the "Copy Prompt" CTA in the hero.
 export const COPY_PROMPT = `Read https://flueframework.com/start.md then help create my first agent...`;
 
-export const HERO = `import { createAgent, type AgentRouteHandler, type AgentWebSocketHandler } from '@flue/runtime';
+export const HERO = `import { createAgent, type AgentRouteHandler } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import triage from '../skills/triage/SKILL.md' with { type: 'skill' };
 import verify from '../skills/verify/SKILL.md' with { type: 'skill' };
@@ -15,9 +15,8 @@ intentional, and attempt a fix.
 
 ...\`;
 
-// Expose (and protect) your agents over HTTP and WebSockets:
+// Expose (and protect) your agents over HTTP:
 export const route: AgentRouteHandler = async (_c, next) => next();
-export const websocket: AgentWebSocketHandler = async (_c, next) => next();
 
 // Compose the complete harness your agent needs to do real work,
 // complete with virtual, local, or remote container sandbox.

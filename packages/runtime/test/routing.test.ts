@@ -1,10 +1,18 @@
 import { Hono } from 'hono';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test';
 
 import { createFlueContext } from '../src/client.ts';
+import { InMemoryRunRegistry } from '../src/node/run-registry.ts';
 import { InMemoryRunStore } from '../src/node/run-store.ts';
-import { configureFlueRuntime, createDefaultFlueApp, flue, resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
+import { agentStreamPath } from '../src/runtime/event-stream-store.ts';
+import {
+	configureFlueRuntime,
+	createDefaultFlueApp,
+	flue,
+	resetFlueRuntimeForTests,
+} from '../src/runtime/flue-app.ts';
 import { InMemorySessionStore } from '../src/session.ts';
+import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 afterEach(() => {
 	resetFlueRuntimeForTests();
@@ -31,19 +39,13 @@ describe('flue()', () => {
 			paths: Record<string, Record<string, unknown>>;
 		};
 		expect(body.info).toMatchObject({ title: 'Flue Public API', version: '9.9.9' });
-		expect(Object.keys(body.paths)).toHaveLength(5);
+		expect(Object.keys(body.paths)).toHaveLength(2);
 		expect(body.paths).toMatchObject({
 			'/workflows/{name}': { post: expect.any(Object) },
 			'/agents/{name}/{id}': { post: expect.any(Object) },
-			'/runs/{runId}': { get: expect.any(Object) },
-			'/runs/{runId}/events': { get: expect.any(Object) },
-			'/runs/{runId}/stream': { get: expect.any(Object) },
 		});
 		expect(Object.keys(body.paths['/workflows/{name}'] ?? {})).toEqual(['post']);
 		expect(Object.keys(body.paths['/agents/{name}/{id}'] ?? {})).toEqual(['post']);
-		expect(Object.keys(body.paths['/runs/{runId}'] ?? {})).toEqual(['get']);
-		expect(Object.keys(body.paths['/runs/{runId}/events'] ?? {})).toEqual(['get']);
-		expect(Object.keys(body.paths['/runs/{runId}/stream'] ?? {})).toEqual(['get']);
 	});
 
 	it('invokes an HTTP-exposed agent when the mounted app receives a valid agent POST', async () => {
@@ -56,6 +58,7 @@ describe('flue()', () => {
 				assistant: (id) => async (payload) => ({ instanceId: id, payload }),
 			},
 			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = new Hono();
 		app.route('/api', flue());
@@ -68,10 +71,101 @@ describe('flue()', () => {
 			}),
 		);
 
+		expect(response.status).toBe(202);
+		expect(await response.json()).toEqual({
+			streamUrl: 'http://localhost/api/agents/assistant/customer-123',
+			offset: '-1',
+		});
+	});
+
+	it('returns the synchronous result envelope when an agent POST requests wait=result', async () => {
+		configureFlueRuntime({
+			target: 'node',
+			manifest: {
+				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+			},
+			createAdmission: {
+				assistant: (id) => async (payload) => ({ instanceId: id, payload }),
+			},
+			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
+		});
+		const app = new Hono();
+		app.route('/api', flue());
+
+		const response = await app.fetch(
+			new Request('http://localhost/api/agents/assistant/customer-123?wait=result', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ message: 'hello' }),
+			}),
+		);
+
 		expect(response.status).toBe(200);
 		expect(await response.json()).toEqual({
 			result: { instanceId: 'customer-123', payload: { message: 'hello' } },
+			streamUrl: 'http://localhost/api/agents/assistant/customer-123',
+			offset: '-1',
 		});
+	});
+
+	it("captures the prompt tail offset and serves exactly that prompt's events from it", async () => {
+		const store = createTestEventStreamStore();
+		configureFlueRuntime({
+			target: 'node',
+			manifest: {
+				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+			},
+			createAdmission: {
+				// Simulates the coordinator: each accepted prompt appends one
+				// event to the agent's durable stream.
+				assistant: (id) => async (payload) => {
+					await store.appendEvent(agentStreamPath('assistant', id), {
+						type: 'message',
+						text: (payload as { message: string }).message,
+					});
+					return undefined;
+				},
+			},
+			createContext: createTestContext,
+			eventStreamStore: store,
+		});
+		const app = new Hono();
+		app.route('/api', flue());
+
+		const prompt = (message: string) =>
+			app.fetch(
+				new Request('http://localhost/api/agents/assistant/customer-123', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ message }),
+				}),
+			);
+
+		// First prompt on a fresh instance: the captured tail is the start sentinel.
+		const first = await prompt('hello');
+		expect(first.status).toBe(202);
+		const firstBody = (await first.json()) as { streamUrl: string; offset: string };
+		expect(firstBody.offset).toBe('-1');
+
+		// The accepted streamUrl is immediately readable — not a blank 404.
+		const fullRead = await app.fetch(new Request(firstBody.streamUrl));
+		expect(fullRead.status).toBe(200);
+		expect(await fullRead.json()).toEqual([{ type: 'message', text: 'hello' }]);
+
+		// Second prompt: the captured offset is the real stream tail before
+		// this prompt's first event, not a degenerate constant.
+		const second = await prompt('again');
+		expect(second.status).toBe(202);
+		const secondBody = (await second.json()) as { streamUrl: string; offset: string };
+		expect(secondBody.offset).toMatch(/^\d{16}_\d{16}$/);
+
+		// Reading from that offset returns exactly the second prompt's events.
+		const offsetRead = await app.fetch(
+			new Request(`${secondBody.streamUrl}?offset=${secondBody.offset}`),
+		);
+		expect(offsetRead.status).toBe(200);
+		expect(await offsetRead.json()).toEqual([{ type: 'message', text: 'again' }]);
 	});
 
 	it('rejects non-POST agent requests with a method envelope when a path targets an HTTP agent', async () => {
@@ -89,12 +183,12 @@ describe('flue()', () => {
 		);
 
 		expect(response.status).toBe(405);
-		expect(response.headers.get('allow')).toBe('POST');
+		expect(response.headers.get('allow')).toBe('GET, HEAD, POST');
 		expect(await response.json()).toEqual({
 			error: {
 				type: 'method_not_allowed',
 				message: 'HTTP method DELETE is not allowed on this endpoint.',
-				details: 'This endpoint accepts "POST" only.',
+				details: 'This endpoint accepts "GET", "HEAD", "POST" only.',
 			},
 		});
 	});
@@ -194,6 +288,7 @@ describe('flue()', () => {
 				},
 			},
 			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = new Hono();
 		app.route('/api', flue());
@@ -206,10 +301,46 @@ describe('flue()', () => {
 			}),
 		);
 
-		expect(response.status).toBe(200);
+		expect(response.status).toBe(202);
 		expect(response.headers.get('x-authored-middleware')).toBe('ran');
-		expect(await response.json()).toEqual({ result: { payload: { message: 'hello' } } });
+		expect(await response.json()).toEqual({
+			streamUrl: 'http://localhost/api/agents/assistant/customer-123',
+			offset: '-1',
+		});
 		expect(inspected).toBe('Bearer test-token:/api/agents/assistant/customer-123');
+	});
+
+	it('applies workflow middleware to run stream reads', async () => {
+		const runRegistry = new InMemoryRunRegistry();
+		await runRegistry.recordRunStart({
+			runId: 'workflow:daily-report:01',
+			owner: {
+				kind: 'workflow',
+				workflowName: 'daily-report',
+				instanceId: 'workflow:daily-report:01',
+			},
+			startedAt: '2026-06-01T10:00:00.000Z',
+		});
+		const store = createTestEventStreamStore();
+		await store.createStream('runs/workflow:daily-report:01');
+		configureFlueRuntime({
+			target: 'node',
+			manifest: { agents: [], workflows: [{ name: 'daily-report', transports: { http: true } }] },
+			runRegistry,
+			eventStreamStore: store,
+			workflowRouteMiddleware: {
+				'daily-report': async (c) => c.json({ blocked: true }, 401),
+			},
+		});
+		const app = new Hono();
+		app.route('/api', flue());
+
+		const response = await app.fetch(
+			new Request('http://localhost/api/runs/workflow%3Adaily-report%3A01'),
+		);
+
+		expect(response.status).toBe(401);
+		expect(await response.json()).toEqual({ blocked: true });
 	});
 
 	it('returns an authored middleware response without invoking the handler when middleware short-circuits', async () => {
@@ -290,6 +421,7 @@ describe('flue()', () => {
 				assistant: (_id) => async (payload) => ({ message: payload.message }),
 			},
 			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = new Hono();
 		app.route('/api', flue());
@@ -323,6 +455,7 @@ describe('flue()', () => {
 				assistant: (_id) => async (payload) => ({ message: payload.message }),
 			},
 			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = new Hono();
 		app.route('/api', flue());
@@ -357,6 +490,7 @@ describe('flue()', () => {
 			workflowHandlers: { 'daily-report': (ctx) => ({ payload: ctx.payload }) },
 			createContext: createTestContext,
 			runStore: new InMemoryRunStore(),
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = new Hono();
 		app.route('/api', flue());
@@ -384,6 +518,7 @@ describe('flue()', () => {
 				assistant: (_id) => async (payload) => ({ message: payload.message }),
 			},
 			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = new Hono();
 		app.route('/api', flue());
@@ -401,41 +536,7 @@ describe('flue()', () => {
 			error: {
 				type: 'invalid_request',
 				message: 'Request is malformed.',
-				details:
-					'Direct agent requests must use JSON object body { "message": string, "session"?: string }.',
-			},
-		});
-	});
-
-	it('rejects a direct agent body when it targets a reserved task session name', async () => {
-		configureFlueRuntime({
-			target: 'node',
-			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
-			},
-			createAdmission: {
-				assistant: (_id) => async (payload) => ({ message: payload.message }),
-			},
-			createContext: createTestContext,
-		});
-		const app = new Hono();
-		app.route('/api', flue());
-
-		const response = await app.fetch(
-			new Request('http://localhost/api/agents/assistant/customer-123', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ message: 'Hello', session: 'task:default:child' }),
-			}),
-		);
-
-		expect(response.status).toBe(400);
-		expect(await response.json()).toEqual({
-			error: {
-				type: 'invalid_request',
-				message: 'Request is malformed.',
-				details:
-					'Direct agent request "session" names beginning with "task:" are reserved for delegated tasks.',
+				details: 'Direct agent requests must use JSON object body { "message": string }.',
 			},
 		});
 	});
@@ -445,7 +546,7 @@ describe('flue()', () => {
 			target: 'node',
 			manifest: {
 				agents: [],
-				workflows: [{ name: 'internal-report', transports: { websocket: true } }],
+				workflows: [{ name: 'internal-report', transports: {} }],
 			},
 		});
 		const app = new Hono();
@@ -477,6 +578,7 @@ describe('createDefaultFlueApp()', () => {
 				assistant: (id) => async (payload) => ({ instanceId: id, payload }),
 			},
 			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = createDefaultFlueApp();
 
@@ -488,9 +590,10 @@ describe('createDefaultFlueApp()', () => {
 			}),
 		);
 
-		expect(response.status).toBe(200);
+		expect(response.status).toBe(202);
 		expect(await response.json()).toEqual({
-			result: { instanceId: 'customer-123', payload: { message: 'hello' } },
+			streamUrl: 'http://localhost/agents/assistant/customer-123',
+			offset: '-1',
 		});
 	});
 

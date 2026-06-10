@@ -55,7 +55,7 @@ A recovered workflow handling segment represents terminal processing after inter
 
 ## Identity and accounting
 
-Spans include `flue.event.start_index` and `flue.event.end_index` when the corresponding Flue lifecycle events carry indexes. Log span events include `flue.event.index`. For successfully persisted workflow events, combine an index with `flue.run_id` to correlate trace activity with workflow history and SSE resume positions. The adapter receives live events, so the presence of an index does not prove persistence succeeded. For direct and dispatched agent activity, indexes are live per-context ordering values only; `flue.dispatch_id` remains the delivery identity for dispatched work.
+Spans include `flue.event.start_index` and `flue.event.end_index` when the corresponding Flue lifecycle events carry indexes. Log span events include `flue.event.index`. For successfully persisted workflow events, combine an index with `flue.run_id` to correlate trace activity with workflow history and Durable Streams offsets. The adapter receives live events, so the presence of an index does not prove persistence succeeded. `flue.dispatch_id` remains the delivery identity for dispatched work.
 
 Model-turn leaf spans export `gen_ai.usage.*`. Compaction spans and operation spans may also export `flue.compaction.usage.*` and `flue.operation.usage.*` roll-ups for inspection. Do not sum roll-ups together with their nested model-turn leaf usage. Likewise, `flue.duration_ms` values are elapsed durations for nested boundaries and can overlap. A recovered workflow handling span reports the run-level total as `flue.workflow.total_duration_ms`, not the recovery segment's elapsed time.
 

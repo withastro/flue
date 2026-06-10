@@ -24,11 +24,7 @@
 			"entry": ["{src/{app,cloudflare,agents/*,workflows/*},flue.config}.{ts,mts,js,mjs}"],
 			"project": ["src/**/*.{ts,mts,js,mjs}"]
 		},
-		"examples/node-websocket": {
-			"entry": ["{src/{app,cloudflare,agents/*,workflows/*},flue.config}.{ts,mts,js,mjs}"],
-			"project": ["src/**/*.{ts,mts,js,mjs}"],
-			"ignoreDependencies": ["@flue/sdk"]
-		},
+
 		"apps/www": {
 			"entry": ["src/homepage-shaders.ts"]
 		},

@@ -13,34 +13,6 @@
 		".": {
 			"types": "./dist/index.d.mts",
 			"import": "./dist/index.mjs"
-		},
-		"./app": {
-			"types": "./dist/deprecated.d.mts",
-			"import": "./dist/deprecated.mjs"
-		},
-		"./client": {
-			"types": "./dist/deprecated.d.mts",
-			"import": "./dist/deprecated.mjs"
-		},
-		"./sandbox": {
-			"types": "./dist/deprecated.d.mts",
-			"import": "./dist/deprecated.mjs"
-		},
-		"./internal": {
-			"types": "./dist/deprecated.d.mts",
-			"import": "./dist/deprecated.mjs"
-		},
-		"./node": {
-			"types": "./dist/deprecated.d.mts",
-			"import": "./dist/deprecated.mjs"
-		},
-		"./cloudflare": {
-			"types": "./dist/deprecated.d.mts",
-			"import": "./dist/deprecated.mjs"
-		},
-		"./config": {
-			"types": "./dist/deprecated.d.mts",
-			"import": "./dist/deprecated.mjs"
 		}
 	},
 	"main": "./dist/index.mjs",
@@ -54,7 +26,11 @@
 	"scripts": {
 		"prepublishOnly": "cp ../../README.md ."
 	},
+	"dependencies": {
+		"@durable-streams/client": "^0.2.6"
+	},
 	"devDependencies": {
+		"@flue/runtime": "workspace:*",
 		"typescript": "^6.0.3",
 		"vitest": "catalog:",
 		"vite-plus": "catalog:"

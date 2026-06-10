@@ -26,11 +26,7 @@ export type {
 	AgentProfile,
 	AgentRouteHandler,
 	AgentRuntimeConfig,
-	AgentWebSocketClientMessage,
-	AgentWebSocketHandler,
-	AgentWebSocketServerMessage,
 	AttachedAgentEvent,
-	AttachedAgentStreamError,
 	BashFactory,
 	BashLike,
 	CallHandle,
@@ -43,7 +39,6 @@ export type {
 	FlueFs,
 	FlueHarness,
 	FlueLogger,
-	FluePublicError,
 	FlueSession,
 	FlueSessions,
 	LlmAssistantMessage,
@@ -82,13 +77,7 @@ export type {
 	ThinkingLevel,
 	ToolDefinition,
 	ToolParameters,
-	WebSocketErrorMessage,
-	WebSocketServerMessage,
 	WorkflowRouteHandler,
-	WorkflowRunWebSocketErrorMessage,
-	WorkflowWebSocketClientMessage,
-	WorkflowWebSocketHandler,
-	WorkflowWebSocketServerMessage,
 } from './types.ts';
 
 // Note: the public Hono sub-app `flue()` and the `Fetchable` interface

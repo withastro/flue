@@ -1,49 +1,44 @@
 ---
 title: client.workflows
-description: Start workflow invocations over WebSockets.
-lastReviewedAt: 2026-06-02
+description: Start workflow runs and receive their run ID and stream URL.
 ---
 
-## `client.workflows.connect(...)`
+## `client.workflows.invoke(...)`
 
 ```ts
-connect(name: string): WorkflowSocket;
+invoke(name: string, options?: WorkflowInvokeOptions): Promise<WorkflowInvokeResult>;
 ```
 
-Opens a WebSocket connection for one workflow invocation.
-
-### `WorkflowSocket`
+Starts a workflow run. Returns the run ID and a fully resolved stream URL for observing run events.
 
 ```ts
-interface WorkflowSocket {
-  readonly ready: Promise<void>;
-  readonly runId: Promise<string>;
-  invoke(payload?: unknown): Promise<WorkflowSocketInvokeResult>;
-  onEvent(listener: WorkflowSocketEventListener): () => void;
-  close(code?: number, reason?: string): void;
-}
+const run = await client.workflows.invoke('summarize', {
+  payload: { text: 'Summarize this document.' },
+});
+
+console.log(run.runId); // "workflow:summarize:01JX..."
+console.log(run.streamUrl); // "https://example.com/api/runs/workflow%3Asummarize%3A01JX..."
 ```
 
-`ready` resolves after the server accepts the connection. A workflow socket accepts only one `invoke()` call. `runId` resolves after that invocation is admitted, before the terminal result arrives. Start the invocation before awaiting `runId`:
+Use the returned `runId` with [`client.runs`](/docs/sdk/runs/) to stream events, fetch all events, or retrieve run metadata.
+
+### `WorkflowInvokeOptions`
+
+| Field     | Type          | Default | Description               |
+| --------- | ------------- | ------- | ------------------------- |
+| `payload` | `unknown`     | —       | Workflow-defined payload. |
+| `signal`  | `AbortSignal` | —       | Cancel the HTTP request.  |
+
+### `WorkflowInvokeResult`
 
 ```ts
-const workflow = client.workflows.connect('summarize');
-await workflow.ready;
-
-const completion = workflow.invoke({ text: 'Summarize me' });
-const runId = await workflow.runId;
-
-console.log('admitted run', runId);
-console.log(await completion);
-```
-
-`runId` rejects if the socket closes or the invocation fails before admission. Once resolved, it remains available if the initiating socket later disconnects. `onEvent()` subscribes to workflow-run events and returns an unsubscribe function. `close()` rejects pending work.
-
-### `WorkflowSocketInvokeResult`
-
-```ts
-interface WorkflowSocketInvokeResult {
-  result: unknown;
+interface WorkflowInvokeResult {
   runId: string;
+  streamUrl: string;
 }
 ```
+
+| Field       | Description                                                  |
+| ----------- | ------------------------------------------------------------ |
+| `runId`     | The workflow run ID.                                         |
+| `streamUrl` | Fully resolved Durable Streams URL for observing run events. |

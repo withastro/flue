@@ -34,7 +34,7 @@ Caller-safe error details exposed by Flue transports. Unknown failures become a 
 
 ### Categories
 
-The following categories are stable for framework-owned transport failures. HTTP responses use the listed status code. SSE and WebSocket frames carry the same `FluePublicError` shape without an HTTP status.
+The following categories are stable for framework-owned transport failures. HTTP responses use the listed status code.
 
 | Type                       | HTTP status | Meaning                                                                                   |
 | -------------------------- | ----------- | ----------------------------------------------------------------------------------------- |
@@ -54,19 +54,18 @@ The following categories are stable for framework-owned transport failures. HTTP
 
 ## Transport envelopes
 
-| Surface                               | Envelope                           |
-| ------------------------------------- | ---------------------------------- |
-| HTTP error response                   | `{ error: FluePublicError }`       |
-| Attached-agent SSE terminal error     | `AttachedAgentStreamError`         |
-| Workflow-run SSE infrastructure error | `{ error: FluePublicError }`       |
-| WebSocket connection or request error | `WebSocketErrorMessage`            |
-| Workflow WebSocket run-scoped error   | `WorkflowRunWebSocketErrorMessage` |
+| Surface                                                  | Envelope                     |
+| -------------------------------------------------------- | ---------------------------- |
+| Framework HTTP error response                            | `{ error: FluePublicError }` |
+| Durable Streams invalid-query or missing-stream response | `{ error: FluePublicError }` |
 
-See [Events Reference](/docs/api/events-reference/) for attached-agent event streams and WebSocket protocol message types.
+Durable Streams reads use the same framework envelope for invalid query parameters and missing streams. A stream may still terminate through transport behavior rather than a JSON error body, such as a client disconnect during SSE.
+
+See [Events Reference](/docs/api/events-reference/) for runtime event types.
 
 ### Workflow-run streams
 
-Workflow failures normally appear in a terminal `run_end` event with `isError: true`. A workflow-run SSE stream can also terminate with a stream-infrastructure `event: error` frame whose payload is `{ error: FluePublicError }`. That infrastructure frame is a transport failure, not a workflow-run failure record.
+Workflow failures normally appear in a terminal `run_end` event with `isError: true`.
 
 ## Workflow-run and operation failures
 

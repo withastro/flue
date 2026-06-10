@@ -74,22 +74,6 @@ const ${agentClassName(agent.name)} = class ${agentClassName(agent.name)} extend
     return cloudflareAgents.onRequest(this, request);
   }
 
-  fetch(request) {
-    return cloudflareAgents.fetch(this, request, () => super.fetch(request));
-  }
-
-  webSocketMessage(socket, message) {
-    return cloudflareAgents.webSocketMessage(this, socket, message, () => super.webSocketMessage(socket, message));
-  }
-
-  webSocketClose(socket, code, reason, wasClean) {
-    return cloudflareAgents.webSocketClose(this, socket, code, reason, () => super.webSocketClose(socket, code, reason, wasClean));
-  }
-
-  webSocketError(socket, error) {
-    return cloudflareAgents.webSocketError(this, socket, () => super.webSocketError(socket, error));
-  }
-
   onFiberRecovered(ctx) {
     return cloudflareAgents.onFiberRecovered(this, ctx, () => typeof super.onFiberRecovered === 'function' ? super.onFiberRecovered(ctx) : undefined);
   }
@@ -108,32 +92,6 @@ export { Wrapped${agentClassName(agent.name)} as ${agentClassName(agent.name)} }
 const ${workflowClassName(workflow.name)} = class ${workflowClassName(workflow.name)} extends workflowExtension${index}.base(Agent) {
   async onRequest(request) {
     return dispatchWorkflow(request, this, ${JSON.stringify(workflow.name)});
-  }
-
-  async fetch(request) {
-    if (isWebSocketUpgrade(request)) {
-      await this.__unsafe_ensureInitialized();
-      return acceptWorkflowSocket(request, this, ${JSON.stringify(workflow.name)});
-    }
-    return super.fetch(request);
-  }
-
-  async webSocketMessage(socket, message) {
-    if (isFlueSocket(socket, 'workflow', ${JSON.stringify(workflow.name)})) {
-      await this.__unsafe_ensureInitialized();
-      return messageWorkflowSocket(socket, message, this, ${JSON.stringify(workflow.name)});
-    }
-    return super.webSocketMessage(socket, message);
-  }
-
-  async webSocketClose(socket, code, reason, wasClean) {
-    if (isFlueSocket(socket, 'workflow', ${JSON.stringify(workflow.name)})) return closeFlueSocket(socket, code, reason);
-    return super.webSocketClose(socket, code, reason, wasClean);
-  }
-
-  async webSocketError(socket, error) {
-    if (isFlueSocket(socket, 'workflow', ${JSON.stringify(workflow.name)})) return closeFlueSocket(socket, 1011, 'WebSocket error');
-    return super.webSocketError(socket, error);
   }
 
   async onFiberRecovered(ctx) {
@@ -163,7 +121,9 @@ export { Wrapped${workflowClassName(workflow.name)} as ${workflowClassName(workf
 			)
 			.join('\n');
 
-		const userAppImport = appEntry ? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};` : '';
+		const userAppImport = appEntry
+			? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};`
+			: '';
 		const userCloudflareImport = cloudflareEntry
 			? `import * as userCloudflareModule from ${JSON.stringify(cloudflareEntry.replace(/\\/g, '/'))};`
 			: '';
@@ -194,21 +154,20 @@ import {
   InMemoryRunStore,
   createDurableRunStore,
   CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
+  CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH,
   createCloudflareAgentRuntime,
   createSqlSessionStore,
-  createRunSubscriberRegistry,
+   SqliteEventStreamStore,
   bashFactoryToSessionEnv,
   resolveModel,
   handleWorkflowRequest,
   handleRunRouteRequest,
+  handleStreamRead,
+  handleStreamHead,
   failRecoveredRun,
   configureFlueRuntime,
   createDefaultFlueApp,
-  createDirectAgentHandler,
   hasRegisteredProvider,
-  isFlueSocket,
-  closeFlueSocket,
-  socketRequestUrl,
 } from '@flue/runtime/internal';
 import {
   runWithCloudflareContext,
@@ -216,8 +175,6 @@ import {
   getCloudflareAIBindingApiProvider,
   FlueRegistry,
   createCloudflareRunRegistry,
-  connectCloudflareWorkflowWebSocket,
-  messageCloudflareWorkflowWebSocket,
   resolveCloudflareExtension,
 } from '@flue/runtime/cloudflare';
 import { registerApiProvider, registerProvider } from '@flue/runtime';
@@ -258,7 +215,7 @@ const workflowModules = {
 ${workflowModuleEntries}
 };
 const normalized = normalizeBuiltModules(agentModules, workflowModules);
-const { manifest, directHandlers, createdAgents, dispatchAgentNames, websocketAgentHandlers, workflowHandlers, websocketWorkflowHandlers, agentRouteMiddleware, agentWebSocketMiddleware, workflowRouteMiddleware, workflowWebSocketMiddleware } = normalized;
+const { manifest, createdAgents, dispatchAgentNames, workflowHandlers, agentRouteMiddleware, workflowRouteMiddleware } = normalized;
 const agentIdentities = {
 ${agentIdentityEntries}
 };
@@ -337,6 +294,7 @@ function resolveSandbox(sandbox) {
 const memoryWorkflowSessionStore = new InMemorySessionStore();
 const memoryRunStore = new InMemoryRunStore();
 const INTERNAL_DISPATCH_PATH = CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH;
+const INTERNAL_RUN_METADATA_PATH = CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH;
 const dispatchQueue = {
   async enqueue(input) {
     const identity = agentIdentities[input.agent];
@@ -351,9 +309,6 @@ const dispatchQueue = {
     return response.json();
   },
 };
-
-// Module-scoped per-isolate registry; run ids isolate buckets across DOs.
-const runSubscribers = createRunSubscriberRegistry();
 
 function createContextForRequest(id, runId, payload, doInstance, req, defaultStore, initialEventIndex, dispatchId) {
   return createFlueContext({
@@ -432,17 +387,26 @@ function createDurableObjectIdentity(doInstance, identity) {
   };
 }
 
+const eventStreamStores = new WeakMap();
+
+function createEventStreamStoreForInstance(doInstance) {
+  const existing = eventStreamStores.get(doInstance);
+  if (existing) return existing;
+  const sql = doInstance?.ctx?.storage?.sql;
+  if (!sql) {
+    throw new Error('[flue] Durable Object SQLite storage is unavailable — cannot create the event stream store. Flue Durable Object classes require SQLite-backed storage.');
+  }
+  const store = new SqliteEventStreamStore(sql);
+  eventStreamStores.set(doInstance, store);
+  return store;
+}
+
 const cloudflareAgents = createCloudflareAgentRuntime({
   createdAgents,
-  directHandlers,
-  websocketAgentHandlers,
   createContext: ({ executionStore, instance, payload, request, initialEventIndex, dispatchId }) =>
     createAgentContextForRequest(executionStore, instance.name, payload, instance, request, initialEventIndex, dispatchId),
   runWithInstanceContext: (instance, agentName, fn) => runWithInstanceContext(instance, agentRuntimeIdentity(agentName), fn),
-  createWebSocketPair: () => {
-    const pair = new WebSocketPair();
-    return { client: pair[0], server: pair[1] };
-  },
+  createEventStreamStore: (instance) => createEventStreamStoreForInstance(instance),
 });
 
 function assertAgentsDurabilityApi(doInstance, method) {
@@ -466,8 +430,8 @@ async function handleFlueWorkflowFiberRecovered(ctx, doInstance, workflowName) {
     request: new Request('https://flue.invalid/workflows/' + encodeURIComponent(workflowName), { method: 'POST' }),
     error: new Error('Flue workflow execution was interrupted. Start a new workflow run explicitly if retry is appropriate.'),
     runStore,
-    runSubscribers,
     runRegistry: createRunRegistryForRequest(doInstance.env),
+    eventStreamStore: createEventStreamStoreForInstance(doInstance),
     createContext: (id_, recoveredRunId, payload, req, initialEventIndex) => createWorkflowContextForRequest(id_, recoveredRunId, payload, doInstance, req, initialEventIndex),
   });
 }
@@ -481,12 +445,17 @@ async function dispatchWorkflow(request, doInstance, workflowName) {
   const instanceId = doInstance.name;
   const runRoute = parseRunRoute(request);
   if (runRoute) {
+    // DS stream read (GET/HEAD on /runs/:runId) — use EventStreamStore.
+    if (runRoute.action === 'ds-stream') {
+      const store = createEventStreamStoreForInstance(doInstance);
+      const streamPath = 'runs/' + runRoute.runId;
+      if (request.method === 'HEAD') return await handleStreamHead(store, streamPath);
+      return handleStreamRead({ store, path: streamPath, request });
+    }
     return handleRunRouteRequest({
-      request,
       owner: { kind: 'workflow', workflowName, instanceId },
+      runId: instanceId,
       runStore: createRunStoreForRequest(doInstance),
-      runSubscribers,
-      ...runRoute,
     });
   }
 
@@ -500,8 +469,8 @@ async function dispatchWorkflow(request, doInstance, workflowName) {
       runId: instanceId,
       handler,
       runStore: createRunStoreForRequest(doInstance),
-      runSubscribers,
       runRegistry: createRunRegistryForRequest(doInstance.env),
+      eventStreamStore: createEventStreamStoreForInstance(doInstance),
       createContext: (id_, runId, payload, req, initialEventIndex, dispatchId) => createWorkflowContextForRequest(id_, runId, payload, doInstance, req, initialEventIndex, dispatchId),
       startWorkflowAdmission: (runId, run) => {
         assertAgentsDurabilityApi(doInstance, 'runFiber');
@@ -510,45 +479,6 @@ async function dispatchWorkflow(request, doInstance, workflowName) {
     }));
 }
 
-function isWebSocketUpgrade(request) {
-  return request.method === 'GET' && request.headers.get('upgrade')?.toLowerCase() === 'websocket';
-}
-
-function acceptWorkflowSocket(request, doInstance, workflowName) {
-  const handler = websocketWorkflowHandlers[workflowName];
-  if (!handler) return new Response(null, { status: 404 });
-  const pair = new WebSocketPair();
-  const client = pair[0];
-  const server = pair[1];
-  doInstance.ctx.acceptWebSocket(server);
-  connectCloudflareWorkflowWebSocket(server, { name: workflowName, runId: doInstance.name, requestUrl: socketRequestUrl(request) });
-  return new Response(null, { status: 101, webSocket: client });
-}
-
-async function messageWorkflowSocket(connection, message, doInstance, workflowName) {
-  const handler = websocketWorkflowHandlers[workflowName];
-  if (!handler) return;
-  const identity = workflowRuntimeIdentity(workflowName);
-  return runWithInstanceContext(doInstance, identity, () => messageCloudflareWorkflowWebSocket(connection, message, {
-    name: workflowName,
-    runId: doInstance.name,
-    request: socketRequest(connection),
-    handler,
-    runStore: createRunStoreForRequest(doInstance),
-    runSubscribers,
-    runRegistry: createRunRegistryForRequest(doInstance.env),
-    createContext: (id_, runId, payload, req) => createWorkflowContextForRequest(id_, runId, payload, doInstance, req),
-    startWorkflowAdmission: (runId, run) => {
-      assertAgentsDurabilityApi(doInstance, 'runFiber');
-      return doInstance.runFiber('flue:workflow:' + runId, () => runWithInstanceContext(doInstance, identity, run));
-    },
-  }));
-}
-
-function socketRequest(connection) {
-  const attachment = connection.deserializeAttachment?.();
-  return new Request(attachment?.requestUrl || 'https://flue.invalid/');
-}
 
 
 function workflowRuntimeIdentity(workflowName) {
@@ -568,7 +498,9 @@ function parseWorkflowStart(request, workflowName) {
 }
 
 function parseRunRoute(request) {
-  const segments = new URL(request.url).pathname.split('/').filter(Boolean);
+  const url = new URL(request.url);
+  if (url.pathname === INTERNAL_RUN_METADATA_PATH) return { action: 'get' };
+  const segments = url.pathname.split('/').filter(Boolean);
   if (segments.length < 2 || segments[0] !== 'runs') return null;
   let runId;
   try {
@@ -578,9 +510,13 @@ function parseRunRoute(request) {
   }
   const child = segments[2];
   if (!runId) return null;
-  if (!child) return { action: 'get', runId };
-  if (child === 'events') return { action: 'events', runId };
-  if (child === 'stream') return { action: 'stream', runId };
+  if (!child) {
+    const method = request.method;
+    // GET/HEAD on /runs/:runId → DS stream read. The outer worker rejects
+    // other methods before forwarding, so nothing else routes here.
+    if (method === 'GET' || method === 'HEAD') return { action: 'ds-stream', runId };
+    return null;
+  }
   return null;
 }
 
@@ -598,14 +534,10 @@ configureFlueRuntime({
   devMode: import.meta.env.DEV,
   runtimeVersion: ${runtimeVersion},
   manifest,
-  handlers: directHandlers,
   dispatchQueue,
   resolveDispatchAgentName: (agent) => dispatchAgentNames.get(agent),
-  workflowHandlers,
   agentRouteMiddleware,
-  agentWebSocketMiddleware,
   workflowRouteMiddleware,
-  workflowWebSocketMiddleware,
   routeAgentRequest: async (request, reqEnv, target) => {
     const binding = reqEnv?.[agentIdentities[target.agentName]?.bindingName];
     if (!binding) return null;
