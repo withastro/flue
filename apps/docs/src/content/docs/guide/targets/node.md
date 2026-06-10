@@ -26,9 +26,11 @@ The build externalizes your application dependencies rather than bundling them. 
 
 Without `db.ts`, the generated Node server uses process-local in-memory SQLite for agent sessions and accepted submissions, plus in-memory workflow-run storage. This gives one running process ordered state handling, but a restart loses that state.
 
-With a durable adapter, direct prompts and `dispatch(...)` inputs enter the same SQL-backed per-session queue. Inputs for one session preserve accepted order, while different sessions can progress independently.
+With a durable adapter, direct prompts and `dispatch(...)` inputs enter the same SQL-backed per-instance queue. Inputs for one agent instance are processed in accepted order.
 
 Node does not get Cloudflare's automatic Durable Object wake or Fiber recovery. A replacement process must start successfully before startup reconciliation runs, and the coordinator periodically scans expired leases so work stranded by a fast restart is eventually reclaimed.
+
+That reconciliation covers agent submissions only. Workflow runs do not survive a Node restart, and Node currently has no recovery path that terminalizes a run interrupted by a crash or closes its event stream. With a durable adapter the orphaned `runs/<id>` stream persists in an open state, so live Durable Streams readers — long-poll, SSE, or `flue logs -f` — wait indefinitely for events that will never arrive. Use a catch-up read such as `flue logs --no-follow` to inspect events persisted before the crash. On Cloudflare, Fiber recovery terminalizes interrupted runs and closes their streams.
 
 See [Database](/docs/guide/database/) for `db.ts`, SQLite, Postgres, and custom adapters. See [Durable Execution](/docs/guide/durable-execution/) for recovery behavior.
 

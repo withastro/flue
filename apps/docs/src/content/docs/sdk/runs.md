@@ -63,3 +63,5 @@ interface FlueEventStream<T> extends AsyncIterable<T> {
   readonly offset: string;
 }
 ```
+
+`offset` is the resume offset of the most recently fetched batch (the server's `Stream-Next-Offset`). It is batch-granular: it advances per HTTP response, not per delivered event, so every event in a batch observes the batch's final offset. Checkpointing `offset` mid-batch and resuming from it skips the rest of that batch. For per-event checkpoints, use the event's `eventIndex` instead (event index equals stream sequence); `flue logs --format ndjson` prints a per-event `offset` derived from it.

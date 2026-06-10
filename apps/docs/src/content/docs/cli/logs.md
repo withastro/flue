@@ -16,7 +16,7 @@ flue logs <workflowRunId> [--server <url>] [--header 'Name: value'] [--follow|-f
 
 Runs are workflow-only. Direct HTTP agent prompts and dispatched agent inputs are persistent session interactions, not runs.
 
-`flue logs` reads run events via the [Durable Streams](https://durablestreams.com/) protocol. Follow mode uses live SSE tailing with automatic reconnection and offset-based replay. Replay mode performs a single catch-up read and exits. See [Streaming Protocol](/docs/api/streaming-protocol/) for the raw HTTP contract.
+`flue logs` reads run events via the [Durable Streams](https://durablestreams.com/) protocol. Follow mode uses long-poll live tailing with automatic reconnection and offset-based replay. Replay mode performs a single catch-up read and exits. See [Streaming Protocol](/docs/api/streaming-protocol/) for the raw HTTP contract.
 
 `flue logs` inspects runs owned by the selected running server. It cannot inspect the private child process used by `flue run`: that one-shot process streams events directly to its command and does not publish run-inspection routes.
 
@@ -53,7 +53,7 @@ The expanded token may still be visible in process arguments while the command r
 
 ## Output and exit behavior
 
-`pretty` writes human-readable events to stderr. `json` and `ndjson` are currently aliases: each writes one JSON event object per stdout line.
+`pretty` writes human-readable events to stderr. `json` and `ndjson` each write one JSON event object per stdout line. `json` emits the event object unmodified. `ndjson` additionally adds a per-event `offset` field, derived from the event's `eventIndex`, that can be passed directly to `--since` to resume strictly after that event. The `offset` field is present in both replay and follow modes.
 
 Request failures exit with status `1`. A failed workflow exits with status `2` only when its failing `run_end` event is consumed. Signal interruption (Ctrl-C) exits with status `130`.
 

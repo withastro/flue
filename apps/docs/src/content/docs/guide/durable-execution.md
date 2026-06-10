@@ -29,7 +29,7 @@ On Cloudflare, generated Durable Object-backed agents store session history in S
 
 ```txt
 direct HTTP prompt ─────────────────────┐
-                                        ├→ durable per-session queue → stored session history
+                                        ├→ durable per-instance queue → stored session history
 dispatch(...) input ────────────────────┘
 ```
 
@@ -49,7 +49,7 @@ Both direct HTTP prompts and asynchronous `dispatch(...)` inputs go through the 
 
 ```txt
 direct HTTP prompt ─────────────────────┐
-                                        ├→ durable per-session queue → stored session history
+                                        ├→ durable per-instance queue → stored session history
 dispatch(...) input ────────────────────┘
 ```
 
@@ -88,6 +88,8 @@ Use the [Sandboxes](/docs/guide/sandboxes/) guide to choose a workspace lifecycl
 Workflows are finite function invocations. Each invocation runs your authored `run(...)` function once and receives its own `runId`. A workflow may load data, call external services, initialize agents, and return a result or error.
 
 Flue workflows are not resumable. If a workflow is interrupted, Flue does not checkpoint arbitrary TypeScript execution and continue the function from the last completed line or step. Your application decides whether starting the workflow again is appropriate.
+
+Interrupted-run cleanup differs by target. On Cloudflare, recovery terminalizes an interrupted run as errored — emitting `run_resume` then `run_end` — and closes its event stream so readers see the end of the stream. Node.js currently has no equivalent recovery path: runs do not survive a process restart, a run orphaned by a crash is never terminalized, and its event stream is never closed. Live readers of that run's stream (long-poll, SSE, or `flue logs -f`) wait indefinitely; use a catch-up read to inspect the events persisted before the crash.
 
 ### Retry workflows explicitly
 
