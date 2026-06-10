@@ -81,7 +81,10 @@ function encodeSseData(payload: string): string {
 export async function handleStreamHead(store: EventStreamStore, path: string): Promise<Response> {
 	const meta = await store.getStreamMeta(path);
 	if (!meta) {
-		return streamErrorResponse(new RunNotFoundError({ runId: path }));
+		// HEAD responses must not carry a body — keep the envelope's status
+		// and headers only.
+		const error = streamErrorResponse(new RunNotFoundError({ runId: path }));
+		return new Response(null, { status: error.status, headers: error.headers });
 	}
 
 	const headers: Record<string, string> = {
@@ -165,10 +168,8 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 // ─── Catch-up mode ──────────────────────────────────────────────────────────
 
 function streamErrorResponse(error: InvalidRequestError | RunNotFoundError): Response {
-	const response = toHttpResponse(error);
-	response.headers.set('X-Content-Type-Options', SECURITY_HEADERS['X-Content-Type-Options']);
-	response.headers.set('Cross-Origin-Resource-Policy', SECURITY_HEADERS['Cross-Origin-Resource-Policy']);
-	return response;
+	// toHttpResponse sets the §12.7 security headers on every error response.
+	return toHttpResponse(error);
 }
 
 function handleCatchUpMode(

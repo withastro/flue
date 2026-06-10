@@ -513,12 +513,18 @@ const GENERIC_INTERNAL: WireEnvelope = {
  * generic 500 with no message leaked.
  */
 export function toHttpResponse(err: unknown): Response {
+	// Browser security headers (DS protocol §12.7) — set on every error
+	// response so stream-endpoint errors thrown before the protocol layer
+	// (e.g. run lookups) still carry them.
+	const baseHeaders: Record<string, string> = {
+		'content-type': 'application/json',
+		'x-content-type-options': 'nosniff',
+		'cross-origin-resource-policy': 'cross-origin',
+	};
 	if (isFlueError(err)) {
 		const isHttp = err instanceof FlueHttpError;
 		const status = isHttp ? err.status : 500;
-		const headers: Record<string, string> = {
-			'content-type': 'application/json',
-		};
+		const headers = { ...baseHeaders };
 		if (isHttp && err.headers) {
 			Object.assign(headers, err.headers);
 		}
@@ -534,7 +540,7 @@ export function toHttpResponse(err: unknown): Response {
 	flueLog.error(err);
 	return new Response(JSON.stringify(GENERIC_INTERNAL), {
 		status: 500,
-		headers: { 'content-type': 'application/json' },
+		headers: baseHeaders,
 	});
 }
 

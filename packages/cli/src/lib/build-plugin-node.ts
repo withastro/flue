@@ -118,6 +118,7 @@ if (!userPersistenceAdapter || typeof userPersistenceAdapter.connect !== 'functi
 let executionStore;
 let runStore;
 let runRegistry;
+let eventStreamStore;
 try {
   if (userPersistenceAdapter.migrate) await userPersistenceAdapter.migrate();
   executionStore = userPersistenceAdapter.connect();
@@ -129,6 +130,10 @@ try {
   if (typeof userPersistenceAdapter.connectEventStreamStore !== 'function') {
     throw new Error('connectEventStreamStore() must be defined on the PersistenceAdapter.');
   }
+  eventStreamStore = userPersistenceAdapter.connectEventStreamStore();
+  if (!eventStreamStore || typeof eventStreamStore.appendEvent !== 'function' || typeof eventStreamStore.readEvents !== 'function') {
+    throw new Error('connectEventStreamStore() must return an EventStreamStore.');
+  }
 } catch (error) {
   throw new Error('[flue] Failed to initialize persistence from db.ts: ' + (error instanceof Error ? error.message : error), { cause: error });
 }`
@@ -137,10 +142,10 @@ const defaultAdapter = sqlite();
 if (defaultAdapter.migrate) defaultAdapter.migrate();
 const executionStore = defaultAdapter.connect();
 const runStore = defaultAdapter.connectRunStore();
-const runRegistry = defaultAdapter.connectRunRegistry();`
+const runRegistry = defaultAdapter.connectRunRegistry();
+const eventStreamStore = defaultAdapter.connectEventStreamStore();`
 		}
 const persistenceAdapter = ${dbEntry ? `userPersistenceAdapter` : `defaultAdapter`};
-const eventStreamStore = persistenceAdapter.connectEventStreamStore();
 const agentCoordinator = createNodeAgentCoordinator({
   submissions: executionStore.submissions,
   agents: createdAgents,
@@ -308,6 +313,7 @@ function startLocalWorkflow(name) {
       emitIdleOnComplete: true,
       runStore,
       runRegistry,
+      eventStreamStore,
     }).then(
       (invocation) => sendLocalMessage({ type: 'result', requestId: message.requestId, runId, result: invocation.result ?? null }, () => process.exit(0)),
       (error) => sendLocalMessage(ipcErrorMessage(error, message.requestId, runId), () => process.exit(1)),

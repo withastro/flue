@@ -16,6 +16,7 @@ import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
 import { createSessionStorageKey } from '../src/session-identity.ts';
 import { generateSessionAffinityKey } from '../src/runtime/ids.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
+import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 // ---------------------------------------------------------------------------
 // Env setup — load ANTHROPIC_API_KEY from the repo .env file
@@ -133,6 +134,7 @@ function createRealCoordinator(
 		submissions: executionStore.submissions,
 		agents: { assistant: agent },
 		createContext: makeRealCreateContext(executionStore),
+		eventStreamStore: createTestEventStreamStore(),
 	});
 	return { coordinator, executionStore };
 }
@@ -152,6 +154,7 @@ function createFauxCoordinator(
 		submissions: executionStore.submissions,
 		agents: { assistant: agent },
 		createContext: makeFauxCreateContext(provider, executionStore),
+		eventStreamStore: createTestEventStreamStore(),
 	});
 	return { coordinator, executionStore };
 }

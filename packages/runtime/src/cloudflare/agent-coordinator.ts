@@ -15,7 +15,6 @@ import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import { createSqlAgentExecutionStore } from './agent-execution-store.ts';
 
 export const CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH = '/__flue/internal/dispatch';
-export const CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH = '/__flue/internal/run-metadata';
 
 const FLUE_AGENT_SUBMISSION_WAKE_CALLBACK = '__flueWakeAgentSubmissions';
 const FLUE_AGENT_SUBMISSION_WAKE_SECONDS = 30;
@@ -74,7 +73,7 @@ interface CloudflareAgentRuntimeOptions {
 		agentName: string,
 		callback: () => T,
 	) => T;
-	readonly createEventStreamStore?: (instance: CloudflareAgentInstance) => import('../runtime/event-stream-store.ts').EventStreamStore | undefined;
+	readonly createEventStreamStore: (instance: CloudflareAgentInstance) => import('../runtime/event-stream-store.ts').EventStreamStore;
 }
 
 export interface CloudflareAgentRuntime {
@@ -124,7 +123,7 @@ export function createCloudflareAgentRuntime(options: CloudflareAgentRuntimeOpti
 					instance,
 					prepared,
 					options,
-					options.createEventStreamStore?.(instance),
+					options.createEventStreamStore(instance),
 					observers,
 					activeAttempts,
 				),
@@ -150,7 +149,7 @@ class CloudflareAgentCoordinator {
 		private readonly instance: CloudflareAgentInstance,
 		private readonly prepared: CloudflareAgentPreparedCoordinator,
 		private readonly options: CloudflareAgentRuntimeOptions,
-		private readonly eventStreamStore: import('../runtime/event-stream-store.ts').EventStreamStore | undefined,
+		private readonly eventStreamStore: import('../runtime/event-stream-store.ts').EventStreamStore,
 		private readonly observers: ReturnType<typeof createAgentSubmissionObserverRegistry>,
 		private readonly activeAttempts: Set<string>,
 	) {}
@@ -174,7 +173,6 @@ class CloudflareAgentCoordinator {
 		const method = request.method;
 		if (method === 'GET' || method === 'HEAD') {
 			const store = this.eventStreamStore;
-			if (!store) return new Response(null, { status: 404 });
 			const streamPath = agentStreamPath(this.agentName, this.instance.name);
 			if (method === 'HEAD') return await handleStreamHead(store, streamPath);
 			return handleStreamRead({ store, path: streamPath, request });
@@ -431,10 +429,7 @@ class CloudflareAgentCoordinator {
 		const eventStreamStore = this.eventStreamStore;
 		// Ensure the agent event stream exists before processing. createStream
 		// is idempotent — safe to call on every submission.
-		if (eventStreamStore) {
-			const streamPath = agentStreamPath(this.agentName, this.instance.name);
-			await eventStreamStore.createStream(streamPath);
-		}
+		await eventStreamStore.createStream(agentStreamPath(this.agentName, this.instance.name));
 		await processSubmission({
 			submissions: this.submissions,
 			submission,
@@ -445,14 +440,12 @@ class CloudflareAgentCoordinator {
 			},
 			createContext: (payload, dispatchId) => {
 				const ctx = this.createContext(payload, submissionSyntheticRequest(submission.input), undefined, dispatchId);
-				if (eventStreamStore) {
-					const streamPath = agentStreamPath(this.agentName, this.instance.name);
-					ctx.subscribeEvent((event) => {
-						eventStreamStore.appendEvent(streamPath, event).catch((error) => {
-							console.error('[flue:event-stream] appendEvent failed:', error);
-						});
+				const streamPath = agentStreamPath(this.agentName, this.instance.name);
+				ctx.subscribeEvent((event) => {
+					eventStreamStore.appendEvent(streamPath, event).catch((error) => {
+						console.error('[flue:event-stream] appendEvent failed:', error);
 					});
-				}
+				});
 				return ctx;
 			},
 			observers: this.observers,

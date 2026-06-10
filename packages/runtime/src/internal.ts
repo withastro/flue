@@ -23,9 +23,9 @@ export { createFlueContext } from './client.ts';
 // The generated CF entry imports them from there directly.
 export {
 	CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
-	CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH,
 	createCloudflareAgentRuntime,
 } from './cloudflare/agent-coordinator.ts';
+export { CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH } from './runtime/flue-app.ts';
 export { createSqlSessionStore } from './cloudflare/agent-execution-store.ts';
 export { createDurableRunStore } from './cloudflare/run-store.ts';
 export { createNodeAgentCoordinator, createNodeDispatchQueue } from './node/agent-coordinator.ts';
@@ -77,8 +77,8 @@ export {
 	invokeDirectAttached,
 	invokeWorkflowAttached,
 } from './runtime/handle-agent.ts';
-export type { HandleRunRouteOptions } from './runtime/handle-run-routes.ts';
-export { handleRunRouteRequest } from './runtime/handle-run-routes.ts';
+export type { HandleRunRouteOptions } from './runtime/flue-app.ts';
+export { handleRunRouteRequest } from './runtime/flue-app.ts';
 export { handleStreamHead, handleStreamRead } from './runtime/handle-stream-routes.ts';
 export { generateWorkflowRunId } from './runtime/ids.ts';
 export { hasRegisteredProvider } from './runtime/providers.ts';

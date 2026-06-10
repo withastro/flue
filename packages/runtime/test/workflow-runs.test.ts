@@ -10,6 +10,7 @@ import {
 } from '../src/internal.ts';
 import { resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import { flue } from '../src/routing.ts';
+import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 afterEach(() => {
 	resetFlueRuntimeForTests();
@@ -45,7 +46,7 @@ function createContext(
 }
 
 function createApp(runtime: FlueRuntime): Hono {
-	configureFlueRuntime(runtime);
+	configureFlueRuntime({ eventStreamStore: createTestEventStreamStore(), ...runtime });
 	const app = new Hono();
 	app.route('/flue', flue());
 	return app;

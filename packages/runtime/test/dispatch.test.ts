@@ -27,6 +27,7 @@ import { generateSessionAffinityKey } from '../src/runtime/ids.ts';
 import { createSessionStorageKey } from '../src/session-identity.ts';
 import type { AgentConfig } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
+import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 const providers: FauxProviderRegistration[] = [];
 
@@ -981,6 +982,7 @@ describe('repairInterruptedToolCalls()', () => {
 					defaultStore: executionStore.sessions,
 					submissionStore: executionStore.submissions,
 				}),
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(executionStore.submissions);
 		executionStore.submissions.updateTurnJournalPhase = async (attempt, phase, options) => {
@@ -1049,6 +1051,7 @@ describe('repairInterruptedToolCalls()', () => {
 					defaultStore: executionStore.sessions,
 					submissionStore: executionStore.submissions,
 				}),
+			eventStreamStore: createTestEventStreamStore(),
 		});
 
 		const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(executionStore.submissions);

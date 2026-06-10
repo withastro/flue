@@ -8,6 +8,7 @@ import type {
 	AgentSubmissionInterruption,
 	DirectAgentSubmissionInput,
 } from '../src/runtime/agent-submissions.ts';
+import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -74,7 +75,7 @@ function makeRuntime(options: {
 		runWithInstanceContext(_instance, _agentName, callback) {
 			return callback();
 		},
-		createEventStreamStore: options.createEventStreamStore,
+		createEventStreamStore: options.createEventStreamStore ?? (() => createTestEventStreamStore()),
 	});
 }
 
@@ -423,6 +424,9 @@ describe('createCloudflareAgentRuntime()', () => {
 						};
 					},
 					setEventCallback() {},
+					subscribeEvent() {
+						return () => {};
+					},
 				} as unknown as FlueContextInternal;
 			},
 		});

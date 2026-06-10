@@ -13,6 +13,7 @@ import {
 	RouteNotFoundError,
 	RunNotFoundError,
 	RunRegistryUnavailableError,
+	RunStoreUnavailableError,
 	toHttpResponse,
 	ValidationError,
 	validateAgentRequest,
@@ -33,10 +34,9 @@ import {
 	handleWorkflowRequest,
 	type WorkflowHandler,
 } from './handle-agent.ts';
-import { handleRunRouteRequest } from './handle-run-routes.ts';
 import { handleStreamHead, handleStreamRead } from './handle-stream-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
-import type { RunPointer, RunRegistry } from './run-registry.ts';
+import type { RunOwner, RunPointer, RunRegistry } from './run-registry.ts';
 import { agentStreamPath, runStreamPath, type EventStreamStore } from './event-stream-store.ts';
 import type { RunStore } from './run-store.ts';
 
@@ -77,7 +77,12 @@ export interface FlueRuntime {
 	/** Node workflow-run history store. */
 	runStore?: RunStore;
 
-	/** Durable event stream store for DS-compatible event persistence. */
+	/**
+	 * Durable event stream store for DS-compatible event persistence.
+	 * Required when {@link target} is `'node'` — the generated Node entry
+	 * always provides one. On Cloudflare, streams live in per-instance
+	 * Durable Object stores instead, so the worker-level runtime has none.
+	 */
 	eventStreamStore?: EventStreamStore;
 
 	/** Cross-deployment workflow-run pointer index for bare `/runs/:runId` lookups. */
@@ -460,7 +465,7 @@ const workflowRouteHandler: MiddlewareHandler = async (c) => {
 				createContext,
 				runStore: rt.runStore,
 				runRegistry: rt.runRegistry,
-				eventStreamStore: rt.eventStreamStore,
+				eventStreamStore: requireNodeEventStreamStore(rt),
 			});
 		}
 
@@ -510,13 +515,11 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 		if (c.req.method === 'GET' || c.req.method === 'HEAD') {
 			const streamPath = agentStreamPath(name, id);
 			if (rt.target === 'node') {
-				if (!rt.eventStreamStore) {
-					return new Response(null, { status: 404 });
-				}
+				const store = requireNodeEventStreamStore(rt);
 				if (c.req.method === 'HEAD') {
-					return await handleStreamHead(rt.eventStreamStore, streamPath);
+					return await handleStreamHead(store, streamPath);
 				}
-				return handleStreamRead({ store: rt.eventStreamStore, path: streamPath, request });
+				return handleStreamRead({ store, path: streamPath, request });
 			}
 
 			// Cloudflare: forward to the agent DO.
@@ -540,7 +543,7 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 				request,
 				id,
 				agentName: name,
-				eventStreamStore: rt.eventStreamStore,
+				eventStreamStore: requireNodeEventStreamStore(rt),
 				admitAttachedSubmission,
 			});
 		}
@@ -579,13 +582,11 @@ const runStreamReadHandler: MiddlewareHandler = async (c) => {
 
 	return runAttachedMiddleware(c, rt.workflowRouteMiddleware?.[pointer.owner.workflowName], async () => {
 		if (rt.target === 'node') {
-			if (!rt.eventStreamStore) {
-				throw new RunNotFoundError({ runId });
-			}
+			const store = requireNodeEventStreamStore(rt);
 			if (method === 'HEAD') {
-				return await handleStreamHead(rt.eventStreamStore, streamPath);
+				return await handleStreamHead(store, streamPath);
 			}
-			return handleStreamRead({ store: rt.eventStreamStore, path: streamPath, request: c.req.raw });
+			return handleStreamRead({ store, path: streamPath, request: c.req.raw });
 		}
 
 		const response = await rt.routeRunRequest?.(c.req.raw, c.env, pointer.owner);
@@ -601,16 +602,10 @@ export async function handleRunById(opts: {
 	runId: string;
 }): Promise<Response> {
 	const { rt, request, env, runId } = opts;
-	if (rt.target === 'cloudflare') {
-		if (!rt.createRunRegistryForRequest || !rt.routeRunRequest) {
-			throw new RunRegistryUnavailableError();
-		}
-		const registry = rt.createRunRegistryForRequest(env);
-		if (!registry) throw new RunRegistryUnavailableError();
-		const pointer = await registry.lookupRun(runId);
-		if (!pointer) throw new RunNotFoundError({ runId });
+	const pointer = await lookupRunPointer(rt, env, runId);
 
-		const response = await rt.routeRunRequest(
+	if (rt.target === 'cloudflare') {
+		const response = await rt.routeRunRequest!(
 			normalizeRunMetadataRequest(request),
 			env,
 			pointer.owner,
@@ -622,16 +617,31 @@ export async function handleRunById(opts: {
 		});
 	}
 
-	if (!rt.runRegistry) throw new RunRegistryUnavailableError();
-	const pointer = await rt.runRegistry.lookupRun(runId);
-	if (!pointer) throw new RunNotFoundError({ runId });
-
 	return handleRunRouteRequest({
-		request,
 		runStore: rt.runStore,
 		owner: pointer.owner,
 		runId,
 	});
+}
+
+export interface HandleRunRouteOptions {
+	runStore?: RunStore;
+	owner: RunOwner;
+	runId: string;
+}
+
+/** Serve run metadata (`RunRecord`) for an owner-scoped run lookup. */
+export async function handleRunRouteRequest(opts: HandleRunRouteOptions): Promise<Response> {
+	if (!opts.runStore) throw new RunStoreUnavailableError();
+	const run = await opts.runStore.getRun(opts.runId);
+	if (!run || !sameRunOwner(run.owner, opts.owner)) {
+		throw new RunNotFoundError({ runId: opts.runId });
+	}
+	return new Response(JSON.stringify(run), { headers: { 'content-type': 'application/json' } });
+}
+
+function sameRunOwner(left: RunOwner, right: RunOwner): boolean {
+	return left.workflowName === right.workflowName && left.instanceId === right.instanceId;
 }
 
 function lazyOpenApiRouteHandler(
@@ -639,6 +649,21 @@ function lazyOpenApiRouteHandler(
 	getOptions: () => ReturnType<typeof publicOpenApiOptions>,
 ): MiddlewareHandler {
 	return (c, next) => openAPIRouteHandler(app, getOptions())(c, next);
+}
+
+/**
+ * Resolve the event stream store on a Node-target runtime. The generated
+ * Node entry always constructs one, so a missing store is a wiring bug —
+ * fail loudly instead of masquerading as a missing stream/run.
+ */
+function requireNodeEventStreamStore(rt: FlueRuntime): EventStreamStore {
+	if (!rt.eventStreamStore) {
+		throw new Error(
+			'[flue] Node runtime configured without an event stream store. ' +
+				'The generated Node entry always provides one — this indicates a misconfigured runtime.',
+		);
+	}
+	return rt.eventStreamStore;
 }
 
 async function lookupRunPointer(rt: FlueRuntime, env: unknown, runId: string): Promise<RunPointer> {
@@ -658,9 +683,16 @@ async function lookupRunPointer(rt: FlueRuntime, env: unknown, runId: string): P
 	return pointer;
 }
 
+/**
+ * Internal path the CF workflow DO uses to distinguish admin metadata
+ * fetches from public DS stream reads on `/runs/:runId`. Cannot collide
+ * with user traffic (follows the agent internal-dispatch-path precedent).
+ */
+export const CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH = '/__flue/internal/run-metadata';
+
 function normalizeRunMetadataRequest(request: Request): Request {
 	const url = new URL(request.url);
-	url.pathname = '/__flue/internal/run-metadata';
+	url.pathname = CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH;
 	return new Request(url, request);
 }
 

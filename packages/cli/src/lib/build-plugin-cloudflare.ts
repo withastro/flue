@@ -391,7 +391,9 @@ function createEventStreamStoreForInstance(doInstance) {
   const existing = eventStreamStores.get(doInstance);
   if (existing) return existing;
   const sql = doInstance?.ctx?.storage?.sql;
-  if (!sql) return undefined;
+  if (!sql) {
+    throw new Error('[flue] Durable Object SQLite storage is unavailable — cannot create the event stream store. Flue Durable Object classes require SQLite-backed storage.');
+  }
   const store = new SqliteEventStreamStore(sql);
   eventStreamStores.set(doInstance, store);
   return store;
@@ -444,13 +446,11 @@ async function dispatchWorkflow(request, doInstance, workflowName) {
     // DS stream read (GET/HEAD on /runs/:runId) — use EventStreamStore.
     if (runRoute.action === 'ds-stream') {
       const store = createEventStreamStoreForInstance(doInstance);
-      if (!store) return new Response(null, { status: 404 });
       const streamPath = 'runs/' + runRoute.runId;
       if (request.method === 'HEAD') return await handleStreamHead(store, streamPath);
       return handleStreamRead({ store, path: streamPath, request });
     }
     return handleRunRouteRequest({
-      request,
       owner: { kind: 'workflow', workflowName, instanceId },
       runId: instanceId,
       runStore: createRunStoreForRequest(doInstance),
@@ -510,9 +510,10 @@ function parseRunRoute(request) {
   if (!runId) return null;
   if (!child) {
     const method = request.method;
-    // GET/HEAD on /runs/:runId → DS stream read.
+    // GET/HEAD on /runs/:runId → DS stream read. The outer worker rejects
+    // other methods before forwarding, so nothing else routes here.
     if (method === 'GET' || method === 'HEAD') return { action: 'ds-stream', runId };
-    return { action: 'get', runId };
+    return null;
   }
   return null;
 }

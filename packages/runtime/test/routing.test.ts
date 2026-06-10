@@ -1,13 +1,13 @@
-import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createFlueContext } from '../src/client.ts';
 import { InMemoryRunRegistry } from '../src/node/run-registry.ts';
 import { InMemoryRunStore } from '../src/node/run-store.ts';
-import { SqliteEventStreamStore } from '../src/runtime/event-stream-store.ts';
+import { agentStreamPath } from '../src/runtime/event-stream-store.ts';
 import { configureFlueRuntime, createDefaultFlueApp, flue, resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import { InMemorySessionStore } from '../src/session.ts';
+import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 afterEach(() => {
 	resetFlueRuntimeForTests();
@@ -53,6 +53,7 @@ describe('flue()', () => {
 				assistant: (id) => async (payload) => ({ instanceId: id, payload }),
 			},
 			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = new Hono();
 		app.route('/api', flue());
@@ -70,6 +71,65 @@ describe('flue()', () => {
 			streamUrl: 'http://localhost/api/agents/assistant/customer-123',
 			offset: '-1',
 		});
+	});
+
+	it('captures the prompt tail offset and serves exactly that prompt\'s events from it', async () => {
+		const store = createTestEventStreamStore();
+		configureFlueRuntime({
+			target: 'node',
+			manifest: {
+				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+			},
+			createAdmission: {
+				// Simulates the coordinator: each accepted prompt appends one
+				// event to the agent's durable stream.
+				assistant: (id) => async (payload) => {
+					await store.appendEvent(agentStreamPath('assistant', id), {
+						type: 'message',
+						text: (payload as { message: string }).message,
+					});
+					return undefined;
+				},
+			},
+			createContext: createTestContext,
+			eventStreamStore: store,
+		});
+		const app = new Hono();
+		app.route('/api', flue());
+
+		const prompt = (message: string) =>
+			app.fetch(
+				new Request('http://localhost/api/agents/assistant/customer-123', {
+					method: 'POST',
+					headers: { 'content-type': 'application/json' },
+					body: JSON.stringify({ message }),
+				}),
+			);
+
+		// First prompt on a fresh instance: the captured tail is the start sentinel.
+		const first = await prompt('hello');
+		expect(first.status).toBe(202);
+		const firstBody = (await first.json()) as { streamUrl: string; offset: string };
+		expect(firstBody.offset).toBe('-1');
+
+		// The accepted streamUrl is immediately readable — not a blank 404.
+		const fullRead = await app.fetch(new Request(firstBody.streamUrl));
+		expect(fullRead.status).toBe(200);
+		expect(await fullRead.json()).toEqual([{ type: 'message', text: 'hello' }]);
+
+		// Second prompt: the captured offset is the real stream tail before
+		// this prompt's first event, not a degenerate constant.
+		const second = await prompt('again');
+		expect(second.status).toBe(202);
+		const secondBody = (await second.json()) as { streamUrl: string; offset: string };
+		expect(secondBody.offset).toMatch(/^\d{16}_\d{16}$/);
+
+		// Reading from that offset returns exactly the second prompt's events.
+		const offsetRead = await app.fetch(
+			new Request(`${secondBody.streamUrl}?offset=${secondBody.offset}`),
+		);
+		expect(offsetRead.status).toBe(200);
+		expect(await offsetRead.json()).toEqual([{ type: 'message', text: 'again' }]);
 	});
 
 	it('rejects non-POST agent requests with a method envelope when a path targets an HTTP agent', async () => {
@@ -192,6 +252,7 @@ describe('flue()', () => {
 				},
 			},
 			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = new Hono();
 		app.route('/api', flue());
@@ -220,17 +281,7 @@ describe('flue()', () => {
 			owner: { kind: 'workflow', workflowName: 'daily-report', instanceId: 'workflow:daily-report:01' },
 			startedAt: '2026-06-01T10:00:00.000Z',
 		});
-		const db = new DatabaseSync(':memory:');
-		const store = new SqliteEventStreamStore({
-			exec(query: string, ...bindings: unknown[]) {
-				const stmt = db.prepare(query);
-				if (/^\s*(SELECT|WITH)/i.test(query) || /\bRETURNING\b/i.test(query)) {
-					return { toArray: () => stmt.all(...(bindings as never[])) as Record<string, unknown>[] };
-				}
-				stmt.run(...(bindings as never[]));
-				return { toArray: () => [] as Record<string, unknown>[] };
-			},
-		});
+		const store = createTestEventStreamStore();
 		await store.createStream('runs/workflow:daily-report:01');
 		configureFlueRuntime({
 			target: 'node',
@@ -328,6 +379,7 @@ describe('flue()', () => {
 				assistant: (_id) => async (payload) => ({ message: payload.message }),
 			},
 			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = new Hono();
 		app.route('/api', flue());
@@ -361,6 +413,7 @@ describe('flue()', () => {
 				assistant: (_id) => async (payload) => ({ message: payload.message }),
 			},
 			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = new Hono();
 		app.route('/api', flue());
@@ -395,6 +448,7 @@ describe('flue()', () => {
 			workflowHandlers: { 'daily-report': (ctx) => ({ payload: ctx.payload }) },
 			createContext: createTestContext,
 			runStore: new InMemoryRunStore(),
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = new Hono();
 		app.route('/api', flue());
@@ -422,6 +476,7 @@ describe('flue()', () => {
 				assistant: (_id) => async (payload) => ({ message: payload.message }),
 			},
 			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = new Hono();
 		app.route('/api', flue());
@@ -482,6 +537,7 @@ describe('createDefaultFlueApp()', () => {
 				assistant: (id) => async (payload) => ({ instanceId: id, payload }),
 			},
 			createContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
 		});
 		const app = createDefaultFlueApp();
 

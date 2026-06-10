@@ -68,7 +68,7 @@ export function createNodeAgentCoordinator(options: {
 	submissions: AgentSubmissionStore;
 	agents: Record<string, CreatedAgent>;
 	createContext: CreateContextFn;
-	eventStreamStore?: import('../runtime/event-stream-store.ts').EventStreamStore;
+	eventStreamStore: import('../runtime/event-stream-store.ts').EventStreamStore;
 }): NodeAgentCoordinator {
 	const { submissions, agents, createContext, eventStreamStore } = options;
 	const observers = createAgentSubmissionObserverRegistry();
@@ -139,14 +139,12 @@ export function createNodeAgentCoordinator(options: {
 			const ctx = createContext(input.id, undefined, payload, submissionSyntheticRequest(input), undefined, dispatchId);
 			// Subscribe to events for durable agent event persistence.
 			// createStream is called before processSubmission (see spawnSubmissionTask).
-			if (eventStreamStore) {
-				const streamPath = agentStreamPath(input.agent, input.id);
-				ctx.subscribeEvent((event) => {
-					eventStreamStore.appendEvent(streamPath, event).catch((error) => {
-						console.error('[flue:event-stream] appendEvent failed:', error);
-					});
+			const streamPath = agentStreamPath(input.agent, input.id);
+			ctx.subscribeEvent((event) => {
+				eventStreamStore.appendEvent(streamPath, event).catch((error) => {
+					console.error('[flue:event-stream] appendEvent failed:', error);
 				});
-			}
+			});
 			return ctx;
 		};
 	}
@@ -170,10 +168,7 @@ export function createNodeAgentCoordinator(options: {
 			// createStream is idempotent — safe to call on every submission.
 			// Must complete before processSubmission so appendEvent calls
 			// in the subscribeEvent callback don't hit a missing stream.
-			if (eventStreamStore) {
-				const streamPath = agentStreamPath(claimed.input.agent, claimed.input.id);
-				await eventStreamStore.createStream(streamPath);
-			}
+			await eventStreamStore.createStream(agentStreamPath(claimed.input.agent, claimed.input.id));
 			return processSubmission({
 				submissions,
 				submission: claimed,

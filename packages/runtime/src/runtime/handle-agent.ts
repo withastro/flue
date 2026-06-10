@@ -97,7 +97,7 @@ export interface HandleAgentOptions {
 	request: Request;
 	id: string;
 	agentName?: string;
-	eventStreamStore?: EventStreamStore;
+	eventStreamStore: EventStreamStore;
 	admitAttachedSubmission: AttachedAgentSubmissionAdmission;
 }
 
@@ -109,7 +109,7 @@ export interface HandleWorkflowOptions {
 	startWorkflowAdmission?: StartWorkflowAdmissionFn;
 	runStore?: RunStore;
 	runRegistry?: RunRegistry;
-	eventStreamStore?: EventStreamStore;
+	eventStreamStore: EventStreamStore;
 	runId?: string;
 }
 
@@ -135,8 +135,8 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 		streamUrlUrl.search = '';
 		const streamUrl = streamUrlUrl.toString();
 		const streamPath = opts.agentName ? agentStreamPath(opts.agentName, id) : undefined;
-		if (streamPath && opts.eventStreamStore) await opts.eventStreamStore.createStream(streamPath);
-		const offset = streamPath && opts.eventStreamStore
+		if (streamPath) await opts.eventStreamStore.createStream(streamPath);
+		const offset = streamPath
 			? (await opts.eventStreamStore.getStreamMeta(streamPath))?.nextOffset ?? '-1'
 			: '-1';
 		if (new URL(request.url).searchParams.get('wait') === 'result') {
@@ -209,7 +209,7 @@ export interface InvokeWorkflowAttachedOptions {
 	onEvent?: FlueEventCallback;
 	runStore?: RunStore;
 	runRegistry?: RunRegistry;
-	eventStreamStore?: EventStreamStore;
+	eventStreamStore: EventStreamStore;
 }
 
 export interface DirectAttachedOptions {
@@ -233,7 +233,7 @@ export interface FailRecoveredRunOptions {
 	error: unknown;
 	runStore?: RunStore;
 	runRegistry?: RunRegistry;
-	eventStreamStore?: EventStreamStore;
+	eventStreamStore: EventStreamStore;
 }
 
 interface WorkflowAdmissionOptions {
@@ -247,7 +247,7 @@ interface WorkflowAdmissionOptions {
 	startWorkflowAdmission: StartWorkflowAdmissionFn;
 	runStore?: RunStore;
 	runRegistry?: RunRegistry;
-	eventStreamStore?: EventStreamStore;
+	eventStreamStore: EventStreamStore;
 	onAdmitted?: (runId: string) => void;
 	onEvent?: FlueEventCallback;
 }
@@ -380,7 +380,7 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 	const payload = run?.payload !== undefined ? run.payload : startEvent?.payload;
 	// Ensure the event stream exists — the original workflow may have crashed
 	// before createWorkflowRunLifecycle called createStream. Idempotent.
-	await opts.eventStreamStore?.createStream(runStreamPath(opts.runId));
+	await opts.eventStreamStore.createStream(runStreamPath(opts.runId));
 	const lifecycle: WorkflowRunLifecycle = {
 		...opts,
 		payload,
@@ -395,7 +395,6 @@ export async function failRecoveredRun(opts: FailRecoveredRunOptions): Promise<v
 }
 
 async function readRecoveryEvents(opts: FailRecoveredRunOptions): Promise<FlueEvent[]> {
-	if (!opts.eventStreamStore) return [];
 	const streamPath = runStreamPath(opts.runId);
 	// Read all events — recovery needs the full history to find the
 	// terminal event and compute the next event index.
@@ -435,7 +434,7 @@ async function reconcileTerminalRun(
 	// Ensure the event stream is closed so DS readers see EOF. A crash
 	// between appendEvent(run_end) and closeStream() can leave the stream
 	// permanently open without this repair.
-	await opts.eventStreamStore?.closeStream(runStreamPath(opts.runId));
+	await opts.eventStreamStore.closeStream(runStreamPath(opts.runId));
 	await safeRegistry('recordRunStart(recovery)', () =>
 		opts.runRegistry?.recordRunStart({
 			runId: opts.runId,
@@ -557,7 +556,7 @@ interface WorkflowRunLifecycleOptions {
 	createContext: CreateContextFn;
 	runStore?: RunStore;
 	runRegistry?: RunRegistry;
-	eventStreamStore?: EventStreamStore;
+	eventStreamStore: EventStreamStore;
 	requirePersistedAdmission?: boolean;
 }
 
@@ -609,7 +608,7 @@ async function createWorkflowRunLifecycle(
 			}),
 		);
 	// Create the durable event stream for this workflow run.
-	await options.eventStreamStore?.createStream(runStreamPath(options.runId));
+	await options.eventStreamStore.createStream(runStreamPath(options.runId));
 	return { ...options, ctx, startedAt, startedAtMs };
 }
 
@@ -696,9 +695,9 @@ async function emitRunEnd(
 	// Append run_end to the durable event stream, then close it.
 	// Each operation is individually guarded so a store failure cannot
 	// prevent RunStore/RunRegistry finalization below.
-	try { await eventStreamStore?.appendEvent(runStreamPath(runId), decorated); }
+	try { await eventStreamStore.appendEvent(runStreamPath(runId), decorated); }
 	catch (e) { console.error('[flue:event-stream] appendEvent(run_end) failed:', e); }
-	try { await eventStreamStore?.closeStream(runStreamPath(runId)); }
+	try { await eventStreamStore.closeStream(runStreamPath(runId)); }
 	catch (e) { console.error('[flue:event-stream] closeStream failed:', e); }
 
 	const didEndRun = runStore
@@ -737,7 +736,6 @@ async function emitRunEnd(
  */
 function subscribeRunFanout(lifecycle: WorkflowRunLifecycle): () => Promise<void> {
 	const { ctx, eventStreamStore, runId } = lifecycle;
-	if (!eventStreamStore) return async () => {};
 	const pending: Promise<void>[] = [];
 	const unsubscribe = ctx.subscribeEvent((event) => {
 		if (event.type === 'run_end') return;
