@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 // Node-based export-map smoke tests cannot load the Cloudflare virtual module; real Cloudflare runtime behavior is covered by explicit boundary and integration suites.
@@ -67,6 +67,23 @@ describe('package entrypoints', () => {
 			FlueRegistry: expect.any(Function),
 			getCloudflareAIBindingApiProvider: expect.any(Function),
 			runWithCloudflareContext: expect.any(Function),
+		});
+	});
+
+	it('exposes optional Chat SDK channel helpers when a consumer imports @flue/runtime/channel/chat-sdk', async () => {
+		const chatSdk = await import('@flue/runtime/channel/chat-sdk');
+
+		expect(chatSdk.createChatSdkChannel).toEqual(expect.any(Function));
+	});
+
+	it('declares optional Cloudflare Chat SDK state helpers in the package export map', () => {
+		const pkg = JSON.parse(readFileSync('package.json', 'utf8')) as {
+			exports: Record<string, { import: string; types: string }>;
+		};
+
+		expect(pkg.exports['./channel/chat-sdk/cloudflare']).toEqual({
+			import: './dist/channel/chat-sdk/cloudflare.mjs',
+			types: './dist/channel/chat-sdk/cloudflare.d.mts',
 		});
 	});
 });

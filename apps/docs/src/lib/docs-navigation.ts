@@ -53,6 +53,7 @@ export const docsSections: DocsSection[] = [
 					{ title: 'Routing', slug: 'guide/routing' },
 					{ title: 'Develop & Build', slug: 'guide/develop-and-build' },
 					{ title: 'Chat', slug: 'guide/chat' },
+					{ title: 'Durable Chat SDK on Cloudflare', slug: 'guide/chat-sdk-cloudflare' },
 					{ title: 'Observability', slug: 'guide/observability' },
 				],
 			},

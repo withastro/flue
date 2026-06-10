@@ -7,6 +7,8 @@ export default defineConfig({
 		'src/routing.ts',
 		'src/internal.ts',
 		'src/cloudflare/index.ts',
+		'src/channel/chat-sdk.ts',
+		'src/channel/chat-sdk/cloudflare.ts',
 		'src/node/index.ts',
 		'src/test-utils/define-store-contract-tests.ts',
 		'src/test-utils/define-event-stream-store-contract-tests.ts',
@@ -20,5 +22,5 @@ export default defineConfig({
 	// keeps the import in the emitted bundle so workerd can resolve it
 	// at runtime (rather than having rolldown fail to find a package
 	// on disk at build time).
-	deps: { neverBundle: ['cloudflare:workers', 'vitest'] },
+	deps: { neverBundle: ['agents', 'agents/chat-sdk', 'chat', 'cloudflare:workers', 'vitest'] },
 });

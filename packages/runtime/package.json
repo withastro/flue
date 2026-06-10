@@ -1,85 +1,108 @@
 {
-	"name": "@flue/runtime",
-	"version": "0.11.1",
-	"type": "module",
-	"license": "Apache-2.0",
-	"homepage": "https://flueframework.com/",
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/withastro/flue",
-		"directory": "packages/runtime"
-	},
-	"exports": {
-		".": {
-			"types": "./types/index.d.ts",
-			"import": "./dist/index.mjs"
-		},
-		"./adapter": {
-			"types": "./dist/adapter.d.mts",
-			"import": "./dist/adapter.mjs"
-		},
-		"./routing": {
-			"types": "./dist/routing.d.mts",
-			"import": "./dist/routing.mjs"
-		},
-		"./internal": {
-			"types": "./dist/internal.d.mts",
-			"import": "./dist/internal.mjs"
-		},
-		"./cloudflare": {
-			"types": "./dist/cloudflare/index.d.mts",
-			"import": "./dist/cloudflare/index.mjs"
-		},
-		"./node": {
-			"types": "./dist/node/index.d.mts",
-			"import": "./dist/node/index.mjs"
-		},
-		"./test-utils": {
-			"types": "./dist/test-utils/define-store-contract-tests.d.mts",
-			"import": "./dist/test-utils/define-store-contract-tests.mjs"
-		}
-	},
-	"main": "./dist/index.mjs",
-	"types": "./types/index.d.ts",
-	"files": [
-		"dist",
-		"docs",
-		"types"
-	],
-	"engines": {
-		"node": ">=22.18.0"
-	},
-	"scripts": {
-		"build": "tsdown",
-		"check:types": "tsc --noEmit",
-		"test": "vitest run",
-		"test:integration:cloudflare": "vitest run --config vitest.integration.cloudflare.config.ts --no-file-parallelism",
-		"test:watch": "vitest"
-	},
-	"dependencies": {
-		"@earendil-works/pi-agent-core": "^0.79.0",
-		"@earendil-works/pi-ai": "^0.79.0",
-		"@hono/node-server": "^2.0.3",
-		"@hono/standard-validator": "^0.2.0",
-		"@modelcontextprotocol/sdk": "^1.29.0",
-		"@standard-community/standard-json": "^0.3.5",
-		"@standard-community/standard-openapi": "^0.2.9",
-		"@valibot/to-json-schema": "^1.3.0",
-		"hono": "^4.8.3",
-		"hono-openapi": "^1.3.0",
-		"js-yaml": "^4.1.1",
-		"just-bash": "^3.0.1",
-		"openapi-types": "^12.1.3",
-		"quansync": "^0.2.11",
-		"ulidx": "^2.4.1",
-		"valibot": "^1.1.0"
-	},
-	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260602.1",
-		"@types/js-yaml": "^4.0.9",
-		"tsdown": "^0.22.0",
-		"typescript": "^6.0.3",
-		"vite": "^8.0.14",
-		"vitest": "^4.1.6"
-	}
+  "name": "@flue/runtime",
+  "version": "0.11.1",
+  "homepage": "https://flueframework.com/",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/withastro/flue",
+    "directory": "packages/runtime"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "types"
+  ],
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./types/index.d.ts",
+      "import": "./dist/index.mjs"
+    },
+    "./adapter": {
+      "types": "./dist/adapter.d.mts",
+      "import": "./dist/adapter.mjs"
+    },
+    "./routing": {
+      "types": "./dist/routing.d.mts",
+      "import": "./dist/routing.mjs"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.mts",
+      "import": "./dist/internal.mjs"
+    },
+    "./cloudflare": {
+      "types": "./dist/cloudflare/index.d.mts",
+      "import": "./dist/cloudflare/index.mjs"
+    },
+    "./channel/chat-sdk": {
+      "types": "./dist/channel/chat-sdk.d.mts",
+      "import": "./dist/channel/chat-sdk.mjs"
+    },
+    "./channel/chat-sdk/cloudflare": {
+      "types": "./dist/channel/chat-sdk/cloudflare.d.mts",
+      "import": "./dist/channel/chat-sdk/cloudflare.mjs"
+    },
+    "./node": {
+      "types": "./dist/node/index.d.mts",
+      "import": "./dist/node/index.mjs"
+    },
+    "./test-utils": {
+      "types": "./dist/test-utils/define-store-contract-tests.d.mts",
+      "import": "./dist/test-utils/define-store-contract-tests.mjs"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "check:types": "tsc --noEmit",
+    "test": "vitest run",
+    "test:integration:cloudflare": "vitest run --config vitest.integration.cloudflare.config.ts --no-file-parallelism",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.79.0",
+    "@earendil-works/pi-ai": "^0.79.0",
+    "@hono/node-server": "^2.0.3",
+    "@hono/standard-validator": "^0.2.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@standard-community/standard-json": "^0.3.5",
+    "@standard-community/standard-openapi": "^0.2.9",
+    "@valibot/to-json-schema": "^1.3.0",
+    "hono": "^4.8.3",
+    "hono-openapi": "^1.3.0",
+    "js-yaml": "^4.1.1",
+    "just-bash": "^3.0.1",
+    "openapi-types": "^12.1.3",
+    "quansync": "^0.2.11",
+    "ulidx": "^2.4.1",
+    "valibot": "^1.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260602.1",
+    "@types/js-yaml": "^4.0.9",
+    "@types/ws": "^8.18.1",
+    "agents": "^0.15.0",
+    "chat": "^4.30.0",
+    "tsdown": "^0.22.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.14",
+    "vitest": "^4.1.6"
+  },
+  "peerDependencies": {
+    "agents": "^0.15.0",
+    "chat": "^4.30.0"
+  },
+  "peerDependenciesMeta": {
+    "agents": {
+      "optional": true
+    },
+    "chat": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  }
 }

@@ -2,35 +2,64 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 
 const baseUrl = process.env.FLUE_CHAT_BASE_URL ?? 'http://localhost:3585';
-const payload = {
-	action: 'created',
-	comment: {
-		id: 99,
-		body: '@flue-bot please reply',
-		created_at: '2026-05-25T00:00:00.000Z',
-		updated_at: '2026-05-25T00:00:00.000Z',
-		user: { id: 2, login: 'octocat', type: 'User' },
-	},
-	issue: { number: 42 },
-	repository: { name: 'widgets', owner: { id: 3, login: 'acme', type: 'Organization' } },
-	sender: { id: 2, login: 'octocat', type: 'User' },
-};
-const body = JSON.stringify(payload);
-const signature = `sha256=${createHmac('sha256', 'chat-sdk-example-secret').update(body).digest('hex')}`;
+const runId = Date.now();
+const issueNumber = runId;
+const mentionPayload = issueCommentPayload({
+	body: '@flue-bot please reply',
+	id: runId,
+});
+const approvalPayload = issueCommentPayload({
+	body: 'approve',
+	id: runId + 1,
+});
 
-const response = await sendWebhookWhenReady();
-assert.equal(response.status, 200);
-assert.equal(await response.text(), 'ok');
+const mentionResponse = await sendWebhookWhenReady(mentionPayload);
+assert.equal(mentionResponse.status, 200);
+assert.equal(await mentionResponse.text(), 'ok');
 
-const comments = await waitForOutboundComment();
-assert.deepEqual(comments, [
+const firstComments = await waitForOutboundComments(1);
+assert.deepEqual(firstComments, [
 	{
-		issueNumber: 42,
-		body: 'Reply from a Flue agent through Chat SDK.',
+		issueNumber,
+		body: 'I need human approval before continuing. Reply with "approve" in this thread.',
 	},
 ]);
 
-async function sendWebhookWhenReady() {
+const approvalResponse = await sendWebhookWhenReady(approvalPayload);
+assert.equal(approvalResponse.status, 200);
+assert.equal(await approvalResponse.text(), 'ok');
+
+const comments = await waitForOutboundComments(2);
+assert.deepEqual(comments, [
+	{
+		issueNumber,
+		body: 'I need human approval before continuing. Reply with "approve" in this thread.',
+	},
+	{
+		issueNumber,
+		body: 'Approved by a human. Reply from a Flue agent through Chat SDK.',
+	},
+]);
+
+function issueCommentPayload({ body, id }) {
+	return {
+		action: 'created',
+		comment: {
+			id,
+			body,
+			created_at: '2026-05-25T00:00:00.000Z',
+			updated_at: '2026-05-25T00:00:00.000Z',
+			user: { id: 2, login: 'octocat', type: 'User' },
+		},
+		issue: { number: issueNumber },
+		repository: { name: 'widgets', owner: { id: 3, login: 'acme', type: 'Organization' } },
+		sender: { id: 2, login: 'octocat', type: 'User' },
+	};
+}
+
+async function sendWebhookWhenReady(payload) {
+	const body = JSON.stringify(payload);
+	const signature = `sha256=${createHmac('sha256', 'chat-sdk-example-secret').update(body).digest('hex')}`;
 	const deadline = Date.now() + 10000;
 	while (Date.now() < deadline) {
 		try {
@@ -50,13 +79,14 @@ async function sendWebhookWhenReady() {
 	throw new Error('Timed out waiting for the Flue server.');
 }
 
-async function waitForOutboundComment() {
+async function waitForOutboundComments(count) {
 	const deadline = Date.now() + 10000;
 	while (Date.now() < deadline) {
 		const result = await fetch(new URL('/test/outbound-comments', baseUrl));
 		if (result.ok) {
 			const comments = await result.json();
-			if (comments.length > 0) return comments;
+			const runComments = comments.filter((comment) => comment.issueNumber === issueNumber);
+			if (runComments.length >= count) return runComments;
 		}
 		await new Promise((resolve) => setTimeout(resolve, 100));
 	}

@@ -162,6 +162,7 @@ Provider events and asynchronous processing can also be retried. If posting a du
 ## Next steps
 
 - Explore `examples/chat-sdk/` for a runnable GitHub mention-to-reply integration.
+- See [Chat SDK on Cloudflare](/docs/guide/chat-sdk-cloudflare/) for the optional Flue channel adapter and durable Chat SDK state helper.
 - See the [Chat SDK documentation](https://chat-sdk.dev/docs) for its supported platform adapters, event handlers, and state adapters.
 - See [Agents](/docs/guide/building-agents/) for continuing agent instances and asynchronous `dispatch(...)` input.
 - See [Routing](/docs/guide/routing/) for composing webhook routes with Flue application routes.
