@@ -154,6 +154,7 @@ import {
   CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
   CLOUDFLARE_WORKFLOW_INTERNAL_METADATA_PATH,
   createCloudflareAgentRuntime,
+  createR2SessionAttachmentStore,
   createSqlSessionStore,
    SqliteEventStreamStore,
   bashFactoryToSessionEnv,
@@ -204,6 +205,7 @@ if (!hasRegisteredProvider('cloudflare')) {
 const skills = {};
 const packagedSkills = ${packagedSkillsValue};
 const systemPrompt = '';
+const sessionAttachmentStore = createR2SessionAttachmentStore(env.FLUE_SESSION_ATTACHMENTS);
 
 ${builtModuleNormalizationSource}
 const agentModules = {
@@ -346,7 +348,7 @@ function createAgentContextForRequest(executionStore, id, payload, doInstance, r
 
 function createWorkflowContextForRequest(id, runId, payload, doInstance, req, initialEventIndex, dispatchId) {
   const storage = doInstance?.ctx?.storage;
-  const defaultStore = storage?.sql ? createSqlSessionStore(storage) : memoryWorkflowSessionStore;
+  const defaultStore = storage?.sql ? createSqlSessionStore(storage, { attachmentStore: sessionAttachmentStore }) : memoryWorkflowSessionStore;
   return createContextForRequest(id, runId, payload, doInstance, req, defaultStore, initialEventIndex, dispatchId);
 }
 
@@ -401,6 +403,7 @@ function createEventStreamStoreForInstance(doInstance) {
 
 const cloudflareAgents = createCloudflareAgentRuntime({
   createdAgents,
+  sessionStoreOptions: { attachmentStore: sessionAttachmentStore },
   createContext: ({ executionStore, instance, payload, request, initialEventIndex, dispatchId }) =>
     createAgentContextForRequest(executionStore, instance.name, payload, instance, request, initialEventIndex, dispatchId),
   runWithInstanceContext: (instance, agentName, fn) => runWithInstanceContext(instance, agentRuntimeIdentity(agentName), fn),

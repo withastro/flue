@@ -6,5 +6,9 @@
  * Import platform-agnostic types (`FlueContext`, `PersistenceAdapter`, etc.)
  * from `@flue/runtime`.
  */
-export { sqlite } from './agent-execution-store.ts';
+export {
+	sqlite,
+	type SessionAttachmentStore,
+	type SqlitePersistenceOptions,
+} from './agent-execution-store.ts';
 export { type LocalSandboxOptions, local } from './local.ts';

@@ -75,4 +75,5 @@ export { formatOffset, parseOffset } from './runtime/event-stream-store.ts';
 
 // ─── Re-export session types needed for SessionStore implementations ────────
 
+export type { SessionAttachmentStore } from './sql-agent-execution-store.ts';
 export type { SessionData, SessionStore } from './types.ts';

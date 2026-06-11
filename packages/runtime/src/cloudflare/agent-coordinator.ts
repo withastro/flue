@@ -22,6 +22,7 @@ const FLUE_AGENT_SUBMISSION_ATTEMPT_STALE_MS = 15 * 60 * 1000;
 const FLUE_AGENT_SUBMISSION_ATTEMPT_FIBER = 'flue:submission-attempt';
 
 import type { SqlStorage } from '../sql-storage.ts';
+import type { SqlSessionStoreOptions } from '../sql-agent-execution-store.ts';
 
 interface CloudflareAgentStorage {
 	sql?: SqlStorage;
@@ -74,6 +75,7 @@ interface CloudflareAgentRuntimeOptions {
 		callback: () => T,
 	) => T;
 	readonly createEventStreamStore: (instance: CloudflareAgentInstance) => import('../runtime/event-stream-store.ts').EventStreamStore;
+	readonly sessionStoreOptions?: SqlSessionStoreOptions;
 }
 
 export interface CloudflareAgentRuntime {
@@ -113,7 +115,7 @@ export function createCloudflareAgentRuntime(options: CloudflareAgentRuntimeOpti
 		prepare({ storage, className, agentName }) {
 			return {
 				agentName,
-				executionStore: createSqlAgentExecutionStore(storage, className),
+				executionStore: createSqlAgentExecutionStore(storage, className, options.sessionStoreOptions),
 			};
 		},
 		attach(instance, prepared) {

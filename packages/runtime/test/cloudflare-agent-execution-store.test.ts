@@ -2,9 +2,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import {
 	createSqlAgentExecutionStore,
+	createR2SessionAttachmentStore,
 	createSqlSessionStore,
 } from '../src/cloudflare/agent-execution-store.ts';
 import type { DispatchInput } from '../src/runtime/dispatch-queue.ts';
+import type { SessionAttachmentStore } from '../src/sql-agent-execution-store.ts';
 import type { SessionData } from '../src/types.ts';
 
 function makeFakeSql() {
@@ -76,6 +78,26 @@ function sessionData(overrides: Partial<SessionData> = {}): SessionData {
 	};
 }
 
+class RecordingAttachmentStore implements SessionAttachmentStore {
+	readonly objects = new Map<string, string>();
+	readonly deleted: string[] = [];
+
+	async put(key: string, data: string): Promise<void> {
+		this.objects.set(key, data);
+	}
+
+	async get(key: string): Promise<string> {
+		const data = this.objects.get(key);
+		if (data === undefined) throw new Error(`missing object ${key}`);
+		return data;
+	}
+
+	async delete(key: string): Promise<void> {
+		this.deleted.push(key);
+		this.objects.delete(key);
+	}
+}
+
 describe('createSqlAgentExecutionStore()', () => {
 	it('creates the initial flue_agent_submissions schema and ordering indexes when initialized', () => {
 		const { db, sql, transactionSync } = makeFakeSql();
@@ -134,6 +156,7 @@ describe('createSqlAgentExecutionStore()', () => {
 			{ name: 'flue_agent_stream_chunks' },
 			{ name: 'flue_agent_submissions' },
 			{ name: 'flue_agent_turn_journals' },
+			{ name: 'flue_session_attachment_deletions' },
 			{ name: 'flue_session_blobs' },
 			{ name: 'flue_session_entries' },
 			{ name: 'flue_sessions' },
@@ -305,6 +328,138 @@ describe('createSqlAgentExecutionStore()', () => {
 		});
 	});
 
+	it('stores large image content in an external attachment store when configured', async () => {
+		const { db, sql, transactionSync } = makeFakeSql();
+		const attachments = new RecordingAttachmentStore();
+		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent', {
+			attachmentStore: attachments,
+			externalBlobThreshold: 1,
+		});
+		const imageData = 'a'.repeat(600_000);
+		const data = sessionData({
+			entries: [
+				{
+					type: 'message',
+					id: 'entry-1',
+					parentId: null,
+					timestamp: '2026-06-03T00:00:00.000Z',
+					source: 'prompt',
+					message: {
+						role: 'user',
+						content: [
+							{ type: 'text', text: 'Describe this image.' },
+							{ type: 'image', data: imageData, mimeType: 'image/png' },
+						],
+						timestamp: 0,
+					},
+				},
+			],
+			leafId: 'entry-1',
+		});
+
+		await store.sessions.save('s1', data);
+
+		const blobRow = db
+			.prepare(
+				`SELECT storage_kind, object_key, data
+				 FROM flue_session_blobs
+				 WHERE session_id = ?`,
+			)
+			.get('s1') as { storage_kind: string; object_key: string; data: string | null };
+		const entryRow = db
+			.prepare('SELECT data FROM flue_session_entries WHERE session_id = ?')
+			.get('s1') as { data: string };
+
+		expect(blobRow.storage_kind).toBe('external');
+		expect(blobRow.object_key).toMatch(/^flue-sessions\//);
+		expect(blobRow.data).toBeNull();
+		expect(attachments.objects.get(blobRow.object_key)).toBe(imageData);
+		expect(entryRow.data).toContain('__flueSessionBlobRef');
+		expect(entryRow.data).not.toContain(imageData);
+		await expect(store.sessions.load('s1')).resolves.toEqual(data);
+
+		await store.sessions.delete('s1');
+
+		expect(attachments.objects.has(blobRow.object_key)).toBe(false);
+		expect(attachments.deleted).toEqual([blobRow.object_key]);
+	});
+
+	it('retries external attachment cleanup when object deletion fails', async () => {
+		const { db, sql, transactionSync } = makeFakeSql();
+		const attachments = new RecordingAttachmentStore();
+		let failDelete = true;
+		attachments.delete = async (key: string): Promise<void> => {
+			attachments.deleted.push(key);
+			if (failDelete) throw new Error('r2 unavailable');
+			attachments.objects.delete(key);
+		};
+		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent', {
+			attachmentStore: attachments,
+			externalBlobThreshold: 1,
+		});
+		const data = sessionData({
+			entries: [
+				{
+					type: 'message',
+					id: 'entry-1',
+					parentId: null,
+					timestamp: '2026-06-03T00:00:00.000Z',
+					source: 'prompt',
+					message: {
+						role: 'user',
+						content: [{ type: 'image', data: 'image-data', mimeType: 'image/png' }],
+						timestamp: 0,
+					},
+				},
+			],
+			leafId: 'entry-1',
+		});
+
+		await store.sessions.save('s1', data);
+		const objectKey = db
+			.prepare('SELECT object_key FROM flue_session_blobs WHERE session_id = ?')
+			.get('s1') as { object_key: string };
+		await store.sessions.delete('s1');
+
+		expect(attachments.objects.has(objectKey.object_key)).toBe(true);
+		expect(db.prepare('SELECT object_key FROM flue_session_attachment_deletions').all()).toEqual([
+			{ object_key: objectKey.object_key },
+		]);
+
+		failDelete = false;
+		await store.sessions.save('s2', sessionData());
+
+		expect(attachments.objects.has(objectKey.object_key)).toBe(false);
+		expect(db.prepare('SELECT object_key FROM flue_session_attachment_deletions').all()).toEqual(
+			[],
+		);
+	});
+
+	it('adapts an R2 bucket binding for session attachment storage', async () => {
+		const bucketObjects = new Map<string, string>();
+		const bucket = {
+			async put(key: string, value: string): Promise<void> {
+				bucketObjects.set(key, value);
+			},
+			async get(key: string): Promise<{ text(): Promise<string> } | null> {
+				const value = bucketObjects.get(key);
+				return value === undefined ? null : { text: async () => value };
+			},
+			async delete(key: string): Promise<void> {
+				bucketObjects.delete(key);
+			},
+		};
+		const store = createR2SessionAttachmentStore(bucket)!;
+
+		await store.put('object-key', 'image-data');
+
+		expect(await store.get('object-key')).toBe('image-data');
+		await store.delete('object-key');
+		await expect(store.get('object-key')).rejects.toThrow(
+			'[flue] Persisted session attachment object is missing.',
+		);
+	});
+
 	it('loads legacy session rows when entries still live in flue_sessions', async () => {
 		const { db, sql, transactionSync } = makeFakeSql();
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
@@ -321,13 +476,64 @@ describe('createSqlAgentExecutionStore()', () => {
 			],
 			leafId: 'entry-1',
 		});
-		db.prepare('INSERT INTO flue_sessions (id, data, updated_at) VALUES (?, ?, ?)').run(
+		db.prepare('INSERT INTO flue_sessions (id, data) VALUES (?, ?)').run(
 			'legacy',
 			JSON.stringify(data),
-			1,
 		);
 
 		await expect(store.sessions.load('legacy')).resolves.toEqual(data);
+	});
+
+	it('migrates existing SQL chunk blob tables when session persistence is initialized', async () => {
+		const { db, sql, transactionSync } = makeFakeSql();
+		db.prepare(
+			`CREATE TABLE flue_sessions (
+			 id TEXT PRIMARY KEY,
+			 data TEXT NOT NULL
+			)`,
+		).run();
+		db.prepare(
+			`CREATE TABLE flue_session_entries (
+			 session_id TEXT NOT NULL,
+			 entry_id TEXT NOT NULL,
+			 position INTEGER NOT NULL,
+			 data TEXT NOT NULL,
+			 PRIMARY KEY (session_id, entry_id)
+			)`,
+		).run();
+		db.prepare(
+			`CREATE TABLE flue_session_blobs (
+			 session_id TEXT NOT NULL,
+			 entry_id TEXT NOT NULL,
+			 blob_id TEXT NOT NULL,
+			 segment_index INTEGER NOT NULL,
+			 segment_count INTEGER NOT NULL,
+			 data TEXT NOT NULL,
+			 PRIMARY KEY (session_id, entry_id, blob_id, segment_index)
+			)`,
+		).run();
+
+		createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
+
+		expect(
+			db.prepare("SELECT name FROM pragma_table_info('flue_session_blobs') ORDER BY cid").all(),
+		).toEqual([
+			{ name: 'session_id' },
+			{ name: 'entry_id' },
+			{ name: 'blob_id' },
+			{ name: 'storage_kind' },
+			{ name: 'object_key' },
+			{ name: 'segment_index' },
+			{ name: 'segment_count' },
+			{ name: 'data' },
+		]);
+		expect(
+			db
+				.prepare(
+					"SELECT \"notnull\" AS is_not_null FROM pragma_table_info('flue_session_blobs') WHERE name = 'data'",
+				)
+				.get(),
+		).toEqual({ is_not_null: 0 });
 	});
 
 	it('preserves user JSON with blob-ref-like keys when a session is saved', async () => {
@@ -388,6 +594,7 @@ describe('createSqlSessionStore()', () => {
 		expect(
 			db.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name").all(),
 		).toEqual([
+			{ name: 'flue_session_attachment_deletions' },
 			{ name: 'flue_session_blobs' },
 			{ name: 'flue_session_entries' },
 			{ name: 'flue_sessions' },

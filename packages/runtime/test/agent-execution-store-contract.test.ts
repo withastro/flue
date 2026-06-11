@@ -16,7 +16,11 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
 import type { SqlStorage } from '../src/sql-storage.ts';
-import { createSqlAgentExecutionStoreFromSql, ensureSqlAgentExecutionTables } from '../src/sql-agent-execution-store.ts';
+import {
+	createSqlAgentExecutionStoreFromSql,
+	ensureSqlAgentExecutionTables,
+	type SessionAttachmentStore,
+} from '../src/sql-agent-execution-store.ts';
 import { createNodeAgentExecutionStore, sqlite } from '../src/node/agent-execution-store.ts';
 import type { SessionData } from '../src/types.ts';
 import { defineStoreContractTests } from '../src/test-utils/define-store-contract-tests.ts';
@@ -64,6 +68,26 @@ function createNodeBackend(): AgentExecutionStore {
 	return createNodeAgentExecutionStore();
 }
 
+class RecordingAttachmentStore implements SessionAttachmentStore {
+	readonly objects = new Map<string, string>();
+	readonly deleted: string[] = [];
+
+	async put(key: string, data: string): Promise<void> {
+		this.objects.set(key, data);
+	}
+
+	async get(key: string): Promise<string> {
+		const data = this.objects.get(key);
+		if (data === undefined) throw new Error(`missing object ${key}`);
+		return data;
+	}
+
+	async delete(key: string): Promise<void> {
+		this.deleted.push(key);
+		this.objects.delete(key);
+	}
+}
+
 // ─── Contract tests (shared) ────────────────────────────────────────────────
 
 defineStoreContractTests('AgentExecutionStore (cloudflare-sql)', {
@@ -72,6 +96,47 @@ defineStoreContractTests('AgentExecutionStore (cloudflare-sql)', {
 
 defineStoreContractTests('AgentExecutionStore (node-sqlite)', {
 	create: createNodeBackend,
+});
+
+describe('createNodeAgentExecutionStore()', () => {
+	it('stores large session blobs in a custom attachment store when configured', async () => {
+		const attachments = new RecordingAttachmentStore();
+		const store = createNodeAgentExecutionStore(':memory:', {
+			attachmentStore: attachments,
+			externalBlobThreshold: 1,
+		});
+		const imageData = 'a'.repeat(600_000);
+		const data: SessionData = {
+			version: 5,
+			affinityKey: 'affinity-1',
+			entries: [
+				{
+					type: 'message',
+					id: 'entry-1',
+					parentId: null,
+					timestamp: '2026-06-03T00:00:00.000Z',
+					source: 'prompt',
+					message: {
+						role: 'user',
+						content: [{ type: 'image', data: imageData, mimeType: 'image/png' }],
+						timestamp: 0,
+					},
+				},
+			],
+			leafId: 'entry-1',
+			metadata: {},
+			createdAt: '2026-06-03T00:00:00.000Z',
+			updatedAt: '2026-06-03T00:00:00.000Z',
+		};
+
+		await store.sessions.save('s1', data);
+
+		expect([...attachments.objects.values()]).toEqual([imageData]);
+		await expect(store.sessions.load('s1')).resolves.toEqual(data);
+		const objectKey = [...attachments.objects.keys()][0]!;
+		await store.sessions.delete('s1');
+		expect(attachments.deleted).toEqual([objectKey]);
+	});
 });
 
 // ─── sqlite() PersistenceAdapter tests ──────────────────────────────────────

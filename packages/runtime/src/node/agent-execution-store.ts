@@ -14,7 +14,18 @@ import { InMemoryRunRegistry } from './run-registry.ts';
 import { InMemoryRunStore } from './run-store.ts';
 import type { SqlStorage } from '../sql-storage.ts';
 import { SqliteEventStreamStore } from '../runtime/event-stream-store.ts';
-import { createSqlAgentExecutionStoreFromSql, ensureSqlAgentExecutionTables } from '../sql-agent-execution-store.ts';
+import {
+	createSqlAgentExecutionStoreFromSql,
+	ensureSqlAgentExecutionTables,
+	type SessionAttachmentStore,
+} from '../sql-agent-execution-store.ts';
+
+export type { SessionAttachmentStore };
+
+export interface SqlitePersistenceOptions {
+	attachmentStore?: SessionAttachmentStore;
+	externalBlobThreshold?: number;
+}
 
 /**
  * Adapt `node:sqlite` {@link DatabaseSync} to the Cloudflare {@link SqlStorage}
@@ -96,10 +107,11 @@ function openDatabase(path: string): { db: DatabaseSync; sql: SqlStorage; runTra
  */
 export function createNodeAgentExecutionStore(
 	path: string = ':memory:',
+	options: SqlitePersistenceOptions = {},
 ): AgentExecutionStore {
 	const { sql, runTransaction } = openDatabase(path);
 	ensureSqlAgentExecutionTables(sql);
-	return createSqlAgentExecutionStoreFromSql(sql, runTransaction);
+	return createSqlAgentExecutionStoreFromSql(sql, runTransaction, options);
 }
 
 /**
@@ -116,7 +128,7 @@ export function createNodeAgentExecutionStore(
  * export default sqlite('./data/flue.db');
  * ```
  */
-export function sqlite(path?: string): PersistenceAdapter {
+export function sqlite(path?: string, options: SqlitePersistenceOptions = {}): PersistenceAdapter {
 	if (path !== undefined && path !== ':memory:' && path.trim() === '') {
 		throw new Error('[flue] sqlite() requires a non-empty file path, or omit the argument for an in-memory database.');
 	}
@@ -134,7 +146,7 @@ export function sqlite(path?: string): PersistenceAdapter {
 		},
 		connect() {
 			const { sql, runTransaction } = ensureOpen();
-			return createSqlAgentExecutionStoreFromSql(sql, runTransaction);
+			return createSqlAgentExecutionStoreFromSql(sql, runTransaction, options);
 		},
 		connectRunStore() {
 			return new InMemoryRunStore();

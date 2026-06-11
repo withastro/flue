@@ -48,11 +48,28 @@ import type { SessionData, SessionEntry, SessionStore } from './types.ts';
 const SESSION_BLOB_CHUNK_SIZE = 512 * 1024;
 const SESSION_BLOB_REF_KEY = '__flueSessionBlobRef';
 const SESSION_BLOB_REF_TYPE = 'flue.sessionBlob.v1';
+const DEFAULT_EXTERNAL_BLOB_THRESHOLD = SESSION_BLOB_CHUNK_SIZE;
+
+export interface SessionAttachmentStore {
+	put(key: string, data: string): Promise<void>;
+	get(key: string): Promise<string>;
+	delete(key: string): Promise<void>;
+}
+
+export interface SqlSessionStoreOptions {
+	attachmentStore?: SessionAttachmentStore;
+	externalBlobThreshold?: number;
+}
 
 interface StoredSessionBlob {
 	entryId: string;
 	blobId: string;
 	data: string;
+}
+
+interface PreparedSessionBlob extends StoredSessionBlob {
+	storageKind: 'sql_chunk' | 'external';
+	objectKey?: string;
 }
 
 interface SerializedSessionEntry {
@@ -83,9 +100,10 @@ export function ensureSqlAgentExecutionTables(sql: SqlStorage): void {
 export function createSqlAgentExecutionStoreFromSql(
 	sql: SqlStorage,
 	runTransaction: <T>(closure: () => T) => T,
+	options: SqlSessionStoreOptions = {},
 ): AgentExecutionStore {
 	return {
-		sessions: new SqlSessionStore(sql, runTransaction),
+		sessions: new SqlSessionStore(sql, runTransaction, options),
 		submissions: new AgentSubmissionStoreImpl(sql, runTransaction),
 	};
 }
@@ -94,106 +112,176 @@ export class SqlSessionStore implements SessionStore {
 	constructor(
 		private sql: SqlStorage,
 		private transactionSync: <T>(closure: () => T) => T,
+		private options: SqlSessionStoreOptions = {},
 	) {}
 
 	async save(id: string, data: SessionData): Promise<void> {
-		const entries = data.entries.map((entry, position) => {
-			const serialized = serializeSessionEntry(entry);
-			return {
-				entry,
-				position,
-				data: serialized.entryJson,
-				blobs: serialized.blobs,
-			};
-		});
-		this.transactionSync(() => {
-			this.sql.exec(
-				`INSERT INTO flue_sessions (id, data) VALUES (?, ?)
-				 ON CONFLICT (id) DO UPDATE SET data = excluded.data`,
-				id,
-				JSON.stringify(sessionMetadata(data)),
-			);
-			this.sql.exec('DELETE FROM flue_session_blobs WHERE session_id = ?', id);
-			const existingRows = this.sql.exec(
-				'SELECT entry_id, position, data FROM flue_session_entries WHERE session_id = ?',
-				id,
-			).toArray();
-			const existing = new Map(existingRows.map((row) => [row.entry_id, row]));
-			const retained = new Set<string>();
-			for (const { entry, position, data: entryData, blobs } of entries) {
-				retained.add(entry.id);
-				const current = existing.get(entry.id);
-				if (current?.position !== position || current.data !== entryData) {
-					this.sql.exec(
-						`INSERT INTO flue_session_entries (session_id, entry_id, position, data)
-						 VALUES (?, ?, ?, ?)
-						 ON CONFLICT (session_id, entry_id) DO UPDATE SET
-						 position = excluded.position, data = excluded.data`,
+		const serializedEntries = data.entries.map((entry) => serializeSessionEntry(entry));
+		const entries = data.entries.map((entry, position) => ({
+			entry,
+			position,
+			data: serializedEntries[position]!.entryJson,
+		}));
+		const oldExternalKeys = this.selectExternalObjectKeys(id);
+		const preparedBlobs = await this.prepareSessionBlobs(id, serializedEntries);
+		const uploadedExternalKeys = preparedBlobs
+			.filter((blob) => blob.storageKind === 'external' && blob.objectKey)
+			.map((blob) => blob.objectKey!);
+		const currentExternalKeys = new Set(uploadedExternalKeys);
+		const staleExternalKeys = oldExternalKeys.filter((key) => !currentExternalKeys.has(key));
+		try {
+			this.transactionSync(() => {
+				this.sql.exec('DELETE FROM flue_session_blobs WHERE session_id = ?', id);
+				this.sql.exec(
+					`INSERT INTO flue_sessions (id, data) VALUES (?, ?)
+					 ON CONFLICT (id) DO UPDATE SET data = excluded.data`,
+					id,
+					JSON.stringify(sessionMetadata(data)),
+				);
+				const existingRows = this.sql
+					.exec(
+						'SELECT entry_id, position, data FROM flue_session_entries WHERE session_id = ?',
 						id,
-						entry.id,
-						position,
-						entryData,
-					);
+					)
+					.toArray();
+				const existing = new Map(existingRows.map((row) => [row.entry_id, row]));
+				const retained = new Set<string>();
+
+				for (const { entry, position, data: entryData } of entries) {
+					retained.add(entry.id);
+					const current = existing.get(entry.id);
+					if (current?.position !== position || current.data !== entryData) {
+						this.sql.exec(
+							`INSERT INTO flue_session_entries (session_id, entry_id, position, data)
+							 VALUES (?, ?, ?, ?)
+							 ON CONFLICT (session_id, entry_id) DO UPDATE SET
+							 position = excluded.position, data = excluded.data`,
+							id,
+							entry.id,
+							position,
+							entryData,
+						);
+					}
 				}
-				for (const blob of blobs) {
+				for (const row of existingRows) {
+					if (typeof row.entry_id === 'string' && !retained.has(row.entry_id)) {
+						this.sql.exec(
+							'DELETE FROM flue_session_entries WHERE session_id = ? AND entry_id = ?',
+							id,
+							row.entry_id,
+						);
+					}
+				}
+				for (const blob of preparedBlobs) {
 					this.insertSessionBlob(id, blob);
 				}
-			}
-			for (const row of existingRows) {
-				if (typeof row.entry_id === 'string' && !retained.has(row.entry_id)) {
-					this.sql.exec(
-						'DELETE FROM flue_session_entries WHERE session_id = ? AND entry_id = ?',
-						id,
-						row.entry_id,
-					);
-				}
-			}
-		});
+				this.enqueueExternalObjectDeletions(staleExternalKeys);
+			});
+		} catch (error) {
+			this.enqueueExternalObjectDeletionsBestEffort(uploadedExternalKeys);
+			await this.deleteExternalObjectsBestEffort(uploadedExternalKeys);
+			throw error;
+		}
+
+		await this.deleteExternalObjectsBestEffort(staleExternalKeys);
+		await this.drainExternalObjectDeletions();
 	}
 
 	async load(id: string): Promise<SessionData | null> {
-		return this.transactionSync(() => {
-			const rows = this.sql.exec('SELECT data FROM flue_sessions WHERE id = ?', id).toArray();
-			const row = rows[0];
-			if (!row) return null;
-			if (typeof row.data !== 'string') {
-				throw new Error('[flue] Persisted session row is malformed.');
-			}
-			const session = JSON.parse(row.data) as SessionData | SessionMetadata;
-			const entryRows = this.sql.exec(
+		const rows = this.sql.exec('SELECT data FROM flue_sessions WHERE id = ?', id).toArray();
+		const row = rows[0];
+		if (!row) return null;
+		if (typeof row.data !== 'string') {
+			throw new Error('[flue] Persisted session row is malformed.');
+		}
+		const session = JSON.parse(row.data) as SessionData | SessionMetadata;
+		const entryRows = this.sql
+			.exec(
 				'SELECT entry_id, data FROM flue_session_entries WHERE session_id = ? ORDER BY position ASC',
 				id,
-			).toArray();
-			if (entryRows.length === 0 && Array.isArray((session as SessionData).entries)) {
-				return session as SessionData;
-			}
-			const blobs = sessionBlobMap(
-				this.sql
-					.exec(
-						`SELECT entry_id, blob_id, segment_index, segment_count, data
-						 FROM flue_session_blobs
-						 WHERE session_id = ?
-						 ORDER BY entry_id ASC, blob_id ASC, segment_index ASC`,
-						id,
-					)
-					.toArray(),
-			);
-			return {
-				...session,
-				entries: entryRows.map((entryRow) => parseSessionEntryRow(entryRow, blobs)),
-			} as SessionData;
-		});
+			)
+			.toArray();
+		if (entryRows.length === 0 && Array.isArray((session as SessionData).entries)) {
+			return session as SessionData;
+		}
+
+		const blobs = await sessionBlobMap(
+			this.sql
+				.exec(
+					`SELECT entry_id, blob_id, storage_kind, object_key, segment_index, segment_count, data
+					 FROM flue_session_blobs
+					 WHERE session_id = ?
+					 ORDER BY entry_id ASC, blob_id ASC, segment_index ASC`,
+					id,
+				)
+				.toArray(),
+			this.options.attachmentStore,
+		);
+		return {
+			...session,
+			entries: entryRows.map((entryRow) => parseSessionEntryRow(entryRow, blobs)),
+		} as SessionData;
 	}
 
 	async delete(id: string): Promise<void> {
+		const externalKeys = this.selectExternalObjectKeys(id);
 		this.transactionSync(() => {
+			this.enqueueExternalObjectDeletions(externalKeys);
 			this.sql.exec('DELETE FROM flue_session_blobs WHERE session_id = ?', id);
 			this.sql.exec('DELETE FROM flue_session_entries WHERE session_id = ?', id);
 			this.sql.exec('DELETE FROM flue_sessions WHERE id = ?', id);
 		});
+		await this.deleteExternalObjectsBestEffort(externalKeys);
+		await this.drainExternalObjectDeletions();
 	}
 
-	private insertSessionBlob(sessionId: string, blob: StoredSessionBlob): void {
+	private async prepareSessionBlobs(
+		sessionId: string,
+		entries: SerializedSessionEntry[],
+	): Promise<PreparedSessionBlob[]> {
+		const prepared: PreparedSessionBlob[] = [];
+		try {
+			for (const entry of entries) {
+				for (const blob of entry.blobs) {
+					if (!this.shouldStoreExternally(blob)) {
+						prepared.push({ ...blob, storageKind: 'sql_chunk' });
+						continue;
+					}
+					const objectKey = createSessionAttachmentObjectKey(sessionId, blob.entryId, blob.blobId);
+					await this.options.attachmentStore!.put(objectKey, blob.data);
+					prepared.push({ ...blob, storageKind: 'external', objectKey });
+				}
+			}
+		} catch (error) {
+			await this.deleteExternalObjectsBestEffort(
+				prepared
+					.filter((blob) => blob.storageKind === 'external' && blob.objectKey)
+					.map((blob) => blob.objectKey!),
+			);
+			throw error;
+		}
+		return prepared;
+	}
+
+	private shouldStoreExternally(blob: StoredSessionBlob): boolean {
+		const threshold = this.options.externalBlobThreshold ?? DEFAULT_EXTERNAL_BLOB_THRESHOLD;
+		return Boolean(this.options.attachmentStore && blob.data.length >= threshold);
+	}
+
+	private insertSessionBlob(sessionId: string, blob: PreparedSessionBlob): void {
+		if (blob.storageKind === 'external') {
+			this.sql.exec(
+				`INSERT INTO flue_session_blobs
+				 (session_id, entry_id, blob_id, storage_kind, object_key, segment_index, segment_count, data)
+				 VALUES (?, ?, ?, 'external', ?, 0, 1, NULL)`,
+				sessionId,
+				blob.entryId,
+				blob.blobId,
+				blob.objectKey,
+			);
+			return;
+		}
+
 		const segmentCount = Math.ceil(blob.data.length / SESSION_BLOB_CHUNK_SIZE);
 		for (
 			let offset = 0, segmentIndex = 0;
@@ -202,8 +290,8 @@ export class SqlSessionStore implements SessionStore {
 		) {
 			this.sql.exec(
 				`INSERT INTO flue_session_blobs
-				 (session_id, entry_id, blob_id, segment_index, segment_count, data)
-				 VALUES (?, ?, ?, ?, ?, ?)`,
+				 (session_id, entry_id, blob_id, storage_kind, object_key, segment_index, segment_count, data)
+				 VALUES (?, ?, ?, 'sql_chunk', NULL, ?, ?, ?)`,
 				sessionId,
 				blob.entryId,
 				blob.blobId,
@@ -212,6 +300,75 @@ export class SqlSessionStore implements SessionStore {
 				blob.data.slice(offset, offset + SESSION_BLOB_CHUNK_SIZE),
 			);
 		}
+	}
+
+	private selectExternalObjectKeys(sessionId: string): string[] {
+		return this.sql
+			.exec(
+				`SELECT object_key
+				 FROM flue_session_blobs
+				 WHERE session_id = ? AND storage_kind = 'external' AND object_key IS NOT NULL`,
+				sessionId,
+			)
+			.toArray()
+			.map((row) => {
+				if (typeof row.object_key !== 'string') {
+					throw new Error('[flue] Persisted session blob row is malformed.');
+				}
+				return row.object_key;
+			});
+	}
+
+	private async deleteExternalObjectsBestEffort(keys: string[]): Promise<void> {
+		if (!this.options.attachmentStore || keys.length === 0) return;
+		const failures: Array<{ key: string; error: unknown }> = [];
+		for (const key of new Set(keys)) {
+			try {
+				await this.options.attachmentStore.delete(key);
+				this.sql.exec('DELETE FROM flue_session_attachment_deletions WHERE object_key = ?', key);
+			} catch (error) {
+				failures.push({ key, error });
+			}
+		}
+		if (failures.length > 0) {
+			console.warn(
+				`[flue] Failed to delete ${failures.length} external session attachment object(s); cleanup will be retried by a later session storage operation.`,
+				failures.map(({ key }) => key),
+			);
+		}
+	}
+
+	private enqueueExternalObjectDeletions(keys: string[]): void {
+		for (const key of new Set(keys)) {
+			this.sql.exec(
+				`INSERT OR IGNORE INTO flue_session_attachment_deletions (object_key, created_at)
+				 VALUES (?, ?)`,
+				key,
+				Date.now(),
+			);
+		}
+	}
+
+	private enqueueExternalObjectDeletionsBestEffort(keys: string[]): void {
+		try {
+			this.enqueueExternalObjectDeletions(keys);
+		} catch (error) {
+			console.warn('[flue] Failed to queue external session attachment cleanup.', error);
+		}
+	}
+
+	private async drainExternalObjectDeletions(): Promise<void> {
+		if (!this.options.attachmentStore) return;
+		const keys = this.sql
+			.exec('SELECT object_key FROM flue_session_attachment_deletions ORDER BY created_at ASC')
+			.toArray()
+			.map((row) => {
+				if (typeof row.object_key !== 'string') {
+					throw new Error('[flue] Persisted session attachment deletion row is malformed.');
+				}
+				return row.object_key;
+			});
+		await this.deleteExternalObjectsBestEffort(keys);
 	}
 }
 
@@ -270,19 +427,41 @@ function isExternalizableSessionBlob(
 	);
 }
 
-function sessionBlobMap(rows: SqlRow[]): Map<string, string> {
+async function sessionBlobMap(
+	rows: SqlRow[],
+	attachmentStore: SessionAttachmentStore | undefined,
+): Promise<Map<string, string>> {
 	const chunks = new Map<string, { segmentCount: number; segments: string[] }>();
+	const externalObjects = new Map<string, string>();
 	for (const row of rows) {
 		if (
 			typeof row.entry_id !== 'string' ||
 			typeof row.blob_id !== 'string' ||
+			(row.storage_kind !== 'sql_chunk' && row.storage_kind !== 'external') ||
 			!isNonNegativeInteger(row.segment_index) ||
 			!isPositiveInteger(row.segment_count) ||
-			typeof row.data !== 'string'
+			(row.object_key !== null &&
+				row.object_key !== undefined &&
+				typeof row.object_key !== 'string')
 		) {
 			throw new Error('[flue] Persisted session blob row is malformed.');
 		}
 		const key = sessionBlobKey(row.entry_id, row.blob_id);
+		if (row.storage_kind === 'external') {
+			if (
+				typeof row.object_key !== 'string' ||
+				row.segment_index !== 0 ||
+				row.segment_count !== 1
+			) {
+				throw new Error('[flue] Persisted session blob row is malformed.');
+			}
+			externalObjects.set(key, row.object_key);
+			continue;
+		}
+
+		if (typeof row.data !== 'string') {
+			throw new Error('[flue] Persisted session blob row is malformed.');
+		}
 		const chunk = chunks.get(key) ?? { segmentCount: row.segment_count, segments: [] };
 		if (chunk.segmentCount !== row.segment_count || row.segment_index >= chunk.segmentCount) {
 			throw new Error('[flue] Persisted session blob row is malformed.');
@@ -302,6 +481,14 @@ function sessionBlobMap(rows: SqlRow[]): Map<string, string> {
 			}
 		}
 		blobs.set(key, chunk.segments.join(''));
+	}
+	for (const [key, objectKey] of externalObjects) {
+		if (!attachmentStore) {
+			throw new Error(
+				'[flue] Session attachment storage is not configured for persisted external blobs.',
+			);
+		}
+		blobs.set(key, await attachmentStore.get(objectKey));
 	}
 	return blobs;
 }
@@ -335,6 +522,20 @@ function hydrateSessionValue(value: unknown, entryId: string, blobs: Map<string,
 
 function sessionBlobKey(entryId: string, blobId: string): string {
 	return `${entryId}\0${blobId}`;
+}
+
+function createSessionAttachmentObjectKey(
+	sessionId: string,
+	entryId: string,
+	blobId: string,
+): string {
+	return [
+		'flue-sessions',
+		encodeURIComponent(sessionId),
+		'entries',
+		encodeURIComponent(entryId),
+		`${encodeURIComponent(blobId)}-${crypto.randomUUID()}`,
+	].join('/');
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1073,14 +1274,62 @@ export function ensureSessionTable(sql: SqlStorage): void {
 		`CREATE INDEX IF NOT EXISTS flue_session_entries_session_position_idx
 		 ON flue_session_entries (session_id, position ASC)`,
 	);
+	ensureSessionBlobTable(sql);
+	sql.exec(
+		`CREATE TABLE IF NOT EXISTS flue_session_attachment_deletions (
+		 object_key TEXT PRIMARY KEY,
+		 created_at INTEGER NOT NULL
+		)`,
+	);
+}
+
+function ensureSessionBlobTable(sql: SqlStorage): void {
+	const columns = sql
+		.exec('SELECT name, "notnull" FROM pragma_table_info(\'flue_session_blobs\')')
+		.toArray();
+	if (columns.length === 0) {
+		createSessionBlobTable(sql);
+		return;
+	}
+
+	const byName = new Map(
+		columns.map((row) => {
+			if (typeof row.name !== 'string' || typeof row.notnull !== 'number') {
+				throw new Error('[flue] Persisted session blob schema is malformed.');
+			}
+			return [row.name, row];
+		}),
+	);
+	const dataColumn = byName.get('data');
+	const current =
+		byName.has('storage_kind') && byName.has('object_key') && dataColumn?.notnull === 0;
+	if (current) return;
+
+	const storageKindExpr = byName.has('storage_kind') ? 'storage_kind' : "'sql_chunk'";
+	const objectKeyExpr = byName.has('object_key') ? 'object_key' : 'NULL';
+	sql.exec('DROP TABLE IF EXISTS flue_session_blobs_migration_old');
+	sql.exec('ALTER TABLE flue_session_blobs RENAME TO flue_session_blobs_migration_old');
+	createSessionBlobTable(sql);
+	sql.exec(
+		`INSERT INTO flue_session_blobs
+		 (session_id, entry_id, blob_id, storage_kind, object_key, segment_index, segment_count, data)
+		 SELECT session_id, entry_id, blob_id, ${storageKindExpr}, ${objectKeyExpr}, segment_index, segment_count, data
+		 FROM flue_session_blobs_migration_old`,
+	);
+	sql.exec('DROP TABLE flue_session_blobs_migration_old');
+}
+
+function createSessionBlobTable(sql: SqlStorage): void {
 	sql.exec(
 		`CREATE TABLE IF NOT EXISTS flue_session_blobs (
 		 session_id TEXT NOT NULL,
 		 entry_id TEXT NOT NULL,
 		 blob_id TEXT NOT NULL,
+		 storage_kind TEXT NOT NULL DEFAULT 'sql_chunk',
+		 object_key TEXT,
 		 segment_index INTEGER NOT NULL,
 		 segment_count INTEGER NOT NULL,
-		 data TEXT NOT NULL,
+		 data TEXT,
 		 PRIMARY KEY (session_id, entry_id, blob_id, segment_index)
 		)`,
 	);

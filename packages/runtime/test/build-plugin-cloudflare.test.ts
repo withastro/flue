@@ -26,6 +26,7 @@ describe('CloudflarePlugin', () => {
 		);
 
 		expect(entry).toContain('createCloudflareAgentRuntime');
+		expect(entry).toContain('createR2SessionAttachmentStore');
 		expect(entry).toContain('createSqlSessionStore');
 		expect(entry).toContain(
 			`constructor(ctx, env) {
@@ -41,7 +42,11 @@ describe('CloudflarePlugin', () => {
 		expect(entry).not.toContain('finishSessionDeletion');
 		expect(entry).toContain('const memoryWorkflowSessionStore = new InMemorySessionStore();');
 		expect(entry).toContain(
-			'const defaultStore = storage?.sql ? createSqlSessionStore(storage) : memoryWorkflowSessionStore;',
+			'const sessionAttachmentStore = createR2SessionAttachmentStore(env.FLUE_SESSION_ATTACHMENTS);',
+		);
+		expect(entry).toContain('sessionStoreOptions: { attachmentStore: sessionAttachmentStore },');
+		expect(entry).toContain(
+			'const defaultStore = storage?.sql ? createSqlSessionStore(storage, { attachmentStore: sessionAttachmentStore }) : memoryWorkflowSessionStore;',
 		);
 		expect(entry).toContain('createDurableRunStore(doInstance.ctx.storage.sql)');
 		expect(entry).toContain(': memoryRunStore;');
