@@ -1,7 +1,8 @@
-packages: [ packages/*, examples/*, apps/* ]
+packages: [packages/*, examples/*, apps/*]
 allowBuilds:
-  '@google/genai': false
-  '@mongodb-js/zstd': false
+  "@google/genai": false
+  "@mongodb-js/zstd": false
+  braintrust: false
   core-js-pure: false
   esbuild: false
   msgpackr-extract: true
@@ -13,6 +14,6 @@ allowBuilds:
 minimumReleaseAge: 1440
 resolutionMode: highest
 minimumReleaseAgeExclude:
-  - '@aws-sdk/*'
-  - '@smithy/*'
+  - "@aws-sdk/*"
+  - "@smithy/*"
   - protobufjs

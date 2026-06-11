@@ -34,8 +34,6 @@ import {
 	isSubmissionPayload,
 	parseAcceptedAt,
 } from './adapter-helpers.ts';
-
-type SqlRow = Record<string, unknown>;
 import {
 	type AgentSubmissionInput,
 	createDispatchAgentSubmissionInput,
@@ -43,7 +41,25 @@ import {
 } from './runtime/agent-submissions.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import { createSessionStorageKey } from './session-identity.ts';
-import type { SessionData, SessionStore } from './types.ts';
+import type { SessionData, SessionEntry, SessionStore } from './types.ts';
+
+type SqlRow = Record<string, unknown>;
+const SESSION_BLOB_CHUNK_SIZE = 512 * 1024;
+const SESSION_BLOB_REF_KEY = '__flueSessionBlobRef';
+const SESSION_BLOB_REF_TYPE = 'flue.sessionBlob.v1';
+
+interface StoredSessionBlob {
+	entryId: string;
+	blobId: string;
+	data: string;
+}
+
+interface SerializedSessionEntry {
+	entryJson: string;
+	blobs: StoredSessionBlob[];
+}
+
+type SessionMetadata = Omit<SessionData, 'entries'>;
 
 /**
  * Run idempotent DDL for all agent execution store tables.
@@ -68,21 +84,63 @@ export function createSqlAgentExecutionStoreFromSql(
 	runTransaction: <T>(closure: () => T) => T,
 ): AgentExecutionStore {
 	return {
-		sessions: new SqlSessionStore(sql),
+		sessions: new SqlSessionStore(sql, runTransaction),
 		submissions: new AgentSubmissionStoreImpl(sql, runTransaction),
 	};
 }
 
 export class SqlSessionStore implements SessionStore {
-	constructor(private sql: SqlStorage) {}
+	constructor(
+		private sql: SqlStorage,
+		private transactionSync?: <T>(closure: () => T) => T,
+	) {}
 
 	async save(id: string, data: SessionData): Promise<void> {
-		this.sql.exec(
-			'INSERT OR REPLACE INTO flue_sessions (id, data, updated_at) VALUES (?, ?, ?)',
-			id,
-			JSON.stringify(data),
-			Date.now(),
-		);
+		const serializedEntries = data.entries.map((entry) => serializeSessionEntry(entry));
+		this.runTransaction(() => {
+			this.sql.exec('DELETE FROM flue_session_blobs WHERE session_id = ?', id);
+			this.sql.exec('DELETE FROM flue_session_entries WHERE session_id = ?', id);
+			this.sql.exec(
+				'INSERT OR REPLACE INTO flue_sessions (id, data, updated_at) VALUES (?, ?, ?)',
+				id,
+				JSON.stringify(sessionMetadata(data)),
+				Date.now(),
+			);
+
+			for (const [sequence, entry] of data.entries.entries()) {
+				const serialized = serializedEntries[sequence]!;
+				this.sql.exec(
+					`INSERT INTO flue_session_entries
+					 (session_id, entry_id, parent_id, sequence, entry_json)
+					 VALUES (?, ?, ?, ?, ?)`,
+					id,
+					entry.id,
+					entry.parentId,
+					sequence,
+					serialized.entryJson,
+				);
+				for (const blob of serialized.blobs) {
+					const segmentCount = Math.ceil(blob.data.length / SESSION_BLOB_CHUNK_SIZE);
+					for (
+						let offset = 0, segmentIndex = 0;
+						offset < blob.data.length;
+						offset += SESSION_BLOB_CHUNK_SIZE, segmentIndex++
+					) {
+						this.sql.exec(
+							`INSERT INTO flue_session_blobs
+							 (session_id, entry_id, blob_id, segment_index, segment_count, data)
+							 VALUES (?, ?, ?, ?, ?, ?)`,
+							id,
+							blob.entryId,
+							blob.blobId,
+							segmentIndex,
+							segmentCount,
+							blob.data.slice(offset, offset + SESSION_BLOB_CHUNK_SIZE),
+						);
+					}
+				}
+			}
+		});
 	}
 
 	async load(id: string): Promise<SessionData | null> {
@@ -90,12 +148,182 @@ export class SqlSessionStore implements SessionStore {
 		const row = rows[0];
 		if (!row) return null;
 		if (typeof row.data !== 'string') throw new Error('[flue] Persisted session row is malformed.');
-		return JSON.parse(row.data) as SessionData;
+		const metadata = JSON.parse(row.data) as SessionData | SessionMetadata;
+		const entryRows = this.sql
+			.exec(
+				`SELECT entry_id, entry_json
+				 FROM flue_session_entries
+				 WHERE session_id = ?
+				 ORDER BY sequence ASC`,
+				id,
+			)
+			.toArray();
+		if (entryRows.length === 0 && Array.isArray((metadata as SessionData).entries)) {
+			return metadata as SessionData;
+		}
+
+		const blobs = sessionBlobMap(
+			this.sql
+				.exec(
+					`SELECT entry_id, blob_id, segment_index, segment_count, data
+					 FROM flue_session_blobs
+					 WHERE session_id = ?
+					 ORDER BY entry_id ASC, blob_id ASC, segment_index ASC`,
+					id,
+				)
+				.toArray(),
+		);
+		return {
+			...metadata,
+			entries: entryRows.map((entryRow) => parseSessionEntryRow(entryRow, blobs)),
+		} as SessionData;
 	}
 
 	async delete(id: string): Promise<void> {
-		this.sql.exec('DELETE FROM flue_sessions WHERE id = ?', id);
+		this.runTransaction(() => {
+			this.sql.exec('DELETE FROM flue_session_blobs WHERE session_id = ?', id);
+			this.sql.exec('DELETE FROM flue_session_entries WHERE session_id = ?', id);
+			this.sql.exec('DELETE FROM flue_sessions WHERE id = ?', id);
+		});
 	}
+
+	private runTransaction<T>(closure: () => T): T {
+		return this.transactionSync ? this.transactionSync(closure) : closure();
+	}
+}
+
+function sessionMetadata(data: SessionData): SessionMetadata {
+	const { entries: _entries, ...metadata } = data;
+	return metadata;
+}
+
+function serializeSessionEntry(entry: SessionEntry): SerializedSessionEntry {
+	const blobs: StoredSessionBlob[] = [];
+	let nextBlobIndex = 0;
+	return {
+		entryJson: JSON.stringify(
+			externalizeSessionValue(entry, entry.id, blobs, () => `blob_${nextBlobIndex++}`),
+		),
+		blobs,
+	};
+}
+
+function externalizeSessionValue(
+	value: unknown,
+	entryId: string,
+	blobs: StoredSessionBlob[],
+	nextBlobId: () => string,
+): unknown {
+	if (Array.isArray(value)) {
+		return value.map((item) => externalizeSessionValue(item, entryId, blobs, nextBlobId));
+	}
+	if (!isRecord(value)) return value;
+
+	const output: Record<string, unknown> = {};
+	for (const [key, child] of Object.entries(value)) {
+		if (isExternalizableSessionBlob(value, key, child)) {
+			const blobId = nextBlobId();
+			blobs.push({ entryId, blobId, data: child });
+			output[key] = { [SESSION_BLOB_REF_KEY]: { type: SESSION_BLOB_REF_TYPE, id: blobId } };
+			continue;
+		}
+		output[key] = externalizeSessionValue(child, entryId, blobs, nextBlobId);
+	}
+	return output;
+}
+
+function isExternalizableSessionBlob(
+	parent: Record<string, unknown>,
+	key: string,
+	value: unknown,
+): value is string {
+	if (value === '' || typeof value !== 'string') return false;
+	if (key !== 'data' && key !== 'blob') return false;
+	return (
+		parent.type === 'image' ||
+		parent.type === 'blob' ||
+		parent.type === 'document' ||
+		parent.type === 'file'
+	);
+}
+
+function sessionBlobMap(rows: SqlRow[]): Map<string, string> {
+	const chunks = new Map<string, { segmentCount: number; segments: string[] }>();
+	for (const row of rows) {
+		if (
+			typeof row.entry_id !== 'string' ||
+			typeof row.blob_id !== 'string' ||
+			!isNonNegativeInteger(row.segment_index) ||
+			!isPositiveInteger(row.segment_count) ||
+			typeof row.data !== 'string'
+		) {
+			throw new Error('[flue] Persisted session blob row is malformed.');
+		}
+		const key = sessionBlobKey(row.entry_id, row.blob_id);
+		const chunk = chunks.get(key) ?? { segmentCount: row.segment_count, segments: [] };
+		if (chunk.segmentCount !== row.segment_count || row.segment_index >= chunk.segmentCount) {
+			throw new Error('[flue] Persisted session blob row is malformed.');
+		}
+		chunk.segments[row.segment_index] = row.data;
+		chunks.set(key, chunk);
+	}
+
+	const blobs = new Map<string, string>();
+	for (const [key, chunk] of chunks) {
+		if (chunk.segments.length !== chunk.segmentCount) {
+			throw new Error('[flue] Persisted session blob row is malformed.');
+		}
+		for (const segment of chunk.segments) {
+			if (typeof segment !== 'string') {
+				throw new Error('[flue] Persisted session blob row is malformed.');
+			}
+		}
+		blobs.set(key, chunk.segments.join(''));
+	}
+	return blobs;
+}
+
+function parseSessionEntryRow(row: SqlRow, blobs: Map<string, string>): SessionEntry {
+	if (typeof row.entry_id !== 'string' || typeof row.entry_json !== 'string') {
+		throw new Error('[flue] Persisted session entry row is malformed.');
+	}
+	return hydrateSessionValue(JSON.parse(row.entry_json), row.entry_id, blobs) as SessionEntry;
+}
+
+function hydrateSessionValue(value: unknown, entryId: string, blobs: Map<string, string>): unknown {
+	if (Array.isArray(value)) {
+		return value.map((item) => hydrateSessionValue(item, entryId, blobs));
+	}
+	if (!isRecord(value)) return value;
+
+	const ref = value[SESSION_BLOB_REF_KEY];
+	if (isRecord(ref) && ref.type === SESSION_BLOB_REF_TYPE && typeof ref.id === 'string') {
+		const blob = blobs.get(sessionBlobKey(entryId, ref.id));
+		if (blob === undefined) throw new Error('[flue] Persisted session blob reference is missing.');
+		return blob;
+	}
+
+	const output: Record<string, unknown> = {};
+	for (const [key, child] of Object.entries(value)) {
+		output[key] = hydrateSessionValue(child, entryId, blobs);
+	}
+	return output;
+}
+
+function sessionBlobKey(entryId: string, blobId: string): string {
+	return `${entryId}\0${blobId}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+	return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+	return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
 class AgentSubmissionStoreImpl implements AgentSubmissionStore {
@@ -194,7 +422,10 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		);
 	}
 
-	async commitTurnJournal(attempt: SubmissionAttemptRef, committedLeafId: string): Promise<boolean> {
+	async commitTurnJournal(
+		attempt: SubmissionAttemptRef,
+		committedLeafId: string,
+	): Promise<boolean> {
 		const now = Date.now();
 		return (
 			this.sql
@@ -233,7 +464,11 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		);
 	}
 
-	async appendStreamChunkSegment(streamKey: string, segmentIndex: number, body: string): Promise<boolean> {
+	async appendStreamChunkSegment(
+		streamKey: string,
+		segmentIndex: number,
+		body: string,
+	): Promise<boolean> {
 		return (
 			this.sql
 				.exec(
@@ -250,7 +485,9 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		);
 	}
 
-	async getStreamChunkSegments(streamKey: string): Promise<Array<{ segmentIndex: number; body: string }>> {
+	async getStreamChunkSegments(
+		streamKey: string,
+	): Promise<Array<{ segmentIndex: number; body: string }>> {
 		const rows = this.sql
 			.exec(
 				`SELECT segment_index, body
@@ -283,12 +520,19 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				.exec(
 					`UPDATE flue_agent_submissions
 					 SET attempt_id = ?, recovery_requested_at = NULL, started_at = ?, attempt_count = attempt_count + 1${
-						lease ? ', owner_id = ?, lease_expires_at = ?' : ''
-					 }
+							lease ? ', owner_id = ?, lease_expires_at = ?' : ''
+						}
 					 WHERE submission_id = ? AND status = 'running' AND attempt_id = ?
 					 RETURNING ${submissionColumns}`,
 					...(lease
-						? [nextAttemptId, now, lease.ownerId, lease.leaseExpiresAt, attempt.submissionId, attempt.attemptId]
+						? [
+								nextAttemptId,
+								now,
+								lease.ownerId,
+								lease.leaseExpiresAt,
+								attempt.submissionId,
+								attempt.attemptId,
+							]
 						: [nextAttemptId, now, attempt.submissionId, attempt.attemptId]),
 				)
 				.toArray()[0];
@@ -418,7 +662,10 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		);
 	}
 
-	private async runSessionDeletion(sessionKey: string, deleteSessionTree: () => Promise<void>): Promise<void> {
+	private async runSessionDeletion(
+		sessionKey: string,
+		deleteSessionTree: () => Promise<void>,
+	): Promise<void> {
 		this.transactionSync(() => {
 			const active = this.sql
 				.exec(
@@ -613,10 +860,15 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				if (receipt) return { kind: 'retained_receipt', receipt };
 			}
 			const deleting = this.sql
-				.exec('SELECT 1 FROM flue_agent_session_deletions WHERE session_key = ? LIMIT 1', sessionKey)
+				.exec(
+					'SELECT 1 FROM flue_agent_session_deletions WHERE session_key = ? LIMIT 1',
+					sessionKey,
+				)
 				.toArray();
 			if (deleting.length > 0) {
-				throw new Error('[flue] Durable agent submission admission is unavailable while this session is being deleted. Retry after deletion completes.');
+				throw new Error(
+					'[flue] Durable agent submission admission is unavailable while this session is being deleted. Retry after deletion completes.',
+				);
 			}
 			this.sql.exec(
 				`INSERT OR IGNORE INTO flue_agent_submissions
@@ -629,7 +881,8 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				acceptedAt,
 			);
 			const row = this.readSubmissionRow(submissionId);
-			if (!row) throw new Error(`[flue] Durable ${kind} admission did not create a submission row.`);
+			if (!row)
+				throw new Error(`[flue] Durable ${kind} admission did not create a submission row.`);
 			if (row.kind !== kind || row.payload !== payload) return { kind: 'conflict' };
 			return { kind: 'submission', submission: parseSubmission(row) };
 		});
@@ -639,24 +892,29 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		return this.sql.exec(query, ...bindings).toArray().length > 0;
 	}
 
-	private parseOperationalRows(
-		rows: SqlRow[],
-		status: 'queued' | 'active',
-	): AgentSubmission[] {
+	private parseOperationalRows(rows: SqlRow[], status: 'queued' | 'active'): AgentSubmission[] {
 		const submissions: AgentSubmission[] = [];
 		for (const row of rows) {
 			try {
 				submissions.push(parseSubmission(row));
 			} catch (error) {
 				if (typeof row.sequence !== 'number') throw error;
-				console.error('[flue] Terminating malformed submission (sequence %d):', row.sequence, error);
+				console.error(
+					'[flue] Terminating malformed submission (sequence %d):',
+					row.sequence,
+					error,
+				);
 				this.failSubmissionSequence(row.sequence, status, error);
 			}
 		}
 		return submissions;
 	}
 
-	private failSubmissionSequence(sequence: number, status: 'queued' | 'active', error: unknown): void {
+	private failSubmissionSequence(
+		sequence: number,
+		status: 'queued' | 'active',
+		error: unknown,
+	): void {
 		this.sql.exec(
 			`UPDATE flue_agent_submissions
 			 SET status = 'settled', settled_at = ?, error = ?
@@ -710,11 +968,19 @@ function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 		typeof row.revision !== 'number' ||
 		typeof row.created_at !== 'number' ||
 		typeof row.updated_at !== 'number' ||
-		(row.checkpoint_leaf_id !== null && row.checkpoint_leaf_id !== undefined && typeof row.checkpoint_leaf_id !== 'string') ||
-		(row.stream_key !== null && row.stream_key !== undefined && typeof row.stream_key !== 'string') ||
-		(row.stream_consumed_at !== null && row.stream_consumed_at !== undefined && typeof row.stream_consumed_at !== 'number') ||
+		(row.checkpoint_leaf_id !== null &&
+			row.checkpoint_leaf_id !== undefined &&
+			typeof row.checkpoint_leaf_id !== 'string') ||
+		(row.stream_key !== null &&
+			row.stream_key !== undefined &&
+			typeof row.stream_key !== 'string') ||
+		(row.stream_consumed_at !== null &&
+			row.stream_consumed_at !== undefined &&
+			typeof row.stream_consumed_at !== 'number') ||
 		(row.committed !== 0 && row.committed !== 1) ||
-		(row.committed_leaf_id !== null && row.committed_leaf_id !== undefined && typeof row.committed_leaf_id !== 'string')
+		(row.committed_leaf_id !== null &&
+			row.committed_leaf_id !== undefined &&
+			typeof row.committed_leaf_id !== 'string')
 	) {
 		throw new Error('[flue] Persisted turn journal row is malformed.');
 	}
@@ -729,12 +995,20 @@ function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 		revision: row.revision,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
-		...(typeof row.checkpoint_leaf_id === 'string' ? { checkpointLeafId: row.checkpoint_leaf_id } : {}),
-		...(typeof row.tool_request_json === 'string' ? { toolRequest: JSON.parse(row.tool_request_json) as unknown } : {}),
+		...(typeof row.checkpoint_leaf_id === 'string'
+			? { checkpointLeafId: row.checkpoint_leaf_id }
+			: {}),
+		...(typeof row.tool_request_json === 'string'
+			? { toolRequest: JSON.parse(row.tool_request_json) as unknown }
+			: {}),
 		...(typeof row.stream_key === 'string' ? { streamKey: row.stream_key } : {}),
-		...(typeof row.stream_consumed_at === 'number' ? { streamConsumedAt: row.stream_consumed_at } : {}),
+		...(typeof row.stream_consumed_at === 'number'
+			? { streamConsumedAt: row.stream_consumed_at }
+			: {}),
 		committed: row.committed === 1,
-		...(typeof row.committed_leaf_id === 'string' ? { committedLeafId: row.committed_leaf_id } : {}),
+		...(typeof row.committed_leaf_id === 'string'
+			? { committedLeafId: row.committed_leaf_id }
+			: {}),
 	};
 }
 
@@ -745,18 +1019,20 @@ function parseSubmission(row: SqlRow): AgentSubmission {
 		typeof row.session_key !== 'string' ||
 		(row.kind !== 'dispatch' && row.kind !== 'direct') ||
 		typeof row.payload !== 'string' ||
-		(row.status !== 'queued' &&
-			row.status !== 'running' &&
-			row.status !== 'settled') ||
+		(row.status !== 'queued' && row.status !== 'running' && row.status !== 'settled') ||
 		typeof row.accepted_at !== 'number' ||
-		(row.attempt_id !== null && row.attempt_id !== undefined && typeof row.attempt_id !== 'string') ||
+		(row.attempt_id !== null &&
+			row.attempt_id !== undefined &&
+			typeof row.attempt_id !== 'string') ||
 		(row.input_applied_at !== null &&
 			row.input_applied_at !== undefined &&
 			typeof row.input_applied_at !== 'number') ||
 		(row.recovery_requested_at !== null &&
 			row.recovery_requested_at !== undefined &&
 			typeof row.recovery_requested_at !== 'number') ||
-		(row.started_at !== null && row.started_at !== undefined && typeof row.started_at !== 'number') ||
+		(row.started_at !== null &&
+			row.started_at !== undefined &&
+			typeof row.started_at !== 'number') ||
 		(row.status === 'queued' &&
 			(row.attempt_id !== null ||
 				row.input_applied_at !== null ||
@@ -771,12 +1047,14 @@ function parseSubmission(row: SqlRow): AgentSubmission {
 		throw new Error('[flue] Persisted agent submission row is malformed.');
 	}
 	const input = JSON.parse(row.payload) as unknown;
-	if (!isSubmissionPayload(input, {
-		kind: row.kind as string,
-		submissionId: row.submission_id as string,
-		sessionKey: row.session_key as string,
-		acceptedAt: row.accepted_at as number,
-	})) {
+	if (
+		!isSubmissionPayload(input, {
+			kind: row.kind as string,
+			submissionId: row.submission_id as string,
+			sessionKey: row.session_key as string,
+			acceptedAt: row.accepted_at as number,
+		})
+	) {
 		throw new Error('[flue] Persisted agent submission payload is malformed.');
 	}
 	return {
@@ -808,6 +1086,31 @@ export function ensureSessionTable(sql: SqlStorage): void {
 		 id TEXT PRIMARY KEY,
 		 data TEXT NOT NULL,
 		 updated_at INTEGER NOT NULL
+		)`,
+	);
+	sql.exec(
+		`CREATE TABLE IF NOT EXISTS flue_session_entries (
+		 session_id TEXT NOT NULL,
+		 entry_id TEXT NOT NULL,
+		 parent_id TEXT,
+		 sequence INTEGER NOT NULL,
+		 entry_json TEXT NOT NULL,
+		 PRIMARY KEY (session_id, entry_id)
+		)`,
+	);
+	sql.exec(
+		`CREATE INDEX IF NOT EXISTS flue_session_entries_session_sequence_idx
+		 ON flue_session_entries (session_id, sequence ASC)`,
+	);
+	sql.exec(
+		`CREATE TABLE IF NOT EXISTS flue_session_blobs (
+		 session_id TEXT NOT NULL,
+		 entry_id TEXT NOT NULL,
+		 blob_id TEXT NOT NULL,
+		 segment_index INTEGER NOT NULL,
+		 segment_count INTEGER NOT NULL,
+		 data TEXT NOT NULL,
+		 PRIMARY KEY (session_id, entry_id, blob_id, segment_index)
 		)`,
 	);
 }

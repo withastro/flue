@@ -13,9 +13,12 @@ interface DurableObjectStorage {
 	transactionSync?<T>(closure: () => T): T;
 }
 
-export function createSqlSessionStore(sql: SqlStorage): SessionStore {
+export function createSqlSessionStore(
+	sql: SqlStorage,
+	transactionSync?: <T>(closure: () => T) => T,
+): SessionStore {
 	ensureSessionTable(sql);
-	return new SqlSessionStore(sql);
+	return new SqlSessionStore(sql, transactionSync);
 }
 
 export function createSqlAgentExecutionStore(

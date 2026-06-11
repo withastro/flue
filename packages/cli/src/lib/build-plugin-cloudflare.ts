@@ -121,7 +121,9 @@ export { Wrapped${workflowClassName(workflow.name)} as ${workflowClassName(workf
 			)
 			.join('\n');
 
-		const userAppImport = appEntry ? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};` : '';
+		const userAppImport = appEntry
+			? `import userApp from ${JSON.stringify(appEntry.replace(/\\/g, '/'))};`
+			: '';
 		const userCloudflareImport = cloudflareEntry
 			? `import * as userCloudflareModule from ${JSON.stringify(cloudflareEntry.replace(/\\/g, '/'))};`
 			: '';
@@ -345,8 +347,8 @@ function createAgentContextForRequest(executionStore, id, payload, doInstance, r
 }
 
 function createWorkflowContextForRequest(id, runId, payload, doInstance, req, initialEventIndex, dispatchId) {
-  const sql = doInstance?.ctx?.storage?.sql;
-  const defaultStore = sql ? createSqlSessionStore(sql) : memoryWorkflowSessionStore;
+  const storage = doInstance?.ctx?.storage;
+  const defaultStore = storage?.sql ? createSqlSessionStore(storage.sql, storage.transactionSync?.bind(storage)) : memoryWorkflowSessionStore;
   return createContextForRequest(id, runId, payload, doInstance, req, defaultStore, initialEventIndex, dispatchId);
 }
 
