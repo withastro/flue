@@ -435,6 +435,63 @@ describe('createSqlAgentExecutionStore()', () => {
 		);
 	});
 
+	it('queues external attachment cleanup when a later object upload fails', async () => {
+		const { db, sql, transactionSync } = makeFakeSql();
+		const attachments = new RecordingAttachmentStore();
+		let putCount = 0;
+		let failDelete = true;
+		attachments.put = async (key: string, data: string): Promise<void> => {
+			putCount++;
+			attachments.objects.set(key, data);
+			if (putCount === 2) throw new Error('r2 put failed');
+		};
+		attachments.delete = async (key: string): Promise<void> => {
+			attachments.deleted.push(key);
+			if (failDelete) throw new Error('r2 delete failed');
+			attachments.objects.delete(key);
+		};
+		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent', {
+			attachmentStore: attachments,
+			externalBlobThreshold: 1,
+		});
+		const data = sessionData({
+			entries: [
+				{
+					type: 'message',
+					id: 'entry-1',
+					parentId: null,
+					timestamp: '2026-06-03T00:00:00.000Z',
+					source: 'prompt',
+					message: {
+						role: 'user',
+						content: [
+							{ type: 'image', data: 'image-1', mimeType: 'image/png' },
+							{ type: 'image', data: 'image-2', mimeType: 'image/png' },
+						],
+						timestamp: 0,
+					},
+				},
+			],
+			leafId: 'entry-1',
+		});
+
+		await expect(store.sessions.save('s1', data)).rejects.toThrow('r2 put failed');
+
+		const queued = db
+			.prepare('SELECT object_key FROM flue_session_attachment_deletions ORDER BY object_key')
+			.all() as Array<{ object_key: string }>;
+		expect(queued).toHaveLength(2);
+		expect(attachments.objects.size).toBe(2);
+
+		failDelete = false;
+		await store.sessions.save('s2', sessionData());
+
+		expect(attachments.objects.size).toBe(0);
+		expect(db.prepare('SELECT object_key FROM flue_session_attachment_deletions').all()).toEqual(
+			[],
+		);
+	});
+
 	it('adapts an R2 bucket binding for session attachment storage', async () => {
 		const bucketObjects = new Map<string, string>();
 		const bucket = {
@@ -536,7 +593,61 @@ describe('createSqlAgentExecutionStore()', () => {
 		).toEqual({ is_not_null: 0 });
 	});
 
-	it('preserves user JSON with blob-ref-like keys when a session is saved', async () => {
+	it('rolls back session blob table migration when copying old rows fails', () => {
+		const { db, sql, transactionSync } = makeFakeSql();
+		db.prepare(
+			`CREATE TABLE flue_session_blobs (
+			 session_id TEXT NOT NULL,
+			 entry_id TEXT NOT NULL,
+			 blob_id TEXT NOT NULL,
+			 segment_index INTEGER NOT NULL,
+			 segment_count INTEGER NOT NULL,
+			 data TEXT NOT NULL,
+			 PRIMARY KEY (session_id, entry_id, blob_id, segment_index)
+			)`,
+		).run();
+		db.prepare(
+			`INSERT INTO flue_session_blobs
+			 (session_id, entry_id, blob_id, segment_index, segment_count, data)
+			 VALUES ('s1', 'entry-1', 'blob-1', 0, 1, 'image-data')`,
+		).run();
+		const failingSql = {
+			exec(query: string, ...bindings: unknown[]) {
+				if (
+					query.includes('INSERT INTO flue_session_blobs') &&
+					query.includes('flue_session_blobs_migration_old')
+				) {
+					throw new Error('copy failed');
+				}
+				return sql.exec(query, ...bindings);
+			},
+		};
+
+		expect(() =>
+			createSqlAgentExecutionStore({ sql: failingSql, transactionSync }, 'FlueAssistantAgent'),
+		).toThrow('copy failed');
+
+		expect(
+			db.prepare("SELECT name FROM pragma_table_info('flue_session_blobs') ORDER BY cid").all(),
+		).toEqual([
+			{ name: 'session_id' },
+			{ name: 'entry_id' },
+			{ name: 'blob_id' },
+			{ name: 'segment_index' },
+			{ name: 'segment_count' },
+			{ name: 'data' },
+		]);
+		expect(db.prepare('SELECT data FROM flue_session_blobs').get()).toEqual({
+			data: 'image-data',
+		});
+		expect(
+			db
+				.prepare("SELECT name FROM sqlite_schema WHERE name = 'flue_session_blobs_migration_old'")
+				.all(),
+		).toEqual([]);
+	});
+
+	it('preserves user JSON with blob-ref-like content outside message content when a session is saved', async () => {
 		const { sql, transactionSync } = makeFakeSql();
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		const data = sessionData({
@@ -548,7 +659,13 @@ describe('createSqlAgentExecutionStore()', () => {
 					timestamp: '2026-06-03T00:00:00.000Z',
 					fromId: 'entry-0',
 					summary: 'Preserve user details.',
-					details: { __flueSessionBlobRef: 'user-owned-value' },
+					details: {
+						type: 'image',
+						data: {
+							__flueSessionBlobRef: { type: 'flue.sessionBlob.v1', id: 'user-owned-id' },
+						},
+						mimeType: 'image/png',
+					},
 				},
 			],
 			leafId: 'entry-1',

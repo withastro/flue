@@ -158,7 +158,7 @@ export function createNodeAgentExecutionStore(
 	options: SqlitePersistenceOptions = {},
 ): AgentExecutionStore {
 	const { sql, runTransaction } = openDatabase(path);
-	ensureSqlAgentExecutionTables(sql);
+	ensureSqlAgentExecutionTables(sql, runTransaction);
 	return createSqlAgentExecutionStoreFromSql(sql, runTransaction, options);
 }
 
@@ -190,7 +190,8 @@ export function sqlite(path?: string, options: SqlitePersistenceOptions = {}): P
 
 	return {
 		migrate() {
-			ensureSqlAgentExecutionTables(ensureOpen().sql);
+			const { sql, runTransaction } = ensureOpen();
+			ensureSqlAgentExecutionTables(sql, runTransaction);
 		},
 		connect() {
 			const { sql, runTransaction } = ensureOpen();

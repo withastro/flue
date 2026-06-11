@@ -64,7 +64,7 @@ function createCloudflareSqlBackend(): AgentExecutionStore {
 			throw error;
 		}
 	};
-	ensureSqlAgentExecutionTables(sql);
+	ensureSqlAgentExecutionTables(sql, runTransaction);
 	return createSqlAgentExecutionStoreFromSql(sql, runTransaction);
 }
 

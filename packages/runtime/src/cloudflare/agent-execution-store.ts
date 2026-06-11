@@ -30,8 +30,8 @@ export function createSqlSessionStore(
 	if (!sql || typeof transactionSync !== 'function') {
 		throw new Error('[flue] Cloudflare workflow session persistence requires Durable Object SQLite.');
 	}
-	ensureSessionTable(sql);
 	const runTransaction = <T>(closure: () => T): T => transactionSync.call(storage, closure) as T;
+	ensureSessionTable(sql, runTransaction);
 	return new SqlSessionStore(sql, runTransaction, options);
 }
 
@@ -73,8 +73,8 @@ export function createSqlAgentExecutionStore(
 		);
 	}
 	try {
-		ensureSqlAgentExecutionTables(sql);
 		const runTransaction = <T>(closure: () => T): T => transactionSync.call(storage, closure) as T;
+		ensureSqlAgentExecutionTables(sql, runTransaction);
 		return createSqlAgentExecutionStoreFromSql(sql, runTransaction, options);
 	} catch (cause) {
 		const detail = cause instanceof Error ? cause.message : String(cause);

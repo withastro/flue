@@ -67,10 +67,9 @@ interface StoredSessionBlob {
 	data: string;
 }
 
-interface PreparedSessionBlob extends StoredSessionBlob {
-	storageKind: 'sql_chunk' | 'external';
-	objectKey?: string;
-}
+type PreparedSessionBlob =
+	| (StoredSessionBlob & { storageKind: 'sql_chunk' })
+	| (StoredSessionBlob & { storageKind: 'external'; objectKey: string });
 
 interface SerializedSessionEntry {
 	entryJson: string;
@@ -78,14 +77,18 @@ interface SerializedSessionEntry {
 }
 
 type SessionMetadata = Omit<SessionData, 'entries'>;
+export type SqlTransactionSync = <T>(closure: () => T) => T;
 
 /**
  * Run idempotent DDL for all agent execution store tables.
  * Called by `createSqlAgentExecutionStore` (Cloudflare DO path) and
  * by the `sqlite()` adapter's `migrate()` method (Node).
  */
-export function ensureSqlAgentExecutionTables(sql: SqlStorage): void {
-	ensureSessionTable(sql);
+export function ensureSqlAgentExecutionTables(
+	sql: SqlStorage,
+	runTransaction?: SqlTransactionSync,
+): void {
+	ensureSessionTable(sql, runTransaction);
 	ensureSubmissionTable(sql);
 	ensureTurnJournalTable(sql);
 }
@@ -99,7 +102,7 @@ export function ensureSqlAgentExecutionTables(sql: SqlStorage): void {
  */
 export function createSqlAgentExecutionStoreFromSql(
 	sql: SqlStorage,
-	runTransaction: <T>(closure: () => T) => T,
+	runTransaction: SqlTransactionSync,
 	options: SqlSessionStoreOptions = {},
 ): AgentExecutionStore {
 	return {
@@ -111,22 +114,28 @@ export function createSqlAgentExecutionStoreFromSql(
 export class SqlSessionStore implements SessionStore {
 	constructor(
 		private sql: SqlStorage,
-		private transactionSync: <T>(closure: () => T) => T,
+		private transactionSync: SqlTransactionSync,
 		private options: SqlSessionStoreOptions = {},
 	) {}
 
 	async save(id: string, data: SessionData): Promise<void> {
-		const serializedEntries = data.entries.map((entry) => serializeSessionEntry(entry));
-		const entries = data.entries.map((entry, position) => ({
-			entry,
-			position,
-			data: serializedEntries[position]!.entryJson,
-		}));
+		const entries = data.entries.map((entry, position) => {
+			const serialized = serializeSessionEntry(entry);
+			return {
+				entry,
+				position,
+				data: serialized.entryJson,
+				blobs: serialized.blobs,
+			};
+		});
 		const oldExternalKeys = this.selectExternalObjectKeys(id);
-		const preparedBlobs = await this.prepareSessionBlobs(id, serializedEntries);
+		const preparedBlobs = await this.prepareSessionBlobs(id, entries);
 		const uploadedExternalKeys = preparedBlobs
-			.filter((blob) => blob.storageKind === 'external' && blob.objectKey)
-			.map((blob) => blob.objectKey!);
+			.filter(
+				(blob): blob is Extract<PreparedSessionBlob, { storageKind: 'external' }> =>
+					blob.storageKind === 'external',
+			)
+			.map((blob) => blob.objectKey);
 		const currentExternalKeys = new Set(uploadedExternalKeys);
 		const staleExternalKeys = oldExternalKeys.filter((key) => !currentExternalKeys.has(key));
 		try {
@@ -237,9 +246,10 @@ export class SqlSessionStore implements SessionStore {
 
 	private async prepareSessionBlobs(
 		sessionId: string,
-		entries: SerializedSessionEntry[],
+		entries: Array<Pick<SerializedSessionEntry, 'blobs'>>,
 	): Promise<PreparedSessionBlob[]> {
 		const prepared: PreparedSessionBlob[] = [];
+		const attemptedExternalKeys: string[] = [];
 		try {
 			for (const entry of entries) {
 				for (const blob of entry.blobs) {
@@ -248,16 +258,14 @@ export class SqlSessionStore implements SessionStore {
 						continue;
 					}
 					const objectKey = createSessionAttachmentObjectKey(sessionId, blob.entryId, blob.blobId);
+					attemptedExternalKeys.push(objectKey);
 					await this.options.attachmentStore!.put(objectKey, blob.data);
 					prepared.push({ ...blob, storageKind: 'external', objectKey });
 				}
 			}
 		} catch (error) {
-			await this.deleteExternalObjectsBestEffort(
-				prepared
-					.filter((blob) => blob.storageKind === 'external' && blob.objectKey)
-					.map((blob) => blob.objectKey!),
-			);
+			this.enqueueExternalObjectDeletionsBestEffort(attemptedExternalKeys);
+			await this.deleteExternalObjectsBestEffort(attemptedExternalKeys);
 			throw error;
 		}
 		return prepared;
@@ -380,10 +388,24 @@ function sessionMetadata(data: SessionData): SessionMetadata {
 function serializeSessionEntry(entry: SessionEntry): SerializedSessionEntry {
 	const blobs: StoredSessionBlob[] = [];
 	let nextBlobIndex = 0;
+	const message = entry.type === 'message' ? (entry.message as unknown) : undefined;
+	const serializedEntry: SessionEntry =
+		isRecord(message) && 'content' in message
+			? ({
+					...entry,
+					message: {
+						...message,
+						content: externalizeSessionValue(
+							message.content,
+							entry.id,
+							blobs,
+							() => `blob_${nextBlobIndex++}`,
+						),
+					},
+				} as SessionEntry)
+			: entry;
 	return {
-		entryJson: JSON.stringify(
-			externalizeSessionValue(entry, entry.id, blobs, () => `blob_${nextBlobIndex++}`),
-		),
+		entryJson: JSON.stringify(serializedEntry),
 		blobs,
 	};
 }
@@ -419,6 +441,10 @@ function isExternalizableSessionBlob(
 ): value is string {
 	if (value === '' || typeof value !== 'string') return false;
 	if (key !== 'data' && key !== 'blob') return false;
+	return isExternalizableSessionBlobParent(parent);
+}
+
+function isExternalizableSessionBlobParent(parent: Record<string, unknown>): boolean {
 	return (
 		parent.type === 'image' ||
 		parent.type === 'blob' ||
@@ -497,7 +523,17 @@ function parseSessionEntryRow(row: SqlRow, blobs: Map<string, string>): SessionE
 	if (typeof row.entry_id !== 'string' || typeof row.data !== 'string') {
 		throw new Error('[flue] Persisted session entry row is malformed.');
 	}
-	return hydrateSessionValue(JSON.parse(row.data), row.entry_id, blobs) as SessionEntry;
+	const entry = JSON.parse(row.data) as SessionEntry;
+	if (entry.type !== 'message') return entry;
+	const message = entry.message as unknown;
+	if (!isRecord(message) || !('content' in message)) return entry;
+	return {
+		...entry,
+		message: {
+			...message,
+			content: hydrateSessionValue(message.content, row.entry_id, blobs),
+		} as typeof entry.message,
+	};
 }
 
 function hydrateSessionValue(value: unknown, entryId: string, blobs: Map<string, string>): unknown {
@@ -506,18 +542,36 @@ function hydrateSessionValue(value: unknown, entryId: string, blobs: Map<string,
 	}
 	if (!isRecord(value)) return value;
 
-	const ref = value[SESSION_BLOB_REF_KEY];
-	if (isRecord(ref) && ref.type === SESSION_BLOB_REF_TYPE && typeof ref.id === 'string') {
-		const blob = blobs.get(sessionBlobKey(entryId, ref.id));
-		if (blob === undefined) throw new Error('[flue] Persisted session blob reference is missing.');
-		return blob;
-	}
-
 	const output: Record<string, unknown> = {};
 	for (const [key, child] of Object.entries(value)) {
+		const refId = hydratableSessionBlobRefId(value, key, child);
+		if (refId) {
+			const blob = blobs.get(sessionBlobKey(entryId, refId));
+			if (blob === undefined) {
+				throw new Error('[flue] Persisted session blob reference is missing.');
+			}
+			output[key] = blob;
+			continue;
+		}
 		output[key] = hydrateSessionValue(child, entryId, blobs);
 	}
 	return output;
+}
+
+function hydratableSessionBlobRefId(
+	parent: Record<string, unknown>,
+	key: string,
+	value: unknown,
+): string | undefined {
+	if (!isExternalizableSessionBlobParent(parent) || (key !== 'data' && key !== 'blob')) {
+		return undefined;
+	}
+	if (!isRecord(value) || Object.keys(value).length !== 1) return undefined;
+	const ref = value[SESSION_BLOB_REF_KEY];
+	if (!isRecord(ref) || ref.type !== SESSION_BLOB_REF_TYPE || typeof ref.id !== 'string') {
+		return undefined;
+	}
+	return ref.id;
 }
 
 function sessionBlobKey(entryId: string, blobId: string): string {
@@ -555,7 +609,7 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 
 	constructor(
 		private sql: SqlStorage,
-		private transactionSync: <T>(closure: () => T) => T,
+		private transactionSync: SqlTransactionSync,
 	) {}
 
 	async getSubmission(submissionId: string): Promise<AgentSubmission | null> {
@@ -1254,7 +1308,7 @@ function parseSubmission(row: SqlRow): AgentSubmission {
 	};
 }
 
-export function ensureSessionTable(sql: SqlStorage): void {
+export function ensureSessionTable(sql: SqlStorage, runTransaction?: SqlTransactionSync): void {
 	sql.exec(
 		`CREATE TABLE IF NOT EXISTS flue_sessions (
 		 id TEXT PRIMARY KEY,
@@ -1274,7 +1328,7 @@ export function ensureSessionTable(sql: SqlStorage): void {
 		`CREATE INDEX IF NOT EXISTS flue_session_entries_session_position_idx
 		 ON flue_session_entries (session_id, position ASC)`,
 	);
-	ensureSessionBlobTable(sql);
+	ensureSessionBlobTable(sql, runTransaction);
 	sql.exec(
 		`CREATE TABLE IF NOT EXISTS flue_session_attachment_deletions (
 		 object_key TEXT PRIMARY KEY,
@@ -1283,7 +1337,7 @@ export function ensureSessionTable(sql: SqlStorage): void {
 	);
 }
 
-function ensureSessionBlobTable(sql: SqlStorage): void {
+function ensureSessionBlobTable(sql: SqlStorage, runTransaction?: SqlTransactionSync): void {
 	const columns = sql
 		.exec('SELECT name, "notnull" FROM pragma_table_info(\'flue_session_blobs\')')
 		.toArray();
@@ -1305,8 +1359,20 @@ function ensureSessionBlobTable(sql: SqlStorage): void {
 		byName.has('storage_kind') && byName.has('object_key') && dataColumn?.notnull === 0;
 	if (current) return;
 
-	const storageKindExpr = byName.has('storage_kind') ? 'storage_kind' : "'sql_chunk'";
-	const objectKeyExpr = byName.has('object_key') ? 'object_key' : 'NULL';
+	const migrate = () => migrateSessionBlobTable(sql, byName);
+	if (runTransaction) {
+		runTransaction(migrate);
+		return;
+	}
+	migrate();
+}
+
+function migrateSessionBlobTable(
+	sql: SqlStorage,
+	columns: Map<string, SqlRow>,
+): void {
+	const storageKindExpr = columns.has('storage_kind') ? 'storage_kind' : "'sql_chunk'";
+	const objectKeyExpr = columns.has('object_key') ? 'object_key' : 'NULL';
 	sql.exec('DROP TABLE IF EXISTS flue_session_blobs_migration_old');
 	sql.exec('ALTER TABLE flue_session_blobs RENAME TO flue_session_blobs_migration_old');
 	createSessionBlobTable(sql);
