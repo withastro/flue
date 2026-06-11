@@ -21,7 +21,11 @@ import {
 	ensureSqlAgentExecutionTables,
 	type SessionAttachmentStore,
 } from '../src/sql-agent-execution-store.ts';
-import { createNodeAgentExecutionStore, sqlite } from '../src/node/agent-execution-store.ts';
+import {
+	createNodeAgentExecutionStore,
+	fileSessionAttachmentStore,
+	sqlite,
+} from '../src/node/agent-execution-store.ts';
 import type { SessionData } from '../src/types.ts';
 import { defineStoreContractTests } from '../src/test-utils/define-store-contract-tests.ts';
 
@@ -136,6 +140,77 @@ describe('createNodeAgentExecutionStore()', () => {
 		const objectKey = [...attachments.objects.keys()][0]!;
 		await store.sessions.delete('s1');
 		expect(attachments.deleted).toEqual([objectKey]);
+	});
+
+	it('stores large session blobs in filesystem attachments when configured', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'flue-file-attachments-'));
+		try {
+			const attachments = fileSessionAttachmentStore(join(dir, 'attachments'));
+			const store = createNodeAgentExecutionStore(':memory:', {
+				attachmentStore: attachments,
+				externalBlobThreshold: 1,
+			});
+			const imageData = 'a'.repeat(600_000);
+			const data: SessionData = {
+				version: 5,
+				affinityKey: 'affinity-1',
+				entries: [
+					{
+						type: 'message',
+						id: 'entry-1',
+						parentId: null,
+						timestamp: '2026-06-03T00:00:00.000Z',
+						source: 'prompt',
+						message: {
+							role: 'user',
+							content: [{ type: 'image', data: imageData, mimeType: 'image/png' }],
+							timestamp: 0,
+						},
+					},
+				],
+				leafId: 'entry-1',
+				metadata: {},
+				createdAt: '2026-06-03T00:00:00.000Z',
+				updatedAt: '2026-06-03T00:00:00.000Z',
+			};
+
+			await store.sessions.save('s1', data);
+
+			await expect(store.sessions.load('s1')).resolves.toEqual(data);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+});
+
+describe('fileSessionAttachmentStore()', () => {
+	it('writes, reads, and deletes attachment files under the configured root', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'flue-file-attachments-'));
+		try {
+			const store = fileSessionAttachmentStore(join(dir, 'attachments'));
+			await store.put('flue-sessions/s1/entries/blob-1', 'image-data');
+
+			expect(await store.get('flue-sessions/s1/entries/blob-1')).toBe('image-data');
+			await store.delete('flue-sessions/s1/entries/blob-1');
+			await expect(store.get('flue-sessions/s1/entries/blob-1')).rejects.toThrow(
+				'[flue] Persisted session attachment file is missing.',
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+
+	it('rejects attachment keys outside the configured root', async () => {
+		const dir = mkdtempSync(join(tmpdir(), 'flue-file-attachments-'));
+		try {
+			const store = fileSessionAttachmentStore(join(dir, 'attachments'));
+
+			await expect(store.put('../outside', 'image-data')).rejects.toThrow(
+				'[flue] Invalid session attachment file key.',
+			);
+		} finally {
+			rmSync(dir, { recursive: true, force: true });
+		}
 	});
 });
 

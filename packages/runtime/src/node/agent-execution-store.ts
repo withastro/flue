@@ -7,7 +7,9 @@
  */
 
 import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { basename, dirname, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { AgentExecutionStore, PersistenceAdapter } from '../agent-execution-store.ts';
 import { InMemoryRunRegistry } from './run-registry.ts';
@@ -25,6 +27,52 @@ export type { SessionAttachmentStore };
 export interface SqlitePersistenceOptions {
 	attachmentStore?: SessionAttachmentStore;
 	externalBlobThreshold?: number;
+}
+
+/**
+ * Create a filesystem-backed session attachment store for Node SQLite persistence.
+ * SQL rows remain the authoritative manifest; files only hold attachment bytes.
+ */
+export function fileSessionAttachmentStore(root: string): SessionAttachmentStore {
+	const rootPath = resolve(root);
+	const rootPrefix = rootPath.endsWith(sep) ? rootPath : `${rootPath}${sep}`;
+
+	function pathFor(key: string): string {
+		const filePath = resolve(rootPath, key);
+		if (!filePath.startsWith(rootPrefix)) {
+			throw new Error('[flue] Invalid session attachment file key.');
+		}
+		return filePath;
+	}
+
+	return {
+		async put(key: string, data: string): Promise<void> {
+			const filePath = pathFor(key);
+			const directory = dirname(filePath);
+			await mkdir(directory, { recursive: true });
+			const tempPath = resolve(directory, `.${basename(filePath)}.${randomUUID()}.tmp`);
+			try {
+				await writeFile(tempPath, data, 'utf8');
+				await rename(tempPath, filePath);
+			} catch (error) {
+				await rm(tempPath, { force: true });
+				throw error;
+			}
+		},
+
+		async get(key: string): Promise<string> {
+			const filePath = pathFor(key);
+			try {
+				return await readFile(filePath, 'utf8');
+			} catch (cause) {
+				throw new Error('[flue] Persisted session attachment file is missing.', { cause });
+			}
+		},
+
+		async delete(key: string): Promise<void> {
+			await rm(pathFor(key), { force: true });
+		},
+	};
 }
 
 /**

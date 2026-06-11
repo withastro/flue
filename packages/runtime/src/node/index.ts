@@ -7,6 +7,7 @@
  * from `@flue/runtime`.
  */
 export {
+	fileSessionAttachmentStore,
 	sqlite,
 	type SessionAttachmentStore,
 	type SqlitePersistenceOptions,
