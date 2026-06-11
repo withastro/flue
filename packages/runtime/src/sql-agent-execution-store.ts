@@ -43,7 +43,24 @@ import {
 } from './runtime/agent-submissions.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import { createSessionStorageKey } from './session-identity.ts';
-import type { SessionData, SessionStore } from './types.ts';
+import type { SessionData, SessionEntry, SessionStore } from './types.ts';
+
+const SESSION_BLOB_CHUNK_SIZE = 512 * 1024;
+const SESSION_BLOB_REF_KEY = '__flueSessionBlobRef';
+const SESSION_BLOB_REF_TYPE = 'flue.sessionBlob.v1';
+
+interface StoredSessionBlob {
+	entryId: string;
+	blobId: string;
+	data: string;
+}
+
+interface SerializedSessionEntry {
+	entryJson: string;
+	blobs: StoredSessionBlob[];
+}
+
+type SessionMetadata = Omit<SessionData, 'entries'>;
 
 /**
  * Run idempotent DDL for all agent execution store tables.
@@ -80,39 +97,47 @@ export class SqlSessionStore implements SessionStore {
 	) {}
 
 	async save(id: string, data: SessionData): Promise<void> {
-		const { entries: sessionEntries, ...session } = data;
-		const entries = sessionEntries.map((entry, position) => ({
-			entry,
-			position,
-			data: JSON.stringify(entry),
-		}));
+		const entries = data.entries.map((entry, position) => {
+			const serialized = serializeSessionEntry(entry);
+			return {
+				entry,
+				position,
+				data: serialized.entryJson,
+				blobs: serialized.blobs,
+			};
+		});
 		this.transactionSync(() => {
 			this.sql.exec(
 				`INSERT INTO flue_sessions (id, data) VALUES (?, ?)
 				 ON CONFLICT (id) DO UPDATE SET data = excluded.data`,
 				id,
-				JSON.stringify(session),
+				JSON.stringify(sessionMetadata(data)),
 			);
+			this.sql.exec('DELETE FROM flue_session_blobs WHERE session_id = ?', id);
 			const existingRows = this.sql.exec(
 				'SELECT entry_id, position, data FROM flue_session_entries WHERE session_id = ?',
 				id,
 			).toArray();
 			const existing = new Map(existingRows.map((row) => [row.entry_id, row]));
 			const retained = new Set<string>();
-			for (const { entry, position, data: entryData } of entries) {
+			for (const { entry, position, data: entryData, blobs } of entries) {
 				retained.add(entry.id);
 				const current = existing.get(entry.id);
-				if (current?.position === position && current.data === entryData) continue;
-				this.sql.exec(
-					`INSERT INTO flue_session_entries (session_id, entry_id, position, data)
-					 VALUES (?, ?, ?, ?)
-					 ON CONFLICT (session_id, entry_id) DO UPDATE SET
-					 position = excluded.position, data = excluded.data`,
-					id,
-					entry.id,
-					position,
-					entryData,
-				);
+				if (current?.position !== position || current.data !== entryData) {
+					this.sql.exec(
+						`INSERT INTO flue_session_entries (session_id, entry_id, position, data)
+						 VALUES (?, ?, ?, ?)
+						 ON CONFLICT (session_id, entry_id) DO UPDATE SET
+						 position = excluded.position, data = excluded.data`,
+						id,
+						entry.id,
+						position,
+						entryData,
+					);
+				}
+				for (const blob of blobs) {
+					this.insertSessionBlob(id, blob);
+				}
 			}
 			for (const row of existingRows) {
 				if (typeof row.entry_id === 'string' && !retained.has(row.entry_id)) {
@@ -134,29 +159,194 @@ export class SqlSessionStore implements SessionStore {
 			if (typeof row.data !== 'string') {
 				throw new Error('[flue] Persisted session row is malformed.');
 			}
-			const session = JSON.parse(row.data) as Omit<SessionData, 'entries'>;
+			const session = JSON.parse(row.data) as SessionData | SessionMetadata;
 			const entryRows = this.sql.exec(
-				'SELECT data FROM flue_session_entries WHERE session_id = ? ORDER BY position ASC',
+				'SELECT entry_id, data FROM flue_session_entries WHERE session_id = ? ORDER BY position ASC',
 				id,
 			).toArray();
+			if (entryRows.length === 0 && Array.isArray((session as SessionData).entries)) {
+				return session as SessionData;
+			}
+			const blobs = sessionBlobMap(
+				this.sql
+					.exec(
+						`SELECT entry_id, blob_id, segment_index, segment_count, data
+						 FROM flue_session_blobs
+						 WHERE session_id = ?
+						 ORDER BY entry_id ASC, blob_id ASC, segment_index ASC`,
+						id,
+					)
+					.toArray(),
+			);
 			return {
 				...session,
-				entries: entryRows.map((entryRow) => {
-					if (typeof entryRow.data !== 'string') {
-						throw new Error('[flue] Persisted session entry row is malformed.');
-					}
-					return JSON.parse(entryRow.data);
-				}),
-			};
+				entries: entryRows.map((entryRow) => parseSessionEntryRow(entryRow, blobs)),
+			} as SessionData;
 		});
 	}
 
 	async delete(id: string): Promise<void> {
 		this.transactionSync(() => {
+			this.sql.exec('DELETE FROM flue_session_blobs WHERE session_id = ?', id);
 			this.sql.exec('DELETE FROM flue_session_entries WHERE session_id = ?', id);
 			this.sql.exec('DELETE FROM flue_sessions WHERE id = ?', id);
 		});
 	}
+
+	private insertSessionBlob(sessionId: string, blob: StoredSessionBlob): void {
+		const segmentCount = Math.ceil(blob.data.length / SESSION_BLOB_CHUNK_SIZE);
+		for (
+			let offset = 0, segmentIndex = 0;
+			offset < blob.data.length;
+			offset += SESSION_BLOB_CHUNK_SIZE, segmentIndex++
+		) {
+			this.sql.exec(
+				`INSERT INTO flue_session_blobs
+				 (session_id, entry_id, blob_id, segment_index, segment_count, data)
+				 VALUES (?, ?, ?, ?, ?, ?)`,
+				sessionId,
+				blob.entryId,
+				blob.blobId,
+				segmentIndex,
+				segmentCount,
+				blob.data.slice(offset, offset + SESSION_BLOB_CHUNK_SIZE),
+			);
+		}
+	}
+}
+
+function sessionMetadata(data: SessionData): SessionMetadata {
+	const { entries: _entries, ...metadata } = data;
+	return metadata;
+}
+
+function serializeSessionEntry(entry: SessionEntry): SerializedSessionEntry {
+	const blobs: StoredSessionBlob[] = [];
+	let nextBlobIndex = 0;
+	return {
+		entryJson: JSON.stringify(
+			externalizeSessionValue(entry, entry.id, blobs, () => `blob_${nextBlobIndex++}`),
+		),
+		blobs,
+	};
+}
+
+function externalizeSessionValue(
+	value: unknown,
+	entryId: string,
+	blobs: StoredSessionBlob[],
+	nextBlobId: () => string,
+): unknown {
+	if (Array.isArray(value)) {
+		return value.map((item) => externalizeSessionValue(item, entryId, blobs, nextBlobId));
+	}
+	if (!isRecord(value)) return value;
+
+	const output: Record<string, unknown> = {};
+	for (const [key, child] of Object.entries(value)) {
+		if (isExternalizableSessionBlob(value, key, child)) {
+			const blobId = nextBlobId();
+			blobs.push({ entryId, blobId, data: child });
+			output[key] = { [SESSION_BLOB_REF_KEY]: { type: SESSION_BLOB_REF_TYPE, id: blobId } };
+			continue;
+		}
+		output[key] = externalizeSessionValue(child, entryId, blobs, nextBlobId);
+	}
+	return output;
+}
+
+function isExternalizableSessionBlob(
+	parent: Record<string, unknown>,
+	key: string,
+	value: unknown,
+): value is string {
+	if (value === '' || typeof value !== 'string') return false;
+	if (key !== 'data' && key !== 'blob') return false;
+	return (
+		parent.type === 'image' ||
+		parent.type === 'blob' ||
+		parent.type === 'document' ||
+		parent.type === 'file'
+	);
+}
+
+function sessionBlobMap(rows: SqlRow[]): Map<string, string> {
+	const chunks = new Map<string, { segmentCount: number; segments: string[] }>();
+	for (const row of rows) {
+		if (
+			typeof row.entry_id !== 'string' ||
+			typeof row.blob_id !== 'string' ||
+			!isNonNegativeInteger(row.segment_index) ||
+			!isPositiveInteger(row.segment_count) ||
+			typeof row.data !== 'string'
+		) {
+			throw new Error('[flue] Persisted session blob row is malformed.');
+		}
+		const key = sessionBlobKey(row.entry_id, row.blob_id);
+		const chunk = chunks.get(key) ?? { segmentCount: row.segment_count, segments: [] };
+		if (chunk.segmentCount !== row.segment_count || row.segment_index >= chunk.segmentCount) {
+			throw new Error('[flue] Persisted session blob row is malformed.');
+		}
+		chunk.segments[row.segment_index] = row.data;
+		chunks.set(key, chunk);
+	}
+
+	const blobs = new Map<string, string>();
+	for (const [key, chunk] of chunks) {
+		if (chunk.segments.length !== chunk.segmentCount) {
+			throw new Error('[flue] Persisted session blob row is malformed.');
+		}
+		for (const segment of chunk.segments) {
+			if (typeof segment !== 'string') {
+				throw new Error('[flue] Persisted session blob row is malformed.');
+			}
+		}
+		blobs.set(key, chunk.segments.join(''));
+	}
+	return blobs;
+}
+
+function parseSessionEntryRow(row: SqlRow, blobs: Map<string, string>): SessionEntry {
+	if (typeof row.entry_id !== 'string' || typeof row.data !== 'string') {
+		throw new Error('[flue] Persisted session entry row is malformed.');
+	}
+	return hydrateSessionValue(JSON.parse(row.data), row.entry_id, blobs) as SessionEntry;
+}
+
+function hydrateSessionValue(value: unknown, entryId: string, blobs: Map<string, string>): unknown {
+	if (Array.isArray(value)) {
+		return value.map((item) => hydrateSessionValue(item, entryId, blobs));
+	}
+	if (!isRecord(value)) return value;
+
+	const ref = value[SESSION_BLOB_REF_KEY];
+	if (isRecord(ref) && ref.type === SESSION_BLOB_REF_TYPE && typeof ref.id === 'string') {
+		const blob = blobs.get(sessionBlobKey(entryId, ref.id));
+		if (blob === undefined) throw new Error('[flue] Persisted session blob reference is missing.');
+		return blob;
+	}
+
+	const output: Record<string, unknown> = {};
+	for (const [key, child] of Object.entries(value)) {
+		output[key] = hydrateSessionValue(child, entryId, blobs);
+	}
+	return output;
+}
+
+function sessionBlobKey(entryId: string, blobId: string): string {
+	return `${entryId}\0${blobId}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === 'object' && value !== null;
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+	return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+	return typeof value === 'number' && Number.isInteger(value) && value > 0;
 }
 
 class AgentSubmissionStoreImpl implements AgentSubmissionStore {
@@ -882,6 +1072,17 @@ export function ensureSessionTable(sql: SqlStorage): void {
 	sql.exec(
 		`CREATE INDEX IF NOT EXISTS flue_session_entries_session_position_idx
 		 ON flue_session_entries (session_id, position ASC)`,
+	);
+	sql.exec(
+		`CREATE TABLE IF NOT EXISTS flue_session_blobs (
+		 session_id TEXT NOT NULL,
+		 entry_id TEXT NOT NULL,
+		 blob_id TEXT NOT NULL,
+		 segment_index INTEGER NOT NULL,
+		 segment_count INTEGER NOT NULL,
+		 data TEXT NOT NULL,
+		 PRIMARY KEY (session_id, entry_id, blob_id, segment_index)
+		)`,
 	);
 }
 
