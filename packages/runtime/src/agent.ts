@@ -380,26 +380,37 @@ export function formatBashResult(
 }
 
 const GrepParams = Type.Object({
-	pattern: Type.String({ description: 'Search pattern (regex)' }),
-	path: Type.Optional(Type.String({ description: 'Directory or file to search (default: .)' })),
-	include: Type.Optional(Type.String({ description: 'Glob filter, e.g. "*.ts"' })),
+    pattern: Type.String({
+        description:
+            'Search pattern. Uses extended grep regex by default; set literal to true for exact string matching.',
+    }),
+    path: Type.Optional(Type.String({ description: 'Directory or file to search (default: .)' })),
+    include: Type.Optional(Type.String({ description: 'Glob filter, e.g. "*.ts"' })),
+    literal: Type.Optional(
+        Type.Boolean({
+            description:
+                'Match pattern as a literal string instead of a regex. Use for code containing characters like ( ) | + ? { }.',
+        }),
+    ),
 });
 
 function createGrepTool(env: SessionEnv): AgentTool<typeof GrepParams> {
-	return {
-		name: 'grep',
-		label: 'Search Files',
-		description:
-			'Search file contents for a regex pattern. Returns matching lines with file paths and line numbers.',
-		parameters: GrepParams,
-		async execute(_toolCallId: string, params: Static<typeof GrepParams>, signal?: AbortSignal) {
-			throwIfAborted(signal);
-
-			const searchPath = params.path || '.';
-			let cmd = `grep -rn ${shellQuote(params.pattern)} ${shellQuote(searchPath)}`;
-			if (params.include) {
-				cmd = `grep -rn --include=${shellQuote(params.include)} ${shellQuote(params.pattern)} ${shellQuote(searchPath)}`;
-			}
+    return {
+        name: 'grep',
+        label: 'Search Files',
+        description:
+            'Search file contents. Patterns use extended grep regex by default; set literal for exact string matching. Returns matching lines with file paths and line numbers.',
+        parameters: GrepParams,
+        async execute(_toolCallId: string, params: Static<typeof GrepParams>, signal?: AbortSignal) {
+            throwIfAborted(signal);
+ 
+            const searchPath = params.path || '.';
+            // Extended regex matches the flavor models naturally emit; literal uses fixed strings.
+            const flags = params.literal ? '-rnF' : '-rnE';
+            let cmd = `grep ${flags} ${shellQuote(params.pattern)} ${shellQuote(searchPath)}`;
+            if (params.include) {
+                cmd = `grep ${flags} --include=${shellQuote(params.include)} ${shellQuote(params.pattern)} ${shellQuote(searchPath)}`;
+            }
 
 			const result = await env.exec(cmd);
 
