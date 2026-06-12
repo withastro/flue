@@ -168,7 +168,7 @@ export const docsSections: DocsSection[] = [
 						],
 					},
 					{ title: 'Events and records', slug: 'sdk/events' },
-				{ title: 'Errors', slug: 'sdk/errors' },
+					{ title: 'Errors', slug: 'sdk/errors' },
 				],
 			},
 		],
@@ -180,7 +180,10 @@ export const docsSections: DocsSection[] = [
 		groups: [
 			{
 				title: 'Ecosystem',
-				items: [{ title: 'Overview', slug: 'ecosystem/overview' }],
+				items: [
+					{ title: 'Overview', slug: 'ecosystem/overview' },
+					{ title: 'Evaluating Agents', slug: 'ecosystem/evals' },
+				],
 			},
 			{
 				title: 'Deployment',

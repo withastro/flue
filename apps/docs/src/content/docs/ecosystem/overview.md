@@ -5,6 +5,8 @@ description: Choose deployment environments and sandbox integrations for Flue ap
 
 The Flue ecosystem connects deployable applications to hosting environments and sandbox providers. Start with [Develop & Build](/docs/guide/develop-and-build/) to develop locally and create build output, then use this section for a specific deployment destination or sandbox integration.
 
+Use [Evaluating Flue Agents](/docs/ecosystem/evals/) when you want to run behavior-quality evals against the public workflow and agent routes your application ships.
+
 ## Deployment environments
 
 Flue builds application artifacts for Node.js and Cloudflare. Deployment pages document how those artifacts fit a particular host or execution environment.
