@@ -963,9 +963,6 @@ function createTestContext(id: string, runId: string | undefined, payload: unkno
 		env: {},
 		req,
 		agentConfig: {
-			systemPrompt: '',
-			skills: {},
-			model: undefined,
 			resolveModel: () => undefined,
 		},
 		createDefaultEnv: async () => ({}) as never,

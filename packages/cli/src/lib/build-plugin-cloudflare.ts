@@ -203,9 +203,7 @@ if (!hasRegisteredProvider('cloudflare')) {
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
-const skills = {};
 const packagedSkills = ${packagedSkillsValue};
-const systemPrompt = '';
 
 ${builtModuleNormalizationSource}
 const agentModules = {
@@ -277,9 +275,7 @@ function createContextForRequest(id, runId, payload, doInstance, req, defaultSto
     env: doInstance?.env ?? {},
     req,
     initialEventIndex,
-    agentConfig: {
-      systemPrompt, skills, packagedSkills, model: undefined, resolveModel,
-    },
+    agentConfig: { packagedSkills, resolveModel },
     createDefaultEnv,
     defaultStore,
   });
@@ -293,9 +289,7 @@ function createAgentContextForRequest(executionStore, id, payload, doInstance, r
     req,
     initialEventIndex,
     dispatchId,
-    agentConfig: {
-      systemPrompt, skills, packagedSkills, model: undefined, resolveModel,
-    },
+    agentConfig: { packagedSkills, resolveModel },
     createDefaultEnv,
     defaultStore: executionStore.sessions,
     submissionStore: executionStore.submissions,

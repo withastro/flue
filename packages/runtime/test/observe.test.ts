@@ -8,9 +8,6 @@ function createContext(id: string) {
 		payload: {},
 		env: {},
 		agentConfig: {
-			systemPrompt: '',
-			skills: {},
-			model: undefined,
 			resolveModel: () => undefined,
 		},
 		createDefaultEnv: async () => {

@@ -34,9 +34,6 @@ function createContext(provider: FauxProviderRegistration, store?: SessionStore)
 		payload: {},
 		env: {},
 		agentConfig: {
-			systemPrompt: '',
-			skills: {},
-			model: undefined,
 			resolveModel: (specifier) => {
 				if (!specifier) return undefined;
 				return provider.getModel(specifier.slice(specifier.indexOf('/') + 1));

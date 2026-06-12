@@ -16,9 +16,6 @@ function createContext(overrides: Partial<FlueContextConfig> = {}) {
 		payload: { request: 'payload' },
 		env: { API_KEY: 'secret' },
 		agentConfig: {
-			systemPrompt: '',
-			skills: {},
-			model: undefined,
 			resolveModel: () => undefined,
 		},
 		createDefaultEnv: async () => createNoopSessionEnv(),

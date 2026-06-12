@@ -33,9 +33,6 @@ async function createSession(
 		payload: {},
 		env: {},
 		agentConfig: {
-			systemPrompt: '',
-			skills: {},
-			model: undefined,
 			resolveModel: () => provider.getModel(),
 		},
 		createDefaultEnv: async () => createNoopSessionEnv(),

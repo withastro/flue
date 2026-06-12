@@ -285,10 +285,7 @@ describe('dispatched session processing', () => {
 			env: {},
 			req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
 				subagents: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
@@ -342,10 +339,7 @@ describe('dispatched session processing', () => {
 			env: {},
 			req: new Request('http://flue.local/agents/moderator/guild:direct-input-marker-order', { method: 'POST' }),
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
 				subagents: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
@@ -714,7 +708,7 @@ describe('repairInterruptedToolCalls()', () => {
 		const ctx = createFlueContext({
 			id: submissionInput.id, dispatchId: submissionInput.dispatchId, payload: submissionInput,
 			env: {}, req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
-			agentConfig: { systemPrompt: '', skills: {}, subagents: {}, model: undefined, resolveModel: () => provider.getModel() },
+			agentConfig: { subagents: {}, resolveModel: () => provider.getModel() },
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
 			defaultStore: store.sessions,
 			submissionStore: store.submissions,
@@ -770,7 +764,7 @@ describe('repairInterruptedToolCalls()', () => {
 		const ctx = createFlueContext({
 			id: submissionInput.id, dispatchId: submissionInput.dispatchId, payload: submissionInput,
 			env: {}, req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
-			agentConfig: { systemPrompt: '', skills: {}, subagents: {}, model: undefined, resolveModel: () => provider.getModel() },
+			agentConfig: { subagents: {}, resolveModel: () => provider.getModel() },
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
 			defaultStore: store.sessions,
 			submissionStore: store.submissions,
@@ -829,7 +823,7 @@ describe('repairInterruptedToolCalls()', () => {
 		const ctx = createFlueContext({
 			id: submissionInput.id, dispatchId: submissionInput.dispatchId, payload: submissionInput,
 			env: {}, req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
-			agentConfig: { systemPrompt: '', skills: {}, subagents: {}, model: undefined, resolveModel: () => provider.getModel() },
+			agentConfig: { subagents: {}, resolveModel: () => provider.getModel() },
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
 			defaultStore: store.sessions,
 			submissionStore: store.submissions,
@@ -883,7 +877,7 @@ describe('repairInterruptedToolCalls()', () => {
 		const ctx = createFlueContext({
 			id: submissionInput.id, dispatchId: submissionInput.dispatchId, payload: submissionInput,
 			env: {}, req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
-			agentConfig: { systemPrompt: '', skills: {}, subagents: {}, model: undefined, resolveModel: () => provider.getModel() },
+			agentConfig: { subagents: {}, resolveModel: () => provider.getModel() },
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
 			defaultStore: store.sessions,
 			submissionStore: store.submissions,

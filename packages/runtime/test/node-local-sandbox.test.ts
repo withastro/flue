@@ -12,9 +12,6 @@ function createContext() {
 		payload: undefined,
 		env: {},
 		agentConfig: {
-			systemPrompt: '',
-			skills: {},
-			model: undefined,
 			resolveModel: () => undefined,
 		},
 		createDefaultEnv: async () => {

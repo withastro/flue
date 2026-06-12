@@ -45,9 +45,6 @@ function createContext(provider: FauxProviderRegistration, store: SessionStore =
 		payload: {},
 		env: {},
 		agentConfig: {
-			systemPrompt: '',
-			skills: {},
-			model: undefined,
 			resolveModel: () => provider.getModel(),
 		},
 		createDefaultEnv: async () => createNoopSessionEnv(),

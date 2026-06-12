@@ -98,9 +98,6 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () =>
@@ -134,9 +131,6 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () =>
@@ -194,10 +188,7 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
 				packagedSkills: { [reference.id]: directory },
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createEnv(),
@@ -254,10 +245,7 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
 				packagedSkills: { [reference.id]: directory },
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createEnv(),
@@ -324,10 +312,7 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
 				packagedSkills: { [reference.id]: directory },
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createEnv(),
@@ -401,10 +386,7 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
 				packagedSkills: { [reference.id]: directory },
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createEnv(),
@@ -472,10 +454,7 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
 				packagedSkills: { [reference.id]: directory },
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () =>
@@ -520,9 +499,6 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createEnv(),
@@ -545,9 +521,6 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createEnv(),
@@ -568,9 +541,6 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () =>
@@ -609,9 +579,6 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createEnv(),
@@ -653,9 +620,6 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createEnv({ files }),
@@ -713,9 +677,6 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createEnv(),
@@ -792,10 +753,7 @@ describe('session.skill()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
 				packagedSkills: { [reference.id]: directory },
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createEnv(),

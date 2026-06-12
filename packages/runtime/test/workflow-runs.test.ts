@@ -35,9 +35,6 @@ function createContext(
 		initialEventIndex,
 		env: {},
 		agentConfig: {
-			systemPrompt: '',
-			skills: {},
-			model: undefined,
 			resolveModel: () => undefined,
 		},
 		createDefaultEnv: async () => {

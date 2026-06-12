@@ -597,9 +597,6 @@ function createContext(env: SessionEnv, store: SessionStore, overrides: Partial<
 		payload: undefined,
 		env: {},
 		agentConfig: {
-			systemPrompt: '',
-			skills: {},
-			model: undefined,
 			resolveModel: () => undefined,
 		},
 		createDefaultEnv: async () => env,

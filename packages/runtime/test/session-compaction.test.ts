@@ -29,9 +29,6 @@ describe('session.compact()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
@@ -68,9 +65,6 @@ describe('session.compact()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
@@ -120,9 +114,6 @@ describe('session.compact()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
@@ -177,9 +168,6 @@ describe('session.compact()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
@@ -216,9 +204,6 @@ describe('session.compact()', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
@@ -267,9 +252,6 @@ describe('automatic compaction', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
@@ -314,9 +296,6 @@ describe('automatic compaction', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
@@ -364,9 +343,6 @@ describe('automatic compaction', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
@@ -423,9 +399,6 @@ describe('automatic compaction', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
@@ -476,9 +449,6 @@ describe('automatic compaction', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
@@ -541,9 +511,6 @@ describe('automatic compaction', () => {
 			payload: {},
 			env: {},
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: (requested) => {
 					if (requested === agentModelSpecifier) return agentModel;
 					if (requested === summarizerModelSpecifier) return summarizerModel;

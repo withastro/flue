@@ -85,10 +85,7 @@ function makeRealCreateContext(executionStore: AgentExecutionStore): CreateConte
 			req,
 			initialEventIndex,
 			agentConfig: {
-				systemPrompt: 'You are a test assistant. Respond with a single short sentence.',
-				skills: {},
 				subagents: {},
-				model,
 				resolveModel: (m) => (m ? resolveModel(m) : model),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
@@ -112,10 +109,7 @@ function makeFauxCreateContext(
 			req,
 			initialEventIndex,
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
 				subagents: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),

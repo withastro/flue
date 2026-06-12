@@ -31,7 +31,13 @@ export interface FlueContextConfig {
 	dispatchId?: string;
 	payload: any;
 	env: Record<string, any>;
-	agentConfig: AgentConfig;
+	/**
+	 * Host-provided agent-config seeds (`resolveModel`, `packagedSkills`, and
+	 * runtime-wide defaults). `systemPrompt`, `skills`, and `model` are
+	 * runtime-owned — discovered from the session cwd and resolved from the
+	 * agent definition during harness initialization — so they are not inputs.
+	 */
+	agentConfig: Omit<AgentConfig, 'systemPrompt' | 'skills' | 'model'>;
 	createDefaultEnv: () => Promise<SessionEnv>;
 	defaultStore: SessionStore;
 	/**

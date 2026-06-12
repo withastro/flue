@@ -55,9 +55,6 @@ function createContext() {
 		payload: {},
 		env: {},
 		agentConfig: {
-			systemPrompt: '',
-			skills: {},
-			model: undefined,
 			resolveModel,
 		},
 		createDefaultEnv: async () => createNoopSessionEnv(),

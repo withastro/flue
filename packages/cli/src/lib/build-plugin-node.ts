@@ -82,9 +82,7 @@ ${userDbImport}
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
-const skills = {};
 const packagedSkills = ${packagedSkillsValue};
-const systemPrompt = '';
 
 ${builtModuleNormalizationSource}
 const agentModules = {
@@ -180,9 +178,7 @@ function createContextForRequest(id, runId, payload, req, initialEventIndex, dis
     initialEventIndex,
     env: process.env,
     req,
-    agentConfig: {
-      systemPrompt, skills, packagedSkills, model: undefined, resolveModel,
-    },
+    agentConfig: { packagedSkills, resolveModel },
     createDefaultEnv,
     defaultStore: executionStore.sessions,
     submissionStore: executionStore.submissions,

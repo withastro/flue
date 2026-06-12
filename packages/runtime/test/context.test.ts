@@ -85,9 +85,6 @@ function createContext(overrides: Partial<FlueContextConfig> = {}) {
 		payload: {},
 		env: {},
 		agentConfig: {
-			systemPrompt: '',
-			skills: {},
-			model: undefined,
 			resolveModel: () => undefined,
 		},
 		createDefaultEnv: async () => createEnv(),
@@ -336,9 +333,6 @@ describe('session context discovery', () => {
 		const events: FlueEvent[] = [];
 		const ctx = createContext({
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () =>
@@ -375,9 +369,6 @@ describe('session context discovery', () => {
 		const events: FlueEvent[] = [];
 		const ctx = createContext({
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () =>
@@ -418,9 +409,6 @@ describe('session context discovery', () => {
 		const events: FlueEvent[] = [];
 		const ctx = createContext({
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () =>
@@ -462,9 +450,6 @@ describe('session context discovery', () => {
 		const factoryOptions: { id: string }[] = [];
 		const ctx = createContext({
 			agentConfig: {
-				systemPrompt: '',
-				skills: {},
-				model: undefined,
 				resolveModel: () => provider.getModel(),
 			},
 		});
