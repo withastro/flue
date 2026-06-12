@@ -102,7 +102,7 @@ export interface AgentSubmissionSession {
 		input: AgentSubmissionInput,
 		toolRequest: AgentSubmissionToolRequest,
 	): Promise<string | undefined>;
-	recoverInterruptedStream(streamKey: string): Promise<boolean>;
+	recoverInterruptedStream(streamKey: string, turnCheckpointLeafId?: string): Promise<boolean>;
 	recordSubmissionTerminal(input: AgentSubmissionInterruption): Promise<void>;
 }
 
@@ -391,11 +391,12 @@ export async function reconcileInterruptedSubmission(
 		journal.streamConsumedAt === undefined
 	) {
 		const streamKey = journal.streamKey;
+		const turnCheckpointLeafId = journal.checkpointLeafId;
 		const recoveryCtx = createContext(payload, dispatchId);
 		const recovered = (await createAgentSubmissionSessionHandler(
 			agent,
 			input,
-			(s) => s.recoverInterruptedStream(streamKey),
+			(s) => s.recoverInterruptedStream(streamKey, turnCheckpointLeafId),
 		)(recoveryCtx)) as boolean;
 		if (recovered) {
 			await submissions.markStreamConsumed(attempt, journal.streamKey);

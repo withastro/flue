@@ -538,16 +538,18 @@ leaseExpiresAt: 1,
 				const storageKey = createSessionStorageKey('instance-1', 'default', 'default');
 				const session = await store2.sessions.load(storageKey);
 				const entries = session?.entries ?? [];
-				// The recovered partial preserves the output collected before
-				// the abort, and the continuation signal marks the resume.
-				const recoveredPartial = entries.find(
+				// The aborted turn's checkpoint preserves the output collected
+				// before the abort, the continuation signal marks the resume,
+				// and recovery appends no second copy of the partial: durable
+				// history holds exactly one aborted partial assistant.
+				const abortedPartials = entries.filter(
 					(entry) =>
 						entry.type === 'message' &&
 						entry.message.role === 'assistant' &&
-						(entry.message as any).stopReason === 'aborted' &&
-						JSON.stringify((entry.message as any).content).includes('lorem ipsum'),
+						(entry.message as any).stopReason === 'aborted',
 				);
-				expect(recoveredPartial).toBeDefined();
+				expect(abortedPartials).toHaveLength(1);
+				expect(JSON.stringify((abortedPartials[0] as any).message.content)).toContain('lorem ipsum');
 				const continued = entries.filter(
 					(entry) =>
 						entry.type === 'message' &&

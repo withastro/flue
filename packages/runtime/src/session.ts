@@ -806,12 +806,13 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		return this.history.getLeafId() ?? undefined;
 	}
 
-	async recoverInterruptedStream(streamKey: string): Promise<boolean> {
+	async recoverInterruptedStream(streamKey: string, turnCheckpointLeafId?: string): Promise<boolean> {
 		if (!this.submissionStore) return false;
 		const segments = await this.submissionStore.getStreamChunkSegments(streamKey);
 		const recovered = reconstructInterruptedStream(segments, streamKey);
 		if (!recovered) return false;
-		const alreadyRecovered = this.history.getActivePath().some(
+		const activePath = this.history.getActivePath();
+		const alreadyRecovered = activePath.some(
 			(entry) =>
 				entry.type === 'message' &&
 				entry.message.role === 'signal' &&
@@ -819,7 +820,26 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				entry.message.attributes?.streamKey === streamKey,
 		);
 		if (alreadyRecovered) return true;
-		this.history.appendMessages([recovered.partial, recovered.interrupted, recovered.continued]);
+		// A graceful shutdown abort reaches turn_end before the process exits,
+		// so the interrupted turn's partial is usually already checkpointed as
+		// the trailing aborted assistant. Append only the recovery signals then
+		// — re-appending the reconstructed partial would duplicate it in
+		// durable history. The trailing aborted assistant belongs to this turn
+		// exactly when it was appended after the turn began, i.e. it is not the
+		// journal's pre-turn checkpoint leaf (a hard crash mid-turn checkpoints
+		// nothing, leaving any trailing aborted assistant from an earlier turn
+		// at that leaf).
+		const last = activePath.at(-1);
+		const partialAlreadyCheckpointed =
+			last?.type === 'message' &&
+			last.message.role === 'assistant' &&
+			(last.message as AssistantMessage).stopReason === 'aborted' &&
+			last.id !== turnCheckpointLeafId;
+		this.history.appendMessages(
+			partialAlreadyCheckpointed
+				? [recovered.interrupted, recovered.continued]
+				: [recovered.partial, recovered.interrupted, recovered.continued],
+		);
 		this.rebuildHarnessContext();
 		await this.save();
 		return true;
