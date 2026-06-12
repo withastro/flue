@@ -86,11 +86,6 @@ export type StartWorkflowAdmissionFn = (
 	run: () => Promise<unknown>,
 ) => Promise<unknown>;
 
-/**
- * Direct-agent foreground execution wrapper. Wraps the call to `handler(ctx)`
- * so targets can layer in keepalive / context propagation. Defaults to direct
- * invocation when omitted.
- */
 export interface HandleAgentOptions {
 	request: Request;
 	id: string;
@@ -151,9 +146,9 @@ function admissionResponse(
 /**
  * Handle one attached `/agents/:name/:id` prompt interaction.
  *
-	 * Returns accepted stream coordinates by default, or a synchronous JSON
-	 * result when `?wait=result` is requested. Events are available via the DS
-	 * stream read endpoint (GET on the same URL).
+ * Returns accepted stream coordinates by default, or a synchronous JSON
+ * result when `?wait=result` is requested. Events are available via the DS
+ * stream read endpoint (GET on the same URL).
  */
 export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Response> {
 	const { request, id } = opts;

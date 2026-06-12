@@ -99,8 +99,6 @@ export interface AgentSubmissionSession {
 	recordSubmissionTerminal(input: AgentSubmissionInterruption): Promise<void>;
 }
 
-
-
 interface AgentSubmissionObserver {
 	onEvent?: (event: AttachedAgentEvent) => Promise<void> | void;
 }
