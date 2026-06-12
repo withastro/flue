@@ -14,7 +14,15 @@ export interface RunRecord {
 	error?: unknown;
 }
 
-interface PromptUsage {
+/**
+ * Sentinel string that replaces raw image `data` in event payloads. Events
+ * never carry raw image bytes; image content blocks keep their `mimeType`
+ * but have `data` replaced with this value.
+ */
+export const IMAGE_DATA_OMITTED = '[image data omitted from event]';
+
+/** Aggregated token and cost usage for model work. */
+export interface PromptUsage {
 	input: number;
 	output: number;
 	cacheRead: number;

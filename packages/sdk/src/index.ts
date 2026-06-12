@@ -30,6 +30,7 @@ export type {
 	FlueEventStream,
 	FlueStreamOptions,
 } from './public/stream.ts';
+export { IMAGE_DATA_OMITTED } from './types.ts';
 export type {
 	AgentPromptResponse,
 	AttachedAgentEvent,
@@ -40,6 +41,7 @@ export type {
 	LlmThinkingContent,
 	LlmToolCall,
 	LlmTurnPurpose,
+	PromptUsage,
 	RunRecord,
 	RunStatus,
 } from './types.ts';
