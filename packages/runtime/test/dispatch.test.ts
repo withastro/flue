@@ -1,10 +1,8 @@
 import {
 	type FauxProviderRegistration,
 	fauxAssistantMessage,
-	fauxToolCall,
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
-import * as v from 'valibot';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createAgent } from '../src/agent-definition.ts';
 import { dispatch } from '../src/index.ts';
@@ -24,10 +22,8 @@ import {
 import { resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import { generateSessionAffinityKey } from '../src/runtime/ids.ts';
 import { createSessionStorageKey } from '../src/session-identity.ts';
-import { defineTool } from '../src/tool.ts';
-import type { AgentConfig } from '../src/types.ts';
+import type { AgentConfig, SessionData } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
-import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 const providers: FauxProviderRegistration[] = [];
 
@@ -668,6 +664,28 @@ describe('repairInterruptedToolCalls()', () => {
 		};
 	}
 
+	/** Walk the active path from the leaf to the root, returning tool results in chronological order. */
+	function activePathToolResults(
+		sessionData: SessionData,
+	): Array<{ toolCallId: string; isError: boolean; text: string }> {
+		const results: Array<{ toolCallId: string; isError: boolean; text: string }> = [];
+		let currentId = sessionData.leafId;
+		while (currentId) {
+			const entry = sessionData.entries.find((e) => e.id === currentId);
+			if (!entry) break;
+			if (entry.type === 'message' && entry.message.role === 'toolResult') {
+				const first = entry.message.content[0];
+				results.unshift({
+					toolCallId: entry.message.toolCallId,
+					isError: entry.message.isError,
+					text: first?.type === 'text' ? first.text : '',
+				});
+			}
+			currentId = entry.parentId;
+		}
+		return results;
+	}
+
 	it('appends synthetic interrupted results for all unresolved tool calls', async () => {
 		const { sqlite } = await import('../src/node/agent-execution-store.ts');
 		const adapter = sqlite();
@@ -713,20 +731,7 @@ describe('repairInterruptedToolCalls()', () => {
 		// Walk the active path to find tool results in order.
 		const sessionData = await store.sessions.load(storageKey);
 		if (!sessionData) throw new Error('Expected repaired session data.');
-		const activeResults: Array<{ toolCallId: string; isError: boolean; text: string }> = [];
-		let currentId = sessionData.leafId;
-		while (currentId) {
-			const entry = sessionData.entries.find((e) => e.id === currentId);
-			if (!entry) break;
-			if (entry.type === 'message' && (entry as any).message.role === 'toolResult') {
-				activeResults.unshift({
-					toolCallId: (entry as any).message.toolCallId,
-					isError: (entry as any).message.isError,
-					text: (entry as any).message.content[0]?.text ?? '',
-				});
-			}
-			currentId = entry.parentId;
-		}
+		const activeResults = activePathToolResults(sessionData);
 
 		expect(activeResults).toHaveLength(2);
 		// Both are synthetic interrupted results in original tool-call order.
@@ -782,19 +787,7 @@ describe('repairInterruptedToolCalls()', () => {
 		// Walk the active path to find tool results in order.
 		const sessionData = await store.sessions.load(storageKey);
 		if (!sessionData) throw new Error('Expected repaired session data.');
-		const activeResults: Array<{ toolCallId: string; isError: boolean }> = [];
-		let currentId = sessionData.leafId;
-		while (currentId) {
-			const entry = sessionData.entries.find((e) => e.id === currentId);
-			if (!entry) break;
-			if (entry.type === 'message' && (entry as any).message.role === 'toolResult') {
-				activeResults.unshift({
-					toolCallId: (entry as any).message.toolCallId,
-					isError: (entry as any).message.isError,
-				});
-			}
-			currentId = entry.parentId;
-		}
+		const activeResults = activePathToolResults(sessionData);
 
 		// Two results in original tool-call order.
 		expect(activeResults).toHaveLength(2);
@@ -852,21 +845,8 @@ describe('repairInterruptedToolCalls()', () => {
 
 		const sessionData = await store.sessions.load(storageKey);
 		if (!sessionData) throw new Error('Expected repaired session data.');
-		const path = sessionData.entries;
 		// Walk from the leaf backwards to find the tool results in the active path.
-		const resultEntries: Array<{ toolCallId: string; isError: boolean }> = [];
-		let currentId = sessionData.leafId;
-		while (currentId) {
-			const entry = path.find((e) => e.id === currentId);
-			if (!entry) break;
-			if (entry.type === 'message' && (entry as any).message.role === 'toolResult') {
-				resultEntries.unshift({
-					toolCallId: (entry as any).message.toolCallId,
-					isError: (entry as any).message.isError,
-				});
-			}
-			currentId = entry.parentId;
-		}
+		const resultEntries = activePathToolResults(sessionData);
 
 		// Results must be in original tool-call order: [tc1, tc2, tc3].
 		expect(resultEntries.map((r) => r.toolCallId)).toEqual([tc1.id, tc2.id, tc3.id]);
@@ -916,149 +896,6 @@ describe('repairInterruptedToolCalls()', () => {
 		)(ctx);
 
 		expect(repairedLeafId).toBeUndefined();
-	});
-
-	it('persists assistant tool request before recording tool_request_recorded when a turn invokes a tool', async () => {
-		const { sqlite } = await import('../src/node/agent-execution-store.ts');
-		const adapter = sqlite();
-		await adapter.migrate?.();
-		const { executionStore } = await adapter.connect();
-		const provider = createProvider();
-		const toolCallId = `tool:journal-order-${crypto.randomUUID()}`;
-		provider.setResponses([
-			fauxAssistantMessage(fauxToolCall('lookup', { q: 'x' }, { id: toolCallId }), {
-				stopReason: 'toolUse',
-			}),
-			fauxAssistantMessage('Done.'),
-		]);
-		const lookup = defineTool({
-			name: 'lookup',
-			description: 'Look up.',
-			parameters: v.object({ q: v.string() }),
-			execute: async () => 'found it',
-		});
-		const events: Array<
-			| { type: 'save'; data: import('../src/types.ts').SessionData }
-			| { type: 'phase'; phase: string }
-		> = [];
-		const originalSave = executionStore.sessions.save.bind(executionStore.sessions);
-		executionStore.sessions.save = async (id, data) => {
-			events.push({ type: 'save', data });
-			return originalSave(id, data);
-		};
-		const dispatchInput: DispatchInput = {
-			dispatchId: 'dispatch:journal-order',
-			agent: 'moderator',
-			id: 'guild:journal-order',
-			input: { type: 'flagged' },
-			acceptedAt: '2026-06-01T00:00:00.000Z',
-		};
-		const { createNodeAgentCoordinator } = await import('../src/node/agent-coordinator.ts');
-		const coordinator = createNodeAgentCoordinator({
-			submissions: executionStore.submissions,
-			sessions: executionStore.sessions,
-			agents: {
-				moderator: createAgent(() => ({
-					model: `${provider.getModel().provider}/${provider.getModel().id}`,
-					tools: [lookup],
-				})),
-			},
-			createContext: (id, runId, payload, req, initialEventIndex, dispatchId) =>
-				createFlueContext({
-					id, runId, dispatchId, payload, env: {}, req, initialEventIndex,
-					agentConfig: { systemPrompt: '', skills: {}, subagents: {}, model: undefined, resolveModel: () => provider.getModel() },
-					createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
-					defaultStore: executionStore.sessions,
-					submissionStore: executionStore.submissions,
-				}),
-			eventStreamStore: createTestEventStreamStore(),
-		});
-		const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(executionStore.submissions);
-		executionStore.submissions.updateTurnJournalPhase = async (attempt, phase, options) => {
-			events.push({ type: 'phase', phase });
-			return originalUpdate(attempt, phase, options);
-		};
-
-		await coordinator.admitDispatch(dispatchInput);
-		await coordinator.waitForIdle();
-
-		const toolRequestIndex = events.findIndex(
-			(event) => event.type === 'phase' && event.phase === 'tool_request_recorded',
-		);
-		expect(toolRequestIndex).toBeGreaterThan(0);
-		const precedingSave = events
-			.slice(0, toolRequestIndex)
-			.reverse()
-			.find((event): event is { type: 'save'; data: import('../src/types.ts').SessionData } => event.type === 'save');
-		expect(precedingSave?.data.entries.some((entry) =>
-			entry.type === 'message' &&
-			entry.message.role === 'assistant' &&
-			entry.message.content.some((content) => content.type === 'toolCall' && content.id === toolCallId),
-		)).toBe(true);
-	});
-
-	it('records journal phase transitions through tool_request_recorded during a tool-use turn', async () => {
-		const { sqlite } = await import('../src/node/agent-execution-store.ts');
-		const adapter = sqlite();
-		await adapter.migrate?.();
-		const { executionStore } = await adapter.connect();
-		const provider = createProvider();
-		const toolCallId = `tool:journal-${crypto.randomUUID()}`;
-		provider.setResponses([
-			fauxAssistantMessage(fauxToolCall('lookup', { q: 'x' }, { id: toolCallId }), {
-				stopReason: 'toolUse',
-			}),
-			fauxAssistantMessage('Done.'),
-		]);
-		const lookup = defineTool({
-			name: 'lookup',
-			description: 'Look up.',
-			parameters: v.object({ q: v.string() }),
-			execute: async () => 'found it',
-		});
-		const phases: string[] = [];
-		const dispatchInput: DispatchInput = {
-			dispatchId: 'dispatch:journal-phases',
-			agent: 'moderator',
-			id: 'guild:journal-phases',
-			input: { type: 'flagged' },
-			acceptedAt: '2026-06-01T00:00:00.000Z',
-		};
-		const { createNodeAgentCoordinator } = await import('../src/node/agent-coordinator.ts');
-		const coordinator = createNodeAgentCoordinator({
-			submissions: executionStore.submissions,
-			sessions: executionStore.sessions,
-			agents: {
-				moderator: createAgent(() => ({
-					model: `${provider.getModel().provider}/${provider.getModel().id}`,
-					tools: [lookup],
-				})),
-			},
-			createContext: (id, runId, payload, req, initialEventIndex, dispatchId) =>
-				createFlueContext({
-					id, runId, dispatchId, payload, env: {}, req, initialEventIndex,
-					agentConfig: { systemPrompt: '', skills: {}, subagents: {}, model: undefined, resolveModel: () => provider.getModel() },
-					createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
-					defaultStore: executionStore.sessions,
-					submissionStore: executionStore.submissions,
-				}),
-			eventStreamStore: createTestEventStreamStore(),
-		});
-
-		const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(executionStore.submissions);
-		executionStore.submissions.updateTurnJournalPhase = async (attempt, phase, options) => {
-			phases.push(phase);
-			return originalUpdate(attempt, phase, options);
-		};
-
-		await coordinator.admitDispatch(dispatchInput);
-		await coordinator.waitForIdle();
-
-		expect(phases).toContain('provider_started');
-		expect(phases).toContain('tool_request_recorded');
-		expect(phases.filter((p) => p === 'before_provider').length).toBeGreaterThanOrEqual(1);
-		const journal = await executionStore.submissions.getTurnJournal(dispatchInput.dispatchId);
-		expect(journal?.committed).toBe(true);
 	});
 });
 

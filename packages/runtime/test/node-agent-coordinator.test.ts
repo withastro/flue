@@ -1,8 +1,10 @@
 import {
 	type FauxProviderRegistration,
 	fauxAssistantMessage,
+	fauxToolCall,
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
+import * as v from 'valibot';
 import { afterEach, describe, expect, it } from 'vitest';
 import { join } from 'node:path';
 import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
@@ -15,6 +17,8 @@ import type { CreateContextFn } from '../src/runtime/handle-agent.ts';
 import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
 import { createSessionStorageKey } from '../src/session-identity.ts';
 import { generateSessionAffinityKey } from '../src/runtime/ids.ts';
+import { defineTool } from '../src/tool.ts';
+import type { SessionData } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
 import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
@@ -589,6 +593,116 @@ leaseExpiresAt: 1,
 			const submission = await executionStore.submissions.getSubmission(input.dispatchId);
 			expect(submission).toMatchObject({ status: 'settled' });
 			expect(submission?.error).toBeUndefined();
+		});
+	});
+
+	describe('turn journal during tool-use turns', () => {
+		it('persists assistant tool request before recording tool_request_recorded when a turn invokes a tool', async () => {
+			const executionStore = await openExecutionStore(createTempDbPath());
+			const provider = createFauxProvider();
+			const toolCallId = `tool:journal-order-${crypto.randomUUID()}`;
+			provider.setResponses([
+				fauxAssistantMessage(fauxToolCall('lookup', { q: 'x' }, { id: toolCallId }), {
+					stopReason: 'toolUse',
+				}),
+				fauxAssistantMessage('Done.'),
+			]);
+			const lookup = defineTool({
+				name: 'lookup',
+				description: 'Look up.',
+				parameters: v.object({ q: v.string() }),
+				execute: async () => 'found it',
+			});
+			const events: Array<
+				| { type: 'save'; data: SessionData }
+				| { type: 'phase'; phase: string }
+			> = [];
+			const originalSave = executionStore.sessions.save.bind(executionStore.sessions);
+			executionStore.sessions.save = async (id, data) => {
+				events.push({ type: 'save', data });
+				return originalSave(id, data);
+			};
+			const coordinator = createNodeAgentCoordinator({
+				submissions: executionStore.submissions,
+				sessions: executionStore.sessions,
+				agents: {
+					assistant: createAgent(() => ({
+						model: `${provider.getModel().provider}/${provider.getModel().id}`,
+						tools: [lookup],
+					})),
+				},
+				createContext: makeFauxCreateContext(provider, executionStore),
+				eventStreamStore: createTestEventStreamStore(),
+			});
+			const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(executionStore.submissions);
+			executionStore.submissions.updateTurnJournalPhase = async (attempt, phase, options) => {
+				events.push({ type: 'phase', phase });
+				return originalUpdate(attempt, phase, options);
+			};
+
+			await coordinator.admitDispatch(makeDispatchInput({ dispatchId: 'dispatch:journal-order' }));
+			await coordinator.waitForIdle();
+
+			const toolRequestIndex = events.findIndex(
+				(event) => event.type === 'phase' && event.phase === 'tool_request_recorded',
+			);
+			expect(toolRequestIndex).toBeGreaterThan(0);
+			const precedingSave = events
+				.slice(0, toolRequestIndex)
+				.reverse()
+				.find((event): event is { type: 'save'; data: SessionData } => event.type === 'save');
+			expect(precedingSave?.data.entries.some((entry) =>
+				entry.type === 'message' &&
+				entry.message.role === 'assistant' &&
+				entry.message.content.some((content) => content.type === 'toolCall' && content.id === toolCallId),
+			)).toBe(true);
+		});
+
+		it('records journal phase transitions through tool_request_recorded during a tool-use turn', async () => {
+			const executionStore = await openExecutionStore(createTempDbPath());
+			const provider = createFauxProvider();
+			const toolCallId = `tool:journal-${crypto.randomUUID()}`;
+			provider.setResponses([
+				fauxAssistantMessage(fauxToolCall('lookup', { q: 'x' }, { id: toolCallId }), {
+					stopReason: 'toolUse',
+				}),
+				fauxAssistantMessage('Done.'),
+			]);
+			const lookup = defineTool({
+				name: 'lookup',
+				description: 'Look up.',
+				parameters: v.object({ q: v.string() }),
+				execute: async () => 'found it',
+			});
+			const phases: string[] = [];
+			const coordinator = createNodeAgentCoordinator({
+				submissions: executionStore.submissions,
+				sessions: executionStore.sessions,
+				agents: {
+					assistant: createAgent(() => ({
+						model: `${provider.getModel().provider}/${provider.getModel().id}`,
+						tools: [lookup],
+					})),
+				},
+				createContext: makeFauxCreateContext(provider, executionStore),
+				eventStreamStore: createTestEventStreamStore(),
+			});
+
+			const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(executionStore.submissions);
+			executionStore.submissions.updateTurnJournalPhase = async (attempt, phase, options) => {
+				phases.push(phase);
+				return originalUpdate(attempt, phase, options);
+			};
+
+			const input = makeDispatchInput({ dispatchId: 'dispatch:journal-phases' });
+			await coordinator.admitDispatch(input);
+			await coordinator.waitForIdle();
+
+			expect(phases).toContain('provider_started');
+			expect(phases).toContain('tool_request_recorded');
+			expect(phases.filter((p) => p === 'before_provider').length).toBeGreaterThanOrEqual(1);
+			const journal = await executionStore.submissions.getTurnJournal(input.dispatchId);
+			expect(journal?.committed).toBe(true);
 		});
 	});
 
