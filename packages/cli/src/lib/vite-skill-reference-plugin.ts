@@ -54,9 +54,12 @@ export function skillReferencePlugin(options: SkillReferencePluginOptions): Plug
 			if (declarations.length === 0) return null;
 			let transformed = parseableCode;
 			for (const declaration of declarations.sort((a, b) => b.start - a.start)) {
-				const authoredPath = path.resolve(path.dirname(importerPath), declaration.specifier);
-				assertPackagedSkillPath(authoredPath, projectRoot);
-				const resolvedPath = canonicalPath(authoredPath);
+				const resolvedPath = await resolveSkillImport.call(
+					this,
+					declaration.specifier,
+					importerPath,
+					projectRoot,
+				);
 				const skillModuleId = `${internalSkillModulePrefix}${resolvedPath}`;
 				transformed = `${transformed.slice(0, declaration.start)}${JSON.stringify(skillModuleId)}${transformed.slice(declaration.end)}`;
 			}
@@ -191,27 +194,62 @@ async function readSkillMetadata(
 	projectRoot: string,
 ): Promise<Omit<PackagedSkillDirectory, 'files'>> {
 	const directory = path.dirname(skillPath);
-	const relativeDirectory = stableProjectRelativePath(directory, projectRoot);
+	const identityPath = stableSkillIdentityPath(directory, projectRoot);
 	const raw = await fs.promises.readFile(skillPath, 'utf8');
 	const parsed = parseSkillMarkdown(raw, {
 		directoryName: path.basename(directory),
 		path: skillPath,
 	});
 	return {
-		id: `skill:${parsed.name}:${createHash('sha256').update(relativeDirectory).digest('hex').slice(0, 16)}`,
+		id: `skill:${parsed.name}:${createHash('sha256').update(identityPath).digest('hex').slice(0, 16)}`,
 		name: parsed.name,
 		description: parsed.description,
 	};
 }
 
-function stableProjectRelativePath(directory: string, projectRoot: string): string {
-	const relativePath = normalizePath(path.relative(projectRoot, canonicalPath(directory)));
-	if (relativePath === '' || relativePath === '..' || relativePath.startsWith('../')) {
-		throw new Error(
-			`[flue] Imported skill directory "${directory}" must be inside project root "${projectRoot}" so it can be packaged with a stable identity.`,
-		);
+async function resolveSkillImport(
+	this: PluginContext,
+	specifier: string,
+	importerPath: string,
+	projectRoot: string,
+): Promise<string> {
+	if (isRelativeSpecifier(specifier)) {
+		const authoredPath = path.resolve(path.dirname(importerPath), specifier);
+		assertPackagedSkillPath(authoredPath, projectRoot);
+		return canonicalPath(authoredPath);
 	}
-	return relativePath;
+
+	const resolved = await this.resolve(specifier, importerPath, { skipSelf: true });
+	if (!resolved) {
+		throw new Error(`[flue] Unable to resolve skill import "${specifier}" from "${importerPath}".`);
+	}
+
+	const resolvedPath = canonicalPath(resolved.id.split(/[?#]/, 1)[0] ?? resolved.id);
+	if (!isSkillMarkdownPath(resolvedPath)) {
+		throw new Error(`[flue] Skill imports must target a SKILL.md file: ${specifier}`);
+	}
+	return resolvedPath;
+}
+
+function stableSkillIdentityPath(directory: string, projectRoot: string): string {
+	const relativePath = normalizePath(path.relative(projectRoot, canonicalPath(directory)));
+	if (relativePath !== '' && relativePath !== '..' && !relativePath.startsWith('../')) {
+		return `project:${relativePath}`;
+	}
+
+	const packageRoot = findPackageRoot(directory);
+	if (packageRoot) {
+		const pkg = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8')) as {
+			name?: unknown;
+			version?: unknown;
+		};
+		const packageName = typeof pkg.name === 'string' && pkg.name ? pkg.name : packageRoot;
+		const packageVersion = typeof pkg.version === 'string' && pkg.version ? pkg.version : '';
+		const packageRelativePath = normalizePath(path.relative(packageRoot, directory));
+		return `package:${packageName}@${packageVersion}:${packageRelativePath}`;
+	}
+
+	return `external:${canonicalPath(directory)}`;
 }
 
 function assertPackagedSkillPath(skillPath: string, projectRoot: string): void {
@@ -244,6 +282,19 @@ function canonicalPath(filePath: string): string {
 		unresolvedPath = parentPath;
 	}
 	return normalizePath(path.join(fs.realpathSync.native(unresolvedPath), ...suffixes));
+}
+
+function findPackageRoot(directory: string): string | undefined {
+	let currentPath = canonicalPath(directory);
+	while (currentPath !== path.dirname(currentPath)) {
+		if (fs.existsSync(path.join(currentPath, 'package.json'))) return currentPath;
+		currentPath = path.dirname(currentPath);
+	}
+	return undefined;
+}
+
+function isRelativeSpecifier(specifier: string): boolean {
+	return specifier.startsWith('.') || specifier.startsWith('/');
 }
 
 function isWithinDirectory(filePath: string, directory: string): boolean {
@@ -346,6 +397,14 @@ function isSkillMarkdownPath(specifier: string): boolean {
 
 interface ModuleAst {
 	body: unknown[];
+}
+
+interface PluginContext {
+	resolve(
+		source: string,
+		importer?: string,
+		options?: { skipSelf?: boolean },
+	): Promise<{ id: string } | null>;
 }
 
 interface AstNode {
