@@ -5,6 +5,7 @@ import type { PackagedSkillDirectory, PackagedSkillFile, SkillReference } from '
 import { parseSkillMarkdown } from '@flue/runtime/internal';
 import { normalizePath, type Plugin, transformWithOxc } from 'vite';
 
+const MARKDOWN_MODULE_PREFIX = '\0flue-markdown:';
 const PACKAGED_SKILLS_MODULE_ID = 'virtual:flue/packaged-skills';
 const RESOLVED_PACKAGED_SKILLS_MODULE_ID = '\0virtual:flue/packaged-skills';
 const SKILL_MODULE_PREFIX = '\0flue-skill:';
@@ -24,12 +25,19 @@ const SENSITIVE_DIRECTORIES = new Set(['.aws', '.gnupg', '.ssh']);
 const EXCLUDED_FILES = new Set(['.netrc', '.npmrc', '.pypirc', '_netrc', 'credentials.json']);
 const SENSITIVE_FILE_PATTERNS = [/\.key$/i, /\.pem$/i, /\.p12$/i, /\.pfx$/i, /^secrets?(?:\.|$)/i];
 
-export interface SkillReferencePluginOptions {
+export interface ImportAttributePluginOptions {
 	root: string;
 	bootstrapEntries?: readonly string[];
 }
 
-export function skillReferencePlugin(options: SkillReferencePluginOptions): Plugin {
+/**
+ * Handles Flue's attributed imports — `with { type: 'markdown' }` and
+ * `with { type: 'skill' }` — in one plugin so each module in the graph is
+ * type-stripped and parsed once per (re)build, and so the two attribute
+ * types cannot drift apart.
+ */
+export function importAttributePlugin(options: ImportAttributePluginOptions): Plugin {
+	let viteRoot = '';
 	const projectRoot = canonicalPath(path.resolve(options.root));
 	const bootstrapEntries = new Set(
 		(options.bootstrapEntries ?? []).map((entry) => canonicalPath(path.resolve(entry))),
@@ -40,8 +48,11 @@ export function skillReferencePlugin(options: SkillReferencePluginOptions): Plug
 	const trackedSkillDirectories = new Set<string>();
 
 	return {
-		name: 'flue-skill-reference',
+		name: 'flue-import-attributes',
 		enforce: 'pre',
+		configResolved(config) {
+			viteRoot = config.root;
+		},
 		async transform(code, id) {
 			if (!/\.[cm]?[jt]sx?(?:\?|$)/i.test(id)) return null;
 			const importerPath = id.split('?')[0] ?? id;
@@ -50,10 +61,43 @@ export function skillReferencePlugin(options: SkillReferencePluginOptions): Plug
 				: code;
 			const ast = this.parse(parseableCode) as unknown as ModuleAst;
 			assertNoDynamicSkillImports(ast);
-			const declarations = collectAttributedSkillReferences(ast);
-			if (declarations.length === 0) return null;
-			let transformed = parseableCode;
-			for (const declaration of declarations.sort((a, b) => b.start - a.start)) {
+			const markdownImports = collectAttributedImports(ast, 'markdown');
+			const skillImports = collectAttributedImports(ast, 'skill');
+			if (markdownImports.length === 0 && skillImports.length === 0) return null;
+			const replacements: Array<AttributedImport & { moduleId: string }> = [];
+			for (const declaration of markdownImports) {
+				if (isSkillMarkdownPath(declaration.specifier)) {
+					throw new Error(
+						`[flue] SKILL.md imports must use an import attribute: with { type: 'skill' }.`,
+					);
+				}
+				if (!/\.md$/i.test(declaration.specifier)) {
+					throw new Error(
+						`[flue] Markdown imports must target a .md file: ${declaration.specifier}`,
+					);
+				}
+				const rootRelativePath = declaration.specifier.startsWith('/')
+					? path.resolve(viteRoot, declaration.specifier.slice(1))
+					: undefined;
+				const resolved = rootRelativePath
+					? { id: rootRelativePath, external: false }
+					: await this.resolve(declaration.specifier, importerPath, { skipSelf: true });
+				if (!resolved || resolved.external) {
+					throw new Error(`[flue] Unable to resolve markdown import: ${declaration.specifier}`);
+				}
+				if (isSkillMarkdownPath(resolved.id)) {
+					throw new Error(
+						`[flue] SKILL.md imports must use an import attribute: with { type: 'skill' }.`,
+					);
+				}
+				replacements.push({ ...declaration, moduleId: `${MARKDOWN_MODULE_PREFIX}${resolved.id}` });
+			}
+			for (const declaration of skillImports) {
+				if (!isSkillMarkdownPath(declaration.specifier)) {
+					throw new Error(
+						`[flue] Skill imports must target a SKILL.md file: ${declaration.specifier}`,
+					);
+				}
 				if (!declaration.specifier.startsWith('.')) {
 					throw new Error(
 						`[flue] Skill import "${declaration.specifier}" must use a relative path to a SKILL.md inside the project root (for example "./skills/review/SKILL.md"). Bare and absolute specifiers are unsupported because imported skills are packaged into the deployed application.`,
@@ -62,12 +106,19 @@ export function skillReferencePlugin(options: SkillReferencePluginOptions): Plug
 				const authoredPath = path.resolve(path.dirname(importerPath), declaration.specifier);
 				assertPackagedSkillPath(authoredPath, projectRoot);
 				const resolvedPath = canonicalPath(authoredPath);
-				const skillModuleId = `${internalSkillModulePrefix}${resolvedPath}`;
-				transformed = `${transformed.slice(0, declaration.start)}${JSON.stringify(skillModuleId)}${transformed.slice(declaration.end)}`;
+				replacements.push({
+					...declaration,
+					moduleId: `${internalSkillModulePrefix}${resolvedPath}`,
+				});
+			}
+			let transformed = parseableCode;
+			for (const replacement of replacements.sort((a, b) => b.start - a.start)) {
+				transformed = `${transformed.slice(0, replacement.start)}${JSON.stringify(replacement.moduleId)}${transformed.slice(replacement.end)}`;
 			}
 			return { code: transformed, map: null };
 		},
 		resolveId(source, importer) {
+			if (source.startsWith(MARKDOWN_MODULE_PREFIX)) return source;
 			if (source === PACKAGED_SKILLS_MODULE_ID) {
 				if (!isAuthorizedPackagedStoreImporter(importer, bootstrapEntries)) {
 					throw new Error(
@@ -128,6 +179,11 @@ export function skillReferencePlugin(options: SkillReferencePluginOptions): Plug
 			return [registry, ...options.modules];
 		},
 		async load(id) {
+			if (id.startsWith(MARKDOWN_MODULE_PREFIX)) {
+				const markdownPath = id.slice(MARKDOWN_MODULE_PREFIX.length);
+				this.addWatchFile(markdownPath);
+				return `export default ${JSON.stringify(await fs.promises.readFile(markdownPath, 'utf8'))};`;
+			}
 			if (id === RESOLVED_PACKAGED_SKILLS_MODULE_ID) {
 				return [
 					'const packagedSkills = new Map();',
@@ -359,14 +415,17 @@ interface AstNode {
 	attributes?: Array<{ key?: { name?: unknown; value?: unknown }; value?: { value?: unknown } }>;
 }
 
-interface AttributedSkillReference {
+interface AttributedImport {
 	specifier: string;
 	start: number;
 	end: number;
 }
 
-function collectAttributedSkillReferences(ast: ModuleAst): AttributedSkillReference[] {
-	const references: AttributedSkillReference[] = [];
+function collectAttributedImports(
+	ast: ModuleAst,
+	attributeValue: 'markdown' | 'skill',
+): AttributedImport[] {
+	const imports: AttributedImport[] = [];
 	for (const entry of ast.body) {
 		const declaration = entry as AstNode;
 		if (
@@ -377,22 +436,19 @@ function collectAttributedSkillReferences(ast: ModuleAst): AttributedSkillRefere
 			continue;
 		const specifier = declaration.source?.value;
 		if (typeof specifier !== 'string') continue;
-		const skillAttribute = declaration.attributes?.some((attribute) => {
+		const matchesAttribute = declaration.attributes?.some((attribute) => {
 			const key = attribute.key?.name ?? attribute.key?.value;
-			return key === 'type' && attribute.value?.value === 'skill';
+			return key === 'type' && attribute.value?.value === attributeValue;
 		});
-		if (!skillAttribute) continue;
-		if (!isSkillMarkdownPath(specifier)) {
-			throw new Error(`[flue] Skill imports must target a SKILL.md file: ${specifier}`);
-		}
+		if (!matchesAttribute) continue;
 		const start = declaration.source?.start;
 		const end = declaration.source?.end;
 		if (typeof start !== 'number' || typeof end !== 'number') {
-			throw new Error(`[flue] Unable to transform skill import: ${specifier}`);
+			throw new Error(`[flue] Unable to transform ${attributeValue} import: ${specifier}`);
 		}
-		references.push({ specifier, start, end });
+		imports.push({ specifier, start, end });
 	}
-	return references;
+	return imports;
 }
 
 function assertNoDynamicSkillImports(ast: ModuleAst): void {

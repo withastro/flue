@@ -7,8 +7,7 @@ import { packageUpSync } from 'package-up';
 import { CloudflarePlugin } from './build-plugin-cloudflare.ts';
 import { NodePlugin } from './build-plugin-node.ts';
 import type { AgentInfo, BuildContext, BuildOptions, BuildPlugin, WorkflowInfo } from './types.ts';
-import { markdownImportPlugin } from './vite-markdown-import-plugin.ts';
-import { skillReferencePlugin } from './vite-skill-reference-plugin.ts';
+import { importAttributePlugin } from './vite-import-attribute-plugin.ts';
 
 /**
  * Result returned by {@link build}. `changed` indicates whether any file in
@@ -168,9 +167,10 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 		if (generatedChanged) fs.writeFileSync(entryPath, serverCode, 'utf-8');
 		const inputFiles: Array<[string, string]> = [
 			[cloudflareViteConfigPath(root), inputs.wranglerConfig],
-			...Object.entries(inputs.entryDirFiles ?? {}).map(
-				([filename, content]): [string, string] => [path.join(inputDir, filename), content],
-			),
+			...Object.entries(inputs.entryDirFiles ?? {}).map(([filename, content]): [string, string] => [
+				path.join(inputDir, filename),
+				content,
+			]),
 		];
 		for (const [filePath, content] of inputFiles) {
 			const changed = !fs.existsSync(filePath) || fs.readFileSync(filePath, 'utf-8') !== content;
@@ -356,7 +356,7 @@ function createSharedViteConfig(root: string, bootstrapEntries: readonly string[
 	return {
 		configFile: false as const,
 		root,
-		plugins: [markdownImportPlugin(), skillReferencePlugin({ root, bootstrapEntries })],
+		plugins: [importAttributePlugin({ root, bootstrapEntries })],
 	};
 }
 
