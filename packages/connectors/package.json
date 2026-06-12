@@ -1,7 +1,0 @@
-{
-	"name": "@flue/connectors",
-	"version": "0.3.7",
-	"type": "module",
-	"private": true,
-	"license": "Apache-2.0"
-}

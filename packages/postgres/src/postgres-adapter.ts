@@ -108,7 +108,6 @@ export function postgres(urlOrOptions?: string | PostgresOptions): PersistenceAd
 		}
 		return runner;
 	}
-
 	return {
 		async migrate() {
 			await ensureTables(getRunner());
@@ -416,7 +415,6 @@ class PgSessionStore implements SessionStore {
 			}
 		});
 	}
-
 	async load(id: string): Promise<SessionData | null> {
 		return this.runner.transaction(async (tx) => {
 			const rows = await tx.query(
@@ -1475,5 +1473,3 @@ function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 		...(row.committed_leaf_id != null ? { committedLeafId: String(row.committed_leaf_id) } : {}),
 	};
 }
-
-

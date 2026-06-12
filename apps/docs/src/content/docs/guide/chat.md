@@ -3,7 +3,7 @@ title: Chat
 description: Connect conversational platforms to continuing Flue agents and controlled outbound actions.
 ---
 
-Connect chat platforms to continuing agents through application-owned event handling and explicit outbound tools. This guide shows the pattern for webhook-based integrations directly and with [Chat SDK](https://chat-sdk.dev/docs), a convenient integration for conversational platforms.
+Connect chat platforms to continuing agents through application-owned event handling and explicit outbound tools. This guide shows the pattern for webhook-based integrations directly, with first-party [Channels](/docs/guide/channels/), and with [Chat SDK](https://chat-sdk.dev/docs), a convenient integration for conversational platforms.
 
 ## Receive chat events in your application
 
@@ -162,6 +162,8 @@ Provider events and asynchronous processing can also be retried. If posting a du
 ## Next steps
 
 - Explore `examples/chat-sdk/` for a runnable GitHub mention-to-reply integration.
+- See [Channels](/docs/guide/channels/) for first-party Slack and GitHub webhook helpers.
+- See [Chat SDK on Cloudflare](/docs/guide/chat-sdk-cloudflare/) for direct Chat SDK event handling with durable Chat SDK state.
 - See the [Chat SDK documentation](https://chat-sdk.dev/docs) for its supported platform adapters, event handlers, and state adapters.
 - See [Agents](/docs/guide/building-agents/) for continuing agent instances and asynchronous `dispatch(...)` input.
 - See [Routing](/docs/guide/routing/) for composing webhook routes with Flue application routes.

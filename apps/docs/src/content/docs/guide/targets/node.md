@@ -114,5 +114,3 @@ function sqlite(path?: string): PersistenceAdapter;
 ```
 
 Creates the built-in Node SQLite persistence adapter. Omit `path` for in-memory storage, or pass a file path for persistence across process restarts.
-
-

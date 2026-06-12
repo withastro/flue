@@ -3,7 +3,23 @@
 	"name": "chat-sdk-example",
 	"compatibility_date": "2026-04-01",
 	"compatibility_flags": ["nodejs_compat"],
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "CHAT_INGRESS",
+				"class_name": "ChatIngressAgent"
+			},
+			{
+				"name": "FLUE_CHAT_SDK_STATE_AGENT",
+				"class_name": "FlueChatSdkStateAgent"
+			}
+		]
+	},
 	"migrations": [
+		{
+			"tag": "chat-ingress-agent",
+			"new_sqlite_classes": ["ChatIngressAgent"]
+		},
 		{
 			"tag": "flue-class-Assistant",
 			"new_sqlite_classes": ["Assistant"]
@@ -15,6 +31,10 @@
 		{
 			"tag": "flue-rename-generated-classes",
 			"renamed_classes": [{ "from": "Assistant", "to": "FlueAssistantAgent" }]
+		},
+		{
+			"tag": "chat-sdk-state-agent",
+			"new_sqlite_classes": ["FlueChatSdkStateAgent"]
 		}
 	]
 }
