@@ -149,19 +149,14 @@ function estimateTokens(message: AgentMessage): number {
 	return 0;
 }
 
-function estimateContextTokens(messages: AgentMessage[]): {
-	tokens: number;
-	usageTokens: number;
-	trailingTokens: number;
-	lastUsageIndex: number | null;
-} {
+function estimateContextTokens(messages: AgentMessage[]): number {
 	const usageInfo = getLastAssistantUsageInfo(messages);
 	if (!usageInfo) {
 		let estimated = 0;
 		for (const message of messages) {
 			estimated += estimateTokens(message);
 		}
-		return { tokens: estimated, usageTokens: 0, trailingTokens: estimated, lastUsageIndex: null };
+		return estimated;
 	}
 	const usageTokens = calculateContextTokens(usageInfo.usage);
 	let trailingTokens = 0;
@@ -169,12 +164,7 @@ function estimateContextTokens(messages: AgentMessage[]): {
 		const message = messages[i];
 		if (message) trailingTokens += estimateTokens(message);
 	}
-	return {
-		tokens: usageTokens + trailingTokens,
-		usageTokens,
-		trailingTokens,
-		lastUsageIndex: usageInfo.index,
-	};
+	return usageTokens + trailingTokens;
 }
 
 export function shouldCompact(
@@ -481,7 +471,6 @@ export interface CompactionPreparation {
 
 export interface CompactionResult {
 	summary: string;
-	firstKeptIndex: number;
 	tokensBefore: number;
 	details: { readFiles: string[]; modifiedFiles: string[] };
 	/**
@@ -529,7 +518,7 @@ export function prepareCompaction(
 
 	const boundaryStart = previousCompaction ? previousCompaction.firstKeptIndex : 0;
 	const boundaryEnd = messages.length;
-	const tokensBefore = estimateContextTokens(messages).tokens;
+	const tokensBefore = estimateContextTokens(messages);
 
 	const cutPoint = findCutPoint(messages, boundaryStart, boundaryEnd, settings.keepRecentTokens);
 
@@ -671,7 +660,6 @@ export async function compact(
 	observer?: CompactionTurnObserver,
 ): Promise<CompactionResult> {
 	const {
-		firstKeptIndex,
 		messagesToSummarize,
 		turnPrefixMessages,
 		isSplitTurn,
@@ -739,7 +727,6 @@ export async function compact(
 
 	return {
 		summary,
-		firstKeptIndex,
 		tokensBefore,
 		details: { readFiles, modifiedFiles },
 		usage: aggregateUsage,
