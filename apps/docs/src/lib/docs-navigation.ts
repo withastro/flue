@@ -195,7 +195,10 @@ export const docsSections: DocsSection[] = [
 		landingSlug: 'ecosystem',
 		groups: [
 			{
-				items: [{ title: 'Overview', slug: 'ecosystem', icon: 'home' }],
+				items: [
+					{ title: 'Overview', slug: 'ecosystem', icon: 'home' },
+					{ title: 'Evaluating Agents', slug: 'ecosystem/evals' },
+				],
 			},
 			{
 				title: 'Channels',

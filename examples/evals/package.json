@@ -1,0 +1,21 @@
+{
+	"name": "example-evals",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "flue dev --target node",
+		"build": "flue build --target node",
+		"evals": "vitest run --config vitest.evals.config.ts",
+		"evals:json": "vitest run --config vitest.evals.config.ts --reporter=vitest-evals/reporter --reporter=json --outputFile.json=vitest-results.json"
+	},
+	"dependencies": {
+		"@flue/runtime": "workspace:*",
+		"valibot": "^1.0.0"
+	},
+	"devDependencies": {
+		"@flue/cli": "workspace:*",
+		"@flue/sdk": "workspace:*",
+		"vitest": "^4.1.9",
+		"vitest-evals": "^0.12.0"
+	}
+}

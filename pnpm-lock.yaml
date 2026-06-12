@@ -219,7 +219,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -232,6 +232,28 @@ importers:
       vitest:
         specifier: ^4.1.6
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  examples/evals:
+    dependencies:
+      '@flue/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      valibot:
+        specifier: ^1.0.0
+        version: 1.4.0(typescript@6.0.3)
+    devDependencies:
+      '@flue/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@flue/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      vitest-evals:
+        specifier: ^0.12.0
+        version: 0.12.0(ai@6.0.191(zod@4.4.3))(tinyrainbow@3.1.0)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(zod@4.4.3)
 
   examples/github-channel:
     dependencies:
@@ -247,7 +269,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -275,7 +297,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -347,7 +369,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -378,7 +400,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -403,7 +425,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -431,7 +453,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -508,7 +530,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -539,7 +561,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -586,7 +608,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -617,7 +639,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -645,7 +667,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -673,7 +695,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -701,7 +723,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -726,7 +748,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -754,7 +776,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -782,7 +804,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@flue/cli':
         specifier: workspace:*
         version: link:../../packages/cli
@@ -850,7 +872,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -872,7 +894,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -894,7 +916,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -913,7 +935,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -954,7 +976,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -973,7 +995,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -1030,7 +1052,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@notionhq/client':
         specifier: 5.22.0
         version: 5.22.0
@@ -1147,7 +1169,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@types/node':
         specifier: ^22.10.10
         version: 22.19.19
@@ -1239,7 +1261,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -1280,7 +1302,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -1302,7 +1324,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -1321,7 +1343,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       '@types/node':
         specifier: ^22.10.10
         version: 22.19.19
@@ -1352,7 +1374,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -1374,7 +1396,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -1393,7 +1415,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -1418,7 +1440,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -1440,7 +1462,7 @@ importers:
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.16.15
-        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
+        version: 0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))
       tsdown:
         specifier: ^0.22.0
         version: 0.22.0(oxc-resolver@11.19.1(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0))(tsx@4.22.3)(typescript@6.0.3)
@@ -4488,8 +4510,17 @@ packages:
     resolution: {integrity: sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug==}
     engines: {node: '>= 20'}
 
+  '@vitest-evals/core@0.12.0':
+    resolution: {integrity: sha512-JOatlrVw4jcP9VCBAFcM07pGxUA2iLt4Ks5jaRYqyATjkNwPYnyNDL+YHgvelANfPA0BBX8MzRfs6vEkzJgC+A==}
+
+  '@vitest-evals/report-ui@0.12.0':
+    resolution: {integrity: sha512-rjWKnB+WL1ekiIvHdcnEX0tfaCwfeG3BNU6jvGKuJsHqkf8JRtuTyy/xgUKKsb56CokcZ3K3hmeo6RKik/KBrQ==}
+
   '@vitest/expect@4.1.7':
     resolution: {integrity: sha512-1R+tw0ortHEbZDGMymm+pN7/AFQ/RkFFdtd7EN+VBpynKmLbP8A3rpEXdshBJ7+8hQ9zBJh/i1s0yKNtxAnU7w==}
+
+  '@vitest/expect@4.1.9':
+    resolution: {integrity: sha512-vl/rYsUKcBr3SnQn166+XR5ZQcgMx3DQhFWdfli/cWpLnLUmbxZvyrJZotLFUryib+LtArYMSTJ5RbQ57ZqrlA==}
 
   '@vitest/mocker@4.1.7':
     resolution: {integrity: sha512-vY7nuamKgfvpA1Koa3oYIw/k7D6kZnpGyNMZW8loow2bsBYla1TFdqTaXncWdRn4pgwNs+90RhnXhJScDwQeJA==}
@@ -4502,20 +4533,46 @@ packages:
       vite:
         optional: true
 
+  '@vitest/mocker@4.1.9':
+    resolution: {integrity: sha512-EVkXzBjrPGM+cK8/ANWgBrkUCfJfb38/EfTSO8h7pWvKkyPkpWxvR7BkD2MyItMF62C97zAEoqdpUixwR/e+Rw==}
+    peerDependencies:
+      msw: ^2.4.9
+      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
+    peerDependenciesMeta:
+      msw:
+        optional: true
+      vite:
+        optional: true
+
   '@vitest/pretty-format@4.1.7':
     resolution: {integrity: sha512-umgCarTOYQWIaDMvGDRZij+6b9oVeLIyJzfN+AS88e0ZOU3QTgNNSTtjQOpcvWr3np1N0j4WgZj+sb3oYBDscw==}
+
+  '@vitest/pretty-format@4.1.9':
+    resolution: {integrity: sha512-s0iufns3iIFitdgm+YR7g1whCAaGtXz459VS9/PqyKDEEFgYIhsHOQmXgIgDuYCt7DeQmiZT0Qe2OA2p4ZPu5A==}
 
   '@vitest/runner@4.1.7':
     resolution: {integrity: sha512-BapjmAQ2aI78WdMEfeUWivnfVzB+VPGwWRQcJE0OUq7qEeEcBsCSf+0T5iREBNE5nBb4wA5Ya0W6IA+sghdEFw==}
 
+  '@vitest/runner@4.1.9':
+    resolution: {integrity: sha512-KXLMDtc7oe70+3mJfGrPUWPesswH+3sTxAMAMl8DG7I8IUQT4XW718dY5ID3vPUcmlu27CcKfY4P3h3I29SLJg==}
+
   '@vitest/snapshot@4.1.7':
     resolution: {integrity: sha512-ZacLzja+TmJeZ1h14xW2FB/WpeimUD3haBXQPyJqxvo8jQTmfeA8zv58mtjN2C7EHXZDYVcVYdYmAxjkWVvKCw==}
+
+  '@vitest/snapshot@4.1.9':
+    resolution: {integrity: sha512-Jc7RKGNBo8Z28WYIm0Niej4xdSPByRf6mU58VpHQkd6Zh05rlnA+twjbK5HyeIGHxrzsc3mJgS43uM0CZKzaIA==}
 
   '@vitest/spy@4.1.7':
     resolution: {integrity: sha512-kbkI5LMWakyuTIvs6fUJ5qdIVb1XVKsYJAT4OJ938cHMROYMSfmoQdZy0aaAnjbbc8F61vkoTqz/Az+/HiIu5Q==}
 
+  '@vitest/spy@4.1.9':
+    resolution: {integrity: sha512-fHpsS6mIi+PiEW+vcRVOMkX1oSaPKne3VOclSFICPcGOmfKgXPU5iAah+wcNcj2xPrCCmfq99IDGf+EojhhvhA==}
+
   '@vitest/utils@4.1.7':
     resolution: {integrity: sha512-T532WBu791cBxJlCl6SO+J14l81DQx6uQHm1bQbmCDY7nqlEIgkza/UFnSBNaUtSf41unldDFjdOBYEQC4b5Hw==}
+
+  '@vitest/utils@4.1.9':
+    resolution: {integrity: sha512-A51o8ymO5PpqlWNnBP9ZHPXDIpuMtTLlGSjN7la4US+LJzoUMyhwjA5QXlm39JexgwHKW4Xjs8Z2d3dLCXOeuA==}
 
   '@vladfrangu/async_event_emitter@2.4.7':
     resolution: {integrity: sha512-Xfe6rpCTxSxfbswi/W/Pz7zp1WWSNn4A0eW4mLkQUewCrXXtMj31lCg+iQyTkh/CkusZSq9eDflu7tjEDXUY6g==}
@@ -7566,6 +7623,20 @@ packages:
       vite:
         optional: true
 
+  vitest-evals@0.12.0:
+    resolution: {integrity: sha512-pyVA4N8gM+T2JB+SGFNSuXcgf/CHbBygAXkXR1fEPEfleKyMacJXPF9gLWIyyC1x5BCrt0r4zkwzkdjZrdpwZQ==}
+    hasBin: true
+    peerDependencies:
+      ai: '>=4 <7'
+      tinyrainbow: '>=2 <4'
+      vitest: '>=4 <5'
+      zod: '>=3 <5'
+    peerDependenciesMeta:
+      ai:
+        optional: true
+      zod:
+        optional: true
+
   vitest@4.1.7:
     resolution: {integrity: sha512-flYyaFd2CgoCoU+0UKt3pxksgC+S02iTDN0n3LtqaMeXsI9SBcdNujc2k0DeFLzUn/0k538yNjOSdwgCqcrwJA==}
     engines: {node: ^20.0.0 || ^22.0.0 || >=24.0.0}
@@ -7580,6 +7651,47 @@ packages:
       '@vitest/coverage-istanbul': 4.1.7
       '@vitest/coverage-v8': 4.1.7
       '@vitest/ui': 4.1.7
+      happy-dom: '*'
+      jsdom: '*'
+      vite: ^6.0.0 || ^7.0.0 || ^8.0.0
+    peerDependenciesMeta:
+      '@edge-runtime/vm':
+        optional: true
+      '@opentelemetry/api':
+        optional: true
+      '@types/node':
+        optional: true
+      '@vitest/browser-playwright':
+        optional: true
+      '@vitest/browser-preview':
+        optional: true
+      '@vitest/browser-webdriverio':
+        optional: true
+      '@vitest/coverage-istanbul':
+        optional: true
+      '@vitest/coverage-v8':
+        optional: true
+      '@vitest/ui':
+        optional: true
+      happy-dom:
+        optional: true
+      jsdom:
+        optional: true
+
+  vitest@4.1.9:
+    resolution: {integrity: sha512-nE3/LEyc0z87uHYLZebqCUOaJr2hdtuPp7BQ4BosVFnfltxgAvMG08NyrSGlPpOUWvR27c5flSmYFTNr78L9GQ==}
+    engines: {node: ^20.0.0 || ^22.0.0 || >=24.0.0}
+    hasBin: true
+    peerDependencies:
+      '@edge-runtime/vm': '*'
+      '@opentelemetry/api': ^1.9.0
+      '@types/node': ^20.0.0 || ^22.0.0 || >=24.0.0
+      '@vitest/browser-playwright': 4.1.9
+      '@vitest/browser-preview': 4.1.9
+      '@vitest/browser-webdriverio': 4.1.9
+      '@vitest/coverage-istanbul': 4.1.9
+      '@vitest/coverage-v8': 4.1.9
+      '@vitest/ui': 4.1.9
       happy-dom: '*'
       jsdom: '*'
       vite: ^6.0.0 || ^7.0.0 || ^8.0.0
@@ -8932,10 +9044,10 @@ snapshots:
       - utf-8-validate
       - workerd
 
-  '@cloudflare/vitest-pool-workers@0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))':
+  '@cloudflare/vitest-pool-workers@0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))':
     dependencies:
-      '@vitest/runner': 4.1.7
-      '@vitest/snapshot': 4.1.7
+      '@vitest/runner': 4.1.9
+      '@vitest/snapshot': 4.1.9
       cjs-module-lexer: 1.2.3
       esbuild: 0.27.3
       miniflare: 4.20260611.0
@@ -8947,10 +9059,10 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@cloudflare/vitest-pool-workers@0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.7)(@vitest/snapshot@4.1.7)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))':
+  '@cloudflare/vitest-pool-workers@0.16.15(@cloudflare/workers-types@4.20260602.1)(@vitest/runner@4.1.9)(@vitest/snapshot@4.1.9)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))':
     dependencies:
-      '@vitest/runner': 4.1.7
-      '@vitest/snapshot': 4.1.7
+      '@vitest/runner': 4.1.9
+      '@vitest/snapshot': 4.1.9
       cjs-module-lexer: 1.2.3
       esbuild: 0.27.3
       miniflare: 4.20260611.0
@@ -11076,12 +11188,29 @@ snapshots:
 
   '@vercel/oidc@3.2.0': {}
 
+  '@vitest-evals/core@0.12.0':
+    dependencies:
+      zod: 4.4.3
+
+  '@vitest-evals/report-ui@0.12.0':
+    dependencies:
+      '@vitest-evals/core': 0.12.0
+
   '@vitest/expect@4.1.7':
     dependencies:
       '@standard-schema/spec': 1.1.0
       '@types/chai': 5.2.3
       '@vitest/spy': 4.1.7
       '@vitest/utils': 4.1.7
+      chai: 6.2.2
+      tinyrainbow: 3.1.0
+
+  '@vitest/expect@4.1.9':
+    dependencies:
+      '@standard-schema/spec': 1.1.0
+      '@types/chai': 5.2.3
+      '@vitest/spy': 4.1.9
+      '@vitest/utils': 4.1.9
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
@@ -11109,13 +11238,30 @@ snapshots:
     optionalDependencies:
       vite: 8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
 
+  '@vitest/mocker@4.1.9(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))':
+    dependencies:
+      '@vitest/spy': 4.1.9
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+
   '@vitest/pretty-format@4.1.7':
+    dependencies:
+      tinyrainbow: 3.1.0
+
+  '@vitest/pretty-format@4.1.9':
     dependencies:
       tinyrainbow: 3.1.0
 
   '@vitest/runner@4.1.7':
     dependencies:
       '@vitest/utils': 4.1.7
+      pathe: 2.0.3
+
+  '@vitest/runner@4.1.9':
+    dependencies:
+      '@vitest/utils': 4.1.9
       pathe: 2.0.3
 
   '@vitest/snapshot@4.1.7':
@@ -11125,11 +11271,26 @@ snapshots:
       magic-string: 0.30.21
       pathe: 2.0.3
 
+  '@vitest/snapshot@4.1.9':
+    dependencies:
+      '@vitest/pretty-format': 4.1.9
+      '@vitest/utils': 4.1.9
+      magic-string: 0.30.21
+      pathe: 2.0.3
+
   '@vitest/spy@4.1.7': {}
+
+  '@vitest/spy@4.1.9': {}
 
   '@vitest/utils@4.1.7':
     dependencies:
       '@vitest/pretty-format': 4.1.7
+      convert-source-map: 2.0.0
+      tinyrainbow: 3.1.0
+
+  '@vitest/utils@4.1.9':
+    dependencies:
+      '@vitest/pretty-format': 4.1.9
       convert-source-map: 2.0.0
       tinyrainbow: 3.1.0
 
@@ -14802,6 +14963,16 @@ snapshots:
     optionalDependencies:
       vite: 8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
 
+  vitest-evals@0.12.0(ai@6.0.191(zod@4.4.3))(tinyrainbow@3.1.0)(vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(zod@4.4.3):
+    dependencies:
+      '@vitest-evals/core': 0.12.0
+      '@vitest-evals/report-ui': 0.12.0
+      tinyrainbow: 3.1.0
+      vitest: 4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+    optionalDependencies:
+      ai: 6.0.191(zod@4.4.3)
+      zod: 4.4.3
+
   vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)):
     dependencies:
       '@vitest/expect': 4.1.7
@@ -14879,6 +15050,35 @@ snapshots:
       tinybench: 2.9.0
       tinyexec: 1.1.2
       tinyglobby: 0.2.16
+      tinyrainbow: 3.1.0
+      vite: 8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@opentelemetry/api': 1.9.1
+      '@types/node': 24.13.1
+      happy-dom: 18.0.1
+    transitivePeerDependencies:
+      - msw
+
+  vitest@4.1.9(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)):
+    dependencies:
+      '@vitest/expect': 4.1.9
+      '@vitest/mocker': 4.1.9(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      '@vitest/pretty-format': 4.1.9
+      '@vitest/runner': 4.1.9
+      '@vitest/snapshot': 4.1.9
+      '@vitest/spy': 4.1.9
+      '@vitest/utils': 4.1.9
+      es-module-lexer: 2.1.0
+      expect-type: 1.3.0
+      magic-string: 0.30.21
+      obug: 2.1.1
+      pathe: 2.0.3
+      picomatch: 4.0.4
+      std-env: 4.1.0
+      tinybench: 2.9.0
+      tinyexec: 1.1.2
+      tinyglobby: 0.2.17
       tinyrainbow: 3.1.0
       vite: 8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
       why-is-node-running: 2.3.0
