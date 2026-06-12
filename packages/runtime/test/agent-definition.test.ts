@@ -56,6 +56,14 @@ describe('createAgent()', () => {
 		);
 	});
 
+	it('rejects a top-level name when an initializer returns one', async () => {
+		const agent = createAgent(() => ({ model: false, name: 'support' }) as never);
+
+		await expect(createContext().init(agent)).rejects.toThrow(
+			'unknown runtime config field "name"',
+		);
+	});
+
 	it('rejects harness initialization when the initializer does not explicitly select a model or model false', async () => {
 		await expect(createContext().init(createAgent(() => ({})))).rejects.toThrow(
 			'createAgent() requires a model',

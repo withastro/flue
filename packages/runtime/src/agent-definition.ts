@@ -22,12 +22,11 @@ const AGENT_PROFILE_FIELDS = new Set([
 	'durability',
 ]);
 
-const AGENT_RUNTIME_FIELDS = new Set([
-	...AGENT_PROFILE_FIELDS,
-	'profile',
-	'cwd',
-	'sandbox',
-]);
+// `name` is profile-only: a created agent is addressed by its module filename,
+// so a top-level name on the runtime config would have nothing to control.
+const AGENT_RUNTIME_FIELDS = new Set(
+	[...AGENT_PROFILE_FIELDS, 'profile', 'cwd', 'sandbox'].filter((field) => field !== 'name'),
+);
 
 const VALID_THINKING_LEVELS = {
 	off: true,
@@ -95,7 +94,7 @@ export function resolveAgentProfile(options: AgentRuntimeConfig | undefined): Ag
 	assertAgentRuntimeConfig(options);
 	const profile = options?.profile;
 	return {
-		name: hasOwn(options, 'name') ? options?.name : profile?.name,
+		name: profile?.name,
 		description: hasOwn(options, 'description') ? options?.description : profile?.description,
 		model: hasOwn(options, 'model') ? options?.model : profile?.model,
 		instructions: hasOwn(options, 'instructions') ? options?.instructions : profile?.instructions,

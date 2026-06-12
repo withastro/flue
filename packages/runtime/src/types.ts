@@ -384,7 +384,7 @@ export interface AgentProfile {
 export interface AgentRuntimeConfig {
 	/** Reusable baseline profile. Created-agent fields replace or extend profile values. */
 	profile?: AgentProfile;
-	name?: string;
+	/** Optional human-facing description of what this agent does. */
 	description?: string;
 	/** Default model specifier. Set to `false` to require call-level model selection. */
 	model?: ModelConfig;
