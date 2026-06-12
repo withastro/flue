@@ -3,7 +3,7 @@
  *
  * Runs the same behavioral assertions against both the Cloudflare-style SQL
  * backend (node:sqlite standing in for DO SQLite) and the Node backend
- * (node:sqlite :memory: via createNodeAgentExecutionStore).
+ * (node:sqlite :memory: via the sqlite() adapter).
  *
  * SQL-specific tests (schema assertions, error diagnostics, DO-specific edge
  * cases) remain in cloudflare-agent-execution-store.test.ts.
@@ -18,7 +18,7 @@ import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
 import { PersistedSchemaVersionError } from '../src/errors.ts';
 import type { SqlStorage } from '../src/sql-storage.ts';
 import { createSqlAgentExecutionStoreFromSql, ensureSqlAgentExecutionTables } from '../src/sql-agent-execution-store.ts';
-import { createNodeAgentExecutionStore, sqlite } from '../src/node/agent-execution-store.ts';
+import { sqlite } from '../src/node/agent-execution-store.ts';
 import type { SessionData } from '../src/types.ts';
 import { defineStoreContractTests } from '../src/test-utils/define-store-contract-tests.ts';
 
@@ -62,7 +62,9 @@ function createCloudflareSqlBackend(): AgentExecutionStore {
 }
 
 function createNodeBackend(): AgentExecutionStore {
-	return createNodeAgentExecutionStore();
+	const adapter = sqlite();
+	adapter.migrate?.();
+	return adapter.connect();
 }
 
 // ─── Contract tests (shared) ────────────────────────────────────────────────

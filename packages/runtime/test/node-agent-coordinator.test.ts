@@ -9,7 +9,7 @@ import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createAgent } from '../src/agent-definition.ts';
 import { createFlueContext, resolveModel, type DispatchInput } from '../src/internal.ts';
-import { createNodeAgentExecutionStore } from '../src/node/agent-execution-store.ts';
+import { sqlite } from '../src/node/agent-execution-store.ts';
 import { createNodeAgentCoordinator, type NodeAgentCoordinator } from '../src/node/agent-coordinator.ts';
 import type { CreateContextFn } from '../src/runtime/handle-agent.ts';
 import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
@@ -58,6 +58,13 @@ function createTempDbPath(): string {
 	const dir = mkdtempSync(join(tmpdir(), 'flue-node-coordinator-'));
 	tempDirs.push(dir);
 	return join(dir, 'agent.db');
+}
+
+/** Open (or reopen) a file-backed execution store via the sqlite() adapter. */
+function openExecutionStore(dbPath: string): AgentExecutionStore {
+	const adapter = sqlite(dbPath);
+	adapter.migrate?.();
+	return adapter.connect();
 }
 
 /** Create a context factory that uses a real LLM model. */
@@ -127,7 +134,7 @@ function makeDispatchInput(overrides: Partial<DispatchInput> = {}): DispatchInpu
 function createRealCoordinator(
 	dbPath: string,
 ): { coordinator: NodeAgentCoordinator; executionStore: AgentExecutionStore } {
-	const executionStore = createNodeAgentExecutionStore(dbPath);
+	const executionStore = openExecutionStore(dbPath);
 	const agent = createAgent(() => ({ model: REAL_MODEL }));
 	const coordinator = createNodeAgentCoordinator({
 		submissions: executionStore.submissions,
@@ -145,7 +152,7 @@ function createFauxCoordinator(
 	provider: FauxProviderRegistration,
 	durability?: { retry?: number; timeout?: number },
 ): { coordinator: NodeAgentCoordinator; executionStore: AgentExecutionStore } {
-	const executionStore = createNodeAgentExecutionStore(dbPath);
+	const executionStore = openExecutionStore(dbPath);
 	const agent = createAgent(() => ({
 		model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		durability,
@@ -188,7 +195,7 @@ describe('NodeAgentCoordinator', () => {
 			await coordinator.waitForIdle();
 
 			// "Restart": open the same file with a fresh store.
-			const reopened = createNodeAgentExecutionStore(dbPath);
+			const reopened = openExecutionStore(dbPath);
 			const submission = await reopened.submissions.getSubmission(input.dispatchId);
 			expect(submission).toMatchObject({ status: 'settled', kind: 'dispatch' });
 			expect(submission?.error).toBeUndefined();
@@ -200,7 +207,7 @@ describe('NodeAgentCoordinator', () => {
 		it.skipIf(!hasApiKey)('reconciles an interrupted submission by requeuing when canonical input is absent', async () => {
 			const dbPath = createTempDbPath();
 			// First process will be "interrupted" — we manually admit+claim without processing.
-			const store1 = createNodeAgentExecutionStore(dbPath);
+			const store1 = openExecutionStore(dbPath);
 			const input = makeDispatchInput();
 			await store1.submissions.admitDispatch(input);
 		await store1.submissions.claimSubmission({
@@ -263,7 +270,7 @@ leaseExpiresAt: 1,
 		it('terminalizes a submission after exceeding the retry budget', async () => {
 			const dbPath = createTempDbPath();
 			const provider = createFauxProvider();
-			const store = createNodeAgentExecutionStore(dbPath);
+			const store = openExecutionStore(dbPath);
 
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
@@ -351,7 +358,7 @@ leaseExpiresAt: 1,
 		it('terminalizes a submission after the configured timeout expires', async () => {
 			const dbPath = createTempDbPath();
 			const provider = createFauxProvider();
-			const store = createNodeAgentExecutionStore(dbPath);
+			const store = openExecutionStore(dbPath);
 
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
@@ -380,7 +387,7 @@ leaseExpiresAt: 1,
 			const dbPath = createTempDbPath();
 			const provider = createFauxProvider();
 			provider.setResponses([fauxAssistantMessage('Completed after preserved tool result.')]);
-			const store = createNodeAgentExecutionStore(dbPath);
+			const store = openExecutionStore(dbPath);
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
 		const claimed = await store.submissions.claimSubmission({
@@ -495,7 +502,7 @@ leaseExpiresAt: 1,
 			];
 
 			// Manually build the interrupted session state in the store.
-			const store = createNodeAgentExecutionStore(dbPath);
+			const store = openExecutionStore(dbPath);
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
 		const claimed = await store.submissions.claimSubmission({
@@ -599,7 +606,7 @@ leaseExpiresAt: 1,
 	describe('queue ordering across restart', () => {
 		it.skipIf(!hasApiKey)('reconciles the interrupted submission before processing queued work in the same session', async () => {
 			const dbPath = createTempDbPath();
-			const store = createNodeAgentExecutionStore(dbPath);
+			const store = openExecutionStore(dbPath);
 
 			// Admit two dispatches to the same session.
 			const inputA = makeDispatchInput({ dispatchId: 'dispatch-A' });
@@ -654,7 +661,7 @@ leaseExpiresAt: 1,
 	describe('queue drain after dispatch', () => {
 		it.skipIf(!hasApiKey)('drains queued submissions after processing a new dispatch', async () => {
 			const dbPath = createTempDbPath();
-			const store = createNodeAgentExecutionStore(dbPath);
+			const store = openExecutionStore(dbPath);
 
 			// Pre-queue a submission from a "previous process" that was never claimed.
 			const inputOld = makeDispatchInput({ dispatchId: 'dispatch-old' });
@@ -680,7 +687,7 @@ leaseExpiresAt: 1,
 	describe('session deletion resume across restart', () => {
 		it('completes a crash-interrupted session deletion during reconciliation and unblocks admissions', async () => {
 			const dbPath = createTempDbPath();
-			const store = createNodeAgentExecutionStore(dbPath);
+			const store = openExecutionStore(dbPath);
 			const sessionKey = createSessionStorageKey('instance-1', 'default', 'default');
 			await store.sessions.save(sessionKey, {
 				version: 5,
@@ -743,7 +750,7 @@ leaseExpiresAt: 1,
 			await admit({ message: 'Hello persisted' });
 
 			// "Restart": open the same file with a fresh store and verify settled.
-			const reopened = createNodeAgentExecutionStore(dbPath);
+			const reopened = openExecutionStore(dbPath);
 			expect(await reopened.submissions.hasUnsettledSubmissions()).toBe(false);
 		});
 
@@ -796,7 +803,7 @@ leaseExpiresAt: 1,
 			const dbPath = createTempDbPath();
 			const provider = createFauxProvider();
 			provider.setResponses([fauxAssistantMessage('Recovered direct reply.')]);
-			const store = createNodeAgentExecutionStore(dbPath);
+			const store = openExecutionStore(dbPath);
 
 			// Manually admit a direct submission and claim it without processing.
 			await store.submissions.admitDirect({
@@ -828,7 +835,7 @@ leaseExpiresAt: 1,
 			const dbPath = createTempDbPath();
 			const provider = createFauxProvider();
 			provider.setResponses([fauxAssistantMessage('Should not run.')]);
-			const store = createNodeAgentExecutionStore(dbPath);
+			const store = openExecutionStore(dbPath);
 
 			// Admit, claim, and mark input applied — then "crash."
 			await store.submissions.admitDirect({
@@ -863,7 +870,7 @@ leaseExpiresAt: 1,
 			const dbPath = createTempDbPath();
 			const provider = createFauxProvider();
 			provider.setResponses([fauxAssistantMessage('Recovered without observer.')]);
-			const store = createNodeAgentExecutionStore(dbPath);
+			const store = openExecutionStore(dbPath);
 
 			// Admit and claim without processing — simulates crash.
 			await store.submissions.admitDirect({
@@ -894,7 +901,7 @@ leaseExpiresAt: 1,
 	describe('direct and dispatch same-session ordering', () => {
 		it('queues a dispatch behind a same-session direct prompt until the direct settles', async () => {
 			const dbPath = createTempDbPath();
-			const store = createNodeAgentExecutionStore(dbPath);
+			const store = openExecutionStore(dbPath);
 
 			// Manually admit a direct submission and claim it to simulate an in-progress direct prompt.
 			await store.submissions.admitDirect({

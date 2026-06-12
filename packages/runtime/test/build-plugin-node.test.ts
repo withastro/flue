@@ -41,7 +41,7 @@ describe('NodePlugin', () => {
 		expect(entry).toContain("typeof userPersistenceAdapter.connect !== 'function'");
 		expect(entry).toContain('userPersistenceAdapter.migrate');
 		expect(entry).toContain('userPersistenceAdapter.connect()');
-		expect(entry).not.toContain('createNodeAgentExecutionStore()');
+		expect(entry).not.toContain('defaultAdapter');
 	});
 
 	it('creates the agent coordinator with reconciliation and dispatch queue', () => {

@@ -9,7 +9,7 @@
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { AgentExecutionStore, PersistenceAdapter } from '../agent-execution-store.ts';
+import type { PersistenceAdapter } from '../agent-execution-store.ts';
 import type { SqlStorage } from '../sql-storage.ts';
 import { createSqlRunRegistry } from '../sql-run-registry.ts';
 import { createSqlRunStore } from '../sql-run-store.ts';
@@ -83,23 +83,6 @@ function openDatabase(path: string): { db: DatabaseSync; sql: SqlStorage; runTra
 	const sql = createNodeSqlStorage(db);
 	const runTransaction = createNodeTransactionSync(db);
 	return { db, sql, runTransaction };
-}
-
-/**
- * Create a process-local {@link AgentExecutionStore} backed by `node:sqlite`.
- *
- * Uses `:memory:` by default — data is lost on process exit. Pass a file path
- * for local development persistence.
- *
- * Runs DDL internally — this is the all-in-one path used by the generated
- * Node entry when no `db.ts` is present.
- */
-export function createNodeAgentExecutionStore(
-	path: string = ':memory:',
-): AgentExecutionStore {
-	const { sql, runTransaction } = openDatabase(path);
-	ensureSqlAgentExecutionTables(sql);
-	return createSqlAgentExecutionStoreFromSql(sql, runTransaction);
 }
 
 /**
