@@ -1,6 +1,6 @@
 /**
- * Demonstrates the `getShellSandbox` + `hydrateFromBucket` flow that
- * replaces the old (buggy) `getVirtualSandbox(env.BUCKET)` pattern.
+ * Demonstrates the `getShellSandbox` + `hydrateFromBucket` flow for
+ * hydrating a cf-shell Workspace from an R2 bucket.
  *
  * What this shows:
  *   1. Construct a default Workspace for the agent instance.
@@ -23,7 +23,7 @@
  *     Worker Loader access on your account), or
  *   - `wrangler deploy` to a preview environment.
  * See the example's README.md for the full setup, the seed-r2.sh helper,
- * and the migration / fallback options if you don't have Loader access.
+ * and the fallback options if you don't have Loader access.
  */
 import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
 import * as v from 'valibot';

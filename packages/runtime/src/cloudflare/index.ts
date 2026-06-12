@@ -4,8 +4,6 @@ export type {
 	ResolvedCloudflareExtension,
 } from './extension.ts';
 export { extend, resolveCloudflareExtension } from './extension.ts';
-export type { VirtualSandboxOptions } from './virtual-sandbox.ts';
-export { getVirtualSandbox } from './virtual-sandbox.ts';
 
 export type { CloudflareAIBinding, CloudflareAIBindingRegistration } from '../runtime/providers.ts';
 export { cfSandboxToSessionEnv } from './cf-sandbox.ts';

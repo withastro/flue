@@ -96,11 +96,3 @@ curl -X POST http://localhost:3583/workflows/skills-from-git?wait=result \
 the Durable Object's SQLite on first run; second-run hydration is a no-op
 on the sentinel check. Bump the sentinel key in source (or wipe the DO's
 storage) to force re-hydration.
-
-## Migrating from `getVirtualSandbox`
-
-If you're coming from `getVirtualSandbox(env.BUCKET)`, the replacement is
-`getShellSandbox({ workspace, loader })` plus an explicit
-`hydrateFromBucket(workspace, env.BUCKET)` step before the sandbox is
-created. `skills-from-r2.ts` is the canonical example of that flow. R2 is
-only a hydration source here; it is not mounted as the Workspace filesystem.
