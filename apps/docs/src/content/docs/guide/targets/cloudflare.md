@@ -203,6 +203,8 @@ export const cloudflare = extend({
 
 Both `base` and `wrap` are optional. Do not override Flue-owned `fetch()`, `onRequest()`, `onFiberRecovered()`, or `alarm()` methods.
 
+For deployment-wide scheduled work, use a Worker cron trigger from source-root `cloudflare.ts`. See [Scheduling](/docs/guide/scheduling/).
+
 ## Extending `cloudflare.ts` Entrypoint
 
 Your project may include a source-root `cloudflare.ts` file for Worker-level Cloudflare code that is separate from individual agent and workflow modules.
