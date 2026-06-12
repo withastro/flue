@@ -16,6 +16,7 @@ import {
 import { resolveConfigCandidates } from '../src/lib/config-paths.ts';
 import { DEFAULT_DEV_PORT, dev } from '../src/lib/dev.ts';
 import { createEnvLoader, type EnvLoader, selectEnvFile } from '../src/lib/env.ts';
+import { formatOffset } from '@flue/runtime/adapter';
 import { createFlueClient, type FlueEventStream } from '@flue/sdk';
 import type { FlueEvent, RunRecord } from '@flue/sdk';
 import { CATEGORY_ROOTS, CONNECTORS } from './_connectors.generated.ts';
@@ -241,7 +242,7 @@ interface LogsArgs {
 	 * terminal. CLI flags `--follow` / `--no-follow` set it explicitly.
 	 */
 	follow: boolean | undefined;
-	/** DS offset to resume after. Accepts integers (legacy) or opaque offset strings. */
+	/** Opaque DS offset to resume after (e.g. the ndjson `offset` field). */
 	since: string | undefined;
 	/** Filter to a specific set of event types (comma-separated on the CLI). */
 	types: ReadonlySet<string> | undefined;
@@ -526,7 +527,7 @@ function parseLogsArgs(rest: string[]): LogsArgs {
 				console.error('Missing value for --since');
 				process.exit(1);
 			}
-			since = normalizeSinceOffset(value);
+			since = value;
 		} else if (arg === '--types') {
 			const value = rest[++i];
 			if (!value) {
@@ -1424,18 +1425,6 @@ function createLogsClient(args: LogsArgs) {
 	});
 }
 
-const OFFSET_COMPONENT_PAD = 16;
-
-/** Format an event index as a DS offset (`<zeros>_<index>`, both 16 digits). */
-function formatEventOffset(index: number | string): string {
-	const digits = String(index).replace(/^0+(?=\d)/, '');
-	return `${'0'.repeat(OFFSET_COMPONENT_PAD)}_${digits.padStart(OFFSET_COMPONENT_PAD, '0')}`;
-}
-
-function normalizeSinceOffset(value: string): string {
-	return /^\d+$/.test(value) ? formatEventOffset(value) : value;
-}
-
 function logsEmitEvent(event: FlueEvent, format: LogsArgs['format']): void {
 	if (format === 'ndjson') {
 		// ndjson lines carry a per-event resume offset derived from eventIndex
@@ -1443,7 +1432,7 @@ function logsEmitEvent(event: FlueEvent, format: LogsArgs['format']): void {
 		// runs only). The stream's own offset getter is batch-granular and
 		// would skip events if used as a mid-batch checkpoint.
 		const offset =
-			typeof event.eventIndex === 'number' ? formatEventOffset(event.eventIndex) : undefined;
+			typeof event.eventIndex === 'number' ? formatOffset(event.eventIndex) : undefined;
 		const output = offset ? { ...event, offset } : event;
 		process.stdout.write(`${JSON.stringify(output)}\n`);
 	} else {

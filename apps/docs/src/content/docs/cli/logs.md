@@ -34,7 +34,7 @@ Runs are workflow-only. Direct HTTP agent prompts and dispatched agent inputs ar
 | `--header 'Name: value'`          | None                             | Forward a curl-style HTTP header to every request. Repeat to send multiple distinct headers.                              |
 | `--follow`, `-f`                  | Automatic                        | Force live event streaming.                                                                                               |
 | `--no-follow`                     | Automatic                        | Replay persisted events once and exit.                                                                                    |
-| `--since <offset>`                | Beginning of history             | Resume strictly after a stream offset. Accepts integer event indices (legacy) or opaque Durable Streams offset strings.   |
+| `--since <offset>`                | Beginning of history             | Resume strictly after an opaque Durable Streams offset, such as the `offset` field emitted by `--format ndjson`.          |
 | `--types <a,b,c>`                 | All event types                  | Emit only the selected comma-separated event types. Filtering is applied client-side.                                     |
 | `--limit <n>`                     | Unlimited                        | Limit emitted events. Applied client-side in both replay and follow modes.                                                |
 | `--format <pretty\|ndjson>`       | `pretty`                         | Select human-readable or line-delimited JSON output.                                                                      |
@@ -62,7 +62,7 @@ Request failures exit with status `1`. A failed workflow exits with status `2` o
 ```bash
 flue logs run_01JX...
 flue logs run_01JX... --no-follow
-flue logs run_01JX... --since 25
+flue logs run_01JX... --since 0000000000000000_0000000000000025
 flue logs run_01JX... --types operation_start,operation,tool,log,run_end --format ndjson
 ```
 

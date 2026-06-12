@@ -144,7 +144,7 @@ test('forwards authentication headers to follow-mode streams', async () => {
 				server,
 				'--follow',
 				'--since',
-				'25',
+				'0000000000000000_0000000000000025',
 				'--header',
 				'Authorization: Bearer secret',
 				'--format',
@@ -159,7 +159,7 @@ test('forwards authentication headers to follow-mode streams', async () => {
 	for (const request of requests) {
 		assert.equal(request.headers.authorization, 'Bearer secret');
 	}
-	// Verify the DS offset query param includes the converted --since value.
+	// Verify the opaque --since value is passed through as the DS offset param.
 	const streamRequest = requests.find(
 		(request) => request.url.startsWith('/runs/run-1') && !isRunMetaRequest(request),
 	);
