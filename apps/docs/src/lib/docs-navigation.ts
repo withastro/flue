@@ -57,7 +57,11 @@ export const docsSections: DocsSection[] = [
 				],
 			},
 			{
-				title: 'Targets',
+				title: 'Frontend',
+				items: [{ title: 'React', slug: 'guide/react' }],
+			},
+			{
+				title: 'Deploy',
 				items: [
 					{ title: 'Node.js', slug: 'guide/targets/node' },
 					{ title: 'Cloudflare', slug: 'guide/targets/cloudflare' },
@@ -160,15 +164,6 @@ export const docsSections: DocsSection[] = [
 					},
 					{ title: 'Events and records', slug: 'sdk/events' },
 					{ title: 'Errors', slug: 'sdk/errors' },
-					{
-						title: 'React',
-						slug: 'sdk/react/overview',
-						items: [
-							{ title: 'Overview and setup', slug: 'sdk/react/overview' },
-							{ title: 'useFlueAgent', slug: 'sdk/react/use-flue-agent' },
-							{ title: 'useFlueWorkflow', slug: 'sdk/react/use-flue-workflow' },
-						],
-					},
 				],
 			},
 		],
