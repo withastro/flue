@@ -1,5 +1,5 @@
 import type { AgentMessage, AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core';
-import type { ImageContent, Model } from '@earendil-works/pi-ai';
+import type { ImageContent, Model, TextContent } from '@earendil-works/pi-ai';
 
 export interface SignalMessage {
 	role: 'signal';
@@ -124,6 +124,12 @@ export type ToolArgs<TParams extends ToolParameters> = [TParams] extends [v.Gene
 	? v.InferOutput<TParams>
 	: Record<string, any>;
 
+/** Content a custom tool can return to the model. */
+export type ToolResultContent = TextContent | ImageContent;
+
+/** Result returned from a custom tool callback. */
+export type ToolExecuteResult = string | ToolResultContent[];
+
 /**
  * Custom tool passed to createAgent(), init(), prompt(), skill(), or task().
  * Agent and init tools are available to every session call; prompt/skill/task
@@ -138,8 +144,8 @@ export interface ToolDefinition<TParams extends ToolParameters = ToolParameters>
 	description: string;
 	/** Valibot object schema or raw JSON Schema object. */
 	parameters: TParams;
-	/** Returns a string result sent back to the LLM. Thrown errors become tool errors. */
-	execute: (args: ToolArgs<TParams>, signal?: AbortSignal) => Promise<string>;
+	/** Returns text or content blocks sent back to the LLM. Thrown errors become tool errors. */
+	execute: (args: ToolArgs<TParams>, signal?: AbortSignal) => Promise<ToolExecuteResult>;
 }
 
 // ─── File Stat ──────────────────────────────────────────────────────────────

@@ -409,7 +409,7 @@ describe('custom tools', () => {
 		expect(provider.state.callCount).toBe(1);
 	});
 
-	it('returns callback output to the model when a custom tool completes', async () => {
+	it('returns callback text output to the model when a custom tool completes', async () => {
 		const provider = createProvider();
 		const execute = vi.fn(async () => 'Found the requested value.');
 		let modelToolResult: unknown;
@@ -444,6 +444,47 @@ describe('custom tools', () => {
 			isError: false,
 		});
 		expect(result.text).toBe('Lookup complete.');
+	});
+
+	it('returns callback image content to the model when a custom tool completes', async () => {
+		const provider = createProvider();
+		let modelToolResult: unknown;
+		provider.setResponses([
+			fauxAssistantMessage(fauxToolCall('screenshot', {}), { stopReason: 'toolUse' }),
+			(context) => {
+				modelToolResult = context.messages.at(-1);
+				return fauxAssistantMessage('Screenshot reviewed.');
+			},
+		]);
+		const screenshot = defineTool({
+			name: 'screenshot',
+			description: 'Capture a screenshot.',
+			parameters: v.object({}),
+			execute: async () => [
+				{ type: 'text' as const, text: 'Attached screenshot.' },
+				{ type: 'image' as const, data: 'aW1hZ2UtYnl0ZXM=', mimeType: 'image/png' },
+			],
+		});
+		const harness = await createContext(provider).init(
+			createAgent(() => ({
+				model: `${provider.getModel().provider}/${provider.getModel().id}`,
+				tools: [screenshot],
+			})),
+		);
+		const session = await harness.session();
+
+		const result = await session.prompt('Capture the screenshot.');
+
+		expect(modelToolResult).toMatchObject({
+			role: 'toolResult',
+			toolName: 'screenshot',
+			content: [
+				{ type: 'text', text: 'Attached screenshot.' },
+				{ type: 'image', data: 'aW1hZ2UtYnl0ZXM=', mimeType: 'image/png' },
+			],
+			isError: false,
+		});
+		expect(result.text).toBe('Screenshot reviewed.');
 	});
 
 	it('exposes valibot parameters to the provider as one stable plain JSON Schema object', async () => {

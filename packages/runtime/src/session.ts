@@ -1151,9 +1151,9 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				parameters: toolDef.parameters as any,
 				async execute(_toolCallId: string, params: unknown, signal?: AbortSignal) {
 					if (signal?.aborted) throw abortErrorFor(signal);
-					const resultText = await toolDef.execute(params as Record<string, any>, signal);
+					const result = await toolDef.execute(params as Record<string, any>, signal);
 					return {
-						content: [{ type: 'text' as const, text: resultText }],
+						content: typeof result === 'string' ? [{ type: 'text' as const, text: result }] : result,
 						details: { customTool: toolDef.name },
 					};
 				},

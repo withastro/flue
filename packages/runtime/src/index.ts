@@ -104,7 +104,9 @@ export type {
 	ThinkingLevel,
 	ToolArgs,
 	ToolDefinition,
+	ToolExecuteResult,
 	ToolParameters,
+	ToolResultContent,
 	WorkflowRouteHandler,
 } from './types.ts';
 

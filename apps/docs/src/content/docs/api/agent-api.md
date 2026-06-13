@@ -53,7 +53,9 @@ import {
   type ThinkingLevel,
   type ToolArgs,
   type ToolDefinition,
+  type ToolExecuteResult,
   type ToolParameters,
+  type ToolResultContent,
   type ToolValidationIssue,
 } from '@flue/runtime';
 ```
@@ -130,7 +132,9 @@ Valibot `parameters` are converted to plain JSON Schema once at definition time,
 | `name`        | `string`                                                             | Tool name. Must be unique across active built-in and custom tools.                                                                          |
 | `description` | `string`                                                             | Tells the model when and how to use this tool.                                                                                              |
 | `parameters`  | `ToolParameters`                                                     | Valibot object schema (`v.object({ ... })`), or a raw JSON Schema object for schemas produced elsewhere (e.g. MCP).                         |
-| `execute`     | `(args: ToolArgs<TParams>, signal?: AbortSignal) => Promise<string>` | Receives the parsed, typed arguments (the schema's `v.InferOutput`). Returns text sent back to the model. Thrown errors become tool errors. |
+| `execute`     | `(args: ToolArgs<TParams>, signal?: AbortSignal) => Promise<ToolExecuteResult>` | Receives the parsed, typed arguments (the schema's `v.InferOutput`). Returns text or text/image content sent back to the model. Thrown errors become tool errors. |
+
+`ToolExecuteResult` is `string | ToolResultContent[]`; `ToolResultContent` is a text or image content block. Image blocks use `{ type: 'image', data: '<base64>', mimeType: 'image/png' }`, and require a vision-capable model to be useful in the following model turn.
 
 ```ts
 import { defineTool } from '@flue/runtime';
