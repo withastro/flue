@@ -50,6 +50,7 @@ flue add daytona --print | claude
 flue add github --print | codex
 flue add slack --print | codex
 flue add discord --print | codex
+flue add teams --print | codex
 flue add @cloudflare/shell --print | opencode
 flue add https://e2b.dev --category sandbox --print | claude
 flue add ./vendor/provider-docs --category sandbox --print | codex

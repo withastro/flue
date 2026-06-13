@@ -19,7 +19,7 @@
 - `FlueFs.writeFile()` now guarantees parent directory creation in every sandbox mode; `ShellOptions.timeoutMs` is available for shell operations.
 - `observe()` subscribers can skip selected event types, and OpenTelemetry spans and attributes now align with GenAI semconv.
 - Added `@flue/react` with `FlueProvider`, `useFlueAgent()`, and `useFlueWorkflow()` for live agent transcripts and workflow-run observation. Agent messages use an AI SDK v5-compatible parts shape without a runtime dependency on `ai`.
-- Added first-party `@flue/github`, `@flue/slack`, and `@flue/discord` packages for verified HTTP ingress, constructor-owned typed handlers, canonical conversation identities, and discovered `channels/<name>.ts` routing. `flue add github|slack|discord` creates editable project code using provider SDK clients and application-owned tools.
+- Added first-party `@flue/github`, `@flue/slack`, `@flue/discord`, and `@flue/teams` packages for verified HTTP ingress, constructor-owned typed handlers, canonical conversation identities, and discovered `channels/<name>.ts` routing. `flue add github|slack|discord|teams` creates editable project code using provider SDK or Fetch clients and application-owned tools.
 - Durable event-stream reads accept `tail=N` to start from the beginning while reading at most the latest N events. Direct agent prompt receipts and their emitted events now expose a `submissionId` for reliable correlation.
 - `@flue/sdk` accepts browser-relative base URLs such as `/api`, exposes typed message snapshots, and supports `tail` across stream APIs.
 

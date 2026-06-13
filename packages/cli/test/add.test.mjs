@@ -47,6 +47,7 @@ before(async () => {
 			github: 'channel--github.md',
 			slack: 'channel--slack.md',
 			discord: 'channel--discord.md',
+			teams: 'channel--teams.md',
 		};
 		const file = slug ? files[slug] : undefined;
 		if (!file) {
@@ -75,8 +76,22 @@ describe('flue add', () => {
 		assert.equal(result.code, 0);
 		assert.match(result.stderr, /flue add github\s+channel\s+https:\/\/github\.com/);
 		assert.match(result.stderr, /flue add slack\s+channel\s+https:\/\/slack\.com/);
+		assert.match(
+			result.stderr,
+			/flue add teams\s+channel\s+https:\/\/www\.microsoft\.com\/microsoft-teams/,
+		);
 		assert.ok(result.stderr.includes('flue add <url> --category sandbox'));
 		assert.ok(result.stderr.includes('flue add <url> --category channel'));
+	});
+
+	it('prints the Teams channel recipe with the Workers-compatible Fetch path', async () => {
+		const result = await runCli(['add', 'teams', '--print']);
+		assert.equal(result.code, 0);
+		assert.ok(result.stdout.startsWith('# Add a Microsoft Teams Channel to Flue'));
+		assert.ok(result.stdout.includes('export const channel'));
+		assert.ok(result.stdout.includes('export const client'));
+		assert.ok(result.stdout.includes('/channels/teams/activities'));
+		assert.ok(result.stdout.includes('https://api.botframework.com/.default'));
 	});
 
 	it('prints a named channel recipe without registry frontmatter', async () => {

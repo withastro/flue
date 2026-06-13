@@ -1287,6 +1287,186 @@ Final reference gap audit:
   project-owned REST client rather than a Flue abstraction.
 - No justified HTTP-interaction ingress gap remains.
 
+### Microsoft Teams — 2026-06-13
+
+Status:
+
+- Complete.
+
+Reference capability brief:
+
+- The high-level adapter documentation describes Bot Framework activities,
+  mentions, Adaptive Cards and modals, reactions, direct and group
+  conversations, broad outbound messaging, streaming, files, typing,
+  Microsoft Graph user lookup, and message history.
+- No reference implementation, architecture, types, fixtures, payloads,
+  snapshots, sample messages, or tests were consulted.
+
+Primary sources:
+
+- Microsoft Bot Connector incoming-request authentication and endorsement
+  documentation.
+- Microsoft Bot Connector send-and-receive REST documentation.
+- Microsoft Teams bot conversation and activity documentation.
+- Microsoft Teams resource-specific consent and message-delivery
+  documentation.
+- Microsoft 365 Agents SDK authentication documentation.
+- Official `@microsoft/agents-hosting`, `@microsoft/teams.apps`, and
+  `@microsoft/agents-activity` package metadata and declarations.
+- Microsoft public-cloud OpenID metadata and endorsed JWKS document.
+- `jose` package exports and Web API runtime declarations.
+
+Clean-room affirmation:
+
+- All normalized activity types, synthetic payloads, generated RSA keys and
+  JWTs, fake ids, assertions, OAuth responses, and Connector requests were
+  designed from Microsoft primary sources and Flue's existing channel
+  contract. Nothing was copied or translated from Chat SDK source, types,
+  fixtures, payloads, snapshots, sample messages, or tests.
+
+Decisions:
+
+- Add `@flue/teams` and `flue add teams` with one
+  `POST /channels/<file>/activities` surface.
+- Keep a fixed-application, fixed-host-tenant v1 boundary. Bot Connector JWT
+  audience constrains the application; authenticated conversation and channel
+  tenant fields constrain the Teams tenant. Sender account tenant ids are not
+  forced to match because guest and shared-channel users may belong to another
+  tenant.
+- Verify `RS256` Bot Connector tokens through configurable OpenID metadata,
+  require the configured issuer and audience plus expiration, require the
+  selected signing key's `msteams` endorsement, and compare the activity
+  `serviceUrl` exactly with the signed `serviceurl` claim.
+- Cache bounded OpenID/JWKS results and imported Web Crypto keys. Refresh once
+  for an unknown key id with a cooldown that prevents unbounded attacker-driven
+  discovery requests.
+- Normalize message, conversation-update, invoke, and message-reaction
+  activities. Preserve other authenticated activity types as explicit unknown
+  variants.
+- Expose Teams account, mention, conversation, team, channel, thread, bot, and
+  verified Connector service identities needed for dispatch and outbound
+  routing.
+- Keep normal Hono and Fetch response behavior: `undefined` becomes an empty
+  `200`, JSON-compatible values become JSON responses, and `Response` values
+  pass through. Use a default and maximum 4.5-second application deadline so
+  invoke handlers complete before Teams' documented five-second response
+  window.
+- Do not use Microsoft's current JavaScript hosting SDKs in the canonical
+  recipe. `@microsoft/agents-hosting` and `@microsoft/teams.apps` declare Node
+  runtimes and depend on Node-oriented MSAL, JWT, HTTP, or Express stacks.
+- Provide a project-owned Fetch client that performs tenant-specific OAuth
+  client credentials and Bot Connector REST message requests. The client is
+  application code, not an outbound abstraction exported by `@flue/teams`.
+- Retain the verified Connector `serviceUrl` and bot id in the conversation
+  reference so the canonical example remains stateless. Conversation keys
+  remain syntax-only identifiers and the example agent remains dispatch-only.
+- Support public-cloud defaults plus explicit OpenID metadata, issuer, and
+  OAuth-authority overrides for a supported sovereign deployment.
+
+Tests:
+
+- Added original synthetic activities with distinct application, tenant,
+  conversation, team, channel, thread, user, and bot ids.
+- Generated RSA keys and signed Bot Connector JWTs locally for valid,
+  malformed, expired, wrong-audience, unknown-key, rotated-key, unendorsed,
+  service-URL mismatch, channel mismatch, and tenant mismatch coverage.
+- Covered messages and mentions, attachments, invokes, conversation updates,
+  reactions, unknown variants, external-user tenant identity, response
+  serialization, Hono status control, handler failure and timeout, body limits,
+  media types, discovery failure, and canonical-key round trips.
+- Added permanent workerd execution of `jose` RSA/JWT/JWKS verification.
+- Added permanent workerd execution of the project-owned OAuth and Connector
+  Fetch client against an injected local transport, including token reuse and
+  exact request construction.
+
+Validation:
+
+- Package build, strict typecheck, Node tests, and workerd tests pass.
+- Example strict typecheck, workerd outbound-client test, Node build, and
+  Cloudflare build pass. Both builds discover exactly one `teams` channel.
+- A built Node server returned empty `200` for an original locally signed
+  authenticated activity and `401` for an invalid bearer token while using a
+  local HTTPS OpenID/JWKS server.
+- Documentation check and production build pass.
+- The real `flue add` CLI test suite passes and verifies the Teams recipe and
+  Workers-compatible Fetch path.
+- Prepared publish docs were generated for all public packages.
+- The packed package contains the intended runtime declarations, JavaScript,
+  README, license metadata, and prepared docs without an outbound client or
+  model tool.
+- A clean strict TypeScript consumer compiles against the packed tarball and
+  narrows Teams activity variants and conversation references.
+
+Focused review:
+
+- Reviewed the complete provider diff for JWT verification ordering, issuer
+  and audience checks, key endorsements, exact service URL trust, tenant
+  boundaries, key rotation, discovery failure, activity narrowing, response
+  behavior, canonical identity, outbound token handling, Cloudflare execution,
+  declarations, and documentation.
+- Corrected the initial tenant check so an authenticated guest or
+  shared-channel sender may have an account tenant different from the fixed
+  host conversation tenant.
+- Increased only the trusted discovery-document limit from 1 MiB to 4 MiB
+  after the live Microsoft public JWKS measured approximately 967 KB. The
+  activity body limit remains 1 MiB.
+- Moved the project-owned Fetch helper out of the immediate `channels/`
+  directory after real builds correctly discovered every file there as a
+  channel module.
+- Added imported-key caching and an unknown-key refresh cooldown after
+  reviewing the cost and denial-of-service implications of Microsoft's large
+  JWKS.
+- No unresolved correctness findings remain.
+
+Deviations:
+
+- The initial brief preferred an official or established outbound SDK when
+  possible. Current official JavaScript packages are explicitly Node-oriented
+  and failed the required runtime-dependency audit, while Microsoft documents
+  a small standards-based OAuth and Connector REST path. The canonical recipe
+  therefore uses project-owned Fetch code on both Node and Cloudflare.
+- The initial generic discovery limit matched the 1 MiB activity body limit.
+  Current primary-source evidence showed that Microsoft key discovery already
+  approaches that size, so discovery uses a separate 4 MiB cap.
+
+Deferrals:
+
+- Multi-tenant application installation, OAuth consent, credential selection,
+  token encryption, and durable installation state remain outside this
+  fixed-tenant channel.
+- Federated workload identity is an application-owned alternative token source;
+  the canonical cross-platform recipe uses a client secret.
+- Microsoft Graph user lookup, message history, channel enumeration, and their
+  delegated, application, or resource-specific permissions remain
+  application-owned outbound behavior.
+- Editing and deleting messages, file uploads, typing, streaming, Adaptive Card
+  construction, proactive conversation creation, and other broad outbound
+  behavior remain additions to the project-owned client rather than Flue
+  package API.
+- No live Teams tenant, Azure Bot registration, or provider credential was used
+  in automated or manual validation.
+
+Final reference gap audit:
+
+- Reopened only the pinned high-level Teams adapter README and root capability
+  statement after implementation; no reference source, declarations, sample
+  messages, or tests were used.
+- Messages and mentions, conversation updates, Adaptive Card or modal invokes,
+  and received reactions are represented as authenticated HTTP ingress.
+- Buttons, cards, and modals are invoke payload and response policy over the
+  normalized activity rather than separate Flue route surfaces.
+- Direct messages, group chats, channels, and channel threads are represented
+  in the normalized destination model.
+- Receiving all channel or group-chat messages is Teams application
+  registration and resource-specific consent configuration, documented in the
+  guide rather than package behavior.
+- Posting is demonstrated by the project-owned Fetch client. Editing, deleting,
+  files, typing, streaming, history, Graph user lookup, channel lookup, and
+  other broad outbound capabilities remain application behavior.
+- Multi-tenant and federated credential modes remain application installation
+  and token-source concerns outside the fixed-tenant HTTP ingress package.
+- No justified authenticated HTTP ingress gap remains.
+
 ## Implementation log template
 
 Append one section per provider while implementing:

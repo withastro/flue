@@ -152,7 +152,8 @@ universal adapter. They should:
 1. Inspect the target, source root, app entrypoint, agents, environment types,
    and secret conventions.
 2. Install the first-party ingress package when one exists and the provider's
-   established outbound SDK.
+   established outbound SDK or a narrow Fetch client when the SDK is not
+   cross-platform.
 3. Create `channels/<provider>.ts` with named `channel` and `client` exports.
 4. Use constructor-owned verified callbacks and exact default path comments.
 5. Show optional unused protocol surfaces commented out.

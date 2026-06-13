@@ -11,6 +11,7 @@ your application decide what happens next. Flue provides ingress packages for:
 | GitHub   | `@flue/github`  | `/channels/<file>/webhook`                                 |
 | Slack    | `@flue/slack`   | `/channels/<file>/events`, `/channels/<file>/interactions` |
 | Discord  | `@flue/discord` | `/channels/<file>/interactions`                            |
+| Teams    | `@flue/teams`   | `/channels/<file>/activities`                              |
 
 The packages own signature verification, body limits, provider handshakes,
 identity checks, typed event normalization, and acknowledgement behavior. They
@@ -24,10 +25,12 @@ Use `flue add` to give your coding agent the complete integration recipe:
 flue add github --print | codex
 flue add slack --print | codex
 flue add discord --print | codex
+flue add teams --print | codex
 ```
 
-The recipe installs the ingress package and provider SDK, then creates an
-editable `channels/<provider>.ts` module that exports:
+The recipe installs the ingress package and an established provider SDK or
+narrow Fetch client, then creates an editable `channels/<provider>.ts` module
+that exports:
 
 - `channel`, the verified inbound integration discovered by Flue;
 - `client`, the project-owned provider SDK client;
@@ -41,7 +44,8 @@ flue add https://provider.example/webhooks --category channel --print | codex
 
 See the provider guides for [GitHub](/docs/guide/channels/github/),
 [Slack](/docs/guide/channels/slack/), and
-[Discord](/docs/guide/channels/discord/), or
+[Discord](/docs/guide/channels/discord/),
+[Microsoft Teams](/docs/guide/channels/teams/), or
 [build a custom channel](/docs/guide/build-your-own-channel/).
 
 ## File-based routing
@@ -52,6 +56,7 @@ Each immediate file beneath `channels/` exports one named `channel` binding:
 src/channels/github.ts  -> /channels/github/webhook
 src/channels/slack.ts   -> /channels/slack/events
                           /channels/slack/interactions
+src/channels/teams.ts   -> /channels/teams/activities
 ```
 
 The filename defines the channel namespace. Provider packages define fixed,
@@ -164,6 +169,7 @@ Channel packages are stateless and do not deduplicate deliveries.
 | Slack Events API     | Slack may retry and supplies retry metadata.                           |
 | Slack interactivity  | Requires a prompt acknowledgement and is not a dependable retry queue. |
 | Discord interactions | Failures are user-visible and do not provide dependable redelivery.    |
+| Teams activities     | Use `activityId` when the application needs duplicate protection.      |
 
 Handlers wait for application work such as `dispatch(...)` admission before
 acknowledging. Deadlines cannot forcibly stop arbitrary callback code. Claim a

@@ -1,0 +1,21 @@
+{
+	"name": "teams-channel-example",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "flue build --target node",
+		"check:types": "tsc --noEmit",
+		"test": "vitest run --config vitest.workerd.config.ts"
+	},
+	"dependencies": {
+		"@flue/runtime": "workspace:*",
+		"@flue/teams": "workspace:*"
+	},
+	"devDependencies": {
+		"@cloudflare/vitest-pool-workers": "0.16.15",
+		"@flue/cli": "workspace:*",
+		"agents": "^0.14.1",
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.6"
+	}
+}
