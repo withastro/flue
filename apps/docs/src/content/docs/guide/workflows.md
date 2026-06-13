@@ -38,6 +38,8 @@ In this example:
 
 A workflow can contain ordinary TypeScript logic before, between, or after agent operations: load application data, branch on input, log progress, or transform a response before returning it. Configure the agent's model, instructions, tools, skills, and sandbox through `createAgent(...)`, as you would for an addressable agent.
 
+Prefer `init(agent)` and `session.prompt(...)` for model-backed work inside a workflow, even when the workflow only makes one model call. Calling a provider binding or SDK directly bypasses Flue's model resolution, tools, skills, sandbox configuration, operation events, and response handling.
+
 See [Project Layout](/docs/guide/project-layout/) for supported source layouts, [Models & Providers](/docs/guide/models/) for model configuration, and [Agents](/docs/guide/building-agents/) for agent configuration concepts.
 
 ## Running a workflow

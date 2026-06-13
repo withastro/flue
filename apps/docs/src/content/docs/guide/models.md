@@ -18,6 +18,7 @@ A model specifier is the unique string Flue uses to refer to a specific model ac
 | `openai/gpt-5.5`                      | `openai`     | `gpt-5.5`                  |
 | `openrouter/moonshotai/kimi-k2.6`     | `openrouter` | `moonshotai/kimi-k2.6`     |
 | `cloudflare/@cf/moonshotai/kimi-k2.6` | `cloudflare` | `@cf/moonshotai/kimi-k2.6` |
+| `cloudflare/openai/gpt-5.5`           | `cloudflare` | `openai/gpt-5.5`           |
 
 Use a model specifier to choose an agent's default model:
 
@@ -154,6 +155,8 @@ Choose a new provider ID unless you intend to override a built-in connection pat
 ## Cloudflare Workers AI (Cloudflare only)
 
 For applications built with `--target cloudflare`, Flue provides the `cloudflare/...` provider ID for running model calls through a [Workers AI](https://developers.cloudflare.com/workers-ai/) binding. This path uses the binding attached to your Worker rather than URL-backed provider credentials.
+
+Everything after `cloudflare/` is passed as the model ID to `env.AI.run(...)`. Use Workers AI model IDs such as `@cf/moonshotai/kimi-k2.6`, or a binding-supported AI Gateway model ID such as `openai/gpt-5.5` when your Worker should reach that model through Cloudflare's binding and gateway path. Use `openai/gpt-5.5` without the `cloudflare/` prefix only when you intend to use Flue's direct OpenAI provider and its credentials.
 
 ```ts title="src/agents/assistant.ts"
 import { createAgent } from '@flue/runtime';
