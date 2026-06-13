@@ -708,6 +708,22 @@ describe('createDiscordChannel()', () => {
 		expect(fetch).not.toHaveBeenCalled();
 	});
 
+	it('disables parsed mentions by default for direct client posts', async () => {
+		const fetch = vi.fn(async () => Response.json({ id: 'M1' }));
+		const discord = createChannel({ fetch });
+
+		await discord.client.postMessage(
+			{ type: 'dm', channelId: 'C1' },
+			{ content: '@everyone' },
+		);
+
+		const [, init] = (fetch.mock.calls as unknown[][])[0] as [URL, RequestInit];
+		expect(JSON.parse(String(init.body))).toEqual({
+			content: '@everyone',
+			allowed_mentions: { parse: [] },
+		});
+	});
+
 	it('follows bounded preserving redirects only on the fixed Discord origin', async () => {
 		const allowedFetch = vi
 			.fn()

@@ -16,14 +16,20 @@ export {
 	InvalidDiscordInputError,
 } from './errors.ts';
 
+/** Credentials, trusted application identity, and transport settings. */
 export interface DiscordChannelOptions {
+	/** 32-byte Discord application public key encoded as 64 hexadecimal characters. */
 	publicKey: string;
+	/** Expected signed Discord application id. */
 	applicationId: string;
 	botToken: string;
+	/** Fetch implementation used by the outbound client. Defaults to `globalThis.fetch`. */
 	fetch?: typeof globalThis.fetch;
+	/** Outbound request timeout in milliseconds. Defaults to 10 seconds. */
 	requestTimeoutMs?: number;
 }
 
+/** Supported guild-channel, guild-thread, or bot-DM destination. */
 export type DiscordDestinationRef =
 	| { type: 'guild'; guildId: string; channelId: string; channelKind: 'channel' | 'thread' }
 	| { type: 'dm'; channelId: string };
@@ -54,12 +60,23 @@ export interface DiscordModalField {
 export interface DiscordInteractionEnvelope<TData> {
 	id: string;
 	applicationId: string;
+	/**
+	 * Sensitive interaction capability. Keep it out of dispatch input, model
+	 * context, logs, and durable session data.
+	 */
 	token: string;
 	destination: DiscordDestinationRef;
 	data: TData;
+	/** Complete parsed payload. It may contain sensitive provider capabilities. */
 	raw: unknown;
 }
 
+/**
+ * Provider-native component input accepted by the v1 serializers.
+ *
+ * Message components support action rows containing non-link buttons. Modal
+ * components support Label components containing text inputs.
+ */
 export interface DiscordComponent {
 	type: number;
 	customId?: string;
@@ -79,6 +96,7 @@ export interface DiscordComponent {
 export interface DiscordMessage {
 	content: string;
 	components?: readonly DiscordComponent[];
+	/** Allowed mention expansion. Package serializers default to no parsed mentions. */
 	allowedMentions?: {
 		parse?: Array<'users' | 'roles' | 'everyone'>;
 		users?: string[];
@@ -86,13 +104,16 @@ export interface DiscordMessage {
 	};
 }
 
+/** Immediate response accepted from a chat-input command handler. */
 export type DiscordCommandResponse =
 	| { type: 'message'; message: DiscordMessage; ephemeral?: boolean }
 	| { type: 'modal'; customId: string; title: string; components: readonly DiscordComponent[] };
+/** Immediate response accepted from a button handler. */
 export type DiscordComponentResponse =
 	| { type: 'message'; message: DiscordMessage; ephemeral?: boolean }
 	| { type: 'update_message'; message: DiscordMessage }
 	| { type: 'modal'; customId: string; title: string; components: readonly DiscordComponent[] };
+/** Immediate response accepted from a modal-submission handler. */
 export type DiscordModalResponse =
 	| { type: 'message'; message: DiscordMessage; ephemeral?: boolean }
 	| { type: 'update_message'; message: DiscordMessage };
@@ -103,18 +124,23 @@ export type DiscordInteractionHandler<TInteraction, TResponse> = (
 export type DiscordRouteHandler = (request: Request) => Promise<Response>;
 
 export interface DiscordInteractionRouteOptions {
+	/** Maximum request-body size in bytes. Defaults to 1 MiB. */
 	bodyLimit?: number;
+	/** Handler deadline in milliseconds. Defaults to and may not exceed 2500. */
 	handlerTimeoutMs?: number;
 }
 
+/** Fixed-origin Discord API v10 writes. Methods do not retry automatically. */
 export interface DiscordClient {
 	postMessage(ref: DiscordDestinationRef, message: DiscordMessage, signal?: AbortSignal): Promise<void>;
 }
 
 export interface DiscordMessageToolOptions {
+	/** Mention classes enabled by trusted application code. Defaults to none. */
 	allowMentions?: Array<'users' | 'roles' | 'everyone'>;
 }
 
+/** Verified interactions, outbound client/tools, and canonical identity helpers. */
 export interface DiscordChannel {
 	readonly routes: {
 		interactions(options?: DiscordInteractionRouteOptions): DiscordRouteHandler;
@@ -123,22 +149,33 @@ export interface DiscordChannel {
 	readonly tools: {
 		postMessage(ref: DiscordDestinationRef, options?: DiscordMessageToolOptions): ToolDefinition;
 	};
+	/** Registers the sole response-producing handler for a chat-input command name. */
 	onCommand(
 		name: string,
 		handler: DiscordInteractionHandler<DiscordInteractionEnvelope<DiscordCommandData>, DiscordCommandResponse>,
 	): () => void;
+	/** Registers the sole response-producing handler for a button custom id. */
 	onComponent(
 		customId: string,
 		handler: DiscordInteractionHandler<DiscordInteractionEnvelope<DiscordComponentData>, DiscordComponentResponse>,
 	): () => void;
+	/** Registers the sole response-producing handler for a modal custom id. */
 	onModal(
 		customId: string,
 		handler: DiscordInteractionHandler<DiscordInteractionEnvelope<DiscordModalData>, DiscordModalResponse>,
 	): () => void;
+	/** Serializes a canonical namespaced identifier. It is not an authorization capability. */
 	conversationKey(ref: DiscordDestinationRef): string;
+	/** Parses only canonical keys produced by `conversationKey()`. */
 	parseConversationKey(id: string): DiscordDestinationRef;
 }
 
+/**
+ * Creates a fixed-application Discord HTTP interactions channel.
+ *
+ * PING is handled internally. Successful interactions wait for the registered
+ * handler, and the channel does not deduplicate interaction ids.
+ */
 export function createDiscordChannel(options: DiscordChannelOptions): DiscordChannel {
 	const publicKey = validateOptions(options);
 	const applicationId = options.applicationId;

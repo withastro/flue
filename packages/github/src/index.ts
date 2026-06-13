@@ -17,13 +17,19 @@ export {
 	InvalidGitHubInputError,
 } from './errors.ts';
 
+/** Credentials and transport settings for one fixed GitHub integration. */
 export interface GitHubChannelOptions {
+	/** Secret configured on the GitHub webhook. */
 	webhookSecret: string;
+	/** Token used for issue and pull-request API writes. */
 	token: string;
+	/** Fetch implementation used by the outbound client. Defaults to `globalThis.fetch`. */
 	fetch?: typeof globalThis.fetch;
+	/** Outbound request timeout in milliseconds. Defaults to 10 seconds. */
 	requestTimeoutMs?: number;
 }
 
+/** Canonical issue or pull-request destination. Pull requests use their issue number. */
 export interface GitHubIssueRef {
 	owner: string;
 	repo: string;
@@ -51,6 +57,7 @@ export interface GitHubPullRequestOpenedPayload {
 
 export interface GitHubWebhookEvent<TType extends string, TPayload> {
 	type: TType;
+	/** GitHub delivery id. Replays and manual redeliveries retain this value. */
 	deliveryId: string;
 	hookId?: string;
 	installationTarget?: {
@@ -60,6 +67,7 @@ export interface GitHubWebhookEvent<TType extends string, TPayload> {
 	installationId?: number;
 	repository: GitHubRepositoryRef;
 	payload: TPayload;
+	/** Parsed provider payload. Treat this as untrusted provider data. */
 	raw: unknown;
 }
 
@@ -80,14 +88,17 @@ export type GitHubNotificationHandler<TEvent> = (event: TEvent) => void | Promis
 export type GitHubRouteHandler = (request: Request) => Promise<Response>;
 
 export interface GitHubWebhookRouteOptions {
+	/** Maximum request-body size in bytes. Defaults to 25 MiB. */
 	bodyLimit?: number;
 }
 
+/** Fixed-origin GitHub REST writes. Methods do not retry automatically. */
 export interface GitHubClient {
 	commentOnIssue(ref: GitHubIssueRef, text: string, signal?: AbortSignal): Promise<void>;
 	addLabels(ref: GitHubIssueRef, labels: string[], signal?: AbortSignal): Promise<void>;
 }
 
+/** Verified ingress, outbound client/tools, and canonical identity helpers. */
 export interface GitHubChannel {
 	readonly routes: {
 		webhook(options?: GitHubWebhookRouteOptions): GitHubRouteHandler;
@@ -97,14 +108,27 @@ export interface GitHubChannel {
 		commentOnIssue(ref: GitHubIssueRef): ToolDefinition;
 		addLabels(ref: GitHubIssueRef): ToolDefinition;
 	};
+	/**
+	 * Registers the sole handler for one supported event key.
+	 *
+	 * The returned unsubscribe function is registration-specific and idempotent.
+	 */
 	on<TKey extends GitHubEventName>(
 		type: TKey,
 		handler: GitHubNotificationHandler<GitHubEvents[TKey]>,
 	): () => void;
+	/** Serializes a canonical namespaced identifier. It is not an authorization capability. */
 	conversationKey(ref: GitHubIssueRef): string;
+	/** Parses only canonical keys produced by `conversationKey()`. */
 	parseConversationKey(id: string): GitHubIssueRef;
 }
 
+/**
+ * Creates a fixed-credential GitHub channel.
+ *
+ * Successful webhook acknowledgement waits for the registered handler to
+ * finish. The channel is stateless and does not deduplicate delivery ids.
+ */
 export function createGitHubChannel(options: GitHubChannelOptions): GitHubChannel {
 	validateOptions(options);
 	const webhookSecret = options.webhookSecret;

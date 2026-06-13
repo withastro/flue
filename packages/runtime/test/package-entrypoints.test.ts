@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 
 // Node-based export-map smoke tests cannot load the Cloudflare virtual module
@@ -53,6 +53,12 @@ describe('package entrypoints', () => {
 			defineTool: expect.any(Function),
 		});
 		expect(tool).not.toHaveProperty('normalizeToolDefinition');
+	});
+
+	it('keeps tool declarations isolated when a consumer imports @flue/runtime/tool', () => {
+		const declaration = readFileSync('dist/tool-entrypoint.d.mts', 'utf8');
+
+		expect(declaration).not.toContain('./types-');
 	});
 
 	it('exposes generated-runtime APIs when generated code imports @flue/runtime/internal', async () => {

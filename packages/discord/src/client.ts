@@ -100,21 +100,15 @@ function serializeMessage(message: DiscordMessage): Record<string, unknown> {
 	return {
 		content: message.content,
 		...(components === undefined ? {} : { components }),
-		...(message.allowedMentions === undefined
-			? {}
-			: {
-					allowed_mentions: {
-						...(message.allowedMentions.parse === undefined
-							? {}
-							: { parse: message.allowedMentions.parse }),
-						...(message.allowedMentions.users === undefined
-							? {}
-							: { users: message.allowedMentions.users }),
-						...(message.allowedMentions.roles === undefined
-							? {}
-							: { roles: message.allowedMentions.roles }),
-					},
-				}),
+		allowed_mentions: {
+			parse: message.allowedMentions?.parse ?? [],
+			...(message.allowedMentions?.users === undefined
+				? {}
+				: { users: message.allowedMentions.users }),
+			...(message.allowedMentions?.roles === undefined
+				? {}
+				: { roles: message.allowedMentions.roles }),
+		},
 	};
 }
 

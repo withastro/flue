@@ -16,15 +16,21 @@ export {
 	SlackTimeoutError,
 } from './errors.ts';
 
+/** Credentials, trusted identity, and transport settings for one Slack workspace. */
 export interface SlackChannelOptions {
 	signingSecret: string;
 	botToken: string;
+	/** Expected signed Slack application id. */
 	appId: string;
+	/** Expected workspace id. Org-wide installations are not supported in v1. */
 	teamId: string;
+	/** Fetch implementation used by the outbound client. Defaults to `globalThis.fetch`. */
 	fetch?: typeof globalThis.fetch;
+	/** Outbound request timeout in milliseconds. Defaults to 10 seconds. */
 	requestTimeoutMs?: number;
 }
 
+/** Canonical Slack thread destination within the configured workspace. */
 export interface SlackThreadRef {
 	teamId: string;
 	channelId: string;
@@ -54,6 +60,7 @@ export interface SlackEventEnvelope<TType extends string, TPayload> {
 	teamId: string;
 	retry?: { number: number; reason?: string };
 	payload: TPayload;
+	/** Parsed provider payload. Treat this as untrusted provider data. */
 	raw: unknown;
 }
 
@@ -63,11 +70,18 @@ export interface SlackActionEnvelope {
 	teamId: string;
 	userId: string;
 	actionId: string;
+	/** Signed action value when the provider action supplies one. */
 	value?: string;
 	channelId: string;
 	messageTs: string;
 	threadTs: string;
+	/** Provider-native action object. */
 	payload: unknown;
+	/**
+	 * Complete parsed interaction payload. It may contain a signed
+	 * `response_url` capability; keep it out of dispatch input, model context,
+	 * logs, and durable session data.
+	 */
 	raw: unknown;
 }
 
@@ -80,15 +94,23 @@ export interface SlackViewSubmissionEnvelope {
 	callbackId: string;
 	privateMetadata?: string;
 	values: unknown;
+	/**
+	 * Complete parsed interaction payload. It may contain a signed
+	 * `response_url` capability; keep it out of dispatch input, model context,
+	 * logs, and durable session data.
+	 */
 	raw: unknown;
 }
 
 export interface SlackMessage {
 	text: string;
+	/** Provider-native Block Kit payload. */
 	blocks?: readonly unknown[];
 }
 
+/** Empty acknowledgement required for supported block actions. */
 export type SlackActionResponse = { type: 'ack' };
+/** Acknowledges a view submission or returns field errors keyed by block id. */
 export type SlackViewResponse =
 	| { type: 'ack' }
 	| { type: 'validation_errors'; errors: Record<string, string> };
@@ -106,15 +128,19 @@ export type SlackInteractionHandler<TEvent, TResponse> = (
 export type SlackRouteHandler = (request: Request) => Promise<Response>;
 
 export interface SlackRouteOptions {
+	/** Maximum request-body size in bytes. Defaults to 1 MiB. */
 	bodyLimit?: number;
+	/** Handler deadline in milliseconds. Defaults to and may not exceed 2500. */
 	handlerTimeoutMs?: number;
 }
 
+/** Fixed-origin Slack Web API writes. Methods do not retry automatically. */
 export interface SlackClient {
 	postMessage(ref: SlackThreadRef, message: SlackMessage, signal?: AbortSignal): Promise<void>;
 	addReaction(ref: SlackThreadRef, name: string, signal?: AbortSignal): Promise<void>;
 }
 
+/** Verified ingress, outbound client/tools, and canonical identity helpers. */
 export interface SlackChannel {
 	readonly routes: {
 		events(options?: SlackRouteOptions): SlackRouteHandler;
@@ -125,22 +151,34 @@ export interface SlackChannel {
 		replyInThread(ref: SlackThreadRef): ToolDefinition;
 		addReaction(ref: SlackThreadRef): ToolDefinition;
 	};
+	/** Registers the sole handler for one supported Events API key. */
 	on<TKey extends SlackEventName>(
 		type: TKey,
 		handler: SlackNotificationHandler<SlackEvents[TKey]>,
 	): () => void;
+	/** Registers the sole acknowledgement-producing handler for an action id. */
 	onAction(
 		actionId: string,
 		handler: SlackInteractionHandler<SlackActionEnvelope, SlackActionResponse>,
 	): () => void;
+	/** Registers the sole response-producing handler for a modal callback id. */
 	onView(
 		callbackId: string,
 		handler: SlackInteractionHandler<SlackViewSubmissionEnvelope, SlackViewResponse>,
 	): () => void;
+	/** Serializes a canonical namespaced identifier. It is not an authorization capability. */
 	conversationKey(ref: SlackThreadRef): string;
+	/** Parses only canonical keys produced by `conversationKey()`. */
 	parseConversationKey(id: string): SlackThreadRef;
 }
 
+/**
+ * Creates a fixed-workspace Slack channel.
+ *
+ * Signed request timestamps must be within five minutes of the server clock. Successful
+ * acknowledgement waits for the registered handler, and the channel does not
+ * deduplicate Events API retries.
+ */
 export function createSlackChannel(options: SlackChannelOptions): SlackChannel {
 	validateOptions(options);
 	const signingSecret = options.signingSecret;

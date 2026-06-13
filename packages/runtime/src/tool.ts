@@ -2,7 +2,7 @@ import { toJsonSchema } from '@valibot/to-json-schema';
 import * as v from 'valibot';
 import { ToolInputValidationError, type ToolValidationIssue } from './errors.ts';
 import { isTopLevelObjectSchema, stripJsonSchemaMeta } from './tool-schema.ts';
-import type { ToolDefinition, ToolParameters } from './types.ts';
+import type { ToolDefinition, ToolParameters } from './tool-types.ts';
 
 /**
  * Validates a custom model-callable tool and returns a shallow-frozen,

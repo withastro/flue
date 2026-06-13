@@ -77,7 +77,7 @@ app.route('/', flue());
 export default app;
 ```
 
-Here, the webhook route belongs to your application: it determines which requests are valid and which agent instance receives the accepted input. `dispatch(...)` delivers that input asynchronously to the continuing agent session. See [Agents](/docs/guide/building-agents/) for agent interaction patterns and [Chat](/docs/guide/chat/) for conversational platform integrations.
+Here, the webhook route belongs to your application: it determines which requests are valid and which agent instance receives the accepted input. `dispatch(...)` delivers that input asynchronously to the continuing agent session. See [Agents](/docs/guide/building-agents/) for agent interaction patterns and [Channels](/docs/guide/channels/) for provider integrations.
 
 ## Customized routing
 
@@ -104,9 +104,9 @@ Apply middleware to the mounted paths your application publishes, such as `/api/
 Mounting `flue()` does not make every discovered agent or workflow directly invocable. Each module opts into its public transports:
 
 | Module export    | Available through the mounted Flue application                                                                  |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------- |
+| ---------------- | --------------------------------------------------------------------------------------------------------------- |
 | Agent `route`    | HTTP prompts at `POST /agents/:name/:id` and event streaming at `GET /agents/:name/:id` beneath the mount path. |
-| Workflow `route` | HTTP invocation at `POST /workflows/:name` beneath the mount path.                                               |
+| Workflow `route` | HTTP invocation at `POST /workflows/:name` beneath the mount path.                                              |
 
 Run reads at `GET /runs/:runId` (event streaming, and the run record via `?meta`) are not gated by any module export: the route is registered unconditionally beneath the mount path and serves any admitted workflow run, however it was invoked. When the owning workflow exports `route` middleware, both views run that middleware before disclosing whether the run exists. Unknown run IDs return `404`.
 
@@ -120,6 +120,6 @@ See [Agents](/docs/guide/building-agents/) for creating and exposing continuing 
 
 - [Agents](/docs/guide/building-agents/) — create continuing agents and deliver direct or dispatched input.
 - [Workflows](/docs/guide/workflows/) — create finite operations and inspect workflow runs.
-- [Chat](/docs/guide/chat/) — compose conversational platform ingress with agent sessions.
+- [Channels](/docs/guide/channels/) — compose provider ingress with agent sessions.
 - [Develop & Build](/docs/guide/develop-and-build/) — run the application locally, create build output, and continue to deployment.
 - [Observability](/docs/guide/observability/) — observe workflow runs and agent activity.
