@@ -23,6 +23,8 @@ The class name is how Cloudflare identifies the Durable Object in migrations. Th
 
 Agent session state, accepted submissions, and workflow run history are stored in the owning Durable Object's SQLite storage automatically. The Cloudflare target does not use `db.ts`; a source-root `db.ts` is rejected at build time.
 
+Do not hand-author Flue's generated `FLUE_*` bindings in `wrangler.jsonc`. Declare migrations for generated classes, and declare bindings only for application-owned resources such as your own Durable Objects, R2 buckets, Queues, Hyperdrive configs, Browser Rendering bindings, or Send Email bindings.
+
 ## `wrangler.jsonc`
 
 Your project's `wrangler.jsonc` at the project root configures your Worker's name, compatibility settings, and Durable Object migrations. Flue reads this file during builds and merges its generated bindings alongside your authored configuration.
@@ -41,13 +43,9 @@ Flue generates the Durable Object classes and bindings, but your `wrangler.jsonc
   "migrations": [
     {
       "tag": "v1",
-      "new_sqlite_classes": [
-        "FlueRegistry",
-        "FlueSupportChatAgent",
-        "FlueTranslateWorkflow"
-      ]
-    }
-  ]
+      "new_sqlite_classes": ["FlueRegistry", "FlueSupportChatAgent", "FlueTranslateWorkflow"],
+    },
+  ],
 }
 ```
 
@@ -61,8 +59,8 @@ Cloudflare requires an ordered migration history that accounts for every Durable
 {
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["FlueRegistry", "FlueSupportChatAgent"] },
-    { "tag": "v2", "new_sqlite_classes": ["FlueTranslateWorkflow"] }
-  ]
+    { "tag": "v2", "new_sqlite_classes": ["FlueTranslateWorkflow"] },
+  ],
 }
 ```
 
@@ -73,9 +71,12 @@ For example, if you remove an agent or workflow that was previously deployed, ap
 ```jsonc
 {
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["FlueRegistry", "FlueSupportChatAgent", "FlueTranslateWorkflow"] },
-    { "tag": "v2", "deleted_classes": ["FlueSupportChatAgent"] }
-  ]
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["FlueRegistry", "FlueSupportChatAgent", "FlueTranslateWorkflow"],
+    },
+    { "tag": "v2", "deleted_classes": ["FlueSupportChatAgent"] },
+  ],
 }
 ```
 
@@ -85,8 +86,11 @@ Similarly, use `renamed_classes` when a deployed class changes its name, such as
 {
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["FlueRegistry", "FlueSupportChatAgent"] },
-    { "tag": "v2", "renamed_classes": [{ "from": "FlueSupportChatAgent", "to": "FlueSupportAssistantAgent" }] }
-  ]
+    {
+      "tag": "v2",
+      "renamed_classes": [{ "from": "FlueSupportChatAgent", "to": "FlueSupportAssistantAgent" }],
+    },
+  ],
 }
 ```
 
@@ -195,14 +199,13 @@ export const cloudflare = extend({
 ```ts
 export const cloudflare = extend({
   wrap: (Final) =>
-    Sentry.instrumentDurableObjectWithSentry(
-      (env) => ({ dsn: env.SENTRY_DSN }),
-      Final,
-    ),
+    Sentry.instrumentDurableObjectWithSentry((env) => ({ dsn: env.SENTRY_DSN }), Final),
 });
 ```
 
 Both `base` and `wrap` are optional. Do not override Flue-owned `fetch()`, `onRequest()`, `onFiberRecovered()`, or `alarm()` methods.
+
+Use this module-local extension point for scheduled or queued behavior that belongs to one generated agent or workflow Durable Object. Do not add a Worker cron trigger just to reach `scheduleEvery(...)`; the Agents SDK scheduling APIs run inside the generated Durable Object after that object is created. If your application needs to create the first instance, expose an authenticated bootstrap route in `app.ts` or otherwise obtain the Durable Object namespace from `env` and address the instance once.
 
 ## Extending `cloudflare.ts` Entrypoint
 
@@ -235,6 +238,8 @@ export default {
 ```
 
 Use `app.ts` for custom HTTP routes and middleware. `cloudflare.ts` must not define a default `fetch` handler because Flue keeps HTTP composition in `app.ts`.
+
+Use `cloudflare.ts` for Worker-level events such as inbound email, queues, or cron handlers that are not owned by a specific generated agent or workflow class. If one of those handlers needs to start a Flue workflow and preserve run history, invoke the mounted workflow route through the application HTTP surface instead of importing and calling the workflow's `run(...)` function directly.
 
 ## Reference
 

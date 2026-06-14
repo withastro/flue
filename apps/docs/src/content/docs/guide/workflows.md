@@ -70,6 +70,8 @@ An exposed `summarize` workflow accepts requests at `POST /workflows/summarize`.
 
 By default, `POST /workflows/summarize` returns `202 { runId, streamUrl, offset }` after admission. Add `?wait=result` to wait for the completed result in the same request. For HTTP response modes, authentication, and custom application mounts, see [Routing](/docs/guide/routing/).
 
+Application-owned routes, Worker handlers, and other workflows should use the same admission boundary when they want a real workflow run. Do not import a workflow module and call `run(...)` directly from `app.ts`, `cloudflare.ts`, an email handler, or a scheduler; that bypasses Flue's admission path, durable run storage, events, route middleware, and run inspection APIs. Instead, call the mounted workflow route with an authenticated `Request`, or extract shared pure application logic into a separate module that both the workflow and the caller can use.
+
 ## Working with the harness
 
 `init(agent)` returns a harness: the initialized environment your workflow uses for that agent. Through the harness, application code can prepare the agent's workspace and open sessions where the agent performs work.
@@ -157,12 +159,12 @@ Use structured results when later application code depends on specific fields, i
 
 When a workflow is invoked through a running application, its `runId` lets you inspect the run independently of the HTTP request that started it. This is useful for background work, live progress, debugging, and operational tooling.
 
-| Surface                                           | Use it for                                                              |
-| ------------------------------------------------- | ----------------------------------------------------------------------- |
-| `flue logs <runId>`                               | Inspect or follow events for a workflow run from the command line.      |
-| `GET /runs/<runId>`                               | Stream run events via the Durable Streams protocol.                     |
-| `GET /runs/<runId>?meta`                          | Read the workflow-run record as plain JSON.                             |
-| `client.runs.get()`, `.events()`, and `.stream()` | Build application tooling around a known workflow run.                  |
+| Surface                                           | Use it for                                                                                                                                                         |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `flue logs <runId>`                               | Inspect or follow events for a workflow run from the command line.                                                                                                 |
+| `GET /runs/<runId>`                               | Stream run events via the Durable Streams protocol.                                                                                                                |
+| `GET /runs/<runId>?meta`                          | Read the workflow-run record as plain JSON.                                                                                                                        |
+| `client.runs.get()`, `.events()`, and `.stream()` | Build application tooling around a known workflow run.                                                                                                             |
 | `listRuns()` from `@flue/runtime`                 | List workflow runs from your own protected server-side endpoints. See [compose your own admin endpoints](/docs/api/routing-api/#compose-your-own-admin-endpoints). |
 
 Run listing can reveal workflow payloads, results, model activity, and application logs. Only publish a listing surface behind an authorization boundary appropriate for that data.
