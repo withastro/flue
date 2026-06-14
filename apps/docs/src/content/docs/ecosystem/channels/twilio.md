@@ -45,19 +45,19 @@ export const channel = createTwilioChannel({
   },
 
   // Path: /channels/twilio/webhook
-  async webhook({ body, conversation }) {
-    if (body.OptOutType === 'STOP') return;
-    const numMedia = Number(body.NumMedia ?? '0');
+  async webhook({ payload, conversation }) {
+    if (payload.OptOutType === 'STOP') return;
+    const numMedia = Number(payload.NumMedia ?? '0');
     await dispatch(assistant, {
       id: channel.conversationKey(conversation),
       input: {
         type: 'twilio.message',
-        messageSid: body.MessageSid,
-        from: body.From,
-        text: body.Body,
+        messageSid: payload.MessageSid,
+        from: payload.From,
+        text: payload.Body,
         media: Array.from({ length: numMedia }, (_, index) => ({
           index,
-          contentType: body[`MediaContentType${index}`],
+          contentType: payload[`MediaContentType${index}`],
         })),
       },
     });
@@ -125,8 +125,8 @@ The package rejects signed requests for another account or destination.
 
 ## Message behavior
 
-Verified messages reach the handler as `{ c, body, conversation, idempotencyToken? }`.
-`body` is the provider-native verified form exactly as Twilio signed it: field
+Verified messages reach the handler as `{ c, payload, conversation, idempotencyToken? }`.
+`payload` is the provider-native verified form exactly as Twilio signed it: field
 names use Twilio's PascalCase wire spelling (`MessageSid`, `From`, `To`, `Body`,
 `NumMedia`, `MediaUrl0`, `OptOutType`, …), every value is a `string`, and a
 parameter Twilio repeats becomes a `readonly string[]`. The channel does not
@@ -156,7 +156,7 @@ https://example.com/channels/twilio/status
 ```
 
 Set the same URL as `StatusCallback` on outbound messages. The status handler
-input mirrors the inbound shape: `body` carries the exact `MessageStatus` string
+input mirrors the inbound shape: `payload` carries the exact `MessageStatus` string
 forwarded verbatim — never narrowed to a frozen union — alongside every other
 signed status parameter (sender, recipient, error, channel, and delivery-receipt
 fields), with the same string / `string[]` rules and index-signature forwarding.
@@ -170,7 +170,7 @@ claiming durable deduplication.
 Twilio does not guarantee `MessagingServiceSid` in every status callback, and
 the channel does **not** gate status callbacks on it. For a Messaging Service
 channel, the signed account SID and the exact signed callback URL scope the
-route. Read `body.MessagingServiceSid` in application code when a present value
+route. Read `payload.MessagingServiceSid` in application code when a present value
 matters.
 
 ## Deadlines

@@ -74,7 +74,7 @@ export interface TwilioChannelOptions<E extends Env = Env> {
  * authenticated field the current types do not yet model. The shape is the
  * exact verified wire object; the channel does not rename, narrow, or coerce it.
  */
-export interface TwilioWebhookBody {
+export interface TwilioWebhookPayload {
 	readonly [field: string]: string | readonly string[] | undefined;
 }
 
@@ -87,7 +87,7 @@ export interface TwilioWebhookBody {
  * unannounced future field — are forwarded verbatim through the index
  * signature and read directly with Twilio's PascalCase wire names.
  */
-export interface TwilioIncomingMessageBody extends TwilioWebhookBody {
+export interface TwilioIncomingMessagePayload extends TwilioWebhookPayload {
 	readonly MessageSid: string;
 	readonly AccountSid: string;
 	readonly From: string;
@@ -103,7 +103,7 @@ export interface TwilioIncomingMessageBody extends TwilioWebhookBody {
  * (sender, recipient, error, channel, and delivery-receipt fields) is
  * forwarded through the index signature.
  */
-export interface TwilioStatusCallbackBody extends TwilioWebhookBody {
+export interface TwilioStatusCallbackPayload extends TwilioWebhookPayload {
 	readonly MessageSid: string;
 	readonly AccountSid: string;
 	readonly MessageStatus: string;
@@ -135,7 +135,7 @@ export type TwilioHandlerResult =
 export interface TwilioWebhookHandlerInput<E extends Env = Env> {
 	c: Context<E>;
 	/** Provider-native verified form fields with Twilio's wire names. */
-	body: TwilioIncomingMessageBody;
+	payload: TwilioIncomingMessagePayload;
 	/** Canonical conversation identity derived from the verified destination and sender. */
 	conversation: TwilioConversationRef;
 	/** `I-Twilio-Idempotency-Token` retry identity when Twilio supplies it. */
@@ -146,7 +146,7 @@ export interface TwilioWebhookHandlerInput<E extends Env = Env> {
 export interface TwilioStatusHandlerInput<E extends Env = Env> {
 	c: Context<E>;
 	/** Provider-native verified form fields with Twilio's wire names. */
-	body: TwilioStatusCallbackBody;
+	payload: TwilioStatusCallbackPayload;
 	/** Canonical conversation identity when both addresses are present. */
 	conversation?: TwilioConversationRef;
 	/** `I-Twilio-Idempotency-Token` retry identity when Twilio supplies it. */

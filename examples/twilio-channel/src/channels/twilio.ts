@@ -21,19 +21,19 @@ export const channel = createTwilioChannel({
 	},
 
 	// Path: /channels/twilio/webhook
-	async webhook({ body, conversation }) {
-		if (body.OptOutType === 'STOP') return;
-		const numMedia = Number(body.NumMedia ?? '0');
+	async webhook({ payload, conversation }) {
+		if (payload.OptOutType === 'STOP') return;
+		const numMedia = Number(payload.NumMedia ?? '0');
 		await dispatch(assistant, {
 			id: channel.conversationKey(conversation),
 			input: {
 				type: 'twilio.message',
-				messageSid: body.MessageSid,
-				from: body.From,
-				text: body.Body,
+				messageSid: payload.MessageSid,
+				from: payload.From,
+				text: payload.Body,
 				media: Array.from({ length: numMedia }, (_, index) => ({
 					index,
-					contentType: body[`MediaContentType${index}`],
+					contentType: payload[`MediaContentType${index}`],
 				})),
 			},
 		});

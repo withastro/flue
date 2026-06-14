@@ -61,7 +61,7 @@ describe('@flue/twilio workerd ingress', () => {
 		expect(rejected.status).toBe(401);
 		expect(webhook).toHaveBeenCalledOnce();
 		const input = webhook.mock.calls[0]?.[0];
-		expect(input.body).toMatchObject({
+		expect(input.payload).toMatchObject({
 			MessageSid: 'SM20202020202020202020202020202020',
 			Body: 'Worker SMS',
 			From: '+15557015015',

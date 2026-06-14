@@ -13,8 +13,8 @@ export const channel = createTwilioChannel({
     type: 'address',
     address: process.env.TWILIO_PHONE_NUMBER!,
   },
-  webhook({ body, conversation }) {
-    // Handle one verified SMS or MMS message. `body` is the provider-native
+  webhook({ payload, conversation }) {
+    // Handle one verified SMS or MMS message. `payload` is the provider-native
     // verified form with Twilio's PascalCase wire names.
   },
 });

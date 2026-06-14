@@ -2,9 +2,9 @@ import type { Env, Handler } from 'hono';
 import type {
 	TwilioChannelOptions,
 	TwilioConversationRef,
-	TwilioIncomingMessageBody,
-	TwilioStatusCallbackBody,
-	TwilioWebhookBody,
+	TwilioIncomingMessagePayload,
+	TwilioStatusCallbackPayload,
+	TwilioWebhookPayload,
 } from './index.ts';
 
 const DEFAULT_BODY_LIMIT = 1024 * 1024;
@@ -18,7 +18,7 @@ interface ConfiguredUrl {
 
 interface ParsedForm {
 	values: ReadonlyMap<string, readonly string[]>;
-	body: TwilioWebhookBody;
+	payload: TwilioWebhookPayload;
 }
 
 interface AcceptedRequest {
@@ -42,25 +42,25 @@ export function createTwilioWebhookHandler<E extends Env>(
 		);
 		if (accepted instanceof Response) return accepted;
 
-		const body = accepted.form.body as TwilioIncomingMessageBody;
+		const payload = accepted.form.payload as TwilioIncomingMessagePayload;
 		if (
-			!isRequired(body.MessageSid) ||
-			!isRequired(body.AccountSid) ||
-			!isRequired(body.From) ||
-			!isRequired(body.To)
+			!isRequired(payload.MessageSid) ||
+			!isRequired(payload.AccountSid) ||
+			!isRequired(payload.From) ||
+			!isRequired(payload.To)
 		) {
 			return response(400);
 		}
-		if (body.AccountSid !== options.accountSid) return response(403);
+		if (payload.AccountSid !== options.accountSid) return response(403);
 
-		const conversation = incomingConversation(options, body);
+		const conversation = incomingConversation(options, payload);
 		if (!conversation) return response(403);
 
 		let result: unknown;
 		try {
 			result = await options.webhook({
 				c,
-				body,
+				payload,
 				conversation,
 				...(accepted.idempotencyToken === undefined
 					? {}
@@ -92,23 +92,23 @@ export function createTwilioStatusCallbackHandler<E extends Env>(
 		);
 		if (accepted instanceof Response) return accepted;
 
-		const body = accepted.form.body as TwilioStatusCallbackBody;
+		const payload = accepted.form.payload as TwilioStatusCallbackPayload;
 		if (
-			!isRequired(body.MessageSid) ||
-			!isRequired(body.AccountSid) ||
-			!isRequired(body.MessageStatus)
+			!isRequired(payload.MessageSid) ||
+			!isRequired(payload.AccountSid) ||
+			!isRequired(payload.MessageStatus)
 		) {
 			return response(400);
 		}
-		if (body.AccountSid !== options.accountSid) return response(403);
+		if (payload.AccountSid !== options.accountSid) return response(403);
 
-		const conversation = statusConversation(options, body);
+		const conversation = statusConversation(options, payload);
 
 		let result: unknown;
 		try {
 			result = await callback({
 				c,
-				body,
+				payload,
 				...(conversation === undefined ? {} : { conversation }),
 				...(accepted.idempotencyToken === undefined
 					? {}
@@ -159,45 +159,45 @@ async function acceptSignedForm(
 
 function incomingConversation<E extends Env>(
 	options: TwilioChannelOptions<E>,
-	body: TwilioIncomingMessageBody,
+	payload: TwilioIncomingMessagePayload,
 ): TwilioConversationRef | undefined {
 	if (options.destination.type === 'address') {
-		if (body.To !== options.destination.address) return undefined;
+		if (payload.To !== options.destination.address) return undefined;
 		return {
 			type: 'address',
-			accountSid: body.AccountSid,
-			address: body.To,
-			participant: body.From,
+			accountSid: payload.AccountSid,
+			address: payload.To,
+			participant: payload.From,
 		};
 	}
-	if (body.MessagingServiceSid !== options.destination.messagingServiceSid) {
+	if (payload.MessagingServiceSid !== options.destination.messagingServiceSid) {
 		return undefined;
 	}
 	return {
 		type: 'messaging-service',
-		accountSid: body.AccountSid,
+		accountSid: payload.AccountSid,
 		messagingServiceSid: options.destination.messagingServiceSid,
-		address: body.To,
-		participant: body.From,
+		address: payload.To,
+		participant: payload.From,
 	};
 }
 
 function statusConversation<E extends Env>(
 	options: TwilioChannelOptions<E>,
-	body: TwilioStatusCallbackBody,
+	payload: TwilioStatusCallbackPayload,
 ): TwilioConversationRef | undefined {
-	const { From, To } = body;
+	const { From, To } = payload;
 	if (!isRequired(From) || !isRequired(To)) return undefined;
 	return options.destination.type === 'address'
 		? {
 				type: 'address',
-				accountSid: body.AccountSid,
+				accountSid: payload.AccountSid,
 				address: From,
 				participant: To,
 			}
 		: {
 				type: 'messaging-service',
-				accountSid: body.AccountSid,
+				accountSid: payload.AccountSid,
 				messagingServiceSid: options.destination.messagingServiceSid,
 				address: From,
 				participant: To,
@@ -249,7 +249,7 @@ function parseForm(body: string): ParsedForm | undefined {
 			enumerable: true,
 		});
 	}
-	return { values, body: Object.freeze(native) as TwilioWebhookBody };
+	return { values, payload: Object.freeze(native) as TwilioWebhookPayload };
 }
 
 async function importSigningKey(authToken: string): Promise<CryptoKey> {

@@ -84,7 +84,7 @@ Handlers receive the verified Twilio form exactly as Twilio signed it. The
 channel does not rename, narrow, or coerce fields.
 
 ```ts
-interface TwilioWebhookBody {
+interface TwilioWebhookPayload {
   readonly [field: string]: string | readonly string[] | undefined;
 }
 ```
@@ -101,7 +101,7 @@ Two concrete bodies model only the identity fields the channel verifies; the
 index signature carries everything else:
 
 ```ts
-interface TwilioIncomingMessageBody extends TwilioWebhookBody {
+interface TwilioIncomingMessagePayload extends TwilioWebhookPayload {
   readonly MessageSid: string;
   readonly AccountSid: string;
   readonly From: string;
@@ -109,7 +109,7 @@ interface TwilioIncomingMessageBody extends TwilioWebhookBody {
   readonly Body: string;
 }
 
-interface TwilioStatusCallbackBody extends TwilioWebhookBody {
+interface TwilioStatusCallbackPayload extends TwilioWebhookPayload {
   readonly MessageSid: string;
   readonly AccountSid: string;
   readonly MessageStatus: string;
@@ -126,13 +126,13 @@ and rich-message fields in application code.
 ```ts
 interface TwilioWebhookHandlerInput<E extends Env = Env> {
   c: Context<E>;
-  body: TwilioIncomingMessageBody;
+  payload: TwilioIncomingMessagePayload;
   conversation: TwilioConversationRef;
   idempotencyToken?: string;
 }
 ```
 
-- `body` is the verified native form (above).
+- `payload` is the verified native form (above).
 - `conversation` is the canonical ref derived from the verified destination
   (`To`) and sender (`From`).
 - `idempotencyToken` carries `I-Twilio-Idempotency-Token` when Twilio supplies
@@ -149,13 +149,13 @@ that does not match the configured `destination` is rejected with `403`.
 ```ts
 interface TwilioStatusHandlerInput<E extends Env = Env> {
   c: Context<E>;
-  body: TwilioStatusCallbackBody;
+  payload: TwilioStatusCallbackPayload;
   conversation?: TwilioConversationRef;
   idempotencyToken?: string;
 }
 ```
 
-- `body` carries the exact `MessageStatus` string and every other signed status
+- `payload` carries the exact `MessageStatus` string and every other signed status
   parameter (sender, recipient, error, channel, delivery-receipt fields).
 - `conversation` is present only when both addresses are signed (status
   callbacks swap the sender/recipient roles: `address` is `From`, `participant`
@@ -166,7 +166,7 @@ A request missing `MessageSid`, `AccountSid`, or `MessageStatus` is rejected wit
 `400`; a wrong account SID is rejected with `403`. Twilio does not guarantee
 `MessagingServiceSid` on every status callback, and the channel does **not** gate
 status callbacks on it — the signed account SID and the exact signed callback
-URL scope the route. Read `body.MessagingServiceSid` in application code when a
+URL scope the route. Read `payload.MessagingServiceSid` in application code when a
 present value matters.
 
 ## Conversation identity

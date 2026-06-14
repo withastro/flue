@@ -77,7 +77,7 @@ describe('createTwilioChannel()', () => {
 		});
 		// Native Twilio wire fields are forwarded unchanged, including unmodeled
 		// repeated parameters and rich-message fields.
-		expect(input.body).toMatchObject({
+		expect(input.payload).toMatchObject({
 			MessageSid: 'MM33333333333333333333333333333333',
 			AccountSid: 'AC11111111111111111111111111111111',
 			MessagingServiceSid: 'MG22222222222222222222222222222222',
@@ -160,7 +160,7 @@ describe('createTwilioChannel()', () => {
 		// The exact Twilio lifecycle value is preserved without narrowing, and
 		// a present MessagingServiceSid is forwarded verbatim — the channel no
 		// longer gates status callbacks on a service-SID match.
-		expect(input.body).toMatchObject({
+		expect(input.payload).toMatchObject({
 			MessageSid: 'SM55555555555555555555555555555555',
 			AccountSid: 'AC44444444444444444444444444444444',
 			MessageStatus: 'carrier-confirmed',

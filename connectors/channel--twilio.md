@@ -79,19 +79,19 @@ export const channel = createTwilioChannel({
   },
 
   // Path: /channels/twilio/webhook
-  async webhook({ body, conversation }) {
-    if (body.OptOutType === 'STOP') return;
-    const numMedia = Number(body.NumMedia ?? '0');
+  async webhook({ payload, conversation }) {
+    if (payload.OptOutType === 'STOP') return;
+    const numMedia = Number(payload.NumMedia ?? '0');
     await dispatch(assistant, {
       id: channel.conversationKey(conversation),
       input: {
         type: 'twilio.message',
-        messageSid: body.MessageSid,
-        from: body.From,
-        text: body.Body,
+        messageSid: payload.MessageSid,
+        from: payload.From,
+        text: payload.Body,
         media: Array.from({ length: numMedia }, (_, index) => ({
           index,
-          contentType: body[`MediaContentType${index}`],
+          contentType: payload[`MediaContentType${index}`],
         })),
       },
     });
@@ -186,8 +186,8 @@ Status ingress is optional. Add both properties together:
 statusCallbackUrl: process.env.TWILIO_STATUS_CALLBACK_URL!,
 
 // Path: /channels/twilio/status
-async statusCallback({ body }) {
-  // Persist delivery state (body.MessageStatus) outside model context.
+async statusCallback({ payload }) {
+  // Persist delivery state (payload.MessageStatus) outside model context.
 },
 ```
 
@@ -199,14 +199,14 @@ message SID.
 Twilio does not guarantee `MessagingServiceSid` in every status callback. For
 a Messaging Service channel, the signed account SID and the exact signed
 callback URL scope the route; the package does not gate status callbacks on a
-matching `MessagingServiceSid`. Read `body.MessagingServiceSid` in application
+matching `MessagingServiceSid`. Read `payload.MessagingServiceSid` in application
 code when a present value matters.
 
 ## Handle inbound messages
 
-The handler input is `{ c, body, conversation, idempotencyToken? }`:
+The handler input is `{ c, payload, conversation, idempotencyToken? }`:
 
-- `body` is the provider-native verified form using Twilio's PascalCase wire
+- `payload` is the provider-native verified form using Twilio's PascalCase wire
   names (`MessageSid`, `From`, `To`, `Body`, `NumMedia`, `NumSegments`,
   `MediaUrl0`, `OptOutType`, `Latitude`, geographic, and rich-message fields).
   Every value is a string; a repeated parameter becomes a `string[]`. New Twilio
