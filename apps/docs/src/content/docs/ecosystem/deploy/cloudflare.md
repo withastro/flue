@@ -93,6 +93,23 @@ npx wrangler deploy
 
 `flue build --target cloudflare` compiles your project into a `./dist` directory containing a Cloudflare Workers-compatible artifact. `wrangler deploy` pushes it live.
 
+### Serving assets from the same Worker
+
+Workers static assets are served before your Worker script unless `assets.run_worker_first` says otherwise. If a single Worker serves a front-end build and application routes that invoke Flue, include every application-owned API prefix and every mounted Flue prefix in `run_worker_first` so those requests reach Hono instead of the asset handler or SPA fallback:
+
+```jsonc title="wrangler.jsonc"
+{
+  "assets": {
+    "directory": "./dist/client",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*", "/_flue/*"],
+  },
+}
+```
+
+Adjust the prefixes to match where your `app.ts` mounts public routes and `flue()`. If Flue is mounted at `/api`, include `/api/*`; if your application mounts Flue at a private internal prefix, include that prefix too and protect it with middleware.
+
 ### 5. Add your API key
 
 For local Cloudflare development, put provider API keys in `.dev.vars` beside your Wrangler configuration:
