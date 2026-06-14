@@ -11,9 +11,6 @@ const verificationToken = optionalEnv('NOTION_WEBHOOK_VERIFICATION_TOKEN');
 
 export const channel = createNotionChannel({
 	...(verificationToken === undefined ? {} : { verificationToken }),
-	workspaceId: optionalEnv('NOTION_WORKSPACE_ID'),
-	subscriptionId: optionalEnv('NOTION_SUBSCRIPTION_ID'),
-	integrationId: optionalEnv('NOTION_INTEGRATION_ID'),
 
 	// Temporary endpoint setup only:
 	// 1. Leave NOTION_WEBHOOK_VERIFICATION_TOKEN unset.

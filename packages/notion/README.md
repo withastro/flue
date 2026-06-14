@@ -34,10 +34,13 @@ capture Notion's unsigned token. Store it as
 `NOTION_WEBHOOK_VERIFICATION_TOKEN`, restart the application, and paste the
 same token into Notion's connection UI.
 
-The channel uses the official SDK's webhook payload types. Newer verified event
-types arrive as `{ type: 'unknown', eventType, raw, ... }`. Outbound API calls,
-OAuth, subscriptions, credentials, deduplication, ordering, and persistence
-remain application-owned.
+`event` is the official SDK's provider-native webhook payload union, so
+`switch (event.type)` narrows each modeled variant. The only adjustment is
+widening `authors`/`accessible_by` to Notion's documented `agent` principal
+type, which the current SDK type omits. A verified event whose `type` is newer
+than the installed SDK is still forwarded — typed as the union — and reached
+from a `default` arm. Outbound API calls, OAuth, subscriptions, credentials,
+deduplication, ordering, and persistence remain application-owned.
 
 The package declares `@types/node` as a peer because the official SDK's public
 types import `node:http`. This is a declaration-only requirement and does not

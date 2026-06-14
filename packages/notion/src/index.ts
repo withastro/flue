@@ -54,12 +54,6 @@ export interface NotionChannelOptions<E extends Env = Env> {
 	 * as the HMAC signing secret. Ordinary events receive `503` while absent.
 	 */
 	verificationToken?: string;
-	/** Optional fixed workspace id. Mismatched signed events receive `403`. */
-	workspaceId?: string;
-	/** Optional fixed subscription id. Mismatched signed events receive `403`. */
-	subscriptionId?: string;
-	/** Optional fixed integration id. Mismatched signed events receive `403`. */
-	integrationId?: string;
 	/** Maximum request-body size in bytes. Defaults to 1 MiB. */
 	bodyLimit?: number;
 	/**
@@ -72,19 +66,31 @@ export interface NotionChannelOptions<E extends Env = Env> {
 	webhook(input: NotionWebhookHandlerInput<E>): NotionHandlerResult;
 }
 
-export interface NotionWebhookPrincipal {
-	id: string;
-	type: 'agent' | 'bot' | 'person';
-}
+/**
+ * Notion's documented webhook author/principal type.
+ *
+ * The current official SDK's `BaseWebhookPayload` declares only `person` and
+ * `bot`, but Notion's webhook documentation also lists `agent`. The channel
+ * widens the native `authors` and `accessible_by` arrays to the documented set
+ * without otherwise reshaping the provider payload.
+ */
+export type NotionWebhookAuthorType = 'person' | 'bot' | 'agent';
 
 type WithDocumentedAuthors<T> = T extends unknown
-	? Omit<T, 'accessible_by' | 'authors'> & {
-			authors: NotionWebhookPrincipal[];
-			accessible_by?: NotionWebhookPrincipal[];
+	? Omit<T, 'authors' | 'accessible_by'> & {
+			authors: Array<{ id: string; type: NotionWebhookAuthorType }>;
+			accessible_by?: Array<{ id: string; type: NotionWebhookAuthorType }>;
 		}
 	: never;
 
-/** Event variants exported by the current official Notion SDK. */
+/**
+ * Provider-native webhook payload union, sourced from the official Notion SDK's
+ * exported `*WebhookPayload` types.
+ *
+ * The only adjustment is widening `authors`/`accessible_by` to Notion's
+ * documented principal types (the SDK type lags the docs here). Field names,
+ * nesting, and discriminants are otherwise the provider's own.
+ */
 export type NotionKnownWebhookEvent = WithDocumentedAuthors<
 	| CommentCreatedWebhookPayload
 	| CommentDeletedWebhookPayload
@@ -119,25 +125,18 @@ export type NotionKnownWebhookEvent = WithDocumentedAuthors<
 	| ViewUpdatedWebhookPayload
 >;
 
-/** Verified event whose type is newer than the installed SDK. */
-export interface NotionUnknownWebhookEvent {
-	type: 'unknown';
-	eventType: string;
-	id: string;
-	timestamp: string;
-	workspaceId: string;
-	workspaceName: string;
-	subscriptionId: string;
-	integrationId: string;
-	authors: NotionWebhookPrincipal[];
-	accessibleBy?: NotionWebhookPrincipal[];
-	attemptNumber: number;
-	apiVersion: string;
-	/** Complete parsed payload after signature verification. */
-	raw: unknown;
-}
-
-export type NotionWebhookEvent = NotionKnownWebhookEvent | NotionUnknownWebhookEvent;
+/**
+ * Provider-native payload delivered to the `webhook` callback: the official
+ * Notion `*WebhookPayload` union (with `authors`/`accessible_by` widened to the
+ * documented principal types). `switch (event.type)` narrows each modeled
+ * variant.
+ *
+ * Notion can add event families and API versions; an authenticated event
+ * outside the installed SDK's union is still forwarded at runtime — typed as
+ * the current union — and reached through a `default` arm. Inspect `event.type`
+ * to handle an event family newer than your installed `@notionhq/client`.
+ */
+export type NotionWebhookEvent = NotionKnownWebhookEvent;
 
 export interface NotionVerificationHandlerInput<E extends Env = Env> {
 	c: Context<E>;
@@ -198,14 +197,5 @@ function validateOptions<E extends Env>(options: NotionChannelOptions<E>): void 
 	}
 	if (typeof options.webhook !== 'function') {
 		throw new TypeError('createNotionChannel() requires a webhook handler.');
-	}
-	for (const [name, value] of [
-		['workspaceId', options.workspaceId],
-		['subscriptionId', options.subscriptionId],
-		['integrationId', options.integrationId],
-	] as const) {
-		if (value !== undefined && (typeof value !== 'string' || value.length === 0)) {
-			throw new TypeError(`Notion ${name} must be a non-empty string.`);
-		}
 	}
 }

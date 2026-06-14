@@ -3,6 +3,8 @@ import { describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
 	createNotionChannel,
 	type NotionChannel,
+	type NotionWebhookAuthorType,
+	type NotionWebhookEvent,
 	type NotionWebhookHandlerInput,
 } from '../src/index.ts';
 
@@ -42,7 +44,7 @@ describe('createNotionChannel()', () => {
 		});
 	});
 
-	it('normalizes a verified future event without losing delivery metadata', async () => {
+	it('forwards a verified future event type with its native fields', async () => {
 		const webhook = vi.fn();
 		const notion = createNotionChannel({
 			verificationToken: 'notion_secret_future',
@@ -63,18 +65,15 @@ describe('createNotionChannel()', () => {
 		expect(response.status).toBe(200);
 		expect(webhook).toHaveBeenCalledOnce();
 		expect(webhook.mock.calls[0]?.[0].event).toMatchObject({
-			type: 'unknown',
-			eventType: 'workspace.member_invited',
+			type: 'workspace.member_invited',
 			id: 'delivery_future',
-			workspaceId: 'workspace_acme',
-			attemptNumber: 1,
-			raw: {
-				entity: { id: 'user_future', type: 'user' },
-			},
+			workspace_id: 'workspace_acme',
+			attempt_number: 1,
+			entity: { id: 'user_future', type: 'user' },
 		});
 	});
 
-	it('normalizes a familiar event under a future API version as unknown', async () => {
+	it('forwards a familiar event under a future API version with its native fields', async () => {
 		const webhook = vi.fn();
 		const notion = createNotionChannel({
 			verificationToken: 'notion_secret_version',
@@ -93,9 +92,8 @@ describe('createNotionChannel()', () => {
 
 		expect(response.status).toBe(200);
 		expect(webhook.mock.calls[0]?.[0].event).toMatchObject({
-			type: 'unknown',
-			eventType: 'page.created',
-			apiVersion: '2027-01-01',
+			type: 'page.created',
+			api_version: '2027-01-01',
 		});
 	});
 
@@ -302,58 +300,52 @@ describe('createNotionChannel()', () => {
 		expect(webhook).not.toHaveBeenCalled();
 	});
 
-	it('rejects malformed signed payloads and configured identity mismatches', async () => {
+	it('rejects unparseable or untyped signed bodies', async () => {
 		const webhook = vi.fn();
 		const notion = createNotionChannel({
 			verificationToken: 'notion_secret_identity',
-			workspaceId: 'workspace_expected',
-			subscriptionId: 'subscription_expected',
-			integrationId: 'integration_expected',
 			webhook,
 		});
 		const app = channelApp(notion);
 		const malformed = '{"type":';
-		const mismatchedBody = JSON.stringify(notionEvent());
-		const incompleteBody = JSON.stringify(notionEvent({ data: undefined }));
-		const malformedDataBody = JSON.stringify(
-			notionEvent({
-				type: 'page.properties_updated',
-				data: {
-					parent: { id: 'workspace_acme', type: 'space' },
-					updated_properties: [42],
-				},
-			}),
-		);
-		const malformedAccessBody = JSON.stringify(notionEvent({ accessible_by: 'not-an-array' }));
+		const untyped = JSON.stringify({ id: 'delivery_untyped', workspace_id: 'workspace_acme' });
 
 		const malformedResponse = await app.request(
 			jsonRequest(malformed, await signatureHeader(malformed, 'notion_secret_identity')),
 		);
-		const mismatchedResponse = await app.request(
-			jsonRequest(mismatchedBody, await signatureHeader(mismatchedBody, 'notion_secret_identity')),
-		);
-		const incompleteResponse = await app.request(
-			jsonRequest(incompleteBody, await signatureHeader(incompleteBody, 'notion_secret_identity')),
-		);
-		const malformedDataResponse = await app.request(
-			jsonRequest(
-				malformedDataBody,
-				await signatureHeader(malformedDataBody, 'notion_secret_identity'),
-			),
-		);
-		const malformedAccessResponse = await app.request(
-			jsonRequest(
-				malformedAccessBody,
-				await signatureHeader(malformedAccessBody, 'notion_secret_identity'),
-			),
+		const untypedResponse = await app.request(
+			jsonRequest(untyped, await signatureHeader(untyped, 'notion_secret_identity')),
 		);
 
 		expect(malformedResponse.status).toBe(400);
-		expect(mismatchedResponse.status).toBe(403);
-		expect(incompleteResponse.status).toBe(400);
-		expect(malformedDataResponse.status).toBe(400);
-		expect(malformedAccessResponse.status).toBe(400);
+		expect(untypedResponse.status).toBe(400);
 		expect(webhook).not.toHaveBeenCalled();
+	});
+
+	it('forwards verified events with their native fields without structural reshaping', async () => {
+		const webhook = vi.fn();
+		const notion = createNotionChannel({
+			verificationToken: 'notion_secret_native',
+			webhook,
+		});
+		// A page event whose `data` is absent and whose authors include `agent`:
+		// the channel forwards it as-is rather than rejecting it on shape.
+		const body = JSON.stringify(
+			notionEvent({
+				data: undefined,
+				authors: [{ id: 'agent_1', type: 'agent' }],
+			}),
+		);
+
+		const response = await channelApp(notion).request(
+			jsonRequest(body, await signatureHeader(body, 'notion_secret_native')),
+		);
+
+		expect(response.status).toBe(200);
+		expect(webhook.mock.calls[0]?.[0].event).toMatchObject({
+			type: 'page.created',
+			authors: [{ id: 'agent_1', type: 'agent' }],
+		});
 	});
 
 	it('enforces media type and declared or streamed body limits', async () => {
@@ -446,10 +438,19 @@ describe('createNotionChannel()', () => {
 				},
 			},
 			{
-				handler: () => new Date() as never,
+				// A non-plain value is no longer a clean 500: it serializes through
+				// `Response.json`. A `Date` becomes its ISO string; `NaN` becomes `null`.
+				handler: () => new Date('2026-06-13T00:00:00.000Z') as never,
 				assert: async (response: Response) => {
-					expect(response.status).toBe(500);
-					expect(await response.text()).toBe('');
+					expect(response.status).toBe(200);
+					await expect(response.json()).resolves.toBe('2026-06-13T00:00:00.000Z');
+				},
+			},
+			{
+				handler: () => Number.NaN as never,
+				assert: async (response: Response) => {
+					expect(response.status).toBe(200);
+					await expect(response.json()).resolves.toBeNull();
 				},
 			},
 		];
@@ -466,16 +467,22 @@ describe('createNotionChannel()', () => {
 		}
 	});
 
-	it('publishes one fixed route and preserves known-event type narrowing', () => {
+	it('publishes one fixed route and exposes provider-native typed events', () => {
 		const notion = createNotionChannel({
 			verificationToken: 'notion_secret_route',
 			webhook({ event }) {
-				if (event.type === 'page.created') {
-					expectTypeOf(event.entity.id).toEqualTypeOf<string>();
-					expectTypeOf(event.data.parent.type).toEqualTypeOf<
-						'space' | 'block' | 'page' | 'database' | 'team' | 'agent'
-					>();
-				}
+				// Modeled events carry the official SDK payload shape, including the
+				// documented `agent` author principal that the SDK type omits.
+				const pageCreated = event as Extract<NotionWebhookEvent, { type: 'page.created' }>;
+				expectTypeOf(pageCreated.entity.id).toEqualTypeOf<string>();
+				expectTypeOf(pageCreated.data.parent.type).toEqualTypeOf<
+					'space' | 'block' | 'page' | 'database' | 'team' | 'agent'
+				>();
+				expectTypeOf(pageCreated.authors[0]!.type).toEqualTypeOf<NotionWebhookAuthorType>();
+				// Authenticated future/unknown event types are still forwarded at
+				// runtime (see the forwarding tests above), but they are not part of
+				// the official modeled union and are reached via a `default` arm
+				// rather than being statically typed here.
 			},
 		});
 		expect(notion.routes).toHaveLength(1);

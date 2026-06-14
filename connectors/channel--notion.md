@@ -61,9 +61,6 @@ export const client = new Client({
 
 export const channel = createNotionChannel({
   ...(verificationToken ? { verificationToken } : {}),
-  workspaceId: process.env.NOTION_WORKSPACE_ID,
-  subscriptionId: process.env.NOTION_SUBSCRIPTION_ID,
-  integrationId: process.env.NOTION_INTEGRATION_ID,
 
   // Initial setup only: temporarily use this instead of verificationToken and
   // persist the received value through the project's secure secret workflow.
@@ -196,8 +193,9 @@ events receive `503` because no HMAC secret is available.
 
 Recurring events include `X-Notion-Signature:
 sha256=<hex-hmac>`. `@flue/notion` verifies the exact request bytes with the
-stored verification token before parsing. Optional `workspaceId`,
-`subscriptionId`, and `integrationId` settings constrain signed identity.
+stored verification token before parsing. The per-subscription signing token
+already establishes identity through signature verification, so the channel
+exposes no separate workspace, subscription, or integration constraint options.
 
 `NOTION_TOKEN` authenticates outbound API calls and is distinct from
 `NOTION_WEBHOOK_VERIFICATION_TOKEN`. OAuth authorization, token exchange,
@@ -211,9 +209,13 @@ execute in workerd with Flue's required `nodejs_compat` configuration. OAuth is
 outside this recipe; validate any additional SDK operations the application
 chooses to ship.
 
-Known events use the official SDK's provider-native webhook payload types.
-Future verified event types arrive as `type: 'unknown'` with `eventType`,
-delivery metadata, and the complete parsed payload under `raw`.
+Events are delivered as the official SDK's provider-native webhook payload
+types. Modeled `type` values narrow to the matching SDK payload shape; the
+channel widens only `authors`/`accessible_by` to include Notion's documented
+`agent` principal type, which the current SDK type omits. Any authenticated
+event type the installed SDK does not yet model is still forwarded with its
+native snake-case fields — handle it from a `default` arm after the `type`
+values you care about.
 
 Notion can retry failed deliveries up to eight times with exponential backoff
 and does not guarantee ordering. Use `event.id` in application-owned durable
@@ -230,9 +232,9 @@ original synthetic payloads and test:
 
 - the unsigned one-field verification request and secure capture path;
 - valid and tampered exact-body HMAC-SHA256 signatures;
-- missing or malformed signatures and fixed identity mismatches;
-- grouped page cases, selected comment cases, retries, and future unknown
-  events;
+- missing or malformed signatures;
+- grouped page cases, selected comment cases, retries, and forwarding of
+  authenticated event types the installed SDK does not yet model;
 - malformed JSON, content type, body limits, and handler response behavior;
 - the exact `/channels/notion/webhook` route;
 - one real `Client.pages.retrieve()` call through an injected fake Fetch

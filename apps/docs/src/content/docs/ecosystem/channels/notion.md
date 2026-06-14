@@ -59,9 +59,6 @@ export const client = new Client({
 
 export const channel = createNotionChannel({
   ...(verificationToken ? { verificationToken } : {}),
-  workspaceId: process.env.NOTION_WORKSPACE_ID,
-  subscriptionId: process.env.NOTION_SUBSCRIPTION_ID,
-  integrationId: process.env.NOTION_INTEGRATION_ID,
 
   // Initial setup only: temporarily use this instead of verificationToken and
   // persist the received value through the project's secure secret workflow.
@@ -134,10 +131,14 @@ export function pageIdFromInstanceId(id: string): string {
 }
 ```
 
-Known events retain the official SDK's provider-native snake-case fields.
-Verified event types newer than the installed SDK arrive as `type: 'unknown'`
-with `eventType`, normalized delivery metadata, and the complete parsed
-payload under `raw`.
+`event` is the official SDK's provider-native webhook payload union, so
+`switch (event.type)` narrows each modeled variant to its snake-case payload
+shape. The channel widens only `authors`/`accessible_by` to include Notion's
+documented `agent` author type, which the current SDK type omits. A verified
+event whose `type` is newer than the installed SDK is still forwarded — typed
+as the union, with its native fields intact — and handled from the `default`
+arm. There is no synthetic `type: 'unknown'` variant, `eventType`, or `raw`
+mirror.
 
 The `notion-page:` id is a local application convention because
 `@flue/notion` does not invent one universal conversation key for unrelated
@@ -191,9 +192,10 @@ signed recurring events receive `503` and the `webhook` callback is not run.
 
 For recurring events, Notion sends
 `X-Notion-Signature: sha256=<hex-hmac>`. The package verifies HMAC-SHA256 over
-the exact request bytes before parsing. Configure optional `workspaceId`,
-`subscriptionId`, or `integrationId` constraints when the route belongs to one
-fixed Notion installation.
+the exact request bytes before parsing. The per-subscription signing token
+already establishes the sending identity through signature verification, so the
+channel exposes no separate workspace, subscription, or integration constraint
+options.
 
 ## Delivery behavior
 

@@ -17,9 +17,8 @@ export {
   type NotionChannelOptions,
   type NotionHandlerResult,
   type NotionKnownWebhookEvent,
-  type NotionUnknownWebhookEvent,
   type NotionVerificationHandlerInput,
-  type NotionWebhookPrincipal,
+  type NotionWebhookAuthorType,
   type NotionWebhookEvent,
   type NotionWebhookHandlerInput,
 };
@@ -42,27 +41,25 @@ required.
 ```ts
 interface NotionChannelOptions<E extends Env = Env> {
   verificationToken?: string;
-  workspaceId?: string;
-  subscriptionId?: string;
-  integrationId?: string;
   bodyLimit?: number;
   verification?(input: NotionVerificationHandlerInput<E>): NotionHandlerResult;
   webhook(input: NotionWebhookHandlerInput<E>): NotionHandlerResult;
 }
 ```
 
-| Field               | Description                                                                  |
-| ------------------- | ---------------------------------------------------------------------------- |
-| `verificationToken` | Token supplied by Notion during endpoint setup and used as the HMAC key.     |
-| `workspaceId`       | Optional fixed workspace constraint. Signed mismatches receive `403`.        |
-| `subscriptionId`    | Optional fixed subscription constraint. Signed mismatches receive `403`.     |
-| `integrationId`     | Optional fixed integration constraint. Signed mismatches receive `403`.      |
-| `bodyLimit`         | Maximum request-body size. Defaults to 1 MiB.                                |
-| `verification`      | Handles the initial unsigned verification-token request.                     |
-| `webhook`           | Receives every structurally valid event after signature and identity checks. |
+| Field               | Description                                                              |
+| ------------------- | ------------------------------------------------------------------------ |
+| `verificationToken` | Token supplied by Notion during endpoint setup and used as the HMAC key. |
+| `bodyLimit`         | Maximum request-body size. Defaults to 1 MiB.                            |
+| `verification`      | Handles the initial unsigned verification-token request.                 |
+| `webhook`           | Receives every verified event after signature verification.              |
+
+The per-subscription signing token already establishes the sending identity
+through signature verification, so the channel exposes no separate workspace,
+subscription, or integration constraint options.
 
 The constructor throws `TypeError` for missing handlers, an empty configured
-token or identity, a non-function callback, or a non-positive body limit.
+token, a non-function callback, or a non-positive body limit.
 
 ## Initial verification
 
@@ -101,9 +98,12 @@ Recurring requests require `application/json` and
 HMAC-SHA256 over the exact request bytes using `verificationToken`.
 Authentication runs before JSON parsing or `webhook`.
 
-Malformed signed payloads receive `400`. Missing, malformed, or changed
-signatures receive `401`. Configured workspace, subscription, or integration
-mismatches receive `403`. Oversized bodies receive `413`; unsupported media
+A verified event is forwarded to `webhook` whenever its parsed body is a JSON
+object carrying a non-empty string `type`; the channel does not re-validate the
+nested provider shape. Only a signed body that is unparseable JSON, not a JSON
+object, or missing a string `type` receives `400`. Missing, malformed, or
+changed signatures receive `401`. Signed events while no verification token is
+configured receive `503`. Oversized bodies receive `413`; unsupported media
 types receive `415`.
 
 ## Handler result
@@ -149,12 +149,15 @@ comment, view, or file identity appropriate to their agent.
 ## `NotionWebhookEvent`
 
 ```ts
-type NotionWebhookEvent = NotionKnownWebhookEvent | NotionUnknownWebhookEvent;
+type NotionWebhookEvent = NotionKnownWebhookEvent;
 ```
 
-`NotionKnownWebhookEvent` is a union of the webhook payload types exported by
-the installed official Notion SDK. Known values retain provider-native
-snake-case fields:
+`NotionWebhookEvent` is the provider-native webhook payload union, sourced from
+the webhook payload types exported by the installed official Notion SDK. The
+only adjustment is widening `authors`/`accessible_by` to Notion's documented
+principal types; field names, nesting, and discriminants are otherwise the
+provider's own. `switch (event.type)` narrows each modeled variant. The covered
+event types are:
 
 - Comments: `comment.created`, `comment.deleted`, `comment.updated`
 - Data sources: `data_source.content_updated`, `data_source.created`,
@@ -177,46 +180,42 @@ Known events include `id`, `timestamp`, `workspace_id`, `workspace_name`,
 it.
 
 ```ts
-interface NotionWebhookPrincipal {
-  id: string;
-  type: 'agent' | 'bot' | 'person';
-}
+type NotionWebhookAuthorType = 'person' | 'bot' | 'agent';
 ```
 
 `@flue/notion` widens the official SDK's current `authors` and optional
-`accessible_by` declarations to include Notion's documented `agent` principal
-type.
+`accessible_by` declarations to include Notion's documented `agent` author
+type. The SDK's `BaseWebhookPayload` types these arrays as `person | bot`
+only — the SDK type lags the documentation — so the channel applies a faithful
+widening without otherwise reshaping the provider payload.
 
-## Unknown event normalization
+## Unmodeled and future events
+
+`NotionWebhookEvent` is a closed union over the event types the installed
+`@notionhq/client` models. Notion can add event families and API versions, so
+an authenticated event whose `type` is outside that union is still forwarded to
+`webhook` with its native, provider-shaped snake-case fields — there is no
+synthetic `type: 'unknown'` variant, no `eventType`, no `raw`, and no camel-case
+mirror. At runtime such an event is typed as the union and reached through a
+`default` arm; inspect `event.type` to handle a family newer than your installed
+SDK.
 
 ```ts
-interface NotionUnknownWebhookEvent {
-  type: 'unknown';
-  eventType: string;
-  id: string;
-  timestamp: string;
-  workspaceId: string;
-  workspaceName: string;
-  subscriptionId: string;
-  integrationId: string;
-  authors: NotionWebhookPrincipal[];
-  accessibleBy?: NotionWebhookPrincipal[];
-  attemptNumber: number;
-  apiVersion: string;
-  raw: unknown;
+async webhook({ event }) {
+  switch (event.type) {
+    case 'page.created':
+      // narrowed to the modeled PageCreatedWebhookPayload shape
+      return;
+    default:
+      // any other authenticated event, including types the installed SDK
+      // does not yet model, with the provider's native field names
+      return;
+  }
 }
 ```
 
-A structurally valid, signed event whose provider `type` is not represented by
-the installed SDK, or whose `api_version` is newer than the installed SDK's
-known versions, is normalized to `type: 'unknown'`. `eventType` preserves the
-provider event type. The camel-case identity and delivery fields are copied
-from the verified payload, and `raw` contains the complete parsed payload.
-
-Unknown normalization does not accept an otherwise malformed event. The
-provider payload must still include a non-empty event type, delivery id,
-parseable timestamp, workspace, subscription, integration, valid authors,
-positive integer attempt number, and API version.
+Upgrading `@notionhq/client` widens the modeled union, so previously
+unmodeled types begin narrowing under their own `case`.
 
 ## Delivery semantics
 
