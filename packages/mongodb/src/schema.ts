@@ -16,7 +16,6 @@ export function schema(prefix: string): MongoCollectionSpec[] {
 		spec('values', [{ name: 'generation_index', key: { generation: 1, index: 1 }, unique: true }]),
 		spec('sessions'),
 		spec('session_entries', [{ name: 'session_generation_position', key: { sessionId: 1, generation: 1, position: 1 }, unique: true, collation: simple }]),
-		spec('chunk_pointers', [{ name: 'owner', key: { ownerKind: 1, ownerId: 1, ownerPart: 1 }, unique: true, collation: simple }]),
 		spec('submissions', [
 			{ name: 'submission_id', key: { submissionId: 1 }, unique: true, collation: simple },
 			{ name: 'status_sequence', key: { status: 1, sequence: 1 } },

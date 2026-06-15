@@ -3,13 +3,13 @@ interface FrontmatterCommon {
 	version: number;
 }
 
-export interface FrontmatterBlueprint extends FrontmatterCommon {
+interface FrontmatterBlueprint extends FrontmatterCommon {
 	website: string;
 	aliases: string[];
 	root?: undefined;
 }
 
-export interface FrontmatterRoot extends FrontmatterCommon {
+interface FrontmatterRoot extends FrontmatterCommon {
 	root: true;
 }
 
