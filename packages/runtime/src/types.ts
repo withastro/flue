@@ -25,6 +25,10 @@ export type { ToolArgs, ToolDefinition, ToolParameters } from './tool-types.ts';
 export type { ThinkingLevel };
 
 export type AgentRouteHandler = MiddlewareHandler;
+export type AgentWebSocketHandler = (
+	socket: WebSocket,
+	request: Request,
+) => void | Promise<void>;
 export type WorkflowRouteHandler = MiddlewareHandler;
 
 /** Input accepted by the created-agent overload of `dispatch(...)`. */
@@ -301,6 +305,8 @@ export interface AgentConfig {
 	/** Discovered at runtime from .agents/skills/ in the session's cwd. */
 	skills: Record<string, Skill>;
 	subagents?: Record<string, AgentProfile>;
+	/** Selected framework/sandbox built-in tools. Undefined preserves defaults. */
+	builtInTools?: BuiltInToolsConfig;
 	/**
 	 * Agent-wide default model. Undefined when the user explicitly passes
 	 * `createAgent(() => ({ model: false }))`, so each model-using call must provide a
@@ -328,6 +334,25 @@ export interface AgentConfig {
 /** Model specifier, or `false` to require call-level model selection. */
 export type ModelConfig = string | false;
 
+/**
+ * Model-facing framework tool names recognized by {@link AgentProfile.builtInTools}.
+ *
+ * Sandbox adapters may provide additional built-in tool names; include those
+ * literal names in the `builtInTools` list when selecting a subset.
+ */
+export type BuiltInToolName =
+	| 'read'
+	| 'write'
+	| 'edit'
+	| 'bash'
+	| 'grep'
+	| 'glob'
+	| 'task'
+	| 'activate_skill'
+	| (string & {});
+
+export type BuiltInToolsConfig = false | readonly BuiltInToolName[];
+
 // ─── Agent Profile and Runtime Creation ─────────────────────────────────────
 
 /** Reusable agent behavior accepted by {@link defineAgentProfile}. */
@@ -343,6 +368,12 @@ export interface AgentProfile {
 	skills?: Skill[];
 	/** Custom model-callable tools available to sessions initialized from this profile. */
 	tools?: ToolDefinition[];
+	/**
+	 * Built-in model-callable tools available to sessions initialized from this
+	 * profile. Omit for the full default set, set to `false` to disable all
+	 * built-ins, or provide model-facing names to keep only those built-ins.
+	 */
+	builtInTools?: BuiltInToolsConfig;
 	/** Named profiles available for delegated `session.task()` operations. */
 	subagents?: AgentProfile[];
 	/** Default reasoning effort. Individual operations may override this value. */
@@ -375,6 +406,12 @@ export interface AgentRuntimeConfig {
 	skills?: Skill[];
 	/** Additional custom model-callable tools available to initialized sessions. */
 	tools?: ToolDefinition[];
+	/**
+	 * Built-in model-callable tools available to initialized sessions. Omit for
+	 * the full default set, set to `false` to disable all built-ins, or provide
+	 * model-facing names to keep only those built-ins.
+	 */
+	builtInTools?: BuiltInToolsConfig;
 	/** Additional named profiles available for delegated `session.task()` operations. */
 	subagents?: AgentProfile[];
 	/** Default reasoning effort. Individual operations may override this value. */

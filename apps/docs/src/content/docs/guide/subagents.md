@@ -1,7 +1,7 @@
 ---
 title: Subagents
 description: Let agents delegate focused work to named specialists.
-lastReviewedAt: 2026-05-29
+lastReviewedAt: 2026-06-15
 ---
 
 Subagents let an agent delegate a piece of work to a named specialist while it continues to own the interaction. Use them when an agent should ask another configured role to research, classify, or review something and then work with the returned answer.
@@ -42,11 +42,12 @@ The child session receives the delegated request and its own configured context,
 
 A subagent profile is self-contained. The capability fields that define what the subagent is and can do apply only when the profile declares them — omitting one means the subagent has none, never the parent's. Environment fields fall back to the parent's values as runtime defaults.
 
-| Field                                          | Behavior                                                                                                                                              |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `instructions`, `tools`, `skills`, `subagents` | Profile-owned. Only the profile's own declarations apply; an omitted field means none. The parent's values never flow into the delegated session.      |
-| `model`, `thinkingLevel`, `compaction`         | Inherits as a default. The profile's own value wins when declared; an omitted field uses the parent's value.                                           |
-| `durability`                                   | Rejected. Delegated task sessions run inside the parent operation, so declaring `durability` on a subagent profile is a definition-time error.         |
+| Field                                          | Behavior                                                                                                                                          |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `instructions`, `tools`, `skills`, `subagents` | Profile-owned. Only the profile's own declarations apply; an omitted field means none. The parent's values never flow into the delegated session. |
+| `builtInTools`                                 | Profile-owned selection. The parent's value does not flow into the delegated session; an omitted field preserves the default built-in tool set.   |
+| `model`, `thinkingLevel`, `compaction`         | Inherits as a default. The profile's own value wins when declared; an omitted field uses the parent's value.                                      |
+| `durability`                                   | Rejected. Delegated task sessions run inside the parent operation, so declaring `durability` on a subagent profile is a definition-time error.    |
 
 A `task()` call without an `agent` name is not a subagent delegation: the child session reuses the parent's full configuration in a fresh context.
 

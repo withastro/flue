@@ -27,6 +27,7 @@ import {
 	createPackagedSkillReadTool,
 	createTaskTool,
 	createTools,
+	filterBuiltInTools,
 	type TaskToolParams,
 	type TaskToolResultDetails,
 } from './agent.ts';
@@ -1199,6 +1200,8 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		thinkingLevel?: ThinkingLevel,
 		activePackagedSkills?: Record<string, PackagedSkillDirectory>,
 	): AgentTool<any>[] {
+		if (this.config.builtInTools === false || this.config.builtInTools?.length === 0) return [];
+
 		const runTask = (params: TaskToolParams, signal?: AbortSignal) =>
 			this.runTaskForTool(params, tools, model, thinkingLevel, signal);
 		const packagedSkills = {
@@ -1245,18 +1248,24 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				}
 			}
 			this.validateAdapterTools(adapterTools);
-			return appendActivateSkillTool([
-				...adapterTools,
-				createTaskTool(runTask, this.config.subagents ?? {}),
-			]);
+			return filterBuiltInTools(
+				appendActivateSkillTool([
+					...adapterTools,
+					createTaskTool(runTask, this.config.subagents ?? {}),
+				]),
+				this.config.builtInTools,
+			);
 		}
 
-		return appendActivateSkillTool(
-			createTools(env, {
-				subagents: this.config.subagents ?? {},
-				packagedSkills,
-				task: runTask,
-			}),
+		return filterBuiltInTools(
+			appendActivateSkillTool(
+				createTools(env, {
+					subagents: this.config.subagents ?? {},
+					packagedSkills,
+					task: runTask,
+				}),
+			),
+			this.config.builtInTools,
 		);
 	}
 

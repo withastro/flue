@@ -1,7 +1,7 @@
 ---
 title: Tools
 description: Give agents application capabilities through custom tools and MCP servers.
-lastReviewedAt: 2026-05-29
+lastReviewedAt: 2026-06-15
 ---
 
 Tools let an agent retrieve information or perform actions while it works. Define tools when an agent needs to call your application's data layer or services, such as looking up an order, creating a ticket, or approving a request.
@@ -61,6 +61,36 @@ export default createAgent(() => ({
 When this agent receives a request, the model can call `lookup_order_status` if it needs the current status before composing its answer. The call and returned text become part of the session context so the agent can continue working with the result.
 
 Attach tools this way when they are part of an agent's ordinary capabilities. When a tool is needed for only one bounded action, you can instead provide it in the options for `session.prompt(...)`, `session.skill(...)`, or `session.task(...)`; see the [Agent API](/docs/api/agent-api/).
+
+## Select built-in tools
+
+Flue adds built-in model-facing tools for workspace access and delegation. The default sandbox exposes `read`, `write`, `edit`, `bash`, `grep`, and `glob`; Flue also adds `task`, and adds `activate_skill` when the session has registered skills.
+
+Disable built-ins when an agent should call only your application tools:
+
+```ts title="src/agents/order-assistant.ts"
+import { createAgent } from '@flue/runtime';
+import { lookupOrderStatus } from '../shared/order-tools.ts';
+
+export default createAgent(() => ({
+  model: 'anthropic/claude-haiku-4-5',
+  builtInTools: false,
+  tools: [lookupOrderStatus],
+}));
+```
+
+Or keep only the built-ins this agent needs:
+
+```ts title="src/agents/research-assistant.ts"
+import { createAgent } from '@flue/runtime';
+
+export default createAgent(() => ({
+  model: 'anthropic/claude-haiku-4-5',
+  builtInTools: ['read', 'grep'],
+}));
+```
+
+When a sandbox adapter supplies its own built-in tools, select them by their model-facing names.
 
 ## Protect access
 

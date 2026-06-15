@@ -259,6 +259,87 @@ describe('custom tools', () => {
 		expect(activeToolNames).toContain('lookup');
 	});
 
+	it('keeps built-in tools enabled when builtInTools is omitted', async () => {
+		const provider = createProvider();
+		let activeToolNames: string[] = [];
+		provider.setResponses([
+			(context) => {
+				activeToolNames = (context.tools ?? []).map((tool) => tool.name);
+				return fauxAssistantMessage('Done.');
+			},
+		]);
+		const harness = await createContext(provider).init(
+			createAgent(() => ({
+				model: `${provider.getModel().provider}/${provider.getModel().id}`,
+			})),
+		);
+		const session = await harness.session();
+
+		await session.prompt('List your tools.');
+
+		expect(activeToolNames).toEqual(['read', 'write', 'edit', 'bash', 'grep', 'glob', 'task']);
+	});
+
+	it('exposes only custom tools when built-in tools are disabled', async () => {
+		const provider = createProvider();
+		let activeToolNames: string[] = [];
+		provider.setResponses([
+			(context) => {
+				activeToolNames = (context.tools ?? []).map((tool) => tool.name);
+				return fauxAssistantMessage('Done.');
+			},
+		]);
+		const harness = await createContext(provider).init(
+			createAgent(() => ({
+				model: `${provider.getModel().provider}/${provider.getModel().id}`,
+				builtInTools: false,
+				tools: [
+					defineTool({
+						name: 'lookup',
+						description: 'Look up a value.',
+						parameters: v.object({}),
+						execute: async () => 'ok',
+					}),
+				],
+			})),
+		);
+		const session = await harness.session();
+
+		await session.prompt('List your tools.');
+
+		expect(activeToolNames).toEqual(['lookup']);
+	});
+
+	it('exposes selected built-in tools when an agent lists their names', async () => {
+		const provider = createProvider();
+		let activeToolNames: string[] = [];
+		provider.setResponses([
+			(context) => {
+				activeToolNames = (context.tools ?? []).map((tool) => tool.name);
+				return fauxAssistantMessage('Done.');
+			},
+		]);
+		const harness = await createContext(provider).init(
+			createAgent(() => ({
+				model: `${provider.getModel().provider}/${provider.getModel().id}`,
+				builtInTools: ['read', 'task'],
+				tools: [
+					defineTool({
+						name: 'lookup',
+						description: 'Look up a value.',
+						parameters: v.object({}),
+						execute: async () => 'ok',
+					}),
+				],
+			})),
+		);
+		const session = await harness.session();
+
+		await session.prompt('List your tools.');
+
+		expect(activeToolNames).toEqual(['read', 'task', 'lookup']);
+	});
+
 	it('exposes call-level custom tools only when the receiving operation begins', async () => {
 		const provider = createProvider();
 		const activeToolNames: string[][] = [];

@@ -1,7 +1,7 @@
 ---
 title: Agent API
 description: Reference for defining agents and running agent operations with @flue/runtime.
-lastReviewedAt: 2026-05-30
+lastReviewedAt: 2026-06-15
 ---
 
 The agent API is exported from `@flue/runtime`.
@@ -21,8 +21,12 @@ import {
   type AgentDispatchRequest,
   type AgentHarnessOptions,
   type AgentProfile,
+  type AgentRouteHandler,
   type AgentRuntimeConfig,
+  type AgentWebSocketHandler,
   type BashFactory,
+  type BuiltInToolName,
+  type BuiltInToolsConfig,
   type CallHandle,
   type CompactionConfig,
   type CreatedAgent,
@@ -70,20 +74,21 @@ Throws when the profile contains unknown fields, invalid capabilities, duplicate
 
 #### `AgentProfile`
 
-| Field           | Type                        | Description                                                                                                                                                                 |
-| --------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `name`          | `string`                    | Profile name. Required when selecting this profile with `session.task()`.                                                                                                   |
-| `description`   | `string`                    | Human-readable profile description.                                                                                                                                         |
-| `model`         | `string \| false`           | Default model specifier. Set to `false` to require call-level model selection.                                                                                              |
-| `instructions`  | `string`                    | Instructions prepended to discovered workspace context.                                                                                                                     |
-| `skills`        | `Skill[]`                   | Registered skills available to initialized sessions.                                                                                                                        |
-| `tools`         | `ToolDefinition[]`          | Custom model-callable tools available to initialized sessions.                                                                                                              |
-| `subagents`     | `AgentProfile[]`            | Named profiles available for delegated `session.task()` operations.                                                                                                         |
-| `thinkingLevel` | `ThinkingLevel`             | Default reasoning effort. Individual operations may override this value.                                                                                                    |
-| `compaction`    | `false \| CompactionConfig` | Automatic conversation-compaction configuration. `false` disables threshold compaction; overflow recovery and explicit `session.compact()` calls still compact when needed. |
-| `durability`    | `DurabilityConfig`          | Durability configuration for durable agent submissions. Controls recovery attempt limits and submission timeouts. Rejected on subagent profiles.                            |
+| Field           | Type                        | Description                                                                                                                                                                             |
+| --------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `name`          | `string`                    | Profile name. Required when selecting this profile with `session.task()`.                                                                                                               |
+| `description`   | `string`                    | Human-readable profile description.                                                                                                                                                     |
+| `model`         | `string \| false`           | Default model specifier. Set to `false` to require call-level model selection.                                                                                                          |
+| `instructions`  | `string`                    | Instructions prepended to discovered workspace context.                                                                                                                                 |
+| `skills`        | `Skill[]`                   | Registered skills available to initialized sessions.                                                                                                                                    |
+| `tools`         | `ToolDefinition[]`          | Custom model-callable tools available to initialized sessions.                                                                                                                          |
+| `builtInTools`  | `BuiltInToolsConfig`        | Built-in model-callable tools available to initialized sessions. Omit for the full default set, set to `false` to disable all built-ins, or provide names to keep only those built-ins. |
+| `subagents`     | `AgentProfile[]`            | Named profiles available for delegated `session.task()` operations.                                                                                                                     |
+| `thinkingLevel` | `ThinkingLevel`             | Default reasoning effort. Individual operations may override this value.                                                                                                                |
+| `compaction`    | `false \| CompactionConfig` | Automatic conversation-compaction configuration. `false` disables threshold compaction; overflow recovery and explicit `session.compact()` calls still compact when needed.             |
+| `durability`    | `DurabilityConfig`          | Durability configuration for durable agent submissions. Controls recovery attempt limits and submission timeouts. Rejected on subagent profiles.                                        |
 
-When a profile is selected as a subagent with `session.task()`, it is self-contained: `instructions`, `tools`, `skills`, and `subagents` apply only as declared on the profile (omitted means none), while `model`, `thinkingLevel`, and `compaction` inherit from the parent as defaults. See [Subagents](/docs/guide/subagents/#configuration-inheritance).
+When a profile is selected as a subagent with `session.task()`, it is self-contained: `instructions`, `tools`, `skills`, and `subagents` apply only as declared on the profile (omitted means none), while `builtInTools` uses the profile's own selection and preserves the default built-in set when omitted. `model`, `thinkingLevel`, and `compaction` inherit from the parent as defaults. See [Subagents](/docs/guide/subagents/#configuration-inheritance).
 
 #### `DurabilityConfig`
 
@@ -112,6 +117,25 @@ type Skill =
 ```
 
 Skill metadata registered with an agent, harness, or profile. Imported `SkillReference` values bundle application-owned skill content. Inline metadata adds only a named catalog entry; it does not package or inject an instruction body. Initialization rejects a registered skill whose name collides with a workspace-discovered skill. See [Skills](/docs/guide/skills/).
+
+#### `BuiltInToolsConfig`
+
+```ts
+type BuiltInToolsConfig = false | readonly BuiltInToolName[];
+
+type BuiltInToolName =
+  | 'read'
+  | 'write'
+  | 'edit'
+  | 'bash'
+  | 'grep'
+  | 'glob'
+  | 'task'
+  | 'activate_skill'
+  | (string & {});
+```
+
+Controls Flue and sandbox adapter built-in tools by model-facing name. Omit `builtInTools` for the full default set. Use `false` for custom tools only. Use an array such as `['read', 'grep']` to keep only selected built-ins. Sandbox adapters may expose additional names, such as `code`; include those names in the array when selecting a subset.
 
 ## `defineTool(...)`
 
@@ -214,6 +238,7 @@ The initializer runs whenever the runtime initializes a harness from the created
 | `instructions`  | `string`                    | Instructions prepended to discovered workspace context.                                                                                                                                                                                                                                   |
 | `skills`        | `Skill[]`                   | Additional registered skills available to initialized sessions.                                                                                                                                                                                                                           |
 | `tools`         | `ToolDefinition[]`          | Additional custom model-callable tools available to initialized sessions.                                                                                                                                                                                                                 |
+| `builtInTools`  | `BuiltInToolsConfig`        | Built-in model-callable tools available to initialized sessions. Omit for the full default set, set to `false` to disable all built-ins, or provide names to keep only those built-ins.                                                                                                   |
 | `subagents`     | `AgentProfile[]`            | Additional named profiles available for delegated `session.task()` operations.                                                                                                                                                                                                            |
 | `thinkingLevel` | `ThinkingLevel`             | Default reasoning effort. Individual operations may override this value.                                                                                                                                                                                                                  |
 | `compaction`    | `false \| CompactionConfig` | Automatic conversation-compaction configuration. `false` disables threshold compaction; overflow recovery and explicit `session.compact()` calls still compact when needed.                                                                                                               |

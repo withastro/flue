@@ -1,9 +1,9 @@
-import type { AgentSubmissionStore } from './agent-execution-store.ts';
 import {
 	assertResolvedAgentProfile,
 	extendAgentProfile,
 	resolveAgentProfile,
 } from './agent-definition.ts';
+import type { AgentSubmissionStore } from './agent-execution-store.ts';
 import { discoverSessionContext } from './context.ts';
 import { Harness } from './harness.ts';
 import { dispatchGlobalEvent } from './runtime/events.ts';
@@ -217,6 +217,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 							.filter((agent): agent is AgentProfile & { name: string } => agent.name !== undefined)
 							.map((agent) => [agent.name, agent]),
 					),
+					builtInTools: definition.builtInTools,
 					model: agentModel,
 					thinkingLevel: definition.thinkingLevel ?? config.agentConfig.thinkingLevel,
 					compaction: definition.compaction ?? config.agentConfig.compaction,

@@ -3,6 +3,7 @@ import type {
 	AgentCreateContext,
 	AgentProfile,
 	AgentRuntimeConfig,
+	BuiltInToolsConfig,
 	CreatedAgent,
 	Skill,
 	ThinkingLevel,
@@ -26,6 +27,7 @@ const AgentProfileSchema = v.strictObject(
 		instructions: v.optional(v.string()),
 		skills: v.optional(v.array(v.unknown())),
 		tools: v.optional(v.array(v.unknown())),
+		builtInTools: v.optional(v.union([v.literal(false), v.array(v.string())])),
 		subagents: v.optional(v.array(v.unknown())),
 		thinkingLevel: v.optional(v.string()),
 		compaction: v.optional(v.union([v.literal(false), v.looseObject({})])),
@@ -95,6 +97,9 @@ export function resolveAgentProfile(options: AgentRuntimeConfig | undefined): Ag
 		instructions: hasOwn(options, 'instructions') ? options?.instructions : profile?.instructions,
 		skills: mergeArrays(profile?.skills, options?.skills),
 		tools: mergeArrays(profile?.tools, options?.tools),
+		builtInTools: hasOwn(options, 'builtInTools')
+			? options?.builtInTools
+			: profile?.builtInTools,
 		subagents: mergeArrays(profile?.subagents, options?.subagents),
 		thinkingLevel: hasOwn(options, 'thinkingLevel')
 			? options?.thinkingLevel
@@ -169,6 +174,7 @@ function assertAgentProfile(
 	assertThinkingLevel(definition.thinkingLevel, label);
 	assertCompaction(definition.compaction, label);
 	assertDurability(definition.durability, label);
+	assertBuiltInTools(definition.builtInTools, label);
 	assertTools(definition.tools, label);
 	assertSkills(definition.skills, label);
 	assertSubagents(definition.subagents, label, activeDefinitions);
@@ -177,6 +183,20 @@ function assertAgentProfile(
 	assertUniqueNames(definition.subagents, `${label} subagents`, 'subagent');
 
 	activeDefinitions.delete(source);
+}
+
+function assertBuiltInTools(value: BuiltInToolsConfig | undefined, label: string): void {
+	if (value === undefined || value === false) return;
+	const names = new Set<string>();
+	for (const [index, name] of value.entries()) {
+		assertNonEmptyString(name, `${label} builtInTools[${index}]`);
+		if (names.has(name)) {
+			throw new Error(
+				`[flue] ${label} builtInTools must not contain duplicate tool name "${name}".`,
+			);
+		}
+		names.add(name);
+	}
 }
 
 function assertThinkingLevel(value: ThinkingLevel | undefined, label: string): void {

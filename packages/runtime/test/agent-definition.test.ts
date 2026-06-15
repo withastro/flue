@@ -130,6 +130,19 @@ describe('defineAgentProfile()', () => {
 		).toThrow('duplicate tool name');
 	});
 
+	it('accepts built-in tool selection on a profile', () => {
+		expect(() =>
+			defineAgentProfile({ model: false, builtInTools: ['read', 'task'] }),
+		).not.toThrow();
+		expect(() => defineAgentProfile({ model: false, builtInTools: false })).not.toThrow();
+	});
+
+	it('rejects duplicate built-in tool names on a profile', () => {
+		expect(() =>
+			defineAgentProfile({ model: false, builtInTools: ['read', 'read'] }),
+		).toThrow('duplicate tool name "read"');
+	});
+
 	it('rejects duplicate skill names when a profile repeats a skill name', () => {
 		expect(() =>
 			defineAgentProfile({

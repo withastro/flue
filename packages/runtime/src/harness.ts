@@ -1,12 +1,12 @@
-import type { AgentSubmissionStore } from './agent-execution-store.ts';
 import { createCallHandle } from './abort.ts';
+import type { AgentSubmissionStore } from './agent-execution-store.ts';
 import { discoverSessionContext } from './context.ts';
 import { SessionAlreadyExistsError, SessionNotFoundError } from './errors.ts';
 import { generateSessionAffinityKey } from './runtime/ids.ts';
 import { createCwdSessionEnv, createFlueFs } from './sandbox.ts';
 import {
-	createPublicSession,
 	type CreateTaskSessionOptions,
+	createPublicSession,
 	deleteSessionTree,
 	Session,
 } from './session.ts';
@@ -170,9 +170,10 @@ export class Harness implements FlueHarness {
 		const taskAgent = options.agent;
 		// Subagent profiles are self-contained: capability/identity fields
 		// (instructions, tools, skills, subagents) come only from the profile —
-		// omitted means none, never the parent's. Environment fields (model,
-		// thinkingLevel, compaction) inherit from the parent as runtime
-		// defaults. Agent-less tasks reuse the parent's full config.
+		// omitted means none, never the parent's. builtInTools also uses the
+		// profile's own selection; omitted preserves the framework default set.
+		// Environment fields (model, thinkingLevel, compaction) inherit from
+		// the parent as runtime defaults. Agent-less tasks reuse the parent's full config.
 		const instructions = taskAgent ? taskAgent.instructions : this.config.instructions;
 		const definitionSkills = taskAgent ? taskAgent.skills : this.config.definitionSkills;
 		const localContext = await discoverSessionContext(taskEnv, instructions, definitionSkills);
@@ -189,6 +190,7 @@ export class Harness implements FlueHarness {
 							.map((agent) => [agent.name, agent]),
 					)
 				: this.config.subagents,
+			builtInTools: taskAgent ? taskAgent.builtInTools : this.config.builtInTools,
 			model:
 				taskAgent?.model !== undefined
 					? this.config.resolveModel(taskAgent.model)

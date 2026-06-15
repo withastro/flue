@@ -1,7 +1,12 @@
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { type Static, Type } from '@earendil-works/pi-ai';
 import { composeTimeoutSignal } from './abort.ts';
-import type { AgentProfile, PackagedSkillDirectory, SessionEnv } from './types.ts';
+import type {
+	AgentProfile,
+	BuiltInToolsConfig,
+	PackagedSkillDirectory,
+	SessionEnv,
+} from './types.ts';
 
 const MAX_READ_LINES = 2000;
 const MAX_READ_BYTES = 50 * 1024;
@@ -33,6 +38,7 @@ export interface CreateToolsOptions {
 	) => Promise<AgentToolResult<TaskToolResultDetails>>;
 	subagents?: Record<string, AgentProfile>;
 	packagedSkills?: Record<string, PackagedSkillDirectory>;
+	builtInTools?: BuiltInToolsConfig;
 }
 
 export function createTools(env: SessionEnv, options?: CreateToolsOptions): AgentTool<any>[] {
@@ -45,7 +51,17 @@ export function createTools(env: SessionEnv, options?: CreateToolsOptions): Agen
 		createGlobTool(env),
 	];
 	if (options?.task) tools.push(createTaskTool(options.task, options.subagents ?? {}));
-	return tools;
+	return filterBuiltInTools(tools, options?.builtInTools);
+}
+
+export function filterBuiltInTools(
+	tools: AgentTool<any>[],
+	builtInTools: BuiltInToolsConfig | undefined,
+): AgentTool<any>[] {
+	if (builtInTools === undefined) return tools;
+	if (builtInTools === false) return [];
+	const enabled = new Set<string>(builtInTools);
+	return tools.filter((tool) => enabled.has(tool.name));
 }
 
 const ReadParams = Type.Object({
