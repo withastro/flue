@@ -48,10 +48,8 @@ describe('createTwilioChannel()', () => {
 			['CustomTag', 'violet'],
 		]);
 		const request = signedRequest({
-			requestUrl:
-				'https://internal.example.test/channels/twilio/webhook?environment=staging',
-			signatureUrl:
-				'https://hooks.example.test/public/messaging/inbound?environment=staging',
+			requestUrl: 'https://internal.example.test/channels/twilio/webhook?environment=staging',
+			signatureUrl: 'https://hooks.example.test/public/messaging/inbound?environment=staging',
 			authToken: 'auth-token-cobalt',
 			params,
 			headers: { 'i-twilio-idempotency-token': 'retry-token-cobalt' },
@@ -61,9 +59,7 @@ describe('createTwilioChannel()', () => {
 
 		expect(result.status).toBe(200);
 		expect(result.headers.get('content-type')).toBe('text/xml; charset=UTF-8');
-		expect(await result.text()).toBe(
-			'<?xml version="1.0" encoding="UTF-8"?><Response/>',
-		);
+		expect(await result.text()).toBe('<?xml version="1.0" encoding="UTF-8"?><Response/>');
 		expect(webhook).toHaveBeenCalledOnce();
 		const input = webhook.mock.calls[0]?.[0];
 		expect(input.c).toEqual(expect.any(Object));
@@ -140,10 +136,7 @@ describe('createTwilioChannel()', () => {
 			}),
 		);
 
-		expect(channel.routes.map((route) => route.path)).toEqual([
-			'/webhook',
-			'/status',
-		]);
+		expect(channel.routes.map((route) => route.path)).toEqual(['/webhook', '/status']);
 		expect(result.status).toBe(200);
 		expect(await result.text()).toBe('');
 		expect(webhook).not.toHaveBeenCalled();
@@ -284,10 +277,7 @@ describe('createTwilioChannel()', () => {
 			to: '+15557005005',
 			body: 'Queue this task.',
 		});
-		params.set(
-			'MessagingServiceSid',
-			'MGffffffffffffffffffffffffffffffff',
-		);
+		params.set('MessagingServiceSid', 'MGffffffffffffffffffffffffffffffff');
 
 		const result = await channelApp(channel).request(
 			signedRequest({
@@ -300,9 +290,7 @@ describe('createTwilioChannel()', () => {
 
 		expect(result.status).toBe(202);
 		expect(result.headers.get('content-type')).toBe('text/xml');
-		expect(await result.text()).toBe(
-			'<Response><Message>Queued.</Message></Response>',
-		);
+		expect(await result.text()).toBe('<Response><Message>Queued.</Message></Response>');
 		expect(webhook.mock.calls[0]?.[0].conversation).toEqual({
 			type: 'address',
 			accountSid: 'AC66666666666666666666666666666666',
@@ -355,8 +343,7 @@ describe('createTwilioChannel()', () => {
 		// handler instead of being rejected with 400.
 		const extraRequestQuery = await app.request(
 			signedRequest({
-				requestUrl:
-					'https://hooks.example.test/channels/twilio/webhook?added=true',
+				requestUrl: 'https://hooks.example.test/channels/twilio/webhook?added=true',
 				signatureUrl: 'https://hooks.example.test/channels/twilio/webhook',
 				authToken: 'auth-token-elm',
 				params: extraQuery,
@@ -408,25 +395,19 @@ describe('createTwilioChannel()', () => {
 		missingRequired.delete('MessageSid');
 
 		const app = channelApp(channel);
-		const unsupported = await app.request(
-			'https://hooks.example.test/channels/twilio/webhook',
-			{
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: '{}',
+		const unsupported = await app.request('https://hooks.example.test/channels/twilio/webhook', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: '{}',
+		});
+		const oversized = await app.request('https://hooks.example.test/channels/twilio/webhook', {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/x-www-form-urlencoded',
+				'content-length': '513',
 			},
-		);
-		const oversized = await app.request(
-			'https://hooks.example.test/channels/twilio/webhook',
-			{
-				method: 'POST',
-				headers: {
-					'content-type': 'application/x-www-form-urlencoded',
-					'content-length': '513',
-				},
-				body: 'Body=x',
-			},
-		);
+			body: 'Body=x',
+		});
 		const malformedResult = await app.request(
 			signedRequest({
 				requestUrl: 'https://hooks.example.test/channels/twilio/webhook',
@@ -480,9 +461,7 @@ describe('createTwilioChannel()', () => {
 			expect(channel.parseConversationKey(id)).toEqual(ref);
 		}
 		expect(() =>
-			channel.parseConversationKey(
-				'twilio:v1:account:ACbad:address:%2B1555:participant:%2b1666',
-			),
+			channel.parseConversationKey('twilio:v1:account:ACbad:address:%2B1555:participant:%2b1666'),
 		).toThrow(InvalidTwilioConversationKeyError);
 	});
 
@@ -505,8 +484,7 @@ describe('createTwilioChannel()', () => {
 				accountSid: 'ACffffffffffffffffffffffffffffffff',
 				authToken: 'token',
 				webhookUrl: 'https://hooks.example.test/channels/twilio/webhook',
-				statusCallbackUrl:
-					'https://hooks.example.test/channels/twilio/status',
+				statusCallbackUrl: 'https://hooks.example.test/channels/twilio/status',
 				destination: { type: 'address', address: '+15557013013' },
 				webhook() {},
 			}),
@@ -580,9 +558,7 @@ function signedRequest(input: {
 	});
 }
 
-function toTwilioParams(
-	params: URLSearchParams,
-): Record<string, string | string[]> {
+function toTwilioParams(params: URLSearchParams): Record<string, string | string[]> {
 	const result: Record<string, string | string[]> = {};
 	for (const [name, value] of params) {
 		const existing = result[name];

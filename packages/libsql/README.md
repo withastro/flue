@@ -20,7 +20,10 @@ const toRows = (rs: ResultSet) =>
 let tail: Promise<unknown> = Promise.resolve();
 const serialize = <T>(operation: () => Promise<T>): Promise<T> => {
   const result = tail.then(operation, operation);
-  tail = result.then(() => undefined, () => undefined);
+  tail = result.then(
+    () => undefined,
+    () => undefined,
+  );
   return result;
 };
 
@@ -32,8 +35,7 @@ export default libsql({
       const tx = await client.transaction('write');
       try {
         const result = await fn({
-          query: async (text, params = []) =>
-            toRows(await tx.execute({ sql: text, args: params })),
+          query: async (text, params = []) => toRows(await tx.execute({ sql: text, args: params })),
         });
         await tx.commit();
         return result;
@@ -84,12 +86,12 @@ so you own the client and its connection options. A runner is three functions:
 `createClient` decides where state lives — the adapter is identical across all
 of them:
 
-| Target | `createClient(...)` |
-| --- | --- |
-| Hosted Turso | `{ url: 'libsql://<db>.turso.io', authToken }` |
+| Target                                        | `createClient(...)`                                          |
+| --------------------------------------------- | ------------------------------------------------------------ |
+| Hosted Turso                                  | `{ url: 'libsql://<db>.turso.io', authToken }`               |
 | Embedded replica (local file synced to Turso) | `{ url: 'file:local.db', syncUrl: 'libsql://…', authToken }` |
-| Self-hosted libSQL server (`sqld`) | `{ url: 'http://127.0.0.1:8080' }` |
-| Local SQLite file | `{ url: 'file:./data/flue.db' }` |
+| Self-hosted libSQL server (`sqld`)            | `{ url: 'http://127.0.0.1:8080' }`                           |
+| Local SQLite file                             | `{ url: 'file:./data/flue.db' }`                             |
 
 ## Embedded-file concurrency
 

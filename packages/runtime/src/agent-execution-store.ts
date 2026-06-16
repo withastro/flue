@@ -7,7 +7,10 @@
  * implement it directly.
  */
 
-import type { AgentSubmissionInput, DirectAgentSubmissionInput } from './runtime/agent-submissions.ts';
+import type {
+	AgentSubmissionInput,
+	DirectAgentSubmissionInput,
+} from './runtime/agent-submissions.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import type { EventStreamStore } from './runtime/event-stream-store.ts';
 import type { RunStore } from './runtime/run-store.ts';
@@ -256,7 +259,10 @@ export interface AgentSubmissionStore {
 	 * installing the supplied durability (or defaults) on first application.
 	 * Gated on a running submission owned by `attempt`; otherwise `false`.
 	 */
-	markSubmissionInputApplied(attempt: SubmissionAttemptRef, durability?: SubmissionDurability): Promise<boolean>;
+	markSubmissionInputApplied(
+		attempt: SubmissionAttemptRef,
+		durability?: SubmissionDurability,
+	): Promise<boolean>;
 	/**
 	 * Stamp `recoveryRequestedAt` once. Gated on a running submission owned
 	 * by `attempt`; otherwise `false`.

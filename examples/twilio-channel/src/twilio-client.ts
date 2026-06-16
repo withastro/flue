@@ -10,10 +10,7 @@ export type TwilioCreateMessageInput = {
 	body?: string;
 	mediaUrl?: readonly string[];
 	statusCallback?: string;
-} & (
-	| { from: string; messagingServiceSid?: never }
-	| { from?: never; messagingServiceSid: string }
-);
+} & ({ from: string; messagingServiceSid?: never } | { from?: never; messagingServiceSid: string });
 
 export interface TwilioMessageResult {
 	sid: string;
@@ -34,18 +31,13 @@ export class TwilioClient {
 		this.#accountSid = required(options.accountSid, 'accountSid');
 		this.#authToken = required(options.authToken, 'authToken');
 		this.#fetch = options.fetch ?? globalThis.fetch;
-		this.#apiBaseUrl = (options.apiBaseUrl ?? 'https://api.twilio.com').replace(
-			/\/+$/,
-			'',
-		);
+		this.#apiBaseUrl = (options.apiBaseUrl ?? 'https://api.twilio.com').replace(/\/+$/, '');
 		this.messages = {
 			create: (input) => this.#createMessage(input),
 		};
 	}
 
-	async #createMessage(
-		input: TwilioCreateMessageInput,
-	): Promise<TwilioMessageResult> {
+	async #createMessage(input: TwilioCreateMessageInput): Promise<TwilioMessageResult> {
 		required(input.to, 'to');
 		if (
 			(input.body === undefined || input.body.length === 0) &&
@@ -57,19 +49,13 @@ export class TwilioClient {
 		if (input.body !== undefined) form.set('Body', input.body);
 		if (input.from !== undefined) form.set('From', required(input.from, 'from'));
 		if (input.messagingServiceSid !== undefined) {
-			form.set(
-				'MessagingServiceSid',
-				required(input.messagingServiceSid, 'messagingServiceSid'),
-			);
+			form.set('MessagingServiceSid', required(input.messagingServiceSid, 'messagingServiceSid'));
 		}
 		for (const url of input.mediaUrl ?? []) {
 			form.append('MediaUrl', required(url, 'mediaUrl'));
 		}
 		if (input.statusCallback !== undefined) {
-			form.set(
-				'StatusCallback',
-				required(input.statusCallback, 'statusCallback'),
-			);
+			form.set('StatusCallback', required(input.statusCallback, 'statusCallback'));
 		}
 
 		const result = await this.#fetch(
@@ -79,10 +65,7 @@ export class TwilioClient {
 			{
 				method: 'POST',
 				headers: {
-					authorization: `Basic ${basicAuth(
-						this.#accountSid,
-						this.#authToken,
-					)}`,
+					authorization: `Basic ${basicAuth(this.#accountSid, this.#authToken)}`,
 					'content-type': 'application/x-www-form-urlencoded',
 				},
 				body: form,
@@ -101,9 +84,7 @@ export class TwilioClient {
 		}
 		return {
 			sid: payload.sid,
-			...(typeof payload.status === 'string'
-				? { status: payload.status }
-				: {}),
+			...(typeof payload.status === 'string' ? { status: payload.status } : {}),
 		};
 	}
 }

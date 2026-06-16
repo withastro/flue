@@ -1,3 +1,13 @@
+export type { BackoffOptions, LiveMode } from '@durable-streams/client';
+// Stream errors surfaced by `stream()`/`events()` iteration. These classes
+// are owned by @durable-streams/client; only the ones reachable through SDK
+// reads are re-exported.
+export {
+	DurableStreamError,
+	FetchBackoffAbortError,
+	FetchError,
+	StreamClosedError,
+} from '@durable-streams/client';
 export type {
 	CreateFlueClientOptions,
 	FlueClient,
@@ -16,21 +26,7 @@ export type {
 	AgentPromptResult,
 	AgentSendResult,
 } from './public/invoke.ts';
-// Stream errors surfaced by `stream()`/`events()` iteration. These classes
-// are owned by @durable-streams/client; only the ones reachable through SDK
-// reads are re-exported.
-export {
-	DurableStreamError,
-	FetchBackoffAbortError,
-	FetchError,
-	StreamClosedError,
-} from '@durable-streams/client';
-export type { BackoffOptions, LiveMode } from '@durable-streams/client';
-export type {
-	FlueEventStream,
-	FlueStreamOptions,
-} from './public/stream.ts';
-export { IMAGE_DATA_OMITTED } from './types.ts';
+export type { FlueEventStream, FlueStreamOptions } from './public/stream.ts';
 export type {
 	AgentPromptResponse,
 	AttachedAgentEvent,
@@ -49,3 +45,4 @@ export type {
 	RunRecord,
 	RunStatus,
 } from './types.ts';
+export { IMAGE_DATA_OMITTED } from './types.ts';

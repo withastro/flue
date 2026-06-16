@@ -90,8 +90,7 @@ describe('flue()', () => {
 			manifest: { agents: [] },
 			channelHandlers: {
 				slack: {
-					'POST /events': async () =>
-						({ [Symbol.toStringTag]: 'Response' }) as unknown as Response,
+					'POST /events': async () => ({ [Symbol.toStringTag]: 'Response' }) as unknown as Response,
 				},
 			},
 		});

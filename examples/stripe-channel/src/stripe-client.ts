@@ -1,9 +1,6 @@
 import Stripe from 'stripe';
 
-export function stripeRequestOptions(
-	accountId?: string,
-	context?: string,
-): Stripe.RequestOptions {
+export function stripeRequestOptions(accountId?: string, context?: string): Stripe.RequestOptions {
 	if (context) return { stripeContext: context };
 	if (accountId) return { stripeAccount: accountId };
 	return {};

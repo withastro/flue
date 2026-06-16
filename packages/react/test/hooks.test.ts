@@ -1,9 +1,4 @@
-import type {
-	AttachedAgentEvent,
-	FlueClient,
-	FlueEvent,
-	FlueEventStream,
-} from '@flue/sdk';
+import type { AttachedAgentEvent, FlueClient, FlueEvent, FlueEventStream } from '@flue/sdk';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useFlueAgent } from '../src/use-agent.ts';
@@ -63,7 +58,9 @@ describe('useFlueAgent()', () => {
 			offset: '-1',
 			submissionId: 'submission-1',
 		});
-		const flue = client({ agents: { stream: vi.fn(() => stream), send } as unknown as FlueClient['agents'] });
+		const flue = client({
+			agents: { stream: vi.fn(() => stream), send } as unknown as FlueClient['agents'],
+		});
 		const { result } = renderHook(() => useFlueAgent({ name: 'agent', id: 'id', client: flue }));
 
 		await act(async () => result.current.sendMessage('hello'));
@@ -119,7 +116,9 @@ describe('useFlueWorkflow()', () => {
 				timestamp: '2026-06-12T00:00:02.000Z',
 			},
 		] as FlueEvent[];
-		const flue = client({ runs: { stream: vi.fn(() => eventStream(events)) } as unknown as FlueClient['runs'] });
+		const flue = client({
+			runs: { stream: vi.fn(() => eventStream(events)) } as unknown as FlueClient['runs'],
+		});
 		const { result } = renderHook(() => useFlueWorkflow({ runId: 'run-1', client: flue }));
 
 		await waitFor(() => expect(result.current.status).toBe('completed'));

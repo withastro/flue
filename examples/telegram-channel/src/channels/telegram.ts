@@ -1,8 +1,5 @@
-import {
-	createTelegramChannel,
-	type TelegramConversationRef,
-} from '@flue/telegram';
 import { defineTool, dispatch } from '@flue/runtime';
+import { createTelegramChannel, type TelegramConversationRef } from '@flue/telegram';
 import { Api } from 'grammy';
 import type { Message } from 'grammy/types';
 import assistant from '../agents/assistant.ts';
@@ -14,8 +11,7 @@ export const channel = createTelegramChannel({
 
 	// Path: /channels/telegram/webhook
 	async webhook({ update }) {
-		const incoming =
-			update.message ?? update.channel_post ?? update.business_message;
+		const incoming = update.message ?? update.channel_post ?? update.business_message;
 		if (incoming) {
 			const conversation = conversationFromMessage(incoming);
 			await dispatch(assistant, {
@@ -84,9 +80,7 @@ export function postMessage(ref: TelegramConversationRef) {
 				...(ref.type === 'business-chat'
 					? { business_connection_id: ref.businessConnectionId }
 					: {}),
-				...(ref.messageThreadId === undefined
-					? {}
-					: { message_thread_id: ref.messageThreadId }),
+				...(ref.messageThreadId === undefined ? {} : { message_thread_id: ref.messageThreadId }),
 				...(ref.directMessagesTopicId === undefined
 					? {}
 					: { direct_messages_topic_id: ref.directMessagesTopicId }),

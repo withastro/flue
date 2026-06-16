@@ -24,9 +24,9 @@ export const route: AgentRouteHandler = async (_c, next) => next();
 // Compose the complete harness your agent needs to do real work,
 // complete with virtual, local, or remote container sandbox.
 export default createAgent(() => ({
-  model:   'anthropic/claude-sonnet-4-6',
-  tools:   [...githubTools],
-  skills:  [triage, verify],
+  model: 'anthropic/claude-sonnet-4-6',
+  tools: [...githubTools],
+  skills: [triage, verify],
   sandbox: local(),
   instructions,
 }));
@@ -36,7 +36,7 @@ export default createAgent(() => ({
 
 The first agents were built with raw LLM API calls. This worked for simple chatbots and scripted tasks, but not much else.
 
-Agents like Claude Code and Codex broke the mold. These were *real agents.* Autonomous. You give them a task — not a pre-defined series of steps — and trust them to complete it using the context and tools that you provide.
+Agents like Claude Code and Codex broke the mold. These were _real agents._ Autonomous. You give them a task — not a pre-defined series of steps — and trust them to complete it using the context and tools that you provide.
 
 **Flue unlocks this new architecture for agents.** Its built-in TypeScript harness gives any model the context and environment it needs for truly autonomous work: sessions, tools, skills, instructions, filesystem access, and a secure sandbox to run in. Run your agents locally via CLI or deploy them to your hosted runtime of choice.
 
@@ -66,10 +66,10 @@ Build agents that can safely take action, maintain continuity, and connect to th
 
 ## Packages
 
-| Package | Description |
-| --- | --- |
-| [`@flue/runtime`](packages/runtime) | Runtime: harness, sessions, tools, sandbox |
-| [`@flue/cli`](packages/cli) | CLI and build/dev tooling (`flue` binary) |
-| [`@flue/sdk`](packages/sdk) | Client SDK for consuming deployed agents and workflows |
-| [`@flue/opentelemetry`](packages/opentelemetry) | OpenTelemetry tracing adapter |
-| [`@flue/postgres`](packages/postgres) | Postgres persistence adapter |
+| Package                                         | Description                                            |
+| ----------------------------------------------- | ------------------------------------------------------ |
+| [`@flue/runtime`](packages/runtime)             | Runtime: harness, sessions, tools, sandbox             |
+| [`@flue/cli`](packages/cli)                     | CLI and build/dev tooling (`flue` binary)              |
+| [`@flue/sdk`](packages/sdk)                     | Client SDK for consuming deployed agents and workflows |
+| [`@flue/opentelemetry`](packages/opentelemetry) | OpenTelemetry tracing adapter                          |
+| [`@flue/postgres`](packages/postgres)           | Postgres persistence adapter                           |

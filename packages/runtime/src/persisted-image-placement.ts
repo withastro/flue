@@ -1,13 +1,13 @@
-import type { DirectAgentSubmissionInput } from './runtime/agent-submissions.ts';
-import type { SessionEntry } from './types.ts';
 import {
+	type ExtractedImages,
 	extractDirectSubmissionImages,
 	extractSessionEntryImages,
 	hydrateDirectSubmissionImages,
 	hydrateSessionEntryImages,
-	type ExtractedImages,
 	type PersistedImageChunk,
 } from './persisted-images.ts';
+import type { DirectAgentSubmissionInput } from './runtime/agent-submissions.ts';
+import type { SessionEntry } from './types.ts';
 
 export interface PersistedChunkOwner {
 	kind: 'session_entry' | 'submission';
@@ -23,9 +23,9 @@ export interface PersistedChunkRow {
 }
 
 export interface PersistedChunkStore<Result = void> {
-	read(owner: PersistedChunkOwner): Result extends Promise<unknown>
-		? Promise<PersistedChunkRow[]>
-		: PersistedChunkRow[];
+	read(
+		owner: PersistedChunkOwner,
+	): Result extends Promise<unknown> ? Promise<PersistedChunkRow[]> : PersistedChunkRow[];
 	replace(owner: PersistedChunkOwner, chunks: readonly PersistedImageChunk[]): Result;
 	delete(owner: PersistedChunkOwner): Result;
 	deleteMany(owners: readonly PersistedChunkOwner[]): Result;
@@ -70,7 +70,10 @@ export function matchesPersistedDirectSubmission(
 	rows: readonly PersistedChunkRow[],
 ): boolean {
 	try {
-		return JSON.stringify(hydratePersistedDirectSubmission(persistedInput, rows)) === JSON.stringify(input);
+		return (
+			JSON.stringify(hydratePersistedDirectSubmission(persistedInput, rows)) ===
+			JSON.stringify(input)
+		);
 	} catch {
 		return false;
 	}

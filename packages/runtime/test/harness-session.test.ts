@@ -591,7 +591,11 @@ describe('FlueSession', () => {
 	});
 });
 
-function createContext(env: SessionEnv, store: SessionStore, overrides: Partial<FlueContextConfig> = {}) {
+function createContext(
+	env: SessionEnv,
+	store: SessionStore,
+	overrides: Partial<FlueContextConfig> = {},
+) {
 	return createFlueContext({
 		id: 'agent-instance',
 		payload: undefined,

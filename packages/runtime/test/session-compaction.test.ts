@@ -135,8 +135,7 @@ describe('session.compact()', () => {
 		expect(events.some((event) => event.type === 'compaction' && !event.isError)).toBe(false);
 		expect(
 			events.some(
-				(event) =>
-					event.type === 'operation' && event.operationKind === 'compact' && event.isError,
+				(event) => event.type === 'operation' && event.operationKind === 'compact' && event.isError,
 			),
 		).toBe(true);
 	});

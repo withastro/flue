@@ -6,8 +6,8 @@ import {
 	type Link,
 	type Span,
 	type SpanContext,
-	type SpanOptions,
 	SpanKind,
+	type SpanOptions,
 	type SpanStatus,
 	SpanStatusCode,
 	type TimeInput,
@@ -654,9 +654,9 @@ describe('createOpenTelemetryObserver', () => {
 			'flue.workflow report',
 		]);
 		expect(tracer.spans.slice(0, 4).every((span) => span.ended)).toBe(true);
-		expect(tracer.spans.slice(1, 4).every((span) => span.status?.code === SpanStatusCode.ERROR)).toBe(
-			true,
-		);
+		expect(
+			tracer.spans.slice(1, 4).every((span) => span.status?.code === SpanStatusCode.ERROR),
+		).toBe(true);
 		expect(tracer.spans[4]?.ended).toBe(false);
 	});
 
@@ -802,11 +802,13 @@ describe('createOpenTelemetryObserver', () => {
 		]);
 		expect(tracer.spans.every((span) => span.ended)).toBe(true);
 		expect(
-			tracer.spans.slice(1).every(
-				(span) =>
-					span.status?.code === SpanStatusCode.ERROR &&
-					span.status.message === 'Operation ended before this span received its terminal event.',
-			),
+			tracer.spans
+				.slice(1)
+				.every(
+					(span) =>
+						span.status?.code === SpanStatusCode.ERROR &&
+						span.status.message === 'Operation ended before this span received its terminal event.',
+				),
 		).toBe(true);
 	});
 

@@ -1,4 +1,10 @@
-import { FlueProvider, type UIMessagePart, useFlueAgent, useFlueClient, useFlueWorkflow } from '@flue/react';
+import {
+	FlueProvider,
+	type UIMessagePart,
+	useFlueAgent,
+	useFlueClient,
+	useFlueWorkflow,
+} from '@flue/react';
 import { createFlueClient } from '@flue/sdk';
 import { type FormEvent, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -71,7 +77,9 @@ function App() {
 						placeholder="Say hello"
 						value={input}
 					/>
-					<button disabled={!input.trim()} type="submit">Send</button>
+					<button disabled={!input.trim()} type="submit">
+						Send
+					</button>
 				</form>
 			</section>
 			<section>
@@ -79,7 +87,9 @@ function App() {
 					<h2>Workflow</h2>
 					<span className={`status ${workflow.status}`}>{workflow.status}</span>
 				</div>
-				<button onClick={triggerWorkflow} type="button">Trigger demo workflow</button>
+				<button onClick={triggerWorkflow} type="button">
+					Trigger demo workflow
+				</button>
 				<div className="logs" aria-live="polite">
 					{workflow.logs.length === 0 && <p className="empty">Workflow logs appear here.</p>}
 					{workflow.logs.map((log) => (
@@ -99,9 +109,19 @@ function App() {
 
 function MessagePart({ part }: { part: UIMessagePart }) {
 	if (part.type === 'text') return <p>{part.text}</p>;
-	if (part.type === 'reasoning') return <details><summary>Reasoning</summary>{part.text}</details>;
+	if (part.type === 'reasoning')
+		return (
+			<details>
+				<summary>Reasoning</summary>
+				{part.text}
+			</details>
+		);
 	if (part.type === 'file') return <a href={part.url}>Attachment</a>;
-	return <pre>{part.toolName}: {part.state}</pre>;
+	return (
+		<pre>
+			{part.toolName}: {part.state}
+		</pre>
+	);
 }
 
 function partKey(part: UIMessagePart): string {

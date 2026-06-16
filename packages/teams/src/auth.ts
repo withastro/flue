@@ -1,4 +1,4 @@
-import { decodeProtectedHeader, importJWK, jwtVerify, type JWK } from 'jose';
+import { decodeProtectedHeader, importJWK, type JWK, jwtVerify } from 'jose';
 
 const DEFAULT_OPEN_ID_METADATA_URL =
 	'https://login.botframework.com/v1/.well-known/openidconfiguration';

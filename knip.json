@@ -19,7 +19,11 @@
 		},
 
 		"apps/www": {
-			"entry": ["src/homepage-shaders.ts", "src/pages/**/*.{astro,md,mdx}", "src/layouts/**/*.astro"]
+			"entry": [
+				"src/homepage-shaders.ts",
+				"src/pages/**/*.{astro,md,mdx}",
+				"src/layouts/**/*.astro"
+			]
 		},
 		"packages/runtime": {
 			"ignoreDependencies": ["@hono/node-server"]

@@ -19,7 +19,7 @@ import {
 import { resolveConfigCandidates } from '../src/lib/config-paths.ts';
 import { DEFAULT_DEV_PORT, dev } from '../src/lib/dev.ts';
 import { createEnvLoader, type EnvLoader, selectEnvFile } from '../src/lib/env.ts';
-import { brand, dim, error as cliError, note, row, success } from '../src/lib/terminal.ts';
+import { brand, error as cliError, dim, note, row, success } from '../src/lib/terminal.ts';
 import { BLUEPRINTS, KIND_ROOTS } from './_blueprints.generated.ts';
 
 interface ApplicationConfigArgs {
@@ -949,7 +949,9 @@ function logEvent(event: any) {
 			break;
 
 		case 'compaction':
-			console.error(dim(`compaction done messages ${event.messagesBefore} → ${event.messagesAfter}`));
+			console.error(
+				dim(`compaction done messages ${event.messagesBefore} → ${event.messagesAfter}`),
+			);
 			break;
 
 		case 'log':
@@ -1453,7 +1455,9 @@ function logsRenderPretty(event: FlueEvent): void {
 		const duration = formatDuration(event.durationMs);
 		if (event.isError) {
 			const err = event.error as { message?: string } | undefined;
-			console.error(`${dim('run:end')}   ${event.runId}  ERROR  ${err?.message ?? ''}  (${duration})`);
+			console.error(
+				`${dim('run:end')}   ${event.runId}  ERROR  ${err?.message ?? ''}  (${duration})`,
+			);
 		} else {
 			console.error(`${dim('run:end')}   ${event.runId}  ok  (${duration})`);
 		}
@@ -1518,7 +1522,9 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 		try {
 			run = await client.runs.get(args.runId);
 		} catch (err) {
-			cliError(`Failed to fetch run ${args.runId}: ${err instanceof Error ? err.message : String(err)}`);
+			cliError(
+				`Failed to fetch run ${args.runId}: ${err instanceof Error ? err.message : String(err)}`,
+			);
 			process.exit(1);
 		}
 		// Run ids are opaque; surface the owning workflow from the run record.

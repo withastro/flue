@@ -1,15 +1,9 @@
 import type { Update } from '@grammyjs/types';
 import type { Context, Env, Handler } from 'hono';
-import {
-	InvalidTelegramConversationKeyError,
-	InvalidTelegramInputError,
-} from './errors.ts';
+import { InvalidTelegramConversationKeyError, InvalidTelegramInputError } from './errors.ts';
 import { createTelegramWebhookHandler } from './webhook.ts';
 
-export {
-	InvalidTelegramConversationKeyError,
-	InvalidTelegramInputError,
-} from './errors.ts';
+export { InvalidTelegramConversationKeyError, InvalidTelegramInputError } from './errors.ts';
 
 /**
  * Provider-native Telegram Bot API `Update`.
@@ -77,9 +71,7 @@ type TelegramHandlerValue = undefined | JsonValue | Response;
  * JSON responses (and may carry a Bot API method call), and Hono or Fetch
  * responses pass through unchanged.
  */
-export type TelegramHandlerResult =
-	| TelegramHandlerValue
-	| Promise<TelegramHandlerValue>;
+export type TelegramHandlerResult = TelegramHandlerValue | Promise<TelegramHandlerValue>;
 
 /** Input for the verified webhook route. */
 export interface TelegramWebhookHandlerInput<E extends Env = Env> {
@@ -124,9 +116,7 @@ export function createTelegramChannel<E extends Env = Env>(
 				'thread',
 				ref.messageThreadId === undefined ? '' : String(ref.messageThreadId),
 				'direct',
-				ref.directMessagesTopicId === undefined
-					? ''
-					: String(ref.directMessagesTopicId),
+				ref.directMessagesTopicId === undefined ? '' : String(ref.directMessagesTopicId),
 			];
 			return ref.type === 'business-chat'
 				? [
@@ -141,10 +131,13 @@ export function createTelegramChannel<E extends Env = Env>(
 		parseConversationKey(id) {
 			try {
 				const business =
-					/^telegram:v1:business:([^:]+):chat:([^:]+):thread:([^:]*):direct:([^:]*)$/.exec(
-						id,
-					);
-				if (business?.[1] && business[2] && business[3] !== undefined && business[4] !== undefined) {
+					/^telegram:v1:business:([^:]+):chat:([^:]+):thread:([^:]*):direct:([^:]*)$/.exec(id);
+				if (
+					business?.[1] &&
+					business[2] &&
+					business[3] !== undefined &&
+					business[4] !== undefined
+				) {
 					const ref: TelegramConversationRef = {
 						type: 'business-chat',
 						businessConnectionId: decodeURIComponent(business[1]),
@@ -159,8 +152,7 @@ export function createTelegramChannel<E extends Env = Env>(
 					return ref;
 				}
 
-				const regular =
-					/^telegram:v1:regular:chat:([^:]+):thread:([^:]*):direct:([^:]*)$/.exec(id);
+				const regular = /^telegram:v1:regular:chat:([^:]+):thread:([^:]*):direct:([^:]*)$/.exec(id);
 				if (!regular?.[1] || regular[2] === undefined || regular[3] === undefined) {
 					throw new InvalidTelegramConversationKeyError();
 				}
@@ -211,25 +203,16 @@ function assertConversationRef(ref: TelegramConversationRef): void {
 		assertPositiveInteger(ref.messageThreadId, 'conversation.messageThreadId');
 	}
 	if (ref.directMessagesTopicId !== undefined) {
-		assertPositiveInteger(
-			ref.directMessagesTopicId,
-			'conversation.directMessagesTopicId',
-		);
+		assertPositiveInteger(ref.directMessagesTopicId, 'conversation.directMessagesTopicId');
 	}
-	if (
-		ref.messageThreadId !== undefined &&
-		ref.directMessagesTopicId !== undefined
-	) {
+	if (ref.messageThreadId !== undefined && ref.directMessagesTopicId !== undefined) {
 		throw new InvalidTelegramInputError('conversation.topic');
 	}
 	if (
 		ref.type === 'business-chat' &&
-		(typeof ref.businessConnectionId !== 'string' ||
-			ref.businessConnectionId.length === 0)
+		(typeof ref.businessConnectionId !== 'string' || ref.businessConnectionId.length === 0)
 	) {
-		throw new InvalidTelegramInputError(
-			'conversation.businessConnectionId',
-		);
+		throw new InvalidTelegramInputError('conversation.businessConnectionId');
 	}
 }
 
@@ -257,9 +240,10 @@ function parseIdentifier(value: string): number {
 	return parsed;
 }
 
-function optionalNumericIdentity<
-	TKey extends 'messageThreadId' | 'directMessagesTopicId',
->(key: TKey, value: string): Partial<Record<TKey, number>> {
+function optionalNumericIdentity<TKey extends 'messageThreadId' | 'directMessagesTopicId'>(
+	key: TKey,
+	value: string,
+): Partial<Record<TKey, number>> {
 	if (value === '') return {};
 	if (!/^[1-9]\d*$/.test(value)) {
 		throw new InvalidTelegramConversationKeyError();

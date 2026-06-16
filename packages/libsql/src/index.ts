@@ -52,5 +52,5 @@
  * ```
  */
 
+export type { LibsqlParameter, LibsqlQuery, LibsqlRunner } from './libsql-adapter.ts';
 export { libsql } from './libsql-adapter.ts';
-export type { LibsqlParameter, LibsqlRunner, LibsqlQuery } from './libsql-adapter.ts';

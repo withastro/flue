@@ -30,10 +30,9 @@ describe('MessengerClient', () => {
 			text: 'Node reply',
 			replyToMessageId: 'm_node_parent_83',
 		});
-		const page = await client.request<{ id: string; name: string }>(
-			'/v25.0/page_node_80',
-			{ query: { fields: 'id,name' } },
-		);
+		const page = await client.request<{ id: string; name: string }>('/v25.0/page_node_80', {
+			query: { fields: 'id,name' },
+		});
 
 		expect(result).toEqual({
 			recipientId: 'psid_node_81',
@@ -47,9 +46,7 @@ describe('MessengerClient', () => {
 		expect(messageUrl.origin + messageUrl.pathname).toBe(
 			'https://graph.example.test/v25.0/page_node_80/messages',
 		);
-		expect(messageUrl.searchParams.get('access_token')).toBe(
-			'page-token-node',
-		);
+		expect(messageUrl.searchParams.get('access_token')).toBe('page-token-node');
 		expect(fetch.mock.calls[0]?.[1]?.headers).toEqual({
 			'content-type': 'application/json',
 		});

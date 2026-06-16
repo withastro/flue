@@ -1,9 +1,9 @@
-import type { AgentSubmissionStore } from './agent-execution-store.ts';
 import {
 	assertResolvedAgentProfile,
 	extendAgentProfile,
 	resolveAgentProfile,
 } from './agent-definition.ts';
+import type { AgentSubmissionStore } from './agent-execution-store.ts';
 import { discoverSessionContext } from './context.ts';
 import { Harness } from './harness.ts';
 import { dispatchGlobalEvent } from './runtime/events.ts';

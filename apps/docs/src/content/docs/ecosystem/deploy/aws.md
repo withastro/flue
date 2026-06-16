@@ -39,12 +39,12 @@ aws ecs create-express-gateway-service \
   --monitor-resources
 ```
 
-| Concern         | Express Mode                                                                                          |
-| --------------- | ----------------------------------------------------------------------------------------------------- |
-| Image           | `--primary-container image` points at the ECR repository; the **execution role** pulls it.            |
+| Concern         | Express Mode                                                                                                                                                                                                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Image           | `--primary-container image` points at the ECR repository; the **execution role** pulls it.                                                                                                                                                                                                                                     |
 | Env and secrets | Plaintext vars go in `environment`. Inject secrets as a task `secrets` reference resolved by the execution role from [Secrets Manager or SSM Parameter Store](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/specifying-sensitive-data-secrets.html) — keep the provider key and `DATABASE_URL` out of the image. |
-| Health check    | `--health-check-path` is the ALB target-group path. Flue does not generate one — define `/health` in `app.ts`. |
-| Scaling         | `--scaling-target` sets `minTaskCount` / `maxTaskCount`; scaling tracks CPU. Keep `minTaskCount` ≥ 1 so a process is always up to hold sessions. |
+| Health check    | `--health-check-path` is the ALB target-group path. Flue does not generate one — define `/health` in `app.ts`.                                                                                                                                                                                                                 |
+| Scaling         | `--scaling-target` sets `minTaskCount` / `maxTaskCount`; scaling tracks CPU. Keep `minTaskCount` ≥ 1 so a process is always up to hold sessions.                                                                                                                                                                               |
 
 For streamed responses, the ALB sits in front of long-lived `GET /runs/:runId` connections (long-poll / SSE). Raise the target group's idle timeout above your longest run, or have clients read stream coordinates from the `202` admission response and reconnect. Run more than one task only with shared Postgres (see [Persistence](#persistence)) — Flue's in-memory coordinator is per-process.
 
@@ -74,11 +74,11 @@ Restart=always
 WantedBy=multi-user.target
 ```
 
-| Concern         | EC2                                                                                                                   |
-| --------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Concern         | EC2                                                                                                                                                                               |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Env and secrets | systemd `EnvironmentFile` (mode `600`) or `docker run -e`. Pull the provider key and `DATABASE_URL` from SSM Parameter Store on boot rather than committing them to the instance. |
-| Health check    | Nothing checks the process for you. If you front it with an ALB or run a watcher, point it at `/health` (define the route in `app.ts`). |
-| Port and TLS    | The instance's **security group** must open the listening port. Terminate TLS at a reverse proxy on the box (nginx / Caddy) or behind an ALB; the Node server speaks plain HTTP. |
+| Health check    | Nothing checks the process for you. If you front it with an ALB or run a watcher, point it at `/health` (define the route in `app.ts`).                                           |
+| Port and TLS    | The instance's **security group** must open the listening port. Terminate TLS at a reverse proxy on the box (nginx / Caddy) or behind an ALB; the Node server speaks plain HTTP.  |
 
 There is no second instance to fail over to and no autoscaling — one process holds all sessions. Long-lived `GET /runs/:runId` streams work directly; if an ALB is in front, raise its idle timeout. In-memory state is lost when the process restarts; add shared Postgres before you scale past one box.
 

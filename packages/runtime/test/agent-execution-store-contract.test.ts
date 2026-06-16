@@ -9,18 +9,21 @@
  * cases) remain in cloudflare-agent-execution-store.test.ts.
  */
 
-import { DatabaseSync } from 'node:sqlite';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
 import { PersistedSchemaVersionError } from '../src/errors.ts';
-import type { SqlStorage } from '../src/sql-storage.ts';
-import { createSqlAgentExecutionStoreFromSql, ensureSqlAgentExecutionTables } from '../src/sql-agent-execution-store.ts';
 import { sqlite } from '../src/node/agent-execution-store.ts';
-import type { SessionData } from '../src/types.ts';
+import {
+	createSqlAgentExecutionStoreFromSql,
+	ensureSqlAgentExecutionTables,
+} from '../src/sql-agent-execution-store.ts';
+import type { SqlStorage } from '../src/sql-storage.ts';
 import { defineStoreContractTests } from '../src/test-utils/define-store-contract-tests.ts';
+import type { SessionData } from '../src/types.ts';
 
 // ─── Backend factories ──────────────────────────────────────────────────────
 
@@ -112,7 +115,9 @@ describe('sqlite() PersistenceAdapter', () => {
 
 	afterEach(() => {
 		for (const dir of tempDirs.splice(0)) {
-			try { rmSync(dir, { recursive: true }); } catch {}
+			try {
+				rmSync(dir, { recursive: true });
+			} catch {}
 		}
 	});
 
@@ -154,7 +159,11 @@ describe('sqlite() PersistenceAdapter', () => {
 		const { executionStore: store1 } = await adapter.connect();
 		await store1.sessions.save('s1', sessionData());
 		await store1.submissions.admitDispatch(dispatchInput());
-		await store1.submissions.claimSubmission({ ...attempt('dispatch-1', 'attempt-1'), ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
+		await store1.submissions.claimSubmission({
+			...attempt('dispatch-1', 'attempt-1'),
+			ownerId: 'test-owner',
+			leaseExpiresAt: Date.now() + 30_000,
+		});
 		await store1.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
 		await adapter.close?.();
 
@@ -246,7 +255,9 @@ describe('sqlite() PersistenceAdapter', () => {
 		await adapter.close?.();
 
 		const db = new DatabaseSync(dbPath);
-		const rows = db.prepare(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).all() as { value: string }[];
+		const rows = db.prepare(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).all() as {
+			value: string;
+		}[];
 		expect(rows).toEqual([{ value: '1' }]);
 		db.close();
 	});

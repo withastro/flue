@@ -1,12 +1,14 @@
 import { stream as dsStream } from '@durable-streams/client';
 import { HttpClient, type HttpClientOptions, type RequestHeaders } from './http.ts';
+
 export type { HttpClientOptions } from './http.ts';
+
 import {
 	type AgentPromptOptions,
-	promptAgent,
-	sendAgent,
 	type AgentPromptResult,
 	type AgentSendResult,
+	promptAgent,
+	sendAgent,
 } from './public/invoke.ts';
 import {
 	createFlueEventStream,
@@ -63,7 +65,11 @@ export interface FlueClient {
 		/** Starts one prompt without waiting for completion. */
 		send(name: string, id: string, options: AgentPromptOptions): Promise<AgentSendResult>;
 		/** Stream events from an agent instance via the Durable Streams protocol. */
-		stream(name: string, id: string, options?: FlueStreamOptions): FlueEventStream<AttachedAgentEvent>;
+		stream(
+			name: string,
+			id: string,
+			options?: FlueStreamOptions,
+		): FlueEventStream<AttachedAgentEvent>;
 	};
 	/** Workflow-run inspection and streaming APIs. */
 	runs: {
@@ -100,8 +106,7 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 				}),
 		},
 		runs: {
-			get: (runId) =>
-				http.json<RunRecord>({ path: `/runs/${encodeURIComponent(runId)}?meta` }),
+			get: (runId) => http.json<RunRecord>({ path: `/runs/${encodeURIComponent(runId)}?meta` }),
 			stream: (runId, opts = {}) =>
 				createFlueEventStream<FlueEvent>(opts, {
 					url: http.url(`/runs/${encodeURIComponent(runId)}`),
@@ -132,7 +137,6 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 				}
 				return events;
 			},
-
 		},
 		workflows: {
 			// The admission envelope IS the result: the server owns stream-URL
@@ -151,7 +155,10 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 	};
 }
 
-async function readJsonWithAbort<T>(response: { json(): Promise<T> }, signal?: AbortSignal): Promise<T> {
+async function readJsonWithAbort<T>(
+	response: { json(): Promise<T> },
+	signal?: AbortSignal,
+): Promise<T> {
 	const result = await response.json();
 	if (signal?.aborted) {
 		throw signal.reason ?? new DOMException('Aborted', 'AbortError');

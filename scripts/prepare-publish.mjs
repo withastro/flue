@@ -6,7 +6,7 @@
  *
  * Run from anywhere: `node scripts/prepare-publish.mjs`
  */
-import { cp, copyFile, readdir, readFile, rm } from 'node:fs/promises';
+import { copyFile, cp, readdir, readFile, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 

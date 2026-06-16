@@ -1,10 +1,10 @@
+import { SUBMISSION_SESSION_NAME } from '../adapter-helpers.ts';
 import type {
 	AgentSubmission,
 	AgentSubmissionStore,
 	SubmissionAttemptRef,
 	SubmissionDurability,
 } from '../agent-execution-store.ts';
-import { SUBMISSION_SESSION_NAME } from '../adapter-helpers.ts';
 import type { FlueContextInternal } from '../client.ts';
 import {
 	SubmissionInterruptedError,
@@ -133,7 +133,9 @@ export type AttachedAgentSubmissionAdmission = (
 	waitForResult?: boolean,
 ) => Promise<AttachedAgentSubmissionReceipt>;
 
-export function createDispatchAgentSubmissionInput(input: DispatchInput): DispatchAgentSubmissionInput {
+export function createDispatchAgentSubmissionInput(
+	input: DispatchInput,
+): DispatchAgentSubmissionInput {
 	return { ...input, kind: 'dispatch', submissionId: input.dispatchId };
 }
 
@@ -371,7 +373,13 @@ export async function reconcileInterruptedSubmission(
 						maxAttempts: submission.maxRetry,
 					});
 		return failInterruptedSubmission(
-			submissions, submission, attempt, agent, 'exhausted_retry_budget', error, createContext,
+			submissions,
+			submission,
+			attempt,
+			agent,
+			'exhausted_retry_budget',
+			error,
+			createContext,
 			journal?.streamKey,
 		);
 	}
@@ -380,7 +388,13 @@ export async function reconcileInterruptedSubmission(
 	if (submission.timeoutAt > 0 && Date.now() >= submission.timeoutAt) {
 		const error = new SubmissionTimeoutError();
 		return failInterruptedSubmission(
-			submissions, submission, attempt, agent, 'exceeded_timeout', error, createContext,
+			submissions,
+			submission,
+			attempt,
+			agent,
+			'exceeded_timeout',
+			error,
+			createContext,
 			journal?.streamKey,
 		);
 	}
@@ -416,15 +430,17 @@ export async function reconcileInterruptedSubmission(
 		const turnCheckpointLeafId = journal.checkpointLeafId;
 		const recoveryCtx = createContext(payload, dispatchId);
 		if (submission.kind === 'direct') recoveryCtx.setSubmissionId?.(submission.submissionId);
-		const recovered = (await createAgentSubmissionSessionHandler(
-			agent,
-			input,
-			(s) => s.recoverInterruptedStream(streamKey, turnCheckpointLeafId),
+		const recovered = (await createAgentSubmissionSessionHandler(agent, input, (s) =>
+			s.recoverInterruptedStream(streamKey, turnCheckpointLeafId),
 		)(recoveryCtx)) as boolean;
 		if (recovered) {
 			await submissions.markStreamConsumed(attempt, journal.streamKey);
 			await submissions.deleteStreamChunkSegments(journal.streamKey);
-			const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
+			const replacement = await submissions.replaceTurnJournalAttempt(
+				attempt,
+				crypto.randomUUID(),
+				lease,
+			);
 			if (replacement) return { disposition: 'replacement', submission: replacement };
 		}
 	}
@@ -452,7 +468,11 @@ export async function reconcileInterruptedSubmission(
 		// the submission instead of retrying.
 		(state === 'continuable' || (state === 'uncertain' && providerUnreached))
 	) {
-		const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
+		const replacement = await submissions.replaceTurnJournalAttempt(
+			attempt,
+			crypto.randomUUID(),
+			lease,
+		);
 		if (replacement) return { disposition: 'replacement', submission: replacement };
 	}
 
@@ -464,20 +484,26 @@ export async function reconcileInterruptedSubmission(
 	) {
 		const repairCtx = createContext(payload, dispatchId);
 		if (submission.kind === 'direct') repairCtx.setSubmissionId?.(submission.submissionId);
-		const repairedLeafId = (await createAgentSubmissionSessionHandler(
-			agent,
-			input,
-			(s) => s.repairInterruptedToolCalls(input, journal.toolRequest as AgentSubmissionToolRequest),
+		const repairedLeafId = (await createAgentSubmissionSessionHandler(agent, input, (s) =>
+			s.repairInterruptedToolCalls(input, journal.toolRequest as AgentSubmissionToolRequest),
 		)(repairCtx)) as string | undefined;
 		if (repairedLeafId) {
 			await submissions.updateTurnJournalPhase(attempt, 'before_provider', {
 				checkpointLeafId: repairedLeafId,
 			});
-			const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
+			const replacement = await submissions.replaceTurnJournalAttempt(
+				attempt,
+				crypto.randomUUID(),
+				lease,
+			);
 			if (replacement) return { disposition: 'replacement', submission: replacement };
 		}
 		if (state === 'continuable') {
-			const replacement = await submissions.replaceTurnJournalAttempt(attempt, crypto.randomUUID(), lease);
+			const replacement = await submissions.replaceTurnJournalAttempt(
+				attempt,
+				crypto.randomUUID(),
+				lease,
+			);
 			if (replacement) return { disposition: 'replacement', submission: replacement };
 		}
 	}
@@ -490,14 +516,23 @@ export async function reconcileInterruptedSubmission(
 		}
 		const error = new SubmissionInterruptedError({ phase: 'before_input_marker' });
 		return failInterruptedSubmission(
-			submissions, submission, attempt, agent,
-			'interrupted_before_input_marker', error, createContext, journal?.streamKey,
+			submissions,
+			submission,
+			attempt,
+			agent,
+			'interrupted_before_input_marker',
+			error,
+			createContext,
+			journal?.streamKey,
 		);
 	}
 
 	// Collect interrupted tool metadata from the journal when available.
 	const interruptedTools = journal?.toolRequest
-		? (journal.toolRequest as AgentSubmissionToolRequest).toolCalls.map((tc) => ({ name: tc.name, id: tc.id }))
+		? (journal.toolRequest as AgentSubmissionToolRequest).toolCalls.map((tc) => ({
+				name: tc.name,
+				id: tc.id,
+			}))
 		: undefined;
 
 	// Post-input-application interruption without completion.
@@ -506,8 +541,15 @@ export async function reconcileInterruptedSubmission(
 		interruptedTools,
 	});
 	return failInterruptedSubmission(
-		submissions, submission, attempt, agent,
-		'interrupted_after_input_application', error, createContext, journal?.streamKey, interruptedTools,
+		submissions,
+		submission,
+		attempt,
+		agent,
+		'interrupted_after_input_application',
+		error,
+		createContext,
+		journal?.streamKey,
+		interruptedTools,
 	);
 }
 
@@ -524,7 +566,9 @@ function createSubmissionEventCallback(
 ): (event: Record<string, unknown>) => Promise<void> | void {
 	return (event) => {
 		if (event.type === 'run_start' || event.type === 'run_end') return;
-		const attachedEvent = { ...event, instanceId, submissionId } as AttachedAgentEvent & { runId?: string };
+		const attachedEvent = { ...event, instanceId, submissionId } as AttachedAgentEvent & {
+			runId?: string;
+		};
 		delete attachedEvent.runId;
 		return publish(submissionId, attachedEvent);
 	};
@@ -613,7 +657,9 @@ export async function processSubmission(opts: ProcessSubmissionOptions): Promise
 			const handle = session.processSubmissionInput(input, {
 				onInputApplied: async (durability: SubmissionDurability) => {
 					if (!(await submissions.markSubmissionInputApplied(attempt, durability))) {
-						throw new Error('[flue] Agent submission attempt lost ownership before input application.');
+						throw new Error(
+							'[flue] Agent submission attempt lost ownership before input application.',
+						);
 					}
 				},
 				startedAt: submission.startedAt,

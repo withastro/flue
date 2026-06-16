@@ -259,9 +259,9 @@ describe('createSalesforceMarketingCloudChannel()', () => {
 		const events = vi.fn();
 
 		expect(() =>
-			createSalesforceMarketingCloudChannel(
-				{ events } as unknown as Parameters<typeof createSalesforceMarketingCloudChannel>[0],
-			),
+			createSalesforceMarketingCloudChannel({ events } as unknown as Parameters<
+				typeof createSalesforceMarketingCloudChannel
+			>[0]),
 		).toThrow('signatureKey must be a non-empty string');
 		expect(events).not.toHaveBeenCalled();
 	});

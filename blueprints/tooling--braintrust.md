@@ -1,5 +1,5 @@
 ---
-{ "kind": "tooling", "version": 2, "website": "https://www.braintrust.dev" }
+{ 'kind': 'tooling', 'version': 2, 'website': 'https://www.braintrust.dev' }
 ---
 
 # Add Braintrust to Flue

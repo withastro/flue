@@ -60,11 +60,11 @@ export function getCustomerSummary(ref: StripeCustomerRef) {
 			additionalProperties: false,
 		},
 		async execute() {
-				const customer = await client.customers.retrieve(
-					ref.customerId,
-					{},
-					stripeRequestOptions(ref.accountId, ref.context),
-				);
+			const customer = await client.customers.retrieve(
+				ref.customerId,
+				{},
+				stripeRequestOptions(ref.accountId, ref.context),
+			);
 			if (customer.deleted) {
 				return JSON.stringify({ customerId: customer.id, deleted: true });
 			}

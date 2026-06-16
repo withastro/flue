@@ -45,12 +45,12 @@ interface ResendChannelOptions<E extends Env = Env> {
 }
 ```
 
-| Field           | Description                                                  |
-| --------------- | ------------------------------------------------------------ |
-| `client`        | Project-owned official Resend SDK client.                    |
-| `webhookSecret` | Signing secret for this Resend webhook endpoint.             |
-| `bodyLimit`     | Maximum request-body size in bytes. Defaults to 1 MiB.       |
-| `webhook`       | Receives each verified webhook event.                        |
+| Field           | Description                                            |
+| --------------- | ------------------------------------------------------ |
+| `client`        | Project-owned official Resend SDK client.              |
+| `webhookSecret` | Signing secret for this Resend webhook endpoint.       |
+| `bodyLimit`     | Maximum request-body size in bytes. Defaults to 1 MiB. |
+| `webhook`       | Receives each verified webhook event.                  |
 
 The constructor throws `TypeError` for a missing compatible client, empty
 signing secret, missing callback, or non-positive integer body limit.

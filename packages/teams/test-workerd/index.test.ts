@@ -1,5 +1,5 @@
-import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { Hono } from 'hono';
+import { exportJWK, generateKeyPair, SignJWT } from 'jose';
 import { describe, expect, it, vi } from 'vitest';
 import { createTeamsChannel } from '../src/index.ts';
 

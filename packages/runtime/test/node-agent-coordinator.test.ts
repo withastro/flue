@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
 	type FauxProviderRegistration,
 	fauxAssistantMessage,
@@ -7,19 +10,20 @@ import {
 } from '@earendil-works/pi-ai';
 import * as v from 'valibot';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { join } from 'node:path';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { createAgent } from '../src/agent-definition.ts';
-import { createFlueContext, resolveModel, type DispatchInput } from '../src/internal.ts';
-import { sqlite } from '../src/node/agent-execution-store.ts';
-import { createNodeAgentCoordinator, createNodeDispatchQueue, type NodeAgentCoordinator } from '../src/node/agent-coordinator.ts';
-import type { CreateContextFn } from '../src/runtime/handle-agent.ts';
-import { agentStreamPath } from '../src/runtime/event-stream-store.ts';
 import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
-import { createSessionStorageKey } from '../src/session-identity.ts';
-import { generateSessionAffinityKey } from '../src/runtime/ids.ts';
 import { SubmissionInterruptedError } from '../src/errors.ts';
+import { createFlueContext, type DispatchInput, resolveModel } from '../src/internal.ts';
+import {
+	createNodeAgentCoordinator,
+	createNodeDispatchQueue,
+	type NodeAgentCoordinator,
+} from '../src/node/agent-coordinator.ts';
+import { sqlite } from '../src/node/agent-execution-store.ts';
+import { agentStreamPath } from '../src/runtime/event-stream-store.ts';
+import type { CreateContextFn } from '../src/runtime/handle-agent.ts';
+import { generateSessionAffinityKey } from '../src/runtime/ids.ts';
+import { createSessionStorageKey } from '../src/session-identity.ts';
 import { defineTool } from '../src/tool.ts';
 import type { SessionData } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
@@ -53,12 +57,16 @@ const tempDirs: string[] = [];
 afterEach(() => {
 	for (const provider of providers.splice(0)) provider.unregister();
 	for (const dir of tempDirs.splice(0)) {
-		try { rmSync(dir, { recursive: true }); } catch {}
+		try {
+			rmSync(dir, { recursive: true });
+		} catch {}
 	}
 });
 
 function createFauxProvider(): FauxProviderRegistration {
-	const provider = registerFauxProvider({ provider: `node-coordinator-test-${crypto.randomUUID()}` });
+	const provider = registerFauxProvider({
+		provider: `node-coordinator-test-${crypto.randomUUID()}`,
+	});
 	providers.push(provider);
 	return provider;
 }
@@ -218,12 +226,12 @@ describe('NodeAgentCoordinator', () => {
 			const store1 = await openExecutionStore(dbPath);
 			const input = makeDispatchInput();
 			await store1.submissions.admitDispatch(input);
-		await store1.submissions.claimSubmission({
-			submissionId: input.dispatchId,
-			attemptId: 'attempt-interrupted',
-			ownerId: 'test-owner',
-leaseExpiresAt: 1,
-		});
+			await store1.submissions.claimSubmission({
+				submissionId: input.dispatchId,
+				attemptId: 'attempt-interrupted',
+				ownerId: 'test-owner',
+				leaseExpiresAt: 1,
+			});
 			// Submission is now running with no canonical input — simulates crash before input applied.
 
 			// "Restart": a new coordinator reconciles and replays the dispatch input.
@@ -272,7 +280,10 @@ leaseExpiresAt: 1,
 			provider.setResponses([fauxAssistantMessage('Complete response.')]);
 
 			// Process fully, then simulate an interrupted second dispatch to same session.
-			const { coordinator: coord1, executionStore: store1 } = await createFauxCoordinator(dbPath, provider);
+			const { coordinator: coord1, executionStore: store1 } = await createFauxCoordinator(
+				dbPath,
+				provider,
+			);
 			const input1 = makeDispatchInput({ dispatchId: 'dispatch-first' });
 			await coord1.admitDispatch(input1);
 			await coord1.waitForIdle();
@@ -280,13 +291,13 @@ leaseExpiresAt: 1,
 			// Now manually admit+claim a second dispatch without processing — leave running.
 			const input2 = makeDispatchInput({ dispatchId: 'dispatch-second' });
 			await store1.submissions.admitDispatch(input2);
-		await store1.submissions.claimSubmission({
-			submissionId: input2.dispatchId,
-			attemptId: 'attempt-interrupted',
-			ownerId: 'test-owner',
-			leaseExpiresAt: 1,
-		});
-		// Mark input applied to simulate crash after input was persisted.
+			await store1.submissions.claimSubmission({
+				submissionId: input2.dispatchId,
+				attemptId: 'attempt-interrupted',
+				ownerId: 'test-owner',
+				leaseExpiresAt: 1,
+			});
+			// Mark input applied to simulate crash after input was persisted.
 			await store1.submissions.markSubmissionInputApplied({
 				submissionId: input2.dispatchId,
 				attemptId: 'attempt-interrupted',
@@ -294,7 +305,10 @@ leaseExpiresAt: 1,
 
 			// "Restart": the second submission's input is applied but no completed response.
 			// It should be terminalized (not replayed).
-			const { coordinator: coord2, executionStore: store2 } = await createFauxCoordinator(dbPath, provider);
+			const { coordinator: coord2, executionStore: store2 } = await createFauxCoordinator(
+				dbPath,
+				provider,
+			);
 			await coord2.reconcileSubmissions();
 
 			const submission = await store2.submissions.getSubmission(input2.dispatchId);
@@ -491,7 +505,9 @@ leaseExpiresAt: 1,
 			});
 			providers.push(provider);
 			provider.setResponses([
-				fauxAssistantMessage(`The full answer that never finishes. ${'lorem ipsum dolor '.repeat(250)}`),
+				fauxAssistantMessage(
+					`The full answer that never finishes. ${'lorem ipsum dolor '.repeat(250)}`,
+				),
 			]);
 			const { coordinator, executionStore } = await createFauxCoordinator(dbPath, provider);
 
@@ -530,7 +546,10 @@ leaseExpiresAt: 1,
 			const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 60_000);
 			try {
 				provider.setResponses([fauxAssistantMessage('Recovered completion.')]);
-				const { coordinator: restarted, executionStore: store2 } = await createFauxCoordinator(dbPath, provider);
+				const { coordinator: restarted, executionStore: store2 } = await createFauxCoordinator(
+					dbPath,
+					provider,
+				);
 				await restarted.reconcileSubmissions();
 
 				const submission = await store2.submissions.getSubmission(input.dispatchId);
@@ -550,7 +569,9 @@ leaseExpiresAt: 1,
 						(entry.message as any).stopReason === 'aborted',
 				);
 				expect(abortedPartials).toHaveLength(1);
-				expect(JSON.stringify((abortedPartials[0] as any).message.content)).toContain('lorem ipsum');
+				expect(JSON.stringify((abortedPartials[0] as any).message.content)).toContain(
+					'lorem ipsum',
+				);
 				const continued = entries.filter(
 					(entry) =>
 						entry.type === 'message' &&
@@ -622,7 +643,10 @@ leaseExpiresAt: 1,
 			const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 60_000);
 			try {
 				provider.setResponses([fauxAssistantMessage('Recovered after task interruption.')]);
-				const { coordinator: restarted, executionStore: store2 } = await createFauxCoordinator(dbPath, provider);
+				const { coordinator: restarted, executionStore: store2 } = await createFauxCoordinator(
+					dbPath,
+					provider,
+				);
 				await restarted.reconcileSubmissions();
 
 				const submission = await store2.submissions.getSubmission(input.dispatchId);
@@ -710,7 +734,10 @@ leaseExpiresAt: 1,
 								executionMode: 'sequential' as const,
 								execute: async () => {
 									counts.alpha = (counts.alpha ?? 0) + 1;
-									return { content: [{ type: 'text' as const, text: 'alpha result' }], details: {} };
+									return {
+										content: [{ type: 'text' as const, text: 'alpha result' }],
+										details: {},
+									};
 								},
 							},
 							{
@@ -732,7 +759,10 @@ leaseExpiresAt: 1,
 								executionMode: 'sequential' as const,
 								execute: async () => {
 									counts.charlie = (counts.charlie ?? 0) + 1;
-									return { content: [{ type: 'text' as const, text: 'charlie result' }], details: {} };
+									return {
+										content: [{ type: 'text' as const, text: 'charlie result' }],
+										details: {},
+									};
 								},
 							},
 						],
@@ -891,7 +921,9 @@ leaseExpiresAt: 1,
 			});
 			providers.push(provider);
 			provider.setResponses([
-				fauxAssistantMessage(`The full answer that never finishes. ${'lorem ipsum dolor '.repeat(250)}`),
+				fauxAssistantMessage(
+					`The full answer that never finishes. ${'lorem ipsum dolor '.repeat(250)}`,
+				),
 			]);
 			// A timeout shorter than the restart's clock advance, so the
 			// reconciliation terminalizes instead of resuming.
@@ -952,14 +984,14 @@ leaseExpiresAt: 1,
 
 			// Simulate repeated interruptions until retry budget is exhausted.
 			// Default maxRetry is 10. We claim, then replace the attempt to increment count.
-		const claimed = await store.submissions.claimSubmission({
-			submissionId: input.dispatchId,
-			attemptId: 'attempt-0',
-			ownerId: 'test-owner',
-			leaseExpiresAt: 1,
-		});
-		expect(claimed).toBeTruthy();
-		if (!claimed) throw new Error('Expected claimed submission.');
+			const claimed = await store.submissions.claimSubmission({
+				submissionId: input.dispatchId,
+				attemptId: 'attempt-0',
+				ownerId: 'test-owner',
+				leaseExpiresAt: 1,
+			});
+			expect(claimed).toBeTruthy();
+			if (!claimed) throw new Error('Expected claimed submission.');
 
 			// Mark input applied: journal-attempt replacement only happens after
 			// input application, and pre-input exhaustion settles with its own
@@ -1170,7 +1202,9 @@ leaseExpiresAt: 1,
 
 			const submission = await executionStore.submissions.getSubmission(input.dispatchId);
 			expect(submission?.maxRetry).toBe(3);
-			expect(submission?.timeoutAt).toBeGreaterThanOrEqual((submission?.startedAt ?? 0) + 7_200_000);
+			expect(submission?.timeoutAt).toBeGreaterThanOrEqual(
+				(submission?.startedAt ?? 0) + 7_200_000,
+			);
 		});
 
 		it('terminalizes a submission after the configured timeout expires', async () => {
@@ -1183,8 +1217,13 @@ leaseExpiresAt: 1,
 
 			// Claim with a timeout that's already expired.
 			const pastTimeout = Date.now() - 1000;
-		await store.submissions.claimSubmission({ submissionId: input.dispatchId, attemptId: 'attempt-timeout', ownerId: 'test-owner', leaseExpiresAt: 1 });
-		await store.submissions.markSubmissionInputApplied(
+			await store.submissions.claimSubmission({
+				submissionId: input.dispatchId,
+				attemptId: 'attempt-timeout',
+				ownerId: 'test-owner',
+				leaseExpiresAt: 1,
+			});
+			await store.submissions.markSubmissionInputApplied(
 				{ submissionId: input.dispatchId, attemptId: 'attempt-timeout' },
 				{ maxRetry: 10, timeoutAt: pastTimeout },
 			);
@@ -1291,18 +1330,18 @@ leaseExpiresAt: 1,
 			const store = await openExecutionStore(dbPath);
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
-		const claimed = await store.submissions.claimSubmission({
-			submissionId: input.dispatchId,
-			attemptId: 'attempt-tool-result',
-			ownerId: 'test-owner',
-			leaseExpiresAt: 1,
-		});
-		expect(claimed).toBeTruthy();
-		if (!claimed) throw new Error('Expected claimed submission.');
-		await store.submissions.markSubmissionInputApplied({
-			submissionId: input.dispatchId,
-			attemptId: 'attempt-tool-result',
-		});
+			const claimed = await store.submissions.claimSubmission({
+				submissionId: input.dispatchId,
+				attemptId: 'attempt-tool-result',
+				ownerId: 'test-owner',
+				leaseExpiresAt: 1,
+			});
+			expect(claimed).toBeTruthy();
+			if (!claimed) throw new Error('Expected claimed submission.');
+			await store.submissions.markSubmissionInputApplied({
+				submissionId: input.dispatchId,
+				attemptId: 'attempt-tool-result',
+			});
 			await store.submissions.beginTurnJournal({
 				submissionId: input.dispatchId,
 				sessionKey: claimed.sessionKey,
@@ -1400,16 +1439,16 @@ leaseExpiresAt: 1,
 			const store = await openExecutionStore(dbPath);
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
-		const claimed = await store.submissions.claimSubmission({
-			submissionId: input.dispatchId,
-			attemptId: 'attempt-tool-repair',
-			ownerId: 'test-owner',
-			leaseExpiresAt: 1,
-		});
-		expect(claimed).toBeTruthy();
-		if (!claimed) throw new Error('Expected claimed submission.');
+			const claimed = await store.submissions.claimSubmission({
+				submissionId: input.dispatchId,
+				attemptId: 'attempt-tool-repair',
+				ownerId: 'test-owner',
+				leaseExpiresAt: 1,
+			});
+			expect(claimed).toBeTruthy();
+			if (!claimed) throw new Error('Expected claimed submission.');
 
-		// Mark input applied (the submission got past input application).
+			// Mark input applied (the submission got past input application).
 			await store.submissions.markSubmissionInputApplied({
 				submissionId: input.dispatchId,
 				attemptId: 'attempt-tool-repair',
@@ -1428,7 +1467,9 @@ leaseExpiresAt: 1,
 			await store.submissions.updateTurnJournalPhase(
 				{ submissionId: input.dispatchId, attemptId: 'attempt-tool-repair' },
 				'tool_request_recorded',
-				{ toolRequest: { toolCalls: toolCalls.map((tc) => ({ type: 'toolCall' as const, ...tc })) } },
+				{
+					toolRequest: { toolCalls: toolCalls.map((tc) => ({ type: 'toolCall' as const, ...tc })) },
+				},
 			);
 
 			// Also persist the session history up to the tool calls (user msg + assistant msg).
@@ -1509,10 +1550,8 @@ leaseExpiresAt: 1,
 				parameters: v.object({ q: v.string() }),
 				execute: async () => 'found it',
 			});
-			const events: Array<
-				| { type: 'save'; data: SessionData }
-				| { type: 'phase'; phase: string }
-			> = [];
+			const events: Array<{ type: 'save'; data: SessionData } | { type: 'phase'; phase: string }> =
+				[];
 			const originalSave = executionStore.sessions.save.bind(executionStore.sessions);
 			executionStore.sessions.save = async (id, data) => {
 				events.push({ type: 'save', data });
@@ -1530,7 +1569,9 @@ leaseExpiresAt: 1,
 				createContext: makeFauxCreateContext(provider, executionStore),
 				eventStreamStore: createTestEventStreamStore(),
 			});
-			const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(executionStore.submissions);
+			const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(
+				executionStore.submissions,
+			);
 			executionStore.submissions.updateTurnJournalPhase = async (attempt, phase, options) => {
 				events.push({ type: 'phase', phase });
 				return originalUpdate(attempt, phase, options);
@@ -1547,11 +1588,16 @@ leaseExpiresAt: 1,
 				.slice(0, toolRequestIndex)
 				.reverse()
 				.find((event): event is { type: 'save'; data: SessionData } => event.type === 'save');
-			expect(precedingSave?.data.entries.some((entry) =>
-				entry.type === 'message' &&
-				entry.message.role === 'assistant' &&
-				entry.message.content.some((content) => content.type === 'toolCall' && content.id === toolCallId),
-			)).toBe(true);
+			expect(
+				precedingSave?.data.entries.some(
+					(entry) =>
+						entry.type === 'message' &&
+						entry.message.role === 'assistant' &&
+						entry.message.content.some(
+							(content) => content.type === 'toolCall' && content.id === toolCallId,
+						),
+				),
+			).toBe(true);
 		});
 
 		it('records journal phase transitions through tool_request_recorded during a tool-use turn', async () => {
@@ -1584,7 +1630,9 @@ leaseExpiresAt: 1,
 				eventStreamStore: createTestEventStreamStore(),
 			});
 
-			const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(executionStore.submissions);
+			const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(
+				executionStore.submissions,
+			);
 			executionStore.submissions.updateTurnJournalPhase = async (attempt, phase, options) => {
 				phases.push(phase);
 				return originalUpdate(attempt, phase, options);
@@ -1613,14 +1661,14 @@ leaseExpiresAt: 1,
 			await store.submissions.admitDispatch(inputA);
 			await store.submissions.admitDispatch(inputB);
 
-		// Claim A (the session head), leave B queued.
-		await store.submissions.claimSubmission({
-			submissionId: inputA.dispatchId,
-			attemptId: 'attempt-A',
-			ownerId: 'test-owner',
-			leaseExpiresAt: 1,
-		});
-		// A is now running but unprocessed (simulates crash).
+			// Claim A (the session head), leave B queued.
+			await store.submissions.claimSubmission({
+				submissionId: inputA.dispatchId,
+				attemptId: 'attempt-A',
+				ownerId: 'test-owner',
+				leaseExpiresAt: 1,
+			});
+			// A is now running but unprocessed (simulates crash).
 
 			// "Restart": reconcile should handle A (requeue since no input applied),
 			// then process A, then drain B.
@@ -1726,7 +1774,9 @@ leaseExpiresAt: 1,
 			await queue.enqueue(input);
 
 			await expect(
-				queue.enqueue(makeDispatchInput({ dispatchId: 'dispatch-conflict', input: { message: 'Different' } })),
+				queue.enqueue(
+					makeDispatchInput({ dispatchId: 'dispatch-conflict', input: { message: 'Different' } }),
+				),
 			).rejects.toThrow();
 			await coordinator.waitForIdle();
 		});
@@ -1812,7 +1862,9 @@ leaseExpiresAt: 1,
 
 			const events: unknown[] = [];
 			const admit = coordinator.createAdmission('assistant', 'instance-1');
-			await admit({ message: 'Hello events' }, (event) => { events.push(event); });
+			await admit({ message: 'Hello events' }, (event) => {
+				events.push(event);
+			});
 
 			// Should have received at least one event during processing.
 			expect(events.length).toBeGreaterThan(0);
@@ -1887,13 +1939,13 @@ leaseExpiresAt: 1,
 				payload: { message: 'Hello interrupted' },
 				acceptedAt: new Date().toISOString(),
 			});
-		await store.submissions.claimSubmission({
-			submissionId: 'direct-interrupted',
-			attemptId: 'attempt-crashed',
-			ownerId: 'test-owner',
-			leaseExpiresAt: 1,
-		});
-		// Submission is running with no canonical input — simulates crash before input applied.
+			await store.submissions.claimSubmission({
+				submissionId: 'direct-interrupted',
+				attemptId: 'attempt-crashed',
+				ownerId: 'test-owner',
+				leaseExpiresAt: 1,
+			});
+			// Submission is running with no canonical input — simulates crash before input applied.
 
 			// "Restart": new coordinator reconciles.
 			const { coordinator, executionStore } = await createFauxCoordinator(dbPath, provider);
@@ -1919,16 +1971,16 @@ leaseExpiresAt: 1,
 				payload: { message: 'Hello terminalized' },
 				acceptedAt: new Date().toISOString(),
 			});
-		await store.submissions.claimSubmission({
-			submissionId: 'direct-terminalized',
-			attemptId: 'attempt-applied',
-			ownerId: 'test-owner',
-			leaseExpiresAt: 1,
-		});
-		await store.submissions.markSubmissionInputApplied({
-			submissionId: 'direct-terminalized',
-			attemptId: 'attempt-applied',
-		});
+			await store.submissions.claimSubmission({
+				submissionId: 'direct-terminalized',
+				attemptId: 'attempt-applied',
+				ownerId: 'test-owner',
+				leaseExpiresAt: 1,
+			});
+			await store.submissions.markSubmissionInputApplied({
+				submissionId: 'direct-terminalized',
+				attemptId: 'attempt-applied',
+			});
 
 			// "Restart": should terminalize because input was applied but no completed response.
 			const { coordinator, executionStore } = await createFauxCoordinator(dbPath, provider);
@@ -2125,12 +2177,12 @@ leaseExpiresAt: 1,
 				payload: { message: 'Hello silent' },
 				acceptedAt: new Date().toISOString(),
 			});
-		await store.submissions.claimSubmission({
-			submissionId: 'direct-no-observer',
-			attemptId: 'attempt-silent',
-			ownerId: 'test-owner',
-			leaseExpiresAt: 1,
-		});
+			await store.submissions.claimSubmission({
+				submissionId: 'direct-no-observer',
+				attemptId: 'attempt-silent',
+				ownerId: 'test-owner',
+				leaseExpiresAt: 1,
+			});
 
 			// "Restart": no observer attached. Should still reconcile and settle.
 			const { coordinator, executionStore } = await createFauxCoordinator(dbPath, provider);
@@ -2149,18 +2201,22 @@ leaseExpiresAt: 1,
 	// contract above is covered deterministically by the faux provider; this
 	// exists only to smoke-test the lifecycle against a real provider.
 	describe('real Anthropic API smoke', () => {
-		it.skipIf(!hasApiKey)('processes a dispatch through the full submission lifecycle against the real API', async () => {
-			const dbPath = createTempDbPath();
-			const { coordinator, executionStore } = await createRealCoordinator(dbPath);
+		it.skipIf(!hasApiKey)(
+			'processes a dispatch through the full submission lifecycle against the real API',
+			async () => {
+				const dbPath = createTempDbPath();
+				const { coordinator, executionStore } = await createRealCoordinator(dbPath);
 
-			const input = makeDispatchInput();
-			await coordinator.admitDispatch(input);
-			await coordinator.waitForIdle();
+				const input = makeDispatchInput();
+				await coordinator.admitDispatch(input);
+				await coordinator.waitForIdle();
 
-			const submission = await executionStore.submissions.getSubmission(input.dispatchId);
-			expect(submission).toMatchObject({ status: 'settled', kind: 'dispatch' });
-			expect(submission?.error).toBeUndefined();
-		}, 30_000);
+				const submission = await executionStore.submissions.getSubmission(input.dispatchId);
+				expect(submission).toMatchObject({ status: 'settled', kind: 'dispatch' });
+				expect(submission?.error).toBeUndefined();
+			},
+			30_000,
+		);
 	});
 
 	describe('direct and dispatch same-session ordering', () => {
@@ -2177,12 +2233,12 @@ leaseExpiresAt: 1,
 				payload: { message: 'Direct first' },
 				acceptedAt: new Date().toISOString(),
 			});
-		await store.submissions.claimSubmission({
-			submissionId: 'direct-head',
-			attemptId: 'attempt-running',
-			ownerId: 'test-owner',
-			leaseExpiresAt: 1,
-		});
+			await store.submissions.claimSubmission({
+				submissionId: 'direct-head',
+				attemptId: 'attempt-running',
+				ownerId: 'test-owner',
+				leaseExpiresAt: 1,
+			});
 
 			// Admit a dispatch to the same session.
 			const dispatchInput = makeDispatchInput({

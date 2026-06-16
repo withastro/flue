@@ -5,30 +5,150 @@
 	font-synthesis: none;
 }
 
-* { box-sizing: border-box; }
-body { margin: 0; min-width: 320px; min-height: 100vh; }
-button, input { font: inherit; }
-button { border: 0; border-radius: 0.65rem; padding: 0.7rem 1rem; color: white; background: #176b45; cursor: pointer; }
-button:disabled { cursor: not-allowed; opacity: 0.45; }
-main { width: min(920px, calc(100% - 2rem)); margin: 0 auto; padding: 3rem 0; }
-header { margin-bottom: 2rem; }
-h1, h2, p { margin-top: 0; }
-h1 { margin-bottom: 0; font-size: clamp(2rem, 6vw, 4rem); letter-spacing: -0.05em; }
-.eyebrow { margin-bottom: 0.5rem; color: #176b45; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; }
-section { margin-bottom: 1rem; padding: 1.25rem; border: 1px solid #d0dbd2; border-radius: 1rem; background: #fff; box-shadow: 0 0.75rem 2rem rgba(22, 45, 32, 0.06); }
-.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
-.status { padding: 0.25rem 0.55rem; border-radius: 999px; color: #536158; background: #edf1ee; font-size: 0.8rem; }
-.status.streaming, .status.running, .status.completed { color: #0d5e3a; background: #dff5e8; }
-.status.error, .status.errored, .status.disconnected { color: #8f2929; background: #fde7e7; }
-.messages, .logs { display: grid; gap: 0.75rem; min-height: 7rem; margin: 1rem 0; padding: 1rem; border-radius: 0.75rem; background: #f5f7f5; }
-.message { width: fit-content; max-width: 80%; padding: 0.75rem 1rem; border-radius: 0.75rem; background: white; }
-.message.user { justify-self: end; color: white; background: #176b45; }
-.message p { margin: 0.3rem 0 0; white-space: pre-wrap; }
-.message strong { font-size: 0.75rem; text-transform: capitalize; opacity: 0.65; }
-form { display: flex; gap: 0.75rem; }
-input { flex: 1; min-width: 0; border: 1px solid #bdc9bf; border-radius: 0.65rem; padding: 0.7rem 0.8rem; }
-.empty { margin: auto; color: #6c786f; }
-.log { display: grid; grid-template-columns: auto 1fr; gap: 0.75rem; align-items: baseline; }
-time { color: #6c786f; font-size: 0.8rem; }
-.error { padding: 0.8rem 1rem; border-radius: 0.65rem; color: #8f2929; background: #fde7e7; }
-pre { overflow: auto; }
+* {
+	box-sizing: border-box;
+}
+body {
+	margin: 0;
+	min-width: 320px;
+	min-height: 100vh;
+}
+button,
+input {
+	font: inherit;
+}
+button {
+	border: 0;
+	border-radius: 0.65rem;
+	padding: 0.7rem 1rem;
+	color: white;
+	background: #176b45;
+	cursor: pointer;
+}
+button:disabled {
+	cursor: not-allowed;
+	opacity: 0.45;
+}
+main {
+	width: min(920px, calc(100% - 2rem));
+	margin: 0 auto;
+	padding: 3rem 0;
+}
+header {
+	margin-bottom: 2rem;
+}
+h1,
+h2,
+p {
+	margin-top: 0;
+}
+h1 {
+	margin-bottom: 0;
+	font-size: clamp(2rem, 6vw, 4rem);
+	letter-spacing: -0.05em;
+}
+.eyebrow {
+	margin-bottom: 0.5rem;
+	color: #176b45;
+	font-weight: 700;
+	text-transform: uppercase;
+	letter-spacing: 0.12em;
+}
+section {
+	margin-bottom: 1rem;
+	padding: 1.25rem;
+	border: 1px solid #d0dbd2;
+	border-radius: 1rem;
+	background: #fff;
+	box-shadow: 0 0.75rem 2rem rgba(22, 45, 32, 0.06);
+}
+.section-heading {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 1rem;
+}
+.status {
+	padding: 0.25rem 0.55rem;
+	border-radius: 999px;
+	color: #536158;
+	background: #edf1ee;
+	font-size: 0.8rem;
+}
+.status.streaming,
+.status.running,
+.status.completed {
+	color: #0d5e3a;
+	background: #dff5e8;
+}
+.status.error,
+.status.errored,
+.status.disconnected {
+	color: #8f2929;
+	background: #fde7e7;
+}
+.messages,
+.logs {
+	display: grid;
+	gap: 0.75rem;
+	min-height: 7rem;
+	margin: 1rem 0;
+	padding: 1rem;
+	border-radius: 0.75rem;
+	background: #f5f7f5;
+}
+.message {
+	width: fit-content;
+	max-width: 80%;
+	padding: 0.75rem 1rem;
+	border-radius: 0.75rem;
+	background: white;
+}
+.message.user {
+	justify-self: end;
+	color: white;
+	background: #176b45;
+}
+.message p {
+	margin: 0.3rem 0 0;
+	white-space: pre-wrap;
+}
+.message strong {
+	font-size: 0.75rem;
+	text-transform: capitalize;
+	opacity: 0.65;
+}
+form {
+	display: flex;
+	gap: 0.75rem;
+}
+input {
+	flex: 1;
+	min-width: 0;
+	border: 1px solid #bdc9bf;
+	border-radius: 0.65rem;
+	padding: 0.7rem 0.8rem;
+}
+.empty {
+	margin: auto;
+	color: #6c786f;
+}
+.log {
+	display: grid;
+	grid-template-columns: auto 1fr;
+	gap: 0.75rem;
+	align-items: baseline;
+}
+time {
+	color: #6c786f;
+	font-size: 0.8rem;
+}
+.error {
+	padding: 0.8rem 1rem;
+	border-radius: 0.65rem;
+	color: #8f2929;
+	background: #fde7e7;
+}
+pre {
+	overflow: auto;
+}

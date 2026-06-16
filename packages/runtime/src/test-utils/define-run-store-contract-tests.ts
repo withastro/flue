@@ -6,10 +6,7 @@ export interface RunStoreContractBackend {
 	cleanup?(): void | Promise<void>;
 }
 
-export function defineRunStoreContractTests(
-	label: string,
-	backend: RunStoreContractBackend,
-): void {
+export function defineRunStoreContractTests(label: string, backend: RunStoreContractBackend): void {
 	describe(label, () => {
 		let cleanup: (() => void | Promise<void>) | undefined;
 
@@ -298,9 +295,9 @@ export function defineRunStoreContractTests(
 			const firstPage = await store.listRuns({ limit: 1 });
 			expect(firstPage.runs.map((pointer) => pointer.runId)).toEqual(['run_02NIPPO']);
 			expect(firstPage.nextCursor).toEqual(expect.any(String));
-			expect(
-				(await store.listRuns({ limit: 1, cursor: firstPage.nextCursor })).runs,
-			).toMatchObject([{ runId: 'run_01NIPPO', workflowName: '日報' }]);
+			expect((await store.listRuns({ limit: 1, cursor: firstPage.nextCursor })).runs).toMatchObject(
+				[{ runId: 'run_01NIPPO', workflowName: '日報' }],
+			);
 		});
 	});
 }

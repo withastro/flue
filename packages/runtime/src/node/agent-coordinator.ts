@@ -1,7 +1,9 @@
-import type { AgentDispatchAdmission, AgentSubmission, AgentSubmissionStore } from '../agent-execution-store.ts';
+import type {
+	AgentDispatchAdmission,
+	AgentSubmission,
+	AgentSubmissionStore,
+} from '../agent-execution-store.ts';
 import { LEASE_DURATION_MS } from '../agent-execution-store.ts';
-import { deleteSessionTree } from '../session.ts';
-import type { AttachedAgentEvent, CreatedAgent, DirectAgentPayload, DispatchReceipt, SessionStore } from '../types.ts';
 import {
 	type AgentSubmissionInput,
 	type AttachedAgentSubmissionAdmission,
@@ -11,10 +13,18 @@ import {
 	reconcileInterruptedSubmission,
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
-import type { CreateContextFn } from '../runtime/handle-agent.ts';
-import { agentStreamPath } from '../runtime/event-stream-store.ts';
-import { isStreamExcludedEvent } from '../runtime/run-store.ts';
 import type { DispatchInput, DispatchQueue } from '../runtime/dispatch-queue.ts';
+import { agentStreamPath } from '../runtime/event-stream-store.ts';
+import type { CreateContextFn } from '../runtime/handle-agent.ts';
+import { isStreamExcludedEvent } from '../runtime/run-store.ts';
+import { deleteSessionTree } from '../session.ts';
+import type {
+	AttachedAgentEvent,
+	CreatedAgent,
+	DirectAgentPayload,
+	DispatchReceipt,
+	SessionStore,
+} from '../types.ts';
 
 export interface NodeAgentCoordinator {
 	/** Call once at startup to reconcile interrupted work from a previous process. */
@@ -66,7 +76,9 @@ export function createNodeDispatchQueue(coordinator: NodeAgentCoordinator): Disp
 				};
 			}
 			if (admission.kind === 'conflict') {
-				throw new Error(`[flue] dispatch() target agent "${input.agent}" rejected a conflicting dispatch replay.`);
+				throw new Error(
+					`[flue] dispatch() target agent "${input.agent}" rejected a conflicting dispatch replay.`,
+				);
 			}
 			return {
 				dispatchId: admission.submission.submissionId,
@@ -149,7 +161,14 @@ export function createNodeAgentCoordinator(options: {
 
 	function makeSubmissionContext(input: AgentSubmissionInput) {
 		return (payload: unknown, dispatchId: string | undefined) => {
-			const ctx = createContext(input.id, undefined, payload, submissionSyntheticRequest(input), undefined, dispatchId);
+			const ctx = createContext(
+				input.id,
+				undefined,
+				payload,
+				submissionSyntheticRequest(input),
+				undefined,
+				dispatchId,
+			);
 			// Subscribe to events for durable agent event persistence.
 			// createStream is called before processSubmission (see spawnSubmissionTask).
 			const streamPath = agentStreamPath(input.agent, input.id);
@@ -190,7 +209,8 @@ export function createNodeAgentCoordinator(options: {
 				createContext: makeSubmissionContext(claimed.input),
 				observers,
 				signal: controller.signal,
-				isShutdownAbort: (error) => stopping && error instanceof DOMException && error.name === 'AbortError',
+				isShutdownAbort: (error) =>
+					stopping && error instanceof DOMException && error.name === 'AbortError',
 			});
 		})()
 			.catch((error) => {
@@ -389,14 +409,11 @@ export function createNodeAgentCoordinator(options: {
 			const agentName = submission.input.agent;
 			const agent = agents[agentName];
 			if (!agent) {
-				console.error(
-					'[flue:submission-reconciliation]',
-					{
-						submissionId: submission.submissionId,
-						operation: 'reconcile_submission',
-						outcome: 'agent_unavailable',
-					},
-				);
+				console.error('[flue:submission-reconciliation]', {
+					submissionId: submission.submissionId,
+					operation: 'reconcile_submission',
+					outcome: 'agent_unavailable',
+				});
 				continue;
 			}
 			try {
@@ -509,7 +526,11 @@ export function createNodeAgentCoordinator(options: {
 					throw new Error(`[flue] direct prompt target agent "${agentName}" has no created agent.`);
 				}
 
-				const input = createDirectAgentSubmissionInput({ agent: agentName, id: instanceId, payload });
+				const input = createDirectAgentSubmissionInput({
+					agent: agentName,
+					id: instanceId,
+					payload,
+				});
 
 				const attachment = observers.attach(input.submissionId, { onEvent });
 				try {

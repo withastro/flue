@@ -52,7 +52,13 @@ describe('createAgentSubmissionObserverRegistry()', () => {
 		});
 
 		await expect(
-			registry.publish('direct:observer-failure', { type: 'idle', instanceId: 'agent-1', v: 1, eventIndex: 0, timestamp: '2026-06-01T00:00:00.000Z' }),
+			registry.publish('direct:observer-failure', {
+				type: 'idle',
+				instanceId: 'agent-1',
+				v: 1,
+				eventIndex: 0,
+				timestamp: '2026-06-01T00:00:00.000Z',
+			}),
 		).resolves.toBeUndefined();
 		registry.complete('direct:observer-failure', 'done');
 
@@ -264,7 +270,13 @@ describe('dispatched session processing', () => {
 		const store = new InMemorySessionStore();
 		const originalSave = store.save.bind(store);
 		store.save = async (id, data) => {
-			if (data.entries.some((entry) => entry.type === 'message' && entry.dispatch?.dispatchId === 'dispatch:input-marker-order')) {
+			if (
+				data.entries.some(
+					(entry) =>
+						entry.type === 'message' &&
+						entry.dispatch?.dispatchId === 'dispatch:input-marker-order',
+				)
+			) {
 				order.push('persist-input');
 			}
 			await originalSave(id, data);
@@ -318,7 +330,12 @@ describe('dispatched session processing', () => {
 		const store = new InMemorySessionStore();
 		const originalSave = store.save.bind(store);
 		store.save = async (id, data) => {
-			if (data.entries.some((entry) => entry.type === 'message' && entry.directSubmissionId === 'direct:input-marker-order')) {
+			if (
+				data.entries.some(
+					(entry) =>
+						entry.type === 'message' && entry.directSubmissionId === 'direct:input-marker-order',
+				)
+			) {
 				order.push('persist-input');
 			}
 			await originalSave(id, data);
@@ -338,7 +355,9 @@ describe('dispatched session processing', () => {
 			id: input.id,
 			payload: input.payload,
 			env: {},
-			req: new Request('http://flue.local/agents/moderator/guild:direct-input-marker-order', { method: 'POST' }),
+			req: new Request('http://flue.local/agents/moderator/guild:direct-input-marker-order', {
+				method: 'POST',
+			}),
 			agentConfig: {
 				subagents: {},
 				resolveModel: () => provider.getModel(),
@@ -355,7 +374,9 @@ describe('dispatched session processing', () => {
 			}),
 		)(ctx);
 
-		const data = await store.load(`agent-session:${JSON.stringify([input.id, 'default', 'default'])}`);
+		const data = await store.load(
+			`agent-session:${JSON.stringify([input.id, 'default', 'default'])}`,
+		);
 		expect(order.indexOf('persist-input')).toBeLessThan(order.indexOf('input-applied'));
 		expect(order.indexOf('input-applied')).toBeLessThan(order.indexOf('provider'));
 		expect(data?.entries[0]).toMatchObject({
@@ -404,7 +425,9 @@ describe('dispatched session processing', () => {
 			id: input.id,
 			payload: input.payload,
 			env: {},
-			req: new Request('http://flue.local/agents/moderator/guild:aborted-turn-no-commit', { method: 'POST' }),
+			req: new Request('http://flue.local/agents/moderator/guild:aborted-turn-no-commit', {
+				method: 'POST',
+			}),
 			agentConfig: {
 				subagents: {},
 				resolveModel: () => provider.getModel(),
@@ -470,7 +493,9 @@ describe('dispatched session processing', () => {
 			id: input.id,
 			payload: input.payload,
 			env: {},
-			req: new Request('http://flue.local/agents/moderator/guild:error-turn-no-commit', { method: 'POST' }),
+			req: new Request('http://flue.local/agents/moderator/guild:error-turn-no-commit', {
+				method: 'POST',
+			}),
 			agentConfig: {
 				subagents: {},
 				resolveModel: () => provider.getModel(),
@@ -519,7 +544,9 @@ describe('dispatched session processing', () => {
 				id: input.id,
 				payload: input.payload,
 				env: {},
-				req: new Request('http://flue.local/agents/moderator/guild:terminal-advisory', { method: 'POST' }),
+				req: new Request('http://flue.local/agents/moderator/guild:terminal-advisory', {
+					method: 'POST',
+				}),
 				agentConfig: testAgentConfig(),
 				createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
 				defaultStore: store,
@@ -528,13 +555,20 @@ describe('dispatched session processing', () => {
 			submissionId: input.submissionId,
 			kind: 'direct' as const,
 			reason: 'interrupted_after_input_application' as const,
-			message: 'Provider replay was not attempted because prior execution could not be proven safe.',
+			message:
+				'Provider replay was not attempted because prior execution could not be proven safe.',
 		};
 
-		await createAgentSubmissionSessionHandler(agent, input, (s) => s.recordSubmissionTerminal(terminal))(createContext());
-		await createAgentSubmissionSessionHandler(agent, input, (s) => s.recordSubmissionTerminal(terminal))(createContext());
+		await createAgentSubmissionSessionHandler(agent, input, (s) =>
+			s.recordSubmissionTerminal(terminal),
+		)(createContext());
+		await createAgentSubmissionSessionHandler(agent, input, (s) =>
+			s.recordSubmissionTerminal(terminal),
+		)(createContext());
 
-		const data = await store.load(`agent-session:${JSON.stringify([input.id, 'default', 'default'])}`);
+		const data = await store.load(
+			`agent-session:${JSON.stringify([input.id, 'default', 'default'])}`,
+		);
 		expect(data?.entries).toHaveLength(1);
 		expect(data?.entries[0]).toMatchObject({
 			submissionTerminal: {
@@ -545,7 +579,8 @@ describe('dispatched session processing', () => {
 			message: {
 				role: 'signal',
 				type: 'submission_interrupted',
-				content: 'Provider replay was not attempted because prior execution could not be proven safe.',
+				content:
+					'Provider replay was not attempted because prior execution could not be proven safe.',
 			},
 		});
 	});
@@ -572,7 +607,11 @@ describe('dispatched session processing', () => {
 					id: 'direct-input',
 					parentId: null,
 					timestamp,
-					message: { role: 'user', content: [{ type: 'text', text: input.payload.message }], timestamp: 0 },
+					message: {
+						role: 'user',
+						content: [{ type: 'text', text: input.payload.message }],
+						timestamp: 0,
+					},
 					directSubmissionId: input.submissionId,
 				},
 				{
@@ -595,13 +634,19 @@ describe('dispatched session processing', () => {
 			id: input.id,
 			payload: input.payload,
 			env: {},
-			req: new Request('http://flue.local/agents/moderator/guild:direct-inspect-completed', { method: 'POST' }),
+			req: new Request('http://flue.local/agents/moderator/guild:direct-inspect-completed', {
+				method: 'POST',
+			}),
 			agentConfig: testAgentConfig(),
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
 			defaultStore: store,
 		});
 
-		await expect(createAgentSubmissionSessionHandler(agent, input, (s) => s.inspectSubmissionInput(input))(ctx)).resolves.toBe('completed');
+		await expect(
+			createAgentSubmissionSessionHandler(agent, input, (s) => s.inspectSubmissionInput(input))(
+				ctx,
+			),
+		).resolves.toBe('completed');
 		expect(provider.state.callCount).toBe(0);
 	});
 
@@ -626,7 +671,11 @@ describe('dispatched session processing', () => {
 					id: 'dispatch-input',
 					parentId: null,
 					timestamp,
-					message: { role: 'user', content: [{ type: 'text', text: 'persisted dispatch' }], timestamp: 0 },
+					message: {
+						role: 'user',
+						content: [{ type: 'text', text: 'persisted dispatch' }],
+						timestamp: 0,
+					},
 					dispatch: { dispatchId: input.dispatchId },
 				},
 				{
@@ -656,7 +705,11 @@ describe('dispatched session processing', () => {
 			defaultStore: store,
 		});
 
-		await expect(createAgentSubmissionSessionHandler(agent, createDispatchAgentSubmissionInput(input), (s) => s.inspectSubmissionInput(createDispatchAgentSubmissionInput(input)))(ctx)).resolves.toBe('completed');
+		await expect(
+			createAgentSubmissionSessionHandler(agent, createDispatchAgentSubmissionInput(input), (s) =>
+				s.inspectSubmissionInput(createDispatchAgentSubmissionInput(input)),
+			)(ctx),
+		).resolves.toBe('completed');
 		expect(provider.state.callCount).toBe(0);
 	});
 
@@ -681,7 +734,11 @@ describe('dispatched session processing', () => {
 					id: 'dispatch-input',
 					parentId: null,
 					timestamp,
-					message: { role: 'user', content: [{ type: 'text', text: 'persisted dispatch' }], timestamp: 0 },
+					message: {
+						role: 'user',
+						content: [{ type: 'text', text: 'persisted dispatch' }],
+						timestamp: 0,
+					},
 					dispatch: { dispatchId: input.dispatchId },
 				},
 			],
@@ -704,7 +761,11 @@ describe('dispatched session processing', () => {
 			defaultStore: store,
 		});
 
-		await expect(createAgentSubmissionSessionHandler(agent, createDispatchAgentSubmissionInput(input), (s) => s.inspectSubmissionInput(createDispatchAgentSubmissionInput(input)))(ctx)).resolves.toBe('uncertain');
+		await expect(
+			createAgentSubmissionSessionHandler(agent, createDispatchAgentSubmissionInput(input), (s) =>
+				s.inspectSubmissionInput(createDispatchAgentSubmissionInput(input)),
+			)(ctx),
+		).resolves.toBe('uncertain');
 		expect(provider.state.callCount).toBe(0);
 	});
 
@@ -733,13 +794,41 @@ describe('dispatched session processing', () => {
 					id: 'dispatch-input',
 					parentId: null,
 					timestamp,
-					message: { role: 'user', content: [{ type: 'text', text: 'persisted dispatch' }], timestamp: 0 },
+					message: {
+						role: 'user',
+						content: [{ type: 'text', text: 'persisted dispatch' }],
+						timestamp: 0,
+					},
 					dispatch: { dispatchId: input.dispatchId },
 				},
-				{ type: 'message', id: 'error-1', parentId: 'dispatch-input', timestamp, message: retryableError() },
-				{ type: 'message', id: 'error-2', parentId: 'error-1', timestamp, message: retryableError() },
-				{ type: 'message', id: 'error-3', parentId: 'error-2', timestamp, message: retryableError() },
-				{ type: 'message', id: 'error-4', parentId: 'error-3', timestamp, message: retryableError() },
+				{
+					type: 'message',
+					id: 'error-1',
+					parentId: 'dispatch-input',
+					timestamp,
+					message: retryableError(),
+				},
+				{
+					type: 'message',
+					id: 'error-2',
+					parentId: 'error-1',
+					timestamp,
+					message: retryableError(),
+				},
+				{
+					type: 'message',
+					id: 'error-3',
+					parentId: 'error-2',
+					timestamp,
+					message: retryableError(),
+				},
+				{
+					type: 'message',
+					id: 'error-4',
+					parentId: 'error-3',
+					timestamp,
+					message: retryableError(),
+				},
 			],
 			leafId: 'error-4',
 			metadata: {},
@@ -794,7 +883,11 @@ describe('dispatched session processing', () => {
 					id: 'earlier-user',
 					parentId: null,
 					timestamp,
-					message: { role: 'user', content: [{ type: 'text', text: 'earlier question' }], timestamp: 0 },
+					message: {
+						role: 'user',
+						content: [{ type: 'text', text: 'earlier question' }],
+						timestamp: 0,
+					},
 				},
 				{
 					type: 'message',
@@ -808,7 +901,11 @@ describe('dispatched session processing', () => {
 					id: 'dispatch-input',
 					parentId: 'earlier-assistant',
 					timestamp,
-					message: { role: 'user', content: [{ type: 'text', text: 'persisted dispatch' }], timestamp: 0 },
+					message: {
+						role: 'user',
+						content: [{ type: 'text', text: 'persisted dispatch' }],
+						timestamp: 0,
+					},
 					dispatch: { dispatchId: input.dispatchId },
 				},
 				{
@@ -972,7 +1069,12 @@ describe('repairInterruptedToolCalls()', () => {
 		const tc2 = { id: `tc:b-${crypto.randomUUID()}`, name: 'search' };
 
 		// Pre-populate with interrupted state: assistant requested 2 tools, no results persisted.
-		const { data, storageKey } = interruptedSessionData('dispatch:repair-all', 'guild:repair', 'default', [tc1, tc2]);
+		const { data, storageKey } = interruptedSessionData(
+			'dispatch:repair-all',
+			'guild:repair',
+			'default',
+			[tc1, tc2],
+		);
 		await store.sessions.save(storageKey, data);
 
 		const submissionInput = {
@@ -988,18 +1090,24 @@ describe('repairInterruptedToolCalls()', () => {
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const ctx = createFlueContext({
-			id: submissionInput.id, dispatchId: submissionInput.dispatchId, payload: submissionInput,
-			env: {}, req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
+			id: submissionInput.id,
+			dispatchId: submissionInput.dispatchId,
+			payload: submissionInput,
+			env: {},
+			req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
 			agentConfig: { subagents: {}, resolveModel: () => provider.getModel() },
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
 			defaultStore: store.sessions,
 			submissionStore: store.submissions,
 		});
 
-		const repairedLeafId = await createAgentSubmissionSessionHandler(
-			agent,
-			submissionInput,
-			(s) => s.repairInterruptedToolCalls(submissionInput, { toolCalls: [{ type: 'toolCall', ...tc1 }, { type: 'toolCall', ...tc2 }] }),
+		const repairedLeafId = await createAgentSubmissionSessionHandler(agent, submissionInput, (s) =>
+			s.repairInterruptedToolCalls(submissionInput, {
+				toolCalls: [
+					{ type: 'toolCall', ...tc1 },
+					{ type: 'toolCall', ...tc2 },
+				],
+			}),
 		)(ctx);
 
 		expect(repairedLeafId).toBeTruthy();
@@ -1028,7 +1136,13 @@ describe('repairInterruptedToolCalls()', () => {
 		const tc2 = { id: `tc:missing-${crypto.randomUUID()}`, name: 'slow_tool' };
 
 		// Pre-populate: tc1 has a result, tc2 does not.
-		const { data, storageKey } = interruptedSessionData('dispatch:repair-partial', 'guild:repair', 'default', [tc1, tc2], [tc1.id]);
+		const { data, storageKey } = interruptedSessionData(
+			'dispatch:repair-partial',
+			'guild:repair',
+			'default',
+			[tc1, tc2],
+			[tc1.id],
+		);
 		await store.sessions.save(storageKey, data);
 
 		const submissionInput = {
@@ -1044,18 +1158,24 @@ describe('repairInterruptedToolCalls()', () => {
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const ctx = createFlueContext({
-			id: submissionInput.id, dispatchId: submissionInput.dispatchId, payload: submissionInput,
-			env: {}, req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
+			id: submissionInput.id,
+			dispatchId: submissionInput.dispatchId,
+			payload: submissionInput,
+			env: {},
+			req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
 			agentConfig: { subagents: {}, resolveModel: () => provider.getModel() },
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
 			defaultStore: store.sessions,
 			submissionStore: store.submissions,
 		});
 
-		const repairedLeafId = await createAgentSubmissionSessionHandler(
-			agent,
-			submissionInput,
-			(s) => s.repairInterruptedToolCalls(submissionInput, { toolCalls: [{ type: 'toolCall', ...tc1 }, { type: 'toolCall', ...tc2 }] }),
+		const repairedLeafId = await createAgentSubmissionSessionHandler(agent, submissionInput, (s) =>
+			s.repairInterruptedToolCalls(submissionInput, {
+				toolCalls: [
+					{ type: 'toolCall', ...tc1 },
+					{ type: 'toolCall', ...tc2 },
+				],
+			}),
 		)(ctx);
 
 		expect(repairedLeafId).toBeTruthy();
@@ -1085,8 +1205,11 @@ describe('repairInterruptedToolCalls()', () => {
 
 		// Pre-populate: only tc2 (the middle tool) has a settled result.
 		const { data, storageKey } = interruptedSessionData(
-			'dispatch:repair-order', 'guild:repair', 'default',
-			[tc1, tc2, tc3], [tc2.id],
+			'dispatch:repair-order',
+			'guild:repair',
+			'default',
+			[tc1, tc2, tc3],
+			[tc2.id],
 		);
 		await store.sessions.save(storageKey, data);
 
@@ -1103,18 +1226,25 @@ describe('repairInterruptedToolCalls()', () => {
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const ctx = createFlueContext({
-			id: submissionInput.id, dispatchId: submissionInput.dispatchId, payload: submissionInput,
-			env: {}, req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
+			id: submissionInput.id,
+			dispatchId: submissionInput.dispatchId,
+			payload: submissionInput,
+			env: {},
+			req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
 			agentConfig: { subagents: {}, resolveModel: () => provider.getModel() },
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
 			defaultStore: store.sessions,
 			submissionStore: store.submissions,
 		});
 
-		const repairedLeafId = await createAgentSubmissionSessionHandler(
-			agent,
-			submissionInput,
-			(s) => s.repairInterruptedToolCalls(submissionInput, { toolCalls: [{ type: 'toolCall', ...tc1 }, { type: 'toolCall', ...tc2 }, { type: 'toolCall', ...tc3 }] }),
+		const repairedLeafId = await createAgentSubmissionSessionHandler(agent, submissionInput, (s) =>
+			s.repairInterruptedToolCalls(submissionInput, {
+				toolCalls: [
+					{ type: 'toolCall', ...tc1 },
+					{ type: 'toolCall', ...tc2 },
+					{ type: 'toolCall', ...tc3 },
+				],
+			}),
 		)(ctx);
 
 		expect(repairedLeafId).toBeTruthy();
@@ -1141,7 +1271,13 @@ describe('repairInterruptedToolCalls()', () => {
 		const tc1 = { id: `tc:done-${crypto.randomUUID()}`, name: 'lookup' };
 
 		// Pre-populate: tc1 has a result.
-		const { data, storageKey } = interruptedSessionData('dispatch:repair-noop', 'guild:repair', 'default', [tc1], [tc1.id]);
+		const { data, storageKey } = interruptedSessionData(
+			'dispatch:repair-noop',
+			'guild:repair',
+			'default',
+			[tc1],
+			[tc1.id],
+		);
 		await store.sessions.save(storageKey, data);
 
 		const submissionInput = {
@@ -1157,18 +1293,19 @@ describe('repairInterruptedToolCalls()', () => {
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const ctx = createFlueContext({
-			id: submissionInput.id, dispatchId: submissionInput.dispatchId, payload: submissionInput,
-			env: {}, req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
+			id: submissionInput.id,
+			dispatchId: submissionInput.dispatchId,
+			payload: submissionInput,
+			env: {},
+			req: new Request('http://flue.local/_dispatch', { method: 'POST' }),
 			agentConfig: { subagents: {}, resolveModel: () => provider.getModel() },
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
 			defaultStore: store.sessions,
 			submissionStore: store.submissions,
 		});
 
-		const repairedLeafId = await createAgentSubmissionSessionHandler(
-			agent,
-			submissionInput,
-			(s) => s.repairInterruptedToolCalls(submissionInput, { toolCalls: [{ type: 'toolCall', ...tc1 }] }),
+		const repairedLeafId = await createAgentSubmissionSessionHandler(agent, submissionInput, (s) =>
+			s.repairInterruptedToolCalls(submissionInput, { toolCalls: [{ type: 'toolCall', ...tc1 }] }),
 		)(ctx);
 
 		expect(repairedLeafId).toBeUndefined();

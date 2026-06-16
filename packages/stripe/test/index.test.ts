@@ -342,9 +342,7 @@ describe('createStripeChannel()', () => {
 			webhook: () => Number.NaN as never,
 		});
 
-		const mapResponse = await channelApp(map).request(
-			await signedRequest(body, 'whsec_serialize'),
-		);
+		const mapResponse = await channelApp(map).request(await signedRequest(body, 'whsec_serialize'));
 		const nanResponse = await channelApp(notANumber).request(
 			await signedRequest(body, 'whsec_serialize'),
 		);

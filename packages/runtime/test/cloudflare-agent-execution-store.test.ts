@@ -28,7 +28,9 @@ function makeFakeSql() {
 				let rows: unknown[];
 				const trimmed = query.trimStart().toUpperCase();
 				const expectsRows =
-					trimmed.startsWith('SELECT') || trimmed.startsWith('WITH') || /\bRETURNING\b/i.test(query);
+					trimmed.startsWith('SELECT') ||
+					trimmed.startsWith('WITH') ||
+					/\bRETURNING\b/i.test(query);
 				if (expectsRows) {
 					rows = stmt.all(...(bindings as never[]));
 				} else {
@@ -68,9 +70,11 @@ describe('createSqlAgentExecutionStore()', () => {
 
 		const columnNames = (table: string) =>
 			new Set(
-				(db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{ name: string }>).map(
-					(row) => row.name,
-				),
+				(
+					db.prepare(`SELECT name FROM pragma_table_info('${table}')`).all() as Array<{
+						name: string;
+					}>
+				).map((row) => row.name),
 			);
 		expect(columnNames('flue_agent_submissions')).toEqual(
 			new Set([
@@ -117,7 +121,9 @@ describe('createSqlAgentExecutionStore()', () => {
 		const tableNames = new Set(
 			(
 				db
-					.prepare("SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+					.prepare(
+						"SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+					)
 					.all() as Array<{ name: string }>
 			).map((row) => row.name),
 		);
@@ -137,7 +143,9 @@ describe('createSqlAgentExecutionStore()', () => {
 		);
 		const submissionIndexNames = (
 			db
-				.prepare("SELECT name FROM sqlite_schema WHERE type = 'index' AND tbl_name = 'flue_agent_submissions'")
+				.prepare(
+					"SELECT name FROM sqlite_schema WHERE type = 'index' AND tbl_name = 'flue_agent_submissions'",
+				)
 				.all() as Array<{ name: string }>
 		).map((row) => row.name);
 		expect(submissionIndexNames).toEqual(
@@ -156,14 +164,31 @@ describe('createSqlAgentExecutionStore()', () => {
 			version: 6 as const,
 			affinityKey: 'aff_00000000000000000000000000',
 			taskSessions: [],
-			entries: [{ type: 'message' as const, id: 'entry-1', parentId: null, timestamp: '2026-06-03T00:00:00.000Z', message: { role: 'user' as const, content: [{ type: 'image' as const, data: imageData, mimeType: 'image/png' }], timestamp: 0 } }],
-			leafId: 'entry-1', metadata: {}, createdAt: '2026-06-03T00:00:00.000Z', updatedAt: '2026-06-03T00:00:00.000Z',
+			entries: [
+				{
+					type: 'message' as const,
+					id: 'entry-1',
+					parentId: null,
+					timestamp: '2026-06-03T00:00:00.000Z',
+					message: {
+						role: 'user' as const,
+						content: [{ type: 'image' as const, data: imageData, mimeType: 'image/png' }],
+						timestamp: 0,
+					},
+				},
+			],
+			leafId: 'entry-1',
+			metadata: {},
+			createdAt: '2026-06-03T00:00:00.000Z',
+			updatedAt: '2026-06-03T00:00:00.000Z',
 		};
 		await store.save('session-1', data);
 		expect(
-			db.prepare(
-				"SELECT COUNT(*) AS count FROM flue_image_chunks WHERE owner_kind = 'session_entry'",
-			).get(),
+			db
+				.prepare(
+					"SELECT COUNT(*) AS count FROM flue_image_chunks WHERE owner_kind = 'session_entry'",
+				)
+				.get(),
 		).toEqual({ count: 2 });
 		expect(await store.load('session-1')).toEqual(data);
 
@@ -176,7 +201,9 @@ describe('createSqlAgentExecutionStore()', () => {
 		expect(await store.load('session-1')).toEqual(updated);
 
 		await store.delete('session-1');
-		expect(db.prepare('SELECT COUNT(*) AS count FROM flue_image_chunks').get()).toEqual({ count: 0 });
+		expect(db.prepare('SELECT COUNT(*) AS count FROM flue_image_chunks').get()).toEqual({
+			count: 0,
+		});
 	});
 
 	it('keeps four-byte Unicode image chunks safely below the row limit', async () => {
@@ -187,24 +214,28 @@ describe('createSqlAgentExecutionStore()', () => {
 			version: 6 as const,
 			affinityKey: 'aff_00000000000000000000000000',
 			taskSessions: [],
-			entries: [{
-				type: 'message' as const,
-				id: 'unicode-entry',
-				parentId: null,
-				timestamp: '2026-06-03T00:00:00.000Z',
-				message: {
-					role: 'user' as const,
-					content: [{ type: 'image' as const, data: imageData, mimeType: 'image/png' }],
-					timestamp: 0,
+			entries: [
+				{
+					type: 'message' as const,
+					id: 'unicode-entry',
+					parentId: null,
+					timestamp: '2026-06-03T00:00:00.000Z',
+					message: {
+						role: 'user' as const,
+						content: [{ type: 'image' as const, data: imageData, mimeType: 'image/png' }],
+						timestamp: 0,
+					},
 				},
-			}],
+			],
 			leafId: 'unicode-entry',
 			metadata: {},
 			createdAt: '2026-06-03T00:00:00.000Z',
 			updatedAt: '2026-06-03T00:00:00.000Z',
 		};
 		await store.save('unicode-session', data);
-		const chunks = db.prepare('SELECT data FROM flue_image_chunks ORDER BY chunk_index').all() as Array<{ data: string }>;
+		const chunks = db
+			.prepare('SELECT data FROM flue_image_chunks ORDER BY chunk_index')
+			.all() as Array<{ data: string }>;
 		expect(chunks.length).toBeGreaterThan(1);
 		for (const chunk of chunks) {
 			expect(Buffer.byteLength(chunk.data, 'utf8')).toBeLessThan(2 * 1024 * 1024);
@@ -236,9 +267,9 @@ describe('createSqlAgentExecutionStore()', () => {
 		expect(submission.input).toMatchObject({ payload: { images: [{ data: imageData }] } });
 		expect(replay.input).toEqual(submission.input);
 		expect(
-			db.prepare(
-				"SELECT COUNT(*) AS count FROM flue_image_chunks WHERE owner_kind = 'submission'",
-			).get(),
+			db
+				.prepare("SELECT COUNT(*) AS count FROM flue_image_chunks WHERE owner_kind = 'submission'")
+				.get(),
 		).toEqual({ count: 2 });
 		await expect(
 			store.submissions.admitDirect({
@@ -281,20 +312,22 @@ describe('createSqlAgentExecutionStore()', () => {
 			version: 6 as const,
 			affinityKey: 'aff_00000000000000000000000000',
 			taskSessions: [],
-			entries: [{
-				type: 'message' as const,
-				id: 'tool-entry',
-				parentId: null,
-				timestamp: '2026-06-03T00:00:00.000Z',
-				message: {
-					role: 'toolResult' as const,
-					toolCallId: 'call-1',
-					toolName: 'camera',
-					content: [{ type: 'image' as const, data: 'image-data', mimeType: 'image/png' }],
-					isError: false,
-					timestamp: 0,
+			entries: [
+				{
+					type: 'message' as const,
+					id: 'tool-entry',
+					parentId: null,
+					timestamp: '2026-06-03T00:00:00.000Z',
+					message: {
+						role: 'toolResult' as const,
+						toolCallId: 'call-1',
+						toolName: 'camera',
+						content: [{ type: 'image' as const, data: 'image-data', mimeType: 'image/png' }],
+						isError: false,
+						timestamp: 0,
+					},
 				},
-			}],
+			],
 			leafId: 'tool-entry',
 			metadata: {},
 			createdAt: '2026-06-03T00:00:00.000Z',
@@ -311,17 +344,25 @@ describe('createSqlAgentExecutionStore()', () => {
 			version: 6 as const,
 			affinityKey: 'aff_00000000000000000000000000',
 			taskSessions: [],
-			entries: [{
-				type: 'message' as const,
-				id: 'entry-1',
-				parentId: null,
-				timestamp: '2026-06-03T00:00:00.000Z',
-				message: {
-					role: 'user' as const,
-					content: [{ type: 'image' as const, data: 'a'.repeat(IMAGE_DATA_CHUNK_LENGTH + 1), mimeType: 'image/png' }],
-					timestamp: 0,
+			entries: [
+				{
+					type: 'message' as const,
+					id: 'entry-1',
+					parentId: null,
+					timestamp: '2026-06-03T00:00:00.000Z',
+					message: {
+						role: 'user' as const,
+						content: [
+							{
+								type: 'image' as const,
+								data: 'a'.repeat(IMAGE_DATA_CHUNK_LENGTH + 1),
+								mimeType: 'image/png',
+							},
+						],
+						timestamp: 0,
+					},
 				},
-			}],
+			],
 			leafId: 'entry-1',
 			metadata: {},
 			createdAt: '2026-06-03T00:00:00.000Z',
@@ -339,17 +380,19 @@ describe('createSqlAgentExecutionStore()', () => {
 			version: 6 as const,
 			affinityKey: 'aff_00000000000000000000000000',
 			taskSessions: [],
-			entries: [{
-				type: 'message' as const,
-				id: 'entry-1',
-				parentId: null,
-				timestamp: '2026-06-03T00:00:00.000Z',
-				message: {
-					role: 'user' as const,
-					content: [{ type: 'image' as const, data: 'image-data', mimeType: 'image/png' }],
-					timestamp: 0,
+			entries: [
+				{
+					type: 'message' as const,
+					id: 'entry-1',
+					parentId: null,
+					timestamp: '2026-06-03T00:00:00.000Z',
+					message: {
+						role: 'user' as const,
+						content: [{ type: 'image' as const, data: 'image-data', mimeType: 'image/png' }],
+						timestamp: 0,
+					},
 				},
-			}],
+			],
 			leafId: 'entry-1',
 			metadata: {},
 			createdAt: '2026-06-03T00:00:00.000Z',
@@ -371,17 +414,19 @@ describe('createSqlAgentExecutionStore()', () => {
 			version: 6 as const,
 			affinityKey: 'aff_00000000000000000000000000',
 			taskSessions: [],
-			entries: [{
-				type: 'message' as const,
-				id: entryId,
-				parentId: null,
-				timestamp: '2026-06-03T00:00:00.000Z',
-				message: {
-					role: 'user' as const,
-					content: [{ type: 'image' as const, data: imageData, mimeType: 'image/png' }],
-					timestamp: 0,
+			entries: [
+				{
+					type: 'message' as const,
+					id: entryId,
+					parentId: null,
+					timestamp: '2026-06-03T00:00:00.000Z',
+					message: {
+						role: 'user' as const,
+						content: [{ type: 'image' as const, data: imageData, mimeType: 'image/png' }],
+						timestamp: 0,
+					},
 				},
-			}],
+			],
 			leafId: entryId,
 			metadata: {},
 			createdAt: '2026-06-03T00:00:00.000Z',
@@ -393,13 +438,40 @@ describe('createSqlAgentExecutionStore()', () => {
 		await store.save('session', second);
 		await store.delete('session:%_');
 		expect(await store.load('session')).toEqual(second);
-		expect(db.prepare('SELECT COUNT(*) AS count FROM flue_image_chunks').get()).toEqual({ count: 1 });
+		expect(db.prepare('SELECT COUNT(*) AS count FROM flue_image_chunks').get()).toEqual({
+			count: 1,
+		});
 	});
 
 	it('rejects persisted session images over the encoded length limit', async () => {
 		const { sql, transactionSync } = makeFakeSql();
 		const store = createSqlSessionStore({ sql, transactionSync });
-		await expect(store.save('session-1', { version: 6, taskSessions: [], affinityKey: 'aff_00000000000000000000000000', entries: [{ type: 'message', id: 'entry-1', parentId: null, timestamp: '2026-06-03T00:00:00.000Z', message: { role: 'user', content: [{ type: 'image', data: 'a'.repeat(14 * 1024 * 1024 + 1), mimeType: 'image/png' }], timestamp: 0 } }], leafId: 'entry-1', metadata: {}, createdAt: '2026-06-03T00:00:00.000Z', updatedAt: '2026-06-03T00:00:00.000Z' })).rejects.toThrow('Image data exceeds');
+		await expect(
+			store.save('session-1', {
+				version: 6,
+				taskSessions: [],
+				affinityKey: 'aff_00000000000000000000000000',
+				entries: [
+					{
+						type: 'message',
+						id: 'entry-1',
+						parentId: null,
+						timestamp: '2026-06-03T00:00:00.000Z',
+						message: {
+							role: 'user',
+							content: [
+								{ type: 'image', data: 'a'.repeat(14 * 1024 * 1024 + 1), mimeType: 'image/png' },
+							],
+							timestamp: 0,
+						},
+					},
+				],
+				leafId: 'entry-1',
+				metadata: {},
+				createdAt: '2026-06-03T00:00:00.000Z',
+				updatedAt: '2026-06-03T00:00:00.000Z',
+			}),
+		).rejects.toThrow('Image data exceeds');
 	});
 
 	it('ensures only one SQL row per replayed dispatch admission', async () => {
@@ -438,10 +510,9 @@ describe('createSqlAgentExecutionStore()', () => {
 		const { db, sql, transactionSync } = makeFakeSql();
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		await store.submissions.admitDispatch(dispatchInput());
-		db.prepare('UPDATE flue_agent_submissions SET input_applied_at = ? WHERE submission_id = ?').run(
-			1,
-			'dispatch-1',
-		);
+		db.prepare(
+			'UPDATE flue_agent_submissions SET input_applied_at = ? WHERE submission_id = ?',
+		).run(1, 'dispatch-1');
 
 		expect(await store.submissions.listRunnableSubmissions()).toEqual([]);
 		expect(await store.submissions.getSubmission('dispatch-1')).toMatchObject({
@@ -455,15 +526,21 @@ describe('createSqlAgentExecutionStore()', () => {
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		const sessionKey = 'agent-session:["agent-1","default","default"]';
 		await store.submissions.admitDispatch(dispatchInput());
-		await store.submissions.claimSubmission({ ...attempt('dispatch-1', 'attempt-1'), ownerId: 'test-owner', leaseExpiresAt: Date.now() + 30_000 });
+		await store.submissions.claimSubmission({
+			...attempt('dispatch-1', 'attempt-1'),
+			ownerId: 'test-owner',
+			leaseExpiresAt: Date.now() + 30_000,
+		});
 		await store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
 
 		await store.submissions.deleteSession(sessionKey, async () => {});
 
 		expect(
-			db.prepare('SELECT dispatch_id, accepted_at FROM flue_agent_dispatch_receipts WHERE dispatch_id = ?').get(
-				'dispatch-1',
-			),
+			db
+				.prepare(
+					'SELECT dispatch_id, accepted_at FROM flue_agent_dispatch_receipts WHERE dispatch_id = ?',
+				)
+				.get('dispatch-1'),
 		).toEqual({
 			dispatch_id: 'dispatch-1',
 			accepted_at: Date.parse('2026-06-03T00:00:00.000Z'),
@@ -488,7 +565,9 @@ describe('createSqlAgentExecutionStore()', () => {
 		const { sql, transactionSync } = makeFakeSql();
 		sql.exec('CREATE TABLE flue_agent_submissions (sequence INTEGER PRIMARY KEY AUTOINCREMENT)');
 
-		expect(() => createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent')).toThrow(
+		expect(() =>
+			createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent'),
+		).toThrow(
 			'[flue] Cloudflare durable agent class "FlueAssistantAgent" could not initialize its SQLite execution store. Underlying error: no such column: status',
 		);
 	});

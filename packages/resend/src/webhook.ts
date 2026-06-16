@@ -1,9 +1,5 @@
 import type { Env, Handler } from 'hono';
-import type {
-	ResendChannelOptions,
-	ResendWebhookDelivery,
-	ResendWebhookEvent,
-} from './index.ts';
+import type { ResendChannelOptions, ResendWebhookDelivery, ResendWebhookEvent } from './index.ts';
 
 const DEFAULT_BODY_LIMIT = 1024 * 1024;
 const decoder = new TextDecoder('utf-8', { fatal: true });

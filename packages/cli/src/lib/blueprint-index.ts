@@ -67,7 +67,9 @@ export function validateBlueprintBody(source: string, file: string, version: num
 		throw new Error(`[blueprints] ${file}: "## Upgrade Guide" must be the final H2 section.`);
 	}
 
-	const entries = headings.filter((heading) => heading.level === 3 && heading.line > upgradeGuide.line);
+	const entries = headings.filter(
+		(heading) => heading.level === 3 && heading.line > upgradeGuide.line,
+	);
 	if (entries.length !== version) {
 		throw new Error(
 			`[blueprints] ${file}: Upgrade Guide must contain exactly ${version} version entries.`,
@@ -81,12 +83,13 @@ export function validateBlueprintBody(source: string, file: string, version: num
 			);
 		}
 		const end = entries[index + 1]?.line ?? lines.length;
-		const body = lines.slice(entry.line + 1, end).join('\n').trim();
+		const body = lines
+			.slice(entry.line + 1, end)
+			.join('\n')
+			.trim();
 		if (expectedVersion === 1) {
 			if (body !== 'Initial version.') {
-				throw new Error(
-					`[blueprints] ${file}: Version 1 body must be exactly "Initial version.".`,
-				);
+				throw new Error(`[blueprints] ${file}: Version 1 body must be exactly "Initial version.".`);
 			}
 		} else {
 			const diff = /```diff[^\n]*\n([\s\S]*?)\n```/g;

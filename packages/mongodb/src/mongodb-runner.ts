@@ -18,13 +18,32 @@ export interface MongoWriteResult {
 }
 
 export interface MongoCollection {
-	findOne(filter: MongoFilter, options?: { sort?: Record<string, 1 | -1>; projection?: Record<string, 0 | 1>; collation?: { locale: 'simple' } }): Promise<MongoDocument | null>;
+	findOne(
+		filter: MongoFilter,
+		options?: {
+			sort?: Record<string, 1 | -1>;
+			projection?: Record<string, 0 | 1>;
+			collation?: { locale: 'simple' };
+		},
+	): Promise<MongoDocument | null>;
 	find(filter?: MongoFilter, options?: MongoCursorOptions): Promise<MongoDocument[]>;
 	insertOne(document: MongoDocument): Promise<MongoWriteResult>;
 	insertMany(documents: MongoDocument[]): Promise<MongoWriteResult>;
-	updateOne(filter: MongoFilter, update: MongoUpdate, options?: { upsert?: boolean }): Promise<MongoWriteResult>;
+	updateOne(
+		filter: MongoFilter,
+		update: MongoUpdate,
+		options?: { upsert?: boolean },
+	): Promise<MongoWriteResult>;
 	updateMany(filter: MongoFilter, update: MongoUpdate): Promise<MongoWriteResult>;
-	findOneAndUpdate(filter: MongoFilter, update: MongoUpdate, options?: { upsert?: boolean; returnDocument?: 'before' | 'after'; sort?: Record<string, 1 | -1> }): Promise<MongoDocument | null>;
+	findOneAndUpdate(
+		filter: MongoFilter,
+		update: MongoUpdate,
+		options?: {
+			upsert?: boolean;
+			returnDocument?: 'before' | 'after';
+			sort?: Record<string, 1 | -1>;
+		},
+	): Promise<MongoDocument | null>;
 	deleteOne(filter: MongoFilter): Promise<MongoWriteResult>;
 	deleteMany(filter: MongoFilter): Promise<MongoWriteResult>;
 }
@@ -58,7 +77,14 @@ export interface MongoRunner extends MongoOperations {
 	transaction<T>(fn: (tx: MongoOperations) => Promise<T>): Promise<T>;
 	topology(): Promise<MongoTopology>;
 	ensureCollection(spec: MongoCollectionSpec): Promise<void>;
-	inspectCollection(name: string): Promise<{ validator: MongoDocument; validationLevel: 'strict'; validationAction: 'error'; indexes: MongoIndexSpec[] } | null>;
+	inspectCollection(
+		name: string,
+	): Promise<{
+		validator: MongoDocument;
+		validationLevel: 'strict';
+		validationAction: 'error';
+		indexes: MongoIndexSpec[];
+	} | null>;
 	close(): void | Promise<void>;
 }
 
@@ -73,7 +99,10 @@ export interface MongoTransactionSession {
 export interface MongoTransactionRetryOptions {
 	maxTransactionAttempts?: number;
 	maxCommitAttempts?: number;
-	hasErrorLabel(error: unknown, label: 'TransientTransactionError' | 'UnknownTransactionCommitResult'): boolean;
+	hasErrorLabel(
+		error: unknown,
+		label: 'TransientTransactionError' | 'UnknownTransactionCommitResult',
+	): boolean;
 }
 
 export async function runMongoTransactionWithRetry<T>(
@@ -89,15 +118,27 @@ export async function runMongoTransactionWithRetry<T>(
 			session.start();
 			const value = await fn(session.operations);
 			for (let commitAttempt = 0; commitAttempt < maxCommits; commitAttempt++) {
-				try { await session.commit(); return value; }
-				catch (error) {
-					if (!options.hasErrorLabel(error, 'UnknownTransactionCommitResult') || commitAttempt + 1 === maxCommits) throw error;
+				try {
+					await session.commit();
+					return value;
+				} catch (error) {
+					if (
+						!options.hasErrorLabel(error, 'UnknownTransactionCommitResult') ||
+						commitAttempt + 1 === maxCommits
+					)
+						throw error;
 				}
 			}
 		} catch (error) {
 			await session.abort().catch(() => undefined);
-			if (!options.hasErrorLabel(error, 'TransientTransactionError') || transactionAttempt + 1 === maxTransactions) throw error;
-		} finally { await session.end(); }
+			if (
+				!options.hasErrorLabel(error, 'TransientTransactionError') ||
+				transactionAttempt + 1 === maxTransactions
+			)
+				throw error;
+		} finally {
+			await session.end();
+		}
 	}
 	throw new TypeError('MongoDB transaction retry limit exhausted.');
 }

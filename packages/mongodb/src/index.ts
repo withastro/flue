@@ -1,5 +1,4 @@
 export { mongodb } from './mongodb-adapter.ts';
-export { runMongoTransactionWithRetry } from './mongodb-runner.ts';
 export type {
 	MongoCollection,
 	MongoCollectionSpec,
@@ -16,3 +15,4 @@ export type {
 	MongoUpdate,
 	MongoWriteResult,
 } from './mongodb-runner.ts';
+export { runMongoTransactionWithRetry } from './mongodb-runner.ts';

@@ -8,8 +8,18 @@
  * @see https://github.com/durable-streams/durable-streams/blob/main/PROTOCOL.md
  */
 
-import { InvalidRequestError, RunNotFoundError, StreamNotFoundError, toHttpResponse } from '../errors.ts';
-import { formatOffset, parseOffset, type EventStreamReadResult, type EventStreamStore } from './event-stream-store.ts';
+import {
+	InvalidRequestError,
+	RunNotFoundError,
+	StreamNotFoundError,
+	toHttpResponse,
+} from '../errors.ts';
+import {
+	type EventStreamReadResult,
+	type EventStreamStore,
+	formatOffset,
+	parseOffset,
+} from './event-stream-store.ts';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -62,9 +72,10 @@ function generateETag(
 	endOffset: string,
 	closed: boolean,
 ): string {
-	const pathEncoded = typeof Buffer !== 'undefined'
-		? Buffer.from(path).toString('base64')
-		: btoa(String.fromCharCode(...new TextEncoder().encode(path)));
+	const pathEncoded =
+		typeof Buffer !== 'undefined'
+			? Buffer.from(path).toString('base64')
+			: btoa(String.fromCharCode(...new TextEncoder().encode(path)));
 	const closedSuffix = closed ? ':c' : '';
 	return `"${pathEncoded}:${startOffset}:${endOffset}${closedSuffix}"`;
 }
@@ -130,23 +141,33 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 	const cursor = url.searchParams.get('cursor') ?? undefined;
 
 	if (offsetValues.length > 1) {
-		return streamErrorResponse(new InvalidRequestError({ reason: 'Duplicate offset parameters are not allowed.' }));
+		return streamErrorResponse(
+			new InvalidRequestError({ reason: 'Duplicate offset parameters are not allowed.' }),
+		);
 	}
 	if (tailValues.length > 1) {
-		return streamErrorResponse(new InvalidRequestError({ reason: 'Duplicate tail parameters are not allowed.' }));
+		return streamErrorResponse(
+			new InvalidRequestError({ reason: 'Duplicate tail parameters are not allowed.' }),
+		);
 	}
 	const tailParam = tailValues[0];
 	if (tailParam !== undefined && !/^[1-9]\d*$/.test(tailParam)) {
-		return streamErrorResponse(new InvalidRequestError({ reason: 'Tail must be an integer greater than or equal to 1.' }));
+		return streamErrorResponse(
+			new InvalidRequestError({ reason: 'Tail must be an integer greater than or equal to 1.' }),
+		);
 	}
 
 	if (liveRaw !== null && offsetValues.length === 0) {
-		return streamErrorResponse(new InvalidRequestError({ reason: 'Offset is required for live mode.' }));
+		return streamErrorResponse(
+			new InvalidRequestError({ reason: 'Offset is required for live mode.' }),
+		);
 	}
 
 	// Validate live mode.
 	if (liveRaw !== null && liveRaw !== 'long-poll' && liveRaw !== 'sse') {
-		return streamErrorResponse(new InvalidRequestError({ reason: 'Invalid live mode. Use "long-poll" or "sse".' }));
+		return streamErrorResponse(
+			new InvalidRequestError({ reason: 'Invalid live mode. Use "long-poll" or "sse".' }),
+		);
 	}
 	const live = liveRaw as 'long-poll' | 'sse' | null;
 
@@ -161,11 +182,14 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 		return streamErrorResponse(streamNotFoundError(path));
 	}
 
-	const readOffset = offsetParam === 'now' && live !== null
-		? meta.nextOffset
-		: offsetParam === '-1' && tailParam !== undefined
-			? formatOffset(Number(maxBigInt(-1n, BigInt(parseOffset(meta.nextOffset)) - BigInt(tailParam))))
-			: offsetParam;
+	const readOffset =
+		offsetParam === 'now' && live !== null
+			? meta.nextOffset
+			: offsetParam === '-1' && tailParam !== undefined
+				? formatOffset(
+						Number(maxBigInt(-1n, BigInt(parseOffset(meta.nextOffset)) - BigInt(tailParam))),
+					)
+				: offsetParam;
 
 	if (live === 'sse') {
 		return handleSseMode(store, path, readOffset, request.signal);
@@ -183,7 +207,9 @@ export async function handleStreamRead(opts: HandleStreamReadOptions): Promise<R
 
 // ─── Catch-up mode ──────────────────────────────────────────────────────────
 
-function streamErrorResponse(error: InvalidRequestError | RunNotFoundError | StreamNotFoundError): Response {
+function streamErrorResponse(
+	error: InvalidRequestError | RunNotFoundError | StreamNotFoundError,
+): Response {
 	// toHttpResponse sets the §12.7 security headers on every error response.
 	return toHttpResponse(error);
 }
@@ -202,7 +228,10 @@ function handleCatchUpMode(
 	result: EventStreamReadResult,
 ): Response {
 	const isClosed = result.closed && result.upToDate;
-	const etag = offsetParam === 'now' ? undefined : generateETag(path, offsetParam, result.nextOffset, isClosed);
+	const etag =
+		offsetParam === 'now'
+			? undefined
+			: generateETag(path, offsetParam, result.nextOffset, isClosed);
 
 	const conditional = etag ? checkConditional(request, etag) : null;
 	if (conditional) return conditional;
@@ -278,7 +307,8 @@ function longPollDataResponse(
 	};
 	if (result.upToDate) headers[STREAM_UP_TO_DATE] = 'true';
 	if (isClosed) headers[STREAM_CLOSED] = 'true';
-	if (offsetParam !== 'now') headers.etag = generateETag(path, offsetParam, result.nextOffset, isClosed);
+	if (offsetParam !== 'now')
+		headers.etag = generateETag(path, offsetParam, result.nextOffset, isClosed);
 	return new Response(JSON.stringify(result.events.map((e) => e.data)), { status: 200, headers });
 }
 
@@ -354,17 +384,21 @@ function handleSseMode(
 	const stream = new ReadableStream<Uint8Array>({
 		start(controller) {
 			// Track client disconnects.
-			signal.addEventListener('abort', () => {
-				isConnected = false;
-				resolveCapacity?.();
-				resolveCapacity = undefined;
-				cleanup();
-				try {
-					controller.close();
-				} catch {
-					// Already closed.
-				}
-			}, { once: true });
+			signal.addEventListener(
+				'abort',
+				() => {
+					isConnected = false;
+					resolveCapacity?.();
+					resolveCapacity = undefined;
+					cleanup();
+					try {
+						controller.close();
+					} catch {
+						// Already closed.
+					}
+				},
+				{ once: true },
+			);
 
 			// Start heartbeat.
 			heartbeatTimer = setInterval(() => {
@@ -378,29 +412,42 @@ function handleSseMode(
 			}, SSE_HEARTBEAT_MS);
 
 			// Run the SSE loop asynchronously.
-			runSseLoop(store, path, offsetParam, controller, encoder, signal, () => isConnected, () => {
-				if (controller.desiredSize === null || controller.desiredSize > 0) return Promise.resolve();
-				return new Promise<void>((resolve) => {
-					resolveCapacity = resolve;
-				});
-			}).then(() => {
-				cleanup();
-				try {
-					controller.close();
-				} catch {
-					// Already closed.
-				}
-			}, (error) => {
-				// A rejected loop (e.g. a failing store read) must not escape as an
-				// unhandled rejection — that would take down the whole process.
-				console.error(`[flue] SSE stream read failed for ${path}:`, error);
-				cleanup();
-				try {
-					controller.error(error);
-				} catch {
-					// Already closed.
-				}
-			});
+			runSseLoop(
+				store,
+				path,
+				offsetParam,
+				controller,
+				encoder,
+				signal,
+				() => isConnected,
+				() => {
+					if (controller.desiredSize === null || controller.desiredSize > 0)
+						return Promise.resolve();
+					return new Promise<void>((resolve) => {
+						resolveCapacity = resolve;
+					});
+				},
+			).then(
+				() => {
+					cleanup();
+					try {
+						controller.close();
+					} catch {
+						// Already closed.
+					}
+				},
+				(error) => {
+					// A rejected loop (e.g. a failing store read) must not escape as an
+					// unhandled rejection — that would take down the whole process.
+					console.error(`[flue] SSE stream read failed for ${path}:`, error);
+					cleanup();
+					try {
+						controller.error(error);
+					} catch {
+						// Already closed.
+					}
+				},
+			);
 		},
 		pull() {
 			resolveCapacity?.();
@@ -512,7 +559,9 @@ async function runSseLoop(
 				[SSE_UP_TO_DATE_FIELD]: true,
 			};
 			try {
-				controller.enqueue(encoder.encode(`event: control\n${encodeSseData(JSON.stringify(keepAlive))}`));
+				controller.enqueue(
+					encoder.encode(`event: control\n${encodeSseData(JSON.stringify(keepAlive))}`),
+				);
 			} catch {
 				return;
 			}

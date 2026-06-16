@@ -114,7 +114,9 @@ function extractContentImages(content: unknown): ExtractedImages<unknown> {
 	return extractImageBlocks(content);
 }
 
-function extractImageArray(images: PromptImage[] | undefined): ExtractedImages<PromptImage[] | undefined> {
+function extractImageArray(
+	images: PromptImage[] | undefined,
+): ExtractedImages<PromptImage[] | undefined> {
 	if (images === undefined) return { value: undefined, chunks: [] };
 	return extractImageBlocks(images) as ExtractedImages<PromptImage[]>;
 }
@@ -153,7 +155,10 @@ function markerIds(content: unknown): string[] {
 	});
 }
 
-function assertExactImageGroups(markerImageIds: string[], imageData: ReadonlyMap<string, string>): void {
+function assertExactImageGroups(
+	markerImageIds: string[],
+	imageData: ReadonlyMap<string, string>,
+): void {
 	const markers = new Set(markerImageIds);
 	if (markers.size !== markerImageIds.length || markers.size !== imageData.size) {
 		throw new Error('[flue] Persisted image chunks do not match persisted image markers.');

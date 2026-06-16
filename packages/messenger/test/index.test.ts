@@ -31,9 +31,7 @@ describe('createMessengerChannel()', () => {
 		);
 
 		expect(accepted.status).toBe(200);
-		expect(accepted.headers.get('content-type')).toBe(
-			'text/plain; charset=UTF-8',
-		);
+		expect(accepted.headers.get('content-type')).toBe('text/plain; charset=UTF-8');
 		expect(await accepted.text()).toBe('challenge-copper');
 		expect(wrongToken.status).toBe(403);
 		expect(duplicate.status).toBe(400);
@@ -106,9 +104,7 @@ describe('createMessengerChannel()', () => {
 			],
 		});
 
-		const result = await channelApp(channel).request(
-			await signedRequest(body, 'app-secret-amber'),
-		);
+		const result = await channelApp(channel).request(await signedRequest(body, 'app-secret-amber'));
 
 		expect(result.status).toBe(200);
 		expect(result.headers.get('content-type')).toBe('text/plain; charset=UTF-8');
@@ -203,9 +199,7 @@ describe('createMessengerChannel()', () => {
 		const entry = payload.entry[0];
 		// Echo, opt-in token, standby, and changes all arrive native and intact.
 		expect(entry?.messaging?.[0]?.message?.is_echo).toBe(true);
-		expect(entry?.messaging?.[1]?.optin?.notification_messages_token).toBe(
-			'capability-violet',
-		);
+		expect(entry?.messaging?.[1]?.optin?.notification_messages_token).toBe('capability-violet');
 		expect(entry?.standby?.[0]?.message?.mid).toBe('m_violet_standby_52');
 		expect(entry?.changes?.[0]?.field).toBe('messaging_postbacks');
 		// String timestamps are preserved verbatim, not coerced.
@@ -239,48 +233,35 @@ describe('createMessengerChannel()', () => {
 			],
 		});
 		const changed = valid.replace('résumé', 'resume');
-		const invalidSignature = new Request(
-			'https://hooks.example.test/channels/messenger/webhook',
-			{
-				method: 'POST',
-				headers: {
-					'content-type': 'application/json',
-					'x-hub-signature-256': await signature(valid, 'app-secret-cedar'),
-				},
-				body: changed,
+		const invalidSignature = new Request('https://hooks.example.test/channels/messenger/webhook', {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+				'x-hub-signature-256': await signature(valid, 'app-secret-cedar'),
 			},
-		);
+			body: changed,
+		});
 		const wrongPageBody = valid.replaceAll('page_cedar_55', 'page_other_58');
 		const malformedBody = '{"object":"page","entry":"not-an-array"}';
 		const app = channelApp(channel);
 
 		const changedResult = await app.request(invalidSignature);
-		const wrongPage = await app.request(
-			await signedRequest(wrongPageBody, 'app-secret-cedar'),
-		);
-		const malformed = await app.request(
-			await signedRequest(malformedBody, 'app-secret-cedar'),
-		);
-		const unsupported = await app.request(
-			'https://hooks.example.test/channels/messenger/webhook',
-			{
-				method: 'POST',
-				headers: { 'content-type': 'text/plain' },
-				body: valid,
+		const wrongPage = await app.request(await signedRequest(wrongPageBody, 'app-secret-cedar'));
+		const malformed = await app.request(await signedRequest(malformedBody, 'app-secret-cedar'));
+		const unsupported = await app.request('https://hooks.example.test/channels/messenger/webhook', {
+			method: 'POST',
+			headers: { 'content-type': 'text/plain' },
+			body: valid,
+		});
+		const oversized = await app.request('https://hooks.example.test/channels/messenger/webhook', {
+			method: 'POST',
+			headers: {
+				'content-type': 'application/json',
+				'content-length': '701',
+				'x-hub-signature-256': await signature(valid, 'app-secret-cedar'),
 			},
-		);
-		const oversized = await app.request(
-			'https://hooks.example.test/channels/messenger/webhook',
-			{
-				method: 'POST',
-				headers: {
-					'content-type': 'application/json',
-					'content-length': '701',
-					'x-hub-signature-256': await signature(valid, 'app-secret-cedar'),
-				},
-				body: valid,
-			},
-		);
+			body: valid,
+		});
 
 		expect(changedResult.status).toBe(401);
 		expect(wrongPage.status).toBe(403);
@@ -326,9 +307,7 @@ describe('createMessengerChannel()', () => {
 		});
 		const body = JSON.stringify(base);
 
-		const json = await channelApp(jsonChannel).request(
-			await signedRequest(body, 'app-secret-fir'),
-		);
+		const json = await channelApp(jsonChannel).request(await signedRequest(body, 'app-secret-fir'));
 		const custom = await channelApp(responseChannel).request(
 			await signedRequest(body, 'app-secret-fir'),
 		);
@@ -403,9 +382,7 @@ describe('createMessengerChannel()', () => {
 			expect(channel.parseConversationKey(id)).toEqual(ref);
 		}
 		expect(() =>
-			channel.parseConversationKey(
-				'messenger:v1:page:page_oak_62:page-scoped-id:%70sid',
-			),
+			channel.parseConversationKey('messenger:v1:page:page_oak_62:page-scoped-id:%70sid'),
 		).toThrow(InvalidMessengerConversationKeyError);
 		expect(() =>
 			createMessengerChannel({
@@ -452,7 +429,5 @@ async function signature(body: string, appSecret: string): Promise<string> {
 	const bytes = new Uint8Array(
 		await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(body)),
 	);
-	return `sha256=${[...bytes]
-		.map((byte) => byte.toString(16).padStart(2, '0'))
-		.join('')}`;
+	return `sha256=${[...bytes].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }

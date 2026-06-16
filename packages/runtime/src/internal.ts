@@ -15,21 +15,6 @@ export { Bash, InMemoryFs } from 'just-bash';
 import { resolveRegisteredModel } from './runtime/providers.ts';
 import type { ModelConfig } from './types.ts';
 
-export type { FlueContextConfig, FlueContextInternal } from './client.ts';
-export { createFlueContext } from './client.ts';
-// `FlueRegistry` (Durable Object class) and the composite Cloudflare run
-// store/index factories live in the `@flue/runtime/cloudflare/internal`
-// subpath because that entry pulls in `cloudflare:workers`, a virtual module
-// Node can't resolve. The generated CF entry imports them from there
-// directly; nothing here may import `cloudflare:workers`.
-export {
-	CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
-	createCloudflareAgentRuntime,
-} from './cloudflare/agent-coordinator.ts';
-export { createSqlSessionStore } from './cloudflare/agent-execution-store.ts';
-export { createSqlRunStore } from './sql-run-store.ts';
-export { createNodeAgentCoordinator, createNodeDispatchQueue } from './node/agent-coordinator.ts';
-export { InMemoryRunStore } from './node/run-store.ts';
 export type {
 	AgentDispatchAdmission,
 	AgentDispatchReceipt,
@@ -43,9 +28,33 @@ export type {
 	SubmissionAttemptRef,
 	SubmissionDurability,
 } from './agent-execution-store.ts';
+export type { FlueContextConfig, FlueContextInternal } from './client.ts';
+export { createFlueContext } from './client.ts';
+// `FlueRegistry` (Durable Object class) and the composite Cloudflare run
+// store/index factories live in the `@flue/runtime/cloudflare/internal`
+// subpath because that entry pulls in `cloudflare:workers`, a virtual module
+// Node can't resolve. The generated CF entry imports them from there
+// directly; nothing here may import `cloudflare:workers`.
+export {
+	CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
+	createCloudflareAgentRuntime,
+} from './cloudflare/agent-coordinator.ts';
+export { createSqlSessionStore } from './cloudflare/agent-execution-store.ts';
+export { createNodeAgentCoordinator, createNodeDispatchQueue } from './node/agent-coordinator.ts';
+export { InMemoryRunStore } from './node/run-store.ts';
+export type {
+	DirectAgentSubmissionInput,
+	DispatchAgentSubmissionInput,
+} from './runtime/agent-submissions.ts';
 export type { DispatchInput, DispatchQueue } from './runtime/dispatch-queue.ts';
-export type { FlueRuntime } from './runtime/flue-app.ts';
-export { configureFlueRuntime, createDefaultFlueApp } from './runtime/flue-app.ts';
+export type { EventStreamStore } from './runtime/event-stream-store.ts';
+export { SqliteEventStreamStore } from './runtime/event-stream-store.ts';
+export type { FlueRuntime, HandleRunRouteOptions } from './runtime/flue-app.ts';
+export {
+	configureFlueRuntime,
+	createDefaultFlueApp,
+	handleRunRouteRequest,
+} from './runtime/flue-app.ts';
 export type {
 	CreateContextFn,
 	DirectAttachedOptions,
@@ -76,13 +85,9 @@ export {
 	invokeDirectAttached,
 	invokeWorkflowAttached,
 } from './runtime/handle-agent.ts';
-export type { HandleRunRouteOptions } from './runtime/flue-app.ts';
-export { handleRunRouteRequest } from './runtime/flue-app.ts';
 export { handleStreamHead, handleStreamRead } from './runtime/handle-stream-routes.ts';
 export { generateWorkflowRunId } from './runtime/ids.ts';
 export { hasRegisteredProvider } from './runtime/providers.ts';
-export type { EventStreamStore } from './runtime/event-stream-store.ts';
-export { SqliteEventStreamStore } from './runtime/event-stream-store.ts';
 export type {
 	ListRunsOpts,
 	ListRunsResponse,
@@ -93,9 +98,9 @@ export type {
 } from './runtime/run-store.ts';
 
 export { bashFactoryToSessionEnv } from './sandbox.ts';
-export type { DirectAgentSubmissionInput, DispatchAgentSubmissionInput } from './runtime/agent-submissions.ts';
 export { InMemorySessionStore } from './session.ts';
 export { parseSkillMarkdown } from './skill-frontmatter.ts';
+export { createSqlRunStore } from './sql-run-store.ts';
 
 /**
  * Resolve a `provider-id/model-id` model specifier to a pi-ai Model.

@@ -6,6 +6,8 @@
  * One `flue_runs` table backs records, lookups, and listings; pointers are
  * a column-subset projection of the run record.
  */
+
+import { clampLimit } from './adapter-helpers.ts';
 import {
 	type CreateRunInput,
 	DEFAULT_LIST_LIMIT,
@@ -20,7 +22,6 @@ import {
 	type RunStatus,
 	type RunStore,
 } from './runtime/run-store.ts';
-import { clampLimit } from './adapter-helpers.ts';
 import { ensureFlueSchemaVersion } from './schema-version.ts';
 import type { SqlStorage } from './sql-storage.ts';
 
@@ -65,9 +66,7 @@ class SqlRunStore implements RunStore {
 	}
 
 	async getRun(runId: string): Promise<RunRecord | null> {
-		const rows = this.sql
-			.exec('SELECT * FROM flue_runs WHERE run_id = ?', runId)
-			.toArray();
+		const rows = this.sql.exec('SELECT * FROM flue_runs WHERE run_id = ?', runId).toArray();
 		const row = rows[0];
 		if (!row) return null;
 		return rowToRunRecord(row);

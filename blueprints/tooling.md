@@ -1,5 +1,5 @@
 ---
-{ "kind": "tooling", "version": 2, "root": true }
+{ 'kind': 'tooling', 'version': 2, 'root': true }
 ---
 
 # Generic Flue Tooling Integration

@@ -25,13 +25,13 @@ The local connection uses private child-process communication. The agent does no
 
 ## Options
 
-| Option             | Default                                                    | Description                                                                                                                         |
-| ------------------ | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `--target node`    | Configuration value                                        | Select the supported local connection target.                                                                                       |
-| `--root <path>`    | Selected config-file directory, or config search directory | Select the project root.                                                                                                            |
-| `--output <path>`  | `<root>/dist`                                              | Select the build output directory.                                                                                                  |
-| `--config <path>`  | Auto-discovered `flue.config.*`                            | Select a configuration file.                                                                                                        |
-| `--env <path>`     | `<config-base>/.env`, when present                         | Select one alternate `.env`-format file loaded before configuration. Relative paths resolve from `<config-base>`. Shell values win. |
+| Option            | Default                                                    | Description                                                                                                                         |
+| ----------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `--target node`   | Configuration value                                        | Select the supported local connection target.                                                                                       |
+| `--root <path>`   | Selected config-file directory, or config search directory | Select the project root.                                                                                                            |
+| `--output <path>` | `<root>/dist`                                              | Select the build output directory.                                                                                                  |
+| `--config <path>` | Auto-discovered `flue.config.*`                            | Select a configuration file.                                                                                                        |
+| `--env <path>`    | `<config-base>/.env`, when present                         | Select one alternate `.env`-format file loaded before configuration. Relative paths resolve from `<config-base>`. Shell values win. |
 
 ## Output and exit behavior
 

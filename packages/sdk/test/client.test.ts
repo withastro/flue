@@ -1,10 +1,6 @@
 import { getEventListeners } from 'node:events';
 import { describe, expect, it } from 'vitest';
-import {
-	type AgentPromptOptions,
-	createFlueClient,
-	FlueApiError,
-} from '../src/index.ts';
+import { type AgentPromptOptions, createFlueClient, FlueApiError } from '../src/index.ts';
 
 describe('createFlueClient', () => {
 	describe('agents.prompt()', () => {
@@ -95,7 +91,11 @@ describe('createFlueClient', () => {
 				},
 			});
 
-			for await (const _ of client.agents.stream('agent', 'id', { offset: '-1', tail: 100, live: false })) {
+			for await (const _ of client.agents.stream('agent', 'id', {
+				offset: '-1',
+				tail: 100,
+				live: false,
+			})) {
 			}
 
 			const parsed = new URL(url);
@@ -154,7 +154,9 @@ describe('createFlueClient', () => {
 				baseUrl: 'https://flue.test',
 				fetch: async (_input, init) =>
 					await new Promise<Response>((_resolve, reject) => {
-						init?.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
+						init?.signal?.addEventListener('abort', () =>
+							reject(new DOMException('Aborted', 'AbortError')),
+						);
 					}),
 			});
 
@@ -175,7 +177,10 @@ describe('createFlueClient', () => {
 			// A long-lived signal reused across retry attempts must not
 			// accumulate one 'abort' listener per failed connection.
 			const controller = new AbortController();
-			const eventStream = client.agents.stream('agent', 'missing', { live: false, signal: controller.signal });
+			const eventStream = client.agents.stream('agent', 'missing', {
+				live: false,
+				signal: controller.signal,
+			});
 			const iterator = eventStream[Symbol.asyncIterator]();
 
 			await expect(iterator.next()).rejects.toThrow();
@@ -185,7 +190,8 @@ describe('createFlueClient', () => {
 		it('delivers events in call order when next() is called concurrently', async () => {
 			const client = createFlueClient({
 				baseUrl: 'https://flue.test',
-				fetch: async () => dsJsonResponse([{ type: 'agent_start' }, { type: 'turn_start' }, { type: 'idle' }]),
+				fetch: async () =>
+					dsJsonResponse([{ type: 'agent_start' }, { type: 'turn_start' }, { type: 'idle' }]),
 			});
 
 			// The async-iterator protocol permits issuing next() before the
@@ -193,7 +199,12 @@ describe('createFlueClient', () => {
 			// calls must queue onto sequential results instead of dropping a
 			// waiter or surfacing an internal error.
 			const iterator = client.agents.stream('agent', 'id', { live: false })[Symbol.asyncIterator]();
-			const results = await Promise.all([iterator.next(), iterator.next(), iterator.next(), iterator.next()]);
+			const results = await Promise.all([
+				iterator.next(),
+				iterator.next(),
+				iterator.next(),
+				iterator.next(),
+			]);
 
 			expect(results).toEqual([
 				{ value: { type: 'agent_start' }, done: false },
@@ -286,7 +297,10 @@ describe('createFlueClient', () => {
 				baseUrl: 'https://flue.test',
 				fetch: async (input) => {
 					urls.push(typeof input === 'string' ? input : new Request(input).url);
-					return dsJsonResponse([{ type: 'run_end', runId: 'run-1', isError: false, durationMs: 100 }], { closed: true });
+					return dsJsonResponse(
+						[{ type: 'run_end', runId: 'run-1', isError: false, durationMs: 100 }],
+						{ closed: true },
+					);
 				},
 			});
 
@@ -317,10 +331,13 @@ describe('createFlueClient', () => {
 							{ upToDate: false, nextOffset: '0000000000000000_0000000000000002' },
 						);
 					}
-					return dsJsonResponse([{ type: 'run_end', runId: 'run-1', isError: false, durationMs: 50 }], {
-						closed: true,
-						nextOffset: '0000000000000000_0000000000000003',
-					});
+					return dsJsonResponse(
+						[{ type: 'run_end', runId: 'run-1', isError: false, durationMs: 50 }],
+						{
+							closed: true,
+							nextOffset: '0000000000000000_0000000000000003',
+						},
+					);
 				},
 			});
 
@@ -397,10 +414,13 @@ describe('createFlueClient', () => {
 							{ upToDate: false, nextOffset: '0000000000000000_0000000000000002' },
 						);
 					}
-					return dsJsonResponse([{ type: 'run_end', runId: 'r1', isError: false, durationMs: 50 }], {
-						closed: true,
-						nextOffset: '0000000000000000_0000000000000003',
-					});
+					return dsJsonResponse(
+						[{ type: 'run_end', runId: 'r1', isError: false, durationMs: 50 }],
+						{
+							closed: true,
+							nextOffset: '0000000000000000_0000000000000003',
+						},
+					);
 				},
 			});
 
@@ -610,7 +630,6 @@ describe('createFlueClient', () => {
 			expect(error.body).toBeNull();
 		});
 	});
-
 });
 
 // ─── Test helpers ───────────────────────────────────────────────────────────

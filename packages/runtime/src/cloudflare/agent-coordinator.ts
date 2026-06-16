@@ -1,4 +1,8 @@
-import type { AgentExecutionStore, AgentSubmission, AgentSubmissionStore } from '../agent-execution-store.ts';
+import type {
+	AgentExecutionStore,
+	AgentSubmission,
+	AgentSubmissionStore,
+} from '../agent-execution-store.ts';
 import type { FlueContextInternal } from '../client.ts';
 import {
 	createAgentSubmissionObserverRegistry,
@@ -8,10 +12,10 @@ import {
 	reconcileInterruptedSubmission,
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
-import { assertAgentDispatchAdmissionInput, handleAgentRequest } from '../runtime/handle-agent.ts';
 import { agentStreamPath } from '../runtime/event-stream-store.ts';
-import { isStreamExcludedEvent } from '../runtime/run-store.ts';
+import { assertAgentDispatchAdmissionInput, handleAgentRequest } from '../runtime/handle-agent.ts';
 import { handleStreamHead, handleStreamRead } from '../runtime/handle-stream-routes.ts';
+import { isStreamExcludedEvent } from '../runtime/run-store.ts';
 import { deleteSessionTree } from '../session.ts';
 import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import { createSqlAgentExecutionStore } from './agent-execution-store.ts';
@@ -75,7 +79,9 @@ interface CloudflareAgentRuntimeOptions {
 		agentName: string,
 		callback: () => T,
 	) => T;
-	readonly createEventStreamStore: (instance: CloudflareAgentInstance) => import('../runtime/event-stream-store.ts').EventStreamStore;
+	readonly createEventStreamStore: (
+		instance: CloudflareAgentInstance,
+	) => import('../runtime/event-stream-store.ts').EventStreamStore;
 }
 
 export interface CloudflareAgentRuntime {
@@ -98,7 +104,9 @@ export interface CloudflareAgentRuntime {
 	): Promise<unknown>;
 }
 
-export function createCloudflareAgentRuntime(options: CloudflareAgentRuntimeOptions): CloudflareAgentRuntime {
+export function createCloudflareAgentRuntime(
+	options: CloudflareAgentRuntimeOptions,
+): CloudflareAgentRuntime {
 	const coordinators = new WeakMap<CloudflareAgentInstance, CloudflareAgentCoordinator>();
 	const observers = createAgentSubmissionObserverRegistry();
 	const activeAttempts = new Set<string>();
@@ -216,7 +224,8 @@ class CloudflareAgentCoordinator {
 				id: this.instance.name,
 				agentName: this.agentName,
 				eventStreamStore: this.eventStreamStore,
-				admitAttachedSubmission: (payload, onEvent, waitForResult) => this.admitAttachedSubmission(payload, onEvent, waitForResult),
+				admitAttachedSubmission: (payload, onEvent, waitForResult) =>
+					this.admitAttachedSubmission(payload, onEvent, waitForResult),
 			}),
 		);
 	}
@@ -272,7 +281,11 @@ class CloudflareAgentCoordinator {
 	 * emitted on either path (including reconciliation-driven settlement)
 	 * reach detached stream readers.
 	 */
-	private createDurableContext(payload: unknown, request: Request, dispatchId?: string): FlueContextInternal {
+	private createDurableContext(
+		payload: unknown,
+		request: Request,
+		dispatchId?: string,
+	): FlueContextInternal {
 		const ctx = this.createContext(payload, request, undefined, dispatchId);
 		const streamPath = agentStreamPath(this.agentName, this.instance.name);
 		ctx.subscribeEvent((event) => {
@@ -292,7 +305,9 @@ class CloudflareAgentCoordinator {
 		}
 	}
 
-	private armSubmissionWake(options: { delaySeconds?: number; idempotent?: boolean } = {}): Promise<unknown> {
+	private armSubmissionWake(
+		options: { delaySeconds?: number; idempotent?: boolean } = {},
+	): Promise<unknown> {
 		this.assertAgentsDurabilityApi('schedule');
 		return this.instance.schedule(
 			options.delaySeconds ?? FLUE_AGENT_SUBMISSION_WAKE_SECONDS,
@@ -308,7 +323,9 @@ class CloudflareAgentCoordinator {
 		return true;
 	}
 
-	private async reconcileSubmissions(options: { driverAlreadyArmed?: boolean } = {}): Promise<boolean> {
+	private async reconcileSubmissions(
+		options: { driverAlreadyArmed?: boolean } = {},
+	): Promise<boolean> {
 		if (!(await this.submissions.hasUnsettledSubmissions())) return false;
 		if (!options.driverAlreadyArmed) await this.restoreSubmissionWake();
 		try {
@@ -348,16 +365,16 @@ class CloudflareAgentCoordinator {
 				}
 			}
 			for (const submission of await this.submissions.listRunnableSubmissions()) {
-			// Cloudflare DOs are single-threaded per instance — leases are
-			// advisory-only. Set to 0 so reconciliation never misidentifies
-			// an active submission as expired. The Node coordinator uses real
-			// lease expiry with heartbeat renewal for multi-process safety.
-			const claimed = await this.submissions.claimSubmission({
-				submissionId: submission.submissionId,
-				attemptId: crypto.randomUUID(),
-				ownerId: this.instance.ctx.id.toString(),
-				leaseExpiresAt: 0,
-			});
+				// Cloudflare DOs are single-threaded per instance — leases are
+				// advisory-only. Set to 0 so reconciliation never misidentifies
+				// an active submission as expired. The Node coordinator uses real
+				// lease expiry with heartbeat renewal for multi-process safety.
+				const claimed = await this.submissions.claimSubmission({
+					submissionId: submission.submissionId,
+					attemptId: crypto.randomUUID(),
+					ownerId: this.instance.ctx.id.toString(),
+					leaseExpiresAt: 0,
+				});
 				if (!claimed) continue;
 				try {
 					await this.startSubmissionAttempt(claimed);
@@ -409,18 +426,22 @@ class CloudflareAgentCoordinator {
 		// reconciliation lands durably even when the previous incarnation
 		// died before creating it. Best-effort: settlement must never depend
 		// on event-stream plumbing.
-		await Promise.resolve(this.eventStreamStore.createStream(agentStreamPath(this.agentName, this.instance.name))).catch(
-			(error) => {
-				console.error('[flue:event-stream] createStream failed:', error);
-			},
-		);
+		await Promise.resolve(
+			this.eventStreamStore.createStream(agentStreamPath(this.agentName, this.instance.name)),
+		).catch((error) => {
+			console.error('[flue:event-stream] createStream failed:', error);
+		});
 		const reconciled = await this.runWithInstanceContext(() =>
 			reconcileInterruptedSubmission(
 				this.submissions,
 				submission,
 				agent,
 				(payload, dispatchId) =>
-					this.createDurableContext(payload, submissionSyntheticRequest(submission.input), dispatchId),
+					this.createDurableContext(
+						payload,
+						submissionSyntheticRequest(submission.input),
+						dispatchId,
+					),
 				{ ownerId: this.instance.ctx.id.toString(), leaseExpiresAt: 0 },
 			),
 		);
@@ -485,7 +506,10 @@ class CloudflareAgentCoordinator {
 	 * rather than thrown: a leftover marker only delays reconciliation of
 	 * this attempt until the staleness cutoff expires.
 	 */
-	private async deleteAttemptMarkerSafely(attempt: { submissionId: string; attemptId: string }): Promise<void> {
+	private async deleteAttemptMarkerSafely(attempt: {
+		submissionId: string;
+		attemptId: string;
+	}): Promise<void> {
 		try {
 			await this.submissions.deleteAttemptMarker(attempt);
 		} catch (error) {
@@ -530,7 +554,11 @@ class CloudflareAgentCoordinator {
 				return agent;
 			},
 			createContext: (payload, dispatchId) =>
-				this.createDurableContext(payload, submissionSyntheticRequest(submission.input), dispatchId),
+				this.createDurableContext(
+					payload,
+					submissionSyntheticRequest(submission.input),
+					dispatchId,
+				),
 			observers: this.observers,
 			wrapExecution: (fn) => this.runWithInstanceContext(fn),
 			onSettled: () => {
@@ -555,7 +583,11 @@ class CloudflareAgentCoordinator {
 		onEvent?: (event: AttachedAgentEvent) => Promise<void> | void,
 		waitForResult = true,
 	) {
-		const input = createDirectAgentSubmissionInput({ agent: this.agentName, id: this.instance.name, payload });
+		const input = createDirectAgentSubmissionInput({
+			agent: this.agentName,
+			id: this.instance.name,
+			payload,
+		});
 		const attachment = this.observers.attach(input.submissionId, { onEvent });
 		try {
 			await this.armSubmissionWake();
@@ -595,9 +627,11 @@ class CloudflareAgentCoordinator {
 			return new Response('Conflicting internal dispatch replay.', { status: 409 });
 		}
 		await this.reconcileSubmissions({ driverAlreadyArmed: true });
-		return Response.json({ dispatchId: admission.submission.submissionId, acceptedAt: input.acceptedAt });
+		return Response.json({
+			dispatchId: admission.submission.submissionId,
+			acceptedAt: input.acceptedAt,
+		});
 	}
-
 }
 
 function submissionAttemptMarkerKey(submission: AgentSubmission): string {
@@ -605,7 +639,8 @@ function submissionAttemptMarkerKey(submission: AgentSubmission): string {
 }
 
 function isInternalDispatchRequest(request: Request): boolean {
-	return request.method === 'POST' && new URL(request.url).pathname === CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH;
+	return (
+		request.method === 'POST' &&
+		new URL(request.url).pathname === CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH
+	);
 }
-
-

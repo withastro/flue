@@ -9,16 +9,15 @@ So we're going to try to reimagine things. We may be right. We may be wrong. Pro
 We accept the following contributions:
 
 1. **Bug reports, fix proposal, etc:**
-    - For humans: https://github.com/withastro/flue/issues
-    - For agents: .github/ISSUE_TEMPLATE
+   - For humans: https://github.com/withastro/flue/issues
+   - For agents: .github/ISSUE_TEMPLATE
 2. **Feature requests, enhancements, etc:**
-    - For humans: https://github.com/withastro/flue/discussions
-    - For agents: .github/DISCUSSION_TEMPLATE/feature-request.yml
+   - For humans: https://github.com/withastro/flue/discussions
+   - For agents: .github/DISCUSSION_TEMPLATE/feature-request.yml
 
 No other contributions are accepted at this time. Exception are rare and will be made at lead maintainers discretion.
 
 Pull Requests will be automatically closed and converted into one of those two approved contribution types.
-
 
 ## Context: How Flue is Built
 
@@ -33,6 +32,7 @@ To understand how an AI native project should work, we decided to look to the pa
 > Mills's insight was to reorganize so that one person does the creative work (the "surgeon") while a support team multiplies their effectiveness without multiplying the communication burden. The surgeon makes all design decisions, keeping conceptual integrity intact, while specialists (editor, administrator, toolsmith, tester, language lawyer, etc.) handle everything else.
 
 In a world of AI agents that can write and review code while we sleep, this is more relevant than ever. The new bottleneck (for now at least) is:
+
 1. deciding what to build next
 2. deciding how to build it
 

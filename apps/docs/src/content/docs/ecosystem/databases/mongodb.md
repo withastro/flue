@@ -30,7 +30,9 @@ const client = new MongoClient(process.env.MONGODB_URL!);
 await client.connect();
 
 const db = client.db(process.env.MONGODB_DATABASE);
-const runner: MongoRunner = { /* ... */ };
+const runner: MongoRunner = {
+  /* ... */
+};
 
 export default mongodb(runner);
 ```

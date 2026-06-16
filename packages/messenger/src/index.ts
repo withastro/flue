@@ -1,17 +1,8 @@
 import type { Context, Env, Handler } from 'hono';
-import {
-	InvalidMessengerConversationKeyError,
-	InvalidMessengerInputError,
-} from './errors.ts';
-import {
-	createMessengerVerificationHandler,
-	createMessengerWebhookHandler,
-} from './webhook.ts';
+import { InvalidMessengerConversationKeyError, InvalidMessengerInputError } from './errors.ts';
+import { createMessengerVerificationHandler, createMessengerWebhookHandler } from './webhook.ts';
 
-export {
-	InvalidMessengerConversationKeyError,
-	InvalidMessengerInputError,
-} from './errors.ts';
+export { InvalidMessengerConversationKeyError, InvalidMessengerInputError } from './errors.ts';
 
 export type JsonValue =
 	| null
@@ -245,9 +236,7 @@ type MessengerHandlerValue = undefined | JsonValue | Response;
  * Returning nothing acknowledges with `EVENT_RECEIVED`. JSON-compatible values
  * become JSON responses, and Hono or Fetch responses pass through unchanged.
  */
-export type MessengerHandlerResult =
-	| MessengerHandlerValue
-	| Promise<MessengerHandlerValue>;
+export type MessengerHandlerResult = MessengerHandlerValue | Promise<MessengerHandlerValue>;
 
 export interface MessengerWebhookHandlerInput<E extends Env = Env> {
 	c: Context<E>;
@@ -311,10 +300,7 @@ export function createMessengerChannel<E extends Env = Env>(
 		},
 		parseConversationKey(id) {
 			try {
-				const match =
-					/^messenger:v1:page:([^:]+):(page-scoped-id|user-ref):([^:]+)$/.exec(
-						id,
-					);
+				const match = /^messenger:v1:page:([^:]+):(page-scoped-id|user-ref):([^:]+)$/.exec(id);
 				if (!match) throw new InvalidMessengerConversationKeyError();
 				const [, encodedPageId, type, participantId] = match;
 				if (!encodedPageId || !type || !participantId) {
@@ -361,9 +347,7 @@ function participantActor(
 	if (!actor || typeof actor !== 'object') return undefined;
 	const id = typeof actor.id === 'string' && actor.id.length > 0 ? actor.id : undefined;
 	const userRef =
-		typeof actor.user_ref === 'string' && actor.user_ref.length > 0
-			? actor.user_ref
-			: undefined;
+		typeof actor.user_ref === 'string' && actor.user_ref.length > 0 ? actor.user_ref : undefined;
 	if (id !== undefined && userRef !== undefined) return undefined;
 	if (id !== undefined) {
 		return id === pageId ? { type: 'page', id } : { type: 'page-scoped-id', id };
@@ -372,9 +356,7 @@ function participantActor(
 	return undefined;
 }
 
-function validateOptions<E extends Env>(
-	options: MessengerChannelOptions<E>,
-): void {
+function validateOptions<E extends Env>(options: MessengerChannelOptions<E>): void {
 	if (!options || typeof options !== 'object') {
 		throw new TypeError('createMessengerChannel() requires an options object.');
 	}
@@ -394,10 +376,7 @@ function assertConversationRef(ref: MessengerConversationRef): void {
 	if (!ref.participant || typeof ref.participant !== 'object') {
 		throw new InvalidMessengerInputError('conversation.participant');
 	}
-	if (
-		ref.participant.type !== 'page-scoped-id' &&
-		ref.participant.type !== 'user-ref'
-	) {
+	if (ref.participant.type !== 'page-scoped-id' && ref.participant.type !== 'user-ref') {
 		throw new InvalidMessengerInputError('conversation.participant.type');
 	}
 	assertSegment(ref.participant.id, 'conversation.participant.id');

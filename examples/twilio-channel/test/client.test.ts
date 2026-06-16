@@ -32,21 +32,17 @@ describe('TwilioClient', () => {
 			'https://api.twilio.test/2010-04-01/Accounts/AC40404040404040404040404040404040/Messages.json',
 		);
 		expect(fetch.mock.calls[0]?.[1]?.headers).toMatchObject({
-			authorization: `Basic ${btoa(
-				'AC40404040404040404040404040404040:node-auth-token',
-			)}`,
+			authorization: `Basic ${btoa('AC40404040404040404040404040404040:node-auth-token')}`,
 			'content-type': 'application/x-www-form-urlencoded',
 		});
-		expect(
-			Object.fromEntries(
-				new URLSearchParams(String(fetch.mock.calls[0]?.[1]?.body)),
-			),
-		).toEqual({
-			To: '+15557016016',
-			From: '+15557017017',
-			Body: 'Node response',
-			MediaUrl: 'https://assets.example.test/node.webp',
-			StatusCallback: 'https://hooks.example.test/channels/twilio/status',
-		});
+		expect(Object.fromEntries(new URLSearchParams(String(fetch.mock.calls[0]?.[1]?.body)))).toEqual(
+			{
+				To: '+15557016016',
+				From: '+15557017017',
+				Body: 'Node response',
+				MediaUrl: 'https://assets.example.test/node.webp',
+				StatusCallback: 'https://hooks.example.test/channels/twilio/status',
+			},
+		);
 	});
 });

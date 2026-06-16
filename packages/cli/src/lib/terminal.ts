@@ -34,7 +34,9 @@ export function brand(lines: [string, string, string]): string {
 }
 
 export function brandRows(title: string, rows: readonly [string, string | undefined][]): void {
-	const visible = rows.filter((row): row is [string, string] => row[1] !== undefined && row[1] !== '');
+	const visible = rows.filter(
+		(row): row is [string, string] => row[1] !== undefined && row[1] !== '',
+	);
 	const mark = [blue(' ▗ '), blue(' ▚ '), blue(' ▘ ')];
 	console.error(`${mark[0]} ${bold(title)}`);
 	visible.forEach(([label, value], index) => {

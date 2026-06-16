@@ -3,8 +3,6 @@ import type { Context, Env, Handler } from 'hono';
 import { InvalidLinearConversationKeyError, InvalidLinearInputError } from './errors.ts';
 import { createLinearWebhookHandler } from './webhook.ts';
 
-export { InvalidLinearConversationKeyError, InvalidLinearInputError } from './errors.ts';
-
 /**
  * Provider-native Linear webhook payload union, re-exported from
  * `@linear/sdk/webhooks`. Verified deliveries are forwarded with Linear's own
@@ -18,6 +16,7 @@ export { InvalidLinearConversationKeyError, InvalidLinearInputError } from './er
  * the payload.
  */
 export type { LinearWebhookPayload } from '@linear/sdk/webhooks';
+export { InvalidLinearConversationKeyError, InvalidLinearInputError } from './errors.ts';
 
 export type JsonValue =
 	| null
@@ -137,8 +136,7 @@ export function createLinearChannel<E extends Env = Env>(
 		},
 		parseConversationKey(id) {
 			try {
-				const agentMatch =
-					/^linear:v1:organization:([^:]+):agent-session:([^:]+)$/.exec(id);
+				const agentMatch = /^linear:v1:organization:([^:]+):agent-session:([^:]+)$/.exec(id);
 				if (agentMatch?.[1] && agentMatch[2]) {
 					const ref: LinearConversationRef = {
 						type: 'agent-session',
@@ -152,8 +150,7 @@ export function createLinearChannel<E extends Env = Env>(
 					return ref;
 				}
 
-				const issueMatch =
-					/^linear:v1:organization:([^:]+):issue:([^:]+):thread:([^:]*)$/.exec(id);
+				const issueMatch = /^linear:v1:organization:([^:]+):issue:([^:]+):thread:([^:]*)$/.exec(id);
 				if (!issueMatch?.[1] || !issueMatch[2] || issueMatch[3] === undefined) {
 					throw new InvalidLinearConversationKeyError();
 				}

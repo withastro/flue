@@ -39,9 +39,7 @@ describe('createTelegramChannel()', () => {
 			},
 		};
 
-		const response = await channelApp(telegram).request(
-			request(raw, 'telegram_secret-42'),
-		);
+		const response = await channelApp(telegram).request(request(raw, 'telegram_secret-42'));
 
 		expect(response.status).toBe(200);
 		expect(webhook).toHaveBeenCalledOnce();
@@ -274,9 +272,7 @@ describe('createTelegramChannel()', () => {
 			webhook: () => 10n as never,
 		});
 
-		expect((await channelApp(throwing).request(request(raw, 'secret'))).status).toBe(
-			500,
-		);
+		expect((await channelApp(throwing).request(request(raw, 'secret'))).status).toBe(500);
 
 		const mapResponse = await channelApp(mapReturn).request(request(raw, 'secret'));
 		expect(mapResponse.status).toBe(200);
@@ -288,9 +284,7 @@ describe('createTelegramChannel()', () => {
 
 		// `Response.json(10n)` throws synchronously; Hono's default error
 		// handler turns the thrown error into a 500.
-		expect((await channelApp(bigintReturn).request(request(raw, 'secret'))).status).toBe(
-			500,
-		);
+		expect((await channelApp(bigintReturn).request(request(raw, 'secret'))).status).toBe(500);
 	});
 
 	it('round-trips regular, business, thread, and direct-topic conversation keys', () => {
@@ -341,9 +335,7 @@ describe('createTelegramChannel()', () => {
 			}),
 		).toThrow(InvalidTelegramInputError);
 		expect(() =>
-			telegram.parseConversationKey(
-				'telegram:v1:regular:chat:01:thread::direct:',
-			),
+			telegram.parseConversationKey('telegram:v1:regular:chat:01:thread::direct:'),
 		).toThrow(InvalidTelegramConversationKeyError);
 		expect(telegram.routes).toHaveLength(1);
 		expect(telegram.routes[0]).toMatchObject({
@@ -364,9 +356,7 @@ function request(value: unknown, secret?: string): Request {
 		method: 'POST',
 		headers: {
 			'content-type': 'application/json; charset=utf-8',
-			...(secret === undefined
-				? {}
-				: { 'x-telegram-bot-api-secret-token': secret }),
+			...(secret === undefined ? {} : { 'x-telegram-bot-api-secret-token': secret }),
 		},
 		body: JSON.stringify(value),
 	});

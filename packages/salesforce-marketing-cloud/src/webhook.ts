@@ -134,7 +134,12 @@ async function verifySignature(
 	signature: Uint8Array,
 ): Promise<boolean> {
 	try {
-		return await crypto.subtle.verify('HMAC', key, copyArrayBuffer(signature), copyArrayBuffer(body));
+		return await crypto.subtle.verify(
+			'HMAC',
+			key,
+			copyArrayBuffer(signature),
+			copyArrayBuffer(body),
+		);
 	} catch {
 		return false;
 	}

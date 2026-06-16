@@ -62,9 +62,7 @@ describe('listRuns()', () => {
 	});
 
 	it('rejects with a configuration error when no runtime is configured', async () => {
-		await expect(listRuns()).rejects.toThrow(
-			'listRuns() called before runtime was configured',
-		);
+		await expect(listRuns()).rejects.toThrow('listRuns() called before runtime was configured');
 	});
 });
 
@@ -123,11 +121,10 @@ describe('getRun()', () => {
 			runId: 'run_01DAILYREPORT',
 			status: 'completed',
 		});
-		expect(routeRunRequest).toHaveBeenCalledExactlyOnceWith(
-			expect.any(Request),
-			undefined,
-			{ workflowName: 'daily-report', runId: 'run_01DAILYREPORT' },
-		);
+		expect(routeRunRequest).toHaveBeenCalledExactlyOnceWith(expect.any(Request), undefined, {
+			workflowName: 'daily-report',
+			runId: 'run_01DAILYREPORT',
+		});
 	});
 });
 

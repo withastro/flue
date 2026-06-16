@@ -7,11 +7,24 @@ interface StagedChunks {
 	owner: PersistedChunkOwner;
 }
 
-export async function stageChunks(runner: MongoRunner, prefix: string, owner: PersistedChunkOwner, chunks: readonly PersistedChunkRow[]): Promise<StagedChunks> {
-	const pointer = await new ValueStore(runner, prefix).stage(`chunks:${owner.kind}:${owner.id}:${owner.part}`, chunks);
+export async function stageChunks(
+	runner: MongoRunner,
+	prefix: string,
+	owner: PersistedChunkOwner,
+	chunks: readonly PersistedChunkRow[],
+): Promise<StagedChunks> {
+	const pointer = await new ValueStore(runner, prefix).stage(
+		`chunks:${owner.kind}:${owner.id}:${owner.part}`,
+		chunks,
+	);
 	return { pointer, owner };
 }
 
-export async function publishChunks(operations: MongoOperations, runner: MongoRunner, prefix: string, staged: StagedChunks): Promise<void> {
+export async function publishChunks(
+	operations: MongoOperations,
+	runner: MongoRunner,
+	prefix: string,
+	staged: StagedChunks,
+): Promise<void> {
 	await new ValueStore(runner, prefix).publish(staged.pointer, operations);
 }

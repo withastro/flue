@@ -1,8 +1,5 @@
 import type { Env, Handler } from 'hono';
-import type {
-	MessengerChannelOptions,
-	MessengerWebhookPayload,
-} from './index.ts';
+import type { MessengerChannelOptions, MessengerWebhookPayload } from './index.ts';
 
 const DEFAULT_BODY_LIMIT = 1024 * 1024;
 const EVENT_RECEIVED = 'EVENT_RECEIVED';
@@ -79,20 +76,15 @@ export function createMessengerWebhookHandler<E extends Env>(
 
 function isJsonRequest(request: Request): boolean {
 	return (
-		request.headers
-			.get('content-type')
-			?.split(';', 1)[0]
-			?.trim()
-			.toLowerCase() === 'application/json'
+		request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() ===
+		'application/json'
 	);
 }
 
 async function readBody(
 	request: Request,
 	bodyLimit: number,
-): Promise<
-	{ type: 'ok'; value: Uint8Array } | { type: 'too-large' } | { type: 'invalid' }
-> {
+): Promise<{ type: 'ok'; value: Uint8Array } | { type: 'too-large' } | { type: 'invalid' }> {
 	const contentLength = request.headers.get('content-length');
 	if (contentLength) {
 		const length = Number(contentLength);
@@ -164,21 +156,14 @@ async function verifySignature(
 	signature: Uint8Array,
 ): Promise<boolean> {
 	try {
-		return crypto.subtle.verify(
-			'HMAC',
-			key,
-			toArrayBuffer(signature),
-			toArrayBuffer(body),
-		);
+		return crypto.subtle.verify('HMAC', key, toArrayBuffer(signature), toArrayBuffer(body));
 	} catch {
 		return false;
 	}
 }
 
 async function digest(value: string): Promise<Uint8Array> {
-	return new Uint8Array(
-		await crypto.subtle.digest('SHA-256', encoder.encode(value)),
-	);
+	return new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(value)));
 }
 
 function secureEqual(left: Uint8Array, right: Uint8Array): boolean {

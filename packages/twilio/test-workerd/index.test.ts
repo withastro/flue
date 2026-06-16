@@ -143,9 +143,7 @@ async function signatureFor(
 		false,
 		['sign'],
 	);
-	const signed = new Uint8Array(
-		await crypto.subtle.sign('HMAC', key, encoder.encode(data)),
-	);
+	const signed = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(data)));
 	let binary = '';
 	for (const byte of signed) binary += String.fromCharCode(byte);
 	return btoa(binary);

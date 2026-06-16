@@ -10,8 +10,8 @@
 
 import * as v from 'valibot';
 import type { AgentSubmission } from './agent-execution-store.ts';
-import { createSessionStorageKey } from './session-identity.ts';
 import { DirectAgentPayloadSchema } from './runtime/schemas.ts';
+import { createSessionStorageKey } from './session-identity.ts';
 
 /**
  * Agent-mode submissions (HTTP and dispatch) always target the

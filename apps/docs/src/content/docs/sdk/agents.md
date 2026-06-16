@@ -17,11 +17,11 @@ Waiting is best-effort and scoped to the server process that admitted the prompt
 
 ### `AgentPromptOptions`
 
-| Field     | Type                 | Description                                                              |
-| --------- | -------------------- | ------------------------------------------------------------------------ |
-| `message` | `string`             | Prompt sent to the agent instance.                                       |
-| `images`  | `AgentPromptImage[]` | Optional image attachments. Requires a vision-capable model.             |
-| `signal`  | `AbortSignal`        | Cancel the in-flight HTTP request.                                       |
+| Field     | Type                 | Description                                                  |
+| --------- | -------------------- | ------------------------------------------------------------ |
+| `message` | `string`             | Prompt sent to the agent instance.                           |
+| `images`  | `AgentPromptImage[]` | Optional image attachments. Requires a vision-capable model. |
+| `signal`  | `AbortSignal`        | Cancel the in-flight HTTP request.                           |
 
 ### `AgentPromptImage`
 
@@ -66,11 +66,11 @@ interface AgentPromptResponse {
 }
 ```
 
-| Field   | Type     | Description                                                              |
-| ------- | -------- | ------------------------------------------------------------------------ |
-| `text`  | `string` | Assistant text returned by the prompt.                                   |
+| Field   | Type     | Description                                                             |
+| ------- | -------- | ----------------------------------------------------------------------- |
+| `text`  | `string` | Assistant text returned by the prompt.                                  |
 | `usage` | object   | Aggregated token and cost usage for model work performed by the prompt. |
-| `model` | object   | Model selected for the prompt's primary turn.                            |
+| `model` | object   | Model selected for the prompt's primary turn.                           |
 
 ## `client.agents.send(...)`
 

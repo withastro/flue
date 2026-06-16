@@ -1,4 +1,6 @@
 /** In-memory `RunStore` for explicitly non-durable (no-database) setups. */
+
+import { clampLimit } from '../adapter-helpers.ts';
 import {
 	type CreateRunInput,
 	type CursorTuple,
@@ -13,7 +15,6 @@ import {
 	type RunRecord,
 	type RunStore,
 } from '../runtime/run-store.ts';
-import { clampLimit } from '../adapter-helpers.ts';
 
 export class InMemoryRunStore implements RunStore {
 	private runs = new Map<string, RunRecord>();

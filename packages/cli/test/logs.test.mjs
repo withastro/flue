@@ -126,9 +126,7 @@ test('forwards authentication headers to follow-mode streams', async () => {
 					'stream-closed': 'true',
 				});
 				response.end(
-					JSON.stringify([
-						{ type: 'run_end', runId: 'run-1', isError: false, durationMs: 100 },
-					]),
+					JSON.stringify([{ type: 'run_end', runId: 'run-1', isError: false, durationMs: 100 }]),
 				);
 				return;
 			}

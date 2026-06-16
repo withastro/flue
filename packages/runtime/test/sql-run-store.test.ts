@@ -12,7 +12,9 @@ function makeFakeSql() {
 				let rows: unknown[];
 				const trimmed = query.trimStart().toUpperCase();
 				const expectsRows =
-					trimmed.startsWith('SELECT') || trimmed.startsWith('WITH') || /\bRETURNING\b/i.test(query);
+					trimmed.startsWith('SELECT') ||
+					trimmed.startsWith('WITH') ||
+					/\bRETURNING\b/i.test(query);
 				if (expectsRows) {
 					rows = stmt.all(...(bindings as never[]));
 				} else {

@@ -7,12 +7,12 @@ Flue implements the [Durable Streams](https://durablestreams.com) read protocol 
 
 ## Stream routes
 
-| Route | Purpose |
-| --- | --- |
-| `GET /agents/:name/:id` | Read one agent instance stream. |
+| Route                    | Purpose                                    |
+| ------------------------ | ------------------------------------------ |
+| `GET /agents/:name/:id`  | Read one agent instance stream.            |
 | `HEAD /agents/:name/:id` | Read agent stream metadata without a body. |
-| `GET /runs/:runId` | Read one workflow-run stream. |
-| `HEAD /runs/:runId` | Read workflow-run metadata without a body. |
+| `GET /runs/:runId`       | Read one workflow-run stream.              |
+| `HEAD /runs/:runId`      | Read workflow-run metadata without a body. |
 
 Agent streams exist after the first admitted prompt for that instance. Workflow-run streams exist after workflow admission. Missing streams return `404`.
 
@@ -39,11 +39,11 @@ A long-poll read waits up to 30 seconds for new data before returning `204`. An 
 
 Offsets are opaque Durable Streams coordinates. Flue currently formats them as two zero-padded integer components, such as `0000000000000000_0000000000000005`. Consumers should treat them as opaque strings and pass back the latest returned value rather than parsing them.
 
-| Offset | Meaning |
-| --- | --- |
-| `-1` | Read from the beginning of the stream. |
-| `now` | Read from the current tail. In live mode, wait for events appended after the current tail. |
-| Returned offset | Resume strictly after that event. |
+| Offset          | Meaning                                                                                    |
+| --------------- | ------------------------------------------------------------------------------------------ |
+| `-1`            | Read from the beginning of the stream.                                                     |
+| `now`           | Read from the current tail. In live mode, wait for events appended after the current tail. |
+| Returned offset | Resume strictly after that event.                                                          |
 
 The SDK exposes a resume offset as `stream.offset`. It is batch-granular: it advances only after every event in the fetched batch has been delivered. Resuming from a checkpoint does not skip undelivered events, though it can re-deliver an in-flight batch. For per-event checkpoints on workflow-run streams use the event's `eventIndex` (there it equals the stream sequence; agent streams restart `eventIndex` per prompt, so it is not an offset there); `flue logs --format ndjson` prints a per-event `offset` derived from it. `agents.send()` and `agents.prompt()` return an offset captured before that prompt is admitted, so reading from that offset yields that prompt's events. `workflows.invoke()` returns the run ID plus a server-provided `streamUrl` and an `offset` captured at admission, so reading from that offset yields the run's events from the start.
 
@@ -62,26 +62,26 @@ GET /runs/run_01JX...?offset=-1&tail=100
 
 ## Response headers
 
-| Header | Meaning |
-| --- | --- |
-| `Stream-Next-Offset` | Offset to use for the next read. |
-| `Stream-Up-To-Date` | `true` when the read reached the current tail. |
-| `Stream-Closed` | `true` when the stream is closed and no more events can arrive. |
-| `Stream-Cursor` | Cursor for long-poll continuation. |
-| `ETag` | Cache validator for catch-up and long-poll reads except `offset=now`. |
-| `Cache-Control` | `no-store` on catch-up reads, long-poll `200` responses, and `HEAD`; `no-cache` on SSE responses; absent on long-poll `204` responses. |
+| Header               | Meaning                                                                                                                                |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `Stream-Next-Offset` | Offset to use for the next read.                                                                                                       |
+| `Stream-Up-To-Date`  | `true` when the read reached the current tail.                                                                                         |
+| `Stream-Closed`      | `true` when the stream is closed and no more events can arrive.                                                                        |
+| `Stream-Cursor`      | Cursor for long-poll continuation.                                                                                                     |
+| `ETag`               | Cache validator for catch-up and long-poll reads except `offset=now`.                                                                  |
+| `Cache-Control`      | `no-store` on catch-up reads, long-poll `200` responses, and `HEAD`; `no-cache` on SSE responses; absent on long-poll `204` responses. |
 
 A conditional catch-up read with `If-None-Match` may return `304`. `offset=now` does not emit an ETag because its meaning is relative to the time of the request. `HEAD` returns stream metadata with the same stream headers and no body.
 
 ## Status behavior
 
-| Status | Meaning |
-| --- | --- |
-| `200` | Read returned event data. Catch-up and long-poll bodies are JSON arrays. |
-| `204` | Long-poll reached its 30-second timeout without new data. |
-| `304` | Conditional read matched the current ETag. |
-| `400` | Invalid stream query. |
-| `404` | Stream does not exist or is not accessible. Agent streams use the `stream_not_found` error category; run streams use `run_not_found`. See the [Errors Reference](/docs/api/errors-reference/). |
+| Status | Meaning                                                                                                                                                                                        |
+| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `200`  | Read returned event data. Catch-up and long-poll bodies are JSON arrays.                                                                                                                       |
+| `204`  | Long-poll reached its 30-second timeout without new data.                                                                                                                                      |
+| `304`  | Conditional read matched the current ETag.                                                                                                                                                     |
+| `400`  | Invalid stream query.                                                                                                                                                                          |
+| `404`  | Stream does not exist or is not accessible. Agent streams use the `stream_not_found` error category; run streams use `run_not_found`. See the [Errors Reference](/docs/api/errors-reference/). |
 
 A closed stream can still return stored history. Once caught up, its response includes `Stream-Closed: true`. Long-poll returns immediately for a closed, caught-up stream.
 

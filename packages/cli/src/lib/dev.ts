@@ -137,9 +137,18 @@ export async function dev(options: DevOptions): Promise<void> {
 		['source', path.relative(root, sourceRoot) || '.'],
 		['output', path.relative(root, output) || '.'],
 	]);
-	section('agents', discoverAgents(sourceRoot).map((agent) => agent.name));
-	section('workflows', discoverWorkflows(sourceRoot).map((workflow) => workflow.name));
-	section('channels', discoverChannels(sourceRoot).map((channel) => channel.name));
+	section(
+		'agents',
+		discoverAgents(sourceRoot).map((agent) => agent.name),
+	);
+	section(
+		'workflows',
+		discoverWorkflows(sourceRoot).map((workflow) => workflow.name),
+	);
+	section(
+		'channels',
+		discoverChannels(sourceRoot).map((channel) => channel.name),
+	);
 	console.error('');
 	if (reloader.url) {
 		const exampleAgent = pickExampleAgentName(sourceRoot);

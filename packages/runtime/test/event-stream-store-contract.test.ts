@@ -1,6 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
-import { defineEventStreamStoreContractTests } from '../src/test-utils/define-event-stream-store-contract-tests.ts';
 import { SqliteEventStreamStore } from '../src/runtime/event-stream-store.ts';
+import { defineEventStreamStoreContractTests } from '../src/test-utils/define-event-stream-store-contract-tests.ts';
 
 function createStore() {
 	const db = new DatabaseSync(':memory:');

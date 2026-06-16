@@ -285,9 +285,7 @@ function buildModelFromRegistration(
 	// provider whose catalog doesn't list this model ID (e.g. a gateway
 	// exposing a brand-new model), provider-level transport facts still
 	// hydrate from the provider's other catalog entries.
-	const catalog = getModel(providerId as KnownProvider, modelId as never) as
-		| Model<Api>
-		| undefined;
+	const catalog = getModel(providerId as KnownProvider, modelId as never) as Model<Api> | undefined;
 	const providerDefaults = catalog ?? getModels(providerId as KnownProvider)[0];
 	const api = registration.api ?? providerDefaults?.api;
 	const baseUrl = registration.baseUrl ?? providerDefaults?.baseUrl;
@@ -299,9 +297,7 @@ function buildModelFromRegistration(
 
 	const base = catalog ?? zeroMetadataModel(providerId, modelId, api, baseUrl);
 	const headers =
-		base.headers || registration.headers
-			? { ...base.headers, ...registration.headers }
-			: undefined;
+		base.headers || registration.headers ? { ...base.headers, ...registration.headers } : undefined;
 	return {
 		...base,
 		api,
@@ -312,7 +308,8 @@ function buildModelFromRegistration(
 			registration.models?.[modelId]?.contextWindow ??
 			registration.contextWindow ??
 			base.contextWindow,
-		maxTokens: registration.models?.[modelId]?.maxTokens ?? registration.maxTokens ?? base.maxTokens,
+		maxTokens:
+			registration.models?.[modelId]?.maxTokens ?? registration.maxTokens ?? base.maxTokens,
 	};
 }
 

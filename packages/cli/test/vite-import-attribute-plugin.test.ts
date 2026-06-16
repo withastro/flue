@@ -2,8 +2,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { afterEach, describe, expect, it } from 'vitest';
 import { build } from 'vite';
+import { afterEach, describe, expect, it } from 'vitest';
 import { importAttributePlugin } from '../src/lib/vite-import-attribute-plugin.ts';
 
 const fixtureRoots: string[] = [];
@@ -46,8 +46,12 @@ export const references = [local, review];`,
 		]);
 		expect(Object.values(result.packagedSkills)).toEqual(
 			expect.arrayContaining([
-				expect.objectContaining({ files: expect.objectContaining({ 'LOCAL.txt': expect.anything() }) }),
-				expect.objectContaining({ files: expect.objectContaining({ 'REVIEW.txt': expect.anything() }) }),
+				expect.objectContaining({
+					files: expect.objectContaining({ 'LOCAL.txt': expect.anything() }),
+				}),
+				expect.objectContaining({
+					files: expect.objectContaining({ 'REVIEW.txt': expect.anything() }),
+				}),
 			]),
 		);
 	});
@@ -143,7 +147,10 @@ function writeSkill(
 	}
 }
 
-async function buildFixture(root: string, source: string): Promise<{
+async function buildFixture(
+	root: string,
+	source: string,
+): Promise<{
 	references: Array<{ id: string; name: string; description: string }>;
 	packagedSkills: Record<string, { files: Record<string, unknown> }>;
 }> {

@@ -74,13 +74,13 @@ type GitHubWebhookDelivery = {
 }[WebhookEventName];
 ```
 
-| Field                | Description                                                            |
-| -------------------- | --------------------------------------------------------------------- |
-| `name`               | The `X-GitHub-Event` value. Discriminates `payload`.                  |
-| `payload`            | GitHub's parsed event, typed by `@octokit/webhooks-types`.            |
+| Field                | Description                                                               |
+| -------------------- | ------------------------------------------------------------------------- |
+| `name`               | The `X-GitHub-Event` value. Discriminates `payload`.                      |
+| `payload`            | GitHub's parsed event, typed by `@octokit/webhooks-types`.                |
 | `deliveryId`         | The `X-GitHub-Delivery` GUID. Manual redeliveries reuse it; dedupe on it. |
-| `hookId`             | Header-derived hook id, when GitHub supplies one.                     |
-| `installationTarget` | Header-derived installation target, when GitHub supplies one.         |
+| `hookId`             | Header-derived hook id, when GitHub supplies one.                         |
+| `installationTarget` | Header-derived installation target, when GitHub supplies one.             |
 
 `name` is the discriminant. Narrowing on it narrows `payload` to the matching
 native event — `name: 'issues'` gives an `IssuesEvent`, `name: 'pull_request'`
@@ -96,11 +96,7 @@ example `push`) are forwarded like any other verified delivery.
 The package re-exports the underlying types from `@octokit/webhooks-types`:
 
 ```ts
-import type {
-  EventPayloadMap,
-  WebhookEvent,
-  WebhookEventName,
-} from '@flue/github';
+import type { EventPayloadMap, WebhookEvent, WebhookEventName } from '@flue/github';
 ```
 
 GitHub `ping` is acknowledged internally and does not invoke `webhook`.

@@ -1,9 +1,6 @@
 import type { Update } from '@grammyjs/types';
 import type { Env, Handler } from 'hono';
-import type {
-	TelegramChannelOptions,
-	TelegramHandlerResult,
-} from './index.ts';
+import type { TelegramChannelOptions, TelegramHandlerResult } from './index.ts';
 
 const DEFAULT_BODY_LIMIT = 1024 * 1024;
 const encoder = new TextEncoder();
@@ -24,9 +21,7 @@ export function createTelegramWebhookHandler<E extends Env>(
 		if (
 			!secureEqual(
 				await expectedSecretDigest,
-				await digestSecret(
-					request.headers.get('x-telegram-bot-api-secret-token') ?? '',
-				),
+				await digestSecret(request.headers.get('x-telegram-bot-api-secret-token') ?? ''),
 			)
 		) {
 			return response(401);
@@ -57,11 +52,7 @@ export function createTelegramWebhookHandler<E extends Env>(
 function isUpdate(value: unknown): value is Update {
 	if (!isRecord(value)) return false;
 	const updateId = value.update_id;
-	return (
-		typeof updateId === 'number' &&
-		Number.isSafeInteger(updateId) &&
-		updateId >= 0
-	);
+	return typeof updateId === 'number' && Number.isSafeInteger(updateId) && updateId >= 0;
 }
 
 function serializeHandlerResult(value: unknown): Response {
@@ -94,11 +85,7 @@ function isJsonRequest(request: Request): boolean {
 async function readBody(
 	request: Request,
 	bodyLimit: number,
-): Promise<
-	| { type: 'success'; value: Uint8Array }
-	| { type: 'too-large' }
-	| { type: 'invalid' }
-> {
+): Promise<{ type: 'success'; value: Uint8Array } | { type: 'too-large' } | { type: 'invalid' }> {
 	const contentLength = request.headers.get('content-length');
 	if (contentLength !== null && Number(contentLength) > bodyLimit) {
 		return { type: 'too-large' };

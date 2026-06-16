@@ -1,11 +1,11 @@
-import { exportJWK, generateKeyPair, SignJWT, type JWK } from 'jose';
 import { Hono } from 'hono';
+import { exportJWK, generateKeyPair, type JWK, SignJWT } from 'jose';
 import { describe, expect, it, vi } from 'vitest';
 import {
 	createTeamsChannel,
-	type TeamsChannel,
 	InvalidTeamsConversationKeyError,
 	InvalidTeamsInputError,
+	type TeamsChannel,
 } from '../src/index.ts';
 
 const APP_ID = '00000000-1111-2222-3333-444444444444';

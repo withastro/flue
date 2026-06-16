@@ -33,11 +33,9 @@ describe('grammY Api', () => {
 			fetch,
 		});
 
-		const regular = await client.sendMessage(
-			-1_001_400_700,
-			'Investigating.',
-			{ message_thread_id: 44 },
-		);
+		const regular = await client.sendMessage(-1_001_400_700, 'Investigating.', {
+			message_thread_id: 44,
+		});
 		const business = await client.sendMessage(881_209, 'The issue is resolved.', {
 			business_connection_id: 'business-cobalt',
 		});
@@ -47,9 +45,7 @@ describe('grammY Api', () => {
 		expect(fetch).toHaveBeenCalledTimes(2);
 		const firstUrl = String(fetch.mock.calls[0]?.[0]);
 		const secondUrl = String(fetch.mock.calls[1]?.[0]);
-		expect(firstUrl).toBe(
-			'https://telegram.example.test/bot123456:test-token/sendMessage',
-		);
+		expect(firstUrl).toBe('https://telegram.example.test/bot123456:test-token/sendMessage');
 		expect(secondUrl).toBe(firstUrl);
 		expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
 			chat_id: -1_001_400_700,

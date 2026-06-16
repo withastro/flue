@@ -43,7 +43,10 @@ export class WorkflowRun {
 	private reconnectWake: (() => void) | undefined;
 	private seenEvents = new Set<string>();
 
-	constructor(private client: FlueClient, private runId: string) {}
+	constructor(
+		private client: FlueClient,
+		private runId: string,
+	) {}
 
 	start(): void {
 		if (this.active || this.terminal) return;
@@ -98,7 +101,8 @@ export class WorkflowRun {
 					return;
 				}
 			}
-			if (this.isCurrent(generation) && this.stream === stream) this.reconnectOffset = stream.offset;
+			if (this.isCurrent(generation) && this.stream === stream)
+				this.reconnectOffset = stream.offset;
 			if (this.isCurrent(generation) && this.stream === stream && !this.terminal) {
 				this.terminal = true;
 				this.update({ status: 'disconnected' });

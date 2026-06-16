@@ -1,8 +1,5 @@
 import { defineTool, dispatch } from '@flue/runtime';
-import {
-	createTwilioChannel,
-	type TwilioConversationRef,
-} from '@flue/twilio';
+import { createTwilioChannel, type TwilioConversationRef } from '@flue/twilio';
 import assistant from '../agents/assistant.ts';
 import { TwilioClient } from '../twilio-client.ts';
 

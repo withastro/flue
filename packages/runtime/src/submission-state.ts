@@ -116,7 +116,8 @@ export function classifySubmissionState(
 		return { kind: 'advanced_past_input' };
 	}
 	const assistant = following.findLast(
-		(entry): entry is MessageEntry => entry.type === 'message' && entry.message.role === 'assistant',
+		(entry): entry is MessageEntry =>
+			entry.type === 'message' && entry.message.role === 'assistant',
 	)?.message as AssistantMessage | undefined;
 	if (!assistant) {
 		return {
@@ -162,7 +163,9 @@ export function classifySubmissionState(
 		};
 	}
 	if (assistant.stopReason === 'toolUse') {
-		if (following.some((entry) => entry.type === 'message' && entry.message.role === 'toolResult')) {
+		if (
+			following.some((entry) => entry.type === 'message' && entry.message.role === 'toolResult')
+		) {
 			return {
 				kind: 'resume',
 				mode: findTrailingPartialToolBatch(following) ? 'tool_results_partial' : 'tool_results',

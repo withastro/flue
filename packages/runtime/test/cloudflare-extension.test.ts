@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-	extend,
 	type ExtensionClass,
+	extend,
 	resolveCloudflareExtension,
 } from '../src/cloudflare/extension.ts';
 

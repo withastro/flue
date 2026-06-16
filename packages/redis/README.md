@@ -12,10 +12,11 @@ await client.connect();
 
 export default redis({
   command: (command, args = []) => client.sendCommand([command, ...args.map(String)]),
-  eval: (script, keys, args = []) => client.eval(script, {
-    keys,
-    arguments: args.map(String),
-  }),
+  eval: (script, keys, args = []) =>
+    client.eval(script, {
+      keys,
+      arguments: args.map(String),
+    }),
   pipeline: async (commands) => {
     const multi = client.multi();
     for (const { command, args = [] } of commands) {

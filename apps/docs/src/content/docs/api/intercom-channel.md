@@ -112,17 +112,17 @@ interface IntercomNotification {
 }
 ```
 
-| Field               | Meaning                                                                  |
-| ------------------- | ------------------------------------------------------------------------ |
-| `type`              | Always `notification_event` after envelope validation.                   |
-| `topic`             | Open provider topic string, e.g. `conversation.user.replied`.            |
-| `app_id`            | Intercom workspace identity in the notification envelope.                |
-| `id`                | Notification identity for application-owned dedupe; pings may be null.   |
-| `created_at`        | Provider creation timestamp in Unix seconds.                             |
-| `delivery_attempts` | Positive provider attempt count.                                         |
-| `first_sent_at`     | First-send timestamp in Unix seconds.                                    |
-| `data.item`         | Provider-native, API-versioned JSON payload for the affected resource.   |
-| `self`              | Optional provider notification URL.                                      |
+| Field               | Meaning                                                                |
+| ------------------- | ---------------------------------------------------------------------- |
+| `type`              | Always `notification_event` after envelope validation.                 |
+| `topic`             | Open provider topic string, e.g. `conversation.user.replied`.          |
+| `app_id`            | Intercom workspace identity in the notification envelope.              |
+| `id`                | Notification identity for application-owned dedupe; pings may be null. |
+| `created_at`        | Provider creation timestamp in Unix seconds.                           |
+| `delivery_attempts` | Positive provider attempt count.                                       |
+| `first_sent_at`     | First-send timestamp in Unix seconds.                                  |
+| `data.item`         | Provider-native, API-versioned JSON payload for the affected resource. |
+| `self`              | Optional provider notification URL.                                    |
 
 `topic` is deliberately not a closed union. Verified future topics remain
 observable. `data.item` is JSON-typed because Intercom's catalog is broad and

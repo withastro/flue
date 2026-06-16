@@ -7,19 +7,19 @@
  */
 
 import { PGlite } from '@electric-sql/pglite';
-import { describe, expect, it } from 'vitest';
 import { PersistedSchemaVersionError, type SessionData } from '@flue/runtime/adapter';
-import {
-	postgres,
-	type PostgresParameter,
-	type PostgresQuery,
-	type PostgresRunner,
-} from '../src/postgres-adapter.ts';
 import {
 	defineEventStreamStoreContractTests,
 	defineRunStoreContractTests,
 	defineStoreContractTests,
 } from '@flue/runtime/test-utils';
+import { describe, expect, it } from 'vitest';
+import {
+	type PostgresParameter,
+	type PostgresQuery,
+	type PostgresRunner,
+	postgres,
+} from '../src/postgres-adapter.ts';
 
 // ─── PGlite → PostgresRunner adapter ───────────────────────────────────────
 

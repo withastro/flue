@@ -10,10 +10,13 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { PersistenceAdapter } from '../agent-execution-store.ts';
-import type { SqlStorage } from '../sql-storage.ts';
-import { createSqlRunStore } from '../sql-run-store.ts';
 import { SqliteEventStreamStore } from '../runtime/event-stream-store.ts';
-import { createSqlAgentExecutionStoreFromSql, ensureSqlAgentExecutionTables } from '../sql-agent-execution-store.ts';
+import {
+	createSqlAgentExecutionStoreFromSql,
+	ensureSqlAgentExecutionTables,
+} from '../sql-agent-execution-store.ts';
+import { createSqlRunStore } from '../sql-run-store.ts';
+import type { SqlStorage } from '../sql-storage.ts';
 
 /**
  * Adapt `node:sqlite` {@link DatabaseSync} to the Cloudflare {@link SqlStorage}
@@ -71,7 +74,11 @@ function createNodeTransactionSync(db: DatabaseSync): <T>(closure: () => T) => T
 }
 
 /** Open a `node:sqlite` database and return the handle, SQL adapter, and transaction wrapper. */
-function openDatabase(path: string): { db: DatabaseSync; sql: SqlStorage; runTransaction: <T>(closure: () => T) => T } {
+function openDatabase(path: string): {
+	db: DatabaseSync;
+	sql: SqlStorage;
+	runTransaction: <T>(closure: () => T) => T;
+} {
 	if (path !== ':memory:') {
 		mkdirSync(dirname(path), { recursive: true });
 	}
@@ -100,7 +107,9 @@ function openDatabase(path: string): { db: DatabaseSync; sql: SqlStorage; runTra
  */
 export function sqlite(path?: string): PersistenceAdapter {
 	if (path !== undefined && path !== ':memory:' && path.trim() === '') {
-		throw new Error('[flue] sqlite() requires a non-empty file path, or omit the argument for an in-memory database.');
+		throw new Error(
+			'[flue] sqlite() requires a non-empty file path, or omit the argument for an in-memory database.',
+		);
 	}
 	const resolvedPath = path ?? ':memory:';
 	let state: ReturnType<typeof openDatabase> | undefined;

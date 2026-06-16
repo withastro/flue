@@ -43,13 +43,11 @@ export class StreamChunkWriter {
 		const events = this.pending;
 		this.pending = [];
 		const segmentIndex = this.segmentIndex++;
-		this.flushing = this.store.appendStreamChunkSegment(
-			this.streamKey,
-			segmentIndex,
-			JSON.stringify(events),
-		).then((inserted) => {
-			if (!inserted) this.failed = true;
-		});
+		this.flushing = this.store
+			.appendStreamChunkSegment(this.streamKey, segmentIndex, JSON.stringify(events))
+			.then((inserted) => {
+				if (!inserted) this.failed = true;
+			});
 		try {
 			await this.flushing;
 		} catch (error) {
@@ -94,7 +92,11 @@ export function reconstructInterruptedStream(
 	let sawToolCall = false;
 	for (const update of events) {
 		if ('partial' in update) partial = update.partial;
-		if (update.type === 'toolcall_start' || update.type === 'toolcall_delta' || update.type === 'toolcall_end') {
+		if (
+			update.type === 'toolcall_start' ||
+			update.type === 'toolcall_delta' ||
+			update.type === 'toolcall_end'
+		) {
 			sawToolCall = true;
 			continue;
 		}
@@ -139,7 +141,9 @@ export function reconstructInterruptedStream(
 	// be preserved from the original partial AssistantMessage.
 	const content = blocks.filter((block): block is AssistantMessage['content'][number] => {
 		if (!block) return false;
-		return block.type === 'text' ? block.text.length > 0 : block.type === 'thinking' && block.thinking.length > 0;
+		return block.type === 'text'
+			? block.text.length > 0
+			: block.type === 'thinking' && block.thinking.length > 0;
 	});
 	if (content.length === 0) return null;
 	const recovered: AssistantMessage = {
@@ -160,7 +164,8 @@ export function reconstructInterruptedStream(
 		continued: {
 			role: 'signal',
 			type: 'stream_continued',
-			content: 'Continue the previous assistant response from exactly where it left off. Do not repeat content already provided.',
+			content:
+				'Continue the previous assistant response from exactly where it left off. Do not repeat content already provided.',
 			attributes: { streamKey },
 			timestamp: Date.now(),
 		},
@@ -170,7 +175,7 @@ export function reconstructInterruptedStream(
 function parseSegment(body: string): StreamChunkEvent[] {
 	try {
 		const parsed = JSON.parse(body) as unknown;
-		return Array.isArray(parsed) ? parsed as StreamChunkEvent[] : [];
+		return Array.isArray(parsed) ? (parsed as StreamChunkEvent[]) : [];
 	} catch {
 		return [];
 	}

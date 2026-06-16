@@ -1,7 +1,4 @@
-import {
-	createMessengerChannel,
-	type MessengerConversationRef,
-} from '@flue/messenger';
+import { createMessengerChannel, type MessengerConversationRef } from '@flue/messenger';
 import { defineTool, dispatch } from '@flue/runtime';
 import assistant from '../agents/assistant.ts';
 import { MessengerClient } from '../messenger-client.ts';
@@ -34,9 +31,7 @@ export const channel = createMessengerChannel({
 						type: 'messenger.message',
 						messageId: event.message.mid,
 						text: event.message.text,
-						attachmentTypes: (event.message.attachments ?? []).map(
-							(attachment) => attachment.type,
-						),
+						attachmentTypes: (event.message.attachments ?? []).map((attachment) => attachment.type),
 						quickReplyPayload: event.message.quick_reply?.payload,
 					},
 				});
@@ -48,8 +43,7 @@ export const channel = createMessengerChannel({
 export function postMessage(ref: MessengerConversationRef) {
 	return defineTool({
 		name: 'post_messenger_message',
-		description:
-			'Post a message to the Facebook Messenger conversation bound to this agent.',
+		description: 'Post a message to the Facebook Messenger conversation bound to this agent.',
 		parameters: {
 			type: 'object',
 			properties: {

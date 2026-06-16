@@ -2,8 +2,8 @@ import type { Activity } from 'botframework-schema';
 import type { Context, Env, Handler } from 'hono';
 import {
 	BotFrameworkDiscoveryError,
-	createBotFrameworkTokenVerifier,
 	type BotFrameworkTokenVerifierOptions,
+	createBotFrameworkTokenVerifier,
 } from './auth.ts';
 import type { TeamsConversationRef, TeamsHandlerResult } from './index.ts';
 

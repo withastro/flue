@@ -24,11 +24,13 @@ export class RedisKeys {
 	meta = () => this.key('meta');
 	sequence = () => this.key('sequence', 'admission');
 	session = (id: string) => this.encoded('session', id);
-	sessionGeneration = (id: string, generation: string) => this.encoded('session-generation', id, generation);
+	sessionGeneration = (id: string, generation: string) =>
+		this.encoded('session-generation', id, generation);
 	sessionGenerations = (id: string) => this.encoded('session-generations', id);
 	sessionReaders = (id: string) => this.encoded('session-readers', id);
 	submission = (id: string) => this.encoded('submission', id);
-	submissionGeneration = (id: string, generation: string) => this.encoded('submission-generation', id, generation);
+	submissionGeneration = (id: string, generation: string) =>
+		this.encoded('submission-generation', id, generation);
 	submissionGenerations = (id: string) => this.encoded('submission-generations', id);
 	submissionReaders = (id: string) => this.encoded('submission-readers', id);
 	submissionIds = () => this.key('submissions');
@@ -43,7 +45,8 @@ export class RedisKeys {
 	deletion = (sessionKey: string) => this.encoded('deletion', sessionKey);
 	deletions = () => this.key('deletions');
 	receipt = (id: string) => this.encoded('receipt', id);
-	marker = (submissionId: string, attemptId: string) => this.encoded('marker', submissionId, attemptId);
+	marker = (submissionId: string, attemptId: string) =>
+		this.encoded('marker', submissionId, attemptId);
 	markers = () => this.key('markers');
 	run = (id: string) => this.encoded('run', id);
 	runs = () => this.key('runs');

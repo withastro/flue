@@ -442,9 +442,7 @@ describe('createLinearChannel()', () => {
 		expect(issueKey).toBe(
 			'linear:v1:organization:org%3Aglacier:issue:issue%2Famber:thread:comment%3Aroot',
 		);
-		expect(sessionKey).toBe(
-			'linear:v1:organization:org%3Aglacier:agent-session:session%2Fcobalt',
-		);
+		expect(sessionKey).toBe('linear:v1:organization:org%3Aglacier:agent-session:session%2Fcobalt');
 		expect(linear.parseConversationKey(issueKey)).toEqual(issueRef);
 		expect(linear.parseConversationKey(sessionKey)).toEqual(sessionRef);
 	});

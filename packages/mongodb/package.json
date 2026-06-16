@@ -17,15 +17,21 @@
 	},
 	"main": "./dist/index.mjs",
 	"types": "./dist/index.d.mts",
-	"files": ["dist"],
-	"engines": { "node": ">=22.18.0" },
+	"files": [
+		"dist"
+	],
+	"engines": {
+		"node": ">=22.18.0"
+	},
 	"scripts": {
 		"build": "tsdown",
 		"check:types": "tsc --noEmit",
 		"test": "vitest run",
 		"check:lint": "biome lint ."
 	},
-	"dependencies": { "@flue/runtime": "workspace:*" },
+	"dependencies": {
+		"@flue/runtime": "workspace:*"
+	},
 	"devDependencies": {
 		"mongodb": "^6.17.0",
 		"tsdown": "^0.22.0",

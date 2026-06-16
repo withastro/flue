@@ -6,8 +6,8 @@
  * and SSE live tailing.
  */
 
-import { stream } from '@durable-streams/client';
 import type { BackoffOptions, LiveMode } from '@durable-streams/client';
+import { stream } from '@durable-streams/client';
 import type { FlueEvent } from '../types.ts';
 
 /** Options for streaming Flue events from an agent instance or workflow run. */
@@ -96,7 +96,9 @@ export function createFlueEventStream<T = FlueEvent>(
 	const connect = (): Promise<Awaited<ReturnType<typeof stream<T>>>> => {
 		if (responsePromise) return responsePromise;
 		if (abortController.signal.aborted) {
-			return Promise.reject(abortController.signal.reason ?? new DOMException('Aborted', 'AbortError'));
+			return Promise.reject(
+				abortController.signal.reason ?? new DOMException('Aborted', 'AbortError'),
+			);
 		}
 		responsePromise = stream<T>({
 			url: url.toString(),
@@ -130,7 +132,12 @@ export function createFlueEventStream<T = FlueEvent>(
 	// undelivered ones land within microtasks once fetching has finished).
 	let started = false;
 	let pending:
-		| { items: readonly T[]; next: number; offset: string; final: { upToDate: boolean } | undefined }
+		| {
+				items: readonly T[];
+				next: number;
+				offset: string;
+				final: { upToDate: boolean } | undefined;
+		  }
 		| undefined;
 	let drained: (() => void) | undefined;
 	let notify: (() => void) | undefined;
@@ -166,7 +173,8 @@ export function createFlueEventStream<T = FlueEvent>(
 	const startConsuming = (res: Awaited<ReturnType<typeof stream<T>>>) => {
 		res.subscribeJson<T>((batch) => {
 			if (abortController.signal.aborted) return;
-			const final = batch.streamClosed || streamOpts.live === false ? { upToDate: batch.upToDate } : undefined;
+			const final =
+				batch.streamClosed || streamOpts.live === false ? { upToDate: batch.upToDate } : undefined;
 			if (batch.items.length === 0) {
 				// Nothing to deliver; the batch's next-offset is still a safe
 				// resume point because no undelivered event lies behind it.
@@ -249,7 +257,12 @@ export function createFlueEventStream<T = FlueEvent>(
 				// stream, even when the server caps the catch-up batch and
 				// reports more data remains (no Stream-Up-To-Date header).
 				// Reconnect from the latest offset until up-to-date.
-				if (streamOpts.live === false && finalBatch && !finalBatch.upToDate && finalBatch.offset !== connectOffset) {
+				if (
+					streamOpts.live === false &&
+					finalBatch &&
+					!finalBatch.upToDate &&
+					finalBatch.offset !== connectOffset
+				) {
 					connectOffset = finalBatch.offset;
 					responsePromise = undefined;
 					started = false;

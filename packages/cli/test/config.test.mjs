@@ -64,10 +64,7 @@ describe('resolveConfig()', () => {
 
 		it('rejects a config file with an invalid target value', async () => {
 			const root = createFixtureRoot();
-			fs.writeFileSync(
-				path.join(root, 'flue.config.mjs'),
-				`export default { target: 'deno' };\n`,
-			);
+			fs.writeFileSync(path.join(root, 'flue.config.mjs'), `export default { target: 'deno' };\n`);
 			await assert.rejects(resolveConfig({ cwd: root }), /Invalid config/);
 		});
 

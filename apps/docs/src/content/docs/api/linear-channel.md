@@ -33,7 +33,7 @@ interface LinearChannelOptions<E extends Env = Env> {
 | `organizationId` | Optional signed organization constraint. Mismatches receive `403`. |
 | `webhookId`      | Optional signed webhook constraint. Mismatches receive `403`.      |
 | `bodyLimit`      | Maximum request body. Default: 1 MiB.                              |
-| `webhook`        | Callback for every verified delivery.                             |
+| `webhook`        | Callback for every verified delivery.                              |
 
 ```ts
 type LinearHandlerResult = void | JsonValue | Response | Promise<void | JsonValue | Response>;

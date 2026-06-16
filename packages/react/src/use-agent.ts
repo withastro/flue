@@ -43,7 +43,7 @@ export function useFlueAgent(options: UseFlueAgentOptions): UseFlueAgentResult {
 		sendMessage: session
 			? session.sendMessage.bind(session)
 			: async () => {
-				throw new Error('useFlueAgent() cannot send without an agent id');
-			},
+					throw new Error('useFlueAgent() cannot send without an agent id');
+				},
 	};
 }

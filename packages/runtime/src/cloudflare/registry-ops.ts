@@ -11,6 +11,8 @@
  * Does not import `cloudflare:workers`; the `FlueRegistry` DO class wraps
  * these synchronous ops in `cloudflare/registry-do.ts`.
  */
+
+import { clampLimit } from '../adapter-helpers.ts';
 import {
 	DEFAULT_LIST_LIMIT,
 	decodeRunCursor,
@@ -21,7 +23,6 @@ import {
 	type RunPointer,
 	type RunStatus,
 } from '../runtime/run-store.ts';
-import { clampLimit } from '../adapter-helpers.ts';
 import { ensureFlueSchemaVersion } from '../schema-version.ts';
 import type { SqlStorage } from '../sql-storage.ts';
 

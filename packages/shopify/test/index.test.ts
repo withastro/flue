@@ -48,12 +48,8 @@ describe('createShopifyChannel()', () => {
 		expect(input.c.req.header('x-shopify-topic')).toBe('orders/create');
 		expect(input.c.req.header('x-shopify-shop-domain')).toBe('flue-fixtures.myshopify.com');
 		expect(input.c.req.header('x-shopify-api-version')).toBe('2026-04');
-		expect(input.c.req.header('x-shopify-webhook-id')).toBe(
-			'3f884e50-7f2f-48b1-a85b-1f5f1d499173',
-		);
-		expect(input.c.req.header('x-shopify-event-id')).toBe(
-			'9f66d8cb-82e2-4fd7-b70d-369ec19ddc2e',
-		);
+		expect(input.c.req.header('x-shopify-webhook-id')).toBe('3f884e50-7f2f-48b1-a85b-1f5f1d499173');
+		expect(input.c.req.header('x-shopify-event-id')).toBe('9f66d8cb-82e2-4fd7-b70d-369ec19ddc2e');
 		expect(input.c.req.header('x-shopify-triggered-at')).toBe('2026-06-13T23:45:10.123456Z');
 		expect(input.c.req.header('x-shopify-sub-topic')).toBe('online-store');
 	});
@@ -131,9 +127,10 @@ describe('createShopifyChannel()', () => {
 			expect(response.status).toBe(200);
 		}
 
-		expect(
-			webhook.mock.calls.map(([input]) => input.c.req.header('x-shopify-topic')),
-		).toEqual(['customers/data_request', 'inventory_forecasts/recalculated']);
+		expect(webhook.mock.calls.map(([input]) => input.c.req.header('x-shopify-topic'))).toEqual([
+			'customers/data_request',
+			'inventory_forecasts/recalculated',
+		]);
 		expect(webhook.mock.calls[1]?.[0].payload).toEqual({
 			forecast: [1, 2, 3],
 			source: null,

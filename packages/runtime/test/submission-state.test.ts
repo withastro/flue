@@ -318,10 +318,7 @@ describe('classifySubmissionState()', () => {
 
 	it('counts consecutive trailing retryable errors when several persisted in a row', () => {
 		const following: SessionEntry[] = [
-			messageEntry(
-				'a1',
-				assistant({ stopReason: 'error', errorMessage: '429 Too Many Requests' }),
-			),
+			messageEntry('a1', assistant({ stopReason: 'error', errorMessage: '429 Too Many Requests' })),
 			messageEntry('a2', assistant({ stopReason: 'error', errorMessage: 'Overloaded' })),
 		];
 		expect(classifySubmissionState(following, { contextWindow: 100000 })).toMatchObject({

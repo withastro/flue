@@ -1,14 +1,7 @@
-import type {
-	WebhookMessage,
-	WebhookValue,
-	WhatsAppConversationRef,
-} from '@flue/whatsapp';
+import type { WebhookMessage, WebhookValue, WhatsAppConversationRef } from '@flue/whatsapp';
 import { WhatsAppClient } from '@kapso/whatsapp-cloud-api';
 import { describe, expect, it, vi } from 'vitest';
-import {
-	inboundConversationRef,
-	sendTextMessage,
-} from '../src/whatsapp-client.ts';
+import { inboundConversationRef, sendTextMessage } from '../src/whatsapp-client.ts';
 
 describe('inboundConversationRef()', () => {
 	it('uses the business-scoped user id when an inbound message also has a phone number', () => {

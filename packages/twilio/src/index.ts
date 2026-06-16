@@ -1,17 +1,8 @@
 import type { Context, Env, Handler } from 'hono';
-import {
-	InvalidTwilioConversationKeyError,
-	InvalidTwilioInputError,
-} from './errors.ts';
-import {
-	createTwilioStatusCallbackHandler,
-	createTwilioWebhookHandler,
-} from './webhook.ts';
+import { InvalidTwilioConversationKeyError, InvalidTwilioInputError } from './errors.ts';
+import { createTwilioStatusCallbackHandler, createTwilioWebhookHandler } from './webhook.ts';
 
-export {
-	InvalidTwilioConversationKeyError,
-	InvalidTwilioInputError,
-} from './errors.ts';
+export { InvalidTwilioConversationKeyError, InvalidTwilioInputError } from './errors.ts';
 
 export interface ChannelRoute<E extends Env = Env> {
 	readonly method: string;
@@ -127,9 +118,7 @@ export type TwilioConversationRef =
 
 type TwilioHandlerValue = undefined | Response;
 
-export type TwilioHandlerResult =
-	| TwilioHandlerValue
-	| Promise<TwilioHandlerValue>;
+export type TwilioHandlerResult = TwilioHandlerValue | Promise<TwilioHandlerValue>;
 
 /** Input for one verified inbound message webhook. */
 export interface TwilioWebhookHandlerInput<E extends Env = Env> {
@@ -193,12 +182,7 @@ export function createTwilioChannel<E extends Env = Env>(
 		routes,
 		conversationKey(ref) {
 			assertConversationRef(ref);
-			const base = [
-				'twilio',
-				'v1',
-				'account',
-				encodeURIComponent(ref.accountSid),
-			];
+			const base = ['twilio', 'v1', 'account', encodeURIComponent(ref.accountSid)];
 			return ref.type === 'address'
 				? [
 						...base,
@@ -219,10 +203,7 @@ export function createTwilioChannel<E extends Env = Env>(
 		},
 		parseConversationKey(id) {
 			try {
-				const address =
-					/^twilio:v1:account:([^:]+):address:([^:]+):participant:([^:]+)$/.exec(
-						id,
-					);
+				const address = /^twilio:v1:account:([^:]+):address:([^:]+):participant:([^:]+)$/.exec(id);
 				const service =
 					/^twilio:v1:account:([^:]+):messaging-service:([^:]+):address:([^:]+):participant:([^:]+)$/.exec(
 						id,
@@ -240,8 +221,7 @@ export function createTwilioChannel<E extends Env = Env>(
 						participant: decodeURIComponent(participant),
 					};
 				} else if (service) {
-					const [, accountSid, messagingServiceSid, destination, participant] =
-						service;
+					const [, accountSid, messagingServiceSid, destination, participant] = service;
 					if (!accountSid || !messagingServiceSid || !destination || !participant) {
 						throw new InvalidTwilioConversationKeyError();
 					}
@@ -282,10 +262,7 @@ function validateOptions<E extends Env>(options: TwilioChannelOptions<E>): void 
 	if (options.destination.type === 'address') {
 		assertSegment(options.destination.address, 'destination.address');
 	} else if (options.destination.type === 'messaging-service') {
-		assertSegment(
-			options.destination.messagingServiceSid,
-			'destination.messagingServiceSid',
-		);
+		assertSegment(options.destination.messagingServiceSid, 'destination.messagingServiceSid');
 	} else {
 		throw new InvalidTwilioInputError('destination.type');
 	}
@@ -295,17 +272,12 @@ function validateOptions<E extends Env>(options: TwilioChannelOptions<E>): void 
 	const hasStatusUrl = options.statusCallbackUrl !== undefined;
 	const hasStatusHandler = options.statusCallback !== undefined;
 	if (hasStatusUrl !== hasStatusHandler) {
-		throw new InvalidTwilioInputError(
-			hasStatusUrl ? 'statusCallback' : 'statusCallbackUrl',
-		);
+		throw new InvalidTwilioInputError(hasStatusUrl ? 'statusCallback' : 'statusCallbackUrl');
 	}
 	if (options.statusCallbackUrl !== undefined) {
 		assertConfiguredUrl(options.statusCallbackUrl, 'statusCallbackUrl');
 	}
-	if (
-		options.statusCallback !== undefined &&
-		typeof options.statusCallback !== 'function'
-	) {
+	if (options.statusCallback !== undefined && typeof options.statusCallback !== 'function') {
 		throw new InvalidTwilioInputError('statusCallback');
 	}
 }
@@ -335,10 +307,7 @@ function assertConversationRef(ref: TwilioConversationRef): void {
 	assertSegment(ref.participant, 'conversation.participant');
 	if (ref.type === 'address') return;
 	if (ref.type === 'messaging-service') {
-		assertSegment(
-			ref.messagingServiceSid,
-			'conversation.messagingServiceSid',
-		);
+		assertSegment(ref.messagingServiceSid, 'conversation.messagingServiceSid');
 		return;
 	}
 	throw new InvalidTwilioInputError('conversation.type');

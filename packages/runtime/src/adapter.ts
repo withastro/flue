@@ -66,6 +66,7 @@ export type { DispatchInput } from './runtime/dispatch-queue.ts';
 
 // ─── Adapter helper functions ───────────────────────────────────────────────
 
+export type { SubmissionPayloadContext } from './adapter-helpers.ts';
 export {
 	clampLimit,
 	deduplicateSessionDeletion,
@@ -75,14 +76,12 @@ export {
 	SUBMISSION_SESSION_NAME,
 } from './adapter-helpers.ts';
 
-export type { SubmissionPayloadContext } from './adapter-helpers.ts';
-
 export { createSessionStorageKey } from './session-identity.ts';
 
 // ─── Schema versioning ──────────────────────────────────────────────────────
 
-export { assertSupportedFlueSchemaVersion, FLUE_SCHEMA_VERSION } from './schema-version.ts';
 export { PersistedSchemaVersionError } from './errors.ts';
+export { assertSupportedFlueSchemaVersion, FLUE_SCHEMA_VERSION } from './schema-version.ts';
 
 // ─── Persisted chunk placement ───────────────────────────────────────────────
 
@@ -114,12 +113,26 @@ export type {
 	RunStatus,
 	RunStore,
 } from './runtime/run-store.ts';
-export { DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT, encodeRunCursor, decodeRunCursor } from './runtime/run-store.ts';
+export {
+	DEFAULT_LIST_LIMIT,
+	decodeRunCursor,
+	encodeRunCursor,
+	MAX_LIST_LIMIT,
+} from './runtime/run-store.ts';
 
 // ─── Event stream store ─────────────────────────────────────────────────────
 
-export type { EventStreamStore, EventStreamMeta, EventStreamReadResult } from './runtime/event-stream-store.ts';
-export { DEFAULT_READ_LIMIT, formatOffset, MAX_READ_LIMIT, parseOffset } from './runtime/event-stream-store.ts';
+export type {
+	EventStreamMeta,
+	EventStreamReadResult,
+	EventStreamStore,
+} from './runtime/event-stream-store.ts';
+export {
+	DEFAULT_READ_LIMIT,
+	formatOffset,
+	MAX_READ_LIMIT,
+	parseOffset,
+} from './runtime/event-stream-store.ts';
 
 // ─── Re-export session types needed for SessionStore implementations ────────
 

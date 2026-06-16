@@ -1,5 +1,10 @@
 import type { Env, Handler } from 'hono';
-import type { IntercomChannelOptions, IntercomNotification, JsonObject, JsonValue } from './index.ts';
+import type {
+	IntercomChannelOptions,
+	IntercomNotification,
+	JsonObject,
+	JsonValue,
+} from './index.ts';
 
 const DEFAULT_BODY_LIMIT = 1024 * 1024;
 const encoder = new TextEncoder();
@@ -104,7 +109,12 @@ async function verifySignature(
 	signature: Uint8Array,
 ): Promise<boolean> {
 	try {
-		return await crypto.subtle.verify('HMAC', key, copyArrayBuffer(signature), copyArrayBuffer(body));
+		return await crypto.subtle.verify(
+			'HMAC',
+			key,
+			copyArrayBuffer(signature),
+			copyArrayBuffer(body),
+		);
 	} catch {
 		return false;
 	}

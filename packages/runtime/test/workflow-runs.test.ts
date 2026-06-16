@@ -9,9 +9,9 @@ import {
 	InMemoryRunStore,
 	InMemorySessionStore,
 } from '../src/internal.ts';
+import { flue } from '../src/routing.ts';
 import { formatOffset } from '../src/runtime/event-stream-store.ts';
 import { resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
-import { flue } from '../src/routing.ts';
 import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 afterEach(() => {
@@ -115,7 +115,12 @@ describe('workflow invocation', () => {
 		const response = await app.fetch(
 			new Request('http://localhost/flue/workflows/daily-report?wait=result', { method: 'POST' }),
 		);
-		const body = (await response.json()) as { result: unknown; runId: string; streamUrl: string; offset: string };
+		const body = (await response.json()) as {
+			result: unknown;
+			runId: string;
+			streamUrl: string;
+			offset: string;
+		};
 
 		expect(response.status).toBe(200);
 		expect(body).toEqual({
@@ -449,16 +454,24 @@ describe('workflow run lifecycle', () => {
 
 		const result = await eventStreamStore.readEvents(streamPath, { offset: '-1' });
 		const recovered = result.events
-			.map((entry) => ({ offset: entry.offset, data: entry.data as { type: string; eventIndex?: number } }))
+			.map((entry) => ({
+				offset: entry.offset,
+				data: entry.data as { type: string; eventIndex?: number },
+			}))
 			.filter((entry) => entry.data.type === 'run_resume' || entry.data.type === 'run_end');
 
 		// Counting events would restart at index 3 and mint duplicates; the
 		// head-derived index continues after the gap, keeping seq == eventIndex.
 		expect(recovered).toEqual([
-			{ offset: formatOffset(7), data: expect.objectContaining({ type: 'run_resume', eventIndex: 7 }) },
-			{ offset: formatOffset(8), data: expect.objectContaining({ type: 'run_end', eventIndex: 8, isError: true }) },
+			{
+				offset: formatOffset(7),
+				data: expect.objectContaining({ type: 'run_resume', eventIndex: 7 }),
+			},
+			{
+				offset: formatOffset(8),
+				data: expect.objectContaining({ type: 'run_end', eventIndex: 8, isError: true }),
+			},
 		]);
 		expect(result.closed).toBe(true);
 	});
-
 });

@@ -1,8 +1,4 @@
-import {
-	fauxAssistantMessage,
-	fauxText,
-	registerFauxProvider,
-} from '@earendil-works/pi-ai';
+import { fauxAssistantMessage, fauxText, registerFauxProvider } from '@earendil-works/pi-ai';
 import { createAgent } from '@flue/runtime';
 
 export default createAgent(() => {
@@ -18,9 +14,7 @@ export default createAgent(() => {
 				input?.role === 'user'
 					? typeof input.content === 'string'
 						? input.content
-						: input.content
-								.map((block) => (block.type === 'text' ? block.text : ''))
-								.join('')
+						: input.content.map((block) => (block.type === 'text' ? block.text : '')).join('')
 					: '';
 			return fauxAssistantMessage(fauxText(`You said: ${text}`));
 		},

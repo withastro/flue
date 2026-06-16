@@ -1,16 +1,16 @@
 ---
 layout: ../../layouts/BlogLayout.astro
-title: "Flue 1.0 Beta"
-description: "Flue 1.0 Beta is here: the open framework for building agents without lab lock-in. Write once, deploy anywhere, and run on whatever LLM you choose."
-author: "Fred K. Schott"
-authorUrl: "https://x.com/FredKSchott"
-pubDate: "2026-06-15"
+title: 'Flue 1.0 Beta'
+description: 'Flue 1.0 Beta is here: the open framework for building agents without lab lock-in. Write once, deploy anywhere, and run on whatever LLM you choose.'
+author: 'Fred K. Schott'
+authorUrl: 'https://x.com/FredKSchott'
+pubDate: '2026-06-15'
 ---
 
-import CopyPrompt from "../../components/CopyPrompt.astro";
-import ChannelRibbon from "../../components/ChannelRibbon.astro";
+import CopyPrompt from '../../components/CopyPrompt.astro';
+import ChannelRibbon from '../../components/ChannelRibbon.astro';
 
-**Flue is the open agent framework.** We ship a best-in-class framework for building agents without lab lock-in. Write once, deploy anywhere, and run your agents on whatever LLM you choose. 
+**Flue is the open agent framework.** We ship a best-in-class framework for building agents without lab lock-in. Write once, deploy anywhere, and run your agents on whatever LLM you choose.
 
 **Flue 1.0 Beta is available today.** This is the release where Flue's core primitives — agents, workflows, sandboxes, channels — have come together into a cohesive story of what Flue actually _is_ and what it means to build agents with Flue.
 
@@ -42,14 +42,14 @@ Flue originally launched as a TypeScript harness, built on top of Pi. Flue's pro
 const writer = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
 
 export async function run({ init, payload }: FlueContext) {
-  const harness = await init(writer);
-  const session = await harness.session();
-  const response = await session.prompt(`Summarize: ${payload.text}`);
-  return { summary: response.text };
+	const harness = await init(writer);
+	const session = await harness.session();
+	const response = await session.prompt(`Summarize: ${payload.text}`);
+	return { summary: response.text };
 }
 ```
 
-We launched this in May. But what people wanted to build with Flue was more ambitious: fully autonomous agents. So today we're introducing a proper [Agent](/docs/guide/building-agents/) primitive, built on that same core harness. 
+We launched this in May. But what people wanted to build with Flue was more ambitious: fully autonomous agents. So today we're introducing a proper [Agent](/docs/guide/building-agents/) primitive, built on that same core harness.
 
 ```ts
 // src/agents/triage.ts
@@ -61,18 +61,17 @@ export const route = async (_c, next) => next();
 
 // Compose your agent with the context it needs to be successful.
 export default createAgent(() => ({
-  model:   'anthropic/claude-sonnet-4-6',
-  tools:   [...githubTools],
-  skills:  [triage, verify],
-  sandbox: local(),
-  instructions,
+	model: 'anthropic/claude-sonnet-4-6',
+	tools: [...githubTools],
+	skills: [triage, verify],
+	sandbox: local(),
+	instructions,
 }));
 ```
 
-Instead of writing a deterministic workflow yourself, Flue agents only need *context*. Define the instructions, tools, skills, and sandbox for the agent, and then watch it go solve whatever tasks you give it, autonomously.
+Instead of writing a deterministic workflow yourself, Flue agents only need _context_. Define the instructions, tools, skills, and sandbox for the agent, and then watch it go solve whatever tasks you give it, autonomously.
 
 Agents and workflows are two sides of the same coin. Both share a common implementation, but they serve different needs: agents solve open-ended problems on their own, while workflows run the deterministic steps you define.
-
 
 ## Introducing: Channels
 
@@ -89,14 +88,14 @@ import { createSlackChannel } from '@flue/slack';
 import assistant from '../agents/assistant.ts';
 
 export const channel = createSlackChannel({
-  signingSecret: process.env.SLACK_SIGNING_SECRET!,
-  async events({ payload }) {
-    const event = payload.event;
-    await dispatch(assistant, {
-      id: event.channel,
-      input: { type: 'slack.mention', text: event.text },
-    });
-  },
+	signingSecret: process.env.SLACK_SIGNING_SECRET!,
+	async events({ payload }) {
+		const event = payload.event;
+		await dispatch(assistant, {
+			id: event.channel,
+			input: { type: 'slack.mention', text: event.text },
+		});
+	},
 });
 ```
 
@@ -114,7 +113,6 @@ flue add database postgres
 flue add tooling opentelemetry
 ```
 
-
 ## Introducing: @flue/react
 
 `@flue/react` makes it easy to build frontend experiences around your agents. The `useFlueAgent()` and `useFlueWorkflow()` hooks stream live data straight into your React app, with no realtime plumbing required to write yourself.
@@ -128,11 +126,11 @@ import { FlueProvider, useFlueAgent } from '@flue/react';
 const client = createFlueClient({ baseUrl: '/api' });
 
 function Chat() {
-  const { messages, status, sendMessage } = useFlueAgent({
-    name: 'triage',
-    id: 'ticket-8472',
-  });
-  // ...
+	const { messages, status, sendMessage } = useFlueAgent({
+		name: 'triage',
+		id: 'ticket-8472',
+	});
+	// ...
 }
 ```
 

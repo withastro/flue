@@ -38,9 +38,7 @@ describe('@flue/notion workerd ingress', () => {
 		});
 
 		const response = await channelApp(notion).request(
-			request(
-				JSON.stringify({ verification_token: 'notion_worker_setup', provider_added: true }),
-			),
+			request(JSON.stringify({ verification_token: 'notion_worker_setup', provider_added: true })),
 		);
 
 		expect(response.status).toBe(200);

@@ -23,5 +23,5 @@
  * ```
  */
 
+export type { PostgresParameter, PostgresQuery, PostgresRunner } from './postgres-adapter.ts';
 export { postgres } from './postgres-adapter.ts';
-export type { PostgresParameter, PostgresRunner, PostgresQuery } from './postgres-adapter.ts';

@@ -4,8 +4,6 @@ import { defaultBotFrameworkOpenIdMetadataUrl, defaultBotFrameworkTokenIssuer } 
 import { InvalidTeamsConversationKeyError, InvalidTeamsInputError } from './errors.ts';
 import { createTeamsActivitiesHandler, deriveDestination } from './routes.ts';
 
-export { InvalidTeamsConversationKeyError, InvalidTeamsInputError } from './errors.ts';
-
 /**
  * Provider-native Bot Framework activity payload, re-exported from the official
  * `botframework-schema` package. Microsoft Teams delivers these to the
@@ -13,13 +11,14 @@ export { InvalidTeamsConversationKeyError, InvalidTeamsInputError } from './erro
  */
 export type {
 	Activity,
+	Attachment,
 	ChannelAccount,
 	ConversationAccount,
 	Entity,
-	Attachment,
 	Mention,
 	MessageReaction,
 } from 'botframework-schema';
+export { InvalidTeamsConversationKeyError, InvalidTeamsInputError } from './errors.ts';
 
 export type JsonValue =
 	| null
@@ -121,7 +120,10 @@ export function createTeamsChannel<E extends Env = Env>(
 		routes: [{ method: 'POST', path: '/activities', handler }],
 		destination(activity) {
 			if (!activity || typeof activity !== 'object') throw new InvalidTeamsInputError('activity');
-			const ref = deriveDestination(activity as unknown as Record<string, unknown>, options.tenantId);
+			const ref = deriveDestination(
+				activity as unknown as Record<string, unknown>,
+				options.tenantId,
+			);
 			if (!ref) throw new InvalidTeamsInputError('activity');
 			return ref;
 		},

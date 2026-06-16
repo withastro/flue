@@ -50,13 +50,13 @@ for await (const event of client.runs.stream(run.runId, { live: true })) {
 
 ### `FlueStreamOptions`
 
-| Option   | Type                                    | Default | Description                                              |
-| -------- | --------------------------------------- | ------- | -------------------------------------------------------- |
-| `offset` | `string`                                | `"-1"`  | Starting offset. `"-1"` for full history, `"now"` for future events only, or an opaque offset from a previous read. |
-| `tail`   | `number`                                | —       | With `offset: "-1"`, start far enough back to read at most the latest N events. Must be an integer of at least 1. |
-| `live`   | `boolean \| 'sse' \| 'long-poll'`       | `true`  | Enable live tailing. `true` uses long-poll; pass `'sse'` explicitly for SSE. |
-| `signal` | `AbortSignal`                           | —       | Stop consuming events when aborted.                      |
-| `backoffOptions` | `BackoffOptions`                  | —       | Configure reconnect retry behavior.                      |
+| Option           | Type                              | Default | Description                                                                                                         |
+| ---------------- | --------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------- |
+| `offset`         | `string`                          | `"-1"`  | Starting offset. `"-1"` for full history, `"now"` for future events only, or an opaque offset from a previous read. |
+| `tail`           | `number`                          | —       | With `offset: "-1"`, start far enough back to read at most the latest N events. Must be an integer of at least 1.   |
+| `live`           | `boolean \| 'sse' \| 'long-poll'` | `true`  | Enable live tailing. `true` uses long-poll; pass `'sse'` explicitly for SSE.                                        |
+| `signal`         | `AbortSignal`                     | —       | Stop consuming events when aborted.                                                                                 |
+| `backoffOptions` | `BackoffOptions`                  | —       | Configure reconnect retry behavior.                                                                                 |
 
 `tail` is available anywhere these options are accepted, including `client.runs.events()`. It only modifies the `"-1"` start; it has no effect with `"now"` or a concrete resume offset. There is no upper cap.
 

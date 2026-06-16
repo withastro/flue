@@ -52,7 +52,9 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 	const verbose = options.log !== 'silent';
 	const rel = (filePath: string) => {
 		const relative = path.relative(root, filePath);
-		return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? relative : filePath;
+		return relative && !relative.startsWith('..') && !path.isAbsolute(relative)
+			? relative
+			: filePath;
 	};
 
 	const sourceRoot = path.resolve(options.sourceRoot);
@@ -73,11 +75,23 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 			['source', rel(sourceRoot)],
 			['app', appEntry ? rel(appEntry) : undefined],
 			['database', dbEntry ? rel(dbEntry) : undefined],
-			['cloudflare', cloudflareEntry && plugin.name === 'cloudflare' ? rel(cloudflareEntry) : undefined],
+			[
+				'cloudflare',
+				cloudflareEntry && plugin.name === 'cloudflare' ? rel(cloudflareEntry) : undefined,
+			],
 		]);
-		section('agents', agents.map((agent) => agent.name));
-		section('workflows', workflows.map((workflow) => workflow.name));
-		section('channels', channels.map((channel) => channel.name));
+		section(
+			'agents',
+			agents.map((agent) => agent.name),
+		);
+		section(
+			'workflows',
+			workflows.map((workflow) => workflow.name),
+		);
+		section(
+			'channels',
+			channels.map((channel) => channel.name),
+		);
 		console.error('');
 	}
 

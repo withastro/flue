@@ -1,8 +1,5 @@
 import { defineTool, dispatch } from '@flue/runtime';
-import {
-	createWhatsAppChannel,
-	type WhatsAppConversationRef,
-} from '@flue/whatsapp';
+import { createWhatsAppChannel, type WhatsAppConversationRef } from '@flue/whatsapp';
 import { WhatsAppClient } from '@kapso/whatsapp-cloud-api';
 import assistant from '../agents/assistant.ts';
 import { inboundConversationRef, sendTextMessage } from '../whatsapp-client.ts';
@@ -40,7 +37,6 @@ export const channel = createWhatsAppChannel({
 		}
 	},
 });
-
 
 export function postMessage(ref: WhatsAppConversationRef) {
 	return defineTool({

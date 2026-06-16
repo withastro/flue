@@ -6,11 +6,11 @@ import type {
 	CompactionEntry,
 	DispatchMessageMetadata,
 	MessageEntry,
+	PromptImage,
 	PromptUsage,
 	SessionData,
 	SessionEntry,
 	SignalMessage,
-	PromptImage,
 	TaskSessionRef,
 } from './types.ts';
 
@@ -331,7 +331,11 @@ function createContextSummaryMessage(summary: string, timestamp: string): AgentM
 	return createUserContextMessage(renderSignalMessage(signal), timestamp);
 }
 
-export function createUserContextMessage(text: string, timestamp: string, images: PromptImage[] = []): AgentMessage {
+export function createUserContextMessage(
+	text: string,
+	timestamp: string,
+	images: PromptImage[] = [],
+): AgentMessage {
 	return {
 		role: 'user',
 		content: [{ type: 'text', text }, ...images],
@@ -341,10 +345,11 @@ export function createUserContextMessage(text: string, timestamp: string, images
 
 export function renderSignalMessage(message: SignalMessage): string {
 	const tagName = message.tagName ?? 'signal';
-	const attributes = [
-		['type', message.type],
-		...Object.entries(message.attributes ?? {}),
-	].map(([name, value]) => ` ${escapeXmlAttribute(name ?? '')}="${escapeXmlAttribute(value ?? '')}"`).join('');
+	const attributes = [['type', message.type], ...Object.entries(message.attributes ?? {})]
+		.map(
+			([name, value]) => ` ${escapeXmlAttribute(name ?? '')}="${escapeXmlAttribute(value ?? '')}"`,
+		)
+		.join('');
 	return `<${tagName}${attributes}>\n${escapeXmlText(message.content)}\n</${tagName}>`;
 }
 

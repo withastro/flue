@@ -18,6 +18,13 @@
  * `@flue/runtime/test-utils`, not by code sharing.
  */
 
+import {
+	deduplicateSessionDeletion,
+	isSubmissionPayload,
+	parseAcceptedAt,
+	SUBMISSION_HARNESS_NAME,
+	SUBMISSION_SESSION_NAME,
+} from './adapter-helpers.ts';
 import type {
 	AgentAttemptMarker,
 	AgentDispatchAdmission,
@@ -31,30 +38,15 @@ import type {
 	SubmissionAttemptRef,
 	SubmissionClaimRef,
 } from './agent-execution-store.ts';
-import type { SqlStorage } from './sql-storage.ts';
 import {
 	DURABILITY_DEFAULT_MAX_ATTEMPTS,
 	DURABILITY_DEFAULT_TIMEOUT_MS,
 	LEASE_DURATION_MS,
 } from './agent-execution-store.ts';
-import {
-	SUBMISSION_HARNESS_NAME,
-	SUBMISSION_SESSION_NAME,
-	deduplicateSessionDeletion,
-	isSubmissionPayload,
-	parseAcceptedAt,
-} from './adapter-helpers.ts';
+import type { SqlStorage } from './sql-storage.ts';
 
 type SqlRow = Record<string, unknown>;
-import {
-	type AgentSubmissionInput,
-	createDispatchAgentSubmissionInput,
-	type DirectAgentSubmissionInput,
-} from './runtime/agent-submissions.ts';
-import type { DispatchInput } from './runtime/dispatch-queue.ts';
-import { ensureFlueSchemaVersion } from './schema-version.ts';
-import { createSessionStorageKey } from './session-identity.ts';
-import type { SessionData, SessionEntry, SessionStore } from './types.ts';
+
 import {
 	hydratePersistedDirectSubmission,
 	hydratePersistedSessionEntry,
@@ -65,7 +57,19 @@ import {
 	sessionEntryChunkOwner,
 	submissionChunkOwner,
 } from './persisted-image-placement.ts';
-import { createSqlPersistedChunkStore, ensureSqlPersistedChunkTable } from './sql-persisted-chunk-store.ts';
+import {
+	type AgentSubmissionInput,
+	createDispatchAgentSubmissionInput,
+	type DirectAgentSubmissionInput,
+} from './runtime/agent-submissions.ts';
+import type { DispatchInput } from './runtime/dispatch-queue.ts';
+import { ensureFlueSchemaVersion } from './schema-version.ts';
+import { createSessionStorageKey } from './session-identity.ts';
+import {
+	createSqlPersistedChunkStore,
+	ensureSqlPersistedChunkTable,
+} from './sql-persisted-chunk-store.ts';
+import type { SessionData, SessionEntry, SessionStore } from './types.ts';
 
 /**
  * Bring the agent execution store schema to the current version.
@@ -120,10 +124,9 @@ export class SqlSessionStore implements SessionStore {
 				id,
 				JSON.stringify(session),
 			);
-			const existingRows = this.sql.exec(
-				'SELECT entry_id, position, data FROM flue_session_entries WHERE session_id = ?',
-				id,
-			).toArray();
+			const existingRows = this.sql
+				.exec('SELECT entry_id, position, data FROM flue_session_entries WHERE session_id = ?', id)
+				.toArray();
 			const existing = new Map(existingRows.map((row) => [row.entry_id, row]));
 			const retained = new Set<string>();
 			for (const { entry, position, data: entryData, chunks } of entries) {
@@ -171,10 +174,12 @@ export class SqlSessionStore implements SessionStore {
 				throw new Error('[flue] Persisted session row is malformed.');
 			}
 			const session = JSON.parse(row.data) as Omit<SessionData, 'entries'>;
-			const entryRows = this.sql.exec(
-				'SELECT entry_id, data FROM flue_session_entries WHERE session_id = ? ORDER BY position ASC',
-				id,
-			).toArray();
+			const entryRows = this.sql
+				.exec(
+					'SELECT entry_id, data FROM flue_session_entries WHERE session_id = ? ORDER BY position ASC',
+					id,
+				)
+				.toArray();
 			return {
 				...session,
 				entries: entryRows.map((entryRow) => {
@@ -197,7 +202,6 @@ export class SqlSessionStore implements SessionStore {
 			this.sql.exec('DELETE FROM flue_sessions WHERE id = ?', id);
 		});
 	}
-
 }
 
 class AgentSubmissionStoreImpl implements AgentSubmissionStore {
@@ -296,7 +300,10 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		);
 	}
 
-	async commitTurnJournal(attempt: SubmissionAttemptRef, committedLeafId: string): Promise<boolean> {
+	async commitTurnJournal(
+		attempt: SubmissionAttemptRef,
+		committedLeafId: string,
+	): Promise<boolean> {
 		const now = Date.now();
 		return (
 			this.sql
@@ -335,7 +342,11 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		);
 	}
 
-	async appendStreamChunkSegment(streamKey: string, segmentIndex: number, body: string): Promise<boolean> {
+	async appendStreamChunkSegment(
+		streamKey: string,
+		segmentIndex: number,
+		body: string,
+	): Promise<boolean> {
 		return (
 			this.sql
 				.exec(
@@ -351,7 +362,9 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		);
 	}
 
-	async getStreamChunkSegments(streamKey: string): Promise<Array<{ segmentIndex: number; body: string }>> {
+	async getStreamChunkSegments(
+		streamKey: string,
+	): Promise<Array<{ segmentIndex: number; body: string }>> {
 		const rows = this.sql
 			.exec(
 				`SELECT segment_index, body
@@ -384,12 +397,19 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				.exec(
 					`UPDATE flue_agent_submissions
 					 SET attempt_id = ?, recovery_requested_at = NULL, started_at = ?, attempt_count = attempt_count + 1${
-						lease ? ', owner_id = ?, lease_expires_at = ?' : ''
-					 }
+							lease ? ', owner_id = ?, lease_expires_at = ?' : ''
+						}
 					 WHERE submission_id = ? AND status = 'running' AND attempt_id = ?
 					 RETURNING ${submissionColumns}`,
 					...(lease
-						? [nextAttemptId, now, lease.ownerId, lease.leaseExpiresAt, attempt.submissionId, attempt.attemptId]
+						? [
+								nextAttemptId,
+								now,
+								lease.ownerId,
+								lease.leaseExpiresAt,
+								attempt.submissionId,
+								attempt.attemptId,
+							]
 						: [nextAttemptId, now, attempt.submissionId, attempt.attemptId]),
 				)
 				.toArray()[0];
@@ -511,7 +531,11 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 			) {
 				throw new Error('[flue] Persisted attempt marker row is malformed.');
 			}
-			return { submissionId: row.submission_id, attemptId: row.attempt_id, createdAt: row.created_at };
+			return {
+				submissionId: row.submission_id,
+				attemptId: row.attempt_id,
+				createdAt: row.created_at,
+			};
 		});
 	}
 
@@ -562,7 +586,10 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 			.map((row) => String(row.session_key));
 	}
 
-	private async runSessionDeletion(sessionKey: string, deleteSessionTree: () => Promise<void>): Promise<void> {
+	private async runSessionDeletion(
+		sessionKey: string,
+		deleteSessionTree: () => Promise<void>,
+	): Promise<void> {
 		this.transactionSync(() => {
 			const active = this.sql
 				.exec(
@@ -638,12 +665,14 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				sessionKey,
 				startedAt,
 			);
-			const deletedSubmissionRows = this.sql.exec(
-				`SELECT submission_id FROM flue_agent_submissions
+			const deletedSubmissionRows = this.sql
+				.exec(
+					`SELECT submission_id FROM flue_agent_submissions
 				 WHERE session_key = ? AND status = 'settled' AND accepted_at <= ?`,
-				sessionKey,
-				startedAt,
-			).toArray();
+					sessionKey,
+					startedAt,
+				)
+				.toArray();
 			const submissionOwners = deletedSubmissionRows.flatMap((row) =>
 				typeof row.submission_id === 'string' ? [submissionChunkOwner(row.submission_id)] : [],
 			);
@@ -762,12 +791,15 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 
 	private admitSubmission(input: AgentSubmissionInput): AgentDispatchAdmission {
 		const { kind, submissionId } = input;
-		const prepared = kind === 'direct'
-			? prepareDirectSubmission(input)
-			: { value: input, chunks: [] };
+		const prepared =
+			kind === 'direct' ? prepareDirectSubmission(input) : { value: input, chunks: [] };
 		const payload = JSON.stringify(prepared.value);
 		const acceptedAt = parseAcceptedAt(input.acceptedAt, `${kind} admission`);
-		const sessionKey = createSessionStorageKey(input.id, SUBMISSION_HARNESS_NAME, SUBMISSION_SESSION_NAME);
+		const sessionKey = createSessionStorageKey(
+			input.id,
+			SUBMISSION_HARNESS_NAME,
+			SUBMISSION_SESSION_NAME,
+		);
 		return this.transactionSync(() => {
 			const chunkStore = createSqlPersistedChunkStore(this.sql);
 			if (kind === 'dispatch') {
@@ -775,10 +807,15 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				if (receipt) return { kind: 'retained_receipt', receipt };
 			}
 			const deleting = this.sql
-				.exec('SELECT 1 FROM flue_agent_session_deletions WHERE session_key = ? LIMIT 1', sessionKey)
+				.exec(
+					'SELECT 1 FROM flue_agent_session_deletions WHERE session_key = ? LIMIT 1',
+					sessionKey,
+				)
 				.toArray();
 			if (deleting.length > 0) {
-				throw new Error('[flue] Durable agent submission admission is unavailable while this session is being deleted. Retry after deletion completes.');
+				throw new Error(
+					'[flue] Durable agent submission admission is unavailable while this session is being deleted. Retry after deletion completes.',
+				);
 			}
 			this.sql.exec(
 				`INSERT OR IGNORE INTO flue_agent_submissions
@@ -791,7 +828,8 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				acceptedAt,
 			);
 			const row = this.readSubmissionRow(submissionId);
-			if (!row) throw new Error(`[flue] Durable ${kind} admission did not create a submission row.`);
+			if (!row)
+				throw new Error(`[flue] Durable ${kind} admission did not create a submission row.`);
 			if (row.kind !== kind) return { kind: 'conflict' };
 			const owner = submissionChunkOwner(submissionId);
 			if (row.payload !== payload) {
@@ -803,7 +841,8 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 						JSON.parse(row.payload) as DirectAgentSubmissionInput,
 						chunkStore.read(owner),
 					)
-				) return { kind: 'conflict' };
+				)
+					return { kind: 'conflict' };
 				return { kind: 'submission', submission: this.parseSubmission(row) };
 			}
 			const persistedChunks = chunkStore.read(owner);
@@ -827,24 +866,29 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		);
 	}
 
-	private parseOperationalRows(
-		rows: SqlRow[],
-		status: 'queued' | 'active',
-	): AgentSubmission[] {
+	private parseOperationalRows(rows: SqlRow[], status: 'queued' | 'active'): AgentSubmission[] {
 		const submissions: AgentSubmission[] = [];
 		for (const row of rows) {
 			try {
 				submissions.push(this.parseSubmission(row));
 			} catch (error) {
 				if (typeof row.sequence !== 'number') throw error;
-				console.error('[flue] Terminating malformed submission (sequence %d):', row.sequence, error);
+				console.error(
+					'[flue] Terminating malformed submission (sequence %d):',
+					row.sequence,
+					error,
+				);
 				this.failSubmissionSequence(row.sequence, status, error);
 			}
 		}
 		return submissions;
 	}
 
-	private failSubmissionSequence(sequence: number, status: 'queued' | 'active', error: unknown): void {
+	private failSubmissionSequence(
+		sequence: number,
+		status: 'queued' | 'active',
+		error: unknown,
+	): void {
 		this.sql.exec(
 			`UPDATE flue_agent_submissions
 			 SET status = 'settled', settled_at = ?, error = ?
@@ -898,11 +942,19 @@ function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 		typeof row.revision !== 'number' ||
 		typeof row.created_at !== 'number' ||
 		typeof row.updated_at !== 'number' ||
-		(row.checkpoint_leaf_id !== null && row.checkpoint_leaf_id !== undefined && typeof row.checkpoint_leaf_id !== 'string') ||
-		(row.stream_key !== null && row.stream_key !== undefined && typeof row.stream_key !== 'string') ||
-		(row.stream_consumed_at !== null && row.stream_consumed_at !== undefined && typeof row.stream_consumed_at !== 'number') ||
+		(row.checkpoint_leaf_id !== null &&
+			row.checkpoint_leaf_id !== undefined &&
+			typeof row.checkpoint_leaf_id !== 'string') ||
+		(row.stream_key !== null &&
+			row.stream_key !== undefined &&
+			typeof row.stream_key !== 'string') ||
+		(row.stream_consumed_at !== null &&
+			row.stream_consumed_at !== undefined &&
+			typeof row.stream_consumed_at !== 'number') ||
 		(row.committed !== 0 && row.committed !== 1) ||
-		(row.committed_leaf_id !== null && row.committed_leaf_id !== undefined && typeof row.committed_leaf_id !== 'string')
+		(row.committed_leaf_id !== null &&
+			row.committed_leaf_id !== undefined &&
+			typeof row.committed_leaf_id !== 'string')
 	) {
 		throw new Error('[flue] Persisted turn journal row is malformed.');
 	}
@@ -917,34 +969,47 @@ function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 		revision: row.revision,
 		createdAt: row.created_at,
 		updatedAt: row.updated_at,
-		...(typeof row.checkpoint_leaf_id === 'string' ? { checkpointLeafId: row.checkpoint_leaf_id } : {}),
-		...(typeof row.tool_request_json === 'string' ? { toolRequest: JSON.parse(row.tool_request_json) as unknown } : {}),
+		...(typeof row.checkpoint_leaf_id === 'string'
+			? { checkpointLeafId: row.checkpoint_leaf_id }
+			: {}),
+		...(typeof row.tool_request_json === 'string'
+			? { toolRequest: JSON.parse(row.tool_request_json) as unknown }
+			: {}),
 		...(typeof row.stream_key === 'string' ? { streamKey: row.stream_key } : {}),
-		...(typeof row.stream_consumed_at === 'number' ? { streamConsumedAt: row.stream_consumed_at } : {}),
+		...(typeof row.stream_consumed_at === 'number'
+			? { streamConsumedAt: row.stream_consumed_at }
+			: {}),
 		committed: row.committed === 1,
-		...(typeof row.committed_leaf_id === 'string' ? { committedLeafId: row.committed_leaf_id } : {}),
+		...(typeof row.committed_leaf_id === 'string'
+			? { committedLeafId: row.committed_leaf_id }
+			: {}),
 	};
 }
 
-function parseSubmission(row: SqlRow, chunks: Parameters<typeof hydratePersistedDirectSubmission>[1]): AgentSubmission {
+function parseSubmission(
+	row: SqlRow,
+	chunks: Parameters<typeof hydratePersistedDirectSubmission>[1],
+): AgentSubmission {
 	if (
 		typeof row.sequence !== 'number' ||
 		typeof row.submission_id !== 'string' ||
 		typeof row.session_key !== 'string' ||
 		(row.kind !== 'dispatch' && row.kind !== 'direct') ||
 		typeof row.payload !== 'string' ||
-		(row.status !== 'queued' &&
-			row.status !== 'running' &&
-			row.status !== 'settled') ||
+		(row.status !== 'queued' && row.status !== 'running' && row.status !== 'settled') ||
 		typeof row.accepted_at !== 'number' ||
-		(row.attempt_id !== null && row.attempt_id !== undefined && typeof row.attempt_id !== 'string') ||
+		(row.attempt_id !== null &&
+			row.attempt_id !== undefined &&
+			typeof row.attempt_id !== 'string') ||
 		(row.input_applied_at !== null &&
 			row.input_applied_at !== undefined &&
 			typeof row.input_applied_at !== 'number') ||
 		(row.recovery_requested_at !== null &&
 			row.recovery_requested_at !== undefined &&
 			typeof row.recovery_requested_at !== 'number') ||
-		(row.started_at !== null && row.started_at !== undefined && typeof row.started_at !== 'number') ||
+		(row.started_at !== null &&
+			row.started_at !== undefined &&
+			typeof row.started_at !== 'number') ||
 		(row.status === 'queued' &&
 			(row.attempt_id !== null ||
 				row.input_applied_at !== null ||
@@ -959,15 +1024,18 @@ function parseSubmission(row: SqlRow, chunks: Parameters<typeof hydratePersisted
 		throw new Error('[flue] Persisted agent submission row is malformed.');
 	}
 	const parsedPayload = JSON.parse(row.payload);
-	const input = row.kind === 'direct'
-		? hydratePersistedDirectSubmission(parsedPayload as DirectAgentSubmissionInput, chunks)
-		: parsedPayload;
-	if (!isSubmissionPayload(input, {
-		kind: row.kind as string,
-		submissionId: row.submission_id as string,
-		sessionKey: row.session_key as string,
-		acceptedAt: row.accepted_at as number,
-	})) {
+	const input =
+		row.kind === 'direct'
+			? hydratePersistedDirectSubmission(parsedPayload as DirectAgentSubmissionInput, chunks)
+			: parsedPayload;
+	if (
+		!isSubmissionPayload(input, {
+			kind: row.kind as string,
+			submissionId: row.submission_id as string,
+			sessionKey: row.session_key as string,
+			acceptedAt: row.accepted_at as number,
+		})
+	) {
 		throw new Error('[flue] Persisted agent submission payload is malformed.');
 	}
 	return {

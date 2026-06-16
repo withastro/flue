@@ -1,13 +1,13 @@
 import type { AgentExecutionStore } from '../agent-execution-store.ts';
-import type { SqlStorage } from '../sql-storage.ts';
+import { ensureFlueSchemaVersion } from '../schema-version.ts';
 import {
 	createSqlAgentExecutionStoreFromSql,
-	ensureSqlAgentExecutionTables,
 	ensureSessionTable,
+	ensureSqlAgentExecutionTables,
 	SqlSessionStore,
 } from '../sql-agent-execution-store.ts';
-import { ensureFlueSchemaVersion } from '../schema-version.ts';
 import { ensureSqlPersistedChunkTable } from '../sql-persisted-chunk-store.ts';
+import type { SqlStorage } from '../sql-storage.ts';
 import type { SessionStore } from '../types.ts';
 
 interface DurableObjectStorage {
@@ -19,7 +19,9 @@ export function createSqlSessionStore(storage: DurableObjectStorage): SessionSto
 	const sql = storage.sql;
 	const transactionSync = storage.transactionSync;
 	if (!sql || typeof transactionSync !== 'function') {
-		throw new Error('[flue] Cloudflare workflow session persistence requires Durable Object SQLite.');
+		throw new Error(
+			'[flue] Cloudflare workflow session persistence requires Durable Object SQLite.',
+		);
 	}
 	ensureFlueSchemaVersion(sql);
 	ensureSessionTable(sql);

@@ -1,8 +1,4 @@
-import type {
-	WebhookMessage,
-	WebhookValue,
-	WhatsAppConversationRef,
-} from '@flue/whatsapp';
+import type { WebhookMessage, WebhookValue, WhatsAppConversationRef } from '@flue/whatsapp';
 import type { SendMessageResponse, WhatsAppClient } from '@kapso/whatsapp-cloud-api';
 
 export function inboundConversationRef(

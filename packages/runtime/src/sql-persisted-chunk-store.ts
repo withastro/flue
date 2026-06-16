@@ -1,9 +1,9 @@
-import type { PersistedImageChunk } from './persisted-images.ts';
 import type {
 	PersistedChunkOwner,
 	PersistedChunkRow,
 	PersistedChunkStore,
 } from './persisted-image-placement.ts';
+import type { PersistedImageChunk } from './persisted-images.ts';
 import type { SqlStorage } from './sql-storage.ts';
 
 export function ensureSqlPersistedChunkTable(sql: SqlStorage): void {
@@ -48,11 +48,7 @@ export function createSqlPersistedChunkStore(sql: SqlStorage): PersistedChunkSto
 			for (const owner of owners) deleteOwner(sql, owner);
 		},
 		deleteOwner(kind, id) {
-			sql.exec(
-				'DELETE FROM flue_image_chunks WHERE owner_kind = ? AND owner_id = ?',
-				kind,
-				id,
-			);
+			sql.exec('DELETE FROM flue_image_chunks WHERE owner_kind = ? AND owner_id = ?', kind, id);
 		},
 	};
 }

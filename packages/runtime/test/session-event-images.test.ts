@@ -85,7 +85,9 @@ describe('session event image redaction', () => {
 					event.type === 'message_end',
 			)
 			.map((event) => event.message)
-			.find((message): message is Extract<AgentMessage, { role: 'user' }> => message.role === 'user');
+			.find(
+				(message): message is Extract<AgentMessage, { role: 'user' }> => message.role === 'user',
+			);
 		expect(userMessageEnd?.content).toContainEqual(
 			expect.objectContaining({ type: 'image', data: IMAGE_DATA_OMITTED, mimeType: 'image/png' }),
 		);

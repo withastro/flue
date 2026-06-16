@@ -47,7 +47,7 @@ interface ZendeskChannelOptions<E extends Env = Env> {
 }
 ```
 
-| Field           | Description                                                              |
+| Field           | Description                                                             |
 | --------------- | ----------------------------------------------------------------------- |
 | `signingSecret` | Zendesk webhook signing secret used for exact-body HMAC verification.   |
 | `accountId`     | Optional expected payload and header account id.                        |
@@ -110,16 +110,16 @@ interface ZendeskEvent<
 }
 ```
 
-| Field                   | Meaning                                                           |
-| ----------------------- | ----------------------------------------------------------------- |
-| `account_id`            | Zendesk account id, normalized to a positive decimal string.      |
+| Field                   | Meaning                                                            |
+| ----------------------- | ------------------------------------------------------------------ |
+| `account_id`            | Zendesk account id, normalized to a positive decimal string.       |
 | `id`                    | Provider event id. Use it as a replay-resistant deduplication key. |
-| `type`                  | Open provider event type, e.g. `zen:event-type:ticket.created`.   |
-| `subject`               | Provider resource subject, e.g. `zen:ticket:<id>`.                |
-| `time`                  | Provider event occurrence timestamp.                              |
-| `zendesk_event_version` | Open provider schema version, e.g. `2022-06-20`.                  |
-| `event`                 | Provider-native change object. Properties vary by event type.     |
-| `detail`                | Provider-native resource object. Properties vary by event domain. |
+| `type`                  | Open provider event type, e.g. `zen:event-type:ticket.created`.    |
+| `subject`               | Provider resource subject, e.g. `zen:ticket:<id>`.                 |
+| `time`                  | Provider event occurrence timestamp.                               |
+| `zendesk_event_version` | Open provider schema version, e.g. `2022-06-20`.                   |
+| `event`                 | Provider-native change object. Properties vary by event type.      |
+| `detail`                | Provider-native resource object. Properties vary by event domain.  |
 
 `type` and `zendesk_event_version` remain open strings, and the index signature
 forwards any authenticated future or unmodeled fields. Verified future events
@@ -145,11 +145,11 @@ interface ZendeskDelivery {
 }
 ```
 
-| Field                | Provider source                         | Meaning                                          |
-| -------------------- | --------------------------------------- | ------------------------------------------------ |
-| `webhookId`          | `X-Zendesk-Webhook-Id`                  | Webhook configuration identity.                  |
-| `invocationId`       | `X-Zendesk-Webhook-Invocation-Id`       | Unsigned provider attempt-correlation identity.  |
-| `signatureTimestamp` | `X-Zendesk-Webhook-Signature-Timestamp` | Exact timestamp included in the HMAC input.      |
+| Field                | Provider source                         | Meaning                                         |
+| -------------------- | --------------------------------------- | ----------------------------------------------- |
+| `webhookId`          | `X-Zendesk-Webhook-Id`                  | Webhook configuration identity.                 |
+| `invocationId`       | `X-Zendesk-Webhook-Invocation-Id`       | Unsigned provider attempt-correlation identity. |
+| `signatureTimestamp` | `X-Zendesk-Webhook-Signature-Timestamp` | Exact timestamp included in the HMAC input.     |
 
 Prefer the signed `payload.id` for deduplication; `invocationId` only correlates
 provider retry attempts.

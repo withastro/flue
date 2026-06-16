@@ -1,5 +1,5 @@
 ---
-{ "kind": "tooling", "version": 2, "website": "https://sentry.io" }
+{ 'kind': 'tooling', 'version': 2, 'website': 'https://sentry.io' }
 ---
 
 # Add Sentry to Flue

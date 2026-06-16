@@ -155,9 +155,7 @@ describe('createSandboxSessionEnv()', () => {
 			'/workspace/project',
 		);
 
-		await expect(env.writeFile('output/result.txt', 'done')).rejects.toThrow(
-			'disk quota exceeded',
-		);
+		await expect(env.writeFile('output/result.txt', 'done')).rejects.toThrow('disk quota exceeded');
 		expect(writeFile).toHaveBeenCalledTimes(2);
 	});
 

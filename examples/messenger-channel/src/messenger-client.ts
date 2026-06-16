@@ -77,18 +77,13 @@ export class MessengerClient {
 
 	constructor(options: MessengerClientOptions) {
 		this.#pageId = required(options.pageId, 'pageId');
-		this.#pageAccessToken = required(
-			options.pageAccessToken,
-			'pageAccessToken',
-		);
+		this.#pageAccessToken = required(options.pageAccessToken, 'pageAccessToken');
 		this.#graphVersion = options.graphVersion ?? 'v25.0';
 		if (!/^v\d+\.\d+$/.test(this.#graphVersion)) {
 			throw new TypeError('Messenger graphVersion must look like v25.0.');
 		}
 		this.#fetch = options.fetch ?? globalThis.fetch;
-		this.#apiBaseUrl = (
-			options.apiBaseUrl ?? 'https://graph.facebook.com'
-		).replace(/\/+$/, '');
+		this.#apiBaseUrl = (options.apiBaseUrl ?? 'https://graph.facebook.com').replace(/\/+$/, '');
 		this.messages = {
 			send: (input) => this.#sendMessage(input),
 			sendText: (input) =>
@@ -97,9 +92,7 @@ export class MessengerClient {
 					message: {
 						text: required(input.text, 'text'),
 					},
-					...(input.messagingType === undefined
-						? {}
-						: { messagingType: input.messagingType }),
+					...(input.messagingType === undefined ? {} : { messagingType: input.messagingType }),
 					...(input.tag === undefined ? {} : { tag: input.tag }),
 					...(input.replyToMessageId === undefined
 						? {}
@@ -111,10 +104,7 @@ export class MessengerClient {
 		};
 	}
 
-	async request<T>(
-		path: string,
-		options: MessengerRequestOptions = {},
-	): Promise<T> {
+	async request<T>(path: string, options: MessengerRequestOptions = {}): Promise<T> {
 		if (!path.startsWith('/')) {
 			throw new TypeError('Messenger request path must start with /.');
 		}
@@ -125,14 +115,8 @@ export class MessengerClient {
 		}
 		const result = await this.#fetch(url, {
 			method: options.method ?? (options.body === undefined ? 'GET' : 'POST'),
-			headers:
-				options.body === undefined
-					? undefined
-					: { 'content-type': 'application/json' },
-			body:
-				options.body === undefined
-					? undefined
-					: JSON.stringify(options.body),
+			headers: options.body === undefined ? undefined : { 'content-type': 'application/json' },
+			body: options.body === undefined ? undefined : JSON.stringify(options.body),
 		});
 		const payload = await readJson(result);
 		if (!result.ok) {
@@ -146,9 +130,7 @@ export class MessengerClient {
 		return payload as T;
 	}
 
-	async #sendMessage(
-		input: MessengerSendInput,
-	): Promise<MessengerSendResult> {
+	async #sendMessage(input: MessengerSendInput): Promise<MessengerSendResult> {
 		const payload = await this.request<Record<string, unknown>>(
 			`/${this.#graphVersion}/${encodeURIComponent(this.#pageId)}/messages`,
 			{
@@ -157,9 +139,7 @@ export class MessengerClient {
 					recipient: recipient(input.to),
 					messaging_type: input.messagingType ?? 'RESPONSE',
 					message: input.message,
-					...(input.tag === undefined
-						? {}
-						: { tag: required(input.tag, 'tag') }),
+					...(input.tag === undefined ? {} : { tag: required(input.tag, 'tag') }),
 					...(input.notificationType === undefined
 						? {}
 						: { notification_type: input.notificationType }),
@@ -167,10 +147,7 @@ export class MessengerClient {
 						? {}
 						: {
 								reply_to: {
-									mid: required(
-										input.replyToMessageId,
-										'replyToMessageId',
-									),
+									mid: required(input.replyToMessageId, 'replyToMessageId'),
 								},
 							}),
 				},
@@ -221,9 +198,7 @@ export class MessengerClient {
 	}
 }
 
-function recipient(
-	value: MessengerParticipantRef,
-): { id: string } | { user_ref: string } {
+function recipient(value: MessengerParticipantRef): { id: string } | { user_ref: string } {
 	return value.type === 'page-scoped-id'
 		? { id: required(value.id, 'recipient.id') }
 		: { user_ref: required(value.id, 'recipient.userRef') };
@@ -237,19 +212,13 @@ async function readJson(response: Response): Promise<Record<string, unknown>> {
 	return value;
 }
 
-function readRequiredString(
-	value: Record<string, unknown>,
-	key: string,
-): string {
+function readRequiredString(value: Record<string, unknown>, key: string): string {
 	const item = readOptionalString(value, key);
 	if (!item) throw new Error(`Messenger response did not include ${key}.`);
 	return item;
 }
 
-function readOptionalString(
-	value: Record<string, unknown>,
-	key: string,
-): string | undefined {
+function readOptionalString(value: Record<string, unknown>, key: string): string | undefined {
 	const item = value[key];
 	return typeof item === 'string' && item.length > 0 ? item : undefined;
 }

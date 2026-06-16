@@ -17,9 +17,9 @@ const run = await client.workflows.invoke('summarize', {
   payload: { text: 'Summarize this document.' },
 });
 
-console.log(run.runId);     // "run_01JX..."
+console.log(run.runId); // "run_01JX..."
 console.log(run.streamUrl); // "https://example.com/api/runs/run_01JX..."
-console.log(run.offset);    // "-1"
+console.log(run.offset); // "-1"
 ```
 
 Use the returned `runId` with [`client.runs`](/docs/sdk/runs/) to stream events, fetch all events, or retrieve run metadata.
@@ -37,11 +37,11 @@ console.log(run.result); // the workflow's return value
 
 ### `WorkflowInvokeOptions`
 
-| Field     | Type          | Default | Description              |
-| --------- | ------------- | ------- | ------------------------ |
-| `payload` | `unknown`     | —       | Workflow-defined payload. |
+| Field     | Type          | Default | Description                                                      |
+| --------- | ------------- | ------- | ---------------------------------------------------------------- |
+| `payload` | `unknown`     | —       | Workflow-defined payload.                                        |
 | `wait`    | `'result'`    | —       | Wait for the run to finish and resolve with its terminal result. |
-| `signal`  | `AbortSignal` | —       | Cancel the HTTP request. |
+| `signal`  | `AbortSignal` | —       | Cancel the HTTP request.                                         |
 
 ### `WorkflowInvokeResult`
 
@@ -53,10 +53,10 @@ interface WorkflowInvokeResult {
 }
 ```
 
-| Field       | Description                                                      |
-| ----------- | ---------------------------------------------------------------- |
-| `runId`     | The workflow run ID.                                             |
-| `streamUrl` | Fully resolved Durable Streams URL for observing run events.     |
+| Field       | Description                                                                                                     |
+| ----------- | --------------------------------------------------------------------------------------------------------------- |
+| `runId`     | The workflow run ID.                                                                                            |
+| `streamUrl` | Fully resolved Durable Streams URL for observing run events.                                                    |
 | `offset`    | Opaque stream offset captured at admission. Reading `streamUrl` from it yields the run's events from the start. |
 
 All fields are server-provided; treat `offset` as an opaque token and do not construct one.

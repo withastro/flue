@@ -1,18 +1,18 @@
-import mysql2, { type Pool } from 'mysql2/promise';
-import { describe, expect, it } from 'vitest';
 import { PersistedSchemaVersionError, type SessionData } from '@flue/runtime/adapter';
 import {
 	defineEventStreamStoreContractTests,
 	defineRunStoreContractTests,
 	defineStoreContractTests,
 } from '@flue/runtime/test-utils';
-import { mysql, type MysqlQuery, type MysqlRunner } from '../src/mysql-adapter.ts';
+import mysql2, { type Pool } from 'mysql2/promise';
+import { describe, expect, it } from 'vitest';
+import { type MysqlQuery, type MysqlRunner, mysql } from '../src/mysql-adapter.ts';
 
 const mysqlUrl = process.env.TEST_MYSQL_URL;
 const describeMysql = mysqlUrl ? describe : describe.skip;
 
 function queryRows(result: unknown): Record<string, unknown>[] {
-	return Array.isArray(result) ? result as Record<string, unknown>[] : [];
+	return Array.isArray(result) ? (result as Record<string, unknown>[]) : [];
 }
 
 async function createMysqlRunner(): Promise<{ runner: MysqlRunner; pool: Pool; database: string }> {
@@ -137,7 +137,9 @@ describeMysql('mysql()', () => {
 		await runner.query(`UPDATE flue_meta SET value = '999' WHERE \`key\` = 'schema_version'`);
 		await runner.query('DROP TABLE flue_event_stream_entries');
 		await expect(adapter.migrate?.()).rejects.toThrowError(PersistedSchemaVersionError);
-		const rows = await runner.query(`SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'flue_event_stream_entries'`);
+		const rows = await runner.query(
+			`SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'flue_event_stream_entries'`,
+		);
 		expect(rows).toEqual([]);
 		await adapter.close?.();
 	});
@@ -146,9 +148,13 @@ describeMysql('mysql()', () => {
 		const { runner } = await createMysqlRunner();
 		const adapter = mysql(runner);
 		await adapter.migrate?.();
-		const engines = await runner.query(`SELECT DISTINCT ENGINE AS engine FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'flue\\_%'`);
+		const engines = await runner.query(
+			`SELECT DISTINCT ENGINE AS engine FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'flue\\_%'`,
+		);
 		expect(engines).toEqual([{ engine: 'InnoDB' }]);
-		const columns = await runner.query(`SELECT COLLATION_NAME AS collation_name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'flue_agent_submissions' AND COLUMN_NAME IN ('submission_id', 'session_key')`);
+		const columns = await runner.query(
+			`SELECT COLLATION_NAME AS collation_name FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'flue_agent_submissions' AND COLUMN_NAME IN ('submission_id', 'session_key')`,
+		);
 		expect(columns.every((row) => row.collation_name === 'utf8mb4_bin')).toBe(true);
 		await adapter.close?.();
 	});
@@ -166,8 +172,18 @@ describeMysql('mysql()', () => {
 			acceptedAt: '2026-06-03T00:00:00.000Z',
 		});
 		const claims = await Promise.all([
-			submissions.claimSubmission({ submissionId: 'concurrent-claim', attemptId: 'attempt-1', ownerId: 'owner-1', leaseExpiresAt: Date.now() + 30_000 }),
-			submissions.claimSubmission({ submissionId: 'concurrent-claim', attemptId: 'attempt-2', ownerId: 'owner-2', leaseExpiresAt: Date.now() + 30_000 }),
+			submissions.claimSubmission({
+				submissionId: 'concurrent-claim',
+				attemptId: 'attempt-1',
+				ownerId: 'owner-1',
+				leaseExpiresAt: Date.now() + 30_000,
+			}),
+			submissions.claimSubmission({
+				submissionId: 'concurrent-claim',
+				attemptId: 'attempt-2',
+				ownerId: 'owner-2',
+				leaseExpiresAt: Date.now() + 30_000,
+			}),
 		]);
 		expect(claims.filter(Boolean)).toHaveLength(1);
 		await adapter.close?.();
@@ -189,11 +205,12 @@ describeMysql('mysql()', () => {
 	it('rejects malformed existing submissions schema without stamping when a backend is available', async () => {
 		const { runner } = await createMysqlRunner();
 		const adapter = mysql(runner);
-		await runner.query(`CREATE TABLE flue_agent_submissions (sequence BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, submission_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, session_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, kind VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, payload LONGTEXT NOT NULL, status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, accepted_at BIGINT NOT NULL, attempt_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, input_applied_at BIGINT, recovery_requested_at BIGINT, started_at BIGINT, settled_at BIGINT, error LONGTEXT, attempt_count INT NOT NULL DEFAULT 0, max_retry INT NOT NULL DEFAULT 10, timeout_at BIGINT NOT NULL DEFAULT 0, owner_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, lease_expires_at BIGINT NOT NULL DEFAULT 0, INDEX flue_agent_submissions_status_sequence_idx (status, sequence), INDEX flue_agent_submissions_session_status_sequence_idx (session_key, status, sequence)) ENGINE=InnoDB`);
+		await runner.query(
+			`CREATE TABLE flue_agent_submissions (sequence BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, submission_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, session_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, kind VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, payload LONGTEXT NOT NULL, status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, accepted_at BIGINT NOT NULL, attempt_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, input_applied_at BIGINT, recovery_requested_at BIGINT, started_at BIGINT, settled_at BIGINT, error LONGTEXT, attempt_count INT NOT NULL DEFAULT 0, max_retry INT NOT NULL DEFAULT 10, timeout_at BIGINT NOT NULL DEFAULT 0, owner_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, lease_expires_at BIGINT NOT NULL DEFAULT 0, INDEX flue_agent_submissions_status_sequence_idx (status, sequence), INDEX flue_agent_submissions_session_status_sequence_idx (session_key, status, sequence)) ENGINE=InnoDB`,
+		);
 		await expect(adapter.migrate?.()).rejects.toThrowError(/submission_id/);
 		const rows = await runner.query(`SELECT value FROM flue_meta WHERE \`key\` = 'schema_version'`);
 		expect(rows).toEqual([]);
 		await adapter.close?.();
 	});
 });
-

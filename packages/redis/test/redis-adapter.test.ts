@@ -20,7 +20,8 @@ function createRunner(client: TestRedisClient): RedisRunner {
 		eval: (script, keys, args = []) => client.eval(script, { keys, arguments: args.map(String) }),
 		pipeline: async (commands) => {
 			const multi = client.multi();
-			for (const item of commands) multi.addCommand([item.command, ...(item.args ?? []).map(String)]);
+			for (const item of commands)
+				multi.addCommand([item.command, ...(item.args ?? []).map(String)]);
 			return multi.exec();
 		},
 		close: () => client.close(),
@@ -66,21 +67,33 @@ async function cleanupHarness() {
 
 describeRedis('Redis shared contracts', () => {
 	defineStoreContractTests('Redis AgentExecutionStore', {
-		async create() { return (await createHarness()).executionStore; },
+		async create() {
+			return (await createHarness()).executionStore;
+		},
 		cleanup: cleanupHarness,
 	});
 	defineRunStoreContractTests('Redis RunStore', {
-		async create() { return (await createHarness()).runStore; },
+		async create() {
+			return (await createHarness()).runStore;
+		},
 		cleanup: cleanupHarness,
 	});
 	defineEventStreamStoreContractTests('Redis EventStreamStore', {
-		async create() { return (await createHarness()).eventStreamStore; },
+		async create() {
+			return (await createHarness()).eventStreamStore;
+		},
 		cleanup: cleanupHarness,
 	});
 });
 
 function dispatchInput(dispatchId = 'dispatch-1') {
-	return { dispatchId, agent: 'assistant', id: 'agent-1', input: { text: 'hello' }, acceptedAt: '2026-06-03T00:00:00.000Z' };
+	return {
+		dispatchId,
+		agent: 'assistant',
+		id: 'agent-1',
+		input: { text: 'hello' },
+		acceptedAt: '2026-06-03T00:00:00.000Z',
+	};
 }
 
 function sessionData(label: string): SessionData {
@@ -104,8 +117,18 @@ describeRedis('redis() concurrency', () => {
 		const secondStores = await second.adapter.connect();
 		await firstStores.executionStore.submissions.admitDispatch(dispatchInput());
 		const results = await Promise.all([
-			firstStores.executionStore.submissions.claimSubmission({ submissionId: 'dispatch-1', attemptId: 'a', ownerId: 'one', leaseExpiresAt: Date.now() + 30_000 }),
-			secondStores.executionStore.submissions.claimSubmission({ submissionId: 'dispatch-1', attemptId: 'b', ownerId: 'two', leaseExpiresAt: Date.now() + 30_000 }),
+			firstStores.executionStore.submissions.claimSubmission({
+				submissionId: 'dispatch-1',
+				attemptId: 'a',
+				ownerId: 'one',
+				leaseExpiresAt: Date.now() + 30_000,
+			}),
+			secondStores.executionStore.submissions.claimSubmission({
+				submissionId: 'dispatch-1',
+				attemptId: 'b',
+				ownerId: 'two',
+				leaseExpiresAt: Date.now() + 30_000,
+			}),
 		]);
 		expect(results.filter(Boolean)).toHaveLength(1);
 		await cleanupPrefix(first, [second]);
@@ -118,13 +141,29 @@ describeRedis('redis() concurrency', () => {
 		const secondStores = await secondHarness.adapter.connect();
 		const admitted = await firstStores.executionStore.submissions.admitDispatch(dispatchInput());
 		if (admitted.kind !== 'submission') throw new Error('Expected submission.');
-		const claimed = await firstStores.executionStore.submissions.claimSubmission({ submissionId: 'dispatch-1', attemptId: 'a', ownerId: 'one', leaseExpiresAt: Date.now() + 30_000 });
+		const claimed = await firstStores.executionStore.submissions.claimSubmission({
+			submissionId: 'dispatch-1',
+			attemptId: 'a',
+			ownerId: 'one',
+			leaseExpiresAt: Date.now() + 30_000,
+		});
 		if (!claimed) throw new Error('Expected claim.');
-		await firstStores.executionStore.submissions.completeSubmission({ submissionId: 'dispatch-1', attemptId: 'a' });
+		await firstStores.executionStore.submissions.completeSubmission({
+			submissionId: 'dispatch-1',
+			attemptId: 'a',
+		});
 		let release: (() => void) | undefined;
-		const deleting = firstStores.executionStore.submissions.deleteSession(admitted.submission.sessionKey, () => new Promise<void>(resolve => { release = resolve; }));
-		while (!release) await new Promise(resolve => setTimeout(resolve, 1));
-		await expect(secondStores.executionStore.submissions.admitDispatch(dispatchInput('dispatch-2'))).rejects.toThrow();
+		const deleting = firstStores.executionStore.submissions.deleteSession(
+			admitted.submission.sessionKey,
+			() =>
+				new Promise<void>((resolve) => {
+					release = resolve;
+				}),
+		);
+		while (!release) await new Promise((resolve) => setTimeout(resolve, 1));
+		await expect(
+			secondStores.executionStore.submissions.admitDispatch(dispatchInput('dispatch-2')),
+		).rejects.toThrow();
 		release();
 		await deleting;
 		await cleanupPrefix(firstHarness, [secondHarness]);
@@ -139,14 +178,16 @@ describeRedis('redis() concurrency', () => {
 		let release: (() => void) | undefined;
 		const snapshot = () => {
 			calls++;
-			return new Promise<void>(resolve => { release = resolve; });
+			return new Promise<void>((resolve) => {
+				release = resolve;
+			});
 		};
 		const sessionKey = 'agent-session:["agent-1","default","default"]';
 		const deletions = [
 			firstStores.executionStore.submissions.deleteSession(sessionKey, snapshot),
 			secondStores.executionStore.submissions.deleteSession(sessionKey, snapshot),
 		];
-		while (!release) await new Promise(resolve => setTimeout(resolve, 1));
+		while (!release) await new Promise((resolve) => setTimeout(resolve, 1));
 		release();
 		await Promise.all(deletions);
 		expect(calls).toBe(1);
@@ -160,7 +201,9 @@ describeRedis('redis() concurrency', () => {
 			stores.executionStore.submissions.appendStreamChunkSegment('stream', 0, 'second'),
 		]);
 		expect(results.filter(Boolean)).toHaveLength(1);
-		expect(await stores.executionStore.submissions.getStreamChunkSegments('stream')).toHaveLength(1);
+		expect(await stores.executionStore.submissions.getStreamChunkSegments('stream')).toHaveLength(
+			1,
+		);
 		await cleanupHarness();
 	});
 
@@ -170,7 +213,11 @@ describeRedis('redis() concurrency', () => {
 		const firstStore = (await first.adapter.connect()).eventStreamStore;
 		const secondStore = (await second.adapter.connect()).eventStreamStore;
 		await firstStore.createStream('events');
-		const offsets = await Promise.all(Array.from({ length: 20 }, (_, index) => (index % 2 ? firstStore : secondStore).appendEvent('events', { index })));
+		const offsets = await Promise.all(
+			Array.from({ length: 20 }, (_, index) =>
+				(index % 2 ? firstStore : secondStore).appendEvent('events', { index }),
+			),
+		);
 		expect(new Set(offsets)).toHaveLength(20);
 		await secondStore.closeStream('events');
 		await expect(firstStore.appendEvent('events', { index: 21 })).rejects.toThrow();
@@ -195,7 +242,9 @@ describeRedis('redis() concurrency', () => {
 		const second = await createSharedHarness(first.prefix);
 		const firstSessions = (await first.adapter.connect()).executionStore.sessions;
 		const secondSessions = (await second.adapter.connect()).executionStore.sessions;
-		const saves = Array.from({ length: 10 }, (_, index) => firstSessions.save('session', sessionData(String(index))));
+		const saves = Array.from({ length: 10 }, (_, index) =>
+			firstSessions.save('session', sessionData(String(index))),
+		);
 		const loads = Array.from({ length: 20 }, async () => {
 			const value = await secondSessions.load('session');
 			if (value) expect(value.metadata.label).toMatch(/^\d$/);
@@ -209,20 +258,28 @@ describeRedis('redis() concurrency', () => {
 		const target = await createSharedHarness();
 		const base = createRunner(target.client);
 		let fail = false;
-		const adapter = redis({
-			...base,
-			pipeline: async commands => {
-				if (fail) return commands.map((_, index) => index === 1 ? new Error('injected pipeline failure') : 1);
-				const results = await base.pipeline?.(commands);
-				if (!results) throw new Error('Missing pipeline results.');
-				return results;
+		const adapter = redis(
+			{
+				...base,
+				pipeline: async (commands) => {
+					if (fail)
+						return commands.map((_, index) =>
+							index === 1 ? new Error('injected pipeline failure') : 1,
+						);
+					const results = await base.pipeline?.(commands);
+					if (!results) throw new Error('Missing pipeline results.');
+					return results;
+				},
+				close: () => undefined,
 			},
-			close: () => undefined,
-		}, { keyPrefix: target.prefix, inspectServer: false });
+			{ keyPrefix: target.prefix, inspectServer: false },
+		);
 		const sessions = (await adapter.connect()).executionStore.sessions;
 		await sessions.save('session', sessionData('first'));
 		fail = true;
-		await expect(sessions.save('session', sessionData('second'))).rejects.toThrow('injected pipeline failure');
+		await expect(sessions.save('session', sessionData('second'))).rejects.toThrow(
+			'injected pipeline failure',
+		);
 		expect((await sessions.load('session'))?.metadata.label).toBe('first');
 		await adapter.close?.();
 		await cleanupPrefix(target);
@@ -233,10 +290,26 @@ describeRedis('redis() concurrency', () => {
 		const second = await createSharedHarness(first.prefix);
 		const firstRuns = (await first.adapter.connect()).runStore;
 		const secondRuns = (await second.adapter.connect()).runStore;
-		await firstRuns.createRun({ runId: 'run', workflowName: 'workflow', startedAt: '2026-01-01T00:00:00+05:00', payload: null });
+		await firstRuns.createRun({
+			runId: 'run',
+			workflowName: 'workflow',
+			startedAt: '2026-01-01T00:00:00+05:00',
+			payload: null,
+		});
 		await Promise.all([
-			firstRuns.endRun({ runId: 'run', endedAt: '2026-01-01T00:00:01Z', durationMs: 1, isError: false }),
-			secondRuns.endRun({ runId: 'run', endedAt: '2026-01-01T00:00:02Z', durationMs: 2, isError: true, error: 'failed' }),
+			firstRuns.endRun({
+				runId: 'run',
+				endedAt: '2026-01-01T00:00:01Z',
+				durationMs: 1,
+				isError: false,
+			}),
+			secondRuns.endRun({
+				runId: 'run',
+				endedAt: '2026-01-01T00:00:02Z',
+				durationMs: 2,
+				isError: true,
+				error: 'failed',
+			}),
 		]);
 		const run = await firstRuns.getRun('run');
 		expect(run?.status === 'completed' || run?.status === 'errored').toBe(true);

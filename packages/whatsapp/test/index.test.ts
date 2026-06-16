@@ -345,7 +345,11 @@ describe('createWhatsAppChannel()', () => {
 		// Native media payloads keep the bearer-authenticated media id and hash.
 		expect(messages[0]).toMatchObject({
 			type: 'image',
-			image: { id: 'media_image_maple', sha256: 'synthetic-hash-maple', caption: 'Damaged package' },
+			image: {
+				id: 'media_image_maple',
+				sha256: 'synthetic-hash-maple',
+				caption: 'Damaged package',
+			},
 		});
 		expect(messages[1]).toMatchObject({
 			type: 'location',
@@ -357,7 +361,10 @@ describe('createWhatsAppChannel()', () => {
 			org: { company: 'Northwind Repair' },
 		});
 		expect(messages[3]).toMatchObject({ type: 'reaction', reaction: { emoji: '✅' } });
-		expect(messages[4]).toMatchObject({ type: 'unsupported', unsupported: { type: 'poll_creation' } });
+		expect(messages[4]).toMatchObject({
+			type: 'unsupported',
+			unsupported: { type: 'poll_creation' },
+		});
 		// Authenticated future/unmodeled message types are forwarded at runtime.
 		expect(messages[5]).toMatchObject({ type: 'future_message', future_message: { value: 7 } });
 	});

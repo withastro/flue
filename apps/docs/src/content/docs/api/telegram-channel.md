@@ -25,11 +25,11 @@ interface TelegramChannelOptions<E extends Env = Env> {
 }
 ```
 
-| Field         | Description                                                                   |
-| ------------- | ----------------------------------------------------------------------------- |
+| Field         | Description                                                                  |
+| ------------- | ---------------------------------------------------------------------------- |
 | `secretToken` | The 1-256 character `secret_token` configured through Telegram `setWebhook`. |
-| `bodyLimit`   | Maximum request body. Default: 1 MiB.                                         |
-| `webhook`     | Callback for one verified provider-native Telegram `Update`.                  |
+| `bodyLimit`   | Maximum request body. Default: 1 MiB.                                        |
+| `webhook`     | Callback for one verified provider-native Telegram `Update`.                 |
 
 `secretToken` accepts only Telegram's documented `A-Z`, `a-z`, `0-9`, `_`, and
 `-` characters. It is required by Flue even though Telegram makes the setting

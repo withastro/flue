@@ -34,12 +34,7 @@ export function createTwilioWebhookHandler<E extends Env>(
 	const key = importSigningKey(options.authToken);
 
 	return async (c) => {
-		const accepted = await acceptSignedForm(
-			c.req.raw,
-			configuredUrl,
-			bodyLimit,
-			key,
-		);
+		const accepted = await acceptSignedForm(c.req.raw, configuredUrl, bodyLimit, key);
 		if (accepted instanceof Response) return accepted;
 
 		const payload = accepted.form.payload as TwilioIncomingMessagePayload;
@@ -79,17 +74,10 @@ export function createTwilioStatusCallbackHandler<E extends Env>(
 	const bodyLimit = resolveBodyLimit(options.bodyLimit);
 	const configuredUrl = parseConfiguredUrl(options.statusCallbackUrl as string);
 	const key = importSigningKey(options.authToken);
-	const callback = options.statusCallback as NonNullable<
-		TwilioChannelOptions<E>['statusCallback']
-	>;
+	const callback = options.statusCallback as NonNullable<TwilioChannelOptions<E>['statusCallback']>;
 
 	return async (c) => {
-		const accepted = await acceptSignedForm(
-			c.req.raw,
-			configuredUrl,
-			bodyLimit,
-			key,
-		);
+		const accepted = await acceptSignedForm(c.req.raw, configuredUrl, bodyLimit, key);
 		if (accepted instanceof Response) return accepted;
 
 		const payload = accepted.form.payload as TwilioStatusCallbackPayload;
@@ -138,19 +126,12 @@ async function acceptSignedForm(
 	const signature = request.headers.get('x-twilio-signature');
 	if (
 		!signature ||
-		!(await verifySignature(
-			await key,
-			signature,
-			configuredUrl.signatureUrl,
-			form.values,
-		))
+		!(await verifySignature(await key, signature, configuredUrl.signatureUrl, form.values))
 	) {
 		return response(401);
 	}
 
-	const idempotencyToken = optionalHeader(
-		request.headers.get('i-twilio-idempotency-token'),
-	);
+	const idempotencyToken = optionalHeader(request.headers.get('i-twilio-idempotency-token'));
 	return {
 		form,
 		...(idempotencyToken === undefined ? {} : { idempotencyToken }),
@@ -214,8 +195,7 @@ function statusConversation<E extends Env>(
 
 function parseConfiguredUrl(value: string): ConfiguredUrl {
 	const fragmentIndex = value.indexOf('#');
-	const signatureUrl =
-		fragmentIndex === -1 ? value : value.slice(0, fragmentIndex);
+	const signatureUrl = fragmentIndex === -1 ? value : value.slice(0, fragmentIndex);
 	return { signatureUrl };
 }
 
@@ -229,11 +209,8 @@ function resolveBodyLimit(value: number | undefined): number {
 
 function isFormRequest(request: Request): boolean {
 	return (
-		request.headers
-			.get('content-type')
-			?.split(';', 1)[0]
-			?.trim()
-			.toLowerCase() === 'application/x-www-form-urlencoded'
+		request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() ===
+		'application/x-www-form-urlencoded'
 	);
 }
 
@@ -320,11 +297,7 @@ function optionalHeader(value: string | null): string | undefined {
 async function readBody(
 	request: Request,
 	limit: number,
-): Promise<
-	| { type: 'ok'; value: string }
-	| { type: 'too-large' }
-	| { type: 'invalid' }
-> {
+): Promise<{ type: 'ok'; value: string } | { type: 'too-large' } | { type: 'invalid' }> {
 	const contentLength = request.headers.get('content-length');
 	if (contentLength) {
 		const length = Number(contentLength);

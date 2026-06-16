@@ -586,7 +586,8 @@ describe('Cloudflare AI binding provider', () => {
 				reason: 'error',
 				error: expect.objectContaining({
 					stopReason: 'error',
-					errorMessage: 'Cloudflare AI binding returned 502 Bad Gateway: request aborted by upstream',
+					errorMessage:
+						'Cloudflare AI binding returned 502 Bad Gateway: request aborted by upstream',
 				}),
 			}),
 		]);

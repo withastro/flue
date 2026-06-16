@@ -14,29 +14,36 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createClient } from '@libsql/client';
-import { describe, expect, it } from 'vitest';
 import { PersistedSchemaVersionError, type SessionData } from '@flue/runtime/adapter';
-import {
-	libsql,
-	type LibsqlParameter,
-	type LibsqlQuery,
-	type LibsqlRunner,
-} from '../src/libsql-adapter.ts';
 import {
 	defineEventStreamStoreContractTests,
 	defineRunStoreContractTests,
 	defineStoreContractTests,
 } from '@flue/runtime/test-utils';
+import { createClient } from '@libsql/client';
+import { describe, expect, it } from 'vitest';
+import {
+	type LibsqlParameter,
+	type LibsqlQuery,
+	type LibsqlRunner,
+	libsql,
+} from '../src/libsql-adapter.ts';
 
 // ─── @libsql/client → LibsqlRunner adapter ─────────────────────────────────
 
-function createLibsqlRunner(options: { path?: string; intMode?: 'number' | 'string' | 'bigint' } = {}): LibsqlRunner {
+function createLibsqlRunner(
+	options: { path?: string; intMode?: 'number' | 'string' | 'bigint' } = {},
+): LibsqlRunner {
 	const dir = options.path ? undefined : mkdtempSync(join(tmpdir(), 'flue-libsql-'));
 	const path = options.path ?? join(dir ?? tmpdir(), 'test.db');
 	const client = createClient({ url: `file:${path}`, intMode: options.intMode });
-	const toRows = (rs: { rows: ArrayLike<Record<string, unknown>>; columns: string[] }): Record<string, unknown>[] =>
-		Array.from(rs.rows, (row) => Object.fromEntries(rs.columns.map((column) => [column, row[column]])));
+	const toRows = (rs: {
+		rows: ArrayLike<Record<string, unknown>>;
+		columns: string[];
+	}): Record<string, unknown>[] =>
+		Array.from(rs.rows, (row) =>
+			Object.fromEntries(rs.columns.map((column) => [column, row[column]])),
+		);
 
 	// The local libSQL file driver takes an immediate write lock when a
 	// `write` transaction opens and returns SQLITE_BUSY (no automatic
@@ -49,7 +56,10 @@ function createLibsqlRunner(options: { path?: string; intMode?: 'number' | 'stri
 	let tail: Promise<unknown> = Promise.resolve();
 	const serialize = <T>(op: () => Promise<T>): Promise<T> => {
 		const run = tail.then(op, op);
-		tail = run.then(() => undefined, () => undefined);
+		tail = run.then(
+			() => undefined,
+			() => undefined,
+		);
 		return run;
 	};
 

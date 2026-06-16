@@ -47,11 +47,11 @@ interface PersistenceStores {
 
 A persistence adapter provides the database-backed stores used by a generated Node server. Flue calls `migrate()` once at startup when present, then awaits `connect()` once to obtain every store — an unreachable or misconfigured database fails at boot, not inside the first request. On shutdown, Flue calls `close()` when present. Adapters that create schema implicitly may omit `migrate()`, but must still uphold the schema-versioning obligation below in their store-creating paths.
 
-| Method | Contract |
-| --- | --- |
-| `connect()` | Open the database and return all three stores. May return a `Promise`; async pool setup, remote handshakes, and — for adapters without `migrate()` — the schema-version check belong here. |
-| `migrate?()` | Bring the store to the current schema/format version before connecting. |
-| `close?()` | Release connections, pools, or file handles during shutdown. |
+| Method       | Contract                                                                                                                                                                                   |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `connect()`  | Open the database and return all three stores. May return a `Promise`; async pool setup, remote handshakes, and — for adapters without `migrate()` — the schema-version check belong here. |
+| `migrate?()` | Bring the store to the current schema/format version before connecting.                                                                                                                    |
+| `close?()`   | Release connections, pools, or file handles during shutdown.                                                                                                                               |
 
 ### Schema versioning
 
@@ -84,11 +84,11 @@ interface SessionStore {
 }
 ```
 
-| Method | Contract |
-| --- | --- |
+| Method           | Contract                                                                         |
+| ---------------- | -------------------------------------------------------------------------------- |
 | `save(id, data)` | Persist the complete current session record under the supplied Flue storage key. |
-| `load(id)` | Return the saved session record, or `null` when none exists. |
-| `delete(id)` | Delete the stored session record for that key. |
+| `load(id)`       | Return the saved session record, or `null` when none exists.                     |
+| `delete(id)`     | Delete the stored session record for that key.                                   |
 
 ## `AgentSubmissionStore`
 
@@ -122,7 +122,10 @@ interface AgentSubmissionStore {
   admitDispatch(input: DispatchInput): Promise<AgentDispatchAdmission>;
   admitDirect(input: DirectAgentSubmissionInput): Promise<AgentSubmission>;
   claimSubmission(claim: SubmissionClaimRef): Promise<AgentSubmission | null>;
-  markSubmissionInputApplied(attempt: SubmissionAttemptRef, durability?: SubmissionDurability): Promise<boolean>;
+  markSubmissionInputApplied(
+    attempt: SubmissionAttemptRef,
+    durability?: SubmissionDurability,
+  ): Promise<boolean>;
   requestSubmissionRecovery(attempt: SubmissionAttemptRef): Promise<boolean>;
   requeueSubmissionBeforeInputApplied(attempt: SubmissionAttemptRef): Promise<boolean>;
   completeSubmission(attempt: SubmissionAttemptRef): Promise<boolean>;
@@ -185,13 +188,13 @@ interface RunStore {
 
 The run store persists workflow-run records and serves run lookup and listing for `/runs`, `flue logs`, and the [inspection primitives](#inspection-primitives). Event payloads live in `EventStreamStore`. Agent prompts and dispatched agent input do not create workflow runs.
 
-| Method | Contract |
-| --- | --- |
+| Method        | Contract                                                                                                                                                                                                                                                                            |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `createRun()` | Persist a new `active` run record. Idempotent, first-writer-wins: when a record with the same `runId` already exists, the call is a no-op and the existing record — including any terminal status, result, or error — is preserved (`INSERT OR IGNORE` / `ON CONFLICT DO NOTHING`). |
-| `endRun()` | Finalize a run record with its terminal status, result, or error. A no-op when no record exists for `runId`. |
-| `getRun()` | Return the full run record, or `null` when unknown. |
-| `lookupRun()` | Return the `RunPointer` projection of `getRun()` — every record field except `payload`, `result`, and `error` — or `null` when unknown. |
-| `listRuns()` | List run pointers newest first (`startedAt` descending, then `runId` descending), filtered by `status`/`workflowName` and paginated via the opaque `nextCursor`. |
+| `endRun()`    | Finalize a run record with its terminal status, result, or error. A no-op when no record exists for `runId`.                                                                                                                                                                        |
+| `getRun()`    | Return the full run record, or `null` when unknown.                                                                                                                                                                                                                                 |
+| `lookupRun()` | Return the `RunPointer` projection of `getRun()` — every record field except `payload`, `result`, and `error` — or `null` when unknown.                                                                                                                                             |
+| `listRuns()`  | List run pointers newest first (`startedAt` descending, then `runId` descending), filtered by `status`/`workflowName` and paginated via the opaque `nextCursor`.                                                                                                                    |
 
 Single-database adapters back all five methods from one run-records table; pointers are a column-subset select. Verify a custom implementation with `defineRunStoreContractTests` from `@flue/runtime/test-utils`.
 
@@ -253,16 +256,16 @@ interface TaskSessionRef {
 
 `SessionData` is the complete persisted conversation record for one session.
 
-| Field | Contract |
-| --- | --- |
-| `version` | Storage format version. Flue rejects unsupported versions. |
-| `affinityKey` | Opaque Flue-generated provider-affinity key. Persist it unchanged. |
-| `entries` | Stored message and compaction history. |
-| `leafId` | Current active leaf in the session history tree, or `null`. |
+| Field          | Contract                                                                                                                                           |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `version`      | Storage format version. Flue rejects unsupported versions.                                                                                         |
+| `affinityKey`  | Opaque Flue-generated provider-affinity key. Persist it unchanged.                                                                                 |
+| `entries`      | Stored message and compaction history.                                                                                                             |
+| `leafId`       | Current active leaf in the session history tree, or `null`.                                                                                        |
 | `taskSessions` | Framework bookkeeping: child task sessions created by delegated tasks. The recursive deletion cascade follows these references. Persist unchanged. |
-| `metadata` | Application-owned session metadata. Flue never reads or writes keys here. |
-| `createdAt` | ISO timestamp for session creation. |
-| `updatedAt` | ISO timestamp for the last persisted update. |
+| `metadata`     | Application-owned session metadata. Flue never reads or writes keys here.                                                                          |
+| `createdAt`    | ISO timestamp for session creation.                                                                                                                |
+| `updatedAt`    | ISO timestamp for the last persisted update.                                                                                                       |
 
 `SessionData` may contain model-visible text, tool output, dispatch snapshots, and summaries derived from earlier content. Treat it as potentially sensitive.
 

@@ -68,9 +68,7 @@ describe('@flue/messenger workerd ingress', () => {
 		expect(await accepted.text()).toBe('EVENT_RECEIVED');
 		expect(rejected.status).toBe(401);
 		expect(webhook).toHaveBeenCalledOnce();
-		expect(
-			webhook.mock.calls[0]?.[0].payload.entry[0]?.messaging[0],
-		).toMatchObject({
+		expect(webhook.mock.calls[0]?.[0].payload.entry[0]?.messaging[0]).toMatchObject({
 			sender: { id: 'psid_worker_72' },
 			recipient: { id: 'page_worker_71' },
 			message: {
@@ -89,10 +87,6 @@ async function signatureFor(appSecret: string, body: string): Promise<string> {
 		false,
 		['sign'],
 	);
-	const signature = new Uint8Array(
-		await crypto.subtle.sign('HMAC', key, encoder.encode(body)),
-	);
-	return `sha256=${[...signature]
-		.map((byte) => byte.toString(16).padStart(2, '0'))
-		.join('')}`;
+	const signature = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(body)));
+	return `sha256=${[...signature].map((byte) => byte.toString(16).padStart(2, '0')).join('')}`;
 }

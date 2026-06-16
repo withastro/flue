@@ -3,8 +3,8 @@ import type { Context, Env, Handler } from 'hono';
 import { InvalidGitHubConversationKeyError, InvalidGitHubInputError } from './errors.ts';
 import { createGitHubWebhookHandler } from './webhook.ts';
 
-export { InvalidGitHubConversationKeyError, InvalidGitHubInputError } from './errors.ts';
 export type { EventPayloadMap, WebhookEvent, WebhookEventName } from '@octokit/webhooks-types';
+export { InvalidGitHubConversationKeyError, InvalidGitHubInputError } from './errors.ts';
 
 export type JsonValue =
 	| null

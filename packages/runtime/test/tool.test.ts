@@ -39,7 +39,10 @@ class RecordingSessionStore implements SessionStore {
 	}
 }
 
-function createContext(provider: FauxProviderRegistration, store: SessionStore = new InMemorySessionStore()) {
+function createContext(
+	provider: FauxProviderRegistration,
+	store: SessionStore = new InMemorySessionStore(),
+) {
 	return createFlueContext({
 		id: 'tool-test-instance',
 		payload: {},
@@ -343,11 +346,11 @@ describe('custom tools', () => {
 				expect(data?.entries).toEqual([
 					expect.objectContaining({ message: expect.objectContaining({ role: 'user' }) }),
 					expect.objectContaining({
-					message: expect.objectContaining({ role: 'assistant', stopReason: 'toolUse' }),
-				}),
+						message: expect.objectContaining({ role: 'assistant', stopReason: 'toolUse' }),
+					}),
 					expect.objectContaining({
-					message: expect.objectContaining({ role: 'toolResult', toolName: 'lookup' }),
-				}),
+						message: expect.objectContaining({ role: 'toolResult', toolName: 'lookup' }),
+					}),
 				]);
 				expect(context.messages.at(-1)).toMatchObject({ role: 'toolResult', toolName: 'lookup' });
 				return fauxAssistantMessage('Lookup complete.');
@@ -367,7 +370,9 @@ describe('custom tools', () => {
 		);
 		const session = await harness.session();
 
-		await expect(session.prompt('Look up flue.')).resolves.toMatchObject({ text: 'Lookup complete.' });
+		await expect(session.prompt('Look up flue.')).resolves.toMatchObject({
+			text: 'Lookup complete.',
+		});
 	});
 
 	it('does not begin a follow-up provider turn when persisting the completed prior turn fails', async () => {
@@ -381,7 +386,7 @@ describe('custom tools', () => {
 						entry.type === 'message' &&
 						entry.message.role === 'toolResult' &&
 						entry.message.toolName === 'lookup',
-					)
+				)
 			) {
 				throw new Error('persist failed');
 			}
