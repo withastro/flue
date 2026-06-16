@@ -47,6 +47,31 @@ describe('flue (argument parsing)', () => {
 		assert.ok(!result.stderr.includes('Unknown flag'), result.stderr);
 	});
 
+	it('reports a missing string value when the next argument is another flag', async () => {
+		const result = await runCli(['run', 'hello', '--target', '--root', './app']);
+		assert.equal(result.code, 1);
+		assert.ok(result.stderr.includes('Missing value for --target'), result.stderr);
+	});
+
+	it('reports a missing string value when the next argument is an inline flag', async () => {
+		const result = await runCli(['run', 'hello', '--target', '--root=./app']);
+		assert.equal(result.code, 1);
+		assert.ok(result.stderr.includes('Missing value for --target'), result.stderr);
+	});
+
+	it('reports a missing logs string value when the next argument is a boolean flag', async () => {
+		const result = await runCli(['logs', 'run-1', '--server', '--no-follow']);
+		assert.equal(result.code, 1);
+		assert.ok(result.stderr.includes('Missing value for --server'), result.stderr);
+	});
+
+	it('accepts a flag-like string value when provided inline', async () => {
+		const result = await runCli(['run', 'hello', '--target=--root']);
+		assert.equal(result.code, 1);
+		assert.ok(result.stderr.includes('Invalid target: "--root"'), result.stderr);
+		assert.ok(!result.stderr.includes('Missing value for --target'), result.stderr);
+	});
+
 	it('rejects --payload when passed to `flue build`', async () => {
 		const result = await runCli(['build', '--payload', '{"x":1}']);
 		assert.equal(result.code, 1);

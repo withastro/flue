@@ -332,6 +332,15 @@ function parseCommandOptions(
 					: '';
 			fail(`\`flue ${command}\` does not accept ${token.rawName}${hint}.`);
 		}
+		if (
+			options[optionName]?.type === 'string' &&
+			token.inlineValue === false &&
+			token.value !== undefined
+		) {
+			const separator = token.value.indexOf('=');
+			const valueName = separator === -1 ? token.value : token.value.slice(0, separator);
+			if (known.has(valueName)) fail(`Missing value for ${token.rawName}`);
+		}
 		if (options[optionName]?.type === 'boolean' && token.value !== undefined) {
 			fail(`${token.rawName} does not accept a value`);
 		}
