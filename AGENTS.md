@@ -56,6 +56,8 @@ A single `review` task is enough review for most work. Additional reviews are al
 
 When writing new plans to disk, write them to `plans/` (gitignored intentionally) with a `YYYY-MM-DD` filename prefix.
 
+When updating Flue documentation under `apps/docs/src/content/docs/`, also check `skills/flue/README.md` and update any affected installable skill content under `skills/flue/`.
+
 ## Errors
 
 Throw structured error classes from `packages/runtime/src/errors.ts` rather than ad-hoc `new Error('[flue] ...')`. If no existing class fits, add one following the structured-constructor pattern: machine-readable fields in `details`, developer-only guidance (filesystem paths, setup mechanics) in `dev` — never in the caller-visible message. Consumers distinguish failures via `instanceof` checks against exported classes and structured fields; error message strings are not API, and tests should assert on class and structured data rather than message text.
