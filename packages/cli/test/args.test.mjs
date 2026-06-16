@@ -40,6 +40,13 @@ describe('flue (argument parsing)', () => {
 		assert.ok(result.stderr.includes('Missing workflow name'), result.stderr);
 	});
 
+	it('treats `--target=node` the same as `--target node`', async () => {
+		const result = await runCli(['run', '--target=node']);
+		assert.equal(result.code, 1);
+		assert.ok(result.stderr.includes('Missing workflow name'), result.stderr);
+		assert.ok(!result.stderr.includes('Unknown flag'), result.stderr);
+	});
+
 	it('rejects --payload when passed to `flue build`', async () => {
 		const result = await runCli(['build', '--payload', '{"x":1}']);
 		assert.equal(result.code, 1);

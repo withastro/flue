@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { type ParseArgsOptionsConfig, parseArgs as parseNodeArgs } from 'node:util';
 import { formatOffset } from '@flue/runtime/adapter';
 import type { FlueEvent, RunRecord } from '@flue/sdk';
 import { createFlueClient, type FlueEventStream } from '@flue/sdk';
@@ -19,7 +20,15 @@ import {
 import { resolveConfigCandidates } from '../src/lib/config-paths.ts';
 import { DEFAULT_DEV_PORT, dev } from '../src/lib/dev.ts';
 import { createEnvLoader, type EnvLoader, selectEnvFile } from '../src/lib/env.ts';
-import { brand, brandRows, error as cliError, dim, note, row, success } from '../src/lib/terminal.ts';
+import {
+	brand,
+	brandRows,
+	error as cliError,
+	dim,
+	note,
+	row,
+	success,
+} from '../src/lib/terminal.ts';
 import { BLUEPRINTS, KIND_ROOTS } from './_blueprints.generated.ts';
 
 interface ApplicationConfigArgs {
@@ -267,16 +276,100 @@ type ParsedArgs =
 	| InitArgs
 	| LogsArgs;
 
+type ParsedOptionToken = Extract<
+	NonNullable<ReturnType<typeof parseNodeArgs>['tokens']>[number],
+	{ kind: 'option' }
+>;
+type CliValue = string | boolean | Array<string | boolean> | undefined;
+type CliValues = Record<string, CliValue>;
+
+const SHARED_PARSE_OPTIONS = {
+	payload: { type: 'string' },
+	target: { type: 'string' },
+	root: { type: 'string' },
+	output: { type: 'string' },
+	config: { type: 'string' },
+	port: { type: 'string' },
+	env: { type: 'string', multiple: true },
+} as const;
+
 /** Every flag `parseFlags` knows how to parse, across all commands that use it. */
-const SHARED_FLAGS = new Set([
-	'--payload',
-	'--target',
-	'--root',
-	'--output',
-	'--config',
-	'--port',
-	'--env',
-]);
+const SHARED_FLAGS = new Set(Object.keys(SHARED_PARSE_OPTIONS).map((name) => `--${name}`));
+
+function fail(message: string, usage = false): never {
+	console.error(message);
+	if (usage) printUsage();
+	process.exit(1);
+}
+
+function parseCommandOptions(
+	command: string,
+	args: string[],
+	options: ParseArgsOptionsConfig,
+	allowed: ReadonlySet<string>,
+	known: ReadonlySet<string> = allowed,
+	allowNegative = false,
+) {
+	const parsed = parseNodeArgs({
+		args,
+		options,
+		allowPositionals: true,
+		allowNegative,
+		strict: false,
+		tokens: true,
+	});
+	for (const token of (parsed.tokens ?? []).filter(
+		(token): token is ParsedOptionToken => token.kind === 'option',
+	)) {
+		const optionName = token.rawName.startsWith('--no-') ? token.rawName.slice(5) : token.name;
+		if (!known.has(token.rawName)) {
+			fail(`Unknown flag for \`flue ${command}\`: ${token.rawName}`, true);
+		}
+		if (!allowed.has(token.rawName)) {
+			const hint =
+				command === 'connect' && token.rawName === '--payload'
+					? '; enter prompts after connecting'
+					: '';
+			fail(`\`flue ${command}\` does not accept ${token.rawName}${hint}.`);
+		}
+		if (options[optionName]?.type === 'boolean' && token.value !== undefined) {
+			fail(`${token.rawName} does not accept a value`);
+		}
+	}
+	return { positionals: parsed.positionals, values: parsed.values as CliValues };
+}
+
+function stringFlag(values: CliValues, name: string, missingMessage: string): string | undefined {
+	const value = values[name];
+	if (value === undefined) return undefined;
+	if (typeof value !== 'string' || value.length === 0) fail(missingMessage);
+	return value;
+}
+
+function stringListFlag(values: CliValues, name: string, missingMessage: string): string[] {
+	const value = values[name];
+	const valuesList = value === undefined ? [] : Array.isArray(value) ? value : [value];
+	const strings: string[] = [];
+	for (const item of valuesList) {
+		if (typeof item !== 'string' || item.length === 0) fail(missingMessage);
+		strings.push(item);
+	}
+	return strings;
+}
+
+function booleanFlag(values: CliValues, name: string, flag: string): boolean {
+	const value = values[name];
+	if (value === undefined) return false;
+	if (value !== true) fail(`${flag} does not accept a value`);
+	return true;
+}
+
+function targetFlag(value: string | undefined): 'node' | 'cloudflare' | undefined {
+	if (value !== undefined && value !== 'node' && value !== 'cloudflare') {
+		fail(`Invalid target: "${value}". Supported targets: node, cloudflare`);
+	}
+	return value;
+}
 
 function parseFlags(
 	command: 'build' | 'dev' | 'run' | 'connect',
@@ -292,103 +385,42 @@ function parseFlags(
 	port: number;
 	envFile: string | undefined;
 } {
-	const positionals: string[] = [];
-	let target: 'node' | 'cloudflare' | undefined;
-	let explicitRoot: string | undefined;
-	let explicitOutput: string | undefined;
-	let configFile: string | undefined;
-	let payload = '{}';
-	let port = 0;
-	let envFile: string | undefined;
+	const { positionals, values } = parseCommandOptions(
+		command,
+		args,
+		SHARED_PARSE_OPTIONS,
+		allowed,
+		SHARED_FLAGS,
+	);
+	const envFiles = stringListFlag(values, 'env', 'Missing value for --env');
+	if (envFiles.length > 1) {
+		fail('`--env` accepts one file. Combine values into one file or provide shell overrides.');
+	}
 
-	for (let i = 0; i < args.length; i++) {
-		const arg = args[i];
-		if (arg === undefined) continue;
-		if (!arg.startsWith('--')) {
-			positionals.push(arg);
-			continue;
-		}
-		if (!SHARED_FLAGS.has(arg)) {
-			console.error(`Unknown flag for \`flue ${command}\`: ${arg}`);
-			printUsage();
-			process.exit(1);
-		}
-		if (!allowed.has(arg)) {
-			const hint =
-				command === 'connect' && arg === '--payload' ? '; enter prompts after connecting' : '';
-			console.error(`\`flue ${command}\` does not accept ${arg}${hint}.`);
-			process.exit(1);
-		}
-		if (arg === '--payload') {
-			payload = args[++i] ?? '';
-			if (!payload) {
-				console.error('Missing value for --payload');
-				process.exit(1);
-			}
-		} else if (arg === '--target') {
-			const targetFlag = args[++i];
-			if (!targetFlag) {
-				console.error('Missing value for --target');
-				process.exit(1);
-			}
-			if (targetFlag !== 'node' && targetFlag !== 'cloudflare') {
-				console.error(`Invalid target: "${targetFlag}". Supported targets: node, cloudflare`);
-				process.exit(1);
-			}
-			target = targetFlag;
-		} else if (arg === '--root') {
-			explicitRoot = args[++i] ?? '';
-			if (!explicitRoot) {
-				console.error('Missing value for --root');
-				process.exit(1);
-			}
-		} else if (arg === '--output') {
-			explicitOutput = args[++i] ?? '';
-			if (!explicitOutput) {
-				console.error('Missing value for --output');
-				process.exit(1);
-			}
-		} else if (arg === '--config') {
-			configFile = args[++i] ?? '';
-			if (!configFile) {
-				console.error('Missing value for --config');
-				process.exit(1);
-			}
-		} else if (arg === '--port') {
-			const portStr = args[++i];
-			port = parseInt(portStr ?? '', 10);
-			if (Number.isNaN(port)) {
-				console.error('Invalid value for --port');
-				process.exit(1);
-			}
-		} else if (arg === '--env') {
-			const value = args[++i];
-			if (!value) {
-				console.error('Missing value for --env');
-				process.exit(1);
-			}
-			if (envFile !== undefined) {
-				console.error(
-					'`--env` accepts one file. Combine values into one file or provide shell overrides.',
-				);
-				process.exit(1);
-			}
-			envFile = value;
-		}
+	const portStr = stringFlag(values, 'port', 'Invalid value for --port');
+	let port = 0;
+	if (portStr !== undefined) {
+		port = parseInt(portStr, 10);
+		if (Number.isNaN(port)) fail('Invalid value for --port');
 	}
 
 	return {
 		positionals,
-		target,
-		explicitRoot: explicitRoot ? path.resolve(explicitRoot) : undefined,
-		explicitOutput: explicitOutput ? path.resolve(explicitOutput) : undefined,
+		target: targetFlag(stringFlag(values, 'target', 'Missing value for --target')),
+		explicitRoot: pathFlag(values, 'root', 'Missing value for --root'),
+		explicitOutput: pathFlag(values, 'output', 'Missing value for --output'),
 		// `--config` is intentionally NOT pre-resolved: the config loader
 		// resolves it vs. cwd at load time, mirroring how Vite handles `--config`.
-		configFile,
-		payload,
+		configFile: stringFlag(values, 'config', 'Missing value for --config'),
+		payload: stringFlag(values, 'payload', 'Missing value for --payload') ?? '{}',
 		port,
-		envFile,
+		envFile: envFiles[0],
 	};
+}
+
+function pathFlag(values: CliValues, name: string, missingMessage: string): string | undefined {
+	const value = stringFlag(values, name, missingMessage);
+	return value ? path.resolve(value) : undefined;
 }
 
 function shellQuote(value: string): string {
@@ -421,20 +453,13 @@ function parseBlueprintCommandArgs(
 	command: 'add' | 'update',
 	rest: string[],
 ): BlueprintCommandArgs {
-	const positionals: string[] = [];
-	let print = false;
-
-	for (const arg of rest) {
-		if (arg === '--print') {
-			print = true;
-		} else if (arg.startsWith('--')) {
-			console.error(`Unknown flag for \`flue ${command}\`: ${arg}`);
-			printUsage();
-			process.exit(1);
-		} else {
-			positionals.push(arg);
-		}
-	}
+	const { positionals, values } = parseCommandOptions(
+		command,
+		rest,
+		{ print: { type: 'boolean' } },
+		new Set(['--print']),
+	);
+	const print = booleanFlag(values, 'print', '--print');
 
 	if (command === 'add' && positionals.length === 0) {
 		return { command, kind: '', target: '', print };
@@ -533,90 +558,82 @@ function parseLogsHeader(value: string | undefined, headers: Headers): void {
 }
 
 function parseLogsArgs(rest: string[]): LogsArgs {
-	const positional: string[] = [];
-	let server = `http://127.0.0.1:${DEFAULT_DEV_PORT}`;
+	const logsFlags = new Set([
+		'--server',
+		'--header',
+		'--follow',
+		'-f',
+		'--no-follow',
+		'--since',
+		'--types',
+		'--limit',
+		'--format',
+	]);
+	const { positionals, values } = parseCommandOptions(
+		'logs',
+		rest,
+		{
+			server: { type: 'string' },
+			header: { type: 'string', multiple: true },
+			follow: { type: 'boolean', short: 'f' },
+			since: { type: 'string' },
+			types: { type: 'string' },
+			limit: { type: 'string' },
+			format: { type: 'string' },
+		},
+		logsFlags,
+		logsFlags,
+		true,
+	);
+
+	const server =
+		stringFlag(values, 'server', 'Missing value for --server') ??
+		`http://127.0.0.1:${DEFAULT_DEV_PORT}`;
 	const headers = new Headers();
-	let follow: boolean | undefined;
-	let since: string | undefined;
+	const follow = values.follow;
+	if (follow !== undefined && typeof follow !== 'boolean') fail('--follow does not accept a value');
+	const since = stringFlag(values, 'since', 'Missing value for --since');
 	let types: ReadonlySet<string> | undefined;
 	let limit: number | undefined;
 	let format: LogsArgs['format'] = 'pretty';
 
-	for (let i = 0; i < rest.length; i++) {
-		const arg = rest[i];
-		if (arg === undefined) continue;
-		if (arg === '--server') {
-			const value = rest[++i];
-			if (!value) {
-				console.error('Missing value for --server');
-				process.exit(1);
-			}
-			server = value;
-		} else if (arg === '--header') {
-			parseLogsHeader(rest[++i], headers);
-		} else if (arg === '--follow' || arg === '-f') {
-			follow = true;
-		} else if (arg === '--no-follow') {
-			follow = false;
-		} else if (arg === '--since') {
-			const value = rest[++i];
-			if (!value) {
-				console.error('Missing value for --since');
-				process.exit(1);
-			}
-			since = value;
-		} else if (arg === '--types') {
-			const value = rest[++i];
-			if (!value) {
-				console.error('Missing value for --types');
-				process.exit(1);
-			}
-			const parts = value
-				.split(',')
-				.map((t) => t.trim())
-				.filter(Boolean);
-			if (parts.length > 0) types = new Set(parts);
-		} else if (arg === '--limit') {
-			const value = rest[++i];
-			const parsed = Number.parseInt(value ?? '', 10);
-			if (!Number.isFinite(parsed) || parsed <= 0) {
-				console.error('Invalid value for --limit (expected a positive integer)');
-				process.exit(1);
-			}
-			limit = parsed;
-		} else if (arg === '--format') {
-			const value = rest[++i];
-			if (value !== 'pretty' && value !== 'ndjson') {
-				console.error(`Invalid value for --format: "${value}". Allowed: pretty, ndjson`);
-				process.exit(1);
-			}
-			format = value;
-		} else if (arg.startsWith('--')) {
-			console.error(`Unknown flag for \`flue logs\`: ${arg}`);
-			printUsage();
-			process.exit(1);
-		} else {
-			positional.push(arg);
+	for (const header of stringListFlag(values, 'header', 'Missing value for --header')) {
+		parseLogsHeader(header, headers);
+	}
+	const typesValue = stringFlag(values, 'types', 'Missing value for --types');
+	if (typesValue !== undefined) {
+		const parts = typesValue
+			.split(',')
+			.map((t) => t.trim())
+			.filter(Boolean);
+		if (parts.length > 0) types = new Set(parts);
+	}
+	const limitValue = stringFlag(
+		values,
+		'limit',
+		'Invalid value for --limit (expected a positive integer)',
+	);
+	if (limitValue !== undefined) {
+		limit = Number.parseInt(limitValue, 10);
+		if (!Number.isFinite(limit) || limit <= 0) {
+			fail('Invalid value for --limit (expected a positive integer)');
 		}
 	}
-
-	if (positional.length < 1) {
-		console.error('Missing required argument for `flue logs`: <runId>');
-		printUsage();
-		process.exit(1);
-	}
-	if (positional.length > 1) {
-		console.error(`Unexpected extra arguments for \`flue logs\`: ${positional.slice(1).join(' ')}`);
-		printUsage();
-		process.exit(1);
+	const formatValue = stringFlag(values, 'format', 'Missing value for --format');
+	if (formatValue !== undefined) {
+		if (formatValue !== 'pretty' && formatValue !== 'ndjson') {
+			fail(`Invalid value for --format: "${formatValue}". Allowed: pretty, ndjson`);
+		}
+		format = formatValue;
 	}
 
-	const runId = positional[0];
-	if (!runId) {
-		console.error('Missing required argument for `flue logs`: <runId>');
-		printUsage();
-		process.exit(1);
+	if (positionals.length < 1) fail('Missing required argument for `flue logs`: <runId>', true);
+	if (positionals.length > 1) {
+		fail(`Unexpected extra arguments for \`flue logs\`: ${positionals.slice(1).join(' ')}`, true);
 	}
+
+	const runId = positionals[0];
+	if (!runId) fail('Missing required argument for `flue logs`: <runId>', true);
 
 	return {
 		command: 'logs',
@@ -632,51 +649,32 @@ function parseLogsArgs(rest: string[]): LogsArgs {
 }
 
 function parseInitArgs(rest: string[]): InitArgs {
-	let target: 'node' | 'cloudflare' | undefined;
-	let explicitRoot: string | undefined;
-	let force = false;
+	const { positionals, values } = parseCommandOptions(
+		'init',
+		rest,
+		{
+			target: { type: 'string' },
+			root: { type: 'string' },
+			force: { type: 'boolean' },
+		},
+		new Set(['--target', '--root', '--force']),
+	);
+	const target = targetFlag(stringFlag(values, 'target', 'Missing value for --target'));
 
-	for (let i = 0; i < rest.length; i++) {
-		const arg = rest[i];
-		if (arg === undefined) continue;
-		if (arg === '--target') {
-			const value = rest[++i];
-			if (!value) {
-				console.error('Missing value for --target');
-				process.exit(1);
-			}
-			if (value !== 'node' && value !== 'cloudflare') {
-				console.error(`Invalid target: "${value}". Supported targets: node, cloudflare`);
-				process.exit(1);
-			}
-			target = value;
-		} else if (arg === '--root') {
-			const value = rest[++i];
-			if (!value) {
-				console.error('Missing value for --root');
-				process.exit(1);
-			}
-			explicitRoot = path.resolve(value);
-		} else if (arg === '--force') {
-			force = true;
-		} else if (arg.startsWith('--')) {
-			console.error(`Unknown flag for \`flue init\`: ${arg}`);
-			printUsage();
-			process.exit(1);
-		} else {
-			console.error(`Unexpected argument for \`flue init\`: ${arg}`);
-			printUsage();
-			process.exit(1);
-		}
+	for (const positional of positionals) {
+		fail(`Unexpected argument for \`flue init\`: ${positional}`, true);
 	}
 
 	if (!target) {
-		console.error('Missing required --target flag for init command.');
-		printUsage();
-		process.exit(1);
+		fail('Missing required --target flag for init command.', true);
 	}
 
-	return { command: 'init', target, explicitRoot, force };
+	return {
+		command: 'init',
+		target,
+		explicitRoot: pathFlag(values, 'root', 'Missing value for --root'),
+		force: booleanFlag(values, 'force', '--force'),
+	};
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
