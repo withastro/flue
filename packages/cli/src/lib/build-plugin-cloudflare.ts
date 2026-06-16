@@ -12,6 +12,7 @@ import {
 	generateBuiltModuleNormalizationSource,
 	workflowVarName,
 } from './generated-entry-normalization.ts';
+import { note } from './terminal.ts';
 import type { BuildContext, BuildPlugin, ViteCloudflareInputs } from './types.ts';
 
 export class CloudflarePlugin implements BuildPlugin {
@@ -580,7 +581,7 @@ export default {
 			path: userConfigPath,
 		} = await readUserWranglerConfig(ctx.root);
 		if (userConfigPath) {
-			console.log(`[flue] Merging with user wrangler config: ${userConfigPath}`);
+			note(`wrangler ${userConfigPath}`);
 		}
 		validateUserWranglerConfig({ config: userConfig, effectiveConfig });
 

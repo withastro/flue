@@ -143,4 +143,8 @@ export interface BuildOptions {
 	output?: string;
 	target?: 'node' | 'cloudflare';
 	mode?: 'build' | 'development';
+	/** Controls human build progress output. Defaults to `normal`. */
+	log?: 'normal' | 'silent';
+	configFile?: string;
+	envFile?: string;
 }

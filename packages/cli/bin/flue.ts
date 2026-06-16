@@ -19,6 +19,15 @@ import {
 import { resolveConfigCandidates } from '../src/lib/config-paths.ts';
 import { DEFAULT_DEV_PORT, dev } from '../src/lib/dev.ts';
 import { createEnvLoader, type EnvLoader, selectEnvFile } from '../src/lib/env.ts';
+import {
+	brand,
+	brandRows,
+	dim,
+	error as cliError,
+	note,
+	row,
+	success,
+} from '../src/lib/terminal.ts';
 import { BLUEPRINTS, KIND_ROOTS } from './_blueprints.generated.ts';
 
 interface ApplicationConfigArgs {
@@ -39,11 +48,10 @@ function loadCliEnvironment(args: ApplicationConfigArgs): EnvLoader {
 				: resolveConfigPath({ cwd: searchFrom, configFile: undefined });
 		const baseDir = configPath ? path.dirname(configPath) : searchFrom;
 		const envLoader = createEnvLoader(selectEnvFile(args.envFile, baseDir));
-		if (fs.existsSync(envLoader.file)) console.error(`[flue] Loading env from: ${envLoader.file}`);
 		envLoader.apply();
 		return envLoader;
 	} catch (err) {
-		console.error(err instanceof Error ? err.message : String(err));
+		cliError(err instanceof Error ? err.message : String(err));
 		process.exit(1);
 	}
 }
@@ -54,7 +62,7 @@ async function resolveCliConfig(args: {
 	explicitRoot: string | undefined;
 	explicitOutput: string | undefined;
 	configFile: string | undefined;
-}): Promise<FlueConfig> {
+}): Promise<{ cfg: FlueConfig; configPath?: string }> {
 	const inline: UserFlueConfig = {};
 	if (args.target) inline.target = args.target;
 	if (args.explicitRoot) inline.root = args.explicitRoot;
@@ -67,24 +75,19 @@ async function resolveCliConfig(args: {
 			configFile: args.configFile,
 			inline,
 		});
-		if (configPath) {
-			console.error(
-				`[flue] Loaded config: ${path.relative(process.cwd(), configPath) || configPath}`,
-			);
-		}
-		return flueConfig;
+		return { cfg: flueConfig, configPath };
 	} catch (err) {
-		console.error(err instanceof Error ? err.message : String(err));
+		cliError(err instanceof Error ? err.message : String(err));
 		process.exit(1);
 	}
 }
 
 async function resolveApplicationCommand(
 	args: ApplicationConfigArgs,
-): Promise<{ cfg: FlueConfig; envLoader: EnvLoader }> {
+): Promise<{ cfg: FlueConfig; envLoader: EnvLoader; configPath?: string }> {
 	const envLoader = loadCliEnvironment(args);
-	const cfg = await resolveCliConfig(args);
-	return { cfg, envLoader };
+	const { cfg, configPath } = await resolveCliConfig(args);
+	return { cfg, envLoader, configPath };
 }
 
 // ─── Arg Parsing ────────────────────────────────────────────────────────────
@@ -402,7 +405,7 @@ function shellQuote(value: string): string {
 
 function printCloudflareRunUnsupported(workflow: string, payload: string): never {
 	console.error(
-		'[flue] `flue run --target cloudflare` is not supported.\n\n' +
+		'`flue run --target cloudflare` is not supported.\n\n' +
 			'`flue run` is a one-shot Node.js invoker; Cloudflare builds need a Workers runtime.\n\n' +
 			'For local development of a Cloudflare target, use `flue dev`:\n\n' +
 			`  flue dev --target cloudflare\n\n` +
@@ -416,7 +419,7 @@ function printCloudflareRunUnsupported(workflow: string, payload: string): never
 
 function printCloudflareConnectUnsupported(): never {
 	console.error(
-		'[flue] `flue connect --target cloudflare` is not supported.\n\n' +
+		'`flue connect --target cloudflare` is not supported.\n\n' +
 			'`flue connect` currently starts a local Node.js process; Cloudflare connections require a Workers runtime.',
 	);
 	process.exit(1);
@@ -885,7 +888,7 @@ function logEvent(event: any) {
 
 		case 'thinking_start':
 			flushTextBuffer();
-			console.error('\x1b[2m[flue] thinking:start\x1b[0m');
+			console.error(dim('thinking'));
 			break;
 
 		case 'thinking_delta': {
@@ -921,7 +924,7 @@ function logEvent(event: any) {
 					toolDetail += `  ${event.args.pattern}`;
 				}
 			}
-			console.error(`[flue] tool:start  ${toolDetail}`);
+			console.error(`${dim('tool')} ${toolDetail}`);
 			break;
 		}
 
@@ -936,7 +939,7 @@ function logEvent(event: any) {
 					resultPreview = `  ${text}`;
 				}
 			}
-			console.error(`[flue] tool:${status}   ${event.toolName}${resultPreview}`);
+			console.error(`${dim(`tool ${status}`)} ${event.toolName}${resultPreview}`);
 			break;
 		}
 
@@ -950,20 +953,16 @@ function logEvent(event: any) {
 
 		case 'compaction_start':
 			flushBuffers();
-			console.error(
-				`[flue] compaction:start  reason=${event.reason} tokens=${event.estimatedTokens}`,
-			);
+			console.error(dim(`compaction start reason=${event.reason} tokens=${event.estimatedTokens}`));
 			break;
 
 		case 'compaction':
-			console.error(
-				`[flue] compaction:done   messages: ${event.messagesBefore} → ${event.messagesAfter}`,
-			);
+			console.error(dim(`compaction done messages ${event.messagesBefore} → ${event.messagesAfter}`));
 			break;
 
 		case 'log':
 			flushBuffers();
-			console.error(`[flue] ${event.level ?? 'info'}: ${event.message ?? ''}`);
+			console.error(`${dim(event.level ?? 'info')} ${event.message ?? ''}`);
 			break;
 
 		case 'idle':
@@ -975,9 +974,7 @@ function logEvent(event: any) {
 			// Envelope: { type: 'error', error: { type, message, details, dev?, meta? } }
 			// `dev` is only present when the server is in local/dev mode —
 			// `flue run` always is, so we render it whenever it's present.
-			console.error(
-				`[flue] ERROR [${event.error?.type ?? 'unknown'}]: ${event.error?.message ?? ''}`,
-			);
+			cliError(`[${event.error?.type ?? 'unknown'}] ${event.error?.message ?? ''}`);
 			if (event.error?.details) {
 				for (const line of String(event.error.details).split('\n')) {
 					if (line) console.error(`  ${line}`);
@@ -1043,7 +1040,7 @@ function startLocalProcess(
 	});
 	const pipeOutput = (data: Buffer) => {
 		for (const line of data.toString().trimEnd().split('\n')) {
-			if (line.trim()) console.error(line);
+			if (line.trim()) console.error(dim(line));
 		}
 	};
 	child.stdout?.on('data', pipeOutput);
@@ -1157,16 +1154,18 @@ function sendLocalRequest(
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function buildCommand(args: BuildArgs) {
-	const { cfg } = await resolveApplicationCommand(args);
+	const { cfg, configPath, envLoader } = await resolveApplicationCommand(args);
 	try {
 		await build({
 			root: cfg.root,
 			sourceRoot: cfg.sourceRoot,
 			output: cfg.output,
 			target: cfg.target,
+			configFile: configPath,
+			envFile: fs.existsSync(envLoader.file) ? envLoader.file : undefined,
 		});
 	} catch (err) {
-		console.error(`[flue] Build failed:`, err instanceof Error ? err.message : String(err));
+		cliError(`Build failed: ${err instanceof Error ? err.message : String(err)}`);
 		process.exit(1);
 	}
 }
@@ -1184,7 +1183,7 @@ function devConfigFiles(args: DevArgs): string[] {
 }
 
 async function devCommand(args: DevArgs) {
-	const { cfg, envLoader } = await resolveApplicationCommand(args);
+	const { cfg, envLoader, configPath } = await resolveApplicationCommand(args);
 	try {
 		// dev() blocks until SIGINT/SIGTERM exits the process. We don't expect
 		// it to return; if it ever does, just exit cleanly.
@@ -1197,10 +1196,11 @@ async function devCommand(args: DevArgs) {
 			envFile: envLoader.file,
 			envLoader,
 			configFiles: devConfigFiles(args),
+			configFile: configPath,
 			onReady: () => process.send?.(INTERNAL_DEV_READY),
 		});
 	} catch (err) {
-		console.error(`[flue] Dev server failed:`, err instanceof Error ? err.message : String(err));
+		cliError(`Dev server failed: ${err instanceof Error ? err.message : String(err)}`);
 		process.exit(1);
 	}
 }
@@ -1263,7 +1263,7 @@ function superviseDevCommand(args: DevArgs) {
 				return;
 			}
 			if (replacementSession && !sessionReady) {
-				console.error('[flue] Dev server restart failed. Waiting for a configuration change...');
+				cliError('Dev server restart failed. Waiting for a configuration change...');
 				return;
 			}
 			exit(code ?? 1);
@@ -1273,7 +1273,7 @@ function superviseDevCommand(args: DevArgs) {
 		for (const configFile of configFiles) {
 			configFileStates.set(configFile, readConfigFileState(configFile));
 		}
-		console.error(`[flue] Configuration changed: ${file}. Restarting dev server...`);
+		console.error(`${dim('config')} ${file} changed; restarting`);
 		restartRequested = true;
 		if (restartTimer) clearTimeout(restartTimer);
 		restartTimer = setTimeout(() => {
@@ -1300,17 +1300,13 @@ function superviseDevCommand(args: DevArgs) {
 				}
 			});
 			watcher.on('error', (err) => {
-				console.error(
-					`[flue] Config watcher failed: ${err instanceof Error ? err.message : String(err)}`,
-				);
+				cliError(`Config watcher failed: ${err instanceof Error ? err.message : String(err)}`);
 				exit(1);
 			});
 			watchers.push(watcher);
 		}
 	} catch (err) {
-		console.error(
-			`[flue] Config watcher failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
+		cliError(`Config watcher failed: ${err instanceof Error ? err.message : String(err)}`);
 		exit(1);
 	}
 
@@ -1334,7 +1330,7 @@ async function buildLocalTarget(
 		'target' | 'explicitRoot' | 'explicitOutput' | 'configFile' | 'envFile'
 	>,
 ) {
-	const { cfg } = await resolveApplicationCommand(args);
+	const { cfg, configPath, envLoader } = await resolveApplicationCommand(args);
 	if (cfg.target === 'cloudflare') return { cfg, serverPath: undefined };
 	try {
 		await build({
@@ -1342,9 +1338,12 @@ async function buildLocalTarget(
 			sourceRoot: cfg.sourceRoot,
 			output: cfg.output,
 			target: cfg.target,
+			log: 'silent',
+			configFile: configPath,
+			envFile: fs.existsSync(envLoader.file) ? envLoader.file : undefined,
 		});
 	} catch (err) {
-		console.error(`[flue] Build failed:`, err instanceof Error ? err.message : String(err));
+		cliError(`Build failed: ${err instanceof Error ? err.message : String(err)}`);
 		process.exit(1);
 	}
 	return { cfg, serverPath: path.join(cfg.output, 'server.mjs') };
@@ -1355,6 +1354,7 @@ async function run(args: RunArgs) {
 	if (built.cfg.target === 'cloudflare') printCloudflareRunUnsupported(args.workflow, args.payload);
 	if (!built.serverPath)
 		throw new Error('[flue] Node local workflow build did not produce an executable artifact.');
+	console.error(brand(['flue run', `workflow ${args.workflow}`, 'starting...']));
 	const child = startLocalProcess(
 		built.serverPath,
 		'workflow',
@@ -1362,7 +1362,6 @@ async function run(args: RunArgs) {
 		undefined,
 		built.cfg.root,
 	);
-	console.error(`[flue] Running workflow: ${args.workflow}`);
 	try {
 		await waitForLocalReady(
 			child,
@@ -1375,12 +1374,12 @@ async function run(args: RunArgs) {
 				requestId: `req_${crypto.randomUUID()}`,
 				payload: JSON.parse(args.payload),
 			},
-			(message) => console.error(`[flue] Run ID: ${message.runId}`),
+			(message) => row('run', message.runId),
 		);
 		if (result !== undefined && result !== null) console.log(JSON.stringify(result, null, 2));
-		console.error('[flue] Done.');
+		success('workflow completed');
 	} catch (err) {
-		console.error(`[flue] Workflow error: ${err instanceof Error ? err.message : String(err)}`);
+		cliError(`Workflow failed: ${err instanceof Error ? err.message : String(err)}`);
 		stopLocalProcess();
 		process.exit(1);
 	}
@@ -1392,6 +1391,7 @@ async function connectCommand(args: ConnectArgs) {
 	if (built.cfg.target === 'cloudflare') printCloudflareConnectUnsupported();
 	if (!built.serverPath)
 		throw new Error('[flue] Node local agent build did not produce an executable artifact.');
+	console.error(brand(['flue connect', `${args.agent}/${args.instanceId}`, 'starting...']));
 	const child = startLocalProcess(
 		built.serverPath,
 		'agent',
@@ -1408,21 +1408,18 @@ async function connectCommand(args: ConnectArgs) {
 				message.instanceId === args.instanceId,
 		);
 	} catch (err) {
-		console.error(`[flue] Connection error: ${err instanceof Error ? err.message : String(err)}`);
+		cliError(`Connection failed: ${err instanceof Error ? err.message : String(err)}`);
 		stopLocalProcess();
 		process.exit(1);
 	}
-	console.error(
-		`[flue] Connected to ${args.agent}/${args.instanceId}. Enter a prompt per line; Ctrl-D to exit.`,
-	);
+	success('connected');
+	note('enter one prompt per line; Ctrl+D to exit');
 	const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
 	let closing = false;
 	child.once('exit', (code) => {
 		if (closing) return;
 		input.close();
-		console.error(
-			`[flue] Agent connection ended unexpectedly${code === null ? '.' : ` (code ${code}).`}`,
-		);
+		cliError(`Agent connection ended unexpectedly${code === null ? '.' : ` (code ${code}).`}`);
 		process.exitCode = 1;
 	});
 	for await (const line of input) {
@@ -1435,7 +1432,7 @@ async function connectCommand(args: ConnectArgs) {
 			});
 			if (result !== undefined && result !== null) console.log(JSON.stringify(result, null, 2));
 		} catch (err) {
-			console.error(`[flue] Agent error: ${err instanceof Error ? err.message : String(err)}`);
+			cliError(`Agent failed: ${err instanceof Error ? err.message : String(err)}`);
 		}
 	}
 	closing = true;
@@ -1457,28 +1454,26 @@ function formatDuration(ms: number | undefined): string {
 function logsRenderPretty(event: FlueEvent): void {
 	const { type } = event;
 	if (type === 'run_start') {
-		console.error(`[flue] run:start    ${event.runId}  workflow=${event.workflowName}`);
+		console.error(`${dim('run:start')} ${event.runId}  workflow=${event.workflowName}`);
 		return;
 	}
 	if (type === 'run_end') {
 		const duration = formatDuration(event.durationMs);
 		if (event.isError) {
 			const err = event.error as { message?: string } | undefined;
-			console.error(
-				`[flue] run:end      ${event.runId}  ERROR  ${err?.message ?? ''}  (${duration})`,
-			);
+			console.error(`${dim('run:end')}   ${event.runId}  ERROR  ${err?.message ?? ''}  (${duration})`);
 		} else {
-			console.error(`[flue] run:end      ${event.runId}  ok  (${duration})`);
+			console.error(`${dim('run:end')}   ${event.runId}  ok  (${duration})`);
 		}
 		return;
 	}
 	if (type === 'operation_start') {
-		console.error(`[flue] op:start      ${event.operationKind}`);
+		console.error(`${dim('op:start')}  ${event.operationKind}`);
 		return;
 	}
 	if (type === 'operation') {
 		const duration = formatDuration(event.durationMs);
-		console.error(`[flue] op:done      ${event.operationKind}${duration ? `  (${duration})` : ''}`);
+		console.error(`${dim('op:done')}   ${event.operationKind}${duration ? `  (${duration})` : ''}`);
 		return;
 	}
 	logEvent(event);
@@ -1489,6 +1484,14 @@ function createLogsClient(args: LogsArgs) {
 		baseUrl: args.server,
 		headers: args.headers,
 	});
+}
+
+function getRunWorkflowName(run: RunRecord): string {
+	const record = run as RunRecord & {
+		workflowName?: string;
+		owner?: { workflowName?: string };
+	};
+	return record.workflowName ?? record.owner?.workflowName ?? 'unknown';
 }
 
 function logsEmitEvent(event: FlueEvent, format: LogsArgs['format']): void {
@@ -1508,6 +1511,9 @@ function logsEmitEvent(event: FlueEvent, format: LogsArgs['format']): void {
 
 async function logsCommand(args: LogsArgs): Promise<void> {
 	const client = createLogsClient(args);
+	if (args.format === 'pretty') {
+		console.error(brand(['flue logs', args.runId, args.follow === false ? 'replay' : 'stream']));
+	}
 
 	let shouldFollow: boolean;
 	if (args.follow === false) {
@@ -1520,16 +1526,14 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 		try {
 			run = await client.runs.get(args.runId);
 		} catch (err) {
-			console.error(
-				`[flue] Failed to fetch run ${args.runId}: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			cliError(`Failed to fetch run ${args.runId}: ${err instanceof Error ? err.message : String(err)}`);
 			process.exit(1);
 		}
 		// Run ids are opaque; surface the owning workflow from the run record.
 		if (args.format === 'pretty') {
-			console.error(
-				`[flue] run          ${args.runId}  workflow=${run.workflowName}  status=${run.status}`,
-			);
+			row('workflow', getRunWorkflowName(run));
+			row('status', run.status);
+			console.error('');
 		}
 		shouldFollow = args.follow ?? run.status === 'active';
 	}
@@ -1548,8 +1552,8 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 				},
 			});
 		} catch (err) {
-			console.error(
-				`[flue] Failed to read events for run ${args.runId}: ${err instanceof Error ? err.message : String(err)}`,
+			cliError(
+				`Failed to read events for run ${args.runId}: ${err instanceof Error ? err.message : String(err)}`,
 			);
 			process.exit(1);
 		}
@@ -1609,9 +1613,7 @@ async function logsCommand(args: LogsArgs): Promise<void> {
 		}
 	} catch (err) {
 		if (!signalled) {
-			console.error(
-				`[flue] Stream interrupted: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			cliError(`Stream interrupted: ${err instanceof Error ? err.message : String(err)}`);
 			exitCode = 1;
 		}
 	} finally {
@@ -1644,7 +1646,7 @@ function initCommand(args: InitArgs) {
 	const targetDir = args.explicitRoot ?? process.cwd();
 
 	if (!fs.existsSync(targetDir)) {
-		console.error(`[flue] Target directory does not exist: ${targetDir}`);
+		cliError(`Target directory does not exist: ${targetDir}`);
 		process.exit(1);
 	}
 
@@ -1655,15 +1657,13 @@ function initCommand(args: InitArgs) {
 	try {
 		existing = resolveConfigPath({ cwd: targetDir, configFile: undefined });
 	} catch (err) {
-		console.error(err instanceof Error ? err.message : String(err));
+		cliError(err instanceof Error ? err.message : String(err));
 		process.exit(1);
 	}
 
 	if (existing && !args.force) {
 		const rel = path.relative(process.cwd(), existing) || existing;
-		console.error(
-			`[flue] A Flue config already exists at ${rel}.\n  Re-run with --force to overwrite.`,
-		);
+		cliError(`A Flue config already exists at ${rel}.\n  Re-run with --force to overwrite.`);
 		process.exit(1);
 	}
 
@@ -1673,30 +1673,25 @@ function initCommand(args: InitArgs) {
 	try {
 		fs.writeFileSync(outPath, content);
 	} catch (err) {
-		console.error(
-			`[flue] Failed to write ${outPath}: ${err instanceof Error ? err.message : String(err)}`,
-		);
+		cliError(`Failed to write ${outPath}: ${err instanceof Error ? err.message : String(err)}`);
 		process.exit(1);
 	}
 
 	const relOut = path.relative(process.cwd(), outPath) || outPath;
-	console.error(`[flue] Wrote ${relOut}`);
+	console.error(brand(['flue init', `target ${args.target}`, `wrote ${relOut}`]));
 
 	// If --force overwrote a non-`.ts` variant, the new flue.config.ts will
 	// take precedence (CONFIG_BASENAMES priority), but the old file still
 	// sits on disk. Surface that so the user isn't surprised later.
 	if (existing && path.basename(existing) !== 'flue.config.ts') {
 		const relExisting = path.relative(process.cwd(), existing) || existing;
-		console.error(
-			`[flue] Note: ${relExisting} is still on disk. ` +
-				`flue.config.ts now takes precedence; delete the old file if you no longer need it.`,
+		note(
+			`${relExisting} is still on disk. flue.config.ts now takes precedence; delete the old file if you no longer need it.`,
 		);
 	}
 
 	console.error('');
-	console.error('Next step:');
-	console.error('');
-	console.error('  fetch https://flueframework.com/start.md to create a new agent');
+	note('next: fetch https://flueframework.com/start.md to create a new agent');
 }
 
 // ─── `flue add` ─────────────────────────────────────────────────────────────
@@ -1798,15 +1793,14 @@ async function fetchBlueprintMarkdown(
 	try {
 		res = await fetch(url);
 	} catch (err) {
-		console.error(
-			`[flue] Failed to reach the blueprint registry at ${url}.\n` +
-				`  ${err instanceof Error ? err.message : String(err)}`,
+		cliError(
+			`Failed to reach the blueprint registry at ${url}.\n  ${err instanceof Error ? err.message : String(err)}`,
 		);
 		process.exit(1);
 	}
 	if (res.status === 404) return { notFound: true };
 	if (!res.ok) {
-		console.error(`[flue] Blueprint registry returned HTTP ${res.status} for ${url}.`);
+		cliError(`Blueprint registry returned HTTP ${res.status} for ${url}.`);
 		process.exit(1);
 	}
 	return { body: await res.text() };
@@ -1959,9 +1953,8 @@ function normalizeDocsPath(input: string): string {
 function docsCommand(args: DocsArgs): void {
 	const root = resolveDocsRoot();
 	if (!root) {
-		console.error(
-			'[flue] Could not locate the bundled documentation. ' +
-				'Your @flue/cli installation may be incomplete — try reinstalling it.',
+		cliError(
+			'Could not locate the bundled documentation. Your @flue/cli installation may be incomplete — try reinstalling it.',
 		);
 		process.exit(1);
 	}
@@ -1985,9 +1978,8 @@ function docsCommand(args: DocsArgs): void {
 		const target = normalizeDocsPath(args.value);
 		const page = pages.find((candidate) => candidate.path === target);
 		if (!page) {
-			console.error(
-				`[flue] Unknown docs page: ${args.value}\n` +
-					'Run `flue docs` to list available pages, or `flue docs search <query>` to find one.',
+			cliError(
+				`Unknown docs page: ${args.value}\nRun \`flue docs\` to list available pages, or \`flue docs search <query>\` to find one.`,
 			);
 			process.exit(1);
 		}
@@ -2058,9 +2050,8 @@ async function emitBlueprintMarkdown(
 ) {
 	const result = await fetchBlueprintMarkdown(opts.slug);
 	if ('notFound' in result) {
-		console.error(
-			`[flue] The blueprint registry did not have Markdown for ${opts.notFoundLabel}. ` +
-				`Your installed CLI may be out of sync with the registry — try updating @flue/cli.`,
+		cliError(
+			`The blueprint registry did not have Markdown for ${opts.notFoundLabel}. Your installed CLI may be out of sync with the registry — try updating @flue/cli.`,
 		);
 		process.exit(1);
 	}
@@ -2088,10 +2079,8 @@ async function blueprintCommand(args: BlueprintCommandArgs) {
 
 	const root = KIND_ROOTS.find((entry) => entry.kind === args.kind);
 	if (!root) {
-		console.error(
-			`[flue] Unknown blueprint kind "${args.kind}". Known kinds: ${
-				KIND_ROOTS.map((entry) => entry.kind).join(', ') || '(none)'
-			}`,
+		cliError(
+			`Unknown blueprint kind "${args.kind}". Known kinds: ${KIND_ROOTS.map((entry) => entry.kind).join(', ') || '(none)'}`,
 		);
 		process.exit(1);
 	}
@@ -2163,7 +2152,7 @@ async function main() {
 }
 
 void main().catch((err) => {
-	console.error(`[flue] ${err instanceof Error ? err.message : String(err)}`);
+	cliError(err instanceof Error ? err.message : String(err));
 	stopLocalProcess();
 	process.exit(1);
 });

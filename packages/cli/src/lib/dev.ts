@@ -22,6 +22,7 @@ import {
 	viteInputDir,
 } from './build.ts';
 import { createEnvLoader, type EnvLoader, selectEnvFile } from './env.ts';
+import { blue, brandRows, dim, error, note, red, section, success } from './terminal.ts';
 import type { BuildOptions } from './types.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ export interface DevOptions {
 	envFile?: string;
 	envLoader?: EnvLoader;
 	configFiles?: readonly string[];
+	configFile?: string;
 	onReady?: () => void;
 }
 
@@ -101,13 +103,11 @@ export async function dev(options: DevOptions): Promise<void> {
 		output,
 		target: options.target,
 		mode: options.target === 'cloudflare' ? 'development' : 'build',
+		log: 'silent',
+		configFile: options.configFile,
+		envFile: fs.existsSync(envFile) ? envFile : undefined,
 	};
 
-	console.error(`[flue] Starting dev server (target: ${options.target})`);
-	console.error(`[flue] Watching: ${root}`);
-	console.error(`[flue] Building...`);
-
-	const initialStart = Date.now();
 	try {
 		if (options.target === 'cloudflare') {
 			await envLoader.withApplied(() => build(buildOptions));
@@ -115,11 +115,8 @@ export async function dev(options: DevOptions): Promise<void> {
 			await build(buildOptions);
 		}
 	} catch (err) {
-		throw new Error(
-			`[flue] Initial build failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
+		throw new Error(`Initial build failed: ${err instanceof Error ? err.message : String(err)}`);
 	}
-	console.error(`[flue] Built in ${Date.now() - initialStart}ms`);
 
 	if (options.target === 'cloudflare') envLoader.restore();
 	const reloader: DevReloader =
@@ -129,15 +126,26 @@ export async function dev(options: DevOptions): Promise<void> {
 
 	await reloader.start();
 
+	brandRows('flue dev', [
+		['target', options.target],
+		['server', reloader.url],
+		['config', options.configFile ? displayPath(root, options.configFile) : undefined],
+		['env', fs.existsSync(envFile) ? displayPath(root, envFile) : undefined],
+		['source', path.relative(root, sourceRoot) || '.'],
+		['output', path.relative(root, output) || '.'],
+	]);
+	section('agents', listModuleNames(sourceRoot, 'agents'));
+	section('workflows', listModuleNames(sourceRoot, 'workflows'));
+	section('channels', listModuleNames(sourceRoot, 'channels'));
+	console.error('');
 	if (reloader.url) {
-		console.error(`[flue] Server: ${reloader.url}`);
 		const exampleAgent = pickExampleAgentName(sourceRoot);
 		if (exampleAgent) {
-			console.error(`[flue] Try: curl -X POST ${reloader.url}/agents/${exampleAgent}/test-1 \\`);
-			console.error(`         -H 'Content-Type: application/json' -d '{}'`);
+			note(`connect with: flue connect ${exampleAgent} local`);
 		}
 	}
-	console.error(`[flue] Press Ctrl+C to stop\n`);
+	note('watching for changes; Ctrl+C to stop');
+	console.error('');
 	options.onReady?.();
 
 	// ─── Watch loop ──────────────────────────────────────────────────────────
@@ -160,13 +168,11 @@ export async function dev(options: DevOptions): Promise<void> {
 				try {
 					envLoader.apply();
 				} catch (err) {
-					console.error(
-						`[flue] Environment reload failed: ${err instanceof Error ? err.message : String(err)}`,
-					);
+					error(`Environment reload failed: ${err instanceof Error ? err.message : String(err)}`);
 					return;
 				}
 			}
-			console.error(`[flue] Change detected: ${relPath}`);
+			console.error(`${dim('changed')} ${relPath}`);
 			rebuilder.schedule(isEnvFile);
 		},
 	});
@@ -177,16 +183,14 @@ export async function dev(options: DevOptions): Promise<void> {
 	const shutdown = async (signal: string, exitCode: number) => {
 		if (shuttingDown) return;
 		shuttingDown = true;
-		console.error(`\n[flue] Received ${signal}, shutting down...`);
+		console.error(`\n${dim(signal)} shutting down`);
 		watcher.close();
 		try {
 			await reloader.stop();
 		} catch (err) {
-			console.error(
-				`[flue] Error during shutdown: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			error(`Shutdown failed: ${err instanceof Error ? err.message : String(err)}`);
 		}
-		console.error(`[flue] Stopped.`);
+		success('stopped');
 		process.exit(exitCode);
 	};
 
@@ -207,6 +211,11 @@ export async function dev(options: DevOptions): Promise<void> {
 
 	// Block forever until a signal handler exits the process.
 	await new Promise<void>(() => {});
+}
+
+function displayPath(root: string, filePath: string): string {
+	const relative = path.relative(root, filePath);
+	return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? relative : filePath;
 }
 
 // ─── Rebuilder ──────────────────────────────────────────────────────────────
@@ -239,15 +248,18 @@ function createRebuilder(
 	const runOnce = async (force: boolean) => {
 		running = true;
 		const start = Date.now();
-		console.error(`[flue] Rebuilding...`);
+		console.error(`${dim('rebuild')} started`);
 		try {
 			const { changed } = await rebuild();
 			await reloader.reload(changed || force);
-			console.error(`[flue] Reloaded in ${Date.now() - start}ms\n`);
+			success(`rebuilt in ${Date.now() - start}ms`);
+			console.error('');
 		} catch (err) {
 			// Don't exit the dev loop on a rebuild error — the user is editing
 			// code, they'll fix it and trigger another rebuild.
-			console.error(`[flue] Rebuild failed: ${err instanceof Error ? err.message : String(err)}\n`);
+			error(`Rebuild failed: ${err instanceof Error ? err.message : String(err)}`);
+			note('fix the error; dev is still watching');
+			console.error('');
 		} finally {
 			running = false;
 			if (queued) {
@@ -363,9 +375,7 @@ function createWatcher(options: WatcherOptions): WatcherHandle {
 		});
 		watchers.push(w);
 	} catch (err) {
-		console.error(
-			`[flue] Failed to watch ${root}: ${err instanceof Error ? err.message : String(err)}`,
-		);
+		error(`Failed to watch ${root}: ${err instanceof Error ? err.message : String(err)}`);
 	}
 
 	try {
@@ -469,7 +479,7 @@ class NodeReloader implements DevReloader {
 				) {
 					continue;
 				}
-				console.error(line);
+				console.error(formatChildLogLine(line));
 			}
 		};
 		child.stdout?.on('data', pipe);
@@ -479,9 +489,7 @@ class NodeReloader implements DevReloader {
 			if (this.child === child) {
 				this.child = null;
 				if (code !== 0 && code !== null) {
-					console.error(
-						`[flue] Node server exited unexpectedly (code=${code}, signal=${signal ?? 'none'})`,
-					);
+					error(`Node server exited unexpectedly (code=${code}, signal=${signal ?? 'none'})`);
 				}
 			}
 		});
@@ -527,6 +535,18 @@ class NodeReloader implements DevReloader {
 			}, 1_000);
 		});
 	}
+}
+
+function formatChildLogLine(line: string): string {
+	const flueStructured = line.match(/^\[flue\]\s+\[([^\]]+)\]\s*(.*)$/);
+	if (flueStructured) {
+		const code = flueStructured[1]?.replace(/_/g, ' ') ?? 'error';
+		const message = flueStructured[2] ?? '';
+		return `${red('flue')}: ${red(code)}: ${message}`;
+	}
+	const fluePlain = line.match(/^\[flue\]\s+(.*)$/);
+	if (fluePlain) return `${blue('flue')}: ${fluePlain[1] ?? ''}`;
+	return line;
 }
 
 // ─── Cloudflare reloader ────────────────────────────────────────────────────
@@ -612,5 +632,18 @@ function pickExampleAgentName(sourceRoot: string): string | null {
 		return null;
 	} catch {
 		return null;
+	}
+}
+
+function listModuleNames(sourceRoot: string, directory: 'agents' | 'workflows' | 'channels'): string[] {
+	try {
+		const modulesDir = path.join(sourceRoot, directory);
+		if (!fs.existsSync(modulesDir)) return [];
+		return fs
+			.readdirSync(modulesDir)
+			.map((entry) => entry.match(/^([a-zA-Z0-9_-]+)\.(ts|js|mts|mjs)$/)?.[1])
+			.filter((name): name is string => Boolean(name));
+	} catch {
+		return [];
 	}
 }

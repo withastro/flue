@@ -21,8 +21,12 @@ function stripFrontmatter(source) {
 }
 
 async function runCli(args) {
+	const env = { ...process.env, FLUE_REGISTRY_URL: registryUrl };
+	for (const key of Object.keys(env)) {
+		if (key.startsWith('CODEX_')) delete env[key];
+	}
 	const child = spawn(process.execPath, [cli.pathname, ...args], {
-		env: { ...process.env, FLUE_REGISTRY_URL: registryUrl },
+		env,
 		stdio: ['ignore', 'pipe', 'pipe'],
 	});
 	let stdout = '';

@@ -6,6 +6,7 @@ import { cloudflare } from '@cloudflare/vite-plugin';
 import { packageUpSync } from 'package-up';
 import { CloudflarePlugin } from './build-plugin-cloudflare.ts';
 import { NodePlugin } from './build-plugin-node.ts';
+import { brandRows, section, success } from './terminal.ts';
 import type {
 	AgentInfo,
 	BuildContext,
@@ -48,15 +49,13 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 	const root = path.resolve(options.root);
 	const output = path.resolve(options.output ?? path.join(root, 'dist'));
 	const plugin: BuildPlugin = resolvePlugin(options);
+	const verbose = options.log !== 'silent';
+	const rel = (filePath: string) => {
+		const relative = path.relative(root, filePath);
+		return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? relative : filePath;
+	};
 
 	const sourceRoot = path.resolve(options.sourceRoot);
-
-	console.log(`[flue] Building: ${root}`);
-	if (sourceRoot !== root) {
-		console.log(`[flue] Source root: ${sourceRoot}`);
-	}
-	console.log(`[flue] Output: ${output}`);
-	console.log(`[flue] Target: ${plugin.name}`);
 
 	const agents = discoverAgents(sourceRoot);
 	const workflows = discoverWorkflows(sourceRoot);
@@ -65,6 +64,23 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 	const cloudflareEntry = discoverOptionalEntry(sourceRoot, 'cloudflare');
 	const dbEntry = discoverOptionalEntry(sourceRoot, 'db');
 
+	if (verbose) {
+		brandRows('flue build', [
+			['target', plugin.name],
+			['output', rel(output)],
+			['config', options.configFile ? rel(options.configFile) : undefined],
+			['env', options.envFile ? rel(options.envFile) : undefined],
+			['source', rel(sourceRoot)],
+			['app', appEntry ? rel(appEntry) : undefined],
+			['database', dbEntry ? rel(dbEntry) : undefined],
+			['cloudflare', cloudflareEntry && plugin.name === 'cloudflare' ? rel(cloudflareEntry) : undefined],
+		]);
+		section('agents', agents.map((agent) => agent.name));
+		section('workflows', workflows.map((workflow) => workflow.name));
+		section('channels', channels.map((channel) => channel.name));
+		console.error('');
+	}
+
 	if (agents.length === 0 && workflows.length === 0) {
 		throw new Error(
 			`[flue] No agent or workflow files found.\n\n` +
@@ -72,35 +88,6 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 				`Add at least one agent or workflow file.`,
 		);
 	}
-
-	if (appEntry) {
-		console.log(`[flue] Custom app entry: ${path.relative(root, appEntry) || appEntry}`);
-	}
-	if (dbEntry) {
-		console.log(`[flue] Custom persistence: ${path.relative(root, dbEntry) || dbEntry}`);
-	}
-	if (cloudflareEntry && plugin.name === 'cloudflare') {
-		console.log(
-			`[flue] Custom Cloudflare entry: ${path.relative(root, cloudflareEntry) || cloudflareEntry}`,
-		);
-	}
-
-	if (agents.length > 0) {
-		console.log(`[flue] Found ${agents.length} agent(s): ${agents.map((a) => a.name).join(', ')}`);
-	}
-	if (workflows.length > 0) {
-		console.log(
-			`[flue] Found ${workflows.length} workflow(s): ${workflows.map((workflow) => workflow.name).join(', ')}`,
-		);
-	}
-	if (channels.length > 0) {
-		console.log(
-			`[flue] Found ${channels.length} channel(s): ${channels.map((channel) => channel.name).join(', ')}`,
-		);
-	}
-	console.log(
-		`[flue] AGENTS.md and workspace .agents/skills/ will be discovered at runtime; imported SKILL.md directories are packaged by Vite`,
-	);
 
 	fs.mkdirSync(output, { recursive: true });
 
@@ -156,7 +143,7 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 					},
 				},
 			});
-			console.log(`[flue] Built: ${outPath}`);
+			if (verbose) success(`built ${rel(outPath)}`);
 			anyChanged = true;
 		} finally {
 			try {
@@ -192,7 +179,7 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 			generatedChanged ||= changed;
 		}
 		if (options.mode === 'development') {
-			console.log(`[flue] Prepared Cloudflare Vite entry: ${entryPath}`);
+			if (verbose) success(`prepared ${rel(entryPath)}`);
 			return { changed: generatedChanged };
 		}
 		const generatedConfigPath = cloudflareViteConfigPath(root);
@@ -207,7 +194,7 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 			});
 			await builder.buildApp();
 		});
-		console.log(`[flue] Built Cloudflare application: ${output}`);
+		if (verbose) success(`built ${rel(output)}`);
 		anyChanged = true;
 	}
 
@@ -221,13 +208,13 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 			const changed = !fs.existsSync(filePath) || fs.readFileSync(filePath, 'utf-8') !== content;
 			if (changed) {
 				fs.writeFileSync(filePath, content, 'utf-8');
-				console.log(`[flue] Generated: ${filePath}`);
+				if (verbose) success(`generated ${rel(filePath)}`);
 				anyChanged = true;
 			}
 		}
 	}
 
-	console.log(`[flue] Build complete. Output: ${output}`);
+	if (verbose) success(`ready ${rel(output)}`);
 	return { changed: anyChanged };
 }
 

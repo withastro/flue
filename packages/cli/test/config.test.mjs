@@ -172,9 +172,9 @@ describe('flue build', () => {
 		const [exitCode] = await once(child, 'exit');
 
 		assert.equal(exitCode, 0, `flue build failed:\n\n${output}`);
-		assert.match(output, /Source root: .*\.flue/);
-		assert.match(output, /Found 1 agent\(s\): helper/);
-		assert.match(output, /Found 1 workflow\(s\): inner/);
+		assert.match(output, /source\s+\.flue/);
+		assert.match(output, /agents\s+helper/s);
+		assert.match(output, /workflows\s+inner/s);
 		assert.doesNotMatch(output, /stray/);
 		assert.doesNotMatch(output, /outer/);
 		assert.equal(fs.existsSync(path.join(root, 'dist', 'server.mjs')), true);

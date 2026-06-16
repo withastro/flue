@@ -48,7 +48,7 @@ test('restarts after discovered config changes and recovers after invalid config
 		await waitForServer(port);
 
 		fs.rmSync(path.join(root, 'flue.config.ts'));
-		await dev.waitForLog('Loaded config: flue.config.mjs');
+		await dev.waitForLog('config    flue.config.mjs');
 		await waitForServer(port);
 	} finally {
 		await dev.stop();
