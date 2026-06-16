@@ -101,7 +101,7 @@ describe('validateUserWranglerConfig()', () => {
 		expect(() =>
 			validateUserWranglerConfig({
 				config: { env: { staging: { compatibility_date: '2025-01-01' } } },
-				effectiveConfig: { compatibility_date: '2026-04-01' },
+				effectiveConfig: { compatibility_date: '2026-06-01' },
 			}),
 		).toThrow('"env.staging.compatibility_date" is "2025-01-01"');
 	});

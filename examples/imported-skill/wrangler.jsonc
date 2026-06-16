@@ -1,7 +1,7 @@
 {
-	"$schema": "https://workers.cloudflare.com/schema/wrangler.json",
+	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "imported-skill-example",
-	"compatibility_date": "2026-04-01",
+	"compatibility_date": "2026-06-01",
 	"compatibility_flags": ["nodejs_compat"],
 	"migrations": [
 		{

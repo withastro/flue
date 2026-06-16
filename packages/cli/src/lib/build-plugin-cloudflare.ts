@@ -600,7 +600,7 @@ export default {
 		// Always include the wrangler JSON schema reference if absent so the
 		// generated file gets editor validation if someone opens it directly.
 		if (typeof merged.$schema !== 'string') {
-			merged.$schema = 'https://workers.cloudflare.com/schema/wrangler.json';
+			merged.$schema = './node_modules/wrangler/config-schema.json';
 		}
 
 		// Flue no longer emits a Dockerfile. Users who use container sandboxes

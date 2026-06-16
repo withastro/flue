@@ -3,9 +3,9 @@
 	// merges its own contributions into an ignored Vite input config, and the
 	// official Cloudflare Vite integration emits the deployable Worker output.
 	// src/cloudflare.ts explicitly exports the Sandbox class from @cloudflare/sandbox.
-	"$schema": "https://workers.cloudflare.com/schema/wrangler.json",
+	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "assistant",
-	"compatibility_date": "2026-04-01",
+	"compatibility_date": "2026-06-01",
 	"compatibility_flags": ["nodejs_compat"],
 	"durable_objects": {
 		"bindings": [

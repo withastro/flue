@@ -1,6 +1,6 @@
 {
 	"name": "flue-docs",
-	"compatibility_date": "2026-04-01",
+	"compatibility_date": "2026-06-01",
 	"main": "./src/worker.ts",
 	"ai": {
 		"binding": "AI"

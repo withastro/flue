@@ -72,9 +72,9 @@ Cloudflare requires an explicit migration whenever a Worker adds a Durable Objec
 
 ```jsonc
 {
-  "$schema": "https://workers.cloudflare.com/schema/wrangler.json",
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "my-flue-worker",
-  "compatibility_date": "2026-04-01",
+  "compatibility_date": "2026-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "migrations": [{ "tag": "v1", "new_sqlite_classes": ["FlueRegistry", "FlueTranslateWorkflow"] }],
 }
@@ -354,9 +354,9 @@ export { Sandbox } from '@cloudflare/sandbox';
 
 ```jsonc
 {
-  "$schema": "https://workers.cloudflare.com/schema/wrangler.json",
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "my-agent",
-  "compatibility_date": "2026-04-01",
+  "compatibility_date": "2026-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "durable_objects": {
     "bindings": [{ "class_name": "Sandbox", "name": "Sandbox" }],

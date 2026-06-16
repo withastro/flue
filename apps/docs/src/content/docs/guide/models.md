@@ -170,7 +170,7 @@ Declare an `AI` binding in your project's Wrangler configuration:
 
 ```jsonc title="wrangler.jsonc"
 {
-  "$schema": "https://workers.cloudflare.com/schema/wrangler.json",
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "ai": {
     "binding": "AI",
   },

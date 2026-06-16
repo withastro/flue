@@ -128,7 +128,7 @@ export default {
 			fs.writeFileSync(
 				path.join(root, 'wrangler.jsonc'),
 				JSON.stringify({
-					compatibility_date: '2026-04-01',
+					compatibility_date: '2026-06-01',
 					compatibility_flags: ['nodejs_compat'],
 					durable_objects: { bindings: [{ name: 'FLUE_ASSISTANT_AGENT', class_name: 'Counter' }] },
 				}),
@@ -190,7 +190,7 @@ async function createGeneratedFixture(
 		path.join(root, 'wrangler.jsonc'),
 		JSON.stringify({
 			name: 'cloudflare-deployment-extension',
-			compatibility_date: '2026-04-01',
+			compatibility_date: '2026-06-01',
 			compatibility_flags: ['nodejs_compat'],
 			durable_objects: { bindings: [{ name: 'Counter', class_name: 'Counter' }] },
 			migrations: [

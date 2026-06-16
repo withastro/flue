@@ -36,9 +36,9 @@ Flue generates the Durable Object classes and bindings, but your `wrangler.jsonc
 
 ```jsonc
 {
-  "$schema": "https://workers.cloudflare.com/schema/wrangler.json",
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "my-flue-worker",
-  "compatibility_date": "2026-04-01",
+  "compatibility_date": "2026-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "migrations": [
     {

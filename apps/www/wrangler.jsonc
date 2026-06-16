@@ -1,6 +1,6 @@
 {
 	"name": "flue-www",
-	"compatibility_date": "2026-04-01",
+	"compatibility_date": "2026-06-01",
 	"preview_urls": true,
 	"routes": [{ "pattern": "flueframework.com", "custom_domain": true }],
 	"assets": {
