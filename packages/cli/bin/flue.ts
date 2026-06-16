@@ -412,7 +412,7 @@ function printCloudflareRunUnsupported(workflow: string, payload: string): never
 function printCloudflareConnectUnsupported(): never {
 	console.error(
 		'`flue connect --target cloudflare` is not supported.\n\n' +
-			'`flue connect` currently starts a local Node.js process; Cloudflare connections require a Workers runtime.',
+			'Use `flue connect <agent-name> local --target node` instead.',
 	);
 	process.exit(1);
 }
