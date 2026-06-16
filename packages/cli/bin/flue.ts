@@ -332,6 +332,7 @@ function parseCommandOptions(
 					: '';
 			fail(`\`flue ${command}\` does not accept ${token.rawName}${hint}.`);
 		}
+		// Prevent a following known flag from being consumed as this string option's value.
 		if (
 			options[optionName]?.type === 'string' &&
 			token.inlineValue === false &&
