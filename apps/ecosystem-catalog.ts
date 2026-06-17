@@ -239,6 +239,7 @@ export const deploy: EcosystemItem[] = [
 ].sort(sortEcosystemItems);
 
 export const sandboxes: EcosystemItem[] = [
+	{ name: 'Blaxel', href: '/docs/ecosystem/sandboxes/blaxel/', background: '#2563eb' },
 	{ name: 'boxd', href: '/docs/ecosystem/sandboxes/boxd/', background: '#2563eb' },
 	{
 		name: 'Cloudflare Sandbox',

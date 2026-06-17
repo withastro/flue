@@ -222,6 +222,7 @@ export const docsSections: DocsSection[] = [
 			{
 				title: 'Sandboxes',
 				items: [
+					{ title: 'Blaxel', slug: 'ecosystem/sandboxes/blaxel' },
 					{ title: 'boxd', slug: 'ecosystem/sandboxes/boxd' },
 					{ title: 'Cloudflare Shell', slug: 'ecosystem/sandboxes/cloudflare-shell' },
 					{ title: 'Cloudflare Sandbox', slug: 'ecosystem/sandboxes/cloudflare' },

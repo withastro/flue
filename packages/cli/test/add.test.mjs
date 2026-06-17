@@ -68,6 +68,7 @@ before(async () => {
 			whatsapp: 'channel--whatsapp.md',
 			twilio: 'channel--twilio.md',
 			messenger: 'channel--messenger.md',
+			blaxel: 'sandbox--blaxel.md',
 			daytona: 'sandbox--daytona.md',
 			postgres: 'database--postgres.md',
 			libsql: 'database--libsql.md',
@@ -174,6 +175,7 @@ describe('flue add', () => {
 			/flue add tooling braintrust\s+tooling\s+https:\/\/www\.braintrust\.dev/,
 		);
 		assert.match(result.stderr, /flue add tooling sentry\s+tooling\s+https:\/\/sentry\.io/);
+		assert.match(result.stderr, /flue add sandbox blaxel\s+sandbox\s+https:\/\/blaxel\.ai/);
 		assert.ok(result.stderr.includes('flue add sandbox <url>'));
 		assert.ok(result.stderr.includes('flue add channel <url>'));
 		assert.ok(result.stderr.includes('flue add database <url>'));
@@ -187,6 +189,19 @@ describe('flue add', () => {
 		assert.ok(result.stdout.includes('<source-dir>/sandboxes/daytona.ts'));
 		assert.ok(result.stdout.includes("'../sandboxes/daytona'"));
 		assert.ok(!result.stdout.includes('/connectors/'));
+	});
+
+	it('prints the Blaxel sandbox blueprint', async () => {
+		const result = await runCli(['add', 'sandbox', 'blaxel', '--print']);
+
+		assert.equal(result.code, 0);
+		assert.ok(result.stdout.startsWith('# Add a Flue Sandbox Adapter: Blaxel'));
+		assert.ok(result.stdout.includes('<source-dir>/sandboxes/blaxel.ts'));
+		assert.ok(result.stdout.includes('@blaxel/core'));
+		assert.ok(result.stdout.includes('// flue-blueprint: sandbox/blaxel@1'));
+		assert.ok(result.stdout.includes('SandboxInstance.createIfNotExists'));
+		assert.ok(result.stdout.includes('blaxel(sandbox, { cwd: "/path" })'));
+		assert.ok(result.stdout.includes('model: false'));
 	});
 
 	it('prints the WhatsApp channel blueprint', async () => {
@@ -582,6 +597,15 @@ describe('flue update', () => {
 
 		assert.equal(updated.code, 0);
 		assert.equal(updated.stdout, added.stdout);
+	});
+
+	it('prints the exact same Blaxel sandbox blueprint as flue add', async () => {
+		const added = await runCli(['add', 'sandbox', 'blaxel', '--print']);
+		const updated = await runCli(['update', 'sandbox', 'blaxel', '--print']);
+
+		assert.equal(updated.code, 0);
+		assert.equal(updated.stdout, added.stdout);
+		assert.ok(updated.stdout.includes('// flue-blueprint: sandbox/blaxel@1'));
 	});
 
 	it('prints the exact same MongoDB blueprint as flue add', async () => {
