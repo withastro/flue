@@ -30,9 +30,9 @@ Keep evals out of the default unit-test suite. Use a separate config and command
 
 ```json title="package.json"
 {
-	"scripts": {
-		"evals": "vitest run --config vitest.evals.config.ts",
-		"evals:json": "vitest run --config vitest.evals.config.ts --reporter=vitest-evals/reporter --reporter=json --outputFile.json=vitest-results.json"
+  "scripts": {
+    "evals": "vitest run --config vitest.evals.config.ts",
+    "evals:json": "vitest run --config vitest.evals.config.ts --reporter=vitest-evals/reporter --reporter=json --outputFile.json=vitest-results.json"
   }
 }
 ```
@@ -41,11 +41,11 @@ Keep evals out of the default unit-test suite. Use a separate config and command
 import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
-	test: {
-		include: ['evals/**/*.eval.ts'],
-		testTimeout: 60_000,
-		hookTimeout: 60_000,
-		reporters: ['vitest-evals/reporter'],
+  test: {
+    include: ['evals/**/*.eval.ts'],
+    testTimeout: 60_000,
+    hookTimeout: 60_000,
+    reporters: ['vitest-evals/reporter'],
     env: {
       FLUE_EVAL_BASE_URL: process.env.FLUE_EVAL_BASE_URL ?? 'http://localhost:3583',
       FLUE_EVAL_WITH_JUDGES: process.env.FLUE_EVAL_WITH_JUDGES ?? '0',
@@ -87,10 +87,14 @@ const workflowHarness = createHarness<ClassificationInput, ClassificationOutput>
 
     const body = (await response.json()) as {
       result: ClassificationOutput;
-      _meta?: { runId?: string };
+      runId: string;
+      streamUrl: string;
+      offset: string;
     };
 
-    setArtifact('runId', body._meta?.runId ?? null);
+    setArtifact('runId', body.runId);
+    setArtifact('streamUrl', body.streamUrl);
+    setArtifact('offset', body.offset);
     return { output: body.result };
   },
 });
@@ -113,9 +117,8 @@ const classifier = createAgent(() => ({ model: 'openai/gpt-5.5' }));
 export async function run({ init, payload }: FlueContext) {
   const harness = await init(classifier);
   const session = await harness.session();
-  const message = typeof payload === 'object' && payload && 'message' in payload
-    ? String(payload.message)
-    : '';
+  const message =
+    typeof payload === 'object' && payload && 'message' in payload ? String(payload.message) : '';
 
   const response = await session.prompt(`Classify this support request: ${message}`, {
     result: v.object({
@@ -169,9 +172,8 @@ const agentHarness = createHarness<{ message: string }, { instanceId: string; te
     });
 
     const promptResult = response.result as { text?: unknown };
-    const text = typeof promptResult.text === 'string'
-      ? promptResult.text
-      : JSON.stringify(response.result);
+    const text =
+      typeof promptResult.text === 'string' ? promptResult.text : JSON.stringify(response.result);
 
     setArtifact('instanceId', instanceId);
     setArtifact('streamUrl', response.streamUrl);
@@ -183,7 +185,8 @@ const agentHarness = createHarness<{ message: string }, { instanceId: string; te
 describeEval('support agent', { harness: agentHarness }, (it) => {
   it('answers a billing prompt with an isolated agent instance', async ({ run }) => {
     const result = await run({
-      message: 'A customer says they were charged twice for invoice INV-123. Give a concise support triage reply.',
+      message:
+        'A customer says they were charged twice for invoice INV-123. Give a concise support triage reply.',
     });
 
     expect(result.output.instanceId).toMatch(/^support-eval-/);
@@ -193,7 +196,7 @@ describeEval('support agent', { harness: agentHarness }, (it) => {
 });
 ```
 
-Use direct HTTP instead of the SDK if that is the boundary you need to verify. The SDK call above maps to `POST /agents/:name/:id?wait=result` and returns the same result envelope plus stream coordinates.
+Use direct HTTP instead of the SDK if that is the boundary you need to verify. The SDK call above maps to `POST /agents/:name/:id?wait=result` and returns the prompt `result` with `streamUrl`, `offset`, and `submissionId`.
 
 ## Add Assertions and Judges
 
@@ -205,21 +208,24 @@ Use judges only for checks that are genuinely semantic, such as factuality, grou
 import { createJudge, type JudgeContext } from 'vitest-evals';
 
 const classificationRubricJudge = createJudge(
-	'classification-rubric',
-	async (ctx: JudgeContext<ClassificationInput, ClassificationOutput, { expectedCategory?: string }>) => {
-		const correctCategory = ctx.metadata.expectedCategory === undefined ||
-			ctx.output.category === ctx.metadata.expectedCategory;
-		const hasSummary = ctx.output.summary.trim().length > 0;
+  'classification-rubric',
+  async (
+    ctx: JudgeContext<ClassificationInput, ClassificationOutput, { expectedCategory?: string }>,
+  ) => {
+    const correctCategory =
+      ctx.metadata.expectedCategory === undefined ||
+      ctx.output.category === ctx.metadata.expectedCategory;
+    const hasSummary = ctx.output.summary.trim().length > 0;
 
-		return {
-			score: correctCategory && hasSummary ? 1 : 0,
-			metadata: {
-				expectedCategory: ctx.metadata.expectedCategory ?? null,
-				actualCategory: ctx.output.category,
-				hasSummary,
-			},
-		};
-	},
+    return {
+      score: correctCategory && hasSummary ? 1 : 0,
+      metadata: {
+        expectedCategory: ctx.metadata.expectedCategory ?? null,
+        actualCategory: ctx.output.category,
+        hasSummary,
+      },
+    };
+  },
 );
 
 await expect(result).toSatisfyJudge(classificationRubricJudge, { threshold: 1 });

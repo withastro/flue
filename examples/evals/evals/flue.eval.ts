@@ -22,9 +22,9 @@ type ClassificationMetadata = {
 
 type WorkflowResponse = {
 	result: ClassificationOutput;
-	_meta?: {
-		runId?: string;
-	};
+	runId: string;
+	streamUrl: string;
+	offset: string;
 };
 
 type AgentInput = {
@@ -43,7 +43,11 @@ type AgentPromptPayload = {
 const baseUrl = (process.env.FLUE_EVAL_BASE_URL ?? 'http://localhost:3583').replace(/\/+$/, '');
 const client = createFlueClient({ baseUrl });
 
-const workflowHarness = createHarness<ClassificationInput, ClassificationOutput, ClassificationMetadata>({
+const workflowHarness = createHarness<
+	ClassificationInput,
+	ClassificationOutput,
+	ClassificationMetadata
+>({
 	name: 'flue-workflow-http',
 	run: async ({ input, signal, setArtifact }) => {
 		const response = await fetch(`${baseUrl}/workflows/classify?wait=result`, {
@@ -55,7 +59,9 @@ const workflowHarness = createHarness<ClassificationInput, ClassificationOutput,
 		const body = await readJson<WorkflowResponse>(response);
 
 		setArtifact('workflow', 'classify');
-		setArtifact('runId', body._meta?.runId ?? null);
+		setArtifact('runId', body.runId);
+		setArtifact('streamUrl', body.streamUrl);
+		setArtifact('offset', body.offset);
 
 		return { output: body.result };
 	},
@@ -85,7 +91,8 @@ const classificationRubricJudge = createJudge(
 	'classification-rubric',
 	async (ctx: JudgeContext<ClassificationInput, ClassificationOutput, ClassificationMetadata>) => {
 		const expectedCategory = ctx.metadata.expectedCategory;
-		const correctCategory = expectedCategory === undefined || ctx.output.category === expectedCategory;
+		const correctCategory =
+			expectedCategory === undefined || ctx.output.category === expectedCategory;
 		const hasSummary = ctx.output.summary.trim().length > 0;
 
 		return {
