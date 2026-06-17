@@ -35,14 +35,15 @@ export type ProviderRegistration = HttpProviderRegistration | CloudflareAIBindin
 /** Register an HTTP-backed provider ID with {@link registerProvider}. */
 export interface HttpProviderRegistration {
 	/**
-	 * Wire protocol used for requests. Required for provider IDs the catalog
-	 * doesn't know; defaults to the catalog protocol for catalog provider IDs.
+	 * Wire protocol used for requests. Required for provider IDs that neither
+	 * Pi's catalog nor Flue's built-in provider defaults know; otherwise
+	 * defaults to the built-in protocol.
 	 */
 	api?: Api;
 	/**
 	 * Endpoint root, e.g. `'https://api.anthropic.com/v1'`. Required for
-	 * provider IDs the catalog doesn't know; defaults to the catalog endpoint
-	 * for catalog provider IDs.
+	 * provider IDs that neither Pi's catalog nor Flue's built-in provider
+	 * defaults know; otherwise defaults to the built-in endpoint.
 	 */
 	baseUrl?: string;
 	/**
@@ -116,6 +117,35 @@ function isCloudflareBindingRegistration(
  */
 const providersById = new Map<string, ProviderRegistration>();
 
+type BuiltInHttpProviderDefaults = Pick<HttpProviderRegistration, 'api' | 'baseUrl'> & {
+	api: Api;
+	baseUrl: string;
+	apiKeyEnvVar?: string;
+};
+
+const builtInHttpProvidersById = new Map<string, BuiltInHttpProviderDefaults>([
+	[
+		'nebius',
+		{
+			api: 'openai-completions',
+			baseUrl: 'https://api.tokenfactory.nebius.com/v1',
+			apiKeyEnvVar: 'NEBIUS_API_KEY',
+		},
+	],
+]);
+
+function getBuiltInHttpProviderDefaults(
+	providerId: string,
+): BuiltInHttpProviderDefaults | undefined {
+	return builtInHttpProvidersById.get(providerId);
+}
+
+function getEnvVar(name: string): string | undefined {
+	if (typeof process === 'undefined' || !process.env) return undefined;
+	const value = process.env[name];
+	return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
 /**
  * Register a model provider keyed by the provider ID used in model specifiers.
  *
@@ -131,19 +161,24 @@ const providersById = new Map<string, ProviderRegistration>();
  * });
  * ```
  *
- * Provider IDs the catalog doesn't know are registered from scratch and must
- * supply `api` and `baseUrl`.
+ * Provider IDs that neither Pi's catalog nor Flue's built-in provider defaults
+ * know are registered from scratch and must supply `api` and `baseUrl`.
  *
  * Each call REPLACES the provider ID's previous registration; calls do not
- * accumulate. The effective settings are always the catalog defaults (when
- * the ID is known) plus the latest call's options. On Cloudflare, registering
- * the `cloudflare` provider ID in `app.ts` takes precedence over the
- * generated Workers AI binding default.
+ * accumulate. The effective settings are always the built-in defaults (when
+ * the ID is known through Pi's catalog or Flue's provider defaults) plus the
+ * latest call's options. On Cloudflare, registering the `cloudflare` provider
+ * ID in `app.ts` takes precedence over the generated Workers AI binding
+ * default.
  */
 export function registerProvider(providerId: string, registration: ProviderRegistration): void {
+	const builtInDefaults = isCloudflareBindingRegistration(registration)
+		? undefined
+		: getBuiltInHttpProviderDefaults(providerId);
 	if (
 		!isCloudflareBindingRegistration(registration) &&
-		(registration.api === undefined || registration.baseUrl === undefined) &&
+		((registration.api ?? builtInDefaults?.api) === undefined ||
+			(registration.baseUrl ?? builtInDefaults?.baseUrl) === undefined) &&
 		getModels(providerId as KnownProvider).length === 0
 	) {
 		throw new ProviderRegistrationError({ providerId });
@@ -160,11 +195,14 @@ export function hasRegisteredProvider(providerId: string): boolean {
 	return providersById.has(providerId);
 }
 
-/** Look up an API key registered for a provider ID. */
+/** Look up an API key registered for a provider ID or supplied by a Flue built-in provider. */
 export function getRegisteredApiKey(providerId: string): string | undefined {
 	const registration = providersById.get(providerId);
-	if (!registration || isCloudflareBindingRegistration(registration)) return undefined;
-	return registration.apiKey;
+	if (registration && isCloudflareBindingRegistration(registration)) return undefined;
+	if (registration?.apiKey) return registration.apiKey;
+
+	const builtInDefaults = getBuiltInHttpProviderDefaults(providerId);
+	return builtInDefaults?.apiKeyEnvVar ? getEnvVar(builtInDefaults.apiKeyEnvVar) : undefined;
 }
 
 /** Whether a registered provider opted into OpenAI-hosted response storage. */
@@ -248,7 +286,7 @@ export function resolveRegisteredModel(
 	providerId: string,
 	modelId: string,
 ): Model<Api> | undefined {
-	const registration = providersById.get(providerId);
+	const registration = providersById.get(providerId) ?? getBuiltInHttpProviderDefaults(providerId);
 	if (!registration) return undefined;
 	return buildModelFromRegistration(providerId, registration, modelId);
 }
@@ -286,9 +324,10 @@ function buildModelFromRegistration(
 	// exposing a brand-new model), provider-level transport facts still
 	// hydrate from the provider's other catalog entries.
 	const catalog = getModel(providerId as KnownProvider, modelId as never) as Model<Api> | undefined;
+	const builtInDefaults = getBuiltInHttpProviderDefaults(providerId);
 	const providerDefaults = catalog ?? getModels(providerId as KnownProvider)[0];
-	const api = registration.api ?? providerDefaults?.api;
-	const baseUrl = registration.baseUrl ?? providerDefaults?.baseUrl;
+	const api = registration.api ?? providerDefaults?.api ?? builtInDefaults?.api;
+	const baseUrl = registration.baseUrl ?? providerDefaults?.baseUrl ?? builtInDefaults?.baseUrl;
 	if (api === undefined || baseUrl === undefined) {
 		// Unreachable: registerProvider() rejects non-catalog registrations
 		// that omit api/baseUrl.

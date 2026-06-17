@@ -8,6 +8,7 @@ import { createNoopSessionEnv } from './fixtures/session-env.ts';
 afterEach(() => {
 	resetProvidersForTests();
 	vi.unstubAllGlobals();
+	vi.unstubAllEnvs();
 });
 
 /** Stub global fetch, capture outgoing requests, and answer with a valid SSE stream. */
@@ -182,6 +183,52 @@ describe('registerProvider()', () => {
 		expect(resolveModel('metadata-http/other')).toMatchObject({
 			contextWindow: 8000,
 			maxTokens: 1000,
+		});
+	});
+
+	it('resolves Nebius Token Factory models when using the built-in provider id', () => {
+		const resolved = resolveModel('nebius/meta-llama/Meta-Llama-3.1-70B-Instruct');
+
+		expect(resolved).toMatchObject({
+			id: 'meta-llama/Meta-Llama-3.1-70B-Instruct',
+			name: 'meta-llama/Meta-Llama-3.1-70B-Instruct',
+			provider: 'nebius',
+			api: 'openai-completions',
+			baseUrl: 'https://api.tokenfactory.nebius.com/v1',
+			contextWindow: 0,
+			maxTokens: 0,
+		});
+	});
+
+	it('sends NEBIUS_API_KEY when a built-in Nebius model makes a request', async () => {
+		vi.stubEnv('NEBIUS_API_KEY', 'sk-nebius');
+		const seen = captureFetch('Hello from Nebius.');
+		const harness = await createContext().init(
+			createAgent(() => ({ model: 'nebius/meta-llama/Meta-Llama-3.1-70B-Instruct' })),
+		);
+		const session = await harness.session();
+
+		await session.prompt('Say hello.');
+
+		expect(seen).toHaveLength(1);
+		const [request] = seen;
+		if (!request) throw new Error('Expected a provider request.');
+		const url = new URL(request.url);
+		expect(url.origin).toBe('https://api.tokenfactory.nebius.com');
+		expect(url.pathname).toBe('/v1/chat/completions');
+		expect(request.headers.get('authorization')).toBe('Bearer sk-nebius');
+	});
+
+	it('keeps Nebius transport defaults when overriding only its API key', () => {
+		registerProvider('nebius', { apiKey: 'sk-override' });
+
+		const resolved = resolveModel('nebius/deepseek-ai/DeepSeek-R1-0528');
+
+		expect(resolved).toMatchObject({
+			id: 'deepseek-ai/DeepSeek-R1-0528',
+			provider: 'nebius',
+			api: 'openai-completions',
+			baseUrl: 'https://api.tokenfactory.nebius.com/v1',
 		});
 	});
 

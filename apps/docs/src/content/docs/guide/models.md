@@ -1,7 +1,7 @@
 ---
 title: LLM (Models & Providers)
 description: Select models, configure providers, and tune reasoning behavior in Flue agents.
-lastReviewedAt: 2026-05-29
+lastReviewedAt: 2026-06-17
 ---
 
 Models determine what kind of work an agent can perform. Providers determine how your application reaches those models, authenticates its requests, and applies any transport-specific configuration.
@@ -10,15 +10,16 @@ This guide covers model selection and provider setup. For configuring addressabl
 
 ## Model specifier
 
-A model specifier is the unique string Flue uses to refer to a specific model across providers. It combines a provider ID, such as `anthropic`, `cloudflare`, `openai`, or `openrouter`, with a model ID recognized by that provider:
+A model specifier is the unique string Flue uses to refer to a specific model across providers. It combines a provider ID, such as `anthropic`, `cloudflare`, `nebius`, `openai`, or `openrouter`, with a model ID recognized by that provider:
 
-| Model specifier                       | Provider ID  | Model ID                   |
-| ------------------------------------- | ------------ | -------------------------- |
-| `anthropic/claude-sonnet-4-6`         | `anthropic`  | `claude-sonnet-4-6`        |
-| `openai/gpt-5.5`                      | `openai`     | `gpt-5.5`                  |
-| `openrouter/moonshotai/kimi-k2.6`     | `openrouter` | `moonshotai/kimi-k2.6`     |
-| `cloudflare/@cf/moonshotai/kimi-k2.6` | `cloudflare` | `@cf/moonshotai/kimi-k2.6` |
-| `cloudflare/openai/gpt-5.5`           | `cloudflare` | `openai/gpt-5.5`           |
+| Model specifier                                 | Provider ID  | Model ID                                 |
+| ----------------------------------------------- | ------------ | ---------------------------------------- |
+| `anthropic/claude-sonnet-4-6`                   | `anthropic`  | `claude-sonnet-4-6`                      |
+| `openai/gpt-5.5`                                | `openai`     | `gpt-5.5`                                |
+| `openrouter/moonshotai/kimi-k2.6`               | `openrouter` | `moonshotai/kimi-k2.6`                   |
+| `nebius/meta-llama/Meta-Llama-3.1-70B-Instruct` | `nebius`     | `meta-llama/Meta-Llama-3.1-70B-Instruct` |
+| `cloudflare/@cf/moonshotai/kimi-k2.6`           | `cloudflare` | `@cf/moonshotai/kimi-k2.6`               |
+| `cloudflare/openai/gpt-5.5`                     | `cloudflare` | `openai/gpt-5.5`                         |
 
 Use a model specifier to choose an agent's default model:
 
@@ -71,6 +72,7 @@ Most hosted providers require credentials before they will accept model requests
 | Provider ID  | Environment variable |
 | ------------ | -------------------- |
 | `anthropic`  | `ANTHROPIC_API_KEY`  |
+| `nebius`     | `NEBIUS_API_KEY`     |
 | `openai`     | `OPENAI_API_KEY`     |
 | `openrouter` | `OPENROUTER_API_KEY` |
 
@@ -80,9 +82,31 @@ Some provider paths authenticate through their platform integration instead of a
 
 ### Built-in providers
 
-Flue includes Pi's catalog-backed providers and models. To use a built-in provider, choose one of its supported model specifiers and make its required credentials available at runtime; you do not need to register the provider in application code.
+Flue includes Pi's catalog-backed providers and models, plus Flue-bundled provider defaults for selected OpenAI-compatible services such as Nebius Token Factory. To use a built-in provider, choose one of its supported model specifiers and make its required credentials available at runtime; you do not need to register the provider in application code.
 
 See Pi's [provider documentation](https://pi.dev/docs/latest/providers) for the built-in providers, their supported authentication variables, and their model catalog.
+
+### Nebius Token Factory
+
+Flue includes a built-in `nebius` provider for [Nebius Token Factory](https://docs.tokenfactory.nebius.com/api-reference/introduction), which exposes an OpenAI-compatible chat completions API. Set `NEBIUS_API_KEY` and use `nebius/<model-id>` with the model ID shown in Token Factory:
+
+```ts title="src/agents/assistant.ts"
+import { createAgent } from '@flue/runtime';
+
+export default createAgent(() => ({
+  model: 'nebius/meta-llama/Meta-Llama-3.1-70B-Instruct',
+}));
+```
+
+Nebius model availability can change independently of Flue, so Flue does not pin a local Nebius model catalog. The model ID after `nebius/` is sent to Token Factory as-is and validated by Nebius at request time. To route Nebius through a gateway or pass a key explicitly, override only the settings you need:
+
+```ts title="src/app.ts"
+import { registerProvider } from '@flue/runtime';
+
+registerProvider('nebius', {
+  apiKey: process.env.NEBIUS_API_KEY,
+});
+```
 
 ### Cloudflare providers
 
@@ -118,7 +142,7 @@ A provider override can change its endpoint, API key, or headers without changin
 
 ### Custom providers
 
-Use `registerProvider(...)` in `src/app.ts` when you want to connect Flue to a model provider that is not built in. Registering a provider assigns it a provider ID, which you can then use in model specifiers throughout your application. Provider IDs outside the built-in catalog must supply `api` and `baseUrl`.
+Use `registerProvider(...)` in `src/app.ts` when you want to connect Flue to a model provider that is not built in. Registering a provider assigns it a provider ID, which you can then use in model specifiers throughout your application. Provider IDs outside the built-in catalog and Flue-bundled defaults must supply `api` and `baseUrl`.
 
 For example, you can register a local Ollama server through its OpenAI-compatible endpoint:
 

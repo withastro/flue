@@ -1,7 +1,7 @@
 ---
 title: Provider API
 description: Register custom model providers and override built-in provider transport.
-lastReviewedAt: 2026-05-31
+lastReviewedAt: 2026-06-17
 ---
 
 The provider API configures model connection paths at runtime. Import ordinary provider APIs from `@flue/runtime`. For model selection, authentication setup, and Workers AI examples, see [Models & Providers](/docs/guide/models/).
@@ -25,7 +25,7 @@ function registerProvider(providerId: string, registration: ProviderRegistration
 
 Registers a model provider keyed by the provider ID used in model specifiers. The provider ID is the prefix used in model specifiers, such as `anthropic` in `anthropic/claude-sonnet-4-6`.
 
-When the provider ID is a catalog provider, models resolve from the catalog — preserving metadata such as cost, context window, and wire protocol — with this call's options layered on top. That makes routing a built-in provider through a gateway one call:
+When the provider ID is a catalog provider, models resolve from the catalog — preserving metadata such as cost, context window, and wire protocol — with this call's options layered on top. Flue-bundled providers that are not in Pi's catalog, such as `nebius`, keep their built-in protocol and endpoint defaults when you override only authentication or headers. That makes routing a built-in provider through a gateway one call:
 
 ```ts
 registerProvider('anthropic', {
@@ -34,7 +34,7 @@ registerProvider('anthropic', {
 });
 ```
 
-Provider IDs the catalog doesn't know are registered from scratch and must supply `api` and `baseUrl`. For example, registering `ollama` makes model specifiers such as `ollama/llama3.1:8b` available to agents and operations:
+Provider IDs that neither Pi's catalog nor Flue's built-in provider defaults know are registered from scratch and must supply `api` and `baseUrl`. For example, registering `ollama` makes model specifiers such as `ollama/llama3.1:8b` available to agents and operations:
 
 ```ts
 registerProvider('ollama', {
@@ -43,7 +43,7 @@ registerProvider('ollama', {
 });
 ```
 
-Each call replaces the provider ID's previous registration; calls do not accumulate. The effective settings are always the catalog defaults (when the ID is known) plus the latest call's options.
+Each call replaces the provider ID's previous registration; calls do not accumulate. The effective settings are always the built-in defaults (when the ID is known through Pi's catalog or Flue's provider defaults) plus the latest call's options.
 
 ### `ProviderRegistration`
 
@@ -74,16 +74,16 @@ interface HttpProviderRegistration {
 }
 ```
 
-| Property         | Purpose                                                                                                                                                                            |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `api`            | Wire protocol used for requests. Use a Pi-provided API slug or register one with `registerApiProvider()`. Required for non-catalog provider IDs; defaults to the catalog protocol. |
-| `baseUrl`        | Endpoint root, such as `https://api.anthropic.com/v1`. Required for non-catalog provider IDs; defaults to the catalog endpoint.                                                    |
-| `apiKey`         | Optional API key. When omitted, the underlying provider integration may use its normal environment-variable lookup.                                                                |
-| `headers`        | Headers sent on outgoing requests. Merged per key over the catalog model's headers when the provider ID hydrates from the catalog; the registration's values win on conflict.      |
-| `contextWindow`  | Default context-window size for models resolved through this registration. Falls back to the catalog value for catalog models, then to `0`, meaning unknown.                       |
-| `maxTokens`      | Default output-token limit for models resolved through this registration. Falls back to the catalog value for catalog models, then to `0`.                                         |
-| `models`         | Per-model `contextWindow` and `maxTokens` overrides keyed by model ID. Per-model values override provider-level defaults.                                                          |
-| `storeResponses` | Send `store: true` for OpenAI Responses API providers. Enable only when your application accepts the provider's retention policy.                                                  |
+| Property         | Purpose                                                                                                                                                                                                                   |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`            | Wire protocol used for requests. Use a Pi-provided API slug or register one with `registerApiProvider()`. Required for provider IDs with no catalog or Flue-bundled default; otherwise defaults to the built-in protocol. |
+| `baseUrl`        | Endpoint root, such as `https://api.anthropic.com/v1`. Required for provider IDs with no catalog or Flue-bundled default; otherwise defaults to the built-in endpoint.                                                    |
+| `apiKey`         | Optional API key. When omitted, the underlying provider integration may use its normal environment-variable lookup.                                                                                                       |
+| `headers`        | Headers sent on outgoing requests. Merged per key over the catalog model's headers when the provider ID hydrates from the catalog; the registration's values win on conflict.                                             |
+| `contextWindow`  | Default context-window size for models resolved through this registration. Falls back to the catalog value for catalog models, then to `0`, meaning unknown.                                                              |
+| `maxTokens`      | Default output-token limit for models resolved through this registration. Falls back to the catalog value for catalog models, then to `0`.                                                                                |
+| `models`         | Per-model `contextWindow` and `maxTokens` overrides keyed by model ID. Per-model values override provider-level defaults.                                                                                                 |
+| `storeResponses` | Send `store: true` for OpenAI Responses API providers. Enable only when your application accepts the provider's retention policy.                                                                                         |
 
 Registering a non-catalog provider ID without `api` and `baseUrl` throws a `ProviderRegistrationError`.
 
