@@ -192,6 +192,8 @@ export default createAgent(({ id }) => ({
 
 For more information, see [Routing](/docs/guide/routing/) and [SDK](/docs/sdk/overview/).
 
+When evaluating direct agent behavior, use a fresh agent `id` for each eval case unless the case is intentionally testing conversation memory across turns. See [Evaluating Flue Agents](/docs/ecosystem/evals/) for a black-box eval setup against public routes.
+
 ## `dispatch()`
 
 Use `dispatch(...)` when your application receives an event for an agent asynchronously, such as a webhook, queue message, chat event, or notification. For example, an application route can verify an incoming support-system webhook and dispatch the comment to the agent for that ticket:

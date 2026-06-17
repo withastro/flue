@@ -155,6 +155,8 @@ export async function run({ init, payload }: FlueContext<{ ticket: string }>) {
 
 Use structured results when later application code depends on specific fields, instead of parsing a textual answer. See the [Agent API](/docs/api/agent-api/) for result errors, operation options, and response types.
 
+Workflows are also a natural eval boundary when each case has bounded input and expected output. Evaluate the public workflow route, not the workflow module internals; see [Evaluating Flue Agents](/docs/ecosystem/evals/).
+
 ## Managing workflow runs
 
 When a workflow is invoked through a running application, its `runId` lets you inspect the run independently of the HTTP request that started it. This is useful for background work, live progress, debugging, and operational tooling.

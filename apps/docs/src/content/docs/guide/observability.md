@@ -95,6 +95,8 @@ Streaming deltas are best-effort live progress; use `message_end` as the authori
 
 You can also consume `observe(...)` directly when these integrations do not match your telemetry or data-handling requirements.
 
+Observability shows what happened during a real run or agent operation. For behavior-quality regression checks against workflow and agent routes, use an eval runner at the application boundary; see [Evaluating Flue Agents](/docs/ecosystem/evals/).
+
 ## Export telemetry safely
 
 Runtime events can contain workflow payloads, prompts, model messages, logs, tool values, errors, and application-owned metadata. Flue replaces image data in recognized content blocks with an omission sentinel before events are observed or persisted, but arbitrary payloads, log attributes, tool details, and results still require an application-owned sanitization policy.
