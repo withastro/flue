@@ -205,7 +205,7 @@ export const cloudflare = extend({
 
 Both `base` and `wrap` are optional. Do not override Flue-owned `fetch()`, `onRequest()`, `onFiberRecovered()`, or `alarm()` methods.
 
-Use this module-local extension point for scheduled or queued behavior that belongs to one generated agent or workflow Durable Object. Do not add a Worker cron trigger just to reach `scheduleEvery(...)`; the Agents SDK scheduling APIs run inside the generated Durable Object after that object is created. If your application needs to create the first instance, expose an authenticated bootstrap route in `app.ts` or otherwise obtain the Durable Object namespace from `env` and address the instance once.
+Use this module-local extension point for scheduled or queued behavior that belongs to one generated agent or workflow Durable Object. Do not add a Worker cron trigger just to reach `schedule(...)` or `scheduleEvery(...)`; the Agents SDK scheduling APIs run inside the generated Durable Object after that object is created. If your application needs to create the first instance, expose an authenticated bootstrap route in `app.ts` or otherwise obtain the Durable Object namespace from `env` and address the instance once.
 
 For deployment-wide scheduled work, use a Worker cron trigger from source-root `cloudflare.ts`. See [Scheduling](/docs/guide/scheduling/).
 

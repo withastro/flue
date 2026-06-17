@@ -1,7 +1,7 @@
 ---
 title: Scheduling
 description: Run Flue work on a schedule by using platform-owned schedulers.
-lastReviewedAt: 2026-06-12
+lastReviewedAt: 2026-06-18
 ---
 
 Flue does not include a native scheduler. Scheduled work belongs to the platform that runs your application: cron, systemd, CI, queue infrastructure, managed cron products, or Cloudflare Worker cron triggers.
@@ -63,7 +63,7 @@ curl -fsS -X POST 'https://flue.example.com/workflows/digest' \
   -d '{"source":"cron"}'
 ```
 
-The default response is `202 { "runId": "..." }`. Use the returned run ID with `flue logs`, `/runs/<runId>`, or `client.runs` when you need to inspect events. Add `?wait=result` only when the scheduler should wait for the workflow result in the same HTTP request.
+The default response is `202 { "runId": "...", "streamUrl": "...", "offset": "..." }`. Use the returned run ID with `flue logs`, `/runs/<runId>`, or `client.runs` when you need to inspect events. Add `?wait=result` only when the scheduler should wait for the workflow result in the same HTTP request.
 
 ### Run the CLI from a scheduler
 
@@ -159,9 +159,9 @@ Configure the cron trigger in `wrangler.jsonc`:
 
 ```jsonc title="wrangler.jsonc"
 {
-  "$schema": "https://workers.cloudflare.com/schema/wrangler.json",
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "my-flue-worker",
-  "compatibility_date": "2026-04-01",
+  "compatibility_date": "2026-06-01",
   "compatibility_flags": ["nodejs_compat"],
   "triggers": {
     "crons": ["0 12 * * *"],
