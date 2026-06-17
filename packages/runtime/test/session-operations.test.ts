@@ -691,6 +691,184 @@ describe('session.task()', () => {
 		expect(taskRequests).toEqual([['Review only the delegated input.']]);
 	});
 
+	it('passes a visible parent image to the child when the task tool receives its attachment ID', async () => {
+		const provider = createProvider([{ id: 'reviewer' }]);
+		let attachmentId = '';
+		provider.setResponses([
+			(context) => {
+				const prompt = context.messages[0];
+				const text =
+					prompt && Array.isArray(prompt.content)
+						? prompt.content.find((block) => block.type === 'text')?.text
+						: undefined;
+				attachmentId = text?.match(/id="(att_[^"]+)"/)?.[1] ?? '';
+				return fauxAssistantMessage(
+					fauxToolCall('task', {
+						prompt: 'Analyze the delegated image.',
+						attachments: [{ id: attachmentId }],
+					}),
+					{ stopReason: 'toolUse' },
+				);
+			},
+			(context) => {
+				expect(context.messages).toEqual([
+					expect.objectContaining({
+						role: 'user',
+						content: expect.arrayContaining([
+							expect.objectContaining({ type: 'text', text: 'Analyze the delegated image.' }),
+							{ type: 'image', data: 'aGVsbG8=', mimeType: 'image/png' },
+						]),
+					}),
+				]);
+				return fauxAssistantMessage('Image analyzed.');
+			},
+			fauxAssistantMessage('Delegation complete.'),
+		]);
+		const ctx = createContext(provider);
+		const harness = await ctx.init(
+			createAgent(() => ({ model: `${provider.getModel().provider}/reviewer` })),
+		);
+		const session = await harness.session();
+
+		const response = await session.prompt('Delegate this image.', {
+			images: [{ type: 'image', data: 'aGVsbG8=', mimeType: 'image/png' }],
+		});
+
+		expect(attachmentId).toMatch(/^att_/);
+		expect(response.text).toBe('Delegation complete.');
+	});
+
+	it('deduplicates repeated attachment IDs before passing images to the child', async () => {
+		const provider = createProvider([{ id: 'reviewer' }]);
+		let attachmentId = '';
+		provider.setResponses([
+			(context) => {
+				const prompt = context.messages[0];
+				const text =
+					prompt && Array.isArray(prompt.content)
+						? prompt.content.find((block) => block.type === 'text')?.text
+						: undefined;
+				attachmentId = text?.match(/id="(att_[^"]+)"/)?.[1] ?? '';
+				return fauxAssistantMessage(
+					fauxToolCall('task', {
+						prompt: 'Analyze the delegated image.',
+						attachments: [{ id: attachmentId }, { id: attachmentId }],
+					}),
+					{ stopReason: 'toolUse' },
+				);
+			},
+			(context) => {
+				const prompt = context.messages[0];
+				const images =
+					prompt && Array.isArray(prompt.content)
+						? prompt.content.filter((block) => block.type === 'image')
+						: [];
+				expect(images).toEqual([
+					{ type: 'image', data: 'aGVsbG8=', mimeType: 'image/png' },
+				]);
+				return fauxAssistantMessage('Image analyzed once.');
+			},
+			fauxAssistantMessage('Delegation complete.'),
+		]);
+		const ctx = createContext(provider);
+		const harness = await ctx.init(
+			createAgent(() => ({ model: `${provider.getModel().provider}/reviewer` })),
+		);
+		const session = await harness.session();
+
+		await session.prompt('Delegate this image.', {
+			images: [{ type: 'image', data: 'aGVsbG8=', mimeType: 'image/png' }],
+		});
+	});
+
+	it('returns a structured error without creating a child when the task tool receives an unavailable attachment ID', async () => {
+		const provider = createProvider([{ id: 'reviewer' }]);
+		let rejectedTaskResult: unknown;
+		provider.setResponses([
+			fauxAssistantMessage(
+				fauxToolCall('task', {
+					prompt: 'Analyze the delegated image.',
+					attachments: [{ id: 'att_missing' }],
+				}),
+				{ stopReason: 'toolUse' },
+			),
+			(context) => {
+				rejectedTaskResult = context.messages.at(-1);
+				return fauxAssistantMessage('Handled missing attachment.');
+			},
+		]);
+		const store = new RecordingSessionStore();
+		const ctx = createContext(provider, { store });
+		const harness = await ctx.init(
+			createAgent(() => ({ model: `${provider.getModel().provider}/reviewer` })),
+		);
+		const session = await harness.session();
+
+		await session.prompt('Delegate an unavailable image.');
+
+		expect(rejectedTaskResult).toMatchObject({
+			role: 'toolResult',
+			toolName: 'task',
+			isError: true,
+			content: [
+				{
+					type: 'text',
+					text: 'Attachment "att_missing" is not available in this session.',
+				},
+			],
+		});
+		expect([...store.records.keys()].some((key) => key.includes('task:default:'))).toBe(false);
+	});
+
+	it('preserves attachment identity after session state is reloaded', async () => {
+		const provider = createProvider([{ id: 'reviewer' }]);
+		let attachmentId = '';
+		provider.setResponses([
+			(context) => {
+				const prompt = context.messages[0];
+				const text =
+					prompt && Array.isArray(prompt.content)
+						? prompt.content.find((block) => block.type === 'text')?.text
+						: undefined;
+				attachmentId = text?.match(/id="(att_[^"]+)"/)?.[1] ?? '';
+				return fauxAssistantMessage('Stored image.');
+			},
+			() =>
+				fauxAssistantMessage(
+					fauxToolCall('task', {
+						prompt: 'Analyze the stored image.',
+						attachments: [{ id: attachmentId }],
+					}),
+					{ stopReason: 'toolUse' },
+				),
+			(context) => {
+				expect(context.messages[0]).toMatchObject({
+					role: 'user',
+					content: expect.arrayContaining([
+						{ type: 'image', data: 'aGVsbG8=', mimeType: 'image/png' },
+					]),
+				});
+				return fauxAssistantMessage('Reloaded image analyzed.');
+			},
+			fauxAssistantMessage('Delegation complete.'),
+		]);
+		const store = new RecordingSessionStore();
+		const agent = createAgent(() => ({ model: `${provider.getModel().provider}/reviewer` }));
+		const firstContext = createContext(provider, { store });
+		const firstHarness = await firstContext.init(agent);
+		const firstSession = await firstHarness.session();
+		await firstSession.prompt('Store this image.', {
+			images: [{ type: 'image', data: 'aGVsbG8=', mimeType: 'image/png' }],
+		});
+		const secondContext = createContext(provider, { store });
+		const secondHarness = await secondContext.init(agent);
+		const secondSession = await secondHarness.session();
+
+		const response = await secondSession.prompt('Delegate the stored image.');
+
+		expect(response.text).toBe('Delegation complete.');
+	});
+
 	it('selects a declared subagent profile when task() receives an agent name', async () => {
 		const provider = createProvider([{ id: 'parent-model' }, { id: 'delegate-model' }]);
 		const selectedModels: string[] = [];

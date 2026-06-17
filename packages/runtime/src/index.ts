@@ -3,6 +3,7 @@
 
 export { createAgent, defineAgentProfile } from './agent-definition.ts';
 export {
+	AttachmentNotAvailableError,
 	FlueError,
 	ModelNotConfiguredError,
 	OperationFailedError,
@@ -17,6 +18,7 @@ export {
 	SubmissionInterruptedError,
 	SubmissionRetryExhaustedError,
 	SubmissionTimeoutError,
+	TaskAttachmentLimitExceededError,
 	TaskDepthExceededError,
 	ToolInputValidationError,
 	ToolNameConflictError,
@@ -79,6 +81,7 @@ export type {
 	LlmToolResultMessage,
 	LlmTurnPurpose,
 	LlmUserMessage,
+	MessageAttachmentRef,
 	MessageEntry,
 	ModelConfig,
 	NamedAgentDispatchRequest,

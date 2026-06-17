@@ -10,12 +10,14 @@ const MAX_GREP_LINE_LENGTH = 500;
 const MAX_GLOB_RESULTS = 1000;
 const BASE64_READ_LINE_LENGTH = 76;
 const PACKAGED_SKILLS_ROOT = '/.flue/packaged-skills/';
+export const MAX_TASK_ATTACHMENTS = 4;
 
 export interface TaskToolParams {
 	prompt: string;
 	description?: string;
 	agent?: string;
 	cwd?: string;
+	attachments?: Array<{ id: string }>;
 }
 
 export interface TaskToolResultDetails {
@@ -284,6 +286,17 @@ const TaskParams = Type.Object({
 				'Working directory for the child agent. AGENTS.md and skills are discovered from here.',
 		}),
 	),
+	attachments: Type.Optional(
+		Type.Array(
+			Type.Object({
+				id: Type.String({ description: 'Attachment ID shown in the current conversation' }),
+			}),
+			{
+				description: 'Images from this conversation to include in the child agent prompt',
+				maxItems: MAX_TASK_ATTACHMENTS,
+			},
+		),
+	),
 });
 
 /** Build Flue's framework-owned `task` tool. */
@@ -310,6 +323,7 @@ export function createTaskTool(
 		description:
 			'Delegate a focused task to a detached child agent with its own context. ' +
 			'Use this for independent research, file exploration, or parallel work. ' +
+			'Pass attachment IDs shown in the conversation to include those images. ' +
 			'The task returns only its final answer to this conversation.' +
 			agentDescription,
 		parameters: TaskParams,

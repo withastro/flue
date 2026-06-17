@@ -27,6 +27,7 @@ import {
 	createPackagedSkillReadTool,
 	createTaskTool,
 	createTools,
+	MAX_TASK_ATTACHMENTS,
 	type TaskToolParams,
 	type TaskToolResultDetails,
 } from './agent.ts';
@@ -56,6 +57,7 @@ import {
 	SkillNotRegisteredError,
 	SubagentNotDeclaredError,
 	SubmissionTimeoutError,
+	TaskAttachmentLimitExceededError,
 	TaskDepthExceededError,
 	ToolNameConflictError,
 } from './errors.ts';
@@ -1334,6 +1336,18 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		inheritedThinkingLevel: ThinkingLevel | undefined,
 		signal?: AbortSignal,
 	): Promise<AgentToolResult<TaskToolResultDetails>> {
+		const attachmentIds = [
+			...new Set((params.attachments ?? []).map((attachment) => attachment.id)),
+		];
+		if (attachmentIds.length > MAX_TASK_ATTACHMENTS) {
+			throw new TaskAttachmentLimitExceededError({
+				count: attachmentIds.length,
+				max: MAX_TASK_ATTACHMENTS,
+			});
+		}
+		const images = this.history
+			.resolveImageAttachments(attachmentIds)
+			.map((attachment) => attachment.image);
 		const result = await this.executeTask(
 			params.prompt,
 			{
@@ -1341,6 +1355,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				inheritedModel,
 				inheritedThinkingLevel,
 				cwd: params.cwd,
+				images,
 				// Subagent profiles are self-contained: the parent's call-level
 				// tools flow only into agent-less tasks, never into a selected
 				// profile's session.
@@ -2173,7 +2188,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			persistInput: () =>
 				this.history.appendMessage(
 					createUserContextMessage(
-						input.payload.message,
+						this.history.prepareImagePrompt(input.payload.message, input.payload.images),
 						new Date().toISOString(),
 						input.payload.images,
 					),
@@ -2338,6 +2353,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		signal: AbortSignal;
 	}): Promise<PromptResponse | PromptResultResponse<unknown>> {
 		assertImagesWithinLimit(args.images);
+		const promptText = this.history.prepareImagePrompt(args.promptText, args.images);
 		const resultBundle = args.schema ? createResultTools(args.schema) : undefined;
 
 		return this.withCallOverrides(
@@ -2355,7 +2371,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 
 				if (resultBundle) {
 					const result = await this.runWithResultTools(
-						args.promptText,
+						promptText,
 						resultBundle,
 						args.errorLabel,
 						args.signal,
@@ -2369,7 +2385,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				}
 
 				await this.runModelTurnWithRecovery({
-					start: () => this.agentLoop.prompt(args.promptText, args.images),
+					start: () => this.agentLoop.prompt(promptText, args.images),
 					signal: args.signal,
 				});
 				this.throwIfError(args.errorLabel);

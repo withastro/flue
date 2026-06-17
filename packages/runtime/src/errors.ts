@@ -577,6 +577,30 @@ export class SubagentNotDeclaredError extends FlueError {
 	}
 }
 
+export class AttachmentNotAvailableError extends FlueError {
+	constructor({ attachmentId }: { attachmentId: string }) {
+		super({
+			type: 'attachment_not_available',
+			message: `Attachment "${attachmentId}" is not available in this session.`,
+			details: 'The delegated task can only receive attachments visible in its calling session.',
+			dev: 'Pass an attachment ID from the current conversation attachment manifest.',
+			meta: { attachmentId },
+		});
+	}
+}
+
+export class TaskAttachmentLimitExceededError extends FlueError {
+	constructor({ count, max }: { count: number; max: number }) {
+		super({
+			type: 'task_attachment_limit_exceeded',
+			message: `A delegated task can receive at most ${max} attachments.`,
+			details: 'Reduce the number of images delegated in one task.',
+			dev: 'Split the image analysis across multiple task calls.',
+			meta: { count, max },
+		});
+	}
+}
+
 export class ToolNameConflictError extends FlueError {
 	constructor({
 		name,
