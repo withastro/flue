@@ -120,7 +120,7 @@ describe('cloudflareSandbox()', () => {
 		});
 	});
 
-	it('forwards command cwd env and millisecond timeout when a wrapped command executes', async () => {
+	it('forwards cloneable command options when a wrapped command executes', async () => {
 		const exec = vi.fn(async () => ({ stdout: 'done', stderr: 'warning', exitCode: 3 }));
 		const env = await cloudflareSandbox({ exec } as unknown as CloudflareSandboxStub, {
 			cwd: '/workspace/project',
@@ -140,7 +140,6 @@ describe('cloudflareSandbox()', () => {
 			cwd: '/workspace/check',
 			env: { NODE_ENV: 'test' },
 			timeout: 12_000,
-			signal,
 		});
 	});
 
@@ -219,7 +218,7 @@ describe('cloudflareSandbox()', () => {
 		expect(deleteFile).toHaveBeenCalledWith('/workspace/project/tmp');
 	});
 
-	it('forwards a signal and rejects when a Cloudflare sandbox is aborted in flight', async () => {
+	it('keeps cancellation local when a Cloudflare sandbox command is aborted in flight', async () => {
 		let markStarted: () => void = () => {};
 		const started = new Promise<void>((resolve) => {
 			markStarted = resolve;
@@ -251,7 +250,6 @@ describe('cloudflareSandbox()', () => {
 			cwd: '/workspace/project',
 			env: undefined,
 			timeout: undefined,
-			signal: controller.signal,
 		});
 	});
 });

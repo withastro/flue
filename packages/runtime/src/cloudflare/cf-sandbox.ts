@@ -19,7 +19,6 @@ export interface CloudflareSandboxStub {
 			cwd?: string;
 			env?: Record<string, string>;
 			timeout?: number;
-			signal?: AbortSignal;
 		},
 	): Promise<{ success: boolean; stdout: string; stderr: string; exitCode?: number }>;
 	readFile(path: string, options?: { encoding?: string }): Promise<{ content: string }>;
@@ -159,12 +158,14 @@ export function cfSandboxToSessionEnv(
 			const externalSignal = execOpts?.signal;
 			if (externalSignal?.aborted) throw abortErrorFor(externalSignal);
 
+			// Cloudflare Sandbox does not currently accept AbortSignal across the
+			// getSandbox(...).exec(...) RPC boundary. Keep cancellation local while
+			// forwarding cloneable execution options to the sandbox.
 			const result = await sandbox.exec(command, {
 				cwd: execOpts?.cwd,
 				env: execOpts?.env,
 				// The Cloudflare sandbox `timeout` option is in milliseconds.
 				timeout: execOpts?.timeoutMs,
-				signal: externalSignal,
 			});
 
 			if (externalSignal?.aborted) throw abortErrorFor(externalSignal);
