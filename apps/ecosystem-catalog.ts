@@ -1,9 +1,20 @@
+import {
+	boxdIcon,
+	braintrustIcon,
+	daytonaIcon,
+	e2bIcon,
+	exeDevIcon,
+	isloIcon,
+	mirageIcon,
+	modalIcon,
+	openTelemetryIcon
+} from './ecosystem-icons';
+
 export interface EcosystemItem {
 	name: string;
 	href: string;
 	icon?: string;
 	mark?: string;
-	brand?: 'daytona' | 'e2b' | 'modal';
 	background: string;
 	iconClass?: string;
 	keywords?: string;
@@ -16,22 +27,11 @@ function sortEcosystemItems(a: EcosystemItem, b: EcosystemItem): number {
 }
 
 function sortEcosystemItemsLogoFirst(a: EcosystemItem, b: EcosystemItem): number {
-	const aHasLogo = Boolean(a.icon ?? a.brand ?? a.mark);
-	const bHasLogo = Boolean(b.icon ?? b.brand ?? b.mark);
+	const aHasLogo = Boolean(a.icon ?? a.mark);
+	const bHasLogo = Boolean(b.icon ?? b.mark);
 	if (aHasLogo !== bHasLogo) return aHasLogo ? -1 : 1;
 	return sortEcosystemItems(a, b);
 }
-
-function svgDataUri(svg: string): string {
-	return `data:image/svg+xml,${encodeURIComponent(svg)}`;
-}
-
-const braintrustIcon = svgDataUri(
-	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 27 27"><path fill="#fff" d="M9.552 0c1.507 0 2.729 1.237 2.729 2.762v2.76c0 1.525-1.222 2.762-2.729 2.762H8.188v1.074h1.364c1.507 0 2.729 1.236 2.729 2.761v2.762c0 1.525-1.222 2.761-2.729 2.761H8.188v1.074h1.364c1.507 0 2.729 1.237 2.729 2.762v2.76c0 1.525-1.222 2.762-2.729 2.762h-2.73c-1.507 0-2.728-1.237-2.728-2.762v-1.917H2.729C1.222 22.321 0 21.085 0 19.56v-2.762c0-1.525 1.223-2.761 2.729-2.761h1.365v-1.074H2.729C1.223 12.963 0 11.727 0 10.202V7.44c0-1.525 1.222-2.761 2.729-2.761h1.365V2.762C4.094 1.237 5.315 0 6.822 0zm9.4 0c1.507 0 2.729 1.237 2.729 2.762v1.917h1.365c1.507 0 2.728 1.237 2.728 2.761v2.762c0 1.525-1.221 2.761-2.728 2.761h-1.365v1.074h1.365c1.507 0 2.728 1.236 2.728 2.761v2.762c0 1.524-1.221 2.761-2.728 2.761h-1.365v1.917c0 1.525-1.222 2.762-2.729 2.762h-2.729c-1.507 0-2.728-1.237-2.728-2.762v-2.76c0-1.525 1.221-2.762 2.728-2.762h1.364v-1.074h-1.364c-1.507 0-2.728-1.236-2.728-2.761v-2.762c0-1.525 1.221-2.761 2.728-2.761h1.364V8.284h-1.364c-1.507 0-2.728-1.237-2.728-2.762v-2.76C13.495 1.237 14.716 0 16.223 0z"/></svg>',
-);
-const openTelemetryIcon = svgDataUri(
-	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128"><path fill="#f5a800" d="M67.648 69.797c-5.246 5.25-5.246 13.758 0 19.008 5.25 5.246 13.758 5.246 19.004 0 5.25-5.25 5.25-13.758 0-19.008-5.246-5.246-13.754-5.246-19.004 0Zm14.207 14.219a6.649 6.649 0 0 1-9.41 0 6.65 6.65 0 0 1 0-9.407 6.649 6.649 0 0 1 9.41 0c2.598 2.586 2.598 6.809 0 9.407ZM86.43 3.672l-8.235 8.234a4.17 4.17 0 0 0 0 5.875l32.149 32.149a4.17 4.17 0 0 0 5.875 0l8.234-8.235c1.61-1.61 1.61-4.261 0-5.87L92.29 3.671a4.159 4.159 0 0 0-5.86 0ZM28.738 108.895a3.763 3.763 0 0 0 0-5.31l-4.183-4.187a3.768 3.768 0 0 0-5.313 0l-8.644 8.649-.016.012-2.371-2.375c-1.313-1.313-3.45-1.313-4.75 0-1.313 1.312-1.313 3.449 0 4.75l14.246 14.242a3.353 3.353 0 0 0 4.746 0c1.3-1.313 1.313-3.45 0-4.746l-2.375-2.375.016-.012Zm43.559-81.582L54.004 45.605c-1.625 1.625-1.625 4.301 0 5.926L65.3 62.824c7.984-5.746 19.18-5.035 26.363 2.153l9.148-9.149c1.622-1.625 1.622-4.297 0-5.922L78.22 27.313a4.185 4.185 0 0 0-5.922 0ZM60.55 67.585l-6.672-6.672c-1.563-1.562-4.125-1.562-5.684 0l-23.53 23.54a4.036 4.036 0 0 0 0 5.687l13.331 13.332a4.036 4.036 0 0 0 5.688 0l15.132-15.157c-3.199-6.609-2.625-14.593 1.735-20.73Z"/></svg>',
-);
 
 export const channels: EcosystemItem[] = [
 	{
@@ -238,8 +238,14 @@ export const deploy: EcosystemItem[] = [
 	},
 ].sort(sortEcosystemItems);
 
-export const sandboxes: EcosystemItem[] = [
-	{ name: 'boxd', href: '/docs/ecosystem/sandboxes/boxd/', background: '#2563eb' },
+const sandboxItems: EcosystemItem[] = [
+	{
+		name: 'boxd',
+		href: '/docs/ecosystem/sandboxes/boxd/',
+		icon: boxdIcon,
+		background: '#000000',
+		iconClass: 'w-1/2! h-1/2!',
+	},
 	{
 		name: 'Cloudflare Sandbox',
 		href: '/docs/ecosystem/sandboxes/cloudflare/',
@@ -256,27 +262,46 @@ export const sandboxes: EcosystemItem[] = [
 	{
 		name: 'Daytona',
 		href: '/docs/ecosystem/sandboxes/daytona/',
-		brand: 'daytona',
+		icon: daytonaIcon,
 		background: '#181717',
+		iconClass: 'w-1/2! h-1/2!',
 		homepageRank: 9,
 	},
 	{
 		name: 'E2B',
 		href: '/docs/ecosystem/sandboxes/e2b/',
-		brand: 'e2b',
+		icon: e2bIcon,
 		background: '#ffffff',
+		iconClass: 'w-3/4! h-3/4!',
 		homepageRank: 17,
 	},
-	{ name: 'exe.dev', href: '/docs/ecosystem/sandboxes/exedev/', background: '#2563eb' },
-	{ name: 'islo', href: '/docs/ecosystem/sandboxes/islo/', background: '#2563eb' },
-	{ name: 'Mirage', href: '/docs/ecosystem/sandboxes/mirage/', background: '#2563eb' },
+	{
+		name: 'exe.dev',
+		href: '/docs/ecosystem/sandboxes/exedev/',
+		icon: exeDevIcon,
+		background: '#ffffff',
+	},
+	{
+		name: 'islo',
+		href: '/docs/ecosystem/sandboxes/islo/',
+		icon: isloIcon,
+		background: '#ffffff',
+		iconClass: 'w-3/4! h-3/4! max-h-3/4!',
+	},
+	{
+		name: 'Mirage',
+		href: '/docs/ecosystem/sandboxes/mirage/',
+		icon: mirageIcon,
+		background: '#000000',
+		iconClass: 'w-[62%]! h-auto! max-h-[62%]!',
+	},
 	{
 		name: 'Modal',
 		href: '/docs/ecosystem/sandboxes/modal/',
-		brand: 'modal',
+		icon: modalIcon,
 		background: '#ffffff',
+		iconClass: 'w-2/3! h-2/3!',
 	},
-	{ name: 'smolvm', href: '/docs/ecosystem/sandboxes/smolvm/', background: '#2563eb' },
 	{
 		name: 'Vercel Sandbox',
 		href: '/docs/ecosystem/sandboxes/vercel/',
@@ -285,7 +310,9 @@ export const sandboxes: EcosystemItem[] = [
 		iconClass: 'monochrome-white ecosystem-logo-small',
 		homepageRank: 4,
 	},
-].sort(sortEcosystemItemsLogoFirst);
+];
+
+export const sandboxes = sandboxItems.sort(sortEcosystemItemsLogoFirst);
 
 export const databases: EcosystemItem[] = [
 	{
@@ -417,14 +444,14 @@ const homepageOrderIndex = new Map(homepageOrder.map((name, index) => [name, ind
 const seenIcons = new Set<string>();
 
 export const homepageEcosystemItems = catalog
-	.filter((item) => item.icon || item.brand === 'daytona' || item.brand === 'e2b')
+	.filter((item) => item.icon)
 	.sort(
 		(a, b) =>
 			(homepageOrderIndex.get(a.name) ?? Number.MAX_SAFE_INTEGER) -
-				(homepageOrderIndex.get(b.name) ?? Number.MAX_SAFE_INTEGER) || sortEcosystemItems(a, b),
+			(homepageOrderIndex.get(b.name) ?? Number.MAX_SAFE_INTEGER) || sortEcosystemItems(a, b),
 	)
 	.filter((item) => {
-		const identity = item.icon ?? item.brand;
+		const identity = item.icon;
 		if (!identity || seenIcons.has(identity)) return false;
 		seenIcons.add(identity);
 		return true;

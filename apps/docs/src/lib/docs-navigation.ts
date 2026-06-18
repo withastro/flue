@@ -1,15 +1,15 @@
 export type DocsNavItem =
 	| {
-			title: string;
-			slug: string;
-			anchor?: string;
-			icon?: 'home';
-			items?: DocsNavItem[];
-	  }
+		title: string;
+		slug: string;
+		anchor?: string;
+		icon?: 'home';
+		items?: DocsNavItem[];
+	}
 	| {
-			title: string;
-			href: string;
-	  };
+		title: string;
+		href: string;
+	};
 
 export interface DocsNavGroup {
 	title?: string;

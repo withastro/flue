@@ -68,46 +68,11 @@ import { channels, databases, deploy, sandboxes, tooling } from '../../../../eco
 					<li data-ecosystem-item data-search={`${item.name} ${item.keywords ?? ''}`.toLowerCase()}>
 						<a class="ecosystem-item group" href={item.href} aria-label={item.name}>
 							<span class="ecosystem-icon" style={`--ecosystem-icon-bg: ${item.background}`}>
-								{
-									item.icon ? (
-										<img class:list={['ecosystem-logo', item.iconClass]} src={item.icon} alt="" loading="lazy" />
-									) : item.brand === 'daytona' ? (
-										<svg class="ecosystem-sandbox-logo ecosystem-daytona-logo text-white" viewBox="0 0 69 72" fill="none" aria-hidden="true">
-											<rect x="3.63965" y="48.4343" width="24.9293" height="8.54716" fill="currentColor" />
-											<rect x="37.1162" y="18.5193" width="28.4906" height="8.54716" fill="currentColor" />
-											<rect width="29.9151" height="8.54717" transform="matrix(0.707107 -0.707106 0.707107 0.707106 22.1582 21.1531)" fill="currentColor" />
-											<rect width="22.9746" height="8.54717" transform="matrix(-0.707107 -0.707106 -0.707107 0.707106 22.2891 42.521)" fill="currentColor" />
-											<rect width="24.217" height="8.54717" transform="matrix(-0.707107 0.707106 -0.707107 -0.707106 43.6572 54.4778)" fill="currentColor" />
-											<rect width="27.066" height="8.54717" transform="matrix(0.707107 0.707106 0.707107 -0.707106 43.5264 33.1099)" fill="currentColor" />
-											<rect x="22.1582" y="12.1082" width="20.6556" height="8.54718" transform="rotate(90 22.1582 12.1082)" fill="currentColor" />
-											<rect x="52.0732" y="42.0237" width="25.6415" height="8.54718" transform="rotate(90 52.0732 42.0237)" fill="currentColor" />
-										</svg>
-									) : item.brand === 'e2b' ? (
-										<svg class="ecosystem-sandbox-logo ecosystem-e2b-logo text-black" viewBox="0 0 65 18" fill="none" aria-hidden="true">
-											<path d="M20.2235 0V4.67645H5.49328C5.04263 4.67661 4.67645 5.0426 4.67645 5.49328V5.84494C4.67645 6.29563 5.04263 6.66161 5.49328 6.66178H20.2235V11.3382H5.49328C5.04263 11.3384 4.67645 11.7044 4.67645 12.1551V12.5067C4.67657 12.9573 5.04271 13.3222 5.49328 13.3223H20.2235V18H3.12668C1.39998 17.9996 1.98414e-05 16.5989 0 14.8721V3.12668C0.000280465 1.40008 1.40013 0.000432767 3.12668 0H20.2235Z" fill="currentColor" />
-											<path d="M39.2723 0C40.9992 0.000155056 42.399 1.40092 42.399 3.12791V8.36701C42.3989 10.0101 41.0672 11.3417 39.424 11.3419H36.9587C36.9413 11.3408 36.9232 11.3382 36.9057 11.3382H27.6379C27.1873 11.3384 26.8211 11.7044 26.8211 12.1551V12.5067C26.8213 12.9572 27.1874 13.3221 27.6379 13.3223H42.3903V18H22.1446V9.63299C22.1446 7.98998 23.4767 6.65732 25.1195 6.65684H27.5762C27.5967 6.65838 27.6174 6.66174 27.6379 6.66178H36.9057C37.3563 6.66171 37.7225 6.29578 37.7225 5.84494V5.49328C37.7224 5.04255 37.3563 4.67775 36.9057 4.67768H22.1755V0H39.2723Z" fill="currentColor" />
-											<path fill-rule="evenodd" clip-rule="evenodd" d="M61.4379 0C63.1648 3.6786e-05 64.5655 1.39985 64.5658 3.12668V14.8721C64.5658 16.5992 63.1649 18 61.4379 18H44.3386V0H61.4379ZM49.8319 11.3382C49.3813 11.3384 49.0151 11.7044 49.0151 12.1551V12.5067C49.0152 12.9573 49.3813 13.3222 49.8319 13.3223H59.0725C59.523 13.3222 59.888 12.9574 59.8881 12.5067V12.1551C59.8881 11.7043 59.5231 11.3384 59.0725 11.3382H49.8319ZM49.8319 4.67645C49.3813 4.67661 49.0151 5.0426 49.0151 5.49328V5.84494C49.0151 6.29562 49.3813 6.66161 49.8319 6.66178H59.0725C59.5231 6.66162 59.8881 6.29571 59.8881 5.84494V5.49328C59.8881 5.04252 59.5231 4.67661 59.0725 4.67645H49.8319Z" fill="currentColor" />
-										</svg>
-									) : item.brand === 'modal' ? (
-										<svg class="ecosystem-sandbox-logo ecosystem-modal-logo" viewBox="0 0 404 211" fill="none" aria-hidden="true">
-											<path d="M163.477 4.39583L201.633 70.3333L123.035 206.604C121.453 209.242 118.64 211 115.475 211H44.4379C42.8554 211 41.2729 210.648 40.042 209.769C38.8112 209.066 37.5804 207.835 36.877 206.604L1.35875 145.062C-0.22375 142.425 -0.22375 138.908 1.35875 136.271L77.4946 4.39583C78.1979 2.98917 79.4288 1.93416 80.6596 1.23083C81.8904 0.527495 83.473 0 85.0555 0H156.092C159.257 0 162.07 1.75833 163.653 4.39583H163.477ZM402.083 136.271L325.947 4.39583C325.244 2.98917 324.013 1.93416 322.782 1.23083C321.551 0.527495 319.969 0 318.386 0H247.35C244.185 0 241.371 1.75833 239.789 4.39583L201.633 70.3333L280.23 206.604C281.813 209.242 284.626 211 287.791 211H358.828C360.41 211 361.993 210.648 363.224 209.769C364.455 209.066 365.685 207.835 366.389 206.604L401.907 145.062C403.49 142.425 403.49 138.908 401.907 136.271H402.083Z" fill="#62DE61" />
-											<path d="M120.396 70.3333H201.631L163.475 4.39583C161.892 1.75833 159.079 0 155.914 0H84.8773C83.2948 0 81.7123 0.351661 80.4814 1.23083L120.396 70.3333Z" fill="url(#modal-gradient-0)" />
-											<path d="M120.402 70.3346L80.4877 1.23206C79.2569 1.93539 78.0261 3.16623 77.3227 4.39706L1.18688 136.272C-0.395625 138.91 -0.395625 142.426 1.18688 145.064L36.7053 206.605C37.4086 208.012 38.6395 209.067 39.8703 209.77L120.402 70.3346Z" fill="url(#modal-gradient-1)" />
-											<path d="M201.638 70.3334H120.403L39.8711 209.769C41.1019 210.473 42.6844 211 44.2669 211H115.303C118.468 211 121.282 209.242 122.864 206.604L201.462 70.3334H201.638Z" fill="#09AF58" />
-											<path d="M402.094 145.062C402.798 143.656 403.325 142.249 403.325 140.667H323.497L283.583 209.769C284.814 210.472 286.396 211 287.979 211H359.015C362.18 211 364.994 209.242 366.576 206.604L402.094 145.062Z" fill="#09AF58" />
-											<path d="M247.18 0C245.598 0 244.015 0.351661 242.784 1.23083L323.316 140.667H403.144C403.144 139.084 402.793 137.677 401.913 136.271L325.778 4.39583C324.195 1.75833 321.382 0 318.217 0H247.18Z" fill="url(#modal-gradient-2)" />
-											<path d="M283.391 209.77L323.305 140.668L242.773 1.23206C241.542 1.93539 240.311 3.16623 239.608 4.39706L201.452 70.3346L280.05 206.605C280.753 208.012 281.984 209.067 283.215 209.77H283.391Z" fill="url(#modal-gradient-3)" />
-											<defs>
-												<linearGradient id="modal-gradient-0" x1="171.036" y1="-316.5" x2="110.901" y2="-316.5" gradientUnits="userSpaceOnUse"><stop stop-color="#BFF9B4" /><stop offset="1" stop-color="#80EE64" /></linearGradient>
-												<linearGradient id="modal-gradient-1" x1="9.45105" y1="192.187" x2="109.852" y2="18.1121" gradientUnits="userSpaceOnUse"><stop stop-color="#80EE64" /><stop offset="0.18" stop-color="#7BEB63" /><stop offset="0.36" stop-color="#6FE562" /><stop offset="0.55" stop-color="#5ADA60" /><stop offset="0.74" stop-color="#3DCA5D" /><stop offset="0.93" stop-color="#18B759" /><stop offset="1" stop-color="#09AF58" /></linearGradient>
-												<linearGradient id="modal-gradient-2" x1="373.78" y1="157.722" x2="273.379" y2="-16.3526" gradientUnits="userSpaceOnUse"><stop stop-color="#BFF9B4" /><stop offset="1" stop-color="#80EE64" /></linearGradient>
-												<linearGradient id="modal-gradient-3" x1="312.93" y1="192.89" x2="212.354" y2="18.8154" gradientUnits="userSpaceOnUse"><stop stop-color="#80EE64" /><stop offset="0.18" stop-color="#7BEB63" /><stop offset="0.36" stop-color="#6FE562" /><stop offset="0.55" stop-color="#5ADA60" /><stop offset="0.74" stop-color="#3DCA5D" /><stop offset="0.93" stop-color="#18B759" /><stop offset="1" stop-color="#09AF58" /></linearGradient>
-											</defs>
-										</svg>
-									) : (
-										<span class="ecosystem-default-grid" aria-hidden="true" />
-									)
-								}
+								{item.icon ? (
+									<img class:list={['ecosystem-logo', item.iconClass]} src={item.icon} alt="" loading="lazy" />
+								) : (
+									<span class="ecosystem-default-grid" aria-hidden="true" />
+								)}
 							</span>
 							<span class="ecosystem-name">{item.name}</span>
 						</a>
@@ -329,12 +294,6 @@ import { channels, databases, deploy, sandboxes, tooling } from '../../../../eco
 		height: 58%;
 	}
 
-	.ecosystem-sandbox-logo {
-		width: 62%;
-		height: auto;
-		max-height: 62%;
-	}
-
 	/* Default placeholder for ecosystem items without a logo: a 30deg white
 	   drafting grid over a light blue gradient, brighter at the top as if lit
 	   from above (the homepage blue accent). Clipped to the rounded tile. */
@@ -346,19 +305,6 @@ import { channels, databases, deploy, sandboxes, tooling } from '../../../../eco
 			repeating-linear-gradient(30deg, rgb(255 255 255 / 0.26) 0, rgb(255 255 255 / 0.26) 1px, transparent 1px, transparent 13px),
 			repeating-linear-gradient(120deg, rgb(255 255 255 / 0.26) 0, rgb(255 255 255 / 0.26) 1px, transparent 1px, transparent 13px),
 			linear-gradient(180deg, #5a98f6 0%, #3173ea 100%);
-	}
-
-	.ecosystem-daytona-logo {
-		width: 48%;
-		max-height: 54%;
-	}
-
-	.ecosystem-e2b-logo {
-		width: 80%;
-	}
-
-	.ecosystem-modal-logo {
-		width: 66%;
 	}
 
 	.ecosystem-mark {
