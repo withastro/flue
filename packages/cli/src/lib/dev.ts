@@ -26,7 +26,7 @@ import {
 } from './build.ts';
 import { createEnvLoader, type EnvLoader, selectEnvFile } from './env.ts';
 import { blue, brandRows, dim, error, note, red, section, success } from './terminal.ts';
-import type { BuildOptions } from './types.ts';
+import type { BuildOptions, BuiltinFlueTarget, FlueTarget } from './types.ts';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -38,7 +38,8 @@ export interface DevOptions {
 	 * See {@link BuildOptions.output} for details.
 	 */
 	output?: string;
-	target: 'node' | 'cloudflare';
+	target: BuiltinFlueTarget | FlueTarget;
+	devMode: 'node-like' | 'cloudflare-vite';
 	/** Defaults to 3583 ("FLUE" on a phone keypad). */
 	port?: number;
 	envFile?: string;
@@ -105,14 +106,14 @@ export async function dev(options: DevOptions): Promise<void> {
 		sourceRoot,
 		output,
 		target: options.target,
-		mode: options.target === 'cloudflare' ? 'development' : 'build',
+		mode: options.devMode === 'cloudflare-vite' ? 'development' : 'build',
 		log: 'silent',
 		configFile: options.configFile,
 		envFile: fs.existsSync(envFile) ? envFile : undefined,
 	};
 
 	try {
-		if (options.target === 'cloudflare') {
+		if (options.devMode === 'cloudflare-vite') {
 			await envLoader.withApplied(() => build(buildOptions));
 		} else {
 			await build(buildOptions);
@@ -121,16 +122,16 @@ export async function dev(options: DevOptions): Promise<void> {
 		throw new Error(`Initial build failed: ${err instanceof Error ? err.message : String(err)}`);
 	}
 
-	if (options.target === 'cloudflare') envLoader.restore();
+	if (options.devMode === 'cloudflare-vite') envLoader.restore();
 	const reloader: DevReloader =
-		options.target === 'node'
+		options.devMode === 'node-like'
 			? new NodeReloader({ root, output, port })
 			: new CloudflareReloader({ root, sourceRoot, port });
 
 	await reloader.start();
 
 	brandRows('flue dev', [
-		['target', options.target],
+		['target', targetName(options.target)],
 		['server', reloader.url],
 		['config', options.configFile ? displayPath(root, options.configFile) : undefined],
 		['env', fs.existsSync(envFile) ? displayPath(root, envFile) : undefined],
@@ -163,7 +164,7 @@ export async function dev(options: DevOptions): Promise<void> {
 	// ─── Watch loop ──────────────────────────────────────────────────────────
 
 	const rebuild =
-		options.target === 'cloudflare'
+		options.devMode === 'cloudflare-vite'
 			? () => envLoader.withApplied(() => build(buildOptions))
 			: () => build(buildOptions);
 	const rebuilder = createRebuilder(reloader, rebuild);
@@ -176,7 +177,7 @@ export async function dev(options: DevOptions): Promise<void> {
 		onChange: (relPath) => {
 			const isEnvFile = relPath === envFile;
 			if (!isEnvFile && !reloader.shouldRebuildOn(relPath)) return;
-			if (isEnvFile && options.target === 'node') {
+			if (isEnvFile && options.devMode === 'node-like') {
 				try {
 					envLoader.apply();
 				} catch (err) {
@@ -223,6 +224,10 @@ export async function dev(options: DevOptions): Promise<void> {
 
 	// Block forever until a signal handler exits the process.
 	await new Promise<void>(() => {});
+}
+
+function targetName(target: BuiltinFlueTarget | FlueTarget): string {
+	return typeof target === 'string' ? target : target.name;
 }
 
 function displayPath(root: string, filePath: string): string {

@@ -7,6 +7,10 @@
  * build/dev tooling moved from `@flue/sdk` into `@flue/cli` so the runtime
  * package would stop carrying tooling types.
  */
+import type { FlueForwardRouter } from '@flue/runtime';
+
+export type BuiltinFlueTarget = 'node' | 'cloudflare';
+
 export interface AgentInfo {
 	name: string;
 	filePath: string;
@@ -114,6 +118,16 @@ export interface BuildPlugin {
 	viteInputs?(ctx: BuildContext): ViteCloudflareInputs | Promise<ViteCloudflareInputs>;
 }
 
+export interface FlueTarget {
+	name: string;
+	build: BuildPlugin;
+	routing: FlueForwardRouter;
+}
+
+export function defineTarget(target: FlueTarget): FlueTarget {
+	return target;
+}
+
 /** Generated inputs consumed by the official Cloudflare Vite integration. */
 export interface ViteCloudflareInputs {
 	/**
@@ -141,7 +155,7 @@ export interface BuildOptions {
 	 * time, not `root`.
 	 */
 	output?: string;
-	target?: 'node' | 'cloudflare';
+	target?: BuiltinFlueTarget | FlueTarget;
 	mode?: 'build' | 'development';
 	/** Controls human build progress output. Defaults to `normal`. */
 	log?: 'normal' | 'silent';

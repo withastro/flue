@@ -10,6 +10,7 @@
 import { RunStoreUnavailableError } from '../errors.ts';
 import {
 	type AgentManifestEntry,
+	type FlueForwardRunIndex,
 	type FlueRuntime,
 	getFlueRuntime,
 	type RunListing,
@@ -36,6 +37,11 @@ export async function getRun(runId: string): Promise<RunRecord | null> {
 	if (rt.target === 'node') {
 		if (!rt.runStore) throw new RunStoreUnavailableError();
 		return rt.runStore.getRun(runId);
+	}
+
+	if (rt.target !== 'cloudflare') {
+		const index = requireForwardRunIndex(rt);
+		return index.getRun(runId);
 	}
 
 	// Cloudflare: full records live in the owning per-workflow Durable
@@ -82,6 +88,14 @@ function requireRunListing(rt: FlueRuntime): RunListing {
 		if (!index) throw new RunStoreUnavailableError();
 		return index;
 	}
+	if (rt.target !== 'node') return requireForwardRunIndex(rt);
 	if (!rt.runStore) throw new RunStoreUnavailableError();
 	return rt.runStore;
+}
+
+function requireForwardRunIndex(rt: FlueRuntime): FlueForwardRunIndex {
+	if (rt.target === 'node' || rt.target === 'cloudflare') throw new RunStoreUnavailableError();
+	const index = rt.target.routing.runIndex;
+	if (!index) throw new RunStoreUnavailableError();
+	return index;
 }

@@ -2,6 +2,8 @@ import { defineConfig } from 'tsdown';
 
 export default defineConfig({
 	entry: {
+		// Public target-authoring SDK surface.
+		index: 'src/index.ts',
 		// Bin entry, written to dist/flue.mjs (the build script renames to dist/flue.js).
 		flue: 'bin/flue.ts',
 		// `@flue/cli/config` subpath, written to dist/config.mjs.

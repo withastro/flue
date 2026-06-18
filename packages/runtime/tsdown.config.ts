@@ -4,6 +4,7 @@ export default defineConfig({
 	entry: [
 		'src/index.ts',
 		'src/adapter.ts',
+		'src/adapter-kit.ts',
 		'src/routing.ts',
 		'src/tool-entrypoint.ts',
 		'src/internal.ts',

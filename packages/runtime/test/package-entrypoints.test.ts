@@ -114,4 +114,37 @@ describe('package entrypoints', () => {
 			defineStoreContractTests: expect.any(Function),
 		});
 	});
+
+	it('exposes target-authoring primitives when an adapter imports @flue/runtime/adapter-kit', async () => {
+		const adapterKit = await import('@flue/runtime/adapter-kit');
+
+		expect(adapterKit).toMatchObject({
+			Bash: expect.any(Function),
+			InMemoryFs: expect.any(Function),
+			agentStreamPath: expect.any(Function),
+			assertAgentDispatchAdmissionInput: expect.any(Function),
+			bashFactoryToSessionEnv: expect.any(Function),
+			configureFlueRuntime: expect.any(Function),
+			createDefaultFlueApp: expect.any(Function),
+			createDirectAgentSubmissionInput: expect.any(Function),
+			createFlueContext: expect.any(Function),
+			createSqlRunStore: expect.any(Function),
+			failRecoveredRun: expect.any(Function),
+			generateWorkflowRunId: expect.any(Function),
+			handleAgentRequest: expect.any(Function),
+			handleRunRouteRequest: expect.any(Function),
+			handleStreamHead: expect.any(Function),
+			handleStreamRead: expect.any(Function),
+			handleWorkflowRequest: expect.any(Function),
+			hasRegisteredProvider: expect.any(Function),
+			isStreamExcludedEvent: expect.any(Function),
+			processSubmission: expect.any(Function),
+			reconcileInterruptedSubmission: expect.any(Function),
+			resolveModel: expect.any(Function),
+			SqliteEventStreamStore: expect.any(Function),
+			submissionSyntheticRequest: expect.any(Function),
+		});
+		expect(adapterKit).not.toHaveProperty('FlueRegistry');
+		expect(adapterKit).not.toHaveProperty('createCloudflareRunStore');
+	});
 });

@@ -37,7 +37,7 @@ import {
 } from './handle-agent.ts';
 import { handleStreamHead, handleStreamRead } from './handle-stream-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
-import type { RunPointer, RunStore } from './run-store.ts';
+import type { ListRunsOpts, ListRunsResponse, RunPointer, RunRecord, RunStore } from './run-store.ts';
 
 import {
 	AgentAdmissionResponseSchema,
@@ -52,7 +52,7 @@ import {
 } from './schemas.ts';
 
 export interface FlueRuntime {
-	target: 'node' | 'cloudflare';
+	target: 'node' | 'cloudflare' | FlueRuntimeTarget;
 	devMode?: boolean;
 
 	// ─── Node-only ──────────────────────────────────────────────────────────
@@ -137,8 +137,30 @@ export interface FlueRuntime {
 	resolveDispatchAgentName?: (agent: CreatedAgent) => string | undefined;
 }
 
+export type FlueForwardTarget =
+	| { kind: 'agent'; agentName: string; instanceId: string }
+	| { kind: 'workflow'; workflowName: string; instanceId: string }
+	| { kind: 'run'; workflowName: string; runId: string };
+
 /** Cross-deployment run lookup/listing surface of a {@link RunStore}. */
 export type RunListing = Pick<RunStore, 'lookupRun' | 'listRuns'>;
+
+/** Custom target run index surface. */
+export interface FlueForwardRunIndex {
+	lookupRun(id: string): Promise<RunPointer | null>;
+	getRun(id: string): Promise<RunRecord | null>;
+	listRuns(options?: ListRunsOpts): Promise<ListRunsResponse>;
+}
+
+export interface FlueForwardRouter {
+	forward(request: Request, target: FlueForwardTarget): Promise<Response | null>;
+	runIndex?: FlueForwardRunIndex;
+}
+
+export interface FlueRuntimeTarget {
+	name: string;
+	routing: FlueForwardRouter;
+}
 
 /** One built agent in the deployment manifest, as returned by `listAgents()`. */
 export interface AgentManifestEntry {
@@ -484,7 +506,7 @@ const workflowRouteHandler: MiddlewareHandler = async (c) => {
 	const request = c.req.raw.clone();
 
 	return runAttachedMiddleware(c, rt.workflowRouteMiddleware?.[name], async () => {
-		if (rt.target === 'node') {
+		if (isNodeTarget(rt)) {
 			const handler = rt.workflowHandlers?.[name];
 			const createContext = rt.createContext;
 			if (!handler || !createContext) {
@@ -500,16 +522,29 @@ const workflowRouteHandler: MiddlewareHandler = async (c) => {
 			});
 		}
 
-		if (!rt.routeWorkflowRequest) {
-			throw new Error('[flue] Cloudflare runtime is missing workflow route forwarding.');
+		if (isCloudflareTarget(rt)) {
+			if (!rt.routeWorkflowRequest) {
+				throw new Error('[flue] Cloudflare runtime is missing workflow route forwarding.');
+			}
+			// One workflow run = one workflow DO instance. The instanceId IS the
+			// runId; the DO it lands on then re-uses that value to seed its run
+			// record via handleWorkflowRequest({ runId: instanceId, ... }).
+			const response = await rt.routeWorkflowRequest(
+				normalizeAttachedRequest(request, `/workflows/${encodeURIComponent(name)}`),
+				c.env,
+				{
+					workflowName: name,
+					instanceId: generateWorkflowRunId(),
+				},
+			);
+			if (response) return response;
+			throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
 		}
-		// One workflow run = one workflow DO instance. The instanceId IS the
-		// runId; the DO it lands on then re-uses that value to seed its run
-		// record via handleWorkflowRequest({ runId: instanceId, ... }).
-		const response = await rt.routeWorkflowRequest(
+
+		const response = await requireCustomTarget(rt).routing.forward(
 			normalizeAttachedRequest(request, `/workflows/${encodeURIComponent(name)}`),
-			c.env,
 			{
+				kind: 'workflow',
 				workflowName: name,
 				instanceId: generateWorkflowRunId(),
 			},
@@ -545,15 +580,24 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 		// DS stream read (GET/HEAD) — served directly for Node, forwarded for CF.
 		if (c.req.method === 'GET' || c.req.method === 'HEAD') {
 			const streamPath = agentStreamPath(name, id);
-			if (rt.target === 'node') {
+			if (isNodeTarget(rt)) {
 				return nodeStreamReadResponse(rt, c.req.method, streamPath, request);
 			}
 
-			// Cloudflare: forward to the agent DO.
-			if (!rt.routeAgentRequest) {
-				throw new Error('[flue] Cloudflare runtime is missing agent route forwarding.');
+			if (isCloudflareTarget(rt)) {
+				if (!rt.routeAgentRequest) {
+					throw new Error('[flue] Cloudflare runtime is missing agent route forwarding.');
+				}
+				const response = await rt.routeAgentRequest(request, c.env, {
+					agentName: name,
+					instanceId: id,
+				});
+				if (response) return response;
+				throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
 			}
-			const response = await rt.routeAgentRequest(request, c.env, {
+
+			const response = await requireCustomTarget(rt).routing.forward(request, {
+				kind: 'agent',
 				agentName: name,
 				instanceId: id,
 			});
@@ -561,7 +605,7 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 			throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
 		}
 
-		if (rt.target === 'node') {
+		if (isNodeTarget(rt)) {
 			const admitAttachedSubmission = rt.createAdmission?.[name]?.(id);
 			if (!admitAttachedSubmission) {
 				throw new Error('[flue] Node runtime is missing agent admission configuration.');
@@ -575,10 +619,24 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 			});
 		}
 
-		if (!rt.routeAgentRequest) {
-			throw new Error('[flue] Cloudflare runtime is missing agent route forwarding.');
+		if (isCloudflareTarget(rt)) {
+			if (!rt.routeAgentRequest) {
+				throw new Error('[flue] Cloudflare runtime is missing agent route forwarding.');
+			}
+			const response = await rt.routeAgentRequest(request, c.env, {
+				agentName: name,
+				instanceId: id,
+			});
+			if (response) return response;
+
+			throw new RouteNotFoundError({
+				method: c.req.method,
+				path: new URL(c.req.url).pathname,
+			});
 		}
-		const response = await rt.routeAgentRequest(request, c.env, {
+
+		const response = await requireCustomTarget(rt).routing.forward(request, {
+			kind: 'agent',
 			agentName: name,
 			instanceId: id,
 		});
@@ -692,14 +750,20 @@ const runStreamReadHandler: MiddlewareHandler = async (c) => {
 		// (`offset`, `live`) are ignored on this view.
 		const wantsMeta = method === 'GET' && new URL(c.req.url).searchParams.has('meta');
 
-		if (rt.target === 'node') {
+		if (isNodeTarget(rt)) {
 			if (wantsMeta) {
 				return handleRunRouteRequest({ runStore: rt.runStore, workflowName, runId });
 			}
 			return nodeStreamReadResponse(rt, method, runStreamPath(runId), c.req.raw);
 		}
 
-		const response = await rt.routeRunRequest?.(c.req.raw, c.env, { workflowName, runId });
+		const response = isCloudflareTarget(rt)
+			? await rt.routeRunRequest?.(c.req.raw, c.env, { workflowName, runId })
+			: await requireCustomTarget(rt).routing.forward(c.req.raw, {
+					kind: 'run',
+					workflowName,
+					runId,
+				});
 		if (response) return response;
 		throw new RouteNotFoundError({ method, path: new URL(c.req.url).pathname });
 	});
@@ -768,7 +832,7 @@ async function findRunPointer(
 	env: unknown,
 	runId: string,
 ): Promise<RunPointer | null> {
-	if (rt.target === 'cloudflare') {
+	if (isCloudflareTarget(rt)) {
 		if (!rt.createRunIndexForRequest || !rt.routeRunRequest) {
 			throw new RunStoreUnavailableError();
 		}
@@ -776,8 +840,28 @@ async function findRunPointer(
 		if (!index) throw new RunStoreUnavailableError();
 		return index.lookupRun(runId);
 	}
+	if (!isNodeTarget(rt)) {
+		const index = requireCustomTarget(rt).routing.runIndex;
+		if (!index) throw new RunStoreUnavailableError();
+		return index.lookupRun(runId);
+	}
 	if (!rt.runStore) throw new RunStoreUnavailableError();
 	return rt.runStore.lookupRun(runId);
+}
+
+function isNodeTarget(rt: FlueRuntime): rt is FlueRuntime & { target: 'node' } {
+	return rt.target === 'node';
+}
+
+function isCloudflareTarget(rt: FlueRuntime): rt is FlueRuntime & { target: 'cloudflare' } {
+	return rt.target === 'cloudflare';
+}
+
+function requireCustomTarget(rt: FlueRuntime): FlueRuntimeTarget {
+	if (rt.target === 'node' || rt.target === 'cloudflare') {
+		throw new Error('[flue] Internal target dispatch expected a custom target.');
+	}
+	return rt.target;
 }
 
 function isRegisteredWorkflow(rt: FlueRuntime, workflowName: string): boolean {

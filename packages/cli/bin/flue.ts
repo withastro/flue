@@ -29,6 +29,7 @@ import {
 	row,
 	success,
 } from '../src/lib/terminal.ts';
+import type { BuiltinFlueTarget, FlueTarget } from '../src/lib/types.ts';
 import { BLUEPRINTS, KIND_ROOTS } from './_blueprints.generated.ts';
 
 interface ApplicationConfigArgs {
@@ -1195,6 +1196,7 @@ async function devCommand(args: DevArgs) {
 			sourceRoot: cfg.sourceRoot,
 			output: cfg.output,
 			target: cfg.target,
+			devMode: resolveDevMode(cfg.target),
 			port: args.port || undefined,
 			envFile: envLoader.file,
 			envLoader,
@@ -1206,6 +1208,16 @@ async function devCommand(args: DevArgs) {
 		cliError(`Dev server failed: ${err instanceof Error ? err.message : String(err)}`);
 		process.exit(1);
 	}
+}
+
+function resolveDevMode(target: BuiltinFlueTarget | FlueTarget): 'node-like' | 'cloudflare-vite' {
+	if (target === 'cloudflare') return 'cloudflare-vite';
+	if (target === 'node') return 'node-like';
+	return target.build.bundle === 'vite-cloudflare' ? 'cloudflare-vite' : 'node-like';
+}
+
+function targetName(target: BuiltinFlueTarget | FlueTarget): string {
+	return typeof target === 'string' ? target : target.name;
 }
 
 function readConfigFileState(file: string): string | undefined {
@@ -1340,7 +1352,9 @@ async function buildLocalTarget(
 ) {
 	const { cfg, configPath, envLoader } = await resolveApplicationCommand(args);
 	const envFile = fs.existsSync(envLoader.file) ? envLoader.file : undefined;
-	if (cfg.target === 'cloudflare') return { cfg, configPath, envFile, serverPath: undefined };
+	if (resolveDevMode(cfg.target) === 'cloudflare-vite') {
+		return { cfg, configPath, envFile, serverPath: undefined };
+	}
 	try {
 		await build({
 			root: cfg.root,
@@ -1360,12 +1374,14 @@ async function buildLocalTarget(
 
 async function run(args: RunArgs) {
 	const built = await buildLocalTarget(args);
-	if (built.cfg.target === 'cloudflare') printCloudflareRunUnsupported(args.workflow, args.payload);
+	if (resolveDevMode(built.cfg.target) === 'cloudflare-vite') {
+		printCloudflareRunUnsupported(args.workflow, args.payload);
+	}
 	if (!built.serverPath)
 		throw new Error('[flue] Node local workflow build did not produce an executable artifact.');
 	brandRows('flue run', [
 		['workflow', args.workflow],
-		['target', built.cfg.target],
+		['target', targetName(built.cfg.target)],
 		['config', built.configPath ? displayPath(built.cfg.root, built.configPath) : undefined],
 		['env', built.envFile ? displayPath(built.cfg.root, built.envFile) : undefined],
 	]);
@@ -1405,7 +1421,7 @@ async function run(args: RunArgs) {
 
 async function connectCommand(args: ConnectArgs) {
 	const built = await buildLocalTarget(args);
-	if (built.cfg.target === 'cloudflare') printCloudflareConnectUnsupported();
+	if (resolveDevMode(built.cfg.target) === 'cloudflare-vite') printCloudflareConnectUnsupported();
 	if (!built.serverPath)
 		throw new Error('[flue] Node local agent build did not produce an executable artifact.');
 	console.error(brand(['flue connect', `${args.agent}/${args.instanceId}`, 'starting...']));

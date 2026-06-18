@@ -11,6 +11,7 @@ import { pathToFileURL } from 'node:url';
 import * as v from 'valibot';
 import { CONFIG_BASENAMES } from './config-paths.ts';
 import { resolveSourceRoot } from './source-root.ts';
+import type { BuiltinFlueTarget, FlueTarget } from './types.ts';
 
 // ─── Authoring API (re-exported by the public `@flue/cli/config` subpath) ───
 
@@ -25,8 +26,9 @@ export interface UserFlueConfig {
 	 *
 	 * - `'node'` builds a Node.js server.
 	 * - `'cloudflare'` builds a Workers-compatible application.
+	 * - a target object from `defineTarget()` builds with an external adapter.
 	 */
-	target?: 'node' | 'cloudflare';
+	target?: BuiltinFlueTarget | FlueTarget;
 	/**
 	 * Project root. Must not be empty. Relative values loaded from a
 	 * configuration file resolve from the directory containing that file;
@@ -50,7 +52,7 @@ export interface UserFlueConfig {
 /** Fully resolved configuration consumed by the rest of the CLI. */
 export interface FlueConfig {
 	/** Selected build and development target. */
-	target: 'node' | 'cloudflare';
+	target: BuiltinFlueTarget | FlueTarget;
 	/** Absolute project-root path. */
 	root: string;
 	/** Absolute directory from which authored modules are discovered. */
@@ -77,15 +79,15 @@ export function defineConfig(config: UserFlueConfig): UserFlueConfig {
 
 // ─── Validation ─────────────────────────────────────────────────────────────
 
-const TargetSchema = v.picklist(['node', 'cloudflare'] as const);
-
 const NonEmptyPathSchema = v.pipe(v.string(), v.minLength(1, 'Path must not be empty.'));
 
 const UserFlueConfigSchema = v.strictObject({
-	target: v.optional(TargetSchema),
+	target: v.optional(v.unknown()),
 	root: v.optional(NonEmptyPathSchema),
 	output: v.optional(NonEmptyPathSchema),
 });
+
+type ParsedUserFlueConfig = Omit<UserFlueConfig, 'target'> & { target?: unknown };
 
 // ─── Discovery ──────────────────────────────────────────────────────────────
 
@@ -234,7 +236,7 @@ export async function resolveConfig(opts: ResolveConfigOptions): Promise<Resolve
 		if (!result.success) {
 			throw new Error(formatValidationError(configPath, result.issues));
 		}
-		fileConfig = result.output;
+		fileConfig = normalizeUserConfigTarget(configPath, result.output);
 	}
 
 	// The "config root" — the directory we resolve relative paths in the config
@@ -247,7 +249,7 @@ export async function resolveConfig(opts: ResolveConfigOptions): Promise<Resolve
 	if (!inlineResult.success) {
 		throw new Error(formatValidationError('inline options', inlineResult.issues));
 	}
-	const inline = inlineResult.output;
+	const inline = normalizeUserConfigTarget('inline options', inlineResult.output);
 
 	// Merge: per-field, inline > file. We don't merge nested structures because
 	// the surface is flat today.
@@ -310,6 +312,40 @@ function resolvePath(
 	if (value === undefined) return opts.fallback;
 	if (path.isAbsolute(value)) return value;
 	return path.resolve(opts.baseDir, value);
+}
+
+function normalizeUserConfigTarget(
+	source: string,
+	config: ParsedUserFlueConfig,
+): UserFlueConfig {
+	const target = config.target;
+	if (target === undefined || target === 'node' || target === 'cloudflare') {
+		return { ...config, target };
+	}
+	if (isFlueTarget(target)) return { ...config, target };
+	throw new Error(
+		`[flue] Invalid config in ${source}:\n` +
+			'  • target: Expected "node", "cloudflare", or a target object returned by defineTarget().',
+	);
+}
+
+function isFlueTarget(value: unknown): value is FlueTarget {
+	if (typeof value !== 'object' || value === null) return false;
+	const candidate = value as Partial<FlueTarget>;
+	const build = candidate.build as Partial<FlueTarget['build']> | undefined;
+	const routing = candidate.routing as Partial<FlueTarget['routing']> | undefined;
+	return (
+		typeof candidate.name === 'string' &&
+		candidate.name.length > 0 &&
+		typeof build === 'object' &&
+		build !== null &&
+		typeof build.name === 'string' &&
+		typeof build.generateEntryPoint === 'function' &&
+		(build.bundle === 'vite' || build.bundle === 'vite-cloudflare') &&
+		typeof routing === 'object' &&
+		routing !== null &&
+		typeof routing.forward === 'function'
+	);
 }
 
 function formatValidationError(

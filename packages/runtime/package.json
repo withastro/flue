@@ -18,6 +18,10 @@
 			"types": "./dist/adapter.d.mts",
 			"import": "./dist/adapter.mjs"
 		},
+		"./adapter-kit": {
+			"types": "./dist/adapter-kit.d.mts",
+			"import": "./dist/adapter-kit.mjs"
+		},
 		"./routing": {
 			"types": "./dist/routing.d.mts",
 			"import": "./dist/routing.mjs"

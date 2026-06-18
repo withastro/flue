@@ -13,6 +13,7 @@ import type {
 	BuildOptions,
 	BuildPlugin,
 	ChannelInfo,
+	FlueTarget,
 	WorkflowInfo,
 } from './types.ts';
 import { importAttributePlugin } from './vite-import-attribute-plugin.ts';
@@ -260,6 +261,8 @@ function resolvePlugin(options: BuildOptions): BuildPlugin {
 		);
 	}
 
+	if (isFlueTarget(options.target)) return options.target.build;
+
 	switch (options.target) {
 		case 'node':
 			return new NodePlugin();
@@ -270,6 +273,10 @@ function resolvePlugin(options: BuildOptions): BuildPlugin {
 				`[flue] Unknown target: "${options.target}". Supported targets: node, cloudflare`,
 			);
 	}
+}
+
+function isFlueTarget(value: BuildOptions['target']): value is FlueTarget {
+	return typeof value === 'object' && value !== null;
 }
 
 export function discoverAgents(sourceRoot: string): AgentInfo[] {

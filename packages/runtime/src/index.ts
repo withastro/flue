@@ -27,7 +27,7 @@ export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.
 export { connectMcpServer } from './mcp.ts';
 export { ResultUnavailableError } from './result.ts';
 export { type FlueEventSubscriber, observe } from './runtime/events.ts';
-export type { AgentManifestEntry } from './runtime/flue-app.ts';
+export type { AgentManifestEntry, FlueForwardRouter } from './runtime/flue-app.ts';
 export { dispatch } from './runtime/flue-app.ts';
 export { getRun, listAgents, listRuns } from './runtime/inspect.ts';
 export {

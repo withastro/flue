@@ -106,7 +106,7 @@ export interface AgentSubmissionSession {
 	recordSubmissionTerminal(input: AgentSubmissionInterruption): Promise<void>;
 }
 
-interface AgentSubmissionObserver {
+export interface AgentSubmissionObserver {
 	onEvent?: (event: AttachedAgentEvent) => Promise<void> | void;
 }
 
@@ -115,7 +115,7 @@ interface AgentSubmissionAttachment {
 	detach(): void;
 }
 
-interface AgentSubmissionObserverRegistry {
+export interface AgentSubmissionObserverRegistry {
 	attach(submissionId: string, observer: AgentSubmissionObserver): AgentSubmissionAttachment;
 	publish(submissionId: string, event: AttachedAgentEvent): Promise<void>;
 	complete(submissionId: string, result: unknown): void;
