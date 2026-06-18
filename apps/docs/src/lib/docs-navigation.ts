@@ -65,6 +65,7 @@ export const docsSections: DocsSection[] = [
 				items: [
 					{ title: 'Cloudflare', slug: 'guide/targets/cloudflare' },
 					{ title: 'Node.js', slug: 'guide/targets/node' },
+					{ title: 'Rivet', slug: 'guide/targets/rivet' },
 				],
 			},
 		],
@@ -246,7 +247,9 @@ export const docsSections: DocsSection[] = [
 					{ title: 'Node.js', slug: 'ecosystem/deploy/node' },
 					{ title: 'Railway', slug: 'ecosystem/deploy/railway' },
 					{ title: 'Render', slug: 'ecosystem/deploy/render' },
+					{ title: 'Rivet', slug: 'ecosystem/deploy/rivet' },
 					{ title: 'SST', slug: 'ecosystem/deploy/sst' },
+					{ title: 'Vercel', slug: 'ecosystem/deploy/vercel' },
 				],
 			},
 			{
