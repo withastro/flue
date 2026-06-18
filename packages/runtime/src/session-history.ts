@@ -28,11 +28,6 @@ export interface CompactionAppendInput {
 	usage?: PromptUsage;
 }
 
-export interface ResolvedImageAttachment {
-	id: string;
-	image: PromptImage;
-}
-
 export class SessionHistory {
 	private entries: SessionEntry[];
 	private byId: Map<string, SessionEntry>;
@@ -44,11 +39,10 @@ export class SessionHistory {
 		this.leafId = leafId;
 		this.byId = new Map(this.entries.map((entry) => [entry.id, entry]));
 		for (const entry of this.entries) {
-			if (entry.type !== 'message' || !entry.attachments) continue;
-			const content = getImageContent(entry.message);
-			for (const attachment of entry.attachments) {
-				const image = content?.[attachment.contentIndex];
-				if (isPromptImage(image)) this.rememberImageAttachment(image, attachment.id);
+			if (entry.type !== 'message' || !entry.imageAttachmentIds) continue;
+			for (const [index, image] of getPromptImages(entry.message).entries()) {
+				const id = entry.imageAttachmentIds[index];
+				if (id) this.rememberImageAttachment(image, id);
 			}
 		}
 	}
@@ -159,8 +153,10 @@ export class SessionHistory {
 			timestamp: new Date().toISOString(),
 			message,
 		};
-		const attachments = this.createAttachmentRefs(message);
-		if (attachments.length > 0) entry.attachments = attachments;
+		const imageAttachmentIds = getPromptImages(message).map((image) =>
+			this.getOrCreateImageAttachmentId(image),
+		);
+		if (imageAttachmentIds.length > 0) entry.imageAttachmentIds = imageAttachmentIds;
 		if (metadata?.dispatch) entry.dispatch = metadata.dispatch;
 		if (metadata?.directSubmissionId) entry.directSubmissionId = metadata.directSubmissionId;
 		if (metadata?.submissionTerminal) entry.submissionTerminal = metadata.submissionTerminal;
@@ -200,23 +196,20 @@ export class SessionHistory {
 		return `${text}\n\n<attachments>\n${manifest}\n</attachments>`;
 	}
 
-	resolveImageAttachments(ids: readonly string[]): ResolvedImageAttachment[] {
+	resolveImages(ids: readonly string[]): PromptImage[] {
 		const available = new Map<string, PromptImage>();
 		for (const contextEntry of this.buildContextEntries()) {
 			const entry = contextEntry.entry;
-			if (entry?.type !== 'message' || !entry.attachments) continue;
-			const content = getImageContent(entry.message);
-			for (const attachment of entry.attachments) {
-				const image = content?.[attachment.contentIndex];
-				if (isPromptImage(image) && image.mimeType === attachment.mimeType) {
-					available.set(attachment.id, image);
-				}
+			if (entry?.type !== 'message' || !entry.imageAttachmentIds) continue;
+			for (const [index, image] of getPromptImages(entry.message).entries()) {
+				const id = entry.imageAttachmentIds[index];
+				if (id) available.set(id, image);
 			}
 		}
 		return ids.map((id) => {
 			const image = available.get(id);
 			if (!image) throw new AttachmentNotAvailableError({ attachmentId: id });
-			return { id, image };
+			return image;
 		});
 	}
 
@@ -272,22 +265,6 @@ export class SessionHistory {
 			throw new Error(`[flue] Cannot set leaf: entry "${entryId}" does not exist.`);
 		}
 		this.leafId = entryId;
-	}
-
-	private createAttachmentRefs(message: AgentMessage): NonNullable<MessageEntry['attachments']> {
-		const content = getImageContent(message);
-		if (!content) return [];
-		return content.flatMap((block, contentIndex) => {
-			if (!isPromptImage(block)) return [];
-			return [
-				{
-					id: this.getOrCreateImageAttachmentId(block),
-					type: 'image' as const,
-					mimeType: block.mimeType,
-					contentIndex,
-				},
-			];
-		});
 	}
 
 	private getOrCreateImageAttachmentId(image: PromptImage): string {
@@ -377,11 +354,11 @@ function pathToContextEntries(path: SessionEntry[]): ContextEntry[] {
 	return context;
 }
 
-function getImageContent(message: AgentMessage): unknown[] | undefined {
+function getPromptImages(message: AgentMessage): PromptImage[] {
 	if ((message.role !== 'user' && message.role !== 'toolResult') || !Array.isArray(message.content)) {
-		return undefined;
+		return [];
 	}
-	return message.content;
+	return message.content.filter(isPromptImage);
 }
 
 function isPromptImage(value: unknown): value is PromptImage {

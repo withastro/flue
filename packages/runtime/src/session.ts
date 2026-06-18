@@ -27,7 +27,6 @@ import {
 	createPackagedSkillReadTool,
 	createTaskTool,
 	createTools,
-	MAX_TASK_ATTACHMENTS,
 	type TaskToolParams,
 	type TaskToolResultDetails,
 } from './agent.ts';
@@ -57,7 +56,6 @@ import {
 	SkillNotRegisteredError,
 	SubagentNotDeclaredError,
 	SubmissionTimeoutError,
-	TaskAttachmentLimitExceededError,
 	TaskDepthExceededError,
 	ToolNameConflictError,
 } from './errors.ts';
@@ -1339,15 +1337,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		const attachmentIds = [
 			...new Set((params.attachments ?? []).map((attachment) => attachment.id)),
 		];
-		if (attachmentIds.length > MAX_TASK_ATTACHMENTS) {
-			throw new TaskAttachmentLimitExceededError({
-				count: attachmentIds.length,
-				max: MAX_TASK_ATTACHMENTS,
-			});
-		}
-		const images = this.history
-			.resolveImageAttachments(attachmentIds)
-			.map((attachment) => attachment.image);
+		const images = this.history.resolveImages(attachmentIds);
 		const result = await this.executeTask(
 			params.prompt,
 			{

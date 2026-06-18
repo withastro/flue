@@ -10,7 +10,6 @@ const MAX_GREP_LINE_LENGTH = 500;
 const MAX_GLOB_RESULTS = 1000;
 const BASE64_READ_LINE_LENGTH = 76;
 const PACKAGED_SKILLS_ROOT = '/.flue/packaged-skills/';
-export const MAX_TASK_ATTACHMENTS = 4;
 
 export interface TaskToolParams {
 	prompt: string;
@@ -291,10 +290,7 @@ const TaskParams = Type.Object({
 			Type.Object({
 				id: Type.String({ description: 'Attachment ID shown in the current conversation' }),
 			}),
-			{
-				description: 'Images from this conversation to include in the child agent prompt',
-				maxItems: MAX_TASK_ATTACHMENTS,
-			},
+			{ description: 'Images from this conversation to include in the child agent prompt' },
 		),
 	),
 });

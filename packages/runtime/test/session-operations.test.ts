@@ -820,6 +820,67 @@ describe('session.task()', () => {
 		expect([...store.records.keys()].some((key) => key.includes('task:default:'))).toBe(false);
 	});
 
+	it('rejects an attachment ID after compaction removes its image from model context', async () => {
+		const provider = createProvider([{ id: 'reviewer' }]);
+		let attachmentId = '';
+		let rejectedTaskResult: unknown;
+		provider.setResponses([
+			(context) => {
+				const prompt = context.messages[0];
+				const text =
+					prompt && Array.isArray(prompt.content)
+						? prompt.content.find((block) => block.type === 'text')?.text
+						: undefined;
+				attachmentId = text?.match(/id="([^"]+)"/)?.[1] ?? '';
+				return fauxAssistantMessage('Stored image.');
+			},
+			fauxAssistantMessage('Recent response.'),
+			fauxAssistantMessage('Summary without attachment IDs.'),
+			fauxAssistantMessage('Validated summary without attachment IDs.'),
+			() =>
+				fauxAssistantMessage(
+					fauxToolCall('task', {
+						prompt: 'Analyze the compacted image.',
+						attachments: [{ id: attachmentId }],
+					}),
+					{ stopReason: 'toolUse' },
+				),
+			(context) => {
+				rejectedTaskResult = context.messages.at(-1);
+				return fauxAssistantMessage('Handled compacted attachment.');
+			},
+		]);
+		const store = new RecordingSessionStore();
+		const ctx = createContext(provider, { store });
+		const harness = await ctx.init(
+			createAgent(() => ({
+				model: `${provider.getModel().provider}/reviewer`,
+				compaction: { keepRecentTokens: 1 },
+			})),
+		);
+		const session = await harness.session();
+		await session.prompt('Store this image.', {
+			images: [{ type: 'image', data: 'aGVsbG8=', mimeType: 'image/png' }],
+		});
+		await session.prompt('Keep this recent message.');
+		await session.compact();
+
+		await session.prompt('Try the old attachment ID.');
+
+		expect(rejectedTaskResult).toMatchObject({
+			role: 'toolResult',
+			toolName: 'task',
+			isError: true,
+			content: [
+				{
+					type: 'text',
+					text: `Attachment "${attachmentId}" is not available in this session.`,
+				},
+			],
+		});
+		expect([...store.records.keys()].some((key) => key.includes('task:default:'))).toBe(false);
+	});
+
 	it('preserves attachment identity after session state is reloaded', async () => {
 		const provider = createProvider([{ id: 'reviewer' }]);
 		let attachmentId = '';

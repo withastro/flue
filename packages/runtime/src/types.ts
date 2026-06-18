@@ -704,17 +704,10 @@ interface SessionEntryBase {
 export interface MessageEntry extends SessionEntryBase {
 	type: 'message';
 	message: AgentMessage;
-	attachments?: MessageAttachmentRef[];
+	imageAttachmentIds?: string[];
 	dispatch?: DispatchMessageMetadata;
 	directSubmissionId?: string;
 	submissionTerminal?: SubmissionTerminalMetadata;
-}
-
-export interface MessageAttachmentRef {
-	id: string;
-	type: 'image';
-	mimeType: string;
-	contentIndex: number;
 }
 
 interface SubmissionTerminalMetadata {
