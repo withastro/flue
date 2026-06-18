@@ -1,5 +1,5 @@
 ---
-{ "kind": "tooling", "version": 2, "website": "https://sentry.io" }
+{ "kind": "tooling", "version": 3, "website": "https://sentry.io" }
 ---
 
 # Add Sentry to Flue
@@ -53,7 +53,7 @@ initialization below. The remaining bridge is shared by both targets.
 ### Node initialization
 
 ```ts title="src/sentry.ts"
-// flue-blueprint: tooling/sentry@2
+// flue-blueprint: tooling/sentry@3
 import { type FlueEvent, observe } from '@flue/runtime';
 import * as Sentry from '@sentry/node';
 
@@ -63,6 +63,7 @@ Sentry.init({
   environment: process.env.SENTRY_ENVIRONMENT ?? process.env.NODE_ENV,
   release: process.env.SENTRY_RELEASE,
   tracesSampleRate: 0,
+  attachStacktrace: true,
 });
 ```
 
@@ -78,7 +79,7 @@ Flue server. Do not claim complete auto-instrumentation from the late
 ### Cloudflare import
 
 ```ts title="src/sentry.ts"
-// flue-blueprint: tooling/sentry@2
+// flue-blueprint: tooling/sentry@3
 import { type FlueEvent, observe } from '@flue/runtime';
 import * as Sentry from '@sentry/cloudflare';
 ```
@@ -237,6 +238,7 @@ export const cloudflare = extend<DurableObject<Env>>({
         environment: env.SENTRY_ENVIRONMENT,
         release: env.SENTRY_RELEASE,
         tracesSampleRate: 0,
+        attachStacktrace: true,
       }),
       Final,
     ),
@@ -386,4 +388,29 @@ Remove the runtime event-type filter. The bridge continues to branch on the even
 +    });
 +  }
 +});
+```
+
+### Version 3 — 2026-06-18
+
+Add `attachStacktrace: true` to `Sentry.init()` so that `captureMessage` calls include a stack trace. Without this, error-level log messages captured via `Sentry.captureMessage` have no call-site information.
+
+**Node initialization:**
+
+```diff
+--- a/src/sentry.ts
++++ b/src/sentry.ts
+@@ -1,4 +1,4 @@
+-// flue-blueprint: tooling/sentry@2
++// flue-blueprint: tooling/sentry@3
+@@ Sentry.init({
+   tracesSampleRate: 0,
++  attachStacktrace: true,
+ });
+```
+
+**Cloudflare DO wrapper** (in each agent/workflow module):
+
+```diff
+       tracesSampleRate: 0,
++      attachStacktrace: true,
 ```
