@@ -55,7 +55,6 @@ export interface FlueContextInternal extends FlueContext {
 	readonly runId: string | undefined;
 	initializeCreatedAgent(
 		agent: CreatedAgent,
-		payload: unknown,
 		options?: AgentHarnessOptions,
 	): Promise<FlueHarness>;
 	emitEvent(event: FlueEventInput): FlueEvent;
@@ -147,19 +146,18 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			},
 		},
 
-		init(agent: CreatedAgent<any, any>, options?: AgentHarnessOptions): Promise<FlueHarness> {
-			return ctx.initializeCreatedAgent(agent, config.payload, options);
+		init(agent: CreatedAgent<any>, options?: AgentHarnessOptions): Promise<FlueHarness> {
+			return ctx.initializeCreatedAgent(agent, options);
 		},
 
 		async initializeCreatedAgent(
 			agent: CreatedAgent,
-			payload: unknown,
 			options?: AgentHarnessOptions,
 		): Promise<FlueHarness> {
 			if (!agent || agent.__flueCreatedAgent !== true || typeof agent.initialize !== 'function') {
 				throw new Error('[flue] init() requires an agent created with createAgent(...).');
 			}
-			const resolvedOptions = await agent.initialize({ id: config.id, env: config.env, payload });
+			const resolvedOptions = await agent.initialize({ id: config.id, env: config.env });
 			const definition = assertResolvedAgentProfile(
 				extendAgentProfile(resolveAgentProfile(resolvedOptions), {
 					tools: options?.tools,

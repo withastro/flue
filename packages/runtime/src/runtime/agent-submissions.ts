@@ -808,7 +808,7 @@ async function openAgentSubmissionSession(
 	agent: CreatedAgent,
 	_input: AgentSubmissionInput,
 ): Promise<AgentSubmissionSession> {
-	const harness = await ctx.initializeCreatedAgent(agent, undefined);
+	const harness = await ctx.initializeCreatedAgent(agent);
 	// External submissions always target the default session of the default
 	// harness. `harness.session()` hands out the public FlueSession facade;
 	// unwrap it to reach the internal durable submission executor surface.

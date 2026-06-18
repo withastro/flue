@@ -185,11 +185,11 @@ interface McpServerConnection {
 ## `createAgent(...)`
 
 ```ts
-function createAgent<TPayload = unknown, TEnv = Record<string, any>>(
+function createAgent<TEnv = Record<string, any>>(
   initialize: (
-    context: AgentCreateContext<TPayload, TEnv>,
+    context: AgentCreateContext<TEnv>,
   ) => AgentRuntimeConfig | Promise<AgentRuntimeConfig>,
-): CreatedAgent<TPayload, TEnv>;
+): CreatedAgent<TEnv>;
 ```
 
 Creates an agent initializer. Default-export the returned value from an `agents/<name>.ts` module to define an addressable agent, or pass it to `ctx.init()` inside a workflow.
@@ -198,11 +198,10 @@ The initializer runs whenever the runtime initializes a harness from the created
 
 #### `AgentCreateContext`
 
-| Field     | Type                    | Description                                                                 |
-| --------- | ----------------------- | --------------------------------------------------------------------------- |
-| `id`      | `string`                | Agent instance id, or workflow run id when initialized with `ctx.init()`.   |
-| `env`     | `TEnv`                  | Platform environment bindings supplied by the runtime.                      |
-| `payload` | `TPayload \| undefined` | Workflow payload when initialized with `ctx.init()`; otherwise `undefined`. |
+| Field | Type     | Description                                                               |
+| ----- | -------- | ------------------------------------------------------------------------- |
+| `id`  | `string` | Agent instance id, or workflow run id when initialized with `ctx.init()`. |
+| `env` | `TEnv`   | Platform environment bindings supplied by the runtime.                    |
 
 #### `AgentRuntimeConfig`
 
@@ -270,7 +269,7 @@ interface FlueContext<TPayload = unknown, TEnv = Record<string, any>> {
   readonly env: TEnv;
   readonly req: Request | undefined;
   readonly log: FlueLogger;
-  init(agent: CreatedAgent<TPayload, TEnv>, options?: AgentHarnessOptions): Promise<FlueHarness>;
+  init(agent: CreatedAgent<TEnv>, options?: AgentHarnessOptions): Promise<FlueHarness>;
 }
 ```
 

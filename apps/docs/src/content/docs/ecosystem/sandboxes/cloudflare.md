@@ -63,7 +63,7 @@ import { cloudflareSandbox } from '@flue/runtime/cloudflare';
 
 type Env = { Sandbox: DurableObjectNamespace };
 
-export default createAgent<unknown, Env>(({ id, env }) => ({
+export default createAgent<Env>(({ id, env }) => ({
   model: 'anthropic/claude-sonnet-4-6',
   sandbox: cloudflareSandbox(getSandbox(env.Sandbox, id)),
   cwd: '/workspace',

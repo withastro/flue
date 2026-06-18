@@ -38,16 +38,15 @@ describe('createAgent()', () => {
 		expect(() => createAgent(null as never)).toThrow('requires an initializer function');
 	});
 
-	it('invokes the initializer with id env and payload when a context initializes the created agent', async () => {
+	it('invokes the initializer with id and env when a context initializes the created agent', async () => {
 		const env = { API_KEY: 'secret' };
-		const payload = { request: 'payload' };
 		const initialize = vi.fn(() => ({ model: false as const }));
-		const ctx = createContext({ id: 'workflow-run', env, payload });
+		const ctx = createContext({ id: 'workflow-run', env, payload: { request: 'payload' } });
 
 		await ctx.init(createAgent(initialize));
 
 		expect(initialize).toHaveBeenCalledOnce();
-		expect(initialize).toHaveBeenCalledWith({ id: 'workflow-run', env, payload });
+		expect(initialize).toHaveBeenCalledWith({ id: 'workflow-run', env });
 	});
 
 	it('rejects unknown runtime fields when an initializer returns unsupported configuration', async () => {
@@ -75,11 +74,11 @@ describe('createAgent()', () => {
 	// Compile-time contract, enforced by `check:types` over this file: typed
 	// created agents stay usable in untyped positions such as `dispatch(agent)`
 	// and an untyped workflow's `init(agent)`.
-	it('keeps a typed created agent assignable to bare CreatedAgent positions when payload and env type parameters are supplied', () => {
+	it('keeps an env-typed created agent assignable to bare CreatedAgent positions', () => {
 		interface Env {
 			DB: { query(sql: string): unknown };
 		}
-		const typed = createAgent<{ text: string }, Env>(() => ({ model: false }));
+		const typed = createAgent<Env>(() => ({ model: false }));
 		const bare: CreatedAgent = typed;
 		const initFromUntypedContext = (ctx: FlueContext) => ctx.init(typed);
 
@@ -87,13 +86,16 @@ describe('createAgent()', () => {
 		expect(initFromUntypedContext).toBeInstanceOf(Function);
 	});
 
-	it('rejects a typed created agent at compile time when a typed context expects an incompatible payload', () => {
-		const typed = createAgent<{ text: string }>(() => ({ model: false }));
-		const initFromMismatchedContext = (ctx: FlueContext<{ other: number }>) =>
-			// @ts-expect-error — the agent's payload shape does not match the context's payload.
-			ctx.init(typed);
+	it('allows an env-typed created agent in workflows with different payload types', () => {
+		interface Env {
+			DB: { query(sql: string): unknown };
+		}
+		const typed = createAgent<Env>(() => ({ model: false }));
+		const initFromFirstWorkflow = (ctx: FlueContext<{ text: string }, Env>) => ctx.init(typed);
+		const initFromSecondWorkflow = (ctx: FlueContext<{ other: number }, Env>) => ctx.init(typed);
 
-		expect(initFromMismatchedContext).toBeInstanceOf(Function);
+		expect(initFromFirstWorkflow).toBeInstanceOf(Function);
+		expect(initFromSecondWorkflow).toBeInstanceOf(Function);
 	});
 });
 
