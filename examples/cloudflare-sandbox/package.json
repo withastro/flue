@@ -1,0 +1,20 @@
+{
+	"name": "cloudflare-sandbox-example",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "flue dev --target cloudflare",
+		"build": "flue build --target cloudflare"
+	},
+	"dependencies": {
+		"@cloudflare/sandbox": "*",
+		"@flue/runtime": "workspace:*",
+		"agents": "^0.14.1",
+		"hono": "^4.7.0"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20260602.1",
+		"@flue/cli": "workspace:*",
+		"wrangler": "^4.97.0"
+	}
+}
