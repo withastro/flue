@@ -70,7 +70,7 @@ An exposed `summarize` workflow accepts requests at `POST /workflows/summarize`.
 
 By default, `POST /workflows/summarize` returns `202 { runId, streamUrl, offset }` after admission. Add `?wait=result` to wait for the completed result in the same request. For HTTP response modes, authentication, and custom application mounts, see [Routing](/docs/guide/routing/).
 
-Application-owned routes, Worker handlers, and other workflows should use the same admission boundary when they want a real workflow run. Do not import a workflow module and call `run(...)` directly from `app.ts`, `cloudflare.ts`, an email handler, or a scheduler; that bypasses Flue's admission path, durable run storage, events, route middleware, and run inspection APIs. Instead, call the mounted workflow route with an authenticated `Request`, or extract shared pure application logic into a separate module that both the workflow and the caller can use.
+Application-owned routes, Worker handlers, and other workflows should use the same admission boundary when they want a real workflow run. Do not import a workflow module and call `run(...)` directly from `app.ts`, `cloudflare.ts`, an email handler, or a scheduler; that bypasses Flue's admission path, durable run storage, events, route middleware, and run inspection APIs. Instead, call the mounted workflow route with an authenticated `Request`, use the scheduler patterns in [Scheduling](/docs/guide/scheduling/), or extract shared pure application logic into a separate module that both the workflow and the caller can use.
 
 ## Working with the harness
 

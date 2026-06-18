@@ -32,6 +32,8 @@ Node does not get Cloudflare's automatic Durable Object wake or Fiber recovery. 
 
 That reconciliation covers agent submissions only. Node currently has no recovery path that terminalizes a workflow run interrupted by a crash or closes its event stream. With a durable adapter the run record and its events survive the restart, but the interrupted run remains listed as `active` and the orphaned `runs/<id>` stream persists in an open state, so live Durable Streams readers — long-poll, SSE, or `flue logs -f` — wait indefinitely for events that will never arrive. Use a catch-up read such as `flue logs --no-follow` to inspect events persisted before the crash. On Cloudflare, Fiber recovery terminalizes interrupted runs and closes their streams.
 
+Node has no native Flue scheduler. Use an external scheduler to call a workflow route, run a small SDK script, execute `flue run`, or dispatch input to an agent. See [Scheduling](/docs/guide/scheduling/) for the entrypoint choices.
+
 See [Database](/docs/guide/database/) for `db.ts`, SQLite, Postgres, and custom adapters. See [Durable Agents](/docs/concepts/durable-execution/) for recovery behavior.
 
 ## `local()` sandbox

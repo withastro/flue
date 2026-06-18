@@ -104,7 +104,7 @@ Streamed runs are served over a long-lived `GET /runs/:runId` connection (long-p
 
 ## Going further
 
-- **Scheduled workflows.** Model periodic tasks (nightly summaries, cache refreshes) as a Render cron job rather than inbound agent traffic. Add a `type: cron` service with a `schedule` (standard cron syntax, evaluated in UTC) whose `startCommand` is `npx flue run <workflow> --target node`. Each fire builds, runs the workflow once, and exits — close any Postgres connections so the process terminates cleanly. Render runs at most one instance of a given cron job at a time and stops a run after 12 hours.
+- **Scheduled workflows.** Model periodic tasks (nightly summaries, cache refreshes) as a Render cron job rather than inbound agent traffic. Add a `type: cron` service with a `schedule` (standard cron syntax, evaluated in UTC) whose `startCommand` is `npx flue run <workflow> --target node`. Each fire builds, runs the workflow once, and exits — close any Postgres connections so the process terminates cleanly. Render runs at most one instance of a given cron job at a time and stops a run after 12 hours. See [Scheduling](/docs/guide/scheduling/) for other Flue entrypoint options.
 - **Background workers.** For continuous, queue-driven delivery, add a `type: worker` service. A worker has no public port; it runs `node dist/server.mjs` (or a custom entry), makes attached agent requests and waits for results, or has application code call `dispatch(...)` for asynchronous delivery identified by `dispatchId`.
 
 ## References

@@ -90,7 +90,7 @@ Streamed responses use a long-lived `GET /runs/:runId` (long-poll/SSE). Keep at 
 ## Going further
 
 - **Regions and scaling.** `fly scale count` adds Machines and `fly scale vm` resizes them; run more than one Machine across regions for availability. Multi-Machine deployments require shared Postgres for session state — in-memory state is per-Machine.
-- **Scheduled workflows.** Model periodic jobs (nightly summaries, cache refreshes) as Fly [scheduled Machines](https://fly.io/docs/machines/) that run `npx flue run <workflow> --target node` once and exit, rather than as inbound agent traffic against the always-on server.
+- **Scheduled workflows.** Model periodic jobs (nightly summaries, cache refreshes) as Fly [scheduled Machines](https://fly.io/docs/machines/) that run `npx flue run <workflow> --target node` once and exit, rather than as inbound agent traffic against the always-on server. See [Scheduling](/docs/guide/scheduling/) for other Flue entrypoint options.
 
 ## References
 
