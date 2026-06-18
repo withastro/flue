@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Fixes & Other Changes
+
+- Fixed model-invoked `task` calls being unable to pass images from the current conversation to a child agent. Flue now exposes stable attachment IDs alongside image prompts and accepts `attachments: [{ id }]`, including across session reloads while the image remains visible in the calling session's model context.
+
 ## 1.0.0-beta.1 - 2026-06-16
 
 ### Breaking Changes
@@ -18,7 +24,6 @@
 
 ### New Features
 
-- Model-invoked `task` calls can forward images from the current conversation to a child agent with `attachments: [{ id }]`. Flue exposes stable attachment IDs alongside image prompts, preserves them across session reloads, and only resolves images still visible in the calling session's model context.
 - Built-in `sqlite()` now persists workflow runs and indexes, matching PostgreSQL and Cloudflare durability; all built-in SQL stores now schema-version stamp.
 - `@flue/runtime` exports `listRuns()`, `getRun()`, and `listAgents()`; SDK `runs.get()` uses public `?meta`; workflow `wait=result` and typed direct-agent prompt responses are supported.
 - `CallHandle` now implements the full Promise interface, and SDK stream coordinates are taken from server responses rather than fabricated.
