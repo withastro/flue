@@ -35,11 +35,13 @@ export const ErrorEnvelopeSchema = v.object({
 // (runs are workflow-only), and sync responses add `result`.
 
 export const AgentAdmissionResponseSchema = v.object({
+	submissionId: v.string(),
 	streamUrl: v.string(),
 	offset: v.string(),
 });
 
 export const AgentInvocationResponseSchema = v.object({
+	submissionId: v.string(),
 	result: v.unknown(),
 	streamUrl: v.string(),
 	offset: v.string(),

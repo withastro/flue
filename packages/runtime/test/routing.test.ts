@@ -232,6 +232,25 @@ describe('flue()', () => {
 		});
 		expect(Object.keys(body.paths['/workflows/{name}'] ?? {})).toEqual(['post']);
 		expect(Object.keys(body.paths['/agents/{name}/{id}'] ?? {})).toEqual(['post']);
+		const agentResponses = body.paths['/agents/{name}/{id}']?.post?.responses;
+		expect(agentResponses?.['202']?.content?.['application/json']?.schema).toMatchObject({
+			type: 'object',
+			required: expect.arrayContaining(['submissionId', 'streamUrl', 'offset']),
+			properties: {
+				submissionId: { type: 'string' },
+				streamUrl: { type: 'string' },
+				offset: { type: 'string' },
+			},
+		});
+		expect(agentResponses?.['200']?.content?.['application/json']?.schema).toMatchObject({
+			type: 'object',
+			required: expect.arrayContaining(['submissionId', 'result', 'streamUrl', 'offset']),
+			properties: {
+				submissionId: { type: 'string' },
+				streamUrl: { type: 'string' },
+				offset: { type: 'string' },
+			},
+		});
 		// Both invocation routes document the same modes: 202 admission by
 		// default plus the ?wait=result synchronous mode.
 		for (const post of [
