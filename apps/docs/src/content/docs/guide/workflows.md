@@ -166,4 +166,5 @@ For event contents, structured logging, filtering, and telemetry export, see [Ob
 - [Agent API](/docs/api/agent-api/) — look up session operations, structured results, and workspace methods.
 - [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), and [Sandboxes](/docs/guide/sandboxes/) — configure what the agent in a workflow can do and where it works.
 - [Routing](/docs/guide/routing/) — expose workflows over HTTP and protect their endpoints.
+- [Schedules](/docs/guide/schedules/) — invoke workflows on Cloudflare or Node.js schedules.
 - [Observability](/docs/guide/observability/) — inspect run events and connect execution to monitoring and tracing tools.

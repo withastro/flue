@@ -51,6 +51,7 @@ before(async () => {
 			tooling: 'tooling.md',
 			braintrust: 'tooling--braintrust.md',
 			sentry: 'tooling--sentry.md',
+			'vitest-evals': 'tooling--vitest-evals.md',
 			github: 'channel--github.md',
 			stripe: 'channel--stripe.md',
 			notion: 'channel--notion.md',
@@ -174,6 +175,10 @@ describe('flue add', () => {
 			/flue add tooling braintrust\s+tooling\s+https:\/\/www\.braintrust\.dev/,
 		);
 		assert.match(result.stderr, /flue add tooling sentry\s+tooling\s+https:\/\/sentry\.io/);
+		assert.match(
+			result.stderr,
+			/flue add tooling vitest-evals\s+tooling\s+https:\/\/vitest-evals\.sentry\.dev/,
+		);
 		assert.ok(result.stderr.includes('flue add sandbox <url>'));
 		assert.ok(result.stderr.includes('flue add channel <url>'));
 		assert.ok(result.stderr.includes('flue add database <url>'));
@@ -514,6 +519,23 @@ describe('flue add', () => {
 		assert.ok(result.stdout.includes('This comparison is required when the marker is missing.'));
 	});
 
+	it('prints the vitest-evals tooling blueprint with a public Flue harness', async () => {
+		const result = await runCli(['add', 'tooling', 'vitest-evals', '--print']);
+
+		assert.equal(result.code, 0);
+		assert.ok(result.stdout.includes('@flue/sdk'));
+		assert.ok(result.stdout.includes('vitest-evals'));
+		assert.ok(result.stdout.includes('vitest.evals.config.ts'));
+		assert.ok(result.stdout.includes('createFlueClient'));
+		assert.ok(result.stdout.includes('createFlueAgentHarness'));
+		assert.ok(result.stdout.includes('offset: invocation.offset'));
+		assert.ok(result.stdout.includes('event.submissionId !== invocation.submissionId'));
+		assert.ok(result.stdout.includes('crypto.randomUUID()'));
+		assert.ok(result.stdout.includes('// flue-blueprint: tooling/vitest-evals@1'));
+		assert.ok(result.stdout.includes('Do not add an unauthenticated `route` export'));
+		assert.ok(result.stdout.includes('This comparison is required when the marker is missing.'));
+	});
+
 	it('substitutes any absolute research URL into the generic kind blueprint', async () => {
 		const url = 'git+ssh://git@example.test/provider.git';
 		const result = await runCli(['add', 'channel', url, '--print']);
@@ -639,6 +661,15 @@ describe('flue update', () => {
 		assert.equal(updated.code, 0);
 		assert.equal(updated.stdout, added.stdout);
 		assert.ok(updated.stdout.includes('// flue-blueprint: tooling/sentry@1'));
+	});
+
+	it('prints the exact same vitest-evals blueprint as flue add', async () => {
+		const added = await runCli(['add', 'tooling', 'vitest-evals', '--print']);
+		const updated = await runCli(['update', 'tooling', 'vitest-evals', '--print']);
+
+		assert.equal(updated.code, 0);
+		assert.equal(updated.stdout, added.stdout);
+		assert.ok(updated.stdout.includes('// flue-blueprint: tooling/vitest-evals@1'));
 	});
 
 	it('prints the exact same URL-substituted blueprint as flue add', async () => {

@@ -233,5 +233,6 @@ Your application chooses the agent instance before dispatching the event. `dispa
 - [Subagents](/docs/guide/subagents/) — delegate focused work to specialist profiles.
 - [Routing](/docs/guide/routing/) — expose agent HTTP surfaces inside an authenticated application.
 - [Workflows](/docs/guide/workflows/) — run single-use or background agent work.
+- [Schedules](/docs/guide/schedules/) — dispatch agent input on a schedule.
 - [Channels](/docs/guide/channels/) — deliver verified provider events into agent sessions.
 - [Observability](/docs/guide/observability/) — inspect agent activity.

@@ -6,6 +6,10 @@
 
 - **Addressable agents and workflow harnesses now use separate initialization APIs.** Reserve `createAgent(...)` for default exports from `agents/<name>.ts`; its initializer receives only the stable agent instance `id` and platform `env`. Workflows now pass `AgentRuntimeConfig` directly to `ctx.init({ ... })`, where they can build invocation-local configuration from `ctx.payload`, `ctx.env`, and other workflow state. Migrate `const agent = createAgent(() => config); await ctx.init(agent)` to `await ctx.init(config)`. Workflow `ctx.payload` is unchanged.
 
+### Fixes & Other Changes
+
+- Fixed Cloudflare sandbox shell calls failing before execution because an `AbortSignal` was sent across the Durable Object RPC boundary.
+
 ## 1.0.0-beta.2 - 2026-06-17
 
 ### Fixes & Other Changes

@@ -37,6 +37,7 @@ pnpm-debug.log*
 
 # other
 *.tsbuildinfo
+vitest-results.json
 
 # wrangler generated types
 worker-configuration.d.ts

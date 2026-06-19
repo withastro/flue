@@ -17,6 +17,10 @@
 			],
 			"project": ["src/**/*.{ts,mts,js,mjs}"]
 		},
+		"examples/vitest-evals": {
+			"entry": ["src/evals/**/*.eval.ts", "src/agents/*.ts", "flue.config.ts"],
+			"project": ["src/**/*.ts", "*.ts"]
+		},
 
 		"apps/www": {
 			"entry": [

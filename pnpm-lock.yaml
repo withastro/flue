@@ -417,6 +417,22 @@ importers:
         specifier: ^4.1.6
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
 
+  examples/node-schedules:
+    dependencies:
+      '@flue/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      croner:
+        specifier: ^10.0.1
+        version: 10.0.1
+      hono:
+        specifier: ^4.7.0
+        version: 4.12.22
+    devDependencies:
+      '@flue/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+
   examples/notion-channel:
     dependencies:
       '@flue/notion':
@@ -739,6 +755,31 @@ importers:
       vitest:
         specifier: ^4.1.6
         version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  examples/vitest-evals:
+    dependencies:
+      '@flue/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
+      valibot:
+        specifier: ^1.0.0
+        version: 1.4.0(typescript@6.0.3)
+    devDependencies:
+      '@flue/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
+      '@flue/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vitest:
+        specifier: ^4.1.6
+        version: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      vitest-evals:
+        specifier: ^0.13.1
+        version: 0.13.1(ai@6.0.191(zod@4.4.3))(tinyrainbow@3.1.0)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(zod@4.4.3)
 
   examples/whatsapp-channel:
     dependencies:
@@ -4488,6 +4529,12 @@ packages:
     resolution: {integrity: sha512-UycprH3T6n3jH0k44NHMa7pnFHGu/N05MjojYr+Mc6I7obkoLIJujSWwin1pCvdy/eOxrI/l3uDLQsmcrOb4ug==}
     engines: {node: '>= 20'}
 
+  '@vitest-evals/core@0.13.1':
+    resolution: {integrity: sha512-YX5bRG+J0GCzwJiNoq7UHJVRrtqx07lF3cYUrHnvfRLrn/R5nfBkFkm9eluAYlMFbWehFw+fFIW7bPuyL+3pMg==}
+
+  '@vitest-evals/report-ui@0.13.1':
+    resolution: {integrity: sha512-uA0OSe8UFhSP8i92hUNSFbdJ7Lwi0b06DVfvPb9lnEADgZrExv8IiHy9mkRuU+aMwo7zQI75ZZz1qx07XzPczA==}
+
   '@vitest/expect@4.1.7':
     resolution: {integrity: sha512-1R+tw0ortHEbZDGMymm+pN7/AFQ/RkFFdtd7EN+VBpynKmLbP8A3rpEXdshBJ7+8hQ9zBJh/i1s0yKNtxAnU7w==}
 
@@ -5022,6 +5069,10 @@ packages:
   cron-schedule@6.0.0:
     resolution: {integrity: sha512-BoZaseYGXOo5j5HUwTaegIog3JJbuH4BbrY9A1ArLjXpy+RWb3mV28F/9Gv1dDA7E2L8kngWva4NWisnLTyfgQ==}
     engines: {node: '>=20'}
+
+  croner@10.0.1:
+    resolution: {integrity: sha512-ixNtAJndqh173VQ4KodSdJEI6nuioBWI0V1ITNKhZZsO0pEMoDxz539T4FTTbSZ/xIOSuDnzxLVRqBVSvPNE2g==}
+    engines: {node: '>=18.0'}
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -7564,6 +7615,20 @@ packages:
       vite: ^3.0.0 || ^4.0.0 || ^5.0.0 || ^6.0.0 || ^7.0.0 || ^8.0.0
     peerDependenciesMeta:
       vite:
+        optional: true
+
+  vitest-evals@0.13.1:
+    resolution: {integrity: sha512-UCA3drMFVxtYB3F/0AjQEBSp7EPc2Du2Au85kLHtQg4V6p2mpifP4m5VEfwgxVXq8UfrnsMk8SJvOB/5EiDC0g==}
+    hasBin: true
+    peerDependencies:
+      ai: '>=4 <7'
+      tinyrainbow: '>=2 <4'
+      vitest: '>=4 <5'
+      zod: '>=3 <5'
+    peerDependenciesMeta:
+      ai:
+        optional: true
+      zod:
         optional: true
 
   vitest@4.1.7:
@@ -11076,6 +11141,14 @@ snapshots:
 
   '@vercel/oidc@3.2.0': {}
 
+  '@vitest-evals/core@0.13.1':
+    dependencies:
+      zod: 4.4.3
+
+  '@vitest-evals/report-ui@0.13.1':
+    dependencies:
+      '@vitest-evals/core': 0.13.1
+
   '@vitest/expect@4.1.7':
     dependencies:
       '@standard-schema/spec': 1.1.0
@@ -11753,6 +11826,8 @@ snapshots:
   crc-32@1.2.2: {}
 
   cron-schedule@6.0.0: {}
+
+  croner@10.0.1: {}
 
   cross-spawn@7.0.6:
     dependencies:
@@ -14801,6 +14876,16 @@ snapshots:
   vitefu@1.1.3(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)):
     optionalDependencies:
       vite: 8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+
+  vitest-evals@0.13.1(ai@6.0.191(zod@4.4.3))(tinyrainbow@3.1.0)(vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(zod@4.4.3):
+    dependencies:
+      '@vitest-evals/core': 0.13.1
+      '@vitest-evals/report-ui': 0.13.1
+      tinyrainbow: 3.1.0
+      vitest: 4.1.7(@opentelemetry/api@1.9.1)(@types/node@24.13.1)(happy-dom@18.0.1)(vite@8.0.16(@types/node@24.13.1)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+    optionalDependencies:
+      ai: 6.0.191(zod@4.4.3)
+      zod: 4.4.3
 
   vitest@4.1.7(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(happy-dom@18.0.1)(vite@8.0.16(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)):
     dependencies:

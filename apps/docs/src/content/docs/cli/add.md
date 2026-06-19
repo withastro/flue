@@ -68,6 +68,7 @@ flue add sandbox @cloudflare/shell --print | opencode
 flue add database postgres --print | codex
 flue add tooling braintrust --print | opencode
 flue add tooling sentry --print | opencode
+flue add tooling vitest-evals --print | opencode
 flue add sandbox https://e2b.dev --print | claude
 flue add channel https://provider.example/webhooks --print | codex
 flue add database https://database.example/docs --print | codex

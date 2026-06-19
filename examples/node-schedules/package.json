@@ -1,0 +1,17 @@
+{
+	"name": "example-node-schedules",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"build": "flue build --target node",
+		"check:types": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@flue/runtime": "workspace:*",
+		"croner": "^10.0.1",
+		"hono": "^4.7.0"
+	},
+	"devDependencies": {
+		"@flue/cli": "workspace:*"
+	}
+}

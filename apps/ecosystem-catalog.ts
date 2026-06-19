@@ -374,6 +374,12 @@ export const tooling: EcosystemItem[] = [
 		iconClass: 'ecosystem-logo-tooling',
 		keywords: 'sentry observability monitoring errors tracing',
 	},
+	{
+		name: 'Vitest Evals',
+		href: '/docs/ecosystem/tooling/vitest-evals/',
+		background: '#729b1b',
+		keywords: 'vitest evals evaluation testing regression llm agent judges',
+	},
 ].sort(sortEcosystemItems);
 
 const catalog = [...channels, ...deploy, ...databases, ...tooling, ...sandboxes];

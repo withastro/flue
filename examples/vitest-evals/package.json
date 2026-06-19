@@ -1,0 +1,24 @@
+{
+	"name": "example-vitest-evals",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "flue dev",
+		"build": "flue build",
+		"check:types": "tsc --noEmit",
+		"evals": "vitest run --config vitest.evals.config.ts",
+		"evals:info": "VITEST_EVALS_REPORT_LEVEL=info vitest run --config vitest.evals.config.ts",
+		"evals:json": "vitest run --config vitest.evals.config.ts --reporter=vitest-evals/reporter --reporter=json --outputFile.json=vitest-results.json"
+	},
+	"dependencies": {
+		"@flue/runtime": "workspace:*",
+		"valibot": "^1.0.0"
+	},
+	"devDependencies": {
+		"@flue/cli": "workspace:*",
+		"@flue/sdk": "workspace:*",
+		"typescript": "^6.0.3",
+		"vitest": "^4.1.6",
+		"vitest-evals": "^0.13.1"
+	}
+}

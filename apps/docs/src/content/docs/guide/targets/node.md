@@ -5,7 +5,7 @@ description: Understand the Node.js-specific runtime behavior and APIs for Flue 
 
 The Node.js target builds your agents and workflows as a standard Node.js server. The generated server runs anywhere Node runs: a local machine, a container, a VM, a CI runner, or a managed hosting service. Node is also the target where agents can operate directly on the host filesystem and shell through `local()`.
 
-For a deployment walkthrough, see [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/).
+For a deployment walkthrough, see [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/). To run agents or workflows on a cron schedule, see [Schedules](/docs/guide/schedules/).
 
 ## Generated server
 
