@@ -1,5 +1,4 @@
 import {
-	createAgent,
 	defineAgentProfile,
 	type FlueContext,
 	type WorkflowRouteHandler,
@@ -12,10 +11,8 @@ const editor = defineAgentProfile({
 	instructions: 'Rewrite the supplied sentence in a clearer, shorter form.',
 });
 
-const agent = createAgent(() => ({ model: 'anthropic/claude-haiku-4-5', subagents: [editor] }));
-
 export async function run({ init, payload }: FlueContext<{ draft?: string }>) {
-	const harness = await init(agent);
+	const harness = await init({ model: 'anthropic/claude-haiku-4-5', subagents: [editor] });
 	const session = await harness.session();
 	const draft =
 		typeof payload.draft === 'string'

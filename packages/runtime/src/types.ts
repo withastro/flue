@@ -59,7 +59,7 @@ export interface DirectAgentPayload {
 
 /** Context passed to a {@link createAgent} initializer. */
 export interface AgentCreateContext<TEnv = Record<string, any>> {
-	/** Agent instance id, or workflow run id when initialized with `ctx.init()`. */
+	/** Stable agent instance id. */
 	readonly id: string;
 	/** Platform environment bindings supplied by the runtime. */
 	readonly env: TEnv;
@@ -359,7 +359,7 @@ export interface AgentProfile {
 	durability?: DurabilityConfig;
 }
 
-/** Configuration returned by a {@link createAgent} initializer. */
+/** Configuration passed to {@link FlueContext.init} or returned by a {@link createAgent} initializer. */
 export interface AgentRuntimeConfig {
 	/** Reusable baseline profile. Created-agent fields replace or extend profile values. */
 	profile?: AgentProfile;
@@ -411,8 +411,7 @@ export interface CreatedAgent<TEnv = Record<string, any>> {
 	readonly __flueCreatedAgent: true;
 	// Deliberately method syntax (not an arrow-typed property): methods are
 	// bivariant under strictFunctionTypes, so env-typed created agents remain
-	// assignable to bare `CreatedAgent` positions such as `dispatch()` and an
-	// untyped `FlueContext.init()`.
+	// assignable to bare `CreatedAgent` positions such as `dispatch()`.
 	initialize(context: AgentCreateContext<TEnv>): AgentRuntimeConfig | Promise<AgentRuntimeConfig>;
 }
 
@@ -456,10 +455,11 @@ export interface FlueContext<TPayload = unknown, TEnv = Record<string, any>> {
 	/** Emit observable structured log events, persisted in a run stream only during a workflow run. */
 	readonly log: FlueLogger;
 	/**
-	 * Initialize a created agent for this workflow invocation. Each harness name
-	 * may be initialized once per context. Defaults to the `'default'` harness.
+	 * Initialize an agent harness for this workflow invocation from runtime
+	 * configuration. Each harness name may be initialized once per context.
+	 * Defaults to the `'default'` harness.
 	 */
-	init(agent: CreatedAgent<TEnv>, options?: AgentHarnessOptions): Promise<FlueHarness>;
+	init(runtimeConfig: AgentRuntimeConfig, options?: AgentHarnessOptions): Promise<FlueHarness>;
 }
 
 export interface FlueLogger {

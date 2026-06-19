@@ -33,15 +33,13 @@ npm install -D @flue/cli
 `.flue/workflows/translate.ts`:
 
 ```typescript
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import type { FlueContext, WorkflowRouteHandler } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const translator = createAgent(() => ({ model: 'openai/gpt-5.5' }));
-
 export async function run({ init, payload }: FlueContext<{ text: string; language: string }>) {
-  const harness = await init(translator);
+  const harness = await init({ model: 'openai/gpt-5.5' });
   const session = await harness.session();
 
   const { data } = await session.prompt(
@@ -61,7 +59,7 @@ export async function run({ init, payload }: FlueContext<{ text: string; languag
 A few things to note:
 
 - **`route`** — Export Hono middleware to expose this workflow via HTTP. It may perform authentication before calling `next()`.
-- **`createAgent(...)` + `init(agent)`** — Created agents declare model and sandbox configuration; workflows initialize them when needed. `init(agent)` fails unless its created agent config provides a model, sets `model: false`, or supplies a profile with a model. By default, Flue gives initialized agents a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
+- **`ctx.init(...)`** — Workflows pass model and sandbox configuration directly when initializing a harness. Initialization fails unless the runtime config provides a model, sets `model: false`, or supplies a profile with a model. By default, Flue gives initialized agents a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
 - **Schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns it on `response.data`, fully typed.
 
 ### 3. Add your API key
@@ -120,15 +118,13 @@ npx flue run translate --target node \
 Subagents define named delegates for detached task sessions:
 
 ```typescript
-import { createAgent, defineAgentProfile } from '@flue/runtime';
+import { defineAgentProfile } from '@flue/runtime';
 
 const analyst = defineAgentProfile({
   name: 'analyst',
   instructions: 'Focus on quantitative insights, trends, and actionable takeaways.',
 });
-const reportAgent = createAgent(() => ({ model: 'openai/gpt-5.5', subagents: [analyst] }));
-
-const harness = await init(reportAgent);
+const harness = await init({ model: 'openai/gpt-5.5', subagents: [analyst] });
 const session = await harness.session();
 const analysis = await session.task("Analyze this quarter's metrics", { agent: 'analyst' });
 ```
@@ -175,16 +171,14 @@ Env exposure is opt-in. By default only shell essentials (`PATH`, `HOME`, locale
 `.flue/workflows/reviewer.ts`:
 
 ```typescript
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import type { FlueContext, WorkflowRouteHandler } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const reviewer = createAgent(() => ({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' }));
-
 export async function run({ init, payload }: FlueContext<{ topic: string }>) {
-  const harness = await init(reviewer);
+  const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
 
   const { data } = await session.prompt(
@@ -218,7 +212,7 @@ The agent reads, searches, and modifies files via its built-in tools — read, w
 - **Dev tooling** — analyze project structure, run linters, generate boilerplate.
 - **CI** — issue triage, deploy checks, anything where the runner already provides isolation.
 
-No container startup, real project context, fast iteration. If you need a tighter boundary on a specific operation — agent can call it, never sees the underlying secret — wrap it as a custom tool via `createAgent(() => ({ tools: [...] }))`. The tool reads `process.env`; the agent only sees the tool's params and result.
+No container startup, real project context, fast iteration. If you need a tighter boundary on a specific operation — agent can call it, never sees the underlying secret — pass it as a custom tool via `ctx.init({ ..., tools: [...] })`. The tool reads `process.env`; the agent only sees the tool's params and result.
 
 ## Connecting a remote sandbox
 
@@ -275,9 +269,9 @@ Flue does not add a health endpoint or deployment-inspection routes by default. 
 
 Here's the progression of sandbox types available on Node.js, from simplest to most powerful:
 
-1. **Empty virtual sandbox** — `createAgent(() => ({ model: 'openai/gpt-5.5' }))`. Fast, cheap, stateless. Good for prompt-and-response agents.
+1. **Empty virtual sandbox** — `ctx.init({ model: 'openai/gpt-5.5' })`. Fast, cheap, stateless. Good for prompt-and-response agents.
 2. **Virtual sandbox with shell setup** — Use `session.shell()` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
-3. **Local sandbox** — `createAgent(() => ({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' }))`. Direct host filesystem and shell access. Ideal for self-hosted agents, CI tasks, and dev tooling — anywhere the host environment already provides isolation. Import `local` from `@flue/runtime/node` and pass `env: { ... }` to expose specific host env vars to the agent's shell.
+3. **Local sandbox** — `ctx.init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' })`. Direct host filesystem and shell access. Ideal for self-hosted agents, CI tasks, and dev tooling — anywhere the host environment already provides isolation. Import `local` from `@flue/runtime/node` and pass `env: { ... }` to expose specific host env vars to the agent's shell.
 4. **Remote sandbox** — Full isolated Linux environment via a sandbox adapter. For multi-tenant agents, coding sandboxes, and anything that needs per-session isolation.
 
 Start simple. Move up when you need to.

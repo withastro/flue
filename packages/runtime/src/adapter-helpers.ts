@@ -16,7 +16,7 @@ import { createSessionStorageKey } from './session-identity.ts';
 /**
  * Agent-mode submissions (HTTP and dispatch) always target the
  * default harness. Named harnesses exist for multi-harness workflows
- * (`ctx.init(agent, { name: 'setup' })`), but external submissions do
+ * (`ctx.init(config, { name: 'setup' })`), but external submissions do
  * not select a harness — they implicitly use `'default'`.
  *
  * Exported for adapter implementations that construct session storage keys.

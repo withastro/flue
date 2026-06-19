@@ -58,16 +58,14 @@ export function defineAgentProfile(profile: AgentProfile): AgentProfile {
 }
 
 /**
- * Creates an agent initializer. Default-export the returned value from an
- * `agents/<name>.ts` module to define an addressable agent, or pass it to
- * `ctx.init()` inside a workflow.
+ * Creates an addressable agent initializer. Default-export the returned value
+ * from an `agents/<name>.ts` module.
  *
- * The initializer runs whenever the runtime initializes a harness from the
- * created agent: when a workflow calls `ctx.init()`, and when the runtime
- * prepares an addressable agent interaction. Do not treat it as a one-time
- * constructor for a persistent agent instance id. Return a runtime config
- * object with `model: '<provider>/<model>'`, `model: false`, or a profile with
- * its own model field.
+ * The initializer runs whenever the runtime prepares an interaction with the
+ * addressable agent. Do not treat it as a one-time constructor for a persistent
+ * agent instance id. Return a runtime config object with
+ * `model: '<provider>/<model>'`, `model: false`, or a profile with its own model
+ * field.
  */
 export function createAgent<TEnv = Record<string, any>>(
 	initialize: (
@@ -130,17 +128,15 @@ function mergeArrays<T>(base: T[] | undefined, additions: T[] | undefined): T[] 
 
 function assertAgentRuntimeConfig(value: AgentRuntimeConfig | undefined): void {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) {
-		throw new Error('[flue] createAgent() initializer must return an agent runtime config object.');
+		throw new Error('[flue] Agent runtime config must be an object.');
 	}
 	for (const key of Object.keys(value)) {
 		if (!AGENT_RUNTIME_FIELDS.has(key)) {
-			throw new Error(
-				`[flue] createAgent() initializer returned unknown runtime config field "${key}".`,
-			);
+			throw new Error(`[flue] Unknown agent runtime config field "${key}".`);
 		}
 	}
 	if (value.profile !== undefined) {
-		assertAgentProfile(value.profile, 'createAgent() profile', new WeakSet());
+		assertAgentProfile(value.profile, 'Agent runtime config profile', new WeakSet());
 	}
 }
 

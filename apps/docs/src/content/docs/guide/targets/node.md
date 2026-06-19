@@ -52,8 +52,11 @@ export default createAgent(() => ({
 
 Only shell-essential environment variables are exposed to the agent's shell by default. API keys, tokens, and credentials are deliberately excluded. Pass specific values through `env` when a command needs them:
 
-```ts
-const reviewer = createAgent(() => ({
+```ts title="src/agents/repository-reviewer.ts"
+import { createAgent } from '@flue/runtime';
+import { local } from '@flue/runtime/node';
+
+export default createAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   sandbox: local({
     env: { GH_TOKEN: process.env.GH_TOKEN },

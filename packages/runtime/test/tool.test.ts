@@ -6,7 +6,7 @@ import {
 } from '@earendil-works/pi-ai';
 import * as v from 'valibot';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgent, defineTool, ToolNameConflictError } from '../src/index.ts';
+import { defineTool, ToolNameConflictError } from '../src/index.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 import type { SessionData, SessionStore } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
@@ -57,7 +57,7 @@ function createContext(
 
 async function createSession(provider: FauxProviderRegistration) {
 	const harness = await createContext(provider).init(
-		createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+		{ model: `${provider.getModel().provider}/${provider.getModel().id}` },
 	);
 	return harness.session();
 }
@@ -205,7 +205,7 @@ describe('custom tools', () => {
 	it('rejects duplicate custom tool names when an operation assembles its active tools', async () => {
 		const provider = createProvider();
 		const harness = await createContext(provider).init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				tools: [
 					defineTool({
@@ -215,7 +215,7 @@ describe('custom tools', () => {
 						execute: async () => 'ok',
 					}),
 				],
-			})),
+			},
 		);
 		const session = await harness.session();
 
@@ -243,7 +243,7 @@ describe('custom tools', () => {
 			},
 		]);
 		const harness = await createContext(provider).init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				tools: [
 					defineTool({
@@ -253,7 +253,7 @@ describe('custom tools', () => {
 						execute: async () => 'ok',
 					}),
 				],
-			})),
+			},
 		);
 		const session = await harness.session();
 
@@ -319,10 +319,10 @@ describe('custom tools', () => {
 			},
 		});
 		const harness = await createContext(provider).init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				tools: [lookup],
-			})),
+			},
 		);
 		const session = await harness.session();
 
@@ -363,10 +363,10 @@ describe('custom tools', () => {
 			execute: async () => 'Found the requested value.',
 		});
 		const harness = await createContext(provider, store).init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				tools: [lookup],
-			})),
+			},
 		);
 		const session = await harness.session();
 
@@ -403,10 +403,10 @@ describe('custom tools', () => {
 			execute: async () => 'Found the requested value.',
 		});
 		const harness = await createContext(provider, store).init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				tools: [lookup],
-			})),
+			},
 		);
 		const session = await harness.session();
 
@@ -432,10 +432,10 @@ describe('custom tools', () => {
 			execute,
 		});
 		const harness = await createContext(provider).init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				tools: [lookup],
-			})),
+			},
 		);
 		const session = await harness.session();
 
@@ -465,7 +465,7 @@ describe('custom tools', () => {
 			},
 		]);
 		const harness = await createContext(provider).init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				tools: [
 					defineTool({
@@ -475,7 +475,7 @@ describe('custom tools', () => {
 						execute: async () => 'ok',
 					}),
 				],
-			})),
+			},
 		);
 		const session = await harness.session();
 
@@ -517,10 +517,10 @@ describe('custom tools', () => {
 			execute,
 		});
 		const harness = await createContext(provider).init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				tools: [lookup],
-			})),
+			},
 		);
 		const session = await harness.session();
 
@@ -570,10 +570,10 @@ describe('custom tools', () => {
 			},
 		});
 		const harness = await createContext(provider).init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				tools: [lookup],
-			})),
+			},
 		);
 		const session = await harness.session();
 

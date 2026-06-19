@@ -235,7 +235,7 @@ This is a large pre-1.0 release that establishes Flue's model for building persi
 
 ### Breaking Changes
 
-- **Applications must adopt the agent/workflow split.** Move one-shot request/result modules from `agents/` to `workflows/`; long-lived agent modules now default-export `createAgent(...)`. Workflows create harnesses with `init(agent)` rather than inline `init({ ... })` configuration.
+- **Applications must adopt the agent/workflow split.** Move one-shot request/result modules from `agents/` to `workflows/`; long-lived agent modules now default-export `createAgent(...)`. Workflows create invocation-local harnesses by passing runtime configuration directly to `init({ ... })`.
 - **Routing and run semantics changed.** Public HTTP and WebSocket exposure is declared through `route` and `websocket` middleware exports. Runs, `/runs`, and `flue logs` now describe workflows only; direct or dispatched agent interactions correlate by instance, session, operation, and `dispatchId` instead of `runId`.
 - **Roles and older agent definitions were replaced.** Migrate roles and `task({ role })` to named `defineAgentProfile(...)` subagents and `task({ agent })`; migrate reusable agent definitions to profiles and `ToolDef` imports to `ToolDefinition`.
 - **Build and Cloudflare configuration changed.** Node and Cloudflare builds now use a shared Vite graph; Cloudflare development follows `.dev.vars` / `.env` and `CLOUDFLARE_ENV` conventions. Cloudflare workflows now receive per-workflow Durable Object bindings, so review generated Wrangler configuration when upgrading.

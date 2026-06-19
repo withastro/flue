@@ -4,7 +4,6 @@ import {
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgent } from '../src/index.ts';
 import type { FlueContextConfig } from '../src/internal.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 import type { FlueEvent, SessionEnv } from '../src/types.ts';
@@ -283,7 +282,7 @@ describe('FlueContext', () => {
 
 	it('rejects duplicate harness names when init() is called twice with the same name', async () => {
 		const ctx = createContext();
-		const agent = createAgent(() => ({ model: false }));
+		const agent = { model: false as const };
 
 		await ctx.init(agent, { name: 'reviewer' });
 
@@ -294,7 +293,7 @@ describe('FlueContext', () => {
 
 	it('allows distinct harnesses when init() is called with distinct names', async () => {
 		const ctx = createContext();
-		const agent = createAgent(() => ({ model: false }));
+		const agent = { model: false as const };
 
 		const reviewer = await ctx.init(agent, { name: 'reviewer' });
 		const writer = await ctx.init(agent, { name: 'writer' });
@@ -306,8 +305,8 @@ describe('FlueContext', () => {
 	it('allows the same harness name to retry when an earlier initialization attempt fails', async () => {
 		let attempt = 0;
 		const ctx = createContext();
-		const agent = createAgent(() => ({
-			model: false,
+		const agent = {
+			model: false as const,
 			sandbox: {
 				createSessionEnv: async () => {
 					attempt += 1;
@@ -315,7 +314,7 @@ describe('FlueContext', () => {
 					return createEnv();
 				},
 			},
-		}));
+		};
 
 		await expect(ctx.init(agent, { name: 'reviewer' })).rejects.toThrow(
 			'temporary sandbox failure',
@@ -342,10 +341,10 @@ describe('session context discovery', () => {
 			events.push(event);
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				instructions: 'Agent-specific review instructions.',
-			})),
+			},
 		);
 		const session = await harness.session();
 
@@ -383,9 +382,9 @@ describe('session context discovery', () => {
 			events.push(event);
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
-			})),
+			},
 		);
 		const session = await harness.session();
 
@@ -424,10 +423,10 @@ describe('session context discovery', () => {
 			events.push(event);
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				cwd: 'workspace',
-			})),
+			},
 		);
 		const session = await harness.session();
 
@@ -457,7 +456,7 @@ describe('session context discovery', () => {
 			events.push(event);
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				cwd: 'workspace',
 				sandbox: {
@@ -472,7 +471,7 @@ describe('session context discovery', () => {
 						});
 					},
 				},
-			})),
+			},
 		);
 		const session = await harness.session();
 

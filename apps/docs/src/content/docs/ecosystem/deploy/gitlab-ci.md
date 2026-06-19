@@ -25,14 +25,12 @@ npm install -D @flue/cli
 `.flue/workflows/hello.ts`:
 
 ```typescript
-import { createAgent, type FlueContext } from '@flue/runtime';
+import type { FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
-const agent = createAgent(() => ({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' }));
-
 export async function run({ init, payload }: FlueContext<{ name?: string }>) {
-  const harness = await init(agent);
+  const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
 
   const { data } = await session.prompt(
@@ -52,7 +50,7 @@ export async function run({ init, payload }: FlueContext<{ name?: string }>) {
 A few things to note:
 
 - This workflow omits a public `route` handler, so it is internal-only and designed to be run from the CLI, which is perfect for CI.
-- **`model`** — `init(agent)` fails unless the created agent config provides a model, sets `model: false`, or supplies a profile with a model.
+- **`model`** — `ctx.init(...)` fails unless the runtime config provides a model, sets `model: false`, or supplies a profile with a model.
 - **`local()`** — The `local()` sandbox runs the agent directly against the host filesystem and shell. In CI, that's the checked-out repo plus whatever binaries are on `$PATH` (`glab`, `git`, `npm`, etc.). Skills and `AGENTS.md` are discovered automatically from the project root. By default only shell-essential env vars (`PATH`, `HOME`, locale, etc.) are inherited from `process.env` — pass `local({ env: { GITLAB_TOKEN: process.env.GITLAB_TOKEN } })` to expose more. Use `local()` only when the runner itself provides the isolation boundary.
 - **Schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns it on `response.data`, fully typed.
 
@@ -124,9 +122,9 @@ Once wired up, open an issue and you'll see a passing pipeline with the agent's 
 
 Now let's build something useful — an issue triage agent that analyzes an issue and reports back. This is where Flue's agent features start to shine.
 
-### The agent handler
+### The workflow handler
 
-The agent handler is where orchestration lives. The `FlueContext` gives you everything you need: `init()` to create a session, `payload` for input data, and `env` for environment bindings.
+The workflow handler is where orchestration lives. The `FlueContext` gives you everything you need: `init()` to initialize a harness, `payload` for input data, and `env` for environment bindings.
 
 Once you have a session, you have three core methods:
 
@@ -163,19 +161,17 @@ In GitLab CI, this means you set the secrets you want the agent's CLIs to see in
 `.flue/workflows/triage.ts`:
 
 ```typescript
-import { createAgent, type FlueContext } from '@flue/runtime';
+import type { FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
-const agent = createAgent(() => ({
-  sandbox: local({
-    env: { GITLAB_TOKEN: process.env.GITLAB_TOKEN },
-  }),
-  model: 'anthropic/claude-opus-4-7',
-}));
-
 export async function run({ init, payload }: FlueContext<{ issueIid: number; projectId: string }>) {
-  const harness = await init(agent);
+  const harness = await init({
+    sandbox: local({
+      env: { GITLAB_TOKEN: process.env.GITLAB_TOKEN },
+    }),
+    model: 'anthropic/claude-opus-4-7',
+  });
   const session = await harness.session();
 
   // The agent's bash tool can run `glab` directly — only the env vars
@@ -199,7 +195,7 @@ export async function run({ init, payload }: FlueContext<{ issueIid: number; pro
 }
 ```
 
-If you want a tighter boundary — the agent can call a specific operation but never see the underlying token — return the custom tool from `createAgent(...)` with `tools: [...]`. The tool implementation reads the secret from `process.env`; the agent only sees the tool's parameters and result.
+If you want a tighter boundary — the agent can call a specific operation but never see the underlying token — pass the custom tool to `ctx.init(...)` with `tools: [...]`. The tool implementation reads the secret from `process.env`; the agent only sees the tool's parameters and result.
 
 ### Subagents
 
@@ -210,8 +206,7 @@ const reviewer = defineAgentProfile({
   name: 'reviewer',
   instructions: 'Focus on correctness, security, and project standards.',
 });
-const agent = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6', subagents: [reviewer] }));
-const harness = await init(agent);
+const harness = await init({ model: 'anthropic/claude-sonnet-4-6', subagents: [reviewer] });
 const session = await harness.session();
 const { data } = await session.task(`Review this MR:\n${diff}`, {
   agent: 'reviewer',
@@ -288,14 +283,12 @@ Add these as CI/CD variables (**Settings > CI/CD > Variables**, masked):
 Result schemas aren't just for type safety — they're how you orchestrate multi-step workflows. Because you get typed data back from `prompt()` and `skill()`, you can branch on results within a single agent:
 
 ```typescript
-import { createAgent, type FlueContext } from '@flue/runtime';
+import type { FlueContext } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
-const agent = createAgent(() => ({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' }));
-
 export async function run({ init, payload }: FlueContext<{ issueIid: number }>) {
-  const harness = await init(agent);
+  const harness = await init({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' });
   const session = await harness.session();
 
   const { data } = await session.skill('triage', {

@@ -63,14 +63,13 @@ Pass an initialized E2B `Sandbox` to `e2b(...)`, then assign the returned factor
 
 ```ts
 import { Sandbox } from 'e2b';
-import { createAgent } from '@flue/runtime';
 import { e2b } from '../sandboxes/e2b';
 
 const sandbox = await Sandbox.create();
-const agent = createAgent(() => ({
+const harness = await ctx.init({
   model: 'anthropic/claude-sonnet-4-6',
   sandbox: e2b(sandbox),
-}));
+});
 ```
 
 Select templates, timeouts, network access, secret exposure, and resource reuse through your application and provider policy. Flue adapts the active environment; it does not choose provider retention for you.

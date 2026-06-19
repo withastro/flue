@@ -1,8 +1,6 @@
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import type { FlueContext, WorkflowRouteHandler } from '@flue/runtime';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
-
-const agent = createAgent(() => ({ model: 'anthropic/claude-haiku-4-5' }));
 
 /**
  * Demonstrates the request metadata exposed on `FlueContext`.
@@ -44,7 +42,7 @@ export async function run({ req, init }: FlueContext) {
 	}
 
 	console.log('[with-request] authorization header present, proceeding');
-	const harness = await init(agent);
+	const harness = await init({ model: 'anthropic/claude-haiku-4-5' });
 	const session = await harness.session();
 	const { text } = await session.prompt('Say hello in 5 words.');
 	return { skipped: false, text };

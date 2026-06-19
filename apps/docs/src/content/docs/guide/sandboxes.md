@@ -15,15 +15,13 @@ By default, an initialized agent works in a virtual sandbox unless you configure
 For example, a workflow can stage an input document, let an agent work on it, and retrieve an output file:
 
 ```ts title="src/workflows/review-document.ts"
-import { createAgent, type FlueContext } from '@flue/runtime';
-
-const reviewer = createAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  cwd: '/workspace',
-}));
+import type { FlueContext } from '@flue/runtime';
 
 export async function run({ init, payload }: FlueContext<{ document: string }>) {
-  const harness = await init(reviewer);
+  const harness = await init({
+    model: 'anthropic/claude-sonnet-4-6',
+    cwd: '/workspace',
+  });
   await harness.fs.writeFile('document.md', payload.document);
 
   const session = await harness.session();

@@ -5,7 +5,7 @@ import {
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgent, SkillNotRegisteredError } from '../src/index.ts';
+import { SkillNotRegisteredError } from '../src/index.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 import type { PackagedSkillDirectory, SessionEnv, SkillReference } from '../src/types.ts';
 
@@ -110,7 +110,7 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+			{ model: `${provider.getModel().provider}/${provider.getModel().id}` },
 		);
 		const session = await harness.session();
 
@@ -145,7 +145,7 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+			{ model: `${provider.getModel().provider}/${provider.getModel().id}` },
 		);
 		const session = await harness.session();
 
@@ -195,7 +195,7 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+			{ model: `${provider.getModel().provider}/${provider.getModel().id}` },
 		);
 		const session = await harness.session();
 
@@ -252,7 +252,7 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+			{ model: `${provider.getModel().provider}/${provider.getModel().id}` },
 		);
 		const session = await harness.session();
 
@@ -319,7 +319,7 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+			{ model: `${provider.getModel().provider}/${provider.getModel().id}` },
 		);
 		const session = await harness.session();
 
@@ -393,7 +393,7 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+			{ model: `${provider.getModel().provider}/${provider.getModel().id}` },
 		);
 		const session = await harness.session();
 
@@ -465,7 +465,7 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+			{ model: `${provider.getModel().provider}/${provider.getModel().id}` },
 		);
 		const session = await harness.session();
 
@@ -505,7 +505,7 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+			{ model: `${provider.getModel().provider}/${provider.getModel().id}` },
 		);
 		const session = await harness.session();
 
@@ -527,7 +527,7 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+			{ model: `${provider.getModel().provider}/${provider.getModel().id}` },
 		);
 		const session = await harness.session();
 
@@ -555,10 +555,10 @@ describe('session.skill()', () => {
 
 		await expect(
 			ctx.init(
-				createAgent(() => ({
+				{
 					model: `${provider.getModel().provider}/${provider.getModel().id}`,
 					skills: [{ name: 'review', description: 'Review packaged changes.' }],
-				})),
+				},
 			),
 		).rejects.toThrow(
 			'[flue] Skill name "review" appears in both agent definition and workspace discovery.',
@@ -585,7 +585,7 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+			{ model: `${provider.getModel().provider}/${provider.getModel().id}` },
 		);
 		const session = await harness.session();
 
@@ -626,7 +626,7 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
+			{ model: `${provider.getModel().provider}/${provider.getModel().id}` },
 		);
 		files['/repo/.agents/skills/review/SKILL.md'] =
 			'---\nname: review\ndescription: Review workspace changes.\n---\nRead the current checklist.';
@@ -683,10 +683,10 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				skills: [{ name: 'review', description: 'Review changes.' }],
-			})),
+			},
 		);
 		const session = await harness.session();
 
@@ -760,10 +760,10 @@ describe('session.skill()', () => {
 			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.init(
-			createAgent(() => ({
+			{
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				skills: [reference],
-			})),
+			},
 		);
 		const session = await harness.session();
 

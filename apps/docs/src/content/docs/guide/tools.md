@@ -106,7 +106,10 @@ const lookupCustomerOrder = defineTool({
   },
 });
 
-const harness = await init(agent, { tools: [lookupCustomerOrder] });
+const harness = await init(
+  { model: 'anthropic/claude-sonnet-4-6' },
+  { tools: [lookupCustomerOrder] },
+);
 ```
 
 Do not put credentials, tenant identifiers, or unrestricted destinations into model-selected tool arguments when trusted application code can supply them instead.
@@ -155,16 +158,12 @@ authorization design for them.
 An MCP server supplies remotely implemented tools. `connectMcpServer(...)` lists those tools and returns ordinary tool definitions, which you provide to agent work in the same way as your own custom tools.
 
 ```ts title="src/workflows/inventory-assistant.ts"
-import { connectMcpServer, createAgent, type FlueContext } from '@flue/runtime';
+import { connectMcpServer, type FlueContext } from '@flue/runtime';
 
 type Env = {
   INVENTORY_MCP_URL: string;
   INVENTORY_MCP_TOKEN: string;
 };
-
-const agent = createAgent(() => ({
-  model: 'anthropic/claude-haiku-4-5',
-}));
 
 export async function run({ init, payload, env }: FlueContext<{ question: string }, Env>) {
   const inventory = await connectMcpServer('inventory', {
@@ -175,7 +174,7 @@ export async function run({ init, payload, env }: FlueContext<{ question: string
   });
 
   try {
-    const harness = await init(agent, { tools: inventory.tools });
+    const harness = await init({ model: 'anthropic/claude-haiku-4-5' }, { tools: inventory.tools });
     const session = await harness.session();
     return await session.prompt(payload.question);
   } finally {

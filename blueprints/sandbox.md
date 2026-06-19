@@ -81,7 +81,7 @@ These are the things that aren't obvious from the spec or the example.
 - Typecheck the project (`npx tsc --noEmit` is safe). Fix anything you broke.
 - If the user is mid-task on an agent that this adapter is meant to plug
   into, finish that wiring. Otherwise share a small snippet showing how to
-  wire it up — typically returning the factory from `createAgent(() => ({ sandbox: ... }))`, then calling `init(agent)` from a workflow or default-exporting the created agent from an agent module.
+  wire it up — pass the factory in the `AgentRuntimeConfig` supplied directly to `ctx.init(...)` from a workflow, or return it from `createAgent(...)` in a default-exported addressable agent module.
 - Tell the user what commands to run next: any new deps you added, any env
   vars they need to set, and `flue dev`.
 

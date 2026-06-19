@@ -95,17 +95,15 @@ Normally you can trust the agent to use the skills you provide it, as needed, to
 In workflows, you can manually trigger a skill through the `session.skill(name: string)` API method. This works with both registered imported skills and workspace-discovered skills.
 
 ```ts title="src/workflows/review-change.ts"
-import { createAgent, type FlueContext } from '@flue/runtime';
+import type { FlueContext } from '@flue/runtime';
 import * as v from 'valibot';
 import review from '../skills/review/SKILL.md' with { type: 'skill' };
 
-const agent = createAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  skills: [review],
-}));
-
 export async function run({ init, payload }: FlueContext<{ change: string }>) {
-  const harness = await init(agent);
+  const harness = await init({
+    model: 'anthropic/claude-sonnet-4-6',
+    skills: [review],
+  });
   const session = await harness.session();
 
   const response = await session.skill('review', {

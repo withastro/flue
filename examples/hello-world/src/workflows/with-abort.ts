@@ -1,8 +1,6 @@
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import type { FlueContext, WorkflowRouteHandler } from '@flue/runtime';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
-
-const agent = createAgent(() => ({ model: 'anthropic/claude-haiku-4-5' }));
 
 /**
  * Cancellation test.
@@ -14,7 +12,7 @@ const agent = createAgent(() => ({ model: 'anthropic/claude-haiku-4-5' }));
  * - aborts tear down in-flight bash tool commands
  */
 export async function run({ init }: FlueContext) {
-	const harness = await init(agent);
+	const harness = await init({ model: 'anthropic/claude-haiku-4-5' });
 	const session = await harness.session();
 
 	// Test 1: prompt() with AbortSignal.timeout

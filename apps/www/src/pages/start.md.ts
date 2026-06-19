@@ -79,7 +79,7 @@ Before implementing, restate the chosen requirements to yourself as an implement
    - Do not export \`route\` unless the user needs direct HTTP access. For a basic local starter, use \`flue connect <agent-name> local\` instead.
 4. If the selected shape is **agent + workflow**, create one minimal **workflow module** for the finite job.
    - Put it in the selected layout's immediate \`workflows/\` directory, using a lower-kebab-case filename.
-   - Import the created agent from the new agent module, export \`run(...)\`, initialize it with \`const harness = await init(agent)\`, open a session, perform one purpose-specific operation, and return its result.
+   - Export \`run(...)\`, initialize a harness directly with \`const harness = await init({ model: '<exact model specifier>', instructions: '<short purpose-specific instruction>' })\`, open a session, perform one purpose-specific operation, and return its result. Do not import the addressable agent module into the workflow.
    - Export workflow \`route\` only if the user needs that invocation surface.
 5. Add \`tsconfig.json\` for TypeScript editor/typechecking support.
    - If no \`tsconfig.json\` exists, create this minimal one:
@@ -100,7 +100,7 @@ Before implementing, restate the chosen requirements to yourself as an implement
    - TypeScript may ignore hidden directories by default, so projects using the \`.flue\` layout usually need \`.flue/**/*.ts\` included explicitly.
 6. Add only the dependencies and config required by the selected deploy guide and chosen starter shape.
 7. Run the most relevant validation command you can, such as build, typecheck, \`flue connect\` for an agent, or a local workflow invocation when a workflow was created. If you cannot run it, explain why.
-8. Finish with the exact next commands the user should run, including how to set any required secrets and how to interact with the created agent or invoke the workflow.
+8. Finish with the exact next commands the user should run, including how to set any required secrets and how to interact with the addressable agent or invoke the workflow.
 
 ## Step 4: Verify Implementation
 
@@ -109,7 +109,7 @@ Before finishing, verify that the implementation matches the user's explicit cho
 - **Project location**: Files were created in the requested directory.
 - **Source layout**: Files use only the selected \`.flue\`, \`src\`, or root layout; entrypoints were placed only in the selected source directory.
 - **Agent module**: One agent module exists in the selected layout's \`agents/<name>.ts\` and default-exports \`createAgent(...)\`.
-- **Workflow choice**: No workflow was added for an agent-only starter; for an agent + workflow starter, one workflow module initializes the created agent with \`init(agent)\`.
+- **Workflow choice**: No workflow was added for an agent-only starter; for an agent + workflow starter, one workflow module initializes a harness directly with \`init(AgentRuntimeConfig, options?)\`.
 - **Deploy target**: Config and commands match the user's selected deploy target.
 - **LLM provider/model**: Model specifier is one of the suggested values, or an exact value from \`https://flueframework.com/models.json\` if the user requested another model.
 - **Secrets**: No fake API keys, tokens, or secrets were invented.

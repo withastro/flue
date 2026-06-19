@@ -67,8 +67,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * import { mirage } from '../sandboxes/mirage';
  *
  * const ws = new Workspace({ '/data': new RAMResource() }, { mode: MountMode.WRITE });
- * const agent = createAgent(() => ({ sandbox: mirage(ws), model: 'anthropic/claude-sonnet-4-6' }));
- * const harness = await init(agent);
+ * const harness = await ctx.init({ sandbox: mirage(ws), model: 'anthropic/claude-sonnet-4-6' });
  * const session = await harness.session();
  * ```
  */
@@ -348,7 +347,7 @@ into, you can finish that work by wiring the adapter into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import type { FlueContext, WorkflowRouteHandler } from '@flue/runtime';
 import { Workspace, RAMResource, MountMode } from '@struktoai/mirage-node';
 import { mirage } from '../sandboxes/mirage'; // adjust path to match the user's layout
 
@@ -357,11 +356,10 @@ export const route: WorkflowRouteHandler = async (_c, next) => next();
 export async function run ({ init }: FlueContext) {
   const ws = new Workspace({ '/data': new RAMResource() }, { mode: MountMode.WRITE });
 
-  const agent = createAgent(() => ({
+  const harness = await init({
     sandbox: mirage(ws, { cwd: '/data' }),
     model: 'anthropic/claude-sonnet-4-6',
-  }));
-  const harness = await init(agent);
+  });
   const session = await harness.session();
 
   return await session.shell('echo "hello mirage" > /data/hello.txt && cat /data/hello.txt');

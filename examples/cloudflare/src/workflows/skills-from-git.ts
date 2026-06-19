@@ -18,7 +18,7 @@
 
 import { WorkspaceFileSystem } from '@cloudflare/shell';
 import { createGit } from '@cloudflare/shell/git';
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import type { FlueContext, WorkflowRouteHandler } from '@flue/runtime';
 import { getDefaultWorkspace, getShellSandbox } from '../sandboxes/cloudflare-shell';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
@@ -47,12 +47,11 @@ export async function run({ init, env }: FlueContext<unknown, Env>) {
 		await workspace.writeFile(HYDRATION_SENTINEL, new Date().toISOString());
 	}
 
-	const agent = createAgent(() => ({
+	const harness = await init({
 		sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
 		model: 'cloudflare/@cf/moonshotai/kimi-k2.6',
 		cwd: CLONE_DIR,
-	}));
-	const harness = await init(agent);
+	});
 	const session = await harness.session();
 
 	// Ask the agent to introspect the cloned repo via the code tool.

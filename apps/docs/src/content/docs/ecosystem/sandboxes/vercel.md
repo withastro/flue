@@ -117,14 +117,13 @@ Pass an initialized Vercel `Sandbox` to `vercel(...)` and assign the returned fa
 
 ```ts
 import { Sandbox } from '@vercel/sandbox';
-import { createAgent } from '@flue/runtime';
 import { vercel } from '../sandboxes/vercel';
 
 const sandbox = await Sandbox.create({ runtime: 'node24' });
-const agent = createAgent(() => ({
+const harness = await ctx.init({
   model: 'anthropic/claude-sonnet-4-6',
   sandbox: vercel(sandbox),
-}));
+});
 ```
 
 Keep Vercel authentication values in trusted application configuration and determine whether sandboxes should be fresh per job or reusable for stable agent identities.

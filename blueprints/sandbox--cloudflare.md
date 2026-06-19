@@ -120,7 +120,7 @@ The short version, for your reference:
    above) is the key on `env`:
 
    ```ts
-   import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+   import type { FlueContext, WorkflowRouteHandler } from '@flue/runtime';
    import { cloudflareSandbox } from '@flue/runtime/cloudflare';
    import { getSandbox } from '@cloudflare/sandbox';
 
@@ -128,8 +128,7 @@ The short version, for your reference:
 
    export async function run ({ init, id, env, payload }: FlueContext<{ message: string }>) {
      const sandbox = cloudflareSandbox(getSandbox(env.Sandbox, id));
-     const agent = createAgent(() => ({ sandbox, model: 'anthropic/claude-opus-4-7' }));
-     const harness = await init(agent);
+     const harness = await init({ sandbox, model: 'anthropic/claude-opus-4-7' });
      const session = await harness.session();
 
      return await session.prompt(payload.message);
@@ -137,7 +136,7 @@ The short version, for your reference:
    ```
 
    Pass the result of `getSandbox()` through `cloudflareSandbox(...)` before
-   supplying it to `createAgent()`. The wrapper is provided by
+   supplying it to `ctx.init(...)`. The wrapper is provided by
    `@flue/runtime/cloudflare`, so no project-owned adapter file is needed.
 
 6. Tell the user to put local variables in `.dev.vars` or `.env` and run

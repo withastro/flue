@@ -1,4 +1,4 @@
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import type { FlueContext, WorkflowRouteHandler } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
@@ -17,15 +17,14 @@ export async function run({ init }: FlueContext) {
 	process.env[sentinelKey] = 'leaked';
 
 	try {
-		const agent = createAgent(() => ({
+		const harness = await init({
 			sandbox: local({
 				// `CUSTOM_VAR` is the only thing past the allowlist; the
 				// sentinel above is intentionally NOT listed.
 				env: { CUSTOM_VAR: 'visible-to-sandbox' },
 			}),
 			model: false,
-		}));
-		const harness = await init(agent);
+		});
 		const session = await harness.session();
 
 		const results: Record<string, boolean> = {};

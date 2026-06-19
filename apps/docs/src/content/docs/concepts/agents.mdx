@@ -59,15 +59,12 @@ For the people building these systems, that inverts the job. You're no longer wr
 Some of the most popular agent harnesses today were designed for coding. Flue is deliberately the opposite. A Flue agent is purely headless — there's no CLI or developer-facing product experience like Claude Code or Codex. Our JavaScript API is essential to Flue's success, whereas for others it's often an afterthought to their primary product. So we invest a lot of attention and care into getting it right.
 
 ```ts
-// Compose the agent: its model, capabilities, and environment.
-const agent = createAgent(() => ({
+// Initialize a workflow harness with its model, capabilities, and environment.
+const harness = await init({
 	model: 'anthropic/claude-sonnet-4-6',
 	tools,
 	skills,
-}));
-
-// Then drive it from your own code.
-const harness = await init(agent);
+});
 const session = await harness.session();
 const { text } = await session.prompt('Triage this incoming issue.');
 ```
@@ -86,6 +83,6 @@ Out of the box, Flue provides a lightweight virtual sandbox — an in-memory fil
 
 - [Why Flue](/docs/introduction/why-flue/) — the case for building agents and workflows this way.
 - [Agents](/docs/guide/building-agents/) — defining an addressable agent, its sessions, and its runtime configuration.
-- [Workflows](/docs/guide/workflows/) — initializing an agent from code during a finite operation.
+- [Workflows](/docs/guide/workflows/) — initializing a harness from runtime configuration during a finite operation.
 - [Sandboxes](/docs/guide/sandboxes/), [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), and [Subagents](/docs/guide/subagents/) — the pieces of the harness, in depth.
 - [Workflows](/docs/guide/workflows/) — bounded jobs with inspectable run history.

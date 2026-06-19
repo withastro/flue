@@ -98,6 +98,84 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 		return decorated;
 	};
 
+	const initializeHarness = async (
+		runtimeConfig: AgentRuntimeConfig,
+		options?: AgentHarnessOptions,
+	): Promise<FlueHarness> => {
+		const definition = assertResolvedAgentProfile(
+			extendAgentProfile(resolveAgentProfile(runtimeConfig), {
+				tools: options?.tools,
+				skills: options?.skills,
+				subagents: options?.subagents,
+			}),
+			'init()',
+		);
+		if (!hasInitModel(runtimeConfig)) {
+			throw new Error(
+				'[flue] init() requires a model. Pass { model: "provider-id/model-id" }, { model: false }, or a profile with a model.',
+			);
+		}
+		if (definition.model !== false && typeof definition.model !== 'string') {
+			throw new Error('[flue] init() model must be a model specifier or false.');
+		}
+
+		const name = options?.name ?? 'default';
+		if (initializedHarnessNames.has(name)) {
+			throw new Error(`[flue] init() has already been called with name "${name}" in this request.`);
+		}
+		initializedHarnessNames.add(name);
+
+		try {
+			const { env: baseEnv, toolFactory } = await resolveSessionEnv(
+				config.id,
+				runtimeConfig.sandbox,
+				config,
+			);
+			const env = runtimeConfig.cwd
+				? createCwdSessionEnv(baseEnv, baseEnv.resolvePath(runtimeConfig.cwd))
+				: baseEnv;
+			const localContext = await discoverSessionContext(
+				env,
+				definition.instructions,
+				definition.skills,
+			);
+			const agentModel = config.agentConfig.resolveModel(definition.model);
+			const agentConfig: AgentConfig = {
+				...config.agentConfig,
+				systemPrompt: localContext.systemPrompt,
+				instructions: definition.instructions,
+				definitionSkills: definition.skills,
+				skills: localContext.skills,
+				subagents: Object.fromEntries(
+					(definition.subagents ?? [])
+						.filter((agent): agent is AgentProfile & { name: string } => agent.name !== undefined)
+						.map((agent) => [agent.name, agent]),
+				),
+				model: agentModel,
+				thinkingLevel: definition.thinkingLevel ?? config.agentConfig.thinkingLevel,
+				compaction: definition.compaction ?? config.agentConfig.compaction,
+				durability: definition.durability,
+			};
+
+			return new Harness(
+				config.id,
+				name,
+				agentConfig,
+				env,
+				config.defaultStore,
+				(event) => {
+					emitEvent(event);
+				},
+				definition.tools,
+				toolFactory,
+				config.submissionStore,
+			);
+		} catch (error) {
+			initializedHarnessNames.delete(name);
+			throw error;
+		}
+	};
+
 	const ctx: FlueContextInternal = {
 		get id() {
 			return config.id;
@@ -146,8 +224,8 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			},
 		},
 
-		init(agent: CreatedAgent<any>, options?: AgentHarnessOptions): Promise<FlueHarness> {
-			return ctx.initializeCreatedAgent(agent, options);
+		init(runtimeConfig: AgentRuntimeConfig, options?: AgentHarnessOptions): Promise<FlueHarness> {
+			return initializeHarness(runtimeConfig, options);
 		},
 
 		async initializeCreatedAgent(
@@ -155,89 +233,10 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			options?: AgentHarnessOptions,
 		): Promise<FlueHarness> {
 			if (!agent || agent.__flueCreatedAgent !== true || typeof agent.initialize !== 'function') {
-				throw new Error('[flue] init() requires an agent created with createAgent(...).');
+				throw new Error('[flue] Addressable agent initialization requires createAgent(...).');
 			}
-			const resolvedOptions = await agent.initialize({ id: config.id, env: config.env });
-			const definition = assertResolvedAgentProfile(
-				extendAgentProfile(resolveAgentProfile(resolvedOptions), {
-					tools: options?.tools,
-					skills: options?.skills,
-					subagents: options?.subagents,
-				}),
-				'createAgent() and init()',
-			);
-			if (!hasInitModel(resolvedOptions)) {
-				throw new Error(
-					'[flue] createAgent() requires a model. Return { model: "provider-id/model-id" }, { model: false }, or a profile with a model.',
-				);
-			}
-			if (definition.model !== false && typeof definition.model !== 'string') {
-				throw new Error('[flue] createAgent() model must be a model specifier or false.');
-			}
-
-			const name = options?.name ?? 'default';
-			if (initializedHarnessNames.has(name)) {
-				throw new Error(
-					`[flue] init() has already been called with name "${name}" in this request.`,
-				);
-			}
-			initializedHarnessNames.add(name);
-
-			try {
-				const sandbox = resolvedOptions.sandbox;
-				const { env: baseEnv, toolFactory } = await resolveSessionEnv(config.id, sandbox, config);
-				// Resolve created-agent `cwd` against the sandbox's own cwd so that
-				// relative paths target the sandbox/session filesystem, not the
-				// agent process cwd or `/`. Mirrors the same pattern used for
-				// task sessions in harness.ts.
-				const env = resolvedOptions.cwd
-					? createCwdSessionEnv(baseEnv, baseEnv.resolvePath(resolvedOptions.cwd))
-					: baseEnv;
-				const store: SessionStore = config.defaultStore;
-				const localContext = await discoverSessionContext(
-					env,
-					definition.instructions,
-					definition.skills,
-				);
-
-				// Harness-level model override. Per-call `model` on prompt()/skill() still wins
-				// because resolveModelForCall() applies it on top of this default.
-				const agentModel = config.agentConfig.resolveModel(definition.model);
-
-				const agentConfig: AgentConfig = {
-					...config.agentConfig,
-					systemPrompt: localContext.systemPrompt,
-					instructions: definition.instructions,
-					definitionSkills: definition.skills,
-					skills: localContext.skills,
-					subagents: Object.fromEntries(
-						(definition.subagents ?? [])
-							.filter((agent): agent is AgentProfile & { name: string } => agent.name !== undefined)
-							.map((agent) => [agent.name, agent]),
-					),
-					model: agentModel,
-					thinkingLevel: definition.thinkingLevel ?? config.agentConfig.thinkingLevel,
-					compaction: definition.compaction ?? config.agentConfig.compaction,
-					durability: definition.durability,
-				};
-
-				return new Harness(
-					config.id,
-					name,
-					agentConfig,
-					env,
-					store,
-					(event) => {
-						emitEvent(event);
-					},
-					definition.tools,
-					toolFactory,
-					config.submissionStore,
-				);
-			} catch (error) {
-				initializedHarnessNames.delete(name);
-				throw error;
-			}
+			const runtimeConfig = await agent.initialize({ id: config.id, env: config.env });
+			return initializeHarness(runtimeConfig, options);
 		},
 
 		emitEvent,
@@ -309,5 +308,5 @@ async function resolveSessionEnv(
 		const env = await sandbox.createSessionEnv({ id });
 		return { env, toolFactory: sandbox.tools };
 	}
-	throw new Error('[flue] Invalid sandbox option returned from createAgent().');
+	throw new Error('[flue] Agent runtime config contains an invalid sandbox.');
 }

@@ -54,8 +54,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  *
  * const client = new Compute({ apiKey: process.env.BOXD_API_KEY });
  * const box = await client.box.create({ name: 'my-agent' });
- * const agent = createAgent(() => ({ sandbox: boxd(box), model: 'anthropic/claude-sonnet-4-6' }));
- * const harness = await init(agent);
+ * const harness = await ctx.init({ sandbox: boxd(box), model: 'anthropic/claude-sonnet-4-6' });
  * const session = await harness.session();
  * ```
  */
@@ -302,7 +301,7 @@ into, you can finish that work by wiring the adapter into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import type { FlueContext, WorkflowRouteHandler } from '@flue/runtime';
 import { Compute } from '@boxd-sh/sdk';
 import { boxd } from '../sandboxes/boxd'; // adjust path to match the user's layout
 
@@ -313,11 +312,10 @@ export async function run ({ init, env }: FlueContext) {
   const box = await client.box.create({ name: `agent-${Date.now()}` });
 
   try {
-    const agent = createAgent(() => ({
+    const harness = await init({
       sandbox: boxd(box),
       model: 'anthropic/claude-sonnet-4-6',
-    }));
-    const harness = await init(agent);
+    });
     const session = await harness.session();
     return await session.shell('uname -a');
   } finally {

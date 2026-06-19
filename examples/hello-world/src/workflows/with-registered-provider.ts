@@ -1,12 +1,10 @@
-import { createAgent, type FlueContext, type WorkflowRouteHandler } from '@flue/runtime';
+import type { FlueContext, WorkflowRouteHandler } from '@flue/runtime';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const agent = createAgent(() => ({ model: 'ollama/llama3.1:8b' }));
-
 /**
  * Smoke-test agent for `registerProvider(...)`. Verifies that
- * `createAgent(() => ({ model: 'ollama/...' }))` resolves through the runtime registry
+ * `init({ model: 'ollama/...' })` resolves through the runtime registry
  * populated by the `registerProvider('ollama', ...)` call at the top of
  * `app.ts`, instead of falling through to the pi-ai catalog and erroring.
  *
@@ -16,7 +14,7 @@ const agent = createAgent(() => ({ model: 'ollama/llama3.1:8b' }));
  * if the registration failed to land.
  */
 export async function run({ init }: FlueContext) {
-	const harness = await init(agent);
+	const harness = await init({ model: 'ollama/llama3.1:8b' });
 	const session = await harness.session();
 	return {
 		ok: true,

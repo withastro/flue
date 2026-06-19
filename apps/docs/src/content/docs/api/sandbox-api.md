@@ -33,13 +33,13 @@ export function provider(sandbox: ProviderSandbox): SandboxFactory {
 }
 ```
 
-Sandbox adapters are pure adapters. They map a provider sandbox to a `SessionEnv` rooted at the provider-owned base cwd and stop there. They must not apply a created agent's `cwd`: Flue resolves that value once against the adapter's base cwd during `init()`. Sandbox adapters do not manage the sandbox's lifetime. The user owns what they create.
+Sandbox adapters are pure adapters. They map a provider sandbox to a `SessionEnv` rooted at the provider-owned base cwd and stop there. They must not apply an agent runtime config's `cwd`: Flue resolves that value once against the adapter's base cwd during `init()`. Sandbox adapters do not manage the sandbox's lifetime. The user owns what they create.
 
 ## Imports
 
 Import these from `@flue/runtime`:
 
-- `createSandboxSessionEnv(api, cwd)` wraps your `SandboxApi` into a `SessionEnv` that Flue can drive. Pass the provider-owned base cwd, not a created agent's cwd.
+- `createSandboxSessionEnv(api, cwd)` wraps your `SandboxApi` into a `SessionEnv` that Flue can drive. Pass the provider-owned base cwd, not the runtime config's cwd.
 - `SandboxApi` is the interface you implement.
 - `SandboxFactory` is what your factory returns.
 - `SessionToolFactory` is the optional model-facing tool factory type for a custom sandbox.
