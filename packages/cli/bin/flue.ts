@@ -1228,7 +1228,7 @@ function superviseDevCommand(args: DevArgs) {
 		configFilesByDirectory.set(directory, basenames);
 	}
 
-	const watchers: fs.FSWatcher[] = [];
+	const watchers: Array<{ close(): void }> = [];
 	let child: ChildProcess | undefined;
 	let restartTimer: NodeJS.Timeout | undefined;
 	let restartRequested = false;
@@ -1238,6 +1238,30 @@ function superviseDevCommand(args: DevArgs) {
 
 	const closeWatchers = () => {
 		for (const watcher of watchers.splice(0)) watcher.close();
+	};
+	const isWatchResourceError = (err: unknown): boolean => {
+		const code =
+			err && typeof err === 'object' && 'code' in err ? (err as { code?: unknown }).code : undefined;
+		return code === 'EMFILE' || code === 'ENOSPC';
+	};
+	const formatWatchError = (err: unknown): string =>
+		err instanceof Error ? err.message : String(err);
+	const createConfigWatchFileFallback = (
+		directory: string,
+		basenames: ReadonlySet<string>,
+	): { close(): void } => {
+		const files = [...basenames].map((basename) => path.join(directory, basename));
+		for (const file of files) {
+			fs.watchFile(file, { interval: 500 }, (curr, prev) => {
+				if (curr.mtimeMs === prev.mtimeMs && curr.size === prev.size) return;
+				restart(file);
+			});
+		}
+		return {
+			close() {
+				for (const file of files) fs.unwatchFile(file);
+			},
+		};
 	};
 	const exit = (code: number) => {
 		closeWatchers();
@@ -1288,28 +1312,49 @@ function superviseDevCommand(args: DevArgs) {
 
 	try {
 		for (const [directory, basenames] of configFilesByDirectory) {
-			const watcher = fs.watch(directory, (_event, filename) => {
-				const basename = filename?.toString();
-				if (basename !== undefined) {
-					if (!basenames.has(basename)) return;
-					restart(path.join(directory, basename));
-					return;
-				}
-				for (const configFile of configFiles) {
-					if (configFileStates.get(configFile) !== readConfigFileState(configFile)) {
-						restart(configFile);
+			let watcher: fs.FSWatcher;
+			try {
+				watcher = fs.watch(directory, (_event, filename) => {
+					const basename = filename?.toString();
+					if (basename !== undefined) {
+						if (!basenames.has(basename)) return;
+						restart(path.join(directory, basename));
 						return;
 					}
-				}
-			});
+					for (const configFile of configFiles) {
+						if (configFileStates.get(configFile) !== readConfigFileState(configFile)) {
+							restart(configFile);
+							return;
+						}
+					}
+				});
+			} catch (err) {
+				if (!isWatchResourceError(err)) throw err;
+				console.warn(
+					`${dim('config')} Config watcher unavailable: ${formatWatchError(err)}; polling config files`,
+				);
+				watchers.push(createConfigWatchFileFallback(directory, basenames));
+				continue;
+			}
 			watcher.on('error', (err) => {
-				cliError(`Config watcher failed: ${err instanceof Error ? err.message : String(err)}`);
+				if (isWatchResourceError(err)) {
+					console.warn(
+						`${dim('config')} Config watcher unavailable: ${formatWatchError(err)}; polling config files`,
+					);
+					watcher.close();
+					const replacement = createConfigWatchFileFallback(directory, basenames);
+					const index = watchers.indexOf(watcher);
+					if (index === -1) watchers.push(replacement);
+					else watchers.splice(index, 1, replacement);
+					return;
+				}
+				cliError(`Config watcher failed: ${formatWatchError(err)}`);
 				exit(1);
 			});
 			watchers.push(watcher);
 		}
 	} catch (err) {
-		cliError(`Config watcher failed: ${err instanceof Error ? err.message : String(err)}`);
+		cliError(`Config watcher failed: ${formatWatchError(err)}`);
 		exit(1);
 	}
 

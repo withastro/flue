@@ -85,6 +85,49 @@ test('watches an explicit config outside the project root', async () => {
 	}
 });
 
+test('falls back to polling config files when directory watch hits resource limits', async () => {
+	const root = createFixtureRoot();
+	const port = await getAvailablePort();
+	writeWorkflow(root);
+	fs.writeFileSync(
+		path.join(root, 'flue.config.mjs'),
+		`export default { target: 'node', output: 'dist-one' };\n`,
+	);
+	const preload = path.join(root, 'fail-root-watch.cjs');
+	fs.writeFileSync(
+		preload,
+		`const fs = require('node:fs');
+const originalWatch = fs.watch;
+fs.watch = function watch(target, ...args) {
+	if (String(target) === process.cwd()) {
+		const err = new Error('too many open files, watch');
+		err.code = 'EMFILE';
+		throw err;
+	}
+	return originalWatch.call(this, target, ...args);
+};
+`,
+	);
+
+	const dev = startDev(root, ['--port', String(port)], {
+		NODE_OPTIONS: `--require ${JSON.stringify(preload)}`,
+	});
+	try {
+		await dev.waitForLog('Config watcher unavailable: too many open files, watch; polling config files');
+		await waitForServer(port, dev.logs);
+		assert.equal(fs.existsSync(path.join(root, 'dist-one', 'server.mjs')), true);
+
+		fs.writeFileSync(
+			path.join(root, 'flue.config.mjs'),
+			`export default { target: 'node', output: 'dist-two' };\n`,
+		);
+		await waitForPath(path.join(root, 'dist-two', 'server.mjs'));
+		await waitForServer(port);
+	} finally {
+		await dev.stop();
+	}
+});
+
 function createFixtureRoot() {
 	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'flue-cli-dev-'));
 	fixtureRoots.push(root);
@@ -106,9 +149,10 @@ function writeWorkflow(root) {
 	);
 }
 
-function startDev(cwd, args) {
+function startDev(cwd, args, env = {}) {
 	const child = spawn(process.execPath, [cli.pathname, 'dev', ...args], {
 		cwd,
+		env: { ...process.env, ...env },
 		stdio: ['ignore', 'pipe', 'pipe'],
 	});
 	let output = '';
