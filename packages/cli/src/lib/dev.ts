@@ -338,6 +338,7 @@ interface WatcherHandle {
  *     with one exception: `.flue/` is allowed through only when it is the
  *     selected source directory.
  *   - Editor backup/swap suffixes
+ *   - Patterns read from `<root>/.gitignore` (loaded once at startup)
  */
 function createWatcher(options: WatcherOptions): WatcherHandle {
 	const { root, sourceRoot, output, envFile, configFiles, onChange } = options;
@@ -350,6 +351,19 @@ function createWatcher(options: WatcherOptions): WatcherHandle {
 	// won't see writes there at all — but we still ignore any path that
 	// resolves into it, just to be safe across platforms.
 	const outputRelToRoot = path.relative(root, output).split(path.sep).join('/');
+
+	// Read .gitignore patterns once during watcher creation
+	const gitignorePath = path.join(root, '.gitignore');
+	let gitignorePatterns: string[] = [];
+	try {
+		const content = fs.readFileSync(gitignorePath, 'utf-8');
+		gitignorePatterns = content
+			.split('\n')
+			.map((l) => l.trim())
+			.filter((l) => l && !l.startsWith('#'));
+	} catch {
+		// .gitignore may not exist
+	}
 
 	const isIgnoredPath = (relPath: string): boolean => {
 		const normalized = relPath.replace(/\\/g, '/');
@@ -375,6 +389,13 @@ function createWatcher(options: WatcherOptions): WatcherHandle {
 		const base = parts[parts.length - 1] ?? '';
 		if (!base) return true;
 		if (base.endsWith('~') || base.endsWith('.swp') || base.endsWith('.swx')) return true;
+		// Match any path segment against .gitignore patterns
+		for (const pattern of gitignorePatterns) {
+			const p = pattern.endsWith('/') ? pattern.slice(0, -1) : pattern;
+			for (const part of parts) {
+				if (part === p) return true;
+			}
+		}
 		return false;
 	};
 
