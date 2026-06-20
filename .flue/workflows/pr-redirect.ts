@@ -26,7 +26,7 @@
  * before adding any secret to the sandbox.
  */
 
-import { createAgent, defineWorkflow, type FlueSession } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type FlueSession } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 import {
@@ -572,7 +572,7 @@ function extractJson(text: string): unknown {
 // ─── Entry point ────────────────────────────────────────────────────────────
 
 const ghToken = process.env.GITHUB_TOKEN;
-const agent = createAgent(() => {
+const agent = defineAgent(() => {
 	if (!ghToken) throw new Error('GITHUB_TOKEN env var is required.');
 	return {
 		sandbox: local({ env: { GH_TOKEN: ghToken } }),

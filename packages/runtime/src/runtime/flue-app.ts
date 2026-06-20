@@ -21,7 +21,7 @@ import {
 } from '../errors.ts';
 import type {
 	AgentDispatchRequest,
-	CreatedAgent,
+	AgentDefinition,
 	DispatchReceipt,
 	NamedAgentDispatchRequest,
 } from '../types.ts';
@@ -135,8 +135,8 @@ export interface FlueRuntime {
 	/** Internal dispatch admission queue. Defaults to process-lifetime memory. */
 	dispatchQueue?: DispatchQueue;
 
-	/** Resolve discovered/default-exported created agent identities for global dispatch. */
-	resolveDispatchAgentName?: (agent: CreatedAgent) => string | undefined;
+	/** Resolve discovered/default-exported agent definition identities for global dispatch. */
+	resolveDispatchAgentName?: (agent: AgentDefinition) => string | undefined;
 
 	/** Resolve the exact discovered/default-exported Workflow Definition identity. */
 	resolveWorkflowName?: (workflow: WorkflowDefinition) => string | undefined;
@@ -156,8 +156,8 @@ export interface AgentManifestEntry {
 	description?: string;
 	/** Transports the agent is exposed over. */
 	transports: { http?: true };
-	/** Whether the module default-exports a created agent. */
-	created: boolean;
+	/** Whether the module default-exports an agent definition. */
+	defined: boolean;
 }
 
 interface FlueManifest {
@@ -176,7 +176,7 @@ interface FlueManifest {
  * `dispatchId` identifies delivery and is not a workflow `runId`; dispatched
  * input does not create workflow-run history.
  *
- * The created-agent overload requires a value default-exported by exactly one
+ * The agent-definition overload requires a value default-exported by exactly one
  * discovered `agents/<name>.ts` module. The named overload targets a discovered
  * agent module by name.
  *
@@ -187,12 +187,12 @@ interface FlueManifest {
  * external side effects to be idempotent.
  */
 export function dispatch(
-	agent: CreatedAgent,
+	agent: AgentDefinition,
 	request: AgentDispatchRequest,
 ): Promise<DispatchReceipt>;
 export function dispatch(request: NamedAgentDispatchRequest): Promise<DispatchReceipt>;
 export async function dispatch(
-	agentOrRequest: CreatedAgent | NamedAgentDispatchRequest,
+	agentOrRequest: AgentDefinition | NamedAgentDispatchRequest,
 	maybeRequest?: AgentDispatchRequest,
 ): Promise<DispatchReceipt> {
 	const rt = runtimeConfig;
@@ -207,8 +207,8 @@ export async function dispatch(
 			'[flue] dispatch() cannot be accepted because no dispatch queue is configured.',
 		);
 	}
-	const request = isCreatedAgentValue(agentOrRequest)
-		? resolveCreatedAgentDispatchRequest(agentOrRequest, maybeRequest, rt)
+	const request = isAgentDefinitionValue(agentOrRequest)
+		? resolveAgentDefinitionDispatchRequest(agentOrRequest, maybeRequest, rt)
 		: agentOrRequest;
 	return enqueueDispatch({ request, dispatchQueue: rt.dispatchQueue, rt });
 }
@@ -220,18 +220,18 @@ export function invoke<TWorkflow extends WorkflowDefinition>(
 	return invokeWorkflow(workflow, request, runtimeConfig);
 }
 
-function isCreatedAgentValue(
-	value: CreatedAgent | NamedAgentDispatchRequest,
-): value is CreatedAgent {
+function isAgentDefinitionValue(
+	value: AgentDefinition | NamedAgentDispatchRequest,
+): value is AgentDefinition {
 	return (
-		'__flueCreatedAgent' in value &&
-		value.__flueCreatedAgent === true &&
+		'__flueAgentDefinition' in value &&
+		value.__flueAgentDefinition === true &&
 		typeof value.initialize === 'function'
 	);
 }
 
-function resolveCreatedAgentDispatchRequest(
-	agent: CreatedAgent,
+function resolveAgentDefinitionDispatchRequest(
+	agent: AgentDefinition,
 	request: AgentDispatchRequest | undefined,
 	rt: FlueRuntime,
 ): NamedAgentDispatchRequest {
@@ -239,7 +239,7 @@ function resolveCreatedAgentDispatchRequest(
 	const name = rt.resolveDispatchAgentName?.(agent);
 	if (!name) {
 		throw new Error(
-			'[flue] dispatch() target created agent is not a discovered default-exported agent in this built application.',
+			'[flue] dispatch() target agent definition is not a discovered default-exported agent in this built application.',
 		);
 	}
 	return { agent: name, id: request.id, input: request.input };

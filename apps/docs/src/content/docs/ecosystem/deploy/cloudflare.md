@@ -33,12 +33,12 @@ npm install -D @flue/cli wrangler
 `.flue/workflows/translate.ts`:
 
 ```typescript
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const translator = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
+const translator = defineAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
 
 export default defineWorkflow({
   agent: translator,
@@ -61,7 +61,7 @@ export default defineWorkflow({
 A few things to note:
 
 - **`route`** — Export Hono middleware to expose this workflow via HTTP. It may perform authentication before calling `next()`.
-- **`createAgent(...)` + `defineWorkflow(...)`** — The required workflow agent declares model and sandbox policy. Flue initializes its harness for each run. By default, it receives a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
+- **`defineAgent(...)` + `defineWorkflow(...)`** — The required workflow agent declares model and sandbox policy. Flue initializes its harness for each run. By default, it receives a virtual sandbox powered by [just-bash](https://github.com/vercel-labs/just-bash). No container needed.
 - **Schemas** — The [Valibot](https://valibot.dev) schema defines the expected output shape. Flue parses the agent's response and returns it on `response.data`, fully typed.
 
 ### 3. Configure Durable Object migrations
@@ -165,10 +165,10 @@ Route middleware sees the original inbound HTTP request before Flue forwards acc
 Flue normally owns each generated agent and workflow Durable Object class. When an addressable agent or workflow needs native Cloudflare Agents SDK capabilities such as `onStart()`, `schedule()`, `scheduleEvery()`, or `queue()`, export a `cloudflare` extension descriptor from its module:
 
 ```ts
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { extend } from '@flue/runtime/cloudflare';
 
-export default createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
+export default defineAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
 
 export const cloudflare = extend({
   base: (Base) =>
@@ -243,13 +243,13 @@ Use `.flue/app.ts` for custom HTTP routes and middleware. `cloudflare.ts` must n
 Subagents define named delegates for detached task sessions:
 
 ```typescript
-import { createAgent, defineAgentProfile } from '@flue/runtime';
+import { defineAgent, defineAgentProfile } from '@flue/runtime';
 
 const triager = defineAgentProfile({
   name: 'triager',
   instructions: 'Search thoroughly, cite sources, and stay concise.',
 });
-const support = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6', subagents: [triager] }));
+const support = defineAgent(() => ({ model: 'anthropic/claude-sonnet-4-6', subagents: [triager] }));
 
 export default defineWorkflow({
   agent: support,
@@ -270,12 +270,12 @@ By default, the virtual sandbox starts empty — no files, no skills, no context
 Because the agent has shell access, it can set up its own workspace on the fly:
 
 ```typescript
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const reporter = createAgent(() => ({ model: 'openai/gpt-5.5' }));
+const reporter = defineAgent(() => ({ model: 'openai/gpt-5.5' }));
 
 export default defineWorkflow({
   agent: reporter,
@@ -308,12 +308,12 @@ For support agents, you can seed Flue's default virtual sandbox with the knowled
 `.flue/workflows/support.ts`:
 
 ```typescript
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const support = createAgent(() => ({ model: 'openrouter/moonshotai/kimi-k2.6' }));
+const support = defineAgent(() => ({ model: 'openrouter/moonshotai/kimi-k2.6' }));
 
 export default defineWorkflow({
   agent: support,
@@ -394,13 +394,13 @@ The base image is published by Cloudflare and bundles the control-plane HTTP ser
 `.flue/agents/assistant.ts`:
 
 ```typescript
-import { createAgent, type AgentRouteHandler } from '@flue/runtime';
+import { defineAgent, type AgentRouteHandler } from '@flue/runtime';
 import { cloudflareSandbox } from '@flue/runtime/cloudflare';
 import { getSandbox } from '@cloudflare/sandbox';
 
 export const route: AgentRouteHandler = async (_c, next) => next();
 
-export default createAgent(({ id, env }) => ({
+export default defineAgent(({ id, env }) => ({
   sandbox: cloudflareSandbox(getSandbox(env.Sandbox, id)),
   model: 'anthropic/claude-opus-4-7',
 }));
@@ -575,7 +575,7 @@ Stream events from a deployed agent with `GET https://my-support-agent.<your-sub
 
 Here's the progression of sandbox types available on Cloudflare, from simplest to most powerful:
 
-1. **Empty virtual sandbox** — `createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }))`. Fast, cheap, stateless. Good for prompt-and-response agents.
+1. **Empty virtual sandbox** — `defineAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }))`. Fast, cheap, stateless. Good for prompt-and-response agents.
 2. **Virtual sandbox with shell setup** — Use `session.shell()` to write files and configure the workspace. Still fast and cheap, good for agents that need small amounts of static context.
 3. **Container sandbox** — Full Linux environment via `@cloudflare/sandbox`. For coding agents, complex dev environments, and anything that needs real system tools.
 

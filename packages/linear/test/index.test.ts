@@ -117,7 +117,7 @@ describe('createLinearChannel()', () => {
 		expect(seen).toEqual(['Issue.update', 'Project.create']);
 	});
 
-	it('forwards a created agent session with prompt context and nested issue identity', async () => {
+	it('forwards an agent definition session with prompt context and nested issue identity', async () => {
 		const webhook = vi.fn();
 		const linear = createLinearChannel({ webhookSecret: 'secret', webhook });
 		const raw = agentSessionPayload({

@@ -41,7 +41,7 @@ export interface CloudflareSandboxOptions {
  * import { getSandbox } from '@cloudflare/sandbox';
  * import { cloudflareSandbox } from '@flue/runtime/cloudflare';
  *
- * export default createAgent(({ id, env }) => ({
+ * export default defineAgent(({ id, env }) => ({
  *   sandbox: cloudflareSandbox(getSandbox(env.Sandbox, id)),
  * }));
  * ```

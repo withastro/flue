@@ -39,10 +39,10 @@ See [Database](/docs/guide/database/) for `db.ts`, SQLite, Postgres, and custom 
 Node is the only target with the built-in `local()` sandbox factory. It gives an agent direct access to the host filesystem and shell, making it useful for development tools, CI tasks, coding agents, and self-hosted automation where the host environment already provides isolation.
 
 ```ts title="src/agents/repository-reviewer.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   sandbox: local(),
 }));
@@ -53,7 +53,7 @@ export default createAgent(() => ({
 Only shell-essential environment variables are exposed to the agent's shell by default. API keys, tokens, and credentials are deliberately excluded. Pass specific values through `env` when a command needs them:
 
 ```ts
-const reviewer = createAgent(() => ({
+const reviewer = defineAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   sandbox: local({
     env: { GH_TOKEN: process.env.GH_TOKEN },
@@ -96,7 +96,7 @@ import { local } from '@flue/runtime/node';
 function local(options?: LocalSandboxOptions): SandboxFactory;
 ```
 
-Creates a sandbox factory that binds directly to the host filesystem and shell. Pass it to `createAgent(...)` through the `sandbox` option.
+Creates a sandbox factory that binds directly to the host filesystem and shell. Pass it to `defineAgent(...)` through the `sandbox` option.
 
 **`LocalSandboxOptions`:**
 

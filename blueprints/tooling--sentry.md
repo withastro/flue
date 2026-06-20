@@ -214,7 +214,7 @@ Skip this section for Node.
 Flue agents and workflows run in separate Durable Object isolates. Every agent
 and workflow module that should report through Sentry must export a module-local
 Cloudflare extension that wraps the final Flue-generated class. Add the
-following to each module, preserving its existing default created agent or
+following to each module, preserving its existing default agent definition or
 workflow definition export:
 
 ```ts

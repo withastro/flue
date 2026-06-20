@@ -49,7 +49,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * import { vercel } from './sandboxes/vercel';
  *
  * const sandbox = await Sandbox.create({ runtime: 'node24' });
- * const agent = createAgent(() => ({ sandbox: vercel(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
+ * const agent = defineAgent(() => ({ sandbox: vercel(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
  * export default defineWorkflow({ agent, async run({ harness }) {
  *   return await (await harness.session()).prompt('Inspect the workspace.');
  * }});
@@ -229,13 +229,13 @@ into, you can finish that work by wiring the adapter into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import { Sandbox } from '@vercel/sandbox';
 import { vercel } from '../sandboxes/vercel'; // adjust path to match the user's layout
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const agent = createAgent(async () => {
+const agent = defineAgent(async () => {
   const sandbox = await Sandbox.create({ runtime: 'node24' });
   return {
     sandbox: vercel(sandbox),

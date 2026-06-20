@@ -10,12 +10,12 @@ The Workflow API is exported from `@flue/runtime`.
 
 ```ts
 function defineWorkflow<TAction extends ActionDefinition>(options: {
-  agent: CreatedAgent;
+  agent: AgentDefinition;
   action: TAction;
 }): ExtractedWorkflow<TAction>;
 
 function defineWorkflow<TInput, TOutput>(options: {
-  agent: CreatedAgent;
+  agent: AgentDefinition;
   input?: TInput;
   output?: TOutput;
   run(context: ActionContext<TInput>): unknown | Promise<unknown>;
@@ -32,7 +32,7 @@ The agent may be private to the workflow. Discovery under `agents/` is required 
 
 ```ts
 interface WorkflowDefinition<TAction extends ActionDefinition> {
-  readonly agent: CreatedAgent;
+  readonly agent: AgentDefinition;
   readonly action: TAction;
 }
 ```
@@ -83,7 +83,7 @@ For each invocation, Flue:
 6. validates and serializes output;
 7. closes invocation resources before persisting `run_end` and the terminal result or error.
 
-Schema-invalid input can therefore produce an admitted, observable failed run, but it never initializes the Created Agent or sandbox.
+Schema-invalid input can therefore produce an admitted, observable failed run, but it never initializes the agent definition or sandbox.
 
 `RunRecord.input` contains the admitted input. The first lifecycle event is normally `run_start`, whose `input` field carries the same value. Interrupted admission may instead expose `run_resume` first. `run_end` records terminal success or failure.
 

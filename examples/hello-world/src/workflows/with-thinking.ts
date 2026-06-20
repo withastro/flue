@@ -1,5 +1,5 @@
 import {
-	createAgent,
+	defineAgent,
 	defineWorkflow,
 	defineAgentProfile,
 	type WorkflowRouteHandler,
@@ -8,7 +8,7 @@ import * as v from 'valibot';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 const auditor = defineAgentProfile({ name: 'auditor', thinkingLevel: 'high' });
-const agent = createAgent(() => ({
+const agent = defineAgent(() => ({
 	model: 'anthropic/claude-haiku-4-5',
 	thinkingLevel: 'low',
 	subagents: [auditor],

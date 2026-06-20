@@ -123,10 +123,10 @@ them into dispatch input, model context, logs, or durable session data.
 ## Wire the agent
 
 ```ts
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { channel, replyInThread } from '../channels/slack.ts';
 
-export default createAgent(({ id }) => ({
+export default defineAgent(({ id }) => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: [replyInThread(channel.parseConversationKey(id))],
 }));

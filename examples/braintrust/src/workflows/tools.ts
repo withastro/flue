@@ -1,5 +1,5 @@
 import {
-	createAgent,
+	defineAgent,
 	defineWorkflow,
 	defineTool,
 	type WorkflowRouteHandler,
@@ -7,7 +7,7 @@ import {
 import * as v from 'valibot';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
-const agent = createAgent(() => ({ model: 'anthropic/claude-haiku-4-5' }));
+const agent = defineAgent(() => ({ model: 'anthropic/claude-haiku-4-5' }));
 const lookup = defineTool({
 	name: 'lookup_weather',
 	description: 'Look up current weather for a city.',

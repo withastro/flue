@@ -12,7 +12,7 @@ import type {
 	AgentConfig,
 	AgentProfile,
 	AgentRuntimeConfig,
-	CreatedAgent,
+	AgentDefinition,
 	FlueContext,
 	FlueEvent,
 	FlueEventCallback,
@@ -51,7 +51,7 @@ export interface FlueContextConfig {
 /** Extends FlueContext with server-only methods. Agent handlers only see FlueContext. */
 export interface FlueContextInternal extends FlueContext {
 	readonly runId: string | undefined;
-	initializeRootHarness(agent: CreatedAgent): Promise<Harness>;
+	initializeRootHarness(agent: AgentDefinition): Promise<Harness>;
 	emitEvent(event: FlueEventInput): FlueEvent;
 	subscribeEvent(callback: FlueEventCallback): () => void;
 	setEventCallback(callback: FlueEventCallback | undefined): void;
@@ -109,7 +109,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			return config.req;
 		},
 
-		initializeRootHarness(agent: CreatedAgent): Promise<Harness> {
+		initializeRootHarness(agent: AgentDefinition): Promise<Harness> {
 			return initializeRootHarness(agent, config, emitEvent);
 		},
 
@@ -161,22 +161,22 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 }
 
 export async function initializeRootHarness(
-	agent: CreatedAgent,
+	agent: AgentDefinition,
 	config: FlueContextConfig,
 	emitEvent: (event: FlueEventInput) => void,
 ): Promise<Harness> {
 	const resolvedOptions = await agent.initialize({ id: config.id, env: config.env });
 	const definition = assertResolvedAgentProfile(
 		extendAgentProfile(resolveAgentProfile(resolvedOptions), {}),
-		'createAgent()',
+		'defineAgent()',
 	);
 	if (!hasInitModel(resolvedOptions)) {
 		throw new Error(
-			'[flue] createAgent() requires a model. Return { model: "provider-id/model-id" }, { model: false }, or a profile with a model.',
+			'[flue] defineAgent() requires a model. Return { model: "provider-id/model-id" }, { model: false }, or a profile with a model.',
 		);
 	}
 	if (definition.model !== false && typeof definition.model !== 'string') {
-		throw new Error('[flue] createAgent() model must be a model specifier or false.');
+		throw new Error('[flue] defineAgent() model must be a model specifier or false.');
 	}
 	const { env: baseEnv, toolFactory } = await resolveSessionEnv(
 		config.id,
@@ -271,5 +271,5 @@ async function resolveSessionEnv(
 		const env = await sandbox.createSessionEnv({ id });
 		return { env, toolFactory: sandbox.tools };
 	}
-	throw new Error('[flue] Invalid sandbox option returned from createAgent().');
+	throw new Error('[flue] Invalid sandbox option returned from defineAgent().');
 }

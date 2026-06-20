@@ -20,7 +20,7 @@ import { isStreamExcludedEvent } from '../runtime/run-store.ts';
 import { deleteSessionTree } from '../session.ts';
 import type {
 	AttachedAgentEvent,
-	CreatedAgent,
+	AgentDefinition,
 	DirectAgentPayload,
 	DispatchReceipt,
 	SessionStore,
@@ -91,7 +91,7 @@ export function createNodeDispatchQueue(coordinator: NodeAgentCoordinator): Disp
 export function createNodeAgentCoordinator(options: {
 	submissions: AgentSubmissionStore;
 	sessions: SessionStore;
-	agents: Record<string, CreatedAgent>;
+	agents: Record<string, AgentDefinition>;
 	createContext: CreateContextFn;
 	eventStreamStore: import('../runtime/event-stream-store.ts').EventStreamStore;
 }): NodeAgentCoordinator {
@@ -181,9 +181,9 @@ export function createNodeAgentCoordinator(options: {
 		};
 	}
 
-	function resolveAgent(name: string): CreatedAgent {
+	function resolveAgent(name: string): AgentDefinition {
 		const agent = agents[name];
-		if (!agent) throw new Error(`[flue] submission target agent "${name}" has no created agent.`);
+		if (!agent) throw new Error(`[flue] submission target agent "${name}" has no agent definition.`);
 		return agent;
 	}
 
@@ -500,7 +500,7 @@ export function createNodeAgentCoordinator(options: {
 			if (stopping) throw new Error('[flue] Coordinator is shutting down.');
 			const agent = agents[input.agent];
 			if (!agent) {
-				throw new Error(`[flue] dispatch target agent "${input.agent}" has no created agent.`);
+				throw new Error(`[flue] dispatch target agent "${input.agent}" has no agent definition.`);
 			}
 
 			const admission = await submissions.admitDispatch(input);
@@ -522,7 +522,7 @@ export function createNodeAgentCoordinator(options: {
 				if (stopping) throw new Error('[flue] Coordinator is shutting down.');
 				const agent = agents[agentName];
 				if (!agent) {
-					throw new Error(`[flue] direct prompt target agent "${agentName}" has no created agent.`);
+					throw new Error(`[flue] direct prompt target agent "${agentName}" has no agent definition.`);
 				}
 
 				const input = createDirectAgentSubmissionInput({

@@ -1,6 +1,6 @@
 import { WorkspaceFileSystem } from '@cloudflare/shell';
 import { createGit } from '@cloudflare/shell/git';
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import { getDefaultWorkspace, getShellSandbox } from '../sandboxes/cloudflare-shell';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
@@ -10,7 +10,7 @@ interface Env {
 const HYDRATION_SENTINEL = '/.hydrated';
 const TARGET_REPO = 'https://github.com/FredKSchott/vinext-starter';
 const CLONE_DIR = '/repo';
-const agent = createAgent<Env>(async ({ env }) => {
+const agent = defineAgent<Env>(async ({ env }) => {
 	const workspace = getDefaultWorkspace();
 	if (!(await workspace.exists(HYDRATION_SENTINEL))) {
 		const git = createGit(new WorkspaceFileSystem(workspace));

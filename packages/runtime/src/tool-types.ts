@@ -21,7 +21,7 @@ export type ToolArgs<TParams extends ToolParameters> = [TParams] extends [v.Gene
 	: Record<string, any>;
 
 /**
- * Custom tool passed to createAgent(), init(), prompt(), skill(), or task().
+ * Custom tool passed to defineAgent(), init(), prompt(), skill(), or task().
  * Agent and init tools are available to every session call; prompt/skill/task
  * tools are scoped to that call.
  * Build `parameters` with valibot (`v.object({ ... })`), or pass a raw JSON

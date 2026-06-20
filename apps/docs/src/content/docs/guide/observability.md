@@ -13,10 +13,10 @@ Each workflow invocation has a `runId`. Its run history records the completed re
 Use the Action context's `log` methods to record application-specific facts that runtime activity alone cannot explain. For example, a summarization workflow can report the size of the accepted document and the usage of the completed operation:
 
 ```ts title="src/workflows/summarize.ts"
-import { createAgent, defineWorkflow } from '@flue/runtime';
+import { defineAgent, defineWorkflow } from '@flue/runtime';
 import * as v from 'valibot';
 
-const summarizer = createAgent(() => ({
+const summarizer = defineAgent(() => ({
   model: 'anthropic/claude-haiku-4-5',
   instructions: 'Summarize the supplied document clearly and concisely.',
 }));

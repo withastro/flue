@@ -234,7 +234,7 @@ const channelModules = {
 ${channelModuleEntries}
 };
 const normalized = normalizeBuiltModules(agentModules, workflowModules, channelModules);
-const { manifest, createdAgents, dispatchAgentNames, workflows, workflowNames, agentRouteMiddleware, workflowRouteMiddleware, channelHandlers } = normalized;
+const { manifest, agentDefinitions, dispatchAgentNames, workflows, workflowNames, agentRouteMiddleware, workflowRouteMiddleware, channelHandlers } = normalized;
 const agentIdentities = {
 ${agentIdentityEntries}
 };
@@ -376,7 +376,7 @@ function createEventStreamStoreForInstance(doInstance) {
 }
 
 const cloudflareAgents = createCloudflareAgentRuntime({
-  createdAgents,
+  agentDefinitions,
   createContext: ({ executionStore, instance, request, initialEventIndex, dispatchId }) =>
     createAgentContextForRequest(executionStore, instance.name, instance, request, initialEventIndex, dispatchId),
   runWithInstanceContext: (instance, agentName, fn) => runWithInstanceContext(instance, agentRuntimeIdentity(agentName), fn),

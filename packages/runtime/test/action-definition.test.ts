@@ -5,7 +5,7 @@ import {
 	ActionOutputSerializationError,
 	ActionOutputValidationError,
 	type ActionOutputSchema,
-	createAgent,
+	defineAgent,
 	defineWorkflow,
 	defineAction,
 	defineTool,
@@ -178,7 +178,7 @@ describe('defineAction()', () => {
 
 describe('defineWorkflow()', () => {
 	it('creates extracted and inline branded workflows with required agents', () => {
-		const agent = createAgent(() => ({ model: false }));
+		const agent = defineAgent(() => ({ model: false }));
 		const action = defineAction({
 			name: 'review',
 			description: 'Reviews input.',
@@ -199,7 +199,7 @@ describe('defineWorkflow()', () => {
 	});
 
 	it('excludes undefined-producing inline output schemas from the public type', () => {
-		const agent = createAgent(() => ({ model: false }));
+		const agent = defineAgent(() => ({ model: false }));
 		const invalidOutput = v.undefined();
 		expectTypeOf(invalidOutput).not.toMatchTypeOf<ActionOutputSchema>();
 		defineWorkflow({
@@ -209,14 +209,14 @@ describe('defineWorkflow()', () => {
 		});
 	});
 
-	it('rejects forged Created Agent and Action brands', () => {
-		const agent = createAgent(() => ({ model: false }));
+	it('rejects forged AgentDefinition and Action brands', () => {
+		const agent = defineAgent(() => ({ model: false }));
 		const action = defineAction({
 			name: 'review',
 			description: 'Reviews input.',
 			run: async () => undefined,
 		});
-		const forgedAgent = { __flueCreatedAgent: true, initialize: async () => ({ model: false }) };
+		const forgedAgent = { __flueAgentDefinition: true, initialize: async () => ({ model: false }) };
 		const forgedAction = {
 			__flueAction: true,
 			name: 'forged',
@@ -227,12 +227,12 @@ describe('defineWorkflow()', () => {
 			run: async () => undefined,
 		};
 
-		expect(() => defineWorkflow({ agent: forgedAgent, action } as never)).toThrow('CreatedAgent');
+		expect(() => defineWorkflow({ agent: forgedAgent, action } as never)).toThrow('AgentDefinition');
 		expect(() => defineWorkflow({ agent, action: forgedAction } as never)).toThrow('Action');
 	});
 
 	it('rejects definitions that provide both an action and inline run', () => {
-		const agent = createAgent(() => ({ model: false }));
+		const agent = defineAgent(() => ({ model: false }));
 		const action = defineAction({
 			name: 'review',
 			description: 'Reviews input.',

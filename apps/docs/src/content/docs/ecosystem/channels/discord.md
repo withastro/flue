@@ -236,10 +236,10 @@ export function postMessage(ref: DiscordDestinationRef) {
 Bind the destination when creating the agent:
 
 ```ts title="src/agents/assistant.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { channel, postMessage } from '../channels/discord.ts';
 
-export default createAgent(({ id }) => ({
+export default defineAgent(({ id }) => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: [postMessage(channel.parseConversationKey(id))],
 }));

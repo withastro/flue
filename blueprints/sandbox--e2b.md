@@ -57,7 +57,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * import { e2b } from './sandboxes/e2b';
  *
  * const sandbox = await Sandbox.create();
- * const agent = createAgent(() => ({ sandbox: e2b(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
+ * const agent = defineAgent(() => ({ sandbox: e2b(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
  * export default defineWorkflow({ agent, async run({ harness }) {
  *   return await (await harness.session()).prompt('Inspect the workspace.');
  * }});
@@ -229,13 +229,13 @@ into, you can finish that work by wiring the adapter into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import { Sandbox } from 'e2b';
 import { e2b } from '../sandboxes/e2b'; // adjust path to match the user's layout
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const agent = createAgent(async () => {
+const agent = defineAgent(async () => {
   // E2B reads E2B_API_KEY from the environment automatically.
   const sandbox = await Sandbox.create();
   return {

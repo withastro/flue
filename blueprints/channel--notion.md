@@ -156,10 +156,10 @@ application's agent policy.
 ## Wire the agent
 
 ```ts
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { pageIdFromInstanceId, retrievePage } from '../channels/notion.ts';
 
-export default createAgent(({ id }) => ({
+export default defineAgent(({ id }) => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: [retrievePage(pageIdFromInstanceId(id))],
 }));

@@ -1,8 +1,8 @@
-import { bash, createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { bash, defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import { Bash, InMemoryFs } from 'just-bash';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
-const agent = createAgent(() => {
+const agent = defineAgent(() => {
 	const fs = new InMemoryFs();
 	return { sandbox: bash(() => new Bash({ fs })), model: false };
 });

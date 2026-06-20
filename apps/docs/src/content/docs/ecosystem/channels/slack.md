@@ -235,10 +235,10 @@ export function replyInThread(ref: { channelId: string; threadTs: string }) {
 Bind the destination in trusted code:
 
 ```ts title="src/agents/assistant.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { channel, replyInThread } from '../channels/slack.ts';
 
-export default createAgent(({ id }) => ({
+export default defineAgent(({ id }) => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: [replyInThread(channel.parseConversationKey(id))],
 }));

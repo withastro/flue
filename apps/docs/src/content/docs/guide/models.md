@@ -23,9 +23,9 @@ A model specifier is the unique string Flue uses to refer to a specific model ac
 Use a model specifier to choose an agent's default model:
 
 ```ts title="src/agents/assistant.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
 }));
 ```
@@ -48,9 +48,9 @@ Reasoning effort controls how much additional reasoning Flue requests from a mod
 Set the ordinary reasoning effort for an agent alongside its model:
 
 ```ts title="src/agents/reviewer.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   thinkingLevel: 'high',
 }));
@@ -141,9 +141,9 @@ export default app;
 The registered provider ID is now available anywhere you select a model:
 
 ```ts title="src/agents/local-assistant.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'ollama/llama3.1:8b',
 }));
 ```
@@ -159,9 +159,9 @@ For applications built with `--target cloudflare`, Flue provides the `cloudflare
 Everything after `cloudflare/` is passed as the model ID to `env.AI.run(...)`. Use Workers AI model IDs such as `@cf/moonshotai/kimi-k2.6`, or a binding-supported AI Gateway model ID such as `openai/gpt-5.5` when your Worker should reach that model through Cloudflare's binding and gateway path. Use `openai/gpt-5.5` without the `cloudflare/` prefix only when you intend to use Flue's direct OpenAI provider and its credentials.
 
 ```ts title="src/agents/assistant.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'cloudflare/@cf/moonshotai/kimi-k2.6',
 }));
 ```

@@ -115,7 +115,7 @@ For the full recovery model, see [Durable Agents](/docs/concepts/durable-executi
 [Workers AI](https://developers.cloudflare.com/workers-ai/) lets you run AI models directly on Cloudflare's infrastructure without managing API keys or external provider accounts. Flue connects to Workers AI automatically on the Cloudflare target, so using a Workers AI model is as simple as specifying the model name:
 
 ```ts
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'cloudflare/@cf/meta/llama-3.1-8b-instruct',
 }));
 ```
@@ -132,12 +132,12 @@ To customize the gateway, disable it, or target a named gateway, re-register the
 
 ```ts
 import { getSandbox } from '@cloudflare/sandbox';
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { cloudflareSandbox } from '@flue/runtime/cloudflare';
 
 type Env = { Sandbox: DurableObjectNamespace };
 
-export default createAgent<Env>(({ id, env }) => ({
+export default defineAgent<Env>(({ id, env }) => ({
   model: 'anthropic/claude-sonnet-4-6',
   sandbox: cloudflareSandbox(getSandbox(env.Sandbox, id)),
   cwd: '/workspace',
@@ -171,10 +171,10 @@ Use Cloudflare Shell when a durable Workspace and structured code operations are
 Flue owns each generated Durable Object class. When an agent or workflow needs access to native Cloudflare Agents SDK capabilities such as `onStart()`, `schedule()`, `scheduleEvery()`, or `queue()`, export a `cloudflare` extension descriptor from its module:
 
 ```ts
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { extend } from '@flue/runtime/cloudflare';
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
 }));
 

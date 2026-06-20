@@ -1,6 +1,6 @@
 import {
 	bash,
-	createAgent,
+	defineAgent,
 	defineWorkflow,
 	defineTool,
 	type WorkflowRouteHandler,
@@ -10,7 +10,7 @@ import * as v from 'valibot';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const agent = createAgent(() => {
+const agent = defineAgent(() => {
 	const fs = new InMemoryFs();
 	return {
 		sandbox: bash(() =>

@@ -1,7 +1,7 @@
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { parseShopifyOrderInstanceId, retrieveOrder } from '../channels/shopify.ts';
 
-export default createAgent(({ id }) => {
+export default defineAgent(({ id }) => {
 	const order = parseShopifyOrderInstanceId(id);
 	return {
 		model: 'anthropic/claude-haiku-4-5',

@@ -63,7 +63,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * ```typescript
  * import { exedev } from './sandboxes/exedev';
  *
- * const agent = createAgent(() => ({
+ * const agent = defineAgent(() => ({
  *   sandbox: exedev({ host: 'maple-dune.exe.xyz' }),
  *   model: 'anthropic/claude-sonnet-4-6',
  * }));
@@ -77,7 +77,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * import { createExeVm, deleteExeVm, exedev } from './sandboxes/exedev';
  *
  * const vm = await createExeVm({ apiToken: process.env.EXE_API_TOKEN! });
- * const agent = createAgent(() => ({
+ * const agent = defineAgent(() => ({
  *   sandbox: exedev(vm),
  *   model: 'anthropic/claude-sonnet-4-6',
  * }));
@@ -728,12 +728,12 @@ no obvious project convention like `EXE_VM_HOST`, ask for the exe.dev VM
 hostname before wiring the adapter.
 
 ```ts
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from "@flue/runtime";
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from "@flue/runtime";
 import { exedev } from "../sandboxes/exedev";
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const agent = createAgent(({ env }) => ({
+const agent = defineAgent(({ env }) => ({
   sandbox: exedev({ host: env.EXE_VM_HOST }),
   model: "anthropic/claude-sonnet-4-6",
 }));
@@ -754,12 +754,12 @@ API token with `new` permission. The bound agent initializer creates the VM and
 passes it to `exedev(...)`.
 
 ```ts
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from "@flue/runtime";
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from "@flue/runtime";
 import { createExeVm, exedev } from "../sandboxes/exedev";
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const agent = createAgent(async ({ env }) => {
+const agent = defineAgent(async ({ env }) => {
   const vm = await createExeVm({ apiToken: env.EXE_API_TOKEN });
   return {
     sandbox: exedev(vm),
@@ -783,12 +783,12 @@ an API token with `cp` permission. If the project also deletes the clone, the
 token needs `rm` permission.
 
 ```ts
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from "@flue/runtime";
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from "@flue/runtime";
 import { cloneExeVm, exedev } from "../sandboxes/exedev";
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const agent = createAgent(async ({ env }) => {
+const agent = defineAgent(async ({ env }) => {
   const vm = await cloneExeVm({
     apiToken: env.EXE_API_TOKEN,
     source: "my-dev-vm",

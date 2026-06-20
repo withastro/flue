@@ -1,9 +1,9 @@
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import review from '../skills/review/SKILL.md' with { type: 'skill' };
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const agent = createAgent(() => ({ model: 'anthropic/claude-haiku-4-5', skills: [review] }));
+const agent = defineAgent(() => ({ model: 'anthropic/claude-haiku-4-5', skills: [review] }));
 
 export default defineWorkflow({
 	agent,

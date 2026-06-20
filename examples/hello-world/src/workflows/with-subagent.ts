@@ -1,5 +1,5 @@
 import {
-	createAgent,
+	defineAgent,
 	defineWorkflow,
 	defineAgentProfile,
 	type WorkflowRouteHandler,
@@ -11,7 +11,7 @@ const greeter = defineAgentProfile({
 	name: 'greeter',
 	instructions: 'Write one warm, concise greeting.',
 });
-const agent = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6', subagents: [greeter] }));
+const agent = defineAgent(() => ({ model: 'anthropic/claude-sonnet-4-6', subagents: [greeter] }));
 
 export default defineWorkflow({
 	agent,

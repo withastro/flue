@@ -22,7 +22,7 @@ export function generateBuiltModuleNormalizationSource(): string {
 	return `
 function normalizeBuiltModules(agentModules, workflowModules, channelModules = {}) {
   const manifest = { agents: [], workflows: [] };
-  const createdAgents = {};
+  const agentDefinitions = {};
   const dispatchAgentNames = new Map();
   const workflows = {};
   const workflowNames = new Map();
@@ -30,17 +30,17 @@ function normalizeBuiltModules(agentModules, workflowModules, channelModules = {
   const workflowRouteMiddleware = {};
   const channelHandlers = {};
   for (const [name, mod] of Object.entries(agentModules)) {
-    if (!mod.default || mod.default.__flueCreatedAgent !== true || typeof mod.default.initialize !== 'function') throw new Error('[flue] Agent "' + name + '" must default-export createAgent(...).');
+    if (!mod.default || mod.default.__flueAgentDefinition !== true || typeof mod.default.initialize !== 'function') throw new Error('[flue] Agent "' + name + '" must default-export defineAgent(...).');
     if (mod.route !== undefined && typeof mod.route !== 'function') throw new Error('[flue] Agent "' + name + '" route export must be a callable Hono middleware value.');
     if (mod.description !== undefined && (typeof mod.description !== 'string' || mod.description.trim().length === 0)) throw new Error('[flue] Agent "' + name + '" description export must be a non-empty string.');
     const transports = {};
     if (typeof mod.route === 'function') transports.http = true;
-    const entry = { name, transports, created: true };
+    const entry = { name, transports, defined: true };
     if (mod.description !== undefined) entry.description = mod.description;
     manifest.agents.push(entry);
-    createdAgents[name] = mod.default;
+    agentDefinitions[name] = mod.default;
     const previousDispatchName = dispatchAgentNames.get(mod.default);
-    if (previousDispatchName !== undefined) throw new Error('[flue] Agents "' + previousDispatchName + '" and "' + name + '" default-export the same created agent value. Use distinct createAgent(...) values for dispatchable agent modules.');
+    if (previousDispatchName !== undefined) throw new Error('[flue] Agents "' + previousDispatchName + '" and "' + name + '" default-export the same agent definition value. Use distinct defineAgent(...) values for dispatchable agent modules.');
     dispatchAgentNames.set(mod.default, name);
     if (typeof mod.route === 'function') agentRouteMiddleware[name] = mod.route;
   }
@@ -77,7 +77,7 @@ function normalizeBuiltModules(agentModules, workflowModules, channelModules = {
     channelHandlers[name] = routes;
   }
 
-  return { manifest, createdAgents, dispatchAgentNames, workflows, workflowNames, agentRouteMiddleware, workflowRouteMiddleware, channelHandlers };
+  return { manifest, agentDefinitions, dispatchAgentNames, workflows, workflowNames, agentRouteMiddleware, workflowRouteMiddleware, channelHandlers };
 }
 
 `;

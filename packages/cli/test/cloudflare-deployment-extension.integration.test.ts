@@ -123,7 +123,7 @@ export default {
 		try {
 			fs.writeFileSync(
 				path.join(root, 'src', 'agents', 'reviewer.ts'),
-				`import { createAgent } from '@flue/runtime';\nexport default createAgent(() => ({ model: false }));\n`,
+				`import { defineAgent } from '@flue/runtime';\nexport default defineAgent(() => ({ model: false }));\n`,
 			);
 			fs.writeFileSync(
 				path.join(root, 'wrangler.jsonc'),
@@ -202,7 +202,7 @@ async function createGeneratedFixture(
 	);
 	fs.writeFileSync(
 		path.join(root, 'src', 'agents', 'assistant.ts'),
-		`import { createAgent } from '@flue/runtime';\nexport default createAgent(() => ({ model: false }));\n`,
+		`import { defineAgent } from '@flue/runtime';\nexport default defineAgent(() => ({ model: false }));\n`,
 	);
 	fs.writeFileSync(path.join(root, 'src', 'cloudflare.ts'), cloudflareSource);
 	fs.writeFileSync(

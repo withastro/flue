@@ -35,14 +35,14 @@ const normalizeBuiltModules = new Function(
 ) as NormalizeBuiltModules;
 
 function agentModule(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-	return { default: { __flueCreatedAgent: true, initialize: () => ({}) }, ...overrides };
+	return { default: { __flueAgentDefinition: true, initialize: () => ({}) }, ...overrides };
 }
 
 function workflowModule(overrides: Record<string, unknown> = {}): Record<string, unknown> {
 	return {
 		default: {
 			__flueWorkflowDefinition: true,
-			agent: { __flueCreatedAgent: true, initialize: () => ({}) },
+			agent: { __flueAgentDefinition: true, initialize: () => ({}) },
 			action: { __flueAction: true },
 		},
 		...overrides,
@@ -61,7 +61,7 @@ describe('normalizeBuiltModules()', () => {
 				name: 'support',
 				description: 'Resolves customer support tickets.',
 				transports: {},
-				created: true,
+				defined: true,
 			},
 		]);
 	});
@@ -69,7 +69,7 @@ describe('normalizeBuiltModules()', () => {
 	it('omits description from the agent manifest entry when the module does not export one', () => {
 		const { manifest } = normalizeBuiltModules({ support: agentModule() }, {});
 
-		expect(manifest.agents).toEqual([{ name: 'support', transports: {}, created: true }]);
+		expect(manifest.agents).toEqual([{ name: 'support', transports: {}, defined: true }]);
 	});
 
 	it('throws when an agent description export is not a string', () => {

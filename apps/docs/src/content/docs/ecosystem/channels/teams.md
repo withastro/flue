@@ -160,10 +160,10 @@ any non-2xx response, so return a 2xx once the work is safely admitted.
 ## Bind the tool
 
 ```ts title="src/agents/assistant.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { channel, postMessage } from '../channels/teams.ts';
 
-export default createAgent(({ id }) => ({
+export default defineAgent(({ id }) => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: [postMessage(channel.parseConversationKey(id))],
 }));

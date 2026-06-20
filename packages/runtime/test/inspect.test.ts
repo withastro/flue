@@ -138,9 +138,9 @@ describe('listAgents()', () => {
 						name: 'support',
 						description: 'Resolves customer support tickets.',
 						transports: { http: true },
-						created: true,
+						defined: true,
 					},
-					{ name: 'offline', transports: {}, created: false },
+					{ name: 'offline', transports: {}, defined: false },
 				],
 			},
 		});
@@ -150,9 +150,9 @@ describe('listAgents()', () => {
 				name: 'support',
 				description: 'Resolves customer support tickets.',
 				transports: { http: true },
-				created: true,
+				defined: true,
 			},
-			{ name: 'offline', transports: {}, created: false },
+			{ name: 'offline', transports: {}, defined: false },
 		]);
 	});
 });

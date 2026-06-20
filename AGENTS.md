@@ -6,15 +6,15 @@ Framework where projects containing agents and workflows are compiled into deplo
 
 ```
 Agent profile                 — one reusable `defineAgentProfile(...)` value
-Created agent                 — one runtime initializer from `createAgent(...)`
-Agent module                  — `agents/<name>.ts`; default-exports a created agent
-└─ AgentInstance              — URL `<id>`; provided to `createAgent(({ id }))`
+Agent definition              — one runtime initializer from `defineAgent(...)`
+Agent module                  — `agents/<name>.ts`; default-exports an agent definition
+└─ AgentInstance              — URL `<id>`; provided to `defineAgent(({ id }))`
    └─ Harness                 — runtime-initialized agent environment; defaults to name `"default"`
       └─ Session              — one `harness.session(name?)`; defaults to `"default"`
          └─ Operation        — one `session.prompt` / `skill` / `task` / `shell` call
             └─ Turn          — one LLM round-trip inside pi-agent-core
 Workflow                     — `workflows/<name>.ts`; exports `run(...)`
-└─ Workflow run/invocation    — unique `ctx.id === runId`; initializes local created agents via `init(agent)` when needed
+└─ Workflow run/invocation    — unique `ctx.id === runId`; initializes local agent definitions via `init(agent)` when needed
 ```
 
 Runs are workflow-only. Direct HTTP/WebSocket agent prompts and dispatched agent inputs operate within persistent sessions and must not be described as runs. `dispatch(...)` is identified by `dispatchId`; `/runs` and `flue logs` inspect workflow runs only.

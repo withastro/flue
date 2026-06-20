@@ -349,11 +349,11 @@ ENS identity. Do not use deprecated `compositeId` for transactional email.
 Create an agent module such as `<source-dir>/agents/assistant.ts`:
 
 ```ts
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { retrieveCallback } from '../channels/salesforce-marketing-cloud.ts';
 import { parseEmailEventInstanceId } from '../salesforce-marketing-cloud-email.ts';
 
-export default createAgent(({ id }) => {
+export default defineAgent(({ id }) => {
   const email = parseEmailEventInstanceId(id);
   return {
     model: 'anthropic/claude-haiku-4-5',

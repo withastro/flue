@@ -6,7 +6,7 @@ import {
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgent, IMAGE_DATA_OMITTED } from '../src/index.ts';
+import { defineAgent, IMAGE_DATA_OMITTED } from '../src/index.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 import type { FlueEvent, SessionData, SessionStore } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
@@ -69,7 +69,7 @@ describe('session event image redaction', () => {
 			events.push(event);
 		});
 		const harness = await ctx.initializeRootHarness(
-			createAgent(() => ({ model: `${provider.getModel().provider}/reviewer` })),
+			defineAgent(() => ({ model: `${provider.getModel().provider}/reviewer` })),
 		);
 		const session = await harness.session();
 
@@ -110,7 +110,7 @@ describe('session event image redaction', () => {
 			events.push(event);
 		});
 		const harness = await ctx.initializeRootHarness(
-			createAgent(() => ({ model: `${provider.getModel().provider}/reviewer` })),
+			defineAgent(() => ({ model: `${provider.getModel().provider}/reviewer` })),
 		);
 		const session = await harness.session();
 
@@ -143,7 +143,7 @@ describe('session event image redaction', () => {
 			events.push(event);
 		});
 		const harness = await ctx.initializeRootHarness(
-			createAgent(() => ({
+			defineAgent(() => ({
 				model: `${provider.getModel().provider}/reviewer`,
 				sandbox: {
 					createSessionEnv: async () => createNoopSessionEnv(),
@@ -203,7 +203,7 @@ describe('session event image redaction', () => {
 			events.push(event);
 		});
 		const harness = await ctx.initializeRootHarness(
-			createAgent(() => ({ model: `${provider.getModel().provider}/reviewer` })),
+			defineAgent(() => ({ model: `${provider.getModel().provider}/reviewer` })),
 		);
 		const session = await harness.session();
 
@@ -240,7 +240,7 @@ describe('session event image redaction', () => {
 			events.push(event);
 		});
 		const harness = await ctx.initializeRootHarness(
-			createAgent(() => ({
+			defineAgent(() => ({
 				model: `${provider.getModel().provider}/reviewer`,
 				sandbox: {
 					createSessionEnv: async () => createNoopSessionEnv(),

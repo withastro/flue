@@ -134,10 +134,10 @@ paths, or credentials unless the application has explicitly authorized that.
 Bind the trusted conversation destination inside the agent initializer:
 
 ```ts
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { channel, commentOnIssue } from '../channels/github.ts';
 
-export default createAgent(({ id }) => ({
+export default defineAgent(({ id }) => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: [commentOnIssue(channel.parseConversationKey(id))],
 }));

@@ -28,7 +28,7 @@ export type { ThinkingLevel };
 export type AgentRouteHandler = MiddlewareHandler;
 export type WorkflowRouteHandler = MiddlewareHandler;
 
-/** Input accepted by the created-agent overload of `dispatch(...)`. */
+/** Input accepted by the agent-definition overload of `dispatch(...)`. */
 export interface AgentDispatchRequest {
 	/** Target agent instance id. Must be a non-empty string. */
 	id: string;
@@ -58,7 +58,7 @@ export interface DirectAgentPayload {
 	images?: PromptImage[];
 }
 
-/** Context passed to a {@link createAgent} initializer. */
+/** Context passed to a {@link defineAgent} initializer. */
 export interface AgentCreateContext<TEnv = Record<string, any>> {
 	/** Agent instance id. */
 	readonly id: string;
@@ -193,7 +193,7 @@ export interface SessionEnv {
  * to read the file itself.
  *
  * Paths can be absolute or relative. Relative paths are resolved against
- * the agent's cwd, which comes from `createAgent(() => ({ cwd }))` if set, otherwise from
+ * the agent's cwd, which comes from `defineAgent(() => ({ cwd }))` if set, otherwise from
  * the sandbox adapter's default (varies by provider). Use absolute paths
  * for portability across sandbox adapters.
  */
@@ -303,7 +303,7 @@ export interface AgentConfig {
 	actions?: ActionDefinition[];
 	/**
 	 * Agent-wide default model. Undefined when the user explicitly passes
-	 * `createAgent(() => ({ model: false }))`, so each model-using call must provide a
+	 * `defineAgent(() => ({ model: false }))`, so each model-using call must provide a
 	 * call-site override.
 	 */
 	model: Model<any> | undefined;
@@ -362,9 +362,9 @@ export interface AgentProfile {
 	durability?: DurabilityConfig;
 }
 
-/** Configuration returned by a {@link createAgent} initializer. */
+/** Configuration returned by a {@link defineAgent} initializer. */
 export interface AgentRuntimeConfig {
-	/** Reusable baseline profile. Created-agent fields replace or extend profile values. */
+	/** Reusable baseline profile. Agent definition fields replace or extend profile values. */
 	profile?: AgentProfile;
 	/** Optional human-facing description of what this agent does. */
 	description?: string;
@@ -398,9 +398,9 @@ export interface AgentRuntimeConfig {
 	sandbox?: SandboxFactory;
 }
 
-/** Opaque agent initializer created by {@link createAgent}. */
-export interface CreatedAgent<TEnv = Record<string, any>> {
-	readonly __flueCreatedAgent: true;
+/** Opaque agent initializer created by {@link defineAgent}. */
+export interface AgentDefinition<TEnv = Record<string, any>> {
+	readonly __flueAgentDefinition: true;
 	initialize(context: AgentCreateContext<TEnv>): AgentRuntimeConfig | Promise<AgentRuntimeConfig>;
 }
 

@@ -286,11 +286,11 @@ remain application-owned.
 ## Bind the agent
 
 ```ts title="src/agents/assistant.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { retrieveCallback } from '../channels/salesforce-marketing-cloud.ts';
 import { parseEmailEventInstanceId } from '../salesforce-marketing-cloud-email.ts';
 
-export default createAgent(({ id }) => {
+export default defineAgent(({ id }) => {
   const email = parseEmailEventInstanceId(id);
   return {
     model: 'anthropic/claude-haiku-4-5',

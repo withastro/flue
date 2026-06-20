@@ -115,10 +115,10 @@ application has explicitly authorized that access.
 Bind the trusted customer id inside the agent initializer:
 
 ```ts
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { retrieveCustomer } from '../channels/stripe.ts';
 
-export default createAgent(({ id: customerId }) => ({
+export default defineAgent(({ id: customerId }) => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: [retrieveCustomer(customerId)],
 }));

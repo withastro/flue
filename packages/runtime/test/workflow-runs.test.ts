@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import * as v from 'valibot';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 import {
-	createAgent,
+	defineAgent,
 	defineWorkflow,
 	invoke,
 	WorkflowAdmissionError,
@@ -56,7 +56,7 @@ function createContext(
 
 function workflow(run: (input: unknown) => any) {
 	return defineWorkflow({
-		agent: createAgent(() => ({ model: false })),
+		agent: defineAgent(() => ({ model: false })),
 		input: v.looseObject({}),
 		async run({ input }) {
 			return run(input);
@@ -74,12 +74,12 @@ function createApp(runtime: FlueRuntime): Hono {
 describe('invoke()', () => {
 	it('infers caller input from Workflow Action input semantics', () => {
 		const required = defineWorkflow({
-			agent: createAgent(() => ({ model: false })),
+			agent: defineAgent(() => ({ model: false })),
 			input: v.object({ count: v.number() }),
 			run: async ({ input }) => input,
 		});
 		const omitted = defineWorkflow({
-			agent: createAgent(() => ({ model: false })),
+			agent: defineAgent(() => ({ model: false })),
 			run: async () => undefined,
 		});
 
@@ -90,7 +90,7 @@ describe('invoke()', () => {
 
 	it('rejects supplied input when a Workflow Action declares no input', async () => {
 		const target = defineWorkflow({
-			agent: createAgent(() => ({ model: false })),
+			agent: defineAgent(() => ({ model: false })),
 			run: async () => undefined,
 		});
 		const admitWorkflow = vi.fn(async () => ({ runId: 'run_no_input' }));
@@ -467,7 +467,7 @@ describe('workflow invocation', () => {
 		const initialize = vi.fn(() => ({ model: false as const }));
 		const createSessionEnv = vi.fn(async () => createNoopSessionEnv());
 		const invalidWorkflow = defineWorkflow({
-			agent: createAgent(initialize),
+			agent: defineAgent(initialize),
 			input: v.object({ count: v.number() }),
 			run: async ({ input }) => input,
 		});
@@ -506,7 +506,7 @@ describe('workflow invocation', () => {
 		const initialize = vi.fn(() => ({ model: false as const }));
 		const createSessionEnv = vi.fn(async () => createNoopSessionEnv());
 		const noInputWorkflow = defineWorkflow({
-			agent: createAgent(initialize),
+			agent: defineAgent(initialize),
 			run: async () => undefined,
 		});
 		const app = createApp({
@@ -599,7 +599,7 @@ describe('workflow run lifecycle', () => {
 		const runStore = new InMemoryRunStore();
 		const eventStreamStore = createTestEventStreamStore();
 		const createdWorkflow = defineWorkflow({
-			agent: createAgent(() => ({ model: false })),
+			agent: defineAgent(() => ({ model: false })),
 			async run({ harness }) {
 				const session = await harness.session();
 				void session.shell('slow operation');

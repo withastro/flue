@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createFlueContext } from '../src/client.ts';
-import { createAgent, defineWorkflow } from '../src/index.ts';
+import { defineAgent, defineWorkflow } from '../src/index.ts';
 import { ModelNotConfiguredError } from '../src/errors.ts';
 import { InMemoryRunStore } from '../src/node/run-store.ts';
 import { MAX_IMAGE_DATA_LENGTH } from '../src/persisted-images.ts';
@@ -212,7 +212,7 @@ describe('flue()', () => {
 			target: 'node',
 			runtimeVersion: '9.9.9',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 				workflows: [{ name: 'daily-report', transports: { http: true } }],
 			},
 		});
@@ -273,7 +273,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			createAdmission: {
 				assistant: (id) => async (payload) => ({
@@ -311,7 +311,7 @@ describe('flue()', () => {
 	it('accepts direct agent images and delivers them unchanged', async () => {
 		configureFlueRuntime({
 			target: 'node',
-			manifest: { agents: [{ name: 'assistant', transports: { http: true }, created: true }] },
+			manifest: { agents: [{ name: 'assistant', transports: { http: true }, defined: true }] },
 			createAdmission: {
 				assistant: () => async (payload) => ({ submissionId: 'submission-1', result: payload }),
 			},
@@ -344,7 +344,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			createAdmission: {
 				assistant: (id) => async (payload) => ({
@@ -380,7 +380,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			createAdmission: {
 				// Simulates the session surface failing the prompt (e.g. no model
@@ -422,7 +422,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			createAdmission: {
 				assistant: (id) => async (payload) => ({
@@ -459,7 +459,7 @@ describe('flue()', () => {
 			},
 			workflows: {
 				'daily-report': defineWorkflow({
-					agent: createAgent(() => ({ model: false })),
+					agent: defineAgent(() => ({ model: false })),
 					run: async () => ({ delivered: true }),
 				}),
 			},
@@ -485,7 +485,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			createAdmission: {
 				// Simulates the coordinator: each accepted prompt creates the
@@ -545,7 +545,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			createAdmission: {
 				// Simulates the coordinator rejecting admission (e.g. shutting down).
@@ -587,7 +587,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 		});
 		const app = new Hono();
@@ -639,7 +639,7 @@ describe('flue()', () => {
 			target: 'node',
 			devMode: false,
 			manifest: {
-				agents: [{ name: 'private-support', transports: { http: true }, created: true }],
+				agents: [{ name: 'private-support', transports: { http: true }, defined: true }],
 			},
 		});
 		const app = new Hono();
@@ -664,7 +664,7 @@ describe('flue()', () => {
 			target: 'node',
 			devMode: true,
 			manifest: {
-				agents: [{ name: 'private-support', transports: { http: true }, created: true }],
+				agents: [{ name: 'private-support', transports: { http: true }, defined: true }],
 			},
 		});
 		const app = new Hono();
@@ -690,7 +690,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			createAdmission: {
 				assistant: (_id) => async (payload) => ({
@@ -875,7 +875,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			agentRouteMiddleware: {
 				assistant: async (c) => c.json({ blocked: true }, 401),
@@ -903,7 +903,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			agentRouteMiddleware: { assistant: () => Promise.resolve(undefined) },
 			createContext: createTestContext,
@@ -942,7 +942,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			createAdmission: {
 				assistant: (_id) => async (payload) => ({
@@ -979,7 +979,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			createAdmission: {
 				assistant: (_id) => async (payload) => ({
@@ -1022,7 +1022,7 @@ describe('flue()', () => {
 			},
 			workflows: {
 				'daily-report': defineWorkflow({
-					agent: createAgent(() => ({ model: false })),
+					agent: defineAgent(() => ({ model: false })),
 					run: async () => undefined,
 				}),
 			},
@@ -1052,7 +1052,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			createAdmission: {
 				assistant: (_id) => async (payload) => ({
@@ -1089,7 +1089,7 @@ describe('flue()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			createAdmission: {
 				assistant: () => async (payload) => ({ submissionId: 'submission-1', result: payload }),
@@ -1159,7 +1159,7 @@ describe('createDefaultFlueApp()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			manifest: {
-				agents: [{ name: 'assistant', transports: { http: true }, created: true }],
+				agents: [{ name: 'assistant', transports: { http: true }, defined: true }],
 			},
 			createAdmission: {
 				assistant: (id) => async (payload) => ({

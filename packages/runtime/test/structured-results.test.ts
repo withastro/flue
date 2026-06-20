@@ -7,7 +7,7 @@ import {
 } from '@earendil-works/pi-ai';
 import * as v from 'valibot';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgent, ResultUnavailableError } from '../src/index.ts';
+import { defineAgent, ResultUnavailableError } from '../src/index.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 import type { FlueEvent, FlueSession, Skill } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
@@ -39,7 +39,7 @@ async function createSession(
 	});
 	if (options.onEvent) ctx.setEventCallback(options.onEvent);
 	const harness = await ctx.initializeRootHarness(
-		createAgent(() => ({
+		defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 			skills: options.skills,
 		})),

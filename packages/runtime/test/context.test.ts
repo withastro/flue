@@ -4,7 +4,7 @@ import {
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgent } from '../src/index.ts';
+import { defineAgent } from '../src/index.ts';
 import type { FlueContextConfig } from '../src/internal.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
 import type { FlueEvent, SessionEnv } from '../src/types.ts';
@@ -281,7 +281,7 @@ describe('FlueContext', () => {
 	it('allows root harness initialization to retry after an earlier attempt fails', async () => {
 		let attempt = 0;
 		const ctx = createContext();
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: false,
 			sandbox: {
 				createSessionEnv: async () => {
@@ -315,7 +315,7 @@ describe('session context discovery', () => {
 			events.push(event);
 		});
 		const harness = await ctx.initializeRootHarness(
-			createAgent(() => ({
+			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				instructions: 'Agent-specific review instructions.',
 			})),
@@ -356,7 +356,7 @@ describe('session context discovery', () => {
 			events.push(event);
 		});
 		const harness = await ctx.initializeRootHarness(
-			createAgent(() => ({
+			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 			})),
 		);
@@ -376,7 +376,7 @@ describe('session context discovery', () => {
 		);
 	});
 
-	it('discovers context from the created-agent cwd when a relative cwd is configured', async () => {
+	it('discovers context from the agent-definition cwd when a relative cwd is configured', async () => {
 		const provider = createProvider();
 		provider.setResponses([fauxAssistantMessage('Reviewed.')]);
 		const events: FlueEvent[] = [];
@@ -397,7 +397,7 @@ describe('session context discovery', () => {
 			events.push(event);
 		});
 		const harness = await ctx.initializeRootHarness(
-			createAgent(() => ({
+			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				cwd: 'workspace',
 			})),
@@ -416,7 +416,7 @@ describe('session context discovery', () => {
 		expect(systemPrompt).not.toContain('Root workspace guidance.');
 	});
 
-	it('scopes a custom sandbox cwd once when a relative created-agent cwd is configured', async () => {
+	it('scopes a custom sandbox cwd once when a relative agent-definition cwd is configured', async () => {
 		const provider = createProvider();
 		provider.setResponses([fauxAssistantMessage('Reviewed.')]);
 		const events: FlueEvent[] = [];
@@ -430,7 +430,7 @@ describe('session context discovery', () => {
 			events.push(event);
 		});
 		const harness = await ctx.initializeRootHarness(
-			createAgent(() => ({
+			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				cwd: 'workspace',
 				sandbox: {

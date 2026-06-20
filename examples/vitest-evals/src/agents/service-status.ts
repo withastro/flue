@@ -1,4 +1,4 @@
-import { type AgentRouteHandler, createAgent, defineTool } from '@flue/runtime';
+import { type AgentRouteHandler, defineAgent, defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 
 export const route: AgentRouteHandler = async (_c, next) => next();
@@ -10,7 +10,7 @@ const getServiceStatus = defineTool({
 	execute: async ({ service }) => `${service}: operational`,
 });
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
 	model: 'anthropic/claude-haiku-4-5',
 	instructions: 'Use the service status tool before answering questions about system health.',
 	tools: [getServiceStatus],

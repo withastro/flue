@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-	createAgent,
+	defineAgent,
 	defineAction,
 	defineAgentProfile,
 	defineTool,
@@ -8,7 +8,7 @@ import {
 } from '../src/index.ts';
 import type { FlueContextConfig } from '../src/internal.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
-import type { AgentProfile, CreatedAgent, ToolDefinition } from '../src/types.ts';
+import type { AgentProfile, AgentDefinition, ToolDefinition } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
 
 function createContext(overrides: Partial<FlueContextConfig> = {}) {
@@ -33,24 +33,24 @@ function createTool(name: string): ToolDefinition {
 	});
 }
 
-describe('createAgent()', () => {
+describe('defineAgent()', () => {
 	it('rejects invalid input when it does not receive an initializer function', () => {
-		expect(() => createAgent(null as never)).toThrow('requires an initializer function');
+		expect(() => defineAgent(null as never)).toThrow('requires an initializer function');
 	});
 
-	it('invokes the initializer with id and env when a runner initializes the created agent', async () => {
+	it('invokes the initializer with id and env when a runner initializes the agent definition', async () => {
 		const env = { API_KEY: 'secret' };
 		const initialize = vi.fn(() => ({ model: false as const }));
 		const ctx = createContext({ id: 'workflow-run', env });
 
-		await ctx.initializeRootHarness(createAgent(initialize));
+		await ctx.initializeRootHarness(defineAgent(initialize));
 
 		expect(initialize).toHaveBeenCalledOnce();
 		expect(initialize).toHaveBeenCalledWith({ id: 'workflow-run', env });
 	});
 
 	it('rejects unknown runtime fields when an initializer returns unsupported configuration', async () => {
-		const agent = createAgent(() => ({ model: false, unsupported: true }) as never);
+		const agent = defineAgent(() => ({ model: false, unsupported: true }) as never);
 
 		await expect(createContext().initializeRootHarness(agent)).rejects.toThrow(
 			'unknown runtime config field "unsupported"',
@@ -58,7 +58,7 @@ describe('createAgent()', () => {
 	});
 
 	it('rejects a top-level name when an initializer returns one', async () => {
-		const agent = createAgent(() => ({ model: false, name: 'support' }) as never);
+		const agent = defineAgent(() => ({ model: false, name: 'support' }) as never);
 
 		await expect(createContext().initializeRootHarness(agent)).rejects.toThrow(
 			'unknown runtime config field "name"',
@@ -66,19 +66,19 @@ describe('createAgent()', () => {
 	});
 
 	it('rejects harness initialization when the initializer does not explicitly select a model or model false', async () => {
-		await expect(createContext().initializeRootHarness(createAgent(() => ({})))).rejects.toThrow(
-			'createAgent() requires a model',
+		await expect(createContext().initializeRootHarness(defineAgent(() => ({})))).rejects.toThrow(
+			'defineAgent() requires a model',
 		);
 	});
 
-	it('keeps an env-typed created agent assignable to bare CreatedAgent positions', () => {
+	it('keeps an env-typed agent definition assignable to bare AgentDefinition positions', () => {
 		interface Env {
 			DB: { query(sql: string): unknown };
 		}
-		const typed = createAgent<Env>(() => ({ model: false }));
-		const bare: CreatedAgent = typed;
+		const typed = defineAgent<Env>(() => ({ model: false }));
+		const bare: AgentDefinition = typed;
 
-		expect(bare.__flueCreatedAgent).toBe(true);
+		expect(bare.__flueAgentDefinition).toBe(true);
 	});
 });
 
@@ -105,7 +105,7 @@ describe('defineAgentProfile()', () => {
 			},
 		});
 		const harness = await createContext().initializeRootHarness(
-			createAgent(() => ({
+			defineAgent(() => ({
 				profile: defineAgentProfile({ model: false, actions: [profileAction] }),
 				actions: [runtimeAction],
 			})),
@@ -184,7 +184,7 @@ describe('defineAgentProfile()', () => {
 		expect(() => defineAgentProfile(profile)).toThrow('circular subagents');
 	});
 
-	it('merges profile capabilities when a created agent extends a reusable profile', async () => {
+	it('merges profile capabilities when an agent definition extends a reusable profile', async () => {
 		const profile = defineAgentProfile({
 			model: false,
 			skills: [{ name: 'profile_skill', description: 'Profile skill.' }],
@@ -192,7 +192,7 @@ describe('defineAgentProfile()', () => {
 			subagents: [{ name: 'profile_agent', model: false }],
 		});
 		const harness = await createContext().initializeRootHarness(
-			createAgent(() => ({
+			defineAgent(() => ({
 				profile,
 				skills: [{ name: 'runtime_skill', description: 'Runtime skill.' }],
 				tools: [createTool('runtime_tool')],
@@ -211,10 +211,10 @@ describe('defineAgentProfile()', () => {
 		);
 	});
 
-	it('rejects duplicate tool names when a created agent repeats a profile tool name', async () => {
+	it('rejects duplicate tool names when an agent definition repeats a profile tool name', async () => {
 		await expect(
 			createContext().initializeRootHarness(
-				createAgent(() => ({
+				defineAgent(() => ({
 					profile: defineAgentProfile({ model: false, tools: [createTool('lookup')] }),
 					tools: [createTool('lookup')],
 				})),
@@ -222,9 +222,9 @@ describe('defineAgentProfile()', () => {
 		).rejects.toThrow('duplicate tool name "lookup"');
 	});
 
-	it('replaces scalar profile defaults when a created agent supplies scalar overrides', async () => {
+	it('replaces scalar profile defaults when an agent definition supplies scalar overrides', async () => {
 		const profile = defineAgentProfile({ model: 'profile/model' });
-		const harness = await createContext().initializeRootHarness(createAgent(() => ({ profile, model: false })));
+		const harness = await createContext().initializeRootHarness(defineAgent(() => ({ profile, model: false })));
 		const session = await harness.session();
 
 		await expect(session.prompt('Answer without a model.')).rejects.toThrow(
@@ -270,9 +270,9 @@ describe('defineAgentProfile()', () => {
 		).toThrow('must not declare durability');
 	});
 
-	it('accepts durability config when a created agent supplies it', async () => {
+	it('accepts durability config when an agent definition supplies it', async () => {
 		const harness = await createContext().initializeRootHarness(
-			createAgent(() => ({ model: false, durability: { maxAttempts: 3, timeoutMs: 7_200_000 } })),
+			defineAgent(() => ({ model: false, durability: { maxAttempts: 3, timeoutMs: 7_200_000 } })),
 		);
 		expect(harness).toBeDefined();
 	});

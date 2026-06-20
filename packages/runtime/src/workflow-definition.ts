@@ -8,9 +8,9 @@ import {
 	type ActionOutputSchema,
 	type JsonValue,
 } from './action.ts';
-import { isCreatedAgent } from './agent-definition.ts';
+import { isAgentDefinition } from './agent-definition.ts';
 import { isTopLevelObjectSchema, isValibotSchema } from './schema.ts';
-import type { CreatedAgent } from './types.ts';
+import type { AgentDefinition } from './types.ts';
 
 type InlineRunResult<S extends ActionOutputSchema | undefined> = S extends ActionOutputSchema
 	? v.InferInput<S>
@@ -18,7 +18,7 @@ type InlineRunResult<S extends ActionOutputSchema | undefined> = S extends Actio
 
 export interface WorkflowDefinition<TAction extends ActionDefinition = ActionDefinition> {
 	readonly __flueWorkflowDefinition: true;
-	readonly agent: CreatedAgent;
+	readonly agent: AgentDefinition;
 	readonly action: TAction;
 }
 
@@ -33,7 +33,7 @@ export type InlineWorkflow<
 const workflowDefinitions = new WeakSet<object>();
 
 type ExtractedWorkflowOptions<TAction extends ActionDefinition> = {
-	agent: CreatedAgent;
+	agent: AgentDefinition;
 	action: TAction;
 	input?: never;
 	output?: never;
@@ -44,7 +44,7 @@ type InlineWorkflowOptions<
 	TInput extends ActionInputSchema | undefined,
 	TOutput extends ActionOutputSchema | undefined,
 > = {
-	agent: CreatedAgent;
+	agent: AgentDefinition;
 	action?: never;
 	input?: TInput;
 	output?: TOutput;
@@ -64,8 +64,8 @@ export function defineWorkflow(
 	if (!options || typeof options !== 'object') {
 		throw new Error('[flue] defineWorkflow() requires a workflow definition object.');
 	}
-	if (!isCreatedAgent(options.agent)) {
-		throw new Error('[flue] defineWorkflow({ agent }) requires a CreatedAgent.');
+	if (!isAgentDefinition(options.agent)) {
+		throw new Error('[flue] defineWorkflow({ agent }) requires an AgentDefinition.');
 	}
 	const hasAction = Object.hasOwn(options, 'action') && options.action !== undefined;
 	const hasRun = Object.hasOwn(options, 'run') && options.run !== undefined;
@@ -103,7 +103,7 @@ export function defineWorkflow(
 }
 
 function makeWorkflowDefinition<TAction extends ActionDefinition>(
-	agent: CreatedAgent,
+	agent: AgentDefinition,
 	action: TAction,
 ): WorkflowDefinition<TAction> {
 	const workflow = Object.freeze({

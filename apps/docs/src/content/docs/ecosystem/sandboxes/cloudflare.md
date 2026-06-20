@@ -15,10 +15,10 @@ flue add sandbox cloudflare
 
 ## Overview
 
-Cloudflare Sandbox is a Cloudflare target integration rather than a generated adapter. In a Cloudflare-targeted project, the blueprint installs `@cloudflare/sandbox`; a workflow obtains the bound Durable Object with `getSandbox(...)`, wraps it with Flue's `cloudflareSandbox(...)`, and passes that sandbox factory to a created agent.
+Cloudflare Sandbox is a Cloudflare target integration rather than a generated adapter. In a Cloudflare-targeted project, the blueprint installs `@cloudflare/sandbox`; a workflow obtains the bound Durable Object with `getSandbox(...)`, wraps it with Flue's `cloudflareSandbox(...)`, and passes that sandbox factory to an agent definition.
 
 ```ts title="<source-root>/workflows/coding-agent.ts (excerpt)"
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import { cloudflareSandbox } from '@flue/runtime/cloudflare';
 import { getSandbox } from '@cloudflare/sandbox';
 import * as v from 'valibot';
@@ -27,7 +27,7 @@ type Env = { Sandbox: DurableObjectNamespace };
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const agent = createAgent<Env>(({ id, env }) => ({
+const agent = defineAgent<Env>(({ id, env }) => ({
   sandbox: cloudflareSandbox(getSandbox(env.Sandbox, id)),
   model: 'anthropic/claude-opus-4-7',
 }));
@@ -65,12 +65,12 @@ Declare the sandbox binding in Wrangler configuration, then wrap the RPC stub re
 
 ```ts
 import { getSandbox } from '@cloudflare/sandbox';
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { cloudflareSandbox } from '@flue/runtime/cloudflare';
 
 type Env = { Sandbox: DurableObjectNamespace };
 
-export default createAgent<Env>(({ id, env }) => ({
+export default defineAgent<Env>(({ id, env }) => ({
   model: 'anthropic/claude-sonnet-4-6',
   sandbox: cloudflareSandbox(getSandbox(env.Sandbox, id)),
   cwd: '/workspace',

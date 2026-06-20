@@ -4,11 +4,11 @@ import {
 	fauxToolCall,
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
-import { createAgent, defineTool } from '@flue/runtime';
+import { defineAgent, defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { bot } from '../chat.ts';
 
-export default createAgent(() => {
+export default defineAgent(() => {
 	const faux = registerFauxProvider({
 		api: 'chat-sdk-example',
 		provider: 'chat-sdk-example',

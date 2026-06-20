@@ -1,9 +1,9 @@
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 const sentinelKey = '__FLUE_LOCAL_SMOKE_SENTINEL__';
-const agent = createAgent(() => ({
+const agent = defineAgent(() => ({
 	sandbox: local({ env: { CUSTOM_VAR: 'visible-to-sandbox' } }),
 	model: false,
 }));

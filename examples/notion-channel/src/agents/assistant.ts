@@ -1,7 +1,7 @@
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { pageIdFromInstanceId, retrievePage } from '../channels/notion.ts';
 
-export default createAgent(({ id }) => {
+export default defineAgent(({ id }) => {
 	const pageId = pageIdFromInstanceId(id);
 	return {
 		model: 'anthropic/claude-haiku-4-5',

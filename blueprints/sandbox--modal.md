@@ -66,7 +66,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * const image = client.images.fromRegistry('python:3.13-slim');
  * const sandbox = await client.sandboxes.create(app, image);
  *
- * const agent = createAgent(() => ({ sandbox: modal(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
+ * const agent = defineAgent(() => ({ sandbox: modal(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
  * export default defineWorkflow({ agent, async run({ harness }) {
  *   return await (await harness.session()).prompt('Inspect the workspace.');
  * }});
@@ -328,13 +328,13 @@ into, you can finish that work by wiring the adapter into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import { ModalClient } from 'modal';
 import { modal } from '../sandboxes/modal'; // adjust path to match the user's layout
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-const agent = createAgent(async () => {
+const agent = defineAgent(async () => {
   // ModalClient reads MODAL_TOKEN_ID / MODAL_TOKEN_SECRET (or ~/.modal.toml)
   // automatically.
   const client = new ModalClient();

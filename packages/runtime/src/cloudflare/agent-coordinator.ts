@@ -65,7 +65,7 @@ interface CloudflareAgentPreparedCoordinator {
 }
 
 interface CloudflareAgentRuntimeOptions {
-	readonly createdAgents: Record<string, Parameters<typeof createAgentSubmissionSessionHandler>[0]>;
+	readonly agentDefinitions: Record<string, Parameters<typeof createAgentSubmissionSessionHandler>[0]>;
 	readonly createContext: (options: {
 		readonly executionStore: AgentExecutionStore;
 		readonly instance: CloudflareAgentInstance;
@@ -415,7 +415,7 @@ class CloudflareAgentCoordinator {
 	}
 
 	private async reconcileInterruptedSubmission(submission: AgentSubmission): Promise<void> {
-		const agent = this.options.createdAgents[this.agentName];
+		const agent = this.options.agentDefinitions[this.agentName];
 		if (!agent) throw new Error('[flue] Agent target unavailable during durable reconciliation.');
 		// Ensure the agent event stream exists (idempotent, normally created
 		// at first accepted processing) so a settlement event emitted during
@@ -541,7 +541,7 @@ class CloudflareAgentCoordinator {
 			submissions: this.submissions,
 			submission,
 			resolveAgent: (name) => {
-				const agent = this.options.createdAgents[name];
+				const agent = this.options.agentDefinitions[name];
 				if (!agent) throw new Error('[flue] Agent target unavailable during durable processing.');
 				return agent;
 			},
@@ -600,7 +600,7 @@ class CloudflareAgentCoordinator {
 		if (input.agent !== this.agentName || input.id !== this.instance.name) {
 			return new Response('Invalid internal dispatch target.', { status: 400 });
 		}
-		if (!this.options.createdAgents[this.agentName]) {
+		if (!this.options.agentDefinitions[this.agentName]) {
 			return new Response('Dispatch target unavailable.', { status: 404 });
 		}
 		await this.armSubmissionWake();

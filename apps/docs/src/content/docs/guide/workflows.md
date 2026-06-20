@@ -4,17 +4,17 @@ description: Create finite agent-backed operations from inline or reusable Actio
 lastReviewedAt: 2026-06-19
 ---
 
-Workflows are finite, inspectable operations for background jobs, document transformations, reviews, and CI tasks. Every workflow binds one [Action](/docs/api/action-api/) to one created agent. Use an [agent](/docs/guide/building-agents/) instead when work should continue across messages.
+Workflows are finite, inspectable operations for background jobs, document transformations, reviews, and CI tasks. Every workflow binds one [Action](/docs/api/action-api/) to one agent definition. Use an [agent](/docs/guide/building-agents/) instead when work should continue across messages.
 
 ## Create a workflow
 
 A file in `src/workflows/` defines a discovered workflow. Its filename becomes the workflow name, and its default export must be the value returned by `defineWorkflow()`:
 
 ```ts title="src/workflows/summarize.ts"
-import { createAgent, defineWorkflow } from '@flue/runtime';
+import { defineAgent, defineWorkflow } from '@flue/runtime';
 import * as v from 'valibot';
 
-const summarizer = createAgent(() => ({
+const summarizer = defineAgent(() => ({
   model: 'anthropic/claude-haiku-4-5',
   instructions: 'Summarize the supplied document clearly and concisely.',
 }));
@@ -75,10 +75,10 @@ export const summarize = defineAction({
 Bind the extracted Action without repeating its schemas or handler:
 
 ```ts title="src/workflows/summarize.ts"
-import { createAgent, defineWorkflow } from '@flue/runtime';
+import { defineAgent, defineWorkflow } from '@flue/runtime';
 import { summarize } from '../actions/summarize.ts';
 
-const summarizer = createAgent(() => ({
+const summarizer = defineAgent(() => ({
   model: 'anthropic/claude-haiku-4-5',
 }));
 

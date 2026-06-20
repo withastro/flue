@@ -75,11 +75,11 @@ Before implementing, restate the chosen requirements to yourself as an implement
 2. Create or update the project in the requested directory using the selected source layout.
 3. Always create one minimal **agent module** matching the user's idea, keeping it closer to "hello world" than a production app.
    - Put it in the selected layout's immediate \`agents/\` directory, using a lower-kebab-case filename such as \`src/agents/hello-world.ts\`.
-   - It must default-export \`createAgent(() => ({ model: '<exact model specifier>', instructions: '<short purpose-specific instruction>' }))\`.
+   - It must default-export \`defineAgent(() => ({ model: '<exact model specifier>', instructions: '<short purpose-specific instruction>' }))\`.
    - Do not export \`route\` unless the user needs direct HTTP access. For a basic local starter, use \`flue connect <agent-name> local\` instead.
 4. If the selected shape is **agent + workflow**, create one minimal **workflow module** for the finite job.
    - Put it in the selected layout's immediate \`workflows/\` directory, using a lower-kebab-case filename.
-    - Import \`defineWorkflow\` and the created agent, then default-export \`defineWorkflow({ agent, async run({ harness }) { ... } })\`. Open a session from the supplied harness, perform one purpose-specific operation, and return its result.
+    - Import \`defineWorkflow\` and the agent definition, then default-export \`defineWorkflow({ agent, async run({ harness }) { ... } })\`. Open a session from the supplied harness, perform one purpose-specific operation, and return its result.
    - Export workflow \`route\` only if the user needs that invocation surface.
 5. Add \`tsconfig.json\` for TypeScript editor/typechecking support.
    - If no \`tsconfig.json\` exists, create this minimal one:
@@ -100,7 +100,7 @@ Before implementing, restate the chosen requirements to yourself as an implement
    - TypeScript may ignore hidden directories by default, so projects using the \`.flue\` layout usually need \`.flue/**/*.ts\` included explicitly.
 6. Add only the dependencies and config required by the selected deploy guide and chosen starter shape.
 7. Run the most relevant validation command you can, such as build, typecheck, \`flue connect\` for an agent, or a local workflow invocation when a workflow was created. If you cannot run it, explain why.
-8. Finish with the exact next commands the user should run, including how to set any required secrets and how to interact with the created agent or invoke the workflow.
+8. Finish with the exact next commands the user should run, including how to set any required secrets and how to interact with the agent definition or invoke the workflow.
 
 ## Step 4: Verify Implementation
 
@@ -108,8 +108,8 @@ Before finishing, verify that the implementation matches the user's explicit cho
 
 - **Project location**: Files were created in the requested directory.
 - **Source layout**: Files use only the selected \`.flue\`, \`src\`, or root layout; entrypoints were placed only in the selected source directory.
-- **Agent module**: One agent module exists in the selected layout's \`agents/<name>.ts\` and default-exports \`createAgent(...)\`.
-- **Workflow choice**: No workflow was added for an agent-only starter; for an agent + workflow starter, one workflow module default-exports \`defineWorkflow(...)\` with the created agent bound through its \`agent\` field.
+- **Agent module**: One agent module exists in the selected layout's \`agents/<name>.ts\` and default-exports \`defineAgent(...)\`.
+- **Workflow choice**: No workflow was added for an agent-only starter; for an agent + workflow starter, one workflow module default-exports \`defineWorkflow(...)\` with the agent definition bound through its \`agent\` field.
 - **Deploy target**: Config and commands match the user's selected deploy target.
 - **LLM provider/model**: Model specifier is one of the suggested values, or an exact value from \`https://flueframework.com/models.json\` if the user requested another model.
 - **Secrets**: No fake API keys, tokens, or secrets were invented.

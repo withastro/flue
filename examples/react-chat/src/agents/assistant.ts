@@ -1,7 +1,7 @@
 import { fauxAssistantMessage, fauxText, registerFauxProvider } from '@earendil-works/pi-ai';
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 
-export default createAgent(() => {
+export default defineAgent(() => {
 	const faux = registerFauxProvider({
 		api: 'react-chat-example',
 		provider: 'react-chat-example',

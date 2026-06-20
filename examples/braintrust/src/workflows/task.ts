@@ -1,5 +1,5 @@
 import {
-	createAgent,
+	defineAgent,
 	defineWorkflow,
 	defineAgentProfile,
 	type WorkflowRouteHandler,
@@ -11,7 +11,7 @@ const editor = defineAgentProfile({
 	name: 'editor',
 	instructions: 'Rewrite the supplied sentence in a clearer, shorter form.',
 });
-const agent = createAgent(() => ({ model: 'anthropic/claude-haiku-4-5', subagents: [editor] }));
+const agent = defineAgent(() => ({ model: 'anthropic/claude-haiku-4-5', subagents: [editor] }));
 export default defineWorkflow({
 	agent,
 	input: v.object({ draft: v.optional(v.string()) }),

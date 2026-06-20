@@ -191,10 +191,10 @@ callback.
 ## Bind the tool
 
 ```ts title="src/agents/assistant.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { channel, commentOnIssue } from '../channels/github.ts';
 
-export default createAgent(({ id }) => ({
+export default defineAgent(({ id }) => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: [commentOnIssue(channel.parseConversationKey(id))],
 }));

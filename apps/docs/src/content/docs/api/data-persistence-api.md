@@ -208,7 +208,7 @@ function getRun(runId: string): Promise<RunRecord | null>;
 function listAgents(): Promise<AgentManifestEntry[]>;
 ```
 
-Server-side free functions for application code running inside a Flue-built server. Like `dispatch(...)`, they read the generated runtime: `listRuns()` and `getRun()` read the configured run store, and `listAgents()` returns the built agents (`{ name, description?, transports, created }`) from the deployment manifest. The optional `description` comes from the agent module's static `description` export; see [Agents](/docs/guide/building-agents/#creating-a-new-agent). Use them to [compose your own admin endpoints](/docs/api/routing-api/#compose-your-own-admin-endpoints) behind application-owned authorization — Flue ships no inspection HTTP surface of its own.
+Server-side free functions for application code running inside a Flue-built server. Like `dispatch(...)`, they read the generated runtime: `listRuns()` and `getRun()` read the configured run store, and `listAgents()` returns the built agents (`{ name, description?, transports, defined }`) from the deployment manifest. The optional `description` comes from the agent module's static `description` export; see [Agents](/docs/guide/building-agents/#creating-a-new-agent). Use them to [compose your own admin endpoints](/docs/api/routing-api/#compose-your-own-admin-endpoints) behind application-owned authorization — Flue ships no inspection HTTP surface of its own.
 
 ## `EventStreamStore`
 

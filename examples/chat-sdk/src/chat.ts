@@ -1,6 +1,6 @@
 import { createGitHubAdapter } from '@chat-adapter/github';
 import { createMemoryState } from '@chat-adapter/state-memory';
-import { type CreatedAgent, dispatch } from '@flue/runtime';
+import { type AgentDefinition, dispatch } from '@flue/runtime';
 import { Chat } from 'chat';
 
 const webhookSecret = 'chat-sdk-example-secret';
@@ -23,7 +23,7 @@ export const bot = new Chat({
 
 let handlersRegistered = false;
 
-export function registerChatHandlers(agent: CreatedAgent): void {
+export function registerChatHandlers(agent: AgentDefinition): void {
 	if (handlersRegistered) return;
 	handlersRegistered = true;
 	bot.onNewMention(async (thread, message) => {

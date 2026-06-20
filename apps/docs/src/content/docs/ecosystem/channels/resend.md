@@ -178,10 +178,10 @@ or durable storage.
 ## Bind the tool
 
 ```ts title="src/agents/assistant.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { emailIdFromInstanceId, retrieveReceivedEmail } from '../channels/resend.ts';
 
-export default createAgent(({ id }) => {
+export default defineAgent(({ id }) => {
   const emailId = emailIdFromInstanceId(id);
   return {
     model: 'anthropic/claude-haiku-4-5',

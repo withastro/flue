@@ -117,10 +117,10 @@ body or use the Hono context for explicit status and response control.
 ## Wire the agent
 
 ```ts
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { channel, postMessage } from '../channels/teams.ts';
 
-export default createAgent(({ id }) => ({
+export default defineAgent(({ id }) => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: [postMessage(channel.parseConversationKey(id))],
 }));

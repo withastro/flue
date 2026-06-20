@@ -48,10 +48,10 @@ Use clear action-oriented names, such as `lookup_order_status` or `create_suppor
 Provide a stable capability in the configuration for the agent that needs it:
 
 ```ts title="src/agents/order-assistant.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { lookupOrderStatus } from '../shared/order-tools.ts';
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'anthropic/claude-haiku-4-5',
   instructions: 'Help customers check the status of their orders.',
   tools: [lookupOrderStatus],
@@ -69,11 +69,11 @@ A tool's parameters are model-selected inputs, not an authorization boundary. Yo
 For an addressable customer-support agent, the selected agent instance can establish which customer's orders are accessible:
 
 ```ts title="src/agents/customer-orders.ts"
-import { createAgent, defineTool } from '@flue/runtime';
+import { defineAgent, defineTool } from '@flue/runtime';
 import * as v from 'valibot';
 import { orders } from '../shared/orders.ts';
 
-export default createAgent(({ id: customerId }) => ({
+export default defineAgent(({ id: customerId }) => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: [
     defineTool({
@@ -106,7 +106,7 @@ const lookupCustomerOrder = defineTool({
   },
 });
 
-const agent = createAgent(() => ({
+const agent = defineAgent(() => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: [lookupCustomerOrder],
 }));
@@ -166,7 +166,7 @@ authorization design for them.
 An MCP server supplies remotely implemented tools. `connectMcpServer(...)` lists those tools and returns ordinary tool definitions, which you provide to agent work in the same way as your own custom tools.
 
 ```ts title="src/workflows/inventory-assistant.ts"
-import { connectMcpServer, createAgent, defineWorkflow } from '@flue/runtime';
+import { connectMcpServer, defineAgent, defineWorkflow } from '@flue/runtime';
 import * as v from 'valibot';
 
 type Env = {
@@ -179,7 +179,7 @@ const inventory = await connectMcpServer('inventory', {
   headers: { Authorization: `Bearer ${process.env.INVENTORY_MCP_TOKEN}` },
 });
 
-const agent = createAgent<Env>(() => ({
+const agent = defineAgent<Env>(() => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: inventory.tools,
 }));

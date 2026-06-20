@@ -1,4 +1,4 @@
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import * as v from 'valibot';
 import {
 	getDefaultWorkspace,
@@ -12,7 +12,7 @@ interface Env {
 	LOADER: WorkerLoader;
 }
 const HYDRATION_SENTINEL = '/.hydrated';
-const agent = createAgent<Env>(async ({ env }) => {
+const agent = defineAgent<Env>(async ({ env }) => {
 	const workspace = getDefaultWorkspace();
 	if (!(await workspace.exists(HYDRATION_SENTINEL))) {
 		await hydrateFromBucket(workspace, env.KNOWLEDGE_BASE);

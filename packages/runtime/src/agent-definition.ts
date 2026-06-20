@@ -4,13 +4,13 @@ import type {
 	AgentCreateContext,
 	AgentProfile,
 	AgentRuntimeConfig,
-	CreatedAgent,
+	AgentDefinition,
 	Skill,
 	ThinkingLevel,
 	ToolDefinition,
 } from './types.ts';
 
-const createdAgents = new WeakSet<object>();
+const agentDefinitions = new WeakSet<object>();
 
 const VALID_THINKING_LEVELS = {
 	off: true,
@@ -41,7 +41,7 @@ const AgentProfileSchema = v.strictObject(
 			: issue.message,
 );
 
-// `name` is profile-only: a created agent is addressed by its module filename,
+// `name` is profile-only: an agent definition is addressed by its module filename,
 // so a top-level name on the runtime config would have nothing to control.
 const AGENT_RUNTIME_FIELDS = new Set(
 	[...Object.keys(AgentProfileSchema.entries), 'profile', 'cwd', 'sandbox'].filter(
@@ -51,7 +51,7 @@ const AGENT_RUNTIME_FIELDS = new Set(
 
 /**
  * Validates and returns a reusable agent profile. Use profiles as the baseline
- * for a created agent or as named subagents available to `session.task()`.
+ * for an agent definition or as named subagents available to `session.task()`.
  *
  * Throws when the profile contains unknown fields, invalid capabilities,
  * duplicate capability names, or circular subagents.
@@ -62,31 +62,31 @@ export function defineAgentProfile(profile: AgentProfile): AgentProfile {
 }
 
 /**
- * Creates an agent initializer. Default-export the returned value from an
+ * Defines an agent initializer. Default-export the returned value from an
  * `agents/<name>.ts` module to define an addressable agent, or bind it to a
  * workflow definition.
  *
  * The initializer runs whenever a runner initializes a root harness from the
- * created agent. Do not treat it as a one-time
+ * agent definition. Do not treat it as a one-time
  * constructor for a persistent agent instance id. Return a runtime config
  * object with `model: '<provider>/<model>'`, `model: false`, or a profile with
  * its own model field.
  */
-export function createAgent<TEnv = Record<string, any>>(
+export function defineAgent<TEnv = Record<string, any>>(
 	initialize: (
 		context: AgentCreateContext<TEnv>,
 	) => AgentRuntimeConfig | Promise<AgentRuntimeConfig>,
-): CreatedAgent<TEnv> {
+): AgentDefinition<TEnv> {
 	if (typeof initialize !== 'function') {
-		throw new Error('[flue] createAgent() requires an initializer function.');
+		throw new Error('[flue] defineAgent() requires an initializer function.');
 	}
-	const agent = Object.freeze({ __flueCreatedAgent: true as const, initialize });
-	createdAgents.add(agent);
+	const agent = Object.freeze({ __flueAgentDefinition: true as const, initialize });
+	agentDefinitions.add(agent);
 	return agent;
 }
 
-export function isCreatedAgent(value: unknown): value is CreatedAgent {
-	return Boolean(value && typeof value === 'object' && createdAgents.has(value));
+export function isAgentDefinition(value: unknown): value is AgentDefinition {
+	return Boolean(value && typeof value === 'object' && agentDefinitions.has(value));
 }
 
 export function assertResolvedAgentProfile(profile: AgentProfile, label: string): AgentProfile {
@@ -141,17 +141,17 @@ function mergeArrays<T>(base: T[] | undefined, additions: T[] | undefined): T[] 
 
 function assertAgentRuntimeConfig(value: AgentRuntimeConfig | undefined): void {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) {
-		throw new Error('[flue] createAgent() initializer must return an agent runtime config object.');
+		throw new Error('[flue] defineAgent() initializer must return an agent runtime config object.');
 	}
 	for (const key of Object.keys(value)) {
 		if (!AGENT_RUNTIME_FIELDS.has(key)) {
 			throw new Error(
-				`[flue] createAgent() initializer returned unknown runtime config field "${key}".`,
+				`[flue] defineAgent() initializer returned unknown runtime config field "${key}".`,
 			);
 		}
 	}
 	if (value.profile !== undefined) {
-		assertAgentProfile(value.profile, 'createAgent() profile', new WeakSet());
+		assertAgentProfile(value.profile, 'defineAgent() profile', new WeakSet());
 	}
 }
 
@@ -302,7 +302,7 @@ function assertSubagents(
 		if (subagent.durability !== undefined) {
 			throw new Error(
 				`[flue] ${label} subagents[${index}] must not declare durability. ` +
-					'Delegated task sessions run inside the parent operation; configure durability on the created agent instead.',
+					'Delegated task sessions run inside the parent operation; configure durability on the agent definition instead.',
 			);
 		}
 		assertAgentProfile(value, `${label} subagents[${index}]`, activeDefinitions);

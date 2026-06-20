@@ -10,16 +10,16 @@ For the underlying mental model, start with [What is an agent?](/docs/concepts/a
 
 ## Creating a new agent
 
-In a Flue project, an agent is a file in `src/agents/` whose default export is created with `createAgent(...)`:
+In a Flue project, an agent is a file in `src/agents/` whose default export is created with `defineAgent(...)`:
 
 ```ts title="src/agents/joke-teller.ts"
-import { createAgent, type AgentRouteHandler } from '@flue/runtime';
+import { defineAgent, type AgentRouteHandler } from '@flue/runtime';
 
 export const description = 'Tells a short joke in response to each message.';
 
 export const route: AgentRouteHandler = async (_c, next) => next();
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'anthropic/claude-haiku-4-5',
   instructions: 'Tell a short joke in response to each message.',
 }));
@@ -30,21 +30,21 @@ In this example:
 - **The filename:** This gives the agent its name: `joke-teller`.
 - `description`: This optional static description is collected into the deployment manifest at build time and returned by [`listAgents()`](/docs/api/data-persistence-api/#inspection-primitives). When present, it must be a non-empty string.
 - `route`: This exposes the agent over HTTP at `POST /agents/joke-teller/:id`. Event streaming is available at `GET /agents/joke-teller/:id`.
-- `createAgent(...)`: This defines the agent's behavior and environment.
+- `defineAgent(...)`: This defines the agent's behavior and environment.
 
 See [Project Layout](/docs/guide/project-layout/) and [Models & Providers](/docs/guide/models/) for more information.
 
 ## Agent configuration
 
-The object returned by `createAgent(...)` defines the agent's behavior, capabilities, and environment. For example, a repository reviewer can be given review instructions, reusable tools and skills, and a local workspace to work within:
+The object returned by `defineAgent(...)` defines the agent's behavior, capabilities, and environment. For example, a repository reviewer can be given review instructions, reusable tools and skills, and a local workspace to work within:
 
 ```ts title="src/agents/repository-reviewer.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import reviewChecklist from '../skills/review-checklist/SKILL.md' with { type: 'skill' };
 import { repositoryTools } from '../shared/repository-tools.ts';
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   instructions: 'Review the requested change and report only findings supported by evidence.',
   cwd: '/srv/repositories/catalog-service',
@@ -61,10 +61,10 @@ For more details, see [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/)
 Long instructions can live in their own markdown file. Import a `.md` file with the `with { type: 'markdown' }` import attribute and Flue inlines its contents as a string at build time:
 
 ```ts title="src/agents/repository-reviewer.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import instructions from './repository-reviewer.md' with { type: 'markdown' };
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   instructions,
 }));
@@ -83,15 +83,15 @@ POST /agents/support-assistant/ticket-8472
 
 It's up to the developer to decide what `id` means and whether it maps to important application data, such as a user ID, customer support ticket, or GitHub issue. A randomly generated ID can also work.
 
-Flue passes that ID to `createAgent(...)`, where the application can configure the resources that belong to that instance. For example, a support agent can receive tools scoped to one ticket:
+Flue passes that ID to `defineAgent(...)`, where the application can configure the resources that belong to that instance. For example, a support agent can receive tools scoped to one ticket:
 
 ```ts title="src/agents/support-assistant.ts"
-import { createAgent, type AgentRouteHandler } from '@flue/runtime';
+import { defineAgent, type AgentRouteHandler } from '@flue/runtime';
 import { createTicketTools } from '../shared/support-tickets.ts';
 
 export const route: AgentRouteHandler = async (_c, next) => next();
 
-export default createAgent(({ id }) => ({
+export default defineAgent(({ id }) => ({
   model: 'anthropic/claude-haiku-4-5',
   instructions: 'Help the customer understand and resolve their support ticket.',
   tools: createTicketTools(id),
@@ -105,7 +105,7 @@ In this example, the agent can access the ticket selected by its `id`, but its t
 An agent profile defines reusable behavior and capabilities without creating a public agent or configuring its runtime resources. Use profiles to share an agent's model, instructions, tools, or skills across your project.
 
 ```ts title="src/agents/support-assistant.ts"
-import { createAgent, defineAgentProfile } from '@flue/runtime';
+import { defineAgent, defineAgentProfile } from '@flue/runtime';
 import { supportTools } from '../shared/support-tools.ts';
 
 const support = defineAgentProfile({
@@ -114,19 +114,19 @@ const support = defineAgentProfile({
   tools: supportTools,
 });
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   profile: support,
 }));
 ```
 
-`createAgent(...)` can replace profile fields such as the model or instructions, and add tools, skills, or subagents needed for a specific agent.
+`defineAgent(...)` can replace profile fields such as the model or instructions, and add tools, skills, or subagents needed for a specific agent.
 
 ## Subagents
 
 Subagents are another use for agent profiles: they let an agent delegate focused work to another agent.
 
 ```ts title="src/agents/policy-assistant.ts"
-import { createAgent, defineAgentProfile } from '@flue/runtime';
+import { defineAgent, defineAgentProfile } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 
 const policyResearcherSubagent = defineAgentProfile({
@@ -135,7 +135,7 @@ const policyResearcherSubagent = defineAgentProfile({
   instructions: 'Read the policy workspace and return supporting quotations with file paths.',
 });
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   instructions: 'Answer policy questions only after delegating source lookup to policy_researcher.',
   sandbox: local(),
@@ -171,7 +171,7 @@ The body may also carry an optional `images` array of `{ "type": "image", "data"
 Use the `route` handler to protect direct HTTP access to an agent instance:
 
 ```ts title="src/agents/support-assistant.ts"
-import { createAgent, type AgentRouteHandler } from '@flue/runtime';
+import { defineAgent, type AgentRouteHandler } from '@flue/runtime';
 import { authenticate } from '../auth.ts';
 
 export const route: AgentRouteHandler = async (c, next) => {
@@ -184,7 +184,7 @@ export const route: AgentRouteHandler = async (c, next) => {
   await next();
 };
 
-export default createAgent(({ id }) => ({
+export default defineAgent(({ id }) => ({
   model: 'anthropic/claude-haiku-4-5',
   instructions: `Help with authorized support ticket ${id}.`,
 }));

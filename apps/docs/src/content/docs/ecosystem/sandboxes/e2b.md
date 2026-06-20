@@ -63,11 +63,11 @@ Pass an initialized E2B `Sandbox` to `e2b(...)`, then assign the returned factor
 
 ```ts
 import { Sandbox } from 'e2b';
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { e2b } from '../sandboxes/e2b';
 
 const sandbox = await Sandbox.create();
-const agent = createAgent(() => ({
+const agent = defineAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   sandbox: e2b(sandbox),
 }));

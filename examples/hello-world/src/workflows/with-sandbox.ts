@@ -1,9 +1,9 @@
 import { Daytona } from '@daytona/sdk';
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import { daytona } from '../sandboxes/daytona';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
-const agent = createAgent(async ({ env }) => {
+const agent = defineAgent(async ({ env }) => {
 	const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
 	return { sandbox: daytona(await client.create()), model: 'anthropic/claude-sonnet-4-6' };
 });

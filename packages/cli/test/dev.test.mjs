@@ -22,7 +22,7 @@ test('restarts after discovered config changes and recovers after invalid config
 	writeWorkflow(root);
 	fs.writeFileSync(
 		path.join(root, 'workflows', 'daily.report.mjs'),
-		`import { createAgent, defineWorkflow } from '@flue/runtime';\nexport default defineWorkflow({ agent: createAgent(() => ({ model: false })), async run() { return { ok: true }; } });\n`,
+		`import { defineAgent, defineWorkflow } from '@flue/runtime';\nexport default defineWorkflow({ agent: defineAgent(() => ({ model: false })), async run() { return { ok: true }; } });\n`,
 	);
 	fs.writeFileSync(path.join(root, '.config-helper.mjs'), `export default 'dist-one';\n`);
 	fs.writeFileSync(
@@ -102,7 +102,7 @@ function writeWorkflow(root) {
 	fs.mkdirSync(path.join(root, 'workflows'));
 	fs.writeFileSync(
 		path.join(root, 'workflows', 'smoke.mjs'),
-		`import { createAgent, defineWorkflow } from '@flue/runtime';\nexport const route = async (_c, next) => next();\nexport default defineWorkflow({ agent: createAgent(() => ({ model: false })), async run() { return { ok: true }; } });\n`,
+		`import { defineAgent, defineWorkflow } from '@flue/runtime';\nexport const route = async (_c, next) => next();\nexport default defineWorkflow({ agent: defineAgent(() => ({ model: false })), async run() { return { ok: true }; } });\n`,
 	);
 }
 

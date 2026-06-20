@@ -39,7 +39,7 @@ Flue originally launched with a simple programmable TypeScript harness, built on
 // HTTP - POST /workflows/summarize
 // CLI  - flue run summarize --input='{"text": "Lorem ipsum..."}'
 
-const writer = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
+const writer = defineAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
 
 export default defineWorkflow({
 	agent: writer,
@@ -63,7 +63,7 @@ We launched Workflows back in May. But what people wanted to build with Flue was
 export const route = async (_c, next) => next();
 
 // Compose your agent with the context it needs to be successful.
-export default createAgent(() => ({
+export default defineAgent(() => ({
 	model: 'anthropic/claude-sonnet-4-6',
 	tools: [...githubTools],
 	skills: [triage, verify],

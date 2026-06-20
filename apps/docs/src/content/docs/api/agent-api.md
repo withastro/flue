@@ -13,7 +13,7 @@ import {
   ToolInputValidationError,
   bash,
   connectMcpServer,
-  createAgent,
+  defineAgent,
   defineAgentProfile,
   defineTool,
   dispatch,
@@ -24,7 +24,7 @@ import {
   type BashFactory,
   type CallHandle,
   type CompactionConfig,
-  type CreatedAgent,
+  type AgentDefinition,
   type DispatchReceipt,
   type FileStat,
   type FlueFs,
@@ -62,7 +62,7 @@ import {
 function defineAgentProfile(profile: AgentProfile): AgentProfile;
 ```
 
-Validates and returns a reusable agent profile. Use profiles as the baseline for a created agent or as named subagents available to `session.task()`.
+Validates and returns a reusable agent profile. Use profiles as the baseline for an agent definition or as named subagents available to `session.task()`.
 
 Throws when the profile contains unknown fields, invalid capabilities, duplicate capability names, or circular subagents.
 
@@ -181,19 +181,19 @@ interface McpServerConnection {
 | `tools`   | MCP tools adapted into ordinary Flue tool definitions. |
 | `close()` | Close the underlying MCP client connection.            |
 
-## `createAgent(...)`
+## `defineAgent(...)`
 
 ```ts
-function createAgent<TEnv = Record<string, any>>(
+function defineAgent<TEnv = Record<string, any>>(
   initialize: (
     context: AgentCreateContext<TEnv>,
   ) => AgentRuntimeConfig | Promise<AgentRuntimeConfig>,
-): CreatedAgent<TEnv>;
+): AgentDefinition<TEnv>;
 ```
 
-Creates an agent initializer. Default-export the returned value from an `agents/<name>.ts` module to define an addressable agent, or bind it to a Workflow Definition.
+Defines an agent initializer. Default-export the returned value from an `agents/<name>.ts` module to define an addressable agent, or bind it to a Workflow Definition.
 
-The initializer runs whenever a runner initializes a root harness from the created agent. Do not treat it as a one-time constructor for a persistent agent instance id. Return a runtime config object with `model: '<provider>/<model>'`, `model: false`, or a profile with its own model field.
+The initializer runs whenever a runner initializes a root harness from the agent definition. Do not treat it as a one-time constructor for a persistent agent instance id. Return a runtime config object with `model: '<provider>/<model>'`, `model: false`, or a profile with its own model field.
 
 #### `AgentCreateContext`
 
@@ -207,7 +207,7 @@ The initializer runs whenever a runner initializes a root harness from the creat
 | Field           | Type                        | Description                                                                                                                                                                                                                                                                               |
 | --------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `description`   | `string`                    | Optional organizational metadata describing what this agent does. Overrides the profile description when set. Per-initialization metadata only — for a static description that surfaces in the deployment manifest and `listAgents()`, use the module-level `description` export instead. |
-| `profile`       | `AgentProfile`              | Reusable baseline profile. Created-agent fields replace or extend profile values.                                                                                                                                                                                                         |
+| `profile`       | `AgentProfile`              | Reusable baseline profile. Agent-definition fields replace or extend profile values.                                                                                                                                                                                                         |
 | `model`         | `string \| false`           | Default model specifier. Set to `false` to require call-level model selection.                                                                                                                                                                                                            |
 | `instructions`  | `string`                    | Instructions prepended to discovered workspace context.                                                                                                                                                                                                                                   |
 | `skills`        | `Skill[]`                   | Additional registered skills available to initialized sessions.                                                                                                                                                                                                                           |
@@ -220,14 +220,14 @@ The initializer runs whenever a runner initializes a root harness from the creat
 | `cwd`           | `string`                    | Working directory inside the initialized sandbox.                                                                                                                                                                                                                                         |
 | `sandbox`       | `SandboxFactory`            | Sandbox factory used to construct the initialized environment. Omit for the default in-memory sandbox; use `bash(...)` to wrap a custom just-bash factory (`BashFactory`). See [Sandboxes](/docs/guide/sandboxes/).                                                                       |
 
-#### `CreatedAgent`
+#### `AgentDefinition`
 
-`CreatedAgent` is the opaque initializer value returned by `createAgent()`.
+`AgentDefinition` is the opaque initializer value returned by `defineAgent()`.
 
 ## `dispatch(...)`
 
 ```ts
-function dispatch(agent: CreatedAgent, request: AgentDispatchRequest): Promise<DispatchReceipt>;
+function dispatch(agent: AgentDefinition, request: AgentDispatchRequest): Promise<DispatchReceipt>;
 
 function dispatch(request: NamedAgentDispatchRequest): Promise<DispatchReceipt>;
 
@@ -246,7 +246,7 @@ interface DispatchReceipt {
 }
 ```
 
-Accepts input for asynchronous delivery to a continuing agent instance. The created-agent overload requires a value default-exported by one discovered `agents/<name>.ts` module. The named overload selects a discovered agent module by name.
+Accepts input for asynchronous delivery to a continuing agent instance. The agent-definition overload requires a value default-exported by one discovered `agents/<name>.ts` module. The named overload selects a discovered agent module by name.
 
 | Field        | Description                                                                                           |
 | ------------ | ----------------------------------------------------------------------------------------------------- |
@@ -262,7 +262,7 @@ Delivery durability depends on the generated target. Node uses a process-lifetim
 
 ## Agent
 
-A created agent is the opaque value returned by `createAgent()`. Default-export it from `agents/<name>.ts` to make persistent instances addressable, or bind it to a workflow as execution policy. Workflow runners initialize their harness automatically.
+An agent definition is the opaque value returned by `defineAgent()`. Default-export it from `agents/<name>.ts` to make persistent instances addressable, or bind it to a workflow as execution policy. Workflow runners initialize their harness automatically.
 
 ## Harness
 

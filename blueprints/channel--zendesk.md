@@ -312,10 +312,10 @@ than independent authorization capabilities.
 Bind the account and ticket selected by verified application code:
 
 ```ts
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { channel, retrieveTicket } from '../channels/zendesk.ts';
 
-export default createAgent(({ id }) => {
+export default defineAgent(({ id }) => {
   const ticket = channel.parseTicketKey(id);
   return {
     model: 'anthropic/claude-haiku-4-5',

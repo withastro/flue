@@ -111,7 +111,7 @@ const channelModules = {
 ${channelModuleEntries}
 };
 const normalized = normalizeBuiltModules(agentModules, workflowModules, channelModules);
-const { manifest, createdAgents, dispatchAgentNames, workflows, workflowNames, agentRouteMiddleware, workflowRouteMiddleware, channelHandlers } = normalized;
+const { manifest, agentDefinitions, dispatchAgentNames, workflows, workflowNames, agentRouteMiddleware, workflowRouteMiddleware, channelHandlers } = normalized;
 
 const isLocalMode = process.env.FLUE_MODE === 'local';
 const localCliTarget = process.env.FLUE_CLI_TARGET;
@@ -182,7 +182,7 @@ const persistenceAdapter = ${dbEntry ? `userPersistenceAdapter` : `defaultAdapte
 const agentCoordinator = createNodeAgentCoordinator({
   submissions: executionStore.submissions,
   sessions: executionStore.sessions,
-  agents: createdAgents,
+  agents: agentDefinitions,
   createContext: createContextForRequest,
   eventStreamStore,
 });
@@ -191,7 +191,7 @@ const dispatchQueue = createNodeDispatchQueue(agentCoordinator);
 // Build per-agent durable admission factories so HTTP prompts enter
 // the same durable submission lifecycle as dispatches.
 const createAdmission = Object.fromEntries(
-  Object.keys(createdAgents).map((name) => [
+  Object.keys(agentDefinitions).map((name) => [
     name,
     (instanceId) => agentCoordinator.createAdmission(name, instanceId),
   ]),

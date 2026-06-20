@@ -1,4 +1,4 @@
-import { type AgentRouteHandler, createAgent, defineAgentProfile } from '@flue/runtime';
+import { type AgentRouteHandler, defineAgent, defineAgentProfile } from '@flue/runtime';
 
 export const route: AgentRouteHandler = async (_c, next) => next();
 
@@ -7,4 +7,4 @@ const cloudflareBinding = defineAgentProfile({
 	instructions: 'You process direct requests using a Cloudflare Workers AI binding.',
 });
 
-export default createAgent(() => ({ profile: cloudflareBinding }));
+export default defineAgent(() => ({ profile: cloudflareBinding }));

@@ -4,7 +4,7 @@
  * Thin `SandboxFactory` wrapper around `createLocalSessionEnv` from
  * `./local-env.ts`. The helper holds the real implementation (host fs +
  * `child_process.spawn`, env allowlist resolution); this file just adapts
- * it to the public `createAgent(() => ({ sandbox }))` surface that sandbox adapters plug into.
+ * it to the public `defineAgent(() => ({ sandbox }))` surface that sandbox adapters plug into.
  *
  * For full semantics — env allowlist, cwd defaulting, `exec` env layering —
  * see `LocalSessionEnvOptions` and `DEFAULT_LOCAL_ENV_ALLOWLIST` in

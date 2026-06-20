@@ -159,10 +159,10 @@ namespaces require it.
 ## Bind the tool
 
 ```ts title="src/agents/billing.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { retrieveCustomer } from '../channels/stripe.ts';
 
-export default createAgent(({ id: customerId }) => ({
+export default defineAgent(({ id: customerId }) => ({
   model: 'anthropic/claude-haiku-4-5',
   tools: [retrieveCustomer(customerId)],
 }));

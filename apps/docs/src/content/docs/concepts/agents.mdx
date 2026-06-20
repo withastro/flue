@@ -30,10 +30,10 @@ Flue's built-in agent harness gives you all of these pieces in TypeScript, ready
 
 ```ts
 // Example: .flue/agents/triage.ts
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
 	model: 'anthropic/claude-sonnet-4-6',
 	instructions, // who the agent is and how it works
 	tools, // what it can do
@@ -60,7 +60,7 @@ Some of the most popular agent harnesses today were designed for coding. Flue is
 
 ```ts
 // Compose the agent: its model, capabilities, and environment.
-const agent = createAgent(() => ({
+const agent = defineAgent(() => ({
 	model: 'anthropic/claude-sonnet-4-6',
 	tools,
 	skills,

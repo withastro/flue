@@ -312,7 +312,7 @@ belongs outside this adapter.
 ## Wiring it into a workflow
 
 ```ts
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 import { getDefaultWorkspace, getShellSandbox } from '../sandboxes/cloudflare-shell';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
@@ -321,7 +321,7 @@ interface Env {
   LOADER: WorkerLoader;
 }
 
-const agent = createAgent<Env>(({ env }) => {
+const agent = defineAgent<Env>(({ env }) => {
   const workspace = getDefaultWorkspace();
   return {
     sandbox: getShellSandbox({ workspace, loader: env.LOADER }),

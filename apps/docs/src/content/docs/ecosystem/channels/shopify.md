@@ -276,10 +276,10 @@ string through `Number`.
 ## Bind the tool
 
 ```ts title="src/agents/orders.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { orderRefFromInstanceId, retrieveOrder } from '../channels/shopify.ts';
 
-export default createAgent(({ id }) => {
+export default defineAgent(({ id }) => {
   const { shopDomain, orderId } = orderRefFromInstanceId(id);
   if (shopDomain !== process.env.SHOPIFY_SHOP_DOMAIN) {
     throw new TypeError('Unexpected Shopify shop.');

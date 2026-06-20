@@ -44,9 +44,9 @@ Add `.env` to `.gitignore` and do not commit provider credentials. We use Anthro
 Create `agents/hello-world.ts`. This example uses Claude Sonnet, but you can choose any [supported model](https://pi.dev/models) and configure its provider credentials instead:
 
 ```ts title="agents/hello-world.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
 	model: 'anthropic/claude-sonnet-4-6',
 	instructions: 'Tell a funny "hello world" engineering joke.',
 }));

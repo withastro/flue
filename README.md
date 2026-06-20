@@ -4,7 +4,7 @@ Not another SDK. Build autonomous agents and powerful AI workflows with Flue's p
 
 ```ts
 // agents/triage.ts
-import { createAgent, type AgentRouteHandler } from '@flue/runtime';
+import { defineAgent, type AgentRouteHandler } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import triage from '../skills/triage/SKILL.md' with { type: 'skill' };
 import verify from '../skills/verify/SKILL.md' with { type: 'skill' };
@@ -23,7 +23,7 @@ export const route: AgentRouteHandler = async (_c, next) => next();
 
 // Compose the complete harness your agent needs to do real work,
 // complete with virtual, local, or remote container sandbox.
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   tools: [...githubTools],
   skills: [triage, verify],

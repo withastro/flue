@@ -1,6 +1,6 @@
 import { getModel } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgent, ProviderRegistrationError } from '../src/index.ts';
+import { defineAgent, ProviderRegistrationError } from '../src/index.ts';
 import { createFlueContext, InMemorySessionStore, resolveModel } from '../src/internal.ts';
 import { registerProvider, resetProvidersForTests } from '../src/runtime/providers.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
@@ -70,7 +70,7 @@ describe('registerProvider()', () => {
 			apiKey: 'sk-capture',
 		});
 		const harness = await createContext().initializeRootHarness(
-			createAgent(() => ({ model: 'capture-http/capture-model' })),
+			defineAgent(() => ({ model: 'capture-http/capture-model' })),
 		);
 		const session = await harness.session();
 
@@ -95,7 +95,7 @@ describe('registerProvider()', () => {
 			headers: { 'x-gateway-tenant': 'acme' },
 		});
 		const harness = await createContext().initializeRootHarness(
-			createAgent(() => ({ model: 'capture-auth/capture-model' })),
+			defineAgent(() => ({ model: 'capture-auth/capture-model' })),
 		);
 		const session = await harness.session();
 

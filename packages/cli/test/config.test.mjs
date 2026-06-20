@@ -233,14 +233,14 @@ describe('flue build', () => {
 		fs.mkdirSync(path.join(root, '.flue', 'workflows'), { recursive: true });
 		fs.writeFileSync(
 			path.join(root, '.flue', 'agents', 'helper.mjs'),
-			`import { createAgent, defineAgentProfile } from '@flue/runtime';\n` +
+			`import { defineAgent, defineAgentProfile } from '@flue/runtime';\n` +
 				`const profile = defineAgentProfile({ instructions: 'helper' });\n` +
-				`export default createAgent(() => ({ profile }));\n`,
+				`export default defineAgent(() => ({ profile }));\n`,
 		);
 		fs.writeFileSync(
 			path.join(root, '.flue', 'workflows', 'inner.mjs'),
-			`import { createAgent, defineWorkflow } from '@flue/runtime';\n` +
-				`const agent = createAgent(() => ({ model: false }));\n` +
+			`import { defineAgent, defineWorkflow } from '@flue/runtime';\n` +
+				`const agent = defineAgent(() => ({ model: false }));\n` +
 				`export default defineWorkflow({ agent, async run() { return { ok: true }; } });\n`,
 		);
 
@@ -249,14 +249,14 @@ describe('flue build', () => {
 		fs.mkdirSync(path.join(root, 'workflows'));
 		fs.writeFileSync(
 			path.join(root, 'agents', 'stray.mjs'),
-			`import { createAgent, defineAgentProfile } from '@flue/runtime';\n` +
+			`import { defineAgent, defineAgentProfile } from '@flue/runtime';\n` +
 				`const profile = defineAgentProfile({ instructions: 'stray' });\n` +
-				`export default createAgent(() => ({ profile }));\n`,
+				`export default defineAgent(() => ({ profile }));\n`,
 		);
 		fs.writeFileSync(
 			path.join(root, 'workflows', 'outer.mjs'),
-			`import { createAgent, defineWorkflow } from '@flue/runtime';\n` +
-				`const agent = createAgent(() => ({ model: false }));\n` +
+			`import { defineAgent, defineWorkflow } from '@flue/runtime';\n` +
+				`const agent = defineAgent(() => ({ model: false }));\n` +
 				`export default defineWorkflow({ agent, async run() { return { ok: true }; } });\n`,
 		);
 
@@ -296,8 +296,8 @@ function createNoInputWorkflowFixture() {
 	fs.mkdirSync(path.join(root, 'workflows'));
 	fs.writeFileSync(
 		path.join(root, 'workflows', 'no-input.mjs'),
-		`import { createAgent, defineWorkflow } from '@flue/runtime';\n` +
-			`const agent = createAgent(() => ({ model: false }));\n` +
+		`import { defineAgent, defineWorkflow } from '@flue/runtime';\n` +
+			`const agent = defineAgent(() => ({ model: false }));\n` +
 			`export default defineWorkflow({ agent, async run() { return { ok: true }; } });\n`,
 	);
 	return root;
@@ -311,8 +311,8 @@ function createWorkflowFixture(optionalInput = false) {
 	fs.writeFileSync(
 		path.join(root, 'workflows', 'inspect-input.mjs'),
 		`import * as v from 'valibot';\n` +
-			`import { createAgent, defineWorkflow } from '@flue/runtime';\n` +
-			`const agent = createAgent(() => ({ model: false }));\n` +
+			`import { defineAgent, defineWorkflow } from '@flue/runtime';\n` +
+			`const agent = defineAgent(() => ({ model: false }));\n` +
 			`export default defineWorkflow({\n` +
 			`  agent,\n` +
 			(optionalInput

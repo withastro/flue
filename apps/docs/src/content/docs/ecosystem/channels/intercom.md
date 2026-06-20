@@ -232,10 +232,10 @@ official SDK supports it.
 ## Bind the tool
 
 ```ts title="src/agents/assistant.ts"
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import { channel, retrieveConversation } from '../channels/intercom.ts';
 
-export default createAgent(({ id }) => {
+export default defineAgent(({ id }) => {
   const conversation = channel.parseConversationKey(id);
   return {
     model: 'anthropic/claude-haiku-4-5',

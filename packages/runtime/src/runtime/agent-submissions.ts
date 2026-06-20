@@ -15,7 +15,7 @@ import { getInternalSession } from '../session.ts';
 import type {
 	AttachedAgentEvent,
 	CallHandle,
-	CreatedAgent,
+	AgentDefinition,
 	DirectAgentPayload,
 	PromptResponse,
 } from '../types.ts';
@@ -155,7 +155,7 @@ export function createDirectAgentSubmissionInput(options: {
 }
 
 export function createAgentSubmissionSessionHandler(
-	agent: CreatedAgent,
+	agent: AgentDefinition,
 	input: AgentSubmissionInput,
 	execute: (session: AgentSubmissionSession) => Promise<unknown> | unknown,
 ): (ctx: FlueContextInternal) => Promise<unknown> {
@@ -305,7 +305,7 @@ type ReconciliationResult =
 export async function reconcileInterruptedSubmission(
 	submissions: AgentSubmissionStore,
 	submission: AgentSubmission,
-	agent: CreatedAgent,
+	agent: AgentDefinition,
 	createContext: (dispatchId: string | undefined) => FlueContextInternal,
 	lease?: { ownerId: string; leaseExpiresAt: number },
 ): Promise<ReconciliationResult> {
@@ -586,8 +586,8 @@ export interface ProcessSubmissionOptions {
 	submissions: AgentSubmissionStore;
 	/** The claimed submission to process. */
 	submission: AgentSubmission;
-	/** Resolve a created agent by name. Must throw if absent. */
-	resolveAgent: (name: string) => CreatedAgent;
+	/** Resolve an agent definition by name. Must throw if absent. */
+	resolveAgent: (name: string) => AgentDefinition;
 	/** Build a context for this submission. */
 	createContext: (dispatchId: string | undefined) => FlueContextInternal;
 	/** Observer registry for direct submission events and settlement. */
@@ -718,7 +718,7 @@ async function failInterruptedSubmission(
 	submissions: AgentSubmissionStore,
 	submission: AgentSubmission,
 	attempt: SubmissionAttemptRef,
-	agent: CreatedAgent,
+	agent: AgentDefinition,
 	reason: AgentSubmissionInterruption['reason'],
 	error: Error,
 	createContext: (dispatchId: string | undefined) => FlueContextInternal,
@@ -798,7 +798,7 @@ function submissionAttemptRef(submission: AgentSubmission): SubmissionAttemptRef
 
 async function openAgentSubmissionSession(
 	ctx: FlueContextInternal,
-	agent: CreatedAgent,
+	agent: AgentDefinition,
 	_input: AgentSubmissionInput,
 ): Promise<AgentSubmissionSession> {
 	const harness = await ctx.initializeRootHarness(agent);

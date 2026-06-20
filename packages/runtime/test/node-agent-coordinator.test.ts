@@ -10,7 +10,7 @@ import {
 } from '@earendil-works/pi-ai';
 import * as v from 'valibot';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createAgent } from '../src/agent-definition.ts';
+import { defineAgent } from '../src/agent-definition.ts';
 import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
 import { SubmissionInterruptedError } from '../src/errors.ts';
 import { createFlueContext, type DispatchInput, resolveModel } from '../src/internal.ts';
@@ -145,7 +145,7 @@ async function createRealCoordinator(
 	dbPath: string,
 ): Promise<{ coordinator: NodeAgentCoordinator; executionStore: AgentExecutionStore }> {
 	const executionStore = await openExecutionStore(dbPath);
-	const agent = createAgent(() => ({ model: REAL_MODEL }));
+	const agent = defineAgent(() => ({ model: REAL_MODEL }));
 	const coordinator = createNodeAgentCoordinator({
 		submissions: executionStore.submissions,
 		sessions: executionStore.sessions,
@@ -163,7 +163,7 @@ async function createFauxCoordinator(
 	durability?: { maxAttempts?: number; timeoutMs?: number },
 ): Promise<{ coordinator: NodeAgentCoordinator; executionStore: AgentExecutionStore }> {
 	const executionStore = await openExecutionStore(dbPath);
-	const agent = createAgent(() => ({
+	const agent = defineAgent(() => ({
 		model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		durability,
 	}));
@@ -719,7 +719,7 @@ describe('NodeAgentCoordinator', () => {
 				counts: Record<string, number>,
 				bravoExecute: ToolExecute,
 			) =>
-				createAgent(() => ({
+				defineAgent(() => ({
 					model: `${provider.getModel().provider}/${provider.getModel().id}`,
 					sandbox: {
 						createSessionEnv: async () => createNoopSessionEnv({ cwd: '/' }),
@@ -1559,7 +1559,7 @@ describe('NodeAgentCoordinator', () => {
 				submissions: executionStore.submissions,
 				sessions: executionStore.sessions,
 				agents: {
-					assistant: createAgent(() => ({
+					assistant: defineAgent(() => ({
 						model: `${provider.getModel().provider}/${provider.getModel().id}`,
 						tools: [lookup],
 					})),
@@ -1619,7 +1619,7 @@ describe('NodeAgentCoordinator', () => {
 				submissions: executionStore.submissions,
 				sessions: executionStore.sessions,
 				agents: {
-					assistant: createAgent(() => ({
+					assistant: defineAgent(() => ({
 						model: `${provider.getModel().provider}/${provider.getModel().id}`,
 						tools: [lookup],
 					})),
@@ -1999,7 +1999,7 @@ describe('NodeAgentCoordinator', () => {
 				submissions: executionStore.submissions,
 				sessions: executionStore.sessions,
 				agents: {
-					assistant: createAgent(() => ({
+					assistant: defineAgent(() => ({
 						model: `${provider.getModel().provider}/${provider.getModel().id}`,
 					})),
 				},
@@ -2104,7 +2104,7 @@ describe('NodeAgentCoordinator', () => {
 				submissions: executionStore.submissions,
 				sessions: executionStore.sessions,
 				agents: {
-					assistant: createAgent(() => ({
+					assistant: defineAgent(() => ({
 						model: `${provider.getModel().provider}/${provider.getModel().id}`,
 					})),
 				},

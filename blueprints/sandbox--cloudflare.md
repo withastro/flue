@@ -120,14 +120,14 @@ The short version, for your reference:
    above) is the key on `env`:
 
    ```ts
-   import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+   import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
    import { cloudflareSandbox } from '@flue/runtime/cloudflare';
    import { getSandbox } from '@cloudflare/sandbox';
    import * as v from 'valibot';
 
    export const route: WorkflowRouteHandler = async (_c, next) => next();
 
-   const agent = createAgent(({ id, env }) => ({
+   const agent = defineAgent(({ id, env }) => ({
      sandbox: cloudflareSandbox(getSandbox(env.Sandbox, id)),
      model: 'anthropic/claude-opus-4-7',
    }));
@@ -143,7 +143,7 @@ The short version, for your reference:
    ```
 
    Pass the result of `getSandbox()` through `cloudflareSandbox(...)` before
-   supplying it to `createAgent()`. The wrapper is provided by
+   supplying it to `defineAgent()`. The wrapper is provided by
    `@flue/runtime/cloudflare`, so no project-owned adapter file is needed.
 
 6. Tell the user to put local variables in `.dev.vars` or `.env` and run

@@ -1,7 +1,7 @@
-import { createAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
 
 export const route: WorkflowRouteHandler = async (_c, next) => next();
-const agent = createAgent(() => ({ model: 'ollama/llama3.1:8b' }));
+const agent = defineAgent(() => ({ model: 'ollama/llama3.1:8b' }));
 
 export default defineWorkflow({
 	agent,

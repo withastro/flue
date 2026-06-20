@@ -13,7 +13,7 @@ A subagent is an [agent profile](/docs/guide/building-agents/#agent-profiles) de
 Create a named profile with `defineAgentProfile(...)`, then provide it through an agent's `subagents` configuration:
 
 ```ts title="src/agents/support-assistant.ts"
-import { createAgent, defineAgentProfile } from '@flue/runtime';
+import { defineAgent, defineAgentProfile } from '@flue/runtime';
 
 const issueClassifier = defineAgentProfile({
   name: 'issue_classifier',
@@ -21,7 +21,7 @@ const issueClassifier = defineAgentProfile({
   instructions: 'Return the likely product area and urgency for the reported issue.',
 });
 
-export default createAgent(() => ({
+export default defineAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   instructions: 'Help resolve support requests. Delegate classification when it helps your answer.',
   subagents: [issueClassifier],
@@ -55,7 +55,7 @@ A `task()` call without an `agent` name is not a subagent delegation: the child 
 A workflow can choose delegation directly when application logic requires work from a particular subagent. Call `session.task(...)` with the name of a declared subagent, and provide `result` when the workflow needs validated data:
 
 ```ts title="src/workflows/review-change.ts"
-import { createAgent, defineWorkflow, defineAgentProfile } from '@flue/runtime';
+import { defineAgent, defineWorkflow, defineAgentProfile } from '@flue/runtime';
 import * as v from 'valibot';
 
 const reviewer = defineAgentProfile({
@@ -63,7 +63,7 @@ const reviewer = defineAgentProfile({
   instructions: 'Review the proposed change and identify concrete correctness risks.',
 });
 
-const coordinator = createAgent(() => ({
+const coordinator = defineAgent(() => ({
   model: 'anthropic/claude-sonnet-4-6',
   subagents: [reviewer],
 }));

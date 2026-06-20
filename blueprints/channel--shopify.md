@@ -238,13 +238,13 @@ through its own authenticated state and authorization policy.
 Bind the trusted shop and order selected by application code:
 
 ```ts
-import { createAgent } from '@flue/runtime';
+import { defineAgent } from '@flue/runtime';
 import {
   orderRefFromInstanceId,
   retrieveOrder,
 } from '../channels/shopify.ts';
 
-export default createAgent(({ id }) => {
+export default defineAgent(({ id }) => {
   const { shopDomain, orderId } = orderRefFromInstanceId(id);
   if (shopDomain !== process.env.SHOPIFY_SHOP_DOMAIN) {
     throw new TypeError('Unexpected Shopify shop.');

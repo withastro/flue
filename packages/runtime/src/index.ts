@@ -11,7 +11,7 @@ export type {
 	ActionOutputSchema,
 	JsonValue,
 } from './action.ts';
-export { createAgent, defineAgentProfile } from './agent-definition.ts';
+export { defineAgent, defineAgentProfile } from './agent-definition.ts';
 export {
 	ActionInputValidationError,
 	ActionOutputSerializationError,
@@ -81,7 +81,7 @@ export type {
 	CallHandle,
 	CompactionConfig,
 	CompactionEntry,
-	CreatedAgent,
+	AgentDefinition,
 	DispatchReceipt,
 	DurabilityConfig,
 	FileStat,

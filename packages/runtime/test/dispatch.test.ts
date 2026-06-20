@@ -4,7 +4,7 @@ import {
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it } from 'vitest';
-import { createAgent } from '../src/agent-definition.ts';
+import { defineAgent } from '../src/agent-definition.ts';
 import { OperationFailedError } from '../src/errors.ts';
 import { dispatch } from '../src/index.ts';
 import {
@@ -77,7 +77,7 @@ describe('dispatch()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			dispatchQueue: noopDispatchQueue(),
-			manifest: { agents: [{ name: 'moderator', transports: {}, created: true }] },
+			manifest: { agents: [{ name: 'moderator', transports: {}, defined: true }] },
 		});
 
 		const receipt = await dispatch({
@@ -92,8 +92,8 @@ describe('dispatch()', () => {
 		});
 	});
 
-	it('resolves a discovered agent name when dispatch() receives a created agent target', async () => {
-		const moderator = createAgent(() => ({ model: false }));
+	it('resolves a discovered agent name when dispatch() receives an agent definition target', async () => {
+		const moderator = defineAgent(() => ({ model: false }));
 		const admitted: DispatchInput[] = [];
 		configureFlueRuntime({
 			target: 'node',
@@ -104,7 +104,7 @@ describe('dispatch()', () => {
 				},
 			},
 			resolveDispatchAgentName: (candidate) => (candidate === moderator ? 'moderator' : undefined),
-			manifest: { agents: [{ name: 'moderator', transports: {}, created: true }] },
+			manifest: { agents: [{ name: 'moderator', transports: {}, defined: true }] },
 		});
 
 		await dispatch(moderator, {
@@ -121,13 +121,13 @@ describe('dispatch()', () => {
 		]);
 	});
 
-	it('rejects a created agent target when the built application cannot resolve its identity', async () => {
-		const localModerator = createAgent(() => ({ model: false }));
+	it('rejects an agent definition target when the built application cannot resolve its identity', async () => {
+		const localModerator = defineAgent(() => ({ model: false }));
 		configureFlueRuntime({
 			target: 'node',
 			dispatchQueue: noopDispatchQueue(),
 			resolveDispatchAgentName: () => undefined,
-			manifest: { agents: [{ name: 'moderator', transports: {}, created: true }] },
+			manifest: { agents: [{ name: 'moderator', transports: {}, defined: true }] },
 		});
 
 		await expect(
@@ -149,7 +149,7 @@ describe('dispatch()', () => {
 					return { dispatchId: input.dispatchId, acceptedAt: input.acceptedAt };
 				},
 			},
-			manifest: { agents: [{ name: 'moderator', transports: {}, created: true }] },
+			manifest: { agents: [{ name: 'moderator', transports: {}, defined: true }] },
 		});
 
 		await dispatch({ agent: 'moderator', id: 'guild:snapshot', input: payload });
@@ -165,7 +165,7 @@ describe('dispatch()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			dispatchQueue: noopDispatchQueue(),
-			manifest: { agents: [{ name: 'moderator', transports: {}, created: true }] },
+			manifest: { agents: [{ name: 'moderator', transports: {}, defined: true }] },
 		});
 
 		await expect(
@@ -177,7 +177,7 @@ describe('dispatch()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			dispatchQueue: noopDispatchQueue(),
-			manifest: { agents: [{ name: 'moderator', transports: {}, created: true }] },
+			manifest: { agents: [{ name: 'moderator', transports: {}, defined: true }] },
 		});
 
 		await expect(
@@ -193,7 +193,7 @@ describe('dispatch()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			dispatchQueue: noopDispatchQueue(),
-			manifest: { agents: [{ name: 'moderator', transports: {}, created: true }] },
+			manifest: { agents: [{ name: 'moderator', transports: {}, defined: true }] },
 		});
 
 		await expect(
@@ -209,7 +209,7 @@ describe('dispatch()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			dispatchQueue: noopDispatchQueue(),
-			manifest: { agents: [{ name: 'moderator', transports: {}, created: true }] },
+			manifest: { agents: [{ name: 'moderator', transports: {}, defined: true }] },
 		});
 
 		await expect(
@@ -225,7 +225,7 @@ describe('dispatch()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			dispatchQueue: noopDispatchQueue(),
-			manifest: { agents: [{ name: 'moderator', transports: {}, created: true }] },
+			manifest: { agents: [{ name: 'moderator', transports: {}, defined: true }] },
 		});
 
 		await expect(
@@ -237,7 +237,7 @@ describe('dispatch()', () => {
 		configureFlueRuntime({
 			target: 'node',
 			dispatchQueue: noopDispatchQueue(),
-			manifest: { agents: [{ name: 'moderator', transports: {}, created: true }] },
+			manifest: { agents: [{ name: 'moderator', transports: {}, defined: true }] },
 		});
 
 		await expect(
@@ -248,7 +248,7 @@ describe('dispatch()', () => {
 	it('rejects calls when the runtime has no dispatch queue', async () => {
 		configureFlueRuntime({
 			target: 'node',
-			manifest: { agents: [{ name: 'moderator', transports: {}, created: true }] },
+			manifest: { agents: [{ name: 'moderator', transports: {}, defined: true }] },
 		});
 
 		await expect(
@@ -281,7 +281,7 @@ describe('dispatched session processing', () => {
 			}
 			await originalSave(id, data);
 		};
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const input: DispatchInput = {
@@ -339,7 +339,7 @@ describe('dispatched session processing', () => {
 			}
 			await originalSave(id, data);
 		};
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const input: DirectAgentSubmissionInput = {
@@ -408,7 +408,7 @@ describe('dispatched session processing', () => {
 			},
 		} as unknown as import('../src/agent-execution-store.ts').AgentSubmissionStore;
 		const journalCommits: string[] = [];
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const input: DirectAgentSubmissionInput = {
@@ -475,7 +475,7 @@ describe('dispatched session processing', () => {
 			},
 		} as unknown as import('../src/agent-execution-store.ts').AgentSubmissionStore;
 		const journalCommits: string[] = [];
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const input: DirectAgentSubmissionInput = {
@@ -532,7 +532,7 @@ describe('dispatched session processing', () => {
 			payload: { message: 'Hello directly' },
 			acceptedAt: '2026-06-01T00:00:00.000Z',
 		};
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const createContext = () =>
@@ -622,7 +622,7 @@ describe('dispatched session processing', () => {
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		});
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const ctx = createFlueContext({
@@ -685,7 +685,7 @@ describe('dispatched session processing', () => {
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		});
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const ctx = createFlueContext({
@@ -740,7 +740,7 @@ describe('dispatched session processing', () => {
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		});
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const ctx = createFlueContext({
@@ -827,7 +827,7 @@ describe('dispatched session processing', () => {
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		});
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const ctx = createFlueContext({
@@ -915,7 +915,7 @@ describe('dispatched session processing', () => {
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		});
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 			compaction: { keepRecentTokens: 3 },
 		}));
@@ -1076,7 +1076,7 @@ describe('repairInterruptedToolCalls()', () => {
 			input: { type: 'flagged' },
 			acceptedAt: '2026-06-01T00:00:00.000Z',
 		};
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const ctx = createFlueContext({
@@ -1143,7 +1143,7 @@ describe('repairInterruptedToolCalls()', () => {
 			input: { type: 'flagged' },
 			acceptedAt: '2026-06-01T00:00:00.000Z',
 		};
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const ctx = createFlueContext({
@@ -1210,7 +1210,7 @@ describe('repairInterruptedToolCalls()', () => {
 			input: { type: 'flagged' },
 			acceptedAt: '2026-06-01T00:00:00.000Z',
 		};
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const ctx = createFlueContext({
@@ -1276,7 +1276,7 @@ describe('repairInterruptedToolCalls()', () => {
 			input: { type: 'flagged' },
 			acceptedAt: '2026-06-01T00:00:00.000Z',
 		};
-		const agent = createAgent(() => ({
+		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		}));
 		const ctx = createFlueContext({

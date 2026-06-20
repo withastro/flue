@@ -25,11 +25,11 @@ npm install -D @flue/cli
 `.flue/workflows/hello.ts`:
 
 ```typescript
-import { createAgent, defineWorkflow } from '@flue/runtime';
+import { defineAgent, defineWorkflow } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
-const agent = createAgent(() => ({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' }));
+const agent = defineAgent(() => ({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' }));
 
 export default defineWorkflow({
   agent,
@@ -163,11 +163,11 @@ In GitLab CI, this means you set the secrets you want the agent's CLIs to see in
 `.flue/workflows/triage.ts`:
 
 ```typescript
-import { createAgent, defineWorkflow } from '@flue/runtime';
+import { defineAgent, defineWorkflow } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
-const agent = createAgent(() => ({
+const agent = defineAgent(() => ({
   sandbox: local({
     env: { GITLAB_TOKEN: process.env.GITLAB_TOKEN },
   }),
@@ -198,7 +198,7 @@ export default defineWorkflow({
 });
 ```
 
-If you want a tighter boundary — the agent can call a specific operation but never see the underlying token — return the custom tool from `createAgent(...)` with `tools: [...]`. The tool implementation reads the secret from `process.env`; the agent only sees the tool's parameters and result.
+If you want a tighter boundary — the agent can call a specific operation but never see the underlying token — return the custom tool from `defineAgent(...)` with `tools: [...]`. The tool implementation reads the secret from `process.env`; the agent only sees the tool's parameters and result.
 
 ### Subagents
 
@@ -209,7 +209,7 @@ const reviewer = defineAgentProfile({
   name: 'reviewer',
   instructions: 'Focus on correctness, security, and project standards.',
 });
-const agent = createAgent(() => ({ model: 'anthropic/claude-sonnet-4-6', subagents: [reviewer] }));
+const agent = defineAgent(() => ({ model: 'anthropic/claude-sonnet-4-6', subagents: [reviewer] }));
 async run({ harness, input }) {
   const { data } = await (await harness.session()).task(`Review this MR:\n${input.diff}`, {
   agent: 'reviewer',
@@ -288,11 +288,11 @@ Add these as CI/CD variables (**Settings > CI/CD > Variables**, masked):
 Result schemas aren't just for type safety — they're how you orchestrate multi-step workflows. Because you get typed data back from `prompt()` and `skill()`, you can branch on results within a single agent:
 
 ```typescript
-import { createAgent, defineWorkflow } from '@flue/runtime';
+import { defineAgent, defineWorkflow } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
 import * as v from 'valibot';
 
-const agent = createAgent(() => ({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' }));
+const agent = defineAgent(() => ({ sandbox: local(), model: 'anthropic/claude-sonnet-4-6' }));
 
 export default defineWorkflow({
   agent,
