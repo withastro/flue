@@ -1228,7 +1228,7 @@ function superviseDevCommand(args: DevArgs) {
 		configFilesByDirectory.set(directory, basenames);
 	}
 
-	const watchers: fs.FSWatcher[] = [];
+	const watchers: { close(): void }[] = [];
 	let child: ChildProcess | undefined;
 	let restartTimer: NodeJS.Timeout | undefined;
 	let restartRequested = false;
@@ -1286,8 +1286,8 @@ function superviseDevCommand(args: DevArgs) {
 		child?.kill('SIGTERM');
 	};
 
-	try {
-		for (const [directory, basenames] of configFilesByDirectory) {
+	for (const [directory, basenames] of configFilesByDirectory) {
+		try {
 			const watcher = fs.watch(directory, (_event, filename) => {
 				const basename = filename?.toString();
 				if (basename !== undefined) {
@@ -1307,10 +1307,24 @@ function superviseDevCommand(args: DevArgs) {
 				exit(1);
 			});
 			watchers.push(watcher);
+		} catch (err) {
+			if (err instanceof Error && 'code' in err && ((err as NodeJS.ErrnoException).code === 'EMFILE' || (err as NodeJS.ErrnoException).code === 'ENOSPC')) {
+				console.error(`${dim('config')} ${(err as NodeJS.ErrnoException).code}: ${(err as Error).message}; falling back to polling`);
+				const interval = setInterval(() => {
+					for (const basename of basenames) {
+						const configFile = path.join(directory, basename);
+						if (configFileStates.get(configFile) !== readConfigFileState(configFile)) {
+							restart(configFile);
+							return;
+						}
+					}
+				}, 1000);
+				watchers.push({ close: () => clearInterval(interval) });
+			} else {
+				cliError(`Config watcher failed: ${err instanceof Error ? err.message : String(err)}`);
+				exit(1);
+			}
 		}
-	} catch (err) {
-		cliError(`Config watcher failed: ${err instanceof Error ? err.message : String(err)}`);
-		exit(1);
 	}
 
 	const shutdown = (signal: NodeJS.Signals) => {

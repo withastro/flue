@@ -341,7 +341,7 @@ interface WatcherHandle {
  */
 function createWatcher(options: WatcherOptions): WatcherHandle {
 	const { root, sourceRoot, output, envFile, configFiles, onChange } = options;
-	const watchers: fs.FSWatcher[] = [];
+	const watchers: { close(): void }[] = [];
 	const watchesDotFlue = sourceRoot === path.join(root, '.flue');
 	const ignoredConfigFiles = new Set(configFiles.map((file) => path.resolve(file)));
 
@@ -387,7 +387,43 @@ function createWatcher(options: WatcherOptions): WatcherHandle {
 		});
 		watchers.push(w);
 	} catch (err) {
-		error(`Failed to watch ${root}: ${err instanceof Error ? err.message : String(err)}`);
+		if (err instanceof Error && 'code' in err && ((err as NodeJS.ErrnoException).code === 'EMFILE' || (err as NodeJS.ErrnoException).code === 'ENOSPC')) {
+			console.warn(`${dim('dev')} ${(err as NodeJS.ErrnoException).code}: file watching unavailable; polling ${root}`);
+			const cache = new Map<string, number>();
+			const interval = setInterval(() => {
+				const walk = (dir: string, baseRel: string) => {
+					let entries: fs.Dirent[];
+					try {
+						entries = fs.readdirSync(dir, { withFileTypes: true });
+					} catch {
+						return;
+					}
+					for (const entry of entries) {
+						const relPath = baseRel ? `${baseRel}/${entry.name}` : entry.name;
+						if (entry.isDirectory()) {
+							if (isIgnoredPath(relPath)) continue;
+							walk(path.join(dir, entry.name), relPath);
+						} else if (entry.isFile()) {
+							if (isIgnoredPath(relPath)) continue;
+							try {
+								const stat = fs.statSync(path.join(dir, entry.name));
+								const cached = cache.get(relPath);
+								if (cached !== undefined && cached !== stat.mtimeMs) {
+									onChange(relPath);
+								}
+								cache.set(relPath, stat.mtimeMs);
+							} catch {
+								// file removed between readdir and stat
+							}
+						}
+					}
+				};
+				walk(root, '');
+			}, 1000);
+			watchers.push({ close: () => clearInterval(interval) });
+		} else {
+			error(`Failed to watch ${root}: ${err instanceof Error ? err.message : String(err)}`);
+		}
 	}
 
 	try {
@@ -397,7 +433,28 @@ function createWatcher(options: WatcherOptions): WatcherHandle {
 			if (filename?.toString() === envBasename) onChange(envFile);
 		});
 		watchers.push(w);
-	} catch {}
+	} catch (err) {
+		if (err instanceof Error && 'code' in err && ((err as NodeJS.ErrnoException).code === 'EMFILE' || (err as NodeJS.ErrnoException).code === 'ENOSPC')) {
+			let cached: string | undefined;
+			try {
+				const stat = fs.statSync(envFile);
+				cached = `${stat.mtimeMs}:${stat.size}`;
+			} catch {}
+			const interval = setInterval(() => {
+				try {
+					const stat = fs.statSync(envFile);
+					const state = `${stat.mtimeMs}:${stat.size}`;
+					if (cached !== undefined && cached !== state) {
+						onChange(envFile);
+					}
+					cached = state;
+				} catch {
+					// file removed
+				}
+			}, 1000);
+			watchers.push({ close: () => clearInterval(interval) });
+		}
+	}
 
 	return {
 		close() {
