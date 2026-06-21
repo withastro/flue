@@ -1,7 +1,6 @@
 /// <reference path="../types/skill-md.d.ts" />
 /// <reference path="../types/markdown-md.d.ts" />
 
-export { defineAction } from './action.ts';
 export type {
 	ActionContext,
 	ActionDefinition,
@@ -11,18 +10,14 @@ export type {
 	ActionOutputSchema,
 	JsonValue,
 } from './action.ts';
+export { defineAction } from './action.ts';
 export { createAgent, defineAgent, defineAgentProfile } from './agent-definition.ts';
 export {
 	ActionInputValidationError,
 	ActionOutputSerializationError,
 	ActionOutputValidationError,
 	AttachmentNotAvailableError,
-	WorkflowAdmissionError,
-	WorkflowAdmissionUnavailableError,
-	WorkflowInputSerializationError,
-	WorkflowInputUnexpectedError,
-	WorkflowInvocationNotConfiguredError,
-	WorkflowNotDiscoveredError,
+	DelegationDepthExceededError,
 	FlueError,
 	ModelNotConfiguredError,
 	OperationFailedError,
@@ -37,11 +32,16 @@ export {
 	SubmissionInterruptedError,
 	SubmissionRetryExhaustedError,
 	SubmissionTimeoutError,
-	DelegationDepthExceededError,
 	ToolInputValidationError,
 	ToolNameConflictError,
 	type ToolValidationIssue,
 	type ValidationIssue,
+	WorkflowAdmissionError,
+	WorkflowAdmissionUnavailableError,
+	WorkflowInputSerializationError,
+	WorkflowInputUnexpectedError,
+	WorkflowInvocationNotConfiguredError,
+	WorkflowNotDiscoveredError,
 } from './errors.ts';
 export { IMAGE_DATA_OMITTED } from './event-redaction.ts';
 export type { McpServerConnection, McpServerOptions, McpTransport } from './mcp.ts';
@@ -50,8 +50,8 @@ export { ResultUnavailableError } from './result.ts';
 export { type FlueEventSubscriber, observe } from './runtime/events.ts';
 export type { AgentManifestEntry } from './runtime/flue-app.ts';
 export { dispatch, invoke } from './runtime/flue-app.ts';
-export type { WorkflowInvocationReceipt, WorkflowInvokeRequest } from './runtime/invoke.ts';
 export { getRun, listAgents, listRuns } from './runtime/inspect.ts';
+export type { WorkflowInvocationReceipt, WorkflowInvokeRequest } from './runtime/invoke.ts';
 export {
 	type HttpProviderRegistration,
 	type ProviderRegistration,
@@ -68,11 +68,10 @@ export type {
 } from './runtime/run-store.ts';
 export { bash, createSandboxSessionEnv, type SandboxApi } from './sandbox.ts';
 export { defineTool } from './tool.ts';
-export { defineWorkflow } from './workflow-definition.ts';
-export type { WorkflowDefinition } from './workflow-definition.ts';
 export type {
-	AgentInitializerContext,
+	AgentDefinition,
 	AgentDispatchRequest,
+	AgentInitializerContext,
 	AgentProfile,
 	AgentRouteHandler,
 	AgentRuntimeConfig,
@@ -82,7 +81,6 @@ export type {
 	CallHandle,
 	CompactionConfig,
 	CompactionEntry,
-	AgentDefinition,
 	DispatchReceipt,
 	DurabilityConfig,
 	FileStat,
@@ -132,6 +130,8 @@ export type {
 	WorkflowRouteHandler,
 	WorkflowRunsHandler,
 } from './types.ts';
+export type { WorkflowDefinition } from './workflow-definition.ts';
+export { defineWorkflow } from './workflow-definition.ts';
 
 // Note: the persistence storage contract (`PersistenceAdapter`, `SessionStore`,
 // `SessionData`, and friends) lives at `@flue/runtime/adapter`, the canonical

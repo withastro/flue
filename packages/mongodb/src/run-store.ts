@@ -1,3 +1,4 @@
+import type { WorkflowRunPointer } from '@flue/runtime';
 import type {
 	CreateRunInput,
 	EndRunInput,
@@ -8,7 +9,6 @@ import type {
 	RunStatus,
 	RunStore,
 } from '@flue/runtime/adapter';
-import type { WorkflowRunPointer } from '@flue/runtime';
 import {
 	clampLimit,
 	DEFAULT_LIST_LIMIT,
@@ -41,16 +41,14 @@ export class MongoRunStore implements RunStore {
 				)
 					return;
 				if (payload) await this.values.publish(payload, tx);
-				await tx
-					.collection(collectionName(this.prefix, 'runs'))
-					.insertOne({
-						_id: input.runId,
-						runId: input.runId,
-						workflowName: input.workflowName,
-						status: 'active',
-						startedAt: new Date(input.startedAt).toISOString(),
-						payload: payload ?? null,
-					});
+				await tx.collection(collectionName(this.prefix, 'runs')).insertOne({
+					_id: input.runId,
+					runId: input.runId,
+					workflowName: input.workflowName,
+					status: 'active',
+					startedAt: new Date(input.startedAt).toISOString(),
+					payload: payload ?? null,
+				});
 				committed = true;
 			});
 		} catch (error) {
@@ -113,9 +111,7 @@ export class MongoRunStore implements RunStore {
 			{ runId },
 			{ projection: { _id: 0, runId: 1, workflowName: 1 } },
 		);
-		return row
-			? { runId: String(row.runId), workflowName: String(row.workflowName) }
-			: null;
+		return row ? { runId: String(row.runId), workflowName: String(row.workflowName) } : null;
 	}
 	async listRuns(opts: ListRunsOpts = {}): Promise<ListRunsResponse> {
 		const limit = clampLimit(opts.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);

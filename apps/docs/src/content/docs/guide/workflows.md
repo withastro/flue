@@ -95,18 +95,15 @@ const { runId } = await invoke(summarize, {
 
 Workflow HTTP access is private by default. Two independent module exports control it:
 
-| Export  | Exposes                                                     |
-| ------- | ----------------------------------------------------------- |
-| `route` | Invocation at `POST /workflows/<name>`.                     |
-| `runs`  | Run records and event streams beneath `/runs/<runId>`.      |
+| Export  | Exposes                                                |
+| ------- | ------------------------------------------------------ |
+| `route` | Invocation at `POST /workflows/<name>`.                |
+| `runs`  | Run records and event streams beneath `/runs/<runId>`. |
 
 Use the same authentication policy for both when callers should be able to invoke and inspect a workflow:
 
 ```ts title="src/workflows/summarize.ts"
-import type {
-  WorkflowRouteHandler,
-  WorkflowRunsHandler,
-} from '@flue/runtime';
+import type { WorkflowRouteHandler, WorkflowRunsHandler } from '@flue/runtime';
 import { requireUser } from '../auth.ts';
 
 export const route: WorkflowRouteHandler = requireUser;

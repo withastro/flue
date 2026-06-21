@@ -402,7 +402,9 @@ export interface AgentRuntimeConfig {
 /** Opaque agent initializer created by {@link defineAgent}. */
 export interface AgentDefinition<TEnv = Record<string, any>> {
 	readonly __flueAgentDefinition: true;
-	initialize(context: AgentInitializerContext<TEnv>): AgentRuntimeConfig | Promise<AgentRuntimeConfig>;
+	initialize(
+		context: AgentInitializerContext<TEnv>,
+	): AgentRuntimeConfig | Promise<AgentRuntimeConfig>;
 }
 
 // ─── Flue Event Context ────────────────────────────────────────────────────

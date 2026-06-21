@@ -1,7 +1,7 @@
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import type * as v from 'valibot';
 import { formatPackagedSkillFilePath } from './agent.ts';
-import { parseValibot, isTopLevelObjectSchema, valibotToJsonSchema } from './schema.ts';
+import { isTopLevelObjectSchema, parseValibot, valibotToJsonSchema } from './schema.ts';
 import { parseSkillMarkdown } from './skill-frontmatter.ts';
 import type { PackagedSkillDirectory, SkillReference } from './types.ts';
 

@@ -3,11 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { InMemoryRunStore } from '../src/node/run-store.ts';
 import { configureFlueRuntime, resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
 import { getRun, listAgents, listRuns } from '../src/runtime/inspect.ts';
-import {
-	cloudflareRuntime,
-	agentRecord,
-	nodeRuntime,
-} from './helpers/runtime-config.ts';
+import { agentRecord, cloudflareRuntime, nodeRuntime } from './helpers/runtime-config.ts';
 
 afterEach(() => {
 	resetFlueRuntimeForTests();

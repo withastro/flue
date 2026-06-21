@@ -40,18 +40,16 @@ export class ValueStore {
 			updatedAt: Date.now(),
 		});
 		try {
-			await this.runner
-				.collection(collectionName(this.prefix, 'values'))
-				.insertMany(
-					parts.map((data, index) => ({
-						_id: `${pointer.generation}:${index}`,
-						owner,
-						generation: pointer.generation,
-						index,
-						count: parts.length,
-						data,
-					})),
-				);
+			await this.runner.collection(collectionName(this.prefix, 'values')).insertMany(
+				parts.map((data, index) => ({
+					_id: `${pointer.generation}:${index}`,
+					owner,
+					generation: pointer.generation,
+					index,
+					count: parts.length,
+					data,
+				})),
+			);
 			return pointer;
 		} catch (error) {
 			await this.deleteParts(pointer);

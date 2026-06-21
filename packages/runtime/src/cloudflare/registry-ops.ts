@@ -102,9 +102,7 @@ class SqlRegistryOps implements RegistryOps {
 		const row = this.sql
 			.exec('SELECT run_id, workflow_name FROM flue_registry_runs WHERE run_id = ?', runId)
 			.toArray()[0];
-		return row
-			? { runId: String(row.run_id), workflowName: String(row.workflow_name) }
-			: null;
+		return row ? { runId: String(row.run_id), workflowName: String(row.workflow_name) } : null;
 	}
 
 	listRuns(opts: ListRunsOpts): ListRunsResponse {

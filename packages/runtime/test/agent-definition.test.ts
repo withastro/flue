@@ -1,14 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
-	defineAgent,
 	defineAction,
+	defineAgent,
 	defineAgentProfile,
 	defineTool,
 	ModelNotConfiguredError,
 } from '../src/index.ts';
 import type { FlueContextConfig } from '../src/internal.ts';
 import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
-import type { AgentProfile, AgentDefinition, ToolDefinition } from '../src/types.ts';
+import type { AgentDefinition, AgentProfile, ToolDefinition } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
 
 function createContext(overrides: Partial<FlueContextConfig> = {}) {
@@ -224,7 +224,9 @@ describe('defineAgentProfile()', () => {
 
 	it('replaces scalar profile defaults when an agent definition supplies scalar overrides', async () => {
 		const profile = defineAgentProfile({ model: 'profile/model' });
-		const harness = await createContext().initializeRootHarness(defineAgent(() => ({ profile, model: false })));
+		const harness = await createContext().initializeRootHarness(
+			defineAgent(() => ({ profile, model: false })),
+		);
 		const session = await harness.session();
 
 		await expect(session.prompt('Answer without a model.')).rejects.toThrow(

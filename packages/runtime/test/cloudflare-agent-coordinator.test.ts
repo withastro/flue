@@ -60,7 +60,9 @@ function makeFakeSql() {
 
 function makeRuntime(
 	options: {
-		createdAgent?: Parameters<typeof createCloudflareAgentRuntime>[0]['agents'][number]['definition'];
+		createdAgent?: Parameters<
+			typeof createCloudflareAgentRuntime
+		>[0]['agents'][number]['definition'];
 		createContext?: Parameters<typeof createCloudflareAgentRuntime>[0]['createContext'];
 		createEventStreamStore?: Parameters<
 			typeof createCloudflareAgentRuntime
@@ -68,9 +70,7 @@ function makeRuntime(
 	} = {},
 ) {
 	return createCloudflareAgentRuntime({
-		agents: options.createdAgent
-			? [{ name: 'assistant', definition: options.createdAgent }]
-			: [],
+		agents: options.createdAgent ? [{ name: 'assistant', definition: options.createdAgent }] : [],
 		createContext:
 			options.createContext ??
 			(() => {

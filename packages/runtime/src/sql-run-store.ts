@@ -78,9 +78,7 @@ class SqlRunStore implements RunStore {
 			.exec('SELECT run_id, workflow_name FROM flue_runs WHERE run_id = ?', runId)
 			.toArray();
 		const row = rows[0];
-		return row
-			? { runId: String(row.run_id), workflowName: String(row.workflow_name) }
-			: null;
+		return row ? { runId: String(row.run_id), workflowName: String(row.workflow_name) } : null;
 	}
 
 	async listRuns(opts: ListRunsOpts = {}): Promise<ListRunsResponse> {

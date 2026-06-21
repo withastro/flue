@@ -1,13 +1,13 @@
 import { defineAgent } from '../../src/agent-definition.ts';
-import type { AgentDefinition } from '../../src/types.ts';
-import type { WorkflowDefinition } from '../../src/workflow-definition.ts';
+import { InMemoryRunStore } from '../../src/node/run-store.ts';
 import type {
 	AgentRecord,
 	CloudflareRuntime,
 	NodeRuntime,
 	WorkflowRecord,
 } from '../../src/runtime/flue-app.ts';
-import { InMemoryRunStore } from '../../src/node/run-store.ts';
+import type { AgentDefinition } from '../../src/types.ts';
+import type { WorkflowDefinition } from '../../src/workflow-definition.ts';
 import { createTestEventStreamStore } from './test-event-stream-store.ts';
 
 export function agentRecord(

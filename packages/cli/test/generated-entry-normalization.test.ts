@@ -16,19 +16,21 @@ type NormalizeBuiltModules = (
 const normalizeBuiltModules = new Function(
 	'assertWorkflowDefinition',
 	`${generateBuiltModuleNormalizationSource()}; return normalizeBuiltModules;`,
-)(
-	(value: unknown, name: string) => {
-		const workflow = value as { __flueWorkflowDefinition?: unknown; agent?: unknown; action?: unknown };
-		if (
-			!workflow ||
-			workflow.__flueWorkflowDefinition !== true ||
-			!workflow.agent ||
-			!workflow.action
-		) {
-			throw new Error(`[flue] Workflow "${name}" must default-export defineWorkflow(...).`);
-		}
-	},
-) as NormalizeBuiltModules;
+)((value: unknown, name: string) => {
+	const workflow = value as {
+		__flueWorkflowDefinition?: unknown;
+		agent?: unknown;
+		action?: unknown;
+	};
+	if (
+		!workflow ||
+		workflow.__flueWorkflowDefinition !== true ||
+		!workflow.agent ||
+		!workflow.action
+	) {
+		throw new Error(`[flue] Workflow "${name}" must default-export defineWorkflow(...).`);
+	}
+}) as NormalizeBuiltModules;
 
 function agentModule(overrides: Record<string, unknown> = {}): Record<string, unknown> {
 	return { default: { __flueAgentDefinition: true, initialize: () => ({}) }, ...overrides };
@@ -136,7 +138,9 @@ describe('normalizeBuiltModules()', () => {
 		const module = workflowModule();
 		const normalized = normalizeBuiltModules({}, { report: module });
 
-		expect(normalized.workflows.find((record) => record.definition === module.default)?.name).toBe('report');
+		expect(normalized.workflows.find((record) => record.definition === module.default)?.name).toBe(
+			'report',
+		);
 		const clone = { ...(module.default as object) };
 		expect(normalized.workflows.find((record) => record.definition === clone)).toBeUndefined();
 	});

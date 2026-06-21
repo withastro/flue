@@ -594,110 +594,110 @@ export default defineWorkflow({
 
 		const session = await harness.session();
 
-	// ─── LLM phase ──────────────────────────────────────────────────────
-	const pr = await fetchPullRequest(session, prNumber);
-	log.info('pr-redirect: fetched PR', { prNumber, author: pr.author, title: pr.title });
+		// ─── LLM phase ──────────────────────────────────────────────────────
+		const pr = await fetchPullRequest(session, prNumber);
+		log.info('pr-redirect: fetched PR', { prNumber, author: pr.author, title: pr.title });
 
-	const classification = await classify(session, pr);
-	log.info('pr-redirect: classified', {
-		prNumber,
-		kind: classification.kind,
-		suggestedTitle: classification.suggestedTitle,
-	});
-
-	const queries = await generateSearchQueries(session, pr, classification);
-	log.info('pr-redirect: search queries', { prNumber, queries });
-
-	const allCandidates: Candidate[] = [];
-	for (const q of queries) {
-		const results =
-			classification.kind === 'bug'
-				? await searchIssues(session, log, pr.baseRepo, q)
-				: await searchDiscussions(session, log, pr.baseRepo, q);
-		allCandidates.push(...results);
-	}
-	log.info('pr-redirect: candidates', { prNumber, count: allCandidates.length });
-
-	const duplicate = await scoreDuplicates(session, log, pr, classification, allCandidates);
-	if (duplicate) {
-		log.info('pr-redirect: duplicate found', {
+		const classification = await classify(session, pr);
+		log.info('pr-redirect: classified', {
 			prNumber,
-			duplicateNumber: duplicate.number,
-			confidence: duplicate.confidence,
+			kind: classification.kind,
+			suggestedTitle: classification.suggestedTitle,
 		});
-	} else {
-		log.info('pr-redirect: no duplicate', { prNumber });
-	}
 
-	// ─── Build the Decision ─────────────────────────────────────────────
-	// Pure data and a final LLM call (only for bugs). No mutations
-	// happen until the switch below.
-	let decision: Decision;
-	if (duplicate) {
-		decision = {
-			action: 'comment-on-duplicate',
-			duplicate,
-			commentBody: duplicateCommentBody(pr, classification),
-		};
-	} else if (classification.kind === 'bug') {
-		const llmBody = await writeBugIssueBody(session, pr);
-		decision = {
-			action: 'create-issue',
-			title: classification.suggestedTitle,
-			body: bugIssueBody(pr, llmBody),
-		};
-	} else {
-		decision = {
-			action: 'create-discussion',
-			title: classification.suggestedTitle,
-			body: featureDiscussionBody(pr),
-		};
-	}
+		const queries = await generateSearchQueries(session, pr, classification);
+		log.info('pr-redirect: search queries', { prNumber, queries });
 
-	// ─── Deterministic phase ────────────────────────────────────────────
-	// No LLM beyond this point. All mutations use FREDKBOT_GITHUB_TOKEN
-	// via lib/github.ts on inputs already validated above.
-	//
-	// Order is significant: create the destination first so the PR's
-	// closing comment can link to it. If `closePullRequest` fails, a
-	// maintainer can close manually — the destination still exists.
-	let destinationUrl: string;
-	let destinationKind: 'issue' | 'discussion' | 'duplicate';
-	switch (decision.action) {
-		case 'comment-on-duplicate': {
-			if (decision.duplicate.kind === 'issue') {
-				await commentOnIssue(decision.duplicate.number, decision.commentBody);
-			} else {
-				await commentOnDiscussion(decision.duplicate.number, decision.commentBody);
-			}
-			destinationUrl = decision.duplicate.url;
-			destinationKind = 'duplicate';
-			break;
+		const allCandidates: Candidate[] = [];
+		for (const q of queries) {
+			const results =
+				classification.kind === 'bug'
+					? await searchIssues(session, log, pr.baseRepo, q)
+					: await searchDiscussions(session, log, pr.baseRepo, q);
+			allCandidates.push(...results);
 		}
-		case 'create-issue': {
-			const created = await createIssue({ title: decision.title, body: decision.body });
-			destinationUrl = created.htmlUrl;
-			destinationKind = 'issue';
-			break;
-		}
-		case 'create-discussion': {
-			const created = await createDiscussion({
-				title: decision.title,
-				body: decision.body,
-				categoryName: FEATURE_REQUEST_CATEGORY,
+		log.info('pr-redirect: candidates', { prNumber, count: allCandidates.length });
+
+		const duplicate = await scoreDuplicates(session, log, pr, classification, allCandidates);
+		if (duplicate) {
+			log.info('pr-redirect: duplicate found', {
+				prNumber,
+				duplicateNumber: duplicate.number,
+				confidence: duplicate.confidence,
 			});
-			destinationUrl = created.url;
-			destinationKind = 'discussion';
-			break;
+		} else {
+			log.info('pr-redirect: no duplicate', { prNumber });
 		}
-	}
 
-	await commentOnPullRequest(prNumber, closePrComment(destinationUrl, destinationKind));
-	await closePullRequest(prNumber);
+		// ─── Build the Decision ─────────────────────────────────────────────
+		// Pure data and a final LLM call (only for bugs). No mutations
+		// happen until the switch below.
+		let decision: Decision;
+		if (duplicate) {
+			decision = {
+				action: 'comment-on-duplicate',
+				duplicate,
+				commentBody: duplicateCommentBody(pr, classification),
+			};
+		} else if (classification.kind === 'bug') {
+			const llmBody = await writeBugIssueBody(session, pr);
+			decision = {
+				action: 'create-issue',
+				title: classification.suggestedTitle,
+				body: bugIssueBody(pr, llmBody),
+			};
+		} else {
+			decision = {
+				action: 'create-discussion',
+				title: classification.suggestedTitle,
+				body: featureDiscussionBody(pr),
+			};
+		}
 
-	// Done last so that a partial-failure run leaves the label in place
-	// and a maintainer can re-trigger by removing-and-re-adding it.
-	await removeLabelIfPresent(prNumber, TRIAGE_LABEL);
+		// ─── Deterministic phase ────────────────────────────────────────────
+		// No LLM beyond this point. All mutations use FREDKBOT_GITHUB_TOKEN
+		// via lib/github.ts on inputs already validated above.
+		//
+		// Order is significant: create the destination first so the PR's
+		// closing comment can link to it. If `closePullRequest` fails, a
+		// maintainer can close manually — the destination still exists.
+		let destinationUrl: string;
+		let destinationKind: 'issue' | 'discussion' | 'duplicate';
+		switch (decision.action) {
+			case 'comment-on-duplicate': {
+				if (decision.duplicate.kind === 'issue') {
+					await commentOnIssue(decision.duplicate.number, decision.commentBody);
+				} else {
+					await commentOnDiscussion(decision.duplicate.number, decision.commentBody);
+				}
+				destinationUrl = decision.duplicate.url;
+				destinationKind = 'duplicate';
+				break;
+			}
+			case 'create-issue': {
+				const created = await createIssue({ title: decision.title, body: decision.body });
+				destinationUrl = created.htmlUrl;
+				destinationKind = 'issue';
+				break;
+			}
+			case 'create-discussion': {
+				const created = await createDiscussion({
+					title: decision.title,
+					body: decision.body,
+					categoryName: FEATURE_REQUEST_CATEGORY,
+				});
+				destinationUrl = created.url;
+				destinationKind = 'discussion';
+				break;
+			}
+		}
+
+		await commentOnPullRequest(prNumber, closePrComment(destinationUrl, destinationKind));
+		await closePullRequest(prNumber);
+
+		// Done last so that a partial-failure run leaves the label in place
+		// and a maintainer can re-trigger by removing-and-re-adding it.
+		await removeLabelIfPresent(prNumber, TRIAGE_LABEL);
 
 		log.info('pr-redirect: done', { prNumber, action: decision.action, destinationUrl });
 		return { action: decision.action, destinationUrl, prNumber };

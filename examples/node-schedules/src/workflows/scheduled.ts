@@ -1,5 +1,6 @@
 import { defineAgent, defineWorkflow } from '@flue/runtime';
 import * as v from 'valibot';
+
 const agent = defineAgent(() => ({ model: 'anthropic/claude-sonnet-4-6' }));
 export default defineWorkflow({
 	agent,

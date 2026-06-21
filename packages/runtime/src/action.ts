@@ -5,22 +5,26 @@ import {
 	ActionOutputValidationError,
 	WorkflowInputUnexpectedError,
 } from './errors.ts';
-import { isTopLevelObjectSchema, isValibotSchema, parseValibot } from './schema.ts';
 import { cloneJsonSerializable } from './json-snapshot.ts';
+import { isTopLevelObjectSchema, isValibotSchema, parseValibot } from './schema.ts';
 import type { FlueHarness, FlueLogger } from './types.ts';
 
 const definedActions = new WeakSet<object>();
 
-export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+export type JsonValue =
+	| null
+	| boolean
+	| number
+	| string
+	| JsonValue[]
+	| { [key: string]: JsonValue };
 export type ActionInputSchema = v.GenericSchema<Record<string, unknown>, unknown>;
 export type ActionOutputSchema = v.GenericSchema<any, NonNullable<unknown> | null>;
 
 export type ActionContext<S extends ActionInputSchema | undefined> = {
 	readonly harness: FlueHarness;
 	readonly log: FlueLogger;
-} & (S extends ActionInputSchema
-	? { readonly input: v.InferOutput<S> }
-	: Record<never, never>);
+} & (S extends ActionInputSchema ? { readonly input: v.InferOutput<S> } : Record<never, never>);
 
 type ActionRunResult<S extends ActionOutputSchema | undefined> = S extends ActionOutputSchema
 	? v.InferInput<S>
@@ -38,23 +42,19 @@ export interface ActionDefinition<
 	run(context: ActionContext<TInput>): ActionRunResult<TOutput> | Promise<ActionRunResult<TOutput>>;
 }
 
-export type ActionInput<TAction extends ActionDefinition> = TAction extends ActionDefinition<
-	infer TInput,
-	any
->
-	? TInput extends ActionInputSchema
-		? v.InferInput<TInput>
-		: never
-	: never;
+export type ActionInput<TAction extends ActionDefinition> =
+	TAction extends ActionDefinition<infer TInput, any>
+		? TInput extends ActionInputSchema
+			? v.InferInput<TInput>
+			: never
+		: never;
 
-export type ActionOutput<TAction extends ActionDefinition> = TAction extends ActionDefinition<
-	any,
-	infer TOutput
->
-	? TOutput extends ActionOutputSchema
-		? v.InferOutput<TOutput>
-		: unknown
-	: never;
+export type ActionOutput<TAction extends ActionDefinition> =
+	TAction extends ActionDefinition<any, infer TOutput>
+		? TOutput extends ActionOutputSchema
+			? v.InferOutput<TOutput>
+			: unknown
+		: never;
 
 type ActionOptions<
 	TInput extends ActionInputSchema | undefined,

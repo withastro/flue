@@ -19,8 +19,8 @@ import type { CreateAgentContextFn } from '../runtime/handle-agent.ts';
 import { isStreamExcludedEvent } from '../runtime/run-store.ts';
 import { deleteSessionTree } from '../session.ts';
 import type {
-	AttachedAgentEvent,
 	AgentDefinition,
+	AttachedAgentEvent,
 	DirectAgentPayload,
 	DispatchReceipt,
 	SessionStore,
@@ -181,7 +181,8 @@ export function createNodeAgentCoordinator(options: {
 
 	function resolveAgent(name: string): AgentDefinition {
 		const agent = agents.find((record) => record.name === name)?.definition;
-		if (!agent) throw new Error(`[flue] submission target agent "${name}" has no agent definition.`);
+		if (!agent)
+			throw new Error(`[flue] submission target agent "${name}" has no agent definition.`);
 		return agent;
 	}
 
@@ -520,7 +521,9 @@ export function createNodeAgentCoordinator(options: {
 				if (stopping) throw new Error('[flue] Coordinator is shutting down.');
 				const agent = agents.find((record) => record.name === agentName)?.definition;
 				if (!agent) {
-					throw new Error(`[flue] direct prompt target agent "${agentName}" has no agent definition.`);
+					throw new Error(
+						`[flue] direct prompt target agent "${agentName}" has no agent definition.`,
+					);
 				}
 
 				const input = createDirectAgentSubmissionInput({

@@ -112,7 +112,7 @@ Mounting `flue()` does not make every discovered agent or workflow directly invo
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
 | Agent `route`     | HTTP prompts at `POST /agents/:name/:id` and event streaming at `GET /agents/:name/:id` beneath the mount path. |
 | Workflow `route`  | HTTP invocation at `POST /workflows/:name` beneath the mount path.                                              |
-| Workflow `runs`   | Authorized HTTP operations on existing runs owned by that workflow beneath `/runs/:runId`.                     |
+| Workflow `runs`   | Authorized HTTP operations on existing runs owned by that workflow beneath `/runs/:runId`.                      |
 | Channel `channel` | Provider-declared HTTP surfaces beneath `/channels/:name/<suffix>`.                                             |
 
 `route` controls workflow invocation only. Export `runs` separately when HTTP clients should inspect runs, including runs created by ambient `invoke()`, schedules, or other non-HTTP callers:

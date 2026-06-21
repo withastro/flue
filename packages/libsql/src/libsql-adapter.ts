@@ -10,6 +10,7 @@
  * tests can substitute an in-memory client without pulling in a real server.
  */
 
+import type { WorkflowRunPointer } from '@flue/runtime';
 import type {
 	AgentAttemptMarker,
 	AgentDispatchAdmission,
@@ -41,7 +42,6 @@ import type {
 	SubmissionAttemptRef,
 	SubmissionClaimRef,
 } from '@flue/runtime/adapter';
-import type { WorkflowRunPointer } from '@flue/runtime';
 import {
 	assertSupportedFlueSchemaVersion,
 	clampLimit,

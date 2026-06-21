@@ -56,5 +56,7 @@ export default defineWorkflow({
 });
 
 function isAbortError(error: unknown): boolean {
-	return !!error && typeof error === 'object' && (error as { name?: unknown }).name === 'AbortError';
+	return (
+		!!error && typeof error === 'object' && (error as { name?: unknown }).name === 'AbortError'
+	);
 }

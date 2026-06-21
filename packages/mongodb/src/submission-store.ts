@@ -240,14 +240,12 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 		try {
 			await this.runner.transaction(async (tx) => {
 				await this.values.publish(pointer, tx);
-				await tx
-					.collection(collectionName(this.prefix, 'stream_segments'))
-					.insertOne({
-						_id: `${streamKey}:${segmentIndex}`,
-						streamKey,
-						segmentIndex,
-						body: pointer,
-					});
+				await tx.collection(collectionName(this.prefix, 'stream_segments')).insertOne({
+					_id: `${streamKey}:${segmentIndex}`,
+					streamKey,
+					segmentIndex,
+					body: pointer,
+				});
 			});
 			return true;
 		} catch (error) {

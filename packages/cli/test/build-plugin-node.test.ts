@@ -83,7 +83,9 @@ describe('NodePlugin', () => {
 		expect(entry).toContain('const { agents, workflows, channelHandlers } = normalized;');
 		expect(entry).toContain('workflows.find((record) => record.name === workflowName)?.definition');
 		expect(entry).toContain('admitDetachedWorkflow({');
-		expect(entry).not.toContain("flueApp.fetch(new Request('https://flue.invalid/_internal/workflows/");
+		expect(entry).not.toContain(
+			"flueApp.fetch(new Request('https://flue.invalid/_internal/workflows/",
+		);
 	});
 
 	it('imports discovered channels and configures their normalized handlers', () => {

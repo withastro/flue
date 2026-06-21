@@ -20,13 +20,14 @@ import {
 	validateWorkflowRequest,
 } from '../errors.ts';
 import type {
-	AgentDispatchRequest,
 	AgentDefinition,
+	AgentDispatchRequest,
 	DispatchReceipt,
 	NamedAgentDispatchRequest,
 	WorkflowRouteHandler,
 	WorkflowRunsHandler,
 } from '../types.ts';
+import type { WorkflowDefinition } from '../workflow-definition.ts';
 import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
 import { enqueueDispatch } from './dispatch.ts';
 import type { DispatchQueue } from './dispatch-queue.ts';
@@ -38,8 +39,11 @@ import {
 } from './handle-agent.ts';
 import { handleStreamHead, handleStreamRead } from './handle-stream-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
-import { invokeWorkflow, type WorkflowInvokeRequest, type WorkflowInvocationReceipt } from './invoke.ts';
-import type { WorkflowDefinition } from '../workflow-definition.ts';
+import {
+	invokeWorkflow,
+	type WorkflowInvocationReceipt,
+	type WorkflowInvokeRequest,
+} from './invoke.ts';
 import type { RunStore, WorkflowRunPointer } from './run-store.ts';
 
 import {
@@ -81,10 +85,7 @@ interface RuntimeBase {
 export interface NodeRuntime extends RuntimeBase {
 	target: 'node';
 	createWorkflowContext: CreateWorkflowContextFn;
-	createAgentAdmission: (
-		agentName: string,
-		instanceId: string,
-	) => AttachedAgentSubmissionAdmission;
+	createAgentAdmission: (agentName: string, instanceId: string) => AttachedAgentSubmissionAdmission;
 	runStore: RunStore;
 	eventStreamStore: EventStreamStore;
 }

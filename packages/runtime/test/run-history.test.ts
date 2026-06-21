@@ -4,8 +4,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { InMemoryRunStore } from '../src/node/run-store.ts';
 import { flue } from '../src/routing.ts';
 import { configureFlueRuntime, resetFlueRuntimeForTests } from '../src/runtime/flue-app.ts';
-import { nodeRuntime } from './helpers/runtime-config.ts';
 import type { RunStore } from '../src/runtime/run-store.ts';
+import { nodeRuntime } from './helpers/runtime-config.ts';
 
 afterEach(() => {
 	resetFlueRuntimeForTests();

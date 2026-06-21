@@ -38,10 +38,14 @@ export async function invokeWorkflow<TWorkflow extends WorkflowDefinition>(
 	if (!runtime) throw new WorkflowInvocationNotConfiguredError();
 	const workflowName = runtime.workflows.find((record) => record.definition === workflow)?.name;
 	if (!workflowName) throw new WorkflowNotDiscoveredError();
-	if (!workflow.action.input && request.input !== undefined) throw new WorkflowInputUnexpectedError();
+	if (!workflow.action.input && request.input !== undefined)
+		throw new WorkflowInputUnexpectedError();
 	let input: unknown;
 	try {
-		input = request.input === undefined ? undefined : cloneJsonSerializable(request.input, 'invoke().input');
+		input =
+			request.input === undefined
+				? undefined
+				: cloneJsonSerializable(request.input, 'invoke().input');
 	} catch (cause) {
 		throw new WorkflowInputSerializationError({ cause });
 	}

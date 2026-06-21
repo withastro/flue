@@ -2,8 +2,8 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createFlueContext } from '../src/client.ts';
-import { defineAgent, defineWorkflow } from '../src/index.ts';
 import { ModelNotConfiguredError } from '../src/errors.ts';
+import { defineAgent, defineWorkflow } from '../src/index.ts';
 import { InMemoryRunStore } from '../src/node/run-store.ts';
 import { MAX_IMAGE_DATA_LENGTH } from '../src/persisted-images.ts';
 import { agentStreamPath } from '../src/runtime/event-stream-store.ts';
@@ -15,7 +15,12 @@ import {
 } from '../src/runtime/flue-app.ts';
 import { InMemorySessionStore } from '../src/session.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
-import { agentRecord, cloudflareRuntime, nodeRuntime, workflowRecord } from './helpers/runtime-config.ts';
+import {
+	agentRecord,
+	cloudflareRuntime,
+	nodeRuntime,
+	workflowRecord,
+} from './helpers/runtime-config.ts';
 import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 afterEach(() => {
@@ -24,18 +29,20 @@ afterEach(() => {
 
 describe('flue()', () => {
 	it('serves a discovered channel handler beneath the flue mount prefix', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			channelHandlers: {
-				slack: {
-					'POST /events': async (c) =>
-						c.json({
-							path: c.req.path,
-							team: c.req.query('team'),
-						}),
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				channelHandlers: {
+					slack: {
+						'POST /events': async (c) =>
+							c.json({
+								path: c.req.path,
+								team: c.req.query('team'),
+							}),
+					},
 				},
-			},
-		}));
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -66,14 +73,16 @@ describe('flue()', () => {
 		expect(response).not.toBeInstanceOf(Response);
 		expect(Object.prototype.toString.call(response)).toBe('[object Response]');
 
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			channelHandlers: {
-				slack: {
-					'POST /events': async () => response,
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				channelHandlers: {
+					slack: {
+						'POST /events': async () => response,
+					},
 				},
-			},
-		}));
+			}),
+		);
 		const app = new Hono();
 		app.route('/', flue());
 
@@ -86,14 +95,17 @@ describe('flue()', () => {
 	});
 
 	it('rejects a tagged object when a channel handler does not return a Fetch response', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			channelHandlers: {
-				slack: {
-					'POST /events': async () => ({ [Symbol.toStringTag]: 'Response' }) as unknown as Response,
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				channelHandlers: {
+					slack: {
+						'POST /events': async () =>
+							({ [Symbol.toStringTag]: 'Response' }) as unknown as Response,
+					},
 				},
-			},
-		}));
+			}),
+		);
 		const app = new Hono();
 		app.route('/', flue());
 
@@ -115,14 +127,16 @@ describe('flue()', () => {
 				headers: { 'x-endpoint-validation': 'accepted' },
 			});
 		});
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			channelHandlers: {
-				intercom: {
-					'HEAD /webhook': handler,
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				channelHandlers: {
+					intercom: {
+						'HEAD /webhook': handler,
+					},
 				},
-			},
-		}));
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -138,15 +152,17 @@ describe('flue()', () => {
 	});
 
 	it('returns method_not_allowed for a configured channel path with the wrong method', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			channelHandlers: {
-				slack: {
-					'POST /events': async (c) => c.body(null, 200),
-					'PUT /events': async (c) => c.body(null, 202),
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				channelHandlers: {
+					slack: {
+						'POST /events': async (c) => c.body(null, 200),
+						'PUT /events': async (c) => c.body(null, 202),
+					},
 				},
-			},
-		}));
+			}),
+		);
 		const app = new Hono();
 		app.route('/', flue());
 
@@ -159,14 +175,16 @@ describe('flue()', () => {
 	});
 
 	it('serves channel route suffixes with multiple path segments', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			channelHandlers: {
-				custom: {
-					'POST /webhooks/retries': async (c) => c.text(c.req.param('suffix') ?? ''),
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				channelHandlers: {
+					custom: {
+						'POST /webhooks/retries': async (c) => c.text(c.req.param('suffix') ?? ''),
+					},
 				},
-			},
-		}));
+			}),
+		);
 		const app = new Hono();
 		app.route('/', flue());
 
@@ -179,14 +197,16 @@ describe('flue()', () => {
 	});
 
 	it('does not serve the top-level channel namespace or an unknown suffix', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			channelHandlers: {
-				slack: {
-					'POST /events': async (c) => c.body(null, 200),
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				channelHandlers: {
+					slack: {
+						'POST /events': async (c) => c.body(null, 200),
+					},
 				},
-			},
-		}));
+			}),
+		);
 		const app = new Hono();
 		app.route('/', flue());
 
@@ -202,18 +222,23 @@ describe('flue()', () => {
 	});
 
 	it('describes public agent workflow and workflow-run routes when the mounted app serves openapi.json', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			runtimeVersion: '9.9.9',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			workflows: [
-				workflowRecord(
-					'daily-report',
-					defineWorkflow({ agent: defineAgent(() => ({ model: false })), run: async () => undefined }),
-					{ route: async (_c, next) => next() },
-				),
-			],
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				runtimeVersion: '9.9.9',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				workflows: [
+					workflowRecord(
+						'daily-report',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => undefined,
+						}),
+						{ route: async (_c, next) => next() },
+					),
+				],
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -268,16 +293,18 @@ describe('flue()', () => {
 	});
 
 	it('invokes an HTTP-exposed agent when the mounted app receives a valid agent POST', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, id) => async (payload) => ({
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				createAgentAdmission: (_agentName, id) => async (payload) => ({
 					submissionId: 'submission-1',
 					result: { instanceId: id, payload },
 				}),
-			createWorkflowContext: createTestContext,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+				createWorkflowContext: createTestContext,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -303,13 +330,18 @@ describe('flue()', () => {
 	});
 
 	it('accepts direct agent images and delivers them unchanged', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, ) => async (payload) => ({ submissionId: 'submission-1', result: payload }),
-			createWorkflowContext: createTestContext,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				createAgentAdmission: (_agentName) => async (payload) => ({
+					submissionId: 'submission-1',
+					result: payload,
+				}),
+				createWorkflowContext: createTestContext,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 		const response = await app.fetch(
@@ -333,16 +365,18 @@ describe('flue()', () => {
 	});
 
 	it('returns the synchronous result envelope when an agent POST requests wait=result', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, id) => async (payload) => ({
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				createAgentAdmission: (_agentName, id) => async (payload) => ({
 					submissionId: 'submission-1',
 					result: { instanceId: id, payload },
 				}),
-			createWorkflowContext: createTestContext,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+				createWorkflowContext: createTestContext,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -365,15 +399,17 @@ describe('flue()', () => {
 
 	it('renders the typed error envelope when a session FlueError fails a synchronous agent POST', async () => {
 		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, ) => async () => {
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				createAgentAdmission: (_agentName) => async () => {
 					throw new ModelNotConfiguredError({ callSite: 'this prompt() call' });
 				},
-			createWorkflowContext: createTestContext,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+				createWorkflowContext: createTestContext,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -400,16 +436,18 @@ describe('flue()', () => {
 	});
 
 	it('rejects an unknown wait value with invalid_request when an agent POST mistypes the query', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, id) => async (payload) => ({
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				createAgentAdmission: (_agentName, id) => async (payload) => ({
 					submissionId: 'submission-1',
 					result: { instanceId: id, payload },
 				}),
-			createWorkflowContext: createTestContext,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+				createWorkflowContext: createTestContext,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -428,22 +466,24 @@ describe('flue()', () => {
 	});
 
 	it('rejects an unknown wait value with invalid_request when a workflow POST mistypes the query', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [
-				workflowRecord(
-					'daily-report',
-					defineWorkflow({
-						agent: defineAgent(() => ({ model: false })),
-						run: async () => ({ delivered: true }),
-					}),
-					{ route: async (_c, next) => next() },
-				),
-			],
-			createWorkflowContext: createTestContext,
-			runStore: new InMemoryRunStore(),
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [
+					workflowRecord(
+						'daily-report',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => ({ delivered: true }),
+						}),
+						{ route: async (_c, next) => next() },
+					),
+				],
+				createWorkflowContext: createTestContext,
+				runStore: new InMemoryRunStore(),
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -459,10 +499,11 @@ describe('flue()', () => {
 
 	it("captures the prompt tail offset and serves exactly that prompt's events from it", async () => {
 		const store = createTestEventStreamStore();
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, id) => async (payload) => {
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				createAgentAdmission: (_agentName, id) => async (payload) => {
 					await store.createStream(agentStreamPath('assistant', id));
 					await store.appendEvent(agentStreamPath('assistant', id), {
 						type: 'message',
@@ -470,9 +511,10 @@ describe('flue()', () => {
 					});
 					return { submissionId: `submission-${(payload as { message: string }).message}` };
 				},
-			createWorkflowContext: createTestContext,
-			eventStreamStore: store,
-		}));
+				createWorkflowContext: createTestContext,
+				eventStreamStore: store,
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -513,15 +555,17 @@ describe('flue()', () => {
 
 	it("keeps the agent stream unreadable when the instance's only prompt fails admission", async () => {
 		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, ) => async () => {
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				createAgentAdmission: (_agentName) => async () => {
 					throw new Error('[flue] runtime is shutting down; new submissions are not accepted.');
 				},
-			createWorkflowContext: createTestContext,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+				createWorkflowContext: createTestContext,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -550,10 +594,12 @@ describe('flue()', () => {
 	});
 
 	it('rejects non-POST agent requests with a method envelope when a path targets an HTTP agent', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -573,10 +619,21 @@ describe('flue()', () => {
 	});
 
 	it('rejects non-POST workflow requests with a method envelope when a path targets an HTTP workflow', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [workflowRecord('daily-report', defineWorkflow({ agent: defineAgent(() => ({ model: false })), run: async () => undefined }), { route: async (_c, next) => next() })],
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [
+					workflowRecord(
+						'daily-report',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => undefined,
+						}),
+						{ route: async (_c, next) => next() },
+					),
+				],
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -596,11 +653,13 @@ describe('flue()', () => {
 	});
 
 	it('omits registered sibling names in production when an unknown agent is requested', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			devMode: false,
-			agents: [agentRecord('private-support', { route: async (_c, next) => next() })],
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				devMode: false,
+				agents: [agentRecord('private-support', { route: async (_c, next) => next() })],
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -619,11 +678,13 @@ describe('flue()', () => {
 	});
 
 	it('includes developer guidance in dev mode when an unknown agent is requested', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			devMode: true,
-			agents: [agentRecord('private-support', { route: async (_c, next) => next() })],
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				devMode: true,
+				agents: [agentRecord('private-support', { route: async (_c, next) => next() })],
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -644,24 +705,26 @@ describe('flue()', () => {
 
 	it('lets authored route middleware inspect a request when an exposed handler runs', async () => {
 		let inspected = '';
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [
-				agentRecord('assistant', {
-					route: async (c, next) => {
-						inspected = `${c.req.header('authorization')}:${new URL(c.req.url).pathname}`;
-						await next();
-						c.header('x-authored-middleware', 'ran');
-					},
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [
+					agentRecord('assistant', {
+						route: async (c, next) => {
+							inspected = `${c.req.header('authorization')}:${new URL(c.req.url).pathname}`;
+							await next();
+							c.header('x-authored-middleware', 'ran');
+						},
+					}),
+				],
+				createAgentAdmission: (_agentName, _id) => async (payload) => ({
+					submissionId: 'submission-1',
+					result: { payload },
 				}),
-			],
-			createAgentAdmission: (_agentName, _id) => async (payload) => ({
-				submissionId: 'submission-1',
-				result: { payload },
+				createWorkflowContext: createTestContext,
+				eventStreamStore: createTestEventStreamStore(),
 			}),
-			createWorkflowContext: createTestContext,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -693,13 +756,23 @@ describe('flue()', () => {
 		});
 		const store = createTestEventStreamStore();
 		await store.createStream('runs/run_01DAILYREPORT');
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [workflowRecord('daily-report', defineWorkflow({ agent: defineAgent(() => ({ model: false })), run: async () => undefined }), { runs: async (c) => c.json({ blocked: true }, 401) })],
-			runStore,
-			eventStreamStore: store,
-
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [
+					workflowRecord(
+						'daily-report',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => undefined,
+						}),
+						{ runs: async (c) => c.json({ blocked: true }, 401) },
+					),
+				],
+				runStore,
+				eventStreamStore: store,
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -711,10 +784,21 @@ describe('flue()', () => {
 
 	it('returns run_not_found for an unknown run without invoking runs middleware', async () => {
 		const runs = vi.fn(async (_c, next) => next());
-		configureFlueRuntime(nodeRuntime({
-			workflows: [workflowRecord('daily-report', defineWorkflow({ agent: defineAgent(() => ({ model: false })), run: async () => undefined }), { runs })],
-			runStore: new InMemoryRunStore(),
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				workflows: [
+					workflowRecord(
+						'daily-report',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => undefined,
+						}),
+						{ runs },
+					),
+				],
+				runStore: new InMemoryRunStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -733,10 +817,21 @@ describe('flue()', () => {
 			startedAt: '2026-06-01T10:00:00.000Z',
 			input: {},
 		});
-		configureFlueRuntime(nodeRuntime({
-			workflows: [workflowRecord('daily-report', defineWorkflow({ agent: defineAgent(() => ({ model: false })), run: async () => undefined }), { route: async (_c, next) => next() })],
-			runStore,
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				workflows: [
+					workflowRecord(
+						'daily-report',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => undefined,
+						}),
+						{ route: async (_c, next) => next() },
+					),
+				],
+				runStore,
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -755,14 +850,27 @@ describe('flue()', () => {
 			input: {},
 		});
 		const runs = vi.fn(async (_c, next) => next());
-		configureFlueRuntime(nodeRuntime({
-			workflows: [workflowRecord('daily-report', defineWorkflow({ agent: defineAgent(() => ({ model: false })), run: async () => undefined }), { runs })],
-			runStore,
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				workflows: [
+					workflowRecord(
+						'daily-report',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => undefined,
+						}),
+						{ runs },
+					),
+				],
+				runStore,
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
-		const response = await app.fetch(new Request('http://localhost/api/runs/run_01DAILYREPORT', { method: 'DELETE' }));
+		const response = await app.fetch(
+			new Request('http://localhost/api/runs/run_01DAILYREPORT', { method: 'DELETE' }),
+		);
 
 		expect(response.status).toBe(405);
 		expect(runs).toHaveBeenCalledOnce();
@@ -777,11 +885,22 @@ describe('flue()', () => {
 			input: {},
 		});
 		const routeRunRequest = vi.fn(async () => new Response('forwarded'));
-		configureFlueRuntime(cloudflareRuntime({
-			workflows: [workflowRecord('daily-report', defineWorkflow({ agent: defineAgent(() => ({ model: false })), run: async () => undefined }), { runs: async (c) => c.json({ blocked: true }, 401) })],
-			createRunIndexForRequest: () => runStore,
-			routeRunRequest,
-		}));
+		configureFlueRuntime(
+			cloudflareRuntime({
+				workflows: [
+					workflowRecord(
+						'daily-report',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => undefined,
+						}),
+						{ runs: async (c) => c.json({ blocked: true }, 401) },
+					),
+				],
+				createRunIndexForRequest: () => runStore,
+				routeRunRequest,
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -806,12 +925,23 @@ describe('flue()', () => {
 			isError: false,
 			result: { delivered: true },
 		});
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [workflowRecord('daily-report', defineWorkflow({ agent: defineAgent(() => ({ model: false })), run: async () => undefined }), { runs: async (_c, next) => next() })],
-			runStore,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [
+					workflowRecord(
+						'daily-report',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => undefined,
+						}),
+						{ runs: async (_c, next) => next() },
+					),
+				],
+				runStore,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -847,12 +977,22 @@ describe('flue()', () => {
 			startedAt: '2026-06-01T10:00:00.000Z',
 			input: {},
 		});
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [workflowRecord('daily-report', defineWorkflow({ agent: defineAgent(() => ({ model: false })), run: async () => undefined }), { runs: async (c) => c.json({ blocked: true }, 401) })],
-			runStore,
-
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [
+					workflowRecord(
+						'daily-report',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => undefined,
+						}),
+						{ runs: async (c) => c.json({ blocked: true }, 401) },
+					),
+				],
+				runStore,
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -875,12 +1015,23 @@ describe('flue()', () => {
 			startedAt: '2026-06-01T10:00:00.000Z',
 			input: {},
 		});
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [workflowRecord('daily-report-v2', defineWorkflow({ agent: defineAgent(() => ({ model: false })), run: async () => undefined }), { runs: async (_c, next) => next() })],
-			runStore,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [
+					workflowRecord(
+						'daily-report-v2',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => undefined,
+						}),
+						{ runs: async (_c, next) => next() },
+					),
+				],
+				runStore,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -901,11 +1052,13 @@ describe('flue()', () => {
 
 	it('returns an authored middleware response without invoking the handler when middleware short-circuits', async () => {
 		const handlerCalls = 0;
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (c) => c.json({ blocked: true }, 401) })],
-			createWorkflowContext: createTestContext,
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (c) => c.json({ blocked: true }, 401) })],
+				createWorkflowContext: createTestContext,
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -924,13 +1077,13 @@ describe('flue()', () => {
 
 	it('reports a diagnostic error when authored middleware neither returns a response nor awaits next()', async () => {
 		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [
-				agentRecord('assistant', { route: () => Promise.resolve(undefined) }),
-			],
-			createWorkflowContext: createTestContext,
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: () => Promise.resolve(undefined) })],
+				createWorkflowContext: createTestContext,
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -962,16 +1115,18 @@ describe('flue()', () => {
 	});
 
 	it('returns unsupported_media_type when a request sends a body with a non-JSON content type', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, _id) => async (payload) => ({
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				createAgentAdmission: (_agentName, _id) => async (payload) => ({
 					submissionId: 'submission-1',
 					result: { message: payload.message },
 				}),
-			createWorkflowContext: createTestContext,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+				createWorkflowContext: createTestContext,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -995,16 +1150,18 @@ describe('flue()', () => {
 	});
 
 	it('returns invalid_json when an application/json request body cannot be parsed', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, _id) => async (payload) => ({
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				createAgentAdmission: (_agentName, _id) => async (payload) => ({
 					submissionId: 'submission-1',
 					result: { message: payload.message },
 				}),
-			createWorkflowContext: createTestContext,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+				createWorkflowContext: createTestContext,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -1029,22 +1186,24 @@ describe('flue()', () => {
 	});
 
 	it('treats an empty workflow POST body as an empty object when a workflow is invoked', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [
-				workflowRecord(
-					'daily-report',
-					defineWorkflow({
-						agent: defineAgent(() => ({ model: false })),
-						run: async () => undefined,
-					}),
-					{ route: async (_c, next) => next() },
-				),
-			],
-			createWorkflowContext: createTestContext,
-			runStore: new InMemoryRunStore(),
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [
+					workflowRecord(
+						'daily-report',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => undefined,
+						}),
+						{ route: async (_c, next) => next() },
+					),
+				],
+				createWorkflowContext: createTestContext,
+				runStore: new InMemoryRunStore(),
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -1061,16 +1220,18 @@ describe('flue()', () => {
 	});
 
 	it('rejects a direct agent body when it does not contain a string message', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, _id) => async (payload) => ({
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				createAgentAdmission: (_agentName, _id) => async (payload) => ({
 					submissionId: 'submission-1',
 					result: { message: payload.message },
 				}),
-			createWorkflowContext: createTestContext,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+				createWorkflowContext: createTestContext,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -1094,13 +1255,18 @@ describe('flue()', () => {
 	});
 
 	it('rejects a direct agent image above the encoded length limit', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, ) => async (payload) => ({ submissionId: 'submission-1', result: payload }),
-			createWorkflowContext: createTestContext,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				createAgentAdmission: (_agentName) => async (payload) => ({
+					submissionId: 'submission-1',
+					result: payload,
+				}),
+				createWorkflowContext: createTestContext,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -1131,15 +1297,20 @@ describe('flue()', () => {
 	});
 
 	it('renders a non-HTTP workflow as workflow_not_found when probed over HTTP', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [
-				workflowRecord(
-					'internal-report',
-					defineWorkflow({ agent: defineAgent(() => ({ model: false })), run: async () => undefined }),
-				),
-			],
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [
+					workflowRecord(
+						'internal-report',
+						defineWorkflow({
+							agent: defineAgent(() => ({ model: false })),
+							run: async () => undefined,
+						}),
+					),
+				],
+			}),
+		);
 		const app = new Hono();
 		app.route('/api', flue());
 
@@ -1162,16 +1333,18 @@ describe('flue()', () => {
 
 describe('createDefaultFlueApp()', () => {
 	it('mounts Flue routes at root when the generated runtime uses default application composition', async () => {
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, id) => async (payload) => ({
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+				createAgentAdmission: (_agentName, id) => async (payload) => ({
 					submissionId: 'submission-1',
 					result: { instanceId: id, payload },
 				}),
-			createWorkflowContext: createTestContext,
-			eventStreamStore: createTestEventStreamStore(),
-		}));
+				createWorkflowContext: createTestContext,
+				eventStreamStore: createTestEventStreamStore(),
+			}),
+		);
 		const app = createDefaultFlueApp();
 
 		const response = await app.fetch(

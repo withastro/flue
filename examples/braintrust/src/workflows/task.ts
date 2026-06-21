@@ -1,7 +1,7 @@
 import {
 	defineAgent,
-	defineWorkflow,
 	defineAgentProfile,
+	defineWorkflow,
 	type WorkflowRouteHandler,
 } from '@flue/runtime';
 import * as v from 'valibot';

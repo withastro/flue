@@ -3,7 +3,6 @@
 import * as v from 'valibot';
 import { parseActionInput, runActionWithParsedInput } from '../action.ts';
 import type { FlueContextInternal } from '../client.ts';
-import { isWorkflowDefinition, type WorkflowDefinition } from '../workflow-definition.ts';
 import {
 	InvalidRequestError,
 	parseJsonBody,
@@ -16,6 +15,7 @@ import type {
 	FlueEvent,
 	FlueEventCallback,
 } from '../types.ts';
+import { isWorkflowDefinition, type WorkflowDefinition } from '../workflow-definition.ts';
 import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
 import type { DispatchInput } from './dispatch-queue.ts';
 import {
@@ -29,7 +29,10 @@ import { generateWorkflowRunId } from './ids.ts';
 import { isBufferedRunEvent, isStreamExcludedEvent, type RunStore } from './run-store.ts';
 import { DirectAgentPayloadSchema } from './schemas.ts';
 
-export function assertWorkflowDefinition(value: unknown, name: string): asserts value is WorkflowDefinition {
+export function assertWorkflowDefinition(
+	value: unknown,
+	name: string,
+): asserts value is WorkflowDefinition {
 	if (!isWorkflowDefinition(value)) {
 		throw new Error(`[flue] Workflow "${name}" must default-export defineWorkflow(...).`);
 	}

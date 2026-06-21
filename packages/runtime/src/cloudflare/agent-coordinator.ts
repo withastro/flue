@@ -281,10 +281,7 @@ class CloudflareAgentCoordinator {
 	 * emitted on either path (including reconciliation-driven settlement)
 	 * reach detached stream readers.
 	 */
-	private createDurableContext(
-		request: Request,
-		dispatchId?: string,
-	): FlueContextInternal {
+	private createDurableContext(request: Request, dispatchId?: string): FlueContextInternal {
 		const ctx = this.createContext(request, undefined, dispatchId);
 		const streamPath = agentStreamPath(this.agentName, this.instance.name);
 		ctx.subscribeEvent((event) => {

@@ -1,10 +1,10 @@
 import * as v from 'valibot';
 import { isActionDefinition } from './action.ts';
 import type {
+	AgentDefinition,
 	AgentInitializerContext,
 	AgentProfile,
 	AgentRuntimeConfig,
-	AgentDefinition,
 	Skill,
 	ThinkingLevel,
 	ToolDefinition,
@@ -276,9 +276,7 @@ function assertTools(
 function assertActions(values: unknown[] | undefined, label: string): void {
 	for (const [index, value] of values?.entries() ?? []) {
 		if (!isActionDefinition(value)) {
-			throw new Error(
-				`[flue] ${label} actions[${index}] must be created with defineAction().`,
-			);
+			throw new Error(`[flue] ${label} actions[${index}] must be created with defineAction().`);
 		}
 	}
 }

@@ -22,7 +22,7 @@ import type {
 import { streamSimple } from '@earendil-works/pi-ai';
 import type * as v from 'valibot';
 import { abortErrorFor, createCallHandle } from './abort.ts';
-import { parseActionInput, runActionWithParsedInput, type ActionDefinition } from './action.ts';
+import { type ActionDefinition, parseActionInput, runActionWithParsedInput } from './action.ts';
 import {
 	createActivateSkillTool,
 	createPackagedSkillReadTool,
@@ -50,6 +50,7 @@ import {
 } from './compaction.ts';
 import { isWorkspaceSkill, skillsDirIn } from './context.ts';
 import {
+	DelegationDepthExceededError,
 	ModelNotConfiguredError,
 	OperationFailedError,
 	SessionBusyError,
@@ -57,7 +58,6 @@ import {
 	SkillNotRegisteredError,
 	SubagentNotDeclaredError,
 	SubmissionTimeoutError,
-	DelegationDepthExceededError,
 	ToolNameConflictError,
 } from './errors.ts';
 import { IMAGE_DATA_OMITTED, redactEventImages } from './event-redaction.ts';
@@ -1217,11 +1217,13 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			name: action.name,
 			label: action.name,
 			description: action.description,
-			parameters: (action.input ? valibotToJsonSchema(action.input) : {
-				type: 'object',
-				properties: {},
-				additionalProperties: false,
-			}) as any,
+			parameters: (action.input
+				? valibotToJsonSchema(action.input)
+				: {
+						type: 'object',
+						properties: {},
+						additionalProperties: false,
+					}) as any,
 			execute: (toolCallId: string, params: unknown, signal?: AbortSignal) =>
 				this.executeActionTool(action, toolCallId, params, signal),
 		}));

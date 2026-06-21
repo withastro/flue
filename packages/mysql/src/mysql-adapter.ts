@@ -1,3 +1,4 @@
+import type { WorkflowRunPointer } from '@flue/runtime';
 import type {
 	AgentAttemptMarker,
 	AgentDispatchAdmission,
@@ -29,7 +30,6 @@ import type {
 	SubmissionAttemptRef,
 	SubmissionClaimRef,
 } from '@flue/runtime/adapter';
-import type { WorkflowRunPointer } from '@flue/runtime';
 import {
 	assertSupportedFlueSchemaVersion,
 	clampLimit,

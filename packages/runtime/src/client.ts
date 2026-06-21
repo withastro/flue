@@ -10,12 +10,12 @@ import { dispatchGlobalEvent } from './runtime/events.ts';
 import { createCwdSessionEnv } from './sandbox.ts';
 import type {
 	AgentConfig,
+	AgentDefinition,
 	AgentProfile,
 	AgentRuntimeConfig,
-	AgentDefinition,
 	FlueEvent,
-	FlueEventContext,
 	FlueEventCallback,
+	FlueEventContext,
 	FlueEventInput,
 	SandboxFactory,
 	SessionEnv,
@@ -199,7 +199,9 @@ export async function initializeRootHarness(
 		actions: definition.actions,
 		subagents: Object.fromEntries(
 			(definition.subagents ?? [])
-				.filter((candidate): candidate is AgentProfile & { name: string } => candidate.name !== undefined)
+				.filter(
+					(candidate): candidate is AgentProfile & { name: string } => candidate.name !== undefined,
+				)
 				.map((candidate) => [candidate.name, candidate]),
 		),
 		model: config.agentConfig.resolveModel(definition.model),

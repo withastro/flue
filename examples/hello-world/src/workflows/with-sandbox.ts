@@ -15,7 +15,8 @@ export default defineWorkflow({
 		const uname = await session.shell('uname -a');
 		const unameOk = uname.exitCode === 0 && uname.stdout.includes('Linux');
 		await session.shell('echo "hello from sandbox" > /tmp/test.txt');
-		const fileOk = (await session.shell('cat /tmp/test.txt')).stdout.trim() === 'hello from sandbox';
+		const fileOk =
+			(await session.shell('cat /tmp/test.txt')).stdout.trim() === 'hello from sandbox';
 		const compound = await session.shell('echo step1 && echo step2');
 		const compoundOk = compound.stdout.includes('step1') && compound.stdout.includes('step2');
 		const pipe = await session.shell('echo -e "a\\nb\\nc" | wc -l');

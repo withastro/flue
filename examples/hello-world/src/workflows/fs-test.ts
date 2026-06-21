@@ -17,7 +17,8 @@ export default defineWorkflow({
 		const session = await harness.session();
 		const results: Record<string, boolean> = {};
 		await session.shell('echo "Seeded workspace instructions" > AGENTS.md');
-		results['read workspace file'] = (await session.shell('cat AGENTS.md')).stdout.trim().length > 0;
+		results['read workspace file'] =
+			(await session.shell('cat AGENTS.md')).stdout.trim().length > 0;
 		await session.prompt(
 			'Create a file called "hello.txt" in the current directory. Its contents should be exactly: Hello from the agent',
 		);

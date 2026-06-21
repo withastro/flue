@@ -37,18 +37,16 @@ export class MongoSessionStore implements SessionStore {
 					.collection(collectionName(this.prefix, 'session_entries'))
 					.deleteMany({ sessionId: id, generation });
 				if (entries.length)
-					await tx
-						.collection(collectionName(this.prefix, 'session_entries'))
-						.insertMany(
-							entries.map((entry, position) => ({
-								_id: `${id}:${generation}:${position}`,
-								sessionId: id,
-								generation,
-								position,
-								entryId: entry.id,
-								pointer: pointers[position + 1],
-							})),
-						);
+					await tx.collection(collectionName(this.prefix, 'session_entries')).insertMany(
+						entries.map((entry, position) => ({
+							_id: `${id}:${generation}:${position}`,
+							sessionId: id,
+							generation,
+							position,
+							entryId: entry.id,
+							pointer: pointers[position + 1],
+						})),
+					);
 				await sessions.updateOne(
 					{ _id: id },
 					{

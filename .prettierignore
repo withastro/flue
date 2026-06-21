@@ -6,7 +6,5 @@
 **/.turbo/
 **/.cache/
 packages/cli/bin/_blueprints.generated.ts
-blueprints/sandbox*.md
-blueprints/channel*.md
-blueprints/tooling--vitest-evals.md
+blueprints/*.md
 plans/

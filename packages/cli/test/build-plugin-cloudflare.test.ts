@@ -15,12 +15,8 @@ describe('CloudflarePlugin', () => {
 		expect(entry).toContain('class FlueDraftWorkflow');
 		expect(entry).toContain('bindingName: "FLUE_DRAFT_WORKFLOW_AGENT"');
 		expect(entry).toContain('bindingName: "FLUE_DRAFT_WORKFLOW"');
-		expect(entry).toContain(
-			'resolveCloudflareExtension(agentModules["draft-workflow"]',
-		);
-		expect(entry).toContain(
-			'resolveCloudflareExtension(workflowModules["draft"]',
-		);
+		expect(entry).toContain('resolveCloudflareExtension(agentModules["draft-workflow"]');
+		expect(entry).toContain('resolveCloudflareExtension(workflowModules["draft"]');
 		expect(entry).not.toContain('runtimeAgents');
 		expect(entry).not.toContain('runtimeWorkflows');
 	});
@@ -55,7 +51,9 @@ describe('CloudflarePlugin', () => {
 		expect(entry).toContain('workflows,');
 		expect(entry).toContain('routeRunRequest: async (request, reqEnv, target) => {');
 		expect(entry).toContain('return fetchAgent(binding, target.runId, request);');
-		expect(entry).not.toContain('routeRunRequest: async (request, reqEnv, target) => runAttachedMiddleware');
+		expect(entry).not.toContain(
+			'routeRunRequest: async (request, reqEnv, target) => runAttachedMiddleware',
+		);
 	});
 
 	it('wires ambient workflow invocation through a private per-run Durable Object request', async () => {
@@ -69,7 +67,9 @@ describe('CloudflarePlugin', () => {
 			'const { agents, workflows, channelHandlers } = normalizeBuiltModules(agentModules, workflowModules, channelModules);',
 		);
 		expect(entry).toContain('workflows.find((record) => record.name === workflowName)?.definition');
-		expect(entry).toContain("const INTERNAL_WORKFLOW_INVOKE_PATH = '/_flue/internal/workflow-invoke'");
+		expect(entry).toContain(
+			"const INTERNAL_WORKFLOW_INVOKE_PATH = '/_flue/internal/workflow-invoke'",
+		);
 		expect(entry).toContain("doInstance.runFiber('flue:workflow:' + runId");
 		expect(entry).toContain('const admission = Promise.withResolvers();');
 		expect(entry).toContain('return { admitted: admission.promise, completion };');

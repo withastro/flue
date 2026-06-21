@@ -13,9 +13,9 @@ import {
 } from '../errors.ts';
 import { getInternalSession } from '../session.ts';
 import type {
+	AgentDefinition,
 	AttachedAgentEvent,
 	CallHandle,
-	AgentDefinition,
 	DirectAgentPayload,
 	PromptResponse,
 } from '../types.ts';

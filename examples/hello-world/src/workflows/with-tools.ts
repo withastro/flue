@@ -1,8 +1,8 @@
 import {
 	bash,
 	defineAgent,
-	defineWorkflow,
 	defineTool,
+	defineWorkflow,
 	type WorkflowRouteHandler,
 } from '@flue/runtime';
 import { Bash, InMemoryFs } from 'just-bash';
@@ -13,9 +13,7 @@ export const route: WorkflowRouteHandler = async (_c, next) => next();
 const agent = defineAgent(() => {
 	const fs = new InMemoryFs();
 	return {
-		sandbox: bash(() =>
-			new Bash({ fs, network: { dangerouslyAllowFullInternetAccess: true } }),
-		),
+		sandbox: bash(() => new Bash({ fs, network: { dangerouslyAllowFullInternetAccess: true } })),
 		model: 'anthropic/claude-sonnet-4-6',
 	};
 });

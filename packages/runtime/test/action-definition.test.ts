@@ -1,17 +1,17 @@
 import * as v from 'valibot';
 import { describe, expect, expectTypeOf, it, vi } from 'vitest';
+import { validateAndRunAction } from '../src/action.ts';
 import {
 	ActionInputValidationError,
+	type ActionOutputSchema,
 	ActionOutputSerializationError,
 	ActionOutputValidationError,
-	type ActionOutputSchema,
+	defineAction,
 	defineAgent,
 	defineWorkflow,
-	defineAction,
 	type FlueHarness,
 	type FlueLogger,
 } from '../src/index.ts';
-import { validateAndRunAction } from '../src/action.ts';
 
 const harness = {} as FlueHarness;
 const log = {} as FlueLogger;
@@ -23,7 +23,10 @@ describe('defineAction()', () => {
 			name: 'format_count',
 			description: 'Formats a count.',
 			input: v.object({ count: v.pipe(v.string(), v.transform(Number)) }),
-			output: v.pipe(v.string(), v.transform((value) => ({ value }))),
+			output: v.pipe(
+				v.string(),
+				v.transform((value) => ({ value })),
+			),
 			run,
 		});
 
@@ -60,7 +63,7 @@ describe('defineAction()', () => {
 			name: 'count',
 			description: 'Returns a count.',
 			output: v.object({ count: v.number() }),
-			run: async () => ({ count: 'invalid' } as never),
+			run: async () => ({ count: 'invalid' }) as never,
 		});
 
 		await expect(validateAndRunAction(action, { harness, log })).rejects.toBeInstanceOf(
@@ -76,7 +79,12 @@ describe('defineAction()', () => {
 		expectTypeOf(v.string()).toMatchTypeOf<ActionOutputSchema>();
 		expectTypeOf(v.undefined()).not.toMatchTypeOf<ActionOutputSchema>();
 		expectTypeOf(v.optional(v.string())).not.toMatchTypeOf<ActionOutputSchema>();
-		expectTypeOf(v.pipe(v.string(), v.transform(() => undefined))).not.toMatchTypeOf<ActionOutputSchema>();
+		expectTypeOf(
+			v.pipe(
+				v.string(),
+				v.transform(() => undefined),
+			),
+		).not.toMatchTypeOf<ActionOutputSchema>();
 	});
 
 	it('rejects undefined produced by a cast declared output schema at runtime', async () => {
@@ -218,7 +226,9 @@ describe('defineWorkflow()', () => {
 			run: async () => undefined,
 		};
 
-		expect(() => defineWorkflow({ agent: forgedAgent, action } as never)).toThrow('AgentDefinition');
+		expect(() => defineWorkflow({ agent: forgedAgent, action } as never)).toThrow(
+			'AgentDefinition',
+		);
 		expect(() => defineWorkflow({ agent, action: forgedAction } as never)).toThrow('Action');
 	});
 

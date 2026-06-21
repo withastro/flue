@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { Hono } from 'hono';
 import * as v from 'valibot';
 import { afterEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
+import type { WorkflowInvokeRequest } from '../src/index.ts';
 import {
 	defineAgent,
 	defineWorkflow,
@@ -12,11 +13,10 @@ import {
 	WorkflowInvocationNotConfiguredError,
 	WorkflowNotDiscoveredError,
 } from '../src/index.ts';
-import type { WorkflowInvokeRequest } from '../src/index.ts';
 import {
+	admitDetachedWorkflow,
 	configureFlueRuntime,
 	createFlueContext,
-	admitDetachedWorkflow,
 	failRecoveredRun,
 	handleWorkflowRequest,
 	InMemoryRunStore,
@@ -56,7 +56,10 @@ function createContext({
 	});
 }
 
-function httpWorkflowRecord(name: string, definition: import('../src/internal.ts').WorkflowRecord['definition']) {
+function httpWorkflowRecord(
+	name: string,
+	definition: import('../src/internal.ts').WorkflowRecord['definition'],
+) {
 	return workflowRecord(name, definition, { route: async (_c, next) => next() });
 }
 
@@ -102,11 +105,13 @@ describe('invoke()', () => {
 			run: async () => undefined,
 		});
 		const admitWorkflow = vi.fn(async () => ({ runId: 'run_no_input' }));
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [httpWorkflowRecord('target', target)],
-			admitWorkflow,
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [httpWorkflowRecord('target', target)],
+				admitWorkflow,
+			}),
+		);
 
 		await expect(invoke(target, { input: {} } as never)).rejects.toBeInstanceOf(
 			WorkflowInputUnexpectedError,
@@ -125,11 +130,13 @@ describe('invoke()', () => {
 	it('rejects Workflow Definitions that are not exact discovered identities', async () => {
 		const discovered = workflow(async () => undefined);
 		const undiscovered = workflow(async () => undefined);
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [httpWorkflowRecord('discovered', discovered)],
-			admitWorkflow: async () => ({ runId: 'run_discovered' }),
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [httpWorkflowRecord('discovered', discovered)],
+				admitWorkflow: async () => ({ runId: 'run_discovered' }),
+			}),
+		);
 
 		await expect(invoke(undiscovered, { input: {} })).rejects.toBeInstanceOf(
 			WorkflowNotDiscoveredError,
@@ -140,14 +147,16 @@ describe('invoke()', () => {
 		const target = workflow(async () => undefined);
 		const admitted: unknown[] = [];
 		const input = { nested: { count: 1 } };
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [httpWorkflowRecord('target', target)],
-			admitWorkflow: async (admission) => {
-				admitted.push(admission.input);
-				return { runId: 'run_snapshot' };
-			},
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [httpWorkflowRecord('target', target)],
+				admitWorkflow: async (admission) => {
+					admitted.push(admission.input);
+					return { runId: 'run_snapshot' };
+				},
+			}),
+		);
 
 		await invoke(target, { input });
 		input.nested.count = 2;
@@ -160,13 +169,15 @@ describe('invoke()', () => {
 
 	it('wraps target admission failures in a structured public error', async () => {
 		const target = workflow(async () => undefined);
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [httpWorkflowRecord('target', target)],
-			admitWorkflow: async () => {
-				throw new Error('storage unavailable');
-			},
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [httpWorkflowRecord('target', target)],
+				admitWorkflow: async () => {
+					throw new Error('storage unavailable');
+				},
+			}),
+		);
 
 		await expect(invoke(target, { input: {} })).rejects.toBeInstanceOf(WorkflowAdmissionError);
 	});
@@ -182,20 +193,22 @@ describe('invoke()', () => {
 		});
 		const runStore = new InMemoryRunStore();
 		const eventStreamStore = createTestEventStreamStore();
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [httpWorkflowRecord('target', target)],
-			admitWorkflow: ({ workflowName, input }) =>
-				admitDetachedWorkflow({
-					workflowName,
-					workflow: target,
-					input,
-					request: new Request('https://flue.invalid/_internal/workflow', { method: 'POST' }),
-					createContext,
-					runStore,
-					eventStreamStore,
-				}),
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [httpWorkflowRecord('target', target)],
+				admitWorkflow: ({ workflowName, input }) =>
+					admitDetachedWorkflow({
+						workflowName,
+						workflow: target,
+						input,
+						request: new Request('https://flue.invalid/_internal/workflow', { method: 'POST' }),
+						createContext,
+						runStore,
+						eventStreamStore,
+					}),
+			}),
+		);
 
 		const receipt = await invoke(target, { input: { report: 'weekly' } });
 		expect(await runStore.getRun(receipt.runId)).toMatchObject({
@@ -234,7 +247,9 @@ describe('invoke()', () => {
 
 		expect(await runStore.getRun(runId)).toMatchObject({ status: 'errored', isError: true });
 		const stream = await eventStreamStore.readEvents(`runs/${runId}`, { offset: '-1' });
-		expect(stream.events.map((event) => (event.data as { type: string }).type)).toEqual(['run_end']);
+		expect(stream.events.map((event) => (event.data as { type: string }).type)).toEqual([
+			'run_end',
+		]);
 		expect(stream.closed).toBe(true);
 	});
 
@@ -335,20 +350,22 @@ describe('invoke()', () => {
 		});
 		const runStore = new InMemoryRunStore();
 		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			workflows: [httpWorkflowRecord('target', target)],
-			admitWorkflow: ({ workflowName, input }) =>
-				admitDetachedWorkflow({
-					workflowName,
-					workflow: target,
-					input,
-					request: new Request('https://flue.invalid/_internal/workflow', { method: 'POST' }),
-					createContext,
-					runStore,
-					eventStreamStore: createTestEventStreamStore(),
-				}),
-		}));
+		configureFlueRuntime(
+			nodeRuntime({
+				target: 'node',
+				workflows: [httpWorkflowRecord('target', target)],
+				admitWorkflow: ({ workflowName, input }) =>
+					admitDetachedWorkflow({
+						workflowName,
+						workflow: target,
+						input,
+						request: new Request('https://flue.invalid/_internal/workflow', { method: 'POST' }),
+						createContext,
+						runStore,
+						eventStreamStore: createTestEventStreamStore(),
+					}),
+			}),
+		);
 
 		try {
 			const receipt = await invoke(target, { input: {} });
@@ -372,10 +389,15 @@ describe('workflow invocation', () => {
 		const app = createApp({
 			target: 'node',
 
-			workflows: [httpWorkflowRecord('daily-report', workflow(async () => {
-					await completionGate;
-					return { delivered: true };
-				}))],
+			workflows: [
+				httpWorkflowRecord(
+					'daily-report',
+					workflow(async () => {
+						await completionGate;
+						return { delivered: true };
+					}),
+				),
+			],
 			createWorkflowContext: createContext,
 			runStore,
 		});
@@ -405,7 +427,12 @@ describe('workflow invocation', () => {
 		const app = createApp({
 			target: 'node',
 
-			workflows: [httpWorkflowRecord('daily-report', workflow(async () => ({ delivered: true })))],
+			workflows: [
+				httpWorkflowRecord(
+					'daily-report',
+					workflow(async () => ({ delivered: true })),
+				),
+			],
 			createWorkflowContext: createContext,
 			runStore: new InMemoryRunStore(),
 		});
@@ -431,9 +458,14 @@ describe('workflow invocation', () => {
 		const app = createApp({
 			target: 'node',
 
-			workflows: [httpWorkflowRecord('daily-report', workflow(async () => {
-					executions++;
-				}))],
+			workflows: [
+				httpWorkflowRecord(
+					'daily-report',
+					workflow(async () => {
+						executions++;
+					}),
+				),
+			],
 			createWorkflowContext: createContext,
 			runStore: undefined,
 		});
@@ -462,9 +494,14 @@ describe('workflow invocation', () => {
 			const app = createApp({
 				target: 'node',
 
-				workflows: [httpWorkflowRecord('daily-report', workflow(async () => {
-						executions++;
-					}))],
+				workflows: [
+					httpWorkflowRecord(
+						'daily-report',
+						workflow(async () => {
+							executions++;
+						}),
+					),
+				],
 				createWorkflowContext: createContext,
 				runStore,
 			});
@@ -492,7 +529,13 @@ describe('workflow invocation', () => {
 		const app = createApp({
 			target: 'node',
 
-			workflows: [workflowRecord('daily-report', workflow(async (input) => ({ input })), { route: middleware })],
+			workflows: [
+				workflowRecord(
+					'daily-report',
+					workflow(async (input) => ({ input })),
+					{ route: middleware },
+				),
+			],
 
 			createWorkflowContext: createContext,
 			runStore: new InMemoryRunStore(),
@@ -594,7 +637,12 @@ describe('workflow invocation', () => {
 		const app = createApp({
 			target: 'node',
 
-			workflows: [httpWorkflowRecord('daily-report', workflow(async () => undefined))],
+			workflows: [
+				httpWorkflowRecord(
+					'daily-report',
+					workflow(async () => undefined),
+				),
+			],
 			createWorkflowContext: createContext,
 			runStore,
 		});
@@ -690,8 +738,8 @@ describe('workflow run lifecycle', () => {
 				new Request('http://localhost/flue/workflows/cleanup?wait=result', { method: 'POST' }),
 			),
 		).finally(() => {
-				responseSettled = true;
-			});
+			responseSettled = true;
+		});
 		await aborted;
 		const activeRun = (await runStore.listRuns()).runs[0];
 		expect(activeRun?.status).toBe('active');
@@ -704,7 +752,9 @@ describe('workflow run lifecycle', () => {
 		expect(operationSettled).toBe(true);
 		if (!activeRun) throw new Error('Expected an admitted run.');
 		expect((await runStore.getRun(activeRun.runId))?.status).toBe('completed');
-		const persisted = await eventStreamStore.readEvents(`runs/${activeRun.runId}`, { offset: '-1' });
+		const persisted = await eventStreamStore.readEvents(`runs/${activeRun.runId}`, {
+			offset: '-1',
+		});
 		const types = persisted.events.map((entry) => (entry.data as { type: string }).type);
 		expect(types.at(-1)).toBe('run_end');
 		expect(persisted.events[0]?.data).toMatchObject({ type: 'run_start' });
@@ -726,9 +776,14 @@ describe('workflow run lifecycle', () => {
 			const app = createApp({
 				target: 'node',
 
-				workflows: [httpWorkflowRecord('daily-report', workflow(async () => {
-						throw new Error('report generation failed');
-					}))],
+				workflows: [
+					httpWorkflowRecord(
+						'daily-report',
+						workflow(async () => {
+							throw new Error('report generation failed');
+						}),
+					),
+				],
 				createWorkflowContext: createContext,
 				runStore,
 			});
@@ -773,9 +828,14 @@ describe('workflow run lifecycle', () => {
 			const app = createApp({
 				target: 'node',
 
-				workflows: [httpWorkflowRecord('daily-report', workflow(async () => {
-						throw new Error('report generation failed');
-					}))],
+				workflows: [
+					httpWorkflowRecord(
+						'daily-report',
+						workflow(async () => {
+							throw new Error('report generation failed');
+						}),
+					),
+				],
 				createWorkflowContext: createContext,
 				runStore,
 			});

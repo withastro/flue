@@ -1,11 +1,11 @@
 import type * as v from 'valibot';
 import {
-	defineAction,
-	isActionDefinition,
 	type ActionContext,
 	type ActionDefinition,
 	type ActionInputSchema,
 	type ActionOutputSchema,
+	defineAction,
+	isActionDefinition,
 	type JsonValue,
 } from './action.ts';
 import { isAgentDefinition } from './agent-definition.ts';
@@ -100,4 +100,3 @@ function makeWorkflowDefinition<TAction extends ActionDefinition>(
 export function isWorkflowDefinition(value: unknown): value is WorkflowDefinition {
 	return Boolean(value && typeof value === 'object' && workflowDefinitions.has(value));
 }
-

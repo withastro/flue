@@ -9,8 +9,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	ActionOutputSerializationError,
 	ActionOutputValidationError,
-	defineAgent,
 	defineAction,
+	defineAgent,
 	defineTool,
 	ToolNameConflictError,
 } from '../src/index.ts';
