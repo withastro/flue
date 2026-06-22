@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 import { type ChildProcess, spawn } from 'node:child_process';
 import * as fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
+import { createFlueClient, type FlueEvent } from '@flue/sdk';
+import { ulid } from 'ulidx';
 import { type ParseArgsOptionsConfig, parseArgs as parseNodeArgs } from 'node:util';
 import { determineAgent } from '@vercel/detect-agent';
 import MiniSearch from 'minisearch';
@@ -18,6 +20,11 @@ import {
 import { resolveConfigCandidates } from '../src/lib/config-paths.ts';
 import { DEFAULT_DEV_PORT, dev } from '../src/lib/dev.ts';
 import { createEnvLoader, type EnvLoader, selectEnvFile } from '../src/lib/env.ts';
+import { createLineEventPresenter } from '../src/lib/line-event-presenter.ts';
+import { type LocalHttpRuntime, startLocalHttpRuntime } from '../src/lib/local-http-runtime.ts';
+import { assertRunIdAllowed, parseAgentInput, runTarget } from '../src/lib/run-controller.ts';
+import { isAbsoluteServer, parseHeaders, resolveServerUrl } from '../src/lib/run-http.ts';
+import { resolveRunResource, type RunResource } from '../src/lib/run-resource.ts';
 import {
 	brand,
 	brandRows,
@@ -94,8 +101,8 @@ function printUsage(log: (message: string) => void = console.error) {
 	log(
 		'Usage:\n' +
 			'  flue dev   [--target <node|cloudflare>] [--root <path>] [--output <path>] [--config <path>] [--port <number>] [--env <path>]\n' +
-			'  flue run     <workflow> [--target node] [--input <json>] [--root <path>] [--output <path>] [--config <path>] [--env <path>]\n' +
-			'  flue connect <agent> <instance-id> [--target node] [--root <path>] [--output <path>] [--config <path>] [--env <path>]\n' +
+			'  flue run     <name> [--target <node|cloudflare>] [--id <id>] [--input <json>] [--server <path|url>] [--header \'Name: value\'] [--root <path>] [--output <path>] [--config <path>] [--env <path>]\n' +
+
 			'  flue build   [--target <node|cloudflare>] [--root <path>] [--output <path>] [--config <path>] [--env <path>]\n' +
 			'  flue init  --target <node|cloudflare> [--root <path>] [--force]\n' +
 			'  flue add   [<kind> <name|url>] [--print]\n' +
@@ -104,8 +111,8 @@ function printUsage(log: (message: string) => void = console.error) {
 			'\n' +
 			'Commands:\n' +
 			'  dev    Long-running watch-mode dev server. Rebuilds and reloads on file changes.\n' +
-			'  run      One-shot build + invoke a workflow (production-style; use for CI / scripted runs).\n' +
-			'  connect  Build + open an interactive local connection to an agent instance.\n' +
+			'  run      Invoke one agent or workflow through its normal HTTP application, then exit.\n' +
+
 			'  build    Build a deployable artifact to ./dist (production deploys).\n' +
 			'  init   Scaffold a starter flue.config.ts in the target directory.\n' +
 			'  add    Fetch a blueprint implementation guide for an AI coding agent to follow.\n' +
@@ -119,7 +126,7 @@ function printUsage(log: (message: string) => void = console.error) {
 			'                       Default: search the root dir (or cwd) for `flue.config.*`.\n' +
 			'                       CLI flags always override values set in the config file.\n' +
 			`  --port <number>      Port for the dev server. Default: ${DEFAULT_DEV_PORT}\n` +
-			'  --env <path>         Select one alternate .env-format file for build/dev/run/connect before config loads.\n' +
+			'  --env <path>         Select one alternate .env-format file for build/dev/run before config loads.\n' +
 			'                       Without --env, these commands load <project>/.env when present. Shell values win.\n' +
 			'  --print              (flue add/update) Print the raw blueprint Markdown to stdout regardless of whether the caller is an agent.\n' +
 			'  --force              (flue init) Overwrite an existing flue.config.* in the target directory.\n' +
@@ -129,7 +136,7 @@ function printUsage(log: (message: string) => void = console.error) {
 			'  flue dev --target cloudflare --port 8787\n' +
 			'  flue run hello --target node\n' +
 			'  flue run hello --target node --input \'{"name": "World"}\' --env .env.staging\n' +
-			'  flue connect assistant thread-1 --target node\n' +
+
 			'  flue build --target node\n' +
 			'  flue build --target cloudflare --root ./my-app\n' +
 			'  flue build --target node --output ./build\n' +
@@ -151,25 +158,12 @@ function printUsage(log: (message: string) => void = console.error) {
 
 interface RunArgs {
 	command: 'run';
-	workflow: string;
-	/** May be undefined if the user is relying on `flue.config.ts` for `target`. */
-	target: 'node' | undefined;
+	resource: string;
+	target: 'node' | 'cloudflare' | undefined;
 	input: string | undefined;
-	/** Explicit --root value, or undefined to default to cwd. */
-	explicitRoot: string | undefined;
-	/** Explicit --output value, or undefined to default to <root>/dist. */
-	explicitOutput: string | undefined;
-	/** Explicit --config value, or undefined to auto-discover. */
-	configFile: string | undefined;
-	/** Explicit --env file, or undefined to use the default project .env. */
-	envFile: string | undefined;
-}
-
-interface ConnectArgs {
-	command: 'connect';
-	agent: string;
-	instanceId: string;
-	target: 'node' | undefined;
+	id: string | undefined;
+	server: string | undefined;
+	headers: string[];
 	explicitRoot: string | undefined;
 	explicitOutput: string | undefined;
 	configFile: string | undefined;
@@ -238,7 +232,6 @@ interface InitArgs {
 
 type ParsedArgs =
 	| RunArgs
-	| ConnectArgs
 	| BuildArgs
 	| DevArgs
 	| BlueprintCommandArgs
@@ -254,6 +247,9 @@ type CliValues = Record<string, CliValue>;
 
 const SHARED_PARSE_OPTIONS = {
 	input: { type: 'string' },
+	id: { type: 'string' },
+	server: { type: 'string' },
+	header: { type: 'string', multiple: true },
 	target: { type: 'string' },
 	root: { type: 'string' },
 	output: { type: 'string' },
@@ -293,11 +289,7 @@ function parseCommandOptions(
 			fail(`Unknown flag for \`flue ${command}\`: ${token.rawName}`, true);
 		}
 		if (!allowed.has(token.rawName)) {
-			const hint =
-				command === 'connect' && token.rawName === '--input'
-					? '; enter prompts after connecting'
-					: '';
-			fail(`\`flue ${command}\` does not accept ${token.rawName}${hint}.`);
+			fail(`\`flue ${command}\` does not accept ${token.rawName}.`);
 		}
 		// Prevent a following known flag from being consumed as this string option's value.
 		if (
@@ -349,7 +341,7 @@ function targetFlag(value: string | undefined): 'node' | 'cloudflare' | undefine
 }
 
 function parseFlags(
-	command: 'build' | 'dev' | 'run' | 'connect',
+	command: 'build' | 'dev' | 'run',
 	args: string[],
 	allowed: ReadonlySet<string>,
 ): {
@@ -359,6 +351,9 @@ function parseFlags(
 	explicitOutput: string | undefined;
 	configFile: string | undefined;
 	input: string | undefined;
+	id: string | undefined;
+	server: string | undefined;
+	headers: string[];
 	port: number;
 	envFile: string | undefined;
 } {
@@ -390,6 +385,9 @@ function parseFlags(
 		// resolves it vs. cwd at load time, mirroring how Vite handles `--config`.
 		configFile: stringFlag(values, 'config', 'Missing value for --config'),
 		input: stringFlag(values, 'input', 'Missing value for --input'),
+		id: stringFlag(values, 'id', 'Missing value for --id'),
+		server: stringFlag(values, 'server', 'Missing value for --server'),
+		headers: stringListFlag(values, 'header', 'Missing value for --header'),
 		port,
 		envFile: envFiles[0],
 	};
@@ -402,31 +400,6 @@ function pathFlag(values: CliValues, name: string, missingMessage: string): stri
 
 function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
-}
-
-function printCloudflareRunUnsupported(workflow: string, input: string | undefined): never {
-	const request =
-		input === undefined
-			? `  curl -X POST http://localhost:${DEFAULT_DEV_PORT}/workflows/${workflow}`
-			: `  curl http://localhost:${DEFAULT_DEV_PORT}/workflows/${workflow} \\\n` +
-				'    -H "Content-Type: application/json" \\\n' +
-				`    -d ${shellQuote(input)}`;
-	console.error(
-		'`flue run --target cloudflare` is not supported.\n\n' +
-			'`flue run` is a one-shot Node.js invoker; Cloudflare builds need a Workers runtime.\n\n' +
-			'For local development of a Cloudflare target, use `flue dev`:\n\n' +
-			`  flue dev --target cloudflare\n\n` +
-			`Then in another terminal:\n\n${request}`,
-	);
-	process.exit(1);
-}
-
-function printCloudflareConnectUnsupported(): never {
-	console.error(
-		'`flue connect --target cloudflare` is not supported.\n\n' +
-			'`flue connect` currently starts a local Node.js process; Cloudflare connections require a Workers runtime.',
-	);
-	process.exit(1);
 }
 
 function parseBlueprintCommandArgs(
@@ -608,45 +581,25 @@ function parseArgs(argv: string[]): ParsedArgs {
 		};
 	}
 
-	if (command === 'connect') {
-		const flags = parseFlags(
-			'connect',
-			rest,
-			new Set(['--target', '--root', '--output', '--config', '--env']),
-		);
-		const [agent, instanceId, ...extra] = flags.positionals;
-		if (!agent || !instanceId) {
-			console.error('Missing agent name or instance id for connect command.');
-			printUsage();
-			process.exit(1);
-		}
-		if (extra.length > 0) {
-			console.error(`Unexpected extra arguments for \`flue connect\`: ${extra.join(' ')}`);
-			printUsage();
-			process.exit(1);
-		}
-		if (flags.target === 'cloudflare') printCloudflareConnectUnsupported();
-		return {
-			command: 'connect',
-			agent,
-			instanceId,
-			target: flags.target as 'node' | undefined,
-			explicitRoot: flags.explicitRoot,
-			explicitOutput: flags.explicitOutput,
-			configFile: flags.configFile,
-			envFile: flags.envFile,
-		};
-	}
-
 	if (command === 'run') {
 		const flags = parseFlags(
 			'run',
 			rest,
-			new Set(['--target', '--input', '--root', '--output', '--config', '--env']),
+			new Set([
+				'--target',
+				'--input',
+				'--id',
+				'--server',
+				'--header',
+				'--root',
+				'--output',
+				'--config',
+				'--env',
+			]),
 		);
-		const [workflow, ...extra] = flags.positionals;
-		if (!workflow) {
-			console.error('Missing workflow name for run command.');
+		const [resource, ...extra] = flags.positionals;
+		if (!resource) {
+			console.error('Missing agent or workflow name for run command.');
 			printUsage();
 			process.exit(1);
 		}
@@ -654,14 +607,6 @@ function parseArgs(argv: string[]): ParsedArgs {
 			console.error(`Unexpected extra arguments for \`flue run\`: ${extra.join(' ')}`);
 			printUsage();
 			process.exit(1);
-		}
-
-		// `flue run` only supports node. If the user explicitly asked for
-		// cloudflare on the CLI, bail with the usual usage hint. The case
-		// where `flue.config.ts` sets `target: cloudflare` is handled later
-		// in `run()` after config resolution.
-		if (flags.target === 'cloudflare') {
-			printCloudflareRunUnsupported(workflow, flags.input);
 		}
 		if (flags.input !== undefined) {
 			try {
@@ -671,12 +616,21 @@ function parseArgs(argv: string[]): ParsedArgs {
 				process.exit(1);
 			}
 		}
+		try {
+			parseHeaders(flags.headers);
+			if (flags.server !== undefined) resolveServerUrl(flags.server);
+		} catch (error) {
+			fail(error instanceof Error ? error.message : String(error));
+		}
 
 		return {
 			command: 'run',
-			workflow,
-			target: flags.target as 'node' | undefined,
+			resource,
+			target: flags.target,
 			input: flags.input,
+			id: flags.id,
+			server: flags.server,
+			headers: flags.headers,
 			explicitRoot: flags.explicitRoot,
 			explicitOutput: flags.explicitOutput,
 			configFile: flags.configFile,
@@ -686,313 +640,6 @@ function parseArgs(argv: string[]): ParsedArgs {
 
 	printUsage();
 	process.exit(1);
-}
-
-// ─── Event rendering ─────────────────────────────────────────────────────────
-
-let textBuffer = '';
-let thinkingBuffer = '';
-
-function flushTextBuffer() {
-	if (textBuffer) {
-		for (const line of textBuffer.split('\n')) {
-			if (line) console.error(`  ${line}`);
-		}
-		textBuffer = '';
-	}
-}
-
-function flushThinkingBuffer() {
-	if (thinkingBuffer) {
-		for (const line of thinkingBuffer.split('\n')) {
-			if (line) console.error(`\x1b[2m  ${line}\x1b[0m`);
-		}
-		thinkingBuffer = '';
-	}
-}
-
-function flushBuffers() {
-	flushTextBuffer();
-	flushThinkingBuffer();
-}
-
-function logEvent(event: any) {
-	switch (event.type) {
-		case 'text_delta': {
-			flushThinkingBuffer();
-			const combined = textBuffer + (event.text ?? '');
-			const lines = combined.split('\n');
-			textBuffer = lines.pop() ?? '';
-			for (const line of lines) {
-				console.error(`  ${line}`);
-			}
-			break;
-		}
-
-		case 'thinking_start':
-			flushTextBuffer();
-			console.error(pc.dim('thinking'));
-			break;
-
-		case 'thinking_delta': {
-			flushTextBuffer();
-			const combined = thinkingBuffer + (event.delta ?? '');
-			const lines = combined.split('\n');
-			thinkingBuffer = lines.pop() ?? '';
-			for (const line of lines) {
-				if (line) console.error(`\x1b[2m  ${line}\x1b[0m`);
-			}
-			break;
-		}
-
-		case 'thinking_end':
-			flushThinkingBuffer();
-			break;
-
-		case 'tool_start': {
-			flushBuffers();
-			let toolDetail = event.toolName;
-			if (event.args) {
-				if (event.toolName === 'bash' && event.args.command) {
-					toolDetail += `  $ ${event.args.command.length > 120 ? `${event.args.command.slice(0, 120)}...` : event.args.command}`;
-				} else if (event.toolName === 'read' && event.args.path) {
-					toolDetail += `  ${event.args.path}`;
-				} else if (event.toolName === 'write' && event.args.path) {
-					toolDetail += `  ${event.args.path}`;
-				} else if (event.toolName === 'edit' && event.args.path) {
-					toolDetail += `  ${event.args.path}`;
-				} else if (event.toolName === 'grep' && event.args.pattern) {
-					toolDetail += `  ${event.args.pattern}`;
-				} else if (event.toolName === 'glob' && event.args.pattern) {
-					toolDetail += `  ${event.args.pattern}`;
-				}
-			}
-			console.error(`${pc.dim('tool')} ${toolDetail}`);
-			break;
-		}
-
-		case 'tool': {
-			const status = event.isError ? 'error' : 'done';
-			let resultPreview = '';
-			if (event.result?.content?.[0]?.text) {
-				const text = event.result.content[0].text as string;
-				if (text.length > 200) {
-					resultPreview = `  (${text.length} chars)`;
-				} else if (event.isError) {
-					resultPreview = `  ${text}`;
-				}
-			}
-			console.error(`${pc.dim(`tool ${status}`)} ${event.toolName}${resultPreview}`);
-			break;
-		}
-
-		case 'turn_start':
-		case 'turn_messages':
-			break;
-
-		case 'turn':
-			flushBuffers();
-			break;
-
-		case 'compaction_start':
-			flushBuffers();
-			console.error(pc.dim(`compaction start reason=${event.reason} tokens=${event.estimatedTokens}`));
-			break;
-
-		case 'compaction':
-			console.error(
-				pc.dim(`compaction done messages ${event.messagesBefore} → ${event.messagesAfter}`),
-			);
-			break;
-
-		case 'log':
-			flushBuffers();
-			console.error(`${pc.dim(event.level ?? 'info')} ${event.message ?? ''}`);
-			break;
-
-		case 'idle':
-			flushBuffers();
-			break;
-
-		case 'error':
-			flushBuffers();
-			// Envelope: { type: 'error', error: { type, message, details, dev?, meta? } }
-			// `dev` is only present when the server is in local/dev mode —
-			// `flue run` always is, so we render it whenever it's present.
-			cliError(`[${event.error?.type ?? 'unknown'}] ${event.error?.message ?? ''}`);
-			if (event.error?.details) {
-				for (const line of String(event.error.details).split('\n')) {
-					if (line) console.error(`  ${line}`);
-				}
-			}
-			if (event.error?.dev) {
-				for (const line of String(event.error.dev).split('\n')) {
-					if (line) console.error(`  ${line}`);
-				}
-			}
-			break;
-
-		case 'run_start':
-		case 'run_end':
-			// `flue run` extracts the final result/error from `run_end`
-			// in the run stream consumer before reaching this renderer. `run_start`
-			// is uninteresting in single-run-mode output. Skipped here.
-			break;
-
-		case 'operation_start':
-		case 'operation':
-			// Structural lifecycle events. `flue run` is a one-shot,
-			// linear consumer that already shows tool I/O and text
-			// streaming inline; operation banners would be noise.
-			break;
-	}
-}
-
-type LocalCliMessage = {
-	type?: string;
-	target?: string;
-	name?: string;
-	instanceId?: string;
-	requestId?: string;
-	runId?: string;
-	event?: any;
-	result?: any;
-	error?: { type?: string; message?: string; details?: string; dev?: string };
-};
-
-let localProcess: ChildProcess | undefined;
-
-function startLocalProcess(
-	serverPath: string,
-	target: 'workflow' | 'agent',
-	name: string,
-	id: string | undefined,
-	cwd: string,
-): ChildProcess {
-	const child = spawn(process.execPath, [serverPath], {
-		stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-		cwd,
-		env: {
-			...process.env,
-			FLUE_MODE: 'local',
-			FLUE_INTERNAL_CLI_IPC: '1',
-			FLUE_CLI_TARGET: target,
-			FLUE_CLI_NAME: name,
-			...(id === undefined ? {} : { FLUE_CLI_ID: id }),
-		},
-	});
-	const pipeOutput = (data: Buffer) => {
-		for (const line of data.toString().trimEnd().split('\n')) {
-			if (line.trim()) console.error(pc.dim(line));
-		}
-	};
-	child.stdout?.on('data', pipeOutput);
-	child.stderr?.on('data', pipeOutput);
-	localProcess = child;
-	return child;
-}
-
-function stopLocalProcess() {
-	if (localProcess && !localProcess.killed) localProcess.kill('SIGTERM');
-	localProcess = undefined;
-}
-
-function waitForLocalReady(
-	child: ChildProcess,
-	expected: (message: LocalCliMessage) => boolean,
-): Promise<void> {
-	return new Promise((resolve, reject) => {
-		const timeout = setTimeout(() => {
-			cleanup();
-			child.kill('SIGTERM');
-			reject(new Error('Local execution process did not become ready within 60 seconds.'));
-		}, 60_000);
-		const onMessage = (raw: unknown) => {
-			const message = raw as LocalCliMessage;
-			if (message.type === 'error') {
-				cleanup();
-				reject(new Error(formatLocalError(message)));
-				return;
-			}
-			if (message.type === 'ready' && expected(message)) {
-				cleanup();
-				resolve();
-			}
-		};
-		const onExit = (code: number | null) => {
-			cleanup();
-			reject(
-				new Error(
-					`Local execution process exited before becoming ready${code === null ? '' : ` (code ${code})`}.`,
-				),
-			);
-		};
-		const cleanup = () => {
-			clearTimeout(timeout);
-			child.off('message', onMessage);
-			child.off('exit', onExit);
-		};
-		child.on('message', onMessage);
-		child.once('exit', onExit);
-	});
-}
-
-function formatLocalError(message: LocalCliMessage): string {
-	const error = message.error;
-	if (!error) return 'Unknown local execution error.';
-	const messageText = error.message ?? 'Unknown error';
-	const lines = [`[${error.type ?? 'unknown'}] ${messageText}`];
-	if (error.details && error.details !== messageText) lines.push(error.details);
-	if (error.dev && error.dev !== messageText && error.dev !== error.details) lines.push(error.dev);
-	return lines.join('\n');
-}
-
-function sendLocalRequest(
-	child: ChildProcess,
-	message: Record<string, unknown>,
-	onStarted?: (message: LocalCliMessage) => void,
-): Promise<any> {
-	return new Promise((resolve, reject) => {
-		const requestId = message.requestId;
-		const onMessage = (raw: unknown) => {
-			const incoming = raw as LocalCliMessage;
-			if (incoming.requestId !== requestId) return;
-			if (incoming.type === 'started') {
-				onStarted?.(incoming);
-				return;
-			}
-			if (incoming.type === 'event') {
-				logEvent(incoming.event);
-				return;
-			}
-			if (incoming.type === 'result') {
-				cleanup();
-				flushBuffers();
-				resolve(incoming.result);
-				return;
-			}
-			if (incoming.type === 'error') {
-				cleanup();
-				flushBuffers();
-				reject(new Error(formatLocalError(incoming)));
-			}
-		};
-		const onExit = (code: number | null) => {
-			cleanup();
-			reject(
-				new Error(
-					`Local execution process exited before returning a result${code === null ? '' : ` (code ${code})`}.`,
-				),
-			);
-		};
-		const cleanup = () => {
-			child.off('message', onMessage);
-			child.off('exit', onExit);
-		};
-		child.on('message', onMessage);
-		child.once('exit', onExit);
-		child.send?.(message);
-	});
 }
 
 // ─── Main ───────────────────────────────────────────────────────────────────
@@ -1181,128 +828,150 @@ function displayPath(root: string, filePath: string): string {
 	return relative && !relative.startsWith('..') && !path.isAbsolute(relative) ? relative : filePath;
 }
 
-async function buildLocalTarget(
-	args: Pick<
-		RunArgs | ConnectArgs,
-		'target' | 'explicitRoot' | 'explicitOutput' | 'configFile' | 'envFile'
-	>,
-) {
-	const { cfg, configPath, envLoader } = await resolveApplicationCommand(args);
-	const envFile = fs.existsSync(envLoader.file) ? envLoader.file : undefined;
-	if (cfg.target === 'cloudflare') return { cfg, configPath, envFile, serverPath: undefined };
-	try {
-		await build({
-			root: cfg.root,
-			sourceRoot: cfg.sourceRoot,
-			output: cfg.output,
-			target: cfg.target,
-			log: 'silent',
-			configFile: configPath,
-			envFile,
-		});
-	} catch (err) {
-		cliError(`Build failed: ${err instanceof Error ? err.message : String(err)}`);
-		process.exit(1);
-	}
-	return { cfg, configPath, envFile, serverPath: path.join(cfg.output, 'server.mjs') };
+function snapshotFiles(paths: readonly string[]): Map<string, string | undefined> {
+	return new Map(paths.map((file) => [file, fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : undefined]));
 }
 
-async function run(args: RunArgs) {
-	const built = await buildLocalTarget(args);
-	if (built.cfg.target === 'cloudflare') printCloudflareRunUnsupported(args.workflow, args.input);
-	if (!built.serverPath)
-		throw new Error('[flue] Node local workflow build did not produce an executable artifact.');
-	brandRows('flue run', [
-		['workflow', args.workflow],
-		['target', built.cfg.target],
-		['config', built.configPath ? displayPath(built.cfg.root, built.configPath) : undefined],
-		['env', built.envFile ? displayPath(built.cfg.root, built.envFile) : undefined],
-	]);
-	const child = startLocalProcess(
-		built.serverPath,
-		'workflow',
-		args.workflow,
-		undefined,
-		built.cfg.root,
-	);
-	try {
-		await waitForLocalReady(
-			child,
-			(message) => message.target === 'workflow' && message.name === args.workflow,
-		);
-		const result = await sendLocalRequest(
-			child,
-			{
-				type: 'invoke',
-				requestId: `req_${crypto.randomUUID()}`,
-				input: args.input === undefined ? undefined : JSON.parse(args.input),
-			},
-			(message) => {
-				row('run', message.runId);
-				console.error('');
-			},
-		);
-		if (result !== undefined && result !== null) console.log(JSON.stringify(result, null, 2));
-		success('workflow completed');
-	} catch (err) {
-		cliError(`Workflow failed: ${err instanceof Error ? err.message : String(err)}`);
-		stopLocalProcess();
-		process.exit(1);
-	}
-	stopLocalProcess();
-}
-
-async function connectCommand(args: ConnectArgs) {
-	const built = await buildLocalTarget(args);
-	if (built.cfg.target === 'cloudflare') printCloudflareConnectUnsupported();
-	if (!built.serverPath)
-		throw new Error('[flue] Node local agent build did not produce an executable artifact.');
-	console.error(brand(['flue connect', `${args.agent}/${args.instanceId}`, 'starting...']));
-	const child = startLocalProcess(
-		built.serverPath,
-		'agent',
-		args.agent,
-		args.instanceId,
-		built.cfg.root,
-	);
-	try {
-		await waitForLocalReady(
-			child,
-			(message) =>
-				message.target === 'agent' &&
-				message.name === args.agent &&
-				message.instanceId === args.instanceId,
-		);
-	} catch (err) {
-		cliError(`Connection failed: ${err instanceof Error ? err.message : String(err)}`);
-		stopLocalProcess();
-		process.exit(1);
-	}
-	success('connected');
-	note('enter one prompt per line; Ctrl+D to exit');
-	const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
-	let closing = false;
-	child.once('exit', (code) => {
-		if (closing) return;
-		input.close();
-		cliError(`Agent connection ended unexpectedly${code === null ? '.' : ` (code ${code}).`}`);
-		process.exitCode = 1;
-	});
-	for await (const line of input) {
-		if (!line.trim()) continue;
-		try {
-			const result = await sendLocalRequest(child, {
-				type: 'prompt',
-				requestId: `req_${crypto.randomUUID()}`,
-				message: line,
-			});
-			if (result !== undefined && result !== null) console.log(JSON.stringify(result, null, 2));
-		} catch (err) {
-			cliError(`Agent failed: ${err instanceof Error ? err.message : String(err)}`);
+function restoreFiles(snapshot: ReadonlyMap<string, string | undefined>): void {
+	for (const [file, content] of snapshot) {
+		if (content === undefined) {
+			fs.rmSync(file, { force: true });
+		} else {
+			fs.mkdirSync(path.dirname(file), { recursive: true });
+			fs.writeFileSync(file, content);
 		}
 	}
-	closing = true;
-	stopLocalProcess();
+}
+
+let activeRunController: AbortController | undefined;
+
+async function run(args: RunArgs) {
+	const attachRemote = isAbsoluteServer(args.server);
+	let cfg: FlueConfig | undefined;
+	let configPath: string | undefined;
+	let envFile: string | undefined;
+	let resource: RunResource;
+	if (attachRemote) {
+		const qualified = args.resource.match(/^(agent|workflow):(.+)$/);
+		if (!qualified) {
+			throw new Error(
+				`[flue] Absolute --server requires a qualified resource: agent:${args.resource} or workflow:${args.resource}.`,
+			);
+		}
+		resource = {
+			kind: qualified[1] as RunResource['kind'],
+			name: qualified[2] as string,
+			filePath: '',
+		} as RunResource;
+	} else {
+		const resolved = await resolveApplicationCommand(args);
+		cfg = resolved.cfg;
+		configPath = resolved.configPath;
+		envFile = fs.existsSync(resolved.envLoader.file) ? resolved.envLoader.file : undefined;
+		resource = resolveRunResource(cfg.sourceRoot, args.resource);
+	}
+	assertRunIdAllowed(resource.kind, args.id);
+	const input = args.input === undefined ? undefined : JSON.parse(args.input);
+	if (resource.kind === 'agent' && input === undefined) {
+		throw new Error('[flue] Agent `flue run` requires --input.');
+	}
+	const instanceId = resource.kind === 'agent' ? (args.id ?? ulid()) : undefined;
+	let runtime: LocalHttpRuntime | undefined;
+	let temporaryOutput: string | undefined;
+	let cloudflareScratch: Map<string, string | undefined> | undefined;
+	let cloudflareInputDirExisted = true;
+	const controller = new AbortController();
+	activeRunController = controller;
+	const presenter = createLineEventPresenter({
+		write: (line) => console.error(line),
+		dim: pc.dim,
+	});
+	try {
+		if (!attachRemote) {
+			temporaryOutput = fs.mkdtempSync(path.join(os.tmpdir(), 'flue-run-'));
+			if (cfg?.target === 'cloudflare') {
+				cloudflareInputDirExisted = fs.existsSync(path.join(cfg.root, '.flue-vite'));
+				cloudflareScratch = snapshotFiles([
+					path.join(cfg.root, '.flue-vite', '_entry.ts'),
+					path.join(cfg.root, '.flue-vite.wrangler.jsonc'),
+				]);
+			}
+			runtime = await startLocalHttpRuntime({
+				root: cfg?.root as string,
+				sourceRoot: cfg?.sourceRoot as string,
+				output: temporaryOutput,
+				target: cfg?.target as 'node' | 'cloudflare',
+				configFile: configPath,
+				envFile,
+				env: process.env,
+				signal: controller.signal,
+				onOutput: ({ line }) => {
+					if (line.trim()) console.error(pc.dim(line));
+				},
+			});
+		}
+		const baseUrl = attachRemote
+			? resolveServerUrl(args.server)
+			: resolveServerUrl(args.server, runtime?.url as string);
+		brandRows('flue run', [
+			[resource.kind, resource.name],
+			['id', instanceId],
+			['target', attachRemote ? undefined : cfg?.target],
+			['server', baseUrl],
+			['config', configPath && cfg ? displayPath(cfg.root, configPath) : undefined],
+			['env', envFile && cfg ? displayPath(cfg.root, envFile) : undefined],
+		]);
+		const client = createFlueClient({ baseUrl, headers: parseHeaders(args.headers) });
+		const target =
+			resource.kind === 'agent'
+				? {
+						kind: 'agent' as const,
+						name: resource.name,
+						instanceId: instanceId as string,
+						input: parseAgentInput(input),
+					}
+				: { kind: 'workflow' as const, name: resource.name, input };
+		let runIdShown = false;
+		const completed = await runTarget(
+			client,
+			target,
+			(event: FlueEvent) => {
+				if (!runIdShown && event.type === 'run_start') {
+					runIdShown = true;
+					row('run', event.runId);
+					console.error('');
+				}
+				presenter.present(event);
+			},
+			controller.signal,
+		);
+		presenter.flush();
+		if (completed.kind === 'workflow' && !runIdShown) row('run', completed.runId);
+		if (completed.result !== undefined && completed.result !== null) {
+			console.log(JSON.stringify(completed.result, null, 2));
+		}
+		success(`${resource.kind} completed`);
+	} catch (err) {
+		presenter.flush();
+		if (!controller.signal.aborted) {
+			cliError(`${resource.kind === 'agent' ? 'Agent' : 'Workflow'} failed: ${err instanceof Error ? err.message : String(err)}`);
+			process.exitCode = 1;
+		}
+	} finally {
+		try {
+			await runtime?.stop();
+		} finally {
+			activeRunController = undefined;
+			if (cloudflareScratch) restoreFiles(cloudflareScratch);
+			if (!cloudflareInputDirExisted && cfg) {
+				const inputDir = path.join(cfg.root, '.flue-vite');
+				try {
+					if (fs.readdirSync(inputDir).length === 0) fs.rmdirSync(inputDir);
+				} catch {}
+			}
+			if (temporaryOutput) fs.rmSync(temporaryOutput, { recursive: true, force: true });
+		}
+	}
 }
 
 // ─── `flue init` ────────────────────────────────────────────────────────────
@@ -1802,15 +1471,12 @@ const args = parseArgs(process.argv.slice(2));
 // `dev` manages its own supervisor shutdown, so it skips the hard-exit
 // handlers that would otherwise run first and preempt its graceful path.
 if (args.command !== 'dev') {
-	process.on('SIGINT', () => {
-		stopLocalProcess();
-		process.exit(130);
-	});
-
-	process.on('SIGTERM', () => {
-		stopLocalProcess();
-		process.exit(143);
-	});
+	const shutdown = (signal: NodeJS.Signals) => {
+		activeRunController?.abort(new DOMException('Aborted', 'AbortError'));
+		process.exitCode = signal === 'SIGINT' ? 130 : 143;
+	};
+	process.on('SIGINT', () => shutdown('SIGINT'));
+	process.on('SIGTERM', () => shutdown('SIGTERM'));
 }
 
 async function main() {
@@ -1827,15 +1493,12 @@ async function main() {
 		docsCommand(args);
 	} else if (args.command === 'init') {
 		initCommand(args);
-	} else if (args.command === 'connect') {
-		await connectCommand(args);
-	} else {
+	} else if (args.command === 'run') {
 		await run(args);
 	}
 }
 
 void main().catch((err) => {
 	cliError(err instanceof Error ? err.message : String(err));
-	stopLocalProcess();
 	process.exit(1);
 });

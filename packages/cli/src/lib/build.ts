@@ -116,6 +116,7 @@ async function buildApplication(options: BuildOptions): Promise<BuildResult> {
 		cloudflareEntry,
 		dbEntry,
 		runtimeVersion: readRuntimeVersion(root),
+		temporaryLocalExposure: options.temporaryLocalExposure === true,
 	};
 
 	const serverCode = await plugin.generateEntryPoint(ctx);

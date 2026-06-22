@@ -37,11 +37,13 @@
 	"dependencies": {
 		"@cloudflare/vite-plugin": "^1.39.2",
 		"@flue/runtime": "workspace:*",
+		"@flue/sdk": "workspace:*",
 		"@vercel/detect-agent": "^1.2.3",
 		"debug": "^4.4.3",
 		"minisearch": "^7.2.0",
 		"package-up": "^5.0.0",
 		"picocolors": "^1.1.1",
+		"ulidx": "^2.4.1",
 		"valibot": "^1.0.0",
 		"vite": "^8.0.14"
 	},

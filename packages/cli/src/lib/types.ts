@@ -69,6 +69,7 @@ export interface BuildContext {
 	dbEntry?: string;
 	/** Version of @flue/runtime resolved for this build. */
 	runtimeVersion: string;
+	temporaryLocalExposure?: boolean;
 }
 
 /**
@@ -147,4 +148,5 @@ export interface BuildOptions {
 	log?: 'normal' | 'silent';
 	configFile?: string;
 	envFile?: string;
+	temporaryLocalExposure?: boolean;
 }

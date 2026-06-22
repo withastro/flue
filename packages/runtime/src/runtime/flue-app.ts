@@ -486,7 +486,7 @@ const workflowRouteHandler: MiddlewareHandler = async (c) => {
 		// runId; the DO it lands on then re-uses that value to seed its run
 		// record via handleWorkflowRequest({ runId: instanceId, ... }).
 		const response = await rt.routeWorkflowRequest(
-			normalizeAttachedRequest(request, `/workflows/${encodeURIComponent(name)}`),
+			request,
 			c.env,
 			{
 				workflowName: name,
@@ -760,12 +760,6 @@ async function runAttachedMiddleware(
 	throw new Error(
 		'Context is not finalized. Did you forget to return a Response object or await next()?',
 	);
-}
-
-function normalizeAttachedRequest(request: Request, pathname: string): Request {
-	const url = new URL(request.url);
-	url.pathname = pathname;
-	return new Request(url, request);
 }
 
 function registeredAgentsForTransport(rt: FlueRuntime): readonly string[] {

@@ -24,26 +24,23 @@ async function runCli(args) {
 }
 
 describe('flue (argument parsing)', () => {
-	it('treats the positional as the workflow when flags precede it in `flue run`', async () => {
-		// `--target cloudflare` makes `flue run` exit at parse time with a
-		// message that names the workflow, proving the flags-first positional
-		// was assigned correctly instead of being mistaken for the workflow.
+	it('treats the positional as the resource when flags precede it in `flue run`', async () => {
 		const result = await runCli(['run', '--target', 'cloudflare', 'hello']);
 		assert.equal(result.code, 1);
-		assert.ok(result.stderr.includes('/workflows/hello'), result.stderr);
-		assert.ok(!result.stderr.includes('Unknown'), result.stderr);
+		assert.ok(result.stderr.includes('Resource "hello" not found'), result.stderr);
+		assert.ok(!result.stderr.includes('Unknown flag'), result.stderr);
 	});
 
-	it('reports the missing workflow when `flue run` receives flags but no positional', async () => {
+	it('reports the missing resource when `flue run` receives flags but no positional', async () => {
 		const result = await runCli(['run', '--target', 'node']);
 		assert.equal(result.code, 1);
-		assert.ok(result.stderr.includes('Missing workflow name'), result.stderr);
+		assert.ok(result.stderr.includes('Missing agent or workflow name'), result.stderr);
 	});
 
 	it('treats `--target=node` the same as `--target node`', async () => {
 		const result = await runCli(['run', '--target=node']);
 		assert.equal(result.code, 1);
-		assert.ok(result.stderr.includes('Missing workflow name'), result.stderr);
+		assert.ok(result.stderr.includes('Missing agent or workflow name'), result.stderr);
 		assert.ok(!result.stderr.includes('Unknown flag'), result.stderr);
 	});
 
@@ -84,12 +81,36 @@ describe('flue (argument parsing)', () => {
 		assert.ok(result.stderr.includes('`flue dev` does not accept --input'), result.stderr);
 	});
 
-	it('rejects --input when `flue connect` is given the default input value', async () => {
-		// Rejection is by flag name, not by comparing against the default
-		// value, so even `--input '{}'` errors instead of slipping through.
-		const result = await runCli(['connect', 'assistant', 'thread-1', '--input', '{}']);
+	it('treats the removed connect command as unknown', async () => {
+		const result = await runCli(['connect', 'assistant', 'thread-1']);
 		assert.equal(result.code, 1);
-		assert.ok(result.stderr.includes('`flue connect` does not accept --input'), result.stderr);
+		assert.ok(result.stderr.includes('Usage:'), result.stderr);
+		assert.ok(!result.stderr.includes('flue connect <'), result.stderr);
+	});
+
+	it('accepts the workflow --id flag for resource-aware validation', async () => {
+		const result = await runCli(['run', 'workflow:hello', '--id', 'chosen-run', '--target', 'node']);
+		assert.equal(result.code, 1);
+		assert.ok(result.stderr.includes('Resource "workflow:hello" not found'), result.stderr);
+		assert.ok(!result.stderr.includes('Unknown flag'), result.stderr);
+	});
+
+	it('attaches to an absolute server without requiring local project configuration', async () => {
+		const result = await runCli([
+			'run',
+			'workflow:report',
+			'--server',
+			'http://127.0.0.1:1/api/flue',
+		]);
+		assert.equal(result.code, 1);
+		assert.ok(!result.stderr.includes('Missing required `target`'), result.stderr);
+		assert.ok(result.stderr.includes('Workflow failed'), result.stderr);
+	});
+
+	it('rejects malformed header syntax before starting work', async () => {
+		const result = await runCli(['run', 'hello', '--header', 'invalid']);
+		assert.equal(result.code, 1);
+		assert.ok(result.stderr.includes('Invalid header'), result.stderr);
 	});
 
 	it('rejects the removed --payload flag when passed to `flue run`', async () => {

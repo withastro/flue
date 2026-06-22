@@ -23,6 +23,7 @@ export class CloudflarePlugin implements BuildPlugin {
 	async generateEntryPoint(ctx: BuildContext): Promise<string> {
 		const { agents, appEntry, channels, cloudflareEntry, workflows } = ctx;
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
+		const temporaryLocalExposure = JSON.stringify(ctx.temporaryLocalExposure);
 		validateCloudflareAgentNames(ctx);
 		validateCloudflareExportNames(ctx);
 		if (ctx.dbEntry) {
@@ -491,17 +492,17 @@ function parseWorkflowStart(request, workflowName) {
   if (request.method !== 'POST') return false;
   const url = new URL(request.url);
   const segments = url.pathname.split('/').filter(Boolean);
-  if (segments.length !== 2 || segments[0] !== 'workflows') return false;
-  return decodeURIComponent(segments[1] || '') === workflowName;
+  if (segments.length < 2 || segments[segments.length - 2] !== 'workflows') return false;
+  return decodeURIComponent(segments[segments.length - 1] || '') === workflowName;
 }
 
 function parseRunRoute(request) {
   const url = new URL(request.url);
   const segments = url.pathname.split('/').filter(Boolean);
-  if (segments.length !== 2 || segments[0] !== 'runs') return null;
+  if (segments.length < 2 || segments[segments.length - 2] !== 'runs') return null;
   let runId;
   try {
-    runId = decodeURIComponent(segments[1] || '');
+    runId = decodeURIComponent(segments[segments.length - 1] || '');
   } catch {
     return null;
   }
@@ -526,6 +527,7 @@ export { FlueRegistry };
 configureFlueRuntime({
   target: 'cloudflare',
   devMode: import.meta.env.DEV,
+  temporaryLocalExposure: ${temporaryLocalExposure},
   runtimeVersion: ${runtimeVersion},
   agents,
   workflows,

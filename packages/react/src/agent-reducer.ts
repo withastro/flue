@@ -135,7 +135,7 @@ function reduceAgentEventOnce(state: AgentState, event: AgentReducerEvent): Agen
 				? {
 						...state,
 						status: 'error',
-						error: new Error(event.error ?? 'Agent submission failed'),
+						error: new Error(event.error?.message ?? 'Agent submission failed'),
 						pendingSends: state.pendingSends.filter(
 							(send) => send.submissionId !== event.submissionId,
 						),

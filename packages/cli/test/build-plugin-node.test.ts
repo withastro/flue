@@ -86,6 +86,15 @@ describe('NodePlugin', () => {
 		expect(entry).not.toContain("flueApp.fetch(new Request('https://flue.invalid/_internal/workflows/");
 	});
 
+	it('passes temporary local HTTP exposure into runtime configuration', () => {
+		const entry = new NodePlugin().generateEntryPoint(
+			testBuildContext({ temporaryLocalExposure: true }),
+		);
+
+		expect(entry).toContain('temporaryLocalExposure: true');
+		expect(entry).toContain("hostname: '127.0.0.1'");
+	});
+
 	it('imports discovered channels and configures their normalized handlers', () => {
 		const entry = new NodePlugin().generateEntryPoint(
 			testBuildContext({

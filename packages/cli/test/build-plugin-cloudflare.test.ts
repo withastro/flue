@@ -78,6 +78,14 @@ describe('CloudflarePlugin', () => {
 		);
 	});
 
+	it('passes temporary local HTTP exposure into runtime configuration', async () => {
+		const entry = await new CloudflarePlugin().generateEntryPoint(
+			testBuildContext({ temporaryLocalExposure: true }),
+		);
+
+		expect(entry).toContain('temporaryLocalExposure: true');
+	});
+
 	it('imports discovered channels and configures their normalized handlers', async () => {
 		const entry = await new CloudflarePlugin().generateEntryPoint(
 			testBuildContext({

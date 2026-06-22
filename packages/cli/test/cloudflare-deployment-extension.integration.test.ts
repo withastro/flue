@@ -1,3 +1,5 @@
+import { spawn } from 'node:child_process';
+import { once } from 'node:events';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -12,6 +14,52 @@ import {
 } from '../src/lib/build.ts';
 
 describe('Cloudflare deployment extensions', () => {
+	it('runs a route-free workflow through an authored non-root app mount and exits', async () => {
+		const root = createRunFixture();
+		try {
+			const child = spawn(
+				process.execPath,
+				[
+					path.resolve(process.cwd(), 'bin/flue.mjs'),
+					'run',
+					'checkpoint',
+					'--server',
+					'/internal/flue',
+					'--header',
+					'x-checkpoint: observed',
+				],
+				{ cwd: root, stdio: ['ignore', 'pipe', 'pipe'] },
+			);
+			let stdout = '';
+			let stderr = '';
+			child.stdout.setEncoding('utf8');
+			child.stderr.setEncoding('utf8');
+			child.stdout.on('data', (chunk: string) => {
+				stdout += chunk;
+			});
+			child.stderr.on('data', (chunk: string) => {
+				stderr += chunk;
+			});
+			const [exitCode] = await Promise.race([
+				once(child, 'exit'),
+				new Promise<never>((_, reject) =>
+					setTimeout(() => {
+						child.kill('SIGKILL');
+						reject(new Error(`Cloudflare run timed out:\n${stderr}`));
+					}, 30_000),
+				),
+			]);
+
+			expect(exitCode, stderr).toBe(0);
+			expect(JSON.parse(stdout)).toEqual({ checkpoint: 2 });
+			expect(stderr).toMatch(/run\s+run_[0-9A-HJKMNP-TV-Z]+/);
+			expect(stderr).toContain('info checkpoint stream event');
+			expect(stderr).toContain('workflow completed');
+		} finally {
+			removeFixture(root);
+		}
+	}, 90000);
+
 	it('exports an authored Durable Object and composes non-HTTP Worker handlers', async () => {
 		const root = await createGeneratedFixture(
 			`import { DurableObject } from 'cloudflare:workers';
@@ -149,6 +197,55 @@ export default {
 		}
 	}, 90000);
 });
+
+function createRunFixture(): string {
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), 'flue-cloudflare-run-'));
+	fs.mkdirSync(path.join(root, 'node_modules', '@earendil-works'), { recursive: true });
+	fs.mkdirSync(path.join(root, 'node_modules', '@flue'), { recursive: true });
+	fs.symlinkSync(
+		path.resolve(process.cwd(), '../runtime/node_modules/@earendil-works/pi-ai'),
+		path.join(root, 'node_modules', '@earendil-works', 'pi-ai'),
+		'dir',
+	);
+	fs.symlinkSync(
+		path.resolve(process.cwd(), '../runtime'),
+		path.join(root, 'node_modules', '@flue', 'runtime'),
+		'dir',
+	);
+	fs.symlinkSync(
+		path.resolve(process.cwd(), '../../examples/cloudflare/node_modules/agents'),
+		path.join(root, 'node_modules', 'agents'),
+		'dir',
+	);
+	fs.symlinkSync(
+		path.resolve(process.cwd(), '../../examples/cloudflare/node_modules/hono'),
+		path.join(root, 'node_modules', 'hono'),
+		'dir',
+	);
+	fs.writeFileSync(path.join(root, 'flue.config.mjs'), `export default { target: 'cloudflare' };\n`);
+	fs.writeFileSync(
+		path.join(root, 'wrangler.jsonc'),
+		JSON.stringify({
+			name: 'cloudflare-run-checkpoint',
+			compatibility_date: '2026-06-01',
+			compatibility_flags: ['nodejs_compat'],
+			migrations: [
+				{ tag: 'v1', new_sqlite_classes: ['FlueRegistry'] },
+				{ tag: 'v2', new_sqlite_classes: ['FlueCheckpointWorkflow'] },
+			],
+		}),
+	);
+	fs.mkdirSync(path.join(root, 'workflows'));
+	fs.writeFileSync(
+		path.join(root, 'workflows', 'checkpoint.mjs'),
+		`import { defineAgent, defineWorkflow } from '@flue/runtime';\nconst agent = defineAgent(() => ({ model: false }));\nexport default defineWorkflow({ agent, async run({ log }) { log.info('checkpoint stream event'); return { checkpoint: 2 }; } });\n`,
+	);
+	fs.writeFileSync(
+		path.join(root, 'app.mjs'),
+		`import { flue } from '@flue/runtime/routing';\nimport { Hono } from 'hono';\nconst app = new Hono();\napp.use('*', async (c, next) => { if (c.req.header('x-checkpoint') !== 'observed') return c.text('missing checkpoint header', 400); await next(); c.header('x-outer-middleware', 'observed'); });\napp.route('/internal/flue', flue());\nexport default app;\n`,
+	);
+	return root;
+}
 
 function removeFixture(root: string): void {
 	fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });

@@ -14,6 +14,7 @@ export class NodePlugin implements BuildPlugin {
 	generateEntryPoint(ctx: BuildContext): string {
 		const { agents, appEntry, channels, dbEntry, workflows } = ctx;
 		const runtimeVersion = JSON.stringify(ctx.runtimeVersion);
+		const temporaryLocalExposure = JSON.stringify(ctx.temporaryLocalExposure);
 
 		const agentImports = agents
 			.map((a, index) => {
@@ -87,9 +88,6 @@ import {
   resolveModel,
   configureFlueRuntime,
   createDefaultFlueApp,
-  invokeWorkflowAttached,
-  invokeDirectAttached,
-  generateWorkflowRunId,
   installDevLifecycleLogger,
 } from '@flue/runtime/internal';
 ${agentImports}
@@ -118,19 +116,6 @@ const { agents, workflows, channelHandlers } = normalized;
 
 const isLocalMode = process.env.FLUE_MODE === 'local';
 const devLifecycle = isLocalMode && process.env.FLUE_INTERNAL_DEV_LOGS === '1' ? installDevLifecycleLogger() : undefined;
-const localCliTarget = process.env.FLUE_CLI_TARGET;
-const localCliName = process.env.FLUE_CLI_NAME;
-const localCliId = process.env.FLUE_CLI_ID;
-// IPC mode requires the explicit internal gate set by the Flue CLI in
-// addition to the target vars, so user-supplied FLUE_CLI_* values alone
-// can never switch a production server into IPC mode.
-const isLocalCliMode =
-  process.env.FLUE_INTERNAL_CLI_IPC === '1' &&
-  (localCliTarget !== undefined || localCliName !== undefined || localCliId !== undefined);
-const hasIpcChannel = typeof process.send === 'function';
-if (isLocalCliMode && !hasIpcChannel) {
-  console.warn('[flue] FLUE_INTERNAL_CLI_IPC is set but no IPC channel was inherited; ignoring it and starting the HTTP server.');
-}
 
 // ─── Sandbox Environments ───────────────────────────────────────────────────
 
@@ -232,6 +217,7 @@ function createWorkflowContextForRequest({ runId, request, initialEventIndex }) 
 configureFlueRuntime({
   target: 'node',
   devMode: isLocalMode,
+  temporaryLocalExposure: ${temporaryLocalExposure},
   runtimeVersion: ${runtimeVersion},
   agents,
   workflows,
@@ -286,143 +272,11 @@ const flueApp = createDefaultFlueApp();`
 
 // ─── Start ──────────────────────────────────────────────────────────────────
 
-function sendLocalMessage(message, done) {
-  if (!process.send) throw new Error('[flue] Local CLI execution requires an inherited IPC connection.');
-  process.send(message, done);
-}
-
-function localRequest() {
-  return new Request('https://flue.invalid/_cli', { method: 'POST' });
-}
-
-function localErrorMessage(reason, requestId) {
-  return { type: 'error', requestId, error: { type: 'invalid_request', message: reason, details: reason } };
-}
-
-function failLocalStartup(reason) {
-  sendLocalMessage(localErrorMessage(reason), () => process.exit(1));
-}
-
-function parseIpcWorkflowMessage(raw) {
-  if (!raw || typeof raw !== 'object' || raw.type !== 'invoke' || typeof raw.requestId !== 'string') {
-    throw new Error('IPC workflow messages must have type "invoke" and a string requestId.');
-  }
-  return { type: 'invoke', requestId: raw.requestId, input: raw.input };
-}
-
-function parseIpcAgentMessage(raw) {
-  if (!raw || typeof raw !== 'object' || typeof raw.requestId !== 'string') {
-    throw new Error('IPC agent messages must have a string requestId.');
-  }
-  if (raw.type !== 'prompt' || typeof raw.message !== 'string') {
-    throw new Error('IPC agent messages must have type "prompt" with a string message.');
-  }
-  return { type: 'prompt', requestId: raw.requestId, message: raw.message };
-}
-
-function ipcErrorMessage(error, requestId, runId) {
-  const publicError = error instanceof Error
-    ? { type: 'internal_error', message: error.message, details: error.message }
-    : { type: 'internal_error', message: String(error), details: String(error) };
-  return runId === undefined
-    ? { type: 'error', requestId, error: publicError }
-    : { type: 'error', requestId, runId, error: publicError };
-}
-
-function startLocalWorkflow(name) {
-  const workflow = workflows.find((record) => record.name === name)?.definition;
-  if (!workflow) {
-    failLocalStartup('Unknown workflow: ' + name);
-    return;
-  }
-  let invoked = false;
-  sendLocalMessage({ type: 'ready', target: 'workflow', name });
-  process.on('message', (raw) => {
-    let message;
-    try {
-      message = parseIpcWorkflowMessage(raw);
-      if (invoked) {
-        sendLocalMessage(localErrorMessage('Local workflow execution accepts one invocation only.', message.requestId));
-        return;
-      }
-      invoked = true;
-    } catch (error) {
-      sendLocalMessage(ipcErrorMessage(error));
-      return;
-    }
-    const runId = generateWorkflowRunId();
-    sendLocalMessage({ type: 'started', requestId: message.requestId, runId });
-    void invokeWorkflowAttached({
-      workflowName: name,
-      runId,
-      input: message.input,
-      request: localRequest(),
-      workflow,
-      createContext: createWorkflowContextForRequest,
-      onEvent: (event) => sendLocalMessage({ type: 'event', requestId: message.requestId, runId, event }),
-      runStore,
-      eventStreamStore,
-    }).then(
-      (invocation) => sendLocalMessage({ type: 'result', requestId: message.requestId, runId, result: invocation.result ?? null }, () => process.exit(0)),
-      (error) => sendLocalMessage(ipcErrorMessage(error, message.requestId, runId), () => process.exit(1)),
-    );
-  });
-}
-
-function startLocalAgent(name, id) {
-  if (!id) {
-    failLocalStartup('Local agent connection requires an instance id.');
-    return;
-  }
-  if (!agents.some((agent) => agent.name === name)) {
-    failLocalStartup('Unknown agent for admission: ' + name);
-    return;
-  }
-  sendLocalMessage({ type: 'ready', target: 'agent', name, instanceId: id });
-  process.on('message', (raw) => {
-    let message;
-    try {
-      message = parseIpcAgentMessage(raw);
-    } catch (error) {
-      sendLocalMessage(ipcErrorMessage(error));
-      return;
-    }
-    let didStart = false;
-    void invokeDirectAttached({
-      payload: { message: message.message },
-      admitAttachedSubmission: agentCoordinator.createAdmission(name, id),
-      onEvent: (event) => {
-        if (!didStart) {
-          didStart = true;
-          sendLocalMessage({ type: 'started', requestId: message.requestId });
-        }
-        sendLocalMessage({ type: 'event', requestId: message.requestId, event });
-      },
-    }).then(
-      (result) => sendLocalMessage({ type: 'result', requestId: message.requestId, result: result ?? null }),
-      (error) => sendLocalMessage(ipcErrorMessage(error, message.requestId)),
-    );
-  });
-}
-
-if (isLocalCliMode && hasIpcChannel) {
-  if (!localCliName || (localCliTarget !== 'workflow' && localCliTarget !== 'agent')) {
-    failLocalStartup('Invalid local CLI target configuration.');
-  } else if (localCliTarget === 'workflow') {
-    startLocalWorkflow(localCliName);
-  } else {
-    startLocalAgent(localCliName, localCliId);
-  }
-  process.on('disconnect', async () => {
-    await agentCoordinator.shutdown();
-    if (persistenceAdapter.close) await persistenceAdapter.close();
-    process.exit(0);
-  });
-} else {
-  const port = parseInt(process.env.PORT || '3000', 10);
-  const server = serve({
+const port = parseInt(process.env.PORT || '3000', 10);
+const server = serve({
     fetch: (request, env) => flueApp.fetch(request, env),
     port,
+    ...(process.env.FLUE_INTERNAL_LOCAL_ONLY === '1' ? { hostname: '127.0.0.1' } : {}),
     serverOptions: { requestTimeout: 0 },
   }, () => {
     console.log('[flue] Server listening on http://localhost:' + port);
@@ -454,9 +308,9 @@ if (isLocalCliMode && hasIpcChannel) {
     });
     process.exit(exitCode);
   }
-  process.on('SIGINT', () => { void stop('SIGINT', 130); });
-  process.on('SIGTERM', () => { void stop('SIGTERM', 143); });
-}
+process.on('SIGINT', () => { void stop('SIGINT', 130); });
+process.on('SIGTERM', () => { void stop('SIGTERM', 143); });
+process.on('disconnect', () => { void stop('disconnect', 0); });
 `;
 	}
 
