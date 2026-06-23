@@ -81,7 +81,7 @@ function createReadTool(
 		name: 'read',
 		label: 'Read File',
 		description:
-			'Read a file or list a directory. For files, output is truncated to 2000 lines or 50KB — use offset/limit for large files. For directories, returns the list of entries.',
+			'Read a file. Output is truncated to 2000 lines or 50KB — use offset/limit for large files.',
 		parameters: ReadParams,
 		async execute(_toolCallId: string, params: Static<typeof ReadParams>, signal?: AbortSignal) {
 			throwIfAborted(signal);
@@ -92,20 +92,6 @@ function createReadTool(
 			}
 			if (params.path.startsWith(PACKAGED_SKILLS_ROOT)) {
 				throw new Error(`[flue] Packaged skill file not found: ${params.path}`);
-			}
-
-			try {
-				const fileStat = await env.stat(params.path);
-				if (fileStat.isDirectory) {
-					const entries = await env.readdir(params.path);
-					const listing = entries.join('\n');
-					return {
-						content: [{ type: 'text', text: listing || '(empty directory)' }],
-						details: { path: params.path, isDirectory: true, entries: entries.length },
-					};
-				}
-			} catch {
-				// stat failed — fall through to readFile
 			}
 
 			const content = await env.readFile(params.path);
