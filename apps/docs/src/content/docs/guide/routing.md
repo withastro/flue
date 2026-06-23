@@ -79,52 +79,32 @@ export default app;
 
 Here, the webhook route belongs to your application: it determines which requests are valid and which agent instance receives the accepted input. `dispatch(...)` delivers that input asynchronously to the continuing agent session. See [Agents](/docs/guide/building-agents/) for agent interaction patterns and [Channels](/docs/guide/channels/) for provider integrations.
 
-## Call Flue from your own routes
+## Invoke workflows from application routes
 
-Sometimes an application-owned route should use a workflow as an internal job boundary, but the browser or external caller should not call Flue directly. Mount `flue()` behind private middleware, then call the same Hono app in process:
+Application-owned routes can invoke a workflow without exposing its HTTP route:
 
 ```ts title="src/app.ts"
-import { createFlueClient } from '@flue/sdk';
+import { invoke } from '@flue/runtime';
 import { flue } from '@flue/runtime/routing';
 import { Hono } from 'hono';
+import summarizeTicket from './workflows/summarize-ticket.ts';
 
-type Env = { INTERNAL_FLUE_TOKEN: string };
-
-const app = new Hono<{ Bindings: Env }>();
-
-app.use('/_flue/*', async (c, next) => {
-  if (c.req.header('x-internal-flue') !== c.env.INTERNAL_FLUE_TOKEN) {
-    return c.notFound();
-  }
-
-  await next();
-});
-
-app.route('/_flue', flue());
+const app = new Hono();
 
 app.post('/api/summaries', async (c) => {
-  const client = createFlueClient({
-    baseUrl: new URL('/_flue', c.req.url).toString(),
-    headers: { 'x-internal-flue': c.env.INTERNAL_FLUE_TOKEN },
-    fetch: async (input, init) => app.fetch(new Request(input, init), c.env),
-  });
-
-  const run = await client.workflows.invoke('summarize-ticket', {
+  const receipt = await invoke(summarizeTicket, {
     input: await c.req.json(),
-    wait: 'result',
   });
 
-  return c.json(run.result);
+  return c.json(receipt, 202);
 });
+
+app.route('/', flue());
 
 export default app;
 ```
 
-This is still the HTTP workflow surface. The workflow module must export `route`, because the SDK call goes through `POST /workflows/<name>`. Export `runs` as well only when the internal caller also needs `client.runs.get()`, `client.runs.events()`, or `client.runs.stream()` for that workflow's run IDs.
-
-Prefer ambient [`invoke()`](/docs/api/workflow-api/#invoke) when application code only needs to admit background work and keep the returned `runId`. Use an internal HTTP call when you intentionally want route middleware, `?wait=result`, SDK streaming, or the same request/response contract used by external HTTP clients.
-
-Calling the full `app.fetch()` or `app.request()` runs application-level middleware on the private mount. Calling a saved `flue()` sub-app directly skips outer `app.use()` middleware, so do that only when the workflow's own `route` or `runs` middleware performs the required authorization.
+`invoke()` admits the workflow through the configured runtime and returns its `runId` without waiting for execution to finish. The workflow does not need to export `route`; that export controls only direct HTTP invocation through the Flue mount. See [`invoke()`](/docs/api/workflow-api/#invoke) for its input and lifecycle contract.
 
 ## Customized routing
 
@@ -159,7 +139,7 @@ Mounting `flue()` does not make every discovered agent or workflow directly invo
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
 | Agent `route`     | HTTP prompts at `POST /agents/:name/:id` and event streaming at `GET /agents/:name/:id` beneath the mount path. |
 | Workflow `route`  | HTTP invocation at `POST /workflows/:name` beneath the mount path.                                              |
-| Workflow `runs`   | Authorized HTTP operations on existing runs owned by that workflow beneath `/runs/:runId`.                     |
+| Workflow `runs`   | Authorized HTTP operations on existing runs owned by that workflow beneath `/runs/:runId`.                      |
 | Channel `channel` | Provider-declared HTTP surfaces beneath `/channels/:name/<suffix>`.                                             |
 
 `route` controls workflow invocation only. Export `runs` separately when HTTP clients should inspect runs, including runs created by ambient `invoke()`, schedules, or other non-HTTP callers:
