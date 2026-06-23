@@ -249,6 +249,7 @@ export const docsSections: DocsSection[] = [
 				title: 'Tooling',
 				items: [
 					{ title: 'Braintrust', slug: 'ecosystem/tooling/braintrust' },
+					{ title: 'Jetty', slug: 'ecosystem/tooling/jetty' },
 					{ title: 'OpenTelemetry', slug: 'ecosystem/tooling/opentelemetry' },
 					{ title: 'Sentry', slug: 'ecosystem/tooling/sentry' },
 					{ title: 'Vitest Evals', slug: 'ecosystem/tooling/vitest-evals' },
