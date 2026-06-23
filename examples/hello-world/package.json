@@ -5,7 +5,7 @@
 	"dependencies": {
 		"@daytona/sdk": "*",
 		"@flue/runtime": "workspace:*",
-		"agents": "^0.14.1",
+		"agents": "^0.14.2",
 		"hono": "^4.7.0",
 		"just-bash": "^3.0.1",
 		"valibot": "^1.0.0"

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes & Other Changes
+
+- Cloudflare projects now require `agents@^0.14.2`, whose schema migration repairs upgraded Durable Object SQLite databases missing the Agents SDK's MCP server table.
+
 ## @flue/react 1.0.0-beta.4 - 2026-06-23
 
 ### Fixes & Other Changes

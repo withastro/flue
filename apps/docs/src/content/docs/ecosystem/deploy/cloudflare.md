@@ -23,7 +23,7 @@ The simplest agent — no container, no storage, just a prompt and a typed resul
 ```bash
 mkdir my-flue-worker && cd my-flue-worker
 npm init -y
-npm install @flue/runtime valibot 'agents@^0.14.1'
+npm install @flue/runtime valibot 'agents@^0.14.2'
 npm install -D @flue/cli wrangler
 ```
 

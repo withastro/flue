@@ -18,7 +18,7 @@
 		"@flue/cli": "workspace:*",
 		"@types/node": "^22.10.10",
 		"@types/react": "^19.2.17",
-		"agents": "^0.14.1",
+		"agents": "^0.14.2",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.6"
 	}

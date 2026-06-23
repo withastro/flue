@@ -5,7 +5,7 @@
 	"dependencies": {
 		"@cloudflare/sandbox": "*",
 		"@flue/runtime": "workspace:*",
-		"agents": "^0.14.1"
+		"agents": "^0.14.2"
 	},
 	"devDependencies": {
 		"@flue/cli": "workspace:*"

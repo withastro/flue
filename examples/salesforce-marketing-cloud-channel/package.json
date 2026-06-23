@@ -16,7 +16,7 @@
 		"@cloudflare/vitest-pool-workers": "0.16.15",
 		"@flue/cli": "workspace:*",
 		"@types/node": "^22.10.10",
-		"agents": "^0.14.1",
+		"agents": "^0.14.2",
 		"typescript": "^6.0.3",
 		"vitest": "^4.1.6"
 	}
