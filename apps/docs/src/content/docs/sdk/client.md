@@ -1,6 +1,7 @@
 ---
 title: createFlueClient(...)
-description: Configure an SDK client for a deployed Flue application.
+description: Configure an SDK client for a mounted Flue application.
+lastReviewedAt: 2026-06-22
 ---
 
 ```ts
@@ -26,7 +27,7 @@ Outside a browser, `baseUrl` must be absolute; a relative value throws an error.
 function createFlueClient(options: CreateFlueClientOptions): FlueClient;
 ```
 
-Creates a client for the public routes of a deployed Flue application.
+Creates a client for the HTTP routes of a mounted Flue application.
 
 ## `CreateFlueClientOptions`
 
@@ -46,3 +47,5 @@ type RequestHeaders =
 ```
 
 Use a function to resolve headers separately for each HTTP request and stream reconnection.
+
+`fetch` may target an in-process Hono app instead of the network. This is useful for application-owned routes that call a private `flue()` mount; see [Call Flue from your own routes](/docs/guide/routing/#call-flue-from-your-own-routes).
