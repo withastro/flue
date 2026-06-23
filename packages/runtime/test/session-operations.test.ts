@@ -207,8 +207,16 @@ describe('session.prompt()', () => {
 		await session.prompt('Review this workspace.');
 
 		expect(events.some((event) => event.type === 'message_update')).toBe(false);
+		const thinkingEvents = events.filter((event) => event.type.startsWith('thinking_'));
+		expect(thinkingEvents).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ type: 'thinking_start', contentIndex: 0 }),
+				expect.objectContaining({ type: 'thinking_delta', contentIndex: 0 }),
+				expect.objectContaining({ type: 'thinking_end', contentIndex: 0, content: 'Inspect inputs' }),
+			]),
+		);
 		expect(
-			events
+			thinkingEvents
 				.filter((event) => event.type === 'thinking_delta')
 				.map((event) => event.delta)
 				.join(''),

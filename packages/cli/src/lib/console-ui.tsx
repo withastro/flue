@@ -1,9 +1,9 @@
 import { Box, render, Static, Text, useApp, useInput, usePaste } from 'ink';
 import TextInput from 'ink-text-input';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import type { ConsoleController } from './console-controller.ts';
+import type { ConsoleController, ConsoleQueuedPrompt } from './console-controller.ts';
 import { boundedShutdown } from './console-shutdown.ts';
-import { transcriptDisplayRecords, type TranscriptRecord } from './console-transcript.ts';
+import { type TranscriptRecord, transcriptDisplayRecords } from './console-transcript.ts';
 
 export function ConsoleUi({ controller }: { controller: ConsoleController }) {
 	const { exit } = useApp();
@@ -56,6 +56,7 @@ export function ConsoleUi({ controller }: { controller: ConsoleController }) {
 				{(record) => <TranscriptLine key={record.id} record={record} />}
 			</Static>
 			{pending.map((record) => <TranscriptLine key={record.id} record={record} />)}
+			{snapshot.queuedPrompts.length > 0 ? <QueuedPrompts prompts={snapshot.queuedPrompts} /> : null}
 			<Box marginTop={1}>
 				<Text dimColor>{subject}</Text>
 				<Text dimColor>  ·  </Text>
@@ -87,15 +88,31 @@ export function submitConsoleMessage(controller: ConsoleController, message: str
 	void controller.submit(message).catch(() => {});
 }
 
+function MessageLine({ label, text }: { label: 'you' | 'agent'; text: string }) {
+	const user = label === 'you';
+	return (
+		<Box flexDirection="column" marginTop={1}>
+			<Text bold color={user ? 'white' : 'black'} backgroundColor={user ? 'blue' : 'cyan'}> {label} </Text>
+			<Text>{text}</Text>
+		</Box>
+	);
+}
+
+function QueuedPrompts({ prompts }: { prompts: readonly ConsoleQueuedPrompt[] }) {
+	return (
+		<Box flexDirection="column" marginTop={1}>
+			<Text dimColor backgroundColor="blue"> queue </Text>
+			{prompts.map((prompt) => <Text key={prompt.id} dimColor>{prompt.message}</Text>)}
+		</Box>
+	);
+}
+
 function TranscriptLine({ record }: { record: TranscriptRecord }) {
 	if (record.tone === 'user' || record.tone === 'normal') {
-		const user = record.tone === 'user';
-		return (
-			<Box marginY={1}>
-				<Text bold color={user ? 'white' : 'black'} backgroundColor={user ? 'blue' : 'cyan'}> {user ? 'you' : 'agent'} </Text>
-				<Text>  {record.text}</Text>
-			</Box>
-		);
+		return <MessageLine label={record.tone === 'user' ? 'you' : 'agent'} text={record.text} />;
+	}
+	if (record.layout === 'thinking') {
+		return <Box marginY={1}><Text dimColor>{record.text}</Text></Box>;
 	}
 	return <Text dimColor={record.tone === 'dim'} color={record.tone === 'error' ? 'red' : record.tone === 'success' ? 'green' : record.tone === 'accent' ? 'blue' : undefined}>{record.text}</Text>;
 }

@@ -20,6 +20,11 @@ type ConsoleStatus =
 	| 'closed'
 	| 'detached';
 
+export interface ConsoleQueuedPrompt {
+	readonly id: number;
+	readonly message: string;
+}
+
 export interface ConsoleSnapshot {
 	readonly resource?: { kind: 'agent' | 'workflow'; name: string };
 	readonly id?: string;
@@ -29,6 +34,7 @@ export interface ConsoleSnapshot {
 	readonly status: ConsoleStatus;
 	readonly active: boolean;
 	readonly composerEnabled: boolean;
+	readonly queuedPrompts: readonly ConsoleQueuedPrompt[];
 	readonly transcript: ConsoleTranscript;
 }
 
@@ -55,8 +61,10 @@ export function createConsoleController(options: ConsoleControllerOptions): Cons
 		status: 'preparing',
 		active: false,
 		composerEnabled: false,
+		queuedPrompts: [],
 		transcript: createConsoleTranscript(),
 	};
+	let nextQueuedPromptId = 1;
 	let started: Promise<void> | undefined;
 	let closePromise: Promise<void> | undefined;
 	const activeControllers = new Set<AbortController>();
@@ -88,26 +96,26 @@ export function createConsoleController(options: ConsoleControllerOptions): Cons
 			if (closing) throw new Error('Console is closing.');
 			if (!execution || execution.resource.kind !== 'agent') throw new Error('Agent console is not ready.');
 			const input = parseAgentInput({ message });
-			publish({}, { type: 'prompt', message: input.message });
+			const queuedPrompt = enqueuePrompt(input.message);
 			await execute(execution.client, {
 				kind: 'agent',
 				name: execution.resource.name,
 				instanceId: execution.instanceId as string,
 				input,
-			});
+			}, queuedPrompt);
 		},
 		recordServerOutput(line, stream) {
 			if (!closing) publish({}, { type: 'server', line, stream });
 		},
 		setLifecycleStatus(status) {
-			if (!snapshot.active && !closing) publish({ status }, { type: 'status', message: lifecycleStatusMessage(status) });
+			if (!snapshot.active && !closing) publish({ status });
 		},
 		close() {
 			if (closePromise) return closePromise;
 			closing = true;
 			const startup = started;
 			closePromise = (async () => {
-				publish({ status: 'closing', composerEnabled: false });
+				publish({ status: 'closing', composerEnabled: false, queuedPrompts: [] });
 				for (const controller of activeControllers) controller.abort();
 				options.lifecycle.cancel();
 				try {
@@ -145,13 +153,13 @@ export function createConsoleController(options: ConsoleControllerOptions): Cons
 			publish({ server: execution.baseUrl, status: 'ready', composerEnabled: execution.resource.kind === 'agent' });
 			if (execution.resource.kind === 'agent' && options.initialInput !== undefined) {
 				const input = parseAgentInput(options.initialInput);
-				publish({}, { type: 'prompt', message: input.message });
+				const queuedPrompt = enqueuePrompt(input.message);
 				await execute(execution.client, {
 					kind: 'agent',
 					name: execution.resource.name,
 					instanceId: execution.instanceId as string,
 					input,
-				});
+				}, queuedPrompt);
 			} else if (execution.resource.kind === 'workflow') {
 				await execute(execution.client, {
 					kind: 'workflow',
@@ -170,7 +178,21 @@ export function createConsoleController(options: ConsoleControllerOptions): Cons
 		}
 	}
 
-	async function execute(client: FlueClient, target: Parameters<typeof runTarget>[1]): Promise<void> {
+	function enqueuePrompt(message: string): ConsoleQueuedPrompt {
+		const queuedPrompt = { id: nextQueuedPromptId++, message };
+		publish({ queuedPrompts: [...snapshot.queuedPrompts, queuedPrompt] });
+		return queuedPrompt;
+	}
+
+	function removeQueuedPrompt(queuedPrompt: ConsoleQueuedPrompt): readonly ConsoleQueuedPrompt[] {
+		return snapshot.queuedPrompts.filter((prompt) => prompt.id !== queuedPrompt.id);
+	}
+
+	async function execute(
+		client: FlueClient,
+		target: Parameters<typeof runTarget>[1],
+		queuedPrompt?: ConsoleQueuedPrompt,
+	): Promise<void> {
 		if (closing) return;
 		const activeController = new AbortController();
 		activeControllers.add(activeController);
@@ -178,14 +200,45 @@ export function createConsoleController(options: ConsoleControllerOptions): Cons
 		options.lifecycle.signal.addEventListener('abort', abort, { once: true });
 		publish({ status: 'active', active: true, composerEnabled: target.kind === 'agent' });
 		let failed = false;
+		let promptStarted = false;
+		const onEvent = (event: FlueEvent): void => {
+			if (closing) return;
+			const id = event.type === 'run_start' ? event.runId : snapshot.id;
+			if (
+				queuedPrompt
+				&& !promptStarted
+				&& event.type === 'operation_start'
+				&& event.operationKind === 'prompt'
+			) {
+				promptStarted = true;
+				publish(
+					{ id, queuedPrompts: removeQueuedPrompt(queuedPrompt) },
+					{ type: 'prompt', message: queuedPrompt.message },
+				);
+				return;
+			}
+			publish({ id }, { type: 'event', event });
+		};
 		try {
 			const result = await runTarget(client, target, onEvent, activeController.signal);
 			if (closing) return;
+			if (queuedPrompt && !promptStarted) {
+				promptStarted = true;
+				publish(
+					{ queuedPrompts: removeQueuedPrompt(queuedPrompt) },
+					{ type: 'prompt', message: queuedPrompt.message },
+				);
+			}
 			const id = result.kind === 'workflow' ? result.runId : snapshot.id;
 			publish({ id }, { type: 'result', result: result.result });
 		} catch (error) {
 			failed = !activeController.signal.aborted;
-			if (!closing && failed) publish({}, { type: 'error', error });
+			if (!closing && failed) {
+				publish(
+					queuedPrompt && !promptStarted ? { queuedPrompts: removeQueuedPrompt(queuedPrompt) } : {},
+					{ type: 'error', error },
+				);
+			}
 		} finally {
 			options.lifecycle.signal.removeEventListener('abort', abort);
 			activeControllers.delete(activeController);
@@ -199,17 +252,4 @@ export function createConsoleController(options: ConsoleControllerOptions): Cons
 			}
 		}
 	}
-
-	function onEvent(event: FlueEvent): void {
-		if (closing) return;
-		const id = event.type === 'run_start' ? event.runId : snapshot.id;
-		publish({ id }, { type: 'event', event });
-	}
-}
-
-function lifecycleStatusMessage(status: 'preparing' | 'building' | 'starting' | 'ready'): string {
-	if (status === 'preparing') return 'preparing project';
-	if (status === 'building') return 'building application';
-	if (status === 'starting') return 'starting runtime';
-	return 'runtime ready';
 }

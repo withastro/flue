@@ -25,6 +25,7 @@ export interface AgentState extends AgentSnapshot {
 	activeSubmissionIds: string[];
 	settledSubmissionIds: string[];
 	recentEventIds: string[];
+	reasoningPartIndexes: Record<string, Record<number, number>>;
 }
 
 type StreamAgentEvent = AttachedAgentEvent & { submissionId?: string };
@@ -47,6 +48,7 @@ export const emptyAgentState: AgentState = {
 	activeSubmissionIds: [],
 	settledSubmissionIds: [],
 	recentEventIds: [],
+	reasoningPartIndexes: {},
 };
 
 const RECENT_EVENT_LIMIT = 1000;
@@ -196,6 +198,9 @@ function reduceMessageBoundary(
 			event.message.role === 'assistant' && event.submissionId
 				? addUnique(state.activeSubmissionIds, event.submissionId)
 				: state.activeSubmissionIds,
+		reasoningPartIndexes: event.message.role === 'assistant'
+			? { ...state.reasoningPartIndexes, [id]: reasoningIndexes(event.message) }
+			: state.reasoningPartIndexes,
 	};
 }
 
@@ -217,31 +222,50 @@ function reduceTextDelta(
 	return replaceMessageAt(state, index, { ...current, parts });
 }
 
-function reduceThinkingStart(state: AgentState, event: StreamAgentEvent): AgentState {
-	const index = findEventAssistant(state.messages, event);
-	if (index < 0) return state;
-	const current = state.messages[index];
-	if (!current) return state;
-	return replaceMessageAt(state, index, {
-		...current,
-		parts: [...current.parts, { type: 'reasoning', text: '', state: 'streaming' }],
-	});
-}
-
-function reduceThinkingDelta(
+function reduceThinkingStart(
 	state: AgentState,
-	event: StreamAgentEvent & { delta: string },
+	event: StreamAgentEvent & { contentIndex?: number },
 ): AgentState {
 	const index = findEventAssistant(state.messages, event);
 	if (index < 0) return state;
 	const current = state.messages[index];
 	if (!current) return state;
-	const reasoning = current.parts.findLastIndex(
-		(part) => part.type === 'reasoning' && part.state !== 'done',
-	);
-	if (reasoning < 0) return state;
+	const known = event.contentIndex === undefined
+		? undefined
+		: state.reasoningPartIndexes[current.id]?.[event.contentIndex];
+	if (known !== undefined && current.parts[known]?.type === 'reasoning') return state;
+	const partIndex = current.parts.length;
+	const next = replaceMessageAt(state, index, {
+		...current,
+		parts: [...current.parts, { type: 'reasoning', text: '', state: 'streaming' }],
+	});
+	return event.contentIndex === undefined
+		? next
+		: {
+				...next,
+				reasoningPartIndexes: setReasoningPartIndex(
+					state.reasoningPartIndexes,
+					current.id,
+					event.contentIndex,
+					partIndex,
+				),
+			};
+}
+
+function reduceThinkingDelta(
+	state: AgentState,
+	event: StreamAgentEvent & { contentIndex?: number; delta: string },
+): AgentState {
+	const index = findEventAssistant(state.messages, event);
+	if (index < 0) return state;
+	const current = state.messages[index];
+	if (!current) return state;
+	const reasoning = event.contentIndex === undefined
+		? current.parts.findLastIndex((part) => part.type === 'reasoning' && part.state !== 'done')
+		: state.reasoningPartIndexes[current.id]?.[event.contentIndex];
+	if (reasoning === undefined || reasoning < 0) return state;
 	const part = current.parts[reasoning];
-	if (!part || part.type !== 'reasoning') return state;
+	if (!part || part.type !== 'reasoning' || part.state === 'done') return state;
 	const parts = [...current.parts];
 	parts[reasoning] = { ...part, text: part.text + event.delta, state: 'streaming' };
 	return replaceMessageAt(state, index, { ...current, parts });
@@ -249,14 +273,16 @@ function reduceThinkingDelta(
 
 function reduceThinkingEnd(
 	state: AgentState,
-	event: StreamAgentEvent & { content: string },
+	event: StreamAgentEvent & { contentIndex?: number; content: string },
 ): AgentState {
 	const index = findEventAssistant(state.messages, event);
 	if (index < 0) return state;
 	const current = state.messages[index];
 	if (!current) return state;
-	const reasoning = current.parts.findLastIndex((part) => part.type === 'reasoning');
-	if (reasoning < 0) return state;
+	const reasoning = event.contentIndex === undefined
+		? current.parts.findLastIndex((part) => part.type === 'reasoning')
+		: state.reasoningPartIndexes[current.id]?.[event.contentIndex];
+	if (reasoning === undefined || reasoning < 0) return state;
 	const part = current.parts[reasoning];
 	if (!part || part.type !== 'reasoning') return state;
 	const parts = [...current.parts];
@@ -404,6 +430,29 @@ function snapshotMessage(
 		}
 	}
 	return { id, role: message.role, metadata: previous?.metadata, parts };
+}
+
+function reasoningIndexes(message: LlmMessage): Record<number, number> {
+	if (message.role !== 'assistant' || typeof message.content === 'string') return {};
+	const indexes: Record<number, number> = {};
+	let partIndex = 0;
+	for (const [contentIndex, block] of message.content.entries()) {
+		if (block.type === 'thinking') indexes[contentIndex] = partIndex;
+		partIndex++;
+	}
+	return indexes;
+}
+
+function setReasoningPartIndex(
+	indexes: AgentState['reasoningPartIndexes'],
+	messageId: string,
+	contentIndex: number,
+	partIndex: number,
+): AgentState['reasoningPartIndexes'] {
+	return {
+		...indexes,
+		[messageId]: { ...indexes[messageId], [contentIndex]: partIndex },
+	};
 }
 
 function optimisticMessage(

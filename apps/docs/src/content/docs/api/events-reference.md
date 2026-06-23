@@ -61,7 +61,7 @@ Operations, turns, task ids, and tool-call ids are generated correlation boundar
 | `text_delta`                                       | Best-effort live text progress.                                                                                                                                                                                               |
 | `thinking_start`, `thinking_delta`, `thinking_end` | Best-effort live thinking progress.                                                                                                                                                                                           |
 
-Streaming deltas are live progress signals, not authoritative message state. A reader that attaches after generation starts may miss earlier partial output until the assistant `message_end` supplies the complete message. Internal interrupted-turn recovery uses separate durable state and is unaffected by the public event contract.
+Streaming deltas are live progress signals, not authoritative message state. A reader that attaches after generation starts may miss earlier partial output until the assistant `message_end` supplies the complete message. Thinking events include `contentIndex`, the zero-based index of the thinking block in the assistant message; correlate thinking events within a turn by `contentIndex`. Historical persisted events may omit this field. Internal interrupted-turn recovery uses separate durable state and is unaffected by the public event contract.
 
 `turn_request` and `turn` use purpose `agent`, `compaction`, or `compaction_prefix`. Count model activity from either the normalized `turn` events or the detailed `turn_messages`/`message_*` family, not both.
 

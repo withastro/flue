@@ -955,9 +955,9 @@ type FlueEventVariant =
 	| { type: 'message_start'; message: AgentMessage; turnId: string }
 	| { type: 'message_end'; message: AgentMessage; turnId: string }
 	| { type: 'text_delta'; text: string }
-	| { type: 'thinking_start' }
-	| { type: 'thinking_delta'; delta: string }
-	| { type: 'thinking_end'; content: string }
+	| { type: 'thinking_start'; contentIndex?: number }
+	| { type: 'thinking_delta'; contentIndex?: number; delta: string }
+	| { type: 'thinking_end'; contentIndex?: number; content: string }
 	| { type: 'tool_start'; toolName: string; toolCallId: string; args?: any }
 	| {
 			type: 'tool';

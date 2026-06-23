@@ -27,12 +27,14 @@ describe('reduceAgentEvent()', () => {
 		state = reduceAgentEvent(state, {
 			...base,
 			type: 'thinking_start',
+			contentIndex: 0,
 			eventIndex: 2,
 			turnId: 'turn-1',
 		});
 		state = reduceAgentEvent(state, {
 			...base,
 			type: 'thinking_delta',
+			contentIndex: 0,
 			delta: 'consider',
 			eventIndex: 3,
 			turnId: 'turn-1',
@@ -40,6 +42,7 @@ describe('reduceAgentEvent()', () => {
 		state = reduceAgentEvent(state, {
 			...base,
 			type: 'thinking_end',
+			contentIndex: 0,
 			content: 'consider carefully',
 			eventIndex: 4,
 			turnId: 'turn-1',
@@ -69,6 +72,78 @@ describe('reduceAgentEvent()', () => {
 					{ type: 'text', text: 'hello world', state: 'streaming' },
 				],
 			},
+		]);
+	});
+
+	it('correlates interleaved thinking events by content index', () => {
+		let state = reduceAgentEvent(
+			emptyAgentState,
+			message('message_start', { role: 'assistant', content: [] }, { turnId: 'turn-1' }),
+		);
+		state = reduceAgentEvent(state, {
+			...base,
+			type: 'thinking_start',
+			contentIndex: 0,
+			eventIndex: 2,
+			turnId: 'turn-1',
+		});
+		state = reduceAgentEvent(state, {
+			...base,
+			type: 'thinking_start',
+			contentIndex: 2,
+			eventIndex: 3,
+			turnId: 'turn-1',
+		});
+		state = reduceAgentEvent(state, {
+			...base,
+			type: 'thinking_delta',
+			contentIndex: 0,
+			delta: 'first',
+			eventIndex: 4,
+			turnId: 'turn-1',
+		});
+		state = reduceAgentEvent(state, {
+			...base,
+			type: 'thinking_end',
+			contentIndex: 0,
+			content: 'first done',
+			eventIndex: 5,
+			turnId: 'turn-1',
+		});
+		state = reduceAgentEvent(state, {
+			...base,
+			type: 'thinking_delta',
+			contentIndex: 2,
+			delta: 'second',
+			eventIndex: 6,
+			turnId: 'turn-1',
+		});
+
+		expect(state.messages[0]?.parts).toEqual([
+			{ type: 'reasoning', text: 'first done', state: 'done' },
+			{ type: 'reasoning', text: 'second', state: 'streaming' },
+		]);
+
+		state = reduceAgentEvent(state, message('message_end', {
+			role: 'assistant',
+			content: [
+				{ type: 'thinking', thinking: 'first final' },
+				{ type: 'text', text: 'answer' },
+				{ type: 'thinking', thinking: 'second final' },
+			],
+		}, { turnId: 'turn-1', eventIndex: 7 }));
+		state = reduceAgentEvent(state, {
+			...base,
+			type: 'thinking_delta',
+			contentIndex: 0,
+			delta: ' stale',
+			eventIndex: 8,
+			turnId: 'turn-1',
+		});
+		expect(state.messages[0]?.parts).toEqual([
+			{ type: 'reasoning', text: 'first final', state: 'done' },
+			{ type: 'text', text: 'answer', state: 'done' },
+			{ type: 'reasoning', text: 'second final', state: 'done' },
 		]);
 	});
 

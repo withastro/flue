@@ -1,4 +1,4 @@
-import type { FlueClient } from '@flue/sdk';
+import type { AttachedAgentEvent, FlueClient, FlueEvent } from '@flue/sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { createConsoleController } from '../src/lib/console-controller.ts';
 import type { ExecutionLifecycle } from '../src/lib/execution-lifecycle.ts';
@@ -51,14 +51,16 @@ describe('createConsoleController()', () => {
 		expect(controller.getSnapshot()).toMatchObject({ status: 'completed', composerEnabled: true, id: 'instance-1' });
 	});
 
-	it('admits another prompt while the previous prompt is active', async () => {
+	it('keeps admitted prompts queued until each prompt operation starts', async () => {
 		const releases: Array<() => void> = [];
 		const send = vi.fn()
 			.mockResolvedValueOnce({ streamUrl: 'x', offset: '0', submissionId: 'first' })
 			.mockResolvedValueOnce({ streamUrl: 'x', offset: '1', submissionId: 'second' });
+		const waitCallbacks: Array<(event: AttachedAgentEvent | FlueEvent) => void | Promise<void>> = [];
 		const wait = vi.fn(
-			() =>
+			(_admission, options: { onEvent: (event: AttachedAgentEvent | FlueEvent) => void | Promise<void> }) =>
 				new Promise((resolve) => {
+					waitCallbacks.push(options.onEvent);
 					releases.push(() => resolve({ text: 'done' }));
 				}),
 		);
@@ -68,20 +70,47 @@ describe('createConsoleController()', () => {
 
 		const first = controller.submit('first');
 		await vi.waitFor(() => expect(wait).toHaveBeenCalledTimes(1));
-		expect(controller.getSnapshot()).toMatchObject({ active: true, composerEnabled: true });
 		const second = controller.submit('second');
 		await vi.waitFor(() => expect(wait).toHaveBeenCalledTimes(2));
 
-		expect(send).toHaveBeenNthCalledWith(2, 'support', 'instance-1', {
-			message: 'second',
-			signal: expect.any(AbortSignal),
+		expect(controller.getSnapshot().queuedPrompts).toEqual([
+			{ id: 1, message: 'first' },
+			{ id: 2, message: 'second' },
+		]);
+		expect(controller.getSnapshot().transcript.records).toEqual([]);
+		const secondOnEvent = waitCallbacks[1];
+		await secondOnEvent?.({
+			v: 1,
+			eventIndex: 2,
+			timestamp: '2026-06-22T00:00:01.000Z',
+			type: 'operation_start',
+			operationId: 'operation-2',
+			operationKind: 'prompt',
+			instanceId: 'instance-1',
+			submissionId: 'second',
 		});
-		expect(controller.getSnapshot().transcript.records).toEqual(
-			expect.arrayContaining([
-				expect.objectContaining({ text: 'first', tone: 'user' }),
-				expect.objectContaining({ text: 'second', tone: 'user' }),
-			]),
-		);
+		expect(controller.getSnapshot().queuedPrompts).toEqual([{ id: 1, message: 'first' }]);
+		expect(controller.getSnapshot().transcript.records).toEqual([
+			expect.objectContaining({ text: 'second', tone: 'user' }),
+		]);
+		controller.recordServerOutput('still processing second', 'stdout');
+		const firstOnEvent = waitCallbacks[0];
+		await firstOnEvent?.({
+			v: 1,
+			eventIndex: 3,
+			timestamp: '2026-06-22T00:00:02.000Z',
+			type: 'operation_start',
+			operationId: 'operation-1',
+			operationKind: 'prompt',
+			instanceId: 'instance-1',
+			submissionId: 'first',
+		});
+		expect(controller.getSnapshot().queuedPrompts).toEqual([]);
+		expect(controller.getSnapshot().transcript.records.map((record) => record.text)).toEqual([
+			'second',
+			'server stdout still processing second',
+			'first',
+		]);
 		for (const release of releases.splice(0)) release();
 		await Promise.all([first, second]);
 		expect(controller.getSnapshot()).toMatchObject({ active: false, composerEnabled: true });
@@ -173,17 +202,16 @@ describe('createConsoleController()', () => {
 		expect(activeController.getSnapshot().transcript.records.some((record) => record.text.includes('result'))).toBe(false);
 	});
 
-	it('records lifecycle states and preserves server stream tones', async () => {
+	it('updates lifecycle status without recording it and preserves server stream tones', async () => {
 		const setup = lifecycle({ agents: {} } as unknown as FlueClient);
 		const controller = createConsoleController({ lifecycle: setup.value });
 		controller.setLifecycleStatus('building');
+		expect(controller.getSnapshot()).toMatchObject({ status: 'building', transcript: { records: [] } });
 		controller.setLifecycleStatus('starting');
 		controller.recordServerOutput('listening', 'stdout');
 		controller.recordServerOutput('failed line', 'stderr');
 
 		expect(controller.getSnapshot().transcript.records).toEqual([
-			expect.objectContaining({ text: 'building application', tone: 'dim' }),
-			expect.objectContaining({ text: 'starting runtime', tone: 'dim' }),
 			expect.objectContaining({ text: 'server stdout listening', tone: 'dim' }),
 			expect.objectContaining({ text: 'server stderr failed line', tone: 'error' }),
 		]);

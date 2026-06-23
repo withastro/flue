@@ -6,6 +6,7 @@ export interface TranscriptRecord {
 	readonly id: number;
 	readonly text: string;
 	readonly tone: TranscriptTone;
+	readonly layout?: 'thinking';
 }
 
 export interface ConsoleTranscript {
@@ -56,7 +57,11 @@ function reduceEvent(state: ConsoleTranscript, event: FlueEvent): ConsoleTranscr
 		if (key) delete streaming[key];
 		return text ? append({ ...state, streaming }, text, 'normal') : { ...state, streaming };
 	}
-	if (event.type === 'thinking_start') return append(state, 'thinking', 'dim');
+	if (event.type === 'thinking_start' || event.type === 'thinking_delta') return state;
+	if (event.type === 'thinking_end') {
+		const content = sanitize(event.content);
+		return content ? append(state, `Thinking...\n${content}`, 'dim', 'thinking') : state;
+	}
 	if (event.type === 'tool_start') return append(state, `tool  ${event.toolName} ${toolDetail(event.toolName, event.args)}`, 'dim');
 	if (event.type === 'tool') {
 		return append(
@@ -87,16 +92,25 @@ function reduceEvent(state: ConsoleTranscript, event: FlueEvent): ConsoleTranscr
 }
 
 function isSuppressedServerOutput(line: string): boolean {
+	const clean = sanitize(line);
 	return (
-		line.includes('ExperimentalWarning: SQLite is an experimental feature and might change at any time') ||
-		line.includes('Use `node --trace-warnings')
+		clean.includes('ExperimentalWarning: SQLite is an experimental feature and might change at any time') ||
+		clean.includes('Use `node --trace-warnings') ||
+		clean.startsWith('wrangler ')
 	);
 }
 
-function append(state: ConsoleTranscript, raw: string, tone: TranscriptTone): ConsoleTranscript {
-	const text = sanitize(raw);
+function append(
+	state: ConsoleTranscript,
+	raw: string,
+	tone: TranscriptTone,
+	layout?: TranscriptRecord['layout'],
+): ConsoleTranscript {
+	const text = layout === 'thinking'
+		? raw.split('\n').map(sanitize).filter(Boolean).join('\n')
+		: sanitize(raw);
 	if (!text) return state;
-	const records = [...state.records, { id: state.nextId, text, tone }].slice(-TRANSCRIPT_LIMIT);
+	const records = [...state.records, { id: state.nextId, text, tone, layout }].slice(-TRANSCRIPT_LIMIT);
 	return { ...state, records, nextId: state.nextId + 1 };
 }
 
