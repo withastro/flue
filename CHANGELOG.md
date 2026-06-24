@@ -1,9 +1,11 @@
 # Changelog
 
-## Unreleased
+## @flue/runtime, @flue/cli, and @flue/sdk 1.0.0-beta.5 - 2026-06-23
 
 ### Fixes & Other Changes
 
+- `flue dev` now resolves attributed Markdown and Agent Skill imports exported by workspace packages.
+- The built-in `read` tool now reads files only and returns the filesystem error when given a directory.
 - Cloudflare projects now require `agents@^0.14.2`, whose schema migration repairs upgraded Durable Object SQLite databases missing the Agents SDK's MCP server table.
 
 ## @flue/react 1.0.0-beta.4 - 2026-06-23
