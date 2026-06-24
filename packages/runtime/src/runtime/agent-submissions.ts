@@ -13,12 +13,14 @@ import {
 	SubmissionRetryExhaustedError,
 	SubmissionTimeoutError,
 } from '../errors.ts';
-import { interceptExecution, type FlueTraceCarrier } from '../execution-interceptor.ts';
+import { redactEventImages } from '../event-redaction.ts';
+import { type FlueTraceCarrier, interceptExecution } from '../execution-interceptor.ts';
 import { getInternalSession } from '../session.ts';
+import { createUserContextMessage } from '../session-history.ts';
 import type {
+	AgentDefinition,
 	AttachedAgentEvent,
 	CallHandle,
-	AgentDefinition,
 	DirectAgentPayload,
 	PromptResponse,
 } from '../types.ts';
@@ -42,6 +44,11 @@ export interface DirectAgentSubmissionInput {
 }
 
 export type AgentSubmissionInput = DispatchAgentSubmissionInput | DirectAgentSubmissionInput;
+
+export interface SubmissionInputOutbox {
+	readonly eventKey: string;
+	readonly event: AttachedAgentEvent;
+}
 
 export interface AgentSubmissionInterruption {
 	readonly submissionId: string;
@@ -159,6 +166,38 @@ export function createDirectAgentSubmissionInput(options: {
 		payload: options.payload,
 		acceptedAt: new Date().toISOString(),
 		...(options.traceCarrier ? { traceCarrier: options.traceCarrier } : {}),
+	};
+}
+
+export function createDirectSubmissionInputOutbox(
+	input: DirectAgentSubmissionInput,
+): SubmissionInputOutbox {
+	const turnId = `turn_${input.submissionId}`;
+	const redacted = redactEventImages({
+		type: 'message_end',
+		message: createUserContextMessage(
+			input.payload.message,
+			input.acceptedAt,
+			input.payload.images,
+		),
+		turnId,
+	});
+	if (redacted.type !== 'message_end') {
+		throw new Error('[flue] Direct submission input event changed type during redaction.');
+	}
+	return {
+		eventKey: `direct-submission:${input.submissionId}:input`,
+		event: {
+			type: 'message_end',
+			message: redacted.message,
+			turnId,
+			v: 3,
+			eventIndex: 0,
+			timestamp: input.acceptedAt,
+			agentName: input.agent,
+			instanceId: input.id,
+			submissionId: input.submissionId,
+		},
 	};
 }
 
@@ -315,12 +354,16 @@ export async function reconcileInterruptedSubmission(
 	submission: AgentSubmission,
 	agent: AgentDefinition,
 	createContext: (dispatchId: string | undefined) => FlueContextInternal,
+	deliverInputEvent: (input: SubmissionInputOutbox) => Promise<string>,
 	deliverTerminalEvent: (terminal: SubmissionTerminalOutbox) => Promise<string>,
 	lease?: { ownerId: string; leaseExpiresAt: number },
 ): Promise<ReconciliationResult> {
 	const { input } = submission;
 	const attempt = submissionAttemptRef(submission);
 	if (!attempt) return { disposition: 'stale' };
+	if (input.kind === 'direct') {
+		await deliverInputEvent(createDirectSubmissionInputOutbox(input));
+	}
 
 	// Inspect canonical session state first: a completed canonical response
 	// is finished provider work and settles as success unconditionally. The
@@ -610,6 +653,7 @@ export interface ProcessSubmissionOptions {
 	createContext: (dispatchId: string | undefined) => FlueContextInternal;
 	/** Observer registry for direct submission events and settlement. */
 	observers: Pick<AgentSubmissionObserverRegistry, 'publish' | 'complete' | 'fail'>;
+	deliverInputEvent: (input: SubmissionInputOutbox) => Promise<string>;
 	deliverTerminalEvent: (terminal: SubmissionTerminalOutbox) => Promise<string>;
 	onInteractionStart?: (interaction: {
 		agentName: string;
@@ -659,6 +703,9 @@ export async function processSubmission(opts: ProcessSubmissionOptions): Promise
 	};
 	const persisted = await submissions.getSubmission(submission.submissionId);
 	if (persisted?.status !== 'running' || persisted.attemptId !== attempt.attemptId) return;
+	if (input.kind === 'direct') {
+		await opts.deliverInputEvent(createDirectSubmissionInputOutbox(input));
+	}
 	if (submission.attemptCount === 1 && opts.onInteractionStart) {
 		try {
 			opts.onInteractionStart({
@@ -770,7 +817,8 @@ export async function processSubmission(opts: ProcessSubmissionOptions): Promise
 						result,
 					)
 				: await submissions.completeSubmission(attempt);
-		if (submission.kind === 'direct' && settled) observers.complete(submission.submissionId, result);
+		if (submission.kind === 'direct' && settled)
+			observers.complete(submission.submissionId, result);
 	} finally {
 		if (submission.kind === 'direct') ctx.setEventCallback(undefined);
 		opts.onSettled?.();
@@ -858,7 +906,10 @@ async function settleDirectSubmission(
 	try {
 		await ctx.flushEventCallbacks();
 	} catch (callbackError) {
-		console.error('[flue:event-stream] Event persistence failed before terminal settlement:', callbackError);
+		console.error(
+			'[flue:event-stream] Event persistence failed before terminal settlement:',
+			callbackError,
+		);
 	}
 	const offset = terminal.offset ?? (await deliverTerminalEvent(terminal));
 	if (!(await submissions.recordSubmissionTerminalOffset(attempt, eventKey, offset))) return false;

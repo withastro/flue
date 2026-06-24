@@ -4,6 +4,7 @@ import type {
 	AgentSubmissionStore,
 } from '../agent-execution-store.ts';
 import { LEASE_DURATION_MS } from '../agent-execution-store.ts';
+import { assertProductEventV3 } from '../product-event.ts';
 import {
 	type AgentSubmissionInput,
 	type AttachedAgentSubmissionAdmission,
@@ -11,19 +12,22 @@ import {
 	createDirectAgentSubmissionInput,
 	processSubmission,
 	reconcileInterruptedSubmission,
+	type SubmissionInputOutbox,
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
 import type { AgentInteractionStart } from '../runtime/dev-lifecycle-logger.ts';
 import type { DispatchInput, DispatchQueue } from '../runtime/dispatch-queue.ts';
 import { agentStreamPath } from '../runtime/event-stream-store.ts';
 import type { CreateAgentContextFn } from '../runtime/handle-agent.ts';
-import type { RuntimeActivityGate, RuntimeActivityLease } from '../runtime/runtime-activity-gate.ts';
 import { isStreamExcludedEvent } from '../runtime/run-store.ts';
-import { assertProductEventV3 } from '../product-event.ts';
+import type {
+	RuntimeActivityGate,
+	RuntimeActivityLease,
+} from '../runtime/runtime-activity-gate.ts';
 import { deleteSessionTree } from '../session.ts';
 import type {
-	AttachedAgentEvent,
 	AgentDefinition,
+	AttachedAgentEvent,
 	DirectAgentPayload,
 	DispatchReceipt,
 	SessionStore,
@@ -100,7 +104,15 @@ export function createNodeAgentCoordinator(options: {
 	onInteractionStart?: (interaction: AgentInteractionStart) => void;
 	activityGate?: RuntimeActivityGate;
 }): NodeAgentCoordinator {
-	const { submissions, sessions, agents, createContext, eventStreamStore, onInteractionStart, activityGate } = options;
+	const {
+		submissions,
+		sessions,
+		agents,
+		createContext,
+		eventStreamStore,
+		onInteractionStart,
+		activityGate,
+	} = options;
 	const observers = createAgentSubmissionObserverRegistry();
 
 	// ── Lease ownership ──────────────────────────────────────────────────
@@ -171,6 +183,7 @@ export function createNodeAgentCoordinator(options: {
 				id: input.id,
 				agentName: input.agent,
 				request: submissionSyntheticRequest(input),
+				...(input.kind === 'direct' ? { initialEventIndex: 1 } : {}),
 				dispatchId,
 			});
 			// Subscribe to events for durable agent event persistence.
@@ -186,8 +199,17 @@ export function createNodeAgentCoordinator(options: {
 
 	function resolveAgent(name: string): AgentDefinition {
 		const agent = agents.find((record) => record.name === name)?.definition;
-		if (!agent) throw new Error(`[flue] submission target agent "${name}" has no agent definition.`);
+		if (!agent)
+			throw new Error(`[flue] submission target agent "${name}" has no agent definition.`);
 		return agent;
+	}
+
+	function deliverInputEvent(input: AgentSubmissionInput, outbox: SubmissionInputOutbox) {
+		return eventStreamStore.appendEventOnce(
+			agentStreamPath(input.agent, input.id),
+			outbox.eventKey,
+			outbox.event,
+		);
 	}
 
 	/**
@@ -210,6 +232,7 @@ export function createNodeAgentCoordinator(options: {
 				resolveAgent,
 				createContext: makeSubmissionContext(claimed.input),
 				observers,
+				deliverInputEvent: (outbox) => deliverInputEvent(claimed.input, outbox),
 				deliverTerminalEvent: (terminal) =>
 					eventStreamStore.appendEventOnce(
 						agentStreamPath(claimed.input.agent, claimed.input.id),
@@ -416,7 +439,9 @@ export function createNodeAgentCoordinator(options: {
 			if (!submission || submission.kind !== 'direct') continue;
 			const streamPath = agentStreamPath(submission.input.agent, submission.input.id);
 			await eventStreamStore.createStream(streamPath);
-			const offset = terminal.offset ?? (await eventStreamStore.appendEventOnce(streamPath, terminal.eventKey, terminal.event));
+			const offset =
+				terminal.offset ??
+				(await eventStreamStore.appendEventOnce(streamPath, terminal.eventKey, terminal.event));
 			const attempt = { submissionId: terminal.submissionId, attemptId: terminal.attemptId };
 			await submissions.recordSubmissionTerminalOffset(attempt, terminal.eventKey, offset);
 			if (await submissions.finalizeSubmissionTerminal(attempt, terminal.eventKey)) {
@@ -429,7 +454,10 @@ export function createNodeAgentCoordinator(options: {
 				};
 				if (event.outcome === 'completed') observers.complete(terminal.submissionId, event.result);
 				if (event.outcome === 'failed') {
-					observers.fail(terminal.submissionId, new Error(event.error?.message ?? 'Agent submission failed.'));
+					observers.fail(
+						terminal.submissionId,
+						new Error(event.error?.message ?? 'Agent submission failed.'),
+					);
 				}
 			}
 		}
@@ -466,6 +494,7 @@ export function createNodeAgentCoordinator(options: {
 					submission,
 					agent,
 					makeSubmissionContext(submission.input),
+					(outbox) => deliverInputEvent(submission.input, outbox),
 					(terminal) =>
 						eventStreamStore.appendEventOnce(
 							agentStreamPath(submission.input.agent, submission.input.id),
@@ -575,7 +604,9 @@ export function createNodeAgentCoordinator(options: {
 				const agent = agents.find((record) => record.name === agentName)?.definition;
 				if (!agent) {
 					activityLease?.release();
-					throw new Error(`[flue] direct prompt target agent "${agentName}" has no agent definition.`);
+					throw new Error(
+						`[flue] direct prompt target agent "${agentName}" has no agent definition.`,
+					);
 				}
 
 				const input = createDirectAgentSubmissionInput({

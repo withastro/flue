@@ -5,12 +5,14 @@ import type {
 } from '../agent-execution-store.ts';
 import type { FlueContextInternal } from '../client.ts';
 import type { FlueTraceCarrier } from '../execution-interceptor.ts';
+import { assertProductEventV3 } from '../product-event.ts';
 import {
 	createAgentSubmissionObserverRegistry,
 	type createAgentSubmissionSessionHandler,
 	createDirectAgentSubmissionInput,
 	processSubmission,
 	reconcileInterruptedSubmission,
+	type SubmissionInputOutbox,
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
 import type { AgentInteractionStart } from '../runtime/dev-lifecycle-logger.ts';
@@ -18,7 +20,6 @@ import { agentStreamPath } from '../runtime/event-stream-store.ts';
 import { assertAgentDispatchAdmissionInput, handleAgentRequest } from '../runtime/handle-agent.ts';
 import { handleStreamHead, handleStreamRead } from '../runtime/handle-stream-routes.ts';
 import { isStreamExcludedEvent } from '../runtime/run-store.ts';
-import { assertProductEventV3 } from '../product-event.ts';
 import { deleteSessionTree } from '../session.ts';
 import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import { createSqlAgentExecutionStore } from './agent-execution-store.ts';
@@ -290,14 +291,23 @@ class CloudflareAgentCoordinator {
 	private createDurableContext(
 		request: Request,
 		dispatchId?: string,
+		initialEventIndex?: number,
 	): FlueContextInternal {
-		const ctx = this.createContext(request, undefined, dispatchId);
+		const ctx = this.createContext(request, initialEventIndex, dispatchId);
 		const streamPath = agentStreamPath(this.agentName, this.instance.name);
 		ctx.subscribeEvent(async (event) => {
 			if (isStreamExcludedEvent(event) || event.type === 'submission_settled') return;
 			await this.eventStreamStore.appendEvent(streamPath, event);
 		});
 		return ctx;
+	}
+
+	private deliverInputEvent(input: AgentSubmission, outbox: SubmissionInputOutbox) {
+		return this.eventStreamStore.appendEventOnce(
+			agentStreamPath(input.input.agent, input.input.id),
+			outbox.eventKey,
+			outbox.event,
+		);
 	}
 
 	private assertAgentsDurabilityApi(method: 'runFiber' | 'schedule'): void {
@@ -345,13 +355,15 @@ class CloudflareAgentCoordinator {
 				await this.submissions.recordSubmissionTerminalOffset(attempt, terminal.eventKey, offset);
 				if (await this.submissions.finalizeSubmissionTerminal(attempt, terminal.eventKey)) {
 					const journal = await this.submissions.getTurnJournal(terminal.submissionId);
-					if (journal?.streamKey) await this.submissions.deleteStreamChunkSegments(journal.streamKey);
+					if (journal?.streamKey)
+						await this.submissions.deleteStreamChunkSegments(journal.streamKey);
 					const event = terminal.event as {
 						outcome?: 'completed' | 'failed';
 						result?: unknown;
 						error?: { message?: string };
 					};
-					if (event.outcome === 'completed') this.observers.complete(terminal.submissionId, event.result);
+					if (event.outcome === 'completed')
+						this.observers.complete(terminal.submissionId, event.result);
 					if (event.outcome === 'failed') {
 						this.observers.fail(
 							terminal.submissionId,
@@ -468,7 +480,12 @@ class CloudflareAgentCoordinator {
 				submission,
 				agent,
 				(dispatchId) =>
-					this.createDurableContext(submissionSyntheticRequest(submission.input), dispatchId),
+					this.createDurableContext(
+						submissionSyntheticRequest(submission.input),
+						dispatchId,
+						submission.kind === 'direct' ? 1 : undefined,
+					),
+				(outbox) => this.deliverInputEvent(submission, outbox),
 				(terminal) =>
 					this.eventStreamStore.appendEventOnce(
 						agentStreamPath(this.agentName, this.instance.name),
@@ -587,8 +604,13 @@ class CloudflareAgentCoordinator {
 				return agent;
 			},
 			createContext: (dispatchId) =>
-				this.createDurableContext(submissionSyntheticRequest(submission.input), dispatchId),
+				this.createDurableContext(
+					submissionSyntheticRequest(submission.input),
+					dispatchId,
+					submission.kind === 'direct' ? 1 : undefined,
+				),
 			observers: this.observers,
+			deliverInputEvent: (outbox) => this.deliverInputEvent(submission, outbox),
 			deliverTerminalEvent: (terminal) =>
 				this.eventStreamStore.appendEventOnce(
 					agentStreamPath(this.agentName, this.instance.name),

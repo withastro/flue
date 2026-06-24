@@ -8,6 +8,7 @@ import type {
 	AgentSubmissionInterruption,
 	DirectAgentSubmissionInput,
 } from '../src/runtime/agent-submissions.ts';
+import { agentStreamPath } from '../src/runtime/event-stream-store.ts';
 import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 afterEach(() => {
@@ -60,7 +61,9 @@ function makeFakeSql() {
 
 function makeRuntime(
 	options: {
-		createdAgent?: Parameters<typeof createCloudflareAgentRuntime>[0]['agents'][number]['definition'];
+		createdAgent?: Parameters<
+			typeof createCloudflareAgentRuntime
+		>[0]['agents'][number]['definition'];
 		createContext?: Parameters<typeof createCloudflareAgentRuntime>[0]['createContext'];
 		createEventStreamStore?: Parameters<
 			typeof createCloudflareAgentRuntime
@@ -68,9 +71,7 @@ function makeRuntime(
 	} = {},
 ) {
 	return createCloudflareAgentRuntime({
-		agents: options.createdAgent
-			? [{ name: 'assistant', definition: options.createdAgent }]
-			: [],
+		agents: options.createdAgent ? [{ name: 'assistant', definition: options.createdAgent }] : [],
 		createContext:
 			options.createContext ??
 			(() => {
@@ -460,6 +461,43 @@ describe('createCloudflareAgentRuntime()', () => {
 		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
 			status: 'running',
 		});
+	});
+
+	it('appends the direct input event while reconciling an interrupted attempt', async () => {
+		const { storage } = makeFakeSql();
+		const recovery = makeRecoveryContext({ inspection: 'absent' });
+		const eventStreamStore = createTestEventStreamStore();
+		const runtime = makeRuntime({
+			createdAgent: {} as never,
+			createContext: () => recovery.ctx,
+			createEventStreamStore: () => eventStreamStore,
+		});
+		const instance = makeInstance(storage);
+		const executionStore = prepare(runtime, instance);
+		await eventStreamStore.createStream(agentStreamPath('assistant', 'agent-1'));
+		await executionStore.submissions.admitDirect(directInput());
+		await executionStore.submissions.claimSubmission({
+			submissionId: 'direct-1',
+			attemptId: 'attempt-1',
+			ownerId: 'test-owner',
+			leaseExpiresAt: Date.now() + 30_000,
+		});
+
+		await runtime.onStart(instance, () => {});
+
+		const stream = await eventStreamStore.readEvents(agentStreamPath('assistant', 'agent-1'), {
+			offset: '-1',
+		});
+		expect(stream.events.map((event) => event.data)).toEqual([
+			expect.objectContaining({
+				type: 'message_end',
+				eventIndex: 0,
+				timestamp: '2026-06-03T00:00:00.000Z',
+				instanceId: 'agent-1',
+				submissionId: 'direct-1',
+				message: expect.objectContaining({ role: 'user' }),
+			}),
+		]);
 	});
 
 	it('records interruption before settling applied incomplete canonical input as error', async () => {

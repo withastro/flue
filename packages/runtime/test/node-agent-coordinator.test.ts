@@ -159,8 +159,13 @@ async function createFauxCoordinator(
 	dbPath: string,
 	provider: FauxProviderRegistration,
 	durability?: { maxAttempts?: number; timeoutMs?: number },
-): Promise<{ coordinator: NodeAgentCoordinator; executionStore: AgentExecutionStore }> {
+): Promise<{
+	coordinator: NodeAgentCoordinator;
+	executionStore: AgentExecutionStore;
+	eventStreamStore: ReturnType<typeof createTestEventStreamStore>;
+}> {
 	const executionStore = await openExecutionStore(dbPath);
+	const eventStreamStore = createTestEventStreamStore();
 	const agent = defineAgent(() => ({
 		model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		durability,
@@ -170,9 +175,9 @@ async function createFauxCoordinator(
 		sessions: executionStore.sessions,
 		agents: [{ name: 'assistant', definition: agent }],
 		createContext: makeFauxCreateContext(provider, executionStore),
-		eventStreamStore: createTestEventStreamStore(),
+		eventStreamStore,
 	});
-	return { coordinator, executionStore };
+	return { coordinator, executionStore, eventStreamStore };
 }
 
 // ---------------------------------------------------------------------------
@@ -1855,6 +1860,65 @@ describe('NodeAgentCoordinator', () => {
 			expect(await executionStore.submissions.hasUnsettledSubmissions()).toBe(false);
 		});
 
+		it('replays the complete transcript after a direct prompt settles', async () => {
+			const dbPath = createTempDbPath();
+			const provider = createFauxProvider();
+			provider.setResponses([fauxAssistantMessage('Durable reply.')]);
+			const executionStore = await openExecutionStore(dbPath);
+			const eventStreamStore = createTestEventStreamStore();
+			const coordinator = createNodeAgentCoordinator({
+				submissions: executionStore.submissions,
+				sessions: executionStore.sessions,
+				agents: [
+					{
+						name: 'assistant',
+						definition: defineAgent(() => ({
+							model: `${provider.getModel().provider}/${provider.getModel().id}`,
+						})),
+					},
+				],
+				createContext: makeFauxCreateContext(provider, executionStore),
+				eventStreamStore,
+			});
+
+			const receipt = await coordinator.createAdmission(
+				'assistant',
+				'instance-1',
+			)({ message: 'Durable prompt' });
+			const session = await executionStore.sessions.load(
+				createSessionStorageKey('instance-1', 'default', 'default'),
+			);
+			const stream = await eventStreamStore.readEvents(agentStreamPath('assistant', 'instance-1'), {
+				offset: '-1',
+			});
+			const messageEvents = stream.events
+				.map((event) => event.data as Record<string, unknown>)
+				.filter((event) => event.type === 'message_end');
+
+			expect(
+				session?.entries
+					.filter((entry) => entry.type === 'message')
+					.map((entry) => entry.message.role),
+			).toEqual(['user', 'assistant']);
+			expect(messageEvents.map((event) => (event.message as { role: string }).role)).toEqual([
+				'user',
+				'assistant',
+			]);
+			expect(messageEvents[0]).toMatchObject({
+				eventIndex: 0,
+				submissionId: receipt.submissionId,
+				message: {
+					role: 'user',
+					content: [{ type: 'text', text: 'Durable prompt' }],
+				},
+			});
+			expect(messageEvents[1]).toMatchObject({
+				submissionId: receipt.submissionId,
+				message: { role: 'assistant' },
+			});
+			expect((messageEvents[1]?.eventIndex as number) > 0).toBe(true);
+		});
+
 		it('appends the terminal result before settling a direct prompt', async () => {
 			const dbPath = createTempDbPath();
 			const provider = createFauxProvider();
@@ -1889,8 +1953,10 @@ describe('NodeAgentCoordinator', () => {
 				eventStreamStore,
 			});
 
-			const receipt = await coordinator
-				.createAdmission('assistant', 'instance-1')({ message: 'Hello terminal event' });
+			const receipt = await coordinator.createAdmission(
+				'assistant',
+				'instance-1',
+			)({ message: 'Hello terminal event' });
 			const stream = await eventStreamStore.readEvents(agentStreamPath('assistant', 'instance-1'));
 			const terminal = stream.events
 				.map((event) => event.data as Record<string, unknown>)
@@ -2011,12 +2077,26 @@ describe('NodeAgentCoordinator', () => {
 			// Submission is running with no canonical input — simulates crash before input applied.
 
 			// "Restart": new coordinator reconciles.
-			const { coordinator, executionStore } = await createFauxCoordinator(dbPath, provider);
+			const { coordinator, executionStore, eventStreamStore } = await createFauxCoordinator(
+				dbPath,
+				provider,
+			);
 			await coordinator.reconcileSubmissions();
 
 			const submission = await executionStore.submissions.getSubmission('direct-interrupted');
+			const stream = await eventStreamStore.readEvents(agentStreamPath('assistant', 'instance-1'), {
+				offset: '-1',
+			});
+			const userMessages = stream.events
+				.map((event) => event.data as Record<string, unknown>)
+				.filter(
+					(event) =>
+						event.type === 'message_end' &&
+						(event.message as { role?: string } | undefined)?.role === 'user',
+				);
 			expect(submission).toMatchObject({ status: 'settled' });
 			expect(submission?.error).toBeUndefined();
+			expect(userMessages).toHaveLength(1);
 		});
 
 		it('terminalizes an interrupted direct prompt when input was applied but no response completed', async () => {
@@ -2099,7 +2179,7 @@ describe('NodeAgentCoordinator', () => {
 				await executionStore.sessions.save(storageKey, {
 					version: 8,
 					conversationId: 'conv_01KT3P3GZGFBCKHKMQ11A7H2HW',
-				affinityKey: generateSessionAffinityKey(),
+					affinityKey: generateSessionAffinityKey(),
 					childSessions: [],
 					entries: [
 						{
