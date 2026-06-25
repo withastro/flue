@@ -86,7 +86,7 @@ describe('defineSkill()', () => {
 		});
 	});
 
-	it('lazily advertises and reads resources when activated autonomously', async () => {
+	it('exposes packaged resources without synthesizing adapter filesystem read', async () => {
 		const provider = registerFauxProvider({ provider: `define-skill-${crypto.randomUUID()}` });
 		providers.push(provider);
 		let activationResult: unknown;
@@ -104,7 +104,7 @@ describe('defineSkill()', () => {
 			}),
 			(context) => {
 				activationResult = context.messages.at(-1);
-				return fauxAssistantMessage(fauxToolCall('read', { path: resourcePath }), {
+				return fauxAssistantMessage(fauxToolCall('read_skill_resource', { path: resourcePath }), {
 					stopReason: 'toolUse',
 				});
 			},
@@ -124,6 +124,10 @@ describe('defineSkill()', () => {
 			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				skills: [review],
+				sandbox: {
+					createSessionEnv: async () => createEnv(),
+					tools: () => [],
+				},
 			})),
 		);
 		const session = await harness.session();
@@ -136,7 +140,9 @@ describe('defineSkill()', () => {
 			content: [
 				{
 					type: 'text',
-					text: expect.stringContaining(`references/checklist.md → read ${resourcePath}`),
+					text: expect.stringContaining(
+						`references/checklist.md → read_skill_resource ${resourcePath}`,
+					),
 				},
 			],
 			isError: false,
@@ -146,7 +152,7 @@ describe('defineSkill()', () => {
 		});
 		expect(readResult).toMatchObject({
 			role: 'toolResult',
-			toolName: 'read',
+			toolName: 'read_skill_resource',
 			content: [{ type: 'text', text: 'Check errors.' }],
 			isError: false,
 		});

@@ -1,7 +1,10 @@
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import type * as v from 'valibot';
-import { formatPackagedSkillFilePath } from './agent.ts';
-import { parseValibot, isTopLevelObjectSchema, valibotToJsonSchema } from './schema.ts';
+import {
+	formatPackagedSkillFilePath,
+	READ_SKILL_RESOURCE_TOOL_NAME,
+} from './agent.ts';
+import { isTopLevelObjectSchema, parseValibot, valibotToJsonSchema } from './schema.ts';
 import { parseSkillMarkdown } from './skill-frontmatter.ts';
 import type { PackagedSkillDirectory, SkillReference } from './types.ts';
 
@@ -61,7 +64,8 @@ export function buildPackagedSkillPrompt(
 			'Supporting skill resources are available but are not loaded into context unless needed:',
 			'<skill_resources>',
 			...resources.map(
-				(filePath) => `- ${filePath} → read ${formatPackagedSkillFilePath(reference.id, filePath)}`,
+				(filePath) =>
+					`- ${filePath} → ${READ_SKILL_RESOURCE_TOOL_NAME} ${formatPackagedSkillFilePath(reference.id, filePath)}`,
 			),
 			'</skill_resources>',
 		);

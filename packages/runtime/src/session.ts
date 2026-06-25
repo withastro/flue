@@ -29,6 +29,7 @@ import {
 	createPackagedSkillReadTool,
 	createTaskTool,
 	createTools,
+	READ_SKILL_RESOURCE_TOOL_NAME,
 	type TaskToolParams,
 	type TaskToolResultDetails,
 } from './agent.ts';
@@ -1619,6 +1620,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		const frameworkReserved = new Set([
 			'task',
 			'activate_skill',
+			READ_SKILL_RESOURCE_TOOL_NAME,
 			FINISH_TOOL_NAME,
 			GIVE_UP_TOOL_NAME,
 		]);
@@ -1686,13 +1688,20 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			skillNames.length > 0
 				? createActivateSkillTool(skillNames, (name) => this.activateSkillForTool(name))
 				: undefined;
-		const frameworkTools = (taskTool: AgentTool<any>) =>
-			activateSkillTool ? [taskTool, activateSkillTool] : [taskTool];
+		const packagedRead = Object.values(packagedSkills).some((skill) =>
+			Object.keys(skill.files).some((path) => path !== 'SKILL.md'),
+		)
+			? createPackagedSkillReadTool(packagedSkills)
+			: undefined;
+		const frameworkTools = (taskTool: AgentTool<any>) => [
+			taskTool,
+			...(activateSkillTool ? [activateSkillTool] : []),
+			...(packagedRead ? [packagedRead] : []),
+		];
 
 		if (this.toolFactory) {
 			let adapterTools = this.toolFactory(env, { subagents: this.config.subagents ?? {} });
-			if (Object.keys(packagedSkills).length > 0) {
-				const packagedRead = createPackagedSkillReadTool(packagedSkills);
+			if (packagedRead) {
 				const adapterRead = adapterTools.find((tool) => tool.name === 'read');
 				if (adapterRead) {
 					adapterTools = adapterTools.map((tool) =>
@@ -1716,8 +1725,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 									},
 								},
 					);
-				} else {
-					adapterTools = [...adapterTools, packagedRead];
 				}
 			}
 			return [

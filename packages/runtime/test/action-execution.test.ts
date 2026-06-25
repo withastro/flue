@@ -9,8 +9,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
 	ActionOutputSerializationError,
 	ActionOutputValidationError,
-	defineAgent,
 	defineAction,
+	defineAgent,
 	defineTool,
 	ToolNameConflictError,
 } from '../src/index.ts';
@@ -615,7 +615,7 @@ describe('Action model tools', () => {
 	});
 
 	it('rejects adapter framework-reserved names regardless of active result or skill tools', async () => {
-		for (const name of ['task', 'activate_skill', 'finish', 'give_up']) {
+		for (const name of ['task', 'activate_skill', 'read_skill_resource', 'finish', 'give_up']) {
 			const provider = createProvider();
 			const harness = await createContext(
 				provider,
@@ -636,7 +636,7 @@ describe('Action model tools', () => {
 			});
 		}
 
-		for (const name of ['task', 'activate_skill', 'finish', 'give_up']) {
+		for (const name of ['task', 'activate_skill', 'read_skill_resource', 'finish', 'give_up']) {
 			const provider = createProvider();
 			const harness = await createContext(
 				provider,

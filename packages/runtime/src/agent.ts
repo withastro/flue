@@ -10,6 +10,7 @@ const MAX_GREP_LINE_LENGTH = 500;
 const MAX_GLOB_RESULTS = 1000;
 const BASE64_READ_LINE_LENGTH = 76;
 const PACKAGED_SKILLS_ROOT = '/.flue/packaged-skills/';
+export const READ_SKILL_RESOURCE_TOOL_NAME = 'read_skill_resource';
 
 export interface TaskToolParams {
 	prompt: string;
@@ -59,8 +60,8 @@ export function createPackagedSkillReadTool(
 	packagedSkills: Record<string, PackagedSkillDirectory>,
 ): AgentTool<typeof ReadParams> {
 	return {
-		name: 'read',
-		label: 'Read Packaged Skill File',
+		name: READ_SKILL_RESOURCE_TOOL_NAME,
+		label: 'Read Skill Resource',
 		description: 'Read a packaged skill supporting file by its advertised path.',
 		parameters: ReadParams,
 		async execute(_toolCallId: string, params: Static<typeof ReadParams>, signal?: AbortSignal) {
