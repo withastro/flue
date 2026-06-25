@@ -1,13 +1,30 @@
 import type { AssistantMessage, AssistantMessageEvent } from '@earendil-works/pi-ai';
 import type { AgentSubmissionStore } from '../agent-execution-store.ts';
+import { StreamChunkSegmentTooLargeError } from '../errors.ts';
 import type { SignalMessage } from '../types.ts';
 
 const STREAM_FLUSH_INTERVAL_MS = 3_000;
+export const MAX_STREAM_CHUNK_SEGMENT_BYTES = 1_900_000;
 
-type StreamChunkEvent = AssistantMessageEvent;
+const textEncoder = new TextEncoder();
+
+type CompactPartial = Omit<
+	AssistantMessage,
+	'role' | 'content' | 'stopReason' | 'errorMessage'
+>;
+type CompactStreamEvent =
+	| { type: 'text_delta'; contentIndex: number; delta: string }
+	| { type: 'text_end'; contentIndex: number; content: string }
+	| { type: 'thinking_start'; contentIndex: number }
+	| { type: 'thinking_delta'; contentIndex: number; delta: string }
+	| { type: 'thinking_end'; contentIndex: number; content: string }
+	| { type: 'toolcall' };
+
+type StoredStreamEvent = CompactStreamEvent & { partial?: CompactPartial };
 
 export class StreamChunkWriter {
-	private pending: StreamChunkEvent[] = [];
+	private pending: CompactStreamEvent[] = [];
+	private pendingPartial: AssistantMessage | undefined;
 	private segmentIndex = 0;
 	private timer: ReturnType<typeof setTimeout> | undefined;
 	private flushing: Promise<void> | undefined;
@@ -19,10 +36,15 @@ export class StreamChunkWriter {
 		readonly streamKey: string,
 	) {}
 
-	write(event: StreamChunkEvent): void {
+	write(event: AssistantMessageEvent): void {
 		if (!this.active || this.failed) return;
-		this.pending.push(event);
-		if (!this.timer) {
+		this.pendingPartial =
+			'partial' in event ? event.partial : event.type === 'done' ? event.message : event.error;
+		const compact = compactStreamEvent(event);
+		if (compact && (compact.type !== 'toolcall' || !this.pending.some(isToolCallMarker))) {
+			this.pending.push(compact);
+		}
+		if (!this.timer && this.pending.length > 0) {
 			this.timer = setTimeout(() => {
 				this.timer = undefined;
 				void this.flush().catch((err) => {
@@ -39,12 +61,23 @@ export class StreamChunkWriter {
 			this.timer = undefined;
 		}
 		if (this.flushing) await this.flushing;
-		if (this.failed || this.pending.length === 0) return;
-		const events = this.pending;
+		if (this.failed || this.pending.length === 0 || !this.pendingPartial) return;
+		const pending = this.pending;
+		const partial = this.pendingPartial;
 		this.pending = [];
+		this.pendingPartial = undefined;
+		const body = serializeStreamEvents(pending, partial);
+		const serializedBytes = textEncoder.encode(body).byteLength;
+		if (serializedBytes > MAX_STREAM_CHUNK_SEGMENT_BYTES) {
+			this.failed = true;
+			throw new StreamChunkSegmentTooLargeError({
+				serializedBytes,
+				maximumBytes: MAX_STREAM_CHUNK_SEGMENT_BYTES,
+			});
+		}
 		const segmentIndex = this.segmentIndex++;
 		this.flushing = this.store
-			.appendStreamChunkSegment(this.streamKey, segmentIndex, JSON.stringify(events))
+			.appendStreamChunkSegment(this.streamKey, segmentIndex, body)
 			.then((inserted) => {
 				if (!inserted) this.failed = true;
 			});
@@ -56,7 +89,6 @@ export class StreamChunkWriter {
 		} finally {
 			this.flushing = undefined;
 		}
-		// Only re-schedule if the writer is still active (not closed).
 		if (this.active && this.pending.length > 0 && !this.timer && !this.failed) {
 			this.timer = setTimeout(() => {
 				this.timer = undefined;
@@ -88,11 +120,12 @@ export function reconstructInterruptedStream(
 ): { partial: AssistantMessage; interrupted: SignalMessage; continued: SignalMessage } | null {
 	const events = segments.flatMap((segment) => parseSegment(segment.body));
 	const blocks: Array<AssistantMessage['content'][number] | undefined> = [];
-	let partial: AssistantMessage | undefined;
+	let partial: AssistantMessage | CompactPartial | undefined;
 	let sawToolCall = false;
 	for (const update of events) {
-		if ('partial' in update) partial = update.partial;
+		if ('partial' in update && update.partial) partial = update.partial;
 		if (
+			update.type === 'toolcall' ||
 			update.type === 'toolcall_start' ||
 			update.type === 'toolcall_delta' ||
 			update.type === 'toolcall_end'
@@ -101,44 +134,18 @@ export function reconstructInterruptedStream(
 			continue;
 		}
 		if (update.type === 'text_delta') {
-			const existing = blocks[update.contentIndex];
-			if (existing?.type === 'text') {
-				existing.text += update.delta;
-			} else {
-				blocks[update.contentIndex] = { type: 'text', text: update.delta };
-			}
+			appendText(blocks, update.contentIndex, update.delta);
 		} else if (update.type === 'text_end') {
-			const existing = blocks[update.contentIndex];
-			if (existing?.type === 'text') {
-				existing.text = update.content;
-			} else {
-				blocks[update.contentIndex] = { type: 'text', text: update.content };
-			}
+			blocks[update.contentIndex] = { type: 'text', text: update.content };
 		} else if (update.type === 'thinking_start') {
 			blocks[update.contentIndex] = { type: 'thinking', thinking: '' };
 		} else if (update.type === 'thinking_delta') {
-			const existing = blocks[update.contentIndex];
-			if (existing?.type === 'thinking') {
-				existing.thinking += update.delta;
-			} else {
-				blocks[update.contentIndex] = { type: 'thinking', thinking: update.delta };
-			}
+			appendThinking(blocks, update.contentIndex, update.delta);
 		} else if (update.type === 'thinking_end') {
-			const existing = blocks[update.contentIndex];
-			if (existing?.type === 'thinking') {
-				existing.thinking = update.content;
-			} else {
-				blocks[update.contentIndex] = { type: 'thinking', thinking: update.content };
-			}
+			blocks[update.contentIndex] = { type: 'thinking', thinking: update.content };
 		}
 	}
 	if (sawToolCall || !partial) return null;
-	// Reconstructed blocks intentionally omit provider signature metadata
-	// (textSignature, thinkingSignature) because stream deltas don't carry them.
-	// This is safe: recovered content is rendered as signal messages (XML) for the
-	// model, not sent back as provider-facing assistant blocks. If the architecture
-	// changes to feed recovered content directly to the provider, signatures must
-	// be preserved from the original partial AssistantMessage.
 	const content = blocks.filter((block): block is AssistantMessage['content'][number] => {
 		if (!block) return false;
 		return block.type === 'text'
@@ -148,6 +155,7 @@ export function reconstructInterruptedStream(
 	if (content.length === 0) return null;
 	const recovered: AssistantMessage = {
 		...partial,
+		role: 'assistant',
 		content,
 		stopReason: 'aborted',
 		errorMessage: 'Stream interrupted before completion.',
@@ -172,10 +180,74 @@ export function reconstructInterruptedStream(
 	};
 }
 
-function parseSegment(body: string): StreamChunkEvent[] {
+function compactStreamEvent(event: AssistantMessageEvent): CompactStreamEvent | undefined {
+	switch (event.type) {
+		case 'text_delta':
+			return { type: event.type, contentIndex: event.contentIndex, delta: event.delta };
+		case 'text_end':
+			return { type: event.type, contentIndex: event.contentIndex, content: event.content };
+		case 'thinking_start':
+			return { type: event.type, contentIndex: event.contentIndex };
+		case 'thinking_delta':
+			return { type: event.type, contentIndex: event.contentIndex, delta: event.delta };
+		case 'thinking_end':
+			return { type: event.type, contentIndex: event.contentIndex, content: event.content };
+		case 'toolcall_start':
+		case 'toolcall_delta':
+		case 'toolcall_end':
+			return { type: 'toolcall' };
+		default:
+			return undefined;
+	}
+}
+
+function isToolCallMarker(event: CompactStreamEvent): boolean {
+	return event.type === 'toolcall';
+}
+
+function serializeStreamEvents(
+	pending: CompactStreamEvent[],
+	message: AssistantMessage,
+): string {
+	const events: StoredStreamEvent[] = [...pending];
+	const last = events.at(-1);
+	if (last) {
+		const {
+			role: _role,
+			content: _content,
+			stopReason: _stopReason,
+			errorMessage: _errorMessage,
+			...partial
+		} = message;
+		events[events.length - 1] = { ...last, partial };
+	}
+	return JSON.stringify(events);
+}
+
+function appendText(
+	blocks: Array<AssistantMessage['content'][number] | undefined>,
+	contentIndex: number,
+	content: string,
+): void {
+	const existing = blocks[contentIndex];
+	if (existing?.type === 'text') existing.text += content;
+	else blocks[contentIndex] = { type: 'text', text: content };
+}
+
+function appendThinking(
+	blocks: Array<AssistantMessage['content'][number] | undefined>,
+	contentIndex: number,
+	content: string,
+): void {
+	const existing = blocks[contentIndex];
+	if (existing?.type === 'thinking') existing.thinking += content;
+	else blocks[contentIndex] = { type: 'thinking', thinking: content };
+}
+
+function parseSegment(body: string): Array<AssistantMessageEvent | StoredStreamEvent> {
 	try {
 		const parsed = JSON.parse(body) as unknown;
-		return Array.isArray(parsed) ? (parsed as StreamChunkEvent[]) : [];
+		return Array.isArray(parsed) ? (parsed as Array<AssistantMessageEvent | StoredStreamEvent>) : [];
 	} catch {
 		return [];
 	}

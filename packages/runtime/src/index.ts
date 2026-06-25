@@ -35,6 +35,7 @@ export {
 	SessionDeletedError,
 	SessionNotFoundError,
 	SessionDataVersionError,
+	StreamChunkSegmentTooLargeError,
 	SkillDefinitionValidationError,
 	SkillNotRegisteredError,
 	SubagentNotDeclaredError,

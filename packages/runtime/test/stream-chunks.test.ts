@@ -1,6 +1,11 @@
 import type { AssistantMessage, AssistantMessageEvent } from '@earendil-works/pi-ai';
 import { describe, expect, it, vi } from 'vitest';
-import { reconstructInterruptedStream, StreamChunkWriter } from '../src/runtime/stream-chunks.ts';
+import { StreamChunkSegmentTooLargeError } from '../src/index.ts';
+import {
+	MAX_STREAM_CHUNK_SEGMENT_BYTES,
+	reconstructInterruptedStream,
+	StreamChunkWriter,
+} from '../src/runtime/stream-chunks.ts';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -166,7 +171,96 @@ describe('StreamChunkWriter', () => {
 		expect(storedSegment.streamKey).toBe('test-key');
 		expect(storedSegment.segmentIndex).toBe(0);
 		const parsed = JSON.parse(storedSegment.body);
-		expect(parsed).toHaveLength(2);
+		expect(parsed).toMatchObject([
+			{ type: 'text_delta', contentIndex: 0, delta: 'hello' },
+			{ type: 'text_delta', contentIndex: 0, delta: ' world', partial: expect.any(Object) },
+		]);
+		expect(parsed[0]).not.toHaveProperty('partial');
+		expect(parsed[1].partial).not.toHaveProperty('content');
+	});
+
+	it('stores cumulative provider partials with linear growth when text streams in many deltas', async () => {
+		const stored: Array<{ segmentIndex: number; body: string }> = [];
+		const store = {
+			appendStreamChunkSegment: async (_key: string, segmentIndex: number, body: string) => {
+				stored.push({ segmentIndex, body });
+				return true;
+			},
+		};
+		const writer = new StreamChunkWriter(store, 'linear-key');
+		let cumulative = '';
+		for (let index = 0; index < 500; index++) {
+			const delta = `token-${String(index)} `;
+			cumulative += delta;
+			writer.write({
+				type: 'text_delta',
+				contentIndex: 0,
+				delta,
+				partial: fakePartial([{ type: 'text', text: cumulative }]),
+			});
+		}
+		await writer.flush();
+
+		const totalBytes = stored.reduce(
+			(total, item) => total + new TextEncoder().encode(item.body).byteLength,
+			0,
+		);
+		expect(totalBytes).toBeLessThan(100_000);
+		const recovered = reconstructInterruptedStream(stored, 'linear-key');
+		expect(recovered?.partial.content).toEqual([{ type: 'text', text: cumulative }]);
+	});
+
+	it('rejects an oversized UTF-8 segment before writing it to storage', async () => {
+		let callCount = 0;
+		const store = {
+			appendStreamChunkSegment: async () => {
+				callCount++;
+				return true;
+			},
+		};
+		const writer = new StreamChunkWriter(store, 'oversized-key');
+		const content = '🙂"\\\n'.repeat(250_000);
+		writer.write({
+			type: 'text_delta',
+			contentIndex: 0,
+			delta: content,
+			partial: fakePartial([{ type: 'text', text: content }]),
+		});
+		const error = await writer.flush().catch((cause: unknown) => cause);
+
+		expect(error).toBeInstanceOf(StreamChunkSegmentTooLargeError);
+		expect(error).toMatchObject({
+			type: 'stream_chunk_segment_too_large',
+			meta: {
+				maximumBytes: MAX_STREAM_CHUNK_SEGMENT_BYTES,
+				serializedBytes: expect.any(Number),
+			},
+		});
+		expect(callCount).toBe(0);
+	});
+
+	it('keeps compact tool-call streams ineligible for recovery without persisting arguments', async () => {
+		const stored: Array<{ segmentIndex: number; body: string }> = [];
+		const store = {
+			appendStreamChunkSegment: async (_key: string, segmentIndex: number, body: string) => {
+				stored.push({ segmentIndex, body });
+				return true;
+			},
+		};
+		const writer = new StreamChunkWriter(store, 'tool-key');
+		const argumentsText = '{"prompt":"do not persist this marker"}';
+		writer.write({
+			type: 'toolcall_delta',
+			contentIndex: 0,
+			delta: argumentsText,
+			partial: fakePartial(),
+		});
+		await writer.flush();
+
+		expect(stored).toHaveLength(1);
+		expect(stored[0]?.body).not.toContain('do not persist this marker');
+		expect(JSON.parse(stored[0]?.body ?? '')).toMatchObject([{ type: 'toolcall' }]);
+		expect(reconstructInterruptedStream(stored, 'tool-key')).toBeNull();
 	});
 
 	it('marks itself failed on insert rejection and stops writing', async () => {
