@@ -23,6 +23,7 @@ import type { DirectAgentSubmissionInput } from '../runtime/agent-submissions.ts
 import type { DispatchInput } from '../runtime/dispatch-queue.ts';
 import type { SessionData } from '../types.ts';
 
+export { defineConversationStreamStoreContractTests } from './define-conversation-stream-store-contract-tests.ts';
 export { defineEventStreamStoreContractTests } from './define-event-stream-store-contract-tests.ts';
 export { defineRunStoreContractTests } from './define-run-store-contract-tests.ts';
 

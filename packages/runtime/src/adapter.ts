@@ -121,6 +121,20 @@ export {
 	MAX_LIST_LIMIT,
 } from './runtime/run-store.ts';
 
+// ─── Canonical conversation stream store ────────────────────────────────────
+
+export type { ConversationRecord } from './conversation-records.ts';
+export type {
+	ConversationProducerClaim,
+	ConversationSnapshot,
+	ConversationSnapshotStore,
+	ConversationStreamBatch,
+	ConversationStreamIdentity,
+	ConversationStreamMeta,
+	ConversationStreamReadResult,
+	ConversationStreamStore,
+} from './runtime/conversation-stream-store.ts';
+
 // ─── Event stream store ─────────────────────────────────────────────────────
 
 export type {

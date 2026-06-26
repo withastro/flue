@@ -10,6 +10,11 @@ import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { PersistenceAdapter } from '../agent-execution-store.ts';
+import {
+	ensureSqlConversationStreamTables,
+	SqliteConversationSnapshotStore,
+	SqliteConversationStreamStore,
+} from '../runtime/conversation-stream-store.ts';
 import { SqliteEventStreamStore } from '../runtime/event-stream-store.ts';
 import {
 	createSqlAgentExecutionStoreFromSql,
@@ -125,6 +130,7 @@ export function sqlite(path?: string): PersistenceAdapter {
 			ensureSqlAgentExecutionTables(sql);
 			createSqlRunStore(sql);
 			new SqliteEventStreamStore(sql);
+			ensureSqlConversationStreamTables(sql);
 		},
 		connect() {
 			const { sql, runTransaction } = ensureOpen();
@@ -132,6 +138,8 @@ export function sqlite(path?: string): PersistenceAdapter {
 				executionStore: createSqlAgentExecutionStoreFromSql(sql, runTransaction),
 				runStore: createSqlRunStore(sql),
 				eventStreamStore: new SqliteEventStreamStore(sql),
+				conversationStreamStore: new SqliteConversationStreamStore(sql, runTransaction),
+				conversationSnapshotStore: new SqliteConversationSnapshotStore(sql, runTransaction),
 			};
 		},
 		close() {

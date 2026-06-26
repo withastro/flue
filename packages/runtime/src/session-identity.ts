@@ -69,7 +69,7 @@ export function childSessionStorageKey(
 	return undefined;
 }
 
-function parseSessionStorageKey(storageKey: string): SessionStorageIdentity | undefined {
+export function parseSessionStorageKey(storageKey: string): SessionStorageIdentity | undefined {
 	if (!storageKey.startsWith(SESSION_STORAGE_PREFIX)) return undefined;
 	let value: unknown;
 	try {

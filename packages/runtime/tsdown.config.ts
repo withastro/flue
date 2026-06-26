@@ -12,6 +12,7 @@ export default defineConfig({
 		'src/node/index.ts',
 		'src/test-utils/define-store-contract-tests.ts',
 		'src/test-utils/define-event-stream-store-contract-tests.ts',
+		'src/test-utils/define-conversation-stream-store-contract-tests.ts',
 	],
 	format: ['esm'],
 	dts: true,

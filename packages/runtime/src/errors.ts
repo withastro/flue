@@ -433,6 +433,48 @@ export class SessionDataVersionError extends FlueError {
 	}
 }
 
+export class ConversationRecordInvariantError extends FlueError {
+	constructor({
+		recordId,
+		recordType,
+		reason,
+	}: {
+		recordId: string;
+		recordType: string;
+		reason: string;
+	}) {
+		super({
+			type: 'conversation_record_invariant',
+			message: 'A canonical conversation record violates the conversation stream contract.',
+			details: 'The persisted conversation cannot be reduced safely.',
+			dev: reason,
+			meta: { recordId, recordType, reason },
+		});
+		this.name = 'ConversationRecordInvariantError';
+	}
+}
+
+export class ConversationStreamStoreError extends FlueError {
+	constructor({
+		operation,
+		path,
+		reason,
+	}: {
+		operation: string;
+		path: string;
+		reason: string;
+	}) {
+		super({
+			type: 'conversation_stream_store_failure',
+			message: 'The canonical conversation stream operation could not be completed.',
+			details: 'The conversation stream remains unchanged when the operation was rejected.',
+			dev: reason,
+			meta: { operation, path, reason },
+		});
+		this.name = 'ConversationStreamStoreError';
+	}
+}
+
 export class StreamChunkSegmentTooLargeError extends FlueError {
 	constructor({ serializedBytes, maximumBytes }: { serializedBytes: number; maximumBytes: number }) {
 		super({

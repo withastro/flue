@@ -1,4 +1,8 @@
 import type { AgentExecutionStore } from '../agent-execution-store.ts';
+import {
+	SqliteConversationSnapshotStore,
+	SqliteConversationStreamStore,
+} from '../runtime/conversation-stream-store.ts';
 import { migrateFlueSqlSchema } from '../schema-version.ts';
 import {
 	createSqlAgentExecutionStoreFromSql,
@@ -13,6 +17,19 @@ import type { SessionStore } from '../types.ts';
 interface DurableObjectStorage {
 	readonly sql?: SqlStorage;
 	transactionSync?<T>(closure: () => T): T;
+}
+
+export function createSqlConversationStores(storage: DurableObjectStorage | undefined) {
+	const sql = storage?.sql;
+	const transactionSync = storage?.transactionSync;
+	if (!sql || typeof transactionSync !== 'function') {
+		throw new Error('[flue] Cloudflare canonical conversation persistence requires Durable Object SQLite.');
+	}
+	const runTransaction = <T>(closure: () => T): T => transactionSync.call(storage, closure) as T;
+	return {
+		conversationStreamStore: new SqliteConversationStreamStore(sql, runTransaction),
+		conversationSnapshotStore: new SqliteConversationSnapshotStore(sql, runTransaction),
+	};
 }
 
 export function createSqlSessionStore(storage: DurableObjectStorage): SessionStore {

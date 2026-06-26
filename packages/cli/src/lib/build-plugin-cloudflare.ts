@@ -170,8 +170,9 @@ import {
   createSqlRunStore,
   CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
   createCloudflareAgentRuntime,
+  createSqlConversationStores,
   createSqlSessionStore,
-   SqliteEventStreamStore,
+  SqliteEventStreamStore,
   bashFactoryToSessionEnv,
   resolveModel,
   handleWorkflowRequest,
@@ -352,6 +353,15 @@ function createDurableObjectIdentity(doInstance, identity) {
 }
 
 const eventStreamStores = new WeakMap();
+const conversationStores = new WeakMap();
+
+function createConversationStoresForInstance(doInstance) {
+  const existing = conversationStores.get(doInstance);
+  if (existing) return existing;
+  const stores = createSqlConversationStores(doInstance?.ctx?.storage);
+  conversationStores.set(doInstance, stores);
+  return stores;
+}
 
 function createEventStreamStoreForInstance(doInstance) {
   const existing = eventStreamStores.get(doInstance);

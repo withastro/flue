@@ -1,0 +1,835 @@
+import type { AgentMessage } from '@earendil-works/pi-agent-core';
+import type { AssistantMessage, ToolResultMessage, UserMessage } from '@earendil-works/pi-ai';
+import type {
+	AssistantMessageStartedRecord,
+	AttachmentRef,
+	CanonicalChildSessionRef,
+	CanonicalToolResultContent,
+	CanonicalUserContent,
+	CompactionRecord,
+	ConversationRecord,
+} from './conversation-records.ts';
+import { AttachmentNotAvailableError, ConversationRecordInvariantError } from './errors.ts';
+import { createUserContextMessage, renderSignalMessage } from './session-history.ts';
+
+interface ReducedEntryBase {
+	id: string;
+	parentId: string | null;
+	timestamp: string;
+	submissionId?: string;
+}
+
+export interface ReducedMessageEntry extends ReducedEntryBase {
+	type: 'message';
+	message: AgentMessage;
+	attachmentRefs?: Map<string, AttachmentRef>;
+}
+
+export interface ReducedCompactionEntry extends ReducedEntryBase {
+	type: 'compaction';
+	summary: string;
+	firstKeptEntryId: string;
+	sourceLeafId: string;
+	tokensBefore: number;
+	details?: { readFiles: string[]; modifiedFiles: string[] };
+	usage?: CompactionRecord['usage'];
+}
+
+export type ReducedEntry = ReducedMessageEntry | ReducedCompactionEntry;
+
+interface ReducedAssistantBlockBase {
+	blockId: string;
+	blockIndex: number;
+}
+
+interface ReducedAssistantTextBlock extends ReducedAssistantBlockBase {
+	type: 'text';
+	deltas: string[];
+	completed: boolean;
+	textSignature?: string;
+}
+
+interface ReducedAssistantReasoningBlock extends ReducedAssistantBlockBase {
+	type: 'reasoning';
+	deltas: string[];
+	completed: boolean;
+	encrypted?: string;
+	summary?: string;
+	redacted?: boolean;
+}
+
+interface ReducedAssistantToolCallBlock extends ReducedAssistantBlockBase {
+	type: 'tool_call';
+	toolCallId: string;
+	name: string;
+	arguments: Record<string, unknown>;
+	thoughtSignature?: string;
+}
+
+export type ReducedAssistantBlock =
+	| ReducedAssistantTextBlock
+	| ReducedAssistantReasoningBlock
+	| ReducedAssistantToolCallBlock;
+
+export interface InProgressAssistantMessage {
+	messageId: string;
+	parentId: string | null;
+	timestamp: string;
+	submissionId?: string;
+	modelInfo: AssistantMessageStartedRecord['modelInfo'];
+	blocks: Map<string, ReducedAssistantBlock>;
+	blockIndexes: Set<number>;
+}
+
+export interface ReducedConversationState {
+	conversationId: string;
+	affinityKey: string;
+	harness: string;
+	session: string;
+	parentConversationId?: string;
+	taskId?: string;
+	actionInvocationId?: string;
+	deleted: boolean;
+	entries: Map<string, ReducedEntry>;
+	activeLeafId: string | null;
+	inProgressMessages: Map<string, InProgressAssistantMessage>;
+	childConversations: Map<string, CanonicalChildSessionRef>;
+}
+
+export interface ReducedInstanceState {
+	recordsThroughOffset: string;
+	conversations: Map<string, ReducedConversationState>;
+	recordsById: Map<string, ConversationRecord>;
+	entryOwners: Map<string, string>;
+}
+
+export interface ConversationProjectionOptions {
+	resolveAttachment?: (attachment: AttachmentRef) => { data: string; mimeType: string };
+}
+
+export function createReducedInstanceState(): ReducedInstanceState {
+	return {
+		recordsThroughOffset: '-1',
+		conversations: new Map(),
+		recordsById: new Map(),
+		entryOwners: new Map(),
+	};
+}
+
+export function reduceConversationRecords(
+	state: ReducedInstanceState,
+	records: readonly ConversationRecord[],
+	offset = state.recordsThroughOffset,
+): ReducedInstanceState {
+	const next = cloneReducedInstanceState(state);
+	for (const record of records) applyConversationRecord(next, record);
+	next.recordsThroughOffset = offset;
+	return next;
+}
+
+export function cloneReducedInstanceState(state: ReducedInstanceState): ReducedInstanceState {
+	return {
+		recordsThroughOffset: state.recordsThroughOffset,
+		recordsById: new Map(state.recordsById),
+		entryOwners: new Map(state.entryOwners),
+		conversations: new Map(
+			[...state.conversations].map(([id, conversation]) => [
+				id,
+				{
+					...conversation,
+					entries: new Map(
+						[...conversation.entries].map(([entryId, entry]) => [
+							entryId,
+							entry.type === 'message'
+								? {
+									...entry,
+									attachmentRefs: entry.attachmentRefs
+										? new Map(entry.attachmentRefs)
+										: undefined,
+								}
+								: { ...entry },
+						]),
+					),
+					inProgressMessages: new Map(
+						[...conversation.inProgressMessages].map(([messageId, message]) => [
+							messageId,
+							{
+								...message,
+								blocks: new Map(
+									[...message.blocks].map(([blockId, block]) => [
+										blockId,
+										block.type === 'text' || block.type === 'reasoning'
+											? { ...block, deltas: [...block.deltas] }
+											: { ...block },
+									]),
+								),
+								blockIndexes: new Set(message.blockIndexes),
+							},
+						]),
+					),
+					childConversations: new Map(conversation.childConversations),
+				},
+			]),
+		),
+	};
+}
+
+export function applyConversationRecord(
+	state: ReducedInstanceState,
+	record: ConversationRecord,
+): void {
+	const accepted = state.recordsById.get(record.id);
+	if (accepted) {
+		if (JSON.stringify(accepted) === JSON.stringify(record)) return;
+		fail(record, `Record id "${record.id}" was reused with different content.`);
+	}
+	if (record.v !== 1) fail(record, `Record version "${String(record.v)}" is unsupported.`);
+
+	if (record.type === 'conversation_created') {
+		if (state.conversations.has(record.conversationId)) {
+			fail(record, `Conversation "${record.conversationId}" is already initialized.`);
+		}
+		state.conversations.set(record.conversationId, {
+			conversationId: record.conversationId,
+			affinityKey: record.affinityKey,
+			harness: record.harness,
+			session: record.session,
+			parentConversationId: record.parentConversationId,
+			taskId: record.taskId,
+			actionInvocationId: record.actionInvocationId,
+			deleted: false,
+			entries: new Map(),
+			activeLeafId: null,
+			inProgressMessages: new Map(),
+			childConversations: new Map(),
+		});
+		state.recordsById.set(record.id, record);
+		return;
+	}
+
+	const conversation = state.conversations.get(record.conversationId);
+	if (!conversation) fail(record, `Conversation "${record.conversationId}" is not initialized.`);
+	if (conversation.harness !== record.harness || conversation.session !== record.session) {
+		fail(record, `Conversation scope conflicts with its creation record.`);
+	}
+
+	switch (record.type) {
+		case 'conversation_deleted':
+			if (conversation.deleted) fail(record, `Conversation is already deleted.`);
+			conversation.deleted = true;
+			break;
+		case 'user_message':
+			appendEntry(state, conversation, record, {
+				type: 'message',
+				id: record.messageId,
+				parentId: record.parentId,
+				timestamp: record.timestamp,
+				submissionId: record.submissionId,
+				message: userMessage(record.content, record.timestamp),
+				attachmentRefs: attachmentRefs(record.content),
+			});
+			break;
+		case 'signal':
+			appendEntry(state, conversation, record, {
+				type: 'message',
+				id: record.messageId,
+				parentId: record.parentId,
+				timestamp: record.timestamp,
+				submissionId: record.submissionId,
+				message: {
+					role: 'signal',
+					type: record.signalType,
+					tagName: record.tagName,
+					content: record.content,
+					attributes: record.attributes,
+					timestamp: new Date(record.timestamp).getTime(),
+				},
+			});
+			break;
+		case 'assistant_message_started':
+			assertParent(conversation, record, record.parentId);
+			if (conversation.inProgressMessages.size > 0) {
+				fail(record, `Conversation already has an in-progress assistant message.`);
+			}
+			if (record.parentId !== conversation.activeLeafId) {
+				fail(record, `Assistant parent is not the active leaf. Append active_leaf_changed first.`);
+			}
+			if (conversation.entries.has(record.messageId) || conversation.inProgressMessages.has(record.messageId)) {
+				fail(record, `Assistant entry "${record.messageId}" already exists.`);
+			}
+			conversation.inProgressMessages.set(record.messageId, {
+				messageId: record.messageId,
+				parentId: record.parentId,
+				timestamp: record.timestamp,
+				submissionId: record.submissionId,
+				modelInfo: record.modelInfo,
+				blocks: new Map(),
+				blockIndexes: new Set(),
+			});
+			break;
+		case 'assistant_text_started': {
+			const message = getInProgress(conversation, record, record.messageId);
+			startBlock(message, record, {
+				type: 'text',
+				blockId: record.blockId,
+				blockIndex: record.blockIndex,
+				deltas: [],
+				completed: false,
+				textSignature: record.textSignature,
+			});
+			break;
+		}
+		case 'assistant_reasoning_started': {
+			const message = getInProgress(conversation, record, record.messageId);
+			startBlock(message, record, {
+				type: 'reasoning',
+				blockId: record.blockId,
+				blockIndex: record.blockIndex,
+				deltas: [],
+				completed: false,
+			});
+			break;
+		}
+		case 'assistant_text_delta':
+			appendDelta(conversation, record, 'text');
+			break;
+		case 'assistant_reasoning_delta':
+			appendDelta(conversation, record, 'reasoning');
+			break;
+		case 'assistant_text_completed':
+			completeBlock(conversation, record, 'text');
+			break;
+		case 'assistant_reasoning_completed': {
+			const block = completeBlock(conversation, record, 'reasoning');
+			block.encrypted = record.encrypted;
+			block.summary = record.summary;
+			block.redacted = record.redacted;
+			break;
+		}
+		case 'assistant_tool_call': {
+			const message = getInProgress(conversation, record, record.messageId);
+			startBlock(message, record, {
+				type: 'tool_call',
+				blockId: record.blockId,
+				blockIndex: record.blockIndex,
+				toolCallId: record.toolCallId,
+				name: record.name,
+				arguments: record.arguments,
+				thoughtSignature: record.thoughtSignature,
+			});
+			break;
+		}
+		case 'assistant_message_completed': {
+			const inProgress = getInProgress(conversation, record, record.messageId);
+			for (const block of inProgress.blocks.values()) {
+				if ((block.type === 'text' || block.type === 'reasoning') && !block.completed) {
+					fail(record, `Assistant block "${block.blockId}" is not complete.`);
+				}
+			}
+			const content = [...inProgress.blocks.values()]
+				.sort((a, b) => a.blockIndex - b.blockIndex)
+				.map(materializeAssistantBlock);
+			const message = {
+				...inProgress.modelInfo,
+				role: 'assistant',
+				content,
+				stopReason: record.stopReason,
+				usage: record.usage,
+				errorMessage: record.error,
+				timestamp: new Date(inProgress.timestamp).getTime(),
+			} as AssistantMessage;
+			assertAssistantCompletionAppend(state, conversation, record, inProgress);
+			conversation.inProgressMessages.delete(record.messageId);
+			commitEntry(state, conversation, {
+				type: 'message',
+				id: record.messageId,
+				parentId: inProgress.parentId,
+				timestamp: inProgress.timestamp,
+				submissionId: inProgress.submissionId,
+				message,
+			});
+			break;
+		}
+		case 'tool_result':
+			validateToolResultPrefix(conversation, record);
+			appendEntry(state, conversation, record, {
+				type: 'message',
+				id: record.messageId,
+				parentId: record.parentId,
+				timestamp: record.timestamp,
+				submissionId: record.submissionId,
+				message: toolResultMessage(record, record.content),
+				attachmentRefs: attachmentRefs(record.content),
+			});
+			break;
+		case 'compaction':
+			if (!conversation.entries.has(record.firstKeptEntryId)) {
+				fail(record, `Compaction first-kept entry "${record.firstKeptEntryId}" does not exist.`);
+			}
+			if (!conversation.entries.has(record.sourceLeafId)) {
+				fail(record, `Compaction source leaf "${record.sourceLeafId}" does not exist.`);
+			}
+			if (record.sourceLeafId !== record.parentId || record.sourceLeafId !== conversation.activeLeafId) {
+				fail(record, `Compaction source leaf must be its active parent.`);
+			}
+			if (!pathToLeaf(conversation, record.sourceLeafId).some((entry) => entry.id === record.firstKeptEntryId)) {
+				fail(record, `Compaction first-kept entry is not on the source path.`);
+			}
+			appendEntry(state, conversation, record, {
+				type: 'compaction',
+				id: record.entryId,
+				parentId: record.parentId,
+				timestamp: record.timestamp,
+				submissionId: record.submissionId,
+				summary: record.summary,
+				firstKeptEntryId: record.firstKeptEntryId,
+				sourceLeafId: record.sourceLeafId,
+				tokensBefore: record.tokensBefore,
+				details: record.details,
+				usage: record.usage,
+			});
+			break;
+		case 'active_leaf_changed':
+			if (conversation.activeLeafId !== record.previousLeafId) {
+				fail(record, `Active leaf does not match previousLeafId.`);
+			}
+			if (record.leafId !== null && !conversation.entries.has(record.leafId)) {
+				fail(record, `Selected leaf "${record.leafId}" does not exist.`);
+			}
+			conversation.activeLeafId = record.leafId;
+			break;
+		case 'child_session_retained': {
+			const existing = conversation.childConversations.get(record.child.conversationId);
+			if (existing && JSON.stringify(existing) !== JSON.stringify(record.child)) {
+				fail(record, `Child conversation topology conflicts with an existing retained child.`);
+			}
+			conversation.childConversations.set(record.child.conversationId, record.child);
+			break;
+		}
+		case 'child_session_released':
+			if (!conversation.childConversations.has(record.childConversationId)) {
+				fail(record, `Child conversation is not retained.`);
+			}
+			conversation.childConversations.delete(record.childConversationId);
+			break;
+	}
+	state.recordsById.set(record.id, record);
+}
+
+export function getActiveConversationPath(conversation: ReducedConversationState): ReducedEntry[] {
+	const path: ReducedEntry[] = [];
+	const visited = new Set<string>();
+	let current = conversation.activeLeafId
+		? conversation.entries.get(conversation.activeLeafId)
+		: undefined;
+	while (current) {
+		if (visited.has(current.id)) {
+			throw new ConversationRecordInvariantError({
+				recordId: current.id,
+				recordType: current.type,
+				reason: `Conversation graph contains a cycle at "${current.id}".`,
+			});
+		}
+		visited.add(current.id);
+		path.push(current);
+		current = current.parentId ? conversation.entries.get(current.parentId) : undefined;
+	}
+	return path.reverse();
+}
+
+export function buildConversationContext(
+	conversation: ReducedConversationState,
+	options: ConversationProjectionOptions = {},
+): AgentMessage[] {
+	const path = getActiveConversationPath(conversation);
+	const latestCompactionIndex = path.findLastIndex((entry) => entry.type === 'compaction');
+	if (latestCompactionIndex === -1) return pathToMessages(path, options);
+	const compaction = path[latestCompactionIndex] as ReducedCompactionEntry;
+	const firstKeptIndex = path.findIndex((entry) => entry.id === compaction.firstKeptEntryId);
+	const keptStart = firstKeptIndex >= 0 ? firstKeptIndex : latestCompactionIndex + 1;
+	return [
+		createUserContextMessage(
+			renderSignalMessage({
+				role: 'signal',
+				type: 'context_summary',
+				tagName: 'compaction',
+				content: compaction.summary,
+				timestamp: new Date(compaction.timestamp).getTime(),
+			}),
+			compaction.timestamp,
+		),
+		...pathToMessages(path.slice(keptStart, latestCompactionIndex), options),
+		...pathToMessages(path.slice(latestCompactionIndex + 1), options),
+	];
+}
+
+function pathToMessages(
+	path: ReducedEntry[],
+	options: ConversationProjectionOptions,
+): AgentMessage[] {
+	const messages: AgentMessage[] = [];
+	let index = 0;
+	while (index < path.length) {
+		const entry = path[index];
+		if (!entry || entry.type !== 'message') {
+			index += 1;
+			continue;
+		}
+		const message = resolveMessageAttachments(entry, options);
+		if (message.role === 'signal') {
+			messages.push(createUserContextMessage(renderSignalMessage(message), entry.timestamp));
+			index += 1;
+			continue;
+		}
+		if (message.role === 'assistant') {
+			if (message.stopReason === 'error' || message.stopReason === 'aborted') {
+				const next = path[index + 1];
+				const afterNext = path[index + 2];
+				const resumable =
+					message.stopReason === 'aborted' &&
+					next?.type === 'message' &&
+					next.message.role === 'signal' &&
+					next.message.type === 'stream_interrupted' &&
+					afterNext?.type === 'message' &&
+					afterNext.message.role === 'signal' &&
+					afterNext.message.type === 'stream_continued';
+				if (!resumable) {
+					index += 1;
+					continue;
+				}
+			}
+			const toolCalls = message.content.filter((block) => block.type === 'toolCall');
+			if (toolCalls.length > 0) {
+				const results: ToolResultMessage[] = [];
+				let resultIndex = index + 1;
+				while (resultIndex < path.length) {
+					const result = path[resultIndex];
+					if (result?.type !== 'message' || result.message.role !== 'toolResult') break;
+					results.push(resolveMessageAttachments(result, options) as ToolResultMessage);
+					resultIndex += 1;
+				}
+				if (isCompleteToolBatch(toolCalls, results)) messages.push(message, ...results);
+				index = resultIndex;
+				continue;
+			}
+			messages.push(message);
+			index += 1;
+			continue;
+		}
+		if (message.role !== 'toolResult') messages.push(message);
+		index += 1;
+	}
+	return messages;
+}
+
+function appendEntry(
+	state: ReducedInstanceState,
+	conversation: ReducedConversationState,
+	record: ConversationRecord,
+	entry: ReducedEntry,
+): void {
+	assertEntryAppend(state, conversation, record, entry.id, entry.parentId);
+	commitEntry(state, conversation, entry);
+}
+
+function assertEntryAppend(
+	state: ReducedInstanceState,
+	conversation: ReducedConversationState,
+	record: ConversationRecord,
+	entryId: string,
+	parentId: string | null,
+): void {
+	if (!entryId.startsWith('entry_')) fail(record, `Graph entry ids must use the "entry_" prefix.`);
+	const owner = state.entryOwners.get(entryId);
+	if (owner && owner !== conversation.conversationId) {
+		fail(record, `Graph entry "${entryId}" belongs to another conversation.`);
+	}
+	if (conversation.entries.has(entryId) || conversation.inProgressMessages.has(entryId)) {
+		fail(record, `Graph entry "${entryId}" already exists.`);
+	}
+	assertParent(conversation, record, parentId);
+	if (parentId !== conversation.activeLeafId) {
+		fail(
+			record,
+			`Entry parent "${String(parentId)}" is not the active leaf "${String(conversation.activeLeafId)}". Append active_leaf_changed before creating a branch.`,
+		);
+	}
+	if (conversation.inProgressMessages.size > 0) {
+		fail(record, `Cannot advance the conversation while an assistant message is in progress.`);
+	}
+}
+
+function commitEntry(
+	state: ReducedInstanceState,
+	conversation: ReducedConversationState,
+	entry: ReducedEntry,
+): void {
+	conversation.entries.set(entry.id, entry);
+	conversation.activeLeafId = entry.id;
+	state.entryOwners.set(entry.id, conversation.conversationId);
+}
+
+function assertAssistantCompletionAppend(
+	state: ReducedInstanceState,
+	conversation: ReducedConversationState,
+	record: ConversationRecord,
+	message: InProgressAssistantMessage,
+): void {
+	if (!message.messageId.startsWith('entry_')) {
+		fail(record, `Graph entry ids must use the "entry_" prefix.`);
+	}
+	const owner = state.entryOwners.get(message.messageId);
+	if (owner && owner !== conversation.conversationId) {
+		fail(record, `Graph entry "${message.messageId}" belongs to another conversation.`);
+	}
+	if (conversation.entries.has(message.messageId)) {
+		fail(record, `Graph entry "${message.messageId}" already exists.`);
+	}
+	assertParent(conversation, record, message.parentId);
+	if (message.parentId !== conversation.activeLeafId) {
+		fail(record, `Assistant parent is no longer the active leaf.`);
+	}
+}
+
+function assertParent(
+	conversation: ReducedConversationState,
+	record: ConversationRecord,
+	parentId: string | null,
+): void {
+	if (parentId !== null && !conversation.entries.has(parentId)) {
+		fail(record, `Parent entry "${parentId}" does not exist in this conversation.`);
+	}
+}
+
+function validateToolResultPrefix(
+	conversation: ReducedConversationState,
+	record: Extract<ConversationRecord, { type: 'tool_result' }>,
+): void {
+	const path = getActiveConversationPath(conversation);
+	let assistantIndex = path.length - 1;
+	while (assistantIndex >= 0) {
+		const entry = path[assistantIndex];
+		if (entry?.type !== 'message' || entry.message.role !== 'toolResult') break;
+		assistantIndex -= 1;
+	}
+	const assistantEntry = path[assistantIndex];
+	if (assistantEntry?.type !== 'message' || assistantEntry.message.role !== 'assistant') {
+		fail(record, `Tool result does not follow an assistant tool request.`);
+	}
+	const calls = assistantEntry.message.content.filter((block) => block.type === 'toolCall');
+	const priorResults = path.slice(assistantIndex + 1);
+	const expectedCall = calls[priorResults.length];
+	if (!expectedCall) fail(record, `Tool request has no remaining result slot.`);
+	if (record.parentId !== conversation.activeLeafId) {
+		fail(record, `Tool result must extend the active ordered result chain.`);
+	}
+	if (record.toolCallId !== expectedCall.id || record.toolName !== expectedCall.name) {
+		fail(record, `Tool result does not match the next requested tool call.`);
+	}
+}
+
+function pathToLeaf(
+	conversation: ReducedConversationState,
+	leafId: string,
+): ReducedEntry[] {
+	const path: ReducedEntry[] = [];
+	let current = conversation.entries.get(leafId);
+	while (current) {
+		path.push(current);
+		current = current.parentId ? conversation.entries.get(current.parentId) : undefined;
+	}
+	return path.reverse();
+}
+
+function getInProgress(
+	conversation: ReducedConversationState,
+	record: ConversationRecord,
+	messageId: string,
+): InProgressAssistantMessage {
+	const message = conversation.inProgressMessages.get(messageId);
+	if (!message) fail(record, `Assistant message "${messageId}" is not in progress.`);
+	return message;
+}
+
+function startBlock(
+	message: InProgressAssistantMessage,
+	record: ConversationRecord,
+	block: ReducedAssistantBlock,
+): void {
+	if (!Number.isInteger(block.blockIndex) || block.blockIndex < 0) {
+		fail(record, `Block index must be a non-negative integer.`);
+	}
+	if (message.blocks.has(block.blockId)) fail(record, `Block "${block.blockId}" already exists.`);
+	if (message.blockIndexes.has(block.blockIndex)) {
+		fail(record, `Block index "${block.blockIndex}" already exists in this message.`);
+	}
+	message.blocks.set(block.blockId, block);
+	message.blockIndexes.add(block.blockIndex);
+}
+
+function appendDelta(
+	conversation: ReducedConversationState,
+	record: Extract<
+		ConversationRecord,
+		{ type: 'assistant_text_delta' | 'assistant_reasoning_delta' }
+	>,
+	type: 'text' | 'reasoning',
+): void {
+	const message = getInProgress(conversation, record, record.messageId);
+	const block = message.blocks.get(record.blockId);
+	if (!block || block.type !== type) fail(record, `Block "${record.blockId}" is not ${type}.`);
+	if (block.completed) fail(record, `Block "${record.blockId}" is already complete.`);
+	if (record.sequence !== block.deltas.length) {
+		fail(record, `Expected delta sequence ${block.deltas.length}, received ${record.sequence}.`);
+	}
+	block.deltas.push(record.delta);
+}
+
+function completeBlock(
+	conversation: ReducedConversationState,
+	record: Extract<
+		ConversationRecord,
+		{ type: 'assistant_text_completed' | 'assistant_reasoning_completed' }
+	>,
+	type: 'text',
+): ReducedAssistantTextBlock;
+function completeBlock(
+	conversation: ReducedConversationState,
+	record: Extract<
+		ConversationRecord,
+		{ type: 'assistant_text_completed' | 'assistant_reasoning_completed' }
+	>,
+	type: 'reasoning',
+): ReducedAssistantReasoningBlock;
+function completeBlock(
+	conversation: ReducedConversationState,
+	record: Extract<
+		ConversationRecord,
+		{ type: 'assistant_text_completed' | 'assistant_reasoning_completed' }
+	>,
+	type: 'text' | 'reasoning',
+): ReducedAssistantTextBlock | ReducedAssistantReasoningBlock {
+	const message = getInProgress(conversation, record, record.messageId);
+	const block = message.blocks.get(record.blockId);
+	if (!block || block.type !== type) fail(record, `Block "${record.blockId}" is not ${type}.`);
+	if (block.completed) fail(record, `Block "${record.blockId}" is already complete.`);
+	if (record.deltaCount !== block.deltas.length) {
+		fail(record, `Completion expected ${record.deltaCount} deltas but replay has ${block.deltas.length}.`);
+	}
+	block.completed = true;
+	return block;
+}
+
+function materializeAssistantBlock(
+	block: ReducedAssistantBlock,
+): AssistantMessage['content'][number] {
+	if (block.type === 'text') {
+		return {
+			type: 'text',
+			text: block.deltas.join(''),
+			textSignature: block.textSignature,
+		};
+	}
+	if (block.type === 'reasoning') {
+		return {
+			type: 'thinking',
+			thinking: block.deltas.join(''),
+			thinkingSignature: block.encrypted,
+			redacted: block.redacted,
+		};
+	}
+	return {
+		type: 'toolCall',
+		id: block.toolCallId,
+		name: block.name,
+		arguments: block.arguments,
+		thoughtSignature: block.thoughtSignature,
+	};
+}
+
+function attachmentRefs(
+	content: Array<CanonicalUserContent | CanonicalToolResultContent>,
+): Map<string, AttachmentRef> | undefined {
+	const refs = content.flatMap((block) => (block.type === 'attachment' ? [block.attachment] : []));
+	return refs.length > 0 ? new Map(refs.map((ref) => [ref.id, ref])) : undefined;
+}
+
+function userMessage(content: CanonicalUserContent[], timestamp: string): AgentMessage {
+	return {
+		role: 'user',
+		content: content.map((block) =>
+			block.type === 'text'
+				? block
+				: {
+						type: 'image' as const,
+						data: block.attachment.id,
+						mimeType: block.attachment.mimeType,
+					},
+		),
+		timestamp: new Date(timestamp).getTime(),
+	} as UserMessage as AgentMessage;
+}
+
+function toolResultMessage(
+	record: Extract<ConversationRecord, { type: 'tool_result' }>,
+	content: CanonicalToolResultContent[],
+): AgentMessage {
+	return {
+		role: 'toolResult',
+		toolCallId: record.toolCallId,
+		toolName: record.toolName,
+		isError: record.isError,
+		content: content.map((block) =>
+			block.type === 'text'
+				? block
+				: {
+						type: 'image' as const,
+						data: block.attachment.id,
+						mimeType: block.attachment.mimeType,
+					},
+		),
+		timestamp: new Date(record.timestamp).getTime(),
+	} as ToolResultMessage as AgentMessage;
+}
+
+function resolveMessageAttachments(
+	entry: ReducedMessageEntry,
+	options: ConversationProjectionOptions,
+): AgentMessage {
+	const message = entry.message;
+	if ((message.role !== 'user' && message.role !== 'toolResult') || !Array.isArray(message.content)) {
+		return message;
+	}
+	const content = message.content.map((block) => {
+		if (block.type !== 'image') return block;
+		const ref = entry.attachmentRefs?.get(block.data);
+		if (!ref) return block;
+		if (!options.resolveAttachment) throw new AttachmentNotAvailableError({ attachmentId: ref.id });
+		return { type: 'image' as const, ...options.resolveAttachment(ref) };
+	});
+	return { ...message, content } as AgentMessage;
+}
+
+function isCompleteToolBatch(
+	toolCalls: Extract<AssistantMessage['content'][number], { type: 'toolCall' }>[],
+	results: ToolResultMessage[],
+): boolean {
+	if (toolCalls.length !== results.length) return false;
+	const seen = new Set<string>();
+	for (let index = 0; index < toolCalls.length; index++) {
+		const call = toolCalls[index];
+		const result = results[index];
+		if (!call || !result || seen.has(call.id)) return false;
+		seen.add(call.id);
+		if (result.toolCallId !== call.id || result.toolName !== call.name) return false;
+	}
+	return true;
+}
+
+function fail(record: ConversationRecord, reason: string): never {
+	throw new ConversationRecordInvariantError({
+		recordId: record.id,
+		recordType: record.type,
+		reason,
+	});
+}

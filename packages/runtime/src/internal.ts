@@ -40,25 +40,32 @@ export {
 	CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
 	createCloudflareAgentRuntime,
 } from './cloudflare/agent-coordinator.ts';
-export { createSqlSessionStore } from './cloudflare/agent-execution-store.ts';
+export {
+	createSqlConversationStores,
+	createSqlSessionStore,
+} from './cloudflare/agent-execution-store.ts';
+export { RuntimeUnavailableError, toHttpResponse } from './errors.ts';
+export type { InstrumentationOwner } from './instrumentation.ts';
+export {
+	createInstrumentationOwner,
+	runWithInstrumentationOwner,
+} from './instrumentation.ts';
 export { createNodeAgentCoordinator, createNodeDispatchQueue } from './node/agent-coordinator.ts';
-export { createRuntimeActivityGate } from './runtime/runtime-activity-gate.ts';
-export type {
-	RuntimeActivityGate,
-	RuntimeActivityLease,
-} from './runtime/runtime-activity-gate.ts';
 export { InMemoryRunStore } from './node/run-store.ts';
 export type {
 	DirectAgentSubmissionInput,
 	DispatchAgentSubmissionInput,
 } from './runtime/agent-submissions.ts';
+export type {
+	ConversationSnapshotStore,
+	ConversationStreamStore,
+} from './runtime/conversation-stream-store.ts';
+export {
+	SqliteConversationSnapshotStore,
+	SqliteConversationStreamStore,
+} from './runtime/conversation-stream-store.ts';
 export type { AgentInteractionStart } from './runtime/dev-lifecycle-logger.ts';
 export { installDevLifecycleLogger } from './runtime/dev-lifecycle-logger.ts';
-export {
-	createInstrumentationOwner,
-	runWithInstrumentationOwner,
-} from './instrumentation.ts';
-export type { InstrumentationOwner } from './instrumentation.ts';
 export type { DispatchInput, DispatchQueue } from './runtime/dispatch-queue.ts';
 export type { EventStreamStore } from './runtime/event-stream-store.ts';
 export { SqliteEventStreamStore } from './runtime/event-stream-store.ts';
@@ -113,7 +120,6 @@ export {
 } from './runtime/handle-agent.ts';
 export { handleStreamHead, handleStreamRead } from './runtime/handle-stream-routes.ts';
 export { generateWorkflowRunId } from './runtime/ids.ts';
-export { RuntimeUnavailableError, toHttpResponse } from './errors.ts';
 export { hasRegisteredProvider, resetProviderRuntime } from './runtime/providers.ts';
 export type {
 	ListRunsOpts,
@@ -124,6 +130,11 @@ export type {
 	RunStore,
 	WorkflowRunPointer,
 } from './runtime/run-store.ts';
+export type {
+	RuntimeActivityGate,
+	RuntimeActivityLease,
+} from './runtime/runtime-activity-gate.ts';
+export { createRuntimeActivityGate } from './runtime/runtime-activity-gate.ts';
 
 export { bashFactoryToSessionEnv } from './sandbox.ts';
 export { InMemorySessionStore } from './session.ts';

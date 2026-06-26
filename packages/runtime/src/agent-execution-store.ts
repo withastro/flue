@@ -11,6 +11,10 @@ import type {
 	AgentSubmissionInput,
 	DirectAgentSubmissionInput,
 } from './runtime/agent-submissions.ts';
+import type {
+	ConversationSnapshotStore,
+	ConversationStreamStore,
+} from './runtime/conversation-stream-store.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import type { EventStreamStore } from './runtime/event-stream-store.ts';
 import type { RunStore } from './runtime/run-store.ts';
@@ -379,6 +383,10 @@ export interface PersistenceStores {
 	readonly runStore: RunStore;
 	/** Durable append-only event streams for agents and workflow runs. */
 	readonly eventStreamStore: EventStreamStore;
+	/** Canonical per-agent-instance conversation streams during the adapter rollout. */
+	readonly conversationStreamStore?: ConversationStreamStore;
+	/** Disposable materialized caches for canonical conversation streams during the adapter rollout. */
+	readonly conversationSnapshotStore?: ConversationSnapshotStore;
 }
 
 /**
