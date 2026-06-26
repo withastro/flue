@@ -189,6 +189,19 @@ export interface ChildSessionReleasedRecord extends ConversationRecordEnvelope {
 	childConversationId: string;
 }
 
+export interface DataRecord extends ConversationRecordEnvelope {
+	type: 'data';
+	dataType: string;
+	data: unknown;
+}
+
+export interface SubmissionSettledRecord extends ConversationRecordEnvelope {
+	type: 'submission_settled';
+	outcome: 'completed' | 'failed';
+	result?: unknown;
+	error?: unknown;
+}
+
 export type ConversationRecord =
 	| ConversationCreatedRecord
 	| ConversationDeletedRecord
@@ -207,7 +220,9 @@ export type ConversationRecord =
 	| CompactionRecord
 	| ActiveLeafChangedRecord
 	| ChildSessionRetainedRecord
-	| ChildSessionReleasedRecord;
+	| ChildSessionReleasedRecord
+	| DataRecord
+	| SubmissionSettledRecord;
 
 export type ConversationRecordType = ConversationRecord['type'];
 

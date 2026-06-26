@@ -258,11 +258,11 @@ describe('sqlite() PersistenceAdapter', () => {
 		const rows = db.prepare(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).all() as {
 			value: string;
 		}[];
-		expect(rows).toEqual([{ value: '3' }]);
+		expect(rows).toEqual([{ value: '4' }]);
 		db.close();
 	});
 
-	it('migrates version 1 submission storage to the terminal outbox schema', async () => {
+	it('rejects version 1 persistence without mutating its schema', async () => {
 		const dir = createTempDir();
 		const dbPath = join(dir, 'migration-test.db');
 		const db = new DatabaseSync(dbPath);
@@ -288,26 +288,17 @@ describe('sqlite() PersistenceAdapter', () => {
 		db.close();
 
 		const adapter = sqlite(dbPath);
-		await adapter.migrate?.();
-		await adapter.close?.();
-		const migrated = new DatabaseSync(dbPath);
-		const columns = migrated.prepare('PRAGMA table_info(flue_agent_submissions)').all() as Array<{
+		expect(() => adapter.migrate?.()).toThrow('supports version 4');
+		const unchanged = new DatabaseSync(dbPath);
+		const columns = unchanged.prepare('PRAGMA table_info(flue_agent_submissions)').all() as Array<{
 			name: string;
 		}>;
-		expect(columns.map((column) => column.name)).toEqual(
-			expect.arrayContaining(['terminal_event_key', 'terminal_event_json', 'terminal_event_offset']),
-		);
-		const runColumns = migrated.prepare('PRAGMA table_info(flue_runs)').all() as Array<{ name: string }>;
-		expect(runColumns.map((column) => column.name)).toEqual(
-			expect.arrayContaining(['traceparent', 'tracestate']),
-		);
-		expect(
-			migrated.prepare(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).get(),
-		).toEqual({ value: '3' });
-		migrated.close();
+		expect(columns.map((column) => column.name)).not.toContain('terminal_event_key');
+		expect(unchanged.prepare(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).get()).toEqual({ value: '1' });
+		unchanged.close();
 	});
 
-	it('repairs partial physical schemas already stamped with the current version', async () => {
+	it('rejects version 3 persistence without repairing its schema', async () => {
 		const dir = createTempDir();
 		const dbPath = join(dir, 'partial-current-test.db');
 		const db = new DatabaseSync(dbPath);
@@ -335,18 +326,13 @@ describe('sqlite() PersistenceAdapter', () => {
 		db.close();
 
 		const adapter = sqlite(dbPath);
-		await adapter.migrate?.();
-		await adapter.close?.();
-		const repaired = new DatabaseSync(dbPath);
-		const submissionColumns = repaired.prepare('PRAGMA table_info(flue_agent_submissions)').all() as Array<{ name: string }>;
-		const runColumns = repaired.prepare('PRAGMA table_info(flue_runs)').all() as Array<{ name: string }>;
-		expect(submissionColumns.map((column) => column.name)).toEqual(
-			expect.arrayContaining(['terminal_event_key', 'terminal_event_json', 'terminal_event_offset']),
-		);
-		expect(runColumns.map((column) => column.name)).toEqual(
-			expect.arrayContaining(['traceparent', 'tracestate']),
-		);
-		repaired.close();
+		expect(() => adapter.migrate?.()).toThrow('supports version 4');
+		const unchanged = new DatabaseSync(dbPath);
+		const submissionColumns = unchanged.prepare('PRAGMA table_info(flue_agent_submissions)').all() as Array<{ name: string }>;
+		const runColumns = unchanged.prepare('PRAGMA table_info(flue_runs)').all() as Array<{ name: string }>;
+		expect(submissionColumns.map((column) => column.name)).not.toContain('terminal_event_json');
+		expect(runColumns.map((column) => column.name)).not.toContain('tracestate');
+		unchanged.close();
 	});
 
 	it('rejects opening a database stamped with a newer schema version', async () => {

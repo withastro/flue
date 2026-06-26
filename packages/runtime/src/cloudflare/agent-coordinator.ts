@@ -4,7 +4,9 @@ import type {
 	AgentSubmissionStore,
 } from '../agent-execution-store.ts';
 import type { FlueContextInternal } from '../client.ts';
+import { ConversationRecordWriter } from '../conversation-writer.ts';
 import type { FlueTraceCarrier } from '../execution-interceptor.ts';
+import { assertProductEventV3 } from '../product-event.ts';
 import {
 	createAgentSubmissionObserverRegistry,
 	type createAgentSubmissionSessionHandler,
@@ -13,15 +15,21 @@ import {
 	reconcileInterruptedSubmission,
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
+import type {
+	ConversationSnapshotStore,
+	ConversationStreamStore,
+} from '../runtime/conversation-stream-store.ts';
 import type { AgentInteractionStart } from '../runtime/dev-lifecycle-logger.ts';
 import { agentStreamPath } from '../runtime/event-stream-store.ts';
 import { assertAgentDispatchAdmissionInput, handleAgentRequest } from '../runtime/handle-agent.ts';
 import { handleStreamHead, handleStreamRead } from '../runtime/handle-stream-routes.ts';
 import { isStreamExcludedEvent } from '../runtime/run-store.ts';
-import { assertProductEventV3 } from '../product-event.ts';
 import { deleteSessionTree } from '../session.ts';
 import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
-import { createSqlAgentExecutionStore } from './agent-execution-store.ts';
+import {
+	createSqlAgentExecutionStore,
+	createSqlConversationStores,
+} from './agent-execution-store.ts';
 
 export const CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH = '/__flue/internal/dispatch';
 
@@ -65,6 +73,8 @@ interface CloudflareAgentRecoveredFiberContext {
 interface CloudflareAgentPreparedCoordinator {
 	readonly agentName: string;
 	readonly executionStore: AgentExecutionStore;
+	readonly conversationStreamStore: ConversationStreamStore;
+	readonly conversationSnapshotStore: ConversationSnapshotStore;
 }
 
 interface CloudflareAgentRuntimeOptions {
@@ -128,9 +138,11 @@ export function createCloudflareAgentRuntime(
 
 	return {
 		prepare({ storage, className, agentName }) {
+			const conversationStores = createSqlConversationStores(storage);
 			return {
 				agentName,
 				executionStore: createSqlAgentExecutionStore(storage, className),
+				...conversationStores,
 			};
 		},
 		attach(instance, prepared) {
@@ -170,6 +182,8 @@ class CloudflareAgentCoordinator {
 		private readonly observers: ReturnType<typeof createAgentSubmissionObserverRegistry>,
 		private readonly activeAttempts: Set<string>,
 	) {}
+
+	private conversationWriter: ConversationRecordWriter | undefined;
 
 	async onStart(inherited: () => Promise<unknown> | unknown): Promise<void> {
 		await this.restoreSubmissionWake();
@@ -266,6 +280,17 @@ class CloudflareAgentCoordinator {
 		return this.options.runWithInstanceContext(this.instance, this.agentName, callback);
 	}
 
+	private async ensureConversationWriter(): Promise<ConversationRecordWriter> {
+		this.conversationWriter ??= await ConversationRecordWriter.create({
+			store: this.prepared.conversationStreamStore,
+			path: agentStreamPath(this.agentName, this.instance.name),
+			identity: { agentName: this.agentName, instanceId: this.instance.name },
+			producerId: this.instance.ctx.id.toString(),
+			snapshots: this.prepared.conversationSnapshotStore,
+		});
+		return this.conversationWriter;
+	}
+
 	private createContext(
 		request: Request,
 		initialEventIndex?: number,
@@ -292,6 +317,7 @@ class CloudflareAgentCoordinator {
 		dispatchId?: string,
 	): FlueContextInternal {
 		const ctx = this.createContext(request, undefined, dispatchId);
+		ctx.setConversationWriter?.(this.conversationWriter);
 		const streamPath = agentStreamPath(this.agentName, this.instance.name);
 		ctx.subscribeEvent(async (event) => {
 			if (isStreamExcludedEvent(event) || event.type === 'submission_settled') return;
@@ -450,6 +476,7 @@ class CloudflareAgentCoordinator {
 	}
 
 	private async reconcileInterruptedSubmission(submission: AgentSubmission): Promise<void> {
+		const conversationWriter = await this.ensureConversationWriter();
 		const agent = this.options.agents.find((record) => record.name === this.agentName)?.definition;
 		if (!agent) throw new Error('[flue] Agent target unavailable during durable reconciliation.');
 		// Ensure the agent event stream exists (idempotent, normally created
@@ -476,6 +503,7 @@ class CloudflareAgentCoordinator {
 						terminal.event,
 					),
 				{ ownerId: this.instance.ctx.id.toString(), leaseExpiresAt: 0 },
+				conversationWriter,
 			),
 		);
 		if (reconciled.disposition === 'replacement') {
@@ -575,6 +603,7 @@ class CloudflareAgentCoordinator {
 	}
 
 	private async processSubmissionEntry(submission: AgentSubmission): Promise<void> {
+		const conversationWriter = await this.ensureConversationWriter();
 		// Ensure the agent event stream exists before processing. createStream
 		// is idempotent — safe to call on every submission.
 		await this.eventStreamStore.createStream(agentStreamPath(this.agentName, this.instance.name));
@@ -595,6 +624,7 @@ class CloudflareAgentCoordinator {
 					terminal.eventKey,
 					terminal.event,
 				),
+			conversationWriter,
 			onInteractionStart: this.options.onInteractionStart,
 			wrapExecution: (fn) => this.runWithInstanceContext(fn),
 			onSettled: () => {

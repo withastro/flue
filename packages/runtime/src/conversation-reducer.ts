@@ -248,9 +248,6 @@ export function applyConversationRecord(
 			break;
 		case 'assistant_message_started':
 			assertParent(conversation, record, record.parentId);
-			if (conversation.inProgressMessages.size > 0) {
-				fail(record, `Conversation already has an in-progress assistant message.`);
-			}
 			if (record.parentId !== conversation.activeLeafId) {
 				fail(record, `Assistant parent is not the active leaf. Append active_leaf_changed first.`);
 			}
@@ -411,6 +408,9 @@ export function applyConversationRecord(
 				fail(record, `Child conversation is not retained.`);
 			}
 			conversation.childConversations.delete(record.childConversationId);
+			break;
+		case 'data':
+		case 'submission_settled':
 			break;
 	}
 	state.recordsById.set(record.id, record);

@@ -142,7 +142,9 @@ function makeDispatchInput(overrides: Partial<DispatchInput> = {}): DispatchInpu
 async function createRealCoordinator(
 	dbPath: string,
 ): Promise<{ coordinator: NodeAgentCoordinator; executionStore: AgentExecutionStore }> {
-	const executionStore = await openExecutionStore(dbPath);
+	const adapter = sqlite(dbPath);
+	await adapter.migrate?.();
+	const { executionStore, conversationStreamStore, conversationSnapshotStore } = await adapter.connect();
 	const agent = defineAgent(() => ({ model: REAL_MODEL }));
 	const coordinator = createNodeAgentCoordinator({
 		submissions: executionStore.submissions,
@@ -150,6 +152,8 @@ async function createRealCoordinator(
 		agents: [{ name: 'assistant', definition: agent }],
 		createContext: makeRealCreateContext(executionStore),
 		eventStreamStore: createTestEventStreamStore(),
+		conversationStreamStore,
+		conversationSnapshotStore,
 	});
 	return { coordinator, executionStore };
 }
@@ -160,7 +164,9 @@ async function createFauxCoordinator(
 	provider: FauxProviderRegistration,
 	durability?: { maxAttempts?: number; timeoutMs?: number },
 ): Promise<{ coordinator: NodeAgentCoordinator; executionStore: AgentExecutionStore }> {
-	const executionStore = await openExecutionStore(dbPath);
+	const adapter = sqlite(dbPath);
+	await adapter.migrate?.();
+	const { executionStore, conversationStreamStore, conversationSnapshotStore } = await adapter.connect();
 	const agent = defineAgent(() => ({
 		model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		durability,
@@ -171,6 +177,8 @@ async function createFauxCoordinator(
 		agents: [{ name: 'assistant', definition: agent }],
 		createContext: makeFauxCreateContext(provider, executionStore),
 		eventStreamStore: createTestEventStreamStore(),
+		conversationStreamStore,
+		conversationSnapshotStore,
 	});
 	return { coordinator, executionStore };
 }
@@ -181,7 +189,59 @@ async function createFauxCoordinator(
 
 describe('NodeAgentCoordinator', () => {
 	describe('basic lifecycle', () => {
-		it('processes a dispatch through the full submission lifecycle with file persistence', async () => {
+		it('writes canonical input and assistant output when processing a dispatch', async () => {
+		const dbPath = createTempDbPath();
+		const provider = createFauxProvider();
+		provider.setResponses([fauxAssistantMessage('Hello back')]);
+		const { coordinator } = await createFauxCoordinator(dbPath, provider);
+		const input = makeDispatchInput();
+
+		await coordinator.admitDispatch(input);
+		await coordinator.waitForIdle();
+
+		const adapter = sqlite(dbPath);
+		await adapter.migrate?.();
+		const { conversationStreamStore } = await adapter.connect();
+		const read = await conversationStreamStore.read(agentStreamPath('assistant', 'instance-1'));
+		const records = read.batches.flatMap((batch) => batch.records);
+		expect(records.map((record) => record.type)).toEqual(expect.arrayContaining([
+			'conversation_created',
+			'signal',
+			'assistant_message_started',
+			'assistant_text_delta',
+			'assistant_text_completed',
+			'assistant_message_completed',
+		]));
+		const inputRecord = records.find((record) => record.type === 'signal');
+		const assistantRecord = records.find((record) => record.type === 'assistant_message_started');
+		expect(inputRecord).toMatchObject({ dispatchId: input.dispatchId, signalType: 'dispatch_input' });
+		expect(assistantRecord).toMatchObject({ parentId: `entry_dispatch_${input.dispatchId}` });
+
+		await coordinator.shutdown();
+	});
+
+	it('rebuilds canonical state when the disposable snapshot is deleted', async () => {
+		const dbPath = createTempDbPath();
+		const provider = createFauxProvider();
+		provider.setResponses([fauxAssistantMessage('Snapshot reply')]);
+		const { coordinator } = await createFauxCoordinator(dbPath, provider);
+		const input = makeDispatchInput();
+		await coordinator.admitDispatch(input);
+		await coordinator.waitForIdle();
+		await coordinator.shutdown();
+
+		const adapter = sqlite(dbPath);
+		await adapter.migrate?.();
+		const { conversationStreamStore, conversationSnapshotStore } = await adapter.connect();
+		const path = agentStreamPath('assistant', 'instance-1');
+		const snapshot = await conversationSnapshotStore.load(path);
+		expect(snapshot).not.toBeNull();
+		await conversationSnapshotStore.delete(path);
+		const read = await conversationStreamStore.read(path);
+		expect(read.batches.flatMap((batch) => batch.records).map((record) => record.type)).toContain('assistant_message_completed');
+	});
+
+	it('processes a dispatch through the full submission lifecycle with file persistence', async () => {
 			const dbPath = createTempDbPath();
 			const provider = createFauxProvider();
 			provider.setResponses([fauxAssistantMessage('Done.')]);

@@ -4,6 +4,8 @@ import type {
 	AgentSubmissionStore,
 } from '../agent-execution-store.ts';
 import { LEASE_DURATION_MS } from '../agent-execution-store.ts';
+import { ConversationRecordWriter } from '../conversation-writer.ts';
+import { assertProductEventV3 } from '../product-event.ts';
 import {
 	type AgentSubmissionInput,
 	type AttachedAgentSubmissionAdmission,
@@ -13,17 +15,20 @@ import {
 	reconcileInterruptedSubmission,
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
+import type {
+	ConversationSnapshotStore,
+	ConversationStreamStore,
+} from '../runtime/conversation-stream-store.ts';
 import type { AgentInteractionStart } from '../runtime/dev-lifecycle-logger.ts';
 import type { DispatchInput, DispatchQueue } from '../runtime/dispatch-queue.ts';
 import { agentStreamPath } from '../runtime/event-stream-store.ts';
 import type { CreateAgentContextFn } from '../runtime/handle-agent.ts';
-import type { RuntimeActivityGate, RuntimeActivityLease } from '../runtime/runtime-activity-gate.ts';
 import { isStreamExcludedEvent } from '../runtime/run-store.ts';
-import { assertProductEventV3 } from '../product-event.ts';
+import type { RuntimeActivityGate, RuntimeActivityLease } from '../runtime/runtime-activity-gate.ts';
 import { deleteSessionTree } from '../session.ts';
 import type {
-	AttachedAgentEvent,
 	AgentDefinition,
+	AttachedAgentEvent,
 	DirectAgentPayload,
 	DispatchReceipt,
 	SessionStore,
@@ -97,11 +102,14 @@ export function createNodeAgentCoordinator(options: {
 	agents: ReadonlyArray<{ name: string; definition: AgentDefinition }>;
 	createContext: CreateAgentContextFn;
 	eventStreamStore: import('../runtime/event-stream-store.ts').EventStreamStore;
+	conversationStreamStore?: ConversationStreamStore;
+	conversationSnapshotStore?: ConversationSnapshotStore;
 	onInteractionStart?: (interaction: AgentInteractionStart) => void;
 	activityGate?: RuntimeActivityGate;
 }): NodeAgentCoordinator {
-	const { submissions, sessions, agents, createContext, eventStreamStore, onInteractionStart, activityGate } = options;
+	const { submissions, sessions, agents, createContext, eventStreamStore, conversationStreamStore, conversationSnapshotStore, onInteractionStart, activityGate } = options;
 	const observers = createAgentSubmissionObserverRegistry();
+	const conversationWriters = new Map<string, Promise<ConversationRecordWriter>>();
 
 	// ── Lease ownership ──────────────────────────────────────────────────
 
@@ -165,7 +173,27 @@ export function createNodeAgentCoordinator(options: {
 
 	// ── Helpers ──────────────────────────────────────────────────────────
 
-	function makeSubmissionContext(input: AgentSubmissionInput) {
+	function getConversationWriter(input: AgentSubmissionInput): Promise<ConversationRecordWriter | undefined> {
+		if (!conversationStreamStore) return Promise.resolve(undefined);
+		const path = agentStreamPath(input.agent, input.id);
+		let writer = conversationWriters.get(path);
+		if (!writer) {
+			writer = ConversationRecordWriter.create({
+				store: conversationStreamStore,
+				path,
+				identity: { agentName: input.agent, instanceId: input.id },
+				producerId: ownerId,
+				snapshots: conversationSnapshotStore,
+			});
+			conversationWriters.set(path, writer);
+			void writer.catch(() => {
+				if (conversationWriters.get(path) === writer) conversationWriters.delete(path);
+			});
+		}
+		return writer;
+	}
+
+	function makeSubmissionContext(input: AgentSubmissionInput, writer: ConversationRecordWriter | undefined) {
 		return (dispatchId: string | undefined) => {
 			const ctx = createContext({
 				id: input.id,
@@ -173,6 +201,7 @@ export function createNodeAgentCoordinator(options: {
 				request: submissionSyntheticRequest(input),
 				dispatchId,
 			});
+			ctx.setConversationWriter?.(writer);
 			// Subscribe to events for durable agent event persistence.
 			// createStream is called before processSubmission (see spawnSubmissionTask).
 			const streamPath = agentStreamPath(input.agent, input.id);
@@ -204,11 +233,12 @@ export function createNodeAgentCoordinator(options: {
 			// Must complete before processSubmission so appendEvent calls
 			// in the subscribeEvent callback don't hit a missing stream.
 			await eventStreamStore.createStream(agentStreamPath(claimed.input.agent, claimed.input.id));
+			const conversationWriter = await getConversationWriter(claimed.input);
 			return processSubmission({
 				submissions,
 				submission: claimed,
 				resolveAgent,
-				createContext: makeSubmissionContext(claimed.input),
+				createContext: makeSubmissionContext(claimed.input, conversationWriter),
 				observers,
 				deliverTerminalEvent: (terminal) =>
 					eventStreamStore.appendEventOnce(
@@ -216,6 +246,7 @@ export function createNodeAgentCoordinator(options: {
 						terminal.eventKey,
 						terminal.event,
 					),
+				conversationWriter,
 				onInteractionStart,
 				signal: controller.signal,
 				isShutdownAbort: (error) =>
@@ -461,11 +492,12 @@ export function createNodeAgentCoordinator(options: {
 					.catch((error) => {
 						console.error('[flue:event-stream] createStream failed:', error);
 					});
+				const conversationWriter = await getConversationWriter(submission.input);
 				const reconciled = await reconcileInterruptedSubmission(
 					submissions,
 					submission,
 					agent,
-					makeSubmissionContext(submission.input),
+					makeSubmissionContext(submission.input, conversationWriter),
 					(terminal) =>
 						eventStreamStore.appendEventOnce(
 							agentStreamPath(submission.input.agent, submission.input.id),
@@ -473,6 +505,7 @@ export function createNodeAgentCoordinator(options: {
 							terminal.event,
 						),
 					{ ownerId, leaseExpiresAt: Date.now() + LEASE_DURATION_MS },
+					conversationWriter,
 				);
 				if (reconciled.disposition === 'replacement') {
 					spawnSubmissionTask(reconciled.submission);

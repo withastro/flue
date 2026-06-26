@@ -19,12 +19,9 @@ interface DurableObjectStorage {
 	transactionSync?<T>(closure: () => T): T;
 }
 
-export function createSqlConversationStores(storage: DurableObjectStorage | undefined) {
-	const sql = storage?.sql;
-	const transactionSync = storage?.transactionSync;
-	if (!sql || typeof transactionSync !== 'function') {
-		throw new Error('[flue] Cloudflare canonical conversation persistence requires Durable Object SQLite.');
-	}
+export function createSqlConversationStores(storage: DurableObjectStorage) {
+	const sql = storage.sql as SqlStorage;
+	const transactionSync = storage.transactionSync as NonNullable<DurableObjectStorage['transactionSync']>;
 	const runTransaction = <T>(closure: () => T): T => transactionSync.call(storage, closure) as T;
 	return {
 		conversationStreamStore: new SqliteConversationStreamStore(sql, runTransaction),

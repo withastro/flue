@@ -190,13 +190,15 @@ if (!userPersistenceAdapter || typeof userPersistenceAdapter.connect !== 'functi
 let executionStore;
 let runStore;
 let eventStreamStore;
+let conversationStreamStore;
+let conversationSnapshotStore;
 try {
   if (userPersistenceAdapter.migrate) await userPersistenceAdapter.migrate();
   const stores = await userPersistenceAdapter.connect();
   if (!stores || typeof stores !== 'object') {
     throw new Error('connect() must return { executionStore, runStore, eventStreamStore }.');
   }
-  ({ executionStore, runStore, eventStreamStore } = stores);
+  ({ executionStore, runStore, eventStreamStore, conversationStreamStore, conversationSnapshotStore } = stores);
   if (!executionStore || typeof executionStore.sessions?.save !== 'function' || typeof executionStore.submissions?.getSubmission !== 'function') {
     throw new Error('connect() must return an executionStore with sessions and submissions.');
   }
@@ -206,13 +208,19 @@ try {
   if (!eventStreamStore || typeof eventStreamStore.appendEvent !== 'function' || typeof eventStreamStore.readEvents !== 'function') {
     throw new Error('connect() must return an eventStreamStore.');
   }
+  if (!conversationStreamStore || typeof conversationStreamStore.append !== 'function' || typeof conversationStreamStore.acquireProducer !== 'function') {
+    throw new Error('connect() must return a conversationStreamStore.');
+  }
+  if (!conversationSnapshotStore || typeof conversationSnapshotStore.load !== 'function' || typeof conversationSnapshotStore.save !== 'function') {
+    throw new Error('connect() must return a conversationSnapshotStore.');
+  }
 } catch (error) {
   throw new Error('[flue] Failed to initialize persistence from db.ts: ' + (error instanceof Error ? error.message : error), { cause: error });
 }`
 		: `// Default persistence for Node — in-memory SQLite, process lifetime.
 const defaultAdapter = sqlite();
 if (defaultAdapter.migrate) await defaultAdapter.migrate();
-const { executionStore, runStore, eventStreamStore } = await defaultAdapter.connect();`
+const { executionStore, runStore, eventStreamStore, conversationStreamStore, conversationSnapshotStore } = await defaultAdapter.connect();`
 }
 persistenceAdapter = ${dbEntry ? `userPersistenceAdapter` : `defaultAdapter`};
 const activityGate = createRuntimeActivityGate();
@@ -222,6 +230,8 @@ agentCoordinator = createNodeAgentCoordinator({
   agents,
   createContext: createAgentContextForRequest,
   eventStreamStore,
+  conversationStreamStore,
+  conversationSnapshotStore,
   onInteractionStart: devLifecycle?.onAgentInteractionStart,
   activityGate,
 });

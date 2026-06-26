@@ -51,6 +51,17 @@ import {
 	shouldCompact,
 } from './compaction.ts';
 import { isWorkspaceSkill, skillsDirIn } from './context.ts';
+import {
+	classifyConversationSubmission,
+	projectConversationModelContext,
+} from './conversation-projections.ts';
+import {
+	type ConversationRecord,
+	generateConversationEntryId,
+	generateConversationRecordId,
+} from './conversation-records.ts';
+import { getActiveConversationPath } from './conversation-reducer.ts';
+import type { ConversationRecordWriter } from './conversation-writer.ts';
 import { createDataEmitter } from './data.ts';
 import {
 	DelegationDepthExceededError,
@@ -318,6 +329,7 @@ interface SessionInitOptions {
 	scopeSignal?: AbortSignal;
 	onDelete?: () => void;
 	submissionStore?: AgentSubmissionStore;
+	conversationWriter?: ConversationRecordWriter;
 	executionContext?: FlueExecutionContext;
 }
 
@@ -551,6 +563,17 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	private staleStreamChunkKeys = new Set<string>();
 	private activeSubmissionId: string | undefined;
 	private activeSubmissionAttemptId: string | undefined;
+	private conversationWriter: ConversationRecordWriter | undefined;
+	private canonicalAssistant:
+		| {
+				messageId: string;
+				parentId: string | null;
+				blocks: Map<number, { id: string; type: 'text' | 'reasoning'; deltaCount: number; completed: boolean }>;
+		  }
+		| undefined;
+	private canonicalToolResultParentId: string | undefined;
+	private pendingCanonicalWrites = new Set<Promise<void>>();
+	private pendingToolPublications = new Map<string, () => void>();
 	private executionIdentity: FlueExecutionContext;
 	private readonly emitData = createDataEmitter((event) => this.emit(event));
 
@@ -584,6 +607,51 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			wrapProviderStream(streamSimple(model, context, options), operation, executionContext),
 		);
 	};
+
+	private canonicalEnvelope(type: ConversationRecord['type'], id = generateConversationRecordId()) {
+		return {
+			v: 1 as const,
+			id,
+			type,
+			conversationId: this.conversationId,
+			harness: this.executionIdentity.harness ?? 'default',
+			session: this.name,
+			timestamp: new Date().toISOString(),
+			...(this.activeSubmissionId ? { submissionId: this.activeSubmissionId } : {}),
+			...(this.activeSubmissionAttemptId ? { attemptId: this.activeSubmissionAttemptId } : {}),
+			...(this.activeOperationId ? { operationId: this.activeOperationId } : {}),
+			...(this.activeTurnId ? { turnId: this.activeTurnId } : {}),
+		};
+	}
+
+	private canonicalAppendOptions() {
+		const submission =
+			this.activeSubmissionId && this.activeSubmissionAttemptId
+				? { submissionId: this.activeSubmissionId, attemptId: this.activeSubmissionAttemptId }
+				: undefined;
+		return submission ? { submission } : {};
+	}
+
+	private appendCanonical(records: readonly ConversationRecord[]): Promise<{ offset: string }> {
+		if (!this.conversationWriter) return Promise.resolve({ offset: '-1' });
+		return this.conversationWriter.append(records, this.canonicalAppendOptions());
+	}
+
+	private enqueueCanonical(records: readonly ConversationRecord[], publish: () => void): void {
+		if (!this.conversationWriter) {
+			publish();
+			return;
+		}
+		const pending = this.conversationWriter.enqueue(records, this.canonicalAppendOptions()).then(() => publish());
+		let tracked: Promise<void>;
+		tracked = pending.finally(() => this.pendingCanonicalWrites.delete(tracked));
+		this.pendingCanonicalWrites.add(tracked);
+	}
+
+	private async flushCanonical(): Promise<void> {
+		await this.conversationWriter?.flush();
+		await Promise.all(this.pendingCanonicalWrites);
+	}
 
 	private modelRequestInfo(model: Model<any> | undefined, options?: SimpleStreamOptions): ModelRequestInfo {
 		if (!model) throw new Error('[flue] Missing configured model for turn telemetry.');
@@ -686,6 +754,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		this.scopeSignal = options.scopeSignal;
 		this.onDelete = options.onDelete;
 		this.submissionStore = options.submissionStore;
+		this.conversationWriter = options.conversationWriter;
 		this.executionIdentity = options.executionContext ?? {};
 
 		this.metadata = options.existingData?.metadata ?? {};
@@ -734,13 +803,86 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				case 'message_start': {
 					const turnId = this.activeTurnId ?? generateTurnId();
 					this.activeTurnId = turnId;
+					if (event.message.role === 'assistant') {
+						const messageId = generateConversationEntryId();
+						const parentId = await this.conversationWriter?.getConversationLeaf(this.conversationId) ?? null;
+						this.canonicalAssistant = { messageId, parentId, blocks: new Map() };
+						this.canonicalToolResultParentId = undefined;
+						const { role: _role, content: _content, stopReason: _stopReason, errorMessage: _errorMessage, timestamp: _timestamp, usage: _usage, ...modelInfo } = event.message;
+						await this.appendCanonical([{
+							...this.canonicalEnvelope('assistant_message_started'),
+							type: 'assistant_message_started',
+							messageId,
+							parentId,
+							modelInfo,
+						}]);
+					}
 					this.emit({ type: 'message_start', message: event.message, turnId });
 					break;
 				}
 				case 'message_update': {
 					this.activeStreamChunkWriter?.write(event.assistantMessageEvent);
 					const aEvent = event.assistantMessageEvent;
-					if (aEvent.type === 'text_delta') {
+					const assistant = this.canonicalAssistant;
+					if (assistant && aEvent.type === 'text_start') {
+						const blockId = `block_${crypto.randomUUID()}`;
+						assistant.blocks.set(aEvent.contentIndex, { id: blockId, type: 'text', deltaCount: 0, completed: false });
+						await this.appendCanonical([{
+							...this.canonicalEnvelope('assistant_text_started'), type: 'assistant_text_started',
+							messageId: assistant.messageId, blockId, blockIndex: aEvent.contentIndex,
+						}]);
+					} else if (assistant && aEvent.type === 'text_delta') {
+						const block = assistant.blocks.get(aEvent.contentIndex);
+						if (!block || block.type !== 'text') throw new Error('[flue] Canonical text delta has no started block.');
+						this.enqueueCanonical([{
+							...this.canonicalEnvelope('assistant_text_delta'), type: 'assistant_text_delta',
+							messageId: assistant.messageId, blockId: block.id, sequence: block.deltaCount++, delta: aEvent.delta,
+						}], () => this.emit({ type: 'text_delta', text: aEvent.delta }));
+					} else if (assistant && aEvent.type === 'text_end') {
+						const block = assistant.blocks.get(aEvent.contentIndex);
+						if (!block || block.type !== 'text') throw new Error('[flue] Canonical text completion has no started block.');
+						await this.flushCanonical();
+						await this.appendCanonical([{
+							...this.canonicalEnvelope('assistant_text_completed'), type: 'assistant_text_completed',
+							messageId: assistant.messageId, blockId: block.id, deltaCount: block.deltaCount,
+						}]);
+						block.completed = true;
+					} else if (assistant && aEvent.type === 'thinking_start') {
+						const blockId = `block_${crypto.randomUUID()}`;
+						assistant.blocks.set(aEvent.contentIndex, { id: blockId, type: 'reasoning', deltaCount: 0, completed: false });
+						await this.appendCanonical([{
+							...this.canonicalEnvelope('assistant_reasoning_started'), type: 'assistant_reasoning_started',
+							messageId: assistant.messageId, blockId, blockIndex: aEvent.contentIndex,
+						}]);
+						this.emit({ type: 'thinking_start', contentIndex: aEvent.contentIndex });
+					} else if (assistant && aEvent.type === 'thinking_delta') {
+						const block = assistant.blocks.get(aEvent.contentIndex);
+						if (!block || block.type !== 'reasoning') throw new Error('[flue] Canonical reasoning delta has no started block.');
+						this.enqueueCanonical([{
+							...this.canonicalEnvelope('assistant_reasoning_delta'), type: 'assistant_reasoning_delta',
+							messageId: assistant.messageId, blockId: block.id, sequence: block.deltaCount++, delta: aEvent.delta,
+						}], () => this.emit({ type: 'thinking_delta', contentIndex: aEvent.contentIndex, delta: aEvent.delta }));
+					} else if (assistant && aEvent.type === 'thinking_end') {
+						const block = assistant.blocks.get(aEvent.contentIndex);
+						if (!block || block.type !== 'reasoning') throw new Error('[flue] Canonical reasoning completion has no started block.');
+						const content = aEvent.partial.content[aEvent.contentIndex];
+						await this.flushCanonical();
+						await this.appendCanonical([{
+							...this.canonicalEnvelope('assistant_reasoning_completed'), type: 'assistant_reasoning_completed',
+							messageId: assistant.messageId, blockId: block.id, deltaCount: block.deltaCount,
+							...(content?.type === 'thinking' && content.thinkingSignature ? { encrypted: content.thinkingSignature } : {}),
+						}]);
+						block.completed = true;
+						this.emit({ type: 'thinking_end', contentIndex: aEvent.contentIndex, content: aEvent.content });
+					} else if (assistant && aEvent.type === 'toolcall_end') {
+						await this.appendCanonical([{
+							...this.canonicalEnvelope('assistant_tool_call'), type: 'assistant_tool_call',
+							messageId: assistant.messageId, blockId: `block_${crypto.randomUUID()}`,
+							blockIndex: aEvent.contentIndex, toolCallId: aEvent.toolCall.id,
+							name: aEvent.toolCall.name, arguments: aEvent.toolCall.arguments,
+							...(aEvent.toolCall.thoughtSignature ? { thoughtSignature: aEvent.toolCall.thoughtSignature } : {}),
+						}]);
+					} else if (aEvent.type === 'text_delta') {
 						this.emit({ type: 'text_delta', text: aEvent.delta });
 					} else if (aEvent.type === 'thinking_start') {
 						this.emit({ type: 'thinking_start', contentIndex: aEvent.contentIndex });
@@ -755,6 +897,30 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					const turnId = this.activeTurnId ?? generateTurnId();
 					this.activeTurnId = turnId;
 					if (event.message.role === 'assistant') {
+						const canonical = this.canonicalAssistant;
+						if (canonical) {
+							await this.flushCanonical();
+							for (const block of canonical.blocks.values()) {
+								if (block.completed) continue;
+								await this.appendCanonical([block.type === 'text'
+									? {
+										...this.canonicalEnvelope('assistant_text_completed'), type: 'assistant_text_completed',
+										messageId: canonical.messageId, blockId: block.id, deltaCount: block.deltaCount,
+									}
+									: {
+										...this.canonicalEnvelope('assistant_reasoning_completed'), type: 'assistant_reasoning_completed',
+										messageId: canonical.messageId, blockId: block.id, deltaCount: block.deltaCount,
+									}]);
+								block.completed = true;
+							}
+							await this.appendCanonical([{
+								...this.canonicalEnvelope('assistant_message_completed'), type: 'assistant_message_completed',
+								messageId: canonical.messageId, stopReason: event.message.stopReason,
+								usage: event.message.usage,
+								...(event.message.errorMessage ? { error: event.message.errorMessage } : {}),
+							}]);
+							this.canonicalAssistant = undefined;
+						}
 						const request = this.modelRequests.get(turnId) ?? this.modelRequestInfo(this.agentLoop.state.model);
 						this.emitTurn(turnId, 'agent', event.message, request);
 						this.modelRequests.delete(turnId);
@@ -807,27 +973,59 @@ export class Session implements FlueSession, AgentSubmissionSession {
 							call.telemetry,
 						);
 					}
-					this.emit(
-						{
-							type: 'tool',
-							toolName: event.toolName,
-							toolCallId: event.toolCallId,
-							isError: event.isError,
-							result: event.result,
-							durationMs: durationSince(call.startedAt),
-						},
-						{
-							...call.telemetry,
-							...(call.effectiveResultCaptured ? { effectiveResult: call.effectiveResult } : {}),
-							...(event.isError ? { errorInfo: classifyError(call.error ?? event.result) } : {}),
-						},
-					);
+					const publishTool = () =>
+						this.emit(
+							{
+								type: 'tool',
+								toolName: event.toolName,
+								toolCallId: event.toolCallId,
+								isError: event.isError,
+								result: event.result,
+								durationMs: durationSince(call.startedAt),
+							},
+							{
+								...call.telemetry,
+								...(call.effectiveResultCaptured ? { effectiveResult: call.effectiveResult } : {}),
+								...(event.isError ? { errorInfo: classifyError(call.error ?? event.result) } : {}),
+							},
+						);
+					if (this.conversationWriter) this.pendingToolPublications.set(event.toolCallId, publishTool);
+					else publishTool();
 					this.activeToolCalls.delete(event.toolCallId);
 					break;
 				}
 				case 'turn_end': {
 					const turnId = this.activeTurnId ?? generateTurnId();
 					await this.activeStreamChunkWriter?.flush();
+					if (event.toolResults.length > 0 && this.conversationWriter) {
+						let parentId = this.canonicalToolResultParentId ?? await this.conversationWriter.getConversationLeaf(this.conversationId);
+						for (const toolResult of event.toolResults) {
+							if (!parentId) throw new Error('[flue] Canonical tool result has no assistant parent.');
+							const messageId = generateConversationEntryId();
+							await this.appendCanonical([{
+								...this.canonicalEnvelope('tool_result'), type: 'tool_result', messageId, parentId,
+								toolCallId: toolResult.toolCallId, toolName: toolResult.toolName,
+								isError: toolResult.isError,
+								content: await Promise.all(toolResult.content.map(async (content, index) =>
+									content.type === 'text'
+										? { type: 'text' as const, text: content.text }
+										: {
+											type: 'attachment' as const,
+											attachment: {
+												id: `att_tool_${toolResult.toolCallId}_${index}`,
+												mimeType: content.mimeType,
+												size: content.data.length,
+												digest: await sha256(content.data),
+											},
+										},
+								)),
+							}]);
+							parentId = messageId;
+							this.pendingToolPublications.get(toolResult.toolCallId)?.();
+							this.pendingToolPublications.delete(toolResult.toolCallId);
+						}
+						this.canonicalToolResultParentId = parentId ?? undefined;
+					}
 					const message = event.message;
 					const assistant =
 						message.role === 'assistant' ? (message as AssistantMessage) : undefined;
@@ -890,6 +1088,10 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		};
 	}
 
+	async initializeCanonicalContext(): Promise<void> {
+		await this.rebuildCanonicalContext();
+	}
+
 	prompt<S extends v.GenericSchema>(
 		text: string,
 		options: PromptOptions<S> & { result: S },
@@ -914,12 +1116,21 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		);
 	}
 
-	inspectSubmissionInput(input: AgentSubmissionInput): AgentSubmissionInspection {
-		return this.inspectPersistedInput(
-			input.kind === 'dispatch'
-				? this.history.findDispatchInput(input.dispatchId)
-				: this.history.findDirectSubmissionInput(input.submissionId),
-		);
+	async inspectSubmissionInput(input: AgentSubmissionInput): Promise<AgentSubmissionInspection> {
+		const legacyInput = input.kind === 'dispatch'
+			? this.history.findDispatchInput(input.dispatchId)
+			: this.history.findDirectSubmissionInput(input.submissionId);
+		if (this.conversationWriter) {
+			const conversation = await this.conversationWriter.getConversation(this.conversationId);
+			if (conversation?.entries.has(this.canonicalInputEntryId(input))) {
+				return this.inspectCanonicalState(classifyConversationSubmission(
+					conversation,
+					this.canonicalInputEntryId(input),
+					{ contextWindow: this.agentLoop.state.model?.contextWindow ?? 0 },
+				));
+			}
+		}
+		return this.inspectPersistedInput(legacyInput);
 	}
 
 	/**
@@ -930,7 +1141,35 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	 * reconciliation can resolve a waiting observer with the real result.
 	 * Returns undefined when the input or a completed response is absent.
 	 */
-	reconstructSubmissionResult(input: AgentSubmissionInput): PromptResponse | undefined {
+	async reconstructSubmissionResult(input: AgentSubmissionInput): Promise<PromptResponse | undefined> {
+		if (this.conversationWriter) {
+			const conversation = await this.conversationWriter.getConversation(this.conversationId);
+			const path = conversation ? getActiveConversationPath(conversation) : [];
+			const inputIndex = path.findIndex((entry) => entry.id === this.canonicalInputEntryId(input));
+			if (inputIndex !== -1) {
+				const following = path.slice(inputIndex + 1);
+				const assistantEntry = following.findLast(
+					(entry) => entry.type === 'message' && entry.message.role === 'assistant',
+				);
+				if (assistantEntry?.type === 'message' && assistantEntry.message.role === 'assistant') {
+					const assistant = assistantEntry.message as AssistantMessage;
+					if (isCompletedAssistantResponse(assistant)) {
+						let usage = emptyUsage();
+						for (const entry of following) {
+							if (entry.type === 'message' && entry.message.role === 'assistant') {
+								const value = fromProviderUsage((entry.message as AssistantMessage).usage);
+								if (value) usage = addUsage(usage, value);
+							} else if (entry.type === 'compaction' && entry.usage) usage = addUsage(usage, entry.usage);
+						}
+						return {
+							text: assistant.content.flatMap((block) => block.type === 'text' ? [block.text] : []).join('\n'),
+							usage,
+							model: { provider: assistant.provider, id: assistant.model },
+						};
+					}
+				}
+			}
+		}
 		const inputEntry =
 			input.kind === 'dispatch'
 				? this.history.findDispatchInput(input.dispatchId)
@@ -947,7 +1186,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			text: assistant.content
 				.flatMap((block) => (block.type === 'text' ? [block.text] : []))
 				.join('\n'),
-			usage: this.aggregateUsageSince(inputEntry.id),
+			usage: await this.aggregateCanonicalUsageSince(inputEntry.id),
 			model: { provider: assistant.provider, id: assistant.model },
 		};
 	}
@@ -2154,6 +2393,16 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		this.agentLoopMessageCheckpointCursor = messages.length;
 	}
 
+	private async rebuildCanonicalContext(): Promise<void> {
+		if (!this.conversationWriter) return;
+		const conversation = await this.conversationWriter.getConversation(this.conversationId);
+		if (!conversation) return;
+		if (getActiveConversationPath(conversation).some((entry) => entry.type === 'message' && entry.attachmentRefs?.size)) return;
+		const messages = projectConversationModelContext(conversation);
+		this.agentLoop.state.messages = messages;
+		this.agentLoopMessageCheckpointCursor = messages.length;
+	}
+
 	private async checkpointHarnessMessages(): Promise<void> {
 		const messages = this.agentLoop.state.messages.slice(
 			this.agentLoopMessageCheckpointCursor,
@@ -2436,8 +2685,14 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				? (this.config.resolveModel(compactionConfig.model) ?? sessionModel)
 				: sessionModel;
 
+			const canonicalConversation = this.conversationWriter
+				? await this.conversationWriter.getConversation(this.conversationId)
+				: undefined;
+			const canonicalPath = canonicalConversation ? getActiveConversationPath(canonicalConversation) : undefined;
 			const contextEntries = this.history.buildContextEntries();
-			const messages = contextEntries.map((entry) => entry.message);
+			const messages = canonicalConversation
+				? projectConversationModelContext(canonicalConversation)
+				: contextEntries.map((entry) => entry.message);
 			const latestCompaction = this.history.getLatestCompaction();
 
 			const preparation = prepareCompaction(
@@ -2455,7 +2710,9 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				this.internalLog('info', '[flue:compaction] Nothing to compact (no valid cut point found)');
 				return false;
 			}
-			const firstKeptEntry = contextEntries[preparation.firstKeptIndex]?.entry;
+			const firstKeptEntry = canonicalPath
+				? canonicalPath.filter((entry) => entry.type === 'message')[preparation.firstKeptIndex]
+				: contextEntries[preparation.firstKeptIndex]?.entry;
 			if (!firstKeptEntry || firstKeptEntry.type !== 'message') {
 				this.internalLog(
 					'info',
@@ -2519,6 +2776,23 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				return false;
 			}
 
+			if (this.conversationWriter) {
+				const conversation = await this.conversationWriter.getConversation(this.conversationId);
+				const sourceLeafId = conversation?.activeLeafId;
+				if (!sourceLeafId) throw new Error('[flue] Canonical compaction has no source leaf.');
+				await this.appendCanonical([{
+					...this.canonicalEnvelope('compaction'),
+					type: 'compaction',
+					entryId: generateConversationEntryId(),
+					parentId: sourceLeafId,
+					summary: result.summary,
+					firstKeptEntryId: firstKeptEntry.id,
+					sourceLeafId,
+					tokensBefore: result.tokensBefore,
+					details: result.details,
+					usage: result.usage,
+				}]);
+			}
 			this.history.appendCompaction({
 				summary: result.summary,
 				firstKeptEntryId: firstKeptEntry.id,
@@ -2598,6 +2872,22 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	 * mid-call mutations (e.g. overflow recovery removing a failed
 	 * assistant turn before retry).
 	 */
+	private async aggregateCanonicalUsageSince(beforeLeafId: string | null): Promise<PromptUsage> {
+		if (!this.conversationWriter) return this.aggregateUsageSince(beforeLeafId);
+		const conversation = await this.conversationWriter.getConversation(this.conversationId);
+		if (!conversation) return emptyUsage();
+		const path = getActiveConversationPath(conversation);
+		const start = beforeLeafId ? path.findIndex((entry) => entry.id === beforeLeafId) + 1 : 0;
+		let totals = emptyUsage();
+		for (const entry of path.slice(start)) {
+			if (entry.type === 'message' && entry.message.role === 'assistant') {
+				const usage = fromProviderUsage((entry.message as AssistantMessage).usage);
+				if (usage) totals = addUsage(totals, usage);
+			} else if (entry.type === 'compaction' && entry.usage) totals = addUsage(totals, entry.usage);
+		}
+		return totals;
+	}
+
 	private aggregateUsageSince(beforeLeafId: string | null): PromptUsage {
 		let totals = emptyUsage();
 		for (const entry of this.history.getActivePathSince(beforeLeafId)) {
@@ -2655,6 +2945,29 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		return undefined;
 	}
 
+	private canonicalInputEntryId(input: AgentSubmissionInput): string {
+		return input.kind === 'dispatch'
+			? submissionEntryId('dispatch', input.dispatchId)
+			: submissionEntryId('direct', input.submissionId);
+	}
+
+	private inspectCanonicalState(state: ReturnType<typeof classifyConversationSubmission>): AgentSubmissionInspection {
+		switch (state.kind) {
+			case 'absent':
+				return 'absent';
+			case 'completed':
+				return 'completed';
+			case 'interrupted_partial':
+				return 'continuable';
+			case 'resume':
+				return state.mode === 'overflow' || state.mode === 'input_only'
+					? 'uncertain'
+					: 'continuable';
+			default:
+				return 'uncertain';
+		}
+	}
+
 	private inspectPersistedInput(inputEntry: MessageEntry | undefined): AgentSubmissionInspection {
 		const state = classifySubmissionState(
 			inputEntry ? this.history.getActivePathSince(inputEntry.id) : undefined,
@@ -2691,6 +3004,15 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		this.activeAgentInput = { text: renderSignalMessage(createDispatchInputSignal(input)) };
 		return this.runPersistedContextInput({
 			findInput: () => this.history.findDispatchInput(input.dispatchId),
+			createCanonicalInput: (parentId) => ({
+				...this.canonicalEnvelope('signal', `record_dispatch_input_${input.dispatchId}`),
+				type: 'signal',
+				messageId: submissionEntryId('dispatch', input.dispatchId),
+				parentId,
+				dispatchId: input.dispatchId,
+				signalType: 'dispatch_input',
+				content: renderSignalMessage(createDispatchInputSignal(input)),
+			}),
 			persistInput: () =>
 				this.history.appendMessage(createDispatchInputSignal(input), {
 					dispatch: dispatchMetadata(input),
@@ -2719,6 +3041,24 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		};
 		return this.runPersistedContextInput({
 			findInput: () => this.history.findDirectSubmissionInput(input.submissionId),
+			createCanonicalInput: async (parentId) => ({
+				...this.canonicalEnvelope('user_message', `record_direct_input_${input.submissionId}`),
+				type: 'user_message',
+				messageId: submissionEntryId('direct', input.submissionId),
+				parentId,
+				content: [
+					{ type: 'text', text: input.payload.message },
+					...await Promise.all((input.payload.images ?? []).map(async (image, index) => ({
+						type: 'attachment' as const,
+						attachment: {
+							id: `att_direct_${input.submissionId}_${index}`,
+							mimeType: image.mimeType,
+							size: image.data.length,
+							digest: await sha256(image.data),
+						},
+					}))),
+				],
+			}),
 			persistInput: () =>
 				this.history.appendMessage(
 					createUserContextMessage(
@@ -2762,6 +3102,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	private async runPersistedContextInput(options: {
 		findInput: () => MessageEntry | undefined;
 		persistInput: () => string;
+		createCanonicalInput?: (parentId: string | null) => Promise<ConversationRecord> | ConversationRecord;
 		emitPersistedInput?: (entry: MessageEntry) => void;
 		journal?: ProcessAgentSubmissionOptions['journal'];
 		startedAt?: number;
@@ -2787,13 +3128,24 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				this.activeTimeoutAt = durability.timeoutAt;
 				try {
 					let inputEntry = options.findInput();
+					let canonicalInputEntryId: string | undefined;
 					const inputAlreadyPersisted = inputEntry !== undefined;
+					if (options.createCanonicalInput && this.conversationWriter) {
+						const parentId = await this.conversationWriter.getConversationLeaf(this.conversationId);
+						const record = await options.createCanonicalInput(parentId);
+						const entryId = record.type === 'user_message' || record.type === 'signal' ? record.messageId : undefined;
+						canonicalInputEntryId = entryId;
+						if (!entryId || !(await this.conversationWriter.hasConversationEntry(this.conversationId, entryId))) {
+							await this.appendCanonical([record]);
+						}
+					}
 					if (!inputEntry) {
 						options.persistInput();
 						this.rebuildHarnessContext();
 						await this.save();
 						inputEntry = options.findInput();
 					}
+					await this.rebuildCanonicalContext();
 					if (!inputEntry) {
 						throw new OperationFailedError({
 							operation: options.errorLabel,
@@ -2802,9 +3154,15 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					}
 					if (!inputAlreadyPersisted) options.emitPersistedInput?.(inputEntry);
 					await options.onInputApplied?.(durability);
-					const state = classifySubmissionState(this.history.getActivePathSince(inputEntry.id), {
-						contextWindow: this.agentLoop.state.model.contextWindow ?? 0,
-					});
+					const state = this.conversationWriter
+						? classifyConversationSubmission(
+							await this.conversationWriter.getConversation(this.conversationId) ?? (() => { throw new Error('[flue] Canonical conversation is missing.'); })(),
+							canonicalInputEntryId ?? inputEntry.id,
+							{ contextWindow: this.agentLoop.state.model.contextWindow ?? 0 },
+						)
+						: classifySubmissionState(this.history.getActivePathSince(inputEntry.id), {
+							contextWindow: this.agentLoop.state.model.contextWindow ?? 0,
+						});
 					switch (state.kind) {
 						case 'absent':
 							// Unreachable: `following` is only classified for a found input
@@ -2859,7 +3217,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					}
 					return {
 						text: this.getAssistantText(),
-						usage: this.aggregateUsageSince(inputEntry.id),
+						usage: await this.aggregateCanonicalUsageSince(inputEntry.id),
 						model: { provider: resolvedModel.provider, id: resolvedModel.id },
 					};
 				} finally {
@@ -2916,7 +3274,30 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				activePackagedSkills: args.activePackagedSkills,
 			},
 			async ({ resolvedModel }) => {
-				const beforeLeafId = this.history.getLeafId();
+				const beforeLeafId = this.conversationWriter
+					? await this.conversationWriter.getConversationLeaf(this.conversationId)
+					: this.history.getLeafId();
+				if (this.conversationWriter) {
+					const messageId = generateConversationEntryId();
+					await this.appendCanonical([{
+						...this.canonicalEnvelope('user_message'),
+						type: 'user_message',
+						messageId,
+						parentId: beforeLeafId,
+						content: [
+							{ type: 'text', text: args.promptText },
+							...await Promise.all((args.images ?? []).map(async (image, index) => ({
+								type: 'attachment' as const,
+								attachment: {
+									id: `att_prompt_${messageId}_${index}`,
+									mimeType: image.mimeType,
+									size: image.data.length,
+									digest: await sha256(image.data),
+								},
+							}))),
+						],
+					}]);
+				}
 				const model: PromptModel = { provider: resolvedModel.provider, id: resolvedModel.id };
 
 				if (resultBundle) {
@@ -2929,7 +3310,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					);
 					return {
 						data: result,
-						usage: this.aggregateUsageSince(beforeLeafId),
+						usage: await this.aggregateCanonicalUsageSince(beforeLeafId),
 						model,
 					};
 				}
@@ -2942,7 +3323,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 
 				return {
 					text: this.getAssistantText(),
-					usage: this.aggregateUsageSince(beforeLeafId),
+					usage: await this.aggregateCanonicalUsageSince(beforeLeafId),
 					model,
 				};
 			},
@@ -3067,6 +3448,16 @@ function normalizeLogAttributes(
 	if (!attributes) return undefined;
 	if (!(attributes.error instanceof Error)) return attributes;
 	return { ...attributes, error: serializeError(attributes.error) };
+}
+
+function submissionEntryId(kind: 'direct' | 'dispatch', id: string): string {
+	return `entry_${kind}_${id.replaceAll(/[^A-Za-z0-9_-]/g, '_')}`;
+}
+
+async function sha256(value: string): Promise<string> {
+	const bytes = new TextEncoder().encode(value);
+	const digest = await crypto.subtle.digest('SHA-256', bytes);
+	return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
 }
 
 function durationSince(start: number | undefined): number {

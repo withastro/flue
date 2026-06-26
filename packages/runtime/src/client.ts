@@ -5,18 +5,19 @@ import {
 } from './agent-definition.ts';
 import type { AgentSubmissionStore } from './agent-execution-store.ts';
 import { discoverSessionContext } from './context.ts';
+import type { ConversationRecordWriter } from './conversation-writer.ts';
 import { createDataEmitter } from './data.ts';
 import { Harness } from './harness.ts';
 import { dispatchGlobalEvent } from './runtime/events.ts';
 import { createCwdSessionEnv } from './sandbox.ts';
 import type {
 	AgentConfig,
+	AgentDefinition,
 	AgentProfile,
 	AgentRuntimeConfig,
-	AgentDefinition,
 	FlueEvent,
-	FlueEventContext,
 	FlueEventCallback,
+	FlueEventContext,
 	FlueEventInput,
 	FlueObservationDetail,
 	SandboxFactory,
@@ -48,6 +49,7 @@ export interface FlueContextConfig {
 	req?: Request;
 	initialEventIndex?: number;
 	submissionStore?: AgentSubmissionStore;
+	conversationWriter?: ConversationRecordWriter;
 }
 
 /** Extends FlueEventContext with server-only methods. */
@@ -61,6 +63,7 @@ export interface FlueContextInternal extends FlueEventContext {
 	flushEventCallbacks(): Promise<void>;
 	setEventCallback(callback: FlueEventCallback | undefined): void;
 	setSubmissionId(submissionId: string | undefined): void;
+	setConversationWriter?(writer: ConversationRecordWriter | undefined): void;
 }
 
 export function createFlueContext(config: FlueContextConfig): FlueContextInternal {
@@ -70,6 +73,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 	let eventCallbackError: unknown;
 	let eventIndex = config.initialEventIndex ?? 0;
 	let submissionId: string | undefined;
+	let conversationWriter = config.conversationWriter;
 
 	const createEvent = (event: FlueEventInput): FlueEvent => ({
 		...event,
@@ -134,7 +138,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 		},
 
 		initializeRootHarness(agent: AgentDefinition): Promise<Harness> {
-			return initializeRootHarness(agent, config, emitEvent);
+			return initializeRootHarness(agent, { ...config, conversationWriter }, emitEvent);
 		},
 
 		emitData: createDataEmitter(emitEvent),
@@ -193,6 +197,10 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 
 		setSubmissionId(value: string | undefined): void {
 			submissionId = value;
+		},
+
+		setConversationWriter(value: ConversationRecordWriter | undefined): void {
+			conversationWriter = value;
 		},
 	};
 
@@ -257,6 +265,7 @@ export async function initializeRootHarness(
 		definition.tools,
 		toolFactory,
 		config.submissionStore,
+		config.conversationWriter,
 		definition.actions,
 		config.runId === undefined ? { instanceId: config.id } : { runId: config.runId },
 	);

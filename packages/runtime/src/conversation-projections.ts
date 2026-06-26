@@ -111,6 +111,7 @@ export function projectConversationModelContext(
 	return buildConversationContext(conversation);
 }
 
+
 function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMessage | undefined {
 	const message = entry.message;
 	if (message.role === 'user') {

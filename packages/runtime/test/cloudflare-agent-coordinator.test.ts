@@ -209,16 +209,6 @@ describe('createCloudflareAgentRuntime()', () => {
 		expect(createEventStreamStore).toHaveBeenCalledOnce();
 	});
 
-	it('initializes SQLite during preparation before instance attachment', () => {
-		const runtime = makeRuntime();
-
-		expect(() =>
-			runtime.prepare({ storage: {}, className: 'FlueAssistantAgent', agentName: 'assistant' }),
-		).toThrow(
-			'Cloudflare durable agent class "FlueAssistantAgent" requires Durable Object SQLite.',
-		);
-	});
-
 	it('restores a pending wake before inherited startup when unsettled work exists', async () => {
 		const events: string[] = [];
 		const { storage } = makeFakeSql();

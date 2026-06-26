@@ -2,8 +2,9 @@ import { abortErrorFor, createCallHandle } from './abort.ts';
 import type { ActionDefinition } from './action.ts';
 import type { AgentSubmissionStore } from './agent-execution-store.ts';
 import { discoverSessionContext } from './context.ts';
-import type { FlueExecutionContext } from './execution-interceptor.ts';
+import type { ConversationRecordWriter } from './conversation-writer.ts';
 import { SessionAlreadyExistsError, SessionNotFoundError } from './errors.ts';
+import type { FlueExecutionContext } from './execution-interceptor.ts';
 import { generateConversationId, generateSessionAffinityKey } from './runtime/ids.ts';
 import { createCwdSessionEnv, createFlueFs } from './sandbox.ts';
 import {
@@ -25,9 +26,9 @@ import type {
 	CallHandle,
 	FlueEventInput,
 	FlueEventInputCallback,
-	FlueObservationDetail,
 	FlueFs,
 	FlueHarness,
+	FlueObservationDetail,
 	FlueSession,
 	FlueSessions,
 	SessionData,
@@ -68,6 +69,7 @@ export class Harness implements FlueHarness {
 		private agentTools: ToolDefinition[] = [],
 		private toolFactory?: SessionToolFactory,
 		private submissionStore?: AgentSubmissionStore,
+		private conversationWriter?: ConversationRecordWriter,
 		private actions: ActionDefinition[] = config.actions ?? [],
 		private executionContext: FlueExecutionContext = {},
 		private scopeName?: string,
@@ -157,20 +159,37 @@ export class Harness implements FlueHarness {
 			this.scopeName ? `${this.name}:${this.scopeName}` : this.name,
 			sessionName,
 		);
+		const harnessScope = this.scopeName ? `${this.name}:${this.scopeName}` : this.name;
+		const canonical = await this.conversationWriter?.findConversation(harnessScope, sessionName);
 		const existingData = await this.store.load(storageKey);
-		if (mode === 'get' && !existingData) {
+		if (mode === 'get' && !canonical && !existingData) {
 			throw new SessionNotFoundError({ session: sessionName, harness: this.name });
 		}
-		if (mode === 'create' && existingData) {
+		if (mode === 'create' && (canonical || existingData)) {
 			throw new SessionAlreadyExistsError({ session: sessionName, harness: this.name });
 		}
 
-		let data = existingData;
+		let data = canonical
+			? {
+					...(existingData ?? createEmptySessionData()),
+					conversationId: canonical.conversationId,
+					affinityKey: canonical.affinityKey,
+				}
+			: existingData;
 		if (!data) {
 			data = createEmptySessionData();
 			await this.retainSession?.(sessionName);
 			await this.store.save(storageKey, data);
 		}
+
+		await this.conversationWriter?.ensureConversation({
+			conversationId: data.conversationId,
+			harness: this.scopeName ? `${this.name}:${this.scopeName}` : this.name,
+			session: sessionName,
+			affinityKey: data.affinityKey,
+			createdAt: data.createdAt,
+			...(this.executionContext.taskId ? { taskId: this.executionContext.taskId } : {}),
+		});
 
 		const session = new Session({
 			name: sessionName,
@@ -191,8 +210,10 @@ export class Harness implements FlueHarness {
 			scopeSignal: this.scopeAbortController.signal,
 			onDelete: () => this.openSessions.delete(sessionName),
 			submissionStore: this.submissionStore,
+			conversationWriter: this.conversationWriter,
 			executionContext: { ...this.executionContext, harness: this.name },
 		});
+		await session.initializeCanonicalContext();
 		this.openSessions.set(sessionName, session);
 		return session;
 	}
@@ -260,6 +281,14 @@ export class Harness implements FlueHarness {
 		// carried by the parent's typed `childSessions` field, and task/parent
 		// correlation flows through event decoration below.
 		const data = createEmptySessionData();
+		await this.conversationWriter?.ensureConversation({
+			conversationId: data.conversationId,
+			harness: this.scopeName ? `${this.name}:${this.scopeName}` : this.name,
+			session: sessionName,
+			affinityKey: data.affinityKey,
+			createdAt: data.createdAt,
+			taskId: options.taskId,
+		});
 		const eventCallback: FlueEventInputCallback | undefined = this.eventCallback
 			? (event, observation) => {
 					this.eventCallback?.({
@@ -271,7 +300,7 @@ export class Harness implements FlueHarness {
 				}
 			: undefined;
 
-		return new Session({
+		const session = new Session({
 			name: sessionName,
 			storageKey,
 			conversationId: data.conversationId,
@@ -288,8 +317,11 @@ export class Harness implements FlueHarness {
 			actions: taskConfig.actions ?? [],
 			createActionHarness: (actionOptions) => this.createActionHarness(actionOptions),
 			scopeSignal: this.scopeAbortController.signal,
+			conversationWriter: this.conversationWriter,
 			executionContext: { ...this.executionContext, harness: this.name, taskId: options.taskId },
 		});
+		await session.initializeCanonicalContext();
+		return session;
 	}
 
 	private createActionHarness: import('./session.ts').CreateActionHarness = (options) => {
@@ -305,6 +337,7 @@ export class Harness implements FlueHarness {
 			options.tools,
 			this.toolFactory,
 			this.submissionStore,
+			this.conversationWriter,
 			options.actions,
 			options.executionContext,
 			nestedScope,
@@ -352,17 +385,21 @@ function normalizeSessionName(name: string | undefined): string {
 	return name ?? DEFAULT_SESSION_NAME;
 }
 
-function createEmptySessionData(): SessionData {
+function createEmptySessionData(options?: {
+	conversationId?: string;
+	affinityKey?: string;
+	createdAt?: string;
+}): SessionData {
 	const now = new Date().toISOString();
 	return {
 		version: 8,
-		conversationId: generateConversationId(),
-		affinityKey: generateSessionAffinityKey(),
+		conversationId: options?.conversationId ?? generateConversationId(),
+		affinityKey: options?.affinityKey ?? generateSessionAffinityKey(),
 		entries: [],
 		leafId: null,
 		childSessions: [],
 		metadata: {},
-		createdAt: now,
+		createdAt: options?.createdAt ?? now,
 		updatedAt: now,
 	};
 }
