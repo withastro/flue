@@ -110,7 +110,6 @@ import {
 	getRegisteredApiKey,
 	getRegisteredStoreResponses,
 } from './runtime/providers.ts';
-import { reconstructInterruptedStream, StreamChunkWriter } from './runtime/stream-chunks.ts';
 import { createFlueFs } from './sandbox.ts';
 import { valibotToJsonSchema } from './schema.ts';
 import {
@@ -554,13 +553,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	private activeJournalCallbacks: ProcessAgentSubmissionOptions['journal'] | undefined;
 	private activeTimeoutAt: number | undefined;
 	private activeTurnCanCommitJournal = false;
-	private activeStreamChunkWriter: StreamChunkWriter | undefined;
-	/**
-	 * Stream keys whose chunk segments belong to aborted/error turns of this
-	 * session. They are kept durable so restart reconciliation can recover the
-	 * partial stream, and deleted once a later turn checkpoint supersedes them.
-	 */
-	private staleStreamChunkKeys = new Set<string>();
 	private activeSubmissionId: string | undefined;
 	private activeSubmissionAttemptId: string | undefined;
 	private conversationWriter: ConversationRecordWriter | undefined;
@@ -597,25 +589,12 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	private emitTurnRequestAndStream: StreamFn = async (model, context, options) => {
 		if (this.activeTurnId === undefined) this.activeTurnId = generateTurnId();
 		const turnId = this.activeTurnId;
-		const streamKey =
-			!this.conversationWriter && this.activeSubmissionId && this.activeSubmissionAttemptId
-				? `${this.activeSubmissionId}:${turnId}:${this.activeSubmissionAttemptId}`
-				: undefined;
 		const state = {
 			operationId: this.activeOperationId ?? generateOperationId(),
 			turnId,
 			checkpointLeafId: this.history.getLeafId() ?? undefined,
-			streamKey,
 		};
 		await this.activeJournalCallbacks?.beforeProvider?.(state);
-		if (streamKey && this.submissionStore && !this.conversationWriter) {
-			this.activeStreamChunkWriter = new StreamChunkWriter(this.submissionStore, streamKey);
-		} else {
-			// Defensive: never let a leftover writer from a failed earlier run capture
-			// this turn's deltas under the old submission's stream key.
-			this.activeStreamChunkWriter?.cancel();
-			this.activeStreamChunkWriter = undefined;
-		}
 		this.emitTurnRequest(turnId, 'agent', model, context, options);
 		await this.activeJournalCallbacks?.providerStarted?.(state);
 		const operation = { type: 'model' as const, turnId };
@@ -838,7 +817,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					break;
 				}
 				case 'message_update': {
-					this.activeStreamChunkWriter?.write(event.assistantMessageEvent);
 					const aEvent = event.assistantMessageEvent;
 					const assistant = this.canonicalAssistant;
 					if (assistant && aEvent.type === 'text_start') {
@@ -1013,7 +991,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				}
 				case 'turn_end': {
 					const turnId = this.activeTurnId ?? generateTurnId();
-					await this.activeStreamChunkWriter?.flush();
 					if (event.toolResults.length > 0 && this.conversationWriter) {
 						let parentId = this.canonicalToolResultParentId ?? await this.conversationWriter.getConversationLeaf(this.conversationId);
 						for (const toolResult of event.toolResults) {
@@ -1046,19 +1023,9 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					const message = event.message;
 					const assistant =
 						message.role === 'assistant' ? (message as AssistantMessage) : undefined;
-					// An aborted/error turn is not durable progress: leave the
-					// journal uncommitted and keep the persisted partial-stream
-					// chunks alive so restart reconciliation can resume the
-					// submission (stream recovery, transient retry, or replay
-					// from the input) instead of terminally failing it. The
-					// chunks become stale once a later turn commits; stage them
-					// for deletion at that point.
 					const turnInterrupted =
 						assistant?.stopReason === 'aborted' || assistant?.stopReason === 'error';
 					this.activeTurnCanCommitJournal = !turnInterrupted;
-					if (turnInterrupted && this.activeStreamChunkWriter) {
-						this.staleStreamChunkKeys.add(this.activeStreamChunkWriter.streamKey);
-					}
 					await this.checkpointHarnessMessages();
 					this.emit({
 						type: 'turn_messages',
@@ -1068,17 +1035,12 @@ export class Session implements FlueSession, AgentSubmissionSession {
 						toolResults: event.toolResults,
 					});
 					this.activeTurnId = undefined;
-					await this.activeStreamChunkWriter?.close();
-					this.activeStreamChunkWriter = undefined;
 					break;
 				}
 				case 'agent_end':
-					await this.activeStreamChunkWriter?.flush();
 					await this.checkpointHarnessMessages();
 					this.emit({ type: 'agent_end', messages: event.messages });
 					this.activeTurnId = undefined;
-					await this.activeStreamChunkWriter?.close();
-					this.activeStreamChunkWriter = undefined;
 					break;
 			}
 		});
@@ -1484,44 +1446,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			await this.rebuildCanonicalContext();
 			return true;
 		}
-		if (!this.submissionStore) return false;
-		const streamKey = `${attempt.submissionId}:${turnId}:${attempt.attemptId}`;
-		const segments = await this.submissionStore.getStreamChunkSegments(streamKey);
-		const recovered = reconstructInterruptedStream(segments, streamKey);
-		if (!recovered) return false;
-		const turnCheckpointLeafId = this.history.getLeafId() ?? undefined;
-		const activePath = this.history.getActivePath();
-		const alreadyRecovered = activePath.some(
-			(entry) =>
-				entry.type === 'message' &&
-				entry.message.role === 'signal' &&
-				entry.message.type === 'stream_continued' &&
-				entry.message.attributes?.streamKey === streamKey,
-		);
-		if (alreadyRecovered) return true;
-		// A graceful shutdown abort reaches turn_end before the process exits,
-		// so the interrupted turn's partial is usually already checkpointed as
-		// the trailing aborted assistant. Append only the recovery signals then
-		// — re-appending the reconstructed partial would duplicate it in
-		// durable history. The trailing aborted assistant belongs to this turn
-		// exactly when it was appended after the turn began, i.e. it is not the
-		// journal's pre-turn checkpoint leaf (a hard crash mid-turn checkpoints
-		// nothing, leaving any trailing aborted assistant from an earlier turn
-		// at that leaf).
-		const last = activePath.at(-1);
-		const partialAlreadyCheckpointed =
-			last?.type === 'message' &&
-			last.message.role === 'assistant' &&
-			(last.message as AssistantMessage).stopReason === 'aborted' &&
-			last.id !== turnCheckpointLeafId;
-		this.history.appendMessages(
-			partialAlreadyCheckpointed
-				? [recovered.interrupted, recovered.continued]
-				: [recovered.partial, recovered.interrupted, recovered.continued],
-		);
-		this.rebuildHarnessContext();
-		await this.save();
-		return true;
+		return false;
 	}
 
 	async recordSubmissionTerminal(input: AgentSubmissionInterruption): Promise<void> {
@@ -2610,26 +2535,8 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					committedLeafId: leafId,
 				});
 			}
-			await this.deleteSupersededStreamChunks();
 			this.activeTurnCanCommitJournal = false;
 		}
-	}
-
-	/**
-	 * Delete stream chunk segments that a durable turn checkpoint has just
-	 * superseded: the active turn's own segments plus any segments staged by
-	 * earlier aborted/error turns of this session (kept alive until now so an
-	 * intervening crash could still recover the interrupted stream).
-	 */
-	private async deleteSupersededStreamChunks(): Promise<void> {
-		if (!this.submissionStore) return;
-		if (this.activeStreamChunkWriter) {
-			await this.submissionStore.deleteStreamChunkSegments(this.activeStreamChunkWriter.streamKey);
-		}
-		for (const streamKey of this.staleStreamChunkKeys) {
-			await this.submissionStore.deleteStreamChunkSegments(streamKey);
-		}
-		this.staleStreamChunkKeys.clear();
 	}
 
 	private async save(): Promise<void> {
@@ -2769,13 +2676,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				await this.agentLoop.waitForIdle();
 				await this.checkpointHarnessMessages();
 			} catch (error) {
-				try {
-					await this.activeStreamChunkWriter?.flush();
-				} catch {
-					// Best-effort: persisting partial deltas must not mask the run error.
-				}
-				this.activeStreamChunkWriter?.cancel();
-				this.activeStreamChunkWriter = undefined;
 				this.rebuildHarnessContext();
 				throw error;
 			}
@@ -3403,12 +3303,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					this.activeSubmissionId = undefined;
 					this.activeSubmissionAttemptId = undefined;
 					this.activeTimeoutAt = undefined;
-					// Defensive: the writer is normally closed in turn_end/agent_end, but a
-					// failure mid-run (e.g. a checkpoint save throwing) can leave it assigned.
-					// A stale writer would direct a later prompt's deltas to this
-					// submission's stream key.
-					this.activeStreamChunkWriter?.cancel();
-					this.activeStreamChunkWriter = undefined;
 				}
 			},
 		);

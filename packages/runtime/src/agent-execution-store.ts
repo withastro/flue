@@ -123,8 +123,6 @@ export interface AgentTurnJournal {
 	readonly updatedAt: number;
 	readonly checkpointLeafId?: string;
 	readonly toolRequest?: unknown;
-	readonly streamKey?: string;
-	readonly streamConsumedAt?: number;
 	readonly committed: boolean;
 	readonly committedLeafId?: string;
 }
@@ -155,7 +153,7 @@ export interface CreateTurnJournalInput {
  * unique indexes is the adapter's choice. Verify an implementation with
  * `defineStoreContractTests` from `@flue/runtime/test-utils`.
  *
- * Stability: the turn-journal, stream-chunk, and lease method groups (and
+ * Stability: the turn-journal and lease method groups (and
  * the {@link AgentTurnJournalPhase} union) mirror the durable-execution
  * engine and are subject to change until 1.0. This applies to every
  * backend equally.
@@ -183,8 +181,8 @@ export interface AgentSubmissionStore {
 	// Turn journal lifecycle. Each submission has at most ONE journal slot.
 	/**
 	 * Create the submission's journal, or replace an existing one in place:
-	 * the new turn's identity and phase are written, stream and commit state
-	 * are reset, and the revision increases. Returns whether a journal was
+	 * the new turn's identity and phase are written, commit state is reset,
+	 * and the revision increases. Returns whether a journal was
 	 * written.
 	 */
 	beginTurnJournal(input: CreateTurnJournalInput): Promise<boolean>;
@@ -200,7 +198,6 @@ export interface AgentSubmissionStore {
 		options?: {
 			checkpointLeafId?: string;
 			toolRequest?: unknown;
-			streamKey?: string;
 		},
 	): Promise<boolean>;
 	/**
@@ -210,12 +207,6 @@ export interface AgentSubmissionStore {
 	 * leaves the stored commit untouched.
 	 */
 	commitTurnJournal(attempt: SubmissionAttemptRef, committedLeafId: string): Promise<boolean>;
-	/**
-	 * Stamp the journal's stream-consumed timestamp at most once. Succeeds
-	 * only when the uncommitted journal is owned by `attempt`, stores the
-	 * same `streamKey`, and has not been marked before; otherwise `false`.
-	 */
-	markStreamConsumed(attempt: SubmissionAttemptRef, streamKey: string): Promise<boolean>;
 	/**
 	 * Recovery handoff: atomically move a running submission and its
 	 * uncommitted journal from `attempt` to `nextAttemptId`, increment
@@ -228,17 +219,6 @@ export interface AgentSubmissionStore {
 		nextAttemptId: string,
 		lease?: { ownerId: string; leaseExpiresAt: number },
 	): Promise<AgentSubmission | null>;
-
-	// Stream chunks
-	/**
-	 * Insert a segment keyed by (`streamKey`, `segmentIndex`). When that key
-	 * already exists, return `false` WITHOUT overwriting the stored body.
-	 */
-	appendStreamChunkSegment(streamKey: string, segmentIndex: number, body: string): Promise<boolean>;
-	/** All segments for the stream, ordered by `segmentIndex` ascending. */
-	getStreamChunkSegments(streamKey: string): Promise<Array<{ segmentIndex: number; body: string }>>;
-	/** Remove every segment for the stream; a no-op when none exist. */
-	deleteStreamChunkSegments(streamKey: string): Promise<void>;
 
 	// Admission
 	/**

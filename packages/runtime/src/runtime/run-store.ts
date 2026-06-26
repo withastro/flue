@@ -136,10 +136,6 @@ export interface RunStore {
  * Per-chunk streaming events that are buffered before persistence.
  * These events are flushed at most once per interval (~3 s) to avoid
  * starting one storage write per streamed chunk during generation.
- *
- * Interrupted-stream recovery reads the separate throttled
- * StreamChunkWriter segments, and `message_end` carries the complete message
- * for history replay.
  */
 const BUFFERED_RUN_EVENT_TYPES: ReadonlySet<FlueEvent['type']> = new Set([
 	'text_delta',

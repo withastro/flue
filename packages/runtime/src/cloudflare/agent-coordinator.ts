@@ -26,8 +26,6 @@ import {
 	handleAgentConversationHead,
 	handleAgentConversationRead,
 } from '../runtime/handle-conversation-routes.ts';
-import { handleStreamHead, handleStreamRead } from '../runtime/handle-stream-routes.ts';
-import { isStreamExcludedEvent } from '../runtime/run-store.ts';
 import { deleteSessionTree } from '../session.ts';
 import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import {
@@ -237,23 +235,18 @@ class CloudflareAgentCoordinator {
 		const method = request.method;
 		if (method === 'GET' || method === 'HEAD') {
 			const streamPath = agentStreamPath(this.agentName, this.instance.name);
-			const view = new URL(request.url).searchParams.get('view');
-			if (view) {
-				if (method === 'HEAD') {
-					return await handleAgentConversationHead(
-						this.prepared.conversationStreamStore,
-						streamPath,
-					);
-				}
-				return handleAgentConversationRead({
-					store: this.prepared.conversationStreamStore,
-					snapshots: this.prepared.conversationSnapshotStore,
-					path: streamPath,
-					request,
-				});
+			if (method === 'HEAD') {
+				return await handleAgentConversationHead(
+					this.prepared.conversationStreamStore,
+					streamPath,
+				);
 			}
-			if (method === 'HEAD') return await handleStreamHead(this.eventStreamStore, streamPath);
-			return handleStreamRead({ store: this.eventStreamStore, path: streamPath, request });
+			return handleAgentConversationRead({
+				store: this.prepared.conversationStreamStore,
+				snapshots: this.prepared.conversationSnapshotStore,
+				path: streamPath,
+				request,
+			});
 		}
 
 		return this.runWithInstanceContext(() =>
@@ -261,7 +254,7 @@ class CloudflareAgentCoordinator {
 				request,
 				id: this.instance.name,
 				agentName: this.agentName,
-				eventStreamStore: this.eventStreamStore,
+				conversationStreamStore: this.prepared.conversationStreamStore,
 				admitAttachedSubmission: (payload, onEvent, waitForResult, traceCarrier) =>
 					this.admitAttachedSubmission(payload, onEvent, waitForResult, traceCarrier),
 			}),
@@ -323,23 +316,12 @@ class CloudflareAgentCoordinator {
 		});
 	}
 
-	/**
-	 * Create a context whose events are appended to the agent's durable event
-	 * stream. Used for both submission processing and reconciliation so events
-	 * emitted on either path (including reconciliation-driven settlement)
-	 * reach detached stream readers.
-	 */
 	private createDurableContext(
 		request: Request,
 		dispatchId?: string,
 	): FlueContextInternal {
 		const ctx = this.createContext(request, undefined, dispatchId);
 		ctx.setConversationWriter?.(this.conversationWriter);
-		const streamPath = agentStreamPath(this.agentName, this.instance.name);
-		ctx.subscribeEvent(async (event) => {
-			if (isStreamExcludedEvent(event) || event.type === 'submission_settled') return;
-			await this.eventStreamStore.appendEvent(streamPath, event);
-		});
 		return ctx;
 	}
 
@@ -387,8 +369,6 @@ class CloudflareAgentCoordinator {
 				const attempt = { submissionId: terminal.submissionId, attemptId: terminal.attemptId };
 				await this.submissions.recordSubmissionTerminalOffset(attempt, terminal.eventKey, offset);
 				if (await this.submissions.finalizeSubmissionTerminal(attempt, terminal.eventKey)) {
-					const journal = await this.submissions.getTurnJournal(terminal.submissionId);
-					if (journal?.streamKey) await this.submissions.deleteStreamChunkSegments(journal.streamKey);
 					const event = terminal.event as {
 						outcome?: 'completed' | 'failed';
 						result?: unknown;
@@ -496,16 +476,6 @@ class CloudflareAgentCoordinator {
 		const conversationWriter = await this.ensureConversationWriter();
 		const agent = this.options.agents.find((record) => record.name === this.agentName)?.definition;
 		if (!agent) throw new Error('[flue] Agent target unavailable during durable reconciliation.');
-		// Ensure the agent event stream exists (idempotent, normally created
-		// at first accepted processing) so a settlement event emitted during
-		// reconciliation lands durably even when the previous incarnation
-		// died before creating it. Best-effort: settlement must never depend
-		// on event-stream plumbing.
-		await Promise.resolve(
-			this.eventStreamStore.createStream(agentStreamPath(this.agentName, this.instance.name)),
-		).catch((error) => {
-			console.error('[flue:event-stream] createStream failed:', error);
-		});
 		const reconciled = await this.runWithInstanceContext(() =>
 			reconcileInterruptedSubmission(
 				this.submissions,
@@ -621,9 +591,6 @@ class CloudflareAgentCoordinator {
 
 	private async processSubmissionEntry(submission: AgentSubmission): Promise<void> {
 		const conversationWriter = await this.ensureConversationWriter();
-		// Ensure the agent event stream exists before processing. createStream
-		// is idempotent — safe to call on every submission.
-		await this.eventStreamStore.createStream(agentStreamPath(this.agentName, this.instance.name));
 		await processSubmission({
 			submissions: this.submissions,
 			submission,

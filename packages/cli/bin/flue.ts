@@ -4,7 +4,7 @@ import * as fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { type ParseArgsOptionsConfig, parseArgs as parseNodeArgs } from 'node:util';
-import type { FlueEvent } from '@flue/sdk';
+import type { AgentConversationUpdate, FlueEvent } from '@flue/sdk';
 import { determineAgent } from '@vercel/detect-agent';
 import MiniSearch from 'minisearch';
 import pc from 'picocolors';
@@ -860,13 +860,13 @@ async function run(args: RunArgs) {
 		const completed = await runTarget(
 			execution.client,
 			target,
-			(event: FlueEvent) => {
+			(event: AgentConversationUpdate | FlueEvent) => {
 				if (!runIdShown && event.type === 'run_start') {
 					runIdShown = true;
 					row('run', event.runId);
 					console.error('');
 				}
-				presenter.present(event);
+				if (event.v === 3) presenter.present(event);
 			},
 			lifecycle.signal,
 		);

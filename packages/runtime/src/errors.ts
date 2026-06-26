@@ -475,19 +475,6 @@ export class ConversationStreamStoreError extends FlueError {
 	}
 }
 
-export class StreamChunkSegmentTooLargeError extends FlueError {
-	constructor({ serializedBytes, maximumBytes }: { serializedBytes: number; maximumBytes: number }) {
-		super({
-			type: 'stream_chunk_segment_too_large',
-			message: `Stream recovery segment is too large to persist (${serializedBytes} bytes; maximum ${maximumBytes} bytes).`,
-			details: 'The model produced more recovery data in one flush interval than the persistence backend can store safely.',
-			dev: 'Reduce individual streamed output size or increase stream flush frequency before retrying.',
-			meta: { serializedBytes, maximumBytes },
-		});
-		this.name = 'StreamChunkSegmentTooLargeError';
-	}
-}
-
 export class PersistedSchemaVersionError extends FlueError {
 	constructor({
 		storedVersion,

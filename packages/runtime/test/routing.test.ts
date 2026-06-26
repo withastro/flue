@@ -2,11 +2,10 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createFlueContext } from '../src/client.ts';
-import { defineAgent, defineWorkflow } from '../src/index.ts';
 import { ModelNotConfiguredError } from '../src/errors.ts';
+import { defineAgent, defineWorkflow } from '../src/index.ts';
 import { InMemoryRunStore } from '../src/node/run-store.ts';
 import { MAX_IMAGE_DATA_LENGTH } from '../src/persisted-images.ts';
-import { agentStreamPath } from '../src/runtime/event-stream-store.ts';
 import {
 	configureFlueRuntime,
 	createDefaultFlueApp,
@@ -399,67 +398,6 @@ describe('flue()', () => {
 		expect(((await response.json()) as { error: { type: string } }).error.type).toBe(
 			'invalid_request',
 		);
-	});
-
-	it("captures the prompt tail offset and serves exactly that prompt's events from it", async () => {
-		const store = createTestEventStreamStore();
-		configureFlueRuntime(nodeRuntime({
-			target: 'node',
-			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
-			createAgentAdmission: (_agentName, id) => async (payload) => {
-					await store.createStream(agentStreamPath('assistant', id));
-					await store.appendEvent(agentStreamPath('assistant', id), {
-						type: 'message',
-						text: (payload as { message: string }).message,
-						v: 3,
-						eventIndex: 0,
-						timestamp: '2026-06-22T00:00:00.000Z',
-					});
-					return { submissionId: `submission-${(payload as { message: string }).message}` };
-				},
-			createWorkflowContext: createTestContext,
-			eventStreamStore: store,
-		}));
-		const app = new Hono();
-		app.route('/api', flue());
-
-		const prompt = (message: string) =>
-			app.fetch(
-				new Request('http://localhost/api/agents/assistant/customer-123', {
-					method: 'POST',
-					headers: { 'content-type': 'application/json' },
-					body: JSON.stringify({ message }),
-				}),
-			);
-
-		// First prompt on a fresh instance: the captured tail is the start sentinel.
-		const first = await prompt('hello');
-		expect(first.status).toBe(202);
-		const firstBody = (await first.json()) as { streamUrl: string; offset: string };
-		expect(firstBody.offset).toBe('-1');
-
-		// The accepted streamUrl is immediately readable — not a blank 404.
-		const fullRead = await app.fetch(new Request(firstBody.streamUrl));
-		expect(fullRead.status).toBe(200);
-		expect(await fullRead.json()).toEqual([
-			expect.objectContaining({ type: 'message', text: 'hello', v: 3 }),
-		]);
-
-		// Second prompt: the captured offset is the real stream tail before
-		// this prompt's first event, not a degenerate constant.
-		const second = await prompt('again');
-		expect(second.status).toBe(202);
-		const secondBody = (await second.json()) as { streamUrl: string; offset: string };
-		expect(secondBody.offset).toMatch(/^\d{16}_\d{16}$/);
-
-		// Reading from that offset returns exactly the second prompt's events.
-		const offsetRead = await app.fetch(
-			new Request(`${secondBody.streamUrl}?offset=${secondBody.offset}`),
-		);
-		expect(offsetRead.status).toBe(200);
-		expect(await offsetRead.json()).toEqual([
-			expect.objectContaining({ type: 'message', text: 'again', v: 3 }),
-		]);
 	});
 
 	it("keeps the agent stream unreadable when the instance's only prompt fails admission", async () => {

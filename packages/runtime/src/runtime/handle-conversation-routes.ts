@@ -33,7 +33,7 @@ export async function handleAgentConversationRead(options: {
 	request: Request;
 }): Promise<Response> {
 	const url = new URL(options.request.url);
-	const view = url.searchParams.get('view');
+	const view = url.searchParams.get('view') ?? 'history';
 	if (view === 'history') return historyResponse(options, selectorFrom(url));
 	if (view === 'updates') return updatesResponse(options, selectorFrom(url));
 	if (view === 'activity') return activityResponse(options);

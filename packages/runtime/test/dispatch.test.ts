@@ -372,7 +372,7 @@ describe('dispatched session processing', () => {
 		expect(data?.entries[0]).not.toHaveProperty('dispatch');
 	});
 
-	it('does not commit the journal or delete stream chunks when a turn ends aborted', async () => {
+	it('does not commit the journal when a turn ends aborted', async () => {
 		const provider = createProvider();
 		provider.setResponses([
 			fauxAssistantMessage('partial output collected before the abort', {
@@ -381,20 +381,7 @@ describe('dispatched session processing', () => {
 			}),
 		]);
 		const store = new InMemorySessionStore();
-		const chunkSegments: Array<{ streamKey: string; body: string }> = [];
-		const deletedStreamKeys: string[] = [];
-		// Documented narrow fake: the session only touches the stream-chunk
-		// subset of the submission store during processing.
-		const submissionStore = {
-			appendStreamChunkSegment: async (streamKey: string, _segmentIndex: number, body: string) => {
-				chunkSegments.push({ streamKey, body });
-				return true;
-			},
-			getStreamChunkSegments: async () => [],
-			deleteStreamChunkSegments: async (streamKey: string) => {
-				deletedStreamKeys.push(streamKey);
-			},
-		} as unknown as import('../src/agent-execution-store.ts').AgentSubmissionStore;
+		const submissionStore = {} as import('../src/agent-execution-store.ts').AgentSubmissionStore;
 		const journalCommits: string[] = [];
 		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
@@ -438,30 +425,16 @@ describe('dispatched session processing', () => {
 			)(ctx),
 		).rejects.toBeInstanceOf(OperationFailedError);
 
-		// The aborted turn is not durable progress: the journal must stay
-		// uncommitted and the persisted partial-stream chunks must survive so
-		// restart reconciliation can recover the interrupted stream.
 		expect(journalCommits).toEqual([]);
-		expect(deletedStreamKeys).toEqual([]);
-		expect(chunkSegments.length).toBeGreaterThan(0);
 	});
 
-	it('does not commit the journal or delete stream chunks when a turn ends with a model error', async () => {
+	it('does not commit the journal when a turn ends with a model error', async () => {
 		const provider = createProvider();
 		provider.setResponses([
 			fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'invalid_api_key' }),
 		]);
 		const store = new InMemorySessionStore();
-		const deletedStreamKeys: string[] = [];
-		// Documented narrow fake: the session only touches the stream-chunk
-		// subset of the submission store during processing.
-		const submissionStore = {
-			appendStreamChunkSegment: async () => true,
-			getStreamChunkSegments: async () => [],
-			deleteStreamChunkSegments: async (streamKey: string) => {
-				deletedStreamKeys.push(streamKey);
-			},
-		} as unknown as import('../src/agent-execution-store.ts').AgentSubmissionStore;
+		const submissionStore = {} as import('../src/agent-execution-store.ts').AgentSubmissionStore;
 		const journalCommits: string[] = [];
 		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
@@ -506,7 +479,6 @@ describe('dispatched session processing', () => {
 		).rejects.toBeInstanceOf(OperationFailedError);
 
 		expect(journalCommits).toEqual([]);
-		expect(deletedStreamKeys).toEqual([]);
 	});
 
 	it('persists one provider-visible terminal advisory when an interrupted submission cannot replay safely', async () => {

@@ -636,33 +636,6 @@ export function defineStoreContractTests(label: string, backend: StoreContractTe
 			});
 		});
 
-		// ── Stream chunks ────────────────────────────────────────────────
-
-		describe('stream chunks', () => {
-			it('saves, reads, and deletes ordered stream segments', async () => {
-				const store = await create();
-				await store.submissions.appendStreamChunkSegment('stream-1', 0, '["a"]');
-				await store.submissions.appendStreamChunkSegment('stream-1', 1, '["b"]');
-				expect(await store.submissions.getStreamChunkSegments('stream-1')).toEqual([
-					{ segmentIndex: 0, body: '["a"]' },
-					{ segmentIndex: 1, body: '["b"]' },
-				]);
-				await store.submissions.deleteStreamChunkSegments('stream-1');
-				expect(await store.submissions.getStreamChunkSegments('stream-1')).toEqual([]);
-			});
-
-			it('rejects duplicate stream segment indexes', async () => {
-				const store = await create();
-				expect(await store.submissions.appendStreamChunkSegment('stream-1', 0, '["a"]')).toBe(true);
-				expect(await store.submissions.appendStreamChunkSegment('stream-1', 0, '["b"]')).toBe(
-					false,
-				);
-				expect(await store.submissions.getStreamChunkSegments('stream-1')).toEqual([
-					{ segmentIndex: 0, body: '["a"]' },
-				]);
-			});
-		});
-
 		// ── Turn journal lifecycle ────────────────────────────────────────
 
 		describe('turn journal lifecycle', () => {
@@ -686,9 +659,6 @@ export function defineStoreContractTests(label: string, backend: StoreContractTe
 					await store.submissions.updateTurnJournalPhase(
 						attempt('dispatch-1', 'attempt-1'),
 						'provider_started',
-						{
-							streamKey: 'dispatch-1:turn-1:attempt-1',
-						},
 					),
 				).toBe(true);
 				expect(
@@ -703,7 +673,6 @@ export function defineStoreContractTests(label: string, backend: StoreContractTe
 				expect(await store.submissions.getTurnJournal('dispatch-1')).toMatchObject({
 					phase: 'tool_request_recorded',
 					committed: false,
-					streamKey: 'dispatch-1:turn-1:attempt-1',
 					toolRequest: { toolCalls: ['lookup'] },
 				});
 				expect(
@@ -713,43 +682,6 @@ export function defineStoreContractTests(label: string, backend: StoreContractTe
 					phase: 'committed',
 					committed: true,
 					committedLeafId: 'leaf-1',
-				});
-			});
-
-			it('marks a stream as consumed once', async () => {
-				const store = await create();
-				await store.submissions.admitDispatch(dispatchInput());
-				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
-				await store.submissions.beginTurnJournal({
-					submissionId: 'dispatch-1',
-					sessionKey: 'agent-session:["agent-1","default","default"]',
-					kind: 'dispatch',
-					attemptId: 'attempt-1',
-					operationId: 'op-1',
-					turnId: 'turn-1',
-					phase: 'before_provider',
-				});
-				await store.submissions.updateTurnJournalPhase(
-					attempt('dispatch-1', 'attempt-1'),
-					'provider_started',
-					{
-						streamKey: 'dispatch-1:turn-1:attempt-1',
-					},
-				);
-				expect(
-					await store.submissions.markStreamConsumed(
-						attempt('dispatch-1', 'attempt-1'),
-						'dispatch-1:turn-1:attempt-1',
-					),
-				).toBe(true);
-				expect(
-					await store.submissions.markStreamConsumed(
-						attempt('dispatch-1', 'attempt-1'),
-						'dispatch-1:turn-1:attempt-1',
-					),
-				).toBe(false);
-				expect(await store.submissions.getTurnJournal('dispatch-1')).toMatchObject({
-					streamConsumedAt: expect.any(Number),
 				});
 			});
 

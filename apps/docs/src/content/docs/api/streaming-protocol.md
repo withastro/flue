@@ -1,99 +1,66 @@
 ---
 title: Streaming Protocol
-description: Reference for reading Flue agent and workflow event streams over Durable Streams.
-lastReviewedAt: 2026-06-20
+description: Reference for reading Flue agent conversations and workflow events over Durable Streams.
+lastReviewedAt: 2026-06-26
 ---
 
-Flue implements the [Durable Streams](https://durablestreams.com) read protocol for agent-instance and workflow-run events. This page is for raw HTTP consumers. SDK users usually use `client.agents.stream()`, `client.runs.stream()`, or `client.runs.events()` instead.
+Flue uses Durable Streams offsets for agent conversations and workflow-run events. SDK users should use `client.agents.history()` and `client.agents.updates()` for agents, or `client.runs.stream()` and `client.runs.events()` for workflows.
 
 ## Stream routes
 
-| Route                    | Purpose                                    |
-| ------------------------ | ------------------------------------------ |
-| `GET /agents/:name/:id`  | Read one agent instance stream.            |
-| `HEAD /agents/:name/:id` | Read agent stream metadata without a body. |
-| `GET /runs/:runId`       | Read one workflow-run stream.              |
-| `HEAD /runs/:runId`      | Read workflow-run metadata without a body. |
+| Route | Purpose |
+| --- | --- |
+| `GET /agents/:name/:id?view=history` | Read one materialized agent conversation snapshot. |
+| `GET /agents/:name/:id?view=updates&offset=...` | Read conversation updates after an offset. |
+| `GET /agents/:name/:id?view=activity&offset=...` | Read raw canonical activity after an offset. |
+| `HEAD /agents/:name/:id` | Read agent stream metadata. |
+| `GET /runs/:runId` | Read workflow-run events. |
+| `HEAD /runs/:runId` | Read workflow-run stream metadata. |
 
-Agent streams exist after the first admitted prompt for that instance. Workflow-run streams are readable only when the owning workflow exports `runs` middleware and it authorizes the request. Unknown, removed, and unexposed runs all return `404`.
+A plain agent `GET` defaults to the history view. Agent views select the active `default` harness and session unless `conversationId`, `harness`, or `session` is provided.
 
-## Read modes
+## Agent history and updates
 
-A plain `GET` performs a catch-up read and returns a JSON array of event payloads.
+History returns one JSON snapshot after reducing the complete physical stream prefix. Its `offset` is the physical agent-instance tail, including records omitted from that conversation's projection.
+
+Updates require `offset` and resume strictly after it. Use `live=long-poll` for one waitable read or `live=sse` for a continuous stream. Do not resume without retaining the projection state produced by the matching history snapshot; request fresh history when local state is unavailable.
+
+Agent history and updates do not support `tail`. A suffix can omit message starts, branches, compaction state, or earlier deltas and cannot be reduced safely.
+
+## Workflow reads
+
+A plain workflow-run `GET` performs a catch-up read and returns a JSON array of versioned workflow events.
 
 ```http
 GET /runs/run_01JX...?offset=-1
-```
-
-Use `?live=long-poll` for one waitable read, or `?live=sse` for a continuous event stream. Live reads require `offset`.
-
-```http
-GET /runs/run_01JX...?offset=0000000000000000_0000000000000005&live=long-poll
 GET /runs/run_01JX...?offset=0000000000000000_0000000000000005&live=sse
 ```
 
-Supported `live` values are `long-poll` and `sse`. Any other value, duplicate `offset` parameter, malformed offset, or live request without `offset` returns `400`.
-
-A long-poll read waits up to 30 seconds for new data before returning `204`. An idle SSE connection receives `: heartbeat` comment frames every 15 seconds and a keep-alive control frame after each 30-second internal wait.
+Workflow-run streams retain `tail=N` for bounded event inspection.
 
 ## Offsets
 
-Offsets are opaque Durable Streams coordinates. Flue currently formats them as two zero-padded integer components, such as `0000000000000000_0000000000000005`. Consumers should treat them as opaque strings and pass back the latest returned value rather than parsing them.
+Offsets are opaque resume-after tokens. Pass returned values back unchanged; do not parse or increment them.
 
-| Offset          | Meaning                                                                                    |
-| --------------- | ------------------------------------------------------------------------------------------ |
-| `-1`            | Read from the beginning of the stream.                                                     |
-| `now`           | Read from the current tail. In live mode, wait for events appended after the current tail. |
-| Returned offset | Resume strictly after that event.                                                          |
-
-The SDK exposes a resume offset as `stream.offset`. It is batch-granular: it advances only after every event in the fetched batch has been delivered. Resuming from a checkpoint does not skip undelivered events, though it can re-deliver an in-flight batch. An event's `eventIndex` identifies and orders it within its runtime context; it is not a stream offset. `agents.send()` and `agents.prompt()` return an offset captured before that prompt is admitted, so reading from that offset yields that prompt's events. Workflow invocation returns only `runId`; start an exposed run stream from `-1` to read its history.
-
-## Recent history with `tail`
-
-`tail=N` modifies the `-1` start sentinel — "from the beginning, but at most the last N events."
-
-This extension applies to agent and workflow-run `GET` routes. It changes only the initial position: it has no effect with `offset=now` or a concrete offset, including the concrete offsets used when a client reconnects. A value larger than the stream returns its full history.
-
-`tail` must occur once and be an integer greater than or equal to 1. Zero, negative values, non-integers, and duplicate parameters return `400`. There is no upper cap; server read batching remains independent of the requested starting position.
-
-```http
-GET /agents/support/ticket-42?offset=-1&tail=100
-GET /runs/run_01JX...?offset=-1&tail=100
-```
+One agent offset identifies one atomic canonical record batch. SDK stream checkpoints advance only after every public update derived from that batch has been delivered. A filtered batch may advance the offset without producing an update.
 
 ## Response headers
 
-| Header               | Meaning                                                                                                                                |
-| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| `Stream-Next-Offset` | Offset to use for the next read.                                                                                                       |
-| `Stream-Up-To-Date`  | `true` when the read reached the current tail.                                                                                         |
-| `Stream-Closed`      | `true` when the stream is closed and no more events can arrive.                                                                        |
-| `Stream-Cursor`      | Cursor for long-poll continuation.                                                                                                     |
-| `ETag`               | Cache validator for catch-up and long-poll reads except `offset=now`.                                                                  |
-| `Cache-Control`      | `no-store` on catch-up reads, long-poll `200` responses, and `HEAD`; `no-cache` on SSE responses; absent on long-poll `204` responses. |
+| Header | Meaning |
+| --- | --- |
+| `Stream-Next-Offset` | Offset to use for the next read. |
+| `Stream-Up-To-Date` | `true` when the read reached the current tail. |
+| `Stream-Closed` | `true` when no more records can arrive. |
+| `Stream-Cursor` | Cursor for long-poll continuation. |
 
-A conditional catch-up read with `If-None-Match` may return `304`. `offset=now` does not emit an ETag because its meaning is relative to the time of the request. `HEAD` returns stream metadata with the same stream headers and no body.
-
-## Status behavior
-
-| Status | Meaning                                                                                                                                                                                        |
-| ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `200`  | Read returned event data. Catch-up and long-poll bodies are JSON arrays.                                                                                                                       |
-| `204`  | Long-poll reached its 30-second timeout without new data.                                                                                                                                      |
-| `304`  | Conditional read matched the current ETag.                                                                                                                                                     |
-| `400`  | Invalid stream query.                                                                                                                                                                          |
-| `404`  | Stream does not exist or is not accessible. Agent streams use the `stream_not_found` error category; run streams use `run_not_found`. See the [Errors Reference](/docs/api/errors-reference/). |
-
-A closed stream can still return stored history. Once caught up, its response includes `Stream-Closed: true`. Long-poll returns immediately for a closed, caught-up stream.
+Catch-up responses use `Cache-Control: no-store`; SSE uses `Cache-Control: no-cache`.
 
 ## SSE framing
 
-SSE responses use named frames:
+SSE responses contain:
 
-- `event: data` frames whose `data:` payload is a JSON **array** of event payloads. One frame may carry multiple events.
-- `event: control` frames whose payload is a JSON object containing `streamNextOffset` and, depending on stream state, `streamCursor`, `upToDate`, and `streamClosed`. Flue emits a control frame after each data batch and as a keep-alive while an open stream stays idle.
-- `: heartbeat` comment frames every 15 seconds to keep idle connections alive.
+- `event: data` frames with a JSON array of updates or events;
+- `event: control` frames with `streamNextOffset` and optional `upToDate` or `streamClosed` fields;
+- heartbeat comments on idle connections.
 
-Consumers that only need event payloads can read `event: data` frames and ignore control and heartbeat frames, but should track `streamNextOffset` from control frames to resume correctly after a disconnect.
-
-SSE is intended for live tailing, not browser caching. Flue sends `Cache-Control: no-cache` on SSE responses (matching the Durable Streams reference server) and does not rely on intermediary cacheability for stream reads.
+Track `streamNextOffset` from control frames to resume after a disconnect.

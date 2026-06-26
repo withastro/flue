@@ -1,13 +1,14 @@
 import type { BackoffOptions } from '@durable-streams/client';
 import type { HttpClient } from '../http.ts';
+import type { FlueEvent, RunRecord } from '../types.ts';
+import type { AgentConversationUpdate } from './conversation.ts';
 import type { AgentSendResult } from './invoke.ts';
 import { createFlueEventStream } from './stream.ts';
-import type { AttachedAgentEvent, FlueEvent, RunRecord } from '../types.ts';
 
 export interface AgentWaitOptions {
 	signal?: AbortSignal;
 	backoffOptions?: BackoffOptions;
-	onEvent?: (event: AttachedAgentEvent) => void | Promise<void>;
+	onEvent?: (event: AgentConversationUpdate) => void | Promise<void>;
 }
 
 export interface WorkflowRunOptions {
@@ -51,26 +52,30 @@ export async function waitForAgentSubmission<TResult>(
 	admission: AgentSendResult,
 	options: AgentWaitOptions = {},
 ): Promise<TResult> {
-	const stream = createFlueEventStream<AttachedAgentEvent>(
+	const url = new URL(admission.streamUrl);
+	url.searchParams.set('view', 'updates');
+	const stream = createFlueEventStream<AgentConversationUpdate>(
 		{
 			offset: admission.offset,
 			signal: options.signal,
 			backoffOptions: options.backoffOptions,
 		},
-		{ url: admission.streamUrl, fetch: http.fetchWithHeaders.bind(http) },
+		{ url: url.toString(), fetch: http.fetchWithHeaders.bind(http) },
+		assertConversationUpdate,
 	);
 
 	for await (const event of stream) {
-		if (event.submissionId !== admission.submissionId) continue;
+		if (event.type !== 'conversation_record') continue;
+		if (event.record.submissionId !== admission.submissionId) continue;
 		await options.onEvent?.(event);
 		throwIfAborted(options.signal);
-		if (event.type !== 'submission_settled') continue;
-		if (event.outcome === 'completed') return event.result as TResult;
+		if (event.record.type !== 'submission_settled') continue;
+		if (event.record.outcome === 'completed') return event.record.result as TResult;
 		throw new FlueExecutionError({
 			target: 'agent_submission',
 			targetId: admission.submissionId,
 			failure: 'failed',
-			error: event.error,
+			error: event.record.error,
 		});
 	}
 
@@ -80,6 +85,18 @@ export async function waitForAgentSubmission<TResult>(
 		targetId: admission.submissionId,
 		failure: 'terminal_event_missing',
 	});
+}
+
+function assertConversationUpdate(value: AgentConversationUpdate): AgentConversationUpdate {
+	if (
+		!value ||
+		typeof value !== 'object' ||
+		value.v !== 1 ||
+		(value.type !== 'conversation_record' && value.type !== 'conversation_reset')
+	) {
+		throw new TypeError('Unsupported agent conversation update.');
+	}
+	return value;
 }
 
 export async function runWorkflow<TResult>(

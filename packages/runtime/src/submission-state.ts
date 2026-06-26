@@ -47,8 +47,8 @@ import type { MessageEntry, SessionEntry } from './types.ts';
  *   result, synthesize interrupted-markers for the unresolved calls — and
  *   only then continue (see `findTrailingPartialToolBatch`).
  * - `stream_continuation` — an aborted response already recovered from
- *   persisted stream chunks (a `stream_continued` signal follows it);
- *   continue from the recovered partial.
+ *   canonical deltas (a `stream_continued` signal follows it); continue from
+ *   the recovered partial.
  * - `transient_retry` — a retryable model error; wait out the backoff and
  *   retry the turn.
  * - `overflow` — a context-overflow response; compact and retry the turn.
@@ -56,7 +56,7 @@ import type { MessageEntry, SessionEntry } from './types.ts';
  *   continuation (e.g. checkpointed when graceful shutdown aborted the
  *   turn). The partial is excluded from model context, so resuming replays
  *   the turn from the last durable user/toolResult message; the collected
- *   partial output stays preserved in history. When durable stream chunks
+ *   partial output stays preserved in history. When canonical partial deltas
  *   exist, reconciliation upgrades this state to `stream_continuation` via
  *   `recoverInterruptedStream` before processing resumes.
  */

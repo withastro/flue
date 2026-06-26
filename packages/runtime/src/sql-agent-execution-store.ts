@@ -36,8 +36,8 @@ import type {
 	AgentTurnJournalPhase,
 	CreateTurnJournalInput,
 	SubmissionAttemptRef,
-	SubmissionTerminalOutbox,
 	SubmissionClaimRef,
+	SubmissionTerminalOutbox,
 } from './agent-execution-store.ts';
 import {
 	DURABILITY_DEFAULT_MAX_ATTEMPTS,
@@ -216,7 +216,7 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 			.exec(
 				`SELECT submission_id, session_key, kind, attempt_id, operation_id, turn_id,
 					        phase, revision, created_at, updated_at, checkpoint_leaf_id,
-					        tool_request_json, stream_key, stream_consumed_at, committed, committed_leaf_id
+					        tool_request_json, committed, committed_leaf_id
 				 FROM flue_agent_turn_journals
 				 WHERE submission_id = ?
 				 LIMIT 1`,
@@ -234,8 +234,8 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 					`INSERT INTO flue_agent_turn_journals
 					 (submission_id, session_key, kind, attempt_id, operation_id, turn_id,
 						  phase, revision, created_at, updated_at, checkpoint_leaf_id,
-						  tool_request_json, stream_key, stream_consumed_at, committed, committed_leaf_id)
-							 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL, NULL, 0, NULL)
+						  tool_request_json, committed, committed_leaf_id)
+							 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 0, NULL)
 						 ON CONFLICT(submission_id) DO UPDATE SET
 						  attempt_id = excluded.attempt_id,
 						  operation_id = excluded.operation_id,
@@ -245,8 +245,6 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 						  updated_at = excluded.updated_at,
 						  checkpoint_leaf_id = excluded.checkpoint_leaf_id,
 						  tool_request_json = excluded.tool_request_json,
-						  stream_key = NULL,
-						  stream_consumed_at = NULL,
 						  committed = 0,
 						  committed_leaf_id = NULL
 						 RETURNING submission_id`,
@@ -269,7 +267,7 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 	async updateTurnJournalPhase(
 		attempt: SubmissionAttemptRef,
 		phase: AgentTurnJournalPhase,
-		options: { checkpointLeafId?: string; toolRequest?: unknown; streamKey?: string } = {},
+		options: { checkpointLeafId?: string; toolRequest?: unknown } = {},
 	): Promise<boolean> {
 		const now = Date.now();
 		return (
@@ -278,15 +276,13 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 					`UPDATE flue_agent_turn_journals
 					 SET phase = ?, revision = revision + 1, updated_at = ?,
 						     checkpoint_leaf_id = COALESCE(?, checkpoint_leaf_id),
-						     tool_request_json = COALESCE(?, tool_request_json),
-						     stream_key = COALESCE(?, stream_key)
+						     tool_request_json = COALESCE(?, tool_request_json)
 					 WHERE submission_id = ? AND attempt_id = ? AND committed = 0
 					 RETURNING submission_id`,
 					phase,
 					now,
 					options.checkpointLeafId ?? null,
 					options.toolRequest === undefined ? null : JSON.stringify(options.toolRequest),
-					options.streamKey ?? null,
 					attempt.submissionId,
 					attempt.attemptId,
 				)
@@ -314,70 +310,6 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				)
 				.toArray().length > 0
 		);
-	}
-
-	async markStreamConsumed(attempt: SubmissionAttemptRef, streamKey: string): Promise<boolean> {
-		const now = Date.now();
-		return (
-			this.sql
-				.exec(
-					`UPDATE flue_agent_turn_journals
-					 SET revision = revision + 1, updated_at = ?, stream_consumed_at = ?
-					 WHERE submission_id = ? AND attempt_id = ? AND committed = 0
-					   AND stream_key = ? AND stream_consumed_at IS NULL
-					 RETURNING submission_id`,
-					now,
-					now,
-					attempt.submissionId,
-					attempt.attemptId,
-					streamKey,
-				)
-				.toArray().length > 0
-		);
-	}
-
-	async appendStreamChunkSegment(
-		streamKey: string,
-		segmentIndex: number,
-		body: string,
-	): Promise<boolean> {
-		return (
-			this.sql
-				.exec(
-					`INSERT OR IGNORE INTO flue_agent_stream_chunks
-					 (stream_key, segment_index, body)
-					 VALUES (?, ?, ?)
-					 RETURNING stream_key`,
-					streamKey,
-					segmentIndex,
-					body,
-				)
-				.toArray().length > 0
-		);
-	}
-
-	async getStreamChunkSegments(
-		streamKey: string,
-	): Promise<Array<{ segmentIndex: number; body: string }>> {
-		const rows = this.sql
-			.exec(
-				`SELECT segment_index, body
-				 FROM flue_agent_stream_chunks
-				 WHERE stream_key = ?
-				 ORDER BY segment_index ASC`,
-				streamKey,
-			)
-			.toArray();
-		return rows.map((row) => {
-			if (typeof row.segment_index !== 'number' || typeof row.body !== 'string') {
-				throw new Error('[flue] Persisted stream chunk row is malformed.');
-			}
-			return { segmentIndex: row.segment_index, body: row.body };
-		});
-	}
-
-	async deleteStreamChunkSegments(streamKey: string): Promise<void> {
-		this.sql.exec('DELETE FROM flue_agent_stream_chunks WHERE stream_key = ?', streamKey);
 	}
 
 	async replaceTurnJournalAttempt(
@@ -647,18 +579,6 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				 SELECT submission_id, accepted_at
 				 FROM flue_agent_submissions
 				 WHERE session_key = ? AND kind = 'dispatch' AND status = 'settled' AND accepted_at <= ?`,
-				sessionKey,
-				startedAt,
-			);
-			// Clean up orphaned stream chunks for journals belonging to deleted submissions.
-			this.sql.exec(
-				`DELETE FROM flue_agent_stream_chunks
-				 WHERE stream_key IN (
-				   SELECT j.stream_key FROM flue_agent_turn_journals j
-				   INNER JOIN flue_agent_submissions s ON j.submission_id = s.submission_id
-				   WHERE s.session_key = ? AND s.status = 'settled' AND s.accepted_at <= ?
-				     AND j.stream_key IS NOT NULL
-				 )`,
 				sessionKey,
 				startedAt,
 			);
@@ -1026,12 +946,6 @@ function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 		(row.checkpoint_leaf_id !== null &&
 			row.checkpoint_leaf_id !== undefined &&
 			typeof row.checkpoint_leaf_id !== 'string') ||
-		(row.stream_key !== null &&
-			row.stream_key !== undefined &&
-			typeof row.stream_key !== 'string') ||
-		(row.stream_consumed_at !== null &&
-			row.stream_consumed_at !== undefined &&
-			typeof row.stream_consumed_at !== 'number') ||
 		(row.committed !== 0 && row.committed !== 1) ||
 		(row.committed_leaf_id !== null &&
 			row.committed_leaf_id !== undefined &&
@@ -1055,10 +969,6 @@ function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 			: {}),
 		...(typeof row.tool_request_json === 'string'
 			? { toolRequest: JSON.parse(row.tool_request_json) as unknown }
-			: {}),
-		...(typeof row.stream_key === 'string' ? { streamKey: row.stream_key } : {}),
-		...(typeof row.stream_consumed_at === 'number'
-			? { streamConsumedAt: row.stream_consumed_at }
 			: {}),
 		committed: row.committed === 1,
 		...(typeof row.committed_leaf_id === 'string'
@@ -1207,18 +1117,8 @@ function ensureTurnJournalTable(sql: SqlStorage): void {
 		 updated_at INTEGER NOT NULL,
 		 checkpoint_leaf_id TEXT,
 		 tool_request_json TEXT,
-		 stream_key TEXT,
-		 stream_consumed_at INTEGER,
 		 committed INTEGER NOT NULL DEFAULT 0,
 		 committed_leaf_id TEXT
-		)`,
-	);
-	sql.exec(
-		`CREATE TABLE IF NOT EXISTS flue_agent_stream_chunks (
-		 stream_key TEXT NOT NULL,
-		 segment_index INTEGER NOT NULL,
-		 body TEXT NOT NULL,
-		 PRIMARY KEY (stream_key, segment_index)
 		)`,
 	);
 }

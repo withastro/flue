@@ -23,7 +23,6 @@ import type { AgentInteractionStart } from '../runtime/dev-lifecycle-logger.ts';
 import type { DispatchInput, DispatchQueue } from '../runtime/dispatch-queue.ts';
 import { agentStreamPath } from '../runtime/event-stream-store.ts';
 import type { CreateAgentContextFn } from '../runtime/handle-agent.ts';
-import { isStreamExcludedEvent } from '../runtime/run-store.ts';
 import type { RuntimeActivityGate, RuntimeActivityLease } from '../runtime/runtime-activity-gate.ts';
 import { deleteSessionTree } from '../session.ts';
 import type {
@@ -202,13 +201,6 @@ export function createNodeAgentCoordinator(options: {
 				dispatchId,
 			});
 			ctx.setConversationWriter?.(writer);
-			// Subscribe to events for durable agent event persistence.
-			// createStream is called before processSubmission (see spawnSubmissionTask).
-			const streamPath = agentStreamPath(input.agent, input.id);
-			ctx.subscribeEvent(async (event) => {
-				if (isStreamExcludedEvent(event) || event.type === 'submission_settled') return;
-				await eventStreamStore.appendEvent(streamPath, event);
-			});
 			return ctx;
 		};
 	}
@@ -228,11 +220,6 @@ export function createNodeAgentCoordinator(options: {
 	function spawnSubmissionTask(claimed: AgentSubmission): void {
 		const controller = new AbortController();
 		const task = (async () => {
-			// Ensure the agent event stream exists before processing.
-			// createStream is idempotent — safe to call on every submission.
-			// Must complete before processSubmission so appendEvent calls
-			// in the subscribeEvent callback don't hit a missing stream.
-			await eventStreamStore.createStream(agentStreamPath(claimed.input.agent, claimed.input.id));
 			const conversationWriter = await getConversationWriter(claimed.input);
 			return processSubmission({
 				submissions,
@@ -451,8 +438,6 @@ export function createNodeAgentCoordinator(options: {
 			const attempt = { submissionId: terminal.submissionId, attemptId: terminal.attemptId };
 			await submissions.recordSubmissionTerminalOffset(attempt, terminal.eventKey, offset);
 			if (await submissions.finalizeSubmissionTerminal(attempt, terminal.eventKey)) {
-				const journal = await submissions.getTurnJournal(terminal.submissionId);
-				if (journal?.streamKey) await submissions.deleteStreamChunkSegments(journal.streamKey);
 				const event = terminal.event as {
 					outcome?: 'completed' | 'failed';
 					result?: unknown;

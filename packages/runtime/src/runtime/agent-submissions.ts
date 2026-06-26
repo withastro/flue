@@ -63,7 +63,6 @@ interface ProcessAgentSubmissionJournalState {
 	readonly operationId: string;
 	readonly turnId: string;
 	readonly checkpointLeafId?: string;
-	readonly streamKey?: string;
 }
 
 export interface ProcessAgentSubmissionOptions {
@@ -267,7 +266,6 @@ function createSubmissionJournalCallbacks(
 		providerStarted: async (state) => {
 			await submissions.updateTurnJournalPhase(attempt, 'provider_started', {
 				checkpointLeafId: state.checkpointLeafId,
-				...(state.streamKey ? { streamKey: state.streamKey } : {}),
 			});
 		},
 		toolRequestRecorded: async (state) => {
@@ -344,28 +342,21 @@ export async function reconcileInterruptedSubmission(
 		};
 	})(ctx)) as { state: AgentSubmissionInspection; result: unknown };
 	const state = inspected.state;
-	// Fetch the turn journal up front: every terminal settlement below must
-	// also delete the journal's surviving chunk segments — the in-memory
-	// staging set that would normally delete them at the next durable
-	// checkpoint died with the interrupted process, and a settled submission
-	// gets no later checkpoint.
 	const journal = await submissions.getTurnJournal(submission.submissionId);
 	if (state === 'completed') {
-		const settled =
-			submission.kind === 'direct'
-				? await settleDirectSubmission(
-						submissions,
-						attempt,
-						ctx,
-						deliverTerminalEvent,
-						'completed',
-						inspected.result,
-						undefined,
-						conversationWriter,
-					)
-				: await submissions.completeSubmission(attempt);
-		if (settled && journal?.streamKey) {
-			await submissions.deleteStreamChunkSegments(journal.streamKey);
+		if (submission.kind === 'direct') {
+			await settleDirectSubmission(
+				submissions,
+				attempt,
+				ctx,
+				deliverTerminalEvent,
+				'completed',
+				inspected.result,
+				undefined,
+				conversationWriter,
+			);
+		} else {
+			await submissions.completeSubmission(attempt);
 		}
 		return { disposition: 'completed', result: inspected.result };
 	}
@@ -397,7 +388,6 @@ export async function reconcileInterruptedSubmission(
 			error,
 			createContext,
 			deliverTerminalEvent,
-			journal?.streamKey,
 			undefined,
 			conversationWriter,
 		);
@@ -415,7 +405,6 @@ export async function reconcileInterruptedSubmission(
 			error,
 			createContext,
 			deliverTerminalEvent,
-			journal?.streamKey,
 			undefined,
 			conversationWriter,
 		);
@@ -476,7 +465,6 @@ export async function reconcileInterruptedSubmission(
 				error,
 				createContext,
 				deliverTerminalEvent,
-				undefined,
 				undefined,
 				conversationWriter,
 			);
@@ -570,7 +558,6 @@ export async function reconcileInterruptedSubmission(
 			error,
 			createContext,
 			deliverTerminalEvent,
-			journal?.streamKey,
 			undefined,
 			conversationWriter,
 		);
@@ -598,7 +585,6 @@ export async function reconcileInterruptedSubmission(
 		error,
 		createContext,
 		deliverTerminalEvent,
-		journal?.streamKey,
 		interruptedTools,
 		conversationWriter,
 	);
@@ -841,7 +827,6 @@ async function failInterruptedSubmission(
 	error: Error,
 	createContext: (dispatchId: string | undefined) => FlueContextInternal,
 	deliverTerminalEvent: (terminal: SubmissionTerminalOutbox) => Promise<string>,
-	journalStreamKey: string | undefined,
 	interruptedTools?: ReadonlyArray<{ readonly name: string; readonly id: string }>,
 	conversationWriter?: ConversationRecordWriter,
 ): Promise<ReconciliationResult> {
@@ -884,11 +869,6 @@ async function failInterruptedSubmission(
 				)
 			: await submissions.failSubmission(attempt, error);
 	if (!settled) return { disposition: 'stale' };
-	// Terminal settlement supersedes any chunk segments an interrupted turn
-	// left durable for recovery; no later checkpoint will delete them. Only
-	// the settlement CAS winner deletes — a lost CAS means another live
-	// attempt may still need the segments.
-	if (journalStreamKey) await submissions.deleteStreamChunkSegments(journalStreamKey);
 	return { disposition: 'failed', error };
 }
 
@@ -896,7 +876,7 @@ async function settleDirectSubmission(
 	submissions: AgentSubmissionStore,
 	attempt: SubmissionAttemptRef,
 	ctx: FlueContextInternal,
-	deliverTerminalEvent: (terminal: SubmissionTerminalOutbox) => Promise<string>,
+	_deliverTerminalEvent: (terminal: SubmissionTerminalOutbox) => Promise<string>,
 	outcome: 'completed' | 'failed',
 	result?: unknown,
 	error?: unknown,
@@ -932,14 +912,9 @@ async function settleDirectSubmission(
 	}
 	const terminal = await submissions.reserveSubmissionTerminal(attempt, { eventKey, event });
 	if (!terminal) return false;
-	try {
-		await ctx.flushEventCallbacks();
-	} catch (callbackError) {
-		console.error('[flue:event-stream] Event persistence failed before terminal settlement:', callbackError);
-	}
-	const offset = terminal.offset ?? (await deliverTerminalEvent(terminal));
+	const offset = conversationWriter?.offset ?? '-1';
 	if (!(await submissions.recordSubmissionTerminalOffset(attempt, eventKey, offset))) return false;
-	ctx.publishEvent(terminal.event as AttachedAgentEvent);
+	ctx.publishEvent(event as AttachedAgentEvent);
 	try {
 		await ctx.flushEventCallbacks();
 	} catch (callbackError) {

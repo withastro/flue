@@ -4,25 +4,26 @@ import * as v from 'valibot';
 import { parseActionInput, runActionWithParsedInput } from '../action.ts';
 import type { FlueContextInternal } from '../client.ts';
 import {
-	extractTraceCarrier,
-	interceptExecution,
-	type FlueTraceCarrier,
-} from '../execution-interceptor.ts';
-import { assertProductEventV3 } from '../product-event.ts';
-import { isWorkflowDefinition, type WorkflowDefinition } from '../workflow-definition.ts';
-import {
 	InvalidRequestError,
 	parseJsonBody,
 	RunStoreUnavailableError,
 	toHttpResponse,
 } from '../errors.ts';
+import {
+	extractTraceCarrier,
+	type FlueTraceCarrier,
+	interceptExecution,
+} from '../execution-interceptor.ts';
+import { assertProductEventV3 } from '../product-event.ts';
 import type {
 	AttachedAgentEventCallback,
 	DirectAgentPayload,
 	FlueEvent,
 	FlueEventCallback,
 } from '../types.ts';
+import { isWorkflowDefinition, type WorkflowDefinition } from '../workflow-definition.ts';
 import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
+import type { ConversationStreamStore } from './conversation-stream-store.ts';
 import type { DispatchInput } from './dispatch-queue.ts';
 import { agentStreamPath, type EventStreamStore, runStreamPath } from './event-stream-store.ts';
 
@@ -108,7 +109,7 @@ export interface HandleAgentOptions {
 	request: Request;
 	id: string;
 	agentName: string;
-	eventStreamStore: EventStreamStore;
+	conversationStreamStore: ConversationStreamStore;
 	admitAttachedSubmission: AttachedAgentSubmissionAdmission;
 }
 
@@ -188,7 +189,7 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 		// admission fails, breaking the documented 404-until-first-prompt
 		// contract for stream reads.
 		const streamPath = agentStreamPath(opts.agentName, id);
-		const offset = (await opts.eventStreamStore.getStreamMeta(streamPath))?.nextOffset ?? '-1';
+		const offset = (await opts.conversationStreamStore.getMeta(streamPath))?.nextOffset ?? '-1';
 		if (new URL(request.url).searchParams.get('wait') === 'result') {
 			return runDirectSyncMode(directOptions, streamUrl, offset);
 		}

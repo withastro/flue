@@ -32,7 +32,6 @@ import {
 } from './public/stream.ts';
 import type {
 	AgentPromptResponse,
-	AttachedAgentEvent,
 	FlueEvent,
 	RunRecord,
 } from './types.ts';
@@ -96,11 +95,6 @@ export interface FlueClient {
 			id: string,
 			options: AgentConversationActivityOptions,
 		): FlueEventStream<AgentConversationActivity>;
-		stream(
-			name: string,
-			id: string,
-			options?: FlueStreamOptions,
-		): FlueEventStream<AttachedAgentEvent>;
 	};
 	/** Workflow-run inspection and streaming APIs. */
 	runs: {
@@ -165,11 +159,6 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 					},
 					assertConversationActivity,
 				),
-			stream: (name, id, opts = {}) =>
-				createFlueEventStream<AttachedAgentEvent>(opts, {
-					url: http.url(`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`),
-					fetch: http.fetchWithHeaders.bind(http),
-				}),
 		},
 		runs: {
 			get: (runId) => http.json<RunRecord>({ path: `/runs/${encodeURIComponent(runId)}?meta` }),

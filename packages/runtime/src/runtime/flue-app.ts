@@ -429,7 +429,12 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 						request,
 					});
 				}
-				return nodeStreamReadResponse(rt, c.req.method, streamPath, request);
+				return handleAgentConversationRead({
+					store: rt.conversationStreamStore,
+					snapshots: rt.conversationSnapshotStore,
+					path: streamPath,
+					request,
+				});
 			}
 
 			// Cloudflare: forward to the agent DO.
@@ -450,7 +455,7 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 				request,
 				id,
 				agentName: name,
-				eventStreamStore: rt.eventStreamStore,
+				conversationStreamStore: rt.conversationStreamStore,
 				admitAttachedSubmission,
 			});
 		}

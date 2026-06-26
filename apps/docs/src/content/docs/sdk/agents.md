@@ -1,6 +1,6 @@
 ---
 title: client.agents
-description: Invoke persistent agent instances and stream their events.
+description: Invoke persistent agent instances and read their conversations.
 ---
 
 Direct agent APIs interact with persistent agent instances. They use an agent name and instance id. Each agent instance is a single conversation. Direct agent interactions do not create workflow runs and do not emit `runId`.
@@ -13,7 +13,7 @@ prompt(name: string, id: string, options: AgentPromptOptions): Promise<AgentProm
 
 Sends one prompt to a persistent agent instance and waits for the terminal result. This uses `POST /agents/:name/:id?wait=result`.
 
-Waiting is best-effort and scoped to the server process that admitted the prompt; the prompt itself is a durable submission either way. If that process is interrupted before settlement, the call fails or disconnects while recovery settles the submission in the background — the outcome then appears in session history and as a `submission_settled` event on the agent stream.
+The prompt is a durable submission. If the request disconnects before settlement, recovery continues in the background and the result remains available from the agent conversation.
 
 ### `AgentPromptOptions`
 
@@ -78,7 +78,7 @@ interface AgentPromptResponse {
 send(name: string, id: string, options: AgentPromptOptions): Promise<AgentSendResult>;
 ```
 
-Starts one prompt without waiting for completion. This uses the default `POST /agents/:name/:id` response, which returns `202`. Use the returned `offset` with `agents.stream()` to read exactly that prompt's events.
+Starts one prompt without waiting for completion. This uses the default `POST /agents/:name/:id` response, which returns `202`. Pass the result to `agents.wait()` to wait for settlement, or use its `offset` with `agents.updates()` when retaining conversation state locally.
 
 ### `AgentSendResult`
 
@@ -90,26 +90,40 @@ interface AgentSendResult {
 }
 ```
 
-Both `prompt()` and `send()` return the required `submissionId`. It correlates this direct submission with its attached agent events; workflow- and dispatch-driven activity use their existing `runId` and `dispatchId` fields instead.
+Both `prompt()` and `send()` return the required `submissionId`, which identifies the durable direct submission.
 
-## `client.agents.stream(...)`
+## `client.agents.history(...)`
 
 ```ts
-stream(name: string, id: string, options?: FlueStreamOptions): FlueEventStream<AttachedAgentEvent>;
+history(name: string, id: string, options?: AgentConversationHistoryOptions): Promise<AgentConversationSnapshot>;
 ```
 
-Streams events from an agent instance via the [Durable Streams](https://durablestreams.com) protocol. See [Streaming Protocol](/docs/api/streaming-protocol/) for the raw HTTP contract. Returns an async iterable of typed `FlueEvent` objects.
+Returns one materialized conversation snapshot. The snapshot includes its physical stream `offset`; historical token deltas are already reduced into complete message parts.
 
-Use `offset` to control where reading begins. Pass `"-1"` for full history, `"now"` for future events only, or an offset returned by a previous read to resume from that position. A stream created before the first admitted prompt can return `404` because agent streams are created on first prompt admission.
+## `client.agents.updates(...)`
 
 ```ts
-for await (const event of client.agents.stream('support', 'ticket-42', {
-  offset: '-1',
-  live: true,
+updates(name: string, id: string, options: AgentConversationUpdateOptions): FlueEventStream<AgentConversationUpdate>;
+```
+
+Streams durable conversation updates strictly after the required `offset`. Initialize local state with `history()`, then apply updates with `reduceAgentConversationUpdate()`.
+
+```ts
+const snapshot = await client.agents.history('support', 'ticket-42');
+let state = createAgentConversationState(snapshot);
+
+for await (const update of client.agents.updates('support', 'ticket-42', {
+  offset: snapshot.offset,
+  live: 'sse',
 })) {
-  console.log(event.type);
-  if (event.type === 'idle') break;
+  state = reduceAgentConversationUpdate(state, update);
 }
 ```
 
-See [`FlueStreamOptions`](/docs/sdk/runs/#fluestreamoptions) for available options.
+## `client.agents.activity(...)`
+
+```ts
+activity(name: string, id: string, options: AgentConversationActivityOptions): FlueEventStream<AgentConversationActivity>;
+```
+
+Reads raw canonical activity for diagnostics. Use `history()` and `updates()` for application conversation state.

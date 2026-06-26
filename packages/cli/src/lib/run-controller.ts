@@ -1,7 +1,7 @@
 import type {
 	AgentPromptImage,
+	AgentConversationUpdate,
 	AgentPromptResponse,
-	AttachedAgentEvent,
 	FlueClient,
 	FlueEvent,
 	WorkflowRunResult,
@@ -34,7 +34,7 @@ export type RunTargetResult =
 export async function runTarget(
 	client: FlueClient,
 	target: RunTarget,
-	onEvent?: (event: AttachedAgentEvent | FlueEvent) => void | Promise<void>,
+	onEvent?: (event: AgentConversationUpdate | FlueEvent) => void | Promise<void>,
 	signal?: AbortSignal,
 ): Promise<RunTargetResult> {
 	if (target.kind === 'agent') {
@@ -42,7 +42,10 @@ export async function runTarget(
 			...target.input,
 			signal,
 		});
-		const result = await client.agents.wait<AgentPromptResponse>(admission, { onEvent, signal });
+		const result = await client.agents.wait<AgentPromptResponse>(admission, {
+			onEvent: onEvent as ((event: AgentConversationUpdate) => void | Promise<void>) | undefined,
+			signal,
+		});
 		return { kind: 'agent', instanceId: target.instanceId, result };
 	}
 	const completed: WorkflowRunResult = await client.workflows.run(target.name, {
