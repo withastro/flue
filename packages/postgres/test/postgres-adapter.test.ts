@@ -9,6 +9,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { PersistedSchemaVersionError, type SessionData } from '@flue/runtime/adapter';
 import {
+	defineConversationStreamStoreContractTests,
 	defineEventStreamStoreContractTests,
 	defineRunStoreContractTests,
 	defineStoreContractTests,
@@ -71,6 +72,28 @@ function createPgliteRunner(): PostgresRunner {
 			await adapter.migrate?.();
 			const { eventStreamStore } = await adapter.connect();
 			return eventStreamStore;
+		},
+		async cleanup() {
+			await adapter?.close?.();
+			adapter = undefined;
+		},
+	});
+}
+
+{
+	let adapter: ReturnType<typeof postgres> | undefined;
+	defineConversationStreamStoreContractTests('Postgres ConversationStreamStore', {
+		async create() {
+			adapter = postgres(createPgliteRunner());
+			await adapter.migrate?.();
+			const stores = await adapter.connect();
+			if (!stores.conversationStreamStore || !stores.conversationSnapshotStore) {
+				throw new Error('Expected Postgres conversation stores.');
+			}
+			return {
+				stream: stores.conversationStreamStore,
+				snapshots: stores.conversationSnapshotStore,
+			};
 		},
 		async cleanup() {
 			await adapter?.close?.();

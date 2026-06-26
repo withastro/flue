@@ -9,6 +9,7 @@
  * substitute PGlite without pulling in a real Postgres server.
  */
 
+import type { WorkflowRunPointer } from '@flue/runtime';
 import type {
 	AgentAttemptMarker,
 	AgentDispatchAdmission,
@@ -40,7 +41,6 @@ import type {
 	SubmissionAttemptRef,
 	SubmissionClaimRef,
 } from '@flue/runtime/adapter';
-import type { WorkflowRunPointer } from '@flue/runtime';
 import {
 	assertSupportedFlueSchemaVersion,
 	clampLimit,
@@ -72,6 +72,10 @@ import {
 	sessionEntryChunkOwner,
 	submissionChunkOwner,
 } from '@flue/runtime/adapter';
+import {
+	PgConversationSnapshotStore,
+	PgConversationStreamStore,
+} from './postgres-conversation-store.ts';
 
 // ─── Bring-your-own-driver runner seam ──────────────────────────────────────
 
@@ -148,6 +152,8 @@ export function postgres(runner: PostgresRunner): PersistenceAdapter {
 				},
 				runStore: new PgRunStore(runner),
 				eventStreamStore: new PgEventStreamStore(runner),
+				conversationStreamStore: new PgConversationStreamStore(runner),
+				conversationSnapshotStore: new PgConversationSnapshotStore(runner),
 			};
 		},
 		async close() {
@@ -355,6 +361,42 @@ async function ensureTables(runner: PostgresRunner): Promise<void> {
 				PRIMARY KEY (path, seq)
 			)
 		`);
+		await tx.query(`
+			CREATE TABLE IF NOT EXISTS flue_conversation_streams (
+				path TEXT PRIMARY KEY,
+				identity_json TEXT NOT NULL,
+				next_offset BIGINT NOT NULL DEFAULT 0,
+				closed BOOLEAN NOT NULL DEFAULT FALSE,
+				producer_id TEXT,
+				producer_epoch BIGINT NOT NULL DEFAULT 0,
+				next_producer_sequence BIGINT NOT NULL DEFAULT 0,
+				incarnation TEXT NOT NULL
+			)
+		`);
+		await tx.query(`
+			CREATE TABLE IF NOT EXISTS flue_conversation_stream_batches (
+				path TEXT NOT NULL,
+				seq BIGINT NOT NULL,
+				producer_id TEXT NOT NULL,
+				producer_epoch BIGINT NOT NULL,
+				producer_sequence BIGINT NOT NULL,
+				data TEXT NOT NULL,
+				submission_id TEXT,
+				attempt_id TEXT,
+				PRIMARY KEY (path, seq),
+				UNIQUE (path, producer_id, producer_epoch, producer_sequence)
+			)
+		`);
+		await tx.query(`
+			CREATE TABLE IF NOT EXISTS flue_conversation_snapshots (
+				path TEXT PRIMARY KEY,
+				reducer_version INTEGER NOT NULL,
+				stream_offset TEXT NOT NULL,
+				data TEXT NOT NULL,
+				created_at TEXT NOT NULL
+			)
+		`);
+
 		await tx.query(`ALTER TABLE flue_event_stream_entries ADD COLUMN IF NOT EXISTS event_key TEXT`);
 		await tx.query(`
 			CREATE UNIQUE INDEX IF NOT EXISTS flue_event_stream_entries_path_event_key_idx
