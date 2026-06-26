@@ -146,8 +146,8 @@ export function reduceAgentConversationUpdate(
 	state: AgentConversationState,
 	update: AgentConversationUpdate,
 ): AgentConversationState {
-	if (update.conversationId !== state.conversationId) return state;
 	if (update.type === 'conversation_reset') return createAgentConversationState(update.snapshot);
+	if (update.conversationId !== state.conversationId) return state;
 	const record = update.record;
 	if (state.recordIds.includes(record.id)) return state;
 	const next = reduceRecord(state, record);

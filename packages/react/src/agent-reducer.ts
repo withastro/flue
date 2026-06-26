@@ -88,8 +88,15 @@ export function reduceAgentEvent(state: AgentState, event: AgentReducerEvent): A
 				: { ...state, status: 'submitted', historyReady: true, error: undefined };
 		case 'local_stream_failed':
 			return { ...state, status: 'error', error: event.error };
-		case 'conversation_record':
 		case 'conversation_reset':
+			return mergeConversation(
+				state,
+				state.conversation
+					? reduceAgentConversationUpdate(state.conversation, event)
+					: createAgentConversationState(event.snapshot),
+				state.historyReady,
+			);
+		case 'conversation_record':
 			if (!state.conversation) return state;
 			return mergeConversation(
 				state,
@@ -202,10 +209,13 @@ function toUiMessage(message: AgentConversationMessage): UIMessage {
 				}];
 			}
 			return [{
-				type: 'file',
-				mediaType: part.attachment.mimeType,
-				url: '',
-				attachmentId: part.attachment.id,
+				type: 'data-attachment',
+				id: part.attachment.id,
+				data: {
+					mediaType: part.attachment.mimeType,
+					size: part.attachment.size,
+					digest: part.attachment.digest,
+				},
 			}];
 		}),
 	};

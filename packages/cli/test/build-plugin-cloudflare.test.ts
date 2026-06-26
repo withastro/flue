@@ -34,12 +34,15 @@ describe('CloudflarePlugin', () => {
 		);
 
 		expect(entry).toContain('createCloudflareAgentRuntime');
-		expect(entry).toContain('createSqlSessionStore');
+		expect(entry).not.toContain('createSqlSessionStore');
 		expect(entry).toContain('createSqlRunStore');
 		expect(entry).toContain('createContext: createAgentContextForRequest');
 		expect(entry).toContain(
 			'function createAgentContextForRequest({ executionStore, instance, agentName, request, initialEventIndex, dispatchId })',
 		);
+		expect(entry).toContain('submissionStore: executionStore.submissions');
+		expect(entry).not.toContain('executionStore.sessions');
+		expect(entry).not.toContain('defaultStore:');
 	});
 
 	it('passes normalized Workflow route and runs middleware to the outer Worker runtime', async () => {

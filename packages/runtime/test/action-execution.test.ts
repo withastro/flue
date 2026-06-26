@@ -15,7 +15,7 @@ import {
 	ToolNameConflictError,
 } from '../src/index.ts';
 import { createFlueContext } from '../src/internal.ts';
-import type { FlueEvent, SessionData, SessionEnv, SessionStore } from '../src/types.ts';
+import type { FlueEvent, SessionEnv } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
 
 const providers: FauxProviderRegistration[] = [];
@@ -28,25 +28,6 @@ function createProvider(): FauxProviderRegistration {
 	const provider = registerFauxProvider({ provider: `action-execution-${crypto.randomUUID()}` });
 	providers.push(provider);
 	return provider;
-}
-
-class RecordingSessionStore implements SessionStore {
-	readonly records = new Map<string, SessionData>();
-	readonly saves: Array<{ id: string; data: SessionData }> = [];
-
-	async save(id: string, data: SessionData): Promise<void> {
-		const snapshot = structuredClone(data);
-		this.records.set(id, snapshot);
-		this.saves.push({ id, data: snapshot });
-	}
-
-	async load(id: string): Promise<SessionData | null> {
-		return structuredClone(this.records.get(id) ?? null);
-	}
-
-	async delete(id: string): Promise<void> {
-		this.records.delete(id);
-	}
 }
 
 function createAgentTool(name: string) {
@@ -63,7 +44,6 @@ function createAgentTool(name: string) {
 
 function createContext(
 	provider: FauxProviderRegistration,
-	store: SessionStore,
 	env: SessionEnv = createNoopSessionEnv(),
 ) {
 	return createFlueContext({
@@ -71,14 +51,12 @@ function createContext(
 		env: {},
 		agentConfig: { resolveModel: () => provider.getModel() },
 		createDefaultEnv: async () => env,
-		defaultStore: store,
 	});
 }
 
 describe('model-called Actions', () => {
 	it('exposes the Action input as model tool parameters', async () => {
 		const provider = createProvider();
-		const store = new RecordingSessionStore();
 		let parameters: unknown;
 		const action = defineAction({
 			name: 'inspect_repository',
@@ -94,7 +72,7 @@ describe('model-called Actions', () => {
 				return fauxAssistantMessage('Done.');
 			},
 		]);
-		const harness = await createContext(provider, store).initializeRootHarness(
+		const harness = await createContext(provider).initializeRootHarness(
 			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				actions: [action],
@@ -115,7 +93,6 @@ describe('model-called Actions', () => {
 
 	it('emits parent-session data when a model-called Action reports progress', async () => {
 		const provider = createProvider();
-		const store = new RecordingSessionStore();
 		const events: FlueEvent[] = [];
 		const action = defineAction({
 			name: 'review_repository',
@@ -131,7 +108,7 @@ describe('model-called Actions', () => {
 			}),
 			fauxAssistantMessage('Reviewed.'),
 		]);
-		const context = createContext(provider, store);
+		const context = createContext(provider);
 		context.subscribeEvent((event) => {
 			events.push(event);
 		});
@@ -160,7 +137,6 @@ describe('model-called Actions', () => {
 
 	it('returns validated JSON-cloned output while isolating and retaining Action sessions', async () => {
 		const provider = createProvider();
-		const store = new RecordingSessionStore();
 		let modelResult: unknown;
 		const source = { status: 'reviewed' };
 		const review = defineAction({
@@ -191,7 +167,7 @@ describe('model-called Actions', () => {
 				return fauxAssistantMessage('Reviewed.');
 			},
 		]);
-		const harness = await createContext(provider, store).initializeRootHarness(
+		const harness = await createContext(provider).initializeRootHarness(
 			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				actions: [review],
@@ -209,29 +185,10 @@ describe('model-called Actions', () => {
 			content: [{ type: 'text', text: '{"status":"reviewed"}' }],
 			isError: false,
 		});
-		const parentData = store.records.get('agent-session:["action-instance","default","default"]');
-		const actionRefs = parentData?.childSessions.filter((ref) => ref.type === 'action') ?? [];
-		expect(actionRefs).toEqual([
-			{ type: 'action', session: 'default', invocationId: expect.any(String) },
-			{ type: 'action', session: 'notes', invocationId: expect.any(String) },
-		]);
-		expect(new Set(actionRefs.map((ref) => ref.invocationId)).size).toBe(1);
-		for (const ref of actionRefs) {
-			expect(
-				store.records.has(
-					`agent-session:["action-instance","default:action:${ref.invocationId}","${ref.session}"]`,
-				),
-			).toBe(true);
-		}
-		const firstChildSave = store.saves.findIndex(({ id }) => id.includes('default:action:'));
-		const ownershipSave = store.saves.findIndex(({ data }) => data.childSessions.length > 0);
-		expect(ownershipSave).toBeGreaterThanOrEqual(0);
-		expect(ownershipSave).toBeLessThan(firstChildSave);
 	});
 
 	it('shares the parent filesystem without creating another sandbox', async () => {
 		const provider = createProvider();
-		const store = new RecordingSessionStore();
 		const writeFile = vi.fn(async () => {});
 		const sharedEnv = createNoopSessionEnv({ writeFile });
 		const createSessionEnv = vi.fn(async () => sharedEnv);
@@ -247,7 +204,7 @@ describe('model-called Actions', () => {
 			fauxAssistantMessage(fauxToolCall('write_report', {}), { stopReason: 'toolUse' }),
 			fauxAssistantMessage('Done.'),
 		]);
-		const harness = await createContext(provider, store).initializeRootHarness(
+		const harness = await createContext(provider).initializeRootHarness(
 			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				sandbox: { createSessionEnv },
@@ -263,7 +220,6 @@ describe('model-called Actions', () => {
 
 	it('inherits selected-profile capabilities and config through Task to Action to Task', async () => {
 		const provider = createProvider();
-		const store = new RecordingSessionStore();
 		const exec = vi.fn(async () => ({ stdout: 'ok', stderr: '', exitCode: 0 }));
 		let actionToolNames: string[] = [];
 		let nestedTaskToolNames: string[] = [];
@@ -307,7 +263,6 @@ describe('model-called Actions', () => {
 		});
 		const harness = await createContext(
 			provider,
-			store,
 			createNoopSessionEnv({ exec }),
 		).initializeRootHarness(
 			defineAgent(() => ({
@@ -337,7 +292,6 @@ describe('model-called Actions', () => {
 
 	it('cancels direct harness shell calls and waits for cleanup before an Action settles', async () => {
 		const provider = createProvider();
-		const store = new RecordingSessionStore();
 		let startedResolve: () => void = () => {};
 		const started = new Promise<void>((resolve) => {
 			startedResolve = resolve;
@@ -379,7 +333,7 @@ describe('model-called Actions', () => {
 				return fauxAssistantMessage('Handled.');
 			},
 		]);
-		const harness = await createContext(provider, store, env).initializeRootHarness(
+		const harness = await createContext(provider, env).initializeRootHarness(
 			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				actions: [action],
@@ -394,7 +348,6 @@ describe('model-called Actions', () => {
 
 	it('retains child sessions and cancels every active Action operation when the parent is aborted', async () => {
 		const provider = createProvider();
-		const store = new RecordingSessionStore();
 		let startedResolve: () => void = () => {};
 		const started = new Promise<void>((resolve) => {
 			startedResolve = resolve;
@@ -426,7 +379,7 @@ describe('model-called Actions', () => {
 		provider.setResponses([
 			fauxAssistantMessage(fauxToolCall('wait_for_children', {}), { stopReason: 'toolUse' }),
 		]);
-		const harness = await createContext(provider, store, env).initializeRootHarness(
+		const harness = await createContext(provider, env).initializeRootHarness(
 			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
 				actions: [action],
@@ -446,185 +399,6 @@ describe('model-called Actions', () => {
 		await expect(operation).rejects.toMatchObject({ name: 'AbortError' });
 		expect(signals).toHaveLength(2);
 		expect(signals.every((signal) => signal.aborted)).toBe(true);
-		expect(
-			store.records.get('agent-session:["action-instance","default","default"]')?.childSessions,
-		).toHaveLength(2);
-	});
-
-	it('retries ownership persistence after a parent save failure without orphaning the child', async () => {
-		const provider = createProvider();
-		const store = new RecordingSessionStore();
-		let failedOwnershipSave = false;
-		const save = store.save.bind(store);
-		store.save = async (id, data) => {
-			if (
-				!failedOwnershipSave &&
-				id === 'agent-session:["action-instance","default","default"]' &&
-				data.childSessions.length > 0
-			) {
-				failedOwnershipSave = true;
-				throw new Error('ownership save failed');
-			}
-			await save(id, data);
-		};
-		let attempts = 0;
-		const action = defineAction({
-			name: 'retry_retention',
-			description: 'Retry retained session creation.',
-			async run({ harness }) {
-				attempts++;
-				await harness.session();
-				return { attempts };
-			},
-		});
-		provider.setResponses([
-			fauxAssistantMessage(fauxToolCall('retry_retention', {}), { stopReason: 'toolUse' }),
-			fauxAssistantMessage(fauxToolCall('retry_retention', {}), { stopReason: 'toolUse' }),
-			fauxAssistantMessage('Retried.'),
-		]);
-		const harness = await createContext(provider, store).initializeRootHarness(
-			defineAgent(() => ({
-				model: `${provider.getModel().provider}/${provider.getModel().id}`,
-				actions: [action],
-			})),
-		);
-		const parent = await harness.session();
-
-		await parent.prompt('Retry retention.');
-
-		const parentKey = 'agent-session:["action-instance","default","default"]';
-		const parentData = store.records.get(parentKey);
-		expect(failedOwnershipSave).toBe(true);
-		expect(attempts).toBe(2);
-		expect(parentData?.childSessions).toHaveLength(1);
-		expect([...store.records.keys()].filter((key) => key.includes('default:action:'))).toHaveLength(
-			1,
-		);
-		await parent.delete();
-		expect([...store.records.keys()].filter((key) => key.includes('default:action:'))).toHaveLength(
-			0,
-		);
-	});
-
-	it('recursively deletes a task retained by an Action session', async () => {
-		const provider = createProvider();
-		const store = new RecordingSessionStore();
-		const action = defineAction({
-			name: 'delegate_from_action',
-			description: 'Delegate from an Action.',
-			async run({ harness }) {
-				await (await harness.session()).task('Complete nested work.');
-				return undefined;
-			},
-		});
-		provider.setResponses([
-			fauxAssistantMessage(fauxToolCall('delegate_from_action', {}), { stopReason: 'toolUse' }),
-			fauxAssistantMessage('Nested work complete.'),
-			fauxAssistantMessage('Done.'),
-		]);
-		const harness = await createContext(provider, store).initializeRootHarness(
-			defineAgent(() => ({
-				model: `${provider.getModel().provider}/${provider.getModel().id}`,
-				actions: [action],
-			})),
-		);
-		const parent = await harness.session();
-		await parent.prompt('Delegate.');
-		const descendants = [...store.records.keys()].filter((key) => key.includes(':action:'));
-		expect(descendants).toHaveLength(2);
-
-		await parent.delete();
-
-		for (const key of descendants) expect(store.records.has(key)).toBe(false);
-	});
-
-	it('recursively deletes an Action retained by another Action session', async () => {
-		const provider = createProvider();
-		const store = new RecordingSessionStore();
-		const nested = defineAction({
-			name: 'nested_action',
-			description: 'Run nested work.',
-			async run({ harness }) {
-				await harness.session();
-				return undefined;
-			},
-		});
-		const outer = defineAction({
-			name: 'outer_action',
-			description: 'Run an Action from an Action.',
-			async run({ harness }) {
-				await (await harness.session()).prompt('Run nested work.');
-				return undefined;
-			},
-		});
-		provider.setResponses([
-			fauxAssistantMessage(fauxToolCall('outer_action', {}), { stopReason: 'toolUse' }),
-			fauxAssistantMessage(fauxToolCall('nested_action', {}), { stopReason: 'toolUse' }),
-			fauxAssistantMessage('Nested done.'),
-			fauxAssistantMessage('Done.'),
-		]);
-		const harness = await createContext(provider, store).initializeRootHarness(
-			defineAgent(() => ({
-				model: `${provider.getModel().provider}/${provider.getModel().id}`,
-				actions: [outer, nested],
-			})),
-		);
-		const parent = await harness.session();
-		await parent.prompt('Run outer work.');
-		const descendants = [...store.records.keys()].filter((key) => key.includes(':action:'));
-		expect(descendants).toHaveLength(2);
-
-		await parent.delete();
-
-		for (const key of descendants) expect(store.records.has(key)).toBe(false);
-	});
-
-	it('recursively deletes valid task and Action descendants without following tampered references', async () => {
-		const provider = createProvider();
-		const store = new RecordingSessionStore();
-		const action = defineAction({
-			name: 'retain_child',
-			description: 'Retain a child session.',
-			async run({ harness }) {
-				await harness.session();
-				return undefined;
-			},
-		});
-		provider.setResponses([
-			fauxAssistantMessage(fauxToolCall('retain_child', {}), { stopReason: 'toolUse' }),
-			fauxAssistantMessage('Done.'),
-		]);
-		const harness = await createContext(provider, store).initializeRootHarness(
-			defineAgent(() => ({
-				model: `${provider.getModel().provider}/${provider.getModel().id}`,
-				actions: [action],
-			})),
-		);
-		const parent = await harness.session();
-		await parent.prompt('Retain.');
-		const parentKey = 'agent-session:["action-instance","default","default"]';
-		const parentData = store.records.get(parentKey);
-		const validRef = parentData?.childSessions.find((ref) => ref.type === 'action');
-		expect(validRef).toBeDefined();
-		if (!parentData || !validRef) throw new Error('missing retained child');
-		parentData.childSessions.push({
-			type: 'action',
-			invocationId: 'tampered',
-			session: 'victim',
-		});
-		await store.save(parentKey, parentData);
-		const victimKey = 'agent-session:["action-instance","default:action:tampered","victim"]';
-		await store.save(victimKey, structuredClone(parentData));
-
-		await parent.delete();
-
-		expect(store.records.has(parentKey)).toBe(false);
-		expect(
-			store.records.has(
-				`agent-session:["action-instance","default:action:${validRef.invocationId}","default"]`,
-			),
-		).toBe(false);
-		expect(store.records.has(victimKey)).toBe(true);
 	});
 });
 
@@ -640,7 +414,6 @@ describe('Action model tools', () => {
 		});
 		const harness = await createContext(
 			provider,
-			new RecordingSessionStore(),
 		).initializeRootHarness(
 			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
@@ -664,8 +437,7 @@ describe('Action model tools', () => {
 			const provider = createProvider();
 			const harness = await createContext(
 				provider,
-				new RecordingSessionStore(),
-			).initializeRootHarness(
+				).initializeRootHarness(
 				defineAgent(() => ({
 					model: `${provider.getModel().provider}/${provider.getModel().id}`,
 					sandbox: {
@@ -685,8 +457,7 @@ describe('Action model tools', () => {
 			const provider = createProvider();
 			const harness = await createContext(
 				provider,
-				new RecordingSessionStore(),
-			).initializeRootHarness(
+				).initializeRootHarness(
 				defineAgent(() => ({
 					model: `${provider.getModel().provider}/${provider.getModel().id}`,
 					skills: [{ name: 'review', description: 'Review inputs.' }],
@@ -727,7 +498,6 @@ describe('Action model tools', () => {
 		]);
 		const harness = await createContext(
 			provider,
-			new RecordingSessionStore(),
 		).initializeRootHarness(
 			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
@@ -787,7 +557,6 @@ describe('Action model tools', () => {
 		]);
 		const harness = await createContext(
 			provider,
-			new RecordingSessionStore(),
 		).initializeRootHarness(
 			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,
@@ -843,7 +612,6 @@ describe('Action model tools', () => {
 		]);
 		const harness = await createContext(
 			provider,
-			new RecordingSessionStore(),
 		).initializeRootHarness(
 			defineAgent(() => ({
 				model: `${provider.getModel().provider}/${provider.getModel().id}`,

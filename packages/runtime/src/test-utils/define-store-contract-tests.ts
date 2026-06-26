@@ -3,7 +3,7 @@
  *
  * Adapter packages call {@link defineStoreContractTests} with a factory
  * function that creates their backend. The tests exercise every method
- * on `SessionStore` and `AgentSubmissionStore` with identical behavioral
+ * on `AgentSubmissionStore` with identical behavioral
  * assertions regardless of the underlying storage engine.
  *
  * @example
@@ -21,8 +21,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { AgentExecutionStore } from '../agent-execution-store.ts';
 import type { DirectAgentSubmissionInput } from '../runtime/agent-submissions.ts';
 import type { DispatchInput } from '../runtime/dispatch-queue.ts';
-import type { SessionData } from '../types.ts';
 
+export { defineAttachmentStoreContractTests } from './define-attachment-store-contract-tests.ts';
 export { defineConversationStreamStoreContractTests } from './define-conversation-stream-store-contract-tests.ts';
 export { defineEventStreamStoreContractTests } from './define-event-stream-store-contract-tests.ts';
 export { defineRunStoreContractTests } from './define-run-store-contract-tests.ts';
@@ -76,51 +76,6 @@ async function admitDirectReady(store: AgentExecutionStore, input: DirectAgentSu
 	return (await store.submissions.markSubmissionCanonicalReady(submission.submissionId)) ?? submission;
 }
 
-function sessionData(): SessionData {
-	return {
-		version: 8,
-		conversationId: 'conv_01KT3P3GZGFBCKHKMQ11A7H2HW',
-		affinityKey: 'affinity-1',
-		entries: [
-			{
-				type: 'message',
-				id: 'entry-1',
-				parentId: null,
-				timestamp: '2026-06-03T00:00:00.000Z',
-				message: { role: 'user', content: 'Hello', timestamp: 0 },
-			},
-			{
-				type: 'message',
-				id: 'entry-2',
-				parentId: 'entry-1',
-				timestamp: '2026-06-03T00:00:01.000Z',
-				message: {
-					role: 'assistant',
-					content: [{ type: 'text', text: 'Hi' }],
-					api: 'openai-chat-completions' as never,
-					provider: 'test',
-					model: 'test-model',
-					usage: {
-						input: 0,
-						output: 0,
-						cacheRead: 0,
-						cacheWrite: 0,
-						totalTokens: 0,
-						cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-					},
-					stopReason: 'stop',
-					timestamp: 1,
-				},
-			},
-		],
-		leafId: 'entry-2',
-		childSessions: [],
-		metadata: { label: 'example' },
-		createdAt: '2026-06-03T00:00:00.000Z',
-		updatedAt: '2026-06-03T00:00:01.000Z',
-	};
-}
-
 // ─── Contract test definition ───────────────────────────────────────────────
 
 export interface StoreContractTestBackend {
@@ -146,71 +101,6 @@ export function defineStoreContractTests(label: string, backend: StoreContractTe
 		afterEach(async () => {
 			await _cleanup?.();
 			_cleanup = undefined;
-		});
-
-		// ── Sessions ──────────────────────────────────────────────────────
-
-		describe('sessions', () => {
-			it('loads null for missing sessions', async () => {
-				const store = await create();
-				expect(await store.sessions.load('missing')).toBeNull();
-			});
-
-			it('loads the saved session data when a session was saved', async () => {
-				const store = await create();
-				await store.sessions.save('s1', sessionData());
-				expect(await store.sessions.load('s1')).toEqual(sessionData());
-			});
-
-			it('round-trips session images larger than a single database value', async () => {
-				const store = await create();
-				const imageData = 'a'.repeat(2 * 1024 * 1024 + 1);
-				const data: SessionData = {
-					...sessionData(),
-					entries: [
-						{
-							type: 'message',
-							id: 'image-entry',
-							parentId: null,
-							timestamp: '2026-06-03T00:00:00.000Z',
-							message: {
-								role: 'user',
-								content: [{ type: 'image', data: imageData, mimeType: 'image/png' }],
-								timestamp: 0,
-							},
-						},
-					],
-					leafId: 'image-entry',
-				};
-				await store.sessions.save('image-session', data);
-				expect(await store.sessions.load('image-session')).toEqual(data);
-			});
-
-			it('replaces existing session entries when session data is overwritten', async () => {
-				const store = await create();
-				const data = sessionData();
-				await store.sessions.save('s1', data);
-				const updated = {
-					...data,
-					entries: data.entries.slice(0, 1),
-					leafId: 'entry-1',
-					updatedAt: '2026-06-04T00:00:00.000Z',
-				};
-				await store.sessions.save('s1', updated);
-				expect(await store.sessions.load('s1')).toEqual(updated);
-			});
-
-			it('deletes existing sessions', async () => {
-				const store = await create();
-				await store.sessions.save('s1', sessionData());
-				await store.sessions.delete('s1');
-				expect(await store.sessions.load('s1')).toBeNull();
-			});
-
-			it('silently handles deleting nonexistent sessions', async () => {
-				const store = await create();
-				await expect(store.sessions.delete('missing')).resolves.toBeUndefined();
-			});
 		});
 
 		// ── Dispatch admission ────────────────────────────────────────────
@@ -823,141 +713,6 @@ export function defineStoreContractTests(label: string, backend: StoreContractTe
 				});
 				expect(await store.submissions.getTurnJournal('dispatch-1')).toMatchObject({
 					attemptId: 'attempt-2',
-				});
-			});
-		});
-
-		// ── Session deletion coordination ─────────────────────────────────
-
-		describe('session deletion', () => {
-			it('rejects deletion while submissions are queued or running', async () => {
-				const store = await create();
-				await admitDispatchReady(store,dispatchInput());
-				const sessionKey = 'agent-session:["agent-1","default","default"]';
-
-				await expect(store.submissions.deleteSession(sessionKey, async () => {})).rejects.toThrow(
-					'Session cannot be deleted while durable agent submissions are queued or running.',
-				);
-			});
-
-			it('blocks new submissions until session deletion completes', async () => {
-				const store = await create();
-				const sessionKey = 'agent-session:["agent-1","default","default"]';
-				let releaseDeletion: () => void = () => {};
-				const deletionReleased = new Promise<void>((resolve) => {
-					releaseDeletion = resolve;
-				});
-
-				const deletion = store.submissions.deleteSession(sessionKey, () => deletionReleased);
-				await expect(admitDispatchReady(store,dispatchInput())).rejects.toThrow(
-					'Durable agent submission admission is unavailable while this session is being deleted.',
-				);
-				releaseDeletion();
-				await deletion;
-				expect(await admitDispatchReady(store,dispatchInput())).toMatchObject({
-					kind: 'submission',
-					submission: { status: 'queued' },
-				});
-			});
-
-			it('shares session deletion work while deletion is in progress', async () => {
-				const store = await create();
-				const sessionKey = 'agent-session:["agent-1","default","default"]';
-				let releaseDeletion: () => void = () => {};
-				const deletionReleased = new Promise<void>((resolve) => {
-					releaseDeletion = resolve;
-				});
-				let signalDeletionStarted: () => void = () => {};
-				const deletionStarted = new Promise<void>((resolve) => {
-					signalDeletionStarted = resolve;
-				});
-				let deletionCalls = 0;
-
-				const first = store.submissions.deleteSession(sessionKey, async () => {
-					deletionCalls += 1;
-					signalDeletionStarted();
-					await deletionReleased;
-				});
-				const second = store.submissions.deleteSession(sessionKey, async () => {
-					deletionCalls += 1;
-				});
-
-				await deletionStarted;
-				expect(deletionCalls).toBe(1);
-				releaseDeletion();
-				await Promise.all([first, second]);
-				expect(deletionCalls).toBe(1);
-			});
-
-			it('cleans up deletion marker when snapshot deletion fails', async () => {
-				const store = await create();
-				const sessionKey = 'agent-session:["agent-1","default","default"]';
-
-				await expect(
-					store.submissions.deleteSession(sessionKey, async () => {
-						throw new Error('snapshot deletion failed');
-					}),
-				).rejects.toThrow('snapshot deletion failed');
-				// The deletion marker is removed on failure so the session
-				// returns to a usable state — admissions are not blocked.
-				expect(await admitDispatchReady(store,dispatchInput())).toMatchObject({
-					kind: 'submission',
-					submission: { status: 'queued' },
-				});
-			});
-
-			it('lists the pending deletion marker until deletion completes', async () => {
-				const store = await create();
-				const sessionKey = 'agent-session:["agent-1","default","default"]';
-				let releaseDeletion: () => void = () => {};
-				const deletionReleased = new Promise<void>((resolve) => {
-					releaseDeletion = resolve;
-				});
-
-				let signalDeletionStarted: () => void = () => {};
-				const deletionStarted = new Promise<void>((resolve) => {
-					signalDeletionStarted = resolve;
-				});
-
-				const deletion = store.submissions.deleteSession(sessionKey, () => {
-					signalDeletionStarted();
-					return deletionReleased;
-				});
-				// The deletion callback only runs after the durable phase-1
-				// marker write has completed.
-				await deletionStarted;
-				expect(await store.submissions.listPendingSessionDeletions()).toEqual([sessionKey]);
-				releaseDeletion();
-				await deletion;
-				expect(await store.submissions.listPendingSessionDeletions()).toEqual([]);
-			});
-
-			it('clears terminal rows when a settled session is deleted', async () => {
-				const store = await create();
-				const sessionKey = 'agent-session:["agent-1","default","default"]';
-				await admitDispatchReady(store,dispatchInput());
-				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
-				await store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
-
-				await store.submissions.deleteSession(sessionKey, async () => {});
-
-				expect(await store.submissions.getSubmission('dispatch-1')).toBeNull();
-			});
-
-			it('returns retained receipt after deletion removed the settled dispatch row', async () => {
-				const store = await create();
-				const sessionKey = 'agent-session:["agent-1","default","default"]';
-				await admitDispatchReady(store,dispatchInput());
-				await store.submissions.claimSubmission(claim('dispatch-1', 'attempt-1'));
-				await store.submissions.completeSubmission(attempt('dispatch-1', 'attempt-1'));
-				await store.submissions.deleteSession(sessionKey, async () => {});
-
-				expect(await admitDispatchReady(store,dispatchInput())).toEqual({
-					kind: 'retained_receipt',
-					receipt: {
-						submissionId: 'dispatch-1',
-						acceptedAt: Date.parse('2026-06-03T00:00:00.000Z'),
-					},
 				});
 			});
 		});

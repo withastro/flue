@@ -27,9 +27,13 @@
  *   fails the operation.
  */
 
+import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { AssistantMessage } from '@earendil-works/pi-ai';
 import { isContextOverflow } from './compaction.ts';
-import type { MessageEntry, SessionEntry } from './types.ts';
+
+export type CanonicalSubmissionEntry =
+	| { id: string; type: 'message'; message: AgentMessage }
+	| { id: string; type: 'compaction' };
 
 /**
  * How a `resume` state continues the interrupted submission:
@@ -108,17 +112,19 @@ export type SubmissionState =
  *   explicit overflow error messages are detected then).
  */
 export function classifySubmissionState(
-	following: SessionEntry[] | undefined,
+	following: readonly CanonicalSubmissionEntry[] | undefined,
 	opts: { contextWindow: number },
 ): SubmissionState {
 	if (following === undefined) return { kind: 'absent' };
 	if (following.some((entry) => entry.type === 'message' && entry.message.role === 'user')) {
 		return { kind: 'advanced_past_input' };
 	}
-	const assistant = following.findLast(
-		(entry): entry is MessageEntry =>
-			entry.type === 'message' && entry.message.role === 'assistant',
-	)?.message as AssistantMessage | undefined;
+	const assistantEntry = following.findLast(
+		(entry) => entry.type === 'message' && entry.message.role === 'assistant',
+	);
+	const assistant = assistantEntry?.type === 'message'
+		? (assistantEntry.message as AssistantMessage)
+		: undefined;
 	if (!assistant) {
 		return {
 			kind: 'resume',
@@ -231,7 +237,7 @@ export interface TrailingPartialToolBatch {
  * incomplete.
  */
 export function findTrailingPartialToolBatch(
-	following: SessionEntry[],
+	following: readonly CanonicalSubmissionEntry[],
 ): TrailingPartialToolBatch | undefined {
 	if (
 		following.some(
@@ -292,7 +298,9 @@ export function isCompletedAssistantResponse(message: AssistantMessage): boolean
 	return message.stopReason === 'stop' || message.stopReason === 'length';
 }
 
-export function countConsecutiveRetryableModelErrors(entries: SessionEntry[]): number {
+export function countConsecutiveRetryableModelErrors(
+	entries: readonly CanonicalSubmissionEntry[],
+): number {
 	let count = 0;
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];

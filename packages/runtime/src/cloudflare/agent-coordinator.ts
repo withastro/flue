@@ -15,6 +15,7 @@ import {
 	reconcileInterruptedSubmission,
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
+import type { AttachmentStore } from '../runtime/attachment-store.ts';
 import type {
 	ConversationSnapshotStore,
 	ConversationStreamStore,
@@ -26,7 +27,6 @@ import {
 	handleAgentConversationHead,
 	handleAgentConversationRead,
 } from '../runtime/handle-conversation-routes.ts';
-import { deleteSessionTree } from '../session.ts';
 import type { AttachedAgentEvent, DirectAgentPayload } from '../types.ts';
 import {
 	createSqlAgentExecutionStore,
@@ -77,6 +77,7 @@ interface CloudflareAgentPreparedCoordinator {
 	readonly executionStore: AgentExecutionStore;
 	readonly conversationStreamStore: ConversationStreamStore;
 	readonly conversationSnapshotStore: ConversationSnapshotStore;
+	readonly attachmentStore: AttachmentStore;
 }
 
 interface CloudflareAgentRuntimeOptions {
@@ -137,10 +138,11 @@ export function createCloudflareAgentRuntime(
 
 	return {
 		prepare({ storage, className, agentName }) {
+			const executionStore = createSqlAgentExecutionStore(storage, className);
 			const conversationStores = createSqlConversationStores(storage);
 			return {
 				agentName,
-				executionStore: createSqlAgentExecutionStore(storage, className),
+				executionStore,
 				...conversationStores,
 			};
 		},
@@ -186,37 +188,7 @@ class CloudflareAgentCoordinator {
 	async onStart(inherited: () => Promise<unknown> | unknown): Promise<void> {
 		await this.restoreSubmissionWake();
 		await inherited();
-		await this.resumePendingSessionDeletions();
 		await this.reconcileSubmissions({ driverAlreadyArmed: true });
-	}
-
-	/**
-	 * Resume session deletions interrupted by an eviction or crash. A durable
-	 * deletion marker written before the interruption blocks every admission
-	 * for that session until deletion completes, so re-run the (idempotent)
-	 * deletion to clear it. Failures are logged and left for the next start;
-	 * the marker keeps the session safely blocked meanwhile.
-	 */
-	private async resumePendingSessionDeletions(): Promise<void> {
-		for (const sessionKey of await this.submissions.listPendingSessionDeletions()) {
-			try {
-				await this.submissions.deleteSession(sessionKey, () =>
-					deleteSessionTree(this.executionStore.sessions, sessionKey),
-				);
-			} catch (error) {
-				console.error(
-					'[flue:session-deletion]',
-					{
-						agentName: this.agentName,
-						instanceId: this.instance.name,
-						sessionKey,
-						operation: 'resume_session_deletion',
-						outcome: 'failed',
-					},
-					error,
-				);
-			}
-		}
 	}
 
 	async wakeSubmissions(): Promise<void> {
@@ -318,6 +290,7 @@ class CloudflareAgentCoordinator {
 	): FlueContextInternal {
 		const ctx = this.createContext(request, undefined, dispatchId);
 		ctx.setConversationWriter?.(this.conversationWriter);
+		ctx.setAttachmentStore?.(this.prepared.attachmentStore);
 		return ctx;
 	}
 
@@ -606,7 +579,7 @@ class CloudflareAgentCoordinator {
 				submissionSyntheticRequest(input),
 				input.kind === 'dispatch' ? input.dispatchId : undefined,
 			);
-			await materializeAgentSubmissionSession(ctx, agent, input);
+			await materializeAgentSubmissionSession(ctx, agent, input, this.prepared.attachmentStore);
 		});
 		this.conversationMaterialization = operation.catch(() => {});
 		return operation;

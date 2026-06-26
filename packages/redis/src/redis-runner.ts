@@ -1,4 +1,4 @@
-export type RedisArgument = string | number;
+export type RedisArgument = string | number | Uint8Array;
 export type RedisCommand = (command: string, args?: RedisArgument[]) => Promise<unknown>;
 export type RedisEval = (
 	script: string,

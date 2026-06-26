@@ -1,6 +1,6 @@
 import type { DirectAgentSubmissionInput } from './runtime/agent-submissions.ts';
 import { MAX_IMAGE_DATA_LENGTH } from './runtime/schemas.ts';
-import type { PromptImage, SessionEntry } from './types.ts';
+import type { PromptImage } from './types.ts';
 
 export { MAX_IMAGE_DATA_LENGTH };
 export const IMAGE_DATA_CHUNK_LENGTH = 256 * 1024;
@@ -8,11 +8,6 @@ export const IMAGE_DATA_CHUNK_LENGTH = 256 * 1024;
 const markerPrefix = '__flue_image_chunks__:';
 
 type ImageBlock = PromptImage | (Omit<PromptImage, 'data'> & { data: string });
-type MessageWithImageContent = {
-	role: 'user' | 'toolResult';
-	content: unknown;
-};
-
 export interface PersistedImageChunk {
 	imageId: string;
 	index: number;
@@ -38,35 +33,6 @@ export function assertImagesWithinLimit(images: readonly PromptImage[] | undefin
 			throw new Error(`[flue] Image data exceeds the ${MAX_IMAGE_DATA_LENGTH} character limit.`);
 		}
 	}
-}
-
-export function extractSessionEntryImages(entry: SessionEntry): ExtractedImages<SessionEntry> {
-	if (entry.type !== 'message' || !isMessageWithImageContent(entry.message)) {
-		return { value: entry, chunks: [] };
-	}
-	const extracted = extractContentImages(entry.message.content);
-	return {
-		value: {
-			...entry,
-			message: { ...entry.message, content: extracted.value },
-		} as SessionEntry,
-		chunks: extracted.chunks,
-	};
-}
-
-export function hydrateSessionEntryImages(
-	entry: SessionEntry,
-	imageData: ReadonlyMap<string, string>,
-): SessionEntry {
-	if (entry.type !== 'message' || !isMessageWithImageContent(entry.message)) {
-		assertExactImageGroups([], imageData);
-		return entry;
-	}
-	assertExactImageGroups(markerIds(entry.message.content), imageData);
-	return {
-		...entry,
-		message: { ...entry.message, content: hydrateContentImages(entry.message.content, imageData) },
-	} as SessionEntry;
 }
 
 export function extractDirectSubmissionImages(
@@ -101,17 +67,6 @@ export function hydrateDirectSubmissionImages(
 			images: hydrateImageArray(input.payload.images, imageData),
 		},
 	};
-}
-
-function isMessageWithImageContent(message: unknown): message is MessageWithImageContent {
-	if (!message || typeof message !== 'object') return false;
-	const role = (message as { role?: unknown }).role;
-	return role === 'user' || role === 'toolResult';
-}
-
-function extractContentImages(content: unknown): ExtractedImages<unknown> {
-	if (!Array.isArray(content)) return { value: content, chunks: [] };
-	return extractImageBlocks(content);
 }
 
 function extractImageArray(
@@ -168,11 +123,6 @@ function assertExactImageGroups(
 			throw new Error('[flue] Persisted image chunks do not match persisted image markers.');
 		}
 	}
-}
-
-function hydrateContentImages(content: unknown, imageData: ReadonlyMap<string, string>): unknown {
-	if (!Array.isArray(content)) return content;
-	return hydrateImageArray(content, imageData);
 }
 
 function hydrateImageArray<T>(blocks: T[], imageData: ReadonlyMap<string, string>): T[] {

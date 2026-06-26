@@ -40,10 +40,7 @@ export {
 	CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
 	createCloudflareAgentRuntime,
 } from './cloudflare/agent-coordinator.ts';
-export {
-	createSqlConversationStores,
-	createSqlSessionStore,
-} from './cloudflare/agent-execution-store.ts';
+export { createSqlConversationStores } from './cloudflare/agent-execution-store.ts';
 export { RuntimeUnavailableError, toHttpResponse } from './errors.ts';
 export type { InstrumentationOwner } from './instrumentation.ts';
 export {
@@ -56,11 +53,14 @@ export type {
 	DirectAgentSubmissionInput,
 	DispatchAgentSubmissionInput,
 } from './runtime/agent-submissions.ts';
+export type { AttachmentStore } from './runtime/attachment-store.ts';
+export { InMemoryAttachmentStore } from './runtime/attachment-store.ts';
 export type {
 	ConversationSnapshotStore,
 	ConversationStreamStore,
 } from './runtime/conversation-stream-store.ts';
 export {
+	InMemoryConversationStreamStore,
 	SqliteConversationSnapshotStore,
 	SqliteConversationStreamStore,
 } from './runtime/conversation-stream-store.ts';
@@ -141,7 +141,6 @@ export type {
 export { createRuntimeActivityGate } from './runtime/runtime-activity-gate.ts';
 
 export { bashFactoryToSessionEnv } from './sandbox.ts';
-export { InMemorySessionStore } from './session.ts';
 export { parseSkillMarkdown } from './skill-frontmatter.ts';
 export { buildPackagedSkill, createSkillReference } from './skill-package.ts';
 export { createSqlRunStore } from './sql-run-store.ts';

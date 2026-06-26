@@ -7,10 +7,10 @@
 You are an AI coding agent configuring Postgres-backed persistence for a Flue
 project using the first-party `@flue/postgres` adapter.
 
-This gives the project's agent sessions, accepted submissions, and workflow-run
-records durable state that survives process restart and is shared across
-replicas. It does not store the application's own business data — keep customer
-records, tickets, and payments in your application's tables.
+This persists canonical agent conversation streams, disposable snapshots,
+immutable attachments, accepted submissions, workflow-run records, and event
+streams across process restarts and replicas. It does not store application
+business data.
 
 ## Check the target first
 

@@ -29,8 +29,6 @@ export {
 	SandboxOperationUnsupportedError,
 	SessionAlreadyExistsError,
 	SessionBusyError,
-	SessionDataVersionError,
-	SessionDeletedError,
 	SessionNotFoundError,
 	SkillDefinitionValidationError,
 	SkillNotRegisteredError,
@@ -97,7 +95,6 @@ export type {
 	BashLike,
 	CallHandle,
 	CompactionConfig,
-	CompactionEntry,
 	DispatchReceipt,
 	DurabilityConfig,
 	FileStat,
@@ -119,7 +116,6 @@ export type {
 	LlmToolResultMessage,
 	LlmTurnPurpose,
 	LlmUserMessage,
-	MessageEntry,
 	ModelConfig,
 	ModelRequest,
 	ModelRequestInfo,
@@ -135,7 +131,6 @@ export type {
 	PromptResultResponse,
 	PromptUsage,
 	SandboxFactory,
-	SessionEntry,
 	SessionEnv,
 	SessionToolFactory,
 	SessionToolFactoryOptions,
@@ -159,15 +154,11 @@ export { FLUE_EVENT_SCHEMA_REVISION } from './types.ts';
 export type { WorkflowDefinition } from './workflow-definition.ts';
 export { defineWorkflow } from './workflow-definition.ts';
 
-// Note: the persistence storage contract (`PersistenceAdapter`, `SessionStore`,
-// `SessionData`, and friends) lives at `@flue/runtime/adapter`, the canonical
-// surface for persistence adapter authors — not on the root barrel.
-//
 // Note: the public Hono sub-app `flue()` and the `Fetchable` interface
 // for user-authored `app.ts` entries live at `@flue/runtime/routing`, not on
 // the root barrel.
 //
-// Note: createFlueContext, InMemorySessionStore, bashFactoryToSessionEnv, and the
+// Note: createFlueContext, bashFactoryToSessionEnv, and the
 // FlueContextConfig/FlueContextInternal types are intentionally NOT re-exported
 // here. They are internal runtime helpers consumed exclusively by the generated
 // server entry point — see `@flue/runtime/internal`. User agent code should not

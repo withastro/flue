@@ -18,9 +18,9 @@ import {
 	type ToolInput,
 	type ToolOutput,
 } from '../src/index.ts';
-import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
+import { createFlueContext } from '../src/internal.ts';
 import { validateAndRunTool } from '../src/tool.ts';
-import type { FlueEvent, FlueObservation, SessionData, SessionStore } from '../src/types.ts';
+import type { FlueEvent, FlueObservation } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
 
 const providers: FauxProviderRegistration[] = [];
@@ -35,32 +35,12 @@ function createProvider(): FauxProviderRegistration {
 	return provider;
 }
 
-class RecordingSessionStore implements SessionStore {
-	readonly records = new Map<string, SessionData>();
-
-	async save(id: string, data: SessionData): Promise<void> {
-		this.records.set(id, structuredClone(data));
-	}
-
-	async load(id: string): Promise<SessionData | null> {
-		return structuredClone(this.records.get(id) ?? null);
-	}
-
-	async delete(id: string): Promise<void> {
-		this.records.delete(id);
-	}
-}
-
-function createContext(
-	provider: FauxProviderRegistration,
-	store: SessionStore = new InMemorySessionStore(),
-) {
+function createContext(provider: FauxProviderRegistration) {
 	return createFlueContext({
 		id: 'tool-test-instance',
 		env: {},
 		agentConfig: { resolveModel: () => provider.getModel() },
 		createDefaultEnv: async () => createNoopSessionEnv(),
-		defaultStore: store,
 	});
 }
 
@@ -802,42 +782,5 @@ describe('custom tools', () => {
 				],
 			}),
 		).rejects.toThrow(ToolNameConflictError);
-	});
-
-	it('persists a completed tool result before requesting follow-up inference', async () => {
-		const provider = createProvider();
-		const store = new RecordingSessionStore();
-		provider.setResponses([
-			fauxAssistantMessage(fauxToolCall('lookup', { query: 'flue' }), { stopReason: 'toolUse' }),
-			() => {
-				const data = [...store.records.values()][0];
-				expect(data?.entries).toEqual([
-					expect.objectContaining({ message: expect.objectContaining({ role: 'user' }) }),
-					expect.objectContaining({
-						message: expect.objectContaining({ role: 'assistant', stopReason: 'toolUse' }),
-					}),
-					expect.objectContaining({
-						message: expect.objectContaining({ role: 'toolResult', toolName: 'lookup' }),
-					}),
-				]);
-				return fauxAssistantMessage('Lookup complete.');
-			},
-		]);
-		const lookup = defineTool({
-			name: 'lookup',
-			description: 'Look up a value.',
-			input: v.object({ query: v.string() }),
-			run: async () => 'Found the requested value.',
-		});
-		const harness = await createContext(provider, store).initializeRootHarness(
-			defineAgent(() => ({
-				model: `${provider.getModel().provider}/${provider.getModel().id}`,
-				tools: [lookup],
-			})),
-		);
-
-		await expect((await harness.session()).prompt('Look up flue.')).resolves.toMatchObject({
-			text: 'Lookup complete.',
-		});
 	});
 });

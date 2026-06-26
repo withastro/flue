@@ -18,7 +18,6 @@ import {
 	createSessionStorageKey,
 	DURABILITY_DEFAULT_MAX_ATTEMPTS,
 	DURABILITY_DEFAULT_TIMEOUT_MS,
-	deduplicateSessionDeletion,
 	hydratePersistedDirectSubmission,
 	isSubmissionPayload,
 	LEASE_DURATION_MS,
@@ -29,24 +28,11 @@ import {
 	SUBMISSION_SESSION_NAME,
 } from '@flue/runtime/adapter';
 import { publishChunks, stageChunks } from './chunk-store.ts';
-import type { MongoDocument, MongoOperations, MongoRunner } from './mongodb-runner.ts';
+import type { MongoDocument, MongoRunner } from './mongodb-runner.ts';
 import { collectionName } from './schema.ts';
 import { type StoredValue, ValueStore } from './value-store.ts';
 
-const DELETION_LEASE_MS = 30_000;
-const DELETION_POLL_MS = 50;
-
-export function deletionOwnershipFilter(
-	sessionKey: string,
-	ownerId: string,
-	fence: number,
-	phase: 'callback' | 'cleanup',
-): MongoDocument {
-	return { _id: sessionKey, ownerId, fence, phase };
-}
-
 export class MongoSubmissionStore implements AgentSubmissionStore {
-	private pending = new Map<string, Promise<void>>();
 	private values: ValueStore;
 	constructor(
 		private runner: MongoRunner,
@@ -284,7 +270,6 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 				canonicalReadyAt: { $ne: null },
 			});
 			if (!candidate) return null;
-			await touchGuard(tx, this.prefix, String(candidate.sessionKey));
 			const earlier = await submissions.findOne({
 				sessionKey: candidate.sessionKey,
 				status: { $in: ['queued', 'running', 'terminalizing'] },
@@ -438,22 +423,13 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 		);
 		return Promise.all(rows.map((row) => this.parseSubmission(row)));
 	}
-	deleteSession(sessionKey: string, callback: () => Promise<void>): Promise<void> {
-		return deduplicateSessionDeletion(this.pending, sessionKey, () =>
-			this.deleteSessionOwned(sessionKey, callback),
-		);
-	}
-	async listPendingSessionDeletions(): Promise<string[]> {
-		return (await this.c('deletions').find()).map((row) => String(row.sessionKey));
-	}
-
 	private async admit(
 		input: DispatchAgentSubmissionInput | DirectAgentSubmissionInput,
 	): Promise<AgentDispatchAdmission> {
 		const prepared =
 			input.kind === 'direct' ? prepareDirectSubmission(input) : { value: input, chunks: [] };
 		const pointer = await this.values.stage(`submission:${input.submissionId}`, prepared.value);
-		const owner = { kind: 'submission' as const, id: input.submissionId, part: 'input' };
+		const owner = { kind: 'submission' as const, id: input.submissionId, part: '' as const };
 		const stagedChunks = await stageChunks(this.runner, this.prefix, owner, prepared.chunks);
 		const sessionKey = createSessionStorageKey(
 			input.id,
@@ -464,23 +440,6 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 		let committed = false;
 		try {
 			const result = await this.runner.transaction(async (tx) => {
-				if (input.kind === 'dispatch') {
-					const receipt = await tx
-						.collection(collectionName(this.prefix, 'receipts'))
-						.findOne({ _id: input.submissionId });
-					if (receipt)
-						return {
-							kind: 'retained_receipt',
-							receipt: { submissionId: input.submissionId, acceptedAt: Number(receipt.acceptedAt) },
-						} as AgentDispatchAdmission;
-				}
-				await touchGuard(tx, this.prefix, sessionKey);
-				if (
-					await tx.collection(collectionName(this.prefix, 'deletions')).findOne({ _id: sessionKey })
-				)
-					throw new TypeError(
-						'Durable admission is unavailable while this session is being deleted.',
-					);
 				const submissions = tx.collection(collectionName(this.prefix, 'submissions'));
 				const existing = await submissions.findOne({ submissionId: input.submissionId });
 				if (existing) return existing;
@@ -514,11 +473,6 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 			});
 			const row = result as MongoDocument;
 			committed = row.payload === pointer;
-			if ('kind' in result && result.kind === 'retained_receipt') {
-				await this.values.discardStaged(pointer);
-				await this.values.discardStaged(stagedChunks.pointer);
-				return result as AgentDispatchAdmission;
-			}
 			if (!committed) {
 				await this.values.discardStaged(pointer);
 				await this.values.discardStaged(stagedChunks.pointer);
@@ -547,148 +501,6 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 				await this.values.discardStaged(stagedChunks.pointer);
 			}
 			throw error;
-		}
-	}
-
-	private async deleteSessionOwned(
-		sessionKey: string,
-		callback: () => Promise<void>,
-	): Promise<void> {
-		const ownerId = randomUUID();
-		let ownership: { cutoff: number; fence: number } | null = null;
-		while (!ownership) {
-			ownership = await this.runner.transaction(async (tx) => {
-				await touchGuard(tx, this.prefix, sessionKey);
-				if (
-					await tx
-						.collection(collectionName(this.prefix, 'submissions'))
-						.findOne({ sessionKey, status: { $in: ['queued', 'running', 'terminalizing'] } })
-				)
-					throw new TypeError(
-						'Session cannot be deleted while durable agent submissions are queued or running.',
-					);
-				const deletions = tx.collection(collectionName(this.prefix, 'deletions'));
-				const current = await deletions.findOne({ _id: sessionKey });
-				if (current && Number(current.leaseExpiresAt) >= Date.now() && current.ownerId !== ownerId)
-					return null;
-				const counter = await tx
-					.collection(collectionName(this.prefix, 'counters'))
-					.findOne({ _id: 'submission' });
-				const fenceCounter = await tx
-					.collection(collectionName(this.prefix, 'counters'))
-					.findOneAndUpdate(
-						{ _id: `deletion:${sessionKey}` },
-						{ $inc: { value: 1 } },
-						{ upsert: true, returnDocument: 'after' },
-					);
-				const next = {
-					cutoff: Number(current?.cutoff ?? counter?.value ?? 0),
-					fence: Number(fenceCounter?.value),
-				};
-				await deletions.updateOne(
-					{ _id: sessionKey },
-					{
-						$set: {
-							sessionKey,
-							ownerId,
-							...next,
-							phase: 'callback',
-							leaseExpiresAt: Date.now() + DELETION_LEASE_MS,
-						},
-					},
-					{ upsert: true },
-				);
-				return next;
-			});
-			if (!ownership) {
-				await new Promise((resolve) => setTimeout(resolve, DELETION_POLL_MS));
-				if (!(await this.c('deletions').findOne({ _id: sessionKey }))) return;
-			}
-		}
-		let lost = false;
-		let heartbeatTask = Promise.resolve();
-		const heartbeat = setInterval(() => {
-			heartbeatTask = heartbeatTask.then(async () => {
-				const renewed = await this.c('deletions')
-					.updateOne(deletionOwnershipFilter(sessionKey, ownerId, ownership.fence, 'callback'), {
-						$set: { leaseExpiresAt: Date.now() + DELETION_LEASE_MS },
-					})
-					.catch(() => null);
-				if (!renewed || renewed.matchedCount !== 1) lost = true;
-			});
-		}, DELETION_LEASE_MS / 3);
-		try {
-			await callback();
-		} catch (error) {
-			clearInterval(heartbeat);
-			await heartbeatTask;
-			if (!lost)
-				await this.c('deletions').deleteOne(
-					deletionOwnershipFilter(sessionKey, ownerId, ownership.fence, 'callback'),
-				);
-			throw error;
-		}
-		clearInterval(heartbeat);
-		await heartbeatTask;
-		if (lost) return;
-		const deleted = await this.runner.transaction(async (tx) => {
-			await touchGuard(tx, this.prefix, sessionKey);
-			const deletions = tx.collection(collectionName(this.prefix, 'deletions'));
-			const marker = await deletions.findOneAndUpdate(
-				deletionOwnershipFilter(sessionKey, ownerId, ownership.fence, 'callback'),
-				{ $set: { phase: 'cleanup', leaseExpiresAt: Date.now() + DELETION_LEASE_MS } },
-				{ returnDocument: 'after' },
-			);
-			if (!marker) return { rows: [], journals: [] };
-			const submissions = tx.collection(collectionName(this.prefix, 'submissions'));
-			const rows = await submissions.find({
-				sessionKey,
-				status: 'settled',
-				sequence: { $lte: ownership.cutoff },
-			});
-			const ids = rows.map((row) => row.submissionId);
-			for (const row of rows)
-				if (row.kind === 'dispatch')
-					await tx
-						.collection(collectionName(this.prefix, 'receipts'))
-						.updateOne(
-							{ _id: row.submissionId },
-							{ $setOnInsert: { acceptedAt: row.acceptedAt } },
-							{ upsert: true },
-						);
-			const journals = [];
-			for (let offset = 0; offset < ids.length; offset += 100) {
-				const batch = ids.slice(offset, offset + 100);
-				journals.push(
-					...(await tx
-						.collection(collectionName(this.prefix, 'journals'))
-						.find({ submissionId: { $in: batch } })),
-				);
-				await tx
-					.collection(collectionName(this.prefix, 'journals'))
-					.deleteMany({ submissionId: { $in: batch } });
-				await submissions.deleteMany({
-					submissionId: { $in: batch },
-					sessionKey,
-					status: 'settled',
-					sequence: { $lte: ownership.cutoff },
-				});
-			}
-			await deletions.deleteOne(
-				deletionOwnershipFilter(sessionKey, ownerId, ownership.fence, 'cleanup'),
-			);
-			return { rows, journals };
-		});
-		for (const journal of deleted.journals) {
-			if (journal.toolRequest)
-				await this.values
-					.retire(journal.toolRequest as unknown as StoredValue)
-					.catch(() => undefined);
-		}
-		for (const row of deleted.rows) {
-			await this.values.retire(row.payload as unknown as StoredValue).catch(() => undefined);
-			if (row.chunks)
-				await this.values.retire(row.chunks as unknown as StoredValue).catch(() => undefined);
 		}
 	}
 
@@ -769,20 +581,6 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 			leaseExpiresAt: Number(row.leaseExpiresAt),
 		};
 	}
-}
-
-async function touchGuard(
-	operations: MongoOperations,
-	prefix: string,
-	sessionKey: string,
-): Promise<void> {
-	await operations
-		.collection(collectionName(prefix, 'guards'))
-		.updateOne(
-			{ _id: sessionKey },
-			{ $inc: { revision: 1 }, $setOnInsert: { sessionKey } },
-			{ upsert: true },
-		);
 }
 function isDuplicate(error: unknown): boolean {
 	return Boolean(

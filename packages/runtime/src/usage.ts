@@ -6,7 +6,7 @@
  * Kept in their own module to share between `session.ts` (per-call
  * aggregation across the active path) and `session.ts`'s compaction
  * persistence path (normalizing pi-ai's `Usage` into our `PromptUsage`
- * before storing on a `CompactionEntry`).
+ * before storing on a canonical compaction record).
  */
 import type { Usage } from '@earendil-works/pi-ai';
 import type { PromptUsage } from './types.ts';

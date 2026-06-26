@@ -1,9 +1,9 @@
 /**
  * libSQL / Turso persistence adapter.
  *
- * Implements {@link AgentSubmissionStore}, {@link SessionStore},
- * {@link RunStore}, and {@link EventStreamStore} against a libSQL / Turso
- * database using SQLite-dialect parameterised queries (`?` placeholders).
+ * Implements {@link AgentSubmissionStore}, {@link RunStore}, and
+ * {@link EventStreamStore} against a libSQL / Turso database using
+ * SQLite-dialect parameterised queries (`?` placeholders).
  *
  * The adapter accepts any async SQL runner conforming to {@link LibsqlRunner}
  * so that an application can supply its own configured `@libsql/client`, and
@@ -37,8 +37,6 @@ import type {
 	RunRecord,
 	RunStatus,
 	RunStore,
-	SessionData,
-	SessionStore,
 	SubmissionAttemptRef,
 	SubmissionClaimRef,
 } from '@flue/runtime/adapter';
@@ -52,12 +50,10 @@ import {
 	DURABILITY_DEFAULT_MAX_ATTEMPTS,
 	DURABILITY_DEFAULT_TIMEOUT_MS,
 	decodeRunCursor,
-	deduplicateSessionDeletion,
 	encodeRunCursor,
 	FLUE_SCHEMA_VERSION,
 	formatOffset,
 	hydratePersistedDirectSubmission,
-	hydratePersistedSessionEntry,
 	isSubmissionPayload,
 	LEASE_DURATION_MS,
 	MAX_LIST_LIMIT,
@@ -66,13 +62,12 @@ import {
 	parseAcceptedAt,
 	parseOffset,
 	prepareDirectSubmission,
-	prepareSessionEntry,
 	SUBMISSION_HARNESS_NAME,
 	SUBMISSION_SESSION_NAME,
 	samePersistedChunks,
-	sessionEntryChunkOwner,
 	submissionChunkOwner,
 } from '@flue/runtime/adapter';
+import { LibsqlAttachmentStore } from './libsql-attachment-store.ts';
 import {
 	LibsqlConversationSnapshotStore,
 	LibsqlConversationStreamStore,
@@ -87,7 +82,7 @@ type SqlRow = Record<string, unknown>;
  * A query over a configured libSQL driver: a SQL string with `?` placeholders
  * plus positional parameters, resolving to result rows as plain objects.
  */
-export type LibsqlParameter = string | number | boolean | null;
+export type LibsqlParameter = string | number | boolean | ArrayBuffer | null;
 export type LibsqlQuery = (text: string, params?: LibsqlParameter[]) => Promise<SqlRow[]>;
 
 /**
@@ -168,13 +163,13 @@ export function libsql(runner: LibsqlRunner): PersistenceAdapter {
 		connect() {
 			return {
 				executionStore: {
-					sessions: new LibsqlSessionStore(runner),
 					submissions: new LibsqlSubmissionStore(runner),
 				},
 				runStore: new LibsqlRunStore(runner),
 				eventStreamStore: new LibsqlEventStreamStore(runner),
 				conversationStreamStore: new LibsqlConversationStreamStore(runner),
 				conversationSnapshotStore: new LibsqlConversationSnapshotStore(runner),
+				attachmentStore: new LibsqlAttachmentStore(runner),
 			};
 		},
 		async close() {
@@ -212,28 +207,6 @@ async function ensureTables(runner: LibsqlRunner): Promise<void> {
 		} else {
 			assertSupportedFlueSchemaVersion(String(storedVersion));
 		}
-
-		await tx.query(`
-			CREATE TABLE IF NOT EXISTS flue_sessions (
-				id TEXT PRIMARY KEY,
-				data TEXT NOT NULL
-			)
-		`);
-
-		await tx.query(`
-			CREATE TABLE IF NOT EXISTS flue_session_entries (
-				session_id TEXT NOT NULL,
-				entry_id TEXT NOT NULL,
-				position INTEGER NOT NULL,
-				data TEXT NOT NULL,
-				PRIMARY KEY (session_id, entry_id)
-			)
-		`);
-
-		await tx.query(`
-			CREATE INDEX IF NOT EXISTS flue_session_entries_session_position_idx
-			ON flue_session_entries (session_id, position ASC)
-		`);
 
 		await tx.query(`
 			CREATE TABLE IF NOT EXISTS flue_image_chunks (
@@ -291,13 +264,6 @@ async function ensureTables(runner: LibsqlRunner): Promise<void> {
 				tool_request_json TEXT,
 				committed INTEGER NOT NULL DEFAULT 0,
 				committed_leaf_id TEXT
-			)
-		`);
-
-		await tx.query(`
-			CREATE TABLE IF NOT EXISTS flue_agent_session_deletions (
-				session_key TEXT PRIMARY KEY,
-				started_at INTEGER NOT NULL
 			)
 		`);
 
@@ -415,6 +381,24 @@ async function ensureTables(runner: LibsqlRunner): Promise<void> {
 				created_at TEXT NOT NULL
 			)
 		`);
+		await tx.query(`
+			CREATE TABLE IF NOT EXISTS flue_attachments (
+				stream_path TEXT NOT NULL,
+				attachment_id TEXT NOT NULL,
+				mime_type TEXT NOT NULL,
+				byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
+				digest TEXT NOT NULL,
+				owner_kind TEXT NOT NULL CHECK (owner_kind IN ('conversation', 'submission')),
+				owner_id TEXT NOT NULL,
+				bytes BLOB NOT NULL,
+				created_at INTEGER NOT NULL,
+				PRIMARY KEY (stream_path, attachment_id)
+			)
+		`);
+		await tx.query(`
+			CREATE INDEX IF NOT EXISTS flue_attachments_owner_idx
+			ON flue_attachments (stream_path, owner_kind, owner_id, attachment_id)
+		`);
 		try {
 			await tx.query(`ALTER TABLE flue_event_stream_entries ADD COLUMN event_key TEXT`);
 		} catch (error) {
@@ -496,97 +480,6 @@ async function deleteLibsqlChunkOwner(
 	);
 }
 
-class LibsqlSessionStore implements SessionStore {
-	constructor(private runner: LibsqlRunner) {}
-
-	async save(id: string, data: SessionData): Promise<void> {
-		const { entries: sessionEntries, ...session } = data;
-		const entries = sessionEntries.map((entry, position) => {
-			const prepared = prepareSessionEntry(entry);
-			return { entry, position, data: JSON.stringify(prepared.value), chunks: prepared.chunks };
-		});
-		await this.runner.transaction(async (tx) => {
-			const chunkStore = createLibsqlChunkStore(tx);
-			await tx.query(
-				`INSERT INTO flue_sessions (id, data) VALUES (?, ?)
-				 ON CONFLICT (id) DO UPDATE SET data = excluded.data`,
-				[id, JSON.stringify(session)],
-			);
-			const existingRows = await tx.query(
-				'SELECT entry_id, position, data FROM flue_session_entries WHERE session_id = ?',
-				[id],
-			);
-			const existing = new Map(existingRows.map((row) => [row.entry_id, row]));
-			const retained = new Set<string>();
-			for (const { entry, position, data: entryData, chunks } of entries) {
-				retained.add(entry.id);
-				const current = existing.get(entry.id);
-				const owner = sessionEntryChunkOwner(id, entry.id);
-				const currentChunks = await chunkStore.read(owner);
-				const entryChanged = Number(current?.position) !== position || current?.data !== entryData;
-				const chunksChanged = !samePersistedChunks(currentChunks, chunks);
-				if (!entryChanged && !chunksChanged) continue;
-				if (entryChanged)
-					await tx.query(
-						`INSERT INTO flue_session_entries (session_id, entry_id, position, data)
-					 VALUES (?, ?, ?, ?)
-					 ON CONFLICT (session_id, entry_id) DO UPDATE SET
-					 position = excluded.position, data = excluded.data`,
-						[id, entry.id, position, entryData],
-					);
-				if (chunksChanged) await chunkStore.replace(owner, chunks);
-			}
-			for (const row of existingRows) {
-				if (typeof row.entry_id === 'string' && !retained.has(row.entry_id)) {
-					await chunkStore.delete(sessionEntryChunkOwner(id, row.entry_id));
-					await tx.query('DELETE FROM flue_session_entries WHERE session_id = ? AND entry_id = ?', [
-						id,
-						row.entry_id,
-					]);
-				}
-			}
-		});
-	}
-
-	async load(id: string): Promise<SessionData | null> {
-		return this.runner.transaction(async (tx) => {
-			const chunkStore = createLibsqlChunkStore(tx);
-			const rows = await tx.query('SELECT data FROM flue_sessions WHERE id = ? LIMIT 1', [id]);
-			const row = rows[0];
-			if (!row) return null;
-			if (typeof row.data !== 'string') {
-				throw new Error('[flue] Persisted session row is malformed.');
-			}
-			const session = JSON.parse(row.data) as Omit<SessionData, 'entries'>;
-			const entryRows = await tx.query(
-				'SELECT entry_id, data FROM flue_session_entries WHERE session_id = ? ORDER BY position ASC',
-				[id],
-			);
-			return {
-				...session,
-				entries: await Promise.all(
-					entryRows.map(async (entryRow) => {
-						if (typeof entryRow.entry_id !== 'string' || typeof entryRow.data !== 'string') {
-							throw new Error('[flue] Persisted session entry row is malformed.');
-						}
-						return hydratePersistedSessionEntry(
-							JSON.parse(entryRow.data),
-							await chunkStore.read(sessionEntryChunkOwner(id, entryRow.entry_id)),
-						);
-					}),
-				),
-			};
-		});
-	}
-
-	async delete(id: string): Promise<void> {
-		await this.runner.transaction(async (tx) => {
-			await createLibsqlChunkStore(tx).deleteOwner('session_entry', id);
-			await tx.query('DELETE FROM flue_session_entries WHERE session_id = ?', [id]);
-			await tx.query('DELETE FROM flue_sessions WHERE id = ?', [id]);
-		});
-	}
-}
 
 // ─── Submission store ───────────────────────────────────────────────────────
 
@@ -619,8 +512,6 @@ function prefixed(table: string): string {
 }
 
 class LibsqlSubmissionStore implements AgentSubmissionStore {
-	private pendingSessionDeletions = new Map<string, Promise<void>>();
-
 	constructor(private runner: LibsqlRunner) {}
 
 	// ── Query ────────────────────────────────────────────────────────────
@@ -1049,19 +940,6 @@ class LibsqlSubmissionStore implements AgentSubmissionStore {
 		});
 	}
 
-	// ── Deletion ─────────────────────────────────────────────────────────
-
-	deleteSession(sessionKey: string, deleteSessionTree: () => Promise<void>): Promise<void> {
-		return deduplicateSessionDeletion(this.pendingSessionDeletions, sessionKey, () =>
-			this.runSessionDeletion(sessionKey, deleteSessionTree),
-		);
-	}
-
-	async listPendingSessionDeletions(): Promise<string[]> {
-		const rows = await this.runner.query('SELECT session_key FROM flue_agent_session_deletions');
-		return rows.map((row) => String(row.session_key));
-	}
-
 	// ── Private ──────────────────────────────────────────────────────────
 
 	private async admitSubmission(
@@ -1089,19 +967,6 @@ class LibsqlSubmissionStore implements AgentSubmissionStore {
 					const receipt = parseDispatchReceipt(receiptRows[0]);
 					return { kind: 'retained_receipt' as const, receipt };
 				}
-			}
-
-			// SQLite has no advisory locks; admission and session deletion are
-			// serialized by the surrounding transaction. Reject admission while
-			// a deletion marker exists for the session.
-			const deletingRows = await tx.query(
-				'SELECT 1 FROM flue_agent_session_deletions WHERE session_key = ? LIMIT 1',
-				[sessionKey],
-			);
-			if (deletingRows.length > 0) {
-				throw new Error(
-					'[flue] Durable agent submission admission is unavailable while this session is being deleted. Retry after deletion completes.',
-				);
 			}
 
 			await tx.query(
@@ -1144,92 +1009,6 @@ class LibsqlSubmissionStore implements AgentSubmissionStore {
 		});
 	}
 
-	private async runSessionDeletion(
-		sessionKey: string,
-		deleteSessionTree: () => Promise<void>,
-	): Promise<void> {
-		// Phase 1: check for active submissions and mark deletion.
-		const deletionStartedAt = Date.now();
-		await this.runner.transaction(async (tx) => {
-			const active = await tx.query(
-				`SELECT 1 FROM flue_agent_submissions
-				 WHERE session_key = ? AND status IN ('queued', 'running', 'terminalizing')
-				 LIMIT 1`,
-				[sessionKey],
-			);
-			if (active.length > 0) {
-				throw new Error(
-					'[flue] Session cannot be deleted while durable agent submissions are queued or running. Wait for accepted work to settle, then retry deletion.',
-				);
-			}
-			await tx.query(
-				`INSERT OR IGNORE INTO flue_agent_session_deletions (session_key, started_at) VALUES (?, ?)`,
-				[sessionKey, deletionStartedAt],
-			);
-		});
-
-		// Phase 2: delete the session tree (async, outside transaction).
-		try {
-			await deleteSessionTree();
-		} catch (error) {
-			// Remove the deletion marker so the session returns to a usable
-			// state. A persistent deleteSessionTree failure must not leave the
-			// marker indefinitely blocking future admissions.
-			await this.runner.query('DELETE FROM flue_agent_session_deletions WHERE session_key = ?', [
-				sessionKey,
-			]);
-			throw error;
-		}
-
-		// Phase 3: clean up settled submission rows and deletion marker.
-		// Re-read the deletion marker's started_at; if the marker is gone, a
-		// concurrent deletion run already completed phase 3 — nothing to do.
-		await this.runner.transaction(async (tx) => {
-			const deletionRows = await tx.query(
-				'SELECT started_at FROM flue_agent_session_deletions WHERE session_key = ?',
-				[sessionKey],
-			);
-			const deletionRow = deletionRows[0];
-			const startedAt = deletionRow != null ? Number(deletionRow.started_at) : NaN;
-			if (!deletionRow || !Number.isFinite(startedAt)) {
-				return;
-			}
-			await tx.query(
-				`INSERT OR IGNORE INTO flue_agent_dispatch_receipts (dispatch_id, accepted_at)
-				 SELECT submission_id, accepted_at
-				 FROM flue_agent_submissions
-				 WHERE session_key = ? AND kind = 'dispatch' AND status = 'settled'
-				   AND accepted_at <= ?`,
-				[sessionKey, startedAt],
-			);
-			// Clean up orphaned turn journals for deleted submissions.
-			await tx.query(
-				`DELETE FROM flue_agent_turn_journals
-				 WHERE submission_id IN (
-				   SELECT submission_id FROM flue_agent_submissions
-				   WHERE session_key = ? AND status = 'settled' AND accepted_at <= ?
-				 )`,
-				[sessionKey, startedAt],
-			);
-			const deletedSubmissionRows = await tx.query(
-				`SELECT submission_id FROM flue_agent_submissions
-				 WHERE session_key = ? AND status = 'settled' AND accepted_at <= ?`,
-				[sessionKey, startedAt],
-			);
-			const submissionOwners = deletedSubmissionRows.flatMap((row) =>
-				typeof row.submission_id === 'string' ? [submissionChunkOwner(row.submission_id)] : [],
-			);
-			await createLibsqlChunkStore(tx).deleteMany(submissionOwners);
-			await tx.query(
-				`DELETE FROM flue_agent_submissions
-				 WHERE session_key = ? AND status = 'settled' AND accepted_at <= ?`,
-				[sessionKey, startedAt],
-			);
-			await tx.query('DELETE FROM flue_agent_session_deletions WHERE session_key = ?', [
-				sessionKey,
-			]);
-		});
-	}
 
 	private async parseOperationalRows(
 		rows: SqlRow[],

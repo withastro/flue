@@ -7,6 +7,8 @@ import type {
 } from '../agent-execution-store.ts';
 import type { FlueContextInternal } from '../client.ts';
 import type { ConversationRecordWriter } from '../conversation-writer.ts';
+import { createAttachmentRef, type AttachmentStore } from './attachment-store.ts';
+import { agentStreamPath } from './event-stream-store.ts';
 import {
 	FlueError,
 	SubmissionInterruptedError,
@@ -96,6 +98,7 @@ interface AgentSubmissionToolRequest {
  * caught at compile time.
  */
 export interface AgentSubmissionSession {
+	readonly conversationId: string;
 	inspectSubmissionInput(input: AgentSubmissionInput): Promise<AgentSubmissionInspection> | AgentSubmissionInspection;
 	reconstructSubmissionResult(input: AgentSubmissionInput): Promise<PromptResponse | undefined> | PromptResponse | undefined;
 	processSubmissionInput(
@@ -170,9 +173,40 @@ export async function materializeAgentSubmissionSession(
 	ctx: FlueContextInternal,
 	agent: AgentDefinition,
 	input: AgentSubmissionInput,
+	attachmentStore?: AttachmentStore,
 ): Promise<void> {
 	if (input.kind === 'direct') ctx.setSubmissionId?.(input.submissionId);
-	await openAgentSubmissionSession(ctx, agent, input);
+	const session = await openAgentSubmissionSession(ctx, agent, input);
+	if (input.kind === 'direct' && attachmentStore) {
+		for (const [index, image] of (input.payload.images ?? []).entries()) {
+			const bytes = decodeBase64(image.data);
+			const attachment = await createAttachmentRef({
+				id: `att_direct_${input.submissionId}_${index}`,
+				mimeType: image.mimeType,
+				bytes,
+			});
+			const streamPath = agentStreamPath(input.agent, input.id);
+			const bound = await attachmentStore.get({
+				streamPath,
+				conversationId: session.conversationId,
+				attachmentId: attachment.id,
+			});
+			if (!bound) {
+				await attachmentStore.put({
+					streamPath,
+					attachment,
+					bytes,
+					owner: { kind: 'submission', submissionId: input.submissionId },
+				});
+			}
+			await attachmentStore.bindSubmissionAttachment({
+				streamPath,
+				submissionId: input.submissionId,
+				conversationId: session.conversationId,
+				attachment,
+			});
+		}
+	}
 }
 
 export function createAgentSubmissionSessionHandler(
@@ -907,7 +941,7 @@ async function settleDirectSubmission(
 			[...candidate.entries.values()].some((entry) => entry.submissionId === attempt.submissionId),
 		) ??
 		[...reduced.conversations.values()].find(
-			(candidate) => candidate.harness === 'default' && candidate.session === 'default' && !candidate.deleted,
+			(candidate) => candidate.harness === 'default' && candidate.session === 'default',
 		);
 	if (!conversation) return false;
 	const pending = (await submissions.listPendingSubmissionSettlements()).find(
@@ -944,6 +978,11 @@ async function settleDirectSubmission(
 		console.error('[flue:subscriber] Terminal event subscriber failed:', callbackError);
 	}
 	return submissions.finalizeSubmissionSettlement(attempt, eventKey);
+}
+
+function decodeBase64(value: string): Uint8Array {
+	const binary = atob(value);
+	return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
 function serializeSubmissionError(error: unknown): {

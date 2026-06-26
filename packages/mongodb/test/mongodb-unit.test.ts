@@ -6,7 +6,7 @@ import {
 	mongodb,
 	runMongoTransactionWithRetry,
 } from '../src/index.ts';
-import { deletionOwnershipFilter, MongoSubmissionStore } from '../src/submission-store.ts';
+import { MongoSubmissionStore } from '../src/submission-store.ts';
 import { type StoredValue, ValueStore } from '../src/value-store.ts';
 
 function result(matchedCount = 1, deletedCount = 1) {
@@ -250,17 +250,6 @@ describe('MongoSubmissionStore update semantics', () => {
 		expect(updates[1]).toEqual([
 			{ $set: { recoveryRequestedAt: { $ifNull: ['$recoveryRequestedAt', expect.any(Number)] } } },
 		]);
-	});
-});
-
-describe('deletionOwnershipFilter()', () => {
-	it('fences ownership by session owner generation and phase', () => {
-		expect(deletionOwnershipFilter('session', 'owner', 3, 'cleanup')).toEqual({
-			_id: 'session',
-			ownerId: 'owner',
-			fence: 3,
-			phase: 'cleanup',
-		});
 	});
 });
 

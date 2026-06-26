@@ -5,6 +5,7 @@ import {
 	FLUE_SCHEMA_VERSION,
 	PersistedSchemaVersionError,
 } from '@flue/runtime/adapter';
+import { MongoAttachmentStore } from './attachment-store.ts';
 import {
 	MongoConversationSnapshotStore,
 	MongoConversationStreamStore,
@@ -13,7 +14,6 @@ import { MongoEventStreamStore } from './event-stream-store.ts';
 import type { MongoOptions, MongoRunner } from './mongodb-runner.ts';
 import { MongoRunStore } from './run-store.ts';
 import { collectionName, ensureSchema, schema } from './schema.ts';
-import { MongoSessionStore } from './session-store.ts';
 import { MongoSubmissionStore } from './submission-store.ts';
 import { ValueStore } from './value-store.ts';
 
@@ -95,13 +95,13 @@ export function mongodb(runner: MongoRunner, options: MongoOptions = {}): Persis
 				throw new TypeError('@flue/mongodb connect() requires a successful migrate() first.');
 			return {
 				executionStore: {
-					sessions: new MongoSessionStore(runner, prefix),
 					submissions: new MongoSubmissionStore(runner, prefix),
 				},
 				runStore: new MongoRunStore(runner, prefix),
 				eventStreamStore: new MongoEventStreamStore(runner, prefix),
 				conversationStreamStore: new MongoConversationStreamStore(runner, prefix),
 				conversationSnapshotStore: new MongoConversationSnapshotStore(runner, prefix),
+				attachmentStore: new MongoAttachmentStore(runner, prefix),
 			};
 		},
 		async close() {

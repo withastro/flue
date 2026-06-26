@@ -23,7 +23,6 @@ import {
 } from '../src/sql-agent-execution-store.ts';
 import type { SqlStorage } from '../src/sql-storage.ts';
 import { defineStoreContractTests } from '../src/test-utils/define-store-contract-tests.ts';
-import type { SessionData } from '../src/types.ts';
 
 // ─── Backend factories ──────────────────────────────────────────────────────
 
@@ -83,20 +82,6 @@ defineStoreContractTests('AgentExecutionStore (node-sqlite)', {
 
 // ─── sqlite() PersistenceAdapter tests ──────────────────────────────────────
 
-function sessionData(): SessionData {
-	return {
-		version: 8,
-		conversationId: 'conv_01KT3P3GZGFBCKHKMQ11A7H2HW',
-		affinityKey: 'affinity-1',
-		entries: [],
-		leafId: null,
-		childSessions: [],
-		metadata: {},
-		createdAt: '2026-06-03T00:00:00.000Z',
-		updatedAt: '2026-06-03T00:00:00.000Z',
-	};
-}
-
 function dispatchInput() {
 	return {
 		dispatchId: 'dispatch-1',
@@ -151,14 +136,13 @@ describe('sqlite() PersistenceAdapter', () => {
 		await adapter.close?.();
 	});
 
-	it('preserves sessions across close() and connect() cycles', async () => {
+	it('preserves settled submissions across close() and connect() cycles', async () => {
 		const dir = createTempDir();
 		const dbPath = join(dir, 'restart-test.db');
 		const adapter = sqlite(dbPath);
 
 		await adapter.migrate?.();
 		const { executionStore: store1 } = await adapter.connect();
-		await store1.sessions.save('s1', sessionData());
 		await store1.submissions.admitDispatch(dispatchInput());
 		await store1.submissions.markSubmissionCanonicalReady('dispatch-1');
 		await store1.submissions.claimSubmission({
@@ -171,7 +155,6 @@ describe('sqlite() PersistenceAdapter', () => {
 
 		await adapter.migrate?.();
 		const { executionStore: store2 } = await adapter.connect();
-		expect(await store2.sessions.load('s1')).toEqual(sessionData());
 		const submission = await store2.submissions.getSubmission('dispatch-1');
 		expect(submission).toMatchObject({ status: 'settled', kind: 'dispatch' });
 		expect(await store2.submissions.hasUnsettledSubmissions()).toBe(false);
@@ -226,9 +209,12 @@ describe('sqlite() PersistenceAdapter', () => {
 	it('returns an in-memory store when no path is provided', async () => {
 		const adapter = sqlite();
 		await adapter.migrate?.();
-		const { executionStore: store } = await adapter.connect();
-		await store.sessions.save('s1', sessionData());
-		expect(await store.sessions.load('s1')).toEqual(sessionData());
+		const { executionStore } = await adapter.connect();
+		await executionStore.submissions.admitDispatch(dispatchInput());
+		expect(await executionStore.submissions.getSubmission('dispatch-1')).toMatchObject({
+			status: 'queued',
+			kind: 'dispatch',
+		});
 		await adapter.close?.();
 	});
 
@@ -259,7 +245,7 @@ describe('sqlite() PersistenceAdapter', () => {
 		const rows = db.prepare(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).all() as {
 			value: string;
 		}[];
-		expect(rows).toEqual([{ value: '5' }]);
+		expect(rows).toEqual([{ value: '6' }]);
 		db.close();
 	});
 
@@ -289,7 +275,7 @@ describe('sqlite() PersistenceAdapter', () => {
 		db.close();
 
 		const adapter = sqlite(dbPath);
-		expect(() => adapter.migrate?.()).toThrow('supports version 5');
+		expect(() => adapter.migrate?.()).toThrow('supports version 6');
 		const unchanged = new DatabaseSync(dbPath);
 		const columns = unchanged.prepare('PRAGMA table_info(flue_agent_submissions)').all() as Array<{
 			name: string;
@@ -327,7 +313,7 @@ describe('sqlite() PersistenceAdapter', () => {
 		db.close();
 
 		const adapter = sqlite(dbPath);
-		expect(() => adapter.migrate?.()).toThrow('supports version 5');
+		expect(() => adapter.migrate?.()).toThrow('supports version 6');
 		const unchanged = new DatabaseSync(dbPath);
 		const submissionColumns = unchanged.prepare('PRAGMA table_info(flue_agent_submissions)').all() as Array<{ name: string }>;
 		const runColumns = unchanged.prepare('PRAGMA table_info(flue_runs)').all() as Array<{ name: string }>;

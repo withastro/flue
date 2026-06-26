@@ -5,9 +5,12 @@ import {
 } from './agent-definition.ts';
 import type { AgentSubmissionStore } from './agent-execution-store.ts';
 import { discoverSessionContext } from './context.ts';
-import type { ConversationRecordWriter } from './conversation-writer.ts';
+import { ConversationRecordWriter } from './conversation-writer.ts';
 import { createDataEmitter } from './data.ts';
 import { Harness } from './harness.ts';
+import { type AttachmentStore, InMemoryAttachmentStore } from './runtime/attachment-store.ts';
+import { InMemoryConversationStreamStore } from './runtime/conversation-stream-store.ts';
+import { agentStreamPath } from './runtime/event-stream-store.ts';
 import { dispatchGlobalEvent } from './runtime/events.ts';
 import { createCwdSessionEnv } from './sandbox.ts';
 import type {
@@ -22,7 +25,6 @@ import type {
 	FlueObservationDetail,
 	SandboxFactory,
 	SessionEnv,
-	SessionStore,
 	SessionToolFactory,
 } from './types.ts';
 
@@ -40,7 +42,6 @@ export interface FlueContextConfig {
 	 */
 	agentConfig: Omit<AgentConfig, 'systemPrompt' | 'skills' | 'model'>;
 	createDefaultEnv: () => Promise<SessionEnv>;
-	defaultStore: SessionStore;
 	/**
 	 * The current HTTP request, if any. Surfaced to handlers as `ctx.req`.
 	 * Build plugins pass the standard Fetch `Request` through; non-HTTP entry
@@ -50,6 +51,7 @@ export interface FlueContextConfig {
 	initialEventIndex?: number;
 	submissionStore?: AgentSubmissionStore;
 	conversationWriter?: ConversationRecordWriter;
+	attachmentStore?: AttachmentStore;
 }
 
 /** Extends FlueEventContext with server-only methods. */
@@ -64,6 +66,7 @@ export interface FlueContextInternal extends FlueEventContext {
 	setEventCallback(callback: FlueEventCallback | undefined): void;
 	setSubmissionId(submissionId: string | undefined): void;
 	setConversationWriter?(writer: ConversationRecordWriter | undefined): void;
+	setAttachmentStore?(store: AttachmentStore | undefined): void;
 }
 
 export function createFlueContext(config: FlueContextConfig): FlueContextInternal {
@@ -74,6 +77,11 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 	let eventIndex = config.initialEventIndex ?? 0;
 	let submissionId: string | undefined;
 	let conversationWriter = config.conversationWriter;
+	let attachmentStore = config.attachmentStore;
+	let localConversationRuntime: Promise<{
+		writer: ConversationRecordWriter;
+		attachments: AttachmentStore;
+	}> | undefined;
 
 	const createEvent = (event: FlueEventInput): FlueEvent => ({
 		...event,
@@ -137,8 +145,14 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			return config.req;
 		},
 
-		initializeRootHarness(agent: AgentDefinition): Promise<Harness> {
-			return initializeRootHarness(agent, { ...config, conversationWriter }, emitEvent);
+		async initializeRootHarness(agent: AgentDefinition): Promise<Harness> {
+			if (!conversationWriter || !attachmentStore) {
+				localConversationRuntime ??= createLocalConversationRuntime(config);
+				const local = await localConversationRuntime;
+				conversationWriter ??= local.writer;
+				attachmentStore ??= local.attachments;
+			}
+			return initializeRootHarness(agent, { ...config, conversationWriter, attachmentStore }, emitEvent);
 		},
 
 		emitData: createDataEmitter(emitEvent),
@@ -202,9 +216,32 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 		setConversationWriter(value: ConversationRecordWriter | undefined): void {
 			conversationWriter = value;
 		},
+
+		setAttachmentStore(value: AttachmentStore | undefined): void {
+			attachmentStore = value;
+		},
 	};
 
 	return ctx;
+}
+
+async function createLocalConversationRuntime(config: FlueContextConfig): Promise<{
+	writer: ConversationRecordWriter;
+	attachments: AttachmentStore;
+}> {
+	const store = new InMemoryConversationStreamStore();
+	const path = config.runId === undefined
+		? agentStreamPath(config.agentName ?? 'agent', config.id)
+		: `workflow-executions/${config.runId}`;
+	return {
+		writer: await ConversationRecordWriter.create({
+			store,
+			path,
+			identity: { agentName: config.agentName ?? 'workflow', instanceId: config.id },
+			producerId: `execution:${config.runId ?? config.id}`,
+		}),
+		attachments: new InMemoryAttachmentStore(),
+	};
 }
 
 export async function initializeRootHarness(
@@ -255,17 +292,20 @@ export async function initializeRootHarness(
 		compaction: definition.compaction ?? config.agentConfig.compaction,
 		durability: definition.durability,
 	};
+	if (!config.conversationWriter || !config.attachmentStore) {
+		throw new Error('[flue] Canonical conversation runtime is not configured.');
+	}
 	return new Harness(
 		config.id,
 		'default',
 		agentConfig,
 		env,
-		config.defaultStore,
 		emitEvent,
-		definition.tools,
+		definition.tools ?? [],
 		toolFactory,
 		config.submissionStore,
 		config.conversationWriter,
+		config.attachmentStore,
 		definition.actions,
 		config.runId === undefined ? { instanceId: config.id } : { runId: config.runId },
 	);

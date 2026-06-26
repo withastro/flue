@@ -24,6 +24,12 @@ describe('NodePlugin', () => {
 
 		expect(entry).toContain('"/fixture/db.ts"');
 		expect(entry).not.toContain('sqlite()');
+		expect(entry).toContain('submissions: executionStore.submissions');
+		expect(entry).toContain('conversationStreamStore,');
+		expect(entry).toContain('conversationSnapshotStore,');
+		expect(entry).toContain('attachmentStore,');
+		expect(entry).not.toContain('executionStore.sessions');
+		expect(entry).not.toContain('defaultStore:');
 	});
 
 	it('composes user app.ts when present and falls back to the default app', () => {

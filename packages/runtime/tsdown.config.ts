@@ -11,6 +11,7 @@ export default defineConfig({
 		'src/cloudflare/internal.ts',
 		'src/node/index.ts',
 		'src/test-utils/define-store-contract-tests.ts',
+		'src/test-utils/define-attachment-store-contract-tests.ts',
 		'src/test-utils/define-event-stream-store-contract-tests.ts',
 		'src/test-utils/define-conversation-stream-store-contract-tests.ts',
 	],

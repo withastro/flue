@@ -57,20 +57,26 @@ sets; it never scans the keyspace.
 
 ## Storage model
 
+The adapter persists the canonical append-only conversation stream, disposable
+snapshots, immutable external attachments, submission lifecycle state, workflow
+runs, and distinct event streams. The canonical stream is the sole transcript;
+sessions append for the instance lifetime and have no per-session deletion.
+Whole-instance stream, snapshot, and attachment deletion methods are low-level
+primitives, not public orchestration.
+
 Hashes hold authoritative metadata and immutable generation manifests. Sorted
 sets maintain submission, run, and event ordering; sets maintain bounded cleanup
-ownership. Lua scripts serialize admission, deletion, claims, lifecycle and
-lease transitions, journals, run indexes, and event append/close.
+ownership. Lua scripts serialize admission, claims, lifecycle and lease
+transitions, journals, run indexes, and event append/close.
 
-Session snapshots and direct-submission image chunks are staged into immutable
-generation hashes with ordinary or pipelined commands. A short Lua script then
-publishes the generation pointer atomically. Readers bind to one published
-generation, so they never observe a partially written large value. Reader counts
-and a grace period protect generations held by concurrent loads. Per-owner sorted
-sets reclaim superseded and failed staging without `KEYS` scans; reclamation is
-opportunistic on later owner activity, so abandoned staging can remain until that
-owner is accessed again. Stream segment insertion uses single-key `HSETNX`
-first-writer-wins semantics.
+Direct-submission payloads and image chunks are staged into immutable generation
+hashes with ordinary or pipelined commands, then published atomically during
+admission. Readers bind to one published generation, so they never observe a
+partially written value. Reader counts and a grace period protect generations held
+by concurrent loads. Per-submission sorted sets reclaim superseded and failed
+staging without `KEYS` scans; reclamation is opportunistic on later submission
+activity, so abandoned staging can remain until that submission is accessed again.
+Stream segment insertion uses single-key `HSETNX` first-writer-wins semantics.
 
 Redis Lua does not roll back earlier commands when a later command fails. Scripts
 validate key types first, allocate index capacity before authoritative state where
@@ -80,10 +86,6 @@ of memory during a multi-command script can still require operational recovery.
 Maintain enough headroom for the largest staged generation and its transition
 indexes; `noeviction` prevents data loss but does not make an exhausted server
 writable.
-
-Session deletion records an admission-sequence cutoff, not caller-provided
-`acceptedAt`, before invoking runtime snapshot deletion. Only settled submissions
-at or below that cutoff are removed.
 
 ## Bring your own driver
 

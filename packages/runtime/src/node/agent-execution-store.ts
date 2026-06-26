@@ -20,6 +20,7 @@ import {
 	createSqlAgentExecutionStoreFromSql,
 	ensureSqlAgentExecutionTables,
 } from '../sql-agent-execution-store.ts';
+import { ensureSqlAttachmentTable, SqliteAttachmentStore } from '../sql-attachment-store.ts';
 import { createSqlRunStore } from '../sql-run-store.ts';
 import type { SqlStorage } from '../sql-storage.ts';
 
@@ -131,6 +132,7 @@ export function sqlite(path?: string): PersistenceAdapter {
 			createSqlRunStore(sql);
 			new SqliteEventStreamStore(sql);
 			ensureSqlConversationStreamTables(sql);
+			ensureSqlAttachmentTable(sql);
 		},
 		connect() {
 			const { sql, runTransaction } = ensureOpen();
@@ -140,6 +142,7 @@ export function sqlite(path?: string): PersistenceAdapter {
 				eventStreamStore: new SqliteEventStreamStore(sql),
 				conversationStreamStore: new SqliteConversationStreamStore(sql, runTransaction),
 				conversationSnapshotStore: new SqliteConversationSnapshotStore(sql, runTransaction),
+				attachmentStore: new SqliteAttachmentStore(sql, runTransaction),
 			};
 		},
 		close() {

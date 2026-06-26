@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createFlueContext, InMemorySessionStore, installDevLifecycleLogger } from '../src/internal.ts';
+import { createFlueContext, installDevLifecycleLogger } from '../src/internal.ts';
 
 function createContext(runId: string) {
 	return createFlueContext({
@@ -10,7 +10,6 @@ function createContext(runId: string) {
 		createDefaultEnv: async () => {
 			throw new Error('unexpected sandbox initialization');
 		},
-		defaultStore: new InMemorySessionStore(),
 	});
 }
 

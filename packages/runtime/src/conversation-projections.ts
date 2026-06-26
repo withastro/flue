@@ -2,14 +2,20 @@ import type { AssistantMessage } from '@earendil-works/pi-ai';
 import type { AttachmentRef } from './conversation-records.ts';
 import type {
 	InProgressAssistantMessage,
+	ReducedCompactionEntry,
 	ReducedConversationState,
 	ReducedEntry,
 	ReducedMessageEntry,
 } from './conversation-reducer.ts';
-import { buildConversationContext, getActiveConversationPath } from './conversation-reducer.ts';
+import {
+	buildConversationContext,
+	buildConversationContextEntries,
+	getActiveConversationPath,
+} from './conversation-reducer.ts';
 import type { SubmissionState } from './submission-state.ts';
 import { classifySubmissionState } from './submission-state.ts';
-import type { PromptUsage, SessionEntry } from './types.ts';
+import type { PromptUsage } from './types.ts';
+import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 
 export type ConversationUiPart =
 	| { type: 'text'; blockId?: string; text: string; state: 'streaming' | 'done' }
@@ -64,10 +70,7 @@ export function classifyConversationSubmission(
 			assistant: materializeInterruptedAssistant(inProgress),
 		};
 	}
-	return classifySubmissionState(
-		path.slice(inputIndex + 1).map(toLegacyEntry),
-		options,
-	);
+	return classifySubmissionState(path.slice(inputIndex + 1), options);
 }
 
 export function projectConversationUi(
@@ -106,12 +109,72 @@ export function projectConversationUi(
 	return { conversationId: conversation.conversationId, streamOffset, messages };
 }
 
-export function projectConversationModelContext(
+export function getActiveConversationPathSince(
 	conversation: ReducedConversationState,
-): ReturnType<typeof buildConversationContext> {
-	return buildConversationContext(conversation);
+	boundaryId: string | null,
+): ReducedEntry[] | undefined {
+	const path = getActiveConversationPath(conversation);
+	if (boundaryId === null) return path;
+	const boundaryIndex = path.findIndex((entry) => entry.id === boundaryId);
+	return boundaryIndex === -1 ? undefined : path.slice(boundaryIndex + 1);
 }
 
+export function getLatestCompletedAssistantEntry(
+	entries: readonly ReducedEntry[],
+): ReducedMessageEntry | undefined {
+	return entries.findLast(
+		(entry): entry is ReducedMessageEntry =>
+			entry.type === 'message' &&
+			entry.message.role === 'assistant' &&
+			(entry.message.stopReason === 'stop' || entry.message.stopReason === 'length'),
+	);
+}
+
+export function getAssistantText(assistant: AssistantMessage): string {
+	return assistant.content
+		.flatMap((block) => (block.type === 'text' ? [block.text] : []))
+		.join('\n');
+}
+
+export function aggregateConversationUsageSince(
+	conversation: ReducedConversationState,
+	boundaryId: string | null,
+): PromptUsage | undefined {
+	const entries = getActiveConversationPathSince(conversation, boundaryId);
+	if (!entries) return undefined;
+	let usage = emptyUsage();
+	for (const entry of entries) {
+		if (entry.type === 'message' && entry.message.role === 'assistant') {
+			const assistantUsage = fromProviderUsage(entry.message.usage);
+			if (assistantUsage) usage = addUsage(usage, assistantUsage);
+		} else if (entry.type === 'compaction' && entry.usage) {
+			usage = addUsage(usage, entry.usage);
+		}
+	}
+	return usage;
+}
+
+export function getLatestConversationCompaction(
+	conversation: ReducedConversationState,
+): ReducedCompactionEntry | undefined {
+	return getActiveConversationPath(conversation).findLast(
+		(entry): entry is ReducedCompactionEntry => entry.type === 'compaction',
+	);
+}
+
+export function projectConversationModelContext(
+	conversation: ReducedConversationState,
+	options?: Parameters<typeof buildConversationContext>[1],
+): ReturnType<typeof buildConversationContext> {
+	return buildConversationContext(conversation, options);
+}
+
+export function projectConversationModelContextEntries(
+	conversation: ReducedConversationState,
+	options?: Parameters<typeof buildConversationContextEntries>[1],
+): ReturnType<typeof buildConversationContextEntries> {
+	return buildConversationContextEntries(conversation, options);
+}
 
 function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMessage | undefined {
 	const message = entry.message;
@@ -235,29 +298,6 @@ function projectInProgressMessage(
 		});
 	if (parts.length === 0) return undefined;
 	return { id: message.messageId, role: 'assistant', parts };
-}
-
-function toLegacyEntry(entry: ReducedEntry): SessionEntry {
-	if (entry.type === 'message') {
-		return {
-			type: 'message',
-			id: entry.id,
-			parentId: entry.parentId,
-			timestamp: entry.timestamp,
-			message: entry.message,
-		};
-	}
-	return {
-		type: 'compaction',
-		id: entry.id,
-		parentId: entry.parentId,
-		timestamp: entry.timestamp,
-		summary: entry.summary,
-		firstKeptEntryId: entry.firstKeptEntryId,
-		tokensBefore: entry.tokensBefore,
-		details: entry.details,
-		usage: entry.usage,
-	};
 }
 
 function toolResultOutput(content: Array<{ type: string; text?: string }>): unknown {

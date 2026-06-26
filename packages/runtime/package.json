@@ -49,6 +49,10 @@
 		"./test-utils/conversation-stream": {
 			"types": "./dist/test-utils/define-conversation-stream-store-contract-tests.d.mts",
 			"import": "./dist/test-utils/define-conversation-stream-store-contract-tests.mjs"
+		},
+		"./test-utils/attachment-store": {
+			"types": "./dist/test-utils/define-attachment-store-contract-tests.d.mts",
+			"import": "./dist/test-utils/define-attachment-store-contract-tests.mjs"
 		}
 	},
 	"main": "./dist/index.mjs",

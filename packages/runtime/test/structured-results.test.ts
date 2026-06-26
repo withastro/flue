@@ -8,7 +8,7 @@ import {
 import * as v from 'valibot';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineAgent, observe, ResultUnavailableError } from '../src/index.ts';
-import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
+import { createFlueContext } from '../src/internal.ts';
 import type { FlueEvent, FlueObservation, FlueSession, Skill } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
 
@@ -35,7 +35,6 @@ async function createSession(
 			resolveModel: () => provider.getModel(),
 		},
 		createDefaultEnv: async () => createNoopSessionEnv(),
-		defaultStore: new InMemorySessionStore(),
 	});
 	if (options.onEvent) ctx.setEventCallback(options.onEvent);
 	const harness = await ctx.initializeRootHarness(

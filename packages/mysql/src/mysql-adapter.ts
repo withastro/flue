@@ -25,8 +25,6 @@ import type {
 	RunRecord,
 	RunStatus,
 	RunStore,
-	SessionData,
-	SessionStore,
 	SubmissionAttemptRef,
 	SubmissionClaimRef,
 } from '@flue/runtime/adapter';
@@ -40,12 +38,10 @@ import {
 	DURABILITY_DEFAULT_MAX_ATTEMPTS,
 	DURABILITY_DEFAULT_TIMEOUT_MS,
 	decodeRunCursor,
-	deduplicateSessionDeletion,
 	encodeRunCursor,
 	FLUE_SCHEMA_VERSION,
 	formatOffset,
 	hydratePersistedDirectSubmission,
-	hydratePersistedSessionEntry,
 	isSubmissionPayload,
 	LEASE_DURATION_MS,
 	MAX_LIST_LIMIT,
@@ -54,13 +50,12 @@ import {
 	parseAcceptedAt,
 	parseOffset,
 	prepareDirectSubmission,
-	prepareSessionEntry,
 	SUBMISSION_HARNESS_NAME,
 	SUBMISSION_SESSION_NAME,
 	samePersistedChunks,
-	sessionEntryChunkOwner,
 	submissionChunkOwner,
 } from '@flue/runtime/adapter';
+import { MysqlAttachmentStore } from './mysql-attachment-store.ts';
 import {
 	MysqlConversationSnapshotStore,
 	MysqlConversationStreamStore,
@@ -68,7 +63,7 @@ import {
 
 type SqlRow = Record<string, unknown>;
 
-export type MysqlParameter = string | number | boolean | null;
+export type MysqlParameter = string | number | boolean | Uint8Array | null;
 export type MysqlQuery = (text: string, params?: MysqlParameter[]) => Promise<SqlRow[]>;
 
 export interface MysqlRunner {
@@ -86,13 +81,13 @@ export function mysql(runner: MysqlRunner): PersistenceAdapter {
 		connect() {
 			return {
 				executionStore: {
-					sessions: new MysqlSessionStore(runner),
 					submissions: new MysqlSubmissionStore(runner),
 				},
 				runStore: new MysqlRunStore(runner),
 				eventStreamStore: new MysqlEventStreamStore(runner),
 				conversationStreamStore: new MysqlConversationStreamStore(runner),
 				conversationSnapshotStore: new MysqlConversationSnapshotStore(runner),
+				attachmentStore: new MysqlAttachmentStore(runner),
 			};
 		},
 		async close() {
@@ -105,8 +100,6 @@ export function mysql(runner: MysqlRunner): PersistenceAdapter {
 
 const schemaTables = {
 	flue_meta: ['key', 'value'],
-	flue_sessions: ['id', 'data'],
-	flue_session_entries: ['session_id', 'entry_id', 'position', 'data'],
 	flue_image_chunks: [
 		'owner_kind',
 		'owner_id',
@@ -155,7 +148,6 @@ const schemaTables = {
 		'committed',
 		'committed_leaf_id',
 	],
-	flue_agent_session_deletions: ['session_key', 'started_at'],
 	flue_agent_dispatch_receipts: ['dispatch_id', 'accepted_at'],
 	flue_agent_attempt_markers: ['submission_id', 'attempt_id', 'created_at'],
 	flue_runs: [
@@ -195,6 +187,7 @@ const schemaTables = {
 		'attempt_id',
 	],
 	flue_conversation_snapshots: ['path', 'reducer_version', 'stream_offset', 'data', 'created_at'],
+	flue_attachments: ['stream_path', 'attachment_id', 'mime_type', 'byte_size', 'digest', 'owner_kind', 'owner_id', 'bytes', 'created_at'],
 } as const;
 
 interface SchemaColumn {
@@ -207,18 +200,6 @@ interface SchemaColumn {
 
 const criticalColumns: Record<string, SchemaColumn> = {
 	'flue_meta.key': { type: 'varchar(64)', collation: 'utf8mb4_bin', nullable: false },
-	'flue_sessions.id': { type: 'varchar(512)', collation: 'utf8mb4_bin', nullable: false },
-	'flue_session_entries.session_id': {
-		type: 'varchar(512)',
-		collation: 'utf8mb4_bin',
-		nullable: false,
-	},
-	'flue_session_entries.entry_id': {
-		type: 'varchar(255)',
-		collation: 'utf8mb4_bin',
-		nullable: false,
-	},
-	'flue_session_entries.position': { type: 'int', nullable: false },
 	'flue_image_chunks.owner_kind': {
 		type: 'varchar(32)',
 		collation: 'utf8mb4_bin',
@@ -266,11 +247,6 @@ const criticalColumns: Record<string, SchemaColumn> = {
 		collation: 'utf8mb4_bin',
 		nullable: false,
 	},
-	'flue_agent_session_deletions.session_key': {
-		type: 'varchar(512)',
-		collation: 'utf8mb4_bin',
-		nullable: false,
-	},
 	'flue_agent_dispatch_receipts.dispatch_id': {
 		type: 'varchar(255)',
 		collation: 'utf8mb4_bin',
@@ -308,11 +284,12 @@ const criticalColumns: Record<string, SchemaColumn> = {
 	'flue_conversation_stream_batches.seq': { type: 'bigint', nullable: false },
 	'flue_conversation_stream_batches.producer_id': { type: 'varchar(128)', collation: 'utf8mb4_bin', nullable: false },
 	'flue_conversation_snapshots.path': { type: 'varchar(512)', collation: 'utf8mb4_bin', nullable: false },
+	'flue_attachments.stream_path': { type: 'varchar(255)', collation: 'utf8mb4_bin', nullable: false },
+	'flue_attachments.attachment_id': { type: 'varchar(255)', collation: 'utf8mb4_bin', nullable: false },
+	'flue_attachments.owner_kind': { type: 'varchar(16)', collation: 'ascii_bin', nullable: false },
 };
 
 const longtextColumns = [
-	'flue_sessions.data',
-	'flue_session_entries.data',
 	'flue_image_chunks.data',
 	'flue_agent_submissions.payload',
 	'flue_agent_submissions.error',
@@ -329,14 +306,6 @@ const longtextColumns = [
 
 const requiredIndexes = [
 	{ table: 'flue_meta', name: 'PRIMARY', columns: ['key'], nonUnique: false },
-	{ table: 'flue_sessions', name: 'PRIMARY', columns: ['id'], nonUnique: false },
-	{
-		table: 'flue_session_entries',
-		name: 'PRIMARY',
-		columns: ['session_id', 'entry_id'],
-		nonUnique: false,
-	},
-	{ table: 'flue_session_entries', columns: ['session_id', 'position'], nonUnique: true },
 	{
 		table: 'flue_image_chunks',
 		name: 'PRIMARY',
@@ -361,12 +330,6 @@ const requiredIndexes = [
 		table: 'flue_agent_turn_journals',
 		name: 'PRIMARY',
 		columns: ['submission_id'],
-		nonUnique: false,
-	},
-	{
-		table: 'flue_agent_session_deletions',
-		name: 'PRIMARY',
-		columns: ['session_key'],
 		nonUnique: false,
 	},
 	{
@@ -404,6 +367,8 @@ const requiredIndexes = [
 		nonUnique: false,
 	},
 	{ table: 'flue_conversation_snapshots', name: 'PRIMARY', columns: ['path'], nonUnique: false },
+	{ table: 'flue_attachments', name: 'PRIMARY', columns: ['stream_path', 'attachment_id'], nonUnique: false },
+	{ table: 'flue_attachments', columns: ['stream_path', 'owner_kind', 'owner_id'], nonUnique: true },
 ];
 
 function invalidMysqlSchema(subject: string): Error {
@@ -434,13 +399,10 @@ async function ensureTables(runner: MysqlRunner): Promise<void> {
 	}
 	const ddl = [
 		`CREATE TABLE IF NOT EXISTS flue_meta (\`key\` VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, value VARCHAR(64) NOT NULL) ENGINE=InnoDB`,
-		`CREATE TABLE IF NOT EXISTS flue_sessions (id VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, data LONGTEXT NOT NULL) ENGINE=InnoDB`,
-		`CREATE TABLE IF NOT EXISTS flue_session_entries (session_id VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, entry_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, position INT NOT NULL, data LONGTEXT NOT NULL, PRIMARY KEY (session_id, entry_id), INDEX flue_session_entries_session_position_idx (session_id, position)) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_image_chunks (owner_kind VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, owner_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, owner_part VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, image_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, chunk_index INT NOT NULL, chunk_count INT NOT NULL, data LONGTEXT NOT NULL, PRIMARY KEY (owner_kind, owner_id, owner_part, image_id, chunk_index)) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_agent_session_locks (session_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_agent_submissions (sequence BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, submission_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL UNIQUE, session_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, kind VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, payload LONGTEXT NOT NULL, status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, accepted_at BIGINT NOT NULL, canonical_ready_at BIGINT, attempt_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, input_applied_at BIGINT, recovery_requested_at BIGINT, started_at BIGINT, settled_at BIGINT, error LONGTEXT, attempt_count INT NOT NULL DEFAULT 0, max_retry INT NOT NULL DEFAULT ${DURABILITY_DEFAULT_MAX_ATTEMPTS}, timeout_at BIGINT NOT NULL DEFAULT 0, owner_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, lease_expires_at BIGINT NOT NULL DEFAULT 0, settlement_record_id VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, settlement_record LONGTEXT, INDEX flue_agent_submissions_status_sequence_idx (status, sequence), INDEX flue_agent_submissions_session_status_sequence_idx (session_key, status, sequence)) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_agent_turn_journals (submission_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, session_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, kind VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, attempt_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, operation_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, turn_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, phase VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, revision INT NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, checkpoint_leaf_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, tool_request_json LONGTEXT, committed TINYINT(1) NOT NULL DEFAULT 0, committed_leaf_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin) ENGINE=InnoDB`,
-		`CREATE TABLE IF NOT EXISTS flue_agent_session_deletions (session_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, started_at BIGINT NOT NULL) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_agent_dispatch_receipts (dispatch_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, accepted_at BIGINT NOT NULL) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_agent_attempt_markers (submission_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, attempt_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, created_at BIGINT NOT NULL, PRIMARY KEY (submission_id, attempt_id)) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_runs (run_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, workflow_name VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, started_at VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, payload LONGTEXT, traceparent VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin, tracestate LONGTEXT, ended_at VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin, is_error TINYINT(1), duration_ms BIGINT, result LONGTEXT, error LONGTEXT, INDEX flue_runs_status_started_idx (status, started_at DESC, run_id DESC), INDEX flue_runs_workflow_started_idx (workflow_name, started_at DESC, run_id DESC)) ENGINE=InnoDB`,
@@ -449,6 +411,7 @@ async function ensureTables(runner: MysqlRunner): Promise<void> {
 		`CREATE TABLE IF NOT EXISTS flue_conversation_streams (path VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, identity_json LONGTEXT NOT NULL, next_offset BIGINT NOT NULL DEFAULT 0, closed TINYINT(1) NOT NULL DEFAULT 0, producer_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, producer_epoch BIGINT NOT NULL DEFAULT 0, next_producer_sequence BIGINT NOT NULL DEFAULT 0, incarnation VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_conversation_stream_batches (path VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, seq BIGINT NOT NULL, producer_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, producer_epoch BIGINT NOT NULL, producer_sequence BIGINT NOT NULL, data LONGTEXT NOT NULL, submission_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, attempt_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, PRIMARY KEY (path, seq), UNIQUE INDEX flue_conversation_stream_batches_producer_idx (path, producer_id, producer_epoch, producer_sequence)) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_conversation_snapshots (path VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, reducer_version INT NOT NULL, stream_offset VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, data LONGTEXT NOT NULL, created_at VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL) ENGINE=InnoDB`,
+		`CREATE TABLE IF NOT EXISTS flue_attachments (stream_path VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, attachment_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, mime_type VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, byte_size BIGINT UNSIGNED NOT NULL, digest VARCHAR(128) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, owner_kind VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, owner_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, bytes LONGBLOB NOT NULL, created_at BIGINT NOT NULL, PRIMARY KEY (stream_path, attachment_id), INDEX flue_attachments_owner_idx (stream_path, owner_kind, owner_id), CHECK (owner_kind IN ('conversation', 'submission'))) ENGINE=InnoDB`,
 	];
 	for (const statement of ddl) await runner.query(statement);
 	for (const repair of [
@@ -637,98 +600,6 @@ async function deleteMysqlChunkOwner(
 	);
 }
 
-class MysqlSessionStore implements SessionStore {
-	constructor(private runner: MysqlRunner) {}
-
-	async save(id: string, data: SessionData): Promise<void> {
-		const { entries: sessionEntries, ...session } = data;
-		const entries = sessionEntries.map((entry, position) => {
-			const prepared = prepareSessionEntry(entry);
-			return { entry, position, data: JSON.stringify(prepared.value), chunks: prepared.chunks };
-		});
-		await this.runner.transaction(async (tx) => {
-			await lockSession(tx, id);
-			const chunkStore = createMysqlChunkStore(tx);
-			await tx.query(
-				`INSERT INTO flue_sessions (id, data) VALUES (?, ?)
-				 ON DUPLICATE KEY UPDATE data = VALUES(data)`,
-				[id, JSON.stringify(session)],
-			);
-			const existingRows = await tx.query(
-				'SELECT entry_id, position, data FROM flue_session_entries WHERE session_id = ?',
-				[id],
-			);
-			const existing = new Map(existingRows.map((row) => [row.entry_id, row]));
-			const retained = new Set<string>();
-			for (const { entry, position, data: entryData, chunks } of entries) {
-				retained.add(entry.id);
-				const current = existing.get(entry.id);
-				const owner = sessionEntryChunkOwner(id, entry.id);
-				const currentChunks = await chunkStore.read(owner);
-				const entryChanged = Number(current?.position) !== position || current?.data !== entryData;
-				const chunksChanged = !samePersistedChunks(currentChunks, chunks);
-				if (!entryChanged && !chunksChanged) continue;
-				if (entryChanged)
-					await tx.query(
-						`INSERT INTO flue_session_entries (session_id, entry_id, position, data)
-					 VALUES (?, ?, ?, ?)
-					 ON DUPLICATE KEY UPDATE position = VALUES(position), data = VALUES(data)`,
-						[id, entry.id, position, entryData],
-					);
-				if (chunksChanged) await chunkStore.replace(owner, chunks);
-			}
-			for (const row of existingRows) {
-				if (typeof row.entry_id === 'string' && !retained.has(row.entry_id)) {
-					await chunkStore.delete(sessionEntryChunkOwner(id, row.entry_id));
-					await tx.query('DELETE FROM flue_session_entries WHERE session_id = ? AND entry_id = ?', [
-						id,
-						row.entry_id,
-					]);
-				}
-			}
-		});
-	}
-
-	async load(id: string): Promise<SessionData | null> {
-		return this.runner.transaction(async (tx) => {
-			const chunkStore = createMysqlChunkStore(tx);
-			const rows = await tx.query('SELECT data FROM flue_sessions WHERE id = ? LIMIT 1', [id]);
-			const row = rows[0];
-			if (!row) return null;
-			if (typeof row.data !== 'string') {
-				throw new Error('[flue] Persisted session row is malformed.');
-			}
-			const session = JSON.parse(row.data) as Omit<SessionData, 'entries'>;
-			const entryRows = await tx.query(
-				'SELECT entry_id, data FROM flue_session_entries WHERE session_id = ? ORDER BY position ASC',
-				[id],
-			);
-			return {
-				...session,
-				entries: await Promise.all(
-					entryRows.map(async (entryRow) => {
-						if (typeof entryRow.entry_id !== 'string' || typeof entryRow.data !== 'string') {
-							throw new Error('[flue] Persisted session entry row is malformed.');
-						}
-						return hydratePersistedSessionEntry(
-							JSON.parse(entryRow.data),
-							await chunkStore.read(sessionEntryChunkOwner(id, entryRow.entry_id)),
-						);
-					}),
-				),
-			};
-		});
-	}
-
-	async delete(id: string): Promise<void> {
-		await this.runner.transaction(async (tx) => {
-			await lockSession(tx, id);
-			await createMysqlChunkStore(tx).deleteOwner('session_entry', id);
-			await tx.query('DELETE FROM flue_session_entries WHERE session_id = ?', [id]);
-			await tx.query('DELETE FROM flue_sessions WHERE id = ?', [id]);
-		});
-	}
-}
 
 const submissionColumns = [
 	'sequence',
@@ -759,8 +630,6 @@ function prefixed(table: string): string {
 }
 
 class MysqlSubmissionStore implements AgentSubmissionStore {
-	private pendingSessionDeletions = new Map<string, Promise<void>>();
-
 	constructor(private runner: MysqlRunner) {}
 
 	async getSubmission(submissionId: string): Promise<AgentSubmission | null> {
@@ -1172,17 +1041,6 @@ class MysqlSubmissionStore implements AgentSubmissionStore {
 		});
 	}
 
-	deleteSession(sessionKey: string, deleteSessionTree: () => Promise<void>): Promise<void> {
-		return deduplicateSessionDeletion(this.pendingSessionDeletions, sessionKey, () =>
-			this.runSessionDeletion(sessionKey, deleteSessionTree),
-		);
-	}
-
-	async listPendingSessionDeletions(): Promise<string[]> {
-		const rows = await this.runner.query('SELECT session_key FROM flue_agent_session_deletions');
-		return rows.map((row) => String(row.session_key));
-	}
-
 	private async admitSubmission(
 		input: DispatchAgentSubmissionInput | DirectAgentSubmissionInput,
 	): Promise<AgentDispatchAdmission> {
@@ -1210,16 +1068,6 @@ class MysqlSubmissionStore implements AgentSubmissionStore {
 					return { kind: 'retained_receipt' as const, receipt };
 				}
 			}
-			const deletingRows = await tx.query(
-				'SELECT 1 FROM flue_agent_session_deletions WHERE session_key = ? LIMIT 1',
-				[sessionKey],
-			);
-			if (deletingRows.length > 0) {
-				throw new Error(
-					'[flue] Durable agent submission admission is unavailable while this session is being deleted. Retry after deletion completes.',
-				);
-			}
-
 			await tx.query(
 				`INSERT IGNORE INTO flue_agent_submissions
 				 (submission_id, session_key, kind, payload, status, accepted_at)
@@ -1257,84 +1105,6 @@ class MysqlSubmissionStore implements AgentSubmissionStore {
 				return { kind: 'conflict' as const };
 			}
 			return { kind: 'submission' as const, submission: parseSubmission(row, prepared.chunks) };
-		});
-	}
-
-	private async runSessionDeletion(
-		sessionKey: string,
-		deleteSessionTree: () => Promise<void>,
-	): Promise<void> {
-		const deletionStartedAt = Date.now();
-		await this.runner.transaction(async (tx) => {
-			await lockSession(tx, sessionKey);
-			const active = await tx.query(
-				`SELECT 1 FROM flue_agent_submissions
-				 WHERE session_key = ? AND status IN ('queued', 'running', 'terminalizing')
-				 LIMIT 1`,
-				[sessionKey],
-			);
-			if (active.length > 0) {
-				throw new Error(
-					'[flue] Session cannot be deleted while durable agent submissions are queued or running. Wait for accepted work to settle, then retry deletion.',
-				);
-			}
-			await tx.query(
-				`INSERT IGNORE INTO flue_agent_session_deletions (session_key, started_at) VALUES (?, ?)`,
-				[sessionKey, deletionStartedAt],
-			);
-		});
-		try {
-			await deleteSessionTree();
-		} catch (error) {
-			await this.runner.query('DELETE FROM flue_agent_session_deletions WHERE session_key = ?', [
-				sessionKey,
-			]);
-			throw error;
-		}
-		await this.runner.transaction(async (tx) => {
-			await lockSession(tx, sessionKey);
-			const deletionRows = await tx.query(
-				'SELECT started_at FROM flue_agent_session_deletions WHERE session_key = ?',
-				[sessionKey],
-			);
-			const deletionRow = deletionRows[0];
-			const startedAt = deletionRow != null ? Number(deletionRow.started_at) : NaN;
-			if (!deletionRow || !Number.isFinite(startedAt)) {
-				return;
-			}
-			await tx.query(
-				`INSERT IGNORE INTO flue_agent_dispatch_receipts (dispatch_id, accepted_at)
-				 SELECT submission_id, accepted_at
-				 FROM flue_agent_submissions
-				 WHERE session_key = ? AND kind = 'dispatch' AND status = 'settled'
-				   AND accepted_at <= ?`,
-				[sessionKey, startedAt],
-			);
-			await tx.query(
-				`DELETE FROM flue_agent_turn_journals
-				 WHERE submission_id IN (
-				   SELECT submission_id FROM flue_agent_submissions
-				   WHERE session_key = ? AND status = 'settled' AND accepted_at <= ?
-				 )`,
-				[sessionKey, startedAt],
-			);
-			const deletedSubmissionRows = await tx.query(
-				`SELECT submission_id FROM flue_agent_submissions
-				 WHERE session_key = ? AND status = 'settled' AND accepted_at <= ?`,
-				[sessionKey, startedAt],
-			);
-			const submissionOwners = deletedSubmissionRows.flatMap((row) =>
-				typeof row.submission_id === 'string' ? [submissionChunkOwner(row.submission_id)] : [],
-			);
-			await createMysqlChunkStore(tx).deleteMany(submissionOwners);
-			await tx.query(
-				`DELETE FROM flue_agent_submissions
-				 WHERE session_key = ? AND status = 'settled' AND accepted_at <= ?`,
-				[sessionKey, startedAt],
-			);
-			await tx.query('DELETE FROM flue_agent_session_deletions WHERE session_key = ?', [
-				sessionKey,
-			]);
 		});
 	}
 
@@ -1660,24 +1430,37 @@ class MysqlEventStreamStore implements EventStreamStore {
 	}
 
 	async appendEventOnce(path: string, key: string, event: unknown): Promise<string> {
-		const data = JSON.stringify(event);
-		const offset = await this.runner.transaction(async (tx) => {
-			const existing = await tx.query(`SELECT seq, data FROM flue_event_stream_entries WHERE path = ? AND event_key = ? LIMIT 1 FOR UPDATE`, [path, key]);
-			if (existing[0]) {
-				if (existing[0].data !== data) throw new TypeError(`Event key "${key}" has a conflicting payload.`);
-				return Number(existing[0].seq);
-			}
-			const rows = await tx.query(`SELECT next_offset, closed FROM flue_event_streams WHERE path = ? FOR UPDATE`, [path]);
-			const row = rows[0];
-			if (!row) throw new TypeError(`Event stream "${path}" does not exist.`);
-			if (parseMysqlBoolean(row.closed)) throw new TypeError(`Event stream "${path}" is closed.`);
-			const seq = Number(row.next_offset);
-			await tx.query(`UPDATE flue_event_streams SET next_offset = next_offset + 1 WHERE path = ? AND closed = 0`, [path]);
-			await tx.query(`INSERT INTO flue_event_stream_entries (path, seq, data, event_key) VALUES (?, ?, ?, ?)`, [path, seq, data, key]);
-			return seq;
+		const previous = this.pendingAppends.get(path) ?? Promise.resolve();
+		const append = previous.then(async () => {
+			const data = JSON.stringify(event);
+			const offset = await this.runner.transaction(async (tx) => {
+				const rows = await tx.query(`SELECT next_offset, closed FROM flue_event_streams WHERE path = ? FOR UPDATE`, [path]);
+				const row = rows[0];
+				if (!row) throw new TypeError(`Event stream "${path}" does not exist.`);
+				if (parseMysqlBoolean(row.closed)) throw new TypeError(`Event stream "${path}" is closed.`);
+				const existing = await tx.query(`SELECT seq, data FROM flue_event_stream_entries WHERE path = ? AND event_key = ? LIMIT 1`, [path, key]);
+				if (existing[0]) {
+					if (existing[0].data !== data) throw new TypeError(`Event key "${key}" has a conflicting payload.`);
+					return Number(existing[0].seq);
+				}
+				const seq = Number(row.next_offset);
+				await tx.query(`UPDATE flue_event_streams SET next_offset = next_offset + 1 WHERE path = ? AND closed = 0`, [path]);
+				await tx.query(`INSERT INTO flue_event_stream_entries (path, seq, data, event_key) VALUES (?, ?, ?, ?)`, [path, seq, data, key]);
+				return seq;
+			});
+			this.notifyListeners(path);
+			return formatOffset(offset);
 		});
-		this.notifyListeners(path);
-		return formatOffset(offset);
+		const settled = append.then(
+			() => undefined,
+			() => undefined,
+		);
+		this.pendingAppends.set(path, settled);
+		try {
+			return await append;
+		} finally {
+			if (this.pendingAppends.get(path) === settled) this.pendingAppends.delete(path);
+		}
 	}
 
 	async readEvents(

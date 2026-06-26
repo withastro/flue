@@ -19,7 +19,7 @@ api/action-api -- Action API
 api/agent-api -- Agent API
   Reference for defining agents and running agent operations with @flue/runtime.
 api/data-persistence-api -- Data Persistence API
-  Reference for Flue persistence adapters, stores, and session data.
+  Reference for Flue persistence adapters and stores.
 api/errors-reference -- Errors Reference
   Reference Flue transport errors, runtime failures, and development diagnostics.
 api/events-reference -- Events Reference

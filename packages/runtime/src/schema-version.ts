@@ -18,7 +18,7 @@ import type { SqlStorage } from './sql-storage.ts';
  * Bump this when a persisted format changes incompatibly. Pre-1.0 stores with
  * another version are rejected and must be cleared.
  */
-export const FLUE_SCHEMA_VERSION = 5;
+export const FLUE_SCHEMA_VERSION = 6;
 
 /**
  * Throw {@link PersistedSchemaVersionError} unless the stored version matches

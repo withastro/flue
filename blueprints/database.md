@@ -11,11 +11,12 @@ for a backend that Flue does not have a built-in adapter for. The deliverable
 is one file in the user's project that default-exports a `PersistenceAdapter`
 for the backend, satisfying Flue's published contract.
 
-A `PersistenceAdapter` stores Flue's runtime state: agent session snapshots,
-accepted agent submissions and their durable turn journals, and workflow-run
-records and events. It is **not** a place for the application's own business
-data. Implementing one correctly means honoring the contract's ordering,
-idempotency, and lease semantics — read the spec before writing code.
+A `PersistenceAdapter` stores Flue runtime state: canonical append-only agent
+conversation streams, disposable snapshots, immutable external attachments,
+accepted submissions and durable turn journals, workflow-run records, and event
+streams. It is **not** a place for application business data. Implementing one
+correctly means honoring the contract's ordering, idempotency, and lease
+semantics — read the spec before writing code.
 
 There's no fixed procedure for getting there — your backend's shape (a SQL
 driver, a document store, a key-value server, an HTTP data API) will dictate
@@ -46,8 +47,8 @@ modified the implementation.
 
 Read these before writing code.
 
-- **Spec** (the `PersistenceAdapter` contract — `SessionStore`,
-  `AgentSubmissionStore`, `RunStore`, and `EventStreamStore`):
+- **Spec** (the `PersistenceAdapter` contract — canonical stream, snapshot,
+  attachment, submission, run, and event-stream stores):
   `https://flueframework.com/docs/api/data-persistence-api/index.md`
 - **Worked example** (the Postgres adapter — one complete implementation of
   the full contract; your backend's shape may be quite different):

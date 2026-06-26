@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+	aggregateConversationUsageSince,
 	classifyConversationSubmission,
+	getActiveConversationPathSince,
+	getAssistantText,
+	getLatestCompletedAssistantEntry,
+	getLatestConversationCompaction,
+	projectConversationModelContextEntries,
 	projectConversationUi,
 } from '../src/conversation-projections.ts';
 import type { ConversationRecord } from '../src/conversation-records.ts';
@@ -11,6 +17,10 @@ import {
 	getActiveConversationPath,
 	reduceConversationRecords,
 } from '../src/conversation-reducer.ts';
+import {
+	decodeReducedInstanceState,
+	encodeReducedInstanceState,
+} from '../src/conversation-reader.ts';
 import { ConversationRecordInvariantError } from '../src/errors.ts';
 
 const scope = {
@@ -118,7 +128,10 @@ describe('reduceConversationRecords()', () => {
 		const state = reduceConversationRecords(createReducedInstanceState(), canonicalConversation(), '8');
 		const conversation = state.conversations.get('conv_01');
 
-		expect(conversation?.activeLeafId).toBe('entry_assistant');
+		expect(conversation).toMatchObject({
+			activeLeafId: 'entry_assistant',
+			createdAt: '2026-06-25T00:00:00.000Z',
+		});
 		expect(buildConversationContext(required(conversation))).toMatchObject([
 			{ role: 'user', content: [{ type: 'text', text: 'Hello' }] },
 			{
@@ -127,6 +140,13 @@ describe('reduceConversationRecords()', () => {
 				stopReason: 'stop',
 			},
 		]);
+	});
+
+	it('preserves conversation creation time through snapshot encoding', () => {
+		const state = reduceConversationRecords(createReducedInstanceState(), canonicalConversation(), '8');
+		const decoded = decodeReducedInstanceState(encodeReducedInstanceState(state));
+
+		expect(decoded.conversations.get('conv_01')?.createdAt).toBe('2026-06-25T00:00:00.000Z');
 	});
 
 	it('produces equal state when records are applied individually or in batches', () => {
@@ -266,6 +286,54 @@ describe('reduceConversationRecords()', () => {
 				contextWindow: 100000,
 			}),
 		).toMatchObject({ kind: 'completed', overflow: false });
+	});
+
+	it('distinguishes a missing exact boundary from an empty path suffix', () => {
+		const state = reduceConversationRecords(createReducedInstanceState(), canonicalConversation(), '8');
+		const conversation = required(state.conversations.get('conv_01'));
+
+		expect(getActiveConversationPathSince(conversation, 'entry_assistant')).toEqual([]);
+		expect(getActiveConversationPathSince(conversation, 'entry_missing')).toBeUndefined();
+	});
+
+	it('projects canonical response helpers from the exact submission boundary', () => {
+		const state = reduceConversationRecords(createReducedInstanceState(), canonicalConversation(), '8');
+		const conversation = required(state.conversations.get('conv_01'));
+		const following = required(getActiveConversationPathSince(conversation, 'entry_user'));
+		const assistantEntry = required(getLatestCompletedAssistantEntry(following));
+
+		expect(getAssistantText(assistantEntry.message as never)).toBe('Hi there');
+		expect(aggregateConversationUsageSince(conversation, 'entry_user')).toEqual(usage);
+		expect(aggregateConversationUsageSince(conversation, 'entry_missing')).toBeUndefined();
+	});
+
+	it('retains source entry identity when projecting compacted model context', () => {
+		const state = reduceConversationRecords(createReducedInstanceState(), canonicalConversation(), '8');
+		applyConversationRecord(state, {
+			...scope,
+			id: 'record_compaction',
+			type: 'compaction',
+			timestamp: '2026-06-25T00:00:03.000Z',
+			entryId: 'entry_compaction',
+			parentId: 'entry_assistant',
+			sourceLeafId: 'entry_assistant',
+			firstKeptEntryId: 'entry_user',
+			summary: 'Earlier context',
+			tokensBefore: 12,
+			usage,
+		});
+		const conversation = required(state.conversations.get('conv_01'));
+
+		expect(getLatestConversationCompaction(conversation)?.id).toBe('entry_compaction');
+		expect(
+			projectConversationModelContextEntries(conversation).map((entry) => entry.sourceEntry.id),
+		).toEqual(['entry_compaction', 'entry_user', 'entry_assistant']);
+		expect(aggregateConversationUsageSince(conversation, 'entry_user')).toEqual({
+			...usage,
+			input: 20,
+			output: 4,
+			totalTokens: 24,
+		});
 	});
 
 	it('rejects a tool result that does not match the next requested tool call', () => {

@@ -8,17 +8,6 @@ local function require_type(key, expected)
 end
 `;
 
-export const publishGenerationScript = `${guard}
-require_type(KEYS[1], 'hash')
-require_type(KEYS[2], 'hash')
-require_type(KEYS[3], 'zset')
-if redis.call('EXISTS', KEYS[2]) == 0 then return 0 end
-local old = redis.call('HGET', KEYS[1], 'generation')
-redis.call('HSET', KEYS[1], 'generation', ARGV[1])
-redis.call('ZADD', KEYS[3], ARGV[2], ARGV[1])
-return old or ''
-`;
-
 export const acquireGenerationScript = `${guard}
 require_type(KEYS[1], 'hash')
 require_type(KEYS[2], 'hash')
@@ -52,27 +41,13 @@ end
 return removed
 `;
 
-export const publishChunksScript = `${guard}
-require_type(KEYS[1], 'hash')
-require_type(KEYS[2], 'hash')
-require_type(KEYS[3], 'zset')
-require_type(KEYS[4], 'set')
-if redis.call('EXISTS', KEYS[2]) == 0 then return 0 end
-local old = redis.call('HGET', KEYS[1], 'generation')
-redis.call('HSET', KEYS[1], 'generation', ARGV[1])
-redis.call('ZADD', KEYS[3], ARGV[2], ARGV[1])
-redis.call('SADD', KEYS[4], KEYS[1])
-return old or ''
-`;
-
 export const admitSubmissionScript = `${guard}
 for i = 1, #KEYS do
-  if i == 1 or i == 2 or i == 9 or i == 10 then require_type(KEYS[i], 'hash')
+  if i == 1 or i == 2 or i == 9 then require_type(KEYS[i], 'hash')
   elseif i == 3 then require_type(KEYS[i], 'string')
   elseif i == 8 then require_type(KEYS[i], 'zset')
-  elseif i == 4 or i == 5 or i == 6 or i == 7 or i == 11 then require_type(KEYS[i], 'zset') end
+  elseif i == 4 or i == 5 or i == 6 or i == 7 or i == 10 then require_type(KEYS[i], 'zset') end
 end
-if redis.call('EXISTS', KEYS[10]) == 1 then return {'deleting'} end
 if redis.call('EXISTS', KEYS[9]) == 1 then return {'receipt', redis.call('HGET', KEYS[9], 'acceptedAt')} end
 if redis.call('EXISTS', KEYS[2]) == 1 then return {'existing'} end
 if redis.call('EXISTS', KEYS[1]) == 0 then return {'missing_generation'} end
@@ -81,7 +56,7 @@ redis.call('ZADD', KEYS[4], sequence, ARGV[1])
 redis.call('ZADD', KEYS[5], sequence, ARGV[1])
 redis.call('ZADD', KEYS[6], sequence, ARGV[1])
 redis.call('ZADD', KEYS[7], sequence, ARGV[1])
-redis.call('ZADD', KEYS[11], sequence, ARGV[1])
+redis.call('ZADD', KEYS[10], sequence, ARGV[1])
 redis.call('HSET', KEYS[2],
   'submissionId', ARGV[1], 'sessionKey', ARGV[2], 'kind', ARGV[3],
   'status', 'queued', 'acceptedAt', ARGV[4], 'sequence', sequence,
@@ -189,59 +164,6 @@ for i = 1, #KEYS do
   require_type(KEYS[i], 'hash')
   if redis.call('HGET', KEYS[i], 'status') == 'running' and redis.call('HGET', KEYS[i], 'ownerId') == ARGV[1] then redis.call('HSET', KEYS[i], 'leaseExpiresAt', ARGV[2]) end
 end
-return 1
-`;
-
-export const acquireDeletionScript = `${guard}
-require_type(KEYS[1], 'hash')
-require_type(KEYS[2], 'zset')
-require_type(KEYS[3], 'string')
-require_type(KEYS[4], 'zset')
-if redis.call('ZCARD', KEYS[2]) > 0 then return {'active'} end
-local exists = redis.call('EXISTS', KEYS[1]) == 1
-local owner = redis.call('HGET', KEYS[1], 'ownerId')
-local lease = tonumber(redis.call('HGET', KEYS[1], 'leaseExpiresAt') or '0')
-if exists and owner ~= ARGV[1] and lease > tonumber(ARGV[2]) then return {'waiting', tostring(lease)} end
-local cutoff = exists and redis.call('HGET', KEYS[1], 'cutoff') or (redis.call('GET', KEYS[3]) or '0')
-redis.call('ZADD', KEYS[4], ARGV[2], ARGV[3])
-redis.call('HSET', KEYS[1], 'cutoff', cutoff, 'startedAt', ARGV[2], 'ownerId', ARGV[1], 'leaseExpiresAt', ARGV[4], 'phase', 'snapshot')
-return {'owned', cutoff}
-`;
-
-export const renewDeletionScript = `${guard}
-require_type(KEYS[1], 'hash')
-if redis.call('HGET', KEYS[1], 'ownerId') ~= ARGV[1] then return 0 end
-redis.call('HSET', KEYS[1], 'leaseExpiresAt', ARGV[2])
-return 1
-`;
-
-export const finishDeletionScript = `${guard}
-require_type(KEYS[1], 'hash')
-require_type(KEYS[2], 'zset')
-if redis.call('HGET', KEYS[1], 'ownerId') ~= ARGV[1] then return 0 end
-redis.call('DEL', KEYS[1])
-redis.call('ZREM', KEYS[2], ARGV[2])
-return 1
-`;
-
-export const deleteSubmissionScript = `${guard}
-require_type(KEYS[1], 'hash')
-for i = 2, 6 do require_type(KEYS[i], 'zset') end
-require_type(KEYS[7], 'hash')
-require_type(KEYS[8], 'set')
-require_type(KEYS[9], 'zset')
-require_type(KEYS[10], 'hash')
-if redis.call('HGET', KEYS[7], 'ownerId') ~= ARGV[1] then return 0 end
-if redis.call('HGET', KEYS[1], 'status') ~= 'settled' or tonumber(redis.call('HGET', KEYS[1], 'sequence')) > tonumber(ARGV[2]) then return 0 end
-if redis.call('HGET', KEYS[1], 'kind') == 'dispatch' then redis.call('HSET', KEYS[10], 'acceptedAt', redis.call('HGET', KEYS[1], 'acceptedAt')) end
-redis.call('ZREM', KEYS[2], ARGV[3])
-redis.call('ZREM', KEYS[3], ARGV[3])
-redis.call('ZREM', KEYS[4], ARGV[3])
-redis.call('ZREM', KEYS[5], ARGV[3])
-redis.call('ZREM', KEYS[6], ARGV[3])
-redis.call('SREM', KEYS[8], ARGV[3])
-redis.call('DEL', KEYS[9])
-redis.call('DEL', KEYS[1])
 return 1
 `;
 

@@ -10,7 +10,7 @@ import type {
 	ConversationRecord,
 } from './conversation-records.ts';
 import { AttachmentNotAvailableError, ConversationRecordInvariantError } from './errors.ts';
-import { createUserContextMessage, renderSignalMessage } from './session-history.ts';
+import { createUserContextMessage, renderSignalMessage } from './message-rendering.ts';
 
 interface ReducedEntryBase {
 	id: string;
@@ -84,12 +84,12 @@ export interface InProgressAssistantMessage {
 export interface ReducedConversationState {
 	conversationId: string;
 	affinityKey: string;
+	createdAt: string;
 	harness: string;
 	session: string;
 	parentConversationId?: string;
 	taskId?: string;
 	actionInvocationId?: string;
-	deleted: boolean;
 	entries: Map<string, ReducedEntry>;
 	activeLeafId: string | null;
 	inProgressMessages: Map<string, InProgressAssistantMessage>;
@@ -105,6 +105,11 @@ export interface ReducedInstanceState {
 
 export interface ConversationProjectionOptions {
 	resolveAttachment?: (attachment: AttachmentRef) => { data: string; mimeType: string };
+}
+
+export interface ReducedContextEntry {
+	message: AgentMessage;
+	sourceEntry: ReducedEntry;
 }
 
 export function createReducedInstanceState(): ReducedInstanceState {
@@ -192,12 +197,12 @@ export function applyConversationRecord(
 		state.conversations.set(record.conversationId, {
 			conversationId: record.conversationId,
 			affinityKey: record.affinityKey,
+			createdAt: record.createdAt,
 			harness: record.harness,
 			session: record.session,
 			parentConversationId: record.parentConversationId,
 			taskId: record.taskId,
 			actionInvocationId: record.actionInvocationId,
-			deleted: false,
 			entries: new Map(),
 			activeLeafId: null,
 			inProgressMessages: new Map(),
@@ -212,12 +217,7 @@ export function applyConversationRecord(
 	if (conversation.harness !== record.harness || conversation.session !== record.session) {
 		fail(record, `Conversation scope conflicts with its creation record.`);
 	}
-
 	switch (record.type) {
-		case 'conversation_deleted':
-			if (conversation.deleted) fail(record, `Conversation is already deleted.`);
-			conversation.deleted = true;
-			break;
 		case 'user_message':
 			appendEntry(state, conversation, record, {
 				type: 'message',
@@ -396,6 +396,22 @@ export function applyConversationRecord(
 			conversation.activeLeafId = record.leafId;
 			break;
 		case 'child_session_retained': {
+			const child = state.conversations.get(record.child.conversationId);
+			if (!child) fail(record, `Retained child conversation does not exist.`);
+			if (
+				child.parentConversationId !== conversation.conversationId ||
+				child.harness !== record.child.harness ||
+				child.session !== record.child.session ||
+				child.taskId !== record.child.taskId ||
+				child.actionInvocationId !== record.child.invocationId
+			) {
+				fail(record, `Retained child identity conflicts with its creation record.`);
+			}
+			for (const parent of state.conversations.values()) {
+				if (parent !== conversation && parent.childConversations.has(record.child.conversationId)) {
+					fail(record, `Child conversation is already retained by another parent.`);
+				}
+			}
 			const existing = conversation.childConversations.get(record.child.conversationId);
 			if (existing && JSON.stringify(existing) !== JSON.stringify(record.child)) {
 				fail(record, `Child conversation topology conflicts with an existing retained child.`);
@@ -403,12 +419,6 @@ export function applyConversationRecord(
 			conversation.childConversations.set(record.child.conversationId, record.child);
 			break;
 		}
-		case 'child_session_released':
-			if (!conversation.childConversations.has(record.childConversationId)) {
-				fail(record, `Child conversation is not retained.`);
-			}
-			conversation.childConversations.delete(record.childConversationId);
-			break;
 		case 'data':
 		case 'submission_settled':
 			break;
@@ -437,37 +447,47 @@ export function getActiveConversationPath(conversation: ReducedConversationState
 	return path.reverse();
 }
 
-export function buildConversationContext(
+export function buildConversationContextEntries(
 	conversation: ReducedConversationState,
 	options: ConversationProjectionOptions = {},
-): AgentMessage[] {
+): ReducedContextEntry[] {
 	const path = getActiveConversationPath(conversation);
 	const latestCompactionIndex = path.findLastIndex((entry) => entry.type === 'compaction');
-	if (latestCompactionIndex === -1) return pathToMessages(path, options);
+	if (latestCompactionIndex === -1) return pathToContextEntries(path, options);
 	const compaction = path[latestCompactionIndex] as ReducedCompactionEntry;
 	const firstKeptIndex = path.findIndex((entry) => entry.id === compaction.firstKeptEntryId);
 	const keptStart = firstKeptIndex >= 0 ? firstKeptIndex : latestCompactionIndex + 1;
 	return [
-		createUserContextMessage(
-			renderSignalMessage({
-				role: 'signal',
-				type: 'context_summary',
-				tagName: 'compaction',
-				content: compaction.summary,
-				timestamp: new Date(compaction.timestamp).getTime(),
-			}),
-			compaction.timestamp,
-		),
-		...pathToMessages(path.slice(keptStart, latestCompactionIndex), options),
-		...pathToMessages(path.slice(latestCompactionIndex + 1), options),
+		{
+			message: createUserContextMessage(
+				renderSignalMessage({
+					role: 'signal',
+					type: 'context_summary',
+					tagName: 'compaction',
+					content: compaction.summary,
+					timestamp: new Date(compaction.timestamp).getTime(),
+				}),
+				compaction.timestamp,
+			),
+			sourceEntry: compaction,
+		},
+		...pathToContextEntries(path.slice(keptStart, latestCompactionIndex), options),
+		...pathToContextEntries(path.slice(latestCompactionIndex + 1), options),
 	];
 }
 
-function pathToMessages(
+export function buildConversationContext(
+	conversation: ReducedConversationState,
+	options: ConversationProjectionOptions = {},
+): AgentMessage[] {
+	return buildConversationContextEntries(conversation, options).map((entry) => entry.message);
+}
+
+function pathToContextEntries(
 	path: ReducedEntry[],
 	options: ConversationProjectionOptions,
-): AgentMessage[] {
-	const messages: AgentMessage[] = [];
+): ReducedContextEntry[] {
+	const messages: ReducedContextEntry[] = [];
 	let index = 0;
 	while (index < path.length) {
 		const entry = path[index];
@@ -477,7 +497,10 @@ function pathToMessages(
 		}
 		const message = resolveMessageAttachments(entry, options);
 		if (message.role === 'signal') {
-			messages.push(createUserContextMessage(renderSignalMessage(message), entry.timestamp));
+			messages.push({
+				message: createUserContextMessage(renderSignalMessage(message), entry.timestamp),
+				sourceEntry: entry,
+			});
 			index += 1;
 			continue;
 		}
@@ -508,15 +531,22 @@ function pathToMessages(
 					results.push(resolveMessageAttachments(result, options) as ToolResultMessage);
 					resultIndex += 1;
 				}
-				if (isCompleteToolBatch(toolCalls, results)) messages.push(message, ...results);
+				if (isCompleteToolBatch(toolCalls, results)) {
+					messages.push({ message, sourceEntry: entry });
+					for (let resultOffset = 0; resultOffset < results.length; resultOffset++) {
+						const resultEntry = path[index + 1 + resultOffset];
+						const result = results[resultOffset];
+						if (resultEntry && result) messages.push({ message: result, sourceEntry: resultEntry });
+					}
+				}
 				index = resultIndex;
 				continue;
 			}
-			messages.push(message);
+			messages.push({ message, sourceEntry: entry });
 			index += 1;
 			continue;
 		}
-		if (message.role !== 'toolResult') messages.push(message);
+		if (message.role !== 'toolResult') messages.push({ message, sourceEntry: entry });
 		index += 1;
 	}
 	return messages;

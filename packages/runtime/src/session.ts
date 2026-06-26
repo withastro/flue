@@ -52,23 +52,29 @@ import {
 } from './compaction.ts';
 import { isWorkspaceSkill, skillsDirIn } from './context.ts';
 import {
+	aggregateConversationUsageSince,
 	classifyConversationSubmission,
+	getActiveConversationPathSince,
+	getAssistantText,
+	getLatestCompletedAssistantEntry,
+	getLatestConversationCompaction,
 	projectConversationModelContext,
+	projectConversationModelContextEntries,
 } from './conversation-projections.ts';
 import {
 	type ConversationRecord,
 	generateConversationEntryId,
 	generateConversationRecordId,
 } from './conversation-records.ts';
-import { getActiveConversationPath } from './conversation-reducer.ts';
+import { getActiveConversationPath, type ReducedConversationState, type ReducedMessageEntry } from './conversation-reducer.ts';
 import type { ConversationRecordWriter } from './conversation-writer.ts';
 import { createDataEmitter } from './data.ts';
 import {
+	AttachmentNotAvailableError,
 	DelegationDepthExceededError,
 	ModelNotConfiguredError,
 	OperationFailedError,
 	SessionBusyError,
-	SessionDeletedError,
 	SkillNotRegisteredError,
 	SubagentNotDeclaredError,
 	SubmissionTimeoutError,
@@ -103,6 +109,7 @@ import type {
 	ProcessAgentSubmissionOptions,
 } from './runtime/agent-submissions.ts';
 import { agentSubmissionDispatchInput } from './runtime/agent-submissions.ts';
+import { type AttachmentStore, createAttachmentRef } from './runtime/attachment-store.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import { generateOperationId, generateTurnId } from './runtime/ids.ts';
 import {
@@ -112,16 +119,10 @@ import {
 } from './runtime/providers.ts';
 import { createFlueFs } from './sandbox.ts';
 import { valibotToJsonSchema } from './schema.ts';
-import {
-	createUserContextMessage,
-	renderSignalMessage,
-	SessionHistory,
-} from './session-history.ts';
-import { childSessionStorageKey } from './session-identity.ts';
+import { renderSignalMessage } from './message-rendering.ts';
 import { execShellWithEvents, getErrorMessage } from './shell.ts';
 import { getSkillReferenceDirectory } from './skill-package.ts';
 import {
-	classifySubmissionState,
 	countConsecutiveRetryableModelErrors,
 	findTrailingPartialToolBatch,
 	isCompletedAssistantResponse,
@@ -133,8 +134,6 @@ import type {
 	AgentConfig,
 	AgentProfile,
 	CallHandle,
-	ChildSessionRef,
-	DispatchMessageMetadata,
 	FlueEvent,
 	FlueEventInput,
 	FlueEventInputCallback,
@@ -142,18 +141,15 @@ import type {
 	FlueHarness,
 	FlueObservationDetail,
 	FlueSession,
-	MessageEntry,
 	ModelRequestInfo,
 	PackagedSkillDirectory,
+	PromptImage,
 	PromptModel,
 	PromptOptions,
 	PromptResponse,
 	PromptResultResponse,
 	PromptUsage,
-	SessionData,
-	SessionEntry,
 	SessionEnv,
-	SessionStore,
 	SessionToolFactory,
 	ShellOptions,
 	ShellResult,
@@ -164,9 +160,7 @@ import type {
 	ThinkingLevel,
 	ToolDefinition,
 } from './types.ts';
-import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
-
-export { SessionHistory } from './session-history.ts';
+import { emptyUsage, fromProviderUsage } from './usage.ts';
 
 const MAX_DELEGATION_DEPTH = 4;
 const MAX_TRANSIENT_MODEL_RETRIES = 3;
@@ -279,6 +273,7 @@ function toTurnContent(block: ProviderContentBlock): TurnContent {
 
 export interface CreateTaskSessionOptions {
 	parentSession: string;
+	parentConversationId: string;
 	taskId: string;
 	parentEnv: SessionEnv;
 	cwd?: string;
@@ -290,6 +285,7 @@ export type CreateTaskSession = (options: CreateTaskSessionOptions) => Promise<S
 
 interface CreateActionHarnessOptions {
 	invocationId: string;
+	parentConversationId: string;
 	depth: number;
 	signal?: AbortSignal;
 	executionContext: FlueExecutionContext;
@@ -298,7 +294,11 @@ interface CreateActionHarnessOptions {
 	env: SessionEnv;
 	tools: ToolDefinition[];
 	actions: ActionDefinition[];
-	retainSession(session: string): Promise<void>;
+	retainSession(
+		session: string,
+		conversation: { conversationId: string; affinityKey: string; createdAt: string },
+		harness: string,
+	): Promise<void>;
 }
 
 export interface ActionHarness extends FlueHarness {
@@ -311,13 +311,9 @@ type OperationKind = 'prompt' | 'skill' | 'task' | 'shell' | 'compact';
 
 interface SessionInitOptions {
 	name: string;
-	storageKey: string;
-	conversationId: string;
-	affinityKey: string;
+	conversation: ReducedConversationState;
 	config: AgentConfig;
 	env: SessionEnv;
-	store: SessionStore;
-	existingData: SessionData | null;
 	onAgentEvent?: FlueEventInputCallback;
 	agentTools?: ToolDefinition[];
 	toolFactory?: SessionToolFactory;
@@ -326,9 +322,10 @@ interface SessionInitOptions {
 	actions?: ActionDefinition[];
 	createActionHarness?: CreateActionHarness;
 	scopeSignal?: AbortSignal;
-	onDelete?: () => void;
+	onClose?: () => void;
 	submissionStore?: AgentSubmissionStore;
-	conversationWriter?: ConversationRecordWriter;
+	conversationWriter: ConversationRecordWriter;
+	attachmentStore: AttachmentStore;
 	executionContext?: FlueExecutionContext;
 }
 
@@ -374,23 +371,6 @@ function getRegisteredPackagedSkills(
 	return registered;
 }
 
-/** In-memory session store. Sessions persist for the lifetime of the process. */
-export class InMemorySessionStore implements SessionStore {
-	private store = new Map<string, SessionData>();
-
-	async save(id: string, data: SessionData): Promise<void> {
-		this.store.set(id, data);
-	}
-
-	async load(id: string): Promise<SessionData | null> {
-		return this.store.get(id) ?? null;
-	}
-
-	async delete(id: string): Promise<void> {
-		this.store.delete(id);
-	}
-}
-
 function createDispatchInputSignal(input: DispatchInput): SignalMessage {
 	return {
 		role: 'signal',
@@ -406,10 +386,6 @@ function createDispatchInputSignal(input: DispatchInput): SignalMessage {
 		},
 		timestamp: Date.now(),
 	};
-}
-
-function dispatchMetadata(input: DispatchInput): DispatchMessageMetadata {
-	return { dispatchId: input.dispatchId };
 }
 
 function stableStringify(value: unknown): string {
@@ -510,24 +486,17 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	readonly name: string;
 	readonly conversationId: string;
 	readonly fs: FlueFs;
-	metadata: Record<string, any>;
 
-	private childSessions: ChildSessionRef[];
 	private agentLoop: Agent;
-	private storageKey: string;
 	private affinityKey: string;
 	private config: AgentConfig;
 	private env: SessionEnv;
-	private store: SessionStore;
-	private history: SessionHistory;
-	private createdAt: string | undefined;
 	private compactionAbortController: AbortController | undefined;
 	private modelRetryAbortController: AbortController | undefined;
 	private eventCallback: FlueEventInputCallback | undefined;
 	private agentTools: ToolDefinition[];
 	private toolFactory: SessionToolFactory | undefined;
-	private deleted = false;
-	private deletionPromise: Promise<void> | undefined;
+	private closed = false;
 	private activeOperation: OperationKind | undefined;
 	private activeOperationId: string | undefined;
 	private activeAgentInput: FlueObservationDetail['agentInput'];
@@ -546,16 +515,16 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	private actions: ActionDefinition[];
 	private createActionHarness: CreateActionHarness | undefined;
 	private scopeSignal: AbortSignal | undefined;
-	private onDelete: (() => void) | undefined;
+	private onClose: (() => void) | undefined;
 	private submissionStore: AgentSubmissionStore | undefined;
-	private pendingSave: Promise<void> = Promise.resolve();
 	private agentLoopMessageCheckpointCursor = 0;
 	private activeJournalCallbacks: ProcessAgentSubmissionOptions['journal'] | undefined;
 	private activeTimeoutAt: number | undefined;
 	private activeTurnCanCommitJournal = false;
 	private activeSubmissionId: string | undefined;
 	private activeSubmissionAttemptId: string | undefined;
-	private conversationWriter: ConversationRecordWriter | undefined;
+	private conversationWriter: ConversationRecordWriter;
+	private attachmentStore: AttachmentStore;
 	private canonicalAssistant:
 		| {
 				messageId: string;
@@ -568,22 +537,18 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	private pendingToolPublications = new Map<string, () => void>();
 	private executionIdentity: FlueExecutionContext;
 	private readonly emitData = createDataEmitter((event) => {
-		if (this.conversationWriter) {
-			this.enqueueCanonical(
-				[
-					{
-						...this.canonicalEnvelope('data'),
-						type: 'data',
-						dataType: event.name,
-						...(event.id === undefined ? {} : { dataId: event.id }),
-						data: event.data,
-					},
-				],
-				() => this.emit(event),
-			);
-			return;
-		}
-		this.emit(event);
+		this.enqueueCanonical(
+			[
+				{
+					...this.canonicalEnvelope('data'),
+					type: 'data',
+					dataType: event.name,
+					...(event.id === undefined ? {} : { dataId: event.id }),
+					data: event.data,
+				},
+			],
+			() => this.emit(event),
+		);
 	});
 
 	private emitTurnRequestAndStream: StreamFn = async (model, context, options) => {
@@ -592,7 +557,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		const state = {
 			operationId: this.activeOperationId ?? generateOperationId(),
 			turnId,
-			checkpointLeafId: this.history.getLeafId() ?? undefined,
+			checkpointLeafId: (await this.conversationWriter.getConversationLeaf(this.conversationId)) ?? undefined,
 		};
 		await this.activeJournalCallbacks?.beforeProvider?.(state);
 		this.emitTurnRequest(turnId, 'agent', model, context, options);
@@ -629,15 +594,10 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	}
 
 	private appendCanonical(records: readonly ConversationRecord[]): Promise<{ offset: string }> {
-		if (!this.conversationWriter) return Promise.resolve({ offset: '-1' });
 		return this.conversationWriter.append(records, this.canonicalAppendOptions());
 	}
 
 	private enqueueCanonical(records: readonly ConversationRecord[], publish: () => void): void {
-		if (!this.conversationWriter) {
-			publish();
-			return;
-		}
 		const pending = this.conversationWriter.enqueue(records, this.canonicalAppendOptions()).then(() => publish());
 		let tracked: Promise<void>;
 		tracked = pending.finally(() => this.pendingCanonicalWrites.delete(tracked));
@@ -645,7 +605,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	}
 
 	private async flushCanonical(): Promise<void> {
-		await this.conversationWriter?.flush();
+		await this.conversationWriter.flush();
 		await Promise.all(this.pendingCanonicalWrites);
 	}
 
@@ -663,7 +623,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			reasoningLevel: options?.reasoning,
 			maxTokens: options?.maxTokens,
 			temperature: options?.temperature,
-			...(this.history.getLatestCompaction() ? { contextCompacted: true as const } : {}),
+
 		};
 	}
 
@@ -734,13 +694,11 @@ export class Session implements FlueSession, AgentSubmissionSession {
 
 	constructor(options: SessionInitOptions) {
 		this.name = options.name;
-		this.conversationId = options.conversationId;
-		this.storageKey = options.storageKey;
-		this.affinityKey = options.affinityKey;
+		this.conversationId = options.conversation.conversationId;
+		this.affinityKey = options.conversation.affinityKey;
 		this.config = options.config;
 		this.env = options.env;
 		this.fs = createFlueFs(options.env);
-		this.store = options.store;
 		this.agentTools = options.agentTools ?? [];
 		this.toolFactory = options.toolFactory;
 		this.delegationDepth = options.delegationDepth ?? 0;
@@ -748,16 +706,11 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		this.actions = options.actions ?? [];
 		this.createActionHarness = options.createActionHarness;
 		this.scopeSignal = options.scopeSignal;
-		this.onDelete = options.onDelete;
+		this.onClose = options.onClose;
 		this.submissionStore = options.submissionStore;
 		this.conversationWriter = options.conversationWriter;
+		this.attachmentStore = options.attachmentStore;
 		this.executionIdentity = options.executionContext ?? {};
-
-		this.metadata = options.existingData?.metadata ?? {};
-		this.childSessions = options.existingData?.childSessions ?? [];
-		this.createdAt = options.existingData?.createdAt;
-
-		this.history = SessionHistory.fromData(options.existingData);
 
 		const systemPrompt = this.config.systemPrompt;
 
@@ -767,7 +720,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			[],
 		);
 
-		const previousMessages = this.history.buildContext();
+		const previousMessages: AgentMessage[] = [];
 
 		this.agentLoop = new Agent({
 			initialState: {
@@ -801,7 +754,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					this.activeTurnId = turnId;
 					if (event.message.role === 'assistant') {
 						const messageId = generateConversationEntryId();
-						const parentId = await this.conversationWriter?.getConversationLeaf(this.conversationId) ?? null;
+						const parentId = await this.conversationWriter.getConversationLeaf(this.conversationId) ?? null;
 						this.canonicalAssistant = { messageId, parentId, blocks: new Map() };
 						this.canonicalToolResultParentId = undefined;
 						const { role: _role, content: _content, stopReason: _stopReason, errorMessage: _errorMessage, timestamp: _timestamp, usage: _usage, ...modelInfo } = event.message;
@@ -928,7 +881,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 							await this.activeJournalCallbacks?.toolRequestRecorded?.({
 								operationId: this.activeOperationId ?? generateOperationId(),
 								turnId: this.activeTurnId ?? generateTurnId(),
-								checkpointLeafId: this.history.getLeafId() ?? undefined,
+								checkpointLeafId: (await this.conversationWriter.getConversationLeaf(this.conversationId)) ?? undefined,
 								toolRequest: { toolCalls },
 							});
 						}
@@ -984,8 +937,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 								...(event.isError ? { errorInfo: classifyError(call.error ?? event.result) } : {}),
 							},
 						);
-					if (this.conversationWriter) this.pendingToolPublications.set(event.toolCallId, publishTool);
-					else publishTool();
+					this.pendingToolPublications.set(event.toolCallId, publishTool);
 					this.activeToolCalls.delete(event.toolCallId);
 					break;
 				}
@@ -996,23 +948,27 @@ export class Session implements FlueSession, AgentSubmissionSession {
 						for (const toolResult of event.toolResults) {
 							if (!parentId) throw new Error('[flue] Canonical tool result has no assistant parent.');
 							const messageId = generateConversationEntryId();
+							const images = toolResult.content.flatMap((content, index) =>
+								content.type === 'image'
+									? [{ id: `att_tool_${toolResult.toolCallId}_${index}`, mimeType: content.mimeType, data: content.data }]
+									: [],
+							);
+							const refs = await this.persistCanonicalAttachments(images);
+							let imageIndex = 0;
+							const attachmentContent = () => {
+								const attachment = refs[imageIndex++];
+								if (!attachment) throw new Error('[flue] Canonical tool attachment is missing.');
+								return { type: 'attachment' as const, attachment };
+							};
 							await this.appendCanonical([{
 								...this.canonicalEnvelope('tool_result'), type: 'tool_result', messageId, parentId,
 								toolCallId: toolResult.toolCallId, toolName: toolResult.toolName,
 								isError: toolResult.isError,
-								content: await Promise.all(toolResult.content.map(async (content, index) =>
+								content: toolResult.content.map((content) =>
 									content.type === 'text'
 										? { type: 'text' as const, text: content.text }
-										: {
-											type: 'attachment' as const,
-											attachment: {
-												id: `att_tool_${toolResult.toolCallId}_${index}`,
-												mimeType: content.mimeType,
-												size: content.data.length,
-												digest: await sha256(content.data),
-											},
-										},
-								)),
+										: attachmentContent(),
+								),
 							}]);
 							parentId = messageId;
 							this.pendingToolPublications.get(toolResult.toolCallId)?.();
@@ -1096,20 +1052,13 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	}
 
 	async inspectSubmissionInput(input: AgentSubmissionInput): Promise<AgentSubmissionInspection> {
-		const legacyInput = input.kind === 'dispatch'
-			? this.history.findDispatchInput(input.dispatchId)
-			: this.history.findDirectSubmissionInput(input.submissionId);
-		if (this.conversationWriter) {
-			const conversation = await this.conversationWriter.getConversation(this.conversationId);
-			if (conversation?.entries.has(this.canonicalInputEntryId(input))) {
-				return this.inspectCanonicalState(classifyConversationSubmission(
-					conversation,
-					this.canonicalInputEntryId(input),
-					{ contextWindow: this.agentLoop.state.model?.contextWindow ?? 0 },
-				));
-			}
-		}
-		return this.inspectPersistedInput(legacyInput);
+		const conversation = await this.conversationWriter.getConversation(this.conversationId);
+		if (!conversation?.entries.has(this.canonicalInputEntryId(input))) return 'absent';
+		return this.inspectCanonicalState(classifyConversationSubmission(
+			conversation,
+			this.canonicalInputEntryId(input),
+			{ contextWindow: this.agentLoop.state.model?.contextWindow ?? 0 },
+		));
 	}
 
 	/**
@@ -1121,51 +1070,18 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	 * Returns undefined when the input or a completed response is absent.
 	 */
 	async reconstructSubmissionResult(input: AgentSubmissionInput): Promise<PromptResponse | undefined> {
-		if (this.conversationWriter) {
-			const conversation = await this.conversationWriter.getConversation(this.conversationId);
-			const path = conversation ? getActiveConversationPath(conversation) : [];
-			const inputIndex = path.findIndex((entry) => entry.id === this.canonicalInputEntryId(input));
-			if (inputIndex !== -1) {
-				const following = path.slice(inputIndex + 1);
-				const assistantEntry = following.findLast(
-					(entry) => entry.type === 'message' && entry.message.role === 'assistant',
-				);
-				if (assistantEntry?.type === 'message' && assistantEntry.message.role === 'assistant') {
-					const assistant = assistantEntry.message as AssistantMessage;
-					if (isCompletedAssistantResponse(assistant)) {
-						let usage = emptyUsage();
-						for (const entry of following) {
-							if (entry.type === 'message' && entry.message.role === 'assistant') {
-								const value = fromProviderUsage((entry.message as AssistantMessage).usage);
-								if (value) usage = addUsage(usage, value);
-							} else if (entry.type === 'compaction' && entry.usage) usage = addUsage(usage, entry.usage);
-						}
-						return {
-							text: assistant.content.flatMap((block) => block.type === 'text' ? [block.text] : []).join('\n'),
-							usage,
-							model: { provider: assistant.provider, id: assistant.model },
-						};
-					}
-				}
-			}
-		}
-		const inputEntry =
-			input.kind === 'dispatch'
-				? this.history.findDispatchInput(input.dispatchId)
-				: this.history.findDirectSubmissionInput(input.submissionId);
-		if (!inputEntry) return undefined;
-		const assistant = this.history
-			.getActivePathSince(inputEntry.id)
-			.findLast(
-				(entry): entry is MessageEntry =>
-					entry.type === 'message' && entry.message.role === 'assistant',
-			)?.message as AssistantMessage | undefined;
-		if (!assistant || !isCompletedAssistantResponse(assistant)) return undefined;
+		const conversation = await this.conversationWriter.getConversation(this.conversationId);
+		if (!conversation) return undefined;
+		const following = getActiveConversationPathSince(conversation, this.canonicalInputEntryId(input));
+		if (!following) return undefined;
+		const assistantEntry = getLatestCompletedAssistantEntry(following);
+		if (!assistantEntry || assistantEntry.message.role !== 'assistant') return undefined;
+		const assistant = assistantEntry.message;
+		const usage = aggregateConversationUsageSince(conversation, this.canonicalInputEntryId(input));
+		if (!usage) return undefined;
 		return {
-			text: assistant.content
-				.flatMap((block) => (block.type === 'text' ? [block.text] : []))
-				.join('\n'),
-			usage: await this.aggregateCanonicalUsageSince(inputEntry.id),
+			text: getAssistantText(assistant),
+			usage,
 			model: { provider: assistant.provider, id: assistant.model },
 		};
 	}
@@ -1197,9 +1113,9 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		toolRequest: { toolCalls: Array<{ type: 'toolCall'; id: string; name: string }> },
 		attempt?: import('./agent-execution-store.ts').SubmissionAttemptRef,
 	): Promise<string | undefined> {
-		if (attempt && this.conversationWriter) {
-			this.activeSubmissionId = attempt.submissionId;
-			this.activeSubmissionAttemptId = attempt.attemptId;
+		{
+			this.activeSubmissionId = attempt?.submissionId;
+			this.activeSubmissionAttemptId = attempt?.attemptId;
 			const conversation = await this.conversationWriter.getConversation(this.conversationId);
 			if (conversation) {
 				const path = getActiveConversationPath(conversation);
@@ -1257,20 +1173,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				}
 			}
 		}
-
-		const inputEntry =
-			input.kind === 'dispatch'
-				? this.history.findDispatchInput(input.dispatchId)
-				: this.history.findDirectSubmissionInput(input.submissionId);
-		if (!inputEntry) return undefined;
-		const following = this.history.getActivePathSince(inputEntry.id);
-		const assistant = following.findLast(
-			(entry): entry is MessageEntry =>
-				entry.type === 'message' && entry.message.role === 'assistant',
-		);
-		if (!assistant || (assistant.message as AssistantMessage).stopReason !== 'toolUse')
-			return undefined;
-		return this.appendRepairedToolResultBatch(assistant.id, toolRequest.toolCalls, following);
+		return undefined;
 	}
 
 	/**
@@ -1282,11 +1185,14 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	 * history (the journal's toolRequest does not survive the next turn the
 	 * abort also cut short). No-op when no trailing partial batch exists.
 	 */
-	private async repairTrailingPartialToolBatch(inputEntry: MessageEntry): Promise<void> {
-		const following = this.history.getActivePathSince(inputEntry.id);
-		const partial = findTrailingPartialToolBatch(following);
+	private async repairTrailingPartialToolBatch(inputEntryId: string): Promise<void> {
+		const conversation = await this.requireConversation();
+		const following = getActiveConversationPathSince(conversation, inputEntryId);
+		if (!following) return;
+		const messages = following.flatMap((entry) => entry.type === 'message' ? [entry] : []);
+		const partial = findTrailingPartialToolBatch(messages);
 		if (!partial) return;
-		await this.appendRepairedToolResultBatch(partial.entryId, partial.toolCalls, following);
+		await this.appendRepairedToolResultBatch(partial.entryId, partial.toolCalls, messages, conversation.activeLeafId);
 	}
 
 	/**
@@ -1299,57 +1205,61 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	private async appendRepairedToolResultBatch(
 		assistantEntryId: string,
 		toolCalls: ReadonlyArray<{ id: string; name: string }>,
-		following: SessionEntry[],
+		following: ReducedMessageEntry[],
+		previousLeafId: string | null,
 	): Promise<string | undefined> {
-		const settledByCallId = new Map<string, ToolResultMessage>();
+		const settledByCallId = new Map<string, ReducedMessageEntry>();
 		for (const entry of following) {
-			if (entry.type === 'message' && entry.message.role === 'toolResult') {
-				const result = entry.message as ToolResultMessage;
-				if (!settledByCallId.has(result.toolCallId)) {
-					settledByCallId.set(result.toolCallId, result);
-				}
+			if (entry.message.role !== 'toolResult') continue;
+			if (!settledByCallId.has(entry.message.toolCallId)) {
+				settledByCallId.set(entry.message.toolCallId, entry);
 			}
 		}
-
-		const hasUnsettled = toolCalls.some((tc) => !settledByCallId.has(tc.id));
-		if (!hasUnsettled) return undefined;
-
-		const now = Date.now();
-		const orderedResults: ToolResultMessage[] = toolCalls.map((tc) => {
-			const settled = settledByCallId.get(tc.id);
-			if (settled) return settled;
-			return {
-				role: 'toolResult' as const,
-				toolCallId: tc.id,
-				toolName: tc.name,
-				content: [
-					{
-						type: 'text' as const,
-						text: JSON.stringify({
-							type: 'interrupted',
-							message: 'Tool execution was interrupted before completion. The outcome is unknown.',
-						}),
-					},
-				],
-				isError: true,
-				timestamp: now,
-			};
-		});
-
-		// Branch from the assistant entry so results are in correct positional
-		// order regardless of which partial results were previously persisted.
-		this.history.setLeaf(assistantEntryId);
-		this.history.appendMessages(orderedResults);
-		this.rebuildHarnessContext();
-		await this.save();
-		return this.history.getLeafId() ?? undefined;
+		if (toolCalls.every((toolCall) => settledByCallId.has(toolCall.id))) return undefined;
+		const records: ConversationRecord[] = [{
+			...this.canonicalEnvelope('active_leaf_changed'),
+			type: 'active_leaf_changed',
+			leafId: assistantEntryId,
+			previousLeafId,
+			reason: 'interrupted_tool_batch_repair',
+		}];
+		let parentId = assistantEntryId;
+		for (const toolCall of toolCalls) {
+			const settledEntry = settledByCallId.get(toolCall.id);
+			const settled = settledEntry?.message.role === 'toolResult' ? settledEntry.message : undefined;
+			const messageId = generateConversationEntryId();
+			records.push({
+				...this.canonicalEnvelope('tool_result'),
+				type: 'tool_result',
+				messageId,
+				parentId,
+				toolCallId: toolCall.id,
+				toolName: toolCall.name,
+				isError: settled?.isError ?? true,
+				content: settled
+					? settled.content.map((block) => {
+						if (block.type === 'text') return { type: 'text' as const, text: block.text };
+						const attachment = settledEntry?.attachmentRefs?.get(block.data);
+						if (!attachment) throw new AttachmentNotAvailableError({ attachmentId: block.data });
+						return { type: 'attachment' as const, attachment };
+					})
+					: [{ type: 'text', text: JSON.stringify({
+						type: 'interrupted',
+						message: 'Tool execution was interrupted before completion. The outcome is unknown.',
+					}) }],
+			});
+			parentId = messageId;
+		}
+		await this.appendCanonical(records);
+		await this.rebuildCanonicalContext();
+		return parentId;
 	}
 
 	async recoverInterruptedStream(
 		attempt: import('./agent-execution-store.ts').SubmissionAttemptRef,
 		turnId: string,
 	): Promise<boolean> {
-		if (this.conversationWriter) {
+		{
 			this.activeSubmissionId = attempt.submissionId;
 			this.activeSubmissionAttemptId = attempt.attemptId;
 			this.activeTurnId = turnId;
@@ -1450,32 +1360,30 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	}
 
 	async recordSubmissionTerminal(input: AgentSubmissionInterruption): Promise<void> {
-		if (this.history.findSubmissionTerminal(input.submissionId)) return;
 		let body = input.message;
 		if (input.interruptedTools && input.interruptedTools.length > 0) {
 			const toolList = input.interruptedTools.map((t) => `  - ${t.name} (${t.id})`).join('\n');
 			body += `\n\nInterrupted tool call(s):\n${toolList}`;
 		}
-		const signal: SignalMessage = {
-			role: 'signal',
-			type: 'submission_interrupted',
-			content: body,
-			attributes: {
-				submissionId: input.submissionId,
-				kind: input.kind,
-				reason: input.reason,
-			},
-			timestamp: Date.now(),
-		};
-		this.history.appendMessage(signal, {
-			submissionTerminal: {
-				submissionId: input.submissionId,
-				kind: input.kind,
-				reason: input.reason,
-			},
-		});
-		this.rebuildHarnessContext();
-		await this.save();
+		{
+			const recordId = `record_submission_interrupted_${input.submissionId}`;
+			if (await this.conversationWriter.hasRecord(recordId)) return;
+			const parentId = await this.conversationWriter.getConversationLeaf(this.conversationId);
+			await this.appendCanonical([{
+				...this.canonicalEnvelope('signal', recordId),
+				type: 'signal',
+				messageId: `entry_submission_interrupted_${input.submissionId}`,
+				parentId,
+				signalType: 'submission_interrupted',
+				content: body,
+				attributes: {
+					submissionId: input.submissionId,
+					kind: input.kind,
+					reason: input.reason,
+				},
+			}]);
+			await this.rebuildCanonicalContext();
+		}
 	}
 
 	skill<S extends v.GenericSchema>(
@@ -1589,51 +1497,20 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		this.abort();
 		await this.activeOperationSettlement;
 		await Promise.allSettled([
-			this.pendingSave,
+			this.flushCanonical(),
 			...[...this.activeTasks].map((task) => task.settle()),
 			...[...this.activeActionHarnesses].map((harness) => harness.close()),
 		]);
 	}
 
-	/**
-	 * Detach a child task session after its task completes. Aborts pending
-	 * work and fires the onDelete callback but does NOT delete stored data —
-	 * child session storage is parent-owned and cleaned up when the parent
-	 * session is deleted via the session-tree cascade.
-	 */
 	close(): Promise<void> {
 		if (this.closePromise) return this.closePromise;
-		this.deleted = true;
+		this.closed = true;
 		this.abort();
 		this.closePromise = this.settle().finally(() => {
-			this.onDelete?.();
+			this.onClose?.();
 		});
 		return this.closePromise;
-	}
-
-	delete(): Promise<void> {
-		if (this.deletionPromise) return this.deletionPromise;
-		if (this.deleted) return Promise.resolve();
-		if (this.activeOperation) {
-			return Promise.reject(
-				new SessionBusyError({ session: this.name, activeOperation: this.activeOperation }),
-			);
-		}
-		this.deleted = true;
-		this.deletionPromise = Promise.resolve()
-			.then(() => {
-				const deleteTree = () => deleteSessionTree(this.store, this.storageKey);
-				return this.submissionStore?.deleteSession(this.storageKey, deleteTree) ?? deleteTree();
-			})
-			.then(() => {
-				this.onDelete?.();
-			})
-			.catch((error) => {
-				this.deleted = false;
-				this.deletionPromise = undefined;
-				throw error;
-			});
-		return this.deletionPromise;
 	}
 
 	/** Precedence: call-level > agent-level default. */
@@ -1887,6 +1764,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		const invocationId = crypto.randomUUID();
 		const harness = this.createActionHarness({
 			invocationId,
+			parentConversationId: this.conversationId,
 			depth: this.delegationDepth + 1,
 			signal,
 			executionContext: this.executionIdentity,
@@ -1895,24 +1773,30 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			env: this.env,
 			tools: this.agentTools,
 			actions: this.actions,
-			retainSession: async (session) => {
-				if (
-					this.childSessions.some(
-						(ref) =>
-							ref.type === 'action' && ref.invocationId === invocationId && ref.session === session,
-					)
-				) {
-					return;
-				}
-				const reference = { type: 'action', invocationId, session } as const;
-				this.childSessions.push(reference);
-				try {
-					await this.save();
-				} catch (error) {
-					const index = this.childSessions.indexOf(reference);
-					if (index !== -1) this.childSessions.splice(index, 1);
-					throw error;
-				}
+			retainSession: async (session, conversation, harness) => {
+				await this.conversationWriter.ensureChildConversation({
+					parent: {
+						conversationId: this.conversationId,
+						harness: this.executionIdentity.harness ?? 'default',
+						session: this.name,
+					},
+					child: {
+						conversationId: conversation.conversationId,
+						harness,
+						session,
+						affinityKey: conversation.affinityKey,
+						createdAt: conversation.createdAt,
+						parentConversationId: this.conversationId,
+						actionInvocationId: invocationId,
+					},
+					ref: {
+						conversationId: conversation.conversationId,
+						harness,
+						session,
+						type: 'action',
+						invocationId,
+					},
+				});
 			},
 		});
 		this.activeActionHarnesses.add(harness);
@@ -2149,7 +2033,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		const attachmentIds = [
 			...new Set((params.attachments ?? []).map((attachment) => attachment.id)),
 		];
-		const images = this.history.resolveImages(attachmentIds);
+		const images = await this.resolveCanonicalImages(attachmentIds);
 		const result = await this.executeTask(
 			params.prompt,
 			{
@@ -2210,14 +2094,13 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		try {
 			child = await this.createTaskSession({
 				parentSession: this.name,
+				parentConversationId: this.conversationId,
 				taskId,
 				parentEnv: this.env,
 				cwd: options?.cwd,
 				agent: taskAgent,
 				depth: this.delegationDepth + 1,
 			});
-			await this.recordTaskSession(child.name, taskId);
-			await child.save();
 			this.activeTasks.add(child);
 			this.emit({
 				type: 'task_start',
@@ -2273,7 +2156,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				text: typeof output?.text === 'string' ? output.text : child.getAssistantText(),
 				taskId,
 				session: child.name,
-				messageId: child.getLatestAssistantMessageId(),
+				messageId: await child.getLatestAssistantMessageId(),
 				agent: taskAgent?.name,
 				cwd: options?.cwd,
 			};
@@ -2428,80 +2311,182 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	}
 
 	private assertActive(): void {
-		if (this.deleted) {
-			throw new SessionDeletedError({ session: this.name });
-		}
+		if (this.closed) throw abortErrorFor(AbortSignal.abort());
 	}
 
 	/** Append a `session.shell()` call as an LLM-shaped bash tool exchange. */
+	private async resolveCanonicalImages(ids: readonly string[]): Promise<PromptImage[]> {
+		const conversation = await this.conversationWriter.getConversation(this.conversationId);
+		if (!conversation) throw new AttachmentNotAvailableError({ attachmentId: ids[0] ?? '' });
+		const available = this.visibleCanonicalAttachments(conversation);
+		const images: PromptImage[] = [];
+		for (const id of ids) {
+			const attachment = available.get(id);
+			if (!attachment) throw new AttachmentNotAvailableError({ attachmentId: id });
+			const stored = await this.attachmentStore.get({
+				streamPath: this.conversationWriter.path,
+				conversationId: this.conversationId,
+				attachmentId: id,
+			});
+			if (!stored) throw new AttachmentNotAvailableError({ attachmentId: id });
+			images.push({ type: 'image', data: encodeBase64(stored.bytes), mimeType: attachment.mimeType });
+		}
+		return images;
+	}
+
+	private visibleCanonicalAttachments(
+		conversation: ReducedConversationState,
+	): Map<string, import('./conversation-records.ts').AttachmentRef> {
+		const available = new Map<string, import('./conversation-records.ts').AttachmentRef>();
+		for (const contextEntry of projectConversationModelContextEntries(conversation, {
+			resolveAttachment: (attachment) => ({ data: attachment.id, mimeType: attachment.mimeType }),
+		})) {
+			if (contextEntry.sourceEntry.type !== 'message') continue;
+			for (const attachment of contextEntry.sourceEntry.attachmentRefs?.values() ?? []) {
+				available.set(attachment.id, attachment);
+			}
+		}
+		return available;
+	}
+
+	private attachmentManifest(
+		text: string,
+		attachments: readonly import('./conversation-records.ts').AttachmentRef[],
+	): string {
+		if (attachments.length === 0) return text;
+		const manifest = attachments
+			.map((attachment) => `<image id="${attachment.id}" mimeType="${attachment.mimeType}" />`)
+			.join('\n');
+		return `${text}\n\n<attachments>\n${manifest}\n</attachments>`;
+	}
+
+	private async persistCanonicalAttachments(
+		attachments: ReadonlyArray<{ id: string; mimeType: string; data: string }>,
+	): Promise<import('./conversation-records.ts').AttachmentRef[]> {
+		const refs: import('./conversation-records.ts').AttachmentRef[] = [];
+		for (const attachment of attachments) {
+			const bytes = decodeBase64(attachment.data);
+			const ref = await createAttachmentRef({
+				id: attachment.id,
+				mimeType: attachment.mimeType,
+				bytes,
+			});
+			await this.attachmentStore.put({
+				streamPath: this.conversationWriter.path,
+				attachment: ref,
+				bytes,
+				owner: { kind: 'conversation', conversationId: this.conversationId },
+			});
+			refs.push(ref);
+		}
+		return refs;
+	}
+
 	private async appendShellTriple(
 		toolCallId: string,
 		args: Record<string, unknown>,
 		toolResult: AgentToolResult<any>,
 		isError: boolean,
 	): Promise<void> {
-		const timestamp = Date.now();
-		const command = args.command as string;
-		const userMessage: UserMessage = {
-			role: 'user',
-			content: `Run this shell command:\n\n\`\`\`bash\n${command}\n\`\`\``,
-			timestamp,
+		const parentId = await this.conversationWriter.getConversationLeaf(this.conversationId);
+		const userMessageId = generateConversationEntryId();
+		const assistantMessageId = generateConversationEntryId();
+		const resultMessageId = generateConversationEntryId();
+		const refs = await this.persistCanonicalAttachments(
+				toolResult.content.flatMap((content, index) => content.type === 'image'
+					? [{ id: `att_tool_${toolCallId}_${index}`, mimeType: content.mimeType, data: content.data }]
+					: []),
+		);
+		let imageIndex = 0;
+		const attachmentContent = () => {
+			const attachment = refs[imageIndex++];
+			if (!attachment) throw new Error('[flue] Canonical shell attachment is missing.');
+			return { type: 'attachment' as const, attachment };
 		};
-		const assistantMessage: AssistantMessage = {
-			role: 'assistant',
-			content: [
+		await this.appendCanonical([
 				{
-					type: 'toolCall',
-					id: toolCallId,
-					name: 'bash',
-					arguments: args as Record<string, unknown>,
+					...this.canonicalEnvelope('user_message'),
+					type: 'user_message',
+					messageId: userMessageId,
+					parentId,
+					content: [{ type: 'text', text: `Run this shell command:\n\n\`\`\`bash\n${String(args.command)}\n\`\`\`` }],
 				},
-			],
-			// Synthetic provider-bookkeeping fields. No real provider was
-			// involved in producing this turn; we use sentinel values that
-			// don't pretend otherwise. pi-ai's providers don't read these
-			// fields when transforming history for the next turn — they
-			// only inspect content and stopReason.
-			api: 'flue-shell',
-			provider: 'flue',
-			model: '',
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
-			stopReason: 'toolUse',
-			timestamp,
-		};
-		const toolResultMessage: ToolResultMessage = {
-			role: 'toolResult',
-			toolCallId,
-			toolName: 'bash',
-			content: toolResult.content as ToolResultMessage['content'],
-			details: toolResult.details,
-			isError,
-			timestamp,
-		};
-		this.history.appendMessages([userMessage, assistantMessage, toolResultMessage]);
-		this.rebuildHarnessContext();
-		await this.save();
+				{
+					...this.canonicalEnvelope('assistant_message_started'),
+					type: 'assistant_message_started',
+					messageId: assistantMessageId,
+					parentId: userMessageId,
+					modelInfo: { api: 'flue-shell', provider: 'flue', model: '' },
+				},
+				{
+					...this.canonicalEnvelope('assistant_tool_call'),
+					type: 'assistant_tool_call',
+					messageId: assistantMessageId,
+					blockId: `block_${crypto.randomUUID()}`,
+					blockIndex: 0,
+					toolCallId,
+					name: 'bash',
+					arguments: args,
+				},
+				{
+					...this.canonicalEnvelope('assistant_message_completed'),
+					type: 'assistant_message_completed',
+					messageId: assistantMessageId,
+					stopReason: 'toolUse',
+					usage: zeroProviderUsage(),
+				},
+				{
+					...this.canonicalEnvelope('tool_result'),
+					type: 'tool_result',
+					messageId: resultMessageId,
+					parentId: assistantMessageId,
+					toolCallId,
+					toolName: 'bash',
+					isError,
+					content: toolResult.content.map((content) => content.type === 'text'
+						? { type: 'text' as const, text: content.text }
+						: attachmentContent()),
+				},
+		]);
+		await this.rebuildCanonicalContext();
 	}
 
-	private rebuildHarnessContext(): void {
-		const messages = this.history.buildContext();
-		this.agentLoop.state.messages = messages;
-		this.agentLoopMessageCheckpointCursor = messages.length;
+	private async requireConversation(): Promise<ReducedConversationState> {
+		const conversation = await this.conversationWriter.getConversation(this.conversationId);
+		if (!conversation) throw new Error('[flue] Canonical conversation is missing.');
+		return conversation;
+	}
+
+	private async resolveCanonicalContextAttachments(
+		conversation: ReducedConversationState,
+	): Promise<Map<string, PromptImage>> {
+		const resolved = new Map<string, PromptImage>();
+		for (const attachment of this.visibleCanonicalAttachments(conversation).values()) {
+			const stored = await this.attachmentStore.get({
+				streamPath: this.conversationWriter.path,
+				conversationId: this.conversationId,
+				attachmentId: attachment.id,
+			});
+			if (!stored) throw new AttachmentNotAvailableError({ attachmentId: attachment.id });
+			resolved.set(attachment.id, {
+				type: 'image',
+				data: encodeBase64(stored.bytes),
+				mimeType: stored.attachment.mimeType,
+			});
+		}
+		return resolved;
 	}
 
 	private async rebuildCanonicalContext(): Promise<void> {
-		if (!this.conversationWriter) return;
-		const conversation = await this.conversationWriter.getConversation(this.conversationId);
-		if (!conversation) return;
-		if (getActiveConversationPath(conversation).some((entry) => entry.type === 'message' && entry.attachmentRefs?.size)) return;
-		const messages = projectConversationModelContext(conversation);
+		const conversation = await this.requireConversation();
+		const resolved = await this.resolveCanonicalContextAttachments(conversation);
+		const messages = projectConversationModelContext(conversation, {
+			resolveAttachment: (attachment) => {
+				const image = resolved.get(attachment.id);
+				if (!image) throw new AttachmentNotAvailableError({ attachmentId: attachment.id });
+				return image;
+			},
+		});
 		this.agentLoop.state.messages = messages;
 		this.agentLoopMessageCheckpointCursor = messages.length;
 	}
@@ -2511,11 +2496,9 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			this.agentLoopMessageCheckpointCursor,
 		) as AgentMessage[];
 		if (messages.length === 0) return;
-		this.history.appendMessages(messages);
 		this.agentLoopMessageCheckpointCursor = this.agentLoop.state.messages.length;
-		await this.save();
 		if (this.activeTurnCanCommitJournal) {
-			const leafId = this.history.getLeafId();
+			const leafId = await this.conversationWriter.getConversationLeaf(this.conversationId);
 			if (!leafId) {
 				throw new Error('[flue] Invariant: checkpoint leaf ID is null after saving messages.');
 			}
@@ -2539,33 +2522,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		}
 	}
 
-	private async save(): Promise<void> {
-		const result = this.pendingSave.then(async () => {
-			const now = new Date().toISOString();
-			const data = this.history.toData(
-				this.conversationId,
-				this.affinityKey,
-				this.childSessions,
-				this.metadata,
-				this.createdAt ?? now,
-				now,
-			);
-			if (!this.createdAt) this.createdAt = now;
-			await this.store.save(this.storageKey, data);
-		});
-		this.pendingSave = result.then(
-			() => {},
-			() => {},
-		);
-		await result;
-	}
-
-	private async recordTaskSession(session: string, taskId: string): Promise<void> {
-		if (!this.childSessions.some((child) => child.type === 'task' && child.session === session)) {
-			this.childSessions.push({ type: 'task', session, taskId });
-			await this.save();
-		}
-	}
 
 	// ─── Model-turn recovery and compaction ───────────────────────────────────
 
@@ -2620,7 +2576,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				if (assistant !== undefined) {
 					await this.checkCompaction(assistant);
 					if (assistant.stopReason === 'error' || assistant.stopReason === 'aborted') {
-						this.rebuildHarnessContext();
+						await this.rebuildCanonicalContext();
 					}
 				}
 				return;
@@ -2628,7 +2584,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			if (overflow && overflowRecoveryAttempted) {
 				// Overflow persisting through a compaction attempt is not
 				// recoverable here; the caller's `throwIfError` surfaces it.
-				this.rebuildHarnessContext();
+				await this.rebuildCanonicalContext();
 				return;
 			}
 
@@ -2637,7 +2593,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			if (overflow && assistant !== undefined) {
 				overflowRecoveryAttempted = true;
 				this.internalLog('info', '[flue:compaction] Overflow detected, compacting and retrying...');
-				this.rebuildHarnessContext();
+				await this.rebuildCanonicalContext();
 				if (!(await this.runCompaction('overflow'))) {
 					if (!turnCompleted && options.resume) {
 						throw new OperationFailedError({
@@ -2655,7 +2611,12 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				// successful turns don't share one budget. This keeps the live
 				// budget identical to the one a restart computes when it resumes a
 				// persisted error.
-				const transientRetries = countConsecutiveRetryableModelErrors(this.history.getActivePath());
+				const canonicalConversation = await this.requireConversation();
+				const transientRetries = countConsecutiveRetryableModelErrors(
+					getActiveConversationPath(canonicalConversation).flatMap((entry) =>
+						entry.type === 'message' ? [entry] : [],
+					),
+				);
 				if (!(await this.waitForTransientModelRetry(assistant, transientRetries))) {
 					if (!turnCompleted && options.resume) {
 						throw new OperationFailedError({
@@ -2676,7 +2637,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				await this.agentLoop.waitForIdle();
 				await this.checkpointHarnessMessages();
 			} catch (error) {
-				this.rebuildHarnessContext();
+				await this.rebuildCanonicalContext();
 				throw error;
 			}
 			turnCompleted = true;
@@ -2696,11 +2657,11 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				attempts: attempt - 1,
 				error: assistant.errorMessage,
 			});
-			this.rebuildHarnessContext();
+			await this.rebuildCanonicalContext();
 			return false;
 		}
 		const delayMs = modelRetryDelayMs(attempt);
-		this.rebuildHarnessContext();
+		await this.rebuildCanonicalContext();
 		this.modelRetryAbortController = new AbortController();
 		this.internalLog('warn', '[flue:model-retry] Retrying transient model error', {
 			attempt,
@@ -2739,7 +2700,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 
 	/**
 	 * Runs a compaction pass. The summarization cost (1–2 internal LLM
-	 * calls) is persisted on the resulting `CompactionEntry.usage`, which
+	 * calls) is persisted on the resulting canonical compaction usage, which
 	 * `aggregateUsageSince` later folds into the surrounding call's
 	 * `response.usage` — so users see the true cost of the call that
 	 * triggered compaction.
@@ -2763,15 +2724,18 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				? (this.config.resolveModel(compactionConfig.model) ?? sessionModel)
 				: sessionModel;
 
-			const canonicalConversation = this.conversationWriter
-				? await this.conversationWriter.getConversation(this.conversationId)
-				: undefined;
-			const canonicalPath = canonicalConversation ? getActiveConversationPath(canonicalConversation) : undefined;
-			const contextEntries = this.history.buildContextEntries();
-			const messages = canonicalConversation
-				? projectConversationModelContext(canonicalConversation)
-				: contextEntries.map((entry) => entry.message);
-			const latestCompaction = this.history.getLatestCompaction();
+			const canonicalConversation = await this.requireConversation();
+			const canonicalPath = getActiveConversationPath(canonicalConversation);
+			const resolvedAttachments = await this.resolveCanonicalContextAttachments(canonicalConversation);
+			const contextEntries = projectConversationModelContextEntries(canonicalConversation, {
+				resolveAttachment: (attachment) => {
+					const image = resolvedAttachments.get(attachment.id);
+					if (!image) throw new AttachmentNotAvailableError({ attachmentId: attachment.id });
+					return image;
+				},
+			});
+			const messages = contextEntries.map((entry) => entry.message);
+			const latestCompaction = getLatestConversationCompaction(canonicalConversation);
 
 			const preparation = prepareCompaction(
 				messages,
@@ -2788,9 +2752,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				this.internalLog('info', '[flue:compaction] Nothing to compact (no valid cut point found)');
 				return false;
 			}
-			const firstKeptEntry = canonicalPath
-				? canonicalPath.filter((entry) => entry.type === 'message')[preparation.firstKeptIndex]
-				: contextEntries[preparation.firstKeptIndex]?.entry;
+			const firstKeptEntry = contextEntries[preparation.firstKeptIndex]?.sourceEntry;
 			if (!firstKeptEntry || firstKeptEntry.type !== 'message') {
 				this.internalLog(
 					'info',
@@ -2854,9 +2816,9 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				return false;
 			}
 
-			if (this.conversationWriter) {
-				const conversation = await this.conversationWriter.getConversation(this.conversationId);
-				const sourceLeafId = conversation?.activeLeafId;
+			{
+				const conversation = await this.requireConversation();
+				const sourceLeafId = conversation.activeLeafId;
 				if (!sourceLeafId) throw new Error('[flue] Canonical compaction has no source leaf.');
 				await this.appendCanonical([{
 					...this.canonicalEnvelope('compaction'),
@@ -2871,14 +2833,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					usage: result.usage,
 				}]);
 			}
-			this.history.appendCompaction({
-				summary: result.summary,
-				firstKeptEntryId: firstKeptEntry.id,
-				tokensBefore: result.tokensBefore,
-				details: result.details,
-				usage: result.usage,
-			});
-			this.rebuildHarnessContext();
+			await this.rebuildCanonicalContext();
 
 			const messagesAfter = this.agentLoop.state.messages.length;
 			this.internalLog(
@@ -2897,7 +2852,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			});
 			terminalPending = false;
 
-			await this.save();
 			return true;
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : String(error);
@@ -2951,32 +2905,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	 * assistant turn before retry).
 	 */
 	private async aggregateCanonicalUsageSince(beforeLeafId: string | null): Promise<PromptUsage> {
-		if (!this.conversationWriter) return this.aggregateUsageSince(beforeLeafId);
-		const conversation = await this.conversationWriter.getConversation(this.conversationId);
-		if (!conversation) return emptyUsage();
-		const path = getActiveConversationPath(conversation);
-		const start = beforeLeafId ? path.findIndex((entry) => entry.id === beforeLeafId) + 1 : 0;
-		let totals = emptyUsage();
-		for (const entry of path.slice(start)) {
-			if (entry.type === 'message' && entry.message.role === 'assistant') {
-				const usage = fromProviderUsage((entry.message as AssistantMessage).usage);
-				if (usage) totals = addUsage(totals, usage);
-			} else if (entry.type === 'compaction' && entry.usage) totals = addUsage(totals, entry.usage);
-		}
-		return totals;
-	}
-
-	private aggregateUsageSince(beforeLeafId: string | null): PromptUsage {
-		let totals = emptyUsage();
-		for (const entry of this.history.getActivePathSince(beforeLeafId)) {
-			if (entry.type === 'message' && entry.message.role === 'assistant') {
-				const usage = fromProviderUsage((entry.message as AssistantMessage).usage);
-				if (usage) totals = addUsage(totals, usage);
-			} else if (entry.type === 'compaction' && entry.usage) {
-				totals = addUsage(totals, entry.usage);
-			}
-		}
-		return totals;
+		return aggregateConversationUsageSince(await this.requireConversation(), beforeLeafId) ?? emptyUsage();
 	}
 
 	private agentInvocationOutput(result: unknown): FlueObservationDetail['agentOutput'] {
@@ -3012,15 +2941,10 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		return '';
 	}
 
-	private getLatestAssistantMessageId(): string | undefined {
-		const path = this.history.getActivePath();
-		for (let i = path.length - 1; i >= 0; i--) {
-			const entry = path[i];
-			if (entry?.type === 'message' && entry.message.role === 'assistant') {
-				return entry.id;
-			}
-		}
-		return undefined;
+	private async getLatestAssistantMessageId(): Promise<string | undefined> {
+		return getActiveConversationPath(await this.requireConversation()).findLast(
+			(entry) => entry.type === 'message' && entry.message.role === 'assistant',
+		)?.id;
 	}
 
 	private canonicalInputEntryId(input: AgentSubmissionInput): string {
@@ -3046,33 +2970,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		}
 	}
 
-	private inspectPersistedInput(inputEntry: MessageEntry | undefined): AgentSubmissionInspection {
-		const state = classifySubmissionState(
-			inputEntry ? this.history.getActivePathSince(inputEntry.id) : undefined,
-			{ contextWindow: this.agentLoop.state.model?.contextWindow ?? 0 },
-		);
-		switch (state.kind) {
-			case 'absent':
-				return 'absent';
-			case 'completed':
-				// Inspection ignores the overflow flag: a stop/length response is a
-				// settled canonical result for reconciliation, even though the
-				// processing preamble would compact-and-continue a silent overflow
-				// (see submission-state.ts).
-				return 'completed';
-			case 'resume':
-				// Overflow and input-only resumes stay 'uncertain' (see
-				// submission-state.ts): reconciliation compensates with its
-				// provider-unreached retry special case. Every other resume mode
-				// has partial progress that restart processing can safely
-				// continue, so reconciliation reports it 'continuable'.
-				return state.mode === 'overflow' || state.mode === 'input_only'
-					? 'uncertain'
-					: 'continuable';
-			default:
-				return 'uncertain';
-		}
-	}
 
 	private async runPersistedDispatchInput(
 		input: DispatchInput,
@@ -3081,7 +2978,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	): Promise<PromptResponse> {
 		this.activeAgentInput = { text: renderSignalMessage(createDispatchInputSignal(input)) };
 		return this.runPersistedContextInput({
-			findInput: () => this.history.findDispatchInput(input.dispatchId),
+			inputEntryId: submissionEntryId('dispatch', input.dispatchId),
 			createCanonicalInput: (parentId) => ({
 				...this.canonicalEnvelope('signal', `record_dispatch_input_${input.dispatchId}`),
 				type: 'signal',
@@ -3091,10 +2988,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				signalType: 'dispatch_input',
 				content: renderSignalMessage(createDispatchInputSignal(input)),
 			}),
-			persistInput: () =>
-				this.history.appendMessage(createDispatchInputSignal(input), {
-					dispatch: dispatchMetadata(input),
-				}),
 			errorLabel: `dispatch(${input.dispatchId})`,
 			callSite: 'this dispatched input',
 			onInputApplied: options?.onInputApplied,
@@ -3118,40 +3011,25 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				: {}),
 		};
 		return this.runPersistedContextInput({
-			findInput: () => this.history.findDirectSubmissionInput(input.submissionId),
-			createCanonicalInput: async (parentId) => ({
-				...this.canonicalEnvelope('user_message', `record_direct_input_${input.submissionId}`),
-				type: 'user_message',
-				messageId: submissionEntryId('direct', input.submissionId),
-				parentId,
-				content: [
-					{ type: 'text', text: input.payload.message },
-					...await Promise.all((input.payload.images ?? []).map(async (image, index) => ({
-						type: 'attachment' as const,
-						attachment: {
-							id: `att_direct_${input.submissionId}_${index}`,
-							mimeType: image.mimeType,
-							size: image.data.length,
-							digest: await sha256(image.data),
-						},
-					}))),
-				],
-			}),
-			persistInput: () =>
-				this.history.appendMessage(
-					createUserContextMessage(
-						this.history.prepareImagePrompt(input.payload.message, input.payload.images),
-						new Date().toISOString(),
-						input.payload.images,
-					),
-					{ directSubmissionId: input.submissionId },
-				),
-			emitPersistedInput: (entry) => {
-				this.emit({
-					type: 'message_end',
-					message: entry.message,
-					turnId: `direct-submission:${input.submissionId}:input`,
-				});
+			inputEntryId: submissionEntryId('direct', input.submissionId),
+			createCanonicalInput: async (parentId) => {
+				const refs = await this.persistCanonicalAttachments(
+					(input.payload.images ?? []).map((image, index) => ({
+						id: `att_direct_${input.submissionId}_${index}`,
+						mimeType: image.mimeType,
+						data: image.data,
+					})),
+				);
+				return {
+					...this.canonicalEnvelope('user_message', `record_direct_input_${input.submissionId}`),
+					type: 'user_message',
+					messageId: submissionEntryId('direct', input.submissionId),
+					parentId,
+					content: [
+						{ type: 'text', text: input.payload.message },
+						...refs.map((attachment) => ({ type: 'attachment' as const, attachment })),
+					],
+				};
 			},
 			errorLabel: `direct(${input.submissionId})`,
 			callSite: 'this direct input',
@@ -3178,10 +3056,8 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	}
 
 	private async runPersistedContextInput(options: {
-		findInput: () => MessageEntry | undefined;
-		persistInput: () => string;
-		createCanonicalInput?: (parentId: string | null) => Promise<ConversationRecord> | ConversationRecord;
-		emitPersistedInput?: (entry: MessageEntry) => void;
+		inputEntryId: string;
+		createCanonicalInput: (parentId: string | null) => Promise<ConversationRecord> | ConversationRecord;
 		journal?: ProcessAgentSubmissionOptions['journal'];
 		startedAt?: number;
 		timeoutAt?: number;
@@ -3205,42 +3081,21 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				const durability = this.resolveSubmissionDurability(options.startedAt, options.timeoutAt);
 				this.activeTimeoutAt = durability.timeoutAt;
 				try {
-					let inputEntry = options.findInput();
-					let canonicalInputEntryId: string | undefined;
-					const inputAlreadyPersisted = inputEntry !== undefined;
-					if (options.createCanonicalInput && this.conversationWriter) {
+					const inputAlreadyPersisted = await this.conversationWriter.hasConversationEntry(
+						this.conversationId,
+						options.inputEntryId,
+					);
+					if (!inputAlreadyPersisted) {
 						const parentId = await this.conversationWriter.getConversationLeaf(this.conversationId);
-						const record = await options.createCanonicalInput(parentId);
-						const entryId = record.type === 'user_message' || record.type === 'signal' ? record.messageId : undefined;
-						canonicalInputEntryId = entryId;
-						if (!entryId || !(await this.conversationWriter.hasConversationEntry(this.conversationId, entryId))) {
-							await this.appendCanonical([record]);
-						}
-					}
-					if (!inputEntry) {
-						options.persistInput();
-						this.rebuildHarnessContext();
-						await this.save();
-						inputEntry = options.findInput();
+						await this.appendCanonical([await options.createCanonicalInput(parentId)]);
 					}
 					await this.rebuildCanonicalContext();
-					if (!inputEntry) {
-						throw new OperationFailedError({
-							operation: options.errorLabel,
-							reason: 'the input could not be persisted',
-						});
-					}
-					if (!inputAlreadyPersisted) options.emitPersistedInput?.(inputEntry);
 					await options.onInputApplied?.(durability);
-					const state = this.conversationWriter
-						? classifyConversationSubmission(
-							await this.conversationWriter.getConversation(this.conversationId) ?? (() => { throw new Error('[flue] Canonical conversation is missing.'); })(),
-							canonicalInputEntryId ?? inputEntry.id,
-							{ contextWindow: this.agentLoop.state.model.contextWindow ?? 0 },
-						)
-						: classifySubmissionState(this.history.getActivePathSince(inputEntry.id), {
-							contextWindow: this.agentLoop.state.model.contextWindow ?? 0,
-						});
+					const state = classifyConversationSubmission(
+						await this.requireConversation(),
+						options.inputEntryId,
+						{ contextWindow: this.agentLoop.state.model.contextWindow ?? 0 },
+					);
 					switch (state.kind) {
 						case 'absent':
 							// Unreachable: `following` is only classified for a found input
@@ -3272,7 +3127,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 							// continues from the repaired results instead of re-executing
 							// tool calls that already completed.
 							if (state.kind === 'resume' && state.mode === 'tool_results_partial') {
-								await this.repairTrailingPartialToolBatch(inputEntry);
+								await this.repairTrailingPartialToolBatch(options.inputEntryId);
 							}
 							// Recovery for the persisted trailing assistant (overflow
 							// compaction, transient-retry backoff) happens inside the turn
@@ -3295,7 +3150,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					}
 					return {
 						text: this.getAssistantText(),
-						usage: await this.aggregateCanonicalUsageSince(inputEntry.id),
+						usage: await this.aggregateCanonicalUsageSince(options.inputEntryId),
 						model: { provider: resolvedModel.provider, id: resolvedModel.id },
 					};
 				} finally {
@@ -3333,7 +3188,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				? { images: args.images.map((image) => ({ mimeType: image.mimeType })) }
 				: {}),
 		};
-		const promptText = this.history.prepareImagePrompt(args.promptText, args.images);
+		const promptText = args.promptText;
 		const resultBundle = args.schema ? createResultTools(args.schema) : undefined;
 
 		return this.withCallOverrides(
@@ -3346,27 +3201,26 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				activePackagedSkills: args.activePackagedSkills,
 			},
 			async ({ resolvedModel }) => {
-				const beforeLeafId = this.conversationWriter
-					? await this.conversationWriter.getConversationLeaf(this.conversationId)
-					: this.history.getLeafId();
-				if (this.conversationWriter) {
+				const beforeLeafId = await this.conversationWriter.getConversationLeaf(this.conversationId);
+				let canonicalPromptText = args.promptText;
+				{
 					const messageId = generateConversationEntryId();
+					const refs = await this.persistCanonicalAttachments(
+						(args.images ?? []).map((image, index) => ({
+							id: `att_prompt_${messageId}_${index}`,
+							mimeType: image.mimeType,
+							data: image.data,
+						})),
+					);
+					canonicalPromptText = this.attachmentManifest(args.promptText, refs);
 					await this.appendCanonical([{
 						...this.canonicalEnvelope('user_message'),
 						type: 'user_message',
 						messageId,
 						parentId: beforeLeafId,
 						content: [
-							{ type: 'text', text: args.promptText },
-							...await Promise.all((args.images ?? []).map(async (image, index) => ({
-								type: 'attachment' as const,
-								attachment: {
-									id: `att_prompt_${messageId}_${index}`,
-									mimeType: image.mimeType,
-									size: image.data.length,
-									digest: await sha256(image.data),
-								},
-							}))),
+							{ type: 'text', text: canonicalPromptText },
+							...refs.map((attachment) => ({ type: 'attachment' as const, attachment })),
 						],
 					}]);
 				}
@@ -3374,7 +3228,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 
 				if (resultBundle) {
 					const result = await this.runWithResultTools(
-						promptText,
+						canonicalPromptText,
 						resultBundle,
 						args.errorLabel,
 						args.signal,
@@ -3388,7 +3242,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				}
 
 				await this.runModelTurnWithRecovery({
-					start: () => this.agentLoop.prompt(promptText, args.images),
+					start: () => this.agentLoop.prompt(canonicalPromptText, args.images),
 					signal: args.signal,
 				});
 				this.throwIfError(args.errorLabel);
@@ -3473,7 +3327,6 @@ export function createPublicSession(session: Session): FlueSession {
 		skill: session.skill.bind(session) as FlueSession['skill'],
 		task: session.task.bind(session) as FlueSession['task'],
 		compact: session.compact.bind(session),
-		delete: session.delete.bind(session),
 	};
 	publicSessionsBySession.set(session, facade);
 	internalSessionsByFacade.set(facade, session);
@@ -3491,21 +3344,6 @@ export function getInternalSession(session: FlueSession): Session | undefined {
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
-
-export async function deleteSessionTree(
-	store: SessionStore,
-	storageKey: string,
-	seen = new Set<string>(),
-): Promise<void> {
-	if (seen.has(storageKey)) return;
-	seen.add(storageKey);
-	const data = await store.load(storageKey);
-	for (const child of data?.childSessions ?? []) {
-		const childStorageKey = childSessionStorageKey(storageKey, child);
-		if (childStorageKey) await deleteSessionTree(store, childStorageKey, seen);
-	}
-	await store.delete(storageKey);
-}
 
 function serializeError(error: unknown): unknown {
 	if (error instanceof Error) {
@@ -3533,14 +3371,25 @@ function zeroProviderUsage(): AssistantMessage['usage'] {
 	};
 }
 
-function submissionEntryId(kind: 'direct' | 'dispatch', id: string): string {
-	return `entry_${kind}_${id.replaceAll(/[^A-Za-z0-9_-]/g, '_')}`;
+function encodeBase64(bytes: Uint8Array): string {
+	let binary = '';
+	for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+		binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+	}
+	return btoa(binary);
 }
 
-async function sha256(value: string): Promise<string> {
-	const bytes = new TextEncoder().encode(value);
-	const digest = await crypto.subtle.digest('SHA-256', bytes);
-	return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
+function decodeBase64(value: string): Uint8Array {
+	const binary = atob(value);
+	return Uint8Array.from(binary, (character) => character.charCodeAt(0));
+}
+
+function submissionEntryId(kind: 'direct' | 'dispatch', id: string): string {
+	const bytes = new TextEncoder().encode(id);
+	let binary = '';
+	for (const byte of bytes) binary += String.fromCharCode(byte);
+	const encoded = btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
+	return `entry_${kind}_${encoded}`;
 }
 
 function durationSince(start: number | undefined): number {

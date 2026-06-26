@@ -1,7 +1,7 @@
 import { getModel } from '@earendil-works/pi-ai';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineAgent, ProviderRegistrationError } from '../src/index.ts';
-import { createFlueContext, InMemorySessionStore, resolveModel } from '../src/internal.ts';
+import { createFlueContext, resolveModel } from '../src/internal.ts';
 import {
 	getProviderTelemetry,
 	registerProvider,
@@ -61,7 +61,6 @@ function createContext() {
 			resolveModel,
 		},
 		createDefaultEnv: async () => createNoopSessionEnv(),
-		defaultStore: new InMemorySessionStore(),
 	});
 }
 

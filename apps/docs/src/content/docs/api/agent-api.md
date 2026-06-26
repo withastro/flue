@@ -329,14 +329,6 @@ create(name?: string): Promise<FlueSession>;
 
 Creates a new session. Defaults to `'default'`. Rejects with `SessionAlreadyExistsError` if it already exists.
 
-### `harness.sessions.delete(...)`
-
-```ts
-delete(name?: string): Promise<void>;
-```
-
-Deletes a session's stored conversation state. Defaults to `'default'`. No-op when missing. Rejects with `SessionBusyError` if the open session has an active operation. It also rejects while the session has accepted durable submissions queued or running. Session-management requests for one name are applied in request order.
-
 ### `harness.shell(...)`
 
 ```ts
@@ -368,7 +360,6 @@ interface FlueSession {
   shell(command: string, options?: ShellOptions): CallHandle<ShellResult>;
   readonly fs: FlueFs;
   compact(): Promise<void>;
-  delete(): Promise<void>;
 }
 ```
 
@@ -481,7 +472,7 @@ Opaque imported packaged-skill reference accepted by `session.skill()`. Import a
 task(text: string, options?: TaskOptions): CallHandle<PromptResponse>;
 ```
 
-Delegates work to a detached child session. Pass `options.agent` to select a named subagent profile and `options.result` to require validated data. Completed child history remains parent-owned until the parent session is deleted or application-owned retention removes it.
+Delegates work to a detached child session. Pass `options.agent` to select a named subagent profile and `options.result` to require validated data.
 
 #### `TaskOptions`
 
@@ -536,14 +527,6 @@ compact(): Promise<void>;
 ```
 
 Triggers conversation compaction immediately. Resolves without work when there is nothing to compact. Rejects when summarization fails or is aborted. Rejects with `SessionBusyError` if another operation is active on the session.
-
-### `session.delete()`
-
-```ts
-delete(): Promise<void>;
-```
-
-Deletes this session's stored conversation state. Rejects with `SessionBusyError` while an operation is active. It also rejects while accepted durable submissions are queued or running for the session. Once deletion starts, the session is unusable and concurrent calls share the same deletion work.
 
 #### `CallHandle<T>`
 

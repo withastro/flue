@@ -125,6 +125,230 @@ export function ensureSqlConversationStreamTables(sql: SqlStorage): void {
 	});
 }
 
+interface InMemoryConversationBatch extends ConversationStreamBatch {
+	producerId: string;
+	producerEpoch: number;
+	producerSequence: number;
+	data: string;
+	submissionId: string | null;
+	attemptId: string | null;
+}
+
+interface InMemoryConversationStream {
+	identity: ConversationStreamIdentity;
+	incarnation: string;
+	closed: boolean;
+	producerId: string | null;
+	producerEpoch: number;
+	nextProducerSequence: number;
+	batches: InMemoryConversationBatch[];
+}
+
+export class InMemoryConversationStreamStore implements ConversationStreamStore {
+	private streams = new Map<string, InMemoryConversationStream>();
+	private listeners = new Map<string, Set<() => void>>();
+
+	async createStream(path: string, identity: ConversationStreamIdentity): Promise<void> {
+		const existing = this.streams.get(path);
+		if (existing) {
+			if (
+				existing.identity.agentName !== identity.agentName ||
+				existing.identity.instanceId !== identity.instanceId
+			) {
+				this.fail('create', path, 'Stream identity conflicts.');
+			}
+			return;
+		}
+		this.streams.set(path, {
+			identity: { ...identity },
+			incarnation: crypto.randomUUID(),
+			closed: false,
+			producerId: null,
+			producerEpoch: 0,
+			nextProducerSequence: 0,
+			batches: [],
+		});
+	}
+
+	async acquireProducer(path: string, producerId: string): Promise<ConversationProducerClaim> {
+		const stream = this.streams.get(path);
+		if (!stream) this.fail('acquire_producer', path, 'Stream does not exist.');
+		if (stream.closed) this.fail('acquire_producer', path, 'Stream is closed.');
+		stream.producerId = producerId;
+		stream.producerEpoch += 1;
+		stream.nextProducerSequence = 0;
+		return {
+			producerId,
+			producerEpoch: stream.producerEpoch,
+			incarnation: stream.incarnation,
+			nextProducerSequence: 0,
+			offset: formatOffset(stream.batches.length - 1),
+		};
+	}
+
+	async append(input: {
+		path: string;
+		producerId: string;
+		producerEpoch: number;
+		incarnation: string;
+		producerSequence: number;
+		expectedOffset?: string;
+		submission?: { submissionId: string; attemptId: string };
+		records: readonly ConversationRecord[];
+	}): Promise<{ offset: string }> {
+		if (input.records.length === 0) this.fail('append', input.path, 'A canonical batch cannot be empty.');
+		const data = JSON.stringify(input.records);
+		const stream = this.streams.get(input.path);
+		if (!stream) this.fail('append', input.path, 'Stream does not exist.');
+		if (stream.closed) this.fail('append', input.path, 'Stream is closed.');
+		if (
+			stream.producerId !== input.producerId ||
+			stream.producerEpoch !== input.producerEpoch ||
+			stream.incarnation !== input.incarnation
+		) {
+			this.fail('append', input.path, 'Producer ownership is stale.');
+		}
+		const retry = stream.batches.find(
+			(batch) =>
+				batch.producerId === input.producerId &&
+				batch.producerEpoch === input.producerEpoch &&
+				batch.producerSequence === input.producerSequence,
+		);
+		if (retry) {
+			if (
+				retry.data !== data ||
+				retry.submissionId !== (input.submission?.submissionId ?? null) ||
+				retry.attemptId !== (input.submission?.attemptId ?? null)
+			) {
+				this.fail('append', input.path, 'Producer sequence has conflicting content.');
+			}
+			return { offset: retry.offset };
+		}
+		if (stream.nextProducerSequence !== input.producerSequence) {
+			this.fail('append', input.path, 'Producer sequence is not the next expected value.');
+		}
+		const head = formatOffset(stream.batches.length - 1);
+		if (input.expectedOffset !== undefined && input.expectedOffset !== head) {
+			this.fail('append', input.path, 'Expected stream head does not match the current head.');
+		}
+		this.assertSubmissionOwnership(input.path, input.submission, input.records);
+		const offset = formatOffset(stream.batches.length);
+		stream.batches.push({
+			offset,
+			records: JSON.parse(data) as ConversationRecord[],
+			producerId: input.producerId,
+			producerEpoch: input.producerEpoch,
+			producerSequence: input.producerSequence,
+			data,
+			submissionId: input.submission?.submissionId ?? null,
+			attemptId: input.submission?.attemptId ?? null,
+		});
+		stream.nextProducerSequence += 1;
+		this.notify(input.path);
+		return { offset };
+	}
+
+	async read(
+		path: string,
+		options?: { offset?: string; limit?: number },
+	): Promise<ConversationStreamReadResult> {
+		const stream = this.streams.get(path);
+		if (!stream) return { batches: [], nextOffset: '-1', upToDate: true, closed: false };
+		const head = stream.batches.length - 1;
+		const rawOffset = options?.offset ?? '-1';
+		if (rawOffset === 'now') {
+			return { batches: [], nextOffset: formatOffset(head), upToDate: true, closed: stream.closed };
+		}
+		const startAfter = parseOffset(rawOffset);
+		if (!Number.isSafeInteger(startAfter) || startAfter > head) {
+			this.fail('read', path, 'Read offset is beyond the canonical stream head.');
+		}
+		const limit = clampLimit(options?.limit, DEFAULT_READ_LIMIT, MAX_READ_LIMIT);
+		const page = stream.batches.slice(startAfter + 1, startAfter + 1 + limit);
+		return {
+			batches: page.map((batch) => ({
+				offset: batch.offset,
+				records: JSON.parse(batch.data) as ConversationRecord[],
+			})),
+			nextOffset: page.at(-1)?.offset ?? formatOffset(startAfter),
+			upToDate: startAfter + page.length >= head,
+			closed: stream.closed,
+		};
+	}
+
+	async getMeta(path: string): Promise<ConversationStreamMeta | null> {
+		const stream = this.streams.get(path);
+		if (!stream) return null;
+		return {
+			identity: { ...stream.identity },
+			incarnation: stream.incarnation,
+			nextOffset: formatOffset(stream.batches.length - 1),
+			closed: stream.closed,
+			producerId: stream.producerId,
+			producerEpoch: stream.producerEpoch,
+			nextProducerSequence: stream.nextProducerSequence,
+		};
+	}
+
+	async close(path: string): Promise<void> {
+		const stream = this.streams.get(path);
+		if (stream) stream.closed = true;
+		this.notify(path);
+	}
+
+	async delete(path: string): Promise<void> {
+		this.streams.delete(path);
+		this.notify(path);
+	}
+
+	subscribe(path: string, listener: () => void): () => void {
+		let listeners = this.listeners.get(path);
+		if (!listeners) {
+			listeners = new Set();
+			this.listeners.set(path, listeners);
+		}
+		listeners.add(listener);
+		return () => {
+			listeners?.delete(listener);
+			if (listeners?.size === 0) this.listeners.delete(path);
+		};
+	}
+
+	private assertSubmissionOwnership(
+		path: string,
+		submission: { submissionId: string; attemptId: string } | undefined,
+		records: readonly ConversationRecord[],
+	): void {
+		const owned = records.filter(
+			(record) => record.submissionId !== undefined || record.attemptId !== undefined,
+		);
+		if (!submission) {
+			if (owned.length > 0) this.fail('append', path, 'Submission-owned records require an attempt authorization.');
+			return;
+		}
+		if (
+			owned.some(
+				(record) =>
+					record.submissionId !== submission.submissionId || record.attemptId !== submission.attemptId,
+			)
+		) {
+			this.fail('append', path, 'Record ownership does not match the authorized submission attempt.');
+		}
+	}
+
+	private fail(operation: string, path: string, reason: string): never {
+		throw new ConversationStreamStoreError({ operation, path, reason });
+	}
+
+	private notify(path: string): void {
+		for (const listener of this.listeners.get(path) ?? []) {
+			try {
+				listener();
+			} catch {}
+		}
+	}
+}
+
 export class SqliteConversationStreamStore implements ConversationStreamStore {
 	private listeners = new Map<string, Set<() => void>>();
 

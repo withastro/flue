@@ -105,33 +105,6 @@ export function parseAcceptedAt(value: string, label: string): number {
 	return acceptedAt;
 }
 
-// ─── Session deletion deduplication ─────────────────────────────────────────
-
-/**
- * Deduplicate concurrent `deleteSession` calls for the same session key.
- *
- * If a deletion is already in progress for the given key, returns the
- * existing promise. Otherwise, calls `runDeletion` and tracks the result.
- * The tracking entry is removed after the promise settles (success or failure).
- */
-export function deduplicateSessionDeletion(
-	pending: Map<string, Promise<void>>,
-	sessionKey: string,
-	runDeletion: () => Promise<void>,
-): Promise<void> {
-	const existing = pending.get(sessionKey);
-	if (existing) return existing;
-	const deletion = runDeletion();
-	pending.set(sessionKey, deletion);
-	const clear = () => {
-		if (pending.get(sessionKey) === deletion) {
-			pending.delete(sessionKey);
-		}
-	};
-	void deletion.then(clear, clear);
-	return deletion;
-}
-
 // ─── Limit clamping ──────────────────────────────────────────────────────────
 
 /**

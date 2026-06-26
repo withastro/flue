@@ -72,8 +72,8 @@ function parseDirectAgentPayload(payload: unknown): DirectAgentPayload {
 
 /**
  * Caller-provided context factory. Differs per-target:
- *   - Node: env=process.env, defaultStore=in-memory.
- *   - Cloudflare: env=DO env, defaultStore=DO SQLite.
+ *   - Node: env=process.env with adapter-backed canonical conversation stores.
+ *   - Cloudflare: env=DO env with Durable Object canonical conversation stores.
  */
 export interface CreateAgentContextOptions {
 	id: string;

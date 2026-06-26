@@ -47,14 +47,6 @@ describe('package entrypoints', () => {
 		expect(runtime).not.toHaveProperty('resetProviderRuntime');
 	});
 
-	it('keeps child session persistence types adapter-only', () => {
-		const rootDeclaration = readFileSync('types/index.d.ts', 'utf8');
-		const adapterDeclaration = readFileSync('dist/adapter.d.mts', 'utf8');
-
-		expect(rootDeclaration).not.toContain('ChildSessionRef');
-		expect(adapterDeclaration).toContain('ChildSessionRef');
-	});
-
 	it('exposes only WorkflowDefinition from the public workflow type surface', () => {
 		const declarations = readFileSync('dist/index.d.mts', 'utf8');
 
@@ -147,6 +139,7 @@ describe('package entrypoints', () => {
 		const testUtils = await import('@flue/runtime/test-utils');
 
 		expect(testUtils).toMatchObject({
+			defineAttachmentStoreContractTests: expect.any(Function),
 			defineEventStreamStoreContractTests: expect.any(Function),
 			defineRunStoreContractTests: expect.any(Function),
 			defineStoreContractTests: expect.any(Function),

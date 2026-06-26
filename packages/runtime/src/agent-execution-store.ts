@@ -16,10 +16,10 @@ import type {
 	ConversationStreamStore,
 } from './runtime/conversation-stream-store.ts';
 import type { SubmissionSettledRecord } from './conversation-records.ts';
+import type { AttachmentStore } from './runtime/attachment-store.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import type { EventStreamStore } from './runtime/event-stream-store.ts';
 import type { RunStore } from './runtime/run-store.ts';
-import type { SessionStore } from './types.ts';
 
 // ─── Durability defaults ────────────────────────────────────────────────────
 
@@ -227,15 +227,12 @@ export interface AgentSubmissionStore {
 	/**
 	 * Idempotent admission keyed by dispatch id. An exact replay (same id,
 	 * same payload) returns the already-admitted submission; the same id
-	 * with a different payload returns `conflict`; an id whose settled row
-	 * was removed by session deletion returns its retained receipt. Throws
-	 * while the target session is being deleted.
+	 * with a different payload returns `conflict`.
 	 */
 	admitDispatch(input: DispatchInput): Promise<AgentDispatchAdmission>;
 	/**
 	 * Admit a direct prompt as a queued submission. Idempotent for an exact
-	 * replay of the same submission id and payload. Throws while the target
-	 * session is being deleted.
+	 * replay of the same submission id and payload.
 	 */
 	admitDirect(input: DirectAgentSubmissionInput): Promise<AgentSubmission>;
 	/**
@@ -326,32 +323,11 @@ export interface AgentSubmissionStore {
 	 */
 	listExpiredSubmissions(): Promise<AgentSubmission[]>;
 
-	// Deletion
-	/**
-	 * Delete all settled submission state for the session. Three phases:
-	 * (1) reject when any submission in the session is queued, running, or terminalizing,
-	 * else durably write a deletion marker that blocks new admissions;
-	 * (2) invoke `deleteSessionTree` (the runtime's snapshot deletion) —
-	 * when it throws, remove the marker so the session returns to a usable
-	 * state and rethrow; (3) retain a receipt for each settled dispatch
-	 * admitted before the marker, remove those submissions and their
-	 * journals/chunks, then remove the marker. Concurrent calls for the
-	 * same session key share one in-flight deletion.
-	 */
-	deleteSession(sessionKey: string, deleteSessionTree: () => Promise<void>): Promise<void>;
-	/**
-	 * List session keys with a durable deletion marker (deletion started but
-	 * never completed, e.g. the process crashed mid-deletion). Coordinators
-	 * resume these at startup by calling {@link deleteSession} again —
-	 * otherwise the marker blocks all admissions for the session forever.
-	 */
-	listPendingSessionDeletions(): Promise<string[]>;
 }
 
 // ─── Execution store ────────────────────────────────────────────────────────
 
 export interface AgentExecutionStore {
-	readonly sessions: SessionStore;
 	readonly submissions: AgentSubmissionStore;
 }
 
@@ -369,6 +345,8 @@ export interface PersistenceStores {
 	readonly conversationStreamStore: ConversationStreamStore;
 	/** Disposable materialized caches for canonical conversation streams. */
 	readonly conversationSnapshotStore: ConversationSnapshotStore;
+	/** Immutable attachment bytes referenced by canonical conversation records. */
+	readonly attachmentStore: AttachmentStore;
 }
 
 /**

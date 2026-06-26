@@ -40,11 +40,6 @@ export interface ConversationCreatedRecord extends ConversationRecordEnvelope {
 	actionInvocationId?: string;
 }
 
-export interface ConversationDeletedRecord extends ConversationRecordEnvelope {
-	type: 'conversation_deleted';
-	reason: 'session_deleted' | 'parent_deleted';
-}
-
 export interface UserMessageRecord extends ConversationRecordEnvelope {
 	type: 'user_message';
 	messageId: string;
@@ -184,11 +179,6 @@ export interface ChildSessionRetainedRecord extends ConversationRecordEnvelope {
 	child: CanonicalChildSessionRef;
 }
 
-export interface ChildSessionReleasedRecord extends ConversationRecordEnvelope {
-	type: 'child_session_released';
-	childConversationId: string;
-}
-
 export interface DataRecord extends ConversationRecordEnvelope {
 	type: 'data';
 	dataType: string;
@@ -205,7 +195,6 @@ export interface SubmissionSettledRecord extends ConversationRecordEnvelope {
 
 export type ConversationRecord =
 	| ConversationCreatedRecord
-	| ConversationDeletedRecord
 	| UserMessageRecord
 	| SignalRecord
 	| AssistantMessageStartedRecord
@@ -221,7 +210,6 @@ export type ConversationRecord =
 	| CompactionRecord
 	| ActiveLeafChangedRecord
 	| ChildSessionRetainedRecord
-	| ChildSessionReleasedRecord
 	| DataRecord
 	| SubmissionSettledRecord;
 

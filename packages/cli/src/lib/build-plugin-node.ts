@@ -192,15 +192,16 @@ let runStore;
 let eventStreamStore;
 let conversationStreamStore;
 let conversationSnapshotStore;
+let attachmentStore;
 try {
   if (userPersistenceAdapter.migrate) await userPersistenceAdapter.migrate();
   const stores = await userPersistenceAdapter.connect();
   if (!stores || typeof stores !== 'object') {
     throw new Error('connect() must return { executionStore, runStore, eventStreamStore }.');
   }
-  ({ executionStore, runStore, eventStreamStore, conversationStreamStore, conversationSnapshotStore } = stores);
-  if (!executionStore || typeof executionStore.sessions?.save !== 'function' || typeof executionStore.submissions?.getSubmission !== 'function') {
-    throw new Error('connect() must return an executionStore with sessions and submissions.');
+  ({ executionStore, runStore, eventStreamStore, conversationStreamStore, conversationSnapshotStore, attachmentStore } = stores);
+  if (!executionStore || typeof executionStore.submissions?.getSubmission !== 'function') {
+    throw new Error('connect() must return an executionStore with submissions.');
   }
   if (!runStore || typeof runStore.createRun !== 'function' || typeof runStore.listRuns !== 'function') {
     throw new Error('connect() must return a runStore.');
@@ -214,23 +215,26 @@ try {
   if (!conversationSnapshotStore || typeof conversationSnapshotStore.load !== 'function' || typeof conversationSnapshotStore.save !== 'function') {
     throw new Error('connect() must return a conversationSnapshotStore.');
   }
+  if (!attachmentStore || typeof attachmentStore.put !== 'function' || typeof attachmentStore.get !== 'function') {
+    throw new Error('connect() must return an attachmentStore.');
+  }
 } catch (error) {
   throw new Error('[flue] Failed to initialize persistence from db.ts: ' + (error instanceof Error ? error.message : error), { cause: error });
 }`
 		: `// Default persistence for Node — in-memory SQLite, process lifetime.
 const defaultAdapter = sqlite();
 if (defaultAdapter.migrate) await defaultAdapter.migrate();
-const { executionStore, runStore, eventStreamStore, conversationStreamStore, conversationSnapshotStore } = await defaultAdapter.connect();`
+const { executionStore, runStore, eventStreamStore, conversationStreamStore, conversationSnapshotStore, attachmentStore } = await defaultAdapter.connect();`
 }
 persistenceAdapter = ${dbEntry ? `userPersistenceAdapter` : `defaultAdapter`};
 const activityGate = createRuntimeActivityGate();
 agentCoordinator = createNodeAgentCoordinator({
   submissions: executionStore.submissions,
-  sessions: executionStore.sessions,
   agents,
   createContext: createAgentContextForRequest,
   conversationStreamStore,
   conversationSnapshotStore,
+  attachmentStore,
   onInteractionStart: devLifecycle?.onAgentInteractionStart,
   activityGate,
 });
@@ -246,7 +250,6 @@ function createAgentContextForRequest({ id, agentName, request, initialEventInde
     req: request,
     agentConfig: { resolveModel },
     createDefaultEnv,
-    defaultStore: executionStore.sessions,
     submissionStore: executionStore.submissions,
   });
 }
@@ -260,7 +263,6 @@ function createWorkflowContextForRequest({ runId, request, initialEventIndex }) 
     req: request,
     agentConfig: { resolveModel },
     createDefaultEnv,
-    defaultStore: executionStore.sessions,
     submissionStore: executionStore.submissions,
   });
 }

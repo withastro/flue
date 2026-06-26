@@ -490,13 +490,6 @@ export interface FlueSessions {
 	get(name?: string): Promise<FlueSession>;
 	/** Create a new session. Defaults to `'default'`. Throws if it already exists. */
 	create(name?: string): Promise<FlueSession>;
-	/**
-	 * Delete a session's stored conversation state. Defaults to `'default'`.
-	 * No-op when missing. Rejects if the open session has an active operation or
-	 * the target runtime still has accepted durable submissions for that session.
-	 * Session-management requests for one name are applied in request order.
-	 */
-	delete(name?: string): Promise<void>;
 }
 
 // ─── Flue Session ───────────────────────────────────────────────────────────
@@ -554,7 +547,7 @@ export interface FlueSession {
 	/**
 	 * Delegate work to a detached child session. Pass `options.agent` to select
 	 * a named subagent profile and `options.result` to require validated data.
-	 * Persisted child history remains parent-owned until the parent is deleted.
+	 * Persisted child history remains part of the parent-owned conversation topology.
 	 */
 	task<S extends v.GenericSchema>(
 		text: string,
@@ -578,14 +571,6 @@ export interface FlueSession {
 	 * same as automatic compaction.
 	 */
 	compact(): Promise<void>;
-
-	/**
-	 * Delete this session's stored conversation state. Rejects while an
-	 * operation or accepted durable submission is active. Once deletion starts,
-	 * the session is unusable and
-	 * concurrent calls share the same deletion work.
-	 */
-	delete(): Promise<void>;
 }
 
 /**
@@ -647,96 +632,6 @@ export interface PromptResultResponse<T> {
 	data: T;
 	usage: PromptUsage;
 	model: PromptModel;
-}
-
-// ─── Session Store ──────────────────────────────────────────────────────────
-
-export interface SessionData {
-	version: 8;
-	/** Opaque stable identity for the persisted conversation. */
-	conversationId: string;
-	/** Opaque stable provider-facing identity used for prompt caching and routing affinity. */
-	affinityKey: string;
-	entries: SessionEntry[];
-	leafId: string | null;
-	/** Retained child sessions recursively deleted with this session. */
-	childSessions: ChildSessionRef[];
-	/** Application-owned session metadata. Flue never reads or writes keys here. */
-	metadata: Record<string, any>;
-	createdAt: string;
-	updatedAt: string;
-}
-
-export type ChildSessionRef =
-	| {
-			type: 'task';
-			/** Child task-session name (`task:<parentSession>:<taskId>`). */
-			session: string;
-			/** Task id that created the child session. */
-			taskId: string;
-	  }
-	| {
-			type: 'action';
-			session: string;
-			invocationId: string;
-	  };
-
-export type SessionEntry = MessageEntry | CompactionEntry;
-
-interface SessionEntryBase {
-	type: string;
-	id: string;
-	parentId: string | null;
-	timestamp: string;
-}
-
-export interface MessageEntry extends SessionEntryBase {
-	type: 'message';
-	message: AgentMessage;
-	imageAttachmentIds?: string[];
-	dispatch?: DispatchMessageMetadata;
-	directSubmissionId?: string;
-	submissionTerminal?: SubmissionTerminalMetadata;
-}
-
-interface SubmissionTerminalMetadata {
-	submissionId: string;
-	kind: 'dispatch' | 'direct';
-	reason:
-		| 'interrupted_before_input_marker'
-		| 'interrupted_after_input_application'
-		| 'exhausted_retry_budget'
-		| 'exceeded_timeout';
-}
-
-/**
- * Replay-matching metadata for a dispatched-input entry. The dispatch payload
- * and identity attributes live in the entry's rendered signal message — this
- * carries only the id used to find the entry again.
- */
-export interface DispatchMessageMetadata {
-	dispatchId: string;
-}
-
-export interface CompactionEntry extends SessionEntryBase {
-	type: 'compaction';
-	summary: string;
-	firstKeptEntryId: string;
-	tokensBefore: number;
-	details?: { readFiles: string[]; modifiedFiles: string[] };
-	/**
-	 * Token usage consumed by the summarization call(s) that produced this
-	 * compaction. Aggregated across the 1–2 internal LLM calls that
-	 * `compact()` dispatched. Undefined for compactions persisted before
-	 * this field was introduced (treated as zero by aggregators).
-	 */
-	usage?: PromptUsage;
-}
-
-export interface SessionStore {
-	save(id: string, data: SessionData): Promise<void>;
-	load(id: string): Promise<SessionData | null>;
-	delete(id: string): Promise<void>;
 }
 
 // ─── Options ────────────────────────────────────────────────────────────────

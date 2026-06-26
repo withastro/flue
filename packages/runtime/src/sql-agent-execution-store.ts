@@ -3,7 +3,7 @@
  *
  * Used by both Cloudflare (DO SQLite) and Node (`node:sqlite`). Contains all
  * SQL-level storage logic — table DDL, row parsing, and the
- * {@link AgentSubmissionStore} and {@link SessionStore} implementations.
+ * {@link AgentSubmissionStore} implementation.
  *
  * Platform-specific wiring (opening the database, providing a transaction
  * wrapper) lives in `cloudflare/agent-execution-store.ts` and
@@ -19,7 +19,6 @@
  */
 
 import {
-	deduplicateSessionDeletion,
 	isSubmissionPayload,
 	parseAcceptedAt,
 	SUBMISSION_HARNESS_NAME,
@@ -50,12 +49,9 @@ type SqlRow = Record<string, unknown>;
 
 import {
 	hydratePersistedDirectSubmission,
-	hydratePersistedSessionEntry,
 	matchesPersistedDirectSubmission,
 	prepareDirectSubmission,
-	prepareSessionEntry,
 	samePersistedChunks,
-	sessionEntryChunkOwner,
 	submissionChunkOwner,
 } from './persisted-image-placement.ts';
 import {
@@ -70,11 +66,9 @@ import {
 	createSqlPersistedChunkStore,
 	ensureSqlPersistedChunkTable,
 } from './sql-persisted-chunk-store.ts';
-import type { SessionData, SessionEntry, SessionStore } from './types.ts';
 
 export function ensureSqlAgentExecutionTables(sql: SqlStorage): void {
 	migrateFlueSqlSchema(sql, () => {
-		ensureSessionTable(sql);
 		ensureSubmissionTable(sql);
 		ensureTurnJournalTable(sql);
 		ensureSqlPersistedChunkTable(sql);
@@ -93,114 +87,11 @@ export function createSqlAgentExecutionStoreFromSql(
 	runTransaction: <T>(closure: () => T) => T,
 ): AgentExecutionStore {
 	return {
-		sessions: new SqlSessionStore(sql, runTransaction),
 		submissions: new AgentSubmissionStoreImpl(sql, runTransaction),
 	};
 }
 
-export class SqlSessionStore implements SessionStore {
-	constructor(
-		private sql: SqlStorage,
-		private transactionSync: <T>(closure: () => T) => T,
-	) {}
-
-	async save(id: string, data: SessionData): Promise<void> {
-		const { entries: sessionEntries, ...session } = data;
-		const entries = sessionEntries.map((entry, position) => {
-			const prepared = prepareSessionEntry(entry);
-			return { entry, position, data: JSON.stringify(prepared.value), chunks: prepared.chunks };
-		});
-		this.transactionSync(() => {
-			const chunkStore = createSqlPersistedChunkStore(this.sql);
-			this.sql.exec(
-				`INSERT INTO flue_sessions (id, data) VALUES (?, ?)
-				 ON CONFLICT (id) DO UPDATE SET data = excluded.data`,
-				id,
-				JSON.stringify(session),
-			);
-			const existingRows = this.sql
-				.exec('SELECT entry_id, position, data FROM flue_session_entries WHERE session_id = ?', id)
-				.toArray();
-			const existing = new Map(existingRows.map((row) => [row.entry_id, row]));
-			const retained = new Set<string>();
-			for (const { entry, position, data: entryData, chunks } of entries) {
-				retained.add(entry.id);
-				const current = existing.get(entry.id);
-				const owner = sessionEntryChunkOwner(id, entry.id);
-				const currentChunks = chunkStore.read(owner);
-				const entryChanged = current?.position !== position || current.data !== entryData;
-				const chunksChanged = !samePersistedChunks(currentChunks, chunks);
-				if (!entryChanged && !chunksChanged) continue;
-				if (entryChanged) {
-					this.sql.exec(
-						`INSERT INTO flue_session_entries (session_id, entry_id, position, data)
-						 VALUES (?, ?, ?, ?)
-						 ON CONFLICT (session_id, entry_id) DO UPDATE SET
-						 position = excluded.position, data = excluded.data`,
-						id,
-						entry.id,
-						position,
-						entryData,
-					);
-				}
-				if (chunksChanged) chunkStore.replace(owner, chunks);
-			}
-			for (const row of existingRows) {
-				if (typeof row.entry_id === 'string' && !retained.has(row.entry_id)) {
-					chunkStore.delete(sessionEntryChunkOwner(id, row.entry_id));
-					this.sql.exec(
-						'DELETE FROM flue_session_entries WHERE session_id = ? AND entry_id = ?',
-						id,
-						row.entry_id,
-					);
-				}
-			}
-		});
-	}
-
-	async load(id: string): Promise<SessionData | null> {
-		return this.transactionSync(() => {
-			const chunkStore = createSqlPersistedChunkStore(this.sql);
-			const rows = this.sql.exec('SELECT data FROM flue_sessions WHERE id = ?', id).toArray();
-			const row = rows[0];
-			if (!row) return null;
-			if (typeof row.data !== 'string') {
-				throw new Error('[flue] Persisted session row is malformed.');
-			}
-			const session = JSON.parse(row.data) as Omit<SessionData, 'entries'>;
-			const entryRows = this.sql
-				.exec(
-					'SELECT entry_id, data FROM flue_session_entries WHERE session_id = ? ORDER BY position ASC',
-					id,
-				)
-				.toArray();
-			return {
-				...session,
-				entries: entryRows.map((entryRow) => {
-					if (typeof entryRow.entry_id !== 'string' || typeof entryRow.data !== 'string') {
-						throw new Error('[flue] Persisted session entry row is malformed.');
-					}
-					return hydratePersistedSessionEntry(
-						JSON.parse(entryRow.data) as SessionEntry,
-						chunkStore.read(sessionEntryChunkOwner(id, entryRow.entry_id)),
-					);
-				}),
-			};
-		});
-	}
-
-	async delete(id: string): Promise<void> {
-		this.transactionSync(() => {
-			createSqlPersistedChunkStore(this.sql).deleteOwner('session_entry', id);
-			this.sql.exec('DELETE FROM flue_session_entries WHERE session_id = ?', id);
-			this.sql.exec('DELETE FROM flue_sessions WHERE id = ?', id);
-		});
-	}
-}
-
 class AgentSubmissionStoreImpl implements AgentSubmissionStore {
-	private pendingSessionDeletions = new Map<string, Promise<void>>();
-
 	constructor(
 		private sql: SqlStorage,
 		private transactionSync: <T>(closure: () => T) => T,
@@ -541,108 +432,6 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		);
 	}
 
-	deleteSession(sessionKey: string, deleteSessionTree: () => Promise<void>): Promise<void> {
-		return deduplicateSessionDeletion(this.pendingSessionDeletions, sessionKey, () =>
-			this.runSessionDeletion(sessionKey, deleteSessionTree),
-		);
-	}
-
-	async listPendingSessionDeletions(): Promise<string[]> {
-		return this.sql
-			.exec('SELECT session_key FROM flue_agent_session_deletions')
-			.toArray()
-			.map((row) => String(row.session_key));
-	}
-
-	private async runSessionDeletion(
-		sessionKey: string,
-		deleteSessionTree: () => Promise<void>,
-	): Promise<void> {
-		this.transactionSync(() => {
-			const active = this.sql
-				.exec(
-					`SELECT 1
-					 FROM flue_agent_submissions
-					 WHERE session_key = ? AND status IN ('queued', 'running', 'terminalizing')
-					 LIMIT 1`,
-					sessionKey,
-				)
-				.toArray();
-			if (active.length > 0) {
-				throw new Error(
-					'[flue] Session cannot be deleted while durable agent submissions are queued or running. Wait for accepted work to settle, then retry deletion.',
-				);
-			}
-			this.sql.exec(
-				'INSERT OR IGNORE INTO flue_agent_session_deletions (session_key, started_at) VALUES (?, ?)',
-				sessionKey,
-				Date.now(),
-			);
-		});
-		try {
-			await deleteSessionTree();
-		} catch (error) {
-			// Remove the deletion marker so the session returns to a usable
-			// state. A persistent deleteSessionTree failure must not leave the
-			// marker indefinitely blocking future admissions.
-			this.sql.exec('DELETE FROM flue_agent_session_deletions WHERE session_key = ?', sessionKey);
-			throw error;
-		}
-		this.transactionSync(() => {
-			const deletionRows = this.sql
-				.exec(
-					'SELECT started_at FROM flue_agent_session_deletions WHERE session_key = ?',
-					sessionKey,
-				)
-				.toArray();
-			const deletionRow = deletionRows[0];
-			if (!deletionRow || typeof deletionRow.started_at !== 'number') {
-				// The marker is gone: a concurrent deletion run (e.g. a startup
-				// resume in another process sharing this database) already
-				// completed phase 3. Nothing left to clean up.
-				return;
-			}
-			const startedAt = deletionRow.started_at;
-			this.sql.exec(
-				`INSERT OR IGNORE INTO flue_agent_dispatch_receipts (dispatch_id, accepted_at)
-				 SELECT submission_id, accepted_at
-				 FROM flue_agent_submissions
-				 WHERE session_key = ? AND kind = 'dispatch' AND status = 'settled' AND accepted_at <= ?`,
-				sessionKey,
-				startedAt,
-			);
-			// Clean up orphaned turn journals for deleted submissions.
-			this.sql.exec(
-				`DELETE FROM flue_agent_turn_journals
-				 WHERE submission_id IN (
-				   SELECT submission_id FROM flue_agent_submissions
-				   WHERE session_key = ? AND status = 'settled' AND accepted_at <= ?
-				 )`,
-				sessionKey,
-				startedAt,
-			);
-			const deletedSubmissionRows = this.sql
-				.exec(
-					`SELECT submission_id FROM flue_agent_submissions
-				 WHERE session_key = ? AND status = 'settled' AND accepted_at <= ?`,
-					sessionKey,
-					startedAt,
-				)
-				.toArray();
-			const submissionOwners = deletedSubmissionRows.flatMap((row) =>
-				typeof row.submission_id === 'string' ? [submissionChunkOwner(row.submission_id)] : [],
-			);
-			createSqlPersistedChunkStore(this.sql).deleteMany(submissionOwners);
-			this.sql.exec(
-				`DELETE FROM flue_agent_submissions
-				 WHERE session_key = ? AND status = 'settled' AND accepted_at <= ?`,
-				sessionKey,
-				startedAt,
-			);
-			this.sql.exec('DELETE FROM flue_agent_session_deletions WHERE session_key = ?', sessionKey);
-		});
-	}
-
 	async claimSubmission(claim: SubmissionClaimRef): Promise<AgentSubmission | null> {
 		const now = Date.now();
 		const timeoutAt = now + DURABILITY_DEFAULT_TIMEOUT_MS;
@@ -818,17 +607,6 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 			if (kind === 'dispatch') {
 				const receipt = this.getDispatchReceipt(submissionId);
 				if (receipt) return { kind: 'retained_receipt', receipt };
-			}
-			const deleting = this.sql
-				.exec(
-					'SELECT 1 FROM flue_agent_session_deletions WHERE session_key = ? LIMIT 1',
-					sessionKey,
-				)
-				.toArray();
-			if (deleting.length > 0) {
-				throw new Error(
-					'[flue] Durable agent submission admission is unavailable while this session is being deleted. Retry after deletion completes.',
-				);
 			}
 			this.sql.exec(
 				`INSERT OR IGNORE INTO flue_agent_submissions
@@ -1090,28 +868,6 @@ function parseSubmission(
 	};
 }
 
-export function ensureSessionTable(sql: SqlStorage): void {
-	sql.exec(
-		`CREATE TABLE IF NOT EXISTS flue_sessions (
-		 id TEXT PRIMARY KEY,
-		 data TEXT NOT NULL
-		)`,
-	);
-	sql.exec(
-		`CREATE TABLE IF NOT EXISTS flue_session_entries (
-		 session_id TEXT NOT NULL,
-		 entry_id TEXT NOT NULL,
-		 position INTEGER NOT NULL,
-		 data TEXT NOT NULL,
-		 PRIMARY KEY (session_id, entry_id)
-		)`,
-	);
-	sql.exec(
-		`CREATE INDEX IF NOT EXISTS flue_session_entries_session_position_idx
-		 ON flue_session_entries (session_id, position ASC)`,
-	);
-}
-
 function ensureTurnJournalTable(sql: SqlStorage): void {
 	sql.exec(
 		`CREATE TABLE IF NOT EXISTS flue_agent_turn_journals (
@@ -1157,12 +913,6 @@ function ensureSubmissionTable(sql: SqlStorage): void {
 		 lease_expires_at INTEGER NOT NULL DEFAULT 0,
 		 settlement_record_id TEXT,
 		 settlement_record_json TEXT
-		)`,
-	);
-	sql.exec(
-		`CREATE TABLE IF NOT EXISTS flue_agent_session_deletions (
-		 session_key TEXT PRIMARY KEY,
-		 started_at INTEGER NOT NULL
 		)`,
 	);
 	sql.exec(

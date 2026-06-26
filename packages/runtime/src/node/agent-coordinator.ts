@@ -16,6 +16,7 @@ import {
 	reconcileInterruptedSubmission,
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
+import type { AttachmentStore } from '../runtime/attachment-store.ts';
 import type {
 	ConversationSnapshotStore,
 	ConversationStreamStore,
@@ -25,13 +26,11 @@ import type { DispatchInput, DispatchQueue } from '../runtime/dispatch-queue.ts'
 import { agentStreamPath } from '../runtime/event-stream-store.ts';
 import type { CreateAgentContextFn } from '../runtime/handle-agent.ts';
 import type { RuntimeActivityGate, RuntimeActivityLease } from '../runtime/runtime-activity-gate.ts';
-import { deleteSessionTree } from '../session.ts';
 import type {
 	AgentDefinition,
 	AttachedAgentEvent,
 	DirectAgentPayload,
 	DispatchReceipt,
-	SessionStore,
 } from '../types.ts';
 
 export interface NodeAgentCoordinator {
@@ -98,15 +97,15 @@ export function createNodeDispatchQueue(coordinator: NodeAgentCoordinator): Disp
 
 export function createNodeAgentCoordinator(options: {
 	submissions: AgentSubmissionStore;
-	sessions: SessionStore;
 	agents: ReadonlyArray<{ name: string; definition: AgentDefinition }>;
 	createContext: CreateAgentContextFn;
 	conversationStreamStore?: ConversationStreamStore;
 	conversationSnapshotStore?: ConversationSnapshotStore;
+	attachmentStore?: AttachmentStore;
 	onInteractionStart?: (interaction: AgentInteractionStart) => void;
 	activityGate?: RuntimeActivityGate;
 }): NodeAgentCoordinator {
-	const { submissions, sessions, agents, createContext, conversationStreamStore, conversationSnapshotStore, onInteractionStart, activityGate } = options;
+	const { submissions, agents, createContext, conversationStreamStore, conversationSnapshotStore, attachmentStore, onInteractionStart, activityGate } = options;
 	const observers = createAgentSubmissionObserverRegistry();
 	const conversationWriters = new Map<string, Promise<ConversationRecordWriter>>();
 	const conversationMaterializations = new Map<string, Promise<void>>();
@@ -202,6 +201,7 @@ export function createNodeAgentCoordinator(options: {
 				dispatchId,
 			});
 			ctx.setConversationWriter?.(writer);
+			ctx.setAttachmentStore?.(attachmentStore);
 			return ctx;
 		};
 	}
@@ -217,7 +217,7 @@ export function createNodeAgentCoordinator(options: {
 			const ctx = makeSubmissionContext(input, writer)(
 				input.kind === 'dispatch' ? input.dispatchId : undefined,
 			);
-			await materializeAgentSubmissionSession(ctx, agent, input);
+			await materializeAgentSubmissionSession(ctx, agent, input, attachmentStore);
 		});
 		conversationMaterializations.set(path, materialized);
 		void materialized.then(
@@ -557,32 +557,10 @@ export function createNodeAgentCoordinator(options: {
 		}
 	}
 
-	/**
-	 * Resume session deletions interrupted by a process crash. A durable
-	 * deletion marker written before the crash blocks every admission for
-	 * that session until deletion completes, so re-run the (idempotent)
-	 * deletion to clear it. Failures are logged and left for the next
-	 * startup; the marker keeps the session safely blocked meanwhile.
-	 */
-	async function resumePendingSessionDeletions(): Promise<void> {
-		for (const sessionKey of await submissions.listPendingSessionDeletions()) {
-			try {
-				await submissions.deleteSession(sessionKey, () => deleteSessionTree(sessions, sessionKey));
-			} catch (error) {
-				console.error(
-					'[flue:session-deletion]',
-					{ sessionKey, operation: 'resume_session_deletion', outcome: 'failed' },
-					error,
-				);
-			}
-		}
-	}
-
 	// ── Public interface ─────────────────────────────────────────────────
 
 	return {
 		async reconcileSubmissions() {
-			await resumePendingSessionDeletions();
 			if (!(await submissions.hasUnsettledSubmissions())) return;
 			await reconcileUnreadySubmissions();
 			// Start the claim loop first so that settlement wakes from

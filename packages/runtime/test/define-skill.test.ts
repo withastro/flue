@@ -10,7 +10,7 @@ import {
 	defineSkill,
 	SkillDefinitionValidationError,
 } from '../src/index.ts';
-import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
+import { createFlueContext } from '../src/internal.ts';
 import type { SessionEnv } from '../src/types.ts';
 
 const providers: FauxProviderRegistration[] = [];
@@ -118,7 +118,6 @@ describe('defineSkill()', () => {
 			env: {},
 			agentConfig: { resolveModel: () => provider.getModel() },
 			createDefaultEnv: async () => createEnv(),
-			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.initializeRootHarness(
 			defineAgent(() => ({
@@ -182,7 +181,6 @@ describe('defineSkill()', () => {
 			env: {},
 			agentConfig: { resolveModel: () => provider.getModel() },
 			createDefaultEnv: async () => createEnv(readFileCalls),
-			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.initializeRootHarness(
 			defineAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),
@@ -215,7 +213,6 @@ describe('defineSkill()', () => {
 			env: {},
 			agentConfig: { resolveModel: () => provider.getModel() },
 			createDefaultEnv: async () => createEnv(),
-			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.initializeRootHarness(
 			defineAgent(() => ({ model: `${provider.getModel().provider}/${provider.getModel().id}` })),

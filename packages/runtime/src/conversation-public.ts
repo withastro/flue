@@ -62,14 +62,12 @@ export function selectAgentConversation(
 	selector: AgentConversationSelector,
 ) {
 	if (selector.conversationId) {
-		const conversation = state.conversations.get(selector.conversationId);
-		return conversation?.deleted ? undefined : conversation;
+		return state.conversations.get(selector.conversationId);
 	}
 	const harness = selector.harness ?? 'default';
 	const session = selector.session ?? 'default';
 	const matches = [...state.conversations.values()].filter(
-		(conversation) =>
-			conversation.harness === harness && conversation.session === session && !conversation.deleted,
+		(conversation) => conversation.harness === harness && conversation.session === session,
 	);
 	if (matches.length > 1) {
 		throw new Error('[flue] Multiple active canonical conversations share one session scope.');
@@ -140,11 +138,7 @@ export function projectAgentConversationBatch(options: {
 }
 
 function requiresSnapshotReset(record: ConversationRecord): boolean {
-	return (
-		record.type === 'conversation_deleted' ||
-		record.type === 'active_leaf_changed' ||
-		record.type === 'compaction'
-	);
+	return record.type === 'active_leaf_changed' || record.type === 'compaction';
 }
 
 function projectData(

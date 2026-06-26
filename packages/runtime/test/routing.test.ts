@@ -12,7 +12,6 @@ import {
 	flue,
 	resetFlueRuntimeForTests,
 } from '../src/runtime/flue-app.ts';
-import { InMemorySessionStore } from '../src/session.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
 import { agentRecord, cloudflareRuntime, nodeRuntime, workflowRecord } from './helpers/runtime-config.ts';
 import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
@@ -1153,6 +1152,5 @@ function createTestContext({ runId, request }: { runId: string; request: Request
 			resolveModel: () => undefined,
 		},
 		createDefaultEnv: async () => createNoopSessionEnv(),
-		defaultStore: new InMemorySessionStore(),
 	});
 }

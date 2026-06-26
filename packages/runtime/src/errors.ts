@@ -421,18 +421,6 @@ export class ProductEventVersionError extends FlueError {
 	}
 }
 
-export class SessionDataVersionError extends FlueError {
-	constructor({ storedVersion }: { storedVersion: string }) {
-		super({
-			type: 'session_data_version_unsupported',
-			message: `Persisted session data version ${storedVersion} is unsupported.`,
-			details: 'The persisted session cannot be read safely by this runtime.',
-			dev: 'Clear session state created by an earlier Flue beta before reopening this session.',
-			meta: { storedVersion, supportedVersion: 8 },
-		});
-	}
-}
-
 export class ConversationRecordInvariantError extends FlueError {
 	constructor({
 		recordId,
@@ -472,6 +460,32 @@ export class ConversationStreamStoreError extends FlueError {
 			meta: { operation, path, reason },
 		});
 		this.name = 'ConversationStreamStoreError';
+	}
+}
+
+export class AttachmentConflictError extends FlueError {
+	constructor({ path, attachmentId }: { path: string; attachmentId: string }) {
+		super({
+			type: 'attachment_conflict',
+			message: 'The attachment identity conflicts with persisted attachment data.',
+			details: 'Use a new attachment identity or retry with the exact original attachment.',
+			dev: `Attachment "${attachmentId}" in canonical stream "${path}" was reused with different content, metadata, or ownership.`,
+			meta: { path, attachmentId },
+		});
+		this.name = 'AttachmentConflictError';
+	}
+}
+
+export class AttachmentIntegrityError extends FlueError {
+	constructor({ attachmentId, reason }: { attachmentId: string; reason: 'size' | 'digest' | 'chunks' }) {
+		super({
+			type: 'attachment_integrity',
+			message: 'The attachment bytes failed integrity verification.',
+			details: 'The attachment cannot be used safely.',
+			dev: `Attachment "${attachmentId}" has a ${reason} mismatch.`,
+			meta: { attachmentId, reason },
+		});
+		this.name = 'AttachmentIntegrityError';
 	}
 }
 
@@ -538,7 +552,7 @@ export class SandboxOperationUnsupportedError extends FlueError {
 //
 // Non-HTTP errors thrown by the session surface: `harness.session()` /
 // `harness.sessions.*` and `session.prompt()` / `skill()` / `task()` /
-// `shell()` / `compact()` / `delete()`. Programmatic consumers (the primary
+// `shell()` / `compact()`. Programmatic consumers (the primary
 // audience of these calls) distinguish failures with `instanceof` against the
 // classes re-exported from the package root. When one of these escapes to the
 // HTTP layer (e.g. a `?wait=result` prompt), `toHttpResponse` renders its
@@ -574,21 +588,8 @@ export class SessionBusyError extends FlueError {
 		super({
 			type: 'session_busy',
 			message: `Session "${session}" is busy running ${activeOperation}.`,
-			details:
-				'Wait for the active operation to finish before starting another operation or deleting the session.',
+			details: 'Wait for the active operation to finish before starting another operation.',
 			dev: 'Sessions run one operation at a time. Start another session for parallel conversation branches.',
-		});
-	}
-}
-
-export class SessionDeletedError extends FlueError {
-	constructor({ session }: { session: string }) {
-		super({
-			type: 'session_deleted',
-			message: `Session "${session}" has been deleted.`,
-			details:
-				'The session and its stored conversation no longer exist. Use a new session to continue.',
-			dev: '',
 		});
 	}
 }

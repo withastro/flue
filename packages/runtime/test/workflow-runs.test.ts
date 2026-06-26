@@ -22,7 +22,6 @@ import {
 	failRecoveredRun,
 	handleWorkflowRequest,
 	InMemoryRunStore,
-	InMemorySessionStore,
 } from '../src/internal.ts';
 import { flue } from '../src/routing.ts';
 import { formatOffset } from '../src/runtime/event-stream-store.ts';
@@ -54,7 +53,6 @@ function createContext({
 			resolveModel: () => undefined,
 		},
 		createDefaultEnv: async () => createNoopSessionEnv(),
-		defaultStore: new InMemorySessionStore(),
 	});
 }
 
@@ -533,8 +531,7 @@ describe('workflow invocation', () => {
 					env: {},
 					agentConfig: { resolveModel: () => undefined },
 					createDefaultEnv: createSessionEnv,
-					defaultStore: new InMemorySessionStore(),
-				});
+							});
 			},
 			runStore: new InMemoryRunStore(),
 		});
@@ -571,8 +568,7 @@ describe('workflow invocation', () => {
 					env: {},
 					agentConfig: { resolveModel: () => undefined },
 					createDefaultEnv: createSessionEnv,
-					defaultStore: new InMemorySessionStore(),
-				});
+							});
 			},
 			runStore: new InMemoryRunStore(),
 		});
@@ -679,8 +675,7 @@ describe('workflow run lifecycle', () => {
 								throw new DOMException('aborted', 'AbortError');
 							},
 						}),
-					defaultStore: new InMemorySessionStore(),
-				});
+							});
 			},
 			runStore,
 			eventStreamStore,

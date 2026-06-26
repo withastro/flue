@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { defineAgent } from '../src/index.ts';
-import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
+import { createFlueContext } from '../src/internal.ts';
 import { local } from '../src/node/index.ts';
 
 function createContext() {
@@ -16,7 +16,6 @@ function createContext() {
 		createDefaultEnv: async () => {
 			throw new Error('unexpected default sandbox');
 		},
-		defaultStore: new InMemorySessionStore(),
 	});
 }
 

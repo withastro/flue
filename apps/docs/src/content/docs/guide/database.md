@@ -3,7 +3,7 @@ title: Database
 description: Configure database-backed state for Flue agents and workflow runs.
 ---
 
-Flue uses a database for agent session history, accepted agent submissions, and workflow-run records. On Node.js, database setup is explicit through `db.ts`. On Cloudflare, generated Durable Objects use SQLite automatically.
+Flue uses a database for canonical agent conversation streams, disposable snapshots, external attachment payloads, accepted agent submissions, and workflow-run records. On Node.js, database setup is explicit through `db.ts`. On Cloudflare, generated Durable Objects use SQLite automatically.
 
 This guide covers how `db.ts` works, which built-in adapters are available, and what database-backed state does and does not cover. For interruption recovery and restart behavior, see [Durable Agents](/docs/concepts/durable-execution/). For the exact adapter contract, see [Data Persistence API](/docs/api/data-persistence-api/).
 
@@ -19,12 +19,14 @@ export default sqlite('./data/flue.db');
 
 Flue discovers `db.ts` at build time and wires the exported `PersistenceAdapter` into the generated server entry. The adapter provides:
 
-- agent session snapshots;
+- the append-only canonical conversation stream for each agent instance;
+- disposable materialized conversation snapshots;
+- immutable attachment payloads referenced by conversation records;
 - accepted direct prompts and `dispatch(...)` submissions;
-- workflow-run records and events;
+- workflow-run records and event streams;
 - workflow-run indexing for `/runs` lookups and `listRuns()`.
 
-Without `db.ts`, the Node target keeps all of this state — sessions, submissions, run records, and run indexing — in in-memory SQLite. That gives one running process ordered state handling, but all of that state disappears when the process exits.
+Without `db.ts`, the Node target keeps all of this state in in-memory SQLite. That gives one running process ordered state handling, but all state disappears when the process exits.
 
 Cloudflare does not use `db.ts`. Generated agent and workflow Durable Objects use SQLite automatically.
 
@@ -54,13 +56,13 @@ import { postgres } from '@flue/postgres';
 export default postgres(process.env.DATABASE_URL!);
 ```
 
-The Postgres adapter persists agent session snapshots, submission rows, workflow-run records, workflow events, and run indexing. Its `migrate()` hook runs automatically when the generated Node server starts.
+The Postgres adapter persists canonical conversation streams, disposable snapshots, immutable attachments, submission rows, workflow-run records, workflow event streams, and run indexing. Its `migrate()` hook runs automatically when the generated Node server starts.
 
 A shared Postgres database is the right choice when another Node process must recover accepted work after a host failure or when several replicas need access to the same workflow-run history.
 
 ## Cloudflare SQLite
 
-On Cloudflare, generated agent and workflow Durable Objects use SQLite automatically. Agent session history, accepted submissions, and workflow-run records are stored in Durable Object SQLite; run indexing is stored in Flue's generated `FlueRegistry` Durable Object. No `db.ts` file is needed, and Cloudflare builds reject one if present.
+On Cloudflare, generated agent and workflow Durable Objects use SQLite automatically. Canonical agent streams, snapshots, attachments, accepted submissions, workflow-run records, and event streams are stored in Durable Object SQLite; run indexing is stored in Flue's generated `FlueRegistry` Durable Object. No `db.ts` file is needed, and Cloudflare builds reject one if present.
 
 Cloudflare Durable Objects also provide the ownership boundary for agent execution: one agent instance owns its own ordered submission queue. See [Cloudflare](/docs/guide/targets/cloudflare/) for generated Durable Object behavior and [Deploy Agents on Cloudflare](/docs/ecosystem/deploy/cloudflare/) for Wrangler migrations.
 
@@ -68,14 +70,16 @@ Cloudflare Durable Objects also provide the ownership boundary for agent executi
 
 A Flue database stores runtime state, not your whole application.
 
-| Stored by Flue                                          | Not stored by Flue                                             |
-| ------------------------------------------------------- | -------------------------------------------------------------- |
-| Agent session messages and compaction state             | Sandbox files and installed dependencies                       |
-| Accepted direct prompts and `dispatch(...)` submissions | External API side effects                                      |
-| Workflow-run records and persisted events               | Application-owned business data unless your own tools store it |
-| Run indexing for `/runs` lookups and `listRuns()`       | Provider credentials or secrets                                |
+| Stored by Flue                                                   | Not stored by Flue                                             |
+| ---------------------------------------------------------------- | -------------------------------------------------------------- |
+| Canonical agent-instance conversation streams                    | Sandbox files and installed dependencies                       |
+| Disposable conversation snapshots and immutable attachments      | External API side effects                                      |
+| Accepted direct prompts and `dispatch(...)` submissions          | Application-owned business data unless your own tools store it |
+| Workflow-run records, event streams, and run indexing            | Provider credentials or secrets                                |
 
-A persisted session does not make a sandbox durable. A durable workspace does not preserve conversation history by itself. Keep customer records, payments, tickets, and other business data in your own application database or external system.
+The canonical stream is the sole transcript. Snapshots are disposable projections, and attachment bytes remain external immutable payloads referenced by stream records. Sessions append to the instance stream for the instance lifetime; Flue exposes no per-session deletion. Store interfaces include low-level whole-instance stream, snapshot, and attachment deletion primitives, but this does not promise public retention or deletion orchestration.
+
+A persisted conversation does not make a sandbox durable. A durable workspace does not preserve conversation history by itself. Keep customer records, payments, tickets, and other business data in your own application database or external system.
 
 ## Choosing an adapter
 

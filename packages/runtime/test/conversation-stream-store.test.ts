@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ConversationRecord } from '../src/conversation-records.ts';
 import { ConversationStreamStoreError } from '../src/errors.ts';
 import {
+	InMemoryConversationStreamStore,
 	SqliteConversationSnapshotStore,
 	SqliteConversationStreamStore,
 } from '../src/runtime/conversation-stream-store.ts';
@@ -42,6 +43,94 @@ function createStores() {
 
 defineConversationStreamStoreContractTests('SqliteConversationStreamStore contract', {
 	create: createStores,
+});
+
+defineConversationStreamStoreContractTests('InMemoryConversationStreamStore contract', {
+	create: () => ({
+		stream: new InMemoryConversationStreamStore(),
+		snapshots: {
+			load: async () => null,
+			save: async () => {},
+			delete: async () => {},
+		},
+	}),
+});
+
+describe('InMemoryConversationStreamStore', () => {
+	it('rejects conflicting identity without replacing the stream', async () => {
+		const stream = new InMemoryConversationStreamStore();
+		await stream.createStream('runs/1', { agentName: 'workflow', instanceId: '1' });
+
+		await expect(
+			stream.createStream('runs/1', { agentName: 'workflow', instanceId: '2' }),
+		).rejects.toBeInstanceOf(ConversationStreamStoreError);
+		expect(await stream.getMeta('runs/1')).toMatchObject({
+			identity: { agentName: 'workflow', instanceId: '1' },
+		});
+	});
+
+	it('checks the expected head before committing an atomic batch', async () => {
+		const stream = new InMemoryConversationStreamStore();
+		await stream.createStream('runs/1', { agentName: 'workflow', instanceId: '1' });
+		const producer = await stream.acquireProducer('runs/1', 'workflow-1');
+
+		await expect(
+			stream.append({
+				path: 'runs/1',
+				producerId: producer.producerId,
+				producerEpoch: producer.producerEpoch,
+				incarnation: producer.incarnation,
+				producerSequence: 0,
+				expectedOffset: '0000000000000000_0000000000000000',
+				records: [userRecord('record_1', 'entry_1'), userRecord('record_2', 'entry_2')],
+			}),
+		).rejects.toBeInstanceOf(ConversationStreamStoreError);
+		expect(await stream.read('runs/1')).toMatchObject({ batches: [], nextOffset: '-1' });
+		expect(await stream.getMeta('runs/1')).toMatchObject({ nextProducerSequence: 0 });
+	});
+
+	it('closes against appends and notifies only subscribed listeners', async () => {
+		const stream = new InMemoryConversationStreamStore();
+		await stream.createStream('runs/1', { agentName: 'workflow', instanceId: '1' });
+		const producer = await stream.acquireProducer('runs/1', 'workflow-1');
+		const listener = vi.fn();
+		const unsubscribe = stream.subscribe('runs/1', listener);
+		unsubscribe();
+		await stream.close('runs/1');
+
+		expect(listener).not.toHaveBeenCalled();
+		expect(await stream.read('runs/1')).toMatchObject({ closed: true });
+		await expect(
+			stream.append({
+				path: 'runs/1',
+				producerId: producer.producerId,
+				producerEpoch: producer.producerEpoch,
+				incarnation: producer.incarnation,
+				producerSequence: 0,
+				records: [userRecord('record_1', 'entry_1')],
+			}),
+		).rejects.toBeInstanceOf(ConversationStreamStoreError);
+	});
+
+	it('fences a claim from a physically deleted stream incarnation', async () => {
+		const stream = new InMemoryConversationStreamStore();
+		await stream.createStream('runs/1', { agentName: 'workflow', instanceId: '1' });
+		const stale = await stream.acquireProducer('runs/1', 'workflow-1');
+		await stream.delete('runs/1');
+		await stream.createStream('runs/1', { agentName: 'workflow', instanceId: '1' });
+		await stream.acquireProducer('runs/1', 'workflow-1');
+
+		await expect(
+			stream.append({
+				path: 'runs/1',
+				producerId: stale.producerId,
+				producerEpoch: stale.producerEpoch,
+				incarnation: stale.incarnation,
+				producerSequence: 0,
+				records: [userRecord('record_1', 'entry_1')],
+			}),
+		).rejects.toBeInstanceOf(ConversationStreamStoreError);
+	});
 });
 
 function userRecord(id: string, messageId: string): ConversationRecord {

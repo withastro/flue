@@ -9,7 +9,7 @@ import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineAgent, connectMcpServer } from '../src/index.ts';
-import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
+import { createFlueContext } from '../src/internal.ts';
 import { connectMcpServerWithClient } from '../src/mcp.ts';
 import { getPreparedToolAdapter } from '../src/tool-adapter.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
@@ -321,7 +321,6 @@ describe('connectMcpServerWithClient()', () => {
 				env: {},
 				agentConfig: { resolveModel: () => provider.getModel() },
 				createDefaultEnv: async () => createNoopSessionEnv(),
-				defaultStore: new InMemorySessionStore(),
 			});
 			const harness = await context.initializeRootHarness(
 				defineAgent(() => ({

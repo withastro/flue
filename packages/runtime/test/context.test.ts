@@ -6,7 +6,7 @@ import {
 import { afterEach, describe, expect, it } from 'vitest';
 import { defineAgent } from '../src/index.ts';
 import type { FlueContextConfig } from '../src/internal.ts';
-import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
+import { createFlueContext } from '../src/internal.ts';
 import type { FlueEvent, SessionEnv } from '../src/types.ts';
 
 const providers: FauxProviderRegistration[] = [];
@@ -87,7 +87,6 @@ function createContext(overrides: Partial<FlueContextConfig> = {}) {
 			resolveModel: () => undefined,
 		},
 		createDefaultEnv: async () => createEnv(),
-		defaultStore: new InMemorySessionStore(),
 		...overrides,
 	});
 }

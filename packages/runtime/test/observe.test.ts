@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { type FlueObservation, observe } from '../src/index.ts';
-import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
+import { createFlueContext } from '../src/internal.ts';
 
 function createContext(id: string) {
 	return createFlueContext({
@@ -12,7 +12,6 @@ function createContext(id: string) {
 		createDefaultEnv: async () => {
 			throw new Error('unexpected sandbox initialization');
 		},
-		defaultStore: new InMemorySessionStore(),
 	});
 }
 

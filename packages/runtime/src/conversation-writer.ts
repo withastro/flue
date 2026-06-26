@@ -4,7 +4,11 @@ import {
 	encodeReducedInstanceState,
 	loadReducedConversationState,
 } from './conversation-reader.ts';
-import type { ConversationCreatedRecord, ConversationRecord } from './conversation-records.ts';
+import type {
+	CanonicalChildSessionRef,
+	ConversationCreatedRecord,
+	ConversationRecord,
+} from './conversation-records.ts';
 import type { ReducedInstanceState } from './conversation-reducer.ts';
 import { reduceConversationRecords } from './conversation-reducer.ts';
 import type {
@@ -39,7 +43,7 @@ export class ConversationRecordWriter {
 		private readonly store: ConversationStreamStore,
 		private readonly snapshots: ConversationSnapshotStore | undefined,
 		readonly path: string,
-		private readonly claim: ConversationProducerClaim,
+		private claim: ConversationProducerClaim,
 	) {
 		this.nextProducerSequence = claim.nextProducerSequence;
 	}
@@ -95,7 +99,7 @@ export class ConversationRecordWriter {
 
 	async findConversation(harness: string, session: string) {
 		const matches = [...(await this.loadReducedState()).conversations.values()].filter(
-			(conversation) => conversation.harness === harness && conversation.session === session && !conversation.deleted,
+			(conversation) => conversation.harness === harness && conversation.session === session,
 		);
 		if (matches.length > 1) throw new Error('[flue] Multiple active canonical conversations share one session scope.');
 		return matches[0];
@@ -210,6 +214,60 @@ export class ConversationRecordWriter {
 			() => {},
 		);
 		return operation;
+	}
+
+	async ensureChildConversation(input: {
+		parent: ConversationRecordScope;
+		child: Omit<ConversationCreatedRecord, 'v' | 'id' | 'type' | 'timestamp'>;
+		ref: CanonicalChildSessionRef;
+	}): Promise<{ offset: string }> {
+		const state = await this.loadReducedState();
+		const parent = state.conversations.get(input.parent.conversationId);
+		if (!parent || parent.harness !== input.parent.harness || parent.session !== input.parent.session) {
+			throw new Error('[flue] Canonical child parent is missing or conflicts with its scope.');
+		}
+		const existing = state.conversations.get(input.child.conversationId);
+		const retained = parent.childConversations.get(input.child.conversationId);
+		if (existing || retained) {
+			if (
+				!existing || !retained ||
+				existing.harness !== input.child.harness ||
+				existing.session !== input.child.session ||
+				existing.affinityKey !== input.child.affinityKey ||
+				existing.parentConversationId !== input.parent.conversationId ||
+				JSON.stringify(retained) !== JSON.stringify(input.ref)
+			) {
+				throw new Error('[flue] Canonical child conversation conflicts with retained topology.');
+			}
+			return { offset: state.recordsThroughOffset };
+		}
+		const timestamp = input.child.createdAt;
+		return this.append([
+			{
+				v: 1,
+				id: `record_conversation_created_${input.child.conversationId}`,
+				type: 'conversation_created',
+				conversationId: input.child.conversationId,
+				harness: input.child.harness,
+				session: input.child.session,
+				timestamp,
+				affinityKey: input.child.affinityKey,
+				createdAt: input.child.createdAt,
+				parentConversationId: input.parent.conversationId,
+				...(input.child.taskId ? { taskId: input.child.taskId } : {}),
+				...(input.child.actionInvocationId ? { actionInvocationId: input.child.actionInvocationId } : {}),
+			},
+			{
+				v: 1,
+				id: `record_child_retained_${input.parent.conversationId}_${input.child.conversationId}`,
+				type: 'child_session_retained',
+				conversationId: input.parent.conversationId,
+				harness: input.parent.harness,
+				session: input.parent.session,
+				timestamp,
+				child: input.ref,
+			},
+		]);
 	}
 
 	async ensureConversation(input: Omit<ConversationCreatedRecord, 'v' | 'id' | 'type' | 'timestamp'> & {

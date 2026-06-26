@@ -8,9 +8,10 @@ You are an AI coding agent configuring MySQL-backed persistence for a Flue
 project using the first-party `@flue/mysql` adapter. This adapter supports
 MySQL 8 with InnoDB tables.
 
-This gives the project's agent sessions, accepted submissions, and workflow-run
-records durable state that survives process restart and is shared across
-replicas. It does not store the application's own business data.
+This persists canonical agent conversation streams, disposable snapshots,
+immutable attachments, accepted submissions, workflow-run records, and event
+streams across process restarts and replicas. It does not store application
+business data.
 
 ## Check the target first
 

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { PersistedSchemaVersionError } from '@flue/runtime/adapter';
 import {
+	defineAttachmentStoreContractTests,
 	defineConversationStreamStoreContractTests,
 	defineEventStreamStoreContractTests,
 	defineRunStoreContractTests,
@@ -242,6 +243,12 @@ describeMongo('MongoDB shared contracts', () => {
 	defineEventStreamStoreContractTests('MongoDB EventStreamStore', {
 		async create() {
 			return (await stores()).eventStreamStore;
+		},
+		cleanup,
+	});
+	defineAttachmentStoreContractTests('MongoDB AttachmentStore', {
+		async create() {
+			return (await stores()).attachmentStore;
 		},
 		cleanup,
 	});

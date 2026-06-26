@@ -1,18 +1,15 @@
 import {
 	type ExtractedImages,
 	extractDirectSubmissionImages,
-	extractSessionEntryImages,
 	hydrateDirectSubmissionImages,
-	hydrateSessionEntryImages,
 	type PersistedImageChunk,
 } from './persisted-images.ts';
 import type { DirectAgentSubmissionInput } from './runtime/agent-submissions.ts';
-import type { SessionEntry } from './types.ts';
 
 export interface PersistedChunkOwner {
-	kind: 'session_entry' | 'submission';
+	kind: 'submission';
 	id: string;
-	part: string;
+	part: '';
 }
 
 export interface PersistedChunkRow {
@@ -32,29 +29,14 @@ export interface PersistedChunkStore<Result = void> {
 	deleteOwner(kind: PersistedChunkOwner['kind'], id: string): Result;
 }
 
-export function sessionEntryChunkOwner(sessionId: string, entryId: string): PersistedChunkOwner {
-	return { kind: 'session_entry', id: sessionId, part: entryId };
-}
-
 export function submissionChunkOwner(submissionId: string): PersistedChunkOwner {
 	return { kind: 'submission', id: submissionId, part: '' };
-}
-
-export function prepareSessionEntry(entry: SessionEntry): ExtractedImages<SessionEntry> {
-	return extractSessionEntryImages(entry);
 }
 
 export function prepareDirectSubmission(
 	input: DirectAgentSubmissionInput,
 ): ExtractedImages<DirectAgentSubmissionInput> {
 	return extractDirectSubmissionImages(input);
-}
-
-export function hydratePersistedSessionEntry(
-	entry: SessionEntry,
-	rows: readonly PersistedChunkRow[],
-): SessionEntry {
-	return hydrateSessionEntryImages(entry, reassemblePersistedChunks(rows));
 }
 
 export function hydratePersistedDirectSubmission(

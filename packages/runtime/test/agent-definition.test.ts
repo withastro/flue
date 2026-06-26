@@ -7,7 +7,7 @@ import {
 	ModelNotConfiguredError,
 } from '../src/index.ts';
 import type { FlueContextConfig } from '../src/internal.ts';
-import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
+import { createFlueContext } from '../src/internal.ts';
 import type { AgentProfile, AgentDefinition, ToolDefinition } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
 
@@ -19,7 +19,6 @@ function createContext(overrides: Partial<FlueContextConfig> = {}) {
 			resolveModel: () => undefined,
 		},
 		createDefaultEnv: async () => createNoopSessionEnv(),
-		defaultStore: new InMemorySessionStore(),
 		...overrides,
 	});
 }

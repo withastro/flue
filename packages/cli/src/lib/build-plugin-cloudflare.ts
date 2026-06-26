@@ -171,7 +171,6 @@ import {
   CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH,
   createCloudflareAgentRuntime,
   createSqlConversationStores,
-  createSqlSessionStore,
   SqliteEventStreamStore,
   bashFactoryToSessionEnv,
   resolveModel,
@@ -294,7 +293,6 @@ function createAgentContextForRequest({ executionStore, instance, agentName, req
     dispatchId,
     agentConfig: { resolveModel },
     createDefaultEnv,
-    defaultStore: executionStore.sessions,
     submissionStore: executionStore.submissions,
   });
 }
@@ -308,7 +306,6 @@ function createWorkflowContextForRequest({ runId, request, initialEventIndex }, 
     initialEventIndex,
     agentConfig: { resolveModel },
     createDefaultEnv,
-    defaultStore: createSqlSessionStore(doInstance.ctx.storage),
   });
 }
 

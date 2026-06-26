@@ -3,9 +3,9 @@ import {
 	fauxAssistantMessage,
 	registerFauxProvider,
 } from '@earendil-works/pi-ai';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { defineAgent, SessionBusyError } from '../src/index.ts';
-import { createFlueContext, InMemorySessionStore } from '../src/internal.ts';
+import { createFlueContext } from '../src/internal.ts';
 import type { FlueEvent } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
 
@@ -31,7 +31,6 @@ describe('session.compact()', () => {
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
-			defaultStore: new InMemorySessionStore(),
 		});
 		ctx.subscribeEvent((event) => {
 			events.push(event);
@@ -66,7 +65,6 @@ describe('session.compact()', () => {
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
-			defaultStore: new InMemorySessionStore(),
 		});
 		ctx.subscribeEvent((event) => {
 			events.push(event);
@@ -114,7 +112,6 @@ describe('session.compact()', () => {
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
-			defaultStore: new InMemorySessionStore(),
 		});
 		ctx.subscribeEvent((event) => {
 			events.push(event);
@@ -166,7 +163,6 @@ describe('session.compact()', () => {
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
-			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.initializeRootHarness(defineAgent(() => ({ model: modelSpecifier })));
 		const session = await harness.session();
@@ -201,7 +197,6 @@ describe('session.compact()', () => {
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
-			defaultStore: new InMemorySessionStore(),
 		});
 		ctx.subscribeEvent((event) => {
 			events.push(event);
@@ -248,7 +243,6 @@ describe('automatic compaction', () => {
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
-			defaultStore: new InMemorySessionStore(),
 		});
 		ctx.subscribeEvent((event) => {
 			events.push(event);
@@ -291,7 +285,6 @@ describe('automatic compaction', () => {
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
-			defaultStore: new InMemorySessionStore(),
 		});
 		ctx.subscribeEvent((event) => {
 			events.push(event);
@@ -328,8 +321,6 @@ describe('automatic compaction', () => {
 		const events: FlueEvent[] = [];
 		const model = provider.getModel();
 		const modelSpecifier = `${model.provider}/${model.id}`;
-		const store = new InMemorySessionStore();
-		const save = vi.spyOn(store, 'save');
 		const ctx = createFlueContext({
 			id: 'overflow-compaction',
 			env: {},
@@ -337,7 +328,6 @@ describe('automatic compaction', () => {
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
-			defaultStore: store,
 		});
 		ctx.subscribeEvent((event) => {
 			events.push(event);
@@ -357,15 +347,6 @@ describe('automatic compaction', () => {
 				expect.objectContaining({ type: 'compaction' }),
 			]),
 		);
-		const data = save.mock.calls.at(-1)?.[1];
-		expect(
-			data?.entries.some(
-				(entry) =>
-					entry.type === 'message' &&
-					entry.message.role === 'assistant' &&
-					entry.message.stopReason === 'error',
-			),
-		).toBe(true);
 	});
 
 	it('still compacts and retries on context overflow when automatic threshold compaction is disabled', async () => {
@@ -392,7 +373,6 @@ describe('automatic compaction', () => {
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
-			defaultStore: new InMemorySessionStore(),
 		});
 		ctx.subscribeEvent((event) => {
 			events.push(event);
@@ -441,7 +421,6 @@ describe('automatic compaction', () => {
 				resolveModel: (requested) => (requested === modelSpecifier ? model : undefined),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
-			defaultStore: new InMemorySessionStore(),
 		});
 		const harness = await ctx.initializeRootHarness(
 			defineAgent(() => ({ model: modelSpecifier, compaction: { keepRecentTokens: 3 } })),
@@ -506,7 +485,6 @@ describe('automatic compaction', () => {
 				},
 			},
 			createDefaultEnv: async () => createNoopSessionEnv(),
-			defaultStore: new InMemorySessionStore(),
 		});
 		ctx.subscribeEvent((event) => {
 			events.push(event);

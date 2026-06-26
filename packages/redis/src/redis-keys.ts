@@ -1,5 +1,3 @@
-import type { PersistedChunkOwner } from '@flue/runtime/adapter';
-
 export function encodeSegment(value: string): string {
 	return Buffer.from(value).toString('base64url');
 }
@@ -23,11 +21,6 @@ export class RedisKeys {
 
 	meta = () => this.key('meta');
 	sequence = () => this.key('sequence', 'admission');
-	session = (id: string) => this.encoded('session', id);
-	sessionGeneration = (id: string, generation: string) =>
-		this.encoded('session-generation', id, generation);
-	sessionGenerations = (id: string) => this.encoded('session-generations', id);
-	sessionReaders = (id: string) => this.encoded('session-readers', id);
 	submission = (id: string) => this.encoded('submission', id);
 	submissionGeneration = (id: string, generation: string) =>
 		this.encoded('submission-generation', id, generation);
@@ -40,8 +33,6 @@ export class RedisKeys {
 	sessionUnsettled = (sessionKey: string) => this.encoded('session-unsettled', sessionKey);
 	journal = (submissionId: string) => this.encoded('journal', submissionId);
 	journals = () => this.key('journals');
-	deletion = (sessionKey: string) => this.encoded('deletion', sessionKey);
-	deletions = () => this.key('deletions');
 	receipt = (id: string) => this.encoded('receipt', id);
 	marker = (submissionId: string, attemptId: string) =>
 		this.encoded('marker', submissionId, attemptId);
@@ -62,14 +53,8 @@ export class RedisKeys {
 	conversationRetries = (path: string) => this.encoded('conversation-retries', path);
 	conversationSnapshot = (path: string) => this.encoded('conversation-snapshot', path);
 	conversations = () => this.key('conversations');
-	chunkOwner(owner: PersistedChunkOwner) {
-		return this.encoded('chunk-owner', owner.kind, owner.id, owner.part);
-	}
-	chunkGeneration(owner: PersistedChunkOwner, generation: string) {
-		return this.encoded('chunk-generation', owner.kind, owner.id, owner.part, generation);
-	}
-	chunkReaders(owner: PersistedChunkOwner) {
-		return this.encoded('chunk-readers', owner.kind, owner.id, owner.part);
-	}
-	chunkOwners = () => this.key('chunk-owners');
+	attachment = (path: string, attachmentId: string) => this.encoded('attachment', path, attachmentId);
+	attachments = (path: string) => this.encoded('attachments', path);
+	conversationAttachmentIndexes = (path: string) => this.encoded('conversation-attachment-indexes', path);
+	conversationAttachments = (path: string, conversationId: string) => this.encoded('conversation-attachments', path, conversationId);
 }

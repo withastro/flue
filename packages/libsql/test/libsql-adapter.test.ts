@@ -14,8 +14,9 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PersistedSchemaVersionError, type SessionData } from '@flue/runtime/adapter';
+import { PersistedSchemaVersionError } from '@flue/runtime/adapter';
 import {
+	defineAttachmentStoreContractTests,
 	defineConversationStreamStoreContractTests,
 	defineEventStreamStoreContractTests,
 	defineRunStoreContractTests,
@@ -51,9 +52,7 @@ function createLibsqlRunner(
 	// queueing) if a second operation overlaps it. A real remote/Turso
 	// connection or a server-backed pool serializes writers for you; here we
 	// reproduce that by funneling every operation through a single promise
-	// chain so transactions never overlap. This keeps the contract suite's
-	// genuinely-concurrent cases (e.g. admission racing a session deletion)
-	// deterministic without weakening them.
+	// chain so transactions never overlap.
 	let tail: Promise<unknown> = Promise.resolve();
 	const serialize = <T>(op: () => Promise<T>): Promise<T> => {
 		const run = tail.then(op, op);
@@ -117,6 +116,21 @@ function createLibsqlRunner(
 
 {
 	let adapter: ReturnType<typeof libsql> | undefined;
+	defineAttachmentStoreContractTests('libSQL AttachmentStore', {
+		async create() {
+			adapter = libsql(createLibsqlRunner());
+			await adapter.migrate?.();
+			return (await adapter.connect()).attachmentStore;
+		},
+		async cleanup() {
+			await adapter?.close?.();
+			adapter = undefined;
+		},
+	});
+}
+
+{
+	let adapter: ReturnType<typeof libsql> | undefined;
 	defineEventStreamStoreContractTests('libSQL EventStreamStore', {
 		async create() {
 			adapter = libsql(createLibsqlRunner());
@@ -144,7 +158,6 @@ function createLibsqlRunner(
 			return {
 				stream: stores.conversationStreamStore,
 				snapshots: stores.conversationSnapshotStore,
-				executionStore: stores.executionStore,
 			};
 		},
 		async cleanup() {
@@ -172,50 +185,14 @@ function createLibsqlRunner(
 
 // ─── Adapter factory tests ──────────────────────────────────────────────────
 
-function sessionData(): SessionData {
-	return {
-		version: 8,
-		conversationId: 'conv_01KT3P3GZGFBCKHKMQ11A7H2HW',
-		affinityKey: 'affinity-1',
-		entries: [],
-		leafId: null,
-		childSessions: [],
-		metadata: {},
-		createdAt: '2026-06-03T00:00:00.000Z',
-		updatedAt: '2026-06-03T00:00:00.000Z',
-	};
-}
-
 describe('libsql() PersistenceAdapter', () => {
 	it('creates a store and closes cleanly via libsql', async () => {
 		const runner = createLibsqlRunner();
 		const adapter = libsql(runner);
 		await adapter.migrate?.();
-		const { executionStore: store } = await adapter.connect();
-		await store.sessions.save('s1', sessionData());
-		expect(await store.sessions.load('s1')).toEqual(sessionData());
+		await adapter.connect();
 		if (!adapter.close) throw new Error('Expected adapter.close to be defined.');
 		await adapter.close();
-	});
-
-	it('persists sessions across a client restart', async () => {
-		const dir = mkdtempSync(join(tmpdir(), 'flue-libsql-restart-'));
-		const path = join(dir, 'test.db');
-		try {
-			const first = libsql(createLibsqlRunner({ path }));
-			await first.migrate?.();
-			const firstConnection = await first.connect();
-			await firstConnection.executionStore.sessions.save('restart', sessionData());
-			await first.close?.();
-
-			const second = libsql(createLibsqlRunner({ path }));
-			await second.migrate?.();
-			const secondConnection = await second.connect();
-			expect(await secondConnection.executionStore.sessions.load('restart')).toEqual(sessionData());
-			await second.close?.();
-		} finally {
-			rmSync(dir, { recursive: true, force: true });
-		}
 	});
 
 	it('decodes run booleans when integer rows are strings', async () => {
@@ -255,7 +232,7 @@ describe('libsql() PersistenceAdapter', () => {
 		await adapter.migrate?.();
 
 		const rows = await runner.query(`SELECT value FROM flue_meta WHERE key = 'schema_version'`);
-		expect(rows).toEqual([{ value: '5' }]);
+		expect(rows).toEqual([{ value: '6' }]);
 
 		await runner.query(`UPDATE flue_meta SET value = '1' WHERE key = 'schema_version'`);
 		await expect(adapter.migrate?.()).rejects.toThrowError(PersistedSchemaVersionError);
