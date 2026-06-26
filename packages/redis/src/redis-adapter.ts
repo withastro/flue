@@ -205,8 +205,6 @@ export function redis(runner: RedisRunner, options: RedisOptions = {}): Persiste
 					'schemaVersion',
 					FLUE_SCHEMA_VERSION,
 				]);
-			else if (String(stored) === '2' && FLUE_SCHEMA_VERSION === 3)
-				await backend.command('HSET', [backend.keys.meta(), 'schemaVersion', FLUE_SCHEMA_VERSION]);
 			else assertSupportedFlueSchemaVersion(String(stored));
 		},
 		connect() {

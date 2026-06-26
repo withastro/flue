@@ -194,7 +194,7 @@ describe('postgres() PersistenceAdapter', () => {
 		await adapter.migrate?.();
 
 		const rows = await runner.query(`SELECT value FROM flue_meta WHERE key = 'schema_version'`);
-		expect(rows).toEqual([{ value: '3' }]);
+		expect(rows).toEqual([{ value: '4' }]);
 
 		await runner.query(`UPDATE flue_meta SET value = '1' WHERE key = 'schema_version'`);
 		await expect(adapter.migrate?.()).rejects.toThrowError(PersistedSchemaVersionError);
@@ -205,7 +205,7 @@ describe('postgres() PersistenceAdapter', () => {
 		await adapter.close();
 	});
 
-	it('migrates schema v2 runs and persists trace carriers', async () => {
+	it('rejects schema v2 persistence without migrating it', async () => {
 		const runner = createPgliteRunner();
 		await runner.query(`CREATE TABLE flue_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
 		await runner.query(`INSERT INTO flue_meta (key, value) VALUES ('schema_version', '2')`);
@@ -224,30 +224,14 @@ describe('postgres() PersistenceAdapter', () => {
 			)
 		`);
 		const adapter = postgres(runner);
-		await adapter.migrate?.();
-		await adapter.migrate?.();
-		const { runStore } = await adapter.connect();
-		await runStore.createRun({
-			runId: 'migrated',
-			workflowName: 'workflow',
-			startedAt: '2026-06-03T00:00:00.000Z',
-			input: undefined,
-			traceCarrier: {
-				traceparent: '00-11111111111111111111111111111111-2222222222222222-01',
-				tracestate: 'vendor=value',
-			},
-		});
+		await expect(adapter.migrate?.()).rejects.toThrowError(PersistedSchemaVersionError);
 		expect(await runner.query(`SELECT value FROM flue_meta WHERE key = 'schema_version'`)).toEqual([
-			{ value: '3' },
+			{ value: '2' },
 		]);
-		expect((await runStore.getRun('migrated'))?.traceCarrier).toEqual({
-			traceparent: '00-11111111111111111111111111111111-2222222222222222-01',
-			tracestate: 'vendor=value',
-		});
 		await adapter.close?.();
 	});
 
-	it('repairs schema v3 run tables lacking trace columns', async () => {
+	it('rejects schema v3 run tables without repairing them', async () => {
 		const runner = createPgliteRunner();
 		await runner.query(`CREATE TABLE flue_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`);
 		await runner.query(`INSERT INTO flue_meta (key, value) VALUES ('schema_version', '3')`);
@@ -266,14 +250,12 @@ describe('postgres() PersistenceAdapter', () => {
 			)
 		`);
 		const adapter = postgres(runner);
-		await adapter.migrate?.();
-		await adapter.migrate?.();
+		await expect(adapter.migrate?.()).rejects.toThrowError(PersistedSchemaVersionError);
 		const columns = await runner.query(
 			`SELECT column_name FROM information_schema.columns
-			 WHERE table_name = 'flue_runs' AND column_name IN ('traceparent', 'tracestate')
-			 ORDER BY column_name`,
+			 WHERE table_name = 'flue_runs' AND column_name IN ('traceparent', 'tracestate')`,
 		);
-		expect(columns).toEqual([{ column_name: 'traceparent' }, { column_name: 'tracestate' }]);
+		expect(columns).toEqual([]);
 		await adapter.close?.();
 	});
 });

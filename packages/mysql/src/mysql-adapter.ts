@@ -431,14 +431,12 @@ async function ensureTables(runner: MysqlRunner): Promise<void> {
 	const metaRows = await runner.query(
 		`SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'flue_meta'`,
 	);
-	let migratingFromV2 = false;
 	if (metaRows.length > 0) {
 		const versionRows = await runner.query(
 			`SELECT value FROM flue_meta WHERE \`key\` = 'schema_version'`,
 		);
 		const storedVersion = versionRows[0]?.value;
-		migratingFromV2 = String(storedVersion) === '2' && FLUE_SCHEMA_VERSION === 3;
-		if (storedVersion !== undefined && storedVersion !== null && !migratingFromV2)
+		if (storedVersion !== undefined && storedVersion !== null)
 			assertSupportedFlueSchemaVersion(String(storedVersion));
 	}
 	const ddl = [
@@ -483,7 +481,7 @@ async function ensureTables(runner: MysqlRunner): Promise<void> {
 		`SELECT value FROM flue_meta WHERE \`key\` = 'schema_version'`,
 	);
 	const storedVersion = versionRows[0]?.value;
-	if (storedVersion !== undefined && storedVersion !== null && !migratingFromV2)
+	if (storedVersion !== undefined && storedVersion !== null)
 		assertSupportedFlueSchemaVersion(String(storedVersion));
 	const tables = await runner.query(
 		`SELECT TABLE_NAME AS table_name, ENGINE AS engine FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'flue\\_%'`,
@@ -551,11 +549,7 @@ async function ensureTables(runner: MysqlRunner): Promise<void> {
 		if (!found)
 			throw invalidMysqlSchema(`index on ${expected.table} (${expected.columns.join(', ')})`);
 	}
-	if (migratingFromV2) {
-		await runner.query(`UPDATE flue_meta SET value = ? WHERE \`key\` = 'schema_version'`, [
-			String(FLUE_SCHEMA_VERSION),
-		]);
-	} else if (storedVersion === undefined || storedVersion === null) {
+	if (storedVersion === undefined || storedVersion === null) {
 		await runner.query(
 			`INSERT INTO flue_meta (\`key\`, value) VALUES ('schema_version', ?) ON DUPLICATE KEY UPDATE value = value`,
 			[String(FLUE_SCHEMA_VERSION)],

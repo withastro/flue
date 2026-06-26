@@ -180,13 +180,12 @@ async function ensureTables(runner: PostgresRunner): Promise<void> {
 		`);
 		const versionRows = await tx.query(`SELECT value FROM flue_meta WHERE key = 'schema_version'`);
 		const storedVersion = versionRows[0]?.value;
-		const migratingFromV2 = String(storedVersion) === '2' && FLUE_SCHEMA_VERSION === 3;
 		if (storedVersion === undefined || storedVersion === null) {
 			await tx.query(
 				`INSERT INTO flue_meta (key, value) VALUES ('schema_version', $1) ON CONFLICT (key) DO NOTHING`,
 				[String(FLUE_SCHEMA_VERSION)],
 			);
-		} else if (!migratingFromV2) {
+		} else {
 			assertSupportedFlueSchemaVersion(String(storedVersion));
 		}
 
@@ -333,12 +332,6 @@ async function ensureTables(runner: PostgresRunner): Promise<void> {
 		`);
 		await tx.query(`ALTER TABLE flue_runs ADD COLUMN IF NOT EXISTS traceparent TEXT`);
 		await tx.query(`ALTER TABLE flue_runs ADD COLUMN IF NOT EXISTS tracestate TEXT`);
-
-		if (migratingFromV2) {
-			await tx.query(`UPDATE flue_meta SET value = $1 WHERE key = 'schema_version'`, [
-				String(FLUE_SCHEMA_VERSION),
-			]);
-		}
 
 		await tx.query(`
 			CREATE INDEX IF NOT EXISTS flue_runs_status_started_idx

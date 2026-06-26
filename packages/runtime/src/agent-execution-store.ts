@@ -383,10 +383,10 @@ export interface PersistenceStores {
 	readonly runStore: RunStore;
 	/** Durable append-only event streams for agents and workflow runs. */
 	readonly eventStreamStore: EventStreamStore;
-	/** Canonical per-agent-instance conversation streams during the adapter rollout. */
-	readonly conversationStreamStore?: ConversationStreamStore;
-	/** Disposable materialized caches for canonical conversation streams during the adapter rollout. */
-	readonly conversationSnapshotStore?: ConversationSnapshotStore;
+	/** Canonical per-agent-instance conversation streams. */
+	readonly conversationStreamStore: ConversationStreamStore;
+	/** Disposable materialized caches for canonical conversation streams. */
+	readonly conversationSnapshotStore: ConversationSnapshotStore;
 }
 
 /**

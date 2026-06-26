@@ -18,7 +18,7 @@ import type { SqlStorage } from './sql-storage.ts';
  * Bump this when a persisted format changes incompatibly, together with
  * `migrate()` logic that brings older stores to the new version.
  */
-export const FLUE_SCHEMA_VERSION = 3;
+export const FLUE_SCHEMA_VERSION = 4;
 
 /**
  * Throw {@link PersistedSchemaVersionError} unless the stored version matches
@@ -45,9 +45,7 @@ export function migrateFlueSqlSchema(sql: SqlStorage, ensureCurrentSchema: () =>
 		)`,
 	);
 	const stored = sql.exec(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).toArray()[0]?.value;
-	if (stored !== undefined && stored !== null && !['1', '2', '3'].includes(String(stored))) {
-		assertSupportedFlueSchemaVersion(String(stored));
-	}
+	if (stored !== undefined && stored !== null) assertSupportedFlueSchemaVersion(String(stored));
 
 	repairSubmissionColumns(sql);
 	repairRunColumns(sql);

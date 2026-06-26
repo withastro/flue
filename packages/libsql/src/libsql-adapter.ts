@@ -201,12 +201,11 @@ async function ensureTables(runner: LibsqlRunner): Promise<void> {
 		`);
 		const versionRows = await tx.query(`SELECT value FROM flue_meta WHERE key = 'schema_version'`);
 		const storedVersion = versionRows[0]?.value;
-		const migratingFromV2 = String(storedVersion) === '2' && FLUE_SCHEMA_VERSION === 3;
 		if (storedVersion === undefined || storedVersion === null) {
 			await tx.query(`INSERT OR IGNORE INTO flue_meta (key, value) VALUES ('schema_version', ?)`, [
 				String(FLUE_SCHEMA_VERSION),
 			]);
-		} else if (!migratingFromV2) {
+		} else {
 			assertSupportedFlueSchemaVersion(String(storedVersion));
 		}
 
@@ -368,12 +367,6 @@ async function ensureTables(runner: LibsqlRunner): Promise<void> {
 			} catch (error) {
 				if (!String(error).toLowerCase().includes('duplicate column')) throw error;
 			}
-		}
-
-		if (migratingFromV2) {
-			await tx.query(`UPDATE flue_meta SET value = ? WHERE key = 'schema_version'`, [
-				String(FLUE_SCHEMA_VERSION),
-			]);
 		}
 
 		await tx.query(`
