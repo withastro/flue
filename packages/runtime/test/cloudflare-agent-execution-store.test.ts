@@ -86,6 +86,7 @@ describe('createSqlAgentExecutionStore()', () => {
 				'status',
 				'accepted_at',
 				'attempt_id',
+				'canonical_ready_at',
 				'input_applied_at',
 				'recovery_requested_at',
 				'started_at',
@@ -96,9 +97,8 @@ describe('createSqlAgentExecutionStore()', () => {
 				'timeout_at',
 				'owner_id',
 				'lease_expires_at',
-				'terminal_event_key',
-				'terminal_event_json',
-				'terminal_event_offset',
+				'settlement_record_id',
+				'settlement_record_json',
 			]),
 		);
 		expect(columnNames('flue_agent_turn_journals')).toEqual(
@@ -497,11 +497,12 @@ describe('createSqlAgentExecutionStore()', () => {
 		const { db, sql, transactionSync } = makeFakeSql();
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		await store.submissions.admitDispatch(dispatchInput({ dispatchId: 'healthy' }));
+		await store.submissions.markSubmissionCanonicalReady('healthy');
 		db.prepare(
 			`INSERT INTO flue_agent_submissions
-			 (submission_id, session_key, kind, payload, status, accepted_at)
-			 VALUES (?, ?, 'dispatch', ?, 'queued', ?)`,
-		).run('malformed', 'agent-session:["agent-1","default","other"]', '{', 1);
+			 (submission_id, session_key, kind, payload, status, accepted_at, canonical_ready_at)
+			 VALUES (?, ?, 'dispatch', ?, 'queued', ?, ?)`,
+		).run('malformed', 'agent-session:["agent-1","default","other"]', '{', 1, 1);
 
 		expect(await store.submissions.listRunnableSubmissions()).toEqual([
 			expect.objectContaining({ submissionId: 'healthy' }),
@@ -517,6 +518,7 @@ describe('createSqlAgentExecutionStore()', () => {
 		const { db, sql, transactionSync } = makeFakeSql();
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		await store.submissions.admitDispatch(dispatchInput());
+		await store.submissions.markSubmissionCanonicalReady('dispatch-1');
 		db.prepare(
 			'UPDATE flue_agent_submissions SET input_applied_at = ? WHERE submission_id = ?',
 		).run(1, 'dispatch-1');
@@ -533,6 +535,7 @@ describe('createSqlAgentExecutionStore()', () => {
 		const store = createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent');
 		const sessionKey = 'agent-session:["agent-1","default","default"]';
 		await store.submissions.admitDispatch(dispatchInput());
+		await store.submissions.markSubmissionCanonicalReady('dispatch-1');
 		await store.submissions.claimSubmission({
 			...attempt('dispatch-1', 'attempt-1'),
 			ownerId: 'test-owner',
@@ -575,7 +578,7 @@ describe('createSqlAgentExecutionStore()', () => {
 		expect(() =>
 			createSqlAgentExecutionStore({ sql, transactionSync }, 'FlueAssistantAgent'),
 		).toThrow(
-			'[flue] Cloudflare durable agent class "FlueAssistantAgent" could not initialize its SQLite execution store. Underlying error: no such column: status',
+			'[flue] Cloudflare durable agent class "FlueAssistantAgent" could not initialize its SQLite execution store. Underlying error: This database records an unrecognized schema version ("unversioned"; this runtime supports version 5).',
 		);
 	});
 });

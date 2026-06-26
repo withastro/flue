@@ -77,20 +77,20 @@ import {
 	createRunScript,
 	deleteSubmissionScript,
 	endRunScript,
-	finalizeTerminalScript,
+	finalizeSettlementScript,
 	finishDeletionScript,
 	journalScript,
 	lifecycleScript,
-	prepareTerminalScript,
+	markSubmissionCanonicalReadyScript,
 	publishChunksScript,
 	publishGenerationScript,
 	quarantineSubmissionScript,
 	reclaimGenerationsScript,
-	recordTerminalOffsetScript,
 	releaseGenerationScript,
 	renewDeletionScript,
 	renewLeasesScript,
 	replaceAttemptScript,
+	reserveSettlementScript,
 } from './redis-scripts.ts';
 
 const empty = '';
@@ -199,13 +199,23 @@ export function redis(runner: RedisRunner, options: RedisOptions = {}): Persiste
 		async migrate() {
 			await inspectServer(backend, options.inspectServer !== false);
 			const stored = await backend.command('HGET', [backend.keys.meta(), 'schemaVersion']);
-			if (stored == null)
+			if (stored == null) {
+				let cursor = '0';
+				let existing = false;
+				do {
+					const result = await backend.command('SCAN', [cursor, 'MATCH', `${backend.keys.prefix}:*`, 'COUNT', 100]);
+					const page = Array.isArray(result) ? result : [];
+					cursor = String(page[0] ?? '0');
+					const keys = strings(page[1]);
+					if (keys.some((key) => key !== backend.keys.meta())) existing = true;
+				} while (cursor !== '0' && !existing);
+				if (existing) assertSupportedFlueSchemaVersion('unversioned');
 				await backend.command('HSETNX', [
 					backend.keys.meta(),
 					'schemaVersion',
 					FLUE_SCHEMA_VERSION,
 				]);
-			else assertSupportedFlueSchemaVersion(String(stored));
+			} else assertSupportedFlueSchemaVersion(String(stored));
 		},
 		connect() {
 			return {
@@ -507,6 +517,17 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 		return row.submissionId ? parseJournal(row) : null;
 	}
 
+	async markSubmissionCanonicalReady(submissionId: string): Promise<AgentSubmission | null> {
+		const changed = integer(
+			await this.backend.eval(
+				markSubmissionCanonicalReadyScript,
+				[this.backend.keys.submission(submissionId)],
+				[Date.now()],
+			),
+		);
+		return changed === 1 ? this.getSubmission(submissionId) : null;
+	}
+
 	async hasUnsettledSubmissions(): Promise<boolean> {
 		return (
 			integer(await this.backend.command('ZCARD', [this.backend.keys.submissionStatus('queued')])) >
@@ -520,13 +541,22 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 		);
 	}
 
+	async listUnreadySubmissions(): Promise<AgentSubmission[]> {
+		const output: AgentSubmission[] = [];
+		for (const id of await this.backend.zrange(this.backend.keys.submissionStatus('queued'))) {
+			const submission = await this.readOperationalSubmission(id, 'queued');
+			if (submission?.canonicalReadyAt === null) output.push(submission);
+		}
+		return output;
+	}
+
 	async listRunnableSubmissions(): Promise<AgentSubmission[]> {
 		const ids = await this.backend.zrange(this.backend.keys.submissionStatus('queued'));
 		const output: AgentSubmission[] = [];
 		const seen = new Set<string>();
 		for (const id of ids) {
 			const submission = await this.readOperationalSubmission(id, 'queued');
-			if (submission && !seen.has(submission.sessionKey)) {
+			if (submission && submission.canonicalReadyAt !== null && !seen.has(submission.sessionKey)) {
 				seen.add(submission.sessionKey);
 				const head = await this.findSessionHead(submission.sessionKey);
 				if (head?.submissionId === id && head.status === 'queued') output.push(submission);
@@ -572,7 +602,7 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 	async updateTurnJournalPhase(
 		attempt: SubmissionAttemptRef,
 		phase: AgentTurnJournalPhase,
-		options: { checkpointLeafId?: string; toolRequest?: unknown; streamKey?: string } = {},
+		options: { checkpointLeafId?: string; toolRequest?: unknown } = {},
 	): Promise<boolean> {
 		return (
 			integer(
@@ -586,7 +616,6 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 						Date.now(),
 						options.checkpointLeafId ?? empty,
 						optionalJson(options.toolRequest),
-						options.streamKey ?? empty,
 					],
 				),
 			) === 1
@@ -606,50 +635,6 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 				),
 			) === 1
 		);
-	}
-
-	async markStreamConsumed(attempt: SubmissionAttemptRef, streamKey: string): Promise<boolean> {
-		return (
-			integer(
-				await this.backend.eval(
-					journalScript,
-					[this.backend.keys.journal(attempt.submissionId)],
-					['consumed', attempt.attemptId, streamKey, Date.now()],
-				),
-			) === 1
-		);
-	}
-
-	async appendStreamChunkSegment(
-		streamKey: string,
-		segmentIndex: number,
-		body: string,
-	): Promise<boolean> {
-		const inserted =
-			integer(
-				await this.backend.command('HSETNX', [
-					this.backend.keys.streamSegments(streamKey),
-					String(segmentIndex),
-					body,
-				]),
-			) === 1;
-		if (inserted)
-			await this.backend.command('SADD', [this.backend.keys.streamSegmentKeys(), streamKey]);
-		return inserted;
-	}
-
-	async getStreamChunkSegments(
-		streamKey: string,
-	): Promise<Array<{ segmentIndex: number; body: string }>> {
-		const row = await this.backend.hgetall(this.backend.keys.streamSegments(streamKey));
-		return Object.entries(row)
-			.map(([index, body]) => ({ segmentIndex: integer(index), body }))
-			.sort((a, b) => a.segmentIndex - b.segmentIndex);
-	}
-
-	async deleteStreamChunkSegments(streamKey: string): Promise<void> {
-		await this.backend.command('DEL', [this.backend.keys.streamSegments(streamKey)]);
-		await this.backend.command('SREM', [this.backend.keys.streamSegmentKeys(), streamKey]);
 	}
 
 	async replaceTurnJournalAttempt(
@@ -740,29 +725,27 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 		return this.lifecycle(attempt, 'requeue', Date.now());
 	}
 
-	async listPendingTerminalOutboxes(): Promise<any[]> {
-		const output = [];
+	async listPendingSubmissionSettlements(): Promise<import('@flue/runtime/adapter').SubmissionSettlementObligation[]> {
+		const output: import('@flue/runtime/adapter').SubmissionSettlementObligation[] = [];
 		for (const id of await this.backend.zrange(this.backend.keys.submissionStatus('terminalizing'))) {
 			const row = await this.backend.hgetall(this.backend.keys.submission(id));
-			if (row.kind === 'direct' && row.status === 'terminalizing') output.push({ submissionId: id, sessionKey: required(row.sessionKey, 'Persisted Redis terminal session is missing.'), attemptId: required(row.attemptId, 'Persisted Redis terminal attempt is missing.'), eventKey: required(row.terminalKey, 'Persisted Redis terminal key is missing.'), event: JSON.parse(required(row.terminalEvent, 'Persisted Redis terminal event is missing.')), ...(row.terminalOffset ? { offset: row.terminalOffset } : {}) });
+			if (row.kind === 'direct' && row.status === 'terminalizing') output.push({ submissionId: id, sessionKey: required(row.sessionKey, 'Persisted Redis settlement session is missing.'), attemptId: required(row.attemptId, 'Persisted Redis settlement attempt is missing.'), recordId: required(row.settlementRecordId, 'Persisted Redis settlement record id is missing.'), record: JSON.parse(required(row.settlementRecord, 'Persisted Redis settlement record is missing.')) });
 		}
 		return output;
 	}
-	async reserveSubmissionTerminal(attempt: SubmissionAttemptRef, terminal: { eventKey: string; event: unknown }): Promise<any | null> {
+	async reserveSubmissionSettlement(attempt: SubmissionAttemptRef, settlement: { recordId: string; record: import('@flue/runtime/adapter').SubmissionSettledRecord }): Promise<import('@flue/runtime/adapter').SubmissionSettlementObligation | null> {
+		if (settlement.record.id !== settlement.recordId) return null;
 		const id = attempt.submissionId;
 		const row = await this.backend.hgetall(this.backend.keys.submission(id));
 		if (!row.sessionKey) return null;
-		await this.backend.eval(prepareTerminalScript, [this.backend.keys.submission(id), this.backend.keys.submissionStatus('running'), this.backend.keys.submissionStatus('terminalizing'), this.backend.keys.sessionUnsettled(row.sessionKey)], [attempt.attemptId, id, terminal.eventKey, json(terminal.event)]);
+		await this.backend.eval(reserveSettlementScript, [this.backend.keys.submission(id), this.backend.keys.submissionStatus('running'), this.backend.keys.submissionStatus('terminalizing'), this.backend.keys.sessionUnsettled(row.sessionKey)], [attempt.attemptId, id, settlement.recordId, json(settlement.record)]);
 		const current = await this.backend.hgetall(this.backend.keys.submission(id));
-		return current.status === 'terminalizing' && current.attemptId === attempt.attemptId && current.terminalKey === terminal.eventKey && current.terminalEvent === json(terminal.event) ? { submissionId: id, sessionKey: current.sessionKey, attemptId: attempt.attemptId, eventKey: terminal.eventKey, event: terminal.event, ...(current.terminalOffset ? { offset: current.terminalOffset } : {}) } : null;
+		return current.status === 'terminalizing' && current.sessionKey && current.attemptId === attempt.attemptId && current.settlementRecordId === settlement.recordId && current.settlementRecord === json(settlement.record) ? { submissionId: id, sessionKey: current.sessionKey, attemptId: attempt.attemptId, recordId: settlement.recordId, record: settlement.record } : null;
 	}
-	async recordSubmissionTerminalOffset(attempt: SubmissionAttemptRef, eventKey: string, offset: string): Promise<boolean> {
-		return integer(await this.backend.eval(recordTerminalOffsetScript, [this.backend.keys.submission(attempt.submissionId)], [attempt.attemptId, eventKey, offset])) === 1;
-	}
-	async finalizeSubmissionTerminal(attempt: SubmissionAttemptRef, eventKey: string): Promise<boolean> {
+	async finalizeSubmissionSettlement(attempt: SubmissionAttemptRef, recordId: string): Promise<boolean> {
 		const row = await this.backend.hgetall(this.backend.keys.submission(attempt.submissionId));
-		if (!row.sessionKey || row.attemptId !== attempt.attemptId || row.terminalKey !== eventKey || !row.terminalOffset) return false;
-		return integer(await this.backend.eval(finalizeTerminalScript, [this.backend.keys.submission(attempt.submissionId), this.backend.keys.submissionStatus('terminalizing'), this.backend.keys.sessionUnsettled(row.sessionKey)], [attempt.submissionId, Date.now(), row.terminalOffset])) === 1;
+		if (!row.sessionKey) return false;
+		return integer(await this.backend.eval(finalizeSettlementScript, [this.backend.keys.submission(attempt.submissionId), this.backend.keys.submissionStatus('terminalizing'), this.backend.keys.sessionUnsettled(row.sessionKey)], [attempt.submissionId, Date.now(), attempt.attemptId, recordId])) === 1;
 	}
 
 	completeSubmission(attempt: SubmissionAttemptRef): Promise<boolean> {
@@ -1097,8 +1080,6 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 		for (const id of await this.backend.zrange(this.backend.keys.sessionSubmissions(sessionKey))) {
 			const row = await this.backend.hgetall(this.backend.keys.submission(id));
 			if (row.status !== 'settled' || integer(row.sequence) > cutoff) continue;
-			const journal = await this.backend.hgetall(this.backend.keys.journal(id));
-			if (journal.streamKey) await this.deleteStreamChunkSegments(journal.streamKey);
 			await this.chunks.delete(submissionChunkOwner(id));
 			const generationIds = strings(
 				await this.backend.command('ZRANGE', [this.backend.keys.submissionGenerations(id), 0, -1]),
@@ -1227,6 +1208,7 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 			input,
 			status: row.status as AgentSubmission['status'],
 			acceptedAt,
+			canonicalReadyAt: row.canonicalReadyAt ? integer(row.canonicalReadyAt) : null,
 			...(row.attemptId ? { attemptId: row.attemptId } : {}),
 			...(row.inputAppliedAt ? { inputAppliedAt: integer(row.inputAppliedAt) } : {}),
 			...(row.recoveryRequestedAt ? { recoveryRequestedAt: integer(row.recoveryRequestedAt) } : {}),
@@ -1256,8 +1238,6 @@ function parseJournal(row: Hash): AgentTurnJournal {
 		updatedAt: integer(row.updatedAt),
 		...(row.checkpointLeafId ? { checkpointLeafId: row.checkpointLeafId } : {}),
 		...(row.toolRequest ? { toolRequest: JSON.parse(row.toolRequest) } : {}),
-		...(row.streamKey ? { streamKey: row.streamKey } : {}),
-		...(row.streamConsumedAt ? { streamConsumedAt: integer(row.streamConsumedAt) } : {}),
 		committed: row.committed === '1',
 		...(row.committedLeafId ? { committedLeafId: row.committedLeafId } : {}),
 	};

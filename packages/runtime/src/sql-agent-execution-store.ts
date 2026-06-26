@@ -37,7 +37,7 @@ import type {
 	CreateTurnJournalInput,
 	SubmissionAttemptRef,
 	SubmissionClaimRef,
-	SubmissionTerminalOutbox,
+	SubmissionSettlementObligation,
 } from './agent-execution-store.ts';
 import {
 	DURABILITY_DEFAULT_MAX_ATTEMPTS,
@@ -379,6 +379,20 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		return admission.submission;
 	}
 
+	async markSubmissionCanonicalReady(submissionId: string): Promise<AgentSubmission | null> {
+		const row = this.sql
+			.exec(
+				`UPDATE flue_agent_submissions
+				 SET canonical_ready_at = COALESCE(canonical_ready_at, ?)
+				 WHERE submission_id = ? AND status = 'queued'
+				 RETURNING ${submissionColumns}`,
+				Date.now(),
+				submissionId,
+			)
+			.toArray()[0];
+		return row ? this.parseSubmission(row) : null;
+	}
+
 	async hasUnsettledSubmissions(): Promise<boolean> {
 		return (
 			this.sql
@@ -392,12 +406,27 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		);
 	}
 
+	async listUnreadySubmissions(): Promise<AgentSubmission[]> {
+		return this.parseOperationalRows(
+			this.sql
+				.exec(
+					`SELECT ${submissionColumns}
+					 FROM flue_agent_submissions
+					 WHERE status = 'queued' AND canonical_ready_at IS NULL
+					 ORDER BY sequence ASC`,
+				)
+				.toArray(),
+			'queued',
+		);
+	}
+
 	async listRunnableSubmissions(): Promise<AgentSubmission[]> {
 		const rows = this.sql
 			.exec(
 				`SELECT ${submissionColumnsFor('current')}
 				 FROM flue_agent_submissions AS current
 				 WHERE current.status = 'queued'
+				   AND current.canonical_ready_at IS NOT NULL
 				   AND NOT EXISTS (
 				     SELECT 1
 				     FROM flue_agent_submissions AS earlier
@@ -425,17 +454,17 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		);
 	}
 
-	async listPendingTerminalOutboxes(): Promise<SubmissionTerminalOutbox[]> {
+	async listPendingSubmissionSettlements(): Promise<SubmissionSettlementObligation[]> {
 		return this.sql
 			.exec(
-				`SELECT submission_id, session_key, attempt_id, terminal_event_key,
-				        terminal_event_json, terminal_event_offset
+				`SELECT submission_id, session_key, attempt_id, settlement_record_id,
+				        settlement_record_json
 				 FROM flue_agent_submissions
 				 WHERE status = 'terminalizing'
 				 ORDER BY sequence ASC`,
 			)
 			.toArray()
-			.map(parseTerminalOutbox);
+			.map(parseSettlementObligation);
 	}
 
 	// ── Attempt markers ──────────────────────────────────────────────────
@@ -624,6 +653,7 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				     max_retry = ?, timeout_at = CASE WHEN timeout_at = 0 THEN ? ELSE timeout_at END,
 				     owner_id = ?, lease_expires_at = ?
 				 WHERE current.submission_id = ? AND current.status = 'queued'
+				   AND current.canonical_ready_at IS NOT NULL
 				   AND NOT EXISTS (
 				     SELECT 1
 				     FROM flue_agent_submissions AS earlier
@@ -691,77 +721,59 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 		);
 	}
 
-	async reserveSubmissionTerminal(
+	async reserveSubmissionSettlement(
 		attempt: SubmissionAttemptRef,
-		terminal: { eventKey: string; event: unknown },
-	): Promise<SubmissionTerminalOutbox | null> {
-		const eventJson = JSON.stringify(terminal.event);
+		settlement: { recordId: string; record: import('./conversation-records.ts').SubmissionSettledRecord },
+	): Promise<SubmissionSettlementObligation | null> {
+		if (settlement.record.id !== settlement.recordId) return null;
+		const recordJson = JSON.stringify(settlement.record);
 		return this.transactionSync(() => {
 			const inserted = this.sql
 				.exec(
 					`UPDATE flue_agent_submissions
-					 SET status = 'terminalizing', terminal_event_key = ?, terminal_event_json = ?
+					 SET status = 'terminalizing', settlement_record_id = ?, settlement_record_json = ?
 					 WHERE submission_id = ? AND kind = 'direct' AND status = 'running' AND attempt_id = ?
-					 RETURNING submission_id, session_key, attempt_id, terminal_event_key,
-					           terminal_event_json, terminal_event_offset`,
-					terminal.eventKey,
-					eventJson,
+					 RETURNING submission_id, session_key, attempt_id, settlement_record_id,
+					           settlement_record_json`,
+					settlement.recordId,
+					recordJson,
 					attempt.submissionId,
 					attempt.attemptId,
 				)
 				.toArray()[0];
-			if (inserted) return parseTerminalOutbox(inserted);
+			if (inserted) return parseSettlementObligation(inserted);
 			const existing = this.sql
 				.exec(
-					`SELECT submission_id, session_key, attempt_id, terminal_event_key,
-					        terminal_event_json, terminal_event_offset
+					`SELECT submission_id, session_key, attempt_id, settlement_record_id,
+					        settlement_record_json
 					 FROM flue_agent_submissions
 					 WHERE submission_id = ? AND kind = 'direct' AND status = 'terminalizing'
-					   AND attempt_id = ? AND terminal_event_key = ? AND terminal_event_json = ?`,
+					   AND attempt_id = ? AND settlement_record_id = ? AND settlement_record_json = ?`,
 					attempt.submissionId,
 					attempt.attemptId,
-					terminal.eventKey,
-					eventJson,
+					settlement.recordId,
+					recordJson,
 				)
 				.toArray()[0];
-			return existing ? parseTerminalOutbox(existing) : null;
+			return existing ? parseSettlementObligation(existing) : null;
 		});
 	}
 
-	async recordSubmissionTerminalOffset(
-		attempt: SubmissionAttemptRef,
-		eventKey: string,
-		offset: string,
-	): Promise<boolean> {
-		return this.updateOwnedSubmission(
-			`UPDATE flue_agent_submissions
-			 SET terminal_event_offset = COALESCE(terminal_event_offset, ?)
-			 WHERE submission_id = ? AND status = 'terminalizing' AND attempt_id = ?
-			   AND terminal_event_key = ?
-			   AND (terminal_event_offset IS NULL OR terminal_event_offset = ?)
-			 RETURNING submission_id`,
-			offset,
-			attempt.submissionId,
-			attempt.attemptId,
-			eventKey,
-			offset,
-		);
-	}
 
-	async finalizeSubmissionTerminal(
+	async finalizeSubmissionSettlement(
 		attempt: SubmissionAttemptRef,
-		eventKey: string,
+		recordId: string,
 	): Promise<boolean> {
 		return this.updateOwnedSubmission(
 			`UPDATE flue_agent_submissions
 			 SET status = 'settled', settled_at = ?, error = NULL
 			 WHERE submission_id = ? AND status = 'terminalizing' AND attempt_id = ?
-			   AND terminal_event_key = ? AND terminal_event_offset IS NOT NULL
+			   AND settlement_record_id = ?
 			 RETURNING submission_id`,
 			Date.now(),
 			attempt.submissionId,
 			attempt.attemptId,
-			eventKey,
+			recordId,
 		);
 	}
 
@@ -914,7 +926,7 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 }
 
 const submissionColumns =
-	'sequence, submission_id, session_key, kind, payload, status, accepted_at, attempt_id, input_applied_at, recovery_requested_at, started_at, error, attempt_count, max_retry, timeout_at, owner_id, lease_expires_at';
+	'sequence, submission_id, session_key, kind, payload, status, accepted_at, canonical_ready_at, attempt_id, input_applied_at, recovery_requested_at, started_at, error, attempt_count, max_retry, timeout_at, owner_id, lease_expires_at';
 
 function submissionColumnsFor(table: string): string {
 	return submissionColumns
@@ -977,28 +989,22 @@ function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 	};
 }
 
-function parseTerminalOutbox(row: SqlRow): SubmissionTerminalOutbox {
+function parseSettlementObligation(row: SqlRow): SubmissionSettlementObligation {
 	if (
 		typeof row.submission_id !== 'string' ||
 		typeof row.session_key !== 'string' ||
 		typeof row.attempt_id !== 'string' ||
-		typeof row.terminal_event_key !== 'string' ||
-		typeof row.terminal_event_json !== 'string' ||
-		(row.terminal_event_offset !== null &&
-			row.terminal_event_offset !== undefined &&
-			typeof row.terminal_event_offset !== 'string')
+		typeof row.settlement_record_id !== 'string' ||
+		typeof row.settlement_record_json !== 'string'
 	) {
-		throw new Error('[flue] Persisted submission terminal outbox is malformed.');
+		throw new Error('[flue] Persisted submission settlement obligation is malformed.');
 	}
 	return {
 		submissionId: row.submission_id,
 		sessionKey: row.session_key,
 		attemptId: row.attempt_id,
-		eventKey: row.terminal_event_key,
-		event: JSON.parse(row.terminal_event_json),
-		...(typeof row.terminal_event_offset === 'string'
-			? { offset: row.terminal_event_offset }
-			: {}),
+		recordId: row.settlement_record_id,
+		record: JSON.parse(row.settlement_record_json),
 	};
 }
 
@@ -1017,6 +1023,9 @@ function parseSubmission(
 			row.status !== 'terminalizing' &&
 			row.status !== 'settled') ||
 		typeof row.accepted_at !== 'number' ||
+		(row.canonical_ready_at !== null &&
+			row.canonical_ready_at !== undefined &&
+			typeof row.canonical_ready_at !== 'number') ||
 		(row.attempt_id !== null &&
 			row.attempt_id !== undefined &&
 			typeof row.attempt_id !== 'string') ||
@@ -1065,6 +1074,7 @@ function parseSubmission(
 		input,
 		status: row.status,
 		acceptedAt: row.accepted_at,
+		canonicalReadyAt: typeof row.canonical_ready_at === 'number' ? row.canonical_ready_at : null,
 		...(typeof row.attempt_id === 'string' ? { attemptId: row.attempt_id } : {}),
 		...(typeof row.input_applied_at === 'number' ? { inputAppliedAt: row.input_applied_at } : {}),
 		...(typeof row.recovery_requested_at === 'number'
@@ -1133,6 +1143,7 @@ function ensureSubmissionTable(sql: SqlStorage): void {
 		 payload TEXT NOT NULL,
 		 status TEXT NOT NULL,
 		 accepted_at INTEGER NOT NULL,
+		 canonical_ready_at INTEGER,
 		 attempt_id TEXT,
 		 input_applied_at INTEGER,
 		 recovery_requested_at INTEGER,
@@ -1144,9 +1155,8 @@ function ensureSubmissionTable(sql: SqlStorage): void {
 		 timeout_at INTEGER NOT NULL DEFAULT 0,
 		 owner_id TEXT,
 		 lease_expires_at INTEGER NOT NULL DEFAULT 0,
-		 terminal_event_key TEXT,
-		 terminal_event_json TEXT,
-		 terminal_event_offset TEXT
+		 settlement_record_id TEXT,
+		 settlement_record_json TEXT
 		)`,
 	);
 	sql.exec(

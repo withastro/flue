@@ -33,11 +33,15 @@ if tonumber(redis.call('HGET', KEYS[1], 'nextProducerSequence') or '0') ~= tonum
 local seq = tonumber(redis.call('HGET', KEYS[1], 'nextOffset') or '0')
 local head = seq - 1
 if ARGV[8] ~= '' and tonumber(ARGV[8]) ~= head then return {'head'} end
+local batch = cjson.decode(ARGV[5])
 if ARGV[6] ~= '' then
   local sessionKey = redis.call('HGET', KEYS[5], 'sessionKey')
   if not sessionKey or string.sub(sessionKey, 1, 14) ~= 'agent-session:' then return {'attempt'} end
   local sessionIdentity = cjson.decode(string.sub(sessionKey, 15))
-  if redis.call('HGET', KEYS[5], 'status') ~= 'running' or redis.call('HGET', KEYS[5], 'attemptId') ~= ARGV[7] or sessionIdentity[1] ~= ARGV[9] then return {'attempt'} end
+  local status = redis.call('HGET', KEYS[5], 'status')
+  local settlementRecord = redis.call('HGET', KEYS[5], 'settlementRecord')
+  local terminalizingSettlement = status == 'terminalizing' and #batch == 1 and batch[1].type == 'submission_settled' and redis.call('HGET', KEYS[5], 'settlementRecordId') == batch[1].id and settlementRecord and ARGV[5] == '[' .. settlementRecord .. ']'
+  if (status ~= 'running' and not terminalizingSettlement) or redis.call('HGET', KEYS[5], 'attemptId') ~= ARGV[7] or sessionIdentity[1] ~= ARGV[9] then return {'attempt'} end
 end
 redis.call('HSET', KEYS[2], tostring(seq), ARGV[5])
 redis.call('ZADD', KEYS[3], seq, tostring(seq))

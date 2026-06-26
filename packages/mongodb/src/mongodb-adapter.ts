@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { PersistenceAdapter } from '@flue/runtime/adapter';
-import { assertSupportedFlueSchemaVersion, FLUE_SCHEMA_VERSION } from '@flue/runtime/adapter';
+import {
+	assertSupportedFlueSchemaVersion,
+	FLUE_SCHEMA_VERSION,
+	PersistedSchemaVersionError,
+} from '@flue/runtime/adapter';
 import {
 	MongoConversationSnapshotStore,
 	MongoConversationStreamStore,
@@ -25,6 +29,7 @@ export function mongodb(runner: MongoRunner, options: MongoOptions = {}): Persis
 			const meta = runner.collection(collectionName(prefix, 'meta'));
 			const existingVersion = await meta.findOne({ _id: 'schema_version' });
 			if (existingVersion) assertMigratableSchemaVersion(String(existingVersion.value));
+			else if (await hasUnversionedData(runner, prefix)) rejectUnversionedSchema();
 			const topology = await runner.topology();
 			if (topology.kind === 'standalone' || !topology.transactions)
 				throw new TypeError(
@@ -69,6 +74,7 @@ export function mongodb(runner: MongoRunner, options: MongoOptions = {}): Persis
 			try {
 				const lockedVersion = await meta.findOne({ _id: 'schema_version' });
 				if (lockedVersion) assertMigratableSchemaVersion(String(lockedVersion.value));
+				else if (await hasUnversionedData(runner, prefix)) rejectUnversionedSchema();
 				await ensureSchema(runner, prefix);
 				await renewal;
 				if (lockLost || !(await meta.findOne({ _id: 'migration_lock', ownerId })))
@@ -109,6 +115,25 @@ export function mongodb(runner: MongoRunner, options: MongoOptions = {}): Persis
 
 function assertMigratableSchemaVersion(storedVersion: string): void {
 	assertSupportedFlueSchemaVersion(storedVersion);
+}
+
+async function hasUnversionedData(runner: MongoRunner, prefix: string): Promise<boolean> {
+	for (const spec of schema(prefix)) {
+		const document = await runner.collection(spec.name).findOne(
+			spec.name === collectionName(prefix, 'meta')
+				? { _id: { $nin: ['schema_version', 'migration_lock'] } }
+				: {},
+		);
+		if (document) return true;
+	}
+	return false;
+}
+
+function rejectUnversionedSchema(): never {
+	throw new PersistedSchemaVersionError({
+		storedVersion: 'unversioned',
+		supportedVersion: FLUE_SCHEMA_VERSION,
+	});
 }
 
 function isDuplicate(error: unknown): boolean {

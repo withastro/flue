@@ -229,7 +229,6 @@ agentCoordinator = createNodeAgentCoordinator({
   sessions: executionStore.sessions,
   agents,
   createContext: createAgentContextForRequest,
-  eventStreamStore,
   conversationStreamStore,
   conversationSnapshotStore,
   onInteractionStart: devLifecycle?.onAgentInteractionStart,

@@ -23,7 +23,7 @@
  * from `@flue/runtime/test-utils`.
  *
  * Stability: `SessionStore`, `RunStore`, and `EventStreamStore` are stable.
- * The `AgentSubmissionStore` turn-journal, stream-chunk, and lease method
+ * The `AgentSubmissionStore` turn-journal, settlement, and lease method
  * groups mirror the durable-execution engine and are subject to change until
  * 1.0 — for every backend equally.
  */
@@ -45,7 +45,7 @@ export type {
 	SubmissionAttemptRef,
 	SubmissionClaimRef,
 	SubmissionDurability,
-	SubmissionTerminalOutbox,
+	SubmissionSettlementObligation,
 } from './agent-execution-store.ts';
 
 export {
@@ -123,7 +123,7 @@ export {
 
 // ─── Canonical conversation stream store ────────────────────────────────────
 
-export type { ConversationRecord } from './conversation-records.ts';
+export type { ConversationRecord, SubmissionSettledRecord } from './conversation-records.ts';
 export type {
 	ConversationProducerClaim,
 	ConversationSnapshot,

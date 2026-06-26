@@ -8,7 +8,6 @@ import type {
 	AgentSubmissionInterruption,
 	DirectAgentSubmissionInput,
 } from '../src/runtime/agent-submissions.ts';
-import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -62,9 +61,6 @@ function makeRuntime(
 	options: {
 		createdAgent?: Parameters<typeof createCloudflareAgentRuntime>[0]['agents'][number]['definition'];
 		createContext?: Parameters<typeof createCloudflareAgentRuntime>[0]['createContext'];
-		createEventStreamStore?: Parameters<
-			typeof createCloudflareAgentRuntime
-		>[0]['createEventStreamStore'];
 	} = {},
 ) {
 	return createCloudflareAgentRuntime({
@@ -79,7 +75,6 @@ function makeRuntime(
 		runWithInstanceContext(_instance, _agentName, callback) {
 			return callback();
 		},
-		createEventStreamStore: options.createEventStreamStore ?? (() => createTestEventStreamStore()),
 	});
 }
 
@@ -188,25 +183,23 @@ function prepare(
 }
 
 describe('createCloudflareAgentRuntime()', () => {
-	it('reuses one event stream store for reads and writes on an instance', async () => {
-		const store = {
-			getStreamMeta: vi.fn(),
-			readEvents: vi.fn(),
-			createStream: vi.fn(),
-			appendEvent: vi.fn(),
-			appendEventOnce: vi.fn(),
-			closeStream: vi.fn(),
-			subscribe: vi.fn(),
-		};
-		const createEventStreamStore = vi.fn(() => store);
-		const runtime = makeRuntime({ createEventStreamStore });
+	it('materializes an admitted submission whose canonical readiness was not marked', async () => {
 		const { storage } = makeFakeSql();
+		const recovery = makeRecoveryContext({ inspection: 'absent' });
+		const runtime = makeRuntime({
+			createdAgent: {} as never,
+			createContext: () => recovery.ctx,
+		});
 		const instance = makeInstance(storage);
-		prepare(runtime, instance);
+		const executionStore = prepare(runtime, instance);
+		await executionStore.submissions.admitDirect(directInput());
 
-		await runtime.onRequest(instance, new Request('http://localhost/agents/assistant/agent-1'));
+		await runtime.onStart(instance, () => {});
 
-		expect(createEventStreamStore).toHaveBeenCalledOnce();
+		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
+			status: 'running',
+			canonicalReadyAt: expect.any(Number),
+		});
 	});
 
 	it('restores a pending wake before inherited startup when unsettled work exists', async () => {
@@ -251,6 +244,7 @@ describe('createCloudflareAgentRuntime()', () => {
 			return originalRequestRecovery(attempt);
 		};
 		await executionStore.submissions.admitDirect(directInput());
+		await executionStore.submissions.markSubmissionCanonicalReady('direct-1');
 		await executionStore.submissions.claimSubmission({
 			submissionId: 'direct-1',
 			attemptId: 'attempt-1',
@@ -288,6 +282,7 @@ describe('createCloudflareAgentRuntime()', () => {
 			return originalRequeue(attempt);
 		};
 		await executionStore.submissions.admitDirect(directInput());
+		await executionStore.submissions.markSubmissionCanonicalReady('direct-1');
 		await executionStore.submissions.claimSubmission({
 			submissionId: 'direct-1',
 			attemptId: 'attempt-1',
@@ -326,6 +321,7 @@ describe('createCloudflareAgentRuntime()', () => {
 			return originalRequeue(attempt);
 		};
 		await executionStore.submissions.admitDirect(directInput());
+		await executionStore.submissions.markSubmissionCanonicalReady('direct-1');
 		await executionStore.submissions.claimSubmission({
 			submissionId: 'direct-1',
 			attemptId: 'attempt-1',
@@ -344,57 +340,6 @@ describe('createCloudflareAgentRuntime()', () => {
 		});
 	});
 
-	it('inserts an attempt marker before the fiber starts and deletes it after settlement', async () => {
-		const { storage } = makeFakeSql();
-		const session = {
-			async processSubmissionInput() {},
-			async recordSubmissionTerminal() {},
-		};
-		const runtime = makeRuntime({
-			createdAgent: {} as never,
-			createContext: () =>
-				({
-					async initializeRootHarness() {
-						return {
-							async session() {
-								return session;
-							},
-						};
-					},
-					setEventCallback() {},
-					createEvent(event: unknown) {
-						return event;
-					},
-					publishEvent() {},
-					emitEvent(event: unknown) {
-						return event;
-					},
-					async flushEventCallbacks() {},
-					subscribeEvent() {
-						return () => {};
-					},
-				}) as unknown as FlueContextInternal,
-		});
-		const instance = makeInstance(storage);
-		const executionStore = prepare(runtime, instance);
-		let markersAtFiberStart: unknown[] | undefined;
-		instance.runFiber = async (_name, callback) => {
-			markersAtFiberStart = await executionStore.submissions.listAttemptMarkers();
-			await callback({ stash() {} });
-		};
-		await executionStore.submissions.admitDirect(directInput());
-
-		await runtime.onStart(instance, () => {});
-
-		expect(markersAtFiberStart).toEqual([expect.objectContaining({ submissionId: 'direct-1' })]);
-		await vi.waitFor(async () => {
-			expect(await executionStore.submissions.listAttemptMarkers()).toEqual([]);
-		});
-		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
-			status: 'settled',
-		});
-	});
-
 	it('degrades to an empty marker set when the marker scan fails so queued submissions remain claimable', async () => {
 		const { db, storage } = makeFakeSql();
 		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -403,6 +348,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		const executionStore = prepare(runtime, instance);
 		db.exec('DROP TABLE flue_agent_attempt_markers');
 		await executionStore.submissions.admitDirect(directInput());
+		await executionStore.submissions.markSubmissionCanonicalReady('direct-1');
 
 		await runtime.onStart(instance, () => {});
 
@@ -437,6 +383,7 @@ describe('createCloudflareAgentRuntime()', () => {
 			return originalRequeue(attempt);
 		};
 		await executionStore.submissions.admitDirect(directInput());
+		await executionStore.submissions.markSubmissionCanonicalReady('direct-1');
 		await executionStore.submissions.claimSubmission({
 			submissionId: 'direct-1',
 			attemptId: 'attempt-1',
@@ -449,95 +396,6 @@ describe('createCloudflareAgentRuntime()', () => {
 		expect(events).toContain('requeue');
 		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
 			status: 'running',
-		});
-	});
-
-	it('records interruption before settling applied incomplete canonical input as error', async () => {
-		const events: string[] = [];
-		const { storage } = makeFakeSql();
-		const recovery = makeRecoveryContext({ inspection: 'uncertain', events });
-		let contextCount = 0;
-		const runtime = makeRuntime({
-			createdAgent: {} as never,
-			createContext: () => {
-				contextCount += 1;
-				return recovery.ctx;
-			},
-		});
-		const instance = makeInstance(storage);
-		const executionStore = prepare(runtime, instance);
-		const originalFinalize = executionStore.submissions.finalizeSubmissionTerminal.bind(
-			executionStore.submissions,
-		);
-		executionStore.submissions.finalizeSubmissionTerminal = async (attempt, eventKey) => {
-			events.push('settle-error');
-			return originalFinalize(attempt, eventKey);
-		};
-		await executionStore.submissions.admitDirect(directInput());
-		const claimed = await executionStore.submissions.claimSubmission({
-			submissionId: 'direct-1',
-			attemptId: 'attempt-1',
-			ownerId: 'test-owner',
-			leaseExpiresAt: Date.now() + 30_000,
-		});
-		if (!claimed) throw new Error('Expected claimed submission.');
-		await executionStore.submissions.markSubmissionInputApplied({
-			submissionId: 'direct-1',
-			attemptId: 'attempt-1',
-		});
-		// The journal records that the provider was reached for the current
-		// turn; with the canonical state still 'uncertain', the interruption
-		// cannot be proven replay-safe and must terminalize. (Without a
-		// journal the provider was provably never reached and reconciliation
-		// retries instead.)
-		await executionStore.submissions.beginTurnJournal({
-			submissionId: 'direct-1',
-			sessionKey: claimed.sessionKey,
-			kind: 'direct',
-			attemptId: 'attempt-1',
-			operationId: 'op-1',
-			turnId: 'turn-1',
-			phase: 'before_provider',
-		});
-		await executionStore.submissions.updateTurnJournalPhase(
-			{ submissionId: 'direct-1', attemptId: 'attempt-1' },
-			'provider_started',
-		);
-
-		await runtime.onStart(instance, () => {});
-
-		expect(events).toEqual(['record-terminal', 'settle-error']);
-		expect(contextCount).toBe(3);
-		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
-			status: 'settled',
-		});
-	});
-
-	it('settles interrupted attempts when canonical completion is already persisted', async () => {
-		const { storage } = makeFakeSql();
-		const recovery = makeRecoveryContext({ inspection: 'completed' });
-		const runtime = makeRuntime({
-			createdAgent: {} as never,
-			createContext: () => recovery.ctx,
-		});
-		const instance = makeInstance(storage);
-		const executionStore = prepare(runtime, instance);
-		await executionStore.submissions.admitDirect(directInput());
-		await executionStore.submissions.claimSubmission({
-			submissionId: 'direct-1',
-			attemptId: 'attempt-1',
-			ownerId: 'test-owner',
-			leaseExpiresAt: Date.now() + 30_000,
-		});
-		await executionStore.submissions.markSubmissionInputApplied({
-			submissionId: 'direct-1',
-			attemptId: 'attempt-1',
-		});
-
-		await runtime.onStart(instance, () => {});
-
-		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
-			status: 'settled',
 		});
 	});
 
@@ -554,6 +412,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		};
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDirect(directInput());
+		await executionStore.submissions.markSubmissionCanonicalReady('direct-1');
 
 		await runtime.onStart(instance, () => {});
 
@@ -680,6 +539,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		const instance = makeInstance(storage);
 		const executionStore = prepare(runtime, instance);
 		await executionStore.submissions.admitDispatch(dispatchInput());
+		await executionStore.submissions.markSubmissionCanonicalReady('dispatch-1');
 		await executionStore.submissions.claimSubmission({
 			submissionId: 'dispatch-1',
 			attemptId: 'attempt-1',

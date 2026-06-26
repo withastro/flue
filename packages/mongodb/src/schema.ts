@@ -51,14 +51,6 @@ export function schema(prefix: string): MongoCollectionSpec[] {
 		spec('journals', [
 			{ name: 'submission_id', key: { submissionId: 1 }, unique: true, collation: simple },
 		]),
-		spec('stream_segments', [
-			{
-				name: 'stream_index',
-				key: { streamKey: 1, segmentIndex: 1 },
-				unique: true,
-				collation: simple,
-			},
-		]),
 		spec('markers', [
 			{
 				name: 'submission_attempt',

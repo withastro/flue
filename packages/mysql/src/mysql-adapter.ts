@@ -136,9 +136,8 @@ const schemaTables = {
 		'timeout_at',
 		'owner_id',
 		'lease_expires_at',
-		'terminal_key',
-		'terminal_event',
-		'terminal_offset',
+		'settlement_record_id',
+		'settlement_record',
 	],
 	flue_agent_turn_journals: [
 		'submission_id',
@@ -153,12 +152,9 @@ const schemaTables = {
 		'updated_at',
 		'checkpoint_leaf_id',
 		'tool_request_json',
-		'stream_key',
-		'stream_consumed_at',
 		'committed',
 		'committed_leaf_id',
 	],
-	flue_agent_stream_chunks: ['stream_key', 'segment_index', 'body'],
 	flue_agent_session_deletions: ['session_key', 'started_at'],
 	flue_agent_dispatch_receipts: ['dispatch_id', 'accepted_at'],
 	flue_agent_attempt_markers: ['submission_id', 'attempt_id', 'created_at'],
@@ -270,12 +266,6 @@ const criticalColumns: Record<string, SchemaColumn> = {
 		collation: 'utf8mb4_bin',
 		nullable: false,
 	},
-	'flue_agent_stream_chunks.stream_key': {
-		type: 'varchar(512)',
-		collation: 'utf8mb4_bin',
-		nullable: false,
-	},
-	'flue_agent_stream_chunks.segment_index': { type: 'int', nullable: false },
 	'flue_agent_session_deletions.session_key': {
 		type: 'varchar(512)',
 		collation: 'utf8mb4_bin',
@@ -327,7 +317,6 @@ const longtextColumns = [
 	'flue_agent_submissions.payload',
 	'flue_agent_submissions.error',
 	'flue_agent_turn_journals.tool_request_json',
-	'flue_agent_stream_chunks.body',
 	'flue_runs.payload',
 	'flue_runs.tracestate',
 	'flue_runs.result',
@@ -372,12 +361,6 @@ const requiredIndexes = [
 		table: 'flue_agent_turn_journals',
 		name: 'PRIMARY',
 		columns: ['submission_id'],
-		nonUnique: false,
-	},
-	{
-		table: 'flue_agent_stream_chunks',
-		name: 'PRIMARY',
-		columns: ['stream_key', 'segment_index'],
 		nonUnique: false,
 	},
 	{
@@ -439,15 +422,24 @@ async function ensureTables(runner: MysqlRunner): Promise<void> {
 		if (storedVersion !== undefined && storedVersion !== null)
 			assertSupportedFlueSchemaVersion(String(storedVersion));
 	}
+	const existingRows = await runner.query(
+		`SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME LIKE 'flue\\_%' AND TABLE_NAME <> 'flue_meta' LIMIT 1`,
+	);
+	if (metaRows.length === 0 || existingRows.length > 0) {
+		const versionRows = metaRows.length > 0
+			? await runner.query(`SELECT value FROM flue_meta WHERE \`key\` = 'schema_version'`)
+			: [];
+		if ((versionRows[0]?.value === undefined || versionRows[0]?.value === null) && existingRows.length > 0)
+			assertSupportedFlueSchemaVersion('unversioned');
+	}
 	const ddl = [
 		`CREATE TABLE IF NOT EXISTS flue_meta (\`key\` VARCHAR(64) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, value VARCHAR(64) NOT NULL) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_sessions (id VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, data LONGTEXT NOT NULL) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_session_entries (session_id VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, entry_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, position INT NOT NULL, data LONGTEXT NOT NULL, PRIMARY KEY (session_id, entry_id), INDEX flue_session_entries_session_position_idx (session_id, position)) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_image_chunks (owner_kind VARCHAR(32) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, owner_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, owner_part VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, image_id VARCHAR(128) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, chunk_index INT NOT NULL, chunk_count INT NOT NULL, data LONGTEXT NOT NULL, PRIMARY KEY (owner_kind, owner_id, owner_part, image_id, chunk_index)) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_agent_session_locks (session_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY) ENGINE=InnoDB`,
-		`CREATE TABLE IF NOT EXISTS flue_agent_submissions (sequence BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, submission_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL UNIQUE, session_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, kind VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, payload LONGTEXT NOT NULL, status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, accepted_at BIGINT NOT NULL, attempt_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, input_applied_at BIGINT, recovery_requested_at BIGINT, started_at BIGINT, settled_at BIGINT, error LONGTEXT, attempt_count INT NOT NULL DEFAULT 0, max_retry INT NOT NULL DEFAULT ${DURABILITY_DEFAULT_MAX_ATTEMPTS}, timeout_at BIGINT NOT NULL DEFAULT 0, owner_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, lease_expires_at BIGINT NOT NULL DEFAULT 0, terminal_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, terminal_event LONGTEXT, terminal_offset VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin, INDEX flue_agent_submissions_status_sequence_idx (status, sequence), INDEX flue_agent_submissions_session_status_sequence_idx (session_key, status, sequence)) ENGINE=InnoDB`,
-		`CREATE TABLE IF NOT EXISTS flue_agent_turn_journals (submission_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, session_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, kind VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, attempt_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, operation_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, turn_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, phase VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, revision INT NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, checkpoint_leaf_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, tool_request_json LONGTEXT, stream_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, stream_consumed_at BIGINT, committed TINYINT(1) NOT NULL DEFAULT 0, committed_leaf_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin) ENGINE=InnoDB`,
-		`CREATE TABLE IF NOT EXISTS flue_agent_stream_chunks (stream_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, segment_index INT NOT NULL, body LONGTEXT NOT NULL, PRIMARY KEY (stream_key, segment_index)) ENGINE=InnoDB`,
+		`CREATE TABLE IF NOT EXISTS flue_agent_submissions (sequence BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY, submission_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL UNIQUE, session_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, kind VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, payload LONGTEXT NOT NULL, status VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, accepted_at BIGINT NOT NULL, canonical_ready_at BIGINT, attempt_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, input_applied_at BIGINT, recovery_requested_at BIGINT, started_at BIGINT, settled_at BIGINT, error LONGTEXT, attempt_count INT NOT NULL DEFAULT 0, max_retry INT NOT NULL DEFAULT ${DURABILITY_DEFAULT_MAX_ATTEMPTS}, timeout_at BIGINT NOT NULL DEFAULT 0, owner_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, lease_expires_at BIGINT NOT NULL DEFAULT 0, settlement_record_id VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, settlement_record LONGTEXT, INDEX flue_agent_submissions_status_sequence_idx (status, sequence), INDEX flue_agent_submissions_session_status_sequence_idx (session_key, status, sequence)) ENGINE=InnoDB`,
+		`CREATE TABLE IF NOT EXISTS flue_agent_turn_journals (submission_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, session_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, kind VARCHAR(16) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, attempt_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, operation_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, turn_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, phase VARCHAR(32) CHARACTER SET ascii COLLATE ascii_bin NOT NULL, revision INT NOT NULL, created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL, checkpoint_leaf_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin, tool_request_json LONGTEXT, committed TINYINT(1) NOT NULL DEFAULT 0, committed_leaf_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_agent_session_deletions (session_key VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, started_at BIGINT NOT NULL) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_agent_dispatch_receipts (dispatch_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin PRIMARY KEY, accepted_at BIGINT NOT NULL) ENGINE=InnoDB`,
 		`CREATE TABLE IF NOT EXISTS flue_agent_attempt_markers (submission_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, attempt_id VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL, created_at BIGINT NOT NULL, PRIMARY KEY (submission_id, attempt_id)) ENGINE=InnoDB`,
@@ -460,9 +452,6 @@ async function ensureTables(runner: MysqlRunner): Promise<void> {
 	];
 	for (const statement of ddl) await runner.query(statement);
 	for (const repair of [
-		{ table: 'flue_agent_submissions', column: 'terminal_key', definition: 'VARCHAR(512) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin' },
-		{ table: 'flue_agent_submissions', column: 'terminal_event', definition: 'LONGTEXT' },
-		{ table: 'flue_agent_submissions', column: 'terminal_offset', definition: 'VARCHAR(64) CHARACTER SET ascii COLLATE ascii_bin' },
 		{ table: 'flue_event_stream_entries', column: 'event_key', definition: 'VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin' },
 		{ table: 'flue_runs', column: 'traceparent', definition: 'VARCHAR(255) CHARACTER SET ascii COLLATE ascii_bin' },
 		{ table: 'flue_runs', column: 'tracestate', definition: 'LONGTEXT' },
@@ -749,6 +738,7 @@ const submissionColumns = [
 	'payload',
 	'status',
 	'accepted_at',
+	'canonical_ready_at',
 	'attempt_id',
 	'input_applied_at',
 	'recovery_requested_at',
@@ -791,14 +781,24 @@ class MysqlSubmissionStore implements AgentSubmissionStore {
 	async getTurnJournal(submissionId: string): Promise<AgentTurnJournal | null> {
 		const rows = await this.runner.query(
 			`SELECT submission_id, session_key, kind, attempt_id, operation_id, turn_id,
-			        phase, revision, created_at, updated_at, checkpoint_leaf_id,
-			        tool_request_json, stream_key, stream_consumed_at, committed, committed_leaf_id
+				        phase, revision, created_at, updated_at, checkpoint_leaf_id,
+				        tool_request_json, committed, committed_leaf_id
 			 FROM flue_agent_turn_journals
 			 WHERE submission_id = ?
 			 LIMIT 1`,
 			[submissionId],
 		);
 		return rows[0] ? parseTurnJournal(rows[0]) : null;
+	}
+
+	async markSubmissionCanonicalReady(submissionId: string): Promise<AgentSubmission | null> {
+		await this.runner.query(
+			`UPDATE flue_agent_submissions SET canonical_ready_at = COALESCE(canonical_ready_at, ?)
+			 WHERE submission_id = ? AND status = 'queued'`,
+			[Date.now(), submissionId],
+		);
+		const submission = await this.getSubmission(submissionId);
+		return submission?.status === 'queued' ? submission : null;
 	}
 
 	async hasUnsettledSubmissions(): Promise<boolean> {
@@ -808,12 +808,25 @@ class MysqlSubmissionStore implements AgentSubmissionStore {
 		return rows.length > 0;
 	}
 
+	async listUnreadySubmissions(): Promise<AgentSubmission[]> {
+		return this.runner.transaction(async (tx) => {
+			const rows = await tx.query(
+				`SELECT ${submissionColumns}
+				 FROM flue_agent_submissions
+				 WHERE status = 'queued' AND canonical_ready_at IS NULL
+				 ORDER BY sequence ASC`,
+			);
+			return this.parseOperationalRows(rows, 'queued', tx);
+		});
+	}
+
 	async listRunnableSubmissions(): Promise<AgentSubmission[]> {
 		return this.runner.transaction(async (tx) => {
 			const rows = await tx.query(
 				`SELECT ${prefixed('current_sub')}
 			 FROM flue_agent_submissions AS current_sub
 			 WHERE current_sub.status = 'queued'
+			   AND current_sub.canonical_ready_at IS NOT NULL
 			   AND NOT EXISTS (
 			     SELECT 1
 			     FROM flue_agent_submissions AS earlier
@@ -847,14 +860,13 @@ class MysqlSubmissionStore implements AgentSubmissionStore {
 			`INSERT INTO flue_agent_turn_journals
 			 (submission_id, session_key, kind, attempt_id, operation_id, turn_id,
 			  phase, revision, created_at, updated_at, checkpoint_leaf_id,
-			  tool_request_json, stream_key, stream_consumed_at, committed, committed_leaf_id)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, NULL, NULL, 0, NULL)
+			  tool_request_json, committed, committed_leaf_id)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 0, NULL)
 			 ON DUPLICATE KEY UPDATE
 			   attempt_id = VALUES(attempt_id), operation_id = VALUES(operation_id),
 			   turn_id = VALUES(turn_id), phase = VALUES(phase), revision = revision + 1,
 			   updated_at = VALUES(updated_at), checkpoint_leaf_id = VALUES(checkpoint_leaf_id),
-			   tool_request_json = VALUES(tool_request_json), stream_key = NULL,
-			   stream_consumed_at = NULL, committed = 0, committed_leaf_id = NULL`,
+			   tool_request_json = VALUES(tool_request_json), committed = 0, committed_leaf_id = NULL`,
 			[
 				input.submissionId,
 				input.sessionKey,
@@ -875,20 +887,19 @@ class MysqlSubmissionStore implements AgentSubmissionStore {
 	async updateTurnJournalPhase(
 		attempt: SubmissionAttemptRef,
 		phase: AgentTurnJournalPhase,
-		options: { checkpointLeafId?: string; toolRequest?: unknown; streamKey?: string } = {},
+		options: { checkpointLeafId?: string; toolRequest?: unknown } = {},
 	): Promise<boolean> {
 		const now = Date.now();
 		return updateIfPresent(
 			this.runner,
 			'SELECT submission_id FROM flue_agent_turn_journals WHERE submission_id = ? AND attempt_id = ? AND committed = 0',
 			[attempt.submissionId, attempt.attemptId],
-			`UPDATE flue_agent_turn_journals SET phase = ?, revision = revision + 1, updated_at = ?, checkpoint_leaf_id = COALESCE(?, checkpoint_leaf_id), tool_request_json = COALESCE(?, tool_request_json), stream_key = COALESCE(?, stream_key) WHERE submission_id = ? AND attempt_id = ? AND committed = 0`,
+			`UPDATE flue_agent_turn_journals SET phase = ?, revision = revision + 1, updated_at = ?, checkpoint_leaf_id = COALESCE(?, checkpoint_leaf_id), tool_request_json = COALESCE(?, tool_request_json) WHERE submission_id = ? AND attempt_id = ? AND committed = 0`,
 			[
 				phase,
 				now,
 				options.checkpointLeafId ?? null,
 				options.toolRequest === undefined ? null : JSON.stringify(options.toolRequest),
-				options.streamKey ?? null,
 				attempt.submissionId,
 				attempt.attemptId,
 			],
@@ -907,57 +918,6 @@ class MysqlSubmissionStore implements AgentSubmissionStore {
 			`UPDATE flue_agent_turn_journals SET phase = 'committed', revision = revision + 1, updated_at = ?, committed = 1, committed_leaf_id = ? WHERE submission_id = ? AND attempt_id = ? AND committed = 0`,
 			[now, committedLeafId, attempt.submissionId, attempt.attemptId],
 		);
-	}
-
-	async markStreamConsumed(attempt: SubmissionAttemptRef, streamKey: string): Promise<boolean> {
-		const now = Date.now();
-		return updateIfPresent(
-			this.runner,
-			'SELECT submission_id FROM flue_agent_turn_journals WHERE submission_id = ? AND attempt_id = ? AND committed = 0 AND stream_key = ? AND stream_consumed_at IS NULL',
-			[attempt.submissionId, attempt.attemptId, streamKey],
-			`UPDATE flue_agent_turn_journals SET revision = revision + 1, updated_at = ?, stream_consumed_at = ? WHERE submission_id = ? AND attempt_id = ? AND committed = 0 AND stream_key = ? AND stream_consumed_at IS NULL`,
-			[now, now, attempt.submissionId, attempt.attemptId, streamKey],
-		);
-	}
-
-	async appendStreamChunkSegment(
-		streamKey: string,
-		segmentIndex: number,
-		body: string,
-	): Promise<boolean> {
-		return this.runner.transaction(async (tx) => {
-			await tx.query(
-				'INSERT IGNORE INTO flue_agent_stream_chunks (stream_key, segment_index, body) VALUES (?, ?, ?)',
-				[streamKey, segmentIndex, body],
-			);
-			const rows = await tx.query('SELECT ROW_COUNT() AS row_count');
-			return Number(rows[0]?.row_count) === 1;
-		});
-	}
-
-	async getStreamChunkSegments(
-		streamKey: string,
-	): Promise<Array<{ segmentIndex: number; body: string }>> {
-		const rows = await this.runner.query(
-			`SELECT segment_index, body
-			 FROM flue_agent_stream_chunks
-			 WHERE stream_key = ?
-			 ORDER BY segment_index ASC`,
-			[streamKey],
-		);
-		return rows.map((row) => {
-			const segmentIndex = Number(row.segment_index);
-			if (!Number.isInteger(segmentIndex) || typeof row.body !== 'string') {
-				throw new Error('[flue] Persisted stream chunk row is malformed.');
-			}
-			return { segmentIndex, body: row.body };
-		});
-	}
-
-	async deleteStreamChunkSegments(streamKey: string): Promise<void> {
-		await this.runner.query('DELETE FROM flue_agent_stream_chunks WHERE stream_key = ?', [
-			streamKey,
-		]);
 	}
 
 	async replaceTurnJournalAttempt(
@@ -1024,7 +984,7 @@ class MysqlSubmissionStore implements AgentSubmissionStore {
 		const timeoutAt = now + DURABILITY_DEFAULT_TIMEOUT_MS;
 		return this.runner.transaction(async (tx) => {
 			const identity = await tx.query(
-				"SELECT session_key FROM flue_agent_submissions WHERE submission_id = ? AND status = 'queued'",
+				"SELECT session_key FROM flue_agent_submissions WHERE submission_id = ? AND status = 'queued' AND canonical_ready_at IS NOT NULL",
 				[claim.submissionId],
 			);
 			if (typeof identity[0]?.session_key !== 'string') return null;
@@ -1105,27 +1065,26 @@ class MysqlSubmissionStore implements AgentSubmissionStore {
 		);
 	}
 
-	async listPendingTerminalOutboxes(): Promise<any[]> {
-		const rows = await this.runner.query(`SELECT submission_id, session_key, attempt_id, terminal_key, terminal_event, terminal_offset FROM flue_agent_submissions WHERE kind = 'direct' AND status = 'terminalizing' ORDER BY sequence ASC`);
-		return rows.map((row) => ({ submissionId: String(row.submission_id), sessionKey: String(row.session_key), attemptId: String(row.attempt_id), eventKey: String(row.terminal_key), event: JSON.parse(String(row.terminal_event)), ...(row.terminal_offset != null ? { offset: String(row.terminal_offset) } : {}) }));
+	async listPendingSubmissionSettlements(): Promise<import('@flue/runtime/adapter').SubmissionSettlementObligation[]> {
+		const rows = await this.runner.query(`SELECT submission_id, session_key, attempt_id, settlement_record_id, settlement_record FROM flue_agent_submissions WHERE kind = 'direct' AND status = 'terminalizing' ORDER BY sequence ASC`);
+		return rows.map((row) => ({ submissionId: String(row.submission_id), sessionKey: String(row.session_key), attemptId: String(row.attempt_id), recordId: String(row.settlement_record_id), record: JSON.parse(String(row.settlement_record)) }));
 	}
-	async reserveSubmissionTerminal(attempt: SubmissionAttemptRef, terminal: { eventKey: string; event: unknown }): Promise<any | null> {
+	async reserveSubmissionSettlement(attempt: SubmissionAttemptRef, settlement: { recordId: string; record: import('@flue/runtime/adapter').SubmissionSettledRecord }): Promise<import('@flue/runtime/adapter').SubmissionSettlementObligation | null> {
+		if (settlement.record.id !== settlement.recordId) return null;
 		return this.runner.transaction(async (tx) => {
-			const data = JSON.stringify(terminal.event);
-			const rows = await tx.query(`SELECT submission_id, session_key, attempt_id, status, terminal_key, terminal_event, terminal_offset FROM flue_agent_submissions WHERE submission_id = ? FOR UPDATE`, [attempt.submissionId]);
+			const data = JSON.stringify(settlement.record);
+			const rows = await tx.query(`SELECT submission_id, session_key, kind, attempt_id, owner_id, status, settlement_record_id, settlement_record FROM flue_agent_submissions WHERE submission_id = ? FOR UPDATE`, [attempt.submissionId]);
 			const row = rows[0];
 			if (!row || row.attempt_id !== attempt.attemptId) return null;
 			if (row.status === 'running') {
-				await tx.query(`UPDATE flue_agent_submissions SET status = 'terminalizing', terminal_key = ?, terminal_event = ? WHERE submission_id = ? AND kind = 'direct' AND status = 'running' AND attempt_id = ? AND owner_id IS NOT NULL`, [terminal.eventKey, data, attempt.submissionId, attempt.attemptId]);
-			} else if (row.status !== 'terminalizing' || row.terminal_key !== terminal.eventKey || row.terminal_event !== data) return null;
-			return { submissionId: attempt.submissionId, sessionKey: String(row.session_key), attemptId: attempt.attemptId, eventKey: terminal.eventKey, event: terminal.event, ...(row.terminal_offset != null ? { offset: String(row.terminal_offset) } : {}) };
+				if (row.kind !== 'direct' || row.owner_id == null) return null;
+				await tx.query(`UPDATE flue_agent_submissions SET status = 'terminalizing', settlement_record_id = ?, settlement_record = ? WHERE submission_id = ? AND status = 'running' AND attempt_id = ?`, [settlement.recordId, data, attempt.submissionId, attempt.attemptId]);
+			} else if (row.status !== 'terminalizing' || row.settlement_record_id !== settlement.recordId || row.settlement_record !== data) return null;
+			return { submissionId: attempt.submissionId, sessionKey: String(row.session_key), attemptId: attempt.attemptId, recordId: settlement.recordId, record: settlement.record };
 		});
 	}
-	async recordSubmissionTerminalOffset(attempt: SubmissionAttemptRef, eventKey: string, offset: string): Promise<boolean> {
-		return updateIfPresent(this.runner, `SELECT submission_id FROM flue_agent_submissions WHERE submission_id = ? AND status = 'terminalizing' AND attempt_id = ? AND terminal_key = ? AND (terminal_offset IS NULL OR terminal_offset = ?)`, [attempt.submissionId, attempt.attemptId, eventKey, offset], `UPDATE flue_agent_submissions SET terminal_offset = COALESCE(terminal_offset, ?) WHERE submission_id = ? AND status = 'terminalizing' AND attempt_id = ? AND terminal_key = ?`, [offset, attempt.submissionId, attempt.attemptId, eventKey]);
-	}
-	async finalizeSubmissionTerminal(attempt: SubmissionAttemptRef, eventKey: string): Promise<boolean> {
-		return updateIfPresent(this.runner, `SELECT submission_id FROM flue_agent_submissions WHERE submission_id = ? AND status = 'terminalizing' AND attempt_id = ? AND terminal_key = ? AND terminal_offset IS NOT NULL`, [attempt.submissionId, attempt.attemptId, eventKey], `UPDATE flue_agent_submissions SET status = 'settled', settled_at = ? WHERE submission_id = ? AND status = 'terminalizing' AND attempt_id = ? AND terminal_key = ? AND terminal_offset IS NOT NULL`, [Date.now(), attempt.submissionId, attempt.attemptId, eventKey]);
+	async finalizeSubmissionSettlement(attempt: SubmissionAttemptRef, recordId: string): Promise<boolean> {
+		return updateIfPresent(this.runner, `SELECT submission_id FROM flue_agent_submissions WHERE submission_id = ? AND status = 'terminalizing' AND attempt_id = ? AND settlement_record_id = ?`, [attempt.submissionId, attempt.attemptId, recordId], `UPDATE flue_agent_submissions SET status = 'settled', settled_at = ? WHERE submission_id = ? AND status = 'terminalizing' AND attempt_id = ? AND settlement_record_id = ?`, [Date.now(), attempt.submissionId, attempt.attemptId, recordId]);
 	}
 
 	async completeSubmission(attempt: SubmissionAttemptRef): Promise<boolean> {
@@ -1352,16 +1311,6 @@ class MysqlSubmissionStore implements AgentSubmissionStore {
 				[sessionKey, startedAt],
 			);
 			await tx.query(
-				`DELETE FROM flue_agent_stream_chunks
-				 WHERE stream_key IN (
-				   SELECT j.stream_key FROM flue_agent_turn_journals j
-				   INNER JOIN flue_agent_submissions s ON j.submission_id = s.submission_id
-				   WHERE s.session_key = ? AND s.status = 'settled' AND s.accepted_at <= ?
-				     AND j.stream_key IS NOT NULL
-				 )`,
-				[sessionKey, startedAt],
-			);
-			await tx.query(
 				`DELETE FROM flue_agent_turn_journals
 				 WHERE submission_id IN (
 				   SELECT submission_id FROM flue_agent_submissions
@@ -1441,6 +1390,7 @@ function parseDispatchReceipt(row: SqlRow): { submissionId: string; acceptedAt: 
 function parseSubmission(row: SqlRow, chunks: readonly PersistedChunkRow[]): AgentSubmission {
 	const sequence = Number(row.sequence);
 	const acceptedAt = Number(row.accepted_at);
+	const canonicalReadyAt = row.canonical_ready_at != null ? Number(row.canonical_ready_at) : null;
 	const attemptCount = Number(row.attempt_count);
 	const maxRetry = Number(row.max_retry);
 	const timeoutAt = Number(row.timeout_at);
@@ -1461,6 +1411,7 @@ function parseSubmission(row: SqlRow, chunks: readonly PersistedChunkRow[]): Age
 		typeof row.payload !== 'string' ||
 		(row.status !== 'queued' && row.status !== 'running' && row.status !== 'terminalizing' && row.status !== 'settled') ||
 		!Number.isFinite(acceptedAt) ||
+		(canonicalReadyAt !== null && !Number.isFinite(canonicalReadyAt)) ||
 		(row.status === 'queued' &&
 			(attemptId !== undefined ||
 				inputAppliedAt !== undefined ||
@@ -1501,6 +1452,7 @@ function parseSubmission(row: SqlRow, chunks: readonly PersistedChunkRow[]): Age
 		input,
 		status: row.status,
 		acceptedAt,
+		canonicalReadyAt,
 		...(attemptId !== undefined ? { attemptId } : {}),
 		...(inputAppliedAt !== undefined ? { inputAppliedAt } : {}),
 		...(recoveryRequestedAt !== undefined ? { recoveryRequestedAt } : {}),
@@ -1840,8 +1792,6 @@ function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 	const createdAt = Number(row.created_at);
 	const updatedAt = Number(row.updated_at);
 	const committed = Number(row.committed);
-	const streamConsumedAt =
-		row.stream_consumed_at != null ? Number(row.stream_consumed_at) : undefined;
 
 	if (
 		typeof row.submission_id !== 'string' ||
@@ -1858,8 +1808,6 @@ function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 		!Number.isFinite(createdAt) ||
 		!Number.isFinite(updatedAt) ||
 		(row.checkpoint_leaf_id != null && typeof row.checkpoint_leaf_id !== 'string') ||
-		(row.stream_key != null && typeof row.stream_key !== 'string') ||
-		(streamConsumedAt !== undefined && !Number.isFinite(streamConsumedAt)) ||
 		(committed !== 0 && committed !== 1) ||
 		(row.committed_leaf_id != null && typeof row.committed_leaf_id !== 'string')
 	) {
@@ -1883,8 +1831,6 @@ function parseTurnJournal(row: SqlRow): AgentTurnJournal {
 		...(typeof row.tool_request_json === 'string'
 			? { toolRequest: JSON.parse(row.tool_request_json) as unknown }
 			: {}),
-		...(typeof row.stream_key === 'string' ? { streamKey: row.stream_key } : {}),
-		...(streamConsumedAt !== undefined ? { streamConsumedAt } : {}),
 		committed: committed === 1,
 		...(typeof row.committed_leaf_id === 'string'
 			? { committedLeafId: row.committed_leaf_id }

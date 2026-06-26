@@ -144,6 +144,7 @@ function createLibsqlRunner(
 			return {
 				stream: stores.conversationStreamStore,
 				snapshots: stores.conversationSnapshotStore,
+				executionStore: stores.executionStore,
 			};
 		},
 		async cleanup() {
@@ -254,7 +255,7 @@ describe('libsql() PersistenceAdapter', () => {
 		await adapter.migrate?.();
 
 		const rows = await runner.query(`SELECT value FROM flue_meta WHERE key = 'schema_version'`);
-		expect(rows).toEqual([{ value: '4' }]);
+		expect(rows).toEqual([{ value: '5' }]);
 
 		await runner.query(`UPDATE flue_meta SET value = '1' WHERE key = 'schema_version'`);
 		await expect(adapter.migrate?.()).rejects.toThrowError(PersistedSchemaVersionError);
@@ -263,6 +264,17 @@ describe('libsql() PersistenceAdapter', () => {
 
 		if (!adapter.close) throw new Error('Expected adapter.close to be defined.');
 		await adapter.close();
+	});
+
+	it('rejects unversioned Flue persistence without stamping it', async () => {
+		const runner = createLibsqlRunner();
+		await runner.query(`CREATE TABLE flue_runs (run_id TEXT PRIMARY KEY)`);
+		const adapter = libsql(runner);
+		await expect(adapter.migrate?.()).rejects.toThrowError(PersistedSchemaVersionError);
+		expect(
+			await runner.query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'flue_meta'`),
+		).toEqual([]);
+		await adapter.close?.();
 	});
 
 	it('rejects schema v2 persistence without migrating it', async () => {

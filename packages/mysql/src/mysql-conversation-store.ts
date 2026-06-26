@@ -192,9 +192,18 @@ async function assertSubmissionAuthorization(query: MysqlQuery, path: string, su
 		return;
 	}
 	if (owned.some((record) => record.submissionId !== submission.submissionId || record.attemptId !== submission.attemptId)) throw failure(path, 'Record ownership does not match the authorized submission attempt.');
-	const rows = await query('SELECT status, attempt_id, session_key FROM flue_agent_submissions WHERE submission_id = ? FOR UPDATE', [submission.submissionId]);
+	const rows = await query('SELECT status, attempt_id, session_key, settlement_record_id, settlement_record FROM flue_agent_submissions WHERE submission_id = ? FOR UPDATE', [submission.submissionId]);
 	const row = rows[0];
-	if (!row || row.status !== 'running' || row.attempt_id !== submission.attemptId || parseSessionInstance(row.session_key) !== path.split('/')[2]) throw failure(path, 'Submission attempt no longer owns work for this agent instance.');
+	const streams = await query('SELECT identity_json FROM flue_conversation_streams WHERE path = ?', [path]);
+	const streamIdentity = streams[0] ? JSON.parse(String(streams[0].identity_json)) as ConversationStreamIdentity : undefined;
+	const terminalizingSettlement =
+		row?.status === 'terminalizing' &&
+		records.length === 1 &&
+		owned.length === 1 &&
+		owned[0]?.type === 'submission_settled' &&
+		row.settlement_record_id === owned[0].id &&
+		row.settlement_record === JSON.stringify(owned[0]);
+	if (!row || (row.status !== 'running' && !terminalizingSettlement) || row.attempt_id !== submission.attemptId || parseSessionInstance(row.session_key) !== streamIdentity?.instanceId) throw failure(path, 'Submission attempt no longer owns work for this agent instance.');
 }
 
 function parseSessionInstance(value: unknown): string | undefined {

@@ -15,6 +15,7 @@ import type {
 	ConversationSnapshotStore,
 	ConversationStreamStore,
 } from './runtime/conversation-stream-store.ts';
+import type { SubmissionSettledRecord } from './conversation-records.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
 import type { EventStreamStore } from './runtime/event-stream-store.ts';
 import type { RunStore } from './runtime/run-store.ts';
@@ -41,6 +42,7 @@ export interface AgentSubmission {
 	readonly input: AgentSubmissionInput;
 	readonly status: AgentSubmissionStatus;
 	readonly acceptedAt: number;
+	readonly canonicalReadyAt: number | null;
 	readonly attemptId?: string;
 	readonly inputAppliedAt?: number;
 	readonly recoveryRequestedAt?: number;
@@ -53,13 +55,12 @@ export interface AgentSubmission {
 	readonly leaseExpiresAt: number;
 }
 
-export interface SubmissionTerminalOutbox {
+export interface SubmissionSettlementObligation {
 	readonly submissionId: string;
 	readonly sessionKey: string;
 	readonly attemptId: string;
-	readonly eventKey: string;
-	readonly event: unknown;
-	readonly offset?: string;
+	readonly recordId: string;
+	readonly record: SubmissionSettledRecord;
 }
 
 export interface SubmissionAttemptRef {
@@ -173,10 +174,12 @@ export interface AgentSubmissionStore {
 	 * everything admitted before it has settled.
 	 */
 	listRunnableSubmissions(): Promise<AgentSubmission[]>;
+	/** All queued submissions without canonical readiness, in admission order. */
+	listUnreadySubmissions(): Promise<AgentSubmission[]>;
 	/** All running submissions, in admission order. */
 	listRunningSubmissions(): Promise<AgentSubmission[]>;
-	/** Direct terminal events reserved for durable publication but not yet finalized. */
-	listPendingTerminalOutboxes(): Promise<SubmissionTerminalOutbox[]>;
+	/** Direct settlement obligations reserved but not yet finalized. */
+	listPendingSubmissionSettlements(): Promise<SubmissionSettlementObligation[]>;
 
 	// Turn journal lifecycle. Each submission has at most ONE journal slot.
 	/**
@@ -235,6 +238,11 @@ export interface AgentSubmissionStore {
 	 * session is being deleted.
 	 */
 	admitDirect(input: DirectAgentSubmissionInput): Promise<AgentSubmission>;
+	/**
+	 * Mark a newly admitted queued submission's canonical conversation as materialized.
+	 * Idempotent while queued; returns `null` when the submission is missing or no longer queued.
+	 */
+	markSubmissionCanonicalReady(submissionId: string): Promise<AgentSubmission | null>;
 
 	// Submission lifecycle
 	/**
@@ -270,23 +278,17 @@ export interface AgentSubmissionStore {
 	 */
 	requeueSubmissionBeforeInputApplied(attempt: SubmissionAttemptRef): Promise<boolean>;
 	/**
-	 * Atomically reserve the canonical decorated terminal event for publication.
+	 * Atomically reserve the exact canonical settlement record as an obligation.
 	 * Only a running direct submission owned by `attempt` may transition to
-	 * terminalizing. Exact retries return the existing reservation; conflicting
-	 * terminal payloads return `null`.
+	 * terminalizing. Exact retries return the existing obligation; conflicting
+	 * record identities or payloads return `null`.
 	 */
-	reserveSubmissionTerminal(
+	reserveSubmissionSettlement(
 		attempt: SubmissionAttemptRef,
-		terminal: { eventKey: string; event: unknown },
-	): Promise<SubmissionTerminalOutbox | null>;
-	/** Record the append offset for an owned terminalizing reservation. */
-	recordSubmissionTerminalOffset(
-		attempt: SubmissionAttemptRef,
-		eventKey: string,
-		offset: string,
-	): Promise<boolean>;
-	/** Finalize an owned terminalizing submission after its event was appended. */
-	finalizeSubmissionTerminal(attempt: SubmissionAttemptRef, eventKey: string): Promise<boolean>;
+		settlement: { recordId: string; record: SubmissionSettledRecord },
+	): Promise<SubmissionSettlementObligation | null>;
+	/** Finalize an owned terminalizing submission after its canonical record exists. */
+	finalizeSubmissionSettlement(attempt: SubmissionAttemptRef, recordId: string): Promise<boolean>;
 	/**
 	 * Settle the submission successfully. Gated on a running submission
 	 * owned by `attempt`: a stale attempt or an already-settled submission

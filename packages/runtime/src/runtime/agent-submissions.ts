@@ -4,7 +4,6 @@ import type {
 	AgentSubmissionStore,
 	SubmissionAttemptRef,
 	SubmissionDurability,
-	SubmissionTerminalOutbox,
 } from '../agent-execution-store.ts';
 import type { FlueContextInternal } from '../client.ts';
 import type { ConversationRecordWriter } from '../conversation-writer.ts';
@@ -133,6 +132,7 @@ interface AgentSubmissionObserverRegistry {
 
 interface AttachedAgentSubmissionReceipt {
 	readonly submissionId: string;
+	readonly offset?: string;
 	readonly result?: unknown;
 }
 
@@ -164,6 +164,15 @@ export function createDirectAgentSubmissionInput(options: {
 		acceptedAt: new Date().toISOString(),
 		...(options.traceCarrier ? { traceCarrier: options.traceCarrier } : {}),
 	};
+}
+
+export async function materializeAgentSubmissionSession(
+	ctx: FlueContextInternal,
+	agent: AgentDefinition,
+	input: AgentSubmissionInput,
+): Promise<void> {
+	if (input.kind === 'direct') ctx.setSubmissionId?.(input.submissionId);
+	await openAgentSubmissionSession(ctx, agent, input);
 }
 
 export function createAgentSubmissionSessionHandler(
@@ -318,7 +327,6 @@ export async function reconcileInterruptedSubmission(
 	submission: AgentSubmission,
 	agent: AgentDefinition,
 	createContext: (dispatchId: string | undefined) => FlueContextInternal,
-	deliverTerminalEvent: (terminal: SubmissionTerminalOutbox) => Promise<string>,
 	lease?: { ownerId: string; leaseExpiresAt: number },
 	conversationWriter?: ConversationRecordWriter,
 ): Promise<ReconciliationResult> {
@@ -349,7 +357,6 @@ export async function reconcileInterruptedSubmission(
 				submissions,
 				attempt,
 				ctx,
-				deliverTerminalEvent,
 				'completed',
 				inspected.result,
 				undefined,
@@ -387,7 +394,6 @@ export async function reconcileInterruptedSubmission(
 			'exhausted_retry_budget',
 			error,
 			createContext,
-			deliverTerminalEvent,
 			undefined,
 			conversationWriter,
 		);
@@ -404,7 +410,6 @@ export async function reconcileInterruptedSubmission(
 			'exceeded_timeout',
 			error,
 			createContext,
-			deliverTerminalEvent,
 			undefined,
 			conversationWriter,
 		);
@@ -464,7 +469,6 @@ export async function reconcileInterruptedSubmission(
 				'interrupted_after_input_application',
 				error,
 				createContext,
-				deliverTerminalEvent,
 				undefined,
 				conversationWriter,
 			);
@@ -543,7 +547,6 @@ export async function reconcileInterruptedSubmission(
 				'interrupted_after_input_application',
 				error,
 				createContext,
-				deliverTerminalEvent,
 				undefined,
 				conversationWriter,
 			);
@@ -573,7 +576,6 @@ export async function reconcileInterruptedSubmission(
 			'interrupted_before_input_marker',
 			error,
 			createContext,
-			deliverTerminalEvent,
 			undefined,
 			conversationWriter,
 		);
@@ -600,7 +602,6 @@ export async function reconcileInterruptedSubmission(
 		'interrupted_after_input_application',
 		error,
 		createContext,
-		deliverTerminalEvent,
 		interruptedTools,
 		conversationWriter,
 	);
@@ -651,7 +652,6 @@ export interface ProcessSubmissionOptions {
 	createContext: (dispatchId: string | undefined) => FlueContextInternal;
 	/** Observer registry for direct submission events and settlement. */
 	observers: Pick<AgentSubmissionObserverRegistry, 'publish' | 'complete' | 'fail'>;
-	deliverTerminalEvent: (terminal: SubmissionTerminalOutbox) => Promise<string>;
 	conversationWriter?: ConversationRecordWriter;
 	onInteractionStart?: (interaction: {
 		agentName: string;
@@ -802,7 +802,6 @@ export async function processSubmission(opts: ProcessSubmissionOptions): Promise
 							submissions,
 							attempt,
 							ctx,
-							opts.deliverTerminalEvent,
 							'failed',
 							undefined,
 							error,
@@ -818,7 +817,6 @@ export async function processSubmission(opts: ProcessSubmissionOptions): Promise
 						submissions,
 						attempt,
 						ctx,
-						opts.deliverTerminalEvent,
 						'completed',
 						result,
 						undefined,
@@ -842,7 +840,6 @@ async function failInterruptedSubmission(
 	reason: AgentSubmissionInterruption['reason'],
 	error: Error,
 	createContext: (dispatchId: string | undefined) => FlueContextInternal,
-	deliverTerminalEvent: (terminal: SubmissionTerminalOutbox) => Promise<string>,
 	interruptedTools?: ReadonlyArray<{ readonly name: string; readonly id: string }>,
 	conversationWriter?: ConversationRecordWriter,
 ): Promise<ReconciliationResult> {
@@ -877,7 +874,6 @@ async function failInterruptedSubmission(
 					submissions,
 					attempt,
 					ctx,
-					deliverTerminalEvent,
 					'failed',
 					undefined,
 					error,
@@ -892,7 +888,6 @@ async function settleDirectSubmission(
 	submissions: AgentSubmissionStore,
 	attempt: SubmissionAttemptRef,
 	ctx: FlueContextInternal,
-	_deliverTerminalEvent: (terminal: SubmissionTerminalOutbox) => Promise<string>,
 	outcome: 'completed' | 'failed',
 	result?: unknown,
 	error?: unknown,
@@ -904,39 +899,51 @@ async function settleDirectSubmission(
 		outcome,
 		...(outcome === 'completed' ? { result } : { error: serializeSubmissionError(error) }),
 	});
-	const eventKey = `direct-submission:${attempt.submissionId}:settled`;
-	if (conversationWriter && !(await conversationWriter.hasRecord(`record_${eventKey}`))) {
-		const reduced = await conversationWriter.loadReducedState();
-		const conversation = [...reduced.conversations.values()].find((candidate) =>
+	if (!conversationWriter) return false;
+	const eventKey = `record_direct-submission:${attempt.submissionId}:settled`;
+	const reduced = await conversationWriter.loadReducedState();
+	const conversation =
+		[...reduced.conversations.values()].find((candidate) =>
 			[...candidate.entries.values()].some((entry) => entry.submissionId === attempt.submissionId),
+		) ??
+		[...reduced.conversations.values()].find(
+			(candidate) => candidate.harness === 'default' && candidate.session === 'default' && !candidate.deleted,
 		);
-		if (conversation) {
-			await conversationWriter.append([{
-				v: 1,
-				id: `record_${eventKey}`,
-				type: 'submission_settled',
-				conversationId: conversation.conversationId,
-				harness: conversation.harness,
-				session: conversation.session,
-				timestamp: new Date().toISOString(),
-				submissionId: attempt.submissionId,
-				attemptId: attempt.attemptId,
-				outcome,
-				...(outcome === 'completed' ? { result } : { error: serializeSubmissionError(error) }),
-			}], { submission: attempt });
-		}
-	}
-	const terminal = await submissions.reserveSubmissionTerminal(attempt, { eventKey, event });
-	if (!terminal) return false;
-	const offset = conversationWriter?.offset ?? '-1';
-	if (!(await submissions.recordSubmissionTerminalOffset(attempt, eventKey, offset))) return false;
+	if (!conversation) return false;
+	const pending = (await submissions.listPendingSubmissionSettlements()).find(
+		(candidate) => candidate.submissionId === attempt.submissionId,
+	);
+	const settlement =
+		pending?.record ?? {
+			v: 1 as const,
+			id: eventKey,
+			type: 'submission_settled' as const,
+			conversationId: conversation.conversationId,
+			harness: conversation.harness,
+			session: conversation.session,
+			timestamp: new Date().toISOString(),
+			submissionId: attempt.submissionId,
+			attemptId: attempt.attemptId,
+			outcome,
+			...(outcome === 'completed' ? { result } : { error: serializeSubmissionError(error) }),
+		};
+	const obligation =
+		pending ??
+		(await submissions.reserveSubmissionSettlement(attempt, {
+			recordId: eventKey,
+			record: settlement,
+		}));
+	if (!obligation) return false;
+	const existing = await conversationWriter.getRecord(eventKey);
+	if (!existing) await conversationWriter.append([obligation.record], { submission: attempt });
+	else if (JSON.stringify(existing) !== JSON.stringify(obligation.record)) return false;
 	ctx.publishEvent(event as AttachedAgentEvent);
 	try {
 		await ctx.flushEventCallbacks();
 	} catch (callbackError) {
 		console.error('[flue:subscriber] Terminal event subscriber failed:', callbackError);
 	}
-	return submissions.finalizeSubmissionTerminal(attempt, eventKey);
+	return submissions.finalizeSubmissionSettlement(attempt, eventKey);
 }
 
 function serializeSubmissionError(error: unknown): {

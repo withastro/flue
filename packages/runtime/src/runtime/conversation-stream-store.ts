@@ -369,7 +369,8 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 		}
 		const row = this.sql
 			.exec(
-				`SELECT status, attempt_id, session_key FROM flue_agent_submissions WHERE submission_id = ?`,
+				`SELECT status, attempt_id, session_key, settlement_record_id, settlement_record_json
+				 FROM flue_agent_submissions WHERE submission_id = ?`,
 				submission.submissionId,
 			)
 			.toArray()[0];
@@ -382,9 +383,16 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 		const instanceId = streamIdentity
 			? (JSON.parse(streamIdentity.identity_json as string) as ConversationStreamIdentity).instanceId
 			: undefined;
+		const terminalizingSettlement =
+			row?.status === 'terminalizing' &&
+			records.length === 1 &&
+			submissionRecords.length === 1 &&
+			submissionRecords[0]?.type === 'submission_settled' &&
+			row.settlement_record_id === submissionRecords[0].id &&
+			row.settlement_record_json === JSON.stringify(submissionRecords[0]);
 		if (
 			!row ||
-			row.status !== 'running' ||
+			(row.status !== 'running' && !terminalizingSettlement) ||
 			row.attempt_id !== submission.attemptId ||
 			!sessionIdentity ||
 			sessionIdentity.instanceId !== instanceId

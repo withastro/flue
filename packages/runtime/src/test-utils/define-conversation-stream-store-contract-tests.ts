@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import type { AgentExecutionStore } from '../agent-execution-store.ts';
 import type { ConversationRecord } from '../conversation-records.ts';
 import type {
 	ConversationSnapshotStore,
@@ -10,10 +11,12 @@ export interface ConversationStreamStoreContractBackend {
 		| {
 				stream: ConversationStreamStore;
 				snapshots: ConversationSnapshotStore;
+				executionStore?: AgentExecutionStore;
 		  }
 		| Promise<{
 				stream: ConversationStreamStore;
 				snapshots: ConversationSnapshotStore;
+				executionStore?: AgentExecutionStore;
 		  }>;
 	cleanup?(): void | Promise<void>;
 }
@@ -144,6 +147,57 @@ export function defineConversationStreamStoreContractTests(
 					records: [userRecord('record_1', 'entry_1')],
 				}),
 			).rejects.toThrow();
+		});
+
+		it('appends only the exact reserved settlement while an attempt is terminalizing', async () => {
+			const { stream, executionStore } = await create();
+			if (!executionStore) return;
+			await executionStore.submissions.admitDirect({
+				kind: 'direct',
+				submissionId: 'direct-1',
+				agent: 'echo',
+				id: 'contract',
+				payload: { message: 'Hello' },
+				acceptedAt: '2026-06-25T00:00:00.000Z',
+			});
+			await executionStore.submissions.markSubmissionCanonicalReady('direct-1');
+			await executionStore.submissions.claimSubmission({
+				submissionId: 'direct-1',
+				attemptId: 'attempt-1',
+				ownerId: 'coordinator',
+				leaseExpiresAt: Date.now() + 30_000,
+			});
+			const record = {
+				v: 1 as const,
+				id: 'direct-1:settled',
+				type: 'submission_settled' as const,
+				conversationId: 'conv_contract',
+				harness: 'default',
+				session: 'default',
+				timestamp: '2026-06-25T00:00:00.000Z',
+				submissionId: 'direct-1',
+				attemptId: 'attempt-1',
+				outcome: 'completed' as const,
+			};
+			await executionStore.submissions.reserveSubmissionSettlement(
+				{ submissionId: 'direct-1', attemptId: 'attempt-1' },
+				{ recordId: record.id, record },
+			);
+			await stream.createStream('agents/echo/contract', { agentName: 'echo', instanceId: 'contract' });
+			const producer = await stream.acquireProducer('agents/echo/contract', 'coordinator');
+			const base = {
+				path: 'agents/echo/contract',
+				producerId: producer.producerId,
+				producerEpoch: producer.producerEpoch,
+				incarnation: producer.incarnation,
+				producerSequence: 0,
+				submission: { submissionId: 'direct-1', attemptId: 'attempt-1' },
+			};
+
+			await expect(stream.append({ ...base, records: [record, userRecord('extra', 'extra')] })).rejects.toThrow();
+			await expect(stream.append({ ...base, records: [{ ...record, outcome: 'failed' }] })).rejects.toThrow();
+			await expect(stream.append({ ...base, submission: { submissionId: 'direct-1', attemptId: 'stale' }, records: [record] })).rejects.toThrow();
+			await expect(stream.append({ ...base, records: [record] })).resolves.toEqual({ offset: '0000000000000000_0000000000000000' });
 		});
 
 		it('replays strictly after a batch offset', async () => {

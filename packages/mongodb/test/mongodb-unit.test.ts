@@ -67,6 +67,50 @@ describe('mongodb() migration guards', () => {
 		expect(topologyCalls).toBe(0);
 		expect(ddlCalls).toBe(0);
 	});
+	it('rejects unversioned Flue persistence before topology or DDL', async () => {
+		let topologyCalls = 0;
+		let ddlCalls = 0;
+		const adapter = mongodb(
+			runner({
+				collection: (name) =>
+					collection({
+						findOne: async () => (name === 'flue_runs' ? { _id: 'legacy' } : null),
+					}),
+				topology: async () => {
+					topologyCalls++;
+					return { kind: 'replica_set', transactions: true };
+				},
+				ensureCollection: async () => {
+					ddlCalls++;
+				},
+			}),
+		);
+		await expect(adapter.migrate?.()).rejects.toThrow(PersistedSchemaVersionError);
+		expect(topologyCalls).toBe(0);
+		expect(ddlCalls).toBe(0);
+	});
+	it('does not treat migration-lock metadata as existing data', async () => {
+		let topologyCalls = 0;
+		let metaDataFilter: Record<string, unknown> | undefined;
+		const adapter = mongodb(
+			runner({
+				collection: (name) =>
+					collection({
+						findOne: async (filter) => {
+							if (name === 'flue_meta' && typeof filter._id === 'object') metaDataFilter = filter;
+							return null;
+						},
+					}),
+				topology: async () => {
+					topologyCalls++;
+					return { kind: 'standalone', transactions: false };
+				},
+			}),
+		);
+		await expect(adapter.migrate?.()).rejects.toThrow('requires a replica set');
+		expect(metaDataFilter).toEqual({ _id: { $nin: ['schema_version', 'migration_lock'] } });
+		expect(topologyCalls).toBe(1);
+	});
 	it('gates connect before successful migration', () => {
 		expect(() => mongodb(runner()).connect()).toThrow('successful migrate()');
 	});

@@ -12,7 +12,6 @@ import * as v from 'valibot';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { defineAgent } from '../src/agent-definition.ts';
 import type { AgentExecutionStore } from '../src/agent-execution-store.ts';
-import { SubmissionInterruptedError } from '../src/errors.ts';
 import { createFlueContext, type DispatchInput, resolveModel } from '../src/internal.ts';
 import {
 	createNodeAgentCoordinator,
@@ -27,7 +26,6 @@ import { createSessionStorageKey } from '../src/session-identity.ts';
 import { defineTool } from '../src/tool.ts';
 import type { SessionData } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
-import { createTestEventStreamStore } from './helpers/test-event-stream-store.ts';
 
 // ---------------------------------------------------------------------------
 // Env setup — load ANTHROPIC_API_KEY from the repo .env file.
@@ -151,7 +149,6 @@ async function createRealCoordinator(
 		sessions: executionStore.sessions,
 		agents: [{ name: 'assistant', definition: agent }],
 		createContext: makeRealCreateContext(executionStore),
-		eventStreamStore: createTestEventStreamStore(),
 		conversationStreamStore,
 		conversationSnapshotStore,
 	});
@@ -176,7 +173,6 @@ async function createFauxCoordinator(
 		sessions: executionStore.sessions,
 		agents: [{ name: 'assistant', definition: agent }],
 		createContext: makeFauxCreateContext(provider, executionStore),
-		eventStreamStore: createTestEventStreamStore(),
 		conversationStreamStore,
 		conversationSnapshotStore,
 	});
@@ -256,6 +252,23 @@ describe('NodeAgentCoordinator', () => {
 			expect(submission?.error).toBeUndefined();
 		});
 
+		it('recovers an admitted submission whose canonical readiness was not marked', async () => {
+			const dbPath = createTempDbPath();
+			const store = await openExecutionStore(dbPath);
+			const input = makeDispatchInput();
+			await store.submissions.admitDispatch(input);
+
+			const provider = createFauxProvider();
+			provider.setResponses([fauxAssistantMessage('Recovered admission.')]);
+			const { coordinator, executionStore } = await createFauxCoordinator(dbPath, provider);
+			await coordinator.reconcileSubmissions();
+
+			expect(await executionStore.submissions.getSubmission(input.dispatchId)).toMatchObject({
+				status: 'settled',
+				canonicalReadyAt: expect.any(Number),
+			});
+		});
+
 		it('persists settled submission across store reopens', async () => {
 			const dbPath = createTempDbPath();
 			const provider = createFauxProvider();
@@ -282,6 +295,7 @@ describe('NodeAgentCoordinator', () => {
 			const store1 = await openExecutionStore(dbPath);
 			const input = makeDispatchInput();
 			await store1.submissions.admitDispatch(input);
+			await store1.submissions.markSubmissionCanonicalReady(input.dispatchId);
 			await store1.submissions.claimSubmission({
 				submissionId: input.dispatchId,
 				attemptId: 'attempt-interrupted',
@@ -307,6 +321,7 @@ describe('NodeAgentCoordinator', () => {
 			const store1 = await openExecutionStore(dbPath);
 			const input = makeDispatchInput();
 			await store1.submissions.admitDispatch(input);
+			await store1.submissions.markSubmissionCanonicalReady(input.dispatchId);
 			await store1.submissions.claimSubmission({
 				submissionId: input.dispatchId,
 				attemptId: 'attempt-interrupted',
@@ -385,6 +400,7 @@ describe('NodeAgentCoordinator', () => {
 			// terminalizing.
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
+			await store.submissions.markSubmissionCanonicalReady(input.dispatchId);
 			await store.submissions.claimSubmission({
 				submissionId: input.dispatchId,
 				attemptId: 'attempt-no-journal',
@@ -454,6 +470,7 @@ describe('NodeAgentCoordinator', () => {
 			// resume the retry rather than terminally failing the submission.
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
+			await store.submissions.markSubmissionCanonicalReady(input.dispatchId);
 			const claimed = await store.submissions.claimSubmission({
 				submissionId: input.dispatchId,
 				attemptId: 'attempt-backoff',
@@ -848,7 +865,6 @@ describe('NodeAgentCoordinator', () => {
 					},
 				],
 				createContext: makeFauxCreateContext(provider, executionStore),
-				eventStreamStore: createTestEventStreamStore(),
 			});
 
 			const input = makeDispatchInput();
@@ -913,7 +929,6 @@ describe('NodeAgentCoordinator', () => {
 						},
 					],
 					createContext: makeFauxCreateContext(provider, store2),
-					eventStreamStore: createTestEventStreamStore(),
 				});
 				await restarted.reconcileSubmissions();
 
@@ -1039,6 +1054,7 @@ describe('NodeAgentCoordinator', () => {
 
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
+			await store.submissions.markSubmissionCanonicalReady(input.dispatchId);
 
 			// Simulate repeated interruptions until retry budget is exhausted.
 			// Default maxRetry is 10. We claim, then replace the attempt to increment count.
@@ -1115,6 +1131,7 @@ describe('NodeAgentCoordinator', () => {
 
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
+			await store.submissions.markSubmissionCanonicalReady(input.dispatchId);
 
 			// Simulate repeated pre-input interruption cycles: each restart
 			// claims the submission (incrementing attemptCount), is interrupted
@@ -1165,6 +1182,7 @@ describe('NodeAgentCoordinator', () => {
 
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
+			await store.submissions.markSubmissionCanonicalReady(input.dispatchId);
 			// Claiming increments attemptCount to 1; persisting maxRetry of 1
 			// exhausts the budget while the canonical response is completed.
 			await store.submissions.claimSubmission({
@@ -1273,6 +1291,7 @@ describe('NodeAgentCoordinator', () => {
 
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
+			await store.submissions.markSubmissionCanonicalReady(input.dispatchId);
 
 			// Claim with a timeout that's already expired.
 			const pastTimeout = Date.now() - 1000;
@@ -1304,6 +1323,7 @@ describe('NodeAgentCoordinator', () => {
 
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
+			await store.submissions.markSubmissionCanonicalReady(input.dispatchId);
 			await store.submissions.claimSubmission({
 				submissionId: input.dispatchId,
 				attemptId: 'attempt-timeout-completed',
@@ -1390,6 +1410,7 @@ describe('NodeAgentCoordinator', () => {
 			const store = await openExecutionStore(dbPath);
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
+			await store.submissions.markSubmissionCanonicalReady(input.dispatchId);
 			const claimed = await store.submissions.claimSubmission({
 				submissionId: input.dispatchId,
 				attemptId: 'attempt-tool-result',
@@ -1500,6 +1521,7 @@ describe('NodeAgentCoordinator', () => {
 			const store = await openExecutionStore(dbPath);
 			const input = makeDispatchInput();
 			await store.submissions.admitDispatch(input);
+			await store.submissions.markSubmissionCanonicalReady(input.dispatchId);
 			const claimed = await store.submissions.claimSubmission({
 				submissionId: input.dispatchId,
 				attemptId: 'attempt-tool-repair',
@@ -1632,7 +1654,6 @@ describe('NodeAgentCoordinator', () => {
 					},
 				],
 				createContext: makeFauxCreateContext(provider, executionStore),
-				eventStreamStore: createTestEventStreamStore(),
 			});
 			const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(
 				executionStore.submissions,
@@ -1695,7 +1716,6 @@ describe('NodeAgentCoordinator', () => {
 					},
 				],
 				createContext: makeFauxCreateContext(provider, executionStore),
-				eventStreamStore: createTestEventStreamStore(),
 			});
 
 			const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(
@@ -1727,7 +1747,9 @@ describe('NodeAgentCoordinator', () => {
 			const inputA = makeDispatchInput({ dispatchId: 'dispatch-A' });
 			const inputB = makeDispatchInput({ dispatchId: 'dispatch-B' });
 			await store.submissions.admitDispatch(inputA);
+			await store.submissions.markSubmissionCanonicalReady(inputA.dispatchId);
 			await store.submissions.admitDispatch(inputB);
+			await store.submissions.markSubmissionCanonicalReady(inputB.dispatchId);
 
 			// Claim A (the session head), leave B queued.
 			await store.submissions.claimSubmission({
@@ -1791,6 +1813,7 @@ describe('NodeAgentCoordinator', () => {
 			// Pre-queue a submission from a "previous process" that was never claimed.
 			const inputOld = makeDispatchInput({ dispatchId: 'dispatch-old' });
 			await store.submissions.admitDispatch(inputOld);
+			await store.submissions.markSubmissionCanonicalReady(inputOld.dispatchId);
 
 			// Now create a fresh coordinator and dispatch a new submission.
 			const provider = createFauxProvider();
@@ -1893,7 +1916,31 @@ describe('NodeAgentCoordinator', () => {
 
 	// ─── Direct prompt admission ────────────────────────────────────────────
 
-	describe('direct prompt admission', () => {
+		describe('direct prompt admission', () => {
+		it('materializes the canonical conversation before detached admission returns', async () => {
+			const dbPath = createTempDbPath();
+			const provider = createFauxProvider();
+			provider.setResponses([fauxAssistantMessage('Later reply.')]);
+			const { coordinator } = await createFauxCoordinator(dbPath, provider);
+
+			const receipt = await coordinator
+				.createAdmission('assistant', 'instance-1')({ message: 'Hello' }, undefined, false);
+			const adapter = sqlite(dbPath);
+			await adapter.migrate?.();
+			const { conversationStreamStore } = await adapter.connect();
+			const read = await conversationStreamStore.read(agentStreamPath('assistant', 'instance-1'));
+			const records = read.batches.flatMap((batch) => batch.records);
+
+			expect(receipt.submissionId).toEqual(expect.any(String));
+			expect(records).toEqual([
+				expect.objectContaining({
+					type: 'conversation_created',
+					harness: 'default',
+					session: 'default',
+				}),
+			]);
+		});
+
 		it('processes a direct prompt through the durable submission lifecycle', async () => {
 			const dbPath = createTempDbPath();
 			const provider = createFauxProvider();
@@ -1907,150 +1954,6 @@ describe('NodeAgentCoordinator', () => {
 			expect(receipt.result).toBeDefined();
 			// The submission should be settled in the store.
 			expect(await executionStore.submissions.hasUnsettledSubmissions()).toBe(false);
-		});
-
-		it.skip('appends the direct user message before assistant output', async () => {
-			const dbPath = createTempDbPath();
-			const provider = createFauxProvider();
-			provider.setResponses([fauxAssistantMessage('Durable reply.')]);
-			const executionStore = await openExecutionStore(dbPath);
-			const eventStreamStore = createTestEventStreamStore();
-			const coordinator = createNodeAgentCoordinator({
-				submissions: executionStore.submissions,
-				sessions: executionStore.sessions,
-				agents: [
-					{
-						name: 'assistant',
-						definition: defineAgent(() => ({
-							model: `${provider.getModel().provider}/${provider.getModel().id}`,
-						})),
-					},
-				],
-				createContext: makeFauxCreateContext(provider, executionStore),
-				eventStreamStore,
-			});
-
-			const receipt = await coordinator
-				.createAdmission('assistant', 'instance-1')({ message: 'Hello durable history' });
-			const stream = await eventStreamStore.readEvents(agentStreamPath('assistant', 'instance-1'), {
-				offset: '-1',
-			});
-			const events = stream.events.map((event) => event.data as Record<string, unknown>);
-			const userIndex = events.findIndex(
-				(event) => event.type === 'message_end' && (event.message as { role?: string }).role === 'user',
-			);
-			const assistantIndex = events.findIndex(
-				(event) => event.type === 'message_end' && (event.message as { role?: string }).role === 'assistant',
-			);
-
-			expect(events[userIndex]).toMatchObject({
-				type: 'message_end',
-				submissionId: receipt.submissionId,
-				message: {
-					role: 'user',
-					content: [{ type: 'text', text: 'Hello durable history' }],
-				},
-			});
-			expect(userIndex).toBeGreaterThanOrEqual(0);
-			expect(assistantIndex).toBeGreaterThan(userIndex);
-		});
-
-		it.skip('continues a direct prompt when user event persistence fails', async () => {
-			const dbPath = createTempDbPath();
-			const provider = createFauxProvider();
-			provider.setResponses([fauxAssistantMessage('Best-effort reply.')]);
-			const executionStore = await openExecutionStore(dbPath);
-			const eventStreamStore = createTestEventStreamStore();
-			const originalAppend = eventStreamStore.appendEvent.bind(eventStreamStore);
-			let failedUserAppend = false;
-			eventStreamStore.appendEvent = async (path, event) => {
-				if (
-					!failedUserAppend &&
-					(event as { type?: string; message?: { role?: string } }).type === 'message_end' &&
-					(event as { message?: { role?: string } }).message?.role === 'user'
-				) {
-					failedUserAppend = true;
-					throw new Error('event store unavailable');
-				}
-				return originalAppend(path, event);
-			};
-			const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-			const coordinator = createNodeAgentCoordinator({
-				submissions: executionStore.submissions,
-				sessions: executionStore.sessions,
-				agents: [
-					{
-						name: 'assistant',
-						definition: defineAgent(() => ({
-							model: `${provider.getModel().provider}/${provider.getModel().id}`,
-						})),
-					},
-				],
-				createContext: makeFauxCreateContext(provider, executionStore),
-				eventStreamStore,
-			});
-
-			try {
-				const receipt = await coordinator
-					.createAdmission('assistant', 'instance-1')({ message: 'Hello best effort' });
-
-				expect(receipt.result).toMatchObject({ text: 'Best-effort reply.' });
-				expect(failedUserAppend).toBe(true);
-				expect(consoleError).toHaveBeenCalledWith(
-					'[flue:event-stream] Direct user event persistence failed before provider execution:',
-					expect.any(Error),
-				);
-			} finally {
-				consoleError.mockRestore();
-			}
-		});
-
-		it.skip('appends the terminal result before settling a direct prompt', async () => {
-			const dbPath = createTempDbPath();
-			const provider = createFauxProvider();
-			provider.setResponses([fauxAssistantMessage('Terminal reply.')]);
-			const executionStore = await openExecutionStore(dbPath);
-			const eventStreamStore = createTestEventStreamStore();
-			let terminalAppended = false;
-			const originalAppend = eventStreamStore.appendEvent.bind(eventStreamStore);
-			eventStreamStore.appendEvent = async (path, event) => {
-				if ((event as { type?: string }).type === 'submission_settled') terminalAppended = true;
-				return originalAppend(path, event);
-			};
-			const originalComplete = executionStore.submissions.completeSubmission.bind(
-				executionStore.submissions,
-			);
-			executionStore.submissions.completeSubmission = async (attempt) => {
-				expect(terminalAppended).toBe(true);
-				return originalComplete(attempt);
-			};
-			const coordinator = createNodeAgentCoordinator({
-				submissions: executionStore.submissions,
-				sessions: executionStore.sessions,
-				agents: [
-					{
-						name: 'assistant',
-						definition: defineAgent(() => ({
-							model: `${provider.getModel().provider}/${provider.getModel().id}`,
-						})),
-					},
-				],
-				createContext: makeFauxCreateContext(provider, executionStore),
-				eventStreamStore,
-			});
-
-			const receipt = await coordinator
-				.createAdmission('assistant', 'instance-1')({ message: 'Hello terminal event' });
-			const stream = await eventStreamStore.readEvents(agentStreamPath('assistant', 'instance-1'));
-			const terminal = stream.events
-				.map((event) => event.data as Record<string, unknown>)
-				.find((event) => event.type === 'submission_settled');
-
-			expect(terminal).toMatchObject({
-				outcome: 'completed',
-				submissionId: receipt.submissionId,
-				result: { text: 'Terminal reply.' },
-			});
 		});
 
 		it('persists direct prompt submission across store reopens', async () => {
@@ -2152,6 +2055,7 @@ describe('NodeAgentCoordinator', () => {
 				payload: { message: 'Hello interrupted' },
 				acceptedAt: new Date().toISOString(),
 			});
+			await store.submissions.markSubmissionCanonicalReady('direct-interrupted');
 			await store.submissions.claimSubmission({
 				submissionId: 'direct-interrupted',
 				attemptId: 'attempt-crashed',
@@ -2184,6 +2088,7 @@ describe('NodeAgentCoordinator', () => {
 				payload: { message: 'Hello terminalized' },
 				acceptedAt: new Date().toISOString(),
 			});
+			await store.submissions.markSubmissionCanonicalReady('direct-terminalized');
 			await store.submissions.claimSubmission({
 				submissionId: 'direct-terminalized',
 				attemptId: 'attempt-applied',
@@ -2204,195 +2109,6 @@ describe('NodeAgentCoordinator', () => {
 			expect(submission?.error).toBeUndefined();
 		});
 
-		it.skip('resolves a waiting direct prompt with the persisted result when reconciliation settles completed work', async () => {
-			const dbPath = createTempDbPath();
-			const provider = createFauxProvider();
-			provider.setResponses([fauxAssistantMessage('Should not be called.')]);
-			const executionStore = await openExecutionStore(dbPath);
-			const eventStreamStore = createTestEventStreamStore();
-			const coordinator = createNodeAgentCoordinator({
-				submissions: executionStore.submissions,
-				sessions: executionStore.sessions,
-				agents: [
-					{
-						name: 'assistant',
-						definition: defineAgent(() => ({
-							model: `${provider.getModel().provider}/${provider.getModel().id}`,
-						})),
-					},
-				],
-				createContext: makeFauxCreateContext(provider, executionStore),
-				eventStreamStore,
-			});
-
-			// Simulate an attempt that checkpointed a completed canonical
-			// response and lost its lease before the settlement CAS: intercept
-			// admission to claim with an already-expired lease and persist the
-			// completed session, so this coordinator's expired-lease
-			// reconciliation — not normal processing — settles the submission
-			// while the caller is still awaiting completion.
-			const originalAdmit = executionStore.submissions.admitDirect.bind(executionStore.submissions);
-			executionStore.submissions.admitDirect = async (input) => {
-				const admitted = await originalAdmit(input);
-				await executionStore.submissions.claimSubmission({
-					submissionId: input.submissionId,
-					attemptId: 'attempt-lease-expired',
-					ownerId: 'previous-owner',
-					leaseExpiresAt: 1,
-				});
-				await executionStore.submissions.markSubmissionInputApplied({
-					submissionId: input.submissionId,
-					attemptId: 'attempt-lease-expired',
-				});
-				const storageKey = createSessionStorageKey('instance-1', 'default', 'default');
-				const now = new Date().toISOString();
-				await executionStore.sessions.save(storageKey, {
-					version: 8,
-					conversationId: 'conv_01KT3P3GZGFBCKHKMQ11A7H2HW',
-				affinityKey: generateSessionAffinityKey(),
-					childSessions: [],
-					entries: [
-						{
-							type: 'message',
-							id: 'e1',
-							parentId: null,
-							timestamp: now,
-							message: {
-								role: 'user',
-								content: [{ type: 'text', text: 'Hello reconciled' }],
-								timestamp: Date.now(),
-							} as any,
-							directSubmissionId: input.submissionId,
-						},
-						{
-							type: 'message',
-							id: 'e2',
-							parentId: 'e1',
-							timestamp: now,
-							message: {
-								role: 'assistant',
-								content: [{ type: 'text', text: 'Completed canonical response.' }],
-								stopReason: 'stop',
-								api: 'test',
-								provider: 'test',
-								model: 'test-model',
-								usage: {
-									input: 0,
-									output: 0,
-									totalTokens: 0,
-									cost: { input: 0, output: 0, total: 0 },
-								},
-								timestamp: Date.now(),
-							} as any,
-						},
-					],
-					leafId: 'e2',
-					metadata: {},
-					createdAt: now,
-					updatedAt: now,
-				});
-				return admitted;
-			};
-
-			const admit = coordinator.createAdmission('assistant', 'instance-1');
-			const receipt = await admit({ message: 'Hello reconciled' });
-
-			expect(receipt.result).toMatchObject({
-				text: 'Completed canonical response.',
-				model: { provider: 'test', id: 'test-model' },
-			});
-			expect(await executionStore.submissions.hasUnsettledSubmissions()).toBe(false);
-			// Reconciliation-driven settlement appends a durable event so
-			// detached stream readers also observe the outcome.
-			const stream = await eventStreamStore.readEvents(agentStreamPath('assistant', 'instance-1'));
-			const settledEvents = stream.events
-				.map((event) => event.data as Record<string, unknown>)
-				.filter((event) => event.type === 'submission_settled');
-			expect(settledEvents).toMatchObject([
-				{
-					outcome: 'completed',
-					submissionId: receipt.submissionId,
-					result: { text: 'Completed canonical response.' },
-				},
-			]);
-		});
-
-		it.skip('rejects a waiting direct prompt with a typed interrupted error when reconciliation terminalizes it', async () => {
-			const dbPath = createTempDbPath();
-			const provider = createFauxProvider();
-			provider.setResponses([fauxAssistantMessage('Should not be called.')]);
-			const executionStore = await openExecutionStore(dbPath);
-			const eventStreamStore = createTestEventStreamStore();
-			const coordinator = createNodeAgentCoordinator({
-				submissions: executionStore.submissions,
-				sessions: executionStore.sessions,
-				agents: [
-					{
-						name: 'assistant',
-						definition: defineAgent(() => ({
-							model: `${provider.getModel().provider}/${provider.getModel().id}`,
-						})),
-					},
-				],
-				createContext: makeFauxCreateContext(provider, executionStore),
-				eventStreamStore,
-			});
-
-			// Simulate an attempt that lost its lease after recording input
-			// application but before persisting any canonical work: intercept
-			// admission to claim with an already-expired lease and mark input
-			// applied, so this coordinator's expired-lease reconciliation —
-			// not normal processing — terminalizes the submission while the
-			// caller is still awaiting completion.
-			const originalAdmit = executionStore.submissions.admitDirect.bind(executionStore.submissions);
-			executionStore.submissions.admitDirect = async (input) => {
-				const admitted = await originalAdmit(input);
-				await executionStore.submissions.claimSubmission({
-					submissionId: input.submissionId,
-					attemptId: 'attempt-lease-expired',
-					ownerId: 'previous-owner',
-					leaseExpiresAt: 1,
-				});
-				await executionStore.submissions.markSubmissionInputApplied({
-					submissionId: input.submissionId,
-					attemptId: 'attempt-lease-expired',
-				});
-				return admitted;
-			};
-
-			const admit = coordinator.createAdmission('assistant', 'instance-1');
-			// The waiting caller rejects with the typed interrupted error —
-			// the settled-submission error vocabulary is structured, not a
-			// raw message string.
-			const rejection = await admit({ message: 'Hello terminalized' }).then(
-				() => undefined,
-				(error: unknown) => error,
-			);
-			expect(rejection).toBeInstanceOf(SubmissionInterruptedError);
-			expect(rejection).toMatchObject({
-				type: 'submission_interrupted',
-				meta: { phase: 'after_input_application' },
-			});
-
-			// Reconciliation-driven failure also appends a durable settlement
-			// event so detached stream readers observe the outcome.
-			const stream = await eventStreamStore.readEvents(agentStreamPath('assistant', 'instance-1'));
-			const settledEvents = stream.events
-				.map((event) => event.data as Record<string, unknown>)
-				.filter((event) => event.type === 'submission_settled');
-			expect(settledEvents).toMatchObject([
-				{
-					outcome: 'failed',
-					submissionId: expect.any(String),
-					error: {
-						type: 'submission_interrupted',
-						message: expect.any(String),
-					},
-				},
-			]);
-			expect(settledEvents[0]).toHaveProperty('submissionId');
-		});
-
 		it('silently recovers a direct prompt after restart with no attached observer', async () => {
 			const dbPath = createTempDbPath();
 			const provider = createFauxProvider();
@@ -2408,6 +2124,7 @@ describe('NodeAgentCoordinator', () => {
 				payload: { message: 'Hello silent' },
 				acceptedAt: new Date().toISOString(),
 			});
+			await store.submissions.markSubmissionCanonicalReady('direct-no-observer');
 			await store.submissions.claimSubmission({
 				submissionId: 'direct-no-observer',
 				attemptId: 'attempt-silent',
@@ -2464,6 +2181,7 @@ describe('NodeAgentCoordinator', () => {
 				payload: { message: 'Direct first' },
 				acceptedAt: new Date().toISOString(),
 			});
+			await store.submissions.markSubmissionCanonicalReady('direct-head');
 			await store.submissions.claimSubmission({
 				submissionId: 'direct-head',
 				attemptId: 'attempt-running',

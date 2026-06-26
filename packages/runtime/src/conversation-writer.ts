@@ -78,6 +78,10 @@ export class ConversationRecordWriter {
 		return (await this.loadReducedState()).recordsById.has(recordId);
 	}
 
+	async getRecord(recordId: string): Promise<import('./conversation-records.ts').ConversationRecord | undefined> {
+		return (await this.loadReducedState()).recordsById.get(recordId);
+	}
+
 	async getConversation(conversationId: string) {
 		return (await this.loadReducedState()).conversations.get(conversationId);
 	}
@@ -165,7 +169,9 @@ export class ConversationRecordWriter {
 		options: ConversationAppendOptions,
 	): Promise<{ offset: string }> {
 		const operation = this.tail.then(async () => {
-			if (this.reducedState) reduceConversationRecords(this.reducedState, records, this.reducedState.recordsThroughOffset);
+			const reduced = this.reducedState
+				? reduceConversationRecords(this.reducedState, records, this.reducedState.recordsThroughOffset)
+				: undefined;
 			const producerSequence = this.nextProducerSequence;
 			const input = {
 				path: this.path,
@@ -179,8 +185,9 @@ export class ConversationRecordWriter {
 			try {
 				const result = await this.store.append(input);
 				this.nextProducerSequence = producerSequence + 1;
-				if (this.reducedState) {
-					this.reducedState = reduceConversationRecords(this.reducedState, records, result.offset);
+				if (reduced) {
+					reduced.recordsThroughOffset = result.offset;
+					this.reducedState = reduced;
 					void this.saveSnapshot().catch(() => {});
 				}
 				return result;
@@ -188,8 +195,9 @@ export class ConversationRecordWriter {
 				try {
 					const result = await this.store.append(input);
 					this.nextProducerSequence = producerSequence + 1;
-					if (this.reducedState) {
-						this.reducedState = reduceConversationRecords(this.reducedState, records, result.offset);
+					if (reduced) {
+						reduced.recordsThroughOffset = result.offset;
+						this.reducedState = reduced;
 					}
 					return result;
 				} catch {

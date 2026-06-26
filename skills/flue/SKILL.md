@@ -31,7 +31,7 @@ api/routing-api -- Routing API
 api/sandbox-api -- Sandbox Adapter API
   Adapt a provider sandbox SDK into Flue's public sandbox contract.
 api/streaming-protocol -- Streaming Protocol
-  Reference for reading Flue agent and workflow event streams over Durable Streams.
+  Reference for reading Flue agent conversations and workflow events over Durable Streams.
 api/workflow-api -- Workflow API
   Reference for creating and invoking workflows with @flue/runtime.
 cli/add -- flue add
@@ -146,7 +146,7 @@ introduction/why-flue -- Why Flue?
 reference/configuration -- Configuration
   Reference for flue.config.ts options.
 sdk/agents -- client.agents
-  Invoke persistent agent instances and stream their events.
+  Invoke persistent agent instances and read their conversations.
 sdk/client -- createFlueClient(...)
   Configure an SDK client for a deployed Flue application.
 sdk/errors -- Errors

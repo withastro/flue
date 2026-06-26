@@ -110,7 +110,6 @@ export type AgentConversationActivityOptions = AgentConversationUpdateOptions;
 
 export interface AgentConversationState {
 	conversationId: string;
-	offset: string;
 	messages: AgentConversationMessage[];
 	data: AgentConversationDataPart[];
 	settlements: AgentConversationSettlement[];
@@ -136,7 +135,6 @@ export function createAgentConversationState(
 ): AgentConversationState {
 	return {
 		conversationId: snapshot.conversationId,
-		offset: snapshot.offset,
 		messages: snapshot.messages,
 		data: snapshot.data,
 		settlements: snapshot.settlements,

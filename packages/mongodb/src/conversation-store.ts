@@ -191,14 +191,23 @@ async function assertSubmissionAuthorization(
 	const submissions = tx.collection(collectionName(prefix, 'submissions'));
 	const row = await submissions.findOne({
 		submissionId: submission.submissionId,
-		status: 'running',
 		attemptId: submission.attemptId,
 	});
-	if (!row || parseSessionInstance(row.sessionKey) !== instanceId) {
+	const terminalizingSettlement =
+		row?.status === 'terminalizing' &&
+		records.length === 1 &&
+		owned.length === 1 &&
+		owned[0]?.type === 'submission_settled' &&
+		row.settlementRecordId === owned[0].id &&
+		JSON.stringify(row.settlementRecord) === JSON.stringify(owned[0]);
+	if (!row || (row.status !== 'running' && !terminalizingSettlement) || parseSessionInstance(row.sessionKey) !== instanceId) {
 		throw failure(path, 'Submission attempt no longer owns work for this agent instance.');
 	}
+	const ownership = terminalizingSettlement
+		? { status: 'terminalizing', settlementRecordId: owned[0]?.id, settlementRecord: row.settlementRecord }
+		: { status: 'running' };
 	const fenced = await submissions.updateOne(
-		{ _id: row._id, status: 'running', attemptId: submission.attemptId },
+		{ _id: row._id, attemptId: submission.attemptId, ...ownership },
 		{ $inc: { conversationWriteRevision: 1 } },
 	);
 	if (fenced.modifiedCount !== 1) {

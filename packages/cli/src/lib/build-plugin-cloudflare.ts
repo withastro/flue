@@ -380,7 +380,6 @@ const cloudflareAgents = createCloudflareAgentRuntime({
   agents,
   createContext: createAgentContextForRequest,
   runWithInstanceContext: (instance, agentName, fn) => runWithInstanceContext(instance, agentRuntimeIdentity(agentName), fn),
-  createEventStreamStore: (instance) => createEventStreamStoreForInstance(instance),
   onInteractionStart: devLifecycle?.onAgentInteractionStart,
 });
 

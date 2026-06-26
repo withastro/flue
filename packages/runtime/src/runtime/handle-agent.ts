@@ -183,14 +183,9 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 			traceCarrier,
 		};
 		const streamUrl = invocationStreamUrl(request);
-		// Stream creation is owned by the coordinator at first accepted prompt
-		// (idempotent createStream before processing each claimed submission).
-		// Creating it here would leave a phantom open stream behind when
-		// admission fails, breaking the documented 404-until-first-prompt
-		// contract for stream reads.
-		const streamPath = agentStreamPath(opts.agentName, id);
-		const offset = (await opts.conversationStreamStore.getMeta(streamPath))?.nextOffset ?? '-1';
 		if (new URL(request.url).searchParams.get('wait') === 'result') {
+			const streamPath = agentStreamPath(opts.agentName, id);
+			const offset = (await opts.conversationStreamStore.getMeta(streamPath))?.nextOffset ?? '-1';
 			return runDirectSyncMode(directOptions, streamUrl, offset);
 		}
 		const receipt = await opts.admitAttachedSubmission(
@@ -199,6 +194,7 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 			false,
 			traceCarrier,
 		);
+		const offset = receipt.offset ?? '-1';
 		return admissionResponse(
 			{ streamUrl, offset, submissionId: receipt.submissionId },
 			streamUrl,

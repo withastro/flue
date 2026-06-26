@@ -1,4 +1,4 @@
-import type { FlueEvent } from '@flue/sdk';
+import type { AgentConversationUpdate, FlueEvent } from '@flue/sdk';
 
 export interface LineEventPresenterOptions {
 	write(line: string): void;
@@ -8,7 +8,7 @@ export interface LineEventPresenterOptions {
 }
 
 export interface LineEventPresenter {
-	present(event: FlueEvent): void;
+	present(event: AgentConversationUpdate | FlueEvent): void;
 	flush(): void;
 }
 
@@ -42,6 +42,56 @@ export function createLineEventPresenter(options: LineEventPresenterOptions): Li
 	return {
 		flush,
 		present(event) {
+			if (event.v === 1) {
+				if (event.type !== 'conversation_record') return;
+				const record = event.record;
+				switch (record.type) {
+					case 'assistant_text_delta':
+						if (typeof record.delta !== 'string') return;
+						flushThinking();
+						beginText();
+						textBuffer = consumeCompleteLines(
+							textBuffer + record.delta,
+							options.write,
+							(line) => `${textIndent}${line}`,
+						);
+						return;
+					case 'assistant_text_completed':
+						flushText();
+						return;
+					case 'assistant_reasoning_started':
+						flushText();
+						options.write(dim('thinking'));
+						return;
+					case 'assistant_reasoning_delta':
+						if (typeof record.delta !== 'string') return;
+						flushText();
+						thinkingBuffer = consumeCompleteLines(
+							thinkingBuffer + record.delta,
+							options.write,
+							(line) => dim(`  ${line}`),
+						);
+						return;
+					case 'assistant_reasoning_completed':
+						flushThinking();
+						return;
+					case 'assistant_tool_call':
+						if (typeof record.name !== 'string') return;
+						flush();
+						options.write(`${dim('tool')} ${record.name}`);
+						return;
+					case 'tool_result':
+						if (typeof record.toolName !== 'string') return;
+						options.write(`${dim(`tool ${record.isError === true ? 'error' : 'done'}`)} ${record.toolName}`);
+						return;
+					case 'submission_settled':
+					case 'assistant_message_completed':
+						flush();
+						return;
+					default:
+						return;
+				}
+			}
 			switch (event.type) {
 				case 'text_delta':
 					flushThinking();

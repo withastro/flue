@@ -15,10 +15,10 @@ import type { SqlStorage } from './sql-storage.ts';
 /**
  * Current schema/format version of Flue's built-in persisted stores.
  *
- * Bump this when a persisted format changes incompatibly, together with
- * `migrate()` logic that brings older stores to the new version.
+ * Bump this when a persisted format changes incompatibly. Pre-1.0 stores with
+ * another version are rejected and must be cleared.
  */
-export const FLUE_SCHEMA_VERSION = 4;
+export const FLUE_SCHEMA_VERSION = 5;
 
 /**
  * Throw {@link PersistedSchemaVersionError} unless the stored version matches
@@ -45,10 +45,24 @@ export function migrateFlueSqlSchema(sql: SqlStorage, ensureCurrentSchema: () =>
 		)`,
 	);
 	const stored = sql.exec(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).toArray()[0]?.value;
-	if (stored !== undefined && stored !== null) assertSupportedFlueSchemaVersion(String(stored));
+	if (stored !== undefined && stored !== null) {
+		assertSupportedFlueSchemaVersion(String(stored));
+	} else {
+		const existing = sql
+			.exec(
+				`SELECT name FROM sqlite_master
+				 WHERE type = 'table' AND name LIKE 'flue_%' AND name <> 'flue_meta'
+				 LIMIT 1`,
+			)
+			.toArray()[0];
+		if (existing) {
+			throw new PersistedSchemaVersionError({
+				storedVersion: 'unversioned',
+				supportedVersion: FLUE_SCHEMA_VERSION,
+			});
+		}
+	}
 
-	repairSubmissionColumns(sql);
-	repairRunColumns(sql);
 	ensureCurrentSchema();
 
 	sql.exec(
@@ -58,35 +72,4 @@ export function migrateFlueSqlSchema(sql: SqlStorage, ensureCurrentSchema: () =>
 	);
 	const persisted = sql.exec(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).toArray()[0]?.value;
 	assertSupportedFlueSchemaVersion(String(persisted));
-}
-
-function repairSubmissionColumns(sql: SqlStorage): void {
-	if (!tableExists(sql, 'flue_agent_submissions')) return;
-	const columns = tableColumns(sql, 'flue_agent_submissions');
-	if (!columns.has('terminal_event_key')) {
-		sql.exec('ALTER TABLE flue_agent_submissions ADD COLUMN terminal_event_key TEXT');
-	}
-	if (!columns.has('terminal_event_json')) {
-		sql.exec('ALTER TABLE flue_agent_submissions ADD COLUMN terminal_event_json TEXT');
-	}
-	if (!columns.has('terminal_event_offset')) {
-		sql.exec('ALTER TABLE flue_agent_submissions ADD COLUMN terminal_event_offset TEXT');
-	}
-}
-
-function repairRunColumns(sql: SqlStorage): void {
-	if (!tableExists(sql, 'flue_runs')) return;
-	const columns = tableColumns(sql, 'flue_runs');
-	if (!columns.has('traceparent')) sql.exec('ALTER TABLE flue_runs ADD COLUMN traceparent TEXT');
-	if (!columns.has('tracestate')) sql.exec('ALTER TABLE flue_runs ADD COLUMN tracestate TEXT');
-}
-
-function tableExists(sql: SqlStorage, table: string): boolean {
-	return sql
-		.exec(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`, table)
-		.toArray().length > 0;
-}
-
-function tableColumns(sql: SqlStorage, table: 'flue_agent_submissions' | 'flue_runs'): Set<string> {
-	return new Set(sql.exec(`PRAGMA table_info(${table})`).toArray().map((row) => String(row.name)));
 }

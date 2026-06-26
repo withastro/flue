@@ -94,6 +94,7 @@ describeRedis('Redis shared contracts', () => {
 			return {
 				stream: connected.conversationStreamStore,
 				snapshots: connected.conversationSnapshotStore,
+				executionStore: connected.executionStore,
 			};
 		},
 		cleanup: cleanupHarness,
@@ -209,18 +210,6 @@ describeRedis('redis() concurrency', () => {
 		await cleanupPrefix(first, [second]);
 	});
 
-	it('inserts one stream segment when writers race', async () => {
-		const stores = await createHarness();
-		const results = await Promise.all([
-			stores.executionStore.submissions.appendStreamChunkSegment('stream', 0, 'first'),
-			stores.executionStore.submissions.appendStreamChunkSegment('stream', 0, 'second'),
-		]);
-		expect(results.filter(Boolean)).toHaveLength(1);
-		expect(await stores.executionStore.submissions.getStreamChunkSegments('stream')).toHaveLength(
-			1,
-		);
-		await cleanupHarness();
-	});
 
 	it('orders concurrent event appends from independent adapters and rejects appends after close', async () => {
 		const first = await createSharedHarness();
@@ -335,12 +324,23 @@ describeRedis('redis() concurrency', () => {
 });
 
 describeRedis('redis() migration', () => {
-	it('migrates schema version 2 to 3', async () => {
+	it('rejects unversioned Flue persistence without stamping it', async () => {
+		if (!redisUrl) throw new TypeError('TEST_REDIS_URL is required.');
+		const client = createClient({ url: redisUrl });
+		await client.connect();
+		const prefix = `flue-test:${randomUUID()}`;
+		await client.set(`${prefix}:run:legacy`, '{}');
+		const adapter = redis(createRunner(client), { keyPrefix: prefix, inspectServer: false });
+		await expect(adapter.migrate?.()).rejects.toThrowError(PersistedSchemaVersionError);
+		expect(await client.exists(`${prefix}:meta`)).toBe(0);
+		await client.del(`${prefix}:run:legacy`);
+		await adapter.close?.();
+	});
+	it('rejects an earlier schema version', async () => {
 		const stores = await createHarness();
 		void stores;
 		await harness?.client.hSet(`${harness?.prefix}:meta`, 'schemaVersion', '2');
-		await harness?.adapter.migrate?.();
-		expect(await harness?.client.hGet(`${harness?.prefix}:meta`, 'schemaVersion')).toBe('3');
+		await expect(harness?.adapter.migrate?.()).rejects.toThrowError(PersistedSchemaVersionError);
 		await cleanupHarness();
 	});
 	it('rejects a newer schema version', async () => {

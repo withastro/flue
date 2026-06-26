@@ -866,7 +866,7 @@ async function run(args: RunArgs) {
 					row('run', event.runId);
 					console.error('');
 				}
-				if (event.v === 3) presenter.present(event);
+				presenter.present(event);
 			},
 			lifecycle.signal,
 		);

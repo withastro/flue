@@ -40,8 +40,6 @@ export class RedisKeys {
 	sessionUnsettled = (sessionKey: string) => this.encoded('session-unsettled', sessionKey);
 	journal = (submissionId: string) => this.encoded('journal', submissionId);
 	journals = () => this.key('journals');
-	streamSegments = (streamKey: string) => this.encoded('stream-segments', streamKey);
-	streamSegmentKeys = () => this.key('stream-segment-keys');
 	deletion = (sessionKey: string) => this.encoded('deletion', sessionKey);
 	deletions = () => this.key('deletions');
 	receipt = (id: string) => this.encoded('receipt', id);

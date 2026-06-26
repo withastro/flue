@@ -6,11 +6,11 @@ import type {
 import type { FlueContextInternal } from '../client.ts';
 import { ConversationRecordWriter } from '../conversation-writer.ts';
 import type { FlueTraceCarrier } from '../execution-interceptor.ts';
-import { assertProductEventV3 } from '../product-event.ts';
 import {
 	createAgentSubmissionObserverRegistry,
 	type createAgentSubmissionSessionHandler,
 	createDirectAgentSubmissionInput,
+	materializeAgentSubmissionSession,
 	processSubmission,
 	reconcileInterruptedSubmission,
 	submissionSyntheticRequest,
@@ -97,9 +97,6 @@ interface CloudflareAgentRuntimeOptions {
 		agentName: string,
 		callback: () => T,
 	) => T;
-	readonly createEventStreamStore: (
-		instance: CloudflareAgentInstance,
-	) => import('../runtime/event-stream-store.ts').EventStreamStore;
 	readonly onInteractionStart?: (interaction: AgentInteractionStart) => void;
 }
 
@@ -154,7 +151,6 @@ export function createCloudflareAgentRuntime(
 					instance,
 					prepared,
 					options,
-					options.createEventStreamStore(instance),
 					observers,
 					activeAttempts,
 				),
@@ -180,12 +176,12 @@ class CloudflareAgentCoordinator {
 		private readonly instance: CloudflareAgentInstance,
 		private readonly prepared: CloudflareAgentPreparedCoordinator,
 		private readonly options: CloudflareAgentRuntimeOptions,
-		private readonly eventStreamStore: import('../runtime/event-stream-store.ts').EventStreamStore,
 		private readonly observers: ReturnType<typeof createAgentSubmissionObserverRegistry>,
 		private readonly activeAttempts: Set<string>,
 	) {}
 
 	private conversationWriter: ConversationRecordWriter | undefined;
+	private conversationMaterialization: Promise<void> = Promise.resolve();
 
 	async onStart(inherited: () => Promise<unknown> | unknown): Promise<void> {
 		await this.restoreSubmissionWake();
@@ -357,28 +353,45 @@ class CloudflareAgentCoordinator {
 		if (!(await this.submissions.hasUnsettledSubmissions())) return false;
 		if (!options.driverAlreadyArmed) await this.restoreSubmissionWake();
 		try {
-			for (const terminal of await this.submissions.listPendingTerminalOutboxes()) {
-				assertProductEventV3(terminal.event);
-				const offset =
-					terminal.offset ??
-					(await this.eventStreamStore.appendEventOnce(
-						agentStreamPath(this.agentName, this.instance.name),
-						terminal.eventKey,
-						terminal.event,
-					));
-				const attempt = { submissionId: terminal.submissionId, attemptId: terminal.attemptId };
-				await this.submissions.recordSubmissionTerminalOffset(attempt, terminal.eventKey, offset);
-				if (await this.submissions.finalizeSubmissionTerminal(attempt, terminal.eventKey)) {
-					const event = terminal.event as {
-						outcome?: 'completed' | 'failed';
-						result?: unknown;
-						error?: { message?: string };
-					};
-					if (event.outcome === 'completed') this.observers.complete(terminal.submissionId, event.result);
-					if (event.outcome === 'failed') {
+			for (const submission of await this.submissions.listUnreadySubmissions()) {
+				const agent = this.options.agents.find(
+					(record) => record.name === submission.input.agent,
+				)?.definition;
+				if (!agent || submission.input.agent !== this.agentName || submission.input.id !== this.instance.name) {
+					console.error('[flue:submission-reconciliation]', {
+						agentName: this.agentName,
+						instanceId: this.instance.name,
+						submissionId: submission.submissionId,
+						sessionKey: submission.sessionKey,
+						operation: 'materialize_submission',
+						outcome: 'agent_unavailable',
+					});
+					continue;
+				}
+				try {
+					await this.materializeSubmissionConversation(submission.input, agent);
+					await this.submissions.markSubmissionCanonicalReady(submission.submissionId);
+				} catch (error) {
+					this.logSubmissionReconciliationFailure(submission, 'materialize_submission', error);
+				}
+			}
+			for (const settlement of await this.submissions.listPendingSubmissionSettlements()) {
+				const submission = await this.submissions.getSubmission(settlement.submissionId);
+				if (!submission || this.activeAttempts.has(this.submissionAttemptLocalKey(submission))) continue;
+				const writer = await this.ensureConversationWriter();
+				const attempt = { submissionId: settlement.submissionId, attemptId: settlement.attemptId };
+				const canonical = await writer.getRecord(settlement.recordId);
+				if (!canonical) await writer.append([settlement.record], { submission: attempt });
+				else if (JSON.stringify(canonical) !== JSON.stringify(settlement.record)) {
+					throw new Error('[flue] Pending settlement does not match its canonical record. Clear incompatible beta persistence.');
+				}
+				if (await this.submissions.finalizeSubmissionSettlement(attempt, settlement.recordId)) {
+					if (settlement.record.outcome === 'completed') this.observers.complete(settlement.submissionId, settlement.record.result);
+					if (settlement.record.outcome === 'failed') {
+						const error = settlement.record.error as { message?: string } | undefined;
 						this.observers.fail(
-							terminal.submissionId,
-							new Error(event.error?.message ?? 'Agent submission failed.'),
+							settlement.submissionId,
+							new Error(error?.message ?? 'Agent submission failed.'),
 						);
 					}
 				}
@@ -454,7 +467,7 @@ class CloudflareAgentCoordinator {
 
 	private logSubmissionReconciliationFailure(
 		submission: AgentSubmission,
-		operation: 'reconcile_submission' | 'start_submission',
+		operation: 'materialize_submission' | 'reconcile_submission' | 'start_submission',
 		error: unknown,
 	): void {
 		console.error(
@@ -483,12 +496,6 @@ class CloudflareAgentCoordinator {
 				agent,
 				(dispatchId) =>
 					this.createDurableContext(submissionSyntheticRequest(submission.input), dispatchId),
-				(terminal) =>
-					this.eventStreamStore.appendEventOnce(
-						agentStreamPath(this.agentName, this.instance.name),
-						terminal.eventKey,
-						terminal.event,
-					),
 				{ ownerId: this.instance.ctx.id.toString(), leaseExpiresAt: 0 },
 				conversationWriter,
 			),
@@ -589,6 +596,22 @@ class CloudflareAgentCoordinator {
 		return keys;
 	}
 
+	private materializeSubmissionConversation(
+		input: AgentSubmission['input'],
+		agent: Parameters<typeof materializeAgentSubmissionSession>[1],
+	): Promise<void> {
+		const operation = this.conversationMaterialization.then(async () => {
+			await this.ensureConversationWriter();
+			const ctx = this.createDurableContext(
+				submissionSyntheticRequest(input),
+				input.kind === 'dispatch' ? input.dispatchId : undefined,
+			);
+			await materializeAgentSubmissionSession(ctx, agent, input);
+		});
+		this.conversationMaterialization = operation.catch(() => {});
+		return operation;
+	}
+
 	private async processSubmissionEntry(submission: AgentSubmission): Promise<void> {
 		const conversationWriter = await this.ensureConversationWriter();
 		await processSubmission({
@@ -602,12 +625,6 @@ class CloudflareAgentCoordinator {
 			createContext: (dispatchId) =>
 				this.createDurableContext(submissionSyntheticRequest(submission.input), dispatchId),
 			observers: this.observers,
-			deliverTerminalEvent: (terminal) =>
-				this.eventStreamStore.appendEventOnce(
-					agentStreamPath(this.agentName, this.instance.name),
-					terminal.eventKey,
-					terminal.event,
-				),
 			conversationWriter,
 			onInteractionStart: this.options.onInteractionStart,
 			wrapExecution: (fn) => this.runWithInstanceContext(fn),
@@ -643,11 +660,22 @@ class CloudflareAgentCoordinator {
 		});
 		const attachment = this.observers.attach(input.submissionId, { onEvent });
 		try {
+			const agent = this.options.agents.find((record) => record.name === this.agentName)?.definition;
+			if (!agent) throw new Error('[flue] Agent target unavailable during durable admission.');
+			const admitted = await this.submissions.admitDirect(input);
+			if (admitted.canonicalReadyAt === null) {
+				try {
+					await this.materializeSubmissionConversation(input, agent);
+					await this.submissions.markSubmissionCanonicalReady(input.submissionId);
+				} catch (error) {
+					throw error;
+				}
+			}
+			const offset = (await this.ensureConversationWriter()).offset;
 			await this.armSubmissionWake();
-			await this.submissions.admitDirect(input);
 			await this.reconcileSubmissions({ driverAlreadyArmed: true });
-			if (!waitForResult) return { submissionId: input.submissionId };
-			return { submissionId: input.submissionId, result: await attachment.completion };
+			if (!waitForResult) return { submissionId: input.submissionId, offset };
+			return { submissionId: input.submissionId, offset, result: await attachment.completion };
 		} catch (error) {
 			// If admission or reconciliation fails before the claim loop
 			// could pick up this submission, fail the observer so the
@@ -665,10 +693,8 @@ class CloudflareAgentCoordinator {
 		if (input.agent !== this.agentName || input.id !== this.instance.name) {
 			return new Response('Invalid internal dispatch target.', { status: 400 });
 		}
-		if (!this.options.agents.find((record) => record.name === this.agentName)?.definition) {
-			return new Response('Dispatch target unavailable.', { status: 404 });
-		}
-		await this.armSubmissionWake();
+		const agent = this.options.agents.find((record) => record.name === this.agentName)?.definition;
+		if (!agent) return new Response('Dispatch target unavailable.', { status: 404 });
 		const admission = await this.submissions.admitDispatch(input);
 		if (admission.kind === 'retained_receipt') {
 			return Response.json({
@@ -679,6 +705,19 @@ class CloudflareAgentCoordinator {
 		if (admission.kind === 'conflict') {
 			return new Response('Conflicting internal dispatch replay.', { status: 409 });
 		}
+		if (admission.submission.canonicalReadyAt === null) {
+			try {
+				await this.materializeSubmissionConversation(
+					{ ...input, kind: 'dispatch', submissionId: input.dispatchId },
+					agent,
+				);
+				const ready = await this.submissions.markSubmissionCanonicalReady(input.dispatchId);
+				if (!ready) throw new Error('[flue] Dispatch admission disappeared before canonical readiness.');
+			} catch (error) {
+				throw error;
+			}
+		}
+		await this.armSubmissionWake();
 		await this.reconcileSubmissions({ driverAlreadyArmed: true });
 		return Response.json({
 			dispatchId: admission.submission.submissionId,

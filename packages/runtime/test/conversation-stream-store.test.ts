@@ -209,7 +209,9 @@ describe('SqliteConversationStreamStore', () => {
 			submission_id TEXT PRIMARY KEY,
 			session_key TEXT NOT NULL,
 			status TEXT NOT NULL,
-			attempt_id TEXT
+			attempt_id TEXT,
+			settlement_record_id TEXT,
+			settlement_record_json TEXT
 		)`);
 		db.prepare(
 			`INSERT INTO flue_agent_submissions (submission_id, session_key, status, attempt_id)

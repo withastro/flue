@@ -160,6 +160,7 @@ describe('sqlite() PersistenceAdapter', () => {
 		const { executionStore: store1 } = await adapter.connect();
 		await store1.sessions.save('s1', sessionData());
 		await store1.submissions.admitDispatch(dispatchInput());
+		await store1.submissions.markSubmissionCanonicalReady('dispatch-1');
 		await store1.submissions.claimSubmission({
 			...attempt('dispatch-1', 'attempt-1'),
 			ownerId: 'test-owner',
@@ -258,7 +259,7 @@ describe('sqlite() PersistenceAdapter', () => {
 		const rows = db.prepare(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).all() as {
 			value: string;
 		}[];
-		expect(rows).toEqual([{ value: '4' }]);
+		expect(rows).toEqual([{ value: '5' }]);
 		db.close();
 	});
 
@@ -288,7 +289,7 @@ describe('sqlite() PersistenceAdapter', () => {
 		db.close();
 
 		const adapter = sqlite(dbPath);
-		expect(() => adapter.migrate?.()).toThrow('supports version 4');
+		expect(() => adapter.migrate?.()).toThrow('supports version 5');
 		const unchanged = new DatabaseSync(dbPath);
 		const columns = unchanged.prepare('PRAGMA table_info(flue_agent_submissions)').all() as Array<{
 			name: string;
@@ -326,7 +327,7 @@ describe('sqlite() PersistenceAdapter', () => {
 		db.close();
 
 		const adapter = sqlite(dbPath);
-		expect(() => adapter.migrate?.()).toThrow('supports version 4');
+		expect(() => adapter.migrate?.()).toThrow('supports version 5');
 		const unchanged = new DatabaseSync(dbPath);
 		const submissionColumns = unchanged.prepare('PRAGMA table_info(flue_agent_submissions)').all() as Array<{ name: string }>;
 		const runColumns = unchanged.prepare('PRAGMA table_info(flue_runs)').all() as Array<{ name: string }>;

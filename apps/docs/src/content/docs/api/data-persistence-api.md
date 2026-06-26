@@ -27,7 +27,7 @@ There is one adapter contract for every backend — no SQL-only or "expert" tier
 
 Always typecheck a custom adapter against the real types from `@flue/runtime/adapter`. The signatures below reference vocabulary types — such as `AgentSubmission`, `AgentTurnJournal`, `RunRecord`, and `RunPointer` — exported from the same subpath. If this page drifts from the package, the package wins.
 
-**Stability:** `SessionStore`, `RunStore`, and `EventStreamStore` are stable. The `AgentSubmissionStore` turn-journal, stream-chunk, and lease method groups (and the `AgentTurnJournalPhase` union) mirror the durable-execution engine and are subject to change until 1.0. This applies to every backend equally.
+**Stability:** `SessionStore`, `RunStore`, and `EventStreamStore` are stable. The `AgentSubmissionStore` turn-journal, settlement, and lease method groups (and the `AgentTurnJournalPhase` union) mirror the durable-execution engine and are subject to change until 1.0. This applies to every backend equally.
 
 ## `PersistenceAdapter`
 
@@ -106,19 +106,20 @@ interface AgentSubmissionStore {
     options?: {
       checkpointLeafId?: string;
       toolRequest?: unknown;
-      streamKey?: string;
     },
   ): Promise<boolean>;
   commitTurnJournal(attempt: SubmissionAttemptRef, committedLeafId: string): Promise<boolean>;
-  markStreamConsumed(attempt: SubmissionAttemptRef, streamKey: string): Promise<boolean>;
   replaceTurnJournalAttempt(
     attempt: SubmissionAttemptRef,
     nextAttemptId: string,
     lease?: { ownerId: string; leaseExpiresAt: number },
   ): Promise<AgentSubmission | null>;
-  appendStreamChunkSegment(streamKey: string, segmentIndex: number, body: string): Promise<boolean>;
-  getStreamChunkSegments(streamKey: string): Promise<Array<{ segmentIndex: number; body: string }>>;
-  deleteStreamChunkSegments(streamKey: string): Promise<void>;
+  listPendingSubmissionSettlements(): Promise<SubmissionSettlementObligation[]>;
+  reserveSubmissionSettlement(
+    attempt: SubmissionAttemptRef,
+    settlement: { recordId: string; record: SubmissionSettledRecord },
+  ): Promise<SubmissionSettlementObligation | null>;
+  finalizeSubmissionSettlement(attempt: SubmissionAttemptRef, recordId: string): Promise<boolean>;
   admitDispatch(input: DispatchInput): Promise<AgentDispatchAdmission>;
   admitDirect(input: DirectAgentSubmissionInput): Promise<AgentSubmission>;
   claimSubmission(claim: SubmissionClaimRef): Promise<AgentSubmission | null>;
@@ -140,9 +141,9 @@ interface AgentSubmissionStore {
 }
 ```
 
-The submission store owns ordered admission, claim ownership, turn journals, stream chunks, recovery, attempt markers, lease renewal, and deletion coordination for direct prompts and `dispatch(...)` input.
+The submission store owns ordered admission, claim ownership, turn journals, settlement obligations, recovery, attempt markers, lease renewal, and deletion coordination for direct prompts and `dispatch(...)` input.
 
-The turn-journal, stream-chunk, and lease method groups are subject to change until 1.0 (see the stability note above). The invariants, by method group:
+The turn-journal, settlement, and lease method groups are subject to change until 1.0 (see the stability note above). The invariants, by method group:
 
 ### Admission
 
@@ -156,11 +157,11 @@ The remaining transitions are gated on a running submission owned by the calling
 
 ### Turn journal
 
-Each submission has at most one journal slot. `beginTurnJournal()` creates it or replaces an existing journal in place, resetting stream and commit state and increasing the revision. `updateTurnJournalPhase()` advances the phase of the uncommitted journal owned by the calling attempt, merging any provided options (absent options keep their stored values). `commitTurnJournal()` transitions only an uncommitted journal owned by the calling attempt — a second commit returns `false` and leaves the stored commit untouched. `markStreamConsumed()` stamps the consumption timestamp at most once, and only when the uncommitted journal stores the same stream key. `replaceTurnJournalAttempt()` is the recovery handoff: it atomically moves a running submission and its uncommitted journal to the new attempt id, increments `attemptCount`, clears any pending recovery request, and installs the new lease when given — or returns `null` without writing.
+Each submission has at most one journal slot. `beginTurnJournal()` creates it or replaces an existing journal in place, resetting commit state and increasing the revision. `updateTurnJournalPhase()` advances the phase of the uncommitted journal owned by the calling attempt, merging any provided options. `commitTurnJournal()` transitions only an uncommitted journal owned by the calling attempt. `replaceTurnJournalAttempt()` atomically moves a running submission and its uncommitted journal to the replacement attempt.
 
-### Stream chunks
+### Settlement obligations
 
-`appendStreamChunkSegment()` inserts a segment keyed by (`streamKey`, `segmentIndex`); when that key already exists it returns `false` **without overwriting** the stored body. `getStreamChunkSegments()` returns all segments ordered by `segmentIndex` ascending. `deleteStreamChunkSegments()` removes every segment for the stream.
+`reserveSubmissionSettlement()` atomically moves an owned direct submission to `terminalizing` with the exact canonical settlement record. Exact retries return the existing obligation; conflicting record identities or payloads return `null`. After the canonical record is durable, `finalizeSubmissionSettlement()` moves the submission to `settled`. `listPendingSubmissionSettlements()` lets restart reconciliation verify and finalize interrupted obligations.
 
 ### Attempt markers
 

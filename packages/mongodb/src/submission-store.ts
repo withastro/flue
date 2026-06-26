@@ -79,15 +79,32 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 			updatedAt: Number(row.updatedAt),
 			...(row.checkpointLeafId ? { checkpointLeafId: String(row.checkpointLeafId) } : {}),
 			...(toolRequest !== undefined ? { toolRequest } : {}),
-			...(row.streamKey ? { streamKey: String(row.streamKey) } : {}),
-			...(row.streamConsumedAt ? { streamConsumedAt: Number(row.streamConsumedAt) } : {}),
 			committed: Boolean(row.committed),
 			...(row.committedLeafId ? { committedLeafId: String(row.committedLeafId) } : {}),
 		};
 	}
 
+	async markSubmissionCanonicalReady(submissionId: string): Promise<AgentSubmission | null> {
+		const row = await this.c('submissions').findOneAndUpdate(
+			{ submissionId, status: 'queued' },
+			[{ $set: { canonicalReadyAt: { $ifNull: ['$canonicalReadyAt', Date.now()] } } }],
+			{ returnDocument: 'after' },
+		);
+		return row ? this.parseSubmission(row) : null;
+	}
+
 	async hasUnsettledSubmissions(): Promise<boolean> {
 		return Boolean(await this.c('submissions').findOne({ status: { $in: ['queued', 'running', 'terminalizing'] } }));
+	}
+
+	async listUnreadySubmissions(): Promise<AgentSubmission[]> {
+		const rows = await this.c('submissions').find(
+			{ status: 'queued', canonicalReadyAt: null },
+			{ sort: { sequence: 1 } },
+		);
+		const output: AgentSubmission[] = [];
+		for (const row of rows) output.push(await this.parseSubmission(row));
+		return output;
 	}
 
 	async listRunnableSubmissions(): Promise<AgentSubmission[]> {
@@ -100,7 +117,8 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 		for (const row of rows)
 			if (!seen.has(String(row.sessionKey))) {
 				seen.add(String(row.sessionKey));
-				if (row.status === 'queued') output.push(await this.parseSubmission(row));
+				if (row.status === 'queued' && row.canonicalReadyAt != null)
+					output.push(await this.parseSubmission(row));
 			}
 		return output;
 	}
@@ -143,8 +161,6 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 							updatedAt: now,
 							checkpointLeafId: input.checkpointLeafId ?? null,
 							toolRequest: pointer ?? null,
-							streamKey: null,
-							streamConsumedAt: null,
 							committed: false,
 							committedLeafId: null,
 						},
@@ -167,7 +183,7 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 	async updateTurnJournalPhase(
 		attempt: SubmissionAttemptRef,
 		phase: AgentTurnJournalPhase,
-		options: { checkpointLeafId?: string; toolRequest?: unknown; streamKey?: string } = {},
+		options: { checkpointLeafId?: string; toolRequest?: unknown } = {},
 	): Promise<boolean> {
 		const pointer =
 			options.toolRequest === undefined
@@ -178,7 +194,6 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 					);
 		const set: MongoDocument = { phase, updatedAt: Date.now() };
 		if (options.checkpointLeafId !== undefined) set.checkpointLeafId = options.checkpointLeafId;
-		if (options.streamKey !== undefined) set.streamKey = options.streamKey;
 		if (pointer) set.toolRequest = pointer;
 		let published = false;
 		try {
@@ -220,63 +235,6 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 			$inc: { revision: 1 },
 		});
 	}
-	async markStreamConsumed(attempt: SubmissionAttemptRef, streamKey: string): Promise<boolean> {
-		return this.journalUpdate(
-			attempt,
-			{ $set: { updatedAt: Date.now(), streamConsumedAt: Date.now() }, $inc: { revision: 1 } },
-			{ streamKey, streamConsumedAt: null },
-		);
-	}
-
-	async appendStreamChunkSegment(
-		streamKey: string,
-		segmentIndex: number,
-		body: string,
-	): Promise<boolean> {
-		const pointer = await this.values.stage(
-			`stream:${streamKey}:${segmentIndex}:${randomUUID()}`,
-			body,
-		);
-		try {
-			await this.runner.transaction(async (tx) => {
-				await this.values.publish(pointer, tx);
-				await tx
-					.collection(collectionName(this.prefix, 'stream_segments'))
-					.insertOne({
-						_id: `${streamKey}:${segmentIndex}`,
-						streamKey,
-						segmentIndex,
-						body: pointer,
-					});
-			});
-			return true;
-		} catch (error) {
-			await this.values.discardStaged(pointer);
-			if (isDuplicate(error)) return false;
-			throw error;
-		}
-	}
-
-	async getStreamChunkSegments(
-		streamKey: string,
-	): Promise<Array<{ segmentIndex: number; body: string }>> {
-		const rows = await this.c('stream_segments').find({ streamKey }, { sort: { segmentIndex: 1 } });
-		const output = [];
-		for (const row of rows)
-			output.push({
-				segmentIndex: Number(row.segmentIndex),
-				body: (await this.values.read(row.body as unknown as StoredValue)) as string,
-			});
-		return output;
-	}
-
-	async deleteStreamChunkSegments(streamKey: string): Promise<void> {
-		const rows = await this.c('stream_segments').find({ streamKey });
-		await this.c('stream_segments').deleteMany({ streamKey });
-		for (const row of rows)
-			await this.values.retire(row.body as unknown as StoredValue).catch(() => undefined);
-	}
-
 	async replaceTurnJournalAttempt(
 		attempt: SubmissionAttemptRef,
 		nextAttemptId: string,
@@ -323,6 +281,7 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 			const candidate = await submissions.findOne({
 				submissionId: claim.submissionId,
 				status: 'queued',
+				canonicalReadyAt: { $ne: null },
 			});
 			if (!candidate) return null;
 			await touchGuard(tx, this.prefix, String(candidate.sessionKey));
@@ -409,23 +368,20 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 			{ inputAppliedAt: null },
 		);
 	}
-	async listPendingTerminalOutboxes(): Promise<any[]> {
-		return (await this.c('submissions').find({ kind: 'direct', status: 'terminalizing' }, { sort: { sequence: 1 } })).map((row) => ({ submissionId: String(row.submissionId), sessionKey: String(row.sessionKey), attemptId: String(row.attemptId), eventKey: String(row.terminalKey), event: row.terminalEvent, ...(row.terminalOffset != null ? { offset: String(row.terminalOffset) } : {}) }));
+	async listPendingSubmissionSettlements(): Promise<import('@flue/runtime/adapter').SubmissionSettlementObligation[]> {
+		return (await this.c('submissions').find({ kind: 'direct', status: 'terminalizing' }, { sort: { sequence: 1 } })).map((row) => ({ submissionId: String(row.submissionId), sessionKey: String(row.sessionKey), attemptId: String(row.attemptId), recordId: String(row.settlementRecordId), record: row.settlementRecord as import('@flue/runtime/adapter').SubmissionSettledRecord }));
 	}
-	async reserveSubmissionTerminal(attempt: SubmissionAttemptRef, terminal: { eventKey: string; event: unknown }): Promise<any | null> {
+	async reserveSubmissionSettlement(attempt: SubmissionAttemptRef, settlement: { recordId: string; record: import('@flue/runtime/adapter').SubmissionSettledRecord }): Promise<import('@flue/runtime/adapter').SubmissionSettlementObligation | null> {
+		if (settlement.record.id !== settlement.recordId) return null;
 		const row = await this.c('submissions').findOneAndUpdate(
-			{ submissionId: attempt.submissionId, kind: 'direct', status: 'running', attemptId: attempt.attemptId, ownerId: { $ne: null }, terminalKey: null },
-			{ $set: { status: 'terminalizing', terminalKey: terminal.eventKey, terminalEvent: terminal.event } }, { returnDocument: 'after' });
+			{ submissionId: attempt.submissionId, kind: 'direct', status: 'running', attemptId: attempt.attemptId, ownerId: { $ne: null }, settlementRecordId: null },
+			{ $set: { status: 'terminalizing', settlementRecordId: settlement.recordId, settlementRecord: settlement.record } }, { returnDocument: 'after' });
 		const current = row ?? await this.c('submissions').findOne({ submissionId: attempt.submissionId, status: 'terminalizing', attemptId: attempt.attemptId });
-		if (!current || current.terminalKey !== terminal.eventKey || JSON.stringify(current.terminalEvent) !== JSON.stringify(terminal.event)) return null;
-		return { submissionId: String(current.submissionId), sessionKey: String(current.sessionKey), attemptId: String(current.attemptId), eventKey: String(current.terminalKey), event: current.terminalEvent, ...(current.terminalOffset != null ? { offset: String(current.terminalOffset) } : {}) };
+		if (!current || current.settlementRecordId !== settlement.recordId || JSON.stringify(current.settlementRecord) !== JSON.stringify(settlement.record)) return null;
+		return { submissionId: String(current.submissionId), sessionKey: String(current.sessionKey), attemptId: String(current.attemptId), recordId: String(current.settlementRecordId), record: current.settlementRecord as import('@flue/runtime/adapter').SubmissionSettledRecord };
 	}
-	async recordSubmissionTerminalOffset(attempt: SubmissionAttemptRef, eventKey: string, offset: string): Promise<boolean> {
-		const result = await this.c('submissions').updateOne({ submissionId: attempt.submissionId, status: 'terminalizing', attemptId: attempt.attemptId, terminalKey: eventKey, $or: [{ terminalOffset: null }, { terminalOffset: offset }] }, { $set: { terminalOffset: offset } });
-		return result.matchedCount === 1;
-	}
-	async finalizeSubmissionTerminal(attempt: SubmissionAttemptRef, eventKey: string): Promise<boolean> {
-		const result = await this.c('submissions').updateOne({ submissionId: attempt.submissionId, kind: 'direct', status: 'terminalizing', attemptId: attempt.attemptId, terminalKey: eventKey, terminalOffset: { $ne: null } }, { $set: { status: 'settled', settledAt: Date.now() } });
+	async finalizeSubmissionSettlement(attempt: SubmissionAttemptRef, recordId: string): Promise<boolean> {
+		const result = await this.c('submissions').updateOne({ submissionId: attempt.submissionId, kind: 'direct', status: 'terminalizing', attemptId: attempt.attemptId, settlementRecordId: recordId }, { $set: { status: 'settled', settledAt: Date.now() } });
 		return result.matchedCount === 1;
 	}
 
@@ -545,6 +501,7 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 					payload: pointer,
 					chunks: stagedChunks.pointer,
 					status: 'queued',
+					canonicalReadyAt: null,
 					acceptedAt,
 					sequence: Number(counter?.value),
 					attemptCount: 0,
@@ -727,7 +684,6 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 				await this.values
 					.retire(journal.toolRequest as unknown as StoredValue)
 					.catch(() => undefined);
-			if (journal.streamKey) await this.deleteStreamChunkSegments(String(journal.streamKey));
 		}
 		for (const row of deleted.rows) {
 			await this.values.retire(row.payload as unknown as StoredValue).catch(() => undefined);
@@ -800,6 +756,7 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 			input,
 			status: row.status as AgentSubmission['status'],
 			acceptedAt: Number(row.acceptedAt),
+			canonicalReadyAt: row.canonicalReadyAt == null ? null : Number(row.canonicalReadyAt),
 			...(row.attemptId ? { attemptId: String(row.attemptId) } : {}),
 			...(row.inputAppliedAt ? { inputAppliedAt: Number(row.inputAppliedAt) } : {}),
 			...(row.recoveryRequestedAt ? { recoveryRequestedAt: Number(row.recoveryRequestedAt) } : {}),

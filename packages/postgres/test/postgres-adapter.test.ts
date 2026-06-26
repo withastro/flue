@@ -93,6 +93,7 @@ function createPgliteRunner(): PostgresRunner {
 			return {
 				stream: stores.conversationStreamStore,
 				snapshots: stores.conversationSnapshotStore,
+				executionStore: stores.executionStore,
 			};
 		},
 		async cleanup() {
@@ -194,7 +195,7 @@ describe('postgres() PersistenceAdapter', () => {
 		await adapter.migrate?.();
 
 		const rows = await runner.query(`SELECT value FROM flue_meta WHERE key = 'schema_version'`);
-		expect(rows).toEqual([{ value: '4' }]);
+		expect(rows).toEqual([{ value: '5' }]);
 
 		await runner.query(`UPDATE flue_meta SET value = '1' WHERE key = 'schema_version'`);
 		await expect(adapter.migrate?.()).rejects.toThrowError(PersistedSchemaVersionError);
@@ -203,6 +204,17 @@ describe('postgres() PersistenceAdapter', () => {
 
 		if (!adapter.close) throw new Error('Expected adapter.close to be defined.');
 		await adapter.close();
+	});
+
+	it('rejects unversioned Flue persistence without stamping it', async () => {
+		const runner = createPgliteRunner();
+		await runner.query(`CREATE TABLE flue_runs (run_id TEXT PRIMARY KEY)`);
+		const adapter = postgres(runner);
+		await expect(adapter.migrate?.()).rejects.toThrowError(PersistedSchemaVersionError);
+		expect(
+			await runner.query(`SELECT table_name FROM information_schema.tables WHERE table_name = 'flue_meta'`),
+		).toEqual([]);
+		await adapter.close?.();
 	});
 
 	it('rejects schema v2 persistence without migrating it', async () => {

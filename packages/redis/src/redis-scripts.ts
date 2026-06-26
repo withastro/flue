@@ -91,12 +91,20 @@ redis.call('ZADD', KEYS[8], ARGV[7], ARGV[6])
 return {'created', tostring(sequence)}
 `;
 
+export const markSubmissionCanonicalReadyScript = `${guard}
+require_type(KEYS[1], 'hash')
+if redis.call('HGET', KEYS[1], 'status') ~= 'queued' then return 0 end
+if redis.call('HEXISTS', KEYS[1], 'canonicalReadyAt') == 0 then redis.call('HSET', KEYS[1], 'canonicalReadyAt', ARGV[1]) end
+return 1
+`;
+
 export const claimSubmissionScript = `${guard}
 require_type(KEYS[1], 'hash')
 require_type(KEYS[2], 'zset')
 require_type(KEYS[3], 'zset')
 require_type(KEYS[4], 'zset')
 if redis.call('HGET', KEYS[1], 'status') ~= 'queued' then return 0 end
+if redis.call('HEXISTS', KEYS[1], 'canonicalReadyAt') == 0 then return 0 end
 local sequence = tonumber(redis.call('HGET', KEYS[1], 'sequence'))
 if #redis.call('ZRANGEBYSCORE', KEYS[2], '-inf', '(' .. sequence, 'LIMIT', 0, 1) > 0 then return 0 end
 redis.call('ZADD', KEYS[4], sequence, ARGV[8])
@@ -157,12 +165,8 @@ if operation == 'phase' then
   redis.call('HSET', KEYS[1], 'phase', ARGV[3], 'revision', revision, 'updatedAt', ARGV[4])
   if ARGV[5] ~= '' then redis.call('HSET', KEYS[1], 'checkpointLeafId', ARGV[5]) end
   if ARGV[6] ~= '' then redis.call('HSET', KEYS[1], 'toolRequest', ARGV[6]) end
-  if ARGV[7] ~= '' then redis.call('HSET', KEYS[1], 'streamKey', ARGV[7]) end
 elseif operation == 'commit' then
   redis.call('HSET', KEYS[1], 'phase', 'committed', 'revision', revision, 'updatedAt', ARGV[3], 'committed', 1, 'committedLeafId', ARGV[4])
-elseif operation == 'consumed' then
-  if redis.call('HGET', KEYS[1], 'streamKey') ~= ARGV[3] or redis.call('HEXISTS', KEYS[1], 'streamConsumedAt') == 1 then return 0 end
-  redis.call('HSET', KEYS[1], 'revision', revision, 'updatedAt', ARGV[4], 'streamConsumedAt', ARGV[4])
 end
 return 1
 `;
@@ -322,35 +326,27 @@ redis.call('HSET', KEYS[1], 'nextOffset', seq + 1)
 return {'appended', tostring(seq)}
 `;
 
-export const prepareTerminalScript = `${guard}
+export const reserveSettlementScript = `${guard}
 require_type(KEYS[1], 'hash')
 for i = 2, 4 do require_type(KEYS[i], 'zset') end
-if redis.call('HGET', KEYS[1], 'kind') ~= 'direct' or redis.call('HGET', KEYS[1], 'status') ~= 'running' or redis.call('HGET', KEYS[1], 'attemptId') ~= ARGV[1] or not redis.call('HGET', KEYS[1], 'ownerId') or redis.call('HEXISTS', KEYS[1], 'terminalKey') == 1 then return 0 end
+if redis.call('HGET', KEYS[1], 'kind') ~= 'direct' or redis.call('HGET', KEYS[1], 'status') ~= 'running' or redis.call('HGET', KEYS[1], 'attemptId') ~= ARGV[1] or not redis.call('HGET', KEYS[1], 'ownerId') or redis.call('HEXISTS', KEYS[1], 'settlementRecordId') == 1 then return 0 end
 local sequence = redis.call('HGET', KEYS[1], 'sequence')
 redis.call('ZREM', KEYS[2], ARGV[2])
 redis.call('ZADD', KEYS[3], sequence, ARGV[2])
 redis.call('ZADD', KEYS[4], sequence, ARGV[2])
-redis.call('HSET', KEYS[1], 'status', 'terminalizing', 'terminalKey', ARGV[3], 'terminalEvent', ARGV[4])
+redis.call('HSET', KEYS[1], 'status', 'terminalizing', 'settlementRecordId', ARGV[3], 'settlementRecord', ARGV[4])
 return 1
 `;
 
-export const recordTerminalOffsetScript = `${guard}
-require_type(KEYS[1], 'hash')
-if redis.call('HGET', KEYS[1], 'status') ~= 'terminalizing' or redis.call('HGET', KEYS[1], 'attemptId') ~= ARGV[1] or redis.call('HGET', KEYS[1], 'terminalKey') ~= ARGV[2] then return 0 end
-local existing = redis.call('HGET', KEYS[1], 'terminalOffset')
-if existing and existing ~= ARGV[3] then return 0 end
-redis.call('HSET', KEYS[1], 'terminalOffset', ARGV[3])
-return 1
-`;
 
-export const finalizeTerminalScript = `${guard}
+export const finalizeSettlementScript = `${guard}
 require_type(KEYS[1], 'hash')
 require_type(KEYS[2], 'zset')
 require_type(KEYS[3], 'zset')
-if redis.call('HGET', KEYS[1], 'kind') ~= 'direct' or redis.call('HGET', KEYS[1], 'status') ~= 'terminalizing' then return 0 end
+if redis.call('HGET', KEYS[1], 'kind') ~= 'direct' or redis.call('HGET', KEYS[1], 'status') ~= 'terminalizing' or redis.call('HGET', KEYS[1], 'attemptId') ~= ARGV[3] or redis.call('HGET', KEYS[1], 'settlementRecordId') ~= ARGV[4] then return 0 end
 redis.call('ZREM', KEYS[2], ARGV[1])
 redis.call('ZREM', KEYS[3], ARGV[1])
-redis.call('HSET', KEYS[1], 'status', 'settled', 'settledAt', ARGV[2], 'terminalOffset', ARGV[3])
+redis.call('HSET', KEYS[1], 'status', 'settled', 'settledAt', ARGV[2])
 return 1
 `;
 

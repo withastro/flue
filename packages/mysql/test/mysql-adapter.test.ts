@@ -102,6 +102,7 @@ function defineContracts(): void {
 				return {
 					stream: stores.conversationStreamStore,
 					snapshots: stores.conversationSnapshotStore,
+					executionStore: stores.executionStore,
 				};
 			},
 			async cleanup() {
@@ -164,6 +165,18 @@ describeMysql('mysql()', () => {
 			`SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'flue_event_stream_entries'`,
 		);
 		expect(rows).toEqual([]);
+		await adapter.close?.();
+	});
+
+	it('rejects unversioned Flue persistence without stamping it when a backend is available', async () => {
+		const { runner } = await createMysqlRunner();
+		const adapter = mysql(runner);
+		await runner.query(`CREATE TABLE flue_runs (run_id VARCHAR(255) PRIMARY KEY) ENGINE=InnoDB`);
+		await expect(adapter.migrate?.()).rejects.toThrowError(PersistedSchemaVersionError);
+		const meta = await runner.query(
+			`SELECT 1 FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'flue_meta'`,
+		);
+		expect(meta).toEqual([]);
 		await adapter.close?.();
 	});
 
@@ -242,20 +255,8 @@ describeMysql('mysql()', () => {
 		await adapter.close?.();
 	});
 
-	it('reports exactly one winning concurrent stream segment insertion when a backend is available', async () => {
-		const adapter = mysql((await createMysqlRunner()).runner);
-		await adapter.migrate?.();
-		const submissions = (await adapter.connect()).executionStore.submissions;
-		const results = await Promise.all([
-			submissions.appendStreamChunkSegment('concurrent-stream', 0, 'same body'),
-			submissions.appendStreamChunkSegment('concurrent-stream', 0, 'same body'),
-		]);
-		expect(results.filter(Boolean)).toHaveLength(1);
-		expect(results.filter((result) => !result)).toHaveLength(1);
-		await adapter.close?.();
-	});
 
-	it('rejects malformed existing submissions schema without stamping when a backend is available', async () => {
+	it('rejects unversioned existing submissions schema without stamping when a backend is available', async () => {
 		const { runner } = await createMysqlRunner();
 		const adapter = mysql(runner);
 		await runner.query(
