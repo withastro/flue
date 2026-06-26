@@ -81,7 +81,7 @@ export { createSessionStorageKey } from './session-identity.ts';
 
 // ─── Schema versioning ──────────────────────────────────────────────────────
 
-export { PersistedSchemaVersionError } from './errors.ts';
+export { ConversationStreamStoreError, PersistedSchemaVersionError } from './errors.ts';
 export { assertSupportedFlueSchemaVersion, FLUE_SCHEMA_VERSION } from './schema-version.ts';
 
 // ─── Persisted chunk placement ───────────────────────────────────────────────

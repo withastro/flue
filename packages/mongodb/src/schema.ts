@@ -82,6 +82,17 @@ export function schema(prefix: string): MongoCollectionSpec[] {
 				collation: simple,
 			},
 		]),
+		spec('conversation_streams'),
+		spec('conversation_batches', [
+			{ name: 'path_offset', key: { path: 1, offset: 1 }, unique: true, collation: simple },
+			{
+				name: 'producer_sequence',
+				key: { path: 1, producerId: 1, producerEpoch: 1, producerSequence: 1 },
+				unique: true,
+				collation: simple,
+			},
+		]),
+		spec('conversation_snapshots'),
 		spec('event_streams'),
 		spec('event_entries', [
 			{ name: 'path_offset', key: { path: 1, offset: 1 }, unique: true, collation: simple },

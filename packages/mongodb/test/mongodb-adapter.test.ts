@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { PersistedSchemaVersionError } from '@flue/runtime/adapter';
 import {
+	defineConversationStreamStoreContractTests,
 	defineEventStreamStoreContractTests,
 	defineRunStoreContractTests,
 	defineStoreContractTests,
@@ -241,6 +242,19 @@ describeMongo('MongoDB shared contracts', () => {
 	defineEventStreamStoreContractTests('MongoDB EventStreamStore', {
 		async create() {
 			return (await stores()).eventStreamStore;
+		},
+		cleanup,
+	});
+	defineConversationStreamStoreContractTests('MongoDB ConversationStreamStore', {
+		async create() {
+			const connected = await stores();
+			if (!connected.conversationStreamStore || !connected.conversationSnapshotStore) {
+				throw new Error('Expected MongoDB conversation stores.');
+			}
+			return {
+				stream: connected.conversationStreamStore,
+				snapshots: connected.conversationSnapshotStore,
+			};
 		},
 		cleanup,
 	});

@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { PersistenceAdapter } from '@flue/runtime/adapter';
 import { assertSupportedFlueSchemaVersion, FLUE_SCHEMA_VERSION } from '@flue/runtime/adapter';
+import {
+	MongoConversationSnapshotStore,
+	MongoConversationStreamStore,
+} from './conversation-store.ts';
 import { MongoEventStreamStore } from './event-stream-store.ts';
 import type { MongoOptions, MongoRunner } from './mongodb-runner.ts';
 import { MongoRunStore } from './run-store.ts';
@@ -96,6 +100,8 @@ export function mongodb(runner: MongoRunner, options: MongoOptions = {}): Persis
 				},
 				runStore: new MongoRunStore(runner, prefix),
 				eventStreamStore: new MongoEventStreamStore(runner, prefix),
+				conversationStreamStore: new MongoConversationStreamStore(runner, prefix),
+				conversationSnapshotStore: new MongoConversationSnapshotStore(runner, prefix),
 			};
 		},
 		async close() {
