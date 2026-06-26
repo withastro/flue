@@ -21,21 +21,40 @@ export type {
 export { createFlueClient } from './client.ts';
 export { FlueApiError } from './http.ts';
 export type {
+	AgentConversationActivity,
+	AgentConversationActivityOptions,
+	AgentConversationDataPart,
+	AgentConversationHistoryOptions,
+	AgentConversationMessage,
+	AgentConversationPart,
+	AgentConversationSelector,
+	AgentConversationSettlement,
+	AgentConversationSnapshot,
+	AgentConversationState,
+	AgentConversationUpdate,
+	AgentConversationUpdateOptions,
+	CanonicalConversationRecord,
+} from './public/conversation.ts';
+export {
+	createAgentConversationState,
+	reduceAgentConversationUpdate,
+} from './public/conversation.ts';
+export type {
 	AgentPromptImage,
 	AgentPromptOptions,
 	AgentPromptResult,
 	AgentSendResult,
 } from './public/invoke.ts';
 export {
-	FlueExecutionError,
 	type AgentWaitOptions,
+	FlueExecutionError,
 	type FlueExecutionFailure,
 	type FlueExecutionTarget,
 	type WorkflowRunOptions,
 	type WorkflowRunResult,
 } from './public/settle.ts';
-export { UnsupportedFlueEventVersionError } from './public/stream.ts';
 export type { FlueEventStream, FlueStreamOptions } from './public/stream.ts';
+export { UnsupportedFlueEventVersionError } from './public/stream.ts';
 export type {
 	AgentPromptResponse,
 	AgentSubmissionSettledEvent,

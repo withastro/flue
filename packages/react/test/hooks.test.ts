@@ -1,4 +1,10 @@
-import type { AttachedAgentEvent, FlueClient, FlueEvent, FlueEventStream } from '@flue/sdk';
+import type {
+	AgentConversationSnapshot,
+	AgentConversationUpdate,
+	FlueClient,
+	FlueEvent,
+	FlueEventStream,
+} from '@flue/sdk';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useFlueAgent } from '../src/use-agent.ts';
@@ -43,57 +49,60 @@ function client(overrides: Partial<FlueClient>): FlueClient {
 }
 
 describe('useFlueAgent()', () => {
-	it('reports history ready only after the atomic transcript is available', async () => {
-		let finishHistory!: () => void;
-		const history = {
-			offset: 'offset-history',
-			cancel: vi.fn(),
-			async *[Symbol.asyncIterator]() {
-				yield {
-					v: 3,
-					type: 'message_end',
-					message: { role: 'user', content: 'history' },
-					eventIndex: 0,
-					timestamp: '2026-06-12T00:00:00.000Z',
-					instanceId: 'id',
-					submissionId: 'submission-1',
-				} as AttachedAgentEvent;
-				await new Promise<void>((resolve) => {
-					finishHistory = resolve;
-				});
+	const historySnapshot: AgentConversationSnapshot = {
+		v: 1,
+		type: 'conversation_snapshot',
+		conversationId: 'conversation-1',
+		harness: 'default',
+		session: 'default',
+		offset: 'offset-history',
+		messages: [
+			{
+				id: 'entry-user',
+				role: 'user',
+				submissionId: 'submission-1',
+				parts: [{ type: 'text', text: 'history', state: 'done' }],
 			},
-		} satisfies FlueEventStream<AttachedAgentEvent>;
-		const live = pendingStream<AttachedAgentEvent>();
-		const connect = vi.fn().mockReturnValueOnce(history).mockReturnValueOnce(live);
-		const flue = client({ agents: { stream: connect } as unknown as FlueClient['agents'] });
+		],
+		data: [],
+		settlements: [],
+	};
+
+	it('reports history ready only after the atomic transcript is available', async () => {
+		let finishHistory!: (snapshot: AgentConversationSnapshot) => void;
+		const history = vi.fn(
+			() => new Promise<AgentConversationSnapshot>((resolve) => (finishHistory = resolve)),
+		);
+		const updates = vi.fn().mockReturnValue(pendingStream<AgentConversationUpdate>());
+		const flue = client({ agents: { history, updates } as unknown as FlueClient['agents'] });
 		const { result, unmount } = renderHook(() =>
 			useFlueAgent({ name: 'agent', id: 'id', history: 'all', client: flue }),
 		);
-		await waitFor(() => expect(connect).toHaveBeenCalledTimes(1));
+		await waitFor(() => expect(history).toHaveBeenCalledTimes(1));
 
 		expect(result.current.historyReady).toBe(false);
 		expect(result.current.messages).toEqual([]);
-		act(() => finishHistory());
+		act(() => finishHistory(historySnapshot));
 		await waitFor(() => expect(result.current.historyReady).toBe(true));
-		expect(result.current.messages[0]?.id).toBe('submission:submission-1:user:0');
+		expect(result.current.messages[0]?.id).toBe('entry-user');
 		unmount();
 	});
 
-	it('forwards the configured live transport after finite history hydration', async () => {
-		const live = pendingStream<AttachedAgentEvent>();
-		const connect = vi
-			.fn()
-			.mockReturnValueOnce(eventStream<AttachedAgentEvent>([], 'offset-history'))
-			.mockReturnValueOnce(live);
-		const flue = client({ agents: { stream: connect } as unknown as FlueClient['agents'] });
+	it('forwards the configured live transport after snapshot hydration', async () => {
+		const history = vi.fn().mockResolvedValue(historySnapshot);
+		const updates = vi.fn().mockReturnValue(pendingStream<AgentConversationUpdate>());
+		const flue = client({ agents: { history, updates } as unknown as FlueClient['agents'] });
 		const { unmount } = renderHook(() =>
 			useFlueAgent({ name: 'agent', id: 'id', live: 'sse', client: flue }),
 		);
 
-		await waitFor(() => expect(connect).toHaveBeenCalledTimes(2));
+		await waitFor(() => expect(updates).toHaveBeenCalledTimes(1));
 
-		expect(connect.mock.calls[0]?.[2]).toEqual({ live: false, offset: '-1', tail: 100 });
-		expect(connect.mock.calls[1]?.[2]).toEqual({ live: 'sse', offset: 'offset-history' });
+		expect(history).toHaveBeenCalledWith('agent', 'id');
+		expect(updates).toHaveBeenCalledWith('agent', 'id', {
+			live: 'sse',
+			offset: 'offset-history',
+		});
 		unmount();
 	});
 
@@ -106,19 +115,17 @@ describe('useFlueAgent()', () => {
 		expect(result.current.messages).toEqual([]);
 	});
 
-	it('submits optimistically and reconciles the stream echo', async () => {
-		const stream = pendingStream<AttachedAgentEvent>();
-		const connect = vi
-			.fn()
-			.mockReturnValueOnce(eventStream<AttachedAgentEvent>([], 'offset-history'))
-			.mockReturnValueOnce(stream);
+	it('submits optimistically and reconciles canonical user identity', async () => {
+		const stream = pendingStream<AgentConversationUpdate>();
+		const history = vi.fn().mockResolvedValue({ ...historySnapshot, messages: [] });
+		const updates = vi.fn().mockReturnValue(stream);
 		const send = vi.fn().mockResolvedValue({
 			streamUrl: 'https://flue.test/agents/agent/id',
-			offset: '-1',
+			offset: 'offset-history',
 			submissionId: 'submission-1',
 		});
 		const flue = client({
-			agents: { stream: connect, send } as unknown as FlueClient['agents'],
+			agents: { history, updates, send } as unknown as FlueClient['agents'],
 		});
 		const { result } = renderHook(() => useFlueAgent({ name: 'agent', id: 'id', client: flue }));
 		await waitFor(() => expect(result.current.historyReady).toBe(true));
@@ -129,17 +136,25 @@ describe('useFlueAgent()', () => {
 
 		act(() => {
 			stream.push({
-				v: 3,
-				type: 'message_end',
-				message: { role: 'user', content: 'hello' },
-				eventIndex: 1,
-				timestamp: '2026-06-12T00:00:00.000Z',
-				instanceId: 'id',
-				submissionId: 'submission-1',
-			} as AttachedAgentEvent);
+				v: 1,
+				type: 'conversation_record',
+				conversationId: 'conversation-1',
+				record: {
+					v: 1,
+					id: 'record-user',
+					type: 'user_message',
+					conversationId: 'conversation-1',
+					harness: 'default',
+					session: 'default',
+					timestamp: '2026-06-12T00:00:00.000Z',
+					submissionId: 'submission-1',
+					messageId: 'entry-user',
+					content: [{ type: 'text', text: 'hello' }],
+				},
+			});
 		});
 		await waitFor(() => expect(result.current.messages).toHaveLength(1));
-		expect(result.current.messages[0]?.id).toBe('submission:submission-1:user:0');
+		expect(result.current.messages[0]?.id).toBe('entry-user');
 	});
 });
 

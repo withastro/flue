@@ -22,6 +22,10 @@ import type {
 import type { AgentInteractionStart } from '../runtime/dev-lifecycle-logger.ts';
 import { agentStreamPath } from '../runtime/event-stream-store.ts';
 import { assertAgentDispatchAdmissionInput, handleAgentRequest } from '../runtime/handle-agent.ts';
+import {
+	handleAgentConversationHead,
+	handleAgentConversationRead,
+} from '../runtime/handle-conversation-routes.ts';
 import { handleStreamHead, handleStreamRead } from '../runtime/handle-stream-routes.ts';
 import { isStreamExcludedEvent } from '../runtime/run-store.ts';
 import { deleteSessionTree } from '../session.ts';
@@ -230,13 +234,26 @@ class CloudflareAgentCoordinator {
 	async onRequest(request: Request): Promise<Response | null> {
 		if (isInternalDispatchRequest(request)) return this.admitDispatch(request);
 
-		// DS stream read (GET/HEAD) — served from the event stream store.
 		const method = request.method;
 		if (method === 'GET' || method === 'HEAD') {
-			const store = this.eventStreamStore;
 			const streamPath = agentStreamPath(this.agentName, this.instance.name);
-			if (method === 'HEAD') return await handleStreamHead(store, streamPath);
-			return handleStreamRead({ store, path: streamPath, request });
+			const view = new URL(request.url).searchParams.get('view');
+			if (view) {
+				if (method === 'HEAD') {
+					return await handleAgentConversationHead(
+						this.prepared.conversationStreamStore,
+						streamPath,
+					);
+				}
+				return handleAgentConversationRead({
+					store: this.prepared.conversationStreamStore,
+					snapshots: this.prepared.conversationSnapshotStore,
+					path: streamPath,
+					request,
+				});
+			}
+			if (method === 'HEAD') return await handleStreamHead(this.eventStreamStore, streamPath);
+			return handleStreamRead({ store: this.eventStreamStore, path: streamPath, request });
 		}
 
 		return this.runWithInstanceContext(() =>

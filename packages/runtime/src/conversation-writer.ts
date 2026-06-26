@@ -1,18 +1,18 @@
-import type { ConversationCreatedRecord, ConversationRecord } from './conversation-records.ts';
 import {
-	createReducedInstanceState,
-	type ReducedInstanceState,
-	reduceConversationRecords,
-} from './conversation-reducer.ts';
+	CONVERSATION_REDUCER_VERSION,
+	CONVERSATION_SNAPSHOT_VERSION,
+	encodeReducedInstanceState,
+	loadReducedConversationState,
+} from './conversation-reader.ts';
+import type { ConversationCreatedRecord, ConversationRecord } from './conversation-records.ts';
+import type { ReducedInstanceState } from './conversation-reducer.ts';
+import { reduceConversationRecords } from './conversation-reducer.ts';
 import type {
 	ConversationProducerClaim,
 	ConversationSnapshotStore,
 	ConversationStreamIdentity,
 	ConversationStreamStore,
 } from './runtime/conversation-stream-store.ts';
-
-const CONVERSATION_SNAPSHOT_VERSION = 1;
-const CONVERSATION_REDUCER_VERSION = 1;
 
 export interface ConversationRecordScope {
 	conversationId: string;
@@ -57,32 +57,13 @@ export class ConversationRecordWriter {
 	}
 
 	async loadReducedState(): Promise<ReducedInstanceState> {
-		if (this.reducedState) return this.reducedState;
-		let state = createReducedInstanceState();
-		let offset = '-1';
-		try {
-			const snapshot = await this.snapshots?.load(this.path);
-			if (
-				snapshot?.version === CONVERSATION_SNAPSHOT_VERSION &&
-				snapshot.reducerVersion === CONVERSATION_REDUCER_VERSION &&
-				snapshot.streamIncarnation === this.claim.incarnation
-			) {
-				state = decodeReducedInstanceState(snapshot.state);
-				offset = snapshot.streamOffset;
-			}
-		} catch {
-			await this.snapshots?.delete(this.path).catch(() => {});
-		}
-		while (true) {
-			const read = await this.store.read(this.path, { offset, limit: 1000 });
-			for (const batch of read.batches) {
-				state = reduceConversationRecords(state, batch.records, batch.offset);
-				offset = batch.offset;
-			}
-			if (read.upToDate) break;
-		}
-		this.reducedState = state;
-		return state;
+		this.reducedState ??= await loadReducedConversationState({
+			store: this.store,
+			path: this.path,
+			snapshots: this.snapshots,
+			streamIncarnation: this.claim.incarnation,
+		});
+		return this.reducedState;
 	}
 
 	async getConversationLeaf(conversationId: string): Promise<string | null> {
@@ -259,23 +240,6 @@ export class ConversationRecordWriter {
 			},
 		]);
 	}
-}
-
-function encodeReducedInstanceState(state: ReducedInstanceState): unknown {
-	return {
-		recordsThroughOffset: state.recordsThroughOffset,
-		records: [...state.recordsById.values()],
-	};
-}
-
-function decodeReducedInstanceState(value: unknown): ReducedInstanceState {
-	if (!value || typeof value !== 'object' || !('records' in value) || !Array.isArray(value.records)) {
-		throw new Error('[flue] Canonical conversation snapshot is malformed.');
-	}
-	const offset = 'recordsThroughOffset' in value && typeof value.recordsThroughOffset === 'string'
-		? value.recordsThroughOffset
-		: '-1';
-	return reduceConversationRecords(createReducedInstanceState(), value.records as ConversationRecord[], offset);
 }
 
 function sameAppendOptions(left: ConversationAppendOptions, right: ConversationAppendOptions): boolean {

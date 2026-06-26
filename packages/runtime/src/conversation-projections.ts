@@ -12,8 +12,8 @@ import { classifySubmissionState } from './submission-state.ts';
 import type { PromptUsage, SessionEntry } from './types.ts';
 
 export type ConversationUiPart =
-	| { type: 'text'; text: string; state: 'streaming' | 'done' }
-	| { type: 'reasoning'; text: string; state: 'streaming' | 'done' }
+	| { type: 'text'; blockId?: string; text: string; state: 'streaming' | 'done' }
+	| { type: 'reasoning'; blockId?: string; text: string; state: 'streaming' | 'done' }
 	| { type: 'attachment'; attachment: AttachmentRef }
 	| {
 			type: 'tool';
@@ -28,6 +28,7 @@ export type ConversationUiPart =
 export interface ConversationUiMessage {
 	id: string;
 	role: 'user' | 'assistant';
+	submissionId?: string;
 	parts: ConversationUiPart[];
 	metadata?: {
 		usage?: PromptUsage;
@@ -127,7 +128,12 @@ function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMess
 				}
 			}
 		}
-		return { id: entry.id, role: 'user', parts };
+		return {
+			id: entry.id,
+			role: 'user',
+			...(entry.submissionId ? { submissionId: entry.submissionId } : {}),
+			parts,
+		};
 	}
 	if (message.role === 'signal') {
 		return {
@@ -206,6 +212,7 @@ function projectInProgressMessage(
 			if (block.type === 'text') {
 				return {
 					type: 'text',
+					blockId: block.blockId,
 					text: block.deltas.join(''),
 					state: block.completed ? 'done' : 'streaming',
 				};
@@ -213,6 +220,7 @@ function projectInProgressMessage(
 			if (block.type === 'reasoning') {
 				return {
 					type: 'reasoning',
+					blockId: block.blockId,
 					text: block.deltas.join(''),
 					state: block.completed ? 'done' : 'streaming',
 				};

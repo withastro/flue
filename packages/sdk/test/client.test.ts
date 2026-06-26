@@ -58,6 +58,67 @@ describe('createFlueClient', () => {
 		});
 	});
 
+	describe('agents.history() and updates()', () => {
+		it('reads one canonical snapshot without suffix hydration parameters', async () => {
+			let seen = '';
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test/api',
+				fetch: async (input) => {
+					seen = typeof input === 'string' ? input : new Request(input).url;
+					return Response.json({
+						v: 1,
+						type: 'conversation_snapshot',
+						conversationId: 'conversation-1',
+						harness: 'default',
+						session: 'default',
+						offset: 'offset-1',
+						messages: [],
+						data: [],
+						settlements: [],
+					});
+				},
+			});
+
+			await client.agents.history('agent', 'id', { harness: 'work', session: 'chat' });
+
+			const url = new URL(seen);
+			expect(url.searchParams.get('view')).toBe('history');
+			expect(url.searchParams.get('harness')).toBe('work');
+			expect(url.searchParams.get('session')).toBe('chat');
+			expect(url.searchParams.has('tail')).toBe(false);
+		});
+
+		it('uses independent v1 projection validation for canonical updates', async () => {
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async () =>
+					dsJsonResponse([
+						{
+							v: 1,
+							type: 'conversation_record',
+							conversationId: 'conversation-1',
+							record: {
+								v: 1,
+								id: 'record-1',
+								type: 'user_message',
+								conversationId: 'conversation-1',
+								harness: 'default',
+								session: 'default',
+								timestamp: '2026-06-26T00:00:00.000Z',
+							},
+						},
+					]),
+			});
+
+			const events = [];
+			for await (const event of client.agents.updates('agent', 'id', {
+				offset: '0000000000000000_0000000000000001',
+				live: false,
+			})) events.push(event);
+			expect(events[0]).toMatchObject({ v: 1, type: 'conversation_record' });
+		});
+	});
+
 	describe('agents.stream()', () => {
 		it('rejects every non-v3 event without compatibility normalization', async () => {
 			for (const version of [1, 2, 4, undefined]) {

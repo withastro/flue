@@ -8,7 +8,7 @@ export type UIMessagePart =
 			| { state: 'output-available'; input: unknown; output: unknown; errorText?: never }
 			| { state: 'output-error'; input: unknown; output?: never; errorText: string }
 	  ))
-	| { type: 'file'; mediaType: string; url: string }
+	| { type: 'file'; mediaType: string; url: string; attachmentId?: string }
 	| { type: `data-${string}`; id?: string; data: unknown };
 
 // Mirrors UIMessage from ai@5.0.201 packages/ai/src/ui/ui-messages.ts.

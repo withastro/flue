@@ -26,7 +26,7 @@ export interface UseFlueAgentResult extends AgentSnapshot {
 
 export function useFlueAgent(options: UseFlueAgentOptions): UseFlueAgentResult {
 	const client = useResolvedFlueClient(options.client);
-	const history = options.history ?? 100;
+	const history = options.history ?? 'all';
 	const live = options.live ?? true;
 	const session = useMemo(
 		() => (options.id ? new AgentSession(client, options.name, options.id, history, live) : undefined),

@@ -1,4 +1,5 @@
 import {
+	type AgentConversationUpdate,
 	type AgentPromptImage,
 	DurableStreamError,
 	FetchError,
@@ -18,13 +19,13 @@ export interface SendMessageOptions {
 	images?: AgentPromptImage[];
 }
 
-export type AgentHistory = number | 'all';
+export type AgentHistory = 'all';
 
 export class AgentSession {
 	private state: AgentState = { ...emptyAgentState };
 	private snapshot: AgentSnapshot = publicSnapshot(this.state);
 	private listeners = new Set<() => void>();
-	private stream: FlueEventStream | undefined;
+	private stream: FlueEventStream<AgentConversationUpdate> | undefined;
 	private disposed = false;
 	private active = false;
 	private generation = 0;
@@ -33,8 +34,6 @@ export class AgentSession {
 	private admittedOffset: string | undefined;
 	private reconnectAttempt = 0;
 	private reconnectWake: (() => void) | undefined;
-	private hydrationState: AgentState = { ...emptyAgentState };
-	private hydrationOffset: string | undefined;
 	private hydrationLocalEvents: AgentReducerEvent[] = [];
 	private localId = 0;
 
@@ -42,7 +41,7 @@ export class AgentSession {
 		private client: FlueClient,
 		private name: string,
 		private id: string,
-		private history: AgentHistory = 100,
+		private history: AgentHistory = 'all',
 		private live: LiveMode = true,
 	) {}
 
@@ -98,15 +97,17 @@ export class AgentSession {
 		if (!this.isCurrent(generation) || this.stream || this.dormantFresh || this.state.historyReady)
 			return;
 		this.dispatch({ type: 'local_connecting', error: this.snapshot.error });
-		const options = this.hydrationOffset
-			? { live: false as const, offset: this.hydrationOffset }
-			: this.history === 'all'
-				? { live: false as const, offset: '-1' }
-				: { live: false as const, offset: '-1', tail: this.history };
-		let stream: FlueEventStream;
 		try {
-			stream = this.client.agents.stream(this.name, this.id, options);
+			const snapshot = await this.client.agents.history(this.name, this.id);
+			if (!this.isCurrent(generation)) return;
+			this.reconnectAttempt = 0;
+			this.state = reduceAgentEvent(this.state, { type: 'local_history', snapshot });
+			this.hydrationLocalEvents = [];
+			this.reconnectOffset = snapshot.offset;
+			this.publish();
+			queueMicrotask(() => void this.connect(generation));
 		} catch (error) {
+			if (!this.isCurrent(generation)) return;
 			if (isStatus(error, 404)) {
 				this.dormantFresh = true;
 				this.dispatch({ type: 'local_stream_not_found' });
@@ -115,50 +116,7 @@ export class AgentSession {
 			} else {
 				await this.retry(toError(error), generation, 'hydrate');
 			}
-			return;
 		}
-		this.stream = stream;
-		try {
-			for await (const event of stream) {
-				if (!this.isCurrent(generation)) return;
-				this.hydrationState = reduceAgentEvent(
-					this.hydrationState,
-					event as AgentReducerEvent,
-				);
-			}
-			if (!this.isCurrent(generation) || this.stream !== stream) return;
-			this.reconnectAttempt = 0;
-			this.commitHydration(stream.offset, generation);
-		} catch (error) {
-			if (!this.isCurrent(generation) || this.stream !== stream) return;
-			this.hydrationOffset = stream.offset !== '-1' ? stream.offset : this.hydrationOffset;
-			if (isStatus(error, 404)) {
-				if (this.admittedOffset) {
-					this.commitHydration(this.admittedOffset, generation);
-				} else {
-					this.dormantFresh = true;
-					this.dispatch({ type: 'local_stream_not_found' });
-				}
-				return;
-			}
-			if (isFatal(error)) {
-				this.dispatch({ type: 'local_stream_failed', error: toError(error) });
-				return;
-			}
-			await this.retry(toError(error), generation, 'hydrate');
-		} finally {
-			if (this.stream === stream) this.stream = undefined;
-		}
-	}
-
-	private commitHydration(offset: string, generation: number): void {
-		this.reconnectOffset = offset;
-		this.state = this.hydrationLocalEvents.reduce(reduceAgentEvent, this.hydrationState);
-		this.state = reduceAgentEvent(this.state, { type: 'local_history_ready' });
-		this.hydrationLocalEvents = [];
-		this.publish();
-		this.stream = undefined;
-		queueMicrotask(() => void this.connect(generation));
 	}
 
 	private async connect(generation = this.generation): Promise<void> {
@@ -167,15 +125,12 @@ export class AgentSession {
 		const offset = this.reconnectOffset ?? this.admittedOffset;
 		if (!offset) return;
 		this.dispatch({ type: 'local_connecting', error: this.snapshot.error });
-		let stream: FlueEventStream;
+		let stream: FlueEventStream<AgentConversationUpdate>;
 		try {
-			stream = this.client.agents.stream(this.name, this.id, { live: this.live, offset });
+			stream = this.client.agents.updates(this.name, this.id, { live: this.live, offset });
 		} catch (error) {
-			if (isFatal(error)) {
-				this.dispatch({ type: 'local_stream_failed', error: toError(error) });
-			} else {
-				await this.retry(toError(error), generation, 'connect');
-			}
+			if (isFatal(error)) this.dispatch({ type: 'local_stream_failed', error: toError(error) });
+			else await this.retry(toError(error), generation, 'connect');
 			return;
 		}
 		this.stream = stream;
@@ -185,11 +140,11 @@ export class AgentSession {
 				if (!this.isCurrent(generation)) return;
 				delivered = true;
 				this.reconnectAttempt = 0;
-				this.dispatch(event as AgentReducerEvent);
+				this.dispatch(event);
 			}
 			if (this.isCurrent(generation) && this.stream === stream) {
 				this.reconnectOffset = stream.offset;
-				await this.retry(new Error('Agent event stream ended unexpectedly'), generation, 'connect');
+				await this.retry(new Error('Agent conversation stream ended unexpectedly'), generation, 'connect');
 			}
 		} catch (error) {
 			if (!this.isCurrent(generation) || this.stream !== stream) return;
@@ -199,11 +154,8 @@ export class AgentSession {
 				await this.retry(toError(error), generation, 'connect');
 				return;
 			}
-			if (isFatal(error)) {
-				this.dispatch({ type: 'local_stream_failed', error: toError(error) });
-				return;
-			}
-			await this.retry(toError(error), generation, 'connect');
+			if (isFatal(error)) this.dispatch({ type: 'local_stream_failed', error: toError(error) });
+			else await this.retry(toError(error), generation, 'connect');
 		} finally {
 			if (this.stream === stream) this.stream = undefined;
 		}
@@ -247,7 +199,6 @@ export class AgentSession {
 	private dispatch(event: AgentReducerEvent): void {
 		if (
 			!this.state.historyReady &&
-			!('eventIndex' in event) &&
 			(event.type === 'local_send_submitted' ||
 				event.type === 'local_send_admitted' ||
 				event.type === 'local_send_failed')
@@ -282,7 +233,7 @@ function isStatus(error: unknown, status: number): boolean {
 }
 
 function isFatal(error: unknown): boolean {
-	return isStatus(error, 401) || isStatus(error, 403) || isStatus(error, 404);
+	return isStatus(error, 400) || isStatus(error, 401) || isStatus(error, 403);
 }
 
 function toError(error: unknown): Error {

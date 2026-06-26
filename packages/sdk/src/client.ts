@@ -3,6 +3,14 @@ import { HttpClient, type HttpClientOptions, type RequestHeaders } from './http.
 
 export type { HttpClientOptions } from './http.ts';
 
+import type {
+	AgentConversationActivity,
+	AgentConversationActivityOptions,
+	AgentConversationHistoryOptions,
+	AgentConversationSnapshot,
+	AgentConversationUpdate,
+	AgentConversationUpdateOptions,
+} from './public/conversation.ts';
 import {
 	type AgentPromptOptions,
 	type AgentPromptResult,
@@ -73,7 +81,21 @@ export interface FlueClient {
 			admission: AgentSendResult,
 			options?: AgentWaitOptions,
 		): Promise<TResult>;
-		/** Stream events from an agent instance via the Durable Streams protocol. */
+		history(
+			name: string,
+			id: string,
+			options?: AgentConversationHistoryOptions,
+		): Promise<AgentConversationSnapshot>;
+		updates(
+			name: string,
+			id: string,
+			options: AgentConversationUpdateOptions,
+		): FlueEventStream<AgentConversationUpdate>;
+		activity(
+			name: string,
+			id: string,
+			options: AgentConversationActivityOptions,
+		): FlueEventStream<AgentConversationActivity>;
 		stream(
 			name: string,
 			id: string,
@@ -113,6 +135,36 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 			prompt: (name, id, opts) => promptAgent(http, name, id, opts),
 			send: (name, id, opts) => sendAgent(http, name, id, opts),
 			wait: (admission, opts) => waitForAgentSubmission(http, admission, opts),
+			history: (name, id, opts = {}) =>
+				http.json<AgentConversationSnapshot>({
+					path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
+					query: conversationQuery('history', opts),
+					signal: opts.signal,
+				}),
+			updates: (name, id, opts) =>
+				createFlueEventStream<AgentConversationUpdate>(
+					{ live: opts.live, offset: opts.offset, signal: opts.signal, backoffOptions: opts.backoffOptions },
+					{
+						url: http.url(
+							`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
+							conversationQuery('updates', opts),
+						),
+						fetch: http.fetchWithHeaders.bind(http),
+					},
+					assertConversationUpdate,
+				),
+			activity: (name, id, opts) =>
+				createFlueEventStream<AgentConversationActivity>(
+					{ live: opts.live, offset: opts.offset, signal: opts.signal, backoffOptions: opts.backoffOptions },
+					{
+						url: http.url(
+							`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
+							conversationQuery('activity', opts),
+						),
+						fetch: http.fetchWithHeaders.bind(http),
+					},
+					assertConversationActivity,
+				),
 			stream: (name, id, opts = {}) =>
 				createFlueEventStream<AttachedAgentEvent>(opts, {
 					url: http.url(`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`),
@@ -164,6 +216,37 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 			run: (name, opts) => runWorkflow(http, name, opts),
 		},
 	};
+}
+
+function conversationQuery(
+	view: 'history' | 'updates' | 'activity',
+	selector: { conversationId?: string; harness?: string; session?: string },
+): Record<string, string | undefined> {
+	return {
+		view,
+		conversationId: selector.conversationId,
+		harness: selector.harness,
+		session: selector.session,
+	};
+}
+
+function assertConversationUpdate(value: AgentConversationUpdate): AgentConversationUpdate {
+	if (
+		!value ||
+		typeof value !== 'object' ||
+		value.v !== 1 ||
+		(value.type !== 'conversation_record' && value.type !== 'conversation_reset')
+	) {
+		throw new TypeError('Unsupported agent conversation update.');
+	}
+	return value;
+}
+
+function assertConversationActivity(value: AgentConversationActivity): AgentConversationActivity {
+	if (!value || typeof value !== 'object' || value.v !== 1 || value.type !== 'conversation_activity') {
+		throw new TypeError('Unsupported agent conversation activity record.');
+	}
+	return value;
 }
 
 async function readJsonWithAbort<T>(

@@ -13,14 +13,19 @@ import {
 	validateWorkflowRequest,
 } from '../errors.ts';
 import type {
-	AgentDispatchRequest,
 	AgentDefinition,
+	AgentDispatchRequest,
 	DispatchReceipt,
 	NamedAgentDispatchRequest,
 	WorkflowRouteHandler,
 	WorkflowRunsHandler,
 } from '../types.ts';
+import type { WorkflowDefinition } from '../workflow-definition.ts';
 import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
+import type {
+	ConversationSnapshotStore,
+	ConversationStreamStore,
+} from './conversation-stream-store.ts';
 import { enqueueDispatch } from './dispatch.ts';
 import type { DispatchQueue } from './dispatch-queue.ts';
 import { agentStreamPath, type EventStreamStore, runStreamPath } from './event-stream-store.ts';
@@ -29,10 +34,13 @@ import {
 	handleAgentRequest,
 	handleWorkflowRequest,
 } from './handle-agent.ts';
+import {
+	handleAgentConversationHead,
+	handleAgentConversationRead,
+} from './handle-conversation-routes.ts';
 import { handleStreamHead, handleStreamRead } from './handle-stream-routes.ts';
 import { generateWorkflowRunId } from './ids.ts';
-import { invokeWorkflow, type WorkflowInvokeRequest, type WorkflowInvocationReceipt } from './invoke.ts';
-import type { WorkflowDefinition } from '../workflow-definition.ts';
+import { invokeWorkflow, type WorkflowInvocationReceipt, type WorkflowInvokeRequest } from './invoke.ts';
 import type { RunStore, WorkflowRunPointer } from './run-store.ts';
 import type { RuntimeActivityGate } from './runtime-activity-gate.ts';
 
@@ -76,6 +84,8 @@ export interface NodeRuntime extends RuntimeBase {
 	) => AttachedAgentSubmissionAdmission;
 	runStore: RunStore;
 	eventStreamStore: EventStreamStore;
+	conversationStreamStore: ConversationStreamStore;
+	conversationSnapshotStore: ConversationSnapshotStore;
 }
 
 export interface CloudflareRuntime extends RuntimeBase {
@@ -407,6 +417,18 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 		if (c.req.method === 'GET' || c.req.method === 'HEAD') {
 			const streamPath = agentStreamPath(name, id);
 			if (rt.target === 'node') {
+				const view = new URL(request.url).searchParams.get('view');
+				if (view) {
+					if (c.req.method === 'HEAD') {
+						return handleAgentConversationHead(rt.conversationStreamStore, streamPath);
+					}
+					return handleAgentConversationRead({
+						store: rt.conversationStreamStore,
+						snapshots: rt.conversationSnapshotStore,
+						path: streamPath,
+						request,
+					});
+				}
 				return nodeStreamReadResponse(rt, c.req.method, streamPath, request);
 			}
 

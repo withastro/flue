@@ -299,6 +299,8 @@ configureFlueRuntime({
   createWorkflowContext: createWorkflowContextForRequest,
   runStore,
   eventStreamStore,
+  conversationStreamStore,
+  conversationSnapshotStore,
 });
 
 try {

@@ -118,6 +118,10 @@ export {
 	invokeDirectAttached,
 	invokeWorkflowAttached,
 } from './runtime/handle-agent.ts';
+export {
+	handleAgentConversationHead,
+	handleAgentConversationRead,
+} from './runtime/handle-conversation-routes.ts';
 export { handleStreamHead, handleStreamRead } from './runtime/handle-stream-routes.ts';
 export { generateWorkflowRunId } from './runtime/ids.ts';
 export { hasRegisteredProvider, resetProviderRuntime } from './runtime/providers.ts';

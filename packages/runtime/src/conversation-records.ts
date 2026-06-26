@@ -192,6 +192,7 @@ export interface ChildSessionReleasedRecord extends ConversationRecordEnvelope {
 export interface DataRecord extends ConversationRecordEnvelope {
 	type: 'data';
 	dataType: string;
+	dataId?: string;
 	data: unknown;
 }
 

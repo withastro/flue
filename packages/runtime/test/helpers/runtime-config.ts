@@ -1,13 +1,14 @@
 import { defineAgent } from '../../src/agent-definition.ts';
-import type { AgentDefinition } from '../../src/types.ts';
-import type { WorkflowDefinition } from '../../src/workflow-definition.ts';
+import { sqlite } from '../../src/node/agent-execution-store.ts';
+import { InMemoryRunStore } from '../../src/node/run-store.ts';
 import type {
 	AgentRecord,
 	CloudflareRuntime,
 	NodeRuntime,
 	WorkflowRecord,
 } from '../../src/runtime/flue-app.ts';
-import { InMemoryRunStore } from '../../src/node/run-store.ts';
+import type { AgentDefinition } from '../../src/types.ts';
+import type { WorkflowDefinition } from '../../src/workflow-definition.ts';
 import { createTestEventStreamStore } from './test-event-stream-store.ts';
 
 export function agentRecord(
@@ -40,6 +41,10 @@ export function workflowRecord(
 }
 
 export function nodeRuntime(overrides: Partial<NodeRuntime> = {}): NodeRuntime {
+	const adapter = sqlite();
+	void adapter.migrate?.();
+	const stores = adapter.connect();
+	if (stores instanceof Promise) throw new Error('Test SQLite adapter must connect synchronously.');
 	return {
 		target: 'node',
 		agents: [],
@@ -56,6 +61,8 @@ export function nodeRuntime(overrides: Partial<NodeRuntime> = {}): NodeRuntime {
 		},
 		runStore: new InMemoryRunStore(),
 		eventStreamStore: createTestEventStreamStore(),
+		conversationStreamStore: stores.conversationStreamStore,
+		conversationSnapshotStore: stores.conversationSnapshotStore,
 		...overrides,
 	};
 }

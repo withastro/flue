@@ -78,6 +78,7 @@ export class UnsupportedFlueEventVersionError extends Error {
 export function createFlueEventStream<T = FlueEvent>(
 	streamOpts: FlueStreamOptions,
 	connectionOpts: StreamConnectionOptions,
+	validate: (value: T) => T = assertSupportedEventVersion,
 ): FlueEventStream<T> {
 	const abortController = new AbortController();
 
@@ -243,7 +244,7 @@ export function createFlueEventStream<T = FlueEvent>(
 			if (pending) {
 				let value: T;
 				try {
-					value = assertSupportedEventVersion(pending.items[pending.next] as T);
+					value = validate(pending.items[pending.next] as T);
 				} catch (error) {
 					terminalFailure = error;
 					deliveryDone = true;

@@ -248,7 +248,7 @@ describe('reduceConversationRecords()', () => {
 		expect(projectConversationUi(conversation, '5').messages[1]).toEqual({
 			id: 'entry_assistant',
 			role: 'assistant',
-			parts: [{ type: 'text', text: 'Hi ', state: 'streaming' }],
+			parts: [{ type: 'text', blockId: 'block_text', text: 'Hi ', state: 'streaming' }],
 		});
 		expect(buildConversationContext(conversation)).toHaveLength(1);
 		expect(classifyConversationSubmission(conversation, 'entry_user', { contextWindow: 100000 })).toMatchObject({
