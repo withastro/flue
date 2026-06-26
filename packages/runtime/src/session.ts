@@ -581,7 +581,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		if (this.activeTurnId === undefined) this.activeTurnId = generateTurnId();
 		const turnId = this.activeTurnId;
 		const streamKey =
-			this.activeSubmissionId && this.activeSubmissionAttemptId
+			!this.conversationWriter && this.activeSubmissionId && this.activeSubmissionAttemptId
 				? `${this.activeSubmissionId}:${turnId}:${this.activeSubmissionAttemptId}`
 				: undefined;
 		const state = {
@@ -591,7 +591,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			streamKey,
 		};
 		await this.activeJournalCallbacks?.beforeProvider?.(state);
-		if (streamKey && this.submissionStore) {
+		if (streamKey && this.submissionStore && !this.conversationWriter) {
 			this.activeStreamChunkWriter = new StreamChunkWriter(this.submissionStore, streamKey);
 		} else {
 			// Defensive: never let a leftover writer from a failed earlier run capture
@@ -1216,7 +1216,69 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	async repairInterruptedToolCalls(
 		input: AgentSubmissionInput,
 		toolRequest: { toolCalls: Array<{ type: 'toolCall'; id: string; name: string }> },
+		attempt?: import('./agent-execution-store.ts').SubmissionAttemptRef,
 	): Promise<string | undefined> {
+		if (attempt && this.conversationWriter) {
+			this.activeSubmissionId = attempt.submissionId;
+			this.activeSubmissionAttemptId = attempt.attemptId;
+			const conversation = await this.conversationWriter.getConversation(this.conversationId);
+			if (conversation) {
+				const path = getActiveConversationPath(conversation);
+				const assistant = path.findLast(
+					(entry) => entry.type === 'message' && entry.message.role === 'assistant' && entry.message.stopReason === 'toolUse',
+				);
+				if (assistant?.type === 'message') {
+					const assistantIndex = path.findIndex((entry) => entry.id === assistant.id);
+					const knownResults = path.slice(assistantIndex + 1).filter(
+						(entry) => entry.type === 'message' && entry.message.role === 'toolResult',
+					);
+					const records: ConversationRecord[] = [{
+						...this.canonicalEnvelope('active_leaf_changed', `record_tool_repair_${assistant.id}_rewind`),
+						type: 'active_leaf_changed',
+						leafId: assistant.id,
+						previousLeafId: conversation.activeLeafId,
+						reason: 'interrupted_tool_batch_repair',
+					}];
+					let parentId = assistant.id;
+					for (const toolCall of toolRequest.toolCalls) {
+						const known = knownResults.find(
+							(entry) => entry.type === 'message' &&
+								entry.message.role === 'toolResult' &&
+								entry.message.toolCallId === toolCall.id,
+						);
+						const knownResult = known?.type === 'message' && known.message.role === 'toolResult'
+							? known.message
+							: undefined;
+						const messageId = `entry_tool_repair_${assistant.id}_${toolCall.id}`;
+						records.push({
+							...this.canonicalEnvelope('tool_result', `record_tool_repair_${assistant.id}_${toolCall.id}`),
+							type: 'tool_result',
+							messageId,
+							parentId,
+							toolCallId: toolCall.id,
+							toolName: toolCall.name,
+							isError: knownResult?.isError ?? true,
+							content: knownResult
+								? knownResult.content.flatMap((block) => block.type === 'text'
+									? [{ type: 'text' as const, text: block.text }]
+									: [])
+								: [{
+									type: 'text',
+									text: JSON.stringify({
+										type: 'interrupted',
+										message: 'Tool execution was interrupted before completion. The outcome is unknown.',
+									}),
+								}],
+						});
+						parentId = messageId;
+					}
+					await this.appendCanonical(records);
+					await this.rebuildCanonicalContext();
+					return parentId;
+				}
+			}
+		}
+
 		const inputEntry =
 			input.kind === 'dispatch'
 				? this.history.findDispatchInput(input.dispatchId)
@@ -1305,13 +1367,112 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	}
 
 	async recoverInterruptedStream(
-		streamKey: string,
-		turnCheckpointLeafId?: string,
+		attempt: import('./agent-execution-store.ts').SubmissionAttemptRef,
+		turnId: string,
 	): Promise<boolean> {
+		if (this.conversationWriter) {
+			this.activeSubmissionId = attempt.submissionId;
+			this.activeSubmissionAttemptId = attempt.attemptId;
+			this.activeTurnId = turnId;
+			const inProgress = await this.conversationWriter.findInProgressAssistant(
+				this.conversationId,
+				attempt.submissionId,
+			);
+			if (!inProgress) {
+				const conversation = await this.conversationWriter.getConversation(this.conversationId);
+				const partial = conversation
+					? getActiveConversationPath(conversation).findLast(
+						(entry) => entry.type === 'message' &&
+							entry.submissionId === attempt.submissionId &&
+							entry.message.role === 'assistant' &&
+							entry.message.stopReason === 'aborted' &&
+							entry.message.content.some((block) => block.type === 'text' && block.text.length > 0),
+					)
+					: undefined;
+				if (!partial) return false;
+				let parentId = partial.id;
+				const records: ConversationRecord[] = [];
+				for (const signalType of ['stream_interrupted', 'stream_continued'] as const) {
+					const messageId = `entry_recovery_${partial.id}_${signalType}`;
+					records.push({
+						...this.canonicalEnvelope('signal', `record_recovery_${partial.id}_${signalType}`),
+						type: 'signal',
+						messageId,
+						parentId,
+						signalType,
+						content: signalType === 'stream_interrupted'
+							? 'The previous assistant stream was interrupted.'
+							: 'Continue from the durable partial assistant response.',
+					});
+					parentId = messageId;
+				}
+				await this.appendCanonical(records);
+				await this.rebuildCanonicalContext();
+				return true;
+			}
+			const blocks = [...inProgress.blocks.values()];
+			const continuable = !blocks.some((block) => block.type === 'tool_call') &&
+				blocks.some((block) =>
+					(block.type === 'text' || block.type === 'reasoning') && block.deltas.join('').length > 0,
+				);
+			const records: ConversationRecord[] = [];
+			for (const block of blocks) {
+				if ((block.type === 'text' || block.type === 'reasoning') && !block.completed) {
+					records.push(block.type === 'text'
+						? {
+							...this.canonicalEnvelope('assistant_text_completed', `record_recovery_${inProgress.messageId}_${block.blockId}_completed`),
+							type: 'assistant_text_completed',
+							messageId: inProgress.messageId,
+							blockId: block.blockId,
+							deltaCount: block.deltas.length,
+						}
+						: {
+							...this.canonicalEnvelope('assistant_reasoning_completed', `record_recovery_${inProgress.messageId}_${block.blockId}_completed`),
+							type: 'assistant_reasoning_completed',
+							messageId: inProgress.messageId,
+							blockId: block.blockId,
+							deltaCount: block.deltas.length,
+						});
+				}
+			}
+			records.push({
+				...this.canonicalEnvelope('assistant_message_completed', `record_recovery_${inProgress.messageId}_aborted`),
+				type: 'assistant_message_completed',
+				messageId: inProgress.messageId,
+				stopReason: 'aborted',
+				usage: zeroProviderUsage(),
+				error: 'Stream interrupted before completion.',
+			});
+			if (!continuable) {
+				await this.appendCanonical(records);
+				await this.rebuildCanonicalContext();
+				return false;
+			}
+			let parentId = inProgress.messageId;
+			for (const signalType of ['stream_interrupted', 'stream_continued'] as const) {
+				const messageId = `entry_recovery_${inProgress.messageId}_${signalType}`;
+				records.push({
+					...this.canonicalEnvelope('signal', `record_recovery_${inProgress.messageId}_${signalType}`),
+					type: 'signal',
+					messageId,
+					parentId,
+					signalType,
+					content: signalType === 'stream_interrupted'
+						? 'The previous assistant stream was interrupted.'
+						: 'Continue from the durable partial assistant response.',
+				});
+				parentId = messageId;
+			}
+			await this.appendCanonical(records);
+			await this.rebuildCanonicalContext();
+			return true;
+		}
 		if (!this.submissionStore) return false;
+		const streamKey = `${attempt.submissionId}:${turnId}:${attempt.attemptId}`;
 		const segments = await this.submissionStore.getStreamChunkSegments(streamKey);
 		const recovered = reconstructInterruptedStream(segments, streamKey);
 		if (!recovered) return false;
+		const turnCheckpointLeafId = this.history.getLeafId() ?? undefined;
 		const activePath = this.history.getActivePath();
 		const alreadyRecovered = activePath.some(
 			(entry) =>
@@ -3448,6 +3609,17 @@ function normalizeLogAttributes(
 	if (!attributes) return undefined;
 	if (!(attributes.error instanceof Error)) return attributes;
 	return { ...attributes, error: serializeError(attributes.error) };
+}
+
+function zeroProviderUsage(): AssistantMessage['usage'] {
+	return {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+		totalTokens: 0,
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+	};
 }
 
 function submissionEntryId(kind: 'direct' | 'dispatch', id: string): string {

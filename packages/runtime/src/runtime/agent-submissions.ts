@@ -107,8 +107,12 @@ export interface AgentSubmissionSession {
 	repairInterruptedToolCalls(
 		input: AgentSubmissionInput,
 		toolRequest: AgentSubmissionToolRequest,
+		attempt?: SubmissionAttemptRef,
 	): Promise<string | undefined>;
-	recoverInterruptedStream(streamKey: string, turnCheckpointLeafId?: string): Promise<boolean>;
+	recoverInterruptedStream(
+		attempt: SubmissionAttemptRef,
+		turnId: string,
+	): Promise<boolean>;
 	recordSubmissionTerminal(input: AgentSubmissionInterruption): Promise<void>;
 }
 
@@ -263,7 +267,7 @@ function createSubmissionJournalCallbacks(
 		providerStarted: async (state) => {
 			await submissions.updateTurnJournalPhase(attempt, 'provider_started', {
 				checkpointLeafId: state.checkpointLeafId,
-				streamKey: state.streamKey,
+				...(state.streamKey ? { streamKey: state.streamKey } : {}),
 			});
 		},
 		toolRequestRecorded: async (state) => {
@@ -438,28 +442,44 @@ export async function reconcileInterruptedSubmission(
 	// recordSubmissionTerminal after (or make it conditional on) the
 	// failSubmission CAS. This is safe today because Cloudflare DOs are
 	// single-threaded and multi-process Node is not a supported configuration.
-	if (
-		journal?.phase === 'provider_started' &&
-		journal.committed === false &&
-		journal.streamKey &&
-		journal.streamConsumedAt === undefined
-	) {
-		const streamKey = journal.streamKey;
-		const turnCheckpointLeafId = journal.checkpointLeafId;
-		const recoveryCtx = createContext(dispatchId);
-		if (submission.kind === 'direct') recoveryCtx.setSubmissionId?.(submission.submissionId);
-		const recovered = (await createAgentSubmissionSessionHandler(agent, input, (s) =>
-			s.recoverInterruptedStream(streamKey, turnCheckpointLeafId),
-		)(recoveryCtx)) as boolean;
-		if (recovered) {
-			await submissions.markStreamConsumed(attempt, journal.streamKey);
-			await submissions.deleteStreamChunkSegments(journal.streamKey);
-			const replacement = await submissions.replaceTurnJournalAttempt(
-				attempt,
-				crypto.randomUUID(),
-				lease,
+	if (journal?.phase === 'provider_started' && journal.committed === false) {
+		const replacement = await submissions.replaceTurnJournalAttempt(
+			attempt,
+			crypto.randomUUID(),
+			lease,
+		);
+		if (replacement?.attemptId) {
+			const replacementAttempt = {
+				submissionId: replacement.submissionId,
+				attemptId: replacement.attemptId,
+			};
+			const recoveryCtx = createContext(dispatchId);
+			if (submission.kind === 'direct') recoveryCtx.setSubmissionId?.(submission.submissionId);
+			let recovered = false;
+			try {
+				recovered = (await createAgentSubmissionSessionHandler(agent, input, (s) =>
+					s.recoverInterruptedStream(replacementAttempt, journal.turnId),
+				)(recoveryCtx)) as boolean;
+			} catch (error) {
+				if (!(error instanceof TypeError && error.message.includes('recoverInterruptedStream'))) throw error;
+			}
+			if (recovered || state === 'continuable') {
+				return { disposition: 'replacement', submission: replacement };
+			}
+			const error = new SubmissionInterruptedError({ phase: 'after_input_application' });
+			return failInterruptedSubmission(
+				submissions,
+				replacement,
+				replacementAttempt,
+				agent,
+				'interrupted_after_input_application',
+				error,
+				createContext,
+				deliverTerminalEvent,
+				undefined,
+				undefined,
+				conversationWriter,
 			);
-			if (replacement) return { disposition: 'replacement', submission: replacement };
 		}
 	}
 	// The journal is the authoritative record of provider work: a null
@@ -500,21 +520,29 @@ export async function reconcileInterruptedSubmission(
 		journal.committed === false &&
 		journal.toolRequest
 	) {
-		const repairCtx = createContext(dispatchId);
-		if (submission.kind === 'direct') repairCtx.setSubmissionId?.(submission.submissionId);
-		const repairedLeafId = (await createAgentSubmissionSessionHandler(agent, input, (s) =>
-			s.repairInterruptedToolCalls(input, journal.toolRequest as AgentSubmissionToolRequest),
-		)(repairCtx)) as string | undefined;
-		if (repairedLeafId) {
-			await submissions.updateTurnJournalPhase(attempt, 'before_provider', {
-				checkpointLeafId: repairedLeafId,
-			});
-			const replacement = await submissions.replaceTurnJournalAttempt(
-				attempt,
-				crypto.randomUUID(),
-				lease,
-			);
-			if (replacement) return { disposition: 'replacement', submission: replacement };
+		const replacement = await submissions.replaceTurnJournalAttempt(
+			attempt,
+			crypto.randomUUID(),
+			lease,
+		);
+		if (replacement?.attemptId) {
+			const repairCtx = createContext(dispatchId);
+			if (submission.kind === 'direct') repairCtx.setSubmissionId?.(submission.submissionId);
+			const repairedLeafId = (await createAgentSubmissionSessionHandler(agent, input, (s) =>
+				s.repairInterruptedToolCalls(
+					input,
+					journal.toolRequest as AgentSubmissionToolRequest,
+					{ submissionId: replacement.submissionId, attemptId: replacement.attemptId as string },
+				),
+			)(repairCtx)) as string | undefined;
+			if (repairedLeafId) {
+				await submissions.updateTurnJournalPhase(
+					{ submissionId: replacement.submissionId, attemptId: replacement.attemptId },
+					'before_provider',
+					{ checkpointLeafId: repairedLeafId },
+				);
+			}
+			return { disposition: 'replacement', submission: replacement };
 		}
 		if (state === 'continuable') {
 			const replacement = await submissions.replaceTurnJournalAttempt(

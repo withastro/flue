@@ -571,16 +571,15 @@ describe('NodeAgentCoordinator', () => {
 
 			const input = makeDispatchInput();
 			await coordinator.admitDispatch(input);
-			// Wait until the streaming turn has flushed at least one durable
-			// chunk segment, then shut down mid-stream.
-			let streamKey: string | undefined;
 			await vi.waitFor(
 				async () => {
-					const journal = await executionStore.submissions.getTurnJournal(input.dispatchId);
-					streamKey = journal?.streamKey;
-					if (!streamKey) throw new Error('Stream has not started yet.');
-					const segments = await executionStore.submissions.getStreamChunkSegments(streamKey);
-					expect(segments.length).toBeGreaterThan(0);
+					const adapter = sqlite(dbPath);
+					await adapter.migrate?.();
+					const { conversationStreamStore } = await adapter.connect();
+					const read = await conversationStreamStore.read(agentStreamPath('assistant', 'instance-1'));
+					expect(read.batches.flatMap((batch) => batch.records).some(
+						(record) => record.type === 'assistant_text_delta',
+					)).toBe(true);
 				},
 				{ timeout: 10_000, interval: 50 },
 			);
@@ -594,9 +593,7 @@ describe('NodeAgentCoordinator', () => {
 			});
 			const journal = await executionStore.submissions.getTurnJournal(input.dispatchId);
 			expect(journal?.committed).toBe(false);
-			if (!journal?.streamKey) throw new Error('Expected a stream key in the journal.');
-			const segments = await executionStore.submissions.getStreamChunkSegments(journal.streamKey);
-			expect(segments.length).toBeGreaterThan(0);
+			expect(journal?.streamKey).toBeUndefined();
 
 			// "Restart": advance the clock past the shut-down coordinator's
 			// lease so reconciliation picks the submission up.
@@ -630,12 +627,13 @@ describe('NodeAgentCoordinator', () => {
 				expect(JSON.stringify((abortedPartials[0] as any).message.content)).toContain(
 					'lorem ipsum',
 				);
-				const continued = entries.filter(
-					(entry) =>
-						entry.type === 'message' &&
-						entry.message.role === 'signal' &&
-						(entry.message as any).type === 'stream_continued',
-				);
+				const adapter = sqlite(dbPath);
+				await adapter.migrate?.();
+				const { conversationStreamStore } = await adapter.connect();
+				const canonical = await conversationStreamStore.read(agentStreamPath('assistant', 'instance-1'));
+				const continued = canonical.batches
+					.flatMap((batch) => batch.records)
+					.filter((record) => record.type === 'signal' && record.signalType === 'stream_continued');
 				expect(continued).toHaveLength(1);
 				const assistants = entries.filter(
 					(entry) => entry.type === 'message' && entry.message.role === 'assistant',
@@ -991,28 +989,25 @@ describe('NodeAgentCoordinator', () => {
 			]);
 			// A timeout shorter than the restart's clock advance, so the
 			// reconciliation terminalizes instead of resuming.
-			const { coordinator, executionStore } = await createFauxCoordinator(dbPath, provider, {
+			const { coordinator } = await createFauxCoordinator(dbPath, provider, {
 				timeoutMs: 30_000,
 			});
 
 			const input = makeDispatchInput();
 			await coordinator.admitDispatch(input);
-			let streamKey: string | undefined;
 			await vi.waitFor(
 				async () => {
-					const journal = await executionStore.submissions.getTurnJournal(input.dispatchId);
-					streamKey = journal?.streamKey;
-					if (!streamKey) throw new Error('Stream has not started yet.');
-					const segments = await executionStore.submissions.getStreamChunkSegments(streamKey);
-					expect(segments.length).toBeGreaterThan(0);
+					const adapter = sqlite(dbPath);
+					await adapter.migrate?.();
+					const { conversationStreamStore } = await adapter.connect();
+					const read = await conversationStreamStore.read(agentStreamPath('assistant', 'instance-1'));
+					expect(read.batches.flatMap((batch) => batch.records).some(
+						(record) => record.type === 'assistant_text_delta',
+					)).toBe(true);
 				},
 				{ timeout: 10_000, interval: 50 },
 			);
 			await coordinator.shutdown();
-			if (!streamKey) throw new Error('Expected a stream key.');
-			expect(
-				(await executionStore.submissions.getStreamChunkSegments(streamKey)).length,
-			).toBeGreaterThan(0);
 
 			// "Restart": advance the clock past both the lease and the timeout.
 			const realNow = Date.now.bind(Date);
@@ -1028,9 +1023,8 @@ describe('NodeAgentCoordinator', () => {
 				const submission = await store2.submissions.getSubmission(input.dispatchId);
 				expect(submission).toMatchObject({ status: 'settled' });
 				expect(submission?.error).toContain('exceeded the configured timeout');
-				// Terminal settlement leaves no orphaned chunk segments behind:
-				// nothing will ever recover or supersede them after this point.
-				expect(await store2.submissions.getStreamChunkSegments(streamKey)).toEqual([]);
+				const journal = await store2.submissions.getTurnJournal(input.dispatchId);
+				expect(journal?.streamKey).toBeUndefined();
 			} finally {
 				nowSpy.mockRestore();
 			}

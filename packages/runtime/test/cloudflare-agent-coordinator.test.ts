@@ -507,7 +507,7 @@ describe('createCloudflareAgentRuntime()', () => {
 		await runtime.onStart(instance, () => {});
 
 		expect(events).toEqual(['record-terminal', 'settle-error']);
-		expect(contextCount).toBe(2);
+		expect(contextCount).toBe(3);
 		expect(await executionStore.submissions.getSubmission('direct-1')).toMatchObject({
 			status: 'settled',
 		});

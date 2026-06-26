@@ -101,6 +101,13 @@ export class ConversationRecordWriter {
 		return (await this.loadReducedState()).conversations.get(conversationId);
 	}
 
+	async findInProgressAssistant(conversationId: string, submissionId: string) {
+		const conversation = await this.getConversation(conversationId);
+		return [...(conversation?.inProgressMessages.values() ?? [])].find(
+			(message) => message.submissionId === submissionId,
+		);
+	}
+
 	async findConversation(harness: string, session: string) {
 		const matches = [...(await this.loadReducedState()).conversations.values()].filter(
 			(conversation) => conversation.harness === harness && conversation.session === session && !conversation.deleted,
