@@ -3,13 +3,14 @@ import { HttpClient, type HttpClientOptions, type RequestHeaders } from './http.
 
 export type { HttpClientOptions } from './http.ts';
 
-import type {
-	AgentConversationActivity,
-	AgentConversationActivityOptions,
-	AgentConversationHistoryOptions,
-	AgentConversationSnapshot,
-	AgentConversationUpdate,
-	AgentConversationUpdateOptions,
+import {
+	type AgentConversationActivity,
+	type AgentConversationActivityOptions,
+	type AgentConversationHistoryOptions,
+	type AgentConversationSnapshot,
+	type AgentConversationUpdate,
+	type AgentConversationUpdateOptions,
+	assertAgentConversationUpdate,
 } from './public/conversation.ts';
 import {
 	type AgentPromptOptions,
@@ -145,7 +146,7 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 						),
 						fetch: http.fetchWithHeaders.bind(http),
 					},
-					assertConversationUpdate,
+					assertAgentConversationUpdate,
 				),
 			activity: (name, id, opts) =>
 				createFlueEventStream<AgentConversationActivity>(
@@ -217,18 +218,6 @@ function conversationQuery(
 		harness: selector.harness,
 		session: selector.session,
 	};
-}
-
-function assertConversationUpdate(value: AgentConversationUpdate): AgentConversationUpdate {
-	if (
-		!value ||
-		typeof value !== 'object' ||
-		value.v !== 1 ||
-		(value.type !== 'conversation_record' && value.type !== 'conversation_reset')
-	) {
-		throw new TypeError('Unsupported agent conversation update.');
-	}
-	return value;
 }
 
 function assertConversationActivity(value: AgentConversationActivity): AgentConversationActivity {

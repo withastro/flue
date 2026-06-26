@@ -1,7 +1,10 @@
 import type { BackoffOptions } from '@durable-streams/client';
 import type { HttpClient } from '../http.ts';
 import type { FlueEvent, RunRecord } from '../types.ts';
-import type { AgentConversationUpdate } from './conversation.ts';
+import {
+	type AgentConversationUpdate,
+	assertAgentConversationUpdate,
+} from './conversation.ts';
 import type { AgentSendResult } from './invoke.ts';
 import { createFlueEventStream } from './stream.ts';
 
@@ -61,7 +64,7 @@ export async function waitForAgentSubmission<TResult>(
 			backoffOptions: options.backoffOptions,
 		},
 		{ url: url.toString(), fetch: http.fetchWithHeaders.bind(http) },
-		assertConversationUpdate,
+		assertAgentConversationUpdate,
 	);
 
 	for await (const event of stream) {
@@ -85,18 +88,6 @@ export async function waitForAgentSubmission<TResult>(
 		targetId: admission.submissionId,
 		failure: 'terminal_event_missing',
 	});
-}
-
-function assertConversationUpdate(value: AgentConversationUpdate): AgentConversationUpdate {
-	if (
-		!value ||
-		typeof value !== 'object' ||
-		value.v !== 1 ||
-		(value.type !== 'conversation_record' && value.type !== 'conversation_reset')
-	) {
-		throw new TypeError('Unsupported agent conversation update.');
-	}
-	return value;
 }
 
 export async function runWorkflow<TResult>(

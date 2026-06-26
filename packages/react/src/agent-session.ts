@@ -34,7 +34,6 @@ export class AgentSession {
 	private admittedOffset: string | undefined;
 	private reconnectAttempt = 0;
 	private reconnectWake: (() => void) | undefined;
-	private hydrationLocalEvents: AgentReducerEvent[] = [];
 	private localId = 0;
 
 	constructor(
@@ -102,7 +101,6 @@ export class AgentSession {
 			if (!this.isCurrent(generation)) return;
 			this.reconnectAttempt = 0;
 			this.state = reduceAgentEvent(this.state, { type: 'local_history', snapshot });
-			this.hydrationLocalEvents = [];
 			this.reconnectOffset = snapshot.offset;
 			this.publish();
 			queueMicrotask(() => void this.connect(generation));
@@ -197,14 +195,6 @@ export class AgentSession {
 	}
 
 	private dispatch(event: AgentReducerEvent): void {
-		if (
-			!this.state.historyReady &&
-			(event.type === 'local_send_submitted' ||
-				event.type === 'local_send_admitted' ||
-				event.type === 'local_send_failed')
-		) {
-			this.hydrationLocalEvents.push(event);
-		}
 		const next = reduceAgentEvent(this.state, event);
 		if (next === this.state) return;
 		this.state = next;

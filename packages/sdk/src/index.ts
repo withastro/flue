@@ -36,6 +36,7 @@ export type {
 	CanonicalConversationRecord,
 } from './public/conversation.ts';
 export {
+	assertAgentConversationUpdate,
 	createAgentConversationState,
 	reduceAgentConversationUpdate,
 } from './public/conversation.ts';

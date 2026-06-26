@@ -117,6 +117,20 @@ export interface AgentConversationState {
 	recordIds: string[];
 }
 
+export function assertAgentConversationUpdate(
+	value: AgentConversationUpdate,
+): AgentConversationUpdate {
+	if (
+		!value ||
+		typeof value !== 'object' ||
+		value.v !== 1 ||
+		(value.type !== 'conversation_record' && value.type !== 'conversation_reset')
+	) {
+		throw new TypeError('Unsupported agent conversation update.');
+	}
+	return value;
+}
+
 export function createAgentConversationState(
 	snapshot: AgentConversationSnapshot,
 ): AgentConversationState {

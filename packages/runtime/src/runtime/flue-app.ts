@@ -413,21 +413,11 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 	// user-defined auth/rate-limiting applies to stream reads too.
 	const record = rt.agents.find((agent) => agent.name === name);
 	return runAttachedMiddleware(c, record?.route, async () => {
-		// DS stream read (GET/HEAD) — served directly for Node, forwarded for CF.
 		if (c.req.method === 'GET' || c.req.method === 'HEAD') {
 			const streamPath = agentStreamPath(name, id);
 			if (rt.target === 'node') {
-				const view = new URL(request.url).searchParams.get('view');
-				if (view) {
-					if (c.req.method === 'HEAD') {
-						return handleAgentConversationHead(rt.conversationStreamStore, streamPath);
-					}
-					return handleAgentConversationRead({
-						store: rt.conversationStreamStore,
-						snapshots: rt.conversationSnapshotStore,
-						path: streamPath,
-						request,
-					});
+				if (c.req.method === 'HEAD') {
+					return handleAgentConversationHead(rt.conversationStreamStore, streamPath);
 				}
 				return handleAgentConversationRead({
 					store: rt.conversationStreamStore,

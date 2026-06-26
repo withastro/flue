@@ -38,7 +38,7 @@ export async function handleAgentConversationRead(options: {
 	if (view === 'updates') return updatesResponse(options, selectorFrom(url));
 	if (view === 'activity') return activityResponse(options);
 	return errorResponse(
-		new InvalidRequestError({ reason: 'Agent stream view is required. Use history, updates, or activity.' }),
+		new InvalidRequestError({ reason: 'Invalid agent conversation view. Use history, updates, or activity.' }),
 	);
 }
 

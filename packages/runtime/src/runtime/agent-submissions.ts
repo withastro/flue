@@ -529,8 +529,24 @@ export async function reconcileInterruptedSubmission(
 					'before_provider',
 					{ checkpointLeafId: repairedLeafId },
 				);
+				return { disposition: 'replacement', submission: replacement };
 			}
-			return { disposition: 'replacement', submission: replacement };
+			if (state === 'continuable') {
+				return { disposition: 'replacement', submission: replacement };
+			}
+			const error = new SubmissionInterruptedError({ phase: 'after_input_application' });
+			return failInterruptedSubmission(
+				submissions,
+				replacement,
+				{ submissionId: replacement.submissionId, attemptId: replacement.attemptId },
+				agent,
+				'interrupted_after_input_application',
+				error,
+				createContext,
+				deliverTerminalEvent,
+				undefined,
+				conversationWriter,
+			);
 		}
 		if (state === 'continuable') {
 			const replacement = await submissions.replaceTurnJournalAttempt(
