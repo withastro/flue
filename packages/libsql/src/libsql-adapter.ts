@@ -10,6 +10,7 @@
  * tests can substitute an in-memory client without pulling in a real server.
  */
 
+import type { WorkflowRunPointer } from '@flue/runtime';
 import type {
 	AgentAttemptMarker,
 	AgentDispatchAdmission,
@@ -41,7 +42,6 @@ import type {
 	SubmissionAttemptRef,
 	SubmissionClaimRef,
 } from '@flue/runtime/adapter';
-import type { WorkflowRunPointer } from '@flue/runtime';
 import {
 	assertSupportedFlueSchemaVersion,
 	clampLimit,
@@ -73,6 +73,10 @@ import {
 	sessionEntryChunkOwner,
 	submissionChunkOwner,
 } from '@flue/runtime/adapter';
+import {
+	LibsqlConversationSnapshotStore,
+	LibsqlConversationStreamStore,
+} from './libsql-conversation-store.ts';
 
 // ─── Bring-your-own-driver runner seam ──────────────────────────────────────
 
@@ -169,6 +173,8 @@ export function libsql(runner: LibsqlRunner): PersistenceAdapter {
 				},
 				runStore: new LibsqlRunStore(runner),
 				eventStreamStore: new LibsqlEventStreamStore(runner),
+				conversationStreamStore: new LibsqlConversationStreamStore(runner),
+				conversationSnapshotStore: new LibsqlConversationSnapshotStore(runner),
 			};
 		},
 		async close() {
@@ -394,6 +400,41 @@ async function ensureTables(runner: LibsqlRunner): Promise<void> {
 				seq     INTEGER NOT NULL,
 				data    TEXT NOT NULL,
 				PRIMARY KEY (path, seq)
+			)
+		`);
+		await tx.query(`
+			CREATE TABLE IF NOT EXISTS flue_conversation_streams (
+				path TEXT PRIMARY KEY,
+				identity_json TEXT NOT NULL,
+				next_offset INTEGER NOT NULL DEFAULT 0,
+				closed INTEGER NOT NULL DEFAULT 0,
+				producer_id TEXT,
+				producer_epoch INTEGER NOT NULL DEFAULT 0,
+				next_producer_sequence INTEGER NOT NULL DEFAULT 0,
+				incarnation TEXT NOT NULL
+			)
+		`);
+		await tx.query(`
+			CREATE TABLE IF NOT EXISTS flue_conversation_stream_batches (
+				path TEXT NOT NULL,
+				seq INTEGER NOT NULL,
+				producer_id TEXT NOT NULL,
+				producer_epoch INTEGER NOT NULL,
+				producer_sequence INTEGER NOT NULL,
+				data TEXT NOT NULL,
+				submission_id TEXT,
+				attempt_id TEXT,
+				PRIMARY KEY (path, seq),
+				UNIQUE (path, producer_id, producer_epoch, producer_sequence)
+			)
+		`);
+		await tx.query(`
+			CREATE TABLE IF NOT EXISTS flue_conversation_snapshots (
+				path TEXT PRIMARY KEY,
+				reducer_version INTEGER NOT NULL,
+				stream_offset TEXT NOT NULL,
+				data TEXT NOT NULL,
+				created_at TEXT NOT NULL
 			)
 		`);
 		try {
