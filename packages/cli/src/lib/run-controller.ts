@@ -1,6 +1,6 @@
 import type {
 	AgentPromptImage,
-	AgentConversationUpdate,
+	ConversationStreamChunk,
 	AgentPromptResponse,
 	FlueClient,
 	FlueEvent,
@@ -34,7 +34,7 @@ export type RunTargetResult =
 export async function runTarget(
 	client: FlueClient,
 	target: RunTarget,
-	onEvent?: (event: AgentConversationUpdate | FlueEvent) => void | Promise<void>,
+	onEvent?: (event: ConversationStreamChunk | FlueEvent) => void | Promise<void>,
 	signal?: AbortSignal,
 ): Promise<RunTargetResult> {
 	if (target.kind === 'agent') {
@@ -43,7 +43,7 @@ export async function runTarget(
 			signal,
 		});
 		const result = await client.agents.wait<AgentPromptResponse>(admission, {
-			onEvent: onEvent as ((event: AgentConversationUpdate) => void | Promise<void>) | undefined,
+			onEvent: onEvent as ((event: ConversationStreamChunk) => void | Promise<void>) | undefined,
 			signal,
 		});
 		return { kind: 'agent', instanceId: target.instanceId, result };

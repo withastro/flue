@@ -1,5 +1,4 @@
 import {
-	type AgentConversationSelector,
 	projectAgentConversationBatch,
 	projectAgentConversationSnapshot,
 } from '../conversation-public.ts';
@@ -33,8 +32,8 @@ export async function handleAgentConversationRead(options: {
 }): Promise<Response> {
 	const url = new URL(options.request.url);
 	const view = url.searchParams.get('view') ?? 'history';
-	if (view === 'history') return historyResponse(options, selectorFrom(url));
-	if (view === 'updates') return updatesResponse(options, selectorFrom(url));
+	if (view === 'history') return historyResponse(options);
+	if (view === 'updates') return updatesResponse(options);
 	return errorResponse(
 		new InvalidRequestError({ reason: 'Invalid agent conversation view. Use history or updates.' }),
 	);
@@ -57,14 +56,11 @@ export async function handleAgentConversationHead(
 	});
 }
 
-async function historyResponse(
-	options: {
-		store: ConversationStreamStore;
-		path: string;
-		request: Request;
-	},
-	selector: AgentConversationSelector,
-): Promise<Response> {
+async function historyResponse(options: {
+	store: ConversationStreamStore;
+	path: string;
+	request: Request;
+}): Promise<Response> {
 	const url = new URL(options.request.url);
 	if (url.searchParams.has('offset') || url.searchParams.has('tail') || url.searchParams.has('live')) {
 		return errorResponse(
@@ -77,7 +73,7 @@ async function historyResponse(
 		store: options.store,
 		path: options.path,
 	});
-	const snapshot = projectAgentConversationSnapshot(state, selector);
+	const snapshot = projectAgentConversationSnapshot(state);
 	if (!snapshot) return errorResponse(new StreamNotFoundError({ path: options.path }));
 	return Response.json(snapshot, {
 		headers: {
@@ -89,14 +85,11 @@ async function historyResponse(
 	});
 }
 
-async function updatesResponse(
-	options: {
-		store: ConversationStreamStore;
-		path: string;
-		request: Request;
-	},
-	selector: AgentConversationSelector,
-): Promise<Response> {
+async function updatesResponse(options: {
+	store: ConversationStreamStore;
+	path: string;
+	request: Request;
+}): Promise<Response> {
 	const url = new URL(options.request.url);
 	if (url.searchParams.has('tail')) {
 		return errorResponse(new InvalidRequestError({ reason: 'Update streams do not accept tail.' }));
@@ -108,7 +101,7 @@ async function updatesResponse(
 	const meta = await options.store.getMeta(options.path);
 	if (!meta) return errorResponse(new StreamNotFoundError({ path: options.path }));
 	if (live === 'sse') {
-		return sseResponse(options.store, options.path, offset, selector, options.request.signal);
+		return sseResponse(options.store, options.path, offset, options.request.signal);
 	}
 	let state = await loadReducedConversationPrefix({
 		store: options.store,
@@ -121,7 +114,7 @@ async function updatesResponse(
 		if (waited === 'aborted') return new Response(null, { status: 499, headers: SECURITY_HEADERS });
 		read = waited;
 	}
-	const projected = projectRead(state, read, selector);
+	const projected = projectRead(state, read);
 	state = projected.state;
 	return dsJsonResponse(projected.items, read, projected.offset);
 }
@@ -129,7 +122,6 @@ async function updatesResponse(
 function projectRead(
 	initialState: Awaited<ReturnType<typeof loadReducedConversationPrefix>>,
 	read: ConversationStreamReadResult,
-	selector: AgentConversationSelector,
 ) {
 	let state = initialState;
 	const items: unknown[] = [];
@@ -141,7 +133,6 @@ function projectRead(
 			...projectAgentConversationBatch({
 				state,
 				previousState,
-				selector,
 				records: batch.records,
 			}),
 		);
@@ -169,7 +160,6 @@ function sseResponse(
 	store: ConversationStreamStore,
 	path: string,
 	offset: string,
-	selector: AgentConversationSelector,
 	signal: AbortSignal,
 ): Response {
 	const encoder = new TextEncoder();
@@ -193,7 +183,7 @@ function sseResponse(
 			try {
 				while (active) {
 					const read = await store.read(path, { offset: currentOffset });
-					const projected = projectRead(state, read, selector);
+					const projected = projectRead(state, read);
 					state = projected.state;
 					if (projected.items.length > 0) {
 						controller.enqueue(
@@ -234,16 +224,6 @@ function sseResponse(
 			...SECURITY_HEADERS,
 		},
 	});
-}
-
-function selectorFrom(url: URL): AgentConversationSelector {
-	return {
-		...(url.searchParams.get('conversationId')
-			? { conversationId: url.searchParams.get('conversationId') as string }
-			: {}),
-		...(url.searchParams.get('harness') ? { harness: url.searchParams.get('harness') as string } : {}),
-		...(url.searchParams.get('session') ? { session: url.searchParams.get('session') as string } : {}),
-	};
 }
 
 function singleOffset(url: URL): string | Response {

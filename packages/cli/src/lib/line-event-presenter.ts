@@ -1,4 +1,24 @@
-import type { AgentConversationUpdate, FlueEvent } from '@flue/sdk';
+import type { ConversationStreamChunk, FlueEvent } from '@flue/sdk';
+
+const CONVERSATION_CHUNK_TYPES = new Set<ConversationStreamChunk['type']>([
+	'conversation-reset',
+	'message-appended',
+	'message-started',
+	'part-start',
+	'part-delta',
+	'part-end',
+	'tool-input',
+	'tool-output',
+	'tool-output-error',
+	'message-completed',
+	'submission-settled',
+]);
+
+function isConversationChunk(
+	event: ConversationStreamChunk | FlueEvent,
+): event is ConversationStreamChunk {
+	return CONVERSATION_CHUNK_TYPES.has(event.type as ConversationStreamChunk['type']);
+}
 
 export interface LineEventPresenterOptions {
 	write(line: string): void;
@@ -8,7 +28,7 @@ export interface LineEventPresenterOptions {
 }
 
 export interface LineEventPresenter {
-	present(event: AgentConversationUpdate | FlueEvent): void;
+	present(event: ConversationStreamChunk | FlueEvent): void;
 	flush(): void;
 }
 
@@ -39,53 +59,57 @@ export function createLineEventPresenter(options: LineEventPresenterOptions): Li
 		flushThinking();
 	};
 
+	const partKinds = new Map<string, 'text' | 'reasoning'>();
+	const toolNames = new Map<string, string>();
+
 	return {
 		flush,
 		present(event) {
-			if (event.v === 1) {
-				if (event.type !== 'conversation_record') return;
-				const record = event.record;
-				switch (record.type) {
-					case 'assistant_text_delta':
-						if (typeof record.delta !== 'string') return;
-						flushThinking();
-						beginText();
-						textBuffer = consumeCompleteLines(
-							textBuffer + record.delta,
-							options.write,
-							(line) => `${textIndent}${line}`,
-						);
+			if (isConversationChunk(event)) {
+				switch (event.type) {
+					case 'part-start':
+						partKinds.set(event.partId, event.kind);
+						if (event.kind === 'reasoning') {
+							flushText();
+							options.write(dim('thinking'));
+						}
 						return;
-					case 'assistant_text_completed':
-						flushText();
+					case 'part-delta':
+						partKinds.set(event.partId, event.kind);
+						if (event.kind === 'reasoning') {
+							flushText();
+							thinkingBuffer = consumeCompleteLines(
+								thinkingBuffer + event.delta,
+								options.write,
+								(line) => dim(`  ${line}`),
+							);
+						} else {
+							flushThinking();
+							beginText();
+							textBuffer = consumeCompleteLines(
+								textBuffer + event.delta,
+								options.write,
+								(line) => `${textIndent}${line}`,
+							);
+						}
 						return;
-					case 'assistant_reasoning_started':
-						flushText();
-						options.write(dim('thinking'));
+					case 'part-end':
+						if (partKinds.get(event.partId) === 'reasoning') flushThinking();
+						else flushText();
 						return;
-					case 'assistant_reasoning_delta':
-						if (typeof record.delta !== 'string') return;
-						flushText();
-						thinkingBuffer = consumeCompleteLines(
-							thinkingBuffer + record.delta,
-							options.write,
-							(line) => dim(`  ${line}`),
-						);
-						return;
-					case 'assistant_reasoning_completed':
-						flushThinking();
-						return;
-					case 'assistant_tool_call':
-						if (typeof record.name !== 'string') return;
+					case 'tool-input':
+						toolNames.set(event.toolCallId, event.toolName);
 						flush();
-						options.write(`${dim('tool')} ${record.name}`);
+						options.write(`${dim('tool')} ${event.toolName}`);
 						return;
-					case 'tool_result':
-						if (typeof record.toolName !== 'string') return;
-						options.write(`${dim(`tool ${record.isError === true ? 'error' : 'done'}`)} ${record.toolName}`);
+					case 'tool-output':
+						options.write(`${dim('tool done')} ${toolNames.get(event.toolCallId) ?? ''}`.trimEnd());
 						return;
-					case 'submission_settled':
-					case 'assistant_message_completed':
+					case 'tool-output-error':
+						options.write(`${dim('tool error')} ${toolNames.get(event.toolCallId) ?? ''}`.trimEnd());
+						return;
+					case 'message-completed':
+					case 'submission-settled':
 						flush();
 						return;
 					default:

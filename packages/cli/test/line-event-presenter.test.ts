@@ -2,29 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { createLineEventPresenter } from '../src/lib/line-event-presenter.ts';
 
 describe('createLineEventPresenter()', () => {
-	it('renders canonical agent text and tool updates', () => {
+	it('renders agent conversation chunks for text and tool updates', () => {
 		const lines: string[] = [];
 		const presenter = createLineEventPresenter({ write: (line) => lines.push(line) });
-		const update = (id: string, type: string, fields: Record<string, unknown>) => ({
-			v: 1 as const,
-			type: 'conversation_record' as const,
-			conversationId: 'conversation-1',
-			record: {
-				v: 1 as const,
-				id,
-				type,
-				conversationId: 'conversation-1',
-				harness: 'default',
-				session: 'default',
-				timestamp: '2026-06-26T00:00:00.000Z',
-				...fields,
-			},
-		});
 
-		presenter.present(update('delta-1', 'assistant_text_delta', { delta: 'hello' }));
-		presenter.present(update('text-done', 'assistant_text_completed', {}));
-		presenter.present(update('tool-call', 'assistant_tool_call', { name: 'bash' }));
-		presenter.present(update('tool-result', 'tool_result', { toolName: 'bash', isError: false }));
+		presenter.present({ type: 'part-delta', conversationId: 'c1', messageId: 'a1', partId: 'b1', kind: 'text', sequence: 0, delta: 'hello' });
+		presenter.present({ type: 'part-end', conversationId: 'c1', messageId: 'a1', partId: 'b1' });
+		presenter.present({ type: 'tool-input', conversationId: 'c1', messageId: 'a1', toolCallId: 't1', toolName: 'bash', input: {} });
+		presenter.present({ type: 'tool-output', conversationId: 'c1', toolCallId: 't1', output: {} });
 
 		expect(lines).toEqual(['  hello', 'tool bash', 'tool done bash']);
 	});

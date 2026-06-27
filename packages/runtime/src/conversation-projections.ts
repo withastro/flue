@@ -17,36 +17,21 @@ import { classifySubmissionState } from './submission-state.ts';
 import type { PromptUsage } from './types.ts';
 import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 
-interface ConversationDeltaState {
-	nextSequence: number;
-	accepted: string[];
-}
-
+/**
+ * Materialized conversation part. Structurally identical to @flue/sdk's
+ * `FlueConversationPart` — the public projection shape. The runtime cannot
+ * import the SDK, so the shape is mirrored here and asserted by the snapshot
+ * wire contract.
+ */
 type ConversationUiPart =
-	| {
-			type: 'text';
-			blockId?: string;
-			text: string;
-			state: 'streaming' | 'done';
-			deltaState?: ConversationDeltaState;
-	  }
-	| {
-			type: 'reasoning';
-			blockId?: string;
-			text: string;
-			state: 'streaming' | 'done';
-			deltaState?: ConversationDeltaState;
-	  }
-	| { type: 'attachment'; attachment: AttachmentRef }
-	| {
-			type: 'tool';
-			toolCallId: string;
-			toolName: string;
-			input: unknown;
-			state: 'input-available' | 'output-available' | 'output-error';
-			output?: unknown;
-			errorText?: string;
-	  };
+	| { type: 'text'; text: string; state: 'streaming' | 'done' }
+	| { type: 'reasoning'; text: string; state: 'streaming' | 'done' }
+	| { type: 'file'; mediaType: string; filename?: string; url?: string }
+	| ({ type: 'dynamic-tool'; toolName: string; toolCallId: string } & (
+			| { state: 'input-available'; input: unknown }
+			| { state: 'output-available'; input: unknown; output: unknown }
+			| { state: 'output-error'; input: unknown; errorText: string }
+	  ));
 
 export interface ConversationUiMessage {
 	id: string;
@@ -57,6 +42,10 @@ export interface ConversationUiMessage {
 		usage?: PromptUsage;
 		model?: { provider: string; id: string };
 	};
+}
+
+function fileFromAttachment(attachment: AttachmentRef): ConversationUiPart {
+	return { type: 'file', mediaType: attachment.mimeType };
 }
 
 export interface ConversationUiSnapshot {
@@ -108,14 +97,15 @@ export function projectConversationUi(
 		const toolResult = entry.message;
 		for (let index = messages.length - 1; index >= 0; index--) {
 			const candidate = messages[index];
-			const part = candidate?.parts.find(
-				(value): value is Extract<ConversationUiPart, { type: 'tool' }> =>
-					value.type === 'tool' && value.toolCallId === toolResult.toolCallId,
-			);
-			if (!part) continue;
-			part.state = toolResult.isError ? 'output-error' : 'output-available';
-			if (toolResult.isError) part.errorText = toolResultText(toolResult.content);
-			else part.output = toolResultOutput(toolResult.content);
+			const partIndex =
+				candidate?.parts.findIndex(
+					(value) => value.type === 'dynamic-tool' && value.toolCallId === toolResult.toolCallId,
+				) ?? -1;
+			if (!candidate || partIndex < 0) continue;
+			const part = candidate.parts[partIndex] as Extract<ConversationUiPart, { type: 'dynamic-tool' }>;
+			candidate.parts[partIndex] = toolResult.isError
+				? { type: 'dynamic-tool', toolName: part.toolName, toolCallId: part.toolCallId, state: 'output-error', input: part.input, errorText: toolResultText(toolResult.content) }
+				: { type: 'dynamic-tool', toolName: part.toolName, toolCallId: part.toolCallId, state: 'output-available', input: part.input, output: toolResultOutput(toolResult.content) };
 			break;
 		}
 	}
@@ -204,7 +194,7 @@ function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMess
 				if (block.type === 'text') parts.push({ type: 'text', text: block.text, state: 'done' });
 				else {
 					const attachment = entry.attachmentRefs?.get(block.data);
-					if (attachment) parts.push({ type: 'attachment', attachment });
+					if (attachment) parts.push(fileFromAttachment(attachment));
 				}
 			}
 		}
@@ -232,7 +222,7 @@ function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMess
 				return { type: 'reasoning', text: block.thinking, state: 'done' };
 			}
 			return {
-				type: 'tool',
+				type: 'dynamic-tool',
 				toolCallId: block.id,
 				toolName: block.name,
 				input: block.arguments,
@@ -292,23 +282,19 @@ function projectInProgressMessage(
 			if (block.type === 'text') {
 				return {
 					type: 'text',
-					blockId: block.blockId,
 					text: block.deltas.join(''),
 					state: block.completed ? 'done' : 'streaming',
-					deltaState: { nextSequence: block.deltas.length, accepted: [...block.deltas] },
 				};
 			}
 			if (block.type === 'reasoning') {
 				return {
 					type: 'reasoning',
-					blockId: block.blockId,
 					text: block.deltas.join(''),
 					state: block.completed ? 'done' : 'streaming',
-					deltaState: { nextSequence: block.deltas.length, accepted: [...block.deltas] },
 				};
 			}
 			return {
-				type: 'tool',
+				type: 'dynamic-tool',
 				toolCallId: block.toolCallId,
 				toolName: block.name,
 				input: block.arguments,

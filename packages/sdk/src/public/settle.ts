@@ -2,16 +2,20 @@ import type { BackoffOptions } from '@durable-streams/client';
 import type { HttpClient } from '../http.ts';
 import type { FlueEvent, RunRecord } from '../types.ts';
 import {
-	type AgentConversationUpdate,
-	assertAgentConversationUpdate,
-} from './conversation.ts';
+	type ConversationStreamChunk,
+	assertConversationStreamChunk,
+} from './conversation-stream.ts';
 import type { AgentSendResult } from './invoke.ts';
 import { createFlueEventStream } from './stream.ts';
 
 export interface AgentWaitOptions {
 	signal?: AbortSignal;
 	backoffOptions?: BackoffOptions;
-	onEvent?: (event: AgentConversationUpdate) => void | Promise<void>;
+	/**
+	 * Invoked for each conversation stream chunk while waiting, for progress
+	 * rendering. Prefer `client.agents.observe()` for maintained UI state.
+	 */
+	onEvent?: (event: ConversationStreamChunk) => void | Promise<void>;
 }
 
 export interface WorkflowRunOptions {
@@ -57,28 +61,27 @@ export async function waitForAgentSubmission<TResult>(
 ): Promise<TResult> {
 	const url = new URL(admission.streamUrl);
 	url.searchParams.set('view', 'updates');
-	const stream = createFlueEventStream<AgentConversationUpdate>(
+	const stream = createFlueEventStream<ConversationStreamChunk>(
 		{
 			offset: admission.offset,
 			signal: options.signal,
 			backoffOptions: options.backoffOptions,
 		},
 		{ url: url.toString(), fetch: http.fetchWithHeaders.bind(http) },
-		assertAgentConversationUpdate,
+		assertConversationStreamChunk,
 	);
 
-	for await (const event of stream) {
-		if (event.type !== 'conversation_record') continue;
-		if (event.record.submissionId !== admission.submissionId) continue;
-		await options.onEvent?.(event);
+	for await (const chunk of stream) {
+		await options.onEvent?.(chunk);
 		throwIfAborted(options.signal);
-		if (event.record.type !== 'submission_settled') continue;
-		if (event.record.outcome === 'completed') return event.record.result as TResult;
+		if (chunk.type !== 'submission-settled') continue;
+		if (chunk.submissionId !== admission.submissionId) continue;
+		if (chunk.outcome === 'completed') return chunk.result as TResult;
 		throw new FlueExecutionError({
 			target: 'agent_submission',
 			targetId: admission.submissionId,
 			failure: 'failed',
-			error: event.record.error,
+			error: chunk.error,
 		});
 	}
 

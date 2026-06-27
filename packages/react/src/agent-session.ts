@@ -16,8 +16,6 @@ export interface SendMessageOptions {
 	images?: AgentPromptImage[];
 }
 
-export type AgentHistory = 'all';
-
 export class AgentSession {
 	private state: AgentState = { ...emptyAgentState };
 	private snapshot: AgentSnapshot = publicSnapshot(this.state);
@@ -31,7 +29,6 @@ export class AgentSession {
 		private client: FlueClient,
 		private name: string,
 		private id: string,
-		_history: AgentHistory = 'all',
 		private live: LiveMode = true,
 	) {}
 

@@ -21,31 +21,20 @@ export type {
 export { createFlueClient } from './client.ts';
 export { FlueApiError } from './http.ts';
 export type {
-	AgentConversationDeltaState,
-	AgentConversationHistoryOptions,
-	AgentConversationMessage,
-	AgentConversationPart,
-	AgentConversationSelector,
-	AgentConversationSettlement,
-	AgentConversationSnapshot,
-	AgentConversationState,
-	AgentConversationUpdate,
-	AgentConversationUpdateOptions,
-	CanonicalConversationRecord,
+	FlueConversationHistoryOptions,
+	FlueConversationMessage,
+	FlueConversationPart,
+	FlueConversationSettlement,
+	FlueConversationSnapshot,
+	FlueConversationState,
 } from './public/conversation.ts';
-export {
-	assertAgentConversationUpdate,
-	createAgentConversationState,
-	reduceAgentConversationUpdate,
-} from './public/conversation.ts';
+export type { ConversationStreamChunk } from './public/conversation-stream.ts';
 export type {
 	AgentConversationObservation,
 	AgentConversationObservationPhase,
 	AgentConversationObservationSnapshot,
 	AgentConversationObserveOptions,
-	AgentConversationObservationSource,
 } from './public/observe.ts';
-export { createAgentConversationObservation } from './public/observe.ts';
 export type {
 	AgentPromptImage,
 	AgentPromptOptions,

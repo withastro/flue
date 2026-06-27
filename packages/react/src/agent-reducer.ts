@@ -1,14 +1,13 @@
 import {
-	type AgentConversationMessage,
-	type AgentConversationState,
 	type AgentPromptImage,
+	type FlueConversationMessage,
+	type FlueConversationState,
 } from '@flue/sdk';
-import type { UIMessage, UIMessagePart } from './types.ts';
 
 export type AgentStatus = 'idle' | 'connecting' | 'submitted' | 'streaming' | 'error';
 
 export interface AgentSnapshot {
-	messages: UIMessage[];
+	messages: FlueConversationMessage[];
 	status: AgentStatus;
 	historyReady: boolean;
 	error: Error | undefined;
@@ -20,7 +19,7 @@ interface PendingSend {
 }
 
 export interface AgentState extends AgentSnapshot {
-	conversation: AgentConversationState | undefined;
+	conversation: FlueConversationState | undefined;
 	pendingSends: PendingSend[];
 	localSubmissionIds: string[];
 	activeSubmissionIds: string[];
@@ -32,7 +31,7 @@ export type AgentReducerEvent =
 	| { type: 'local_send_failed'; localId: string; error: Error }
 	| {
 			type: 'local_observation';
-			conversation: AgentConversationState | undefined;
+			conversation: FlueConversationState | undefined;
 			phase: 'loading' | 'connecting' | 'live' | 'up-to-date' | 'absent' | 'error' | 'closed';
 			error?: Error;
 	  };
@@ -104,7 +103,7 @@ export function reduceAgentEvent(state: AgentState, event: AgentReducerEvent): A
 
 function mergeConversation(
 	state: AgentState,
-	conversation: AgentConversationState,
+	conversation: FlueConversationState,
 	historyReady: boolean,
 ): AgentState {
 	return converge({ ...state, conversation, historyReady });
@@ -113,8 +112,7 @@ function mergeConversation(
 function converge(state: AgentState): AgentState {
 	const conversation = state.conversation;
 	if (!conversation) return state;
-	const canonicalMessages = conversation.messages.map(toUiMessage);
-	let messages = canonicalMessages;
+	let messages = conversation.messages;
 	const pendingSends: PendingSend[] = [];
 	const settledIds = new Set(conversation.settlements.map((settlement) => settlement.submissionId));
 	for (const pending of state.pendingSends) {
@@ -158,60 +156,9 @@ function converge(state: AgentState): AgentState {
 	};
 }
 
-function toUiMessage(message: AgentConversationMessage): UIMessage {
-	return {
-		id: message.id,
-		role: message.role,
-		metadata: message.metadata,
-		parts: message.parts.flatMap((part): UIMessagePart[] => {
-			if (part.type === 'text' || part.type === 'reasoning') {
-				return [{ type: part.type, text: part.text, state: part.state }];
-			}
-			if (part.type === 'tool') {
-				if (part.state === 'output-available') {
-					return [{
-						type: 'dynamic-tool',
-						toolName: part.toolName,
-						toolCallId: part.toolCallId,
-						input: part.input,
-						state: 'output-available',
-						output: part.output,
-					}];
-				}
-				if (part.state === 'output-error') {
-					return [{
-						type: 'dynamic-tool',
-						toolName: part.toolName,
-						toolCallId: part.toolCallId,
-						input: part.input,
-						state: 'output-error',
-						errorText: part.errorText ?? 'Tool failed',
-					}];
-				}
-				return [{
-					type: 'dynamic-tool',
-					toolName: part.toolName,
-					toolCallId: part.toolCallId,
-					input: part.input,
-					state: 'input-available',
-				}];
-			}
-			return [{
-				type: 'data-attachment',
-				id: part.attachment.id,
-				data: {
-					mediaType: part.attachment.mimeType,
-					size: part.attachment.size,
-					digest: part.attachment.digest,
-				},
-			}];
-		}),
-	};
-}
-
 function optimisticMessage(
 	event: Extract<AgentReducerEvent, { type: 'local_send_submitted' }>,
-): UIMessage {
+): FlueConversationMessage {
 	return {
 		id: event.localId,
 		role: 'user',

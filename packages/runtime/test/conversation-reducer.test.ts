@@ -447,10 +447,8 @@ describe('reduceConversationRecords()', () => {
 			role: 'assistant',
 			parts: [{
 				type: 'text',
-				blockId: 'block_text',
 				text: 'Hi ',
 				state: 'streaming',
-				deltaState: { nextSequence: 1, accepted: ['Hi '] },
 			}],
 		});
 		expect(buildConversationContext(conversation)).toHaveLength(1);
@@ -666,7 +664,7 @@ describe('reduceConversationRecords()', () => {
 
 		expect(projectConversationUi(conversation, '2').messages[0]?.parts).toEqual([
 			{ type: 'text', text: 'Inspect this image.', state: 'done' },
-			{ type: 'attachment', attachment },
+			{ type: 'file', mediaType: attachment.mimeType },
 		]);
 		expect(
 			buildConversationContext(conversation, {

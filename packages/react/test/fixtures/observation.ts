@@ -1,11 +1,9 @@
 import {
 	type AgentConversationObservation,
 	type AgentConversationObservationSnapshot,
-	type AgentConversationSnapshot,
-	type AgentConversationState,
-	type AgentConversationUpdate,
-	createAgentConversationState,
-	reduceAgentConversationUpdate,
+	type FlueConversationMessage,
+	type FlueConversationSettlement,
+	type FlueConversationState,
 } from '@flue/sdk';
 import { type Mock, vi } from 'vitest';
 
@@ -18,8 +16,8 @@ export interface FakeObservation extends AgentConversationObservation {
 
 /**
  * Minimal stand-in for the SDK observation injected into AgentSession. Tests
- * drive materialized conversation snapshots directly via `emit()`; reduction
- * itself is the SDK's responsibility and is covered there.
+ * drive materialized conversation snapshots directly via `emit()`; chunk
+ * reduction is the SDK's responsibility and is covered there.
  */
 export function createFakeObservation(
 	initial: AgentConversationObservationSnapshot = {
@@ -46,12 +44,10 @@ export function createFakeObservation(
 	};
 }
 
-/** Builds a materialized conversation state from a snapshot and live records. */
-export function materialize(
-	snapshot: AgentConversationSnapshot,
-	updates: AgentConversationUpdate[] = [],
-): AgentConversationState {
-	let state = createAgentConversationState(snapshot);
-	for (const update of updates) state = reduceAgentConversationUpdate(state, update);
-	return state;
+/** Builds a materialized conversation state as `observe()` would expose it. */
+export function conversation(
+	messages: FlueConversationMessage[] = [],
+	settlements: FlueConversationSettlement[] = [],
+): FlueConversationState {
+	return { conversationId: 'conversation-1', messages, settlements };
 }

@@ -923,7 +923,7 @@ describe('session.task()', () => {
 		if (!conversation) throw new Error('Expected conversation.');
 		expect(projectConversationUi(conversation, writer.offset).messages[0]?.parts).toEqual([
 			{ type: 'text', text: 'Inspect this image.', state: 'done' },
-			{ type: 'attachment', attachment: expect.objectContaining({ id: expect.stringMatching(/^att_prompt_/), mimeType: 'image/png' }) },
+			{ type: 'file', mediaType: 'image/png' },
 		]);
 		expect(modelText).toMatch(/^Inspect this image\.\n\n<attachments>\n<image id="att_prompt_[^"]+" mimeType="image\/png" \/>\n<\/attachments>$/);
 	});

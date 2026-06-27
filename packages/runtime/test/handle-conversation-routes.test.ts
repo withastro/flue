@@ -79,7 +79,7 @@ describe('handleAgentConversationRead()', () => {
 		const snapshot = await response.json();
 
 		expect(snapshot).toMatchObject({
-			type: 'conversation_snapshot',
+			v: 1,
 			conversationId: 'conversation-1',
 			offset: physicalTail,
 			messages: [{ id: 'entry_user' }],
@@ -173,7 +173,7 @@ describe('handleAgentConversationRead()', () => {
 		});
 		const updates = await response.json();
 
-		expect(updates).toMatchObject([{ type: 'conversation_record', record: { id: 'user-1' } }]);
+		expect(updates).toMatchObject([{ type: 'message-appended', message: { id: 'entry_user' } }]);
 		await adapter.close?.();
 	});
 

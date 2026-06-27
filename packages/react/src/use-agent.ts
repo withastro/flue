@@ -1,7 +1,7 @@
 import type { FlueClient, LiveMode } from '@flue/sdk';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { type AgentSnapshot, emptyAgentState } from './agent-reducer.ts';
-import { type AgentHistory, AgentSession, type SendMessageOptions } from './agent-session.ts';
+import { AgentSession, type SendMessageOptions } from './agent-session.ts';
 import { useResolvedFlueClient } from './provider.ts';
 
 const emptySnapshot: AgentSnapshot = {
@@ -15,7 +15,6 @@ const emptySubscribe = () => () => {};
 export interface UseFlueAgentOptions {
 	name: string;
 	id?: string;
-	history?: AgentHistory;
 	live?: LiveMode;
 	client?: FlueClient;
 }
@@ -26,11 +25,10 @@ export interface UseFlueAgentResult extends AgentSnapshot {
 
 export function useFlueAgent(options: UseFlueAgentOptions): UseFlueAgentResult {
 	const client = useResolvedFlueClient(options.client);
-	const history = options.history ?? 'all';
 	const live = options.live ?? true;
 	const session = useMemo(
-		() => (options.id ? new AgentSession(client, options.name, options.id, history, live) : undefined),
-		[client, options.name, options.id, history, live],
+		() => (options.id ? new AgentSession(client, options.name, options.id, live) : undefined),
+		[client, options.name, options.id, live],
 	);
 	useEffect(() => {
 		session?.start();

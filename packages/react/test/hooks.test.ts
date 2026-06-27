@@ -1,8 +1,6 @@
 import type {
-	AgentConversationSnapshot,
-	AgentConversationUpdate,
-	CanonicalConversationRecord,
 	FlueClient,
+	FlueConversationMessage,
 	FlueEvent,
 	FlueEventStream,
 } from '@flue/sdk';
@@ -10,7 +8,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { useFlueAgent } from '../src/use-agent.ts';
 import { useFlueWorkflow } from '../src/use-workflow.ts';
-import { createFakeObservation, materialize } from './fixtures/observation.ts';
+import { conversation, createFakeObservation } from './fixtures/observation.ts';
 
 function eventStream<T>(events: T[], offset = 'offset-1'): FlueEventStream<T> {
 	return {
@@ -46,52 +44,26 @@ function pendingStream<T>(): FlueEventStream<T> & { push(event: T): void } {
 	};
 }
 
-function record(id: string, type: string, fields: Record<string, unknown>): CanonicalConversationRecord {
-	return {
-		v: 1,
-		id,
-		type,
-		conversationId: 'conversation-1',
-		harness: 'default',
-		session: 'default',
-		timestamp: '2026-06-12T00:00:00.000Z',
-		...fields,
-	};
-}
-
-function update(value: CanonicalConversationRecord): AgentConversationUpdate {
-	return { v: 1, type: 'conversation_record', conversationId: 'conversation-1', record: value };
-}
-
 function client(overrides: Partial<FlueClient>): FlueClient {
 	return overrides as FlueClient;
 }
 
 describe('useFlueAgent()', () => {
-	const historySnapshot: AgentConversationSnapshot = {
-		v: 1,
-		type: 'conversation_snapshot',
-		conversationId: 'conversation-1',
-		harness: 'default',
-		session: 'default',
-		offset: 'offset-history',
-		messages: [
-			{
-				id: 'entry-user',
-				role: 'user',
-				submissionId: 'submission-1',
-				parts: [{ type: 'text', text: 'history', state: 'done' }],
-			},
-		],
-		settlements: [],
-	};
+	const historyMessages: FlueConversationMessage[] = [
+		{
+			id: 'entry-user',
+			role: 'user',
+			submissionId: 'submission-1',
+			parts: [{ type: 'text', text: 'history', state: 'done' }],
+		},
+	];
 
 	it('reports history ready only after the observed transcript is available', async () => {
 		const observation = createFakeObservation();
 		const observe = vi.fn().mockReturnValue(observation);
 		const flue = client({ agents: { observe } as unknown as FlueClient['agents'] });
 		const { result, unmount } = renderHook(() =>
-			useFlueAgent({ name: 'agent', id: 'id', history: 'all', client: flue }),
+			useFlueAgent({ name: 'agent', id: 'id', client: flue }),
 		);
 
 		expect(result.current.historyReady).toBe(false);
@@ -99,7 +71,7 @@ describe('useFlueAgent()', () => {
 
 		act(() =>
 			observation.emit({
-				conversation: materialize(historySnapshot),
+				conversation: conversation(historyMessages),
 				offset: 'offset-history',
 				phase: 'live',
 				error: undefined,
@@ -143,12 +115,11 @@ describe('useFlueAgent()', () => {
 		const flue = client({
 			agents: { observe, send } as unknown as FlueClient['agents'],
 		});
-		const empty: AgentConversationSnapshot = { ...historySnapshot, messages: [] };
 		const { result } = renderHook(() => useFlueAgent({ name: 'agent', id: 'id', client: flue }));
 
 		act(() =>
 			observation.emit({
-				conversation: materialize(empty),
+				conversation: conversation(),
 				offset: 'offset-history',
 				phase: 'live',
 				error: undefined,
@@ -162,15 +133,13 @@ describe('useFlueAgent()', () => {
 
 		act(() =>
 			observation.emit({
-				conversation: materialize(empty, [
-					update(
-						record('record-user', 'user_message', {
-							submissionId: 'submission-1',
-							messageId: 'entry-user',
-							parentId: null,
-							content: [{ type: 'text', text: 'hello' }],
-						}),
-					),
+				conversation: conversation([
+					{
+						id: 'entry-user',
+						role: 'user',
+						submissionId: 'submission-1',
+						parts: [{ type: 'text', text: 'hello', state: 'done' }],
+					},
 				]),
 				offset: 'offset-2',
 				phase: 'live',

@@ -1,5 +1,5 @@
 // flue-blueprint: tooling/vitest-evals@1
-import { createFlueClient, type AgentConversationMessage } from '@flue/sdk';
+import { createFlueClient, type FlueConversationMessage } from '@flue/sdk';
 import { createHarness, type SimpleToolCallRecord } from 'vitest-evals';
 
 export interface FlueAgentHarnessOptions {
@@ -9,10 +9,10 @@ export interface FlueAgentHarnessOptions {
 	headers?: Record<string, string>;
 }
 
-function collectToolCalls(messages: AgentConversationMessage[]): SimpleToolCallRecord[] {
+function collectToolCalls(messages: FlueConversationMessage[]): SimpleToolCallRecord[] {
 	return messages.flatMap((message) =>
 		message.parts.flatMap((part) => {
-			if (part.type !== 'tool') return [];
+			if (part.type !== 'dynamic-tool') return [];
 			return [
 				{
 					id: part.toolCallId,

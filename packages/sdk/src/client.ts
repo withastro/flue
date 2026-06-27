@@ -3,13 +3,14 @@ import { HttpClient, type HttpClientOptions, type RequestHeaders } from './http.
 
 export type { HttpClientOptions } from './http.ts';
 
-import {
-	type AgentConversationHistoryOptions,
-	type AgentConversationSnapshot,
-	type AgentConversationUpdate,
-	type AgentConversationUpdateOptions,
-	assertAgentConversationUpdate,
+import type {
+	FlueConversationHistoryOptions,
+	FlueConversationSnapshot,
 } from './public/conversation.ts';
+import {
+	type ConversationStreamChunk,
+	assertConversationStreamChunk,
+} from './public/conversation-stream.ts';
 import {
 	createAgentConversationObservation,
 	type AgentConversationObservation,
@@ -84,16 +85,12 @@ export interface FlueClient {
 			admission: AgentSendResult,
 			options?: AgentWaitOptions,
 		): Promise<TResult>;
+		/** Reads one materialized conversation snapshot for the agent instance. */
 		history(
 			name: string,
 			id: string,
-			options?: AgentConversationHistoryOptions,
-		): Promise<AgentConversationSnapshot>;
-		updates(
-			name: string,
-			id: string,
-			options: AgentConversationUpdateOptions,
-		): FlueEventStream<AgentConversationUpdate>;
+			options?: FlueConversationHistoryOptions,
+		): Promise<FlueConversationSnapshot>;
 		/** Observes one materialized conversation across history catch-up and live updates. */
 		observe(
 			name: string,
@@ -135,43 +132,30 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 			send: (name, id, opts) => sendAgent(http, name, id, opts),
 			wait: (admission, opts) => waitForAgentSubmission(http, admission, opts),
 			history: (name, id, opts = {}) =>
-				http.json<AgentConversationSnapshot>({
+				http.json<FlueConversationSnapshot>({
 					path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
-					query: conversationQuery('history', opts),
+					query: { view: 'history' },
 					signal: opts.signal,
 				}),
-			updates: (name, id, opts) =>
-				createFlueEventStream<AgentConversationUpdate>(
-					{ live: opts.live, offset: opts.offset, signal: opts.signal, backoffOptions: opts.backoffOptions },
-					{
-						url: http.url(
-							`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
-							conversationQuery('updates', opts),
-						),
-						fetch: http.fetchWithHeaders.bind(http),
-					},
-					assertAgentConversationUpdate,
-				),
 			observe: (name, id, opts = {}) =>
 				createAgentConversationObservation(
 					{
-						history: (selector) =>
-							http.json<AgentConversationSnapshot>({
+						history: (historyOptions) =>
+							http.json<FlueConversationSnapshot>({
 								path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
-								query: conversationQuery('history', selector),
-								signal: selector.signal,
+								query: { view: 'history' },
+								signal: historyOptions.signal,
 							}),
 						updates: (updateOptions) =>
-							createFlueEventStream<AgentConversationUpdate>(
+							createFlueEventStream<ConversationStreamChunk>(
 								updateOptions,
 								{
-									url: http.url(
-										`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
-										conversationQuery('updates', updateOptions),
-									),
+									url: http.url(`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`, {
+										view: 'updates',
+									}),
 									fetch: http.fetchWithHeaders.bind(http),
 								},
-								assertAgentConversationUpdate,
+								assertConversationStreamChunk,
 							),
 					},
 					opts,
@@ -221,18 +205,6 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 				}),
 			run: (name, opts) => runWorkflow(http, name, opts),
 		},
-	};
-}
-
-function conversationQuery(
-	view: 'history' | 'updates',
-	selector: { conversationId?: string; harness?: string; session?: string },
-): Record<string, string | undefined> {
-	return {
-		view,
-		conversationId: selector.conversationId,
-		harness: selector.harness,
-		session: selector.session,
 	};
 }
 

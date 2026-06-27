@@ -1,15 +1,8 @@
-import type {
-	AgentConversationSnapshot,
-	AgentConversationUpdate,
-	CanonicalConversationRecord,
-	FlueClient,
-	FlueEvent,
-	FlueEventStream,
-} from '@flue/sdk';
+import type { FlueClient, FlueEvent, FlueEventStream } from '@flue/sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { AgentSession } from '../src/agent-session.ts';
 import { WorkflowRun } from '../src/workflow-run.ts';
-import { createFakeObservation, materialize } from './fixtures/observation.ts';
+import { conversation, createFakeObservation } from './fixtures/observation.ts';
 
 function streamFrom<T>(events: T[], offset = 'offset-1'): FlueEventStream<T> {
 	return {
@@ -19,36 +12,6 @@ function streamFrom<T>(events: T[], offset = 'offset-1'): FlueEventStream<T> {
 			for (const event of events) yield event;
 		},
 	};
-}
-
-function snapshot(messages: AgentConversationSnapshot['messages'] = []): AgentConversationSnapshot {
-	return {
-		v: 1,
-		type: 'conversation_snapshot',
-		conversationId: 'conversation-1',
-		harness: 'default',
-		session: 'default',
-		offset: 'offset-history',
-		messages,
-		settlements: [],
-	};
-}
-
-function record(id: string, type: string, fields: Record<string, unknown>): CanonicalConversationRecord {
-	return {
-		v: 1,
-		id,
-		type,
-		conversationId: 'conversation-1',
-		harness: 'default',
-		session: 'default',
-		timestamp: '2026-06-26T00:00:00.000Z',
-		...fields,
-	};
-}
-
-function update(value: CanonicalConversationRecord): AgentConversationUpdate {
-	return { v: 1, type: 'conversation_record', conversationId: 'conversation-1', record: value };
 }
 
 function client(overrides: Partial<FlueClient>): FlueClient {
@@ -68,16 +31,15 @@ describe('AgentSession', () => {
 		session.start();
 		expect(observe).toHaveBeenCalledWith('agent', 'id', { live: true });
 
-		const userMessage = snapshot([
-			{
-				id: 'entry-user',
-				role: 'user',
-				submissionId: 'submission-1',
-				parts: [{ type: 'text', text: 'first', state: 'done' }],
-			},
-		]);
 		observation.emit({
-			conversation: materialize(userMessage),
+			conversation: conversation([
+				{
+					id: 'entry-user',
+					role: 'user',
+					submissionId: 'submission-1',
+					parts: [{ type: 'text', text: 'first', state: 'done' }],
+				},
+			]),
 			offset: 'offset-history',
 			phase: 'live',
 			error: undefined,
@@ -89,14 +51,14 @@ describe('AgentSession', () => {
 		});
 
 		observation.emit({
-			conversation: materialize(userMessage, [
-				update(
-					record('record-assistant', 'assistant_message_started', {
-						messageId: 'entry-assistant',
-						parentId: 'entry-user',
-						modelInfo: { provider: 'test', model: 'model' },
-					}),
-				),
+			conversation: conversation([
+				{
+					id: 'entry-user',
+					role: 'user',
+					submissionId: 'submission-1',
+					parts: [{ type: 'text', text: 'first', state: 'done' }],
+				},
+				{ id: 'entry-assistant', role: 'assistant', parts: [], metadata: { model: { provider: 'test', id: 'model' } } },
 			]),
 			offset: 'offset-2',
 			phase: 'live',
@@ -118,7 +80,6 @@ describe('AgentSession', () => {
 			client({ agents: { observe } as unknown as FlueClient['agents'] }),
 			'agent',
 			'id',
-			'all',
 			false,
 		);
 
@@ -126,7 +87,7 @@ describe('AgentSession', () => {
 		expect(observe).toHaveBeenCalledWith('agent', 'id', { live: false });
 
 		observation.emit({
-			conversation: materialize(snapshot()),
+			conversation: conversation(),
 			offset: 'offset-final',
 			phase: 'up-to-date',
 			error: undefined,
@@ -156,7 +117,7 @@ describe('AgentSession', () => {
 
 		session.start();
 		observation.emit({
-			conversation: materialize(snapshot()),
+			conversation: conversation(),
 			offset: 'offset-history',
 			phase: 'live',
 			error: undefined,
@@ -165,15 +126,13 @@ describe('AgentSession', () => {
 		expect(session.getSnapshot().status).toBe('submitted');
 
 		observation.emit({
-			conversation: materialize(snapshot(), [
-				update(
-					record('record-user', 'user_message', {
-						submissionId: 'submission-1',
-						messageId: 'entry-canonical-user',
-						parentId: null,
-						content: [{ type: 'text', text: 'hello' }],
-					}),
-				),
+			conversation: conversation([
+				{
+					id: 'entry-canonical-user',
+					role: 'user',
+					submissionId: 'submission-1',
+					parts: [{ type: 'text', text: 'hello', state: 'done' }],
+				},
 			]),
 			offset: 'offset-2',
 			phase: 'live',

@@ -1,4 +1,24 @@
-import type { FlueEvent } from '@flue/sdk';
+import type { ConversationStreamChunk, FlueEvent } from '@flue/sdk';
+
+const CONVERSATION_CHUNK_TYPES = new Set<ConversationStreamChunk['type']>([
+	'conversation-reset',
+	'message-appended',
+	'message-started',
+	'part-start',
+	'part-delta',
+	'part-end',
+	'tool-input',
+	'tool-output',
+	'tool-output-error',
+	'message-completed',
+	'submission-settled',
+]);
+
+function isConversationChunk(
+	event: ConversationStreamChunk | FlueEvent,
+): event is ConversationStreamChunk {
+	return CONVERSATION_CHUNK_TYPES.has(event.type as ConversationStreamChunk['type']);
+}
 
 type TranscriptTone = 'normal' | 'dim' | 'error' | 'success' | 'accent' | 'user';
 
@@ -16,7 +36,7 @@ export interface ConsoleTranscript {
 }
 
 export type TranscriptAction =
-	| { type: 'event'; event: FlueEvent }
+	| { type: 'event'; event: ConversationStreamChunk | FlueEvent }
 	| { type: 'prompt'; message: string }
 	| { type: 'error'; error: unknown }
 	| { type: 'clear-streaming' };
@@ -39,7 +59,11 @@ export function reduceConsoleTranscript(
 	return reduceEvent(state, action.event);
 }
 
-function reduceEvent(state: ConsoleTranscript, event: FlueEvent): ConsoleTranscript {
+function reduceEvent(
+	state: ConsoleTranscript,
+	event: ConversationStreamChunk | FlueEvent,
+): ConsoleTranscript {
+	if (isConversationChunk(event)) return reduceChunk(state, event);
 	if (event.type === 'text_delta') {
 		const key = event.turnId ?? FALLBACK_STREAM_KEY;
 		return { ...state, streaming: { ...state.streaming, [key]: `${state.streaming[key] ?? ''}${event.text}` } };
@@ -80,6 +104,42 @@ function reduceEvent(state: ConsoleTranscript, event: FlueEvent): ConsoleTranscr
 	if (event.type === 'run_resume') return append(state, `run ${event.runId} resumed`, 'dim');
 	if (event.type === 'run_end') return append(state, `run ${event.runId} ${event.isError ? 'failed' : 'completed'} ${event.durationMs}ms`, event.isError ? 'error' : 'success');
 	return state;
+}
+
+function reduceChunk(state: ConsoleTranscript, chunk: ConversationStreamChunk): ConsoleTranscript {
+	switch (chunk.type) {
+		case 'part-delta': {
+			const key = `${chunk.kind}:${chunk.partId}`;
+			return { ...state, streaming: { ...state.streaming, [key]: `${state.streaming[key] ?? ''}${chunk.delta}` } };
+		}
+		case 'part-end': {
+			const textKey = `text:${chunk.partId}`;
+			if (state.streaming[textKey] !== undefined) {
+				const text = state.streaming[textKey] ?? '';
+				const { [textKey]: _removed, ...streaming } = state.streaming;
+				return text ? append({ ...state, streaming }, text, 'normal') : { ...state, streaming };
+			}
+			const reasoningKey = `reasoning:${chunk.partId}`;
+			if (state.streaming[reasoningKey] !== undefined) {
+				const text = state.streaming[reasoningKey] ?? '';
+				const { [reasoningKey]: _removed, ...streaming } = state.streaming;
+				return text ? append({ ...state, streaming }, `Thinking...\n${text}`, 'dim', 'thinking') : { ...state, streaming };
+			}
+			return state;
+		}
+		case 'tool-input':
+			return append(state, `tool  ${chunk.toolName} ${toolDetail(chunk.toolName, chunk.input)}`, 'dim');
+		case 'tool-output':
+			return append(state, `tool done  ${detail(chunk.output)}`, 'dim');
+		case 'tool-output-error':
+			return append(state, `tool failed  ${detail(chunk.errorText)}`, 'error');
+		case 'submission-settled':
+			return chunk.outcome === 'failed'
+				? append({ ...state, streaming: {} }, `error  ${errorMessage(chunk.error)}`, 'error')
+				: { ...state, streaming: {} };
+		default:
+			return state;
+	}
 }
 
 function append(

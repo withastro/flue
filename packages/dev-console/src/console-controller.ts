@@ -1,7 +1,7 @@
 import type {
 	AgentPromptImage,
 	AgentPromptResponse,
-	AttachedAgentEvent,
+	ConversationStreamChunk,
 	FlueClient,
 	FlueEvent,
 	WorkflowRunResult,
@@ -167,20 +167,16 @@ export function createConsoleController(options: ConsoleControllerOptions): Cons
 		publish({ status: 'active', active: true, composerEnabled: target.kind === 'agent' });
 		let failed = false;
 		let promptStarted = false;
-		const onEvent = (event: AttachedAgentEvent | FlueEvent): void => {
+		const onEvent = (event: ConversationStreamChunk | FlueEvent): void => {
 			if (closing) return;
-			const id = event.type === 'run_start' ? event.runId : snapshot.id;
-			if (
-				queuedPrompt
-				&& !promptStarted
-				&& event.type === 'operation_start'
-				&& event.operationKind === 'prompt'
-			) {
+			const id = !('conversationId' in event) && event.type === 'run_start' ? event.runId : snapshot.id;
+			if (queuedPrompt && !promptStarted) {
 				promptStarted = true;
 				publish(
 					{ id, queuedPrompts: removeQueuedPrompt(queuedPrompt) },
 					{ type: 'prompt', message: queuedPrompt.message },
 				);
+				publish({ id }, { type: 'event', event });
 				return;
 			}
 			publish({ id }, { type: 'event', event });
@@ -222,7 +218,7 @@ export function createConsoleController(options: ConsoleControllerOptions): Cons
 
 	async function runAgentTarget(
 		target: Extract<ExecutionTarget, { kind: 'agent' }>,
-		onEvent: (event: AttachedAgentEvent | FlueEvent) => void,
+		onEvent: (event: ConversationStreamChunk | FlueEvent) => void,
 		signal: AbortSignal,
 	): Promise<{ kind: 'agent'; result: AgentPromptResponse }> {
 		const admission = admissionQueue.then(() => {
@@ -237,7 +233,7 @@ export function createConsoleController(options: ConsoleControllerOptions): Cons
 
 	async function runWorkflowTarget(
 		target: Extract<ExecutionTarget, { kind: 'workflow' }>,
-		onEvent: (event: AttachedAgentEvent | FlueEvent) => void,
+		onEvent: (event: ConversationStreamChunk | FlueEvent) => void,
 		signal: AbortSignal,
 	): Promise<{ kind: 'workflow'; runId: string; result: unknown }> {
 		const completed: WorkflowRunResult = await options.client.workflows.run(target.name, {

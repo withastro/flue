@@ -1,400 +1,67 @@
-import type { BackoffOptions, LiveMode } from '@durable-streams/client';
 import type { PromptUsage } from '../types.ts';
 
-export interface AgentConversationSelector {
-	conversationId?: string;
-	harness?: string;
-	session?: string;
-}
+/**
+ * One renderable part of a conversation message.
+ *
+ * Flue projects its private canonical conversation log into this small, stable
+ * shape. Streaming assembly details (delta sequencing, active blocks) are never
+ * exposed here; a part only ever carries materialized content plus a lifecycle
+ * `state`.
+ */
+export type FlueConversationPart =
+	| { type: 'text'; text: string; state: 'streaming' | 'done' }
+	| { type: 'reasoning'; text: string; state: 'streaming' | 'done' }
+	| { type: 'file'; mediaType: string; filename?: string; url?: string }
+	| ({ type: 'dynamic-tool'; toolName: string; toolCallId: string } & (
+			| { state: 'input-available'; input: unknown; output?: never; errorText?: never }
+			| { state: 'output-available'; input: unknown; output: unknown; errorText?: never }
+			| { state: 'output-error'; input: unknown; output?: never; errorText: string }
+	  ));
 
-export interface AgentConversationDeltaState {
-	nextSequence: number;
-	accepted: string[];
-}
-
-export type AgentConversationPart =
-	| {
-			type: 'text';
-			blockId?: string;
-			text: string;
-			state: 'streaming' | 'done';
-			deltaState?: AgentConversationDeltaState;
-	  }
-	| {
-			type: 'reasoning';
-			blockId?: string;
-			text: string;
-			state: 'streaming' | 'done';
-			deltaState?: AgentConversationDeltaState;
-	  }
-	| {
-			type: 'attachment';
-			attachment: { id: string; mimeType: string; size: number; digest: string };
-	  }
-	| {
-			type: 'tool';
-			toolCallId: string;
-			toolName: string;
-			input: unknown;
-			state: 'input-available' | 'output-available' | 'output-error';
-			output?: unknown;
-			errorText?: string;
-	  };
-
-export interface AgentConversationMessage {
+/** One message in a materialized conversation. */
+export interface FlueConversationMessage {
 	id: string;
 	role: 'user' | 'assistant';
+	/** Present on messages produced by a tracked submission. */
 	submissionId?: string;
-	parts: AgentConversationPart[];
+	parts: FlueConversationPart[];
 	metadata?: {
 		usage?: PromptUsage;
 		model?: { provider: string; id: string };
 	};
 }
 
-export interface AgentConversationSettlement {
-	recordId: string;
+/** Terminal outcome of one tracked agent submission within a conversation. */
+export interface FlueConversationSettlement {
 	submissionId: string;
 	outcome: 'completed' | 'failed';
 	result?: unknown;
 	error?: unknown;
 }
 
-export interface AgentConversationSnapshot {
+/**
+ * A complete materialized conversation read at a durable-stream offset.
+ *
+ * Returned by `client.agents.history()` and used to seed `observe()`. The
+ * `offset` is an opaque durable-stream checkpoint; pass it back only through
+ * Flue's own observation machinery.
+ */
+export interface FlueConversationSnapshot {
 	v: 1;
-	type: 'conversation_snapshot';
 	conversationId: string;
-	harness: string;
-	session: string;
 	offset: string;
-	messages: AgentConversationMessage[];
-	settlements: AgentConversationSettlement[];
+	messages: FlueConversationMessage[];
+	settlements: FlueConversationSettlement[];
 }
 
-export interface CanonicalConversationRecord {
-	v: 1;
-	id: string;
-	type: string;
+/** Live materialized conversation maintained by `observe()`. */
+export interface FlueConversationState {
 	conversationId: string;
-	harness: string;
-	session: string;
-	timestamp: string;
-	submissionId?: string;
-	turnId?: string;
-	[key: string]: unknown;
+	messages: FlueConversationMessage[];
+	settlements: FlueConversationSettlement[];
 }
 
-export type AgentConversationUpdate =
-	| {
-			v: 1;
-			type: 'conversation_record';
-			conversationId: string;
-			record: CanonicalConversationRecord;
-	  }
-	| {
-			v: 1;
-			type: 'conversation_reset';
-			conversationId: string;
-			snapshot: AgentConversationSnapshot;
-	  };
-
-export interface AgentConversationHistoryOptions extends AgentConversationSelector {
+/** Options for one `client.agents.history()` read. */
+export interface FlueConversationHistoryOptions {
 	signal?: AbortSignal;
-}
-
-export interface AgentConversationUpdateOptions extends AgentConversationSelector {
-	offset: string;
-	live?: LiveMode;
-	signal?: AbortSignal;
-	backoffOptions?: BackoffOptions;
-}
-
-export interface AgentConversationState {
-	conversationId: string;
-	messages: AgentConversationMessage[];
-	settlements: AgentConversationSettlement[];
-	recordIds: string[];
-}
-
-export function assertAgentConversationUpdate(
-	value: AgentConversationUpdate,
-): AgentConversationUpdate {
-	if (
-		!value ||
-		typeof value !== 'object' ||
-		value.v !== 1 ||
-		(value.type !== 'conversation_record' && value.type !== 'conversation_reset')
-	) {
-		throw new TypeError('Unsupported agent conversation update.');
-	}
-	return value;
-}
-
-export function createAgentConversationState(
-	snapshot: AgentConversationSnapshot,
-): AgentConversationState {
-	return {
-		conversationId: snapshot.conversationId,
-		messages: snapshot.messages,
-		settlements: snapshot.settlements,
-		recordIds: [],
-	};
-}
-
-export function reduceAgentConversationUpdate(
-	state: AgentConversationState,
-	update: AgentConversationUpdate,
-): AgentConversationState {
-	if (update.type === 'conversation_reset') return createAgentConversationState(update.snapshot);
-	if (update.conversationId !== state.conversationId) return state;
-	return reduceRecord(state, update.record);
-}
-
-function reduceRecord(
-	state: AgentConversationState,
-	record: CanonicalConversationRecord,
-): AgentConversationState {
-	switch (record.type) {
-		case 'user_message': {
-			const parts = Array.isArray(record.content)
-				? record.content.flatMap((part): AgentConversationPart[] => {
-						if (!part || typeof part !== 'object') return [];
-						if ('type' in part && part.type === 'text' && 'text' in part) {
-							return [{ type: 'text', text: String(part.text), state: 'done' }];
-						}
-						if ('type' in part && part.type === 'attachment' && 'attachment' in part) {
-							return [{ type: 'attachment', attachment: part.attachment as Extract<AgentConversationPart, { type: 'attachment' }>['attachment'] }];
-						}
-						return [];
-					})
-				: [];
-		return replaceMessage(state, {
-			id: String(record.messageId),
-			role: 'user',
-			...(record.submissionId ? { submissionId: record.submissionId } : {}),
-			parts,
-		});
-		}
-		case 'signal':
-			return replaceMessage(state, {
-				id: String(record.messageId),
-				role: 'user',
-				parts: [{ type: 'text', text: String(record.content ?? ''), state: 'done' }],
-			});
-		case 'assistant_message_started': {
-			if (state.messages.some((message) => message.id === String(record.messageId))) return state;
-			const modelInfo = record.modelInfo as { provider?: unknown; model?: unknown } | undefined;
-			return replaceMessage(state, {
-				id: String(record.messageId),
-				role: 'assistant',
-				...(record.submissionId ? { submissionId: record.submissionId } : {}),
-				parts: [],
-				...(typeof modelInfo?.provider === 'string' && typeof modelInfo.model === 'string'
-					? { metadata: { model: { provider: modelInfo.provider, id: modelInfo.model } } }
-					: {}),
-			});
-		}
-		case 'assistant_text_started':
-			return upsertBlock(state, record, {
-				type: 'text',
-				blockId: String(record.blockId),
-				text: '',
-				state: 'streaming',
-			});
-		case 'assistant_reasoning_started':
-			return upsertBlock(state, record, {
-				type: 'reasoning',
-				blockId: String(record.blockId),
-				text: '',
-				state: 'streaming',
-			});
-		case 'assistant_text_delta':
-			return appendBlockDelta(state, record, 'text');
-		case 'assistant_reasoning_delta':
-			return appendBlockDelta(state, record, 'reasoning');
-		case 'assistant_text_completed':
-			return completeBlock(state, record, 'text');
-		case 'assistant_reasoning_completed':
-			return completeBlock(state, record, 'reasoning');
-		case 'assistant_tool_call':
-			return upsertBlock(state, record, {
-				type: 'tool',
-				toolCallId: String(record.toolCallId),
-				toolName: String(record.name),
-				input: record.arguments,
-				state: 'input-available',
-			});
-		case 'assistant_message_completed':
-			return updateMessage(state, String(record.messageId), (message) => ({
-				...message,
-				parts: message.parts.map((part) =>
-					part.type === 'text' || part.type === 'reasoning' ? { ...part, state: 'done' } : part,
-				),
-				metadata: {
-					...message.metadata,
-					...(record.usage ? { usage: record.usage as PromptUsage } : {}),
-				},
-			}));
-		case 'tool_result':
-			return updateToolResult(state, record);
-		case 'submission_settled':
-			return updateSettlement(state, record);
-		default:
-			return state;
-	}
-}
-
-function replaceMessage(
-	state: AgentConversationState,
-	message: AgentConversationMessage,
-): AgentConversationState {
-	const index = state.messages.findIndex((value) => value.id === message.id);
-	if (index < 0) return { ...state, messages: [...state.messages, message] };
-	const messages = [...state.messages];
-	messages[index] = message;
-	return { ...state, messages };
-}
-
-function updateMessage(
-	state: AgentConversationState,
-	messageId: string,
-	update: (message: AgentConversationMessage) => AgentConversationMessage,
-): AgentConversationState {
-	const index = state.messages.findIndex((message) => message.id === messageId);
-	if (index < 0) return state;
-	const messages = [...state.messages];
-	messages[index] = update(messages[index] as AgentConversationMessage);
-	return { ...state, messages };
-}
-
-function upsertBlock(
-	state: AgentConversationState,
-	record: CanonicalConversationRecord,
-	part: AgentConversationPart,
-): AgentConversationState {
-	return updateMessage(state, String(record.messageId), (message) => {
-		const blockIndex = Number(record.blockIndex);
-		const existing = message.parts.find((value) => blockIdentity(value) === blockIdentity(part));
-		if (existing) return message;
-		const parts = [...message.parts];
-		parts[blockIndex] = part;
-		return { ...message, parts };
-	});
-}
-
-function blockIdentity(part: AgentConversationPart): string | undefined {
-	if (part.type === 'text' || part.type === 'reasoning') return `${part.type}:${part.blockId}`;
-	if (part.type === 'tool') return `tool:${part.toolCallId}`;
-	return undefined;
-}
-
-function appendBlockDelta(
-	state: AgentConversationState,
-	record: CanonicalConversationRecord,
-	type: 'text' | 'reasoning',
-): AgentConversationState {
-	return updateMessage(state, String(record.messageId), (message) => {
-		const blockIndex = message.parts.findIndex(
-			(part) => part.type === type && part.blockId === record.blockId,
-		);
-		if (blockIndex < 0) return message;
-		const sequence = Number(record.sequence);
-		const delta = String(record.delta ?? '');
-		if (!Number.isInteger(sequence) || sequence < 0) {
-			throw new Error(`Invalid delta sequence ${String(record.sequence)} for block "${String(record.blockId)}".`);
-		}
-		const parts = [...message.parts];
-		const part = parts[blockIndex] as Extract<AgentConversationPart, { type: typeof type }>;
-		const deltaState = part.deltaState ?? { nextSequence: 0, accepted: [] };
-		if (sequence < deltaState.nextSequence) {
-			if (deltaState.accepted[sequence] === delta) return message;
-			throw new Error(`Conflicting replay for delta sequence ${sequence} on block "${String(record.blockId)}".`);
-		}
-		if (sequence > deltaState.nextSequence) {
-			throw new Error(`Expected delta sequence ${deltaState.nextSequence}, received ${sequence} for block "${String(record.blockId)}".`);
-		}
-		parts[blockIndex] = {
-			...part,
-			text: part.text + delta,
-			deltaState: {
-				nextSequence: deltaState.nextSequence + 1,
-				accepted: [...deltaState.accepted, delta],
-			},
-		};
-		return { ...message, parts };
-	});
-}
-
-function completeBlock(
-	state: AgentConversationState,
-	record: CanonicalConversationRecord,
-	type: 'text' | 'reasoning',
-): AgentConversationState {
-	return updateMessage(state, String(record.messageId), (message) => ({
-		...message,
-		parts: message.parts.map((part) => {
-			if (part.type !== type || part.blockId !== record.blockId) return part;
-			const deltaCount = Number(record.deltaCount);
-			const acceptedCount = part.deltaState?.nextSequence ?? 0;
-			if (!Number.isInteger(deltaCount) || deltaCount !== acceptedCount) {
-				throw new Error(`Expected ${deltaCount} deltas for block "${String(record.blockId)}", received ${acceptedCount}.`);
-			}
-			return { ...part, state: 'done' };
-		}),
-	}));
-}
-
-function updateToolResult(
-	state: AgentConversationState,
-	record: CanonicalConversationRecord,
-): AgentConversationState {
-	const toolCallId = String(record.toolCallId);
-	const index = state.messages.findLastIndex((message) =>
-		message.parts.some((part) => part.type === 'tool' && part.toolCallId === toolCallId),
-	);
-	if (index < 0) return state;
-	const messages = [...state.messages];
-	const message = messages[index] as AgentConversationMessage;
-	const output = toolResultOutput(record.content);
-	messages[index] = {
-		...message,
-		parts: message.parts.map((part) =>
-			part.type !== 'tool' || part.toolCallId !== toolCallId
-				? part
-				: record.isError
-					? { ...part, state: 'output-error', errorText: String(output), output: undefined }
-					: { ...part, state: 'output-available', output, errorText: undefined },
-		),
-	};
-	return { ...state, messages };
-}
-
-function updateSettlement(
-	state: AgentConversationState,
-	record: CanonicalConversationRecord,
-): AgentConversationState {
-	if (typeof record.submissionId !== 'string') return state;
-	const settlement: AgentConversationSettlement = {
-		recordId: record.id,
-		submissionId: record.submissionId,
-		outcome: record.outcome === 'failed' ? 'failed' : 'completed',
-		...(record.result === undefined ? {} : { result: record.result }),
-		...(record.error === undefined ? {} : { error: record.error }),
-	};
-	const index = state.settlements.findIndex((value) => value.submissionId === settlement.submissionId);
-	if (index < 0) return { ...state, settlements: [...state.settlements, settlement] };
-	const settlements = [...state.settlements];
-	settlements[index] = settlement;
-	return { ...state, settlements };
-}
-
-function toolResultOutput(value: unknown): unknown {
-	if (!Array.isArray(value)) return value;
-	if (value.length === 1) {
-		const block = value[0];
-		if (block && typeof block === 'object' && 'type' in block && block.type === 'text' && 'text' in block) {
-			return block.text;
-		}
-	}
-	return value;
 }

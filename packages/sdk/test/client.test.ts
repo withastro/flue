@@ -1,12 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-	type AgentConversationState,
-	type AgentConversationUpdate,
 	type AgentPromptOptions,
-	createAgentConversationState,
+	type ConversationStreamChunk,
 	createFlueClient,
 	FlueApiError,
-	reduceAgentConversationUpdate,
 } from '../src/index.ts';
 
 describe('createFlueClient', () => {
@@ -71,10 +68,7 @@ describe('createFlueClient', () => {
 					if (url.searchParams.get('view') === 'history') {
 						return Response.json({
 							v: 1,
-							type: 'conversation_snapshot',
 							conversationId: 'conversation-1',
-							harness: 'default',
-							session: 'default',
 							offset: '0000000000000000_0000000000000001',
 							messages: [{ id: 'entry-user', role: 'user', parts: [{ type: 'text', text: 'hello', state: 'done' }] }],
 							settlements: [],
@@ -121,10 +115,7 @@ describe('createFlueClient', () => {
 						if (historyCalls === 1) return Response.json({ error: { message: 'missing' } }, { status: 404 });
 						return Response.json({
 							v: 1,
-							type: 'conversation_snapshot',
 							conversationId: 'conversation-1',
-							harness: 'default',
-							session: 'default',
 							offset: '0000000000000000_0000000000000001',
 							messages: [],
 							settlements: [],
@@ -166,8 +157,8 @@ describe('createFlueClient', () => {
 		});
 	});
 
-	describe('agents.history() and updates()', () => {
-		it('reads one canonical snapshot without suffix hydration parameters', async () => {
+	describe('agents.history()', () => {
+		it('reads one materialized snapshot via the history view', async () => {
 			let seen = '';
 			const client = createFlueClient({
 				baseUrl: 'https://flue.test/api',
@@ -175,10 +166,7 @@ describe('createFlueClient', () => {
 					seen = typeof input === 'string' ? input : new Request(input).url;
 					return Response.json({
 						v: 1,
-						type: 'conversation_snapshot',
 						conversationId: 'conversation-1',
-						harness: 'default',
-						session: 'default',
 						offset: 'offset-1',
 						messages: [],
 						settlements: [],
@@ -186,185 +174,13 @@ describe('createFlueClient', () => {
 				},
 			});
 
-			await client.agents.history('agent', 'id', { harness: 'work', session: 'chat' });
+			await client.agents.history('agent', 'id');
 
 			const url = new URL(seen);
 			expect(url.searchParams.get('view')).toBe('history');
-			expect(url.searchParams.get('harness')).toBe('work');
-			expect(url.searchParams.get('session')).toBe('chat');
+			expect(url.searchParams.has('harness')).toBe(false);
+			expect(url.searchParams.has('session')).toBe(false);
 			expect(url.searchParams.has('tail')).toBe(false);
-		});
-
-		it('uses independent v1 projection validation for canonical updates', async () => {
-			const client = createFlueClient({
-				baseUrl: 'https://flue.test',
-				fetch: async () =>
-					dsJsonResponse([
-						{
-							v: 1,
-							type: 'conversation_record',
-							conversationId: 'conversation-1',
-							record: {
-								v: 1,
-								id: 'record-1',
-								type: 'user_message',
-								conversationId: 'conversation-1',
-								harness: 'default',
-								session: 'default',
-								timestamp: '2026-06-26T00:00:00.000Z',
-							},
-						},
-					]),
-			});
-
-			const events = [];
-			for await (const event of client.agents.updates('agent', 'id', {
-				offset: '0000000000000000_0000000000000001',
-				live: false,
-			})) events.push(event);
-			expect(events[0]).toMatchObject({ v: 1, type: 'conversation_record' });
-		});
-	});
-
-	describe('reduceAgentConversationUpdate()', () => {
-		it('converges when more than 1,000 partially applied deltas replay from the start', () => {
-			let state: AgentConversationState = createAgentConversationState(conversationSnapshot());
-			const started = conversationUpdate('message-started', 'submission-1', 'assistant_message_started', {
-				messageId: 'message-1',
-				modelInfo: { provider: 'test', model: 'model' },
-			}) as AgentConversationUpdate;
-			const blockStarted = conversationUpdate('block-started', 'submission-1', 'assistant_text_started', {
-				messageId: 'message-1',
-				blockId: 'block-1',
-				blockIndex: 0,
-			}) as AgentConversationUpdate;
-			const deltas = Array.from({ length: 1_005 }, (_, sequence) =>
-				conversationUpdate(`delta-${sequence}`, 'submission-1', 'assistant_text_delta', {
-					messageId: 'message-1',
-					blockId: 'block-1',
-					sequence,
-					delta: String(sequence % 10),
-				}) as AgentConversationUpdate,
-			);
-
-			for (const update of [started, blockStarted, ...deltas.slice(0, 1_002)]) {
-				state = reduceAgentConversationUpdate(state, update);
-			}
-			for (const update of [started, blockStarted, ...deltas]) {
-				state = reduceAgentConversationUpdate(state, update);
-			}
-
-			expect(state.messages[0]?.parts[0]).toMatchObject({
-				type: 'text',
-				text: Array.from({ length: 1_005 }, (_, sequence) => String(sequence % 10)).join(''),
-				state: 'streaming',
-			});
-			expect(state.recordIds).toEqual([]);
-		});
-
-		it('accepts the next live delta after hydrating accepted snapshot deltas', () => {
-			let state = createAgentConversationState({
-				...conversationSnapshot(),
-				messages: [{
-					id: 'message-1',
-					role: 'assistant',
-					parts: [{
-						type: 'text',
-						blockId: 'block-1',
-						text: 'hello',
-						state: 'streaming',
-						deltaState: { nextSequence: 2, accepted: ['hel', 'lo'] },
-					}],
-				}],
-			});
-			state = reduceAgentConversationUpdate(
-				state,
-				conversationUpdate('delta-2', 'submission-1', 'assistant_text_delta', {
-					messageId: 'message-1',
-					blockId: 'block-1',
-					sequence: 2,
-					delta: '!',
-				}) as AgentConversationUpdate,
-			);
-
-			expect(state.messages[0]?.parts[0]).toMatchObject({
-				text: 'hello!',
-				deltaState: { nextSequence: 3, accepted: ['hel', 'lo', '!'] },
-			});
-		});
-
-		it('preserves exact and conflicting replay detection after a JSON state round-trip', () => {
-			const state = JSON.parse(JSON.stringify(conversationStateWithTextDelta())) as AgentConversationState;
-			const exact = conversationUpdate('delta-exact', 'submission-1', 'assistant_text_delta', {
-				messageId: 'message-1',
-				blockId: 'block-1',
-				sequence: 0,
-				delta: 'hello',
-			}) as AgentConversationUpdate;
-			const conflict = conversationUpdate('delta-conflict', 'submission-1', 'assistant_text_delta', {
-				messageId: 'message-1',
-				blockId: 'block-1',
-				sequence: 0,
-				delta: 'goodbye',
-			}) as AgentConversationUpdate;
-
-			expect(reduceAgentConversationUpdate(state, exact)).toEqual(state);
-			expect(() => reduceAgentConversationUpdate(state, conflict)).toThrow('Conflicting replay');
-		});
-
-		it('ignores an exact replay of an accepted delta sequence', () => {
-			let state: AgentConversationState = createAgentConversationState(conversationSnapshot());
-			for (const update of [
-				conversationUpdate('message-started', 'submission-1', 'assistant_message_started', {
-					messageId: 'message-1',
-					modelInfo: {},
-				}),
-				conversationUpdate('block-started', 'submission-1', 'assistant_text_started', {
-					messageId: 'message-1',
-					blockId: 'block-1',
-					blockIndex: 0,
-				}),
-				conversationUpdate('delta-original', 'submission-1', 'assistant_text_delta', {
-					messageId: 'message-1',
-					blockId: 'block-1',
-					sequence: 0,
-					delta: 'hello',
-				}),
-				conversationUpdate('delta-replay', 'submission-1', 'assistant_text_delta', {
-					messageId: 'message-1',
-					blockId: 'block-1',
-					sequence: 0,
-					delta: 'hello',
-				}),
-			] as AgentConversationUpdate[]) state = reduceAgentConversationUpdate(state, update);
-
-			expect(state.messages[0]?.parts[0]).toMatchObject({ text: 'hello' });
-		});
-
-		it('throws when a replayed delta sequence has conflicting content', () => {
-			const state = conversationStateWithTextDelta();
-			const replay = conversationUpdate('delta-conflict', 'submission-1', 'assistant_text_delta', {
-				messageId: 'message-1',
-				blockId: 'block-1',
-				sequence: 0,
-				delta: 'goodbye',
-			}) as AgentConversationUpdate;
-
-			expect(() => reduceAgentConversationUpdate(state, replay)).toThrow('Conflicting replay');
-		});
-
-		it('throws when a delta skips the next canonical sequence', () => {
-			const state = conversationStateWithTextDelta();
-			const skipped = conversationUpdate('delta-skipped', 'submission-1', 'assistant_text_delta', {
-				messageId: 'message-1',
-				blockId: 'block-1',
-				sequence: 2,
-				delta: '!',
-			}) as AgentConversationUpdate;
-
-			expect(() => reduceAgentConversationUpdate(state, skipped)).toThrow(
-				'Expected delta sequence 1, received 2',
-			);
 		});
 	});
 
@@ -582,7 +398,7 @@ describe('createFlueClient', () => {
 	});
 
 	describe('agents.wait()', () => {
-		it('follows an admission from its offset and returns its correlated result', async () => {
+		it('follows an admission from its offset and resolves on its settlement chunk', async () => {
 			const offsets: Array<string | null> = [];
 			const seenEvents: string[] = [];
 			const client = createFlueClient({
@@ -592,13 +408,10 @@ describe('createFlueClient', () => {
 					offsets.push(url.searchParams.get('offset'));
 					return dsJsonResponse(
 						[
-							conversationUpdate('other-delta', 'other', 'assistant_text_delta', { delta: 'ignore' }),
-							conversationUpdate('own-delta', 'submission-1', 'assistant_text_delta', { delta: 'hello' }),
-							conversationUpdate('settled', 'submission-1', 'submission_settled', {
-								outcome: 'completed',
-								result: { text: 'done' },
-							}),
-						],
+							{ type: 'part-delta', conversationId: 'c1', messageId: 'a1', partId: 'b1', kind: 'text', sequence: 0, delta: 'hello' },
+							{ type: 'submission-settled', conversationId: 'c1', submissionId: 'other', outcome: 'completed', result: { text: 'ignore' } },
+							{ type: 'submission-settled', conversationId: 'c1', submissionId: 'submission-1', outcome: 'completed', result: { text: 'done' } },
+						] satisfies ConversationStreamChunk[],
 						{ closed: true },
 					);
 				},
@@ -615,7 +428,7 @@ describe('createFlueClient', () => {
 				),
 			).resolves.toEqual({ text: 'done' });
 			expect(offsets).toEqual(['admission-offset']);
-			expect(seenEvents).toEqual(['conversation_record', 'conversation_record']);
+			expect(seenEvents).toEqual(['part-delta', 'submission-settled', 'submission-settled']);
 		});
 
 		it('throws a structured SDK error when the submission fails', async () => {
@@ -624,11 +437,14 @@ describe('createFlueClient', () => {
 				fetch: async () =>
 					dsJsonResponse(
 						[
-							conversationUpdate('settled', 'submission-1', 'submission_settled', {
+							{
+								type: 'submission-settled',
+								conversationId: 'c1',
+								submissionId: 'submission-1',
 								outcome: 'failed',
 								error: { name: 'Error', message: 'model unavailable' },
-							}),
-						],
+							},
+						] satisfies ConversationStreamChunk[],
 						{ closed: true },
 					),
 			});
@@ -839,65 +655,6 @@ describe('createFlueClient', () => {
  * Build a DS-compliant JSON catch-up response. Used by stream tests to
  * simulate the server without a real DS server.
  */
-function conversationSnapshot() {
-	return {
-		v: 1 as const,
-		type: 'conversation_snapshot' as const,
-		conversationId: 'conversation-1',
-		harness: 'default',
-		session: 'default',
-		offset: '-1',
-		messages: [],
-		settlements: [],
-	};
-}
-
-function conversationStateWithTextDelta(): AgentConversationState {
-	let state = createAgentConversationState(conversationSnapshot());
-	for (const update of [
-		conversationUpdate('message-started', 'submission-1', 'assistant_message_started', {
-			messageId: 'message-1',
-			modelInfo: {},
-		}),
-		conversationUpdate('block-started', 'submission-1', 'assistant_text_started', {
-			messageId: 'message-1',
-			blockId: 'block-1',
-			blockIndex: 0,
-		}),
-		conversationUpdate('delta-0', 'submission-1', 'assistant_text_delta', {
-			messageId: 'message-1',
-			blockId: 'block-1',
-			sequence: 0,
-			delta: 'hello',
-		}),
-	] as AgentConversationUpdate[]) state = reduceAgentConversationUpdate(state, update);
-	return state;
-}
-
-function conversationUpdate(
-	id: string,
-	submissionId: string,
-	type: string,
-	fields: Record<string, unknown>,
-) {
-	return {
-		v: 1,
-		type: 'conversation_record',
-		conversationId: 'conversation-1',
-		record: {
-			v: 1,
-			id,
-			type,
-			conversationId: 'conversation-1',
-			harness: 'default',
-			session: 'default',
-			timestamp: '2026-06-26T00:00:00.000Z',
-			submissionId,
-			...fields,
-		},
-	};
-}
-
 function dsJsonResponse(
 	events: unknown[],
 	opts: { closed?: boolean; upToDate?: boolean; nextOffset?: string } = {},
