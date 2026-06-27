@@ -7,8 +7,14 @@ import {
 	type PromptUsage as RuntimePromptUsage,
 	type RunRecord as RuntimeRunRecord,
 } from '@flue/runtime';
+import type {
+	AgentConversationSnapshot as RuntimeConversationSnapshot,
+	ConversationStreamChunk as RuntimeConversationChunk,
+} from '@flue/runtime/internal';
 import {
 	type AgentPromptResponse,
+	type ConversationStreamChunk as SdkConversationChunk,
+	type FlueConversationSnapshot,
 	IMAGE_DATA_OMITTED as SDK_IMAGE_DATA_OMITTED,
 	type FlueEvent as SdkFlueEvent,
 	type LlmMessage as SdkLlmMessage,
@@ -16,6 +22,19 @@ import {
 	type PromptUsage as SdkPromptUsage,
 	type RunRecord as SdkRunRecord,
 } from '../src/index.ts';
+
+// The runtime projects its private canonical log onto the `history`/`updates`
+// wire as these shapes; the SDK reduces them behind observe()/history(). The
+// two definitions are independent (the runtime cannot import the SDK), so they
+// must stay mutually assignable or the wire silently drifts.
+const _convSnapshot: FlueConversationSnapshot = {} as RuntimeConversationSnapshot;
+const _convSnapshotBack: RuntimeConversationSnapshot = {} as FlueConversationSnapshot;
+const _convChunk: SdkConversationChunk = {} as RuntimeConversationChunk;
+const _convChunkBack: RuntimeConversationChunk = {} as SdkConversationChunk;
+void _convSnapshot;
+void _convSnapshotBack;
+void _convChunk;
+void _convChunkBack;
 
 // `turn_request` is in-process only (`observe()` subscribers and exporters);
 // it is never persisted to durable streams or served over HTTP, so the SDK
