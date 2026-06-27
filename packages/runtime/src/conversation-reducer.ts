@@ -29,6 +29,11 @@ export interface ReducedMessageEntry extends ReducedEntryBase {
 	type: 'message';
 	message: AgentMessage;
 	attachmentRefs?: Map<string, AttachmentRef>;
+	/**
+	 * Validated structured tool output for tool-result entries, distinct from the
+	 * model-facing `message` content. Present only when the tool declared one.
+	 */
+	toolOutput?: { value: unknown };
 }
 
 export interface ReducedCompactionEntry extends ReducedEntryBase {
@@ -467,6 +472,7 @@ export function applyConversationRecord(
 					submissionId: record.submissionId,
 					message: toolResultMessage(outcome),
 					attachmentRefs: attachmentRefs(outcome.content),
+					...(outcome.output !== undefined ? { toolOutput: { value: outcome.output } } : {}),
 				});
 				parentId = entryId;
 			}

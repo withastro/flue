@@ -928,6 +928,67 @@ describe('session.task()', () => {
 		expect(modelText).toMatch(/^Inspect this image\.\n\n<attachments>\n<image id="att_prompt_[^"]+" mimeType="image\/png" \/>\n<\/attachments>$/);
 	});
 
+	it('projects structured tool output onto the canonical tool part instead of model-facing text', async () => {
+		const provider = createProvider([{ id: 'reviewer' }]);
+		const store = new InMemoryConversationStreamStore();
+		const writer = await ConversationRecordWriter.create({
+			store,
+			path: 'agents/assistant/structured-tool-instance',
+			identity: { agentName: 'assistant', instanceId: 'structured-tool-instance' },
+			producerId: 'producer-1',
+		});
+		let toolResultText = '';
+		provider.setResponses([
+			fauxAssistantMessage(fauxToolCall('weather', { city: 'NYC' }), { stopReason: 'toolUse' }),
+			(context) => {
+				const toolResult = context.messages.find(
+					(message) => Array.isArray(message.content) && message.content.some((block) => block.type === 'text'),
+				);
+				toolResultText = context.messages
+					.flatMap((message) => (Array.isArray(message.content) ? message.content : []))
+					.filter((block) => block.type === 'text' && block.text.includes('temperature'))
+					.map((block) => (block.type === 'text' ? block.text : ''))
+					.join('');
+				void toolResult;
+				return fauxAssistantMessage('Reported the weather.');
+			},
+		]);
+		const weather = defineTool({
+			name: 'weather',
+			description: 'Look up the weather.',
+			input: v.object({ city: v.string() }),
+			output: v.object({ temperature: v.number() }),
+			run: async () => ({ temperature: 21 }),
+		});
+		const ctx = createFlueContext({
+			id: 'structured-tool-instance',
+			env: {},
+			agentConfig: { resolveModel: () => provider.getModel('reviewer') },
+			createDefaultEnv: async () => createNoopSessionEnv(),
+			conversationWriter: writer,
+		});
+		const harness = await ctx.initializeRootHarness(
+			defineAgent(() => ({ model: `${provider.getModel().provider}/reviewer`, tools: [weather] })),
+		);
+		const session = await harness.session();
+
+		await session.prompt('What is the weather?');
+
+		const conversation = await writer.getConversation(session.conversationId);
+		if (!conversation) throw new Error('Expected conversation.');
+		const toolPart = projectConversationUi(conversation, writer.offset)
+			.messages.flatMap((message) => message.parts)
+			.find((part) => part.type === 'dynamic-tool');
+		expect(toolPart).toMatchObject({
+			type: 'dynamic-tool',
+			toolName: 'weather',
+			state: 'output-available',
+			output: { temperature: 21 },
+		});
+		// The model still received the serialized JSON, not the structured object.
+		expect(toolResultText).toContain('{"temperature":21}');
+	});
+
 	it('projects equivalent attachment context for direct input and restart replay', async () => {
 		const provider = createProvider([{ id: 'reviewer' }]);
 		const store = new InMemoryConversationStreamStore();

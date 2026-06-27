@@ -917,6 +917,9 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					);
 					const refs = await this.persistCanonicalAttachments(images);
 					let imageIndex = 0;
+					const details = result.details as { output?: unknown } | undefined;
+					const hasStructuredOutput =
+						!event.isError && typeof details === 'object' && details !== null && 'output' in details;
 					await this.appendCanonical([{
 						...this.canonicalEnvelope('tool_outcome', `record_tool_outcome_${outcomeKey}`),
 						type: 'tool_outcome',
@@ -930,6 +933,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 							if (!attachment) throw new Error('[flue] Canonical tool outcome attachment is missing.');
 							return { type: 'attachment' as const, attachment };
 						}),
+						...(hasStructuredOutput ? { output: details?.output } : {}),
 					}]);
 					if (!call.startEmitted) {
 						this.emit(

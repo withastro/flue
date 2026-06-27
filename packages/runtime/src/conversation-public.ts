@@ -242,7 +242,14 @@ function encodeToolOutcome(
 	}
 	return outcome.isError
 		? [{ type: 'tool-output-error', conversationId, toolCallId: outcome.toolCallId, errorText: toolResultText(outcome.content) }]
-		: [{ type: 'tool-output', conversationId, toolCallId: outcome.toolCallId, output: toolResultOutput(outcome.content) }];
+		: [
+				{
+					type: 'tool-output',
+					conversationId,
+					toolCallId: outcome.toolCallId,
+					output: outcome.output !== undefined ? outcome.output : toolResultOutput(outcome.content),
+				},
+			];
 }
 
 function projectSettlements(

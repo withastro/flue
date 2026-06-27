@@ -105,7 +105,7 @@ export function projectConversationUi(
 			const part = candidate.parts[partIndex] as Extract<ConversationUiPart, { type: 'dynamic-tool' }>;
 			candidate.parts[partIndex] = toolResult.isError
 				? { type: 'dynamic-tool', toolName: part.toolName, toolCallId: part.toolCallId, state: 'output-error', input: part.input, errorText: toolResultText(toolResult.content) }
-				: { type: 'dynamic-tool', toolName: part.toolName, toolCallId: part.toolCallId, state: 'output-available', input: part.input, output: toolResultOutput(toolResult.content) };
+				: { type: 'dynamic-tool', toolName: part.toolName, toolCallId: part.toolCallId, state: 'output-available', input: part.input, output: entry.toolOutput ? entry.toolOutput.value : toolResultOutput(toolResult.content) };
 			break;
 		}
 	}

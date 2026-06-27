@@ -161,7 +161,16 @@ interface ToolOutcomeRecord extends ConversationRecordEnvelope {
 	toolCallId: string;
 	toolName: string;
 	isError: boolean;
+	/**
+	 * Model-facing result content (text/attachment blocks) sent back to the LLM.
+	 */
 	content: CanonicalToolResultContent[];
+	/**
+	 * Validated structured application output, when the tool declared one. Kept
+	 * distinct from `content` so the UI can render the typed value instead of the
+	 * serialized model-facing text. Absent for tools without structured output.
+	 */
+	output?: unknown;
 }
 
 interface ToolResultsCommittedRecord extends ConversationRecordEnvelope {
