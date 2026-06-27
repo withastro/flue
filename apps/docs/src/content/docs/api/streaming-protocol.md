@@ -4,7 +4,7 @@ description: Reference for reading Flue agent conversations and workflow events 
 lastReviewedAt: 2026-06-26
 ---
 
-Flue uses Durable Streams offsets for agent conversations and workflow-run events. SDK users should normally use `client.agents.observe()` for a materialized live conversation; `history()` and `updates()` expose the underlying snapshot/update boundary. Use `client.runs.stream()` and `client.runs.events()` for workflows.
+Flue uses Durable Streams offsets for agent conversations and workflow-run events. SDK users should use `client.agents.observe()` for a materialized live conversation, or `client.agents.history()` for a one-shot snapshot. The HTTP `history` and `updates` views described here are the underlying wire protocol that `observe()` consumes. Use `client.runs.stream()` and `client.runs.events()` for workflows.
 
 ## Stream routes
 
@@ -16,11 +16,13 @@ Flue uses Durable Streams offsets for agent conversations and workflow-run event
 | `GET /runs/:runId` | Read workflow-run events. |
 | `HEAD /runs/:runId` | Read workflow-run stream metadata. |
 
-A plain agent `GET` defaults to the history view. Agent views select the active `default` harness and session unless `conversationId`, `harness`, or `session` is provided.
+A plain agent `GET` defaults to the history view. Agent views address the instance's default conversation.
 
 ## Agent history and updates
 
-History returns one JSON snapshot after reducing the complete physical stream prefix. Its `offset` is the physical agent-instance tail, including records omitted from that conversation's projection.
+History returns one JSON `FlueConversationSnapshot` after reducing the complete physical stream prefix. Its `offset` is the physical agent-instance tail, including records omitted from that conversation's projection.
+
+The `updates` view emits the strict UI projection protocol (`ConversationStreamChunk`): UI-only operations such as message/part lifecycle, tool input and structured output, settlement, and a full-snapshot reset. The private canonical record schema is never exposed on the wire.
 
 Updates require `offset` and resume strictly after it. Use `live=long-poll` for one waitable read or `live=sse` for a continuous stream. Do not resume without retaining the projection state produced by the matching history snapshot; request fresh history when local state is unavailable.
 
@@ -60,7 +62,7 @@ Canonical agent conversation streams remain open and do not emit `Stream-Closed`
 
 SSE responses contain:
 
-- `event: data` frames with a JSON array of updates or events;
+- `event: data` frames with a JSON array of conversation chunks or workflow events;
 - `event: control` frames with `streamNextOffset` and optional `upToDate`; workflow event streams may also include `streamClosed`;
 - heartbeat comments on idle connections.
 

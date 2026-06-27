@@ -3,7 +3,7 @@ title: client.agents
 description: Invoke persistent agent instances and read their conversations.
 ---
 
-Direct agent APIs interact with persistent agent instances. They use an agent name and instance id; conversation selectors can address a harness and session within that instance. Direct agent interactions do not create workflow runs and do not emit `runId`.
+Direct agent APIs interact with persistent agent instances by agent name and instance id, addressing that instance's default conversation. Direct agent interactions do not create workflow runs and do not emit `runId`.
 
 ## `client.agents.prompt(...)`
 
@@ -78,7 +78,7 @@ interface AgentPromptResponse {
 send(name: string, id: string, options: AgentPromptOptions): Promise<AgentSendResult>;
 ```
 
-Starts one prompt without waiting for completion. This uses the default `POST /agents/:name/:id` response, which returns `202`. Pass the result to `agents.wait()` to wait for settlement, or use its `offset` with `agents.updates()` when retaining conversation state locally.
+Starts one prompt without waiting for completion. This uses the default `POST /agents/:name/:id` response, which returns `202`. Pass the result to `agents.wait()` to await settlement, or observe the conversation with `agents.observe()`.
 
 ### `AgentSendResult`
 
@@ -111,36 +111,14 @@ const unsubscribe = conversation.subscribe(() => {
 });
 ```
 
-`getSnapshot()` returns the materialized conversation, its safe resume offset, the current phase, and any transport error. Call `refresh()` after creating an agent instance that was previously absent, and `close()` when observation is no longer needed.
+`getSnapshot()` returns the materialized `FlueConversationState`, its safe resume offset, the current phase, and any transport error. Call `refresh()` after creating an agent instance that was previously absent, and `close()` when observation is no longer needed.
 
-`history()` and `updates()` remain available as lower-level primitives when an application needs explicit control over snapshot storage or update reduction.
+The observed conversation is a `FlueConversationState` of `FlueConversationMessage` values. Each message has clean, render-ready parts (`text`, `reasoning`, `dynamic-tool`, `file`); streaming assembly is handled internally, so a `text` part is always `{ type, text, state }`. Structured tool output appears on the `dynamic-tool` part's `output`.
 
 ## `client.agents.history(...)`
 
 ```ts
-history(name: string, id: string, options?: AgentConversationHistoryOptions): Promise<AgentConversationSnapshot>;
+history(name: string, id: string, options?: FlueConversationHistoryOptions): Promise<FlueConversationSnapshot>;
 ```
 
-Returns one materialized conversation snapshot. The snapshot includes its physical stream `offset`; historical token deltas are already reduced into complete message parts.
-
-## `client.agents.updates(...)`
-
-```ts
-updates(name: string, id: string, options: AgentConversationUpdateOptions): FlueEventStream<AgentConversationUpdate>;
-```
-
-Streams durable conversation updates strictly after the required `offset`. Most applications should use `observe()`, which performs this handoff and reduction automatically. Use `history()` plus `updates()` directly when managing materialized state and checkpoints yourself.
-
-Starting an updates connection reconstructs the canonical stream prefix through that offset. The history snapshot is materialized by the API and is not persisted as a replay cache. For very large agent-instance streams, measure reconnect latency and avoid unnecessary reconnect loops.
-
-```ts
-const snapshot = await client.agents.history('support', 'ticket-42');
-let state = createAgentConversationState(snapshot);
-
-for await (const update of client.agents.updates('support', 'ticket-42', {
-  offset: snapshot.offset,
-  live: 'sse',
-})) {
-  state = reduceAgentConversationUpdate(state, update);
-}
-```
+Returns one materialized conversation snapshot. The snapshot includes its opaque stream `offset`; historical token deltas are already reduced into complete message parts. Use `observe()` for live state — it performs the snapshot-to-live handoff and reduction for you. The snapshot is materialized by the API on demand and is not a persisted replay cache.
