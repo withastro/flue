@@ -6,7 +6,6 @@ import {
 import type { AgentSubmissionStore } from './agent-execution-store.ts';
 import { discoverSessionContext } from './context.ts';
 import { ConversationRecordWriter } from './conversation-writer.ts';
-import { createDataEmitter } from './data.ts';
 import { Harness } from './harness.ts';
 import { type AttachmentStore, InMemoryAttachmentStore } from './runtime/attachment-store.ts';
 import { InMemoryConversationStreamStore } from './runtime/conversation-stream-store.ts';
@@ -154,8 +153,6 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			}
 			return initializeRootHarness(agent, { ...config, conversationWriter, attachmentStore }, emitEvent);
 		},
-
-		emitData: createDataEmitter(emitEvent),
 
 		log: {
 			info(message, attributes) {

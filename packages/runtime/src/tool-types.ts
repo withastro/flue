@@ -1,5 +1,4 @@
 import type * as v from 'valibot';
-import type { EmitData } from './data.ts';
 import type { JsonValue } from './json-snapshot.ts';
 
 export type ToolInputSchema = v.GenericSchema<Record<string, unknown>, unknown>;
@@ -7,7 +6,6 @@ export type ToolOutputSchema = v.GenericSchema<any, NonNullable<unknown> | null>
 
 export type ToolContext<S extends ToolInputSchema | undefined> = {
 	readonly signal?: AbortSignal;
-	readonly emitData: EmitData;
 } & (S extends ToolInputSchema
 	? { readonly input: v.InferOutput<S> }
 	: Record<never, never>);

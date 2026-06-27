@@ -108,13 +108,6 @@ describe('handleAgentConversationRead()', () => {
 				parentId: null,
 				content: [{ type: 'text', text: 'hello' }],
 			},
-			{
-				...scope,
-				id: 'data-1',
-				type: 'data',
-				dataType: 'status',
-				data: 'done',
-			},
 		]);
 
 		const response = await handleAgentConversationRead({
@@ -126,7 +119,7 @@ describe('handleAgentConversationRead()', () => {
 		});
 		const updates = await response.json();
 
-		expect(updates).toHaveLength(2);
+		expect(updates).toHaveLength(1);
 		expect(response.headers.get('Stream-Next-Offset')).toBe(tail);
 		await adapter.close?.();
 	});

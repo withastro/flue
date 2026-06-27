@@ -7,7 +7,6 @@ import type {
 	CanonicalToolResultContent,
 	ConversationRecord,
 	ConversationRecordEnvelope,
-	DataRecord,
 	SubmissionSettledRecord,
 } from './conversation-records.ts';
 import { toolResultEntryId, type ReducedInstanceState } from './conversation-reducer.ts';
@@ -17,13 +16,6 @@ export interface AgentConversationSelector {
 	conversationId?: string;
 	harness?: string;
 	session?: string;
-}
-
-interface AgentConversationDataPart {
-	recordId: string;
-	name: string;
-	id?: string;
-	data: unknown;
 }
 
 interface AgentConversationSettlement {
@@ -42,7 +34,6 @@ export interface AgentConversationSnapshot {
 	session: string;
 	offset: string;
 	messages: ConversationUiMessage[];
-	data: AgentConversationDataPart[];
 	settlements: AgentConversationSettlement[];
 }
 
@@ -110,7 +101,6 @@ export function projectAgentConversationSnapshot(
 		session: conversation.session,
 		offset: ui.streamOffset,
 		messages: ui.messages,
-		data: projectData(state, conversation.conversationId),
 		settlements: projectSettlements(state, conversation.conversationId),
 	};
 }
@@ -196,29 +186,6 @@ function projectedToolResultRecord(
 
 function requiresSnapshotReset(record: ConversationRecord): boolean {
 	return record.type === 'active_leaf_changed' || record.type === 'compaction';
-}
-
-function projectData(
-	state: ReducedInstanceState,
-	conversationId: string,
-): AgentConversationDataPart[] {
-	const values = new Map<string, AgentConversationDataPart>();
-	for (const record of state.recordsById.values()) {
-		if (record.conversationId !== conversationId || record.type !== 'data') continue;
-		const part = dataPart(record);
-		const key = record.dataId === undefined ? record.id : JSON.stringify([record.dataType, record.dataId]);
-		values.set(key, part);
-	}
-	return [...values.values()];
-}
-
-function dataPart(record: DataRecord): AgentConversationDataPart {
-	return {
-		recordId: record.id,
-		name: record.dataType,
-		...(record.dataId === undefined ? {} : { id: record.dataId }),
-		data: record.data,
-	};
 }
 
 function projectSettlements(

@@ -52,13 +52,6 @@ export interface AgentConversationMessage {
 	};
 }
 
-export interface AgentConversationDataPart {
-	recordId: string;
-	name: string;
-	id?: string;
-	data: unknown;
-}
-
 export interface AgentConversationSettlement {
 	recordId: string;
 	submissionId: string;
@@ -75,7 +68,6 @@ export interface AgentConversationSnapshot {
 	session: string;
 	offset: string;
 	messages: AgentConversationMessage[];
-	data: AgentConversationDataPart[];
 	settlements: AgentConversationSettlement[];
 }
 
@@ -120,7 +112,6 @@ export interface AgentConversationUpdateOptions extends AgentConversationSelecto
 export interface AgentConversationState {
 	conversationId: string;
 	messages: AgentConversationMessage[];
-	data: AgentConversationDataPart[];
 	settlements: AgentConversationSettlement[];
 	recordIds: string[];
 }
@@ -145,7 +136,6 @@ export function createAgentConversationState(
 	return {
 		conversationId: snapshot.conversationId,
 		messages: snapshot.messages,
-		data: snapshot.data,
 		settlements: snapshot.settlements,
 		recordIds: [],
 	};
@@ -247,8 +237,6 @@ function reduceRecord(
 			}));
 		case 'tool_result':
 			return updateToolResult(state, record);
-		case 'data':
-			return updateData(state, record);
 		case 'submission_settled':
 			return updateSettlement(state, record);
 		default:
@@ -379,23 +367,6 @@ function updateToolResult(
 		),
 	};
 	return { ...state, messages };
-}
-
-function updateData(
-	state: AgentConversationState,
-	record: CanonicalConversationRecord,
-): AgentConversationState {
-	const id = typeof record.dataId === 'string' ? record.dataId : undefined;
-	const name = String(record.dataType);
-	const key = id === undefined ? record.id : JSON.stringify([name, id]);
-	const index = state.data.findIndex((part) =>
-		(part.id === undefined ? part.recordId : JSON.stringify([part.name, part.id])) === key,
-	);
-	const part = { recordId: record.id, name, ...(id === undefined ? {} : { id }), data: record.data };
-	if (index < 0) return { ...state, data: [...state.data, part] };
-	const data = [...state.data];
-	data[index] = part;
-	return { ...state, data };
 }
 
 function updateSettlement(

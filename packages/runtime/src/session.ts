@@ -74,7 +74,6 @@ import {
 	toolResultEntryId,
 } from './conversation-reducer.ts';
 import type { ConversationRecordWriter } from './conversation-writer.ts';
-import { createDataEmitter } from './data.ts';
 import {
 	AttachmentNotAvailableError,
 	ConversationRecordInvariantError,
@@ -541,20 +540,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	private pendingCanonicalWrites = new Set<Promise<void>>();
 	private pendingToolPublications = new Map<string, () => void>();
 	private executionIdentity: FlueExecutionContext;
-	private readonly emitData = createDataEmitter((event) => {
-		this.enqueueCanonical(
-			[
-				{
-					...this.canonicalEnvelope('data'),
-					type: 'data',
-					dataType: event.name,
-					...(event.id === undefined ? {} : { dataId: event.id }),
-					data: event.data,
-				},
-			],
-			() => this.emit(event),
-		);
-	});
 
 	private emitTurnRequestAndStream: StreamFn = async (model, context, options) => {
 		if (this.activeTurnId === undefined) this.activeTurnId = generateTurnId();
@@ -1744,7 +1729,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 						result: toolResultText,
 					};
 				}
-				const parsed = parseToolInput(toolDef, params, signal, this.emitData);
+				const parsed = parseToolInput(toolDef, params, signal);
 				return {
 					args: parsed.input,
 					run: async () => {
@@ -1847,7 +1832,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				{
 					harness,
 					log: this.createActionLogger(action.name, toolCallId),
-					emitData: this.emitData,
 				},
 				parsedInput,
 			);

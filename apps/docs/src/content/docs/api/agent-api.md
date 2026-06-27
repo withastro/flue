@@ -135,7 +135,7 @@ function defineTool<
 
 Validates a custom model-callable tool and returns a frozen definition. Tool names are checked for collisions with other active tools when a session assembles its tool list.
 
-`input` and `output` are optional Valibot schemas. `input` must be a top-level object schema. Model-supplied input is validated and parsed before `run` receives it; validation failures become tool errors so the model can retry. When present, `output` validates and parses the returned value. Structured output is snapshotted as JSON-compatible data and JSON-stringified for the model. Without an `output` schema, returning `undefined` sends `null` to the model. `emitData(name, data, { id? })` sends trusted structured activity to UI stream readers without exposing it to the model. It validates and snapshots JSON data synchronously. Payloads are persisted verbatim, so do not include raw image bytes, secrets, or unsanitized PII.
+`input` and `output` are optional Valibot schemas. `input` must be a top-level object schema. Model-supplied input is validated and parsed before `run` receives it; validation failures become tool errors so the model can retry. When present, `output` validates and parses the returned value. Structured output is snapshotted as JSON-compatible data and JSON-stringified for the model. Without an `output` schema, returning `undefined` sends `null` to the model.
 
 #### `ToolDefinition`
 
@@ -145,7 +145,7 @@ Validates a custom model-callable tool and returns a frozen definition. Tool nam
 | `description` | `string`                                  | Tells the model when and how to use this tool.                                                              |
 | `input`       | `ToolInputSchema`                         | Optional top-level Valibot object schema.                                                                   |
 | `output`      | `ToolOutputSchema`                        | Optional Valibot schema for typed, validated output.                                                        |
-| `run`         | `({ input, signal, emitData }) => value \| Promise` | Receives parsed input when declared, an optional `AbortSignal`, and a durable data emitter. Returns JSON-compatible structured data. |
+| `run`         | `({ input, signal }) => value \| Promise` | Receives parsed input when declared and an optional `AbortSignal`. Returns JSON-compatible structured data. |
 
 ```ts
 import { defineTool } from '@flue/runtime';

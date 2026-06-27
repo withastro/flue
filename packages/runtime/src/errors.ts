@@ -789,30 +789,6 @@ export class ActionOutputSerializationError extends FlueError {
 	}
 }
 
-export class DataPartValidationError extends FlueError {
-	constructor({ name, field, cause }: { name: unknown; field: 'name' | 'id' | 'data'; cause?: unknown }) {
-		super({
-			type: 'data_part_validation',
-			message:
-				field === 'name'
-					? 'Data part name is invalid.'
-					: field === 'id'
-						? 'Data part id is invalid.'
-						: `Data part "${String(name)}" payload is not JSON-serializable.`,
-			details: '',
-			dev:
-				field === 'name'
-					? 'Use a non-empty data part name containing only letters, numbers, ".", "_", or "-".'
-					: field === 'id'
-						? 'Pass a string id or omit it.'
-						: 'Pass a plain JSON value without raw image bytes, secrets, or unsanitized PII.',
-			meta: { name, field },
-			cause,
-		});
-		this.name = 'DataPartValidationError';
-	}
-}
-
 export class WorkflowInvocationNotConfiguredError extends FlueError {
 	constructor() {
 		super({

@@ -8,6 +8,7 @@
 - **Agent conversations use one append-only canonical stream per agent instance.** Session history, compaction, child topology, tool outcomes, settlement, and recovery are canonical records in that stream; operational submission rows and observable event streams are not transcripts. Sessions append for the instance lifetime, per-session deletion is removed, and retained Action or Task conversations are no longer recursively deleted. Workflow-local canonical conversation state is scoped to one workflow execution rather than shared across runs.
 - **Agent stream reads are conversation projections.** Replace the former `client.agents.stream()` event behavior with `client.agents.history()` and `client.agents.updates()`. History is an API-materialized conversation snapshot, not a persisted snapshot or replay cache; updates resume from its opaque physical offset.
 - **Attachments are separate immutable payloads.** Canonical records carry opaque `{ id, mimeType, size, digest }` references, and adapters resolve bytes through the required `AttachmentStore`; attachment references are not download URLs.
+- **Free-floating conversation data events are removed.** `emitData()` and standalone `data-*` message parts are removed from runtime, tool, Action, SDK, and React APIs. Structured tool output remains available on the owning tool part; workflow Actions continue to return validated structured output.
 
 ### Fixes & Other Changes
 

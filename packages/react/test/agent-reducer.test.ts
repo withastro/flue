@@ -1,12 +1,14 @@
 import type {
 	AgentConversationSnapshot,
+	AgentConversationState,
 	AgentConversationUpdate,
 	CanonicalConversationRecord,
 } from '@flue/sdk';
 import { describe, expect, it } from 'vitest';
-import { emptyAgentState, reduceAgentEvent } from '../src/agent-reducer.ts';
+import { type AgentReducerEvent, emptyAgentState, reduceAgentEvent } from '../src/agent-reducer.ts';
+import { materialize } from './fixtures/observation.ts';
 
-function snapshot(): AgentConversationSnapshot {
+function snapshot(messages: AgentConversationSnapshot['messages'] = []): AgentConversationSnapshot {
 	return {
 		v: 1,
 		type: 'conversation_snapshot',
@@ -14,18 +16,8 @@ function snapshot(): AgentConversationSnapshot {
 		harness: 'default',
 		session: 'default',
 		offset: 'offset-1',
-		messages: [],
-		data: [],
+		messages,
 		settlements: [],
-	};
-}
-
-function update(record: CanonicalConversationRecord): AgentConversationUpdate {
-	return {
-		v: 1,
-		type: 'conversation_record',
-		conversationId: 'conversation-1',
-		record,
 	};
 }
 
@@ -42,21 +34,34 @@ function record(id: string, type: string, fields: Record<string, unknown>): Cano
 	};
 }
 
+function update(value: CanonicalConversationRecord): AgentConversationUpdate {
+	return { v: 1, type: 'conversation_record', conversationId: 'conversation-1', record: value };
+}
+
+function observed(
+	conversation: AgentConversationState | undefined,
+	phase: 'loading' | 'connecting' | 'live' | 'up-to-date' | 'absent' | 'error' | 'closed' = 'live',
+	error?: Error,
+): AgentReducerEvent {
+	return { type: 'local_observation', conversation, phase, error };
+}
+
 describe('reduceAgentEvent()', () => {
-	it('hydrates a complete canonical snapshot in one reduction', () => {
-		const state = reduceAgentEvent(emptyAgentState, {
-			type: 'local_history',
-			snapshot: {
-				...snapshot(),
-				messages: [
-					{
-						id: 'entry-user',
-						role: 'user',
-						parts: [{ type: 'text', text: 'hello', state: 'done' }],
-					},
-				],
-			},
-		});
+	it('projects an observed canonical transcript into UI messages', () => {
+		const state = reduceAgentEvent(
+			emptyAgentState,
+			observed(
+				materialize(
+					snapshot([
+						{
+							id: 'entry-user',
+							role: 'user',
+							parts: [{ type: 'text', text: 'hello', state: 'done' }],
+						},
+					]),
+				),
+			),
+		);
 
 		expect(state.historyReady).toBe(true);
 		expect(state.messages).toEqual([
@@ -69,136 +74,129 @@ describe('reduceAgentEvent()', () => {
 		]);
 	});
 
-	it('applies durable assistant lifecycle and deltas incrementally', () => {
-		let state = reduceAgentEvent(emptyAgentState, { type: 'local_history', snapshot: snapshot() });
-		state = reduceAgentEvent(
-			state,
-			update(
-				record('start', 'assistant_message_started', {
-					messageId: 'entry-assistant',
-					parentId: null,
-					modelInfo: { provider: 'test', model: 'model' },
-				}),
+	it('strips conversation delta bookkeeping from UI message parts', () => {
+		const state = reduceAgentEvent(
+			emptyAgentState,
+			observed(
+				materialize(
+					snapshot([
+						{
+							id: 'entry-assistant',
+							role: 'assistant',
+							parts: [
+								{
+									type: 'text',
+									blockId: 'block-1',
+									text: 'hello',
+									state: 'streaming',
+									deltaState: { nextSequence: 1, accepted: ['hello'] },
+								},
+							],
+						},
+					]),
+				),
 			),
 		);
-		state = reduceAgentEvent(
-			state,
-			update(
-				record('text-start', 'assistant_text_started', {
-					messageId: 'entry-assistant',
-					blockId: 'block-1',
-					blockIndex: 0,
-				}),
-			),
-		);
-		state = reduceAgentEvent(
-			state,
-			update(
-				record('delta-1', 'assistant_text_delta', {
-					messageId: 'entry-assistant',
-					blockId: 'block-1',
-					sequence: 0,
-					delta: 'hello',
-				}),
+
+		expect(state.messages[0]?.parts).toEqual([{ type: 'text', text: 'hello', state: 'streaming' }]);
+	});
+
+	it('projects tool and attachment parts into React UI shapes', () => {
+		const state = reduceAgentEvent(
+			emptyAgentState,
+			observed(
+				materialize(
+					snapshot([
+						{
+							id: 'entry-user',
+							role: 'user',
+							parts: [
+								{
+									type: 'attachment',
+									attachment: { id: 'att-1', mimeType: 'image/png', size: 3, digest: 'sha' },
+								},
+							],
+						},
+						{
+							id: 'entry-assistant',
+							role: 'assistant',
+							parts: [
+								{
+									type: 'tool',
+									toolCallId: 'call-1',
+									toolName: 'lookup',
+									input: { q: 1 },
+									state: 'output-available',
+									output: { temperature: 21 },
+								},
+							],
+						},
+					]),
+				),
 			),
 		);
 
 		expect(state.messages[0]?.parts).toEqual([
-			{ type: 'text', text: 'hello', state: 'streaming' },
+			{ type: 'data-attachment', id: 'att-1', data: { mediaType: 'image/png', size: 3, digest: 'sha' } },
 		]);
+		expect(state.messages[1]?.parts).toEqual([
+			{
+				type: 'dynamic-tool',
+				toolName: 'lookup',
+				toolCallId: 'call-1',
+				input: { q: 1 },
+				state: 'output-available',
+				output: { temperature: 21 },
+			},
+		]);
+	});
 
+	it('replaces the transcript when a new conversation is observed', () => {
+		let state = reduceAgentEvent(
+			emptyAgentState,
+			observed(materialize(snapshot([{ id: 'entry-old', role: 'user', parts: [] }]))),
+		);
 		state = reduceAgentEvent(
 			state,
-			update(
-				record('text-done', 'assistant_text_completed', {
-					messageId: 'entry-assistant',
-					blockId: 'block-1',
-					deltaCount: 1,
-				}),
+			observed(
+				materialize(
+					snapshot([
+						{
+							id: 'entry-selected',
+							role: 'assistant',
+							parts: [{ type: 'text', text: 'selected', state: 'done' }],
+						},
+					]),
+				),
 			),
 		);
-		expect(state.messages[0]?.parts[0]).toEqual({ type: 'text', text: 'hello', state: 'done' });
-	});
-
-	it('does not expose conversation delta metadata in UI message parts', () => {
-		const state = reduceAgentEvent(emptyAgentState, {
-			type: 'local_history',
-			snapshot: {
-				...snapshot(),
-				messages: [{
-					id: 'entry-assistant',
-					role: 'assistant',
-					parts: [{
-						type: 'text',
-						blockId: 'block-1',
-						text: 'hello',
-						state: 'streaming',
-						deltaState: { nextSequence: 1, accepted: ['hello'] },
-					}],
-				}],
-			},
-		});
-
-		expect(state.messages[0]?.parts).toEqual([
-			{ type: 'text', text: 'hello', state: 'streaming' },
-		]);
-	});
-
-	it('reconciles data by name and id while appending unidentified data', () => {
-		let state = reduceAgentEvent(emptyAgentState, { type: 'local_history', snapshot: snapshot() });
-		state = reduceAgentEvent(
-			state,
-			update(record('data-1', 'data', { dataType: 'status', dataId: 'same', data: 'running' })),
-		);
-		state = reduceAgentEvent(
-			state,
-			update(record('data-2', 'data', { dataType: 'status', dataId: 'same', data: 'done' })),
-		);
-		state = reduceAgentEvent(
-			state,
-			update(record('data-3', 'data', { dataType: 'notice', data: 'one' })),
-		);
-		state = reduceAgentEvent(
-			state,
-			update(record('data-4', 'data', { dataType: 'notice', data: 'two' })),
-		);
-
-		expect(state.messages.map((message) => message.parts[0])).toEqual([
-			{ type: 'data-status', id: 'same', data: 'done' },
-			{ type: 'data-notice', data: 'one' },
-			{ type: 'data-notice', data: 'two' },
-		]);
-	});
-
-	it('replaces transcript state when the server emits a canonical reset', () => {
-		let state = reduceAgentEvent(emptyAgentState, { type: 'local_history', snapshot: snapshot() });
-		state = reduceAgentEvent(state, {
-			v: 1,
-			type: 'conversation_reset',
-			conversationId: 'conversation-1',
-			snapshot: {
-				...snapshot(),
-				offset: 'offset-2',
-				messages: [
-					{
-						id: 'entry-selected',
-						role: 'assistant',
-						parts: [{ type: 'text', text: 'selected', state: 'done' }],
-					},
-				],
-			},
-		});
 
 		expect(state.messages.map((message) => message.id)).toEqual(['entry-selected']);
 	});
 
+	it('clears the transcript when the observed conversation is absent', () => {
+		let state = reduceAgentEvent(
+			emptyAgentState,
+			observed(materialize(snapshot([{ id: 'entry-user', role: 'user', parts: [] }]))),
+		);
+		state = reduceAgentEvent(state, observed(undefined, 'absent'));
+
+		expect(state.messages).toEqual([]);
+		expect(state.status).toBe('idle');
+		expect(state.historyReady).toBe(true);
+	});
+
+	it('surfaces an observation error', () => {
+		const error = new Error('stream failed');
+		const state = reduceAgentEvent(emptyAgentState, observed(undefined, 'error', error));
+
+		expect(state.status).toBe('error');
+		expect(state.error).toBe(error);
+	});
+
 	it('keeps optimistic identity until its canonical user message arrives', () => {
-		let state = reduceAgentEvent(emptyAgentState, { type: 'local_history', snapshot: snapshot() });
-		state = reduceAgentEvent(state, {
-			type: 'local_send_submitted',
-			localId: 'local-1',
-			message: 'hello',
-		});
+		let state = reduceAgentEvent(emptyAgentState, observed(materialize(snapshot())));
+		state = reduceAgentEvent(state, { type: 'local_send_submitted', localId: 'local-1', message: 'hello' });
 		state = reduceAgentEvent(state, {
 			type: 'local_send_admitted',
 			localId: 'local-1',
@@ -206,13 +204,17 @@ describe('reduceAgentEvent()', () => {
 		});
 		state = reduceAgentEvent(
 			state,
-			update(
-				record('user', 'user_message', {
-					messageId: 'entry-user',
-					parentId: null,
-					submissionId: 'submission-1',
-					content: [{ type: 'text', text: 'hello' }],
-				}),
+			observed(
+				materialize(snapshot(), [
+					update(
+						record('user', 'user_message', {
+							messageId: 'entry-user',
+							parentId: null,
+							submissionId: 'submission-1',
+							content: [{ type: 'text', text: 'hello' }],
+						}),
+					),
+				]),
 			),
 		);
 
@@ -220,24 +222,27 @@ describe('reduceAgentEvent()', () => {
 		expect(state.messages[0]?.id).toBe('entry-user');
 	});
 
-	it('reconciles the optimistic message when canonical history arrives before admission', () => {
+	it('reconciles the optimistic message when the canonical transcript arrives before admission', () => {
 		let state = reduceAgentEvent(emptyAgentState, {
 			type: 'local_send_submitted',
 			localId: 'local-1',
 			message: 'hello',
 		});
-		state = reduceAgentEvent(state, {
-			type: 'local_history',
-			snapshot: {
-				...snapshot(),
-				messages: [{
-					id: 'entry-user',
-					role: 'user',
-					submissionId: 'submission-1',
-					parts: [{ type: 'text', text: 'hello', state: 'done' }],
-				}],
-			},
-		});
+		state = reduceAgentEvent(
+			state,
+			observed(
+				materialize(
+					snapshot([
+						{
+							id: 'entry-user',
+							role: 'user',
+							submissionId: 'submission-1',
+							parts: [{ type: 'text', text: 'hello', state: 'done' }],
+						},
+					]),
+				),
+			),
+		);
 		state = reduceAgentEvent(state, {
 			type: 'local_send_admitted',
 			localId: 'local-1',
@@ -249,19 +254,16 @@ describe('reduceAgentEvent()', () => {
 		expect(state.status).toBe('streaming');
 	});
 
-	it('remains idle when completed settlement arrives before admission', () => {
-		let state = reduceAgentEvent(emptyAgentState, { type: 'local_history', snapshot: snapshot() });
-		state = reduceAgentEvent(state, {
-			type: 'local_send_submitted',
-			localId: 'local-1',
-			message: 'hello',
-		});
+	it('remains idle when a completed settlement is observed before admission', () => {
+		let state = reduceAgentEvent(emptyAgentState, observed(materialize(snapshot())));
+		state = reduceAgentEvent(state, { type: 'local_send_submitted', localId: 'local-1', message: 'hello' });
 		state = reduceAgentEvent(
 			state,
-			update(record('settled', 'submission_settled', {
-				submissionId: 'submission-1',
-				outcome: 'completed',
-			})),
+			observed(
+				materialize(snapshot(), [
+					update(record('settled', 'submission_settled', { submissionId: 'submission-1', outcome: 'completed' })),
+				]),
+			),
 		);
 		state = reduceAgentEvent(state, {
 			type: 'local_send_admitted',
@@ -274,20 +276,22 @@ describe('reduceAgentEvent()', () => {
 		expect(state.status).toBe('idle');
 	});
 
-	it('surfaces the failure when failed settlement arrives before admission', () => {
-		let state = reduceAgentEvent(emptyAgentState, { type: 'local_history', snapshot: snapshot() });
-		state = reduceAgentEvent(state, {
-			type: 'local_send_submitted',
-			localId: 'local-1',
-			message: 'hello',
-		});
+	it('surfaces the failure when a failed settlement is observed before admission', () => {
+		let state = reduceAgentEvent(emptyAgentState, observed(materialize(snapshot())));
+		state = reduceAgentEvent(state, { type: 'local_send_submitted', localId: 'local-1', message: 'hello' });
 		state = reduceAgentEvent(
 			state,
-			update(record('settled', 'submission_settled', {
-				submissionId: 'submission-1',
-				outcome: 'failed',
-				error: { message: 'failed before receipt' },
-			})),
+			observed(
+				materialize(snapshot(), [
+					update(
+						record('settled', 'submission_settled', {
+							submissionId: 'submission-1',
+							outcome: 'failed',
+							error: { message: 'failed before receipt' },
+						}),
+					),
+				]),
+			),
 		);
 		state = reduceAgentEvent(state, {
 			type: 'local_send_admitted',
@@ -299,37 +303,5 @@ describe('reduceAgentEvent()', () => {
 		expect(state.activeSubmissionIds).toEqual([]);
 		expect(state.status).toBe('error');
 		expect(state.error?.message).toBe('failed before receipt');
-	});
-
-	it('reconciles the optimistic message when reset arrives before admission', () => {
-		let state = reduceAgentEvent(emptyAgentState, { type: 'local_history', snapshot: snapshot() });
-		state = reduceAgentEvent(state, {
-			type: 'local_send_submitted',
-			localId: 'local-1',
-			message: 'hello',
-		});
-		state = reduceAgentEvent(state, {
-			v: 1,
-			type: 'conversation_reset',
-			conversationId: 'conversation-1',
-			snapshot: {
-				...snapshot(),
-				offset: 'offset-2',
-				messages: [{
-					id: 'entry-user',
-					role: 'user',
-					submissionId: 'submission-1',
-					parts: [{ type: 'text', text: 'hello', state: 'done' }],
-				}],
-			},
-		});
-		state = reduceAgentEvent(state, {
-			type: 'local_send_admitted',
-			localId: 'local-1',
-			submissionId: 'submission-1',
-		});
-
-		expect(state.messages.map((message) => message.id)).toEqual(['entry-user']);
-		expect(state.pendingSends).toEqual([]);
 	});
 });

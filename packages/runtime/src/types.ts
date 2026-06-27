@@ -19,7 +19,6 @@ declare module '@earendil-works/pi-agent-core' {
 import type { MiddlewareHandler } from 'hono';
 import type * as v from 'valibot';
 import type { ActionDefinition } from './action.ts';
-import type { EmitData } from './data.ts';
 import type { ToolDefinition } from './tool-types.ts';
 
 export type {
@@ -446,8 +445,6 @@ export interface FlueEventContext<TEnv = Record<string, any>> {
 	readonly req: Request | undefined;
 	/** Emit observable structured log events, persisted in a run stream only during a workflow run. */
 	readonly log: FlueLogger;
-	/** Emit trusted structured UI state that is persisted verbatim for authorized stream readers. */
-	readonly emitData: EmitData;
 }
 
 export interface FlueLogger {
@@ -977,13 +974,6 @@ type FlueEventVariant =
 			level: 'info' | 'warn' | 'error';
 			message: string;
 			attributes?: Record<string, unknown>;
-	  }
-	| {
-			type: 'data';
-			name: string;
-			id?: string;
-			/** Persisted verbatim. Do not include raw image bytes, secrets, or unsanitized PII. */
-			data: unknown;
 	  }
 	| { type: 'idle' }
 	| {

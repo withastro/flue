@@ -34,7 +34,6 @@ Definition rejects missing metadata, non-Valibot schemas, and input schemas whos
 type ActionContext<S> = {
   readonly harness: FlueHarness;
   readonly log: FlueLogger;
-  readonly emitData: EmitData;
 } & (S extends ActionInputSchema ? { readonly input: InferOutput<S> } : {});
 ```
 
@@ -43,9 +42,6 @@ type ActionContext<S> = {
 | `harness` | Invocation-scoped harness supplied by the runner.                                             |
 | `input`   | Parsed and transformed schema output. Omitted from the type when no input schema is declared. |
 | `log`     | Structured logger for the current execution.                                                  |
-| `emitData` | Emits trusted structured UI activity onto the durable event stream.                    |
-
-`emitData(name, data, { id? })` snapshots JSON-compatible data synchronously. Names accept letters, numbers, `.`, `_`, and `-`. Reusing the same `(name, id)` lets React consumers reconcile lifecycle updates in place. Payloads are persisted verbatim and visible to authorized stream readers; do not include raw image bytes, secrets, or unsanitized PII.
 
 Action context intentionally excludes transport requests, platform bindings, and workflow identity. Pass required data through input and configure capabilities on the agent.
 

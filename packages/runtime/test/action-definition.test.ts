@@ -18,7 +18,6 @@ const log = {} as FlueLogger;
 
 describe('defineAction()', () => {
 	it('validates and transforms action input and output when schemas are declared', async () => {
-		const emitData = vi.fn();
 		const run = vi.fn(async ({ input }: { input: { count: number } }) => String(input.count));
 		const action = defineAction({
 			name: 'format_count',
@@ -28,10 +27,10 @@ describe('defineAction()', () => {
 			run,
 		});
 
-		await expect(validateAndRunAction(action, { harness, log, emitData }, { count: '3' })).resolves.toEqual({
+		await expect(validateAndRunAction(action, { harness, log }, { count: '3' })).resolves.toEqual({
 			value: '3',
 		});
-		expect(run).toHaveBeenCalledWith({ harness, log, emitData, input: { count: 3 } });
+		expect(run).toHaveBeenCalledWith({ harness, log, input: { count: 3 } });
 	});
 
 	it('throws a structured input error before running when action input is invalid', async () => {
@@ -143,7 +142,6 @@ describe('defineAction()', () => {
 			output: v.object({ accepted: v.boolean() }),
 			run: async (context) => {
 				expectTypeOf(context.input).toEqualTypeOf<{ count: number }>();
-				expectTypeOf(context.emitData).toBeFunction();
 				return { accepted: context.input.count > 0 };
 			},
 		});
@@ -152,7 +150,6 @@ describe('defineAction()', () => {
 			description: 'Unknown output action.',
 			run: async (context) => {
 				expectTypeOf(context).not.toHaveProperty('input');
-				expectTypeOf(context.emitData).toBeFunction();
 				return { accepted: true };
 			},
 		});

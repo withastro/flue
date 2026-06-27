@@ -213,13 +213,6 @@ interface ChildSessionRetainedRecord extends ConversationRecordEnvelope {
 	child: CanonicalChildSessionRef;
 }
 
-export interface DataRecord extends ConversationRecordEnvelope {
-	type: 'data';
-	dataType: string;
-	dataId?: string;
-	data: unknown;
-}
-
 export interface SubmissionSettledRecord extends ConversationRecordEnvelope {
 	type: 'submission_settled';
 	outcome: 'completed' | 'failed';
@@ -245,7 +238,6 @@ export type ConversationRecord =
 	| CompactionRecord
 	| ActiveLeafChangedRecord
 	| ChildSessionRetainedRecord
-	| DataRecord
 	| SubmissionSettledRecord;
 
 

@@ -270,7 +270,6 @@ export type FlueEvent = (
 			message: string;
 			attributes?: Record<string, unknown>;
 	  }
-	| { type: 'data'; name: string; id?: string; data: unknown }
 	| { type: 'idle' }
 	| AgentSubmissionSettledEvent
 	| {

@@ -12,13 +12,11 @@ export type {
 } from './action.ts';
 export { defineAction } from './action.ts';
 export { createAgent, defineAgent, defineAgentProfile } from './agent-definition.ts';
-export type { EmitData, EmitDataOptions } from './data.ts';
 export {
 	ActionInputValidationError,
 	ActionOutputSerializationError,
 	ActionOutputValidationError,
 	AttachmentNotAvailableError,
-	DataPartValidationError,
 	DelegationDepthExceededError,
 	FlueError,
 	InstrumentationAlreadyInstalledError,

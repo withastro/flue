@@ -11,6 +11,11 @@ import {
 	assertAgentConversationUpdate,
 } from './public/conversation.ts';
 import {
+	createAgentConversationObservation,
+	type AgentConversationObservation,
+	type AgentConversationObserveOptions,
+} from './public/observe.ts';
+import {
 	type AgentPromptOptions,
 	type AgentPromptResult,
 	type AgentSendResult,
@@ -89,6 +94,12 @@ export interface FlueClient {
 			id: string,
 			options: AgentConversationUpdateOptions,
 		): FlueEventStream<AgentConversationUpdate>;
+		/** Observes one materialized conversation across history catch-up and live updates. */
+		observe(
+			name: string,
+			id: string,
+			options?: AgentConversationObserveOptions,
+		): AgentConversationObservation;
 	};
 	/** Workflow-run inspection and streaming APIs. */
 	runs: {
@@ -140,6 +151,30 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 						fetch: http.fetchWithHeaders.bind(http),
 					},
 					assertAgentConversationUpdate,
+				),
+			observe: (name, id, opts = {}) =>
+				createAgentConversationObservation(
+					{
+						history: (selector) =>
+							http.json<AgentConversationSnapshot>({
+								path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
+								query: conversationQuery('history', selector),
+								signal: selector.signal,
+							}),
+						updates: (updateOptions) =>
+							createFlueEventStream<AgentConversationUpdate>(
+								updateOptions,
+								{
+									url: http.url(
+										`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
+										conversationQuery('updates', updateOptions),
+									),
+									fetch: http.fetchWithHeaders.bind(http),
+								},
+								assertAgentConversationUpdate,
+							),
+					},
+					opts,
 				),
 		},
 		runs: {

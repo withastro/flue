@@ -60,6 +60,112 @@ describe('createFlueClient', () => {
 		});
 	});
 
+	describe('agents.observe()', () => {
+		it('materializes history before following updates from the snapshot offset', async () => {
+			const seen: string[] = [];
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async (input) => {
+					const url = new URL(typeof input === 'string' ? input : new Request(input).url);
+					seen.push(`${url.searchParams.get('view')}:${url.searchParams.get('offset') ?? ''}`);
+					if (url.searchParams.get('view') === 'history') {
+						return Response.json({
+							v: 1,
+							type: 'conversation_snapshot',
+							conversationId: 'conversation-1',
+							harness: 'default',
+							session: 'default',
+							offset: '0000000000000000_0000000000000001',
+							messages: [{ id: 'entry-user', role: 'user', parts: [{ type: 'text', text: 'hello', state: 'done' }] }],
+							settlements: [],
+						});
+					}
+					return dsJsonResponse([], {
+						nextOffset: '0000000000000000_0000000000000001',
+						upToDate: true,
+					});
+				},
+			});
+			const observation = client.agents.observe('agent', 'id', { live: false });
+			const completed = new Promise<void>((resolve) => {
+				const unsubscribe = observation.subscribe(() => {
+					if (observation.getSnapshot().phase === 'up-to-date') {
+						unsubscribe();
+						resolve();
+					}
+				});
+			});
+
+			await completed;
+
+			expect(observation.getSnapshot()).toMatchObject({
+				phase: 'up-to-date',
+				offset: '0000000000000000_0000000000000001',
+				conversation: { conversationId: 'conversation-1', messages: [{ id: 'entry-user' }] },
+			});
+			expect(seen).toEqual([
+				'history:',
+				'updates:0000000000000000_0000000000000001',
+			]);
+			observation.close();
+		});
+
+		it('reports an absent conversation and rehydrates after refresh', async () => {
+			let historyCalls = 0;
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async (input) => {
+					const url = new URL(typeof input === 'string' ? input : new Request(input).url);
+					if (url.searchParams.get('view') === 'history') {
+						historyCalls++;
+						if (historyCalls === 1) return Response.json({ error: { message: 'missing' } }, { status: 404 });
+						return Response.json({
+							v: 1,
+							type: 'conversation_snapshot',
+							conversationId: 'conversation-1',
+							harness: 'default',
+							session: 'default',
+							offset: '0000000000000000_0000000000000001',
+							messages: [],
+							settlements: [],
+						});
+					}
+					return dsJsonResponse([], {
+						nextOffset: '0000000000000000_0000000000000001',
+						upToDate: true,
+					});
+				},
+			});
+			const observation = client.agents.observe('agent', 'id', { live: false });
+			const absent = new Promise<void>((resolve) => {
+				const unsubscribe = observation.subscribe(() => {
+					if (observation.getSnapshot().phase === 'absent') {
+						unsubscribe();
+						resolve();
+					}
+				});
+			});
+			await absent;
+
+			const complete = new Promise<void>((resolve) => {
+				const unsubscribe = observation.subscribe(() => {
+					if (observation.getSnapshot().phase === 'up-to-date') {
+						unsubscribe();
+						resolve();
+					}
+				});
+			});
+			observation.refresh();
+			await complete;
+
+			expect(observation.getSnapshot()).toMatchObject({
+				phase: 'up-to-date',
+				conversation: { conversationId: 'conversation-1' },
+			});
+			observation.close();
+		});
+	});
+
 	describe('agents.history() and updates()', () => {
 		it('reads one canonical snapshot without suffix hydration parameters', async () => {
 			let seen = '';
@@ -75,7 +181,6 @@ describe('createFlueClient', () => {
 						session: 'default',
 						offset: 'offset-1',
 						messages: [],
-						data: [],
 						settlements: [],
 					});
 				},
@@ -743,7 +848,6 @@ function conversationSnapshot() {
 		session: 'default',
 		offset: '-1',
 		messages: [],
-		data: [],
 		settlements: [],
 	};
 }

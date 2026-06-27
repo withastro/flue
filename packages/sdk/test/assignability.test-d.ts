@@ -36,17 +36,6 @@ const _snapshotTurnId: Extract<SdkFlueEvent, MessageSnapshotEvent>['turnId'] = {
 void _snapshot;
 void _snapshotTurnId;
 
-const _data: Extract<SdkFlueEvent, { type: 'data' }> = {} as Extract<
-	RuntimeFlueEvent,
-	{ type: 'data' }
->;
-const _dataBack: Extract<RuntimeFlueEvent, { type: 'data' }> = {} as Extract<
-	SdkFlueEvent,
-	{ type: 'data' }
->;
-void _data;
-void _dataBack;
-
 type _SettlementResult = Extract<
 	SdkFlueEvent,
 	CheckpointOneSettlementEvent

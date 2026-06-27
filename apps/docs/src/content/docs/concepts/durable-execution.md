@@ -50,7 +50,7 @@ Node requires **one live process to own a given agent instance**. A shared datab
 
 On graceful shutdown, active submissions stop at a turn boundary and remain reclaimable. On restart, durable partial output and completed tool results are reused. A tool call that may have started without producing a durable result is not repeated automatically.
 
-Waiting for `?wait=result` is best-effort and process-scoped. If that process disappears, read the canonical conversation with `client.agents.history()` and `client.agents.updates()` to observe durable settlement.
+Waiting for `?wait=result` is best-effort and process-scoped. If that process disappears, observe the canonical conversation with `client.agents.observe()` to receive durable settlement. `history()` and `updates()` remain lower-level primitives for applications that manage their own materialized state.
 
 A file-backed SQLite adapter protects against restart on the same host. Surviving host loss requires external durable storage such as Postgres, while still preserving the single-live-owner rule. See [Database](/docs/guide/database/) and [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/).
 

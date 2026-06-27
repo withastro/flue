@@ -630,7 +630,7 @@ async function executeWorkflowDefinition(
 	try {
 		return await runActionWithParsedInput(
 			workflow.action,
-			{ harness, log: ctx.log, emitData: ctx.emitData },
+			{ harness, log: ctx.log },
 			parsedInput,
 		);
 	} finally {

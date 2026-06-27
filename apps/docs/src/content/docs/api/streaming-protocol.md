@@ -4,7 +4,7 @@ description: Reference for reading Flue agent conversations and workflow events 
 lastReviewedAt: 2026-06-26
 ---
 
-Flue uses Durable Streams offsets for agent conversations and workflow-run events. SDK users should use `client.agents.history()` and `client.agents.updates()` for agents, or `client.runs.stream()` and `client.runs.events()` for workflows.
+Flue uses Durable Streams offsets for agent conversations and workflow-run events. SDK users should normally use `client.agents.observe()` for a materialized live conversation; `history()` and `updates()` expose the underlying snapshot/update boundary. Use `client.runs.stream()` and `client.runs.events()` for workflows.
 
 ## Stream routes
 

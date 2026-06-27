@@ -4,7 +4,6 @@ import {
 	ToolOutputSerializationError,
 	ToolOutputValidationError,
 } from './errors.ts';
-import { detachedDataEmitter, type EmitData } from './data.ts';
 import { cloneJsonSerializable } from './json-snapshot.ts';
 import { isTopLevelObjectSchema, isValibotSchema, parseValibot } from './schema.ts';
 import type {
@@ -66,16 +65,15 @@ export function parseToolInput<TTool extends ToolDefinition>(
 	tool: TTool,
 	input?: unknown,
 	signal?: AbortSignal,
-	emitData: EmitData = detachedDataEmitter,
 ): { context: Parameters<TTool['run']>[0]; input: unknown } {
 	if (!tool.input)
-		return { context: { signal, emitData } as Parameters<TTool['run']>[0], input: undefined };
+		return { context: { signal } as Parameters<TTool['run']>[0], input: undefined };
 	const parsedInput = parseValibot(tool.input, input === undefined ? {} : input);
 	if (!parsedInput.success) {
 		throw new ToolInputValidationError({ tool: tool.name, issues: parsedInput.issues });
 	}
 	return {
-		context: { input: parsedInput.output, signal, emitData } as Parameters<TTool['run']>[0],
+		context: { input: parsedInput.output, signal } as Parameters<TTool['run']>[0],
 		input: parsedInput.output,
 	};
 }

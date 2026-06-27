@@ -246,65 +246,6 @@ describe('FlueContext', () => {
 		]);
 	});
 
-	it('emits a detached data event when application code calls emitData', () => {
-		const events: FlueEvent[] = [];
-		const ctx = createContext({ id: 'agent-data' });
-		ctx.setEventCallback((event) => {
-			events.push(event);
-		});
-		const data = { status: 'running', nested: { attempt: 1 } };
-
-		ctx.emitData('draft.status', data, { id: 'draft-1' });
-		data.nested.attempt = 2;
-
-		expect(events).toEqual([
-			{
-				type: 'data',
-				name: 'draft.status',
-				id: 'draft-1',
-				data: { status: 'running', nested: { attempt: 1 } },
-				instanceId: 'agent-data',
-				v: 3,
-				eventIndex: 0,
-				timestamp: expect.any(String),
-			},
-		]);
-	});
-
-	it('throws a structured error before emitting when data is invalid', () => {
-		const events: FlueEvent[] = [];
-		const ctx = createContext({ id: 'agent-data' });
-		ctx.setEventCallback((event) => {
-			events.push(event);
-		});
-
-		expect(() => ctx.emitData('invalid name', {})).toThrowError(
-			expect.objectContaining({
-				type: 'data_part_validation',
-				meta: { name: 'invalid name', field: 'name' },
-			}),
-		);
-		expect(() => ctx.emitData(Symbol('draft') as never, {})).toThrowError(
-			expect.objectContaining({
-				type: 'data_part_validation',
-				meta: expect.objectContaining({ field: 'name' }),
-			}),
-		);
-		expect(() => ctx.emitData('draft', {}, { id: {} as never })).toThrowError(
-			expect.objectContaining({
-				type: 'data_part_validation',
-				meta: { name: 'draft', field: 'id' },
-			}),
-		);
-		expect(() => ctx.emitData('draft', { missing: undefined })).toThrowError(
-			expect.objectContaining({
-				type: 'data_part_validation',
-				meta: { name: 'draft', field: 'data' },
-			}),
-		);
-		expect(events).toEqual([]);
-	});
-
 	it('serializes attributes.error when application code logs an Error instance', () => {
 		const events: FlueEvent[] = [];
 		const ctx = createContext({ id: 'agent-error-logger' });

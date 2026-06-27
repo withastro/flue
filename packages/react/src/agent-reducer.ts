@@ -1,11 +1,7 @@
 import {
 	type AgentConversationMessage,
-	type AgentConversationSnapshot,
 	type AgentConversationState,
-	type AgentConversationUpdate,
 	type AgentPromptImage,
-	createAgentConversationState,
-	reduceAgentConversationUpdate,
 } from '@flue/sdk';
 import type { UIMessage, UIMessagePart } from './types.ts';
 
@@ -30,17 +26,16 @@ export interface AgentState extends AgentSnapshot {
 	activeSubmissionIds: string[];
 }
 
-type LocalAgentEvent =
+export type AgentReducerEvent =
 	| { type: 'local_send_submitted'; localId: string; message: string; images?: AgentPromptImage[] }
 	| { type: 'local_send_admitted'; localId: string; submissionId: string }
 	| { type: 'local_send_failed'; localId: string; error: Error }
-	| { type: 'local_connecting'; error?: Error }
-	| { type: 'local_history'; snapshot: AgentConversationSnapshot }
-	| { type: 'local_stream_not_found' }
-	| { type: 'local_stream_completed' }
-	| { type: 'local_stream_failed'; error: Error };
-
-export type AgentReducerEvent = AgentConversationUpdate | LocalAgentEvent;
+	| {
+			type: 'local_observation';
+			conversation: AgentConversationState | undefined;
+			phase: 'loading' | 'connecting' | 'live' | 'up-to-date' | 'absent' | 'error' | 'closed';
+			error?: Error;
+	  };
 
 export const emptyAgentState: AgentState = {
 	messages: [],
@@ -85,37 +80,25 @@ export function reduceAgentEvent(state: AgentState, event: AgentReducerEvent): A
 				error: event.error,
 				pendingSends: state.pendingSends.filter((send) => send.localId !== event.localId),
 			};
-		case 'local_connecting':
-			return state.status === 'error'
-				? state
-				: { ...state, status: 'connecting', error: event.error };
-		case 'local_history':
-			return mergeConversation(state, createAgentConversationState(event.snapshot), true);
-		case 'local_stream_not_found':
-			return state.pendingSends.length === 0
-				? { ...state, messages: [], status: 'idle', historyReady: true, error: undefined }
-				: { ...state, status: 'submitted', historyReady: true, error: undefined };
-		case 'local_stream_completed':
-			return state.status === 'connecting'
-				? converge({ ...state, status: 'idle', error: undefined })
-				: state;
-		case 'local_stream_failed':
-			return { ...state, status: 'error', error: event.error };
-		case 'conversation_reset':
-			return mergeConversation(
-				state,
-				state.conversation
-					? reduceAgentConversationUpdate(state.conversation, event)
-					: createAgentConversationState(event.snapshot),
-				state.historyReady,
-			);
-		case 'conversation_record':
-			if (!state.conversation) return state;
-			return mergeConversation(
-				state,
-				reduceAgentConversationUpdate(state.conversation, event),
-				state.historyReady,
-			);
+		case 'local_observation': {
+			if (event.phase === 'error') return { ...state, status: 'error', error: event.error };
+			if (event.phase === 'absent') {
+				return state.pendingSends.length === 0
+					? { ...state, conversation: undefined, messages: [], status: 'idle', historyReady: true, error: undefined }
+					: { ...state, status: 'submitted', historyReady: true, error: undefined };
+			}
+			if (event.conversation) {
+				const merged = mergeConversation(state, event.conversation, true);
+				return event.phase === 'loading' || event.phase === 'connecting'
+					? { ...merged, status: merged.status === 'idle' ? 'connecting' : merged.status, error: event.error }
+					: merged;
+			}
+			return {
+				...state,
+				status: event.phase === 'loading' || event.phase === 'connecting' ? 'connecting' : state.status,
+				error: event.error,
+			};
+		}
 	}
 }
 
@@ -130,20 +113,7 @@ function mergeConversation(
 function converge(state: AgentState): AgentState {
 	const conversation = state.conversation;
 	if (!conversation) return state;
-	const canonicalMessages = [
-		...conversation.messages.map(toUiMessage),
-		...conversation.data.map((part): UIMessage => ({
-			id: part.id === undefined ? `data-event:${part.recordId}` : `data:${JSON.stringify([part.name, part.id])}`,
-			role: 'assistant',
-			parts: [
-				{
-					type: `data-${part.name}`,
-					...(part.id === undefined ? {} : { id: part.id }),
-					data: part.data,
-				},
-			],
-		})),
-	];
+	const canonicalMessages = conversation.messages.map(toUiMessage);
 	let messages = canonicalMessages;
 	const pendingSends: PendingSend[] = [];
 	const settledIds = new Set(conversation.settlements.map((settlement) => settlement.submissionId));
@@ -240,7 +210,7 @@ function toUiMessage(message: AgentConversationMessage): UIMessage {
 }
 
 function optimisticMessage(
-	event: Extract<LocalAgentEvent, { type: 'local_send_submitted' }>,
+	event: Extract<AgentReducerEvent, { type: 'local_send_submitted' }>,
 ): UIMessage {
 	return {
 		id: event.localId,

@@ -1,6 +1,7 @@
 import type {
 	AgentConversationSnapshot,
 	AgentConversationUpdate,
+	CanonicalConversationRecord,
 	FlueClient,
 	FlueEvent,
 	FlueEventStream,
@@ -8,6 +9,7 @@ import type {
 import { describe, expect, it, vi } from 'vitest';
 import { AgentSession } from '../src/agent-session.ts';
 import { WorkflowRun } from '../src/workflow-run.ts';
+import { createFakeObservation, materialize } from './fixtures/observation.ts';
 
 function streamFrom<T>(events: T[], offset = 'offset-1'): FlueEventStream<T> {
 	return {
@@ -15,30 +17,6 @@ function streamFrom<T>(events: T[], offset = 'offset-1'): FlueEventStream<T> {
 		cancel: vi.fn(),
 		async *[Symbol.asyncIterator]() {
 			for (const event of events) yield event;
-		},
-	};
-}
-
-function pendingStream<T>(offset = '-1'): FlueEventStream<T> & { push(event: T): void } {
-	let canceled = false;
-	let wake: (() => void) | undefined;
-	const values: T[] = [];
-	return {
-		offset,
-		push(event) {
-			values.push(event);
-			wake?.();
-		},
-		cancel() {
-			canceled = true;
-			wake?.();
-		},
-		async *[Symbol.asyncIterator]() {
-			while (!canceled) {
-				const value = values.shift();
-				if (value !== undefined) yield value;
-				else await new Promise<void>((resolve) => (wake = resolve));
-			}
 		},
 	};
 }
@@ -52,84 +30,92 @@ function snapshot(messages: AgentConversationSnapshot['messages'] = []): AgentCo
 		session: 'default',
 		offset: 'offset-history',
 		messages,
-		data: [],
 		settlements: [],
 	};
+}
+
+function record(id: string, type: string, fields: Record<string, unknown>): CanonicalConversationRecord {
+	return {
+		v: 1,
+		id,
+		type,
+		conversationId: 'conversation-1',
+		harness: 'default',
+		session: 'default',
+		timestamp: '2026-06-26T00:00:00.000Z',
+		...fields,
+	};
+}
+
+function update(value: CanonicalConversationRecord): AgentConversationUpdate {
+	return { v: 1, type: 'conversation_record', conversationId: 'conversation-1', record: value };
 }
 
 function client(overrides: Partial<FlueClient>): FlueClient {
 	return overrides as FlueClient;
 }
 
-async function settle(): Promise<void> {
-	await Promise.resolve();
-	await Promise.resolve();
-	await Promise.resolve();
-}
-
 describe('AgentSession', () => {
-	it('publishes one canonical snapshot before applying live updates', async () => {
-		const live = pendingStream<AgentConversationUpdate>('offset-history');
-		const history = vi.fn().mockResolvedValue(
-			snapshot([
-				{
-					id: 'entry-user',
-					role: 'user',
-					submissionId: 'submission-1',
-					parts: [{ type: 'text', text: 'first', state: 'done' }],
-				},
-			]),
-		);
-		const updates = vi.fn().mockReturnValue(live);
+	it('projects an observed snapshot before applying observed live updates', () => {
+		const observation = createFakeObservation();
+		const observe = vi.fn().mockReturnValue(observation);
 		const session = new AgentSession(
-			client({ agents: { history, updates } as unknown as FlueClient['agents'] }),
+			client({ agents: { observe } as unknown as FlueClient['agents'] }),
 			'agent',
 			'id',
 		);
 
 		session.start();
-		await settle();
+		expect(observe).toHaveBeenCalledWith('agent', 'id', { live: true });
+
+		const userMessage = snapshot([
+			{
+				id: 'entry-user',
+				role: 'user',
+				submissionId: 'submission-1',
+				parts: [{ type: 'text', text: 'first', state: 'done' }],
+			},
+		]);
+		observation.emit({
+			conversation: materialize(userMessage),
+			offset: 'offset-history',
+			phase: 'live',
+			error: undefined,
+		});
 
 		expect(session.getSnapshot()).toMatchObject({
 			historyReady: true,
 			messages: [{ id: 'entry-user' }],
 		});
-		expect(updates).toHaveBeenCalledWith('agent', 'id', {
-			live: true,
-			offset: 'offset-history',
+
+		observation.emit({
+			conversation: materialize(userMessage, [
+				update(
+					record('record-assistant', 'assistant_message_started', {
+						messageId: 'entry-assistant',
+						parentId: 'entry-user',
+						modelInfo: { provider: 'test', model: 'model' },
+					}),
+				),
+			]),
+			offset: 'offset-2',
+			phase: 'live',
+			error: undefined,
 		});
 
-		live.push({
-			v: 1,
-			type: 'conversation_record',
-			conversationId: 'conversation-1',
-			record: {
-				v: 1,
-				id: 'record-assistant',
-				type: 'assistant_message_started',
-				conversationId: 'conversation-1',
-				harness: 'default',
-				session: 'default',
-				timestamp: '2026-06-26T00:00:00.000Z',
-				messageId: 'entry-assistant',
-				parentId: 'entry-user',
-				modelInfo: { provider: 'test', model: 'model' },
-			},
-		});
-		await settle();
 		expect(session.getSnapshot().messages.map((message) => message.id)).toEqual([
 			'entry-user',
 			'entry-assistant',
 		]);
 		session.dispose();
+		expect(observation.close).toHaveBeenCalled();
 	});
 
-	it('completes finite catch-up after one request without retrying', async () => {
-		vi.useFakeTimers();
-		const history = vi.fn().mockResolvedValue(snapshot());
-		const updates = vi.fn().mockReturnValue(streamFrom<AgentConversationUpdate>([], 'offset-final'));
+	it('forwards a finite live mode and settles to idle once up-to-date', () => {
+		const observation = createFakeObservation();
+		const observe = vi.fn().mockReturnValue(observation);
 		const session = new AgentSession(
-			client({ agents: { history, updates } as unknown as FlueClient['agents'] }),
+			client({ agents: { observe } as unknown as FlueClient['agents'] }),
 			'agent',
 			'id',
 			'all',
@@ -137,56 +123,62 @@ describe('AgentSession', () => {
 		);
 
 		session.start();
-		await settle();
-		await vi.advanceTimersByTimeAsync(60_000);
+		expect(observe).toHaveBeenCalledWith('agent', 'id', { live: false });
 
-		expect(updates).toHaveBeenCalledTimes(1);
-		expect(updates).toHaveBeenCalledWith('agent', 'id', {
-			live: false,
-			offset: 'offset-history',
+		observation.emit({
+			conversation: materialize(snapshot()),
+			offset: 'offset-final',
+			phase: 'up-to-date',
+			error: undefined,
 		});
-		expect(session.getSnapshot()).toMatchObject({ status: 'idle', historyReady: true, error: undefined });
+
+		expect(session.getSnapshot()).toMatchObject({
+			status: 'idle',
+			historyReady: true,
+			error: undefined,
+		});
 		session.dispose();
-		vi.useRealTimers();
 	});
 
 	it('reconciles an optimistic send with canonical user-message identity', async () => {
-		const live = pendingStream<AgentConversationUpdate>('offset-history');
-		const history = vi.fn().mockResolvedValue(snapshot());
-		const updates = vi.fn().mockReturnValue(live);
+		const observation = createFakeObservation();
+		const observe = vi.fn().mockReturnValue(observation);
 		const send = vi.fn().mockResolvedValue({
 			streamUrl: 'https://flue.test/agents/agent/id',
 			offset: 'offset-history',
 			submissionId: 'submission-1',
 		});
 		const session = new AgentSession(
-			client({ agents: { history, updates, send } as unknown as FlueClient['agents'] }),
+			client({ agents: { observe, send } as unknown as FlueClient['agents'] }),
 			'agent',
 			'id',
 		);
-		session.start();
-		await settle();
-		await session.sendMessage('hello');
 
-		live.push({
-			v: 1,
-			type: 'conversation_record',
-			conversationId: 'conversation-1',
-			record: {
-				v: 1,
-				id: 'record-user',
-				type: 'user_message',
-				conversationId: 'conversation-1',
-				harness: 'default',
-				session: 'default',
-				timestamp: '2026-06-26T00:00:00.000Z',
-				submissionId: 'submission-1',
-				messageId: 'entry-canonical-user',
-				parentId: null,
-				content: [{ type: 'text', text: 'hello' }],
-			},
+		session.start();
+		observation.emit({
+			conversation: materialize(snapshot()),
+			offset: 'offset-history',
+			phase: 'live',
+			error: undefined,
 		});
-		await settle();
+		await session.sendMessage('hello');
+		expect(session.getSnapshot().status).toBe('submitted');
+
+		observation.emit({
+			conversation: materialize(snapshot(), [
+				update(
+					record('record-user', 'user_message', {
+						submissionId: 'submission-1',
+						messageId: 'entry-canonical-user',
+						parentId: null,
+						content: [{ type: 'text', text: 'hello' }],
+					}),
+				),
+			]),
+			offset: 'offset-2',
+			phase: 'live',
+			error: undefined,
+		});
 
 		expect(session.getSnapshot().messages).toHaveLength(1);
 		expect(session.getSnapshot().messages[0]?.id).toBe('entry-canonical-user');
@@ -212,7 +204,8 @@ describe('WorkflowRun', () => {
 		);
 		const run = new WorkflowRun(client({ runs: { stream } as unknown as FlueClient['runs'] }), 'run-1');
 		run.start();
-		await settle();
+		await Promise.resolve();
+		await Promise.resolve();
 		expect(run.getSnapshot()).toMatchObject({ status: 'completed', result: 'done' });
 	});
 });

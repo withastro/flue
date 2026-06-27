@@ -5,7 +5,6 @@ import {
 	ActionOutputValidationError,
 	WorkflowInputUnexpectedError,
 } from './errors.ts';
-import { detachedDataEmitter, type EmitData } from './data.ts';
 import { isTopLevelObjectSchema, isValibotSchema, parseValibot } from './schema.ts';
 import { cloneJsonSerializable, type JsonValue } from './json-snapshot.ts';
 import type { FlueHarness, FlueLogger } from './types.ts';
@@ -19,7 +18,6 @@ export type ActionOutputSchema = v.GenericSchema<any, NonNullable<unknown> | nul
 export type ActionContext<S extends ActionInputSchema | undefined> = {
 	readonly harness: FlueHarness;
 	readonly log: FlueLogger;
-	readonly emitData: EmitData;
 } & (S extends ActionInputSchema
 	? { readonly input: v.InferOutput<S> }
 	: Record<never, never>);
@@ -127,7 +125,7 @@ export function parseActionInput(action: ActionDefinition, input?: unknown): Par
 
 export async function runActionWithParsedInput<TAction extends ActionDefinition>(
 	action: TAction,
-	context: { harness: FlueHarness; log: FlueLogger; emitData: EmitData },
+	context: { harness: FlueHarness; log: FlueLogger },
 	input: ParsedActionInput,
 ): Promise<ActionOutput<TAction>> {
 	const runContext = input.declared ? { ...context, input: input.value } : context;
@@ -150,14 +148,10 @@ export async function runActionWithParsedInput<TAction extends ActionDefinition>
 
 export async function validateAndRunAction<TAction extends ActionDefinition>(
 	action: TAction,
-	context: { harness: FlueHarness; log: FlueLogger; emitData?: EmitData },
+	context: { harness: FlueHarness; log: FlueLogger },
 	input?: unknown,
 ): Promise<ActionOutput<TAction>> {
-	return runActionWithParsedInput(
-		action,
-		{ ...context, emitData: context.emitData ?? detachedDataEmitter },
-		parseActionInput(action, input),
-	);
+	return runActionWithParsedInput(action, context, parseActionInput(action, input));
 }
 
 function assertNonEmptyString(value: unknown, label: string): asserts value is string {

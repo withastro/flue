@@ -9,8 +9,7 @@ export type UIMessagePart =
 			| { state: 'output-error'; input: unknown; output?: never; errorText: string }
 	  ))
 	| { type: 'file'; mediaType: string; url: string }
-	| { type: 'data-attachment'; id: string; data: { mediaType: string; size: number; digest: string } }
-	| { type: `data-${string}`; id?: string; data: unknown };
+	| { type: 'data-attachment'; id: string; data: { mediaType: string; size: number; digest: string } };
 
 // Mirrors UIMessage from ai@5.0.201 packages/ai/src/ui/ui-messages.ts.
 export interface UIMessage {

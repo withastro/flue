@@ -58,10 +58,9 @@ describe('defineTool()', () => {
 			description: 'Look up a value.',
 			input: v.object({ count: v.pipe(v.string(), v.transform(Number)) }),
 			output: v.pipe(v.number(), v.transform(String)),
-			run({ input, signal, emitData }) {
+			run({ input, signal }) {
 				expectTypeOf(input).toEqualTypeOf<{ count: number }>();
 				expectTypeOf(signal).toEqualTypeOf<AbortSignal | undefined>();
-				expectTypeOf(emitData).toBeFunction();
 				return input.count;
 			},
 		});
@@ -76,7 +75,6 @@ describe('defineTool()', () => {
 			description: 'Refresh values.',
 			run(context) {
 				expectTypeOf(context).not.toHaveProperty('input');
-				expectTypeOf(context.emitData).toBeFunction();
 				return undefined;
 			},
 		});
@@ -130,7 +128,6 @@ describe('defineTool()', () => {
 		expect(run).toHaveBeenCalledWith({
 			input: { limit: 10 },
 			signal: undefined,
-			emitData: expect.any(Function),
 		});
 	});
 
@@ -156,19 +153,6 @@ describe('defineTool()', () => {
 			},
 		});
 		expect(run).not.toHaveBeenCalled();
-	});
-
-	it('provides a validating no-op data emitter when run detached', async () => {
-		const tool = defineTool({
-			name: 'report',
-			description: 'Report progress.',
-			run: async ({ emitData }) => {
-				emitData('report', { status: 'done' }, { id: 'report-1' });
-				return 'ok';
-			},
-		});
-
-		await expect(validateAndRunTool(tool)).resolves.toBe('ok');
 	});
 
 	it('applies output transforms before returning output', async () => {
@@ -343,49 +327,6 @@ describe('custom tools', () => {
 		} finally {
 			await dispose();
 		}
-	});
-
-	it('emits session-correlated data when a custom tool reports progress', async () => {
-		const provider = createProvider();
-		provider.setResponses([
-			fauxAssistantMessage(fauxToolCall('lookup', {}), { stopReason: 'toolUse' }),
-			fauxAssistantMessage('Done.'),
-		]);
-		const events: FlueEvent[] = [];
-		const context = createContext(provider);
-		context.subscribeEvent((event) => {
-			events.push(event);
-		});
-		const harness = await context.initializeRootHarness(
-			defineAgent(() => ({
-				model: `${provider.getModel().provider}/${provider.getModel().id}`,
-				tools: [
-					defineTool({
-						name: 'lookup',
-						description: 'Look up values.',
-						run: async ({ emitData }) => {
-							emitData('lookup', { status: 'done' }, { id: 'lookup-1' });
-							return 'ok';
-						},
-					}),
-				],
-			})),
-		);
-
-		await (await harness.session()).prompt('Look up values.');
-
-		expect(events).toContainEqual(
-			expect.objectContaining({
-				type: 'data',
-				name: 'lookup',
-				id: 'lookup-1',
-				data: { status: 'done' },
-				conversationId: expect.any(String),
-				session: 'default',
-				operationId: expect.any(String),
-				turnId: expect.any(String),
-			}),
-		);
 	});
 
 	it('emits a start without args and skips execution interception when validation fails', async () => {

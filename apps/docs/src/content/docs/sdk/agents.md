@@ -92,6 +92,29 @@ interface AgentSendResult {
 
 Both `prompt()` and `send()` return the required `submissionId`, which identifies the durable direct submission.
 
+## `client.agents.observe(...)`
+
+```ts
+observe(name: string, id: string, options?: AgentConversationObserveOptions): AgentConversationObservation;
+```
+
+Observes one materialized conversation across initial history catch-up, live updates, reconnects, and canonical resets. This is the default API for applications that retain conversation state.
+
+```ts
+const conversation = client.agents.observe('support', 'ticket-42', {
+  live: 'sse',
+});
+
+const unsubscribe = conversation.subscribe(() => {
+  const snapshot = conversation.getSnapshot();
+  render(snapshot.conversation?.messages ?? []);
+});
+```
+
+`getSnapshot()` returns the materialized conversation, its safe resume offset, the current phase, and any transport error. Call `refresh()` after creating an agent instance that was previously absent, and `close()` when observation is no longer needed.
+
+`history()` and `updates()` remain available as lower-level primitives when an application needs explicit control over snapshot storage or update reduction.
+
 ## `client.agents.history(...)`
 
 ```ts
@@ -106,7 +129,7 @@ Returns one materialized conversation snapshot. The snapshot includes its physic
 updates(name: string, id: string, options: AgentConversationUpdateOptions): FlueEventStream<AgentConversationUpdate>;
 ```
 
-Streams durable conversation updates strictly after the required `offset`. Initialize local state with `history()`, then apply updates with `reduceAgentConversationUpdate()`.
+Streams durable conversation updates strictly after the required `offset`. Most applications should use `observe()`, which performs this handoff and reduction automatically. Use `history()` plus `updates()` directly when managing materialized state and checkpoints yourself.
 
 Starting an updates connection reconstructs the canonical stream prefix through that offset. The history snapshot is materialized by the API and is not persisted as a replay cache. For very large agent-instance streams, measure reconnect latency and avoid unnecessary reconnect loops.
 

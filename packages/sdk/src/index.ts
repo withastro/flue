@@ -21,7 +21,6 @@ export type {
 export { createFlueClient } from './client.ts';
 export { FlueApiError } from './http.ts';
 export type {
-	AgentConversationDataPart,
 	AgentConversationDeltaState,
 	AgentConversationHistoryOptions,
 	AgentConversationMessage,
@@ -39,6 +38,14 @@ export {
 	createAgentConversationState,
 	reduceAgentConversationUpdate,
 } from './public/conversation.ts';
+export type {
+	AgentConversationObservation,
+	AgentConversationObservationPhase,
+	AgentConversationObservationSnapshot,
+	AgentConversationObserveOptions,
+	AgentConversationObservationSource,
+} from './public/observe.ts';
+export { createAgentConversationObservation } from './public/observe.ts';
 export type {
 	AgentPromptImage,
 	AgentPromptOptions,

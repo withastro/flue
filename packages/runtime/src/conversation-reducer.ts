@@ -535,7 +535,6 @@ export function applyConversationRecord(
 			conversation.childConversations.set(record.child.conversationId, record.child);
 			break;
 		}
-		case 'data':
 		case 'submission_settled':
 			break;
 	}
