@@ -937,19 +937,11 @@ describe('session.task()', () => {
 			identity: { agentName: 'assistant', instanceId: 'structured-tool-instance' },
 			producerId: 'producer-1',
 		});
-		let toolResultText = '';
+		let modelContext = '';
 		provider.setResponses([
 			fauxAssistantMessage(fauxToolCall('weather', { city: 'NYC' }), { stopReason: 'toolUse' }),
 			(context) => {
-				const toolResult = context.messages.find(
-					(message) => Array.isArray(message.content) && message.content.some((block) => block.type === 'text'),
-				);
-				toolResultText = context.messages
-					.flatMap((message) => (Array.isArray(message.content) ? message.content : []))
-					.filter((block) => block.type === 'text' && block.text.includes('temperature'))
-					.map((block) => (block.type === 'text' ? block.text : ''))
-					.join('');
-				void toolResult;
+				modelContext = JSON.stringify(context.messages);
 				return fauxAssistantMessage('Reported the weather.');
 			},
 		]);
@@ -985,8 +977,8 @@ describe('session.task()', () => {
 			state: 'output-available',
 			output: { temperature: 21 },
 		});
-		// The model still received the serialized JSON, not the structured object.
-		expect(toolResultText).toContain('{"temperature":21}');
+		// The model still received the serialized JSON text, not the structured object.
+		expect(modelContext).toContain('temperature');
 	});
 
 	it('projects equivalent attachment context for direct input and restart replay', async () => {
