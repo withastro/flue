@@ -174,7 +174,7 @@ if (mode === 'stream-recovery') {
 	]);
 }
 
-if (mode === 'tool-repair') {
+if (mode === 'tool-repair' || mode === 'tool-outcome') {
 	await submissions.beginTurnJournal({
 		submissionId,
 		sessionKey: 'agent-session:["instance-1","default","default"]',
@@ -185,58 +185,77 @@ if (mode === 'tool-repair') {
 		phase: 'before_provider',
 		checkpointLeafId: inputEntryId,
 	});
-	const toolRequest = { toolCalls: [{ type: 'toolCall', id: 'tool-call-1', name: 'lookup' }] };
+	const toolCalls = mode === 'tool-outcome'
+		? [
+				{ type: 'toolCall', id: 'tool-call-1', name: 'lookup' },
+				{ type: 'toolCall', id: 'tool-call-2', name: 'lookup' },
+			]
+		: [{ type: 'toolCall', id: 'tool-call-1', name: 'lookup' }];
+	const toolRequest = { toolCalls };
 	await submissions.updateTurnJournalPhase({ submissionId, attemptId }, 'tool_request_recorded', { toolRequest });
 	await append([
 		{
 			...scope,
 			id: 'record-tool-started',
 			type: 'assistant_message_started',
-			messageId: 'entry-tool-assistant',
+			messageId: 'entry_tool_assistant',
 			parentId: inputEntryId,
 			modelInfo: { api: 'faux', provider: 'faux', model: 'reviewer' },
 		},
-		{
+		...toolCalls.map((toolCall, index) => ({
 			...scope,
-			id: 'record-tool-call',
+			id: `record-tool-call-${index}`,
 			type: 'assistant_tool_call',
-			messageId: 'entry-tool-assistant',
-			blockId: 'block-tool',
-			blockIndex: 0,
-			toolCallId: 'tool-call-1',
-			name: 'lookup',
+			messageId: 'entry_tool_assistant',
+			blockId: `block-tool-${index}`,
+			blockIndex: index,
+			toolCallId: toolCall.id,
+			name: toolCall.name,
 			arguments: {},
-		},
+		})),
 		{
 			...scope,
 			id: 'record-tool-completed',
 			type: 'assistant_message_completed',
-			messageId: 'entry-tool-assistant',
+			messageId: 'entry_tool_assistant',
 			stopReason: 'toolUse',
 			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
 		},
 	]);
-	await append([
-		{
+	if (mode === 'tool-outcome') {
+		await append([{
 			...scope,
-			id: 'record_tool_repair_entry-tool-assistant_rewind',
-			type: 'active_leaf_changed',
-			leafId: 'entry-tool-assistant',
-			previousLeafId: 'entry-tool-assistant',
-			reason: 'interrupted_tool_batch_repair',
-		},
-		{
-			...scope,
-			id: 'record_tool_repair_entry-tool-assistant_tool-call-1',
-			type: 'tool_result',
-			messageId: 'entry_tool_repair_entry-tool-assistant_tool-call-1',
-			parentId: 'entry-tool-assistant',
+			id: 'record-tool-outcome-1',
+			type: 'tool_outcome',
+			assistantMessageId: 'entry_tool_assistant',
 			toolCallId: 'tool-call-1',
 			toolName: 'lookup',
-			isError: true,
-			content: [{ type: 'text', text: '{"type":"interrupted"}' }],
-		},
-	]);
+			isError: false,
+			content: [{ type: 'text', text: 'Known completed result' }],
+		}]);
+	} else {
+		await append([
+			{
+				...scope,
+				id: 'record_tool_repair_entry_tool_assistant_rewind',
+				type: 'active_leaf_changed',
+				leafId: 'entry_tool_assistant',
+				previousLeafId: 'entry_tool_assistant',
+				reason: 'interrupted_tool_batch_repair',
+			},
+			{
+				...scope,
+				id: 'record_tool_repair_entry_tool_assistant_tool-call-1',
+				type: 'tool_result',
+				messageId: 'entry_tool_repair_entry_tool_assistant_tool-call-1',
+				parentId: 'entry_tool_assistant',
+				toolCallId: 'tool-call-1',
+				toolName: 'lookup',
+				isError: true,
+				content: [{ type: 'text', text: '{"type":"interrupted"}' }],
+			},
+		]);
+	}
 }
 
 if (mode === 'settlement') {

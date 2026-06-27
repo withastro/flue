@@ -74,7 +74,7 @@ function createTempDbPath(): string {
 }
 
 async function killAtDurableBoundary(
-	mode: 'input-marker' | 'stream-recovery' | 'tool-repair' | 'settlement',
+	mode: 'input-marker' | 'stream-recovery' | 'tool-repair' | 'tool-outcome' | 'settlement',
 	dbPath: string,
 ): Promise<void> {
 	const child = fork(
@@ -354,6 +354,58 @@ describe('NodeAgentCoordinator', () => {
 			)).toHaveLength(recoveryRecordCount);
 		});
 
+		it('reuses a completed parallel tool outcome after a real process kill before graph materialization', async () => {
+			const dbPath = createTempDbPath();
+			await killAtDurableBoundary('tool-outcome', dbPath);
+			const adapter = sqlite(dbPath);
+			await adapter.migrate?.();
+			const { executionStore, conversationStreamStore, conversationSnapshotStore, attachmentStore } = await adapter.connect();
+			const provider = createFauxProvider();
+			provider.setResponses([fauxAssistantMessage('Continued after repair.')]);
+			let toolCalls = 0;
+			const lookup = defineTool({
+				name: 'lookup',
+				description: 'Look up.',
+				input: v.object({}),
+				run: async () => {
+					toolCalls += 1;
+					return 'must not run';
+				},
+			});
+			const coordinator = createNodeAgentCoordinator({
+				submissions: executionStore.submissions,
+				agents: [{
+					name: 'assistant',
+					definition: defineAgent(() => ({
+						model: `${provider.getModel().provider}/${provider.getModel().id}`,
+						tools: [lookup],
+					})),
+				}],
+				createContext: makeFauxCreateContext(provider, executionStore),
+				conversationStreamStore,
+				conversationSnapshotStore,
+				attachmentStore,
+			});
+
+			await coordinator.reconcileSubmissions();
+			await coordinator.waitForIdle();
+
+			expect(toolCalls).toBe(0);
+			const records = (await conversationStreamStore.read(agentStreamPath('assistant', 'instance-1')))
+				.batches.flatMap((batch) => batch.records);
+			const results = records.filter((record) => record.type === 'tool_result');
+			expect(results).toHaveLength(2);
+			expect(results[0]).toMatchObject({
+				toolCallId: 'tool-call-1',
+				isError: false,
+				content: [{ type: 'text', text: 'Known completed result' }],
+			});
+			expect(results[1]).toMatchObject({
+				toolCallId: 'tool-call-2',
+				isError: true,
+			});
+		});
+
 		it('reuses canonical tool repair after a real process kill before journal repair', async () => {
 			const dbPath = createTempDbPath();
 			await killAtDurableBoundary('tool-repair', dbPath);
@@ -601,7 +653,10 @@ describe('NodeAgentCoordinator', () => {
 		});
 
 		it('records journal phase transitions through tool_request_recorded during a tool-use turn', async () => {
-			const executionStore = await openExecutionStore(createTempDbPath());
+			const dbPath = createTempDbPath();
+			const adapter = sqlite(dbPath);
+			await adapter.migrate?.();
+			const { executionStore, conversationStreamStore, conversationSnapshotStore, attachmentStore } = await adapter.connect();
 			const provider = createFauxProvider();
 			const toolCallId = `tool:journal-${crypto.randomUUID()}`;
 			provider.setResponses([
@@ -629,6 +684,9 @@ describe('NodeAgentCoordinator', () => {
 					},
 				],
 				createContext: makeFauxCreateContext(provider, executionStore),
+				conversationStreamStore,
+				conversationSnapshotStore,
+				attachmentStore,
 			});
 
 			const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(
@@ -648,6 +706,17 @@ describe('NodeAgentCoordinator', () => {
 			expect(phases.filter((p) => p === 'before_provider').length).toBeGreaterThanOrEqual(1);
 			const journal = await executionStore.submissions.getTurnJournal(input.dispatchId);
 			expect(journal?.committed).toBe(true);
+			const records = (await conversationStreamStore.read(
+				agentStreamPath(input.agent, input.id),
+			)).batches.flatMap((batch) => batch.records);
+			const outcomeIndex = records.findIndex(
+				(record) => record.type === 'tool_outcome' && record.toolCallId === toolCallId,
+			);
+			const resultIndex = records.findIndex(
+				(record) => record.type === 'tool_result' && record.toolCallId === toolCallId,
+			);
+			expect(outcomeIndex).toBeGreaterThanOrEqual(0);
+			expect(resultIndex).toBeGreaterThan(outcomeIndex);
 		});
 	});
 

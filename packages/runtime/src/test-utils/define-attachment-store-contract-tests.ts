@@ -51,6 +51,23 @@ export function defineAttachmentStoreContractTests(
 			await expect(store.put(input)).resolves.toBeUndefined();
 		});
 
+		it('accepts concurrent exact puts when one attachment identity has one winner', async () => {
+			const store = await backend.create();
+			const bytes = Uint8Array.from([3, 4, 5]);
+			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/jpeg', bytes });
+			const input = {
+				streamPath: 'agents/assistant/agent-1',
+				attachment,
+				bytes,
+				owner: { kind: 'submission' as const, submissionId: 'submission-1' },
+			};
+
+			await expect(Promise.all([store.put(input), store.put(input)])).resolves.toEqual([
+				undefined,
+				undefined,
+			]);
+		});
+
 		it('throws AttachmentConflictError when one ID is reused with different bytes', async () => {
 			const store = await backend.create();
 			const first = Uint8Array.from([1]);

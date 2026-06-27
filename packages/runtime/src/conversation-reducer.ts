@@ -81,6 +81,14 @@ export interface InProgressAssistantMessage {
 	blockIndexes: Set<number>;
 }
 
+export interface ReducedToolOutcome {
+	assistantMessageId: string;
+	toolCallId: string;
+	toolName: string;
+	isError: boolean;
+	content: CanonicalToolResultContent[];
+}
+
 export interface ReducedConversationState {
 	conversationId: string;
 	affinityKey: string;
@@ -93,12 +101,14 @@ export interface ReducedConversationState {
 	entries: Map<string, ReducedEntry>;
 	activeLeafId: string | null;
 	inProgressMessages: Map<string, InProgressAssistantMessage>;
+	toolOutcomes: Map<string, ReducedToolOutcome>;
 	childConversations: Map<string, CanonicalChildSessionRef>;
 }
 
 export interface ReducedInstanceState {
 	recordsThroughOffset: string;
 	conversations: Map<string, ReducedConversationState>;
+	conversationScopes: Map<string, string>;
 	recordsById: Map<string, ConversationRecord>;
 	entryOwners: Map<string, string>;
 }
@@ -116,6 +126,7 @@ export function createReducedInstanceState(): ReducedInstanceState {
 	return {
 		recordsThroughOffset: '-1',
 		conversations: new Map(),
+		conversationScopes: new Map(),
 		recordsById: new Map(),
 		entryOwners: new Map(),
 	};
@@ -135,6 +146,7 @@ export function reduceConversationRecords(
 export function cloneReducedInstanceState(state: ReducedInstanceState): ReducedInstanceState {
 	return {
 		recordsThroughOffset: state.recordsThroughOffset,
+		conversationScopes: new Map(state.conversationScopes),
 		recordsById: new Map(state.recordsById),
 		entryOwners: new Map(state.entryOwners),
 		conversations: new Map(
@@ -172,6 +184,12 @@ export function cloneReducedInstanceState(state: ReducedInstanceState): ReducedI
 							},
 						]),
 					),
+					toolOutcomes: new Map(
+						[...conversation.toolOutcomes].map(([toolCallId, outcome]) => [
+							toolCallId,
+							{ ...outcome, content: outcome.content.map((block) => ({ ...block })) },
+						]),
+					),
 					childConversations: new Map(conversation.childConversations),
 				},
 			]),
@@ -194,6 +212,14 @@ export function applyConversationRecord(
 		if (state.conversations.has(record.conversationId)) {
 			fail(record, `Conversation "${record.conversationId}" is already initialized.`);
 		}
+		const scopeKey = conversationScopeKey(record.harness, record.session);
+		const scopeOwner = state.conversationScopes.get(scopeKey);
+		if (scopeOwner) {
+			fail(record, `Conversation scope is already owned by "${scopeOwner}".`);
+		}
+		if (record.parentConversationId && !state.conversations.has(record.parentConversationId)) {
+			fail(record, `Parent conversation "${record.parentConversationId}" does not exist.`);
+		}
 		state.conversations.set(record.conversationId, {
 			conversationId: record.conversationId,
 			affinityKey: record.affinityKey,
@@ -206,8 +232,10 @@ export function applyConversationRecord(
 			entries: new Map(),
 			activeLeafId: null,
 			inProgressMessages: new Map(),
+			toolOutcomes: new Map(),
 			childConversations: new Map(),
 		});
+		state.conversationScopes.set(scopeKey, record.conversationId);
 		state.recordsById.set(record.id, record);
 		return;
 	}
@@ -344,6 +372,31 @@ export function applyConversationRecord(
 				timestamp: inProgress.timestamp,
 				submissionId: inProgress.submissionId,
 				message,
+			});
+			break;
+		}
+		case 'tool_outcome': {
+			const assistant = conversation.entries.get(record.assistantMessageId);
+			if (assistant?.type !== 'message' || assistant.message.role !== 'assistant') {
+				fail(record, `Tool outcome assistant "${record.assistantMessageId}" does not exist.`);
+			}
+			const call = assistant.message.content.find(
+				(block): block is Extract<AssistantMessage['content'][number], { type: 'toolCall' }> =>
+					block.type === 'toolCall' && block.id === record.toolCallId,
+			);
+			if (!call || call.name !== record.toolName) {
+				fail(record, `Tool outcome does not match its assistant tool request.`);
+			}
+			const outcomeKey = toolOutcomeKey(record.assistantMessageId, record.toolCallId);
+			if (conversation.toolOutcomes.has(outcomeKey)) {
+				fail(record, `Tool outcome for "${record.toolCallId}" already exists.`);
+			}
+			conversation.toolOutcomes.set(outcomeKey, {
+				assistantMessageId: record.assistantMessageId,
+				toolCallId: record.toolCallId,
+				toolName: record.toolName,
+				isError: record.isError,
+				content: record.content.map((block) => ({ ...block })),
 			});
 			break;
 		}
@@ -854,6 +907,14 @@ function isCompleteToolBatch(
 		if (result.toolCallId !== call.id || result.toolName !== call.name) return false;
 	}
 	return true;
+}
+
+export function toolOutcomeKey(assistantMessageId: string, toolCallId: string): string {
+	return JSON.stringify([assistantMessageId, toolCallId]);
+}
+
+function conversationScopeKey(harness: string, session: string): string {
+	return JSON.stringify([harness, session]);
 }
 
 function fail(record: ConversationRecord, reason: string): never {

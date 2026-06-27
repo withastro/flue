@@ -128,7 +128,7 @@ export function projectAgentConversationBatch(options: {
 			: [];
 	}
 	return relevant
-		.filter((record) => record.type !== 'conversation_created')
+		.filter((record) => record.type !== 'conversation_created' && record.type !== 'tool_outcome')
 		.map((record) => ({
 			v: 1,
 			type: 'conversation_record',

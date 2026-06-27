@@ -136,6 +136,15 @@ export interface AssistantMessageCompletedRecord extends ConversationRecordEnvel
 	error?: string;
 }
 
+export interface ToolOutcomeRecord extends ConversationRecordEnvelope {
+	type: 'tool_outcome';
+	assistantMessageId: string;
+	toolCallId: string;
+	toolName: string;
+	isError: boolean;
+	content: CanonicalToolResultContent[];
+}
+
 export interface ToolResultRecord extends ConversationRecordEnvelope {
 	type: 'tool_result';
 	messageId: string;
@@ -206,6 +215,7 @@ export type ConversationRecord =
 	| AssistantReasoningCompletedRecord
 	| AssistantToolCallRecord
 	| AssistantMessageCompletedRecord
+	| ToolOutcomeRecord
 	| ToolResultRecord
 	| CompactionRecord
 	| ActiveLeafChangedRecord

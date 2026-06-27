@@ -17,6 +17,7 @@ import {
 	SessionBusyError,
 } from '../src/index.ts';
 import { createFlueContext, InMemoryAttachmentStore, InMemoryConversationStreamStore } from '../src/internal.ts';
+import { createAttachmentRef } from '../src/runtime/attachment-store.ts';
 import { getInternalSession } from '../src/session.ts';
 import type { SessionEnv } from '../src/types.ts';
 import { createNoopSessionEnv } from './fixtures/session-env.ts';
@@ -589,6 +590,136 @@ describe('session.task()', () => {
 		expect(writer.offset).toBe(offset);
 	});
 
+	it('reuses a durable attachment outcome when repairing an interrupted tool batch', async () => {
+		const provider = createProvider([{ id: 'reviewer' }]);
+		const store = new InMemoryConversationStreamStore();
+		const attachments = new InMemoryAttachmentStore();
+		const writer = await ConversationRecordWriter.create({
+			store,
+			path: 'agents/assistant/tool-attachment-repair-instance',
+			identity: { agentName: 'assistant', instanceId: 'tool-attachment-repair-instance' },
+			producerId: 'producer-1',
+		});
+		const timestamp = new Date().toISOString();
+		const bytes = Uint8Array.from([1, 2, 3]);
+		const attachment = await createAttachmentRef({ id: 'att_tool_result', mimeType: 'image/png', bytes });
+		await attachments.put({
+			streamPath: writer.path,
+			attachment,
+			bytes,
+			owner: { kind: 'conversation', conversationId: 'conversation-tool-repair' },
+		});
+		await writer.append([
+			{
+				v: 1,
+				id: 'record-tool-created',
+				type: 'conversation_created',
+				conversationId: 'conversation-tool-repair',
+				harness: 'default',
+				session: 'default',
+				timestamp,
+				affinityKey: 'affinity-tool-repair',
+				createdAt: timestamp,
+			},
+			{
+				v: 1,
+				id: 'record-tool-user',
+				type: 'user_message',
+				conversationId: 'conversation-tool-repair',
+				harness: 'default',
+				session: 'default',
+				timestamp,
+				messageId: 'entry_tool_user',
+				parentId: null,
+				content: [{ type: 'text', text: 'Use tools' }],
+			},
+			{
+				v: 1,
+				id: 'record-tool-assistant-started',
+				type: 'assistant_message_started',
+				conversationId: 'conversation-tool-repair',
+				harness: 'default',
+				session: 'default',
+				timestamp,
+				messageId: 'entry_tool_assistant',
+				parentId: 'entry_tool_user',
+				modelInfo: { api: 'faux', provider: provider.getModel().provider, model: 'reviewer' },
+			},
+			{
+				v: 1,
+				id: 'record-tool-call',
+				type: 'assistant_tool_call',
+				conversationId: 'conversation-tool-repair',
+				harness: 'default',
+				session: 'default',
+				timestamp,
+				messageId: 'entry_tool_assistant',
+				blockId: 'block_tool',
+				blockIndex: 0,
+				toolCallId: 'tool-call-1',
+				name: 'lookup',
+				arguments: {},
+			},
+			{
+				v: 1,
+				id: 'record-tool-assistant-completed',
+				type: 'assistant_message_completed',
+				conversationId: 'conversation-tool-repair',
+				harness: 'default',
+				session: 'default',
+				timestamp,
+				messageId: 'entry_tool_assistant',
+				stopReason: 'toolUse',
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
+			},
+			{
+				v: 1,
+				id: 'record-tool-outcome',
+				type: 'tool_outcome',
+				conversationId: 'conversation-tool-repair',
+				harness: 'default',
+				session: 'default',
+				timestamp,
+				assistantMessageId: 'entry_tool_assistant',
+				toolCallId: 'tool-call-1',
+				toolName: 'lookup',
+				isError: false,
+				content: [{ type: 'attachment', attachment }],
+			},
+		]);
+		const ctx = createFlueContext({
+			id: 'tool-attachment-repair-instance',
+			env: {},
+			agentConfig: { resolveModel: () => provider.getModel('reviewer') },
+			createDefaultEnv: async () => createNoopSessionEnv(),
+			conversationWriter: writer,
+			attachmentStore: attachments,
+		});
+		const harness = await ctx.initializeRootHarness(
+			defineAgent(() => ({ model: `${provider.getModel().provider}/reviewer` })),
+		);
+		const internal = getInternalSession(await harness.session());
+		if (!internal) throw new Error('Expected internal session.');
+		const repairedLeaf = await internal.repairInterruptedToolCalls(
+			{
+				kind: 'dispatch',
+				submissionId: 'submission-tool-repair',
+				dispatchId: 'submission-tool-repair',
+				agent: 'assistant',
+				id: 'tool-attachment-repair-instance',
+				input: {},
+				acceptedAt: timestamp,
+			},
+			{ toolCalls: [{ type: 'toolCall', id: 'tool-call-1', name: 'lookup' }] },
+		);
+		const repaired = await writer.getConversation('conversation-tool-repair');
+
+		expect(repaired?.entries.get(repairedLeaf ?? '')).toMatchObject({
+			type: 'message',
+			attachmentRefs: new Map([[attachment.id, attachment]]),
+		});
+	});
+
 	it('reuses an already committed interrupted-tool repair after restart', async () => {
 		const provider = createProvider([{ id: 'reviewer' }]);
 		const store = new InMemoryConversationStreamStore();
@@ -662,6 +793,20 @@ describe('session.task()', () => {
 				stopReason: 'toolUse',
 				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } },
 			},
+			{
+				v: 1,
+				id: 'record-tool-outcome',
+				type: 'tool_outcome',
+				conversationId: 'conversation-tool-repair',
+				harness: 'default',
+				session: 'default',
+				timestamp,
+				assistantMessageId: 'entry_tool_assistant',
+				toolCallId: 'tool-call-1',
+				toolName: 'lookup',
+				isError: false,
+				content: [{ type: 'text', text: 'Known durable result' }],
+			},
 		]);
 		const ctx = createFlueContext({
 			id: 'tool-repair-instance',
@@ -690,7 +835,16 @@ describe('session.task()', () => {
 
 		const repairedLeaf = await internal.repairInterruptedToolCalls(input, request, attempt);
 		const offset = writer.offset;
-		expect(repairedLeaf).toBe('entry_tool_repair_entry_tool_assistant_tool-call-1');
+		expect(repairedLeaf).toMatch(/^entry_tool_repair_/);
+		const repaired = await writer.getConversation('conversation-tool-repair');
+		expect(repaired?.entries.get(repairedLeaf ?? '')).toMatchObject({
+			type: 'message',
+			message: {
+				role: 'toolResult',
+				isError: false,
+				content: [{ type: 'text', text: 'Known durable result' }],
+			},
+		});
 		expect(await internal.repairInterruptedToolCalls(input, request, attempt)).toBe(repairedLeaf);
 		expect(writer.offset).toBe(offset);
 	});

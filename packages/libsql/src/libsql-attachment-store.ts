@@ -25,19 +25,16 @@ export class LibsqlAttachmentStore implements AttachmentStore {
 	async put(input: PutAttachmentInput): Promise<void> {
 		await verifyAttachmentBytes(input.attachment, input.bytes);
 		await this.runner.transaction(async (tx) => {
-			const existing = await readAttachment(tx.query, input.streamPath, input.attachment.id);
-			if (existing) {
-				if (!matchesInput(existing, input)) conflict(input);
-				return;
-			}
 			const owner = ownerColumns(input.owner);
 			await tx.query(
 				`INSERT INTO flue_attachments
 				 (stream_path, attachment_id, mime_type, byte_size, digest, owner_kind, owner_id, bytes, created_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT (stream_path, attachment_id) DO NOTHING`,
 				[input.streamPath, input.attachment.id, input.attachment.mimeType, input.attachment.size,
 					input.attachment.digest, owner.kind, owner.id, exactArrayBuffer(input.bytes), Date.now()],
 			);
+			const accepted = await readAttachment(tx.query, input.streamPath, input.attachment.id);
+			if (!accepted || !matchesInput(accepted, input)) conflict(input);
 		});
 	}
 

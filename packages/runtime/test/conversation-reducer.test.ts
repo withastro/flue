@@ -149,6 +149,35 @@ describe('reduceConversationRecords()', () => {
 		expect(decoded.conversations.get('conv_01')?.createdAt).toBe('2026-06-25T00:00:00.000Z');
 	});
 
+	it('rejects a second conversation when one routing scope is already owned', () => {
+		const state = reduceConversationRecords(createReducedInstanceState(), [required(canonicalConversation()[0])]);
+
+		expect(() => applyConversationRecord(state, {
+			...scope,
+			id: 'record_duplicate_scope',
+			type: 'conversation_created',
+			conversationId: 'conv_02',
+			timestamp: '2026-06-25T00:00:01.000Z',
+			affinityKey: 'aff_02',
+			createdAt: '2026-06-25T00:00:01.000Z',
+		})).toThrow(ConversationRecordInvariantError);
+	});
+
+	it('rejects a child conversation when its parent does not exist', () => {
+		expect(() => reduceConversationRecords(createReducedInstanceState(), [{
+			...scope,
+			id: 'record_orphan_child',
+			type: 'conversation_created',
+			conversationId: 'conv_child',
+			harness: 'default:action:invocation',
+			session: 'child',
+			timestamp: '2026-06-25T00:00:01.000Z',
+			affinityKey: 'aff_child',
+			createdAt: '2026-06-25T00:00:01.000Z',
+			parentConversationId: 'conv_missing',
+		}])).toThrow(ConversationRecordInvariantError);
+	});
+
 	it('produces equal state when records are applied individually or in batches', () => {
 		const records = canonicalConversation();
 		const batched = reduceConversationRecords(createReducedInstanceState(), records, '8');
@@ -334,6 +363,57 @@ describe('reduceConversationRecords()', () => {
 			output: 4,
 			totalTokens: 24,
 		});
+	});
+
+	it('retains a durable tool outcome outside the model-visible graph', () => {
+		const records = canonicalConversation();
+		const state = reduceConversationRecords(createReducedInstanceState(), records.slice(0, 4), '4');
+		applyConversationRecord(state, {
+			...scope,
+			id: 'record_tool_call',
+			type: 'assistant_tool_call',
+			timestamp: '2026-06-25T00:00:02.150Z',
+			messageId: 'entry_assistant',
+			blockId: 'block_tool',
+			blockIndex: 1,
+			toolCallId: 'call_expected',
+			name: 'lookup',
+			arguments: {},
+		});
+		applyConversationRecord(state, {
+			...scope,
+			id: 'record_empty_text_complete',
+			type: 'assistant_text_completed',
+			timestamp: '2026-06-25T00:00:02.200Z',
+			messageId: 'entry_assistant',
+			blockId: 'block_text',
+			deltaCount: 0,
+		});
+		applyConversationRecord(state, {
+			...scope,
+			id: 'record_tool_assistant_complete',
+			type: 'assistant_message_completed',
+			timestamp: '2026-06-25T00:00:02.300Z',
+			messageId: 'entry_assistant',
+			stopReason: 'toolUse',
+			usage,
+		});
+		applyConversationRecord(state, {
+			...scope,
+			id: 'record_tool_outcome',
+			type: 'tool_outcome',
+			timestamp: '2026-06-25T00:00:02.400Z',
+			assistantMessageId: 'entry_assistant',
+			toolCallId: 'call_expected',
+			toolName: 'lookup',
+			isError: false,
+			content: [{ type: 'text', text: 'durable result' }],
+		});
+		const conversation = required(state.conversations.get('conv_01'));
+
+		expect(conversation.activeLeafId).toBe('entry_assistant');
+		expect(conversation.toolOutcomes.size).toBe(1);
+		expect(buildConversationContext(conversation)).toEqual([{ role: 'user', content: [{ type: 'text', text: 'Hello' }], timestamp: expect.any(Number) }]);
 	});
 
 	it('rejects a tool result that does not match the next requested tool call', () => {

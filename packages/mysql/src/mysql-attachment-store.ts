@@ -23,13 +23,10 @@ export class MysqlAttachmentStore implements AttachmentStore {
 	async put(input: PutAttachmentInput): Promise<void> {
 		await verifyAttachmentBytes(input.attachment, input.bytes);
 		await this.runner.transaction(async (tx) => {
-			const existing = await readAttachment(tx.query, input.streamPath, input.attachment.id, true);
-			if (existing) {
-				if (!sameAttachmentRef(existing.attachment, input.attachment) || !sameAttachmentOwner(existing.owner, input.owner) || !attachmentBytesEqual(existing.bytes, input.bytes)) conflict(input);
-				return;
-			}
 			const owner = input.owner.kind === 'conversation' ? input.owner.conversationId : input.owner.submissionId;
-			await tx.query(`INSERT INTO flue_attachments (stream_path, attachment_id, mime_type, byte_size, digest, owner_kind, owner_id, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, [input.streamPath, input.attachment.id, input.attachment.mimeType, input.attachment.size, input.attachment.digest, input.owner.kind, owner, copyAttachmentBytes(input.bytes), Date.now()]);
+			await tx.query(`INSERT INTO flue_attachments (stream_path, attachment_id, mime_type, byte_size, digest, owner_kind, owner_id, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE attachment_id = attachment_id`, [input.streamPath, input.attachment.id, input.attachment.mimeType, input.attachment.size, input.attachment.digest, input.owner.kind, owner, copyAttachmentBytes(input.bytes), Date.now()]);
+			const accepted = await readAttachment(tx.query, input.streamPath, input.attachment.id, true);
+			if (!accepted || !sameAttachmentRef(accepted.attachment, input.attachment) || !sameAttachmentOwner(accepted.owner, input.owner) || !attachmentBytesEqual(accepted.bytes, input.bytes)) conflict(input);
 		});
 	}
 

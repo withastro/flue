@@ -23,15 +23,24 @@ export class MongoAttachmentStore implements AttachmentStore {
 
 	async put(input: PutAttachmentInput): Promise<void> {
 		await verifyAttachmentBytes(input.attachment, input.bytes);
-		await this.runner.transaction(async (tx) => {
-			const collection = tx.collection(collectionName(this.prefix, 'attachments'));
-			const existing = parse(await collection.findOne({ path: input.streamPath, attachmentId: input.attachment.id }), input.attachment.id);
-			if (existing) {
-				if (!sameAttachmentRef(existing.attachment, input.attachment) || !sameAttachmentOwner(existing.owner, input.owner) || !attachmentBytesEqual(existing.bytes, input.bytes)) conflict(input);
-				return;
-			}
-			await collection.insertOne({ _id: crypto.randomUUID(), path: input.streamPath, attachmentId: input.attachment.id, mimeType: input.attachment.mimeType, byteSize: input.attachment.size, digest: input.attachment.digest, ownerKind: input.owner.kind, ownerId: input.owner.kind === 'conversation' ? input.owner.conversationId : input.owner.submissionId, bytes: copyAttachmentBytes(input.bytes), createdAt: Date.now() });
-		});
+		try {
+			await this.runner.transaction(async (tx) => {
+				const collection = tx.collection(collectionName(this.prefix, 'attachments'));
+				const existing = parse(await collection.findOne({ path: input.streamPath, attachmentId: input.attachment.id }), input.attachment.id);
+				if (existing) {
+					if (!matchesInput(existing, input)) conflict(input);
+					return;
+				}
+				await collection.insertOne({ _id: crypto.randomUUID(), path: input.streamPath, attachmentId: input.attachment.id, mimeType: input.attachment.mimeType, byteSize: input.attachment.size, digest: input.attachment.digest, ownerKind: input.owner.kind, ownerId: input.owner.kind === 'conversation' ? input.owner.conversationId : input.owner.submissionId, bytes: copyAttachmentBytes(input.bytes), createdAt: Date.now() });
+			});
+		} catch (error) {
+			if (!isDuplicate(error)) throw error;
+			const accepted = parse(
+				await this.collection(this.runner).findOne({ path: input.streamPath, attachmentId: input.attachment.id }),
+				input.attachment.id,
+			);
+			if (!accepted || !matchesInput(accepted, input)) conflict(input);
+		}
 	}
 
 	async get(input: GetAttachmentInput): Promise<StoredAttachment | null> {
@@ -73,6 +82,21 @@ function parse(document: Record<string, unknown> | null, id: string): Attachment
 	if (!document) return null;
 	const bytes = document.bytes instanceof Uint8Array ? copyAttachmentBytes(document.bytes) : document.bytes instanceof ArrayBuffer ? new Uint8Array(document.bytes.slice(0)) : binaryFromBson(document.bytes);
 	return { attachment: { id, mimeType: String(document.mimeType), size: Number(document.byteSize), digest: String(document.digest) }, bytes, owner: document.ownerKind === 'conversation' ? { kind: 'conversation', conversationId: String(document.ownerId) } : { kind: 'submission', submissionId: String(document.ownerId) } };
+}
+
+function matchesInput(record: AttachmentRecord, input: PutAttachmentInput): boolean {
+	return sameAttachmentRef(record.attachment, input.attachment) &&
+		sameAttachmentOwner(record.owner, input.owner) &&
+		attachmentBytesEqual(record.bytes, input.bytes);
+}
+
+function isDuplicate(error: unknown): boolean {
+	return Boolean(
+		error &&
+		typeof error === 'object' &&
+		'code' in error &&
+		(error as { code: unknown }).code === 11000,
+	);
 }
 
 function binaryFromBson(value: unknown): Uint8Array {
