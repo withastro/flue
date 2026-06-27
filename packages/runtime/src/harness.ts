@@ -1,6 +1,5 @@
 import { abortErrorFor, createCallHandle } from './abort.ts';
 import type { ActionDefinition } from './action.ts';
-import type { AgentSubmissionStore } from './agent-execution-store.ts';
 import { discoverSessionContext } from './context.ts';
 import type { ConversationRecordWriter } from './conversation-writer.ts';
 import { SessionAlreadyExistsError, SessionNotFoundError } from './errors.ts';
@@ -64,7 +63,6 @@ export class Harness implements FlueHarness {
 
 		private agentTools: ToolDefinition[],
 		private toolFactory: SessionToolFactory | undefined,
-		private submissionStore: AgentSubmissionStore | undefined,
 		private conversationWriter: ConversationRecordWriter,
 		private attachmentStore: AttachmentStore,
 		private actions: ActionDefinition[] = config.actions ?? [],
@@ -192,7 +190,6 @@ export class Harness implements FlueHarness {
 			createActionHarness: (actionOptions) => this.createActionHarness(actionOptions),
 			scopeSignal: this.scopeAbortController.signal,
 			onClose: () => this.openSessions.delete(sessionName),
-			submissionStore: this.submissionStore,
 			conversationWriter: this.conversationWriter,
 			attachmentStore: this.attachmentStore,
 			executionContext: { ...this.executionContext, harness: harnessScope },
@@ -308,7 +305,6 @@ export class Harness implements FlueHarness {
 			options.eventCallback ?? this.eventCallback,
 			options.tools,
 			this.toolFactory,
-			this.submissionStore,
 			this.conversationWriter,
 			this.attachmentStore,
 			options.actions,

@@ -108,6 +108,7 @@ function createPgliteRunner(): PostgresRunner {
 			}
 			return {
 				stream: stores.conversationStreamStore,
+				executionStore: stores.executionStore,
 			};
 		},
 		async cleanup() {

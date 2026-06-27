@@ -64,7 +64,7 @@ describe('SqliteAttachmentStore', () => {
 			streamPath: 'agents/assistant/agent-1',
 			attachment,
 			bytes,
-			owner: { kind: 'conversation', conversationId: 'conversation-1' },
+			conversationId: 'conversation-1',
 		});
 
 		expect(db.prepare(
@@ -91,7 +91,7 @@ describe('SqliteAttachmentStore', () => {
 			streamPath: 'agents/assistant/agent-1',
 			attachment,
 			bytes,
-			owner: { kind: 'conversation', conversationId: 'conversation-1' },
+			conversationId: 'conversation-1',
 		});
 		db.prepare(
 			`DELETE FROM flue_attachment_chunks
@@ -115,7 +115,7 @@ describe('SqliteAttachmentStore', () => {
 			streamPath: 'agents/assistant/agent-1',
 			attachment,
 			bytes,
-			owner: { kind: 'conversation', conversationId: 'conversation-1' },
+			conversationId: 'conversation-1',
 		});
 		db.prepare(
 			`UPDATE flue_attachments SET chunk_count = 2

@@ -26,7 +26,7 @@ export function defineAttachmentStoreContractTests(
 				streamPath: 'agents/assistant/agent-1',
 				attachment,
 				bytes,
-				owner: { kind: 'conversation', conversationId: 'conversation-1' },
+				conversationId: 'conversation-1',
 			});
 
 			await expect(store.get({
@@ -44,7 +44,7 @@ export function defineAttachmentStoreContractTests(
 				streamPath: 'agents/assistant/agent-1',
 				attachment,
 				bytes,
-				owner: { kind: 'submission' as const, submissionId: 'submission-1' },
+				conversationId: 'conversation-1',
 			};
 
 			await store.put(input);
@@ -59,7 +59,7 @@ export function defineAttachmentStoreContractTests(
 				streamPath: 'agents/assistant/agent-1',
 				attachment,
 				bytes,
-				owner: { kind: 'submission' as const, submissionId: 'submission-1' },
+				conversationId: 'conversation-1',
 			};
 
 			await expect(Promise.all([store.put(input), store.put(input)])).resolves.toEqual([
@@ -76,18 +76,18 @@ export function defineAttachmentStoreContractTests(
 				streamPath: 'agents/assistant/agent-1',
 				attachment: await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes: first }),
 				bytes: first,
-				owner: { kind: 'conversation', conversationId: 'conversation-1' },
+				conversationId: 'conversation-1',
 			});
 
 			await expect(store.put({
 				streamPath: 'agents/assistant/agent-1',
 				attachment: await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes: second }),
 				bytes: second,
-				owner: { kind: 'conversation', conversationId: 'conversation-1' },
+				conversationId: 'conversation-1',
 			})).rejects.toBeInstanceOf(AttachmentConflictError);
 		});
 
-		it('throws AttachmentConflictError when one ID is reused with a different owner', async () => {
+		it('throws AttachmentConflictError when one ID is reused for a different conversation', async () => {
 			const store = await backend.create();
 			const bytes = Uint8Array.from([1]);
 			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes });
@@ -95,14 +95,14 @@ export function defineAttachmentStoreContractTests(
 				streamPath: 'agents/assistant/agent-1',
 				attachment,
 				bytes,
-				owner: { kind: 'conversation', conversationId: 'conversation-1' },
+				conversationId: 'conversation-1',
 			});
 
 			await expect(store.put({
 				streamPath: 'agents/assistant/agent-1',
 				attachment,
 				bytes,
-				owner: { kind: 'conversation', conversationId: 'conversation-2' },
+				conversationId: 'conversation-2',
 			})).rejects.toBeInstanceOf(AttachmentConflictError);
 		});
 
@@ -115,7 +115,7 @@ export function defineAttachmentStoreContractTests(
 				streamPath: 'agents/assistant/agent-1',
 				attachment: { ...attachment, size: attachment.size + 1 },
 				bytes,
-				owner: { kind: 'conversation', conversationId: 'conversation-1' },
+				conversationId: 'conversation-1',
 			})).rejects.toBeInstanceOf(AttachmentIntegrityError);
 		});
 
@@ -128,7 +128,7 @@ export function defineAttachmentStoreContractTests(
 				streamPath: 'agents/assistant/agent-1',
 				attachment: { ...attachment, digest: '0'.repeat(64) },
 				bytes,
-				owner: { kind: 'conversation', conversationId: 'conversation-1' },
+				conversationId: 'conversation-1',
 			})).rejects.toBeInstanceOf(AttachmentIntegrityError);
 		});
 
@@ -140,7 +140,7 @@ export function defineAttachmentStoreContractTests(
 				streamPath: 'agents/assistant/agent-1',
 				attachment,
 				bytes,
-				owner: { kind: 'conversation', conversationId: 'conversation-1' },
+				conversationId: 'conversation-1',
 			});
 
 			await expect(store.get({
@@ -150,66 +150,11 @@ export function defineAttachmentStoreContractTests(
 			})).resolves.toBeNull();
 		});
 
-		it('binds a staged attachment when submission ownership and reference are exact', async () => {
-			const store = await backend.create();
-			const bytes = Uint8Array.from([8, 9]);
-			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes });
-			await store.put({
-				streamPath: 'agents/assistant/agent-1',
-				attachment,
-				bytes,
-				owner: { kind: 'submission', submissionId: 'submission-1' },
-			});
-
-			await store.bindSubmissionAttachment({
-				streamPath: 'agents/assistant/agent-1',
-				submissionId: 'submission-1',
-				conversationId: 'conversation-1',
-				attachment,
-			});
-			await expect(store.get({
-				streamPath: 'agents/assistant/agent-1',
-				conversationId: 'conversation-1',
-				attachmentId: attachment.id,
-			})).resolves.toEqual({ attachment, bytes });
-			await expect(store.bindSubmissionAttachment({
-				streamPath: 'agents/assistant/agent-1',
-				submissionId: 'submission-1',
-				conversationId: 'conversation-1',
-				attachment,
-			})).resolves.toBeUndefined();
-		});
-
-		it('rejects binding when the staged owner or expected reference differs', async () => {
-			const store = await backend.create();
-			const bytes = Uint8Array.from([8, 9]);
-			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes });
-			await store.put({
-				streamPath: 'agents/assistant/agent-1',
-				attachment,
-				bytes,
-				owner: { kind: 'submission', submissionId: 'submission-1' },
-			});
-
-			await expect(store.bindSubmissionAttachment({
-				streamPath: 'agents/assistant/agent-1',
-				submissionId: 'submission-2',
-				conversationId: 'conversation-1',
-				attachment,
-			})).rejects.toBeInstanceOf(AttachmentConflictError);
-			await expect(store.bindSubmissionAttachment({
-				streamPath: 'agents/assistant/agent-1',
-				submissionId: 'submission-1',
-				conversationId: 'conversation-1',
-				attachment: { ...attachment, mimeType: 'image/jpeg' },
-			})).rejects.toBeInstanceOf(AttachmentConflictError);
-		});
-
 		it('deletes every attachment when an instance is erased', async () => {
 			const store = await backend.create();
 			const bytes = Uint8Array.from([1]);
 			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes });
-			await store.put({ streamPath: 'agents/assistant/agent-1', attachment, bytes, owner: { kind: 'conversation', conversationId: 'conversation-1' } });
+			await store.put({ streamPath: 'agents/assistant/agent-1', attachment, bytes, conversationId: 'conversation-1' });
 			await store.deleteForInstance('agents/assistant/agent-1');
 			await expect(store.get({ streamPath: 'agents/assistant/agent-1', conversationId: 'conversation-1', attachmentId: attachment.id })).resolves.toBeNull();
 		});
@@ -222,7 +167,7 @@ export function defineAttachmentStoreContractTests(
 				streamPath: 'agents/assistant/agent-1',
 				attachment,
 				bytes,
-				owner: { kind: 'conversation', conversationId: 'conversation-1' },
+				conversationId: 'conversation-1',
 			});
 			bytes[0] = 9;
 			const first = await store.get({

@@ -4,12 +4,12 @@ import {
 	projectConversationUi,
 } from './conversation-projections.ts';
 import type {
-	CanonicalToolResultContent,
 	ConversationRecord,
 	SubmissionSettledRecord,
 } from './conversation-records.ts';
+import type { ReducedInstanceState } from './conversation-reducer.ts';
+import { toolResultOutput, toolResultText } from './message-rendering.ts';
 import type { PromptUsage } from './types.ts';
-import { type ReducedInstanceState } from './conversation-reducer.ts';
 
 interface AgentConversationSettlement {
 	submissionId: string;
@@ -127,11 +127,7 @@ export function projectAgentConversationBatch(options: {
 }
 
 function requiresSnapshotReset(record: ConversationRecord): boolean {
-	return (
-		record.type === 'conversation_created' ||
-		record.type === 'active_leaf_changed' ||
-		record.type === 'compaction'
-	);
+	return record.type === 'conversation_created' || record.type === 'compaction';
 }
 
 function encodeRecord(
@@ -269,16 +265,4 @@ function projectSettlements(
 			...(record.result === undefined ? {} : { result: record.result }),
 			...(record.error === undefined ? {} : { error: record.error }),
 		}));
-}
-
-function toolResultOutput(content: CanonicalToolResultContent[]): unknown {
-	if (content.length === 1 && content[0]?.type === 'text') return content[0].text;
-	return content;
-}
-
-function toolResultText(content: CanonicalToolResultContent[]): string {
-	return content
-		.filter((block): block is Extract<CanonicalToolResultContent, { type: 'text' }> => block.type === 'text')
-		.map((block) => block.text)
-		.join('\n');
 }

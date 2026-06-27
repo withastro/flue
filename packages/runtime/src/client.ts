@@ -3,7 +3,6 @@ import {
 	extendAgentProfile,
 	resolveAgentProfile,
 } from './agent-definition.ts';
-import type { AgentSubmissionStore } from './agent-execution-store.ts';
 import { discoverSessionContext } from './context.ts';
 import { ConversationRecordWriter } from './conversation-writer.ts';
 import { Harness } from './harness.ts';
@@ -48,7 +47,6 @@ export interface FlueContextConfig {
 	 */
 	req?: Request;
 	initialEventIndex?: number;
-	submissionStore?: AgentSubmissionStore;
 	conversationWriter?: ConversationRecordWriter;
 	attachmentStore?: AttachmentStore;
 }
@@ -300,7 +298,6 @@ export async function initializeRootHarness(
 		emitEvent,
 		definition.tools ?? [],
 		toolFactory,
-		config.submissionStore,
 		config.conversationWriter,
 		config.attachmentStore,
 		definition.actions,

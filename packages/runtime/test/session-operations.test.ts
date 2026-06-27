@@ -609,7 +609,7 @@ describe('session.task()', () => {
 			streamPath: writer.path,
 			attachment,
 			bytes,
-			owner: { kind: 'conversation', conversationId: 'conversation-tool-repair' },
+			conversationId: 'conversation-tool-repair',
 		});
 		await writer.append([
 			{

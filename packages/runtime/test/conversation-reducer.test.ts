@@ -139,6 +139,112 @@ describe('reduceConversationRecords()', () => {
 		]);
 	});
 
+	it('round-trips text signatures and redacted-thinking markers into model context', () => {
+		const records: ConversationRecord[] = [
+			required(canonicalConversation()[0]),
+			{
+				...scope,
+				id: 'record_user',
+				type: 'user_message',
+				timestamp: '2026-06-25T00:00:01.000Z',
+				messageId: 'entry_user',
+				parentId: null,
+				content: [{ type: 'text', text: 'Hello' }],
+			},
+			{
+				...scope,
+				id: 'record_assistant_start',
+				type: 'assistant_message_started',
+				timestamp: '2026-06-25T00:00:02.000Z',
+				messageId: 'entry_assistant',
+				parentId: 'entry_user',
+				turnId: 'turn_01',
+				modelInfo: { api: 'test', provider: 'test', model: 'test-model' },
+			},
+			{
+				...scope,
+				id: 'record_reasoning_start',
+				type: 'assistant_reasoning_started',
+				timestamp: '2026-06-25T00:00:02.100Z',
+				messageId: 'entry_assistant',
+				blockId: 'block_reasoning',
+				blockIndex: 0,
+			},
+			{
+				...scope,
+				id: 'record_reasoning_delta',
+				type: 'assistant_reasoning_delta',
+				timestamp: '2026-06-25T00:00:02.150Z',
+				messageId: 'entry_assistant',
+				blockId: 'block_reasoning',
+				sequence: 0,
+				delta: 'redacted thinking',
+			},
+			{
+				...scope,
+				id: 'record_reasoning_complete',
+				type: 'assistant_reasoning_completed',
+				timestamp: '2026-06-25T00:00:02.200Z',
+				messageId: 'entry_assistant',
+				blockId: 'block_reasoning',
+				deltaCount: 1,
+				encrypted: 'enc_payload',
+				redacted: true,
+			},
+			{
+				...scope,
+				id: 'record_text_start',
+				type: 'assistant_text_started',
+				timestamp: '2026-06-25T00:00:02.300Z',
+				messageId: 'entry_assistant',
+				blockId: 'block_text',
+				blockIndex: 1,
+			},
+			{
+				...scope,
+				id: 'record_text_delta',
+				type: 'assistant_text_delta',
+				timestamp: '2026-06-25T00:00:02.350Z',
+				messageId: 'entry_assistant',
+				blockId: 'block_text',
+				sequence: 0,
+				delta: 'Answer',
+			},
+			{
+				...scope,
+				id: 'record_text_complete',
+				type: 'assistant_text_completed',
+				timestamp: '2026-06-25T00:00:02.400Z',
+				messageId: 'entry_assistant',
+				blockId: 'block_text',
+				deltaCount: 1,
+				textSignature: 'sig_text',
+			},
+			{
+				...scope,
+				id: 'record_assistant_complete',
+				type: 'assistant_message_completed',
+				timestamp: '2026-06-25T00:00:02.500Z',
+				messageId: 'entry_assistant',
+				stopReason: 'stop',
+				usage,
+			},
+		];
+		const state = reduceConversationRecords(createReducedInstanceState(), records, '9');
+		const conversation = required(state.conversations.get('conv_01'));
+
+		expect(buildConversationContext(conversation)).toMatchObject([
+			{ role: 'user' },
+			{
+				role: 'assistant',
+				content: [
+					{ type: 'thinking', thinking: 'redacted thinking', thinkingSignature: 'enc_payload', redacted: true },
+					{ type: 'text', text: 'Answer', textSignature: 'sig_text' },
+				],
+			},
+		]);
+	});
+
 	it('rejects a second conversation when one routing scope is already owned', () => {
 		const state = reduceConversationRecords(createReducedInstanceState(), [required(canonicalConversation()[0])]);
 
@@ -437,6 +543,23 @@ describe('reduceConversationRecords()', () => {
 		});
 	});
 
+	it('projects an in-progress assistant shell even before its first delta so post-hydration deltas attach', () => {
+		const state = reduceConversationRecords(
+			createReducedInstanceState(),
+			canonicalConversation().slice(0, 3),
+			'2',
+		);
+		const conversation = required(state.conversations.get('conv_01'));
+
+		// records[0..2] = created, user, assistant_message_started (no blocks yet).
+		// The snapshot must still include the empty assistant message so a client
+		// that hydrates here can attach the deltas that arrive after the offset.
+		expect(projectConversationUi(conversation, '2').messages).toEqual([
+			{ id: 'entry_user', role: 'user', parts: [{ type: 'text', text: 'Hello', state: 'done' }] },
+			{ id: 'entry_assistant', role: 'assistant', parts: [] },
+		]);
+	});
+
 	it('projects durable partial deltas as one streaming UI message without model eligibility', () => {
 		const records = canonicalConversation();
 		const state = reduceConversationRecords(createReducedInstanceState(), records.slice(0, 5), '5');
@@ -731,34 +854,4 @@ describe('reduceConversationRecords()', () => {
 		).toThrow(ConversationRecordInvariantError);
 	});
 
-	it('selects only the explicit active branch after a non-linear leaf change', () => {
-		const records = canonicalConversation();
-		const state = reduceConversationRecords(createReducedInstanceState(), records, '8');
-		applyConversationRecord(state, {
-			...scope,
-			id: 'record_rewind',
-			type: 'active_leaf_changed',
-			timestamp: '2026-06-25T00:00:03.000Z',
-			leafId: 'entry_user',
-			previousLeafId: 'entry_assistant',
-			reason: 'repair',
-		});
-		applyConversationRecord(state, {
-			...scope,
-			id: 'record_signal',
-			type: 'signal',
-			timestamp: '2026-06-25T00:00:04.000Z',
-			messageId: 'entry_signal',
-			parentId: 'entry_user',
-			signalType: 'submission_interrupted',
-			content: 'Use the repaired branch.',
-		});
-
-		const conversation = required(state.conversations.get('conv_01'));
-		expect(getActiveConversationPath(conversation).map((entry) => entry.id)).toEqual([
-			'entry_user',
-			'entry_signal',
-		]);
-		expect(buildConversationContext(conversation)).toHaveLength(2);
-	});
 });

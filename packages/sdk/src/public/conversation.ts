@@ -11,7 +11,7 @@ import type { PromptUsage } from '../types.ts';
 export type FlueConversationPart =
 	| { type: 'text'; text: string; state: 'streaming' | 'done' }
 	| { type: 'reasoning'; text: string; state: 'streaming' | 'done' }
-	| { type: 'file'; mediaType: string; filename?: string; url?: string }
+	| { type: 'file'; mediaType: string }
 	| ({ type: 'dynamic-tool'; toolName: string; toolCallId: string } & (
 			| { state: 'input-available'; input: unknown; output?: never; errorText?: never }
 			| { state: 'output-available'; input: unknown; output: unknown; errorText?: never }

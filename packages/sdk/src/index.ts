@@ -28,7 +28,6 @@ export type {
 	FlueConversationSnapshot,
 	FlueConversationState,
 } from './public/conversation.ts';
-export type { ConversationStreamChunk } from './public/conversation-stream.ts';
 export type {
 	AgentConversationObservation,
 	AgentConversationObservationPhase,

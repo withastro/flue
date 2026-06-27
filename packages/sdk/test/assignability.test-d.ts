@@ -11,9 +11,11 @@ import type {
 	AgentConversationSnapshot as RuntimeConversationSnapshot,
 	ConversationStreamChunk as RuntimeConversationChunk,
 } from '@flue/runtime/internal';
+// `ConversationStreamChunk` is internal to the SDK (not public API), but the
+// wire-conformance assertions below must still pin it to the runtime shape.
+import type { ConversationStreamChunk as SdkConversationChunk } from '../src/public/conversation-stream.ts';
 import {
 	type AgentPromptResponse,
-	type ConversationStreamChunk as SdkConversationChunk,
 	type FlueConversationSnapshot,
 	IMAGE_DATA_OMITTED as SDK_IMAGE_DATA_OMITTED,
 	type FlueEvent as SdkFlueEvent,

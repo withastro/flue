@@ -34,7 +34,6 @@ import {
 	type TaskToolResultDetails,
 } from './agent.ts';
 import {
-	type AgentSubmissionStore,
 	DURABILITY_DEFAULT_MAX_ATTEMPTS,
 	DURABILITY_DEFAULT_TIMEOUT_MS,
 	type SubmissionDurability,
@@ -328,7 +327,6 @@ interface SessionInitOptions {
 	createActionHarness?: CreateActionHarness;
 	scopeSignal?: AbortSignal;
 	onClose?: () => void;
-	submissionStore?: AgentSubmissionStore;
 	conversationWriter: ConversationRecordWriter;
 	attachmentStore: AttachmentStore;
 	executionContext?: FlueExecutionContext;
@@ -521,7 +519,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	private createActionHarness: CreateActionHarness | undefined;
 	private scopeSignal: AbortSignal | undefined;
 	private onClose: (() => void) | undefined;
-	private submissionStore: AgentSubmissionStore | undefined;
 	private activeJournalCallbacks: ProcessAgentSubmissionOptions['journal'] | undefined;
 	private activeTimeoutAt: number | undefined;
 	private activeSubmissionId: string | undefined;
@@ -697,7 +694,6 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		this.createActionHarness = options.createActionHarness;
 		this.scopeSignal = options.scopeSignal;
 		this.onClose = options.onClose;
-		this.submissionStore = options.submissionStore;
 		this.conversationWriter = options.conversationWriter;
 		this.attachmentStore = options.attachmentStore;
 		this.executionIdentity = options.executionContext ?? {};
@@ -778,10 +774,12 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					} else if (assistant && aEvent.type === 'text_end') {
 						const block = assistant.blocks.get(aEvent.contentIndex);
 						if (!block || block.type !== 'text') throw new Error('[flue] Canonical text completion has no started block.');
+						const content = aEvent.partial.content[aEvent.contentIndex];
 						await this.flushCanonical();
 						await this.appendCanonical([{
 							...this.canonicalEnvelope('assistant_text_completed'), type: 'assistant_text_completed',
 							messageId: assistant.messageId, blockId: block.id, deltaCount: block.deltaCount,
+							...(content?.type === 'text' && content.textSignature ? { textSignature: content.textSignature } : {}),
 						}]);
 						block.completed = true;
 					} else if (assistant && aEvent.type === 'thinking_start') {
@@ -808,6 +806,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 							...this.canonicalEnvelope('assistant_reasoning_completed'), type: 'assistant_reasoning_completed',
 							messageId: assistant.messageId, blockId: block.id, deltaCount: block.deltaCount,
 							...(content?.type === 'thinking' && content.thinkingSignature ? { encrypted: content.thinkingSignature } : {}),
+							...(content?.type === 'thinking' && content.redacted ? { redacted: true } : {}),
 						}]);
 						block.completed = true;
 						this.emit({ type: 'thinking_end', contentIndex: aEvent.contentIndex, content: aEvent.content });
@@ -2393,7 +2392,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				streamPath: this.conversationWriter.path,
 				attachment: ref,
 				bytes,
-				owner: { kind: 'conversation', conversationId: this.conversationId },
+				conversationId: this.conversationId,
 			});
 			refs.push(ref);
 		}

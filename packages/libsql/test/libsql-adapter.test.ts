@@ -157,6 +157,7 @@ function createLibsqlRunner(
 			}
 			return {
 				stream: stores.conversationStreamStore,
+				executionStore: stores.executionStore,
 			};
 		},
 		async cleanup() {

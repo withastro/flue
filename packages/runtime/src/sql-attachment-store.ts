@@ -1,14 +1,11 @@
 import { AttachmentConflictError, AttachmentIntegrityError } from './errors.ts';
 import {
-	type AttachmentOwner,
 	type AttachmentStore,
 	attachmentBytesEqual,
-	type BindSubmissionAttachmentInput,
 	copyAttachmentBytes,
 	type GetAttachmentInput,
 	type PutAttachmentInput,
 	type StoredAttachment,
-	sameAttachmentOwner,
 	sameAttachmentRef,
 	verifyAttachmentBytes,
 } from './runtime/attachment-store.ts';
@@ -20,8 +17,7 @@ interface SqlAttachmentRow {
 	mime_type: unknown;
 	byte_size: unknown;
 	digest: unknown;
-	owner_kind: unknown;
-	owner_id: unknown;
+	conversation_id: unknown;
 	chunk_count: unknown;
 }
 
@@ -38,8 +34,7 @@ export function ensureSqlAttachmentTable(sql: SqlStorage): void {
 			mime_type TEXT NOT NULL,
 			byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
 			digest TEXT NOT NULL,
-			owner_kind TEXT NOT NULL CHECK (owner_kind IN ('conversation', 'submission')),
-			owner_id TEXT NOT NULL,
+			conversation_id TEXT NOT NULL,
 			chunk_count INTEGER NOT NULL CHECK (chunk_count > 0),
 			created_at INTEGER NOT NULL,
 			PRIMARY KEY (stream_path, attachment_id)
@@ -57,8 +52,8 @@ export function ensureSqlAttachmentTable(sql: SqlStorage): void {
 		)`,
 	);
 	sql.exec(
-		`CREATE INDEX IF NOT EXISTS flue_attachments_owner_idx
-		 ON flue_attachments (stream_path, owner_kind, owner_id, attachment_id)`,
+		`CREATE INDEX IF NOT EXISTS flue_attachments_conversation_idx
+		 ON flue_attachments (stream_path, conversation_id, attachment_id)`,
 	);
 }
 
@@ -78,19 +73,17 @@ export class SqliteAttachmentStore implements AttachmentStore {
 				if (!matchesInput(existing, input)) this.conflict(input.streamPath, input.attachment.id);
 				return;
 			}
-			const owner = ownerColumns(input.owner);
 			const chunks = splitAttachmentBytes(input.bytes);
 			this.sql.exec(
 				`INSERT INTO flue_attachments
-				 (stream_path, attachment_id, mime_type, byte_size, digest, owner_kind, owner_id, chunk_count, created_at)
-				 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				 (stream_path, attachment_id, mime_type, byte_size, digest, conversation_id, chunk_count, created_at)
+				 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 				input.streamPath,
 				input.attachment.id,
 				input.attachment.mimeType,
 				input.attachment.size,
 				input.attachment.digest,
-				owner.kind,
-				owner.id,
+				input.conversationId,
 				chunks.length,
 				Date.now(),
 			);
@@ -109,7 +102,7 @@ export class SqliteAttachmentStore implements AttachmentStore {
 
 	async get(input: GetAttachmentInput): Promise<StoredAttachment | null> {
 		const row = this.read(input.streamPath, input.attachmentId);
-		if (!row || row.owner.kind !== 'conversation' || row.owner.conversationId !== input.conversationId) {
+		if (!row || row.conversationId !== input.conversationId) {
 			return null;
 		}
 		await verifyAttachmentBytes(row.attachment, row.bytes);
@@ -123,40 +116,13 @@ export class SqliteAttachmentStore implements AttachmentStore {
 		});
 	}
 
-	async bindSubmissionAttachment(input: BindSubmissionAttachmentInput): Promise<void> {
-		const row = this.read(input.streamPath, input.attachment.id);
-		if (!row) this.conflict(input.streamPath, input.attachment.id);
-		await verifyAttachmentBytes(input.attachment, row.bytes);
-		if (!sameAttachmentRef(row.attachment, input.attachment)) {
-			this.conflict(input.streamPath, input.attachment.id);
-		}
-		this.runTransaction(() => {
-			const current = this.read(input.streamPath, input.attachment.id);
-			if (!current || !sameAttachmentRef(current.attachment, input.attachment)) {
-				this.conflict(input.streamPath, input.attachment.id);
-			}
-			if (current.owner.kind === 'conversation' && current.owner.conversationId === input.conversationId) return;
-			if (current.owner.kind !== 'submission' || current.owner.submissionId !== input.submissionId) {
-				this.conflict(input.streamPath, input.attachment.id);
-			}
-			this.sql.exec(
-				`UPDATE flue_attachments SET owner_kind = 'conversation', owner_id = ?
-				 WHERE stream_path = ? AND attachment_id = ? AND owner_kind = 'submission' AND owner_id = ?`,
-				input.conversationId,
-				input.streamPath,
-				input.attachment.id,
-				input.submissionId,
-			);
-		});
-	}
-
 	private read(
 		streamPath: string,
 		attachmentId: string,
-	): (StoredAttachment & { owner: AttachmentOwner }) | null {
+	): (StoredAttachment & { conversationId: string }) | null {
 		const value = this.sql
 			.exec(
-				`SELECT mime_type, byte_size, digest, owner_kind, owner_id, chunk_count
+				`SELECT mime_type, byte_size, digest, conversation_id, chunk_count
 				 FROM flue_attachments WHERE stream_path = ? AND attachment_id = ?`,
 				streamPath,
 				attachmentId,
@@ -178,9 +144,7 @@ export class SqliteAttachmentStore implements AttachmentStore {
 				digest: String(value.digest),
 			},
 			bytes: reassembleAttachmentBytes(attachmentId, chunkCount, chunks),
-			owner: value.owner_kind === 'conversation'
-				? { kind: 'conversation', conversationId: String(value.owner_id) }
-				: { kind: 'submission', submissionId: String(value.owner_id) },
+			conversationId: String(value.conversation_id),
 		};
 	}
 
@@ -190,18 +154,12 @@ export class SqliteAttachmentStore implements AttachmentStore {
 }
 
 function matchesInput(
-	existing: StoredAttachment & { owner: AttachmentOwner },
+	existing: StoredAttachment & { conversationId: string },
 	input: PutAttachmentInput,
 ): boolean {
 	return sameAttachmentRef(existing.attachment, input.attachment) &&
-		sameAttachmentOwner(existing.owner, input.owner) &&
+		existing.conversationId === input.conversationId &&
 		attachmentBytesEqual(existing.bytes, input.bytes);
-}
-
-function ownerColumns(owner: AttachmentOwner): { kind: AttachmentOwner['kind']; id: string } {
-	return owner.kind === 'conversation'
-		? { kind: owner.kind, id: owner.conversationId }
-		: { kind: owner.kind, id: owner.submissionId };
 }
 
 function splitAttachmentBytes(bytes: Uint8Array): Uint8Array[] {

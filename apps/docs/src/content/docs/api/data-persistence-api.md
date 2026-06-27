@@ -98,12 +98,11 @@ Canonical state is reconstructed by replaying the conversation stream from its b
 interface AttachmentStore {
   put(input: PutAttachmentInput): Promise<void>;
   get(input: GetAttachmentInput): Promise<StoredAttachment | null>;
-  bindSubmissionAttachment(input: BindSubmissionAttachmentInput): Promise<void>;
   deleteForInstance(streamPath: string): Promise<void>;
 }
 ```
 
-Attachments are immutable external payloads referenced by canonical conversation records. An `AttachmentRef` is opaque storage identity and integrity metadata—`{ id, mimeType, size, digest }`—not a download URL. `put()` must be idempotent for identical bytes and metadata and reject conflicting reuse of an attachment id. Binding changes ownership from a submission to its canonical conversation reference; it does not rewrite payload bytes.
+Attachments are immutable external payloads referenced by canonical conversation records. An `AttachmentRef` is opaque storage identity and integrity metadata—`{ id, mimeType, size, digest }`—not a download URL. Each attachment is owned by the conversation it belongs to (`put()` takes a `conversationId`), and `get()` scopes reads to that conversation. `put()` must be idempotent for identical bytes, metadata, and conversation, and reject conflicting reuse of an attachment id.
 
 `deleteForInstance()` is a low-level whole-instance cleanup primitive. The adapter contract does not expose per-session attachment deletion or promise public orchestration around whole-instance deletion.
 

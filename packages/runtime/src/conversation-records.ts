@@ -93,7 +93,6 @@ interface AssistantTextStartedRecord extends ConversationRecordEnvelope {
 	messageId: string;
 	blockId: string;
 	blockIndex: number;
-	textSignature?: string;
 }
 
 interface AssistantTextDeltaRecord extends ConversationRecordEnvelope {
@@ -109,6 +108,9 @@ interface AssistantTextCompletedRecord extends ConversationRecordEnvelope {
 	messageId: string;
 	blockId: string;
 	deltaCount: number;
+	/** Provider signature for the completed text block, captured at completion so
+	 *  it round-trips back to the provider on the next turn. */
+	textSignature?: string;
 }
 
 interface AssistantReasoningStartedRecord extends ConversationRecordEnvelope {
@@ -132,7 +134,6 @@ interface AssistantReasoningCompletedRecord extends ConversationRecordEnvelope {
 	blockId: string;
 	deltaCount: number;
 	encrypted?: string;
-	summary?: string;
 	redacted?: boolean;
 }
 
@@ -192,13 +193,6 @@ export interface CompactionRecord extends ConversationRecordEnvelope {
 	usage?: PromptUsage;
 }
 
-interface ActiveLeafChangedRecord extends ConversationRecordEnvelope {
-	type: 'active_leaf_changed';
-	leafId: string | null;
-	previousLeafId: string | null;
-	reason: string;
-}
-
 interface CanonicalChildSessionRefBase {
 	conversationId: string;
 	harness: string;
@@ -245,7 +239,6 @@ export type ConversationRecord =
 	| ToolOutcomeRecord
 	| ToolResultsCommittedRecord
 	| CompactionRecord
-	| ActiveLeafChangedRecord
 	| ChildSessionRetainedRecord
 	| SubmissionSettledRecord;
 

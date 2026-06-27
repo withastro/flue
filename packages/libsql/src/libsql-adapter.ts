@@ -374,16 +374,15 @@ async function ensureTables(runner: LibsqlRunner): Promise<void> {
 				mime_type TEXT NOT NULL,
 				byte_size INTEGER NOT NULL CHECK (byte_size >= 0),
 				digest TEXT NOT NULL,
-				owner_kind TEXT NOT NULL CHECK (owner_kind IN ('conversation', 'submission')),
-				owner_id TEXT NOT NULL,
+				conversation_id TEXT NOT NULL,
 				bytes BLOB NOT NULL,
 				created_at INTEGER NOT NULL,
 				PRIMARY KEY (stream_path, attachment_id)
 			)
 		`);
 		await tx.query(`
-			CREATE INDEX IF NOT EXISTS flue_attachments_owner_idx
-			ON flue_attachments (stream_path, owner_kind, owner_id, attachment_id)
+			CREATE INDEX IF NOT EXISTS flue_attachments_conversation_idx
+			ON flue_attachments (stream_path, conversation_id, attachment_id)
 		`);
 		try {
 			await tx.query(`ALTER TABLE flue_event_stream_entries ADD COLUMN event_key TEXT`);

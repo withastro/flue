@@ -130,9 +130,7 @@ export type {
 	SubmissionSettledRecord,
 } from './conversation-records.ts';
 export type {
-	AttachmentOwner,
 	AttachmentStore,
-	BindSubmissionAttachmentInput,
 	GetAttachmentInput,
 	PutAttachmentInput,
 	StoredAttachment,
@@ -142,7 +140,6 @@ export {
 	copyAttachmentBytes,
 	createAttachmentRef,
 	InMemoryAttachmentStore,
-	sameAttachmentOwner,
 	sameAttachmentRef,
 	verifyAttachmentBytes,
 } from './runtime/attachment-store.ts';

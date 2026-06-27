@@ -164,12 +164,12 @@ function optimisticMessage(
 		role: 'user',
 		parts: [
 			{ type: 'text', text: event.message, state: 'done' },
+			// Opaque attachment reference. Flue does not serve attachment bytes yet,
+			// so the optimistic echo carries no data URL — keeping the transcript
+			// consistent with the canonical projection after round-trip.
 			...(event.images ?? []).map((image) => ({
 				type: 'file' as const,
 				mediaType: image.mimeType,
-				url: image.data.startsWith('data:')
-					? image.data
-					: `data:${image.mimeType};base64,${image.data}`,
 			})),
 		],
 	};

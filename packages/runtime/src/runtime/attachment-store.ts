@@ -1,28 +1,17 @@
 import type { AttachmentRef } from '../conversation-records.ts';
 import { AttachmentConflictError, AttachmentIntegrityError } from '../errors.ts';
 
-export type AttachmentOwner =
-	| { kind: 'conversation'; conversationId: string }
-	| { kind: 'submission'; submissionId: string };
-
 export interface PutAttachmentInput {
 	streamPath: string;
 	attachment: AttachmentRef;
 	bytes: Uint8Array;
-	owner: AttachmentOwner;
+	conversationId: string;
 }
 
 export interface GetAttachmentInput {
 	streamPath: string;
 	conversationId: string;
 	attachmentId: string;
-}
-
-export interface BindSubmissionAttachmentInput {
-	streamPath: string;
-	submissionId: string;
-	conversationId: string;
-	attachment: AttachmentRef;
 }
 
 export interface StoredAttachment {
@@ -33,13 +22,12 @@ export interface StoredAttachment {
 export interface AttachmentStore {
 	put(input: PutAttachmentInput): Promise<void>;
 	get(input: GetAttachmentInput): Promise<StoredAttachment | null>;
-	bindSubmissionAttachment(input: BindSubmissionAttachmentInput): Promise<void>;
 	deleteForInstance(streamPath: string): Promise<void>;
 }
 
 interface InMemoryAttachmentRecord extends StoredAttachment {
 	streamPath: string;
-	owner: AttachmentOwner;
+	conversationId: string;
 }
 
 export class InMemoryAttachmentStore implements AttachmentStore {
@@ -52,7 +40,7 @@ export class InMemoryAttachmentStore implements AttachmentStore {
 		if (existing) {
 			if (
 				!sameAttachmentRef(existing.attachment, input.attachment) ||
-				!sameAttachmentOwner(existing.owner, input.owner) ||
+				existing.conversationId !== input.conversationId ||
 				!attachmentBytesEqual(existing.bytes, input.bytes)
 			) {
 				throw new AttachmentConflictError({
@@ -66,13 +54,13 @@ export class InMemoryAttachmentStore implements AttachmentStore {
 			streamPath: input.streamPath,
 			attachment: { ...input.attachment },
 			bytes: copyAttachmentBytes(input.bytes),
-			owner: { ...input.owner },
+			conversationId: input.conversationId,
 		});
 	}
 
 	async get(input: GetAttachmentInput): Promise<StoredAttachment | null> {
 		const record = this.records.get(attachmentKey(input.streamPath, input.attachmentId));
-		if (!record || record.owner.kind !== 'conversation' || record.owner.conversationId !== input.conversationId) {
+		if (!record || record.conversationId !== input.conversationId) {
 			return null;
 		}
 		await verifyAttachmentBytes(record.attachment, record.bytes);
@@ -86,23 +74,6 @@ export class InMemoryAttachmentStore implements AttachmentStore {
 		for (const [key, record] of this.records) {
 			if (record.streamPath === streamPath) this.records.delete(key);
 		}
-	}
-
-	async bindSubmissionAttachment(input: BindSubmissionAttachmentInput): Promise<void> {
-		const key = attachmentKey(input.streamPath, input.attachment.id);
-		const record = this.records.get(key);
-		if (!record) {
-			throw new AttachmentConflictError({ path: input.streamPath, attachmentId: input.attachment.id });
-		}
-		await verifyAttachmentBytes(input.attachment, record.bytes);
-		if (!sameAttachmentRef(record.attachment, input.attachment)) {
-			throw new AttachmentConflictError({ path: input.streamPath, attachmentId: input.attachment.id });
-		}
-		if (record.owner.kind === 'conversation' && record.owner.conversationId === input.conversationId) return;
-		if (record.owner.kind !== 'submission' || record.owner.submissionId !== input.submissionId) {
-			throw new AttachmentConflictError({ path: input.streamPath, attachmentId: input.attachment.id });
-		}
-		record.owner = { kind: 'conversation', conversationId: input.conversationId };
 	}
 }
 
@@ -144,13 +115,6 @@ export function sameAttachmentRef(left: AttachmentRef, right: AttachmentRef): bo
 		left.mimeType === right.mimeType &&
 		left.size === right.size &&
 		left.digest === right.digest;
-}
-
-export function sameAttachmentOwner(left: AttachmentOwner, right: AttachmentOwner): boolean {
-	return left.kind === right.kind &&
-		(left.kind === 'conversation'
-			? left.conversationId === (right as Extract<AttachmentOwner, { kind: 'conversation' }>).conversationId
-			: left.submissionId === (right as Extract<AttachmentOwner, { kind: 'submission' }>).submissionId);
 }
 
 async function attachmentDigest(bytes: Uint8Array): Promise<string> {

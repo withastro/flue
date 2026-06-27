@@ -264,9 +264,17 @@ function appendPartDelta(
 	}
 	const message = state.conversation.messages[location.messageIndex] as FlueConversationMessage;
 	const existing = message.parts[location.partIndex];
-	if (!existing || (existing.type !== 'text' && existing.type !== 'reasoning')) return state;
 	const parts = [...message.parts];
-	parts[location.partIndex] = { ...existing, text: existing.text + chunk.delta };
+	if (!existing) {
+		// Claimed a fresh tail slot for a post-reset block whose `part-start`
+		// preceded the snapshot and was not materialized. Create it so the delta
+		// is rendered rather than silently dropped.
+		parts[location.partIndex] = { type: chunk.kind, text: chunk.delta, state: 'streaming' };
+	} else if (existing.type !== 'text' && existing.type !== 'reasoning') {
+		return state;
+	} else {
+		parts[location.partIndex] = { ...existing, text: existing.text + chunk.delta };
+	}
 	const messages = replacePart(state.conversation.messages, location.messageIndex, parts);
 	const partLocations = state.partLocations.has(key)
 		? state.partLocations
@@ -302,7 +310,8 @@ function claimStreamingPart(
 			return { messageIndex, partIndex: index };
 		}
 	}
-	// No materialized streaming part to continue: start a fresh one.
+	// No materialized streaming part to continue: point at the tail slot so
+	// `appendPartDelta` creates a fresh part there instead of dropping the delta.
 	const message = state.conversation.messages[messageIndex] as FlueConversationMessage;
 	return { messageIndex, partIndex: message.parts.length };
 }

@@ -65,7 +65,6 @@ interface ReducedAssistantReasoningBlock extends ReducedAssistantBlockBase {
 	deltas: string[];
 	completed: boolean;
 	encrypted?: string;
-	summary?: string;
 	redacted?: boolean;
 }
 
@@ -141,7 +140,6 @@ export interface ReducedInstanceState {
 	conversations: Map<string, ReducedConversationState>;
 	conversationScopes: Map<string, string>;
 	recordsById: Map<string, ConversationRecord>;
-	entryOwners: Map<string, string>;
 }
 
 export interface ConversationProjectionOptions {
@@ -159,7 +157,6 @@ export function createReducedInstanceState(): ReducedInstanceState {
 		conversations: new Map(),
 		conversationScopes: new Map(),
 		recordsById: new Map(),
-		entryOwners: new Map(),
 	};
 }
 
@@ -179,7 +176,6 @@ function cloneReducedInstanceState(state: ReducedInstanceState): ReducedInstance
 		recordsThroughOffset: state.recordsThroughOffset,
 		conversationScopes: new Map(state.conversationScopes),
 		recordsById: new Map(state.recordsById),
-		entryOwners: new Map(state.entryOwners),
 		conversations: new Map(
 			[...state.conversations].map(([id, conversation]) => [
 				id,
@@ -272,7 +268,7 @@ export function applyConversationRecord(
 	}
 	switch (record.type) {
 		case 'user_message':
-			appendEntry(state, conversation, record, {
+			appendEntry(conversation, record, {
 				type: 'message',
 				id: record.messageId,
 				parentId: record.parentId,
@@ -283,7 +279,7 @@ export function applyConversationRecord(
 			});
 			break;
 		case 'signal':
-			appendEntry(state, conversation, record, {
+			appendEntry(conversation, record, {
 				type: 'message',
 				id: record.messageId,
 				parentId: record.parentId,
@@ -302,7 +298,7 @@ export function applyConversationRecord(
 		case 'assistant_message_started':
 			assertParent(conversation, record, record.parentId);
 			if (record.parentId !== conversation.activeLeafId) {
-				fail(record, `Assistant parent is not the active leaf. Append active_leaf_changed first.`);
+				fail(record, `Assistant parent "${String(record.parentId)}" is not the conversation tail. Appends are linear.`);
 			}
 			if (conversation.entries.has(record.messageId) || conversation.inProgressMessages.has(record.messageId)) {
 				fail(record, `Assistant entry "${record.messageId}" already exists.`);
@@ -325,7 +321,6 @@ export function applyConversationRecord(
 				blockIndex: record.blockIndex,
 				deltas: [],
 				completed: false,
-				textSignature: record.textSignature,
 			});
 			break;
 		}
@@ -346,13 +341,14 @@ export function applyConversationRecord(
 		case 'assistant_reasoning_delta':
 			appendDelta(conversation, record, 'reasoning');
 			break;
-		case 'assistant_text_completed':
-			completeBlock(conversation, record, 'text');
+		case 'assistant_text_completed': {
+			const block = completeBlock(conversation, record, 'text');
+			block.textSignature = record.textSignature;
 			break;
+		}
 		case 'assistant_reasoning_completed': {
 			const block = completeBlock(conversation, record, 'reasoning');
 			block.encrypted = record.encrypted;
-			block.summary = record.summary;
 			block.redacted = record.redacted;
 			break;
 		}
@@ -388,9 +384,9 @@ export function applyConversationRecord(
 				errorMessage: record.error,
 				timestamp: new Date(inProgress.timestamp).getTime(),
 			} as AssistantMessage;
-			assertAssistantCompletionAppend(state, conversation, record, inProgress);
+			assertAssistantCompletionAppend(conversation, record, inProgress);
 			conversation.inProgressMessages.delete(record.messageId);
-			commitEntry(state, conversation, {
+			commitEntry(conversation, {
 				type: 'message',
 				id: record.messageId,
 				parentId: inProgress.parentId,
@@ -463,8 +459,8 @@ export function applyConversationRecord(
 			let parentId = record.parentId;
 			for (const outcome of outcomes) {
 				const entryId = toolResultEntryId(record.assistantMessageId, outcome.toolCallId);
-				assertEntryAppend(state, conversation, record, entryId, parentId);
-				commitEntry(state, conversation, {
+				assertEntryAppend(conversation, record, entryId, parentId);
+				commitEntry(conversation, {
 					type: 'message',
 					id: entryId,
 					parentId,
@@ -491,7 +487,7 @@ export function applyConversationRecord(
 			if (!pathToLeaf(conversation, record.sourceLeafId).some((entry) => entry.id === record.firstKeptEntryId)) {
 				fail(record, `Compaction first-kept entry is not on the source path.`);
 			}
-			appendEntry(state, conversation, record, {
+			appendEntry(conversation, record, {
 				type: 'compaction',
 				id: record.entryId,
 				parentId: record.parentId,
@@ -504,15 +500,6 @@ export function applyConversationRecord(
 				details: record.details,
 				usage: record.usage,
 			});
-			break;
-		case 'active_leaf_changed':
-			if (conversation.activeLeafId !== record.previousLeafId) {
-				fail(record, `Active leaf does not match previousLeafId.`);
-			}
-			if (record.leafId !== null && !conversation.entries.has(record.leafId)) {
-				fail(record, `Selected leaf "${record.leafId}" does not exist.`);
-			}
-			conversation.activeLeafId = record.leafId;
 			break;
 		case 'child_session_retained': {
 			validateChildReference(record);
@@ -740,27 +727,21 @@ function pathToContextEntries(
 }
 
 function appendEntry(
-	state: ReducedInstanceState,
 	conversation: ReducedConversationState,
 	record: ConversationRecord,
 	entry: ReducedEntry,
 ): void {
-	assertEntryAppend(state, conversation, record, entry.id, entry.parentId);
-	commitEntry(state, conversation, entry);
+	assertEntryAppend(conversation, record, entry.id, entry.parentId);
+	commitEntry(conversation, entry);
 }
 
 function assertEntryAppend(
-	state: ReducedInstanceState,
 	conversation: ReducedConversationState,
 	record: ConversationRecord,
 	entryId: string,
 	parentId: string | null,
 ): void {
 	if (!entryId.startsWith('entry_')) fail(record, `Graph entry ids must use the "entry_" prefix.`);
-	const owner = state.entryOwners.get(entryId);
-	if (owner && owner !== conversation.conversationId) {
-		fail(record, `Graph entry "${entryId}" belongs to another conversation.`);
-	}
 	if (conversation.entries.has(entryId) || conversation.inProgressMessages.has(entryId)) {
 		fail(record, `Graph entry "${entryId}" already exists.`);
 	}
@@ -768,7 +749,7 @@ function assertEntryAppend(
 	if (parentId !== conversation.activeLeafId) {
 		fail(
 			record,
-			`Entry parent "${String(parentId)}" is not the active leaf "${String(conversation.activeLeafId)}". Append active_leaf_changed before creating a branch.`,
+			`Entry parent "${String(parentId)}" is not the conversation tail "${String(conversation.activeLeafId)}". Appends are linear.`,
 		);
 	}
 	if (conversation.inProgressMessages.size > 0) {
@@ -777,17 +758,14 @@ function assertEntryAppend(
 }
 
 function commitEntry(
-	state: ReducedInstanceState,
 	conversation: ReducedConversationState,
 	entry: ReducedEntry,
 ): void {
 	conversation.entries.set(entry.id, entry);
 	conversation.activeLeafId = entry.id;
-	state.entryOwners.set(entry.id, conversation.conversationId);
 }
 
 function assertAssistantCompletionAppend(
-	state: ReducedInstanceState,
 	conversation: ReducedConversationState,
 	record: ConversationRecord,
 	message: InProgressAssistantMessage,
@@ -795,16 +773,12 @@ function assertAssistantCompletionAppend(
 	if (!message.messageId.startsWith('entry_')) {
 		fail(record, `Graph entry ids must use the "entry_" prefix.`);
 	}
-	const owner = state.entryOwners.get(message.messageId);
-	if (owner && owner !== conversation.conversationId) {
-		fail(record, `Graph entry "${message.messageId}" belongs to another conversation.`);
-	}
 	if (conversation.entries.has(message.messageId)) {
 		fail(record, `Graph entry "${message.messageId}" already exists.`);
 	}
 	assertParent(conversation, record, message.parentId);
 	if (message.parentId !== conversation.activeLeafId) {
-		fail(record, `Assistant parent is no longer the active leaf.`);
+		fail(record, `Assistant parent is no longer the conversation tail.`);
 	}
 }
 

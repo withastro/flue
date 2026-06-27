@@ -95,6 +95,27 @@ describe('applyConversationChunk()', () => {
 		expect(conversation.messages[0]?.parts[0]).toEqual({ type: 'text', text: 'abcdefg', state: 'done' });
 	});
 
+	it('creates a fresh part for a post-reset block with no materialized streaming part instead of dropping deltas', () => {
+		const snapshot: FlueConversationSnapshot = {
+			v: 1,
+			conversationId: 'c1',
+			offset: '5',
+			// The assistant message exists but its in-progress block was not
+			// materialized in the snapshot (e.g. zero deltas at the reset offset).
+			messages: [{ id: 'a1', role: 'assistant', parts: [] }],
+			settlements: [],
+		};
+		const conversation = reduce(
+			[
+				{ type: 'part-delta', conversationId: 'c1', messageId: 'a1', partId: 'b1', kind: 'text', sequence: 0, delta: 'he' },
+				{ type: 'part-delta', conversationId: 'c1', messageId: 'a1', partId: 'b1', kind: 'text', sequence: 1, delta: 'llo' },
+				{ type: 'part-end', conversationId: 'c1', messageId: 'a1', partId: 'b1' },
+			],
+			snapshot,
+		);
+		expect(conversation.messages[0]?.parts[0]).toEqual({ type: 'text', text: 'hello', state: 'done' });
+	});
+
 	it('projects structured tool output onto the owning dynamic-tool part', () => {
 		const conversation = reduce([
 			{ type: 'message-started', conversationId: 'c1', messageId: 'a1' },

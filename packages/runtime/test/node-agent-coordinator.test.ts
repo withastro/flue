@@ -119,7 +119,6 @@ function makeRealCreateContext(executionStore: AgentExecutionStore): CreateAgent
 				resolveModel: (m) => (m ? resolveModel(m) : model),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
-			submissionStore: executionStore.submissions,
 		});
 }
 
@@ -140,7 +139,6 @@ function makeFauxCreateContext(
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
-			submissionStore: executionStore.submissions,
 		});
 }
 

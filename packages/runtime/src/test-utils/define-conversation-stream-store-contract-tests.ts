@@ -31,6 +31,37 @@ function userRecord(id: string, messageId: string): ConversationRecord {
 	};
 }
 
+function ownedUserRecord(
+	id: string,
+	messageId: string,
+	submissionId: string,
+	attemptId: string,
+): ConversationRecord {
+	return { ...userRecord(id, messageId), submissionId, attemptId };
+}
+
+async function claimContractSubmission(
+	executionStore: AgentExecutionStore,
+	submissionId: string,
+	attemptId: string,
+): Promise<void> {
+	await executionStore.submissions.admitDirect({
+		kind: 'direct',
+		submissionId,
+		agent: 'echo',
+		id: 'contract',
+		payload: { message: 'Hello' },
+		acceptedAt: '2026-06-25T00:00:00.000Z',
+	});
+	await executionStore.submissions.markSubmissionCanonicalReady(submissionId);
+	await executionStore.submissions.claimSubmission({
+		submissionId,
+		attemptId,
+		ownerId: 'coordinator',
+		leaseExpiresAt: Date.now() + 30_000,
+	});
+}
+
 export function defineConversationStreamStoreContractTests(
 	label: string,
 	backend: ConversationStreamStoreContractBackend,
@@ -243,6 +274,69 @@ export function defineConversationStreamStoreContractTests(
 			await expect(stream.append({ ...base, records: [{ ...record, outcome: 'failed' }] })).rejects.toThrow();
 			await expect(stream.append({ ...base, submission: { submissionId: 'direct-1', attemptId: 'stale' }, records: [record] })).rejects.toThrow();
 			await expect(stream.append({ ...base, records: [record] })).resolves.toEqual({ offset: '0000000000000000_0000000000000000' });
+		});
+
+		it('authorizes a submission-owned append for the running claimed attempt', async () => {
+			const { stream, executionStore } = await create();
+			if (!executionStore) return;
+			await claimContractSubmission(executionStore, 'direct-1', 'attempt-1');
+			await stream.createStream('agents/echo/contract', { agentName: 'echo', instanceId: 'contract' });
+			const producer = await stream.acquireProducer('agents/echo/contract', 'coordinator');
+
+			await expect(
+				stream.append({
+					path: 'agents/echo/contract',
+					producerId: producer.producerId,
+					producerEpoch: producer.producerEpoch,
+					incarnation: producer.incarnation,
+					producerSequence: 0,
+					submission: { submissionId: 'direct-1', attemptId: 'attempt-1' },
+					records: [ownedUserRecord('record_1', 'entry_1', 'direct-1', 'attempt-1')],
+				}),
+			).resolves.toMatchObject({ offset: expect.any(String) });
+		});
+
+		it('rejects a submission-owned append from a stale attempt', async () => {
+			const { stream, executionStore } = await create();
+			if (!executionStore) return;
+			await claimContractSubmission(executionStore, 'direct-1', 'attempt-1');
+			await stream.createStream('agents/echo/contract', { agentName: 'echo', instanceId: 'contract' });
+			const producer = await stream.acquireProducer('agents/echo/contract', 'coordinator');
+
+			// In-record ownership matches the (stale) attempt, but the submission row
+			// still records attempt-1 as owner, so the store must reject.
+			await expect(
+				stream.append({
+					path: 'agents/echo/contract',
+					producerId: producer.producerId,
+					producerEpoch: producer.producerEpoch,
+					incarnation: producer.incarnation,
+					producerSequence: 0,
+					submission: { submissionId: 'direct-1', attemptId: 'attempt-2' },
+					records: [ownedUserRecord('record_1', 'entry_1', 'direct-1', 'attempt-2')],
+				}),
+			).rejects.toThrow();
+			expect((await stream.read('agents/echo/contract')).batches).toHaveLength(0);
+		});
+
+		it('rejects a submission-owned append for an unknown submission', async () => {
+			const { stream, executionStore } = await create();
+			if (!executionStore) return;
+			await stream.createStream('agents/echo/contract', { agentName: 'echo', instanceId: 'contract' });
+			const producer = await stream.acquireProducer('agents/echo/contract', 'coordinator');
+
+			await expect(
+				stream.append({
+					path: 'agents/echo/contract',
+					producerId: producer.producerId,
+					producerEpoch: producer.producerEpoch,
+					incarnation: producer.incarnation,
+					producerSequence: 0,
+					submission: { submissionId: 'ghost', attemptId: 'attempt-1' },
+					records: [ownedUserRecord('record_1', 'entry_1', 'ghost', 'attempt-1')],
+				}),
+			).rejects.toThrow();
+			expect((await stream.read('agents/echo/contract')).batches).toHaveLength(0);
 		});
 
 		it('replays strictly after a batch offset', async () => {

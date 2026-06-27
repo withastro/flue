@@ -74,7 +74,7 @@ export function schema(prefix: string): MongoCollectionSpec[] {
 		]),
 		spec('attachments', [
 			{ name: 'path_attachment', key: { path: 1, attachmentId: 1 }, unique: true, collation: simple },
-			{ name: 'path_owner_attachment', key: { path: 1, ownerKind: 1, ownerId: 1, attachmentId: 1 }, collation: simple },
+			{ name: 'path_conversation_attachment', key: { path: 1, conversationId: 1, attachmentId: 1 }, collation: simple },
 		]),
 		spec('event_streams'),
 		spec('event_entries', [

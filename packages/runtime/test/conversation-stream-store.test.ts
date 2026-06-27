@@ -6,6 +6,10 @@ import {
 	InMemoryConversationStreamStore,
 	SqliteConversationStreamStore,
 } from '../src/runtime/conversation-stream-store.ts';
+import {
+	createSqlAgentExecutionStoreFromSql,
+	ensureSqlAgentExecutionTables,
+} from '../src/sql-agent-execution-store.ts';
 import { defineConversationStreamStoreContractTests } from '../src/test-utils/define-conversation-stream-store-contract-tests.ts';
 
 function createStores() {
@@ -33,9 +37,11 @@ function createStores() {
 			throw error;
 		}
 	};
+	ensureSqlAgentExecutionTables(sql);
 	return {
 		db,
 		stream: new SqliteConversationStreamStore(sql, transaction),
+		executionStore: createSqlAgentExecutionStoreFromSql(sql, transaction),
 	};
 }
 
@@ -240,40 +246,6 @@ describe('SqliteConversationStreamStore', () => {
 				records: [userRecord('record_1', 'entry_1')],
 			}),
 		).resolves.toMatchObject({ offset: '0000000000000000_0000000000000000' });
-	});
-
-	it('validates submission attempt ownership in the same append transaction', async () => {
-		const { db, stream } = createStores();
-		db.exec(`CREATE TABLE IF NOT EXISTS flue_agent_submissions (
-			submission_id TEXT PRIMARY KEY,
-			session_key TEXT NOT NULL,
-			status TEXT NOT NULL,
-			attempt_id TEXT,
-			settlement_record_id TEXT,
-			settlement_record_json TEXT
-		)`);
-		db.prepare(
-			`INSERT INTO flue_agent_submissions (submission_id, session_key, status, attempt_id)
-			 VALUES (?, ?, 'running', ?)`,
-		).run('submission-1', 'agent-session:["1","default","default"]', 'attempt-current');
-		await stream.createStream('agents/echo/1', { agentName: 'echo', instanceId: '1' });
-		const producer = await stream.acquireProducer('agents/echo/1', 'coordinator-1');
-
-		await expect(
-			stream.append({
-				path: 'agents/echo/1',
-				producerId: producer.producerId,
-				producerEpoch: producer.producerEpoch,
-				incarnation: producer.incarnation,
-				producerSequence: 0,
-				submission: { submissionId: 'submission-1', attemptId: 'attempt-stale' },
-				records: [userRecord('record_1', 'entry_1')],
-			}),
-		).rejects.toBeInstanceOf(ConversationStreamStoreError);
-		expect(await stream.getMeta('agents/echo/1')).toMatchObject({
-			nextOffset: '-1',
-			nextProducerSequence: 0,
-		});
 	});
 
 	it('physically deletes canonical batches at instance deletion', async () => {

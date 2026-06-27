@@ -255,7 +255,6 @@ describe('dispatched session processing', () => {
 				errorMessage: 'Request was aborted',
 			}),
 		]);
-		const submissionStore = {} as import('../src/agent-execution-store.ts').AgentSubmissionStore;
 		const journalCommits: string[] = [];
 		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
@@ -279,7 +278,6 @@ describe('dispatched session processing', () => {
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
-			submissionStore,
 		});
 
 		await expect(
@@ -306,7 +304,6 @@ describe('dispatched session processing', () => {
 		provider.setResponses([
 			fauxAssistantMessage('', { stopReason: 'error', errorMessage: 'invalid_api_key' }),
 		]);
-		const submissionStore = {} as import('../src/agent-execution-store.ts').AgentSubmissionStore;
 		const journalCommits: string[] = [];
 		const agent = defineAgent(() => ({
 			model: `${provider.getModel().provider}/${provider.getModel().id}`,
@@ -330,7 +327,6 @@ describe('dispatched session processing', () => {
 				resolveModel: () => provider.getModel(),
 			},
 			createDefaultEnv: async () => createNoopSessionEnv({ cwd: '/' }),
-			submissionStore,
 		});
 
 		await expect(

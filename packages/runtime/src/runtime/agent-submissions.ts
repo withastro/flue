@@ -187,24 +187,11 @@ export async function materializeAgentSubmissionSession(
 				bytes,
 			});
 			const streamPath = agentStreamPath(input.agent, input.id);
-			const bound = await attachmentStore.get({
+			await attachmentStore.put({
 				streamPath,
-				conversationId: session.conversationId,
-				attachmentId: attachment.id,
-			});
-			if (!bound) {
-				await attachmentStore.put({
-					streamPath,
-					attachment,
-					bytes,
-					owner: { kind: 'submission', submissionId: input.submissionId },
-				});
-			}
-			await attachmentStore.bindSubmissionAttachment({
-				streamPath,
-				submissionId: input.submissionId,
-				conversationId: session.conversationId,
 				attachment,
+				bytes,
+				conversationId: session.conversationId,
 			});
 		}
 	}

@@ -12,6 +12,7 @@ import {
 	buildConversationContextEntries,
 	getActiveConversationPath,
 } from './conversation-reducer.ts';
+import { toolResultOutput, toolResultText } from './message-rendering.ts';
 import type { SubmissionState } from './submission-state.ts';
 import { classifySubmissionState } from './submission-state.ts';
 import type { PromptUsage } from './types.ts';
@@ -26,7 +27,7 @@ import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 type ConversationUiPart =
 	| { type: 'text'; text: string; state: 'streaming' | 'done' }
 	| { type: 'reasoning'; text: string; state: 'streaming' | 'done' }
-	| { type: 'file'; mediaType: string; filename?: string; url?: string }
+	| { type: 'file'; mediaType: string }
 	| ({ type: 'dynamic-tool'; toolName: string; toolCallId: string } & (
 			| { state: 'input-available'; input: unknown }
 			| { state: 'output-available'; input: unknown; output: unknown }
@@ -301,18 +302,9 @@ function projectInProgressMessage(
 				state: 'input-available',
 			};
 		});
-	if (parts.length === 0) return undefined;
+	// Always project the in-progress shell, even with zero parts: a client that
+	// hydrates a snapshot taken between `assistant_message_started` and its first
+	// delta needs the message to exist so later streamed deltas attach instead of
+	// being dropped (the message-started record precedes the resume offset).
 	return { id: message.messageId, role: 'assistant', parts };
-}
-
-function toolResultOutput(content: Array<{ type: string; text?: string }>): unknown {
-	if (content.length === 1 && content[0]?.type === 'text') return content[0].text;
-	return content;
-}
-
-function toolResultText(content: Array<{ type: string; text?: string }>): string {
-	return content
-		.filter((block) => block.type === 'text')
-		.map((block) => block.text ?? '')
-		.join('\n');
 }
