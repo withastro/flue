@@ -118,6 +118,7 @@ describe('createOpenTelemetryInstrumentation()', () => {
 			observation({
 				type: 'turn_request',
 				instanceId: 'instance-1',
+				agentName: 'assistant',
 				conversationId: 'conv_01KT3P3GZGFBCKHKMQ11A7H2HW',
 				operationId: 'op-1',
 				turnId: 'turn-1',
@@ -152,6 +153,8 @@ describe('createOpenTelemetryInstrumentation()', () => {
 			'gen_ai.provider.name': 'gateway',
 			'gen_ai.request.model': 'model-1',
 			'gen_ai.request.stream': true,
+			'gen_ai.agent.name': 'assistant',
+			'flue.agent.name': 'assistant',
 			'gen_ai.response.id': 'resp-1',
 			'gen_ai.response.model': 'model-actual',
 			'gen_ai.usage.input_tokens': 5,

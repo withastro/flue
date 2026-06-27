@@ -199,6 +199,7 @@ export function createOpenTelemetryInstrumentation(
 					[ATTR.providerName]: request.providerName,
 					[ATTR.requestModel]: request.requestedModel,
 					[ATTR.requestStream]: true,
+					...(event.agentName ? { [ATTR.agentName]: event.agentName } : {}),
 					...(event.conversationId ? { [ATTR.conversationId]: event.conversationId } : {}),
 					...(request.reasoningLevel ? { [ATTR.reasoningLevel]: request.reasoningLevel } : {}),
 					...(request.maxTokens !== undefined ? { [ATTR.maxTokens]: request.maxTokens } : {}),
