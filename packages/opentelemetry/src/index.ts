@@ -412,6 +412,7 @@ export function createOpenTelemetryInstrumentation(
 				env: {},
 				req: undefined,
 				log: { info() {}, warn() {}, error() {} },
+				emitData() {},
 			}));
 			const tracked = runs.get(runKey(operation));
 			if (tracked) tracked.awaitingWorkflowObservation = true;

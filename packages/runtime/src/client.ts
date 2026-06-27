@@ -76,7 +76,9 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 		...(config.runId === undefined ? { instanceId: config.id } : { runId: config.runId }),
 		...(config.dispatchId === undefined ? {} : { dispatchId: config.dispatchId }),
 		...(submissionId === undefined ? {} : { submissionId }),
-		...(config.agentName === undefined ? {} : { agentName: config.agentName }),
+		...(event.agentName === undefined && config.agentName !== undefined
+			? { agentName: config.agentName }
+			: {}),
 		v: 3,
 		eventIndex: eventIndex++,
 		timestamp: new Date().toISOString(),

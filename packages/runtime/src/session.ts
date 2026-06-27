@@ -1882,6 +1882,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				taskId,
 				prompt: text,
 				agent: taskAgent?.name,
+				...(taskAgent?.name ? { agentName: taskAgent.name } : {}),
 				cwd: options?.cwd,
 				parentSession: this.name,
 				session: child.name,

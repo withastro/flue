@@ -39,10 +39,11 @@ function createProvider(models?: FauxModelDefinition[]): FauxProviderRegistratio
 
 function createContext(
 	provider: FauxProviderRegistration,
-	options: { env?: SessionEnv; store?: SessionStore } = {},
+	options: { env?: SessionEnv; store?: SessionStore; agentName?: string } = {},
 ) {
 	return createFlueContext({
 		id: 'session-operations-instance',
+		agentName: options.agentName,
 		env: {},
 		agentConfig: {
 			resolveModel: (specifier) => {
@@ -977,7 +978,17 @@ describe('session.task()', () => {
 				return fauxAssistantMessage('Delegated profile response.');
 			},
 		]);
-		const ctx = createContext(provider);
+		const ctx = createContext(provider, { agentName: 'root-agent' });
+		const events: Array<{ type: string; agentName?: string; agent?: string; taskId?: string }> = [];
+		ctx.subscribeEvent((event) => {
+			if (
+				event.type === 'task_start' ||
+				event.type === 'operation_start' ||
+				event.type === 'turn_request'
+			) {
+				events.push(event);
+			}
+		});
 		const harness = await ctx.initializeRootHarness(
 			defineAgent(() => ({
 				model: `${provider.getModel().provider}/parent-model`,
@@ -998,6 +1009,26 @@ describe('session.task()', () => {
 		expect(response).toMatchObject({
 			text: 'Delegated profile response.',
 			model: { provider: provider.getModel().provider, id: 'delegate-model' },
+		});
+		const taskStart = events.find((event) => event.type === 'task_start');
+		const childOperationStart = events.find(
+			(event) => event.type === 'operation_start' && event.taskId === taskStart?.taskId,
+		);
+		const childTurnRequest = events.find(
+			(event) => event.type === 'turn_request' && event.taskId === taskStart?.taskId,
+		);
+		expect(taskStart).toMatchObject({
+			type: 'task_start',
+			agent: 'code-reviewer',
+			agentName: 'code-reviewer',
+		});
+		expect(childOperationStart).toMatchObject({
+			type: 'operation_start',
+			agentName: 'code-reviewer',
+		});
+		expect(childTurnRequest).toMatchObject({
+			type: 'turn_request',
+			agentName: 'code-reviewer',
 		});
 	});
 

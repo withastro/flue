@@ -440,6 +440,39 @@ describe('createOpenTelemetryInstrumentation()', () => {
 		expect(tracer.spans[0]?.attributes['gen_ai.tool.call.id']).toBe('call-1');
 	});
 
+	it('uses the closest agent name on delegated task and chat spans', () => {
+		const tracer = new RecordingTracer();
+		const instrumentation = createOpenTelemetryInstrumentation({ tracer: tracer as unknown as Tracer });
+		instrumentation.observe(observation({
+			type: 'task_start',
+			taskId: 'task-1',
+			prompt: 'delegate',
+			agent: 'researcher',
+			agentName: 'researcher',
+			conversationId: 'conv_child',
+		}), ctx);
+		instrumentation.observe(observation({
+			type: 'turn_request',
+			taskId: 'task-1',
+			turnId: 'turn-1',
+			purpose: 'agent',
+			agentName: 'researcher',
+			conversationId: 'conv_child',
+			request: {
+				providerId: 'p',
+				providerName: 'p',
+				requestedModel: 'm',
+				api: 'a',
+				input: { messages: [] },
+			},
+		}), ctx);
+
+		expect(tracer.spans.map((span) => span.name)).toEqual(['invoke_agent researcher', 'chat m']);
+		expect(tracer.spans[0]?.attributes['gen_ai.agent.name']).toBe('researcher');
+		expect(tracer.spans[1]?.attributes['gen_ai.agent.name']).toBe('researcher');
+		expect(tracer.spans[1]?.attributes['flue.agent.name']).toBe('researcher');
+	});
+
 	it('creates one span when a tool start is duplicated', () => {
 		const tracer = new RecordingTracer();
 		const instrumentation = createOpenTelemetryInstrumentation({ tracer: tracer as unknown as Tracer });

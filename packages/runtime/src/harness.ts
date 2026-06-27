@@ -262,9 +262,11 @@ export class Harness implements FlueHarness {
 		const data = createEmptySessionData();
 		const eventCallback: FlueEventInputCallback | undefined = this.eventCallback
 			? (event, observation) => {
+					const agentName = event.agentName ?? taskAgent?.name;
 					this.eventCallback?.({
 						...event,
 						harness: event.harness ?? this.name,
+						...(agentName ? { agentName } : {}),
 						parentSession: event.parentSession ?? options.parentSession,
 						taskId: event.taskId ?? options.taskId,
 					}, observation);
@@ -288,7 +290,12 @@ export class Harness implements FlueHarness {
 			actions: taskConfig.actions ?? [],
 			createActionHarness: (actionOptions) => this.createActionHarness(actionOptions),
 			scopeSignal: this.scopeAbortController.signal,
-			executionContext: { ...this.executionContext, harness: this.name, taskId: options.taskId },
+			executionContext: {
+				...this.executionContext,
+				harness: this.name,
+				taskId: options.taskId,
+				...(taskAgent?.name ? { agentName: taskAgent.name } : {}),
+			},
 		});
 	}
 
