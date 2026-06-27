@@ -11,10 +11,7 @@ import type {
 	AgentSubmissionInput,
 	DirectAgentSubmissionInput,
 } from './runtime/agent-submissions.ts';
-import type {
-	ConversationSnapshotStore,
-	ConversationStreamStore,
-} from './runtime/conversation-stream-store.ts';
+import type { ConversationStreamStore } from './runtime/conversation-stream-store.ts';
 import type { SubmissionSettledRecord } from './conversation-records.ts';
 import type { AttachmentStore } from './runtime/attachment-store.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
@@ -335,7 +332,7 @@ export interface AgentExecutionStore {
 
 /** The complete set of stores a {@link PersistenceAdapter} provides. */
 export interface PersistenceStores {
-	/** Agent session snapshots and durable submission lifecycle storage. */
+	/** Durable agent submission lifecycle storage. */
 	readonly executionStore: AgentExecutionStore;
 	/** Workflow run records, lookup, and listing. */
 	readonly runStore: RunStore;
@@ -343,8 +340,6 @@ export interface PersistenceStores {
 	readonly eventStreamStore: EventStreamStore;
 	/** Canonical per-agent-instance conversation streams. */
 	readonly conversationStreamStore: ConversationStreamStore;
-	/** Disposable materialized caches for canonical conversation streams. */
-	readonly conversationSnapshotStore: ConversationSnapshotStore;
 	/** Immutable attachment bytes referenced by canonical conversation records. */
 	readonly attachmentStore: AttachmentStore;
 }

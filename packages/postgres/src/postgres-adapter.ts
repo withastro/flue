@@ -67,10 +67,7 @@ import {
 	submissionChunkOwner,
 } from '@flue/runtime/adapter';
 import { PgAttachmentStore } from './postgres-attachment-store.ts';
-import {
-	PgConversationSnapshotStore,
-	PgConversationStreamStore,
-} from './postgres-conversation-store.ts';
+import { PgConversationStreamStore } from './postgres-conversation-store.ts';
 
 // ─── Bring-your-own-driver runner seam ──────────────────────────────────────
 
@@ -146,7 +143,6 @@ export function postgres(runner: PostgresRunner): PersistenceAdapter {
 				runStore: new PgRunStore(runner),
 				eventStreamStore: new PgEventStreamStore(runner),
 				conversationStreamStore: new PgConversationStreamStore(runner),
-				conversationSnapshotStore: new PgConversationSnapshotStore(runner),
 				attachmentStore: new PgAttachmentStore(runner),
 			};
 		},
@@ -336,15 +332,6 @@ async function ensureTables(runner: PostgresRunner): Promise<void> {
 				attempt_id TEXT,
 				PRIMARY KEY (path, seq),
 				UNIQUE (path, producer_id, producer_epoch, producer_sequence)
-			)
-		`);
-		await tx.query(`
-			CREATE TABLE IF NOT EXISTS flue_conversation_snapshots (
-				path TEXT PRIMARY KEY,
-				reducer_version INTEGER NOT NULL,
-				stream_offset TEXT NOT NULL,
-				data TEXT NOT NULL,
-				created_at TEXT NOT NULL
 			)
 		`);
 		await tx.query(`

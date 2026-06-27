@@ -142,7 +142,12 @@ export class AgentSession {
 			}
 			if (this.isCurrent(generation) && this.stream === stream) {
 				this.reconnectOffset = stream.offset;
-				await this.retry(new Error('Agent conversation stream ended unexpectedly'), generation, 'connect');
+				if (this.live === false) {
+					this.reconnectAttempt = 0;
+					this.dispatch({ type: 'local_stream_completed' });
+				} else {
+					await this.retry(new Error('Agent conversation stream ended unexpectedly'), generation, 'connect');
+				}
 			}
 		} catch (error) {
 			if (!this.isCurrent(generation) || this.stream !== stream) return;

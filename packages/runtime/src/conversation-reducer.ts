@@ -11,6 +11,12 @@ import type {
 } from './conversation-records.ts';
 import { AttachmentNotAvailableError, ConversationRecordInvariantError } from './errors.ts';
 import { createUserContextMessage, renderSignalMessage } from './message-rendering.ts';
+import {
+	createActionScopeName,
+	createTaskSessionName,
+	isPublicSessionName,
+	isUuid,
+} from './session-identity.ts';
 
 interface ReducedEntryBase {
 	id: string;
@@ -89,21 +95,40 @@ export interface ReducedToolOutcome {
 	content: CanonicalToolResultContent[];
 }
 
-export interface ReducedConversationState {
+interface ReducedConversationStateBase {
 	conversationId: string;
 	affinityKey: string;
 	createdAt: string;
 	harness: string;
 	session: string;
-	parentConversationId?: string;
-	taskId?: string;
-	actionInvocationId?: string;
 	entries: Map<string, ReducedEntry>;
 	activeLeafId: string | null;
 	inProgressMessages: Map<string, InProgressAssistantMessage>;
 	toolOutcomes: Map<string, ReducedToolOutcome>;
 	childConversations: Map<string, CanonicalChildSessionRef>;
 }
+
+export type ReducedConversationState = ReducedConversationStateBase &
+	(
+		| {
+				kind: 'root';
+				parentConversationId?: never;
+				taskId?: never;
+				actionInvocationId?: never;
+		  }
+		| {
+				kind: 'task';
+				parentConversationId: string;
+				taskId: string;
+				actionInvocationId?: never;
+		  }
+		| {
+				kind: 'action';
+				parentConversationId: string;
+				actionInvocationId: string;
+				taskId?: never;
+		  }
+	);
 
 export interface ReducedInstanceState {
 	recordsThroughOffset: string;
@@ -209,6 +234,7 @@ export function applyConversationRecord(
 	if (record.v !== 1) fail(record, `Record version "${String(record.v)}" is unsupported.`);
 
 	if (record.type === 'conversation_created') {
+		validateConversationCreation(state, record);
 		if (state.conversations.has(record.conversationId)) {
 			fail(record, `Conversation "${record.conversationId}" is already initialized.`);
 		}
@@ -221,14 +247,7 @@ export function applyConversationRecord(
 			fail(record, `Parent conversation "${record.parentConversationId}" does not exist.`);
 		}
 		state.conversations.set(record.conversationId, {
-			conversationId: record.conversationId,
-			affinityKey: record.affinityKey,
-			createdAt: record.createdAt,
-			harness: record.harness,
-			session: record.session,
-			parentConversationId: record.parentConversationId,
-			taskId: record.taskId,
-			actionInvocationId: record.actionInvocationId,
+			...record,
 			entries: new Map(),
 			activeLeafId: null,
 			inProgressMessages: new Map(),
@@ -449,14 +468,17 @@ export function applyConversationRecord(
 			conversation.activeLeafId = record.leafId;
 			break;
 		case 'child_session_retained': {
+			validateChildReference(record);
 			const child = state.conversations.get(record.child.conversationId);
 			if (!child) fail(record, `Retained child conversation does not exist.`);
+			const identityMatches = record.child.type === 'task'
+				? child.kind === 'task' && child.taskId === record.child.taskId
+				: child.kind === 'action' && child.actionInvocationId === record.child.invocationId;
 			if (
 				child.parentConversationId !== conversation.conversationId ||
 				child.harness !== record.child.harness ||
 				child.session !== record.child.session ||
-				child.taskId !== record.child.taskId ||
-				child.actionInvocationId !== record.child.invocationId
+				!identityMatches
 			) {
 				fail(record, `Retained child identity conflicts with its creation record.`);
 			}
@@ -477,6 +499,72 @@ export function applyConversationRecord(
 			break;
 	}
 	state.recordsById.set(record.id, record);
+}
+
+function validateConversationCreation(
+	state: ReducedInstanceState,
+	record: Extract<ConversationRecord, { type: 'conversation_created' }>,
+): void {
+	const value = record as ConversationRecord & Record<string, unknown>;
+	if (value.kind === 'root') {
+		if (value.parentConversationId !== undefined || value.taskId !== undefined || value.actionInvocationId !== undefined) {
+			fail(record, `Root conversation creation contains child identity fields.`);
+		}
+		return;
+	}
+	if (value.kind === 'task') {
+		if (
+			typeof value.parentConversationId !== 'string' ||
+			typeof value.taskId !== 'string' ||
+			value.actionInvocationId !== undefined ||
+			!isUuid(value.taskId)
+		) {
+			fail(record, `Task conversation creation has invalid discriminated identity.`);
+		}
+		const parent = state.conversations.get(value.parentConversationId);
+		if (!parent) return;
+		if (record.harness !== parent.harness || record.session !== createTaskSessionName(parent.session, value.taskId)) {
+			fail(record, `Task conversation scope does not match its derived parent identity.`);
+		}
+		return;
+	}
+	if (
+		value.kind !== 'action' ||
+		typeof value.parentConversationId !== 'string' ||
+		typeof value.actionInvocationId !== 'string' ||
+		value.taskId !== undefined ||
+		!isUuid(value.actionInvocationId)
+	) {
+		fail(record, `Action conversation creation has invalid discriminated identity.`);
+	}
+	const parent = state.conversations.get(value.parentConversationId);
+	if (!parent) return;
+	if (
+		record.harness !== `${parent.harness}:${createActionScopeName(value.actionInvocationId)}` ||
+		!isPublicSessionName(record.session)
+	) {
+		fail(record, `Action conversation scope does not match its derived parent identity.`);
+	}
+}
+
+function validateChildReference(
+	record: Extract<ConversationRecord, { type: 'child_session_retained' }>,
+): void {
+	const child = record.child as CanonicalChildSessionRef & Record<string, unknown>;
+	if (child.type === 'task') {
+		if (typeof child.taskId !== 'string' || child.invocationId !== undefined || !isUuid(child.taskId)) {
+			fail(record, `Task child reference has invalid discriminated identity.`);
+		}
+		return;
+	}
+	if (
+		child.type !== 'action' ||
+		typeof child.invocationId !== 'string' ||
+		child.taskId !== undefined ||
+		!isUuid(child.invocationId)
+	) {
+		fail(record, `Action child reference has invalid discriminated identity.`);
+	}
 }
 
 export function getActiveConversationPath(conversation: ReducedConversationState): ReducedEntry[] {

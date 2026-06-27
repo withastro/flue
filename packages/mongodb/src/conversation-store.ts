@@ -1,7 +1,5 @@
 import type {
 	ConversationRecord,
-	ConversationSnapshot,
-	ConversationSnapshotStore,
 	ConversationStreamIdentity,
 	ConversationStreamMeta,
 	ConversationStreamReadResult,
@@ -24,15 +22,31 @@ export class MongoConversationStreamStore implements ConversationStreamStore {
 	constructor(private runner: MongoRunner, private prefix: string) {}
 
 	async createStream(path: string, identity: ConversationStreamIdentity): Promise<void> {
-		await this.runner.transaction(async (tx) => {
-			const collection = tx.collection(collectionName(this.prefix, 'conversation_streams'));
-			const existing = await collection.findOne({ _id: path });
-			if (existing) {
-				if (JSON.stringify(existing.identity) !== JSON.stringify(identity)) throw failure(path, 'Stream identity conflicts.');
-				return;
-			}
-			await collection.insertOne({ _id: path, identity, nextOffset: 0, closed: false, producerId: null, producerEpoch: 0, nextProducerSequence: 0, incarnation: crypto.randomUUID() });
-		});
+		const streams = this.streams();
+		try {
+			await streams.updateOne(
+				{ _id: path },
+				{
+					$setOnInsert: {
+						identity,
+						nextOffset: 0,
+						closed: false,
+						producerId: null,
+						producerEpoch: 0,
+						nextProducerSequence: 0,
+						incarnation: crypto.randomUUID(),
+					},
+				},
+				{ upsert: true },
+			);
+		} catch (error) {
+			if (!isDuplicateKeyError(error)) throw error;
+		}
+		const winner = await streams.findOne({ _id: path });
+		if (!winner) throw failure(path, 'Stream creation did not return the persisted identity.', 'create');
+		if (JSON.stringify(winner.identity) !== JSON.stringify(identity)) {
+			throw failure(path, 'Stream identity conflicts.', 'create');
+		}
 	}
 
 	async acquireProducer(path: string, producerId: string) {
@@ -121,7 +135,6 @@ export class MongoConversationStreamStore implements ConversationStreamStore {
 
 	async delete(path: string): Promise<void> {
 		await this.runner.transaction(async (tx) => {
-			await tx.collection(collectionName(this.prefix, 'conversation_snapshots')).deleteOne({ _id: path });
 			await tx.collection(collectionName(this.prefix, 'conversation_batches')).deleteMany({ path });
 			await tx.collection(collectionName(this.prefix, 'conversation_streams')).deleteOne({ _id: path });
 		});
@@ -138,43 +151,6 @@ export class MongoConversationStreamStore implements ConversationStreamStore {
 	private streams() { return this.runner.collection(collectionName(this.prefix, 'conversation_streams')); }
 	private batches() { return this.runner.collection(collectionName(this.prefix, 'conversation_batches')); }
 	private notify(path: string) { for (const listener of this.listeners.get(path) ?? []) { try { listener(); } catch {} } }
-}
-
-export class MongoConversationSnapshotStore<State = unknown> implements ConversationSnapshotStore<State> {
-	constructor(private runner: MongoRunner, private prefix: string) {}
-
-	async load(path: string): Promise<ConversationSnapshot<State> | null> {
-		const row = await this.runner.collection(collectionName(this.prefix, 'conversation_snapshots')).findOne({ _id: path });
-		return row ? (JSON.parse(String(row.data)) as ConversationSnapshot<State>) : null;
-	}
-
-	async save(path: string, snapshot: ConversationSnapshot<State>): Promise<void> {
-		await this.runner.transaction(async (tx) => {
-			const streams = tx.collection(collectionName(this.prefix, 'conversation_streams'));
-			const meta = await streams.findOne({ _id: path });
-			if (!meta) throw failure(path, 'Stream does not exist.', 'save_snapshot');
-			if (snapshot.streamIncarnation !== meta.incarnation) {
-				throw failure(path, 'Snapshot stream incarnation is stale.', 'save_snapshot');
-			}
-			if (parseOffset(snapshot.streamOffset) > Number(meta.nextOffset) - 1) {
-				throw failure(path, 'Snapshot offset is beyond the stream head.', 'save_snapshot');
-			}
-			const fenced = await streams.updateOne(
-				{ _id: path, incarnation: meta.incarnation, nextOffset: meta.nextOffset },
-				{ $inc: { snapshotRevision: 1 } },
-			);
-			if (fenced.modifiedCount !== 1) throw failure(path, 'Stream changed during snapshot save.', 'save_snapshot');
-			await tx.collection(collectionName(this.prefix, 'conversation_snapshots')).updateOne(
-				{ _id: path },
-				{ $set: { reducerVersion: snapshot.reducerVersion, streamOffset: snapshot.streamOffset, data: JSON.stringify(snapshot), createdAt: snapshot.createdAt } },
-				{ upsert: true },
-			);
-		});
-	}
-
-	async delete(path: string): Promise<void> {
-		await this.runner.collection(collectionName(this.prefix, 'conversation_snapshots')).deleteOne({ _id: path });
-	}
 }
 
 async function assertSubmissionAuthorization(
@@ -218,6 +194,10 @@ async function assertSubmissionAuthorization(
 function parseSessionInstance(value: unknown): string | undefined {
 	if (typeof value !== 'string' || !value.startsWith('agent-session:')) return undefined;
 	try { const parsed = JSON.parse(value.slice('agent-session:'.length)) as unknown; return Array.isArray(parsed) && typeof parsed[0] === 'string' ? parsed[0] : undefined; } catch { return undefined; }
+}
+
+function isDuplicateKeyError(error: unknown): boolean {
+	return typeof error === 'object' && error !== null && 'code' in error && error.code === 11000;
 }
 
 function failure(

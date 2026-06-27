@@ -26,6 +26,7 @@ interface PendingSend {
 export interface AgentState extends AgentSnapshot {
 	conversation: AgentConversationState | undefined;
 	pendingSends: PendingSend[];
+	localSubmissionIds: string[];
 	activeSubmissionIds: string[];
 }
 
@@ -36,6 +37,7 @@ type LocalAgentEvent =
 	| { type: 'local_connecting'; error?: Error }
 	| { type: 'local_history'; snapshot: AgentConversationSnapshot }
 	| { type: 'local_stream_not_found' }
+	| { type: 'local_stream_completed' }
 	| { type: 'local_stream_failed'; error: Error };
 
 export type AgentReducerEvent = AgentConversationUpdate | LocalAgentEvent;
@@ -47,27 +49,34 @@ export const emptyAgentState: AgentState = {
 	error: undefined,
 	conversation: undefined,
 	pendingSends: [],
+	localSubmissionIds: [],
 	activeSubmissionIds: [],
 };
 
 export function reduceAgentEvent(state: AgentState, event: AgentReducerEvent): AgentState {
 	switch (event.type) {
-		case 'local_send_submitted':
+		case 'local_send_submitted': {
+			const settledIds = new Set(
+				state.conversation?.settlements.map((settlement) => settlement.submissionId) ?? [],
+			);
 			return {
 				...state,
 				messages: [...state.messages, optimisticMessage(event)],
 				status: 'submitted',
 				error: undefined,
 				pendingSends: [...state.pendingSends, { localId: event.localId }],
+				localSubmissionIds: state.localSubmissionIds.filter((id) => !settledIds.has(id)),
 			};
+		}
 		case 'local_send_admitted':
-			return {
+			return converge({
 				...state,
 				pendingSends: state.pendingSends.map((send) =>
 					send.localId === event.localId ? { ...send, submissionId: event.submissionId } : send,
 				),
+				localSubmissionIds: addUnique(state.localSubmissionIds, event.submissionId),
 				activeSubmissionIds: addUnique(state.activeSubmissionIds, event.submissionId),
-			};
+			});
 		case 'local_send_failed':
 			return {
 				...state,
@@ -86,6 +95,10 @@ export function reduceAgentEvent(state: AgentState, event: AgentReducerEvent): A
 			return state.pendingSends.length === 0
 				? { ...state, messages: [], status: 'idle', historyReady: true, error: undefined }
 				: { ...state, status: 'submitted', historyReady: true, error: undefined };
+		case 'local_stream_completed':
+			return state.status === 'connecting'
+				? converge({ ...state, status: 'idle', error: undefined })
+				: state;
 		case 'local_stream_failed':
 			return { ...state, status: 'error', error: event.error };
 		case 'conversation_reset':
@@ -111,6 +124,12 @@ function mergeConversation(
 	conversation: AgentConversationState,
 	historyReady: boolean,
 ): AgentState {
+	return converge({ ...state, conversation, historyReady });
+}
+
+function converge(state: AgentState): AgentState {
+	const conversation = state.conversation;
+	if (!conversation) return state;
 	const canonicalMessages = [
 		...conversation.messages.map(toUiMessage),
 		...conversation.data.map((part): UIMessage => ({
@@ -127,11 +146,12 @@ function mergeConversation(
 	];
 	let messages = canonicalMessages;
 	const pendingSends: PendingSend[] = [];
+	const settledIds = new Set(conversation.settlements.map((settlement) => settlement.submissionId));
 	for (const pending of state.pendingSends) {
 		const canonical = pending.submissionId
 			? conversation.messages.find((message) => message.submissionId === pending.submissionId)
 			: undefined;
-		if (canonical) continue;
+		if (canonical || (pending.submissionId && settledIds.has(pending.submissionId))) continue;
 		const optimistic = state.messages.find((message) => message.id === pending.localId);
 		if (optimistic) messages = [...messages, optimistic];
 		pendingSends.push(pending);
@@ -147,24 +167,23 @@ function mergeConversation(
 	const failed = conversation.settlements.find(
 		(settlement) =>
 			settlement.outcome === 'failed' &&
-			state.activeSubmissionIds.includes(settlement.submissionId),
+			state.localSubmissionIds.includes(settlement.submissionId),
 	);
-	const settledIds = new Set(conversation.settlements.map((settlement) => settlement.submissionId));
 	const activeSubmissionIds = state.activeSubmissionIds.filter((id) => !settledIds.has(id));
 	return {
 		...state,
-		conversation,
 		messages,
 		pendingSends,
 		activeSubmissionIds,
-		historyReady,
 		status: failed
 			? 'error'
-			: ownStreaming || activeSubmissionIds.length > 0
+			: ownStreaming
 				? 'streaming'
 				: pendingSends.length > 0
 					? 'submitted'
-					: 'idle',
+					: activeSubmissionIds.length > 0
+						? 'streaming'
+						: 'idle',
 		error: failed ? new Error(settlementError(failed.error)) : undefined,
 	};
 }
@@ -176,8 +195,7 @@ function toUiMessage(message: AgentConversationMessage): UIMessage {
 		metadata: message.metadata,
 		parts: message.parts.flatMap((part): UIMessagePart[] => {
 			if (part.type === 'text' || part.type === 'reasoning') {
-				const { blockId: _blockId, ...uiPart } = part;
-				return [uiPart];
+				return [{ type: part.type, text: part.text, state: part.state }];
 			}
 			if (part.type === 'tool') {
 				if (part.state === 'output-available') {

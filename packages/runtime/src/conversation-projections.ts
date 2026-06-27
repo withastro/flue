@@ -17,9 +17,26 @@ import { classifySubmissionState } from './submission-state.ts';
 import type { PromptUsage } from './types.ts';
 import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 
+export interface ConversationDeltaState {
+	nextSequence: number;
+	accepted: string[];
+}
+
 export type ConversationUiPart =
-	| { type: 'text'; blockId?: string; text: string; state: 'streaming' | 'done' }
-	| { type: 'reasoning'; blockId?: string; text: string; state: 'streaming' | 'done' }
+	| {
+			type: 'text';
+			blockId?: string;
+			text: string;
+			state: 'streaming' | 'done';
+			deltaState?: ConversationDeltaState;
+	  }
+	| {
+			type: 'reasoning';
+			blockId?: string;
+			text: string;
+			state: 'streaming' | 'done';
+			deltaState?: ConversationDeltaState;
+	  }
 	| { type: 'attachment'; attachment: AttachmentRef }
 	| {
 			type: 'tool';
@@ -278,6 +295,7 @@ function projectInProgressMessage(
 					blockId: block.blockId,
 					text: block.deltas.join(''),
 					state: block.completed ? 'done' : 'streaming',
+					deltaState: { nextSequence: block.deltas.length, accepted: [...block.deltas] },
 				};
 			}
 			if (block.type === 'reasoning') {
@@ -286,6 +304,7 @@ function projectInProgressMessage(
 					blockId: block.blockId,
 					text: block.deltas.join(''),
 					state: block.completed ? 'done' : 'streaming',
+					deltaState: { nextSequence: block.deltas.length, accepted: [...block.deltas] },
 				};
 			}
 			return {

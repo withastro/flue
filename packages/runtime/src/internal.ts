@@ -55,13 +55,9 @@ export type {
 } from './runtime/agent-submissions.ts';
 export type { AttachmentStore } from './runtime/attachment-store.ts';
 export { InMemoryAttachmentStore } from './runtime/attachment-store.ts';
-export type {
-	ConversationSnapshotStore,
-	ConversationStreamStore,
-} from './runtime/conversation-stream-store.ts';
+export type { ConversationStreamStore } from './runtime/conversation-stream-store.ts';
 export {
 	InMemoryConversationStreamStore,
-	SqliteConversationSnapshotStore,
 	SqliteConversationStreamStore,
 } from './runtime/conversation-stream-store.ts';
 export type { AgentInteractionStart } from './runtime/dev-lifecycle-logger.ts';

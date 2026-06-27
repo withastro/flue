@@ -167,12 +167,12 @@ export class Harness implements FlueHarness {
 			const identity = createConversationIdentity();
 			if (this.retainSession) await this.retainSession(sessionName, identity, harnessScope);
 			else await this.conversationWriter.ensureConversation({
+				kind: 'root',
 				conversationId: identity.conversationId,
 				harness: harnessScope,
 				session: sessionName,
 				affinityKey: identity.affinityKey,
 				createdAt: identity.createdAt,
-				...(this.executionContext.taskId ? { taskId: this.executionContext.taskId } : {}),
 			});
 			conversation = await this.conversationWriter.findConversation(harnessScope, sessionName);
 			if (!conversation) throw new SessionNotFoundError({ session: sessionName, harness: this.name });
@@ -246,6 +246,7 @@ export class Harness implements FlueHarness {
 				session: options.parentSession,
 			},
 			child: {
+				kind: 'task',
 				conversationId: identity.conversationId,
 				harness: harnessScope,
 				session: sessionName,

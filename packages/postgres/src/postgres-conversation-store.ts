@@ -1,13 +1,18 @@
 import type {
 	ConversationRecord,
-	ConversationSnapshot,
-	ConversationSnapshotStore,
 	ConversationStreamIdentity,
 	ConversationStreamMeta,
 	ConversationStreamReadResult,
 	ConversationStreamStore,
 } from '@flue/runtime/adapter';
-import { clampLimit, DEFAULT_READ_LIMIT, formatOffset, MAX_READ_LIMIT, parseOffset } from '@flue/runtime/adapter';
+import {
+	ConversationStreamStoreError,
+	clampLimit,
+	DEFAULT_READ_LIMIT,
+	formatOffset,
+	MAX_READ_LIMIT,
+	parseOffset,
+} from '@flue/runtime/adapter';
 import type { PostgresQuery, PostgresRunner } from './postgres-adapter.ts';
 
 export class PgConversationStreamStore implements ConversationStreamStore {
@@ -17,18 +22,16 @@ export class PgConversationStreamStore implements ConversationStreamStore {
 
 	async createStream(path: string, identity: ConversationStreamIdentity): Promise<void> {
 		const data = JSON.stringify(identity);
-		await this.runner.transaction(async (tx) => {
-			const rows = await tx.query('SELECT identity_json FROM flue_conversation_streams WHERE path = $1 FOR UPDATE', [path]);
-			if (rows[0]) {
-				if (rows[0].identity_json !== data) throw failure(path, 'Stream identity conflicts.');
-				return;
-			}
+		const winner = await this.runner.transaction(async (tx) => {
 			await tx.query(
 				`INSERT INTO flue_conversation_streams (path, identity_json, incarnation)
-				 VALUES ($1, $2, $3)`,
+				 VALUES ($1, $2, $3)
+				 ON CONFLICT (path) DO NOTHING`,
 				[path, data, crypto.randomUUID()],
 			);
+			return tx.query('SELECT identity_json FROM flue_conversation_streams WHERE path = $1', [path]);
 		});
+		if (winner[0]?.identity_json !== data) throw failure(path, 'Stream identity conflicts.', 'create');
 	}
 
 	async acquireProducer(path: string, producerId: string) {
@@ -41,7 +44,7 @@ export class PgConversationStreamStore implements ConversationStreamStore {
 				[producerId, path],
 			);
 			const row = rows[0];
-			if (!row) throw failure(path, 'Stream does not exist or is closed.');
+			if (!row) throw failure(path, 'Stream does not exist or is closed.', 'acquire_producer');
 			return {
 				producerId,
 				producerEpoch: Number(row.producer_epoch),
@@ -62,7 +65,7 @@ export class PgConversationStreamStore implements ConversationStreamStore {
 		submission?: { submissionId: string; attemptId: string };
 		records: readonly ConversationRecord[];
 	}): Promise<{ offset: string }> {
-		if (input.records.length === 0) throw failure(input.path, 'A canonical batch cannot be empty.');
+		if (input.records.length === 0) throw failure(input.path, 'A canonical batch cannot be empty.', 'append');
 		const data = JSON.stringify(input.records);
 		const result = await this.runner.transaction(async (tx) => {
 			const rows = await tx.query(
@@ -138,7 +141,7 @@ export class PgConversationStreamStore implements ConversationStreamStore {
 		if (rawOffset === 'now') return { batches: [], nextOffset: meta.nextOffset, upToDate: true, closed: meta.closed };
 		const startAfter = parseOffset(rawOffset);
 		if (!Number.isSafeInteger(startAfter) || startAfter > parseOffset(meta.nextOffset)) {
-			throw failure(path, 'Read offset is beyond the canonical stream head.');
+			throw failure(path, 'Read offset is beyond the canonical stream head.', 'read');
 		}
 		const limit = clampLimit(options?.limit, DEFAULT_READ_LIMIT, MAX_READ_LIMIT);
 		const rows = await this.runner.query(
@@ -185,7 +188,6 @@ export class PgConversationStreamStore implements ConversationStreamStore {
 
 	async delete(path: string): Promise<void> {
 		await this.runner.transaction(async (tx) => {
-			await tx.query('DELETE FROM flue_conversation_snapshots WHERE path = $1', [path]);
 			await tx.query('DELETE FROM flue_conversation_stream_batches WHERE path = $1', [path]);
 			await tx.query('DELETE FROM flue_conversation_streams WHERE path = $1', [path]);
 		});
@@ -211,41 +213,6 @@ export class PgConversationStreamStore implements ConversationStreamStore {
 				listener();
 			} catch {}
 		}
-	}
-}
-
-export class PgConversationSnapshotStore<State = unknown> implements ConversationSnapshotStore<State> {
-	constructor(private runner: PostgresRunner) {}
-
-	async load(path: string): Promise<ConversationSnapshot<State> | null> {
-		const rows = await this.runner.query('SELECT data FROM flue_conversation_snapshots WHERE path = $1', [path]);
-		return rows[0] ? (JSON.parse(String(rows[0].data)) as ConversationSnapshot<State>) : null;
-	}
-
-	async save(path: string, snapshot: ConversationSnapshot<State>): Promise<void> {
-		await this.runner.transaction(async (tx) => {
-			const rows = await tx.query('SELECT next_offset, incarnation FROM flue_conversation_streams WHERE path = $1 FOR UPDATE', [path]);
-			const meta = rows[0];
-			if (!meta) throw failure(path, 'Stream does not exist.');
-			if (snapshot.streamIncarnation !== meta.incarnation) {
-				throw failure(path, 'Snapshot stream incarnation is stale.');
-			}
-			if (parseOffset(snapshot.streamOffset) > Number(meta.next_offset) - 1) {
-				throw failure(path, 'Snapshot offset is beyond the stream head.');
-			}
-			await tx.query(
-				`INSERT INTO flue_conversation_snapshots
-				 (path, reducer_version, stream_offset, data, created_at)
-				 VALUES ($1, $2, $3, $4, $5)
-				 ON CONFLICT (path) DO UPDATE SET reducer_version = EXCLUDED.reducer_version,
-				 stream_offset = EXCLUDED.stream_offset, data = EXCLUDED.data, created_at = EXCLUDED.created_at`,
-				[path, snapshot.reducerVersion, snapshot.streamOffset, JSON.stringify(snapshot), snapshot.createdAt],
-			);
-		});
-	}
-
-	async delete(path: string): Promise<void> {
-		await this.runner.query('DELETE FROM flue_conversation_snapshots WHERE path = $1', [path]);
 	}
 }
 
@@ -298,6 +265,10 @@ function parseSessionInstance(value: unknown): string | undefined {
 	}
 }
 
-function failure(path: string, reason: string): TypeError {
-	return new TypeError(`[flue] Canonical conversation stream "${path}" failed: ${reason}`);
+function failure(
+	path: string,
+	reason: string,
+	operation = 'append',
+): ConversationStreamStoreError {
+	return new ConversationStreamStoreError({ operation, path, reason });
 }

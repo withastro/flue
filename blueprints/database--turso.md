@@ -10,8 +10,8 @@ Turso is hosted libSQL; this is the same adapter as the `libsql` blueprint with
 a Turso client configuration. For a local file or self-hosted libSQL server,
 use the `libsql` blueprint instead.
 
-This persists canonical agent conversation streams, disposable snapshots,
-immutable attachments, accepted submissions, workflow-run records, and event
+This persists canonical agent conversation streams, immutable attachments,
+accepted submissions, workflow-run records, and event
 streams across process restarts and replicas. It does not store application
 business data.
 

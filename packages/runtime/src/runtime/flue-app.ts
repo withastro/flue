@@ -22,10 +22,7 @@ import type {
 } from '../types.ts';
 import type { WorkflowDefinition } from '../workflow-definition.ts';
 import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
-import type {
-	ConversationSnapshotStore,
-	ConversationStreamStore,
-} from './conversation-stream-store.ts';
+import type { ConversationStreamStore } from './conversation-stream-store.ts';
 import { enqueueDispatch } from './dispatch.ts';
 import type { DispatchQueue } from './dispatch-queue.ts';
 import { agentStreamPath, type EventStreamStore, runStreamPath } from './event-stream-store.ts';
@@ -85,7 +82,6 @@ export interface NodeRuntime extends RuntimeBase {
 	runStore: RunStore;
 	eventStreamStore: EventStreamStore;
 	conversationStreamStore: ConversationStreamStore;
-	conversationSnapshotStore: ConversationSnapshotStore;
 }
 
 export interface CloudflareRuntime extends RuntimeBase {
@@ -421,9 +417,8 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 				}
 				return handleAgentConversationRead({
 					store: rt.conversationStreamStore,
-					snapshots: rt.conversationSnapshotStore,
-					path: streamPath,
-					request,
+					path: agentStreamPath(name, id),
+					request: c.req.raw,
 				});
 			}
 

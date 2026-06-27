@@ -31,14 +31,33 @@ export type CanonicalToolResultContent =
 	| Extract<ToolResultMessage['content'][number], { type: 'text' }>
 	| { type: 'attachment'; attachment: AttachmentRef };
 
-export interface ConversationCreatedRecord extends ConversationRecordEnvelope {
+interface ConversationCreatedRecordBase extends ConversationRecordEnvelope {
 	type: 'conversation_created';
 	affinityKey: string;
 	createdAt: string;
-	parentConversationId?: string;
-	taskId?: string;
-	actionInvocationId?: string;
 }
+
+export type ConversationCreatedRecord = ConversationCreatedRecordBase &
+	(
+		| {
+				kind: 'root';
+				parentConversationId?: never;
+				taskId?: never;
+				actionInvocationId?: never;
+		  }
+		| {
+				kind: 'task';
+				parentConversationId: string;
+				taskId: string;
+				actionInvocationId?: never;
+		  }
+		| {
+				kind: 'action';
+				parentConversationId: string;
+				actionInvocationId: string;
+				taskId?: never;
+		  }
+	);
 
 export interface UserMessageRecord extends ConversationRecordEnvelope {
 	type: 'user_message';
@@ -174,14 +193,23 @@ export interface ActiveLeafChangedRecord extends ConversationRecordEnvelope {
 	reason: string;
 }
 
-export interface CanonicalChildSessionRef {
+interface CanonicalChildSessionRefBase {
 	conversationId: string;
 	harness: string;
 	session: string;
-	type: 'task' | 'action';
-	taskId?: string;
-	invocationId?: string;
 }
+
+export type CanonicalChildSessionRef =
+	| (CanonicalChildSessionRefBase & {
+			type: 'task';
+			taskId: string;
+			invocationId?: never;
+	  })
+	| (CanonicalChildSessionRefBase & {
+			type: 'action';
+			invocationId: string;
+			taskId?: never;
+	  });
 
 export interface ChildSessionRetainedRecord extends ConversationRecordEnvelope {
 	type: 'child_session_retained';

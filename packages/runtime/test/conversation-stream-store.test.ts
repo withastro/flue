@@ -4,7 +4,6 @@ import type { ConversationRecord } from '../src/conversation-records.ts';
 import { ConversationStreamStoreError } from '../src/errors.ts';
 import {
 	InMemoryConversationStreamStore,
-	SqliteConversationSnapshotStore,
 	SqliteConversationStreamStore,
 } from '../src/runtime/conversation-stream-store.ts';
 import { defineConversationStreamStoreContractTests } from '../src/test-utils/define-conversation-stream-store-contract-tests.ts';
@@ -37,7 +36,6 @@ function createStores() {
 	return {
 		db,
 		stream: new SqliteConversationStreamStore(sql, transaction),
-		snapshots: new SqliteConversationSnapshotStore(sql, transaction),
 	};
 }
 
@@ -48,11 +46,6 @@ defineConversationStreamStoreContractTests('SqliteConversationStreamStore contra
 defineConversationStreamStoreContractTests('InMemoryConversationStreamStore contract', {
 	create: () => ({
 		stream: new InMemoryConversationStreamStore(),
-		snapshots: {
-			load: async () => null,
-			save: async () => {},
-			delete: async () => {},
-		},
 	}),
 });
 
@@ -326,8 +319,8 @@ describe('SqliteConversationStreamStore', () => {
 		});
 	});
 
-	it('saves disposable snapshots only through an existing canonical offset', async () => {
-		const { stream, snapshots } = createStores();
+	it('physically deletes canonical batches at instance deletion', async () => {
+		const { stream } = createStores();
 		await stream.createStream('agents/echo/1', { agentName: 'echo', instanceId: '1' });
 		const producer = await stream.acquireProducer('agents/echo/1', 'coordinator-1');
 		await stream.append({
@@ -337,51 +330,11 @@ describe('SqliteConversationStreamStore', () => {
 			incarnation: producer.incarnation,
 			producerSequence: 0,
 			records: [userRecord('record_1', 'entry_1')],
-		});
-		const meta = await stream.getMeta('agents/echo/1');
-		if (!meta) throw new Error('Expected canonical stream metadata.');
-		const snapshot = {
-			version: 1,
-			reducerVersion: 1,
-			streamOffset: '0000000000000000_0000000000000000',
-			streamIncarnation: meta.incarnation,
-			state: { conversations: 1 },
-			createdAt: '2026-06-25T00:00:01.000Z',
-		};
-
-		await snapshots.save('agents/echo/1', snapshot);
-		expect(await snapshots.load('agents/echo/1')).toEqual(snapshot);
-		await snapshots.delete('agents/echo/1');
-		expect(await snapshots.load('agents/echo/1')).toBeNull();
-	});
-
-	it('physically deletes canonical batches and snapshots at instance deletion', async () => {
-		const { stream, snapshots } = createStores();
-		await stream.createStream('agents/echo/1', { agentName: 'echo', instanceId: '1' });
-		const producer = await stream.acquireProducer('agents/echo/1', 'coordinator-1');
-		await stream.append({
-			path: 'agents/echo/1',
-			producerId: producer.producerId,
-			producerEpoch: producer.producerEpoch,
-			incarnation: producer.incarnation,
-			producerSequence: 0,
-			records: [userRecord('record_1', 'entry_1')],
-		});
-		const meta = await stream.getMeta('agents/echo/1');
-		if (!meta) throw new Error('Expected canonical stream metadata.');
-		await snapshots.save('agents/echo/1', {
-			version: 1,
-			reducerVersion: 1,
-			streamOffset: '0000000000000000_0000000000000000',
-			streamIncarnation: meta.incarnation,
-			state: {},
-			createdAt: '2026-06-25T00:00:01.000Z',
 		});
 
 		await stream.delete('agents/echo/1');
 
 		expect(await stream.getMeta('agents/echo/1')).toBeNull();
 		expect(await stream.read('agents/echo/1')).toMatchObject({ batches: [], nextOffset: '-1' });
-		expect(await snapshots.load('agents/echo/1')).toBeNull();
 	});
 });

@@ -14,6 +14,7 @@ import {
 	verifyAttachmentBytes,
 } from '@flue/runtime/adapter';
 import type { MysqlQuery, MysqlRunner } from './mysql-adapter.ts';
+import { assertMysqlConversationStreamPath } from './mysql-conversation-store.ts';
 
 interface AttachmentRecord extends StoredAttachment { owner: AttachmentOwner }
 
@@ -21,6 +22,7 @@ export class MysqlAttachmentStore implements AttachmentStore {
 	constructor(private runner: MysqlRunner) {}
 
 	async put(input: PutAttachmentInput): Promise<void> {
+		assertMysqlConversationStreamPath(input.streamPath, 'put_attachment');
 		await verifyAttachmentBytes(input.attachment, input.bytes);
 		await this.runner.transaction(async (tx) => {
 			const owner = input.owner.kind === 'conversation' ? input.owner.conversationId : input.owner.submissionId;
@@ -31,6 +33,7 @@ export class MysqlAttachmentStore implements AttachmentStore {
 	}
 
 	async get(input: GetAttachmentInput): Promise<StoredAttachment | null> {
+		assertMysqlConversationStreamPath(input.streamPath, 'get_attachment');
 		const record = await readAttachment(this.runner.query, input.streamPath, input.attachmentId, false);
 		if (!record || record.owner.kind !== 'conversation' || record.owner.conversationId !== input.conversationId) return null;
 		await verifyAttachmentBytes(record.attachment, record.bytes);
@@ -38,14 +41,17 @@ export class MysqlAttachmentStore implements AttachmentStore {
 	}
 
 	async listForConversation(input: { streamPath: string; conversationId: string }): Promise<AttachmentRef[]> {
+		assertMysqlConversationStreamPath(input.streamPath, 'list_attachments');
 		return (await this.runner.query(`SELECT attachment_id, mime_type, byte_size, digest FROM flue_attachments WHERE stream_path = ? AND owner_kind = 'conversation' AND owner_id = ? ORDER BY attachment_id`, [input.streamPath, input.conversationId])).map((row) => ({ id: String(row.attachment_id), mimeType: String(row.mime_type), size: Number(row.byte_size), digest: String(row.digest) }));
 	}
 
 	async deleteForInstance(streamPath: string): Promise<void> {
+		assertMysqlConversationStreamPath(streamPath, 'delete_attachments');
 		await this.runner.query('DELETE FROM flue_attachments WHERE stream_path = ?', [streamPath]);
 	}
 
 	async bindSubmissionAttachment(input: BindSubmissionAttachmentInput): Promise<void> {
+		assertMysqlConversationStreamPath(input.streamPath, 'bind_attachment');
 		await this.runner.transaction(async (tx) => {
 			const record = await readAttachment(tx.query, input.streamPath, input.attachment.id, true);
 			if (!record) conflict(input);

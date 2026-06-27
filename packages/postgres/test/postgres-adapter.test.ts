@@ -103,12 +103,11 @@ function createPgliteRunner(): PostgresRunner {
 			adapter = postgres(createPgliteRunner());
 			await adapter.migrate?.();
 			const stores = await adapter.connect();
-			if (!stores.conversationStreamStore || !stores.conversationSnapshotStore) {
-				throw new Error('Expected Postgres conversation stores.');
+			if (!stores.conversationStreamStore) {
+				throw new Error('Expected Postgres conversation stream store.');
 			}
 			return {
 				stream: stores.conversationStreamStore,
-				snapshots: stores.conversationSnapshotStore,
 			};
 		},
 		async cleanup() {

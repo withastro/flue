@@ -100,12 +100,11 @@ describeRedis('Redis shared contracts', () => {
 	defineConversationStreamStoreContractTests('Redis ConversationStreamStore', {
 		async create() {
 			const connected = await createHarness();
-			if (!connected.conversationStreamStore || !connected.conversationSnapshotStore) {
-				throw new Error('Expected Redis conversation stores.');
+			if (!connected.conversationStreamStore) {
+				throw new Error('Expected Redis conversation stream store.');
 			}
 			return {
 				stream: connected.conversationStreamStore,
-				snapshots: connected.conversationSnapshotStore,
 				executionStore: connected.executionStore,
 			};
 		},

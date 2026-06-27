@@ -57,12 +57,13 @@ sets; it never scans the keyspace.
 
 ## Storage model
 
-The adapter persists the canonical append-only conversation stream, disposable
-snapshots, immutable external attachments, submission lifecycle state, workflow
-runs, and distinct event streams. The canonical stream is the sole transcript;
-sessions append for the instance lifetime and have no per-session deletion.
-Whole-instance stream, snapshot, and attachment deletion methods are low-level
-primitives, not public orchestration.
+The adapter persists the canonical append-only conversation stream, immutable
+external attachments, submission lifecycle state, workflow runs, and distinct
+event streams. The canonical stream is the sole transcript and is replayed from
+its beginning; replay acceleration and persisted-log compaction are deferred.
+Sessions append for the instance lifetime and have no per-session deletion.
+Whole-instance stream and attachment deletion methods are low-level primitives,
+not public orchestration.
 
 Hashes hold authoritative metadata and immutable generation manifests. Sorted
 sets maintain submission, run, and event ordering; sets maintain bounded cleanup

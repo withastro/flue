@@ -69,6 +69,7 @@ await append([
 		v: 1,
 		id: `record-created-${mode}`,
 		type: 'conversation_created',
+		kind: 'root',
 		conversationId,
 		harness: 'default',
 		session: 'default',
@@ -84,7 +85,15 @@ await append([
 		messageId: inputEntryId,
 		parentId: null,
 		signalType: 'dispatch_input',
-		content: `<dispatch type="dispatch_input">${mode}</dispatch>`,
+		tagName: 'dispatch',
+		content: JSON.stringify({ message: mode }, null, 2),
+		attributes: {
+			agent: input.agent,
+			id: input.id,
+			session: 'default',
+			dispatchId: input.dispatchId,
+			acceptedAt: input.acceptedAt,
+		},
 	},
 ]);
 

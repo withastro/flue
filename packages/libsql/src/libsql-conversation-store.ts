@@ -1,7 +1,5 @@
 import type {
 	ConversationRecord,
-	ConversationSnapshot,
-	ConversationSnapshotStore,
 	ConversationStreamIdentity,
 	ConversationStreamMeta,
 	ConversationStreamReadResult,
@@ -148,7 +146,6 @@ export class LibsqlConversationStreamStore implements ConversationStreamStore {
 
 	async delete(path: string): Promise<void> {
 		await this.runner.transaction(async (tx) => {
-			await tx.query('DELETE FROM flue_conversation_snapshots WHERE path = ?', [path]);
 			await tx.query('DELETE FROM flue_conversation_stream_batches WHERE path = ?', [path]);
 			await tx.query('DELETE FROM flue_conversation_streams WHERE path = ?', [path]);
 		});
@@ -172,35 +169,6 @@ export class LibsqlConversationStreamStore implements ConversationStreamStore {
 		for (const listener of this.listeners.get(path) ?? []) {
 			try { listener(); } catch {}
 		}
-	}
-}
-
-export class LibsqlConversationSnapshotStore<State = unknown> implements ConversationSnapshotStore<State> {
-	constructor(private runner: LibsqlRunner) {}
-
-	async load(path: string): Promise<ConversationSnapshot<State> | null> {
-		const rows = await this.runner.query('SELECT data FROM flue_conversation_snapshots WHERE path = ?', [path]);
-		return rows[0] ? (JSON.parse(String(rows[0].data)) as ConversationSnapshot<State>) : null;
-	}
-
-	async save(path: string, snapshot: ConversationSnapshot<State>): Promise<void> {
-		await this.runner.transaction(async (tx) => {
-			const rows = await tx.query('SELECT next_offset, incarnation FROM flue_conversation_streams WHERE path = ?', [path]);
-			const meta = rows[0];
-			if (!meta) throw failure(path, 'Stream does not exist.');
-			if (snapshot.streamIncarnation !== meta.incarnation) throw failure(path, 'Snapshot stream incarnation is stale.');
-			if (parseOffset(snapshot.streamOffset) > Number(meta.next_offset) - 1) throw failure(path, 'Snapshot offset is beyond the stream head.');
-			await tx.query(
-				`INSERT INTO flue_conversation_snapshots (path, reducer_version, stream_offset, data, created_at)
-				 VALUES (?, ?, ?, ?, ?) ON CONFLICT(path) DO UPDATE SET reducer_version = excluded.reducer_version,
-				 stream_offset = excluded.stream_offset, data = excluded.data, created_at = excluded.created_at`,
-				[path, snapshot.reducerVersion, snapshot.streamOffset, JSON.stringify(snapshot), snapshot.createdAt],
-			);
-		});
-	}
-
-	async delete(path: string): Promise<void> {
-		await this.runner.query('DELETE FROM flue_conversation_snapshots WHERE path = ?', [path]);
 	}
 }
 

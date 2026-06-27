@@ -17,10 +17,6 @@ import {
 	getActiveConversationPath,
 	reduceConversationRecords,
 } from '../src/conversation-reducer.ts';
-import {
-	decodeReducedInstanceState,
-	encodeReducedInstanceState,
-} from '../src/conversation-reader.ts';
 import { ConversationRecordInvariantError } from '../src/errors.ts';
 
 const scope = {
@@ -50,6 +46,7 @@ function canonicalConversation(): ConversationRecord[] {
 			...scope,
 			id: 'record_created',
 			type: 'conversation_created',
+			kind: 'root',
 			timestamp: '2026-06-25T00:00:00.000Z',
 			affinityKey: 'aff_01',
 			createdAt: '2026-06-25T00:00:00.000Z',
@@ -142,13 +139,6 @@ describe('reduceConversationRecords()', () => {
 		]);
 	});
 
-	it('preserves conversation creation time through snapshot encoding', () => {
-		const state = reduceConversationRecords(createReducedInstanceState(), canonicalConversation(), '8');
-		const decoded = decodeReducedInstanceState(encodeReducedInstanceState(state));
-
-		expect(decoded.conversations.get('conv_01')?.createdAt).toBe('2026-06-25T00:00:00.000Z');
-	});
-
 	it('rejects a second conversation when one routing scope is already owned', () => {
 		const state = reduceConversationRecords(createReducedInstanceState(), [required(canonicalConversation()[0])]);
 
@@ -156,6 +146,7 @@ describe('reduceConversationRecords()', () => {
 			...scope,
 			id: 'record_duplicate_scope',
 			type: 'conversation_created',
+			kind: 'root',
 			conversationId: 'conv_02',
 			timestamp: '2026-06-25T00:00:01.000Z',
 			affinityKey: 'aff_02',
@@ -168,14 +159,171 @@ describe('reduceConversationRecords()', () => {
 			...scope,
 			id: 'record_orphan_child',
 			type: 'conversation_created',
+			kind: 'action',
 			conversationId: 'conv_child',
-			harness: 'default:action:invocation',
+			harness: 'default:action:123e4567-e89b-42d3-a456-426614174000',
 			session: 'child',
 			timestamp: '2026-06-25T00:00:01.000Z',
 			affinityKey: 'aff_child',
 			createdAt: '2026-06-25T00:00:01.000Z',
 			parentConversationId: 'conv_missing',
+			actionInvocationId: '123e4567-e89b-42d3-a456-426614174000',
 		}])).toThrow(ConversationRecordInvariantError);
+	});
+
+	it('accepts valid atomic task and action topology', () => {
+		const taskId = '123e4567-e89b-42d3-a456-426614174000';
+		const invocationId = '123e4567-e89b-42d3-a456-426614174001';
+		const state = reduceConversationRecords(createReducedInstanceState(), [
+			required(canonicalConversation()[0]),
+			{
+				...scope,
+				id: 'record_task_created',
+				type: 'conversation_created',
+				kind: 'task',
+				conversationId: 'conv_task',
+				session: `task:default:${taskId}`,
+				timestamp: '2026-06-25T00:00:01.000Z',
+				affinityKey: 'aff_task',
+				createdAt: '2026-06-25T00:00:01.000Z',
+				parentConversationId: 'conv_01',
+				taskId,
+			},
+			{
+				...scope,
+				id: 'record_task_retained',
+				type: 'child_session_retained',
+				timestamp: '2026-06-25T00:00:01.000Z',
+				child: {
+					conversationId: 'conv_task',
+					harness: 'default',
+					session: `task:default:${taskId}`,
+					type: 'task',
+					taskId,
+				},
+			},
+			{
+				...scope,
+				id: 'record_action_created',
+				type: 'conversation_created',
+				kind: 'action',
+				conversationId: 'conv_action',
+				harness: `default:action:${invocationId}`,
+				session: 'action-child',
+				timestamp: '2026-06-25T00:00:02.000Z',
+				affinityKey: 'aff_action',
+				createdAt: '2026-06-25T00:00:02.000Z',
+				parentConversationId: 'conv_01',
+				actionInvocationId: invocationId,
+			},
+			{
+				...scope,
+				id: 'record_action_retained',
+				type: 'child_session_retained',
+				timestamp: '2026-06-25T00:00:02.000Z',
+				child: {
+					conversationId: 'conv_action',
+					harness: `default:action:${invocationId}`,
+					session: 'action-child',
+					type: 'action',
+					invocationId,
+				},
+			},
+		]);
+
+		expect(state.conversations.get('conv_01')?.childConversations.size).toBe(2);
+	});
+
+	it('rejects contradictory conversation kind fields', () => {
+		const contradictory = {
+			...scope,
+			id: 'record_contradictory_creation',
+			type: 'conversation_created',
+			kind: 'root',
+			timestamp: '2026-06-25T00:00:00.000Z',
+			affinityKey: 'aff_contradictory',
+			createdAt: '2026-06-25T00:00:00.000Z',
+			taskId: '123e4567-e89b-42d3-a456-426614174000',
+		} as unknown as ConversationRecord;
+
+		expect(() => applyConversationRecord(createReducedInstanceState(), contradictory)).toThrow(
+			ConversationRecordInvariantError,
+		);
+	});
+
+	it('rejects contradictory child kind fields', () => {
+		const taskId = '123e4567-e89b-42d3-a456-426614174000';
+		const state = reduceConversationRecords(createReducedInstanceState(), [
+			required(canonicalConversation()[0]),
+			{
+				...scope,
+				id: 'record_task_created',
+				type: 'conversation_created',
+				kind: 'task',
+				conversationId: 'conv_task',
+				session: `task:default:${taskId}`,
+				timestamp: '2026-06-25T00:00:01.000Z',
+				affinityKey: 'aff_task',
+				createdAt: '2026-06-25T00:00:01.000Z',
+				parentConversationId: 'conv_01',
+				taskId,
+			},
+		]);
+		const contradictory = {
+			...scope,
+			id: 'record_contradictory_child',
+			type: 'child_session_retained',
+			timestamp: '2026-06-25T00:00:02.000Z',
+			child: {
+				conversationId: 'conv_task',
+				harness: 'default',
+				session: `task:default:${taskId}`,
+				type: 'task',
+				taskId,
+				invocationId: '123e4567-e89b-42d3-a456-426614174001',
+			},
+		} as unknown as ConversationRecord;
+
+		expect(() => applyConversationRecord(state, contradictory)).toThrow(ConversationRecordInvariantError);
+	});
+
+	it('rejects malformed task identity derived from its parent', () => {
+		const state = reduceConversationRecords(createReducedInstanceState(), [required(canonicalConversation()[0])]);
+		const malformed = {
+			...scope,
+			id: 'record_malformed_task',
+			type: 'conversation_created',
+			kind: 'task',
+			conversationId: 'conv_task',
+			session: 'task:default:not-a-uuid',
+			timestamp: '2026-06-25T00:00:01.000Z',
+			affinityKey: 'aff_task',
+			createdAt: '2026-06-25T00:00:01.000Z',
+			parentConversationId: 'conv_01',
+			taskId: 'not-a-uuid',
+		} as unknown as ConversationRecord;
+
+		expect(() => applyConversationRecord(state, malformed)).toThrow(ConversationRecordInvariantError);
+	});
+
+	it('rejects malformed action scope derived from its parent', () => {
+		const invocationId = '123e4567-e89b-42d3-a456-426614174001';
+		const state = reduceConversationRecords(createReducedInstanceState(), [required(canonicalConversation()[0])]);
+
+		expect(() => applyConversationRecord(state, {
+			...scope,
+			id: 'record_malformed_action',
+			type: 'conversation_created',
+			kind: 'action',
+			conversationId: 'conv_action',
+			harness: 'default:action:wrong',
+			session: 'action-child',
+			timestamp: '2026-06-25T00:00:01.000Z',
+			affinityKey: 'aff_action',
+			createdAt: '2026-06-25T00:00:01.000Z',
+			parentConversationId: 'conv_01',
+			actionInvocationId: invocationId,
+		})).toThrow(ConversationRecordInvariantError);
 	});
 
 	it('produces equal state when records are applied individually or in batches', () => {
@@ -297,7 +445,13 @@ describe('reduceConversationRecords()', () => {
 		expect(projectConversationUi(conversation, '5').messages[1]).toEqual({
 			id: 'entry_assistant',
 			role: 'assistant',
-			parts: [{ type: 'text', blockId: 'block_text', text: 'Hi ', state: 'streaming' }],
+			parts: [{
+				type: 'text',
+				blockId: 'block_text',
+				text: 'Hi ',
+				state: 'streaming',
+				deltaState: { nextSequence: 1, accepted: ['Hi '] },
+			}],
 		});
 		expect(buildConversationContext(conversation)).toHaveLength(1);
 		expect(classifyConversationSubmission(conversation, 'entry_user', { contextWindow: 100000 })).toMatchObject({

@@ -9,8 +9,20 @@ interface SessionStorageIdentity {
 	session: string;
 }
 
-function isTaskSessionName(name: string): boolean {
+export function isUuid(value: string): boolean {
+	return UUID_PATTERN.test(value);
+}
+
+export function isTaskSessionName(name: string): boolean {
 	return name.startsWith(TASK_SESSION_PREFIX);
+}
+
+export function isActionScopeName(name: string): boolean {
+	return name.startsWith(ACTION_SCOPE_PREFIX);
+}
+
+export function isPublicSessionName(name: string): boolean {
+	return !isTaskSessionName(name) && !isActionScopeName(name);
 }
 
 export function assertPublicSessionName(name: string): void {
@@ -19,7 +31,7 @@ export function assertPublicSessionName(name: string): void {
 			'[flue] Session names beginning with "task:" are reserved for delegated tasks.',
 		);
 	}
-	if (name.startsWith(ACTION_SCOPE_PREFIX)) {
+	if (isActionScopeName(name)) {
 		throw new Error('[flue] Session names beginning with "action:" are reserved for Actions.');
 	}
 }
@@ -53,7 +65,7 @@ export function childSessionStorageKey(
 		const { taskId } = child as { taskId?: unknown };
 		if (
 			typeof taskId !== 'string' ||
-			!UUID_PATTERN.test(taskId) ||
+			!isUuid(taskId) ||
 			session !== createTaskSessionName(parent.session, taskId)
 		) {
 			return undefined;
@@ -62,7 +74,7 @@ export function childSessionStorageKey(
 	}
 	if (type === 'action') {
 		const { invocationId } = child as { invocationId?: unknown };
-		if (typeof invocationId !== 'string' || !UUID_PATTERN.test(invocationId)) return undefined;
+		if (typeof invocationId !== 'string' || !isUuid(invocationId)) return undefined;
 		const scope = createActionScopeName(invocationId);
 		return createSessionStorageKey(parent.instanceId, `${parent.harness}:${scope}`, session);
 	}

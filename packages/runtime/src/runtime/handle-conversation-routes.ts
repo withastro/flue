@@ -14,7 +14,6 @@ import {
 	toHttpResponse,
 } from '../errors.ts';
 import type {
-	ConversationSnapshotStore,
 	ConversationStreamReadResult,
 	ConversationStreamStore,
 } from './conversation-stream-store.ts';
@@ -28,7 +27,6 @@ const SSE_HEARTBEAT_MS = 15_000;
 
 export async function handleAgentConversationRead(options: {
 	store: ConversationStreamStore;
-	snapshots?: ConversationSnapshotStore;
 	path: string;
 	request: Request;
 }): Promise<Response> {
@@ -63,7 +61,6 @@ export async function handleAgentConversationHead(
 async function historyResponse(
 	options: {
 		store: ConversationStreamStore;
-		snapshots?: ConversationSnapshotStore;
 		path: string;
 		request: Request;
 	},
@@ -80,8 +77,6 @@ async function historyResponse(
 	const state = await loadReducedConversationState({
 		store: options.store,
 		path: options.path,
-		snapshots: options.snapshots,
-		streamIncarnation: meta.incarnation,
 	});
 	const snapshot = projectAgentConversationSnapshot(state, selector);
 	if (!snapshot) return errorResponse(new StreamNotFoundError({ path: options.path }));

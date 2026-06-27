@@ -68,10 +68,7 @@ import {
 	submissionChunkOwner,
 } from '@flue/runtime/adapter';
 import { LibsqlAttachmentStore } from './libsql-attachment-store.ts';
-import {
-	LibsqlConversationSnapshotStore,
-	LibsqlConversationStreamStore,
-} from './libsql-conversation-store.ts';
+import { LibsqlConversationStreamStore } from './libsql-conversation-store.ts';
 
 // ─── Bring-your-own-driver runner seam ──────────────────────────────────────
 
@@ -168,7 +165,6 @@ export function libsql(runner: LibsqlRunner): PersistenceAdapter {
 				runStore: new LibsqlRunStore(runner),
 				eventStreamStore: new LibsqlEventStreamStore(runner),
 				conversationStreamStore: new LibsqlConversationStreamStore(runner),
-				conversationSnapshotStore: new LibsqlConversationSnapshotStore(runner),
 				attachmentStore: new LibsqlAttachmentStore(runner),
 			};
 		},
@@ -370,15 +366,6 @@ async function ensureTables(runner: LibsqlRunner): Promise<void> {
 				attempt_id TEXT,
 				PRIMARY KEY (path, seq),
 				UNIQUE (path, producer_id, producer_epoch, producer_sequence)
-			)
-		`);
-		await tx.query(`
-			CREATE TABLE IF NOT EXISTS flue_conversation_snapshots (
-				path TEXT PRIMARY KEY,
-				reducer_version INTEGER NOT NULL,
-				stream_offset TEXT NOT NULL,
-				data TEXT NOT NULL,
-				created_at TEXT NOT NULL
 			)
 		`);
 		await tx.query(`

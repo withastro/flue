@@ -17,10 +17,7 @@ import {
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
 import type { AttachmentStore } from '../runtime/attachment-store.ts';
-import type {
-	ConversationSnapshotStore,
-	ConversationStreamStore,
-} from '../runtime/conversation-stream-store.ts';
+import type { ConversationStreamStore } from '../runtime/conversation-stream-store.ts';
 import type { AgentInteractionStart } from '../runtime/dev-lifecycle-logger.ts';
 import type { DispatchInput, DispatchQueue } from '../runtime/dispatch-queue.ts';
 import { agentStreamPath } from '../runtime/event-stream-store.ts';
@@ -100,12 +97,11 @@ export function createNodeAgentCoordinator(options: {
 	agents: ReadonlyArray<{ name: string; definition: AgentDefinition }>;
 	createContext: CreateAgentContextFn;
 	conversationStreamStore?: ConversationStreamStore;
-	conversationSnapshotStore?: ConversationSnapshotStore;
 	attachmentStore?: AttachmentStore;
 	onInteractionStart?: (interaction: AgentInteractionStart) => void;
 	activityGate?: RuntimeActivityGate;
 }): NodeAgentCoordinator {
-	const { submissions, agents, createContext, conversationStreamStore, conversationSnapshotStore, attachmentStore, onInteractionStart, activityGate } = options;
+	const { submissions, agents, createContext, conversationStreamStore, attachmentStore, onInteractionStart, activityGate } = options;
 	const observers = createAgentSubmissionObserverRegistry();
 	const conversationWriters = new Map<string, Promise<ConversationRecordWriter>>();
 	const conversationMaterializations = new Map<string, Promise<void>>();
@@ -182,7 +178,6 @@ export function createNodeAgentCoordinator(options: {
 				path,
 				identity: { agentName: input.agent, instanceId: input.id },
 				producerId: ownerId,
-				snapshots: conversationSnapshotStore,
 			});
 			conversationWriters.set(path, writer);
 			void writer.catch(() => {

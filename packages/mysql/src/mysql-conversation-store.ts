@@ -1,14 +1,31 @@
 import type {
 	ConversationRecord,
-	ConversationSnapshot,
-	ConversationSnapshotStore,
 	ConversationStreamIdentity,
 	ConversationStreamMeta,
 	ConversationStreamReadResult,
 	ConversationStreamStore,
 } from '@flue/runtime/adapter';
-import { clampLimit, DEFAULT_READ_LIMIT, formatOffset, MAX_READ_LIMIT, parseOffset } from '@flue/runtime/adapter';
+import {
+	ConversationStreamStoreError,
+	clampLimit,
+	DEFAULT_READ_LIMIT,
+	formatOffset,
+	MAX_READ_LIMIT,
+	parseOffset,
+} from '@flue/runtime/adapter';
 import type { MysqlQuery, MysqlRunner } from './mysql-adapter.ts';
+
+export const MYSQL_CONVERSATION_STREAM_PATH_LIMIT = 255;
+
+export function assertMysqlConversationStreamPath(path: string, operation: string): void {
+	if (path.length > MYSQL_CONVERSATION_STREAM_PATH_LIMIT) {
+		throw new ConversationStreamStoreError({
+			operation,
+			path,
+			reason: `Stream path exceeds the supported ${MYSQL_CONVERSATION_STREAM_PATH_LIMIT}-character limit.`,
+		});
+	}
+}
 
 export class MysqlConversationStreamStore implements ConversationStreamStore {
 	private listeners = new Map<string, Set<() => void>>();
@@ -16,22 +33,27 @@ export class MysqlConversationStreamStore implements ConversationStreamStore {
 	constructor(private runner: MysqlRunner) {}
 
 	async createStream(path: string, identity: ConversationStreamIdentity): Promise<void> {
+		assertMysqlConversationStreamPath(path, 'create');
 		const data = JSON.stringify(identity);
 		await this.runner.transaction(async (tx) => {
-			const rows = await tx.query('SELECT identity_json FROM flue_conversation_streams WHERE path = ? FOR UPDATE', [path]);
-			if (rows[0]) {
-				if (rows[0].identity_json !== data) throw failure(path, 'Stream identity conflicts.');
-				return;
-			}
-			await tx.query('INSERT INTO flue_conversation_streams (path, identity_json, incarnation) VALUES (?, ?, ?)', [path, data, crypto.randomUUID()]);
+			await tx.query(
+				'INSERT IGNORE INTO flue_conversation_streams (path, identity_json, incarnation) VALUES (?, ?, ?)',
+				[path, data, crypto.randomUUID()],
+			);
+			const rows = await tx.query(
+				'SELECT identity_json FROM flue_conversation_streams WHERE path = ? FOR UPDATE',
+				[path],
+			);
+			if (rows[0]?.identity_json !== data) throw failure(path, 'Stream identity conflicts.', 'create');
 		});
 	}
 
 	async acquireProducer(path: string, producerId: string) {
+		assertMysqlConversationStreamPath(path, 'acquire_producer');
 		return this.runner.transaction(async (tx) => {
 			const rows = await tx.query('SELECT next_offset, closed, producer_epoch, incarnation FROM flue_conversation_streams WHERE path = ? FOR UPDATE', [path]);
 			const row = rows[0];
-			if (!row || Number(row.closed) !== 0) throw failure(path, 'Stream does not exist or is closed.');
+			if (!row || Number(row.closed) !== 0) throw failure(path, 'Stream does not exist or is closed.', 'acquire_producer');
 			const producerEpoch = Number(row.producer_epoch) + 1;
 			await tx.query('UPDATE flue_conversation_streams SET producer_id = ?, producer_epoch = ?, next_producer_sequence = 0 WHERE path = ?', [producerId, producerEpoch, path]);
 			return {
@@ -54,7 +76,8 @@ export class MysqlConversationStreamStore implements ConversationStreamStore {
 		submission?: { submissionId: string; attemptId: string };
 		records: readonly ConversationRecord[];
 	}): Promise<{ offset: string }> {
-		if (input.records.length === 0) throw failure(input.path, 'A canonical batch cannot be empty.');
+		assertMysqlConversationStreamPath(input.path, 'append');
+		if (input.records.length === 0) throw failure(input.path, 'A canonical batch cannot be empty.', 'append');
 		const data = JSON.stringify(input.records);
 		const result = await this.runner.transaction(async (tx) => {
 			const rows = await tx.query(
@@ -94,12 +117,13 @@ export class MysqlConversationStreamStore implements ConversationStreamStore {
 	}
 
 	async read(path: string, options?: { offset?: string; limit?: number }): Promise<ConversationStreamReadResult> {
+		assertMysqlConversationStreamPath(path, 'read');
 		const meta = await this.getMeta(path);
 		if (!meta) return { batches: [], nextOffset: '-1', upToDate: true, closed: false };
 		const rawOffset = options?.offset ?? '-1';
 		if (rawOffset === 'now') return { batches: [], nextOffset: meta.nextOffset, upToDate: true, closed: meta.closed };
 		const startAfter = parseOffset(rawOffset);
-		if (!Number.isSafeInteger(startAfter) || startAfter > parseOffset(meta.nextOffset)) throw failure(path, 'Read offset is beyond the canonical stream head.');
+		if (!Number.isSafeInteger(startAfter) || startAfter > parseOffset(meta.nextOffset)) throw failure(path, 'Read offset is beyond the canonical stream head.', 'read');
 		const limit = clampLimit(options?.limit, DEFAULT_READ_LIMIT, MAX_READ_LIMIT);
 		const rows = await this.runner.query(`SELECT seq, data FROM flue_conversation_stream_batches WHERE path = ? AND seq > ? ORDER BY seq ASC LIMIT ${limit + 1}`, [path, startAfter]);
 		const page = rows.slice(0, limit);
@@ -108,6 +132,7 @@ export class MysqlConversationStreamStore implements ConversationStreamStore {
 	}
 
 	async getMeta(path: string): Promise<ConversationStreamMeta | null> {
+		assertMysqlConversationStreamPath(path, 'get_meta');
 		const rows = await this.runner.query('SELECT identity_json, next_offset, closed, producer_id, producer_epoch, next_producer_sequence, incarnation FROM flue_conversation_streams WHERE path = ?', [path]);
 		const row = rows[0];
 		if (!row) return null;
@@ -123,13 +148,14 @@ export class MysqlConversationStreamStore implements ConversationStreamStore {
 	}
 
 	async close(path: string): Promise<void> {
+		assertMysqlConversationStreamPath(path, 'close');
 		await this.runner.query('UPDATE flue_conversation_streams SET closed = 1 WHERE path = ?', [path]);
 		this.notify(path);
 	}
 
 	async delete(path: string): Promise<void> {
+		assertMysqlConversationStreamPath(path, 'delete');
 		await this.runner.transaction(async (tx) => {
-			await tx.query('DELETE FROM flue_conversation_snapshots WHERE path = ?', [path]);
 			await tx.query('DELETE FROM flue_conversation_stream_batches WHERE path = ?', [path]);
 			await tx.query('DELETE FROM flue_conversation_streams WHERE path = ?', [path]);
 		});
@@ -153,35 +179,6 @@ export class MysqlConversationStreamStore implements ConversationStreamStore {
 		for (const listener of this.listeners.get(path) ?? []) {
 			try { listener(); } catch {}
 		}
-	}
-}
-
-export class MysqlConversationSnapshotStore<State = unknown> implements ConversationSnapshotStore<State> {
-	constructor(private runner: MysqlRunner) {}
-
-	async load(path: string): Promise<ConversationSnapshot<State> | null> {
-		const rows = await this.runner.query('SELECT data FROM flue_conversation_snapshots WHERE path = ?', [path]);
-		return rows[0] ? (JSON.parse(String(rows[0].data)) as ConversationSnapshot<State>) : null;
-	}
-
-	async save(path: string, snapshot: ConversationSnapshot<State>): Promise<void> {
-		await this.runner.transaction(async (tx) => {
-			const rows = await tx.query('SELECT next_offset, incarnation FROM flue_conversation_streams WHERE path = ? FOR UPDATE', [path]);
-			const meta = rows[0];
-			if (!meta) throw failure(path, 'Stream does not exist.');
-			if (snapshot.streamIncarnation !== meta.incarnation) throw failure(path, 'Snapshot stream incarnation is stale.');
-			if (parseOffset(snapshot.streamOffset) > Number(meta.next_offset) - 1) throw failure(path, 'Snapshot offset is beyond the stream head.');
-			await tx.query(
-				`INSERT INTO flue_conversation_snapshots (path, reducer_version, stream_offset, data, created_at)
-				 VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE reducer_version = VALUES(reducer_version),
-				 stream_offset = VALUES(stream_offset), data = VALUES(data), created_at = VALUES(created_at)`,
-				[path, snapshot.reducerVersion, snapshot.streamOffset, JSON.stringify(snapshot), snapshot.createdAt],
-			);
-		});
-	}
-
-	async delete(path: string): Promise<void> {
-		await this.runner.query('DELETE FROM flue_conversation_snapshots WHERE path = ?', [path]);
 	}
 }
 
@@ -214,6 +211,10 @@ function parseSessionInstance(value: unknown): string | undefined {
 	} catch { return undefined; }
 }
 
-function failure(path: string, reason: string): TypeError {
-	return new TypeError(`[flue] Canonical conversation stream "${path}" failed: ${reason}`);
+function failure(
+	path: string,
+	reason: string,
+	operation = 'append',
+): ConversationStreamStoreError {
+	return new ConversationStreamStoreError({ operation, path, reason });
 }

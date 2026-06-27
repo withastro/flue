@@ -7,9 +7,26 @@ export interface AgentConversationSelector {
 	session?: string;
 }
 
+export interface AgentConversationDeltaState {
+	nextSequence: number;
+	accepted: string[];
+}
+
 export type AgentConversationPart =
-	| { type: 'text'; blockId?: string; text: string; state: 'streaming' | 'done' }
-	| { type: 'reasoning'; blockId?: string; text: string; state: 'streaming' | 'done' }
+	| {
+			type: 'text';
+			blockId?: string;
+			text: string;
+			state: 'streaming' | 'done';
+			deltaState?: AgentConversationDeltaState;
+	  }
+	| {
+			type: 'reasoning';
+			blockId?: string;
+			text: string;
+			state: 'streaming' | 'done';
+			deltaState?: AgentConversationDeltaState;
+	  }
 	| {
 			type: 'attachment';
 			attachment: { id: string; mimeType: string; size: number; digest: string };
@@ -148,13 +165,7 @@ export function reduceAgentConversationUpdate(
 ): AgentConversationState {
 	if (update.type === 'conversation_reset') return createAgentConversationState(update.snapshot);
 	if (update.conversationId !== state.conversationId) return state;
-	const record = update.record;
-	if (state.recordIds.includes(record.id)) return state;
-	const next = reduceRecord(state, record);
-	return {
-		...next,
-		recordIds: [...next.recordIds, record.id].slice(-1000),
-	};
+	return reduceRecord(state, update.record);
 }
 
 function reduceRecord(
@@ -189,6 +200,7 @@ function reduceRecord(
 				parts: [{ type: 'text', text: String(record.content ?? ''), state: 'done' }],
 			});
 		case 'assistant_message_started': {
+			if (state.messages.some((message) => message.id === String(record.messageId))) return state;
 			const modelInfo = record.modelInfo as { provider?: unknown; model?: unknown } | undefined;
 			return replaceMessage(state, {
 				id: String(record.messageId),
@@ -282,10 +294,18 @@ function upsertBlock(
 ): AgentConversationState {
 	return updateMessage(state, String(record.messageId), (message) => {
 		const blockIndex = Number(record.blockIndex);
+		const existing = message.parts.find((value) => blockIdentity(value) === blockIdentity(part));
+		if (existing) return message;
 		const parts = [...message.parts];
 		parts[blockIndex] = part;
 		return { ...message, parts };
 	});
+}
+
+function blockIdentity(part: AgentConversationPart): string | undefined {
+	if (part.type === 'text' || part.type === 'reasoning') return `${part.type}:${part.blockId}`;
+	if (part.type === 'tool') return `tool:${part.toolCallId}`;
+	return undefined;
 }
 
 function appendBlockDelta(
@@ -298,9 +318,29 @@ function appendBlockDelta(
 			(part) => part.type === type && part.blockId === record.blockId,
 		);
 		if (blockIndex < 0) return message;
+		const sequence = Number(record.sequence);
+		const delta = String(record.delta ?? '');
+		if (!Number.isInteger(sequence) || sequence < 0) {
+			throw new Error(`Invalid delta sequence ${String(record.sequence)} for block "${String(record.blockId)}".`);
+		}
 		const parts = [...message.parts];
 		const part = parts[blockIndex] as Extract<AgentConversationPart, { type: typeof type }>;
-		parts[blockIndex] = { ...part, text: part.text + String(record.delta ?? '') };
+		const deltaState = part.deltaState ?? { nextSequence: 0, accepted: [] };
+		if (sequence < deltaState.nextSequence) {
+			if (deltaState.accepted[sequence] === delta) return message;
+			throw new Error(`Conflicting replay for delta sequence ${sequence} on block "${String(record.blockId)}".`);
+		}
+		if (sequence > deltaState.nextSequence) {
+			throw new Error(`Expected delta sequence ${deltaState.nextSequence}, received ${sequence} for block "${String(record.blockId)}".`);
+		}
+		parts[blockIndex] = {
+			...part,
+			text: part.text + delta,
+			deltaState: {
+				nextSequence: deltaState.nextSequence + 1,
+				accepted: [...deltaState.accepted, delta],
+			},
+		};
 		return { ...message, parts };
 	});
 }
@@ -312,9 +352,15 @@ function completeBlock(
 ): AgentConversationState {
 	return updateMessage(state, String(record.messageId), (message) => ({
 		...message,
-		parts: message.parts.map((part) =>
-			part.type === type && part.blockId === record.blockId ? { ...part, state: 'done' } : part,
-		),
+		parts: message.parts.map((part) => {
+			if (part.type !== type || part.blockId !== record.blockId) return part;
+			const deltaCount = Number(record.deltaCount);
+			const acceptedCount = part.deltaState?.nextSequence ?? 0;
+			if (!Number.isInteger(deltaCount) || deltaCount !== acceptedCount) {
+				throw new Error(`Expected ${deltaCount} deltas for block "${String(record.blockId)}", received ${acceptedCount}.`);
+			}
+			return { ...part, state: 'done' };
+		}),
 	}));
 }
 
@@ -372,7 +418,11 @@ function updateSettlement(
 		...(record.result === undefined ? {} : { result: record.result }),
 		...(record.error === undefined ? {} : { error: record.error }),
 	};
-	return { ...state, settlements: [...state.settlements, settlement] };
+	const index = state.settlements.findIndex((value) => value.submissionId === settlement.submissionId);
+	if (index < 0) return { ...state, settlements: [...state.settlements, settlement] };
+	const settlements = [...state.settlements];
+	settlements[index] = settlement;
+	return { ...state, settlements };
 }
 
 function toolResultOutput(value: unknown): unknown {

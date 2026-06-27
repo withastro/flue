@@ -46,6 +46,7 @@ describe('handleAgentConversationRead()', () => {
 				...scope,
 				id: 'created-1',
 				type: 'conversation_created',
+				kind: 'root',
 				affinityKey: 'affinity-1',
 				createdAt: scope.timestamp,
 			},
@@ -63,6 +64,7 @@ describe('handleAgentConversationRead()', () => {
 				...scope,
 				id: 'created-2',
 				type: 'conversation_created',
+				kind: 'root',
 				conversationId: 'conversation-2',
 				session: 'other',
 				affinityKey: 'affinity-2',
@@ -72,7 +74,6 @@ describe('handleAgentConversationRead()', () => {
 
 		const response = await handleAgentConversationRead({
 			store: stores.conversationStreamStore,
-			snapshots: stores.conversationSnapshotStore,
 			path,
 			request: new Request('https://flue.test/agents/assistant/instance-1?view=history'),
 		});
@@ -94,6 +95,7 @@ describe('handleAgentConversationRead()', () => {
 				...scope,
 				id: 'created-1',
 				type: 'conversation_created',
+				kind: 'root',
 				affinityKey: 'affinity-1',
 				createdAt: scope.timestamp,
 			},

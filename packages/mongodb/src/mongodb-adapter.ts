@@ -6,10 +6,7 @@ import {
 	PersistedSchemaVersionError,
 } from '@flue/runtime/adapter';
 import { MongoAttachmentStore } from './attachment-store.ts';
-import {
-	MongoConversationSnapshotStore,
-	MongoConversationStreamStore,
-} from './conversation-store.ts';
+import { MongoConversationStreamStore } from './conversation-store.ts';
 import { MongoEventStreamStore } from './event-stream-store.ts';
 import type { MongoOptions, MongoRunner } from './mongodb-runner.ts';
 import { MongoRunStore } from './run-store.ts';
@@ -100,7 +97,6 @@ export function mongodb(runner: MongoRunner, options: MongoOptions = {}): Persis
 				runStore: new MongoRunStore(runner, prefix),
 				eventStreamStore: new MongoEventStreamStore(runner, prefix),
 				conversationStreamStore: new MongoConversationStreamStore(runner, prefix),
-				conversationSnapshotStore: new MongoConversationSnapshotStore(runner, prefix),
 				attachmentStore: new MongoAttachmentStore(runner, prefix),
 			};
 		},

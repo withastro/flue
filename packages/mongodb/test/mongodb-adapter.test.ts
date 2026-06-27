@@ -255,12 +255,11 @@ describeMongo('MongoDB shared contracts', () => {
 	defineConversationStreamStoreContractTests('MongoDB ConversationStreamStore', {
 		async create() {
 			const connected = await stores();
-			if (!connected.conversationStreamStore || !connected.conversationSnapshotStore) {
-				throw new Error('Expected MongoDB conversation stores.');
+			if (!connected.conversationStreamStore) {
+				throw new Error('Expected MongoDB conversation stream store.');
 			}
 			return {
 				stream: connected.conversationStreamStore,
-				snapshots: connected.conversationSnapshotStore,
 				executionStore: connected.executionStore,
 			};
 		},

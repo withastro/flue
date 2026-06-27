@@ -191,7 +191,6 @@ let executionStore;
 let runStore;
 let eventStreamStore;
 let conversationStreamStore;
-let conversationSnapshotStore;
 let attachmentStore;
 try {
   if (userPersistenceAdapter.migrate) await userPersistenceAdapter.migrate();
@@ -199,7 +198,7 @@ try {
   if (!stores || typeof stores !== 'object') {
     throw new Error('connect() must return { executionStore, runStore, eventStreamStore }.');
   }
-  ({ executionStore, runStore, eventStreamStore, conversationStreamStore, conversationSnapshotStore, attachmentStore } = stores);
+  ({ executionStore, runStore, eventStreamStore, conversationStreamStore, attachmentStore } = stores);
   if (!executionStore || typeof executionStore.submissions?.getSubmission !== 'function') {
     throw new Error('connect() must return an executionStore with submissions.');
   }
@@ -212,9 +211,6 @@ try {
   if (!conversationStreamStore || typeof conversationStreamStore.append !== 'function' || typeof conversationStreamStore.acquireProducer !== 'function') {
     throw new Error('connect() must return a conversationStreamStore.');
   }
-  if (!conversationSnapshotStore || typeof conversationSnapshotStore.load !== 'function' || typeof conversationSnapshotStore.save !== 'function') {
-    throw new Error('connect() must return a conversationSnapshotStore.');
-  }
   if (!attachmentStore || typeof attachmentStore.put !== 'function' || typeof attachmentStore.get !== 'function') {
     throw new Error('connect() must return an attachmentStore.');
   }
@@ -224,7 +220,7 @@ try {
 		: `// Default persistence for Node — in-memory SQLite, process lifetime.
 const defaultAdapter = sqlite();
 if (defaultAdapter.migrate) await defaultAdapter.migrate();
-const { executionStore, runStore, eventStreamStore, conversationStreamStore, conversationSnapshotStore, attachmentStore } = await defaultAdapter.connect();`
+const { executionStore, runStore, eventStreamStore, conversationStreamStore, attachmentStore } = await defaultAdapter.connect();`
 }
 persistenceAdapter = ${dbEntry ? `userPersistenceAdapter` : `defaultAdapter`};
 const activityGate = createRuntimeActivityGate();
@@ -233,7 +229,6 @@ agentCoordinator = createNodeAgentCoordinator({
   agents,
   createContext: createAgentContextForRequest,
   conversationStreamStore,
-  conversationSnapshotStore,
   attachmentStore,
   onInteractionStart: devLifecycle?.onAgentInteractionStart,
   activityGate,
@@ -301,7 +296,6 @@ configureFlueRuntime({
   runStore,
   eventStreamStore,
   conversationStreamStore,
-  conversationSnapshotStore,
 });
 
 try {

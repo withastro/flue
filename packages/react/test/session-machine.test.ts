@@ -124,6 +124,32 @@ describe('AgentSession', () => {
 		session.dispose();
 	});
 
+	it('completes finite catch-up after one request without retrying', async () => {
+		vi.useFakeTimers();
+		const history = vi.fn().mockResolvedValue(snapshot());
+		const updates = vi.fn().mockReturnValue(streamFrom<AgentConversationUpdate>([], 'offset-final'));
+		const session = new AgentSession(
+			client({ agents: { history, updates } as unknown as FlueClient['agents'] }),
+			'agent',
+			'id',
+			'all',
+			false,
+		);
+
+		session.start();
+		await settle();
+		await vi.advanceTimersByTimeAsync(60_000);
+
+		expect(updates).toHaveBeenCalledTimes(1);
+		expect(updates).toHaveBeenCalledWith('agent', 'id', {
+			live: false,
+			offset: 'offset-history',
+		});
+		expect(session.getSnapshot()).toMatchObject({ status: 'idle', historyReady: true, error: undefined });
+		session.dispose();
+		vi.useRealTimers();
+	});
+
 	it('reconciles an optimistic send with canonical user-message identity', async () => {
 		const live = pendingStream<AgentConversationUpdate>('offset-history');
 		const history = vi.fn().mockResolvedValue(snapshot());

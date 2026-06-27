@@ -52,10 +52,7 @@ import {
 	SUBMISSION_SESSION_NAME,
 } from '@flue/runtime/adapter';
 import { RedisAttachmentStore } from './attachment-store.ts';
-import {
-	RedisConversationSnapshotStore,
-	RedisConversationStreamStore,
-} from './conversation-store.ts';
+import { RedisConversationStreamStore } from './conversation-store.ts';
 import { encodeSegment, RedisKeys } from './redis-keys.ts';
 import type { RedisArgument, RedisOptions, RedisRunner } from './redis-runner.ts';
 import {
@@ -209,7 +206,6 @@ export function redis(runner: RedisRunner, options: RedisOptions = {}): Persiste
 				runStore: new RedisRunStore(backend),
 				eventStreamStore: new RedisEventStreamStore(backend),
 				conversationStreamStore: new RedisConversationStreamStore(runner, backend.keys),
-				conversationSnapshotStore: new RedisConversationSnapshotStore(runner, backend.keys),
 				attachmentStore: new RedisAttachmentStore(runner, backend.keys),
 			};
 		},

@@ -1,7 +1,5 @@
 import type {
 	ConversationRecord,
-	ConversationSnapshot,
-	ConversationSnapshotStore,
 	ConversationStreamIdentity,
 	ConversationStreamMeta,
 	ConversationStreamReadResult,
@@ -22,7 +20,6 @@ import {
 	createConversationScript,
 	deleteConversationScript,
 	readConversationScript,
-	saveConversationSnapshotScript,
 } from './conversation-scripts.ts';
 import type { RedisKeys } from './redis-keys.ts';
 import type { RedisRunner } from './redis-runner.ts';
@@ -182,7 +179,6 @@ export class RedisConversationStreamStore implements ConversationStreamStore {
 				this.keys.conversationBatches(path),
 				this.keys.conversationOrder(path),
 				this.keys.conversationRetries(path),
-				this.keys.conversationSnapshot(path),
 				this.keys.conversations(),
 			],
 			[path],
@@ -198,35 +194,6 @@ export class RedisConversationStreamStore implements ConversationStreamStore {
 	}
 
 	private notify(path: string): void { for (const listener of this.listeners.get(path) ?? []) { try { listener(); } catch {} } }
-}
-
-export class RedisConversationSnapshotStore<State = unknown> implements ConversationSnapshotStore<State> {
-	constructor(private runner: RedisRunner, private keys: RedisKeys) {}
-
-	async load(path: string): Promise<ConversationSnapshot<State> | null> {
-		const value = await this.runner.command('GET', [this.keys.conversationSnapshot(path)]);
-		return value == null ? null : JSON.parse(String(value)) as ConversationSnapshot<State>;
-	}
-
-	async save(path: string, snapshot: ConversationSnapshot<State>): Promise<void> {
-		const result = strings(await this.runner.eval(
-			saveConversationSnapshotScript,
-			[this.keys.conversation(path), this.keys.conversationSnapshot(path)],
-			[snapshot.streamIncarnation, parseOffset(snapshot.streamOffset), JSON.stringify(snapshot)],
-		));
-		if (result[0] !== 'saved') {
-			const reason = result[0] === 'offset'
-				? 'Snapshot offset is beyond the stream head.'
-				: result[0] === 'incarnation'
-					? 'Snapshot stream incarnation is stale.'
-					: 'Stream does not exist.';
-			throw failure('save_snapshot', path, reason);
-		}
-	}
-
-	async delete(path: string): Promise<void> {
-		await this.runner.command('DEL', [this.keys.conversationSnapshot(path)]);
-	}
 }
 
 function appendReason(code: string | undefined): string {

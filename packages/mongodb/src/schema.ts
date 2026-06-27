@@ -72,7 +72,6 @@ export function schema(prefix: string): MongoCollectionSpec[] {
 				collation: simple,
 			},
 		]),
-		spec('conversation_snapshots'),
 		spec('attachments', [
 			{ name: 'path_attachment', key: { path: 1, attachmentId: 1 }, unique: true, collation: simple },
 			{ name: 'path_owner_attachment', key: { path: 1, ownerKind: 1, ownerId: 1, attachmentId: 1 }, collation: simple },

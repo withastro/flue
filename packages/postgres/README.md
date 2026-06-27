@@ -25,14 +25,15 @@ there is no separate migration step.
 This adapter persists Flue runtime state:
 
 - the canonical append-only conversation stream for each agent instance;
-- disposable conversation snapshots and immutable external attachments;
+- immutable external attachments referenced by conversation records;
 - accepted direct prompts and `dispatch(...)` submissions, with durable turn
   journals and leases;
 - workflow-run records, event streams, and run indexing.
 
-The canonical stream is the sole transcript. Sessions append for the instance
-lifetime and have no per-session deletion. Whole-instance stream, snapshot, and
-attachment deletion methods are low-level primitives, not public orchestration.
+The canonical stream is the sole transcript and is replayed from its beginning;
+replay acceleration and persisted-log compaction are deferred. Sessions append
+for the instance lifetime and have no per-session deletion. Whole-instance stream
+and attachment deletion methods are low-level primitives, not public orchestration.
 
 It does not store your application's business data. Keep customer records,
 tickets, and payments in your own tables.

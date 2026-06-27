@@ -24,6 +24,7 @@ export type {
 	AgentConversationActivity,
 	AgentConversationActivityOptions,
 	AgentConversationDataPart,
+	AgentConversationDeltaState,
 	AgentConversationHistoryOptions,
 	AgentConversationMessage,
 	AgentConversationPart,

@@ -111,12 +111,11 @@ function defineContracts(): void {
 				adapter = mysql((await createMysqlRunner()).runner);
 				await adapter.migrate?.();
 				const stores = await adapter.connect();
-				if (!stores.conversationStreamStore || !stores.conversationSnapshotStore) {
-					throw new Error('Expected MySQL conversation stores.');
+				if (!stores.conversationStreamStore) {
+					throw new Error('Expected MySQL conversation stream store.');
 				}
 				return {
 					stream: stores.conversationStreamStore,
-					snapshots: stores.conversationSnapshotStore,
 					executionStore: stores.executionStore,
 				};
 			},

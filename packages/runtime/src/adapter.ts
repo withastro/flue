@@ -149,8 +149,6 @@ export {
 export { InMemoryConversationStreamStore } from './runtime/conversation-stream-store.ts';
 export type {
 	ConversationProducerClaim,
-	ConversationSnapshot,
-	ConversationSnapshotStore,
 	ConversationStreamBatch,
 	ConversationStreamIdentity,
 	ConversationStreamMeta,

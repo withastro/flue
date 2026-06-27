@@ -12,7 +12,6 @@ import { DatabaseSync } from 'node:sqlite';
 import type { PersistenceAdapter } from '../agent-execution-store.ts';
 import {
 	ensureSqlConversationStreamTables,
-	SqliteConversationSnapshotStore,
 	SqliteConversationStreamStore,
 } from '../runtime/conversation-stream-store.ts';
 import { SqliteEventStreamStore } from '../runtime/event-stream-store.ts';
@@ -141,7 +140,6 @@ export function sqlite(path?: string): PersistenceAdapter {
 				runStore: createSqlRunStore(sql),
 				eventStreamStore: new SqliteEventStreamStore(sql),
 				conversationStreamStore: new SqliteConversationStreamStore(sql, runTransaction),
-				conversationSnapshotStore: new SqliteConversationSnapshotStore(sql, runTransaction),
 				attachmentStore: new SqliteAttachmentStore(sql, runTransaction),
 			};
 		},

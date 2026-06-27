@@ -152,12 +152,11 @@ function createLibsqlRunner(
 			adapter = libsql(createLibsqlRunner());
 			await adapter.migrate?.();
 			const stores = await adapter.connect();
-			if (!stores.conversationStreamStore || !stores.conversationSnapshotStore) {
-				throw new Error('Expected libSQL conversation stores.');
+			if (!stores.conversationStreamStore) {
+				throw new Error('Expected libSQL conversation stream store.');
 			}
 			return {
 				stream: stores.conversationStreamStore,
-				snapshots: stores.conversationSnapshotStore,
 			};
 		},
 		async cleanup() {

@@ -41,15 +41,6 @@ export interface ConversationStreamMeta {
 	nextProducerSequence: number;
 }
 
-export interface ConversationSnapshot<State = unknown> {
-	version: number;
-	reducerVersion: number;
-	streamOffset: string;
-	streamIncarnation: string;
-	state: State;
-	createdAt: string;
-}
-
 export interface ConversationStreamStore {
 	createStream(path: string, identity: ConversationStreamIdentity): Promise<void>;
 	acquireProducer(path: string, producerId: string): Promise<ConversationProducerClaim>;
@@ -71,12 +62,6 @@ export interface ConversationStreamStore {
 	close(path: string): Promise<void>;
 	delete(path: string): Promise<void>;
 	subscribe(path: string, listener: () => void): () => void;
-}
-
-export interface ConversationSnapshotStore<State = unknown> {
-	load(path: string): Promise<ConversationSnapshot<State> | null>;
-	save(path: string, snapshot: ConversationSnapshot<State>): Promise<void>;
-	delete(path: string): Promise<void>;
 }
 
 const CREATE_STREAMS_TABLE = `
@@ -105,15 +90,6 @@ CREATE TABLE IF NOT EXISTS flue_conversation_stream_batches (
   UNIQUE (path, producer_id, producer_epoch, producer_sequence)
 )`;
 
-const CREATE_SNAPSHOTS_TABLE = `
-CREATE TABLE IF NOT EXISTS flue_conversation_snapshots (
-  path TEXT PRIMARY KEY,
-  reducer_version INTEGER NOT NULL,
-  stream_offset TEXT NOT NULL,
-  data TEXT NOT NULL,
-  created_at TEXT NOT NULL
-)`;
-
 const DEFAULT_READ_LIMIT = 100;
 const MAX_READ_LIMIT = 1000;
 
@@ -121,7 +97,6 @@ export function ensureSqlConversationStreamTables(sql: SqlStorage): void {
 	migrateFlueSqlSchema(sql, () => {
 		sql.exec(CREATE_STREAMS_TABLE);
 		sql.exec(CREATE_BATCHES_TABLE);
-		sql.exec(CREATE_SNAPSHOTS_TABLE);
 	});
 }
 
@@ -549,7 +524,6 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 
 	async delete(path: string): Promise<void> {
 		this.runTransaction(() => {
-			this.sql.exec('DELETE FROM flue_conversation_snapshots WHERE path = ?', path);
 			this.sql.exec('DELETE FROM flue_conversation_stream_batches WHERE path = ?', path);
 			this.sql.exec('DELETE FROM flue_conversation_streams WHERE path = ?', path);
 		});
@@ -642,58 +616,5 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 				listener();
 			} catch {}
 		}
-	}
-}
-
-export class SqliteConversationSnapshotStore<State = unknown>
-	implements ConversationSnapshotStore<State>
-{
-	constructor(
-		private sql: SqlStorage,
-		private runTransaction: <T>(closure: () => T) => T,
-	) {
-		ensureSqlConversationStreamTables(sql);
-	}
-
-	async load(path: string): Promise<ConversationSnapshot<State> | null> {
-		const row = this.sql
-			.exec('SELECT data FROM flue_conversation_snapshots WHERE path = ?', path)
-			.toArray()[0];
-		return row ? (JSON.parse(row.data as string) as ConversationSnapshot<State>) : null;
-	}
-
-	async save(path: string, snapshot: ConversationSnapshot<State>): Promise<void> {
-		const data = JSON.stringify(snapshot);
-		this.runTransaction(() => {
-			const meta = this.sql
-				.exec('SELECT next_offset, incarnation FROM flue_conversation_streams WHERE path = ?', path)
-				.toArray()[0];
-			if (!meta) throw new ConversationStreamStoreError({ operation: 'save_snapshot', path, reason: 'Stream does not exist.' });
-			if (snapshot.streamIncarnation !== meta.incarnation) {
-				throw new ConversationStreamStoreError({ operation: 'save_snapshot', path, reason: 'Snapshot stream incarnation is stale.' });
-			}
-			if (parseOffset(snapshot.streamOffset) > (meta.next_offset as number) - 1) {
-				throw new ConversationStreamStoreError({ operation: 'save_snapshot', path, reason: 'Snapshot offset is beyond the stream head.' });
-			}
-			this.sql.exec(
-				`INSERT INTO flue_conversation_snapshots
-				 (path, reducer_version, stream_offset, data, created_at)
-				 VALUES (?, ?, ?, ?, ?)
-				 ON CONFLICT(path) DO UPDATE SET
-				 reducer_version = excluded.reducer_version,
-				 stream_offset = excluded.stream_offset,
-				 data = excluded.data,
-				 created_at = excluded.created_at`,
-				path,
-				snapshot.reducerVersion,
-				snapshot.streamOffset,
-				data,
-				snapshot.createdAt,
-			);
-		});
-	}
-
-	async delete(path: string): Promise<void> {
-		this.sql.exec('DELETE FROM flue_conversation_snapshots WHERE path = ?', path);
 	}
 }

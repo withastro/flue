@@ -10,8 +10,8 @@ SQLite file, a self-hosted libSQL server (`sqld`), or an embedded replica. For
 hosted Turso, use the `turso` blueprint instead — it is the same package with a
 different client configuration.
 
-This persists canonical agent conversation streams, disposable snapshots,
-immutable attachments, accepted submissions, workflow-run records, and event
+This persists canonical agent conversation streams, immutable attachments,
+accepted submissions, workflow-run records, and event
 streams. It does not store application business data.
 
 ## Check the target first

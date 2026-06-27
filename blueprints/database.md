@@ -12,7 +12,7 @@ is one file in the user's project that default-exports a `PersistenceAdapter`
 for the backend, satisfying Flue's published contract.
 
 A `PersistenceAdapter` stores Flue runtime state: canonical append-only agent
-conversation streams, disposable snapshots, immutable external attachments,
+conversation streams, immutable external attachments,
 accepted submissions and durable turn journals, workflow-run records, and event
 streams. It is **not** a place for application business data. Implementing one
 correctly means honoring the contract's ordering, idempotency, and lease
@@ -47,8 +47,8 @@ modified the implementation.
 
 Read these before writing code.
 
-- **Spec** (the `PersistenceAdapter` contract — canonical stream, snapshot,
-  attachment, submission, run, and event-stream stores):
+- **Spec** (the `PersistenceAdapter` contract — canonical stream, attachment,
+  submission, run, and event-stream stores):
   `https://flueframework.com/docs/api/data-persistence-api/index.md`
 - **Worked example** (the Postgres adapter — one complete implementation of
   the full contract; your backend's shape may be quite different):

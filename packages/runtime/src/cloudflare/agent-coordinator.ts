@@ -16,10 +16,7 @@ import {
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
 import type { AttachmentStore } from '../runtime/attachment-store.ts';
-import type {
-	ConversationSnapshotStore,
-	ConversationStreamStore,
-} from '../runtime/conversation-stream-store.ts';
+import type { ConversationStreamStore } from '../runtime/conversation-stream-store.ts';
 import type { AgentInteractionStart } from '../runtime/dev-lifecycle-logger.ts';
 import { agentStreamPath } from '../runtime/event-stream-store.ts';
 import { assertAgentDispatchAdmissionInput, handleAgentRequest } from '../runtime/handle-agent.ts';
@@ -76,7 +73,6 @@ interface CloudflareAgentPreparedCoordinator {
 	readonly agentName: string;
 	readonly executionStore: AgentExecutionStore;
 	readonly conversationStreamStore: ConversationStreamStore;
-	readonly conversationSnapshotStore: ConversationSnapshotStore;
 	readonly attachmentStore: AttachmentStore;
 }
 
@@ -211,7 +207,6 @@ class CloudflareAgentCoordinator {
 			}
 			return handleAgentConversationRead({
 				store: this.prepared.conversationStreamStore,
-				snapshots: this.prepared.conversationSnapshotStore,
 				path: streamPath,
 				request,
 			});
@@ -264,7 +259,6 @@ class CloudflareAgentCoordinator {
 			path: agentStreamPath(this.agentName, this.instance.name),
 			identity: { agentName: this.agentName, instanceId: this.instance.name },
 			producerId: this.instance.ctx.id.toString(),
-			snapshots: this.prepared.conversationSnapshotStore,
 		});
 		return this.conversationWriter;
 	}

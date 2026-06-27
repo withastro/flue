@@ -120,6 +120,30 @@ describe('reduceAgentEvent()', () => {
 		expect(state.messages[0]?.parts[0]).toEqual({ type: 'text', text: 'hello', state: 'done' });
 	});
 
+	it('does not expose conversation delta metadata in UI message parts', () => {
+		const state = reduceAgentEvent(emptyAgentState, {
+			type: 'local_history',
+			snapshot: {
+				...snapshot(),
+				messages: [{
+					id: 'entry-assistant',
+					role: 'assistant',
+					parts: [{
+						type: 'text',
+						blockId: 'block-1',
+						text: 'hello',
+						state: 'streaming',
+						deltaState: { nextSequence: 1, accepted: ['hello'] },
+					}],
+				}],
+			},
+		});
+
+		expect(state.messages[0]?.parts).toEqual([
+			{ type: 'text', text: 'hello', state: 'streaming' },
+		]);
+	});
+
 	it('reconciles data by name and id while appending unidentified data', () => {
 		let state = reduceAgentEvent(emptyAgentState, { type: 'local_history', snapshot: snapshot() });
 		state = reduceAgentEvent(
@@ -194,5 +218,118 @@ describe('reduceAgentEvent()', () => {
 
 		expect(state.messages).toHaveLength(1);
 		expect(state.messages[0]?.id).toBe('entry-user');
+	});
+
+	it('reconciles the optimistic message when canonical history arrives before admission', () => {
+		let state = reduceAgentEvent(emptyAgentState, {
+			type: 'local_send_submitted',
+			localId: 'local-1',
+			message: 'hello',
+		});
+		state = reduceAgentEvent(state, {
+			type: 'local_history',
+			snapshot: {
+				...snapshot(),
+				messages: [{
+					id: 'entry-user',
+					role: 'user',
+					submissionId: 'submission-1',
+					parts: [{ type: 'text', text: 'hello', state: 'done' }],
+				}],
+			},
+		});
+		state = reduceAgentEvent(state, {
+			type: 'local_send_admitted',
+			localId: 'local-1',
+			submissionId: 'submission-1',
+		});
+
+		expect(state.messages.map((message) => message.id)).toEqual(['entry-user']);
+		expect(state.pendingSends).toEqual([]);
+		expect(state.status).toBe('streaming');
+	});
+
+	it('remains idle when completed settlement arrives before admission', () => {
+		let state = reduceAgentEvent(emptyAgentState, { type: 'local_history', snapshot: snapshot() });
+		state = reduceAgentEvent(state, {
+			type: 'local_send_submitted',
+			localId: 'local-1',
+			message: 'hello',
+		});
+		state = reduceAgentEvent(
+			state,
+			update(record('settled', 'submission_settled', {
+				submissionId: 'submission-1',
+				outcome: 'completed',
+			})),
+		);
+		state = reduceAgentEvent(state, {
+			type: 'local_send_admitted',
+			localId: 'local-1',
+			submissionId: 'submission-1',
+		});
+
+		expect(state.pendingSends).toEqual([]);
+		expect(state.activeSubmissionIds).toEqual([]);
+		expect(state.status).toBe('idle');
+	});
+
+	it('surfaces the failure when failed settlement arrives before admission', () => {
+		let state = reduceAgentEvent(emptyAgentState, { type: 'local_history', snapshot: snapshot() });
+		state = reduceAgentEvent(state, {
+			type: 'local_send_submitted',
+			localId: 'local-1',
+			message: 'hello',
+		});
+		state = reduceAgentEvent(
+			state,
+			update(record('settled', 'submission_settled', {
+				submissionId: 'submission-1',
+				outcome: 'failed',
+				error: { message: 'failed before receipt' },
+			})),
+		);
+		state = reduceAgentEvent(state, {
+			type: 'local_send_admitted',
+			localId: 'local-1',
+			submissionId: 'submission-1',
+		});
+
+		expect(state.pendingSends).toEqual([]);
+		expect(state.activeSubmissionIds).toEqual([]);
+		expect(state.status).toBe('error');
+		expect(state.error?.message).toBe('failed before receipt');
+	});
+
+	it('reconciles the optimistic message when reset arrives before admission', () => {
+		let state = reduceAgentEvent(emptyAgentState, { type: 'local_history', snapshot: snapshot() });
+		state = reduceAgentEvent(state, {
+			type: 'local_send_submitted',
+			localId: 'local-1',
+			message: 'hello',
+		});
+		state = reduceAgentEvent(state, {
+			v: 1,
+			type: 'conversation_reset',
+			conversationId: 'conversation-1',
+			snapshot: {
+				...snapshot(),
+				offset: 'offset-2',
+				messages: [{
+					id: 'entry-user',
+					role: 'user',
+					submissionId: 'submission-1',
+					parts: [{ type: 'text', text: 'hello', state: 'done' }],
+				}],
+			},
+		});
+		state = reduceAgentEvent(state, {
+			type: 'local_send_admitted',
+			localId: 'local-1',
+			submissionId: 'submission-1',
+		});
+
+		expect(state.messages.map((message) => message.id)).toEqual(['entry-user']);
+		expect(state.pendingSends).toEqual([]);
 	});
 });

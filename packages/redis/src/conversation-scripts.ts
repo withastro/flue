@@ -72,16 +72,7 @@ return 1
 `;
 
 export const deleteConversationScript = `
-redis.call('DEL', KEYS[1], KEYS[2], KEYS[3], KEYS[4], KEYS[5])
-redis.call('SREM', KEYS[6], ARGV[1])
+redis.call('DEL', KEYS[1], KEYS[2], KEYS[3], KEYS[4])
+redis.call('SREM', KEYS[5], ARGV[1])
 return 1
-`;
-
-export const saveConversationSnapshotScript = `
-if redis.call('EXISTS', KEYS[1]) == 0 then return {'missing'} end
-if redis.call('HGET', KEYS[1], 'incarnation') ~= ARGV[1] then return {'incarnation'} end
-local head = tonumber(redis.call('HGET', KEYS[1], 'nextOffset') or '0') - 1
-if tonumber(ARGV[2]) > head then return {'offset'} end
-redis.call('SET', KEYS[2], ARGV[3])
-return {'saved'}
 `;

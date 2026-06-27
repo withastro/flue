@@ -8,8 +8,8 @@ You are an AI coding agent configuring Redis-backed persistence for a Flue
 project using the first-party `@flue/redis` adapter and the official `redis`
 (node-redis) client.
 
-This stores canonical agent conversation streams, disposable snapshots,
-immutable attachments, accepted submissions, workflow-run records, and event
+This stores canonical agent conversation streams, immutable attachments,
+accepted submissions, workflow-run records, and event
 streams. It does not store application business data.
 
 ## Check the target and deployment
@@ -91,12 +91,12 @@ separate empty namespace and does not migrate existing data.
 
 ## What gets stored
 
-The adapter stores canonical append-only conversation streams, disposable
-snapshots, immutable external attachments, accepted direct and dispatched
-submissions, recovery journals, workflow-run records and indexes, and event
-streams. The canonical stream is the sole transcript; sessions have no
-per-session deletion. Whole-instance stream, snapshot, and attachment deletion
-methods are low-level primitives. It does not store sandbox files, external API
+The adapter stores canonical append-only conversation streams, immutable external
+attachments, accepted direct and dispatched submissions, recovery journals,
+workflow-run records and indexes, and event streams. The canonical stream is the
+sole transcript and is replayed from its beginning; replay acceleration and
+persisted-log compaction are deferred. Sessions have no per-session deletion.
+Whole-instance stream and attachment deletion methods are low-level primitives. It does not store sandbox files, external API
 side effects, credentials, or application business data.
 
 ## Verify

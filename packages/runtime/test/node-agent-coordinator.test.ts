@@ -160,14 +160,13 @@ async function createRealCoordinator(
 ): Promise<{ coordinator: NodeAgentCoordinator; executionStore: AgentExecutionStore }> {
 	const adapter = sqlite(dbPath);
 	await adapter.migrate?.();
-	const { executionStore, conversationStreamStore, conversationSnapshotStore, attachmentStore } = await adapter.connect();
+	const { executionStore, conversationStreamStore, attachmentStore } = await adapter.connect();
 	const agent = defineAgent(() => ({ model: REAL_MODEL }));
 	const coordinator = createNodeAgentCoordinator({
 		submissions: executionStore.submissions,
 		agents: [{ name: 'assistant', definition: agent }],
 		createContext: makeRealCreateContext(executionStore),
 		conversationStreamStore,
-		conversationSnapshotStore,
 		attachmentStore,
 	});
 	return { coordinator, executionStore };
@@ -181,7 +180,7 @@ async function createFauxCoordinator(
 ): Promise<{ coordinator: NodeAgentCoordinator; executionStore: AgentExecutionStore }> {
 	const adapter = sqlite(dbPath);
 	await adapter.migrate?.();
-	const { executionStore, conversationStreamStore, conversationSnapshotStore, attachmentStore } = await adapter.connect();
+	const { executionStore, conversationStreamStore, attachmentStore } = await adapter.connect();
 	const agent = defineAgent(() => ({
 		model: `${provider.getModel().provider}/${provider.getModel().id}`,
 		durability,
@@ -191,7 +190,6 @@ async function createFauxCoordinator(
 		agents: [{ name: 'assistant', definition: agent }],
 		createContext: makeFauxCreateContext(provider, executionStore),
 		conversationStreamStore,
-		conversationSnapshotStore,
 		attachmentStore,
 	});
 	return { coordinator, executionStore };
@@ -206,9 +204,21 @@ describe('NodeAgentCoordinator', () => {
 		it('writes canonical input and assistant output when processing a dispatch', async () => {
 		const dbPath = createTempDbPath();
 		const provider = createFauxProvider();
-		provider.setResponses([fauxAssistantMessage('Hello back')]);
+		const providerMessages: string[][] = [];
+		provider.setResponses([(context) => {
+			providerMessages.push(context.messages.map((message) =>
+				typeof message.content === 'string'
+					? message.content
+					: message.content.map((block) => ('text' in block ? block.text : block.type)).join('\n'),
+			));
+			return fauxAssistantMessage('Hello back');
+		}]);
 		const { coordinator } = await createFauxCoordinator(dbPath, provider);
-		const input = makeDispatchInput();
+		const input = makeDispatchInput({
+			dispatchId: 'dispatch-semantic-input',
+			input: { z: '<later>', a: { value: '&first' } },
+			acceptedAt: '2026-06-26T12:00:00.000Z',
+		});
 
 		await coordinator.admitDispatch(input);
 		await coordinator.waitForIdle();
@@ -228,7 +238,22 @@ describe('NodeAgentCoordinator', () => {
 		]));
 		const inputRecord = records.find((record) => record.type === 'signal');
 		const assistantRecord = records.find((record) => record.type === 'assistant_message_started');
-		expect(inputRecord).toMatchObject({ dispatchId: input.dispatchId, signalType: 'dispatch_input' });
+		expect(inputRecord).toMatchObject({
+			dispatchId: input.dispatchId,
+			signalType: 'dispatch_input',
+			tagName: 'dispatch',
+			content: '{\n  "a": {\n    "value": "&first"\n  },\n  "z": "<later>"\n}',
+			attributes: {
+				agent: 'assistant',
+				id: 'instance-1',
+				session: 'default',
+				dispatchId: 'dispatch-semantic-input',
+				acceptedAt: '2026-06-26T12:00:00.000Z',
+			},
+		});
+		expect(providerMessages).toEqual([[
+			'<dispatch type="dispatch_input" agent="assistant" id="instance-1" session="default" dispatchId="dispatch-semantic-input" acceptedAt="2026-06-26T12:00:00.000Z">\n{\n  "a": {\n    "value": "&amp;first"\n  },\n  "z": "&lt;later&gt;"\n}\n</dispatch>',
+		]]);
 		expect(assistantRecord).toMatchObject({ parentId: inputRecord?.type === 'signal' ? inputRecord.messageId : undefined });
 
 		await coordinator.shutdown();
@@ -246,10 +271,8 @@ describe('NodeAgentCoordinator', () => {
 
 		const adapter = sqlite(dbPath);
 		await adapter.migrate?.();
-		const { conversationStreamStore, conversationSnapshotStore } = await adapter.connect();
+		const { conversationStreamStore } = await adapter.connect();
 		const path = agentStreamPath('assistant', 'instance-1');
-		expect(await conversationSnapshotStore.load(path)).toBeNull();
-		await conversationSnapshotStore.delete(path);
 		const read = await conversationStreamStore.read(path);
 		expect(read.batches.flatMap((batch) => batch.records).map((record) => record.type)).toContain('assistant_message_completed');
 	});
@@ -359,7 +382,7 @@ describe('NodeAgentCoordinator', () => {
 			await killAtDurableBoundary('tool-outcome', dbPath);
 			const adapter = sqlite(dbPath);
 			await adapter.migrate?.();
-			const { executionStore, conversationStreamStore, conversationSnapshotStore, attachmentStore } = await adapter.connect();
+			const { executionStore, conversationStreamStore, attachmentStore } = await adapter.connect();
 			const provider = createFauxProvider();
 			provider.setResponses([fauxAssistantMessage('Continued after repair.')]);
 			let toolCalls = 0;
@@ -383,8 +406,7 @@ describe('NodeAgentCoordinator', () => {
 				}],
 				createContext: makeFauxCreateContext(provider, executionStore),
 				conversationStreamStore,
-				conversationSnapshotStore,
-				attachmentStore,
+						attachmentStore,
 			});
 
 			await coordinator.reconcileSubmissions();
@@ -477,6 +499,7 @@ describe('NodeAgentCoordinator', () => {
 						v: 1,
 						id: 'record-conversation-created',
 						type: 'conversation_created',
+						kind: 'root',
 						conversationId: 'conversation-input-marker',
 						harness: 'default',
 						session: 'default',
@@ -498,7 +521,15 @@ describe('NodeAgentCoordinator', () => {
 						messageId: 'entry_dispatch_ZGlzcGF0Y2gtaW5wdXQtbWFya2Vy',
 						parentId: null,
 						signalType: 'dispatch_input',
-						content: '<dispatch type="dispatch_input">input</dispatch>',
+						tagName: 'dispatch',
+						content: '{\n  "message": "Hello"\n}',
+						attributes: {
+							agent: input.agent,
+							id: input.id,
+							session: 'default',
+							dispatchId: input.dispatchId,
+							acceptedAt: input.acceptedAt,
+						},
 					},
 				],
 			});
@@ -626,7 +657,7 @@ describe('NodeAgentCoordinator', () => {
 			const dbPath = createTempDbPath();
 			const adapter = sqlite(dbPath);
 			await adapter.migrate?.();
-			const { executionStore, conversationStreamStore, conversationSnapshotStore, attachmentStore } = await adapter.connect();
+			const { executionStore, conversationStreamStore, attachmentStore } = await adapter.connect();
 			const provider = createFauxProvider();
 			let providerCalls = 0;
 			provider.setResponses([() => {
@@ -642,8 +673,7 @@ describe('NodeAgentCoordinator', () => {
 				}],
 				createContext: makeFauxCreateContext(provider, executionStore),
 				conversationStreamStore,
-				conversationSnapshotStore,
-				attachmentStore,
+						attachmentStore,
 			});
 
 			await coordinator.admitDispatch(makeDispatchInput({ dispatchId: 'dispatch-journal-rejected' }));
@@ -656,7 +686,7 @@ describe('NodeAgentCoordinator', () => {
 			const dbPath = createTempDbPath();
 			const adapter = sqlite(dbPath);
 			await adapter.migrate?.();
-			const { executionStore, conversationStreamStore, conversationSnapshotStore, attachmentStore } = await adapter.connect();
+			const { executionStore, conversationStreamStore, attachmentStore } = await adapter.connect();
 			const provider = createFauxProvider();
 			const toolCallId = `tool:journal-${crypto.randomUUID()}`;
 			provider.setResponses([
@@ -685,8 +715,7 @@ describe('NodeAgentCoordinator', () => {
 				],
 				createContext: makeFauxCreateContext(provider, executionStore),
 				conversationStreamStore,
-				conversationSnapshotStore,
-				attachmentStore,
+						attachmentStore,
 			});
 
 			const originalUpdate = executionStore.submissions.updateTurnJournalPhase.bind(

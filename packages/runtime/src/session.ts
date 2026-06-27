@@ -1813,6 +1813,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 						session: this.name,
 					},
 					child: {
+						kind: 'action',
 						conversationId: conversation.conversationId,
 						harness,
 						session,
@@ -3010,15 +3011,20 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		this.activeAgentInput = { text: renderSignalMessage(createDispatchInputSignal(input)) };
 		return this.runPersistedContextInput({
 			inputEntryId: submissionEntryId('dispatch', input.dispatchId),
-			createCanonicalInput: (parentId) => ({
-				...this.canonicalEnvelope('signal', `record_dispatch_input_${input.dispatchId}`),
-				type: 'signal',
-				messageId: submissionEntryId('dispatch', input.dispatchId),
-				parentId,
-				dispatchId: input.dispatchId,
-				signalType: 'dispatch_input',
-				content: renderSignalMessage(createDispatchInputSignal(input)),
-			}),
+			createCanonicalInput: (parentId) => {
+				const signal = createDispatchInputSignal(input);
+				return {
+					...this.canonicalEnvelope('signal', `record_dispatch_input_${input.dispatchId}`),
+					type: 'signal',
+					messageId: submissionEntryId('dispatch', input.dispatchId),
+					parentId,
+					dispatchId: input.dispatchId,
+					signalType: signal.type,
+					tagName: signal.tagName,
+					content: signal.content,
+					attributes: signal.attributes,
+				};
+			},
 			errorLabel: `dispatch(${input.dispatchId})`,
 			callSite: 'this dispatched input',
 			onInputApplied: options?.onInputApplied,

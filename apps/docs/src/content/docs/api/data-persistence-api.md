@@ -10,7 +10,6 @@ import type {
   AgentExecutionStore,
   AgentSubmissionStore,
   AttachmentStore,
-  ConversationSnapshotStore,
   ConversationStreamStore,
   EventStreamStore,
   PersistenceAdapter,
@@ -37,7 +36,6 @@ interface PersistenceStores {
   readonly runStore: RunStore;
   readonly eventStreamStore: EventStreamStore;
   readonly conversationStreamStore: ConversationStreamStore;
-  readonly conversationSnapshotStore: ConversationSnapshotStore;
   readonly attachmentStore: AttachmentStore;
 }
 ```
@@ -93,17 +91,7 @@ This append-only, per-agent-instance stream is the sole canonical transcript. It
 
 Producer claims fence stale writers. Appends preserve producer sequence and expected-offset invariants, and reads return durable resume offsets. `delete(path)` is a low-level whole-instance primitive; its presence does not promise a public retention or deletion workflow.
 
-## `ConversationSnapshotStore`
-
-```ts
-interface ConversationSnapshotStore<State = unknown> {
-  load(path: string): Promise<ConversationSnapshot<State> | null>;
-  save(path: string, snapshot: ConversationSnapshot<State>): Promise<void>;
-  delete(path: string): Promise<void>;
-}
-```
-
-Snapshots are optional disposable caches of a canonical stream prefix. They may be replaced or deleted without changing transcript semantics and must never become an independent source of truth. The built-in runtime currently replays the canonical stream rather than writing automatic full-log snapshots. `delete(path)` removes the whole instance snapshot only; there is no per-session deletion contract.
+Canonical state is reconstructed by replaying the conversation stream from its beginning. Replay acceleration and compaction of this persisted log are deferred; adapters should not invent a second transcript or cache contract.
 
 ## `AttachmentStore`
 
@@ -164,4 +152,4 @@ These server-side functions read the configured stores and deployment manifest. 
 
 ## Validating an adapter
 
-`@flue/runtime/test-utils` exports contract suites for submission, run, event-stream, canonical-stream, snapshot, and attachment stores. Run every applicable suite against isolated storage. These suites are the acceptance tests for the observable adapter contract.
+`@flue/runtime/test-utils` exports contract suites for submission, run, event-stream, canonical-stream, and attachment stores. Run every applicable suite against isolated storage. These suites are the acceptance tests for the observable adapter contract.
