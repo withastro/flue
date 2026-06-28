@@ -81,12 +81,14 @@ export async function createAttachmentRef(input: {
 	id: string;
 	mimeType: string;
 	bytes: Uint8Array;
+	filename?: string;
 }): Promise<AttachmentRef> {
 	return {
 		id: input.id,
 		mimeType: input.mimeType,
 		size: input.bytes.byteLength,
 		digest: await attachmentDigest(input.bytes),
+		...(input.filename ? { filename: input.filename } : {}),
 	};
 }
 
@@ -111,6 +113,9 @@ export function attachmentBytesEqual(left: Uint8Array, right: Uint8Array): boole
 }
 
 export function sameAttachmentRef(left: AttachmentRef, right: AttachmentRef): boolean {
+	// `filename` is presentation metadata, not byte identity, and is not persisted
+	// by every store — so it is deliberately excluded so an idempotent re-`put`
+	// (recovery) never conflicts on a filename that didn't round-trip.
 	return left.id === right.id &&
 		left.mimeType === right.mimeType &&
 		left.size === right.size &&

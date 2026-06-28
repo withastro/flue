@@ -21,6 +21,12 @@ export interface AttachmentRef {
 	mimeType: string;
 	size: number;
 	digest: string;
+	/**
+	 * Original filename, when the uploader provided one. Presentation metadata,
+	 * not part of byte identity — excluded from attachment-store equality and not
+	 * required by the attachment stores (it travels in the canonical record).
+	 */
+	filename?: string;
 }
 
 export type CanonicalUserContent =

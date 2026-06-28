@@ -181,6 +181,23 @@ describe('reduceAgentEvent()', () => {
 		expect(state.status).toBe('idle');
 	});
 
+	it('renders an instant local data-URL preview for optimistic image sends', () => {
+		let state = reduceAgentEvent(emptyAgentState, observed(conversation()));
+		state = reduceAgentEvent(state, {
+			type: 'local_send_submitted',
+			localId: 'local-1',
+			message: 'see this',
+			images: [{ type: 'image', data: 'AAAA', mimeType: 'image/png', filename: 'shot.png' }],
+		});
+
+		expect(state.messages[0]?.parts[1]).toEqual({
+			type: 'file',
+			mediaType: 'image/png',
+			url: 'data:image/png;base64,AAAA',
+			filename: 'shot.png',
+		});
+	});
+
 	it('retains a failed send in the transcript with retry metadata', () => {
 		let state = reduceAgentEvent(emptyAgentState, observed(conversation()));
 		state = reduceAgentEvent(state, { type: 'local_send_submitted', localId: 'local-1', message: 'hello' });

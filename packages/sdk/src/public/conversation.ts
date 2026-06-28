@@ -17,12 +17,21 @@ export type FlueConversationPart =
 			/**
 			 * Stable attachment id. Present on attachments that have been durably
 			 * recorded; absent on a local optimistic echo whose bytes have not been
-			 * persisted yet. Fetch the bytes with
-			 * `client.agents.attachmentUrl(name, id, attachment.id)`.
+			 * persisted yet.
 			 */
 			id?: string;
 			/** Attachment size in bytes, when known. */
 			size?: number;
+			/**
+			 * URL for the attachment bytes, ready to use as an `<img>`/`<a>` source.
+			 * The SDK fills this in for durably-recorded attachments (a hosted URL on
+			 * the agent's opt-in attachments route); a local optimistic echo carries a
+			 * `data:` URL preview of the bytes being uploaded. May be absent when the
+			 * bytes are not yet resolvable.
+			 */
+			url?: string;
+			/** Original filename, when the uploader provided one. */
+			filename?: string;
 	  }
 	| ({ type: 'dynamic-tool'; toolName: string; toolCallId: string } & (
 			| { state: 'input-available'; input: unknown; output?: never; errorText?: never }

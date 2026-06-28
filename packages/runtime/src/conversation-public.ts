@@ -159,6 +159,9 @@ function encodeRecord(
 										mediaType: content.attachment.mimeType,
 										id: content.attachment.id,
 										size: content.attachment.size,
+										...(content.attachment.filename
+											? { filename: content.attachment.filename }
+											: {}),
 									},
 						),
 					},

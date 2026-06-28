@@ -770,7 +770,13 @@ describe('reduceConversationRecords()', () => {
 
 	it('keeps authored attachment text canonical and projects the manifest only for the model', () => {
 		const created = required(canonicalConversation()[0]);
-		const attachment = { id: 'att_01', mimeType: 'image/png', size: 42, digest: 'sha256:test' };
+		const attachment = {
+			id: 'att_01',
+			mimeType: 'image/png',
+			size: 42,
+			digest: 'sha256:test',
+			filename: 'diagram.png',
+		};
 		const state = reduceConversationRecords(createReducedInstanceState(), [created, {
 			...scope,
 			id: 'record_attachment_user',
@@ -787,7 +793,13 @@ describe('reduceConversationRecords()', () => {
 
 		expect(projectConversationUi(conversation, '2').messages[0]?.parts).toEqual([
 			{ type: 'text', text: 'Inspect this image.', state: 'done' },
-			{ type: 'file', mediaType: attachment.mimeType, id: attachment.id, size: attachment.size },
+			{
+				type: 'file',
+				mediaType: attachment.mimeType,
+				id: attachment.id,
+				size: attachment.size,
+				filename: attachment.filename,
+			},
 		]);
 		expect(
 			buildConversationContext(conversation, {

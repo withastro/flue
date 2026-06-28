@@ -27,7 +27,9 @@ import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 type ConversationUiPart =
 	| { type: 'text'; text: string; state: 'streaming' | 'done' }
 	| { type: 'reasoning'; text: string; state: 'streaming' | 'done' }
-	| { type: 'file'; mediaType: string; id?: string; size?: number }
+	// `url` mirrors the SDK shape but is never set server-side (the runtime does
+	// not know the HTTP mount/baseUrl); the SDK fills it in for consumers.
+	| { type: 'file'; mediaType: string; id?: string; size?: number; url?: string; filename?: string }
 	| ({ type: 'dynamic-tool'; toolName: string; toolCallId: string } & (
 			| { state: 'input-available'; input: unknown }
 			| { state: 'output-available'; input: unknown; output: unknown }
@@ -46,7 +48,13 @@ export interface ConversationUiMessage {
 }
 
 function fileFromAttachment(attachment: AttachmentRef): ConversationUiPart {
-	return { type: 'file', mediaType: attachment.mimeType, id: attachment.id, size: attachment.size };
+	return {
+		type: 'file',
+		mediaType: attachment.mimeType,
+		id: attachment.id,
+		size: attachment.size,
+		...(attachment.filename ? { filename: attachment.filename } : {}),
+	};
 }
 
 export interface ConversationUiSnapshot {

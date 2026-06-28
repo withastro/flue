@@ -1153,7 +1153,8 @@ describe('flue() agent attachments route', () => {
 		);
 
 		expect(response.status).toBe(404);
-		expect((await response.json()).error.type).toBe('route_not_found');
+		const body = (await response.json()) as { error: { type: string } };
+		expect(body.error.type).toBe('route_not_found');
 	});
 
 	it('includes opt-in guidance in the dev error envelope', async () => {
@@ -1166,7 +1167,8 @@ describe('flue() agent attachments route', () => {
 		);
 
 		expect(response.status).toBe(404);
-		expect((await response.json()).error.dev).toContain('attachments');
+		const body = (await response.json()) as { error: { dev?: string } };
+		expect(body.error.dev).toContain('attachments');
 	});
 
 	it('runs the exposed attachments middleware before serving', async () => {
@@ -1216,7 +1218,8 @@ describe('flue() agent attachments route', () => {
 		);
 
 		expect(response.status).toBe(404);
-		expect((await response.json()).error.type).toBe('stream_not_found');
+		const body = (await response.json()) as { error: { type: string } };
+		expect(body.error.type).toBe('stream_not_found');
 	});
 });
 

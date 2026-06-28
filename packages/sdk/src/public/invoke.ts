@@ -5,6 +5,8 @@ export interface AgentPromptImage {
 	type: 'image';
 	data: string;
 	mimeType: string;
+	/** Optional original filename, surfaced on the projected `file` part. */
+	filename?: string;
 }
 
 /** Options for one direct-agent prompt. */

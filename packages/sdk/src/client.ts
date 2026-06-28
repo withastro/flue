@@ -5,6 +5,7 @@ export type { HttpClientOptions } from './http.ts';
 
 import type {
 	FlueConversationHistoryOptions,
+	FlueConversationMessage,
 	FlueConversationSnapshot,
 } from './public/conversation.ts';
 import {
@@ -130,6 +131,57 @@ export interface FlueClient {
 	};
 }
 
+// The runtime can't know the HTTP mount/baseUrl, so the SDK resolves a ready-to-
+// use `url` onto each durably-recorded `file` part (those with an `id`). This
+// lets consumers read `part.url` directly instead of constructing it via
+// `attachmentUrl`. Optimistic parts (no `id`) carry their own `data:` preview and
+// are left untouched.
+function withAttachmentUrls(
+	message: FlueConversationMessage,
+	http: HttpClient,
+	name: string,
+	id: string,
+): FlueConversationMessage {
+	let changed = false;
+	const parts = message.parts.map((part) => {
+		if (part.type === 'file' && part.id !== undefined && part.url === undefined) {
+			changed = true;
+			return {
+				...part,
+				url: http.url(
+					`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}/attachments/${encodeURIComponent(part.id)}`,
+				),
+			};
+		}
+		return part;
+	});
+	return changed ? { ...message, parts } : message;
+}
+
+function rewriteSnapshotAttachmentUrls(
+	snapshot: FlueConversationSnapshot,
+	http: HttpClient,
+	name: string,
+	id: string,
+): FlueConversationSnapshot {
+	return { ...snapshot, messages: snapshot.messages.map((message) => withAttachmentUrls(message, http, name, id)) };
+}
+
+function rewriteChunkAttachmentUrls(
+	chunk: ConversationStreamChunk,
+	http: HttpClient,
+	name: string,
+	id: string,
+): ConversationStreamChunk {
+	if (chunk.type === 'conversation-reset') {
+		return { ...chunk, snapshot: rewriteSnapshotAttachmentUrls(chunk.snapshot, http, name, id) };
+	}
+	if (chunk.type === 'message-appended') {
+		return { ...chunk, message: withAttachmentUrls(chunk.message, http, name, id) };
+	}
+	return chunk;
+}
+
 /** Creates a client for the public routes of a deployed Flue application. */
 export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 	const http = new HttpClient(options);
@@ -138,21 +190,31 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 			prompt: (name, id, opts) => promptAgent(http, name, id, opts),
 			send: (name, id, opts) => sendAgent(http, name, id, opts),
 			wait: (admission, opts) => waitForAgentSubmission(http, admission, opts),
-			history: (name, id, opts = {}) =>
-				http.json<FlueConversationSnapshot>({
-					path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
-					query: { view: 'history' },
-					signal: opts.signal,
-				}),
+			history: async (name, id, opts = {}) =>
+				rewriteSnapshotAttachmentUrls(
+					await http.json<FlueConversationSnapshot>({
+						path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
+						query: { view: 'history' },
+						signal: opts.signal,
+					}),
+					http,
+					name,
+					id,
+				),
 			observe: (name, id, opts = {}) =>
 				createAgentConversationObservation(
 					{
-						history: (historyOptions) =>
-							http.json<FlueConversationSnapshot>({
-								path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
-								query: { view: 'history' },
-								signal: historyOptions.signal,
-							}),
+						history: async (historyOptions) =>
+							rewriteSnapshotAttachmentUrls(
+								await http.json<FlueConversationSnapshot>({
+									path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
+									query: { view: 'history' },
+									signal: historyOptions.signal,
+								}),
+								http,
+								name,
+								id,
+							),
 						updates: (updateOptions) =>
 							createFlueEventStream<ConversationStreamChunk>(
 								updateOptions,
@@ -162,7 +224,8 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 									}),
 									fetch: http.fetchWithHeaders.bind(http),
 								},
-								assertConversationStreamChunk,
+								(chunk) =>
+									rewriteChunkAttachmentUrls(assertConversationStreamChunk(chunk), http, name, id),
 							),
 					},
 					opts,

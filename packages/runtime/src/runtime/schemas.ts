@@ -12,6 +12,7 @@ const DirectAgentImageSchema = v.object({
 		),
 	),
 	mimeType: v.string(),
+	filename: v.optional(v.string()),
 });
 
 export const DirectAgentPayloadSchema = v.object({

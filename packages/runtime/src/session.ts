@@ -2293,7 +2293,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	}
 
 	private async persistCanonicalAttachments(
-		attachments: ReadonlyArray<{ id: string; mimeType: string; data: string }>,
+		attachments: ReadonlyArray<{ id: string; mimeType: string; data: string; filename?: string }>,
 	): Promise<import('./conversation-records.ts').AttachmentRef[]> {
 		const refs: import('./conversation-records.ts').AttachmentRef[] = [];
 		for (const attachment of attachments) {
@@ -2302,6 +2302,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				id: attachment.id,
 				mimeType: attachment.mimeType,
 				bytes,
+				...(attachment.filename ? { filename: attachment.filename } : {}),
 			});
 			await this.attachmentStore.put({
 				streamPath: this.conversationWriter.path,
@@ -2925,6 +2926,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 						id: `att_direct_${input.submissionId}_${index}`,
 						mimeType: image.mimeType,
 						data: image.data,
+						...(image.filename ? { filename: image.filename } : {}),
 					})),
 				);
 				return {

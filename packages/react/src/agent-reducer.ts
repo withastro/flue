@@ -223,13 +223,16 @@ function optimisticMessage(
 		role: 'user',
 		parts: [
 			{ type: 'text', text: event.message, state: 'done' },
-			// Opaque attachment reference. The optimistic echo has no durable
-			// attachment id yet (bytes are not persisted until the server records
-			// them), so it carries only the media type — consistent with the
-			// canonical projection after round-trip.
+			// The echo has no durable attachment id yet, but it does have the bytes
+			// the caller passed — so render an instant local preview via a data URL.
+			// On the optimistic→confirmed swap, the canonical part (carrying the
+			// hosted `url` + `id`) takes its place; consumers read `part.url` either
+			// way, with no flicker and no object-URL lifecycle to manage.
 			...(event.images ?? []).map((image) => ({
 				type: 'file' as const,
 				mediaType: image.mimeType,
+				url: `data:${image.mimeType};base64,${image.data}`,
+				...(image.filename ? { filename: image.filename } : {}),
 			})),
 		],
 	};

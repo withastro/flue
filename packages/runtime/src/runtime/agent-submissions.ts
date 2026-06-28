@@ -156,6 +156,7 @@ export async function materializeAgentSubmissionSession(
 				id: `att_direct_${input.submissionId}_${index}`,
 				mimeType: image.mimeType,
 				bytes,
+				...(image.filename ? { filename: image.filename } : {}),
 			});
 			const streamPath = agentStreamPath(input.agent, input.id);
 			await attachmentStore.put({

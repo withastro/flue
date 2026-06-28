@@ -83,6 +83,37 @@ describe('createFlueClient', () => {
 		});
 	});
 
+	describe('agents.history() attachment urls', () => {
+		it('resolves a url on durably-recorded file parts and leaves preview parts untouched', async () => {
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async () =>
+					Response.json({
+						v: 1,
+						conversationId: 'c1',
+						offset: '0000000000000000_0000000000000001',
+						messages: [
+							{
+								id: 'u1',
+								role: 'user',
+								parts: [
+									{ type: 'file', mediaType: 'image/png', id: 'att-1', size: 3 },
+									{ type: 'file', mediaType: 'image/png', url: 'data:image/png;base64,AAAA' },
+								],
+							},
+						],
+						settlements: [],
+					}),
+			});
+
+			const snapshot = await client.agents.history('agent', 'inst-1');
+			const parts = snapshot.messages[0]?.parts as Array<{ url?: string }>;
+			expect(parts[0]?.url).toBe('https://flue.test/agents/agent/inst-1/attachments/att-1');
+			// A part that already carries a url (e.g. an optimistic data URL) is left as-is.
+			expect(parts[1]?.url).toBe('data:image/png;base64,AAAA');
+		});
+	});
+
 	describe('agents.observe()', () => {
 		it('materializes history before following updates from the snapshot offset', async () => {
 			const seen: string[] = [];

@@ -61,9 +61,16 @@ export interface DispatchReceipt {
 	acceptedAt: string;
 }
 
+/**
+ * One image in a direct (HTTP) agent submission. Extends pi-ai's `ImageContent`
+ * with an optional uploader-provided `filename` (carried on the wire and the
+ * canonical record, but not part of pi-ai's model image shape).
+ */
+export type DirectAgentImage = PromptImage & { filename?: string };
+
 export interface DirectAgentPayload {
 	message: string;
-	images?: PromptImage[];
+	images?: DirectAgentImage[];
 }
 
 /** Context passed to a {@link defineAgent} initializer. */
