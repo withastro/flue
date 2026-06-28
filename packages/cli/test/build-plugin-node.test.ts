@@ -10,8 +10,22 @@ describe('NodePlugin', () => {
 			}),
 		);
 
-		expect(entry).toContain('sqlite()');
+		expect(entry).toContain('const defaultAdapter = sqlite(');
 		expect(entry).not.toContain('/fixture/db.ts');
+	});
+
+	it('points the default Node adapter at a disk file only in local dev (FLUE_DEV_SQLITE_PATH)', () => {
+		const entry = new NodePlugin().generateEntryPoint(
+			testBuildContext({
+				agents: [{ name: 'assistant', filePath: '/fixture/agents/assistant.ts' }],
+			}),
+		);
+
+		// In-memory by default; a disk path is honored only under local `flue dev`,
+		// so deployed Node stays in-memory even if the env var is present.
+		expect(entry).toContain(
+			'sqlite(isLocalMode && runtimeEnv.FLUE_DEV_SQLITE_PATH ? runtimeEnv.FLUE_DEV_SQLITE_PATH : undefined)',
+		);
 	});
 
 	it('wires a user-supplied db.ts instead of the default adapter', () => {

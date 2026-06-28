@@ -218,7 +218,10 @@ try {
   throw new Error('[flue] Failed to initialize persistence from db.ts: ' + (error instanceof Error ? error.message : error), { cause: error });
 }`
 		: `// Default persistence for Node — in-memory SQLite, process lifetime.
-const defaultAdapter = sqlite();
+// Under local \`flue dev\`, FLUE_DEV_SQLITE_PATH points this at a disk file so
+// conversation history survives HMR reloads (the CLI resets that file on each
+// cold dev start). Ignored outside local mode, so deployed Node stays in-memory.
+const defaultAdapter = sqlite(isLocalMode && runtimeEnv.FLUE_DEV_SQLITE_PATH ? runtimeEnv.FLUE_DEV_SQLITE_PATH : undefined);
 if (defaultAdapter.migrate) await defaultAdapter.migrate();
 const { executionStore, runStore, eventStreamStore, conversationStreamStore, attachmentStore } = await defaultAdapter.connect();`
 }

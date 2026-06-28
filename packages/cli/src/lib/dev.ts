@@ -330,6 +330,11 @@ class NodeReloader implements DevReloader {
 
 	async start(): Promise<void> {
 		debugServer('starting node module runtime port=%d', this.port);
+		// Back the dev conversation store with an on-disk SQLite file so history
+		// survives HMR reloads within a session. Reset it on each cold start so a
+		// fresh `flue dev` begins empty (WAL mode adds the -wal/-shm sidecars).
+		const devDbPath = path.join(this.root, 'node_modules', '.cache', 'flue', 'dev.db');
+		for (const suffix of ['', '-wal', '-shm']) fs.rmSync(devDbPath + suffix, { force: true });
 		this.runtime = await createNodeLocalRuntime({
 			root: this.root,
 			sourceRoot: this.sourceRoot,
@@ -339,7 +344,7 @@ class NodeReloader implements DevReloader {
 			// call the dev server during local development.
 			temporaryLocalExposure: false,
 			cors: true,
-			env: process.env,
+			env: { ...process.env, FLUE_DEV_SQLITE_PATH: devDbPath },
 			internalDevLogs: true,
 			viteConfig: this.viteConfig,
 			onWatchChange: this.onProjectChange,
