@@ -34,6 +34,35 @@ describe('createStableNodeListener()', () => {
 		expect(await response.text()).toBe('authored');
 	});
 
+	it('reflects the Origin and answers preflight when dev CORS is enabled', async () => {
+		const listener = createStableNodeListener({ port: 0, cors: true });
+		listeners.push(listener);
+		await listener.listen();
+		listener.install(application(() => new Response('authored', { status: 200 })));
+
+		const preflight = await fetch(listener.url, {
+			method: 'OPTIONS',
+			headers: { origin: 'http://localhost:5173', 'access-control-request-headers': 'authorization' },
+		});
+		expect(preflight.status).toBe(204);
+		expect(preflight.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+		expect(preflight.headers.get('access-control-allow-headers')).toBe('authorization');
+
+		const actual = await fetch(listener.url, { headers: { origin: 'http://localhost:5173' } });
+		expect(actual.headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+		expect(await actual.text()).toBe('authored');
+	});
+
+	it('does not add CORS headers without the dev cors option', async () => {
+		const listener = createStableNodeListener({ port: 0 });
+		listeners.push(listener);
+		await listener.listen();
+		listener.install(application(() => new Response('authored')));
+
+		const response = await fetch(listener.url, { headers: { origin: 'http://localhost:5173' } });
+		expect(response.headers.get('access-control-allow-origin')).toBe(null);
+	});
+
 	it('keeps accepted requests alive while rejecting new requests during drain', async () => {
 		let release!: () => void;
 		const pending = new Promise<void>((resolve) => {

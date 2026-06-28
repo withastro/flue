@@ -22,6 +22,34 @@ export interface StableNodeListener {
 	closeSync(): void;
 }
 
+/**
+ * Permissive, credential-safe CORS for the local dev server only. Reflects the
+ * request `Origin` (never `*`-with-credentials) so a separate-origin SPA — the
+ * common dev setup — can call `flue dev` without extra configuration. Production
+ * deployments are unaffected; CORS there is the application's responsibility.
+ */
+function corsPreflightResponse(request: Request, origin: string): Response {
+	return new Response(null, {
+		status: 204,
+		headers: {
+			'access-control-allow-origin': origin,
+			'access-control-allow-credentials': 'true',
+			'access-control-allow-methods': 'GET,HEAD,POST,PUT,PATCH,DELETE,OPTIONS',
+			'access-control-allow-headers':
+				request.headers.get('access-control-request-headers') ?? '*',
+			'access-control-max-age': '86400',
+			vary: 'Origin',
+		},
+	});
+}
+
+function withCorsHeaders(response: Response, origin: string): Response {
+	response.headers.set('access-control-allow-origin', origin);
+	response.headers.set('access-control-allow-credentials', 'true');
+	response.headers.append('vary', 'Origin');
+	return response;
+}
+
 function isObservationRequest(request: Request): boolean {
 	if (request.method !== 'GET' && request.method !== 'HEAD') return false;
 	const pathname = new URL(request.url).pathname;
@@ -75,12 +103,32 @@ function retainLeaseForResponse(
 export function createStableNodeListener(options: {
 	port: number;
 	hostname?: string;
+	/** Dev-only: reflect the request Origin so a separate-origin SPA can connect. */
+	cors?: boolean;
 }): StableNodeListener {
 	let status: NodeRuntimeStatus = 'loading';
 	let application: LoadedNodeApplication | undefined;
 	let server: ReturnType<typeof createAdaptorServer> | undefined;
 	let listening: Promise<void> | undefined;
 	let stopping: Promise<void> | undefined;
+
+	async function handle(request: Request, env: unknown): Promise<Response> {
+		if (status !== 'ready' || !application) {
+			const state = status === 'closed' ? 'failed' : status;
+			return toHttpResponse(
+				new RuntimeUnavailableError({ state: state === 'ready' ? 'failed' : state }),
+			);
+		}
+		if (isObservationRequest(request)) return application.fetch(request, env);
+		const lease = application.enterActivity();
+		try {
+			const response = await application.fetch(request, env);
+			return retainLeaseForResponse(response, lease);
+		} catch (error) {
+			lease.release();
+			throw error;
+		}
+	}
 
 	return {
 		get port() {
@@ -103,23 +151,12 @@ export function createStableNodeListener(options: {
 				};
 				server = createAdaptorServer({
 					async fetch(request, env) {
-						if (status !== 'ready' || !application) {
-							const state = status === 'closed' ? 'failed' : status;
-							return toHttpResponse(
-								new RuntimeUnavailableError({
-									state: state === 'ready' ? 'failed' : state,
-								}),
-							);
+						const corsOrigin = options.cors ? request.headers.get('origin') : null;
+						if (corsOrigin && request.method === 'OPTIONS') {
+							return corsPreflightResponse(request, corsOrigin);
 						}
-						if (isObservationRequest(request)) return application.fetch(request, env);
-						const lease = application.enterActivity();
-						try {
-							const response = await application.fetch(request, env);
-							return retainLeaseForResponse(response, lease);
-						} catch (error) {
-							lease.release();
-							throw error;
-						}
+						const response = await handle(request, env);
+						return corsOrigin ? withCorsHeaders(response, corsOrigin) : response;
 					},
 					serverOptions: { requestTimeout: 0 },
 				});

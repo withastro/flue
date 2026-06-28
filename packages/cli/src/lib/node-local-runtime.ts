@@ -33,7 +33,13 @@ interface NodeLocalRuntimeOptions {
 export async function createNodeLocalRuntime(
 	options: NodeLocalRuntimeOptions,
 ): Promise<NodeLocalRuntime> {
-	const listener = createStableNodeListener({ port: options.port, hostname: options.hostname });
+	const listener = createStableNodeListener({
+		port: options.port,
+		hostname: options.hostname,
+		// Reflect Origin for separate-origin SPAs in local dev only. Deployed
+		// node servers keep CORS as an explicit application concern.
+		cors: options.temporaryLocalExposure,
+	});
 	let loader: NodeApplicationLoader | undefined;
 	let application: LoadedNodeApplication | undefined;
 	let lifecycle = Promise.resolve();
