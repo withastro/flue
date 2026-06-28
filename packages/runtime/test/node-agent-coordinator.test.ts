@@ -21,6 +21,7 @@ import {
 import { sqlite } from '../src/node/agent-execution-store.ts';
 import type { ConversationStreamStore } from '../src/runtime/conversation-stream-store.ts';
 import { agentStreamPath } from '../src/runtime/event-stream-store.ts';
+import { handleAgentConversationRead } from '../src/runtime/handle-conversation-routes.ts';
 import type { CreateAgentContextFn } from '../src/runtime/handle-agent.ts';
 import { generateSessionAffinityKey } from '../src/runtime/ids.ts';
 import { defineTool } from '../src/tool.ts';
@@ -987,6 +988,40 @@ describe('NodeAgentCoordinator', () => {
 			// "Restart": open the same file with a fresh store and verify settled.
 			const reopened = await openExecutionStore(dbPath);
 			expect(await reopened.submissions.hasUnsettledSubmissions()).toBe(false);
+		});
+
+		it('replays the direct prompt user message through the public conversation history', async () => {
+			// Regression for the durable-stream contract (#368/#307): a direct
+			// prompt's user message must survive in the materialized history read —
+			// what a client rebuilds from after a page refresh — and carry the
+			// submission id so an optimistic local message can be reconciled.
+			const dbPath = createTempDbPath();
+			const provider = createFauxProvider();
+			provider.setResponses([fauxAssistantMessage('Direct reply.')]);
+			const { coordinator } = await createFauxCoordinator(dbPath, provider);
+
+			const receipt = await coordinator.createAdmission('assistant', 'instance-1')({
+				message: 'Hello from direct prompt',
+			});
+
+			const adapter = sqlite(dbPath);
+			await adapter.migrate?.();
+			const { conversationStreamStore } = await adapter.connect();
+			const response = await handleAgentConversationRead({
+				store: conversationStreamStore,
+				path: agentStreamPath('assistant', 'instance-1'),
+				request: new Request('https://flue.test/agents/assistant/instance-1?view=history'),
+			});
+			const snapshot = (await response.json()) as {
+				messages: { role: string; submissionId?: string; parts: unknown[] }[];
+			};
+
+			const userMessage = snapshot.messages.find((message) => message.role === 'user');
+			expect(userMessage).toMatchObject({
+				role: 'user',
+				submissionId: receipt.submissionId,
+				parts: [{ type: 'text', text: 'Hello from direct prompt', state: 'done' }],
+			});
 		});
 
 		it('forwards events to the attached observer during processing', async () => {
