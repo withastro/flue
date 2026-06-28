@@ -62,6 +62,7 @@ export function nodeRuntime(overrides: Partial<NodeRuntime> = {}): NodeRuntime {
 		runStore: new InMemoryRunStore(),
 		eventStreamStore: createTestEventStreamStore(),
 		conversationStreamStore: stores.conversationStreamStore,
+		attachmentStore: stores.attachmentStore,
 		...overrides,
 	};
 }

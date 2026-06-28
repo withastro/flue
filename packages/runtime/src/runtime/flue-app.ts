@@ -2,6 +2,7 @@ import type { Context, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { validator } from 'hono-openapi';
 import {
+	AttachmentsNotExposedError,
 	configureErrorRendering,
 	InvalidRequestError,
 	MethodNotAllowedError,
@@ -22,6 +23,7 @@ import type {
 } from '../types.ts';
 import type { WorkflowDefinition } from '../workflow-definition.ts';
 import type { AttachedAgentSubmissionAdmission } from './agent-submissions.ts';
+import type { AttachmentStore } from './attachment-store.ts';
 import type { ConversationStreamStore } from './conversation-stream-store.ts';
 import { enqueueDispatch } from './dispatch.ts';
 import type { DispatchQueue } from './dispatch-queue.ts';
@@ -32,6 +34,7 @@ import {
 	handleWorkflowRequest,
 } from './handle-agent.ts';
 import {
+	handleAgentAttachmentRead,
 	handleAgentConversationHead,
 	handleAgentConversationRead,
 } from './handle-conversation-routes.ts';
@@ -52,6 +55,13 @@ export interface AgentRecord {
 	definition: AgentDefinition;
 	description?: string;
 	route?: MiddlewareHandler;
+	/**
+	 * Opt-in gate for `GET /agents/:name/:id/attachments/:attachmentId`. When
+	 * absent, the attachment-download endpoint returns 404. When present, it runs
+	 * as middleware before bytes are served, so the agent author authorizes and
+	 * scopes access (the bytes may contain sensitive content).
+	 */
+	attachments?: MiddlewareHandler;
 }
 
 export interface WorkflowRecord {
@@ -82,6 +92,7 @@ export interface NodeRuntime extends RuntimeBase {
 	runStore: RunStore;
 	eventStreamStore: EventStreamStore;
 	conversationStreamStore: ConversationStreamStore;
+	attachmentStore: AttachmentStore;
 }
 
 export interface CloudflareRuntime extends RuntimeBase {
@@ -262,6 +273,9 @@ export function flue(): Hono {
 		validated('query', InvocationQuerySchema),
 		agentRouteHandler,
 	);
+	// Opt-in attachment byte download. A distinct (longer) path, so it never
+	// collides with the agent prompt/stream routes above.
+	app.all('/agents/:name/:id/attachments/:attachmentId', attachmentsRouteHandler);
 	// Non-POSTs still reach the canonical Flue 405 envelope instead of
 	// Hono's default 404 for unmatched methods.
 	app.all('/agents/:name/:id', agentRouteHandler);
@@ -455,6 +469,47 @@ const agentRouteHandler: MiddlewareHandler = async (c) => {
 			method: c.req.method,
 			path: new URL(c.req.url).pathname,
 		});
+	});
+};
+
+const attachmentsRouteHandler: MiddlewareHandler = async (c) => {
+	const rt = requiredRuntime();
+	const name = c.req.param('name') ?? '';
+	const id = c.req.param('id') ?? '';
+	const attachmentId = c.req.param('attachmentId') ?? '';
+
+	const record = rt.agents.find((agent) => agent.name === name);
+	// Strictly opt-in: without an exported `attachments` middleware the endpoint
+	// does not exist, even in dev (`temporaryLocalExposure` does not expose it).
+	// The 404 carries dev-only guidance on how to enable it.
+	if (!record?.attachments) {
+		throw new AttachmentsNotExposedError({
+			method: c.req.method,
+			path: new URL(c.req.url).pathname,
+			agentName: name,
+		});
+	}
+	if (c.req.method !== 'GET') {
+		throw new MethodNotAllowedError({ method: c.req.method, allowed: ['GET'] });
+	}
+
+	const request = c.req.raw.clone();
+	return runAttachedMiddleware(c, record.attachments, async () => {
+		if (rt.target === 'node') {
+			return handleAgentAttachmentRead({
+				conversationStore: rt.conversationStreamStore,
+				attachmentStore: rt.attachmentStore,
+				path: agentStreamPath(name, id),
+				attachmentId,
+			});
+		}
+		// Cloudflare: forward to the agent DO, which owns the attachment bytes.
+		const response = await rt.routeAgentRequest(request, c.env, {
+			agentName: name,
+			instanceId: id,
+		});
+		if (response) return response;
+		throw new RouteNotFoundError({ method: c.req.method, path: new URL(c.req.url).pathname });
 	});
 };
 

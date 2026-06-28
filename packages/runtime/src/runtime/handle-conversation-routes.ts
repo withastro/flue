@@ -8,10 +8,12 @@ import {
 } from '../conversation-reader.ts';
 import { reduceConversationRecords } from '../conversation-reducer.ts';
 import {
+	AttachmentNotFoundError,
 	InvalidRequestError,
 	StreamNotFoundError,
 	toHttpResponse,
 } from '../errors.ts';
+import type { AttachmentStore } from './attachment-store.ts';
 import type {
 	ConversationStreamReadResult,
 	ConversationStreamStore,
@@ -37,6 +39,49 @@ export async function handleAgentConversationRead(options: {
 	return errorResponse(
 		new InvalidRequestError({ reason: 'Invalid agent conversation view. Use history or updates.' }),
 	);
+}
+
+/**
+ * Serves the bytes of one attachment referenced by the default conversation.
+ *
+ * Resolves the agent instance's default conversation id and scopes the lookup to
+ * it, so attachments belonging to task/action child conversations are never
+ * served through the public route. The byte content is immutable (digest-keyed),
+ * hence the long-lived private cache. Reached only after the route's opt-in
+ * `attachments` middleware has run.
+ */
+export async function handleAgentAttachmentRead(options: {
+	conversationStore: ConversationStreamStore;
+	attachmentStore: AttachmentStore;
+	path: string;
+	attachmentId: string;
+}): Promise<Response> {
+	const meta = await options.conversationStore.getMeta(options.path);
+	if (!meta) return errorResponse(new StreamNotFoundError({ path: options.path }));
+	// Resolving the default conversation id requires the reduced state. This is
+	// the same work as a history read; acceptable for now, but a future
+	// attachmentId→conversationId index would avoid the full reduce per byte read.
+	const state = await loadReducedConversationState({
+		store: options.conversationStore,
+		path: options.path,
+	});
+	const snapshot = projectAgentConversationSnapshot(state);
+	if (!snapshot) return errorResponse(new StreamNotFoundError({ path: options.path }));
+	const stored = await options.attachmentStore.get({
+		streamPath: options.path,
+		conversationId: snapshot.conversationId,
+		attachmentId: options.attachmentId,
+	});
+	if (!stored) return errorResponse(new AttachmentNotFoundError({ attachmentId: options.attachmentId }));
+	return new Response(stored.bytes, {
+		headers: {
+			'content-type': stored.attachment.mimeType,
+			'content-length': String(stored.attachment.size),
+			'content-disposition': 'inline',
+			'cache-control': 'private, max-age=31536000, immutable',
+			...SECURITY_HEADERS,
+		},
+	});
 }
 
 export async function handleAgentConversationHead(
@@ -288,7 +333,9 @@ async function waitForData(
 	}
 }
 
-function errorResponse(error: InvalidRequestError | StreamNotFoundError): Response {
+function errorResponse(
+	error: InvalidRequestError | StreamNotFoundError | AttachmentNotFoundError,
+): Response {
 	return toHttpResponse(error);
 }
 

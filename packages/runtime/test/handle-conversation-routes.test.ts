@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 import type { ConversationRecord } from '../src/conversation-records.ts';
 import { sqlite } from '../src/node/agent-execution-store.ts';
 import type { ConversationStreamStore } from '../src/runtime/conversation-stream-store.ts';
-import { handleAgentConversationRead } from '../src/runtime/handle-conversation-routes.ts';
+import { createAttachmentRef } from '../src/runtime/attachment-store.ts';
+import {
+	handleAgentAttachmentRead,
+	handleAgentConversationRead,
+} from '../src/runtime/handle-conversation-routes.ts';
 
 async function setup() {
 	const adapter = sqlite();
@@ -187,6 +191,67 @@ describe('handleAgentConversationRead()', () => {
 			),
 		});
 		expect(response.status).toBe(400);
+		await adapter.close?.();
+	});
+});
+
+describe('handleAgentAttachmentRead()', () => {
+	it('serves attachment bytes scoped to the default conversation', async () => {
+		const { adapter, stores, path, append } = await setup();
+		await append([
+			{
+				...scope,
+				id: 'created-1',
+				type: 'conversation_created',
+				kind: 'root',
+				affinityKey: 'affinity-1',
+				createdAt: scope.timestamp,
+			},
+		]);
+		const bytes = new TextEncoder().encode('hello-bytes');
+		const attachment = await createAttachmentRef({ id: 'att-1', mimeType: 'text/plain', bytes });
+		await stores.attachmentStore.put({
+			streamPath: path,
+			conversationId: scope.conversationId,
+			attachment,
+			bytes,
+		});
+
+		const response = await handleAgentAttachmentRead({
+			conversationStore: stores.conversationStreamStore,
+			attachmentStore: stores.attachmentStore,
+			path,
+			attachmentId: 'att-1',
+		});
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('content-type')).toBe('text/plain');
+		expect(response.headers.get('content-length')).toBe(String(bytes.byteLength));
+		expect(await response.text()).toBe('hello-bytes');
+		await adapter.close?.();
+	});
+
+	it('returns 404 for an unknown attachment id', async () => {
+		const { adapter, stores, path, append } = await setup();
+		await append([
+			{
+				...scope,
+				id: 'created-1',
+				type: 'conversation_created',
+				kind: 'root',
+				affinityKey: 'affinity-1',
+				createdAt: scope.timestamp,
+			},
+		]);
+
+		const response = await handleAgentAttachmentRead({
+			conversationStore: stores.conversationStreamStore,
+			attachmentStore: stores.attachmentStore,
+			path,
+			attachmentId: 'missing',
+		});
+
+		expect(response.status).toBe(404);
 		await adapter.close?.();
 	});
 });

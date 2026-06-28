@@ -73,9 +73,25 @@ export type ConversationStreamChunk =
 			error?: unknown;
 	  };
 
-/** The default public conversation for an agent instance is its root conversation. */
+// The public conversation API addresses exactly one conversation per agent
+// instance: the default harness/session root. An instance can hold other root
+// conversations too (every additional public `harness.session(name)` opens one),
+// so the default must be selected by its stable identity rather than by record
+// order. Fall back to any root only when no default scope exists, preserving the
+// prior behavior for instances that never used the default session.
+const DEFAULT_HARNESS = 'default';
+const DEFAULT_SESSION = 'default';
+
 function selectRootConversation(state: ReducedInstanceState) {
-	return [...state.conversations.values()].find((conversation) => conversation.kind === 'root');
+	const roots = [...state.conversations.values()].filter(
+		(conversation) => conversation.kind === 'root',
+	);
+	return (
+		roots.find(
+			(conversation) =>
+				conversation.harness === DEFAULT_HARNESS && conversation.session === DEFAULT_SESSION,
+		) ?? roots[0]
+	);
 }
 
 export function projectAgentConversationSnapshot(
@@ -138,7 +154,12 @@ function encodeRecord(
 						parts: record.content.map((content) =>
 							content.type === 'text'
 								? { type: 'text', text: content.text, state: 'done' }
-								: { type: 'file', mediaType: content.attachment.mimeType },
+								: {
+										type: 'file',
+										mediaType: content.attachment.mimeType,
+										id: content.attachment.id,
+										size: content.attachment.size,
+									},
 						),
 					},
 				},

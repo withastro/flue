@@ -296,6 +296,7 @@ configureFlueRuntime({
   runStore,
   eventStreamStore,
   conversationStreamStore,
+  attachmentStore,
 });
 
 try {

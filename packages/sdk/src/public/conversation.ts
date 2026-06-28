@@ -11,7 +11,19 @@ import type { PromptUsage } from '../types.ts';
 export type FlueConversationPart =
 	| { type: 'text'; text: string; state: 'streaming' | 'done' }
 	| { type: 'reasoning'; text: string; state: 'streaming' | 'done' }
-	| { type: 'file'; mediaType: string }
+	| {
+			type: 'file';
+			mediaType: string;
+			/**
+			 * Stable attachment id. Present on attachments that have been durably
+			 * recorded; absent on a local optimistic echo whose bytes have not been
+			 * persisted yet. Fetch the bytes with
+			 * `client.agents.attachmentUrl(name, id, attachment.id)`.
+			 */
+			id?: string;
+			/** Attachment size in bytes, when known. */
+			size?: number;
+	  }
 	| ({ type: 'dynamic-tool'; toolName: string; toolCallId: string } & (
 			| { state: 'input-available'; input: unknown; output?: never; errorText?: never }
 			| { state: 'output-available'; input: unknown; output: unknown; errorText?: never }

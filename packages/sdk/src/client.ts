@@ -97,6 +97,13 @@ export interface FlueClient {
 			id: string,
 			options?: AgentConversationObserveOptions,
 		): AgentConversationObservation;
+		/**
+		 * Absolute URL for one `file` part's attachment bytes, suitable as an
+		 * `<img>`/`<a>` source. The download endpoint is opt-in per agent (via the
+		 * agent module's `attachments` middleware export); without it the URL
+		 * returns 404.
+		 */
+		attachmentUrl(name: string, id: string, attachmentId: string): string;
 	};
 	/** Workflow-run inspection and streaming APIs. */
 	runs: {
@@ -159,6 +166,10 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 							),
 					},
 					opts,
+				),
+			attachmentUrl: (name, id, attachmentId) =>
+				http.url(
+					`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`,
 				),
 		},
 		runs: {

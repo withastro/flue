@@ -21,6 +21,7 @@ import type { AgentInteractionStart } from '../runtime/dev-lifecycle-logger.ts';
 import { agentStreamPath } from '../runtime/event-stream-store.ts';
 import { assertAgentDispatchAdmissionInput, handleAgentRequest } from '../runtime/handle-agent.ts';
 import {
+	handleAgentAttachmentRead,
 	handleAgentConversationHead,
 	handleAgentConversationRead,
 } from '../runtime/handle-conversation-routes.ts';
@@ -200,6 +201,21 @@ class CloudflareAgentCoordinator {
 		const method = request.method;
 		if (method === 'GET' || method === 'HEAD') {
 			const streamPath = agentStreamPath(this.agentName, this.instance.name);
+			// Attachment byte download. The outer Worker has already run the
+			// opt-in `attachments` middleware and only forwards GET, so the DO —
+			// which owns the bytes — just serves from its attachment store.
+			const attachmentId =
+				method === 'GET'
+					? new URL(request.url).pathname.match(/\/attachments\/([^/]+)\/?$/)?.[1]
+					: undefined;
+			if (attachmentId) {
+				return handleAgentAttachmentRead({
+					conversationStore: this.prepared.conversationStreamStore,
+					attachmentStore: this.prepared.attachmentStore,
+					path: streamPath,
+					attachmentId: decodeURIComponent(attachmentId),
+				});
+			}
 			if (method === 'HEAD') {
 				return await handleAgentConversationHead(
 					this.prepared.conversationStreamStore,

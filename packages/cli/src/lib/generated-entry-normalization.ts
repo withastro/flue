@@ -27,12 +27,14 @@ function normalizeBuiltModules(agentModules, workflowModules, channelModules = {
   for (const [name, mod] of Object.entries(agentModules)) {
     if (!mod.default || mod.default.__flueAgentDefinition !== true || typeof mod.default.initialize !== 'function') throw new Error('[flue] Agent "' + name + '" must default-export defineAgent(...).');
     if (mod.route !== undefined && typeof mod.route !== 'function') throw new Error('[flue] Agent "' + name + '" route export must be a callable Hono middleware value.');
+    if (mod.attachments !== undefined && typeof mod.attachments !== 'function') throw new Error('[flue] Agent "' + name + '" attachments export must be a callable Hono middleware value.');
     if (mod.description !== undefined && (typeof mod.description !== 'string' || mod.description.trim().length === 0)) throw new Error('[flue] Agent "' + name + '" description export must be a non-empty string.');
     const previous = agents.find((agent) => agent.definition === mod.default);
     if (previous) throw new Error('[flue] Agents "' + previous.name + '" and "' + name + '" default-export the same agent definition value. Use distinct defineAgent(...) values for dispatchable agent modules.');
     const agent = { name, definition: mod.default };
     if (mod.description !== undefined) agent.description = mod.description;
     if (typeof mod.route === 'function') agent.route = mod.route;
+    if (typeof mod.attachments === 'function') agent.attachments = mod.attachments;
     agents.push(agent);
   }
 

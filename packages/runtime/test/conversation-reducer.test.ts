@@ -787,7 +787,7 @@ describe('reduceConversationRecords()', () => {
 
 		expect(projectConversationUi(conversation, '2').messages[0]?.parts).toEqual([
 			{ type: 'text', text: 'Inspect this image.', state: 'done' },
-			{ type: 'file', mediaType: attachment.mimeType },
+			{ type: 'file', mediaType: attachment.mimeType, id: attachment.id, size: attachment.size },
 		]);
 		expect(
 			buildConversationContext(conversation, {

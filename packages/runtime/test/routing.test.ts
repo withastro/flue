@@ -1142,6 +1142,84 @@ describe('createDefaultFlueApp()', () => {
 	});
 });
 
+describe('flue() agent attachments route', () => {
+	it('returns 404 when the agent does not export an attachments middleware', async () => {
+		configureFlueRuntime(nodeRuntime({ agents: [agentRecord('assistant')] }));
+		const app = new Hono();
+		app.route('/', flue());
+
+		const response = await app.fetch(
+			new Request('http://localhost/agents/assistant/inst-1/attachments/att-1'),
+		);
+
+		expect(response.status).toBe(404);
+		expect((await response.json()).error.type).toBe('route_not_found');
+	});
+
+	it('includes opt-in guidance in the dev error envelope', async () => {
+		configureFlueRuntime(nodeRuntime({ devMode: true, agents: [agentRecord('assistant')] }));
+		const app = new Hono();
+		app.route('/', flue());
+
+		const response = await app.fetch(
+			new Request('http://localhost/agents/assistant/inst-1/attachments/att-1'),
+		);
+
+		expect(response.status).toBe(404);
+		expect((await response.json()).error.dev).toContain('attachments');
+	});
+
+	it('runs the exposed attachments middleware before serving', async () => {
+		configureFlueRuntime(
+			nodeRuntime({
+				agents: [
+					{
+						name: 'assistant',
+						definition: defineAgent(() => ({ model: false })),
+						attachments: async (c) => c.text('forbidden', 403),
+					},
+				],
+			}),
+		);
+		const app = new Hono();
+		app.route('/', flue());
+
+		const response = await app.fetch(
+			new Request('http://localhost/agents/assistant/inst-1/attachments/att-1'),
+		);
+
+		expect(response.status).toBe(403);
+		expect(await response.text()).toBe('forbidden');
+	});
+
+	it('reaches the byte handler when the attachments middleware calls next', async () => {
+		configureFlueRuntime(
+			nodeRuntime({
+				agents: [
+					{
+						name: 'assistant',
+						definition: defineAgent(() => ({ model: false })),
+						attachments: async (_c, next) => {
+							await next();
+						},
+					},
+				],
+			}),
+		);
+		const app = new Hono();
+		app.route('/', flue());
+
+		// No stream exists for this instance yet, so the handler is reached and
+		// reports a missing stream — distinct from the not-exposed 404 above.
+		const response = await app.fetch(
+			new Request('http://localhost/agents/assistant/inst-1/attachments/att-1'),
+		);
+
+		expect(response.status).toBe(404);
+		expect((await response.json()).error.type).toBe('stream_not_found');
+	});
+});
+
 function createTestContext({ runId, request }: { runId: string; request: Request }) {
 	return createFlueContext({
 		id: runId,

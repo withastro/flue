@@ -27,7 +27,7 @@ import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 type ConversationUiPart =
 	| { type: 'text'; text: string; state: 'streaming' | 'done' }
 	| { type: 'reasoning'; text: string; state: 'streaming' | 'done' }
-	| { type: 'file'; mediaType: string }
+	| { type: 'file'; mediaType: string; id?: string; size?: number }
 	| ({ type: 'dynamic-tool'; toolName: string; toolCallId: string } & (
 			| { state: 'input-available'; input: unknown }
 			| { state: 'output-available'; input: unknown; output: unknown }
@@ -46,7 +46,7 @@ export interface ConversationUiMessage {
 }
 
 function fileFromAttachment(attachment: AttachmentRef): ConversationUiPart {
-	return { type: 'file', mediaType: attachment.mimeType };
+	return { type: 'file', mediaType: attachment.mimeType, id: attachment.id, size: attachment.size };
 }
 
 export interface ConversationUiSnapshot {
