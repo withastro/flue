@@ -9,6 +9,7 @@ const emptySnapshot: AgentSnapshot = {
 	status: 'idle',
 	historyReady: false,
 	error: undefined,
+	failedSends: emptyAgentState.failedSends,
 };
 const emptySubscribe = () => () => {};
 

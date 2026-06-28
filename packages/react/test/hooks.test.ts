@@ -147,7 +147,9 @@ describe('useFlueAgent()', () => {
 			}),
 		);
 		await waitFor(() => expect(result.current.messages).toHaveLength(1));
-		expect(result.current.messages[0]?.id).toBe('entry-user');
+		// The canonical user message is re-keyed to the optimistic local id so the
+		// row stays stable across the optimistic→confirmed swap.
+		expect(result.current.messages[0]?.id).toBe('local:agent:id:1');
 	});
 });
 

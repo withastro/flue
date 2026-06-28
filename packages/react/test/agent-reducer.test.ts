@@ -102,9 +102,11 @@ describe('reduceAgentEvent()', () => {
 		expect(state.error).toBe(error);
 	});
 
-	it('keeps optimistic identity until its canonical user message arrives', () => {
+	it('keeps a stable optimistic id after the canonical user message arrives', () => {
 		let state = reduceAgentEvent(emptyAgentState, observed(conversation()));
 		state = reduceAgentEvent(state, { type: 'local_send_submitted', localId: 'local-1', message: 'hello' });
+		// Before confirmation the optimistic echo renders under its local id.
+		expect(state.messages[0]?.id).toBe('local-1');
 		state = reduceAgentEvent(state, {
 			type: 'local_send_admitted',
 			localId: 'local-1',
@@ -124,8 +126,11 @@ describe('reduceAgentEvent()', () => {
 			),
 		);
 
+		// The canonical user message is re-keyed to the optimistic local id, so the
+		// rendered row identity is stable across the optimistic→confirmed swap (no
+		// remove+add that would churn a keyed/virtualized list).
 		expect(state.messages).toHaveLength(1);
-		expect(state.messages[0]?.id).toBe('entry-user');
+		expect(state.messages[0]?.id).toBe('local-1');
 	});
 
 	it('reconciles the optimistic message when the canonical transcript arrives before admission', () => {
@@ -153,7 +158,7 @@ describe('reduceAgentEvent()', () => {
 			submissionId: 'submission-1',
 		});
 
-		expect(state.messages.map((message) => message.id)).toEqual(['entry-user']);
+		expect(state.messages.map((message) => message.id)).toEqual(['local-1']);
 		expect(state.pendingSends).toEqual([]);
 		expect(state.status).toBe('streaming');
 	});
@@ -174,6 +179,36 @@ describe('reduceAgentEvent()', () => {
 		expect(state.pendingSends).toEqual([]);
 		expect(state.activeSubmissionIds).toEqual([]);
 		expect(state.status).toBe('idle');
+	});
+
+	it('retains a failed send in the transcript with retry metadata', () => {
+		let state = reduceAgentEvent(emptyAgentState, observed(conversation()));
+		state = reduceAgentEvent(state, { type: 'local_send_submitted', localId: 'local-1', message: 'hello' });
+		const error = new Error('network down');
+		state = reduceAgentEvent(state, { type: 'local_send_failed', localId: 'local-1', error });
+
+		// The optimistic message stays visible (not silently dropped) and is
+		// reported via failedSends so a UI can offer retry.
+		expect(state.messages.map((message) => message.id)).toEqual(['local-1']);
+		expect(state.failedSends).toEqual([{ id: 'local-1', message: 'hello', error }]);
+		expect(state.status).toBe('error');
+		expect(state.error).toBe(error);
+	});
+
+	it('reflects a new in-flight send as submitted even while a prior send is failed', () => {
+		let state = reduceAgentEvent(emptyAgentState, observed(conversation()));
+		state = reduceAgentEvent(state, { type: 'local_send_submitted', localId: 'local-1', message: 'one' });
+		state = reduceAgentEvent(state, {
+			type: 'local_send_failed',
+			localId: 'local-1',
+			error: new Error('network down'),
+		});
+		state = reduceAgentEvent(state, { type: 'local_send_submitted', localId: 'local-2', message: 'two' });
+
+		// The failed message is still shown, but status tracks the in-flight send.
+		expect(state.messages.map((message) => message.id)).toEqual(['local-2', 'local-1']);
+		expect(state.status).toBe('submitted');
+		expect(state.failedSends.map((failed) => failed.id)).toEqual(['local-1']);
 	});
 
 	it('surfaces the failure when a failed settlement is observed before admission', () => {

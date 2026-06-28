@@ -139,8 +139,10 @@ describe('AgentSession', () => {
 			error: undefined,
 		});
 
+		// The canonical user message adopts the optimistic local id, so the row is
+		// stable across the optimistic→confirmed swap.
 		expect(session.getSnapshot().messages).toHaveLength(1);
-		expect(session.getSnapshot().messages[0]?.id).toBe('entry-canonical-user');
+		expect(session.getSnapshot().messages[0]?.id).toBe('local:agent:id:1');
 		session.dispose();
 	});
 });

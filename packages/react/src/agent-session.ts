@@ -103,6 +103,7 @@ function publicSnapshot(state: AgentState): AgentSnapshot {
 		status: state.status,
 		historyReady: state.historyReady,
 		error: state.error,
+		failedSends: state.failedSends,
 	};
 }
 
