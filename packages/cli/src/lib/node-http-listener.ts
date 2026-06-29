@@ -46,6 +46,16 @@ function corsPreflightResponse(request: Request, origin: string): Response {
 function withCorsHeaders(response: Response, origin: string): Response {
 	response.headers.set('access-control-allow-origin', origin);
 	response.headers.set('access-control-allow-credentials', 'true');
+	// Durable-stream consumers (the SDK conversation/run observers) resume from
+	// the `Stream-Next-Offset` response header and read `Stream-Up-To-Date`.
+	// Cross-origin JS can only see response headers listed here, so without this
+	// a separate-origin SPA can't advance its offset and re-applies the same
+	// batch forever. Expose the stream coordination headers (and the admission
+	// `Location`) to the browser.
+	response.headers.set(
+		'access-control-expose-headers',
+		'Stream-Next-Offset, Stream-Up-To-Date, Location',
+	);
 	response.headers.append('vary', 'Origin');
 	return response;
 }

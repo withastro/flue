@@ -53,6 +53,37 @@ describe('createStableNodeListener()', () => {
 		expect(await actual.text()).toBe('authored');
 	});
 
+	it('exposes durable-stream offset headers so a separate-origin SDK can advance', async () => {
+		const listener = createStableNodeListener({ port: 0, cors: true });
+		listeners.push(listener);
+		await listener.listen();
+		listener.install(
+			application(
+				() =>
+					new Response('[]', {
+						status: 200,
+						headers: {
+							'content-type': 'application/json',
+							'Stream-Next-Offset': '0000000000000000_0000000000000001',
+							'Stream-Up-To-Date': 'true',
+						},
+					}),
+			),
+		);
+
+		const response = await fetch(listener.url, { headers: { origin: 'http://localhost:5173' } });
+
+		// Cross-origin JS can only read response headers the server lists in
+		// `Access-Control-Expose-Headers`. The SDK resumes conversation/run
+		// streams from `Stream-Next-Offset`, so without exposing it a separate-
+		// origin SPA can never advance and re-applies the same batch forever.
+		const exposed = (response.headers.get('access-control-expose-headers') ?? '')
+			.split(',')
+			.map((value) => value.trim().toLowerCase());
+		expect(exposed).toContain('stream-next-offset');
+		expect(exposed).toContain('stream-up-to-date');
+	});
+
 	it('does not add CORS headers without the dev cors option', async () => {
 		const listener = createStableNodeListener({ port: 0 });
 		listeners.push(listener);
