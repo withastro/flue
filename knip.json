@@ -1,6 +1,6 @@
 {
 	"$schema": "https://unpkg.com/knip@6/schema.json",
-	"ignore": [],
+	"ignore": ["demo/**"],
 	"ignoreDependencies": ["@flue/cli", "agents", "wrangler"],
 	"ignoreIssues": {
 		"packages/runtime/src/runtime/schemas.ts": ["duplicates"]

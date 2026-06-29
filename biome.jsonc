@@ -43,7 +43,9 @@
 		"enabled": false
 	},
 	"files": {
-		"includes": ["**", "!apps/www", "!apps/docs/**/*.astro"]
+		// `demo` is a standalone example app with its own oxlint config; exclude it
+		// from the repo-wide biome lint (apps/www is likewise excluded).
+		"includes": ["**", "!apps/www", "!apps/docs/**/*.astro", "!demo"]
 	},
 	"overrides": [
 		{
