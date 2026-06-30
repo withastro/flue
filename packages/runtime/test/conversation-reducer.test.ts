@@ -543,6 +543,20 @@ describe('reduceConversationRecords()', () => {
 		});
 	});
 
+	it('stamps each projected message with its canonical creation timestamp', () => {
+		const state = reduceConversationRecords(createReducedInstanceState(), canonicalConversation(), '8');
+		const messages = projectConversationUi(required(state.conversations.get('conv_01')), '8').messages;
+
+		// User message: the time it was recorded. Assistant message: generation
+		// start (the assistant_message_started record), carried alongside usage/model.
+		expect(messages[0]?.metadata).toEqual({ timestamp: '2026-06-25T00:00:01.000Z' });
+		expect(messages[1]?.metadata).toEqual({
+			timestamp: '2026-06-25T00:00:02.000Z',
+			usage,
+			model: { provider: 'test', id: 'test-model' },
+		});
+	});
+
 	it('projects an in-progress assistant shell even before its first delta so post-hydration deltas attach', () => {
 		const state = reduceConversationRecords(
 			createReducedInstanceState(),
@@ -555,8 +569,18 @@ describe('reduceConversationRecords()', () => {
 		// The snapshot must still include the empty assistant message so a client
 		// that hydrates here can attach the deltas that arrive after the offset.
 		expect(projectConversationUi(conversation, '2').messages).toEqual([
-			{ id: 'entry_user', role: 'user', parts: [{ type: 'text', text: 'Hello', state: 'done' }] },
-			{ id: 'entry_assistant', role: 'assistant', parts: [] },
+			{
+				id: 'entry_user',
+				role: 'user',
+				parts: [{ type: 'text', text: 'Hello', state: 'done' }],
+				metadata: { timestamp: '2026-06-25T00:00:01.000Z' },
+			},
+			{
+				id: 'entry_assistant',
+				role: 'assistant',
+				parts: [],
+				metadata: { timestamp: '2026-06-25T00:00:02.000Z' },
+			},
 		]);
 	});
 
@@ -573,6 +597,7 @@ describe('reduceConversationRecords()', () => {
 				text: 'Hi ',
 				state: 'streaming',
 			}],
+			metadata: { timestamp: '2026-06-25T00:00:02.000Z' },
 		});
 		expect(buildConversationContext(conversation)).toHaveLength(1);
 		expect(classifyConversationSubmission(conversation, 'entry_user', { contextWindow: 100000 })).toMatchObject({

@@ -47,6 +47,13 @@ export interface FlueConversationMessage {
 	submissionId?: string;
 	parts: FlueConversationPart[];
 	metadata?: {
+		/**
+		 * Server-authored message creation time as an ISO 8601 string. For a user
+		 * message this is when it was recorded; for an assistant message it is when
+		 * generation started. A local optimistic echo carries a client-authored time
+		 * until its canonical copy (with the server time) arrives.
+		 */
+		timestamp?: string;
 		usage?: PromptUsage;
 		model?: { provider: string; id: string };
 	};

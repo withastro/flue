@@ -47,6 +47,37 @@ describe('applyConversationChunk()', () => {
 		expect(conversation.messages[0]?.parts[0]).toEqual({ type: 'text', text: 'hello', state: 'done' });
 	});
 
+	it('carries the message-started timestamp onto metadata and preserves it through deltas and completion', () => {
+		const conversation = reduce([
+			{ type: 'message-started', conversationId: 'c1', messageId: 'a1', timestamp: '2026-06-25T00:00:02.000Z' },
+			{ type: 'message-delta', conversationId: 'c1', messageId: 'a1', kind: 'text', delta: 'hi' },
+			{
+				type: 'message-completed',
+				conversationId: 'c1',
+				messageId: 'a1',
+				usage: {
+					input: 1,
+					output: 1,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 2,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+			},
+		]);
+		expect(conversation.messages[0]?.metadata).toEqual({
+			timestamp: '2026-06-25T00:00:02.000Z',
+			usage: {
+				input: 1,
+				output: 1,
+				cacheRead: 0,
+				cacheWrite: 0,
+				totalTokens: 2,
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			},
+		});
+	});
+
 	it('opens a new part when the delta kind changes from reasoning to text', () => {
 		const conversation = reduce([
 			{ type: 'message-started', conversationId: 'c1', messageId: 'a1' },

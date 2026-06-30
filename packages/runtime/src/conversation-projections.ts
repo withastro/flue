@@ -42,6 +42,8 @@ export interface ConversationUiMessage {
 	submissionId?: string;
 	parts: ConversationUiPart[];
 	metadata?: {
+		/** Server-authored message creation time as an ISO 8601 string. */
+		timestamp?: string;
 		usage?: PromptUsage;
 		model?: { provider: string; id: string };
 	};
@@ -212,6 +214,7 @@ function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMess
 			role: 'user',
 			...(entry.submissionId ? { submissionId: entry.submissionId } : {}),
 			parts,
+			metadata: { timestamp: entry.timestamp },
 		};
 	}
 	if (message.role === 'signal') {
@@ -219,6 +222,7 @@ function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMess
 			id: entry.id,
 			role: 'user',
 			parts: [{ type: 'text', text: message.content, state: 'done' }],
+			metadata: { timestamp: entry.timestamp },
 		};
 	}
 	if (message.role !== 'assistant') return undefined;
@@ -239,6 +243,7 @@ function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMess
 			};
 		}),
 		metadata: {
+			timestamp: entry.timestamp,
 			usage: message.usage,
 			model: { provider: message.provider, id: message.model },
 		},
@@ -314,5 +319,10 @@ function projectInProgressMessage(
 	// hydrates a snapshot taken between `assistant_message_started` and its first
 	// delta needs the message to exist so later streamed deltas attach instead of
 	// being dropped (the message-started record precedes the resume offset).
-	return { id: message.messageId, role: 'assistant', parts };
+	return {
+		id: message.messageId,
+		role: 'assistant',
+		parts,
+		metadata: { timestamp: message.timestamp },
+	};
 }

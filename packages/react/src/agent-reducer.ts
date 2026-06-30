@@ -234,6 +234,10 @@ function optimisticMessage(
 	return {
 		id: event.localId,
 		role: 'user',
+		// Client-authored creation time so the just-sent row shows a timestamp
+		// instantly. On the optimistic→confirmed swap, converge() replaces this
+		// echo with the canonical message carrying the server-authored time.
+		metadata: { timestamp: new Date().toISOString() },
 		parts: [
 			{ type: 'text', text: event.message, state: 'done' },
 			// The echo has no durable attachment id yet, but it does have the bytes

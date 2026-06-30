@@ -44,6 +44,8 @@ type ConversationStreamChunkBody =
 			conversationId: string;
 			messageId: string;
 			submissionId?: string;
+			/** Server-authored generation-start time as an ISO 8601 string. */
+			timestamp?: string;
 			model?: { provider: string; id: string };
 	  }
 	| {
@@ -184,6 +186,7 @@ function encodeRecord(
 						id: record.messageId,
 						role: 'user',
 						...(record.submissionId ? { submissionId: record.submissionId } : {}),
+						metadata: { timestamp: record.timestamp },
 						parts: record.content.map((content) =>
 							content.type === 'text'
 								? { type: 'text', text: content.text, state: 'done' }
@@ -208,6 +211,7 @@ function encodeRecord(
 					message: {
 						id: record.messageId,
 						role: 'user',
+						metadata: { timestamp: record.timestamp },
 						parts: [{ type: 'text', text: record.content, state: 'done' }],
 					},
 				},
@@ -218,6 +222,7 @@ function encodeRecord(
 					type: 'message-started',
 					conversationId,
 					messageId: record.messageId,
+					timestamp: record.timestamp,
 					...(record.submissionId ? { submissionId: record.submissionId } : {}),
 					...(typeof record.modelInfo.provider === 'string' && typeof record.modelInfo.model === 'string'
 						? { model: { provider: record.modelInfo.provider, id: record.modelInfo.model } }

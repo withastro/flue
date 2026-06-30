@@ -41,6 +41,8 @@ export type ConversationStreamChunk =
 			conversationId: string;
 			messageId: string;
 			submissionId?: string;
+			/** Server-authored generation-start time as an ISO 8601 string. */
+			timestamp?: string;
 			model?: { provider: string; id: string };
 			position: ConversationChunkPosition;
 	  }
@@ -158,7 +160,14 @@ export function applyConversationChunk(
 						role: 'assistant',
 						...(chunk.submissionId ? { submissionId: chunk.submissionId } : {}),
 						parts: [],
-						...(chunk.model ? { metadata: { model: chunk.model } } : {}),
+						...(chunk.timestamp || chunk.model
+							? {
+									metadata: {
+										...(chunk.timestamp ? { timestamp: chunk.timestamp } : {}),
+										...(chunk.model ? { model: chunk.model } : {}),
+									},
+								}
+							: {}),
 					},
 				];
 			});

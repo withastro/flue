@@ -182,7 +182,12 @@ describe('handleAgentConversationRead()', () => {
 		});
 		const updates = await response.json();
 
-		expect(updates).toMatchObject([{ type: 'message-appended', message: { id: 'entry_user' } }]);
+		expect(updates).toMatchObject([
+			{
+				type: 'message-appended',
+				message: { id: 'entry_user', metadata: { timestamp: '2026-06-26T00:00:00.000Z' } },
+			},
+		]);
 		await adapter.close?.();
 	});
 
