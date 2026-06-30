@@ -1377,6 +1377,9 @@ importers:
 
   packages/runtime:
     dependencies:
+      '@cfworker/json-schema':
+        specifier: ^4.1.1
+        version: 4.1.1
       '@earendil-works/pi-agent-core':
         specifier: ^0.80.2
         version: 0.80.2(@modelcontextprotocol/sdk@1.29.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ws@8.21.0)(zod@4.4.3)

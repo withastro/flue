@@ -437,6 +437,55 @@ describe('connectMcpServerWithClient()', () => {
 		);
 	});
 
+	it('accepts conforming structured output for a schema-bearing MCP tool using the default workerd-safe validator', async () => {
+		// Default validator is CfWorkerJsonSchemaValidator, which interprets JSON
+		// Schema at runtime (no `new Function`), so it both compiles on workerd and
+		// still performs real validation. Conforming output must pass.
+		mcp.listToolsResult = {
+			tools: [
+				{
+					name: 'lookup',
+					inputSchema: { type: 'object' },
+					outputSchema: {
+						type: 'object',
+						properties: { count: { type: 'number' } },
+						required: ['count'],
+					},
+				},
+			],
+		};
+		mcp.callToolResult = { content: [], structuredContent: { count: 2 } };
+		const connection = await connectMcpServerWithClient('catalog', mcp.client, transport);
+
+		await expect(firstPreparedTool(connection.tools).execute({})).resolves.toContain('"count": 2');
+	});
+
+	it('uses a caller-supplied JSON Schema validator to validate structured output when one is provided', async () => {
+		const getValidator = vi.fn(() => (_value: unknown) => ({
+			valid: false as const,
+			data: undefined,
+			errorMessage: 'custom validator rejected the output',
+		}));
+		mcp.listToolsResult = {
+			tools: [
+				{
+					name: 'lookup',
+					inputSchema: { type: 'object' },
+					outputSchema: { type: 'object' },
+				},
+			],
+		};
+		mcp.callToolResult = { content: [], structuredContent: { count: 2 } };
+		const connection = await connectMcpServerWithClient('catalog', mcp.client, transport, {}, {
+			getValidator,
+		});
+
+		await expect(firstPreparedTool(connection.tools).execute({})).rejects.toThrow(
+			'custom validator rejected the output',
+		);
+		expect(getValidator).toHaveBeenCalledOnce();
+	});
+
 	it('excludes a required-task MCP tool from the adapted tool list when the server lists one', async () => {
 		mcp.listToolsResults = [
 			{

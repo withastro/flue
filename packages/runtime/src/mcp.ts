@@ -7,8 +7,11 @@ import {
 	McpError,
 	type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
-import type { JsonSchemaValidator } from '@modelcontextprotocol/sdk/validation';
-import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
+import type {
+	JsonSchemaValidator,
+	jsonSchemaValidator as JsonSchemaValidatorProvider,
+} from '@modelcontextprotocol/sdk/validation';
+import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker';
 import { version as runtimeVersion } from '../package.json' with { type: 'json' };
 import { registerPreparedToolAdapter } from './tool-adapter.ts';
 import type { ToolDefinition } from './types.ts';
@@ -32,6 +35,18 @@ export interface McpServerOptions {
 	timeoutMs?: number;
 	/** Reset the per-request timeout whenever the server sends a progress notification. Defaults to `false`. */
 	resetTimeoutOnProgress?: boolean;
+	/**
+	 * JSON Schema validator used to validate MCP tool `outputSchema`s.
+	 *
+	 * Defaults to {@link CfWorkerJsonSchemaValidator}, which interprets JSON
+	 * Schema at runtime with no code generation. The MCP SDK's default
+	 * `AjvJsonSchemaValidator` compiles schemas via `new Function`, which throws
+	 * `EvalError: Code generation from strings disallowed` on edge runtimes such
+	 * as Cloudflare Workers (workerd). The default keeps `connectMcpServer`
+	 * working everywhere; pass a custom validator (e.g. `AjvJsonSchemaValidator`)
+	 * to opt into AJV on Node.js.
+	 */
+	jsonSchemaValidator?: JsonSchemaValidatorProvider;
 }
 
 /** Request options in the MCP SDK's shape (its `timeout` is milliseconds). */
@@ -72,15 +87,25 @@ export async function connectMcpServer(
 		requestInit,
 		options.fetch,
 	);
-	const client = new Client({
-		name: 'flue',
-		version: runtimeVersion,
-	});
+	const jsonSchemaValidator = options.jsonSchemaValidator ?? new CfWorkerJsonSchemaValidator();
+	const client = new Client(
+		{
+			name: 'flue',
+			version: runtimeVersion,
+		},
+		{ jsonSchemaValidator },
+	);
 
-	return connectMcpServerWithClient(name, client, transport, {
-		timeout: options.timeoutMs,
-		resetTimeoutOnProgress: options.resetTimeoutOnProgress,
-	});
+	return connectMcpServerWithClient(
+		name,
+		client,
+		transport,
+		{
+			timeout: options.timeoutMs,
+			resetTimeoutOnProgress: options.resetTimeoutOnProgress,
+		},
+		jsonSchemaValidator,
+	);
 }
 
 export async function connectMcpServerWithClient(
@@ -88,6 +113,7 @@ export async function connectMcpServerWithClient(
 	client: McpClient,
 	transport: Transport,
 	requestOptions: McpRequestOptions = {},
+	jsonSchemaValidator: JsonSchemaValidatorProvider = new CfWorkerJsonSchemaValidator(),
 ): Promise<McpServerConnection> {
 	try {
 		await client.connect(transport);
@@ -107,7 +133,7 @@ export async function connectMcpServerWithClient(
 
 		return {
 			name,
-			tools: createMcpTools(name, client, tools, requestOptions),
+			tools: createMcpTools(name, client, tools, requestOptions, jsonSchemaValidator),
 			close: () => client.close(),
 		};
 	} catch (error) {
@@ -140,9 +166,9 @@ function createMcpTools(
 	client: McpClient,
 	tools: Tool[],
 	requestOptions: McpRequestOptions,
+	validator: JsonSchemaValidatorProvider,
 ): ToolDefinition[] {
 	const names = new Set<string>();
-	const validator = new AjvJsonSchemaValidator();
 
 	const callableTools = tools.filter((tool) => {
 		if (tool.execution?.taskSupport !== 'required') return true;
