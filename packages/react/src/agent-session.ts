@@ -47,6 +47,17 @@ export class AgentSession {
 
 	getSnapshot = (): AgentSnapshot => this.snapshot;
 
+	/**
+	 * Re-runs the observation's history catch-up and resumes live updates. Use
+	 * this to re-check a conversation reported absent — its creation may be
+	 * triggered out-of-band (a server-side wakeup, queue worker, or webhook) —
+	 * on whatever schedule the application chooses. No-op before `start()` or
+	 * after `dispose()`.
+	 */
+	refresh = (): void => {
+		this.observation?.refresh();
+	};
+
 	async sendMessage(message: string, options: SendMessageOptions = {}): Promise<void> {
 		const localId = `local:${this.name}:${this.id}:${++this.localId}`;
 		this.dispatch({ type: 'local_send_submitted', localId, message, images: options.images });

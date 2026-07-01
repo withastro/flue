@@ -84,6 +84,8 @@ Messages are Flue-owned `FlueConversationMessage` values with a parts-based shap
 
 The hook uses the SDK's materialized `agents.observe()` layer: it loads the complete canonical snapshot, publishes it atomically in durable order, and continues from that exact checkpoint through reconnects and canonical resets. Consumers do not need to coordinate the snapshot and live updates or sort `messages`. Observation follows live updates with Durable Streams long-polling. For a single point-in-time read with no live updates, call `client.agents.history()` directly instead. Partial text and reasoning are best-effort while streaming; the completed canonical assistant message is authoritative.
 
+To observe a conversation that may be created out-of-band after mount — by a server-side wakeup, queue worker, or webhook — call `refresh()` to re-run history catch-up and resume live updates. Deciding when to re-check is the application's responsibility, matching the SDK's [`observe()` model](/docs/sdk/agents/#clientagentsobserve).
+
 ## Observe a workflow run
 
 Workflow invocation and observation are separate. Invoke the workflow with the SDK, retain its `runId`, and pass that ID to `useFlueWorkflow()`:

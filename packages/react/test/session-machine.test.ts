@@ -73,6 +73,26 @@ describe('AgentSession', () => {
 		expect(observation.close).toHaveBeenCalled();
 	});
 
+	it('resumes the observation when refresh() is called for an absent conversation', () => {
+		const observation = createFakeObservation();
+		const observe = vi.fn().mockReturnValue(observation);
+		const session = new AgentSession(
+			client({ agents: { observe } as unknown as FlueClient['agents'] }),
+			'agent',
+			'id',
+		);
+
+		session.start();
+		observation.emit({ conversation: undefined, offset: undefined, phase: 'absent', error: undefined });
+
+		// The application decides when to re-check a conversation that does not
+		// exist yet; refresh() re-runs the observation's history catch-up.
+		session.refresh();
+		expect(observation.refresh).toHaveBeenCalledTimes(1);
+
+		session.dispose();
+	});
+
 	it('reconciles an optimistic send with canonical user-message identity', async () => {
 		const observation = createFakeObservation();
 		const observe = vi.fn().mockReturnValue(observation);

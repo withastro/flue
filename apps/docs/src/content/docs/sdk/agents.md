@@ -125,13 +125,23 @@ const conversation = client.agents.observe('support', 'ticket-42', {
   live: 'sse',
 });
 
+let retry = 0;
 const unsubscribe = conversation.subscribe(() => {
   const snapshot = conversation.getSnapshot();
+
+  // A conversation that does not exist yet reports `phase: 'absent'` and stops.
+  // When and how to re-check is up to you; refresh() re-runs history catch-up.
+  if (snapshot.phase === 'absent') {
+    setTimeout(() => conversation.refresh(), Math.min(1000 * 2 ** retry++, 30_000));
+    return;
+  }
+
+  retry = 0;
   render(snapshot.conversation?.messages ?? []);
 });
 ```
 
-`getSnapshot()` returns the materialized `FlueConversationState`, its safe resume offset, the current phase, and any transport error. Call `refresh()` after creating an agent instance that was previously absent, and `close()` when observation is no longer needed.
+`getSnapshot()` returns the materialized `FlueConversationState`, its safe resume offset, the current phase, and any transport error. A conversation that has not been created yet reports `phase: 'absent'`; call `refresh()` to re-run history catch-up and resume live updates — the example above retries with a simple backoff — and `close()` when observation is no longer needed.
 
 The observed conversation is a `FlueConversationState` of `FlueConversationMessage` values. Each message has clean, render-ready parts (`text`, `reasoning`, `dynamic-tool`, `file`); streaming assembly is handled internally, so a `text` part is always `{ type, text, state }`. Structured tool output appears on the `dynamic-tool` part's `output`.
 

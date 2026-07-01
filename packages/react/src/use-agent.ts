@@ -22,6 +22,13 @@ export interface UseFlueAgentOptions {
 
 export interface UseFlueAgentResult extends AgentSnapshot {
 	sendMessage(message: string, options?: SendMessageOptions): Promise<void>;
+	/**
+	 * Re-checks the conversation and resumes live updates. Call this to observe a
+	 * conversation that may be created out-of-band after mount: when `status` is
+	 * `'idle'` with no messages (the conversation is absent), retry on whatever
+	 * schedule the application chooses.
+	 */
+	refresh(): void;
 }
 
 export function useFlueAgent(options: UseFlueAgentOptions): UseFlueAgentResult {
@@ -50,5 +57,6 @@ export function useFlueAgent(options: UseFlueAgentOptions): UseFlueAgentResult {
 			: async () => {
 					throw new Error('useFlueAgent() cannot send without an agent id');
 				},
+		refresh: session ? session.refresh : () => {},
 	};
 }
