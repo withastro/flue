@@ -543,6 +543,22 @@ describe('reduceConversationRecords()', () => {
 		});
 	});
 
+	it('preserves submission identity across a completed projected turn when records carry the same submission', () => {
+		const records = canonicalConversation().map((record) => {
+			if (record.type === 'user_message' || record.type === 'assistant_message_started') {
+				return { ...record, submissionId: 'submission_01' };
+			}
+			return record;
+		});
+		const state = reduceConversationRecords(createReducedInstanceState(), records, '8');
+		const messages = projectConversationUi(required(state.conversations.get('conv_01')), '8').messages;
+
+		expect(messages).toMatchObject([
+			{ id: 'entry_user', role: 'user', submissionId: 'submission_01' },
+			{ id: 'entry_assistant', role: 'assistant', submissionId: 'submission_01' },
+		]);
+	});
+
 	it('stamps each projected message with its canonical creation timestamp', () => {
 		const state = reduceConversationRecords(createReducedInstanceState(), canonicalConversation(), '8');
 		const messages = projectConversationUi(required(state.conversations.get('conv_01')), '8').messages;

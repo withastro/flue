@@ -229,6 +229,7 @@ function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMess
 	return {
 		id: entry.id,
 		role: 'assistant',
+		submissionId: entry.submissionId,
 		parts: message.content.map((block): ConversationUiPart => {
 			if (block.type === 'text') return { type: 'text', text: block.text, state: 'done' };
 			if (block.type === 'thinking') {
