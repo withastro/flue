@@ -212,6 +212,7 @@ export const docsSections: DocsSection[] = [
 					{ title: 'E2B', slug: 'ecosystem/sandboxes/e2b' },
 					{ title: 'exe.dev', slug: 'ecosystem/sandboxes/exedev' },
 					{ title: 'islo', slug: 'ecosystem/sandboxes/islo' },
+					{ title: 'Microsandbox', slug: 'ecosystem/sandboxes/microsandbox' },
 					{ title: 'Mirage', slug: 'ecosystem/sandboxes/mirage' },
 					{ title: 'Modal', slug: 'ecosystem/sandboxes/modal' },
 					{ title: 'Vercel Sandbox', slug: 'ecosystem/sandboxes/vercel' },

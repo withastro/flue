@@ -96,6 +96,7 @@ ecosystem/sandboxes/daytona -- Daytona
 ecosystem/sandboxes/e2b -- E2B
 ecosystem/sandboxes/exedev -- exe.dev
 ecosystem/sandboxes/islo -- islo
+ecosystem/sandboxes/microsandbox -- Microsandbox
 ecosystem/sandboxes/mirage -- Mirage
 ecosystem/sandboxes/modal -- Modal
 ecosystem/sandboxes/vercel -- Vercel Sandbox

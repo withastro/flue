@@ -269,6 +269,7 @@ export const sandboxes: EcosystemItem[] = [
 	},
 	{ name: 'exe.dev', href: '/docs/ecosystem/sandboxes/exedev/', background: '#2563eb' },
 	{ name: 'islo', href: '/docs/ecosystem/sandboxes/islo/', background: '#2563eb' },
+	{ name: 'Microsandbox', href: '/docs/ecosystem/sandboxes/microsandbox/', background: '#2563eb' },
 	{ name: 'Mirage', href: '/docs/ecosystem/sandboxes/mirage/', background: '#2563eb' },
 	{
 		name: 'Modal',
