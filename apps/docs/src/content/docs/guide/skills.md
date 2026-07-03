@@ -73,6 +73,8 @@ Each discovered skill is available by its declared name without a TypeScript imp
 
 If an imported skill registered on an agent and a discovered workspace skill declare the same name, initialization fails rather than choosing one implicitly.
 
+Flue also accepts inline skill metadata in `skills: [{ name, description }]`, but that form only registers a catalog entry. It does not package `SKILL.md`, and it does not inject reusable skill instructions or supporting files. Use imported skills or workspace-discovered skills when you want real reusable behavior.
+
 ## Frontmatter support
 
 Flue validates every `SKILL.md` against the [Agent Skills specification](https://agentskills.io/specification), whether the skill is imported or discovered in a workspace. The table below lists Flue's support level for each frontmatter field:

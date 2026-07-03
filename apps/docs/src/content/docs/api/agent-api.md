@@ -118,7 +118,7 @@ type Skill =
     };
 ```
 
-Skill metadata registered with an agent, harness, or profile. Imported `SkillReference` values bundle application-owned skill content. Inline metadata adds only a named catalog entry; it does not package or inject an instruction body. Initialization rejects a registered skill whose name collides with a workspace-discovered skill. See [Skills](/docs/guide/skills/).
+Skill metadata registered with an agent, harness, or profile. Imported `SkillReference` values bundle application-owned skill content. Inline metadata adds only a named catalog entry: it is visible in the skill catalog, but it does not package `SKILL.md`, inject instructions, or load supporting files. Use imported or workspace-discovered skills when you need reusable behavior. Initialization rejects a registered skill whose name collides with a workspace-discovered skill. See [Skills](/docs/guide/skills/).
 
 ## `defineTool(...)`
 
