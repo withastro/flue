@@ -992,8 +992,9 @@ export class OperationFailedError extends FlueError {
 		super({
 			type: 'operation_failed',
 			message: `${operation} failed: ${reason}`,
-			details: '',
+			details: reason,
 			dev: '',
+			meta: { operation, reason },
 		});
 	}
 }
