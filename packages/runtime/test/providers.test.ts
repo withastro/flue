@@ -64,6 +64,39 @@ function createContext() {
 	});
 }
 
+describe('resolveModel()', () => {
+	it('resolves every GPT-5.6 variant when an OpenAI model is selected', () => {
+		const sol = resolveModel('openai/gpt-5.6-sol');
+		const terra = resolveModel('openai/gpt-5.6-terra');
+		const luna = resolveModel('openai/gpt-5.6-luna');
+
+		expect(sol).toMatchObject({
+			id: 'gpt-5.6-sol',
+			provider: 'openai',
+			api: 'openai-responses',
+			reasoning: true,
+			thinkingLevelMap: { max: 'max' },
+		});
+		expect(terra).toMatchObject({
+			id: 'gpt-5.6-terra',
+			provider: 'openai',
+			api: 'openai-responses',
+			reasoning: true,
+			thinkingLevelMap: { max: 'max' },
+		});
+		expect(luna).toMatchObject({
+			id: 'gpt-5.6-luna',
+			provider: 'openai',
+			api: 'openai-responses',
+			reasoning: true,
+			thinkingLevelMap: { max: 'max' },
+		});
+		expect(sol.contextWindow).toBeGreaterThan(0);
+		expect(terra.contextWindow).toBeGreaterThan(0);
+		expect(luna.contextWindow).toBeGreaterThan(0);
+	});
+});
+
 describe('registerProvider()', () => {
 	it('sends operations to the registered base URL when a model uses a registered provider id', async () => {
 		const seen = captureFetch('Hello from the registered provider.');

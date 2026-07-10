@@ -20,6 +20,7 @@ const VALID_THINKING_LEVELS = {
 	medium: true,
 	high: true,
 	xhigh: true,
+	max: true,
 } as const satisfies Record<ThinkingLevel, true>;
 
 const AgentProfileSchema = v.strictObject(

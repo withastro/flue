@@ -52,7 +52,9 @@ ${DEPLOY_GUIDE_LIST}
    - We suggest these exact model specifiers:
      - \`anthropic/claude-sonnet-4-6\` - latest Sonnet
      - \`anthropic/claude-opus-4-7\` - latest Opus
-     - \`openai/gpt-5.5\` - GPT-5.5
+     - \`openai/gpt-5.6-sol\` - GPT-5.6 flagship capability
+     - \`openai/gpt-5.6-terra\` - GPT-5.6 balanced capability and cost
+     - \`openai/gpt-5.6-luna\` - GPT-5.6 fastest, lowest-cost option
      - \`openrouter/moonshotai/kimi-k2.6\` - latest Kimi
    - If the user wants a different provider or model, use this list to get the best model specifier: \`https://flueframework.com/models.json\`
    - If their requested model is unavailable, ask before substituting another model. Don't continue until you have a model specifier.

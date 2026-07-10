@@ -4,6 +4,7 @@
 
 ### New Features
 
+- OpenAI GPT-5.6 Sol, Terra, and Luna are now available through the built-in model catalog, including the new `max` reasoning effort tier, so agents can select the capability, cost, and latency profile that fits their workload.
 - Public conversation messages now expose typed `purpose` (`user`, `assistant`, `dispatch`, or `advisory`) and `display` (`visible`, `hidden`, or `diagnostic`), plus optional `turnId` grouping and a `signal` descriptor, so clients can distinguish public chat from internal, control, and advisory activity without parsing message text, timestamps, or ordering. The classification is applied identically across `client.agents.history()` snapshots and live updates, and `@flue/sdk` / `@flue/react` shapes are updated in lockstep (#404).
 - `@flue/react`'s `useFlueAgent()` now exposes `refresh()`, so apps observing an agent conversation that may be created out-of-band (a server-side wakeup, queue worker, or webhook) can re-check on their own schedule instead of faking an empty history snapshot. Retry policy stays in userland (#403).
 

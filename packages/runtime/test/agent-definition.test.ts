@@ -80,6 +80,10 @@ describe('defineAgent()', () => {
 });
 
 describe('defineAgentProfile()', () => {
+	it('accepts max reasoning effort when a profile selects the highest supported tier', () => {
+		expect(() => defineAgentProfile({ model: 'openai/gpt-5.6-sol', thinkingLevel: 'max' })).not.toThrow();
+	});
+
 	it('rejects unknown profile fields when a profile contains unsupported configuration', () => {
 		expect(() => defineAgentProfile({ model: 'anthropic/claude-haiku-4-5', unsupported: true } as never)).toThrow(
 			'unknown agent profile field "unsupported"',

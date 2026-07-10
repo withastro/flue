@@ -12,7 +12,7 @@
 	},
 	"dependencies": {
 		"@astrojs/mdx": "7.0.0-beta.2",
-		"@earendil-works/pi-ai": "^0.80.2",
+		"@earendil-works/pi-ai": "^0.80.6",
 		"@paper-design/shaders": "0.0.76",
 		"@tailwindcss/vite": "^4.2.0",
 		"astro": "7.0.0-beta.3",

@@ -1,7 +1,7 @@
 ---
 title: LLM (Models & Providers)
 description: Select models, configure providers, and tune reasoning behavior in Flue agents.
-lastReviewedAt: 2026-05-29
+lastReviewedAt: 2026-07-09
 ---
 
 Models determine what kind of work an agent can perform. Providers determine how your application reaches those models, authenticates its requests, and applies any transport-specific configuration.
@@ -15,10 +15,14 @@ A model specifier is the unique string Flue uses to refer to a specific model ac
 | Model specifier                       | Provider ID  | Model ID                   |
 | ------------------------------------- | ------------ | -------------------------- |
 | `anthropic/claude-sonnet-4-6`         | `anthropic`  | `claude-sonnet-4-6`        |
-| `openai/gpt-5.5`                      | `openai`     | `gpt-5.5`                  |
+| `openai/gpt-5.6-sol`                  | `openai`     | `gpt-5.6-sol`              |
+| `openai/gpt-5.6-terra`                | `openai`     | `gpt-5.6-terra`            |
+| `openai/gpt-5.6-luna`                 | `openai`     | `gpt-5.6-luna`             |
 | `openrouter/moonshotai/kimi-k2.6`     | `openrouter` | `moonshotai/kimi-k2.6`     |
 | `cloudflare/@cf/moonshotai/kimi-k2.6` | `cloudflare` | `@cf/moonshotai/kimi-k2.6` |
 | `cloudflare/openai/gpt-5.5`           | `cloudflare` | `openai/gpt-5.5`           |
+
+For direct OpenAI access, choose `openai/gpt-5.6-sol` for flagship capability, `openai/gpt-5.6-terra` for a balance of capability and cost, or `openai/gpt-5.6-luna` for fast, high-volume work at the lowest cost in the family.
 
 Use a model specifier to choose an agent's default model:
 
@@ -43,7 +47,8 @@ Reasoning effort controls how much additional reasoning Flue requests from a mod
 | `'low'`     | Favor lower reasoning cost or latency.                     |
 | `'medium'`  | Balance reasoning effort and cost. This is Flue's default. |
 | `'high'`    | Favor more careful reasoning.                              |
-| `'xhigh'`   | Request the highest exposed effort tier.                   |
+| `'xhigh'`   | Request an exceptionally high reasoning effort.            |
+| `'max'`     | Request the highest exposed effort tier.                   |
 
 Set the ordinary reasoning effort for an agent alongside its model:
 

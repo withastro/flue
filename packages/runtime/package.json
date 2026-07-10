@@ -73,8 +73,8 @@
 	},
 	"dependencies": {
 		"@cfworker/json-schema": "^4.1.1",
-		"@earendil-works/pi-agent-core": "^0.80.2",
-		"@earendil-works/pi-ai": "^0.80.2",
+		"@earendil-works/pi-agent-core": "^0.80.6",
+		"@earendil-works/pi-ai": "^0.80.6",
 		"@hono/node-server": "^2.0.3",
 		"@hono/standard-validator": "^0.2.0",
 		"@modelcontextprotocol/sdk": "^1.29.0",
