@@ -119,6 +119,9 @@ export type Skill =
 			description: string;
 	  };
 
+/** How model-visible sessions access registered skills. */
+export type SkillMode = 'activate' | 'files';
+
 // ─── File Stat ──────────────────────────────────────────────────────────────
 
 /**
@@ -313,6 +316,8 @@ export interface AgentConfig {
 	definitionSkills?: Skill[];
 	/** Discovered at runtime from .agents/skills/ in the session's cwd. */
 	skills: Record<string, Skill>;
+	/** Whether skills are loaded through a framework tool or read as ordinary files. */
+	skillMode?: SkillMode;
 	subagents?: Record<string, AgentProfile>;
 	actions?: ActionDefinition[];
 	/** Agent-wide default model. Per-call values override this. */
@@ -348,6 +353,8 @@ export interface AgentProfile {
 	instructions?: string;
 	/** Registered skills available to sessions initialized from this profile. */
 	skills?: Skill[];
+	/** Use `files` to advertise readable SKILL.md paths without skill-specific tools. */
+	skillMode?: SkillMode;
 	/** Custom model-callable tools available to sessions initialized from this profile. */
 	tools?: ToolDefinition[];
 	actions?: ActionDefinition[];
@@ -384,6 +391,8 @@ export interface AgentRuntimeConfig {
 	instructions?: string;
 	/** Additional registered skills available to initialized sessions. */
 	skills?: Skill[];
+	/** Use `files` to advertise readable SKILL.md paths without skill-specific tools. */
+	skillMode?: SkillMode;
 	/** Additional custom model-callable tools available to initialized sessions. */
 	tools?: ToolDefinition[];
 	actions?: ActionDefinition[];

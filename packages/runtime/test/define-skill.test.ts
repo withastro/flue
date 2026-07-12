@@ -158,6 +158,61 @@ describe('defineSkill()', () => {
 		expect(result.text).toBe('Review complete.');
 	});
 
+	it('reads a packaged SKILL.md through the normal read tool in files mode', async () => {
+		const provider = registerFauxProvider({ provider: `define-skill-${crypto.randomUUID()}` });
+		providers.push(provider);
+		const review = defineSkill({
+			name: 'code-review',
+			description: 'Reviews code changes. Use when evaluating a patch.',
+			instructions: 'Inspect the patch carefully.',
+		});
+		const skillPath = `/.flue/packaged-skills/${encodeURIComponent(review.id)}/SKILL.md`;
+		let activeToolNames: string[] = [];
+		let systemPrompt = '';
+		let readResult: unknown;
+		provider.setResponses([
+			(context) => {
+				activeToolNames = (context.tools ?? []).map((tool) => tool.name);
+				systemPrompt = context.systemPrompt ?? '';
+				return fauxAssistantMessage(fauxToolCall('read', { path: skillPath }), {
+					stopReason: 'toolUse',
+				});
+			},
+			(context) => {
+				readResult = context.messages.at(-1);
+				return fauxAssistantMessage('Review complete.');
+			},
+		]);
+		const ctx = createFlueContext({
+			id: 'file-backed-defined-skill-instance',
+			env: {},
+			agentConfig: { resolveModel: () => provider.getModel() },
+			createDefaultEnv: async () => createEnv(),
+		});
+		const harness = await ctx.initializeRootHarness(
+			defineAgent(() => ({
+				model: `${provider.getModel().provider}/${provider.getModel().id}`,
+				skills: [review],
+				skillMode: 'files',
+			})),
+		);
+		const session = await harness.session();
+
+		const result = await session.prompt('Review the patch.');
+
+		expect(activeToolNames).toContain('read');
+		expect(activeToolNames).not.toContain('activate_skill');
+		expect(activeToolNames).not.toContain('read_skill_resource');
+		expect(systemPrompt).toContain(skillPath);
+		expect(readResult).toMatchObject({
+			role: 'toolResult',
+			toolName: 'read',
+			content: [{ type: 'text', text: expect.stringContaining('Inspect the patch carefully.') }],
+			isError: false,
+		});
+		expect(result.text).toBe('Review complete.');
+	});
+
 	it('does not fall through to the sandbox for reserved packaged paths', async () => {
 		const provider = registerFauxProvider({ provider: `define-skill-${crypto.randomUUID()}` });
 		providers.push(provider);

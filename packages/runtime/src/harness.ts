@@ -212,7 +212,8 @@ export class Harness implements FlueHarness {
 		// defaults. Agent-less tasks reuse the parent's full config.
 		const instructions = taskAgent ? taskAgent.instructions : this.config.instructions;
 		const definitionSkills = taskAgent ? taskAgent.skills : this.config.definitionSkills;
-		const localContext = await discoverSessionContext(taskEnv, instructions, definitionSkills);
+		const skillMode = taskAgent?.skillMode ?? this.config.skillMode ?? 'activate';
+		const localContext = await discoverSessionContext(taskEnv, instructions, definitionSkills, skillMode);
 		const taskModel = taskAgent?.model !== undefined
 			? this.config.resolveModel(taskAgent.model)
 			: this.config.model;
@@ -225,6 +226,7 @@ export class Harness implements FlueHarness {
 			instructions,
 			definitionSkills,
 			skills: localContext.skills,
+			skillMode,
 			actions: taskAgent ? taskAgent.actions : this.config.actions,
 			subagents: taskAgent
 				? Object.fromEntries(

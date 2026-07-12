@@ -224,6 +224,73 @@ describe('session.skill()', () => {
 		expect(activeToolNames).not.toContain('activate_skill');
 	});
 
+	it('advertises workspace skill files without skill-specific tools in files mode', async () => {
+		const provider = createProvider();
+		let activeToolNames: string[] = [];
+		let systemPrompt = '';
+		provider.setResponses([
+			(context) => {
+				activeToolNames = (context.tools ?? []).map((tool) => tool.name);
+				systemPrompt = context.systemPrompt ?? '';
+				return fauxAssistantMessage('Skill file available.');
+			},
+		]);
+		const ctx = createFlueContext({
+			id: 'file-backed-skills-instance',
+			env: {},
+			agentConfig: {
+				resolveModel: () => provider.getModel(),
+			},
+			createDefaultEnv: async () =>
+				createEnv({
+					files: {
+						'/repo/.agents/skills/review/SKILL.md':
+							'---\nname: review\ndescription: Review workspace changes.\n---\nInspect the patch.',
+					},
+				}),
+		});
+		const harness = await ctx.initializeRootHarness(
+			defineAgent(() => ({
+				model: `${provider.getModel().provider}/${provider.getModel().id}`,
+				skillMode: 'files',
+			})),
+		);
+		const session = await harness.session();
+
+		await session.prompt('Review the workspace.');
+
+		expect(activeToolNames).toContain('read');
+		expect(activeToolNames).not.toContain('activate_skill');
+		expect(activeToolNames).not.toContain('read_skill_resource');
+		expect(systemPrompt).toContain('/repo/.agents/skills/review/SKILL.md');
+		expect(systemPrompt).toContain('read its `SKILL.md` file with the normal `read` tool');
+		expect(systemPrompt).not.toContain('call the `activate_skill` tool');
+	});
+
+	it('rejects metadata-only skills in files mode because they have no readable file', async () => {
+		const provider = createProvider();
+		const ctx = createFlueContext({
+			id: 'metadata-only-file-backed-skill-instance',
+			env: {},
+			agentConfig: {
+				resolveModel: () => provider.getModel(),
+			},
+			createDefaultEnv: async () => createEnv(),
+		});
+
+		await expect(
+			ctx.initializeRootHarness(
+				defineAgent(() => ({
+					model: `${provider.getModel().provider}/${provider.getModel().id}`,
+					skills: [{ name: 'review', description: 'Review changes.' }],
+					skillMode: 'files',
+				})),
+			),
+		).rejects.toThrow(
+			'[flue] Skill "review" cannot use files mode because it has no readable SKILL.md file.',
+		);
+	});
+
 	it('loads current workspace instructions when the model activates an available skill', async () => {
 		const provider = createProvider();
 		const files = {

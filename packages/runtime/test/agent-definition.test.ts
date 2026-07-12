@@ -86,6 +86,12 @@ describe('defineAgentProfile()', () => {
 		);
 	});
 
+	it('rejects unsupported skill modes', () => {
+		expect(() => defineAgentProfile({ skillMode: 'inline' } as never)).toThrow(
+			'requires a valid agent profile',
+		);
+	});
+
 	it('accepts Actions as first-class profile and runtime capabilities', async () => {
 		const profileAction = defineAction({
 			name: 'profile_action',

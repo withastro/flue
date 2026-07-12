@@ -134,6 +134,7 @@ export type {
 	ShellOptions,
 	ShellResult,
 	Skill,
+	SkillMode,
 	SkillOptions,
 	SkillReference,
 	TaskOptions,

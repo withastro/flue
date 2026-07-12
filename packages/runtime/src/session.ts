@@ -2032,26 +2032,32 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			...getRegisteredPackagedSkills(this.config.skills),
 			...activePackagedSkills,
 		};
+		const skillMode = this.config.skillMode ?? 'activate';
 		const skillNames = Object.keys(this.config.skills);
 		const activateSkillTool =
-			skillNames.length > 0
+			skillMode === 'activate' && skillNames.length > 0
 				? createActivateSkillTool(skillNames, (name) => this.activateSkillForTool(name))
 				: undefined;
 		const packagedRead = Object.values(packagedSkills).some((skill) =>
-			Object.keys(skill.files).some((path) => path !== 'SKILL.md'),
+			Object.keys(skill.files).some((path) => skillMode === 'files' || path !== 'SKILL.md'),
 		)
 			? createPackagedSkillReadTool(packagedSkills)
 			: undefined;
 		const frameworkTools = (taskTool: AgentTool<any>) => [
 			taskTool,
 			...(activateSkillTool ? [activateSkillTool] : []),
-			...(packagedRead ? [packagedRead] : []),
+			...(packagedRead && skillMode === 'activate' ? [packagedRead] : []),
 		];
 
 		if (this.toolFactory) {
 			let adapterTools = this.toolFactory(env, { subagents: this.config.subagents ?? {} });
 			if (packagedRead) {
 				const adapterRead = adapterTools.find((tool) => tool.name === 'read');
+				if (!adapterRead && skillMode === 'files') {
+					throw new Error(
+						'[flue] Packaged skills in files mode require the sandbox tool factory to provide a read tool.',
+					);
+				}
 				if (adapterRead) {
 					adapterTools = adapterTools.map((tool) =>
 						tool !== adapterRead

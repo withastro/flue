@@ -3,7 +3,7 @@
  * working directory. Used at runtime by the session initialisation path.
  */
 import { parseSkillMarkdown } from './skill-frontmatter.ts';
-import type { SessionEnv, Skill } from './types.ts';
+import type { SessionEnv, Skill, SkillMode } from './types.ts';
 
 export interface WorkspaceSkill {
 	readonly __flueWorkspaceSkill: true;
@@ -142,6 +142,7 @@ function composeSystemPrompt(
 	skills: Record<string, Skill>,
 	env?: { cwd: string; directoryListing?: string[] },
 	instructions?: string,
+	skillMode: SkillMode = 'activate',
 ): string {
 	const parts: string[] = [HEADLESS_PREAMBLE];
 
@@ -150,16 +151,22 @@ function composeSystemPrompt(
 
 	const skillEntries = Object.values(skills);
 	if (skillEntries.length > 0) {
+		parts.push('', '## Available Skills', '');
 		parts.push(
-			'',
-			'## Available Skills',
-			'',
-			'The following skills provide specialized instructions for specific tasks. When a task matches a skill description, call the `activate_skill` tool with that skill name before proceeding so its full instructions are loaded. Skill instructions and supporting resources stay lazy until activation or explicit file reads.',
+			skillMode === 'files'
+				? 'The following skills are ordinary files. When a task matches a skill description, read its `SKILL.md` file with the normal `read` tool before proceeding. Resolve supporting paths relative to that skill directory.'
+				: 'The following skills provide specialized instructions for specific tasks. When a task matches a skill description, call the `activate_skill` tool with that skill name before proceeding so its full instructions are loaded. Skill instructions and supporting resources stay lazy until activation or explicit file reads.',
 			'',
 		);
 		for (const skill of skillEntries) {
 			const desc = skill.description ? ` — ${skill.description}` : '';
-			parts.push(`- **${skill.name}**${desc}`);
+			const path = skillMode === 'files' ? skillMdPath(skill) : undefined;
+			if (skillMode === 'files' && !path) {
+				throw new Error(
+					`[flue] Skill "${skill.name}" cannot use files mode because it has no readable SKILL.md file.`,
+				);
+			}
+			parts.push(`- **${skill.name}**${desc}${path ? ` — ${path}` : ''}`);
 		}
 	}
 
@@ -185,6 +192,7 @@ export async function discoverSessionContext(
 	env: SessionEnv,
 	instructions?: string,
 	definitionSkills: readonly Skill[] = [],
+	skillMode: SkillMode = 'activate',
 ): Promise<{ systemPrompt: string; skills: Record<string, Skill> }> {
 	const cwd = env.cwd;
 
@@ -206,7 +214,16 @@ export async function discoverSessionContext(
 			directoryListing,
 		},
 		instructions,
+		skillMode,
 	);
 
 	return { systemPrompt, skills };
+}
+
+function skillMdPath(skill: Skill): string | undefined {
+	if (isWorkspaceSkill(skill)) return skill.skillMdPath;
+	if ('__flueSkillReference' in skill && skill.__flueSkillReference === true) {
+		return `/.flue/packaged-skills/${encodeURIComponent(skill.id)}/SKILL.md`;
+	}
+	return undefined;
 }
