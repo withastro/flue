@@ -333,9 +333,11 @@ export async function reconcileInterruptedSubmission(
 	// Resumable progress, or the one accepted degraded window. Both the
 	// durable-partial-stream case and the trailing-incomplete-tool-batch case
 	// classify 'continuable'; 'uncertain' is the accepted provider-redispatch
-	// window — nothing observable was persisted, so a single retry (which may
-	// re-dispatch the provider once) is safe under the at-least-once execution
-	// contract and `store: true` response replay.
+	// window. In the input-only case, the assistant start may already be
+	// persisted even though no output was produced, so recovery must terminalize
+	// that in-progress message before the provider is re-dispatched. A single
+	// retry is safe under the at-least-once execution contract and `store: true`
+	// response replay.
 	//
 	// Acquire the replacement attempt (the fencing CAS) BEFORE any recovery
 	// append, so a reconciler that loses the CAS never mutates session history.
@@ -362,7 +364,7 @@ export async function reconcileInterruptedSubmission(
 			lease,
 		);
 		if (!replacement?.attemptId) return undefined;
-		if (state === 'continuable') {
+		if (state === 'continuable' || state === 'uncertain') {
 			const recoveryCtx = createContext(dispatchId);
 			if (submission.kind === 'direct') recoveryCtx.setSubmissionId?.(submission.submissionId);
 			await createAgentSubmissionSessionHandler(agent, input, (s) =>

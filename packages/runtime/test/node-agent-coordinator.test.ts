@@ -202,13 +202,15 @@ async function createFauxCoordinator(
  *   retained child conversation (no outcome, no commit).
  * - 'partial-batch': a durable toolUse turn with two `lookup` calls, one
  *   outcome recorded, none committed.
+ * - 'ghost-start': an in-progress assistant started before any output was
+ *   persisted.
  * - 'ghost-stream': an in-progress assistant stream (started + one durable
  *   delta) never completed.
  */
 async function seedDanglingSubmission(options: {
 	dbPath: string;
 	dispatchId: string;
-	shape: 'task-call' | 'partial-batch' | 'ghost-stream';
+	shape: 'task-call' | 'partial-batch' | 'ghost-start' | 'ghost-stream';
 	durability?: { maxRetry: number; timeoutAt: number };
 }): Promise<{ conversationId: string; childConversationId?: string }> {
 	const adapter = sqlite(options.dbPath);
@@ -290,8 +292,8 @@ async function seedDanglingSubmission(options: {
 		options.durability ?? { maxRetry: 1, timeoutAt: Date.now() + 60_000 },
 	);
 
-	if (options.shape === 'ghost-stream') {
-		await append([
+	if (options.shape === 'ghost-start' || options.shape === 'ghost-stream') {
+		const records: ConversationRecord[] = [
 			{
 				...scope,
 				id: 'record-stream-started',
@@ -300,6 +302,8 @@ async function seedDanglingSubmission(options: {
 				parentId: inputEntryId,
 				modelInfo: { api: 'faux', provider: 'faux', model: 'reviewer' },
 			},
+		];
+		if (options.shape === 'ghost-stream') records.push(
 			{
 				...scope,
 				id: 'record-stream-text-started',
@@ -317,7 +321,8 @@ async function seedDanglingSubmission(options: {
 				sequence: 0,
 				delta: 'Durable partial',
 			},
-		]);
+		);
+		await append(records);
 		return { conversationId };
 	}
 
@@ -768,6 +773,51 @@ describe('NodeAgentCoordinator', () => {
 			expect(await executionStore.submissions.getSubmission('dispatch-stream-recovery')).toMatchObject({
 				status: 'settled',
 			});
+		});
+
+		it('terminalizes an input-only assistant start before running the replacement attempt', async () => {
+			const dbPath = createTempDbPath();
+			await seedDanglingSubmission({
+				dbPath,
+				dispatchId: 'dispatch-input-only-start',
+				shape: 'ghost-start',
+				durability: { maxRetry: 2, timeoutAt: Date.now() + 60_000 },
+			});
+			let providerCalls = 0;
+			const provider = createFauxProvider();
+			provider.setResponses([
+				() => {
+					providerCalls += 1;
+					return fauxAssistantMessage('Recovered after interruption.');
+				},
+				() => {
+					providerCalls += 1;
+					return fauxAssistantMessage('Follow-up reply.');
+				},
+			]);
+			const { coordinator, executionStore } = await createFauxCoordinator(dbPath, provider);
+
+			await coordinator.reconcileSubmissions();
+			await coordinator.waitForIdle();
+
+			expect(providerCalls).toBe(1);
+			expect(
+				await executionStore.submissions.getSubmission('dispatch-input-only-start'),
+			).toMatchObject({ status: 'settled' });
+			let records = await readCanonicalRecords(dbPath);
+			expect(records.find((record) => record.id === 'record_recovery_entry_stream_partial_aborted'))
+				.toMatchObject({ type: 'assistant_message_completed', stopReason: 'aborted' });
+
+			await coordinator.admitDispatch(makeDispatchInput({ dispatchId: 'dispatch-after-recovery' }));
+			await coordinator.waitForIdle();
+
+			expect(providerCalls).toBe(2);
+			expect(await executionStore.submissions.getSubmission('dispatch-after-recovery')).toMatchObject({
+				status: 'settled',
+			});
+			records = await readCanonicalRecords(dbPath);
+			expect(records.some((record) => record.submissionId === 'dispatch-after-recovery')).toBe(true);
+			await coordinator.shutdown();
 		});
 
 		it('reuses a completed parallel tool outcome after a real process kill before graph materialization', async () => {

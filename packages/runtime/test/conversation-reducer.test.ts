@@ -523,6 +523,146 @@ describe('reduceConversationRecords()', () => {
 		expect(buildConversationContext(conversation)).toHaveLength(1);
 	});
 
+	it('accepts the next user message when a settled submission left an orphaned assistant', () => {
+		const state = reduceConversationRecords(createReducedInstanceState(), [
+			required(canonicalConversation()[0]),
+			{
+				...scope,
+				id: 'record_user',
+				type: 'user_message',
+				timestamp: '2026-06-25T00:00:01.000Z',
+				messageId: 'entry_user',
+				parentId: null,
+				content: [{ type: 'text', text: 'Hello' }],
+				submissionId: 'submission_01',
+				attemptId: 'attempt_01',
+			},
+			{
+				...scope,
+				id: 'record_assistant_old_start',
+				type: 'assistant_message_started',
+				timestamp: '2026-06-25T00:00:02.000Z',
+				messageId: 'entry_assistant_old',
+				parentId: 'entry_user',
+				turnId: 'turn_01',
+				modelInfo: { api: 'test', provider: 'test', model: 'test-model' },
+				submissionId: 'submission_01',
+				attemptId: 'attempt_01',
+			},
+			{
+				...scope,
+				id: 'record_assistant_replacement_start',
+				type: 'assistant_message_started',
+				timestamp: '2026-06-25T00:00:03.000Z',
+				messageId: 'entry_assistant_replacement',
+				parentId: 'entry_user',
+				turnId: 'turn_02',
+				modelInfo: { api: 'test', provider: 'test', model: 'test-model' },
+				submissionId: 'submission_01',
+				attemptId: 'attempt_02',
+			},
+			{
+				...scope,
+				id: 'record_assistant_replacement_complete',
+				type: 'assistant_message_completed',
+				timestamp: '2026-06-25T00:00:04.000Z',
+				messageId: 'entry_assistant_replacement',
+				stopReason: 'error',
+				usage,
+				error: 'Provider failed.',
+				submissionId: 'submission_01',
+				attemptId: 'attempt_02',
+			},
+			{
+				...scope,
+				id: 'record_submission_settled',
+				type: 'submission_settled',
+				timestamp: '2026-06-25T00:00:05.000Z',
+				submissionId: 'submission_01',
+				attemptId: 'attempt_02',
+				outcome: 'failed',
+				error: { message: 'Provider failed.' },
+			},
+		], '5');
+
+		expect(() => applyConversationRecord(state, {
+			...scope,
+			id: 'record_user_follow_up',
+			type: 'user_message',
+			timestamp: '2026-06-25T00:00:06.000Z',
+			messageId: 'entry_user_follow_up',
+			parentId: 'entry_assistant_replacement',
+			content: [{ type: 'text', text: 'Try again' }],
+			submissionId: 'submission_02',
+			attemptId: 'attempt_03',
+		})).not.toThrow();
+	});
+
+	it('preserves committed entries and the active leaf when settlement clears submission-owned assistants', () => {
+		const records: ConversationRecord[] = [
+			required(canonicalConversation()[0]),
+			{
+				...scope,
+				id: 'record_user',
+				type: 'user_message',
+				timestamp: '2026-06-25T00:00:01.000Z',
+				messageId: 'entry_user',
+				parentId: null,
+				content: [{ type: 'text', text: 'Hello' }],
+				submissionId: 'submission_01',
+			},
+			{
+				...scope,
+				id: 'record_assistant_old_start',
+				type: 'assistant_message_started',
+				timestamp: '2026-06-25T00:00:02.000Z',
+				messageId: 'entry_assistant_old',
+				parentId: 'entry_user',
+				modelInfo: { api: 'test', provider: 'test', model: 'test-model' },
+				submissionId: 'submission_01',
+			},
+			{
+				...scope,
+				id: 'record_assistant_replacement_start',
+				type: 'assistant_message_started',
+				timestamp: '2026-06-25T00:00:03.000Z',
+				messageId: 'entry_assistant_replacement',
+				parentId: 'entry_user',
+				modelInfo: { api: 'test', provider: 'test', model: 'test-model' },
+				submissionId: 'submission_01',
+			},
+			{
+				...scope,
+				id: 'record_assistant_replacement_complete',
+				type: 'assistant_message_completed',
+				timestamp: '2026-06-25T00:00:04.000Z',
+				messageId: 'entry_assistant_replacement',
+				stopReason: 'error',
+				usage,
+				error: 'Provider failed.',
+				submissionId: 'submission_01',
+			},
+		];
+		const state = reduceConversationRecords(createReducedInstanceState(), records, '4');
+		const conversation = required(state.conversations.get('conv_01'));
+		const committedEntries = new Map(conversation.entries);
+		const activeLeafId = conversation.activeLeafId;
+
+		applyConversationRecord(state, {
+			...scope,
+			id: 'record_submission_settled',
+			type: 'submission_settled',
+			timestamp: '2026-06-25T00:00:05.000Z',
+			submissionId: 'submission_01',
+			outcome: 'failed',
+			error: { message: 'Provider failed.' },
+		});
+
+		expect(conversation.inProgressMessages).toHaveLength(0);
+		expect(conversation.entries).toEqual(committedEntries);
+		expect(conversation.activeLeafId).toBe(activeLeafId);
+	});
+
 	it('projects one complete UI snapshot through the physical catch-up offset', () => {
 		const state = reduceConversationRecords(createReducedInstanceState(), canonicalConversation(), '8');
 		const snapshot = projectConversationUi(required(state.conversations.get('conv_01')), '8');

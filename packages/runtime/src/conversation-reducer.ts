@@ -550,6 +550,13 @@ export function applyConversationRecord(
 			break;
 		}
 		case 'submission_settled':
+			if (typeof record.submissionId === 'string') {
+				for (const [messageId, message] of conversation.inProgressMessages) {
+					if (message.submissionId === record.submissionId) {
+						conversation.inProgressMessages.delete(messageId);
+					}
+				}
+			}
 			break;
 	}
 	state.recordsById.set(record.id, record);
