@@ -1,0 +1,19 @@
+skills/flue/SKILL.md
+  s_6048adf12208bf::t_7c860061c8ba0f 36,108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "79cff1a9f3afda4a72db374e2254a8fb0c57b1ef",
+  "prompts": {},
+  "sessions": {
+    "s_6048adf12208bf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce8b6b92-79ce-43a9-b910-f3c8fdcbffef",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
