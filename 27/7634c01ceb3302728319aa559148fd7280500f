@@ -1,0 +1,21 @@
+blueprints/sandbox--cloudflare-shell.md
+  s_8eeed75e966a6a::t_7b1d8510004f77 4,39,232-237,306-309,312-314,322-347,500-590
+examples/cloudflare/src/sandboxes/cloudflare-shell.ts
+  s_8eeed75e966a6a::t_9b7147f3d1b8cc 236-241,304-307,310-312,320-345
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "277634c01ceb3302728319aa559148fd7280500f",
+  "prompts": {},
+  "sessions": {
+    "s_8eeed75e966a6a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "09843d00-02d7-4a1e-a2d6-3a9d1053522b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
