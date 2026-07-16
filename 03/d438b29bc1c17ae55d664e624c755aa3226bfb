@@ -1,0 +1,47 @@
+apps/docs/src/content/docs/ecosystem/tooling/sentry.md
+  s_8eeed75e966a6a::t_e7baf062d48174 33-35,37,41,54-62
+blueprints/tooling--sentry.md
+  s_8eeed75e966a6a::t_ed92591bfdc695 101-104,106,114
+examples/sentry/src/app.ts
+  s_8eeed75e966a6a::t_f08b74513f7e5e 103-106,108,116
+packages/opentelemetry/src/content-policy.ts
+  s_8eeed75e966a6a::t_e4412a8e8198e3 12-13
+packages/opentelemetry/src/index.ts
+  s_8eeed75e966a6a::t_f24d146abb1d05 368,370,376,411,423-424,469,727-729,782,784-816,826-831
+packages/opentelemetry/test/index.test.ts
+  s_8eeed75e966a6a::t_740f0d421e8ce7 1614,1618-1625,1645-1698,1706-1709
+packages/runtime/src/client.ts
+  s_8eeed75e966a6a::t_efdb232aa85b52 79
+packages/runtime/src/errors.ts
+  s_8eeed75e966a6a::t_165917ce174ff6 733-782
+packages/runtime/src/runtime/agent-submissions.ts
+  s_8eeed75e966a6a::t_43281b2bac2982 14,909-914
+packages/runtime/src/session.ts
+  s_8eeed75e966a6a::t_67e4e57dc68f12 86,4175,4711-4721,4771-4781
+packages/runtime/src/types.ts
+  s_8eeed75e966a6a::t_857a89d5d1a903 1044-1049,1055-1058
+packages/runtime/test/error-diagnostics.test.ts
+  s_8eeed75e966a6a::t_30413239819364 5,151-196
+packages/runtime/test/tool.test.ts
+  s_8eeed75e966a6a::t_9d3c390391083c 449-453
+apps/docs/src/content/docs/ecosystem/tooling/opentelemetry.md
+  s_8eeed75e966a6a::t_b3e2205c47f4cd 50,75
+apps/docs/src/content/docs/guide/observability.md
+  s_8eeed75e966a6a::t_d421ff7f58370e 69-70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "03d438b29bc1c17ae55d664e624c755aa3226bfb",
+  "prompts": {},
+  "sessions": {
+    "s_8eeed75e966a6a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "09843d00-02d7-4a1e-a2d6-3a9d1053522b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
