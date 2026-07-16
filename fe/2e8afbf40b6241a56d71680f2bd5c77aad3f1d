@@ -1,0 +1,49 @@
+apps/docs/src/content/docs/cli/init.md
+  s_ff81048bd74134::t_150e02cc6c9d03 3-4,10,15,17-18,20-39,43-50,54,58,68-78,82,84,88,93-95,100-104
+apps/docs/src/content/docs/cli/overview.md
+  s_ff81048bd74134::t_2a52abce51a587 51
+apps/docs/src/content/docs/introduction/why-flue.md
+  s_6bfb4ae2bd5ccb::t_a5bc968139b257 9,11
+apps/docs/src/layouts/DocsLayout.astro
+  s_6bfb4ae2bd5ccb::t_3c2947af578774 38
+packages/cli/bin/flue.ts
+  s_ff81048bd74134::t_058e3823171fa2 16-21,33,40,59-64,69-71,127-130,318,322,326-327,330-332,338-339,636-647,649-650,653-684,686-701,703,706,709-715,736-769,773,775-776,782,792,795-797,813-816,1267
+packages/cli/package.json
+  s_ff81048bd74134::t_b4035ed417d1c3 37,42
+packages/cli/src/lib/init.ts
+  s_ff81048bd74134::t_f1243829bfd62b 1-453
+packages/cli/test/init.test.mjs
+  s_ff81048bd74134::t_78fe8eaa4fdf74 44,53-84,92,95-102,106,117-166,189
+pnpm-lock.yaml
+  s_ff81048bd74134::t_d075bf0acfb0fd 46-47,55-56,81,1255-1257,1265-1267,2047-2052,2059-2064,2072-2078,2086-2092,2100-2106,2114-2120,2126-2130,2137-2142,2149-2154,2159-2162,2166-2169,2176-2178,2194-2199,2210-2219,2228-2231,2668-2716,6199-6201,6685-6688,6747-6756,8130-8133,8984-8987,9312-9314,10483,10514-10516,10520-10522,10526-10528,10532-10534,10538-10540,10544-10546,10555-10562,10566-10568,10572-10574,10590-10604,10612-10618,10632-10642,10690-10720,10737-10760,10776-10782,11496-11526,12258,14727,14878,14906,14910-14914,14927,14946,15377-15380,15514-15606,17162-17163,17921,18262-18266,18281,18295,18310,18794-18810,18881,19285,19416,19579-19582,19750
+apps/docs/src/content/docs/getting-started/quickstart.mdx
+  s_ff81048bd74134::t_f929b7abbe8d9b 9,14,22,24,29,33,35,47,49,55,64,66,68,71,95,97,99,129
+apps/docs/src/content/docs/guide/models.md
+  s_ff81048bd74134::t_919c62d26a9719 2
+apps/docs/src/lib/docs-navigation.ts
+  s_ff81048bd74134::t_a5bd67bbb23b8b 46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fe2e8afbf40b6241a56d71680f2bd5c77aad3f1d",
+  "prompts": {},
+  "sessions": {
+    "s_6bfb4ae2bd5ccb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8f6b7f31-aba5-4135-b3fc-70eb20ab67ac",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_ff81048bd74134": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1d87d642-69ed-4b5d-885c-cfbd37b19090",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
