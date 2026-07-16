@@ -1,0 +1,61 @@
+packages/cli/.gitignore
+  s_f5616a2cc2c208::t_60daf89fe711b4 2
+packages/cli/package.json
+  s_f5616a2cc2c208::t_51611b61a7f03d 35
+packages/cli/scripts/generate-blueprint-index.ts
+  s_f5616a2cc2c208::t_dfc68a30de390f 15
+packages/cli/src/commands/docs.ts
+  s_f5616a2cc2c208::t_3e3ec5bfb29118 1-139
+packages/cli/src/commands/init.ts
+  s_f5616a2cc2c208::t_c735c927e0d6ee 1-253
+packages/cli/src/commands/run.ts
+  s_f5616a2cc2c208::t_16e39114fa1081 1-209
+packages/cli/src/errors.ts
+  s_f5616a2cc2c208::t_0e8d03f9982941 1-132
+packages/cli/src/flags.ts
+  s_f5616a2cc2c208::t_24ef592a5a86f6 1-47
+packages/cli/src/lib/init.ts
+  s_f5616a2cc2c208::t_f48b5a2af0833b 8
+packages/cli/src/lib/package-root.ts
+  s_f5616a2cc2c208::t_8870836d56dff1 1-45
+packages/cli/test/add.test.mjs
+  s_f5616a2cc2c208::t_3bb40a041c9479 596,699
+packages/cli/test/args.test.mjs
+  s_f5616a2cc2c208::t_eae29493250c96 66-70,73-76,79-80,82-92
+packages/cli/test/help.test.mjs
+  s_f5616a2cc2c208::t_0378ca7219e4fa 40-42
+packages/cli/tsdown.config.ts
+  s_f5616a2cc2c208::t_fa14b29bc16609 6
+pnpm-lock.yaml
+  s_f5616a2cc2c208::t_3fea13b6c759f0 1249-1251
+apps/docs/src/content/docs/cli/overview.md
+  s_f5616a2cc2c208::t_fca00441bdd6f3 4,34,56-57
+apps/docs/src/content/docs/cli/run.md
+  s_f5616a2cc2c208::t_d4ed580719f851 4,10,27,86
+packages/cli/src/cli.ts
+  s_f5616a2cc2c208::t_22245214a548c1 1-20
+packages/cli/src/commands/blueprints.ts
+  s_f5616a2cc2c208::t_d34c60029d7f7c 2-5,7-12,14-27,29-36,39-40,46,48-57,59-60,63,65-68,72-75,77-78,80-86,89-93,96,99,124-175,225,234,242-243,246
+packages/cli/src/help.ts
+  s_f5616a2cc2c208::t_c140020abb727f 1-39
+packages/cli/src/lib/docs-pages.ts
+  s_f5616a2cc2c208::t_832bd2cefec23f 1-158
+packages/cli/src/main.ts
+  s_f5616a2cc2c208::t_9132fe9330737a 1-85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1e2f4e7dff8cc69950f6b3269030a444558dc0ce",
+  "prompts": {},
+  "sessions": {
+    "s_f5616a2cc2c208": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "af30505e-d509-4a13-9df2-d9b3b472f6e9",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
