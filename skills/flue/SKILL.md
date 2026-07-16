@@ -100,6 +100,7 @@ ecosystem/sandboxes/mirage -- Mirage
 ecosystem/sandboxes/modal -- Modal
 ecosystem/sandboxes/vercel -- Vercel Sandbox
 ecosystem/tooling/braintrust -- Braintrust
+ecosystem/tooling/jetty -- Jetty
 ecosystem/tooling/opentelemetry -- OpenTelemetry
 ecosystem/tooling/sentry -- Sentry
 ecosystem/tooling/vitest-evals -- Vitest Evals

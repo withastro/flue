@@ -279,6 +279,57 @@ describe('flue()', () => {
 		});
 	});
 
+	it('admits an unwrapped signal DeliveredMessage when a direct agent POST receives one', async () => {
+		let delivered: unknown;
+		configureFlueRuntime(nodeRuntime({
+			target: 'node',
+			agents: [agentRecord('assistant', { route: async (_c, next) => next() })],
+			createAgentAdmission: (_agentName, _id) => async (message) => {
+				delivered = message;
+				return { submissionId: 'submission-1', offset: '-1' };
+			},
+			createWorkflowContext: createTestContext,
+			eventStreamStore: createTestEventStreamStore(),
+		}));
+		const app = new Hono();
+		app.route('/api', flue());
+
+		const response = await app.fetch(
+			new Request('http://localhost/api/agents/assistant/customer-123', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({
+					kind: 'signal',
+					type: 'slack.app_mention',
+					body: '<@UAPP> hello',
+					attributes: {
+						eventId: 'Ev1',
+						senderId: 'U1',
+						teamId: 'T1',
+						channelId: 'C1',
+						messageTs: '1.1',
+						threadTs: '1.1',
+					},
+				}),
+			}),
+		);
+
+		expect(response.status).toBe(202);
+		expect(delivered).toEqual({
+			kind: 'signal',
+			type: 'slack.app_mention',
+			body: '<@UAPP> hello',
+			attributes: {
+				eventId: 'Ev1',
+				senderId: 'U1',
+				teamId: 'T1',
+				channelId: 'C1',
+				messageTs: '1.1',
+				threadTs: '1.1',
+			},
+		});
+	});
+
 	it('rejects any wait query param with invalid_request when an agent POST is sent', async () => {
 		configureFlueRuntime(nodeRuntime({
 			target: 'node',

@@ -57,6 +57,36 @@ describe('createFlueClient', () => {
 				attachments: [{ type: 'image', data: 'YWJj', mimeType: 'image/png' }],
 			});
 		});
+
+		it('sends an unwrapped signal when a structured event is delivered', async () => {
+			const seen: Request[] = [];
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async (input, init) => {
+					seen.push(new Request(input, init));
+					return Response.json({ streamUrl: 'https://flue.test/stream', offset: '-1' });
+				},
+			});
+			await client.agents.send('hello', 'inst-1', {
+				message: {
+					kind: 'signal',
+					type: 'slack.app_mention',
+					body: '<@UAPP> hello',
+					attributes: {
+						eventId: 'Ev1',
+						senderId: 'U1',
+						teamId: 'T1',
+						channelId: 'C1',
+						messageTs: '1.1',
+						threadTs: '1.1',
+					},
+				},
+			});
+
+			expect(await seen[0]?.text()).toBe(
+				'{"kind":"signal","type":"slack.app_mention","body":"<@UAPP> hello","attributes":{"eventId":"Ev1","senderId":"U1","teamId":"T1","channelId":"C1","messageTs":"1.1","threadTs":"1.1"}}',
+			);
+		});
 	});
 
 	describe('agents.history() attachment urls', () => {
