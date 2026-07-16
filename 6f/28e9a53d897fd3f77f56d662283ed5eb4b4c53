@@ -1,0 +1,31 @@
+apps/docs/src/content/docs/guide/observability.md
+  s_8eeed75e966a6a::t_311d1540149311 73
+packages/runtime/src/cloudflare/workers-ai-provider.ts
+  s_8eeed75e966a6a::t_67b00dbf8fd0b1 35,357-364,498-502
+packages/runtime/src/provider-diagnostics.ts
+  s_8eeed75e966a6a::t_ae6ae1a4761bbe 1-110
+packages/runtime/src/session.ts
+  s_8eeed75e966a6a::t_29297da345a182 119,1885-1887,1900
+packages/runtime/src/types.ts
+  s_8eeed75e966a6a::t_7bcaccb0921a3b 1111-1122
+packages/runtime/test/cloudflare-workers-ai-provider.test.ts
+  s_8eeed75e966a6a::t_0deb130784fddb 5,469-531
+packages/runtime/test/provider-diagnostics.test.ts
+  s_8eeed75e966a6a::t_f19bc51ab7e242 1-129
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6f28e9a53d897fd3f77f56d662283ed5eb4b4c53",
+  "prompts": {},
+  "sessions": {
+    "s_8eeed75e966a6a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "09843d00-02d7-4a1e-a2d6-3a9d1053522b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
