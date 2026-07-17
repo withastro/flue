@@ -1,0 +1,93 @@
+CHANGELOG.md
+  s_5c373007ee50f1::t_78288931522244 7
+examples/assistant/vite.config.ts
+  s_5c373007ee50f1::t_08f391501cc0a4 2,5-7,9
+examples/assistant/wrangler.jsonc
+  s_5c373007ee50f1::t_6a6e0d5b45d92a 2-5
+examples/cloudflare/vite.config.ts
+  s_5c373007ee50f1::t_350d76dcaf801c 2,5-10,12
+examples/cloudflare/wrangler.jsonc
+  s_5c373007ee50f1::t_b630406dc1a8e8 2-6
+examples/intercom-channel/vite.config.cloudflare.ts
+  s_5c373007ee50f1::t_2ca83f81bb294e 2,6
+examples/notion-channel/vite.config.cloudflare.ts
+  s_5c373007ee50f1::t_efd294b89f6783 2,6
+examples/resend-channel/vite.config.cloudflare.ts
+  s_5c373007ee50f1::t_e60886aeb739d1 2,6
+examples/salesforce-marketing-cloud-channel/vite.config.cloudflare.ts
+  s_5c373007ee50f1::t_06b0b32164014a 2,6
+examples/shopify-channel/vite.config.cloudflare.ts
+  s_5c373007ee50f1::t_2d73d34a6e440d 2,6
+examples/zendesk-channel/vite.config.cloudflare.ts
+  s_5c373007ee50f1::t_f30f5b2b8f477c 2,6
+packages/vite/src/agent-scan.ts
+  s_5c373007ee50f1::t_40040ce25ca67e 50-52
+packages/vite/src/cloudflare-entry.ts
+  s_5c373007ee50f1::t_e6e74d7ac6b949 2-11,13-14
+packages/vite/src/index.ts
+  s_5c373007ee50f1::t_52bc4edaeea078 13,39-40
+packages/vite/test/cloudflare-build.integration.test.ts
+  s_5c373007ee50f1::t_e93d61e6135ee1 4-6,13,56-59,97-100,108-110,118-121
+packages/vite/test/cloudflare-dev.integration.test.ts
+  s_5c373007ee50f1::t_3f89c4c4d16046 2-6,13,62-65,89-92,110,118-120,148-149,162-164,209-210,217,223
+packages/vite/test/cloudflare-extensions.integration.test.ts
+  s_5c373007ee50f1::t_01c613c19d7a17 13,91-94
+packages/vite/src/cloudflare-worker-config.ts
+  s_4b382b1089b929::t_b3bb178e5464fb 2-3,5-12,14-19,21-29,31-40,42,52-55,58-60,64-66,68-76,79,81-83,86,88-94,96-113,116-136,141-143,145-153,156,159-162,164,166,168,170-177,179-184,187-193,196-200,202-210,212-219,221,223-239,241-254,256-257,260-266
+packages/vite/src/flue-plugin.ts
+  s_724b33eaac4c35::t_a3392155cbaab4 17-22,30-31,59,61-65,112,146-148,178,212-228,257-258,304-306,339-343,347,349-356,457-458,477-490,511-512,525-537,705-708,710-718,720-721,723-725,743-744,774-777,780-782,790-792,798-809,813,847-848,851-853
+packages/vite/test/cloudflare-worker-config.integration.test.ts
+  s_b471ea44017f14::t_5becdcfbb8117f 2-6,8-10,17,19,36-38,40,42-45,54-59,62-106,115-118,121-124,126-133,135-136,138,141,143-176,179-203,207-251,262-267,272-273,275,277-283,285-290,294,304,319,323-326,330
+apps/docs/package.json
+  s_b471ea44017f14::t_b2fa7f5554cd29 8,11
+apps/docs/public/_headers
+  s_b471ea44017f14::t_addeaf5852264c 1-2
+apps/docs/wrangler.jsonc
+  s_b471ea44017f14::t_8126365771c9c3 18-30
+apps/www/package.json
+  s_b471ea44017f14::t_bfb992c579d397 10
+apps/www/public/_headers
+  s_b471ea44017f14::t_976919744d4e64 1-2
+apps/www/wrangler.jsonc
+  s_b471ea44017f14::t_f23b0a91a1a974 10-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3a66670359679b7fc4de750c1257d2b26b0593bd",
+  "prompts": {},
+  "sessions": {
+    "s_4b382b1089b929": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a57aea96d98d369fb",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_5c373007ee50f1": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_091f4b0ceffe6VaH21VYeEilYw",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_724b33eaac4c35": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3700880bee896fc4",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_b471ea44017f14": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "836ce0de-b890-4a33-a2c9-217a91f58537",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
