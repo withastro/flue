@@ -1,0 +1,35 @@
+apps/docs/src/content/docs/guide/workflows.md
+  s_16ba7eb8e0cf28::t_e36a38ec33d14a 1-179
+apps/docs/src/content/docs/guide/building-agents.md
+  s_7b0e2677332b9e::t_f1f1fd5c6aee5f 203
+apps/docs/src/content/docs/guide/durability.md
+  s_7b0e2677332b9e::t_e435f2ffc103f5 156
+apps/docs/src/content/docs/guide/migration.md
+  s_7b0e2677332b9e::t_476688b3c9e9c2 180
+apps/docs/src/lib/docs-navigation.ts
+  s_7b0e2677332b9e::t_2a438ec0c8b7cc 60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "33aa0ef0a833f30d3fef1ffb787a033fa0b883f9",
+  "prompts": {},
+  "sessions": {
+    "s_16ba7eb8e0cf28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a48d96c0-6e3c-47e1-af5c-a3612e4a757e",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_7b0e2677332b9e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86349924-0a8f-41b3-a47d-7b17b7273f2e",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
