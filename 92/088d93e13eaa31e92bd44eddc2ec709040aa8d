@@ -1,0 +1,187 @@
+apps/docs/src/content/docs/ecosystem/databases/libsql.md
+  s_b471ea44017f14::t_9f73648e96d058 148-160
+apps/docs/src/content/docs/ecosystem/databases/postgres.md
+  s_b471ea44017f14::t_8f86c18834afb6 117-129
+apps/docs/src/content/docs/ecosystem/databases/turso.md
+  s_b471ea44017f14::t_82f660bad3a029 145-157
+apps/docs/src/content/docs/guide/channels.md
+  s_b471ea44017f14::t_8887e430775f78 121,189-209
+apps/docs/src/content/docs/guide/models.md
+  s_b471ea44017f14::t_73e7c78755731b 36-39,84,229
+apps/docs/src/content/docs/guide/routing.md
+  s_b471ea44017f14::t_8adea39a61e1bc 114
+apps/docs/src/content/docs/guide/sandboxes.md
+  s_b471ea44017f14::t_0827eb7a763fbb 194
+apps/docs/src/content/docs/guide/schedules.md
+  s_b471ea44017f14::t_bda43cf24bd8f7 124
+apps/docs/src/content/docs/guide/subagents.md
+  s_b471ea44017f14::t_68f9a8338ceb63 59,61-65,94,98-99,165
+apps/docs/public/_redirects
+  s_3ef0f87b096b90::t_b1deab35116638 13-14
+apps/docs/src/content/docs/cli/add.md
+  s_596a67e18f9a49::t_f0d38ff1143648 3-4,10,15-17,19,23-26,30-32,37,40-48
+apps/docs/src/content/docs/cli/docs.md
+  s_b471ea44017f14::t_f7281ec8edd43c 3-4,17,19,21,23,25,27,36-38,44-45,49,51-52,54-57,61-62
+apps/docs/src/content/docs/cli/init.md
+  s_596a67e18f9a49::t_a6a1241af146ec 3-4,10,15,17,19,23-28,30,32,34,36-47,52-57
+apps/docs/src/content/docs/cli/overview.md
+  s_596a67e18f9a49::t_0202f60ca2ec11 3-4,7,9,11,13,16,19,22,25,27-31,33,35,37-40,42
+apps/docs/src/content/docs/cli/run.md
+  s_596a67e18f9a49::t_2bb216ca69e9a2 3-4,10,15,17,21-31,33,35,39-41,43-44,48,50,52-54,56-58,60-61,63-64,66-67,69-70
+apps/docs/src/content/docs/cli/update.md
+  s_596a67e18f9a49::t_4be7651e5e9ee0 3-4,10,15,17,21-24,28-30,35-38
+apps/docs/src/content/docs/ecosystem/databases/mysql.md
+  s_b471ea44017f14::t_140e02c97fad0d 126-138
+apps/docs/src/content/docs/ecosystem/databases/supabase.md
+  s_b471ea44017f14::t_c13c389c8dc6cd 135-148
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_b471ea44017f14::t_2b7adb5623eaf2 455
+apps/docs/src/content/docs/ecosystem/deploy/node.md
+  s_b471ea44017f14::t_a2ed1f3256b25a 258
+apps/docs/src/content/docs/ecosystem/tooling/braintrust.md
+  s_b471ea44017f14::t_0c2e9b10925306 56-60
+apps/docs/src/content/docs/ecosystem/tooling/opentelemetry.md
+  s_3b946584776653::t_3428c4318cf142 35-40,42
+apps/docs/src/content/docs/ecosystem/tooling/sentry.md
+  s_b471ea44017f14::t_844458e6167e23 84-85
+apps/docs/src/content/docs/guide/database.md
+  s_b471ea44017f14::t_9f3972b51bc01f 69,75-84
+apps/docs/src/content/docs/guide/evals.md
+  s_0b19c4ce7d01f6::t_d6f1517f34d506 122-123,203
+apps/docs/src/content/docs/guide/observability.md
+  s_0b19c4ce7d01f6::t_41cf4bc0a3b1dc 13-14,159-161
+apps/docs/src/content/docs/reference/configuration.md
+  s_3b946584776653::t_1b86d01841c024 3-4,7,9-18,26,28,30-32,34,36,38,40-45,47,49,51,53,55-56,58,60,62-64,66,68-76,78,80,82,84-87,89,91,93-94,96,98,100-102,104-118,120,122-126,136-222,225-241,244-404
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_32bb5bd112b007::t_dde38592c90a65 3-4,7,9,11,17-19,21,23-31,33-35,38-41,43-45,47,49,52-100,104,106,108-114,116,118-120,122,124-131,133,135-148,152-153,156-173,177-183,185,189-190,193-195,199-235,237-239,241,243,245-251,253
+apps/docs/src/content/docs/reference/errors.md
+  s_c7a3c9d8e67fa5::t_b639e5833cf9d5 3-4,7,9,11,14-19,23,25-49,51-54,56,58-60,62,64,66,68,70-80,82,84,86,88,91-92,96-100,102-106,108,110-115,117,119-121,123,125,127-172,174,176,178-227,236,238-239,241,243-245,247,249,251-253,255,257,259-277,279,281,283-470,472-486
+apps/docs/src/content/docs/reference/events.md
+  s_4d62bab37ba409::t_c6000d2de6cbd2 3-4,7-11,14-21,24,26-29,31,33,35-49,51,53-57,59,61-66,68-69,71,73-88,90,92-94,96,98-106,108,110,112,114-115,117,119,121-129,131,133,136-546,549,553,556-558,561-565,567,569,577,579,581,583-586,588,590-592,594
+apps/docs/src/content/docs/reference/provider-api.md
+  s_c7a3c9d8e67fa5::t_21f6c50dfa84f2 3-4,7,9,12-18,27,30-34,37,39-64,66-68,70,76,78-83,87,105-168,172-217,222-233,236,238-243,245-247,249,252-255,258-260,262-266
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_c7a3c9d8e67fa5::t_e0cb86bb503ed2 3-4,7,9,11,14-16,18,20-31,33-38,44-144,146,148,150-151,153,155-157,159-163,168,185,189-191,193-206,209-211,214,216-220,222,225-248,250,252-255,258-264,266-267,269-271,274-285,288,290,293-298,301-305,307-309,311,313,315,317-318,320,322,324,326-329,331,333,335-336,338,340,342,344-347,349,351,353,355-356,358,360,362,364-368,370,372,374,376-379,381-394,396,398-399,401,403,405-409,411,413-441,443
+apps/docs/src/content/docs/reference/streaming-protocol.md
+  s_2efdb40349d969::t_d8c9764d3bb1f9 3-4,7,9,11,13-17,19,21,23,25-27,29-34,36,38,40-105,107,109,111,113,115-149,152-179,181,183-286,288,290,292,294,296-298
+apps/docs/src/content/docs/sdk/create-flue-client.md
+  s_596a67e18f9a49::t_7b8fb7b5f701d5 1-73
+apps/docs/src/content/docs/sdk/errors.md
+  s_596a67e18f9a49::t_01ceac00038cff 3-4,7-28,36,40-45,47,49-56,68-81,86-88,90,92,94-133,137-146,150,156-160,166-172,178-180,185,195,199-206,214-244
+apps/docs/src/content/docs/sdk/events.md
+  s_f1057e24c4e923::t_090fc6a30de4ee 2-4,7,9-11,13,15,17-18,20-21,23-32,34,36-40,42,44-49,51,53-54,56-87
+apps/docs/src/content/docs/sdk/flue-client.md
+  s_596a67e18f9a49::t_830b53f21ba8f1 2-4,21-27,29,35,39-53,67-80,82,91-97,110,112-119,125-127,129-134,138-150,152,158,160-162,172-174,176,179,182,185-202,204-209,211,213-259,262-300,304-316,318-322,324-327,329,331,334-395,398,400,406,408
+apps/docs/src/content/docs/sdk/overview.md
+  s_0cf97d9533f2fb::t_ac312f3c12d9dd 3-4,7,9-17,23,27,29,31-33,35-36,38,41-53,55-60,62,64,66-67,69,71-74
+apps/docs/src/lib/docs-navigation.ts
+  s_b471ea44017f14::t_454bbbd3d910f4 133-135
+apps/docs/src/styles/global.css
+  s_b471ea44017f14::t_74c66b4e929e03 321-331,356-361,363-393
+apps/docs/src/content/docs/guide/durability.md
+  s_c7a3c9d8e67fa5::t_6feb0348985c1b 15
+apps/docs/src/content/docs/guide/migration.md
+  s_c7a3c9d8e67fa5::t_02662c63f2ff8a 7,11-15,40-43,47,121-134,142,195-199
+apps/docs/src/content/docs/guide/skills.md
+  s_c7a3c9d8e67fa5::t_e8957010066c1c 53-58,64,153,179
+apps/docs/src/content/docs/reference/agent-api.md
+  s_c7a3c9d8e67fa5::t_95fa1d9829d8b4 3-4,7,9,11-18,21-24,28,30-35,37,39-41,45,47-50,52,55,57-58,62-68,70-72,74-76,86,88-90,95-97,99,102-104,108-110,112,114,116-125,127,129,132,134-141,143,146,148-153,155-158,162,164,166-169,171,173-175,177,179-183,185,187,189-191,193,195,197,200,202-204,207,209-212,215-216,218-220,224,226,228-229,231,233-240,242,245-250,254-258,260,263-265,269,271,274,276-278,282,284,286,289,291,293-296,299,301-303,306-308,312,314-318,320,322,325-327,330,332-335,337,339-344,346,348,351,353-354,358,360,363-371,375-377,379,381,384-391,394-399,402-405,408-412,414-416,418-430,435,437,440-442,446,448,450,452,454,456-460,462,465-473,476,478-484,486,488,491,495-497,499-502,506-511,513,515,517-518,520,522,525-526,530-534,536,539,542,544,547,549-555,559,561-567,569,572,575,577,580-585,589-593,595,598,601,603,606,608,610-617,620-624,627,629-635,637,639-643,645,647,649,651-657,659,661-663,665,667,669-674
+apps/docs/src/content/docs/reference/agent-hooks-api.md
+  s_c7a3c9d8e67fa5::t_ce2726ac63c72a 3-4,7,9,11-25,27,29,31,33-35,37,39-42,44,46-47,49,51-52,54,56-60,62,65,67-69,71-72,75,77-81,83,86-90,93-100,103,105-106,110-118,120,123,126,128-130,132,134-135,137,139-144,147,149-152,154,156-157,160,162-166,169,172-175,177,180-181,183,186-197,200,203,205-208,216,218-222,224-227,230-236,238,241-245,248,250-255,257,260-261,263-266,270,272-277,279,282,285-287,289-292,309,311-317,319,322,324,326-328,332,334-338,340,343,346-349,351,355,357-359,363,377,379,381-384
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "92088d93e13eaa31e92bd44eddc2ec709040aa8d",
+  "prompts": {},
+  "sessions": {
+    "s_0b19c4ce7d01f6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a659f27c1d1e92903",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_0cf97d9533f2fb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a48d206972f1e8d01",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_2efdb40349d969": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a878a8dbb7f0c26cf",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_32bb5bd112b007": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abfbd4e443433c41b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_3b946584776653": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0c2839b482080756",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_3ef0f87b096b90": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad8d722ef200af8cc",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_4d62bab37ba409": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab2923c0b42c01469",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_596a67e18f9a49": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a24344f4fa93e95c2",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_b471ea44017f14": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "836ce0de-b890-4a33-a2c9-217a91f58537",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_c7a3c9d8e67fa5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a7871797f65b07ff7",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f1057e24c4e923": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a1857a360692378c8",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
