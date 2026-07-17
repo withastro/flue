@@ -1,0 +1,131 @@
+apps/docs/src/components/docs/DocsSearch.astro
+  s_b471ea44017f14::t_f841c82d578f89 37
+apps/docs/src/content/docs/cli/init.md
+  s_b471ea44017f14::t_dbf46d33f2722b 36,95
+apps/docs/src/content/docs/cli/run.md
+  s_b471ea44017f14::t_b54f5c9eef8be1 19
+apps/docs/src/content/docs/ecosystem/databases/libsql.md
+  s_b471ea44017f14::t_25f8af34247f80 156
+apps/docs/src/content/docs/ecosystem/databases/mysql.md
+  s_b471ea44017f14::t_7c8034e513499a 134
+apps/docs/src/content/docs/ecosystem/databases/postgres.md
+  s_b471ea44017f14::t_a8f162d8c8d233 126
+apps/docs/src/content/docs/ecosystem/databases/supabase.md
+  s_b471ea44017f14::t_85c4b3c59938b9 144
+apps/docs/src/content/docs/ecosystem/databases/turso.md
+  s_b471ea44017f14::t_61f32fa5d618a7 153
+apps/docs/src/content/docs/ecosystem/deploy/aws.md
+  s_b471ea44017f14::t_d2f0909dbcb118 50
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_b471ea44017f14::t_b4e9b8474cfb91 470,549
+apps/docs/src/content/docs/ecosystem/deploy/docker.md
+  s_b471ea44017f14::t_d186f63060abfb 86
+apps/docs/src/content/docs/ecosystem/deploy/fly.md
+  s_b471ea44017f14::t_c72e72b544880a 92,98
+apps/docs/src/content/docs/ecosystem/deploy/node.md
+  s_b471ea44017f14::t_ad501c234aa503 252,271
+apps/docs/src/content/docs/ecosystem/deploy/railway.md
+  s_b471ea44017f14::t_360cd254e98194 104
+apps/docs/src/content/docs/ecosystem/deploy/render.md
+  s_b471ea44017f14::t_162fc89baa266d 126
+apps/docs/src/content/docs/ecosystem/deploy/sst.md
+  s_b471ea44017f14::t_87c334108c60f0 130
+apps/docs/src/content/docs/ecosystem/sandboxes/boxd.md
+  s_b471ea44017f14::t_1a076cdcdacd8a 87
+apps/docs/src/content/docs/ecosystem/sandboxes/daytona.md
+  s_b471ea44017f14::t_51bf4184b91c1f 87
+apps/docs/src/content/docs/ecosystem/sandboxes/e2b.md
+  s_b471ea44017f14::t_0e715d4043a9f3 85
+apps/docs/src/content/docs/ecosystem/sandboxes/exedev.md
+  s_b471ea44017f14::t_abd841600df291 98
+apps/docs/src/content/docs/ecosystem/sandboxes/islo.md
+  s_b471ea44017f14::t_c1d13a943d0f2e 99
+apps/docs/src/content/docs/ecosystem/sandboxes/mirage.md
+  s_b471ea44017f14::t_bb756a90d24b0b 144
+apps/docs/src/content/docs/ecosystem/sandboxes/modal.md
+  s_b471ea44017f14::t_1df1837e8423e9 75
+apps/docs/src/content/docs/ecosystem/sandboxes/vercel.md
+  s_b471ea44017f14::t_e68c15777c03f1 139
+apps/docs/src/content/docs/guide/agent-hooks.md
+  s_b471ea44017f14::t_dde6af1f318b94 4,71,152,254,281
+apps/docs/src/content/docs/guide/building-agents.md
+  s_b471ea44017f14::t_7339ffeea89f08 4,99,208
+apps/docs/src/content/docs/guide/channels.md
+  s_b471ea44017f14::t_b555e48ddf4894 3-4,7,9,11,14,17-28,31,33,38,41-60,65-74,76,82,85,87,89,91,93,95,97-99,101,103,105,107,109-111,113,115,117,119,121,123-127,129-130,132-133,135-136,138-139,141-146,148,150,152,154-155,157,160,162,166,168-175,177,183,185,187,189,191-209,211,213,215-217,219,221-222,224-229,231-234,236-238,240-241,243,247-251
+apps/docs/src/content/docs/guide/database.md
+  s_b471ea44017f14::t_3aff220b05f16a 9,142,157
+apps/docs/src/content/docs/guide/deploy.md
+  s_b471ea44017f14::t_fc5c97f1a7f1fe 9,67,89,91,95
+apps/docs/src/content/docs/guide/durability.md
+  s_b471ea44017f14::t_a8cad1e87f4658 3-4,7,9,11,13,15,17,19,21-41,43,45,47,49-51,53-56,58,61,63,65-85,87,89,91-92,94,96,98,100,102,104-105,107,109,111,113,115,117,119,121-146,148,150,152,154,156,158,160,162,164-169
+apps/docs/src/content/docs/guide/evals.md
+  s_b471ea44017f14::t_03b9bad903cf9a 3-4,7,9,11,13,15-115,118-129,131,133-135,137,139,147,150,160,162,164-166,168-170,172-177,180-184,190,193,196,198,200,202-206
+apps/docs/src/content/docs/guide/getting-started.mdx
+  s_b471ea44017f14::t_5791272b96c864 109
+apps/docs/src/content/docs/guide/migration.md
+  s_b471ea44017f14::t_3a3f6073a634ff 4,15,127-131,133,148,158,208
+apps/docs/src/content/docs/guide/models.md
+  s_b471ea44017f14::t_f58949f2692c07 86,142,187,227,231-232
+apps/docs/src/content/docs/guide/node-target.md
+  s_b471ea44017f14::t_e8f7f6a9a3a5da 81
+apps/docs/src/content/docs/guide/observability.md
+  s_b471ea44017f14::t_1a1ef1170720c0 3-4,7,9,11,13-16,18,20,22,24-32,36-48,50-60,62-82,86,89-98,100,102-107,109,111-124,127,129,131,133,135-142,144-155,157,161-167,169,171-176,178,180,182,186-190
+apps/docs/src/content/docs/guide/project-layout.md
+  s_b471ea44017f14::t_debdea968ade9e 57
+apps/docs/src/content/docs/guide/routing.md
+  s_b471ea44017f14::t_da4bd824ab3f71 25,110,131,173,177,271
+apps/docs/src/content/docs/guide/sandboxes.md
+  s_b471ea44017f14::t_da3680edac5b1b 99,119,131,158,192,194,201-202,204-205
+apps/docs/src/content/docs/guide/schedules.md
+  s_b471ea44017f14::t_4134854698892e 3-4,7,9,11,13-15,17,19,23-25,29-70,74,79-80,84-86,89-90,93-94,100-103,110,112,114,116,118-122,124,126,128-147,150,152-170,172,177,182-198,202-206
+apps/docs/src/content/docs/guide/skills.md
+  s_b471ea44017f14::t_ac6a543fdc50c3 66,96,100,138,155,181
+apps/docs/src/content/docs/guide/subagents.md
+  s_b471ea44017f14::t_c118bec5644715 36,55,94,167
+apps/docs/src/content/docs/guide/tools.md
+  s_b471ea44017f14::t_a01b7e95d99951 77,94,100,127,198,257,262
+apps/docs/src/content/docs/guide/why-flue.md
+  s_b471ea44017f14::t_873f28533b37ed 67
+apps/docs/src/content/docs/reference/agent-api.md
+  s_b471ea44017f14::t_99485737e62fc7 248,956,1201,1246
+apps/docs/src/content/docs/reference/configuration.md
+  s_b471ea44017f14::t_db438ec252b7d7 57
+apps/docs/src/content/docs/reference/errors.md
+  s_b471ea44017f14::t_dced500b0a8635 62,145,149
+apps/docs/src/content/docs/reference/events.md
+  s_b471ea44017f14::t_f313edf44a6815 154
+apps/docs/src/content/docs/sdk/client.md
+  s_b471ea44017f14::t_e5c699842f9ba6 39,109
+apps/docs/src/content/docs/sdk/errors.md
+  s_b471ea44017f14::t_9a19ab364a66c5 6,19
+apps/docs/src/content/docs/sdk/events.md
+  s_b471ea44017f14::t_c4773331844059 43
+apps/docs/src/lib/docs-navigation.ts
+  s_b471ea44017f14::t_fd4e3786d7f932 30,35-37,74-75,83,89-94,100-101
+apps/docs/src/pages/index.astro
+  s_b471ea44017f14::t_b74280bce14695 2
+blueprints/database.md
+  s_b471ea44017f14::t_2dc2d84b9bd582 51
+blueprints/sandbox.md
+  s_b471ea44017f14::t_97d3f420cb8684 48
+apps/docs/public/_redirects
+  s_b471ea44017f14::t_9832960345f25e 1-17
+apps/docs/src/content/docs/reference/agent-hooks-api.md
+  s_b471ea44017f14::t_cbc2fec1c022cc 2-4,7-29,31-43,45,47-50,52,54-68,72,74-76,78-79,81,83-86,88-97,99-101,103,105,107,109-111,113,115-116,118-126,128-132,134,137,140,146-254,258,260-267,269,271,273-277,279-293,295-307,309-312,314-319,323,325,327-329,331,333-337,339-350,352-373,376-380,382-390,392-407,411,413,415-419,421-487,489-511,513
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c934508f2d4094c264ada11b0f56a023e4b3fd63",
+  "prompts": {},
+  "sessions": {
+    "s_b471ea44017f14": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "836ce0de-b890-4a33-a2c9-217a91f58537",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
