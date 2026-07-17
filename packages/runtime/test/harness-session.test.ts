@@ -116,6 +116,7 @@ describe('FlueHarness', () => {
 				'prompt',
 				'shell',
 				'skill',
+				'spawn',
 				'task',
 			]);
 			const runtimeObject = session as unknown as Record<string, unknown>;

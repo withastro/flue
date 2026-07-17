@@ -10,11 +10,13 @@ import * as v from 'valibot';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { projectConversationUi } from '../src/conversation-projections.ts';
 import { ConversationRecordWriter } from '../src/conversation-writer.ts';
+import type { SubagentHandle } from '../src/index.ts';
 import {
 	defineAgent,
 	defineTool,
 	observe,
 	SessionBusyError,
+	SubagentNotDeclaredError,
 } from '../src/index.ts';
 import { createFlueContext, InMemoryAttachmentStore, InMemoryConversationStreamStore } from '../src/internal.ts';
 import { getInternalSession } from '../src/session.ts';
@@ -1071,6 +1073,142 @@ describe('session.task()', () => {
 			isError: true,
 			content: [{ type: 'text', text: 'Maximum delegation depth (4) exceeded.' }],
 		});
+	});
+});
+
+describe('session.spawn()', () => {
+	it('retains child context across multiple prompts on one spawned subagent', async () => {
+		const provider = createProvider([{ id: 'reviewer' }]);
+		const requests: string[][] = [];
+		const capture = (context: { messages: Array<{ role: string; content: unknown }> }) => {
+			requests.push(
+				context.messages.map((message) =>
+					typeof message.content === 'string'
+						? message.content
+						: (message.content as Array<Record<string, unknown>>)
+								.map((block) => ('text' in block ? String(block.text) : String(block.type)))
+								.join('\n'),
+				),
+			);
+		};
+		provider.setResponses([
+			(context) => {
+				capture(context);
+				return fauxAssistantMessage('Investigated the flaky test.');
+			},
+			(context) => {
+				capture(context);
+				return fauxAssistantMessage('It also fails on main.');
+			},
+		]);
+		const ctx = createContext(provider);
+		const model = `${provider.getModel().provider}/reviewer`;
+		const harness = await ctx.initializeRootHarness(
+			defineAgent(() => ({ model, subagents: [{ name: 'researcher', model }] })),
+		);
+		const session = await harness.session();
+
+		const researcher = await session.spawn({ agent: 'researcher' });
+		const first = await researcher.prompt('Investigate the flaky test.');
+		const second = await researcher.prompt('Does it also fail on main?');
+		await researcher.close();
+
+		expect(first.text).toBe('Investigated the flaky test.');
+		expect(second.text).toBe('It also fails on main.');
+		// The second turn carries the full prior exchange, proving the child
+		// session and its context survive between prompts.
+		expect(requests[0]).toEqual(['Investigate the flaky test.']);
+		expect(requests[1]).toEqual([
+			'Investigate the flaky test.',
+			'Investigated the flaky test.',
+			'Does it also fail on main?',
+		]);
+	});
+
+	it('isolates a spawned subagent conversation from the parent session', async () => {
+		const provider = createProvider([{ id: 'reviewer' }]);
+		const spawnRequests: string[][] = [];
+		provider.setResponses([
+			fauxAssistantMessage('Parent response.'),
+			(context) => {
+				spawnRequests.push(
+					context.messages.map((message) =>
+						typeof message.content === 'string'
+							? message.content
+							: message.content
+									.map((block) => ('text' in block ? block.text : block.type))
+									.join('\n'),
+					),
+				);
+				return fauxAssistantMessage('Subagent response.');
+			},
+		]);
+		const ctx = createContext(provider);
+		const model = `${provider.getModel().provider}/reviewer`;
+		const harness = await ctx.initializeRootHarness(
+			defineAgent(() => ({ model, subagents: [{ name: 'researcher', model }] })),
+		);
+		const session = await harness.session();
+		await session.prompt('Remember parent-only context.');
+
+		const researcher = await session.spawn({ agent: 'researcher' });
+		const response = await researcher.prompt('Work on the delegated input only.');
+		await researcher.close();
+
+		expect(response.text).toBe('Subagent response.');
+		expect(spawnRequests).toEqual([['Work on the delegated input only.']]);
+	});
+
+	it('rejects further work after the subagent handle is closed', async () => {
+		const provider = createProvider([{ id: 'reviewer' }]);
+		provider.setResponses([fauxAssistantMessage('Answer.')]);
+		const ctx = createContext(provider);
+		const model = `${provider.getModel().provider}/reviewer`;
+		const harness = await ctx.initializeRootHarness(
+			defineAgent(() => ({ model, subagents: [{ name: 'researcher', model }] })),
+		);
+		const session = await harness.session();
+
+		const researcher = await session.spawn({ agent: 'researcher' });
+		await researcher.prompt('Do the work.');
+		await researcher.close();
+		// Repeated close is a no-op, not an error.
+		await expect(researcher.close()).resolves.toBeUndefined();
+		await expect(researcher.prompt('More work.')).rejects.toThrow();
+	});
+
+	it('disposes the spawned child on scope exit with await using', async () => {
+		const provider = createProvider([{ id: 'reviewer' }]);
+		provider.setResponses([fauxAssistantMessage('Done.')]);
+		const ctx = createContext(provider);
+		const model = `${provider.getModel().provider}/reviewer`;
+		const harness = await ctx.initializeRootHarness(
+			defineAgent(() => ({ model, subagents: [{ name: 'researcher', model }] })),
+		);
+		const session = await harness.session();
+
+		let escaped: SubagentHandle | undefined;
+		{
+			await using researcher = await session.spawn({ agent: 'researcher' });
+			escaped = researcher;
+			expect((await researcher.prompt('Do the work.')).text).toBe('Done.');
+		}
+
+		// Block exit disposed the handle, closing the child session.
+		await expect(escaped?.prompt('More work.')).rejects.toThrow();
+	});
+
+	it('throws SubagentNotDeclaredError when spawning an undeclared subagent', async () => {
+		const provider = createProvider([{ id: 'reviewer' }]);
+		const ctx = createContext(provider);
+		const harness = await ctx.initializeRootHarness(
+			defineAgent(() => ({ model: `${provider.getModel().provider}/reviewer` })),
+		);
+		const session = await harness.session();
+
+		await expect(session.spawn({ agent: 'missing' })).rejects.toBeInstanceOf(
+			SubagentNotDeclaredError,
+		);
 	});
 });
 

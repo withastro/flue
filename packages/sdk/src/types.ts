@@ -216,7 +216,7 @@ export type FlueEvent = (
 			response: ModelResponse;
 			isError: boolean;
 	  }
-	| { type: 'task_start'; taskId: string; prompt: string; agent?: string; cwd?: string }
+	| { type: 'task_start'; taskId: string; prompt?: string; agent?: string; cwd?: string }
 	| {
 			type: 'task';
 			taskId: string;

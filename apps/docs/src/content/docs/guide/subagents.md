@@ -6,7 +6,7 @@ lastReviewedAt: 2026-05-29
 
 Subagents let an agent delegate a piece of work to a named specialist while it continues to own the interaction. Use them when an agent should ask another configured role to research, classify, or review something and then work with the returned answer.
 
-A subagent is an [agent profile](/docs/guide/building-agents/#agent-profiles) declared on another agent. Delegated work runs in a separate child session, rather than continuing the parent agent's conversation history. The subagent is not a separately addressable agent endpoint.
+A subagent is an [agent profile](/docs/guide/building-agents/#agent-profiles) declared on another agent. Delegated work runs in a separate child session, rather than continuing the parent agent's conversation history. The subagent is not a separately addressable agent endpoint — it has no `/agents/:name/:id` route — but the parent can hold a multi-turn conversation with it in process. Use `task()` for a single delegated question, or `spawn()` to keep the child alive across several prompts (see [Hold a conversation with a subagent](#hold-a-conversation-with-a-subagent)).
 
 ## Define a subagent
 
@@ -37,6 +37,29 @@ The profile's `description` is shown to the parent model alongside the subagent'
 An agent with configured subagents can decide to delegate while answering a prompt. Flue gives the agent a built-in `task` capability that starts a child session for the selected subagent and returns that child's answer to the parent agent.
 
 The child session receives the delegated request and its own configured context, not the parent's existing conversation transcript. When persistence is configured, its retained history remains owned by the parent session rather than becoming an ordinary named session. See [Database](/docs/guide/database/) for persistence setup. When a subagent works in a configured sandbox, it uses that same sandbox boundary as its parent. See [Sandboxes](/docs/guide/sandboxes/) for controlling workspace and command access.
+
+## Hold a conversation with a subagent
+
+`task()` delegates a single prompt and disposes the child. When application code needs a back-and-forth with a specialist — ask, read the answer, then follow up while the child keeps its context — call `session.spawn(...)`. It returns a `SubagentHandle` whose lifecycle you own: prompt it as many times as you like, then close it.
+
+```ts title="src/workflows/investigate.ts"
+async run({ harness }) {
+  const session = await harness.session();
+
+  await using researcher = await session.spawn({ agent: 'researcher' });
+  const diagnosis = await researcher.prompt('Diagnose the failing test in auth.ts.');
+  const scope = await researcher.prompt('Does main have the same bug?'); // remembers the diagnosis
+
+  return { diagnosis: diagnosis.text, scope: scope.text };
+  // The child session closes when `researcher` is disposed at scope exit.
+}
+```
+
+The handle exposes the child session's `prompt()`, `skill()`, `task()`, `shell()`, and `fs` surface, so a spawned specialist can use skills and tools across the conversation just like a top-level session. Each `prompt()` accepts the same options as `session.prompt()`, including `result` for validated structured data.
+
+Spawn shares everything `task()` does: the child is a detached, parent-owned session with the selected profile's configuration (see [Configuration inheritance](#configuration-inheritance)), running inside the parent's sandbox. It differs only in lifecycle — you decide when the conversation ends. Because the handle is `AsyncDisposable`, `await using` closes it automatically on scope exit; you can also call `await researcher.close()` explicitly. Closing is idempotent. Omit `options.agent` to spawn an agent-less child that reuses the parent's full configuration in a fresh conversation.
+
+Like a programmatic `task()`, a spawned child carries no parent `task` tool call, so it lives only for the current process and is not restored by durable subagent recovery. Close handles when you are done with them so their child sessions do not stay open for the life of the parent session.
 
 ## Configuration inheritance
 

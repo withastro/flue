@@ -52,6 +52,8 @@ import {
   type Skill,
   type SkillOptions,
   type SkillReference,
+  type SpawnOptions,
+  type SubagentHandle,
   type TaskOptions,
   type ThinkingLevel,
   type ToolContext,
@@ -80,7 +82,7 @@ Throws when the profile contains unknown fields, invalid capabilities, duplicate
 | --------------- | --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `name`          | `string`                    | Profile name. Required when selecting this profile with `session.task()`.                                                                                                   |
 | `description`   | `string`                    | Human-readable profile description.                                                                                                                                         |
-| `model`         | `string`                    | Default model specifier.                                                                                                                                                |
+| `model`         | `string`                    | Default model specifier.                                                                                                                                                    |
 | `instructions`  | `string`                    | Instructions prepended to discovered workspace context.                                                                                                                     |
 | `skills`        | `Skill[]`                   | Registered skills available to initialized sessions.                                                                                                                        |
 | `tools`         | `ToolDefinition[]`          | Custom model-callable tools available to initialized sessions.                                                                                                              |
@@ -200,11 +202,11 @@ interface McpServerConnection {
 }
 ```
 
-| Field     | Description                                            |
-| --------- | ------------------------------------------------------ |
-| `name`    | Server name supplied to `connectMcpServer()`.          |
-| `tools`   | MCP tools ready to pass directly in `tools` arrays.     |
-| `close()` | Close the underlying MCP client connection.            |
+| Field     | Description                                         |
+| --------- | --------------------------------------------------- |
+| `name`    | Server name supplied to `connectMcpServer()`.       |
+| `tools`   | MCP tools ready to pass directly in `tools` arrays. |
+| `close()` | Close the underlying MCP client connection.         |
 
 ## `defineAgent(...)`
 
@@ -232,8 +234,8 @@ The initializer runs whenever a runner initializes a root harness from the agent
 | Field           | Type                        | Description                                                                                                                                                                                                                                                                               |
 | --------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `description`   | `string`                    | Optional organizational metadata describing what this agent does. Overrides the profile description when set. Per-initialization metadata only — for a static description that surfaces in the deployment manifest and `listAgents()`, use the module-level `description` export instead. |
-| `profile`       | `AgentProfile`              | Reusable baseline profile. Agent-definition fields replace or extend profile values.                                                                                                                                                                                                         |
-| `model`         | `string`                    | Default model specifier.                                                                                                                                                                                                                                                               |
+| `profile`       | `AgentProfile`              | Reusable baseline profile. Agent-definition fields replace or extend profile values.                                                                                                                                                                                                      |
+| `model`         | `string`                    | Default model specifier.                                                                                                                                                                                                                                                                  |
 | `instructions`  | `string`                    | Instructions prepended to discovered workspace context.                                                                                                                                                                                                                                   |
 | `skills`        | `Skill[]`                   | Additional registered skills available to initialized sessions.                                                                                                                                                                                                                           |
 | `tools`         | `ToolDefinition[]`          | Additional custom model-callable tools available to initialized sessions.                                                                                                                                                                                                                 |
@@ -273,13 +275,13 @@ interface DispatchReceipt {
 
 Delivers a message for asynchronous processing by a continuing agent instance. The agent-definition overload requires a value default-exported by one discovered `agents/<name>.ts` module. The named overload selects a discovered agent module by name.
 
-| Field        | Description                                                                             |
-| ------------ | ----------------------------------------------------------------------------------------- |
-| `agent`      | Discovered agent module name for the named overload.                                      |
-| `id`         | Target agent instance id.                                                                 |
-| `message`    | The message delivered to the session. Flue snapshots it when accepted.                    |
-| `dispatchId` | Generated delivery identifier returned in the receipt. This is not a workflow `runId`.     |
-| `acceptedAt` | ISO timestamp assigned when dispatch admission begins.                                    |
+| Field        | Description                                                                            |
+| ------------ | -------------------------------------------------------------------------------------- |
+| `agent`      | Discovered agent module name for the named overload.                                   |
+| `id`         | Target agent instance id.                                                              |
+| `message`    | The message delivered to the session. Flue snapshots it when accepted.                 |
+| `dispatchId` | Generated delivery identifier returned in the receipt. This is not a workflow `runId`. |
+| `acceptedAt` | ISO timestamp assigned when dispatch admission begins.                                 |
 
 `await dispatch(...)` resolves when the current runtime accepts and queues the message. It does not wait for model processing, tool calls, or an agent reply. Dispatched activity belongs to the continuing agent instance: it does not create workflow-run history and does not appear in SDK `client.runs` or raw `/runs` APIs.
 
@@ -303,12 +305,12 @@ The single unified message shape delivered into an agent's session, whether it a
 
 `kind: 'signal'` is a structured, non-conversational event — a webhook payload, a scheduled trigger, an internal system notification. It produces a canonical `signal` record and renders into the model conversation as an XML-tagged block rather than a chat turn. This is the right shape for more advanced scenarios, including most channels: a Slack thread or GitHub issue is a multi-user conversation the agent participates in as one member, and signals model each participant's activity — with sender identity in `attributes` — where a `user` message would confuse other participants with the assistant's own user.
 
-| Field         | Applies to | Description                                                                                          |
+| Field         | Applies to | Description                                                                                            |
 | ------------- | ---------- | ------------------------------------------------------------------------------------------------------ |
 | `body`        | both       | The message content. Always a string today; JSON-stringify structured payloads yourself.               |
 | `attachments` | `user`     | Images attached to the message. See `DeliveredAttachment`.                                             |
 | `type`        | `signal`   | Caller-defined event/signal type, e.g. `'slack.message'`.                                              |
-| `attributes`  | `signal`   | Flat, scalar-valued metadata for correlation — analogous to HTTP headers. Rendered alongside the body.  |
+| `attributes`  | `signal`   | Flat, scalar-valued metadata for correlation — analogous to HTTP headers. Rendered alongside the body. |
 | `tagName`     | `signal`   | Overrides the XML tag name used when rendering the signal into the model prompt. Defaults to `signal`. |
 
 #### `DeliveredAttachment`
@@ -400,6 +402,7 @@ interface FlueSession {
   prompt(text: string, options?: PromptOptions): CallHandle<PromptResponse>;
   skill(skill: SkillReference | string, options?: SkillOptions): CallHandle<PromptResponse>;
   task(text: string, options?: TaskOptions): CallHandle<PromptResponse>;
+  spawn(options?: SpawnOptions): Promise<SubagentHandle>;
   shell(command: string, options?: ShellOptions): CallHandle<ShellResult>;
   readonly fs: FlueFs;
   compact(): Promise<void>;
@@ -529,6 +532,55 @@ Delegates work to a detached child session. Pass `options.agent` to select a nam
 | `cwd`           | `string`           | Working directory for the detached task session. Defaults to the parent session cwd. |
 | `signal`        | `AbortSignal`      | Cancel this task.                                                                    |
 | `images`        | `PromptImage[]`    | Images attached to the task's initial user message. Requires a vision-capable model. |
+
+### `session.spawn(...)`
+
+```ts
+spawn(options?: SpawnOptions): Promise<SubagentHandle>;
+```
+
+Opens a live subagent conversation and returns a handle you can prompt repeatedly. Unlike `task()`, which delegates a single prompt and disposes the child, a spawned child session — and the context it accumulates — stays alive until the handle is closed. The child is parent-owned in the conversation topology, exactly like a delegated `task()` child; it is not a separately addressable agent endpoint.
+
+```ts
+await using researcher = await session.spawn({ agent: 'researcher' });
+const first = await researcher.prompt('Diagnose the failing test in auth.ts.');
+const second = await researcher.prompt('Does main have the same bug?'); // remembers `first`
+// The child closes on scope exit (or `await researcher.close()`).
+```
+
+#### `SpawnOptions`
+
+| Field   | Type     | Description                                                                                              |
+| ------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| `agent` | `string` | Named subagent profile to spawn. Omit to spawn an agent-less child that reuses the parent's full config. |
+| `cwd`   | `string` | Working directory for the spawned session. Defaults to the parent session cwd.                           |
+
+#### `SubagentHandle`
+
+Exposes the child session's `prompt` / `skill` / `task` / `shell` / `fs` surface, plus lifecycle control. Implements `AsyncDisposable`, so `await using` closes it on scope exit.
+
+```ts
+interface SubagentHandle extends AsyncDisposable {
+  readonly name: string;
+  readonly conversationId: string;
+  readonly agent?: string;
+  prompt(text: string, options?: PromptOptions): CallHandle<PromptResponse>;
+  skill(skill: SkillReference | string, options?: SkillOptions): CallHandle<PromptResponse>;
+  task(text: string, options?: TaskOptions): CallHandle<PromptResponse>;
+  shell(command: string, options?: ShellOptions): CallHandle<ShellResult>;
+  readonly fs: FlueFs;
+  close(): Promise<void>;
+}
+```
+
+| Member           | Description                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------ |
+| `name`           | Child session name backing this subagent conversation.                                           |
+| `conversationId` | Persisted opaque identity for the child conversation.                                            |
+| `agent`          | Selected subagent profile name, or `undefined` for an agent-less spawn.                          |
+| `close()`        | Ends the conversation and closes the child session. Idempotent; also runs on `await using` exit. |
+
+The `prompt()`, `skill()`, and `task()` methods omit structured-result overloads above. Pass a Valibot schema as `options.result` to resolve with validated `response.data`, exactly as on `FlueSession`.
 
 ### `session.shell(...)`
 
