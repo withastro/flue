@@ -1,0 +1,21 @@
+apps/www/src/layouts/BlogLayout.astro
+  s_7b0e2677332b9e::t_1c31002b4302f6 81
+apps/www/src/pages/index.astro
+  s_7b0e2677332b9e::t_9c7fd15f66eef9 108,453,467,471,475,479,484-485,491,494-496,501,506,511,514,516-521,526,529,531,534-539,778,781,802
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "11a5f325c8053f4402cbd2a544d93e6bb3daa6a7",
+  "prompts": {},
+  "sessions": {
+    "s_7b0e2677332b9e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86349924-0a8f-41b3-a47d-7b17b7273f2e",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
