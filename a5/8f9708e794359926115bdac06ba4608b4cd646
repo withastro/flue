@@ -1,0 +1,19 @@
+apps/www/src/code-snippets.ts
+  s_7b0e2677332b9e::t_a9fe64bb1cd8c8 9,11-12,15-16,18-19,21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a58f9708e794359926115bdac06ba4608b4cd646",
+  "prompts": {},
+  "sessions": {
+    "s_7b0e2677332b9e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "86349924-0a8f-41b3-a47d-7b17b7273f2e",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
