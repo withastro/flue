@@ -1,0 +1,19 @@
+apps/docs/src/content/docs/getting-started/quickstart.mdx
+  s_6048adf12208bf::t_97f1a5d6c1b742 9,14,22-23,26,34-42,44,47,51-53,60-68,71,77,84,88,90,109,113,120,122,124,128-130,133,139,147-149,151,155-159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "30accf041bc716613c6527a00e381aa3f6363fd5",
+  "prompts": {},
+  "sessions": {
+    "s_6048adf12208bf": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ce8b6b92-79ce-43a9-b910-f3c8fdcbffef",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
