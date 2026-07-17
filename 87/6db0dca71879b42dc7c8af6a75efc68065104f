@@ -1,0 +1,37 @@
+apps/www/src/layouts/BlogLayout.astro
+  s_4e1410233b44b1::t_027ab92d9b99a1 80
+apps/www/src/pages/blog/flue-1-0-beta.mdx
+  s_4e1410233b44b1::t_ad3777c7c4489f 31,191
+apps/www/src/pages/index.astro
+  s_4e1410233b44b1::t_403f59f4a914b4 107,115,256,529
+apps/www/src/pages/start.md.ts
+  s_4e1410233b44b1::t_7d812b427acb66 3,5,8-13,17-18,22,26,29,37,42-48,50-51,66-69,72,74-76,78-93,99,101-104,106-107,111,116-119,125-126
+blueprints/sandbox--cloudflare.md
+  s_44ccbddc3ed6cd::t_998a3a1a152ef5 111-113,179-180
+apps/www/src/code-snippets.ts
+  s_4e1410233b44b1::t_2eed85bb12cb84 4-6,9,12-14,17-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "876db0dca71879b42dc7c8af6a75efc68065104f",
+  "prompts": {},
+  "sessions": {
+    "s_44ccbddc3ed6cd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a4d5d5e00b1cd4635",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_4e1410233b44b1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "64f74f5d-e97c-416c-a95a-009e3912751b",
+        "model": "claude-sonnet-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
