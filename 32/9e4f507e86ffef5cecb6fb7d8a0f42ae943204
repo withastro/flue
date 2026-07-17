@@ -1,0 +1,23 @@
+apps/docs/astro.config.mjs
+  s_16ba7eb8e0cf28::t_25f8b67f663dfb 14-74
+apps/docs/src/components/docs/DocsSidebar.astro
+  s_16ba7eb8e0cf28::t_28a0c960545848 15
+apps/docs/src/styles/global.css
+  s_16ba7eb8e0cf28::t_3bc57e730ac3a2 123-130,260,262-263,268-269,279,283,285,289-327
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "329e4f507e86ffef5cecb6fb7d8a0f42ae943204",
+  "prompts": {},
+  "sessions": {
+    "s_16ba7eb8e0cf28": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "a48d96c0-6e3c-47e1-af5c-a3612e4a757e",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
