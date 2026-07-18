@@ -1,0 +1,19 @@
+apps/docs/src/content/docs/guide/why-flue.md
+  s_79f2d0e3c19967::t_aac973cc7989f2 4,7,9,13,16-22,26,30-34,38-46,48,50,52,54-62,70-71,74-76,78,80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9d1683b4efd957d7f78a0ec418dda77a452738aa",
+  "prompts": {},
+  "sessions": {
+    "s_79f2d0e3c19967": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "54f7ed37-9aa5-470a-a7f9-2da0d93bf4ec",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
