@@ -582,6 +582,20 @@ export interface FlueSession {
 	task(text: string, options?: TaskOptions): CallHandle<PromptResponse>;
 
 	/**
+	 * Open a live subagent conversation and return a handle you can prompt
+	 * repeatedly. Unlike {@link FlueSession.task}, which delegates a single
+	 * prompt and disposes the child, the spawned child session — and the context
+	 * it accumulates — stays alive until the handle is closed (or `await using`
+	 * disposes it). Pass `options.agent` to select a named subagent profile; omit
+	 * it to reuse the parent's full configuration in a fresh conversation.
+	 *
+	 * The child session is parent-owned in the conversation topology, exactly
+	 * like a delegated `task()` child. It is not a separately addressable agent
+	 * endpoint.
+	 */
+	spawn(options?: SpawnOptions): Promise<SubagentHandle>;
+
+	/**
 	 * Trigger compaction immediately. Equivalent to what automatic
 	 * compaction would run when crossing the configured threshold, but
 	 * on-demand — useful for surfacing a `/compact`-style action in agent
@@ -597,6 +611,36 @@ export interface FlueSession {
 	 * same as automatic compaction.
 	 */
 	compact(): Promise<void>;
+}
+
+/**
+ * A live subagent conversation opened with {@link FlueSession.spawn}.
+ *
+ * Unlike {@link FlueSession.task}, which delegates a single prompt to a child
+ * session and disposes it, a spawned subagent keeps its child session — and the
+ * context it accumulates — alive across multiple `prompt()` / `skill()` /
+ * `task()` calls until it is closed. Use it to hold a back-and-forth
+ * conversation with a specialist while the parent keeps owning the interaction.
+ *
+ * The handle exposes the child session's `prompt` / `skill` / `task` / `shell` /
+ * `fs` surface. It implements `AsyncDisposable`, so `await using` closes it on
+ * scope exit; closing is idempotent.
+ */
+export interface SubagentHandle
+	extends Pick<FlueSession, 'prompt' | 'skill' | 'task' | 'shell' | 'fs'>,
+		AsyncDisposable {
+	/** Child session name backing this subagent conversation. */
+	readonly name: string;
+	/** Persisted opaque identity for the child conversation. */
+	readonly conversationId: string;
+	/** Selected subagent profile name, or `undefined` for an agent-less spawn. */
+	readonly agent?: string;
+	/**
+	 * End the conversation and close the child session. Idempotent — repeated
+	 * calls (including `await using` disposal after an explicit close) resolve
+	 * without re-closing.
+	 */
+	close(): Promise<void>;
 }
 
 /**
@@ -706,6 +750,17 @@ export interface TaskOptions<
 	cwd?: string;
 	/** Images attached to the task's initial user message. Requires a vision-capable model. */
 	images?: PromptImage[];
+}
+
+/** Options for `session.spawn()`. */
+export interface SpawnOptions {
+	/**
+	 * Named subagent profile to spawn. Omit to spawn an agent-less child that
+	 * reuses the parent's full configuration in a fresh conversation.
+	 */
+	agent?: string;
+	/** Working directory for the spawned session. Defaults to the parent session cwd. */
+	cwd?: string;
 }
 
 /** Options for `harness.shell()` and `session.shell()`. */
@@ -960,7 +1015,7 @@ type FlueEventVariant =
 			response: ModelResponse;
 			isError: boolean;
 	  }
-	| { type: 'task_start'; taskId: string; prompt: string; agent?: string; cwd?: string }
+	| { type: 'task_start'; taskId: string; prompt?: string; agent?: string; cwd?: string }
 	| {
 			type: 'task';
 			taskId: string;

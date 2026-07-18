@@ -138,6 +138,8 @@ export type {
 	Skill,
 	SkillOptions,
 	SkillReference,
+	SpawnOptions,
+	SubagentHandle,
 	TaskOptions,
 	ThinkingLevel,
 	ToolContext,

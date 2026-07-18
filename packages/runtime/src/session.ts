@@ -155,6 +155,8 @@ import type {
 	ShellResult,
 	SkillOptions,
 	SkillReference,
+	SpawnOptions,
+	SubagentHandle,
 	TaskOptions,
 	ThinkingLevel,
 	ToolDefinition,
@@ -1649,6 +1651,10 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		);
 	}
 
+	async spawn(options?: SpawnOptions): Promise<SubagentHandle> {
+		return this.spawnSubagent(options);
+	}
+
 	shell(command: string, options?: ShellOptions): CallHandle<ShellResult> {
 		return createCallHandle(options?.signal, (signal) =>
 			this.runOperation('shell', signal, () =>
@@ -2213,6 +2219,97 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		const subagent = subagents[name];
 		if (subagent) return subagent;
 		throw new SubagentNotDeclaredError({ subagent: name, available: Object.keys(subagents) });
+	}
+
+	/**
+	 * Open a long-lived child session and hand back a {@link SubagentHandle} the
+	 * caller drives across multiple prompts. This is `executeTask` with the
+	 * lifecycle inverted: instead of create → one prompt → close inside a single
+	 * parent operation, the child is created here, registered so parent
+	 * abort/settle cascades to it, and left open until the handle closes.
+	 *
+	 * Unlike `task()`, `spawn()` does not hold the parent's exclusive operation
+	 * lock: the returned handle outlives any single operation, and each
+	 * `handle.prompt()` runs as an operation on the child session (which has its
+	 * own operation lock). Like a programmatic `task()`, a spawned child carries
+	 * no parent `task` tool call, so it stays out of the durable subagent-recovery
+	 * path — it lives only for the life of this process.
+	 */
+	private async spawnSubagent(options: SpawnOptions | undefined): Promise<SubagentHandle> {
+		this.assertActive();
+		if (!this.createTaskSession) {
+			throw new Error('[flue] This session cannot create task sessions.');
+		}
+		if (this.delegationDepth >= MAX_DELEGATION_DEPTH) {
+			throw new DelegationDepthExceededError({ maxDepth: MAX_DELEGATION_DEPTH });
+		}
+		if (this.scopeSignal?.aborted) throw abortErrorFor(this.scopeSignal);
+
+		const taskId = crypto.randomUUID();
+		const taskAgent = options?.agent ? this.resolveDeclaredSubagent(options.agent) : undefined;
+		const taskStartMs = Date.now();
+
+		const child = await this.createTaskSession({
+			parentSession: this.name,
+			parentConversationId: this.conversationId,
+			taskId,
+			parentEnv: this.env,
+			cwd: options?.cwd,
+			agent: taskAgent,
+			depth: this.delegationDepth + 1,
+		});
+		this.activeTasks.add(child);
+		this.emit({
+			type: 'task_start',
+			taskId,
+			agent: taskAgent?.name,
+			cwd: options?.cwd,
+			parentSession: this.name,
+			session: child.name,
+			conversationId: child.conversationId,
+		});
+
+		const facade = createPublicSession(child);
+		let closePromise: Promise<void> | undefined;
+		const close = (): Promise<void> => {
+			closePromise ??= (async () => {
+				// Best-effort terminal `result`: the child's latest assistant text.
+				// A force-closed child (parent shutdown) may leave this empty.
+				let result = '';
+				try {
+					result = child.getAssistantText();
+				} catch {
+					result = '';
+				}
+				this.emit({
+					type: 'task',
+					taskId,
+					agent: taskAgent?.name,
+					isError: false,
+					result,
+					durationMs: durationSince(taskStartMs),
+					parentSession: this.name,
+					session: child.name,
+					conversationId: child.conversationId,
+				});
+				this.activeTasks.delete(child);
+				await child.close();
+			})();
+			return closePromise;
+		};
+
+		return {
+			name: child.name,
+			conversationId: child.conversationId,
+			agent: taskAgent?.name,
+			fs: facade.fs,
+			prompt: facade.prompt,
+			skill: facade.skill,
+			task: facade.task,
+			shell: facade.shell,
+			close,
+			[Symbol.asyncDispose]: close,
+		};
 	}
 
 	private async runTaskForTool(
@@ -3592,6 +3689,7 @@ export function createPublicSession(session: Session): FlueSession {
 		shell: session.shell.bind(session),
 		skill: session.skill.bind(session) as FlueSession['skill'],
 		task: session.task.bind(session) as FlueSession['task'],
+		spawn: session.spawn.bind(session),
 		compact: session.compact.bind(session),
 	};
 	publicSessionsBySession.set(session, facade);
