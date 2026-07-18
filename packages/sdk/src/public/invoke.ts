@@ -28,6 +28,12 @@ export type DeliveredMessage =
 /** Options for one direct-agent prompt. */
 export interface AgentPromptOptions {
 	message: DeliveredMessage;
+	/**
+	 * Client-minted idempotency key for this submission. The server admits it
+	 * insert-or-ignore, so replaying the same id with the same payload is a
+	 * no-op instead of a duplicate turn. Absent, the server mints its own.
+	 */
+	submissionId?: string;
 	signal?: AbortSignal;
 }
 
@@ -53,7 +59,11 @@ export async function sendAgent(
 	return http.json<AgentSendResult>({
 		method: 'POST',
 		path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
-		body: options.message,
+		// The wire wants submissionId as a top-level sibling of the message fields.
+		body:
+			options.submissionId === undefined
+				? options.message
+				: { ...options.message, submissionId: options.submissionId },
 		signal: options.signal,
 	});
 }

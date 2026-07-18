@@ -70,4 +70,26 @@ describe('createFlueAgentStore()', () => {
 		]);
 		store.stop();
 	});
+
+	it('threads a client-supplied submissionId through sendMessage to agents.send', async () => {
+		const observation = createFakeObservation();
+		const send = vi.fn(async () => ({
+			streamUrl: 'https://flue.test/stream',
+			offset: '-1',
+			submissionId: 'send-1',
+		}));
+		const store = createFlueAgentStore({
+			client: { agents: { observe: () => observation, send } } as unknown as FlueClient,
+			name: 'agent',
+			id: 'conversation',
+		});
+
+		store.start();
+		await store.sendMessage('hello', { submissionId: 'send-1' });
+
+		expect(send).toHaveBeenCalledWith('agent', 'conversation', {
+			message: { kind: 'user', body: 'hello' },
+			submissionId: 'send-1',
+		});
+	});
 });

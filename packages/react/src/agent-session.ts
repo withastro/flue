@@ -14,6 +14,8 @@ import {
 
 export interface SendMessageOptions {
 	images?: DeliveredAttachment[];
+	/** Client-minted idempotency key, threaded to `agents.send` (see `AgentPromptOptions`). */
+	submissionId?: string;
 }
 
 export interface CreateFlueAgentStoreOptions {
@@ -86,6 +88,7 @@ export class AgentSession {
 					body: message,
 					...(options.images?.length ? { attachments: options.images } : {}),
 				},
+				...(options.submissionId === undefined ? {} : { submissionId: options.submissionId }),
 			});
 			this.dispatch({ type: 'local_send_admitted', localId, submissionId: receipt.submissionId });
 			if (this.observation?.getSnapshot().phase === 'absent') this.observation.refresh();

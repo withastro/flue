@@ -57,6 +57,26 @@ describe('createFlueClient', () => {
 				attachments: [{ type: 'image', data: 'YWJj', mimeType: 'image/png' }],
 			});
 		});
+
+		it('threads a client-supplied submissionId as a sibling of the message fields', async () => {
+			const seen: Request[] = [];
+			const client = createFlueClient({
+				baseUrl: 'https://flue.test',
+				fetch: async (input, init) => {
+					seen.push(new Request(input, init));
+					return Response.json({ streamUrl: 'https://flue.test/stream', offset: '-1' });
+				},
+			});
+			await client.agents.send('hello', 'inst-1', {
+				message: { kind: 'user', body: 'Hello' },
+				submissionId: 'send-1',
+			});
+			expect(await seen[0]?.json()).toEqual({
+				kind: 'user',
+				body: 'Hello',
+				submissionId: 'send-1',
+			});
+		});
 	});
 
 	describe('agents.history() attachment urls', () => {
