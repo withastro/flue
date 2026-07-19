@@ -1,0 +1,25 @@
+apps/docs/src/content/docs/guide/schedules.md
+  s_bb50b58f7952fe::t_954c40eeb09fe2 4,79-80,112,130-132
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_bb50b58f7952fe::t_30074fd4978253 4,110-115,252
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_bb50b58f7952fe::t_33ee3787b4d4e6 4,555-571
+apps/docs/src/content/docs/guide/observability.md
+  s_bb50b58f7952fe::t_eab74a23f432d7 4,7,27-30,49-51,54-59,74-79,175-181
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "58b7d021ab252fbcccdb0eb17cbda0c51333cc5f",
+  "prompts": {},
+  "sessions": {
+    "s_bb50b58f7952fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5da38360-f2dc-4d87-be86-4c72f0d7eaca",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
