@@ -153,7 +153,9 @@ function createEditTool(env: SessionEnv): AgentTool<typeof EditParams> {
 			const content = await env.readFile(params.path);
 
 			if (params.replaceAll) {
-				const newContent = content.replaceAll(params.oldText, params.newText);
+				// A function replacer inserts newText verbatim; passing it as a string
+				// would interpret `$` tokens ($&, $`, $', $$) and corrupt the file.
+				const newContent = content.replaceAll(params.oldText, () => params.newText);
 				if (newContent === content) {
 					throw new Error(`Could not find the text in ${params.path}. No changes made.`);
 				}
@@ -177,7 +179,9 @@ function createEditTool(env: SessionEnv): AgentTool<typeof EditParams> {
 				);
 			}
 
-			const newContent = content.replace(params.oldText, params.newText);
+			// A function replacer inserts newText verbatim; passing it as a string
+			// would interpret `$` tokens ($&, $`, $', $$) and corrupt the file.
+			const newContent = content.replace(params.oldText, () => params.newText);
 			await env.writeFile(params.path, newContent);
 			return {
 				content: [{ type: 'text', text: `Successfully edited ${params.path}` }],
