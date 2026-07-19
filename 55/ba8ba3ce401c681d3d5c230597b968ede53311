@@ -1,0 +1,45 @@
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_bb50b58f7952fe::t_5789c07a87d0aa 99,109,134
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_bb50b58f7952fe::t_6bde5e34b4ca7a 196,258-262,302-304,382-389,548,564-569,699-700
+packages/runtime/src/sql-agent-execution-store.ts
+  s_bb50b58f7952fe::t_36fd602884b9ab 100,337,707
+packages/runtime/test/cloudflare-agent-coordinator.test.ts
+  s_bb50b58f7952fe::t_19c25c1dc7dcd0 288,312,318-319,344-345,360,368-370,386-387
+packages/libsql/src/libsql-adapter.ts
+  s_f42ee849a04919::t_e0768a0ff61930 469,484,591
+packages/mongodb/test/mongodb-unit.test.ts
+  s_f42ee849a04919::t_e4e220e991d333 229
+packages/mysql/src/mysql-adapter.ts
+  s_f42ee849a04919::t_db95505428f9ce 313,635,647,747
+packages/mysql/test/mysql-adapter.test.ts
+  s_f42ee849a04919::t_f740e627040313 227
+packages/postgres/src/postgres-adapter.ts
+  s_f42ee849a04919::t_8a79fc461446a7 460,475,580
+packages/redis/src/redis-scripts.ts
+  s_f42ee849a04919::t_925a26a7ea661b 141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "55ba8ba3ce401c681d3d5c230597b968ede53311",
+  "prompts": {},
+  "sessions": {
+    "s_bb50b58f7952fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5da38360-f2dc-4d87-be86-4c72f0d7eaca",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f42ee849a04919": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abf4a6491628e5fa3",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
