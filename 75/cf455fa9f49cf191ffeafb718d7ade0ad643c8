@@ -1,0 +1,29 @@
+packages/runtime/test/cloudflare-flue-agent-class.test.ts
+  s_bb50b58f7952fe::t_637c2201605e52 44,183
+packages/runtime/src/cloudflare/flue-agent-class.ts
+  s_bb50b58f7952fe::t_54c9ee8f69bd8f 80-86,88
+packages/runtime/src/runtime/agent-submissions.ts
+  s_bb50b58f7952fe::t_ae9f70e047900b 654-668,670-697,712-713,721-722,725,727-743
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_bb50b58f7952fe::t_3b4754e73fbb2a 53-61,95-104,144-153,206-207,243,250-251,254-261,264-266,268-271,316-340,342-364,438-440,519-535,538,541,545,547,551-558,560-563,646-650,656,669-670,687-724,747-754,767,770-783,786,812-832,861-864,868,978,1065
+packages/runtime/test/agent-client-cloudflare.test.ts
+  s_bb50b58f7952fe::t_841f291c45dd85 137-149,151
+packages/runtime/test/cloudflare-agent-coordinator.test.ts
+  s_bb50b58f7952fe::t_7002a174025973 90,95,97-100,184-193,206,208-210,244-245,257,269,272,280,282-285,288,319,352-353,355,400-402,404,407-409,412,445,448-450,465-471,474-485,494,527-533,536-541,546,550-553,585,626,629-631,649,666,679,681,693,695,697,699-701,751,792,861,879,934-938,940,946-949,978-1182
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "75cf455fa9f49cf191ffeafb718d7ade0ad643c8",
+  "prompts": {},
+  "sessions": {
+    "s_bb50b58f7952fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5da38360-f2dc-4d87-be86-4c72f0d7eaca",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
