@@ -1,0 +1,19 @@
+apps/docs/src/content/docs/guide/migration.md
+  s_79f2d0e3c19967::t_aaf8bf5cf24b01 3-4,7,9,13-14,17-18,30,42-43,46-51,53,71,76,80,82-83,127,135,140,149-150,158,172-181,200-201,206,208,214-229,236,244,258-261,283-286,290-303,307-309,314-318
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "64971e2baf65a89745b878ec1d89fb0a799e806b",
+  "prompts": {},
+  "sessions": {
+    "s_79f2d0e3c19967": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "54f7ed37-9aa5-470a-a7f9-2da0d93bf4ec",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
