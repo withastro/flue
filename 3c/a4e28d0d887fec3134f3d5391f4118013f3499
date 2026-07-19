@@ -1,0 +1,93 @@
+apps/docs/astro.config.mjs
+  s_bb50b58f7952fe::t_6af8f25658bae8 49-51
+apps/docs/src/content/docs/cli/add.md
+  s_bb50b58f7952fe::t_eac454e7139ae8 23-25,30-31
+apps/docs/src/content/docs/cli/init.md
+  s_bb50b58f7952fe::t_66149d063f576a 23-28,36-37,42-43
+apps/docs/src/content/docs/cli/overview.md
+  s_bb50b58f7952fe::t_82e363ce9ba030 37-40
+apps/docs/src/content/docs/cli/run.md
+  s_bb50b58f7952fe::t_91c7dc178e2535 21-31
+apps/docs/src/content/docs/cli/update.md
+  s_bb50b58f7952fe::t_883c94027273bf 21-23,28-29
+apps/docs/src/content/docs/guide/agent-hooks.md
+  s_bb50b58f7952fe::t_048c18462b3961 7,41,180,186,198,276
+apps/docs/src/content/docs/guide/building-agents.md
+  s_bb50b58f7952fe::t_60beb953a05375 11,26,36,53
+apps/docs/src/content/docs/guide/channels.md
+  s_bb50b58f7952fe::t_182ebd655d11b3 53-57,121,152,164
+apps/docs/src/content/docs/guide/database.md
+  s_bb50b58f7952fe::t_868db4ec1ea713 16,21,47-49,75-84,146-152
+apps/docs/src/content/docs/guide/deploy.md
+  s_bb50b58f7952fe::t_a884429b85a817 7,45
+apps/docs/src/content/docs/guide/durability.md
+  s_bb50b58f7952fe::t_341ac0df5438c4 11,27-35,37,61,98,109,129,156
+apps/docs/src/content/docs/guide/evals.md
+  s_bb50b58f7952fe::t_bd97498266c337 160
+apps/docs/src/content/docs/guide/getting-started.mdx
+  s_bb50b58f7952fe::t_ce48e4cacd8689 14,26,150
+apps/docs/src/content/docs/guide/migration.md
+  s_bb50b58f7952fe::t_d292b1cee994fa 7
+apps/docs/src/content/docs/guide/models.md
+  s_bb50b58f7952fe::t_ffed2f1f48af66 28,60,84,111,155
+apps/docs/src/content/docs/guide/observability.md
+  s_bb50b58f7952fe::t_eab74a23f432d7 4,7,27-30,49-51,54-59,74-79,175-181
+apps/docs/src/content/docs/guide/project-layout.md
+  s_bb50b58f7952fe::t_0213521a7c74f8 51-56
+apps/docs/src/content/docs/guide/routing.md
+  s_bb50b58f7952fe::t_d93b65bb6ccf43 74-80
+apps/docs/src/content/docs/guide/sandboxes.md
+  s_bb50b58f7952fe::t_25cac19d83a55b 196
+apps/docs/src/content/docs/guide/schedules.md
+  s_bb50b58f7952fe::t_954c40eeb09fe2 4,79-80,112,130-132
+apps/docs/src/content/docs/guide/skills.md
+  s_bb50b58f7952fe::t_fab384897d1b65 16,105-108,133-134,156
+apps/docs/src/content/docs/guide/subagents.md
+  s_bb50b58f7952fe::t_dce16ec92291b8 34,59,65,161
+apps/docs/src/content/docs/guide/tools.md
+  s_bb50b58f7952fe::t_8f366b6122f09a 7,51,83-84,131,168
+apps/docs/src/content/docs/guide/workflows.md
+  s_bb50b58f7952fe::t_705bd897638d8c 15-20,111
+apps/docs/src/content/docs/reference/agent-api.md
+  s_bb50b58f7952fe::t_c9a9c8adf5ccd1 89-91,99,226,241,497-499,663
+apps/docs/src/content/docs/reference/agent-hooks-api.md
+  s_bb50b58f7952fe::t_ad0a9d807e8713 7,46,126
+apps/docs/src/content/docs/reference/configuration.md
+  s_bb50b58f7952fe::t_45768324df6fad 94,126
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_bb50b58f7952fe::t_db9bf950b628fb 17-19,33-35,39,53-98,150-167,187-189,216-218,222-227
+apps/docs/src/content/docs/reference/errors.md
+  s_bb50b58f7952fe::t_8665e1b8ff32ca 91-92,156-158
+apps/docs/src/content/docs/reference/provider-api.md
+  s_bb50b58f7952fe::t_babc983c81ba68 207-215
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_bb50b58f7952fe::t_6f88f94f972e84 248
+apps/docs/src/content/docs/reference/streaming-protocol.md
+  s_bb50b58f7952fe::t_0458ec2b5c0cf2 31,33,147-171,241-255,257-288,290-297,321-323
+apps/docs/src/content/docs/sdk/create-flue-client.md
+  s_bb50b58f7952fe::t_4685d9296f68fb 41-46
+apps/docs/src/content/docs/sdk/errors.md
+  s_bb50b58f7952fe::t_0a6ac32a18353e 42-45,68-74,81,105-110,139-142,157-170,178-182,211-213,215-216
+apps/docs/src/content/docs/sdk/flue-client.md
+  s_bb50b58f7952fe::t_90a13bd9f38e3c 23-24,48-53,73-78,93-97,112-117,146-150,160-161,172-173,204-209,229-238,264-269,312-315,324-327,342-344,346-347,360-365,379-381,383-386
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_bb50b58f7952fe::t_33ee3787b4d4e6 4,555-571
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_bb50b58f7952fe::t_30074fd4978253 4,110-115,252
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3ca4e28d0d887fec3134f3d5391f4118013f3499",
+  "prompts": {},
+  "sessions": {
+    "s_bb50b58f7952fe": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5da38360-f2dc-4d87-be86-4c72f0d7eaca",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
