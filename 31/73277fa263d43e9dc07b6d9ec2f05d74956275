@@ -1,0 +1,179 @@
+examples/chat-sdk/package.json
+  s_385823fdbef67c::t_66b5f48e0b9857 13
+examples/hello-world/package.json
+  s_385823fdbef67c::t_3af8a2968aeb28 7
+examples/react-chat/package.json
+  s_385823fdbef67c::t_02a55a2fd9377e 12
+packages/cli/test/run.test.mjs
+  s_385823fdbef67c::t_03abc4d905d549 52-53,55,59,81-82,84,91,107-108,110,118,479-480,482,484
+packages/runtime/package.json
+  s_385823fdbef67c::t_895da9f5016153 80-81
+packages/runtime/src/cloudflare/index.ts
+  s_385823fdbef67c::t_5af5562d8af3a6 37-41
+packages/runtime/src/cloudflare/internal.ts
+  s_385823fdbef67c::t_1445d3136f5d68 26-30
+packages/runtime/src/internal.ts
+  s_385823fdbef67c::t_ddfeee2f2c9af5 58,99-105
+packages/runtime/test/agent-client-cloudflare.test.ts
+  s_385823fdbef67c::t_f52b936f270ba0 2,13,38,41,43-44
+packages/runtime/test/agent-client.test.ts
+  s_385823fdbef67c::t_56173a4bc90017 1,14,26,31-32,36,38-39
+packages/runtime/test/agent-conditional-sends.test.ts
+  s_385823fdbef67c::t_08a4c2529c0a9a 5,7-8,19,27,36-37,40,50,67,94
+packages/runtime/test/agent-delivery.test.ts
+  s_385823fdbef67c::t_11711d25381482 5,7,9,24,31,39-40,43,53
+packages/runtime/test/agent-dispatch-message.test.ts
+  s_385823fdbef67c::t_5726a8d9ef1f5d 6,8,10,35,43,52-53,56,66,123
+packages/runtime/test/agent-function.test.ts
+  s_385823fdbef67c::t_1a0d5e3b85a9a4 2,4-5,24,37,42-44,51
+packages/runtime/test/agent-harness-tool.test.ts
+  s_385823fdbef67c::t_79e011a95a2150 6,8,10,25,34,43-44,47,57,94
+packages/runtime/test/agent-initial-data.test.ts
+  s_385823fdbef67c::t_1406d273bde715 5,7-8,30,41,50-51,54,64,81
+packages/runtime/test/agent-lifecycle-hooks.test.ts
+  s_385823fdbef67c::t_34e91c385fef83 6,8,10,44,51,60-61,64,74,116,161
+packages/runtime/test/agent-output-hooks.test.ts
+  s_385823fdbef67c::t_fbac6a7c770fb5 6,8,10,34,40,48-49,52,62
+packages/runtime/test/agent-props.test.ts
+  s_385823fdbef67c::t_57734d83262ae7 2,4-5,10,14,17-19
+packages/runtime/test/agent-resources.test.ts
+  s_385823fdbef67c::t_b61f5cb9ab3d97 5,7,9,27,34,42-43,46,56
+packages/runtime/test/agent-sandbox.test.ts
+  s_385823fdbef67c::t_5e96974ef21dff 5,7,9,25,34,42-43,46,56
+packages/runtime/test/agent-skill.test.ts
+  s_385823fdbef67c::t_39710e21a457cf 5,7,9,22,30,38-39,42,52
+packages/runtime/test/agent-state.test.ts
+  s_385823fdbef67c::t_0d3e11ab9b1368 5,7,9,29,36,44-45,48,58
+packages/runtime/test/agent-subagent.test.ts
+  s_385823fdbef67c::t_112689ebe37d1f 5,7,9,28,35,43-44,47,57
+packages/runtime/test/conversation-observer.test.ts
+  s_385823fdbef67c::t_21b1d817bb1723 5,7,9,26,32,40-41,44,54,73
+packages/runtime/test/crash-window-sweep.test.ts
+  s_385823fdbef67c::t_d0f7bae165fc37 21,24,27,45,59,68-70,80,120-121,222,250,344
+packages/runtime/test/define-skill.test.ts
+  s_385823fdbef67c::t_33c0e159505313 2,4,6,16,21,125-126,195-196,230-231
+packages/runtime/test/dispatch.test.ts
+  s_385823fdbef67c::t_0eaad31e2708f9 2,4-5,22,63,67-69
+packages/runtime/test/durable-tool.test.ts
+  s_385823fdbef67c::t_31f061c1f20c23 10,12,14,24,33,41-42,45,77,106
+packages/runtime/test/mcp.test.ts
+  s_385823fdbef67c::t_06dc1b141ab1f6 1,11,16,63-66,307-308
+packages/runtime/test/package-entrypoints.test.ts
+  s_385823fdbef67c::t_2606fae9d9eb1b 31,40-41,135,141
+packages/runtime/test/provider-diagnostics.test.ts
+  s_385823fdbef67c::t_6d850c864425fb 2,4-5,14,24,27-28,31
+packages/runtime/test/session-compaction.test.ts
+  s_385823fdbef67c::t_52e45e344bc490 1,5,10,15,18,46,49,90,93,135,138,180,183,226,230,265,269,298,301,343,346,388,391,448,452
+packages/runtime/test/session-event-images.test.ts
+  s_385823fdbef67c::t_49a04f703ba4d6 3,5,7,12,19,22-23,27,31
+packages/runtime/test/session-operations.test.ts
+  s_385823fdbef67c::t_aacc89c2b2be16 3,5,8,27,33,36-37,41,45
+packages/runtime/test/session-skills.test.ts
+  s_385823fdbef67c::t_6bfdf081c71ff0 2,4,6,10,14,17-19
+packages/runtime/test/settlement-rebuild.test.ts
+  s_385823fdbef67c::t_7d5c49621da4a2 18,20-21,32,39,48-50,60
+packages/runtime/test/structured-results.test.ts
+  s_385823fdbef67c::t_5da2f2c54e8992 2,4,7,13,18,21-23,28
+packages/runtime/test/subagent-recovery.test.ts
+  s_385823fdbef67c::t_42c97443678202 2,4,6,18,24,27-28,32,77
+packages/vite/package.json
+  s_385823fdbef67c::t_54a3a1582bbc45 49
+packages/vite/src/bootstrap/node-entry.ts
+  s_385823fdbef67c::t_4662a19bc5f5b7 5
+packages/vite/test/helpers/cloudflare-fixture.ts
+  s_385823fdbef67c::t_680fd28f80aa7a 70-72,74-90
+packages/vite/test/helpers/fixture.ts
+  s_385823fdbef67c::t_670142971bd8f1 50-52,84-100
+pnpm-lock.yaml
+  s_385823fdbef67c::t_ce79c79153cbd7 249-250,451-453,702-703,1657-1658,1660-1661,1939-1941,2934-2935,2938-2942,11857,11859,11871-11891
+examples/react-chat/src/agents/assistant.ts
+  s_385823fdbef67c::t_7b8b00f79afd9d 2-3,14,19
+examples/react-chat/src/agents/demo.ts
+  s_385823fdbef67c::t_a207a30e42326a 12,15-16,23,28
+examples/react-chat/src/app.ts
+  s_385823fdbef67c::t_0932f592f173c9 15-16
+packages/cli/src/lib/run-bootstrap.ts
+  s_385823fdbef67c::t_7a64efd619935e 35,244-249
+packages/runtime/src/agent-tuning.ts
+  s_385823fdbef67c::t_ca2c0733025f5f 16
+packages/runtime/src/compaction.ts
+  s_385823fdbef67c::t_2f8e858573bfab 19-20,22,594,596,639,641,705
+packages/runtime/src/config.ts
+  s_385823fdbef67c::t_099f99a27d020f 72-80,103-109,116,151,330-331,357
+packages/runtime/src/index.ts
+  s_385823fdbef67c::t_4a998c8608ff7c 96
+packages/runtime/src/node/start.ts
+  s_385823fdbef67c::t_d72e991e25fcbd 14,106-109
+packages/runtime/src/runtime/builtin-providers.ts
+  s_385823fdbef67c::t_1adac8cbd213b2 1-19
+packages/runtime/src/session.ts
+  s_385823fdbef67c::t_0be1c3a70c4833 23,158,786-790,1844,1847-1848
+packages/runtime/test/cloudflare-workers-ai-provider.test.ts
+  s_385823fdbef67c::t_0d4257ea0d7593 3,7,11,36-55,66,70-71,76,105,109-110,115-116,171,175-176,181,203,211-212,217,244-246,251,274,278-279,284,304,308-309,314-315,344-346,351,378-380,385,404-406,411,442-444,449,482-484,489,510,513-514,519,542-544,549,601-603,608,632-634,639,666,670-671,676-677,703-705,710,733-735,740,760-762,767,788-790,795
+packages/runtime/test/error-diagnostics.test.ts
+  s_68cc84f0658f2a::t_b03507049c4835 1
+packages/runtime/test/providers.test.ts
+  s_385823fdbef67c::t_8ac7a079222fc0 1-5,7,9,11-14,19,61-96,109-110,112,130,132-137,152-168,170-171,174,176-178,180,182-184,187-188,190-192,195-196,198-201,204-205,207,210-211,213,215-217,219-220,223-230,233,235-236,239-242,245-250,252-269,271,273-283,285-286,288,290
+packages/runtime/test/tool.test.ts
+  s_68cc84f0658f2a::t_3a6182b411913e 2,4,6,24,30,33-35,39,48
+packages/vite/src/bootstrap/node-server.ts
+  s_385823fdbef67c::t_7049dbfa639c15 21-23
+packages/vite/src/bootstrap/virtual-modules.d.ts
+  s_385823fdbef67c::t_255109264d1803 9,35-38
+packages/vite/src/cloudflare-entry.ts
+  s_385823fdbef67c::t_eede9ea875a762 101,106,109,118-119,123-126,128-129
+packages/vite/src/flue-plugin.ts
+  s_385823fdbef67c::t_c23edcf41122b4 77,111,114,512-513,530-532
+packages/vite/src/providers-module.ts
+  s_385823fdbef67c::t_d1ca17b8618f13 1-38
+examples/chat-sdk/src/agents/assistant.ts
+  s_385823fdbef67c::t_71dd5a50eb1692 4,7-8,15,20
+examples/chat-sdk/src/app.ts
+  s_385823fdbef67c::t_de2ec1ebc15d8a 5-6
+examples/cloudflare/src/app.ts
+  s_385823fdbef67c::t_4a0f441f08ba1d 30-31,35,42,45
+examples/hello-world/src/agents/with-registered-provider.ts
+  s_385823fdbef67c::t_95b7aaf75fba12 2-4,6-7,9-30
+examples/hello-world/src/app.ts
+  s_385823fdbef67c::t_53af7686b9ef2f 6-9,28-32,35-50
+knip.json
+  s_385823fdbef67c::t_d187eaa0e7d3b9 36-38
+packages/runtime/src/cloudflare/workers-ai-provider.ts
+  s_385823fdbef67c::t_35997f792019e4 4-5,18-19,24,26,28,30-33,36,39-45,59-62,64,83,296-302,304,623,626-628,664,669,686,772,790,811,814-815,817-883,885-888
+packages/runtime/src/runtime/providers.ts
+  s_385823fdbef67c::t_306b7f2446e509 1,5,7-9,11,14-17,19,22-29,31-32,35-37,40-42,45-47,51-57,59-71,73-80,83,85-89,108,111-114,116,118-120,123-125,131,136,138,142,148-149,151-152,167-180,182,184-186,189-206
+packages/runtime/test/context.test.ts
+  s_385823fdbef67c::t_cee0a552436520 2,4-7,11,14-21,24,27-29
+packages/runtime/test/harness-session.test.ts
+  s_385823fdbef67c::t_62066691e92d88 1-2,10,13-23
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_385823fdbef67c::t_da743bf404da61 6,8,10-11,31,62,71-72,75,124,142,193
+packages/runtime/test/node-local-sandbox.test.ts
+  s_385823fdbef67c::t_93b4f69ce810b6 4-5,10-21
+packages/vite/test/build.test.ts
+  s_385823fdbef67c::t_74d38ab4c1a1af 137-206
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3173277fa263d43e9dc07b6d9ec2f05d74956275",
+  "prompts": {},
+  "sessions": {
+    "s_385823fdbef67c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b8ab253-0958-4fdc-a729-e7667b64c745",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_68cc84f0658f2a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a23b4f7f04ae7a9a4",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
