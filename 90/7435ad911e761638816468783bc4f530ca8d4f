@@ -1,0 +1,25 @@
+packages/runtime/src/runtime/conversation-stream-store.ts
+  s_cfdaac2e1c541d::t_46a0771fc9e2d5 589,608
+packages/runtime/src/sql-agent-execution-store.ts
+  s_cfdaac2e1c541d::t_3ad2eb8ce1c9da 225,366,379,393,396,415,427,721,730,848
+packages/runtime/test/cloudflare-agent-execution-store.test.ts
+  s_cfdaac2e1c541d::t_1e91d3d1ef571e 95
+packages/runtime/test/settlement-rebuild.test.ts
+  s_cfdaac2e1c541d::t_f661fda42c0f4d 119
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "907435ad911e761638816468783bc4f530ca8d4f",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
