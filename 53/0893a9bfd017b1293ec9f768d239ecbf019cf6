@@ -1,0 +1,19 @@
+apps/docs/public/_redirects
+  s_d3f25a8746c90c::t_891aa024762b7c 15,17-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "530893a9bfd017b1293ec9f768d239ecbf019cf6",
+  "prompts": {},
+  "sessions": {
+    "s_d3f25a8746c90c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d15efc81-a804-499a-ac40-9308ca10492d",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
