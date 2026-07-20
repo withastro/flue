@@ -1,0 +1,31 @@
+apps/docs/src/content/docs/guide/migration.md
+  s_385823fdbef67c::t_a489e965113588 230-246,320,332-336
+apps/docs/src/content/docs/guide/models.md
+  s_385823fdbef67c::t_53ffe7baf3ea56 41,43-51,66,151,155,157,160-185,192,194-216,245-246,249-255,263
+skills/flue/SKILL.md
+  s_385823fdbef67c::t_e8dbe691b8acae 137
+apps/docs/src/content/docs/guide/observability.md
+  s_385823fdbef67c::t_b0755db1e0fa16 43
+apps/docs/src/content/docs/reference/agent-api.md
+  s_385823fdbef67c::t_31d7e08fe12326 13
+apps/docs/src/content/docs/reference/configuration.md
+  s_385823fdbef67c::t_7b2a0922432f05 75,121-131,202,207
+apps/docs/src/content/docs/reference/provider-api.md
+  s_385823fdbef67c::t_de094075423e1e 3-4,7,12-17,20-22,25,28-29,32,34-38,40,42,44-46,48,51-62,65,67-70,72,74,76-78,80,82,84,87-89,95,97-98,102-103,106,123,146,150,162,164,166,169-172
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c9ba419032d0a5c2779966e3a29dd802ca2eac45",
+  "prompts": {},
+  "sessions": {
+    "s_385823fdbef67c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b8ab253-0958-4fdc-a729-e7667b64c745",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
