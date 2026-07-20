@@ -1,0 +1,19 @@
+packages/runtime/src/cloudflare/workers-ai-provider.ts
+  s_385823fdbef67c::t_98fcd5c4ecd91d 31-34,324-326,640-642,654-655
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9f171fe546d1380e02e55741be78ba3ef414e85e",
+  "prompts": {},
+  "sessions": {
+    "s_385823fdbef67c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b8ab253-0958-4fdc-a729-e7667b64c745",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
