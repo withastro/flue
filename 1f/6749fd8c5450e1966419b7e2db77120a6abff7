@@ -1,0 +1,21 @@
+packages/runtime/src/harness.ts
+  s_cfdaac2e1c541d::t_b062332aee67d6 5,154,191,195,219,223
+packages/runtime/test/harness-session.test.ts
+  s_cfdaac2e1c541d::t_8029ed441ecad8 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1f6749fd8c5450e1966419b7e2db77120a6abff7",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
