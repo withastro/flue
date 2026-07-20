@@ -1,0 +1,45 @@
+packages/sdk/src/client.ts
+  s_9385ea30820b39::t_5597db74edbe7d 16-20,62-72,76-78,153
+packages/sdk/src/index.ts
+  s_9385ea30820b39::t_da03df1e2a5007 40-41
+packages/sdk/src/public/conversation-stream.ts
+  s_9385ea30820b39::t_125591d57dd45f 129-130,465-467
+packages/sdk/src/public/conversation.ts
+  s_9385ea30820b39::t_d50d66a4b685aa 140-146
+packages/sdk/src/public/read.ts
+  s_9385ea30820b39::t_1fe192082660c4 1-96
+packages/sdk/src/public/reply.ts
+  s_9385ea30820b39::t_4a71d925acb4fc 1-93
+packages/sdk/src/public/settle.ts
+  s_9385ea30820b39::t_157068c672064f 64-66,70-71,83-100
+packages/sdk/test/client.test.ts
+  s_7c716dc335475b::t_0aa24f34624856 470-635
+packages/sdk/test/reply-parity.test.ts
+  s_9385ea30820b39::t_42c15ff1e72b0a 1-121
+packages/sdk/test/reply.test.ts
+  s_9385ea30820b39::t_23d874f386cbc6 1-140
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8f2fb3529949d935fff7e0b6e5e02e0fe9fd94cd",
+  "prompts": {},
+  "sessions": {
+    "s_7c716dc335475b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a0eb778268bc72218",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_9385ea30820b39": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b2f8990-5f95-4619-a5a1-0a46e8d0173f",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
