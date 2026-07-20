@@ -1,0 +1,23 @@
+packages/react/src/agent-reducer.ts
+  s_cfdaac2e1c541d::t_c58846014688f6 146,210-216,218-223
+packages/sdk/src/http.ts
+  s_cfdaac2e1c541d::t_3dd8f1042de178 121-130,132,138
+packages/sdk/src/public/observe.ts
+  s_cfdaac2e1c541d::t_71c34b1a582a58 194-198
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "61def7af130f7b63786144e21173acfd1539d6d0",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
