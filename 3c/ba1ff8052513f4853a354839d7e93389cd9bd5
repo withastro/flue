@@ -1,0 +1,23 @@
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_cfdaac2e1c541d::t_42ad58e55b1e53 826-828,914-916
+packages/runtime/src/node/agent-coordinator.ts
+  s_cfdaac2e1c541d::t_421c42983a4fdd 646-648,740-744
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_cfdaac2e1c541d::t_57c6f99926f5f6 2114-2155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3cba1ff8052513f4853a354839d7e93389cd9bd5",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
