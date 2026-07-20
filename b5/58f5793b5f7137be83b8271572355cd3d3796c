@@ -1,0 +1,35 @@
+packages/cli/src/lib/env.ts
+  s_cfdaac2e1c541d::t_4b5876f54165da 4,16
+packages/cli/src/lib/run-local.ts
+  s_cfdaac2e1c541d::t_e629e599dada5d 33,216-217,222
+packages/vite/src/agent-scan.ts
+  s_cfdaac2e1c541d::t_da34b0029042a4 27,39-41,43,129-147,499,502-505,507
+packages/vite/src/cloudflare-entry.ts
+  s_cfdaac2e1c541d::t_cd0e467e0eedba 181
+packages/vite/src/flue-plugin.ts
+  s_cfdaac2e1c541d::t_983d5b47855770 77
+packages/vite/src/index.ts
+  s_cfdaac2e1c541d::t_06e9fb618ed7ca 29
+packages/vite/src/markdown-import-plugin.ts
+  s_cfdaac2e1c541d::t_4658c03592aecb 24,26-28,80-85,125-127,129-132,218
+packages/vite/src/node-dev.ts
+  s_cfdaac2e1c541d::t_a1ce074a0f4fec 6-9,209-211,217
+packages/vite/src/paths.ts
+  s_cfdaac2e1c541d::t_60b776f13054d2 1-39
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b558f5793b5f7137be83b8271572355cd3d3796c",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
