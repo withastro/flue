@@ -1,0 +1,21 @@
+packages/runtime/src/adapter-helpers.ts
+  s_cfdaac2e1c541d::t_2e6fa33421c67a 69-79
+packages/runtime/test/cloudflare-agent-execution-store.test.ts
+  s_cfdaac2e1c541d::t_6b34eb92df7a29 225-264
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ad7e1f90eb7e0223a4bfabefe580db7d12d7b6f3",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
