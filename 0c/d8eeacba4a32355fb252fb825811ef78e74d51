@@ -1,0 +1,63 @@
+packages/runtime/src/runtime/handle-agent.ts
+  s_cfdaac2e1c541d::t_20dcd289835f1e 121
+packages/runtime/test/agent-function.test.ts
+  s_cfdaac2e1c541d::t_71fd4b97296cba 130-134
+packages/runtime/src/agent-client.ts
+  s_f68e8a4dda39d8::t_52fcd8888564d5 285
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_f68e8a4dda39d8::t_803870ab431104 839-841,846,896,903-909,916,936
+packages/runtime/src/cloudflare/worker-config.ts
+  s_f68e8a4dda39d8::t_db6d5132861bc5 144-150
+packages/runtime/src/errors.ts
+  s_f68e8a4dda39d8::t_c0df64ece2b5f6 377,381,388-389
+packages/runtime/src/node/agent-coordinator.ts
+  s_f68e8a4dda39d8::t_142fe6a3c09006 3,43-47,99,110,655-660,672-674,679,763-767,774
+packages/runtime/src/runtime/agent-submissions.ts
+  s_f68e8a4dda39d8::t_fce119b229a459 132,159,221-223
+packages/runtime/src/runtime/flue-app.ts
+  s_f68e8a4dda39d8::t_1fd4e65f38377a 106-107
+packages/runtime/src/types.ts
+  s_f68e8a4dda39d8::t_e2d8a6f27dd0f2 135
+packages/runtime/test/agent-conditional-sends.test.ts
+  s_f68e8a4dda39d8::t_958fb9a66e145d 11-14,94-104,121-122,128-129,160-161,164-167,191-192,211-214,223,262-265,270-273
+packages/runtime/test/agent-route.test.ts
+  s_f68e8a4dda39d8::t_115cd61ade9f55 52,79-83,96,110,126-130
+packages/runtime/test/cloudflare-agent-coordinator.test.ts
+  s_f68e8a4dda39d8::t_208f17d2e2c4cf 12-14,173-182,193,197-240,772-774,785,1067-1069
+packages/runtime/test/dispatch.test.ts
+  s_f68e8a4dda39d8::t_66c9c4a70d190d 26,53,94,183-187
+packages/runtime/test/helpers/runtime-config.ts
+  s_f68e8a4dda39d8::t_123062ab34cdb9 36,57
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_f68e8a4dda39d8::t_50f3933ff83d44 294-296
+packages/sdk/src/public/read.ts
+  s_f68e8a4dda39d8::t_4731d5452c3fe0 22-26,31-39,73
+packages/sdk/src/public/send.ts
+  s_f68e8a4dda39d8::t_cfe8dab8c3dcd3 67,69
+packages/sdk/src/public/settle.ts
+  s_f68e8a4dda39d8::t_7bef342f68cbd2 19-30,57
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0cd8eeacba4a32355fb252fb825811ef78e74d51",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f68e8a4dda39d8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a1708331beb13f4cd",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
