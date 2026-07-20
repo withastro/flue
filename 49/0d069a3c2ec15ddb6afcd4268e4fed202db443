@@ -1,0 +1,23 @@
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_cfdaac2e1c541d::t_44026dec761a99 723,746,1014,1365,1394,1424,1468,2344
+apps/docs/src/content/docs/guide/durability.md
+  s_cfdaac2e1c541d::t_2cd899b33ffb4c 121
+packages/runtime/src/node/agent-coordinator.ts
+  s_cfdaac2e1c541d::t_242c23789637c4 618-623
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "490d069a3c2ec15ddb6afcd4268e4fed202db443",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
