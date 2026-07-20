@@ -1,0 +1,47 @@
+CHANGELOG.md
+  s_9385ea30820b39::t_5da8f5c2eaa60c 23,33,49-51
+apps/docs/src/content/docs/guide/building-agents.md
+  s_9385ea30820b39::t_91bf84e9320008 196-197,201
+apps/docs/src/content/docs/guide/durability.md
+  s_9385ea30820b39::t_d96f4e3114ac12 11,15,152
+apps/docs/src/content/docs/guide/evals.md
+  s_b54838bc15383b::t_30957783c05b2e 65-66,79-81
+apps/docs/src/content/docs/guide/migration.md
+  s_b54838bc15383b::t_31b7152f879613 186,192-194,200,214
+apps/docs/src/content/docs/guide/schedules.md
+  s_9385ea30820b39::t_04399e6a1cc7ad 139,146-147,151
+apps/docs/src/content/docs/guide/workflows.md
+  s_9385ea30820b39::t_5c256ec8d79dfa 65,78-79,83,102-103,106,114,118,132-139,164-171,180-191
+apps/docs/src/content/docs/reference/agent-api.md
+  s_9385ea30820b39::t_c595bb533e70a2 164,211-213,219,232,235-240,243-249,278,339,518-519
+apps/docs/src/content/docs/reference/errors.md
+  s_9385ea30820b39::t_c94e226341ea75 109-110,120,126,294,302,310,318
+apps/docs/src/content/docs/sdk/flue-client.md
+  s_9385ea30820b39::t_89a350f1957365 35,119-148,164,313-344
+apps/docs/src/content/docs/sdk/overview.md
+  s_9385ea30820b39::t_a4c0777463e2b7 32-34,37,52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7c3a34a8049199e23427c8b0006c1e822f4848be",
+  "prompts": {},
+  "sessions": {
+    "s_9385ea30820b39": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b2f8990-5f95-4619-a5a1-0a46e8d0173f",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_b54838bc15383b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a75fcaa49c6ea5b58",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
