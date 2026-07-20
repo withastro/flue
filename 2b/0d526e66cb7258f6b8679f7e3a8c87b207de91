@@ -1,0 +1,49 @@
+packages/libsql/src/libsql-adapter.ts
+  s_cfdaac2e1c541d::t_11bbfe9c52d5d0 204,363,520,553,559,565,982,1020,1059
+packages/mongodb/src/submission-store.ts
+  s_cfdaac2e1c541d::t_80214853938185 146,166,173,176-177,540,667
+packages/mongodb/test/mongodb-unit.test.ts
+  s_cfdaac2e1c541d::t_e2cad646bf2c18 276
+packages/mysql/src/mysql-adapter.ts
+  s_cfdaac2e1c541d::t_9054b68b17c761 98,182,310,521,690,716,723,725,1108,1143,1182
+packages/mysql/test/mysql-adapter.test.ts
+  s_cfdaac2e1c541d::t_f29f24a080ceb7 227
+packages/postgres/src/postgres-adapter.ts
+  s_cfdaac2e1c541d::t_22930f4e0ae9c4 183,342,524,551,557,563,976,1014,1053
+packages/redis/src/redis-adapter.ts
+  s_cfdaac2e1c541d::t_8bdaf7cb8f814d 388,395,973
+packages/redis/src/redis-scripts.ts
+  s_cfdaac2e1c541d::t_f6e9ecac084177 97,123,135
+packages/runtime/src/agent-execution-store.ts
+  s_cfdaac2e1c541d::t_82ee5c578eecc7 57,104,129,221
+packages/runtime/src/runtime/agent-submissions.ts
+  s_cfdaac2e1c541d::t_5d49abe3199992 399,411,415
+packages/runtime/src/session.ts
+  s_cfdaac2e1c541d::t_27deb0b6d808fe 5137
+packages/runtime/src/sql-agent-execution-store.ts
+  s_cfdaac2e1c541d::t_07d59335d00d66 275,301,306,311,708,780,819,845
+packages/runtime/src/test-utils/define-store-contract-tests.ts
+  s_cfdaac2e1c541d::t_0d7138aa4b33c7 773,786,796,801
+packages/runtime/test/cloudflare-agent-execution-store.test.ts
+  s_cfdaac2e1c541d::t_c340ccebb7ccd6 90
+packages/runtime/test/crash-window-sweep.test.ts
+  s_cfdaac2e1c541d::t_4f433d30003967 206
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_cfdaac2e1c541d::t_faac038cb2ffa9 228,308,1639,1732,1770,1803,1842
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2b0d526e66cb7258f6b8679f7e3a8c87b207de91",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
