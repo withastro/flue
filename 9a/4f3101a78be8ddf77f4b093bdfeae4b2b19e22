@@ -1,0 +1,19 @@
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_cfdaac2e1c541d::t_4a40500de7771a 532-547,644-648
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9a4f3101a78be8ddf77f4b093bdfeae4b2b19e22",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
