@@ -1,0 +1,37 @@
+packages/runtime/src/index.ts
+  s_9385ea30820b39::t_8912ec770f9087 18,24
+packages/runtime/src/node/start.ts
+  s_9385ea30820b39::t_6d0e08bcad6db5 79,95-96
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_9385ea30820b39::t_432bbfa0e33333 2302
+packages/runtime/src/agent-client.ts
+  s_9385ea30820b39::t_12c05f54d57c4a 6-21,27-30,34,42,46,50,75,79-82,87,100,122-124,126-144,146-153,161,165,197,216-231,234-235,238-239,242-278,294-295,301-303,308,310-318,320,323-328,356,388-400,402-406,410-419,421-424,437-440,478-504
+packages/runtime/src/conversation-public.ts
+  s_9385ea30820b39::t_ec2dd7b3fc2a77 16-24,120-121,385-402,452,460-487
+packages/runtime/src/errors.ts
+  s_9385ea30820b39::t_c333c25d0fc972 349-351
+packages/runtime/src/internal.ts
+  s_9385ea30820b39::t_154b5a1635b12b 71
+packages/runtime/src/runtime/conversation-observer.ts
+  s_9385ea30820b39::t_11e9f30a1abd22 131-137,145-147,158-161,165,169-172,187-191,251-255,277-290
+packages/runtime/test/agent-client-cloudflare.test.ts
+  s_9385ea30820b39::t_df4473444868cf 9-10,184-185,188,202-208,210,224,227,245-254,268,270-271,276-451,476-483,485
+packages/runtime/test/agent-client.test.ts
+  s_9385ea30820b39::t_a32d1ed2dffd82 5,64-65,69,71,120-121,124,150-151,155,170-174,177-178,180,182-183,187,200-207,210,233-234,237,239,244-245,250,264-275,278,290,292-293,298-486,542-544
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1294da15c78628247551eec0b324147b3c08024d",
+  "prompts": {},
+  "sessions": {
+    "s_9385ea30820b39": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b2f8990-5f95-4619-a5a1-0a46e8d0173f",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
