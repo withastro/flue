@@ -1,0 +1,27 @@
+packages/mongodb/src/value-store.ts
+  s_cfdaac2e1c541d::t_d2e9f61944584a 97,105
+packages/mysql/src/mysql-adapter.ts
+  s_cfdaac2e1c541d::t_abbe0065b3a5c0 89,92,227,287-290,294-303,305
+packages/opentelemetry/src/content-policy.ts
+  s_cfdaac2e1c541d::t_bdffd02a6bbf09 76-87,91-93,96
+packages/opentelemetry/src/gen-ai-content.ts
+  s_cfdaac2e1c541d::t_ee24daf86cf47c 94
+packages/opentelemetry/src/index.ts
+  s_cfdaac2e1c541d::t_ab1ca85230666a 32,296
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5aedf09d156b6f454326c9a4661203667f7a1041",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
