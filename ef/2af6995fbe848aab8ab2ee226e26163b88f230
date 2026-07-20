@@ -1,0 +1,25 @@
+AGENTS.md
+  s_f68e8a4dda39d8::t_2db248d79bfdad 21
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_f68e8a4dda39d8::t_3f230b6d6038c7 116
+packages/runtime/src/agent-execution-store.ts
+  s_f68e8a4dda39d8::t_c18baff0932b10 197
+packages/runtime/src/test-utils/define-store-contract-tests.ts
+  s_f68e8a4dda39d8::t_999920abf0c8ab 118,151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ef2af6995fbe848aab8ab2ee226e26163b88f230",
+  "prompts": {},
+  "sessions": {
+    "s_f68e8a4dda39d8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a1708331beb13f4cd",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
