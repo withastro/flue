@@ -1,0 +1,31 @@
+apps/docs/src/content/docs/reference/agent-api.md
+  s_4c571461b38139::t_d0907bfdbab7ab 299,320-331
+packages/runtime/src/node/start.ts
+  s_4c571461b38139::t_23debe86931c76 13,17,55-62,83,91,120-126
+packages/runtime/test/agent-client.test.ts
+  s_385823fdbef67c::t_7bc5b4de9c8c88 14,310-343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "30139c613ca3c126405e939b06b24df63db8c789",
+  "prompts": {},
+  "sessions": {
+    "s_385823fdbef67c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b8ab253-0958-4fdc-a729-e7667b64c745",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_4c571461b38139": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-af598d730ff4aaafb",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
