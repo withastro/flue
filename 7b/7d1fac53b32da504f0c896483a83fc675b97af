@@ -1,0 +1,19 @@
+scripts/publish-nightly.mjs
+  s_9385ea30820b39::t_746514ecfc6a05 9-12,28,91-100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7b7d1fac53b32da504f0c896483a83fc675b97af",
+  "prompts": {},
+  "sessions": {
+    "s_9385ea30820b39": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b2f8990-5f95-4619-a5a1-0a46e8d0173f",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
