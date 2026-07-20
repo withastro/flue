@@ -1,0 +1,157 @@
+CHANGELOG.md
+  s_9385ea30820b39::t_44944e6ad6ef9f 13,24-27
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_9385ea30820b39::t_f253e8748d685c 474,480,482
+packages/libsql/src/libsql-adapter.ts
+  s_9385ea30820b39::t_97481a0b7ae04c 215,899,971,974
+packages/libsql/test/libsql-adapter.test.ts
+  s_9385ea30820b39::t_9fa2352da0ab3a 202
+packages/mysql/src/mysql-adapter.ts
+  s_9385ea30820b39::t_b649c487ed4355 103,187,255,314,1035,1105,1108
+packages/postgres/src/postgres-adapter.ts
+  s_9385ea30820b39::t_e40e3de32ce9db 194,894,967,970
+packages/postgres/test/postgres-adapter.test.ts
+  s_9385ea30820b39::t_755a88e34a03ee 131
+packages/runtime/src/agent-client.ts
+  s_9385ea30820b39::t_defc17609c2898 131-132,252-254,269-270,272,275,413
+packages/runtime/src/sql-agent-execution-store.ts
+  s_9385ea30820b39::t_dc685806026ae6 123,128,131,859
+packages/runtime/src/test-utils/define-store-contract-tests.ts
+  s_9385ea30820b39::t_4d8682ec399d58 32,148,150,188,255,300-304,319,341-345,393,396,482-483,509,989,992,1035,1049-1050,1114,1118,1205,1235
+packages/runtime/test/agent-client-cloudflare.test.ts
+  s_9385ea30820b39::t_4368d5392c0e2e 105,112,188,308,310
+packages/runtime/test/agent-client.test.ts
+  s_9385ea30820b39::t_4f2ba1036604a3 71,124,210,239,278,330,332
+packages/runtime/test/agent-conditional-sends.test.ts
+  s_9385ea30820b39::t_e5398dd6162568 4,47,50,80-82,109,117,149,153,172,179,184,199,206,225,249,255
+packages/runtime/test/agent-delivery.test.ts
+  s_9385ea30820b39::t_76e74133b631aa 54,57,149,217
+packages/runtime/test/agent-dispatch-message.test.ts
+  s_9385ea30820b39::t_853648702d922d 67,71,122,156,212,222-223,246,440,488
+packages/runtime/test/agent-execution-store-contract.test.ts
+  s_9385ea30820b39::t_30fb05c3d2bf08 87,203,233,273
+packages/runtime/test/agent-function.test.ts
+  s_9385ea30820b39::t_14ad2cd11208d7 1,130
+packages/runtime/test/agent-harness-tool.test.ts
+  s_9385ea30820b39::t_33d9c0a55a167b 58,61,75,219,305,323-328,331,397,451,456
+packages/runtime/test/agent-initial-data.test.ts
+  s_9385ea30820b39::t_a25649d21255f9 4,61,64,94-96,165,169,195,207,228,232,256
+packages/runtime/test/agent-output-hooks.test.ts
+  s_9385ea30820b39::t_c750171d23a831 63,66,80,397,458,507
+packages/runtime/test/agent-sandbox.test.ts
+  s_9385ea30820b39::t_e2f63e6666f54d 57,60,74,213-218,221,264,324,380,432-437,440,490,499,545-550,553,596,667,711-716,719,763
+packages/runtime/test/agent-skill.test.ts
+  s_9385ea30820b39::t_bb63cf68121679 53,56,70,246
+packages/runtime/test/agent-state.test.ts
+  s_9385ea30820b39::t_f5f046a44cd469 59,62,76,365,367,457,525
+packages/runtime/test/agent-subagent.test.ts
+  s_9385ea30820b39::t_79330dffeb6202 58,61,75,312
+packages/runtime/test/context.test.ts
+  s_9385ea30820b39::t_5559bfd27c127a 1,132,134,145
+packages/runtime/test/conversation-observer.test.ts
+  s_9385ea30820b39::t_e4ee3eff695489 55,59,72
+packages/runtime/test/crash-window-sweep.test.ts
+  s_9385ea30820b39::t_49c83ed39f8f1e 81,84,98,156,177,179,183,196,206,211,216,249,262,264,283-289,301,305-306,327,335,357,379-380,387,402,404,409,411,423-424,435,439-442,447,453-459,477,481,486
+packages/runtime/test/dispatch.test.ts
+  s_9385ea30820b39::t_73c49de25ff664 1,26,53,92,182
+packages/runtime/test/durable-tool.test.ts
+  s_9385ea30820b39::t_4f71a5a37d72d6 78,81,95,239,241,364,366
+packages/runtime/test/helpers/runtime-config.ts
+  s_9385ea30820b39::t_6db7a6b28f96a2 33-36,53-56
+packages/runtime/test/settlement-rebuild.test.ts
+  s_9385ea30820b39::t_c1a81e5b8838c7 17,57,60,74,106,152
+apps/docs/src/content/docs/ecosystem/deploy/railway.md
+  s_1b67523297638a::t_0bdc98527ce04f 109
+apps/docs/src/content/docs/ecosystem/deploy/render.md
+  s_1b67523297638a::t_0f5b84344a3533 131
+apps/docs/src/content/docs/ecosystem/tooling/braintrust.md
+  s_1b67523297638a::t_414f64f4b41084 62
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_1b67523297638a::t_970a3ad3d58e45 369
+apps/docs/src/content/docs/guide/migration.md
+  s_1b67523297638a::t_ffb95f95a39d9c 21,216-223,262,343
+apps/docs/src/content/docs/guide/observability.md
+  s_1b67523297638a::t_ae0df2aadbf6e5 47
+apps/docs/src/content/docs/reference/agent-api.md
+  s_1b67523297638a::t_834f30e6eb7e85 158,175,237
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_1b67523297638a::t_2aa4bde11b3ed5 208
+apps/docs/src/content/docs/reference/events.md
+  s_1b67523297638a::t_6f4433c82f0dd5 98,562
+packages/mongodb/test/mongodb-adapter.test.ts
+  s_9385ea30820b39::t_ae68b864d8e310 267,296,298,304
+packages/redis/test/redis-adapter.test.ts
+  s_f3e300754e5581::t_6de78e96a91b44 101,103
+packages/runtime/src/client.ts
+  s_9385ea30820b39::t_90e07a53c8cfa5 46-51,111
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_9385ea30820b39::t_3ce38fed520432 121,445,453,457-458,685-686,789,809-810,915,928,935
+packages/runtime/src/node/agent-coordinator.ts
+  s_9385ea30820b39::t_23a711557e5081 93,104,232,237,253
+packages/runtime/src/node/assemble.ts
+  s_9385ea30820b39::t_8601af70e07ce6 145,149
+packages/runtime/src/runtime/agent-submissions.ts
+  s_9385ea30820b39::t_4d4470cd72201d 35,245,335,348,380,527,578,739,743
+packages/runtime/src/runtime/dispatch-queue.ts
+  s_9385ea30820b39::t_83384a9d26200a 4
+packages/runtime/src/runtime/dispatch.ts
+  s_9385ea30820b39::t_69f904f8ee8157 3,23
+packages/runtime/src/runtime/events.ts
+  s_9385ea30820b39::t_0fcfdee80e1a8a 8
+packages/runtime/src/runtime/flue-app.ts
+  s_9385ea30820b39::t_13f4e088671acb 64
+packages/runtime/src/runtime/handle-agent.ts
+  s_9385ea30820b39::t_464e6cb791871b 19-20,43
+packages/runtime/src/runtime/ids.ts
+  s_9385ea30820b39::t_bfbf4b5eddf6c3 58-62
+packages/runtime/src/schema-version.ts
+  s_9385ea30820b39::t_75e9ef36455359 21
+packages/runtime/src/session.ts
+  s_9385ea30820b39::t_10b29ad6f2c75a 4891
+packages/runtime/src/types.ts
+  s_9385ea30820b39::t_e9ce5bf22ca171 123-127,1269
+packages/runtime/test/agent-lifecycle-hooks.test.ts
+  s_f3e300754e5581::t_1a9e820cd43e11 75,79,151,419-420
+packages/runtime/test/agent-resources.test.ts
+  s_1b67523297638a::t_b9356a97780621 57,60,74
+packages/runtime/test/cloudflare-agent-coordinator.test.ts
+  s_f3e300754e5581::t_d8a505ecc85339 163,725,954
+packages/runtime/test/cloudflare-agent-execution-store.test.ts
+  s_f3e300754e5581::t_b2700162e8ff19 49,209,264
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_f3e300754e5581::t_a37ee257eed6e3 126,129,143,146,160,228,237-238,240,242,261,264,272,275,287,299,309,445,519,648,679,721,726,748,766,803,807,905,909,917,920,974,1297,1299,1301,1319,1335,1341,1366,1378,1380,1393,1404,1406,1423,1438,1443,1446,1453,1465,1477,1540,1570,1583,1632,1673,1692,1712,1725,1763,1796,1835,1854,1917,1941-1942,1944,1946,1950,1968-1969,1986-1987,1993-1994,2008,2010,2020,2025-2026,2042,2049,2062,2068,2268,2408,2440,2445
+packages/vite/src/cloudflare-entry.ts
+  s_9385ea30820b39::t_0602c3fe8d21ef 181,188
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fa387f60a39403270997a82d2489cbcd95fc9afb",
+  "prompts": {},
+  "sessions": {
+    "s_1b67523297638a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a33bdff4183bc862a",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_9385ea30820b39": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2b2f8990-5f95-4619-a5a1-0a46e8d0173f",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f3e300754e5581": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a6491d31ccddf9db7",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
