@@ -1,0 +1,33 @@
+packages/google-chat/src/auth.ts
+  s_cfdaac2e1c541d::t_9add6c9260eb1e 16,20-26,170-172,175,194-195,200-202,204-206,214-218,222-234,245,249,254,263-265
+packages/google-chat/src/routes.ts
+  s_cfdaac2e1c541d::t_6731da514db4c3 7,46-47,71-72
+packages/google-chat/test/index.test.ts
+  s_cfdaac2e1c541d::t_9f10dff91da209 197-201,245-249
+packages/notion/src/webhook.ts
+  s_cfdaac2e1c541d::t_d15b90af7c3473 16-17,37-41,108-120
+packages/salesforce-marketing-cloud/src/webhook.ts
+  s_cfdaac2e1c541d::t_69ccf2f54fac3b 74
+packages/salesforce-marketing-cloud/test/index.test.ts
+  s_cfdaac2e1c541d::t_2f0b799cf30e80 115,130-131,135,148-156,158-165
+packages/teams/src/routes.ts
+  s_cfdaac2e1c541d::t_2e4712063d029b 95-96,147
+packages/telegram/src/webhook.ts
+  s_cfdaac2e1c541d::t_084178a659bf71 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3672a69eb4da30b102e242b1c019787860d0e74e",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
