@@ -1,0 +1,113 @@
+packages/libsql/test/libsql-adapter.test.ts
+  s_cfdaac2e1c541d::t_eef7cb59df72e4 101,105-106,142
+packages/mongodb/test/mongodb-adapter.test.ts
+  s_cfdaac2e1c541d::t_b4af7391d55905 229,231,249,264-265,295
+packages/mysql/test/mysql-adapter.test.ts
+  s_cfdaac2e1c541d::t_3e8928adfee08f 65,69,103,195
+packages/postgres/test/postgres-adapter.test.ts
+  s_cfdaac2e1c541d::t_2608e62071e813 52,56-57,93
+packages/redis/test/redis-adapter.test.ts
+  s_cfdaac2e1c541d::t_925482ce5e5be7 74,76,94,117-118,120,126,146
+packages/runtime/src/test-utils/define-conversation-stream-store-contract-tests.ts
+  s_cfdaac2e1c541d::t_c7615c056003cf 2,10,14,44,49,57-58,255-257,265-266,284,321-323,344-345,349,371-373,397-398
+packages/runtime/src/test-utils/define-store-contract-tests.ts
+  s_cfdaac2e1c541d::t_ed48273bf8eb47 2,21,61-62,64,70-71,73,81,87,92,105-106,120,122,146,158,162,184,204,237,242,244,250,252,255,265-266,268-269,271,287,289,302,318,323,326,343-345,359-360,370,373,376,380,394-396,402,405,413,415,418,426-431,439-442,450,452-453,457-458,463,476,479,491,494,497,502,520,523,533-535,537,545-546,549,552-553,555,562,583,587,592,603,611,614,619,625,636,641,646-649,655,658,662,671-673,681,688,692,706,713,718,723,727,732,740,746,751,757,770,782-783,794-795,799,809-810,814,824-825,829-831,844,846,861,864,869,878,881,902,908-909,918,924-925,933-934,936,944,950,960,966,973,979-980,986,995,997,1007,1014,1019,1026,1031-1033,1043,1056,1058,1060,1063,1072-1073,1088,1093,1103,1108,1113,1122,1126,1128,1134,1136,1141-1142,1148,1154,1156,1161-1162,1171-1173,1183-1186,1190,1198-1201,1210,1213-1214,1227,1231-1232,1240-1241,1244-1246,1250,1259-1261,1273,1278
+packages/runtime/test/agent-conditional-sends.test.ts
+  s_cfdaac2e1c541d::t_c18d27e9e20dde 71,73,79,178,188,200,207,226,233,245
+packages/runtime/test/agent-delivery.test.ts
+  s_cfdaac2e1c541d::t_fb37c9beb4a6f1 100,135,169,203
+packages/runtime/test/agent-harness-tool.test.ts
+  s_cfdaac2e1c541d::t_5456a3c0a20b16 147,206,249,293,317,378,399,432
+packages/runtime/test/agent-initial-data.test.ts
+  s_cfdaac2e1c541d::t_ce99f742117f82 82,84,90,189,201
+packages/runtime/test/agent-lifecycle-hooks.test.ts
+  s_cfdaac2e1c541d::t_2a3c59af084967 120
+packages/runtime/test/agent-output-hooks.test.ts
+  s_cfdaac2e1c541d::t_b4f1a7cb3bd9eb 346,384,431,445,481,494
+packages/runtime/test/agent-resources.test.ts
+  s_cfdaac2e1c541d::t_fd9febe0700dbc 226,271,301,360,398,414
+packages/runtime/test/agent-sandbox.test.ts
+  s_cfdaac2e1c541d::t_a44c9dee8e3378 187,245,274,305,332,361,390,465,508,571,595,642,663,732
+packages/runtime/test/agent-skill.test.ts
+  s_cfdaac2e1c541d::t_c08271f55a62d8 196,233
+packages/runtime/test/agent-state.test.ts
+  s_cfdaac2e1c541d::t_e6fc224778b8aa 310,352,402,443,478,511
+packages/runtime/test/agent-subagent.test.ts
+  s_cfdaac2e1c541d::t_7112ebaf8be211 246,299
+packages/runtime/test/cloudflare-agent-coordinator.test.ts
+  s_cfdaac2e1c541d::t_7f11c484a50b6c 4,186,194,242,244,260-261,268,298,309,319-320,334-335,350-353,385-387,389,393-395,412,435-437,439,449,485-487,489,536-538,540,544-546,556,572-574,579,610-612,614,618,621,626,675-676,705-708,714,722,731-732,746,771,786,806-807,811,872-874,960-961,975,1002-1003,1012,1020,1042-1043,1047,1066,1083,1104-1105
+packages/runtime/test/cloudflare-agent-execution-store.test.ts
+  s_cfdaac2e1c541d::t_165c85412916ae 141-142,155,184-185,193-194,204-205,212,225-226,229-230,252,265-266,271-272
+packages/runtime/test/conversation-observer.test.ts
+  s_cfdaac2e1c541d::t_f99ddb25f97e5f 80
+packages/runtime/test/crash-window-sweep.test.ts
+  s_cfdaac2e1c541d::t_87d76a8b8c1bb0 30,121,124,126,132,166,175,178,181,204,209,256,263,294,300,308,396,403,410,470,476,480,488
+packages/runtime/test/durable-tool.test.ts
+  s_cfdaac2e1c541d::t_42bf0f85c5f575 110,112,126,516,530
+packages/runtime/test/settlement-rebuild.test.ts
+  s_cfdaac2e1c541d::t_031e7aceaa074f 89,91,107,124,129,133,139,149-150,153-154,162,166
+apps/docs/src/content/docs/guide/database.md
+  s_cc3a13b8b2d71a::t_007a7e101a4073 134
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_cc3a13b8b2d71a::t_b8db917c8a0318 33,39,219,227-228
+packages/libsql/src/libsql-adapter.ts
+  s_cc3a13b8b2d71a::t_3fa3b474dd6c42 130
+packages/mongodb/src/mongodb-adapter.ts
+  s_cc3a13b8b2d71a::t_23453502cda185 92
+packages/mysql/src/mysql-adapter.ts
+  s_cc3a13b8b2d71a::t_72fffe7698d16f 54
+packages/postgres/src/postgres-adapter.ts
+  s_cc3a13b8b2d71a::t_53944993c9ee60 108
+packages/redis/src/redis-adapter.ts
+  s_cc3a13b8b2d71a::t_079082be61975c 166
+packages/runtime/src/adapter.ts
+  s_cc3a13b8b2d71a::t_441375bdf45690 9
+packages/runtime/src/agent-execution-store.ts
+  s_cc3a13b8b2d71a::t_f76e8871bcc269 377
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_cc3a13b8b2d71a::t_57eea603932a15 2,100,111,180,184,397,434
+packages/runtime/src/cloudflare/agent-execution-store.ts
+  s_cc3a13b8b2d71a::t_9fa3b775290ca7 1,31
+packages/runtime/src/node/agent-execution-store.ts
+  s_cc3a13b8b2d71a::t_a60fc5f2728d19 136
+packages/runtime/src/node/assemble.ts
+  s_cc3a13b8b2d71a::t_06d0df1721508f 53,56-57,119,140
+packages/runtime/src/sql-agent-execution-store.ts
+  s_cc3a13b8b2d71a::t_71fe28bf32b987 63,72-73
+packages/runtime/src/sql-storage.ts
+  s_cc3a13b8b2d71a::t_08e7abdf41a5b4 5
+packages/runtime/test/agent-dispatch-message.test.ts
+  s_cc3a13b8b2d71a::t_d7b022544a2967 123-124,126
+packages/runtime/test/agent-execution-store-contract.test.ts
+  s_cc3a13b8b2d71a::t_d85d7bc290508a 2,17,36,66,69-70,75,79,145-148,153,157-158,160,167-169
+packages/runtime/test/conversation-stream-store.test.ts
+  s_cc3a13b8b2d71a::t_b3b0a9cbc315b7 44
+packages/runtime/test/fixtures/durable-boundary-child.mjs
+  s_cc3a13b8b2d71a::t_c8015c0468fb87 7
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_cc3a13b8b2d71a::t_a975ed067b74b6 14,114-115,118-119,170,173,179,185,192,195,201,207,234,237-239,309,593,607,628,674,680,689,708,728,741,743,747,751,768-769,772,804,813,824,891,897,936,939,942,1014,1020,1037,1047,1078,1089,1107,1152,1170,1209,1235,1279-1280,1285,1300,1302-1304,1363,1371,1380,1382-1384,1395,1399,1407,1409-1411,1424-1425,1430,1441,1451-1452,1459,1466,1473,1496,1505,1595,1600,1653,1659,1685,1706,1710,1745,1751,1776,1781,1809,1815,1847-1848,1861,1865,1889,1910,1946,1951-1954,1957,1972,1976-1977,1982,1992,2001-2002,2013,2017-2018,2026,2033-2034,2118,2127-2128,2145-2146,2198,2212,2266,2269,2288,2291,2324,2327,2335-2336,2345,2349,2358,2367,2375-2376,2382,2389,2393,2411,2417,2428,2431,2439-2440,2451,2454,2458
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3afdfaa32a8482747232fa6b1e32cbdbcede35d1",
+  "prompts": {},
+  "sessions": {
+    "s_cc3a13b8b2d71a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-adbd164731c1407a6",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "claude-opus-4-8"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
