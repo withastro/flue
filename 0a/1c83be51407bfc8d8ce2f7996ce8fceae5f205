@@ -1,0 +1,25 @@
+packages/redis/src/redis-scripts.ts
+  s_f68e8a4dda39d8::t_0413fac4c0af72 80,82,91
+packages/runtime/src/adapter-helpers.ts
+  s_f68e8a4dda39d8::t_6ecf279e0a4132 12,157-158,221-227
+packages/runtime/src/node/agent-coordinator.ts
+  s_f68e8a4dda39d8::t_2ff40cf7ddf599 2,88,641
+packages/runtime/test/cloudflare-agent-execution-store.test.ts
+  s_f68e8a4dda39d8::t_35efc9cffa5cf5 108
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0a1c83be51407bfc8d8ce2f7996ce8fceae5f205",
+  "prompts": {},
+  "sessions": {
+    "s_f68e8a4dda39d8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a1708331beb13f4cd",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
