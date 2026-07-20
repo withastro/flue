@@ -1,0 +1,27 @@
+apps/docs/src/content/docs/ecosystem/channels/messenger.md
+  s_cfdaac2e1c541d::t_b7d0a69f8de64e 94
+packages/messenger/README.md
+  s_cfdaac2e1c541d::t_1c9e64799cfb8a 18-20
+packages/messenger/src/index.ts
+  s_cfdaac2e1c541d::t_a89f7c09fa4b48 222,224-228,281-284
+packages/messenger/src/webhook.ts
+  s_cfdaac2e1c541d::t_b7613b49f70a56 58-62
+packages/messenger/test/index.test.ts
+  s_cfdaac2e1c541d::t_70a4761a710bdc 209,271-309
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f7c52350ae8373f92df6fcf76674757a498a82d1",
+  "prompts": {},
+  "sessions": {
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
