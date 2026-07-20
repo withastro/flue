@@ -1,0 +1,131 @@
+packages/runtime/src/agent-tuning.ts
+  s_cfdaac2e1c541d::t_e5d35f45cbbf5a 20
+packages/runtime/src/agent.ts
+  s_cfdaac2e1c541d::t_5baf85ce094ed8 224-225,227,251,607,635-639,642-649,660,681,694-699,706
+packages/runtime/src/client.ts
+  s_cfdaac2e1c541d::t_1b979d5dd2fc5f 97,265,298,333-334,337,342,346,349-350,358
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_cfdaac2e1c541d::t_9f296bf07c1edf 440,451
+packages/runtime/src/compaction.ts
+  s_cfdaac2e1c541d::t_85c33a279cb406 562-570,574,584,593,595,600,610-638,650-658,705-711
+packages/runtime/src/context.ts
+  s_cfdaac2e1c541d::t_e47831e598d9a2 80
+packages/runtime/src/conversation-projections.ts
+  s_cfdaac2e1c541d::t_3e9f19033f7794 9
+packages/runtime/src/conversation-records.ts
+  s_cfdaac2e1c541d::t_6194ee91941082 385
+packages/runtime/src/conversation-reducer.ts
+  s_cfdaac2e1c541d::t_b8da7d70f41a32 3-11,1252
+packages/runtime/src/conversation-writer.ts
+  s_cfdaac2e1c541d::t_9f71bd8d072476 8,78-84,115-117
+packages/runtime/src/harness.ts
+  s_cfdaac2e1c541d::t_156007168ce444 122-124
+packages/runtime/src/hooks/frame.ts
+  s_cfdaac2e1c541d::t_3b3edc313f0c41 88-91,152-153
+packages/runtime/src/hooks/render.ts
+  s_cfdaac2e1c541d::t_a4d9bef805fa66 56-58,100,163,221,228
+packages/runtime/src/hooks/use-data-writer.ts
+  s_cfdaac2e1c541d::t_080a08927e2ab9 3,129-133
+packages/runtime/src/hooks/use-instruction.ts
+  s_cfdaac2e1c541d::t_1d898d51efb69f 25
+packages/runtime/src/hooks/use-persistent-state.ts
+  s_cfdaac2e1c541d::t_bee2abea200aea 2,167-171
+packages/runtime/src/hooks/use-tool.ts
+  s_cfdaac2e1c541d::t_86d1d7157c7016 49
+packages/runtime/src/internal.ts
+  s_cfdaac2e1c541d::t_db48ac3adbcb9f 25
+packages/runtime/src/message-output.ts
+  s_cfdaac2e1c541d::t_1e5703ac8d7aad 205
+packages/runtime/src/node/agent-coordinator.ts
+  s_cfdaac2e1c541d::t_3036197d890af6 9,532-560,625,709
+packages/runtime/src/node/assemble.ts
+  s_cfdaac2e1c541d::t_636b912a0672e4 145
+packages/runtime/src/node/start.ts
+  s_cfdaac2e1c541d::t_2af70797f0fee6 134-149
+packages/runtime/src/runtime/agent-routes.ts
+  s_cfdaac2e1c541d::t_0cd04de9491b0a 4-11,28
+packages/runtime/src/runtime/channel-routes.ts
+  s_cfdaac2e1c541d::t_bff1c96fc53067 134,136
+packages/runtime/src/runtime/conversation-stream-store.ts
+  s_cfdaac2e1c541d::t_ea3942405baca4 8
+packages/runtime/src/runtime/sql-conversation-stream-store.ts
+  s_cfdaac2e1c541d::t_a1c846a06dfd0e 14
+packages/runtime/src/session.ts
+  s_cfdaac2e1c541d::t_b68e240415e6ea 68,74-75,1535,1541,1730-1736,1741,2032,2409,2706,2708-2709,3344,3346-3347,3521-3522,4110,4210,4238,4272,4397,4610
+packages/runtime/src/sql-agent-execution-store.ts
+  s_cfdaac2e1c541d::t_29d1193fa8f647 190,370-371
+packages/runtime/src/test-utils/define-conversation-stream-store-contract-tests.ts
+  s_cfdaac2e1c541d::t_50d7fd046481be 76
+packages/runtime/src/test-utils/define-store-contract-tests.ts
+  s_cfdaac2e1c541d::t_a485c87f148944 97
+packages/runtime/test/agent-client-cloudflare.test.ts
+  s_cfdaac2e1c541d::t_c51f098b957046 105
+packages/runtime/test/agent-conditional-sends.test.ts
+  s_cfdaac2e1c541d::t_275f5006224762 47
+packages/runtime/test/agent-delivery.test.ts
+  s_cfdaac2e1c541d::t_c37c52b78bb08a 54
+packages/runtime/test/agent-dispatch-message.test.ts
+  s_cfdaac2e1c541d::t_faa511025ea7ae 67
+packages/runtime/test/agent-function.test.ts
+  s_cfdaac2e1c541d::t_4e116a134d7565 373
+packages/runtime/test/agent-harness-tool.test.ts
+  s_cfdaac2e1c541d::t_b1bf5521968a9a 58,322
+packages/runtime/test/agent-initial-data.test.ts
+  s_cfdaac2e1c541d::t_192961c4c25137 61
+packages/runtime/test/agent-lifecycle-hooks.test.ts
+  s_cfdaac2e1c541d::t_bcb2159aab0610 75
+packages/runtime/test/agent-output-hooks.test.ts
+  s_cfdaac2e1c541d::t_26c6eb9a7b9a18 63
+packages/runtime/test/agent-resources.test.ts
+  s_cfdaac2e1c541d::t_388c0443ce8859 57
+packages/runtime/test/agent-sandbox.test.ts
+  s_cfdaac2e1c541d::t_4cdec57ecbe036 57,212,425,532,692
+packages/runtime/test/agent-skill.test.ts
+  s_cfdaac2e1c541d::t_08681c4a34ebf9 53
+packages/runtime/test/agent-state.test.ts
+  s_cfdaac2e1c541d::t_2919e0a1a280d8 59
+packages/runtime/test/agent-subagent.test.ts
+  s_cfdaac2e1c541d::t_ff7cefb93b815a 58
+packages/runtime/test/conversation-observer.test.ts
+  s_cfdaac2e1c541d::t_77e982237120d0 55
+packages/runtime/test/conversation-reducer.test.ts
+  s_cfdaac2e1c541d::t_09886485f861aa 14,1233
+packages/runtime/test/crash-window-sweep.test.ts
+  s_cfdaac2e1c541d::t_222f0e66838eb4 81
+packages/runtime/test/durable-tool.test.ts
+  s_cfdaac2e1c541d::t_1328143c0464f0 78
+packages/runtime/test/edit-tool.test.ts
+  s_cfdaac2e1c541d::t_8ec516a86b990d 52-78
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_cfdaac2e1c541d::t_9dac65b01b4cca 126,142
+packages/runtime/test/package-entrypoints.test.ts
+  s_cfdaac2e1c541d::t_3caf6d30fe10fe 139-140
+packages/runtime/test/settlement-rebuild.test.ts
+  s_cfdaac2e1c541d::t_c404126331e253 57
+packages/runtime/src/hooks/json-value.ts
+  s_0f5c410a2df05a::t_748c76e627e61d 1-30
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "67cbf4371f8ccea0ad7467f8c0b5ce356b3c9b34",
+  "prompts": {},
+  "sessions": {
+    "s_0f5c410a2df05a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a2fafea100c42b959",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_cfdaac2e1c541d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "6a805373-8544-4ae1-b99d-fc520e1966bf",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
