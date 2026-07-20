@@ -1,0 +1,35 @@
+packages/runtime/package.json
+  s_f791988f4d88d0::t_78c5e9b4af7ed4 37-40
+packages/runtime/src/telemetry/content.ts
+  s_f791988f4d88d0::t_6283607102e2ff 1-142
+packages/runtime/src/telemetry/index.ts
+  s_f791988f4d88d0::t_9fcdd3bfb37404 1-45
+packages/runtime/src/telemetry/projection.ts
+  s_f791988f4d88d0::t_03b24de4948063 1-105
+packages/runtime/src/telemetry/semconv.ts
+  s_f791988f4d88d0::t_f6df9e2dd9e75e 1-42
+packages/runtime/src/telemetry/truncate.ts
+  s_f791988f4d88d0::t_5911da5a68cdac 1-191
+packages/runtime/test/package-entrypoints.test.ts
+  s_f791988f4d88d0::t_c86d48e7efd265 109-123
+packages/runtime/test/telemetry-content.test.ts
+  s_f791988f4d88d0::t_943a9fae4dabe9 1-231
+packages/runtime/tsdown.config.ts
+  s_f791988f4d88d0::t_a5007f40cbc158 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "08ffe159063c49b5dcb8ca072abbffdefb822b3e",
+  "prompts": {},
+  "sessions": {
+    "s_f791988f4d88d0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "63d25860-2e1e-492e-bcd5-196a5332c7fc",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
