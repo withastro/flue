@@ -1,0 +1,21 @@
+packages/runtime/src/compaction.ts
+  s_5ec01504d0a5e2::t_48ebc38f27c247 571-572,583,586-589,591,610,612,639-640,662-663
+packages/runtime/src/session.ts
+  s_5ec01504d0a5e2::t_ef0c2f720e588c 4829
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5f95fd61d631608736fe4d0cf4cf7791e27faf0b",
+  "prompts": {},
+  "sessions": {
+    "s_5ec01504d0a5e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab94b5ca8ee938a56",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
