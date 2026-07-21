@@ -1,0 +1,35 @@
+packages/runtime/src/errors.ts
+  s_0da6743eb2233d::t_2d748d855319e0 384-386
+apps/docs/src/content/docs/reference/errors.md
+  s_f23de5d8046895::t_bdadfbd1adf347 99
+apps/docs/src/content/docs/sdk/errors.md
+  s_f23de5d8046895::t_d09e06306495ab 79
+packages/runtime/test/agent-route.test.ts
+  s_f23de5d8046895::t_1e052773b4bbde 4,161-184
+packages/sdk/src/public/send.ts
+  s_f23de5d8046895::t_a003fad74de61f 47-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "163899cfba918339e7ad06bcdf9f8d6ab8279a13",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f23de5d8046895": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa357fd881d553e22",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
