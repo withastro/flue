@@ -1,0 +1,29 @@
+pnpm-lock.yaml
+  s_f157b1c6b13c3f::t_49e599dff6ff15 221-222,2531-2532,2536-2537,2541-2542,2547-2548,2553-2554,2559-2560,2564-2565,6492-6496,6730-6731,11139,11142,11145,11148,11151,11154,11157,14696-14699,15120,15124-15125,15128-15129,15136,15140,15145,15154-15160
+examples/braintrust/package.json
+  s_f9b518a565211e::t_013f75c1148007 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a90289fcd603b173c3dd31e08c3a7c36d0854951",
+  "prompts": {},
+  "sessions": {
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f9b518a565211e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa5b8107e6207209d",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
