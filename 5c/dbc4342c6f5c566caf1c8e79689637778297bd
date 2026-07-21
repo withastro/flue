@@ -1,0 +1,33 @@
+packages/react/src/use-agent.ts
+  s_0da6743eb2233d::t_97629f027a0a11 20-21,44-52,58-67
+apps/docs/src/content/docs/guide/react.md
+  s_eef68ee9369e4b::t_acc144d180cb94 101
+packages/react/test/react-dom-server.d.ts
+  s_eef68ee9369e4b::t_30128ad423604c 1-6
+packages/react/test/ssr.test.ts
+  s_eef68ee9369e4b::t_96b37b760eb371 1-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5cdbc4342c6f5c566caf1c8e79689637778297bd",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_eef68ee9369e4b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a8b3aca2592d5542f",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
