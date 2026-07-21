@@ -1,0 +1,201 @@
+apps/docs/src/content/docs/cli/add.md
+  s_0da6743eb2233d::t_5c3c91b332acb8 4
+apps/docs/src/content/docs/cli/docs.md
+  s_0da6743eb2233d::t_37e13587ed9780 4
+apps/docs/src/content/docs/cli/init.md
+  s_0da6743eb2233d::t_cee79244f1698e 4
+apps/docs/src/content/docs/cli/overview.md
+  s_0da6743eb2233d::t_40c19fa79dbcc0 4
+apps/docs/src/content/docs/cli/run.md
+  s_0da6743eb2233d::t_49131638ebfee7 4
+apps/docs/src/content/docs/cli/update.md
+  s_0da6743eb2233d::t_ddf391c542372b 4
+apps/docs/src/content/docs/ecosystem/channels/discord.md
+  s_0da6743eb2233d::t_36ce3b53acc42e 7
+apps/docs/src/content/docs/ecosystem/channels/github.md
+  s_0da6743eb2233d::t_8c78832c03caad 7
+apps/docs/src/content/docs/ecosystem/channels/google-chat.md
+  s_0da6743eb2233d::t_19e98850f0ab73 7
+apps/docs/src/content/docs/ecosystem/channels/intercom.md
+  s_0da6743eb2233d::t_d7332f9116265c 7
+apps/docs/src/content/docs/ecosystem/channels/linear.md
+  s_0da6743eb2233d::t_0bab5cba53c5b2 7
+apps/docs/src/content/docs/ecosystem/channels/messenger.md
+  s_0da6743eb2233d::t_0da9d31efcacc8 7
+apps/docs/src/content/docs/ecosystem/channels/notion.md
+  s_0da6743eb2233d::t_b1690128a485e8 7
+apps/docs/src/content/docs/ecosystem/channels/resend.md
+  s_0da6743eb2233d::t_606496d9c27a4c 7
+apps/docs/src/content/docs/ecosystem/channels/salesforce-marketing-cloud.md
+  s_0da6743eb2233d::t_68ab428ae922fe 7
+apps/docs/src/content/docs/ecosystem/channels/shopify.md
+  s_0da6743eb2233d::t_a5dd6ae2992366 7
+apps/docs/src/content/docs/ecosystem/channels/slack.md
+  s_0da6743eb2233d::t_a96ee1981ba3f7 7
+apps/docs/src/content/docs/ecosystem/channels/stripe.md
+  s_0da6743eb2233d::t_e509034bc6429b 7
+apps/docs/src/content/docs/ecosystem/channels/teams.md
+  s_0da6743eb2233d::t_fc9b95a728d680 7
+apps/docs/src/content/docs/ecosystem/channels/telegram.md
+  s_0da6743eb2233d::t_05a2d170cde4e0 7
+apps/docs/src/content/docs/ecosystem/channels/twilio.md
+  s_0da6743eb2233d::t_da962e9bec8740 7
+apps/docs/src/content/docs/ecosystem/channels/whatsapp.md
+  s_0da6743eb2233d::t_71af84345624cc 7
+apps/docs/src/content/docs/ecosystem/channels/zendesk.md
+  s_0da6743eb2233d::t_5a590207824e77 7
+apps/docs/src/content/docs/ecosystem/databases/libsql.md
+  s_0da6743eb2233d::t_d07afdf19405ac 7
+apps/docs/src/content/docs/ecosystem/databases/mongodb.md
+  s_0da6743eb2233d::t_aa30d99b7cb7b2 7
+apps/docs/src/content/docs/ecosystem/databases/mysql.md
+  s_0da6743eb2233d::t_5907157147d501 7
+apps/docs/src/content/docs/ecosystem/databases/postgres.md
+  s_0da6743eb2233d::t_0602e2590e0bb1 7
+apps/docs/src/content/docs/ecosystem/databases/redis.md
+  s_0da6743eb2233d::t_7140dcd1d28bfb 7
+apps/docs/src/content/docs/ecosystem/databases/supabase.md
+  s_0da6743eb2233d::t_df9ac9e25723c9 7
+apps/docs/src/content/docs/ecosystem/databases/turso.md
+  s_0da6743eb2233d::t_a7462384944b87 7
+apps/docs/src/content/docs/ecosystem/databases/valkey.md
+  s_0da6743eb2233d::t_be963049b5d38b 7
+apps/docs/src/content/docs/ecosystem/deploy/aws.md
+  s_0da6743eb2233d::t_391244ca611728 4
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_0da6743eb2233d::t_762ac53d331800 4
+apps/docs/src/content/docs/ecosystem/deploy/docker.md
+  s_0da6743eb2233d::t_d1211c08d49704 4
+apps/docs/src/content/docs/ecosystem/deploy/fly.md
+  s_0da6743eb2233d::t_38c9efc7361477 4
+apps/docs/src/content/docs/ecosystem/deploy/github-actions.md
+  s_0da6743eb2233d::t_cc9397bd203c57 4
+apps/docs/src/content/docs/ecosystem/deploy/gitlab-ci.md
+  s_0da6743eb2233d::t_3ca29852f3d3fb 4
+apps/docs/src/content/docs/ecosystem/deploy/node.md
+  s_0da6743eb2233d::t_db5e9c9c47961f 4
+apps/docs/src/content/docs/ecosystem/deploy/railway.md
+  s_0da6743eb2233d::t_a03443ce227509 4
+apps/docs/src/content/docs/ecosystem/deploy/render.md
+  s_0da6743eb2233d::t_ab02d487b0ca59 4
+apps/docs/src/content/docs/ecosystem/deploy/sst.md
+  s_0da6743eb2233d::t_8c999df87f7446 4
+apps/docs/src/content/docs/ecosystem/sandboxes/boxd.md
+  s_0da6743eb2233d::t_dea34851f4250f 4
+apps/docs/src/content/docs/ecosystem/sandboxes/cloudflare-shell.md
+  s_0da6743eb2233d::t_1328cd9574e39f 4
+apps/docs/src/content/docs/ecosystem/sandboxes/cloudflare.md
+  s_0da6743eb2233d::t_a57d1f7374e5ca 4
+apps/docs/src/content/docs/ecosystem/sandboxes/daytona.md
+  s_0da6743eb2233d::t_bf82d6f2460410 4
+apps/docs/src/content/docs/ecosystem/sandboxes/e2b.md
+  s_0da6743eb2233d::t_0fc4da69f06fd4 4
+apps/docs/src/content/docs/ecosystem/sandboxes/exedev.md
+  s_0da6743eb2233d::t_7ac5f9b938b8b2 4
+apps/docs/src/content/docs/ecosystem/sandboxes/islo.md
+  s_0da6743eb2233d::t_6cd423a8e09a80 4
+apps/docs/src/content/docs/ecosystem/sandboxes/mirage.md
+  s_0da6743eb2233d::t_8605650059e3c3 4
+apps/docs/src/content/docs/ecosystem/sandboxes/modal.md
+  s_0da6743eb2233d::t_f618fc38ceef10 4
+apps/docs/src/content/docs/ecosystem/sandboxes/vercel.md
+  s_0da6743eb2233d::t_82315397e9071f 4
+apps/docs/src/content/docs/ecosystem/tooling/braintrust.md
+  s_0da6743eb2233d::t_1126c2ef2bfb90 4
+apps/docs/src/content/docs/ecosystem/tooling/opentelemetry.md
+  s_0da6743eb2233d::t_aecc338e2bc3d8 7
+apps/docs/src/content/docs/ecosystem/tooling/sentry.md
+  s_0da6743eb2233d::t_6d11536d96393b 4
+apps/docs/src/content/docs/ecosystem/tooling/vitest-evals.md
+  s_0da6743eb2233d::t_95bbfbfec996fe 4
+apps/docs/src/content/docs/guide/agent-hooks.md
+  s_0da6743eb2233d::t_3d6af250b888c2 4
+apps/docs/src/content/docs/guide/building-agents.md
+  s_0da6743eb2233d::t_c7595c358d43b1 4
+apps/docs/src/content/docs/guide/channels.md
+  s_0da6743eb2233d::t_38fb7984a9dc39 4
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_0da6743eb2233d::t_70fbd631b7444a 4
+apps/docs/src/content/docs/guide/database.md
+  s_0da6743eb2233d::t_b71917afcfcdc6 4
+apps/docs/src/content/docs/guide/deploy.md
+  s_0da6743eb2233d::t_c4745ac74f3dc7 4
+apps/docs/src/content/docs/guide/durability.md
+  s_0da6743eb2233d::t_497fed06a29e1c 4
+apps/docs/src/content/docs/guide/evals.md
+  s_0da6743eb2233d::t_4e51a2e4b16f18 4
+apps/docs/src/content/docs/guide/getting-started.mdx
+  s_0da6743eb2233d::t_572ad0ab9e6b58 4
+apps/docs/src/content/docs/guide/migration.md
+  s_0da6743eb2233d::t_fd175c0894aef6 4
+apps/docs/src/content/docs/guide/models.md
+  s_0da6743eb2233d::t_657ec03011f56c 4
+apps/docs/src/content/docs/guide/node-target.md
+  s_0da6743eb2233d::t_b10506416b2c17 4
+apps/docs/src/content/docs/guide/observability.md
+  s_0da6743eb2233d::t_0a5126db027e86 4
+apps/docs/src/content/docs/guide/project-layout.md
+  s_0da6743eb2233d::t_2f7891e429c2d7 4
+apps/docs/src/content/docs/guide/react.md
+  s_0da6743eb2233d::t_ecbbbb6d1b62de 4
+apps/docs/src/content/docs/guide/routing.md
+  s_0da6743eb2233d::t_a8e3edb659b766 4
+apps/docs/src/content/docs/guide/sandboxes.md
+  s_0da6743eb2233d::t_77672eeb3e43eb 4
+apps/docs/src/content/docs/guide/schedules.md
+  s_0da6743eb2233d::t_a88907a84bbf1a 4
+apps/docs/src/content/docs/guide/skills.md
+  s_0da6743eb2233d::t_77c71ec96a34a5 4
+apps/docs/src/content/docs/guide/subagents.md
+  s_0da6743eb2233d::t_b415217810439a 4
+apps/docs/src/content/docs/guide/tools.md
+  s_0da6743eb2233d::t_9df24af8becd90 4
+apps/docs/src/content/docs/guide/why-flue.md
+  s_0da6743eb2233d::t_9b36b17fe22153 4
+apps/docs/src/content/docs/guide/workflows.md
+  s_0da6743eb2233d::t_3350c815143f03 4
+apps/docs/src/content/docs/reference/agent-api.md
+  s_0da6743eb2233d::t_250bb0ba469077 4
+apps/docs/src/content/docs/reference/agent-hooks-api.md
+  s_0da6743eb2233d::t_90fb94e5a98752 4
+apps/docs/src/content/docs/reference/configuration.md
+  s_0da6743eb2233d::t_dba0cae2bb4095 4
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_0da6743eb2233d::t_0c7180de178f58 4
+apps/docs/src/content/docs/reference/errors.md
+  s_0da6743eb2233d::t_ab112c6711b5ff 4
+apps/docs/src/content/docs/reference/events.md
+  s_0da6743eb2233d::t_ab4695229d024b 4
+apps/docs/src/content/docs/reference/provider-api.md
+  s_0da6743eb2233d::t_be8a647dbf5243 4
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_0da6743eb2233d::t_dcd1fe5daa489c 4
+apps/docs/src/content/docs/reference/streaming-protocol.md
+  s_0da6743eb2233d::t_dbc2d51d99f574 4
+apps/docs/src/content/docs/sdk/create-flue-client.md
+  s_0da6743eb2233d::t_6d4f4ef9c250d3 4
+apps/docs/src/content/docs/sdk/errors.md
+  s_0da6743eb2233d::t_de01fee7d2e50d 4
+apps/docs/src/content/docs/sdk/events.md
+  s_0da6743eb2233d::t_c76ff0bca96d8f 4
+apps/docs/src/content/docs/sdk/flue-client.md
+  s_0da6743eb2233d::t_f7af116799a693 4
+apps/docs/src/content/docs/sdk/overview.md
+  s_0da6743eb2233d::t_98651bab1c535b 4
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9b8fde97b8aa67f2ecfc077086b83d832ea59e54",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
