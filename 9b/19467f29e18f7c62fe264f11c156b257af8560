@@ -1,0 +1,19 @@
+packages/runtime/src/sql-attachment-store.ts
+  s_814c7e369ab81d::t_cd94e04569dc3b 12,31-36,47-49,58-59
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9b19467f29e18f7c62fe264f11c156b257af8560",
+  "prompts": {},
+  "sessions": {
+    "s_814c7e369ab81d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3ee610544995edb7",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
