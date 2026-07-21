@@ -1,0 +1,21 @@
+apps/docs/src/content/docs/reference/configuration.md
+  s_a7725af73facce::t_58d8bf034bce50 55
+packages/cli/bin/flue.mjs
+  s_a7725af73facce::t_bab1f419e708d8 24-25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d079d650a04661d7438723e55777f95e35dffede",
+  "prompts": {},
+  "sessions": {
+    "s_a7725af73facce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acac58f638ed0c549",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
