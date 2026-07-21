@@ -1,0 +1,73 @@
+packages/cli/package.json
+  s_30124aaca1099b::t_3608f7e76b2e13 3
+packages/discord/package.json
+  s_30124aaca1099b::t_8ce2259499a67e 3
+packages/github/package.json
+  s_30124aaca1099b::t_48a9decfa811a7 3
+packages/google-chat/package.json
+  s_30124aaca1099b::t_bb8b7fcaefad68 3
+packages/intercom/package.json
+  s_30124aaca1099b::t_1897fb92bec70b 3
+packages/libsql/package.json
+  s_30124aaca1099b::t_ef347f9a4331a2 3
+packages/linear/package.json
+  s_30124aaca1099b::t_65b3cc5db15041 3
+packages/messenger/package.json
+  s_30124aaca1099b::t_262733ab8da2f8 3
+packages/mongodb/package.json
+  s_30124aaca1099b::t_67beb4a01988d0 3
+packages/mysql/package.json
+  s_30124aaca1099b::t_85198a436a88a8 3
+packages/notion/package.json
+  s_30124aaca1099b::t_c61258e36c7047 3
+packages/opentelemetry/package.json
+  s_30124aaca1099b::t_cec220d616fc82 3
+packages/postgres/package.json
+  s_30124aaca1099b::t_97374d1e05ce70 3
+packages/react/package.json
+  s_30124aaca1099b::t_3028a4d91e0e85 3
+packages/redis/package.json
+  s_30124aaca1099b::t_d18598fbf51d99 3
+packages/resend/package.json
+  s_30124aaca1099b::t_1dab08eec49260 3
+packages/runtime/package.json
+  s_30124aaca1099b::t_7e5eab3332a641 3
+packages/salesforce-marketing-cloud/package.json
+  s_30124aaca1099b::t_b1609af6d346d5 3
+packages/sdk/package.json
+  s_30124aaca1099b::t_bdcf7c0ac6412b 3
+packages/shopify/package.json
+  s_30124aaca1099b::t_86408871047632 3
+packages/slack/package.json
+  s_30124aaca1099b::t_7a987e3f0c485a 3
+packages/stripe/package.json
+  s_30124aaca1099b::t_e613c4e2479ab3 3
+packages/teams/package.json
+  s_30124aaca1099b::t_64bac46dddb0d9 3
+packages/telegram/package.json
+  s_30124aaca1099b::t_50ae7719f3b2eb 3
+packages/twilio/package.json
+  s_30124aaca1099b::t_e226195724d86b 3
+packages/vite/package.json
+  s_30124aaca1099b::t_ed73d1632c3017 3
+packages/whatsapp/package.json
+  s_30124aaca1099b::t_7c904c14ae898e 3
+packages/zendesk/package.json
+  s_30124aaca1099b::t_2380273721fc8d 3
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9fc0dd14496b4fe20adcb3c0fdab63e514afa0e4",
+  "prompts": {},
+  "sessions": {
+    "s_30124aaca1099b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "806e502e-ac34-47ec-93aa-b8d85ed5ac1b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
