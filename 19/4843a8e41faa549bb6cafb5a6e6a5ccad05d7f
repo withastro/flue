@@ -1,0 +1,73 @@
+packages/runtime/package.json
+  s_385823fdbef67c::t_8bb7bb9d11d0f3 97
+packages/runtime/src/client.ts
+  s_385823fdbef67c::t_71f1925ef890bb 344-348,351-352,367,488-492,496,498
+packages/runtime/src/context.ts
+  s_385823fdbef67c::t_be52ae9a2a882a 187-193,211,220-223,227-232,262
+packages/runtime/src/errors.ts
+  s_385823fdbef67c::t_9e0a0199c467d3 576-577,585-590
+packages/runtime/src/harness.ts
+  s_385823fdbef67c::t_fbe76277d791f7 48-49,111-116,119-125,323-326
+packages/runtime/src/hooks/use-sandbox.ts
+  s_385823fdbef67c::t_b94fe50822e890 25-27,32-33
+packages/runtime/src/resources.ts
+  s_385823fdbef67c::t_4e87d09b2e59a3 180-181,203-205
+packages/runtime/src/session.ts
+  s_385823fdbef67c::t_2389d1185c5b51 342-343,375,476-477,495,498,506,513,670-675,678-692,908,941-943,948,951,1004,1127,1152,2125,2911,3564,3724,3908,3947-3953,3996,4015,4116
+packages/runtime/src/types.ts
+  s_385823fdbef67c::t_eb256c5f0f95b2 702-709
+packages/runtime/test/agent-harness-tool.test.ts
+  s_385823fdbef67c::t_af9ece62ae9854 90,359-368,412,486,511,551,585,614,637
+packages/runtime/test/context.test.ts
+  s_385823fdbef67c::t_2fdf7b76dd2551 300-303,360-368
+packages/runtime/test/define-skill.test.ts
+  s_385823fdbef67c::t_04408a54488dc4 1,213
+packages/runtime/test/harness-session.test.ts
+  s_385823fdbef67c::t_911a7fa2e9c5f2 3,21-22,24,31-32,34,61-62,64,80,83,92,121-122,124,149-150,152,162
+packages/runtime/test/session-operations.test.ts
+  s_385823fdbef67c::t_e46780191f7601 19,45,1213
+packages/runtime/test/session-skills.test.ts
+  s_385823fdbef67c::t_6c266b3e19e0de 8,104-112,137-147,186-194,262
+packages/runtime/test/tool.test.ts
+  s_385823fdbef67c::t_962a8e1cb386bd 49-51,266
+packages/vite/src/cloudflare-entry.ts
+  s_385823fdbef67c::t_e2106ad9c1286b 164-165
+pnpm-lock.yaml
+  s_385823fdbef67c::t_8f0e3c80065ac5 1690-1692
+examples/hello-world/src/agents/compaction-test.ts
+  s_33ab3a8ca623a1::t_cd1587bf553bea 2-3,8-13
+examples/hello-world/src/agents/hello.ts
+  s_33ab3a8ca623a1::t_110aa681a003e1 2-3,15
+examples/hello-world/src/agents/with-abort.ts
+  s_33ab3a8ca623a1::t_9fd90190258dc8 2-3,13
+packages/runtime/test/agent-sandbox.test.ts
+  s_385823fdbef67c::t_5c248ce6fb24f3 258,636-640,648,659,663,665,686,695-696,698-700,732-735,761-763,784-787
+packages/runtime/test/package-entrypoints.test.ts
+  s_385823fdbef67c::t_d540ad0a172251 58,61-63
+packages/vite/test/build.test.ts
+  s_385823fdbef67c::t_88133a6f36d4b9 163-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "194843a8e41faa549bb6cafb5a6e6a5ccad05d7f",
+  "prompts": {},
+  "sessions": {
+    "s_33ab3a8ca623a1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a4dd8be69486a2ff4",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_385823fdbef67c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b8ab253-0958-4fdc-a729-e7667b64c745",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
