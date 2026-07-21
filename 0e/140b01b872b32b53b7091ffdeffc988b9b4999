@@ -1,0 +1,31 @@
+packages/redis/package.json
+  s_f157b1c6b13c3f::t_fff056d50b948a 36
+pnpm-lock.yaml
+  s_f157b1c6b13c3f::t_0cce82f1e1d6f6 1608-1609,5256-5258,5260,5262-5264,5274-5276,5278,5280-5282,5284,5286-5288,5290,8950-8952,13465,13467,13469,13475,13477,13479,13481,13483,13485,17545,17547-17551
+packages/redis/test/redis-adapter.test.ts
+  s_07fc9410346103::t_19478d78afec43 8,15-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0e140b01b872b32b53b7091ffdeffc988b9b4999",
+  "prompts": {},
+  "sessions": {
+    "s_07fc9410346103": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a2c9a27b5646d6a21",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
