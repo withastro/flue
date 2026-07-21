@@ -1,0 +1,21 @@
+packages/runtime/src/hooks/use-persistent-state.ts
+  s_5ec01504d0a5e2::t_b96f9d0507a95c 141
+packages/runtime/test/agent-state.test.ts
+  s_5ec01504d0a5e2::t_1515d2cd290e6e 194-195,244,251-252,254,256
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "912d592e9c8d8a398e611a089fcbee91fce6c502",
+  "prompts": {},
+  "sessions": {
+    "s_5ec01504d0a5e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab94b5ca8ee938a56",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
