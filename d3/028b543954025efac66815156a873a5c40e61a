@@ -1,0 +1,41 @@
+packages/runtime/src/sql-agent-execution-store.ts
+  s_0da6743eb2233d::t_03b3ab40f07821 665-682
+packages/libsql/src/libsql-adapter.ts
+  s_1bd45b94bdbf2f::t_ef52f4a9d78982 939-940,943-945,947-952
+packages/mongodb/src/submission-store.ts
+  s_1bd45b94bdbf2f::t_986d93fde838b9 602-614
+packages/mysql/src/mysql-adapter.ts
+  s_1bd45b94bdbf2f::t_e3331c10e67ae7 1068-1074,1079,1081-1086
+packages/postgres/src/postgres-adapter.ts
+  s_1bd45b94bdbf2f::t_dd5b53c00a9c6d 933-934,937-939,941-946
+packages/redis/src/redis-adapter.ts
+  s_1bd45b94bdbf2f::t_a2d34dd1d3d7a5 891-894,905-915
+packages/redis/src/redis-scripts.ts
+  s_1bd45b94bdbf2f::t_8fab3cbef71cb6 236-239,242,247
+packages/runtime/test/agent-execution-store-contract.test.ts
+  s_1bd45b94bdbf2f::t_c13afb8d8383f9 36,63-67,87-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d3028b543954025efac66815156a873a5c40e61a",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_1bd45b94bdbf2f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a07de20d6220cbf75",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
