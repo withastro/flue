@@ -1,0 +1,21 @@
+packages/teams/src/auth.ts
+  s_a7725af73facce::t_c69dbd96ac54b7 120-125,219-221
+packages/teams/test/index.test.ts
+  s_a7725af73facce::t_bb4085588918e3 308-390
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4ccf1ae87e01b2ce430ec70f6e0afeed18faf6ad",
+  "prompts": {},
+  "sessions": {
+    "s_a7725af73facce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acac58f638ed0c549",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
