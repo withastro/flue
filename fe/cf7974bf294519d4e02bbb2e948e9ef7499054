@@ -1,0 +1,33 @@
+examples/chat-sdk/package.json
+  s_385823fdbef67c::t_cd65e8b06efbcd 13
+examples/hello-world/package.json
+  s_385823fdbef67c::t_019bcf23d1bd32 7
+examples/react-chat/package.json
+  s_385823fdbef67c::t_e0185522afd314 12
+packages/runtime/package.json
+  s_385823fdbef67c::t_2dd5a859a7b840 84-85
+packages/vite/package.json
+  s_385823fdbef67c::t_3bdc2d375ec604 49
+pnpm-lock.yaml
+  s_385823fdbef67c::t_93998433aed839 249-250,452-453,702-703,1657-1658,1660-1661,1922-1923,2916-2917,2920-2921,2925-2926,11751,11753,11765,11786
+pnpm-workspace.yaml
+  s_385823fdbef67c::t_05a9a59d6b4893 20-25
+packages/vite/test/build.test.ts
+  s_385823fdbef67c::t_576ea4645c79e3 158-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fecf7974bf294519d4e02bbb2e948e9ef7499054",
+  "prompts": {},
+  "sessions": {
+    "s_385823fdbef67c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b8ab253-0958-4fdc-a729-e7667b64c745",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
