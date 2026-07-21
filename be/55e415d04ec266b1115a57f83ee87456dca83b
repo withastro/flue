@@ -1,0 +1,21 @@
+packages/runtime/src/conversation-records.ts
+  s_5ec01504d0a5e2::t_c7aecd04b9c196 353-355
+packages/runtime/test/agent-lifecycle-hooks.test.ts
+  s_5ec01504d0a5e2::t_1c082c6c42a0ca 761
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "be55e415d04ec266b1115a57f83ee87456dca83b",
+  "prompts": {},
+  "sessions": {
+    "s_5ec01504d0a5e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab94b5ca8ee938a56",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
