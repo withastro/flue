@@ -1,0 +1,23 @@
+packages/runtime/src/hooks/use-subagent.ts
+  s_5ec01504d0a5e2::t_74c6d143725542 1,17-18,35-37
+packages/runtime/src/tool.ts
+  s_5ec01504d0a5e2::t_a15c924baed56a 45-54,62-71
+packages/runtime/test/tool.test.ts
+  s_5ec01504d0a5e2::t_76fd92763ad5c8 84-95,103-111
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1f94046193e5ada2f3a7c0a22f6aa9fc5165ea92",
+  "prompts": {},
+  "sessions": {
+    "s_5ec01504d0a5e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab94b5ca8ee938a56",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
