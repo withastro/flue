@@ -1,0 +1,29 @@
+packages/runtime/src/telemetry/truncate.ts
+  s_0da6743eb2233d::t_c63834d907121d 150,155-159
+packages/runtime/test/telemetry-content.test.ts
+  s_8b38cb19b4d4d1::t_79ba6070991c7d 129-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "53ef8108be38f28f5d18ef0b1955444cebc20474",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_8b38cb19b4d4d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aca58adc2af6f42f5",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
