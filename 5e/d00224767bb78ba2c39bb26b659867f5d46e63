@@ -1,0 +1,21 @@
+apps/docs/src/content/docs/guide/migration.md
+  s_0da6743eb2233d::t_b9a95af7d71685 198-199
+apps/docs/src/content/docs/guide/workflows.md
+  s_0da6743eb2233d::t_9728433acabf95 116-117
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5ed00224767bb78ba2c39bb26b659867f5d46e63",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
