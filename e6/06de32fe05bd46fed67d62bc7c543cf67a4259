@@ -1,0 +1,25 @@
+packages/opentelemetry/src/index.ts
+  s_0da6743eb2233d::t_f447ef89541a0a 253,355
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_0da6743eb2233d::t_c890fb6124d418 283
+packages/runtime/src/session.ts
+  s_0da6743eb2233d::t_8dbb3e54d40ecd 2422-2423,2434
+packages/runtime/src/shell.ts
+  s_0da6743eb2233d::t_be83faf477bd64 59,90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e606de32fe05bd46fed67d62bc7c543cf67a4259",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
