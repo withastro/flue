@@ -1,0 +1,19 @@
+packages/mysql/src/mysql-adapter.ts
+  s_9f1dd1168c4ebd::t_7a076848d79f3f 272-277,279-282,291-297
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fb4c210b1d07dca03b1fc6d4839b5934cdfdca90",
+  "prompts": {},
+  "sessions": {
+    "s_9f1dd1168c4ebd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ac65acc6df632bdb6",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
