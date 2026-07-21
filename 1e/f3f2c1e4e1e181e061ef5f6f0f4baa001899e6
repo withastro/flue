@@ -1,0 +1,19 @@
+packages/runtime/src/agent-execution-store.ts
+  s_814c7e369ab81d::t_6c6ae24d402d01 48,180-184
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1ef3f2c1e4e1e181e061ef5f6f0f4baa001899e6",
+  "prompts": {},
+  "sessions": {
+    "s_814c7e369ab81d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3ee610544995edb7",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
