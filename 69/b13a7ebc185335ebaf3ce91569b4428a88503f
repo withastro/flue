@@ -1,0 +1,19 @@
+packages/mongodb/src/conversation-store.ts
+  s_0da6743eb2233d::t_8a104acfb3e3b7 52,54,67,87,92,98,112,116,149,166,222,246,268,282,291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "69b13a7ebc185335ebaf3ce91569b4428a88503f",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
