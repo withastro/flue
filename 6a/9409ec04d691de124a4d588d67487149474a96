@@ -1,0 +1,31 @@
+apps/docs/src/content/docs/reference/streaming-protocol.md
+  s_0da6743eb2233d::t_7f4b0d8bf44cea 89-92,99
+apps/docs/src/content/docs/sdk/flue-client.md
+  s_0da6743eb2233d::t_024b3c919cec62 107,113-118
+apps/docs/src/content/docs/reference/agent-api.md
+  s_8917edb75186b8::t_05620afcaded33 160,177,291
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6a9409ec04d691de124a4d588d67487149474a96",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_8917edb75186b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a8d7fbeaf8c231648",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
