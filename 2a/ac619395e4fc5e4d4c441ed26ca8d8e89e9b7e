@@ -1,0 +1,29 @@
+packages/runtime/src/conversation-projections.ts
+  s_0da6743eb2233d::t_e9bb64645ce18d 223-226,228-232
+packages/runtime/test/conversation-reducer.test.ts
+  s_814c7e369ab81d::t_ad9a5acd64eb0f 815-977
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2aac619395e4fc5e4d4c441ed26ca8d8e89e9b7e",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_814c7e369ab81d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3ee610544995edb7",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
