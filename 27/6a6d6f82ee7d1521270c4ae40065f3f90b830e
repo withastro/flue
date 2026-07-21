@@ -1,0 +1,31 @@
+packages/runtime/src/agent.ts
+  s_5ec01504d0a5e2::t_6f615cd6aa00f2 4,611
+packages/runtime/src/base64.ts
+  s_5ec01504d0a5e2::t_f912f94a92c340 1-21
+packages/runtime/src/cloudflare/cf-sandbox.ts
+  s_5ec01504d0a5e2::t_cd5dfae32e6ead 3,77,84
+packages/runtime/src/result.ts
+  s_5ec01504d0a5e2::t_25963dea827b02 4,41
+packages/runtime/src/runtime/agent-submissions.ts
+  s_5ec01504d0a5e2::t_cfa9e342f2cfa2 3
+packages/runtime/src/session.ts
+  s_5ec01504d0a5e2::t_a954a4104b2696 58
+packages/runtime/src/skill-package.ts
+  s_5ec01504d0a5e2::t_91fdd8e1791686 1
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "276a6d6f82ee7d1521270c4ae40065f3f90b830e",
+  "prompts": {},
+  "sessions": {
+    "s_5ec01504d0a5e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab94b5ca8ee938a56",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
