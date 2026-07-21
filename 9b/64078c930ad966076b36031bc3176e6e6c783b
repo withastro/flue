@@ -1,0 +1,27 @@
+examples/assistant/package.json
+  s_f157b1c6b13c3f::t_026fb7e16ec9f8 13
+examples/chat-sdk/package.json
+  s_f157b1c6b13c3f::t_449c95c85639fd 22
+examples/cloudflare/package.json
+  s_f157b1c6b13c3f::t_bc22119e142ff5 20
+packages/runtime/package.json
+  s_f157b1c6b13c3f::t_e0f14c8aca17fd 99
+pnpm-lock.yaml
+  s_f157b1c6b13c3f::t_37c3c6072740b5 75,106,194,201,203-204,256,271-272,284,299,309,311-312,324,346,355,386,395,426,435,459,487,506,528,531,543,574,583,611,620,673,676,688,768,771,786,811,814,826,876,879,891,922,931,959,971,1021,1030,1061,1070,1098,1107,1172,1181,1212,1215,1227,1298,1323,1348,1370,1414,1436,1499,1631,1685-1686,1711,1755,1780,1802,1836,1861,1883,1920,1926,1954,1979,2705-2706,11051,11058,11064,11072,11109,14427,14440,17231,17233,18769,18780,18786,18797
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9b64078c930ad966076b36031bc3176e6e6c783b",
+  "prompts": {},
+  "sessions": {
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
