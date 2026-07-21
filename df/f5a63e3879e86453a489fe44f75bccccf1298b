@@ -1,0 +1,19 @@
+packages/cli/src/lib/init.ts
+  s_0da6743eb2233d::t_6b70e82e9d0964 233,250
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "dff5a63e3879e86453a489fe44f75bccccf1298b",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
