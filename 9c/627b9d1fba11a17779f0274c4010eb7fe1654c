@@ -1,0 +1,19 @@
+packages/runtime/test/conversation-stream-store.test.ts
+  s_0da6743eb2233d::t_c86a71d22e1af0 181-185,188-189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9c627b9d1fba11a17779f0274c4010eb7fe1654c",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
