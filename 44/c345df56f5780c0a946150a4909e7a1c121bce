@@ -1,0 +1,23 @@
+packages/notion/src/index.ts
+  s_a7725af73facce::t_780a6b3c208e28 51-54
+packages/notion/src/webhook.ts
+  s_a7725af73facce::t_05f69dc091bcc5 39-43,48
+packages/notion/test/index.test.ts
+  s_a7725af73facce::t_5f5182674c8a0a 251-256,267-268,272-278
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "44c345df56f5780c0a946150a4909e7a1c121bce",
+  "prompts": {},
+  "sessions": {
+    "s_a7725af73facce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acac58f638ed0c549",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
