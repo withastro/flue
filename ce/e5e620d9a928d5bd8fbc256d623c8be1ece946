@@ -1,0 +1,19 @@
+packages/runtime/src/cloudflare/cf-sandbox.ts
+  s_a7725af73facce::t_33dbcff19ef44c 65-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "cee5e620d9a928d5bd8fbc256d623c8be1ece946",
+  "prompts": {},
+  "sessions": {
+    "s_a7725af73facce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acac58f638ed0c549",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
