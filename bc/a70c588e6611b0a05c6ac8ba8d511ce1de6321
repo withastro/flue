@@ -1,0 +1,65 @@
+examples/assistant/package.json
+  s_f157b1c6b13c3f::t_0b66ea4f7b9894 8
+examples/chat-sdk/package.json
+  s_f157b1c6b13c3f::t_dc6518c77b82dd 15
+examples/cloudflare/package.json
+  s_f157b1c6b13c3f::t_a09f88728170e0 14
+examples/discord-channel/package.json
+  s_f157b1c6b13c3f::t_05eaedeaee10e4 23
+examples/github-channel/package.json
+  s_f157b1c6b13c3f::t_17ce1697ff9639 21
+examples/google-chat-channel/package.json
+  s_f157b1c6b13c3f::t_94f72db2fbfb7d 23
+examples/hello-world/package.json
+  s_f157b1c6b13c3f::t_ac8bfec676d3b2 9
+examples/imported-skill/package.json
+  s_f157b1c6b13c3f::t_00638f5c8298db 7
+examples/intercom-channel/package.json
+  s_f157b1c6b13c3f::t_524ed9f8817452 24
+examples/linear-channel/package.json
+  s_f157b1c6b13c3f::t_b4d7d3cf741e10 21
+examples/messenger-channel/package.json
+  s_f157b1c6b13c3f::t_87197bcb0f409a 22
+examples/notion-channel/package.json
+  s_f157b1c6b13c3f::t_51a14c9cb027d9 24
+examples/resend-channel/package.json
+  s_f157b1c6b13c3f::t_d8345ce583a4b9 24
+examples/salesforce-marketing-cloud-channel/package.json
+  s_f157b1c6b13c3f::t_fdbb26ea60da3b 22
+examples/shopify-channel/package.json
+  s_f157b1c6b13c3f::t_22c3fb9259c139 23
+examples/slack-channel/package.json
+  s_f157b1c6b13c3f::t_648a448a532593 21
+examples/stripe-channel/package.json
+  s_f157b1c6b13c3f::t_5d67205153fbae 23
+examples/teams-channel/package.json
+  s_f157b1c6b13c3f::t_5eb42be1dd39e3 20
+examples/telegram-channel/package.json
+  s_f157b1c6b13c3f::t_d002d0c8aa6ab7 21
+examples/twilio-channel/package.json
+  s_f157b1c6b13c3f::t_7ab6707981913c 22
+examples/whatsapp-channel/package.json
+  s_f157b1c6b13c3f::t_6084287240d0f4 23
+examples/zendesk-channel/package.json
+  s_f157b1c6b13c3f::t_18258f5008d391 24
+packages/vite/package.json
+  s_f157b1c6b13c3f::t_784e9c4ca8da3c 50
+pnpm-lock.yaml
+  s_f157b1c6b13c3f::t_d8849ea8b96d50 193-194,244,247,255-256,259,290,293,298-299,354-355,394-395,434-435,458-459,486-487,542-543,582-583,619-620,687-688,785-786,825-826,890-891,930-931,970-971,1029-1030,1069-1070,1106-1107,1150,1180-1181,1226-1227,1925-1926,2253-2256,2269-2275,2281-2283,2285,2291-2297,2309-2311,2313-2317,2319-2321,2323,2325-2327,2333-2336,2341-2344,2358-2365,2367,2369-2371,2373,2387-2390,2395-2398,2403-2406,5800-5802,6247-6248,6251,6257,6262,6270-6271,6274-6275,7666-7668,8506-8507,10461-10465,10496,10498-10507,10517,10520-10526,10530-10532,10534-10535,10553,10555,10557-10559,10561,10564-10566,10568,10570-10571,10575-10576,10579-10580,10592-10596,10599-10601,10603,10606,10620-10625,10638-10647,10653-10657,10755,10757,10760,10766,10768,10774,10776,10796,10815,10817,13770-13771,14114,14116,14118,14126,14132-14133,14497,15772-15773,16872,18199
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bca70c588e6611b0a05c6ac8ba8d511ce1de6321",
+  "prompts": {},
+  "sessions": {
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
