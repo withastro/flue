@@ -1,0 +1,87 @@
+examples/discord-channel/package.json
+  s_f157b1c6b13c3f::t_235e245247ab3a 20
+examples/github-channel/package.json
+  s_f157b1c6b13c3f::t_a71433bc7991d3 18
+examples/google-chat-channel/package.json
+  s_f157b1c6b13c3f::t_5a83b032c191ec 20
+examples/intercom-channel/package.json
+  s_f157b1c6b13c3f::t_14ad8c459dcf3d 20
+examples/linear-channel/package.json
+  s_f157b1c6b13c3f::t_a306f2549169ac 18
+examples/messenger-channel/package.json
+  s_f157b1c6b13c3f::t_3550201992a4e9 19
+examples/notion-channel/package.json
+  s_f157b1c6b13c3f::t_c34271e8d4f73c 20
+examples/resend-channel/package.json
+  s_f157b1c6b13c3f::t_ca43f56883ec80 19
+examples/salesforce-marketing-cloud-channel/package.json
+  s_f157b1c6b13c3f::t_f59fb25ca78b81 18
+examples/shopify-channel/package.json
+  s_f157b1c6b13c3f::t_5390cee95327e9 19
+examples/slack-channel/package.json
+  s_f157b1c6b13c3f::t_54c321d39bce95 18
+examples/stripe-channel/package.json
+  s_f157b1c6b13c3f::t_14dc93f5a719f8 19
+examples/teams-channel/package.json
+  s_f157b1c6b13c3f::t_068d37e5af883c 17
+examples/telegram-channel/package.json
+  s_f157b1c6b13c3f::t_0eca53a2d24f91 18
+examples/twilio-channel/package.json
+  s_f157b1c6b13c3f::t_b35539bd3cac22 19
+examples/whatsapp-channel/package.json
+  s_f157b1c6b13c3f::t_4fefef4c565794 20
+examples/zendesk-channel/package.json
+  s_f157b1c6b13c3f::t_8dc8d9f7d15c88 20
+packages/discord/package.json
+  s_f157b1c6b13c3f::t_cda0be20cb1ac8 40
+packages/github/package.json
+  s_f157b1c6b13c3f::t_3bc8b95a81186e 40
+packages/google-chat/package.json
+  s_f157b1c6b13c3f::t_81f45a475153fd 40
+packages/intercom/package.json
+  s_f157b1c6b13c3f::t_ebeeeefc394050 39
+packages/linear/package.json
+  s_f157b1c6b13c3f::t_45abbbb42b2307 40
+packages/messenger/package.json
+  s_f157b1c6b13c3f::t_9362996e4a358a 39
+packages/notion/package.json
+  s_f157b1c6b13c3f::t_665f4e487b5a7a 41
+packages/resend/package.json
+  s_f157b1c6b13c3f::t_3f54749bfdd0b4 42
+packages/salesforce-marketing-cloud/package.json
+  s_f157b1c6b13c3f::t_cb44c3c309ff03 39
+packages/shopify/package.json
+  s_f157b1c6b13c3f::t_30d62f76463d1a 40
+packages/slack/package.json
+  s_f157b1c6b13c3f::t_5f834fdd0a1fbc 40
+packages/stripe/package.json
+  s_f157b1c6b13c3f::t_a30f00654c0da7 41
+packages/teams/package.json
+  s_f157b1c6b13c3f::t_d3ea80b6fee2ca 41
+packages/telegram/package.json
+  s_f157b1c6b13c3f::t_ee9e3ae496f63d 40
+packages/twilio/package.json
+  s_f157b1c6b13c3f::t_6ce4a9df5ed49f 39
+packages/whatsapp/package.json
+  s_f157b1c6b13c3f::t_fd97847d669e7c 40
+packages/zendesk/package.json
+  s_f157b1c6b13c3f::t_7e0cfc63b5a17d 40
+pnpm-lock.yaml
+  s_f157b1c6b13c3f::t_31e0f423ef3c74 345-346,385-386,425-426,530-531,573-574,610-611,675-676,770-771,813-814,878-879,921-922,958-959,1020-1021,1060-1061,1097-1098,1171-1172,1214-1215,1297-1298,1322-1323,1347-1348,1369-1370,1413-1414,1435-1436,1498-1499,1630-1631,1710-1711,1754-1755,1779-1780,1801-1802,1835-1836,1860-1861,1882-1883,1953-1954,1978-1979,2638-2639,10831,10836-10837,10839
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5a785cff5b4c867382b36f384ee16c2c29e6455f",
+  "prompts": {},
+  "sessions": {
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
