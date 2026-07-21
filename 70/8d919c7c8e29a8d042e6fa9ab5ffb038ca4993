@@ -1,0 +1,19 @@
+packages/mongodb/test/mongodb-unit.test.ts
+  s_0da6743eb2233d::t_faa6c53af3a02c 293-295,297,306-307,310-311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "708d919c7c8e29a8d042e6fa9ab5ffb038ca4993",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
