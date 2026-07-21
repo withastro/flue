@@ -1,0 +1,47 @@
+packages/runtime/src/session.ts
+  s_0da6743eb2233d::t_959ebfbe8418bd 71,952-958,960-977,1015-1021,1024-1031,1130-1138,1140-1143,1175-1179,1632-1640
+apps/docs/src/content/docs/reference/agent-api.md
+  s_c47eb0c3bb3f18::t_c305fff60c9e25 138,688-690
+apps/docs/src/content/docs/reference/agent-hooks-api.md
+  s_c47eb0c3bb3f18::t_5ed8f137400a78 219,313
+packages/runtime/src/conversation-records.ts
+  s_c47eb0c3bb3f18::t_c63b99bed9a6e5 111-145
+packages/runtime/src/hooks/use-delivery.ts
+  s_c47eb0c3bb3f18::t_80b98e8e7c15d0 34-36
+packages/runtime/src/message-output.ts
+  s_c47eb0c3bb3f18::t_becfe2e3baeed1 2,128-135
+packages/runtime/src/runtime/schemas.ts
+  s_c47eb0c3bb3f18::t_82a5fed7226a6f 2,30-43,81
+packages/runtime/test/agent-delivery.test.ts
+  s_c47eb0c3bb3f18::t_3872a9ad0695cc 14,166-322
+packages/runtime/test/agent-lifecycle-hooks.test.ts
+  s_c47eb0c3bb3f18::t_b9e6586f927a37 433-468
+packages/runtime/test/dispatch.test.ts
+  s_c47eb0c3bb3f18::t_6af13c74bb4a0a 242-260
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_c47eb0c3bb3f18::t_2db58f994cb8cf 17,1768-1826
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1b5244a40dfceb1419c3f6a059c077f95c05c8ad",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_c47eb0c3bb3f18": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9b99f8fd8b5f5697",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
