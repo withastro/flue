@@ -1,0 +1,55 @@
+demo/package.json
+  s_f157b1c6b13c3f::t_100517f2661b22 30
+examples/intercom-channel/package.json
+  s_f157b1c6b13c3f::t_94449527544007 23
+examples/notion-channel/package.json
+  s_f157b1c6b13c3f::t_1e0a41e9f7145d 23
+examples/react-chat/package.json
+  s_f157b1c6b13c3f::t_0b571b41b301a6 25
+examples/resend-channel/package.json
+  s_f157b1c6b13c3f::t_5e94974356e78b 22
+examples/salesforce-marketing-cloud-channel/package.json
+  s_f157b1c6b13c3f::t_5a39f0e8f07e6d 21
+examples/shopify-channel/package.json
+  s_f157b1c6b13c3f::t_f71a4644b72f22 22
+examples/stripe-channel/package.json
+  s_f157b1c6b13c3f::t_ae7302877d1f4e 22
+examples/zendesk-channel/package.json
+  s_f157b1c6b13c3f::t_b583dc4d59cd00 23
+package.json
+  s_f157b1c6b13c3f::t_12b85ff00b9255 27
+packages/notion/package.json
+  s_f157b1c6b13c3f::t_428db7504f37b0 44
+packages/resend/package.json
+  s_f157b1c6b13c3f::t_de5901d949642a 44
+packages/stripe/package.json
+  s_f157b1c6b13c3f::t_b8434aea7b6ef4 43
+pnpm-lock.yaml
+  s_f157b1c6b13c3f::t_248702c34d9cee 25-26,47,53,56,72,81,90,93,103,155,157-158,167,182,194,201,213,238,256,281,299,309,321,346,355,361,364,386,395,401,404,426,435,441,444,459,478,487,503,528,531,539-540,543,549,552,574,583,589,592,611,620,626,629,651,673,676,684-685,688,694,697,736-737,749,768,771,779-780,786,792,795,811,814,822-823,826,832,835,857,876,879,887-888,891,897,900,922,931,937,940,955,959,967-968,971,977,980,1002,1021,1030,1036,1039,1061,1070,1076,1079,1098,1107,1113,1116,1144,1147,1150,1172,1181,1187,1190,1212,1215,1223-1224,1227,1233,1236,1266,1285,1298,1310,1323,1335,1348,1360,1370,1382,1401,1414,1426,1436,1448,1470,1480,1489,1499,1507-1508,1517,1547,1566,1596,1618,1631,1636-1637,1649,1701,1711,1723,1742,1755,1767,1780,1792,1802,1807-1808,1811,1820,1836,1848,1861,1873,1883,1898,1920,1926,1938,1941,1954,1966,1979,1991,6004-6006,9591-9593,10401,10407,11048,11053,11061,11068,13580,13587,13851,13856,14104-14107,14221,14224,14226,14245,14251,14430,14436,14451,14530,14580-14581,14587,16962,16964,17876,17907,18097,18099,18376-18377,18532,18540,18547,18549,18551,18556,18561,18564,18581,18585
+packages/redis/test/attachment-store.test.ts
+  s_2b4bf1369fdcfb::t_94309f9f4d969a 53
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1554b6700af35e9f1f96ba925aa92ee36cedbb8e",
+  "prompts": {},
+  "sessions": {
+    "s_2b4bf1369fdcfb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-af727cc41414ca8ba",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
