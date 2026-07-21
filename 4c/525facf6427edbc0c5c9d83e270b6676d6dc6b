@@ -1,0 +1,49 @@
+packages/runtime/test/agent-dispatch-message.test.ts
+  s_0da6743eb2233d::t_fbfdacaaca7194 36-39,42,49,149
+packages/runtime/test/agent-lifecycle-hooks.test.ts
+  s_0da6743eb2233d::t_2fe6f66c83a312 45-48,50,57,145
+packages/runtime/src/agent-client.ts
+  s_5ec01504d0a5e2::t_19c13b1edbd5a9 49,204,233,256,469-470
+packages/runtime/src/internal.ts
+  s_5ec01504d0a5e2::t_c004a7c1b2a3f2 80
+packages/runtime/src/node/assemble.ts
+  s_5ec01504d0a5e2::t_972501363d6c52 14,133-135
+packages/runtime/src/runtime/dispatch.ts
+  s_5ec01504d0a5e2::t_38ce750c88cd20 4,12,41
+packages/runtime/src/runtime/flue-app.ts
+  s_5ec01504d0a5e2::t_e13575a7b1e9b6 15,90,137,181
+packages/runtime/src/runtime/registration.ts
+  s_5ec01504d0a5e2::t_ea7048f19bf3ee 160-176
+packages/runtime/test/agent-client-cloudflare.test.ts
+  s_5ec01504d0a5e2::t_7faef7c823e14c 153
+packages/runtime/test/agent-function.test.ts
+  s_5ec01504d0a5e2::t_9a89d9f6dcc47e 28,138,149-150
+packages/runtime/test/dispatch.test.ts
+  s_5ec01504d0a5e2::t_cea3304dae4d48 19-22,24,48,65,130
+packages/runtime/test/helpers/runtime-config.ts
+  s_5ec01504d0a5e2::t_5b969503aa28f6 3-4,18,25-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4c525facf6427edbc0c5c9d83e270b6676d6dc6b",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_5ec01504d0a5e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab94b5ca8ee938a56",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
