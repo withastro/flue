@@ -1,0 +1,29 @@
+pnpm-lock.yaml
+  s_f157b1c6b13c3f::t_c7fec05b3f8319 346,364,386,404,426,444,531,552,574,592,611,629,676,697,771,795,814,835,879,900,922,940,959,980,1021,1039,1061,1079,1098,1116,1147,1150,1172,1190,1215,1236,1285,1298,1310,1323,1335,1348,1360,1370,1382,1401,1414,1426,1436,1448,1470,1489,1499,1517,1547,1566,1580-1581,1596,1618,1631,1649,1701,1711,1723,1742,1755,1767,1780,1792,1802,1820,1836,1848,1861,1873,1883,1898,1941,1954,1966,1979,1991,6652-6655,7251-7254,7606-7607,11063,11070,14138,14759-14762,15327-15328,15805,15807,15809-15811,15813-15816,17332,18560,18565,18570,18595
+packages/react/package.json
+  s_2b4bf1369fdcfb::t_5bb6ebe78f04e1 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f89758306c0965dfaf43fcd2af4b4e9e46f7426a",
+  "prompts": {},
+  "sessions": {
+    "s_2b4bf1369fdcfb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-af727cc41414ca8ba",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
