@@ -1,0 +1,23 @@
+packages/runtime/src/client.ts
+  s_5ec01504d0a5e2::t_278a63a80855e6 368,373,376
+packages/runtime/src/context.ts
+  s_5ec01504d0a5e2::t_ca35024e4e1a03 204-209
+packages/runtime/src/harness.ts
+  s_5ec01504d0a5e2::t_18ffeb5e564342 334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7325514adc193a16cd689a1718befc4ddaea77bb",
+  "prompts": {},
+  "sessions": {
+    "s_5ec01504d0a5e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab94b5ca8ee938a56",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
