@@ -1,0 +1,25 @@
+packages/redis/src/conversation-store.ts
+  s_9f1dd1168c4ebd::t_a5243296d29d75 49-50
+packages/redis/src/redis-adapter.ts
+  s_9f1dd1168c4ebd::t_2e39995e216796 876
+packages/redis/src/redis-scripts.ts
+  s_9f1dd1168c4ebd::t_33a9c203fbe60c 94,238,240-241
+packages/redis/test/submission-store-races.test.ts
+  s_9f1dd1168c4ebd::t_a339490df8ea7e 87-88,90
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3d0f2f073a88d123eed92240bdaaa6ff240f1f83",
+  "prompts": {},
+  "sessions": {
+    "s_9f1dd1168c4ebd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ac65acc6df632bdb6",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
