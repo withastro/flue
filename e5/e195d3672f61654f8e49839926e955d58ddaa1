@@ -1,0 +1,29 @@
+pnpm-lock.yaml
+  s_0da6743eb2233d::t_20600abb79a5e4 1268-1270
+packages/cli/package.json
+  s_a7725af73facce::t_78101270c14447 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e5e195d3672f61654f8e49839926e955d58ddaa1",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_a7725af73facce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acac58f638ed0c549",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
