@@ -1,0 +1,31 @@
+apps/docs/src/content/docs/sdk/errors.md
+  s_0da6743eb2233d::t_b8550492b14a00 7,56,59,76,110,113
+packages/sdk/src/index.ts
+  s_0da6743eb2233d::t_14e25675244ef0 55
+packages/sdk/src/public/stream.ts
+  s_0da6743eb2233d::t_705adb73da16eb 2,5-6,11,13,26,31,54-55,69
+packages/sdk/test/assignability.test-d.ts
+  s_0da6743eb2233d::t_883c7e33ab0671 1,6
+apps/docs/src/content/docs/reference/events.md
+  s_0da6743eb2233d::t_e26e1d4fed04e8 89
+apps/docs/src/content/docs/sdk/events.md
+  s_0da6743eb2233d::t_6db4c1ca0922e0 7,11-12,39,44,77
+apps/docs/src/content/docs/sdk/overview.md
+  s_0da6743eb2233d::t_d34eda9cb9a1bd 70-71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "14dba97d02f5784301f1e649a880640a0ad645c4",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
