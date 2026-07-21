@@ -1,0 +1,19 @@
+apps/docs/src/content/docs/reference/agent-api.md
+  s_0da6743eb2233d::t_40b243a9fb1dc1 540,557
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3615e9949ac7cc4bec5ad764e7333cfe54bd572c",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
