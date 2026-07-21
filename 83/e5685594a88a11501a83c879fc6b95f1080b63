@@ -1,0 +1,41 @@
+packages/discord/src/routes.ts
+  s_e054e2936896a8::t_83e33964c13eeb 87-88
+packages/intercom/src/webhook.ts
+  s_e054e2936896a8::t_1a4d02dcae3b11 218-219
+packages/messenger/src/webhook.ts
+  s_e054e2936896a8::t_3e41b0039dee74 100-101
+packages/resend/src/webhook.ts
+  s_e054e2936896a8::t_dd7717ec7bbf78 101-102
+packages/salesforce-marketing-cloud/src/webhook.ts
+  s_e054e2936896a8::t_4699d240f99c8a 179-180
+packages/shopify/src/webhook.ts
+  s_e054e2936896a8::t_782f8632a90941 132-133
+packages/stripe/src/webhook.ts
+  s_e054e2936896a8::t_40770bba79b01b 122-123
+packages/zendesk/src/webhook.ts
+  s_0da6743eb2233d::t_6f713dad509b47 274-275
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "83e5685594a88a11501a83c879fc6b95f1080b63",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_e054e2936896a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad0082236f5a8f47e",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
