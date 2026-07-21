@@ -1,0 +1,29 @@
+pnpm-lock.yaml
+  s_f157b1c6b13c3f::t_68abe7ed1d2b0d 1460-1461,6033-6034,6645-6647,8435-8437,8439-8441,8443-8447,8449,14136,14759,16962,16964,16967,16970-16973
+packages/mongodb/package.json
+  s_07fc9410346103::t_9704392fcc3ceb 37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2bfa7cb25f46366387108bc0b06c96060ab28aff",
+  "prompts": {},
+  "sessions": {
+    "s_07fc9410346103": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a2c9a27b5646d6a21",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
