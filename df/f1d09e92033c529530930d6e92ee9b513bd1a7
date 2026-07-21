@@ -1,0 +1,67 @@
+apps/docs/src/content/docs/ecosystem/channels/messenger.md
+  s_30124aaca1099b::t_6bd33d2e4d8c43 90-93,95
+apps/docs/src/content/docs/guide/durability.md
+  s_75ee63bedc1f63::t_35924f95623fa5 121
+apps/docs/src/content/docs/guide/models.md
+  s_30124aaca1099b::t_f9e7614243c538 206-209
+apps/docs/src/content/docs/reference/provider-api.md
+  s_30124aaca1099b::t_73f4940a4be5b2 59-61
+apps/docs/src/content/docs/cli/run.md
+  s_d7d2e10336a042::t_f171db5255d76d 51,54
+apps/docs/src/content/docs/ecosystem/channels/discord.md
+  s_d7d2e10336a042::t_47afafcb9c03ff 284-289
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_75ee63bedc1f63::t_beb8f783e88afa 569-571
+apps/docs/src/content/docs/ecosystem/sandboxes/cloudflare.md
+  s_d7d2e10336a042::t_f3ec586c2b11f4 38
+apps/docs/src/content/docs/ecosystem/tooling/opentelemetry.md
+  s_d7d2e10336a042::t_200bd386ba0330 48,65
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_d7d2e10336a042::t_3448659feeacf7 375,380,384-391,393-394
+apps/docs/src/content/docs/guide/observability.md
+  s_d7d2e10336a042::t_199b6f733f9e2b 175,192,196-198
+apps/docs/src/content/docs/guide/workflows.md
+  s_30124aaca1099b::t_670003cf83ed43 188
+apps/docs/src/content/docs/reference/agent-api.md
+  s_30124aaca1099b::t_415434b9760ed0 517-523,693
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_d7d2e10336a042::t_6ab86ed4fbf0a2 223-224
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_d7d2e10336a042::t_23691acd27040d 197
+apps/docs/src/content/docs/sdk/flue-client.md
+  s_d7d2e10336a042::t_16452b383ae22a 3,13,49-54
+apps/docs/src/content/docs/guide/migration.md
+  s_d7d2e10336a042::t_183010844b3c47 216
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "dff1d09e92033c529530930d6e92ee9b513bd1a7",
+  "prompts": {},
+  "sessions": {
+    "s_30124aaca1099b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "806e502e-ac34-47ec-93aa-b8d85ed5ac1b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_75ee63bedc1f63": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "66e5fee9-0f36-407b-a42a-8c83fc5b7c5d",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_d7d2e10336a042": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a16fbb92fb437c15d",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
