@@ -1,0 +1,53 @@
+packages/runtime/package.json
+  s_385823fdbef67c::t_d2f6a5e079b4cc 64-67
+packages/runtime/test/package-entrypoints.test.ts
+  s_f157b1c6b13c3f::t_882937857f7d2d 146-159
+packages/runtime/tsdown.config.ts
+  s_385823fdbef67c::t_4dab08beaa52f8 14
+packages/vite/src/flue-plugin.ts
+  s_f157b1c6b13c3f::t_d261469b479f36 545
+examples/cloudflare/src/app.ts
+  s_07fc9410346103::t_8a803401a2bb06 31
+packages/runtime/src/cloudflare/index.ts
+  s_385823fdbef67c::t_b7d079475aba6a 37-40
+packages/runtime/src/cloudflare/workers-ai-provider.ts
+  s_385823fdbef67c::t_27fd03fb07f639 855-858
+packages/vite/src/cloudflare-entry.ts
+  s_07fc9410346103::t_e8b17e67272a4e 29-34,43-44,117-121,127-130,140-142
+packages/vite/src/providers-module.ts
+  s_07fc9410346103::t_eea621e0780f3b 21-28
+packages/vite/test/cloudflare-entry.test.ts
+  s_385823fdbef67c::t_9a0c301d71c385 20,72,94,120,128-165
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6713f784ca2e97de7927af448b8baa003afdcdec",
+  "prompts": {},
+  "sessions": {
+    "s_07fc9410346103": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a2c9a27b5646d6a21",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_385823fdbef67c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b8ab253-0958-4fdc-a729-e7667b64c745",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
