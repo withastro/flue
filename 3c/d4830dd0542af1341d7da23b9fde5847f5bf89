@@ -1,0 +1,19 @@
+packages/runtime/src/test-utils/define-attachment-store-contract-tests.ts
+  s_9f1dd1168c4ebd::t_e3355536d4a5d6 5,46-77
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3cd4830dd0542af1341d7da23b9fde5847f5bf89",
+  "prompts": {},
+  "sessions": {
+    "s_9f1dd1168c4ebd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ac65acc6df632bdb6",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
