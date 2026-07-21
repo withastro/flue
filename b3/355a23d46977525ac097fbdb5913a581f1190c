@@ -1,0 +1,25 @@
+apps/docs/src/content/docs/reference/configuration.md
+  s_385823fdbef67c::t_09edfeb378a6da 126
+apps/docs/src/content/docs/reference/provider-api.md
+  s_385823fdbef67c::t_025e814b5167d6 35
+packages/vite/src/flue-plugin.ts
+  s_385823fdbef67c::t_e85d7c43acbc25 367-373,864-876
+packages/vite/test/build.test.ts
+  s_385823fdbef67c::t_ad39edc68f67a4 221-232
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b3355a23d46977525ac097fbdb5913a581f1190c",
+  "prompts": {},
+  "sessions": {
+    "s_385823fdbef67c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b8ab253-0958-4fdc-a729-e7667b64c745",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
