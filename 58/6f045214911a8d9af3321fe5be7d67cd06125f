@@ -1,0 +1,29 @@
+packages/runtime/src/runtime/handle-conversation-routes.ts
+  s_0da6743eb2233d::t_391dc580794957 213-221,232,248,252
+packages/runtime/test/handle-conversation-routes.test.ts
+  s_1bd45b94bdbf2f::t_de2ed6fdba60cd 193-273
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "586f045214911a8d9af3321fe5be7d67cd06125f",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_1bd45b94bdbf2f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a07de20d6220cbf75",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
