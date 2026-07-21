@@ -1,0 +1,91 @@
+examples/chat-sdk/src/agents/assistant.ts
+  s_30124aaca1099b::t_ed3b85d6d9c7c2 2
+examples/react-chat/src/agents/demo.ts
+  s_30124aaca1099b::t_213ec9f9185a3a 10
+packages/cli/test/run.test.mjs
+  s_30124aaca1099b::t_997ab62ee841e9 512-518
+packages/discord/src/index.ts
+  s_30124aaca1099b::t_37fa9803990285 71-73
+packages/mongodb/src/conversation-store.ts
+  s_30124aaca1099b::t_21dc561f7f1e96 87-88,247-251,273-277,299
+packages/opentelemetry/src/index.ts
+  s_30124aaca1099b::t_a7abe769a90514 9-20
+packages/opentelemetry/test/index.test.ts
+  s_30124aaca1099b::t_c4e62ce3d559e6 2,236-238,1085-1086
+packages/runtime/src/adapter-helpers.ts
+  s_30124aaca1099b::t_340ed1d8a1d139 221-229
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_30124aaca1099b::t_c6c6b924f35285 911-912,914-916
+packages/runtime/src/cloudflare/index.ts
+  s_30124aaca1099b::t_6c4d15dcd06326 36
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_30124aaca1099b::t_f92a11c0396125 129-131
+packages/runtime/src/cloudflare/workers-ai-provider.ts
+  s_30124aaca1099b::t_0dfda915b976e4 676,889-894
+packages/runtime/src/node/agent-coordinator.ts
+  s_30124aaca1099b::t_1f581300e89670 37-39,644-647
+packages/runtime/src/runtime/agent-submissions.ts
+  s_30124aaca1099b::t_432707916071a0 10
+packages/runtime/src/session.ts
+  s_30124aaca1099b::t_cce96ac266c582 47,91,1214
+packages/runtime/src/shell.ts
+  s_30124aaca1099b::t_54d8ccee7beba6 57
+packages/runtime/src/sql-agent-execution-store.ts
+  s_30124aaca1099b::t_1f4bb982142aa9 768-770
+packages/runtime/src/telemetry/content.ts
+  s_30124aaca1099b::t_0ef99adb0ba916 15
+packages/runtime/src/telemetry/index.ts
+  s_30124aaca1099b::t_a113e0436d5eae 19
+packages/runtime/src/test-utils/define-store-contract-tests.ts
+  s_30124aaca1099b::t_4e02a292efa843 64,70,154,156,235,260-263,279,311-316,361-366,383,386-389,395-397,436,438,514,529,565-568,700,721-723,832,991,1050-1053,1098,1115,1206
+packages/runtime/test/agent-execution-store-contract.test.ts
+  s_30124aaca1099b::t_ca7fe67370c331 129-131,169-171
+packages/runtime/test/agent-props.test.ts
+  s_30124aaca1099b::t_f38ad72cf8f6bd 1
+packages/runtime/test/agent-resources.test.ts
+  s_30124aaca1099b::t_8df992fcc95e92 540
+packages/runtime/test/cloudflare-agent-coordinator.test.ts
+  s_30124aaca1099b::t_d8357a2df6ce8e 386,535,607
+packages/runtime/test/cloudflare-workers-ai-provider.test.ts
+  s_30124aaca1099b::t_fdf055a8e7db2c 278,636
+packages/runtime/test/crash-window-sweep.test.ts
+  s_30124aaca1099b::t_213c6f2ede9828 494-497,921,964-967,991-993,1024,1072-1075,1108-1109,1131,1165
+packages/runtime/test/durable-tool.test.ts
+  s_30124aaca1099b::t_321f081cbd3e7c 530
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_30124aaca1099b::t_9d4666737ee614 1236-1239,1291,1716,1810-1812,1869,1893-1895,1959-1961,2048-2050,2082-2084,2418-2420
+packages/runtime/test/provider-diagnostics.test.ts
+  s_30124aaca1099b::t_0d79824d515c62 1
+packages/runtime/test/providers.test.ts
+  s_30124aaca1099b::t_1e630c46be19d0 61-65,82-85
+packages/runtime/test/settlement-rebuild.test.ts
+  s_30124aaca1099b::t_c41c495b29712b 150
+packages/runtime/test/structured-results.test.ts
+  s_30124aaca1099b::t_2b780f87e48020 306
+packages/runtime/test/telemetry-content.test.ts
+  s_30124aaca1099b::t_a30214aaad09b6 10,61-63,91-93,143-152,177-179
+packages/sdk/src/public/reply.ts
+  s_30124aaca1099b::t_0691098cf43149 53
+packages/sdk/test/client.test.ts
+  s_30124aaca1099b::t_2db85d9ffd1036 533-534
+packages/teams/src/index.ts
+  s_30124aaca1099b::t_0f8fb702f9896c 119-121
+packages/vite/src/internal.ts
+  s_30124aaca1099b::t_fb7943fff0eca0 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bd772c4563eb6804fb0994dbf2e7ffb2245b2179",
+  "prompts": {},
+  "sessions": {
+    "s_30124aaca1099b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "806e502e-ac34-47ec-93aa-b8d85ed5ac1b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
