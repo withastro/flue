@@ -1,0 +1,19 @@
+packages/github/src/webhook.ts
+  s_e054e2936896a8::t_df8b94d441b743 21,45,86-87,116-119,121,126-139
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "283812b8e546264a84f69182f8a24114149388ac",
+  "prompts": {},
+  "sessions": {
+    "s_e054e2936896a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad0082236f5a8f47e",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
