@@ -1,0 +1,23 @@
+packages/libsql/src/libsql-adapter.ts
+  s_0da6743eb2233d::t_a2570ab06653aa 21-22,170-172,176,269,271,273-277,279,281-284,287-290,297,301,306,308,357,456,512,740,884-885,903,946
+packages/mysql/src/mysql-adapter.ts
+  s_0da6743eb2233d::t_925a86a4b7581a 9-10,67,134-135,139,144,204,215,217,292,419,421,423-427,429,431-434,437-440,447,451,456,458,503,608,666,894,1007-1008,1026,1068
+packages/postgres/src/postgres-adapter.ts
+  s_0da6743eb2233d::t_da8acef3c7dc36 20-21,149-151,155,248,250,252-256,258,260-263,266-269,276,280,285,287,346,445,510,731,878-879,897,939
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5c88426c2906ef8d37675a3bf8894057807d8085",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
