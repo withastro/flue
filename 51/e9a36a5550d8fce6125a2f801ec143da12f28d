@@ -1,0 +1,19 @@
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_7c718dfc7c47d3::t_acb4e83aee1e39 237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "51e9a36a5550d8fce6125a2f801ec143da12f28d",
+  "prompts": {},
+  "sessions": {
+    "s_7c718dfc7c47d3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a08946f3e6e400805",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
