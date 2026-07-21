@@ -1,0 +1,59 @@
+packages/cli/src/lib/env.ts
+  s_22e1c5c4e7184c::t_e9758d8354ba85 44-45
+packages/libsql/src/libsql-adapter.ts
+  s_fa6067028d8719::t_1c76b0d63721c6 267
+packages/postgres/src/postgres-adapter.ts
+  s_0bdcfa3f470e20::t_df033ba15225ed 246
+packages/runtime/src/cloudflare/flue-agent-class.ts
+  s_0bdcfa3f470e20::t_0447775c0e3f61 4-5,7
+packages/runtime/src/index.ts
+  s_b7eb8c7a89c2d2::t_bb4c5e00c7a292 176-178
+packages/runtime/src/agent-client.ts
+  s_0bdcfa3f470e20::t_127bc32b0d81ff 513-514
+packages/runtime/src/node/agent-coordinator.ts
+  s_0bdcfa3f470e20::t_072c62354ad190 151
+packages/runtime/src/session.ts
+  s_0bdcfa3f470e20::t_3cb725c7f1b1d5 3440-3443
+packages/runtime/src/submission-state.ts
+  s_0bdcfa3f470e20::t_bd721038f08050 37-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a1f1c02412e68fc28dadeb6268c9efc49d7d7ee7",
+  "prompts": {},
+  "sessions": {
+    "s_0bdcfa3f470e20": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ac988646376867fd9",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_22e1c5c4e7184c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a5f740ed8896b3b4f",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_b7eb8c7a89c2d2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a57977a239ae2b06b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_fa6067028d8719": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3542a84a36f2f922",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
