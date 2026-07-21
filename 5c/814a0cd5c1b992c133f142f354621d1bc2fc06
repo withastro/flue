@@ -1,0 +1,27 @@
+packages/libsql/src/libsql-adapter.ts
+  s_814c7e369ab81d::t_75574968dbd434 621,623,1003-1004,1011-1012
+packages/mongodb/src/submission-store.ts
+  s_814c7e369ab81d::t_cd2bcb06142961 272-274,280
+packages/mysql/src/mysql-adapter.ts
+  s_814c7e369ab81d::t_27486d2414898c 783-786,792,1138-1140
+packages/postgres/src/postgres-adapter.ts
+  s_814c7e369ab81d::t_6f36561aa88ec6 997-998,1005-1006
+packages/runtime/src/sql-agent-execution-store.ts
+  s_814c7e369ab81d::t_08297525fc0826 351,353
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5c814a0cd5c1b992c133f142f354621d1bc2fc06",
+  "prompts": {},
+  "sessions": {
+    "s_814c7e369ab81d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3ee610544995edb7",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
