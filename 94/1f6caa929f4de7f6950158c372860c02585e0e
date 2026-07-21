@@ -1,0 +1,23 @@
+packages/runtime/src/conversation-reducer.ts
+  s_2f08dea18114c1::t_50e8c95f453054 921-926
+packages/runtime/src/submission-state.ts
+  s_2f08dea18114c1::t_27e048693864a6 180,183,215,267-293,310-321
+packages/runtime/test/submission-state.test.ts
+  s_2f08dea18114c1::t_0b6be1716a0938 7,312-317,320,329-376,391,395-400,403,414-434,507-592
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "941f6caa929f4de7f6950158c372860c02585e0e",
+  "prompts": {},
+  "sessions": {
+    "s_2f08dea18114c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad48315a18ce85173",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
