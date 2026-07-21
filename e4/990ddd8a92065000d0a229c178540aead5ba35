@@ -1,0 +1,25 @@
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_4b95eb34a8b5b6::t_42f96b63d5550d 482,488,490
+apps/docs/src/content/docs/ecosystem/tooling/opentelemetry.md
+  s_4b95eb34a8b5b6::t_6c001ac7d2b0fb 48,65,67
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_4b95eb34a8b5b6::t_4e5318d594c1a4 369-371,373,375,383,390,392,394
+apps/docs/src/content/docs/guide/observability.md
+  s_4b95eb34a8b5b6::t_19b844b800801c 198
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e4990ddd8a92065000d0a229c178540aead5ba35",
+  "prompts": {},
+  "sessions": {
+    "s_4b95eb34a8b5b6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a31774931eb1156e0",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
