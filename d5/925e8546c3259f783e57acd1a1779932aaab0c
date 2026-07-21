@@ -1,0 +1,21 @@
+packages/google-chat/src/routes.ts
+  s_e054e2936896a8::t_f6b2c331a8dcee 117-125,146-147
+packages/google-chat/test/index.test.ts
+  s_e054e2936896a8::t_f75576fa6fa5b6 399-417
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d5925e8546c3259f783e57acd1a1779932aaab0c",
+  "prompts": {},
+  "sessions": {
+    "s_e054e2936896a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad0082236f5a8f47e",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
