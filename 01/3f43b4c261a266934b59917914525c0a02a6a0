@@ -1,0 +1,29 @@
+blueprints/database--redis.md
+  s_0da6743eb2233d::t_af5c08a5e4e416 72-75
+blueprints/database--valkey.md
+  s_0da6743eb2233d::t_9cafc6abc86bf8 74-77
+packages/redis/src/attachment-store.ts
+  s_0da6743eb2233d::t_7b9f8a1ce0fd77 49,103,113-121
+packages/redis/src/redis-runner.ts
+  s_0da6743eb2233d::t_fbe6ebcb73891e 1-4
+packages/redis/test/attachment-store.test.ts
+  s_0da6743eb2233d::t_0a0e90069c60a9 1-83
+packages/redis/test/redis-adapter.test.ts
+  s_0da6743eb2233d::t_aedcc370673004 8,17-20,23-24,28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "013f43b4c261a266934b59917914525c0a02a6a0",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
