@@ -1,0 +1,31 @@
+packages/runtime/src/schema-version.ts
+  s_0da6743eb2233d::t_d25d4ee0538383 66-73
+packages/mysql/src/mysql-adapter.ts
+  s_9f1dd1168c4ebd::t_f5b6f4e19bd089 272-281,291-294
+packages/runtime/test/schema-version.test.ts
+  s_9f1dd1168c4ebd::t_b88a60956894ea 1-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8f3e23a3f86bbeae8d887d3e6cc4b5b136f7b83d",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_9f1dd1168c4ebd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ac65acc6df632bdb6",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
