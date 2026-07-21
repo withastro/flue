@@ -1,0 +1,39 @@
+packages/runtime/src/persisted-image-placement.ts
+  s_0da6743eb2233d::t_b88aa1b6d4cb85 5,9,11-18,20-22,39,47,60,62,64-66,69-70,80,85-87,97-98
+packages/runtime/src/sql-persisted-chunk-store.ts
+  s_0da6743eb2233d::t_8cdff50b739d79 1,4,6-8,12,17,19,22-26,31-33,38,40,47,50,59-60,64-68
+packages/runtime/src/adapter-helpers.ts
+  s_7c718dfc7c47d3::t_b1c4f00b4d07c7 13,17,143-144,147-148,151,184,201,203,208
+packages/runtime/src/adapter.ts
+  s_7c718dfc7c47d3::t_bb85663ed8ed1e 87,89,94
+packages/runtime/src/persisted-images.ts
+  s_7c718dfc7c47d3::t_8eabcf3826911b 8,11-18,26,71,74,77,82,95,102,106,115,129-130,132-133,136-137,143,146
+packages/runtime/src/sql-agent-execution-store.ts
+  s_7c718dfc7c47d3::t_562721c5182fc8 40,48-49,55,608,623-624,643
+packages/runtime/test/cloudflare-agent-execution-store.test.ts
+  s_7c718dfc7c47d3::t_979f9c45a22989 108,151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d841a2c849df0f76726414e238a70dca0b001aaf",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_7c718dfc7c47d3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a08946f3e6e400805",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
