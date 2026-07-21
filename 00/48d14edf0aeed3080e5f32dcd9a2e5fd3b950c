@@ -1,0 +1,55 @@
+apps/docs/src/content/docs/reference/agent-api.md
+  s_0da6743eb2233d::t_1781726c0b9e1a 369
+packages/discord/src/index.ts
+  s_0da6743eb2233d::t_e10506cf638363 1,3,36,71
+packages/github/src/index.ts
+  s_0da6743eb2233d::t_560e0d9411c937 1,3,7,68,102
+packages/google-chat/src/index.ts
+  s_0da6743eb2233d::t_cd7e78f3be45b7 1-2,13,180,204
+packages/intercom/src/index.ts
+  s_0da6743eb2233d::t_b83933413ee754 1-2,6,82,111
+packages/linear/src/index.ts
+  s_0da6743eb2233d::t_e725b98d0d9474 1,3,7,75,103
+packages/messenger/src/index.ts
+  s_0da6743eb2233d::t_2908179f36d9d5 1-2,6,238,278
+packages/notion/src/index.ts
+  s_0da6743eb2233d::t_a20c4473ac7e2f 1,35,38,146,163
+packages/resend/src/index.ts
+  s_0da6743eb2233d::t_16f4aa76632fca 1-2,6,58,76
+packages/runtime/src/index.ts
+  s_0da6743eb2233d::t_4f819f68ebebcc 89
+packages/salesforce-marketing-cloud/src/index.ts
+  s_0da6743eb2233d::t_d3418097b24662 1-2,5,118,139
+packages/shopify/src/index.ts
+  s_0da6743eb2233d::t_53ba6647ca18af 1-2,5,55,75
+packages/slack/src/index.ts
+  s_0da6743eb2233d::t_ce250f2e4cd177 1,3,11,253,281
+packages/stripe/src/index.ts
+  s_0da6743eb2233d::t_dd0ffef764d637 1-2,6,57,83
+packages/teams/src/index.ts
+  s_0da6743eb2233d::t_94156cfb07f7cd 1,3,8,72,119
+packages/telegram/src/index.ts
+  s_0da6743eb2233d::t_8b5da005f855a1 1,3,7,72,100
+packages/twilio/src/index.ts
+  s_0da6743eb2233d::t_6241cd3497b273 1-2,142,169
+packages/whatsapp/src/index.ts
+  s_0da6743eb2233d::t_9f8835369f0d6e 1,17,47,101,128
+packages/zendesk/src/index.ts
+  s_0da6743eb2233d::t_54bd3da907e2bc 1-6,13,125,156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0048d14edf0aeed3080e5f32dcd9a2e5fd3b950c",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
