@@ -1,0 +1,29 @@
+packages/runtime/src/session.ts
+  s_0da6743eb2233d::t_572b95356ff791 2567-2573,2578,2582-2589,2592-2599,2892-2901,4995-5036,5039-5041,5052-5057,5101-5105,5260-5266,5545-5548
+packages/runtime/test/crash-window-sweep.test.ts
+  s_2f08dea18114c1::t_5b7ab363b68ec2 31,34,36,39,374-1089
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7fa7c6172031bd73ed2884516061c6ec15fe5ce0",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_2f08dea18114c1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad48315a18ce85173",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
