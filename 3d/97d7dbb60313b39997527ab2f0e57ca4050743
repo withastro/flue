@@ -1,0 +1,19 @@
+packages/slack/src/routes.ts
+  s_e054e2936896a8::t_de30a50348e0dc 117,146,172-173,204-215,217,222,227-233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3d97d7dbb60313b39997527ab2f0e57ca4050743",
+  "prompts": {},
+  "sessions": {
+    "s_e054e2936896a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad0082236f5a8f47e",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
