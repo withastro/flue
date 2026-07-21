@@ -1,0 +1,35 @@
+packages/discord/src/routes.ts
+  s_0da6743eb2233d::t_beee6f201f26c0 5,34-43,52,104-113
+apps/docs/src/content/docs/ecosystem/channels/discord.md
+  s_8eb36d29bcd373::t_b5d4b7cfd4045d 286-288
+packages/discord/src/index.ts
+  s_8eb36d29bcd373::t_c11387b0add43f 62
+packages/discord/test-workerd/index.test.ts
+  s_8eb36d29bcd373::t_2c7b9cc47f511c 10,53,62,94
+packages/discord/test/index.test.ts
+  s_8eb36d29bcd373::t_a38b5c6ed1624f 144,154-204,230,309-310,313-316
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c048d244721e97ccc5982fa362a82881f82b43d0",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_8eb36d29bcd373": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad43008dd1c2c4f60",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
