@@ -1,0 +1,21 @@
+packages/runtime/src/runtime/registration.ts
+  s_171b00a287ecfd::t_9652ef47667dfc 250-260
+packages/runtime/test/agent-route.test.ts
+  s_171b00a287ecfd::t_119991f3289c8a 146,148-156
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "06b7d895e54269a060ba62457de84d8ee44945e8",
+  "prompts": {},
+  "sessions": {
+    "s_171b00a287ecfd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ac38531f6ce3d90dc",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
