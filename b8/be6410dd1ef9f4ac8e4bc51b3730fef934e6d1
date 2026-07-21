@@ -1,0 +1,33 @@
+packages/runtime/src/cloudflare/cf-sandbox.ts
+  s_0da6743eb2233d::t_85e72bcafa5f3b 59-63,98,123,141-154
+apps/docs/src/content/docs/ecosystem/sandboxes/cloudflare.md
+  s_165edfa4967666::t_6c16808d56073c 38
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_165edfa4967666::t_653d682145dc2c 197
+packages/runtime/test/cloudflare-context.test.ts
+  s_165edfa4967666::t_c876acc4ea09ae 191,198-200,204-253
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b8be6410dd1ef9f4ac8e4bc51b3730fef934e6d1",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_165edfa4967666": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a40780ce5d10abad4",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
