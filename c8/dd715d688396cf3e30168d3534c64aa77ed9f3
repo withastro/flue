@@ -1,0 +1,31 @@
+pnpm-lock.yaml
+  s_f157b1c6b13c3f::t_56d423faafadcf 1149-1150,6287-6288,6290-6291,9961-9962,14503,14507,14509,19004,19006-19007
+examples/vitest-evals/package.json
+  s_07a4f15a3ad886::t_a1378b9212a2f4 25
+examples/vitest-evals/src/evals/harness.ts
+  s_07a4f15a3ad886::t_e2f4afb248f703 3,65-91,93-98,128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c8dd715d688396cf3e30168d3534c64aa77ed9f3",
+  "prompts": {},
+  "sessions": {
+    "s_07a4f15a3ad886": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9322fc3f49da8b25",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
