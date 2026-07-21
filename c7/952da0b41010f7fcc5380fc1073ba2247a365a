@@ -1,0 +1,19 @@
+packages/vite/src/bootstrap/node-server.ts
+  s_0da6743eb2233d::t_9dab68b26e22cb 49,90-91,93-114,116-133,135-143,145-168,170-180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c7952da0b41010f7fcc5380fc1073ba2247a365a",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
