@@ -1,0 +1,33 @@
+packages/runtime/src/runtime/agent-submissions.ts
+  s_0da6743eb2233d::t_e1b16854e6b17d 8,971-1000
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_ccfdc7d8dd1963::t_a1eadb569da14a 17,538
+packages/runtime/src/node/agent-coordinator.ts
+  s_ccfdc7d8dd1963::t_ca15c56f608960 12,536
+packages/runtime/test/cloudflare-agent-coordinator.test.ts
+  s_ccfdc7d8dd1963::t_81118320a488ad 1121-1238
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "71633f9c0b151f99beb2faff95aa006fd529f35a",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_ccfdc7d8dd1963": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abccade3943703a4f",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
