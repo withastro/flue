@@ -1,0 +1,29 @@
+packages/runtime/src/session.ts
+  s_0da6743eb2233d::t_7fb13743763c6d 1090-1096,1098-1102,1116,4873-4888
+packages/runtime/test/agent-resources.test.ts
+  s_814c7e369ab81d::t_85a6ba8fff7dd2 28,526-576
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "19da0d11aa62603d3b80fdfee24e535b59ed5b09",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_814c7e369ab81d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3ee610544995edb7",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
