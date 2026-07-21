@@ -1,0 +1,85 @@
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_385823fdbef67c::t_72b74a4bc82027 152
+apps/docs/src/content/docs/ecosystem/deploy/node.md
+  s_385823fdbef67c::t_87298c5d720d52 116
+apps/docs/src/content/docs/guide/building-agents.md
+  s_f157b1c6b13c3f::t_18c7ad36c117f4 145
+apps/docs/src/content/docs/guide/durability.md
+  s_385823fdbef67c::t_3e340ffffec8e5 15
+apps/docs/src/content/docs/guide/evals.md
+  s_f157b1c6b13c3f::t_89fbe66392f824 88,204
+apps/docs/src/content/docs/guide/migration.md
+  s_385823fdbef67c::t_2f7a490e19c7b0 15,265
+apps/docs/src/content/docs/guide/observability.md
+  s_f157b1c6b13c3f::t_e4f9b7f2f04d56 7,203
+apps/docs/src/content/docs/guide/workflows.md
+  s_0da6743eb2233d::t_756f75b2ae45db 15-20,87,89,154
+apps/docs/src/content/docs/reference/agent-api.md
+  s_385823fdbef67c::t_3a233c4584aef1 242,701
+apps/docs/src/content/docs/reference/errors.md
+  s_385823fdbef67c::t_ad49638f1d8043 9
+apps/docs/src/content/docs/reference/events.md
+  s_385823fdbef67c::t_2a87ec4a434b4a 7
+apps/docs/src/content/docs/reference/streaming-protocol.md
+  s_385823fdbef67c::t_5f4508aed27e6f 7
+apps/docs/src/content/docs/sdk/errors.md
+  s_f157b1c6b13c3f::t_f5c09039894b0a 3,7
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_385823fdbef67c::t_ac19e7216ab840 122
+apps/docs/src/content/docs/guide/getting-started.mdx
+  s_8917edb75186b8::t_f99de2be8d904f 146,158
+apps/docs/src/content/docs/guide/react.md
+  s_385823fdbef67c::t_de83a054f502fd 72
+apps/docs/src/content/docs/guide/routing.md
+  s_8917edb75186b8::t_0660f489aeace7 110,268
+apps/docs/src/content/docs/sdk/create-flue-client.md
+  s_8917edb75186b8::t_cc1a6f19ece852 3
+apps/docs/src/content/docs/sdk/events.md
+  s_385823fdbef67c::t_fca6ab31bdf78a 3,7
+apps/docs/src/content/docs/sdk/flue-client.md
+  s_8917edb75186b8::t_ee01ce5292bfe3 3
+apps/docs/src/content/docs/sdk/overview.md
+  s_8917edb75186b8::t_6f8c6f918a97d5 2-3,7
+apps/docs/src/lib/docs-navigation.ts
+  s_8917edb75186b8::t_188447a0d63449 127,131
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "34f2677ac7ee3227d400be86a9fbfeddfff7d798",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_385823fdbef67c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b8ab253-0958-4fdc-a729-e7667b64c745",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_8917edb75186b8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a8d7fbeaf8c231648",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
