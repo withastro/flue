@@ -1,0 +1,19 @@
+packages/teams/src/routes.ts
+  s_e054e2936896a8::t_50b02edb04808e 170-183,185-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f2d9f8b22c0fd4e2b8a6166b92ff17ada6c436ec",
+  "prompts": {},
+  "sessions": {
+    "s_e054e2936896a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad0082236f5a8f47e",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
