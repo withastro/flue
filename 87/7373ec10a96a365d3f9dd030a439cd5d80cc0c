@@ -1,0 +1,29 @@
+packages/runtime/src/node/agent-coordinator.ts
+  s_0da6743eb2233d::t_be3c26e4d68cbd 24,614-618,638,668,711-712,715-728,770
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_814c7e369ab81d::t_eedb41ebf36752 34,569-604
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "877373ec10a96a365d3f9dd030a439cd5d80cc0c",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_814c7e369ab81d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3ee610544995edb7",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
