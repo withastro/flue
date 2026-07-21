@@ -1,0 +1,89 @@
+apps/docs/src/content/docs/ecosystem/channels/whatsapp.md
+  s_f157b1c6b13c3f::t_46efe870fb07d2 220
+apps/docs/src/content/docs/ecosystem/channels/zendesk.md
+  s_f157b1c6b13c3f::t_c6e5ea1336de90 194-197
+apps/docs/src/content/docs/ecosystem/databases/mongodb.md
+  s_f157b1c6b13c3f::t_2ac2d009545a86 34
+apps/docs/src/content/docs/reference/events.md
+  s_f157b1c6b13c3f::t_5c057bb8d6249b 461
+apps/docs/src/content/docs/reference/provider-api.md
+  s_f157b1c6b13c3f::t_83b3fe403b019e 59
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_f157b1c6b13c3f::t_eb6ecaa1a5fb83 35
+apps/docs/src/content/docs/sdk/create-flue-client.md
+  s_f157b1c6b13c3f::t_78fc4dc1625c4e 67
+apps/docs/src/content/docs/sdk/flue-client.md
+  s_f157b1c6b13c3f::t_fafed118e58e1f 434
+examples/messenger-channel/src/messenger-client.ts
+  s_f157b1c6b13c3f::t_342c63102d8b92 4
+examples/whatsapp-channel/src/whatsapp-client.ts
+  s_f157b1c6b13c3f::t_d182f478206d71 27
+examples/zendesk-channel/src/channels/zendesk.ts
+  s_f157b1c6b13c3f::t_6f6a31d2e32a1d 79-82
+packages/discord/src/index.ts
+  s_f157b1c6b13c3f::t_caaafc489588dd 26
+packages/discord/src/routes.ts
+  s_f157b1c6b13c3f::t_5564735a78c999 143-148
+packages/github/src/index.ts
+  s_f157b1c6b13c3f::t_b83744ce3bd9a4 63
+packages/google-chat/src/index.ts
+  s_f157b1c6b13c3f::t_102b6779c71b59 164
+packages/libsql/src/libsql-adapter.ts
+  s_f157b1c6b13c3f::t_d5c7cc62a49eb1 355,507,732,891
+packages/messenger/src/index.ts
+  s_f157b1c6b13c3f::t_248dbf496d0a45 24
+packages/mongodb/src/value-store.ts
+  s_f157b1c6b13c3f::t_946f24dfb86c6c 25
+packages/mysql/src/mysql-adapter.ts
+  s_f157b1c6b13c3f::t_3b52e3e1da2170 501,603,658,883,1011
+packages/notion/src/webhook.ts
+  s_f157b1c6b13c3f::t_a56880cc1c711c 15-17
+packages/postgres/src/postgres-adapter.ts
+  s_f157b1c6b13c3f::t_475d4dd89b329f 248-250,346,507,725,887
+packages/runtime/src/adapter-helpers.ts
+  s_f157b1c6b13c3f::t_3a1f019e8924cf 146
+packages/runtime/src/agent-client.ts
+  s_f157b1c6b13c3f::t_631dd0d5545b38 401
+packages/runtime/src/agent-execution-store.ts
+  s_f157b1c6b13c3f::t_b4b431404647fe 62
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_f157b1c6b13c3f::t_359eb2d870a199 123
+packages/runtime/src/conversation-records.ts
+  s_f157b1c6b13c3f::t_6bb54b52485626 34
+packages/runtime/src/conversation-reducer.ts
+  s_f157b1c6b13c3f::t_d154ba3744a248 96
+packages/runtime/src/json-snapshot.ts
+  s_f157b1c6b13c3f::t_5d58f6db2eca0c 2
+packages/runtime/src/result.ts
+  s_f157b1c6b13c3f::t_909c3c236dcf15 132
+packages/runtime/src/session.ts
+  s_f157b1c6b13c3f::t_ba498d38d93054 2020-2024,4013-4017
+packages/runtime/src/types.ts
+  s_f157b1c6b13c3f::t_54641e9d6b8db2 1074
+packages/runtime/test/cloudflare-agent-execution-store.test.ts
+  s_f157b1c6b13c3f::t_3013cec4854da1 151-153
+packages/salesforce-marketing-cloud/src/index.ts
+  s_f157b1c6b13c3f::t_9707e3a1771ad1 88
+packages/sdk/src/http.ts
+  s_f157b1c6b13c3f::t_e5d610e1e0b85a 3
+packages/sdk/src/public/observe.ts
+  s_f157b1c6b13c3f::t_9f93e7d42d893c 26
+packages/stripe/src/index.ts
+  s_f157b1c6b13c3f::t_e8653567b19785 38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "42ac96dfcfc8452143d99d707e57cc25c30220b0",
+  "prompts": {},
+  "sessions": {
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
