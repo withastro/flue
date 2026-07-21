@@ -1,0 +1,21 @@
+packages/twilio/src/webhook.ts
+  s_a7725af73facce::t_b9386af1cc0904 255-260
+packages/twilio/test/index.test.ts
+  s_a7725af73facce::t_82cff5d1e457c2 451-493
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "45d08d1743a14697859d4d6c5a4badbb45f86acf",
+  "prompts": {},
+  "sessions": {
+    "s_a7725af73facce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acac58f638ed0c549",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
