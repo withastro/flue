@@ -1,0 +1,21 @@
+packages/vite/src/agent-scan.ts
+  s_a7725af73facce::t_8b2cc1723e6e67 58
+packages/vite/test/agent-scan.test.ts
+  s_a7725af73facce::t_486ef0d7142e64 358,374-386
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "44cfccf5b7177a80be9cd99f798a2efae13fa55b",
+  "prompts": {},
+  "sessions": {
+    "s_a7725af73facce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acac58f638ed0c549",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
