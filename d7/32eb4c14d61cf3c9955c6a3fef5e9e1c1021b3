@@ -1,0 +1,31 @@
+packages/runtime/src/runtime/conversation-stream-store.ts
+  s_0da6743eb2233d::t_5b8db7334b44e8 2,163-172,218-237,270,331,335,344-368,375-399
+packages/runtime/src/test-utils/define-conversation-stream-store-contract-tests.ts
+  s_f23de5d8046895::t_376f4593ae021b 417-506
+packages/runtime/test/conversation-stream-store.test.ts
+  s_f23de5d8046895::t_04f401d0b3b907 53-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d732eb4c14d61cf3c9955c6a3fef5e9e1c1021b3",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f23de5d8046895": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa357fd881d553e22",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
