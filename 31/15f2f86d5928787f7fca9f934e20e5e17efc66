@@ -1,0 +1,19 @@
+plans/2026-07-20-final-audit-findings.md
+  s_ccfdc7d8dd1963::t_a76d4b4d2ac267 1-795
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3115f2f86d5928787f7fca9f934e20e5e17efc66",
+  "prompts": {},
+  "sessions": {
+    "s_ccfdc7d8dd1963": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-abccade3943703a4f",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
