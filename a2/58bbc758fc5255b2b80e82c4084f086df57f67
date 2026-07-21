@@ -1,0 +1,25 @@
+packages/runtime/src/conversation-reducer.ts
+  s_5ec01504d0a5e2::t_cee0fc0c8601f4 120-125,286,527,567-568
+packages/runtime/src/session.ts
+  s_5ec01504d0a5e2::t_da8e2f27e94931 2515,2730,2775,3009
+packages/runtime/test/conversation-reducer.test.ts
+  s_5ec01504d0a5e2::t_1e4b32156835b4 2195
+packages/runtime/test/subagent-recovery.test.ts
+  s_5ec01504d0a5e2::t_8e3e92f9c067fa 117-123,180,242,304-306,357,433
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a258bbc758fc5255b2b80e82c4084f086df57f67",
+  "prompts": {},
+  "sessions": {
+    "s_5ec01504d0a5e2": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab94b5ca8ee938a56",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
