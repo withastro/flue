@@ -1,0 +1,47 @@
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_385823fdbef67c::t_f0b20d8517ebfc 66,496
+apps/docs/src/content/docs/ecosystem/deploy/node.md
+  s_385823fdbef67c::t_88e284c61c2a57 62,189,250
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_385823fdbef67c::t_b817706ea7764c 159
+apps/docs/src/content/docs/guide/durability.md
+  s_385823fdbef67c::t_e1d5fd545043ab 146
+apps/docs/src/content/docs/guide/migration.md
+  s_385823fdbef67c::t_ea0568ceddc2f7 176,179,249,252,334,339
+apps/docs/src/content/docs/guide/models.md
+  s_385823fdbef67c::t_1798863ad318b8 49,249
+apps/docs/src/content/docs/guide/sandboxes.md
+  s_385823fdbef67c::t_82da30fe7b1b4b 7,9,11,13,19-20,23-32,34-39,43,46,68,70,72,208
+apps/docs/src/content/docs/guide/skills.md
+  s_385823fdbef67c::t_3fa18c072a71f9 166
+apps/docs/src/content/docs/guide/tools.md
+  s_385823fdbef67c::t_bb66414039b650 9,81,100,263
+apps/docs/src/content/docs/guide/why-flue.md
+  s_385823fdbef67c::t_2265b51f2241cc 38
+apps/docs/src/content/docs/reference/agent-api.md
+  s_385823fdbef67c::t_24ed4bd25d2d1e 477
+apps/docs/src/content/docs/reference/agent-hooks-api.md
+  s_385823fdbef67c::t_f5769146b03d59 110,116
+apps/docs/src/content/docs/reference/configuration.md
+  s_385823fdbef67c::t_3b8e5b17ceabc7 123,125-126,128
+apps/docs/src/content/docs/reference/provider-api.md
+  s_385823fdbef67c::t_5a4ab30525736e 17-18,32,34-35,95,102
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_385823fdbef67c::t_83b7b2dfca980b 212
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2b1f277b8630ff6fcb82e8e2139f61c2a41a2543",
+  "prompts": {},
+  "sessions": {
+    "s_385823fdbef67c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "5b8ab253-0958-4fdc-a729-e7667b64c745",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
