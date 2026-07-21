@@ -1,0 +1,35 @@
+packages/runtime/test/fixtures/durable-boundary-child.mjs
+  s_0da6743eb2233d::t_1005850f4a9c6a 214
+packages/runtime/src/conversation-records.ts
+  s_9f1dd1168c4ebd::t_9c55fba2b69cf1 252-253,339
+packages/runtime/src/session-identity.ts
+  s_9f1dd1168c4ebd::t_0d31a5b951fb82 13,19,23
+packages/runtime/test/conversation-reducer.test.ts
+  s_9f1dd1168c4ebd::t_7a70c915ed87dc 488,494,501-502,572,581,609,642
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_9f1dd1168c4ebd::t_875ab63f0556ce 446
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a5c9b8d80f203619ff67b2ee2c0b554726423c0d",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_9f1dd1168c4ebd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ac65acc6df632bdb6",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
