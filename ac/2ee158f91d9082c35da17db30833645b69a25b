@@ -1,0 +1,23 @@
+packages/runtime/src/hooks/frame.ts
+  s_a7725af73facce::t_97ac58cd50c997 67-68
+packages/runtime/src/hooks/use-initial-data.ts
+  s_a7725af73facce::t_5bd77a8fc6529c 35
+packages/runtime/src/hooks/use-instruction.ts
+  s_a7725af73facce::t_8e0bf5d77cf48d 11,13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ac2ee158f91d9082c35da17db30833645b69a25b",
+  "prompts": {},
+  "sessions": {
+    "s_a7725af73facce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acac58f638ed0c549",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
