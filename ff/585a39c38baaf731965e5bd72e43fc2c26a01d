@@ -1,0 +1,19 @@
+packages/whatsapp/src/webhook.ts
+  s_e054e2936896a8::t_ec0d262ad3d932 39,50,104-105,143-146,148,153-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ff585a39c38baaf731965e5bd72e43fc2c26a01d",
+  "prompts": {},
+  "sessions": {
+    "s_e054e2936896a8": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad0082236f5a8f47e",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
