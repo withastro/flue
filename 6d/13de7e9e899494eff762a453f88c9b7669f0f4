@@ -1,0 +1,29 @@
+packages/mongodb/src/submission-store.ts
+  s_0da6743eb2233d::t_21dcb94c2076dd 515-518,533,547,564,581
+packages/redis/src/redis-adapter.ts
+  s_7c718dfc7c47d3::t_927a387b1f0fb5 9,923,927
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6d13de7e9e899494eff762a453f88c9b7669f0f4",
+  "prompts": {},
+  "sessions": {
+    "s_0da6743eb2233d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8b49e6ed-48b5-43c0-b63a-5093b551b89b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_7c718dfc7c47d3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a08946f3e6e400805",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
