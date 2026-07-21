@@ -1,0 +1,27 @@
+packages/runtime/src/errors.ts
+  s_a7725af73facce::t_35078886408c99 72,74,76-80
+packages/runtime/src/runtime/handle-conversation-routes.ts
+  s_a7725af73facce::t_48326e4d56173b 49-50
+packages/runtime/src/types.ts
+  s_a7725af73facce::t_6d04f2447c5301 90-91
+packages/sdk/src/client.ts
+  s_a7725af73facce::t_2c5248d110487f 94-96
+packages/sdk/src/public/send.ts
+  s_a7725af73facce::t_d8eef5e724e8c2 33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "76f28a3381c787ae097f740ad050a0be9b7b7f8d",
+  "prompts": {},
+  "sessions": {
+    "s_a7725af73facce": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-acac58f638ed0c549",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
