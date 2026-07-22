@@ -20,7 +20,7 @@ export const { GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS } = toNextHandler(re
 ```
 
 ```ts title="app/api/flue/[...all]/route.ts"
-import { toFlueNextHandler } from '@rivetkit/flue/next';
+import { toFlueNextHandler } from '@rivet-dev/flue/next';
 import { flueApp } from '../../../../dist/server.mjs';
 
 export const maxDuration = 300;

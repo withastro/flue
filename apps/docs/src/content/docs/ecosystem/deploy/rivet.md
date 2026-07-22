@@ -3,12 +3,12 @@ title: Deploy to Rivet
 description: Build and run Flue agents with the Rivet target.
 ---
 
-Use the Rivet target when you want Flue agents and workflows to run on Rivet actors instead of a single Node process or Cloudflare Durable Objects.
+Use the Rivet target when you want Flue agents and workflows to run on Rivet Actors instead of a single Node process or Cloudflare Durable Objects.
 
 ## Install
 
 ```bash
-pnpm add @rivetkit/flue rivetkit
+pnpm add @rivet-dev/flue
 pnpm add -D @flue/cli
 ```
 
@@ -16,7 +16,7 @@ Configure Flue:
 
 ```ts title="flue.config.ts"
 import { defineConfig } from '@flue/cli/config';
-import rivet from '@rivetkit/flue';
+import rivet from '@rivet-dev/flue';
 
 export default defineConfig({
   target: rivet,
