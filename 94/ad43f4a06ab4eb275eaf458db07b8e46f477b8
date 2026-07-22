@@ -1,0 +1,19 @@
+blueprints/sandbox--daytona.md
+  s_c1a51e919e41f9::t_ace20c051a6d80 4,38,69-73,75,78-199,201-203,208-211,213,218,225,229,239,245,247-249,259,270,282-296,314-316,404-533
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "94ad43f4a06ab4eb275eaf458db07b8e46f477b8",
+  "prompts": {},
+  "sessions": {
+    "s_c1a51e919e41f9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a75a10007d06b1e73",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
