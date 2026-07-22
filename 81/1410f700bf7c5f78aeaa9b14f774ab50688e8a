@@ -1,0 +1,29 @@
+packages/vite/test/cloudflare-dev.integration.test.ts
+  s_0f9a49e8bdbf70::t_5453191a77d45e 54-70
+packages/vite/test/cloudflare-extensions.integration.test.ts
+  s_42227eb95afde5::t_96c13393a4d312 78-99
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "811410f700bf7c5f78aeaa9b14f774ab50688e8a",
+  "prompts": {},
+  "sessions": {
+    "s_0f9a49e8bdbf70": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "0aef3fb6-bb68-4470-bc56-2c7310af06dc",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_42227eb95afde5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87ec8cb7-bb56-4c69-9403-7effc347311a",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
