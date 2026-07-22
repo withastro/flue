@@ -1,0 +1,23 @@
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_c1fc2f034b1215::t_58ea751650654b 204-210
+packages/runtime/src/errors.ts
+  s_c1fc2f034b1215::t_ad7ff6cafe7c35 501-507,509,519-521,523-525
+packages/runtime/src/sandbox.ts
+  s_c1fc2f034b1215::t_8cafc4151855e6 202-215
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d67d7e94bd5ef2969447a4fc14e5c833fa0c4655",
+  "prompts": {},
+  "sessions": {
+    "s_c1fc2f034b1215": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab04d0d901395304e",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
