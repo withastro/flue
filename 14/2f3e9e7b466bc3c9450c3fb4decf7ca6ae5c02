@@ -1,0 +1,19 @@
+blueprints/sandbox--boxd.md
+  s_954d07bed0667e::t_b4dddd8a8ff327 4,26-31,48,72-75,82,84-85,101-111,146-265,274-277,280-293,296,301,305,312,346,356,364,373,388,392,404-415,437,497-502,538-663
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "142f3e9e7b466bc3c9450c3fb4decf7ca6ae5c02",
+  "prompts": {},
+  "sessions": {
+    "s_954d07bed0667e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a1210883729e8b031",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
