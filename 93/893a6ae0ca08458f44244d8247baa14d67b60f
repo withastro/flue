@@ -1,0 +1,19 @@
+blueprints/sandbox--exedev.md
+  s_42227eb95afde5::t_dddbd96f8bba29 4,47,62-66,103,182-185,302-313,427-436,459-460,474-554,556-564,591,600,605,612,618,624,629,641,646,652,659-661,672,675,691,697,721-725,769,960-1292
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "93893a6ae0ca08458f44244d8247baa14d67b60f",
+  "prompts": {},
+  "sessions": {
+    "s_42227eb95afde5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87ec8cb7-bb56-4c69-9403-7effc347311a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
