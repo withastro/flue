@@ -1,0 +1,21 @@
+packages/redis/src/conversation-store.ts
+  s_42227eb95afde5::t_8d95ece14c2517 31-50,225-226
+packages/redis/test/redis-adapter.test.ts
+  s_42227eb95afde5::t_984837fa7d2fce 162-210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ce57a8df9a1336561389df5b71d80aec5d77defe",
+  "prompts": {},
+  "sessions": {
+    "s_42227eb95afde5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87ec8cb7-bb56-4c69-9403-7effc347311a",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
