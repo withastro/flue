@@ -1,0 +1,31 @@
+packages/runtime/test/conversation-record-retention.test.ts
+  s_42227eb95afde5::t_a038f050c5368c 27-30,38,43,963-1037
+packages/runtime/src/conversation-reader.ts
+  s_ae154c43db4f7d::t_0472ee11255651 4,8-12,17,22,34,40
+packages/runtime/src/conversation-reducer.ts
+  s_ae154c43db4f7d::t_5ccf72e43edde9 305-320
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "367d812fd5c91a2e592230d0a25d23d0e1703f2a",
+  "prompts": {},
+  "sessions": {
+    "s_42227eb95afde5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87ec8cb7-bb56-4c69-9403-7effc347311a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_ae154c43db4f7d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae31dc4d1e881cf34",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
