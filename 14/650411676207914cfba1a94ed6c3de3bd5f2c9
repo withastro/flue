@@ -1,0 +1,29 @@
+packages/redis/src/redis-adapter.ts
+  s_f157b1c6b13c3f::t_49bcf9e31ae042 184-188,202-203
+packages/redis/test/redis-adapter.test.ts
+  s_e624356a88dc95::t_6fafe4ef7d7463 108-161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "14650411676207914cfba1a94ed6c3de3bd5f2c9",
+  "prompts": {},
+  "sessions": {
+    "s_e624356a88dc95": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "2231092e-9891-4e2b-af0d-35a621526a0c",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f157b1c6b13c3f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "c7d37f4c-9d02-4cd3-a4d1-bbb860469255",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
