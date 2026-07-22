@@ -1,0 +1,41 @@
+packages/runtime/src/conversation-public.ts
+  s_42227eb95afde5::t_131de2449a060f 9,381-392,394,418-421,424-429,434-437,444-447,461
+packages/runtime/src/conversation-reducer.ts
+  s_42227eb95afde5::t_4c7864857b138c 14,120-125,178-231,236-244,373-378,408,629,660-674,812-851
+packages/runtime/src/conversation-writer.ts
+  s_42227eb95afde5::t_efdd6355d8aa2f 7,104
+packages/runtime/src/resources.ts
+  s_42227eb95afde5::t_d3e5b7bf7caacf 18-19,60
+packages/runtime/src/session.ts
+  s_42227eb95afde5::t_c2e11ea06ce949 80,1391-1392,1397-1398,1400-1403
+packages/runtime/test/subagent-recovery.test.ts
+  s_42227eb95afde5::t_9706d682930a1e 119-124
+packages/runtime/src/fnv.ts
+  s_ae154c43db4f7d::t_1cf387637518ea 1-12
+packages/runtime/test/conversation-record-retention.test.ts
+  s_ae154c43db4f7d::t_03c3bcbc571ebf 1-1047
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "322298e7ff8cccdfc21e341c6f4e6a7d5f0567bd",
+  "prompts": {},
+  "sessions": {
+    "s_42227eb95afde5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87ec8cb7-bb56-4c69-9403-7effc347311a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_ae154c43db4f7d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ae31dc4d1e881cf34",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
