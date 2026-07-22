@@ -1,0 +1,31 @@
+packages/libsql/test/libsql-adapter.test.ts
+  s_42227eb95afde5::t_ebcbbc2ced1d2b 174-214
+packages/mongodb/src/conversation-store.ts
+  s_42227eb95afde5::t_2a0b16bd0ccf85 90-92,305-329
+packages/mongodb/test/mongodb-unit.test.ts
+  s_42227eb95afde5::t_d845bcff8768da 1-6,8,388-432
+packages/runtime/src/runtime/conversation-stream-store.ts
+  s_42227eb95afde5::t_ab1ef1b0b273d0 58-61,105-148,185,522-524,552-557,559,572-575,585,629-631,640-709
+packages/runtime/src/runtime/sql-conversation-stream-store.ts
+  s_42227eb95afde5::t_21ed8c0f6fbc9f 151-153,359-382
+packages/runtime/src/test-utils/define-conversation-stream-store-contract-tests.ts
+  s_42227eb95afde5::t_62626ae02034a1 19,30,233-325
+packages/runtime/test/conversation-stream-store.test.ts
+  s_42227eb95afde5::t_16537a0b6a6524 6,79,90,94-191
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "99b225b1c5795d78c7a580a14b12ff4bf9535d88",
+  "prompts": {},
+  "sessions": {
+    "s_42227eb95afde5": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "87ec8cb7-bb56-4c69-9403-7effc347311a",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
