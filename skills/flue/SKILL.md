@@ -89,6 +89,7 @@ ecosystem/deploy/node -- Deploy Agents on Node.js
 ecosystem/deploy/railway -- Deploy Agents on Railway
 ecosystem/deploy/render -- Deploy Agents on Render
 ecosystem/deploy/sst -- Deploy Agents on SST
+ecosystem/sandboxes/blaxel -- Blaxel
 ecosystem/sandboxes/boxd -- boxd
 ecosystem/sandboxes/cloudflare -- Cloudflare Sandbox
 ecosystem/sandboxes/cloudflare-shell -- Cloudflare Shell
@@ -100,6 +101,7 @@ ecosystem/sandboxes/mirage -- Mirage
 ecosystem/sandboxes/modal -- Modal
 ecosystem/sandboxes/vercel -- Vercel Sandbox
 ecosystem/tooling/braintrust -- Braintrust
+ecosystem/tooling/jetty -- Jetty
 ecosystem/tooling/opentelemetry -- OpenTelemetry
 ecosystem/tooling/sentry -- Sentry
 ecosystem/tooling/vitest-evals -- Vitest Evals

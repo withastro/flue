@@ -69,6 +69,7 @@ before(async () => {
 			whatsapp: 'channel--whatsapp.md',
 			twilio: 'channel--twilio.md',
 			messenger: 'channel--messenger.md',
+			blaxel: 'sandbox--blaxel.md',
 			daytona: 'sandbox--daytona.md',
 			postgres: 'database--postgres.md',
 			libsql: 'database--libsql.md',
@@ -179,6 +180,7 @@ describe('flue add', () => {
 			result.stderr,
 			/flue add tooling vitest-evals\s+tooling\s+https:\/\/vitest-evals\.sentry\.dev/,
 		);
+		assert.match(result.stderr, /flue add sandbox blaxel\s+sandbox\s+https:\/\/blaxel\.ai/);
 		assert.ok(result.stderr.includes('flue add sandbox <url>'));
 		assert.ok(result.stderr.includes('flue add channel <url>'));
 		assert.ok(result.stderr.includes('flue add database <url>'));
@@ -192,6 +194,18 @@ describe('flue add', () => {
 		assert.ok(result.stdout.includes('<source-dir>/sandboxes/daytona.ts'));
 		assert.ok(result.stdout.includes("'../sandboxes/daytona'"));
 		assert.ok(!result.stdout.includes('/connectors/'));
+	});
+
+	it('prints the Blaxel sandbox blueprint with the supported SDK and lifecycle boundary', async () => {
+		const result = await runCli(['add', 'sandbox', 'blaxel', '--print']);
+
+		assert.equal(result.code, 0);
+		assert.ok(result.stdout.includes('<source-dir>/sandboxes/blaxel.ts'));
+		assert.ok(result.stdout.includes('@blaxel/core@^0.3.6'));
+		assert.ok(result.stdout.includes('SandboxInstance.createIfNotExists'));
+		assert.ok(result.stdout.includes('waitForCompletion: true'));
+		assert.ok(result.stdout.includes('Math.ceil(options.timeoutMs / 1000)'));
+		assert.ok(result.stdout.includes('does not call `sandbox.delete()`'));
 	});
 
 	it('prints the WhatsApp channel blueprint', async () => {
