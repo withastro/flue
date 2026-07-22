@@ -1,0 +1,21 @@
+apps/docs/src/content/docs/ecosystem/tooling/jetty.md
+  s_0dc56017ea7fe7::t_9852254fa5826e 1-98
+apps/docs/src/lib/docs-navigation.ts
+  s_0dc56017ea7fe7::t_9f02cbc54f2e0c 219
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8a972f3c4adbb37cfd003c0da33d7e94deddd93c",
+  "prompts": {},
+  "sessions": {
+    "s_0dc56017ea7fe7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d6cbe5bb-4829-4245-8685-53ecadf66c36",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
