@@ -1,0 +1,19 @@
+blueprints/sandbox--modal.md
+  s_24e7537a7b9db0::t_e482f1d9419365 4,27-31,36-43,61,94,116-214,219-226,231-234,236,240,244-250,260,296,307,315,327,345,349,362-373,378-382,505-781
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9d671852779add170865783b96f86a43ef04c756",
+  "prompts": {},
+  "sessions": {
+    "s_24e7537a7b9db0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a3c0b79350a9e354c",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
