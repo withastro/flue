@@ -1,0 +1,21 @@
+apps/docs/package.json
+  s_efb374c8cb9400::t_fb6642d8a39372 10
+apps/www/package.json
+  s_efb374c8cb9400::t_6196d64029db68 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5c6f9ca44dd3dc13c0bca971b2ac76274ee9d99f",
+  "prompts": {},
+  "sessions": {
+    "s_efb374c8cb9400": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "97ec5c6b-b4cd-422f-93f7-21a9269e34a9",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
