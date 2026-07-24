@@ -1,0 +1,27 @@
+apps/docs/src/content/docs/guide/mcp.md
+  s_5d7124089579aa::t_60bf95a9cc156b 49,154-155
+apps/docs/src/content/docs/guide/migration.md
+  s_5d7124089579aa::t_e5d4e6945bce82 162,164,337
+apps/docs/src/content/docs/guide/tools.md
+  s_5d7124089579aa::t_9d34aaec89a6bf 239
+apps/docs/src/content/docs/reference/agent-api.md
+  s_5d7124089579aa::t_3d89d3f69118cf 629-670,683,687
+apps/docs/src/content/docs/reference/agent-hooks-api.md
+  s_5d7124089579aa::t_a38bf5a61a96d5 7,139-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "24eccc23bf8a9d1c8df5c1efa3dcfa656aeb5806",
+  "prompts": {},
+  "sessions": {
+    "s_5d7124089579aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f7862de-2a69-4753-93d9-8819dbbb4204",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
