@@ -1,0 +1,31 @@
+packages/runtime/src/client.ts
+  s_5d7124089579aa::t_dc803bf172151a 13,346-361,481,509-510,512,517-532
+packages/runtime/src/harness.ts
+  s_5d7124089579aa::t_ea82a4f223d883 9,54-55,136,155,299
+packages/runtime/src/resources.ts
+  s_5d7124089579aa::t_bb52749dd8ec28 196-214
+packages/runtime/src/session.ts
+  s_5d7124089579aa::t_d02935f6a3db67 1,133,401-402,706-711,1088-1111,2129,5441
+packages/runtime/src/hooks/use-mcp-connection.ts
+  s_5d7124089579aa::t_d73326fb994048 15,106-108
+packages/runtime/src/mcp-types.ts
+  s_5d7124089579aa::t_d6a23754cf9b12 50-70
+packages/runtime/test/use-mcp-connection.test.ts
+  s_5d7124089579aa::t_7d3c327cea1319 1-3,16-17,34-35,38-42,225-360
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d68684ad3907358883dc3cfe2f060301f90bda61",
+  "prompts": {},
+  "sessions": {
+    "s_5d7124089579aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f7862de-2a69-4753-93d9-8819dbbb4204",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
