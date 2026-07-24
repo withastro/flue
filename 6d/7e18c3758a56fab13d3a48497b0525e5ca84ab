@@ -1,0 +1,19 @@
+skills/flue/SKILL.md
+  s_06977d91515734::t_dcd13d17da4ba3 97-98
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6d7e18c3758a56fab13d3a48497b0525e5ca84ab",
+  "prompts": {},
+  "sessions": {
+    "s_06977d91515734": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b1c8dcf-f990-4ce3-836e-4fd9fc044cda",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
