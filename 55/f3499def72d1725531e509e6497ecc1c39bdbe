@@ -1,0 +1,19 @@
+AGENTS.md
+  s_06977d91515734::t_1246f0378b1326 65-79
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "55f3499def72d1725531e509e6497ecc1c39bdbe",
+  "prompts": {},
+  "sessions": {
+    "s_06977d91515734": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b1c8dcf-f990-4ce3-836e-4fd9fc044cda",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
