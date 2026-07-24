@@ -1,0 +1,21 @@
+apps/docs/src/content/docs/guide/tools.md
+  s_5d7124089579aa::t_31336c136a27f7 239
+apps/docs/src/content/docs/reference/agent-api.md
+  s_5d7124089579aa::t_2a0f0825ff78b1 662,683
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "105e41780c0e16126ee7488df3cc6434bff19efe",
+  "prompts": {},
+  "sessions": {
+    "s_5d7124089579aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f7862de-2a69-4753-93d9-8819dbbb4204",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
