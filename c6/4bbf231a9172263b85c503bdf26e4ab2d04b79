@@ -1,0 +1,29 @@
+packages/runtime/src/client.ts
+  s_319bd2dce4205f::t_0e9bf2725afd18 103,114,197,262-265
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_319bd2dce4205f::t_6aec562c546781 11,223-229,457
+packages/runtime/src/mcp.ts
+  s_319bd2dce4205f::t_1cd81d224c4723 49-86
+packages/runtime/src/node/agent-coordinator.ts
+  s_319bd2dce4205f::t_4877ecdfa52fae 6,127-130,224-233,247,889-894
+packages/runtime/test/mcp.test.ts
+  s_319bd2dce4205f::t_29110e58303798 15,697-756
+packages/runtime/test/use-mcp-connection.test.ts
+  s_319bd2dce4205f::t_f07a83d396e9a6 158-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c64bbf231a9172263b85c503bdf26e4ab2d04b79",
+  "prompts": {},
+  "sessions": {
+    "s_319bd2dce4205f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_06ffc8ba6ffejpHDpzykVQZcsf",
+        "model": "gpt-5.6-terra"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
