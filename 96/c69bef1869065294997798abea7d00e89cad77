@@ -1,0 +1,31 @@
+apps/www/src/pages/index.astro
+  s_5d7124089579aa::t_239d5b27682aa9 514
+apps/docs/src/content/docs/guide/mcp.md
+  s_5d7124089579aa::t_f2e9bba75f2c4e 1-132
+apps/docs/src/content/docs/guide/tools.md
+  s_5d7124089579aa::t_a61721ab135b9c 239,241-242,248
+apps/docs/src/content/docs/guide/why-flue.md
+  s_5d7124089579aa::t_c01acc6f4d73ec 20,70
+apps/docs/src/content/docs/reference/agent-api.md
+  s_5d7124089579aa::t_6a41b0b8e91c1d 635,640,645,655-657,661,666,671-672,675
+apps/docs/src/content/docs/reference/agent-hooks-api.md
+  s_5d7124089579aa::t_e9b1bd9de11802 132-162
+apps/docs/src/lib/docs-navigation.ts
+  s_5d7124089579aa::t_a60fda652643a5 49
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "96c69bef1869065294997798abea7d00e89cad77",
+  "prompts": {},
+  "sessions": {
+    "s_5d7124089579aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f7862de-2a69-4753-93d9-8819dbbb4204",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
