@@ -1,0 +1,23 @@
+apps/docs/src/content/docs/reference/agent-api.md
+  s_5d7124089579aa::t_7c2a1e550acd54 632,634
+packages/runtime/src/index.ts
+  s_5d7124089579aa::t_b8d706a55780c2 77
+packages/runtime/src/mcp.ts
+  s_5d7124089579aa::t_18922fbf2d306d 24,39,58,60,93,126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b80a3261a73646a15d5db3c542fd2e6371c50550",
+  "prompts": {},
+  "sessions": {
+    "s_5d7124089579aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f7862de-2a69-4753-93d9-8819dbbb4204",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
