@@ -1,0 +1,19 @@
+apps/docs/src/content/docs/guide/mcp.md
+  s_5d7124089579aa::t_f9506b0f0898c7 152
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3942c77aed5cd120a4754cab3fb993f15c3cebf8",
+  "prompts": {},
+  "sessions": {
+    "s_5d7124089579aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f7862de-2a69-4753-93d9-8819dbbb4204",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
