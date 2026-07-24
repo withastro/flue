@@ -1,0 +1,25 @@
+apps/docs/src/content/docs/guide/mcp.md
+  s_5d7124089579aa::t_dc09f9a1baff24 13,21-22,24,32-48,53-54,56,60,63-64,66,75,77,79,85-86,88,95,105-109,122,130,136-137,139,154
+apps/docs/src/content/docs/guide/tools.md
+  s_5d7124089579aa::t_454aa158b26d97 242-243,245
+apps/docs/src/content/docs/reference/agent-api.md
+  s_5d7124089579aa::t_77af9f44e46d4f 632,641,645,650-651
+apps/docs/src/content/docs/reference/agent-hooks-api.md
+  s_5d7124089579aa::t_88d479fa1bf51e 135-136,139,141-142,145-146,155,157,160-161,164-166
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f1dd0fddbc94c00b1ecd929a6712581cd38f19b0",
+  "prompts": {},
+  "sessions": {
+    "s_5d7124089579aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f7862de-2a69-4753-93d9-8819dbbb4204",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
