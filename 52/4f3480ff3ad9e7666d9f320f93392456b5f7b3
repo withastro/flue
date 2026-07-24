@@ -1,0 +1,33 @@
+apps/docs/src/content/docs/ecosystem/tooling/sentry.md
+  s_5d7124089579aa::t_30751507746639 27-28,52-54,60-62,70-77
+examples/sentry/README.md
+  s_5d7124089579aa::t_8f51ff13d85ed2 78-80,82,186
+examples/sentry/src/sentry.ts
+  s_5d7124089579aa::t_c878f4e9da503a 177-179
+packages/redis/test/redis-adapter.test.ts
+  s_5d7124089579aa::t_d194974bafe518 165-168,193-198,209-220
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_5d7124089579aa::t_28738ac7324b38 788-792
+packages/runtime/test/cloudflare-context.test.ts
+  s_5d7124089579aa::t_fb149c58ede7fd 366-370,420-424
+packages/runtime/test/conversation-record-retention.test.ts
+  s_5d7124089579aa::t_734f212a8305fd 952-954
+packages/runtime/test/conversation-stream-store.test.ts
+  s_5d7124089579aa::t_c122268fae8d15 171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "524f3480ff3ad9e7666d9f320f93392456b5f7b3",
+  "prompts": {},
+  "sessions": {
+    "s_5d7124089579aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f7862de-2a69-4753-93d9-8819dbbb4204",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
