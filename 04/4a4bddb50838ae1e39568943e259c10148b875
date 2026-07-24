@@ -1,0 +1,19 @@
+apps/docs/src/content/docs/guide/mcp.md
+  s_5d7124089579aa::t_251bc683ba3a64 7,9,11,13,30,32,34-36,38,42,44,60,62,76-110,114,118,130,134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "044a4bddb50838ae1e39568943e259c10148b875",
+  "prompts": {},
+  "sessions": {
+    "s_5d7124089579aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f7862de-2a69-4753-93d9-8819dbbb4204",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
