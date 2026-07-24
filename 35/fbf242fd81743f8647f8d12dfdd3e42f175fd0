@@ -1,0 +1,27 @@
+packages/runtime/package.json
+  s_5d7124089579aa::t_194565d9f35f73 90,99
+packages/runtime/src/mcp.ts
+  s_5d7124089579aa::t_c66347eaf545eb 2,4-6,8-9,96,100-101,103-106,160-163,165,167-169,214,219,225,231,273-276,282
+packages/runtime/test/mcp.test.ts
+  s_5d7124089579aa::t_8a723421418eb7 2-3,597,629-660,731-733,735-750,752-764,772,774
+packages/runtime/test/use-mcp-connection.test.ts
+  s_5d7124089579aa::t_5808d779d4d296 2
+pnpm-lock.yaml
+  s_5d7124089579aa::t_4931621b574ab1 1668-1670,1690-1692,3524-3531,3542-3545,11251-11264,11289-11293
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "35fbf242fd81743f8647f8d12dfdd3e42f175fd0",
+  "prompts": {},
+  "sessions": {
+    "s_5d7124089579aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f7862de-2a69-4753-93d9-8819dbbb4204",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
