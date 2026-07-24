@@ -1,48 +1,39 @@
 ---
 title: flue update
-description: Reference for updating integrations from newer Flue blueprint upgrade guides.
-lastReviewedAt: 2026-06-14
+description: Reference for fetching a blueprint guide that brings an existing integration up to the current version.
+lastReviewedAt: 2026-07-21
 ---
 
 ## Synopsis
 
 ```bash
-flue update <kind> <name-or-url> [--print]
+flue update <kind> <name|url> [--print]
 ```
 
 ## Description
 
-`flue update` fetches the same complete, current Markdown blueprint as [`flue add`](/docs/cli/add/). It does not edit project files itself.
+`flue update` fetches the Markdown implementation guide for a blueprint, for piping to a coding agent that will bring an existing integration up to the current blueprint version. The command does not inspect or modify your project — the guide carries the update instructions, including how to compare the existing integration against the current blueprint and preserve customizations.
 
-Most integrations have a primary generated file with a marker identifying the blueprint version that produced it:
-
-```ts
-// flue-blueprint: kind/name@N
-```
-
-Give the fetched blueprint to a coding agent. How the agent updates the integration depends on the argument:
-
-- **Named update with a marker:** The agent applies each cumulative, versioned unified diff after the marked version in ascending order, preserves customizations, and updates the marker.
-- **Named update without a marker:** The agent inspects the existing implementation, compares it against the complete current blueprint, applies every relevant change while preserving customizations, then adds the current marker when the blueprint has a primary marked file. If the blueprint has no primary marked file, comparison remains the durable update path; the agent does not invent a marker in an auxiliary or deployment file.
-- **URL update:** The CLI returns the refreshed generic blueprint with the URL as a research starting point; it does not compare or edit the implementation. Because there is no provider-specific version history, the agent inspects the current implementation, compares it with the complete generic guide, the provider's current primary source, and the current Flue contract, then infers and applies only relevant changes while preserving customizations. It adds or updates a marker only when the guide defines a primary marked file.
+[`flue add`](/docs/cli/add/) emits the same guide; the two commands differ only in intent and argument handling (`flue update` requires both arguments, while `flue add` alone lists the catalog). Output behavior matches `flue add`: the guide prints to stdout for coding agents or with `--print`.
 
 ## Arguments
 
-| Argument        | Description                                                                          |
-| --------------- | ------------------------------------------------------------------------------------ |
-| `<kind>`        | Blueprint kind: `sandbox`, `channel`, `database`, or `tooling`.                      |
-| `<name-or-url>` | Known blueprint slug or alias, or an absolute URL used as a research starting point. |
+| Argument      | Description                                                                                                              |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `<kind>`      | The integration category: `channel`, `database`, `sandbox`, or `tooling`.                                                |
+| `<name\|url>` | A blueprint name matched within the kind, or an absolute URL to provider documentation for the build-from-scratch guide. |
 
 ## Options
 
-| Option    | Description                                                                    |
-| --------- | ------------------------------------------------------------------------------ |
-| `--print` | Write raw blueprint Markdown to stdout, matching [`flue add`](/docs/cli/add/). |
+| Option    | Description                                                                  |
+| --------- | ---------------------------------------------------------------------------- |
+| `--print` | Write the blueprint Markdown to stdout regardless of coding-agent detection. |
 
 ## Examples
 
 ```bash
-flue update channel slack
-flue update sandbox daytona --print | codex
-flue update channel https://provider.example/webhooks --print | claude
+flue update channel slack --print | claude
+flue update database mysql --print | codex
+flue update sandbox @cloudflare/shell --print | opencode
+flue update channel https://developers.notion.com/reference/webhooks --print | claude
 ```

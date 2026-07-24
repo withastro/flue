@@ -34,6 +34,6 @@ storage, installation flow, or model tools. Run `flue add channel teams` to gene
 editable project code using a narrow Fetch client over Microsoft's OAuth and
 Bot Connector REST protocols.
 
-Conversation keys identify Teams conversations and channel threads. They are
+Instance ids identify Teams conversations and channel threads. They are
 not authorization capabilities. The package is stateless and does not
 deduplicate activity ids.

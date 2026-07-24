@@ -34,12 +34,7 @@ export function createTelegramWebhookHandler<E extends Env>(
 		const raw = parseJson(body.value);
 		if (!isUpdate(raw)) return response(400);
 
-		let result: TelegramHandlerResult;
-		try {
-			result = await options.webhook({ c, update: raw });
-		} catch {
-			return response(500);
-		}
+		const result: TelegramHandlerResult = await options.webhook({ c, update: raw });
 		return serializeHandlerResult(result);
 	};
 }
@@ -61,10 +56,14 @@ function serializeHandlerResult(value: unknown): Response {
 	return Response.json(value);
 }
 
-function secureEqual(expected: Uint8Array, actual: Uint8Array): boolean {
+// Same shape as messenger's secureEqual. Both inputs are fixed-length SHA-256
+// digests here, but the length guard is load-bearing the moment a caller
+// hands this variable-length input — do not drop it.
+function secureEqual(left: Uint8Array, right: Uint8Array): boolean {
+	if (left.byteLength !== right.byteLength) return false;
 	let difference = 0;
-	for (let index = 0; index < expected.length; index += 1) {
-		difference |= (expected[index] as number) ^ (actual[index] as number);
+	for (let index = 0; index < left.byteLength; index += 1) {
+		difference |= (left[index] ?? 0) ^ (right[index] ?? 0);
 	}
 	return difference === 0;
 }
@@ -100,7 +99,8 @@ async function readBody(
 			if (done) break;
 			total += value.byteLength;
 			if (total > bodyLimit) {
-				void reader.cancel();
+				// Discard cancel rejections: an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
 				return { type: 'too-large' };
 			}
 			chunks.push(value);

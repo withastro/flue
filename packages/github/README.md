@@ -33,7 +33,7 @@ This package does not include an outbound GitHub client or model tools. Run
 `flue add channel github` to generate editable project code using the official
 `@octokit/rest` SDK and application-owned `defineTool(...)` values.
 
-Conversation keys are stable issue or pull-request identifiers, not
+Instance ids are stable issue or pull-request identifiers, not
 authorization capabilities. The package is stateless and does not deduplicate
 delivery ids: GitHub expects a `2xx` within ten seconds and does not auto-retry,
 so admit durable work quickly and deduplicate on `delivery.deliveryId` when it

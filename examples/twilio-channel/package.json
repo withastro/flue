@@ -3,7 +3,7 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "flue build --target node",
+		"build": "vite build",
 		"check:types": "tsc --noEmit",
 		"test": "pnpm run test:node && pnpm run test:workerd",
 		"test:node": "vitest run",
@@ -12,13 +12,16 @@
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
 		"@flue/twilio": "workspace:*",
+		"hono": "^4.7.0",
 		"valibot": "^1.0.0"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "0.16.15",
+		"@cloudflare/vitest-pool-workers": "0.18.7",
 		"@flue/cli": "workspace:*",
-		"agents": "^0.14.2",
-		"typescript": "^6.0.3",
+		"@flue/vite": "workspace:*",
+		"agents": "^0.17.4",
+		"typescript": "^7.0.2",
+		"vite": "^8.0.14",
 		"vitest": "^4.1.6"
 	}
 }

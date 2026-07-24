@@ -4,6 +4,7 @@ description: Receive verified Shopify webhooks and use a shop-bound Admin GraphQ
 package:
   name: '@flue/shopify'
   href: https://www.npmjs.com/package/@flue/shopify
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -26,8 +27,8 @@ selected orders agent to bind a generated Admin GraphQL tool. It also adds
 ```ts title="src/channels/shopify.ts (abridged)"
 import { createAdminApiClient } from '@shopify/admin-api-client';
 import { createShopifyChannel } from '@flue/shopify';
-import { dispatch } from '@flue/runtime';
-import orders from '../agents/orders.ts';
+import { dispatch, useModel } from '@flue/runtime';
+import { Orders } from '../agents/orders.ts';
 
 const SHOP_DOMAIN = process.env.SHOPIFY_SHOP_DOMAIN!;
 
@@ -49,7 +50,7 @@ export const channel = createShopifyChannel({
 
     const order = parseOrderCreatedPayload(payload);
     if (!order) return c.json({ error: 'Unsupported orders/create payload.' }, 400);
-    await dispatch(orders, {
+    await dispatch(Orders, {
       id: orderInstanceId(shopDomain, order.id),
       message: {
         kind: 'signal',
@@ -68,6 +69,18 @@ the agent instance bound to that trusted shop and order, and the tool can
 retrieve that order without letting the model choose a shop, token, or order id.
 The same verified Fetch path runs on Node and Cloudflare Workers with Flue's
 `nodejs_compat` setting.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as shopify } from './channels/shopify.ts';
+
+app.route('/channels/shopify', shopify.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/shopify` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -101,8 +114,8 @@ requirement and does not add Node runtime code to a Worker.
 ```ts title="src/channels/shopify.ts"
 import { type ClientResponse, createAdminApiClient } from '@shopify/admin-api-client';
 import { createShopifyChannel, type JsonValue } from '@flue/shopify';
-import { defineTool, dispatch } from '@flue/runtime';
-import orders from '../agents/orders.ts';
+import { defineTool, dispatch, useModel } from '@flue/runtime';
+import { Orders } from '../agents/orders.ts';
 
 const SHOP_DOMAIN = process.env.SHOPIFY_SHOP_DOMAIN!;
 const ADMIN_API_VERSION = '2026-04';
@@ -142,7 +155,7 @@ export const channel = createShopifyChannel({
 
         const webhookId = c.req.header('x-shopify-webhook-id');
         const eventId = c.req.header('x-shopify-event-id');
-        await dispatch(orders, {
+        await dispatch(Orders, {
           id: orderInstanceId(shopDomain, order.id),
           message: {
             kind: 'signal',
@@ -280,24 +293,24 @@ string through `Number`.
 ## Bind the tool
 
 ```ts title="src/agents/orders.ts"
-import { defineAgent } from '@flue/runtime';
+'use agent';
+import { type AgentProps, useModel, useTool } from '@flue/runtime';
 import { orderRefFromInstanceId, retrieveOrder } from '../channels/shopify.ts';
 
-export default defineAgent(({ id }) => {
+export function Orders({ id }: AgentProps) {
+  useModel('anthropic/claude-haiku-4-5');
   const { shopDomain, orderId } = orderRefFromInstanceId(id);
   if (shopDomain !== process.env.SHOPIFY_SHOP_DOMAIN) {
     throw new TypeError('Unexpected Shopify shop.');
   }
-  return {
-    model: 'anthropic/claude-haiku-4-5',
-    tools: [retrieveOrder(orderId)],
-  };
-});
+  useTool(retrieveOrder(orderId));
+  return 'Review the newly created Shopify order and summarize any fulfillment or payment follow-up.';
+}
 ```
 
 The local `shopify-order:` id includes shop and order identity because Shopify
-has no universal conversation key. It is still an identifier, not an
-authorization capability. Apply normal access control to direct agent routes.
+has no universal thread concept to derive an instance id from. It is still an
+identifier, not an authorization capability. Apply normal access control to direct agent routes.
 
 ## Verification and event shape
 

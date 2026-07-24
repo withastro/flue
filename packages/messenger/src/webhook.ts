@@ -37,7 +37,6 @@ export function createMessengerWebhookHandler<E extends Env>(
 		throw new TypeError('Messenger webhook bodyLimit must be a positive integer.');
 	}
 	const key = importSigningKey(options.appSecret);
-	const pageId = options.pageId;
 
 	return async (c) => {
 		const request = c.req.raw;
@@ -56,15 +55,11 @@ export function createMessengerWebhookHandler<E extends Env>(
 		if (!isRecord(raw) || raw.object !== 'page' || !Array.isArray(raw.entry)) {
 			return response(400);
 		}
-		for (const entry of raw.entry) {
-			if (!isRecord(entry)) return response(400);
-			const entryPageId = entry.id;
-			if (typeof entryPageId !== 'string' || entryPageId.length === 0) {
-				return response(400);
-			}
-			if (entryPageId !== pageId) return response(403);
-		}
-
+		// One signed POST may batch entries for every Page the app is subscribed
+		// to; Meta retries the whole batch on any non-2xx. Forward the verified
+		// payload unmodified (like WhatsApp) and let the dispatch loop scope by
+		// conversationRef — which returns undefined for other Pages — rather than
+		// reject the batch and wedge the configured Page's delivery.
 		return serializeHandlerResult(
 			await options.webhook({
 				c,
@@ -102,7 +97,8 @@ async function readBody(
 			if (done) break;
 			total += value.byteLength;
 			if (total > bodyLimit) {
-				void reader.cancel();
+				// Discard cancel rejections: an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
 				return { type: 'too-large' };
 			}
 			chunks.push(value);
@@ -156,7 +152,7 @@ async function verifySignature(
 	signature: Uint8Array,
 ): Promise<boolean> {
 	try {
-		return crypto.subtle.verify('HMAC', key, toArrayBuffer(signature), toArrayBuffer(body));
+		return await crypto.subtle.verify('HMAC', key, toArrayBuffer(signature), toArrayBuffer(body));
 	} catch {
 		return false;
 	}

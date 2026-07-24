@@ -8,9 +8,9 @@ export class InvalidTelegramInputError extends TypeError {
 	}
 }
 
-export class InvalidTelegramConversationKeyError extends TypeError {
+export class InvalidTelegramInstanceIdError extends TypeError {
 	constructor() {
-		super('Invalid Telegram conversation key.');
-		this.name = 'InvalidTelegramConversationKeyError';
+		super('Invalid Telegram instance id.');
+		this.name = 'InvalidTelegramInstanceIdError';
 	}
 }

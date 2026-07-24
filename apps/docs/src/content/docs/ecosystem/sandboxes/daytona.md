@@ -1,7 +1,7 @@
 ---
 title: Daytona
 description: Connect a Flue agent to an application-owned Daytona sandbox.
-lastReviewedAt: 2026-06-01
+lastReviewedAt: 2026-07-21
 ---
 
 The Daytona adapter adapts an already-initialized Daytona sandbox from `@daytona/sdk` into Flue's sandbox interface. Use it when a Node-hosted application needs a provider-managed Linux environment with filesystem and shell operations.
@@ -20,7 +20,7 @@ The blueprint installs `@daytona/sdk` when needed and creates `sandboxes/daytona
 
 ```ts title="<source-root>/sandboxes/daytona.ts (abridged)"
 // flue-blueprint: sandbox/daytona@1
-import { createSandboxSessionEnv } from '@flue/runtime';
+import { createSandboxSessionEnv, useModel } from '@flue/runtime';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/runtime';
 import type { Sandbox as DaytonaSandbox } from '@daytona/sdk';
 
@@ -45,7 +45,7 @@ export function daytona(sandbox: DaytonaSandbox): SandboxFactory {
 }
 ```
 
-Pass an initialized Daytona `Sandbox` to `daytona(...)`, then assign the returned factory to an agent's `sandbox` property. Flue uses the provider's working directory as the workspace root, exposes Daytona filesystem and process operations through the session, preserves Daytona's available file metadata, and rounds millisecond command deadlines up to the SDK's whole-second timeout. Daytona supports recursive deletion but not force semantics, so the adapter rejects `force` before deletion. Your application remains responsible for sandbox creation and lifecycle.
+Pass an initialized Daytona `Sandbox` to `daytona(...)`, then pass the returned factory to the agent's `useSandbox(...)` call. Flue uses the provider's working directory as the workspace root, exposes Daytona filesystem and process operations through the session, preserves Daytona's available file metadata, and rounds millisecond command deadlines up to the SDK's whole-second timeout. Daytona supports recursive deletion but not force semantics, so the adapter rejects `force` before deletion. Your application remains responsible for sandbox creation and lifecycle.
 
 ## Configure
 
@@ -64,17 +64,24 @@ The generated adapter expects your application to create and own the Daytona san
 
 ```ts
 import { Daytona } from '@daytona/sdk';
-import { defineAgent } from '@flue/runtime';
+import { useModel, useSandbox } from '@flue/runtime';
 import { daytona } from '../sandboxes/daytona';
 
-const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
-const sandbox = await client.create();
-const agent = defineAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  sandbox: daytona(sandbox),
-}));
+export function Assistant() {
+  useModel('anthropic/claude-sonnet-4-6');
+  useSandbox({
+    // Lazy, per the SandboxFactory contract: constructing this object is
+    // cheap; the expensive Daytona sandbox creation happens once, inside
+    // createSessionEnv(), at initialization — never on a re-render.
+    async createSessionEnv(options) {
+      const client = new Daytona({ apiKey: env.DAYTONA_API_KEY });
+      const sandbox = await client.create();
+      return daytona(sandbox).createSessionEnv(options);
+    },
+  });
+}
 ```
 
-Configure images, snapshots, regions, environment variables, and volumes through the Daytona SDK before passing the sandbox to `daytona(...)`. For a narrower working directory, configure `cwd` on the agent definition; Flue resolves it once against the adapter's provider-owned base directory during `init()`.
+Configure images, snapshots, regions, environment variables, and volumes through the Daytona SDK before passing the sandbox to `daytona(...)`. For a narrower working directory, configure `cwd` on the agent's `useSandbox(...)` call; Flue resolves it once against the adapter's provider-owned base directory during `init()`.
 
-See [Sandboxes](/docs/guide/sandboxes/#remote-sandboxes), [Sandbox Adapter API](/docs/api/sandbox-api/), and [Daytona's TypeScript SDK reference](https://www.daytona.io/docs/en/typescript-sdk/daytona/).
+See [Sandboxes](/docs/guide/sandboxes/#remote-sandboxes), [Sandbox Adapter API](/docs/reference/sandbox-api/), and [Daytona's TypeScript SDK reference](https://www.daytona.io/docs/en/typescript-sdk/daytona/).

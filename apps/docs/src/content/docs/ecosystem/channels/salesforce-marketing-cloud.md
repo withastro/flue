@@ -4,6 +4,7 @@ description: Receive verified Marketing Cloud Engagement ENS batches and compose
 package:
   name: '@flue/salesforce'
   href: https://www.npmjs.com/package/@flue/salesforce
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -26,8 +27,8 @@ Marketing Cloud Engagement ENS, not generic Salesforce APIs.
 
 ```ts title="src/channels/salesforce-marketing-cloud.ts (abridged)"
 import { createSalesforceMarketingCloudChannel } from '@flue/salesforce';
-import { dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { dispatch, useModel } from '@flue/runtime';
+import { Assistant } from '../agents/assistant.ts';
 import { createSalesforceMarketingCloudClient } from '../salesforce-marketing-cloud-client.ts';
 import { emailEventInstanceId, emailRefFromEvent } from '../salesforce-marketing-cloud-email.ts';
 
@@ -49,7 +50,7 @@ export const channel = createSalesforceMarketingCloudChannel({
       usefulEvents.push({ event, ref });
     }
     for (const { event, ref } of usefulEvents) {
-      await dispatch(assistant, {
+      await dispatch(Assistant, {
         id: emailEventInstanceId(ref),
         message: {
           kind: 'signal',
@@ -58,9 +59,7 @@ export const channel = createSalesforceMarketingCloudChannel({
           // natural message text for an engagement event.
           body: JSON.stringify(event.info ?? {}),
           attributes: {
-            ...(typeof event.timestampUTC === 'string'
-              ? { occurredAt: event.timestampUTC }
-              : {}),
+            ...(typeof event.timestampUTC === 'string' ? { occurredAt: event.timestampUTC } : {}),
             callbackId: ref.callbackId,
             mid: ref.mid,
             eid: ref.eid,
@@ -83,6 +82,18 @@ full generated module handles additional send and engagement families and lets
 the bound agent retrieve the configured callback. Callback registration, OAuth,
 token refresh, and the one-time `/ens-verify` call remain application-owned;
 Node and Cloudflare targets use the same Fetch and Web Crypto implementation.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as salesforceMarketingCloud } from './channels/salesforce-marketing-cloud.ts';
+
+app.route('/channels/salesforce-marketing-cloud', salesforceMarketingCloud.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/salesforce-marketing-cloud` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -114,8 +125,8 @@ import {
   createSalesforceMarketingCloudChannel,
   type SalesforceMarketingCloudEvent,
 } from '@flue/salesforce';
-import { defineTool, dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { defineTool, dispatch, useModel } from '@flue/runtime';
+import { Assistant } from '../agents/assistant.ts';
 import { createSalesforceMarketingCloudClient } from '../salesforce-marketing-cloud-client.ts';
 import {
   emailEventInstanceId,
@@ -162,7 +173,7 @@ export const channel = createSalesforceMarketingCloudChannel({
     }
 
     for (const { event, ref } of usefulEvents) {
-      await dispatch(assistant, {
+      await dispatch(Assistant, {
         id: emailEventInstanceId(ref),
         message: {
           kind: 'signal',
@@ -171,9 +182,7 @@ export const channel = createSalesforceMarketingCloudChannel({
           // natural message text for an engagement event.
           body: JSON.stringify(event.info ?? {}),
           attributes: {
-            ...(typeof event.timestampUTC === 'string'
-              ? { occurredAt: event.timestampUTC }
-              : {}),
+            ...(typeof event.timestampUTC === 'string' ? { occurredAt: event.timestampUTC } : {}),
             callbackId: ref.callbackId,
             mid: ref.mid,
             eid: ref.eid,
@@ -304,17 +313,17 @@ remain application-owned.
 ## Bind the agent
 
 ```ts title="src/agents/assistant.ts"
-import { defineAgent } from '@flue/runtime';
+'use agent';
+import { type AgentProps, useModel, useTool } from '@flue/runtime';
 import { retrieveCallback } from '../channels/salesforce-marketing-cloud.ts';
 import { parseEmailEventInstanceId } from '../salesforce-marketing-cloud-email.ts';
 
-export default defineAgent(({ id }) => {
+export function Assistant({ id }: AgentProps) {
+  useModel('anthropic/claude-haiku-4-5');
   const email = parseEmailEventInstanceId(id);
-  return {
-    model: 'anthropic/claude-haiku-4-5',
-    tools: [retrieveCallback(email)],
-  };
-});
+  useTool(retrieveCallback(email));
+  return 'Review the inbound Salesforce Marketing Cloud email lifecycle event. Retrieve the configured ENS callback when callback status or delivery configuration is relevant.';
+}
 ```
 
 The tool accepts no tenant origin, callback id, access token, or resource id

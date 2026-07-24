@@ -1,7 +1,7 @@
-export class InvalidDiscordConversationKeyError extends Error {
+export class InvalidDiscordInstanceIdError extends Error {
 	constructor() {
-		super('Invalid Discord conversation key.');
-		this.name = 'InvalidDiscordConversationKeyError';
+		super('Invalid Discord instance id.');
+		this.name = 'InvalidDiscordInstanceIdError';
 	}
 }
 

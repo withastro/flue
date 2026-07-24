@@ -1,11 +1,4 @@
 export type FlueExecutionOperation =
-	| {
-			type: 'workflow';
-			runId: string;
-			workflowName: string;
-			phase: 'start' | 'resume';
-			startedAt: string;
-		}
 	| { type: 'agent'; operationId: string; operationKind: 'prompt' | 'skill' | 'task' }
 	| { type: 'model'; turnId: string }
 	| { type: 'tool'; toolCallId: string; toolName: string }
@@ -18,10 +11,8 @@ export interface FlueTraceCarrier {
 
 export interface FlueExecutionContext {
 	eventContext?: import('./types.ts').FlueEventContext;
-	runId?: string;
 	instanceId?: string;
 	submissionId?: string;
-	dispatchId?: string;
 	agentName?: string;
 	conversationId?: string;
 	harness?: string;
@@ -42,11 +33,15 @@ const interceptors: FlueExecutionInterceptor[] = [];
 
 export function extractTraceCarrier(headers: Headers): FlueTraceCarrier | undefined {
 	const traceparent = headers.get('traceparent');
-	if (!traceparent || !/^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/.test(traceparent)) return undefined;
+	if (!traceparent || !/^00-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/.test(traceparent))
+		return undefined;
 	const [, traceId, spanId] = traceparent.split('-');
 	if (/^0+$/.test(traceId ?? '') || /^0+$/.test(spanId ?? '')) return undefined;
 	const tracestate = headers.get('tracestate');
-	if (tracestate && (tracestate.length > 512 || !tracestate.split(',').every((entry) => entry.includes('=')))) {
+	if (
+		tracestate &&
+		(tracestate.length > 512 || !tracestate.split(',').every((entry) => entry.includes('=')))
+	) {
 		return { traceparent };
 	}
 	return { traceparent, ...(tracestate ? { tracestate } : {}) };
@@ -76,7 +71,8 @@ function dispatchExecution<T>(
 	const registered = [...interceptors];
 	let index = -1;
 	const dispatch = (nextIndex: number): Promise<T> => {
-		if (nextIndex <= index) return Promise.reject(new Error('Flue execution next() called more than once.'));
+		if (nextIndex <= index)
+			return Promise.reject(new Error('Flue execution next() called more than once.'));
 		index = nextIndex;
 		const interceptor = registered[nextIndex];
 		if (!interceptor) return next();

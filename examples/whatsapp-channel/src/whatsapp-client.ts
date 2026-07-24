@@ -18,9 +18,19 @@ export function inboundConversationRef(
 	};
 }
 
+/** The `WhatsAppConversationRef` fields `sendTextMessage()` actually sends on. */
+export type WhatsAppSendRef =
+	| {
+			type: 'individual';
+			phoneNumberId: string;
+			destination:
+				{ type: 'phone-number'; phoneNumber: string } | { type: 'user-id'; userId: string };
+	  }
+	| { type: 'group'; phoneNumberId: string; groupId: string };
+
 export function sendTextMessage(
 	client: WhatsAppClient,
-	ref: WhatsAppConversationRef,
+	ref: WhatsAppSendRef,
 	body: string,
 ): Promise<SendMessageResponse> {
 	if (ref.type === 'group') {

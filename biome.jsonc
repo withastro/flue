@@ -1,5 +1,5 @@
 {
-	"$schema": "https://biomejs.dev/schemas/2.4.15/schema.json",
+	"$schema": "https://biomejs.dev/schemas/2.5.4/schema.json",
 	"assist": { "actions": { "source": { "organizeImports": "on" } } },
 	"css": {
 		"parser": {
@@ -9,7 +9,7 @@
 	"linter": {
 		"enabled": true,
 		"rules": {
-			"recommended": true,
+			"preset": "recommended",
 			"complexity": {
 				"noForEach": "off"
 			},
@@ -44,8 +44,10 @@
 	},
 	"files": {
 		// `demo` is a standalone example app with its own oxlint config; exclude it
-		// from the repo-wide biome lint (apps/www is likewise excluded).
-		"includes": ["**", "!apps/www", "!apps/docs/**/*.astro", "!demo"]
+		// from the repo-wide biome lint (apps/www is likewise excluded). Static
+		// .svg assets are excluded: they are served as files, not rendered as
+		// JSX, so a11y element rules do not apply to them.
+		"includes": ["**", "!apps/www", "!apps/docs/**/*.astro", "!demo", "!**/*.svg"]
 	},
 	"overrides": [
 		{

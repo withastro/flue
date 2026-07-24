@@ -3,16 +3,17 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "flue build --target node",
+		"build": "vite build",
 		"check:types": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
 		"croner": "^10.0.1",
-		"hono": "^4.7.0",
-		"valibot": "^1.0.0"
+		"hono": "^4.7.0"
 	},
 	"devDependencies": {
-		"@flue/cli": "workspace:*"
+		"@flue/cli": "workspace:*",
+		"@flue/vite": "workspace:*",
+		"vite": "^8.0.14"
 	}
 }

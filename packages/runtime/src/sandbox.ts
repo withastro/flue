@@ -7,27 +7,12 @@ import type {
 	BashFactory,
 	BashLike,
 	FileStat,
-	FlueFs,
 	SandboxFactory,
 	SessionEnv,
 	ShellResult,
 } from './types.ts';
 
 export type { SessionEnv } from './types.ts';
-
-/** Adapt a SessionEnv to the public FlueFs surface. */
-export function createFlueFs(env: SessionEnv): FlueFs {
-	return {
-		readFile: (path) => env.readFile(path),
-		readFileBuffer: (path) => env.readFileBuffer(path),
-		writeFile: (path, content) => env.writeFile(path, content),
-		stat: (path) => env.stat(path),
-		readdir: (path) => env.readdir(path),
-		exists: (path) => env.exists(path),
-		mkdir: (path, options) => env.mkdir(path, options),
-		rm: (path, options) => env.rm(path, options),
-	};
-}
 
 /**
  * Shared implementation of the `FlueFs.writeFile` parent-creation guarantee.
@@ -115,7 +100,7 @@ export function createCwdSessionEnv(parentEnv: SessionEnv, cwd: string): Session
 
 /**
  * Wrap a just-bash factory into a {@link SandboxFactory}:
- * `defineAgent(() => ({ sandbox: bash(() => new Bash({ fs })) }))`.
+ * `useSandbox(bash(() => new Bash({ fs })))`.
  */
 export function bash(factory: BashFactory): SandboxFactory {
 	return {
@@ -214,6 +199,20 @@ function assertBashLike(value: unknown): asserts value is BashLike {
  *     should ignore it; the deadline is still enforced via `timeoutMs`.
  *
  * Sandbox adapters that support both should observe whichever fires first.
+ *
+ * Liveness: an adapter should ensure in-flight operations settle when the
+ * sandbox dies, by whatever mechanism its provider SDK supports — native
+ * rejection of in-flight calls, or polling a cheap control-plane status read
+ * while a call is pending (the first-party Cloudflare adapter does the latter
+ * internally). An adapter with no such mechanism carries an accepted
+ * limitation: when the provider transport never settles a call after the
+ * sandbox dies, that call may hang until the surrounding operation is
+ * aborted. There is deliberately no per-command deadline in this contract —
+ * agent commands are legitimately unbounded, and `timeoutMs` is the command's
+ * own deadline, not an infrastructure liveness bound. An adapter that detects
+ * sandbox death should reject with `SandboxDiedError` (exported from
+ * `@flue/runtime`), so shell classification reports an infrastructure failure
+ * rather than caller cancellation.
  */
 export interface SandboxApi {
 	readFile(path: string): Promise<string>;

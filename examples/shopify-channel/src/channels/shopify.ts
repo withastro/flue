@@ -1,6 +1,6 @@
 import { defineTool, dispatch } from '@flue/runtime';
 import { createShopifyChannel, type JsonValue } from '@flue/shopify';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createShopifyClient, retrieveShopifyOrder } from '../shopify-client.ts';
 
 const ORDER_INSTANCE_PREFIX = 'shopify-order:';
@@ -43,8 +43,14 @@ export const channel = createShopifyChannel({
 				};
 				const eventId = c.req.header('x-shopify-event-id');
 				const webhookId = c.req.header('x-shopify-webhook-id');
-				await dispatch(assistant, {
+				await dispatch(Assistant, {
 					id: shopifyOrderInstanceId(ref),
+					// Recorded once when this event creates the instance; ignored after.
+					initialData: {
+						shopDomain: deliveredShopDomain,
+						orderId: order.id,
+						orderName: order.name,
+					},
 					message: {
 						kind: 'signal',
 						type: 'shopify.orders/create',
@@ -52,7 +58,6 @@ export const channel = createShopifyChannel({
 						attributes: {
 							shopDomain: deliveredShopDomain,
 							orderId: order.id,
-							orderName: order.name,
 							...(webhookId === undefined ? {} : { webhookId }),
 							...(eventId === undefined ? {} : { eventId }),
 						},
@@ -85,32 +90,6 @@ export function shopifyOrderInstanceId(ref: ShopifyOrderRef): string {
 		throw new TypeError('Shopify order reference is invalid.');
 	}
 	return `${ORDER_INSTANCE_PREFIX}${encodeURIComponent(ref.shopDomain)}:${encodeURIComponent(ref.orderId)}`;
-}
-
-export function parseShopifyOrderInstanceId(id: string): ShopifyOrderRef {
-	if (!id.startsWith(ORDER_INSTANCE_PREFIX)) {
-		throw new TypeError('Expected a local Shopify order instance id.');
-	}
-
-	const encoded = id.slice(ORDER_INSTANCE_PREFIX.length);
-	const separator = encoded.indexOf(':');
-	if (separator < 1) {
-		throw new TypeError('Expected a local Shopify order instance id.');
-	}
-
-	let shopDomain: string;
-	let orderId: string;
-	try {
-		shopDomain = decodeURIComponent(encoded.slice(0, separator));
-		orderId = decodeURIComponent(encoded.slice(separator + 1));
-	} catch {
-		throw new TypeError('Expected a local Shopify order instance id.');
-	}
-
-	if (!isShopDomain(shopDomain) || !isOrderId(orderId)) {
-		throw new TypeError('Expected a local Shopify order instance id.');
-	}
-	return { shopDomain, orderId };
 }
 
 function parseOrderCreatedPayload(payload: JsonValue): { id: string; name: string } | undefined {

@@ -9,7 +9,7 @@ It demonstrates:
 - exporting a first-party `channel`;
 - exporting a project-owned native Fetch `client`;
 - handling ticket creation and comments together;
-- dispatching through `channel.ticketKey({ accountId, ticketId })`;
+- dispatching through `channel.instanceId({ accountId, ticketId })`;
 - exposing a narrow tool that retrieves only the already-bound ticket;
 - testing the same client in Node and workerd with `nodejs_compat`.
 

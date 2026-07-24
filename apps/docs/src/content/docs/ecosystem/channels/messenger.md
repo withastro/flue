@@ -4,6 +4,7 @@ description: Receive verified Messenger Page events with a project-owned Graph A
 package:
   name: '@flue/messenger'
   href: https://www.npmjs.com/package/@flue/messenger
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -21,7 +22,7 @@ The Facebook Messenger blueprint installs `@flue/messenger`, creates a project-o
 ```ts title="src/channels/messenger.ts (abridged)"
 import { createMessengerChannel } from '@flue/messenger';
 import { dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { MessengerClient } from '../messenger-client.ts';
 
 export const client = new MessengerClient({
@@ -43,8 +44,13 @@ export const channel = createMessengerChannel({
         const attachmentTypes = (event.message.attachments ?? []).map(
           (attachment) => attachment.type,
         );
-        await dispatch(assistant, {
-          id: channel.conversationKey(conversation),
+        await dispatch(Assistant, {
+          id: channel.instanceId(conversation),
+          // Recorded once when this event creates the instance; ignored after.
+          initialData: {
+            pageId: conversation.pageId,
+            participant: conversation.participant,
+          },
           message: {
             kind: 'signal',
             type: 'messenger.message',
@@ -68,14 +74,26 @@ export const channel = createMessengerChannel({
 
 The abridged example omits the generated `postMessage()` tool and Graph client implementation. Only verified, non-echo text messages from `entry.messaging` are dispatched to the corresponding agent instance; replies return to the same participant through the tool bound by the complete blueprint. Other event families and Graph API operations remain subject to application policy, and the standards-based client supports Node and workerd.
 
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as messenger } from './channels/messenger.ts';
+
+app.route('/channels/messenger', messenger.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/messenger` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+
 ## Configure
 
-| Variable                      | Purpose                                                           |
-| ----------------------------- | ----------------------------------------------------------------- |
-| `MESSENGER_APP_SECRET`        | **Required** — Verifies signed inbound webhook bodies.            |
-| `MESSENGER_VERIFY_TOKEN`      | **Required** — Verifies Meta's callback setup challenge.          |
-| `MESSENGER_PAGE_ID`           | **Required** — Restricts inbound events and binds outbound sends. |
-| `MESSENGER_PAGE_ACCESS_TOKEN` | **Required** — Authenticates outbound Graph API calls.            |
+| Variable                      | Purpose                                                                            |
+| ----------------------------- | ---------------------------------------------------------------------------------- |
+| `MESSENGER_APP_SECRET`        | **Required** — Verifies signed inbound webhook bodies.                             |
+| `MESSENGER_VERIFY_TOKEN`      | **Required** — Verifies Meta's callback setup challenge.                           |
+| `MESSENGER_PAGE_ID`           | **Required** — Scopes conversation identity to your Page and binds outbound sends. |
+| `MESSENGER_PAGE_ACCESS_TOKEN` | **Required** — Authenticates outbound Graph API calls.                             |
 
 It installs `@flue/messenger` for verified Page ingress and creates an editable
 Graph API Fetch client for outbound messages. The same client runs in Node and
@@ -107,7 +125,7 @@ an outbound Graph credential. Keep both in trusted server configuration.
 import { createMessengerChannel, type MessengerConversationRef } from '@flue/messenger';
 import { defineTool, dispatch } from '@flue/runtime';
 import * as v from 'valibot';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { MessengerClient } from '../messenger-client.ts';
 
 export const client = new MessengerClient({
@@ -136,8 +154,13 @@ export const channel = createMessengerChannel({
         const attachmentTypes = (event.message.attachments ?? []).map(
           (attachment) => attachment.type,
         );
-        await dispatch(assistant, {
-          id: channel.conversationKey(conversation),
+        await dispatch(Assistant, {
+          id: channel.instanceId(conversation),
+          // Recorded once when this event creates the instance; ignored after.
+          initialData: {
+            pageId: conversation.pageId,
+            participant: conversation.participant,
+          },
           message: {
             kind: 'signal',
             type: 'messenger.message',
@@ -163,7 +186,7 @@ export function postMessage(ref: MessengerConversationRef) {
     name: 'post_messenger_message',
     description: 'Post to the Messenger conversation bound to this agent.',
     input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
-    async run({ input: { text } }) {
+    async run({ data: { text } }) {
       const result = await client.messages.sendText({
         to: ref.participant,
         text,
@@ -175,8 +198,35 @@ export function postMessage(ref: MessengerConversationRef) {
 ```
 
 The blueprint creates `src/messenger-client.ts` with the Fetch client used above.
-Bind the tool from the agent with
-`postMessage(channel.parseConversationKey(id))`.
+`initialData` is the instance's creation data: recorded once when the event creates the
+instance and ignored afterward, so the channel passes it on every dispatch. Bind
+the tool from the agent with `useInitialData()` instead of parsing the instance
+id:
+
+```ts title="src/agents/assistant.ts"
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { postMessage } from '../channels/messenger.ts';
+
+const initialData = v.object({
+  pageId: v.string(),
+  participant: v.variant('type', [
+    v.object({ type: v.literal('page-scoped-id'), id: v.string() }),
+    v.object({ type: v.literal('user-ref'), id: v.string() }),
+  ]),
+});
+
+export function Assistant() {
+  useModel('anthropic/claude-haiku-4-5');
+  const data = useInitialData<v.InferOutput<typeof initialData>>();
+  if (!data) throw new Error('This agent is created by the Messenger channel dispatch.');
+  useTool(postMessage(data));
+  return 'Reply concisely in the bound Facebook Messenger conversation.';
+}
+
+Assistant.initialData = initialData;
+```
 
 ## Delivery behavior
 
@@ -208,12 +258,12 @@ message ids before dispatch when duplicate admission is unacceptable.
 
 ## Identity and capabilities
 
-Conversation keys combine the fixed Page with either a Page-scoped person id
+Instance ids combine the fixed Page with either a Page-scoped person id
 (PSID) or a `user_ref`. Those participant types are not interchangeable.
 `channel.conversationRef(event)` derives the counterpart participant for a
-native messaging event; parse or derive the key in trusted code and bind the
-destination to application-owned tools rather than letting the model choose a
-recipient id.
+native messaging event; parse or derive the instance id in trusted code and
+bind the destination to application-owned tools rather than letting the model
+choose a recipient id.
 
 Messaging-opt-in (`event.optin`) events may expose a
 `notification_messages_token` — the recurring-notification capability that pairs

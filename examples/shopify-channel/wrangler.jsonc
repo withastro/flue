@@ -1,0 +1,6 @@
+{
+	"name": "shopify-channel-example",
+	"compatibility_date": "2026-06-01",
+	"compatibility_flags": ["nodejs_compat"],
+	"migrations": [{ "tag": "v1", "new_sqlite_classes": ["FlueAssistantAgent"] }]
+}

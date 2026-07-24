@@ -53,15 +53,15 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  *
  * @example
  * ```ts
+ * 'use agent';
+ * import { useModel, useSandbox } from '@flue/runtime';
  * import { islo } from './sandboxes/islo';
  *
- * const agent = defineAgent(() => ({
- *   sandbox: islo('my-sandbox'),
- *   model: 'anthropic/claude-sonnet-4-6',
- * }));
- * export default defineWorkflow({ agent, async run({ harness }) {
- *   return await (await harness.session()).prompt('Inspect the workspace.');
- * }});
+ * export function Assistant() {
+ *   useModel('anthropic/claude-sonnet-4-6');
+ *   useSandbox(islo('my-sandbox'));
+ *   return 'You are a helpful assistant with a full sandbox.';
+ * }
  * ```
  */
 import { spawn } from 'node:child_process';
@@ -183,7 +183,7 @@ class IsloSandboxApi implements SandboxApi {
 		if (
 			fields.length !== 3 ||
 			!/^\d+$/.test(fields[1] ?? '') ||
-			!^-?\d+$/.test(fields[2] ?? '') ||
+			!/^-?\d+$/.test(fields[2] ?? '') ||
 			!Number.isFinite(sizeValue) ||
 			!Number.isFinite(mtimeValue)
 		) {
@@ -269,9 +269,10 @@ Two options for the user:
   set `ISLO_API_KEY` in the environment. The CLI exchanges it for a
   short-lived session token on first call.
 
-**Never invent a key value** — it must come from the user. For CI/server
-runs, recommend `flue dev --env <file>` / `flue run --env <file>` to load
-an `.env`-format file containing `ISLO_API_KEY`.
+**Never invent a key value** — it must come from the user. For local
+one-shot runs, `flue run` loads the project's `.env` (or one alternate
+file via `--env <file>`) — put `ISLO_API_KEY` there. `vite dev` and the
+built server read the shell environment (`process.env`).
 
 ## Provisioning the sandbox
 
@@ -293,24 +294,21 @@ into, you can finish that work by wiring the adapter into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+'use agent';
+import { useModel, useSandbox } from '@flue/runtime';
 import { islo } from '../sandboxes/islo'; // adjust path to match the user's layout
 
-export const route: WorkflowRouteHandler = async (_c, next) => next();
-
-const agent = defineAgent(() => ({
-  sandbox: islo('my-sandbox'),
-  model: 'anthropic/claude-sonnet-4-6',
-}));
-
-export default defineWorkflow({
-  agent,
-  run: async ({ harness }) => {
-    const session = await harness.session();
-    return await session.shell('uname -a');
-  },
-});
+export function Assistant() {
+	useModel('anthropic/claude-sonnet-4-6');
+	useSandbox(islo('my-sandbox'));
+	return 'You are a helpful assistant with a full sandbox.';
+}
 ```
+
+The `'use agent'` directive at the top is what registers the module with
+the application. Mount `createAgentRouter(...)` (from `@flue/runtime/routing`) in
+`app.ts` only if the agent needs
+an HTTP endpoint — `flue run` and `dispatch()` work without a mount.
 
 ## Verify
 
@@ -321,7 +319,9 @@ export default defineWorkflow({
 3. Tell the user the next steps: install the islo CLI (if you didn't),
    run `islo login` (or make `ISLO_API_KEY` available at runtime per the
    Authentication section above), pre-provision a sandbox with
-   `islo use <name>`, then run `flue dev` (or `flue run <workflow>`) to try it.
+   `islo use <name>`, then run
+   `flue run <path-to-the-agent-module> --message "..."` (or `vite dev`
+   for the full application) to try it.
 
 When updating an existing integration, inspect and compare it against this complete current blueprint, apply every relevant change while preserving customizations, and then add or update the marker in the primary marked file. This comparison is required when the marker is missing.
 

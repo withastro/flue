@@ -16,8 +16,10 @@ import type {
 	ToolResultMessage,
 	Usage,
 	UserMessage,
-} from '@earendil-works/pi-ai/compat';
-import { completeSimple, isContextOverflow } from '@earendil-works/pi-ai/compat';
+} from '@earendil-works/pi-ai';
+import { isContextOverflow } from '@earendil-works/pi-ai';
+import { WORKERS_AI_OVERFLOW_MARKER } from './errors.ts';
+import { getRuntimeModels } from './runtime/providers.ts';
 import type { PromptUsage } from './types.ts';
 import { addUsage, fromProviderUsage } from './usage.ts';
 
@@ -498,7 +500,6 @@ export interface CompactionTurnObserver {
 	end(
 		purpose: 'compaction' | 'compaction_prefix',
 		handle: CompactionTurnHandle,
-		model: Model<any>,
 		response: AssistantMessage | undefined,
 		error: unknown | undefined,
 	): void;
@@ -557,14 +558,58 @@ export function prepareCompaction(
 
 // ─── Summary Generation ─────────────────────────────────────────────────────
 
+/**
+ * Owns the observer choreography, error check, and text extraction shared by
+ * generateSummary and generateTurnPrefixSummary; those two only differ in the
+ * prompt they build, the purpose label, and the error-message prefix.
+ */
+async function runSummarizationCall(
+	purpose: 'compaction' | 'compaction_prefix',
+	promptText: string,
+	maxTokens: number,
+	model: Model<any>,
+	signal: AbortSignal,
+	observer: CompactionTurnObserver,
+	errorPrefix: string,
+): Promise<{ text: string; usage: Usage | undefined }> {
+	const summarizationMessages: UserMessage[] = [
+		{ role: 'user', content: [{ type: 'text', text: promptText }], timestamp: Date.now() },
+	];
+
+	const completionOptions: SimpleStreamOptions = { maxTokens, signal };
+	if (model.reasoning) completionOptions.reasoning = 'high';
+
+	const context = { systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages };
+	const handle = observer.start(purpose, model, context, completionOptions);
+	let response: AssistantMessage | undefined;
+	try {
+		response = await observer.run(handle, () =>
+			getRuntimeModels().completeSimple(model, context, completionOptions),
+		);
+		observer.end(purpose, handle, response, undefined);
+	} catch (error) {
+		observer.end(purpose, handle, undefined, error);
+		throw error;
+	}
+
+	if (response.stopReason === 'error') {
+		throw new Error(`${errorPrefix}: ${response.errorMessage || 'Unknown error'}`);
+	}
+
+	const text = response.content
+		.filter((c): c is TextContent => c.type === 'text')
+		.map((c) => c.text)
+		.join('\n');
+	return { text, usage: response.usage };
+}
+
 async function generateSummary(
 	currentMessages: AgentMessage[],
 	model: Model<any>,
 	reserveTokens: number,
-	apiKey: string | undefined,
-	signal: AbortSignal | undefined,
+	signal: AbortSignal,
 	previousSummary: string | undefined,
-	observer: CompactionTurnObserver | undefined,
+	observer: CompactionTurnObserver,
 ): Promise<{ text: string; usage: Usage | undefined }> {
 	const maxTokens = Math.min(Math.floor(0.8 * reserveTokens), 16000);
 	const basePrompt = previousSummary ? UPDATE_SUMMARIZATION_PROMPT : SUMMARIZATION_PROMPT;
@@ -576,84 +621,37 @@ async function generateSummary(
 	}
 	promptText += basePrompt;
 
-	const summarizationMessages: UserMessage[] = [
-		{ role: 'user', content: [{ type: 'text', text: promptText }], timestamp: Date.now() },
-	];
-
-	const completionOptions: SimpleStreamOptions = { maxTokens, signal };
-	if (apiKey) completionOptions.apiKey = apiKey;
-	if (model.reasoning) completionOptions.reasoning = 'high';
-
-	const context = { systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages };
-	const handle = observer?.start('compaction', model, context, completionOptions);
-	const observed = observer && handle ? { observer, handle } : undefined;
-	let response: AssistantMessage | undefined;
-	try {
-		response = observed
-			? await observed.observer.run(observed.handle, () => completeSimple(model, context, completionOptions))
-			: await completeSimple(model, context, completionOptions);
-		observed?.observer.end('compaction', observed.handle, model, response, undefined);
-	} catch (error) {
-		observed?.observer.end('compaction', observed.handle, model, undefined, error);
-		throw error;
-	}
-
-	if (response.stopReason === 'error') {
-		throw new Error(`Summarization failed: ${response.errorMessage || 'Unknown error'}`);
-	}
-
-	const text = response.content
-		.filter((c): c is TextContent => c.type === 'text')
-		.map((c) => c.text)
-		.join('\n');
-	return { text, usage: response.usage };
+	return runSummarizationCall(
+		'compaction',
+		promptText,
+		maxTokens,
+		model,
+		signal,
+		observer,
+		'Summarization failed',
+	);
 }
 
 async function generateTurnPrefixSummary(
 	messages: AgentMessage[],
 	model: Model<any>,
 	reserveTokens: number,
-	apiKey: string | undefined,
-	signal: AbortSignal | undefined,
-	observer: CompactionTurnObserver | undefined,
+	signal: AbortSignal,
+	observer: CompactionTurnObserver,
 ): Promise<{ text: string; usage: Usage | undefined }> {
 	const maxTokens = Math.min(Math.floor(0.5 * reserveTokens), 16000);
 	const conversationText = serializeConversation(messages);
 	const promptText = `<conversation>\n${conversationText}\n</conversation>\n\n${TURN_PREFIX_SUMMARIZATION_PROMPT}`;
 
-	const summarizationMessages: UserMessage[] = [
-		{ role: 'user', content: [{ type: 'text', text: promptText }], timestamp: Date.now() },
-	];
-
-	const completionOptions: SimpleStreamOptions = { maxTokens, signal };
-	if (apiKey) completionOptions.apiKey = apiKey;
-	if (model.reasoning) completionOptions.reasoning = 'high';
-
-	const context = { systemPrompt: SUMMARIZATION_SYSTEM_PROMPT, messages: summarizationMessages };
-	const handle = observer?.start('compaction_prefix', model, context, completionOptions);
-	const observed = observer && handle ? { observer, handle } : undefined;
-	let response: AssistantMessage | undefined;
-	try {
-		response = observed
-			? await observed.observer.run(observed.handle, () => completeSimple(model, context, completionOptions))
-			: await completeSimple(model, context, completionOptions);
-		observed?.observer.end('compaction_prefix', observed.handle, model, response, undefined);
-	} catch (error) {
-		observed?.observer.end('compaction_prefix', observed.handle, model, undefined, error);
-		throw error;
-	}
-
-	if (response.stopReason === 'error') {
-		throw new Error(
-			`Turn prefix summarization failed: ${response.errorMessage || 'Unknown error'}`,
-		);
-	}
-
-	const text = response.content
-		.filter((c): c is TextContent => c.type === 'text')
-		.map((c) => c.text)
-		.join('\n');
-	return { text, usage: response.usage };
+	return runSummarizationCall(
+		'compaction_prefix',
+		promptText,
+		maxTokens,
+		model,
+		signal,
+		observer,
+		'Turn prefix summarization failed',
+	);
 }
 
 // ─── Main Compaction Function ───────────────────────────────────────────────
@@ -661,9 +659,8 @@ async function generateTurnPrefixSummary(
 export async function compact(
 	preparation: CompactionPreparation,
 	model: Model<any>,
-	apiKey: string | undefined,
-	signal?: AbortSignal,
-	observer?: CompactionTurnObserver,
+	signal: AbortSignal,
+	observer: CompactionTurnObserver,
 ): Promise<CompactionResult> {
 	const {
 		messagesToSummarize,
@@ -696,7 +693,6 @@ export async function compact(
 						messagesToSummarize,
 						model,
 						settings.reserveTokens,
-						apiKey,
 						signal,
 						previousSummary,
 						observer,
@@ -706,7 +702,6 @@ export async function compact(
 				turnPrefixMessages,
 				model,
 				settings.reserveTokens,
-				apiKey,
 				signal,
 				observer,
 			),
@@ -719,7 +714,6 @@ export async function compact(
 			messagesToSummarize,
 			model,
 			settings.reserveTokens,
-			apiKey,
 			signal,
 			previousSummary,
 			observer,
@@ -738,4 +732,23 @@ export async function compact(
 		usage: aggregateUsage,
 	};
 }
-export { isContextOverflow };
+/**
+ * Context-overflow classification for an assistant message. Extends pi-ai's
+ * pattern-based `isContextOverflow` with a structural check for the runtime's
+ * own Workers-AI binding marker, so a binding 413 classifies without
+ * depending on pi-ai's pattern list — or on its non-overflow precedence (a
+ * 413 whose provider body happens to mention "rate limit" must still
+ * classify as overflow).
+ */
+export function isAssistantContextOverflow(
+	assistant: AssistantMessage,
+	contextWindow: number,
+): boolean {
+	if (
+		assistant.stopReason === 'error' &&
+		assistant.errorMessage?.includes(WORKERS_AI_OVERFLOW_MARKER)
+	) {
+		return true;
+	}
+	return isContextOverflow(assistant, contextWindow);
+}

@@ -8,7 +8,8 @@
 
 import type { AgentToolResult } from '@earendil-works/pi-agent-core';
 import { formatBashResult } from './agent.ts';
-import { interceptExecution, type FlueExecutionContext } from './execution-interceptor.ts';
+import { type FlueExecutionContext, interceptExecution } from './execution-interceptor.ts';
+import { generateToolCallId } from './runtime/ids.ts';
 import type {
 	FlueEventInput,
 	FlueObservationDetail,
@@ -39,7 +40,7 @@ export async function execShellWithEvents(
 		isError: boolean,
 	) => Promise<void>,
 ): Promise<ShellResult> {
-	const toolCallId = crypto.randomUUID();
+	const toolCallId = generateToolCallId();
 	const startedAt = Date.now();
 
 	// Per-call cwd/env names, when set, are part of the call's identity and
@@ -53,21 +54,19 @@ export async function execShellWithEvents(
 	if (options?.cwd !== undefined) args.cwd = options.cwd;
 	if (options?.env !== undefined) args.env = redactEnvValues(options.env);
 
-	emit(
-		{ type: 'tool_start', toolName: 'bash', toolCallId },
-		{ origin: 'caller', toolType: 'function', args },
-	);
+	emit({ type: 'tool_start', toolName: 'bash', toolCallId }, { origin: 'caller', args });
 
 	try {
 		const result = await interceptExecution(
 			{ type: 'tool', toolCallId, toolName: 'bash' },
 			executionContext,
-			() => env.exec(command, {
-				env: options?.env,
-				cwd: options?.cwd,
-				timeoutMs: options?.timeoutMs,
-				signal,
-			}),
+			() =>
+				env.exec(command, {
+					env: options?.env,
+					cwd: options?.cwd,
+					timeoutMs: options?.timeoutMs,
+					signal,
+				}),
 		);
 		const shellResult: ShellResult = {
 			stdout: result.stdout,
@@ -85,7 +84,7 @@ export async function execShellWithEvents(
 				result: toolResult,
 				durationMs: Date.now() - startedAt,
 			},
-			{ origin: 'caller', toolType: 'function' },
+			{ origin: 'caller' },
 		);
 		return shellResult;
 	} catch (error) {
@@ -110,7 +109,6 @@ export async function execShellWithEvents(
 			},
 			{
 				origin: 'caller',
-				toolType: 'function',
 				errorInfo: classifyShellError(error),
 			},
 		);
@@ -122,7 +120,8 @@ function classifyShellError(error: unknown): { type: string; name?: string; mess
 	if (error instanceof DOMException && error.name === 'AbortError') {
 		return { type: 'AbortError', name: error.name, message: error.message };
 	}
-	if (error instanceof Error) return { type: error.name || '_OTHER', name: error.name, message: error.message };
+	if (error instanceof Error)
+		return { type: error.name || '_OTHER', name: error.name, message: error.message };
 	return { type: '_OTHER', ...(typeof error === 'string' ? { message: error } : {}) };
 }
 

@@ -1,7 +1,7 @@
 ---
 {
   "kind": "sandbox",
-  "version": 1,
+  "version": 2,
   "website": "https://modal.com"
 }
 ---
@@ -24,13 +24,23 @@ A few things worth knowing about Modal that shape this adapter:
   `stdout`/`stderr` streams, not a `{ stdout, stderr, exitCode }` result.
   The adapter pipes both streams to completion and waits for the exit
   code so it conforms to Flue's `SandboxApi.exec` shape.
-- Modal's filesystem API only exposes file open/read/write/close. There is
-  no native `mkdir`, `rm`, `stat`, `readdir`, or `exists`, so those are
-  implemented by shelling out (the same pattern the boxd adapter uses).
+- Modal's filesystem API (`sandbox.filesystem`) exposes whole-file reads
+  and writes, which map directly onto Flue's `readFile`/`writeFile`. The
+  adapter implements `mkdir`, `rm`, `stat`, `readdir`, and `exists` by
+  shelling out (the same pattern the boxd adapter uses), which keeps
+  Flue's `FileStat` semantics exact.
   This means the user's image needs `bash` and basic GNU coreutils
   available — Modal's default `python:3.13-slim` and `alpine:3.21` images
   both work fine. (Alpine ships BusyBox `stat`, which the adapter handles
   in the implementation below.)
+- Modal's transports don't reliably settle a call that is in flight when
+  the sandbox dies — the exec wait path retries transient errors
+  indefinitely when the caller sets no deadline — which would leave an
+  agent hanging forever. The adapter guards every Modal call with a death
+  detector that polls `sandbox.poll()` (a cheap control-plane read that
+  resolves `null` while the sandbox is running and an exit code once it
+  has finished) while a call is pending, and rejects with Flue's
+  `SandboxDiedError` once the sandbox reports finished.
 
 ## Where to write the file
 
@@ -48,7 +58,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
 `SandboxApi` contract.
 
 ```ts
-// flue-blueprint: sandbox/modal@1
+// flue-blueprint: sandbox/modal@2
 /**
  * Modal adapter for Flue.
  *
@@ -58,21 +68,30 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  *
  * @example
  * ```typescript
+ * 'use agent';
  * import { ModalClient } from 'modal';
+ * import { useModel, useSandbox } from '@flue/runtime';
  * import { modal } from './sandboxes/modal';
  *
- * const client = new ModalClient();
- * const app = await client.apps.fromName('my-app', { createIfMissing: true });
- * const image = client.images.fromRegistry('python:3.13-slim');
- * const sandbox = await client.sandboxes.create(app, image);
- *
- * const agent = defineAgent(() => ({ sandbox: modal(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
- * export default defineWorkflow({ agent, async run({ harness }) {
- *   return await (await harness.session()).prompt('Inspect the workspace.');
- * }});
+ * export function Assistant() {
+ *   useModel('anthropic/claude-sonnet-4-6');
+ *   useSandbox({
+ *     // Lazy, per the SandboxFactory contract: constructing this object is
+ *     // cheap; the expensive Modal sandbox creation happens once, inside
+ *     // createSessionEnv(), at initialization — never on a re-render.
+ *     async createSessionEnv(options) {
+ *       const client = new ModalClient();
+ *       const app = await client.apps.fromName('my-app', { createIfMissing: true });
+ *       const image = client.images.fromRegistry('python:3.13-slim');
+ *       const sandbox = await client.sandboxes.create(app, image);
+ *       return modal(sandbox).createSessionEnv(options);
+ *     },
+ *   });
+ *   return 'You are a helpful assistant with a full sandbox.';
+ * }
  * ```
  */
-import { createSandboxSessionEnv } from '@flue/runtime';
+import { createSandboxSessionEnv, SandboxDiedError } from '@flue/runtime';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/runtime';
 import type { Sandbox as ModalSandbox } from 'modal';
 
@@ -94,46 +113,141 @@ function shellQuote(value: string): string {
 	return `'${value.replace(/'/g, `'\\''`)}'`;
 }
 
+/** How often the death detector polls sandbox liveness while a call is pending. */
+const SANDBOX_LIVENESS_POLL_MS = 5_000;
+/** How long a liveness probe may go unanswered before the sandbox is presumed dead. */
+const PROBE_SILENCE_MS = 10_000;
+
+/** The rejection value for an aborted signal (its reason, per DOM abort semantics). */
+function abortErrorFor(signal: AbortSignal): unknown {
+	return signal.reason ?? new DOMException('This operation was aborted', 'AbortError');
+}
+
+/**
+ * Await a Modal SDK call while watching for sandbox death. Modal's
+ * transports can leave a call pending long after the sandbox dies — the
+ * exec wait path retries transient command-router errors indefinitely when
+ * the caller sets no deadline — so a bare await can hang an agent forever.
+ * While the call is pending, this polls `sandbox.poll()` (a cheap
+ * control-plane read that resolves `null` while the sandbox is running and
+ * an exit code once it has finished) and rejects with `SandboxDiedError`
+ * once the sandbox reports finished. A probe that itself goes unanswered
+ * for the silence bound means the control plane is unreachable too, and
+ * the sandbox is presumed dead with it — the Modal client applies no
+ * default per-request timeout, so a wedged connection would otherwise
+ * leave the probe pending forever; its retry middleware turns ordinary
+ * transient failures into fast rejections, which the detector tolerates.
+ *
+ * There is deliberately no deadline: `poll()` resolving `null` — however
+ * long the call has been running — counts as alive, so a legitimately slow
+ * command on a healthy sandbox is never interrupted. When `signal` is
+ * provided, its abort joins the race and rejects immediately even though
+ * the underlying call cannot be cancelled remotely.
+ */
+function raceSandboxDeath<T>(
+	sandbox: ModalSandbox,
+	operation: string,
+	call: Promise<T>,
+	signal?: AbortSignal,
+): Promise<T> {
+	if (signal?.aborted) {
+		// The call is already in flight; swallow its eventual settlement so the
+		// early rejection can't leave an unhandled rejection behind.
+		call.catch(() => {});
+		return Promise.reject(abortErrorFor(signal));
+	}
+	return new Promise<T>((resolve, reject) => {
+		let settled = false;
+		let pollTimer: ReturnType<typeof setTimeout> | undefined;
+		let silenceTimer: ReturnType<typeof setTimeout> | undefined;
+		let removeAbortListener = (): void => {};
+
+		const settle = (complete: () => void): void => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(pollTimer);
+			clearTimeout(silenceTimer);
+			removeAbortListener();
+			complete();
+		};
+
+		if (signal) {
+			const onAbort = (): void => settle(() => reject(abortErrorFor(signal)));
+			signal.addEventListener('abort', onAbort, { once: true });
+			removeAbortListener = () => signal.removeEventListener('abort', onAbort);
+		}
+
+		const probe = (): void => {
+			silenceTimer = setTimeout(() => {
+				settle(() => reject(new SandboxDiedError({ operation, reason: 'probe_silent' })));
+			}, PROBE_SILENCE_MS);
+			sandbox.poll().then(
+				(exitCode) => {
+					if (settled) return;
+					clearTimeout(silenceTimer);
+					if (exitCode !== null) {
+						settle(() => reject(new SandboxDiedError({ operation, reason: 'stopped' })));
+					} else {
+						pollTimer = setTimeout(probe, SANDBOX_LIVENESS_POLL_MS);
+					}
+				},
+				() => {
+					// A rejecting probe is an answer, not silence — and not proof
+					// of death. Keep polling.
+					if (settled) return;
+					clearTimeout(silenceTimer);
+					pollTimer = setTimeout(probe, SANDBOX_LIVENESS_POLL_MS);
+				},
+			);
+		};
+		pollTimer = setTimeout(probe, SANDBOX_LIVENESS_POLL_MS);
+
+		// These handlers double as the losing branch's rejection consumer, so a
+		// late settlement after death or abort can't surface as an unhandled
+		// rejection.
+		call.then(
+			(value) => settle(() => resolve(value)),
+			(error: unknown) => settle(() => reject(error)),
+		);
+	});
+}
+
 /**
  * Implements SandboxApi by wrapping the Modal JS SDK's Sandbox class.
  *
  * Modal's surface is intentionally thin: `sandbox.exec()` for processes
- * and `sandbox.open()` for individual files. There's no built-in `mkdir`,
- * `rm`, `readdir`, `stat`, or `exists`, so those are implemented via
- * `bash -lc` shell-outs. This is the same pattern the boxd adapter uses.
+ * and `sandbox.filesystem` for whole-file reads and writes. `mkdir`, `rm`,
+ * `readdir`, `stat`, and `exists` are implemented via `bash -lc`
+ * shell-outs (the same pattern the boxd adapter uses), which keeps Flue's
+ * `FileStat` semantics exact.
+ *
+ * Every Modal call is awaited through the death detector (see
+ * `raceSandboxDeath` above) so a call that is in flight when the sandbox
+ * dies settles instead of hanging forever.
  */
 class ModalSandboxApi implements SandboxApi {
 	constructor(private sandbox: ModalSandbox) {}
 
+	private guarded<T>(operation: string, call: Promise<T>, signal?: AbortSignal): Promise<T> {
+		return raceSandboxDeath(this.sandbox, operation, call, signal);
+	}
+
 	async readFile(path: string): Promise<string> {
-		const handle = await this.sandbox.open(path, 'r');
-		try {
-			const bytes = await handle.read();
-			return new TextDecoder('utf-8').decode(bytes);
-		} finally {
-			await handle.close();
-		}
+		return this.guarded('readFile', this.sandbox.filesystem.readText(path));
 	}
 
 	async readFileBuffer(path: string): Promise<Uint8Array> {
-		const handle = await this.sandbox.open(path, 'r');
-		try {
-			return await handle.read();
-		} finally {
-			await handle.close();
-		}
+		return this.guarded('readFile', this.sandbox.filesystem.readBytes(path));
 	}
 
 	async writeFile(path: string, content: string | Uint8Array): Promise<void> {
-		const handle = await this.sandbox.open(path, 'w');
-		try {
-			const data =
-				typeof content === 'string' ? new TextEncoder().encode(content) : content;
-			await handle.write(data);
-			await handle.flush();
-		} finally {
-			await handle.close();
-		}
+		// Note the SDK's argument order: data first, then the remote path.
+		await this.guarded(
+			'writeFile',
+			typeof content === 'string'
+				? this.sandbox.filesystem.writeText(content, path)
+				: this.sandbox.filesystem.writeBytes(content, path),
+		);
 	}
 
 	async stat(path: string): Promise<FileStat> {
@@ -143,6 +257,7 @@ class ModalSandboxApi implements SandboxApi {
 		//   BusyBox: %F gives the same words but is positional only with `-c`.
 		// Both implementations accept `stat -c '%F|%s|%Y' <path>`.
 		const result = await this.runShell(
+			'stat',
 			`stat -c '%F|%s|%Y' ${shellQuote(path)} 2>/dev/null`,
 		);
 		if (result.exitCode !== 0 || !result.stdout.trim()) {
@@ -178,7 +293,7 @@ class ModalSandboxApi implements SandboxApi {
 
 	async readdir(path: string): Promise<string[]> {
 		// `ls -A1` excludes . and .. but lists dotfiles, one per line.
-		const result = await this.runShell(`ls -A1 ${shellQuote(path)}`);
+		const result = await this.runShell('readdir', `ls -A1 ${shellQuote(path)}`);
 		if (result.exitCode !== 0) {
 			throw new Error(
 				`[flue:modal] readdir failed for ${path}: ` +
@@ -189,7 +304,7 @@ class ModalSandboxApi implements SandboxApi {
 	}
 
 	async exists(path: string): Promise<boolean> {
-		const result = await this.runShell(`test -e ${shellQuote(path)}`);
+		const result = await this.runShell('exists', `test -e ${shellQuote(path)}`);
 		return result.exitCode === 0;
 	}
 
@@ -197,7 +312,7 @@ class ModalSandboxApi implements SandboxApi {
 		const cmd = options?.recursive
 			? `mkdir -p ${shellQuote(path)}`
 			: `mkdir ${shellQuote(path)}`;
-		const result = await this.runShell(cmd);
+		const result = await this.runShell('mkdir', cmd);
 		if (result.exitCode !== 0) {
 			throw new Error(
 				`[flue:modal] mkdir failed for ${path}: ` +
@@ -209,7 +324,7 @@ class ModalSandboxApi implements SandboxApi {
 	async rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void> {
 		const flags = `${options?.recursive ? 'r' : ''}${options?.force ? 'f' : ''}`;
 		const flagArg = flags ? ` -${flags}` : '';
-		const result = await this.runShell(`rm${flagArg} ${shellQuote(path)}`);
+		const result = await this.runShell('rm', `rm${flagArg} ${shellQuote(path)}`);
 		if (result.exitCode !== 0) {
 			throw new Error(
 				`[flue:modal] rm failed for ${path}: ` +
@@ -227,10 +342,11 @@ class ModalSandboxApi implements SandboxApi {
 			signal?: AbortSignal;
 		},
 	): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-		return this.runShell(command, options);
+		return this.runShell('exec', command, options);
 	}
 
 	private async runShell(
+		operation: string,
 		command: string,
 		options?: {
 			cwd?: string;
@@ -243,23 +359,27 @@ class ModalSandboxApi implements SandboxApi {
 		// so users can pass shell commands the way Flue's other adapters
 		// accept them. `pipe` for stdout/stderr is required to read them
 		// back; the default `ignore` discards output.
-		const proc = await this.sandbox.exec(['bash', '-lc', command], {
-			workdir: options?.cwd,
-			env: options?.env,
-			// Flue and Modal both express command timeouts in milliseconds.
-			timeoutMs: options?.timeoutMs,
-			stdout: 'pipe',
-			stderr: 'pipe',
-		});
+		const proc = await this.guarded(
+			operation,
+			this.sandbox.exec(['bash', '-lc', command], {
+				workdir: options?.cwd,
+				env: options?.env,
+				// Flue and Modal both express command timeouts in milliseconds.
+				timeoutMs: options?.timeoutMs,
+				stdout: 'pipe',
+				stderr: 'pipe',
+			}),
+			options?.signal,
+		);
 
 		// Read both streams concurrently while the process runs, then wait
 		// for the exit code. Reading first and then waiting will deadlock
 		// on processes that fill their stderr buffer.
-		const [stdout, stderr, exitCode] = await Promise.all([
-			proc.stdout.readText(),
-			proc.stderr.readText(),
-			proc.wait(),
-		]);
+		const [stdout, stderr, exitCode] = await this.guarded(
+			operation,
+			Promise.all([proc.stdout.readText(), proc.stderr.readText(), proc.wait()]),
+			options?.signal,
+		);
 		return { stdout, stderr, exitCode };
 	}
 }
@@ -317,8 +437,9 @@ Their conventions, an `AGENTS.md`, or an existing setup (`.env`,
 right answer. If nothing in the project gives you a clear signal, ask the
 user instead of guessing.
 
-For reference: `flue dev --env <file>` and `flue run --env <file>` load
-any `.env`-format file the user points them at.
+For reference: `flue run` loads the project's `.env` by default, and
+`--env <file>` selects one alternate `.env`-format file. `vite dev` and the
+built server read the shell environment (`process.env`).
 
 ## Wiring it into an agent
 
@@ -328,33 +449,35 @@ into, you can finish that work by wiring the adapter into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+'use agent';
 import { ModalClient } from 'modal';
+import { useModel, useSandbox } from '@flue/runtime';
 import { modal } from '../sandboxes/modal'; // adjust path to match the user's layout
 
-export const route: WorkflowRouteHandler = async (_c, next) => next();
-
-const agent = defineAgent(async () => {
-  // ModalClient reads MODAL_TOKEN_ID / MODAL_TOKEN_SECRET (or ~/.modal.toml)
-  // automatically.
-  const client = new ModalClient();
-  const app = await client.apps.fromName('my-flue-app', { createIfMissing: true });
-  const image = client.images.fromRegistry('python:3.13-slim');
-  const sandbox = await client.sandboxes.create(app, image);
-  return {
-    sandbox: modal(sandbox),
-    model: 'anthropic/claude-sonnet-4-6',
-  };
-});
-
-export default defineWorkflow({
-  agent,
-  run: async ({ harness }) => {
-    const session = await harness.session();
-    return await session.shell('uname -a');
-  },
-});
+export function Assistant() {
+	useModel('anthropic/claude-sonnet-4-6');
+	useSandbox({
+		// Lazy, per the SandboxFactory contract: constructing this object is
+		// cheap; the expensive Modal sandbox creation happens once, inside
+		// createSessionEnv(), at initialization — never on a re-render.
+		async createSessionEnv(options) {
+			// ModalClient reads MODAL_TOKEN_ID / MODAL_TOKEN_SECRET (or
+			// ~/.modal.toml) automatically.
+			const client = new ModalClient();
+			const app = await client.apps.fromName('my-flue-app', { createIfMissing: true });
+			const image = client.images.fromRegistry('python:3.13-slim');
+			const sandbox = await client.sandboxes.create(app, image);
+			return modal(sandbox).createSessionEnv(options);
+		},
+	});
+	return 'You are a helpful assistant with a full sandbox.';
+}
 ```
+
+The `'use agent'` directive at the top is what registers the module with
+the application. Mount `createAgentRouter(...)` (from `@flue/runtime/routing`) in
+`app.ts` only if the agent needs
+an HTTP endpoint — `flue run` and `dispatch()` work without a mount.
 
 Tip: if the user wants a faster start, prebuild a custom image with their
 tooling baked in (see Modal's `image-building.ts` example) instead of
@@ -368,8 +491,9 @@ installing packages on every cold start.
    actually wrote the file.
 3. Tell the user the next steps: install `modal` (if you didn't), make sure
    `MODAL_TOKEN_ID` and `MODAL_TOKEN_SECRET` are available at runtime (per
-   the Authentication section above), and run `flue dev` (or
-   `flue run <workflow>`) to try it.
+   the Authentication section above), and run
+   `flue run <path-to-the-agent-module> --message "..."` (or `vite dev`
+   for the full application) to try it.
 
 When updating an existing integration, inspect and compare it against this complete current blueprint, apply every relevant change while preserving customizations, and then add or update the marker in the primary marked file. This comparison is required when the marker is missing.
 
@@ -378,3 +502,280 @@ When updating an existing integration, inspect and compare it against this compl
 ### Version 1 — 2026-06-14
 
 Initial version.
+
+### Version 2 — 2026-07-22
+
+Added sandbox death detection. Modal's transports don't reliably settle a
+call that is in flight when the sandbox dies — the exec wait path retries
+transient command-router errors indefinitely when the caller sets no
+deadline — so an agent awaiting such a call would hang forever. Every
+Modal call now goes through `raceSandboxDeath`, which polls
+`sandbox.poll()` (`null` while running, an exit code once finished) while
+the call is pending and rejects with Flue's `SandboxDiedError` once the
+sandbox reports finished, or when a probe itself goes unanswered for the
+silence bound. `exec()`'s `AbortSignal` also joins the race, so an abort
+rejects immediately. Healthy slow commands are never interrupted: there is
+no deadline, and a rejecting probe (a transient control-plane error) keeps
+polling instead of declaring death. `runShell` gained a leading
+`operation` parameter so the error names the Flue operation that died.
+
+Also fixed the file operations: `modal@0.8.0` — the version this blueprint
+installs — replaced `sandbox.open()` with `sandbox.filesystem`, so the
+version-1 open/read/close code no longer type-checks against the pinned
+SDK. `readFile`/`readFileBuffer`/`writeFile` now use
+`sandbox.filesystem.readText`/`readBytes`/`writeText`/`writeBytes` (note
+the SDK's data-first argument order on writes).
+
+```diff
+--- a/src/sandboxes/modal.ts
++++ b/src/sandboxes/modal.ts
+@@ -1,4 +1,4 @@
+-// flue-blueprint: sandbox/modal@1
++// flue-blueprint: sandbox/modal@2
+@@ -34,7 +34,7 @@
+-import { createSandboxSessionEnv } from '@flue/runtime';
++import { createSandboxSessionEnv, SandboxDiedError } from '@flue/runtime';
+ import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/runtime';
+ import type { Sandbox as ModalSandbox } from 'modal';
+@@ -53,6 +53,109 @@ function shellQuote(value: string): string {
+ 	return `'${value.replace(/'/g, `'\\''`)}'`;
+ }
+
++/** How often the death detector polls sandbox liveness while a call is pending. */
++const SANDBOX_LIVENESS_POLL_MS = 5_000;
++/** How long a liveness probe may go unanswered before the sandbox is presumed dead. */
++const PROBE_SILENCE_MS = 10_000;
++
++/** The rejection value for an aborted signal (its reason, per DOM abort semantics). */
++function abortErrorFor(signal: AbortSignal): unknown {
++	return signal.reason ?? new DOMException('This operation was aborted', 'AbortError');
++}
++
++/**
++ * Await a Modal SDK call while watching for sandbox death. Modal's
++ * transports can leave a call pending long after the sandbox dies — the
++ * exec wait path retries transient command-router errors indefinitely when
++ * the caller sets no deadline — so a bare await can hang an agent forever.
++ * While the call is pending, this polls `sandbox.poll()` (a cheap
++ * control-plane read that resolves `null` while the sandbox is running and
++ * an exit code once it has finished) and rejects with `SandboxDiedError`
++ * once the sandbox reports finished. A probe that itself goes unanswered
++ * for the silence bound means the control plane is unreachable too, and
++ * the sandbox is presumed dead with it — the Modal client applies no
++ * default per-request timeout, so a wedged connection would otherwise
++ * leave the probe pending forever; its retry middleware turns ordinary
++ * transient failures into fast rejections, which the detector tolerates.
++ *
++ * There is deliberately no deadline: `poll()` resolving `null` — however
++ * long the call has been running — counts as alive, so a legitimately slow
++ * command on a healthy sandbox is never interrupted. When `signal` is
++ * provided, its abort joins the race and rejects immediately even though
++ * the underlying call cannot be cancelled remotely.
++ */
++function raceSandboxDeath<T>(
++	sandbox: ModalSandbox,
++	operation: string,
++	call: Promise<T>,
++	signal?: AbortSignal,
++): Promise<T> {
++	if (signal?.aborted) {
++		// The call is already in flight; swallow its eventual settlement so the
++		// early rejection can't leave an unhandled rejection behind.
++		call.catch(() => {});
++		return Promise.reject(abortErrorFor(signal));
++	}
++	return new Promise<T>((resolve, reject) => {
++		let settled = false;
++		let pollTimer: ReturnType<typeof setTimeout> | undefined;
++		let silenceTimer: ReturnType<typeof setTimeout> | undefined;
++		let removeAbortListener = (): void => {};
++
++		const settle = (complete: () => void): void => {
++			if (settled) return;
++			settled = true;
++			clearTimeout(pollTimer);
++			clearTimeout(silenceTimer);
++			removeAbortListener();
++			complete();
++		};
++
++		if (signal) {
++			const onAbort = (): void => settle(() => reject(abortErrorFor(signal)));
++			signal.addEventListener('abort', onAbort, { once: true });
++			removeAbortListener = () => signal.removeEventListener('abort', onAbort);
++		}
++
++		const probe = (): void => {
++			silenceTimer = setTimeout(() => {
++				settle(() => reject(new SandboxDiedError({ operation, reason: 'probe_silent' })));
++			}, PROBE_SILENCE_MS);
++			sandbox.poll().then(
++				(exitCode) => {
++					if (settled) return;
++					clearTimeout(silenceTimer);
++					if (exitCode !== null) {
++						settle(() => reject(new SandboxDiedError({ operation, reason: 'stopped' })));
++					} else {
++						pollTimer = setTimeout(probe, SANDBOX_LIVENESS_POLL_MS);
++					}
++				},
++				() => {
++					// A rejecting probe is an answer, not silence — and not proof
++					// of death. Keep polling.
++					if (settled) return;
++					clearTimeout(silenceTimer);
++					pollTimer = setTimeout(probe, SANDBOX_LIVENESS_POLL_MS);
++				},
++			);
++		};
++		pollTimer = setTimeout(probe, SANDBOX_LIVENESS_POLL_MS);
++
++		// These handlers double as the losing branch's rejection consumer, so a
++		// late settlement after death or abort can't surface as an unhandled
++		// rejection.
++		call.then(
++			(value) => settle(() => resolve(value)),
++			(error: unknown) => settle(() => reject(error)),
++		);
++	});
++}
++
+ /**
+  * Implements SandboxApi by wrapping the Modal JS SDK's Sandbox class.
+  *
+@@ -60,37 +163,33 @@
+- * Modal's surface is intentionally thin: `sandbox.exec()` for processes
+- * and `sandbox.open()` for individual files. There's no built-in `mkdir`,
+- * `rm`, `readdir`, `stat`, or `exists`, so those are implemented via
+- * `bash -lc` shell-outs. This is the same pattern the boxd adapter uses.
++ * Modal's surface is intentionally thin: `sandbox.exec()` for processes
++ * and `sandbox.filesystem` for whole-file reads and writes. `mkdir`, `rm`,
++ * `readdir`, `stat`, and `exists` are implemented via `bash -lc`
++ * shell-outs (the same pattern the boxd adapter uses), which keeps Flue's
++ * `FileStat` semantics exact.
++ *
++ * Every Modal call is awaited through the death detector (see
++ * `raceSandboxDeath` above) so a call that is in flight when the sandbox
++ * dies settles instead of hanging forever.
+  */
+ class ModalSandboxApi implements SandboxApi {
+ 	constructor(private sandbox: ModalSandbox) {}
+
++	private guarded<T>(operation: string, call: Promise<T>, signal?: AbortSignal): Promise<T> {
++		return raceSandboxDeath(this.sandbox, operation, call, signal);
++	}
++
+ 	async readFile(path: string): Promise<string> {
+-		const handle = await this.sandbox.open(path, 'r');
+-		try {
+-			const bytes = await handle.read();
+-			return new TextDecoder('utf-8').decode(bytes);
+-		} finally {
+-			await handle.close();
+-		}
++		return this.guarded('readFile', this.sandbox.filesystem.readText(path));
+ 	}
+
+ 	async readFileBuffer(path: string): Promise<Uint8Array> {
+-		const handle = await this.sandbox.open(path, 'r');
+-		try {
+-			return await handle.read();
+-		} finally {
+-			await handle.close();
+-		}
++		return this.guarded('readFile', this.sandbox.filesystem.readBytes(path));
+ 	}
+
+ 	async writeFile(path: string, content: string | Uint8Array): Promise<void> {
+-		const handle = await this.sandbox.open(path, 'w');
+-		try {
+-			const data =
+-				typeof content === 'string' ? new TextEncoder().encode(content) : content;
+-			await handle.write(data);
+-			await handle.flush();
+-		} finally {
+-			await handle.close();
+-		}
++		// Note the SDK's argument order: data first, then the remote path.
++		await this.guarded(
++			'writeFile',
++			typeof content === 'string'
++				? this.sandbox.filesystem.writeText(content, path)
++				: this.sandbox.filesystem.writeBytes(content, path),
++		);
+ 	}
+@@ -104,6 +215,7 @@
+ 		const result = await this.runShell(
++			'stat',
+ 			`stat -c '%F|%s|%Y' ${shellQuote(path)} 2>/dev/null`,
+ 		);
+@@ -139,7 +251,7 @@
+-		const result = await this.runShell(`ls -A1 ${shellQuote(path)}`);
++		const result = await this.runShell('readdir', `ls -A1 ${shellQuote(path)}`);
+@@ -150,7 +262,7 @@
+-		const result = await this.runShell(`test -e ${shellQuote(path)}`);
++		const result = await this.runShell('exists', `test -e ${shellQuote(path)}`);
+@@ -158,7 +270,7 @@
+ 			: `mkdir ${shellQuote(path)}`;
+-		const result = await this.runShell(cmd);
++		const result = await this.runShell('mkdir', cmd);
+@@ -170,7 +282,7 @@
+-		const result = await this.runShell(`rm${flagArg} ${shellQuote(path)}`);
++		const result = await this.runShell('rm', `rm${flagArg} ${shellQuote(path)}`);
+@@ -182,37 +294,47 @@
+ 	): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+-		return this.runShell(command, options);
++		return this.runShell('exec', command, options);
+ 	}
+
+ 	private async runShell(
++		operation: string,
+ 		command: string,
+ 		options?: {
+ 			cwd?: string;
+ 			env?: Record<string, string>;
+ 			timeoutMs?: number;
+ 			signal?: AbortSignal;
+ 		},
+ 	): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+ 		// Modal's exec takes argv (no shell parsing), so wrap in `bash -lc`
+ 		// so users can pass shell commands the way Flue's other adapters
+ 		// accept them. `pipe` for stdout/stderr is required to read them
+ 		// back; the default `ignore` discards output.
+-		const proc = await this.sandbox.exec(['bash', '-lc', command], {
+-			workdir: options?.cwd,
+-			env: options?.env,
+-			// Flue and Modal both express command timeouts in milliseconds.
+-			timeoutMs: options?.timeoutMs,
+-			stdout: 'pipe',
+-			stderr: 'pipe',
+-		});
++		const proc = await this.guarded(
++			operation,
++			this.sandbox.exec(['bash', '-lc', command], {
++				workdir: options?.cwd,
++				env: options?.env,
++				// Flue and Modal both express command timeouts in milliseconds.
++				timeoutMs: options?.timeoutMs,
++				stdout: 'pipe',
++				stderr: 'pipe',
++			}),
++			options?.signal,
++		);
+
+ 		// Read both streams concurrently while the process runs, then wait
+ 		// for the exit code. Reading first and then waiting will deadlock
+ 		// on processes that fill their stderr buffer.
+-		const [stdout, stderr, exitCode] = await Promise.all([
+-			proc.stdout.readText(),
+-			proc.stderr.readText(),
+-			proc.wait(),
+-		]);
++		const [stdout, stderr, exitCode] = await this.guarded(
++			operation,
++			Promise.all([proc.stdout.readText(), proc.stderr.readText(), proc.wait()]),
++			options?.signal,
++		);
+ 		return { stdout, stderr, exitCode };
+ 	}
+```

@@ -70,7 +70,11 @@ export function createZendeskWebhookHandler<E extends Env>(
 
 		try {
 			return serializeHandlerResult(await options.webhook({ c, payload, delivery }));
-		} catch {
+		} catch (error) {
+			// Zendesk redelivers on 409 (the documented retryable status), so the
+			// failure cannot propagate to the channel router's generic 500 — it
+			// must be surfaced in logs here instead.
+			console.error('[flue] Zendesk webhook handler failed:', error);
 			return response(RETRYABLE_FAILURE_STATUS);
 		}
 	};
@@ -267,7 +271,8 @@ async function readBody(
 			if (done) break;
 			total += value.byteLength;
 			if (total > bodyLimit) {
-				void reader.cancel();
+				// Discard cancel rejections: an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
 				return { type: 'too-large' };
 			}
 			chunks.push(value);

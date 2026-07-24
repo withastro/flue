@@ -3,7 +3,7 @@ import {
 	createSalesforceMarketingCloudChannel,
 	type SalesforceMarketingCloudEvent,
 } from '@flue/salesforce';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import {
 	createSalesforceMarketingCloudClient,
 	type SalesforceMarketingCloudClient,
@@ -53,8 +53,18 @@ export const channel = createSalesforceMarketingCloudChannel({
 		}
 
 		for (const { event, ref } of usefulEvents) {
-			await dispatch(assistant, {
+			await dispatch(Assistant, {
 				id: emailEventInstanceId(ref),
+				// Recorded once when this event creates the instance; ignored after.
+				initialData: {
+					callbackId: ref.callbackId,
+					mid: ref.mid,
+					eid: ref.eid,
+					jobId: ref.jobId,
+					batchId: ref.batchId,
+					listId: ref.listId,
+					subscriberId: ref.subscriberId,
+				},
 				message: {
 					kind: 'signal',
 					type: `salesforce-marketing-cloud.${event.eventCategoryType}`,
@@ -62,9 +72,7 @@ export const channel = createSalesforceMarketingCloudChannel({
 					// natural message text for an engagement event.
 					body: JSON.stringify(event.info ?? {}),
 					attributes: {
-						...(typeof event.timestampUTC === 'string'
-							? { occurredAt: event.timestampUTC }
-							: {}),
+						...(typeof event.timestampUTC === 'string' ? { occurredAt: event.timestampUTC } : {}),
 						callbackId: ref.callbackId,
 						mid: ref.mid,
 						eid: ref.eid,

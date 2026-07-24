@@ -1,7 +1,7 @@
 ---
 title: Modal
 description: Connect a Flue agent to an application-owned Modal Sandbox.
-lastReviewedAt: 2026-05-30
+lastReviewedAt: 2026-07-21
 ---
 
 The Modal adapter adapts an already-initialized Modal Sandbox from the `modal` JavaScript SDK into Flue's sandbox interface. Use it for provider-backed command execution and files when your application provisions Modal sandbox resources.
@@ -72,4 +72,4 @@ Passing `modal(sandbox)` as an agent's `sandbox` exposes the created Modal Sandb
 
 Use Modal when your application already manages Modal applications, images, or sandbox lifetimes and needs to expose that compute boundary to Flue operations. The adapter adapts the created sandbox; creation, shutdown, secret handling, networking, and image content remain your responsibility.
 
-See [Sandboxes](/docs/guide/sandboxes/) and [Sandbox Adapter API](/docs/api/sandbox-api/).
+See [Sandboxes](/docs/guide/sandboxes/) and [Sandbox Adapter API](/docs/reference/sandbox-api/).

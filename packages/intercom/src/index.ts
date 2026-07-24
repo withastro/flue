@@ -1,24 +1,12 @@
-import type { Context, Env, Handler } from 'hono';
-import { InvalidIntercomConversationKeyError, InvalidIntercomInputError } from './errors.ts';
+import { type ChannelRouteDefinition, createChannelRouter, type JsonValue } from '@flue/runtime';
+import type { Context, Env, Hono } from 'hono';
+import { InvalidIntercomInputError, InvalidIntercomInstanceIdError } from './errors.ts';
 import { createIntercomValidationHandler, createIntercomWebhookHandler } from './webhook.ts';
 
-export { InvalidIntercomConversationKeyError, InvalidIntercomInputError } from './errors.ts';
-
-export type JsonValue =
-	| null
-	| boolean
-	| number
-	| string
-	| JsonValue[]
-	| { [key: string]: JsonValue };
+export type { JsonValue } from '@flue/runtime';
+export { InvalidIntercomInputError, InvalidIntercomInstanceIdError } from './errors.ts';
 
 export type JsonObject = { [key: string]: JsonValue };
-
-export interface ChannelRoute<E extends Env = Env> {
-	readonly method: string;
-	readonly path: string;
-	readonly handler: Handler<E>;
-}
 
 /** Ingress configuration for one Intercom developer app secret. */
 export interface IntercomChannelOptions<E extends Env = Env> {
@@ -91,11 +79,20 @@ export type IntercomHandlerResult = IntercomHandlerValue | Promise<IntercomHandl
 
 /** Verified Intercom ingress and canonical conversation identity helpers. */
 export interface IntercomChannel<E extends Env = Env> {
-	readonly routes: readonly ChannelRoute<E>[];
-	/** Serializes a canonical identifier. It is not an authorization capability. */
-	conversationKey(ref: IntercomConversationRef): string;
-	/** Parses only canonical keys produced by `conversationKey()`. */
-	parseConversationKey(id: string): IntercomConversationRef;
+	readonly routes: readonly ChannelRouteDefinition<E>[];
+	/**
+	 * Build a mountable Hono sub-app serving the channel's routes relative
+	 * to the mount point: `app.route('/channels/intercom', channel.route())`.
+	 */
+	route(): Hono<E>;
+	/** Derives the agent instance id, the canonical identifier. It is not an authorization capability. */
+	instanceId(ref: IntercomConversationRef): string;
+	/**
+	 * Parses only instance ids produced by `instanceId()`. Escape hatch: agents
+	 * normally receive structured facts as creation data rather than parsing
+	 * them from the id.
+	 */
+	parseInstanceId(id: string): IntercomConversationRef;
 }
 
 /**
@@ -111,20 +108,22 @@ export function createIntercomChannel<E extends Env = Env>(
 	options: IntercomChannelOptions<E>,
 ): IntercomChannel<E> {
 	validateOptions(options);
+	const routes: readonly ChannelRouteDefinition<E>[] = [
+		{
+			method: 'HEAD',
+			path: '/webhook',
+			handler: createIntercomValidationHandler(),
+		},
+		{
+			method: 'POST',
+			path: '/webhook',
+			handler: createIntercomWebhookHandler(options),
+		},
+	];
 	const channel: IntercomChannel<E> = {
-		routes: [
-			{
-				method: 'HEAD',
-				path: '/webhook',
-				handler: createIntercomValidationHandler(),
-			},
-			{
-				method: 'POST',
-				path: '/webhook',
-				handler: createIntercomWebhookHandler(options),
-			},
-		],
-		conversationKey(ref) {
+		routes,
+		route: () => createChannelRouter(routes),
+		instanceId(ref) {
 			assertConversationRef(ref);
 			return [
 				'intercom',
@@ -135,24 +134,24 @@ export function createIntercomChannel<E extends Env = Env>(
 				encodeURIComponent(ref.conversationId),
 			].join(':');
 		},
-		parseConversationKey(id) {
+		parseInstanceId(id) {
 			try {
 				const match = /^intercom:v1:workspace:([^:]+):conversation:([^:]+)$/.exec(id);
 				if (!match?.[1] || !match[2]) {
-					throw new InvalidIntercomConversationKeyError();
+					throw new InvalidIntercomInstanceIdError();
 				}
 				const ref: IntercomConversationRef = {
 					workspaceId: decodeURIComponent(match[1]),
 					conversationId: decodeURIComponent(match[2]),
 				};
 				assertConversationRef(ref);
-				if (channel.conversationKey(ref) !== id) {
-					throw new InvalidIntercomConversationKeyError();
+				if (channel.instanceId(ref) !== id) {
+					throw new InvalidIntercomInstanceIdError();
 				}
 				return ref;
 			} catch (error) {
-				if (error instanceof InvalidIntercomConversationKeyError) throw error;
-				throw new InvalidIntercomConversationKeyError();
+				if (error instanceof InvalidIntercomInstanceIdError) throw error;
+				throw new InvalidIntercomInstanceIdError();
 			}
 		},
 	};

@@ -1,10 +1,12 @@
 import { clampLimit } from '../adapter-helpers.ts';
+import type { AgentSubmissionStore } from '../agent-execution-store.ts';
 import type { ConversationRecord } from '../conversation-records.ts';
 import { ConversationStreamStoreError } from '../errors.ts';
 import { migrateFlueSqlSchema } from '../schema-version.ts';
 import { parseSessionStorageKey } from '../session-identity.ts';
 import type { SqlStorage } from '../sql-storage.ts';
-import { formatOffset, parseOffset } from './event-stream-store.ts';
+import { generateIncarnationId } from './ids.ts';
+import { DEFAULT_READ_LIMIT, formatOffset, MAX_READ_LIMIT, parseOffset } from './stream-offsets.ts';
 
 export interface ConversationStreamIdentity {
 	agentName: string;
@@ -53,8 +55,10 @@ export interface ConversationStreamStore {
 	 * which appends the child `conversation_created` and the parent
 	 * `child_session_retained` in one batch (a partial write would orphan the
 	 * child). First-party adapters satisfy this by serializing the whole batch
-	 * into a single row/document write inside one transaction; a custom adapter
-	 * that splits records across non-atomic writes violates the contract.
+	 * and writing it inside one transaction — as a single row/document, or
+	 * spilled across chunk rows on backends that cap an individual value's
+	 * size; a custom adapter that splits records across non-atomic writes
+	 * violates the contract.
 	 */
 	append(input: {
 		path: string;
@@ -70,7 +74,6 @@ export interface ConversationStreamStore {
 		options?: { offset?: string; limit?: number },
 	): Promise<ConversationStreamReadResult>;
 	getMeta(path: string): Promise<ConversationStreamMeta | null>;
-	delete(path: string): Promise<void>;
 	subscribe(path: string, listener: () => void): () => void;
 }
 
@@ -99,8 +102,49 @@ CREATE TABLE IF NOT EXISTS flue_conversation_stream_batches (
   UNIQUE (path, producer_id, producer_epoch, producer_sequence)
 )`;
 
-const DEFAULT_READ_LIMIT = 100;
-const MAX_READ_LIMIT = 1000;
+const CREATE_BATCH_CHUNKS_TABLE = `
+CREATE TABLE IF NOT EXISTS flue_conversation_stream_batch_chunks (
+  path TEXT NOT NULL,
+  seq INTEGER NOT NULL,
+  chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
+  chunk_count INTEGER NOT NULL CHECK (chunk_count > 0),
+  data TEXT NOT NULL,
+  PRIMARY KEY (path, seq, chunk_index)
+)`;
+
+/**
+ * Serialized batches longer than this (in UTF-16 code units) spill into
+ * `flue_conversation_stream_batch_chunks` instead of the batch row's `data`
+ * column: Cloudflare Durable Object SQLite caps an individual value at ~2MB.
+ */
+export const CONVERSATION_BATCH_SPILL_THRESHOLD = 1024 * 1024;
+
+/** Code units per spilled chunk row; every cell stays far under the value cap. */
+const BATCH_CHUNK_LENGTH = 512 * 1024;
+
+/**
+ * Ceiling on one serialized batch, generous by an order of magnitude: a 2MB
+ * record already approximates 200k tokens against a 1M-token maximum context
+ * window, so a batch past 12MB indicates an unbounded tool result or message
+ * rather than real conversation data.
+ */
+const MAX_BATCH_DATA_LENGTH = 12 * 1024 * 1024;
+
+// The same per-append ceiling guards the shared async SQL store
+// (sql-conversation-stream-store.ts) and the MongoDB conversation store.
+function oversizedBatchReason(dataLength: number, records: readonly ConversationRecord[]): string {
+	const mb = (length: number) => `${(length / (1024 * 1024)).toFixed(1)}MB`;
+	let largest = records[0] as ConversationRecord;
+	let largestLength = 0;
+	for (const record of records) {
+		const length = JSON.stringify(record).length;
+		if (length > largestLength) {
+			largest = record;
+			largestLength = length;
+		}
+	}
+	return `The batch serializes to ~${mb(dataLength)}, above the 12MB per-append ceiling. The largest record is a "${largest.type}" record (id "${largest.id}") at ~${mb(largestLength)}. Oversized tool results and message content must be truncated before they are recorded (built-in tools cap results at 50KB).`;
+}
 
 /**
  * Shared in-memory listener registry for conversation-stream `subscribe` /
@@ -138,6 +182,7 @@ export function ensureSqlConversationStreamTables(sql: SqlStorage): void {
 	migrateFlueSqlSchema(sql, () => {
 		sql.exec(CREATE_STREAMS_TABLE);
 		sql.exec(CREATE_BATCHES_TABLE);
+		sql.exec(CREATE_BATCH_CHUNKS_TABLE);
 	});
 }
 
@@ -162,6 +207,16 @@ interface InMemoryConversationStream {
 export class InMemoryConversationStreamStore implements ConversationStreamStore {
 	private streams = new Map<string, InMemoryConversationStream>();
 	private listeners = new StreamListenerRegistry();
+	private appendChain: Promise<unknown> = Promise.resolve();
+
+	/**
+	 * With a submission store, appends enforce the same submission fence as
+	 * the SQL stores (attempt ownership, the turn-boundary join allowance,
+	 * terminalizing settlements). Without one — the local conversation
+	 * runtime, which has no submission coordination — only in-record
+	 * ownership consistency is checked.
+	 */
+	constructor(private submissionStore?: AgentSubmissionStore) {}
 
 	async createStream(path: string, identity: ConversationStreamIdentity): Promise<void> {
 		const existing = this.streams.get(path);
@@ -176,7 +231,7 @@ export class InMemoryConversationStreamStore implements ConversationStreamStore 
 		}
 		this.streams.set(path, {
 			identity: { ...identity },
-			incarnation: crypto.randomUUID(),
+			incarnation: generateIncarnationId(),
 			producerId: null,
 			producerEpoch: 0,
 			nextProducerSequence: 0,
@@ -208,7 +263,28 @@ export class InMemoryConversationStreamStore implements ConversationStreamStore 
 		submission?: { submissionId: string; attemptId: string };
 		records: readonly ConversationRecord[];
 	}): Promise<{ offset: string }> {
-		if (input.records.length === 0) this.fail('append', input.path, 'A canonical batch cannot be empty.');
+		// Whole appends are serialized: the submission fence awaits the
+		// injected store, and the retry/sequence checks must not interleave
+		// across that suspension point (SQL stores get this from transactions).
+		const result = this.appendChain.then(() => this.appendSerialized(input));
+		this.appendChain = result.then(
+			() => undefined,
+			() => undefined,
+		);
+		return result;
+	}
+
+	private async appendSerialized(input: {
+		path: string;
+		producerId: string;
+		producerEpoch: number;
+		incarnation: string;
+		producerSequence: number;
+		submission?: { submissionId: string; attemptId: string };
+		records: readonly ConversationRecord[];
+	}): Promise<{ offset: string }> {
+		if (input.records.length === 0)
+			this.fail('append', input.path, 'A canonical batch cannot be empty.');
 		const data = JSON.stringify(input.records);
 		const stream = this.streams.get(input.path);
 		if (!stream) this.fail('append', input.path, 'Stream does not exist.');
@@ -238,7 +314,7 @@ export class InMemoryConversationStreamStore implements ConversationStreamStore 
 		if (stream.nextProducerSequence !== input.producerSequence) {
 			this.fail('append', input.path, 'Producer sequence is not the next expected value.');
 		}
-		this.assertSubmissionOwnership(input.path, input.submission, input.records);
+		await this.assertSubmissionAuthorization(input.path, input.submission, input.records);
 		const offset = formatOffset(stream.batches.length);
 		stream.batches.push({
 			offset,
@@ -295,34 +371,78 @@ export class InMemoryConversationStreamStore implements ConversationStreamStore 
 		};
 	}
 
-	async delete(path: string): Promise<void> {
-		this.streams.delete(path);
-		this.listeners.notify(path);
-	}
-
 	subscribe(path: string, listener: () => void): () => void {
 		return this.listeners.subscribe(path, listener);
 	}
 
-	private assertSubmissionOwnership(
+	private async assertSubmissionAuthorization(
 		path: string,
 		submission: { submissionId: string; attemptId: string } | undefined,
 		records: readonly ConversationRecord[],
-	): void {
+	): Promise<void> {
 		const owned = records.filter(
 			(record) => record.submissionId !== undefined || record.attemptId !== undefined,
 		);
 		if (!submission) {
-			if (owned.length > 0) this.fail('append', path, 'Submission-owned records require an attempt authorization.');
+			if (owned.length > 0)
+				this.fail('append', path, 'Submission-owned records require an attempt authorization.');
 			return;
 		}
+		for (const record of owned) {
+			if (
+				record.submissionId === submission.submissionId &&
+				record.attemptId === submission.attemptId
+			) {
+				continue;
+			}
+			// Turn-boundary join: the host attempt writes a joined delivery's
+			// input and adoption records under its own authority. Legal exactly
+			// when the delivery's row is durably claimed by THIS host
+			// (`joining`/`joined` with `joinedInto` = the authorized submission)
+			// and the record still carries the host's attempt.
+			if (
+				this.submissionStore &&
+				record.attemptId === submission.attemptId &&
+				record.submissionId !== undefined
+			) {
+				const delivery = await this.submissionStore.getSubmission(record.submissionId);
+				if (
+					(delivery?.status === 'joining' || delivery?.status === 'joined') &&
+					delivery.joinedInto === submission.submissionId
+				) {
+					continue;
+				}
+			}
+			this.fail(
+				'append',
+				path,
+				'Record ownership does not match the authorized submission attempt.',
+			);
+		}
+		if (!this.submissionStore) return;
+		const row = await this.submissionStore.getSubmission(submission.submissionId);
+		const sessionIdentity = row ? parseSessionStorageKey(row.sessionKey) : undefined;
+		const streamIdentity = this.streams.get(path)?.identity;
+		const obligation = (await this.submissionStore.listPendingSubmissionSettlements()).find(
+			(pending) => pending.submissionId === submission.submissionId,
+		);
+		const terminalizingSettlement =
+			row?.status === 'terminalizing' &&
+			records.length === 1 &&
+			owned.length === 1 &&
+			owned[0]?.type === 'submission_settled' &&
+			obligation?.recordId === owned[0].id &&
+			JSON.stringify(obligation.record) === JSON.stringify(owned[0]);
 		if (
-			owned.some(
-				(record) =>
-					record.submissionId !== submission.submissionId || record.attemptId !== submission.attemptId,
-			)
+			!row ||
+			(row.status !== 'running' && !terminalizingSettlement) ||
+			row.attemptId !== submission.attemptId ||
+			!sessionIdentity ||
+			!streamIdentity ||
+			sessionIdentity.agentName !== streamIdentity.agentName ||
+			sessionIdentity.instanceId !== streamIdentity.instanceId
 		) {
-			this.fail('append', path, 'Record ownership does not match the authorized submission attempt.');
+			this.fail('append', path, 'Submission attempt no longer owns work for this agent instance.');
 		}
 	}
 
@@ -351,14 +471,15 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 				.exec('SELECT identity_json FROM flue_conversation_streams WHERE path = ?', path)
 				.toArray()[0];
 			if (existing) {
-				if (existing.identity_json !== data) this.fail('create', path, 'Stream identity conflicts.');
+				if (existing.identity_json !== data)
+					this.fail('create', path, 'Stream identity conflicts.');
 				return;
 			}
 			this.sql.exec(
 				'INSERT INTO flue_conversation_streams (path, identity_json, incarnation) VALUES (?, ?, ?)',
 				path,
 				data,
-				crypto.randomUUID(),
+				generateIncarnationId(),
 			);
 		});
 	}
@@ -395,8 +516,12 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 		submission?: { submissionId: string; attemptId: string };
 		records: readonly ConversationRecord[];
 	}): Promise<{ offset: string }> {
-		if (input.records.length === 0) this.fail('append', input.path, 'A canonical batch cannot be empty.');
+		if (input.records.length === 0)
+			this.fail('append', input.path, 'A canonical batch cannot be empty.');
 		const data = JSON.stringify(input.records);
+		if (data.length > MAX_BATCH_DATA_LENGTH) {
+			this.fail('append', input.path, oversizedBatchReason(data.length, input.records));
+		}
 		const result = this.runTransaction(() => {
 			const meta = this.sql
 				.exec(
@@ -424,8 +549,14 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 				)
 				.toArray()[0];
 			if (retry) {
+				const stored = this.materializeBatchData(
+					'append',
+					input.path,
+					retry.seq as number,
+					retry.data as string,
+				);
 				if (
-					retry.data !== data ||
+					stored !== data ||
 					retry.submission_id !== (input.submission?.submissionId ?? null) ||
 					retry.attempt_id !== (input.submission?.attemptId ?? null)
 				) {
@@ -438,6 +569,10 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 			}
 			this.assertSubmissionAuthorization(input.path, input.submission, input.records);
 			const seq = meta.next_offset as number;
+			const stored =
+				data.length > CONVERSATION_BATCH_SPILL_THRESHOLD
+					? this.spillBatchData(input.path, seq, data)
+					: data;
 			this.sql.exec(
 				`INSERT INTO flue_conversation_stream_batches
 				 (path, seq, producer_id, producer_epoch, producer_sequence, data, submission_id, attempt_id)
@@ -447,7 +582,7 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 				input.producerId,
 				input.producerEpoch,
 				input.producerSequence,
-				data,
+				stored,
 				input.submission?.submissionId ?? null,
 				input.submission?.attemptId ?? null,
 			);
@@ -491,13 +626,85 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 		const page = rows.slice(0, limit);
 		const batches = page.map((row) => ({
 			offset: formatOffset(row.seq as number),
-			records: JSON.parse(row.data as string) as ConversationRecord[],
+			records: JSON.parse(
+				this.materializeBatchData('read', path, row.seq as number, row.data as string),
+			) as ConversationRecord[],
 		}));
 		return {
 			batches,
 			nextOffset: batches.at(-1)?.offset ?? formatOffset(startAfter),
 			upToDate: rows.length <= limit,
 		};
+	}
+
+	/**
+	 * Writes `data` as chunk rows keyed by `(path, seq)` and returns the spill
+	 * sentinel to store in the batch row's `data` column.
+	 */
+	private spillBatchData(path: string, seq: number, data: string): string {
+		const parts: string[] = [];
+		let start = 0;
+		while (start < data.length) {
+			let end = Math.min(start + BATCH_CHUNK_LENGTH, data.length);
+			// A boundary never splits a surrogate pair: serialized JSON carries
+			// astral characters unescaped, and a lone surrogate does not survive
+			// the backend's TEXT encoding.
+			const last = data.charCodeAt(end - 1);
+			if (end < data.length && last >= 0xd800 && last <= 0xdbff) end += 1;
+			parts.push(data.slice(start, end));
+			start = end;
+		}
+		for (const [index, part] of parts.entries()) {
+			this.sql.exec(
+				`INSERT INTO flue_conversation_stream_batch_chunks
+				 (path, seq, chunk_index, chunk_count, data) VALUES (?, ?, ?, ?, ?)`,
+				path,
+				seq,
+				index,
+				parts.length,
+				part,
+			);
+		}
+		return JSON.stringify({ $flueChunkCount: parts.length });
+	}
+
+	/**
+	 * Returns the full serialized batch for a stored `data` value. A spilled
+	 * batch row stores the sentinel `{"$flueChunkCount":N}` instead of the
+	 * serialized records; the two shapes cannot collide because real batch
+	 * data is `JSON.stringify` of a records array and always starts with `[`,
+	 * so a stored value starting with `{` is always the sentinel.
+	 */
+	private materializeBatchData(
+		operation: string,
+		path: string,
+		seq: number,
+		stored: string,
+	): string {
+		if (!stored.startsWith('{')) return stored;
+		const chunkCount = (JSON.parse(stored) as { $flueChunkCount?: unknown }).$flueChunkCount;
+		if (typeof chunkCount !== 'number' || !Number.isSafeInteger(chunkCount) || chunkCount <= 0) {
+			this.fail(operation, path, 'Spilled batch sentinel is malformed.');
+		}
+		const rows = this.sql
+			.exec(
+				`SELECT chunk_index, chunk_count, data FROM flue_conversation_stream_batch_chunks
+				 WHERE path = ? AND seq = ? ORDER BY chunk_index`,
+				path,
+				seq,
+			)
+			.toArray();
+		if (rows.length !== chunkCount) {
+			this.fail(operation, path, 'Spilled batch chunk rows do not match the recorded count.');
+		}
+		const parts: string[] = [];
+		for (const [index, row] of rows.entries()) {
+			if ((row.chunk_index as number) !== index || (row.chunk_count as number) !== chunkCount) {
+				this.fail(operation, path, 'Spilled batch chunk rows are not contiguous.');
+			}
+			parts.push(row.data as string);
+		}
+		return parts.join('');
 	}
 
 	async getMeta(path: string): Promise<ConversationStreamMeta | null> {
@@ -519,14 +726,6 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 		};
 	}
 
-	async delete(path: string): Promise<void> {
-		this.runTransaction(() => {
-			this.sql.exec('DELETE FROM flue_conversation_stream_batches WHERE path = ?', path);
-			this.sql.exec('DELETE FROM flue_conversation_streams WHERE path = ?', path);
-		});
-		this.listeners.notify(path);
-	}
-
 	subscribe(path: string, listener: () => void): () => void {
 		return this.listeners.subscribe(path, listener);
 	}
@@ -545,29 +744,52 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 			}
 			return;
 		}
-		if (
-			submissionRecords.some(
-				(record) =>
-					record.submissionId !== submission.submissionId || record.attemptId !== submission.attemptId,
-			)
-		) {
-			this.fail('append', path, 'Record ownership does not match the authorized submission attempt.');
+		for (const record of submissionRecords) {
+			if (
+				record.submissionId === submission.submissionId &&
+				record.attemptId === submission.attemptId
+			) {
+				continue;
+			}
+			// Turn-boundary join: the host attempt writes a joined delivery's
+			// input and adoption records under its own authority. Legal exactly
+			// when the delivery's row is durably claimed by THIS host
+			// (`joining`/`joined` with `joined_into` = the authorized submission)
+			// and the record still carries the host's attempt.
+			if (record.attemptId === submission.attemptId && record.submissionId !== undefined) {
+				const delivery = this.sql
+					.exec(
+						'SELECT status, joined_into FROM flue_agent_submissions WHERE submission_id = ?',
+						record.submissionId,
+					)
+					.toArray()[0];
+				if (
+					(delivery?.status === 'joining' || delivery?.status === 'joined') &&
+					delivery.joined_into === submission.submissionId
+				) {
+					continue;
+				}
+			}
+			this.fail(
+				'append',
+				path,
+				'Record ownership does not match the authorized submission attempt.',
+			);
 		}
 		const row = this.sql
 			.exec(
-				`SELECT status, attempt_id, session_key, settlement_record_id, settlement_record_json
+				`SELECT status, attempt_id, session_key, settlement_record_id, settlement_record
 				 FROM flue_agent_submissions WHERE submission_id = ?`,
 				submission.submissionId,
 			)
 			.toArray()[0];
-		const sessionIdentity = typeof row?.session_key === 'string'
-			? parseSessionStorageKey(row.session_key)
-			: undefined;
-		const streamIdentity = this.sql
+		const sessionIdentity =
+			typeof row?.session_key === 'string' ? parseSessionStorageKey(row.session_key) : undefined;
+		const streamIdentityRow = this.sql
 			.exec('SELECT identity_json FROM flue_conversation_streams WHERE path = ?', path)
 			.toArray()[0];
-		const instanceId = streamIdentity
-			? (JSON.parse(streamIdentity.identity_json as string) as ConversationStreamIdentity).instanceId
+		const streamIdentity = streamIdentityRow
+			? (JSON.parse(streamIdentityRow.identity_json as string) as ConversationStreamIdentity)
 			: undefined;
 		const terminalizingSettlement =
 			row?.status === 'terminalizing' &&
@@ -575,13 +797,15 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 			submissionRecords.length === 1 &&
 			submissionRecords[0]?.type === 'submission_settled' &&
 			row.settlement_record_id === submissionRecords[0].id &&
-			row.settlement_record_json === JSON.stringify(submissionRecords[0]);
+			row.settlement_record === JSON.stringify(submissionRecords[0]);
 		if (
 			!row ||
 			(row.status !== 'running' && !terminalizingSettlement) ||
 			row.attempt_id !== submission.attemptId ||
 			!sessionIdentity ||
-			sessionIdentity.instanceId !== instanceId
+			!streamIdentity ||
+			sessionIdentity.agentName !== streamIdentity.agentName ||
+			sessionIdentity.instanceId !== streamIdentity.instanceId
 		) {
 			this.fail('append', path, 'Submission attempt no longer owns work for this agent instance.');
 		}

@@ -1,6 +1,6 @@
 {
 	"name": "@flue/twilio",
-	"version": "1.0.0-beta.1",
+	"version": "2.0.0-nightly.202607230552",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -32,11 +32,15 @@
 	"dependencies": {
 		"hono": "4.12.22"
 	},
+	"peerDependencies": {
+		"@flue/runtime": "workspace:^"
+	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "0.16.15",
-		"tsdown": "^0.22.0",
+		"@cloudflare/vitest-pool-workers": "0.18.7",
+		"@flue/runtime": "workspace:*",
+		"tsdown": "^0.22.7",
 		"twilio": "6.0.2",
-		"typescript": "^6.0.3",
+		"typescript": "^7.0.2",
 		"vitest": "^4.1.6"
 	}
 }

@@ -1,7 +1,7 @@
-export class InvalidSlackConversationKeyError extends Error {
+export class InvalidSlackInstanceIdError extends Error {
 	constructor() {
-		super('Invalid Slack conversation key.');
-		this.name = 'InvalidSlackConversationKeyError';
+		super('Invalid Slack instance id.');
+		this.name = 'InvalidSlackInstanceIdError';
 	}
 }
 

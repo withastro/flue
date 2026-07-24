@@ -1,7 +1,7 @@
-import { defineAgent, defineAgentProfile } from '@flue/runtime';
+'use agent';
+import { useModel } from '@flue/runtime';
 
-const scheduledAgent = defineAgentProfile({
-	instructions: 'Complete scheduled tasks autonomously.',
-});
-
-export default defineAgent(() => ({ profile: scheduledAgent }));
+export function Scheduled() {
+	useModel('anthropic/claude-sonnet-4-6');
+	return 'Complete scheduled tasks autonomously.';
+}

@@ -1,6 +1,6 @@
 import { createResendChannel } from '@flue/resend';
 import { defineTool, dispatch, type JsonValue } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createResendClient } from '../resend-client.ts';
 
 const EMAIL_INSTANCE_PREFIX = 'resend-email:';
@@ -15,8 +15,15 @@ export const channel = createResendChannel({
 	async webhook({ event, delivery }) {
 		switch (event.type) {
 			case 'email.received': {
-				await dispatch(assistant, {
+				await dispatch(Assistant, {
 					id: emailInstanceId(event.data.email_id),
+					// Recorded once when this event creates the instance; ignored after.
+					initialData: {
+						emailId: event.data.email_id,
+						from: event.data.from,
+						subject: event.data.subject,
+						receivedAt: new Date(event.data.created_at).toISOString(),
+					},
 					message: {
 						kind: 'signal',
 						type: 'resend.email.received',
@@ -25,9 +32,7 @@ export const channel = createResendChannel({
 						body: event.data.subject,
 						attributes: {
 							deliveryId: delivery.id,
-							emailId: event.data.email_id,
 							messageId: event.data.message_id,
-							from: event.data.from,
 							to: event.data.to.join(', '),
 							...(event.data.cc.length === 0 ? {} : { cc: event.data.cc.join(', ') }),
 							...(event.data.attachments.length === 0
@@ -59,17 +64,6 @@ export function retrieveReceivedEmail(emailId: string) {
 export function emailInstanceId(emailId: string): string {
 	if (!emailId) throw new TypeError('Resend email id must be non-empty.');
 	return `${EMAIL_INSTANCE_PREFIX}${encodeURIComponent(emailId)}`;
-}
-
-export function emailIdFromInstanceId(id: string): string {
-	if (!id.startsWith(EMAIL_INSTANCE_PREFIX)) {
-		throw new TypeError('Expected a local Resend email instance id.');
-	}
-	const encodedEmailId = id.slice(EMAIL_INSTANCE_PREFIX.length);
-	if (!encodedEmailId) throw new TypeError('Expected a local Resend email instance id.');
-	const emailId = decodeURIComponent(encodedEmailId);
-	if (!emailId) throw new TypeError('Expected a local Resend email instance id.');
-	return emailId;
 }
 
 function requiredEnv(name: string): string {

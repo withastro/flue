@@ -1,215 +1,167 @@
 ---
 title: Agents
 description: Create an agent, configure its capabilities, and send it messages over time.
-lastReviewedAt: 2026-06-22
+lastReviewedAt: 2026-07-23
 ---
 
-Agents are useful when your application needs a model to keep working within a continuing context. This guide covers creating an agent, configuring its capabilities and environment, and exposing it safely to users.
+Flue is a framework for building autonomous **Agents**. They are at the heart of why Flue exists, so it's important to understand what they are and how they work. This guide covers creating an agent, composing its capabilities and environment, and exposing it safely to users.
 
-For the underlying mental model, start with [What is an agent?](/docs/concepts/agents/). If you need single-use or background work instead of a continuing agent, see [Workflows](/docs/guide/workflows/).
+## What is an agent?
 
-## Creating a new agent
+An agent is made up of three key parts, all working together: **LLM, harness, and specialized context.** Flue is designed to help you customize and compose together all three elements to build powerful, truly autonomous agents to power all sorts of products and internal workflows.
 
-In a Flue project, an agent is a file in `src/agents/` whose default export is created with `defineAgent(...)`:
+Flue ships with two core primitives to help you compose powerful agents: **Agent Functions** and **Agent Hooks**.
 
-```ts title="src/agents/joke-teller.ts"
-import { defineAgent, type AgentRouteHandler } from '@flue/runtime';
+## Agent Functions
 
-export const description = 'Tells a short joke in response to each message.';
+An agent function represents an agent in Flue. In Flue, an agent is a JavaScript function that returns the agent's `system` prompt instructions. Those instructions are rendered, and then passed to the LLM along with the user and assistant messages that make up some agent conversation or workflow.
 
-export const route: AgentRouteHandler = async (_c, next) => next();
-
-export default defineAgent(() => ({
-  model: 'anthropic/claude-haiku-4-5',
-  instructions: 'Tell a short joke in response to each message.',
-}));
-```
-
-In this example:
-
-- **The filename:** This gives the agent its name: `joke-teller`.
-- `description`: This optional static description is collected into the deployment manifest at build time and returned by [`listAgents()`](/docs/api/data-persistence-api/#inspection-primitives). When present, it must be a non-empty string.
-- `route`: This exposes the agent over HTTP at `POST /agents/joke-teller/:id`. Event streaming is available at `GET /agents/joke-teller/:id`.
-- `defineAgent(...)`: This defines the agent's behavior and environment.
-
-See [Project Layout](/docs/guide/project-layout/) and [Models & Providers](/docs/guide/models/) for more information.
-
-## Agent configuration
-
-The object returned by `defineAgent(...)` defines the agent's behavior, capabilities, and environment. For example, a repository reviewer can be given review instructions, reusable Actions, tools and skills, and a local workspace to work within:
-
-```ts title="src/agents/repository-reviewer.ts"
-import { defineAgent } from '@flue/runtime';
-import { local } from '@flue/runtime/node';
-import reviewChecklist from '../skills/review-checklist/SKILL.md' with { type: 'skill' };
-import { reviewChange } from '../actions/review-change.ts';
-import { repositoryTools } from '../shared/repository-tools.ts';
-
-export default defineAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  instructions: 'Review the requested change and report only findings supported by evidence.',
-  cwd: '/srv/repositories/catalog-service',
-  actions: [reviewChange],
-  tools: repositoryTools,
-  skills: [reviewChecklist],
-  sandbox: local(),
-}));
-```
-
-Actions let the model call finite agent-backed operations, tools execute bounded application functions, and skills provide reusable guidance. For more details, see [Actions](/docs/guide/actions/), [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), [Sandboxes](/docs/guide/sandboxes/), and [Database](/docs/guide/database/).
-
-### Markdown instructions
-
-Long instructions can live in their own markdown file. Import a `.md` file with the `with { type: 'markdown' }` import attribute and Flue inlines its contents as a string at build time:
-
-```ts title="src/agents/repository-reviewer.ts"
-import { defineAgent } from '@flue/runtime';
-import instructions from './repository-reviewer.md' with { type: 'markdown' };
-
-export default defineAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  instructions,
-}));
-```
-
-The attribute is required — a `.md` import without it fails the build. `SKILL.md` files are not plain markdown and must use `with { type: 'skill' }` instead; see [Skills](/docs/guide/skills/).
-
-## Agent ID
-
-Each agent is initialized with an `id`, which identifies the continuing instance of that agent.
-
-```text
-POST /agents/support-assistant/ticket-8472
-                               └─────────┘ id
-```
-
-It's up to the developer to decide what `id` means and whether it maps to important application data, such as a user ID, customer support ticket, or GitHub issue. A randomly generated ID can also work.
-
-Flue passes that ID to `defineAgent(...)`, where the application can configure the resources that belong to that instance. For example, a support agent can receive tools scoped to one ticket:
-
-```ts title="src/agents/support-assistant.ts"
-import { defineAgent, type AgentRouteHandler } from '@flue/runtime';
-import { createTicketTools } from '../shared/support-tickets.ts';
-
-export const route: AgentRouteHandler = async (_c, next) => next();
-
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  instructions: 'Help the customer understand and resolve their support ticket.',
-  tools: createTicketTools(id),
-}));
-```
-
-In this example, the agent can access the ticket selected by its `id`, but its tools do not give it access to other tickets. Conversation history belongs in the agent instance's canonical conversation stream, while durable application data should remain in your own data layer.
-
-## Agent profiles
-
-An agent profile defines reusable behavior and capabilities without creating a public agent or configuring its runtime resources. Use profiles to share an agent's model, instructions, tools, or skills across your project.
-
-```ts title="src/agents/support-assistant.ts"
-import { defineAgent, defineAgentProfile } from '@flue/runtime';
-import { supportTools } from '../shared/support-tools.ts';
-
-const support = defineAgentProfile({
-  model: 'anthropic/claude-haiku-4-5',
-  instructions: 'Answer customer support questions clearly and accurately.',
-  tools: supportTools,
-});
-
-export default defineAgent(() => ({
-  profile: support,
-}));
-```
-
-`defineAgent(...)` can replace profile fields such as the model or instructions, and add tools, skills, or subagents needed for a specific agent.
-
-## Subagents
-
-Subagents are another use for agent profiles: they let an agent delegate focused work to another agent.
-
-```ts title="src/agents/policy-assistant.ts"
-import { defineAgent, defineAgentProfile } from '@flue/runtime';
-import { local } from '@flue/runtime/node';
-
-const policyResearcherSubagent = defineAgentProfile({
-  name: 'policy_researcher',
-  description: 'Finds relevant policy text and quotes the supporting passages.',
-  instructions: 'Read the policy workspace and return supporting quotations with file paths.',
-});
-
-export default defineAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  instructions: 'Answer policy questions only after delegating source lookup to policy_researcher.',
-  sandbox: local(),
-  cwd: '/srv/company-policies',
-  subagents: [policyResearcherSubagent],
-}));
-```
-
-Here, `policy-assistant` can use its built-in task capability to delegate source lookup to `policy_researcher` before answering a policy question. The subagent is available to its parent for delegated work. It does not receive its own public endpoint because it is not exported as the agent for that file.
-
-For more information, see [Subagents](/docs/guide/subagents/).
-
-## Interacting with your agent
-
-Users can interact directly with an agent over HTTP. Your application must verify that the caller can access the selected agent `id`.
-
-### HTTP
-
-An agent with a `route` export accepts HTTP messages at `POST /agents/<name>/<id>`. The body contains a message:
-
-```http title="Prompt a support agent instance"
-POST /agents/support-assistant/ticket-8472 HTTP/1.1
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "message": "Can you summarize the open issues in my case?"
+```ts title="src/agents/triage-agent.ts"
+// Example: A simple agent, written in Flue.
+function TriageAgent() {
+  return "Investigate the user's issue and recommend the next action.";
 }
 ```
 
-The body may also carry an optional `images` array of `{ "type": "image", "data": "<base64>", "mimeType": "image/png" }` attachments for vision-capable models. See the [Routing API](/docs/api/routing-api/) for the full request contract.
+An agent is always initialized with an ID. You can provide one via the `--id` flag to `flue run` (optional) or the `POST /:id` route of a hosted agent (required). It's up to you what the ID means — a user ID, a support ticket, a GitHub issue number, or just a random string. Each agent instance is persisted by ID, so you can use the agent ID to message with a specific agent over time.
 
-Use the `route` handler to protect direct HTTP access to an agent instance:
-
-```ts title="src/agents/support-assistant.ts"
-import { defineAgent, type AgentRouteHandler } from '@flue/runtime';
-import { authenticate } from '../auth.ts';
-
-export const route: AgentRouteHandler = async (c, next) => {
-  const principal = await authenticate(c.req.header('authorization'));
-  const ticketId = c.req.param('id');
-
-  if (!principal) return c.json({ error: 'Unauthorized' }, 401);
-  if (!principal.supportTicketIds.includes(ticketId)) return c.notFound();
-
-  await next();
-};
-
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  instructions: `Help with authorized support ticket ${id}.`,
-}));
+```ts title="src/agents/triage-agent.ts"
+function TriageAgent({ id }) {
+  return `Investigate GitHub issue #${id} and recommend the next action.`;
+}
 ```
 
-For more information, see [Routing](/docs/guide/routing/) and [SDK](/docs/sdk/overview/).
+There are other ways to pass (structured) data to your agent — see [Passing data to the agent](/docs/guide/agent-hooks/#passing-data-to-the-agent) in the Agent Hooks guide.
 
-## `dispatch()`
+The agent function _re-renders_ on every turn. That is, every time the model is about to be called, Flue runs your function again and rebuilds its instructions from scratch. The string you return always reflects the agent's current state at that moment:
+
+```ts title="src/agents/assistant-agent.ts"
+function AssistantAgent() {
+  // Warning: Inserting dynamic data into your agent instructions can bust the cache
+  // that LLMs use to give you cheaper inference tokens. It's often a best practice
+  // to avoid doing this in production agents, specifically to save money.
+  return `You are a helpful assistant. The time now is ${Date.now()}.`;
+}
+```
+
+If it helps, you can think of an agent function as similar to a React component render function. This is not accidental, as you'll soon see below: Flue agent functions were intentionally modeled after React to help unlock more expressive, more powerful agent functionality.
+
+## Agent Hooks
+
+An agent function isn't much on its own. It returns instructions, but a working agent needs more than words — a model, tools, a workspace, memory. To unlock all of that, you'll reach for Flue's second core primitive: **agent hooks**.
+
+A hook is a plain function that you call inside your agent function's body to give your agent one new capability. All hooks start with `use`, and the naming is the idea: each one lets your agent _hook into_ a different feature of the Flue runtime:
+
+- [Model](/docs/guide/models/) (`useModel`) selects the LLM that powers the agent.
+- [Sandbox](/docs/guide/sandboxes/) (`useSandbox`) provides its filesystem and command-execution environment.
+- [Tools](/docs/guide/tools/) (`useTool`) let it call application code and affect external systems.
+- [MCP servers](/docs/guide/mcp/) (`useMcpConnection`) mount tools from the open MCP ecosystem.
+- [Skills](/docs/guide/skills/) (`useSkill`) provide expertise it can load when needed.
+- [Subagents](/docs/guide/subagents/) (`useSubagent`) let it delegate focused work to other agents.
+- [Persisted State](/docs/guide/agent-hooks/#persisted-state) (`usePersistentState`) preserves custom data across the agent lifetime.
+- [Event Hooks](/docs/guide/agent-hooks/#event-hooks) (`useAgentStart`, `useAgentFinish`, and others) trigger logic on different lifecycle events.
+
+```ts title="src/agents/triage.ts"
+import { useModel, useSandbox, useSkill, useTool } from '@flue/runtime';
+import { local } from '@flue/runtime/node';
+import { searchIssues } from '../tools/search-issues.ts';
+import reviewChecklist from '../skills/review-checklist/SKILL.md';
+
+function Triage() {
+  useModel('anthropic/claude-sonnet-4-6');
+  useSandbox(local());
+  useTool(searchIssues);
+  useSkill(reviewChecklist);
+  return 'Investigate the reported issue and recommend the next action.';
+}
+```
+
+To learn more about agent hooks, see [Agent Hooks](/docs/guide/agent-hooks/).
+
+## "use agent" Directive
+
+The examples above define agent functions, but your application doesn't know about them yet. To register an agent, mark its module with the `'use agent'` directive and export the function:
+
+```ts title="src/agents/triage-agent.ts"
+'use agent';
+import { useModel } from '@flue/runtime';
+
+export function TriageAgent() {
+  useModel('anthropic/claude-sonnet-4-6');
+  return 'Investigate the reported issue and recommend the next action.';
+}
+```
+
+Like `'use strict'` in JavaScript or `'use client'` in React, the directive is a plain string at the top of the file, before any imports or other statements. At build time, Flue scans your project for marked files and registers every exported, capitalized function as an agent. One file may export several agents.
+
+Registration is what makes an agent addressable by the rest of your application: `dispatch(...)` can send it messages, and `createAgentRouter(...)` can serve it over HTTP. The exported function's name also becomes the agent's durable identity, which keys its conversation storage in the persistent database. To rename the function without a database migration, pin the identity with the [`agentName` static](/docs/reference/agent-api/#agent-statics). Setting an explicit agent name is considered a best-practice by some Flue developers.
+
+```ts title="src/agents/triage-agent.ts"
+'use agent';
+import { useModel } from '@flue/runtime';
+
+export function TriageAgent() {
+  useModel('anthropic/claude-sonnet-4-6');
+  return 'Investigate the reported issue and recommend the next action.';
+}
+
+TriageAgent.agentName = 'triage-agent';
+```
+
+## Interacting with your agent
+
+There are several ways to interact with an agent. All of them run the same agent and durability APIs — they differ only in how the runtime starts and whether an HTTP server exists.
+
+### CLI
+
+The easiest way to interact with your agent is locally, with the `flue run` CLI command:
+
+```bash
+flue run src/agents/triage-agent.ts --message "Triage issue 17307"
+```
+
+This runs one agent module directly — no server, no application build. Pass `--id` to name the conversation so you can continue it across invocations; without it, each run starts a fresh conversation and prints its generated id:
+
+```bash
+flue run src/agents/triage-agent.ts --id issue-17307 --message "Look at issue 17307"
+flue run src/agents/triage-agent.ts --id issue-17307 --message "Any update?"
+```
+
+Conversations persist between runs — in your project's configured database, or a local cache file without one. See the [`flue run` reference](/docs/cli/run/) for agent selection, structured output, and the full flag list.
+
+### HTTP
+
+Agents mounted in your application are served over HTTP (mounting is covered in [Routing](/docs/guide/routing/)). Each conversation has its own URL, ending in the conversation id. `POST` a message to it:
+
+```http title="Prompt a support agent conversation"
+POST /agents/support-assistant/ticket-8472 HTTP/1.1
+Content-Type: application/json
+
+{
+  "kind": "user",
+  "body": "Can you summarize the open issues in my case?"
+}
+```
+
+Prompts are fire-and-forget: the server responds `202` immediately, and the agent's reply is read from the conversation — `GET` the same URL to follow its events, or use the [Flue Agent SDK](/docs/sdk/overview/), which wraps the whole surface (`send()`, `wait()`, `observe()`, `history()`) around one conversation URL.
+
+Anyone who can reach a conversation URL can talk to that conversation. Protect the mount with your application's normal middleware: verify the caller, and check that they're allowed to access that conversation id. See [Routing](/docs/guide/routing/) for the full pattern.
+
+### `dispatch()`
 
 Use `dispatch(...)` when your application receives an event for an agent asynchronously, such as a webhook, queue message, chat event, or notification. For example, an application route can verify an incoming support-system webhook and dispatch the comment to the agent for that ticket:
 
 ```ts title="src/app.ts"
 import { dispatch } from '@flue/runtime';
-import { flue } from '@flue/runtime/routing';
 import { Hono } from 'hono';
-import supportAssistant from './agents/support-assistant.ts';
+import { SupportAssistant } from './agents/support-assistant.ts';
 import { verifySupportWebhook } from './shared/support-webhooks.ts';
 
 const app = new Hono();
 
 app.post('/webhooks/support-comments', async (c) => {
   const event = await verifySupportWebhook(c.req.raw);
-  const receipt = await dispatch(supportAssistant, {
+  const receipt = await dispatch(SupportAssistant, {
     id: event.ticketId,
     message: {
       kind: 'signal',
@@ -222,20 +174,38 @@ app.post('/webhooks/support-comments', async (c) => {
   return c.json(receipt, 202);
 });
 
-app.route('/', flue());
-
 export default app;
 ```
 
-Your application chooses the agent instance before dispatching the event. `dispatch(...)` accepts it for asynchronous processing rather than waiting for an agent response. See [Channels](/docs/guide/channels/) for verified provider ingress and application-owned outbound behavior.
+Your application chooses the agent conversation before dispatching the event. `dispatch(...)` accepts it for asynchronous processing rather than waiting for an agent response. Because registration comes from the `'use agent'` scan, an agent used only through `dispatch(...)` needs no mount at all. See [Channels](/docs/guide/channels/) for verified provider ingress and application-owned outbound behavior.
+
+### Standalone scripts
+
+Finally, you can run agents outside of a Flue application entirely — no server, no `app.ts` — with the more advanced `start()` API. It boots the Flue runtime inside your own Node.js process, which is useful for cron jobs, one-off scripts, and tests:
+
+```ts title="scripts/nightly.ts"
+import { init } from '@flue/runtime';
+import { sqlite, start } from '@flue/runtime/node';
+import { Reporter } from '../src/agents/reporter.ts';
+
+await using flue = await start({
+  agents: [Reporter],
+  db: sqlite('./nightly.db'),
+});
+
+const reporter = init(Reporter, { id: 'nightly-2026-07-16' });
+const receipt = await reporter.dispatch('Produce the nightly report.');
+const reply = await reporter.read(receipt);
+console.log(reply.text);
+```
+
+Provider credentials come from the process environment, and the `db` option decides whether conversations outlive the script: omit it for in-memory state, or pass an adapter like `sqlite()` so a later run can continue the same conversation. Inside an already-running Flue application there is no `start()` — call `init()` or `dispatch()` directly. The [Workflows](/docs/guide/workflows/) guide covers this scripting surface in depth, from CI pipelines to durable orchestration.
 
 ## Next steps
 
-- [Agent API](/docs/api/agent-api/) — look up session operations and their results.
-- [Actions](/docs/guide/actions/), [Tools](/docs/guide/tools/), [Skills](/docs/guide/skills/), and [Sandboxes](/docs/guide/sandboxes/) — configure what an agent can do and where it works.
-- [Subagents](/docs/guide/subagents/) — delegate focused work to specialist profiles.
-- [Routing](/docs/guide/routing/) — expose agent HTTP surfaces inside an authenticated application.
-- [Workflows](/docs/guide/workflows/) — run single-use or background agent work.
-- [Schedules](/docs/guide/schedules/) — invoke finite workflows or dispatch continuing agent input on a schedule.
-- [Channels](/docs/guide/channels/) — deliver verified provider events into agent sessions.
+- [Agent Hooks](/docs/guide/agent-hooks/) — compose your agent's capabilities: tools, skills, state, and event hooks.
+- [Agent API](/docs/reference/agent-api/) — look up session operations and their results.
+- [Routing](/docs/guide/routing/) — mount agent HTTP surfaces inside an authenticated application.
+- [Schedules](/docs/guide/schedules/) — dispatch agent input on a schedule.
+- [Channels](/docs/guide/channels/) — deliver verified provider events into agent conversations.
 - [Observability](/docs/guide/observability/) — inspect agent activity.

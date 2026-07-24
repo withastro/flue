@@ -8,10 +8,9 @@ You are an AI coding agent configuring MySQL-backed persistence for a Flue
 project using the first-party `@flue/mysql` adapter. This adapter supports
 MySQL 8 with InnoDB tables.
 
-This persists canonical agent conversation streams, immutable attachments,
-accepted submissions, workflow-run records, and event
-streams across process restarts and replicas. It does not store application
-business data.
+This persists canonical agent conversation streams, immutable attachments, and
+accepted submissions across process restarts and replicas. It does not store
+application business data.
 
 ## Check the target first
 
@@ -95,13 +94,16 @@ solely to register the database.
 Use MySQL 8 with InnoDB for every Flue table. Supply `MYSQL_URL` through the
 project's existing secret system and configure TLS in `mysql2` as required by
 the database provider. Never commit a real connection string. For local
-development, `flue dev --env <file>` and `flue run --env <file>` load any
-`.env`-format file.
+development, `flue run` loads the project's `.env` by default and `--env <file>`
+selects an alternate `.env`-format file; `vite dev` and the built server read
+the shell environment, so export the variable or source the file before
+starting them.
 
 ## Verify
 
 1. Typecheck the project (`npx tsc --noEmit` is safe).
-2. Build the configured Node target and confirm the adapter is discovered.
+2. Build the configured Node target (`vite build`) and confirm the adapter is
+   discovered.
 3. Point `MYSQL_URL` at a throwaway MySQL 8 database whose tables use InnoDB.
 4. Start the server and confirm `migrate()` creates the `flue_*` tables. Restart
    it and confirm existing state is reloaded.

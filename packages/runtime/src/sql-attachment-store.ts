@@ -9,6 +9,7 @@ import {
 	sameAttachmentRef,
 	verifyAttachmentBytes,
 } from './runtime/attachment-store.ts';
+import { migrateFlueSqlSchema } from './schema-version.ts';
 import type { SqlStorage } from './sql-storage.ts';
 
 export const ATTACHMENT_CHUNK_BYTE_LENGTH = 512 * 1024;
@@ -27,8 +28,12 @@ interface SqlAttachmentChunkRow {
 }
 
 export function ensureSqlAttachmentTable(sql: SqlStorage): void {
-	sql.exec(
-		`CREATE TABLE IF NOT EXISTS flue_attachments (
+	// DDL must stay behind the schema-version fence like its two siblings
+	// (ensureSqlAgentExecutionTables, ensureSqlConversationStreamTables): a
+	// store recorded with an unknown version must reject before any write.
+	migrateFlueSqlSchema(sql, () => {
+		sql.exec(
+			`CREATE TABLE IF NOT EXISTS flue_attachments (
 			stream_path TEXT NOT NULL,
 			attachment_id TEXT NOT NULL,
 			mime_type TEXT NOT NULL,
@@ -39,9 +44,9 @@ export function ensureSqlAttachmentTable(sql: SqlStorage): void {
 			created_at INTEGER NOT NULL,
 			PRIMARY KEY (stream_path, attachment_id)
 		)`,
-	);
-	sql.exec(
-		`CREATE TABLE IF NOT EXISTS flue_attachment_chunks (
+		);
+		sql.exec(
+			`CREATE TABLE IF NOT EXISTS flue_attachment_chunks (
 			stream_path TEXT NOT NULL,
 			attachment_id TEXT NOT NULL,
 			chunk_index INTEGER NOT NULL CHECK (chunk_index >= 0),
@@ -50,11 +55,8 @@ export function ensureSqlAttachmentTable(sql: SqlStorage): void {
 			FOREIGN KEY (stream_path, attachment_id)
 				REFERENCES flue_attachments (stream_path, attachment_id) ON DELETE CASCADE
 		)`,
-	);
-	sql.exec(
-		`CREATE INDEX IF NOT EXISTS flue_attachments_conversation_idx
-		 ON flue_attachments (stream_path, conversation_id, attachment_id)`,
-	);
+		);
+	});
 }
 
 export class SqliteAttachmentStore implements AttachmentStore {
@@ -109,13 +111,6 @@ export class SqliteAttachmentStore implements AttachmentStore {
 		return { attachment: { ...row.attachment }, bytes: copyAttachmentBytes(row.bytes) };
 	}
 
-	async deleteForInstance(streamPath: string): Promise<void> {
-		this.runTransaction(() => {
-			this.sql.exec('DELETE FROM flue_attachment_chunks WHERE stream_path = ?', streamPath);
-			this.sql.exec('DELETE FROM flue_attachments WHERE stream_path = ?', streamPath);
-		});
-	}
-
 	private read(
 		streamPath: string,
 		attachmentId: string,
@@ -130,12 +125,14 @@ export class SqliteAttachmentStore implements AttachmentStore {
 			.toArray()[0] as SqlAttachmentRow | undefined;
 		if (!value) return null;
 		const chunkCount = parseChunkCount(value.chunk_count, attachmentId);
-		const chunks = this.sql.exec(
-			`SELECT chunk_index, bytes FROM flue_attachment_chunks
+		const chunks = this.sql
+			.exec(
+				`SELECT chunk_index, bytes FROM flue_attachment_chunks
 			 WHERE stream_path = ? AND attachment_id = ? ORDER BY chunk_index`,
-			streamPath,
-			attachmentId,
-		).toArray() as unknown as SqlAttachmentChunkRow[];
+				streamPath,
+				attachmentId,
+			)
+			.toArray() as unknown as SqlAttachmentChunkRow[];
 		return {
 			attachment: {
 				id: attachmentId,
@@ -157,18 +154,22 @@ function matchesInput(
 	existing: StoredAttachment & { conversationId: string },
 	input: PutAttachmentInput,
 ): boolean {
-	return sameAttachmentRef(existing.attachment, input.attachment) &&
+	return (
+		sameAttachmentRef(existing.attachment, input.attachment) &&
 		existing.conversationId === input.conversationId &&
-		attachmentBytesEqual(existing.bytes, input.bytes);
+		attachmentBytesEqual(existing.bytes, input.bytes)
+	);
 }
 
 function splitAttachmentBytes(bytes: Uint8Array): Uint8Array[] {
 	const count = Math.max(1, Math.ceil(bytes.byteLength / ATTACHMENT_CHUNK_BYTE_LENGTH));
 	return Array.from({ length: count }, (_, index) =>
-		copyAttachmentBytes(bytes.subarray(
-			index * ATTACHMENT_CHUNK_BYTE_LENGTH,
-			Math.min(bytes.byteLength, (index + 1) * ATTACHMENT_CHUNK_BYTE_LENGTH),
-		)),
+		copyAttachmentBytes(
+			bytes.subarray(
+				index * ATTACHMENT_CHUNK_BYTE_LENGTH,
+				Math.min(bytes.byteLength, (index + 1) * ATTACHMENT_CHUNK_BYTE_LENGTH),
+			),
+		),
 	);
 }
 
@@ -193,7 +194,10 @@ function reassembleAttachmentBytes(
 			throw new AttachmentIntegrityError({ attachmentId, reason: 'chunks' });
 		}
 		const bytes = sqlBytes(row.bytes);
-		if (bytes.byteLength > ATTACHMENT_CHUNK_BYTE_LENGTH || (index < chunkCount - 1 && bytes.byteLength === 0)) {
+		if (
+			bytes.byteLength > ATTACHMENT_CHUNK_BYTE_LENGTH ||
+			(index < chunkCount - 1 && bytes.byteLength === 0)
+		) {
 			throw new AttachmentIntegrityError({ attachmentId, reason: 'chunks' });
 		}
 		return bytes;

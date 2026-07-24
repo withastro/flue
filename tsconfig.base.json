@@ -10,6 +10,9 @@
 		"resolveJsonModule": true,
 		"target": "ES2022",
 		"lib": ["ESNext"],
+		// TS 7 defaults `types` to []; keep the ambient Node globals
+		// (process, Buffer, __dirname, ...) that packages rely on.
+		"types": ["node"],
 
 		// strictness
 		"strict": true,

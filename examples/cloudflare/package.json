@@ -2,17 +2,25 @@
 	"name": "cloudflare",
 	"private": true,
 	"type": "module",
+	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
+		"deploy": "vite build && wrangler deploy"
+	},
 	"dependencies": {
 		"@cloudflare/codemode": "*",
 		"@cloudflare/shell": "*",
 		"@flue/runtime": "workspace:*",
-		"agents": "^0.14.2",
+		"agents": "^0.17.4",
 		"hono": "^4.7.0",
 		"valibot": "^1.0.0"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260602.1",
+		"@cloudflare/vite-plugin": "^1.39.2",
+		"@cloudflare/workers-types": "^5.20260721.1",
 		"@flue/cli": "workspace:*",
-		"wrangler": "^4.97.0"
+		"@flue/vite": "workspace:*",
+		"vite": "^8.0.14",
+		"wrangler": "^4.113.0"
 	}
 }

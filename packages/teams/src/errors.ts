@@ -1,7 +1,7 @@
-export class InvalidTeamsConversationKeyError extends Error {
+export class InvalidTeamsInstanceIdError extends Error {
 	constructor() {
-		super('Invalid Microsoft Teams conversation key.');
-		this.name = 'InvalidTeamsConversationKeyError';
+		super('Invalid Microsoft Teams instance id.');
+		this.name = 'InvalidTeamsInstanceIdError';
 	}
 }
 

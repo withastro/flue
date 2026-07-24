@@ -65,7 +65,12 @@ export const emptyAgentState: AgentState = {
 };
 
 export type AgentReducerEvent =
-	| { type: 'local_send_submitted'; localId: string; message: string; images?: DeliveredAttachment[] }
+	| {
+			type: 'local_send_submitted';
+			localId: string;
+			message: string;
+			images?: DeliveredAttachment[];
+	  }
 	| { type: 'local_send_admitted'; localId: string; submissionId: string }
 	| { type: 'local_send_failed'; localId: string; error: Error }
 	| {
@@ -135,12 +140,17 @@ export function reduceAgentEvent(state: AgentState, event: AgentReducerEvent): A
 			if (event.conversation) {
 				const merged = converge({ ...state, conversation: event.conversation, historyReady: true });
 				return event.phase === 'loading' || event.phase === 'connecting'
-					? { ...merged, status: merged.status === 'idle' ? 'connecting' : merged.status, error: event.error }
+					? {
+							...merged,
+							status: merged.status === 'idle' ? 'connecting' : merged.status,
+							error: event.error ?? merged.error,
+						}
 					: merged;
 			}
 			return {
 				...state,
-				status: event.phase === 'loading' || event.phase === 'connecting' ? 'connecting' : state.status,
+				status:
+					event.phase === 'loading' || event.phase === 'connecting' ? 'connecting' : state.status,
 				error: event.error,
 			};
 		}
@@ -149,7 +159,9 @@ export function reduceAgentEvent(state: AgentState, event: AgentReducerEvent): A
 
 function converge(state: AgentState): AgentState {
 	const conversation = state.conversation;
-	const settledIds = new Set(conversation?.settlements.map((settlement) => settlement.submissionId) ?? []);
+	const settledIds = new Set(
+		conversation?.settlements.map((settlement) => settlement.submissionId) ?? [],
+	);
 	const localIdBySubmissionId = new Map(
 		state.localMessageIds.map((entry) => [entry.submissionId, entry.localId] as const),
 	);
@@ -195,10 +207,20 @@ function converge(state: AgentState): AgentState {
 				(part) => (part.type === 'text' || part.type === 'reasoning') && part.state === 'streaming',
 			),
 	);
-	const failedSettlement = conversation?.settlements.find(
-		(settlement) =>
-			settlement.outcome === 'failed' && state.localSubmissionIds.includes(settlement.submissionId),
+	// Only the most recently admitted local submission's settlement can drive
+	// error status: an earlier failure that a later local send has moved past
+	// must not keep pinning status/error after that later send settles.
+	const settlementBySubmissionId = new Map(
+		(conversation?.settlements ?? []).map(
+			(settlement) => [settlement.submissionId, settlement] as const,
+		),
 	);
+	const lastSettledLocalSubmission = [...state.localSubmissionIds]
+		.reverse()
+		.map((id) => settlementBySubmissionId.get(id))
+		.find((settlement): settlement is NonNullable<typeof settlement> => settlement !== undefined);
+	const failedSettlement =
+		lastSettledLocalSubmission?.outcome === 'failed' ? lastSettledLocalSubmission : undefined;
 	const activeSubmissionIds = state.activeSubmissionIds.filter((id) => !settledIds.has(id));
 	const hasFailedSend = state.failedSends.length > 0;
 
@@ -236,10 +258,6 @@ function optimisticMessage(
 		role: 'user',
 		purpose: 'user',
 		display: 'visible',
-		// Client-authored creation time so the just-sent row shows a timestamp
-		// instantly. On the optimistic→confirmed swap, converge() replaces this
-		// echo with the canonical message carrying the server-authored time.
-		metadata: { timestamp: new Date().toISOString() },
 		parts: [
 			{ type: 'text', text: event.message, state: 'done' },
 			// The echo has no durable attachment id yet, but it does have the bytes

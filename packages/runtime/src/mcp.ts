@@ -1,38 +1,18 @@
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
-import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import {
+	type AuthProvider,
 	type CallToolResult,
-	ErrorCode,
-	McpError,
+	Client,
+	SSEClientTransport,
+	StreamableHTTPClientTransport,
 	type Tool,
-} from '@modelcontextprotocol/sdk/types.js';
-import type { JsonSchemaValidator } from '@modelcontextprotocol/sdk/validation';
-import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker';
+	type Transport,
+} from '@modelcontextprotocol/client';
 import { version as runtimeVersion } from '../package.json' with { type: 'json' };
+import type { McpAuth, McpConnectionDefinition, McpTransport } from './mcp-types.ts';
 import { registerPreparedToolAdapter } from './tool-adapter.ts';
 import type { ToolDefinition } from './types.ts';
 
-/** Remote MCP transport. */
-export type McpTransport = 'streamable-http' | 'sse';
-
-/** Options for {@link connectMcpServer}. */
-export interface McpServerOptions {
-	/** MCP server endpoint. */
-	url: string | URL;
-	/** Defaults to modern streamable HTTP. Use `'sse'` for legacy MCP servers. */
-	transport?: McpTransport;
-	/** Headers merged into MCP transport requests. */
-	headers?: HeadersInit;
-	/** Additional MCP transport request configuration. */
-	requestInit?: RequestInit;
-	/** Custom fetch implementation used by the MCP transport. */
-	fetch?: typeof fetch;
-	/** Per-request timeout in milliseconds for MCP requests. Defaults to the MCP SDK default (60 seconds). */
-	timeoutMs?: number;
-	/** Reset the per-request timeout whenever the server sends a progress notification. Defaults to `false`. */
-	resetTimeoutOnProgress?: boolean;
-}
+export type { McpAuth, McpConnectionDefinition, McpTransport } from './mcp-types.ts';
 
 /** Request options in the MCP SDK's shape (its `timeout` is milliseconds). */
 type McpRequestOptions = {
@@ -40,9 +20,9 @@ type McpRequestOptions = {
 	resetTimeoutOnProgress?: boolean;
 };
 
-/** Connection returned by {@link connectMcpServer}. */
-export interface McpServerConnection {
-	/** Server name supplied to {@link connectMcpServer}. */
+/** Connection returned by {@link createMcpConnection}. */
+export interface McpConnection {
+	/** Server name supplied to {@link createMcpConnection}. */
 	name: string;
 	/** MCP tools adapted into ordinary Flue tool definitions. */
 	tools: ToolDefinition[];
@@ -50,52 +30,100 @@ export interface McpServerConnection {
 	close(): Promise<void>;
 }
 
-type McpClient = Pick<Client, 'callTool' | 'close' | 'connect' | 'listTools'>;
+/**
+ * Resolves `useMcpConnection()` declarations to live connections.
+ * Coordinators inject a per-instance caching resolver; a context without one
+ * connects fresh at every harness initialization.
+ */
+export interface McpConnectionResolver {
+	resolve(definition: McpConnectionDefinition): Promise<McpConnection>;
+}
 
-const mcpJsonSchemaValidator = new CfWorkerJsonSchemaValidator();
+/** A caching {@link McpConnectionResolver} with a teardown for coordinator shutdown. */
+export interface McpConnectionCache extends McpConnectionResolver {
+	/** Close every cached connection and forget them all. */
+	close(): Promise<void>;
+}
 
 /**
- * Connects to a remote MCP server and adapts its listed tools into ordinary
+ * A per-instance MCP connection cache: the first declaration of a server
+ * name connects; later submissions reuse the live connection for the
+ * instance's in-memory lifetime, so definitions are read at first connect
+ * (an `auth` resolver stays per-request). Concurrent resolves of one name
+ * share a single in-flight connect. A failed connect is evicted immediately —
+ * a transient outage must not brick the instance, so the next submission
+ * retries with a freshly read definition.
+ */
+export function createMcpConnectionCache(): McpConnectionCache {
+	const connections = new Map<string, Promise<McpConnection>>();
+	return {
+		resolve(definition: McpConnectionDefinition): Promise<McpConnection> {
+			const cached = connections.get(definition.name);
+			if (cached) return cached;
+			const pending = createMcpConnection(definition);
+			connections.set(definition.name, pending);
+			pending.catch(() => {
+				if (connections.get(definition.name) === pending) {
+					connections.delete(definition.name);
+				}
+			});
+			return pending;
+		},
+		async close(): Promise<void> {
+			const pending = [...connections.values()];
+			connections.clear();
+			await Promise.allSettled(pending.map(async (connection) => (await connection).close()));
+		},
+	};
+}
+
+type McpClient = Pick<Client, 'callTool' | 'close' | 'connect' | 'listTools'>;
+
+/**
+ * Connects to a remote MCP server described by a
+ * {@link McpConnectionDefinition} and adapts its listed tools into ordinary
  * Flue tool definitions.
  *
  * Adapted tool names use `mcp__<server>__<tool>`. Unsupported characters are
  * replaced with underscores, and duplicate adapted names are rejected. Close
  * the returned connection when its tools are no longer needed.
  */
-export async function connectMcpServer(
-	name: string,
-	options: McpServerOptions,
-): Promise<McpServerConnection> {
-	const url = options.url instanceof URL ? options.url : new URL(options.url);
-	const requestInit = mergeRequestInit(options.requestInit, options.headers);
-	const transport = await createTransport(
+export async function createMcpConnection(
+	definition: McpConnectionDefinition,
+): Promise<McpConnection> {
+	const url = definition.url instanceof URL ? definition.url : new URL(definition.url);
+	const requestInit = mergeRequestInit(definition.requestInit, definition.headers);
+	const transport = createTransport(
 		url,
-		options.transport ?? 'streamable-http',
+		definition.transport ?? 'streamable-http',
 		requestInit,
-		options.fetch,
+		definition.fetch,
+		definition.auth === undefined ? undefined : createAuthProvider(definition.auth),
 	);
-	const client = new Client(
-		{
-			name: 'flue',
-			version: runtimeVersion,
-		},
-		{
-			jsonSchemaValidator: mcpJsonSchemaValidator,
-		},
-	);
-
-	return connectMcpServerWithClient(name, client, transport, {
-		timeout: options.timeoutMs,
-		resetTimeoutOnProgress: options.resetTimeoutOnProgress,
+	const client = new Client({
+		name: 'flue',
+		version: runtimeVersion,
 	});
+
+	return createMcpConnectionWithClient(
+		definition.name,
+		client,
+		transport,
+		{
+			timeout: definition.timeoutMs,
+			resetTimeoutOnProgress: definition.resetTimeoutOnProgress,
+		},
+		{ tools: definition.tools },
+	);
 }
 
-export async function connectMcpServerWithClient(
+export async function createMcpConnectionWithClient(
 	name: string,
 	client: McpClient,
 	transport: Transport,
 	requestOptions: McpRequestOptions = {},
-): Promise<McpServerConnection> {
+	selection: { tools?: readonly string[] } = {},
+): Promise<McpConnection> {
 	try {
 		await client.connect(transport);
 		let page = await client.listTools(undefined, requestOptions);
@@ -114,7 +142,12 @@ export async function connectMcpServerWithClient(
 
 		return {
 			name,
-			tools: createMcpTools(name, client, tools, requestOptions),
+			tools: createMcpTools(
+				name,
+				client,
+				selectMcpTools(name, tools, selection.tools),
+				requestOptions,
+			),
 			close: () => client.close(),
 		};
 	} catch (error) {
@@ -123,22 +156,79 @@ export async function connectMcpServerWithClient(
 	}
 }
 
-async function createTransport(
+/**
+ * Adapt the `auth` credential to the MCP SDK's {@link AuthProvider}: the
+ * transport calls `token()` before every request, and on a 401 awaits
+ * `onUnauthorized` and retries once — re-resolving the token, so the
+ * application's credential store is the refresh policy.
+ */
+function createAuthProvider(auth: McpAuth): AuthProvider {
+	const resolveToken = typeof auth === 'function' ? auth : () => auth;
+	return {
+		token: async () => resolveToken(),
+		onUnauthorized: async () => {},
+	};
+}
+
+/**
+ * Apply the `tools` allowlist to the discovered listing, in allowlist order.
+ * Every allowlisted name must exist and be callable — a typo or an
+ * unsupported tool must fail loud, not silently narrow the tool set.
+ */
+function selectMcpTools(
+	serverName: string,
+	discovered: Tool[],
+	allowlist: readonly string[] | undefined,
+): Tool[] {
+	if (allowlist === undefined) return discovered;
+	const byName = new Map(discovered.map((tool) => [tool.name, tool]));
+	const duplicates = allowlist.filter((name, index) => allowlist.indexOf(name) !== index);
+	if (duplicates.length > 0) {
+		throw new Error(
+			`[flue] MCP server "${serverName}" tools allowlist repeats ${formatToolNames(duplicates)}.`,
+		);
+	}
+	const unknown = allowlist.filter((name) => !byName.has(name));
+	if (unknown.length > 0) {
+		throw new Error(
+			`[flue] MCP server "${serverName}" does not expose ${formatToolNames(unknown)} named in the tools allowlist. Discovered tools: ${
+				discovered.map((tool) => tool.name).join(', ') || '(none)'
+			}.`,
+		);
+	}
+	return allowlist.map((name) => {
+		const tool = byName.get(name) as Tool;
+		if (tool.execution?.taskSupport === 'required') {
+			throw new Error(
+				`[flue] MCP tool "${name}" from server "${serverName}" requires task-based execution, which is not supported — remove it from the tools allowlist.`,
+			);
+		}
+		return tool;
+	});
+}
+
+function formatToolNames(names: readonly string[]): string {
+	return [...new Set(names)].map((name) => JSON.stringify(name)).join(', ');
+}
+
+function createTransport(
 	url: URL,
 	transport: McpTransport,
 	requestInit: RequestInit,
 	fetchImpl: typeof fetch | undefined,
+	authProvider: AuthProvider | undefined,
 ) {
 	if (transport === 'sse') {
-		const { SSEClientTransport } = await import('@modelcontextprotocol/sdk/client/sse.js');
 		return new SSEClientTransport(url, {
 			requestInit,
 			fetch: fetchImpl,
+			authProvider,
 		});
 	}
 	return new StreamableHTTPClientTransport(url, {
 		requestInit,
 		fetch: fetchImpl,
+		authProvider,
 	});
 }
 
@@ -160,9 +250,6 @@ function createMcpTools(
 
 	return callableTools.map((tool) => {
 		const toolName = createToolName(serverName, tool.name);
-		const outputValidator = tool.outputSchema
-			? mcpJsonSchemaValidator.getValidator(tool.outputSchema)
-			: undefined;
 		if (names.has(toolName)) {
 			throw new Error(
 				`[flue] MCP tools from server "${serverName}" produced duplicate tool name "${toolName}".`,
@@ -183,16 +270,16 @@ function createMcpTools(
 			parameters: normalizeInputSchema(tool.inputSchema),
 			async execute(args, signal) {
 				if (signal?.aborted) throw new Error('Operation aborted');
-				const result = (await client.callTool(
+				// The client validates structured output against the tool's
+				// declared output schema itself and surfaces a mismatch as an
+				// error — nothing to re-check here.
+				const result: CallToolResult = await client.callTool(
 					{
 						name: tool.name,
 						arguments: args,
 					},
-					undefined,
 					{ ...requestOptions, signal },
-				)) as CallToolResult;
-
-				validateMcpResult(tool.name, result, outputValidator);
+				);
 				const text = formatMcpResult(result);
 				if (result.isError) {
 					throw new Error(text);
@@ -202,28 +289,6 @@ function createMcpTools(
 		});
 		return Object.freeze(definition);
 	});
-}
-
-function validateMcpResult(
-	toolName: string,
-	result: CallToolResult,
-	validator: JsonSchemaValidator<unknown> | undefined,
-): void {
-	if (!validator) return;
-	if (result.structuredContent === undefined && !result.isError) {
-		throw new McpError(
-			ErrorCode.InvalidRequest,
-			`Tool ${toolName} has an output schema but did not return structured content`,
-		);
-	}
-	if (result.structuredContent === undefined) return;
-	const validation = validator(result.structuredContent);
-	if (!validation.valid) {
-		throw new McpError(
-			ErrorCode.InvalidParams,
-			`Structured content does not match the tool's output schema: ${validation.errorMessage}`,
-		);
-	}
 }
 
 function mergeRequestInit(
@@ -251,11 +316,19 @@ function sanitizeToolNamePart(value: string): string {
 }
 
 function createToolDescription(serverName: string, tool: Tool): string {
-	const originalName = tool.name;
+	const parts: string[] = [];
+	// The adapted name parses back to the original ("mcp__linear__create_issue")
+	// unless sanitization altered a part — only then does the mapping need
+	// spelling out, so server descriptions that cross-reference sibling tools
+	// by their original names stay followable.
+	const sanitized =
+		sanitizeToolNamePart(serverName) !== serverName ||
+		sanitizeToolNamePart(tool.name) !== tool.name;
+	if (sanitized) parts.push(`MCP tool "${tool.name}" from server "${serverName}".`);
 	const title = tool.title ?? tool.annotations?.title;
-	const parts = [`MCP tool "${originalName}" from server "${serverName}".`];
-	if (title && title !== originalName) parts.push(`Title: ${title}.`);
+	if (title && title !== tool.name) parts.push(`Title: ${title}.`);
 	if (tool.description) parts.push(tool.description);
+	if (parts.length === 0) parts.push(`MCP tool "${tool.name}" from server "${serverName}".`);
 	return parts.join(' ');
 }
 

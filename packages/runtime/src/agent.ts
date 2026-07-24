@@ -1,7 +1,8 @@
 import type { AgentTool, AgentToolResult } from '@earendil-works/pi-agent-core';
 import { type Static, Type } from '@earendil-works/pi-ai';
 import { composeTimeoutSignal } from './abort.ts';
-import type { AgentProfile, PackagedSkillDirectory, SessionEnv } from './types.ts';
+import { decodeBase64 } from './base64.ts';
+import type { PackagedSkillDirectory, SessionEnv } from './types.ts';
 
 const MAX_READ_LINES = 2000;
 const MAX_READ_BYTES = 50 * 1024;
@@ -15,7 +16,12 @@ export const READ_SKILL_RESOURCE_TOOL_NAME = 'read_skill_resource';
 export interface TaskToolParams {
 	prompt: string;
 	description?: string;
-	agent?: string;
+	/**
+	 * Required and non-blank in the model-facing schema. Agent-less blank
+	 * children exist only outside the tool path: programmatic `session.task()`
+	 * calls and durable replays of records without an `agent` argument.
+	 */
+	agent: string;
 	cwd?: string;
 	attachments?: Array<{ id: string }>;
 }
@@ -28,26 +34,28 @@ export interface TaskToolResultDetails {
 	cwd?: string;
 }
 
-export interface CreateToolsOptions {
-	task?: (
-		params: TaskToolParams,
-		signal?: AbortSignal,
-	) => Promise<AgentToolResult<TaskToolResultDetails>>;
-	subagents?: Record<string, AgentProfile>;
-	packagedSkills?: Record<string, PackagedSkillDirectory>;
-}
-
-export function createTools(env: SessionEnv, options?: CreateToolsOptions): AgentTool<any>[] {
-	const tools: AgentTool<any>[] = [
-		createReadTool(env, options?.packagedSkills ?? {}),
-		createWriteTool(env),
-		createEditTool(env),
-		createBashTool(env),
-		createGrepTool(env),
-		createGlobTool(env),
-	];
-	if (options?.task) tools.push(createTaskTool(options.task, options.subagents ?? {}));
-	return tools;
+/**
+ * Layer packaged-skill routing onto an env before handing it to model-facing
+ * tool factories: `readFile` serves `/.flue/packaged-skills/` paths from the
+ * in-memory catalog (and reports unknown paths under that root as missing)
+ * and delegates everything else. Session-internal — `harness.sandbox` and
+ * `useTool` handlers see the real env, never this overlay.
+ */
+export function overlayPackagedSkills(
+	env: SessionEnv,
+	packagedSkills: Record<string, PackagedSkillDirectory>,
+): SessionEnv {
+	return {
+		...env,
+		async readFile(path: string): Promise<string> {
+			const packagedFile = readPackagedSkillFile(packagedSkills, path);
+			if (packagedFile !== undefined) return packagedFile;
+			if (path.startsWith(PACKAGED_SKILLS_ROOT)) {
+				throw new Error(`[flue] Packaged skill file not found: ${path}`);
+			}
+			return env.readFile(path);
+		},
+	};
 }
 
 const ReadParams = Type.Object({
@@ -74,10 +82,12 @@ export function createPackagedSkillReadTool(
 	};
 }
 
-function createReadTool(
-	env: SessionEnv,
-	packagedSkills: Record<string, PackagedSkillDirectory>,
-): AgentTool<typeof ReadParams> {
+/**
+ * The framework's standard `read` tool over a {@link SessionEnv}. Needs only
+ * the file verbs. Use it (with the other `create*Tool` factories) to compose
+ * a {@link SandboxFactory}'s `tools` list instead of rebuilding from scratch.
+ */
+export function createReadTool(env: SessionEnv): AgentTool<typeof ReadParams> {
 	return {
 		name: 'read',
 		label: 'Read File',
@@ -86,19 +96,62 @@ function createReadTool(
 		parameters: ReadParams,
 		async execute(_toolCallId: string, params: Static<typeof ReadParams>, signal?: AbortSignal) {
 			throwIfAborted(signal);
-
-			const packagedFile = readPackagedSkillFile(packagedSkills, params.path);
-			if (packagedFile !== undefined) {
-				return formatReadContent(params.path, packagedFile, params.offset, params.limit);
-			}
-			if (params.path.startsWith(PACKAGED_SKILLS_ROOT)) {
-				throw new Error(`[flue] Packaged skill file not found: ${params.path}`);
-			}
-
 			const content = await env.readFile(params.path);
 			return formatReadContent(params.path, content, params.offset, params.limit);
 		},
 	};
+}
+
+/**
+ * Per-file mutation locks shared by the standard `write` and `edit` tools.
+ *
+ * A tool batch executes in parallel, so two mutations of the same file would
+ * otherwise read one snapshot and last-write-wins — silently losing edits
+ * and, when a shorter truncating write finishes after a longer one, leaving
+ * corrupt tail bytes. Chaining mutations per resolved path keeps cross-file
+ * parallelism while every read → modify → write transaction sees its
+ * predecessor's result, in dispatch order — so a genuine conflict surfaces
+ * as a real "could not find" error instead of a silent loss.
+ *
+ * Keyed per env instance (one tool list per batch shares one env), with
+ * paths canonicalized through `env.resolvePath` — alias coalescing is as
+ * good as the adapter's resolution. A `bash` command mutating the same file
+ * concurrently remains unsynchronized; a shell cannot take this lock.
+ *
+ * Abort discipline (matching pi's file-mutation queue): the locked operation
+ * checks the signal between awaits rather than rejecting from an abort
+ * listener, so the lock never releases while a filesystem write is in
+ * flight.
+ */
+const fileMutationLocks = new WeakMap<SessionEnv, Map<string, Promise<void>>>();
+
+function withFileMutationLock<T>(
+	env: SessionEnv,
+	path: string,
+	operation: () => Promise<T>,
+): Promise<T> {
+	let locks = fileMutationLocks.get(env);
+	if (!locks) {
+		locks = new Map();
+		fileMutationLocks.set(env, locks);
+	}
+	let key: string;
+	try {
+		key = env.resolvePath(path);
+	} catch {
+		key = path;
+	}
+	const tail = locks.get(key) ?? Promise.resolve();
+	const run = tail.then(operation);
+	const next = run.then(
+		() => undefined,
+		() => undefined,
+	);
+	locks.set(key, next);
+	void next.then(() => {
+		if (locks.get(key) === next) locks.delete(key);
+	});
+	return run;
 }
 
 const WriteParams = Type.Object({
@@ -106,7 +159,11 @@ const WriteParams = Type.Object({
 	content: Type.String({ description: 'Content to write to the file' }),
 });
 
-function createWriteTool(env: SessionEnv): AgentTool<typeof WriteParams> {
+/**
+ * The framework's standard `write` tool over a {@link SessionEnv}. Needs only
+ * the file verbs.
+ */
+export function createWriteTool(env: SessionEnv): AgentTool<typeof WriteParams> {
 	return {
 		name: 'write',
 		label: 'Write File',
@@ -115,18 +172,22 @@ function createWriteTool(env: SessionEnv): AgentTool<typeof WriteParams> {
 		parameters: WriteParams,
 		async execute(_toolCallId: string, params: Static<typeof WriteParams>, signal?: AbortSignal) {
 			throwIfAborted(signal);
-			// SessionEnv.writeFile creates missing parent directories itself
-			// (the FlueFs.writeFile guarantee), so no eager mkdir here.
-			await env.writeFile(params.path, params.content);
-			return {
-				content: [
-					{
-						type: 'text',
-						text: `Successfully wrote ${params.content.length} bytes to ${params.path}`,
-					},
-				],
-				details: { path: params.path, size: params.content.length },
-			};
+			return withFileMutationLock(env, params.path, async () => {
+				// Re-check after the lock wait; never between write start and end.
+				throwIfAborted(signal);
+				// SessionEnv.writeFile creates missing parent directories itself
+				// (the FlueFs.writeFile guarantee), so no eager mkdir here.
+				await env.writeFile(params.path, params.content);
+				return {
+					content: [
+						{
+							type: 'text',
+							text: `Successfully wrote ${params.content.length} bytes to ${params.path}`,
+						},
+					],
+					details: { path: params.path, size: params.content.length },
+				};
+			});
 		},
 	};
 }
@@ -138,7 +199,11 @@ const EditParams = Type.Object({
 	replaceAll: Type.Optional(Type.Boolean({ description: 'Replace all occurrences' })),
 });
 
-function createEditTool(env: SessionEnv): AgentTool<typeof EditParams> {
+/**
+ * The framework's standard `edit` tool over a {@link SessionEnv}. Needs only
+ * the file verbs.
+ */
+export function createEditTool(env: SessionEnv): AgentTool<typeof EditParams> {
 	return {
 		name: 'edit',
 		label: 'Edit File',
@@ -150,39 +215,47 @@ function createEditTool(env: SessionEnv): AgentTool<typeof EditParams> {
 			if (params.oldText === '') {
 				throw new Error('oldText must be a non-empty string.');
 			}
-			const content = await env.readFile(params.path);
+			// The whole read → replace → write transaction holds the lock, so a
+			// same-file edit in the same parallel batch sees this one's result.
+			return withFileMutationLock(env, params.path, async () => {
+				throwIfAborted(signal);
+				const content = await env.readFile(params.path);
+				throwIfAborted(signal);
 
-			if (params.replaceAll) {
-				const newContent = content.replaceAll(params.oldText, params.newText);
-				if (newContent === content) {
-					throw new Error(`Could not find the text in ${params.path}. No changes made.`);
+				// Function replacer: a plain-string second argument would interpret
+				// `$$`/`$&`-style replacement patterns in the model-supplied text.
+				if (params.replaceAll) {
+					const newContent = content.replaceAll(params.oldText, () => params.newText);
+					if (newContent === content) {
+						throw new Error(`Could not find the text in ${params.path}. No changes made.`);
+					}
+					await env.writeFile(params.path, newContent);
+					const count = content.split(params.oldText).length - 1;
+					return {
+						content: [{ type: 'text', text: `Replaced ${count} occurrences in ${params.path}` }],
+						details: { path: params.path, replacements: count },
+					};
 				}
+
+				const occurrences = countOccurrences(content, params.oldText);
+				if (occurrences === 0) {
+					throw new Error(
+						`Could not find the exact text in ${params.path}. Make sure your oldText matches exactly, including whitespace and indentation.`,
+					);
+				}
+				if (occurrences > 1) {
+					throw new Error(
+						`Found ${occurrences} occurrences of the text in ${params.path}. Provide more surrounding context to make the match unique, or use replaceAll.`,
+					);
+				}
+
+				const newContent = content.replace(params.oldText, () => params.newText);
 				await env.writeFile(params.path, newContent);
-				const count = content.split(params.oldText).length - 1;
 				return {
-					content: [{ type: 'text', text: `Replaced ${count} occurrences in ${params.path}` }],
-					details: { path: params.path, replacements: count },
+					content: [{ type: 'text', text: `Successfully edited ${params.path}` }],
+					details: { path: params.path },
 				};
-			}
-
-			const occurrences = countOccurrences(content, params.oldText);
-			if (occurrences === 0) {
-				throw new Error(
-					`Could not find the exact text in ${params.path}. Make sure your oldText matches exactly, including whitespace and indentation.`,
-				);
-			}
-			if (occurrences > 1) {
-				throw new Error(
-					`Found ${occurrences} occurrences of the text in ${params.path}. Provide more surrounding context to make the match unique, or use replaceAll.`,
-				);
-			}
-
-			const newContent = content.replace(params.oldText, params.newText);
-			await env.writeFile(params.path, newContent);
-			return {
-				content: [{ type: 'text', text: `Successfully edited ${params.path}` }],
-				details: { path: params.path },
-			};
+			});
 		},
 	};
 }
@@ -192,7 +265,12 @@ const BashParams = Type.Object({
 	timeout: Type.Optional(Type.Number({ description: 'Timeout in seconds' })),
 });
 
-function createBashTool(env: SessionEnv): AgentTool<typeof BashParams> {
+/**
+ * The framework's standard `bash` tool over a {@link SessionEnv}. Requires a
+ * working `env.exec` — leave it out of a `tools` list for sandboxes that
+ * don't execute shell commands.
+ */
+export function createBashTool(env: SessionEnv): AgentTool<typeof BashParams> {
 	return {
 		name: 'bash',
 		label: 'Run Command',
@@ -263,9 +341,16 @@ const TaskParams = Type.Object({
 		Type.String({ description: 'Short human-readable label for the delegated work' }),
 	),
 	prompt: Type.String({ description: 'Focused instructions for the child agent' }),
-	agent: Type.Optional(
-		Type.String({ description: 'Declared subagent to use for the child agent' }),
-	),
+	// Required in the schema, but a plain string rather than an enum: the
+	// live roster can outgrow the frozen baseline (a dynamically declared
+	// subagent is delegable the same turn its `resources` signal announced
+	// it), and an enum would rewrite the tool spec on every roster flip.
+	agent: Type.String({
+		minLength: 1,
+		description:
+			'Subagent to run the task with, from the list of currently available agents. ' +
+			'Agents that have been removed from the list are no longer usable (until re-introduced, if ever).',
+	}),
 	cwd: Type.Optional(
 		Type.String({
 			description:
@@ -282,25 +367,23 @@ const TaskParams = Type.Object({
 	),
 });
 
-/** Build Flue's framework-owned `task` tool. */
+/**
+ * Build Flue's framework-owned `task` tool. Always in the tool set, and the
+ * spec is fully STATIC — no roster, no per-agent text — so the serialized
+ * tools block never changes and keeps hitting the provider's prompt-cache
+ * prefix regardless of roster state. The roster lives in the system prompt's
+ * "Available Agents" section (same freeze semantics as the skill catalog);
+ * mid-window changes are announced as `resources` signals; and `agent` is
+ * schema-required, resolving against the live roster at run time — an agent
+ * with no `useSubagent()` declarations has no valid value to pass.
+ */
 export function createTaskTool(
 	runTask: (
 		params: TaskToolParams,
 		signal?: AbortSignal,
 		toolCallId?: string,
 	) => Promise<AgentToolResult<TaskToolResultDetails>>,
-	subagents: Record<string, AgentProfile>,
 ): AgentTool<typeof TaskParams> {
-	const agentEntries = Object.entries(subagents);
-	const agentDescription =
-		agentEntries.length > 0
-			? `\nAvailable agents:\n${agentEntries
-					.map(([name, profile]) =>
-						profile.description ? `- ${name}: ${profile.description}` : `- ${name}`,
-					)
-					.join('\n')}`
-			: ' No subagents are currently defined.';
-
 	return {
 		name: 'task',
 		label: 'Run Task',
@@ -308,8 +391,8 @@ export function createTaskTool(
 			'Delegate a focused task to a detached child agent with its own context. ' +
 			'Use this for independent research, file exploration, or parallel work. ' +
 			'Pass attachment IDs shown in the conversation to include those images. ' +
-			'The task returns only its final answer to this conversation.' +
-			agentDescription,
+			'The task returns only its final answer to this conversation. ' +
+			'Agents available for delegation are listed under "Available Agents" in the system prompt.',
 		parameters: TaskParams,
 		async execute(toolCallId: string, params: Static<typeof TaskParams>, signal?: AbortSignal) {
 			throwIfAborted(signal);
@@ -318,21 +401,17 @@ export function createTaskTool(
 	};
 }
 
+/**
+ * The `name` schema is a plain string, validated at run time — a literal
+ * union of skill names would rewrite the tool spec (and invalidate the
+ * provider's prompt cache) every time a dynamically declared skill flips.
+ * An unknown name returns a factual miss listing the available skills.
+ */
 export function createActivateSkillTool(
-	skillNames: string[],
 	activate: (name: string, signal?: AbortSignal) => Promise<string>,
 ): AgentTool<any> {
-	const sortedNames = [...skillNames].sort();
-	const [firstName] = sortedNames;
-	if (!firstName) {
-		throw new Error('[flue] Cannot create activate_skill tool without available skills.');
-	}
-	const NameSchema =
-		sortedNames.length === 1
-			? Type.Literal(firstName)
-			: Type.Union(sortedNames.map((name) => Type.Literal(name)));
 	const ActivateSkillParams = Type.Object({
-		name: NameSchema,
+		name: Type.String({ description: 'Name of the skill to activate' }),
 	});
 
 	return {
@@ -387,10 +466,14 @@ const GrepParams = Type.Object({
 	literal: Type.Optional(Type.Boolean({ description: 'Match the pattern as literal text' })),
 });
 
-const grepBackends = new WeakMap<SessionEnv, Promise<'rg' | 'grep'>>();
+// Keyed on env.exec rather than the env object: the session hands tool
+// factories a fresh per-call overlay env (packaged-skill routing), but the
+// exec function reference is stable across overlays — so the probe still
+// runs once per underlying sandbox.
+const grepBackends = new WeakMap<SessionEnv['exec'], Promise<'rg' | 'grep'>>();
 
 function resolveGrepBackend(env: SessionEnv): Promise<'rg' | 'grep'> {
-	let backend = grepBackends.get(env);
+	let backend = grepBackends.get(env.exec);
 	if (!backend) {
 		// No caller signal here: the probe result is cached per-env, so an
 		// operation abort mid-probe would poison the cache with 'grep'. A
@@ -399,12 +482,16 @@ function resolveGrepBackend(env: SessionEnv): Promise<'rg' | 'grep'> {
 			.exec('rg --version', { timeoutMs: 10_000 })
 			.then((result) => (result.exitCode === 0 ? 'rg' : 'grep'))
 			.catch(() => 'grep');
-		grepBackends.set(env, backend);
+		grepBackends.set(env.exec, backend);
 	}
 	return backend;
 }
 
-function createGrepTool(env: SessionEnv): AgentTool<typeof GrepParams> {
+/**
+ * The framework's standard `grep` tool over a {@link SessionEnv}. Requires a
+ * working `env.exec` (searches via `rg` or `grep` in the sandbox).
+ */
+export function createGrepTool(env: SessionEnv): AgentTool<typeof GrepParams> {
 	return {
 		name: 'grep',
 		label: 'Search Files',
@@ -465,7 +552,11 @@ const GlobParams = Type.Object({
 	path: Type.Optional(Type.String({ description: 'Directory to search in (default: .)' })),
 });
 
-function createGlobTool(env: SessionEnv): AgentTool<typeof GlobParams> {
+/**
+ * The framework's standard `glob` tool over a {@link SessionEnv}. Requires a
+ * working `env.exec` (finds files via `find` in the sandbox).
+ */
+export function createGlobTool(env: SessionEnv): AgentTool<typeof GlobParams> {
 	return {
 		name: 'glob',
 		label: 'Find Files',
@@ -515,12 +606,10 @@ function readPackagedSkillFile(
 ): string | undefined {
 	for (const skill of Object.values(skills)) {
 		for (const [filePath, file] of Object.entries(skill.files)) {
-			if (path !== packagedSkillReadPath(skill.id, filePath)) continue;
+			if (path !== formatPackagedSkillFilePath(skill.id, filePath)) continue;
 			return file.kind === 'binary'
 				? wrapBase64ForReading(file.content)
-				: new TextDecoder().decode(
-						Uint8Array.from(atob(file.content), (character) => character.charCodeAt(0)),
-					);
+				: new TextDecoder().decode(decodeBase64(file.content));
 		}
 	}
 	return undefined;
@@ -543,11 +632,21 @@ function formatReadContent(path: string, content: string, offset?: number, limit
 
 	const endLine = limit ? startLine + limit : allLines.length;
 	const lines = allLines.slice(startLine, endLine);
-	const { text: truncatedText, wasTruncated } = truncateHead(lines, MAX_READ_LINES, MAX_READ_BYTES);
+	const {
+		text: truncatedText,
+		wasTruncated,
+		linesEmitted,
+	} = truncateHead(lines, MAX_READ_LINES, MAX_READ_BYTES);
 
 	let output = truncatedText;
-	if (wasTruncated) {
-		const shownEnd = startLine + truncatedText.split('\n').length;
+	if (wasTruncated && linesEmitted === 0) {
+		// The first requested line alone exceeds the byte budget (e.g. a
+		// minified single-line file). There is no line-based offset that
+		// reaches the rest of it, so say so instead of advising a skip-ahead
+		// that would silently drop the line's content.
+		output += `\n\n[Line ${startLine + 1} exceeds the ${MAX_READ_BYTES}-byte read limit; showing the first ${MAX_READ_BYTES} bytes of it. The remainder of this line is not accessible via offset/limit.]`;
+	} else if (wasTruncated) {
+		const shownEnd = startLine + linesEmitted;
 		output += `\n\n[Showing lines ${startLine + 1}-${shownEnd} of ${allLines.length}. Use offset=${shownEnd + 1} to continue.]`;
 	}
 
@@ -558,11 +657,7 @@ function formatReadContent(path: string, content: string, offset?: number, limit
 }
 
 export function formatPackagedSkillFilePath(skillId: string, filePath: string): string {
-	return packagedSkillReadPath(skillId, filePath);
-}
-
-function packagedSkillReadPath(skillId: string, filePath: string): string {
-	return `/.flue/packaged-skills/${encodeURIComponent(skillId)}/${filePath}`;
+	return `${PACKAGED_SKILLS_ROOT}${encodeURIComponent(skillId)}/${filePath}`;
 }
 
 function countOccurrences(str: string, substr: string): number {
@@ -583,7 +678,7 @@ function truncateHead(
 	lines: string[],
 	maxLines: number,
 	maxBytes: number,
-): { text: string; wasTruncated: boolean } {
+): { text: string; wasTruncated: boolean; linesEmitted: number } {
 	let result = '';
 	let lineCount = 0;
 	let wasTruncated = false;
@@ -596,13 +691,19 @@ function truncateHead(
 		const next = lineCount === 0 ? line : `\n${line}`;
 		if (result.length + next.length > maxBytes) {
 			wasTruncated = true;
+			if (lineCount === 0) {
+				// The first line alone exceeds the byte budget (e.g. a minified
+				// single-line file) — surface a byte-budget-sized prefix instead
+				// of returning nothing.
+				result = line.slice(0, maxBytes);
+			}
 			break;
 		}
 		result += next;
 		lineCount++;
 	}
 
-	return { text: result, wasTruncated };
+	return { text: result, wasTruncated, linesEmitted: lineCount };
 }
 
 function truncateTail(

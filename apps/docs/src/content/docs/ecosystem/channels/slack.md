@@ -4,7 +4,7 @@ description: Receive verified Slack events and use the Slack Web API from applic
 package:
   name: '@flue/slack'
   href: https://www.npmjs.com/package/@flue/slack
-lastReviewedAt: 2026-06-13
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -23,7 +23,7 @@ The Slack blueprint installs `@flue/slack` and Slack's official `@slack/web-api`
 import { dispatch } from '@flue/runtime';
 import { createSlackChannel } from '@flue/slack';
 import { WebClient } from '@slack/web-api';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const client = new WebClient(process.env.SLACK_BOT_TOKEN);
 
@@ -34,8 +34,8 @@ export const channel = createSlackChannel({
     if (payload.event.type !== 'app_mention') return;
 
     const event = payload.event;
-    await dispatch(assistant, {
-      id: channel.conversationKey({
+    await dispatch(Assistant, {
+      id: channel.instanceId({
         teamId: payload.team_id,
         channelId: event.channel,
         threadTs: event.thread_ts ?? event.ts,
@@ -53,6 +53,18 @@ export const channel = createSlackChannel({
 
 The abridged example omits the generated `replyInThread()` tool. The complete blueprint binds that tool in the agent module, so verified app mentions reach a thread-scoped agent instance and replies return to the same thread. Interactivity and slash-command callbacks are optional secondary additions: each callback publishes its corresponding route only when enabled.
 
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as slack } from './channels/slack.ts';
+
+app.route('/channels/slack', slack.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/slack` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
+
 ## Configure
 
 | Variable               | Purpose                                                    |
@@ -62,8 +74,9 @@ The abridged example omits the generated `replyInThread()` tool. The complete bl
 
 The blueprint installs and configures `@flue/slack` for inbound requests, along
 with Slack's official `@slack/web-api` SDK for making outbound API calls. After
-running the command, you will have a new `src/channels/slack.ts` channel with
-new `/channels/slack/*` webhook routes set up and ready to receive events.
+running the command, you will have a new `src/channels/slack.ts` channel whose
+webhook routes are served wherever `app.ts` mounts `channel.route()` —
+conventionally `/channels/slack/*`.
 
 ## Supported Webhooks
 
@@ -83,7 +96,7 @@ verification is answered internally after signature verification.
 ```ts title="src/channels/slack.ts"
 import { dispatch } from '@flue/runtime';
 import { createSlackChannel } from '@flue/slack';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const channel = createSlackChannel({
   signingSecret: process.env.SLACK_SIGNING_SECRET!,
@@ -100,8 +113,15 @@ export const channel = createSlackChannel({
           channelId: event.channel,
           threadTs: event.thread_ts ?? event.ts,
         };
-        await dispatch(assistant, {
-          id: channel.conversationKey(thread),
+        await dispatch(Assistant, {
+          id: channel.instanceId(thread),
+          // Recorded once when this event creates the instance; ignored after.
+          initialData: {
+            channelId: thread.channelId,
+            threadTs: thread.threadTs,
+            startedBy: event.user,
+            startedAt: new Date(Number(event.ts) * 1000).toISOString(),
+          },
           message: {
             kind: 'signal',
             type: 'slack.app_mention',
@@ -218,7 +238,7 @@ export function replyInThread(ref: { channelId: string; threadTs: string }) {
     name: 'reply_in_slack_thread',
     description: 'Reply in the Slack thread bound to this agent.',
     input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
-    async run({ input: { text } }) {
+    async run({ data: { text } }) {
       const result = await client.chat.postMessage({
         channel: ref.channelId,
         thread_ts: ref.threadTs,
@@ -230,19 +250,39 @@ export function replyInThread(ref: { channelId: string; threadTs: string }) {
 }
 ```
 
-Bind the destination in trusted code:
+Bind the destination in trusted code. `data` is the instance's creation data —
+recorded once when the dispatch above creates the instance — so the agent
+reads the structured thread facts with `useInitialData()` instead of parsing
+them from the instance id:
 
 ```ts title="src/agents/assistant.ts"
-import { defineAgent } from '@flue/runtime';
-import { channel, replyInThread } from '../channels/slack.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { replyInThread } from '../channels/slack.ts';
 
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  tools: [replyInThread(channel.parseConversationKey(id))],
-}));
+const initialData = v.object({
+  channelId: v.string(),
+  threadTs: v.string(),
+  startedBy: v.optional(v.string()),
+  startedAt: v.pipe(v.string(), v.isoTimestamp()),
+});
+
+export function Assistant() {
+  useModel('anthropic/claude-haiku-4-5');
+  const data = useInitialData<v.InferOutput<typeof initialData>>();
+  if (!data) throw new Error('This agent is created by the Slack channel dispatch.');
+  useTool(replyInThread(data));
+  const startedBy = data.startedBy ? ` by <@${data.startedBy}>` : '';
+  return `Reply in the bound Slack thread when appropriate. This conversation was started${startedBy} at ${data.startedAt}.`;
+}
+
+Assistant.initialData = initialData;
 ```
 
-The model selects message text. It does not select arbitrary workspaces,
+`channel.parseInstanceId(id)` remains available as an escape hatch for routes
+that receive only the id without creation data. The model selects message
+text. It does not select arbitrary workspaces,
 channels, credentials, or Web API methods.
 
 ## Show Assistant status

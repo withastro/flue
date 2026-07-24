@@ -1,22 +1,10 @@
-import type { Context, Env, Handler } from 'hono';
-import { InvalidMessengerConversationKeyError, InvalidMessengerInputError } from './errors.ts';
+import { type ChannelRouteDefinition, createChannelRouter, type JsonValue } from '@flue/runtime';
+import type { Context, Env, Hono } from 'hono';
+import { InvalidMessengerInputError, InvalidMessengerInstanceIdError } from './errors.ts';
 import { createMessengerVerificationHandler, createMessengerWebhookHandler } from './webhook.ts';
 
-export { InvalidMessengerConversationKeyError, InvalidMessengerInputError } from './errors.ts';
-
-export type JsonValue =
-	| null
-	| boolean
-	| number
-	| string
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-
-export interface ChannelRoute<E extends Env = Env> {
-	readonly method: string;
-	readonly path: string;
-	readonly handler: Handler<E>;
-}
+export type { JsonValue } from '@flue/runtime';
+export { InvalidMessengerInputError, InvalidMessengerInstanceIdError } from './errors.ts';
 
 /** Ingress configuration for one fixed Facebook Page. */
 export interface MessengerChannelOptions<E extends Env = Env> {
@@ -33,8 +21,7 @@ export interface MessengerChannelOptions<E extends Env = Env> {
 }
 
 export type MessengerParticipantRef =
-	| { type: 'page-scoped-id'; id: string }
-	| { type: 'user-ref'; id: string };
+	{ type: 'page-scoped-id'; id: string } | { type: 'user-ref'; id: string };
 
 /** Stable Messenger destination suitable for a Flue agent-instance id. */
 export interface MessengerConversationRef {
@@ -218,11 +205,13 @@ export interface MessengerEntry {
 }
 
 /**
- * Provider-native Page webhook payload after exact-body verification and the
- * fixed-Page identity check.
+ * Provider-native Page webhook payload after exact-body signature verification.
  *
- * One signed POST may batch several entries and several events. Events stay in
- * Meta's delivered order. Flue does not reshape, filter, or deduplicate them.
+ * One signed POST may batch several entries and several events — including
+ * entries for other Pages the app is subscribed to. Events stay in Meta's
+ * delivered order. Flue does not reshape, filter, or deduplicate them;
+ * conversation routing scopes to the configured Page (foreign-Page events
+ * resolve to no conversation).
  */
 export interface MessengerWebhookPayload {
 	object: 'page';
@@ -245,11 +234,21 @@ export interface MessengerWebhookHandlerInput<E extends Env = Env> {
 
 /** Verified Facebook Messenger Page ingress and canonical identity helpers. */
 export interface MessengerChannel<E extends Env = Env> {
-	readonly routes: readonly ChannelRoute<E>[];
-	/** Serializes a canonical namespaced identifier. It is not an authorization capability. */
-	conversationKey(ref: MessengerConversationRef): string;
-	/** Parses only canonical keys produced by `conversationKey()`. */
-	parseConversationKey(id: string): MessengerConversationRef;
+	readonly routes: readonly ChannelRouteDefinition<E>[];
+	/**
+	 * Build a mountable Hono sub-app serving the channel's routes relative
+	 * to the mount point: `app.route('/channels/messenger', channel.route())`.
+	 */
+	route(): Hono<E>;
+	/** Derives the agent instance id: a canonical namespaced identifier. It is not an authorization capability. */
+	instanceId(ref: MessengerConversationRef): string;
+	/**
+	 * Parses only instance ids produced by `instanceId()`.
+	 *
+	 * Escape hatch: agents normally receive structured facts as creation data
+	 * rather than parsing them from the id.
+	 */
+	parseInstanceId(id: string): MessengerConversationRef;
 	/**
 	 * Derives the counterpart participant for one native messaging event.
 	 *
@@ -265,29 +264,32 @@ export interface MessengerChannel<E extends Env = Env> {
  * Creates verified Facebook Messenger webhook routes for one fixed Page.
  *
  * The channel verifies Meta's GET handshake and exact-body
- * `X-Hub-Signature-256` HMAC, confirms each entry targets the configured Page,
- * and forwards the provider-native payload unchanged. It is stateless and does
- * not deduplicate messages or deliveries.
+ * `X-Hub-Signature-256` HMAC, then forwards the provider-native payload
+ * unchanged — including entries for other Pages the app is subscribed to,
+ * which conversation routing scopes out. It is stateless and does not
+ * deduplicate messages or deliveries.
  */
 export function createMessengerChannel<E extends Env = Env>(
 	options: MessengerChannelOptions<E>,
 ): MessengerChannel<E> {
 	validateOptions(options);
 	const pageId = options.pageId;
+	const routes: readonly ChannelRouteDefinition<E>[] = [
+		{
+			method: 'GET',
+			path: '/webhook',
+			handler: createMessengerVerificationHandler(options),
+		},
+		{
+			method: 'POST',
+			path: '/webhook',
+			handler: createMessengerWebhookHandler(options),
+		},
+	];
 	const channel: MessengerChannel<E> = {
-		routes: [
-			{
-				method: 'GET',
-				path: '/webhook',
-				handler: createMessengerVerificationHandler(options),
-			},
-			{
-				method: 'POST',
-				path: '/webhook',
-				handler: createMessengerWebhookHandler(options),
-			},
-		],
-		conversationKey(ref) {
+		routes,
+		route: () => createChannelRouter(routes),
+		instanceId(ref) {
 			assertConversationRef(ref);
 			return [
 				'messenger',
@@ -298,13 +300,13 @@ export function createMessengerChannel<E extends Env = Env>(
 				encodeURIComponent(ref.participant.id),
 			].join(':');
 		},
-		parseConversationKey(id) {
+		parseInstanceId(id) {
 			try {
 				const match = /^messenger:v1:page:([^:]+):(page-scoped-id|user-ref):([^:]+)$/.exec(id);
-				if (!match) throw new InvalidMessengerConversationKeyError();
+				if (!match) throw new InvalidMessengerInstanceIdError();
 				const [, encodedPageId, type, participantId] = match;
 				if (!encodedPageId || !type || !participantId) {
-					throw new InvalidMessengerConversationKeyError();
+					throw new InvalidMessengerInstanceIdError();
 				}
 				const ref: MessengerConversationRef = {
 					pageId: decodeURIComponent(encodedPageId),
@@ -314,13 +316,13 @@ export function createMessengerChannel<E extends Env = Env>(
 					},
 				};
 				assertConversationRef(ref);
-				if (channel.conversationKey(ref) !== id) {
-					throw new InvalidMessengerConversationKeyError();
+				if (channel.instanceId(ref) !== id) {
+					throw new InvalidMessengerInstanceIdError();
 				}
 				return ref;
 			} catch (error) {
-				if (error instanceof InvalidMessengerConversationKeyError) throw error;
-				throw new InvalidMessengerConversationKeyError();
+				if (error instanceof InvalidMessengerInstanceIdError) throw error;
+				throw new InvalidMessengerInstanceIdError();
 			}
 		},
 		conversationRef(event) {

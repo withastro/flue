@@ -31,6 +31,6 @@ This package does not include an outbound Discord client, response builder, or
 model tools. Run `flue add channel discord` to generate editable project code using
 `@discordjs/rest` and application-owned `defineTool(...)` values.
 
-Conversation keys identify application-derived guild destinations, bot DMs,
-and private-channel contexts. Conversation keys are not authorization
+Instance ids identify application-derived guild destinations, bot DMs,
+and private-channel contexts. Instance ids are not authorization
 capabilities. The package is stateless and does not deduplicate interaction ids.

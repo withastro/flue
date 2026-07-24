@@ -17,7 +17,7 @@ The channel module imports the agent and the agent imports the channel. This
 cycle is safe because the imported bindings are read only inside the interaction
 callback and agent initializer, after module evaluation.
 
-Conversation keys validate syntax, not authorization. This agent is intentionally dispatch-only. Any direct agent route must independently authorize the caller-selected instance id before deriving outbound tools from it.
+Instance ids validate syntax, not authorization. This agent is intentionally dispatch-only. Any direct agent route must independently authorize the caller-selected instance id before deriving outbound tools from it.
 
 The example dispatches only interactions with guild or bot-DM destinations.
 Valid modal submissions may omit a destination, and private-channel

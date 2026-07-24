@@ -2,7 +2,7 @@
  * Minimal SQL storage interface shared by Cloudflare DO SQLite and node:sqlite.
  *
  * This is an internal implementation detail — not part of the public adapter
- * contract. Adapter authors implement {@link AgentExecutionStore}, not this.
+ * contract. Adapter authors implement {@link AgentSubmissionStore}, not this.
  */
 
 interface SqlResult {

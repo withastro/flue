@@ -1,6 +1,6 @@
 {
 	"name": "@flue/opentelemetry",
-	"version": "1.0.0-beta.3",
+	"version": "2.0.0-nightly.202607230552",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -38,9 +38,9 @@
 		"@opentelemetry/context-async-hooks": "^2.7.1",
 		"@opentelemetry/core": "^2.7.1",
 		"@opentelemetry/sdk-trace-base": "^2.7.1",
-		"@sentry/node": "10.53.1",
-		"tsdown": "^0.22.0",
-		"typescript": "^6.0.3",
+		"@sentry/node": "10.67.0",
+		"tsdown": "^0.22.7",
+		"typescript": "^7.0.2",
 		"vitest": "^4.1.6"
 	}
 }

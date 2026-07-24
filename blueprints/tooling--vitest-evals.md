@@ -8,11 +8,11 @@ You are an AI coding agent adding `vitest-evals` to a Flue project. Create a sep
 
 ## Inspect the project
 
-Read local instructions and detect the package manager. Inspect `package.json`, TypeScript configuration, existing Vitest configuration, agents, workflows, route authentication, CI configuration, and ignore files. Keep eval support files under `src/evals/`, independent of whether Flue application sources use `.flue/`, `src/`, or the project root.
+Read local instructions and detect the package manager. Inspect `package.json`, TypeScript configuration, existing Vitest configuration, agent modules, the `app.ts` route map, route authentication, CI configuration, and ignore files. Keep eval support files under `src/evals/`, independent of whether Flue application sources use `.flue/`, `src/`, or the project root.
 
-Ask which agent or workflow and which observable behavior should form the starter eval when that is not clear from the project. Do not invent a product requirement merely to produce a passing case.
+Ask which agent and which observable behavior should form the starter eval when that is not clear from the project. Do not invent a product requirement merely to produce a passing case.
 
-The primary agent used below must already expose an HTTP route. Do not add an unauthenticated `route` export without confirming that exposing the agent is appropriate. When the application protects its routes, preserve that boundary and configure the SDK client with the required token or headers.
+The primary agent used below must already be mounted on an HTTP route by the application's `app.ts` (`app.route('/agents/<name>', createAgentRouter(<AgentFn>))`). Do not mount an unauthenticated agent route without confirming that exposing the agent is appropriate. When the application protects its routes, preserve that boundary and configure the SDK client with the required token or headers.
 
 ## Install dependencies
 
@@ -59,8 +59,14 @@ import { createFlueClient, type FlueConversationMessage } from '@flue/sdk';
 import { createHarness, type SimpleToolCallRecord } from 'vitest-evals';
 
 export interface FlueAgentHarnessOptions {
-  agentName: string;
-  baseUrl?: string;
+  /**
+   * Absolute URL where the agent's routes are mounted (wherever the
+   * application's app.ts mounts `createAgentRouter(...)`). Each eval case runs in a
+   * fresh conversation at `<agentUrl>/eval-<uuid>`.
+   */
+  agentUrl: string;
+  /** Harness display name; defaults to the agent URL's last path segment. */
+  name?: string;
   token?: string;
   headers?: Record<string, string>;
 }
@@ -100,22 +106,25 @@ function collectToolCalls(messages: FlueConversationMessage[]): SimpleToolCallRe
 }
 
 export function createFlueAgentHarness(options: FlueAgentHarnessOptions) {
-  const client = createFlueClient({
-    baseUrl: options.baseUrl ?? process.env.FLUE_BASE_URL ?? 'http://127.0.0.1:3583',
-    token: options.token,
-    headers: options.headers,
-  });
+  const agentUrl = options.agentUrl.replace(/\/+$/, '');
+  const agentName = options.name ?? (agentUrl.split('/').at(-1) as string);
 
   return createHarness<string, string>({
-    name: `flue-${options.agentName}-agent`,
+    name: `flue-${agentName}-agent`,
     run: async ({ input, signal }) => {
-      const instanceId = `eval-${crypto.randomUUID()}`;
-      const admission = await client.agents.send(options.agentName, instanceId, {
+      // A fresh conversation per case: the caller constructs the URL by
+      // appending a new id to the agent's mount URL.
+      const conversation = createFlueClient({
+        url: `${agentUrl}/eval-${crypto.randomUUID()}`,
+        token: options.token,
+        headers: options.headers,
+      });
+      const admission = await conversation.send({
         message: { kind: 'user', body: input },
         signal,
       });
-      await client.agents.wait(admission, { signal });
-      const history = await client.agents.history(options.agentName, instanceId, { signal });
+      await conversation.wait(admission, { signal });
+      const history = await conversation.history({ signal });
       const reply = lastAssistantMessage(history.messages);
       const usage = reply?.metadata?.usage;
       const model = reply?.metadata?.model;
@@ -123,8 +132,8 @@ export function createFlueAgentHarness(options: FlueAgentHarnessOptions) {
       return {
         output: messageText(reply),
         toolCalls: collectToolCalls(history.messages),
-        // The reply's own message metadata carries usage/model — agent prompts
-        // are fire-and-forget and have no separate "result" to read this from.
+        // The reply's own message metadata carries usage/model — the same
+        // data the removed prompt-result surface used to return.
         ...((usage ?? model)
           ? {
               usage: {
@@ -146,7 +155,7 @@ export function createFlueAgentHarness(options: FlueAgentHarnessOptions) {
 }
 ```
 
-Agent prompts are fire-and-forget: `send()` admits the prompt and `wait()` only awaits completion, so the following `history()` snapshot — read after `wait()` resolves — contains the completed messages and tool activity for that fresh instance. The harness creates a new agent instance for every `run(...)`; reuse an instance only inside an application-specific harness for a case that intentionally evaluates conversation memory.
+Agent prompts are fire-and-forget: `send()` admits the prompt and `wait()` only awaits completion, so the following `history()` snapshot — read after `wait()` resolves — contains the completed messages and tool activity for that fresh conversation. The `agentUrl` is the agent's mount URL, taken from where the application's `app.ts` mounts the agent's router (`createAgentRouter(...)`) — derive it from the route map, not from the agent's name. The harness opens a new conversation for every `run(...)` by appending a fresh id to that mount URL; reuse a conversation id only inside an application-specific harness for a case that intentionally evaluates conversation memory.
 
 Do not remove the abort signal or derive tool calls from runtime-internal events. Preserve output, token usage, cost, and tool activity unless project-specific data policy requires omitting them.
 
@@ -159,9 +168,13 @@ import { expect } from 'vitest';
 import { describeEval, toolCalls } from 'vitest-evals';
 import { createFlueAgentHarness } from './harness.ts';
 
-const harness = createFlueAgentHarness({ agentName: 'service-status' });
+// The conversation URL base: where app.ts mounts the agent. Point
+// FLUE_AGENT_URL at a deployed application to evaluate it instead.
+const harness = createFlueAgentHarness({
+  agentUrl: process.env.FLUE_AGENT_URL ?? 'http://127.0.0.1:3583/agents/service-status',
+});
 
-describeEval('service status agent', { harness }, (it) => {
+describeEval('Flue service status agent', { harness }, (it) => {
   it('checks live service status before answering', async ({ run }) => {
     const result = await run('Is the checkout service currently operational?');
 
@@ -172,16 +185,18 @@ describeEval('service status agent', { harness }, (it) => {
 });
 ```
 
+Adapt the fallback `agentUrl` to the project: use the local dev server's actual origin (Vite's default port is 5173 unless `vite.config.ts` sets `server.port`) and the agent's mount path from `app.ts`.
+
 Prefer deterministic assertions for exact contracts such as structured output, required tools, prohibited tools, or stable content. Add a `vitest-evals` judge only when the behavior is genuinely semantic. Configure its model separately from the agent under evaluation.
 
-For a workflow, create a project-specific harness around `client.workflows.invoke(name, { input, wait: 'result' })`. Return the workflow's application-facing result as `output`, and retain `runId` in metadata or artifacts. Do not force workflow behavior through the agent harness.
+For a bounded, structured job, evaluate the agent that exposes it as a harness tool (`useTool({ harness: true })`) through this same conversation-URL harness: send the message that triggers the tool and assert on its tool call and the final reply. Do not invent a separate invocation path for it.
 
 ## Run and report evals
 
 The eval process does not start the Flue application. For local evaluation, start the server in one terminal and wait until it is ready:
 
 ```sh
-pnpm exec flue dev
+pnpm exec vite dev
 ```
 
 Then run the evals from a second terminal:
@@ -190,10 +205,10 @@ Then run the evals from a second terminal:
 pnpm run evals
 ```
 
-To evaluate an existing deployment instead, do not start a local server. Point the suite at the deployed application:
+To evaluate an existing deployment instead, do not start a local server. Point the harness at the agent's mount URL on the deployed application:
 
 ```sh
-FLUE_BASE_URL=https://preview.example.com pnpm run evals
+FLUE_AGENT_URL=https://preview.example.com/agents/service-status pnpm run evals
 ```
 
 Use the project's package-manager equivalents. Provider credentials belong to the Flue server process. Authentication credentials for a protected Flue route belong to the SDK client configuration; do not commit either kind of secret.
@@ -203,11 +218,11 @@ Use the project's package-manager equivalents. Provider credentials belong to th
 ## Verify
 
 1. Type-check the project and run its existing lint checks.
-2. Build the Flue target and confirm the selected agent or workflow is discovered.
+2. Build the project with `vite build` and confirm the selected agent module is discovered.
 3. Start the application with provider credentials and run the starter eval.
 4. Confirm the report includes output, usage, and the expected tool calls.
 5. Intentionally break one assertion and confirm the eval command exits non-zero, then restore it.
-6. Run against `FLUE_BASE_URL` when deployed-target evaluation is required.
+6. Run against `FLUE_AGENT_URL` when deployed-target evaluation is required.
 7. If the target is protected, confirm the eval succeeds only with the intended authentication.
 8. Review prompts, outputs, tool values, errors, and report artifacts for sensitive data before retaining or uploading them.
 

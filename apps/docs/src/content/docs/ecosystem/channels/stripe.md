@@ -4,6 +4,7 @@ description: Receive verified Stripe webhooks and use the official SDK from appl
 package:
   name: '@flue/stripe'
   href: https://www.npmjs.com/package/@flue/stripe
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -26,8 +27,8 @@ application.
 ```ts title="src/channels/stripe.ts (abridged)"
 import Stripe from 'stripe';
 import { createStripeChannel } from '@flue/stripe';
-import { dispatch } from '@flue/runtime';
-import billing from '../agents/billing.ts';
+import { dispatch, useModel } from '@flue/runtime';
+import { Billing } from '../agents/billing.ts';
 
 export const client = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   httpClient: Stripe.createFetchHttpClient(),
@@ -43,7 +44,7 @@ export const channel = createStripeChannel({
       typeof session.customer === 'string' ? session.customer : session.customer?.id;
     if (!customerId) return;
 
-    await dispatch(billing, {
+    await dispatch(Billing, {
       id: customerId,
       message: {
         kind: 'signal',
@@ -68,6 +69,18 @@ customer. Other events receive an empty successful response. The generated
 module also defines a customer-bound retrieval tool; the blueprint wires that
 tool into the billing agent. For Cloudflare targets, the same SDK uses its Fetch
 and Web Crypto implementation.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as stripe } from './channels/stripe.ts';
+
+app.route('/channels/stripe', stripe.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/stripe` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -98,8 +111,8 @@ Snapshot events are the default:
 ```ts title="src/channels/stripe.ts"
 import Stripe from 'stripe';
 import { createStripeChannel } from '@flue/stripe';
-import { defineTool, dispatch } from '@flue/runtime';
-import billing from '../agents/billing.ts';
+import { defineTool, dispatch, useModel } from '@flue/runtime';
+import { Billing } from '../agents/billing.ts';
 
 export const client = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   httpClient: Stripe.createFetchHttpClient(),
@@ -119,7 +132,7 @@ export const channel = createStripeChannel({
           typeof session.customer === 'string' ? session.customer : session.customer?.id;
         if (!customerId) return;
 
-        await dispatch(billing, {
+        await dispatch(Billing, {
           id: customerId,
           message: {
             kind: 'signal',
@@ -174,19 +187,21 @@ namespaces require it.
 ## Bind the tool
 
 ```ts title="src/agents/billing.ts"
-import { defineAgent } from '@flue/runtime';
+'use agent';
+import { type AgentProps, useModel, useTool } from '@flue/runtime';
 import { retrieveCustomer } from '../channels/stripe.ts';
 
-export default defineAgent(({ id: customerId }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  tools: [retrieveCustomer(customerId)],
-}));
+export function Billing({ id: customerId }: AgentProps) {
+  useModel('anthropic/claude-haiku-4-5');
+  useTool(retrieveCustomer(customerId));
+  return 'Review the completed Checkout event and summarize any billing follow-up that is needed.';
+}
 ```
 
 The model can invoke the lookup but cannot select another customer, account, or
 credential. Trusted application code binds those values. The channel-agent
 import cycle is supported because both imported bindings are read only inside
-deferred callbacks or initializers.
+deferred callbacks or the agent function body.
 
 ## Thin event notifications
 

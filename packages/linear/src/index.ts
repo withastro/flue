@@ -1,8 +1,10 @@
+import { type ChannelRouteDefinition, createChannelRouter, type JsonValue } from '@flue/runtime';
 import type { LinearWebhookPayload } from '@linear/sdk/webhooks';
-import type { Context, Env, Handler } from 'hono';
-import { InvalidLinearConversationKeyError, InvalidLinearInputError } from './errors.ts';
+import type { Context, Env, Hono } from 'hono';
+import { InvalidLinearInputError, InvalidLinearInstanceIdError } from './errors.ts';
 import { createLinearWebhookHandler } from './webhook.ts';
 
+export type { JsonValue } from '@flue/runtime';
 /**
  * Provider-native Linear webhook payload union, re-exported from
  * `@linear/sdk/webhooks`. Verified deliveries are forwarded with Linear's own
@@ -16,21 +18,7 @@ import { createLinearWebhookHandler } from './webhook.ts';
  * the payload.
  */
 export type { LinearWebhookPayload } from '@linear/sdk/webhooks';
-export { InvalidLinearConversationKeyError, InvalidLinearInputError } from './errors.ts';
-
-export type JsonValue =
-	| null
-	| boolean
-	| number
-	| string
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-
-export interface ChannelRoute<E extends Env = Env> {
-	readonly method: string;
-	readonly path: string;
-	readonly handler: Handler<E>;
-}
+export { InvalidLinearInputError, InvalidLinearInstanceIdError } from './errors.ts';
 
 /** Ingress configuration for one Linear webhook signing secret. */
 export interface LinearChannelOptions<E extends Env = Env> {
@@ -84,11 +72,20 @@ export interface LinearWebhookHandlerInput<E extends Env = Env> {
 
 /** Verified Linear ingress and canonical identity helpers. */
 export interface LinearChannel<E extends Env = Env> {
-	readonly routes: readonly ChannelRoute<E>[];
-	/** Serializes a canonical namespaced identifier. It is not an authorization capability. */
-	conversationKey(ref: LinearConversationRef): string;
-	/** Parses only canonical keys produced by `conversationKey()`. */
-	parseConversationKey(id: string): LinearConversationRef;
+	readonly routes: readonly ChannelRouteDefinition<E>[];
+	/**
+	 * Build a mountable Hono sub-app serving the channel's routes relative
+	 * to the mount point: `app.route('/channels/linear', channel.route())`.
+	 */
+	route(): Hono<E>;
+	/** Derives the agent instance id: a canonical namespaced identifier. It is not an authorization capability. */
+	instanceId(ref: LinearConversationRef): string;
+	/**
+	 * Parses only canonical instance ids produced by `instanceId()`. Escape
+	 * hatch: agents normally receive structured facts as creation data rather
+	 * than parsing them from the id.
+	 */
+	parseInstanceId(id: string): LinearConversationRef;
 }
 
 /**
@@ -103,15 +100,17 @@ export function createLinearChannel<E extends Env = Env>(
 	options: LinearChannelOptions<E>,
 ): LinearChannel<E> {
 	validateOptions(options);
+	const routes: readonly ChannelRouteDefinition<E>[] = [
+		{
+			method: 'POST',
+			path: '/webhook',
+			handler: createLinearWebhookHandler(options),
+		},
+	];
 	const channel: LinearChannel<E> = {
-		routes: [
-			{
-				method: 'POST',
-				path: '/webhook',
-				handler: createLinearWebhookHandler(options),
-			},
-		],
-		conversationKey(ref) {
+		routes,
+		route: () => createChannelRouter(routes),
+		instanceId(ref) {
 			assertConversationRef(ref);
 			if (ref.type === 'agent-session') {
 				return [
@@ -134,7 +133,7 @@ export function createLinearChannel<E extends Env = Env>(
 				encodeURIComponent(ref.threadCommentId ?? ''),
 			].join(':');
 		},
-		parseConversationKey(id) {
+		parseInstanceId(id) {
 			try {
 				const agentMatch = /^linear:v1:organization:([^:]+):agent-session:([^:]+)$/.exec(id);
 				if (agentMatch?.[1] && agentMatch[2]) {
@@ -144,15 +143,15 @@ export function createLinearChannel<E extends Env = Env>(
 						agentSessionId: decodeURIComponent(agentMatch[2]),
 					};
 					assertConversationRef(ref);
-					if (channel.conversationKey(ref) !== id) {
-						throw new InvalidLinearConversationKeyError();
+					if (channel.instanceId(ref) !== id) {
+						throw new InvalidLinearInstanceIdError();
 					}
 					return ref;
 				}
 
 				const issueMatch = /^linear:v1:organization:([^:]+):issue:([^:]+):thread:([^:]*)$/.exec(id);
 				if (!issueMatch?.[1] || !issueMatch[2] || issueMatch[3] === undefined) {
-					throw new InvalidLinearConversationKeyError();
+					throw new InvalidLinearInstanceIdError();
 				}
 				const threadCommentId = decodeURIComponent(issueMatch[3]);
 				const ref: LinearConversationRef = {
@@ -162,13 +161,13 @@ export function createLinearChannel<E extends Env = Env>(
 					...(threadCommentId ? { threadCommentId } : {}),
 				};
 				assertConversationRef(ref);
-				if (channel.conversationKey(ref) !== id) {
-					throw new InvalidLinearConversationKeyError();
+				if (channel.instanceId(ref) !== id) {
+					throw new InvalidLinearInstanceIdError();
 				}
 				return ref;
 			} catch (error) {
-				if (error instanceof InvalidLinearConversationKeyError) throw error;
-				throw new InvalidLinearConversationKeyError();
+				if (error instanceof InvalidLinearInstanceIdError) throw error;
+				throw new InvalidLinearInstanceIdError();
 			}
 		},
 	};

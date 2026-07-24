@@ -1,9 +1,10 @@
 ---
 title: MySQL
-description: Give Flue agents and workflow runs durable, shared state with MySQL 8 and InnoDB.
+description: Give Flue agents durable, shared state with MySQL 8 and InnoDB.
 package:
   name: '@flue/mysql'
   href: https://www.npmjs.com/package/@flue/mysql
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -41,7 +42,7 @@ export default mysql({
 });
 ```
 
-Flue discovers the adapter at build time and wires it into the generated Node server. On startup, it creates and verifies the required MySQL 8 InnoDB tables. Canonical agent conversations, immutable attachments, accepted submissions, and workflow history then survive process replacement. Replicas may share durable state and workflow history, but each agent instance still requires one live Node owner. Application business data remains application-owned. The blueprint applies only to Node targets because Cloudflare deployments use Durable Object SQLite instead.
+Flue discovers the adapter at build time and wires it into the generated Node server. On startup, it creates and verifies the required MySQL 8 InnoDB tables. Canonical agent conversations, immutable attachments, and accepted submissions then survive process replacement. Replicas may share durable state, but each agent instance still requires one live Node owner. Application business data remains application-owned. The blueprint applies only to Node targets because Cloudflare deployments use Durable Object SQLite instead.
 
 ## Configure
 
@@ -51,8 +52,8 @@ Flue discovers the adapter at build time and wires it into the generated Node se
 
 The driver reads this value at runtime. Supply it through your platform's
 secret store, never commit it, and configure `mysql2` TLS options when your
-provider requires them. For local development, `flue dev --env <file>` and
-`flue run --env <file>` load any `.env`-format file.
+provider requires them. For local development, `vite dev` loads the project
+`.env`, and `flue run --env <file>` loads any `.env`-format file.
 
 The blueprint installs `@flue/mysql` and `mysql2`, then writes a source-root
 `db.ts`. Flue discovers that file at build time and wires it into the generated
@@ -123,21 +124,27 @@ newer Flue version refuses to start rather than risking incompatible writes.
 
 A Flue database stores runtime state, not your whole application.
 
-| Stored by Flue                                                   | Not stored by Flue                       |
-| ---------------------------------------------------------------- | ---------------------------------------- |
-| Canonical agent conversation streams and compaction records       | Sandbox files and installed dependencies |
-| Immutable attachment payloads                                    | External API side effects                |
-| Accepted direct prompts and `dispatch(...)` submissions          | Application-owned business data          |
-| Durable submission claims and leases                              | Provider credentials or secrets          |
-| Workflow-run records, persisted events, and run indexes           |                                          |
+Stored by Flue:
 
-See [Durable Agents](/docs/concepts/durable-execution/) for recovery behavior
-and the [Data Persistence API](/docs/api/data-persistence-api/) for the adapter
+- canonical agent conversation streams and compaction records;
+- immutable attachment payloads;
+- accepted direct prompts and `dispatch(...)` submissions;
+- durable submission claims, leases, and settlement records.
+
+Not stored by Flue:
+
+- sandbox files and installed dependencies;
+- external API side effects;
+- application-owned business data;
+- provider credentials or secrets.
+
+See [Durability](/docs/guide/durability/) for recovery behavior
+and the [Data Persistence API](/docs/reference/data-persistence-api/) for the adapter
 contract.
 
 ## When to choose MySQL
 
-Choose MySQL when your Node deployment already operates MySQL 8, or when replacement processes and multiple replicas need durable agent state and shared workflow history in an InnoDB-backed database. Preserve one live owner per agent instance. For single-host persistence, file-backed `sqlite()` may
+Choose MySQL when your Node deployment already operates MySQL 8, or when replacement processes and multiple replicas need durable agent state in an InnoDB-backed database. Preserve one live owner per agent instance. For single-host persistence, file-backed `sqlite()` may
 be simpler. Choose [`@flue/postgres`](/docs/ecosystem/databases/postgres/) when
 Postgres is your existing operational standard, or
 [`@flue/libsql`](/docs/ecosystem/databases/libsql/) for SQLite and libSQL

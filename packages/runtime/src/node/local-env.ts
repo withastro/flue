@@ -14,7 +14,6 @@ import { abortErrorFor, composeTimeoutSignal } from '../abort.ts';
 import { writeFileCreatingParents } from '../sandbox.ts';
 import type { FileStat, SessionEnv, ShellResult } from '../types.ts';
 
-/** Cap on captured stdout+stderr (matches the old `exec` maxBuffer lift). */
 const MAX_OUTPUT_BYTES = 64 * 1024 * 1024;
 
 /** Grace period between SIGTERM and SIGKILL when tearing down a process group. */

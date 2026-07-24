@@ -1,167 +1,111 @@
-import { stream as dsStream } from '@durable-streams/client';
 import { HttpClient, type HttpClientOptions, type RequestHeaders } from './http.ts';
-
-export type { HttpClientOptions } from './http.ts';
-
 import type {
 	FlueConversationHistoryOptions,
 	FlueConversationMessage,
 	FlueConversationSnapshot,
 } from './public/conversation.ts';
 import {
-	type ConversationStreamChunk,
 	assertConversationStreamChunk,
+	type ConversationStreamChunk,
 } from './public/conversation-stream.ts';
 import {
-	createAgentConversationObservation,
 	type AgentConversationObservation,
 	type AgentConversationObserveOptions,
+	createAgentConversationObservation,
 } from './public/observe.ts';
+import {
+	type AgentReadOptions,
+	type AgentReadResult,
+	readAgentSubmissionReply,
+} from './public/read.ts';
 import {
 	type AgentPromptOptions,
 	type AgentSendResult,
-	sendAgent,
-} from './public/invoke.ts';
-import {
-	type AgentWaitOptions,
-	runWorkflow,
-	type WorkflowRunOptions,
-	type WorkflowRunResult,
-	waitForAgentSubmission,
-} from './public/settle.ts';
-import {
-	createFlueEventStream,
-	type FlueEventStream,
-	type FlueStreamOptions,
-} from './public/stream.ts';
-import type {
-	FlueEvent,
-	RunRecord,
-} from './types.ts';
+	sendConversationMessage,
+} from './public/send.ts';
+import { type AgentWaitOptions, waitForAgentSubmission } from './public/settle.ts';
+import { createFlueEventStream } from './public/stream.ts';
 
+export type { HttpClientOptions } from './http.ts';
 export type { RequestHeaders };
 
-/** Options for starting a workflow run. */
-export interface WorkflowInvokeOptions {
-	/** Workflow-defined input. */
-	input?: unknown;
-	/**
-	 * When `'result'`, the request waits for the run to finish and resolves
-	 * with its terminal result. Omit to start the run without waiting.
-	 */
-	wait?: 'result';
-	signal?: AbortSignal;
-}
-
-/** Result of starting a workflow run. */
-export interface WorkflowInvokeResult {
-	/** The workflow run ID. */
-	runId: string;
-}
-
-/** Result of one workflow invocation that waited for the terminal result. */
-export interface WorkflowWaitResult extends WorkflowInvokeResult {
-	/** Terminal result of the workflow run. */
-	result: unknown;
-}
-
-/** Options for one catch-up read of workflow-run events (no live tailing). */
-export type RunEventsOptions = Omit<FlueStreamOptions, 'live'>;
-
-/** Result of aborting an agent instance's durable work. */
+/** Result of aborting the conversation's durable work. */
 export interface AgentAbortResult {
 	/**
 	 * `true` when there was in-flight or queued work that is now being aborted;
-	 * `false` when the instance was idle (nothing to abort). Terminal settlement
-	 * (the distinct aborted outcome) happens asynchronously — observe it via
-	 * `wait()` (which rejects with the submission_aborted error), `observe()`, or
-	 * `history()`.
+	 * `false` when the conversation was idle (nothing to abort). Terminal
+	 * settlement (the distinct aborted outcome) happens asynchronously — observe
+	 * it via `wait()` (which rejects with the submission_aborted error),
+	 * `observe()`, or `history()`.
 	 */
 	aborted: boolean;
 }
 
-/** Options for creating a client for deployed Flue application routes. */
+/** Options for creating a client for one agent conversation. */
 export type CreateFlueClientOptions = HttpClientOptions;
 
-/** Client for invoking deployed agents and workflows and inspecting workflow runs. */
+/**
+ * Client for one agent conversation of a deployed Flue application.
+ *
+ * The framework does not know where an application mounts its agents — the
+ * application's route map (app.ts) does. A client therefore addresses exactly
+ * one conversation by URL: wherever the agent's router
+ * (`createAgentRouter(...)`) is mounted plus the caller-chosen conversation
+ * id. Starting a new conversation is constructing a client with a fresh id
+ * appended to the mount URL.
+ */
 export interface FlueClient {
-	/** Direct interactions with persistent agent instances. */
-	agents: {
-		/** Starts one message delivery without waiting for completion. */
-		send(name: string, id: string, options: AgentPromptOptions): Promise<AgentSendResult>;
-		/**
-		 * Awaits the admitted submission's completion. Resolves void when it
-		 * settles completed and throws `FlueExecutionError` when it settles
-		 * failed or aborted. The agent's reply is not returned here — read it
-		 * from the conversation via `onEvent` chunks, `observe()`, or `history()`.
-		 */
-		wait(admission: AgentSendResult, options?: AgentWaitOptions): Promise<void>;
-		/**
-		 * Aborts all in-flight and queued durable work for an agent instance
-		 * (the agent's currently running submission and any queued behind it).
-		 * Resolves once the abort intent is recorded; the work settles to the
-		 * distinct aborted outcome asynchronously.
-		 */
-		abort(
-			name: string,
-			id: string,
-			options?: { signal?: AbortSignal },
-		): Promise<AgentAbortResult>;
-		/** Reads one materialized conversation snapshot for the agent instance. */
-		history(
-			name: string,
-			id: string,
-			options?: FlueConversationHistoryOptions,
-		): Promise<FlueConversationSnapshot>;
-		/** Observes one materialized conversation across history catch-up and live updates. */
-		observe(
-			name: string,
-			id: string,
-			options?: AgentConversationObserveOptions,
-		): AgentConversationObservation;
-		/**
-		 * Absolute URL for one `file` part's attachment bytes, suitable as an
-		 * `<img>`/`<a>` source. The download endpoint is opt-in per agent (via the
-		 * agent module's `attachments` middleware export); without it the URL
-		 * returns 404.
-		 */
-		attachmentUrl(name: string, id: string, attachmentId: string): string;
-	};
-	/** Workflow-run inspection and streaming APIs. */
-	runs: {
-		/** Retrieves one workflow-run record via the `?meta` view of the run route. */
-		get(runId: string): Promise<RunRecord>;
-		/** Stream events from a workflow run via the Durable Streams protocol. */
-		stream(runId: string, options?: FlueStreamOptions): FlueEventStream<FlueEvent>;
-		/** Get all events from a workflow run as an array (catch-up read, no live tailing). */
-		events(runId: string, options?: RunEventsOptions): Promise<FlueEvent[]>;
-	};
-	/** Start workflow runs. */
-	workflows: {
-		/** Run a workflow to completion and resolve with its terminal result. */
-		invoke(
-			name: string,
-			options: WorkflowInvokeOptions & { wait: 'result' },
-		): Promise<WorkflowWaitResult>;
-		/** Start a workflow run and return its ID. */
-		invoke(name: string, options?: WorkflowInvokeOptions): Promise<WorkflowInvokeResult>;
-		run<TResult = unknown>(
-			name: string,
-			options?: WorkflowRunOptions,
-		): Promise<WorkflowRunResult<TResult>>;
-	};
+	/** The fully resolved conversation URL this client addresses. */
+	readonly url: string;
+	/** Starts one message delivery without waiting for completion (202 admission). */
+	send(options: AgentPromptOptions): Promise<AgentSendResult>;
+	/**
+	 * Awaits one submission's settlement and resolves with its reply. The
+	 * target is the admission `send()` resolved with, or a bare submission id
+	 * — the re-attach form, which follows the conversation from the stream
+	 * origin, so any process can read a submission at any later time; one
+	 * that already settled resolves immediately. Throws `FlueExecutionError`
+	 * when the submission settles failed or aborted. Composes `wait()`,
+	 * `history()`, and `readSubmissionReply()` — use those directly when you
+	 * only need the outcome, or already hold the conversation via `observe()`.
+	 */
+	read(target: AgentSendResult | string, options?: AgentReadOptions): Promise<AgentReadResult>;
+	/**
+	 * Awaits the admitted submission's completion. Resolves void when it
+	 * settles completed and throws `FlueExecutionError` when it settles
+	 * failed or aborted. The agent's reply is not returned here — `read()`
+	 * returns it, or read it from the conversation via `onEvent` chunks,
+	 * `observe()`, or `history()`.
+	 */
+	wait(admission: AgentSendResult, options?: AgentWaitOptions): Promise<void>;
+	/**
+	 * Aborts all in-flight and queued durable work for the conversation (the
+	 * currently running submission and any queued behind it). Resolves once the
+	 * abort intent is recorded; the work settles to the distinct aborted
+	 * outcome asynchronously.
+	 */
+	abort(options?: { signal?: AbortSignal }): Promise<AgentAbortResult>;
+	/** Reads one materialized conversation snapshot. */
+	history(options?: FlueConversationHistoryOptions): Promise<FlueConversationSnapshot>;
+	/** Observes the materialized conversation across history catch-up and live updates. */
+	observe(options?: AgentConversationObserveOptions): AgentConversationObservation;
+	/**
+	 * Absolute URL for one `file` part's attachment bytes, suitable as an
+	 * `<img>`/`<a>` source. The download endpoint is mounted on every agent
+	 * router; auth composes at the mount in `app.ts` like every other agent
+	 * route.
+	 */
+	attachmentUrl(attachmentId: string): string;
 }
 
-// The runtime can't know the HTTP mount/baseUrl, so the SDK resolves a ready-to-
-// use `url` onto each durably-recorded `file` part (those with an `id`). This
-// lets consumers read `part.url` directly instead of constructing it via
-// `attachmentUrl`. Optimistic parts (no `id`) carry their own `data:` preview and
-// are left untouched.
+// The runtime can't know the HTTP mount/conversation URL, so the SDK resolves
+// a ready-to-use `url` onto each durably-recorded `file` part (those with an
+// `id`). This lets consumers read `part.url` directly instead of constructing
+// it via `attachmentUrl`. Optimistic parts (no `id`) carry their own `data:`
+// preview and are left untouched.
 function withAttachmentUrls(
 	message: FlueConversationMessage,
 	http: HttpClient,
-	name: string,
-	id: string,
 ): FlueConversationMessage {
 	let changed = false;
 	const parts = message.parts.map((part) => {
@@ -169,9 +113,7 @@ function withAttachmentUrls(
 			changed = true;
 			return {
 				...part,
-				url: http.url(
-					`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}/attachments/${encodeURIComponent(part.id)}`,
-				),
+				url: http.url(`/attachments/${encodeURIComponent(part.id)}`),
 			};
 		}
 		return part;
@@ -182,139 +124,71 @@ function withAttachmentUrls(
 function rewriteSnapshotAttachmentUrls(
 	snapshot: FlueConversationSnapshot,
 	http: HttpClient,
-	name: string,
-	id: string,
 ): FlueConversationSnapshot {
-	return { ...snapshot, messages: snapshot.messages.map((message) => withAttachmentUrls(message, http, name, id)) };
+	return {
+		...snapshot,
+		messages: snapshot.messages.map((message) => withAttachmentUrls(message, http)),
+	};
 }
 
 function rewriteChunkAttachmentUrls(
 	chunk: ConversationStreamChunk,
 	http: HttpClient,
-	name: string,
-	id: string,
 ): ConversationStreamChunk {
 	if (chunk.type === 'conversation-reset') {
-		return { ...chunk, snapshot: rewriteSnapshotAttachmentUrls(chunk.snapshot, http, name, id) };
+		return { ...chunk, snapshot: rewriteSnapshotAttachmentUrls(chunk.snapshot, http) };
 	}
 	if (chunk.type === 'message-appended') {
-		return { ...chunk, message: withAttachmentUrls(chunk.message, http, name, id) };
+		return { ...chunk, message: withAttachmentUrls(chunk.message, http) };
 	}
 	return chunk;
 }
 
-/** Creates a client for the public routes of a deployed Flue application. */
+/** Creates a client for one agent conversation of a deployed Flue application. */
 export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 	const http = new HttpClient(options);
 	return {
-		agents: {
-			send: (name, id, opts) => sendAgent(http, name, id, opts),
-			wait: (admission, opts) => waitForAgentSubmission(http, admission, opts),
-			abort: (name, id, opts = {}) =>
-				http.json<AgentAbortResult>({
-					method: 'POST',
-					path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}/abort`,
+		url: http.conversationUrl,
+		send: (opts) => sendConversationMessage(http, opts),
+		read: (target, opts) => readAgentSubmissionReply(http, target, opts),
+		wait: (admission, opts) => waitForAgentSubmission(http, admission, opts),
+		abort: (opts = {}) =>
+			http.json<AgentAbortResult>({
+				method: 'POST',
+				path: '/abort',
+				signal: opts.signal,
+			}),
+		history: async (opts = {}) =>
+			rewriteSnapshotAttachmentUrls(
+				await http.json<FlueConversationSnapshot>({
+					query: { view: 'history' },
 					signal: opts.signal,
 				}),
-			history: async (name, id, opts = {}) =>
-				rewriteSnapshotAttachmentUrls(
-					await http.json<FlueConversationSnapshot>({
-						path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
-						query: { view: 'history' },
-						signal: opts.signal,
-					}),
-					http,
-					name,
-					id,
-				),
-			observe: (name, id, opts = {}) =>
-				createAgentConversationObservation(
-					{
-						history: async (historyOptions) =>
-							rewriteSnapshotAttachmentUrls(
-								await http.json<FlueConversationSnapshot>({
-									path: `/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`,
-									query: { view: 'history' },
-									signal: historyOptions.signal,
-								}),
-								http,
-								name,
-								id,
-							),
-						updates: (updateOptions) =>
-							createFlueEventStream<ConversationStreamChunk>(
-								updateOptions,
-								{
-									url: http.url(`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}`, {
-										view: 'updates',
-									}),
-									fetch: http.fetchWithHeaders.bind(http),
-								},
-								(chunk) =>
-									rewriteChunkAttachmentUrls(assertConversationStreamChunk(chunk), http, name, id),
-							),
-					},
-					opts,
-				),
-			attachmentUrl: (name, id, attachmentId) =>
-				http.url(
-					`/agents/${encodeURIComponent(name)}/${encodeURIComponent(id)}/attachments/${encodeURIComponent(attachmentId)}`,
-				),
-		},
-		runs: {
-			get: (runId) => http.json<RunRecord>({ path: `/runs/${encodeURIComponent(runId)}?meta` }),
-			stream: (runId, opts = {}) =>
-				createFlueEventStream<FlueEvent>(opts, {
-					url: http.url(`/runs/${encodeURIComponent(runId)}`),
-					fetch: http.fetchWithHeaders.bind(http),
-				}),
-			events: async (runId, opts) => {
-				const url = new URL(http.url(`/runs/${encodeURIComponent(runId)}`));
-				if (opts?.tail !== undefined) url.searchParams.set('tail', String(opts.tail));
-				const events: FlueEvent[] = [];
-				let offset = opts?.offset ?? '-1';
-				// The DS client makes exactly one request per `live: false` stream,
-				// even when the server caps the catch-up batch and reports more data
-				// remains (no Stream-Up-To-Date header). Loop until up-to-date.
-				for (;;) {
-					const res = await dsStream<FlueEvent>({
-						url: url.toString(),
-						offset,
-						live: false,
-						json: true,
-						signal: opts?.signal,
-						backoffOptions: opts?.backoffOptions,
-						fetch: http.fetchWithHeaders.bind(http),
-						warnOnHttp: false,
-					});
-					events.push(...(await readJsonWithAbort<FlueEvent[]>(res, opts?.signal)));
-					if (res.upToDate || res.offset === offset) break;
-					offset = res.offset;
-				}
-				return events;
-			},
-		},
-		workflows: {
-			invoke: (name, opts?: WorkflowInvokeOptions) =>
-				http.json<WorkflowWaitResult>({
-					method: 'POST',
-					path: `/workflows/${encodeURIComponent(name)}`,
-					query: opts?.wait === 'result' ? { wait: 'result' } : undefined,
-					body: opts?.input,
-					signal: opts?.signal,
-				}),
-			run: (name, opts) => runWorkflow(http, name, opts),
-		},
+				http,
+			),
+		observe: (opts = {}) =>
+			createAgentConversationObservation(
+				{
+					history: async (historyOptions) =>
+						rewriteSnapshotAttachmentUrls(
+							await http.json<FlueConversationSnapshot>({
+								query: { view: 'history' },
+								signal: historyOptions.signal,
+							}),
+							http,
+						),
+					updates: (updateOptions) =>
+						createFlueEventStream<ConversationStreamChunk>(
+							updateOptions,
+							{
+								url: http.url('', { view: 'updates' }),
+								fetch: http.fetchWithHeaders.bind(http),
+							},
+							(chunk) => rewriteChunkAttachmentUrls(assertConversationStreamChunk(chunk), http),
+						),
+				},
+				opts,
+			),
+		attachmentUrl: (attachmentId) => http.url(`/attachments/${encodeURIComponent(attachmentId)}`),
 	};
-}
-
-async function readJsonWithAbort<T>(
-	response: { json(): Promise<T> },
-	signal?: AbortSignal,
-): Promise<T> {
-	const result = await response.json();
-	if (signal?.aborted) {
-		throw signal.reason ?? new DOMException('Aborted', 'AbortError');
-	}
-	return result;
 }

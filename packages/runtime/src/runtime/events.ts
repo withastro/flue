@@ -4,9 +4,8 @@ import { createObservation, type FlueObservationSubscriber } from '../observatio
 import type { FlueEvent, FlueEventContext, FlueObservationDetail } from '../types.ts';
 
 /**
- * Receives a decorated event and its originating context. Workflow
- * events may carry `runId`; direct and dispatched agent events carry
- * `instanceId` and optional `dispatchId` without becoming workflow runs.
+ * Receives a decorated event and its originating context. Direct and
+ * dispatched agent events carry `instanceId` and `submissionId`.
  * Subscriber failures are logged and do not halt dispatch or the originating
  * execution. Returned promises are observed for rejection but are not awaited.
  */
@@ -15,8 +14,8 @@ export type FlueEventSubscriber = FlueObservationSubscriber;
 const subscribers = new Set<FlueObservationSubscriber>();
 
 /**
- * Subscribe to live workflow-run or agent-interaction activity emitted in this isolate.
- * The subscription does not replay durable workflow history or aggregate events
+ * Subscribe to live agent-interaction activity emitted in this isolate.
+ * The subscription does not replay durable history or aggregate events
  * across processes or Cloudflare Durable Object isolates.
  *
  * Usage (typically at the top of `app.ts`):
@@ -25,7 +24,7 @@ const subscribers = new Set<FlueObservationSubscriber>();
  *     import { observe } from '@flue/runtime';
  *
  *     observe((event, ctx) => {
- *       if (event.type === 'run_end' && event.isError) {
+ *       if (event.type === 'log' && event.level === 'error') {
  *         // ship to your error reporter, metrics sink, etc.
  *       }
  *     });

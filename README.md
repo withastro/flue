@@ -1,35 +1,34 @@
 # Flue — The Agent Harness Framework
 
-Not another SDK. Build autonomous agents and powerful AI workflows with Flue's programmable TypeScript harness.
+Not another SDK. Build autonomous agents with Flue's programmable TypeScript harness.
 
 ```ts
 // agents/triage.ts
-import { defineAgent, type AgentRouteHandler } from '@flue/runtime';
+'use agent';
+import { useModel, useSandbox, useSkill, useTool } from '@flue/runtime';
 import { local } from '@flue/runtime/node';
-import triage from '../skills/triage/SKILL.md' with { type: 'skill' };
-import verify from '../skills/verify/SKILL.md' with { type: 'skill' };
-import * as githubTools from '../tools/github.ts';
+import triage from '../skills/triage/SKILL.md';
+import verify from '../skills/verify/SKILL.md';
+import { openIssue, searchCode } from '../tools/github.ts';
 
-// Give agents the context and autonomy to solve complex tasks:
-const instructions = `
+// The agent IS the function. Compose the complete harness it needs to do
+// real work, complete with virtual, local, or remote container sandbox.
+export function Triage() {
+  useModel('anthropic/claude-sonnet-4-6');
+  useSandbox(local());
+  useSkill(triage);
+  useSkill(verify);
+  useTool(openIssue);
+  useTool(searchCode);
+
+  // Give agents the context and autonomy to solve complex tasks:
+  return `
 Triage a bug report end-to-end: reproduce the bug,
 diagnose the root cause, verify whether the behavior is
 intentional, and attempt a fix.
 
 ...`;
-
-// Expose (and protect) your agents over HTTP:
-export const route: AgentRouteHandler = async (_c, next) => next();
-
-// Compose the complete harness your agent needs to do real work,
-// complete with virtual, local, or remote container sandbox.
-export default defineAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  tools: [...githubTools],
-  skills: [triage, verify],
-  sandbox: local(),
-  instructions,
-}));
+}
 ```
 
 ## The framework for building the next generation of agents.
@@ -45,9 +44,8 @@ Agents like Claude Code and Codex broke the mold. These were _real agents._ Auto
 Build agents that can safely take action, maintain continuity, and connect to the systems where work already happens.
 
 - **[Agents](https://flueframework.com/docs/guide/building-agents/)** — Build agents that can keep context across conversations and events as they autonomously work toward a goal.
-- **[Workflows](https://flueframework.com/docs/guide/workflows/)** — Run structured automations where your code guides agent reasoning from a clear input to a finished result.
 - **[Sandboxes](https://flueframework.com/docs/guide/sandboxes/)** — Give agents a secure environment where they can use tools, modify files, and autonomously complete real work.
-- **[Durable Execution](https://flueframework.com/docs/guide/durable-execution/)** — Learn how agents preserve progress through failures and restarts with durable recovery for accepted work.
+- **[Durability](https://flueframework.com/docs/guide/durability/)** — Learn how agents preserve progress through failures and restarts with durable recovery for accepted work.
 - **[Subagents](https://flueframework.com/docs/guide/subagents/)** — Define specialized roles for different tasks, then let your agent delegate work to the right expert.
 - **[Tools](https://flueframework.com/docs/guide/tools/)** — Give agents typed actions for calling APIs, querying data, and making controlled changes through your application.
 - **[Skills](https://flueframework.com/docs/guide/skills/)** — Package reusable expertise and workflows that agents can load whenever a task needs specialized guidance.
@@ -66,10 +64,11 @@ Build agents that can safely take action, maintain continuity, and connect to th
 
 ## Packages
 
-| Package                                         | Description                                            |
-| ----------------------------------------------- | ------------------------------------------------------ |
-| [`@flue/runtime`](packages/runtime)             | Runtime: harness, sessions, tools, sandbox             |
-| [`@flue/cli`](packages/cli)                     | CLI and build/dev tooling (`flue` binary)              |
-| [`@flue/sdk`](packages/sdk)                     | Client SDK for consuming deployed agents and workflows |
-| [`@flue/opentelemetry`](packages/opentelemetry) | OpenTelemetry tracing adapter                          |
-| [`@flue/postgres`](packages/postgres)           | Postgres persistence adapter                           |
+| Package                                         | Description                                                    |
+| ----------------------------------------------- | -------------------------------------------------------------- |
+| [`@flue/runtime`](packages/runtime)             | Runtime: harness, sessions, tools, sandbox                     |
+| [`@flue/vite`](packages/vite)                   | Vite plugin: `vite dev` / `vite build` for Node and Cloudflare |
+| [`@flue/cli`](packages/cli)                     | CLI (`flue` binary): local runs, blueprints, offline docs      |
+| [`@flue/sdk`](packages/sdk)                     | Client SDK for consuming deployed agent conversations          |
+| [`@flue/opentelemetry`](packages/opentelemetry) | OpenTelemetry tracing adapter                                  |
+| [`@flue/postgres`](packages/postgres)           | Postgres persistence adapter                                   |

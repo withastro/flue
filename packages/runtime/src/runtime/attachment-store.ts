@@ -22,11 +22,9 @@ export interface StoredAttachment {
 export interface AttachmentStore {
 	put(input: PutAttachmentInput): Promise<void>;
 	get(input: GetAttachmentInput): Promise<StoredAttachment | null>;
-	deleteForInstance(streamPath: string): Promise<void>;
 }
 
 interface InMemoryAttachmentRecord extends StoredAttachment {
-	streamPath: string;
 	conversationId: string;
 }
 
@@ -51,7 +49,6 @@ export class InMemoryAttachmentStore implements AttachmentStore {
 			return;
 		}
 		this.records.set(key, {
-			streamPath: input.streamPath,
 			attachment: { ...input.attachment },
 			bytes: copyAttachmentBytes(input.bytes),
 			conversationId: input.conversationId,
@@ -68,12 +65,6 @@ export class InMemoryAttachmentStore implements AttachmentStore {
 			attachment: { ...record.attachment },
 			bytes: copyAttachmentBytes(record.bytes),
 		};
-	}
-
-	async deleteForInstance(streamPath: string): Promise<void> {
-		for (const [key, record] of this.records) {
-			if (record.streamPath === streamPath) this.records.delete(key);
-		}
 	}
 }
 
@@ -116,10 +107,12 @@ export function sameAttachmentRef(left: AttachmentRef, right: AttachmentRef): bo
 	// `filename` is presentation metadata, not byte identity, and is not persisted
 	// by every store — so it is deliberately excluded so an idempotent re-`put`
 	// (recovery) never conflicts on a filename that didn't round-trip.
-	return left.id === right.id &&
+	return (
+		left.id === right.id &&
 		left.mimeType === right.mimeType &&
 		left.size === right.size &&
-		left.digest === right.digest;
+		left.digest === right.digest
+	);
 }
 
 async function attachmentDigest(bytes: Uint8Array): Promise<string> {

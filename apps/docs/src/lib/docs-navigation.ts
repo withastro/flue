@@ -27,15 +27,14 @@ export const docsSections: DocsSection[] = [
 	{
 		key: 'guide',
 		title: 'Guide',
-		landingSlug: 'getting-started/quickstart',
+		landingSlug: 'guide/getting-started',
 		groups: [
 			{
 				title: 'Introduction',
 				items: [
-					{ title: 'Getting Started', slug: 'getting-started/quickstart' },
-					{ title: 'Why Flue?', slug: 'introduction/why-flue' },
-					{ title: 'What is an agent?', slug: 'concepts/agents' },
-					{ title: 'Durable Agents', slug: 'concepts/durable-execution' },
+					{ title: 'Getting Started', slug: 'guide/getting-started' },
+					{ title: 'Why Flue?', slug: 'guide/why-flue' },
+					{ title: 'Migration Guide', slug: 'guide/migration' },
 					{ title: 'Changelog', href: 'https://github.com/withastro/flue/blob/main/CHANGELOG.md' },
 				],
 			},
@@ -43,20 +42,28 @@ export const docsSections: DocsSection[] = [
 				title: 'Guides',
 				items: [
 					{ title: 'Project Layout', slug: 'guide/project-layout' },
-					{ title: 'Routing', slug: 'guide/routing' },
-					{ title: 'Database', slug: 'guide/database' },
 					{ title: 'Agents', slug: 'guide/building-agents' },
-					{ title: 'Workflows', slug: 'guide/workflows' },
-					{ title: 'Actions', slug: 'guide/actions' },
-					{ title: 'LLM', slug: 'guide/models' },
+					{ title: 'Agent Hooks', slug: 'guide/agent-hooks' },
+					{ title: 'Models', slug: 'guide/models' },
 					{ title: 'Tools', slug: 'guide/tools' },
+					{ title: 'MCP', slug: 'guide/mcp' },
 					{ title: 'Skills', slug: 'guide/skills' },
 					{ title: 'Subagents', slug: 'guide/subagents' },
 					{ title: 'Sandboxes', slug: 'guide/sandboxes' },
+					{ title: 'Routing', slug: 'guide/routing' },
+					{ title: 'Database', slug: 'guide/database' },
+				],
+			},
+			{
+				title: 'Advanced',
+				items: [
+					{ title: 'Deploy', slug: 'guide/deploy' },
+					{ title: 'Workflows', slug: 'guide/workflows' },
 					{ title: 'Schedules', slug: 'guide/schedules' },
 					{ title: 'Channels', slug: 'guide/channels' },
 					{ title: 'Evals', slug: 'guide/evals' },
 					{ title: 'Observability', slug: 'guide/observability' },
+					{ title: 'Durability', slug: 'guide/durability' },
 				],
 			},
 			{
@@ -66,8 +73,8 @@ export const docsSections: DocsSection[] = [
 			{
 				title: 'Targets',
 				items: [
-					{ title: 'Cloudflare', slug: 'guide/targets/cloudflare' },
-					{ title: 'Node.js', slug: 'guide/targets/node' },
+					{ title: 'Cloudflare', slug: 'guide/cloudflare-target' },
+					{ title: 'Node.js', slug: 'guide/node-target' },
 				],
 			},
 		],
@@ -75,27 +82,25 @@ export const docsSections: DocsSection[] = [
 	{
 		key: 'api',
 		title: 'Reference',
-		landingSlug: 'api/agent-api',
+		landingSlug: 'reference/agent-api',
 		groups: [
 			{
 				title: 'Runtime',
 				items: [
 					{ title: 'Configuration', slug: 'reference/configuration' },
-					{ title: 'Errors Reference', slug: 'api/errors-reference' },
-					{ title: 'Agent API', slug: 'api/agent-api' },
-					{ title: 'Action API', slug: 'api/action-api' },
-					{ title: 'Workflow API', slug: 'api/workflow-api' },
-					{ title: 'Provider API', slug: 'api/provider-api' },
-					{ title: 'Routing API', slug: 'api/routing-api' },
-					{ title: 'Streaming Protocol', slug: 'api/streaming-protocol' },
-					{ title: 'Events Reference', slug: 'api/events-reference' },
+					{ title: 'Errors Reference', slug: 'reference/errors' },
+					{ title: 'Agent API', slug: 'reference/agent-api' },
+					{ title: 'Agent Hooks API', slug: 'reference/agent-hooks-api' },
+					{ title: 'Provider API', slug: 'reference/provider-api' },
+					{ title: 'Streaming Protocol', slug: 'reference/streaming-protocol' },
+					{ title: 'Events Reference', slug: 'reference/events' },
 				],
 			},
 			{
 				title: 'Advanced',
 				items: [
-					{ title: 'Sandbox Adapter API', slug: 'api/sandbox-api' },
-					{ title: 'Data Persistence API', slug: 'api/data-persistence-api' },
+					{ title: 'Sandbox Adapter API', slug: 'reference/sandbox-api' },
+					{ title: 'Data Persistence API', slug: 'reference/data-persistence-api' },
 				],
 			},
 		],
@@ -110,9 +115,7 @@ export const docsSections: DocsSection[] = [
 				items: [
 					{ title: 'Overview', slug: 'cli/overview' },
 					{ title: 'init', slug: 'cli/init' },
-					{ title: 'dev', slug: 'cli/dev' },
 					{ title: 'run', slug: 'cli/run' },
-					{ title: 'build', slug: 'cli/build' },
 					{ title: 'add', slug: 'cli/add' },
 					{ title: 'update', slug: 'cli/update' },
 					{ title: 'docs', slug: 'cli/docs' },
@@ -122,51 +125,16 @@ export const docsSections: DocsSection[] = [
 	},
 	{
 		key: 'sdk',
-		title: 'SDK',
+		title: 'Agent SDK',
 		landingSlug: 'sdk/overview',
 		groups: [
 			{
-				title: 'SDK',
+				title: 'Agent SDK',
 				items: [
 					{ title: 'Overview', slug: 'sdk/overview' },
-					{
-						title: 'createFlueClient(...)',
-						slug: 'sdk/client',
-						items: [
-							{
-								title: 'CreateFlueClientOptions',
-								slug: 'sdk/client',
-								anchor: 'createflueclientoptions',
-							},
-							{ title: 'RequestHeaders', slug: 'sdk/client', anchor: 'requestheaders' },
-						],
-					},
-					{
-						title: 'client.agents',
-						slug: 'sdk/agents',
-						items: [
-							{ title: 'prompt(...)', slug: 'sdk/agents', anchor: 'clientagentsprompt' },
-							{ title: 'send(...)', slug: 'sdk/agents', anchor: 'clientagentssend' },
-							{ title: 'stream(...)', slug: 'sdk/agents', anchor: 'clientagentsstream' },
-						],
-					},
-					{
-						title: 'client.workflows',
-						slug: 'sdk/workflows',
-						items: [
-							{ title: 'invoke(...)', slug: 'sdk/workflows', anchor: 'clientworkflowsinvoke' },
-						],
-					},
-					{
-						title: 'client.runs',
-						slug: 'sdk/runs',
-						items: [
-							{ title: 'get(...)', slug: 'sdk/runs', anchor: 'clientrunsget' },
-							{ title: 'events(...)', slug: 'sdk/runs', anchor: 'clientrunsevents' },
-							{ title: 'stream(...)', slug: 'sdk/runs', anchor: 'clientrunsstream' },
-						],
-					},
-					{ title: 'Events and records', slug: 'sdk/events' },
+					{ title: 'createFlueClient(...)', slug: 'sdk/create-flue-client' },
+					{ title: 'FlueClient', slug: 'sdk/flue-client' },
+					{ title: 'Events', slug: 'sdk/events' },
 					{ title: 'Errors', slug: 'sdk/errors' },
 				],
 			},

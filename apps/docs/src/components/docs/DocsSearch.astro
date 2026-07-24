@@ -34,7 +34,7 @@ import SearchIcon from './SearchIcon.astro';
 	let pagefindPromise;
 
 	if (dialog && panel && input && results && trigger) {
-		const fallbackUrl = `${baseUrl}getting-started/quickstart/`;
+		const fallbackUrl = `${baseUrl}guide/getting-started/`;
 		const escapeHtml = (value) => value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 		const safeUrl = (value) => {
 			try {

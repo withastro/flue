@@ -1,7 +1,7 @@
 ---
 {
   "kind": "sandbox",
-  "version": 1,
+  "version": 3,
   "website": "https://developers.cloudflare.com/workers/runtime-apis/bindings/worker-loader/",
   "aliases": ["@cloudflare/shell"]
 }
@@ -16,9 +16,11 @@ Confirm with the user only when something is genuinely ambiguous.
 ## What this adapter does
 
 Wraps an already-initialized `@cloudflare/shell` `Workspace` into Flue's
-`SandboxFactory` interface. The adapter exposes a codemode-backed `code`
-tool that runs JavaScript against the durable workspace through a Worker Loader
-binding. The user owns workspace construction and hydration.
+`SandboxFactory` interface. The adapter composes the standard file tools
+(`read`, `write`, `edit` — they route through the workspace) with a
+codemode-backed `code` tool that runs JavaScript against the durable
+workspace through a Worker Loader binding. The user owns workspace
+construction and hydration.
 
 ## Where to write the file
 
@@ -34,7 +36,7 @@ Write this file verbatim. It requires a Cloudflare Worker target with a
 `worker_loaders` binding.
 
 ```ts
-// flue-blueprint: sandbox/cloudflare-shell@1
+// flue-blueprint: sandbox/cloudflare-shell@3
 import {
 	STATE_TYPES,
 	Workspace,
@@ -49,6 +51,9 @@ import {
 	type ResolvedProvider,
 } from '@cloudflare/codemode';
 import {
+	createEditTool,
+	createReadTool,
+	createWriteTool,
 	type FileStat,
 	type SandboxFactory,
 	type SessionEnv,
@@ -61,6 +66,30 @@ export interface GetShellSandboxOptions {
 	workspace: Workspace;
 	loader: WorkerLoader;
 	executor?: Pick<DynamicWorkerExecutorOptions, 'timeout' | 'globalOutbound' | 'modules'>;
+}
+
+/**
+ * The environment a cf-shell agent runs in: the generic `SessionEnv` file
+ * verbs route through the workspace, and the workspace itself rides along as
+ * the sandbox's native surface. Narrow to it with {@link shellWorkspace}.
+ */
+export interface ShellSandboxEnv extends SessionEnv {
+	readonly workspace: Workspace;
+}
+
+/**
+ * Narrow an agent's `harness.sandbox` to this sandbox's native surface — the
+ * `@cloudflare/shell` {@link Workspace} — with a runtime check. Throws when
+ * the agent runs on a different sandbox.
+ */
+export function shellWorkspace(sandbox: SessionEnv): Workspace {
+	const workspace = (sandbox as Partial<ShellSandboxEnv>).workspace;
+	if (!(workspace instanceof Workspace)) {
+		throw new Error(
+			'[flue] shellWorkspace(harness.sandbox) requires the cf-shell sandbox — this agent runs on a different environment.',
+		);
+	}
+	return workspace;
 }
 
 export function getShellSandbox(options: GetShellSandboxOptions): SandboxFactory {
@@ -86,11 +115,20 @@ export function getShellSandbox(options: GetShellSandboxOptions): SandboxFactory
 		...executorOptions,
 	});
 	const stateProvider = resolveProvider(stateTools(workspace));
-	const toolFactory: SessionToolFactory = () => [createCodeTool(executor, stateProvider)];
+	// Compose the standard file tools (they need only the SessionEnv file
+	// verbs, which route through the workspace) with this sandbox's native
+	// codemode tool. The exec-backed standard tools (bash/grep/glob) stay
+	// out — this env has no shell.
+	const toolFactory: SessionToolFactory = (env) => [
+		createReadTool(env),
+		createWriteTool(env),
+		createEditTool(env),
+		createCodeTool(executor, stateProvider),
+	];
 
 	return {
-		async createSessionEnv() {
-			return createWorkspaceSessionEnv(workspace, fs, '/');
+		async createSessionEnv(): Promise<ShellSandboxEnv> {
+			return { ...createWorkspaceSessionEnv(workspace, fs, '/'), workspace };
 		},
 		tools: toolFactory,
 	};
@@ -168,9 +206,10 @@ function createWorkspaceSessionEnv(
 }
 
 const EXEC_NOT_SUPPORTED_MESSAGE =
-	'[flue] The cf-shell sandbox does not support exec(). The agent\'s `code` tool runs JavaScript ' +
-	'in an isolated Worker against the workspace; from your own code, use `session.fs` / `harness.fs` ' +
-	'(readFile, writeFile, stat, readdir, etc.) — they route through the same Workspace. If you ' +
+	"[flue] The cf-shell sandbox does not support exec(). The agent's `code` tool runs JavaScript " +
+	'in an isolated Worker against the workspace; from your own code, use the file verbs on ' +
+	'`harness.sandbox` (readFile, writeFile, stat, readdir, etc.) or narrow to the native surface ' +
+	'with `shellWorkspace(harness.sandbox)` — both route through the same Workspace. If you ' +
 	'specifically need bash/grep/find or a real Linux environment, use `@cloudflare/sandbox` ' +
 	'(Containers + mountBucket) instead.';
 
@@ -190,14 +229,38 @@ const CodeParams = {
 		code: {
 			type: 'string',
 			description:
-				'A single async arrow function with the signature `async () => { ... return result; }`. ' +
-				'Inside the body, call `state.*` to operate on the workspace (see the type declarations ' +
-				'below). The function executes in an isolated Worker — no network, no DOM, no imports. ' +
-				'Return whatever JSON-serializable value you want back; it is returned as the tool result.',
+				'A string containing one self-contained async arrow function, for example ' +
+				"`async () => await state.readFile('/notes.md')`. Must be plain JavaScript " +
+				'(no TypeScript annotations). Only the `state` object is in scope — no other ' +
+				'tools, no Node.js APIs, no imports. Batch multiple operations with Promise.all ' +
+				'inside one function instead of issuing parallel code calls. Return a ' +
+				'JSON-serializable value; it is returned as the tool result.',
 		},
 	},
 	required: ['code'],
 };
+
+// Cloudflare allows at most 4 concurrent dynamic-worker invocations per
+// request. A turn that batches more `code` calls than that would fail the
+// surplus with "Too many concurrent dynamic workers" — queue them above a
+// cap of 3 instead (headroom for anything else in the request that holds a
+// dynamic worker).
+const MAX_CONCURRENT_CODE_EXECUTIONS = 3;
+let activeCodeExecutions = 0;
+const codeExecutionWaiters: Array<() => void> = [];
+
+async function withCodeExecutionSlot<T>(run: () => Promise<T>): Promise<T> {
+	while (activeCodeExecutions >= MAX_CONCURRENT_CODE_EXECUTIONS) {
+		await new Promise<void>((resolve) => codeExecutionWaiters.push(resolve));
+	}
+	activeCodeExecutions++;
+	try {
+		return await run();
+	} finally {
+		activeCodeExecutions--;
+		codeExecutionWaiters.shift()?.();
+	}
+}
 
 function createCodeTool(
 	executor: DynamicWorkerExecutor,
@@ -213,7 +276,9 @@ function createCodeTool(
 			params: unknown,
 		) {
 			const code = (params as { code: string }).code;
-			const { result, error, logs } = await executor.execute(code, [stateProvider]);
+			const { result, error, logs } = await withCodeExecutionSlot(() =>
+				executor.execute(code, [stateProvider]),
+			);
 			if (error) {
 				const logsTail = logs?.length ? `\n\nlogs:\n${logs.join('\n')}` : '';
 				throw new Error(`code tool failed: ${error}${logsTail}`);
@@ -238,10 +303,15 @@ function formatResult(result: unknown): string {
 	}
 }
 
+// Each rule below pre-empts an observed model failure bucket from production
+// use (Sentry, 2026-06/07): nested `state` shapes, native agent tools invoked
+// inside `code`, Node require()/API usage, guessed file paths, parallel
+// code-call bursts, and generated-JavaScript syntax/identifier defects.
 function buildCodeToolDescription(): string {
 	return [
-		'Run a snippet of JavaScript inside an isolated Worker against a durable',
-		'workspace filesystem. The snippet must be a single async arrow function:',
+		'Run one JavaScript snippet in an isolated Worker against the durable',
+		'workspace filesystem. The snippet must be a single, self-contained async',
+		'arrow function:',
 		'',
 		'  async () => {',
 		'    const text = await state.readFile("/notes.md");',
@@ -249,13 +319,34 @@ function buildCodeToolDescription(): string {
 		'    return { bytes: text.length };',
 		'  }',
 		'',
-		'Rules:',
-		'- Write JavaScript, not TypeScript — no type annotations.',
-		'- Do not use `import` statements. Everything you need is on `state`.',
-		'- Always `return` the value you want back.',
+		'To touch several files, batch the work inside ONE call (Promise.all for',
+		'reads) instead of issuing parallel code calls:',
+		'',
+		'  async () => {',
+		'    const [a, b] = await Promise.all([',
+		'      state.readFile("/docs/a.md"),',
+		'      state.readFile("/docs/b.md"),',
+		'    ]);',
+		'    return { a, b };',
+		'  }',
+		'',
+		'Rules — each violation fails the call:',
+		'- `state` is the ONLY global beyond standard JavaScript built-ins. It is a',
+		'  flat object of async functions (declaration below); there is no state.fs,',
+		'  state.workspace, or any other nested namespace.',
+		'- Your other agent tools (read, write, edit, task, ...) DO NOT exist inside',
+		'  this snippet. Call them as separate direct tool calls, never from code.',
+		'- This is an isolated Worker, not Node.js: require(), import, fs, path,',
+		'  process, and Buffer do not exist. Network access (fetch, connect) is',
+		'  disabled — do not attempt outbound HTTP.',
+		'- Only use paths you have seen — from earlier reads or state.readdir().',
+		'  Never guess or construct a path from an ID or a name.',
+		'- Write plain JavaScript (no TypeScript annotations) and declare every',
+		'  variable you use. Keep the body simple; do analysis in your reply, not',
+		'  in code.',
+		'- Always `return` the value you want back; it must be JSON-serializable.',
 		'- For multi-file refactors, prefer `state.planEdits()` + `state.applyEditPlan()` over many writes.',
 		'- For tree-wide search/replace, use `state.replaceInFiles()` (transactional by default).',
-		'- Network access (`fetch`, `connect`) is disabled. Do not attempt outbound HTTP.',
 		'',
 		'The `state` API (TypeScript declaration; the runtime is JavaScript):',
 		'',
@@ -267,7 +358,7 @@ function buildCodeToolDescription(): string {
 
 export function getDefaultWorkspace(): Workspace {
 	const { storage } = getCloudflareContext();
-	return new Workspace({ sql: storage.sql });
+	return new Workspace({ sql: storage.sql as SqlStorage });
 }
 ```
 
@@ -298,52 +389,53 @@ or tokens; the user authenticates through their existing Wrangler setup.
 
 ## Behavior and tradeoffs
 
-This adapter is not Flue's default just-bash virtual sandbox. It replaces the
-normal shell and file-manipulation tool set with a `code` tool that runs
-JavaScript against the Workspace `state.*` API. Application code can still use
-`session.fs` and `harness.fs` against the same Workspace; `session.shell()` and
-`harness.shell()` throw.
+This adapter is not Flue's default just-bash virtual sandbox. Its `tools`
+factory keeps the standard file tools (`read`/`write`/`edit`, composed from
+Flue's exported per-tool factories) and swaps the shell-backed tools
+(`bash`/`grep`/`glob`) for a `code` tool that runs JavaScript against the
+Workspace `state.*` API. Application code uses the file verbs on
+`harness.sandbox` against the same Workspace, or narrows to the native
+surface with `shellWorkspace(harness.sandbox)`; `harness.sandbox.exec()`
+throws.
 
 If the user needs Linux commands, language toolchains, or R2 keys exposed as
 mounted filesystem paths, use `@cloudflare/sandbox` Containers with
 `mountBucket` instead. Application-specific data loading into the Workspace
 belongs outside this adapter.
 
-## Wiring it into a workflow
+## Wiring it into an agent
 
 ```ts
-import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+'use agent';
+import { env } from 'cloudflare:workers';
+import { useModel, useSandbox } from '@flue/runtime';
 import { getDefaultWorkspace, getShellSandbox } from '../sandboxes/cloudflare-shell';
-
-export const route: WorkflowRouteHandler = async (_c, next) => next();
 
 interface Env {
   LOADER: WorkerLoader;
 }
 
-const agent = defineAgent<Env>(({ env }) => {
-  const workspace = getDefaultWorkspace();
-  return {
-    sandbox: getShellSandbox({ workspace, loader: env.LOADER }),
-    model: 'cloudflare/@cf/moonshotai/kimi-k2.6',
-  };
-});
+const { LOADER } = env as unknown as Env;
 
-export default defineWorkflow({
-  agent,
-  run: async ({ harness }) => {
-    const session = await harness.session();
-    return await session.prompt('Use the code tool to list the workspace root.');
-  },
-});
+export function Assistant() {
+  useModel('cloudflare/@cf/moonshotai/kimi-k2.6');
+  useSandbox(getShellSandbox({ workspace: getDefaultWorkspace(), loader: LOADER }));
+  return 'You explore and edit the mounted workspace with the file tools and the `code` tool.';
+}
 ```
+
+The `'use agent'` directive at the top is what registers the module with
+the application. Mount the agent's HTTP surface explicitly in `app.ts`
+(`app.route('/agents/<name>', createAgentRouter(Assistant))`, with
+`createAgentRouter` from `@flue/runtime/routing`) if it needs an endpoint —
+`dispatch()` needs no mount.
 
 ## Verify
 
 1. Run the user's typechecker.
 2. Confirm the import path matches where you wrote `cloudflare-shell.ts`.
 3. Confirm `wrangler.jsonc` has a `worker_loaders` binding matching the code.
-4. Tell the user to use `flue dev --target cloudflare`; if local Wrangler cannot simulate Worker Loader, use remote dev or deploy a preview Worker.
+4. Tell the user to use `vite dev` (the Cloudflare target comes from the `cloudflare()` plugin in `vite.config.ts`); if local Wrangler cannot simulate Worker Loader, use remote dev or deploy a preview Worker with `vite build && wrangler deploy`.
 
 When updating an existing integration, inspect and compare it against this complete current blueprint, apply every relevant change while preserving customizations, and then add or update the marker in the primary marked file. This comparison is required when the marker is missing.
 
@@ -352,3 +444,147 @@ When updating an existing integration, inspect and compare it against this compl
 ### Version 1 — 2026-06-14
 
 Initial version.
+
+### Version 2 — 2026-07-12
+
+Bounded `code` tool concurrency. Cloudflare allows at most 4 concurrent
+dynamic-worker invocations per request; when a model batched 5+ `code` calls
+in one turn under Flue's parallel tool execution, the surplus calls failed
+with `Too many concurrent dynamic workers`. The adapter now queues executions
+above a cap of 3.
+
+```diff
+--- a/src/sandboxes/cloudflare-shell.ts
++++ b/src/sandboxes/cloudflare-shell.ts
+@@ -1,4 +1,4 @@
+-// flue-blueprint: sandbox/cloudflare-shell@1
++// flue-blueprint: sandbox/cloudflare-shell@2
+@@ -238,6 +238,29 @@ const CodeParams = {
+ 	required: ['code'],
+ };
+
++// Cloudflare allows at most 4 concurrent dynamic-worker invocations per
++// request. A turn that batches more `code` calls than that would fail the
++// surplus with "Too many concurrent dynamic workers" — queue them above a
++// cap of 3 instead (headroom for anything else in the request that holds a
++// dynamic worker).
++const MAX_CONCURRENT_CODE_EXECUTIONS = 3;
++let activeCodeExecutions = 0;
++const codeExecutionWaiters: Array<() => void> = [];
++
++async function withCodeExecutionSlot<T>(run: () => Promise<T>): Promise<T> {
++	while (activeCodeExecutions >= MAX_CONCURRENT_CODE_EXECUTIONS) {
++		await new Promise<void>((resolve) => codeExecutionWaiters.push(resolve));
++	}
++	activeCodeExecutions++;
++	try {
++		return await run();
++	} finally {
++		activeCodeExecutions--;
++		codeExecutionWaiters.shift()?.();
++	}
++}
++
+ function createCodeTool(
+ 	executor: DynamicWorkerExecutor,
+ 	stateProvider: ResolvedProvider,
+@@ -252,7 +275,9 @@ function createCodeTool(
+ 		) {
+ 			const code = (params as { code: string }).code;
+-			const { result, error, logs } = await executor.execute(code, [stateProvider]);
++			const { result, error, logs } = await withCodeExecutionSlot(() =>
++				executor.execute(code, [stateProvider]),
++			);
+ 			if (error) {
+```
+
+### Version 3 — 2026-07-16
+
+Model-facing guidance only — no behavior change. The `code` tool's
+description and the `code` parameter description were rewritten from
+production failure data (a heavy consumer's Sentry classification of ~2,700
+code-tool warnings): each new rule pre-empts an observed misuse bucket —
+inventing nested `state` namespaces, calling other agent tools from inside
+the snippet, using Node `require()`/`process`/`Buffer`, guessing file paths
+instead of listing directories, bursting parallel `code` calls instead of
+batching with `Promise.all`, and emitting TypeScript or undeclared
+identifiers. To upgrade, replace the `CodeParams` `code` description string
+and the `buildCodeToolDescription()` body with the current blueprint's
+versions.
+
+```diff
+--- a/src/sandboxes/cloudflare-shell.ts
++++ b/src/sandboxes/cloudflare-shell.ts
+@@ -1,4 +1,4 @@
+-// flue-blueprint: sandbox/cloudflare-shell@2
++// flue-blueprint: sandbox/cloudflare-shell@3
+@@ const CodeParams = {
+ 		code: {
+ 			type: 'string',
+ 			description:
+-				'A single async arrow function with the signature `async () => { ... return result; }`. ' +
+-				'Inside the body, call `state.*` to operate on the workspace (see the type declarations ' +
+-				'below). The function executes in an isolated Worker — no network, no DOM, no imports. ' +
+-				'Return whatever JSON-serializable value you want back; it is returned as the tool result.',
++				'A string containing one self-contained async arrow function, for example ' +
++				"`async () => await state.readFile('/notes.md')`. Must be plain JavaScript " +
++				'(no TypeScript annotations). Only the `state` object is in scope — no other ' +
++				'tools, no Node.js APIs, no imports. Batch multiple operations with Promise.all ' +
++				'inside one function instead of issuing parallel code calls. Return a ' +
++				'JSON-serializable value; it is returned as the tool result.',
+ 		},
+@@ function buildCodeToolDescription(): string {
++// Each rule below pre-empts an observed model failure bucket from production
++// use (Sentry, 2026-06/07): nested `state` shapes, native agent tools invoked
++// inside `code`, Node require()/API usage, guessed file paths, parallel
++// code-call bursts, and generated-JavaScript syntax/identifier defects.
+ function buildCodeToolDescription(): string {
+ 	return [
+-		'Run a snippet of JavaScript inside an isolated Worker against a durable',
+-		'workspace filesystem. The snippet must be a single async arrow function:',
++		'Run one JavaScript snippet in an isolated Worker against the durable',
++		'workspace filesystem. The snippet must be a single, self-contained async',
++		'arrow function:',
+ 		'',
+ 		'  async () => {',
+ 		'    const text = await state.readFile("/notes.md");',
+ 		'    await state.writeFile("/notes.md", text.toUpperCase());',
+ 		'    return { bytes: text.length };',
+ 		'  }',
+ 		'',
+-		'Rules:',
+-		'- Write JavaScript, not TypeScript — no type annotations.',
+-		'- Do not use `import` statements. Everything you need is on `state`.',
+-		'- Always `return` the value you want back.',
++		'To touch several files, batch the work inside ONE call (Promise.all for',
++		'reads) instead of issuing parallel code calls:',
++		'',
++		'  async () => {',
++		'    const [a, b] = await Promise.all([',
++		'      state.readFile("/docs/a.md"),',
++		'      state.readFile("/docs/b.md"),',
++		'    ]);',
++		'    return { a, b };',
++		'  }',
++		'',
++		'Rules — each violation fails the call:',
++		'- `state` is the ONLY global beyond standard JavaScript built-ins. It is a',
++		'  flat object of async functions (declaration below); there is no state.fs,',
++		'  state.workspace, or any other nested namespace.',
++		'- Your other agent tools (read, write, edit, task, ...) DO NOT exist inside',
++		'  this snippet. Call them as separate direct tool calls, never from code.',
++		'- This is an isolated Worker, not Node.js: require(), import, fs, path,',
++		'  process, and Buffer do not exist. Network access (fetch, connect) is',
++		'  disabled — do not attempt outbound HTTP.',
++		'- Only use paths you have seen — from earlier reads or state.readdir().',
++		'  Never guess or construct a path from an ID or a name.',
++		'- Write plain JavaScript (no TypeScript annotations) and declare every',
++		'  variable you use. Keep the body simple; do analysis in your reply, not',
++		'  in code.',
++		'- Always `return` the value you want back; it must be JSON-serializable.',
+ 		'- For multi-file refactors, prefer `state.planEdits()` + `state.applyEditPlan()` over many writes.',
+ 		'- For tree-wide search/replace, use `state.replaceInFiles()` (transactional by default).',
+-		'- Network access (`fetch`, `connect`) is disabled. Do not attempt outbound HTTP.',
+ 		'',
+ 		'The `state` API (TypeScript declaration; the runtime is JavaScript):',
+```

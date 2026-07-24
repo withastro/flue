@@ -114,7 +114,7 @@ function prepareRoute(options: SharedRouteOptions): {
 	if (!Number.isSafeInteger(bodyLimit) || bodyLimit <= 0) {
 		throw new TypeError('Slack route bodyLimit must be a positive integer.');
 	}
-	const secret = encoder.encode(options.signingSecret);
+	const key = importSigningKey(options.signingSecret);
 
 	return {
 		async verify(request, expectedMediaType) {
@@ -143,7 +143,7 @@ function prepareRoute(options: SharedRouteOptions): {
 				timestamp === undefined ||
 				Math.abs(Math.floor(Date.now() / 1000) - timestamp) > MAX_SIGNATURE_AGE_SECONDS ||
 				!signature ||
-				!(await verifySignature(secret, timestampText, body, signature))
+				!(await verifySignature(await key, timestampText, body, signature))
 			) {
 				return response(401);
 			}
@@ -169,7 +169,8 @@ async function readBody(request: Request, bodyLimit: number): Promise<Uint8Array
 			if (done) break;
 			total += value.byteLength;
 			if (total > bodyLimit) {
-				void reader.cancel();
+				// Discard cancel rejections: an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
 				return undefined;
 			}
 			chunks.push(value);
@@ -200,24 +201,36 @@ function parseSignature(value: string | null): Uint8Array | undefined {
 	return bytes;
 }
 
-async function verifySignature(
-	secret: Uint8Array,
-	timestamp: string,
-	body: Uint8Array,
-	signature: Uint8Array,
-): Promise<boolean> {
-	const prefix = encoder.encode(`v0:${timestamp}:`);
-	const signed = new Uint8Array(prefix.byteLength + body.byteLength);
-	signed.set(prefix);
-	signed.set(body, prefix.byteLength);
-	const key = await crypto.subtle.importKey(
+// Imported once at handler creation and awaited per use — the
+// messenger/src/webhook.ts importSigningKey shape.
+async function importSigningKey(secret: string): Promise<CryptoKey> {
+	return crypto.subtle.importKey(
 		'raw',
-		toArrayBuffer(secret),
+		toArrayBuffer(encoder.encode(secret)),
 		{ name: 'HMAC', hash: 'SHA-256' },
 		false,
 		['verify'],
 	);
-	return crypto.subtle.verify('HMAC', key, toArrayBuffer(signature), toArrayBuffer(signed));
+}
+
+async function verifySignature(
+	key: CryptoKey,
+	timestamp: string,
+	body: Uint8Array,
+	signature: Uint8Array,
+): Promise<boolean> {
+	// The `v0:{ts}:` signed-data prefix is Slack protocol and stays local.
+	const prefix = encoder.encode(`v0:${timestamp}:`);
+	const signed = new Uint8Array(prefix.byteLength + body.byteLength);
+	signed.set(prefix);
+	signed.set(body, prefix.byteLength);
+	// verify() can throw on malformed input in workerd; report false like the
+	// sfmc/zendesk/intercom copies (awaited so rejections are caught too).
+	try {
+		return await crypto.subtle.verify('HMAC', key, toArrayBuffer(signature), toArrayBuffer(signed));
+	} catch {
+		return false;
+	}
 }
 
 function parseJson(body: Uint8Array): unknown {

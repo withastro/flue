@@ -18,7 +18,7 @@ export function createGitHubWebhookHandler<E extends Env>(
 	if (!Number.isSafeInteger(bodyLimit) || bodyLimit <= 0) {
 		throw new TypeError('GitHub webhook bodyLimit must be a positive integer.');
 	}
-	const secret = encoder.encode(options.webhookSecret);
+	const key = importSigningKey(options.webhookSecret);
 
 	return async (c) => {
 		const request = c.req.raw;
@@ -42,7 +42,7 @@ export function createGitHubWebhookHandler<E extends Env>(
 		if (!body) return new Response(null, { status: 413 });
 
 		const signature = parseSignature(request.headers.get('x-hub-signature-256'));
-		if (!signature || !(await verifySignature(secret, body, signature))) {
+		if (!signature || !(await verifySignature(await key, body, signature))) {
 			return new Response(null, { status: 401 });
 		}
 
@@ -83,7 +83,8 @@ async function readBody(request: Request, bodyLimit: number): Promise<Uint8Array
 			if (done) break;
 			total += value.byteLength;
 			if (total > bodyLimit) {
-				void reader.cancel();
+				// Discard cancel rejections: an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
 				return undefined;
 			}
 			chunks.push(value);
@@ -112,19 +113,30 @@ function parseSignature(value: string | null): Uint8Array | undefined {
 	return bytes;
 }
 
-async function verifySignature(
-	secret: Uint8Array,
-	body: Uint8Array,
-	signature: Uint8Array,
-): Promise<boolean> {
-	const key = await crypto.subtle.importKey(
+// Imported once at handler creation and awaited per use — the
+// messenger/src/webhook.ts importSigningKey shape.
+async function importSigningKey(secret: string): Promise<CryptoKey> {
+	return crypto.subtle.importKey(
 		'raw',
-		toArrayBuffer(secret),
+		toArrayBuffer(encoder.encode(secret)),
 		{ name: 'HMAC', hash: 'SHA-256' },
 		false,
 		['verify'],
 	);
-	return crypto.subtle.verify('HMAC', key, toArrayBuffer(signature), toArrayBuffer(body));
+}
+
+async function verifySignature(
+	key: CryptoKey,
+	body: Uint8Array,
+	signature: Uint8Array,
+): Promise<boolean> {
+	// verify() can throw on malformed input in workerd; report false like the
+	// sfmc/zendesk/intercom copies (awaited so rejections are caught too).
+	try {
+		return await crypto.subtle.verify('HMAC', key, toArrayBuffer(signature), toArrayBuffer(body));
+	} catch {
+		return false;
+	}
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {

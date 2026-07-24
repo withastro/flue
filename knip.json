@@ -1,9 +1,10 @@
 {
 	"$schema": "https://unpkg.com/knip@6/schema.json",
 	"ignore": ["demo/**"],
-	"ignoreDependencies": ["@flue/cli", "agents", "wrangler"],
+	"ignoreDependencies": ["@flue/cli", "agents", "wrangler", "cloudflare"],
 	"ignoreIssues": {
-		"packages/runtime/src/runtime/schemas.ts": ["duplicates"]
+		"packages/runtime/src/runtime/schemas.ts": ["duplicates"],
+		"examples/cloudflare/src/sandboxes/cloudflare-shell.ts": ["exports", "types"]
 	},
 	"workspaces": {
 		".": {
@@ -13,12 +14,12 @@
 		},
 		"examples/*": {
 			"entry": [
-				"{src/{app,cloudflare,agents/*,workflows/*,channels/*},flue.config}.{ts,mts,js,mjs}"
+				"{src/{app,db,cloudflare,agents/*,channels/*},flue.config,vite.config,vite.config.cloudflare,vite.config.ui}.{ts,mts,js,mjs}"
 			],
 			"project": ["src/**/*.{ts,mts,js,mjs}"]
 		},
 		"examples/vitest-evals": {
-			"entry": ["src/evals/**/*.eval.ts", "src/agents/*.ts", "flue.config.ts"],
+			"entry": ["src/evals/**/*.eval.ts", "src/agents/*.ts", "src/app.ts", "flue.config.ts"],
 			"project": ["src/**/*.ts", "*.ts"]
 		},
 
@@ -32,6 +33,9 @@
 		"packages/runtime": {
 			"entry": ["test/fixtures/durable-boundary-child.mjs"],
 			"ignoreDependencies": ["@hono/node-server"]
+		},
+		"packages/vite": {
+			"ignoreDependencies": ["@earendil-works/pi-ai"]
 		}
 	}
 }

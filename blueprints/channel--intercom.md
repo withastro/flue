@@ -15,9 +15,9 @@ application-owned Intercom API behavior to a Flue project.
 
 Read local instructions, detect the package manager and deployment target, and
 select the first existing source root: `<root>/.flue/`, then `<root>/src/`,
-then `<root>/`. Inspect existing agents, environment types, secret conventions,
-Intercom installation storage, region selection, and the webhook topics the
-application needs.
+then `<root>/`. Inspect existing agents, `app.ts` (the application's route
+map), environment types, secret conventions, Intercom installation storage,
+region selection, and the webhook topics the application needs.
 
 Install `@flue/intercom` and the official `intercom-client@^7.0.3` with the
 project's package manager. Keep the SDK in project code; `@flue/intercom`
@@ -93,7 +93,7 @@ import {
   type JsonValue,
 } from '@flue/intercom';
 import { defineTool, dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createIntercomClient, type IntercomRegion } from '../intercom-client.ts';
 
 const workspaceId = requiredEnv('INTERCOM_WORKSPACE_ID');
@@ -118,8 +118,13 @@ export const channel = createIntercomChannel({
           workspaceId: notification.app_id,
           conversationId,
         };
-        await dispatch(assistant, {
-          id: channel.conversationKey(conversation),
+        await dispatch(Assistant, {
+          id: channel.instanceId(conversation),
+          // Recorded once when this event creates the instance; ignored after.
+          initialData: {
+            workspaceId: conversation.workspaceId,
+            conversationId: conversation.conversationId,
+          },
           message: {
             kind: 'signal',
             type: `intercom.${notification.topic}`,
@@ -176,6 +181,33 @@ function requiredEnv(name: string): string {
 }
 ```
 
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. It carries the workspace and conversation identifiers the tool
+needs — the agent reads them with `useInitialData()` instead of parsing the
+instance id. Per-message facts stay on the signal's `attributes`.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the
+channel's router explicitly:
+
+```ts
+// app.ts
+import { Hono } from 'hono';
+import { channel } from './channels/intercom.ts';
+
+const app = new Hono();
+app.route('/channels/intercom', channel.route());
+
+export default app;
+```
+
+`channel.route()` is a pure router factory serving the channel's routes
+relative to the mount path. The `// Path:` comments in this guide assume the
+conventional `/channels/intercom` mount; a different mount path shifts every
+provider URL accordingly.
+
 The channel always publishes unsigned `HEAD /webhook` for Intercom's endpoint
 check and signed `POST /webhook` for notifications. The callback runs only for
 `POST`.
@@ -201,33 +233,55 @@ of being rejected by a closed union.
 Bind the verified workspace and conversation selected by trusted code:
 
 ```ts
-import { defineAgent } from '@flue/runtime';
-import { channel, retrieveConversation } from '../channels/intercom.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { retrieveConversation } from '../channels/intercom.ts';
 
-export default defineAgent(({ id }) => {
-  const conversation = channel.parseConversationKey(id);
-  return {
-    model: 'anthropic/claude-haiku-4-5',
-    tools: [retrieveConversation(conversation)],
-  };
+const initialDataSchema = v.object({
+	workspaceId: v.string(),
+	conversationId: v.string(),
 });
+
+export function Assistant() {
+	useModel('anthropic/claude-haiku-4-5');
+	const data = useInitialData<v.InferOutput<typeof initialDataSchema>>();
+	if (!data) throw new Error('This agent is created by the Intercom channel dispatch.');
+	useTool(retrieveConversation(data));
+	return 'Help with the inbound Intercom conversation. Retrieve the current conversation when more context is needed.';
+}
+
+Assistant.initialData = initialDataSchema;
 ```
 
+The `initialData` static validates the dispatched `initialData` when the
+instance is created; `useInitialData()` returns the parsed value on every
+render.
+
+The `'use agent'` directive (the module's first statement) is what registers
+the agent with the application — `dispatch(...)` from the channel callback
+needs no `app.ts` mounting. Add
+`app.route('/agents/<name>', createAgentRouter(Assistant))` (from
+`@flue/runtime/routing`) in `app.ts` only when the agent
+should also be reachable over HTTP directly.
+
 The tool accepts no workspace, token, host, or conversation id from the model.
-The canonical key is an identifier, not an authorization capability; apply the
+The instance id is an identifier, not an authorization capability; apply the
 project's normal access policy to direct agent routes. The channel-agent import
 cycle is supported because imported bindings are read only inside deferred
-callbacks and initializers.
+callbacks and agent function bodies.
 
 ## Configure the endpoint
 
-Configure this complete HTTPS URL in Intercom's Developer Hub:
+Configure this complete HTTPS URL in Intercom's Developer Hub — the channel's
+mount path in `app.ts` plus the route suffix, with the conventional
+`app.route('/channels/intercom', ...)` mount:
 
 ```txt
 https://example.com/channels/intercom/webhook
 ```
 
-If `flue()` has an outer mount prefix, include it. Intercom first sends an
+A different mount path changes the URL accordingly. Intercom first sends an
 unsigned `HEAD` request and expects `200`. Signed notifications then arrive by
 `POST` with:
 
@@ -260,9 +314,10 @@ rather than blocking the callback on slow operations.
 
 ## Test without Intercom
 
-Run the project's typecheck, Node build, Cloudflare build, and actual workerd
-tests. Flue projects already enable `nodejs_compat`; execute both ingress and
-the official client in that configuration rather than treating bundling as
+Run the project typecheck, `vite build` for the configured target, and actual
+workerd tests. Flue projects already enable `nodejs_compat`; execute both
+ingress and the official client in that configuration rather than treating
+bundling as
 runtime proof.
 
 Use an original synthetic notification and a local test secret. Serialize the
@@ -296,7 +351,7 @@ Cover:
 - `ping`, selected conversation topics, and an original future topic;
 - malformed JSON, media type, declared and streamed body limits;
 - no-value, JSON, and normal `Response` results;
-- a thrown callback surfacing as `500`, and canonical conversation-key round trip.
+- a thrown callback surfacing as `500`, and canonical instance-id round trip.
 
 Test the real exported client with an injected fail-closed Fetch transport in
 both Node and workerd:

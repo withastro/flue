@@ -1,7 +1,7 @@
 ---
 title: Vitest Evals
-description: Add repeatable agent and workflow evals to a Flue project with vitest-evals.
-lastReviewedAt: 2026-06-18
+description: Add repeatable agent evals to a Flue project with vitest-evals.
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -20,20 +20,20 @@ The blueprint guides your coding agent through installing the test dependencies,
 
 The generated harness:
 
-- prompts an HTTP-exposed agent through `@flue/sdk`;
-- gives each eval case a fresh agent instance;
+- prompts a mounted agent conversation through `@flue/sdk` (`createFlueClient({ url })`);
+- gives each eval case a fresh conversation id;
 - captures the prompt's event sequence using its server-provided offset and submission ID;
 - records response text, model usage, costs, and tool calls in the normalized eval result;
 - supports local servers and deployed applications through `FLUE_BASE_URL`.
 
-The blueprint does not expose an existing agent automatically. Confirm that the agent's `route` export and its authentication are appropriate before evaluating it over HTTP.
+The blueprint does not mount an agent automatically. Confirm that `app.ts` mounts the agent with `createAgentRouter(...)` and that its authentication middleware is appropriate before evaluating it over HTTP.
 
 ## Run evals
 
 Start the Flue application in one terminal:
 
 ```sh
-pnpm exec flue dev
+pnpm exec vite dev
 ```
 
 After the server is ready, run evals in another terminal:
@@ -42,7 +42,7 @@ After the server is ready, run evals in another terminal:
 pnpm run evals
 ```
 
-The server process needs the application's normal model-provider credentials. To evaluate a deployment, set its public mount URL:
+The server process needs the application's normal model-provider credentials. To evaluate a deployment, set its base URL:
 
 ```sh
 FLUE_BASE_URL=https://preview.example.com pnpm run evals
@@ -64,4 +64,4 @@ The same artifact can be published by the `getsentry/vitest-evals` GitHub Action
 
 ## Next steps
 
-See [Evals](/docs/guide/evals/) for designing cases, choosing deterministic assertions or judges, evaluating workflows, and understanding the harness. A complete runnable project is available in [`examples/vitest-evals`](https://github.com/withastro/flue/tree/main/examples/vitest-evals).
+See [Evals](/docs/guide/evals/) for designing cases, choosing deterministic assertions or judges, and understanding the harness. A complete runnable project is available in [`examples/vitest-evals`](https://github.com/withastro/flue/tree/main/examples/vitest-evals).

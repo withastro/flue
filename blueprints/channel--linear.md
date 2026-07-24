@@ -15,9 +15,9 @@ webhooks with project-owned outbound Linear API access to a Flue project.
 
 Read local instructions, detect the package manager and target, and select the
 first existing source root: `<root>/.flue/`, then `<root>/src/`, then
-`<root>/`. Inspect existing agents, environment types, secret conventions, and
-whether the application needs ordinary issue comments, Linear agent sessions,
-or both.
+`<root>/`. Inspect existing agents, `app.ts` (the application's route map),
+environment types, secret conventions, and whether the application needs
+ordinary issue comments, Linear agent sessions, or both.
 
 Install `@flue/linear` and `@linear/sdk@^86.0.0`. Flue owns verified ingress.
 The project owns the official SDK client and every outbound tool.
@@ -36,11 +36,7 @@ message, event policy, and tool:
 
 ```ts
 // flue-blueprint: channel/linear@1
-import {
-  createLinearChannel,
-  type LinearConversationRef,
-  type LinearWebhookPayload,
-} from '@flue/linear';
+import { createLinearChannel, type LinearWebhookPayload } from '@flue/linear';
 import { defineTool, dispatch } from '@flue/runtime';
 import { LinearClient } from '@linear/sdk';
 import * as v from 'valibot';
@@ -48,7 +44,7 @@ import type {
   AgentSessionEventWebhookPayload,
   EntityWebhookPayloadWithCommentData,
 } from '@linear/sdk/webhooks';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 const organizationId = process.env.LINEAR_ORGANIZATION_ID;
 const webhookId = process.env.LINEAR_WEBHOOK_ID;
@@ -67,13 +63,20 @@ export const channel = createLinearChannel({
     if (isCommentEvent(payload)) {
       const comment = payload.data;
       if (payload.action !== 'create' || !comment.issueId) return;
-      await dispatch(assistant, {
-        id: channel.conversationKey({
+      await dispatch(Assistant, {
+        id: channel.instanceId({
           type: 'issue',
           organizationId: payload.organizationId,
           issueId: comment.issueId,
           ...(comment.parentId ? { threadCommentId: comment.parentId } : {}),
         }),
+        // Recorded once when this event creates the instance; ignored after.
+        initialData: {
+          type: 'issue',
+          issueId: comment.issueId,
+          ...(comment.parentId ? { threadCommentId: comment.parentId } : {}),
+          ...(comment.issue?.title ? { issueTitle: comment.issue.title } : {}),
+        },
         message: {
           kind: 'signal',
           type: 'linear.comment.created',
@@ -89,12 +92,20 @@ export const channel = createLinearChannel({
     }
 
     if (isAgentSessionEvent(payload)) {
-      await dispatch(assistant, {
-        id: channel.conversationKey({
+      await dispatch(Assistant, {
+        id: channel.instanceId({
           type: 'agent-session',
           organizationId: payload.organizationId,
           agentSessionId: payload.agentSession.id,
         }),
+        // Recorded once when this event creates the instance; ignored after.
+        initialData: {
+          type: 'agent-session',
+          agentSessionId: payload.agentSession.id,
+          ...(payload.agentSession.issue?.title
+            ? { issueTitle: payload.agentSession.issue.title }
+            : {}),
+        },
         message: {
           kind: 'signal',
           type: `linear.agent_session.${payload.action}`,
@@ -124,13 +135,18 @@ function isAgentSessionEvent(
   return payload.type === 'AgentSessionEvent' && 'agentSession' in payload;
 }
 
-export function postMessage(ref: LinearConversationRef) {
+/** The subset of `LinearConversationRef` actually needed to post a message. */
+export type LinearMessageRef =
+  | { type: 'agent-session'; agentSessionId: string }
+  | { type: 'issue'; issueId: string; threadCommentId?: string };
+
+export function postMessage(ref: LinearMessageRef) {
   return defineTool({
     name: 'post_linear_message',
     description: 'Post a message to the Linear conversation bound to this agent.',
     input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
-    async run({ input }) {
-      const { text } = input;
+    async run({ data }) {
+      const { text } = data;
       if (ref.type === 'agent-session') {
         const result = await client.createAgentActivity({
           agentSessionId: ref.agentSessionId,
@@ -153,6 +169,27 @@ export function postMessage(ref: LinearConversationRef) {
 }
 ```
 
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the
+channel's router explicitly:
+
+```ts
+// app.ts
+import { Hono } from 'hono';
+import { channel } from './channels/linear.ts';
+
+const app = new Hono();
+app.route('/channels/linear', channel.route());
+
+export default app;
+```
+
+`channel.route()` is a pure router factory serving the channel's routes
+relative to the mount path. The `// Path:` comments in this guide assume the
+conventional `/channels/linear` mount; a different mount path shifts every
+provider URL accordingly.
+
 Use `accessToken` instead of `apiKey` when an installed OAuth application owns
 the client. Do not implement token storage, refresh, or organization-to-token
 resolution unless the project already owns that installation system.
@@ -161,24 +198,66 @@ The optional organization and webhook ids pin one endpoint to a fixed
 integration. Omit them only when the application intentionally accepts every
 organization or webhook authorized by the signing secret.
 
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. It carries the issue or agent-session fields the tool needs — the
+agent reads them with `useInitialData()` instead of parsing the instance id —
+plus the issue title when the webhook includes one. Per-message facts stay on
+the signal's `attributes`.
+
 ## Wire the agent
 
 ```ts
-import { defineAgent } from '@flue/runtime';
-import { channel, postMessage } from '../channels/linear.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { postMessage } from '../channels/linear.ts';
 
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  tools: [postMessage(channel.parseConversationKey(id))],
-}));
+const initialDataSchema = v.variant('type', [
+	v.object({
+		type: v.literal('agent-session'),
+		agentSessionId: v.string(),
+		issueTitle: v.optional(v.string()),
+	}),
+	v.object({
+		type: v.literal('issue'),
+		issueId: v.string(),
+		threadCommentId: v.optional(v.string()),
+		issueTitle: v.optional(v.string()),
+	}),
+]);
+
+export function Assistant() {
+	useModel('anthropic/claude-haiku-4-5');
+	const data = useInitialData<v.InferOutput<typeof initialDataSchema>>();
+	if (!data) throw new Error('This agent is created by the Linear channel dispatch.');
+	useTool(postMessage(data));
+	const issueTitle = data.issueTitle ? ` on "${data.issueTitle}"` : '';
+	return `Reply concisely in the bound Linear conversation${issueTitle}.`;
+}
+
+Assistant.initialData = initialDataSchema;
 ```
 
+The `initialData` static validates the dispatched `initialData` when the
+instance is created; `useInitialData()` returns the parsed value on every
+render.
+
+The `'use agent'` directive (the module's first statement) is what registers
+the agent with the application — `dispatch(...)` from the channel callback
+needs no `app.ts` mounting. Add
+`app.route('/agents/<name>', createAgentRouter(Assistant))` (from
+`@flue/runtime/routing`) in `app.ts` only when the agent
+should also be reachable over HTTP directly.
+
 The channel-agent import cycle is supported because imported bindings are read
-inside deferred callbacks and initializers.
+inside deferred callbacks and agent function bodies.
 
 ## Configure ordinary webhooks
 
-Create a Linear webhook with:
+Create a Linear webhook pointing at the channel's mount path in `app.ts` plus
+the route suffix — with the conventional
+`app.route('/channels/linear', ...)` mount:
 
 ```txt
 https://example.com/channels/linear/webhook
@@ -235,11 +314,11 @@ Sign the exact bytes locally and cover:
 - fixed organization and webhook id mismatches;
 - native comment, issue, project, `created`, and `prompted` payload forwarding;
 - unmodeled verified resource types;
-- issue-thread and agent-session conversation keys;
+- issue-thread and agent-session instance ids;
 - handler responses and failures;
 - SDK comment and agent-activity GraphQL requests against an injected fake
   Fetch transport in workerd with `nodejs_compat`;
-- Node and Cloudflare project builds.
+- the project typecheck and `vite build` for the configured target.
 
 Do not contact Linear or copy third-party fixtures.
 

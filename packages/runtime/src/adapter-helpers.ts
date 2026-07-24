@@ -9,17 +9,12 @@
  */
 
 import * as v from 'valibot';
-import type {
-	AgentDispatchAdmission,
-	AgentDispatchReceipt,
-	AgentSubmission,
-} from './agent-execution-store.ts';
-import type { PersistedChunkOwner, PersistedChunkRow } from './persisted-image-placement.ts';
+import type { AgentDispatchAdmission, AgentSubmission } from './agent-execution-store.ts';
+import type { SubmissionChunkRow } from './persisted-image-placement.ts';
 import {
 	matchesPersistedSubmissionAttachments,
 	prepareSubmissionAttachments,
-	samePersistedChunks,
-	submissionChunkOwner,
+	sameSubmissionChunks,
 } from './persisted-image-placement.ts';
 import type { AgentSubmissionInput } from './runtime/agent-submissions.ts';
 import { DeliveredMessageSchema } from './runtime/schemas.ts';
@@ -66,6 +61,17 @@ export interface SubmissionPayloadContext {
  * submission metadata. Both dispatch and direct payloads carry the same
  * `message: DeliveredMessage` field — validated identically here regardless
  * of transport `kind`.
+ *
+ * The `kind`/`submissionId`/`sessionKey`/`acceptedAt` cross-checks against
+ * the row's own columns are load-bearing, not redundant: the payload is the
+ * byte-exact admitted input and is the identity the session layer runs under
+ * (it never sees the row). In backends that store the payload physically
+ * apart from the row — MongoDB's chunked value generations, Redis's
+ * per-generation hashes — the store's completeness checks cannot catch a
+ * *complete but wrong* payload (a stale generation pointer, a backup mixing
+ * two databases). This mismatch is the only thing that stops the runtime
+ * executing one submission's message under another's identity: a failing
+ * check terminalizes the row instead of running it.
  */
 export function isSubmissionPayload(
 	input: unknown,
@@ -79,6 +85,7 @@ export function isSubmissionPayload(
 		typeof value.agent === 'string' &&
 		typeof value.id === 'string' &&
 		createSessionStorageKey(
+			value.agent as string,
 			value.id as string,
 			SUBMISSION_HARNESS_NAME,
 			SUBMISSION_SESSION_NAME,
@@ -127,32 +134,24 @@ export interface SubmissionAdmissionRow {
  * `Promise`s — non-native thenables are not supported.
  */
 export interface SubmissionAdmissionBackend<Row extends SubmissionAdmissionRow> {
-	/** Look up a retained dispatch receipt. Only consulted for `kind: 'dispatch'`. */
-	getDispatchReceipt(
-		submissionId: string,
-	): AgentDispatchReceipt | null | Promise<AgentDispatchReceipt | null>;
 	/** Insert the queued submission row, ignoring a duplicate `submissionId`. */
 	insertIfAbsent(row: SubmissionInsertRow): void | Promise<void>;
 	/** Read back the submission row for `submissionId`, if present. */
 	getExisting(submissionId: string): Row | undefined | Promise<Row | undefined>;
 	/** Read the persisted attachment chunks for the submission. */
 	readChunks(
-		owner: PersistedChunkOwner,
-	): readonly PersistedChunkRow[] | Promise<readonly PersistedChunkRow[]>;
+		submissionId: string,
+	): readonly SubmissionChunkRow[] | Promise<readonly SubmissionChunkRow[]>;
 	/** Replace the persisted attachment chunks for the submission. */
-	replaceChunks(
-		owner: PersistedChunkOwner,
-		chunks: readonly PersistedChunkRow[],
-	): void | Promise<void>;
+	replaceChunks(submissionId: string, chunks: readonly SubmissionChunkRow[]): void | Promise<void>;
 	/** Parse a persisted row (plus its attachment chunks) into an {@link AgentSubmission}. */
-	parseSubmission(row: Row, chunks: readonly PersistedChunkRow[]): AgentSubmission;
+	parseSubmission(row: Row, chunks: readonly SubmissionChunkRow[]): AgentSubmission;
 }
 
 /**
  * Shared submission admission algorithm for row-oriented backends:
- * dispatch-receipt check → prepare attachments → insert-or-ignore →
- * read-back → payload compare (idempotent replay vs. conflict) →
- * attachment-chunk adoption or comparison.
+ * prepare attachments → insert-or-ignore → read-back → payload compare
+ * (idempotent replay vs. conflict) → attachment-chunk adoption or comparison.
  *
  * The caller owns transaction scoping — invoke this inside one transaction
  * and pass callbacks bound to it. When every callback is synchronous the
@@ -168,19 +167,18 @@ export function admitSubmissionWithBackend<Row extends SubmissionAdmissionRow>(
 	const payload = JSON.stringify(prepared.value);
 	const acceptedAt = parseAcceptedAt(input.acceptedAt, `${kind} admission`);
 	const sessionKey = createSessionStorageKey(
+		input.agent,
 		input.id,
 		SUBMISSION_HARNESS_NAME,
 		SUBMISSION_SESSION_NAME,
 	);
-	const owner = submissionChunkOwner(submissionId);
-
 	const adopt = (row: Row): AgentDispatchAdmission | Promise<AgentDispatchAdmission> => {
 		if (row.kind !== kind) return { kind: 'conflict' as const };
 		if (row.payload !== payload) {
 			// Serialized payloads differ, but the admission may still be an
 			// idempotent replay once persisted attachment chunks are hydrated
 			// back into the stored payload.
-			return chain(backend.readChunks(owner), (persistedChunks) => {
+			return chain(backend.readChunks(submissionId), (persistedChunks) => {
 				if (
 					typeof row.payload !== 'string' ||
 					!matchesPersistedSubmissionAttachments(
@@ -197,14 +195,14 @@ export function admitSubmissionWithBackend<Row extends SubmissionAdmissionRow>(
 				};
 			});
 		}
-		return chain(backend.readChunks(owner), (persistedChunks) => {
+		return chain(backend.readChunks(submissionId), (persistedChunks) => {
 			if (persistedChunks.length === 0 && prepared.chunks.length > 0) {
-				return chain(backend.replaceChunks(owner, prepared.chunks), () => ({
+				return chain(backend.replaceChunks(submissionId, prepared.chunks), () => ({
 					kind: 'submission' as const,
 					submission: backend.parseSubmission(row, prepared.chunks),
 				}));
 			}
-			if (!samePersistedChunks(persistedChunks, prepared.chunks)) {
+			if (!sameSubmissionChunks(persistedChunks, prepared.chunks)) {
 				return { kind: 'conflict' as const };
 			}
 			return {
@@ -214,19 +212,15 @@ export function admitSubmissionWithBackend<Row extends SubmissionAdmissionRow>(
 		});
 	};
 
-	const admit = (): AgentDispatchAdmission | Promise<AgentDispatchAdmission> =>
-		chain(backend.insertIfAbsent({ submissionId, sessionKey, kind, payload, acceptedAt }), () =>
+	return chain(
+		backend.insertIfAbsent({ submissionId, sessionKey, kind, payload, acceptedAt }),
+		() =>
 			chain(backend.getExisting(submissionId), (row) => {
 				if (!row) {
 					throw new Error(`[flue] Durable ${kind} admission did not create a submission row.`);
 				}
 				return adopt(row);
 			}),
-		);
-
-	if (kind !== 'dispatch') return admit();
-	return chain(backend.getDispatchReceipt(submissionId), (receipt) =>
-		receipt ? { kind: 'retained_receipt' as const, receipt } : admit(),
 	);
 }
 

@@ -99,7 +99,7 @@ jobs:
         # don't need to build.
         run: pnpm --filter @flue/runtime --filter @flue/sdk --filter @flue/cli build
 
-      - name: Run pr-redirect workflow
+      - name: Run pr-redirect agent
         env:
           # Read-only token for the agent's in-sandbox `gh` calls.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -107,11 +107,11 @@ jobs:
           # deterministic phase. Must not be exposed to the sandbox.
           FREDKBOT_GITHUB_TOKEN: ${{ secrets.FREDKBOT_GITHUB_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
-          # Read by the agent rather than interpolated into the shell,
-          # so PR-controlled data never reaches `run:`.
+          # A GitHub-assigned integer (never PR-author-controlled text),
+          # so interpolating it below cannot smuggle data into the shell.
           PR_NUMBER: ${{ github.event.pull_request.number }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
-          node packages/cli/bin/flue.mjs run pr-redirect \
-            --target node \
-            --input "{\"prNumber\": $PR_NUMBER}"
+          node packages/cli/bin/flue.mjs run .flue/agents/pr-redirect.ts \
+            --id "pr-redirect-$PR_NUMBER" \
+            --message "Redirect PR #$PR_NUMBER"

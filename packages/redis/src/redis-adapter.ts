@@ -1,72 +1,49 @@
-import { randomUUID } from 'node:crypto';
-import type { WorkflowRunPointer } from '@flue/runtime';
 import type {
-	AgentAttemptMarker,
 	AgentDispatchAdmission,
 	AgentSubmission,
-	AgentSubmissionStore,
-	CreateRunInput,
 	AgentSubmissionInput,
+	AgentSubmissionStore,
 	DispatchInput,
-	EndRunInput,
-	EventStreamMeta,
-	EventStreamReadResult,
-	EventStreamStore,
-	ListRunsOpts,
-	ListRunsResponse,
-	PersistedChunkRow,
 	PersistenceAdapter,
-	RunPointer,
-	RunRecord,
-	RunStatus,
 	SubmissionAttemptRef,
+	SubmissionChunkRow,
 	SubmissionClaimRef,
 } from '@flue/runtime/adapter';
 import {
 	assertSupportedFlueSchemaVersion,
-	clampLimit,
 	createDispatchAgentSubmissionInput,
 	createSessionStorageKey,
-	DEFAULT_LIST_LIMIT,
-	DEFAULT_READ_LIMIT,
 	DURABILITY_DEFAULT_MAX_ATTEMPTS,
 	DURABILITY_DEFAULT_TIMEOUT_MS,
-	decodeRunCursor,
-	encodeRunCursor,
 	FLUE_SCHEMA_VERSION,
-	formatOffset,
 	hydratePersistedSubmissionAttachments,
 	isSubmissionPayload,
 	LEASE_DURATION_MS,
-	MAX_LIST_LIMIT,
-	MAX_READ_LIMIT,
 	matchesPersistedSubmissionAttachments,
 	parseAcceptedAt,
-	parseOffset,
 	prepareSubmissionAttachments,
 	SUBMISSION_HARNESS_NAME,
 	SUBMISSION_SESSION_NAME,
 } from '@flue/runtime/adapter';
+import { ulid } from 'ulidx';
 import { RedisAttachmentStore } from './attachment-store.ts';
 import { RedisConversationStreamStore } from './conversation-store.ts';
-import { encodeSegment, RedisKeys } from './redis-keys.ts';
+import { RedisKeys } from './redis-keys.ts';
 import type { RedisArgument, RedisOptions, RedisRunner } from './redis-runner.ts';
 import {
 	acquireGenerationScript,
 	admitSubmissionScript,
-	appendEventOnceScript,
-	appendEventScript,
+	claimJoinableSubmissionsScript,
 	claimSubmissionScript,
-	closeEventScript,
-	createRunScript,
-	endRunScript,
 	finalizeSettlementScript,
+	joinLifecycleScript,
 	lifecycleScript,
 	markSubmissionCanonicalReadyScript,
 	quarantineSubmissionScript,
 	reclaimGenerationsScript,
 	releaseGenerationScript,
 	renewLeasesScript,
+	repairSubmissionIndexesScript,
 	replaceAttemptScript,
 	reserveSettlementScript,
 } from './redis-scripts.ts';
@@ -111,20 +88,6 @@ function integer(value: unknown): number {
 
 function json(value: unknown): string {
 	return JSON.stringify(value);
-}
-
-function optionalJson(value: unknown): string {
-	return value === undefined ? empty : json(value);
-}
-
-function score(startedAt: string): number {
-	const value = Date.parse(startedAt);
-	if (!Number.isFinite(value)) throw new TypeError('Run startedAt must be a valid timestamp.');
-	return value;
-}
-
-function canonicalStartedAt(startedAt: string): string {
-	return new Date(score(startedAt)).toISOString();
 }
 
 class Backend {
@@ -174,12 +137,18 @@ export function redis(runner: RedisRunner, options: RedisOptions = {}): Persiste
 	return {
 		async migrate() {
 			await inspectServer(backend, options.inspectServer !== false);
-			const stored = await backend.command('HGET', [backend.keys.meta(), 'schemaVersion']);
+			const stored = await backend.command('HGET', [backend.keys.meta(), 'schema_version']);
 			if (stored == null) {
 				let cursor = '0';
 				let existing = false;
 				do {
-					const result = await backend.command('SCAN', [cursor, 'MATCH', `${backend.keys.prefix}:*`, 'COUNT', 100]);
+					const result = await backend.command('SCAN', [
+						cursor,
+						'MATCH',
+						`${backend.keys.prefix}:*`,
+						'COUNT',
+						100,
+					]);
 					const page = Array.isArray(result) ? result : [];
 					cursor = String(page[0] ?? '0');
 					const keys = strings(page[1]);
@@ -188,18 +157,14 @@ export function redis(runner: RedisRunner, options: RedisOptions = {}): Persiste
 				if (existing) assertSupportedFlueSchemaVersion('unversioned');
 				await backend.command('HSETNX', [
 					backend.keys.meta(),
-					'schemaVersion',
+					'schema_version',
 					FLUE_SCHEMA_VERSION,
 				]);
 			} else assertSupportedFlueSchemaVersion(String(stored));
 		},
 		connect() {
 			return {
-				executionStore: {
-					submissions: new RedisSubmissionStore(backend),
-				},
-				runStore: new RedisRunStore(backend),
-				eventStreamStore: new RedisEventStreamStore(backend),
+				submissionStore: new RedisSubmissionStore(backend),
 				conversationStreamStore: new RedisConversationStreamStore(runner, backend.keys),
 				attachmentStore: new RedisAttachmentStore(runner, backend.keys),
 			};
@@ -216,8 +181,11 @@ async function inspectServer(backend: Backend, enabled: boolean): Promise<void> 
 	if (!enabled) return;
 	let clusterEnabled: boolean | undefined;
 	try {
-		const cluster = strings(await backend.command('CONFIG', ['GET', 'cluster-enabled']));
-		if (cluster[1] === 'yes' || cluster[1] === 'no') clusterEnabled = cluster[1] === 'yes';
+		// CONFIG GET replies are name/value pairs under RESP2 and a map under
+		// RESP3; hash() normalizes both shapes.
+		const cluster = hash(await backend.command('CONFIG', ['GET', 'cluster-enabled']));
+		const value = cluster['cluster-enabled'];
+		if (value === 'yes' || value === 'no') clusterEnabled = value === 'yes';
 	} catch {}
 	if (clusterEnabled === undefined) {
 		try {
@@ -231,8 +199,8 @@ async function inspectServer(backend: Backend, enabled: boolean): Promise<void> 
 	if (clusterEnabled) throw new TypeError('Redis Cluster is not supported by @flue/redis.');
 	let policy: string | undefined;
 	try {
-		const memory = strings(await backend.command('CONFIG', ['GET', 'maxmemory-policy']));
-		policy = memory[1];
+		const memory = hash(await backend.command('CONFIG', ['GET', 'maxmemory-policy']));
+		policy = memory['maxmemory-policy'];
 	} catch {}
 	if (!policy) {
 		try {
@@ -310,16 +278,15 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 	}
 
 	async hasUnsettledSubmissions(): Promise<boolean> {
-		return (
-			integer(await this.backend.command('ZCARD', [this.backend.keys.submissionStatus('queued')])) >
-				0 ||
-			integer(
-				await this.backend.command('ZCARD', [this.backend.keys.submissionStatus('running')]),
-			) > 0 ||
-			integer(
-				await this.backend.command('ZCARD', [this.backend.keys.submissionStatus('terminalizing')]),
-			) > 0
-		);
+		for (const status of ['queued', 'running', 'terminalizing', 'joining', 'joined']) {
+			if (
+				integer(await this.backend.command('ZCARD', [this.backend.keys.submissionStatus(status)])) >
+				0
+			) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	async listUnreadySubmissions(): Promise<AgentSubmission[]> {
@@ -420,23 +387,19 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 
 	markSubmissionInputApplied(
 		attempt: SubmissionAttemptRef,
-		durability?: { maxRetry: number; timeoutAt: number },
+		durability?: { maxAttempts: number; timeoutAt: number },
 	): Promise<boolean> {
 		const now = Date.now();
 		return this.lifecycle(
 			attempt,
 			'input',
 			now,
-			durability?.maxRetry ?? DURABILITY_DEFAULT_MAX_ATTEMPTS,
+			durability?.maxAttempts ?? DURABILITY_DEFAULT_MAX_ATTEMPTS,
 			durability?.timeoutAt ?? now + DURABILITY_DEFAULT_TIMEOUT_MS,
 		);
 	}
 
-	requestSubmissionRecovery(attempt: SubmissionAttemptRef): Promise<boolean> {
-		return this.lifecycle(attempt, 'recovery', Date.now());
-	}
-
-	requeueSubmissionBeforeInputApplied(attempt: SubmissionAttemptRef): Promise<boolean> {
+	requeueSubmission(attempt: SubmissionAttemptRef): Promise<boolean> {
 		return this.lifecycle(attempt, 'requeue', Date.now());
 	}
 
@@ -446,7 +409,12 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 		const affected: string[] = [];
 		for (const id of ids) {
 			const row = await this.backend.hgetall(this.backend.keys.submission(id));
-			if (row.status === 'queued' || row.status === 'running') {
+			if (
+				row.status === 'queued' ||
+				row.status === 'running' ||
+				row.status === 'joining' ||
+				row.status === 'joined'
+			) {
 				// COALESCE-equivalent: first abort request wins.
 				await this.backend.command('HSETNX', [
 					this.backend.keys.submission(id),
@@ -459,27 +427,127 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 		return affected;
 	}
 
-	async listPendingSubmissionSettlements(): Promise<import('@flue/runtime/adapter').SubmissionSettlementObligation[]> {
+	async listPendingSubmissionSettlements(): Promise<
+		import('@flue/runtime/adapter').SubmissionSettlementObligation[]
+	> {
 		const output: import('@flue/runtime/adapter').SubmissionSettlementObligation[] = [];
-		for (const id of await this.backend.zrange(this.backend.keys.submissionStatus('terminalizing'))) {
+		for (const id of await this.backend.zrange(
+			this.backend.keys.submissionStatus('terminalizing'),
+		)) {
 			const row = await this.backend.hgetall(this.backend.keys.submission(id));
-			if (row.kind === 'direct' && row.status === 'terminalizing') output.push({ submissionId: id, sessionKey: required(row.sessionKey, 'Persisted Redis settlement session is missing.'), attemptId: required(row.attemptId, 'Persisted Redis settlement attempt is missing.'), recordId: required(row.settlementRecordId, 'Persisted Redis settlement record id is missing.'), record: JSON.parse(required(row.settlementRecord, 'Persisted Redis settlement record is missing.')) });
+			if (row.status === 'terminalizing')
+				output.push({
+					submissionId: id,
+					sessionKey: required(row.sessionKey, 'Persisted Redis settlement session is missing.'),
+					attemptId: required(row.attemptId, 'Persisted Redis settlement attempt is missing.'),
+					recordId: required(
+						row.settlementRecordId,
+						'Persisted Redis settlement record id is missing.',
+					),
+					record: JSON.parse(
+						required(row.settlementRecord, 'Persisted Redis settlement record is missing.'),
+					),
+				});
 		}
 		return output;
 	}
-	async reserveSubmissionSettlement(attempt: SubmissionAttemptRef, settlement: { recordId: string; record: import('@flue/runtime/adapter').SubmissionSettledRecord }): Promise<import('@flue/runtime/adapter').SubmissionSettlementObligation | null> {
+	async reserveSubmissionSettlement(
+		attempt: SubmissionAttemptRef,
+		settlement: {
+			recordId: string;
+			record: import('@flue/runtime/adapter').SubmissionSettledRecord;
+		},
+	): Promise<import('@flue/runtime/adapter').SubmissionSettlementObligation | null> {
 		if (settlement.record.id !== settlement.recordId) return null;
 		const id = attempt.submissionId;
 		const row = await this.backend.hgetall(this.backend.keys.submission(id));
 		if (!row.sessionKey) return null;
-		await this.backend.eval(reserveSettlementScript, [this.backend.keys.submission(id), this.backend.keys.submissionStatus('running'), this.backend.keys.submissionStatus('terminalizing'), this.backend.keys.sessionUnsettled(row.sessionKey)], [attempt.attemptId, id, settlement.recordId, json(settlement.record)]);
+		// Two reservable shapes, for either submission kind: the submission's
+		// own running attempt, or a delivery JOINED into a host running under
+		// the caller's attempt. The host hash key is passed only when the
+		// pre-read saw a join; the script re-verifies every mutable predicate
+		// (status, joinedInto, host status/attempt) atomically before
+		// adopting the row.
+		const keys = [
+			this.backend.keys.submission(id),
+			this.backend.keys.submissionStatus('running'),
+			this.backend.keys.submissionStatus('terminalizing'),
+			this.backend.keys.sessionUnsettled(row.sessionKey),
+			this.backend.keys.submissionStatus('joined'),
+		];
+		if (row.joinedInto) keys.push(this.backend.keys.submission(row.joinedInto));
+		await this.backend.eval(reserveSettlementScript, keys, [
+			attempt.attemptId,
+			id,
+			settlement.recordId,
+			json(settlement.record),
+			row.joinedInto ?? empty,
+			Date.now(),
+		]);
 		const current = await this.backend.hgetall(this.backend.keys.submission(id));
-		return current.status === 'terminalizing' && current.sessionKey && current.attemptId === attempt.attemptId && current.settlementRecordId === settlement.recordId && current.settlementRecord === json(settlement.record) ? { submissionId: id, sessionKey: current.sessionKey, attemptId: attempt.attemptId, recordId: settlement.recordId, record: settlement.record } : null;
+		return current.status === 'terminalizing' &&
+			current.sessionKey &&
+			current.attemptId === attempt.attemptId &&
+			current.settlementRecordId === settlement.recordId &&
+			current.settlementRecord === json(settlement.record)
+			? {
+					submissionId: id,
+					sessionKey: current.sessionKey,
+					attemptId: attempt.attemptId,
+					recordId: settlement.recordId,
+					record: settlement.record,
+				}
+			: null;
 	}
-	async finalizeSubmissionSettlement(attempt: SubmissionAttemptRef, recordId: string): Promise<boolean> {
+	async finalizeSubmissionSettlement(
+		attempt: SubmissionAttemptRef,
+		recordId: string,
+		options?: { errorMessage?: string },
+	): Promise<boolean> {
 		const row = await this.backend.hgetall(this.backend.keys.submission(attempt.submissionId));
 		if (!row.sessionKey) return false;
-		return integer(await this.backend.eval(finalizeSettlementScript, [this.backend.keys.submission(attempt.submissionId), this.backend.keys.submissionStatus('terminalizing'), this.backend.keys.sessionUnsettled(row.sessionKey)], [attempt.submissionId, Date.now(), attempt.attemptId, recordId])) === 1;
+		// A host settles through the outbox; fan its outcome out to joined
+		// deliveries the same way completeSubmission/failSubmission do. The
+		// reserved record is immutable once terminalizing, so reading the
+		// outcome ahead of the script is race-free. The durable settlement
+		// record is the outcome authority; the row's error field mirrors it —
+		// the caller's raw server-side message when provided, else the
+		// record's client-safe one.
+		const record = row.settlementRecord
+			? (JSON.parse(row.settlementRecord) as { outcome?: string; error?: { message?: string } })
+			: undefined;
+		const errorMessage =
+			record?.outcome === 'completed'
+				? empty
+				: (options?.errorMessage ?? record?.error?.message ?? 'The submission did not complete.');
+		const joins = await this.listJoinIds(attempt.submissionId);
+		return (
+			integer(
+				await this.backend.eval(
+					finalizeSettlementScript,
+					[
+						this.backend.keys.submission(attempt.submissionId),
+						this.backend.keys.submissionStatus('terminalizing'),
+						this.backend.keys.sessionUnsettled(row.sessionKey),
+						this.backend.keys.submissionStatus('queued'),
+						this.backend.keys.submissionStatus('joining'),
+						this.backend.keys.submissionStatus('joined'),
+						this.backend.keys.submissionStatus('settled'),
+						...joins.map((id) => this.backend.keys.submission(id)),
+					],
+					[
+						attempt.submissionId,
+						Date.now(),
+						attempt.attemptId,
+						recordId,
+						errorMessage,
+						empty,
+						empty,
+						...joins,
+					],
+				),
+			) === 1
+		);
 	}
 
 	completeSubmission(attempt: SubmissionAttemptRef): Promise<boolean> {
@@ -495,40 +563,105 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 		);
 	}
 
-	async insertAttemptMarker(attempt: SubmissionAttemptRef): Promise<void> {
-		const member = `${encodeSegment(attempt.submissionId)}.${encodeSegment(attempt.attemptId)}`;
-		await this.backend.command('HSETNX', [
-			this.backend.keys.marker(attempt.submissionId, attempt.attemptId),
-			'createdAt',
-			Date.now(),
-		]);
-		await this.backend.command('SADD', [this.backend.keys.markers(), member]);
+	// ── Turn-boundary joins ──────────────────────────────────────────────
+
+	async claimJoinableSubmissions(
+		host: SubmissionAttemptRef,
+		agentName: string,
+	): Promise<AgentSubmission[]> {
+		const hostRow = await this.backend.hgetall(this.backend.keys.submission(host.submissionId));
+		if (
+			!hostRow.sessionKey ||
+			hostRow.status !== 'running' ||
+			hostRow.attemptId !== host.attemptId
+		) {
+			return [];
+		}
+		// Pre-vet the queued prefix in admission order. Contiguous prefix: the
+		// first non-joinable row ends the claim so admission order is preserved
+		// (everything behind it stays queued). The agent-name predicate lives
+		// in the immutable payload, so it is checked here; the claim script
+		// atomically rechecks every mutable predicate before claiming a row.
+		const candidates: AgentSubmission[] = [];
+		for (const id of await this.backend.zrange(
+			this.backend.keys.sessionUnsettled(hostRow.sessionKey),
+		)) {
+			const row = await this.backend.hgetall(this.backend.keys.submission(id));
+			if (row.status !== 'queued') continue;
+			if (!row.canonicalReadyAt || row.abortRequestedAt) break;
+			const submission = await this.readOperationalSubmission(id, 'queued');
+			if (!submission || submission.input.agent !== agentName) break;
+			candidates.push(submission);
+		}
+		if (candidates.length === 0) return [];
+		const claimed = new Set(
+			strings(
+				await this.backend.eval(
+					claimJoinableSubmissionsScript,
+					[
+						this.backend.keys.submission(host.submissionId),
+						this.backend.keys.submissionStatus('queued'),
+						this.backend.keys.submissionStatus('joining'),
+						...candidates.map((item) => this.backend.keys.submission(item.submissionId)),
+					],
+					[host.attemptId, host.submissionId, ...candidates.map((item) => item.submissionId)],
+				),
+			),
+		);
+		return candidates
+			.filter((item) => claimed.has(item.submissionId))
+			.map((item) => ({ ...item, status: 'joining' as const, joinedInto: host.submissionId }));
 	}
 
-	async deleteAttemptMarker(attempt: SubmissionAttemptRef): Promise<void> {
-		const member = `${encodeSegment(attempt.submissionId)}.${encodeSegment(attempt.attemptId)}`;
-		await this.backend.command('DEL', [
-			this.backend.keys.marker(attempt.submissionId, attempt.attemptId),
-		]);
-		await this.backend.command('SREM', [this.backend.keys.markers(), member]);
+	finalizeJoinedSubmission(host: SubmissionAttemptRef, submissionId: string): Promise<boolean> {
+		return this.joinLifecycle(host, submissionId, 'finalize', 'joined');
 	}
 
-	async listAttemptMarkers(): Promise<AgentAttemptMarker[]> {
-		const members = strings(await this.backend.command('SMEMBERS', [this.backend.keys.markers()]));
-		const output: AgentAttemptMarker[] = [];
-		for (const member of members) {
-			const [submission, attempt] = member.split('.');
-			if (!submission || !attempt) continue;
-			const submissionId = Buffer.from(submission, 'base64url').toString();
-			const attemptId = Buffer.from(attempt, 'base64url').toString();
-			const createdAt = await this.backend.command('HGET', [
-				this.backend.keys.marker(submissionId, attemptId),
-				'createdAt',
-			]);
-			if (createdAt != null)
-				output.push({ submissionId, attemptId, createdAt: integer(createdAt) });
+	revertJoiningSubmission(host: SubmissionAttemptRef, submissionId: string): Promise<boolean> {
+		return this.joinLifecycle(host, submissionId, 'revert', 'queued');
+	}
+
+	async listJoinedSubmissions(hostSubmissionId: string): Promise<AgentSubmission[]> {
+		const output: AgentSubmission[] = [];
+		for (const id of await this.listJoinIds(hostSubmissionId)) {
+			const row = await this.backend.hgetall(this.backend.keys.submission(id));
+			if (row.status !== 'joining' && row.status !== 'joined') continue;
+			const submission = await this.readOperationalSubmission(id, row.status);
+			if (submission) output.push(submission);
 		}
 		return output;
+	}
+
+	private async joinLifecycle(
+		host: SubmissionAttemptRef,
+		submissionId: string,
+		operation: 'finalize' | 'revert',
+		targetStatus: 'joined' | 'queued',
+	): Promise<boolean> {
+		const result = await this.backend.eval(
+			joinLifecycleScript,
+			[
+				this.backend.keys.submission(submissionId),
+				this.backend.keys.submission(host.submissionId),
+				this.backend.keys.submissionStatus('joining'),
+				this.backend.keys.submissionStatus(targetStatus),
+			],
+			[operation, host.attemptId, host.submissionId, Date.now(), submissionId],
+		);
+		return integer(result) === 1;
+	}
+
+	/** Unsettled join ids attached to the host, in admission order. */
+	private async listJoinIds(hostSubmissionId: string): Promise<string[]> {
+		const output: Array<{ id: string; sequence: number }> = [];
+		for (const status of ['joining', 'joined']) {
+			for (const id of await this.backend.zrange(this.backend.keys.submissionStatus(status))) {
+				const row = await this.backend.hgetall(this.backend.keys.submission(id));
+				if (row.joinedInto !== hostSubmissionId || row.status !== status || !row.sequence) continue;
+				output.push({ id, sequence: integer(row.sequence) });
+			}
+		}
+		return output.sort((left, right) => left.sequence - right.sequence).map((item) => item.id);
 	}
 
 	async renewLeases(ownerId: string, submissionIds: string[]): Promise<void> {
@@ -546,13 +679,12 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 		return running.filter((item) => item.leaseExpiresAt > 0 && item.leaseExpiresAt < now);
 	}
 
-	private async admitSubmission(
-		input: AgentSubmissionInput,
-	): Promise<AgentDispatchAdmission> {
+	private async admitSubmission(input: AgentSubmissionInput): Promise<AgentDispatchAdmission> {
 		const prepared = prepareSubmissionAttachments(input);
-		const generation = randomUUID();
+		const generation = `gen_${ulid()}`;
 		const generationKey = this.backend.keys.submissionGeneration(input.submissionId, generation);
 		const sessionKey = createSessionStorageKey(
+			input.agent,
 			input.id,
 			SUBMISSION_HARNESS_NAME,
 			SUBMISSION_SESSION_NAME,
@@ -585,12 +717,8 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 						generationKey,
 						this.backend.keys.submission(input.submissionId),
 						this.backend.keys.sequence(),
-						this.backend.keys.submissionIds(),
-						this.backend.keys.submissionOrder(),
 						this.backend.keys.submissionStatus('queued'),
-						this.backend.keys.sessionSubmissions(sessionKey),
 						this.backend.keys.submissionGenerations(input.submissionId),
-						this.backend.keys.receipt(input.submissionId),
 						this.backend.keys.sessionUnsettled(sessionKey),
 					],
 					[
@@ -611,15 +739,9 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 				) === 0
 			) {
 				await this.backend.pipeline([
-					{ command: 'ZREM', args: [this.backend.keys.submissionIds(), input.submissionId] },
-					{ command: 'ZREM', args: [this.backend.keys.submissionOrder(), input.submissionId] },
 					{
 						command: 'ZREM',
 						args: [this.backend.keys.submissionStatus('queued'), input.submissionId],
-					},
-					{
-						command: 'ZREM',
-						args: [this.backend.keys.sessionSubmissions(sessionKey), input.submissionId],
 					},
 					{
 						command: 'ZREM',
@@ -646,11 +768,6 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 			this.backend.keys.submissionGenerations(input.submissionId),
 			generation,
 		]);
-		if (result[0] === 'receipt')
-			return {
-				kind: 'retained_receipt',
-				receipt: { submissionId: input.submissionId, acceptedAt: integer(result[1]) },
-			};
 		const existingRow = await this.backend.hgetall(
 			this.backend.keys.submission(input.submissionId),
 		);
@@ -685,6 +802,9 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 		const id = attempt.submissionId;
 		const row = await this.backend.hgetall(this.backend.keys.submission(id));
 		if (!row.sessionKey) return false;
+		// Settling a host fans its outcome out to joined deliveries; their row
+		// keys ride along at KEYS[8..] with ids at the same ARGV index.
+		const joins = operation === 'settle' ? await this.listJoinIds(id) : [];
 		try {
 			const result = await this.backend.eval(
 				lifecycleScript,
@@ -694,8 +814,11 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 					this.backend.keys.submissionStatus('running'),
 					this.backend.keys.submissionStatus('settled'),
 					this.backend.keys.sessionUnsettled(row.sessionKey),
+					this.backend.keys.submissionStatus('joining'),
+					this.backend.keys.submissionStatus('joined'),
+					...joins.map((join) => this.backend.keys.submission(join)),
 				],
-				['running', attempt.attemptId, operation, value, extra1, extra2, id],
+				['running', attempt.attemptId, operation, value, extra1, extra2, id, ...joins],
 			);
 			return integer(result) === 1;
 		} finally {
@@ -704,34 +827,38 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 	}
 
 	private async repairSubmissionIndexes(id: string): Promise<void> {
-		const row = await this.backend.hgetall(this.backend.keys.submission(id));
-		if (!row.submissionId || !row.sessionKey || !row.status || !row.sequence) return;
-		const sequence = integer(row.sequence);
-		const commands = ['queued', 'running', 'terminalizing', 'settled'].map((status) => ({
-			command: status === row.status ? 'ZADD' : 'ZREM',
-			args:
-				status === row.status
-					? [this.backend.keys.submissionStatus(status), sequence, id]
-					: [this.backend.keys.submissionStatus(status), id],
-		}));
-		if (row.status === 'settled')
-			commands.push({
-				command: 'ZREM',
-				args: [this.backend.keys.sessionUnsettled(row.sessionKey), id],
-			});
-		else
-			commands.push({
-				command: 'ZADD',
-				args: [this.backend.keys.sessionUnsettled(row.sessionKey), sequence, id],
-			});
-		await this.backend.pipeline(commands);
+		// sessionKey is immutable once the row exists, so pre-reading it to
+		// name the unsettled zset is race-free; every mutable field (status,
+		// sequence) is read inside the script, atomically with the rewrite.
+		const sessionKey = await this.backend.command('HGET', [
+			this.backend.keys.submission(id),
+			'sessionKey',
+		]);
+		if (sessionKey == null) return;
+		await this.backend.eval(
+			repairSubmissionIndexesScript,
+			[
+				this.backend.keys.submission(id),
+				this.backend.keys.submissionStatus('queued'),
+				this.backend.keys.submissionStatus('running'),
+				this.backend.keys.submissionStatus('terminalizing'),
+				this.backend.keys.submissionStatus('settled'),
+				this.backend.keys.submissionStatus('joining'),
+				this.backend.keys.submissionStatus('joined'),
+				this.backend.keys.sessionUnsettled(String(sessionKey)),
+			],
+			[id],
+		);
 	}
 
 	private async findSessionHead(sessionKey: string): Promise<AgentSubmission | null> {
 		const ids = await this.backend.zrange(this.backend.keys.sessionUnsettled(sessionKey));
 		for (const id of ids) {
 			const row = await this.backend.hgetall(this.backend.keys.submission(id));
-			if (row.status === 'terminalizing') return null;
+			// An unsettled non-claimable head (terminalizing, or a join clearing
+			// with its host) blocks the session without being runnable itself.
+			if (row.status === 'terminalizing' || row.status === 'joining' || row.status === 'joined')
+				return null;
 			const status = row.status === 'running' ? 'running' : 'queued';
 			const value = await this.readOperationalSubmission(id, status);
 			if (value) return value;
@@ -741,40 +868,66 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 
 	private async readOperationalSubmission(
 		id: string,
-		expectedStatus: 'queued' | 'running',
+		expectedStatus: 'queued' | 'running' | 'joining' | 'joined',
 	): Promise<AgentSubmission | null> {
+		let submission: AgentSubmission | null;
 		try {
-			const submission = await this.getSubmission(id);
-			if (!submission || submission.status !== expectedStatus)
-				throw new TypeError('Persisted Redis submission index is inconsistent.');
-			return submission;
+			submission = await this.getSubmission(id);
 		} catch (error) {
-			const row = await this.backend.hgetall(this.backend.keys.submission(id));
-			const sessionKey = row.sessionKey ?? empty;
-			await this.backend.eval(
-				quarantineSubmissionScript,
-				[
-					this.backend.keys.submission(id),
-					this.backend.keys.submissionStatus('queued'),
-					this.backend.keys.submissionStatus('running'),
-					this.backend.keys.sessionUnsettled(sessionKey),
-					this.backend.keys.sessionSubmissions(sessionKey),
-					this.backend.keys.submissionStatus('settled'),
-				],
-				[id, row.sequence ?? 0, Date.now(), error instanceof Error ? error.message : String(error)],
-			);
+			// The row exists but does not parse — genuine corruption, the only
+			// case quarantine may claim: it force-settles the row and strips it
+			// from every index.
+			await this.quarantineSubmission(id, error);
 			return null;
 		}
+		// A missing row, or a status other than the index entry the caller was
+		// iterating, is read-side concurrency: a peer's atomic transition moved
+		// the id on between the ZRANGE and this read. The row is the authority
+		// and stays live — skip the id.
+		if (!submission || submission.status !== expectedStatus) return null;
+		return submission;
+	}
+
+	private async quarantineSubmission(id: string, error: unknown): Promise<void> {
+		const row = await this.backend.hgetall(this.backend.keys.submission(id));
+		const sessionKey = row.sessionKey ?? empty;
+		// A quarantined running host can have joined deliveries gated on its
+		// attempt; their row keys ride along at KEYS[8..] with ids at the same
+		// ARGV index so the script fans the outcome out to them.
+		const joins = await this.listJoinIds(id);
+		await this.backend.eval(
+			quarantineSubmissionScript,
+			[
+				this.backend.keys.submission(id),
+				this.backend.keys.submissionStatus('queued'),
+				this.backend.keys.submissionStatus('running'),
+				this.backend.keys.submissionStatus('joining'),
+				this.backend.keys.submissionStatus('joined'),
+				this.backend.keys.sessionUnsettled(sessionKey),
+				this.backend.keys.submissionStatus('settled'),
+				...joins.map((joinId) => this.backend.keys.submission(joinId)),
+			],
+			[
+				id,
+				row.sequence ?? 0,
+				Date.now(),
+				error instanceof Error ? error.message : String(error),
+				empty,
+				empty,
+				empty,
+				...joins,
+			],
+		);
 	}
 
 	private async readSubmissionGeneration(
 		submissionId: string,
 		generation?: string,
-	): Promise<{ payload: string; chunks: PersistedChunkRow[] }> {
+	): Promise<{ payload: string; chunks: SubmissionChunkRow[] }> {
 		const parse = (record: Hash) => {
 			if (!record.payload)
 				throw new TypeError('Persisted Redis submission generation is malformed.');
-			const chunks: PersistedChunkRow[] = [];
+			const chunks: SubmissionChunkRow[] = [];
 			for (let index = 0; index < integer(record.chunkCount ?? 0); index++) {
 				const chunk = record[`chunk:${index}`];
 				if (!chunk) throw new TypeError('Persisted Redis submission generation is malformed.');
@@ -821,255 +974,16 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 			canonicalReadyAt: row.canonicalReadyAt ? integer(row.canonicalReadyAt) : null,
 			...(row.attemptId ? { attemptId: row.attemptId } : {}),
 			...(row.inputAppliedAt ? { inputAppliedAt: integer(row.inputAppliedAt) } : {}),
-			...(row.recoveryRequestedAt ? { recoveryRequestedAt: integer(row.recoveryRequestedAt) } : {}),
 			...(row.abortRequestedAt ? { abortRequestedAt: integer(row.abortRequestedAt) } : {}),
 			...(row.startedAt ? { startedAt: integer(row.startedAt) } : {}),
+			...(row.joinedInto ? { joinedInto: row.joinedInto } : {}),
 			...(row.error ? { error: row.error } : {}),
+			...(row.settledAt != null ? { settledAt: integer(row.settledAt) } : {}),
 			attemptCount: integer(row.attemptCount),
-			maxRetry: integer(row.maxRetry),
+			maxAttempts: integer(row.maxAttempts),
 			timeoutAt: integer(row.timeoutAt),
 			...(row.ownerId ? { ownerId: row.ownerId } : {}),
 			leaseExpiresAt: integer(row.leaseExpiresAt),
 		};
-	}
-}
-
-class RedisRunStore {
-	constructor(private backend: Backend) {}
-
-	async createRun(input: CreateRunInput): Promise<void> {
-		const orderKey = canonicalStartedAt(input.startedAt);
-		await this.backend.eval(
-			createRunScript,
-			[
-				this.backend.keys.run(input.runId),
-				this.backend.keys.runs(),
-				this.backend.keys.runsStatus('active'),
-				this.backend.keys.runsWorkflow(input.workflowName),
-				this.backend.keys.runStatuses(),
-			],
-			[
-				input.runId,
-				input.workflowName,
-				input.startedAt,
-				optionalJson(input.input),
-				score(input.startedAt),
-				orderKey,
-				optionalJson(input.traceCarrier),
-			],
-		);
-	}
-
-	async endRun(input: EndRunInput): Promise<void> {
-		const status = input.isError ? 'errored' : 'completed';
-		await this.backend.eval(
-			endRunScript,
-			[
-				this.backend.keys.run(input.runId),
-				this.backend.keys.runs(),
-				this.backend.keys.runsStatus(status),
-				this.backend.keys.runStatuses(),
-			],
-			[
-				input.runId,
-				status,
-				input.endedAt,
-				input.isError ? 1 : 0,
-				input.durationMs,
-				optionalJson(input.result),
-				optionalJson(input.error),
-				`${this.backend.keys.prefix}:runs:status:`,
-			],
-		);
-	}
-
-	async getRun(runId: string): Promise<RunRecord | null> {
-		const row = await this.backend.hgetall(this.backend.keys.run(runId));
-		return row.runId ? parseRun(row) : null;
-	}
-
-	async lookupRun(runId: string): Promise<WorkflowRunPointer | null> {
-		const values = await this.backend.command('HMGET', [
-			this.backend.keys.run(runId),
-			'runId',
-			'workflowName',
-		]);
-		if (!Array.isArray(values) || values[0] == null || values[1] == null) return null;
-		return { runId: String(values[0]), workflowName: String(values[1]) };
-	}
-
-	async listRuns(opts: ListRunsOpts = {}): Promise<ListRunsResponse> {
-		const limit = clampLimit(opts.limit, DEFAULT_LIST_LIMIT, MAX_LIST_LIMIT);
-		const cursor = decodeRunCursor(opts.cursor);
-		const cursorStartedAt = cursor ? canonicalStartedAt(cursor.startedAt) : undefined;
-		const index = opts.status
-			? this.backend.keys.runsStatus(opts.status)
-			: opts.workflowName
-				? this.backend.keys.runsWorkflow(opts.workflowName)
-				: this.backend.keys.runs();
-		const ids = await this.backend.zrange(index, 0, -1, true);
-		const records: RunPointer[] = [];
-		for (const id of ids) {
-			const run = await this.getRun(id);
-			if (
-				!run ||
-				(opts.status && run.status !== opts.status) ||
-				(opts.workflowName && run.workflowName !== opts.workflowName)
-			)
-				continue;
-			const startedAt = canonicalStartedAt(run.startedAt);
-			if (
-				cursor &&
-				cursorStartedAt &&
-				(startedAt > cursorStartedAt ||
-					(startedAt === cursorStartedAt && run.runId >= cursor.runId))
-			)
-				continue;
-			records.push(pointer(run));
-			if (records.length > limit) break;
-		}
-		const hasNext = records.length > limit;
-		const runs = records.slice(0, limit);
-		const lastRun = runs.at(-1);
-		return { runs, ...(hasNext && lastRun ? { nextCursor: encodeRunCursor(lastRun) } : {}) };
-	}
-}
-
-function parseRun(row: Hash): RunRecord {
-	const malformed = 'Persisted Redis run is malformed.';
-	return {
-		runId: required(row.runId, malformed),
-		workflowName: required(row.workflowName, malformed),
-		status: row.status as RunStatus,
-		startedAt: required(row.startedAt, malformed),
-		...(row.payload ? { input: JSON.parse(row.payload) } : {}),
-		...(row.endedAt ? { endedAt: row.endedAt } : {}),
-		...(row.isError ? { isError: row.isError === '1' } : {}),
-		...(row.durationMs ? { durationMs: integer(row.durationMs) } : {}),
-		...(row.result ? { result: JSON.parse(row.result) } : {}),
-		...(row.error ? { error: JSON.parse(row.error) } : {}),
-		...(row.traceCarrier ? { traceCarrier: JSON.parse(row.traceCarrier) } : {}),
-	};
-}
-
-function pointer(run: RunRecord): RunPointer {
-	return {
-		runId: run.runId,
-		workflowName: run.workflowName,
-		status: run.status,
-		startedAt: run.startedAt,
-		...(run.endedAt ? { endedAt: run.endedAt } : {}),
-		...(run.isError !== undefined ? { isError: run.isError } : {}),
-		...(run.durationMs !== undefined ? { durationMs: run.durationMs } : {}),
-	};
-}
-
-class RedisEventStreamStore implements EventStreamStore {
-	private listeners = new Map<string, Set<() => void>>();
-	constructor(private backend: Backend) {}
-
-	async createStream(path: string): Promise<void> {
-		await this.backend.command('HSETNX', [this.backend.keys.event(path), 'nextOffset', 0]);
-		await this.backend.command('HSETNX', [this.backend.keys.event(path), 'closed', 0]);
-		await this.backend.command('SADD', [this.backend.keys.events(), path]);
-	}
-
-	async appendEvent(path: string, event: unknown): Promise<string> {
-		const result = strings(
-			await this.backend.eval(
-				appendEventScript,
-				[
-					this.backend.keys.event(path),
-					this.backend.keys.eventEntries(path),
-					this.backend.keys.eventOrder(path),
-				],
-				[json(event)],
-			),
-		);
-		if (result[0] === 'missing') throw new TypeError(`Event stream "${path}" does not exist.`);
-		if (result[0] === 'closed') throw new TypeError(`Event stream "${path}" is closed.`);
-		this.notify(path);
-		return formatOffset(integer(result[1]));
-	}
-
-	async appendEventOnce(path: string, key: string, event: unknown): Promise<string> {
-		const result = strings(await this.backend.eval(appendEventOnceScript, [
-			this.backend.keys.event(path), this.backend.keys.eventEntries(path),
-			this.backend.keys.eventOrder(path), this.backend.keys.eventKeys(path),
-		], [key, json(event)]));
-		if (result[0] === 'missing') throw new TypeError(`Event stream "${path}" does not exist.`);
-		if (result[0] === 'closed') throw new TypeError(`Event stream "${path}" is closed.`);
-		if (result[0] === 'conflict') throw new TypeError(`Event key "${key}" has a conflicting payload.`);
-		this.notify(path);
-		return formatOffset(integer(result[1]));
-	}
-
-	async readEvents(
-		path: string,
-		opts?: { offset?: string; limit?: number },
-	): Promise<EventStreamReadResult> {
-		const meta = await this.getStreamMeta(path);
-		if (!meta) return { events: [], nextOffset: formatOffset(-1), upToDate: true, closed: false };
-		const raw = opts?.offset ?? '-1';
-		if (raw === 'now')
-			return { events: [], nextOffset: meta.nextOffset, upToDate: true, closed: meta.closed };
-		const start = raw === '-1' ? -1 : parseOffset(raw);
-		const limit = clampLimit(opts?.limit, DEFAULT_READ_LIMIT, MAX_READ_LIMIT);
-		const sequences = strings(
-			await this.backend.command('ZRANGEBYSCORE', [
-				this.backend.keys.eventOrder(path),
-				`(${start}`,
-				'+inf',
-				'LIMIT',
-				0,
-				limit + 1,
-			]),
-		);
-		const page = sequences.slice(0, limit);
-		const values =
-			page.length > 0
-				? strings(
-						await this.backend.command('HMGET', [this.backend.keys.eventEntries(path), ...page]),
-					)
-				: [];
-		const events = page.map((sequence, index) => ({
-			data: JSON.parse(required(values[index], 'Persisted Redis event stream entry is malformed.')),
-			offset: formatOffset(integer(sequence)),
-		}));
-		return {
-			events,
-			nextOffset: events.at(-1)?.offset ?? formatOffset(start),
-			upToDate: sequences.length <= limit,
-			closed: meta.closed,
-		};
-	}
-
-	async closeStream(path: string): Promise<void> {
-		await this.backend.eval(closeEventScript, [this.backend.keys.event(path)]);
-		this.notify(path);
-	}
-
-	async getStreamMeta(path: string): Promise<EventStreamMeta | null> {
-		const row = await this.backend.hgetall(this.backend.keys.event(path));
-		if (!row.nextOffset) return null;
-		return { nextOffset: formatOffset(integer(row.nextOffset) - 1), closed: row.closed === '1' };
-	}
-
-	subscribe(path: string, listener: () => void): () => void {
-		const set = this.listeners.get(path) ?? new Set();
-		set.add(listener);
-		this.listeners.set(path, set);
-		return () => {
-			set.delete(listener);
-			if (set.size === 0) this.listeners.delete(path);
-		};
-	}
-
-	private notify(path: string): void {
-		for (const listener of this.listeners.get(path) ?? []) {
-			try {
-				listener();
-			} catch {}
-		}
 	}
 }

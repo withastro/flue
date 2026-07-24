@@ -1,12 +1,12 @@
 ---
 title: Deploy Agents on SST
 description: Deploy Flue agents to AWS with SST as a long-running Fargate container service.
-lastReviewedAt: 2026-06-20
+lastReviewedAt: 2026-07-21
 ---
 
-[SST](https://sst.dev) is a TypeScript infrastructure-as-code framework for AWS. You describe your infrastructure as components in a single `sst.config.ts` file and deploy it with `sst deploy`. This guide deploys a Flue agent as a persistent container service, not as a Lambda function: Flue's streaming responses use a long-lived `GET /runs/:runId` connection, and its default coordinator keeps run state in memory, so it must run as an always-on process. SST's `sst.aws.Service` component runs exactly that — a container on AWS Fargate behind a load balancer.
+[SST](https://sst.dev) is a TypeScript infrastructure-as-code framework for AWS. You describe your infrastructure as components in a single `sst.config.ts` file and deploy it with `sst deploy`. This guide deploys a Flue agent as a persistent container service, not as a Lambda function: Flue's streaming responses use long-lived conversation `GET` connections, and its default coordinator keeps state in memory, so it must run as an always-on process. SST's `sst.aws.Service` component runs exactly that — a container on AWS Fargate behind a load balancer.
 
-This guide builds on the [Docker](/docs/ecosystem/deploy/docker/) guide. SST builds and pushes the image from that same `Dockerfile`; the steps below cover the SST-specific wiring — the service, secrets, and database. The `flue build --target node` output (`dist/server.mjs`, started with `node dist/server.mjs`) and its runtime contract are unchanged from the [Node.js](/docs/ecosystem/deploy/node/) guide.
+This guide builds on the [Docker](/docs/ecosystem/deploy/docker/) guide. SST builds and pushes the image from that same `Dockerfile`; the steps below cover the SST-specific wiring — the service, secrets, and database. The `vite build` output (`dist/server.mjs`, started with `node dist/server.mjs`) and its runtime contract are unchanged from the [Node.js](/docs/ecosystem/deploy/node/) guide.
 
 This guide was written against SST v3 (the Ion engine, the current major line). SST's component API moves quickly; confirm field names against the current [SST docs](https://sst.dev/docs/) for your installed version.
 
@@ -69,11 +69,11 @@ Use `OPENAI_API_KEY` (and an `openai/...` `MODEL_SPECIFIER`) instead for OpenAI,
 sst secret set AnthropicApiKey sk-...
 ```
 
-Linking the secret grants the service permission to read it; the `environment` entry is what surfaces it to the Flue process as `process.env.ANTHROPIC_API_KEY`. The `FLUE_MODE`, `FLUE_CLI_*`, and `FLUE_INTERNAL_CLI_IPC` variables are reserved by the Flue CLI — do not set them on the service.
+Linking the secret grants the service permission to read it; the `environment` entry is what surfaces it to the Flue process as `process.env.ANTHROPIC_API_KEY`.
 
 ## Persistence
 
-On a single Fargate task, Flue's canonical conversations, attachments, and accepted submissions live in memory, so they are lost when the task restarts or redeploys. Back them with Postgres when state must survive replacement or workflow history must be available across tasks. Shared storage does not enable active-active agent execution: route each agent instance to one live task.
+On a single Fargate task, Flue's canonical conversations, attachments, and accepted submissions live in memory, so they are lost when the task restarts or redeploys. Back them with Postgres when state must survive replacement or be available to replacement tasks. Shared storage does not enable active-active agent execution: route each agent instance to one live task.
 
 The `sst.aws.Postgres` component provisions an RDS Postgres instance in the VPC and exposes its connection parts as outputs (`host`, `port`, `username`, `password`, `database`). Construct a `DATABASE_URL` from those with `$interpolate` and pass it through `environment`:
 
@@ -93,15 +93,24 @@ new sst.aws.Service('Flue', {
 });
 ```
 
-Install `@flue/postgres` and add a `db.ts` that reads `DATABASE_URL`:
+Install `@flue/postgres` and add a `db.ts` that wraps your configured `pg` pool and reads `DATABASE_URL` — see [Postgres](/docs/ecosystem/databases/postgres/) for the full bring-your-own-driver runner:
 
-```typescript title=".flue/db.ts"
+```typescript title="src/db.ts (abridged)"
 import { postgres } from '@flue/postgres';
+import { Pool } from 'pg';
 
-export default postgres(process.env.DATABASE_URL!);
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+export default postgres({
+  query: async (text, params) => (await pool.query(text, params)).rows,
+  transaction: async (fn) => {
+    /* one checked-out client per transaction; see the Postgres guide */
+  },
+  close: () => pool.end(),
+});
 ```
 
-Flue discovers `db.ts` at build time and wires it into the generated server. The adapter handles schema creation, canonical conversation streams, immutable attachments, durable submission state, and workflow history. Because the Postgres instance and the service share the VPC, the service reaches the database over the private network. See [Database](/docs/guide/database/) for the adapter contract and other backends.
+Flue discovers `db.ts` at build time and wires it into the generated server. The adapter handles schema creation, canonical conversation streams, immutable attachments, and durable submission state. Because the Postgres instance and the service share the VPC, the service reaches the database over the private network. See [Database](/docs/guide/database/) for the adapter contract and other backends.
 
 ## Health and streaming
 
@@ -118,7 +127,7 @@ loadBalancer: {
 
 `sst.aws.Service` also accepts a container-level `health` command (run by ECS, e.g. `{ command: ['CMD-SHELL', 'curl -f http://localhost:8080/health || exit 1'] }`) if you prefer an ECS health check.
 
-Exposed workflow runs hold long-lived `GET /runs/:runId` reads open (long-poll or SSE). Load balancer idle timeouts can cut these off; for slow workflows, retain the invocation's `runId`, raise the idle timeout, and resume the run stream rather than relying on `?wait=result`. See [Workflow HTTP exports](/docs/api/workflow-api/#http-exports).
+Agent conversations hold long-lived `GET` reads open on the conversation URL (long-poll or SSE). Load balancer idle timeouts can cut these off; for slow work, retain the admission's `streamUrl` and `offset`, raise the idle timeout, and resume the conversation stream rather than holding one blocking request. See the [Streaming Protocol](/docs/reference/streaming-protocol/).
 
 ## Going further
 

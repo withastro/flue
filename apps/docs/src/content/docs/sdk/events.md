@@ -1,44 +1,84 @@
 ---
-title: Events and records
-description: SDK event, workflow-run record, and normalized model-turn types.
-lastReviewedAt: 2026-06-15
+title: Events
+description: How the Flue Agent SDK event and conversation types map to their reference pages, plus the SDK-owned event stream and redelivery semantics.
+lastReviewedAt: 2026-07-21
 ---
 
-## `FlueEvent`
+The Flue Agent SDK (`@flue/sdk`) delivers conversation data in two vocabularies, at two levels of abstraction:
 
-`FlueEvent` is the observable runtime-event union. It includes run lifecycle, agent lifecycle, model turn, message, tool, task, compaction, operation, log, structured `data`, idle, and recovery-settlement (`submission_settled`) events. Events are durably stored in an event stream and can be replayed from any offset via the Durable Streams protocol. Dispatched activity uses `dispatchId` as its delivery identity rather than becoming a workflow run.
+- **Materialized conversation state** — [`FlueConversationState`](/docs/sdk/flue-client/#flueconversationstate) and [`FlueConversationSnapshot`](/docs/sdk/flue-client/#flueconversationsnapshot): complete, renderable conversations made of messages, parts, and settlements. This is what [`observe()`](/docs/sdk/flue-client/#observe) maintains and [`history()`](/docs/sdk/flue-client/#history) returns, and it is the level application code should consume.
+- **Conversation stream chunks** — [`ConversationStreamChunk`](/docs/reference/streaming-protocol/#conversationstreamchunk): the incremental update protocol that `observe()` reduces into state and that [`wait()`](/docs/sdk/flue-client/#wait)'s `onEvent` callback exposes raw.
 
-Every delivered event carries the durable event-format version `v: 3`, a per-context `eventIndex`, and a `timestamp`. SDK readers reject v1, v2, missing, and unknown versions with `UnsupportedFlueEventVersionError`; they do not normalize historical formats. The SDK union mirrors the wire format: `turn_request` is in-process only on the server (`observe()` subscribers and exporters) and never appears on streams the SDK reads.
+The runtime's low-level activity event union ([`FlueEvent`](/docs/reference/events/)) is not part of the SDK: no `FlueClient` method delivers it. In-process consumers subscribe to it with `observe()` from `@flue/runtime`.
 
-A `data` event carries a template-safe `name`, optional stable `id`, and JSON-compatible `data` payload. It is append-only on the wire; UI consumers can reconcile repeated `(name, id)` events last-writer-wins, while events without ids remain distinct.
+Each vocabulary is documented on the page that owns it, linked above and mapped export-by-export [below](#exported-types). This page adds only what the SDK itself owns: the [`FlueEventStream`](#flueeventstream) iteration surface and the [offset and redelivery semantics](#offsets-and-redelivery) an SDK consumer sees.
 
-`message_start` and `message_end` bound both user and assistant messages. Text and thinking deltas are best-effort live progress; for a completed assistant message, `message_end` is authoritative. A reader that attaches after generation starts may miss earlier partial output until it arrives. Internal interrupted-turn recovery uses separate durable state and is unaffected by this public stream behavior.
+A minimal consumer reads messages and parts from an observation:
 
-## `AttachedAgentEvent`
+```ts
+import { createFlueClient } from '@flue/sdk';
 
-`AttachedAgentEvent` is emitted by direct interactions with persistent agent instances. It excludes workflow-run lifecycle events, requires `instanceId`, and does not include `runId`.
+const client = createFlueClient({ url: 'https://app.example.com/api/support/thread-42' });
+const observation = client.observe();
 
-## Run types
+observation.subscribe(() => {
+  const { conversation } = observation.getSnapshot();
+  for (const message of conversation?.messages ?? []) {
+    if (message.display !== 'visible') continue;
+    for (const part of message.parts) {
+      if (part.type === 'text') renderText(message.id, part.text, part.state);
+    }
+  }
+});
+```
 
-| Type        | Description                                                                                                      |
-| ----------- | ---------------------------------------------------------------------------------------------------------------- |
-| `RunRecord` | Persisted workflow-run record, including the workflow name, status, timestamps, input, result, and error fields. |
-| `RunStatus` | Workflow-run status: `'active'`, `'completed'`, or `'errored'`.                                                  |
+## Exported types
 
-## Normalized model-turn types
+- `FlueConversationSnapshot`, `FlueConversationState`, `FlueConversationMessage`, `FlueConversationPart`, `FlueConversationSettlement` — the materialized conversation, documented field-by-field on [FlueClient](/docs/sdk/flue-client/#flueconversationsnapshot) with `history()` and `observe()`.
+- `ConversationStreamChunk` — the `updates`-view chunk union, documented on the [Streaming Protocol reference](/docs/reference/streaming-protocol/#conversationstreamchunk). Delivered raw by `wait()`'s `onEvent`; not stable application API — application code should consume materialized state via `observe()` instead.
+- `PromptUsage` — aggregated token and cost usage, carried by conversation settlements; the shape matches the runtime's export of the same name (pinned by a wire-conformance type test).
 
-`turn` events keep correlation, duration, purpose, and error status at top level. Their required `request` is a `ModelRequestInfo` summary; their required `response` is a `ModelResponse`. Output, usage, finish reason, and normalized errors exist only under `response`.
+## FlueEventStream
 
-| Type                  | Description                                                              |
-| --------------------- | ------------------------------------------------------------------------ |
-| `ModelRequestInput`   | Model-visible system prompt, messages, and tools.                         |
-| `ModelRequestInfo`    | Provider identity, requested model, API, and request settings.           |
-| `ModelRequest`        | `ModelRequestInfo` plus the full request `input`; used by `turn_request`. |
-| `ModelResponse`       | Response identity, output, usage, finish reason, and normalized error.   |
-| `LlmAssistantMessage` | Normalized assistant message.                                            |
-| `LlmTextContent`      | Text content.                                                            |
-| `LlmThinkingContent`  | Reasoning content.                                                       |
-| `LlmToolCall`         | Tool call content.                                                       |
-| `LlmTurnPurpose`      | Model-turn purpose: `'agent'`, `'compaction'`, or `'compaction_prefix'`. |
+```ts
+interface FlueEventStream<T = ConversationStreamChunk> extends AsyncIterable<T> {
+  cancel(reason?: unknown): void;
+  readonly offset: string;
+}
+```
 
-`request.providerId` is the provider-registration key used in model specifiers. `request.providerName` is the semantic provider identity and may differ for gateways or custom registrations.
+An async iterable of events backed by a Durable Streams connection, with automatic reconnection, offset-based replay, and live tailing. The SDK constructs these internally (`wait()` consumes a `FlueEventStream<ConversationStreamChunk>`); the type is exported so first-party presenters can type streams of their own. `for await...of` is the consumption interface; breaking out of the loop cleans up the underlying connection.
+
+- `cancel(reason?)` — cancels the stream and aborts the underlying connection. Iteration then ends (`done: true`) rather than throwing.
+- `offset` — the resume checkpoint. It advances per delivered batch: it moves to a batch's next-offset only once every event in that batch has been yielded, so resuming from a checkpointed value never skips undelivered events — at worst it re-delivers the batch that was in flight when the checkpoint was taken (at-least-once).
+
+Each streamed value is passed through a caller-supplied validator before it is yielded; a validator that throws is terminal for the stream (the connection is cancelled and subsequent `next()` calls rethrow). The SDK's own streams validate against the materialized-conversation protocol (see `ConversationStreamError` in [SDK errors](/docs/sdk/errors/)).
+
+### FlueStreamOptions
+
+```ts
+interface FlueStreamOptions {
+  offset?: string;
+  live?: LiveMode;
+  signal?: AbortSignal;
+  backoffOptions?: BackoffOptions;
+}
+```
+
+Options for one event-stream read. `LiveMode` and `BackoffOptions` are re-exported from `@durable-streams/client`.
+
+- `offset` — starting offset. Defaults to `'-1'` (full history).
+- `live` — live tailing mode: `boolean | 'long-poll' | 'sse'`. Defaults to `true` (long-poll). `false` reads to the current end and completes.
+- `signal` — aborts the stream; iteration ends without throwing.
+- `backoffOptions` — retry behavior for connection attempts (`initialDelay`, `maxDelay`, `multiplier`, and callbacks, per `@durable-streams/client`).
+
+## Offsets and redelivery
+
+Every conversation read is anchored to a durable-stream offset — an opaque string checkpoint. Offsets surface on [`FlueConversationSnapshot`](/docs/sdk/flue-client/#flueconversationsnapshot), [`AgentSendResult`](/docs/sdk/flue-client/#agentsendresult), [`AgentConversationObservationSnapshot`](/docs/sdk/flue-client/#agentconversationobservationsnapshot), and [`FlueEventStream`](#flueeventstream). Treat them as opaque: compare for equality if you must, never parse or arithmetic on them. Chunk `position` values are not offsets — they identify and order items but cannot be used as resume points. The wire-level offset format and coordination headers are specified in the [Streaming Protocol reference](/docs/reference/streaming-protocol/#offsets).
+
+Delivery is **at-least-once**: when a connection drops mid-batch, the transport reconnects from the pre-batch offset and replays the batch in flight. The SDK's consumers each absorb this:
+
+- `observe()` dedupes by chunk `position` and rehydrates a fresh snapshot on reconnect rather than resuming incrementally; see [`observe()`](/docs/sdk/flue-client/#observe).
+- `wait()` watches only for the terminal `submission-settled` chunk of its submission, which is idempotent under redelivery. Its `onEvent` callback, however, receives the raw stream: it can observe the same chunk more than once after a reconnect, and it receives every chunk of the conversation from the admission offset, not only chunks belonging to the awaited submission. Dedupe by `position` if the distinction matters; prefer `observe()` for maintained UI state.
+
+Both live modes (`'long-poll'` and `'sse'`) carry the same chunks with the same guarantees; SSE trades connection lifetime for lower token-by-token latency.

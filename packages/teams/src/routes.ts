@@ -92,8 +92,8 @@ export function deriveDestination(
 	if (!serviceUrl || !conversationId || !botId) return undefined;
 	if (!isHttpsServiceUrl(serviceUrl)) return undefined;
 
-	const activityId = readAnyString(raw, 'id');
-	const replyToId = readAnyString(raw, 'replyToId');
+	const activityId = readString(raw, 'id');
+	const replyToId = readString(raw, 'replyToId');
 	const channelData = readRecord(raw, 'channelData');
 	const teamId = readNestedId(channelData, 'team');
 	const channelId = readNestedId(channelData, 'channel');
@@ -144,7 +144,7 @@ function readNestedId(
 	field: string,
 ): string | undefined {
 	const nested = value && readRecord(value, field);
-	return nested && readAnyString(nested, 'id');
+	return nested && readString(nested, 'id');
 }
 
 function isHttpsServiceUrl(value: string): boolean {
@@ -167,15 +167,23 @@ async function readBody(request: Request, limit: number): Promise<Uint8Array | u
 	const reader = request.body.getReader();
 	const chunks: Uint8Array[] = [];
 	let length = 0;
-	while (true) {
-		const { done, value } = await reader.read();
-		if (done) break;
-		length += value.byteLength;
-		if (length > limit) {
-			await reader.cancel();
-			return undefined;
+	// Read errors propagate to the caller's 400 and the lock is always
+	// released — the github/src/webhook.ts readBody shape.
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			length += value.byteLength;
+			if (length > limit) {
+				// Not awaited (a slow cancel must not stall the 413); discard
+				// rejections — an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
+				return undefined;
+			}
+			chunks.push(value);
 		}
-		chunks.push(value);
+	} finally {
+		reader.releaseLock();
 	}
 	const body = new Uint8Array(length);
 	let offset = 0;

@@ -1,9 +1,10 @@
 ---
 title: MongoDB
-description: Give Flue agents and workflow runs durable, shared state with MongoDB.
+description: Give Flue agents durable, shared state with MongoDB.
 package:
   name: '@flue/mongodb'
   href: https://www.npmjs.com/package/@flue/mongodb
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -30,16 +31,14 @@ const client = new MongoClient(process.env.MONGODB_URL!);
 await client.connect();
 
 const db = client.db(process.env.MONGODB_DATABASE);
-const runner: MongoRunner = {
-  /* ... */
-};
+const runner: MongoRunner = {/* ... */};
 
 export default mongodb(runner);
 ```
 
 The blueprint does not modify the MongoDB deployment, which must support
 transactions. Flue discovers the adapter during a Node build
-and persists canonical agent conversations, immutable attachments, accepted submissions, workflow runs, and event streams so that state survives process replacement. Replicas may share durable state and workflow history, but each agent instance still requires one live Node owner. Application business data remains application-owned.
+and persists canonical agent conversations, immutable attachments, and accepted submissions so that state survives process replacement. Replicas may share durable state, but each agent instance still requires one live Node owner. Application business data remains application-owned.
 
 ## Configure
 
@@ -49,7 +48,7 @@ and persists canonical agent conversations, immutable attachments, accepted subm
 | `MONGODB_DATABASE` | **Optional** — Explicit database name for Flue state; recommended when the URL does not select the intended database. |
 
 The official driver reads these values at runtime. Never commit credentials.
-For local development, `flue dev --env <file>` and `flue run --env <file>` load
+For local development, `vite dev` loads the project `.env`, and `flue run --env <file>` loads
 any `.env`-format file; use the deployment platform's secret store in
 production.
 
@@ -129,7 +128,7 @@ that bypasses the adapter's BSON-limit handling.
 
 ## What gets stored
 
-MongoDB stores append-only canonical conversation records, immutable attachment payloads, accepted direct and dispatched submissions, recovery claims and leases, workflow runs and indexes, and persisted event streams. Sessions append for the agent-instance lifetime; there are no session generations, transcript snapshots, per-session deletion, or recursive session-tree cleanup.
+MongoDB stores append-only canonical conversation records, immutable attachment payloads, accepted direct and dispatched submissions, and recovery claims and leases. Sessions append for the agent-instance lifetime; there are no session generations, transcript snapshots, per-session deletion, or recursive session-tree cleanup.
 
 The adapter does not store sandbox files, external API side effects, credentials,
 or application-owned business records.

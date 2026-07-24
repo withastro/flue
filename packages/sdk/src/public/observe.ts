@@ -11,8 +11,7 @@ import type { FlueEventStream } from './stream.ts';
 /**
  * Live mode for conversation observation: `'long-poll'` (offset-resumed polling)
  * or `'sse'` (a long-lived stream for lower-latency token-by-token updates). For
- * a single point-in-time read with no live updates, use
- * `client.agents.history()` instead.
+ * a single point-in-time read with no live updates, use `history()` instead.
  *
  * Both modes are safe under at-least-once redelivery. The `message-delta`
  * protocol is append-style with no per-delta sequence, but every chunk carries a
@@ -24,12 +23,7 @@ import type { FlueEventStream } from './stream.ts';
 export type ConversationLiveMode = 'long-poll' | 'sse';
 
 export type AgentConversationObservationPhase =
-	| 'loading'
-	| 'connecting'
-	| 'live'
-	| 'absent'
-	| 'error'
-	| 'closed';
+	'loading' | 'connecting' | 'live' | 'absent' | 'error' | 'closed';
 
 export interface AgentConversationObservationSnapshot {
 	conversation: FlueConversationState | undefined;
@@ -53,7 +47,7 @@ export interface AgentConversationObservation {
 
 /**
  * Internal composition seam between SDK transport and the observation state
- * machine. Not exported from the package: `client.agents.observe()` is the only
+ * machine. Not exported from the package: the client's `observe()` is the only
  * supported way to construct an observation. Tests drive observation through a
  * fake {@link AgentConversationObservationSource}.
  */
@@ -192,7 +186,11 @@ export function createAgentConversationObservation(
 			if (!isCurrent(value)) return;
 			streamState = createConversationStreamState(history);
 			lastApplied = undefined;
-			reconnectAttempt = 0;
+			// Do not reset reconnectAttempt here: a successful history read is not
+			// progress on the updates stream. Resetting it on every hydrate defeats
+			// backoff growth when the stream keeps failing right after (fixed ~1s
+			// hydrate/fail loop). The real reset lives in follow()'s chunk loop,
+			// once a chunk actually arrives.
 			publish({
 				conversation: streamState,
 				offset: history.offset,
@@ -250,7 +248,11 @@ export function createAgentConversationObservation(
 			closed = true;
 			generation++;
 			clearActive();
-			publish({ ...snapshot, phase: 'closed', error: reason === undefined ? undefined : toError(reason) });
+			publish({
+				...snapshot,
+				phase: 'closed',
+				error: reason === undefined ? undefined : toError(reason),
+			});
 			listeners.clear();
 		},
 	};

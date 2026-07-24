@@ -14,13 +14,11 @@ import {
 	ensureSqlConversationStreamTables,
 	SqliteConversationStreamStore,
 } from '../runtime/conversation-stream-store.ts';
-import { SqliteEventStreamStore } from '../runtime/event-stream-store.ts';
 import {
 	createSqlAgentExecutionStoreFromSql,
 	ensureSqlAgentExecutionTables,
 } from '../sql-agent-execution-store.ts';
 import { ensureSqlAttachmentTable, SqliteAttachmentStore } from '../sql-attachment-store.ts';
-import { createSqlRunStore } from '../sql-run-store.ts';
 import type { SqlStorage } from '../sql-storage.ts';
 
 /**
@@ -53,17 +51,14 @@ function createNodeSqlStorage(db: DatabaseSync): SqlStorage {
 	};
 }
 
-/** Check whether a SQL query is expected to return result rows. */
 function queryExpectsRows(query: string): boolean {
 	const trimmed = query.trimStart().toUpperCase();
-	if (trimmed.startsWith('SELECT') || trimmed.startsWith('WITH') || trimmed.startsWith('PRAGMA')) return true;
+	if (trimmed.startsWith('SELECT') || trimmed.startsWith('WITH') || trimmed.startsWith('PRAGMA'))
+		return true;
 	if (/\bRETURNING\b/i.test(query)) return true;
 	return false;
 }
 
-/**
- * Create an in-memory transaction wrapper for `node:sqlite`.
- */
 function createNodeTransactionSync(db: DatabaseSync): <T>(closure: () => T) => T {
 	return <T>(closure: () => T): T => {
 		db.exec('BEGIN');
@@ -78,7 +73,6 @@ function createNodeTransactionSync(db: DatabaseSync): <T>(closure: () => T) => T
 	};
 }
 
-/** Open a `node:sqlite` database and return the handle, SQL adapter, and transaction wrapper. */
 function openDatabase(path: string): {
 	db: DatabaseSync;
 	sql: SqlStorage;
@@ -128,17 +122,13 @@ export function sqlite(path?: string): PersistenceAdapter {
 		migrate() {
 			const { sql } = ensureOpen();
 			ensureSqlAgentExecutionTables(sql);
-			createSqlRunStore(sql);
-			new SqliteEventStreamStore(sql);
 			ensureSqlConversationStreamTables(sql);
 			ensureSqlAttachmentTable(sql);
 		},
 		connect() {
 			const { sql, runTransaction } = ensureOpen();
 			return {
-				executionStore: createSqlAgentExecutionStoreFromSql(sql, runTransaction),
-				runStore: createSqlRunStore(sql),
-				eventStreamStore: new SqliteEventStreamStore(sql),
+				submissionStore: createSqlAgentExecutionStoreFromSql(sql, runTransaction),
 				conversationStreamStore: new SqliteConversationStreamStore(sql, runTransaction),
 				attachmentStore: new SqliteAttachmentStore(sql, runTransaction),
 			};

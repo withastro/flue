@@ -1,9 +1,10 @@
 ---
 title: Turso
-description: Give Flue agents and workflow runs durable, hosted state with Turso — managed, replicated libSQL.
+description: Give Flue agents durable, hosted state with Turso — managed, replicated libSQL.
 package:
   name: '@flue/libsql'
   href: https://www.npmjs.com/package/@flue/libsql
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -40,7 +41,7 @@ export default libsql({
 });
 ```
 
-Flue discovers the adapter at build time and wires it into the generated Node server. On startup, it creates or verifies the required `flue_*` tables. Canonical agent conversations, immutable attachments, accepted submissions, and workflow history then survive process replacement in hosted Turso. Replicas may share durable state and workflow history, but each agent instance still requires one live Node owner. Application business data remains application-owned. The blueprint applies only to Node targets because Cloudflare deployments use Durable Object SQLite instead.
+Flue discovers the adapter at build time and wires it into the generated Node server. On startup, it creates or verifies the required `flue_*` tables. Canonical agent conversations, immutable attachments, and accepted submissions then survive process replacement in hosted Turso. Replicas may share durable state, but each agent instance still requires one live Node owner. Application business data remains application-owned. The blueprint applies only to Node targets because Cloudflare deployments use Durable Object SQLite instead.
 
 ## Configure
 
@@ -50,7 +51,7 @@ Flue discovers the adapter at build time and wires it into the generated Node se
 | `TURSO_AUTH_TOKEN`   | **Required** — Auth token for the database.    |
 
 `createClient` reads these at runtime — they are not baked into the build. For
-local development, `flue dev --env <file>` and `flue run --env <file>` load any
+local development, `vite dev` loads the project `.env`, and `flue run --env <file>` loads any
 `.env`-format file. In production, supply them from your platform's secret store.
 
 Turso is hosted, replicated libSQL. The blueprint installs `@flue/libsql` and
@@ -142,16 +143,22 @@ database written by a newer Flue refuses to start rather than corrupting state.
 
 A Flue database stores runtime state, not your whole application.
 
-| Stored by Flue                                                   | Not stored by Flue                                             |
-| ---------------------------------------------------------------- | -------------------------------------------------------------- |
-| Canonical agent conversation streams and compaction records       | Sandbox files and installed dependencies                       |
-| Immutable attachment payloads                                    | External API side effects                                      |
-| Accepted direct prompts and `dispatch(...)` submissions          | Application-owned business data unless your own tools store it |
-| Workflow-run records and persisted events                         | Provider credentials or secrets                                |
-| Run indexing for `/runs` lookups and `listRuns()`                 |                                                                |
+Stored by Flue:
 
-See [Durable Agents](/docs/concepts/durable-execution/) for how recovery uses
-submission state, and the [Data Persistence API](/docs/api/data-persistence-api/)
+- canonical agent conversation streams and compaction records;
+- immutable attachment payloads;
+- accepted direct prompts and `dispatch(...)` submissions;
+- durable submission claims, leases, and settlement records.
+
+Not stored by Flue:
+
+- sandbox files and installed dependencies;
+- external API side effects;
+- application-owned business data, unless your own tools store it;
+- provider credentials or secrets.
+
+See [Durability](/docs/guide/durability/) for how recovery uses
+submission state, and the [Data Persistence API](/docs/reference/data-persistence-api/)
 for the exact adapter contract.
 
 ## When to choose Turso

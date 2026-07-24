@@ -4,11 +4,17 @@
 	"type": "module",
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
-		"agents": "^0.14.2",
+		"agents": "^0.17.4",
+		"hono": "^4.7.0",
 		"just-bash": "^3.0.1"
 	},
 	"devDependencies": {
 		"@flue/cli": "workspace:*",
-		"wrangler": "^4.97.0"
+		"@flue/vite": "workspace:*",
+		"vite": "^8.0.14",
+		"wrangler": "^4.113.0"
+	},
+	"scripts": {
+		"build": "vite build"
 	}
 }

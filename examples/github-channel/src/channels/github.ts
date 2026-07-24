@@ -2,7 +2,7 @@ import { createGitHubChannel } from '@flue/github';
 import { defineTool, dispatch } from '@flue/runtime';
 import { Octokit } from '@octokit/rest';
 import * as v from 'valibot';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const client = new Octokit({
 	auth: requiredEnv('GITHUB_TOKEN'),
@@ -20,8 +20,16 @@ export const channel = createGitHubChannel({
 				repo: repository.name,
 				issueNumber: issue.number,
 			};
-			await dispatch(assistant, {
-				id: channel.conversationKey(issueRef),
+			await dispatch(Assistant, {
+				id: channel.instanceId(issueRef),
+				// Recorded once when this event creates the instance; ignored after.
+				initialData: {
+					owner: issueRef.owner,
+					repo: issueRef.repo,
+					issueNumber: issueRef.issueNumber,
+					openedBy: issue.user.login,
+					title: issue.title,
+				},
 				message: {
 					kind: 'signal',
 					type: 'github.issue_comment.created',
@@ -48,8 +56,16 @@ export const channel = createGitHubChannel({
 				repo: repository.name,
 				issueNumber: pull_request.number,
 			};
-			await dispatch(assistant, {
-				id: channel.conversationKey(issueRef),
+			await dispatch(Assistant, {
+				id: channel.instanceId(issueRef),
+				// Recorded once when this event creates the instance; ignored after.
+				initialData: {
+					owner: issueRef.owner,
+					repo: issueRef.repo,
+					issueNumber: issueRef.issueNumber,
+					openedBy: pull_request.user.login,
+					title: pull_request.title,
+				},
 				message: {
 					kind: 'signal',
 					type: 'github.pull_request_review_comment.created',
@@ -82,12 +98,12 @@ export function commentOnIssue(ref: { owner: string; repo: string; issueNumber: 
 		name: 'comment_on_github_issue',
 		description: 'Post a comment to the GitHub issue or pull request bound to this agent.',
 		input: v.object({ body: v.pipe(v.string(), v.minLength(1)) }),
-		async run({ input }) {
+		async run({ data }) {
 			const result = await client.rest.issues.createComment({
 				owner: ref.owner,
 				repo: ref.repo,
 				issue_number: ref.issueNumber,
-				body: input.body,
+				body: data.body,
 			});
 			return { commentId: result.data.id, url: result.data.html_url };
 		},

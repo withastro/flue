@@ -15,8 +15,9 @@ export const channel = createMessengerChannel({
 });
 ```
 
-The package owns verification, exact-body signatures, fixed Page identity, the
-provider-native webhook payload, and canonical conversation identity.
+The package owns verification, exact-body signatures, the provider-native
+webhook payload, and canonical conversation identity (scoped to the
+configured Page).
 Applications own Page access tokens, outbound Graph clients, tools, dispatch
 policy, and deduplication.
 

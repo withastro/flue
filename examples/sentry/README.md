@@ -1,135 +1,115 @@
-# Sentry error reporting for Flue
+# Sentry observability for Flue
 
-A working example of wiring Flue workflow runs up to [Sentry](https://sentry.io)
-for error reporting.
+A working example of wiring Flue agents up to [Sentry](https://sentry.io)
+for errors, logs, and AI traces.
 
 This example is intended to be read top-to-bottom as documentation. The
-entire integration lives in [`src/app.ts`](src/app.ts) — every workflow
-in `src/workflows/` is a plain Flue handler that doesn't import Sentry,
-doesn't import the bridge, and doesn't know that error reporting is
-happening.
+entire integration lives in [`src/sentry.ts`](src/sentry.ts), imported
+once from `app.ts` — every agent in `src/agents/` is a plain Flue agent
+that doesn't import Sentry, doesn't import the bridge, and doesn't know
+that observability is happening.
 
 ## What you get
 
 After running this example with a Sentry DSN configured:
 
-- Every workflow run that ends with an unhandled exception (the handler throws
-  or rejects) becomes a Sentry issue tagged with the Flue `runId`,
-  `workflow` name, harness name, and session name.
-- Every `ctx.log.error(...)` call from a handler becomes a Sentry
-  capture — an exception if the log carries an `error` attribute, a
-  message otherwise.
-- Sentry tags use a stable `flue.*` prefix, so pivoting on
-  `flue.run.id` in Sentry's search box finds every capture from a
-  single Flue run.
-- A failing workflow run in Sentry can be inspected through SDK `client.runs`
-  or the raw `/runs` APIs using its `flue.run.id` tag.
+- **Issues** for terminal failures only: every failed agent operation and
+  every durable submission that settles as `failed` becomes one Sentry
+  issue carrying the original error and its throw-site stack.
+- **Logs** for everything: every `log.info` / `log.warn` / `log.error`
+  call arrives in Sentry Logs at its own level, tagged with the Flue
+  correlation ids. Recovered errors an agent logs and moves past are
+  logs, not issues.
+- **Traces** when `SENTRY_TRACES_SAMPLE_RATE > 0`: each conversation
+  turn shows up as an `invoke_agent` span with `chat` (model turn) and
+  `execute_tool` children, following the OpenTelemetry GenAI semantic
+  conventions, with token usage on the model spans. A conversation's
+  spans, logs, and issues share one trace.
+- Stable `flue.*` tags across all three — pivoting on `flue.instance.id`
+  in Sentry's search box finds every capture from a single agent
+  instance, and `flue.submission.id` pins down one submission.
 
-This example contains workflows, so `runId` and `/runs` apply. Direct or dispatched agent interactions are not workflow runs; correlate them by agent instance/session, request identity, or `dispatchId` instead.
-
-## What this example does NOT do
-
-Deliberate scope cuts, listed up front so you can decide whether this
-example fits your needs:
-
-- **No spans, no traces.** Flue's event stream carries `durationMs`,
-  `usage`, `operationKind`, and other span-shaped fields, but this
-  integration does not emit Sentry spans. Adding spans is a layered
-  follow-up rather than a redesign — the same `observe(...)` hook can
-  call `Sentry.startInactiveSpan` for wide lifecycle events when
-  you're ready.
-- **No log forwarding for `info` / `warn`.** Only `log.error` reaches
-  Sentry. If you want `log.info` as Sentry breadcrumbs, add a one-line
-  `Sentry.addBreadcrumb(...)` call to the bridge in `app.ts`.
-- **No tool-error capture.** Tool failures are usually recoverable
-  (the model handles them and keeps going), so capturing them would
-  drown out real incidents. The bridge in `app.ts` documents how to
-  opt in.
-- **No AI metrics.** Token counts, costs, and model identities live on
-  Flue's `turn` and `operation` events, but this example does not
-  forward them to Sentry as measurements or attributes.
+Model and tool **content** (prompts, completions, tool arguments and
+results) stays out of traces by default. `SENTRY_AI_RECORD_INPUTS` and
+`SENTRY_AI_RECORD_OUTPUTS` opt in per direction, and everything that
+leaves the process passes a redaction pass first.
 
 ## Files
 
 ```
 examples/sentry/
-├── flue.config.ts            ← build-time config (target, paths)
+├── vite.config.ts            ← the flue() Vite plugin; vite dev/build own the app
 ├── package.json
 ├── tsconfig.json
+├── .env.example              ← every knob the integration reads
 ├── AGENTS.md                 ← system prompt for any agent that calls init()
 ├── README.md                 ← you are here
 └── src/
-    ├── app.ts                ← Sentry.init + observe(...) bridge
-    └── workflows/
-        ├── hello.ts          ← success case — no Sentry traffic
-        ├── boom.ts           ← run-fatal throw — captures via run_end
-        └── explicit.ts       ← non-fatal log.error — captures while run continues
+    ├── sentry.ts             ← the entire integration: init + traces + bridge
+    ├── app.ts                ← imports ./sentry.ts, mounts the agents
+    └── agents/
+        ├── assistant.ts      ← tool-using agent — the full-trace demo
+        ├── hello.ts          ← success case — a log and a trace, no issue
+        ├── boom.ts           ← terminal failure — one Sentry issue
+        └── explicit.ts       ← recovered errors — error logs, no issue
 ```
 
-Open `src/app.ts` first. Every line is commented to explain why it's
-there. The rest of this README explains how to run, what to look for,
-and how the pieces fit together.
+Open `src/sentry.ts` first. Every section is commented to explain why
+it's there.
 
 ## How the integration works
 
-Flue emits a structured event for every meaningful boundary in a workflow run —
-`run_start`, `operation`, `turn_request`, `turn`, `tool`, `log`, `run_end`,
-and others. Events emitted in that workflow run carry its correlation tree
-(`runId`, `harness`, `session`, `operationId`, `turnId`, `taskId`) so any
-consumer can reconstruct what happened. See [Observability](https://flueframework.com/docs/guide/observability/)
-for the vendor-neutral event contract and its sensitive-content guidance.
+Flue emits a structured event for every meaningful boundary in an
+agent's work — `operation_start`, `operation`, `turn_request`, `turn`,
+`tool`, `log`, `submission_settled`, and others — each carrying its
+correlation tree (`instanceId`, `submissionId`, `agentName`,
+`conversationId`, `operationId`, `taskId`). See
+[Observability](https://flueframework.com/docs/guide/observability/) for
+the vendor-neutral event contract.
 
-The `@flue/runtime` package exposes a single function for tapping that
-stream globally:
+The integration registers two things through `instrument(...)`:
 
-```ts
-import { observe } from '@flue/runtime';
+1. **Flue's OpenTelemetry instrumentation** (when tracing is enabled).
+   `Sentry.init` owns the global tracer provider, so the spans Flue
+   emits land in Sentry directly. Sentry's own AI provider integrations
+   are suppressed so model calls aren't double-counted.
+2. **A keyed event bridge** that maps events to the Sentry SDK:
 
-observe((event, ctx) => {
-  // event is a fully decorated FlueEvent
-  // ctx is the FlueEventContext of the run that emitted it
-});
-```
+   | Flue event                                    | Sentry call                                                                           |
+   | --------------------------------------------- | ------------------------------------------------------------------------------------- |
+   | `operation` with `isError: true`              | `captureException` (issue)                                                            |
+   | `submission_settled` with `outcome: 'failed'` | `captureException` — only if the failure wasn't already captured from its `operation` |
+   | `log` at any level                            | `Sentry.logger.<level>(...)`                                                          |
 
-`observe` is called once at module scope. The subscriber receives every
-event from every workflow run handled by the current isolate in this example.
+Both registrations are keyed, which makes `vite dev` reloads safe: the
+module re-evaluates on every edit, the newest install wins, and the
+previous one is disposed — no stacked subscribers, no duplicate
+captures.
 
-The bridge in `app.ts` is a single `observe(...)` call that filters for
-two event shapes:
+Every issue capture is enclosed in `Sentry.withScope(...)` so the Flue
+tags do not leak into unrelated events captured elsewhere in the
+process.
 
-| Flue event                                           | Sentry call                              | Severity |
-| ---------------------------------------------------- | ---------------------------------------- | -------- |
-| `run_end` with `isError: true`                       | `captureException` (reconstructed Error) | `error`  |
-| `log` with `level: 'error'` and `attributes.error`   | `captureException` (reconstructed Error) | `error`  |
-| `log` with `level: 'error'` and no `error` attribute | `captureMessage`                         | `error`  |
+### Shutdown flush
 
-Every capture is enclosed in `Sentry.withScope(...)` so the Flue tags
-do not leak into unrelated events captured by Sentry's auto-instrumentation
-elsewhere in the process.
+`sentry.ts` installs SIGINT/SIGTERM listeners that call
+`Sentry.flush(2000)` without ever calling `process.exit()` — Flue's
+generated server owns shutdown. This is best-effort, not a delivery
+guarantee: the server exits as soon as its own lifecycle stop resolves,
+so a flush still in flight can be cut short. Traces and issues are sent
+during the run; only very-recently-buffered logs are at risk.
 
 ## Isolate scoping (Node vs. Cloudflare)
 
-`observe` is described as "global," but the precise meaning differs by
-target:
-
-- **Node target.** One V8 isolate per server process. `observe` is
-  truly global — register once in `app.ts`, captures fire for every
-  run the server handles.
-
-- **Cloudflare target.** Each agent runs in its own [Durable
-  Object](https://developers.cloudflare.com/durable-objects/), which
-  is a separate V8 isolate from the outer Worker and from every other
-  DO. `app.ts` is evaluated once per isolate. That means
-  `Sentry.init` and `observe(...)` execute independently inside each
-  DO. Every isolate has its own Sentry client and captures its own
-  events. This is the only thing that _can_ work on Cloudflare — there
-  is no shared module state across isolates — and it is the right
-  shape: no cross-isolate RPC for every event, each agent
-  independently reports its own errors.
-
-You do not have to think about this when writing handlers. Put
-`Sentry.init` and `observe(...)` at the top of `app.ts` and the rest is
-automatic.
+- **Node target.** One V8 isolate per server process. Register once (the
+  `app.ts` import) and the bridge sees every agent the server handles.
+- **Cloudflare target.** Each agent runs in its own Durable Object — its
+  own V8 isolate — and the module graph evaluates once per isolate, so
+  each DO reports its own activity independently. The Cloudflare setup
+  differs in one more way: `Sentry.init` is replaced by wrapping each
+  generated DO class via a module-local `cloudflare` extension. This
+  example targets Node; run `flue add tooling sentry` in a Cloudflare
+  project to get the full Cloudflare wiring.
 
 ## Running it
 
@@ -141,89 +121,84 @@ From the repo root:
 pnpm install
 ```
 
-This example declares `@flue/runtime` as a workspace dependency and
-`@sentry/node` as a regular npm dependency. The workspace install picks
-up both.
+### 2. Configure
 
-### 2. Set up Sentry
+Copy `.env.example` to `.env` and fill in `SENTRY_DSN` (from your Sentry
+project's Settings → Client Keys page) and `ANTHROPIC_API_KEY`. The
+example's `.env` defaults keep `SENTRY_TRACES_SAMPLE_RATE=1.0` so every
+conversation produces a trace.
 
-Get a Sentry DSN from your project's Settings → Client Keys page. Then
-either export it or put it in a `.env` file your shell sources:
-
-```bash
-export SENTRY_DSN='https://<key>@<org>.ingest.sentry.io/<project>'
-export SENTRY_ENVIRONMENT='development'
-```
-
-If you skip this step, the integration still works — `Sentry.init` is
-called with `enabled: false` and every capture is a no-op. The example
-runs identically, you just won't see any traffic in Sentry's UI.
+If you skip the DSN, the integration still works — `Sentry.init` runs
+with `enabled: false` and every capture is a no-op. The example runs
+identically, you just won't see traffic in Sentry's UI.
 
 ### 3. Run the dev server
 
 ```bash
-pnpm exec flue dev --target node
+pnpm exec vite dev
 ```
 
-The server starts on port `3583`.
+Vite prints the local URL it is serving (`http://localhost:5173` by
+default — substitute yours below).
 
 ### 4. Trigger each scenario
 
+Agent prompts are fire-and-forget: `POST` returns a `202` admission and
+the conversation stream (a `GET` of the same URL) carries the outcome.
+The trailing path segment is the caller-chosen conversation id.
+
 ```bash
-# Success case — no Sentry traffic
-curl -X POST http://localhost:3583/workflows/hello?wait=result \
+# Full trace — invoke_agent → chat → execute_tool, plus an info log
+curl -X POST http://localhost:5173/agents/assistant/demo-1 \
   -H 'content-type: application/json' \
-  -d '{}'
+  -d '{"kind":"user","body":"Where is demo order A123?"}'
 
-# Run-fatal throw — one Sentry issue
-curl -X POST http://localhost:3583/workflows/boom?wait=result \
+# Success case — a log and a trace, no issue
+curl -X POST http://localhost:5173/agents/hello/demo-1 \
   -H 'content-type: application/json' \
-  -d '{}'
+  -d '{"kind":"user","body":"Run the hello action."}'
 
-# Non-fatal handler-reported errors — two Sentry issues, HTTP 200
-curl -X POST http://localhost:3583/workflows/explicit?wait=result \
+# Terminal failure — one Sentry issue (the agent initializer throws)
+curl -X POST http://localhost:5173/agents/boom/demo-1 \
   -H 'content-type: application/json' \
-  -d '{}'
+  -d '{"kind":"user","body":"Anything — this agent always fails."}'
+
+# Recovered errors — error-level logs, agent completes, no issue
+curl -X POST http://localhost:5173/agents/explicit/demo-1 \
+  -H 'content-type: application/json' \
+  -d '{"kind":"user","body":"Run the explicit action."}'
+
+# Watch a conversation's stream
+curl http://localhost:5173/agents/assistant/demo-1
 ```
 
-Each response includes a top-level `runId` field. That's the same id
-you'll see as the `flue.run.id` tag in Sentry.
+### 5. Look in Sentry
 
-### 5. Inspect a captured run
-
-Take a `flue.run.id` from Sentry and pass it to SDK `client.runs.events()` for a catch-up read or `client.runs.stream()` for live events. The raw `/runs/<runId>` APIs expose the same run — including the `run_end` event that triggered the Sentry capture. Each example workflow intentionally exports an allow-through `runs` handler so clients can read these runs; production projects should protect run access with authentication.
+- **Traces** (Explore → Traces): the assistant conversation is one trace
+  — `invoke_agent Assistant` with a `chat claude-haiku-4-5` child (token
+  usage in its attributes) and an `execute_tool lookup_order` child.
+  With the record flags off, spans carry timing, usage, and ids but no
+  message or tool content.
+- **Logs** (Explore → Logs): the tool's `looking up order` line at info
+  level, `explicit`'s two error-level lines, each tagged
+  `flue.instance.id: demo-1` and linked to its trace.
+- **Issues**: exactly one, from `boom` — `intentional explosion for the
+Sentry demo` with the throw-site stack. The `flue.instance.id` tag is
+  the conversation id from the URL; `flue.submission.id` matches the
+  `202` admission response.
 
 ## Adapting this to your project
 
-To use this pattern in your own Flue project:
+Run `flue add tooling sentry` to apply the
+[blueprint](../../blueprints/tooling--sentry.md) this example is built
+from — it handles both the Node and Cloudflare targets. Or copy
+`src/sentry.ts` and the `import './sentry.ts';` line into your own app
+and adjust:
 
-1. Add `@sentry/node` (or `@sentry/cloudflare` for the CF target) to
-   your dependencies.
-2. Copy `installSentryEventBridge` from `app.ts` into your own
-   `app.ts`, alongside your own `Sentry.init` call.
-3. Decide which event types you care about. The defaults in this
-   example (run-fatal + `log.error`) are a reasonable starting point;
-   the bridge code documents what each branch does and how to enable
-   the others.
+1. The env-var surface (`.env.example` documents each knob).
+2. The `scrub(...)` redaction list, for your application's sensitive
+   keys.
+3. Which events raise issues — the bridge documents what each branch
+   does.
 
-That's the whole setup for workflow-run error reporting. There is nothing to do on a per-workflow
-basis.
-
-## Going further
-
-When you outgrow error-only reporting, the same `observe(...)` hook can
-carry more:
-
-- **Breadcrumbs.** Forward `log.info` / `log.warn` to
-  `Sentry.addBreadcrumb(...)` so each captured exception has the
-  in-run log trail attached.
-- **Spans.** The wide `operation`, `tool`, `turn`, and `run_end`
-  events all carry `durationMs`. Synthesize Sentry spans from
-  `(timestamp - durationMs, timestamp)` to build a flame graph for
-  every run. The `gen_ai.*` OpenTelemetry semantic conventions are a
-  good attribute schema to target — see Sentry's GenAI docs.
-- **Metrics.** `turn.usage` carries input/output/cache tokens and cost.
-  Forward as Sentry measurements or to a separate metrics sink.
-
-None of those require changes to your agents. They all live inside the
-same `observe(...)` callback you already have.
+There is nothing to do on a per-agent basis.

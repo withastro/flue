@@ -1,4 +1,3 @@
-import type { PromptUsage } from '../types.ts';
 import type {
 	FlueConversationMessage,
 	FlueConversationPart,
@@ -20,7 +19,10 @@ import type {
  *
  * Streaming assistant content is carried by `message-delta`: a delta appends to
  * the message's current streaming part of the same `kind`, opening a new part on
- * the first delta or on a `kind` change. Each chunk carries a monotonic
+ * the first delta or on a `kind` change. An assistant message is one whole
+ * response: the runtime addresses every step of a multi-step submission at the
+ * same message id, so a later step's `message-started` finds the message
+ * already present (a no-op) and its parts accumulate there. Each chunk carries a monotonic
  * `position`; `observe()` applies chunks in order and drops any at or below the
  * last applied position, so a redelivered batch (e.g. an SSE reconnect) never
  * double-applies.
@@ -34,8 +36,18 @@ import type {
 export type ConversationChunkPosition = { batch: number; index: number };
 
 export type ConversationStreamChunk =
-	| { type: 'conversation-reset'; conversationId: string; snapshot: FlueConversationSnapshot; position: ConversationChunkPosition }
-	| { type: 'message-appended'; conversationId: string; message: FlueConversationMessage; position: ConversationChunkPosition }
+	| {
+			type: 'conversation-reset';
+			conversationId: string;
+			snapshot: FlueConversationSnapshot;
+			position: ConversationChunkPosition;
+	  }
+	| {
+			type: 'message-appended';
+			conversationId: string;
+			message: FlueConversationMessage;
+			position: ConversationChunkPosition;
+	  }
 	| {
 			type: 'message-started';
 			conversationId: string;
@@ -44,9 +56,25 @@ export type ConversationStreamChunk =
 			/** Turn this assistant message belongs to; stamped onto the synthesized
 			 *  message so live grouping matches the snapshot projection. */
 			turnId?: string;
-			/** Server-authored generation-start time as an ISO 8601 string. */
+			/** Agent-authored response metadata from `useResponseStart` hooks. */
+			metadata?: Record<string, unknown>;
+			/** Capture time (ISO 8601) of the underlying canonical record. */
 			timestamp?: string;
-			model?: { provider: string; id: string };
+			position: ConversationChunkPosition;
+	  }
+	| {
+			type: 'message-metadata';
+			conversationId: string;
+			messageId: string;
+			metadata: Record<string, unknown>;
+			position: ConversationChunkPosition;
+	  }
+	| {
+			type: 'data-part';
+			conversationId: string;
+			messageId: string;
+			name: string;
+			data: unknown;
 			position: ConversationChunkPosition;
 	  }
 	| {
@@ -64,17 +92,43 @@ export type ConversationStreamChunk =
 			toolCallId: string;
 			toolName: string;
 			input: unknown;
+			timestamp?: string;
 			position: ConversationChunkPosition;
 	  }
-	| { type: 'tool-output'; conversationId: string; toolCallId: string; output: unknown; durationMs?: number; position: ConversationChunkPosition }
-	| { type: 'tool-output-error'; conversationId: string; toolCallId: string; errorText: string; durationMs?: number; position: ConversationChunkPosition }
-	| { type: 'message-completed'; conversationId: string; messageId: string; usage?: PromptUsage; position: ConversationChunkPosition }
+	| {
+			type: 'tool-output';
+			conversationId: string;
+			toolCallId: string;
+			output: unknown;
+			durationMs?: number;
+			timestamp?: string;
+			position: ConversationChunkPosition;
+	  }
+	| {
+			type: 'tool-output-error';
+			conversationId: string;
+			toolCallId: string;
+			errorText: string;
+			durationMs?: number;
+			timestamp?: string;
+			position: ConversationChunkPosition;
+	  }
+	| {
+			type: 'message-completed';
+			conversationId: string;
+			messageId: string;
+			timestamp?: string;
+			position: ConversationChunkPosition;
+	  }
 	| {
 			type: 'submission-settled';
 			conversationId: string;
 			submissionId: string;
 			outcome: 'completed' | 'failed' | 'aborted';
 			error?: unknown;
+			/** See {@link FlueConversationSettlement.answeredBySubmissionId}. */
+			answeredBySubmissionId?: string;
+			timestamp?: string;
 			position: ConversationChunkPosition;
 	  };
 
@@ -84,11 +138,9 @@ export type ConversationStreamChunk =
  * fresh snapshot.
  */
 export class ConversationStreamError extends Error {
-	readonly recover: 'rehydrate';
 	constructor(message: string) {
 		super(message);
 		this.name = 'ConversationStreamError';
-		this.recover = 'rehydrate';
 	}
 }
 
@@ -97,6 +149,8 @@ const CHUNK_TYPES = new Set<ConversationStreamChunk['type']>([
 	'message-appended',
 	'message-started',
 	'message-delta',
+	'message-metadata',
+	'data-part',
 	'tool-input',
 	'tool-output',
 	'tool-output-error',
@@ -109,7 +163,9 @@ const CHUNK_TYPES = new Set<ConversationStreamChunk['type']>([
  * unknown shapes so a protocol mismatch fails loudly instead of silently
  * producing incomplete state.
  */
-export function assertConversationStreamChunk(value: ConversationStreamChunk): ConversationStreamChunk {
+export function assertConversationStreamChunk(
+	value: ConversationStreamChunk,
+): ConversationStreamChunk {
 	if (
 		!value ||
 		typeof value !== 'object' ||
@@ -154,6 +210,9 @@ export function applyConversationChunk(
 			return mutateMessages(state, (messages) => upsertMessage(messages, chunk.message));
 		case 'message-started':
 			return mutateMessages(state, (messages) => {
+				// A started chunk whose message already exists is a continuation
+				// step of the same response — a no-op here; its parts accumulate on
+				// the open message.
 				if (messages.some((message) => message.id === chunk.messageId)) return messages;
 				return [
 					...messages,
@@ -165,16 +224,41 @@ export function applyConversationChunk(
 						...(chunk.submissionId ? { submissionId: chunk.submissionId } : {}),
 						...(chunk.turnId ? { turnId: chunk.turnId } : {}),
 						parts: [],
-						...(chunk.timestamp || chunk.model
-							? {
-									metadata: {
-										...(chunk.timestamp ? { timestamp: chunk.timestamp } : {}),
-										...(chunk.model ? { model: chunk.model } : {}),
-									},
-								}
-							: {}),
+						...(chunk.metadata ? { metadata: chunk.metadata } : {}),
 					},
 				];
+			});
+		case 'message-metadata':
+			return mutateMessages(state, (messages) => {
+				const index = messages.findIndex((message) => message.id === chunk.messageId);
+				if (index < 0) return messages;
+				const message = messages[index] as FlueConversationMessage;
+				const next = [...messages];
+				next[index] = {
+					...message,
+					metadata: deepMergeMetadata(message.metadata ?? {}, chunk.metadata),
+				};
+				return next;
+			});
+		case 'data-part':
+			return mutateMessages(state, (messages) => {
+				const index = messages.findIndex((message) => message.id === chunk.messageId);
+				if (index < 0) return messages;
+				const message = messages[index] as FlueConversationMessage;
+				const partType = `data-${chunk.name}` as const;
+				const partIndex = message.parts.findIndex((part) => part.type === partType);
+				// The name is the part's identity within the response: the first
+				// write appends at the live end; a rewrite updates the part in
+				// place, keeping its position.
+				const parts =
+					partIndex < 0
+						? [...message.parts, { type: partType, data: chunk.data }]
+						: message.parts.map((part, i) =>
+								i === partIndex ? { type: partType, data: chunk.data } : part,
+							);
+				const next = [...messages];
+				next[index] = { ...message, parts };
+				return next;
 			});
 		case 'message-delta':
 			return appendDelta(state, chunk);
@@ -197,7 +281,7 @@ export function applyConversationChunk(
 				...(chunk.durationMs !== undefined ? { durationMs: chunk.durationMs } : {}),
 			}));
 		case 'message-completed':
-			return completeMessage(state, chunk.messageId, chunk.usage);
+			return completeMessage(state, chunk.messageId);
 		case 'submission-settled':
 			return applySettlement(state, chunk);
 		default: {
@@ -250,7 +334,11 @@ function appendDelta(
 		if (last && last.type === chunk.kind && last.state === 'streaming') {
 			parts[parts.length - 1] = { ...last, text: last.text + chunk.delta };
 		} else {
-			if (last && (last.type === 'text' || last.type === 'reasoning') && last.state === 'streaming') {
+			if (
+				last &&
+				(last.type === 'text' || last.type === 'reasoning') &&
+				last.state === 'streaming'
+			) {
 				parts[parts.length - 1] = { ...last, state: 'done' };
 			}
 			parts.push({ type: chunk.kind, text: chunk.delta, state: 'streaming' });
@@ -269,7 +357,11 @@ function appendToolInput(
 		const index = messages.findIndex((message) => message.id === chunk.messageId);
 		if (index < 0) return messages;
 		const message = messages[index] as FlueConversationMessage;
-		if (message.parts.some((part) => part.type === 'dynamic-tool' && part.toolCallId === chunk.toolCallId)) {
+		if (
+			message.parts.some(
+				(part) => part.type === 'dynamic-tool' && part.toolCallId === chunk.toolCallId,
+			)
+		) {
 			return messages;
 		}
 		// A tool call is a block boundary: any preceding streaming text/reasoning
@@ -303,9 +395,7 @@ function appendToolInput(
 function applyToolResult(
 	state: FlueConversationState,
 	toolCallId: string,
-	update: (
-		part: Extract<FlueConversationPart, { type: 'dynamic-tool' }>,
-	) => FlueConversationPart,
+	update: (part: Extract<FlueConversationPart, { type: 'dynamic-tool' }>) => FlueConversationPart,
 ): FlueConversationState {
 	return mutateMessages(state, (messages) => {
 		const index = messages.findLastIndex((message) =>
@@ -324,11 +414,7 @@ function applyToolResult(
 	});
 }
 
-function completeMessage(
-	state: FlueConversationState,
-	messageId: string,
-	usage: PromptUsage | undefined,
-): FlueConversationState {
+function completeMessage(state: FlueConversationState, messageId: string): FlueConversationState {
 	return mutateMessages(state, (messages) => {
 		const index = messages.findIndex((message) => message.id === messageId);
 		if (index < 0) return messages;
@@ -339,10 +425,31 @@ function completeMessage(
 			parts: message.parts.map((part) =>
 				part.type === 'text' || part.type === 'reasoning' ? { ...part, state: 'done' } : part,
 			),
-			...(usage ? { metadata: { ...message.metadata, usage } } : {}),
 		};
 		return next;
 	});
+}
+
+/** Deep-merge metadata: later values win, plain objects merge recursively, proto keys dropped. */
+function deepMergeMetadata(
+	base: Record<string, unknown>,
+	next: Record<string, unknown>,
+): Record<string, unknown> {
+	const merged: Record<string, unknown> = { ...base };
+	for (const [key, value] of Object.entries(next)) {
+		if (value === undefined) continue;
+		if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+		const current = merged[key];
+		merged[key] =
+			isPlainObject(current) && isPlainObject(value) ? deepMergeMetadata(current, value) : value;
+	}
+	return merged;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+	if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+	const proto = Object.getPrototypeOf(value);
+	return proto === Object.prototype || proto === null;
 }
 
 function applySettlement(
@@ -353,9 +460,15 @@ function applySettlement(
 		submissionId: chunk.submissionId,
 		outcome: chunk.outcome,
 		...(chunk.error === undefined ? {} : { error: chunk.error }),
+		...(chunk.answeredBySubmissionId === undefined
+			? {}
+			: { answeredBySubmissionId: chunk.answeredBySubmissionId }),
 	};
 	const settlements = state.settlements;
 	const index = settlements.findIndex((value) => value.submissionId === settlement.submissionId);
-	const next = index < 0 ? [...settlements, settlement] : settlements.map((value, i) => (i === index ? settlement : value));
+	const next =
+		index < 0
+			? [...settlements, settlement]
+			: settlements.map((value, i) => (i === index ? settlement : value));
 	return { ...state, settlements: next };
 }

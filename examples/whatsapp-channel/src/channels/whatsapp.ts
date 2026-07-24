@@ -1,9 +1,13 @@
 import { defineTool, dispatch } from '@flue/runtime';
-import { createWhatsAppChannel, type WhatsAppConversationRef } from '@flue/whatsapp';
+import { createWhatsAppChannel } from '@flue/whatsapp';
 import { WhatsAppClient } from '@kapso/whatsapp-cloud-api';
 import * as v from 'valibot';
-import assistant from '../agents/assistant.ts';
-import { inboundConversationRef, sendTextMessage } from '../whatsapp-client.ts';
+import { Assistant } from '../agents/assistant.ts';
+import {
+	inboundConversationRef,
+	sendTextMessage,
+	type WhatsAppSendRef,
+} from '../whatsapp-client.ts';
 
 export const client = new WhatsAppClient({
 	accessToken: requiredEnv('WHATSAPP_ACCESS_TOKEN'),
@@ -32,8 +36,16 @@ export const channel = createWhatsAppChannel({
 								message.interactive.list_reply?.title ??
 								message.interactive.nfm_reply?.body ??
 								'');
-					await dispatch(assistant, {
-						id: channel.conversationKey(inboundConversationRef(entry.id, value, message)),
+					const ref = inboundConversationRef(entry.id, value, message);
+					await dispatch(Assistant, {
+						id: channel.instanceId(ref),
+						// Recorded once when this event creates the instance; ignored after.
+						initialData: {
+							phoneNumberId: ref.phoneNumberId,
+							destination: ref.type === 'individual' ? ref.destination : undefined,
+							groupId: ref.type === 'group' ? ref.groupId : undefined,
+							contactName: value.contacts?.[0]?.profile?.name,
+						},
 						message: {
 							kind: 'signal',
 							type: `whatsapp.${message.type}`,
@@ -47,15 +59,15 @@ export const channel = createWhatsAppChannel({
 	},
 });
 
-export function postMessage(ref: WhatsAppConversationRef) {
+export function postMessage(ref: WhatsAppSendRef) {
 	return defineTool({
 		name: 'post_whatsapp_message',
 		description: 'Post a message to the WhatsApp conversation bound to this agent.',
 		input: v.object({
 			text: v.pipe(v.string(), v.minLength(1), v.maxLength(4096)),
 		}),
-		async run({ input }) {
-			const result = await sendTextMessage(client, ref, input.text);
+		async run({ data }) {
+			const result = await sendTextMessage(client, ref, data.text);
 			const messageId = result.messages[0]?.id;
 			return { ...(messageId === undefined ? {} : { messageId }) };
 		},

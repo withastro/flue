@@ -98,7 +98,8 @@ async function readBody(
 			if (done) break;
 			total += value.byteLength;
 			if (total > bodyLimit) {
-				void reader.cancel();
+				// Discard cancel rejections: an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
 				return { type: 'too-large' };
 			}
 			chunks.push(value);

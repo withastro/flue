@@ -1,6 +1,6 @@
 {
 	"name": "@flue/postgres",
-	"version": "1.0.0-beta.9",
+	"version": "2.0.0-nightly.202607230552",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -32,9 +32,9 @@
 		"@flue/runtime": "workspace:*"
 	},
 	"devDependencies": {
-		"@electric-sql/pglite": "^0.2.17",
-		"tsdown": "^0.22.0",
-		"typescript": "^6.0.3",
+		"@electric-sql/pglite": "^0.5.4",
+		"tsdown": "^0.22.7",
+		"typescript": "^7.0.2",
 		"vitest": "^4.1.6"
 	}
 }

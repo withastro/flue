@@ -8,9 +8,9 @@ export class InvalidIntercomInputError extends TypeError {
 	}
 }
 
-export class InvalidIntercomConversationKeyError extends TypeError {
+export class InvalidIntercomInstanceIdError extends TypeError {
 	constructor() {
-		super('Invalid Intercom conversation key.');
-		this.name = 'InvalidIntercomConversationKeyError';
+		super('Invalid Intercom instance id.');
+		this.name = 'InvalidIntercomInstanceIdError';
 	}
 }

@@ -1,20 +1,9 @@
-import type { Context, Env, Handler } from 'hono';
+import { type ChannelRouteDefinition, createChannelRouter, type JsonValue } from '@flue/runtime';
+import type { Context, Env, Hono } from 'hono';
 import type Stripe from 'stripe';
 import { createStripeWebhookHandler } from './webhook.ts';
 
-export type JsonValue =
-	| null
-	| boolean
-	| number
-	| string
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-
-export interface ChannelRoute<E extends Env = Env> {
-	readonly method: string;
-	readonly path: string;
-	readonly handler: Handler<E>;
-}
+export type { JsonValue } from '@flue/runtime';
 
 interface StripeChannelOptionsBase {
 	/** Project-owned Stripe SDK client used for official webhook verification. */
@@ -46,8 +35,7 @@ export interface StripeThinChannelOptions<E extends Env = Env> extends StripeCha
 }
 
 export type StripeChannelOptions<E extends Env = Env> =
-	| StripeSnapshotChannelOptions<E>
-	| StripeThinChannelOptions<E>;
+	StripeSnapshotChannelOptions<E> | StripeThinChannelOptions<E>;
 
 export interface StripeSnapshotWebhookHandlerInput<E extends Env = Env> {
 	c: Context<E>;
@@ -65,7 +53,12 @@ export type StripeHandlerResult = StripeHandlerValue | Promise<StripeHandlerValu
 
 /** Verified Stripe ingress. */
 export interface StripeChannel<E extends Env = Env> {
-	readonly routes: readonly ChannelRoute<E>[];
+	readonly routes: readonly ChannelRouteDefinition<E>[];
+	/**
+	 * Build a mountable Hono sub-app serving the channel's routes relative
+	 * to the mount point: `app.route('/channels/stripe', channel.route())`.
+	 */
+	route(): Hono<E>;
 }
 
 /**
@@ -86,14 +79,16 @@ export function createStripeChannel<E extends Env = Env>(
 	options: StripeChannelOptions<E>,
 ): StripeChannel<E> {
 	validateOptions(options);
+	const routes: readonly ChannelRouteDefinition<E>[] = [
+		{
+			method: 'POST',
+			path: '/webhook',
+			handler: createStripeWebhookHandler(options),
+		},
+	];
 	return {
-		routes: [
-			{
-				method: 'POST',
-				path: '/webhook',
-				handler: createStripeWebhookHandler(options),
-			},
-		],
+		routes,
+		route: () => createChannelRouter(routes),
 	};
 }
 

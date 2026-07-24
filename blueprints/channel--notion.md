@@ -15,8 +15,9 @@ application-owned Notion API behavior to a Flue project.
 
 Read local instructions, detect the package manager and target, and select the
 first existing source root: `<root>/.flue/`, then `<root>/src/`, then
-`<root>/`. Inspect existing agents, environment types, secret conventions, and
-which Notion page or comment events the application needs.
+`<root>/`. Inspect existing agents, `app.ts` (the application's route map),
+environment types, secret conventions, and which Notion page or comment events
+the application needs.
 
 Install `@flue/notion` and the official `@notionhq/client@^5.22.0`. In a strict
 TypeScript project, keep the compatible `@types/node` peer available because
@@ -40,7 +41,7 @@ message, page identity, and tool to the application:
 import { Client } from '@notionhq/client';
 import { createNotionChannel } from '@flue/notion';
 import { defineTool, dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 const PAGE_INSTANCE_PREFIX = 'notion-page:';
 
@@ -80,8 +81,12 @@ export const channel = createNotionChannel({
       case 'page.undeleted':
       case 'page.locked':
       case 'page.unlocked': {
-        await dispatch(assistant, {
+        await dispatch(Assistant, {
           id: pageInstanceId(event.entity.id),
+          // Recorded once when this event creates the instance; ignored after.
+          initialData: {
+            pageId: event.entity.id,
+          },
           message: {
             kind: 'signal',
             type: `notion.${event.type}`,
@@ -124,16 +129,28 @@ export function pageInstanceId(pageId: string): string {
   if (!pageId) throw new TypeError('Notion page id must be non-empty.');
   return `${PAGE_INSTANCE_PREFIX}${encodeURIComponent(pageId)}`;
 }
-
-export function pageIdFromInstanceId(id: string): string {
-  if (!id.startsWith(PAGE_INSTANCE_PREFIX)) {
-    throw new TypeError('Expected a local Notion page instance id.');
-  }
-  const pageId = decodeURIComponent(id.slice(PAGE_INSTANCE_PREFIX.length));
-  if (!pageId) throw new TypeError('Expected a local Notion page instance id.');
-  return pageId;
-}
 ```
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the
+channel's router explicitly:
+
+```ts
+// app.ts
+import { Hono } from 'hono';
+import { channel } from './channels/notion.ts';
+
+const app = new Hono();
+app.route('/channels/notion', channel.route());
+
+export default app;
+```
+
+`channel.route()` is a pure router factory serving the channel's routes
+relative to the mount path. The `// Path:` comments in this guide assume the
+conventional `/channels/notion` mount; a different mount path shifts every
+provider URL accordingly.
 
 The page identity helper is application code, not a capability supplied by
 Notion or `@flue/notion`. The example uses Notion's page id because one
@@ -153,30 +170,60 @@ when they matter. Comment events expose `event.data.page_id`; group the selected
 comment cases into the same local page identity only when that matches the
 application's agent policy.
 
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. It carries the page id the agent's tool binds to — the agent reads
+it with `useInitialData()` instead of parsing the instance id. Per-message
+facts stay on the signal's `attributes`.
+
 ## Wire the agent
 
 ```ts
-import { defineAgent } from '@flue/runtime';
-import { pageIdFromInstanceId, retrievePage } from '../channels/notion.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { retrievePage } from '../channels/notion.ts';
 
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  tools: [retrievePage(pageIdFromInstanceId(id))],
-}));
+const initialDataSchema = v.object({
+	pageId: v.string(),
+});
+
+export function Assistant() {
+	useModel('anthropic/claude-haiku-4-5');
+	const data = useInitialData<v.InferOutput<typeof initialDataSchema>>();
+	if (!data) throw new Error('This agent is created by the Notion channel dispatch.');
+	useTool(retrievePage(data.pageId));
+	return 'Review the Notion page change. Retrieve the current page when its properties are needed.';
+}
+
+Assistant.initialData = initialDataSchema;
 ```
 
+The `initialData` static validates the dispatched `initialData` when the
+instance is created; `useInitialData()` returns the parsed value on every
+render.
+
+The `'use agent'` directive (the module's first statement) is what registers
+the agent with the application — `dispatch(...)` from the channel callback
+needs no `app.ts` mounting. Add
+`app.route('/agents/<name>', createAgentRouter(Assistant))` (from
+`@flue/runtime/routing`) in `app.ts` only when the agent
+should also be reachable over HTTP directly.
+
 The channel-agent import cycle is supported because imported bindings are read
-inside deferred callbacks and initializers.
+inside deferred callbacks and agent function bodies.
 
 ## Configure endpoint verification
 
-Configure the exact webhook URL:
+Configure the exact webhook URL — the channel's mount path in `app.ts` plus
+the route suffix, with the conventional
+`app.route('/channels/notion', ...)` mount:
 
 ```txt
 https://example.com/channels/notion/webhook
 ```
 
-If `flue()` is mounted beneath an outer prefix, include it.
+A different mount path changes the URL accordingly.
 
 Notion first sends one unsigned JSON object containing `verification_token`.
 This request is setup traffic, not authenticated application ingress. To
@@ -229,7 +276,7 @@ response body. A normal Hono or Fetch `Response` passes through unchanged.
 
 ## Test without Notion
 
-Run the project's typecheck and configured Node and Cloudflare builds. Create
+Run the project typecheck and `vite build` for the configured target. Create
 original synthetic payloads and test:
 
 - the unsigned one-field verification request and secure capture path;

@@ -1,21 +1,26 @@
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { AssistantMessage, ToolResultMessage, UserMessage } from '@earendil-works/pi-ai';
-import type {
-	AssistantMessageStartedRecord,
-	AttachmentRef,
-	CanonicalChildSessionRef,
-	CanonicalToolResultContent,
-	CanonicalUserContent,
-	CompactionRecord,
-	ConversationRecord,
+import {
+	type AssistantMessageStartedRecord,
+	type AttachmentRef,
+	type CanonicalChildSessionRef,
+	type CanonicalToolResultContent,
+	type CanonicalUserContent,
+	type CompactionRecord,
+	type ConversationRecord,
+	encodeCanonicalId,
 } from './conversation-records.ts';
 import { AttachmentNotAvailableError, ConversationRecordInvariantError } from './errors.ts';
+import { fnv1a64 } from './fnv.ts';
+import { deepMergeMetadata } from './message-output.ts';
 import { createUserContextMessage, renderSignalMessage } from './message-rendering.ts';
+import type { ResourceSnapshot } from './resources.ts';
 import {
 	createActionScopeName,
 	createTaskSessionName,
+	isDurableInvocationId,
+	isDurableTaskId,
 	isPublicSessionName,
-	isUuid,
 } from './session-identity.ts';
 
 interface ReducedEntryBase {
@@ -89,9 +94,7 @@ interface ReducedAssistantToolCallBlock extends ReducedAssistantBlockBase {
 }
 
 type ReducedAssistantBlock =
-	| ReducedAssistantTextBlock
-	| ReducedAssistantReasoningBlock
-	| ReducedAssistantToolCallBlock;
+	ReducedAssistantTextBlock | ReducedAssistantReasoningBlock | ReducedAssistantToolCallBlock;
 
 export interface InProgressAssistantMessage {
 	messageId: string;
@@ -104,15 +107,6 @@ export interface InProgressAssistantMessage {
 	blockIndexes: Set<number>;
 }
 
-interface ReducedToolOutcome {
-	recordId: string;
-	assistantMessageId: string;
-	toolCallId: string;
-	toolName: string;
-	isError: boolean;
-	content: CanonicalToolResultContent[];
-}
-
 interface ReducedConversationStateBase {
 	conversationId: string;
 	affinityKey: string;
@@ -122,8 +116,38 @@ interface ReducedConversationStateBase {
 	entries: Map<string, ReducedEntry>;
 	activeLeafId: string | null;
 	inProgressMessages: Map<string, InProgressAssistantMessage>;
-	toolOutcomes: Map<string, ReducedToolOutcome>;
+	/**
+	 * Durable tool outcomes of the UNCOMMITTED batch by
+	 * `toolOutcomeKey(assistantMessageId, toolCallId)`, valued by the
+	 * `tool_outcome` record id. Presence/identity index for the window
+	 * between outcome and commit — repair and resume paths check it before
+	 * re-resolving a call. The batch's own `tool_results_committed` consumes
+	 * its keys: the content then lives on the committed tool-result entries.
+	 */
+	toolOutcomes: Map<string, string>;
 	childConversations: Map<string, CanonicalChildSessionRef>;
+	/**
+	 * Custom response metadata per submission: `responseMetadata` from the
+	 * response's first `assistant_message_started` plus every later
+	 * `message_metadata` record, deep-merged in stream order. Projected onto
+	 * the response message under the server-authored keys.
+	 */
+	responseMetadata: Map<string, Record<string, unknown>>;
+	/**
+	 * Client-facing data parts per submission (`message_data_write`), in
+	 * first-write order. Each part is anchored after the assistant step that
+	 * had completed when it was first written; a later write to the same name
+	 * updates `data` in place, keeping the anchor.
+	 */
+	responseDataParts: Map<string, ResponseDataPart[]>;
+	/** Last completed assistant entry per submission — the data-write anchor. */
+	lastAssistantEntryBySubmission: Map<string, string>;
+}
+
+interface ResponseDataPart {
+	name: string;
+	anchorEntryId: string;
+	data: unknown;
 }
 
 export type ReducedConversationState = ReducedConversationStateBase &
@@ -151,11 +175,100 @@ export type ReducedConversationState = ReducedConversationStateBase &
 		  }
 	);
 
+/**
+ * Post-fold residue of a record whose body has no reader once the fold has
+ * applied it: the FNV-1a 64 digest of the record's canonical JSON. The map
+ * key carries presence; the digest carries the id-reuse invariant (a
+ * replayed record must hash to the same content).
+ */
+interface DroppedRecordStub {
+	h: string;
+	type?: never;
+}
+
+/**
+ * Residue of an applied `assistant_message_started`: the envelope fields the
+ * settlement-attribution scan reads (`assistantSubmissionByAttempt`), plus
+ * the dedup digest.
+ */
+interface AssistantMessageStartedStub {
+	h: string;
+	type: 'assistant_message_started';
+	conversationId: string;
+	attemptId?: string;
+	submissionId?: string;
+}
+
+/**
+ * Residue of a `tool_outcome` whose commit has folded: the fields the
+ * response tool-call scan reads (`collectResponseToolCalls`), plus the dedup
+ * digest. The result content lives on the committed tool-result entry.
+ */
+interface ToolOutcomeStub {
+	h: string;
+	type: 'tool_outcome';
+	conversationId: string;
+	submissionId?: string;
+	toolName: string;
+	isError: boolean;
+}
+
+type ConversationRecordStub = DroppedRecordStub | AssistantMessageStartedStub | ToolOutcomeStub;
+
+/**
+ * One `recordsById` value: the full record for the retain-set (types whose
+ * bodies are read after the fold), a stub otherwise. The map is the fold's
+ * idempotency index, not an archive — the log store holds the bytes.
+ */
+export type IndexedConversationRecord = ConversationRecord | ConversationRecordStub;
+
+function isConversationRecordStub(
+	value: IndexedConversationRecord,
+): value is ConversationRecordStub {
+	return 'h' in value;
+}
+
 export interface ReducedInstanceState {
 	recordsThroughOffset: string;
 	conversations: Map<string, ReducedConversationState>;
 	conversationScopes: Map<string, string>;
-	recordsById: Map<string, ConversationRecord>;
+	/**
+	 * Every applied record by id — the dedup/idempotency index for replayed
+	 * and deterministic-id records. Bodies are retained only for the types
+	 * with post-fold readers (settlement compares, durable step memos,
+	 * submission-scoped scans); everything else downgrades to a
+	 * {@link ConversationRecordStub} at application so resident state stays
+	 * an index over the log instead of a second copy of it.
+	 */
+	recordsById: Map<string, IndexedConversationRecord>;
+	/**
+	 * Hook state (`usePersistentState`) snapshot: last-write-wins per name across every
+	 * `state_write` record in the instance's stream, in stream order. Scoped to
+	 * the agent instance (its whole stream), not to one conversation — this is
+	 * the agent's durable memory, readable by any render of the instance.
+	 */
+	state: Map<string, unknown>;
+	/**
+	 * Instance-creation data from the root conversation's
+	 * `conversation_created` record. Present (as a box) once the root
+	 * conversation exists — `value` may itself be undefined when creation
+	 * carried no data. Absent before first contact.
+	 */
+	initialData?: { value: unknown };
+	/**
+	 * The instance uid from the root conversation's birth record. Absent
+	 * before first contact and for instances created before uids shipped.
+	 */
+	uid?: string;
+	/**
+	 * Dynamic-resource bookkeeping from `resource_snapshot` records, scoped
+	 * to the instance like hook state. `narrated` is what the model was last
+	 * told exists (the diff base for the next narration); `baseline` is the
+	 * frozen-presentation snapshot (system-prompt skill catalog, task-tool
+	 * roster), reset at first contact and at each compaction rebaseline.
+	 * Absent for instances that never wrote a snapshot.
+	 */
+	resources?: { baseline?: ResourceSnapshot; narrated: ResourceSnapshot };
 }
 
 export interface ConversationProjectionOptions {
@@ -173,6 +286,7 @@ export function createReducedInstanceState(): ReducedInstanceState {
 		conversations: new Map(),
 		conversationScopes: new Map(),
 		recordsById: new Map(),
+		state: new Map(),
 	};
 }
 
@@ -187,11 +301,32 @@ export function reduceConversationRecords(
 	return next;
 }
 
+/**
+ * Fold one batch into `state` directly, without the failure-atomicity clone.
+ * For from-scratch loads, which discard the partial state when a record
+ * throws; an incremental writer needs {@link reduceConversationRecords},
+ * whose clone keeps the accepted state intact when a later record in the
+ * batch is invalid.
+ */
+export function reduceConversationRecordsInPlace(
+	state: ReducedInstanceState,
+	records: readonly ConversationRecord[],
+	offset: string,
+): void {
+	for (const record of records) applyConversationRecord(state, record);
+	state.recordsThroughOffset = offset;
+}
+
 function cloneReducedInstanceState(state: ReducedInstanceState): ReducedInstanceState {
 	return {
 		recordsThroughOffset: state.recordsThroughOffset,
 		conversationScopes: new Map(state.conversationScopes),
 		recordsById: new Map(state.recordsById),
+		state: new Map(state.state),
+		...(state.initialData ? { initialData: state.initialData } : {}),
+		...(state.uid !== undefined ? { uid: state.uid } : {}),
+		// Snapshots are replaced immutably on update, so carrying the box is safe.
+		...(state.resources ? { resources: { ...state.resources } } : {}),
 		conversations: new Map(
 			[...state.conversations].map(([id, conversation]) => [
 				id,
@@ -202,11 +337,11 @@ function cloneReducedInstanceState(state: ReducedInstanceState): ReducedInstance
 							entryId,
 							entry.type === 'message'
 								? {
-									...entry,
-									attachmentRefs: entry.attachmentRefs
-										? new Map(entry.attachmentRefs)
-										: undefined,
-								}
+										...entry,
+										attachmentRefs: entry.attachmentRefs
+											? new Map(entry.attachmentRefs)
+											: undefined,
+									}
 								: { ...entry },
 						]),
 					),
@@ -227,13 +362,17 @@ function cloneReducedInstanceState(state: ReducedInstanceState): ReducedInstance
 							},
 						]),
 					),
-					toolOutcomes: new Map(
-						[...conversation.toolOutcomes].map(([toolCallId, outcome]) => [
-							toolCallId,
-							{ ...outcome, content: outcome.content.map((block) => ({ ...block })) },
+					toolOutcomes: new Map(conversation.toolOutcomes),
+					childConversations: new Map(conversation.childConversations),
+					// Values are replaced immutably on update, so shallow copies suffice.
+					responseMetadata: new Map(conversation.responseMetadata),
+					responseDataParts: new Map(
+						[...conversation.responseDataParts].map(([submissionId, parts]) => [
+							submissionId,
+							[...parts],
 						]),
 					),
-					childConversations: new Map(conversation.childConversations),
+					lastAssistantEntryBySubmission: new Map(conversation.lastAssistantEntryBySubmission),
 				},
 			]),
 		),
@@ -246,7 +385,12 @@ export function applyConversationRecord(
 ): void {
 	const accepted = state.recordsById.get(record.id);
 	if (accepted) {
-		if (JSON.stringify(accepted) === JSON.stringify(record)) return;
+		// A stub compares by the digest of the record's canonical JSON — the
+		// same equality relation as the retained byte-for-byte compare.
+		const identical = isConversationRecordStub(accepted)
+			? accepted.h === fnv1a64(JSON.stringify(record))
+			: JSON.stringify(accepted) === JSON.stringify(record);
+		if (identical) return;
 		fail(record, `Record id "${record.id}" was reused with different content.`);
 	}
 	if (record.v !== 1) fail(record, `Record version "${String(record.v)}" is unsupported.`);
@@ -271,9 +415,20 @@ export function applyConversationRecord(
 			inProgressMessages: new Map(),
 			toolOutcomes: new Map(),
 			childConversations: new Map(),
+			responseMetadata: new Map(),
+			responseDataParts: new Map(),
+			lastAssistantEntryBySubmission: new Map(),
 		});
 		state.conversationScopes.set(scopeKey, record.conversationId);
-		state.recordsById.set(record.id, record);
+		state.recordsById.set(record.id, indexConversationRecord(record));
+		if (record.kind === 'root') {
+			// First root wins: initialData is the instance's birth data, recorded
+			// once. A named session opens a second root whose record carries no
+			// initialData — it must not clobber the birth value. Mirrors the uid
+			// guard directly below.
+			if (state.initialData === undefined) state.initialData = { value: record.initialData };
+			if (record.uid !== undefined) state.uid = record.uid;
+		}
 		return;
 	}
 
@@ -316,10 +471,22 @@ export function applyConversationRecord(
 		case 'assistant_message_started':
 			assertParent(conversation, record, record.parentId);
 			if (record.parentId !== conversation.activeLeafId) {
-				fail(record, `Assistant parent "${String(record.parentId)}" is not the conversation tail. Appends are linear.`);
+				fail(
+					record,
+					`Assistant parent "${String(record.parentId)}" is not the conversation tail. Appends are linear.`,
+				);
 			}
-			if (conversation.entries.has(record.messageId) || conversation.inProgressMessages.has(record.messageId)) {
+			if (
+				conversation.entries.has(record.messageId) ||
+				conversation.inProgressMessages.has(record.messageId)
+			) {
 				fail(record, `Assistant entry "${record.messageId}" already exists.`);
+			}
+			// A next turn must never stream on top of an uncommitted tool
+			// batch: its completion would bury the batch exactly like a direct
+			// entry append (see `hasUncommittedToolBatchAtLeaf`).
+			if (hasUncommittedToolBatchAtLeaf(conversation)) {
+				fail(record, `Cannot advance the conversation while a tool batch is uncommitted.`);
 			}
 			conversation.inProgressMessages.set(record.messageId, {
 				messageId: record.messageId,
@@ -331,6 +498,12 @@ export function applyConversationRecord(
 				blocks: new Map(),
 				blockIndexes: new Set(),
 			});
+			if (record.responseMetadata) {
+				if (!record.submissionId) {
+					fail(record, `Response metadata requires a tracked submission.`);
+				}
+				mergeResponseMetadata(conversation, record.submissionId, record.responseMetadata);
+			}
 			break;
 		case 'assistant_text_started': {
 			const message = getInProgress(conversation, record, record.messageId);
@@ -414,6 +587,9 @@ export function applyConversationRecord(
 				turnId: inProgress.turnId,
 				message,
 			});
+			if (inProgress.submissionId) {
+				conversation.lastAssistantEntryBySubmission.set(inProgress.submissionId, record.messageId);
+			}
 			break;
 		}
 		case 'tool_outcome': {
@@ -432,14 +608,7 @@ export function applyConversationRecord(
 			if (conversation.toolOutcomes.has(outcomeKey)) {
 				fail(record, `Tool outcome for "${record.toolCallId}" already exists.`);
 			}
-			conversation.toolOutcomes.set(outcomeKey, {
-				recordId: record.id,
-				assistantMessageId: record.assistantMessageId,
-				toolCallId: record.toolCallId,
-				toolName: record.toolName,
-				isError: record.isError,
-				content: record.content.map((block) => ({ ...block })),
-			});
+			conversation.toolOutcomes.set(outcomeKey, record.id);
 			break;
 		}
 		case 'tool_results_committed': {
@@ -451,18 +620,28 @@ export function applyConversationRecord(
 			) {
 				fail(record, `Committed tool results require a completed tool-use assistant.`);
 			}
-			if (record.parentId !== record.assistantMessageId || record.parentId !== conversation.activeLeafId) {
+			if (
+				record.parentId !== record.assistantMessageId ||
+				record.parentId !== conversation.activeLeafId
+			) {
 				fail(record, `Committed tool results must extend their active assistant parent.`);
 			}
 			const calls = assistant.message.content.filter((block) => block.type === 'toolCall');
-			if (record.outcomeIds.length !== calls.length || new Set(record.outcomeIds).size !== calls.length) {
-				fail(record, `Committed tool results must reference every assistant tool call exactly once.`);
+			if (
+				record.outcomeIds.length !== calls.length ||
+				new Set(record.outcomeIds).size !== calls.length
+			) {
+				fail(
+					record,
+					`Committed tool results must reference every assistant tool call exactly once.`,
+				);
 			}
 			const outcomes = record.outcomeIds.map((outcomeId, index) => {
 				const outcomeRecord = state.recordsById.get(outcomeId);
 				const call = calls[index];
 				if (
 					outcomeRecord?.type !== 'tool_outcome' ||
+					isConversationRecordStub(outcomeRecord) ||
 					!call ||
 					outcomeRecord.conversationId !== record.conversationId ||
 					outcomeRecord.harness !== record.harness ||
@@ -470,7 +649,8 @@ export function applyConversationRecord(
 					outcomeRecord.assistantMessageId !== record.assistantMessageId ||
 					outcomeRecord.toolCallId !== call.id ||
 					outcomeRecord.toolName !== call.name ||
-					conversation.toolOutcomes.get(toolOutcomeKey(record.assistantMessageId, call.id))?.recordId !== outcomeId
+					conversation.toolOutcomes.get(toolOutcomeKey(record.assistantMessageId, call.id)) !==
+						outcomeId
 				) {
 					fail(record, `Committed tool outcome references do not match assistant tool-call order.`);
 				}
@@ -492,6 +672,21 @@ export function applyConversationRecord(
 					...(outcome.durationMs !== undefined ? { toolDurationMs: outcome.durationMs } : {}),
 				});
 				parentId = entryId;
+				// The commit consumes its batch: the result content now lives on
+				// the committed entry, so the pre-commit presence index and the
+				// retained outcome body downgrade together. In-place set keeps
+				// the map's insertion order for stream-order scans.
+				conversation.toolOutcomes.delete(
+					toolOutcomeKey(record.assistantMessageId, outcome.toolCallId),
+				);
+				state.recordsById.set(outcome.id, {
+					h: fnv1a64(JSON.stringify(outcome)),
+					type: outcome.type,
+					conversationId: outcome.conversationId,
+					...(outcome.submissionId !== undefined ? { submissionId: outcome.submissionId } : {}),
+					toolName: outcome.toolName,
+					isError: outcome.isError,
+				});
 			}
 			break;
 		}
@@ -502,10 +697,17 @@ export function applyConversationRecord(
 			if (!conversation.entries.has(record.sourceLeafId)) {
 				fail(record, `Compaction source leaf "${record.sourceLeafId}" does not exist.`);
 			}
-			if (record.sourceLeafId !== record.parentId || record.sourceLeafId !== conversation.activeLeafId) {
+			if (
+				record.sourceLeafId !== record.parentId ||
+				record.sourceLeafId !== conversation.activeLeafId
+			) {
 				fail(record, `Compaction source leaf must be its active parent.`);
 			}
-			if (!pathToLeaf(conversation, record.sourceLeafId).some((entry) => entry.id === record.firstKeptEntryId)) {
+			if (
+				!pathToLeaf(conversation, record.sourceLeafId).some(
+					(entry) => entry.id === record.firstKeptEntryId,
+				)
+			) {
 				fail(record, `Compaction first-kept entry is not on the source path.`);
 			}
 			appendEntry(conversation, record, {
@@ -526,9 +728,10 @@ export function applyConversationRecord(
 			validateChildReference(record);
 			const child = state.conversations.get(record.child.conversationId);
 			if (!child) fail(record, `Retained child conversation does not exist.`);
-			const identityMatches = record.child.type === 'task'
-				? child.kind === 'task' && child.taskId === record.child.taskId
-				: child.kind === 'action' && child.actionInvocationId === record.child.invocationId;
+			const identityMatches =
+				record.child.type === 'task'
+					? child.kind === 'task' && child.taskId === record.child.taskId
+					: child.kind === 'action' && child.actionInvocationId === record.child.invocationId;
 			if (
 				child.parentConversationId !== conversation.conversationId ||
 				child.harness !== record.child.harness ||
@@ -550,9 +753,129 @@ export function applyConversationRecord(
 			break;
 		}
 		case 'submission_settled':
+			// Settle barrier: a settled submission can never legitimately complete
+			// an assistant message it left in progress (attempt fencing rejects any
+			// write past settlement), so drop its bookkeeping here. This is the
+			// reducer-level guarantee that persisted history can never brick a
+			// conversation past a settlement — and because the reducer is a pure
+			// fold replayed on load, it retroactively heals streams poisoned by
+			// crash windows that predate it. Content preservation is convergence's
+			// job at the ownership seams; the barrier drops only bookkeeping.
+			// Undefined-owner in-progress messages (programmatic prompts, subagent
+			// children) are never dropped.
+			if (record.submissionId) {
+				for (const [messageId, message] of conversation.inProgressMessages) {
+					if (message.submissionId === record.submissionId) {
+						conversation.inProgressMessages.delete(messageId);
+					}
+				}
+			}
 			break;
+		case 'tool_step_settled':
+			// Durable-step memo: read back by deterministic id from
+			// `recordsById` when a `durable: true` tool call re-executes.
+			// Operational — no graph entry, so it can never enter model context.
+			if (!record.toolCallId || !record.stepName) {
+				fail(record, `A tool step memo requires its toolCallId and stepName.`);
+			}
+			break;
+		case 'state_write':
+			state.state.set(record.name, record.value);
+			break;
+		case 'resource_snapshot':
+			state.resources = {
+				narrated: record.snapshot,
+				...(record.baseline
+					? { baseline: record.snapshot }
+					: state.resources?.baseline
+						? { baseline: state.resources.baseline }
+						: {}),
+			};
+			break;
+		case 'agent_start_run':
+		case 'agent_finish_cycle':
+			// Lifecycle-hook bookkeeping: the session reads these straight from
+			// `recordsById` (submission-scoped scans), no folded state needed.
+			break;
+		case 'message_metadata': {
+			if (!record.submissionId) fail(record, `Response metadata requires a tracked submission.`);
+			mergeResponseMetadata(conversation, record.submissionId, record.metadata);
+			break;
+		}
+		case 'message_data_write': {
+			if (!record.submissionId) {
+				fail(record, `Message data writes require a tracked submission.`);
+			}
+			const anchorEntryId = conversation.lastAssistantEntryBySubmission.get(record.submissionId);
+			if (!anchorEntryId) {
+				fail(record, `Message data writes require a completed assistant step to anchor to.`);
+			}
+			const parts = conversation.responseDataParts.get(record.submissionId) ?? [];
+			const index = parts.findIndex((part) => part.name === record.name);
+			const next =
+				index < 0
+					? [...parts, { name: record.name, anchorEntryId, data: record.data }]
+					: parts.map((part, partIndex) =>
+							// A rewrite updates the data in place: the part keeps its
+							// first-write anchor (and therefore its rendered position).
+							partIndex === index ? { ...part, data: record.data } : part,
+						);
+			conversation.responseDataParts.set(record.submissionId, next);
+			break;
+		}
 	}
-	state.recordsById.set(record.id, record);
+	state.recordsById.set(record.id, indexConversationRecord(record));
+}
+
+/**
+ * The `recordsById` value one applied record leaves behind. The retain-set is
+ * exactly the types with post-fold body readers:
+ *
+ * - `submission_settled`: settlement finalization compares the durable record
+ *   byte-for-byte against the retained obligation (agent-submissions.ts).
+ * - `tool_step_settled`: a durable `step.do` re-execution replays `value`.
+ * - `agent_start_run` / `agent_finish_cycle`: submission-scoped
+ *   presence/count scans (already envelope-only records).
+ * - `assistant_message_completed`: `collectResponseUsage` re-aggregates
+ *   `usage` on resume.
+ * - `tool_outcome`: its commit reads the body back to materialize tool-result
+ *   entries; the commit handler downgrades it once that fold applies.
+ *
+ * Everything else drops to a digest stub, with `assistant_message_started`
+ * keeping the envelope fields the settlement-attribution scan reads.
+ */
+function indexConversationRecord(record: ConversationRecord): IndexedConversationRecord {
+	switch (record.type) {
+		case 'submission_settled':
+		case 'tool_step_settled':
+		case 'agent_start_run':
+		case 'agent_finish_cycle':
+		case 'assistant_message_completed':
+		case 'tool_outcome':
+			return record;
+		case 'assistant_message_started':
+			return {
+				h: fnv1a64(JSON.stringify(record)),
+				type: record.type,
+				conversationId: record.conversationId,
+				...(record.attemptId !== undefined ? { attemptId: record.attemptId } : {}),
+				...(record.submissionId !== undefined ? { submissionId: record.submissionId } : {}),
+			};
+		default:
+			return { h: fnv1a64(JSON.stringify(record)) };
+	}
+}
+
+function mergeResponseMetadata(
+	conversation: ReducedConversationState,
+	submissionId: string,
+	metadata: Record<string, unknown>,
+): void {
+	const current = conversation.responseMetadata.get(submissionId);
+	conversation.responseMetadata.set(
+		submissionId,
+		current ? deepMergeMetadata(current, metadata) : deepMergeMetadata({}, metadata),
+	);
 }
 
 function validateConversationCreation(
@@ -576,14 +899,17 @@ function validateConversationCreation(
 			typeof value.parentConversationId !== 'string' ||
 			typeof value.taskId !== 'string' ||
 			value.actionInvocationId !== undefined ||
-			!isUuid(value.taskId) ||
+			!isDurableTaskId(value.taskId) ||
 			(value.agent !== undefined && typeof value.agent !== 'string')
 		) {
 			fail(record, `Task conversation creation has invalid discriminated identity.`);
 		}
 		const parent = state.conversations.get(value.parentConversationId);
 		if (!parent) return;
-		if (record.harness !== parent.harness || record.session !== createTaskSessionName(parent.session, value.taskId)) {
+		if (
+			record.harness !== parent.harness ||
+			record.session !== createTaskSessionName(parent.session, value.taskId)
+		) {
 			fail(record, `Task conversation scope does not match its derived parent identity.`);
 		}
 		return;
@@ -594,7 +920,7 @@ function validateConversationCreation(
 		typeof value.actionInvocationId !== 'string' ||
 		value.taskId !== undefined ||
 		value.agent !== undefined ||
-		!isUuid(value.actionInvocationId)
+		!isDurableInvocationId(value.actionInvocationId)
 	) {
 		fail(record, `Action conversation creation has invalid discriminated identity.`);
 	}
@@ -616,9 +942,10 @@ function validateChildReference(
 		if (
 			typeof child.taskId !== 'string' ||
 			child.invocationId !== undefined ||
-			!isUuid(child.taskId) ||
+			!isDurableTaskId(child.taskId) ||
 			(child.parentToolCallId !== undefined && typeof child.parentToolCallId !== 'string') ||
-			(child.parentAssistantEntryId !== undefined && typeof child.parentAssistantEntryId !== 'string')
+			(child.parentAssistantEntryId !== undefined &&
+				typeof child.parentAssistantEntryId !== 'string')
 		) {
 			fail(record, `Task child reference has invalid discriminated identity.`);
 		}
@@ -630,7 +957,7 @@ function validateChildReference(
 		child.taskId !== undefined ||
 		child.parentToolCallId !== undefined ||
 		child.parentAssistantEntryId !== undefined ||
-		!isUuid(child.invocationId)
+		!isDurableInvocationId(child.invocationId)
 	) {
 		fail(record, `Action child reference has invalid discriminated identity.`);
 	}
@@ -716,6 +1043,12 @@ function pathToContextEntries(
 		}
 		if (message.role === 'assistant') {
 			if (message.stopReason === 'error' || message.stopReason === 'aborted') {
+				// Positional adjacency IS the recovery contract: the signal pair
+				// is appended only while the aborted partial is the leaf, so a
+				// recovered partial is always immediately followed by its pair.
+				// Classification applies the same rule (submission-state.ts,
+				// `hasAdjacentStreamContinuation`) so it can never claim
+				// "recovered" for a partial this builder excludes from context.
 				const next = path[index + 1];
 				const afterNext = path[index + 2];
 				const resumable =
@@ -791,12 +1124,39 @@ function assertEntryAppend(
 	if (conversation.inProgressMessages.size > 0) {
 		fail(record, `Cannot advance the conversation while an assistant message is in progress.`);
 	}
+	// The uncommitted-batch hold, mirroring the in-progress-message hold above:
+	// the batch's own `tool_results_committed` is the only record that may
+	// extend the leaf while it is held.
+	if (record.type !== 'tool_results_committed' && hasUncommittedToolBatchAtLeaf(conversation)) {
+		fail(record, `Cannot advance the conversation while a tool batch is uncommitted.`);
+	}
 }
 
-function commitEntry(
-	conversation: ReducedConversationState,
-	entry: ReducedEntry,
-): void {
+/**
+ * Whether the active leaf is a toolUse assistant whose result batch has not
+ * committed — held from the moment such an assistant entry commits (it
+ * becomes the leaf) until its own `tool_results_committed` moves the leaf to
+ * the batch's last toolResult entry. While held, nothing may advance the
+ * conversation: an entry appended on the toolUse leaf would bury the
+ * uncommitted batch mid-history, where the context builder silently drops it
+ * and repair can no longer commit it (the commit invariant requires the
+ * assistant to still be the leaf). `tool_outcome` records and all non-entry
+ * records are unaffected — they never move the leaf.
+ */
+function hasUncommittedToolBatchAtLeaf(conversation: ReducedConversationState): boolean {
+	const leaf =
+		conversation.activeLeafId !== null
+			? conversation.entries.get(conversation.activeLeafId)
+			: undefined;
+	return (
+		leaf?.type === 'message' &&
+		leaf.message.role === 'assistant' &&
+		leaf.message.stopReason === 'toolUse' &&
+		leaf.message.content.some((block) => block.type === 'toolCall')
+	);
+}
+
+function commitEntry(conversation: ReducedConversationState, entry: ReducedEntry): void {
 	conversation.entries.set(entry.id, entry);
 	conversation.activeLeafId = entry.id;
 }
@@ -828,10 +1188,7 @@ function assertParent(
 	}
 }
 
-function pathToLeaf(
-	conversation: ReducedConversationState,
-	leafId: string,
-): ReducedEntry[] {
+function pathToLeaf(conversation: ReducedConversationState, leafId: string): ReducedEntry[] {
 	const path: ReducedEntry[] = [];
 	let current = conversation.entries.get(leafId);
 	while (current) {
@@ -914,7 +1271,10 @@ function completeBlock(
 	if (!block || block.type !== type) fail(record, `Block "${record.blockId}" is not ${type}.`);
 	if (block.completed) fail(record, `Block "${record.blockId}" is already complete.`);
 	if (record.deltaCount !== block.deltas.length) {
-		fail(record, `Completion expected ${record.deltaCount} deltas but replay has ${block.deltas.length}.`);
+		fail(
+			record,
+			`Completion expected ${record.deltaCount} deltas but replay has ${block.deltas.length}.`,
+		);
 	}
 	block.completed = true;
 	return block;
@@ -996,7 +1356,10 @@ function resolveMessageAttachments(
 	options: ConversationProjectionOptions,
 ): AgentMessage {
 	const message = entry.message;
-	if ((message.role !== 'user' && message.role !== 'toolResult') || !Array.isArray(message.content)) {
+	if (
+		(message.role !== 'user' && message.role !== 'toolResult') ||
+		!Array.isArray(message.content)
+	) {
 		return message;
 	}
 	const attachments = [...(entry.attachmentRefs?.values() ?? [])];
@@ -1051,14 +1414,7 @@ export function toolResultEntryId(assistantMessageId: string, toolCallId: string
 	return `entry_tool_result_${encodeCanonicalId(assistantMessageId)}_${encodeCanonicalId(toolCallId)}`;
 }
 
-function encodeCanonicalId(id: string): string {
-	const bytes = new TextEncoder().encode(id);
-	let binary = '';
-	for (const byte of bytes) binary += String.fromCharCode(byte);
-	return btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/, '');
-}
-
-function conversationScopeKey(harness: string, session: string): string {
+export function conversationScopeKey(harness: string, session: string): string {
 	return JSON.stringify([harness, session]);
 }
 

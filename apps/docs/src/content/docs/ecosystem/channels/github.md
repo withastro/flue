@@ -4,6 +4,7 @@ description: Receive signed GitHub webhooks and use Octokit from application-own
 package:
   name: '@flue/github'
   href: https://www.npmjs.com/package/@flue/github
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -26,7 +27,7 @@ application.
 import { Octokit } from '@octokit/rest';
 import { createGitHubChannel } from '@flue/github';
 import { dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const client = new Octokit({ auth: process.env.GITHUB_TOKEN });
 
@@ -41,8 +42,16 @@ export const channel = createGitHubChannel({
       issueNumber: issue.number,
     };
 
-    await dispatch(assistant, {
-      id: channel.conversationKey(issueRef),
+    await dispatch(Assistant, {
+      id: channel.instanceId(issueRef),
+      // Recorded once when this event creates the instance; ignored after.
+      initialData: {
+        owner: issueRef.owner,
+        repo: issueRef.repo,
+        issueNumber: issueRef.issueNumber,
+        openedBy: issue.user.login,
+        title: issue.title,
+      },
       message: {
         kind: 'signal',
         type: 'github.issue_comment.created',
@@ -69,6 +78,18 @@ full generated module also handles pull-request review comments and lets the
 bound agent post an issue or pull-request comment through Octokit. Cloudflare
 targets retain the project's credential convention and run Octokit's Fetch path
 under Flue's `nodejs_compat` configuration.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as github } from './channels/github.ts';
+
+app.route('/channels/github', github.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/github` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -101,7 +122,7 @@ import { createGitHubChannel } from '@flue/github';
 import { defineTool, dispatch } from '@flue/runtime';
 import { Octokit } from '@octokit/rest';
 import * as v from 'valibot';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const client = new Octokit({
   auth: process.env.GITHUB_TOKEN,
@@ -122,8 +143,16 @@ export const channel = createGitHubChannel({
         repo: repository.name,
         issueNumber: issue.number,
       };
-      await dispatch(assistant, {
-        id: channel.conversationKey(issueRef),
+      await dispatch(Assistant, {
+        id: channel.instanceId(issueRef),
+        // Recorded once when this event creates the instance; ignored after.
+        initialData: {
+          owner: issueRef.owner,
+          repo: issueRef.repo,
+          issueNumber: issueRef.issueNumber,
+          openedBy: issue.user.login,
+          title: issue.title,
+        },
         message: {
           kind: 'signal',
           type: 'github.issue_comment.created',
@@ -150,8 +179,16 @@ export const channel = createGitHubChannel({
         repo: repository.name,
         issueNumber: pull_request.number,
       };
-      await dispatch(assistant, {
-        id: channel.conversationKey(issueRef),
+      await dispatch(Assistant, {
+        id: channel.instanceId(issueRef),
+        // Recorded once when this event creates the instance; ignored after.
+        initialData: {
+          owner: issueRef.owner,
+          repo: issueRef.repo,
+          issueNumber: issueRef.issueNumber,
+          openedBy: pull_request.user.login,
+          title: pull_request.title,
+        },
         message: {
           kind: 'signal',
           type: 'github.pull_request_review_comment.created',
@@ -184,7 +221,7 @@ export function commentOnIssue(ref: { owner: string; repo: string; issueNumber: 
     name: 'comment_on_github_issue',
     description: 'Comment on the GitHub issue or pull request bound to this agent.',
     input: v.object({ body: v.pipe(v.string(), v.minLength(1)) }),
-    async run({ input: { body } }) {
+    async run({ data: { body } }) {
       const result = await client.rest.issues.createComment({
         owner: ref.owner,
         repo: ref.repo,
@@ -212,19 +249,38 @@ callback.
 ## Bind the tool
 
 ```ts title="src/agents/assistant.ts"
-import { defineAgent } from '@flue/runtime';
-import { channel, commentOnIssue } from '../channels/github.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { commentOnIssue } from '../channels/github.ts';
 
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  tools: [commentOnIssue(channel.parseConversationKey(id))],
-}));
+const initialData = v.object({
+  owner: v.string(),
+  repo: v.string(),
+  issueNumber: v.number(),
+  openedBy: v.string(),
+  title: v.string(),
+});
+
+export function Assistant() {
+  useModel('anthropic/claude-haiku-4-5');
+  const data = useInitialData<v.InferOutput<typeof initialData>>();
+  if (!data) throw new Error('This agent is created by the GitHub channel dispatch.');
+  useTool(commentOnIssue(data));
+  return `Review the issue and post a concise triage comment when appropriate. "${data.title}" was opened by ${data.openedBy}.`;
+}
+
+Assistant.initialData = initialData;
 ```
 
-Pull requests use their issue number for issue comments. The model selects the
-comment body; trusted code binds the repository and issue. The channel-agent
-import cycle is supported because both imported bindings are read only inside
-deferred callbacks or initializers.
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. The agent's `initialData` static validates the dispatched `initialData` when the
+instance is created; `useInitialData()` returns the parsed value on every
+render. Pull requests use their issue number for issue comments. The model
+selects the comment body; trusted code binds the repository and issue. The
+channel-agent import cycle is supported because both imported bindings are
+read only inside deferred callbacks or the agent function body.
 
 GitHub expects a `2xx` response within ten seconds and does not auto-retry.
 The package does not enforce a handler deadline; treat the ten-second window as

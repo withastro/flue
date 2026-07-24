@@ -12,8 +12,6 @@ import type { AgentSubmissionInput } from './runtime/agent-submissions.ts';
 import type { AttachmentStore } from './runtime/attachment-store.ts';
 import type { ConversationStreamStore } from './runtime/conversation-stream-store.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
-import type { EventStreamStore } from './runtime/event-stream-store.ts';
-import type { RunStore } from './runtime/run-store.ts';
 
 // ─── Durability defaults ────────────────────────────────────────────────────
 
@@ -26,7 +24,42 @@ export const LEASE_DURATION_MS = 30_000;
 
 // ─── Submission ─────────────────────────────────────────────────────────────
 
-type AgentSubmissionStatus = 'queued' | 'running' | 'terminalizing' | 'settled';
+/**
+ * Submission lifecycle states. The linear path is
+ * `queued → running → (terminalizing →) settled`. The join pair models a
+ * queued dispatch delivery being absorbed into another submission's live
+ * response at a turn boundary (dispatch-while-busy): `joining` is the durable
+ * intent (claimed by the host's session, canonical input record not yet
+ * confirmed), `joined` means the delivery's input is durably part of the
+ * host's response. Joined submissions settle with their host — see
+ * {@link AgentSubmissionStore.completeSubmission}.
+ *
+ * One-truth-per-fact contract (which store answers which question):
+ *
+ * - **Terminal state is a cache of the stream.** A submission's outcome is
+ *   durably encoded by its conversation stream's `submission_settled` record;
+ *   the settled row (status/error) is a projection of it, and the stream wins
+ *   on disagreement. Mid-settlement crashes leave `terminalizing` rows with a
+ *   reserved record that the coordinators finish on wake; ledger-level
+ *   divergence (a store restored from backup) is converged by
+ *   `rebuildSettledSubmissionRows`, which re-derives terminal rows from the
+ *   streams through the normal reservation machinery.
+ * - **Coordination fields are lossy, never history.** Leases, attempt ids and
+ *   counts, markers, and the abort request stamp exist to elect and
+ *   fence a writer; each converges by its own rule after a crash (lease
+ *   expiry + reconcile scan, marker staleness + startup reconcile, requests
+ *   consumed-or-expire). No code may read a coordination field as historical
+ *   truth — history questions go to the stream. `inputAppliedAt` in
+ *   particular is the durability stamp's bookkeeping, never
+ *   input-appliedness.
+ * - **The ledger's own truths** are the pre-stream facts: the admitted
+ *   payload and queue ordering (admission precedes the conversation's
+ *   existence) and the once-stamped durability budget (`maxAttempts`/
+ *   `timeoutAt`, installed at first input application so retries never
+ *   re-anchor it).
+ */
+type AgentSubmissionStatus =
+	'queued' | 'running' | 'terminalizing' | 'settled' | 'joining' | 'joined';
 
 export interface AgentSubmission {
 	readonly sequence: number;
@@ -39,7 +72,6 @@ export interface AgentSubmission {
 	readonly canonicalReadyAt: number | null;
 	readonly attemptId?: string;
 	readonly inputAppliedAt?: number;
-	readonly recoveryRequestedAt?: number;
 	/**
 	 * When set, abort was requested for this submission. This is a durable
 	 * abort+recovery *signal*, NOT a terminal classification: the aborted
@@ -52,9 +84,19 @@ export interface AgentSubmission {
 	 */
 	readonly abortRequestedAt?: number;
 	readonly startedAt?: number;
+	/**
+	 * The host submission this delivery joined (status `joining`/`joined`,
+	 * and preserved on the settled row for inspection). A joined delivery's
+	 * input became part of the host's live response instead of waking its
+	 * own; it consumes no attempts of its own and settles with the host's
+	 * outcome.
+	 */
+	readonly joinedInto?: string;
 	readonly error?: string;
+	/** Epoch-ms when the submission reached a terminal `settled` state; undefined until then. */
+	readonly settledAt?: number;
 	readonly attemptCount: number;
-	readonly maxRetry: number;
+	readonly maxAttempts: number;
 	readonly timeoutAt: number;
 	readonly ownerId?: string;
 	readonly leaseExpiresAt: number;
@@ -73,41 +115,20 @@ export interface SubmissionAttemptRef {
 	readonly attemptId: string;
 }
 
-
-
 export interface SubmissionClaimRef extends SubmissionAttemptRef {
 	readonly ownerId: string;
 	readonly leaseExpiresAt: number;
 }
 
 export interface SubmissionDurability {
-	readonly maxRetry: number;
+	readonly maxAttempts: number;
 	readonly timeoutAt: number;
-}
-
-/**
- * Flue-owned durable evidence that a submission attempt was started and has
- * not yet settled. The Cloudflare coordinator inserts a marker immediately
- * before starting an attempt fiber and deletes it when the attempt settles;
- * reconciliation treats a fresh marker as proof that the attempt may still
- * be running and must not be reconciled as interrupted.
- */
-export interface AgentAttemptMarker {
-	readonly submissionId: string;
-	readonly attemptId: string;
-	readonly createdAt: number;
 }
 
 // ─── Dispatch admission ─────────────────────────────────────────────────────
 
-export interface AgentDispatchReceipt {
-	readonly submissionId: string;
-	readonly acceptedAt: number;
-}
-
 export type AgentDispatchAdmission =
 	| { readonly kind: 'submission'; readonly submission: AgentSubmission }
-	| { readonly kind: 'retained_receipt'; readonly receipt: AgentDispatchReceipt }
 	| { readonly kind: 'conflict' };
 
 // ─── Submission store ───────────────────────────────────────────────────────
@@ -131,13 +152,15 @@ export interface AgentSubmissionStore {
 	// Query
 	/** Return the submission, or `null` when the id is unknown. */
 	getSubmission(submissionId: string): Promise<AgentSubmission | null>;
-	/** True while any submission is queued or running. */
+	/** True while any submission is queued, running, or joining/joined. */
 	hasUnsettledSubmissions(): Promise<boolean>;
 	/**
 	 * Queued submissions that are each the oldest unsettled submission of
 	 * their session, in admission order. At most one runnable head exists
 	 * per session; later queued work in the same session is excluded until
-	 * everything admitted before it has settled.
+	 * everything admitted before it has settled. `joining`/`joined` rows
+	 * count as unsettled here (they block later queued work exactly like a
+	 * running head; the settle fan-out clears them with their host).
 	 */
 	listRunnableSubmissions(): Promise<AgentSubmission[]>;
 	/** All queued submissions without canonical readiness, in admission order. */
@@ -149,10 +172,11 @@ export interface AgentSubmissionStore {
 
 	/**
 	 * Recovery handoff: atomically move a running submission from `attempt`
-	 * to `nextAttemptId`, increment `attemptCount`, clear any pending recovery
-	 * request, and (when given) install the new lease. Returns the updated
-	 * submission, or `null` — without writing — when the submission is not
-	 * running under `attempt`.
+	 * to `nextAttemptId`, increment `attemptCount`, and (when given) install
+	 * the new lease. `abortRequestedAt` must survive the replacement so a
+	 * pending abort settles the submission instead of retrying it. Returns
+	 * the updated submission, or `null` — without writing — when the
+	 * submission is not running under `attempt`.
 	 */
 	replaceSubmissionAttempt(
 		attempt: SubmissionAttemptRef,
@@ -162,7 +186,7 @@ export interface AgentSubmissionStore {
 
 	// Admission
 	/**
-	 * Idempotent admission keyed by dispatch id. An exact replay (same id,
+	 * Idempotent admission keyed by submission id. An exact replay (same id,
 	 * same payload) returns the already-admitted submission; the same id
 	 * with a different payload returns `conflict`.
 	 */
@@ -184,7 +208,7 @@ export interface AgentSubmissionStore {
 	 * running ONLY when it is currently queued and is the runnable head of
 	 * its session (no earlier unsettled submission in the same session),
 	 * recording the attempt id, owner, lease expiry, and start time,
-	 * incrementing `attemptCount`, resetting `maxRetry` to the system
+	 * incrementing `attemptCount`, resetting `maxAttempts` to the system
 	 * default, and initializing `timeoutAt` when still unset (a previously
 	 * initialized timeout is preserved across requeue/reclaim). Returns the
 	 * claimed submission, or `null` when any condition fails. Two concurrent
@@ -192,23 +216,24 @@ export interface AgentSubmissionStore {
 	 */
 	claimSubmission(claim: SubmissionClaimRef): Promise<AgentSubmission | null>;
 	/**
-	 * Record once that the submission's input was canonically applied,
-	 * installing the supplied durability (or defaults) on first application.
+	 * Install the session-resolved durability budget (or defaults) once, at
+	 * first input application, stamping `inputAppliedAt` as the once-guard.
 	 * Gated on a running submission owned by `attempt`; otherwise `false`.
+	 *
+	 * The timestamp is the durability stamp's own bookkeeping, NOT the truth
+	 * about input application — the canonical stream is the single truth for
+	 * that (a persisted input entry classifies and resumes; an absent one
+	 * requeues). No decision may read `inputAppliedAt` as "was the input
+	 * persisted".
 	 */
 	markSubmissionInputApplied(
 		attempt: SubmissionAttemptRef,
 		durability?: SubmissionDurability,
 	): Promise<boolean>;
 	/**
-	 * Stamp `recoveryRequestedAt` once. Gated on a running submission owned
-	 * by `attempt`; otherwise `false`.
-	 */
-	requestSubmissionRecovery(attempt: SubmissionAttemptRef): Promise<boolean>;
-	/**
 	 * Record an abort request for every unsettled submission in a session.
 	 * Atomically stamps `abortRequestedAt` (COALESCE — first request wins) on
-	 * each `queued` or `running` submission with the given `sessionKey` and
+	 * each `queued`, `running`, `joining`, or `joined` submission with the given `sessionKey` and
 	 * returns their submission ids. It does NOT settle anything and does NOT
 	 * change `status`: terminal settlement always happens through an
 	 * attempt-based path (the pre-execution abort check when a queued submission
@@ -219,45 +244,111 @@ export interface AgentSubmissionStore {
 	 */
 	requestSessionAbort(sessionKey: string): Promise<string[]>;
 	/**
-	 * Return a running submission to queued — clearing its attempt, owner,
-	 * and lease — ONLY while input has not been applied and `attempt` owns
-	 * the submission; otherwise `false`.
+	 * Return a running submission to queued for a clean first attempt —
+	 * clearing its attempt, owner, lease, and durability stamp (a requeued
+	 * submission re-stamps at its next input application) — gated only on
+	 * `attempt` owning the running submission; otherwise `false`. WHEN to
+	 * requeue is the caller's judgment against the canonical stream
+	 * (reconciliation requeues only when the submission's input entry is
+	 * absent — the stream is the single truth for input application); the
+	 * store does not second-guess it from operational fields.
 	 */
-	requeueSubmissionBeforeInputApplied(attempt: SubmissionAttemptRef): Promise<boolean>;
+	requeueSubmission(attempt: SubmissionAttemptRef): Promise<boolean>;
 	/**
 	 * Atomically reserve the exact canonical settlement record as an obligation.
-	 * Only a running direct submission owned by `attempt` may transition to
-	 * terminalizing. Exact retries return the existing obligation; conflicting
-	 * record identities or payloads return `null`.
+	 * Two shapes may transition to terminalizing, for either submission kind: a
+	 * running submission owned by `attempt`, or a delivery `joined` into a host
+	 * running under `attempt.attemptId` — the host settles the joined waiter's
+	 * record under its own authority, adopting the row's `attemptId`/`startedAt`.
+	 * Exact retries return the existing obligation; conflicting record
+	 * identities or payloads return `null`.
 	 */
 	reserveSubmissionSettlement(
 		attempt: SubmissionAttemptRef,
 		settlement: { recordId: string; record: SubmissionSettledRecord },
 	): Promise<SubmissionSettlementObligation | null>;
-	/** Finalize an owned terminalizing submission after its canonical record exists. */
-	finalizeSubmissionSettlement(attempt: SubmissionAttemptRef, recordId: string): Promise<boolean>;
+	/**
+	 * Finalize an owned terminalizing submission after its canonical record
+	 * exists. The row's error column mirrors the settlement outcome:
+	 * `options.errorMessage` (the raw server-side message) when the caller has
+	 * it, else the record's client-safe error message, else null on success.
+	 */
+	finalizeSubmissionSettlement(
+		attempt: SubmissionAttemptRef,
+		recordId: string,
+		options?: { errorMessage?: string },
+	): Promise<boolean>;
 	/**
 	 * Settle the submission successfully. Gated on a running submission
 	 * owned by `attempt`: a stale attempt or an already-settled submission
 	 * returns `false` and preserves the first terminal state.
+	 *
+	 * Joined-delivery fan-out (applies equally to {@link failSubmission} and
+	 * {@link finalizeSubmissionSettlement}): settling a host atomically
+	 * settles every `joined` submission attached to it (`joinedInto` equals
+	 * the host's id) with the same outcome — success here, the host's error
+	 * on failure. Any `joining` stragglers (a join whose canonical input was
+	 * never confirmed — an abort or crash window) atomically revert to
+	 * `queued` instead, so the delivery runs as its own submission rather
+	 * than silently vanishing with a response that never carried it.
+	 *
+	 * Joined DIRECT deliveries normally never reach this fan-out: the
+	 * processing layer settles each one through the settlement outbox (its
+	 * durable `submission_settled` record, reserved via
+	 * {@link reserveSubmissionSettlement} under the host attempt) BEFORE
+	 * settling the host, so HTTP waiters always observe an outcome record.
+	 * The fan-out remains the kind-agnostic backstop: a joined row of either
+	 * kind still present when the host settles is cleared here rather than
+	 * wedging the session queue.
 	 */
 	completeSubmission(attempt: SubmissionAttemptRef): Promise<boolean>;
 	/**
 	 * Settle the submission with an error message. Same gating as
-	 * {@link completeSubmission}: the first terminal state wins.
+	 * {@link completeSubmission}: the first terminal state wins. Applies the
+	 * same joined-delivery fan-out.
 	 */
 	failSubmission(attempt: SubmissionAttemptRef, error: unknown): Promise<boolean>;
 
-	// Attempt markers
+	// Turn-boundary joins (dispatch-while-busy)
 	/**
-	 * Durably record that the attempt was started. Idempotent: re-inserting
-	 * the same (submissionId, attemptId) keeps the original `createdAt`.
+	 * Atomically claim queued deliveries for absorption into the host's live
+	 * response. Gated on the host running under `host.attemptId` (a replaced
+	 * or settled attempt claims nothing — zombie fencing). Claims the
+	 * CONTIGUOUS prefix of the session's queued submissions — both kinds;
+	 * dispatch and direct (HTTP) deliveries join alike — in admission order,
+	 * stopping at the first row that is not joinable: not canonical-ready,
+	 * not the same agent, or abort-requested. Stopping (rather than
+	 * skipping) preserves admission order. Each claimed row transitions
+	 * `queued → joining` with `joinedInto` set to the host; the claimed
+	 * submissions are returned in admission order. Two concurrent claimers
+	 * must never both claim the same row.
 	 */
-	insertAttemptMarker(attempt: SubmissionAttemptRef): Promise<void>;
-	/** Delete the marker matching both ids exactly; a no-op when absent. */
-	deleteAttemptMarker(attempt: SubmissionAttemptRef): Promise<void>;
-	/** All attempt markers. */
-	listAttemptMarkers(): Promise<AgentAttemptMarker[]>;
+	claimJoinableSubmissions(
+		host: SubmissionAttemptRef,
+		agentName: string,
+	): Promise<AgentSubmission[]>;
+	/**
+	 * Confirm a claimed join once the delivery's canonical input record is
+	 * durable: `joining → joined`, stamping `inputAppliedAt` once. Gated on
+	 * the row being `joining` into this host AND the host still running
+	 * under `host.attemptId`; otherwise `false`.
+	 */
+	finalizeJoinedSubmission(host: SubmissionAttemptRef, submissionId: string): Promise<boolean>;
+	/**
+	 * Hand a claimed-but-unconfirmed join back to the queue:
+	 * `joining → queued`, clearing `joinedInto`. Legal only while the
+	 * delivery's canonical input record does NOT exist (the caller owns that
+	 * check — reverting an applied join would duplicate the message). Same
+	 * gating as {@link finalizeJoinedSubmission}; otherwise `false`.
+	 */
+	revertJoiningSubmission(host: SubmissionAttemptRef, submissionId: string): Promise<boolean>;
+	/**
+	 * Every unsettled join attached to the host (`joining` and `joined`), in
+	 * admission order. Recovery uses this to resolve `joining` stragglers by
+	 * canonical-record existence and to re-adopt `joined` deliveries' start
+	 * hooks on a re-attempt.
+	 */
+	listJoinedSubmissions(hostSubmissionId: string): Promise<AgentSubmission[]>;
 
 	// Lease management
 	/**
@@ -272,13 +363,6 @@ export interface AgentSubmissionStore {
 	 * never returned.
 	 */
 	listExpiredSubmissions(): Promise<AgentSubmission[]>;
-
-}
-
-// ─── Execution store ────────────────────────────────────────────────────────
-
-export interface AgentExecutionStore {
-	readonly submissions: AgentSubmissionStore;
 }
 
 // ─── Persistence adapter ────────────────────────────────────────────────────
@@ -286,11 +370,7 @@ export interface AgentExecutionStore {
 /** The complete set of stores a {@link PersistenceAdapter} provides. */
 export interface PersistenceStores {
 	/** Durable agent submission lifecycle storage. */
-	readonly executionStore: AgentExecutionStore;
-	/** Workflow run records, lookup, and listing. */
-	readonly runStore: RunStore;
-	/** Durable append-only event streams for agents and workflow runs. */
-	readonly eventStreamStore: EventStreamStore;
+	readonly submissionStore: AgentSubmissionStore;
 	/** Canonical per-agent-instance conversation streams. */
 	readonly conversationStreamStore: ConversationStreamStore;
 	/** Immutable attachment bytes referenced by canonical conversation records. */

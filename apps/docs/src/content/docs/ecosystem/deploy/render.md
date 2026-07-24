@@ -1,10 +1,10 @@
 ---
 title: Deploy Agents on Render
 description: Run the Flue Node server as a long-running Render web service.
-lastReviewedAt: 2026-06-20
+lastReviewedAt: 2026-07-21
 ---
 
-Flue's Node target is a long-running HTTP server, not a serverless function, so it deploys to Render as a web service that stays up between requests. This guide covers the Render-specific setup; the build itself is the same `node` target described in [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) — `npx flue build --target node` produces `dist/server.mjs`, which you start with `node dist/server.mjs`.
+Flue's Node target is a long-running HTTP server, not a serverless function, so it deploys to Render as a web service that stays up between requests. This guide covers the Render-specific setup; the build itself is the same `node` target described in [Deploy Agents on Node.js](/docs/ecosystem/deploy/node/) — `npx vite build` (with the `flue()` plugin in `vite.config.ts`) produces `dist/server.mjs`, which you start with `node dist/server.mjs`.
 
 The fastest start is the [Flue template](https://render.com/templates/flue): a one-click Blueprint that provisions a Node web service running the translation and assistant agents. The [Flue + Postgres template](https://render.com/templates/flue-with-postgresql) is the same service with a Render Postgres database wired in. Both render the rest of this guide as the explanation of what they set up.
 
@@ -18,7 +18,7 @@ services:
     name: flue-agents
     runtime: node
     plan: free
-    buildCommand: npm ci && npx flue build --target node
+    buildCommand: npm ci && npx vite build
     startCommand: node dist/server.mjs
     healthCheckPath: /health
     envVars:
@@ -26,8 +26,8 @@ services:
         sync: false
 ```
 
-- `buildCommand` compiles the Flue Node target. The build externalizes your dependencies rather than bundling them, so `node_modules` must be present at runtime — `npm ci` installs them, and `@flue/cli` must be available to the build command.
-- `startCommand` runs the generated server, which binds the `PORT` Render injects and serves agents at `/agents/<name>/<id>` and workflows at `/workflows/<name>`.
+- `buildCommand` compiles the Flue Node target. The build externalizes your dependencies rather than bundling them, so `node_modules` must be present at runtime — `npm ci` installs them, and `vite` plus `@flue/vite` must be available to the build command.
+- `startCommand` runs the generated server, which binds the `PORT` Render injects and serves agent conversations at whatever paths `app.ts` mounts them.
 - `healthCheckPath` lets Render verify each deploy before shifting traffic to it — but only if your application defines that route (see [Health and streaming](#health-and-streaming)).
 
 Push the file and create a Blueprint from the Render Dashboard (**New > Blueprint**), or click **Deploy to Render** from a template. Render copies the template repo to your GitHub account, prompts for any `sync: false` secrets, and deploys. To auto-deploy on every push, set `autoDeployTrigger: commit` on the service (this replaces the deprecated `autoDeploy` field).
@@ -53,7 +53,7 @@ envVars:
     sync: false
 ```
 
-Render ignores `sync: false` variables when updating an existing Blueprint, so rotate those secrets from the Dashboard. Do not set the reserved `FLUE_MODE` or `FLUE_CLI_*` variables in production.
+Render ignores `sync: false` variables when updating an existing Blueprint, so rotate those secrets from the Dashboard.
 
 ## Persistence
 
@@ -71,7 +71,7 @@ services:
     name: flue-agents
     runtime: node
     plan: free
-    buildCommand: npm ci && npx flue build --target node
+    buildCommand: npm ci && npx vite build
     startCommand: node dist/server.mjs
     healthCheckPath: /health
     envVars:
@@ -89,24 +89,46 @@ services:
 npm install @flue/postgres
 ```
 
-```typescript title=".flue/db.ts"
+```typescript title="src/db.ts"
 import { postgres } from '@flue/postgres';
+import { Pool } from 'pg';
 
-export default postgres(process.env.DATABASE_URL!);
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+export default postgres({
+  query: async (text, params) => (await pool.query(text, params)).rows,
+  transaction: async (fn) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await fn({
+        query: async (text, params) => (await client.query(text, params)).rows,
+      });
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  },
+  close: () => pool.end(),
+});
 ```
 
-Flue discovers `db.ts` at build time and wires it into the generated server — schema creation, canonical conversation streams, immutable attachments, durable submission state, and workflow history are handled by the adapter. See [Database](/docs/guide/database/) for the adapter contract and alternatives. Note that a `free` Postgres database expires 30 days after creation; use a `basic-256mb` or larger plan for anything you intend to keep.
+Flue discovers `db.ts` at build time and wires it into the generated server — schema creation, canonical conversation streams, immutable attachments, and durable submission state are handled by the adapter. See [Database](/docs/guide/database/) for the adapter contract and alternatives, and [Postgres](/docs/ecosystem/databases/postgres/) for the bring-your-own-driver details. Note that a `free` Postgres database expires 30 days after creation; use a `basic-256mb` or larger plan for anything you intend to keep.
 
 ## Health and streaming
 
 Flue does not generate a `/health` route. If you set `healthCheckPath`, define the matching route in `app.ts` — otherwise the check never passes and Render holds the deploy back. Drop `healthCheckPath` if you don't want a health gate.
 
-Exposed workflow runs are served through long-lived `GET /runs/:runId` reads (long-poll/SSE). Render imposes no fixed idle timeout and allows a request to run up to 100 minutes. Instance replacement can still close connections, so retain the invocation's `runId` and resume the run stream rather than relying on one blocking `?wait=result` request. The server's `SIGTERM` shutdown delay (default 30s, up to 300s via `maxShutdownDelaySeconds`) governs graceful shutdown. See [Workflow HTTP exports](/docs/api/workflow-api/#http-exports).
+Agent conversations are served through long-lived `GET` reads on the conversation URL (long-poll/SSE). Render imposes no fixed idle timeout and allows a request to run up to 100 minutes. Instance replacement can still close connections, so retain the admission's `streamUrl` and `offset` and resume the conversation stream rather than holding one blocking request open. The server's `SIGTERM` shutdown delay (default 30s, up to 300s via `maxShutdownDelaySeconds`) governs graceful shutdown. See the [Streaming Protocol](/docs/reference/streaming-protocol/).
 
 ## Going further
 
-- **Scheduled workflows.** Model periodic tasks as a Render cron job that calls the deployed application's authenticated workflow endpoint, or set its command to `npx flue run workflow:<name> --server https://<host>/<flue-mount>`. Remote attachment avoids rebuilding and starting a second application runtime for every fire. Render runs at most one instance of a given cron job at a time and stops a run after 12 hours.
-- **Background workers.** For continuous, queue-driven delivery, add a `type: worker` service. A worker has no public port; it runs `node dist/server.mjs` (or a custom entry), makes attached agent requests and waits for results, or has application code call `dispatch(...)` for asynchronous delivery identified by `dispatchId`.
+- **Scheduled agents.** Model periodic tasks as a Render cron job that calls the deployed application's authenticated agent endpoint — a `POST` to the agent's conversation URL with a `kind: 'signal'` message. Calling the deployed application avoids rebuilding and starting a second runtime for every fire. Render runs at most one instance of a given cron job at a time and stops a run after 12 hours. See [Schedules](/docs/guide/schedules/).
+- **Background workers.** For continuous, queue-driven delivery, add a `type: worker` service. A worker has no public port; it runs `node dist/server.mjs` (or a custom entry), makes attached agent requests and waits for results, or has application code call `dispatch(...)` for asynchronous delivery identified by the receipt's `submissionId`.
 
 ## References
 

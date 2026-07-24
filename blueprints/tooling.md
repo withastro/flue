@@ -33,11 +33,11 @@ Before editing:
 2. Detect the package manager and configured Flue target.
 3. Select the first existing source root: `<root>/.flue/`, then `<root>/src/`,
    then `<root>/`.
-4. Inspect `app.ts`, `agents/`, `workflows/`, target configuration, environment
-   types, deployment configuration, and secret conventions.
+4. Inspect `app.ts`, `agents/`, target configuration, environment types,
+   deployment configuration, and secret conventions.
 5. Determine which runtime boundaries the tool must cover. Node runs in one
-   process; Cloudflare uses an outer Worker and separate Durable Object isolates
-   for agents and workflows.
+   process; Cloudflare uses an outer Worker and a separate Durable Object
+   isolate for each agent.
 
 ## Research the integration
 
@@ -46,8 +46,8 @@ Confirm from current primary sources:
 - the target-specific package and supported runtime versions;
 - whether initialization must happen before imports, at module scope, in
   middleware, or through a class/handler wrapper;
-- whether agents, workflows, the outer HTTP application, and background work
-  require separate hooks;
+- whether agents, the outer HTTP application, and background work require
+  separate hooks;
 - required compatibility flags, bindings, environment variables, source maps,
   and deployment steps;
 - whether the SDK queues work synchronously, awaits delivery, or requires an
@@ -64,18 +64,19 @@ compatibility shims.
 Use public Flue APIs and the provider's documented extension points. Useful
 integration surfaces include:
 
-- a source-root `app.ts` for application initialization and HTTP middleware;
+- a source-root `app.ts` — the route map that mounts each HTTP-reachable agent
+  via `app.route(...)` — for application initialization and HTTP middleware;
 - `observe(...)` from `@flue/runtime` for isolate-local structured activity;
 - module-local `cloudflare = extend({ base, wrap })` exports from
   `@flue/runtime/cloudflare` when a Cloudflare integration must extend or wrap
-  generated agent or workflow Durable Object classes.
+  generated agent Durable Object classes.
 
 Register `observe(...)` once at module scope. Its callbacks receive every event,
 run synchronously on the event path, are not awaited, and must remain cheap and
 non-throwing. Branch on `event.type` and return immediately for activity the
-integration does not consume. Workflow events may carry
-`runId`; direct and dispatched agent activity is not a workflow run and instead
-uses agent instance, session, request, or `dispatchId` correlation.
+integration does not consume. Events correlate through fields such as
+`instanceId`, `dispatchId`, `submissionId`, `harness`, `session`,
+`parentSession`, `operationId`, and `taskId`.
 
 Treat telemetry as an export boundary. Collect only what the integration needs,
 sanitize sensitive fields, and keep prompts, model output, tool arguments,
@@ -85,7 +86,7 @@ to export them.
 ## Verify
 
 1. Type-check the project.
-2. Build its configured Flue target.
+2. Build it with `vite build` for its configured Flue target.
 3. Run the integration in the target's real runtime, not only a Node-based unit
    test or bundler.
 4. Trigger one successful operation and one controlled failure; confirm expected

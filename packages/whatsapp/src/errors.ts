@@ -8,9 +8,9 @@ export class InvalidWhatsAppInputError extends TypeError {
 	}
 }
 
-export class InvalidWhatsAppConversationKeyError extends TypeError {
+export class InvalidWhatsAppInstanceIdError extends TypeError {
 	constructor() {
-		super('Invalid WhatsApp conversation key.');
-		this.name = 'InvalidWhatsAppConversationKeyError';
+		super('Invalid WhatsApp instance id.');
+		this.name = 'InvalidWhatsAppInstanceIdError';
 	}
 }

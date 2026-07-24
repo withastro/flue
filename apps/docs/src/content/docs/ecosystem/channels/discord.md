@@ -4,7 +4,7 @@ description: Receive verified Discord interactions and use a project-owned REST 
 package:
   name: '@flue/discord'
   href: https://www.npmjs.com/package/@flue/discord
-lastReviewedAt: 2026-06-13
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -27,7 +27,7 @@ bind that tool to the interaction's trusted destination.
 import { REST } from '@discordjs/rest';
 import { createDiscordChannel, type APIInteractionResponse } from '@flue/discord';
 import { dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const client = new REST({ version: '10' }).setToken(process.env.DISCORD_BOT_TOKEN!);
 
@@ -54,8 +54,8 @@ export const channel = createDiscordChannel({
       interaction.data.type === 1
         ? interaction.data.options?.find((option) => option.type === 3)?.value
         : undefined;
-    await dispatch(assistant, {
-      id: channel.conversationKey(destination),
+    await dispatch(Assistant, {
+      id: channel.instanceId(destination),
       message: {
         kind: 'signal',
         type: 'discord.command.ask',
@@ -76,6 +76,18 @@ and message tool. Once configured, an `ask` command continues the agent instance
 for its Discord destination, acknowledges the interaction, and lets that agent
 post messages through the bound REST tool. On Cloudflare Workers, the REST
 package selects its Fetch-based export and uses Flue's `nodejs_compat` setting.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as discord } from './channels/discord.ts';
+
+app.route('/channels/discord', discord.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/discord` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -188,15 +200,15 @@ Not every interaction represents a durable Discord channel conversation. When
 an interaction should continue an agent instance, application code can derive a
 `DiscordDestinationRef` from native `guild_id`, `channel.id`, `channel.type`, and
 `context` fields. The complete generated example from `flue add channel discord` shows
-that derivation and dispatches with `channel.conversationKey(ref)`.
+that derivation and dispatches with `channel.instanceId(ref)`.
 
 Some valid interactions, including modal submissions, may omit a channel.
 Private-channel interactions can be acknowledged through their interaction
 token, but that capability does not grant the bot arbitrary channel-message
 access.
 
-Use `channel.conversationKey(ref)` when a Discord destination should continue
-the same agent instance. Conversation keys are identifiers, not authorization
+Use `channel.instanceId(ref)` when a Discord destination should continue
+the same agent instance. Instance ids are identifiers, not authorization
 capabilities. See the shared [Channels guide](/docs/guide/channels/) for dispatch,
 authorization, and deduplication guidance.
 
@@ -221,15 +233,14 @@ trusted code:
 
 ```ts title="src/channels/discord.ts"
 import { defineTool } from '@flue/runtime';
-import type { DiscordDestinationRef } from '@flue/discord';
 import * as v from 'valibot';
 
-export function postMessage(ref: DiscordDestinationRef) {
+export function postMessage(ref: { channelId: string }) {
   return defineTool({
     name: 'post_discord_message',
     description: 'Post to the Discord destination bound to this agent.',
     input: v.object({ content: v.pipe(v.string(), v.minLength(1)) }),
-    async run({ input: { content } }) {
+    async run({ data: { content } }) {
       const result = (await client.post(`/channels/${ref.channelId}/messages`, {
         body: { content },
       })) as { id?: string };
@@ -239,28 +250,43 @@ export function postMessage(ref: DiscordDestinationRef) {
 }
 ```
 
-Bind the destination when creating the agent:
+`data` is the instance's creation data, recorded once when the dispatching
+event creates the instance. Bind it when creating the agent instead of parsing
+the instance id:
 
 ```ts title="src/agents/assistant.ts"
-import { defineAgent } from '@flue/runtime';
-import { channel, postMessage } from '../channels/discord.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { postMessage } from '../channels/discord.ts';
 
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  tools: [postMessage(channel.parseConversationKey(id))],
-}));
+const initialData = v.object({ channelId: v.string() });
+
+export function Assistant() {
+  useModel('anthropic/claude-haiku-4-5');
+  const data = useInitialData<v.InferOutput<typeof initialData>>();
+  if (!data) throw new Error('This agent is created by the Discord channel dispatch.');
+  useTool(postMessage(data));
+  return 'Post a concise answer to the bound Discord destination.';
+}
+
+Assistant.initialData = initialData;
 ```
 
 The model selects message content. It does not select arbitrary Discord
 channels, credentials, or REST methods. This tool creates an ordinary bot-token
 channel message, not an interaction follow-up or guaranteed ephemeral response.
+`parseInstanceId()` remains available as an escape hatch for recovering the
+destination from the id directly.
 
 ## Delivery and runtime behavior
 
-Discord does not document dependable interaction redelivery behavior. Preserve
-`interaction.id` for tracing, and claim it in application-owned durable storage
-before dispatch when duplicate admission is unacceptable. The channel itself is
-stateless and does not deduplicate interaction ids.
+Discord does not document dependable interaction redelivery behavior. The
+channel rejects signed requests whose timestamp is more than five minutes from
+the server clock, which bounds how stale a replay can be, but it is otherwise
+stateless and does not deduplicate interaction ids. Preserve `interaction.id`
+for tracing, and claim it in application-owned durable storage before dispatch
+when duplicate admission is unacceptable.
 
 `@flue/discord` runs in Node and Cloudflare Workers with Flue's required
 `nodejs_compat` setting. The example executes `@discordjs/rest` channel-message

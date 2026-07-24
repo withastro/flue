@@ -4,6 +4,7 @@ description: Receive verified WhatsApp Business Cloud deliveries with a project-
 package:
   name: '@flue/whatsapp'
   href: https://www.npmjs.com/package/@flue/whatsapp
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -25,7 +26,7 @@ generated message tool.
 import { createWhatsAppChannel } from '@flue/whatsapp';
 import { dispatch } from '@flue/runtime';
 import { WhatsAppClient } from '@kapso/whatsapp-cloud-api';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const client = new WhatsAppClient({
   accessToken: process.env.WHATSAPP_ACCESS_TOKEN!,
@@ -50,8 +51,16 @@ export const channel = createWhatsAppChannel({
                 message.interactive.list_reply?.title ??
                 message.interactive.nfm_reply?.body ??
                 '');
-          await dispatch(assistant, {
-            id: channel.conversationKey(conversationRef(entry.id, change.value, message)),
+          const ref = conversationRef(entry.id, change.value, message);
+          await dispatch(Assistant, {
+            id: channel.instanceId(ref),
+            // Recorded once when this event creates the instance; ignored after.
+            initialData: {
+              phoneNumberId: ref.phoneNumberId,
+              destination: ref.type === 'individual' ? ref.destination : undefined,
+              groupId: ref.type === 'group' ? ref.groupId : undefined,
+              contactName: change.value.contacts?.[0]?.profile?.name,
+            },
             message: {
               kind: 'signal',
               type: `whatsapp.${message.type}`,
@@ -71,6 +80,18 @@ message tool. Once configured, supported messages continue the agent instance
 for the verified business-scoped user or group, and the bound client tool replies
 to that same destination. The Fetch-based client runs on Node and Cloudflare
 Workers with Flue's `nodejs_compat` setting.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as whatsapp } from './channels/whatsapp.ts';
+
+app.route('/channels/whatsapp', whatsapp.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/whatsapp` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -120,7 +141,7 @@ import {
 import { defineTool, dispatch } from '@flue/runtime';
 import { WhatsAppClient, type SendMessageResponse } from '@kapso/whatsapp-cloud-api';
 import * as v from 'valibot';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const client = new WhatsAppClient({
   accessToken: process.env.WHATSAPP_ACCESS_TOKEN!,
@@ -149,8 +170,16 @@ export const channel = createWhatsAppChannel({
                 message.interactive.list_reply?.title ??
                 message.interactive.nfm_reply?.body ??
                 '');
-          await dispatch(assistant, {
-            id: channel.conversationKey(conversationRef(entry.id, value, message)),
+          const ref = conversationRef(entry.id, value, message);
+          await dispatch(Assistant, {
+            id: channel.instanceId(ref),
+            // Recorded once when this event creates the instance; ignored after.
+            initialData: {
+              phoneNumberId: ref.phoneNumberId,
+              destination: ref.type === 'individual' ? ref.destination : undefined,
+              groupId: ref.type === 'group' ? ref.groupId : undefined,
+              contactName: value.contacts?.[0]?.profile?.name,
+            },
             message: {
               kind: 'signal',
               type: `whatsapp.${message.type}`,
@@ -182,7 +211,17 @@ function conversationRef(
   };
 }
 
-function sendTextMessage(ref: WhatsAppConversationRef, body: string): Promise<SendMessageResponse> {
+// The `WhatsAppConversationRef` fields `sendTextMessage()` actually sends on.
+export type WhatsAppSendRef =
+  | {
+      type: 'individual';
+      phoneNumberId: string;
+      destination:
+        { type: 'phone-number'; phoneNumber: string } | { type: 'user-id'; userId: string };
+    }
+  | { type: 'group'; phoneNumberId: string; groupId: string };
+
+function sendTextMessage(ref: WhatsAppSendRef, body: string): Promise<SendMessageResponse> {
   if (ref.type === 'group') {
     return client.messages.sendText({
       phoneNumberId: ref.phoneNumberId,
@@ -211,14 +250,14 @@ function sendTextMessage(ref: WhatsAppConversationRef, body: string): Promise<Se
   });
 }
 
-export function postMessage(ref: WhatsAppConversationRef) {
+export function postMessage(ref: WhatsAppSendRef) {
   return defineTool({
     name: 'post_whatsapp_message',
     description: 'Post to the WhatsApp conversation bound to this agent.',
     input: v.object({
       text: v.pipe(v.string(), v.minLength(1), v.maxLength(4096)),
     }),
-    async run({ input: { text } }) {
+    async run({ data: { text } }) {
       const result = await sendTextMessage(ref, text);
       return { messageId: result.messages[0]?.id ?? null };
     },
@@ -226,9 +265,58 @@ export function postMessage(ref: WhatsAppConversationRef) {
 }
 ```
 
-Bind the tool from the agent with
-`postMessage(channel.parseConversationKey(id))`. Trusted application code
-selects the destination; the model selects only message text.
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. It carries the conversation's destination facts — the agent reads
+them with `useInitialData()` instead of parsing the instance id — plus small
+instance-constant context like the contact's display name. Per-message facts
+stay on the signal's `attributes`.
+
+## Wire the agent
+
+```ts title="src/agents/assistant.ts"
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { postMessage, type WhatsAppSendRef } from '../channels/whatsapp.ts';
+
+const initialData = v.object({
+  phoneNumberId: v.string(),
+  destination: v.optional(
+    v.union([
+      v.object({ type: v.literal('phone-number'), phoneNumber: v.string() }),
+      v.object({ type: v.literal('user-id'), userId: v.string() }),
+    ]),
+  ),
+  groupId: v.optional(v.string()),
+  contactName: v.optional(v.string()),
+});
+
+export function Assistant() {
+  useModel('anthropic/claude-haiku-4-5');
+  const data = useInitialData<v.InferOutput<typeof initialData>>();
+  if (!data) throw new Error('This agent is created by the WhatsApp channel dispatch.');
+  let ref: WhatsAppSendRef;
+  if (data.groupId !== undefined) {
+    ref = { type: 'group', phoneNumberId: data.phoneNumberId, groupId: data.groupId };
+  } else if (data.destination !== undefined) {
+    ref = { type: 'individual', phoneNumberId: data.phoneNumberId, destination: data.destination };
+  } else {
+    throw new Error('WhatsApp instance data is missing a destination.');
+  }
+  useTool(postMessage(ref));
+  const contactName = data.contactName ? ` with ${data.contactName}` : '';
+  return `Reply concisely in the bound WhatsApp conversation${contactName}.`;
+}
+
+Assistant.initialData = initialData;
+```
+
+The agent's `initialData` static validates the dispatched `initialData` when the instance is
+created; `useInitialData()` returns the parsed value on every render. Trusted
+application code selects the destination; the model selects only message
+text. `parseInstanceId()` remains available as an escape hatch for recovering
+that destination from the id directly.
 
 ## Delivery behavior
 

@@ -1,12 +1,8 @@
-import {
-	projectAgentConversationBatch,
-	projectAgentConversationSnapshot,
-} from '../conversation-public.ts';
+import { projectAgentConversationSnapshot } from '../conversation-public.ts';
 import {
 	loadReducedConversationPrefix,
 	loadReducedConversationState,
 } from '../conversation-reader.ts';
-import { reduceConversationRecords } from '../conversation-reducer.ts';
 import {
 	AttachmentNotFoundError,
 	InvalidRequestError,
@@ -14,18 +10,20 @@ import {
 	toHttpResponse,
 } from '../errors.ts';
 import type { AttachmentStore } from './attachment-store.ts';
+import {
+	LONG_POLL_TIMEOUT_MS,
+	projectConversationRead,
+	waitForConversationData,
+} from './conversation-observer.ts';
 import type {
 	ConversationStreamReadResult,
 	ConversationStreamStore,
 } from './conversation-stream-store.ts';
-import { parseOffset } from './event-stream-store.ts';
 
 const SECURITY_HEADERS = {
 	'X-Content-Type-Options': 'nosniff',
 	'Cross-Origin-Resource-Policy': 'cross-origin',
 };
-const LONG_POLL_TIMEOUT_MS = 30_000;
-const DURABLE_POLL_INTERVAL_MS = 250;
 const SSE_HEARTBEAT_MS = 15_000;
 
 export async function handleAgentConversationRead(options: {
@@ -48,8 +46,8 @@ export async function handleAgentConversationRead(options: {
  * Resolves the agent instance's default conversation id and scopes the lookup to
  * it, so attachments belonging to task/action child conversations are never
  * served through the public route. The byte content is immutable (digest-keyed),
- * hence the long-lived private cache. Reached only after the route's opt-in
- * `attachments` middleware has run.
+ * hence the long-lived private cache. The route is mounted on every agent
+ * router; auth composes at the mount in `app.ts` like every other agent route.
  */
 export async function handleAgentAttachmentRead(options: {
 	conversationStore: ConversationStreamStore;
@@ -73,7 +71,8 @@ export async function handleAgentAttachmentRead(options: {
 		conversationId: snapshot.conversationId,
 		attachmentId: options.attachmentId,
 	});
-	if (!stored) return errorResponse(new AttachmentNotFoundError({ attachmentId: options.attachmentId }));
+	if (!stored)
+		return errorResponse(new AttachmentNotFoundError({ attachmentId: options.attachmentId }));
 	return new Response(stored.bytes, {
 		headers: {
 			'content-type': stored.attachment.mimeType,
@@ -113,9 +112,15 @@ async function historyResponse(options: {
 	request: Request;
 }): Promise<Response> {
 	const url = new URL(options.request.url);
-	if (url.searchParams.has('offset') || url.searchParams.has('tail') || url.searchParams.has('live')) {
+	if (
+		url.searchParams.has('offset') ||
+		url.searchParams.has('tail') ||
+		url.searchParams.has('live')
+	) {
 		return errorResponse(
-			new InvalidRequestError({ reason: 'History reads do not accept offset, tail, or live parameters.' }),
+			new InvalidRequestError({
+				reason: 'History reads do not accept offset, tail, or live parameters.',
+			}),
 		);
 	}
 	const meta = await options.store.getMeta(options.path);
@@ -161,36 +166,18 @@ async function updatesResponse(options: {
 	});
 	let read = await options.store.read(options.path, { offset });
 	if (live === 'long-poll' && read.batches.length === 0) {
-		const waited = await waitForData(options.store, options.path, offset, options.request.signal);
+		const waited = await waitForConversationData(
+			options.store,
+			options.path,
+			offset,
+			options.request.signal,
+		);
 		if (waited === 'aborted') return new Response(null, { status: 499, headers: SECURITY_HEADERS });
 		read = waited;
 	}
-	const projected = projectRead(state, read);
+	const projected = projectConversationRead(state, read);
 	state = projected.state;
 	return dsJsonResponse(projected.items, read, projected.offset);
-}
-
-function projectRead(
-	initialState: Awaited<ReturnType<typeof loadReducedConversationPrefix>>,
-	read: ConversationStreamReadResult,
-) {
-	let state = initialState;
-	const items: unknown[] = [];
-	let offset = initialState.recordsThroughOffset;
-	for (const batch of read.batches) {
-		const previousState = state;
-		state = reduceConversationRecords(state, batch.records, batch.offset);
-		items.push(
-			...projectAgentConversationBatch({
-				state,
-				previousState,
-				records: batch.records,
-				batchOrdinal: parseOffset(batch.offset),
-			}),
-		);
-		offset = batch.offset;
-	}
-	return { state, items, offset };
 }
 
 function dsJsonResponse(
@@ -223,7 +210,15 @@ function sseResponse(
 			let state = await loadReducedConversationPrefix({ store, path, offset });
 			let currentOffset = offset;
 			let wake: (() => void) | undefined;
-			unsubscribe = store.subscribe(path, () => wake?.());
+			// A notification can fire while the loop is suspended in store.read
+			// (whose result was snapshotted before the concurrent append), when
+			// no wake is armed. The pending flag keeps it from being dropped —
+			// without it the loop would sleep the full long-poll window.
+			let pending = false;
+			unsubscribe = store.subscribe(path, () => {
+				pending = true;
+				wake?.();
+			});
 			heartbeat = setInterval(() => {
 				if (active) controller.enqueue(encoder.encode(': heartbeat\n\n'));
 			}, SSE_HEARTBEAT_MS);
@@ -234,8 +229,9 @@ function sseResponse(
 			signal.addEventListener('abort', onAbort, { once: true });
 			try {
 				while (active) {
+					pending = false;
 					const read = await store.read(path, { offset: currentOffset });
-					const projected = projectRead(state, read);
+					const projected = projectConversationRead(state, read);
 					state = projected.state;
 					if (projected.items.length > 0) {
 						controller.enqueue(
@@ -249,9 +245,11 @@ function sseResponse(
 					};
 					controller.enqueue(encoder.encode(`event: control\ndata:${JSON.stringify(control)}\n\n`));
 					if (!read.upToDate) continue;
+					if (pending) continue;
 					await new Promise<void>((resolve) => {
 						wake = resolve;
 						setTimeout(resolve, LONG_POLL_TIMEOUT_MS);
+						if (pending || !active) resolve();
 					});
 					wake = undefined;
 				}
@@ -297,47 +295,6 @@ function liveMode(url: URL): 'long-poll' | 'sse' | null | Response {
 	return errorResponse(
 		new InvalidRequestError({ reason: 'Invalid live mode. Use long-poll or sse.' }),
 	);
-}
-
-async function waitForData(
-	store: ConversationStreamStore,
-	path: string,
-	offset: string,
-	signal: AbortSignal,
-): Promise<ConversationStreamReadResult | 'aborted'> {
-	if (signal.aborted) return 'aborted';
-	const deadline = Date.now() + LONG_POLL_TIMEOUT_MS;
-	let pending = false;
-	let wake: (() => void) | undefined;
-	const unsubscribe = store.subscribe(path, () => {
-		pending = true;
-		wake?.();
-	});
-	const onAbort = () => wake?.();
-	signal.addEventListener('abort', onAbort, { once: true });
-	try {
-		while (true) {
-			pending = false;
-			const read = await store.read(path, { offset });
-			if (signal.aborted) return 'aborted';
-			if (read.batches.length > 0 || Date.now() >= deadline) return read;
-			if (pending) continue;
-			await new Promise<void>((resolve) => {
-				let timer: ReturnType<typeof setTimeout>;
-				const finish = () => {
-					clearTimeout(timer);
-					resolve();
-				};
-				wake = finish;
-				timer = setTimeout(finish, Math.min(DURABLE_POLL_INTERVAL_MS, deadline - Date.now()));
-				if (pending || signal.aborted) finish();
-			});
-			wake = undefined;
-		}
-	} finally {
-		unsubscribe();
-		signal.removeEventListener('abort', onAbort);
-	}
 }
 
 function errorResponse(

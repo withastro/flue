@@ -2,35 +2,24 @@ import {
 	type ExtractedImages,
 	extractSubmissionAttachments,
 	hydrateSubmissionAttachments,
-	type PersistedImageChunk,
+	type SubmissionChunkRow,
 } from './persisted-images.ts';
 import type { AgentSubmissionInput } from './runtime/agent-submissions.ts';
 
-export interface PersistedChunkOwner {
-	kind: 'submission';
-	id: string;
-	part: '';
-}
+export type { SubmissionChunkRow } from './persisted-images.ts';
 
-export interface PersistedChunkRow {
-	imageId: string;
-	index: number;
-	count: number;
-	data: string;
-}
-
-export interface PersistedChunkStore<Result = void> {
+/**
+ * Storage for submission-payload overflow chunks (`flue_submission_chunks`):
+ * oversized attachment parts are split out of the persisted payload at
+ * admission and reassembled on read. Chunks share the submission row's
+ * lifecycle — `replace` swaps the whole chunk group atomically with respect
+ * to the admission transaction the caller has opened.
+ */
+export interface SubmissionChunkStore<Result = void> {
 	read(
-		owner: PersistedChunkOwner,
-	): Result extends Promise<unknown> ? Promise<PersistedChunkRow[]> : PersistedChunkRow[];
-	replace(owner: PersistedChunkOwner, chunks: readonly PersistedImageChunk[]): Result;
-	delete(owner: PersistedChunkOwner): Result;
-	deleteMany(owners: readonly PersistedChunkOwner[]): Result;
-	deleteOwner(kind: PersistedChunkOwner['kind'], id: string): Result;
-}
-
-export function submissionChunkOwner(submissionId: string): PersistedChunkOwner {
-	return { kind: 'submission', id: submissionId, part: '' };
+		submissionId: string,
+	): Result extends Promise<unknown> ? Promise<SubmissionChunkRow[]> : SubmissionChunkRow[];
+	replace(submissionId: string, chunks: readonly SubmissionChunkRow[]): Result;
 }
 
 /**
@@ -47,7 +36,7 @@ export function prepareSubmissionAttachments(
 
 export function hydratePersistedSubmissionAttachments(
 	input: AgentSubmissionInput,
-	rows: readonly PersistedChunkRow[],
+	rows: readonly SubmissionChunkRow[],
 ): AgentSubmissionInput {
 	return hydrateSubmissionAttachments(input, reassemblePersistedChunks(rows));
 }
@@ -55,7 +44,7 @@ export function hydratePersistedSubmissionAttachments(
 export function matchesPersistedSubmissionAttachments(
 	input: AgentSubmissionInput,
 	persistedInput: AgentSubmissionInput,
-	rows: readonly PersistedChunkRow[],
+	rows: readonly SubmissionChunkRow[],
 ): boolean {
 	try {
 		return (
@@ -68,17 +57,17 @@ export function matchesPersistedSubmissionAttachments(
 }
 
 function reassemblePersistedChunks(
-	rows: readonly PersistedChunkRow[],
+	rows: readonly SubmissionChunkRow[],
 ): ReadonlyMap<string, string> {
-	const grouped = new Map<string, PersistedChunkRow[]>();
+	const grouped = new Map<string, SubmissionChunkRow[]>();
 	for (const row of rows) {
-		const imageRows = grouped.get(row.imageId) ?? [];
-		imageRows.push(row);
-		grouped.set(row.imageId, imageRows);
+		const itemRows = grouped.get(row.itemId) ?? [];
+		itemRows.push(row);
+		grouped.set(row.itemId, itemRows);
 	}
 	const data = new Map<string, string>();
-	for (const [imageId, imageRows] of grouped) {
-		const ordered = imageRows.toSorted((left, right) => left.index - right.index);
+	for (const [itemId, itemRows] of grouped) {
+		const ordered = itemRows.toSorted((left, right) => left.index - right.index);
 		const expectedCount = ordered[0]?.count;
 		if (
 			expectedCount === undefined ||
@@ -88,14 +77,14 @@ function reassemblePersistedChunks(
 		) {
 			throw new Error('[flue] Persisted image chunks are missing or malformed.');
 		}
-		data.set(imageId, ordered.map((row) => row.data).join(''));
+		data.set(itemId, ordered.map((row) => row.data).join(''));
 	}
 	return data;
 }
 
-export function samePersistedChunks(
-	left: readonly PersistedChunkRow[],
-	right: readonly PersistedImageChunk[],
+export function sameSubmissionChunks(
+	left: readonly SubmissionChunkRow[],
+	right: readonly SubmissionChunkRow[],
 ): boolean {
 	if (left.length !== right.length) return false;
 	const rightByKey = new Map(right.map((chunk) => [chunkKey(chunk), chunk]));
@@ -105,6 +94,6 @@ export function samePersistedChunks(
 	});
 }
 
-function chunkKey(chunk: Pick<PersistedChunkRow, 'imageId' | 'index'>): string {
-	return `${chunk.imageId}\u0000${chunk.index}`;
+function chunkKey(chunk: Pick<SubmissionChunkRow, 'itemId' | 'index'>): string {
+	return `${chunk.itemId}\u0000${chunk.index}`;
 }

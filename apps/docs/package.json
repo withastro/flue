@@ -5,25 +5,24 @@
 	"private": true,
 	"scripts": {
 		"dev": "astro dev",
-		"build": "rm -rf ./dist && astro build && mv ./dist/docs/_redirects ./dist/_redirects && pagefind --site ./dist/docs",
+		"build": "rm -rf ./dist && astro build && mv ./dist/docs/_redirects ./dist/_redirects && mv ./dist/docs/_headers ./dist/_headers && pagefind --site ./dist/docs",
 		"preview": "astro preview",
 		"deploy": "pnpm run build && pnpm exec wrangler deploy",
+		"deploy:nightly": "pnpm run build && pnpm exec wrangler deploy --env nightly",
 		"astro": "astro",
-		"check": "astro check",
-		"check:types": "astro check"
+		"check:types": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@astrojs/mdx": "7.0.0-beta.2",
-		"@paper-design/shaders": "0.0.76",
+		"@astrojs/mdx": "^7.0.3",
+		"@paper-design/shaders": "0.0.77",
 		"@tailwindcss/vite": "^4.2.0",
-		"astro": "7.0.0-beta.3",
+		"astro": "^7.0.9",
 		"tailwindcss": "^4.2.0"
 	},
 	"devDependencies": {
-		"@astrojs/check": "^0.9.9",
 		"pagefind": "^1.5.2",
-		"typescript": "^6.0.3",
+		"typescript": "^7.0.2",
 		"vite": "^8.0.14",
-		"wrangler": "^4.97.0"
+		"wrangler": "^4.113.0"
 	}
 }

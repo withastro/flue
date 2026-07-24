@@ -1,23 +1,12 @@
 /**
- * Runtime-safe application composition APIs for an optional authored `app.ts`
- * entrypoint.
+ * Runtime-safe application composition for the authored `app.ts` entrypoint.
  *
- * Without `app.ts`, Flue generates an application that mounts {@link flue} at
- * `/`. When `app.ts` exists, its default {@link Fetchable} export owns the
- * request pipeline and must mount {@link flue} explicitly to publish Flue
- * routes. Compose deployment-inspection endpoints from the `listRuns()`,
- * `getRun()`, and `listAgents()` primitives exported by `@flue/runtime`.
- *
- * ```ts
- * import { flue } from '@flue/runtime/routing';
- * import { Hono } from 'hono';
- *
- * const app = new Hono();
- * app.route('/', flue());
- * export default app;
- * ```
+ * `app.ts` IS the route map: its default {@link Fetchable} export owns the
+ * request pipeline and mounts agent and channel routers explicitly (e.g.
+ * `app.route('/agents/triage', createAgentRouter(IssueTriage))`).
  */
-export { flue } from './runtime/flue-app.ts';
+
+export { createAgentRouter } from './runtime/registration.ts';
 
 /**
  * Structural contract for the default export of an authored `app.ts` entry.

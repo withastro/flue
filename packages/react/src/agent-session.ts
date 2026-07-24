@@ -1,7 +1,7 @@
 import type {
 	AgentConversationObservation,
-	DeliveredAttachment,
 	ConversationLiveMode,
+	DeliveredAttachment,
 	FlueClient,
 } from '@flue/sdk';
 import {
@@ -27,15 +27,13 @@ export class AgentSession {
 
 	constructor(
 		private client: FlueClient,
-		private name: string,
-		private id: string,
 		private live: ConversationLiveMode = 'sse',
 	) {}
 
 	start(): void {
 		if (this.active) return;
 		this.active = true;
-		this.observation = this.client.agents.observe(this.name, this.id, { live: this.live });
+		this.observation = this.client.observe({ live: this.live });
 		this.unsubscribeObservation = this.observation.subscribe(() => this.applyObservation());
 		this.applyObservation();
 	}
@@ -59,10 +57,10 @@ export class AgentSession {
 	};
 
 	async sendMessage(message: string, options: SendMessageOptions = {}): Promise<void> {
-		const localId = `local:${this.name}:${this.id}:${++this.localId}`;
+		const localId = `local:${++this.localId}`;
 		this.dispatch({ type: 'local_send_submitted', localId, message, images: options.images });
 		try {
-			const receipt = await this.client.agents.send(this.name, this.id, {
+			const receipt = await this.client.send({
 				message: {
 					kind: 'user',
 					body: message,

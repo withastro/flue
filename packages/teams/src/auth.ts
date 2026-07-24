@@ -117,6 +117,12 @@ export function createBotFrameworkTokenVerifier(options: BotFrameworkTokenVerifi
 			importedKeys.clear();
 			if (forceRefresh) lastUnknownKidRefreshAt = Date.now();
 			return cache;
+		} catch (error) {
+			// A failed refresh arms the cooldown too (mirrors google-chat's
+			// key cache): during a discovery outage, unknown-kid tokens must
+			// not trigger an upstream fetch per request.
+			lastUnknownKidRefreshAt = Date.now();
+			throw error;
 		} finally {
 			pending = undefined;
 		}
@@ -210,7 +216,9 @@ function cacheTtl(cacheControl: string | null): number {
 	if (!match?.[1]) return DEFAULT_CACHE_TTL_MS;
 	const seconds = Number(match[1]);
 	if (!Number.isSafeInteger(seconds) || seconds < 0) return DEFAULT_CACHE_TTL_MS;
-	return Math.min(seconds * 1000, MAX_CACHE_TTL_MS);
+	// 60s floor (mirrors google-chat's key cache): `max-age=0` must not turn
+	// every activity into two upstream discovery round-trips.
+	return Math.min(Math.max(60_000, seconds * 1000), MAX_CACHE_TTL_MS);
 }
 
 function parseBearerToken(value: string | null): string | undefined {

@@ -1,6 +1,7 @@
 import { clampLimit } from '../adapter-helpers.ts';
 import type { ConversationRecord } from '../conversation-records.ts';
 import { ConversationStreamStoreError } from '../errors.ts';
+import { parseSessionStorageKey } from '../session-identity.ts';
 import {
 	type ConversationProducerClaim,
 	type ConversationStreamIdentity,
@@ -9,10 +10,8 @@ import {
 	type ConversationStreamStore,
 	StreamListenerRegistry,
 } from './conversation-stream-store.ts';
-import { formatOffset, parseOffset } from './event-stream-store.ts';
-
-const DEFAULT_READ_LIMIT = 100;
-const MAX_READ_LIMIT = 1000;
+import { generateIncarnationId } from './ids.ts';
+import { DEFAULT_READ_LIMIT, formatOffset, MAX_READ_LIMIT, parseOffset } from './stream-offsets.ts';
 
 /**
  * A query inside a {@link SqlConversationDialect} transaction: a SQL string
@@ -76,13 +75,14 @@ class SqlConversationStreamStore implements ConversationStreamStore {
 			await tx.query(
 				`${dialect.insertIgnorePrefix} INTO flue_conversation_streams (path, identity_json, incarnation)
 				 VALUES (${p(1)}, ${p(2)}, ${p(3)}) ${dialect.insertIgnoreSuffix}`,
-				[path, data, crypto.randomUUID()],
+				[path, data, generateIncarnationId()],
 			);
 			const rows = await tx.query(
 				`SELECT identity_json FROM flue_conversation_streams WHERE path = ${p(1)}`,
 				[path],
 			);
-			if (rows[0]?.identity_json !== data) throw failure(path, 'Stream identity conflicts.', 'create');
+			if (rows[0]?.identity_json !== data)
+				throw failure(path, 'Stream identity conflicts.', 'create');
 		});
 	}
 
@@ -145,8 +145,12 @@ class SqlConversationStreamStore implements ConversationStreamStore {
 		const dialect = this.dialect;
 		const p = (index: number) => dialect.placeholder(index);
 		dialect.validatePath?.(input.path, 'append');
-		if (input.records.length === 0) throw failure(input.path, 'A canonical batch cannot be empty.', 'append');
+		if (input.records.length === 0)
+			throw failure(input.path, 'A canonical batch cannot be empty.', 'append');
 		const data = JSON.stringify(input.records);
+		if (data.length > MAX_BATCH_DATA_LENGTH) {
+			throw failure(input.path, oversizedBatchReason(data.length, input.records));
+		}
 		const result = await dialect.transaction(async (tx) => {
 			const rows = await tx.query(
 				`SELECT next_offset, producer_id, producer_epoch, next_producer_sequence, incarnation
@@ -266,17 +270,6 @@ class SqlConversationStreamStore implements ConversationStreamStore {
 		};
 	}
 
-	async delete(path: string): Promise<void> {
-		const dialect = this.dialect;
-		const p = (index: number) => dialect.placeholder(index);
-		dialect.validatePath?.(path, 'delete');
-		await dialect.transaction(async (tx) => {
-			await tx.query(`DELETE FROM flue_conversation_stream_batches WHERE path = ${p(1)}`, [path]);
-			await tx.query(`DELETE FROM flue_conversation_streams WHERE path = ${p(1)}`, [path]);
-		});
-		this.listeners.notify(path);
-	}
-
 	subscribe(path: string, listener: () => void): () => void {
 		return this.listeners.subscribe(path, listener);
 	}
@@ -294,15 +287,35 @@ async function assertSubmissionAuthorization(
 		(record) => record.submissionId !== undefined || record.attemptId !== undefined,
 	);
 	if (!submission) {
-		if (owned.length > 0) throw failure(path, 'Submission-owned records require attempt authorization.');
+		if (owned.length > 0)
+			throw failure(path, 'Submission-owned records require attempt authorization.');
 		return;
 	}
-	if (
-		owned.some(
-			(record) =>
-				record.submissionId !== submission.submissionId || record.attemptId !== submission.attemptId,
-		)
-	) {
+	for (const record of owned) {
+		if (
+			record.submissionId === submission.submissionId &&
+			record.attemptId === submission.attemptId
+		) {
+			continue;
+		}
+		// Turn-boundary join: the host attempt writes a joined delivery's input
+		// and adoption records under its own authority. Legal exactly when the
+		// delivery's row is durably claimed by THIS host (`joining`/`joined`
+		// with `joined_into` = the authorized submission) and the record still
+		// carries the host's attempt.
+		if (record.attemptId === submission.attemptId && record.submissionId !== undefined) {
+			const deliveries = await tx.query(
+				`SELECT status, joined_into FROM flue_agent_submissions WHERE submission_id = ${p(1)}`,
+				[record.submissionId],
+			);
+			const delivery = deliveries[0];
+			if (
+				(delivery?.status === 'joining' || delivery?.status === 'joined') &&
+				delivery.joined_into === submission.submissionId
+			) {
+				continue;
+			}
+		}
 		throw failure(path, 'Record ownership does not match the authorized submission attempt.');
 	}
 	const rows = await tx.query(
@@ -325,26 +338,45 @@ async function assertSubmissionAuthorization(
 		owned[0]?.type === 'submission_settled' &&
 		row.settlement_record_id === owned[0].id &&
 		row.settlement_record === JSON.stringify(owned[0]);
+	const sessionIdentity =
+		typeof row?.session_key === 'string' ? parseSessionStorageKey(row.session_key) : undefined;
 	if (
 		!row ||
 		(row.status !== 'running' && !terminalizingSettlement) ||
 		row.attempt_id !== submission.attemptId ||
-		parseSessionInstance(row.session_key) !== streamIdentity?.instanceId
+		!sessionIdentity ||
+		!streamIdentity ||
+		sessionIdentity.agentName !== streamIdentity.agentName ||
+		sessionIdentity.instanceId !== streamIdentity.instanceId
 	) {
 		throw failure(path, 'Submission attempt no longer owns work for this agent instance.');
 	}
 }
 
-function parseSessionInstance(value: unknown): string | undefined {
-	if (typeof value !== 'string' || !value.startsWith('agent-session:')) return undefined;
-	try {
-		const parsed = JSON.parse(value.slice('agent-session:'.length)) as unknown;
-		return Array.isArray(parsed) && typeof parsed[0] === 'string' ? parsed[0] : undefined;
-	} catch {
-		return undefined;
-	}
-}
-
 function failure(path: string, reason: string, operation = 'append'): ConversationStreamStoreError {
 	return new ConversationStreamStoreError({ operation, path, reason });
+}
+
+/**
+ * Ceiling on one serialized batch, generous by an order of magnitude: a 2MB
+ * record already approximates 200k tokens against a 1M-token maximum context
+ * window, so a batch past 12MB indicates an unbounded tool result or message
+ * rather than real conversation data.
+ */
+const MAX_BATCH_DATA_LENGTH = 12 * 1024 * 1024;
+
+// The same per-append ceiling guards the Durable Object SQLite store
+// (conversation-stream-store.ts) and the MongoDB conversation store.
+function oversizedBatchReason(dataLength: number, records: readonly ConversationRecord[]): string {
+	const mb = (length: number) => `${(length / (1024 * 1024)).toFixed(1)}MB`;
+	let largest = records[0] as ConversationRecord;
+	let largestLength = 0;
+	for (const record of records) {
+		const length = JSON.stringify(record).length;
+		if (length > largestLength) {
+			largest = record;
+			largestLength = length;
+		}
+	}
+	return `The batch serializes to ~${mb(dataLength)}, above the 12MB per-append ceiling. The largest record is a "${largest.type}" record (id "${largest.id}") at ~${mb(largestLength)}. Oversized tool results and message content must be truncated before they are recorded (built-in tools cap results at 50KB).`;
 }

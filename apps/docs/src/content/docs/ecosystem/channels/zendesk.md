@@ -4,6 +4,7 @@ description: Receive verified Zendesk events and use a ticket-bound Fetch client
 package:
   name: '@flue/zendesk'
   href: https://www.npmjs.com/package/@flue/zendesk
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -26,7 +27,7 @@ them; no community Zendesk SDK is installed.
 ```ts title="src/channels/zendesk.ts (abridged)"
 import { createZendeskChannel } from '@flue/zendesk';
 import { dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createZendeskClient } from '../zendesk-client.ts';
 
 export const client = createZendeskClient({
@@ -43,8 +44,8 @@ export const channel = createZendeskChannel({
     const ticketId = ticketIdFromEvent(payload.subject, payload.detail);
     if (!ticketId) return;
 
-    await dispatch(assistant, {
-      id: channel.ticketKey({ accountId: payload.account_id, ticketId }),
+    await dispatch(Assistant, {
+      id: channel.instanceId({ accountId: payload.account_id, ticketId }),
       message: {
         kind: 'signal',
         type: `zendesk.${payload.type}`,
@@ -72,6 +73,18 @@ full generated module validates matching ticket identity in `subject` and
 `detail.id`, handles comment events, and lets the bound agent retrieve the
 current ticket through the project-owned client. That client preserves large
 Zendesk identifiers and runs in Node or Cloudflare Workers.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as zendesk } from './channels/zendesk.ts';
+
+app.route('/channels/zendesk', zendesk.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/zendesk` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -102,7 +115,7 @@ The webhook signing secret and outbound API token are separate credentials.
 ```ts title="src/channels/zendesk.ts"
 import { createZendeskChannel, type JsonValue, type ZendeskTicketRef } from '@flue/zendesk';
 import { defineTool, dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createZendeskClient } from '../zendesk-client.ts';
 
 const accountId = requiredEnv('ZENDESK_ACCOUNT_ID');
@@ -132,8 +145,13 @@ export const channel = createZendeskChannel({
           accountId: payload.account_id,
           ticketId,
         };
-        await dispatch(assistant, {
-          id: channel.ticketKey(ticket),
+        await dispatch(Assistant, {
+          id: channel.instanceId(ticket),
+          // Recorded once when this event creates the instance; ignored after.
+          initialData: {
+            accountId: ticket.accountId,
+            ticketId: ticket.ticketId,
+          },
           message: {
             kind: 'signal',
             type: `zendesk.${payload.type}`,
@@ -173,12 +191,10 @@ function ticketIdFromEvent(subject: string, detail: Record<string, JsonValue>): 
   const match = /^zen:ticket:([1-9]\d*)$/.exec(subject);
   if (!match?.[1]) return undefined;
   const id = detail.id;
-  if (
-    !(
-      (typeof id === 'string' && /^[1-9]\d*$/.test(id)) ||
-      (typeof id === 'number' && Number.isSafeInteger(id) && id > 0)
-    )
-  ) {
+  if (!(
+    (typeof id === 'string' && /^[1-9]\d*$/.test(id)) ||
+    (typeof id === 'number' && Number.isSafeInteger(id) && id > 0)
+  )) {
     return undefined;
   }
   return String(id) === match[1] ? match[1] : undefined;
@@ -310,22 +326,37 @@ instead of being rounded.
 ## Bind the tool
 
 ```ts title="src/agents/assistant.ts"
-import { defineAgent } from '@flue/runtime';
-import { channel, retrieveTicket } from '../channels/zendesk.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { retrieveTicket } from '../channels/zendesk.ts';
 
-export default defineAgent(({ id }) => {
-  const ticket = channel.parseTicketKey(id);
-  return {
-    model: 'anthropic/claude-haiku-4-5',
-    tools: [retrieveTicket(ticket)],
-  };
+const initialData = v.object({
+  accountId: v.string(),
+  ticketId: v.string(),
 });
+
+export function Assistant() {
+  useModel('anthropic/claude-haiku-4-5');
+  const data = useInitialData<v.InferOutput<typeof initialData>>();
+  if (!data) throw new Error('This agent is created by the Zendesk channel dispatch.');
+  useTool(retrieveTicket(data));
+  return 'Review the inbound Zendesk ticket event. Retrieve the current ticket when more context is needed.';
+}
+
+Assistant.initialData = initialData;
 ```
 
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. The agent reads it with `useInitialData()`, validated against the
+agent's `initialData` static, instead of parsing the instance id.
+
 The tool accepts no account, ticket id, API host, or credential from the model.
-`ticketKey()` includes account and ticket identity because Zendesk resource ids
-are account-scoped. The key remains an identifier, not an authorization
-capability.
+`instanceId()` includes account and ticket identity because Zendesk resource
+ids are account-scoped. The id remains an identifier, not an authorization
+capability. `parseInstanceId()` remains available as an escape hatch for
+recovering that identity from the id directly.
 
 ## Verification
 

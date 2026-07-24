@@ -1,27 +1,19 @@
-import type { Context, Env, Handler } from 'hono';
-import { InvalidZendeskInputError, InvalidZendeskTicketKeyError } from './errors.ts';
+import {
+	type ChannelRouteDefinition,
+	createChannelRouter,
+	type JsonValue as RuntimeJsonValue,
+} from '@flue/runtime';
+import type { Context, Env, Hono } from 'hono';
+import { InvalidZendeskInputError, InvalidZendeskInstanceIdError } from './errors.ts';
 import { createZendeskWebhookHandler } from './webhook.ts';
 
-export { InvalidZendeskInputError, InvalidZendeskTicketKeyError } from './errors.ts';
+export { InvalidZendeskInputError, InvalidZendeskInstanceIdError } from './errors.ts';
 
 /** JSON-compatible channel value. Unsafe parsed integers are represented as strings. */
-export type JsonValue =
-	| null
-	| boolean
-	| number
-	| string
-	| JsonValue[]
-	| { [key: string]: JsonValue };
+export type JsonValue = RuntimeJsonValue;
 
 /** JSON object used for provider-native Zendesk payload fields. */
 export type JsonObject = { [key: string]: JsonValue };
-
-/** Fixed route declaration consumed by Flue channel discovery. */
-export interface ChannelRoute<E extends Env = Env> {
-	readonly method: string;
-	readonly path: string;
-	readonly handler: Handler<E>;
-}
 
 /** Ingress configuration for one Zendesk webhook signing secret. */
 export interface ZendeskChannelOptions<E extends Env = Env> {
@@ -130,11 +122,20 @@ export type ZendeskHandlerResult = ZendeskHandlerValue | Promise<ZendeskHandlerV
 /** Verified Zendesk ingress and canonical ticket identity helpers. */
 export interface ZendeskChannel<E extends Env = Env> {
 	/** Fixed route declarations published beneath the discovered channel path. */
-	readonly routes: readonly ChannelRoute<E>[];
-	/** Serializes a canonical identifier. It is not an authorization capability. */
-	ticketKey(ref: ZendeskTicketRef): string;
-	/** Parses only canonical keys produced by `ticketKey()`. */
-	parseTicketKey(id: string): ZendeskTicketRef;
+	readonly routes: readonly ChannelRouteDefinition<E>[];
+	/**
+	 * Build a mountable Hono sub-app serving the channel's routes relative
+	 * to the mount point: `app.route('/channels/zendesk', channel.route())`.
+	 */
+	route(): Hono<E>;
+	/** Derives the agent instance id. It is not an authorization capability. */
+	instanceId(ref: ZendeskTicketRef): string;
+	/**
+	 * Parses only canonical instance ids produced by `instanceId()`. Escape
+	 * hatch: agents normally receive structured facts as creation data rather
+	 * than parsing them from the id.
+	 */
+	parseInstanceId(id: string): ZendeskTicketRef;
 }
 
 /**
@@ -152,15 +153,17 @@ export function createZendeskChannel<E extends Env = Env>(
 	options: ZendeskChannelOptions<E>,
 ): ZendeskChannel<E> {
 	validateOptions(options);
+	const routes: readonly ChannelRouteDefinition<E>[] = [
+		{
+			method: 'POST',
+			path: '/webhook',
+			handler: createZendeskWebhookHandler(options),
+		},
+	];
 	const channel: ZendeskChannel<E> = {
-		routes: [
-			{
-				method: 'POST',
-				path: '/webhook',
-				handler: createZendeskWebhookHandler(options),
-			},
-		],
-		ticketKey(ref) {
+		routes,
+		route: () => createChannelRouter(routes),
+		instanceId(ref) {
 			assertTicketRef(ref);
 			return [
 				'zendesk',
@@ -171,20 +174,20 @@ export function createZendeskChannel<E extends Env = Env>(
 				encodeURIComponent(ref.ticketId),
 			].join(':');
 		},
-		parseTicketKey(id) {
+		parseInstanceId(id) {
 			try {
 				const match = /^zendesk:v1:account:([^:]+):ticket:([^:]+)$/.exec(id);
-				if (!match?.[1] || !match[2]) throw new InvalidZendeskTicketKeyError();
+				if (!match?.[1] || !match[2]) throw new InvalidZendeskInstanceIdError();
 				const ref: ZendeskTicketRef = {
 					accountId: decodeURIComponent(match[1]),
 					ticketId: decodeURIComponent(match[2]),
 				};
 				assertTicketRef(ref);
-				if (channel.ticketKey(ref) !== id) throw new InvalidZendeskTicketKeyError();
+				if (channel.instanceId(ref) !== id) throw new InvalidZendeskInstanceIdError();
 				return ref;
 			} catch (error) {
-				if (error instanceof InvalidZendeskTicketKeyError) throw error;
-				throw new InvalidZendeskTicketKeyError();
+				if (error instanceof InvalidZendeskInstanceIdError) throw error;
+				throw new InvalidZendeskInstanceIdError();
 			}
 		},
 	};

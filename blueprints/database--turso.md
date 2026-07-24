@@ -10,10 +10,9 @@ Turso is hosted libSQL; this is the same adapter as the `libsql` blueprint with
 a Turso client configuration. For a local file or self-hosted libSQL server,
 use the `libsql` blueprint instead.
 
-This persists canonical agent conversation streams, immutable attachments,
-accepted submissions, workflow-run records, and event
-streams across process restarts and replicas. It does not store application
-business data.
+This persists canonical agent conversation streams, immutable attachments, and
+accepted submissions across process restarts and replicas. It does not store
+application business data.
 
 ## Check the target first
 
@@ -96,15 +95,17 @@ step. Do not add an `app.ts` solely to register the database.
 
 The client reads `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` at runtime. Follow
 the project's secret conventions and never commit real values. For local
-development, `flue dev --env <file>` and `flue run --env <file>` load any
-`.env`-format file. Update existing environment documentation or `.env.example`
+development, `flue run` loads the project's `.env` by default and `--env <file>`
+selects an alternate `.env`-format file; `vite dev` and the built server read
+the shell environment, so export the variables or source the file before
+starting them. Update existing environment documentation or `.env.example`
 when the project keeps one.
 
 ## Verify
 
 1. Typecheck the project (`npx tsc --noEmit` is safe).
-2. Build the project's configured Node target and confirm the adapter is
-   discovered and wired into the generated server.
+2. Build the project (`vite build`) for its configured Node target and confirm
+   the adapter is discovered and wired into the generated server.
 3. With `TURSO_DATABASE_URL` and `TURSO_AUTH_TOKEN` set (a development database
    is fine), start the server and confirm it boots — `migrate()` creates the
    `flue_*` tables on first run. Restart it and confirm existing state is

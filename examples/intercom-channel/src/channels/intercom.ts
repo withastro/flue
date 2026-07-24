@@ -4,7 +4,7 @@ import {
 	type JsonValue,
 } from '@flue/intercom';
 import { defineTool, dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createIntercomClient, type IntercomRegion } from '../intercom-client.ts';
 
 const workspaceId = requiredEnv('INTERCOM_WORKSPACE_ID');
@@ -27,8 +27,13 @@ export const channel = createIntercomChannel({
 					workspaceId: notification.app_id,
 					conversationId,
 				};
-				await dispatch(assistant, {
-					id: channel.conversationKey(conversation),
+				await dispatch(Assistant, {
+					id: channel.instanceId(conversation),
+					// Recorded once when this event creates the instance; ignored after.
+					initialData: {
+						workspaceId: conversation.workspaceId,
+						conversationId: conversation.conversationId,
+					},
 					message: {
 						kind: 'signal',
 						type: `intercom.${notification.topic}`,

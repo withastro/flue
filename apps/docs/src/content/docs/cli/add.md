@@ -1,78 +1,48 @@
 ---
 title: flue add
-description: Reference for discovering and applying Flue implementation blueprints.
-lastReviewedAt: 2026-06-14
+description: Reference for fetching blueprint implementation guides.
+lastReviewedAt: 2026-07-21
 ---
 
 ## Synopsis
 
 ```bash
-flue add
-flue add <kind> <name-or-url> [--print]
+flue add [<kind> <name|url>] [--print]
 ```
 
 ## Description
 
-`flue add` fetches a Markdown implementation blueprint for a coding agent. It does not install packages or write project files itself.
+`flue add` fetches a blueprint — a Markdown implementation guide that an AI coding agent follows to build an integration into your project. It is not a package installer: the command prints the guide, and your coding agent applies it. Run with no arguments to list every available blueprint.
 
-With no arguments, the command lists known blueprints. With a kind and known name, it fetches that blueprint. With a kind and absolute URL, it fetches the generic blueprint for that kind and uses the URL as the coding agent's research starting point. Paths are not accepted.
+When invoked by a coding agent (detected from environment markers) or with `--print`, the guide's Markdown is written to stdout. From a plain shell without `--print`, instructions for piping it to a coding agent are printed instead. Blueprints are fetched at run time from the registry at `https://flueframework.com/cli/blueprints/`.
+
+[`flue update`](/docs/cli/update/) fetches the same guide for upgrading an existing integration.
 
 ## Arguments
 
-| Argument        | Description                                                                          |
-| --------------- | ------------------------------------------------------------------------------------ |
-| `<kind>`        | Blueprint kind: `sandbox`, `channel`, `database`, or `tooling`.                      |
-| `<name-or-url>` | Known blueprint slug or alias, or an absolute URL used as a research starting point. |
+| Argument      | Description                                                                                                                                                                                                                                                                           |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<kind>`      | The integration category: `channel`, `database`, `sandbox`, or `tooling`.                                                                                                                                                                                                             |
+| `<name\|url>` | A blueprint name (`slack`, `postgres`, `daytona`, `sentry`, …; run `flue add` with no arguments for the catalog), or an absolute URL to provider documentation, which selects the kind's generic build-from-scratch guide with the URL as the coding agent's research starting point. |
 
 ## Options
 
 | Option    | Description                                                                  |
 | --------- | ---------------------------------------------------------------------------- |
-| `--print` | Write raw blueprint Markdown to stdout regardless of coding-agent detection. |
-
-## Blueprint kinds
-
-| Kind       | Description                                                    |
-| ---------- | -------------------------------------------------------------- |
-| `sandbox`  | Build a sandbox adapter from provider documentation or source. |
-| `channel`  | Add verified provider ingress, a client, and app-owned tools.  |
-| `database` | Add a database-backed persistence adapter.                     |
-| `tooling`  | Add developer tooling such as observability or evaluation.     |
-
-Run `flue add` without arguments to list the currently known blueprints.
+| `--print` | Write the blueprint Markdown to stdout regardless of coding-agent detection. |
 
 ## Examples
 
 ```bash
+# List every available blueprint
 flue add
-flue add sandbox daytona --print
-flue add sandbox daytona --print | claude
-flue add channel github --print | codex
-flue add channel stripe --print | codex
-flue add channel notion --print | codex
-flue add channel resend --print | codex
-flue add channel shopify --print | codex
-flue add channel intercom --print | codex
-flue add channel zendesk --print | codex
-flue add channel salesforce-marketing-cloud --print | codex
-flue add channel slack --print | codex
-flue add channel discord --print | codex
-flue add channel teams --print | codex
-flue add channel google-chat --print | codex
-flue add channel linear --print | codex
-flue add channel telegram --print | codex
-flue add channel whatsapp --print | codex
-flue add channel twilio --print | codex
-flue add channel messenger --print | codex
-flue add sandbox @cloudflare/shell --print | opencode
-flue add database postgres --print | codex
-flue add tooling braintrust --print | opencode
-flue add tooling sentry --print | opencode
-flue add tooling vitest-evals --print | opencode
-flue add sandbox https://e2b.dev --print | claude
-flue add channel https://provider.example/webhooks --print | codex
-flue add database https://database.example/docs --print | codex
-flue add tooling https://tool.example/docs --print | opencode
-```
 
-See [Sandboxes](/docs/guide/sandboxes/), [Channels](/docs/guide/channels/), and the [Ecosystem](/docs/ecosystem/) for implementation guidance.
+# Add a Slack channel with Claude Code
+flue add channel slack --print | claude
+
+# Build a channel from scratch, starting the agent from a provider docs URL
+flue add channel https://developers.notion.com/reference/webhooks --print | codex
+
+# Add a Postgres persistence adapter
+flue add database postgres --print | claude
+```

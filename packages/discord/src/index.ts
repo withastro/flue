@@ -1,16 +1,11 @@
+import { type ChannelRouteDefinition, createChannelRouter } from '@flue/runtime';
 import type { APIInteraction, APIInteractionResponse } from 'discord-api-types/v10';
-import type { Context, Env, Handler } from 'hono';
-import { InvalidDiscordConversationKeyError, InvalidDiscordInputError } from './errors.ts';
+import type { Context, Env, Hono } from 'hono';
+import { InvalidDiscordInputError, InvalidDiscordInstanceIdError } from './errors.ts';
 import { createDiscordInteractionsHandler } from './routes.ts';
 
-export { InvalidDiscordConversationKeyError, InvalidDiscordInputError } from './errors.ts';
+export { InvalidDiscordInputError, InvalidDiscordInstanceIdError } from './errors.ts';
 export type { APIInteraction, APIInteractionResponse };
-
-export interface ChannelRoute<E extends Env = Env> {
-	readonly method: string;
-	readonly path: string;
-	readonly handler: Handler<E>;
-}
 
 export interface DiscordChannelOptions<E extends Env = Env> {
 	/** Public key used to verify exact Discord request bytes. */
@@ -28,9 +23,7 @@ export type DiscordDestinationRef =
 
 /** Discord wire response or an explicit Hono/Fetch response. */
 export type DiscordHandlerResult =
-	| APIInteractionResponse
-	| Response
-	| Promise<APIInteractionResponse | Response>;
+	APIInteractionResponse | Response | Promise<APIInteractionResponse | Response>;
 
 export interface DiscordInteractionsHandlerInput<E extends Env = Env> {
 	c: Context<E>;
@@ -38,14 +31,27 @@ export interface DiscordInteractionsHandlerInput<E extends Env = Env> {
 }
 
 export interface DiscordChannel<E extends Env = Env> {
-	readonly routes: readonly ChannelRoute<E>[];
-	conversationKey(ref: DiscordDestinationRef): string;
-	parseConversationKey(id: string): DiscordDestinationRef;
+	readonly routes: readonly ChannelRouteDefinition<E>[];
+	/**
+	 * Build a mountable Hono sub-app serving the channel's routes relative
+	 * to the mount point: `app.route('/channels/discord', channel.route())`.
+	 */
+	route(): Hono<E>;
+	/** Derives the agent instance id: a canonical namespaced identifier. It is not an authorization capability. */
+	instanceId(ref: DiscordDestinationRef): string;
+	/**
+	 * Parses only instance ids produced by `instanceId()`.
+	 *
+	 * Escape hatch: agents normally receive structured facts as creation data
+	 * rather than parsing them from the id.
+	 */
+	parseInstanceId(id: string): DiscordDestinationRef;
 }
 
 /**
  * Creates a Discord HTTP interactions channel.
  *
+ * Signed request timestamps must be within five minutes of the server clock.
  * Signed PING requests are handled internally. Other authenticated payloads
  * preserve Discord's field names, nesting, and numeric discriminants. The
  * channel does not deduplicate interaction ids or impose a handler timeout.
@@ -60,16 +66,20 @@ export function createDiscordChannel<E extends Env = Env>(
 		interactions: options.interactions,
 	});
 
+	const routes: readonly ChannelRouteDefinition<E>[] = [
+		{ method: 'POST', path: '/interactions', handler },
+	];
 	const channel: DiscordChannel<E> = {
-		routes: [{ method: 'POST', path: '/interactions', handler }],
-		conversationKey(ref) {
+		routes,
+		route: () => createChannelRouter(routes),
+		instanceId(ref) {
 			assertDestinationRef(ref);
 			if (ref.type === 'guild') {
 				return `discord:v1:guild:${encodeURIComponent(ref.guildId)}:${encodeURIComponent(ref.channelId)}`;
 			}
 			return `discord:v1:${ref.type}:${encodeURIComponent(ref.channelId)}`;
 		},
-		parseConversationKey(id) {
+		parseInstanceId(id) {
 			try {
 				const guild = /^discord:v1:guild:([^:]+):([^:]+)$/.exec(id);
 				const guildId = guild?.[1];
@@ -81,25 +91,25 @@ export function createDiscordChannel<E extends Env = Env>(
 						channelId: decodeURIComponent(channelId),
 					};
 					assertDestinationRef(ref);
-					if (channel.conversationKey(ref) !== id) throw new InvalidDiscordConversationKeyError();
+					if (channel.instanceId(ref) !== id) throw new InvalidDiscordInstanceIdError();
 					return ref;
 				}
 				const direct = /^discord:v1:(dm|private):([^:]+)$/.exec(id);
 				const type = direct?.[1];
 				const directChannelId = direct?.[2];
 				if ((type !== 'dm' && type !== 'private') || !directChannelId) {
-					throw new InvalidDiscordConversationKeyError();
+					throw new InvalidDiscordInstanceIdError();
 				}
 				const ref: DiscordDestinationRef = {
 					type,
 					channelId: decodeURIComponent(directChannelId),
 				};
 				assertDestinationRef(ref);
-				if (channel.conversationKey(ref) !== id) throw new InvalidDiscordConversationKeyError();
+				if (channel.instanceId(ref) !== id) throw new InvalidDiscordInstanceIdError();
 				return ref;
 			} catch (error) {
-				if (error instanceof InvalidDiscordConversationKeyError) throw error;
-				throw new InvalidDiscordConversationKeyError();
+				if (error instanceof InvalidDiscordInstanceIdError) throw error;
+				throw new InvalidDiscordInstanceIdError();
 			}
 		},
 	};

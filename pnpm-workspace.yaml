@@ -14,9 +14,25 @@ allowBuilds:
 minimumReleaseAge: 1440
 resolutionMode: highest
 minimumReleaseAgeExclude:
+  # The internal registry gateway omits the "time" metadata field, so the
+  # release-age gate cannot evaluate this scope and fails resolution instead.
+  - '@cloudflare/*'
+  # The Cloudflare toolchain releases in same-day lockstep (@cloudflare/vite-plugin
+  # peers on the wrangler released with it, which pins workerd/miniflare exactly),
+  # so the gate would tear paired versions apart; the toolchain cadence is the
+  # effective gate.
+  - wrangler
+  - workerd
+  - miniflare
   - '@ai-sdk/*'
   - '@earendil-works/pi-ai'
   - '@earendil-works/pi-agent-core'
+  # Vendor SDKs pinned exactly by @earendil-works/pi-ai; the pi release
+  # cadence is the effective gate for these.
+  - '@anthropic-ai/sdk'
+  - '@google/genai'
+  - '@mistralai/mistralai'
+  - openai
   - '@aws-sdk/*'
   - '@smithy/*'
   - ai

@@ -1,12 +1,10 @@
 import type { AgentTool } from '@earendil-works/pi-agent-core';
 import type * as v from 'valibot';
-import {
-	formatPackagedSkillFilePath,
-	READ_SKILL_RESOURCE_TOOL_NAME,
-} from './agent.ts';
+import { formatPackagedSkillFilePath, READ_SKILL_RESOURCE_TOOL_NAME } from './agent.ts';
+import { decodeBase64 } from './base64.ts';
 import { isTopLevelObjectSchema, parseValibot, valibotToJsonSchema } from './schema.ts';
 import { parseSkillMarkdown } from './skill-frontmatter.ts';
-import type { PackagedSkillDirectory, SkillReference } from './types.ts';
+import type { PackagedSkillDirectory } from './types.ts';
 
 /**
  * Names of the framework-injected tools used to capture structured results.
@@ -34,22 +32,19 @@ export function buildResultFollowUpPrompt(): string {
 }
 
 export function buildPackagedSkillPrompt(
-	reference: SkillReference,
 	directory: PackagedSkillDirectory,
 	args?: Record<string, unknown>,
 	schema?: v.GenericSchema,
 ): string {
 	const skillFile = directory.files['SKILL.md'];
-	if (!skillFile) throw new Error(`[flue] Packaged skill "${reference.name}" is missing SKILL.md.`);
-	const raw = new TextDecoder().decode(
-		Uint8Array.from(atob(skillFile.content), (character) => character.charCodeAt(0)),
-	);
+	if (!skillFile) throw new Error(`[flue] Packaged skill "${directory.name}" is missing SKILL.md.`);
+	const raw = new TextDecoder().decode(decodeBase64(skillFile.content));
 	const skill = parseSkillMarkdown(raw, {
-		directoryName: reference.name,
-		path: `${reference.name}/SKILL.md`,
+		directoryName: directory.name,
+		path: `${directory.name}/SKILL.md`,
 	});
 	const parts = [
-		`Run the skill named "${reference.name}".`,
+		`Run the skill named "${directory.name}".`,
 		'',
 		'<skill_instructions>',
 		skill.body,
@@ -65,7 +60,7 @@ export function buildPackagedSkillPrompt(
 			'<skill_resources>',
 			...resources.map(
 				(filePath) =>
-					`- ${filePath} → ${READ_SKILL_RESOURCE_TOOL_NAME} ${formatPackagedSkillFilePath(reference.id, filePath)}`,
+					`- ${filePath} → ${READ_SKILL_RESOURCE_TOOL_NAME} ${formatPackagedSkillFilePath(directory.id, filePath)}`,
 			),
 			'</skill_resources>',
 		);
@@ -134,9 +129,7 @@ export function buildPromptText(text: string, schema?: v.GenericSchema): string 
  * turn without calling either of the result tools.
  */
 type ResultOutcome<T> =
-	| { type: 'pending' }
-	| { type: 'finished'; value: T }
-	| { type: 'gave_up'; reason: string };
+	{ type: 'pending' } | { type: 'finished'; value: T } | { type: 'gave_up'; reason: string };
 
 interface PreparedResultTool {
 	args: unknown;
@@ -146,7 +139,10 @@ interface PreparedResultTool {
 
 const resultToolPreparers = new WeakMap<AgentTool<any>, (params: unknown) => PreparedResultTool>();
 
-export function prepareResultTool(tool: AgentTool<any>, params: unknown): PreparedResultTool | undefined {
+export function prepareResultTool(
+	tool: AgentTool<any>,
+	params: unknown,
+): PreparedResultTool | undefined {
 	return resultToolPreparers.get(tool)?.(params);
 }
 
@@ -199,44 +195,17 @@ export function createResultTools<S extends v.GenericSchema>(
 		`cannot produce a result that conforms to the required schema. Provide a clear \`reason\`. ` +
 		`This ends the task with a failure.`;
 
-	const finishTool: AgentTool<any> = {
-		name: FINISH_TOOL_NAME,
-		label: FINISH_TOOL_NAME,
-		description: finishDescription,
-		parameters: finishParameters as any,
-		async execute(_toolCallId, params) {
-			if (outcome.type !== 'pending') {
-				return alreadyDoneToolError(outcome);
-			}
-
-			const candidate = wrapped ? (params as { result: unknown }).result : params;
-			const parsed = parseValibot(schema, candidate);
-			if (!parsed.success) {
-				const issues = parsed.issues
-					.map((issue) =>
-						issue.path ? `${issue.message} (at ${formatIssuePath(issue.path)})` : issue.message,
-					)
-					.join('; ');
-				// Throw — pi-agent-core encodes this as a tool-error tool-result, which
-				// the LLM sees on its next turn and can correct.
-				throw new Error(
-					`Result does not match the required schema: ${issues}. ` +
-						`Please call \`${FINISH_TOOL_NAME}\` again with a corrected payload.`,
-				);
-			}
-
-			outcome = { type: 'finished', value: parsed.output };
-			return {
-				content: [{ type: 'text', text: 'Result accepted. The task is complete.' }],
-				details: { tool: FINISH_TOOL_NAME, result: parsed.output },
-				terminate: true,
-			};
-		},
-	};
-
-	resultToolPreparers.set(finishTool, (params) => {
+	// The preparer is the single implementation: validation happens at prepare
+	// time (throws surface as tool-error tool-results the LLM can correct),
+	// outcome-setting at run time. The tool's execute() delegates through it so
+	// any direct invocation behaves identically to the session's prepared path.
+	const prepareFinish = (params: unknown): PreparedResultTool => {
 		if (outcome.type !== 'pending') {
-			return { args: params, run: async () => alreadyDoneToolError(outcome), result: resultToolValue };
+			return {
+				args: params,
+				run: async () => alreadyDoneToolError(outcome),
+				result: resultToolValue,
+			};
 		}
 		const candidate = wrapped ? (params as { result: unknown }).result : params;
 		const parsed = parseValibot(schema, candidate);
@@ -246,6 +215,8 @@ export function createResultTools<S extends v.GenericSchema>(
 					issue.path ? `${issue.message} (at ${formatIssuePath(issue.path)})` : issue.message,
 				)
 				.join('; ');
+			// Throw — pi-agent-core encodes this as a tool-error tool-result, which
+			// the LLM sees on its next turn and can correct.
 			throw new Error(
 				`Result does not match the required schema: ${issues}. ` +
 					`Please call \`${FINISH_TOOL_NAME}\` again with a corrected payload.`,
@@ -254,6 +225,9 @@ export function createResultTools<S extends v.GenericSchema>(
 		return {
 			args: parsed.output,
 			run: async () => {
+				// Parallel batches prepare every call before any run() fires, so the
+				// prepare-time check alone cannot enforce first-wins — re-check here.
+				if (outcome.type !== 'pending') return alreadyDoneToolError(outcome);
 				outcome = { type: 'finished', value: parsed.output };
 				return {
 					content: [{ type: 'text', text: 'Result accepted. The task is complete.' }],
@@ -263,7 +237,46 @@ export function createResultTools<S extends v.GenericSchema>(
 			},
 			result: resultToolValue,
 		};
-	});
+	};
+
+	const finishTool: AgentTool<any> = {
+		name: FINISH_TOOL_NAME,
+		label: FINISH_TOOL_NAME,
+		description: finishDescription,
+		parameters: finishParameters as any,
+		execute: async (_toolCallId, params) => prepareFinish(params).run(),
+	};
+
+	resultToolPreparers.set(finishTool, prepareFinish);
+
+	const prepareGiveUp = (params: unknown): PreparedResultTool => {
+		if (outcome.type !== 'pending') {
+			return {
+				args: params,
+				run: async () => alreadyDoneToolError(outcome),
+				result: resultToolValue,
+			};
+		}
+		const reason = (params as { reason: unknown }).reason;
+		if (typeof reason !== 'string' || reason.trim().length === 0) {
+			throw new Error(`\`${GIVE_UP_TOOL_NAME}\` requires a non-empty \`reason\` string.`);
+		}
+		return {
+			args: { reason },
+			run: async () => {
+				// Parallel batches prepare every call before any run() fires, so the
+				// prepare-time check alone cannot enforce first-wins — re-check here.
+				if (outcome.type !== 'pending') return alreadyDoneToolError(outcome);
+				outcome = { type: 'gave_up', reason };
+				return {
+					content: [{ type: 'text', text: 'Acknowledged.' }],
+					details: { tool: GIVE_UP_TOOL_NAME, reason },
+					terminate: true,
+				};
+			},
+			result: resultToolValue,
+		};
+	};
 
 	const giveUpTool: AgentTool<any> = {
 		name: GIVE_UP_TOOL_NAME,
@@ -281,46 +294,10 @@ export function createResultTools<S extends v.GenericSchema>(
 			required: ['reason'],
 			additionalProperties: false,
 		} as any,
-		async execute(_toolCallId, params) {
-			if (outcome.type !== 'pending') {
-				return alreadyDoneToolError(outcome);
-			}
-
-			const reason = (params as { reason: unknown }).reason;
-			if (typeof reason !== 'string' || reason.trim().length === 0) {
-				throw new Error(`\`${GIVE_UP_TOOL_NAME}\` requires a non-empty \`reason\` string.`);
-			}
-
-			outcome = { type: 'gave_up', reason };
-			return {
-				content: [{ type: 'text', text: 'Acknowledged.' }],
-				details: { tool: GIVE_UP_TOOL_NAME, reason },
-				terminate: true,
-			};
-		},
+		execute: async (_toolCallId, params) => prepareGiveUp(params).run(),
 	};
 
-	resultToolPreparers.set(giveUpTool, (params) => {
-		if (outcome.type !== 'pending') {
-			return { args: params, run: async () => alreadyDoneToolError(outcome), result: resultToolValue };
-		}
-		const reason = (params as { reason: unknown }).reason;
-		if (typeof reason !== 'string' || reason.trim().length === 0) {
-			throw new Error(`\`${GIVE_UP_TOOL_NAME}\` requires a non-empty \`reason\` string.`);
-		}
-		return {
-			args: { reason },
-			run: async () => {
-				outcome = { type: 'gave_up', reason };
-				return {
-					content: [{ type: 'text', text: 'Acknowledged.' }],
-					details: { tool: GIVE_UP_TOOL_NAME, reason },
-					terminate: true,
-				};
-			},
-			result: resultToolValue,
-		};
-	});
+	resultToolPreparers.set(giveUpTool, prepareGiveUp);
 
 	return {
 		tools: [finishTool, giveUpTool],
@@ -358,7 +335,9 @@ function alreadyDoneToolError<T>(outcome: ResultOutcome<T>) {
 			? 'A result was already submitted; the task is complete.'
 			: 'The task was already given up; it cannot be resumed.';
 	// Returning an error-shaped tool result (rather than throwing) keeps the
-	// transcript natural and avoids re-triggering termination logic.
+	// transcript natural. `terminate: true` because the outcome is settled —
+	// pi-agent-core only ends the loop when every result in the batch
+	// terminates, so a mixed batch (finish + give_up) must still stop.
 	return {
 		content: [
 			{
@@ -367,6 +346,7 @@ function alreadyDoneToolError<T>(outcome: ResultOutcome<T>) {
 			},
 		],
 		details: { alreadyDone: true },
+		terminate: true,
 	};
 }
 

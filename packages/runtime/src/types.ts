@@ -16,9 +16,8 @@ declare module '@earendil-works/pi-agent-core' {
 	}
 }
 
-import type { MiddlewareHandler } from 'hono';
 import type * as v from 'valibot';
-import type { ActionDefinition } from './action.ts';
+import type { McpConnectionDefinition } from './mcp-types.ts';
 import type { ToolDefinition } from './tool-types.ts';
 
 export type {
@@ -28,13 +27,10 @@ export type {
 	ToolInputSchema,
 	ToolOutput,
 	ToolOutputSchema,
+	ToolStep,
 } from './tool-types.ts';
 
 export type { ThinkingLevel };
-
-export type AgentRouteHandler = MiddlewareHandler;
-export type WorkflowRouteHandler = MiddlewareHandler;
-export type WorkflowRunsHandler = MiddlewareHandler;
 
 /**
  * One attachment on a `kind: 'user'` {@link DeliveredMessage}. Mirrors pi-ai's
@@ -77,34 +73,67 @@ export type DeliveredMessage =
 			tagName?: string;
 	  };
 
-/** Input accepted by the agent-definition overload of `dispatch(...)`. */
+/**
+ * A message as every `dispatch` surface accepts it: a {@link DeliveredMessage}
+ * with its explicit `kind`, or a bare string as shorthand for
+ * `{ kind: 'user', body }`.
+ */
+export type DeliveredMessageInput = string | DeliveredMessage;
+
+/** Input accepted by `dispatch(agent, request)`. */
 export interface AgentDispatchRequest {
 	/** Target agent instance id. Must be a non-empty string. */
 	id: string;
 	/** The message delivered to the session. Flue snapshots the value at admission time. */
-	message: DeliveredMessage;
+	message: DeliveredMessageInput;
+	/**
+	 * Instance-creation data — the seed, consulted only when this send
+	 * creates the instance: validated against the agent's `initialData`
+	 * schema (when declared) and recorded once, readable forever via
+	 * `useInitialData()`. Ignored when the send continues an existing
+	 * instance (pair with `uid: null` to error instead).
+	 */
+	initialData?: unknown;
+	/**
+	 * Send condition — sends are conditional requests, with the instance uid
+	 * playing the ETag:
+	 * - omitted: unconditional; continues the instance or creates it.
+	 * - a string: continue only the incarnation with this uid; a missing
+	 *   instance or mismatched uid rejects at admission (404, nothing
+	 *   durable). Cannot be combined with `initialData`.
+	 * - `null`: create only when no instance exists; an existing instance
+	 *   rejects at admission (409, its uid in the error details).
+	 */
+	uid?: string | null;
 }
 
-/** Input accepted by the named-agent overload of `dispatch(...)`. */
-export interface NamedAgentDispatchRequest extends AgentDispatchRequest {
+/**
+ * Internal queue wire shape: an {@link AgentDispatchRequest} resolved against
+ * a discovered agent name, its message normalized to the canonical
+ * kind-carrying form (the string shorthand expanded). Not part of the public
+ * API — `dispatch()` accepts an agent definition and resolves the name itself.
+ */
+export interface NamedAgentDispatchRequest extends Omit<AgentDispatchRequest, 'message'> {
 	/** Discovered agent module name. Must be a non-empty string. */
 	agent: string;
+	message: DeliveredMessage;
 }
 
 /** Receipt returned after a dispatched input is accepted for delivery. */
 export interface DispatchReceipt {
-	/** Generated delivery identifier. This is not a workflow `runId`. */
-	dispatchId: string;
+	/**
+	 * The accepted delivery's submission id — the same identifier settlements
+	 * carry, accepted by `read()` to await and read this submission's reply.
+	 */
+	submissionId: string;
 	/** ISO timestamp assigned when dispatch admission begins. */
 	acceptedAt: string;
-}
-
-/** Context passed to a {@link defineAgent} initializer. */
-export interface AgentInitializerContext<TEnv = Record<string, any>> {
-	/** Agent instance id or workflow run id. */
-	readonly id: string;
-	/** Platform environment bindings supplied by the runtime. */
-	readonly env: TEnv;
+	/**
+	 * The contacted instance's uid — minted at birth when this send created
+	 * the instance, echoed when it continued one. Pass it back as the `uid`
+	 * send condition to guarantee later sends reach this same incarnation.
+	 */
+	uid: string;
 }
 
 /**
@@ -116,12 +145,34 @@ export type PromptImage = ImageContent;
 
 // ─── Skill ──────────────────────────────────────────────────────────────────
 
-/** Imported packaged skill reference accepted by `session.skill()`. */
+/** Imported packaged skill reference accepted by `useSkill()` and `session.skill()`. */
 export interface SkillReference {
 	readonly __flueSkillReference: true;
 	readonly id: string;
 	readonly name: string;
 	readonly description: string;
+}
+
+/**
+ * An inline skill authored in code — the object accepted by `defineSkill(...)`
+ * and `useSkill(...)`. Equivalent to a skill directory: `instructions` is the
+ * `SKILL.md` body, and `files` carries supporting resources exactly as a
+ * directory import would. The runtime packages a definition lazily the first
+ * time the skill is needed; `defineSkill` itself only validates and types.
+ */
+export interface SkillDefinition {
+	readonly name: string;
+	/** Catalog line — what the skill does and when to use it. */
+	readonly description: string;
+	/** The skill's content: the `SKILL.md` body loaded on activation. */
+	readonly instructions: string;
+	readonly license?: string;
+	readonly compatibility?: string;
+	readonly metadata?: Readonly<Record<string, string>>;
+	/** Space-separated pre-approved tools (experimental in the Agent Skills spec). */
+	readonly allowedTools?: string;
+	/** Supporting resources, keyed by path relative to the skill root. */
+	readonly files?: Readonly<Record<string, string | Uint8Array>>;
 }
 
 export interface PackagedSkillFile {
@@ -137,13 +188,27 @@ export interface PackagedSkillDirectory {
 	readonly files: Record<string, PackagedSkillFile>;
 }
 
-/** Skill metadata registered with an agent, harness, or profile. */
-export type Skill =
-	| SkillReference
-	| {
-			name: string;
-			description: string;
-	  };
+/**
+ * A skill registered with an agent, harness, or profile: a packaged
+ * `SKILL.md` import or an inline {@link SkillDefinition}.
+ */
+export type Skill = SkillReference | SkillDefinition;
+
+/**
+ * A skill discovered at runtime from `.agents/skills/` in the session's cwd.
+ * Its content stays in the workspace; the runtime reads `SKILL.md` from
+ * `skillMdPath` on activation. Never authored directly.
+ */
+export interface WorkspaceSkill {
+	readonly __flueWorkspaceSkill: true;
+	readonly name: string;
+	readonly description: string;
+	readonly directory: string;
+	readonly skillMdPath: string;
+}
+
+/** Any skill the runtime catalogs: registered by the agent or discovered in the workspace. */
+export type RegisteredSkill = Skill | WorkspaceSkill;
 
 // ─── File Stat ──────────────────────────────────────────────────────────────
 
@@ -234,7 +299,7 @@ export interface SessionEnv {
  * to read the file itself.
  *
  * Paths can be absolute or relative. Relative paths are resolved against
- * the agent's cwd, which comes from `defineAgent(() => ({ cwd }))` if set, otherwise from
+ * the agent's cwd, which comes from `useSandbox(factory, { cwd })` if set, otherwise from
  * the sandbox adapter's default (varies by provider). Use absolute paths
  * for portability across sandbox adapters.
  */
@@ -337,10 +402,9 @@ export interface AgentConfig {
 	instructions?: string;
 	/** Agent-definition skills merged into each discovered skill catalog. */
 	definitionSkills?: Skill[];
-	/** Discovered at runtime from .agents/skills/ in the session's cwd. */
-	skills: Record<string, Skill>;
-	subagents?: Record<string, AgentProfile>;
-	actions?: ActionDefinition[];
+	/** The merged catalog: agent-registered skills plus workspace discovery. */
+	skills: Record<string, RegisteredSkill>;
+	subagents?: Record<string, SubagentDefinition>;
 	/** Agent-wide default model. Per-call values override this. */
 	model: Model<any>;
 	/** Resolve a model specifier to a Model instance. Throws on invalid specifiers. */
@@ -357,53 +421,50 @@ export interface AgentConfig {
 	 * uses defaults.
 	 */
 	compaction?: false | CompactionConfig;
-	/** Durability settings resolved from the agent profile. */
+	/** Durability settings resolved from the agent definition. */
 	durability?: DurabilityConfig;
 }
 
-// ─── Agent Profile and Runtime Creation ─────────────────────────────────────
+// ─── Agent Runtime Configuration ────────────────────────────────────────────
 
-/** Reusable agent behavior accepted by {@link defineAgentProfile}. */
-export interface AgentProfile {
-	/** Profile name. Required when selecting this profile with `session.task()`. */
-	name?: string;
-	description?: string;
-	/** Default model specifier. */
+/**
+ * A delegate declared with `useSubagent(...)`. The `agent` function is
+ * rendered at delegation time — in its own frame, fresh per task — into the
+ * delegate's instructions, tools, skills, and nested subagents. Identity and
+ * behavior come only from that render; environment fields (`model`,
+ * `thinkingLevel`) inherit from the parent's turn unless overridden here.
+ */
+export interface SubagentDefinition {
+	/** Catalog name the model uses to select this delegate on the `task` tool. */
+	name: string;
+	/** Catalog line — how the model decides when to delegate to this agent. */
+	description: string;
+	/** The delegate's agent function — it defines the delegate's whole world. */
+	agent: AgentFunction;
+	/** Model specifier override. Inherits the parent's model when omitted. */
 	model?: string;
-	/** Instructions prepended to discovered workspace context. */
-	instructions?: string;
-	/** Registered skills available to sessions initialized from this profile. */
-	skills?: Skill[];
-	/** Custom model-callable tools available to sessions initialized from this profile. */
-	tools?: ToolDefinition[];
-	actions?: ActionDefinition[];
-	/** Named profiles available for delegated `session.task()` operations. */
-	subagents?: AgentProfile[];
-	/** Default reasoning effort. Individual operations may override this value. */
+	/** Reasoning-effort override. Inherits when omitted. */
 	thinkingLevel?: ThinkingLevel;
-	/**
-	 * Automatic conversation-compaction configuration. `false` disables
-	 * threshold compaction; overflow recovery and explicit `session.compact()`
-	 * calls still compact when needed.
-	 */
-	compaction?: false | CompactionConfig;
-	/**
-	 * Durability configuration for durable agent submissions. Controls
-	 * recovery attempt limits and submission timeouts. Rejected on subagent
-	 * profiles: a delegated task runs inside the parent operation and shares the
-	 * parent's durability envelope (timeout and retry budget). On recovery the
-	 * parent resumes its in-flight subagent in-process, so a subagent has no
-	 * independent durability configuration of its own.
-	 */
-	durability?: DurabilityConfig;
 }
 
-/** Configuration returned by a {@link defineAgent} initializer. */
+/**
+ * A delegate rendered into the self-contained shape the task machinery
+ * consumes. Internal: produced at delegation time from a
+ * {@link SubagentDefinition}, never authored directly.
+ */
+export interface ResolvedSubagent {
+	name: string;
+	description: string;
+	model?: string;
+	thinkingLevel?: ThinkingLevel;
+	instructions?: string;
+	tools?: ToolDefinition[];
+	skills?: Skill[];
+	subagents?: SubagentDefinition[];
+}
+
+/** The internal runtime-config shape one render of an agent composes. */
 export interface AgentRuntimeConfig {
-	/** Reusable baseline profile. Agent definition fields replace or extend profile values. */
-	profile?: AgentProfile;
-	/** Optional human-facing description of what this agent does. */
-	description?: string;
 	/** Default model specifier. */
 	model?: string;
 	/** Instructions prepended to discovered workspace context. */
@@ -412,9 +473,8 @@ export interface AgentRuntimeConfig {
 	skills?: Skill[];
 	/** Additional custom model-callable tools available to initialized sessions. */
 	tools?: ToolDefinition[];
-	actions?: ActionDefinition[];
-	/** Additional named profiles available for delegated `session.task()` operations. */
-	subagents?: AgentProfile[];
+	/** Additional named delegates available for `task` delegation. */
+	subagents?: SubagentDefinition[];
 	/** Default reasoning effort. Individual operations may override this value. */
 	thinkingLevel?: ThinkingLevel;
 	/**
@@ -423,26 +483,154 @@ export interface AgentRuntimeConfig {
 	 * calls still compact when needed.
 	 */
 	compaction?: false | CompactionConfig;
-	/**
-	 * Durability configuration for durable agent submissions. Controls
-	 * recovery attempt limits and submission timeouts.
-	 */
-	durability?: DurabilityConfig;
 	/** Working directory inside the initialized sandbox. */
 	cwd?: string;
 	/** Sandbox factory used to construct the initialized environment. */
 	sandbox?: SandboxFactory;
+	/**
+	 * MCP servers declared with `useMcpConnection()`, resolved to adapted
+	 * tools at submission initialization.
+	 */
+	mcpConnections?: McpConnectionDefinition[];
 }
 
-/** Opaque agent initializer created by {@link defineAgent}. */
-export interface AgentDefinition<TEnv = Record<string, any>> {
-	readonly __flueAgentDefinition: true;
-	initialize(context: AgentInitializerContext<TEnv>): AgentRuntimeConfig | Promise<AgentRuntimeConfig>;
+// ─── Agent functions (Flue Hooks) ────────────────────────────────────────────
+
+/**
+ * An agent function: a plain synchronous function that composes an agent's
+ * behavior. Flue Hooks in the body attach what it provides (tools,
+ * instructions, state); the returned string is its instruction — the prose
+ * that teaches the model who it is and how to work. Return nothing for a
+ * tools-only body. The author owns the formatting (headings included).
+ *
+ * An agent is an agent function that declares its model with `useModel()`,
+ * and a delegate is an agent function on the `task` catalog —
+ * `useSubagent({ name, description, agent: Delegate })`. Shared behavior is
+ * composed with custom hooks: plain functions that call `useTool()`,
+ * `useInstruction()`, and the other hooks, and may return values to the
+ * agent body.
+ *
+ * ```ts
+ * function useRetention(active: () => boolean) {
+ *   useTool({
+ *     ...offerCredit,
+ *     run: (ctx) => (active() ? offerCredit.run(ctx) : 'Refused: no churn risk on record.'),
+ *   });
+ *   useInstruction(
+ *     'Only while the customer is weighing cancellation: you may offer retention incentives.',
+ *   );
+ * }
+ * ```
+ *
+ * Nearly everything may be declared conditionally: tools, skills, and
+ * subagents (the runtime narrates set changes to the model), persisted state
+ * (keyed by name in the durable record log regardless of which renders
+ * declared it), event hooks (each seam runs whatever the current render
+ * declares, at-least-once per delivery), and the sandbox (a presence flip
+ * swaps the environment at the next turn boundary). The one invariant:
+ * message data (`useDataWriter`) names must be declared identically on every
+ * render. Guards like the one above scope when an always-present tool may
+ * act. Agent functions must return synchronously — async work lives in tools
+ * and resource factories.
+ */
+export type AgentFunction<TProps = void> = TProps extends void
+	? // biome-ignore lint/suspicious/noConfusingVoidType: tools-only agent bodies have no return statement; `void` keeps them assignable.
+		() => string | undefined | void
+	: // biome-ignore lint/suspicious/noConfusingVoidType: same as above, props form.
+		(props: TProps) => string | undefined | void;
+
+/**
+ * Props the runtime passes to the top-level agent function — the agent's
+ * route data, the way a web framework passes route params to the page
+ * component. Only the root agent function receives them; a subagent's agent
+ * function gets nothing (a delegate runs in isolation from the parent,
+ * intentionally — close over a value explicitly to share it).
+ *
+ * ```ts
+ * // dispatch(support, { id: `order-${orderId}`, message: {...} })
+ * export function Assistant({ id }: AgentProps) {
+ *   useTool(lookupOrder(id.replace(/^order-/, '')));
+ *   return 'Handle support for the one order this instance is bound to.';
+ * }
+ * ```
+ *
+ * When the id encodes several structured facts, don't parse them back out of
+ * it — pass them as `initialData` and read them with `useInitialData()`.
+ *
+ * Agents that don't need route data keep the zero-argument form — `() =>`
+ * agent functions stay assignable unchanged.
+ */
+export interface AgentProps {
+	/**
+	 * This agent instance's id — the `:id` segment of the agent's route
+	 * (`/agents/<name>/:id`), or the `--id` passed to `flue run`. Constant
+	 * for the instance's whole life.
+	 */
+	id: string;
 }
+
+/**
+ * The contract statics an agent function may carry — the parts of the agent
+ * the platform reads WITHOUT running the function. All are optional, all
+ * are plain properties assigned after the declaration (the `PropTypes`
+ * pattern):
+ *
+ * ```ts
+ * export function IssueTriage() {
+ *   useModel('anthropic/claude-opus-4-6');
+ *   return 'Triage the bound issue.';
+ * }
+ * IssueTriage.agentName = 'issue-triage';
+ * IssueTriage.initialData = v.object({ issue: v.pipe(v.number(), v.integer()) });
+ * IssueTriage.durability = { maxAttempts: 5, timeoutMs: 7_200_000 };
+ * ```
+ */
+export interface AgentStatics {
+	/**
+	 * The agent's durable identity — keys conversation storage everywhere and
+	 * the Durable Object class on Cloudflare. Defaults to the function's own
+	 * name (`fn.name`, captured at build time in `'use agent'` modules so
+	 * minification can't corrupt it). Assign this static to decouple the
+	 * durable identity from the source-level function name. Must be a string
+	 * literal in `'use agent'` modules: build targets derive durable
+	 * identifiers from it before any user code runs.
+	 */
+	agentName?: string;
+	/**
+	 * Valibot schema for instance-creation data. Validated once, at the
+	 * instance's first contact, synchronously before anything durable is
+	 * admitted; a mismatch (including absence, unless the schema accepts
+	 * `undefined`) rejects the creating send. The schema-parsed output is what
+	 * gets recorded and what `useInitialData()` returns.
+	 */
+	initialData?: v.GenericSchema;
+	/**
+	 * Submission retry policy: how long ({@link DurabilityConfig.timeoutMs})
+	 * and across how many attempts ({@link DurabilityConfig.maxAttempts}) the
+	 * runtime keeps recovering this agent's work before settling it failed.
+	 * A static rather than a hook because the platform applies it when the
+	 * function is NOT running — including after a crash. Unlike `agentName`,
+	 * the value need not be a literal: express environment-dependent policy in
+	 * the assigned expression, e.g.
+	 * `IssueTriage.durability = process.env.CI ? { timeoutMs: 60_000 } : { timeoutMs: 3_600_000 }`.
+	 * Absent, the store defaults apply (1 hour, 10 attempts).
+	 */
+	durability?: DurabilityConfig;
+}
+
+/**
+ * An agent: an agent function, addressable anywhere an agent is expected
+ * (`init()`, `dispatch()`, `createAgentRouter()`, `start()`). The function IS
+ * the agent — behavior comes from its body (hooks + returned instructions),
+ * and its contract rides as optional statics ({@link AgentStatics}). In a
+ * `'use agent'` module, every exported function with a capitalized name is
+ * an agent.
+ */
+export type Agent = AgentFunction<AgentProps> & AgentStatics;
 
 // ─── Flue Event Context ────────────────────────────────────────────────────
 
-/** Event context for the agent interaction or workflow run that emitted an event. */
+/** Event context for the agent interaction that emitted an event. */
 export interface FlueEventContext<TEnv = Record<string, any>> {
 	/** Workflow run/instance id, or stable agent instance id during agent processing. */
 	readonly id: string;
@@ -472,7 +660,7 @@ export interface FlueEventContext<TEnv = Record<string, any>> {
 	 * trusted proxy on Node. Don't trust headers you don't control.
 	 */
 	readonly req: Request | undefined;
-	/** Emit observable structured log events, persisted in a run stream only during a workflow run. */
+	/** Emit observable structured log events into the conversation activity stream. */
 	readonly log: FlueLogger;
 }
 
@@ -484,38 +672,55 @@ export interface FlueLogger {
 
 // ─── Flue Harness ───────────────────────────────────────────────────────────
 
-/** Initialized agent environment owned by a runtime runner. */
+/**
+ * Initialized agent environment owned by a runtime runner — the surface a
+ * `harness: true` tool and the lifecycle-hook contexts receive.
+ *
+ * `prompt` drives the harness's own scratch conversation: repeated calls
+ * continue it, so a later prompt sees what earlier calls established.
+ * `sandbox` is the agent's initialized environment itself — the live
+ * {@link SessionEnv} the configured {@link SandboxFactory} produced — touched
+ * directly, with no conversation record.
+ */
 export interface FlueHarness {
 	readonly name: string;
 
 	/**
-	 * Get or create a session in this harness. Defaults to the `'default'`
-	 * session. Names beginning with `'task:'` are reserved for delegated tasks.
+	 * Run a model operation with a text instruction in the harness
+	 * conversation. Pass `options.result` to require validated structured
+	 * data instead of freeform text.
 	 */
-	session(name?: string): Promise<FlueSession>;
-
-	/** Explicit session management helpers. */
-	readonly sessions: FlueSessions;
-
-	/** Run a shell command in the harness sandbox without recording it in a conversation. */
-	shell(command: string, options?: ShellOptions): CallHandle<ShellResult>;
+	prompt<S extends v.GenericSchema>(
+		text: string,
+		options: PromptOptions<S> & { result: S },
+	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
+	prompt(text: string, options?: PromptOptions): CallHandle<PromptResponse>;
 
 	/**
-	 * Read and write files in the harness sandbox without recording them in a
-	 * conversation. See {@link FlueFs}.
+	 * Trigger compaction of the harness conversation immediately. Resolves
+	 * (no-op) when there is nothing to compact; rejects when summarization
+	 * fails or another operation is in flight.
 	 */
-	readonly fs: FlueFs;
-}
+	compact(): Promise<void>;
 
-/**
- * Explicit session management helpers exposed by {@link FlueHarness.sessions}.
- * Names beginning with `'task:'` are reserved for delegated tasks.
- */
-export interface FlueSessions {
-	/** Load an existing session. Defaults to `'default'`. Throws if it does not exist. */
-	get(name?: string): Promise<FlueSession>;
-	/** Create a new session. Defaults to `'default'`. Throws if it already exists. */
-	create(name?: string): Promise<FlueSession>;
+	/**
+	 * The environment this agent runs in: the live {@link SessionEnv} resolved
+	 * from the agent's declared sandbox (`useSandbox()`). One object carries
+	 * the whole surface — `exec`, the file verbs (`readFile`/`writeFile`/
+	 * `stat`/`readdir`/`exists`/`mkdir`/`rm`), `cwd`, `resolvePath` — and
+	 * operations on it are never recorded in a conversation.
+	 *
+	 * THROWS when the agent declared no sandbox: there is no default
+	 * environment. Tools that may run in sandbox-less agents should not touch
+	 * this property.
+	 *
+	 * Sandboxes are heterogeneous: an adapter may not support every generic
+	 * verb (it throws where it cannot) and may enrich the object it returns
+	 * with its native surface. Adapter packages ship runtime-checked accessors
+	 * that narrow to that surface — call the sandbox the way it actually
+	 * works.
+	 */
+	readonly sandbox: SessionEnv;
 }
 
 // ─── Flue Session ───────────────────────────────────────────────────────────
@@ -565,14 +770,14 @@ export interface FlueSession {
 	 * structured data instead of freeform text.
 	 */
 	skill<S extends v.GenericSchema>(
-		skill: SkillReference | string,
+		skill: Skill | string,
 		options: SkillOptions<S> & { result: S },
 	): CallHandle<PromptResultResponse<v.InferOutput<S>>>;
-	skill(skill: SkillReference | string, options?: SkillOptions): CallHandle<PromptResponse>;
+	skill(skill: Skill | string, options?: SkillOptions): CallHandle<PromptResponse>;
 
 	/**
 	 * Delegate work to a detached child session. Pass `options.agent` to select
-	 * a named subagent profile and `options.result` to require validated data.
+	 * a named subagent and `options.result` to require validated data.
 	 * Persisted child history remains part of the parent-owned conversation topology.
 	 */
 	task<S extends v.GenericSchema>(
@@ -700,7 +905,7 @@ export interface SkillOptions<
 export interface TaskOptions<
 	S extends v.GenericSchema | undefined = undefined,
 > extends OperationOptions<S> {
-	/** Named subagent profile selected for this delegated task. */
+	/** Named subagent (declared with useSubagent) selected for this delegated task. */
 	agent?: string;
 	/** Working directory for the detached task session. Defaults to the parent session cwd. */
 	cwd?: string;
@@ -733,7 +938,7 @@ export interface ShellResult {
 // ─── Sandbox ────────────────────────────────────────────────────────────────
 
 export interface SessionToolFactoryOptions {
-	subagents: Record<string, AgentProfile>;
+	subagents: Record<string, SubagentDefinition>;
 }
 
 /** Sandbox adapter-supplied model-facing tools. Flue appends `task` separately. */
@@ -748,14 +953,20 @@ export interface SandboxFactory {
 	 * Called once per initialized harness — one call per `init()` — and every
 	 * session and task session of that harness shares the returned env.
 	 *
-	 * `id` is the context id (`ctx.id`): the agent instance id for direct
-	 * agent requests, or the workflow run id inside a workflow. Multiple
+	 * `id` is the context id (`ctx.id`): the agent instance id. Multiple
 	 * harnesses initialized in the same context receive the same `id`, so a
 	 * sandbox adapter that keys provider resources on `id` must tolerate repeated
 	 * calls with the same value.
 	 */
 	createSessionEnv(options: { id: string }): Promise<SessionEnv>;
-	/** Replaces the framework default tool list for this sandbox. */
+	/**
+	 * Replaces the framework default tool list for this sandbox. Omit it for
+	 * the standard set over your env. When you do supply one, compose it from
+	 * the exported per-tool factories (`createReadTool`, `createWriteTool`,
+	 * `createEditTool`, `createBashTool`, `createGrepTool`, `createGlobTool`)
+	 * plus your own tools, rather than rebuilding from scratch — e.g. an
+	 * exec-less sandbox lists the three file tools and its own executor tool.
+	 */
 	tools?: SessionToolFactory;
 }
 
@@ -843,11 +1054,21 @@ export type LlmTool = {
 
 export type LlmTurnPurpose = 'agent' | 'compaction' | 'compaction_prefix';
 
+/**
+ * Classified error details on live observations. In-process only — durable
+ * records and settlement rows use their own serializers, which never carry
+ * `stack` (stacks expose filesystem paths and deployment layout, so they stay
+ * out of anything persisted or replayed).
+ */
 interface FlueErrorInfo {
 	type: string;
 	name?: string;
 	code?: string;
 	message?: string;
+	/** Framework-owned structured metadata from a `FlueError` (e.g. validation issues). */
+	meta?: Record<string, unknown>;
+	/** Throw-site stack, present only when the failure was observed live from a thrown `Error`. */
+	stack?: string;
 }
 
 interface AgentInvocationInput {
@@ -856,14 +1077,12 @@ interface AgentInvocationInput {
 }
 
 type AgentInvocationOutput =
-	| { type: 'text'; text: string; finishReason: string }
-	| { type: 'data'; data: unknown };
+	{ type: 'text'; text: string; finishReason: string } | { type: 'data'; data: unknown };
 
 export interface FlueObservationDetail {
 	agentInput?: AgentInvocationInput;
 	agentOutput?: AgentInvocationOutput;
 	origin?: ToolOrigin;
-	toolType?: ToolSemanticType;
 	description?: string;
 	args?: unknown;
 	effectiveResult?: unknown;
@@ -900,26 +1119,24 @@ export interface ModelResponse {
 	output?: LlmAssistantMessage;
 	usage?: PromptUsage;
 	finishReason?: string;
+	/**
+	 * The provider's exact finish value before normalization (e.g. Workers AI
+	 * `tool_calls` behind `finishReason: 'toolUse'`). Telemetry only — never
+	 * part of replay or execution identity; see `provider-diagnostics.ts`.
+	 */
+	providerFinishReason?: string;
+	/**
+	 * Response-level gateway log correlation (Cloudflare `cf-aig-log-id`),
+	 * read from this response's own headers so concurrent requests cannot
+	 * cross-attribute it. Telemetry only.
+	 */
+	gatewayLogId?: string;
 	error?: FlueErrorInfo;
 }
 
 type ToolOrigin = 'model' | 'caller' | 'framework' | 'adapter';
-type ToolSemanticType = 'function' | 'extension' | 'datastore';
 
 type FlueEventVariant =
-	| {
-			type: 'run_start';
-			runId: string;
-			workflowName: string;
-			startedAt: string;
-			input: unknown;
-	  }
-	| {
-			type: 'run_resume';
-			runId: string;
-			workflowName: string;
-			startedAt: string;
-	  }
 	| { type: 'agent_start' }
 	| { type: 'agent_end'; messages: AgentMessage[] }
 	| { type: 'turn_start'; turnId: string; purpose: LlmTurnPurpose }
@@ -942,6 +1159,17 @@ type FlueEventVariant =
 	| { type: 'thinking_start'; contentIndex?: number }
 	| { type: 'thinking_delta'; contentIndex?: number; delta: string }
 	| { type: 'thinking_end'; contentIndex?: number; content: string }
+	| {
+			/** Streaming fragment of a tool call's JSON-arguments text, for live
+			 *  previews of in-flight tool calls. Delivered to in-process `observe()`
+			 *  subscribers only — never persisted and never replayed; `tool_start`
+			 *  and the canonical tool records remain the source of truth for
+			 *  complete arguments. */
+			type: 'toolcall_delta';
+			toolCallId: string;
+			toolName: string;
+			argumentTextDelta: string;
+	  }
 	| { type: 'tool_start'; toolName: string; toolCallId: string; args?: any }
 	| {
 			type: 'tool';
@@ -1017,14 +1245,6 @@ type FlueEventVariant =
 				dev?: string;
 				meta?: Record<string, unknown>;
 			};
-	  }
-	| {
-			type: 'run_end';
-			runId: string;
-			result?: unknown;
-			isError: boolean;
-			error?: unknown;
-			durationMs: number;
 	  };
 
 /**
@@ -1037,9 +1257,7 @@ type FlueEventVariant =
  * {@link FlueEvent}.
  */
 export type FlueEventInput = FlueEventVariant & {
-	runId?: string;
 	instanceId?: string;
-	dispatchId?: string;
 	submissionId?: string;
 	agentName?: string;
 	conversationId?: string;
@@ -1052,9 +1270,8 @@ export type FlueEventInput = FlueEventVariant & {
 };
 
 /**
- * Observable runtime activity. Workflow events carry `runId`; direct and
- * dispatched agent activity carries `instanceId` without becoming a workflow
- * run. Dispatched activity may also carry `dispatchId`.
+ * Observable runtime activity. Direct and dispatched agent activity carries
+ * `instanceId`; submission-scoped activity carries `submissionId`.
  *
  * Every delivered event carries the durable event-format version `v`, a
  * per-context `eventIndex`, and a `timestamp`. Harnesses and sessions add
@@ -1062,16 +1279,13 @@ export type FlueEventInput = FlueEventVariant & {
  * generated ids — those correlation fields are optional because they apply
  * only to the activity they describe.
  *
- * Persisted workflow events always carry `runId` and `eventIndex`; together they
- * form the immutable persisted identity for one workflow event. Attached-agent
- * streams and `observe()` from `@flue/runtime` deliver live activity; their
- * indexes are per-context ordering, not durable identity.
+ * Attached-agent streams and `observe()` from `@flue/runtime` deliver live
+ * activity; their indexes are per-context ordering, not durable identity.
  *
  * Recognized image content blocks in framework event payloads never carry raw
  * image bytes: their `data` is replaced with the exported
- * `IMAGE_DATA_OMITTED` sentinel. Application-authored `data` event payloads
- * are persisted verbatim and must not include raw image bytes, secrets, or
- * unsanitized PII. Session history retains real image bytes for model context.
+ * `IMAGE_DATA_OMITTED` sentinel. Session history retains real image bytes for
+ * model context.
  */
 export type FlueEvent = FlueEventInput & {
 	/** Durable event-format version. Readers branch on this when the format changes. */
@@ -1080,20 +1294,13 @@ export type FlueEvent = FlueEventInput & {
 	timestamp: string;
 };
 
-export const FLUE_EVENT_SCHEMA_REVISION = 3;
-
 export type FlueObservation = FlueEvent & FlueObservationDetail;
 
 /**
- * Live activity from a direct attached-agent interaction. Attached-agent events
- * require `instanceId`, omit workflow lifecycle events, and never carry
- * `runId`. They are not durable workflow history.
+ * Live activity from a direct attached-agent interaction. Attached-agent
+ * events always carry `instanceId`. They are not durable history.
  */
-export type AttachedAgentEvent = Exclude<
-	FlueEvent,
-	{ type: 'run_start' } | { type: 'run_resume' } | { type: 'run_end' }
-> & {
-	runId?: never;
+export type AttachedAgentEvent = FlueEvent & {
 	instanceId: string;
 };
 

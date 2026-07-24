@@ -12,8 +12,14 @@ interface TeamsResourceResponse {
 	id: string;
 }
 
+/** The subset of `TeamsConversationRef` actually needed to post a message activity. */
+export type TeamsMessageRef = Pick<
+	TeamsConversationRef,
+	'serviceUrl' | 'conversationId' | 'botId' | 'threadId'
+>;
+
 export interface TeamsClient {
-	postMessage(ref: TeamsConversationRef, text: string): Promise<TeamsResourceResponse>;
+	postMessage(ref: TeamsMessageRef, text: string): Promise<TeamsResourceResponse>;
 }
 
 export function createTeamsClient(options: TeamsClientOptions): TeamsClient {
@@ -101,7 +107,7 @@ function oauthTokenUrl(authority: string): URL {
 	return endpoint;
 }
 
-function activityUrl(ref: TeamsConversationRef): URL {
+function activityUrl(ref: TeamsMessageRef): URL {
 	const base = new URL(ref.serviceUrl);
 	if (
 		base.protocol !== 'https:' ||

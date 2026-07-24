@@ -1,7 +1,7 @@
 ---
 title: Deploy Agents on Fly.io
 description: Deploy Flue agents to Fly.io as a long-running Docker app on Fly Machines.
-lastReviewedAt: 2026-06-20
+lastReviewedAt: 2026-07-21
 ---
 
 A Flue server is a long-running HTTP service, not a serverless function, so deploy it to Fly Machines that stay up rather than scaling to zero between requests. `fly launch` builds the [Flue Docker image](/docs/ecosystem/deploy/docker/) and runs it on Machines, which suit a stateful, always-on server well.
@@ -15,7 +15,7 @@ fly launch
 fly deploy
 ```
 
-The Dockerfile builds `dist/server.mjs` (`npx flue build --target node`) and starts it with `node dist/server.mjs`. The server binds `PORT` (default 3000), so set `ENV PORT` in the image — or whatever port the image exposes — and make `internal_port` in `fly.toml` match it. The build externalizes dependencies, so `node_modules` must be present in the image at runtime.
+The Dockerfile builds `dist/server.mjs` (`npx vite build`, with the `flue()` plugin in `vite.config.ts`) and starts it with `node dist/server.mjs`. The server binds `PORT` (default 3000), so set `ENV PORT` in the image — or whatever port the image exposes — and make `internal_port` in `fly.toml` match it. The build externalizes dependencies, so `node_modules` must be present in the image at runtime.
 
 ## fly.toml essentials
 
@@ -59,7 +59,7 @@ Use the env var your provider expects — `ANTHROPIC_API_KEY` for Anthropic, `OP
 
 ## Persistence
 
-On Node.js, canonical agent conversations, attachments, and accepted submissions live in memory by default — fine for a single Machine, but lost on restart. Back Flue with Postgres for replacement recovery and shared workflow history. Multiple Machines must route each agent instance to one live owner; shared storage alone does not make same-instance active-active execution safe.
+On Node.js, canonical agent conversations, attachments, and accepted submissions live in memory by default — fine for a single Machine, but lost on restart. Back Flue with Postgres for replacement recovery. Multiple Machines must route each agent instance to one live owner; shared storage alone does not make same-instance active-active execution safe.
 
 [Fly Managed Postgres](https://fly.io/docs/mpg/) (MPG) is the recommended option; the older unmanaged Fly Postgres (`fly postgres`) still exists, but Fly no longer provides support or guidance for it. `fly mpg create` prompts for a name, region, and plan (or pass `--name` / `--region` / `--plan`); `fly mpg attach` sets `DATABASE_URL` as a secret on the app — the pooled (PgBouncer) connection URL — and restarts it:
 
@@ -74,24 +74,33 @@ Install the adapter and read `DATABASE_URL` in `db.ts`:
 npm install @flue/postgres
 ```
 
-```typescript title=".flue/db.ts"
+```typescript title="src/db.ts (abridged)"
 import { postgres } from '@flue/postgres';
+import { Pool } from 'pg';
 
-export default postgres(process.env.DATABASE_URL!);
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+export default postgres({
+  query: async (text, params) => (await pool.query(text, params)).rows,
+  transaction: async (fn) => {
+    /* one checked-out client per transaction; see the Postgres guide */
+  },
+  close: () => pool.end(),
+});
 ```
 
-Flue discovers `db.ts` at build time and wires it into the generated server. The adapter handles schema creation, canonical conversation streams, immutable attachments, durable submission state, and workflow history. See [Database](/docs/guide/database/) for adapter details and [Data Persistence API](/docs/api/data-persistence-api/) for the contract.
+Flue discovers `db.ts` at build time and wires it into the generated server. The adapter handles schema creation, canonical conversation streams, immutable attachments, and durable submission state. See [Database](/docs/guide/database/) for adapter details, [Postgres](/docs/ecosystem/databases/postgres/) for the bring-your-own-driver runner, and [Data Persistence API](/docs/reference/data-persistence-api/) for the contract.
 
 ## Health and streaming
 
 Flue does not generate a `/health` route — define one in `app.ts` for the `[[http_service.checks]]` path above, or drop the check. Fly's HTTP checks expect a 2xx and do not follow redirects, so with `force_https = true` either run the check over `https` or add `X-Forwarded-Proto = "https"` to its headers.
 
-Exposed workflow runs use long-lived `GET /runs/:runId` reads (long-poll/SSE). Keep at least one Machine running so auto-stop does not cut these connections. For long-running workflows, retain the invocation's `runId` and read the run from offset `-1` instead of holding one blocking request. See [Workflow HTTP exports](/docs/api/workflow-api/#http-exports).
+Agent conversations use long-lived `GET` reads on the conversation URL (long-poll/SSE). Keep at least one Machine running so auto-stop does not cut these connections. For long-running work, retain the admission's `streamUrl` and `offset` and resume the conversation stream instead of holding one blocking request. See the [Streaming Protocol](/docs/reference/streaming-protocol/).
 
 ## Going further
 
-- **Regions and scaling.** `fly scale count` adds Machines and `fly scale vm` resizes them. Multi-Machine deployments need shared Postgres for replacement recovery and workflow history, plus routing that keeps each agent instance on one live Machine and prevents overlapping owners.
-- **Scheduled workflows.** Use Fly [scheduled Machines](https://fly.io/docs/machines/) to call the deployed application's authenticated workflow endpoint, or run `npx flue run workflow:<name> --server https://<host>/<flue-mount>`. Remote attachment exercises the deployed application without building and starting another local runtime.
+- **Regions and scaling.** `fly scale count` adds Machines and `fly scale vm` resizes them. Multi-Machine deployments need shared Postgres for replacement recovery, plus routing that keeps each agent instance on one live Machine and prevents overlapping owners.
+- **Scheduled agents.** Use Fly [scheduled Machines](https://fly.io/docs/machines/) to call the deployed application's authenticated agent endpoint — a `POST` to the agent's conversation URL with a `kind: 'signal'` message. Calling the deployed application avoids building and starting another local runtime for every fire. See [Schedules](/docs/guide/schedules/).
 
 ## References
 

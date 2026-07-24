@@ -4,6 +4,7 @@ description: Receive authenticated Teams activities and use a project-owned Bot 
 package:
   name: '@flue/teams'
   href: https://www.npmjs.com/package/@flue/teams
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -25,15 +26,15 @@ Microsoft's Node-oriented hosting SDKs.
 ```ts title="src/channels/teams.ts (abridged)"
 import { dispatch } from '@flue/runtime';
 import { createTeamsChannel } from '@flue/teams';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const channel = createTeamsChannel({
   appId: process.env.TEAMS_APP_ID!,
   tenantId: process.env.TEAMS_TENANT_ID!,
   async activities({ activity }) {
     if (activity.type !== 'message' || !activity.text) return;
-    await dispatch(assistant, {
-      id: channel.conversationKey(channel.destination(activity)),
+    await dispatch(Assistant, {
+      id: channel.instanceId(channel.destination(activity)),
       message: {
         kind: 'signal',
         type: 'teams.message',
@@ -53,6 +54,18 @@ The abridged example omits the generated client and message tool. Once
 configured, a text activity continues the agent instance for its verified Teams
 conversation, and the bound tool can post a reply to the same Connector service
 URL and thread. The generated Fetch client runs on Node and Cloudflare Workers.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as teams } from './channels/teams.ts';
+
+app.route('/channels/teams', teams.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/teams` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -84,10 +97,10 @@ must receive all channel or group-chat messages.
 
 ```ts title="src/channels/teams.ts"
 import { defineTool, dispatch } from '@flue/runtime';
-import { createTeamsChannel, type TeamsConversationRef } from '@flue/teams';
+import { createTeamsChannel } from '@flue/teams';
 import * as v from 'valibot';
-import assistant from '../agents/assistant.ts';
-import { createTeamsClient } from '../lib/teams-client.ts';
+import { Assistant } from '../agents/assistant.ts';
+import { createTeamsClient, type TeamsMessageRef } from '../lib/teams-client.ts';
 
 const appId = process.env.TEAMS_APP_ID!;
 const tenantId = process.env.TEAMS_TENANT_ID!;
@@ -107,8 +120,16 @@ export const channel = createTeamsChannel({
     switch (activity.type) {
       case 'message': {
         if (!activity.text) return;
-        await dispatch(assistant, {
-          id: channel.conversationKey(channel.destination(activity)),
+        const destination = channel.destination(activity);
+        await dispatch(Assistant, {
+          id: channel.instanceId(destination),
+          // Recorded once when this event creates the instance; ignored after.
+          initialData: {
+            serviceUrl: destination.serviceUrl,
+            conversationId: destination.conversationId,
+            botId: destination.botId,
+            ...(destination.threadId === undefined ? {} : { threadId: destination.threadId }),
+          },
           message: {
             kind: 'signal',
             type: 'teams.message',
@@ -128,12 +149,12 @@ export const channel = createTeamsChannel({
   },
 });
 
-export function postMessage(ref: TeamsConversationRef) {
+export function postMessage(ref: TeamsMessageRef) {
   return defineTool({
     name: 'post_teams_message',
     description: 'Post to the Microsoft Teams conversation bound to this agent.',
     input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
-    async run({ input: { text } }) {
+    async run({ data: { text } }) {
       const result = await client.postMessage(ref, text);
       return { activityId: result.id };
     },
@@ -162,21 +183,33 @@ any non-2xx response, so return a 2xx once the work is safely admitted.
 ## Bind the tool
 
 ```ts title="src/agents/assistant.ts"
-import { defineAgent } from '@flue/runtime';
-import { channel, postMessage } from '../channels/teams.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { postMessage } from '../channels/teams.ts';
 
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  tools: [postMessage(channel.parseConversationKey(id))],
-}));
+const initialData = v.object({
+  serviceUrl: v.string(),
+  conversationId: v.string(),
+  botId: v.string(),
+  threadId: v.optional(v.string()),
+});
+
+export function Assistant() {
+  useModel('anthropic/claude-haiku-4-5');
+  const data = useInitialData<v.InferOutput<typeof initialData>>();
+  if (!data) throw new Error('This agent is created by the Microsoft Teams channel dispatch.');
+  useTool(postMessage(data));
+  return 'Reply concisely in the bound Microsoft Teams conversation.';
+}
+
+Assistant.initialData = initialData;
 ```
 
-The model selects only message text. Trusted code binds the tenant, Connector
-service URL, conversation, bot account, and channel thread.
-
-Conversation keys validate syntax, not authorization. Keep this agent
-dispatch-only, or independently authorize caller-selected instance ids before
-using them for outbound requests.
+The model selects only message text. Trusted code binds the Connector service
+URL, conversation, bot account, and channel thread as the instance's creation
+data — the agent reads them with `useInitialData()` instead of parsing the
+instance id.
 
 ## Authentication
 

@@ -12,11 +12,10 @@ is one file in the user's project that default-exports a `PersistenceAdapter`
 for the backend, satisfying Flue's published contract.
 
 A `PersistenceAdapter` stores Flue runtime state: canonical append-only agent
-conversation streams, immutable external attachments,
-accepted submissions and durable turn journals, workflow-run records, and event
-streams. It is **not** a place for application business data. Implementing one
-correctly means honoring the contract's ordering, idempotency, and lease
-semantics — read the spec before writing code.
+conversation streams, immutable external attachments, and accepted submissions
+with durable turn journals. It is **not** a place for application business
+data. Implementing one correctly means honoring the contract's ordering,
+idempotency, and lease semantics — read the spec before writing code.
 
 There's no fixed procedure for getting there — your backend's shape (a SQL
 driver, a document store, a key-value server, an HTTP data API) will dictate
@@ -47,9 +46,9 @@ modified the implementation.
 
 Read these before writing code.
 
-- **Spec** (the `PersistenceAdapter` contract — canonical stream, attachment,
-  submission, run, and event-stream stores):
-  `https://flueframework.com/docs/api/data-persistence-api/index.md`
+- **Spec** (the `PersistenceAdapter` contract — canonical conversation-stream,
+  attachment, and submission stores):
+  `https://flueframework.com/docs/reference/data-persistence-api/index.md`
 - **Worked example** (the Postgres adapter — one complete implementation of
   the full contract; your backend's shape may be quite different):
   `https://flueframework.com/cli/blueprints/postgres.md`
@@ -87,14 +86,16 @@ These are the things that aren't obvious from the spec or the example.
   (commonly `DATABASE_URL`) and let the project's conventions (`AGENTS.md`, an
   existing `.env`, a secret manager, CI vars) decide where it lives. Ask the
   user only if nothing in the project gives a clear signal. For local dev,
-  `flue dev --env <file>` and `flue run --env <file>` load any `.env`-format
-  file.
+  `flue run` loads the project's `.env` by default and `--env <file>` selects
+  an alternate `.env`-format file; `vite dev` and the built server read the
+  shell environment, so export the variable or source the file before starting
+  them.
 
 ## Wrapping up
 
 - Typecheck the project (`npx tsc --noEmit` is safe). Fix anything you broke.
-- Build the project's configured Node target so the adapter is actually
-  discovered and wired into the generated server.
+- Build the project (`vite build`) for its configured Node target so the
+  adapter is actually discovered and wired into the generated server.
 - Tell the user what to run next: any new deps you added, the env vars the
   adapter reads, and how to point it at a real database.
 

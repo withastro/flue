@@ -10,9 +10,8 @@ project using the first-party `@flue/redis` adapter and the official Redis
 surface used by this adapter. This blueprint supports Valkey specifically; do
 not infer support for every service described as Redis-compatible.
 
-This stores canonical agent conversation streams, immutable attachments,
-accepted submissions, workflow-run records, and event
-streams. It does not store application business data.
+This stores canonical agent conversation streams, immutable attachments, and
+accepted submissions. It does not store application business data.
 
 ## Check the target and deployment
 
@@ -72,6 +71,10 @@ export default redis({
 });
 ```
 
+The adapter never passes binary arguments through the runner (attachment
+bytes are base64-encoded at the store boundary), so the `String()` coercion
+above is lossless.
+
 Do not hardcode or invent a connection string. Read `VALKEY_URL` or the project's
 existing equivalent from its secret system and never commit credentials.
 
@@ -94,16 +97,17 @@ separate empty namespace and does not migrate existing data.
 ## What gets stored
 
 The adapter stores canonical append-only conversation streams, immutable external
-attachments, accepted direct and dispatched submissions, recovery journals,
-workflow-run records and indexes, and event streams. The canonical stream is the
-sole transcript and is replayed from its beginning; replay acceleration and
+attachments, accepted direct and dispatched submissions, and recovery journals.
+The canonical stream is the sole transcript and is replayed from its
+beginning; replay acceleration and
 persisted-log compaction are deferred. Sessions have no per-session deletion.
 Whole-instance stream and attachment deletion methods are low-level primitives. It does not store sandbox files, external API
 side effects, credentials, or application business data.
 
 ## Verify
 
-1. Typecheck and build the configured Node target; confirm `db.ts` is discovered.
+1. Typecheck and build (`vite build`) the configured Node target; confirm
+   `db.ts` is discovered.
 2. Point `VALKEY_URL` at a throwaway persistent standalone or managed single-shard
    Valkey deployment configured with `noeviction`.
 3. Start the server and confirm migration succeeds. If inspection is disabled,

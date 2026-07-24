@@ -3,22 +3,26 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
+		"dev": "vite dev",
+		"build": "vite build",
 		"test:e2e": "node ./test/e2e.mjs"
 	},
 	"dependencies": {
 		"@chat-adapter/github": "*",
 		"@chat-adapter/state-memory": "*",
-		"@earendil-works/pi-ai": "^0.80.2",
+		"@earendil-works/pi-ai": "^0.81.1",
 		"@flue/runtime": "workspace:*",
-		"agents": "^0.14.2",
+		"agents": "^0.17.4",
 		"chat": "*",
 		"hono": "^4.8.3",
 		"just-bash": "^3.0.1",
 		"valibot": "^1.0.0"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20260602.1",
+		"@cloudflare/workers-types": "^5.20260721.1",
 		"@flue/cli": "workspace:*",
-		"wrangler": "^4.97.0"
+		"@flue/vite": "workspace:*",
+		"vite": "^8.0.14",
+		"wrangler": "^4.113.0"
 	}
 }

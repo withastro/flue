@@ -1,9 +1,10 @@
 ---
 title: Supabase
-description: Give Flue agents and workflow runs durable, shared state with Supabase Postgres.
+description: Give Flue agents durable, shared state with Supabase Postgres.
 package:
   name: '@flue/postgres'
   href: https://www.npmjs.com/package/@flue/postgres
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -42,7 +43,7 @@ export default postgres({
 ```
 
 Flue discovers the adapter during a Node build,
-runs its migrations at server startup, and persists canonical agent conversations, immutable attachments, accepted submissions, workflow runs, and event state in Supabase so that state survives process replacement. Replicas may share durable state and workflow history, but each agent instance still requires one live Node owner. Application business data remains application-owned.
+runs its migrations at server startup, and persists canonical agent conversations, immutable attachments, and accepted submissions in Supabase so that state survives process replacement. Replicas may share durable state, but each agent instance still requires one live Node owner. Application business data remains application-owned.
 
 ## Configure
 
@@ -69,8 +70,8 @@ runtime as `SUPABASE_DATABASE_URL`:
 The provider-specific environment variable makes the secret's source clear. If
 your project already uses another database variable convention, use it
 consistently in `db.ts` instead. Supply the value through your platform's secret
-store and never commit it. For local development, `flue dev --env <file>` and
-`flue run --env <file>` load any `.env`-format file.
+store and never commit it. For local development, `vite dev` loads the project
+`.env`, and `flue run --env <file>` loads any `.env`-format file.
 
 Transaction-mode pooling is not the default. It can preserve an explicit
 transaction performed on one checked-out client and does not inherently break
@@ -132,23 +133,30 @@ risking incompatible writes.
 
 A Flue database stores runtime state, not the application's whole data model.
 
-| Stored by Flue                                                                 | Not stored by Flue                       |
-| ------------------------------------------------------------------------------ | ---------------------------------------- |
-| Canonical agent conversation streams and compaction records                    | Sandbox files and installed dependencies |
-| Immutable attachment payloads                                                  | External API side effects                |
-| Accepted direct prompts and `dispatch(...)` submissions                        | Application-owned business data          |
-| Durable submission claims and leases, workflow-run records, persisted events, and run indexes | Provider credentials or secrets          |
-| Recovery state for accepted work                                               | Provider credentials or secrets          |
+Stored by Flue:
 
-See [Durable Agents](/docs/concepts/durable-execution/) for recovery behavior
-and the [Data Persistence API](/docs/api/data-persistence-api/) for the adapter
+- canonical agent conversation streams and compaction records;
+- immutable attachment payloads;
+- accepted direct prompts and `dispatch(...)` submissions;
+- durable submission claims, leases, and settlement records;
+- recovery state for accepted work.
+
+Not stored by Flue:
+
+- sandbox files and installed dependencies;
+- external API side effects;
+- application-owned business data;
+- provider credentials or secrets.
+
+See [Durability](/docs/guide/durability/) for recovery behavior
+and the [Data Persistence API](/docs/reference/data-persistence-api/) for the adapter
 contract.
 
 ## Verify
 
 Build the configured Node target and confirm `db.ts` is discovered. Against a
 non-production Supabase project, start the server and confirm the `flue_*`
-tables are created. Create agent or workflow state, restart the server, and
+tables are created. Create agent state, restart the server, and
 confirm that state is reloaded. If you use the shared pooler, verify that its
 mode matches the deployment and that transaction mode, when explicitly chosen,
 uses no named prepared statements or session state.

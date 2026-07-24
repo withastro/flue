@@ -8,9 +8,8 @@ You are an AI coding agent configuring MongoDB-backed persistence for a Flue
 project using the first-party `@flue/mongodb` adapter and the official `mongodb`
 driver.
 
-This stores canonical agent conversation streams, immutable attachments,
-accepted submissions, workflow runs, and event streams.
-It does not store application business data.
+This stores canonical agent conversation streams, immutable attachments, and
+accepted submissions. It does not store application business data.
 
 ## Check the target and deployment
 
@@ -219,8 +218,10 @@ application should override the URL's database. `client.db(undefined)` uses the
 driver's database selection from the URL (and otherwise its driver default), so
 an explicit `MONGODB_DATABASE` is recommended.
 
-Never commit credentials. For local development, `flue dev --env <file>` and
-`flue run --env <file>` load any `.env`-format file. In production, use the
+Never commit credentials. For local development, `flue run` loads the project's
+`.env` by default and `--env <file>` selects an alternate `.env`-format file;
+`vite dev` and the built server read the shell environment, so export the
+variables or source the file before starting them. In production, use the
 platform's secret store. A dedicated database is preferred; otherwise pass a
 stable unique `collectionPrefix` as the second argument to `mongodb()`. Changing
 the prefix selects a separate namespace and does not migrate existing data.
@@ -242,9 +243,9 @@ transaction publishes a manifest. Failed or abandoned staged generations are
 cleaned up later. Do not bypass this path by embedding large runtime values in
 custom collection documents.
 
-The adapter stores canonical conversation streams, immutable external attachments,
-durable submissions and recovery journals, workflow runs and indexes, and event
-streams. The canonical stream is the sole transcript and is replayed from its
+The adapter stores canonical conversation streams, immutable external
+attachments, and durable submissions with recovery journals. The canonical
+stream is the sole transcript and is replayed from its
 beginning; replay acceleration and persisted-log compaction are deferred. Sessions
 append for the agent-instance lifetime, with no per-session deletion. Whole-instance
 stream and attachment deletion methods are low-level primitives, not a promise of
@@ -253,7 +254,8 @@ sandbox files, external API effects, credentials, or application business data.
 
 ## Verify
 
-1. Typecheck and build the configured Node target; confirm `db.ts` is discovered.
+1. Typecheck and build (`vite build`) the configured Node target; confirm
+   `db.ts` is discovered.
 2. Point `MONGODB_URL` and `MONGODB_DATABASE` at a throwaway Atlas database,
    replica set, transaction-capable sharded cluster, or single-node replica set.
 3. Start the server and confirm migration creates collections and indexes. Then

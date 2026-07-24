@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { AttachmentConflictError, AttachmentIntegrityError } from '../errors.ts';
 import type { AttachmentStore } from '../runtime/attachment-store.ts';
 import { createAttachmentRef } from '../runtime/attachment-store.ts';
-import { AttachmentConflictError, AttachmentIntegrityError } from '../errors.ts';
+import { ATTACHMENT_CHUNK_BYTE_LENGTH } from '../sql-attachment-store.ts';
 
 export interface AttachmentStoreContractBackend {
 	create(): AttachmentStore | Promise<AttachmentStore>;
@@ -20,7 +21,11 @@ export function defineAttachmentStoreContractTests(
 		it('returns the original bytes when an exact conversation attachment is put', async () => {
 			const store = await backend.create();
 			const bytes = Uint8Array.from([0, 1, 2, 255]);
-			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes });
+			const attachment = await createAttachmentRef({
+				id: 'attachment-1',
+				mimeType: 'image/png',
+				bytes,
+			});
 
 			await store.put({
 				streamPath: 'agents/assistant/agent-1',
@@ -29,17 +34,55 @@ export function defineAttachmentStoreContractTests(
 				conversationId: 'conversation-1',
 			});
 
-			await expect(store.get({
+			await expect(
+				store.get({
+					streamPath: 'agents/assistant/agent-1',
+					conversationId: 'conversation-1',
+					attachmentId: attachment.id,
+				}),
+			).resolves.toEqual({ attachment, bytes });
+		});
+
+		it('returns the original bytes when the payload exceeds one persisted chunk', async () => {
+			const store = await backend.create();
+			// Strictly larger than one persisted chunk (512 KiB), so chunked
+			// implementations must split and reassemble in order, and
+			// single-blob backends must hold a realistic image size intact.
+			// The modulus is prime so any reordering or truncation misaligns.
+			const bytes = Uint8Array.from(
+				{ length: ATTACHMENT_CHUNK_BYTE_LENGTH + 1 },
+				(_, index) => index % 251,
+			);
+			const attachment = await createAttachmentRef({
+				id: 'attachment-large',
+				mimeType: 'image/png',
+				bytes,
+			});
+
+			await store.put({
 				streamPath: 'agents/assistant/agent-1',
+				attachment,
+				bytes,
 				conversationId: 'conversation-1',
-				attachmentId: attachment.id,
-			})).resolves.toEqual({ attachment, bytes });
+			});
+
+			await expect(
+				store.get({
+					streamPath: 'agents/assistant/agent-1',
+					conversationId: 'conversation-1',
+					attachmentId: attachment.id,
+				}),
+			).resolves.toEqual({ attachment, bytes });
 		});
 
 		it('accepts an exact retry when the first put acknowledgement is uncertain', async () => {
 			const store = await backend.create();
 			const bytes = Uint8Array.from([3, 4, 5]);
-			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/jpeg', bytes });
+			const attachment = await createAttachmentRef({
+				id: 'attachment-1',
+				mimeType: 'image/jpeg',
+				bytes,
+			});
 			const input = {
 				streamPath: 'agents/assistant/agent-1',
 				attachment,
@@ -54,7 +97,11 @@ export function defineAttachmentStoreContractTests(
 		it('accepts concurrent exact puts when one attachment identity has one winner', async () => {
 			const store = await backend.create();
 			const bytes = Uint8Array.from([3, 4, 5]);
-			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/jpeg', bytes });
+			const attachment = await createAttachmentRef({
+				id: 'attachment-1',
+				mimeType: 'image/jpeg',
+				bytes,
+			});
 			const input = {
 				streamPath: 'agents/assistant/agent-1',
 				attachment,
@@ -74,23 +121,37 @@ export function defineAttachmentStoreContractTests(
 			const second = Uint8Array.from([2]);
 			await store.put({
 				streamPath: 'agents/assistant/agent-1',
-				attachment: await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes: first }),
+				attachment: await createAttachmentRef({
+					id: 'attachment-1',
+					mimeType: 'image/png',
+					bytes: first,
+				}),
 				bytes: first,
 				conversationId: 'conversation-1',
 			});
 
-			await expect(store.put({
-				streamPath: 'agents/assistant/agent-1',
-				attachment: await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes: second }),
-				bytes: second,
-				conversationId: 'conversation-1',
-			})).rejects.toBeInstanceOf(AttachmentConflictError);
+			await expect(
+				store.put({
+					streamPath: 'agents/assistant/agent-1',
+					attachment: await createAttachmentRef({
+						id: 'attachment-1',
+						mimeType: 'image/png',
+						bytes: second,
+					}),
+					bytes: second,
+					conversationId: 'conversation-1',
+				}),
+			).rejects.toBeInstanceOf(AttachmentConflictError);
 		});
 
 		it('throws AttachmentConflictError when one ID is reused for a different conversation', async () => {
 			const store = await backend.create();
 			const bytes = Uint8Array.from([1]);
-			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes });
+			const attachment = await createAttachmentRef({
+				id: 'attachment-1',
+				mimeType: 'image/png',
+				bytes,
+			});
 			await store.put({
 				streamPath: 'agents/assistant/agent-1',
 				attachment,
@@ -98,44 +159,62 @@ export function defineAttachmentStoreContractTests(
 				conversationId: 'conversation-1',
 			});
 
-			await expect(store.put({
-				streamPath: 'agents/assistant/agent-1',
-				attachment,
-				bytes,
-				conversationId: 'conversation-2',
-			})).rejects.toBeInstanceOf(AttachmentConflictError);
+			await expect(
+				store.put({
+					streamPath: 'agents/assistant/agent-1',
+					attachment,
+					bytes,
+					conversationId: 'conversation-2',
+				}),
+			).rejects.toBeInstanceOf(AttachmentConflictError);
 		});
 
 		it('throws AttachmentIntegrityError when declared size differs from decoded bytes', async () => {
 			const store = await backend.create();
 			const bytes = Uint8Array.from([1, 2]);
-			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes });
-
-			await expect(store.put({
-				streamPath: 'agents/assistant/agent-1',
-				attachment: { ...attachment, size: attachment.size + 1 },
+			const attachment = await createAttachmentRef({
+				id: 'attachment-1',
+				mimeType: 'image/png',
 				bytes,
-				conversationId: 'conversation-1',
-			})).rejects.toBeInstanceOf(AttachmentIntegrityError);
+			});
+
+			await expect(
+				store.put({
+					streamPath: 'agents/assistant/agent-1',
+					attachment: { ...attachment, size: attachment.size + 1 },
+					bytes,
+					conversationId: 'conversation-1',
+				}),
+			).rejects.toBeInstanceOf(AttachmentIntegrityError);
 		});
 
 		it('throws AttachmentIntegrityError when declared digest differs from decoded bytes', async () => {
 			const store = await backend.create();
 			const bytes = Uint8Array.from([1, 2]);
-			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes });
-
-			await expect(store.put({
-				streamPath: 'agents/assistant/agent-1',
-				attachment: { ...attachment, digest: '0'.repeat(64) },
+			const attachment = await createAttachmentRef({
+				id: 'attachment-1',
+				mimeType: 'image/png',
 				bytes,
-				conversationId: 'conversation-1',
-			})).rejects.toBeInstanceOf(AttachmentIntegrityError);
+			});
+
+			await expect(
+				store.put({
+					streamPath: 'agents/assistant/agent-1',
+					attachment: { ...attachment, digest: '0'.repeat(64) },
+					bytes,
+					conversationId: 'conversation-1',
+				}),
+			).rejects.toBeInstanceOf(AttachmentIntegrityError);
 		});
 
 		it('returns null when a different conversation requests an existing attachment', async () => {
 			const store = await backend.create();
 			const bytes = Uint8Array.from([1]);
-			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes });
+			const attachment = await createAttachmentRef({
+				id: 'attachment-1',
+				mimeType: 'image/png',
+				bytes,
+			});
 			await store.put({
 				streamPath: 'agents/assistant/agent-1',
 				attachment,
@@ -143,26 +222,23 @@ export function defineAttachmentStoreContractTests(
 				conversationId: 'conversation-1',
 			});
 
-			await expect(store.get({
-				streamPath: 'agents/assistant/agent-1',
-				conversationId: 'conversation-2',
-				attachmentId: attachment.id,
-			})).resolves.toBeNull();
-		});
-
-		it('deletes every attachment when an instance is erased', async () => {
-			const store = await backend.create();
-			const bytes = Uint8Array.from([1]);
-			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes });
-			await store.put({ streamPath: 'agents/assistant/agent-1', attachment, bytes, conversationId: 'conversation-1' });
-			await store.deleteForInstance('agents/assistant/agent-1');
-			await expect(store.get({ streamPath: 'agents/assistant/agent-1', conversationId: 'conversation-1', attachmentId: attachment.id })).resolves.toBeNull();
+			await expect(
+				store.get({
+					streamPath: 'agents/assistant/agent-1',
+					conversationId: 'conversation-2',
+					attachmentId: attachment.id,
+				}),
+			).resolves.toBeNull();
 		});
 
 		it('returns an independent byte copy when stored or returned arrays are mutated', async () => {
 			const store = await backend.create();
 			const bytes = Uint8Array.from([1, 2, 3]);
-			const attachment = await createAttachmentRef({ id: 'attachment-1', mimeType: 'image/png', bytes });
+			const attachment = await createAttachmentRef({
+				id: 'attachment-1',
+				mimeType: 'image/png',
+				bytes,
+			});
 			await store.put({
 				streamPath: 'agents/assistant/agent-1',
 				attachment,
@@ -178,11 +254,13 @@ export function defineAttachmentStoreContractTests(
 			if (!first) throw new Error('Expected attachment.');
 			first.bytes[1] = 9;
 
-			await expect(store.get({
-				streamPath: 'agents/assistant/agent-1',
-				conversationId: 'conversation-1',
-				attachmentId: attachment.id,
-			})).resolves.toEqual({ attachment, bytes: Uint8Array.from([1, 2, 3]) });
+			await expect(
+				store.get({
+					streamPath: 'agents/assistant/agent-1',
+					conversationId: 'conversation-1',
+					attachmentId: attachment.id,
+				}),
+			).resolves.toEqual({ attachment, bytes: Uint8Array.from([1, 2, 3]) });
 		});
 	});
 }

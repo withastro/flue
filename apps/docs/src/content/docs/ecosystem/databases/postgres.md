@@ -1,9 +1,10 @@
 ---
 title: Postgres
-description: Give Flue agents and workflow runs durable, shared state with a Postgres database.
+description: Give Flue agents durable, shared state with a Postgres database.
 package:
   name: '@flue/postgres'
   href: https://www.npmjs.com/package/@flue/postgres
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -46,7 +47,7 @@ export default postgres({
 });
 ```
 
-Flue discovers the adapter at build time and wires it into the generated Node server. On startup, it creates or verifies the required `flue_*` tables. Canonical agent conversations, immutable attachments, accepted submissions, and workflow history then survive process replacement. Replicas may share durable state and workflow history, but each agent instance still requires one live Node owner; Postgres does not enable active-active same-instance execution. Application business data remains application-owned. The blueprint applies only to Node targets because Cloudflare deployments use Durable Object SQLite instead.
+Flue discovers the adapter at build time and wires it into the generated Node server. On startup, it creates or verifies the required `flue_*` tables. Canonical agent conversations, immutable attachments, and accepted submissions then survive process replacement. Replicas may share durable state, but each agent instance still requires one live Node owner; Postgres does not enable active-active same-instance execution. Application business data remains application-owned. The blueprint applies only to Node targets because Cloudflare deployments use Durable Object SQLite instead.
 
 ## Configure
 
@@ -55,14 +56,14 @@ Flue discovers the adapter at build time and wires it into the generated Node se
 | `DATABASE_URL` | **Required** — Postgres connection string, e.g. `postgresql://user:pass@host:5432/db`. |
 
 Your driver reads `DATABASE_URL` at runtime — it is not baked into the build.
-For local development, `flue dev --env <file>` and `flue run --env <file>` load
-any `.env`-format file. In production, supply it from your platform's secret
-store.
+For local development, `vite dev` loads the project `.env`, and
+`flue run --env <file>` selects an alternate `.env`-format file. In production,
+supply it from your platform's secret store.
 
 The blueprint installs `@flue/postgres` with `pg` by default and writes a
 source-root `db.ts` that wraps it. Flue discovers `db.ts` at build
 time and wires it into the generated Node server. After running the command,
-canonical agent conversations, immutable attachments, accepted submissions, and workflow-run records persist to Postgres instead of in-memory state.
+canonical agent conversations, immutable attachments, and accepted submissions persist to Postgres instead of in-memory state.
 
 `@flue/postgres` is a **Node.js** adapter. The Cloudflare target uses Durable
 Object SQLite automatically and rejects a `db.ts` file at build time, so this
@@ -114,17 +115,23 @@ database written by a newer Flue refuses to start rather than corrupting state.
 
 A Flue database stores runtime state, not your whole application.
 
-| Stored by Flue                                                   | Not stored by Flue                                             |
-| ---------------------------------------------------------------- | -------------------------------------------------------------- |
-| Canonical agent conversation streams and compaction records       | Sandbox files and installed dependencies                       |
-| Immutable attachment payloads                                    | External API side effects                                      |
-| Accepted direct prompts and `dispatch(...)` submissions          | Application-owned business data unless your own tools store it |
-| Workflow-run records and persisted events                         | Provider credentials or secrets                                |
-| Run indexing for `/runs` lookups and `listRuns()`                 |                                                                |
+Stored by Flue:
+
+- canonical agent conversation streams and compaction records;
+- immutable attachment payloads;
+- accepted direct prompts and `dispatch(...)` submissions;
+- durable submission claims, leases, and settlement records.
+
+Not stored by Flue:
+
+- sandbox files and installed dependencies;
+- external API side effects;
+- application-owned business data, unless your own tools store it;
+- provider credentials or secrets.
 
 The submission rows are what make accepted work
-recoverable after an interruption. See [Durable Agents](/docs/concepts/durable-execution/)
-for how recovery uses them, and the [Data Persistence API](/docs/api/data-persistence-api/)
+recoverable after an interruption. See [Durability](/docs/guide/durability/)
+for how recovery uses them, and the [Data Persistence API](/docs/reference/data-persistence-api/)
 for the exact adapter contract.
 
 ## When to choose Postgres
@@ -136,7 +143,7 @@ for the exact adapter contract.
 | Multi-replica Node deployment, or state must survive host loss | `@flue/postgres`, with one live owner per agent instance      |
 | Cloudflare deployment                                          | Built-in Durable Object SQLite (no `db.ts`)                   |
 
-Choose Postgres when a replacement process must recover accepted work, when replicas need shared workflow history, or when a single host's disk is not a durable enough home for state. Keep one live owner for each agent instance and use instance-affine routing across replicas. Managed Postgres pairs naturally with the container deploy targets —
+Choose Postgres when a replacement process must recover accepted work, when replicas need shared conversation state, or when a single host's disk is not a durable enough home for state. Keep one live owner for each agent instance and use instance-affine routing across replicas. Managed Postgres pairs naturally with the container deploy targets —
 see [Deploy on AWS](/docs/ecosystem/deploy/aws/) for RDS, and the other
 [deploy guides](/docs/ecosystem/deploy/node/) for provisioning a database
 alongside the server.

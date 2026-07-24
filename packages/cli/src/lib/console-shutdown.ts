@@ -1,6 +1,11 @@
-import type { ExecutionLifecycle } from './execution-lifecycle.ts';
-
 const EXECUTION_SHUTDOWN_TIMEOUT_MS = 5000;
+
+/** The slice of a running execution the signal handler needs. */
+export interface AbortableExecution {
+	cancel(reason?: unknown): void;
+	close(): Promise<void>;
+	forceCloseSync(): void;
+}
 
 export interface BoundedShutdownOptions {
 	close(): Promise<void>;
@@ -37,14 +42,14 @@ export async function boundedShutdown(options: BoundedShutdownOptions): Promise<
 
 export function closeExecutionForSignal(
 	signal: NodeJS.Signals,
-	lifecycle: ExecutionLifecycle,
+	execution: AbortableExecution,
 	terminate?: (code: number) => unknown,
 ): Promise<void> {
 	const exitCode = signal === 'SIGINT' ? 130 : 143;
-	lifecycle.cancel();
+	execution.cancel();
 	return boundedShutdown({
-		close: () => lifecycle.close(),
-		forceCloseSync: () => lifecycle.forceCloseSync(),
+		close: () => execution.close(),
+		forceCloseSync: () => execution.forceCloseSync(),
 		exitCode,
 		terminate,
 	});

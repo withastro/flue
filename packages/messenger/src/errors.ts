@@ -8,9 +8,9 @@ export class InvalidMessengerInputError extends TypeError {
 	}
 }
 
-export class InvalidMessengerConversationKeyError extends TypeError {
+export class InvalidMessengerInstanceIdError extends TypeError {
 	constructor() {
-		super('Invalid Messenger conversation key.');
-		this.name = 'InvalidMessengerConversationKeyError';
+		super('Invalid Messenger instance id.');
+		this.name = 'InvalidMessengerInstanceIdError';
 	}
 }

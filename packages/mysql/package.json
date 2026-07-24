@@ -1,6 +1,6 @@
 {
 	"name": "@flue/mysql",
-	"version": "1.0.0-beta.9",
+	"version": "2.0.0-nightly.202607230552",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -33,8 +33,8 @@
 	},
 	"devDependencies": {
 		"mysql2": "^3.22.5",
-		"tsdown": "^0.22.0",
-		"typescript": "^6.0.3",
+		"tsdown": "^0.22.7",
+		"typescript": "^7.0.2",
 		"vitest": "^4.1.6"
 	}
 }

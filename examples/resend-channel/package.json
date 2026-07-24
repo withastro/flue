@@ -3,23 +3,27 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"build": "flue build --target node",
-		"build:cloudflare": "flue build --target cloudflare",
+		"build": "vite build",
+		"build:cloudflare": "vite build --config vite.config.cloudflare.ts",
 		"check:types": "tsc --noEmit",
 		"test": "vitest run --config vitest.config.ts && vitest run --config vitest.workerd.config.ts"
 	},
 	"dependencies": {
 		"@flue/resend": "workspace:*",
 		"@flue/runtime": "workspace:*",
+		"hono": "^4.7.0",
 		"resend": "*"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "0.16.15",
+		"@cloudflare/vite-plugin": "^1.39.2",
+		"@cloudflare/vitest-pool-workers": "0.18.7",
 		"@flue/cli": "workspace:*",
-		"@types/node": "^22.10.10",
+		"@flue/vite": "workspace:*",
+		"@types/node": "^26.1.1",
 		"@types/react": "^19.2.17",
-		"agents": "^0.14.2",
-		"typescript": "^6.0.3",
+		"agents": "^0.17.4",
+		"typescript": "^7.0.2",
+		"vite": "^8.0.14",
 		"vitest": "^4.1.6"
 	}
 }

@@ -8,9 +8,9 @@ export class InvalidGoogleChatInputError extends TypeError {
 	}
 }
 
-export class InvalidGoogleChatConversationKeyError extends TypeError {
+export class InvalidGoogleChatInstanceIdError extends TypeError {
 	constructor() {
-		super('Invalid Google Chat conversation key.');
-		this.name = 'InvalidGoogleChatConversationKeyError';
+		super('Invalid Google Chat instance id.');
+		this.name = 'InvalidGoogleChatInstanceIdError';
 	}
 }

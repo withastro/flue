@@ -96,7 +96,7 @@ export function extend<TBase extends object = CloudflareAgentLike, TEnv = any>(
 export function resolveCloudflareExtension(
 	mod: Record<string, unknown>,
 	name: string,
-	kind: 'Agent' | 'Workflow',
+	kind: 'Agent',
 ): ResolvedCloudflareExtension {
 	const extension = mod.cloudflare;
 	if (extension === undefined) return { base: identity, wrap: identity };

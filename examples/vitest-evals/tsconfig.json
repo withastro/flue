@@ -1,5 +1,5 @@
 {
 	"extends": "../../tsconfig.base.json",
 	"compilerOptions": { "lib": ["ESNext", "DOM"] },
-	"include": ["src", "flue.config.ts", "vitest.evals.config.ts"]
+	"include": ["src", "flue.config.ts", "vite.config.ts", "vitest.evals.config.ts"]
 }

@@ -1,6 +1,6 @@
 import { createNotionChannel } from '@flue/notion';
 import { defineTool, dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createNotionClient } from '../notion-client.ts';
 
 const PAGE_INSTANCE_PREFIX = 'notion-page:';
@@ -32,8 +32,12 @@ export const channel = createNotionChannel({
 			case 'page.locked':
 			case 'page.unlocked':
 			case 'page.undeleted': {
-				await dispatch(assistant, {
+				await dispatch(Assistant, {
 					id: pageInstanceId(event.entity.id),
+					// Recorded once when this event creates the instance; ignored after.
+					initialData: {
+						pageId: event.entity.id,
+					},
 					message: {
 						kind: 'signal',
 						type: `notion.${event.type}`,
@@ -69,17 +73,6 @@ export function retrievePage(pageId: string) {
 export function pageInstanceId(pageId: string): string {
 	if (!pageId) throw new TypeError('Notion page id must be non-empty.');
 	return `${PAGE_INSTANCE_PREFIX}${encodeURIComponent(pageId)}`;
-}
-
-export function pageIdFromInstanceId(id: string): string {
-	if (!id.startsWith(PAGE_INSTANCE_PREFIX)) {
-		throw new TypeError('Expected a local Notion page instance id.');
-	}
-	const encodedPageId = id.slice(PAGE_INSTANCE_PREFIX.length);
-	if (!encodedPageId) throw new TypeError('Expected a local Notion page instance id.');
-	const pageId = decodeURIComponent(encodedPageId);
-	if (!pageId) throw new TypeError('Expected a local Notion page instance id.');
-	return pageId;
 }
 
 function requiredEnv(name: string): string {

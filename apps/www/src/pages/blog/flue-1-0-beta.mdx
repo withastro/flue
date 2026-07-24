@@ -28,13 +28,13 @@ Try out Flue today. Pass along the prompt below to your coding agent to have it 
 
 <CopyPrompt text="Read https://flueframework.com/start.md then help create my first agent..." />
 
-Read our [Getting Started](/docs/getting-started/quickstart/) guide for full details.
+Read our [Getting Started](/docs/guide/getting-started/) guide for full details.
 
-_Update: `flue run` can execute either an agent or workflow on Node.js or Cloudflare. The experimental interactive console now ships separately as `@flue/dev-console`._
+_Update: Flue's adoption surface has since been redesigned — Flue is now a Vite plugin (`vite dev` / `vite build` replace `flue dev` / `flue build`), routes are mounted explicitly in `app.ts`, `flue run <path> --message` runs one agent locally, and workflows were folded into agents as [actions](/docs/guide/actions/). This post is preserved as written; see the [migration guide](/docs/guide/migration/) for the current surface. The experimental interactive console ships separately as `@flue/dev-console`._
 
 ## Introducing: Agents
 
-Flue originally launched with a simple programmable TypeScript harness, built on top of [Pi](https://pi.dev/). Flue's deterministic approach to agent orchestration turned out to be great for background work — structured automations we now call [Workflows](/docs/guide/workflows/). Workflows are where your trusted code drives the model from start to finish:
+Flue originally launched with a simple programmable TypeScript harness, built on top of [Pi](https://pi.dev/). Flue's deterministic approach to agent orchestration turned out to be great for background work — structured automations we called Workflows. Workflows are where your trusted code drives the model from start to finish:
 
 ```ts
 // src/workflows/summarize.ts
@@ -188,7 +188,7 @@ npm install -D @flue/cli
 npx flue init
 ```
 
-Read the full [Quickstart](/docs/getting-started/quickstart/) for more details.
+Read the full [Quickstart](/docs/guide/getting-started/) for more details.
 
 **Want to help support the project?** Star us on [GitHub](https://github.com/withastro/flue), it's the easiest way to show your support and help us grow!
 

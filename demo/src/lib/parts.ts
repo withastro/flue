@@ -1,4 +1,4 @@
-import type { FlueConversationPart } from '@flue/react'
+import type { FlueConversationPart } from '@flue/react';
 
 /**
  * Whether a conversation part renders anything given the current preferences.
@@ -7,5 +7,5 @@ import type { FlueConversationPart } from '@flue/react'
  * when the transient "Thinking…" indicator is needed.
  */
 export function isVisiblePart(part: FlueConversationPart, showThinking: boolean): boolean {
-  return part.type === 'reasoning' ? showThinking : true
+	return part.type === 'reasoning' ? showThinking : true;
 }

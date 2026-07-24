@@ -53,9 +53,10 @@ and does not guarantee ordering. Persist the signed `payload.id` for
 application-owned deduplication. Use unsigned `delivery.invocationId` only to
 correlate provider delivery attempts.
 
-`ticketKey({ accountId, ticketId })` and `parseTicketKey(id)` provide canonical
-account-scoped ticket identifiers. They do not authorize access and the package
-does not infer a ticket from event families the application has not validated.
+`instanceId({ accountId, ticketId })` and `parseInstanceId(id)` provide
+canonical account-scoped ticket identifiers. They do not authorize access and
+the package does not infer a ticket from event families the application has
+not validated.
 
 Webhook creation, triggers and automations, destination authentication, OAuth,
 token storage, deduplication, ticket policy, Sunshine Conversations, AI Agent

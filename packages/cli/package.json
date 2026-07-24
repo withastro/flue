@@ -1,6 +1,6 @@
 {
 	"name": "@flue/cli",
-	"version": "1.0.0-beta.9",
+	"version": "2.0.0-nightly.202607230552",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -11,12 +11,6 @@
 	},
 	"bin": {
 		"flue": "bin/flue.mjs"
-	},
-	"exports": {
-		"./config": {
-			"types": "./dist/config.d.mts",
-			"import": "./dist/config.mjs"
-		}
 	},
 	"files": [
 		"bin/flue.mjs",
@@ -31,28 +25,25 @@
 		"build": "tsdown && mv dist/flue.mjs dist/flue.js",
 		"check:types": "tsc --noEmit",
 		"pretest": "pnpm run build",
-		"test": "node --test test/*.test.mjs && vitest run",
-		"test:integration:cloudflare": "vitest run --config vitest.integration.cloudflare.config.ts --no-file-parallelism"
+		"test": "node --test test/*.test.mjs && vitest run"
 	},
 	"dependencies": {
-		"@cloudflare/vite-plugin": "^1.39.2",
 		"@flue/runtime": "workspace:*",
-		"@flue/sdk": "workspace:*",
-		"@hono/node-server": "^2.0.3",
+		"@flue/vite": "workspace:*",
 		"@vercel/detect-agent": "^1.2.3",
-		"debug": "^4.4.3",
+		"cac": "^7.0.0",
 		"minisearch": "^7.2.0",
-		"package-up": "^5.0.0",
 		"picocolors": "^1.1.1",
+		"prompts": "^2.4.2",
 		"ulidx": "^2.4.1",
-		"valibot": "^1.0.0",
-		"vite": "^8.0.14"
+		"vite": "^8.1.2"
 	},
 	"devDependencies": {
-		"@types/debug": "^4.1.13",
-		"tsdown": "^0.22.0",
+		"@flue/sdk": "workspace:*",
+		"@types/prompts": "^2.4.9",
+		"tsdown": "^0.22.7",
 		"tsx": "^4.19.2",
-		"typescript": "^6.0.3",
+		"typescript": "^7.0.2",
 		"vitest": "^4.1.6"
 	}
 }

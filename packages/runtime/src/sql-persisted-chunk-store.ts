@@ -1,100 +1,71 @@
-import type {
-	PersistedChunkOwner,
-	PersistedChunkRow,
-	PersistedChunkStore,
-} from './persisted-image-placement.ts';
-import type { PersistedImageChunk } from './persisted-images.ts';
+import type { SubmissionChunkRow, SubmissionChunkStore } from './persisted-image-placement.ts';
 import type { SqlStorage } from './sql-storage.ts';
 
-export function ensureSqlPersistedChunkTable(sql: SqlStorage): void {
+export function ensureSqlSubmissionChunkTable(sql: SqlStorage): void {
 	sql.exec(
-		`CREATE TABLE IF NOT EXISTS flue_image_chunks (
-		 owner_kind TEXT NOT NULL,
-		 owner_id TEXT NOT NULL,
-		 owner_part TEXT NOT NULL,
-		 image_id TEXT NOT NULL,
+		`CREATE TABLE IF NOT EXISTS flue_submission_chunks (
+		 submission_id TEXT NOT NULL,
+		 item_id TEXT NOT NULL,
 		 chunk_index INTEGER NOT NULL,
 		 chunk_count INTEGER NOT NULL,
 		 data TEXT NOT NULL,
-		 PRIMARY KEY (owner_kind, owner_id, owner_part, image_id, chunk_index)
+		 PRIMARY KEY (submission_id, item_id, chunk_index)
 		)`,
 	);
 }
 
-export function createSqlPersistedChunkStore(sql: SqlStorage): PersistedChunkStore {
+export function createSqlSubmissionChunkStore(sql: SqlStorage): SubmissionChunkStore {
 	return {
-		read(owner) {
+		read(submissionId) {
 			return sql
 				.exec(
-					`SELECT image_id, chunk_index, chunk_count, data
-					 FROM flue_image_chunks
-					 WHERE owner_kind = ? AND owner_id = ? AND owner_part = ?
-					 ORDER BY image_id, chunk_index`,
-					owner.kind,
-					owner.id,
-					owner.part,
+					`SELECT item_id, chunk_index, chunk_count, data
+					 FROM flue_submission_chunks
+					 WHERE submission_id = ?
+					 ORDER BY item_id, chunk_index`,
+					submissionId,
 				)
 				.toArray()
 				.map(parseChunkRow);
 		},
-		replace(owner, chunks) {
-			deleteOwner(sql, owner);
-			insertChunks(sql, owner, chunks);
-		},
-		delete(owner) {
-			deleteOwner(sql, owner);
-		},
-		deleteMany(owners) {
-			for (const owner of owners) deleteOwner(sql, owner);
-		},
-		deleteOwner(kind, id) {
-			sql.exec('DELETE FROM flue_image_chunks WHERE owner_kind = ? AND owner_id = ?', kind, id);
+		replace(submissionId, chunks) {
+			sql.exec('DELETE FROM flue_submission_chunks WHERE submission_id = ?', submissionId);
+			insertChunks(sql, submissionId, chunks);
 		},
 	};
 }
 
-function parseChunkRow(row: Record<string, unknown>): PersistedChunkRow {
+function parseChunkRow(row: Record<string, unknown>): SubmissionChunkRow {
 	if (
-		typeof row.image_id !== 'string' ||
+		typeof row.item_id !== 'string' ||
 		typeof row.chunk_index !== 'number' ||
 		!Number.isInteger(row.chunk_index) ||
 		typeof row.chunk_count !== 'number' ||
 		!Number.isInteger(row.chunk_count) ||
 		typeof row.data !== 'string'
 	) {
-		throw new Error('[flue] Persisted image chunk row is malformed.');
+		throw new Error('[flue] Persisted submission chunk row is malformed.');
 	}
 	return {
-		imageId: row.image_id,
+		itemId: row.item_id,
 		index: row.chunk_index,
 		count: row.chunk_count,
 		data: row.data,
 	};
 }
 
-function deleteOwner(sql: SqlStorage, owner: PersistedChunkOwner): void {
-	sql.exec(
-		'DELETE FROM flue_image_chunks WHERE owner_kind = ? AND owner_id = ? AND owner_part = ?',
-		owner.kind,
-		owner.id,
-		owner.part,
-	);
-}
-
 function insertChunks(
 	sql: SqlStorage,
-	owner: PersistedChunkOwner,
-	chunks: readonly PersistedImageChunk[],
+	submissionId: string,
+	chunks: readonly SubmissionChunkRow[],
 ): void {
 	for (const chunk of chunks) {
 		sql.exec(
-			`INSERT INTO flue_image_chunks
-			 (owner_kind, owner_id, owner_part, image_id, chunk_index, chunk_count, data)
-			 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-			owner.kind,
-			owner.id,
-			owner.part,
-			chunk.imageId,
+			`INSERT INTO flue_submission_chunks
+			 (submission_id, item_id, chunk_index, chunk_count, data)
+			 VALUES (?, ?, ?, ?, ?)`,
+			submissionId,
+			chunk.itemId,
 			chunk.index,
 			chunk.count,
 			chunk.data,

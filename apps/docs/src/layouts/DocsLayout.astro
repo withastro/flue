@@ -35,7 +35,7 @@ const {
 	variant = 'default',
 } = Astro.props;
 const tableOfContents = headings.filter((heading) => heading.depth === 2 || heading.depth === 3);
-const coverVariant = currentSlug === 'concepts/agents' ? 'agents' : currentSlug === 'introduction/why-flue' ? 'workflows' : undefined;
+const coverVariant = currentSlug === 'introduction/why-flue' ? 'workflows' : undefined;
 const currentSection = getDocsSection(currentSlug);
 const markdownUrl = `${import.meta.env.BASE_URL}${currentSlug}/index.md`;
 const pageTitle = `${title} | Flue`;

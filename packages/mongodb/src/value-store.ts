@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { ulid } from 'ulidx';
 import type { MongoOperations, MongoRunner } from './mongodb-runner.ts';
 import { collectionName } from './schema.ts';
 
@@ -19,10 +19,10 @@ export class ValueStore {
 	) {}
 
 	async stage(owner: string, value: unknown): Promise<StoredValue> {
-		const pointer = { owner, generation: randomUUID(), count: 0 };
+		const pointer = { owner, generation: `gen_${ulid()}`, count: 0 };
 		const text = JSON.stringify([value]);
 		const parts: string[] = [];
-		for (let offset = 0; offset < text.length; ) {
+		for (let offset = 0; offset < text.length;) {
 			let end = Math.min(text.length, offset + PART_BYTES);
 			while (end > offset && Buffer.byteLength(text.slice(offset, end)) > PART_BYTES)
 				end -= Math.max(1, Math.ceil((end - offset) / 8));
@@ -40,18 +40,16 @@ export class ValueStore {
 			updatedAt: Date.now(),
 		});
 		try {
-			await this.runner
-				.collection(collectionName(this.prefix, 'values'))
-				.insertMany(
-					parts.map((data, index) => ({
-						_id: `${pointer.generation}:${index}`,
-						owner,
-						generation: pointer.generation,
-						index,
-						count: parts.length,
-						data,
-					})),
-				);
+			await this.runner.collection(collectionName(this.prefix, 'values')).insertMany(
+				parts.map((data, index) => ({
+					_id: `${pointer.generation}:${index}`,
+					owner,
+					generation: pointer.generation,
+					index,
+					count: parts.length,
+					data,
+				})),
+			);
 			return pointer;
 		} catch (error) {
 			await this.deleteParts(pointer);
@@ -93,24 +91,10 @@ export class ValueStore {
 		if (removed.deletedCount === 1) await this.deleteParts(pointer);
 	}
 
-	async retire(pointer: StoredValue): Promise<void> {
-		const registry = this.runner.collection(collectionName(this.prefix, 'value_generations'));
-		const result = await registry.updateOne(
-			{ _id: pointer.generation, owner: pointer.owner, state: 'published' },
-			{ $set: { state: 'retired', updatedAt: Date.now() } },
-		);
-		if (result.matchedCount === 1) await this.collect(pointer.generation);
-	}
-
 	async collectGarbage(now = Date.now()): Promise<void> {
 		const registry = this.runner.collection(collectionName(this.prefix, 'value_generations'));
 		const rows = await registry.find(
-			{
-				$or: [
-					{ state: 'retired' },
-					{ state: 'staged', createdAt: { $lt: now - STAGED_MAX_AGE_MS } },
-				],
-			},
+			{ state: 'staged', createdAt: { $lt: now - STAGED_MAX_AGE_MS } },
 			{ sort: { updatedAt: 1 }, limit: GC_BATCH },
 		);
 		for (const row of rows) await this.collect(String(row._id));
@@ -118,7 +102,7 @@ export class ValueStore {
 
 	private async collect(generation: string): Promise<void> {
 		const registry = this.runner.collection(collectionName(this.prefix, 'value_generations'));
-		const row = await registry.findOne({ _id: generation, state: { $in: ['staged', 'retired'] } });
+		const row = await registry.findOne({ _id: generation, state: 'staged' });
 		if (!row) return;
 		await this.runner.collection(collectionName(this.prefix, 'values')).deleteMany({ generation });
 		await registry.deleteOne({ _id: generation, state: row.state });

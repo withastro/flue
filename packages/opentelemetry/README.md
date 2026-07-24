@@ -28,23 +28,22 @@ const instrumentation = createOpenTelemetryInstrumentation({
 
 ## Semantic model
 
-| Flue boundary | OpenTelemetry representation |
-| --- | --- |
-| Workflow invocation | `invoke_workflow <name>` internal span |
-| Prompt or skill | `invoke_agent <agent>` internal span |
-| Delegated task | one task-owned `invoke_agent <agent>` internal span |
-| Provider inference | `chat <requested-model>` client span |
-| GenAI tool execution | `execute_tool <name>` internal span |
-| Caller shell execution | `flue.operation shell` internal span |
-| Context compaction | `flue.compaction` internal span with standard child chat spans |
+| Flue boundary          | OpenTelemetry representation                                   |
+| ---------------------- | -------------------------------------------------------------- |
+| Prompt or skill        | `invoke_agent <agent>` internal span                           |
+| Delegated task         | one task-owned `invoke_agent <agent>` internal span            |
+| Provider inference     | `chat <requested-model>` client span                           |
+| GenAI tool execution   | `execute_tool <name>` internal span                            |
+| Caller shell execution | `flue.operation shell` internal span                           |
+| Context compaction     | `flue.compaction` internal span with standard child chat spans |
 
 A provider chat span measures provider inference only. Tool spans are siblings under the owning agent invocation and correlate with model output through `gen_ai.tool.call.id`.
 
-`gen_ai.conversation.id` is the persisted opaque Flue session identity. Run, submission, dispatch, operation, trace, session-name, and provider-affinity values never substitute for it.
+`gen_ai.conversation.id` is the persisted opaque Flue session identity. Submission, dispatch, operation, trace, session-name, and provider-affinity values never substitute for it.
 
 ## Content capture
 
-Content capture is disabled by default. Implemented model-message, system-instruction, tool-definition, tool-description, argument/result, exception-message, and external-content paths receive no raw content in this mode. Workflow values are not currently exported even when capture is enabled.
+Content capture is disabled by default. Implemented model-message, system-instruction, tool-definition, tool-description, argument/result, exception-message, and external-content paths receive no raw content in this mode.
 
 Enable one instrumentation-wide policy and redact before export:
 
@@ -71,19 +70,18 @@ The instrumentation emits these applicable metrics:
 
 - `gen_ai.client.operation.duration`;
 - `gen_ai.client.token.usage`;
-- `gen_ai.workflow.duration`;
 - `gen_ai.invoke_agent.duration`;
 - `gen_ai.execute_tool.duration`.
 
-Metric attributes exclude conversation, run, submission, dispatch, operation, turn, task, and tool-call IDs. Input token totals include cache-read and cache-creation input tokens.
+Metric attributes exclude conversation, submission, dispatch, operation, turn, task, and tool-call IDs. Input token totals include cache-read and cache-creation input tokens.
 
 Logs are optional and require explicit structural Logger injection. Failed inference operations emit `gen_ai.client.operation.exception` at WARN/13. Error type is always recorded; transformed exception messages are included only when content capture is enabled. Traces and metrics work without a Logger.
 
 ## Propagation and recovery
 
-Flue validates and persists `traceparent` plus optional `tracestate` at workflow and direct-agent admission. Baggage is not persisted. Durable direct-agent execution activates its extracted admission context. `dispatch(...)` does not currently propagate trace context.
+Flue validates and persists `traceparent` plus optional `tracestate` at direct-agent admission. Baggage is not persisted. Durable direct-agent execution activates its extracted admission context. `dispatch(...)` does not currently propagate trace context.
 
-A restarted execution cannot keep an in-memory span open. Workflow recovery restores the persisted admission carrier as the parent of a new recovery-handling span. The new span begins at `run_resume`; it does not reconstruct or backdate the interrupted span. Recovery does not replay provider or tool execution. Replayed stream chunks do not create chat spans or usage metrics, and synthetic interrupted-tool repairs do not create tool spans.
+A restarted execution cannot keep an in-memory span open. Recovery does not replay provider or tool execution. Replayed stream chunks do not create chat spans or usage metrics, and synthetic interrupted-tool repairs do not create tool spans.
 
 ## Current limitation
 

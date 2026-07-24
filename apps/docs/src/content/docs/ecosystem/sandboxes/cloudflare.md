@@ -1,6 +1,7 @@
 ---
 title: Cloudflare Sandbox
 description: Run Flue agent work inside Cloudflare container-backed sandboxes.
+lastReviewedAt: 2026-07-21
 ---
 
 Cloudflare Sandbox uses `@cloudflare/sandbox` to provide a container-backed Linux environment to a Flue application deployed on Cloudflare. This integration is platform-native: it is not an adapter module for a Node-target application.
@@ -15,33 +16,27 @@ flue add sandbox cloudflare
 
 ## Overview
 
-Cloudflare Sandbox is a Cloudflare target integration rather than a generated adapter. In a Cloudflare-targeted project, the blueprint installs `@cloudflare/sandbox`; a workflow obtains the bound Durable Object with `getSandbox(...)`, wraps it with Flue's `cloudflareSandbox(...)`, and passes that sandbox factory to an agent definition.
+Cloudflare Sandbox is a Cloudflare target integration rather than a generated adapter. In a Cloudflare-targeted project, the blueprint installs `@cloudflare/sandbox`; the agent function obtains the bound Durable Object with `getSandbox(...)`, wraps it with Flue's `cloudflareSandbox(...)`, and attaches it with `useSandbox(...)`.
 
-```ts title="<source-root>/workflows/coding-agent.ts (excerpt)"
-import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+```ts title="src/agents/coding-agent.ts (excerpt)"
+'use agent';
+import { env } from 'cloudflare:workers';
+import { type AgentProps, useModel, useSandbox } from '@flue/runtime';
 import { cloudflareSandbox } from '@flue/runtime/cloudflare';
 import { getSandbox } from '@cloudflare/sandbox';
-import * as v from 'valibot';
 
-type Env = { Sandbox: DurableObjectNamespace };
+interface Env {
+  Sandbox: DurableObjectNamespace;
+}
 
-export const route: WorkflowRouteHandler = async (_c, next) => next();
-
-const agent = defineAgent<Env>(({ id, env }) => ({
-  sandbox: cloudflareSandbox(getSandbox(env.Sandbox, id)),
-  model: 'anthropic/claude-opus-4-7',
-}));
-
-export default defineWorkflow({
-  agent,
-  input: v.object({ message: v.string() }),
-  async run({ harness, input }) {
-    return await (await harness.session()).prompt(input.message);
-  },
-});
+export function CodingAgent({ id }: AgentProps) {
+  useModel('anthropic/claude-opus-4-7');
+  const { Sandbox } = env as unknown as Env;
+  useSandbox(cloudflareSandbox(getSandbox(Sandbox, id)));
+}
 ```
 
-The blueprint also exports `Sandbox` from `<source-root>/cloudflare.ts`, adds its Durable Object binding, a new migration entry, and its container declaration to `wrangler.jsonc`, and creates a project-root `Dockerfile` whose image tag matches the installed package version. The resulting workflow runs agent shell and file operations in the container-backed sandbox identified by the workflow run id. Cloudflare's direct delete API does not expose recursive or force controls, so `cloudflareSandbox()` rejects either option before mutation. A Node-targeted project must migrate to the Cloudflare target before using this integration.
+The blueprint also exports `Sandbox` from the source-root `cloudflare.ts`, adds its Durable Object binding, a new migration entry, and its container declaration to `wrangler.jsonc`, and creates a project-root `Dockerfile` whose image tag matches the installed package version. Agent shell and file operations run in the container-backed sandbox keyed by the agent instance id. Cloudflare's direct delete API does not expose recursive or force controls, so `cloudflareSandbox()` implements either option by running `rm` in the container, matching Node's `fs.rm` semantics. A Node-targeted project must migrate to the Cloudflare target before using this integration.
 
 ## Configure
 
@@ -64,17 +59,20 @@ export { Sandbox } from '@cloudflare/sandbox';
 Declare the sandbox binding in Wrangler configuration, then wrap the RPC stub returned by `getSandbox(...)` with `cloudflareSandbox(...)` and pass it to an agent:
 
 ```ts
+import { env } from 'cloudflare:workers';
 import { getSandbox } from '@cloudflare/sandbox';
-import { defineAgent } from '@flue/runtime';
+import { type AgentProps, useModel, useSandbox } from '@flue/runtime';
 import { cloudflareSandbox } from '@flue/runtime/cloudflare';
 
-type Env = { Sandbox: DurableObjectNamespace };
+interface Env {
+  Sandbox: DurableObjectNamespace;
+}
 
-export default defineAgent<Env>(({ id, env }) => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  sandbox: cloudflareSandbox(getSandbox(env.Sandbox, id)),
-  cwd: '/workspace',
-}));
+export function Assistant({ id }: AgentProps) {
+  useModel('anthropic/claude-sonnet-4-6');
+  const { Sandbox } = env as unknown as Env;
+  useSandbox(cloudflareSandbox(getSandbox(Sandbox, id)), { cwd: '/workspace' });
+}
 ```
 
 ## Choose this integration when

@@ -1,67 +1,42 @@
 ---
 title: CLI
-description: Use the Flue CLI to configure, develop, exercise, inspect, and build an application.
-lastReviewedAt: 2026-06-22
+description: The flue command-line interface — invocation, command catalog, global flags, and exit codes.
+lastReviewedAt: 2026-07-21
 ---
 
-Install `@flue/cli` as a development dependency, then invoke `flue` through your package manager:
+The `flue` CLI ships in the `@flue/cli` package as a single `flue` binary. It scaffolds projects, runs one agent module locally, fetches integration blueprints, and reads the documentation bundled with your installed version.
+
+The CLI is not the build tool. Dev servers and production builds are owned by [Vite](/docs/guide/deploy/): `vite dev` and `vite build`, with the `flue()` plugin from `@flue/vite` in `vite.config.ts`.
+
+## Invocation
+
+`@flue/cli` requires Node.js 22.19 or newer. [`flue init`](/docs/cli/init/) scaffolds it as a `devDependency`, and the [getting started guide](/docs/guide/getting-started/) installs it alongside `@flue/runtime`:
 
 ```bash
-npm install --save-dev @flue/cli
-npx flue dev
+npm install @flue/runtime @flue/cli
 ```
 
-The CLI requires Node.js `>=22.19.0`. Cloudflare development and deployment also require `wrangler` as a development dependency.
-
-## Develop locally
-
-`flue dev` serves the application for its configured Node.js or Cloudflare target, watches source files, and rebuilds on changes:
+The `flue` bin is then available through your package manager's runner (`npx flue`, `pnpm flue`, `yarn flue`) or from `package.json` scripts:
 
 ```bash
-npx flue dev
+npx flue run src/agents/assistant.ts -m "Say hello"
 ```
 
-Use its real HTTP and SDK surface while authoring application routes and integrations. Agents and workflows are not public merely because they are discovered; [Routing](/docs/guide/routing/) explains authored exposure.
+## Commands
 
-## Exercise one resource
+- [`flue init [directory]`](/docs/cli/init/) — scaffold a starter Flue project, prompting for the build target and server setup when flags are omitted.
+- [`flue run <path>`](/docs/cli/run/) — run one agent module locally without a server: submit one message, stream the turn, print the reply, exit.
+- [`flue add [kind] [name|url]`](/docs/cli/add/) — fetch a blueprint implementation guide for a coding agent to follow; with no arguments, list the available blueprints.
+- [`flue update <kind> <name|url>`](/docs/cli/update/) — fetch the same blueprint guide for updating an existing integration.
+- [`flue docs [read|search]`](/docs/cli/docs/) — list the bundled documentation pages, print one as markdown, or search them.
 
-`flue run` executes one agent prompt or workflow invocation and exits:
+Each command page is the reference for that command's arguments, flags, and output. Every command prints its primary payload to stdout and everything else — prompts, streaming output, errors — to stderr, so piping stdout is always safe.
 
-```bash
-npx flue run assistant --input '{"message":"Summarize this repository."}'
-npx flue run summarize-ticket --input '{"ticket":"Ticket details"}'
-```
+## Global flags
 
-Without an absolute `--server`, the command starts the configured Node.js or Cloudflare runtime temporarily. It calls through the authored `app.ts` and an existing `flue()` mount, so normal application and resource middleware executes. Route-free resources are temporarily available through that mount for local use; this does not alter deployment behavior or create a mount.
+| Flag              | Description                                                                           |
+| ----------------- | ------------------------------------------------------------------------------------- |
+| `--help`, `-h`    | Print usage to stdout and exit 0. Works globally and per command (`flue run --help`). |
+| `--version`, `-v` | Print the `@flue/cli` version to stdout and exit 0.                                   |
 
-Use `--server /api/flue` for a non-root authored local mount. An absolute URL attaches to an already-running local or deployed application:
-
-```bash
-npx flue run workflow:summarize-ticket \
-  --server https://example.com/api/flue \
-  --input '{"ticket":"Ticket details"}'
-```
-
-See [`flue run`](/docs/cli/run/) for input, identity, headers, resource qualification, and server behavior.
-
-## Build and deploy
-
-`flue build` creates target-specific deployment output:
-
-```bash
-npx flue build
-```
-
-A build packages the discovered application for its runtime target. It does not choose a model, add credentials, expose additional routes, or configure platform-owned bindings. Continue to the [Node.js](/docs/ecosystem/deploy/node/) or [Cloudflare](/docs/ecosystem/deploy/cloudflare/) deployment guide.
-
-## Command reference
-
-| Command                              | Description                                                                     |
-| ------------------------------------ | ------------------------------------------------------------------------------- |
-| [`flue init`](/docs/cli/init/)       | Create an initial `flue.config.ts`.                                             |
-| [`flue dev`](/docs/cli/dev/)         | Serve and watch the local application.                                          |
-| [`flue run`](/docs/cli/run/)         | Execute one agent prompt or workflow invocation, then exit.                     |
-| [`flue build`](/docs/cli/build/)     | Create deployable application artifacts.                                        |
-| [`flue add`](/docs/cli/add/)         | Fetch sandbox, channel, or database installation blueprints for a coding agent. |
-| [`flue update`](/docs/cli/update/)   | Fetch a current blueprint so a coding agent can apply its newer upgrade guides. |
-| [`flue docs`](/docs/cli/docs/)       | List, read, and search the bundled Flue documentation.                          |
+There are no other global flags; every command rejects flags it does not declare.

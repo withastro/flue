@@ -1,9 +1,8 @@
 /**
  * Pi-ai provider that dispatches via `env.AI.run()` instead of HTTP.
- * Registered under the `cloudflare-ai-binding` API.
  *
- * Binding access: the generated entry captures `env.AI` at module init and
- * stores it on the resolved Model as a non-pi-ai `binding` field.
+ * Binding access: `cloudflareBindingProvider()` captures `env.AI` (and the
+ * resolved AI Gateway options) in the provider's stream-function closure.
  *
  * Wire format: the binding accepts multiple Cloudflare model families. Workers
  * AI and OpenAI-family models use the OpenAI-compatible shape; Anthropic AI
@@ -12,25 +11,39 @@
 import type { Ai } from '@cloudflare/workers-types';
 import type {
 	AnthropicOptions,
-	ApiProvider,
 	AssistantMessage,
 	Context,
 	Model,
 	OpenAICompletionsCompat,
+	Provider,
+	ProviderStreams,
 	SimpleStreamOptions,
-	StreamFunction,
-	StreamOptions,
 	Tool,
 	ToolCall,
 	Usage,
-} from '@earendil-works/pi-ai/compat';
-import { createAssistantMessageEventStream, parseStreamingJson } from '@earendil-works/pi-ai/compat';
-import { stream as streamAnthropic } from '@earendil-works/pi-ai/api/anthropic-messages';
-import { convertMessages } from '@earendil-works/pi-ai/api/openai-completions';
-import { CLOUDFLARE_AI_BINDING_API, type CloudflareAIBindingApi } from '../cloudflare-model.ts';
-import { CloudflareAIBindingError } from '../errors.ts';
-import { getModelBinding, getModelGateway } from '../runtime/providers.ts';
+} from '@earendil-works/pi-ai';
+import {
+	type Api,
+	createAssistantMessageEventStream,
+	createProvider,
+	parseStreamingJson,
+} from '@earendil-works/pi-ai';
+// Protocol implementations load lazily, matching pi's own provider design:
+// the worker entry imports this module in every isolate, but the ~90KB of
+// wire-protocol code should cost nothing until a binding model streams.
+import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
+import { cloudflareWorkersAIProvider } from '@earendil-works/pi-ai/providers/cloudflare-workers-ai';
+import { CloudflareAIBindingError, RETRYABLE_INTERRUPTION_MARKER } from '../errors.ts';
+import { attachProviderResponseDiagnostics } from '../provider-diagnostics.ts';
+import { DYNAMIC_MODEL_TEMPLATE } from '../runtime/providers.ts';
 import type { CloudflareGatewayOptions } from './gateway.ts';
+
+/**
+ * The `api` marker carried by this provider's models. Purely descriptive
+ * since the provider dispatches every model through one stream pair — no
+ * wire-protocol registry consults it.
+ */
+const CLOUDFLARE_AI_BINDING_API = 'cloudflare-ai-binding' as const;
 
 // ─── OpenAI-completions compat profile ──────────────────────────────────────
 
@@ -45,8 +58,12 @@ import type { CloudflareGatewayOptions } from './gateway.ts';
  * `sendSessionAffinityHeaders` is inert in this provider — it applies the
  * `x-session-affinity` header itself in `streamCloudflareWorkersAi`.
  */
-const WORKERS_AI_COMPAT: Required<Omit<OpenAICompletionsCompat, 'cacheControlFormat'>> & {
+const WORKERS_AI_COMPAT: Omit<
+	Required<OpenAICompletionsCompat>,
+	'cacheControlFormat' | 'deferredToolsMode'
+> & {
 	cacheControlFormat?: OpenAICompletionsCompat['cacheControlFormat'];
+	deferredToolsMode?: OpenAICompletionsCompat['deferredToolsMode'];
 } = {
 	supportsStore: false,
 	supportsDeveloperRole: false,
@@ -65,6 +82,7 @@ const WORKERS_AI_COMPAT: Required<Omit<OpenAICompletionsCompat, 'cacheControlFor
 	supportsStrictMode: true,
 	cacheControlFormat: undefined,
 	sendSessionAffinityHeaders: true,
+	sessionAffinityFormat: 'openai',
 	supportsLongCacheRetention: false,
 };
 
@@ -277,13 +295,15 @@ function isAbortError(error: unknown): boolean {
 	return error instanceof DOMException && error.name === 'AbortError';
 }
 
-const streamCloudflareWorkersAi: StreamFunction<CloudflareAIBindingApi, SimpleStreamOptions> = (
-	model,
-	context,
-	options,
-) => {
+function streamCloudflareWorkersAi(
+	ai: Ai,
+	gateway: CloudflareGatewayOptions | undefined,
+	model: Model<Api>,
+	context: Context,
+	options?: SimpleStreamOptions,
+) {
 	if (isAnthropicGatewayModel(model)) {
-		return streamCloudflareAnthropicAi(model, context, options);
+		return streamCloudflareAnthropicAi(ai, gateway, model, context, options);
 	}
 
 	const stream = createAssistantMessageEventStream();
@@ -301,7 +321,9 @@ const streamCloudflareWorkersAi: StreamFunction<CloudflareAIBindingApi, SimpleSt
 
 		let response: Response | undefined;
 		try {
-			const ai = resolveBinding(model);
+			// Loaded on demand (module-cached after the first call); the static
+			// specifier keeps bundlers chunking it normally.
+			const { convertMessages } = await import('@earendil-works/pi-ai/api/openai-completions');
 			const messages = convertMessages(
 				// `convertMessages` is typed for `Model<'openai-completions'>` but
 				// only reads provider/id/reasoning, which our model has.
@@ -337,7 +359,6 @@ const streamCloudflareWorkersAi: StreamFunction<CloudflareAIBindingApi, SimpleSt
 			// arbitrary ids through the unknown-model overload (see RunOverload).
 			// `returnRawResponse: true` + `stream: true` in the payload gives us
 			// the raw SSE Response we parse below.
-			const gateway = getModelGateway(model);
 			response = (await (ai.run as unknown as RunOverload)(model.id, finalPayload, {
 				returnRawResponse: true,
 				...(options?.signal ? { signal: options.signal } : {}),
@@ -350,10 +371,20 @@ const streamCloudflareWorkersAi: StreamFunction<CloudflareAIBindingApi, SimpleSt
 				model,
 			);
 
+			// Response-level gateway correlation. This response's OWN header —
+			// never env.AI.aiGatewayLogId, which reflects the binding's most
+			// recent request and cross-attributes under concurrency.
+			const gatewayLogId = response.headers.get('cf-aig-log-id');
+			if (gatewayLogId) {
+				attachProviderResponseDiagnostics(output, { gatewayLogId });
+			}
+
 			await assertSuccessfulBindingResponse(response);
 
 			if (!response.body) {
-				throw new CloudflareAIBindingError({ message: 'Cloudflare AI binding returned empty response body.' });
+				throw new CloudflareAIBindingError({
+					message: 'Cloudflare AI binding returned empty response body.',
+				});
 			}
 
 			stream.push({ type: 'start', partial: output });
@@ -481,6 +512,11 @@ const streamCloudflareWorkersAi: StreamFunction<CloudflareAIBindingApi, SimpleSt
 					output.usage = parseChunkUsage(choice.usage);
 				}
 				if (choice.finish_reason) {
+					// Retain the exact raw value beside the normalized stopReason so
+					// observers can tell provider finish semantics apart (#492).
+					attachProviderResponseDiagnostics(output, {
+						providerFinishReason: choice.finish_reason,
+					});
 					const mapped = mapStopReason(choice.finish_reason);
 					output.stopReason = mapped.stopReason;
 					if (mapped.errorMessage) output.errorMessage = mapped.errorMessage;
@@ -550,7 +586,10 @@ const streamCloudflareWorkersAi: StreamFunction<CloudflareAIBindingApi, SimpleSt
 				throw new Error(output.errorMessage ?? 'Provider returned an error stop reason');
 			}
 			if (!hasFinishReason) {
-				throw new Error('Stream ended without finish_reason');
+				// The stream ended with no error frame and no finish_reason: the
+				// response was truncated in transit (known transient Workers AI
+				// behavior under load), not a model outcome — safe to retry.
+				throw new Error(`Stream ended without finish_reason ${RETRYABLE_INTERRUPTION_MARKER}`);
 			}
 
 			// `aborted` is statically possible on AssistantMessage but unreachable
@@ -586,19 +625,21 @@ const streamCloudflareWorkersAi: StreamFunction<CloudflareAIBindingApi, SimpleSt
 		}
 	})();
 	return stream;
-};
+}
 
 function streamCloudflareAnthropicAi(
-	model: Model<CloudflareAIBindingApi>,
+	ai: Ai,
+	gateway: CloudflareGatewayOptions | undefined,
+	model: Model<Api>,
 	context: Context,
 	options?: SimpleStreamOptions,
 ) {
-	const ai = resolveBinding(model);
-	const gateway = getModelGateway(model);
 	const anthropicModel = toAnthropicGatewayModel(model);
 	const client = createAnthropicBindingClient(ai, model, options, gateway);
 
-	return streamAnthropic(anthropicModel, context, {
+	// The lazy shim types options as plain StreamOptions; the impl receives
+	// the Anthropic-specific fields (client, thinkingEnabled) verbatim.
+	const anthropicOptions: AnthropicOptions = {
 		...options,
 		client,
 		cacheRetention: 'none',
@@ -610,7 +651,8 @@ function streamCloudflareAnthropicAi(
 				? normalized
 				: normalizeAnthropicGatewayPayload(overridden as Record<string, unknown>);
 		},
-	} satisfies AnthropicOptions);
+	};
+	return anthropicMessagesApi().stream(anthropicModel, context, anthropicOptions);
 }
 
 // ─── Internal helpers ───────────────────────────────────────────────────────
@@ -627,13 +669,11 @@ type RunOverload = (
 	},
 ) => Promise<Response | Record<string, unknown>>;
 
-function isAnthropicGatewayModel(model: Model<CloudflareAIBindingApi>): boolean {
+function isAnthropicGatewayModel(model: Model<Api>): boolean {
 	return model.id.startsWith('anthropic/');
 }
 
-function toAnthropicGatewayModel(
-	model: Model<CloudflareAIBindingApi>,
-): Model<'anthropic-messages'> {
+function toAnthropicGatewayModel(model: Model<Api>): Model<'anthropic-messages'> {
 	return {
 		...model,
 		api: 'anthropic-messages',
@@ -649,7 +689,7 @@ function toAnthropicGatewayModel(
 
 function createAnthropicBindingClient(
 	ai: Ai,
-	model: Model<CloudflareAIBindingApi>,
+	model: Model<Api>,
 	options: SimpleStreamOptions | undefined,
 	gateway: CloudflareGatewayOptions | undefined,
 ): AnthropicOptions['client'] {
@@ -688,7 +728,9 @@ function buildExtraHeaders(options: SimpleStreamOptions | undefined): Record<str
 	return extraHeaders;
 }
 
-function normalizeAnthropicGatewayPayload(payload: Record<string, unknown>): Record<string, unknown> {
+function normalizeAnthropicGatewayPayload(
+	payload: Record<string, unknown>,
+): Record<string, unknown> {
 	const system = payload.system;
 	if (Array.isArray(system)) {
 		const text = system
@@ -721,20 +763,6 @@ async function assertSuccessfulBindingResponse(response: Response): Promise<void
 	});
 }
 
-/**
- * Read the binding extension carried on the resolved Model.
- */
-function resolveBinding(model: Model<CloudflareAIBindingApi>): Ai {
-	const ai = getModelBinding(model);
-	if (!ai) {
-		throw new CloudflareAIBindingError({
-			message:
-				'Cloudflare AI binding not available. Models prefixed with "cloudflare/" require a configured AI binding.',
-		});
-	}
-	return ai as Ai;
-}
-
 function pickReasoning(delta: ChatCompletionDelta): { field: string; text: string } | null {
 	for (const field of ['reasoning_content', 'reasoning'] as const) {
 		const value = delta[field];
@@ -747,7 +775,7 @@ function pickReasoning(delta: ChatCompletionDelta): { field: string; text: strin
 
 function applyReasoningEffort(
 	payload: Record<string, unknown>,
-	model: Model<CloudflareAIBindingApi>,
+	model: Model<Api>,
 	level: SimpleStreamOptions['reasoning'] | undefined,
 ): void {
 	if (!model.reasoning || level === undefined) return;
@@ -765,6 +793,7 @@ function mapReasoningEffort(
 			return 'medium';
 		case 'high':
 		case 'xhigh':
+		case 'max':
 			return 'high';
 	}
 }
@@ -785,18 +814,84 @@ async function safeReadText(response: Response): Promise<string | undefined> {
 	}
 }
 
-// ─── Registration ──────────────────────────────────────────────────────────
+// ─── Provider factory ───────────────────────────────────────────────────────
 
 /**
- * Return the pi-ai `ApiProvider` definition for the Cloudflare AI binding.
+ * Minimal Workers AI binding shape. Kept structural so the factory type stays
+ * importable on Node.
  */
-export function getCloudflareAIBindingApiProvider(): ApiProvider<
-	CloudflareAIBindingApi,
-	StreamOptions
-> {
-	return {
-		api: CLOUDFLARE_AI_BINDING_API,
-		stream: streamCloudflareWorkersAi,
-		streamSimple: streamCloudflareWorkersAi,
-	};
+export interface CloudflareAIBinding {
+	run(
+		modelId: string,
+		inputs: Record<string, unknown>,
+		options?: Record<string, unknown>,
+	): Promise<Response | Record<string, unknown>>;
+}
+
+export interface CloudflareBindingProviderOptions {
+	/** The captured `env.AI` reference. */
+	binding: CloudflareAIBinding;
+	/**
+	 * AI Gateway options forwarded to every `env.AI.run(...)` call routed
+	 * through this provider.
+	 *
+	 * - Omitted: routes through Cloudflare's default AI Gateway, which the
+	 *   binding spins up on demand for the account.
+	 * - Options object: replaces the default. Specify `id` plus any other
+	 *   knobs (cache, metadata, logging).
+	 * - `false`: opts out — no gateway is passed to `ai.run`.
+	 *
+	 * See https://developers.cloudflare.com/ai-gateway/integrations/worker-binding-methods/.
+	 */
+	gateway?: CloudflareGatewayOptions | false;
+}
+
+/**
+ * The `cloudflare` provider: pi-ai models dispatched through the Workers AI
+ * binding (`env.AI.run()`) instead of HTTP. Model metadata hydrates from
+ * pi-ai's `cloudflare-workers-ai` catalog; IDs the catalog doesn't know
+ * resolve with zero metadata, since the binding accepts arbitrary model IDs.
+ *
+ * The generated worker entry registers it when the `providers` config is
+ * omitted or lists `'cloudflare'`; call `setProvider()` with this factory in
+ * `app.ts` to override the gateway options (a user registration wins over
+ * the generated one).
+ */
+export function cloudflareBindingProvider(options: CloudflareBindingProviderOptions): Provider {
+	// Resolve the documented tri-state: omitted routes through Cloudflare's
+	// default AI Gateway, `false` opts out, an options object replaces the
+	// default.
+	const gateway = options.gateway === false ? undefined : (options.gateway ?? { id: 'default' });
+	const ai = options.binding as Ai;
+	const stream = (model: Model<Api>, context: Context, streamOptions?: SimpleStreamOptions) =>
+		streamCloudflareWorkersAi(ai, gateway, model, context, streamOptions);
+	const streams: ProviderStreams = { stream, streamSimple: stream };
+
+	const provider = createProvider<Api>({
+		id: 'cloudflare',
+		name: 'Cloudflare Workers AI',
+		// Keyless: the binding itself is the credential.
+		auth: { apiKey: { name: 'Cloudflare AI binding', resolve: async () => ({ auth: {} }) } },
+		models: bindingCatalogModels(),
+		api: streams,
+	});
+	return Object.assign(provider, {
+		[DYNAMIC_MODEL_TEMPLATE]: { api: CLOUDFLARE_AI_BINDING_API, baseUrl: '' },
+	});
+}
+
+/**
+ * pi-ai's `cloudflare-workers-ai` catalog re-tagged for the binding: same
+ * IDs and metadata, dispatched through this provider instead of the REST API.
+ */
+function bindingCatalogModels(): Model<Api>[] {
+	return cloudflareWorkersAIProvider()
+		.getModels()
+		.map((model) => ({
+			...model,
+			api: CLOUDFLARE_AI_BINDING_API,
+			provider: 'cloudflare',
+			baseUrl: '',
+			compat: undefined,
+		}));
 }

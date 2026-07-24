@@ -45,14 +45,24 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  *
  * @example
  * ```typescript
+ * 'use agent';
  * import { Sandbox } from '@vercel/sandbox';
+ * import { useModel, useSandbox } from '@flue/runtime';
  * import { vercel } from './sandboxes/vercel';
  *
- * const sandbox = await Sandbox.create({ runtime: 'node24' });
- * const agent = defineAgent(() => ({ sandbox: vercel(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
- * export default defineWorkflow({ agent, async run({ harness }) {
- *   return await (await harness.session()).prompt('Inspect the workspace.');
- * }});
+ * export function Assistant() {
+ *   useModel('anthropic/claude-sonnet-4-6');
+ *   useSandbox({
+ *     // Lazy, per the SandboxFactory contract: constructing this object is
+ *     // cheap; the expensive Vercel sandbox creation happens once, inside
+ *     // createSessionEnv(), at initialization — never on a re-render.
+ *     async createSessionEnv(options) {
+ *       const sandbox = await Sandbox.create({ runtime: 'node24' });
+ *       return vercel(sandbox).createSessionEnv(options);
+ *     },
+ *   });
+ *   return 'You are a helpful assistant with a full sandbox.';
+ * }
  * ```
  */
 import { createSandboxSessionEnv } from '@flue/runtime';
@@ -210,9 +220,10 @@ There are two paths, depending on where the sandbox runs:
   ```
 
   This drops a `.vercel/.env.development.local` (or similar) file with
-  `VERCEL_OIDC_TOKEN` populated. The user will need to load that file at
-  runtime — `flue dev --env <file>` and `flue run --env <file>` accept any
-  `.env`-format file.
+  `VERCEL_OIDC_TOKEN` populated. For one-shot runs, point `flue run` at it
+  with `--env .vercel/.env.development.local` (by default `flue run` loads
+  the project's `.env`). `vite dev` and the built server read the shell
+  environment (`process.env`), so export the token there for those.
 
   For non-Vercel CI or other environments where OIDC isn't available, the
   user can use a Vercel access token instead. Direct them to Vercel's
@@ -229,28 +240,30 @@ into, you can finish that work by wiring the adapter into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+'use agent';
 import { Sandbox } from '@vercel/sandbox';
+import { useModel, useSandbox } from '@flue/runtime';
 import { vercel } from '../sandboxes/vercel'; // adjust path to match the user's layout
 
-export const route: WorkflowRouteHandler = async (_c, next) => next();
-
-const agent = defineAgent(async () => {
-  const sandbox = await Sandbox.create({ runtime: 'node24' });
-  return {
-    sandbox: vercel(sandbox),
-    model: 'anthropic/claude-sonnet-4-6',
-  };
-});
-
-export default defineWorkflow({
-  agent,
-  run: async ({ harness }) => {
-    const session = await harness.session();
-    return await session.shell('uname -a');
-  },
-});
+export function Assistant() {
+	useModel('anthropic/claude-sonnet-4-6');
+	useSandbox({
+		// Lazy, per the SandboxFactory contract: constructing this object is
+		// cheap; the expensive Vercel sandbox creation happens once, inside
+		// createSessionEnv(), at initialization — never on a re-render.
+		async createSessionEnv(options) {
+			const sandbox = await Sandbox.create({ runtime: 'node24' });
+			return vercel(sandbox).createSessionEnv(options);
+		},
+	});
+	return 'You are a helpful assistant with a full sandbox.';
+}
 ```
+
+The `'use agent'` directive at the top is what registers the module with
+the application. Mount `createAgentRouter(...)` (from `@flue/runtime/routing`) in
+`app.ts` only if the agent needs
+an HTTP endpoint — `flue run` and `dispatch()` work without a mount.
 
 ## Verify
 
@@ -260,8 +273,9 @@ export default defineWorkflow({
    actually wrote the file.
 3. Tell the user the next steps: install `@vercel/sandbox` (if you didn't),
    make sure `VERCEL_OIDC_TOKEN` is available at runtime (per the
-   Authentication section above), and run `flue dev` (or
-   `flue run <workflow>`) to try it.
+   Authentication section above), and run
+   `flue run <path-to-the-agent-module> --message "..."` (or `vite dev`
+   for the full application) to try it.
 
 When updating an existing integration, inspect and compare it against this complete current blueprint, apply every relevant change while preserving customizations, and then add or update the marker in the primary marked file. This comparison is required when the marker is missing.
 

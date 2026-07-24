@@ -1,84 +1,77 @@
 ---
 title: flue run
-description: Reference for executing one agent prompt or workflow invocation from the command line.
-lastReviewedAt: 2026-06-22
+description: Reference for running one agent module locally, transport-free, from the command line.
+lastReviewedAt: 2026-07-21
 ---
 
 ## Synopsis
 
 ```bash
-flue run <name> [--target <node|cloudflare>] [--id <id>] [--input <json>] [--server <path|url>] [--header 'Name: value'] [--root <path>] [--output <path>] [--config <path>] [--env <path>]
+flue run <path> --message <text> [--name <agent>] [--id <id>] [--data <json>] [--uid <uid> | --new] [--env <path>] [--json]
 ```
 
 ## Description
 
-`flue run` executes one discovered agent prompt or workflow invocation, streams its activity, prints the terminal result, and exits. With no absolute `--server`, it starts a temporary Node.js or Cloudflare HTTP runtime and calls the resource through the normal application.
+`flue run` executes one agent module in the local Node.js process: it submits one message, streams the agent's activity to stderr, prints the final assistant reply to stdout, and exits. No server is created and no build artifacts are written — only the agent module (and whatever it imports) is loaded, never `app.ts`. A module that imports `cloudflare:*` APIs fails with a pointer at `vite dev`, where platform bindings exist.
 
-The authored `app.ts`, outer middleware, and authored resource middleware run as they do for an HTTP caller. The temporary runtime also makes route-free discovered resources available through an existing authored `flue()` mount, without changing authored metadata or deployment output. It does not create a mount or bypass application composition.
+Conversations persist between invocations, so `--id` continues a conversation an earlier run started. Storage comes from the project's [db entry](/docs/guide/database/) when one exists, or a project-local cache file (`node_modules/.cache/flue/run.db`) without one. `flue.config.*` is discovered from the current working directory, and the project `.env` is loaded automatically (values already set in the shell win).
 
-## Resource names
+## Options
 
-`<name>` may identify an agent or workflow. If both kinds use the same name, qualify it:
+| Option                 | Description                                                                                                                                                                                                                             |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<path>`               | The agent module to run, as a file path resolved from the current working directory.                                                                                                                                                    |
+| `-m, --message <text>` | The user message submitted to the agent. Required.                                                                                                                                                                                      |
+| `--name <agent>`       | Which agent to run when the module defines several. Matches the agent's name — its `agentName` static when set, otherwise the exported function name. Required when the module exports more than one agent; there is no silent default. |
+| `--id <id>`            | Conversation id to create or continue. Defaults to a fresh generated ULID, printed on stderr.                                                                                                                                           |
+| `--data <json>`        | Instance-creation data, read inside the agent with [`useInitialData()`](/docs/guide/agent-hooks/). Consulted only when this run creates the conversation; silently ignored on continues. Cannot be combined with `--uid`.               |
+| `--uid <uid>`          | Continue only the conversation instance with this uid. Cannot be combined with `--new` or `--data`.                                                                                                                                     |
+| `--new`                | Create only: the run is rejected when the conversation id already exists.                                                                                                                                                               |
+| `--json`               | Print a JSON result envelope to stdout instead of the reply text.                                                                                                                                                                       |
+| `--env <path>`         | Load one alternate `.env`-format file before the run instead of the default `.env`.                                                                                                                                                     |
 
-```bash
-flue run agent:report --input '{"message":"Prepare the report."}'
-flue run workflow:report --input '{"period":"week"}'
-```
+## Output
 
-An absolute `--server` always requires `agent:<name>` or `workflow:<name>` because no local project is available for discovery.
-
-## Input and identity
-
-Agent `--input` is required and takes a `message` string, delivered as a `kind: 'user'` message:
+The final assistant reply prints to stdout; everything else — streamed text, tool activity, status rows — goes to stderr, so stdout stays pipeable. With `--json`, stdout is one JSON envelope instead:
 
 ```json
-{ "message": "Summarize the open issues." }
+{
+  "id": "support-4821",
+  "agent": "hello",
+  "submissionId": "…",
+  "outcome": "completed",
+  "message": "The final assistant reply.",
+  "uid": "inst_…"
+}
 ```
 
-It may also include an `images` field of `{ type: "image", data, mimeType }` attachments. `--id` selects the persistent agent-instance ID. If omitted, Flue generates and displays a bare ULID. Reusing an ID resumes persisted state only when the configured persistence adapter survives the temporary process.
+`--json` always prints exactly one envelope, discriminated by `outcome`, for every terminal result:
 
-Workflow `--input` is parsed as JSON and passed unchanged. It may be omitted when the workflow accepts omitted input. Workflow `--id` is not supported; workflows use their generated run IDs.
+- `"outcome": "completed"` carries `message` (the assistant reply).
+- `"outcome": "failed"` and `"outcome": "aborted"` carry an `error` object instead of a reply — `{ message, type?, details?, dev? }`, the typed fields present when the underlying error is a Flue error.
+- A setup or admission failure before the run starts (module resolution, config, creation-data validation) prints `{ "outcome": "error", "error": { … } }`.
 
-## Server and headers
-
-`--server` selects the Flue base URL:
-
-```bash
-flue run summarize --server /api/flue --input '{"text":"hello"}'
-flue run workflow:summarize --server https://example.com/api/flue --input '{"text":"hello"}'
-```
-
-A path starts a temporary local runtime and points the SDK at that authored `flue()` mount. An absolute URL attaches to an existing local or deployed application and skips local configuration, discovery, build, and startup. `--server` never creates, moves, or alters routes; a wrong path receives the application's normal response.
-
-Repeat `--header` to send authentication or application context on admission, stream reads, and reconnects:
-
-```bash
-flue run report --header 'Authorization: Bearer ...'
-```
-
-For repeated header names, the final value wins case-insensitively.
-
-## Project options
-
-| Option            | Default                                                    | Description                                                                                                                         |
-| ----------------- | ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `--target <name>` | Configuration value                                        | Select `node` or `cloudflare` for a temporary local runtime.                                                                        |
-| `--root <path>`   | Selected config-file directory, or config search directory | Select the project root.                                                                                                            |
-| `--output <path>` | `<root>/dist`                                              | Configure deployment build output. Temporary Node execution does not write runtime artifacts there.                                 |
-| `--config <path>` | Auto-discovered `flue.config.*`                            | Select a configuration file.                                                                                                        |
-| `--env <path>`    | `<config-base>/.env`, when present                         | Select one alternate `.env`-format file loaded before configuration. Relative paths resolve from `<config-base>`. Shell values win. |
-
-These project options are not resolved for an absolute `--server` attachment.
-
-## Output and target support
-
-Run identity and streamed events are written to stderr. A successful non-null terminal result is written as formatted JSON to stdout. The temporary runtime stops after settlement and does not watch or reload source files.
-
-Local execution supports both Node.js and Cloudflare. Cloudflare uses the normal local Vite/workerd runtime and its persisted development state.
+The envelope supplements the exit code rather than replacing it: `0` for completed, `1` for failed and setup errors, `130` for aborts.
 
 ## Examples
 
 ```bash
-flue run assistant --input '{"message":"Draft a release summary."}'
-flue run summarize --target cloudflare --input '{"text":"hello"}' --env .env.staging
+# Run an agent once and print its reply
+flue run src/agents/hello.ts -m "Hi there"
+
+# Continue the same conversation across invocations
+flue run src/agents/support.ts -m "It fails on startup." --id support-4821
+flue run src/agents/support.ts -m "Node 22, macOS."      --id support-4821
+
+# Pick one agent from a multi-agent module
+flue run src/agents/team.ts --name second-shift -m "Take over."
+
+# CI: create exactly once, seed creation data, capture the envelope
+flue run src/agents/triage.ts -m "Triage this." --id "issue-$N" --data '{"issue": 17307}' --new --json
+
+# Extract just the reply text from the envelope
+flue run src/agents/hello.ts -m "Run the demo." --json | jq -r .message
+
+# Load staging credentials for one run
+flue run src/agents/hello.ts -m "Hi" --env .env.staging
 ```

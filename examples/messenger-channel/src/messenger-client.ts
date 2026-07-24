@@ -1,12 +1,7 @@
 import type { MessengerParticipantRef } from '@flue/messenger';
 
 type MessengerJsonValue =
-	| null
-	| boolean
-	| number
-	| string
-	| MessengerJsonValue[]
-	| { [key: string]: MessengerJsonValue };
+	null | boolean | number | string | MessengerJsonValue[] | { [key: string]: MessengerJsonValue };
 
 export interface MessengerClientOptions {
 	pageId: string;

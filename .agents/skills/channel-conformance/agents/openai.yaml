@@ -1,4 +1,0 @@
-interface:
-  display_name: 'Channel Conformance'
-  short_description: 'Build and audit first-party HTTP channels'
-  default_prompt: 'Use $channel-conformance to research, implement, test, and audit one first-party Flue channel.'

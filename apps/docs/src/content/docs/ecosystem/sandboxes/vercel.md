@@ -1,7 +1,7 @@
 ---
 title: Vercel Sandbox
 description: Connect a Flue agent to an application-owned Vercel Sandbox environment.
-lastReviewedAt: 2026-05-30
+lastReviewedAt: 2026-07-21
 ---
 
 The Vercel Sandbox adapter adapts an initialized `@vercel/sandbox` `Sandbox` into Flue's sandbox interface. Use it when application code should execute agent work inside a Vercel-managed sandbox rather than on its host filesystem.
@@ -20,7 +20,7 @@ The blueprint installs `@vercel/sandbox` when needed and creates `sandboxes/verc
 
 ```ts title="<source-root>/sandboxes/vercel.ts (abridged)"
 // flue-blueprint: sandbox/vercel@1
-import { createSandboxSessionEnv } from '@flue/runtime';
+import { createSandboxSessionEnv, useModel } from '@flue/runtime';
 import type { SandboxApi, SandboxFactory, SessionEnv, FileStat } from '@flue/runtime';
 import type { Sandbox as VercelSandbox } from '@vercel/sandbox';
 
@@ -99,7 +99,7 @@ export function vercel(sandbox: VercelSandbox): SandboxFactory {
 }
 ```
 
-Pass an initialized Vercel `Sandbox` to `vercel(...)` and assign the returned factory to an agent's `sandbox` property. The adapter maps the provider's complete file stat, resolves relative paths from `/vercel/sandbox`, forwards a composed signal to command execution and output reads, propagates caller cancellation, and maps only `timeoutMs` cancellation to exit code 124.
+Pass an initialized Vercel `Sandbox` to `vercel(...)` and pass the returned factory to the agent's `useSandbox(...)` call. The adapter maps the provider's complete file stat, resolves relative paths from `/vercel/sandbox`, forwards a composed signal to command execution and output reads, propagates caller cancellation, and maps only `timeoutMs` cancellation to exit code 124.
 
 ## Configure
 
@@ -117,16 +117,23 @@ Pass an initialized Vercel `Sandbox` to `vercel(...)` and assign the returned fa
 
 ```ts
 import { Sandbox } from '@vercel/sandbox';
-import { defineAgent } from '@flue/runtime';
+import { useModel, useSandbox } from '@flue/runtime';
 import { vercel } from '../sandboxes/vercel';
 
-const sandbox = await Sandbox.create({ runtime: 'node24' });
-const agent = defineAgent(() => ({
-  model: 'anthropic/claude-sonnet-4-6',
-  sandbox: vercel(sandbox),
-}));
+export function Assistant() {
+  useModel('anthropic/claude-sonnet-4-6');
+  useSandbox({
+    // Lazy, per the SandboxFactory contract: constructing this object is
+    // cheap; the expensive Vercel sandbox creation happens once, inside
+    // createSessionEnv(), at initialization — never on a re-render.
+    async createSessionEnv(options) {
+      const sandbox = await Sandbox.create({ runtime: 'node24' });
+      return vercel(sandbox).createSessionEnv(options);
+    },
+  });
+}
 ```
 
 Keep Vercel authentication values in trusted application configuration and determine whether sandboxes should be fresh per job or reusable for stable agent identities.
 
-See [Sandboxes](/docs/guide/sandboxes/) and [Sandbox Adapter API](/docs/api/sandbox-api/).
+See [Sandboxes](/docs/guide/sandboxes/) and [Sandbox Adapter API](/docs/reference/sandbox-api/).

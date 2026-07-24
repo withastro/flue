@@ -4,6 +4,7 @@ description: Receive verified Resend webhooks and retrieve inbound email through
 package:
   name: '@flue/resend'
   href: https://www.npmjs.com/package/@flue/resend
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -20,9 +21,9 @@ The Resend blueprint installs `@flue/resend` and the official `resend` SDK, adds
 
 ```ts title="src/channels/resend.ts (abridged)"
 import { createResendChannel } from '@flue/resend';
-import { dispatch } from '@flue/runtime';
+import { dispatch, useModel } from '@flue/runtime';
 import { Resend } from 'resend';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const client = new Resend(process.env.RESEND_API_KEY!);
 
@@ -31,7 +32,7 @@ export const channel = createResendChannel({
   webhookSecret: process.env.RESEND_WEBHOOK_SECRET!,
   async webhook({ event, delivery }) {
     if (event.type !== 'email.received') return;
-    await dispatch(assistant, {
+    await dispatch(Assistant, {
       id: emailInstanceId(event.data.email_id),
       message: {
         kind: 'signal',
@@ -52,6 +53,18 @@ export const channel = createResendChannel({
 ```
 
 The abridged example omits the generated local email-id helpers and `retrieveReceivedEmail()` tool. The complete blueprint binds that tool in the agent module, so a verified `email.received` event starts a message-scoped agent instance that can retrieve the full email through the project-owned client. Receiving-domain setup, webhook registration, attachment retrieval, outbound mail, and reply policy remain application-owned.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as resend } from './channels/resend.ts';
+
+app.route('/channels/resend', resend.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/resend` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -81,9 +94,9 @@ bundle.
 
 ```ts title="src/channels/resend.ts"
 import { createResendChannel } from '@flue/resend';
-import { defineTool, dispatch } from '@flue/runtime';
+import { defineTool, dispatch, useModel } from '@flue/runtime';
 import { Resend } from 'resend';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 const EMAIL_INSTANCE_PREFIX = 'resend-email:';
 
@@ -97,7 +110,7 @@ export const channel = createResendChannel({
   async webhook({ event, delivery }) {
     switch (event.type) {
       case 'email.received': {
-        await dispatch(assistant, {
+        await dispatch(Assistant, {
           id: emailInstanceId(event.data.email_id),
           message: {
             kind: 'signal',
@@ -185,16 +198,16 @@ or durable storage.
 ## Bind the tool
 
 ```ts title="src/agents/assistant.ts"
-import { defineAgent } from '@flue/runtime';
+'use agent';
+import { type AgentProps, useModel, useTool } from '@flue/runtime';
 import { emailIdFromInstanceId, retrieveReceivedEmail } from '../channels/resend.ts';
 
-export default defineAgent(({ id }) => {
+export function Assistant({ id }: AgentProps) {
+  useModel('anthropic/claude-haiku-4-5');
   const emailId = emailIdFromInstanceId(id);
-  return {
-    model: 'anthropic/claude-haiku-4-5',
-    tools: [retrieveReceivedEmail(emailId)],
-  };
-});
+  useTool(retrieveReceivedEmail(emailId));
+  return 'Review the inbound support email. Retrieve the complete email when its body or headers are needed.';
+}
 ```
 
 The model can retrieve only the email already bound by trusted application

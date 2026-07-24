@@ -71,14 +71,7 @@ function parseVerification(rawBody: string): SalesforceMarketingCloudVerificatio
 		return undefined;
 	}
 	if (!isPlainObject(value)) return undefined;
-	const keys = Object.keys(value);
-	if (
-		keys.length !== 2 ||
-		!keys.includes('callbackId') ||
-		!keys.includes('verificationKey') ||
-		!isNonEmptyString(value.callbackId) ||
-		!isNonEmptyString(value.verificationKey)
-	) {
+	if (!isNonEmptyString(value.callbackId) || !isNonEmptyString(value.verificationKey)) {
 		return undefined;
 	}
 	return {
@@ -183,7 +176,8 @@ async function readBody(
 			if (done) break;
 			total += value.byteLength;
 			if (total > bodyLimit) {
-				void reader.cancel();
+				// Discard cancel rejections: an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
 				return { type: 'too-large' };
 			}
 			chunks.push(value);

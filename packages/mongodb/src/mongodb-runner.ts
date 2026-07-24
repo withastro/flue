@@ -77,9 +77,7 @@ export interface MongoRunner extends MongoOperations {
 	transaction<T>(fn: (tx: MongoOperations) => Promise<T>): Promise<T>;
 	topology(): Promise<MongoTopology>;
 	ensureCollection(spec: MongoCollectionSpec): Promise<void>;
-	inspectCollection(
-		name: string,
-	): Promise<{
+	inspectCollection(name: string): Promise<{
 		validator: MongoDocument;
 		validationLevel: 'strict';
 		validationAction: 'error';

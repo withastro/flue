@@ -1,7 +1,7 @@
 ---
 title: exe.dev
 description: Connect a Node-target Flue application to an exe.dev VM over SSH.
-lastReviewedAt: 2026-05-30
+lastReviewedAt: 2026-07-21
 ---
 
 The exe.dev adapter adapts an existing exe.dev VM into Flue's sandbox interface using SSH for commands and SFTP for files. Because it depends on Node.js APIs and `ssh2`, use it with the Node target rather than a Cloudflare Worker target.
@@ -95,4 +95,4 @@ Use exe.dev when a Node-hosted Flue application should operate inside a VM you r
 
 Treat SSH keys and provider tokens as server-side secrets. Decide whether agent instances share or allocate VMs, and clean up application-owned VMs according to your retention policy.
 
-See [Deploy on Node.js](/docs/ecosystem/deploy/node/), [Sandboxes](/docs/guide/sandboxes/), and [Sandbox Adapter API](/docs/api/sandbox-api/).
+See [Deploy on Node.js](/docs/ecosystem/deploy/node/), [Sandboxes](/docs/guide/sandboxes/), and [Sandbox Adapter API](/docs/reference/sandbox-api/).

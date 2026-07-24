@@ -14,6 +14,6 @@ In another terminal, run the eval:
 pnpm --filter example-vitest-evals evals
 ```
 
-Use `evals:info` for detailed tool and usage output, or `evals:json` to write `vitest-results.json` for CI and the local report UI. Set `FLUE_BASE_URL` to evaluate a deployed Flue application instead of the local server.
+Use `evals:info` for detailed tool and usage output, or `evals:json` to write `vitest-results.json` for CI and the local report UI. Set `FLUE_AGENT_URL` to the agent's mount URL on a deployed Flue application to evaluate it instead of the local server.
 
-The harness creates a fresh agent instance for each case, invokes it through `@flue/sdk`, and converts the response, token usage, and tool events into the normalized `vitest-evals` result.
+The harness opens a fresh conversation for each case (a new id appended to the agent's mount URL), drives it through `@flue/sdk`, and converts the response, token usage, and tool events into the normalized `vitest-evals` result.

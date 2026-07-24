@@ -10,10 +10,10 @@ export class InvalidZendeskInputError extends TypeError {
 	}
 }
 
-/** Thrown when a ticket key is malformed or non-canonical. */
-export class InvalidZendeskTicketKeyError extends TypeError {
+/** Thrown when an instance id is malformed or non-canonical. */
+export class InvalidZendeskInstanceIdError extends TypeError {
 	constructor() {
-		super('Invalid Zendesk ticket key.');
-		this.name = 'InvalidZendeskTicketKeyError';
+		super('Invalid Zendesk instance id.');
+		this.name = 'InvalidZendeskInstanceIdError';
 	}
 }

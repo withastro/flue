@@ -21,7 +21,7 @@ The channel module imports the agent and the agent imports the channel. This
 cycle is safe because imported bindings are read only inside the activity
 callback and agent initializer, after module evaluation.
 
-Conversation keys include a verified Bot Connector service URL so the example
+Instance ids include a verified Bot Connector service URL so the example
 can remain stateless. They validate syntax, not authorization. The agent is
 intentionally dispatch-only; any direct route must independently authorize the
 caller-selected instance id before using it for outbound requests.

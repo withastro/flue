@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { InstrumentationAlreadyInstalledError } from './errors.ts';
+import { InstrumentationAlreadyInstalledError, isDevMode } from './errors.ts';
 import type { FlueExecutionInterceptor } from './execution-interceptor.ts';
 import { registerExecutionInterceptor } from './execution-interceptor.ts';
 import type { FlueObservationSubscriber } from './observation.ts';
@@ -31,17 +31,17 @@ export function createInstrumentationOwner(): InstrumentationOwner {
 	const owner: InstrumentationOwnerRegistration = {
 		dispose() {
 			disposed = true;
-			disposePromise ??= Promise.allSettled([...disposers].reverse().map((dispose) => dispose())).then(
-				(results) => {
-					const errors = results
-						.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
-						.map((result) => result.reason);
-					if (errors.length === 1) throw errors[0];
-					if (errors.length > 1) {
-						throw new AggregateError(errors, '[flue] Instrumentation disposal failed.');
-					}
-				},
-			);
+			disposePromise ??= Promise.allSettled(
+				[...disposers].reverse().map((dispose) => dispose()),
+			).then((results) => {
+				const errors = results
+					.filter((result): result is PromiseRejectedResult => result.status === 'rejected')
+					.map((result) => result.reason);
+				if (errors.length === 1) throw errors[0];
+				if (errors.length > 1) {
+					throw new AggregateError(errors, '[flue] Instrumentation disposal failed.');
+				}
+			});
 			return disposePromise;
 		},
 		add(dispose) {
@@ -63,7 +63,20 @@ export function instrument(instrumentation: FlueInstrumentation): () => Promise<
 	const existing = installed.get(instrumentation);
 	if (existing) return existing;
 	const key = instrumentation.key;
-	if (key && installedKeys.has(key)) throw new InstrumentationAlreadyInstalledError();
+	if (key && installedKeys.has(key)) {
+		// In production a keyed double-install is a programming error. Under a
+		// dev module reload, user module scope (`instrument(...)` in `app.ts`)
+		// re-evaluates against a runtime module instance that persisted — most
+		// relevantly inside workerd, where the generated entry's static-import
+		// hoisting leaves no seam to dispose the prior install first (Node dev
+		// disposes through the bootstrap's instrumentation owner instead).
+		// Hot-reload semantics: the newest install wins, the prior one disposes.
+		if (!isDevMode()) throw new InstrumentationAlreadyInstalledError();
+		const previous = installedKeys.get(key);
+		installedKeys.delete(key);
+		const disposePrevious = previous ? installed.get(previous) : undefined;
+		if (disposePrevious) void disposePrevious().catch(() => undefined);
+	}
 	if (key) installedKeys.set(key, instrumentation);
 	let stopObserving: () => void;
 	let stopIntercepting: () => void;

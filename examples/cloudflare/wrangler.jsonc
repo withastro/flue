@@ -1,35 +1,30 @@
 {
-	// User-owned wrangler config for this Flue app. Flue reads this file,
-	// merges its own contributions into an ignored Vite input config, and the
-	// official Cloudflare Vite integration emits the deployable Worker output.
+	// User-owned wrangler config for this Flue app. The official Cloudflare
+	// Vite integration reads this file, applies Flue's contributions (the
+	// generated Worker entry and per-agent Durable Object bindings, via the
+	// flueWorkerConfig() customizer in vite.config.ts), and emits the
+	// deployable Worker output.
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "cloudflare",
 	"compatibility_date": "2026-06-01",
 	"compatibility_flags": ["nodejs_compat"],
+	// Migration history is user-authored: adding an agent = new exported
+	// function + mount + a migration tag for its generated class
+	// (`Flue<PascalName>Agent`, derived from the agent function's name).
+	// Renaming an agent FUNCTION is a storage-identity change — express it
+	// with wrangler-native `renamed_classes`.
 	"migrations": [
 		{
-			"tag": "flue-class-FlueRegistry",
-			"new_sqlite_classes": ["FlueRegistry"]
+			"tag": "flue-class-FlueWithCloudflareBindingAgent",
+			"new_sqlite_classes": ["FlueWithCloudflareBindingAgent"]
 		},
 		{
-			"tag": "flue-class-SkillsFromGitWorkflow",
-			"new_sqlite_classes": ["SkillsFromGitWorkflow"]
+			"tag": "flue-class-FlueSkillsFromGitAgent",
+			"new_sqlite_classes": ["FlueSkillsFromGitAgent"]
 		},
 		{
-			"tag": "flue-class-SkillsFromR2Workflow",
-			"new_sqlite_classes": ["SkillsFromR2Workflow"]
-		},
-		{
-			"tag": "flue-class-WithCloudflareBinding",
-			"new_sqlite_classes": ["WithCloudflareBinding"]
-		},
-		{
-			"tag": "flue-rename-generated-classes",
-			"renamed_classes": [
-				{ "from": "SkillsFromGitWorkflow", "to": "FlueSkillsFromGitWorkflow" },
-				{ "from": "SkillsFromR2Workflow", "to": "FlueSkillsFromR2Workflow" },
-				{ "from": "WithCloudflareBinding", "to": "FlueWithCloudflareBindingAgent" }
-			]
+			"tag": "flue-class-FlueSkillsFromR2Agent",
+			"new_sqlite_classes": ["FlueSkillsFromR2Agent"]
 		}
 	],
 	"ai": {

@@ -5,11 +5,17 @@ import type { PromptImage } from './types.ts';
 export { MAX_IMAGE_DATA_LENGTH };
 export const IMAGE_DATA_CHUNK_LENGTH = 256 * 1024;
 
-const markerPrefix = '__flue_image_chunks__:';
+const markerPrefix = '__flue_submission_chunks__:';
 
 type ImageBlock = PromptImage | (Omit<PromptImage, 'data'> & { data: string });
-export interface PersistedImageChunk {
-	imageId: string;
+
+/**
+ * One persisted chunk of a submission payload value: `itemId` addresses the
+ * chunked value within the submission (today: the attachment part's position),
+ * `index`/`count` order and complete the chunk group.
+ */
+export interface SubmissionChunkRow {
+	itemId: string;
 	index: number;
 	count: number;
 	data: string;
@@ -17,7 +23,7 @@ export interface PersistedImageChunk {
 
 export interface ExtractedImages<T> {
 	value: T;
-	chunks: PersistedImageChunk[];
+	chunks: SubmissionChunkRow[];
 }
 
 /**
@@ -62,18 +68,18 @@ export function extractSubmissionAttachments(
 
 export function hydrateSubmissionAttachments(
 	input: AgentSubmissionInput,
-	imageData: ReadonlyMap<string, string>,
+	itemData: ReadonlyMap<string, string>,
 ): AgentSubmissionInput {
 	if (input.message.kind !== 'user' || input.message.attachments === undefined) {
-		assertExactImageGroups([], imageData);
+		assertExactImageGroups([], itemData);
 		return input;
 	}
-	assertExactImageGroups(markerIds(input.message.attachments), imageData);
+	assertExactImageGroups(markerIds(input.message.attachments), itemData);
 	return {
 		...input,
 		message: {
 			...input.message,
-			attachments: hydrateImageArray(input.message.attachments, imageData),
+			attachments: hydrateImageArray(input.message.attachments, itemData),
 		},
 	} as AgentSubmissionInput;
 }
@@ -86,18 +92,18 @@ function extractImageArray(
 }
 
 function extractImageBlocks(blocks: unknown[]): ExtractedImages<unknown[]> {
-	const chunks: PersistedImageChunk[] = [];
+	const chunks: SubmissionChunkRow[] = [];
 	let imageIndex = 0;
 	const value = blocks.map((block) => {
 		if (!isImageBlock(block)) return block;
 		if (block.data.length > MAX_IMAGE_DATA_LENGTH) {
 			throw new Error(`[flue] Image data exceeds the ${MAX_IMAGE_DATA_LENGTH} character limit.`);
 		}
-		const imageId = String(imageIndex++);
+		const itemId = String(imageIndex++);
 		const count = Math.max(1, Math.ceil(block.data.length / IMAGE_DATA_CHUNK_LENGTH));
 		for (let index = 0; index < count; index++) {
 			chunks.push({
-				imageId,
+				itemId,
 				index,
 				count,
 				data: block.data.slice(
@@ -106,7 +112,7 @@ function extractImageBlocks(blocks: unknown[]): ExtractedImages<unknown[]> {
 				),
 			});
 		}
-		return { ...block, data: `${markerPrefix}${imageId}` };
+		return { ...block, data: `${markerPrefix}${itemId}` };
 	});
 	return { value, chunks };
 }
@@ -120,24 +126,24 @@ function markerIds(content: unknown): string[] {
 }
 
 function assertExactImageGroups(
-	markerImageIds: string[],
-	imageData: ReadonlyMap<string, string>,
+	markerItemIds: string[],
+	itemData: ReadonlyMap<string, string>,
 ): void {
-	const markers = new Set(markerImageIds);
-	if (markers.size !== markerImageIds.length || markers.size !== imageData.size) {
+	const markers = new Set(markerItemIds);
+	if (markers.size !== markerItemIds.length || markers.size !== itemData.size) {
 		throw new Error('[flue] Persisted image chunks do not match persisted image markers.');
 	}
-	for (const imageId of imageData.keys()) {
-		if (!markers.has(imageId)) {
+	for (const itemId of itemData.keys()) {
+		if (!markers.has(itemId)) {
 			throw new Error('[flue] Persisted image chunks do not match persisted image markers.');
 		}
 	}
 }
 
-function hydrateImageArray<T>(blocks: T[], imageData: ReadonlyMap<string, string>): T[] {
+function hydrateImageArray<T>(blocks: T[], itemData: ReadonlyMap<string, string>): T[] {
 	return blocks.map((block) => {
 		if (!isImageBlock(block) || !block.data.startsWith(markerPrefix)) return block;
-		const data = imageData.get(block.data.slice(markerPrefix.length));
+		const data = itemData.get(block.data.slice(markerPrefix.length));
 		if (data === undefined) throw new Error('[flue] Persisted image chunks are missing.');
 		return { ...block, data };
 	}) as T[];

@@ -4,6 +4,7 @@ description: Receive signed Notion webhook events and use the official client fr
 package:
   name: '@flue/notion'
   href: https://www.npmjs.com/package/@flue/notion
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -26,8 +27,8 @@ wires that tool into an agent. It may also add `"node"` to a restrictive
 ```ts title="src/channels/notion.ts (abridged)"
 import { Client } from '@notionhq/client';
 import { createNotionChannel } from '@flue/notion';
-import { dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { dispatch, useModel } from '@flue/runtime';
+import { Assistant } from '../agents/assistant.ts';
 
 export const client = new Client({ auth: process.env.NOTION_TOKEN! });
 
@@ -36,7 +37,7 @@ export const channel = createNotionChannel({
   async webhook({ event }) {
     if (event.type !== 'page.content_updated') return;
 
-    await dispatch(assistant, {
+    await dispatch(Assistant, {
       id: `notion-page:${encodeURIComponent(event.entity.id)}`,
       message: {
         kind: 'signal',
@@ -62,6 +63,18 @@ module handles additional page events, injects a Fetch implementation for Node
 and Cloudflare portability, and lets the bound agent retrieve current page
 state. Initial webhook verification uses a temporary setup callback, described
 below, before recurring signed delivery can begin.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as notion } from './channels/notion.ts';
+
+app.route('/channels/notion', notion.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/notion` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -95,8 +108,8 @@ is a type dependency and does not add Node code to a Worker bundle. If
 ```ts title="src/channels/notion.ts"
 import { Client } from '@notionhq/client';
 import { createNotionChannel } from '@flue/notion';
-import { defineTool, dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { defineTool, dispatch, useModel } from '@flue/runtime';
+import { Assistant } from '../agents/assistant.ts';
 
 const PAGE_INSTANCE_PREFIX = 'notion-page:';
 
@@ -136,7 +149,7 @@ export const channel = createNotionChannel({
       case 'page.undeleted':
       case 'page.locked':
       case 'page.unlocked': {
-        await dispatch(assistant, {
+        await dispatch(Assistant, {
           id: pageInstanceId(event.entity.id),
           message: {
             kind: 'signal',
@@ -201,7 +214,7 @@ arm. There is no synthetic `type: 'unknown'` variant, `eventType`, or `raw`
 mirror.
 
 The `notion-page:` id is a local application convention because
-`@flue/notion` does not invent one universal conversation key for unrelated
+`@flue/notion` does not invent one universal instance id for unrelated
 Notion resources. This example uses the page id because one project-owned
 client selects the installation. Include workspace or installation identity
 when one agent can cross credential domains.
@@ -209,13 +222,16 @@ when one agent can cross credential domains.
 ## Bind the tool
 
 ```ts title="src/agents/assistant.ts"
-import { defineAgent } from '@flue/runtime';
+'use agent';
+import { type AgentProps, useModel, useTool } from '@flue/runtime';
 import { pageIdFromInstanceId, retrievePage } from '../channels/notion.ts';
 
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  tools: [retrievePage(pageIdFromInstanceId(id))],
-}));
+export function Assistant({ id }: AgentProps) {
+  useModel('anthropic/claude-haiku-4-5');
+  const pageId = pageIdFromInstanceId(id);
+  useTool(retrievePage(pageId));
+  return 'Review the Notion page change. Retrieve the current page when its properties are needed.';
+}
 ```
 
 The model can request the current page summary, but it cannot select another

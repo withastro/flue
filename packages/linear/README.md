@@ -31,6 +31,6 @@ This package does not include an outbound Linear client, OAuth installation
 storage, or model tools. Run `flue add channel linear` to generate editable project
 code using the official `@linear/sdk` client.
 
-Conversation keys identify issues, nested issue-comment threads, and agent
+Instance ids identify issues, nested issue-comment threads, and agent
 sessions. They are not authorization capabilities. The package is stateless
 and does not deduplicate `Linear-Delivery` ids.

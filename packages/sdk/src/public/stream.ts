@@ -1,21 +1,19 @@
 /**
- * Typed Durable Streams wrapper for Flue event consumption.
+ * Typed Durable Streams wrapper for Flue conversation-stream consumption.
  *
  * Wraps `@durable-streams/client` to provide an {@link AsyncIterable} of
- * {@link FlueEvent} values with automatic reconnection, offset-based replay,
- * and SSE live tailing.
+ * {@link ConversationStreamChunk} values with automatic reconnection,
+ * offset-based replay, and SSE live tailing.
  */
 
 import type { BackoffOptions, LiveMode } from '@durable-streams/client';
 import { stream } from '@durable-streams/client';
-import type { FlueEvent } from '../types.ts';
+import type { ConversationStreamChunk } from './conversation-stream.ts';
 
-/** Options for streaming Flue events from an agent instance or workflow run. */
+/** Options for streaming conversation chunks from an agent instance. */
 export interface FlueStreamOptions {
 	/** Starting offset. Defaults to `'-1'` (full history). */
 	offset?: string;
-	/** Limit an `offset: '-1'` read to at most the most recent number of events. */
-	tail?: number;
 	/** Live tailing mode. Defaults to `true` (long-poll). */
 	live?: LiveMode;
 	/** Abort signal to cancel the stream. */
@@ -25,12 +23,12 @@ export interface FlueStreamOptions {
 }
 
 /**
- * Async iterable of Flue events backed by a Durable Streams connection.
+ * Async iterable of streamed values backed by a Durable Streams connection.
  *
  * Supports `for await...of` and explicit {@link cancel}. Breaking out of a
  * `for await` loop automatically cleans up the underlying connection.
  */
-export interface FlueEventStream<T = FlueEvent> extends AsyncIterable<T> {
+export interface FlueEventStream<T = ConversationStreamChunk> extends AsyncIterable<T> {
 	/** Cancel the stream and abort the underlying connection. */
 	cancel(reason?: unknown): void;
 	/**
@@ -53,8 +51,8 @@ export interface StreamConnectionOptions {
 }
 
 /**
- * Creates a {@link FlueEventStream} that yields individual {@link FlueEvent}
- * values from a Durable Streams endpoint.
+ * Creates a {@link FlueEventStream} that yields individual values from a
+ * Durable Streams endpoint.
  *
  * Consumes the DS client's `subscribeJson()` batches and yields events one at
  * a time. Each batch's subscriber promise resolves only after the batch's
@@ -63,22 +61,15 @@ export interface StreamConnectionOptions {
  * own batch's `Stream-Next-Offset`. The DS response's live `offset` getter is
  * never used as a checkpoint: response prefetch advances it past batches that
  * have not been delivered yet.
+ *
+ * Each streamed value is passed through `validate` before it is yielded; the
+ * caller supplies the validator for its element type (e.g. the SDK client
+ * validates `ConversationStreamChunk`).
  */
-export class UnsupportedFlueEventVersionError extends Error {
-	readonly received: unknown;
-	readonly supported = 3;
-
-	constructor(received: unknown) {
-		super(`Flue event version ${String(received)} is unsupported. Clear historical event data created by an earlier Flue beta.`);
-		this.name = 'UnsupportedFlueEventVersionError';
-		this.received = received;
-	}
-}
-
-export function createFlueEventStream<T = FlueEvent>(
+export function createFlueEventStream<T = ConversationStreamChunk>(
 	streamOpts: FlueStreamOptions,
 	connectionOpts: StreamConnectionOptions,
-	validate: (value: T) => T = assertSupportedEventVersion,
+	validate: (value: T) => T,
 ): FlueEventStream<T> {
 	const abortController = new AbortController();
 
@@ -99,7 +90,6 @@ export function createFlueEventStream<T = FlueEvent>(
 
 	const fetch = connectionOpts.fetch ?? globalThis.fetch;
 	const url = new URL(connectionOpts.url);
-	if (streamOpts.tail !== undefined) url.searchParams.set('tail', String(streamOpts.tail));
 
 	let connectOffset = streamOpts.offset ?? '-1';
 	let responsePromise: Promise<Awaited<ReturnType<typeof stream<T>>>> | undefined;
@@ -341,12 +331,6 @@ export function createFlueEventStream<T = FlueEvent>(
 			return iterator;
 		},
 	};
-}
-
-function assertSupportedEventVersion<T>(value: T): T {
-	const version = value && typeof value === 'object' ? (value as { v?: unknown }).v : undefined;
-	if (version !== 3) throw new UnsupportedFlueEventVersionError(version);
-	return value;
 }
 
 function isAbortError(err: unknown): boolean {

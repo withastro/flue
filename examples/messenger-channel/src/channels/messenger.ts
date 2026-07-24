@@ -1,7 +1,7 @@
 import { createMessengerChannel, type MessengerConversationRef } from '@flue/messenger';
 import { defineTool, dispatch } from '@flue/runtime';
 import * as v from 'valibot';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { MessengerClient } from '../messenger-client.ts';
 
 export const client = new MessengerClient({
@@ -30,8 +30,13 @@ export const channel = createMessengerChannel({
 				const attachmentTypes = (event.message.attachments ?? []).map(
 					(attachment) => attachment.type,
 				);
-				await dispatch(assistant, {
-					id: channel.conversationKey(conversation),
+				await dispatch(Assistant, {
+					id: channel.instanceId(conversation),
+					// Recorded once when this event creates the instance; ignored after.
+					initialData: {
+						pageId: conversation.pageId,
+						participant: conversation.participant,
+					},
 					message: {
 						kind: 'signal',
 						type: 'messenger.message',
@@ -57,10 +62,10 @@ export function postMessage(ref: MessengerConversationRef) {
 		name: 'post_messenger_message',
 		description: 'Post a message to the Facebook Messenger conversation bound to this agent.',
 		input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
-		async run({ input }) {
+		async run({ data }) {
 			const result = await client.messages.sendText({
 				to: ref.participant,
-				text: input.text,
+				text: data.text,
 			});
 			return {
 				...(result.messageId === undefined ? {} : { messageId: result.messageId }),

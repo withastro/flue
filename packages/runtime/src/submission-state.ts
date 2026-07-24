@@ -6,38 +6,51 @@
  * before the session was last saved. It is the single source of truth for
  * both consumers in `session.ts`:
  *
- * - `inspectPersistedInput`, which maps the fine-grained state onto the
- *   coarse `AgentSubmissionInspection` union used by reconciliation, and
+ * - `inspectCanonicalState`, which maps the fine-grained state onto the
+ *   coarse `AgentSubmissionInspection` union used by reconciliation
+ *   (`'absent' | 'completed' | 'interrupted'` — everything that is neither
+ *   absent nor completed is one bucket, because reconciliation's only move
+ *   is to fence in a replacement attempt and hand the submission back to
+ *   resume processing; repair is never conditional on the coarse mapping),
+ *   and
  * - the `runPersistedContextInput` preamble, which decides whether to
- *   resume, settle, or fail when (re)processing the input.
+ *   resume, settle, or fail when (re)processing the input — after the
+ *   ownership seam has already converged the stream structurally
+ *   (`materializeGhostStream`), so classification only ever sees committed
+ *   entries.
  *
  * The two consumers intentionally do NOT agree on every state. The current
  * divergences, pinned by `test/submission-state.test.ts`:
  *
- * - `resume` with mode `overflow` or `input_only`: the preamble resumes
- *   these, but inspection reports `'uncertain'`. Reconciliation treats
- *   `'uncertain'` as the one accepted provider-redispatch window and retries
- *   it (see `reconcileInterruptedSubmission`), so the coarse mapping still
- *   resumes correctly.
  * - `completed` with `overflow: true` (silent or truncation overflow on a
  *   stop/length response): inspection reports `'completed'`, but the
  *   preamble treats it as an overflow resume (compact and continue).
- * - `tool_use_unresolved`: inspection reports `'uncertain'`; the preamble
- *   repairs the trailing tool batch (every unresolved call gets an explicit
- *   unknown-outcome error, never a re-execution) and continues — identical to
- *   a partial batch. (Before the turn-journal removal a zero-result batch was
- *   settled as-is; canonical recovery cannot prove a tool "never started", so
- *   it conservatively repairs and lets the model proceed.)
- * - `advanced_past_input`: inspection reports `'uncertain'`, the preamble
- *   fails the operation.
+ * - `advanced_past_input` and `terminal_error`: inspection reports
+ *   `'interrupted'` (a replacement attempt is granted), but the preamble
+ *   fails the operation — the failed attempts burn down the retry budget to
+ *   a terminal settle rather than resuming.
+ *
+ * `tool_use_unresolved` inspects as `'interrupted'` and the preamble repairs
+ * the trailing tool batch (unresolved calls get explicit unknown-outcome
+ * errors — never a blind re-execution; only `durable: true` tool calls
+ * re-execute, replaying recorded steps) and continues — identical to a
+ * partial batch. Canonical recovery cannot prove a tool "never started", so
+ * it conservatively repairs and lets the model proceed.
  */
 
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { AssistantMessage } from '@earendil-works/pi-ai';
-import { isContextOverflow } from './compaction.ts';
+import { isAssistantContextOverflow } from './compaction.ts';
+import { RETRYABLE_INTERRUPTION_MARKER } from './errors.ts';
 
 export type CanonicalSubmissionEntry =
-	| { id: string; type: 'message'; message: AgentMessage }
+	| {
+			id: string;
+			type: 'message';
+			message: AgentMessage;
+			/** The submission that owns this entry, when one was active at record time. */
+			submissionId?: string;
+	  }
 	| { id: string; type: 'compaction' };
 
 /**
@@ -63,11 +76,12 @@ export type CanonicalSubmissionEntry =
  * - `overflow` — a context-overflow response; compact and retry the turn.
  * - `aborted_partial` — an aborted response without a recovered stream
  *   continuation (e.g. checkpointed when graceful shutdown aborted the
- *   turn). The partial is excluded from model context, so resuming replays
- *   the turn from the last durable user/toolResult message; the collected
- *   partial output stays preserved in history. When canonical partial deltas
- *   exist, reconciliation upgrades this state to `stream_continuation` via
- *   `recoverInterruptedStream` before processing resumes.
+ *   turn, or materialized from an interrupted in-progress stream at the
+ *   resume seam). The partial is excluded from model context, so resuming
+ *   replays the turn from the last durable user/toolResult message; the
+ *   collected partial output stays preserved in history. When the partial
+ *   carries continuable content, the resume path upgrades this state to
+ *   `stream_continuation` via `upgradeAbortedPartialToContinuation`.
  */
 type SubmissionResumeMode =
 	| 'input_only'
@@ -81,7 +95,12 @@ type SubmissionResumeMode =
 export type SubmissionState =
 	/** The persisted input entry was not found in session history. */
 	| { kind: 'absent' }
-	/** A later user input exists: the session moved on without settling this input. */
+	/**
+	 * A later user input exists: the session moved on without settling this
+	 * input. User messages joined into this submission's own response by the
+	 * turn-boundary join protocol do not count — they are absorbed input, not
+	 * advancement (see `isJoinedDeliveryInput`).
+	 */
 	| { kind: 'advanced_past_input' }
 	/**
 	 * The last assistant response is canonical (stopReason stop/length).
@@ -107,6 +126,28 @@ export type SubmissionState =
 	  };
 
 /**
+ * A user message absorbed into the classified submission's own response by
+ * the turn-boundary join protocol (a queued direct delivery), rather than a
+ * later input the session moved on to. A joined delivery's record carries
+ * the DELIVERY's `submissionId` — never the host's — while every record the
+ * host writes carries the host's own, and programmatic `session.prompt()`
+ * inputs carry none. Recognized only when the classified input's owning
+ * submission is known: joins exist solely under coordinator submissions, so
+ * an unowned input (degenerate/test setups, subagent reattach) keeps the
+ * strict reading.
+ */
+function isJoinedDeliveryInput(
+	entry: Extract<CanonicalSubmissionEntry, { type: 'message' }>,
+	ownSubmissionId: string | undefined,
+): boolean {
+	return (
+		ownSubmissionId !== undefined &&
+		entry.submissionId !== undefined &&
+		entry.submissionId !== ownSubmissionId
+	);
+}
+
+/**
  * Classify how far a persisted submission input progressed.
  *
  * @param following - `history.getActivePathSince(inputEntry.id)` for the
@@ -115,21 +156,32 @@ export type SubmissionState =
  * @param opts.contextWindow - The active model's context window, used for
  *   silent-overflow detection; pass 0 when no model is resolved (only
  *   explicit overflow error messages are detected then).
+ * @param opts.ownSubmissionId - The submission that owns the classified
+ *   input entry. User messages joined into that submission's response (see
+ *   {@link isJoinedDeliveryInput}) are continuation input for the same
+ *   response, not the session advancing past the input.
  */
 export function classifySubmissionState(
 	following: readonly CanonicalSubmissionEntry[] | undefined,
-	opts: { contextWindow: number },
+	opts: { contextWindow: number; ownSubmissionId?: string },
 ): SubmissionState {
 	if (following === undefined) return { kind: 'absent' };
-	if (following.some((entry) => entry.type === 'message' && entry.message.role === 'user')) {
+	if (
+		following.some(
+			(entry) =>
+				entry.type === 'message' &&
+				entry.message.role === 'user' &&
+				!isJoinedDeliveryInput(entry, opts.ownSubmissionId),
+		)
+	) {
 		return { kind: 'advanced_past_input' };
 	}
-	const assistantEntry = following.findLast(
+	const assistantIndex = following.findLastIndex(
 		(entry) => entry.type === 'message' && entry.message.role === 'assistant',
 	);
-	const assistant = assistantEntry?.type === 'message'
-		? (assistantEntry.message as AssistantMessage)
-		: undefined;
+	const assistantEntry = assistantIndex === -1 ? undefined : following[assistantIndex];
+	const assistant =
+		assistantEntry?.type === 'message' ? (assistantEntry.message as AssistantMessage) : undefined;
 	if (!assistant) {
 		return {
 			kind: 'resume',
@@ -137,7 +189,7 @@ export function classifySubmissionState(
 			consecutiveRetryableErrors: countConsecutiveRetryableModelErrors(following),
 		};
 	}
-	const overflow = isContextOverflow(assistant, opts.contextWindow);
+	const overflow = isAssistantContextOverflow(assistant, opts.contextWindow);
 	if (isCompletedAssistantResponse(assistant)) {
 		return { kind: 'completed', assistant, overflow };
 	}
@@ -159,12 +211,7 @@ export function classifySubmissionState(
 	}
 	if (
 		assistant.stopReason === 'aborted' &&
-		following.some(
-			(entry) =>
-				entry.type === 'message' &&
-				entry.message.role === 'signal' &&
-				entry.message.type === 'stream_continued',
-		)
+		hasAdjacentStreamContinuation(following, assistantIndex)
 	) {
 		return {
 			kind: 'resume',
@@ -216,6 +263,33 @@ export function classifySubmissionState(
 	return { kind: 'terminal_error', reason: assistant.errorMessage ?? assistant.stopReason };
 }
 
+/**
+ * Whether the recovery signal pair immediately follows the entry at
+ * `abortedIndex` — the SAME adjacency rule the context builder uses to decide
+ * whether the aborted partial enters model context (conversation-reducer.ts,
+ * `pathToContextEntries`). Classification and context inclusion must never
+ * disagree: an id-anywhere check would claim "recovered" for a partial the
+ * model cannot see. Adjacency is guaranteed by construction — the pair is
+ * appended only while the aborted partial is the leaf
+ * (`upgradeAbortedPartialToContinuation`) and appends are linear — so a
+ * `stream_continued` anywhere else in the window is stale by definition.
+ */
+function hasAdjacentStreamContinuation(
+	following: readonly CanonicalSubmissionEntry[],
+	abortedIndex: number,
+): boolean {
+	const next = following[abortedIndex + 1];
+	const afterNext = following[abortedIndex + 2];
+	return (
+		next?.type === 'message' &&
+		next.message.role === 'signal' &&
+		next.message.type === 'stream_interrupted' &&
+		afterNext?.type === 'message' &&
+		afterNext.message.role === 'signal' &&
+		afterNext.message.type === 'stream_continued'
+	);
+}
+
 export interface TrailingPartialToolBatch {
 	/** History entry id of the toolUse assistant whose batch is incomplete. */
 	entryId: string;
@@ -232,10 +306,18 @@ export interface TrailingPartialToolBatch {
  * partial of the next turn the abort also cut short.
  *
  * Conservative by construction: returns undefined when the batch is
- * complete (every call id has a recorded result), when a recovered stream
- * continuation exists (resumption continues from the recovered partial and
- * must not rewind history), or when any unexpected entry interrupts the
- * trailing `assistant → toolResults → [aborted assistant]` shape.
+ * complete (every call id has a recorded result) or when any unexpected
+ * entry interrupts the trailing `assistant → toolResults → [aborted
+ * assistant]` shape.
+ *
+ * A recovered stream continuation (resumption continues from the recovered
+ * partial and must not rewind history) needs no scan: the recovery signal
+ * pair adjacently follows its aborted assistant forever (appended only at
+ * the leaf, appends linear — the same adjacency rule the context builder
+ * enforces, see `hasAdjacentStreamContinuation`), so a recovered tail ends
+ * in signal entries the structural walk below rejects on its own, and a
+ * pair anywhere earlier is stale by definition and must not veto repair of
+ * a later trailing batch.
  *
  * Both the classifier and the session-side repair derive the batch through
  * this single function so they can never disagree about which turn is
@@ -244,16 +326,6 @@ export interface TrailingPartialToolBatch {
 export function findTrailingPartialToolBatch(
 	following: readonly CanonicalSubmissionEntry[],
 ): TrailingPartialToolBatch | undefined {
-	if (
-		following.some(
-			(entry) =>
-				entry.type === 'message' &&
-				entry.message.role === 'signal' &&
-				entry.message.type === 'stream_continued',
-		)
-	) {
-		return undefined;
-	}
 	let end = following.length;
 	const lastEntry = following[end - 1];
 	if (
@@ -292,8 +364,17 @@ export function findTrailingPartialToolBatch(
 	return { entryId: assistantEntry.id, assistant, toolCalls };
 }
 
+/**
+ * Whether an errored assistant message is worth re-attempting under the
+ * bounded in-loop retry budget. A throw site that can PROVE its failure was
+ * a transient interruption stamps `RETRYABLE_INTERRUPTION_MARKER` into the
+ * message (the persisted record carries only `errorMessage` text, so the
+ * marker is the transport) — checked first. The pattern list is the
+ * best-effort heuristic for error messages Flue does not author.
+ */
 export function isRetryableModelError(message: AssistantMessage): boolean {
 	if (message.stopReason !== 'error' || !message.errorMessage) return false;
+	if (message.errorMessage.includes(RETRYABLE_INTERRUPTION_MARKER)) return true;
 	return /overloaded|rate.?limit|too many requests|429|500|502|503|504|service.?unavailable|server.?error|network.?error|connection.?(?:reset|refused|lost)|socket hang up|fetch failed|timed? out|timeout|terminated/i.test(
 		message.errorMessage,
 	);

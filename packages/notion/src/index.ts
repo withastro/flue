@@ -1,3 +1,4 @@
+import { type ChannelRouteDefinition, createChannelRouter, type JsonValue } from '@flue/runtime';
 import type {
 	CommentCreatedWebhookPayload,
 	CommentDeletedWebhookPayload,
@@ -31,22 +32,10 @@ import type {
 	ViewDeletedWebhookPayload,
 	ViewUpdatedWebhookPayload,
 } from '@notionhq/client';
-import type { Context, Env, Handler } from 'hono';
+import type { Context, Env, Hono } from 'hono';
 import { createNotionWebhookHandler } from './webhook.ts';
 
-export type JsonValue =
-	| null
-	| boolean
-	| number
-	| string
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-
-export interface ChannelRoute<E extends Env = Env> {
-	readonly method: string;
-	readonly path: string;
-	readonly handler: Handler<E>;
-}
+export type { JsonValue } from '@flue/runtime';
 
 export interface NotionChannelOptions<E extends Env = Env> {
 	/**
@@ -58,6 +47,10 @@ export interface NotionChannelOptions<E extends Env = Env> {
 	bodyLimit?: number;
 	/**
 	 * Handles Notion's initial unsigned verification-token delivery.
+	 *
+	 * Also runs when a delivery's token does not match a configured
+	 * `verificationToken` — Notion rotated the token, and this handler is how
+	 * the new one is surfaced.
 	 *
 	 * This callback is setup code, not authenticated application ingress.
 	 */
@@ -154,7 +147,12 @@ export type NotionHandlerResult = NotionHandlerValue | Promise<NotionHandlerValu
 
 /** Verified Notion ingress. */
 export interface NotionChannel<E extends Env = Env> {
-	readonly routes: readonly ChannelRoute<E>[];
+	readonly routes: readonly ChannelRouteDefinition<E>[];
+	/**
+	 * Build a mountable Hono sub-app serving the channel's routes relative
+	 * to the mount point: `app.route('/channels/notion', channel.route())`.
+	 */
+	route(): Hono<E>;
 }
 
 /**
@@ -166,14 +164,16 @@ export function createNotionChannel<E extends Env = Env>(
 	options: NotionChannelOptions<E>,
 ): NotionChannel<E> {
 	validateOptions(options);
+	const routes: readonly ChannelRouteDefinition<E>[] = [
+		{
+			method: 'POST',
+			path: '/webhook',
+			handler: createNotionWebhookHandler(options),
+		},
+	];
 	return {
-		routes: [
-			{
-				method: 'POST',
-				path: '/webhook',
-				handler: createNotionWebhookHandler(options),
-			},
-		],
+		routes,
+		route: () => createChannelRouter(routes),
 	};
 }
 

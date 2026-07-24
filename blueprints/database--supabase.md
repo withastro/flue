@@ -8,10 +8,9 @@ You are an AI coding agent configuring Supabase Postgres persistence for a Flue
 project using the existing first-party `@flue/postgres` adapter and the `pg`
 driver. Do not create a Supabase-specific package or modify `@flue/postgres`.
 
-This persists canonical agent conversation streams, immutable attachments,
-accepted submissions, workflow-run records, and event
-streams across process restarts and replicas. It does not store application
-business data.
+This persists canonical agent conversation streams, immutable attachments, and
+accepted submissions across process restarts and replicas. It does not store
+application business data.
 
 ## Check the target first
 
@@ -90,8 +89,10 @@ export default postgres({
 ```
 
 Do not hardcode or invent a connection string. Follow the project's secret
-conventions and never commit a real value. For local development, `flue dev
---env <file>` and `flue run --env <file>` load any `.env`-format file. Update an
+conventions and never commit a real value. For local development, `flue run`
+loads the project's `.env` by default and `--env <file>` selects an alternate
+`.env`-format file; `vite dev` and the built server read the shell environment,
+so export the variable or source the file before starting them. Update an
 existing `.env.example` or environment documentation when the project keeps
 one; do not introduce a new secret-management convention without need.
 
@@ -108,8 +109,8 @@ There is no separate migration command. A database written by a newer Flue
 version refuses to start rather than risking incompatible writes.
 
 The adapter stores canonical append-only conversation streams, immutable external
-attachments, accepted submissions and durable turn journals, workflow-run records
-and indexes, and distinct event streams. The canonical stream is the sole transcript
+attachments, and accepted submissions with durable turn journals. The canonical
+stream is the sole transcript
 and is replayed from its beginning; replay acceleration and persisted-log compaction
 are deferred. Sessions append for the instance lifetime and have no per-session
 deletion. Whole-instance stream and attachment deletion methods are low-level primitives. It does not store sandbox
@@ -118,12 +119,12 @@ files, external API effects, provider secrets, or application business data.
 ## Verify
 
 1. Typecheck the project (`npx tsc --noEmit` is safe).
-2. Build the project's configured Node target and confirm `db.ts` is discovered
-   and wired into the generated server.
+2. Build the project (`vite build`) for its configured Node target and confirm
+   `db.ts` is discovered and wired into the generated server.
 3. Point `SUPABASE_DATABASE_URL` at a non-production Supabase project, start the
    server, and confirm `migrate()` creates the `flue_*` tables.
-4. Create agent or workflow state, restart the server, and confirm that state is
-   reloaded rather than recreated.
+4. Create agent state, restart the server, and confirm that state is reloaded
+   rather than recreated.
 5. If using the shared pooler, confirm the selected mode matches the deployment:
    session mode by default for persistent IPv4-only Node servers; transaction
    mode only with the prepared-statement and session-state constraints above.

@@ -1,38 +1,24 @@
 ---
 title: React
-description: Build React interfaces for live agent conversations and workflow runs.
+description: Build React interfaces for live agent conversations.
+lastReviewedAt: 2026-07-21
 ---
 
-`@flue/react` turns Flue's durable event streams into live React state. Use `useFlueAgent()` for a continuing conversation with an agent instance and `useFlueWorkflow()` to observe a finite workflow run. HTTP requests, authentication, and stream transport remain in `@flue/sdk`.
+`@flue/react` turns Flue's durable conversation streams into live React state. `useFlueAgent()` observes one agent conversation and sends messages into it. HTTP requests, authentication, and stream transport remain in `@flue/sdk`.
 
 ## Set up React
-
-Install both packages, create one SDK client, and provide it to your application:
 
 ```sh
 pnpm add @flue/react @flue/sdk
 ```
 
-```tsx title="src/main.tsx"
-import { FlueProvider } from '@flue/react';
-import { createFlueClient } from '@flue/sdk';
-import { createRoot } from 'react-dom/client';
-import { App } from './App.tsx';
+No provider or app-level setup is required. A hook addresses one conversation by URL: wherever your application's `app.ts` mounts the agent's routes (`app.route('/agents/support-assistant', createAgentRouter(SupportAssistant))`) plus a caller-chosen conversation id. Starting a new conversation is rendering the hook with a fresh id appended to the mount URL.
 
-const client = createFlueClient({ baseUrl: '/api' });
-
-createRoot(document.getElementById('root')!).render(
-  <FlueProvider client={client}>
-    <App />
-  </FlueProvider>,
-);
-```
-
-Configure authentication, headers, and custom `fetch` behavior on the client. The agent and workflow modules used below must export `route`; mounting `flue()` alone does not expose them. See [Routing](/docs/guide/routing/) to expose and protect the Flue API, including cross-origin applications.
+The agent must be mounted in `app.ts` for the browser to reach it, and the middleware you attach at that mount decides who may access which conversation. See [Routing](/docs/guide/routing/) to mount and protect the agent's routes, including for cross-origin applications.
 
 ## Build an agent conversation
 
-An agent instance is identified by its agent name and instance ID. The hook reconstructs its transcript from durable events, then follows new events:
+The hook reconstructs the conversation's transcript from durable events, then follows new events:
 
 ```tsx title="src/Chat.tsx"
 import { useFlueAgent } from '@flue/react';
@@ -41,8 +27,7 @@ import { useState } from 'react';
 export function Chat({ conversationId }: { conversationId: string }) {
   const [input, setInput] = useState('');
   const agent = useFlueAgent({
-    name: 'support-assistant',
-    id: conversationId,
+    url: `/api/agents/support-assistant/${conversationId}`,
   });
 
   async function submit(event: React.FormEvent) {
@@ -78,56 +63,43 @@ export function Chat({ conversationId }: { conversationId: string }) {
 }
 ```
 
+The `url` here assumes `app.ts` mounted the agent at `/api/agents/support-assistant`; use whatever URL your route map chose. Relative URLs resolve against the browser origin.
+
 `sendMessage()` adds the user message immediately and resolves when the server admits the prompt, not when generation finishes. The stream then reconciles that optimistic message with its durable copy without changing its transcript position. Use `status` to distinguish connection, submission, streaming, and error states. `historyReady` becomes `true` once the requested durable history has loaded as one coherent snapshot; it remains `true` through later live reconnects.
 
-Messages are Flue-owned `FlueConversationMessage` values with a parts-based shape: `text`, `reasoning`, `dynamic-tool`, and `file`. Validated structured tool output is preserved on the `dynamic-tool` part's `output`, so applications can render custom tool interfaces without a separate data-event channel. These are Flue's own types — they are not AI SDK types, and `@flue/react` neither depends on `ai` at runtime nor implements its transport protocol. Durable file attachments project as `file` parts carrying media type only; historical bytes are not served, so render uploads optimistically from local data.
+Messages are Flue-owned `FlueConversationMessage` values with a parts-based shape: `text`, `reasoning`, `dynamic-tool`, and `file`. Validated structured tool output is preserved on the `dynamic-tool` part's `output`, so applications can render custom tool interfaces without a separate data-event channel. These are Flue's own types — they are not AI SDK types, and `@flue/react` neither depends on `ai` at runtime nor implements its transport protocol. Durable `file` parts carry a ready-to-use `url` for attachment bytes (served through the agent router's attachments endpoint); optimistic uploads carry a local `data:` preview.
 
-The hook uses the SDK's materialized `agents.observe()` layer: it loads the complete canonical snapshot, publishes it atomically in durable order, and continues from that exact checkpoint through reconnects and canonical resets. Consumers do not need to coordinate the snapshot and live updates or sort `messages`. Observation follows live updates with Durable Streams long-polling. For a single point-in-time read with no live updates, call `client.agents.history()` directly instead. Partial text and reasoning are best-effort while streaming; the completed canonical assistant message is authoritative.
+The hook uses the Flue Agent SDK's materialized `observe()` layer: it loads the complete canonical snapshot, publishes it atomically in durable order, and continues from that exact checkpoint through reconnects and canonical resets. Consumers do not need to coordinate the snapshot and live updates or sort `messages`. Live updates default to SSE, falling back to Durable Streams long-polling (`live: 'long-poll'` selects it explicitly). For a single point-in-time read with no live updates, use the SDK client's `history()` directly instead. Partial text and reasoning are best-effort while streaming; the completed canonical assistant message is authoritative.
 
-To observe a conversation that may be created out-of-band after mount — by a server-side wakeup, queue worker, or webhook — call `refresh()` to re-run history catch-up and resume live updates. Deciding when to re-check is the application's responsibility, matching the SDK's [`observe()` model](/docs/sdk/agents/#clientagentsobserve).
+To observe a conversation that may be created out-of-band after mount — by a server-side wakeup, queue worker, or webhook — call `refresh()` to re-run history catch-up and resume live updates. Deciding when to re-check is the application's responsibility.
 
-## Observe a workflow run
+## Authentication and custom clients
 
-Workflow invocation and observation are separate. Invoke the workflow with the SDK, retain its `runId`, and pass that ID to `useFlueWorkflow()`:
+For custom headers, a bearer token, or custom `fetch` behavior, create the conversation client yourself and pass it to the hook. Memoize it — a new client instance replaces the session:
 
-```tsx title="src/Report.tsx"
-import { useFlueClient, useFlueWorkflow } from '@flue/react';
-import { useState } from 'react';
+```tsx
+import { useFlueAgent } from '@flue/react';
+import { createFlueClient } from '@flue/sdk';
+import { useMemo } from 'react';
 
-export function Report() {
-  const flue = useFlueClient();
-  const [runId, setRunId] = useState<string>();
-  const run = useFlueWorkflow({ runId });
-
-  async function generate() {
-    const invocation = await flue.workflows.invoke('weekly-report', {
-      input: { week: 'current' },
-    });
-    setRunId(invocation.runId);
-  }
-
-  return (
-    <section>
-      <button onClick={generate} type="button">
-        Generate report
-      </button>
-      <p>{run.status}</p>
-      {run.logs.map((event) => (
-        <pre key={`${event.timestamp}:${event.eventIndex}`}>{event.message}</pre>
-      ))}
-    </section>
+function Chat({ conversationId, token }: { conversationId: string; token: string }) {
+  const client = useMemo(
+    () =>
+      createFlueClient({
+        url: `/api/agents/support-assistant/${conversationId}`,
+        token,
+      }),
+    [conversationId, token],
   );
+  const agent = useFlueAgent({ client });
+  // ...
 }
 ```
 
-The hook replays the complete run before following live events, so it can attach before, during, or after execution. `events` contains the full event history, `logs` selects log events, and `result` or `error` records the terminal outcome.
-
-Transport failures reconnect from the last durable checkpoint. A workflow failure instead produces the terminal `errored` status; observation that ends without a terminal workflow event becomes `disconnected`.
-
 ## Rendering and deferred identity
 
-During server rendering, both hooks return empty, idle state and open no connections. The SDK client still needs an absolute `baseUrl` when it is created on the server; relative paths such as `/api` are browser-only. An omitted agent `id` or workflow `runId` also leaves the hook dormant while routing or application data resolves the identity.
+During server rendering, the hook returns empty, idle state and opens no connections. A relative `url` such as `/api/...` resolves against the browser origin, so the server render stays dormant and the hook connects after hydration. An omitted `url` (and `client`) leaves the hook dormant while routing or application data resolves the conversation identity.
 
 ## API reference
 
-See the [`@flue/react` package README](https://github.com/withastro/flue/tree/main/packages/react#readme) for complete options, result types, statuses, and message-part types.
+See the [`@flue/react` package README](https://github.com/withastro/flue/tree/main/packages/react#readme) for complete options, result types, statuses, and message-part types. A complete runnable chat UI is available in [`examples/react-chat`](https://github.com/withastro/flue/tree/main/examples/react-chat).

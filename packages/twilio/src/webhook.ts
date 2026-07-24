@@ -51,20 +51,17 @@ export function createTwilioWebhookHandler<E extends Env>(
 		const conversation = incomingConversation(options, payload);
 		if (!conversation) return response(403);
 
-		let result: unknown;
-		try {
-			result = await options.webhook({
+		return serializeHandlerResult(
+			await options.webhook({
 				c,
 				payload,
 				conversation,
 				...(accepted.idempotencyToken === undefined
 					? {}
 					: { idempotencyToken: accepted.idempotencyToken }),
-			});
-		} catch {
-			return response(500);
-		}
-		return serializeHandlerResult(result, true);
+			}),
+			true,
+		);
 	};
 }
 
@@ -92,20 +89,17 @@ export function createTwilioStatusCallbackHandler<E extends Env>(
 
 		const conversation = statusConversation(options, payload);
 
-		let result: unknown;
-		try {
-			result = await callback({
+		return serializeHandlerResult(
+			await callback({
 				c,
 				payload,
 				...(conversation === undefined ? {} : { conversation }),
 				...(accepted.idempotencyToken === undefined
 					? {}
 					: { idempotencyToken: accepted.idempotencyToken }),
-			});
-		} catch {
-			return response(500);
-		}
-		return serializeHandlerResult(result, false);
+			}),
+			false,
+		);
 	};
 }
 
@@ -258,11 +252,15 @@ async function verifySignature(
 	const names = [...form.keys()].sort();
 	let data = url;
 	for (const name of names) {
-		const values = [...new Set(form.get(name) ?? [])].sort();
-		for (const value of values) data += `${name}${value}`;
+		// Every occurrence in delivery order — no dedupe, no value sort — so
+		// the HMAC input is injective with respect to the parsed payload the
+		// handler receives: `Body=x&Body=x` must not verify against the
+		// signature Twilio computed for `Body=x`. (Twilio itself never sends
+		// duplicate keys, so genuine deliveries are unaffected.)
+		for (const value of form.get(name) ?? []) data += `${name}${value}`;
 	}
 	try {
-		return crypto.subtle.verify(
+		return await crypto.subtle.verify(
 			'HMAC',
 			key,
 			toArrayBuffer(signatureBytes),
@@ -314,7 +312,9 @@ async function readBody(
 			if (done) break;
 			total += value.byteLength;
 			if (total > limit) {
-				await reader.cancel();
+				// Not awaited (a slow cancel must not stall the 413); discard
+				// rejections — an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
 				return { type: 'too-large' };
 			}
 			chunks.push(value);
@@ -328,11 +328,15 @@ async function readBody(
 		return { type: 'ok', value: decoder.decode(bytes) };
 	} catch {
 		return { type: 'invalid' };
+	} finally {
+		// Always release the lock — the shape every sibling reader uses
+		// (e.g. messenger/src/webhook.ts readBody).
+		reader.releaseLock();
 	}
 }
 
 function serializeHandlerResult(value: unknown, twiml: boolean): Response {
-	if (value instanceof Response) return value;
+	if (Object.prototype.toString.call(value) === '[object Response]') return value as Response;
 	if (value !== undefined) return response(500);
 	return twiml
 		? new Response(EMPTY_TWIML, {

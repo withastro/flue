@@ -1,8 +1,4 @@
-import {
-	createLinearChannel,
-	type LinearConversationRef,
-	type LinearWebhookPayload,
-} from '@flue/linear';
+import { createLinearChannel, type LinearWebhookPayload } from '@flue/linear';
 import { defineTool, dispatch } from '@flue/runtime';
 import { LinearClient } from '@linear/sdk';
 import type {
@@ -10,7 +6,7 @@ import type {
 	EntityWebhookPayloadWithCommentData,
 } from '@linear/sdk/webhooks';
 import * as v from 'valibot';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 const organizationId = optionalEnv('LINEAR_ORGANIZATION_ID');
 const webhookId = optionalEnv('LINEAR_WEBHOOK_ID');
@@ -27,13 +23,20 @@ export const channel = createLinearChannel({
 		if (isCommentEvent(payload)) {
 			const comment = payload.data;
 			if (payload.action !== 'create' || !comment.issueId) return;
-			await dispatch(assistant, {
-				id: channel.conversationKey({
+			await dispatch(Assistant, {
+				id: channel.instanceId({
 					type: 'issue',
 					organizationId: payload.organizationId,
 					issueId: comment.issueId,
 					...(comment.parentId ? { threadCommentId: comment.parentId } : {}),
 				}),
+				// Recorded once when this event creates the instance; ignored after.
+				initialData: {
+					type: 'issue',
+					issueId: comment.issueId,
+					...(comment.parentId ? { threadCommentId: comment.parentId } : {}),
+					...(comment.issue?.title ? { issueTitle: comment.issue.title } : {}),
+				},
 				message: {
 					kind: 'signal',
 					type: 'linear.comment.created',
@@ -49,12 +52,20 @@ export const channel = createLinearChannel({
 		}
 
 		if (isAgentSessionEvent(payload)) {
-			await dispatch(assistant, {
-				id: channel.conversationKey({
+			await dispatch(Assistant, {
+				id: channel.instanceId({
 					type: 'agent-session',
 					organizationId: payload.organizationId,
 					agentSessionId: payload.agentSession.id,
 				}),
+				// Recorded once when this event creates the instance; ignored after.
+				initialData: {
+					type: 'agent-session',
+					agentSessionId: payload.agentSession.id,
+					...(payload.agentSession.issue?.title
+						? { issueTitle: payload.agentSession.issue.title }
+						: {}),
+				},
 				message: {
 					kind: 'signal',
 					type: `linear.agent_session.${payload.action}`,
@@ -85,13 +96,18 @@ function isAgentSessionEvent(
 	return payload.type === 'AgentSessionEvent' && 'agentSession' in payload;
 }
 
-export function postMessage(ref: LinearConversationRef) {
+/** The subset of `LinearConversationRef` actually needed to post a message. */
+export type LinearMessageRef =
+	| { type: 'agent-session'; agentSessionId: string }
+	| { type: 'issue'; issueId: string; threadCommentId?: string };
+
+export function postMessage(ref: LinearMessageRef) {
 	return defineTool({
 		name: 'post_linear_message',
 		description: 'Post a message to the Linear conversation bound to this agent.',
 		input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
-		async run({ input }) {
-			const { text } = input;
+		async run({ data }) {
+			const { text } = data;
 			if (ref.type === 'agent-session') {
 				const result = await client.createAgentActivity({
 					agentSessionId: ref.agentSessionId,

@@ -1,5 +1,5 @@
 import type { Env, Handler } from 'hono';
-import type { NotionChannelOptions, NotionHandlerResult, NotionWebhookEvent } from './index.ts';
+import type { NotionChannelOptions, NotionWebhookEvent } from './index.ts';
 
 const DEFAULT_BODY_LIMIT = 1024 * 1024;
 const encoder = new TextEncoder();
@@ -11,8 +11,12 @@ export function createNotionWebhookHandler<E extends Env>(
 	if (!Number.isSafeInteger(bodyLimit) || bodyLimit <= 0) {
 		throw new TypeError('Notion webhook bodyLimit must be a positive integer.');
 	}
-	const secret =
-		options.verificationToken === undefined ? undefined : encoder.encode(options.verificationToken);
+	const key =
+		options.verificationToken === undefined
+			? undefined
+			: importSigningKey(options.verificationToken);
+	const expectedVerificationDigest =
+		options.verificationToken === undefined ? undefined : digestToken(options.verificationToken);
 
 	return async (c) => {
 		const request = c.req.raw;
@@ -32,18 +36,23 @@ export function createNotionWebhookHandler<E extends Env>(
 				? readNonEmptyString(raw, 'verification_token')
 				: undefined;
 			if (!verificationToken) return response(401);
-			if (options.verificationToken !== undefined) {
-				return verificationToken === options.verificationToken ? response(200) : response(403);
+			if (expectedVerificationDigest !== undefined) {
+				const actualDigest = await digestToken(verificationToken);
+				if (secureEqual(await expectedVerificationDigest, actualDigest)) return response(200);
+				// A mismatched token is a re-verification after Notion rotated
+				// it. The configured token cannot answer that delivery, so the
+				// verification handler must keep running — it is the only path
+				// that surfaces the new token to the operator.
 			}
 			if (options.verification) {
-				return runHandler(() => options.verification?.({ c, verificationToken }));
+				return serializeHandlerResult(await options.verification({ c, verificationToken }));
 			}
-			return response(401);
+			return expectedVerificationDigest !== undefined ? response(403) : response(401);
 		}
 
-		if (!secret) return response(503);
+		if (!key) return response(503);
 		const signature = parseSignature(signatureHeader);
-		if (!signature || !(await verifySignature(secret, body.value, signature))) {
+		if (!signature || !(await verifySignature(await key, body.value, signature))) {
 			return response(401);
 		}
 
@@ -52,16 +61,8 @@ export function createNotionWebhookHandler<E extends Env>(
 			return response(400);
 		}
 		const event = raw as unknown as NotionWebhookEvent;
-		return runHandler(() => options.webhook({ c, event }));
+		return serializeHandlerResult(await options.webhook({ c, event }));
 	};
-}
-
-async function runHandler(handler: () => NotionHandlerResult | undefined): Promise<Response> {
-	try {
-		return serializeHandlerResult(await handler());
-	} catch {
-		return response(500);
-	}
 }
 
 function serializeHandlerResult(value: unknown): Response {
@@ -81,23 +82,47 @@ function parseSignature(value: string): Uint8Array | undefined {
 	return bytes;
 }
 
-async function verifySignature(
-	secret: Uint8Array,
-	body: Uint8Array,
-	signature: Uint8Array,
-): Promise<boolean> {
-	const key = await crypto.subtle.importKey(
+// Imported once at handler creation and awaited per use — the
+// messenger/src/webhook.ts importSigningKey shape.
+async function importSigningKey(secret: string): Promise<CryptoKey> {
+	return crypto.subtle.importKey(
 		'raw',
-		toArrayBuffer(secret),
+		toArrayBuffer(encoder.encode(secret)),
 		{ name: 'HMAC', hash: 'SHA-256' },
 		false,
 		['verify'],
 	);
-	return crypto.subtle.verify('HMAC', key, toArrayBuffer(signature), toArrayBuffer(body));
+}
+
+async function verifySignature(
+	key: CryptoKey,
+	body: Uint8Array,
+	signature: Uint8Array,
+): Promise<boolean> {
+	// verify() can throw on malformed input in workerd; report false like the
+	// sfmc/zendesk/intercom copies (awaited so rejections are caught too).
+	try {
+		return await crypto.subtle.verify('HMAC', key, toArrayBuffer(signature), toArrayBuffer(body));
+	} catch {
+		return false;
+	}
 }
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
 	return bytes.slice().buffer;
+}
+
+async function digestToken(value: string): Promise<Uint8Array> {
+	return new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(value)));
+}
+
+function secureEqual(expected: Uint8Array, actual: Uint8Array): boolean {
+	if (expected.length !== actual.length) return false;
+	let difference = 0;
+	for (let index = 0; index < expected.length; index += 1) {
+		difference |= (expected[index] as number) ^ (actual[index] as number);
+	}
+	return difference === 0;
 }
 
 function parseJson(body: Uint8Array): unknown {
@@ -130,7 +155,8 @@ async function readBody(
 			if (done) break;
 			total += value.byteLength;
 			if (total > bodyLimit) {
-				void reader.cancel();
+				// Discard cancel rejections: an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
 				return { type: 'too-large' };
 			}
 			chunks.push(value);

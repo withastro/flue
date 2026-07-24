@@ -53,14 +53,25 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  *
  * @example
  * ```typescript
+ * 'use agent';
  * import { Sandbox } from 'e2b';
+ * import { useModel, useSandbox } from '@flue/runtime';
  * import { e2b } from './sandboxes/e2b';
  *
- * const sandbox = await Sandbox.create();
- * const agent = defineAgent(() => ({ sandbox: e2b(sandbox), model: 'anthropic/claude-sonnet-4-6' }));
- * export default defineWorkflow({ agent, async run({ harness }) {
- *   return await (await harness.session()).prompt('Inspect the workspace.');
- * }});
+ * export function Assistant() {
+ *   useModel('anthropic/claude-sonnet-4-6');
+ *   useSandbox({
+ *     // Lazy, per the SandboxFactory contract: constructing this object is
+ *     // cheap; the expensive E2B sandbox creation happens once, inside
+ *     // createSessionEnv(), at initialization — never on a re-render.
+ *     // E2B reads E2B_API_KEY from the environment automatically.
+ *     async createSessionEnv(options) {
+ *       const sandbox = await Sandbox.create();
+ *       return e2b(sandbox).createSessionEnv(options);
+ *     },
+ *   });
+ *   return 'You are a helpful assistant with a full sandbox.';
+ * }
  * ```
  */
 import { createSandboxSessionEnv, SandboxOperationUnsupportedError } from '@flue/runtime';
@@ -218,8 +229,9 @@ secret manager, CI vars, etc.) will usually tell you the right answer. If
 nothing in the project gives you a clear signal, ask the user instead of
 guessing.
 
-For reference: `flue dev --env <file>` and `flue run --env <file>` load
-any `.env`-format file the user points them at.
+For reference: `flue run` loads the project's `.env` by default, and
+`--env <file>` selects one alternate `.env`-format file. `vite dev` and the
+built server read the shell environment (`process.env`).
 
 ## Wiring it into an agent
 
@@ -229,29 +241,31 @@ into, you can finish that work by wiring the adapter into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+'use agent';
 import { Sandbox } from 'e2b';
+import { useModel, useSandbox } from '@flue/runtime';
 import { e2b } from '../sandboxes/e2b'; // adjust path to match the user's layout
 
-export const route: WorkflowRouteHandler = async (_c, next) => next();
-
-const agent = defineAgent(async () => {
-  // E2B reads E2B_API_KEY from the environment automatically.
-  const sandbox = await Sandbox.create();
-  return {
-    sandbox: e2b(sandbox),
-    model: 'anthropic/claude-sonnet-4-6',
-  };
-});
-
-export default defineWorkflow({
-  agent,
-  run: async ({ harness }) => {
-    const session = await harness.session();
-    return await session.shell('uname -a');
-  },
-});
+export function Assistant() {
+	useModel('anthropic/claude-sonnet-4-6');
+	useSandbox({
+		// Lazy, per the SandboxFactory contract: constructing this object is
+		// cheap; the expensive E2B sandbox creation happens once, inside
+		// createSessionEnv(), at initialization — never on a re-render.
+		// E2B reads E2B_API_KEY from the environment automatically.
+		async createSessionEnv(options) {
+			const sandbox = await Sandbox.create();
+			return e2b(sandbox).createSessionEnv(options);
+		},
+	});
+	return 'You are a helpful assistant with a full sandbox.';
+}
 ```
+
+The `'use agent'` directive at the top is what registers the module with
+the application. Mount `createAgentRouter(...)` (from `@flue/runtime/routing`) in
+`app.ts` only if the agent needs
+an HTTP endpoint — `flue run` and `dispatch()` work without a mount.
 
 Tip: if the user runs many short-lived agents off the same prepared
 environment, point them at E2B's custom templates
@@ -266,7 +280,8 @@ tooling on every cold start.
    actually wrote the file.
 3. Tell the user the next steps: install `e2b` (if you didn't), make sure
    `E2B_API_KEY` is available at runtime (per the Authentication section
-   above), and run `flue dev` (or `flue run <workflow>`) to try it.
+   above), and run `flue run <path-to-the-agent-module> --message "..."`
+   (or `vite dev` for the full application) to try it.
 
 When updating an existing integration, inspect and compare it against this complete current blueprint, apply every relevant change while preserving customizations, and then add or update the marker in the primary marked file. This comparison is required when the marker is missing.
 

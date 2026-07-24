@@ -1,7 +1,7 @@
-export class InvalidGitHubConversationKeyError extends Error {
+export class InvalidGitHubInstanceIdError extends Error {
 	constructor() {
-		super('Invalid GitHub conversation key.');
-		this.name = 'InvalidGitHubConversationKeyError';
+		super('Invalid GitHub instance id.');
+		this.name = 'InvalidGitHubInstanceIdError';
 	}
 }
 

@@ -4,7 +4,7 @@ description: Receive authenticated Google Chat interactions and Workspace Events
 package:
   name: '@flue/google-chat'
   href: https://www.npmjs.com/package/@flue/google-chat
-lastReviewedAt: 2026-06-14
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -27,7 +27,7 @@ for Workspace Events is an optional section in the same channel module.
 ```ts title="src/channels/google-chat.ts (abridged)"
 import { createGoogleChatChannel } from '@flue/google-chat';
 import { dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createGoogleChatClient } from '../lib/google-chat-client.ts';
 
 export const client = createGoogleChatClient({
@@ -46,8 +46,13 @@ export const channel = createGoogleChatChannel({
       const ref = conversationFromPayload(payload);
       if (!ref) return;
 
-      await dispatch(assistant, {
-        id: channel.conversationKey(ref),
+      await dispatch(Assistant, {
+        id: channel.instanceId(ref),
+        // Recorded once when this event creates the instance; ignored after.
+        initialData: {
+          space: ref.space,
+          ...(ref.thread === undefined ? {} : { thread: ref.thread }),
+        },
         message: {
           kind: 'signal',
           type: `google-chat.${payload.type}`,
@@ -78,6 +83,18 @@ space identity and lets the bound agent post a reply through the project-owned
 client. Workspace Events add an authenticated `/events` route and preserve the
 Pub/Sub wrapper for application-owned decoding and deduplication. Both Node and
 Cloudflare targets use standards-based Fetch and Web Crypto.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as googleChat } from './channels/google-chat.ts';
+
+app.route('/channels/google-chat', googleChat.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/google-chat` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -130,7 +147,7 @@ Configure only the surfaces your application handles. Omitting `interactions` or
 ```ts title="src/channels/google-chat.ts"
 import { createGoogleChatChannel, type GoogleChatConversationRef } from '@flue/google-chat';
 import { dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const channel = createGoogleChatChannel({
   interactions: {
@@ -145,8 +162,13 @@ export const channel = createGoogleChatChannel({
           const ref = conversationFromPayload(payload);
           if (!ref) return c.body(null, 200);
 
-          await dispatch(assistant, {
-            id: channel.conversationKey(ref),
+          await dispatch(Assistant, {
+            id: channel.instanceId(ref),
+            // Recorded once when this event creates the instance; ignored after.
+            initialData: {
+              space: ref.space,
+              ...(ref.thread === undefined ? {} : { thread: ref.thread }),
+            },
             message: {
               kind: 'signal',
               type: `google-chat.${payload.type}`,
@@ -212,7 +234,7 @@ application.
 Derive the canonical space from `payload.space.name` or
 `payload.message.space.name`. Use `space.spaceType` for descriptive metadata,
 not the deprecated `space.type`, and accept a thread only when its resource name
-belongs to that exact space. Conversation keys are identifiers, not
+belongs to that exact space. Instance ids are identifiers, not
 authorization capabilities; see the shared [Channels guide](/docs/guide/channels/)
 for dispatch and authorization guidance.
 
@@ -299,7 +321,7 @@ export function postMessage(ref: GoogleChatConversationRef) {
     name: 'post_google_chat_message',
     description: 'Post a message to the Google Chat conversation bound to this agent.',
     input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
-    async run({ input: { text } }) {
+    async run({ data: { text } }) {
       const message = await client.postMessage(ref, text);
       return { message: message.name };
     },
@@ -307,19 +329,36 @@ export function postMessage(ref: GoogleChatConversationRef) {
 }
 ```
 
-Bind the destination when creating the agent:
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. Bind the tool from the agent with `useInitialData()` instead of
+parsing the instance id:
 
 ```ts title="src/agents/assistant.ts"
-import { defineAgent } from '@flue/runtime';
-import { channel, postMessage } from '../channels/google-chat.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { postMessage } from '../channels/google-chat.ts';
 
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  tools: [postMessage(channel.parseConversationKey(id))],
-}));
+const initialData = v.object({
+  space: v.string(),
+  thread: v.optional(v.string()),
+});
+
+export function Assistant() {
+  useModel('anthropic/claude-haiku-4-5');
+  const data = useInitialData<v.InferOutput<typeof initialData>>();
+  if (!data) throw new Error('This agent is created by the Google Chat channel dispatch.');
+  useTool(postMessage(data));
+  return 'Reply concisely in the bound Google Chat conversation.';
+}
+
+Assistant.initialData = initialData;
 ```
 
-The model selects only message text. It does not select arbitrary service
+The agent's `initialData` static validates the dispatched `initialData` when the instance is
+created; `useInitialData()` returns the parsed value on every render. The
+model selects only message text. It does not select arbitrary service
 accounts, spaces, threads, URLs, or REST operations.
 
 ## Delivery and runtime behavior

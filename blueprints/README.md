@@ -103,12 +103,13 @@ A channel blueprint should:
 1. Inspect the target, source root, app entrypoint, agents, environment types, and secret conventions.
 2. Install a first-party ingress package when available and an established outbound SDK or narrow Fetch client.
 3. Create `channels/<provider>.ts` with named `channel` and `client` exports.
-4. Use constructor-owned verified callbacks and exact default-path guidance.
-5. Dispatch normalized provider input and stable delivery identity.
-6. Define only requested tools, with trusted destinations outside model arguments.
-7. Verify signed payloads against the project's actual build target.
+4. Mount the channel in `app.ts` (`app.route('/channels/<provider>', channel.route())`) and derive every provider webhook URL from the mount path.
+5. Use constructor-owned verified callbacks and exact default-path guidance.
+6. Dispatch normalized provider input and stable delivery identity.
+7. Define only requested tools, with trusted destinations outside model arguments.
+8. Verify signed payloads against the project's actual build target.
 
-Do not imply a common provider-client API, install generic tool collections, or add `app.ts` solely to mount a discovered channel.
+Do not imply a common provider-client API or install generic tool collections.
 
 ### Database adapter blueprints
 

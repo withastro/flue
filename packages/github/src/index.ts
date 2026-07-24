@@ -1,24 +1,12 @@
+import { type ChannelRouteDefinition, createChannelRouter, type JsonValue } from '@flue/runtime';
 import type { EventPayloadMap, WebhookEventName } from '@octokit/webhooks-types';
-import type { Context, Env, Handler } from 'hono';
-import { InvalidGitHubConversationKeyError, InvalidGitHubInputError } from './errors.ts';
+import type { Context, Env, Hono } from 'hono';
+import { InvalidGitHubInputError, InvalidGitHubInstanceIdError } from './errors.ts';
 import { createGitHubWebhookHandler } from './webhook.ts';
 
+export type { JsonValue } from '@flue/runtime';
 export type { EventPayloadMap, WebhookEvent, WebhookEventName } from '@octokit/webhooks-types';
-export { InvalidGitHubConversationKeyError, InvalidGitHubInputError } from './errors.ts';
-
-export type JsonValue =
-	| null
-	| boolean
-	| number
-	| string
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-
-export interface ChannelRoute<E extends Env = Env> {
-	readonly method: string;
-	readonly path: string;
-	readonly handler: Handler<E>;
-}
+export { InvalidGitHubInputError, InvalidGitHubInstanceIdError } from './errors.ts';
 
 /** Ingress configuration for one fixed GitHub webhook. */
 export interface GitHubChannelOptions<E extends Env = Env> {
@@ -72,16 +60,23 @@ type GitHubWebhookHandlerValue = undefined | JsonValue | Response;
  * JSON responses, and Hono or Fetch responses pass through unchanged.
  */
 export type GitHubWebhookHandlerResult =
-	| GitHubWebhookHandlerValue
-	| Promise<GitHubWebhookHandlerValue>;
+	GitHubWebhookHandlerValue | Promise<GitHubWebhookHandlerValue>;
 
 /** Verified ingress and canonical identity helpers. */
 export interface GitHubChannel<E extends Env = Env> {
-	readonly routes: readonly ChannelRoute<E>[];
-	/** Serializes a canonical namespaced identifier. It is not an authorization capability. */
-	conversationKey(ref: GitHubIssueRef): string;
-	/** Parses only canonical keys produced by `conversationKey()`. */
-	parseConversationKey(id: string): GitHubIssueRef;
+	readonly routes: readonly ChannelRouteDefinition<E>[];
+	/**
+	 * Build a mountable Hono sub-app serving the channel's routes relative
+	 * to the mount point: `app.route('/channels/github', channel.route())`.
+	 */
+	route(): Hono<E>;
+	/** Derives the agent instance id: a canonical namespaced identifier. It is not an authorization capability. */
+	instanceId(ref: GitHubIssueRef): string;
+	/**
+	 * Parses only canonical instance ids produced by `instanceId()`. Escape hatch: agents
+	 * normally receive structured facts as creation data rather than parsing them from the id.
+	 */
+	parseInstanceId(id: string): GitHubIssueRef;
 }
 
 /**
@@ -103,30 +98,34 @@ export function createGitHubChannel<E extends Env = Env>(
 		webhook: options.webhook,
 	});
 
+	const routes: readonly ChannelRouteDefinition<E>[] = [
+		{ method: 'POST', path: '/webhook', handler: webhookHandler },
+	];
 	const channel: GitHubChannel<E> = {
-		routes: [{ method: 'POST', path: '/webhook', handler: webhookHandler }],
-		conversationKey(ref) {
+		routes,
+		route: () => createChannelRouter(routes),
+		instanceId(ref) {
 			assertIssueRef(ref);
 			return `github:v1:owner:${encodeURIComponent(ref.owner)}:repo:${encodeURIComponent(ref.repo)}:issue:${ref.issueNumber}`;
 		},
-		parseConversationKey(id) {
+		parseInstanceId(id) {
 			try {
 				const match = /^github:v1:owner:([^:]+):repo:([^:]+):issue:([1-9]\d*)$/.exec(id);
 				const owner = match?.[1];
 				const repo = match?.[2];
 				const issueNumberText = match?.[3];
-				if (!owner || !repo || !issueNumberText) throw new InvalidGitHubConversationKeyError();
+				if (!owner || !repo || !issueNumberText) throw new InvalidGitHubInstanceIdError();
 				const ref = {
 					owner: decodeURIComponent(owner),
 					repo: decodeURIComponent(repo),
 					issueNumber: Number(issueNumberText),
 				};
 				assertIssueRef(ref);
-				if (channel.conversationKey(ref) !== id) throw new InvalidGitHubConversationKeyError();
+				if (channel.instanceId(ref) !== id) throw new InvalidGitHubInstanceIdError();
 				return ref;
 			} catch (error) {
-				if (error instanceof InvalidGitHubConversationKeyError) throw error;
-				throw new InvalidGitHubConversationKeyError();
+				if (error instanceof InvalidGitHubInstanceIdError) throw error;
+				throw new InvalidGitHubInstanceIdError();
 			}
 		},
 	};

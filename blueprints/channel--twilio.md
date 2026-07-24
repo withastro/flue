@@ -15,13 +15,14 @@ with project-owned outbound Twilio access to a Flue project.
 
 Read local instructions, detect the package manager and target, and select the
 first existing source root: `<root>/.flue/`, then `<root>/src/`, then
-`<root>/`. Inspect existing agents, environment types, secret conventions, and
-whether the project uses one Twilio address or a Messaging Service.
+`<root>/`. Inspect existing agents, `app.ts` (the application's route map),
+environment types, secret conventions, and whether the project uses one Twilio
+address or a Messaging Service.
 
 Install `@flue/twilio` and `twilio@^6.0.2`. Flue owns signed webhook validation,
 exact public-URL handling, fixed account and destination identity, provider-native verified form
 fields, optional delivery-status callbacks, TwiML acknowledgement, and canonical
-conversation keys. The project owns credentials, outbound REST access, tools,
+instance ids. The project owns credentials, outbound REST access, tools,
 dispatch policy, and durable duplicate admission.
 
 Do not install the official `twilio` Node helper in a Cloudflare project. Its
@@ -60,13 +61,10 @@ message, destination mode, and tool:
 
 ```ts
 // flue-blueprint: channel/twilio@1
-import {
-  createTwilioChannel,
-  type TwilioConversationRef,
-} from '@flue/twilio';
+import { createTwilioChannel } from '@flue/twilio';
 import { defineTool, dispatch } from '@flue/runtime';
 import * as v from 'valibot';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { TwilioClient } from '../twilio-client.ts';
 
 export const client = new TwilioClient({
@@ -100,8 +98,21 @@ export const channel = createTwilioChannel({
         }
       }
     }
-    await dispatch(assistant, {
-      id: channel.conversationKey(conversation),
+    await dispatch(Assistant, {
+      id: channel.instanceId(conversation),
+      // Recorded once when this event creates the instance; ignored after.
+      initialData:
+        conversation.type === 'messaging-service'
+          ? {
+              type: conversation.type,
+              messagingServiceSid: conversation.messagingServiceSid,
+              participant: conversation.participant,
+            }
+          : {
+              type: conversation.type,
+              address: conversation.address,
+              participant: conversation.participant,
+            },
       message: {
         kind: 'signal',
         type: 'twilio.message',
@@ -112,13 +123,17 @@ export const channel = createTwilioChannel({
   },
 });
 
-export function postMessage(ref: TwilioConversationRef) {
+export function postMessage(
+  ref:
+    | { type: 'address'; address: string; participant: string }
+    | { type: 'messaging-service'; messagingServiceSid: string; participant: string },
+) {
   return defineTool({
     name: 'post_twilio_message',
     description: 'Post to the Twilio conversation bound to this agent.',
     input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
-    async run({ input }) {
-      const { text } = input;
+    async run({ data }) {
+      const { text } = data;
       const result = await client.messages.create({
         to: ref.participant,
         body: text,
@@ -141,20 +156,74 @@ destination: {
 },
 ```
 
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the
+channel's router explicitly:
+
+```ts
+// app.ts
+import { Hono } from 'hono';
+import { channel } from './channels/twilio.ts';
+
+const app = new Hono();
+app.route('/channels/twilio', channel.route());
+
+export default app;
+```
+
+`channel.route()` is a pure router factory serving the channel's routes
+relative to the mount path. The `// Path:` comments in this guide assume the
+conventional `/channels/twilio` mount; a different mount path shifts every
+provider URL accordingly.
+
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. It carries the conversation ref fields the reply tool needs — the
+agent reads them with `useInitialData()` instead of parsing the instance id.
+Per-message facts stay on the signal's `attributes`.
+
 ## Wire the agent
 
 ```ts
-import { defineAgent } from '@flue/runtime';
-import { channel, postMessage } from '../channels/twilio.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { postMessage } from '../channels/twilio.ts';
 
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  tools: [postMessage(channel.parseConversationKey(id))],
-}));
+const initialDataSchema = v.variant('type', [
+	v.object({ type: v.literal('address'), address: v.string(), participant: v.string() }),
+	v.object({
+		type: v.literal('messaging-service'),
+		messagingServiceSid: v.string(),
+		participant: v.string(),
+	}),
+]);
+
+export function Assistant() {
+	useModel('anthropic/claude-haiku-4-5');
+	const data = useInitialData<v.InferOutput<typeof initialDataSchema>>();
+	if (!data) throw new Error('This agent is created by the Twilio channel dispatch.');
+	useTool(postMessage(data));
+	return 'Reply concisely in the bound Twilio conversation.';
+}
+
+Assistant.initialData = initialDataSchema;
 ```
 
+The `initialData` static validates the dispatched `initialData` when the
+instance is created; `useInitialData()` returns the parsed value on every
+render.
+
+The `'use agent'` directive (the module's first statement) is what registers
+the agent with the application — `dispatch(...)` from the channel callback
+needs no `app.ts` mounting. Add
+`app.route('/agents/<name>', createAgentRouter(Assistant))` (from
+`@flue/runtime/routing`) in `app.ts` only when the agent
+should also be reachable over HTTP directly.
+
 The channel-agent import cycle is supported because imported bindings are read
-inside deferred callbacks and initializers.
+inside deferred callbacks and agent function bodies.
 
 ## Configure Twilio
 
@@ -168,15 +237,17 @@ TWILIO_WEBHOOK_URL=https://example.com/channels/twilio/webhook
 ```
 
 Configure the phone number or Messaging Service inbound webhook to send `POST`
-requests to the exact `TWILIO_WEBHOOK_URL` value. The URL must include any
-outer `flue()` mount prefix and any query string. Twilio signs the external
+requests to the exact `TWILIO_WEBHOOK_URL` value. The URL is the channel's
+mount path in `app.ts` plus the route suffix (shown with the conventional
+`app.route('/channels/twilio', ...)` mount) and must include any query
+string. Twilio signs the external
 configured URL and form fields in `X-Twilio-Signature`, so do not derive this
 value from the incoming request behind a proxy.
 
 The external path may differ from the internal request path when a trusted
 proxy strips a prefix. The package validates the signature over the configured
-external URL — query string included — while Flue's fixed route owns the
-internal path. The incoming request's own query string is not re-checked: it is
+external URL — query string included — while the mounted channel route owns
+the internal path. The incoming request's own query string is not re-checked: it is
 already covered by the signed bytes, so any tampering fails signature (`401`).
 
 Twilio connection-override fragments such as `#rc=2&rp=all` may remain in the
@@ -241,7 +312,7 @@ downloaded bytes wholesale into model context.
 ## Respect identity and retries
 
 The package rejects valid signatures for another account, phone/channel
-address, or Messaging Service. Conversation keys identify the fixed Twilio
+address, or Messaging Service. Instance ids identify the fixed Twilio
 destination plus the external participant; they are not authorization
 capabilities.
 
@@ -266,10 +337,10 @@ Create original synthetic form posts from current official schemas and cover:
   policy;
 - body limits, content types, malformed fields, TwiML defaults, and explicit
   `Response` control;
-- canonical conversation-key round trips;
+- canonical instance-id round trips;
 - real outbound Fetch requests against local fake transports in Node and
   workerd;
-- Node and Cloudflare project builds.
+- the project typecheck and `vite build` for the configured target.
 
 Do not contact Twilio or copy third-party fixtures.
 

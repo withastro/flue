@@ -1,9 +1,10 @@
 ---
 title: Valkey
-description: Give Flue agents and workflow runs durable, shared state with Valkey.
+description: Give Flue agents durable, shared state with Valkey.
 package:
   name: '@flue/redis'
   href: https://www.npmjs.com/package/@flue/redis
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -42,7 +43,7 @@ export default redis({
 This abridged excerpt omits the generated pipeline helper, which batches
 commands and rejects any `Error` result. Flue discovers the adapter during a
 Node build, checks and migrates its Valkey namespace at server startup, and
-persists canonical agent conversations, immutable attachments, accepted submissions, workflow runs, and event streams so that they survive Flue process restarts. Durability across Valkey server loss
+persists canonical agent conversations, immutable attachments, and accepted submissions so that they survive Flue process restarts. Durability across Valkey server loss
 depends on the deployment's AOF or snapshot configuration.
 
 ## Configure
@@ -111,7 +112,7 @@ Flue runs `migrate()` at startup. It initializes schema-version metadata
 idempotently and refuses data from an unsupported newer schema; there is no
 separate migration command.
 
-Valkey stores append-only canonical conversation records and compaction facts, immutable attachment payloads, accepted prompts and dispatches, recovery claims and leases, workflow runs and indexes, and persisted event streams. It does not store session transcript snapshots, sandbox files, external API side effects, secrets, or application business data.
+Valkey stores append-only canonical conversation records and compaction facts, immutable attachment payloads, accepted prompts and dispatches, and recovery claims and leases. It does not store session transcript snapshots, sandbox files, external API side effects, secrets, or application business data.
 
 ## Verify durability
 

@@ -18,7 +18,7 @@ import type { SqlStorage } from './sql-storage.ts';
  * Bump this when a persisted format changes incompatibly. Pre-1.0 stores with
  * another version are rejected and must be cleared.
  */
-export const FLUE_SCHEMA_VERSION = 5;
+export const FLUE_SCHEMA_VERSION = 8;
 
 /**
  * Throw {@link PersistedSchemaVersionError} unless the stored version matches
@@ -44,14 +44,16 @@ export function migrateFlueSqlSchema(sql: SqlStorage, ensureCurrentSchema: () =>
 		 value TEXT NOT NULL
 		)`,
 	);
-	const stored = sql.exec(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).toArray()[0]?.value;
+	const stored = sql
+		.exec(`SELECT value FROM flue_meta WHERE key = 'schema_version'`)
+		.toArray()[0]?.value;
 	if (stored !== undefined && stored !== null) {
 		assertSupportedFlueSchemaVersion(String(stored));
 	} else {
 		const existing = sql
 			.exec(
-				`SELECT name FROM sqlite_master
-				 WHERE type = 'table' AND name LIKE 'flue_%' AND name <> 'flue_meta'
+				String.raw`SELECT name FROM sqlite_master
+				 WHERE type = 'table' AND name LIKE 'flue\_%' ESCAPE '\' AND name <> 'flue_meta'
 				 LIMIT 1`,
 			)
 			.toArray()[0];
@@ -61,15 +63,15 @@ export function migrateFlueSqlSchema(sql: SqlStorage, ensureCurrentSchema: () =>
 				supportedVersion: FLUE_SCHEMA_VERSION,
 			});
 		}
+		// Nothing wraps this in a transaction on node:sqlite, so the stamp
+		// must land BEFORE any other DDL: a crash inside ensureCurrentSchema()
+		// then leaves a versioned store that re-migrates cleanly instead of
+		// tripping the unversioned-legacy rejection forever.
+		sql.exec(
+			`INSERT OR IGNORE INTO flue_meta (key, value) VALUES ('schema_version', ?)`,
+			String(FLUE_SCHEMA_VERSION),
+		);
 	}
 
 	ensureCurrentSchema();
-
-	sql.exec(
-		`INSERT INTO flue_meta (key, value) VALUES ('schema_version', ?)
-		 ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
-		String(FLUE_SCHEMA_VERSION),
-	);
-	const persisted = sql.exec(`SELECT value FROM flue_meta WHERE key = 'schema_version'`).toArray()[0]?.value;
-	assertSupportedFlueSchemaVersion(String(persisted));
 }

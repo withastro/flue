@@ -1,19 +1,19 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { parseEnv } from 'node:util';
+import { UsageError } from '../errors.ts';
 
 export interface EnvLoader {
 	readonly file: string;
 	apply(): void;
 	restore(): void;
-	withApplied<T>(fn: () => Promise<T>): Promise<T>;
 }
 
 export function selectEnvFile(envFile: string | undefined, baseDir: string): string {
 	if (!envFile) return path.join(baseDir, '.env');
 	const absolute = path.isAbsolute(envFile) ? envFile : path.resolve(baseDir, envFile);
 	if (!fs.existsSync(absolute)) {
-		throw new Error(`[flue] --env points at a path that doesn't exist: ${envFile}`);
+		throw new UsageError(`--env points at a path that doesn't exist: ${envFile}`);
 	}
 	return absolute;
 }
@@ -41,6 +41,8 @@ export function createEnvLoader(
 		for (const key of Object.keys(selected)) managed.add(key);
 		restore();
 		for (const [key, value] of Object.entries(selected)) {
+			// A variable already present in the process environment wins over the
+			// same key in the .env file — the file only fills gaps.
 			if (original[key] === undefined) process.env[key] = value;
 		}
 	};
@@ -48,13 +50,5 @@ export function createEnvLoader(
 		file,
 		apply,
 		restore,
-		async withApplied<T>(fn: () => Promise<T>): Promise<T> {
-			apply();
-			try {
-				return await fn();
-			} finally {
-				restore();
-			}
-		},
 	};
 }

@@ -1,22 +1,10 @@
-import type { Context, Env, Handler } from 'hono';
+import { type ChannelRouteDefinition, createChannelRouter, type JsonValue } from '@flue/runtime';
+import type { Context, Env, Hono } from 'hono';
 import type { Resend, WebhookEvent, WebhookEventPayload } from 'resend';
 import { createResendWebhookHandler } from './webhook.ts';
 
+export type { JsonValue } from '@flue/runtime';
 export type { WebhookEvent, WebhookEventPayload };
-
-export type JsonValue =
-	| null
-	| boolean
-	| number
-	| string
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-
-export interface ChannelRoute<E extends Env = Env> {
-	readonly method: string;
-	readonly path: string;
-	readonly handler: Handler<E>;
-}
 
 export interface ResendChannelOptions<E extends Env = Env> {
 	/** Project-owned official Resend client used for webhook verification. */
@@ -67,7 +55,12 @@ export type ResendHandlerResult = ResendHandlerValue | Promise<ResendHandlerValu
 
 /** Verified Resend ingress. */
 export interface ResendChannel<E extends Env = Env> {
-	readonly routes: readonly ChannelRoute<E>[];
+	readonly routes: readonly ChannelRouteDefinition<E>[];
+	/**
+	 * Build a mountable Hono sub-app serving the channel's routes relative
+	 * to the mount point: `app.route('/channels/resend', channel.route())`.
+	 */
+	route(): Hono<E>;
 }
 
 /**
@@ -80,14 +73,16 @@ export function createResendChannel<E extends Env = Env>(
 	options: ResendChannelOptions<E>,
 ): ResendChannel<E> {
 	validateOptions(options);
+	const routes: readonly ChannelRouteDefinition<E>[] = [
+		{
+			method: 'POST',
+			path: '/webhook',
+			handler: createResendWebhookHandler(options),
+		},
+	];
 	return {
-		routes: [
-			{
-				method: 'POST',
-				path: '/webhook',
-				handler: createResendWebhookHandler(options),
-			},
-		],
+		routes,
+		route: () => createChannelRouter(routes),
 	};
 }
 

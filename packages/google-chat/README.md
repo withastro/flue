@@ -44,6 +44,6 @@ Workspace Events subscription management, or model tools. Run
 `flue add channel google-chat` to generate editable project code using a narrow
 service-account OAuth and Chat REST client.
 
-Conversation keys identify Google Chat spaces and optional threads. A thread
-must belong to its space. Keys are not authorization capabilities. The package
-is stateless and does not deduplicate interaction or Pub/Sub event ids.
+Instance ids identify Google Chat spaces and optional threads. A thread
+must belong to its space. Instance ids are not authorization capabilities. The
+package is stateless and does not deduplicate interaction or Pub/Sub event ids.

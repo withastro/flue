@@ -12,7 +12,7 @@ import {
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, '../../..');
 const blueprintsDir = join(repoRoot, 'blueprints');
-const outFile = join(here, '../bin/_blueprints.generated.ts');
+const outFile = join(here, '../src/generated/blueprints.ts');
 
 async function main() {
 	const allFiles = (await readdir(blueprintsDir))

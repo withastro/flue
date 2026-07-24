@@ -1,26 +1,53 @@
-/** Example `app.ts`: compose a custom Hono app and runtime providers. */
-import { registerProvider } from '@flue/runtime';
-import { flue } from '@flue/runtime/routing';
+/**
+ * Example `app.ts`: the application's route map. Every agent the app serves
+ * over HTTP is mounted here explicitly — `app.ts` IS the routing table.
+ * Runtime providers are registered here too.
+ */
+import { createProvider } from '@earendil-works/pi-ai';
+import { anthropicMessagesApi } from '@earendil-works/pi-ai/api/anthropic-messages.lazy';
+import { anthropicProvider } from '@earendil-works/pi-ai/providers/anthropic';
+import { setProvider } from '@flue/runtime';
+import { createAgentRouter } from '@flue/runtime/routing';
 import { Hono } from 'hono';
+import { CompactionTest } from './agents/compaction-test.ts';
+import { FsSurfaceTest } from './agents/fs-surface-test.ts';
+import { FsTest } from './agents/fs-test.ts';
+import { Hello } from './agents/hello.ts';
+import { LocalEnvSmoke } from './agents/local-env-smoke.ts';
+import { SessionTest } from './agents/session-test.ts';
+import { WithAbort } from './agents/with-abort.ts';
+import { WithImage } from './agents/with-image.ts';
+import { WithRegisteredProvider } from './agents/with-registered-provider.ts';
+import { WithRequest } from './agents/with-request.ts';
+import { WithSandbox } from './agents/with-sandbox.ts';
+import { WithSkill } from './agents/with-skill.ts';
+import { WithSubagent } from './agents/with-subagent.ts';
+import { WithThinking } from './agents/with-thinking.ts';
+import { WithTools } from './agents/with-tools.ts';
 
-// Brand-new provider IDs for local OpenAI-compatible servers.
-registerProvider('ollama', {
-	api: 'openai-completions',
-	baseUrl: 'http://localhost:11434/v1',
-});
-
-registerProvider('lmstudio', {
-	api: 'openai-completions',
-	baseUrl: 'http://localhost:1234/v1',
-});
-
-// Route a catalog provider through a gateway. Catalog metadata (cost,
-// context window, wire protocol) is preserved; these options layer on top.
+// Route a catalog provider through a gateway: register your own provider
+// under the built-in's ID, reusing its catalog models (cost, context window,
+// wire protocol ride along) with the gateway endpoint and credential.
+// (The from-scratch custom-provider demo lives in
+// `./agents/with-registered-provider.ts`, so it also works under
+// `flue run`, which never loads app.ts.)
 if (process.env.ANTHROPIC_GATEWAY_URL) {
-	registerProvider('anthropic', {
-		baseUrl: process.env.ANTHROPIC_GATEWAY_URL,
-		apiKey: process.env.ANTHROPIC_API_KEY,
-	});
+	const gatewayUrl = process.env.ANTHROPIC_GATEWAY_URL;
+	setProvider(
+		createProvider({
+			id: 'anthropic',
+			auth: {
+				apiKey: {
+					name: 'Anthropic gateway key',
+					resolve: async () => ({ auth: { apiKey: process.env.ANTHROPIC_API_KEY } }),
+				},
+			},
+			models: anthropicProvider()
+				.getModels()
+				.map((model) => ({ ...model, baseUrl: gatewayUrl })),
+			api: anthropicMessagesApi(),
+		}),
+	);
 }
 
 const app = new Hono();
@@ -36,14 +63,41 @@ app.use('*', async (c, next) => {
 // Custom route outside Flue's agent API.
 app.get('/api/ping', (c) => c.json({ pong: true, at: new Date().toISOString() }));
 
-// Mount Flue's built-in agent route.
-app.route('/', flue());
+// Per-agent middleware composes here, as plain Hono, before the mount it
+// applies to. This one logs every request bound for `with-request` and
+// requires an `authorization` header.
+app.use('/agents/with-request/*', async (c, next) => {
+	const request = c.req.raw;
+	console.log('[with-request] method:', request.method);
+	console.log('[with-request] url:', request.url);
+	console.log('[with-request] user-agent:', request.headers.get('user-agent'));
+	console.log('[with-request] raw body:', await request.clone().text());
+	const ip =
+		request.headers.get('cf-connecting-ip') ??
+		request.headers.get('x-forwarded-for')?.split(',')[0]?.trim();
+	console.log('[with-request] ip:', ip);
+	if (!request.headers.get('authorization')) return c.json({ error: 'unauthorized' }, 401);
+	await next();
+});
 
-// To expose deployment-inspection endpoints, compose them from the
-// `listRuns`/`getRun`/`listAgents` primitives exported by `@flue/runtime`,
-// behind your own auth middleware:
-// app.use('/admin/*', myAuthMiddleware);
-// app.get('/admin/agents', async (c) => c.json(await listAgents()));
-// app.get('/admin/runs', async (c) => c.json(await listRuns({ limit: 100 })));
+// Mount every agent explicitly. `createAgentRouter(Fn)` builds a pure router:
+// the mount path is user-chosen (these preserve the conventional
+// /agents/<file-basename> addresses), and per-agent middleware composes
+// above, before the mount it applies to.
+app.route('/agents/compaction-test', createAgentRouter(CompactionTest));
+app.route('/agents/fs-surface-test', createAgentRouter(FsSurfaceTest));
+app.route('/agents/fs-test', createAgentRouter(FsTest));
+app.route('/agents/hello', createAgentRouter(Hello));
+app.route('/agents/local-env-smoke', createAgentRouter(LocalEnvSmoke));
+app.route('/agents/session-test', createAgentRouter(SessionTest));
+app.route('/agents/with-abort', createAgentRouter(WithAbort));
+app.route('/agents/with-image', createAgentRouter(WithImage));
+app.route('/agents/with-registered-provider', createAgentRouter(WithRegisteredProvider));
+app.route('/agents/with-request', createAgentRouter(WithRequest));
+app.route('/agents/with-sandbox', createAgentRouter(WithSandbox));
+app.route('/agents/with-skill', createAgentRouter(WithSkill));
+app.route('/agents/with-subagent', createAgentRouter(WithSubagent));
+app.route('/agents/with-thinking', createAgentRouter(WithThinking));
+app.route('/agents/with-tools', createAgentRouter(WithTools));
 
 export default app;

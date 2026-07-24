@@ -1,7 +1,8 @@
 {
-	// User-owned wrangler config for this Flue app. Flue reads this file,
-	// merges its own contributions into an ignored Vite input config, and the
-	// official Cloudflare Vite integration emits the deployable Worker output.
+	// User-owned wrangler config for this Flue app. The official Cloudflare
+	// Vite integration reads this file, applies Flue's contributions (via the
+	// flueWorkerConfig() customizer in vite.config.ts), and emits the
+	// deployable Worker output.
 	// src/cloudflare.ts explicitly exports the Sandbox class from @cloudflare/sandbox.
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "assistant",
@@ -31,6 +32,12 @@
 		{
 			"tag": "flue-rename-generated-classes",
 			"renamed_classes": [{ "from": "Assistant", "to": "FlueAssistantAgent" }]
+		},
+		{
+			// Workflows (and their run-pointer registry DO) were removed from
+			// Flue; the generated Worker no longer exports FlueRegistry.
+			"tag": "flue-remove-workflow-registry",
+			"deleted_classes": ["FlueRegistry"]
 		}
 	],
 	"containers": [

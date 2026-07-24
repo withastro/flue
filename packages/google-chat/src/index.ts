@@ -1,33 +1,21 @@
-import type { Context, Env, Handler } from 'hono';
+import { type ChannelRouteDefinition, createChannelRouter, type JsonValue } from '@flue/runtime';
+import type { Context, Env, Hono } from 'hono';
 import type {
 	GoogleChatInteractionAuthentication,
 	GoogleChatPubSubAuthentication,
 } from './auth.ts';
-import { InvalidGoogleChatConversationKeyError, InvalidGoogleChatInputError } from './errors.ts';
+import { InvalidGoogleChatInputError, InvalidGoogleChatInstanceIdError } from './errors.ts';
 import {
 	createGoogleChatInteractionsHandler,
 	createGoogleChatWorkspaceEventsHandler,
 } from './routes.ts';
 
+export type { JsonValue } from '@flue/runtime';
 export type {
 	GoogleChatInteractionAuthentication,
 	GoogleChatPubSubAuthentication,
 } from './auth.ts';
-export { InvalidGoogleChatConversationKeyError, InvalidGoogleChatInputError } from './errors.ts';
-
-export type JsonValue =
-	| null
-	| boolean
-	| number
-	| string
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-
-export interface ChannelRoute<E extends Env = Env> {
-	readonly method: string;
-	readonly path: string;
-	readonly handler: Handler<E>;
-}
+export { InvalidGoogleChatInputError, InvalidGoogleChatInstanceIdError } from './errors.ts';
 
 export interface GoogleChatChannelOptions<E extends Env = Env> {
 	/** Direct Google Chat request authentication and callback. */
@@ -173,10 +161,7 @@ export interface GoogleChatWorkspaceEventDelivery {
 }
 
 export type GoogleChatHandlerResult =
-	| undefined
-	| JsonValue
-	| Response
-	| Promise<undefined | JsonValue | Response>;
+	undefined | JsonValue | Response | Promise<undefined | JsonValue | Response>;
 
 export interface GoogleChatInteractionHandlerInput<E extends Env = Env> {
 	c: Context<E>;
@@ -189,11 +174,19 @@ export interface GoogleChatWorkspaceEventHandlerInput<E extends Env = Env> {
 }
 
 export interface GoogleChatChannel<E extends Env = Env> {
-	readonly routes: readonly ChannelRoute<E>[];
-	/** Serializes a canonical namespaced identifier. It is not an authorization capability. */
-	conversationKey(ref: GoogleChatConversationRef): string;
-	/** Parses only canonical keys produced by `conversationKey()`. */
-	parseConversationKey(id: string): GoogleChatConversationRef;
+	readonly routes: readonly ChannelRouteDefinition<E>[];
+	/**
+	 * Build a mountable Hono sub-app serving the channel's routes relative
+	 * to the mount point: `app.route('/channels/google-chat', channel.route())`.
+	 */
+	route(): Hono<E>;
+	/** Derives the agent instance id: a canonical namespaced identifier. It is not an authorization capability. */
+	instanceId(ref: GoogleChatConversationRef): string;
+	/**
+	 * Parses only canonical instance ids produced by `instanceId()`. Escape hatch: agents
+	 * normally receive structured facts as creation data rather than parsing them from the id.
+	 */
+	parseInstanceId(id: string): GoogleChatConversationRef;
 }
 
 /**
@@ -205,7 +198,7 @@ export function createGoogleChatChannel<E extends Env = Env>(
 	options: GoogleChatChannelOptions<E>,
 ): GoogleChatChannel<E> {
 	validateOptions(options);
-	const routes: ChannelRoute<E>[] = [];
+	const routes: ChannelRouteDefinition<E>[] = [];
 	if (options.interactions) {
 		routes.push({
 			method: 'POST',
@@ -233,7 +226,8 @@ export function createGoogleChatChannel<E extends Env = Env>(
 
 	const channel: GoogleChatChannel<E> = {
 		routes,
-		conversationKey(ref) {
+		route: () => createChannelRouter(routes),
+		instanceId(ref) {
 			assertConversationRef(ref);
 			return [
 				'google-chat',
@@ -242,24 +236,24 @@ export function createGoogleChatChannel<E extends Env = Env>(
 				encodeURIComponent(ref.thread ?? ''),
 			].join(':');
 		},
-		parseConversationKey(id) {
+		parseInstanceId(id) {
 			try {
 				const parts = id.split(':');
 				if (parts.length !== 4 || parts[0] !== 'google-chat' || parts[1] !== 'v1') {
-					throw new InvalidGoogleChatConversationKeyError();
+					throw new InvalidGoogleChatInstanceIdError();
 				}
 				const ref: GoogleChatConversationRef = {
 					space: decodeURIComponent(requiredPart(parts[2])),
 					...(parts[3] ? { thread: decodeURIComponent(parts[3]) } : {}),
 				};
 				assertConversationRef(ref);
-				if (channel.conversationKey(ref) !== id) {
-					throw new InvalidGoogleChatConversationKeyError();
+				if (channel.instanceId(ref) !== id) {
+					throw new InvalidGoogleChatInstanceIdError();
 				}
 				return ref;
 			} catch (error) {
-				if (error instanceof InvalidGoogleChatConversationKeyError) throw error;
-				throw new InvalidGoogleChatConversationKeyError();
+				if (error instanceof InvalidGoogleChatInstanceIdError) throw error;
+				throw new InvalidGoogleChatInstanceIdError();
 			}
 		},
 	};
@@ -366,6 +360,6 @@ function assertHttpsUrl(value: unknown, field: string): asserts value is string 
 }
 
 function requiredPart(value: string | undefined): string {
-	if (!value) throw new InvalidGoogleChatConversationKeyError();
+	if (!value) throw new InvalidGoogleChatInstanceIdError();
 	return value;
 }

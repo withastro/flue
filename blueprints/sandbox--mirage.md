@@ -23,8 +23,8 @@ this adapter just adapts the root.
 Things to know before installing:
 
 - Mirage publishes two runtime packages with the same `Workspace` API:
-  `@struktoai/mirage-node` for `--target node`, and
-  `@struktoai/mirage-browser` for `--target cloudflare` (Cloudflare Workers
+  `@struktoai/mirage-node` for the Node target, and
+  `@struktoai/mirage-browser` for the Cloudflare target (Cloudflare Workers
   are a browser-class runtime). The adapter itself imports types from
   `@struktoai/mirage-core` (re-exported by both) so the same file works for
   either target. The user picks the right runtime package in their agent
@@ -32,7 +32,7 @@ Things to know before installing:
 - Some Mirage resources are Node-only (`SSHResource`, `PostgresResource`,
   `MongoDBResource`, `EmailResource`, FUSE). Importing them from
   `@struktoai/mirage-browser` is a build error, so using any of those
-  pins the user to `--target node`.
+  pins the user to the Node target.
 - If you see `@struktoai/mirage-agents` in Mirage's docs, **don't install
   it for Flue** — it's an adapter for other agent frameworks, not for Flue.
 
@@ -63,14 +63,17 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  *
  * @example
  * ```typescript
+ * 'use agent';
  * import { Workspace, RAMResource, MountMode } from '@struktoai/mirage-node';
+ * import { useModel, useSandbox } from '@flue/runtime';
  * import { mirage } from '../sandboxes/mirage';
  *
- * const ws = new Workspace({ '/data': new RAMResource() }, { mode: MountMode.WRITE });
- * const agent = defineAgent(() => ({ sandbox: mirage(ws), model: 'anthropic/claude-sonnet-4-6' }));
- * export default defineWorkflow({ agent, async run({ harness }) {
- *   return await (await harness.session()).prompt('Inspect the workspace.');
- * }});
+ * export function Assistant() {
+ *   useModel('anthropic/claude-sonnet-4-6');
+ *   const ws = new Workspace({ '/data': new RAMResource() }, { mode: MountMode.WRITE });
+ *   useSandbox(mirage(ws));
+ *   return 'You are a helpful assistant with a full sandbox.';
+ * }
  * ```
  */
 import { createSandboxSessionEnv, SandboxOperationUnsupportedError } from '@flue/runtime';
@@ -101,7 +104,7 @@ function shellQuote(value: string): string {
  *
  * Each Flue context maps onto a Mirage session (created lazily by id) so
  * that cwd, env, history, and lastExitCode stay isolated across agent
- * instances and workflow invocations. Harnesses initialized within the same
+ * instances and conversations. Harnesses initialized within the same
  * context intentionally reuse that Mirage session.
  *
  * Filesystem operations route through `workspace.fs.*` (Mirage's direct
@@ -298,17 +301,18 @@ export function mirage(
 ## Required dependencies
 
 Pick the runtime package that matches the user's Flue build target. If
-you can't tell which target they're on, check `package.json` scripts for
-`flue dev` / `flue build` invocations and look for a `wrangler.jsonc` (or
-`.toml` / `.json`) at the project root. If still unclear, ask.
+you can't tell which target they're on, check `vite.config.ts` for the
+`cloudflare()` plugin alongside `flue()`, check `flue.config.ts` for
+`target: 'cloudflare'`, and look for a `wrangler.jsonc` (or `.toml` /
+`.json`) at the project root. If still unclear, ask.
 
-For `--target node`:
+For the Node target:
 
 ```bash
 npm install @struktoai/mirage-node@^0.0.2
 ```
 
-For `--target cloudflare`:
+For the Cloudflare target:
 
 ```bash
 npm install @struktoai/mirage-browser@^0.0.2
@@ -338,8 +342,9 @@ a secret manager, CI vars) for storing whatever credentials the mounted
 resources need. If nothing in the project gives you a clear signal, ask
 the user.
 
-For reference: `flue dev --env <file>` and `flue run --env <file>` load
-any `.env`-format file the user points them at.
+For reference: `flue run` loads the project's `.env` by default, and
+`--env <file>` selects one alternate `.env`-format file. `vite dev` and the
+built server read the shell environment (`process.env`).
 
 ## Wiring it into an agent
 
@@ -349,28 +354,23 @@ into, you can finish that work by wiring the adapter into it. Otherwise,
 share this snippet so they can wire it up themselves.
 
 ```ts
-import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from '@flue/runtime';
+'use agent';
 import { Workspace, RAMResource, MountMode } from '@struktoai/mirage-node';
+import { useModel, useSandbox } from '@flue/runtime';
 import { mirage } from '../sandboxes/mirage'; // adjust path to match the user's layout
 
-export const route: WorkflowRouteHandler = async (_c, next) => next();
-
-const agent = defineAgent(() => {
-  const ws = new Workspace({ '/data': new RAMResource() }, { mode: MountMode.WRITE });
-  return {
-    sandbox: mirage(ws, { cwd: '/data' }),
-    model: 'anthropic/claude-sonnet-4-6',
-  };
-});
-
-export default defineWorkflow({
-  agent,
-  run: async ({ harness }) => {
-    const session = await harness.session();
-    return await session.shell('echo "hello mirage" > /data/hello.txt && cat /data/hello.txt');
-  },
-});
+export function Assistant() {
+	useModel('anthropic/claude-sonnet-4-6');
+	const ws = new Workspace({ '/data': new RAMResource() }, { mode: MountMode.WRITE });
+	useSandbox(mirage(ws, { cwd: '/data' }));
+	return 'You are a helpful assistant with a full sandbox.';
+}
 ```
+
+The `'use agent'` directive at the top is what registers the module with
+the application. Mount `createAgentRouter(...)` (from `@flue/runtime/routing`) in
+`app.ts` only if the agent needs
+an HTTP endpoint — `flue run` and `dispatch()` work without a mount.
 
 ## Verify
 
@@ -381,8 +381,9 @@ export default defineWorkflow({
 3. Tell the user the next steps: install `@struktoai/mirage-node` or
    `@struktoai/mirage-browser` (whichever matches their target), make sure
    any credentials for resources they mount are available at runtime (per
-   the Authentication section above), and run `flue dev` (or
-   `flue run <workflow>`) to try it.
+   the Authentication section above), and run
+   `flue run <path-to-the-agent-module> --message "..."` (or `vite dev`
+   for the full application) to try it.
 
 When updating an existing integration, inspect and compare it against this complete current blueprint, apply every relevant change while preserving customizations, and then add or update the marker in the primary marked file. This comparison is required when the marker is missing.
 

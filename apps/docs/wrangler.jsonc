@@ -15,5 +15,18 @@
 		"run_worker_first": ["/docs/*/index.md"],
 		"html_handling": "auto-trailing-slash",
 		"not_found_handling": "404-page"
+	},
+	"env": {
+		"nightly": {
+			// Bindings are non-inheritable in named environments; routes must be
+			// overridden so nightly doesn't attach to the production routes.
+			"ai": {
+				"binding": "AI"
+			},
+			"routes": [
+				{ "pattern": "nightly.flueframework.com/docs", "zone_name": "flueframework.com" },
+				{ "pattern": "nightly.flueframework.com/docs/*", "zone_name": "flueframework.com" }
+			]
+		}
 	}
 }

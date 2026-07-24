@@ -7,10 +7,9 @@
 You are an AI coding agent configuring Postgres-backed persistence for a Flue
 project using the first-party `@flue/postgres` adapter.
 
-This persists canonical agent conversation streams, immutable attachments,
-accepted submissions, workflow-run records, and event
-streams across process restarts and replicas. It does not store application
-business data.
+This persists canonical agent conversation streams, immutable attachments, and
+accepted submissions across process restarts and replicas. It does not store
+application business data.
 
 ## Check the target first
 
@@ -90,15 +89,17 @@ step to run. Do not add an `app.ts` solely to register the database.
 
 The driver reads `DATABASE_URL` at runtime. Follow the project's secret
 conventions and never commit a real connection string. For local development,
-`flue dev --env <file>` and `flue run --env <file>` load any `.env`-format file.
+`flue run` loads the project's `.env` by default and `--env <file>` selects an
+alternate `.env`-format file; `vite dev` and the built server read the shell
+environment, so export the variable or source the file before starting them.
 Update existing environment documentation or `.env.example` when the project
 keeps one; don't introduce a new secret-management convention without need.
 
 ## Verify
 
 1. Typecheck the project (`npx tsc --noEmit` is safe).
-2. Build the project's configured Node target and confirm the adapter is
-   discovered and wired into the generated server.
+2. Build the project (`vite build`) for its configured Node target and confirm
+   the adapter is discovered and wired into the generated server.
 3. With `DATABASE_URL` pointed at a reachable Postgres (a local container is
    fine), start the server and confirm it boots — `migrate()` creates the
    `flue_*` tables on first run. Restart it and confirm existing state is

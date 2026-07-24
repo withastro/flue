@@ -1,6 +1,6 @@
 {
 	"name": "@flue/mongodb",
-	"version": "1.0.0-beta.9",
+	"version": "2.0.0-nightly.202607230552",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -30,12 +30,13 @@
 		"check:lint": "biome lint ."
 	},
 	"dependencies": {
-		"@flue/runtime": "workspace:*"
+		"@flue/runtime": "workspace:*",
+		"ulidx": "^2.4.1"
 	},
 	"devDependencies": {
-		"mongodb": "^6.17.0",
-		"tsdown": "^0.22.0",
-		"typescript": "^6.0.3",
+		"mongodb": "^7.5.0",
+		"tsdown": "^0.22.7",
+		"typescript": "^7.0.2",
 		"vitest": "^4.1.6"
 	}
 }

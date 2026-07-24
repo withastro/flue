@@ -1,7 +1,7 @@
 ---
 {
   "kind": "sandbox",
-  "version": 1,
+  "version": 2,
   "website": "https://exe.dev",
   "aliases": ["exe"]
 }
@@ -44,7 +44,7 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
 `SandboxApi` contract.
 
 ```ts
-// flue-blueprint: sandbox/exedev@1
+// flue-blueprint: sandbox/exedev@2
 /**
  * exe.dev adapter for Flue.
  *
@@ -59,35 +59,48 @@ Write this file verbatim. Do not "improve" it — it conforms to the published
  * use exe.dev's HTTPS API before/after agent setup. The adapter itself
  * does not create, clone, or delete infrastructure.
  *
+ * The SSH connection doubles as the liveness channel: SSH-level keepalives
+ * surface a silently dead VM as a connection close, and every in-flight
+ * operation settles with SandboxDiedError instead of hanging. See the
+ * death watcher in ExeDevSandboxApi.
+ *
  * @example Existing VM (most common)
  * ```typescript
+ * 'use agent';
+ * import { useModel, useSandbox } from '@flue/runtime';
  * import { exedev } from './sandboxes/exedev';
  *
- * const agent = defineAgent(() => ({
- *   sandbox: exedev({ host: 'maple-dune.exe.xyz' }),
- *   model: 'anthropic/claude-sonnet-4-6',
- * }));
- * export default defineWorkflow({ agent, async run({ harness }) {
- *   return await (await harness.session()).prompt('Inspect the workspace.');
- * }});
+ * export function Assistant() {
+ *   useModel('anthropic/claude-sonnet-4-6');
+ *   useSandbox(exedev({ host: 'maple-dune.exe.xyz' }));
+ *   return 'You are a helpful assistant with a full sandbox.';
+ * }
  * ```
  *
  * @example Create a VM before wrapping it
  * ```typescript
- * import { createExeVm, deleteExeVm, exedev } from './sandboxes/exedev';
+ * 'use agent';
+ * import { useModel, useSandbox } from '@flue/runtime';
+ * import { createExeVm, exedev } from './sandboxes/exedev';
  *
- * const vm = await createExeVm({ apiToken: process.env.EXE_API_TOKEN! });
- * const agent = defineAgent(() => ({
- *   sandbox: exedev(vm),
- *   model: 'anthropic/claude-sonnet-4-6',
- * }));
- * export default defineWorkflow({ agent, async run({ harness }) {
- *   return await (await harness.session()).prompt('Inspect the workspace.');
- * }});
+ * export function Assistant() {
+ *   useModel('anthropic/claude-sonnet-4-6');
+ *   useSandbox({
+ *     // Lazy, per the SandboxFactory contract: constructing this object is
+ *     // cheap; the expensive VM creation happens once, inside
+ *     // createSessionEnv(), at initialization — never on a re-render.
+ *     async createSessionEnv(options) {
+ *       const vm = await createExeVm({ apiToken: process.env.EXE_API_TOKEN });
+ *       return exedev(vm).createSessionEnv(options);
+ *     },
+ *   });
+ *   return 'You are a helpful assistant with a full sandbox.';
+ * }
  * ```
  */
 import {
   createSandboxSessionEnv,
+  SandboxDiedError,
   SandboxOperationUnsupportedError,
 } from "@flue/runtime";
 import type {
@@ -166,6 +179,10 @@ export class ExeDevError extends Error {
 
 const EXE_API_URL = "https://exe.dev/exec";
 const DEFAULT_VM_READY_TIMEOUT_MS = 90_000;
+/** How often ssh2 sends an SSH-level keepalive while the connection is open. */
+const SSH_KEEPALIVE_INTERVAL_MS = 5_000;
+/** Consecutive unanswered keepalives before ssh2 declares the connection dead. */
+const SSH_KEEPALIVE_COUNT_MAX = 2;
 const VM_NAME = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
 const SHELL_ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -282,6 +299,18 @@ function shellEnvAssignment(name: string, value: string): string {
   return `${name}='${shellEscape(value)}'`;
 }
 
+/** Build a standard `AbortError` (`DOMException`) from an aborted signal. */
+function abortError(signal: AbortSignal): Error {
+  const reason: unknown = signal.reason;
+  const message =
+    reason instanceof Error && reason.message
+      ? reason.message
+      : typeof reason === "string" && reason
+        ? reason
+        : "The operation was aborted.";
+  return new DOMException(message, "AbortError");
+}
+
 /** Resolve SSH auth — either a private key (file/buffer) or an agent socket. */
 export function resolveAuth(
   opts: ExeDevAdapterOptions,
@@ -395,6 +424,16 @@ async function sshConnect(
     host: vm.host,
     port: opts.port ?? vm.port ?? 22,
     username: opts.username ?? "user",
+    // A VM that dies with a TCP reset fails in-flight calls natively, but a
+    // VM that vanishes silently (deleted mid-command, host gone) leaves the
+    // socket established and every pending call hanging. SSH-level
+    // keepalives turn that silence into a socket teardown after
+    // SSH_KEEPALIVE_COUNT_MAX unanswered probes, which settles every
+    // in-flight operation (see the death watcher in ExeDevSandboxApi).
+    // sshd answers keepalives regardless of how long a command runs, so a
+    // legitimately slow command on a healthy VM never trips them.
+    keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
+    keepaliveCountMax: SSH_KEEPALIVE_COUNT_MAX,
     ...resolveAuth(opts),
   };
 
@@ -417,6 +456,8 @@ export interface SshLike {
     options: object,
     cb: (err: Error | undefined, stream: SshExecStream) => void,
   ): unknown;
+  on(event: "error", listener: (err: Error) => void): unknown;
+  once(event: "close", listener: () => void): unknown;
 }
 
 export interface SshExecStream {
@@ -430,8 +471,97 @@ export interface SshExecStream {
 export class ExeDevSandboxApi implements SandboxApi {
   private sftpInstance: SFTPWrapper | null = null;
   private sftpPromise: Promise<SFTPWrapper> | null = null;
+  /** Set once the SSH connection is gone; guarded calls reject after that. */
+  private deathReason: "stopped" | "probe_silent" | null = null;
+  private deathWaiters = new Set<() => void>();
 
-  constructor(private ssh: SshLike) {}
+  constructor(private ssh: SshLike) {
+    // ssh2 tears the socket down when SSH_KEEPALIVE_COUNT_MAX consecutive
+    // keepalives go unanswered, emitting 'error' ("Keepalive timeout",
+    // level 'client-timeout') and then 'close'. 'close' also follows a TCP
+    // reset or an orderly disconnect, so it is the single authoritative
+    // death signal. sshConnect() keeps an 'error' listener attached, so the
+    // preceding 'error' event cannot crash the process.
+    let sawKeepaliveTimeout = false;
+    this.ssh.on("error", (err) => {
+      if ((err as Error & { level?: string }).level === "client-timeout") {
+        sawKeepaliveTimeout = true;
+      }
+    });
+    this.ssh.once("close", () => {
+      this.deathReason = sawKeepaliveTimeout ? "probe_silent" : "stopped";
+      const waiters = [...this.deathWaiters];
+      this.deathWaiters.clear();
+      for (const waiter of waiters) waiter();
+    });
+  }
+
+  private diedError(operation: string): SandboxDiedError {
+    return new SandboxDiedError({
+      operation,
+      reason: this.deathReason ?? "stopped",
+    });
+  }
+
+  /**
+   * Await an SSH operation while watching for connection death. SSH is the
+   * liveness channel itself: a VM that dies with a TCP reset fails every
+   * in-flight ssh2 callback natively, and a VM that dies silently is caught
+   * by the keepalives configured in sshConnect(), which destroy the socket.
+   * Either way the client emits 'close' and this race rejects with
+   * SandboxDiedError, so a call that is in flight when the VM dies settles
+   * (and is classified as an infrastructure failure) instead of hanging —
+   * or, for exec, resolving as a phantom success when the channel closes
+   * without an exit code.
+   *
+   * There is deliberately no per-command deadline here; a healthy slow
+   * command is never interrupted. When `signal` is provided, its abort
+   * joins the race and rejects immediately even though the remote command
+   * cannot be cancelled mid-flight.
+   *
+   * Channel opens (getSftp) are not raced: ssh2 fails a pending channel
+   * open natively when the connection closes.
+   */
+  private guarded<T>(operation: string, op: Promise<T>, signal?: AbortSignal): Promise<T> {
+    if (signal?.aborted) {
+      // The call is already in flight; swallow its eventual settlement so
+      // the early rejection can't leave an unhandled rejection behind.
+      op.catch(() => {});
+      return Promise.reject(abortError(signal));
+    }
+    if (this.deathReason) {
+      op.catch(() => {});
+      return Promise.reject(this.diedError(operation));
+    }
+    return new Promise<T>((resolve, reject) => {
+      let settled = false;
+      let removeAbortListener = (): void => {};
+
+      const settle = (complete: () => void): void => {
+        if (settled) return;
+        settled = true;
+        this.deathWaiters.delete(onDeath);
+        removeAbortListener();
+        complete();
+      };
+      const onDeath = (): void => settle(() => reject(this.diedError(operation)));
+      this.deathWaiters.add(onDeath);
+
+      if (signal) {
+        const onAbort = (): void => settle(() => reject(abortError(signal)));
+        signal.addEventListener("abort", onAbort, { once: true });
+        removeAbortListener = () => signal.removeEventListener("abort", onAbort);
+      }
+
+      // These handlers double as the losing branch's rejection consumer, so
+      // a late settlement after death or abort can't surface as an
+      // unhandled rejection.
+      op.then(
+        (value) => settle(() => resolve(value)),
+        (error: unknown) => settle(() => reject(error)),
+      );
+    });
+  }
 
   private getSftp(): Promise<SFTPWrapper> {
     if (this.sftpInstance) return Promise.resolve(this.sftpInstance);
@@ -458,7 +588,7 @@ export class ExeDevSandboxApi implements SandboxApi {
 
   async readFile(filePath: string): Promise<string> {
     const sftp = await this.getSftp();
-    return new Promise<string>((resolve, reject) => {
+    const op = new Promise<string>((resolve, reject) => {
       const chunks: Buffer[] = [];
       const stream = sftp.createReadStream(filePath, { encoding: "utf-8" });
       stream.on("data", (chunk: Buffer | string) => {
@@ -467,33 +597,36 @@ export class ExeDevSandboxApi implements SandboxApi {
       stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
       stream.on("error", reject);
     });
+    return this.guarded("readFile", op);
   }
 
   async readFileBuffer(filePath: string): Promise<Uint8Array> {
     const sftp = await this.getSftp();
-    return new Promise<Uint8Array>((resolve, reject) => {
+    const op = new Promise<Uint8Array>((resolve, reject) => {
       const chunks: Buffer[] = [];
       const stream = sftp.createReadStream(filePath);
       stream.on("data", (chunk: Buffer) => chunks.push(chunk));
       stream.on("end", () => resolve(new Uint8Array(Buffer.concat(chunks))));
       stream.on("error", reject);
     });
+    return this.guarded("readFile", op);
   }
 
   async writeFile(filePath: string, content: string | Uint8Array): Promise<void> {
     const buf = typeof content === "string" ? Buffer.from(content, "utf-8") : Buffer.from(content);
     const sftp = await this.getSftp();
-    return new Promise<void>((resolve, reject) => {
+    const op = new Promise<void>((resolve, reject) => {
       const stream = sftp.createWriteStream(filePath);
       stream.on("close", () => resolve());
       stream.on("error", reject);
       stream.end(buf);
     });
+    return this.guarded("writeFile", op);
   }
 
   async stat(filePath: string): Promise<FileStat> {
     const sftp = await this.getSftp();
-    return new Promise<FileStat>((resolve, reject) => {
+    const op = new Promise<FileStat>((resolve, reject) => {
       sftp.stat(filePath, (err, stats) => {
         if (err) return reject(err);
         resolve({
@@ -505,23 +638,27 @@ export class ExeDevSandboxApi implements SandboxApi {
         });
       });
     });
+    return this.guarded("stat", op);
   }
 
   async readdir(dirPath: string): Promise<string[]> {
     const sftp = await this.getSftp();
-    return new Promise<string[]>((resolve, reject) => {
+    const op = new Promise<string[]>((resolve, reject) => {
       sftp.readdir(dirPath, (err, list) => {
         if (err) return reject(err);
         resolve(list.map((entry) => entry.filename));
       });
     });
+    return this.guarded("readdir", op);
   }
 
   async exists(filePath: string): Promise<boolean> {
     try {
       await this.stat(filePath);
       return true;
-    } catch {
+    } catch (err) {
+      // Sandbox death must reject, not read as "file absent".
+      if (err instanceof SandboxDiedError) throw err;
       return false;
     }
   }
@@ -532,9 +669,10 @@ export class ExeDevSandboxApi implements SandboxApi {
       return;
     }
     const sftp = await this.getSftp();
-    return new Promise<void>((resolve, reject) => {
+    const op = new Promise<void>((resolve, reject) => {
       sftp.mkdir(dirPath, (err) => (err ? reject(err) : resolve()));
     });
+    return this.guarded("mkdir", op);
   }
 
   async rm(filePath: string, options?: { recursive?: boolean; force?: boolean }): Promise<void> {
@@ -550,12 +688,13 @@ export class ExeDevSandboxApi implements SandboxApi {
       });
     }
     const sftp = await this.getSftp();
-    return new Promise<void>((resolve, reject) => {
+    const op = new Promise<void>((resolve, reject) => {
       sftp.unlink(filePath, (unlinkErr) => {
         if (!unlinkErr) return resolve();
         sftp.rmdir(filePath, (rmdirErr) => (rmdirErr ? reject(rmdirErr) : resolve()));
       });
     });
+    return this.guarded("rm", op);
   }
 
   async exec(
@@ -579,9 +718,11 @@ export class ExeDevSandboxApi implements SandboxApi {
       cmd = `cd '${shellEscape(options.cwd)}' && ${cmd}`;
     }
 
-    // ssh2 has no AbortSignal integration. The option is accepted for the
-    // SandboxApi shape; Flue's runtime enforces pre/post signal checks.
-    return new Promise((resolve, reject) => {
+    // ssh2 cannot cancel a remote command mid-flight. The signal instead
+    // joins the death watcher's race (see guarded()), so an abort rejects
+    // immediately even though the VM keeps running the command; Flue's
+    // runtime additionally enforces pre/post signal checks.
+    const op = new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve, reject) => {
       this.ssh.exec(cmd, {}, (err, stream) => {
         if (err) return reject(err);
 
@@ -625,6 +766,7 @@ export class ExeDevSandboxApi implements SandboxApi {
         });
       });
     });
+    return this.guarded("exec", op, options?.signal);
   }
 }
 
@@ -711,8 +853,9 @@ Use project conventions (`.env`, `.dev.vars`, a secret manager, CI vars,
 etc.) for storing any token or host values. If nothing in the project gives
 you a clear signal, ask the user instead of guessing.
 
-For reference: `flue dev --env <file>` and `flue run --env <file>` load
-any `.env`-format file the user points them at.
+For reference: `flue run` loads the project's `.env` by default, and
+`--env <file>` selects one alternate `.env`-format file. `vite dev` and the
+built server read the shell environment (`process.env`).
 
 ## Wiring it into an agent
 
@@ -728,52 +871,43 @@ no obvious project convention like `EXE_VM_HOST`, ask for the exe.dev VM
 hostname before wiring the adapter.
 
 ```ts
-import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from "@flue/runtime";
+'use agent';
+import { useModel, useSandbox } from "@flue/runtime";
 import { exedev } from "../sandboxes/exedev";
 
-export const route: WorkflowRouteHandler = async (_c, next) => next();
-
-const agent = defineAgent(({ env }) => ({
-  sandbox: exedev({ host: env.EXE_VM_HOST }),
-  model: "anthropic/claude-sonnet-4-6",
-}));
-
-export default defineWorkflow({
-  agent,
-  run: async ({ harness }) => {
-    const session = await harness.session();
-    return await session.shell("uname -a");
-  },
-});
+export function Assistant() {
+	useModel("anthropic/claude-sonnet-4-6");
+	useSandbox(exedev({ host: process.env.EXE_VM_HOST }));
+	return "You are a helpful assistant with a full sandbox.";
+}
 ```
+
+The `'use agent'` directive at the top is what registers the module with
+the application. Mount `createAgentRouter(...)` (from `@flue/runtime/routing`) in
+`app.ts` only if the agent needs
+an HTTP endpoint — `flue run` and `dispatch()` work without a mount.
 
 ### Fresh VM
 
 Only use this when the user explicitly asks to create a VM and provides an
-API token with `new` permission. The bound agent initializer creates the VM and
-passes it to `exedev(...)`.
+API token with `new` permission. The `createSessionEnv` closure creates the
+VM and passes it to `exedev(...)`.
 
 ```ts
-import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from "@flue/runtime";
+'use agent';
+import { useModel, useSandbox } from "@flue/runtime";
 import { createExeVm, exedev } from "../sandboxes/exedev";
 
-export const route: WorkflowRouteHandler = async (_c, next) => next();
-
-const agent = defineAgent(async ({ env }) => {
-  const vm = await createExeVm({ apiToken: env.EXE_API_TOKEN });
-  return {
-    sandbox: exedev(vm),
-    model: "anthropic/claude-sonnet-4-6",
-  };
-});
-
-export default defineWorkflow({
-  agent,
-  run: async ({ harness }) => {
-    const session = await harness.session();
-    return await session.shell("uname -a");
-  },
-});
+export function Assistant() {
+	useModel("anthropic/claude-sonnet-4-6");
+	useSandbox({
+		async createSessionEnv(options) {
+			const vm = await createExeVm({ apiToken: process.env.EXE_API_TOKEN });
+			return exedev(vm).createSessionEnv(options);
+		},
+	});
+	return "You are a helpful assistant with a full sandbox.";
+}
 ```
 
 ### Cloned VM
@@ -783,29 +917,23 @@ an API token with `cp` permission. If the project also deletes the clone, the
 token needs `rm` permission.
 
 ```ts
-import { defineAgent, defineWorkflow, type WorkflowRouteHandler } from "@flue/runtime";
+'use agent';
+import { useModel, useSandbox } from "@flue/runtime";
 import { cloneExeVm, exedev } from "../sandboxes/exedev";
 
-export const route: WorkflowRouteHandler = async (_c, next) => next();
-
-const agent = defineAgent(async ({ env }) => {
-  const vm = await cloneExeVm({
-    apiToken: env.EXE_API_TOKEN,
-    source: "my-dev-vm",
-  });
-  return {
-    sandbox: exedev(vm),
-    model: "anthropic/claude-sonnet-4-6",
-  };
-});
-
-export default defineWorkflow({
-  agent,
-  run: async ({ harness }) => {
-    const session = await harness.session();
-    return await session.shell("uname -a");
-  },
-});
+export function Assistant() {
+	useModel("anthropic/claude-sonnet-4-6");
+	useSandbox({
+		async createSessionEnv(options) {
+			const vm = await cloneExeVm({
+				apiToken: process.env.EXE_API_TOKEN,
+				source: "my-dev-vm",
+			});
+			return exedev(vm).createSessionEnv(options);
+		},
+	});
+	return "You are a helpful assistant with a full sandbox.";
+}
 ```
 
 ## Verify
@@ -817,8 +945,10 @@ export default defineWorkflow({
    actually wrote the file.
 4. Tell the user the next steps: install `ssh2` and `@types/ssh2` (if you
    didn't), make sure the needed exe.dev SSH/API values are available at
-   runtime (per the Authentication section above), and run `flue dev --target node`
-   (or `flue run <workflow> --target node`) to try it.
+   runtime (per the Authentication section above), and run
+   `flue run <path-to-the-agent-module> --message "..."` (or `vite dev`
+   for the full application) to try it. Both require the Node target —
+   this adapter is not Cloudflare-compatible.
 
 When updating an existing integration, inspect and compare it against this complete current blueprint, apply every relevant change while preserving customizations, and then add or update the marker in the primary marked file. This comparison is required when the marker is missing.
 
@@ -827,3 +957,336 @@ When updating an existing integration, inspect and compare it against this compl
 ### Version 1 — 2026-06-14
 
 Initial version.
+
+### Version 2 — 2026-07-22
+
+Death detection over the SSH connection. A VM that died with a TCP reset
+already failed in-flight calls natively, but a VM that vanished silently
+(deleted mid-command, host gone) left the socket established forever: SFTP
+calls hung, and `exec` could even resolve as a phantom success with exit
+code 0 when the channel finally closed without an exit status. The adapter
+now enables ssh2's documented SSH-level keepalives (`keepaliveInterval` /
+`keepaliveCountMax`), so a silent death tears the socket down within
+roughly 10–15 seconds, and races every operation against connection death
+so interrupted calls reject with `SandboxDiedError` (imported from
+`@flue/runtime`). Healthy slow commands are unaffected — sshd answers
+keepalives regardless of how long a command runs, and there is still no
+per-command deadline. `exec` also honors an in-flight `AbortSignal` by
+rejecting immediately, and `exists` re-throws `SandboxDiedError` instead
+of reading death as "file absent".
+
+```diff
+--- a/src/sandboxes/exedev.ts
++++ b/src/sandboxes/exedev.ts
+@@ -1,4 +1,4 @@
+-// flue-blueprint: sandbox/exedev@1
++// flue-blueprint: sandbox/exedev@2
+ /**
+  * exe.dev adapter for Flue.
+  *
+@@ -13,6 +13,11 @@
+  * use exe.dev's HTTPS API before/after agent setup. The adapter itself
+  * does not create, clone, or delete infrastructure.
+  *
++ * The SSH connection doubles as the liveness channel: SSH-level keepalives
++ * surface a silently dead VM as a connection close, and every in-flight
++ * operation settles with SandboxDiedError instead of hanging. See the
++ * death watcher in ExeDevSandboxApi.
++ *
+  * @example Existing VM (most common)
+  * ```typescript
+  * 'use agent';
+@@ -49,6 +54,7 @@
+  */
+ import {
+   createSandboxSessionEnv,
++  SandboxDiedError,
+   SandboxOperationUnsupportedError,
+ } from "@flue/runtime";
+ import type {
+@@ -127,6 +133,10 @@
+ 
+ const EXE_API_URL = "https://exe.dev/exec";
+ const DEFAULT_VM_READY_TIMEOUT_MS = 90_000;
++/** How often ssh2 sends an SSH-level keepalive while the connection is open. */
++const SSH_KEEPALIVE_INTERVAL_MS = 5_000;
++/** Consecutive unanswered keepalives before ssh2 declares the connection dead. */
++const SSH_KEEPALIVE_COUNT_MAX = 2;
+ const VM_NAME = /^[A-Za-z0-9][A-Za-z0-9-]*$/;
+ const SHELL_ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+ 
+@@ -241,6 +251,18 @@
+     throw new ExeDevError(`Invalid environment variable name: ${name}`);
+   }
+   return `${name}='${shellEscape(value)}'`;
++}
++
++/** Build a standard `AbortError` (`DOMException`) from an aborted signal. */
++function abortError(signal: AbortSignal): Error {
++  const reason: unknown = signal.reason;
++  const message =
++    reason instanceof Error && reason.message
++      ? reason.message
++      : typeof reason === "string" && reason
++        ? reason
++        : "The operation was aborted.";
++  return new DOMException(message, "AbortError");
+ }
+ 
+ /** Resolve SSH auth — either a private key (file/buffer) or an agent socket. */
+@@ -356,6 +378,16 @@
+     host: vm.host,
+     port: opts.port ?? vm.port ?? 22,
+     username: opts.username ?? "user",
++    // A VM that dies with a TCP reset fails in-flight calls natively, but a
++    // VM that vanishes silently (deleted mid-command, host gone) leaves the
++    // socket established and every pending call hanging. SSH-level
++    // keepalives turn that silence into a socket teardown after
++    // SSH_KEEPALIVE_COUNT_MAX unanswered probes, which settles every
++    // in-flight operation (see the death watcher in ExeDevSandboxApi).
++    // sshd answers keepalives regardless of how long a command runs, so a
++    // legitimately slow command on a healthy VM never trips them.
++    keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
++    keepaliveCountMax: SSH_KEEPALIVE_COUNT_MAX,
+     ...resolveAuth(opts),
+   };
+ 
+@@ -378,6 +410,8 @@
+     options: object,
+     cb: (err: Error | undefined, stream: SshExecStream) => void,
+   ): unknown;
++  on(event: "error", listener: (err: Error) => void): unknown;
++  once(event: "close", listener: () => void): unknown;
+ }
+ 
+ export interface SshExecStream {
+@@ -391,9 +425,98 @@
+ export class ExeDevSandboxApi implements SandboxApi {
+   private sftpInstance: SFTPWrapper | null = null;
+   private sftpPromise: Promise<SFTPWrapper> | null = null;
++  /** Set once the SSH connection is gone; guarded calls reject after that. */
++  private deathReason: "stopped" | "probe_silent" | null = null;
++  private deathWaiters = new Set<() => void>();
+ 
+-  constructor(private ssh: SshLike) {}
++  constructor(private ssh: SshLike) {
++    // ssh2 tears the socket down when SSH_KEEPALIVE_COUNT_MAX consecutive
++    // keepalives go unanswered, emitting 'error' ("Keepalive timeout",
++    // level 'client-timeout') and then 'close'. 'close' also follows a TCP
++    // reset or an orderly disconnect, so it is the single authoritative
++    // death signal. sshConnect() keeps an 'error' listener attached, so the
++    // preceding 'error' event cannot crash the process.
++    let sawKeepaliveTimeout = false;
++    this.ssh.on("error", (err) => {
++      if ((err as Error & { level?: string }).level === "client-timeout") {
++        sawKeepaliveTimeout = true;
++      }
++    });
++    this.ssh.once("close", () => {
++      this.deathReason = sawKeepaliveTimeout ? "probe_silent" : "stopped";
++      const waiters = [...this.deathWaiters];
++      this.deathWaiters.clear();
++      for (const waiter of waiters) waiter();
++    });
++  }
+ 
++  private diedError(operation: string): SandboxDiedError {
++    return new SandboxDiedError({
++      operation,
++      reason: this.deathReason ?? "stopped",
++    });
++  }
++
++  /**
++   * Await an SSH operation while watching for connection death. SSH is the
++   * liveness channel itself: a VM that dies with a TCP reset fails every
++   * in-flight ssh2 callback natively, and a VM that dies silently is caught
++   * by the keepalives configured in sshConnect(), which destroy the socket.
++   * Either way the client emits 'close' and this race rejects with
++   * SandboxDiedError, so a call that is in flight when the VM dies settles
++   * (and is classified as an infrastructure failure) instead of hanging —
++   * or, for exec, resolving as a phantom success when the channel closes
++   * without an exit code.
++   *
++   * There is deliberately no per-command deadline here; a healthy slow
++   * command is never interrupted. When `signal` is provided, its abort
++   * joins the race and rejects immediately even though the remote command
++   * cannot be cancelled mid-flight.
++   *
++   * Channel opens (getSftp) are not raced: ssh2 fails a pending channel
++   * open natively when the connection closes.
++   */
++  private guarded<T>(operation: string, op: Promise<T>, signal?: AbortSignal): Promise<T> {
++    if (signal?.aborted) {
++      // The call is already in flight; swallow its eventual settlement so
++      // the early rejection can't leave an unhandled rejection behind.
++      op.catch(() => {});
++      return Promise.reject(abortError(signal));
++    }
++    if (this.deathReason) {
++      op.catch(() => {});
++      return Promise.reject(this.diedError(operation));
++    }
++    return new Promise<T>((resolve, reject) => {
++      let settled = false;
++      let removeAbortListener = (): void => {};
++
++      const settle = (complete: () => void): void => {
++        if (settled) return;
++        settled = true;
++        this.deathWaiters.delete(onDeath);
++        removeAbortListener();
++        complete();
++      };
++      const onDeath = (): void => settle(() => reject(this.diedError(operation)));
++      this.deathWaiters.add(onDeath);
++
++      if (signal) {
++        const onAbort = (): void => settle(() => reject(abortError(signal)));
++        signal.addEventListener("abort", onAbort, { once: true });
++        removeAbortListener = () => signal.removeEventListener("abort", onAbort);
++      }
++
++      // These handlers double as the losing branch's rejection consumer, so
++      // a late settlement after death or abort can't surface as an
++      // unhandled rejection.
++      op.then(
++        (value) => settle(() => resolve(value)),
++        (error: unknown) => settle(() => reject(error)),
++      );
++    });
++  }
++
+   private getSftp(): Promise<SFTPWrapper> {
+     if (this.sftpInstance) return Promise.resolve(this.sftpInstance);
+     if (this.sftpPromise) return this.sftpPromise;
+@@ -419,7 +542,7 @@
+ 
+   async readFile(filePath: string): Promise<string> {
+     const sftp = await this.getSftp();
+-    return new Promise<string>((resolve, reject) => {
++    const op = new Promise<string>((resolve, reject) => {
+       const chunks: Buffer[] = [];
+       const stream = sftp.createReadStream(filePath, { encoding: "utf-8" });
+       stream.on("data", (chunk: Buffer | string) => {
+@@ -428,33 +551,36 @@
+       stream.on("end", () => resolve(Buffer.concat(chunks).toString("utf-8")));
+       stream.on("error", reject);
+     });
++    return this.guarded("readFile", op);
+   }
+ 
+   async readFileBuffer(filePath: string): Promise<Uint8Array> {
+     const sftp = await this.getSftp();
+-    return new Promise<Uint8Array>((resolve, reject) => {
++    const op = new Promise<Uint8Array>((resolve, reject) => {
+       const chunks: Buffer[] = [];
+       const stream = sftp.createReadStream(filePath);
+       stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+       stream.on("end", () => resolve(new Uint8Array(Buffer.concat(chunks))));
+       stream.on("error", reject);
+     });
++    return this.guarded("readFile", op);
+   }
+ 
+   async writeFile(filePath: string, content: string | Uint8Array): Promise<void> {
+     const buf = typeof content === "string" ? Buffer.from(content, "utf-8") : Buffer.from(content);
+     const sftp = await this.getSftp();
+-    return new Promise<void>((resolve, reject) => {
++    const op = new Promise<void>((resolve, reject) => {
+       const stream = sftp.createWriteStream(filePath);
+       stream.on("close", () => resolve());
+       stream.on("error", reject);
+       stream.end(buf);
+     });
++    return this.guarded("writeFile", op);
+   }
+ 
+   async stat(filePath: string): Promise<FileStat> {
+     const sftp = await this.getSftp();
+-    return new Promise<FileStat>((resolve, reject) => {
++    const op = new Promise<FileStat>((resolve, reject) => {
+       sftp.stat(filePath, (err, stats) => {
+         if (err) return reject(err);
+         resolve({
+@@ -466,23 +592,27 @@
+         });
+       });
+     });
++    return this.guarded("stat", op);
+   }
+ 
+   async readdir(dirPath: string): Promise<string[]> {
+     const sftp = await this.getSftp();
+-    return new Promise<string[]>((resolve, reject) => {
++    const op = new Promise<string[]>((resolve, reject) => {
+       sftp.readdir(dirPath, (err, list) => {
+         if (err) return reject(err);
+         resolve(list.map((entry) => entry.filename));
+       });
+     });
++    return this.guarded("readdir", op);
+   }
+ 
+   async exists(filePath: string): Promise<boolean> {
+     try {
+       await this.stat(filePath);
+       return true;
+-    } catch {
++    } catch (err) {
++      // Sandbox death must reject, not read as "file absent".
++      if (err instanceof SandboxDiedError) throw err;
+       return false;
+     }
+   }
+@@ -493,9 +623,10 @@
+       return;
+     }
+     const sftp = await this.getSftp();
+-    return new Promise<void>((resolve, reject) => {
++    const op = new Promise<void>((resolve, reject) => {
+       sftp.mkdir(dirPath, (err) => (err ? reject(err) : resolve()));
+     });
++    return this.guarded("mkdir", op);
+   }
+ 
+   async rm(filePath: string, options?: { recursive?: boolean; force?: boolean }): Promise<void> {
+@@ -511,12 +642,13 @@
+       });
+     }
+     const sftp = await this.getSftp();
+-    return new Promise<void>((resolve, reject) => {
++    const op = new Promise<void>((resolve, reject) => {
+       sftp.unlink(filePath, (unlinkErr) => {
+         if (!unlinkErr) return resolve();
+         sftp.rmdir(filePath, (rmdirErr) => (rmdirErr ? reject(rmdirErr) : resolve()));
+       });
+     });
++    return this.guarded("rm", op);
+   }
+ 
+   async exec(
+@@ -540,9 +672,11 @@
+       cmd = `cd '${shellEscape(options.cwd)}' && ${cmd}`;
+     }
+ 
+-    // ssh2 has no AbortSignal integration. The option is accepted for the
+-    // SandboxApi shape; Flue's runtime enforces pre/post signal checks.
+-    return new Promise((resolve, reject) => {
++    // ssh2 cannot cancel a remote command mid-flight. The signal instead
++    // joins the death watcher's race (see guarded()), so an abort rejects
++    // immediately even though the VM keeps running the command; Flue's
++    // runtime additionally enforces pre/post signal checks.
++    const op = new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve, reject) => {
+       this.ssh.exec(cmd, {}, (err, stream) => {
+         if (err) return reject(err);
+ 
+@@ -586,6 +720,7 @@
+         });
+       });
+     });
++    return this.guarded("exec", op, options?.signal);
+   }
+ }
+ 
+```

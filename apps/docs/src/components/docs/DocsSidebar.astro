@@ -12,6 +12,6 @@ interface Props {
 const { groups, currentSlug, mobile = false, groupHeadingLevel = 2 } = Astro.props;
 ---
 
-<nav class:list={[mobile ? 'static' : 'sticky top-[calc(var(--docs-header-height)+var(--docs-aside-top))] max-h-[calc(100vh-var(--docs-header-height)-var(--docs-aside-top)-2rem)] overflow-y-auto pr-2']} aria-label="Documentation navigation">
+<nav class:list={[mobile ? 'static' : 'docs-sidebar-nav sticky top-[calc(var(--docs-header-height)+var(--docs-aside-top))] max-h-[calc(100vh-var(--docs-header-height)-var(--docs-aside-top)-2rem)] overflow-y-auto pr-2']} aria-label="Documentation navigation">
 	{groups.map((group) => <DocsSidebarGroup group={group} currentSlug={currentSlug} mobile={mobile} headingLevel={groupHeadingLevel} />)}
 </nav>

@@ -63,7 +63,7 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
     <link rel="manifest" href="/site.webmanifest" />
     <meta name="generator" content={Astro.generator} />
     <title>Flue — The Open Agent Framework</title>
-    <meta name="description" content="Build durable AI agents and workflows with Flue's programmable TypeScript harness. Write once, deploy anywhere, use any LLM." />
+    <meta name="description" content="Build durable AI agents with Flue's programmable TypeScript harness. Write once, deploy anywhere, use any LLM." />
     <meta name="theme-color" content="#ffffff" />
     <link rel="canonical" href="https://flueframework.com/" />
 
@@ -71,7 +71,7 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Flue" />
     <meta property="og:title" content="Flue — The Open Agent Framework" />
-    <meta property="og:description" content="Build durable AI agents and workflows with Flue's programmable TypeScript harness. Write once, deploy anywhere, use any LLM." />
+    <meta property="og:description" content="Build durable AI agents with Flue's programmable TypeScript harness. Write once, deploy anywhere, use any LLM." />
     <meta property="og:url" content="https://flueframework.com/" />
     <meta property="og:image" content="https://flueframework.com/og3.jpg" />
     <meta property="og:image:alt" content="Flue framework logo" />
@@ -79,7 +79,7 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Flue — The Open Agent Framework" />
-    <meta name="twitter:description" content="Build durable AI agents and workflows with Flue's programmable TypeScript harness. Write once, deploy anywhere, use any LLM." />
+    <meta name="twitter:description" content="Build durable AI agents with Flue's programmable TypeScript harness. Write once, deploy anywhere, use any LLM." />
     <meta name="twitter:image" content="https://flueframework.com/og3.jpg" />
     <meta name="twitter:image:alt" content="Flue framework logo" />
 
@@ -104,15 +104,15 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
             <span class="text-2xl font-extrabold tracking-tight text-gray-950 leading-8">Flue</span>
           </a>
           <div class="hidden lg:flex h-full items-center gap-7 text-sm font-medium text-gray-500">
-            <a href="/docs/getting-started/quickstart/" class="hover:text-blue-600 transition-colors">Guide</a>
-            <a href="/docs/api/agent-api/" class="hover:text-blue-600 transition-colors">Reference</a>
+            <a href="/docs/guide/getting-started/" class="hover:text-blue-600 transition-colors">Guide</a>
+            <a href="/docs/reference/agent-api/" class="hover:text-blue-600 transition-colors">Reference</a>
             <a href="/docs/cli/overview/" class="hover:text-blue-600 transition-colors">CLI</a>
             <a href="/docs/sdk/overview/" class="hover:text-blue-600 transition-colors">SDK</a>
             <a href="/docs/ecosystem/" class="hover:text-blue-600 transition-colors">Ecosystem</a>
           </div>
         </div>
         <div class="flex items-center gap-5">
-          <a href="/docs/getting-started/quickstart/" class="text-sm font-medium text-gray-500 transition-colors hover:text-gray-950 lg:hidden">Docs</a>
+          <a href="/docs/guide/getting-started/" class="text-sm font-medium text-gray-500 transition-colors hover:text-gray-950 lg:hidden">Docs</a>
           <a href="https://x.com/flueai" target="_blank" rel="noopener noreferrer" class="text-gray-500 hover:text-gray-950 transition-colors" aria-label="X">
             <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
           </a>
@@ -179,7 +179,7 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
           The Open Agent Framework
         </h1>
         <p class="mt-3 lg:mt-4 max-w-xl text-md sm:text-xl  text-gray-600">
-          Build durable AI agents and workflows with Flue's programmable TypeScript harness. Write once, deploy anywhere, use any LLM.
+          Build durable AI agents with Flue's programmable TypeScript harness. Write once, deploy anywhere, use any LLM.
         </p>
         <div class="mt-6 lg:mt-8 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <div id="copy-prompt-shell" class="group/copy relative" data-feedback="false" data-copy-error="false">
@@ -253,7 +253,7 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
                   <polyline points="4 17 10 11 4 5"/>
                   <line x1="12" y1="19" x2="20" y2="19"/>
                 </svg>
-                <span class="font-[JetBrains_Mono,monospace] text-[13px] text-gray-600">flue run triage</span>
+                <span class="font-[JetBrains_Mono,monospace] text-[13px] text-gray-600">flue run ./agents/triage.ts</span>
               </div>
               <!-- HTTP agent interaction mode -->
               <div class="hidden sm:flex items-baseline gap-2 px-4 py-2.5" title="Prompt a persistent agent instance over HTTP">
@@ -450,7 +450,7 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
         </div>
 
         <div class="mt-10 grid lg:grid-cols-6 gap-5">
-          <a href="/docs/concepts/agents/" class="lg:col-span-3 bg-white flex flex-col transition-colors hover:bg-gray-50 [&>div]:transition-colors hover:[&>div]:border-gray-400">
+          <a href="/docs/guide/building-agents/" class="lg:col-span-3 bg-white flex flex-col transition-colors hover:bg-gray-50 [&>div]:transition-colors hover:[&>div]:border-gray-400">
             <div class="relative flex h-[184px] items-center justify-center overflow-hidden border border-slate-300 bg-[#e9eef4]">
               <svg class="absolute inset-0 h-full w-full" aria-hidden="true">
                 <defs>
@@ -464,7 +464,7 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
             </div>
             <div class="flex-1 border-x border-b border-gray-300 p-6">
               <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Agents</h3>
-              <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Build agents that can keep context across conversations and events as they autonomously work toward a goal.</p>
+              <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Build agents that can keep context across conversations and events as they autonomously work toward a goal. Each one is durable, stateful, and addressable over HTTP.</p>
             </div>
           </a>
 
@@ -482,54 +482,61 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
             </div>
             <div class="flex-1 border-x border-b border-gray-300 p-6">
               <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Workflows</h3>
-              <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Run structured automations where your code guides agent reasoning from a clear input to a finished result.</p>
+              <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Agents are just functions. Script them with <code class="font-[JetBrains_Mono,monospace] text-[13px]">flue run</code> and the SDK — locally, in CI, or from your own backend — or orchestrate them with Cloudflare Workflows, Inngest, and more.</p>
             </div>
           </a>
 
           <a href="/docs/guide/sandboxes/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
             <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Sandboxes</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Give agents a secure environment where they can use tools, modify files, and autonomously complete real work.</p>
+            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">A secure environment where agents run commands, edit files, and do real work.</p>
           </a>
 
-          <a href="/docs/guide/durable-execution/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
-            <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Durable Execution</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Learn how agents preserve progress through failures and restarts with durable recovery for accepted work.</p>
+          <a href="/docs/guide/agent-hooks/#persisted-state" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
+            <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Persistent State</h3>
+            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Write data on each agent and update its capabilities as state changes.</p>
           </a>
 
           <a href="/docs/guide/subagents/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
             <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Subagents</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Define specialized roles for different tasks, then let your agent delegate work to the right expert.</p>
+            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Define specialized roles and let your agent delegate work to the right expert.</p>
           </a>
 
           <a href="/docs/guide/tools/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
             <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Tools</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Give agents typed actions for calling APIs, querying data, and making controlled changes through your application.</p>
+            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Agents call APIs, query data, and make changes — using the code you define.</p>
           </a>
 
           <a href="/docs/guide/skills/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
             <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Skills</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Package reusable expertise and workflows that agents can load whenever a task needs specialized guidance.</p>
+            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Package expertise that agents load whenever a task needs guidance.</p>
           </a>
 
-          <a href="/docs/guide/tools/#connect-mcp-tools" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
+          <a href="/docs/guide/mcp/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
             <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">MCP Servers</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Connect agents to authenticated tools and services through the open Model Context Protocol ecosystem.</p>
+            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Connect agents to thousands of tools through the open Model Context Protocol.</p>
+          </a>
+
+          <a href="/docs/guide/durability/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
+            <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Durable Execution</h3>
+            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Work survives crashes, restarts, and deploys — sessions resume automatically.</p>
           </a>
 
           <a href="/docs/guide/observability/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
             <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Observability</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Monitor your agents and export telemetry with OpenTelemetry, Braintrust, Sentry, or your own observer.</p>
+            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Export session traces to OpenTelemetry, Braintrust, Sentry, or your own observer.</p>
           </a>
 
-          <a href="/docs/guide/chat/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
+          <a href="/docs/guide/channels/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
             <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Chat</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Connect agents to where your work happens across Slack, Teams, Discord, GitHub, and more.</p>
+            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Connect agents to where work happens — Slack, Teams, Discord, GitHub, and more.</p>
           </a>
 
-          <a href="/docs/getting-started/quickstart/" class="group lg:col-span-2 border border-gray-300 bg-gray-950 p-6 text-white transition-colors hover:bg-gray-800">
-            <h3 class="font-heading text-xl font-semibold tracking-tight">Explore the docs</h3>
-            <p class="mt-1.5 text-base text-gray-300 leading-relaxed">Learn how to build, run, and deploy production-ready agents with Flue.</p>
-            <span class="mt-5 inline-flex items-center gap-2 text-sm font-medium text-white">Read the docs <span class="transition-transform group-hover:translate-x-1">&rarr;</span></span>
+          <a href="/docs/guide/getting-started/" class="group lg:col-span-6 flex flex-col gap-4 border border-gray-300 bg-gray-950 p-6 text-white transition-colors hover:bg-gray-800 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 class="font-heading text-xl font-semibold tracking-tight">Explore the docs</h3>
+              <p class="mt-1.5 text-base text-gray-300 leading-relaxed">Learn how to build, run, and deploy production-ready agents with Flue.</p>
+            </div>
+            <span class="inline-flex items-center gap-2 whitespace-nowrap text-sm font-medium text-white">Read the docs <span class="transition-transform group-hover:translate-x-1">&rarr;</span></span>
           </a>
         </div>
       </div>
@@ -768,10 +775,10 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
               cell.classList.add('durability-cell-disrupted');
             });
             setStates(affected, 'down');
-            await sleep(600);
+            await sleep(300);
             if (generation !== recoveryGeneration) return;
             setStates(affected, 'restarting');
-            await sleep(300);
+            await sleep(150);
             if (generation !== recoveryGeneration) return;
             const columns = getColumns();
             const recoveryRows = Array.from({ length: Math.ceil(TOTAL / columns) }, () => [] as HTMLElement[]);
@@ -792,7 +799,7 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
                     recoveryTimers.delete(cell);
                   }, 700);
                   recoveryTimers.set(cell, [cleanupTimer]);
-                }, 500);
+                }, 150);
                 recoveryTimers.set(cell, [onlineTimer]);
                 await sleep(50);
               }
@@ -808,38 +815,6 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
             if (active.length === 0) return;
             recover(active);
           });
-
-          let outageCount = 0;
-          const runOutage = async () => {
-            await sleep(5000);
-
-            if (!durabilityVisible) {
-              runOutage();
-              return;
-            }
-            if (!outageActive) {
-              const online = cells.filter((cell) => cell.dataset.state === 'online');
-              if (online.length > 0) {
-                outageCount += 1;
-                const takeAllDown = outageCount === 1 || Math.random() < 0.3;
-                let affected: HTMLElement[];
-                if (takeAllDown) {
-                  affected = online;
-                } else {
-                  const outagePercent = 0.01 + Math.random() * 0.24;
-                  const outageSize = Math.max(1, Math.ceil(online.length * outagePercent));
-                  affected = [...online]
-                    .sort(() => Math.random() - 0.5)
-                    .slice(0, outageSize)
-                    .sort((a, b) => cells.indexOf(a) - cells.indexOf(b));
-                }
-                await recover(affected);
-              }
-            }
-
-            runOutage();
-          };
-          runOutage();
         };
 
         if ('IntersectionObserver' in window) {
@@ -856,36 +831,9 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
         }
       }
 
-      // --- Architecture cards: staggered entrance pulse ----------------------
-      // Fires once when the architecture diagram scrolls into view.
-      const archSection = document.querySelector('.pattern-layer')?.closest('section');
-      if (archSection && 'IntersectionObserver' in window) {
-        const pulseObserver = new IntersectionObserver(
-          (entries) => {
-            entries.forEach((entry) => {
-              if (!entry.isIntersecting) return;
-              const cards = archSection.querySelectorAll<HTMLElement>('.pattern-layer');
-              cards.forEach((card) => card.classList.add('card-pulse'));
-              pulseObserver.disconnect();
-            });
-          },
-          { threshold: 0.75 }
-        );
-        pulseObserver.observe(archSection);
-      }
     </script>
 
     <style is:global>
-      /* One-time entrance pulse for architecture cards. */
-      @keyframes cardPulse {
-        0%   { transform: translateY(0) scale(1); }
-        50%  { transform: translateY(-6px) scale(1.02); }
-        100% { transform: translateY(0) scale(1); }
-      }
-      .pattern-layer.card-pulse {
-        animation: cardPulse 600ms ease-out forwards;
-      }
-
       .chip-pixel {
         opacity: 0.14;
         animation: chipFlicker 4s steps(1, end) infinite;

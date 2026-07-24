@@ -1,4 +1,5 @@
 import * as v from 'valibot';
+import { RESERVED_SIGNAL_TYPES } from '../conversation-records.ts';
 import { InvalidRequestError } from '../errors.ts';
 import type { DeliveredMessage } from '../types.ts';
 
@@ -26,7 +27,20 @@ const DeliveredUserMessageSchema = v.object({
 
 const DeliveredSignalMessageSchema = v.object({
 	kind: v.literal('signal'),
-	type: v.pipe(v.string(), v.nonEmpty('Signal message "type" must not be empty.')),
+	type: v.pipe(
+		v.string(),
+		v.nonEmpty('Signal message "type" must not be empty.'),
+		// Reserved framework vocabulary: a record carrying one of these types
+		// must be framework-authored (recovery classification and the
+		// `useDelivery()` resume filter read provenance off the type string),
+		// so no delivery surface may mint one.
+		v.check(
+			(type) => !RESERVED_SIGNAL_TYPES.has(type),
+			(issue) =>
+				`Signal type "${issue.input}" is framework-reserved vocabulary ` +
+				"(the runtime's own narration and recovery signals) — use an application-specific type.",
+		),
+	),
 	body: v.string(),
 	attributes: v.optional(v.record(v.string(), v.string())),
 	// The tag name is rendered unescaped as the signal's XML envelope in model
@@ -64,7 +78,7 @@ export function parseDeliveredMessage(value: unknown): DeliveredMessage {
 	const parsed = v.safeParse(DeliveredMessageSchema, value);
 	if (parsed.success) return parsed.output;
 	const specificIssue = parsed.issues.find(
-		(issue) => issue.type === 'max_length' || issue.type === 'regex',
+		(issue) => issue.type === 'max_length' || issue.type === 'regex' || issue.type === 'check',
 	);
 	throw new InvalidRequestError({
 		reason:
@@ -74,9 +88,36 @@ export function parseDeliveredMessage(value: unknown): DeliveredMessage {
 	});
 }
 
-export const WorkflowRouteParamSchema = v.object({ name: v.string() });
-/** `?wait` query contract for the workflow invocation route. */
-export const InvocationQuerySchema = v.object({
-	wait: v.optional(v.literal('result')),
-});
-export const AgentRouteParamSchema = v.object({ name: v.string(), id: v.string() });
+/**
+ * Validate a raw direct-HTTP body as a delivered input: a
+ * {@link DeliveredMessage} with optional reserved top-level siblings, peeled
+ * off before message validation —
+ * - `initialData`: instance-creation data (the seed, used only when the send
+ *   creates the instance);
+ * - `uid`: the send condition (a string continues only that incarnation;
+ *   `null` creates only when fresh; omitted sends unconditionally).
+ */
+export function parseDeliveredInput(value: unknown): {
+	message: DeliveredMessage;
+	initialData?: unknown;
+	uid?: string | null;
+} {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		return { message: parseDeliveredMessage(value) };
+	}
+	if (!('initialData' in value) && !('uid' in value)) {
+		return { message: parseDeliveredMessage(value) };
+	}
+	const { initialData, uid, ...rest } = value as Record<string, unknown>;
+	if ('uid' in value && uid !== null && typeof uid !== 'string') {
+		throw new InvalidRequestError({
+			reason:
+				'`uid` must be a string (continue only that incarnation) or null (create only when fresh).',
+		});
+	}
+	return {
+		message: parseDeliveredMessage(rest),
+		...(initialData !== undefined ? { initialData } : {}),
+		...('uid' in value ? { uid: uid as string | null } : {}),
+	};
+}

@@ -15,8 +15,9 @@ application-owned Admin GraphQL behavior to a Flue project.
 
 Read local instructions, detect the package manager and target, and select the
 first existing source root: `<root>/.flue/`, then `<root>/src/`, then
-`<root>/`. Inspect existing agents, environment types, secret conventions,
-Shopify installation storage, and which webhook topics the application needs.
+`<root>/`. Inspect existing agents, `app.ts` (the application's route map),
+environment types, secret conventions, Shopify installation storage, and which
+webhook topics the application needs.
 
 Install `@flue/shopify` and the official
 `@shopify/admin-api-client@^1.1.2`. Add a compatible `@types/node` development
@@ -48,7 +49,7 @@ import {
 } from '@shopify/admin-api-client';
 import { createShopifyChannel, type JsonValue } from '@flue/shopify';
 import { defineTool, dispatch } from '@flue/runtime';
-import orders from '../agents/orders.ts';
+import { Orders } from '../agents/orders.ts';
 
 const SHOP_DOMAIN = process.env.SHOPIFY_SHOP_DOMAIN!;
 const ADMIN_API_VERSION = '2026-04';
@@ -88,8 +89,14 @@ export const channel = createShopifyChannel({
 
         const webhookId = c.req.header('x-shopify-webhook-id');
         const eventId = c.req.header('x-shopify-event-id');
-        await dispatch(orders, {
+        await dispatch(Orders, {
           id: orderInstanceId(shopDomain, order.id),
+          // Recorded once when this event creates the instance; ignored after.
+          initialData: {
+            shopDomain,
+            orderId: order.id,
+            orderName: order.name,
+          },
           message: {
             kind: 'signal',
             type: 'shopify.orders/create',
@@ -97,7 +104,6 @@ export const channel = createShopifyChannel({
             attributes: {
               shopDomain,
               orderId: order.id,
-              orderName: order.name,
               ...(webhookId === undefined ? {} : { webhookId }),
               ...(eventId === undefined ? {} : { eventId }),
             },
@@ -186,33 +192,28 @@ export function orderInstanceId(shopDomain: string, orderId: string): string {
   }
   return `${ORDER_INSTANCE_PREFIX}${encodeURIComponent(shopDomain)}:${encodeURIComponent(orderId)}`;
 }
-
-export function orderRefFromInstanceId(id: string): {
-  shopDomain: string;
-  orderId: string;
-} {
-  if (!id.startsWith(ORDER_INSTANCE_PREFIX)) {
-    throw new TypeError('Expected a local Shopify order instance id.');
-  }
-  const encoded = id.slice(ORDER_INSTANCE_PREFIX.length);
-  const separator = encoded.indexOf(':');
-  if (separator < 1) {
-    throw new TypeError('Expected a local Shopify order instance id.');
-  }
-  let shopDomain: string;
-  let orderId: string;
-  try {
-    shopDomain = decodeURIComponent(encoded.slice(0, separator));
-    orderId = decodeURIComponent(encoded.slice(separator + 1));
-  } catch {
-    throw new TypeError('Expected a local Shopify order instance id.');
-  }
-  if (!shopDomain || !orderId) {
-    throw new TypeError('Expected a local Shopify order instance id.');
-  }
-  return { shopDomain, orderId };
-}
 ```
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the
+channel's router explicitly:
+
+```ts
+// app.ts
+import { Hono } from 'hono';
+import { channel } from './channels/shopify.ts';
+
+const app = new Hono();
+app.route('/channels/shopify', channel.route());
+
+export default app;
+```
+
+`channel.route()` is a pure router factory serving the channel's routes
+relative to the mount path. The `// Path:` comment in this guide assumes the
+conventional `/channels/shopify` mount; a different mount path shifts every
+provider URL accordingly.
 
 Shopify order ids can exceed JavaScript's safe integer range.
 `@flue/shopify` uses `lossless-json`: safe numeric literals remain numbers,
@@ -232,28 +233,53 @@ client from trusted configuration and uses the header only to reject an
 unexpected route context. A multi-shop application must resolve installations
 through its own authenticated state and authorization policy.
 
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. It carries the shop and order identity — the agent reads them with
+`useInitialData()` instead of parsing the instance id — plus the order name
+already parsed from the payload. Per-message facts stay on the signal's
+`attributes`.
+
 ## Wire the agent
 
 Bind the trusted shop and order selected by application code:
 
 ```ts
-import { defineAgent } from '@flue/runtime';
-import {
-  orderRefFromInstanceId,
-  retrieveOrder,
-} from '../channels/shopify.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { retrieveOrder } from '../channels/shopify.ts';
 
-export default defineAgent(({ id }) => {
-  const { shopDomain, orderId } = orderRefFromInstanceId(id);
-  if (shopDomain !== process.env.SHOPIFY_SHOP_DOMAIN) {
-    throw new TypeError('Unexpected Shopify shop.');
-  }
-  return {
-    model: 'anthropic/claude-haiku-4-5',
-    tools: [retrieveOrder(orderId)],
-  };
+const initialDataSchema = v.object({
+  shopDomain: v.string(),
+  orderId: v.string(),
+  orderName: v.string(),
 });
+
+export function Orders() {
+	useModel('anthropic/claude-haiku-4-5');
+	const data = useInitialData<v.InferOutput<typeof initialDataSchema>>();
+	if (!data) throw new Error('This agent is created by the Shopify channel dispatch.');
+	if (data.shopDomain !== process.env.SHOPIFY_SHOP_DOMAIN) {
+		throw new TypeError('Unexpected Shopify shop.');
+	}
+	useTool(retrieveOrder(data.orderId));
+	return `Review the newly created Shopify order ${data.orderName} and summarize any fulfillment or payment follow-up.`;
+}
+
+Orders.initialData = initialDataSchema;
 ```
+
+The `initialData` static validates the dispatched `initialData` when the
+instance is created; `useInitialData()` returns the parsed value on every
+render.
+
+The `'use agent'` directive (the module's first statement) is what registers
+the agent with the application — `dispatch(...)` from the channel callback
+needs no `app.ts` mounting. Add
+`app.route('/agents/<name>', createAgentRouter(Orders))` (from
+`@flue/runtime/routing`) in `app.ts` only when the agent
+should also be reachable over HTTP directly.
 
 The model cannot choose another shop, token, URL, API version, or order id
 through tool arguments. The agent instance id remains an identifier rather
@@ -261,17 +287,19 @@ than an authorization capability; apply the project's normal access policy to
 direct agent routes.
 
 The channel-agent import cycle is supported because imported bindings are read
-inside deferred callbacks and initializers.
+inside deferred callbacks and agent function bodies.
 
 ## Credentials and endpoint
 
-Configure a JSON webhook subscription with this URL:
+Configure a JSON webhook subscription with this URL — the channel's mount path
+in `app.ts` plus the route suffix, with the conventional
+`app.route('/channels/shopify', ...)` mount:
 
 ```txt
 https://example.com/channels/shopify/webhook
 ```
 
-If `flue()` is mounted beneath an outer prefix, include it. Use JSON delivery;
+A different mount path changes the URL accordingly. Use JSON delivery;
 the first-party channel intentionally rejects XML.
 
 `SHOPIFY_CLIENT_SECRET` verifies inbound webhook bodies.
@@ -332,8 +360,8 @@ installation token.
 
 ## Test without Shopify
 
-Run the project's focused typecheck and configured Node and Cloudflare checks.
-Use original synthetic JSON bodies and local secrets:
+Run the project's focused typecheck and `vite build` for the configured
+target. Use original synthetic JSON bodies and local secrets:
 
 1. Serialize one body once and preserve its exact bytes.
 2. HMAC-SHA256 those bytes with a local client secret and base64-encode the

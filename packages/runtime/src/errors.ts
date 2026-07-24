@@ -3,8 +3,6 @@
  *
  * This file contains both the error vocabulary (concrete error classes) and
  * the framework utilities (renderers, type guards, request parsing helpers).
- * Previously split across `errors.ts` and `error-utils.ts`, but consolidated
- * for better LLM comprehension.
  *
  * ──── Why this file exists ────────────────────────────────────────────────
  *
@@ -69,15 +67,15 @@
  *   - For HTTP errors, the class sets its own `status` (and `headers` where
  *     relevant). Callers do not pick HTTP status codes ad-hoc.
  *
- * Worked example (matches `AgentNotFoundError` below):
+ * Worked example (matches `SkillNotRegisteredError` below):
  *
- *     new AgentNotFoundError({ name, available });
+ *     new SkillNotRegisteredError({ skill, available, skillsDir });
  *     // builds:
- *     //   message: `Agent "foo" is not registered.`
- *     //   details: `Verify the agent name is correct.`
- *     //   dev:     `Available agents: "echo", "greeter". Agents are
- *     //            loaded from the project root's "agents/" directory at
- *     //            build time. ...`
+ *     //   message: `Skill "foo" is not registered.`
+ *     //   details: `Verify the skill name is correct.`
+ *     //   dev:     `Available skills: "echo", "greeter". Skills are
+ *     //            discovered at init() time from skills/<name>/SKILL.md
+ *     //            inside the session's sandbox. ...`
  *
  * The wire response in production omits `dev`; in `flue dev` / `flue run`
  * it includes `dev`. That separation is what lets the dev field be richly
@@ -222,12 +220,14 @@ class FlueHttpError extends FlueError {
 // ─── HTTP-layer error vocabulary ────────────────────────────────────────────
 
 export class RuntimeUnavailableError extends FlueHttpError {
-	constructor({ state }: { state: 'loading' | 'draining' | 'failed' }) {
+	constructor({ state, dev = '' }: { state: 'loading' | 'draining' | 'failed'; dev?: string }) {
 		super({
 			type: 'runtime_unavailable',
 			message: 'The local runtime is temporarily unavailable.',
 			details: 'Retry after the runtime finishes reloading.',
-			dev: '',
+			// Local dev servers pass the underlying load failure here, so the
+			// requester sees WHY the runtime is unavailable, not just that it is.
+			dev,
 			status: 503,
 			headers: { 'Retry-After': '1' },
 			meta: { state },
@@ -287,73 +287,14 @@ class InvalidJsonError extends FlueHttpError {
 	}
 }
 
-class AgentNotFoundError extends FlueHttpError {
-	constructor({ name, available }: { name: string; available: readonly string[] }) {
-		super({
-			type: 'agent_not_found',
-			message: `Agent "${name}" is not registered.`,
-			// Caller-safe: no enumeration, no framework internals.
-			details: `Verify the agent name is correct.`,
-			// Dev-only: sibling enumeration and project-root mechanics. Useful
-			// for the human running the service; would leak namespace state
-			// or framework details to a public caller.
-			dev:
-				`Available agents: ${formatList(available)}.\n` +
-				`Agents are loaded from the project root's "agents/" directory at build time. ` +
-				`Verify the agent file is present in the project root being served.`,
-			status: 404,
-		});
-	}
-}
-
-class WorkflowNotFoundError extends FlueHttpError {
-	constructor({
-		name,
-		available,
-		notHttp = false,
-	}: {
-		name: string;
-		available: readonly string[];
-		notHttp?: boolean;
-	}) {
-		super({
-			type: 'workflow_not_found',
-			message: `Workflow "${name}" is not registered.`,
-			// Caller-safe and identical for unknown and non-HTTP workflows, so
-			// public callers cannot enumerate internal-only workflow names by
-			// probing /workflows/<name>.
-			details: `Verify the workflow name is correct.`,
-			dev: notHttp
-				? `Workflow "${name}" is built but not exposed over HTTP. ` +
-					`To expose it, export route middleware and call await next() to enter the workflow handler.`
-				: `Available workflows: ${formatList(available)}.\n` +
-					`Workflows are loaded from the project root's "workflows/" directory at build time.`,
-			status: 404,
-		});
-	}
-}
-
 export class RouteNotFoundError extends FlueHttpError {
 	constructor({ method, path }: { method: string; path: string }) {
 		super({
 			type: 'route_not_found',
 			message: `No route matches ${method} ${path}.`,
-			// Thrown for any unmatched path (agent, workflow, run, or
-			// otherwise), so the guidance stays generic and we do NOT
-			// enumerate registered routes.
+			// Thrown for any unmatched path, so the guidance stays generic and
+			// we do NOT enumerate registered routes.
 			details: `Verify the request method and path are correct.`,
-			dev: '',
-			status: 404,
-		});
-	}
-}
-
-export class RunNotFoundError extends FlueHttpError {
-	constructor({ runId }: { runId: string }) {
-		super({
-			type: 'run_not_found',
-			message: `Run "${runId}" was not found.`,
-			details: 'Verify the run id is correct and its history is still available.',
 			dev: '',
 			status: 404,
 		});
@@ -365,27 +306,8 @@ export class StreamNotFoundError extends FlueHttpError {
 		super({
 			type: 'stream_not_found',
 			message: `Event stream "${path}" was not found.`,
-			details:
-				'Streams are created when their agent instance receives its first prompt or their workflow run starts.',
+			details: 'Streams are created when their agent instance receives its first prompt.',
 			dev: '',
-			status: 404,
-		});
-	}
-}
-
-/**
- * The attachments endpoint exists but the agent module did not export an
- * `attachments` middleware, so byte downloads are not exposed. Rendered as a
- * plain 404 in production (indistinguishable from any other unmatched route);
- * in dev the `dev` field explains how to opt in.
- */
-export class AttachmentsNotExposedError extends FlueHttpError {
-	constructor({ method, path, agentName }: { method: string; path: string; agentName: string }) {
-		super({
-			type: 'route_not_found',
-			message: `No route matches ${method} ${path}.`,
-			details: 'Verify the request method and path are correct.',
-			dev: `Attachment downloads are opt-in. Export an \`attachments\` Hono middleware from agents/${agentName}.ts to expose GET /agents/${agentName}/:id/attachments/:attachmentId; use it to authorize and scope access. Without it this endpoint returns 404.`,
 			status: 404,
 		});
 	}
@@ -404,18 +326,6 @@ export class AttachmentNotFoundError extends FlueHttpError {
 	}
 }
 
-export class RunStoreUnavailableError extends FlueHttpError {
-	constructor() {
-		super({
-			type: 'run_store_unavailable',
-			message: 'Run history is not available in this runtime.',
-			details: 'This endpoint requires the generated runtime to be configured with a run store.',
-			dev: '',
-			status: 501,
-		});
-	}
-}
-
 export class InvalidRequestError extends FlueHttpError {
 	constructor({ reason }: { reason: string }) {
 		super({
@@ -430,27 +340,57 @@ export class InvalidRequestError extends FlueHttpError {
 	}
 }
 
-// ─── Persistence error vocabulary ───────────────────────────────────────────
-
 /**
- * A persisted store records a schema/format version this runtime does not
- * support. Thrown when opening a database stamped by a newer Flue version
- * (e.g. after a rollback) or carrying an unrecognized version marker.
- *
- * Not an HTTP error — this fires when a store is opened (startup, adapter
- * `migrate()`, Durable Object initialization), before any request is served.
+ * A conditional send (`uid: '<value>'` — continue only the known
+ * incarnation) named an instance that does not exist or whose uid does not
+ * match. Raised synchronously at admission; nothing durable is created.
+ * Also the rejection of a handle `read()` addressed to an instance that
+ * does not exist — a read waits for settlement, and an instance that was
+ * never contacted has nothing to settle.
  */
-export class ProductEventVersionError extends FlueError {
-	constructor({ storedVersion }: { storedVersion: unknown }) {
+export class AgentInstanceNotFoundError extends FlueHttpError {
+	constructor({ id }: { id: string }) {
 		super({
-			type: 'product_event_version_unsupported',
-			message: `Persisted product event version ${String(storedVersion)} is unsupported.`,
-			details: 'The persisted event cannot be read or replayed safely by this runtime.',
-			dev: 'Clear historical event and terminal-outbox data created by an earlier Flue beta.',
-			meta: { storedVersion, supportedVersion: 3 },
+			type: 'agent_instance_not_found',
+			message: `Agent instance "${id}" was not found.`,
+			// One message for absent-instance and uid-mismatch: to a caller
+			// holding a uid condition, "the incarnation you know" not existing
+			// is the same outcome either way.
+			details:
+				'No instance with this id and uid exists. The id may be wrong, or the instance was re-created and this uid names its previous incarnation. Send without a uid to deliver unconditionally.',
+			dev: '',
+			status: 404,
 		});
 	}
 }
+
+/**
+ * A conditional send (`uid: null` — create only when fresh) named an
+ * instance that already exists. Raised synchronously at admission; nothing
+ * durable is created. `details` hands back the existing uid — the condition
+ * is accident prevention for the caller, not access control — so the caller
+ * can continue the existing instance without a separate lookup.
+ */
+export class AgentInstanceExistsError extends FlueHttpError {
+	constructor({ id, uid }: { id: string; uid: string }) {
+		super({
+			type: 'agent_instance_exists',
+			message: `Agent instance "${id}" already exists.`,
+			details: `Continue it with uid "${uid}", or pick a fresh id to create.`,
+			dev: '',
+			status: 409,
+			// HTTP callers read the existing incarnation's uid from
+			// `error.meta.uid` — the details prose is not machine-readable.
+			meta: { uid },
+		});
+		this.uid = uid;
+	}
+
+	/** The existing instance's uid. */
+	readonly uid: string;
+}
+
+// ─── Persistence error vocabulary ───────────────────────────────────────────
 
 export class ConversationRecordInvariantError extends FlueError {
 	constructor({
@@ -474,15 +414,7 @@ export class ConversationRecordInvariantError extends FlueError {
 }
 
 export class ConversationStreamStoreError extends FlueError {
-	constructor({
-		operation,
-		path,
-		reason,
-	}: {
-		operation: string;
-		path: string;
-		reason: string;
-	}) {
+	constructor({ operation, path, reason }: { operation: string; path: string; reason: string }) {
 		super({
 			type: 'conversation_stream_store_failure',
 			message: 'The canonical conversation stream operation could not be completed.',
@@ -508,7 +440,13 @@ export class AttachmentConflictError extends FlueError {
 }
 
 export class AttachmentIntegrityError extends FlueError {
-	constructor({ attachmentId, reason }: { attachmentId: string; reason: 'size' | 'digest' | 'chunks' }) {
+	constructor({
+		attachmentId,
+		reason,
+	}: {
+		attachmentId: string;
+		reason: 'size' | 'digest' | 'chunks';
+	}) {
 		super({
 			type: 'attachment_integrity',
 			message: 'The attachment bytes failed integrity verification.',
@@ -559,6 +497,38 @@ export class InstrumentationAlreadyInstalledError extends FlueError {
 	}
 }
 
+/**
+ * A sandbox call was in flight when the sandbox died, so the call can never
+ * complete. Raised by a sandbox adapter's death detection: when a provider
+ * transport leaves in-flight calls pending forever after the sandbox dies,
+ * the adapter watches sandbox state while a call is pending and rejects with
+ * this error — either because the provider reports the sandbox stopped
+ * (`reason: 'stopped'`) or because the state probe itself went unanswered and
+ * the sandbox is presumed gone (`reason: 'probe_silent'`).
+ *
+ * Deliberately not an `AbortError`: sandbox death is an infrastructure
+ * failure, not caller cancellation, and abort classification must not
+ * misreport it.
+ */
+export class SandboxDiedError extends FlueError {
+	constructor({ operation, reason }: { operation: string; reason: 'stopped' | 'probe_silent' }) {
+		super({
+			type: 'sandbox_died',
+			message:
+				reason === 'stopped'
+					? `Sandbox ${operation} failed: the sandbox stopped while the call was in flight.`
+					: `Sandbox ${operation} failed: the sandbox state probe went unanswered while the call was in flight, so the sandbox is presumed dead.`,
+			details: 'The sandbox is no longer running; the interrupted call did not complete.',
+			dev:
+				'The sandbox may have been destroyed, evicted, or crashed (e.g. out of memory). ' +
+				'Only calls that were in flight when the sandbox died fail this way; whether a ' +
+				'subsequent call reaches a fresh environment is provider-specific.',
+			meta: { operation, reason },
+		});
+		this.name = 'SandboxDiedError';
+	}
+}
+
 export class SandboxOperationUnsupportedError extends FlueError {
 	constructor({
 		operation,
@@ -581,14 +551,13 @@ export class SandboxOperationUnsupportedError extends FlueError {
 
 // ─── Session error vocabulary ───────────────────────────────────────────────
 //
-// Non-HTTP errors thrown by the session surface: `harness.session()` /
-// `harness.sessions.*` and `session.prompt()` / `skill()` / `task()` /
-// `shell()` / `compact()`. Programmatic consumers (the primary
+// Non-HTTP errors thrown by the session surface: the harness's
+// `prompt()` / `skill()` / `task()` / `shell()` / `compact()` operations
+// and the runtime's internal session management. Programmatic consumers (the primary
 // audience of these calls) distinguish failures with `instanceof` against the
 // classes re-exported from the package root. When one of these escapes to the
-// HTTP layer (e.g. a synchronous `?wait=result` workflow invocation),
-// `toHttpResponse` renders its typed envelope with status 500 instead of an
-// opaque `internal_error`.
+// HTTP layer, `toHttpResponse` renders its typed envelope with status 500
+// instead of an opaque `internal_error`.
 //
 // Aborted operations are NOT part of this vocabulary — they reject with a
 // standard `AbortError` (`DOMException`); see `abort.ts`.
@@ -599,18 +568,7 @@ export class SessionNotFoundError extends FlueError {
 			type: 'session_not_found',
 			message: `Session "${session}" does not exist in harness "${harness}".`,
 			details: 'Verify the session name is correct, or create the session first.',
-			dev: '`sessions.get()` never creates sessions. Use `harness.session(name)` to get-or-create, or `sessions.create(name)` to create explicitly.',
-		});
-	}
-}
-
-export class SessionAlreadyExistsError extends FlueError {
-	constructor({ session, harness }: { session: string; harness: string }) {
-		super({
-			type: 'session_already_exists',
-			message: `Session "${session}" already exists in harness "${harness}".`,
-			details: 'Choose a different session name, or open the existing session instead.',
-			dev: '`sessions.create()` requires an unused name. Use `harness.session(name)` to get-or-create.',
+			dev: 'Internal session lookup found no conversation for this name. The public harness operations get-or-create the default session and cannot hit this.',
 		});
 	}
 }
@@ -647,7 +605,8 @@ export class SkillNotRegisteredError extends FlueError {
 	}: {
 		skill: string;
 		available: readonly string[];
-		skillsDir: string;
+		/** Workspace skill directory; absent when the agent has no sandbox. */
+		skillsDir?: string;
 	}) {
 		super({
 			type: 'skill_not_registered',
@@ -655,30 +614,40 @@ export class SkillNotRegisteredError extends FlueError {
 			details: 'Verify the skill name is correct.',
 			dev:
 				`Available skills: ${formatList(available)}.\n` +
-				`Skills are discovered at init() time from ${skillsDir}/<name>/SKILL.md inside the ` +
-				`session's sandbox. If you expected "${skill}" to be there, make sure the SKILL.md file ` +
-				`exists at that path before calling init() — the default empty sandbox starts with no ` +
-				`files, so it has no skills unless you put them there.\n` +
-				`Packaged skills can be imported from SKILL.md with { type: 'skill' } and passed ` +
+				(skillsDir !== undefined
+					? `Skills are discovered at init() time from ${skillsDir}/<name>/SKILL.md inside the ` +
+						`session's sandbox. If you expected "${skill}" to be there, make sure the SKILL.md file ` +
+						`exists at that path before calling init().\n`
+					: `This agent has no sandbox, so no workspace skills were discovered — only declared ` +
+						`skills are available.\n`) +
+				`Packaged skills can be imported from SKILL.md and passed ` +
 				`directly to session.skill(skillReference).`,
 		});
 	}
 }
 
-export class ProviderRegistrationError extends FlueError {
-	constructor({ providerId }: { providerId: string }) {
-		super({
-			type: 'invalid_provider_registration',
-			message: `Provider "${providerId}" cannot be registered without \`api\` and \`baseUrl\`.`,
-			details: `"${providerId}" is not a catalog provider, so its registration must say which wire protocol and endpoint to use.`,
-			dev:
-				'Pass `api` and `baseUrl` in the registerProvider() options. They are only optional ' +
-				'when the provider id is a built-in catalog provider, in which case the registration ' +
-				'hydrates from the catalog.',
-			meta: { providerId },
-		});
-	}
-}
+/**
+ * Marker appended to a Workers-AI binding 413 error message. Overflow
+ * classification reads the persisted assistant `errorMessage` — no typed
+ * error object exists at that point — so the marker is the transport, and
+ * `isAssistantContextOverflow` (compaction.ts) matches it against this same
+ * constant. Keep writer and reader on this one definition.
+ */
+export const WORKERS_AI_OVERFLOW_MARKER = '(request_too_large)';
+
+/**
+ * Marker stamped into a model error message by a throw site that can PROVE
+ * the failure was a transient interruption — e.g. the Workers-AI stream
+ * ending without an error frame or a `finish_reason`, so the response was
+ * truncated in transit. Retry classification reads the persisted assistant
+ * `errorMessage` — no typed error object survives to that point — so the
+ * marker is the transport, and `isRetryableModelError`
+ * (submission-state.ts) matches it against this same constant before
+ * falling back to its message-pattern heuristics. Only stamp it where the
+ * site verifies the interruption; "we don't know what happened" is not
+ * retryable.
+ */
+export const RETRYABLE_INTERRUPTION_MARKER = '(retryable_interruption)';
 
 export class CloudflareAIBindingError extends FlueError {
 	constructor({
@@ -692,18 +661,128 @@ export class CloudflareAIBindingError extends FlueError {
 		statusText?: string;
 		body?: string;
 	}) {
-		const statusLabel = status === undefined ? undefined : `${status}${statusText ? ` ${statusText}` : ''}`;
+		const statusLabel =
+			status === undefined ? undefined : `${status}${statusText ? ` ${statusText}` : ''}`;
+		// The provider body and the 413 marker ride in the MESSAGE, not just
+		// `details`: only the message reaches the assistant `errorMessage`
+		// that overflow classification reads, so a 413/overflow body kept out
+		// of it would leave context-overflow recovery (compaction + retry)
+		// unable to fire.
+		const boundedBody = body ? truncateProviderBody(body) : undefined;
+		const overflowMarker = status === 413 ? ` ${WORKERS_AI_OVERFLOW_MARKER}` : '';
 		super({
 			type: 'cloudflare_ai_binding_error',
-			message: message ?? `Cloudflare AI binding request failed${statusLabel ? ` with ${statusLabel}` : ''}.`,
+			message:
+				message ??
+				`Cloudflare AI binding request failed${statusLabel ? ` with ${statusLabel}` : ''}${overflowMarker}${
+					boundedBody ? `: ${boundedBody}` : '.'
+				}`,
 			details: body ? `Provider response: ${body}` : '',
 			dev: '',
 			meta: {
 				...(status !== undefined ? { status } : {}),
 				...(statusText ? { statusText } : {}),
+				// Structured "conversation outgrew the provider limit" signal:
+				// lets telemetry separate expected, self-healing overflow from a
+				// real binding outage without parsing the message.
+				...(status === 413 ? { reason: 'request_too_large' } : {}),
 			},
 		});
 	}
+}
+
+/** Bound a provider response body for embedding in an error message. */
+function truncateProviderBody(body: string): string {
+	const MAX = 2000;
+	return body.length <= MAX ? body : `${body.slice(0, MAX)}… [truncated]`;
+}
+
+/**
+ * Serialize an error for embedding in observable events (`operation`, `log`).
+ * FlueErrors keep their structured identity (`type`) and diagnostic payload
+ * (`details`, `meta`) — dropping them to bare name/message makes typed
+ * failures (e.g. a record-invariant error's recordId/recordType/reason)
+ * undiagnosable from telemetry.
+ */
+export function serializeEventError(error: unknown): unknown {
+	if (error instanceof FlueError) {
+		return {
+			name: error.name,
+			message: error.message,
+			type: error.type,
+			...(error.details ? { details: error.details } : {}),
+			...(error.meta ? { meta: error.meta } : {}),
+		};
+	}
+	if (error instanceof Error) {
+		return { name: error.name, message: error.message };
+	}
+	return error;
+}
+
+/**
+ * Shape `log`-event attributes: a live `Error` under the `error` key becomes
+ * its `serializeEventError` projection, so every emit path (session and
+ * client context) publishes the same error shape — structured FlueError
+ * identity kept, throw-site stack omitted (log events ride durable-shaped
+ * event fields).
+ */
+export function normalizeLogAttributes(
+	attributes: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+	if (!attributes) return undefined;
+	if (!(attributes.error instanceof Error)) return attributes;
+	return { ...attributes, error: serializeEventError(attributes.error) };
+}
+
+/**
+ * Classify an error for live observation `errorInfo`. Unlike
+ * `serializeEventError` (whose output rides durable-shaped event fields),
+ * this projection is in-process only, so it may carry the throw-site `stack`
+ * — taken solely from real `Error` instances, never from arbitrary thrown
+ * objects. `FlueError`s additionally keep their framework-owned `meta` so
+ * observers get structured failure detail (e.g. validation issues) without
+ * parsing the rendered message.
+ */
+export function classifyError(error: unknown): {
+	type: string;
+	name?: string;
+	code?: string;
+	message?: string;
+	meta?: Record<string, unknown>;
+	stack?: string;
+} {
+	const stackOf = (value: unknown): { stack?: string } =>
+		value instanceof Error && typeof value.stack === 'string' && value.stack.length > 0
+			? { stack: value.stack }
+			: {};
+	if (error instanceof DOMException && error.name === 'AbortError') {
+		return { type: 'AbortError', name: error.name, message: error.message, ...stackOf(error) };
+	}
+	if (error instanceof FlueError) {
+		return {
+			type: error.type,
+			name: error.name,
+			message: error.message,
+			...(error.meta ? { meta: error.meta } : {}),
+			...stackOf(error),
+		};
+	}
+	if (error && typeof error === 'object') {
+		const value = error as { name?: unknown; code?: unknown; type?: unknown; message?: unknown };
+		const name = typeof value.name === 'string' ? value.name : undefined;
+		const code = typeof value.code === 'string' ? value.code : undefined;
+		const type = typeof value.type === 'string' ? value.type : (code ?? name ?? '_OTHER');
+		return {
+			type,
+			...(name === undefined ? {} : { name }),
+			...(code === undefined ? {} : { code }),
+			...(typeof value.message === 'string' ? { message: value.message } : {}),
+			...stackOf(error),
+		};
+	}
+	if (typeof error === 'string') return { type: '_OTHER', message: error };
+	return { type: '_OTHER' };
 }
 
 export class DelegationDepthExceededError extends FlueError {
@@ -711,8 +790,8 @@ export class DelegationDepthExceededError extends FlueError {
 		super({
 			type: 'delegation_depth_exceeded',
 			message: `Maximum delegation depth (${maxDepth}) exceeded.`,
-			details: 'The chain of delegated Tasks and Actions is too deep.',
-			dev: 'Each nested task() or Action delegation adds one level. Restructure the agents to delegate less deeply.',
+			details: 'The chain of delegated tasks is too deep.',
+			dev: 'Each nested task() or harness-tool delegation adds one level. Restructure the agents to delegate less deeply.',
 		});
 	}
 }
@@ -751,7 +830,7 @@ export class ToolNameConflictError extends FlueError {
 	}: {
 		name: string;
 		conflict: 'reserved' | 'duplicate';
-		source: 'builtin' | 'adapter' | 'framework' | 'custom' | 'action' | 'result';
+		source: 'builtin' | 'adapter' | 'framework' | 'custom' | 'result';
 		reserved?: readonly string[];
 	}) {
 		const dev =
@@ -787,150 +866,6 @@ export interface ValidationIssue {
 }
 
 export type ToolValidationIssue = ValidationIssue;
-
-abstract class ActionValidationError extends FlueError {
-	constructor({
-		action,
-		boundary,
-		issues,
-	}: {
-		action: string;
-		boundary: 'input' | 'output';
-		issues: readonly ValidationIssue[];
-	}) {
-		super({
-			type: `action_${boundary}_validation`,
-			message: `Action "${action}" ${boundary} does not match the required schema.`,
-			details: '',
-			dev: '',
-			meta: { action, issues },
-		});
-	}
-}
-
-export class ActionInputValidationError extends ActionValidationError {
-	constructor({ action, issues }: { action: string; issues: readonly ValidationIssue[] }) {
-		super({ action, boundary: 'input', issues });
-		this.name = 'ActionInputValidationError';
-	}
-}
-
-export class ActionOutputValidationError extends ActionValidationError {
-	constructor({ action, issues }: { action: string; issues: readonly ValidationIssue[] }) {
-		super({ action, boundary: 'output', issues });
-		this.name = 'ActionOutputValidationError';
-	}
-}
-
-export class ActionOutputSerializationError extends FlueError {
-	constructor({ action, cause }: { action: string; cause?: unknown }) {
-		super({
-			type: 'action_output_serialization',
-			message: `Action "${action}" output is not JSON-serializable.`,
-			details: '',
-			dev: 'Return a JSON-serializable value, or undefined when the Action has no output schema.',
-			meta: { action },
-			cause,
-		});
-		this.name = 'ActionOutputSerializationError';
-	}
-}
-
-export class WorkflowInvocationNotConfiguredError extends FlueError {
-	constructor() {
-		super({
-			type: 'workflow_invocation_not_configured',
-			message: 'Workflow invocation is not configured in this runtime.',
-			details: '',
-			dev: 'Call invoke() from a Flue-built server entry.',
-		});
-		this.name = 'WorkflowInvocationNotConfiguredError';
-	}
-}
-
-export class WorkflowNotDiscoveredError extends FlueError {
-	constructor() {
-		super({
-			type: 'workflow_not_discovered',
-			message: 'The workflow is not registered in this application.',
-			details: '',
-			dev: 'invoke() accepts the exact Workflow Definition value default-exported by one discovered workflow module.',
-		});
-		this.name = 'WorkflowNotDiscoveredError';
-	}
-}
-
-export class WorkflowInputUnexpectedError extends FlueError {
-	constructor() {
-		super({
-			type: 'workflow_input_unexpected',
-			message: 'This workflow does not accept input.',
-			details: '',
-			dev: 'Remove the input value from invoke() for a workflow whose Action has no input schema.',
-		});
-		this.name = 'WorkflowInputUnexpectedError';
-	}
-}
-
-export class WorkflowInputSerializationError extends FlueError {
-	constructor({ cause }: { cause: unknown }) {
-		super({
-			type: 'workflow_input_serialization',
-			message: 'Workflow input is not JSON-serializable.',
-			details: '',
-			dev: 'Pass a plain JSON value as invoke().input.',
-			cause,
-		});
-		this.name = 'WorkflowInputSerializationError';
-	}
-}
-
-export class WorkflowAdmissionUnavailableError extends FlueError {
-	constructor() {
-		super({
-			type: 'workflow_admission_unavailable',
-			message: 'Workflow admission is not available in this runtime.',
-			details: '',
-			dev: 'The generated runtime did not configure a workflow admission hook.',
-		});
-		this.name = 'WorkflowAdmissionUnavailableError';
-	}
-}
-
-export class WorkflowAdmissionError extends FlueError {
-	constructor({ workflow, cause }: { workflow: string; cause: unknown }) {
-		super({
-			type: 'workflow_admission_failed',
-			message: 'Workflow admission failed.',
-			details: '',
-			dev: `The generated runtime could not admit workflow "${workflow}".`,
-			meta: { workflow },
-			cause,
-		});
-		this.name = 'WorkflowAdmissionError';
-	}
-}
-
-/**
- * Model-supplied tool arguments failed the tool's valibot `parameters`
- * schema. Thrown from the tool's wrapped `execute`; the agent loop converts
- * the throw into an error tool-result built from `message`, so the model sees
- * the issues and can retry with corrected arguments. `meta.issues` carries
- * the structured issues in Standard Schema's shape.
- */
-export class ToolLegacyDefinitionError extends FlueError {
-	constructor({ fields }: { fields: readonly string[] }) {
-		super({
-			type: 'tool_legacy_definition',
-			message: 'This tool uses the unsupported legacy definition format.',
-			details: 'The tool definition contains legacy fields.',
-			dev:
-				'defineTool() no longer supports { parameters, execute }. Rename parameters to input, rename execute to run, and return structured data directly. Flue validates output and JSON-serializes it for the model.',
-			meta: { fields: [...fields] },
-		});
-		this.name = 'ToolLegacyDefinitionError';
-	}
-}
 
 export class ToolInputValidationError extends FlueError {
 	constructor({ tool, issues }: { tool: string; issues: readonly ToolValidationIssue[] }) {
@@ -986,6 +921,8 @@ export class ToolOutputSerializationError extends FlueError {
  * model call errored, or a durable input could not be persisted or recovered.
  * `reason` carries the underlying failure text; it is part of the message so
  * logs and serialized events stay informative, but it is prose, not API.
+ * `meta` carries the unwrapped `operation` and `reason` so telemetry can
+ * classify and title from the underlying failure without parsing the prose.
  */
 export class OperationFailedError extends FlueError {
 	constructor({ operation, reason }: { operation: string; reason: string }) {
@@ -994,76 +931,46 @@ export class OperationFailedError extends FlueError {
 			message: `${operation} failed: ${reason}`,
 			details: '',
 			dev: '',
+			meta: { operation, reason },
 		});
 	}
 }
 
 /**
- * A durable submission was interrupted (process crash, restart, or shutdown)
- * and recovery settled it as failed because resuming or replaying the work
- * was not provably safe. `meta.phase` carries where the interruption left
- * the submission:
+ * A durable submission was repeatedly interrupted (process crash, restart,
+ * or shutdown) while claimed but unstarted, and the shared attempt budget
+ * ran out before its input was ever persisted. No provider work happened,
+ * so the generic retry-exhaustion error would misdescribe the failure; the
+ * shared `attemptCount`/`maxAttempts` budget itself is intentional.
  *
- * - `'retry_exhausted_before_input'` — every attempt was interrupted while
- *   the submission was claimed but unstarted, and the shared attempt budget
- *   ran out. No provider work ever happened, so the generic retry-exhaustion
- *   error would misdescribe the failure; the shared `attemptCount`/
- *   `maxAttempts` budget itself is intentional.
- * - `'before_input_marker'` — interrupted with inconsistent pre-marker state
- *   that canonical replay could not safely repair.
- * - `'after_input_application'` — interrupted after input application
- *   without a completed response that recovery could safely resume. An
- *   unresolved tool call is never assumed to have completed and is never
- *   retried automatically.
+ * (Input application has no other failure phase: the canonical stream is
+ * the single truth for it — a persisted input classifies and resumes, an
+ * absent input requeues — so there is no marker/stream disagreement to
+ * settle as an error.)
  */
 export class SubmissionInterruptedError extends FlueError {
-	constructor(
-		input:
-			| { phase: 'retry_exhausted_before_input'; attemptCount: number; maxAttempts: number }
-			| { phase: 'before_input_marker' }
-			| { phase: 'after_input_application' },
-	) {
-		if (input.phase === 'retry_exhausted_before_input') {
-			super({
-				type: 'submission_interrupted',
-				message:
-					'Submission was repeatedly interrupted before input application and exhausted its retry budget.',
-				details:
-					'Every processing attempt was interrupted before the submission input was applied to the session. ' +
-					'The input was never processed and no model call was started.',
-				dev:
-					'Repeated pre-input interruptions usually mean the process kept restarting or crashing while the ' +
-					"submission waited to start. Each claim consumes one attempt from the agent definition's " +
-					'`durability.maxAttempts` budget.',
-				meta: {
-					phase: input.phase,
-					attemptCount: input.attemptCount,
-					maxAttempts: input.maxAttempts,
-				},
-			});
-		} else if (input.phase === 'before_input_marker') {
-			super({
-				type: 'submission_interrupted',
-				message: 'Submission was interrupted before input application could be safely recovered.',
-				details:
-					'The canonical conversation and operational marker did not provide a safe recoverable input state. ' +
-					'The input was not replayed.',
-				dev: '',
-				meta: { phase: input.phase },
-			});
-		} else {
-			super({
-				type: 'submission_interrupted',
-				message:
-					'Submission was interrupted after input application without a completed response. ' +
-					'The work was not automatically replayed.',
-				details:
-					'Recovery settles interrupted work as failed when it cannot prove that resuming or replaying is ' +
-					'safe: a repeated model or tool call could duplicate external effects.',
-				dev: '',
-				meta: { phase: input.phase },
-			});
-		}
+	constructor(input: {
+		phase: 'retry_exhausted_before_input';
+		attemptCount: number;
+		maxAttempts: number;
+	}) {
+		super({
+			type: 'submission_interrupted',
+			message:
+				'Submission was repeatedly interrupted before input application and exhausted its retry budget.',
+			details:
+				'Every processing attempt was interrupted before the submission input was applied to the session. ' +
+				'The input was never processed and no model call was started.',
+			dev:
+				'Repeated pre-input interruptions usually mean the process kept restarting or crashing while the ' +
+				"submission waited to start. Each claim consumes one attempt from the agent definition's " +
+				'`durability.maxAttempts` budget.',
+			meta: {
+				phase: input.phase,
+				attemptCount: input.attemptCount,
+				maxAttempts: input.maxAttempts,
+			},
+		});
 	}
 }
 
@@ -1225,6 +1132,16 @@ export function configureErrorRendering(options: { devMode: boolean }): void {
 	devMode = options.devMode;
 }
 
+/**
+ * The runtime-wide dev flag, as configured by the target bootstrap. Consulted
+ * by `instrument()` for hot-reload replace semantics — under dev module
+ * reloads, user module scope re-evaluates against a runtime module instance
+ * that persisted.
+ */
+export function isDevMode(): boolean {
+	return devMode;
+}
+
 function envelope(err: FlueError): WireEnvelope {
 	const out: WireEnvelope = {
 		error: {
@@ -1328,63 +1245,5 @@ export async function parseJsonBody(request: Request): Promise<unknown> {
 		throw new InvalidJsonError({
 			parseError: err instanceof Error ? err.message : String(err),
 		});
-	}
-}
-
-/**
- * Validate that a request targeting `/agents/<name>/<id>` is well-formed:
- * method is POST, and agent name is registered. Throws the appropriate
- * FlueHttpError on any failure.
- *
- * Path/id validation is light: we reject empty or whitespace-only segments
- * but otherwise let the URL parser's segment splitting be the source of
- * truth. The Hono route pattern enforces the public path shape.
- */
-export interface ValidateAgentRequestOptions {
-	method: string;
-	name: string;
-	id: string;
-	registeredAgents: readonly string[];
-}
-
-export interface ValidateWorkflowRequestOptions {
-	method: string;
-	name: string;
-	registeredWorkflows: readonly string[];
-	httpWorkflows: readonly string[];
-}
-
-export function validateWorkflowRequest(opts: ValidateWorkflowRequestOptions): void {
-	if (opts.method !== 'POST') {
-		throw new MethodNotAllowedError({ method: opts.method, allowed: ['POST'] });
-	}
-	if (opts.name.trim() === '') {
-		throw new InvalidRequestError({
-			reason: 'Workflow URLs must have the shape /workflows/<name> with a non-empty segment.',
-		});
-	}
-	if (!opts.registeredWorkflows.includes(opts.name)) {
-		throw new WorkflowNotFoundError({ name: opts.name, available: opts.registeredWorkflows });
-	}
-	if (!opts.httpWorkflows.includes(opts.name)) {
-		throw new WorkflowNotFoundError({
-			name: opts.name,
-			available: opts.registeredWorkflows,
-			notHttp: true,
-		});
-	}
-}
-
-export function validateAgentRequest(opts: ValidateAgentRequestOptions): void {
-	if (opts.method !== 'POST' && opts.method !== 'GET' && opts.method !== 'HEAD') {
-		throw new MethodNotAllowedError({ method: opts.method, allowed: ['GET', 'HEAD', 'POST'] });
-	}
-	if (opts.name.trim() === '' || opts.id.trim() === '') {
-		throw new InvalidRequestError({
-			reason: 'Agent URLs must have the shape /agents/<name>/<id> with non-empty segments.',
-		});
-	}
-	if (!opts.registeredAgents.includes(opts.name)) {
-		throw new AgentNotFoundError({ name: opts.name, available: opts.registeredAgents });
 	}
 }

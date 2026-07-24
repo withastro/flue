@@ -3,7 +3,7 @@ import { createTelegramChannel, type TelegramConversationRef } from '@flue/teleg
 import { Api } from 'grammy';
 import type { Message } from 'grammy/types';
 import * as v from 'valibot';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const client = new Api(requiredEnv('TELEGRAM_BOT_TOKEN'));
 
@@ -15,8 +15,10 @@ export const channel = createTelegramChannel({
 		const incoming = update.message ?? update.channel_post ?? update.business_message;
 		if (incoming) {
 			const conversation = conversationFromMessage(incoming);
-			await dispatch(assistant, {
-				id: channel.conversationKey(conversation),
+			await dispatch(Assistant, {
+				id: channel.instanceId(conversation),
+				// Recorded once when this event creates the instance; ignored after.
+				initialData: conversationData(conversation, incoming),
 				message: {
 					kind: 'signal',
 					type: 'telegram.message',
@@ -31,8 +33,11 @@ export const channel = createTelegramChannel({
 			const query = update.callback_query;
 			await client.answerCallbackQuery(query.id);
 			if (!query.message) return;
-			await dispatch(assistant, {
-				id: channel.conversationKey(conversationFromMessage(query.message)),
+			const conversation = conversationFromMessage(query.message);
+			await dispatch(Assistant, {
+				id: channel.instanceId(conversation),
+				// Recorded once when this event creates the instance; ignored after.
+				initialData: conversationData(conversation, query.message),
 				message: {
 					kind: 'signal',
 					type: 'telegram.callback_query',
@@ -81,13 +86,31 @@ function conversationFromMessage(message: Message): TelegramConversationRef {
 		: { type: 'chat', chatId: message.chat.id, ...topic };
 }
 
+/** Instance-creation data: the destination ref plus small instance-constant context. */
+function conversationData(conversation: TelegramConversationRef, message: Message) {
+	return {
+		type: conversation.type,
+		chatId: conversation.chatId,
+		...(conversation.type === 'business-chat'
+			? { businessConnectionId: conversation.businessConnectionId }
+			: {}),
+		...(conversation.messageThreadId === undefined
+			? {}
+			: { messageThreadId: conversation.messageThreadId }),
+		...(conversation.directMessagesTopicId === undefined
+			? {}
+			: { directMessagesTopicId: conversation.directMessagesTopicId }),
+		...(message.chat.title === undefined ? {} : { chatTitle: message.chat.title }),
+	};
+}
+
 export function postMessage(ref: TelegramConversationRef) {
 	return defineTool({
 		name: 'post_telegram_message',
 		description: 'Post a message to the Telegram conversation bound to this agent.',
 		input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
-		async run({ input }) {
-			const message = await client.sendMessage(ref.chatId, input.text, {
+		async run({ data }) {
+			const message = await client.sendMessage(ref.chatId, data.text, {
 				...(ref.type === 'business-chat'
 					? { business_connection_id: ref.businessConnectionId }
 					: {}),

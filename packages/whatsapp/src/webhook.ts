@@ -36,7 +36,7 @@ export function createWhatsAppWebhookHandler<E extends Env>(
 	if (!Number.isSafeInteger(bodyLimit) || bodyLimit <= 0) {
 		throw new TypeError('WhatsApp webhook bodyLimit must be a positive integer.');
 	}
-	const appSecret = encoder.encode(options.appSecret);
+	const key = importSigningKey(options.appSecret);
 
 	return async (c) => {
 		const request = c.req.raw;
@@ -47,7 +47,7 @@ export function createWhatsAppWebhookHandler<E extends Env>(
 		const body = await readBody(request, bodyLimit);
 		if (body.type === 'too-large') return response(413);
 		if (body.type === 'invalid') return response(400);
-		if (!(await verifySignature(appSecret, body.value, signature))) {
+		if (!(await verifySignature(await key, body.value, signature))) {
 			return response(401);
 		}
 
@@ -101,7 +101,8 @@ async function readBody(
 			if (done) break;
 			total += value.byteLength;
 			if (total > bodyLimit) {
-				void reader.cancel();
+				// Discard cancel rejections: an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
 				return { type: 'too-large' };
 			}
 			chunks.push(value);
@@ -139,19 +140,30 @@ function parseSignature(value: string | null): Uint8Array | undefined {
 	return bytes;
 }
 
-async function verifySignature(
-	secret: Uint8Array,
-	body: Uint8Array,
-	signature: Uint8Array,
-): Promise<boolean> {
-	const key = await crypto.subtle.importKey(
+// Imported once at handler creation and awaited per use — the
+// messenger/src/webhook.ts importSigningKey shape.
+async function importSigningKey(secret: string): Promise<CryptoKey> {
+	return crypto.subtle.importKey(
 		'raw',
-		toArrayBuffer(secret),
+		toArrayBuffer(encoder.encode(secret)),
 		{ name: 'HMAC', hash: 'SHA-256' },
 		false,
 		['verify'],
 	);
-	return crypto.subtle.verify('HMAC', key, toArrayBuffer(signature), toArrayBuffer(body));
+}
+
+async function verifySignature(
+	key: CryptoKey,
+	body: Uint8Array,
+	signature: Uint8Array,
+): Promise<boolean> {
+	// verify() can throw on malformed input in workerd; report false like the
+	// sfmc/zendesk/intercom copies (awaited so rejections are caught too).
+	try {
+		return await crypto.subtle.verify('HMAC', key, toArrayBuffer(signature), toArrayBuffer(body));
+	} catch {
+		return false;
+	}
 }
 
 async function digest(value: string): Promise<Uint8Array> {

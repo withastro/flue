@@ -15,8 +15,9 @@ ingress with project-owned outbound WhatsApp access to a Flue project.
 
 Read local instructions, detect the package manager and target, and select the
 first existing source root: `<root>/.flue/`, then `<root>/src/`, then
-`<root>/`. Inspect existing agents, environment types, secret conventions, and
-which WhatsApp message families the application handles.
+`<root>/`. Inspect existing agents, `app.ts` (the application's route map),
+environment types, secret conventions, and which WhatsApp message families the
+application handles.
 
 Install `@flue/whatsapp` and `@kapso/whatsapp-cloud-api@^0.2.1`. Flue owns GET
 verification, exact-body POST signature verification, and forwarding Meta's
@@ -51,7 +52,7 @@ import {
   WhatsAppClient,
   type SendMessageResponse,
 } from '@kapso/whatsapp-cloud-api';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 
 export const client = new WhatsAppClient({
   accessToken: process.env.WHATSAPP_ACCESS_TOKEN!,
@@ -81,10 +82,16 @@ export const channel = createWhatsAppChannel({
                 message.interactive.list_reply?.title ??
                 message.interactive.nfm_reply?.body ??
                 '');
-          await dispatch(assistant, {
-            id: channel.conversationKey(
-              conversationRef(entry.id, change.value, message),
-            ),
+          const ref = conversationRef(entry.id, change.value, message);
+          await dispatch(Assistant, {
+            id: channel.instanceId(ref),
+            // Recorded once when this event creates the instance; ignored after.
+            initialData: {
+              phoneNumberId: ref.phoneNumberId,
+              destination: ref.type === 'individual' ? ref.destination : undefined,
+              groupId: ref.type === 'group' ? ref.groupId : undefined,
+              contactName: change.value.contacts?.[0]?.profile?.name,
+            },
             message: {
               kind: 'signal',
               type: `whatsapp.${message.type}`,
@@ -117,8 +124,19 @@ function conversationRef(
   };
 }
 
+// The `WhatsAppConversationRef` fields `sendTextMessage()` actually sends on.
+export type WhatsAppSendRef =
+  | {
+      type: 'individual';
+      phoneNumberId: string;
+      destination:
+        | { type: 'phone-number'; phoneNumber: string }
+        | { type: 'user-id'; userId: string };
+    }
+  | { type: 'group'; phoneNumberId: string; groupId: string };
+
 function sendTextMessage(
-  ref: WhatsAppConversationRef,
+  ref: WhatsAppSendRef,
   body: string,
 ): Promise<SendMessageResponse> {
   if (ref.type === 'group') {
@@ -149,15 +167,15 @@ function sendTextMessage(
   });
 }
 
-export function postMessage(ref: WhatsAppConversationRef) {
+export function postMessage(ref: WhatsAppSendRef) {
   return defineTool({
     name: 'post_whatsapp_message',
     description: 'Post to the WhatsApp conversation bound to this agent.',
     input: v.object({
       text: v.pipe(v.string(), v.minLength(1), v.maxLength(4096)),
     }),
-    async run({ input }) {
-      const { text } = input;
+    async run({ data }) {
+      const { text } = data;
       const result = await sendTextMessage(ref, text);
       const messageId = result.messages[0]?.id;
       return { ...(messageId === undefined ? {} : { messageId }) };
@@ -169,20 +187,87 @@ export function postMessage(ref: WhatsAppConversationRef) {
 Use the current Graph API version supported by the project. `v25.0` is current
 when this blueprint was authored; keep version upgrades explicit and tested.
 
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the
+channel's router explicitly:
+
+```ts
+// app.ts
+import { Hono } from 'hono';
+import { channel } from './channels/whatsapp.ts';
+
+const app = new Hono();
+app.route('/channels/whatsapp', channel.route());
+
+export default app;
+```
+
+`channel.route()` is a pure router factory serving the channel's routes
+relative to the mount path. The `// Paths:` comment in this guide assumes the
+conventional `/channels/whatsapp` mount; a different mount path shifts every
+provider URL accordingly.
+
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. It carries the conversation's destination facts — the agent reads
+them with `useInitialData()` instead of parsing the instance id — plus small
+instance-constant context like the contact's display name. Per-message facts
+stay on the signal's `attributes`.
+
 ## Wire the agent
 
 ```ts
-import { defineAgent } from '@flue/runtime';
-import { channel, postMessage } from '../channels/whatsapp.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { postMessage, type WhatsAppSendRef } from '../channels/whatsapp.ts';
 
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  tools: [postMessage(channel.parseConversationKey(id))],
-}));
+const initialDataSchema = v.object({
+	phoneNumberId: v.string(),
+	destination: v.optional(
+		v.union([
+			v.object({ type: v.literal('phone-number'), phoneNumber: v.string() }),
+			v.object({ type: v.literal('user-id'), userId: v.string() }),
+		]),
+	),
+	groupId: v.optional(v.string()),
+	contactName: v.optional(v.string()),
+});
+
+export function Assistant() {
+	useModel('anthropic/claude-haiku-4-5');
+	const data = useInitialData<v.InferOutput<typeof initialDataSchema>>();
+	if (!data) throw new Error('This agent is created by the WhatsApp channel dispatch.');
+	let ref: WhatsAppSendRef;
+	if (data.groupId !== undefined) {
+		ref = { type: 'group', phoneNumberId: data.phoneNumberId, groupId: data.groupId };
+	} else if (data.destination !== undefined) {
+		ref = { type: 'individual', phoneNumberId: data.phoneNumberId, destination: data.destination };
+	} else {
+		throw new Error('WhatsApp instance data is missing a destination.');
+	}
+	useTool(postMessage(ref));
+	const contactName = data.contactName ? ` with ${data.contactName}` : '';
+	return `Reply concisely in the bound WhatsApp conversation${contactName}.`;
+}
+
+Assistant.initialData = initialDataSchema;
 ```
 
+The `initialData` static validates the dispatched `initialData` when the
+instance is created; `useInitialData()` returns the parsed value on every
+render.
+
+The `'use agent'` directive (the module's first statement) is what registers
+the agent with the application — `dispatch(...)` from the channel callback
+needs no `app.ts` mounting. Add
+`app.route('/agents/<name>', createAgentRouter(Assistant))` (from
+`@flue/runtime/routing`) in `app.ts` only when the agent
+should also be reachable over HTTP directly.
+
 The channel-agent import cycle is supported because imported bindings are read
-inside deferred callbacks and initializers.
+inside deferred callbacks and agent function bodies.
 
 ## Configure Meta
 
@@ -197,7 +282,9 @@ WHATSAPP_ACCESS_TOKEN=...
 ```
 
 Generate `WHATSAPP_VERIFY_TOKEN` independently. In the Meta app dashboard,
-configure this callback URL and token:
+configure this callback URL and token — the channel's mount path in `app.ts`
+plus the route suffix, with the conventional
+`app.route('/channels/whatsapp', ...)` mount:
 
 ```txt
 https://example.com/channels/whatsapp/webhook
@@ -274,11 +361,11 @@ Create original synthetic payloads from the current official schemas and cover:
 - text, media, location, contacts, interactive replies, reactions,
   unsupported messages, and unknown future message types forwarded natively;
 - malformed JSON, content type, body limits, and response behavior;
-- phone, BSUID, and group conversation-key round trips without namespace
+- phone, BSUID, and group instance-id round trips without namespace
   collisions;
 - real SDK helper and low-level BSUID requests against an injected fake Fetch
   transport in workerd;
-- Node and Cloudflare project builds.
+- the project typecheck and `vite build` for the configured target.
 
 Do not contact Meta or copy third-party fixtures.
 

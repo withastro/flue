@@ -1,7 +1,7 @@
 import { createGoogleChatChannel, type GoogleChatConversationRef } from '@flue/google-chat';
 import { defineTool, dispatch } from '@flue/runtime';
 import * as v from 'valibot';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createGoogleChatClient } from '../lib/google-chat-client.ts';
 
 const appUrl = requiredEnv('GOOGLE_CHAT_APP_URL');
@@ -27,8 +27,13 @@ export const channel = createGoogleChatChannel({
 				case 'APP_COMMAND': {
 					const ref = conversationFromPayload(payload);
 					if (!ref) return;
-					await dispatch(assistant, {
-						id: channel.conversationKey(ref),
+					await dispatch(Assistant, {
+						id: channel.instanceId(ref),
+						// Recorded once when this event creates the instance; ignored after.
+						initialData: {
+							space: ref.space,
+							...(ref.thread === undefined ? {} : { thread: ref.thread }),
+						},
 						message: {
 							kind: 'signal',
 							type: `google-chat.${payload.type}`,
@@ -102,8 +107,8 @@ export function postMessage(ref: GoogleChatConversationRef) {
 		name: 'post_google_chat_message',
 		description: 'Post a message to the Google Chat conversation bound to this agent.',
 		input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
-		async run({ input }) {
-			const message = await client.postMessage(ref, input.text);
+		async run({ data }) {
+			const message = await client.postMessage(ref, data.text);
 			return { message: message.name };
 		},
 	});

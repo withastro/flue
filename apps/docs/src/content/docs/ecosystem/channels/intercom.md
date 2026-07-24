@@ -4,6 +4,7 @@ description: Receive verified Intercom notifications and use a workspace-bound o
 package:
   name: '@flue/intercom'
   href: https://www.npmjs.com/package/@flue/intercom
+lastReviewedAt: 2026-07-21
 ---
 
 ## Quickstart
@@ -21,7 +22,7 @@ The Intercom blueprint installs `@flue/intercom` and the official `intercom-clie
 ```ts title="src/channels/intercom.ts (abridged)"
 import { createIntercomChannel, type IntercomConversationRef } from '@flue/intercom';
 import { dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createIntercomClient } from '../intercom-client.ts';
 
 export const client = createIntercomClient(process.env.INTERCOM_ACCESS_TOKEN!, { region: 'us' });
@@ -37,8 +38,13 @@ export const channel = createIntercomChannel({
       workspaceId: notification.app_id,
       conversationId,
     };
-    await dispatch(assistant, {
-      id: channel.conversationKey(conversation),
+    await dispatch(Assistant, {
+      id: channel.instanceId(conversation),
+      // Recorded once when this event creates the instance; ignored after.
+      initialData: {
+        workspaceId: conversation.workspaceId,
+        conversationId: conversation.conversationId,
+      },
       message: {
         kind: 'signal',
         type: 'intercom.conversation.user.replied',
@@ -57,6 +63,18 @@ export const channel = createIntercomChannel({
 ```
 
 The abridged example shows one dispatched topic and omits the generated environment, region, conversation-id, and retrieval-tool helpers. The complete generated module dispatches `conversation.user.created` and `conversation.user.replied`; other verified topics reach the callback and remain subject to application policy. It pins the SDK to its typed API version, selects the configured region, and binds the retrieval tool in the agent module, so dispatched notifications reach a workspace-scoped agent instance that can retrieve the current conversation without exposing workspace ids or credentials to the model.
+
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the module's named `channel` export:
+
+```ts title="src/app.ts"
+import { channel as intercom } from './channels/intercom.ts';
+
+app.route('/channels/intercom', intercom.route());
+```
+
+`channel.route()` is a pure router factory serving the channel's declared routes relative to the mount path. The webhook paths in this guide assume the conventional `/channels/intercom` mount; a different mount path shifts them accordingly. The dispatch-target agent module carries the `'use agent'` directive — the directive registers it, so a dispatch-only agent needs no HTTP mount of its own.
 
 ## Configure
 
@@ -89,7 +107,7 @@ import {
   type JsonValue,
 } from '@flue/intercom';
 import { defineTool, dispatch } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createIntercomClient, type IntercomRegion } from '../intercom-client.ts';
 
 const workspaceId = requiredEnv('INTERCOM_WORKSPACE_ID');
@@ -113,8 +131,13 @@ export const channel = createIntercomChannel({
           workspaceId: notification.app_id,
           conversationId,
         };
-        await dispatch(assistant, {
-          id: channel.conversationKey(conversation),
+        await dispatch(Assistant, {
+          id: channel.instanceId(conversation),
+          // Recorded once when this event creates the instance; ignored after.
+          initialData: {
+            workspaceId: conversation.workspaceId,
+            conversationId: conversation.conversationId,
+          },
           message: {
             kind: 'signal',
             type: `intercom.${notification.topic}`,
@@ -180,9 +203,15 @@ topics reach the same callback.
 The HMAC-verified body already carries `app_id`, so the channel does not
 re-check workspace identity. Resource ids are not globally unique across
 Intercom workspaces, so the example combines `notification.app_id` and the
-conversation id into a canonical key. An app that serves multiple workspaces
+conversation id into an instance id. An app that serves multiple workspaces
 filters on `notification.app_id` itself, or uses application-owned
 installation state to select credentials.
+
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. It carries the workspace and conversation identifiers the tool
+needs — the agent reads them with `useInitialData()` instead of parsing the
+instance id.
 
 ## Official client
 
@@ -239,24 +268,32 @@ official SDK supports it.
 ## Bind the tool
 
 ```ts title="src/agents/assistant.ts"
-import { defineAgent } from '@flue/runtime';
-import { channel, retrieveConversation } from '../channels/intercom.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { retrieveConversation } from '../channels/intercom.ts';
 
-export default defineAgent(({ id }) => {
-  const conversation = channel.parseConversationKey(id);
-  return {
-    model: 'anthropic/claude-haiku-4-5',
-    tools: [retrieveConversation(conversation)],
-  };
+const initialData = v.object({
+  workspaceId: v.string(),
+  conversationId: v.string(),
 });
+
+export function Assistant() {
+  useModel('anthropic/claude-haiku-4-5');
+  const data = useInitialData<v.InferOutput<typeof initialData>>();
+  if (!data) throw new Error('This agent is created by the Intercom channel dispatch.');
+  useTool(retrieveConversation(data));
+  return 'Help with the inbound Intercom conversation. Retrieve the current conversation when more context is needed.';
+}
+
+Assistant.initialData = initialData;
 ```
 
 The tool retrieves only the conversation already selected from a verified
 notification. It accepts no workspace, conversation id, token, or API host
 from the model.
 
-`channel.conversationKey()` creates canonical workspace-scoped identity.
-Conversation keys remain identifiers, not authorization capabilities. Apply
+The instance id is an identifier, not an authorization capability. Apply
 the project's normal access control to direct agent routes, and verify the
 workspace again before selecting an installation token.
 
@@ -346,7 +383,7 @@ Worker target. Cloudflare projects may use typed bindings instead of
 Create original synthetic notification bodies and local HMAC-SHA1 signatures.
 Exercise valid and tampered exact bytes, `HEAD`, ping, future topics,
 malformed JSON, body limits, handler results, a thrown callback surfacing as
-`500`, and conversation-key round trips in Node and workerd.
+`500`, and instance-id round trips in Node and workerd.
 
 For outbound tests, inject fail-closed Fetch into the actual official client,
 disable retries, assert the exact host, path, method, authorization, version,

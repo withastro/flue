@@ -1,4 +1,3 @@
-import type { AssistantMessage } from '@earendil-works/pi-ai';
 import type { AttachmentRef } from './conversation-records.ts';
 import type {
 	InProgressAssistantMessage,
@@ -7,11 +6,7 @@ import type {
 	ReducedEntry,
 	ReducedMessageEntry,
 } from './conversation-reducer.ts';
-import {
-	buildConversationContext,
-	buildConversationContextEntries,
-	getActiveConversationPath,
-} from './conversation-reducer.ts';
+import { getActiveConversationPath } from './conversation-reducer.ts';
 import { toolResultOutput, toolResultText } from './message-rendering.ts';
 import type { SubmissionState } from './submission-state.ts';
 import { classifySubmissionState } from './submission-state.ts';
@@ -27,6 +22,9 @@ import { addUsage, emptyUsage, fromProviderUsage } from './usage.ts';
 type ConversationUiPart =
 	| { type: 'text'; text: string; state: 'streaming' | 'done' }
 	| { type: 'reasoning'; text: string; state: 'streaming' | 'done' }
+	// A named client-facing data part (`useDataWriter`), AI SDK convention:
+	// the part type is `data-<name>` and the payload rides `data`.
+	| { type: `data-${string}`; data: unknown }
 	// `url` mirrors the SDK shape but is never set server-side (the runtime does
 	// not know the HTTP mount/baseUrl); the SDK fills it in for consumers.
 	| { type: 'file'; mediaType: string; id?: string; size?: number; url?: string; filename?: string }
@@ -77,6 +75,12 @@ interface ConversationSignalDescriptor {
 }
 
 export interface ConversationUiMessage {
+	/**
+	 * Stable message identity. An assistant message represents one whole
+	 * response: every model step of a tracked submission folds into the
+	 * submission's first assistant message (parts accumulate across steps in
+	 * record order), so `id` is the first step's message id.
+	 */
 	id: string;
 	role: ConversationMessageRole;
 	/** Stable semantic classification; see {@link ConversationMessagePurpose}. */
@@ -93,12 +97,13 @@ export interface ConversationUiMessage {
 	/** Typed signal detail; present only on `system`-role messages. */
 	signal?: ConversationSignalDescriptor;
 	parts: ConversationUiPart[];
-	metadata?: {
-		/** Server-authored message creation time as an ISO 8601 string. */
-		timestamp?: string;
-		usage?: PromptUsage;
-		model?: { provider: string; id: string };
-	};
+	/**
+	 * Message metadata is entirely agent-authored (`useResponseStart`/`useResponseFinish`
+	 * producers, deep-merged in call order). The runtime stamps nothing — keys
+	 * like `timestamp`, `usage`, or `model` are app conventions, present only
+	 * when the agent attaches them.
+	 */
+	metadata?: Record<string, unknown>;
 }
 
 /**
@@ -125,6 +130,17 @@ export function classifySignal(signalType: string): {
 		case 'submission_aborted':
 		case 'submission_interrupted':
 			return { purpose: 'advisory', display: 'diagnostic' };
+		// Dynamic-resource narration: runtime bookkeeping announcing that the
+		// declared tools/skills/subagents changed, not a caller dispatch.
+		case 'resources':
+		// Instruction-change narration: the composed instruction document
+		// moved between renders; announcement only, same bookkeeping family.
+		case 'instructions':
+		// Environment-swap narration: a conditional sandbox attached, detached,
+		// or was replaced at a turn boundary; full-snapshot announcement, same
+		// bookkeeping family.
+		case 'environment':
+			return { purpose: 'advisory', display: 'diagnostic' };
 		default:
 			return { purpose: 'dispatch', display: 'diagnostic' };
 	}
@@ -146,29 +162,29 @@ export interface ConversationUiSnapshot {
 	messages: ConversationUiMessage[];
 }
 
-export type CanonicalSubmissionState =
-	| SubmissionState
-	| { kind: 'interrupted_partial'; assistant: AssistantMessage; messageId: string };
-
+/**
+ * Classify how far a persisted submission input progressed, from the
+ * conversation's committed entries. In-progress bookkeeping is deliberately
+ * NOT consulted: structural convergence (`materializeGhostStream`) runs at
+ * every ownership seam before classification, so an interrupted stream is
+ * always a committed aborted entry by the time a consumer classifies — never
+ * a special in-progress state.
+ */
 export function classifyConversationSubmission(
 	conversation: ReducedConversationState,
 	inputEntryId: string,
 	options: { contextWindow: number },
-): CanonicalSubmissionState {
+): SubmissionState {
 	const path = getActiveConversationPath(conversation);
 	const inputIndex = path.findIndex((entry) => entry.id === inputEntryId);
 	if (inputIndex === -1) return classifySubmissionState(undefined, options);
-	const inProgress = [...conversation.inProgressMessages.values()].find(
-		(message) => message.parentId === conversation.activeLeafId && message.blocks.size > 0,
-	);
-	if (inProgress) {
-		return {
-			kind: 'interrupted_partial',
-			messageId: inProgress.messageId,
-			assistant: materializeInterruptedAssistant(inProgress),
-		};
-	}
-	return classifySubmissionState(path.slice(inputIndex + 1), options);
+	// The input entry's own stamp identifies the submission being classified,
+	// so joined-delivery user messages absorbed into its response are read as
+	// continuation input rather than the session advancing past the input.
+	return classifySubmissionState(path.slice(inputIndex + 1), {
+		...options,
+		ownSubmissionId: path[inputIndex]?.submissionId,
+	});
 }
 
 export function projectConversationUi(
@@ -177,10 +193,25 @@ export function projectConversationUi(
 ): ConversationUiSnapshot {
 	const messages: ConversationUiMessage[] = [];
 	const byId = new Map<string, ConversationUiMessage>();
+	// One UI message per assistant response (the UIMessage ecosystem shape):
+	// every assistant step of a tracked submission folds into the submission's
+	// first assistant message, parts accumulating across steps in record order.
+	const responseBySubmission = new Map<string, ConversationUiMessage>();
 	for (const entry of getActiveConversationPath(conversation)) {
 		if (entry.type !== 'message') continue;
 		const projected = projectCompletedMessage(entry);
 		if (projected) {
+			if (projected.role === 'assistant' && projected.submissionId) {
+				const open = responseBySubmission.get(projected.submissionId);
+				if (open) {
+					mergeAssistantContinuation(open, projected);
+					appendAnchoredDataParts(open, conversation, projected.submissionId, projected.id);
+					continue;
+				}
+				responseBySubmission.set(projected.submissionId, projected);
+				appendAnchoredDataParts(projected, conversation, projected.submissionId, projected.id);
+				applyResponseMetadata(projected, conversation);
+			}
 			messages.push(projected);
 			byId.set(projected.id, projected);
 			continue;
@@ -189,23 +220,106 @@ export function projectConversationUi(
 		const toolResult = entry.message;
 		for (let index = messages.length - 1; index >= 0; index--) {
 			const candidate = messages[index];
+			// toolCallIds are only unique per assistant step (the reducer keys
+			// outcomes by assistant message), and steps of one submission merge
+			// into one response message — so backfill the latest matching call
+			// still awaiting output, never a part that already resolved.
 			const partIndex =
-				candidate?.parts.findIndex(
-					(value) => value.type === 'dynamic-tool' && value.toolCallId === toolResult.toolCallId,
+				candidate?.parts.findLastIndex(
+					(value) =>
+						value.type === 'dynamic-tool' &&
+						value.toolCallId === toolResult.toolCallId &&
+						value.state === 'input-available',
 				) ?? -1;
 			if (!candidate || partIndex < 0) continue;
-			const part = candidate.parts[partIndex] as Extract<ConversationUiPart, { type: 'dynamic-tool' }>;
+			const part = candidate.parts[partIndex] as Extract<
+				ConversationUiPart,
+				{ type: 'dynamic-tool' }
+			>;
 			candidate.parts[partIndex] = toolResult.isError
-				? { type: 'dynamic-tool', toolName: part.toolName, toolCallId: part.toolCallId, state: 'output-error', input: part.input, errorText: toolResultText(toolResult.content), ...(entry.toolDurationMs !== undefined ? { durationMs: entry.toolDurationMs } : {}) }
-				: { type: 'dynamic-tool', toolName: part.toolName, toolCallId: part.toolCallId, state: 'output-available', input: part.input, output: entry.toolOutput ? entry.toolOutput.value : toolResultOutput(toolResult.content), ...(entry.toolDurationMs !== undefined ? { durationMs: entry.toolDurationMs } : {}) };
+				? {
+						type: 'dynamic-tool',
+						toolName: part.toolName,
+						toolCallId: part.toolCallId,
+						state: 'output-error',
+						input: part.input,
+						errorText: toolResultText(toolResult.content),
+						...(entry.toolDurationMs !== undefined ? { durationMs: entry.toolDurationMs } : {}),
+					}
+				: {
+						type: 'dynamic-tool',
+						toolName: part.toolName,
+						toolCallId: part.toolCallId,
+						state: 'output-available',
+						input: part.input,
+						output: entry.toolOutput
+							? entry.toolOutput.value
+							: toolResultOutput(toolResult.content),
+						...(entry.toolDurationMs !== undefined ? { durationMs: entry.toolDurationMs } : {}),
+					};
 			break;
 		}
 	}
 	for (const inProgress of conversation.inProgressMessages.values()) {
 		const projected = projectInProgressMessage(inProgress);
-		if (projected && !byId.has(projected.id)) messages.push(projected);
+		if (!projected || byId.has(projected.id)) continue;
+		// A live continuation stream (parented on the current leaf) extends its
+		// submission's open response message. Anything else — e.g. a ghost
+		// partial from an interrupted attempt awaiting terminalization —
+		// projects standalone, as before.
+		const open =
+			projected.submissionId && inProgress.parentId === conversation.activeLeafId
+				? responseBySubmission.get(projected.submissionId)
+				: undefined;
+		if (open) {
+			mergeAssistantContinuation(open, projected);
+			continue;
+		}
+		if (projected.submissionId) applyResponseMetadata(projected, conversation);
+		messages.push(projected);
 	}
 	return { conversationId: conversation.conversationId, streamOffset, messages };
+}
+
+/**
+ * Fold a later assistant step of the same submission into its response
+ * message: parts append in record order; identity fields (id, turnId) stay
+ * the first step's.
+ */
+function mergeAssistantContinuation(
+	open: ConversationUiMessage,
+	continuation: ConversationUiMessage,
+): void {
+	open.parts.push(...continuation.parts);
+}
+
+/**
+ * Append the response's data parts anchored to one assistant step, right
+ * after that step's own parts — the position a live client saw them stream
+ * into. First-write order within a step; a rewrite updated `data` in place.
+ */
+function appendAnchoredDataParts(
+	message: ConversationUiMessage,
+	conversation: ReducedConversationState,
+	submissionId: string,
+	anchorEntryId: string,
+): void {
+	const parts = conversation.responseDataParts.get(submissionId);
+	if (!parts) return;
+	for (const part of parts) {
+		if (part.anchorEntryId !== anchorEntryId) continue;
+		message.parts.push({ type: `data-${part.name}`, data: part.data });
+	}
+}
+
+/** Attach the response's agent-authored metadata (`useResponseStart`/`useResponseFinish`). */
+function applyResponseMetadata(
+	message: ConversationUiMessage,
+	conversation: ReducedConversationState,
+): void {
+	if (!message.submissionId) return;
+	const custom = conversation.responseMetadata.get(message.submissionId);
+	if (custom) message.metadata = custom;
 }
 
 export function getActiveConversationPathSince(
@@ -244,20 +358,6 @@ export function getLatestConversationCompaction(
 	);
 }
 
-export function projectConversationModelContext(
-	conversation: ReducedConversationState,
-	options?: Parameters<typeof buildConversationContext>[1],
-): ReturnType<typeof buildConversationContext> {
-	return buildConversationContext(conversation, options);
-}
-
-export function projectConversationModelContextEntries(
-	conversation: ReducedConversationState,
-	options?: Parameters<typeof buildConversationContextEntries>[1],
-): ReturnType<typeof buildConversationContextEntries> {
-	return buildConversationContextEntries(conversation, options);
-}
-
 function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMessage | undefined {
 	const message = entry.message;
 	if (message.role === 'user') {
@@ -281,7 +381,6 @@ function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMess
 			...(entry.submissionId ? { submissionId: entry.submissionId } : {}),
 			...(entry.turnId ? { turnId: entry.turnId } : {}),
 			parts,
-			metadata: { timestamp: entry.timestamp },
 		};
 	}
 	if (message.role === 'signal') {
@@ -299,7 +398,6 @@ function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMess
 			...(entry.turnId ? { turnId: entry.turnId } : {}),
 			...(Object.keys(signal).length > 0 ? { signal } : {}),
 			parts: [{ type: 'text', text: message.content, state: 'done' }],
-			metadata: { timestamp: entry.timestamp },
 		};
 	}
 	if (message.role !== 'assistant') return undefined;
@@ -323,49 +421,7 @@ function projectCompletedMessage(entry: ReducedMessageEntry): ConversationUiMess
 				state: 'input-available',
 			};
 		}),
-		metadata: {
-			timestamp: entry.timestamp,
-			usage: message.usage,
-			model: { provider: message.provider, id: message.model },
-		},
 	};
-}
-
-function materializeInterruptedAssistant(message: InProgressAssistantMessage): AssistantMessage {
-	const content = [...message.blocks.values()]
-		.sort((a, b) => a.blockIndex - b.blockIndex)
-		.flatMap((block): AssistantMessage['content'] => {
-			if (block.type === 'text') {
-				return [{ type: 'text', text: block.deltas.join(''), textSignature: block.textSignature }];
-			}
-			if (block.type === 'reasoning') {
-				return [
-					{
-						type: 'thinking',
-						thinking: block.deltas.join(''),
-						thinkingSignature: block.encrypted,
-						redacted: block.redacted,
-					},
-				];
-			}
-			return [];
-		});
-	return {
-		...message.modelInfo,
-		role: 'assistant',
-		content,
-		stopReason: 'aborted',
-		errorMessage: 'Stream interrupted before completion.',
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
-		timestamp: new Date(message.timestamp).getTime(),
-	} as AssistantMessage;
 }
 
 function projectInProgressMessage(
@@ -411,6 +467,5 @@ function projectInProgressMessage(
 		...(message.submissionId ? { submissionId: message.submissionId } : {}),
 		...(message.turnId ? { turnId: message.turnId } : {}),
 		parts,
-		metadata: { timestamp: message.timestamp },
 	};
 }

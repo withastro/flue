@@ -1,6 +1,6 @@
 import { defineTool, dispatch } from '@flue/runtime';
 import { createZendeskChannel, type JsonValue, type ZendeskTicketRef } from '@flue/zendesk';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createZendeskClient } from '../zendesk-client.ts';
 
 const accountId = requiredEnv('ZENDESK_ACCOUNT_ID');
@@ -30,8 +30,13 @@ export const channel = createZendeskChannel({
 					accountId: payload.account_id,
 					ticketId,
 				};
-				await dispatch(assistant, {
-					id: channel.ticketKey(ticket),
+				await dispatch(Assistant, {
+					id: channel.instanceId(ticket),
+					// Recorded once when this event creates the instance; ignored after.
+					initialData: {
+						accountId: ticket.accountId,
+						ticketId: ticket.ticketId,
+					},
 					message: {
 						kind: 'signal',
 						type: `zendesk.${payload.type}`,
@@ -71,12 +76,10 @@ function ticketIdFromEvent(subject: string, detail: Record<string, JsonValue>): 
 	const subjectMatch = /^zen:ticket:([1-9]\d*)$/.exec(subject);
 	if (!subjectMatch?.[1]) return undefined;
 	const id = detail.id;
-	if (
-		!(
-			(typeof id === 'string' && /^[1-9]\d*$/.test(id)) ||
-			(typeof id === 'number' && Number.isSafeInteger(id) && id > 0)
-		)
-	) {
+	if (!(
+		(typeof id === 'string' && /^[1-9]\d*$/.test(id)) ||
+		(typeof id === 'number' && Number.isSafeInteger(id) && id > 0)
+	)) {
 		return undefined;
 	}
 	return String(id) === subjectMatch[1] ? subjectMatch[1] : undefined;

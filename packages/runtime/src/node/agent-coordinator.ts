@@ -1,42 +1,48 @@
-import type {
-	AgentDispatchAdmission,
-	AgentSubmission,
-	AgentSubmissionStore,
-} from '../agent-execution-store.ts';
+import { SUBMISSION_HARNESS_NAME, SUBMISSION_SESSION_NAME } from '../adapter-helpers.ts';
+import type { AgentSubmission, AgentSubmissionStore } from '../agent-execution-store.ts';
 import { LEASE_DURATION_MS } from '../agent-execution-store.ts';
 import { ConversationRecordWriter } from '../conversation-writer.ts';
+import { RuntimeUnavailableError, SubmissionAbortedError } from '../errors.ts';
+import { createMcpConnectionCache, type McpConnectionCache } from '../mcp.ts';
 import {
 	type AgentSubmissionInput,
 	type AttachedAgentSubmissionAdmission,
-	agentSubmissionDispatchId,
+	admitInstanceContact,
 	createDirectAgentSubmissionInput,
 	createDispatchAgentSubmissionInput,
-	materializeAgentSubmissionSession,
+	ensureInstanceIdentity,
+	finalizePendingSettlement,
+	type InstanceIdentity,
+	materializeSubmissionAttachments,
 	processSubmission,
 	reconcileInterruptedSubmission,
 	submissionSyntheticRequest,
 } from '../runtime/agent-submissions.ts';
-import { SUBMISSION_HARNESS_NAME, SUBMISSION_SESSION_NAME } from '../adapter-helpers.ts';
-import { createSessionStorageKey } from '../session-identity.ts';
-import { SubmissionAbortedError } from '../errors.ts';
 import type { AttachmentStore } from '../runtime/attachment-store.ts';
 import type { ConversationStreamStore } from '../runtime/conversation-stream-store.ts';
 import type { AgentInteractionStart } from '../runtime/dev-lifecycle-logger.ts';
 import type { DispatchInput, DispatchQueue } from '../runtime/dispatch-queue.ts';
-import { agentStreamPath } from '../runtime/event-stream-store.ts';
 import type { CreateAgentContextFn } from '../runtime/handle-agent.ts';
-import type { RuntimeActivityGate, RuntimeActivityLease } from '../runtime/runtime-activity-gate.ts';
-import type {
-	AgentDefinition,
-	DeliveredMessage,
-	DispatchReceipt,
-} from '../types.ts';
+import { generateAttemptId, generateOwnerId } from '../runtime/ids.ts';
+import type { RuntimeActivityGate } from '../runtime/runtime-activity-gate.ts';
+import { agentStreamPath } from '../runtime/stream-offsets.ts';
+import { createSessionStorageKey } from '../session-identity.ts';
+import type { Agent, DeliveredMessage, DispatchReceipt } from '../types.ts';
 
 export interface NodeAgentCoordinator {
 	/** Call once at startup to reconcile interrupted work from a previous process. */
 	reconcileSubmissions(): Promise<void>;
-	/** Admit a dispatch. The submission is persisted durably; processing is asynchronous. */
-	admitDispatch(input: DispatchInput): Promise<AgentDispatchAdmission>;
+	/**
+	 * Admit a dispatch. The submission is persisted durably; processing is
+	 * asynchronous. `uid` is the contacted instance's uid (recorded at birth
+	 * for a creating send, read back for the receipt).
+	 */
+	admitDispatch(
+		input: DispatchInput,
+	): Promise<
+		| { readonly kind: 'submission'; readonly submission: AgentSubmission; readonly uid: string }
+		| { readonly kind: 'conflict' }
+	>;
 	/**
 	 * Abort all in-flight and queued durable work for an agent instance. Records
 	 * the durable abort intent on every unsettled submission for the instance
@@ -82,22 +88,17 @@ export function createNodeDispatchQueue(coordinator: NodeAgentCoordinator): Disp
 			// Admission is durable — the submission is persisted in SQL. Processing
 			// happens asynchronously via the coordinator's claim loop. Admission
 			// outcomes mirror the Cloudflare coordinator: an exact replay returns
-			// the original stored receipt and a conflicting replay throws.
+			// the original stored submission and a conflicting replay throws.
 			const admission = await coordinator.admitDispatch(input);
-			if (admission.kind === 'retained_receipt') {
-				return {
-					dispatchId: admission.receipt.submissionId,
-					acceptedAt: new Date(admission.receipt.acceptedAt).toISOString(),
-				};
-			}
 			if (admission.kind === 'conflict') {
 				throw new Error(
 					`[flue] dispatch() target agent "${input.agent}" rejected a conflicting dispatch replay.`,
 				);
 			}
 			return {
-				dispatchId: admission.submission.submissionId,
+				submissionId: admission.submission.submissionId,
 				acceptedAt: input.acceptedAt,
+				uid: admission.uid,
 			};
 		},
 	};
@@ -105,22 +106,34 @@ export function createNodeDispatchQueue(coordinator: NodeAgentCoordinator): Disp
 
 export function createNodeAgentCoordinator(options: {
 	submissions: AgentSubmissionStore;
-	agents: ReadonlyArray<{ name: string; definition: AgentDefinition }>;
+	agents: ReadonlyArray<{ name: string; agent: Agent }>;
 	createContext: CreateAgentContextFn;
 	conversationStreamStore?: ConversationStreamStore;
 	attachmentStore?: AttachmentStore;
 	onInteractionStart?: (interaction: AgentInteractionStart) => void;
 	activityGate?: RuntimeActivityGate;
 }): NodeAgentCoordinator {
-	const { submissions, agents, createContext, conversationStreamStore, attachmentStore, onInteractionStart, activityGate } = options;
+	const {
+		submissions,
+		agents,
+		createContext,
+		conversationStreamStore,
+		attachmentStore,
+		onInteractionStart,
+		activityGate,
+	} = options;
 	const conversationWriters = new Map<string, Promise<ConversationRecordWriter>>();
-	const conversationMaterializations = new Map<string, Promise<void>>();
+	const conversationMaterializations = new Map<string, Promise<unknown>>();
+	// Live MCP connections, keyed per instance stream path like the writers
+	// above: submissions reuse an instance's connections for the process
+	// lifetime, and shutdown closes them all.
+	const mcpConnectionCaches = new Map<string, McpConnectionCache>();
 
 	// ── Lease ownership ──────────────────────────────────────────────────
 
 	/** Unique identifier for this coordinator instance. Used as the owner
 	 *  for lease-based submission ownership. */
-	const ownerId = crypto.randomUUID();
+	const ownerId = generateOwnerId();
 
 	/** Heartbeat interval handle; started with the claim loop. */
 	let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
@@ -133,7 +146,6 @@ export function createNodeAgentCoordinator(options: {
 
 	/** Submissions currently being processed, keyed by submissionId. */
 	const activeSubmissions = new Map<string, { task: Promise<void>; abort: AbortController }>();
-	const activityLeases = new Map<string, RuntimeActivityLease>();
 
 	/**
 	 * Wake signal. The claim loop sleeps on `wakePromise` when there is
@@ -145,14 +157,21 @@ export function createNodeAgentCoordinator(options: {
 
 	/**
 	 * When a claim pass is already running, `wake()` sets this flag so
-	 * the current pass loops again after finishing its claims. Same
-	 * cooperative pattern as the old `driveAgainRequested`.
+	 * the current pass loops again after finishing its claims.
 	 */
 	let claimPassRunning = false;
 	let wakeRequested = false;
 
-	/** Whether the claim loop has been started. */
 	let loopRunning = false;
+
+	/**
+	 * The running claim loop's completion. `shutdown()` awaits it so no
+	 * claim pass can still be touching the stores when shutdown resolves —
+	 * callers close the persistence adapter right after, and an in-flight
+	 * `listRunnableSubmissions` would otherwise race the close and log
+	 * "database is not open" retries.
+	 */
+	let claimLoopDone: Promise<void> | null = null;
 
 	/** Whether the coordinator is shutting down. When true, the claim
 	 *  loop stops claiming new work and admissions are rejected. */
@@ -178,7 +197,9 @@ export function createNodeAgentCoordinator(options: {
 
 	// ── Helpers ──────────────────────────────────────────────────────────
 
-	function getConversationWriter(input: AgentSubmissionInput): Promise<ConversationRecordWriter | undefined> {
+	function getConversationWriter(
+		input: AgentSubmissionInput,
+	): Promise<ConversationRecordWriter | undefined> {
 		if (!conversationStreamStore) return Promise.resolve(undefined);
 		const path = agentStreamPath(input.agent, input.id);
 		let writer = conversationWriters.get(path);
@@ -200,30 +221,54 @@ export function createNodeAgentCoordinator(options: {
 		return writer;
 	}
 
-	function makeSubmissionContext(input: AgentSubmissionInput, writer: ConversationRecordWriter | undefined) {
-		return (dispatchId: string | undefined) => {
+	function getMcpConnections(input: AgentSubmissionInput): McpConnectionCache {
+		const path = agentStreamPath(input.agent, input.id);
+		let cache = mcpConnectionCaches.get(path);
+		if (!cache) {
+			cache = createMcpConnectionCache();
+			mcpConnectionCaches.set(path, cache);
+		}
+		return cache;
+	}
+
+	function makeSubmissionContext(
+		input: AgentSubmissionInput,
+		writer: ConversationRecordWriter | undefined,
+	) {
+		return (submissionId: string) => {
 			const ctx = createContext({
 				id: input.id,
 				agentName: input.agent,
 				request: submissionSyntheticRequest(input),
-				dispatchId,
+				submissionId,
 			});
 			ctx.setConversationWriter?.(writer);
 			ctx.setAttachmentStore?.(attachmentStore);
+			ctx.setMcpConnections?.(getMcpConnections(input));
 			return ctx;
 		};
 	}
 
+	/**
+	 * Admission-side materialization, serialized per stream path: ensure the
+	 * instance's birth record (find-or-create, no render, no sandbox) and
+	 * persist the message's attachments under its conversation id. Idempotent —
+	 * admission, replays, and the unready-row recovery pass all run it safely.
+	 * Returns the identity for the receipt; `undefined` without a conversation
+	 * store (storeless configs have nothing durable to materialize).
+	 */
 	function materializeSubmissionConversation(
 		input: AgentSubmissionInput,
-		agent: AgentDefinition,
-	): Promise<void> {
+		agent: Agent,
+	): Promise<InstanceIdentity | undefined> {
 		const path = agentStreamPath(input.agent, input.id);
 		const previous = conversationMaterializations.get(path) ?? Promise.resolve();
 		const materialized = previous.then(async () => {
 			const writer = await getConversationWriter(input);
-			const ctx = makeSubmissionContext(input, writer)(agentSubmissionDispatchId(input));
-			await materializeAgentSubmissionSession(ctx, agent, input, attachmentStore);
+			if (!writer) return undefined;
+			const identity = await ensureInstanceIdentity(writer, agent, input.initialData);
+			await materializeSubmissionAttachments(input, identity.conversationId, attachmentStore);
+			return identity;
 		});
 		conversationMaterializations.set(path, materialized);
 		void materialized.then(
@@ -241,9 +286,10 @@ export function createNodeAgentCoordinator(options: {
 		return materialized;
 	}
 
-	function resolveAgent(name: string): AgentDefinition {
-		const agent = agents.find((record) => record.name === name)?.definition;
-		if (!agent) throw new Error(`[flue] submission target agent "${name}" has no agent definition.`);
+	function resolveAgent(name: string): Agent {
+		const agent = agents.find((record) => record.name === name)?.agent;
+		if (!agent)
+			throw new Error(`[flue] submission target agent "${name}" has no agent definition.`);
 		return agent;
 	}
 
@@ -284,8 +330,6 @@ export function createNodeAgentCoordinator(options: {
 			})
 			.finally(() => {
 				activeSubmissions.delete(claimed.submissionId);
-				activityLeases.get(claimed.submissionId)?.release();
-				activityLeases.delete(claimed.submissionId);
 				wake();
 			});
 		activeSubmissions.set(claimed.submissionId, { task, abort: controller });
@@ -299,6 +343,9 @@ export function createNodeAgentCoordinator(options: {
 	 * Returns whether any progress was made.
 	 */
 	async function runClaimPass(): Promise<boolean> {
+		// Claiming new work during shutdown would spawn tasks the
+		// active-submission abort sweep already ran past.
+		if (stopping) return false;
 		await reconcileUnreadySubmissions();
 		// Periodically scan for expired leases from other coordinators.
 		await periodicLeaseScan();
@@ -310,7 +357,7 @@ export function createNodeAgentCoordinator(options: {
 			if (activeSubmissions.has(submission.submissionId)) continue;
 			const claimed = await submissions.claimSubmission({
 				submissionId: submission.submissionId,
-				attemptId: crypto.randomUUID(),
+				attemptId: generateAttemptId(),
 				ownerId,
 				leaseExpiresAt: Date.now() + LEASE_DURATION_MS,
 			});
@@ -345,16 +392,25 @@ export function createNodeAgentCoordinator(options: {
 					progressed = await runClaimPass();
 					// Keep looping if we made progress (newly-runnable work may
 					// have appeared due to session-head advancement) or if a
-					// wake was requested during this pass.
-				} while (progressed || wakeRequested);
+					// wake was requested during this pass — but never once
+					// shutdown has begun (its own wake() would otherwise
+					// schedule one more pass).
+				} while (!stopping && (progressed || wakeRequested));
 			} catch (error) {
 				// A transient DB error in listRunnableSubmissions or
 				// claimSubmission should not kill the entire loop. Log,
 				// back off briefly, and retry. Setting wakeRequested ensures
 				// the loop retries immediately after the backoff instead of
-				// sleeping indefinitely waiting for an external wake.
+				// sleeping indefinitely waiting for an external wake. During
+				// shutdown, skip the backoff — the loop is about to exit and
+				// `shutdown()` is awaiting it.
 				console.error('[flue:claim-loop] Error in claim pass, retrying:', error);
-				await new Promise<void>((r) => setTimeout(r, 1000));
+				if (!stopping) {
+					await new Promise<void>((r) => {
+						const timer = setTimeout(r, 1000);
+						if (typeof timer === 'object' && 'unref' in timer) timer.unref();
+					});
+				}
 				wakeRequested = true;
 			} finally {
 				// Reset the sleep promise BEFORE clearing claimPassRunning.
@@ -383,7 +439,7 @@ export function createNodeAgentCoordinator(options: {
 		// Fire-and-forget — the loop runs for the coordinator's lifetime.
 		// Errors in individual submissions are caught by spawnSubmissionTask.
 		// Unexpected errors in the loop itself are fatal and logged.
-		void claimLoop().catch((error) => {
+		claimLoopDone = claimLoop().catch((error) => {
 			console.error('[flue:claim-loop] Fatal error in claim loop:', error);
 			loopRunning = false;
 		});
@@ -419,7 +475,6 @@ export function createNodeAgentCoordinator(options: {
 
 	/** Interval (ms) between periodic expired-lease scans in the claim loop. */
 	const LEASE_SCAN_INTERVAL_MS = 15_000;
-	/** Timestamp of the last expired-lease scan. */
 	let lastLeaseScanAt = 0;
 
 	/**
@@ -459,7 +514,7 @@ export function createNodeAgentCoordinator(options: {
 
 	async function reconcileUnreadySubmissions(): Promise<void> {
 		for (const submission of await submissions.listUnreadySubmissions()) {
-			const agent = agents.find((record) => record.name === submission.input.agent)?.definition;
+			const agent = agents.find((record) => record.name === submission.input.agent)?.agent;
 			if (!agent) {
 				console.error('[flue:submission-reconciliation]', {
 					submissionId: submission.submissionId,
@@ -486,24 +541,40 @@ export function createNodeAgentCoordinator(options: {
 	}
 
 	async function runReconciliationPass(): Promise<void> {
+		// Reconciling during shutdown would claim replacement attempts and
+		// spawn tasks after the abort sweep, against a store the caller is
+		// about to close; expired leases are next startup's recovery work.
+		if (stopping) return;
 		await reconcileUnreadySubmissions();
 		for (const settlement of await submissions.listPendingSubmissionSettlements()) {
-			const submission = await submissions.getSubmission(settlement.submissionId);
-			if (!submission || submission.kind !== 'direct') continue;
-			if (activeSubmissions.has(submission.submissionId) || submission.leaseExpiresAt > Date.now()) {
-				continue;
+			try {
+				const submission = await submissions.getSubmission(settlement.submissionId);
+				if (!submission) continue;
+				if (
+					activeSubmissions.has(submission.submissionId) ||
+					submission.leaseExpiresAt > Date.now()
+				) {
+					continue;
+				}
+				const writer = await getConversationWriter(submission.input);
+				if (!writer) continue;
+				await finalizePendingSettlement(submissions, writer, settlement);
+			} catch (error) {
+				console.error(
+					'[flue:submission-reconciliation]',
+					{
+						submissionId: settlement.submissionId,
+						operation: 'finalize_settlement',
+						outcome: 'failed',
+					},
+					error,
+				);
 			}
-			const writer = await getConversationWriter(submission.input);
-			if (!writer) continue;
-			const attempt = { submissionId: settlement.submissionId, attemptId: settlement.attemptId };
-			const canonical = await writer.getRecord(settlement.recordId);
-			if (!canonical) await writer.append([settlement.record], { submission: attempt });
-			else if (JSON.stringify(canonical) !== JSON.stringify(settlement.record)) {
-				throw new Error('[flue] Pending settlement does not match its canonical record. Clear incompatible beta persistence.');
-			}
-			await submissions.finalizeSubmissionSettlement(attempt, settlement.recordId);
 		}
 		for (const submission of await submissions.listExpiredSubmissions()) {
+			// Shutdown began mid-pass: stop before claiming a replacement
+			// attempt the abort sweep would never see.
+			if (stopping) return;
 			// Skip submissions still actively processing in this coordinator
 			// (possible when heartbeat renewals fail transiently and the lease
 			// expires while the task is mid-flight). Reconciling our own live
@@ -511,7 +582,7 @@ export function createNodeAgentCoordinator(options: {
 			// session — exactly the corruption leases exist to prevent.
 			if (activeSubmissions.has(submission.submissionId)) continue;
 			const agentName = submission.input.agent;
-			const agent = agents.find((record) => record.name === agentName)?.definition;
+			const agent = agents.find((record) => record.name === agentName)?.agent;
 			if (!agent) {
 				console.error('[flue:submission-reconciliation]', {
 					submissionId: submission.submissionId,
@@ -557,48 +628,86 @@ export function createNodeAgentCoordinator(options: {
 			// reconciled submissions are properly received.
 			ensureClaimLoop();
 			await reconcileRunningSubmissions();
-			// Wait for all reconciled and subsequently-runnable submissions to
-			// settle. Reconciliation may requeue submissions (putting them back
-			// to 'queued'), which the claim loop then picks up.
-			await this.waitForIdle();
+			// Return once the pass has run — recovered and requeued work settles
+			// in the background via the now-running claim loop. Callers that
+			// boot an HTTP server (start(), `flue run`, the vite node servers)
+			// await only this pass, so the server serves while recovery runs,
+			// matching the Cloudflare coordinator. Callers that need completion
+			// (shutdown, tests) await waitForIdle() explicitly.
 		},
 
 		async admitDispatch(input) {
-			if (stopping) throw new Error('[flue] Coordinator is shutting down.');
+			if (stopping) throw new RuntimeUnavailableError({ state: 'draining' });
+			// The lease scopes the admission call itself — the gate is the
+			// admission/request drain seam (pause() rejects new leases).
+			// Background processing drains via waitForIdle()/shutdown(), never
+			// the gate: leases keyed by submissionId leaked for joined
+			// deliveries, rows still queued at shutdown, and settled replays.
 			const activityLease = activityGate?.enter();
 			try {
-				const agent = agents.find((record) => record.name === input.agent)?.definition;
+				const agent = agents.find((record) => record.name === input.agent)?.agent;
 				if (!agent) {
 					throw new Error(`[flue] dispatch target agent "${input.agent}" has no agent definition.`);
 				}
 
+				const loadReducedState = async () => {
+					const writer = await getConversationWriter(createDispatchAgentSubmissionInput(input));
+					return writer?.loadReducedState();
+				};
+				const contact = await admitInstanceContact({
+					agent,
+					id: input.id,
+					initialData: input.initialData,
+					uid: input.uid,
+					loadReducedState,
+				});
 				const admission = await submissions.admitDispatch(input);
-				if (admission.kind !== 'submission') {
-					activityLease?.release();
-					return admission;
-				}
-				let submission = admission.submission;
-				if (submission.canonicalReadyAt === null) {
-					await materializeSubmissionConversation(createDispatchAgentSubmissionInput(input), agent);
-					submission =
-						(await submissions.markSubmissionCanonicalReady(submission.submissionId)) ?? submission;
-				}
+				if (admission.kind !== 'submission') return admission;
+				// The durable row exists from here on: the wake must fire even if
+				// materialization/readiness/uid below throws, or the queued row
+				// would strand with nothing to ever claim it.
+				try {
+					let submission = admission.submission;
+					let identity: InstanceIdentity | undefined;
+					if (submission.canonicalReadyAt === null) {
+						identity = await materializeSubmissionConversation(
+							createDispatchAgentSubmissionInput(input),
+							agent,
+						);
+						// Tolerate a null return (a concurrent readiness pass may have
+						// advanced this row already): keep the admitted submission rather
+						// than treat null as a lost submission.
+						submission =
+							(await submissions.markSubmissionCanonicalReady(submission.submissionId)) ??
+							submission;
+					}
+					// The uid rides every receipt: echoed for a continuing send, minted
+					// by materialization's identity ensure for a creating one.
+					const uid = contact.uid ?? identity?.uid;
+					if (uid === undefined) {
+						throw new Error(
+							"[flue] invariant: a materialized instance's birth record must carry a uid.",
+						);
+					}
 
-				if (activityLease) activityLeases.set(submission.submissionId, activityLease);
-				ensureClaimLoop();
-				wake();
-				return { kind: 'submission', submission };
-			} catch (error) {
+					return { kind: 'submission', submission, uid };
+				} finally {
+					ensureClaimLoop();
+					wake();
+				}
+			} finally {
 				activityLease?.release();
-				throw error;
 			}
 		},
 
-		async abortInstance(_agentName: string, instanceId: string): Promise<boolean> {
+		async abortInstance(agentName: string, instanceId: string): Promise<boolean> {
 			// External submissions for an instance share one durable session, so
 			// one session-scoped stamp covers the running head and every queued
-			// submission behind it.
+			// submission behind it. The store is shared across agents: the key
+			// carries the full (agent, id) address so another agent's instance
+			// with the same id is untouched.
 			const sessionKey = createSessionStorageKey(
+				agentName,
 				instanceId,
 				SUBMISSION_HARNESS_NAME,
 				SUBMISSION_SESSION_NAME,
@@ -626,41 +735,71 @@ export function createNodeAgentCoordinator(options: {
 		},
 
 		createAdmission(agentName: string, instanceId: string): AttachedAgentSubmissionAdmission {
-			return async (
-				message: DeliveredMessage,
-				traceCarrier?: import('../execution-interceptor.ts').FlueTraceCarrier,
-			) => {
-				if (stopping) throw new Error('[flue] Coordinator is shutting down.');
+			return async (message: DeliveredMessage, options = {}) => {
+				const { traceCarrier, initialData, uid } = options;
+				if (stopping) throw new RuntimeUnavailableError({ state: 'draining' });
+				// Same admission-scoped lease as admitDispatch: released when the
+				// admission call returns, not when the submission settles.
 				const activityLease = activityGate?.enter();
-				const agent = agents.find((record) => record.name === agentName)?.definition;
-				if (!agent) {
-					activityLease?.release();
-					throw new Error(`[flue] direct prompt target agent "${agentName}" has no agent definition.`);
-				}
-
-				const input = createDirectAgentSubmissionInput({
-					agent: agentName,
-					id: instanceId,
-					message,
-					traceCarrier,
-				});
-
 				try {
-					const admitted = await submissions.admitDirect(input);
-					if (admitted.canonicalReadyAt === null) {
-						await materializeSubmissionConversation(input, agent);
-						const ready = await submissions.markSubmissionCanonicalReady(input.submissionId);
-						if (!ready) throw new Error('[flue] Direct admission disappeared before canonical readiness.');
+					const agent = agents.find((record) => record.name === agentName)?.agent;
+					if (!agent) {
+						throw new Error(
+							`[flue] direct prompt target agent "${agentName}" has no agent definition.`,
+						);
 					}
-					const writer = await getConversationWriter(input);
-					const offset = writer?.offset ?? '-1';
-					if (activityLease) activityLeases.set(input.submissionId, activityLease);
-					ensureClaimLoop();
-					wake();
-					return { submissionId: input.submissionId, offset };
-				} catch (error) {
+
+					const input = createDirectAgentSubmissionInput({
+						agent: agentName,
+						id: instanceId,
+						message,
+						initialData,
+						traceCarrier,
+					});
+					const loadReducedState = async () => {
+						const writer = await getConversationWriter(input);
+						return writer?.loadReducedState();
+					};
+					const contact = await admitInstanceContact({
+						agent,
+						id: instanceId,
+						initialData,
+						uid,
+						loadReducedState,
+					});
+					const admitted = await submissions.admitDirect(input);
+					// The durable row exists from here on: the wake must fire even if
+					// materialization/readiness/uid below throws, or the queued row
+					// would strand with nothing to ever claim it.
+					try {
+						let identity: InstanceIdentity | undefined;
+						if (admitted.canonicalReadyAt === null) {
+							identity = await materializeSubmissionConversation(input, agent);
+							// Tolerate a null return: the claim loop's materialize-unready
+							// pass races this admission and can mark-then-claim the row
+							// first, so null means "already advanced past queued" — a
+							// healthy row, not a lost submission (rows are never deleted).
+							await submissions.markSubmissionCanonicalReady(input.submissionId);
+						}
+						const writer = await getConversationWriter(input);
+						const offset = writer?.offset ?? '-1';
+						const instanceUid = contact.uid ?? identity?.uid;
+						if (instanceUid === undefined) {
+							throw new Error(
+								"[flue] invariant: a materialized instance's birth record must carry a uid.",
+							);
+						}
+						return {
+							submissionId: input.submissionId,
+							offset,
+							uid: instanceUid,
+						};
+					} finally {
+						ensureClaimLoop();
+						wake();
+					}
+				} finally {
 					activityLease?.release();
-					throw error;
 				}
 			};
 		},
@@ -694,8 +833,15 @@ export function createNodeAgentCoordinator(options: {
 			if (stopping) return;
 			stopping = true;
 
-			// Wake the claim loop so it exits (checks `stopping` flag).
+			// Wake the claim loop so it exits (checks `stopping` flag), and
+			// wait for it — plus any detached reconciliation pass (abort paths
+			// fire them unawaited): once both have finished, no pass is
+			// mid-flight against the stores and no new submission task can
+			// spawn — so the abort sweep below is complete, and the caller may
+			// close the persistence adapter the moment shutdown resolves.
 			wake();
+			if (claimLoopDone) await claimLoopDone;
+			if (reconcilePassInFlight) await reconcilePassInFlight.catch(() => {});
 
 			// Abort all active submissions at the turn boundary. The abort
 			// signal propagates into the session, which finishes the current
@@ -740,6 +886,12 @@ export function createNodeAgentCoordinator(options: {
 					abandoned,
 				);
 			}
+
+			// Close cached MCP connections last: settled submissions no longer
+			// touch them, and any abandoned work above is being torn down anyway.
+			const mcpCaches = [...mcpConnectionCaches.values()];
+			mcpConnectionCaches.clear();
+			await Promise.allSettled(mcpCaches.map((cache) => cache.close()));
 		},
 	};
 }

@@ -39,8 +39,8 @@ Before editing:
 2. Detect the package manager and Flue target.
 3. Select the first existing Flue source root: `<root>/.flue/`, then
    `<root>/src/`, then `<root>/`.
-4. Inspect existing `agents/`, `workflows/`, `channels/`, `app.ts`, environment
-   types, and secret conventions.
+4. Inspect existing `agents/`, `channels/`, `app.ts` (the application's route
+   map), environment types, and secret conventions.
 5. Ask only when the intended provider behavior or a consequential
    authorization decision cannot be inferred.
 
@@ -71,16 +71,26 @@ export const channel = {
 
 Every route suffix must be non-empty and begin with `/`. Use `/webhook` for one
 ordinary webhook, `/events` for a protocol explicitly named an Events API, and
-provider-native names such as `/interactions` when semantics differ. The
-filename creates the immutable namespace:
+provider-native names such as `/interactions` when semantics differ.
 
-```txt
-channels/acme.ts + /webhook -> /channels/acme/webhook
+A channel serves HTTP routes only where `app.ts` mounts it. First-party
+`@flue/<provider>` channels expose a `channel.route()` router factory; a
+hand-rolled channel object mounts through `createChannelRouter` from
+`@flue/runtime`:
+
+```ts
+// app.ts
+import { createChannelRouter } from '@flue/runtime';
+import { channel } from './channels/acme.ts';
+
+app.route('/channels/acme', createChannelRouter(channel.routes));
+// /channels/acme/webhook
 ```
 
-Add an exact default path comment immediately above each application handler.
-Do not create an `app.ts` merely to mount the channel. An existing `app.ts` may
-mount all of `flue()` beneath an outer prefix; it does not relocate one channel.
+Route suffixes resolve relative to the mount path. Use `/channels/<provider>`
+as the conventional mount unless the project's `app.ts` establishes another
+convention. Add an exact default path comment immediately above each
+application handler, assuming the conventional mount.
 
 Verify signatures against the exact unconsumed body. Enforce useful body
 limits, timestamps or replay windows, content types, provider identity, and
@@ -128,16 +138,16 @@ client. Bind trusted destinations, repositories, or channel ids in application
 code. Do not expose credentials, arbitrary API paths, or unrestricted provider
 destinations as model arguments without an explicit authorization design.
 
-Conversation keys identify destinations; they are not authorization
+Instance ids identify destinations; they are not authorization
 capabilities. Direct agent routes must authorize caller-selected instance ids
 before using them to bind SDK operations.
 
 ## Verify
 
 1. Type-check the project.
-2. Build its configured Flue target.
+2. Build the application with `vite build` for its configured target.
 3. Create representative webhook payloads and valid/invalid signatures locally.
-4. Confirm the discovered route, wrong-method behavior, invalid-signature
+4. Confirm the mounted route, wrong-method behavior, invalid-signature
    rejection, handshake behavior, normalized event, and default response.
 5. Exercise any channel-agent import cycle through the built entry. Imported
    bindings must be read only inside deferred callbacks or initializers.

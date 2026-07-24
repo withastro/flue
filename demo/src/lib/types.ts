@@ -1,4 +1,4 @@
-import type { ConversationLiveMode } from '@flue/sdk'
+import type { ConversationLiveMode } from '@flue/sdk';
 
 /**
  * A configured connection to a single agent. The whole target is expressed as
@@ -8,12 +8,12 @@ import type { ConversationLiveMode } from '@flue/sdk'
  * @example `http://localhost:3583/api/agents/helper`
  */
 export interface Connection {
-  /** Full agent endpoint, e.g. `http://localhost:3583/api/agents/helper`. */
-  agentUrl: string
-  /** Optional bearer token sent as `Authorization: Bearer <token>`. */
-  token?: string
-  /** Transport for live conversation updates: `'sse'` or `'long-poll'`. */
-  live: ConversationLiveMode
+	/** Full agent endpoint, e.g. `http://localhost:3583/api/agents/helper`. */
+	agentUrl: string;
+	/** Optional bearer token sent as `Authorization: Bearer <token>`. */
+	token?: string;
+	/** Transport for live conversation updates: `'sse'` or `'long-poll'`. */
+	live: ConversationLiveMode;
 }
 
 /**
@@ -22,10 +22,10 @@ export interface Connection {
  * The conversation `id` doubles as the agent instance id.
  */
 export interface Conversation {
-  id: string
-  title: string
-  /** Agent the conversation was started against. */
-  agentName: string
-  createdAt: number
-  updatedAt: number
+	id: string;
+	title: string;
+	/** Agent the conversation was started against. */
+	agentName: string;
+	createdAt: number;
+	updatedAt: number;
 }

@@ -4,6 +4,7 @@ import {
 	createPubSubTokenVerifier,
 	type GoogleChatInteractionAuthentication,
 	type GoogleChatPubSubAuthentication,
+	GoogleSigningKeyDiscoveryError,
 } from './auth.ts';
 import type {
 	GoogleChatHandlerResult,
@@ -42,8 +43,8 @@ export function createGoogleChatInteractionsHandler<E extends Env>(
 		}
 		try {
 			await verifyToken(c.req.header('authorization') ?? null);
-		} catch {
-			return response(401);
+		} catch (error) {
+			return response(error instanceof GoogleSigningKeyDiscoveryError ? 503 : 401);
 		}
 		return serializeHandlerResult(
 			await options.handler({
@@ -67,8 +68,8 @@ export function createGoogleChatWorkspaceEventsHandler<E extends Env>(
 		if (raw.type === 'invalid') return response(400);
 		try {
 			await verifyToken(c.req.header('authorization') ?? null);
-		} catch {
-			return response(401);
+		} catch (error) {
+			return response(error instanceof GoogleSigningKeyDiscoveryError ? 503 : 401);
 		}
 		if (!isWorkspaceEventDelivery(raw.value)) return response(400);
 		if (raw.value.subscription !== options.authentication.subscription) return response(403);
@@ -113,7 +114,15 @@ async function readRequestJson(
 		if (!/^\d+$/.test(contentLength)) return { type: 'invalid' };
 		if (Number(contentLength) > limit) return { type: 'too-large' };
 	}
-	const bytes = await readBody(request, limit);
+	// A mid-stream read failure is 'invalid' (→ 400), distinct from the
+	// over-limit 'too-large' (→ 413) — the split every sibling reader makes
+	// (github/src/webhook.ts readBody throws to its caller's 400 response).
+	let bytes: Uint8Array | undefined;
+	try {
+		bytes = await readBody(request, limit);
+	} catch {
+		return { type: 'invalid' };
+	}
 	if (!bytes) return { type: 'too-large' };
 	try {
 		const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
@@ -134,13 +143,12 @@ async function readBody(request: Request, limit: number): Promise<Uint8Array | u
 			if (done) break;
 			total += value.byteLength;
 			if (total > limit) {
-				void reader.cancel();
+				// Discard cancel rejections: an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
 				return undefined;
 			}
 			chunks.push(value);
 		}
-	} catch {
-		return undefined;
 	} finally {
 		reader.releaseLock();
 	}

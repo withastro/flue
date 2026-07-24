@@ -16,9 +16,9 @@ to a Flue project. This is not a generic Salesforce integration.
 
 Read local instructions, detect the package manager and deployment target, and
 select the first existing source root: `<root>/.flue/`, then `<root>/src/`,
-then `<root>/`. Inspect existing agents, environment types, secret
-conventions, Marketing Cloud tenant configuration, and the ENS event families
-the application subscribes to.
+then `<root>/`. Inspect existing agents, `app.ts` (the application's route
+map), environment types, secret conventions, Marketing Cloud tenant
+configuration, and the ENS event families the application subscribes to.
 
 Install `@flue/salesforce`. Do not install
 `@salesforce/core`: ingress and the narrow REST operation in this blueprint use
@@ -195,7 +195,7 @@ import {
   type SalesforceMarketingCloudEvent,
 } from '@flue/salesforce';
 import { defineTool, dispatch, type JsonValue } from '@flue/runtime';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { createSalesforceMarketingCloudClient } from '../salesforce-marketing-cloud-client.ts';
 import {
   emailEventInstanceId,
@@ -245,8 +245,18 @@ export const channel = createSalesforceMarketingCloudChannel({
     }
 
     for (const { event, ref } of usefulEvents) {
-      await dispatch(assistant, {
+      await dispatch(Assistant, {
         id: emailEventInstanceId(ref),
+        // Recorded once when this event creates the instance; ignored after.
+        initialData: {
+          callbackId: ref.callbackId,
+          mid: ref.mid,
+          eid: ref.eid,
+          jobId: ref.jobId,
+          batchId: ref.batchId,
+          listId: ref.listId,
+          subscriberId: ref.subscriberId,
+        },
         message: {
           kind: 'signal',
           type: `salesforce-marketing-cloud.${event.eventCategoryType}`,
@@ -293,8 +303,35 @@ function requiredEnv(name: string): string {
 }
 ```
 
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the
+channel's router explicitly:
+
+```ts
+// app.ts
+import { Hono } from 'hono';
+import { channel } from './channels/salesforce-marketing-cloud.ts';
+
+const app = new Hono();
+app.route('/channels/salesforce-marketing-cloud', channel.route());
+
+export default app;
+```
+
+`channel.route()` is a pure router factory serving the channel's routes
+relative to the mount path. The `// Path:` comment in this guide assumes the
+conventional `/channels/salesforce-marketing-cloud` mount; a different mount
+path shifts every provider URL accordingly.
+
 For each family, validate every provider-specific field before using it for
 routing, authorization, persistence, or tool binding.
+
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. It carries the validated email reference fields — the agent reads
+them with `useInitialData()` instead of parsing the instance id. Per-message
+facts stay on the signal's `attributes`.
 
 The route is always `POST /events`. Signed notifications require
 `SALESFORCE_MARKETING_CLOUD_SIGNATURE_KEY`. This is the opaque UTF-8 HMAC key
@@ -349,18 +386,46 @@ ENS identity. Do not use deprecated `compositeId` for transactional email.
 Create an agent module such as `<source-dir>/agents/assistant.ts`:
 
 ```ts
-import { defineAgent } from '@flue/runtime';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
 import { retrieveCallback } from '../channels/salesforce-marketing-cloud.ts';
-import { parseEmailEventInstanceId } from '../salesforce-marketing-cloud-email.ts';
 
-export default defineAgent(({ id }) => {
-  const email = parseEmailEventInstanceId(id);
-  return {
-    model: 'anthropic/claude-haiku-4-5',
-    tools: [retrieveCallback(email)],
-  };
+const initialDataSchema = v.object({
+	callbackId: v.string(),
+	mid: v.string(),
+	eid: v.string(),
+	jobId: v.string(),
+	batchId: v.string(),
+	listId: v.string(),
+	subscriberId: v.string(),
 });
+
+export function Assistant() {
+	useModel('anthropic/claude-haiku-4-5');
+	const data = useInitialData<v.InferOutput<typeof initialDataSchema>>();
+	if (!data) {
+		throw new Error(
+			'This agent is created by the Salesforce Marketing Cloud channel dispatch.',
+		);
+	}
+	useTool(retrieveCallback(data));
+	return 'Review the inbound Salesforce Marketing Cloud email lifecycle event. Retrieve the configured ENS callback when callback status or delivery configuration is relevant.';
+}
+
+Assistant.initialData = initialDataSchema;
 ```
+
+The `initialData` static validates the dispatched `initialData` when the
+instance is created; `useInitialData()` returns the parsed value on every
+render.
+
+The `'use agent'` directive (the module's first statement) is what registers
+the agent with the application — `dispatch(...)` from the channel callback
+needs no `app.ts` mounting. Add
+`app.route('/agents/<name>', createAgentRouter(Assistant))` (from
+`@flue/runtime/routing`) in `app.ts` only when the agent
+should also be reachable over HTTP directly.
 
 The tool accepts no tenant origin, callback id, or access token from the
 model. ENS does not provide a universal delivery id or conversation id. The
@@ -369,13 +434,15 @@ have been checked and remains an identifier rather than authorization.
 
 ## Configure the endpoint
 
-Register the complete HTTPS callback URL in Marketing Cloud Engagement:
+Register the complete HTTPS callback URL in Marketing Cloud Engagement — the
+channel's mount path in `app.ts` plus the route suffix, with the conventional
+`app.route('/channels/salesforce-marketing-cloud', ...)` mount:
 
 ```txt
 https://example.com/channels/salesforce-marketing-cloud/events
 ```
 
-If `flue()` has an outer mount prefix, include it.
+A different mount path changes the URL accordingly.
 
 Marketing Cloud sends signed notification batches with:
 
@@ -421,8 +488,8 @@ before performing non-idempotent work.
 
 ## Test without Salesforce
 
-Run the project's strict typecheck, Node build, Cloudflare build, and actual
-workerd tests. Flue's canonical Cloudflare environment enables
+Run the project's strict typecheck, `vite build` for the configured target,
+and actual workerd tests. Flue's canonical Cloudflare environment enables
 `nodejs_compat`, while this ingress and client use standard Fetch, URL, and Web
 Crypto APIs.
 

@@ -1,6 +1,6 @@
 {
 	"name": "@flue/resend",
-	"version": "1.0.0-beta.1",
+	"version": "2.0.0-nightly.202607230552",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -33,16 +33,18 @@
 		"hono": "4.12.22"
 	},
 	"peerDependencies": {
+		"@flue/runtime": "workspace:^",
 		"@types/node": ">=20",
 		"@types/react": ">=18",
-		"resend": "^6.12.4"
+		"resend": "^6.17.2"
 	},
 	"devDependencies": {
-		"@cloudflare/vitest-pool-workers": "0.16.15",
-		"@types/node": "^22.10.10",
-		"resend": "6.12.4",
-		"tsdown": "^0.22.0",
-		"typescript": "^6.0.3",
+		"@cloudflare/vitest-pool-workers": "0.18.7",
+		"@flue/runtime": "workspace:*",
+		"@types/node": "^26.1.1",
+		"resend": "6.17.2",
+		"tsdown": "^0.22.7",
+		"typescript": "^7.0.2",
 		"vitest": "^4.1.6"
 	}
 }

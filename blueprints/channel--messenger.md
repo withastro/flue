@@ -15,12 +15,13 @@ ingress and project-owned outbound Graph API access to a Flue project.
 
 Read local instructions, detect the package manager and target, and select the
 first existing source root: `<root>/.flue/`, then `<root>/src/`, then
-`<root>/`. Inspect existing agents, environment types, secret conventions, and
-the Facebook Page the application owns.
+`<root>/`. Inspect existing agents, `app.ts` (the application's route map),
+environment types, secret conventions, and the Facebook Page the application
+owns.
 
 Install `@flue/messenger`. Flue owns GET verification, exact-body
 `X-Hub-Signature-256` validation, fixed Page identity, the provider-native
-payload, and canonical conversation keys. The project owns Page access tokens,
+payload, and canonical instance ids. The project owns Page access tokens,
 outbound Graph API behavior, tools, dispatch policy, and durable duplicate
 admission.
 
@@ -70,7 +71,7 @@ import {
 } from '@flue/messenger';
 import { defineTool, dispatch } from '@flue/runtime';
 import * as v from 'valibot';
-import assistant from '../agents/assistant.ts';
+import { Assistant } from '../agents/assistant.ts';
 import { MessengerClient } from '../messenger-client.ts';
 
 export const client = new MessengerClient({
@@ -96,8 +97,13 @@ export const channel = createMessengerChannel({
         const attachmentTypes = (event.message.attachments ?? []).map(
           (attachment) => attachment.type,
         );
-        await dispatch(assistant, {
-          id: channel.conversationKey(conversation),
+        await dispatch(Assistant, {
+          id: channel.instanceId(conversation),
+          // Recorded once when this event creates the instance; ignored after.
+          initialData: {
+            pageId: conversation.pageId,
+            participant: conversation.participant,
+          },
           message: {
             kind: 'signal',
             type: 'messenger.message',
@@ -123,8 +129,8 @@ export function postMessage(ref: MessengerConversationRef) {
     name: 'post_messenger_message',
     description: 'Post to the Messenger conversation bound to this agent.',
     input: v.object({ text: v.pipe(v.string(), v.minLength(1)) }),
-    async run({ input }) {
-      const { text } = input;
+    async run({ data }) {
+      const { text } = data;
       const result = await client.messages.sendText({
         to: ref.participant,
         text,
@@ -137,20 +143,67 @@ export function postMessage(ref: MessengerConversationRef) {
 }
 ```
 
+## Mount the channel
+
+A channel serves HTTP routes only where `app.ts` mounts it. Mount the
+channel's router explicitly:
+
+```ts
+// app.ts
+import { Hono } from 'hono';
+import { channel } from './channels/messenger.ts';
+
+const app = new Hono();
+app.route('/channels/messenger', channel.route());
+
+export default app;
+```
+
+`channel.route()` is a pure router factory serving the channel's routes
+relative to the mount path. The `// Paths:` comment in this guide assumes the
+conventional `/channels/messenger` mount; a different mount path shifts every
+provider URL accordingly.
+
 ## Wire the agent
 
 ```ts
-import { defineAgent } from '@flue/runtime';
-import { channel, postMessage } from '../channels/messenger.ts';
+'use agent';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+import { postMessage } from '../channels/messenger.ts';
 
-export default defineAgent(({ id }) => ({
-  model: 'anthropic/claude-haiku-4-5',
-  tools: [postMessage(channel.parseConversationKey(id))],
-}));
+const initialDataSchema = v.object({
+	pageId: v.string(),
+	participant: v.variant('type', [
+		v.object({ type: v.literal('page-scoped-id'), id: v.string() }),
+		v.object({ type: v.literal('user-ref'), id: v.string() }),
+	]),
+});
+
+export function Assistant() {
+	useModel('anthropic/claude-haiku-4-5');
+	const data = useInitialData<v.InferOutput<typeof initialDataSchema>>();
+	if (!data) throw new Error('This agent is created by the Messenger channel dispatch.');
+	useTool(postMessage(data));
+	return 'Reply concisely in the bound Facebook Messenger conversation.';
+}
+
+Assistant.initialData = initialDataSchema;
 ```
 
+The `initialData` static validates the dispatched `initialData` when the
+instance is created; `useInitialData()` returns the parsed value on every
+render.
+
+The `'use agent'` directive (the module's first statement) is what registers
+the agent with the application — `dispatch(...)` from the channel callback
+needs no `app.ts` mounting. Add
+`app.route('/agents/<name>', createAgentRouter(Assistant))` (from
+`@flue/runtime/routing`) in `app.ts` only when the agent
+should also be reachable over HTTP directly.
+
 The channel-agent import cycle is supported because imported bindings are read
-inside deferred callbacks and initializers.
+inside deferred callbacks and agent function bodies.
 
 ## Configure Meta
 
@@ -163,7 +216,9 @@ MESSENGER_PAGE_ID=...
 MESSENGER_PAGE_ACCESS_TOKEN=...
 ```
 
-In the Meta app dashboard, configure this callback URL:
+In the Meta app dashboard, configure this callback URL — the channel's mount
+path in `app.ts` plus the route suffix, with the conventional
+`app.route('/channels/messenger', ...)` mount:
 
 ```txt
 https://example.com/channels/messenger/webhook
@@ -200,6 +255,13 @@ verified deliveries.
 native messaging event. Page-scoped ids and `user_ref` values are distinct
 canonical participant types. Bind the derived conversation to a tool in trusted
 code; do not let the model choose a recipient id.
+
+`initialData` is the instance's creation data: recorded once when the event creates
+the instance and ignored afterward, so the channel passes it on every
+dispatch. It carries the conversation's `pageId` and `participant` — the agent
+reads them with `useInitialData()` instead of parsing the instance id. The
+webhook carries no profile name, so there is no further context to fold in.
+Per-message facts stay on the signal's `attributes`.
 
 Opt-in events may contain a `notification_messages_token`. Treat it as a
 short-lived provider capability. Keep tokens and full native payloads out of
@@ -239,10 +301,10 @@ cover:
 - both `entry.messaging` and documented `entry.changes` forms;
 - body limits, malformed events, handler failures, `EVENT_RECEIVED`,
   JSON returns, and explicit `Response` control;
-- canonical Page-scoped-id and `user_ref` key round trips;
+- canonical Page-scoped-id and `user_ref` instance id round trips;
 - real outbound Fetch requests against local fake transports in Node and
   workerd;
-- Node and Cloudflare project builds.
+- the project typecheck and `vite build` for the configured target.
 
 Do not contact Meta or copy third-party fixtures.
 

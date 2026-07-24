@@ -2,6 +2,7 @@ import type { Env, Handler } from 'hono';
 import type { DiscordHandlerResult, DiscordInteractionsHandlerInput } from './index.ts';
 
 const DEFAULT_BODY_LIMIT = 1024 * 1024;
+const MAX_SIGNATURE_AGE_SECONDS = 5 * 60;
 const encoder = new TextEncoder();
 
 interface DiscordInteractionsHandlerOptions<E extends Env> {
@@ -30,8 +31,16 @@ export function createDiscordInteractionsHandler<E extends Env>(
 		}
 
 		const signature = parseHex(request.headers.get('x-signature-ed25519'), 64);
-		const timestamp = request.headers.get('x-signature-timestamp');
-		if (!signature || timestamp === null || timestamp.length === 0) return response(401);
+		const timestampText = request.headers.get('x-signature-timestamp');
+		const timestamp = parseTimestamp(timestampText);
+		if (
+			!signature ||
+			timestampText === null ||
+			timestamp === undefined ||
+			Math.abs(Math.floor(Date.now() / 1000) - timestamp) > MAX_SIGNATURE_AGE_SECONDS
+		) {
+			return response(401);
+		}
 
 		let body: Uint8Array | undefined;
 		try {
@@ -40,7 +49,7 @@ export function createDiscordInteractionsHandler<E extends Env>(
 			return response(400);
 		}
 		if (!body) return response(413);
-		if (!(await verifySignature(options.publicKey, timestamp, body, signature))) {
+		if (!(await verifySignature(options.publicKey, timestampText, body, signature))) {
 			return response(401);
 		}
 
@@ -75,7 +84,8 @@ async function readBody(request: Request, bodyLimit: number): Promise<Uint8Array
 			if (done) break;
 			total += value.byteLength;
 			if (total > bodyLimit) {
-				void reader.cancel();
+				// Discard cancel rejections: an unhandled rejection is fatal on Node.
+				reader.cancel().catch(() => {});
 				return undefined;
 			}
 			chunks.push(value);
@@ -90,6 +100,16 @@ async function readBody(request: Request, bodyLimit: number): Promise<Uint8Array
 		offset += chunk.byteLength;
 	}
 	return body;
+}
+
+function parseTimestamp(value: string | null): number | undefined {
+	return parseNonNegativeInteger(value);
+}
+
+function parseNonNegativeInteger(value: string | null): number | undefined {
+	if (value === null || !/^\d+$/.test(value)) return undefined;
+	const parsed = Number(value);
+	return Number.isSafeInteger(parsed) ? parsed : undefined;
 }
 
 function parseHex(value: string | null, byteLength: number): Uint8Array | undefined {
@@ -120,7 +140,12 @@ async function verifySignature(
 			false,
 			['verify'],
 		);
-		return crypto.subtle.verify('Ed25519', key, toArrayBuffer(signature), toArrayBuffer(signed));
+		return await crypto.subtle.verify(
+			'Ed25519',
+			key,
+			toArrayBuffer(signature),
+			toArrayBuffer(signed),
+		);
 	} catch {
 		return false;
 	}

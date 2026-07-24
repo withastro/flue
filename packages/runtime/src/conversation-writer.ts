@@ -1,13 +1,11 @@
-import {
-	loadReducedConversationState,
-} from './conversation-reader.ts';
+import { loadReducedConversationState } from './conversation-reader.ts';
 import type {
 	CanonicalChildSessionRef,
 	ConversationCreatedRecord,
 	ConversationRecord,
 } from './conversation-records.ts';
-import type { ReducedInstanceState } from './conversation-reducer.ts';
-import { reduceConversationRecords } from './conversation-reducer.ts';
+import type { IndexedConversationRecord, ReducedInstanceState } from './conversation-reducer.ts';
+import { conversationScopeKey, reduceConversationRecords } from './conversation-reducer.ts';
 import type {
 	ConversationProducerClaim,
 	ConversationStreamIdentity,
@@ -30,9 +28,7 @@ type ConversationCreationInput = ConversationCreatedRecord extends infer Record
 		: never
 	: never;
 
-type WriterLifecycle =
-	| { status: 'active' }
-	| { status: 'failed'; error: unknown };
+type WriterLifecycle = { status: 'active' } | { status: 'failed'; error: unknown };
 
 /**
  * How long streamed deltas are coalesced before being appended to the durable
@@ -79,10 +75,13 @@ export class ConversationRecordWriter {
 
 	async loadReducedState(): Promise<ReducedInstanceState> {
 		this.assertActive();
-		this.reducedState ??= await loadReducedConversationState({
-			store: this.store,
-			path: this.path,
-		});
+		if (!this.reducedState) {
+			const loaded = await loadReducedConversationState({
+				store: this.store,
+				path: this.path,
+			});
+			this.reducedState ??= loaded;
+		}
 		this.assertActive();
 		return this.reducedState;
 	}
@@ -92,14 +91,17 @@ export class ConversationRecordWriter {
 	}
 
 	async hasConversationEntry(conversationId: string, entryId: string): Promise<boolean> {
-		return (await this.loadReducedState()).conversations.get(conversationId)?.entries.has(entryId) ?? false;
+		return (
+			(await this.loadReducedState()).conversations.get(conversationId)?.entries.has(entryId) ??
+			false
+		);
 	}
 
 	async hasRecord(recordId: string): Promise<boolean> {
 		return (await this.loadReducedState()).recordsById.has(recordId);
 	}
 
-	async getRecord(recordId: string): Promise<import('./conversation-records.ts').ConversationRecord | undefined> {
+	async getRecord(recordId: string): Promise<IndexedConversationRecord | undefined> {
 		return (await this.loadReducedState()).recordsById.get(recordId);
 	}
 
@@ -107,19 +109,10 @@ export class ConversationRecordWriter {
 		return (await this.loadReducedState()).conversations.get(conversationId);
 	}
 
-	async findInProgressAssistant(conversationId: string, submissionId: string | undefined) {
-		const conversation = await this.getConversation(conversationId);
-		return [...(conversation?.inProgressMessages.values() ?? [])].find(
-			(message) => message.submissionId === submissionId,
-		);
-	}
-
 	async findConversation(harness: string, session: string) {
-		const matches = [...(await this.loadReducedState()).conversations.values()].filter(
-			(conversation) => conversation.harness === harness && conversation.session === session,
-		);
-		if (matches.length > 1) throw new Error('[flue] Multiple active canonical conversations share one session scope.');
-		return matches[0];
+		const state = await this.loadReducedState();
+		const conversationId = state.conversationScopes.get(conversationScopeKey(harness, session));
+		return conversationId ? state.conversations.get(conversationId) : undefined;
 	}
 
 	get offset(): string {
@@ -148,8 +141,13 @@ export class ConversationRecordWriter {
 	): Promise<{ offset: string }> {
 		try {
 			this.assertActive();
-			if (this.pendingRecords.length > 0 && !sameAppendOptions(this.pendingOptions ?? {}, options)) {
-				throw new Error('[flue] Canonical batch ownership changed before the pending batch flushed.');
+			if (
+				this.pendingRecords.length > 0 &&
+				!sameAppendOptions(this.pendingOptions ?? {}, options)
+			) {
+				throw new Error(
+					'[flue] Canonical batch ownership changed before the pending batch flushed.',
+				);
 			}
 			this.pendingOptions = options;
 			this.pendingRecords.push(...records);
@@ -176,7 +174,9 @@ export class ConversationRecordWriter {
 			if (this.pendingTimer) clearTimeout(this.pendingTimer);
 			this.pendingTimer = undefined;
 			if (this.pendingRecords.length === 0) {
-				return Promise.resolve({ offset: this.reducedState?.recordsThroughOffset ?? this.claim.offset });
+				return Promise.resolve({
+					offset: this.reducedState?.recordsThroughOffset ?? this.claim.offset,
+				});
 			}
 			const records = this.pendingRecords;
 			const options = this.pendingOptions ?? {};
@@ -217,7 +217,11 @@ export class ConversationRecordWriter {
 		const operation = this.tail.then(async () => {
 			this.assertActive();
 			const reduced = this.reducedState
-				? reduceConversationRecords(this.reducedState, records, this.reducedState.recordsThroughOffset)
+				? reduceConversationRecords(
+						this.reducedState,
+						records,
+						this.reducedState.recordsThroughOffset,
+					)
 				: undefined;
 			const producerSequence = this.nextProducerSequence;
 			const input = {
@@ -284,14 +288,19 @@ export class ConversationRecordWriter {
 	}): Promise<{ offset: string }> {
 		const state = await this.loadReducedState();
 		const parent = state.conversations.get(input.parent.conversationId);
-		if (!parent || parent.harness !== input.parent.harness || parent.session !== input.parent.session) {
+		if (
+			!parent ||
+			parent.harness !== input.parent.harness ||
+			parent.session !== input.parent.session
+		) {
 			throw new Error('[flue] Canonical child parent is missing or conflicts with its scope.');
 		}
 		const existing = state.conversations.get(input.child.conversationId);
 		const retained = parent.childConversations.get(input.child.conversationId);
 		if (existing || retained) {
 			if (
-				!existing || !retained ||
+				!existing ||
+				!retained ||
 				existing.harness !== input.child.harness ||
 				existing.session !== input.child.session ||
 				existing.affinityKey !== input.child.affinityKey ||
@@ -320,12 +329,12 @@ export class ConversationRecordWriter {
 							parentConversationId: input.parent.conversationId,
 							taskId: input.child.taskId,
 							...(input.child.agent ? { agent: input.child.agent } : {}),
-					  }
+						}
 					: {
 							kind: 'action' as const,
 							parentConversationId: input.parent.conversationId,
 							actionInvocationId: input.child.actionInvocationId,
-					  }),
+						}),
 			},
 			{
 				v: 1,
@@ -340,9 +349,11 @@ export class ConversationRecordWriter {
 		]);
 	}
 
-	async ensureConversation(input: ConversationCreationInput & {
-		timestamp?: string;
-	}): Promise<{ offset: string }> {
+	async ensureConversation(
+		input: ConversationCreationInput & {
+			timestamp?: string;
+		},
+	): Promise<{ offset: string }> {
 		const state = await this.loadReducedState();
 		const existing = state.conversations.get(input.conversationId);
 		if (existing) {
@@ -354,7 +365,9 @@ export class ConversationRecordWriter {
 				existing.taskId !== input.taskId ||
 				existing.actionInvocationId !== input.actionInvocationId
 			) {
-				throw new Error('[flue] Canonical conversation identity conflicts with the requested session.');
+				throw new Error(
+					'[flue] Canonical conversation identity conflicts with the requested session.',
+				);
 			}
 			return { offset: state.recordsThroughOffset };
 		}
@@ -371,7 +384,12 @@ export class ConversationRecordWriter {
 	}
 }
 
-function sameAppendOptions(left: ConversationAppendOptions, right: ConversationAppendOptions): boolean {
-	return left.submission?.submissionId === right.submission?.submissionId &&
-		left.submission?.attemptId === right.submission?.attemptId;
+function sameAppendOptions(
+	left: ConversationAppendOptions,
+	right: ConversationAppendOptions,
+): boolean {
+	return (
+		left.submission?.submissionId === right.submission?.submissionId &&
+		left.submission?.attemptId === right.submission?.attemptId
+	);
 }

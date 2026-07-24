@@ -8,9 +8,9 @@ export class InvalidLinearInputError extends TypeError {
 	}
 }
 
-export class InvalidLinearConversationKeyError extends TypeError {
+export class InvalidLinearInstanceIdError extends TypeError {
 	constructor() {
-		super('Invalid Linear conversation key.');
-		this.name = 'InvalidLinearConversationKeyError';
+		super('Invalid Linear instance id.');
+		this.name = 'InvalidLinearInstanceIdError';
 	}
 }

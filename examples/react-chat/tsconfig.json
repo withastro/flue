@@ -5,5 +5,5 @@
 		"lib": ["ESNext", "DOM", "DOM.Iterable"],
 		"types": ["node", "vite/client"]
 	},
-	"include": ["src", "flue.config.ts", "vite.config.ts"]
+	"include": ["src", "vite.config.ts", "vite.config.ui.ts"]
 }

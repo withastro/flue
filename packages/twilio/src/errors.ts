@@ -8,9 +8,9 @@ export class InvalidTwilioInputError extends TypeError {
 	}
 }
 
-export class InvalidTwilioConversationKeyError extends TypeError {
+export class InvalidTwilioInstanceIdError extends TypeError {
 	constructor() {
-		super('Invalid Twilio conversation key.');
-		this.name = 'InvalidTwilioConversationKeyError';
+		super('Invalid Twilio instance id.');
+		this.name = 'InvalidTwilioInstanceIdError';
 	}
 }

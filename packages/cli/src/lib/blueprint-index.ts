@@ -30,8 +30,13 @@ export interface KindRootRecord {
 	file: string;
 }
 
+/** Tolerate CRLF sources: Windows checkouts with core.autocrlf convert tracked files. */
+function normalizeLineEndings(source: string): string {
+	return source.includes('\r') ? source.replace(/\r\n/g, '\n') : source;
+}
+
 export function validateBlueprintBody(source: string, file: string, version: number): void {
-	const lines = source.split('\n');
+	const lines = normalizeLineEndings(source).split('\n');
 	const headings: { level: number; text: string; line: number }[] = [];
 	let fence: string | undefined;
 
@@ -113,14 +118,15 @@ export function validateBlueprintBody(source: string, file: string, version: num
 }
 
 export function parseBlueprintFrontmatter(source: string, file: string): BlueprintFrontmatter {
-	if (!source.startsWith('---\n')) {
+	const normalized = normalizeLineEndings(source);
+	if (!normalized.startsWith('---\n')) {
 		throw new Error(`[blueprints] ${file}: missing JSON frontmatter (file must start with '---').`);
 	}
-	const end = source.indexOf('\n---\n', 4);
+	const end = normalized.indexOf('\n---\n', 4);
 	if (end < 0) {
 		throw new Error(`[blueprints] ${file}: frontmatter is not closed (no trailing '---').`);
 	}
-	const json = source.slice(4, end).trim();
+	const json = normalized.slice(4, end).trim();
 	let parsed: unknown;
 	try {
 		parsed = JSON.parse(json);

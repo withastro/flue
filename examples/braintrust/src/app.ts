@@ -1,10 +1,12 @@
 import { type FlueObservation, observe } from '@flue/runtime';
-import { flue } from '@flue/runtime/routing';
+import { createAgentRouter } from '@flue/runtime/routing';
 import { braintrustFlueObserver, initLogger } from 'braintrust';
 import { Hono } from 'hono';
+import { Prompt } from './agents/prompt.ts';
+import { Task } from './agents/task.ts';
+import { Tools } from './agents/tools.ts';
 
 const apiKey = process.env.BRAINTRUST_API_KEY;
-const observedRuns = new Set<string>();
 
 if (apiKey) {
 	initLogger({
@@ -18,21 +20,13 @@ if (apiKey) {
 	});
 }
 
+/**
+ * Forward only the lifecycle events Braintrust 3.17's Flue observer
+ * consumes, renaming the terminal tool event to the `tool_call` shape it
+ * expects.
+ */
 function compatibleEvent(event: FlueObservation): unknown {
-	if (event.type === 'run_start') {
-		observedRuns.add(event.runId);
-		return event;
-	}
-	if (event.type === 'run_end') {
-		observedRuns.delete(event.runId);
-		return event;
-	}
 	if (event.type === 'tool') return { ...event, type: 'tool_call' };
-	if (event.type === 'run_resume') {
-		if (observedRuns.has(event.runId)) return event;
-		observedRuns.add(event.runId);
-		return { ...event, type: 'run_start', input: undefined, payload: undefined };
-	}
 	if (
 		event.type === 'operation_start' ||
 		event.type === 'operation' ||
@@ -50,6 +44,8 @@ function compatibleEvent(event: FlueObservation): unknown {
 }
 
 const app = new Hono();
-app.route('/', flue());
+app.route('/agents/prompt', createAgentRouter(Prompt));
+app.route('/agents/tools', createAgentRouter(Tools));
+app.route('/agents/task', createAgentRouter(Task));
 
 export default app;

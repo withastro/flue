@@ -1,21 +1,8 @@
-import type { Context, Env, Handler } from 'hono';
+import { type ChannelRouteDefinition, createChannelRouter, type JsonValue } from '@flue/runtime';
+import type { Context, Env, Hono } from 'hono';
 import { createSalesforceMarketingCloudEventsHandler } from './webhook.ts';
 
-/** JSON-compatible provider value. */
-export type JsonValue =
-	| null
-	| boolean
-	| number
-	| string
-	| JsonValue[]
-	| { [key: string]: JsonValue };
-
-/** Fixed route declaration consumed by Flue channel discovery. */
-export interface ChannelRoute<E extends Env = Env> {
-	readonly method: string;
-	readonly path: string;
-	readonly handler: Handler<E>;
-}
+export type { JsonValue } from '@flue/runtime';
 
 /** One unsigned callback-ownership challenge sent while configuring ENS. */
 export interface SalesforceMarketingCloudVerification {
@@ -98,8 +85,7 @@ type SalesforceMarketingCloudHandlerValue = undefined | JsonValue | Response;
  * delivery failure and retries.
  */
 export type SalesforceMarketingCloudHandlerResult =
-	| SalesforceMarketingCloudHandlerValue
-	| Promise<SalesforceMarketingCloudHandlerValue>;
+	SalesforceMarketingCloudHandlerValue | Promise<SalesforceMarketingCloudHandlerValue>;
 
 /** Ingress configuration for one Marketing Cloud Engagement ENS callback. */
 export interface SalesforceMarketingCloudChannelOptions<E extends Env = Env> {
@@ -128,7 +114,12 @@ export interface SalesforceMarketingCloudChannelOptions<E extends Env = Env> {
 /** Verified Marketing Cloud Engagement ENS ingress. */
 export interface SalesforceMarketingCloudChannel<E extends Env = Env> {
 	/** Fixed route declarations published beneath the discovered channel path. */
-	readonly routes: readonly ChannelRoute<E>[];
+	readonly routes: readonly ChannelRouteDefinition<E>[];
+	/**
+	 * Build a mountable Hono sub-app serving the channel's routes relative
+	 * to the mount point: `app.route('/channels/sfmc', channel.route())`.
+	 */
+	route(): Hono<E>;
 }
 
 /**
@@ -144,14 +135,16 @@ export function createSalesforceMarketingCloudChannel<E extends Env = Env>(
 	options: SalesforceMarketingCloudChannelOptions<E>,
 ): SalesforceMarketingCloudChannel<E> {
 	validateOptions(options);
+	const routes: readonly ChannelRouteDefinition<E>[] = [
+		{
+			method: 'POST',
+			path: '/events',
+			handler: createSalesforceMarketingCloudEventsHandler(options),
+		},
+	];
 	return {
-		routes: [
-			{
-				method: 'POST',
-				path: '/events',
-				handler: createSalesforceMarketingCloudEventsHandler(options),
-			},
-		],
+		routes,
+		route: () => createChannelRouter(routes),
 	};
 }
 

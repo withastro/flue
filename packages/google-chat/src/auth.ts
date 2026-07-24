@@ -13,8 +13,16 @@ const DEFAULT_GOOGLE_JWKS_URL = 'https://www.googleapis.com/oauth2/v3/certs';
 const DEFAULT_CHAT_CERTS_URL =
 	'https://www.googleapis.com/service_accounts/v1/metadata/x509/chat%40system.gserviceaccount.com';
 const DEFAULT_CACHE_MS = 60 * 60 * 1000;
+const MAX_CACHE_MS = 24 * 60 * 60 * 1000;
 const UNKNOWN_KEY_REFRESH_COOLDOWN_MS = 60 * 1000;
 const MAX_DISCOVERY_BYTES = 1024 * 1024;
+
+/**
+ * A transient failure fetching or parsing Google's signing-key discovery
+ * document (JWKS / x509 certificates) — distinct from a genuinely invalid or
+ * forged token, so route handlers can map it to 503 instead of 401.
+ */
+export class GoogleSigningKeyDiscoveryError extends Error {}
 
 export type GoogleChatInteractionAuthentication =
 	| {
@@ -159,11 +167,12 @@ function createGoogleOidcVerifier(options: {
 }
 
 async function fetchJwks(fetcher: typeof globalThis.fetch, url: string): Promise<CachedKeys> {
-	const response = await fetcher(url, { headers: { accept: 'application/json' } });
-	if (!response.ok) throw new Error('Google signing-key discovery failed.');
+	const response = await fetchDiscoveryDocument(fetcher, url);
+	if (!response.ok)
+		throw new GoogleSigningKeyDiscoveryError('Google signing-key discovery failed.');
 	const body = await readJsonResponse(response);
 	if (!isRecord(body) || !Array.isArray(body.keys)) {
-		throw new Error('Invalid Google JWKS response.');
+		throw new GoogleSigningKeyDiscoveryError('Invalid Google JWKS response.');
 	}
 	const keys = new Map<string, CryptoKey>();
 	for (const value of body.keys) {
@@ -182,15 +191,19 @@ async function fetchJwks(fetcher: typeof globalThis.fetch, url: string): Promise
 			keys.set(value.kid, key);
 		} catch {}
 	}
-	if (keys.size === 0) throw new Error('Google JWKS contained no usable keys.');
+	if (keys.size === 0)
+		throw new GoogleSigningKeyDiscoveryError('Google JWKS contained no usable keys.');
 	return { keys, expiresAt: Date.now() + cacheDuration(response.headers) };
 }
 
 async function fetchX509Keys(fetcher: typeof globalThis.fetch, url: string): Promise<CachedKeys> {
-	const response = await fetcher(url, { headers: { accept: 'application/json' } });
-	if (!response.ok) throw new Error('Google Chat certificate discovery failed.');
+	const response = await fetchDiscoveryDocument(fetcher, url);
+	if (!response.ok)
+		throw new GoogleSigningKeyDiscoveryError('Google Chat certificate discovery failed.');
 	const body = await readJsonResponse(response);
-	if (!isRecord(body)) throw new Error('Invalid Google Chat certificate response.');
+	if (!isRecord(body)) {
+		throw new GoogleSigningKeyDiscoveryError('Invalid Google Chat certificate response.');
+	}
 	const keys = new Map<string, CryptoKey>();
 	for (const [id, certificate] of Object.entries(body)) {
 		if (typeof certificate !== 'string') continue;
@@ -198,9 +211,25 @@ async function fetchX509Keys(fetcher: typeof globalThis.fetch, url: string): Pro
 			keys.set(id, await importX509(certificate, 'RS256'));
 		} catch {}
 	}
-	if (keys.size === 0)
-		throw new Error('Google Chat certificate response contained no usable keys.');
+	if (keys.size === 0) {
+		throw new GoogleSigningKeyDiscoveryError(
+			'Google Chat certificate response contained no usable keys.',
+		);
+	}
 	return { keys, expiresAt: Date.now() + cacheDuration(response.headers) };
+}
+
+async function fetchDiscoveryDocument(
+	fetcher: typeof globalThis.fetch,
+	url: string,
+): Promise<Response> {
+	try {
+		return await fetcher(url, { headers: { accept: 'application/json' } });
+	} catch (error) {
+		throw new GoogleSigningKeyDiscoveryError('Google signing-key discovery failed.', {
+			cause: error,
+		});
+	}
 }
 
 function readBearerToken(authorization: string | null): string {
@@ -213,16 +242,16 @@ function readBearerToken(authorization: string | null): string {
 async function readJsonResponse(response: Response): Promise<unknown> {
 	const contentLength = response.headers.get('content-length');
 	if (contentLength && Number(contentLength) > MAX_DISCOVERY_BYTES) {
-		throw new Error('Google discovery response is too large.');
+		throw new GoogleSigningKeyDiscoveryError('Google discovery response is too large.');
 	}
 	const bytes = new Uint8Array(await response.arrayBuffer());
 	if (bytes.byteLength > MAX_DISCOVERY_BYTES) {
-		throw new Error('Google discovery response is too large.');
+		throw new GoogleSigningKeyDiscoveryError('Google discovery response is too large.');
 	}
 	try {
 		return JSON.parse(new TextDecoder().decode(bytes));
 	} catch {
-		throw new Error('Invalid Google discovery JSON.');
+		throw new GoogleSigningKeyDiscoveryError('Invalid Google discovery JSON.');
 	}
 }
 
@@ -231,7 +260,9 @@ function cacheDuration(headers: Headers): number {
 	const match = cacheControl?.match(/(?:^|,)\s*max-age=(\d+)/i);
 	if (!match) return DEFAULT_CACHE_MS;
 	const seconds = Number(match[1]);
-	return Number.isSafeInteger(seconds) ? Math.max(60_000, seconds * 1000) : DEFAULT_CACHE_MS;
+	return Number.isSafeInteger(seconds)
+		? Math.min(Math.max(60_000, seconds * 1000), MAX_CACHE_MS)
+		: DEFAULT_CACHE_MS;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

@@ -3,13 +3,13 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "pnpm run build:ui && flue dev",
-		"build": "pnpm run build:ui && flue build",
-		"build:ui": "vite build",
+		"dev": "pnpm run build:ui && vite dev",
+		"build": "vite build && pnpm run build:ui",
+		"build:ui": "vite build --config vite.config.ui.ts",
 		"check:types": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@earendil-works/pi-ai": "^0.80.2",
+		"@earendil-works/pi-ai": "^0.81.1",
 		"@flue/react": "workspace:*",
 		"@flue/runtime": "workspace:*",
 		"@flue/sdk": "workspace:*",
@@ -21,10 +21,11 @@
 	},
 	"devDependencies": {
 		"@flue/cli": "workspace:*",
-		"@types/node": "^22.10.10",
+		"@flue/vite": "workspace:*",
+		"@types/node": "^26.1.1",
 		"@types/react": "^19.1.8",
 		"@types/react-dom": "^19.1.6",
-		"typescript": "^6.0.3",
-		"vite": "^8.0.14"
+		"typescript": "^7.0.2",
+		"vite": "^8.1.2"
 	}
 }

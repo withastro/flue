@@ -8,17 +8,17 @@ You are an AI coding agent adding Braintrust tracing to a Flue project. Use
 Braintrust's public Flue observer with Flue's public `observe(...)` API so the
 same application source works on Node.js and Cloudflare.
 
-The integration traces workflow runs, prompt and skill operations, model turns,
-tool calls, delegated tasks, compactions, errors, token usage, and estimated
-cost. These events are content-bearing; make an explicit data-export decision
-before enabling them in a sensitive environment.
+The integration traces prompt and skill operations, model turns, tool calls,
+delegated tasks, compactions, errors, token usage, and estimated cost. These
+events are content-bearing; make an explicit data-export decision before
+enabling them in a sensitive environment.
 
 ## Inspect the project
 
 Read local instructions, detect the package manager, and select the first
 existing source root: `<root>/.flue/`, then `<root>/src/`, then `<root>/`. Inspect
-`app.ts`, `flue.config.ts`, agents, workflows, environment types, deployment
-configuration, and secret conventions.
+`app.ts`, `flue.config.ts`, `vite.config.ts`, agent modules, environment types,
+deployment configuration, and secret conventions.
 
 Install `braintrust@3.17.0` with the project's package manager. Do not change the
 Flue target. The package provides Node and `workerd` exports, and the manual
@@ -47,10 +47,9 @@ through `process.env` in both targets.
 
 ## Decide what may leave the application
 
-Braintrust's Flue observer exports workflow results, model-visible
-messages and output, model reasoning, system prompts, tool definitions, tool
-arguments and results, task prompts and results, errors, and correlation
-metadata. Review the
+Braintrust's Flue observer exports model-visible messages and output, model
+reasoning, system prompts, tool definitions, tool arguments and results, task
+prompts and results, errors, and correlation metadata. Review the
 application's retention, access, privacy, and compliance requirements before
 registering it.
 
@@ -67,11 +66,10 @@ Create `<source-dir>/braintrust.ts`:
 
 ```ts title="src/braintrust.ts"
 // flue-blueprint: tooling/braintrust@2
-import { type FlueEvent, observe } from '@flue/runtime';
+import { type FlueObservation, observe } from '@flue/runtime';
 import { braintrustFlueObserver, initLogger } from 'braintrust';
 
 const apiKey = process.env.BRAINTRUST_API_KEY;
-const observedRuns = new Set<string>();
 
 if (apiKey) {
   initLogger({
@@ -85,21 +83,13 @@ if (apiKey) {
   });
 }
 
-function compatibleEvent(event: FlueEvent): unknown {
-  if (event.type === 'run_start') {
-    observedRuns.add(event.runId);
-    return event;
-  }
-  if (event.type === 'run_end') {
-    observedRuns.delete(event.runId);
-    return event;
-  }
+/**
+ * Forward only the lifecycle events Braintrust 3.17's Flue observer
+ * consumes, renaming the terminal tool event to the `tool_call` shape it
+ * expects.
+ */
+function compatibleEvent(event: FlueObservation): unknown {
   if (event.type === 'tool') return { ...event, type: 'tool_call' };
-  if (event.type === 'run_resume') {
-    if (observedRuns.has(event.runId)) return event;
-    observedRuns.add(event.runId);
-    return { ...event, type: 'run_start', input: undefined, payload: undefined };
-  }
   if (
     event.type === 'operation_start' ||
     event.type === 'operation' ||
@@ -119,15 +109,12 @@ function compatibleEvent(event: FlueEvent): unknown {
 
 Braintrust 3.17 expects the previous `tool_call` name for Flue's terminal tool
 event, while current Flue emits `tool`. The compatibility translation closes
-tool spans without changing Flue's event contract. Braintrust also does not yet
-recognize `run_resume`. When this isolate did not observe the original
-`run_start`, the bridge translates recovery to a synthetic input-less `run_start` so
-later activity has a root span. When the predecessor remains locally tracked,
-it ignores `run_resume` and lets `run_end` close that span instead of replacing
-it. This is a compatibility fallback: it loses Flue's distinct recovery
-semantics and does not durably continue the original trace. Re-check the current
-Braintrust observer when upgrading it and remove either translation after the
-SDK accepts the current event directly.
+tool spans without changing Flue's event contract. Every other consumed event
+passes through with its current public shape. The observer was written while
+Flue still had workflow runs, so it also accepts run-specific event names; the
+bridge never forwards them because Flue no longer emits them. Re-check the
+current Braintrust observer when upgrading it and remove the `tool_call`
+translation after the SDK accepts the current event directly.
 
 Import the bridge once from source-root `app.ts`:
 
@@ -137,7 +124,9 @@ import './braintrust.ts';
 
 Preserve the application's existing imports, middleware, routes, and default
 export. If there is no `app.ts`, create one that imports `./braintrust.ts`,
-creates a Hono application, mounts `flue()` at `/`, and default-exports the app.
+creates a Hono application, mounts each HTTP-reachable agent with
+`app.route('/agents/<name>', createAgentRouter(<AgentFn>))` (from
+`@flue/runtime/routing`), and default-exports the app.
 Install a direct `hono` dependency when authoring that file.
 
 When `BRAINTRUST_API_KEY` is absent, the integration does not initialize or
@@ -149,24 +138,23 @@ The observer produces:
 
 | Flue activity                          | Braintrust trace                               |
 | -------------------------------------- | ---------------------------------------------- |
-| Workflow invocation                    | Root `workflow:<name>` task span               |
-| Prompt, skill, or compaction operation | Nested `flue.<kind>` task span                 |
+| Prompt, skill, or compaction operation | Root `flue.<kind>` task span                   |
 | Model turn                             | `llm:<model>` span with usage and cost metrics |
 | Tool call                              | Nested `tool:<name>` span                      |
 | Delegated task                         | Nested task span                               |
 | Context compaction                     | Nested compaction span                         |
 
-Workflow events carry `runId`. Direct and dispatched persistent-agent activity
-is not a workflow run; Braintrust traces its finite operations and retains agent
-instance, session, and optional `dispatchId` correlation instead.
+Each finite operation is a root span. Flue correlation fields — agent instance,
+session, and optional `dispatchId` — connect the spans back to the conversation
+that produced them.
 
 The same bridge runs in one Node process or independently in each Cloudflare
-Durable Object isolate. Braintrust flushes asynchronously and requests a flush
-when a workflow ends. `observe(...)` does not await subscriber promises, and its
-context does not expose Cloudflare's `waitUntil(...)`, so the upload cannot be
-attached to the Durable Object execution lifetime through this integration.
-Node has a process-exit flush fallback; Cloudflare delivery is best-effort and
-may lose final spans when an isolate becomes idle immediately after a run.
+Durable Object isolate. Braintrust flushes asynchronously. `observe(...)` does
+not await subscriber promises, and its context does not expose Cloudflare's
+`waitUntil(...)`, so the upload cannot be attached to the Durable Object
+execution lifetime through this integration. Node has a process-exit flush
+fallback; Cloudflare delivery is best-effort and may lose final spans when an
+isolate becomes idle immediately after an operation.
 Confirm that tradeoff with the user before enabling Cloudflare export and verify
 it under the deployed application's real isolate lifecycle. Do not add awaited
 network work inside the observer callback.
@@ -178,13 +166,13 @@ network work inside the observer callback.
    confirm the Cloudflare bundle resolves Braintrust's `workerd` export.
 3. Run against a non-production Braintrust project and exercise a plain prompt,
    a tool call, a delegated task, compaction, and a controlled failure.
-4. Confirm workflow, operation, model, tool, task, and compaction spans close and
-   nest correctly. Specifically confirm the terminal tool span closes through
-   the compatibility translation.
+4. Confirm operation, model, tool, task, and compaction spans close and nest
+   correctly. Specifically confirm the terminal tool span closes through the
+   compatibility translation.
 5. Confirm model spans contain expected token, cache-token, and estimated-cost
    metrics.
-6. On Cloudflare, test a deployed workflow and allow the request and isolate to
-   finish immediately; measure whether final spans arrive consistently and
+6. On Cloudflare, exercise a deployed agent and allow the request and isolate
+   to finish immediately; measure whether final spans arrive consistently and
    report any loss as the documented best-effort delivery limitation.
 7. Run without `BRAINTRUST_API_KEY` and confirm the application still starts and
    does not export traces.
