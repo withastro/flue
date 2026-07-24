@@ -1,0 +1,21 @@
+scripts/publish-public.mjs
+  s_06977d91515734::t_38b2459f5441b7 3,5-6,34,48,143,145,149,216,243-244,246
+AGENTS.md
+  s_06977d91515734::t_45662f894e09df 67,72,74
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "65ef8a070dfe616c0ae33b25b6c954a406569af2",
+  "prompts": {},
+  "sessions": {
+    "s_06977d91515734": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b1c8dcf-f990-4ce3-836e-4fd9fc044cda",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
