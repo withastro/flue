@@ -1,0 +1,41 @@
+packages/runtime/src/client.ts
+  s_5d7124089579aa::t_4b8b7a4afa4a71 12-13,15,30,44,72-77,335-345,388-391,443,463,482-517
+packages/runtime/src/hooks/frame.ts
+  s_5d7124089579aa::t_25f703dd6af83e 1,120-121,171
+packages/runtime/src/hooks/use-mcp-connection.ts
+  s_5d7124089579aa::t_1949181edb4150 1-147
+packages/runtime/src/index.ts
+  s_5d7124089579aa::t_d4764ba1c9f2c3 66,77
+packages/runtime/src/internal.ts
+  s_5d7124089579aa::t_0d713ced40a4df 40-42
+packages/runtime/src/mcp.ts
+  s_5d7124089579aa::t_613dddffe75902 13,17-22,40-48,66-74,79,91-100,108,128-133,142-200,329-337,339,341
+packages/runtime/test/mcp.test.ts
+  s_5d7124089579aa::t_fddb13797b3a3b 483-623,669-694
+packages/runtime/test/use-mcp-connection.test.ts
+  s_5d7124089579aa::t_942c39901b6515 1-197
+packages/runtime/src/mcp-types.ts
+  s_5d7124089579aa::t_e1f0f6552fe0b2 1-51
+packages/runtime/src/hooks/render.ts
+  s_5d7124089579aa::t_eb7f614a01fa64 112
+packages/runtime/src/types.ts
+  s_5d7124089579aa::t_eca30e858c59ce 20,490-494
+packages/runtime/test/package-entrypoints.test.ts
+  s_5d7124089579aa::t_3275035b492c2f 31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "589fa7f4917a09d5d3f5cb74bfe369aef1a53d50",
+  "prompts": {},
+  "sessions": {
+    "s_5d7124089579aa": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "4f7862de-2a69-4753-93d9-8819dbbb4204",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
