@@ -1,0 +1,23 @@
+packages/vite/src/bootstrap/node-server.ts
+  s_cb8ef689d5cfdd::t_7a0baf3aa365f0 37-42,44-50
+packages/vite/src/index.ts
+  s_cb8ef689d5cfdd::t_01834f7379efb2 20-26
+packages/vite/src/types.ts
+  s_cb8ef689d5cfdd::t_806ab87631de06 1-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8914ce4e9ddf0b8c4a18dada48c845993cf653ed",
+  "prompts": {},
+  "sessions": {
+    "s_cb8ef689d5cfdd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f11d2ac8-9745-4325-886e-c7ffb0696f08",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
