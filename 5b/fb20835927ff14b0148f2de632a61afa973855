@@ -1,0 +1,21 @@
+packages/vite/src/flue-plugin.ts
+  s_cb8ef689d5cfdd::t_26aa774b1d41fb 649,672,968-985
+packages/vite/test/dev.test.ts
+  s_cb8ef689d5cfdd::t_7da17cf4b3c336 1,166-210
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5bfb20835927ff14b0148f2de632a61afa973855",
+  "prompts": {},
+  "sessions": {
+    "s_cb8ef689d5cfdd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f11d2ac8-9745-4325-886e-c7ffb0696f08",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
