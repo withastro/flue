@@ -1,0 +1,31 @@
+packages/runtime/package.json
+  s_83feac60e49a4a::t_b26f28599f17b3 49-52
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_83feac60e49a4a::t_ebc1a63bbdd258 36,454-472
+packages/runtime/src/instrumentation.ts
+  s_83feac60e49a4a::t_aaf0e03dcefc43 62-71
+packages/runtime/test/instrumentation.test.ts
+  s_83feac60e49a4a::t_89e23a47fdaede 6,60-67
+packages/runtime/tsdown.config.ts
+  s_83feac60e49a4a::t_f9b3028143ff3d 14
+packages/runtime/test/cloudflare-tracing.test.ts
+  s_83feac60e49a4a::t_be727815a507c3 21,983-1027
+packages/runtime/test/package-entrypoints.test.ts
+  s_83feac60e49a4a::t_a08f25acf9f099 148-160
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "4d33af0194cb5831f30b7d3efb06551736f96cec",
+  "prompts": {},
+  "sessions": {
+    "s_83feac60e49a4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9943c51e-348e-4562-8a01-0a328022b306",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
