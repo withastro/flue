@@ -1,0 +1,21 @@
+packages/cli/src/lib/init.ts
+  s_83feac60e49a4a::t_2c6b67ebeda028 247-251
+packages/cli/test/init.test.mjs
+  s_83feac60e49a4a::t_425711afe85a9a 127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "2f682b1f78cf4db7d474671a2e713865678e53be",
+  "prompts": {},
+  "sessions": {
+    "s_83feac60e49a4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9943c51e-348e-4562-8a01-0a328022b306",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
