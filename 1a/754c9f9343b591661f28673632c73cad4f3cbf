@@ -1,0 +1,29 @@
+CHANGELOG.md
+  s_83feac60e49a4a::t_7509c14b5d5e4a 27,34
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_83feac60e49a4a::t_7beb9d322c0333 571
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_83feac60e49a4a::t_c973959e94a890 112,361,375
+apps/docs/src/content/docs/guide/observability.md
+  s_83feac60e49a4a::t_ea04f6fb3f0a5d 181,190,198
+apps/docs/src/content/docs/reference/configuration.md
+  s_83feac60e49a4a::t_520da901fed340 136,138-140
+packages/cli/src/lib/init.ts
+  s_83feac60e49a4a::t_6e621a59d11d15 247-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1a754c9f9343b591661f28673632c73cad4f3cbf",
+  "prompts": {},
+  "sessions": {
+    "s_83feac60e49a4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9943c51e-348e-4562-8a01-0a328022b306",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
