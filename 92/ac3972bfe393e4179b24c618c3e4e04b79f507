@@ -1,0 +1,35 @@
+packages/vite/test/dev.test.ts
+  s_cb8ef689d5cfdd::t_7da17cf4b3c336 1,166-210,218,226,234,239,241,253
+  s_cb8ef689d5cfdd::t_38f04b3e487bcc 211-213,215-217
+  s_cb8ef689d5cfdd::t_61224e712a7bf0 219-221,223-225
+  s_cb8ef689d5cfdd::t_46c522b6a19ada 227-229,231-233
+  s_cb8ef689d5cfdd::t_604f149f791230 235-238
+  s_cb8ef689d5cfdd::t_896e98158035ad 240
+  s_cb8ef689d5cfdd::t_6a61a15a8ba5bc 242-244,250-252
+  s_cb8ef689d5cfdd::t_47fc5afbcca1f8 254
+  s_cb8ef689d5cfdd::t_966d476834df70 214,222,230,245-249
+packages/runtime/src/internal.ts
+  s_cb8ef689d5cfdd::t_52a903885c5b67 50-54
+packages/runtime/src/node/assemble.ts
+  s_cb8ef689d5cfdd::t_3e603252735592 21,28-41,126-129,175,193,202-213,215-221
+packages/runtime/test/node-assemble.test.ts
+  s_cb8ef689d5cfdd::t_8ef0f3667d6023 1-105
+packages/vite/src/bootstrap/node-server.ts
+  s_cb8ef689d5cfdd::t_14049b65709c68 29,166-168,170-171
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "92ac3972bfe393e4179b24c618c3e4e04b79f507",
+  "prompts": {},
+  "sessions": {
+    "s_cb8ef689d5cfdd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f11d2ac8-9745-4325-886e-c7ffb0696f08",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
