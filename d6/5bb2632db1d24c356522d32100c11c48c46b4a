@@ -1,0 +1,27 @@
+packages/runtime/src/config.ts
+  s_83feac60e49a4a::t_1361fcb0d279e1 81-90,127,163,344-345,372
+packages/runtime/test/config.test.ts
+  s_83feac60e49a4a::t_c726d6cba504ce 47,55,59-62
+packages/vite/src/cloudflare-entry.ts
+  s_83feac60e49a4a::t_bc5a5ef533dbe4 35-40,49,51,129-133,155-167
+packages/vite/src/flue-plugin.ts
+  s_83feac60e49a4a::t_d48d8d59cf5058 553
+packages/vite/test/cloudflare-entry.test.ts
+  s_83feac60e49a4a::t_89f8ca541788a7 21,74,97,124,138,153,167,173-201
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d65bb2632db1d24c356522d32100c11c48c46b4a",
+  "prompts": {},
+  "sessions": {
+    "s_83feac60e49a4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9943c51e-348e-4562-8a01-0a328022b306",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
