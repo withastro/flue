@@ -1,0 +1,21 @@
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_5e6fe1ae5f4b3c::t_a441031d1f7fab 23-28,47,49-50,91,105-106,154-159,162,203,209,236,243,259,270,278,286,308,319,327,334-336,343,345,357-358,365,375-376,378,399,401,405,413,540,545,553-557,564-565,568,574-575
+packages/runtime/test/cloudflare-tracing.test.ts
+  s_5e6fe1ae5f4b3c::t_f6fb8bfa9c087b 36-38,45-47,53-56,61,66-81,996-1107
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8808f1b386d448dd30cafd2af13f1d9cb760ce64",
+  "prompts": {},
+  "sessions": {
+    "s_5e6fe1ae5f4b3c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d3e32998-cfad-4258-8393-a3ae1a21f051",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
