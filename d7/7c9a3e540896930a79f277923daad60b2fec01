@@ -1,0 +1,49 @@
+packages/runtime/src/cloudflare/cf-sandbox.ts
+  s_6ae5a9129c229c::t_c9408fb437bb71 113-117,164,180-181,280-285
+packages/runtime/src/index.ts
+  s_6ae5a9129c229c::t_d35d8f08a4ab05 98-103
+packages/runtime/src/node/local-env.ts
+  s_6ae5a9129c229c::t_6d00a0acff84ec 144-150
+packages/runtime/src/sandbox.ts
+  s_6ae5a9129c229c::t_116ef4da7ef362 17-137,245-247,256-261,263-265,325-330,368-379,381,386,393-409,411-412
+packages/runtime/src/types.ts
+  s_6ae5a9129c229c::t_4c844c1d946fbe 260-267
+packages/runtime/test/bash-tool.test.ts
+  s_6ae5a9129c229c::t_39c59c3f3dcd3e 1-61
+packages/runtime/test/cloudflare-context.test.ts
+  s_6ae5a9129c229c::t_20dc4912fed22d 296-297,400-401,404-406,420-421,423-427
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_6ae5a9129c229c::t_20938ecb280175 19,37,1044-1136
+packages/runtime/test/node-local-sandbox.test.ts
+  s_6ae5a9129c229c::t_2760d694b83595 233-245
+packages/runtime/test/sandbox.test.ts
+  s_6ae5a9129c229c::t_6725326ef5bcd3 2-8,12-34,262-369,389,391,453-498
+packages/runtime/test/session-operations.test.ts
+  s_6ae5a9129c229c::t_a6286cf87874d1 14,18,1410-1499
+CHANGELOG.md
+  s_e8e3647c4b8a4a::t_975616c2141ddc 30,71
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d77c9a3e540896930a79f277923daad60b2fec01",
+  "prompts": {},
+  "sessions": {
+    "s_6ae5a9129c229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e638a87a-60a6-468c-9182-4add0d2ba122",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_e8e3647c4b8a4a": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad9c87304d0c20ffb",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
