@@ -1,0 +1,53 @@
+CHANGELOG.md
+  s_14200ecc19f70e::t_feca6e104c8369 29,62-66
+packages/runtime/src/agent-client.ts
+  s_14200ecc19f70e::t_3632d411bbe6c6 33-37,432,435-438
+packages/runtime/src/errors.ts
+  s_881caf582d136f::t_cf0f3f87bae418 329-356
+packages/runtime/src/internal.ts
+  s_14200ecc19f70e::t_0acda8b30b01a7 36-40
+packages/runtime/src/runtime/handle-conversation-routes.ts
+  s_14200ecc19f70e::t_76c8eefa4a5c12 1-4,13,26,139-142,167-188,190,192,209,231,240-245,337-341
+packages/runtime/test/handle-conversation-routes.test.ts
+  s_14200ecc19f70e::t_c9bb206c685f72 10,34,125,127-134,140,187,189,279-478
+packages/sdk/src/client.ts
+  s_881caf582d136f::t_5183009d58b883 180,186
+packages/sdk/src/public/conversation-stream.ts
+  s_14200ecc19f70e::t_ac27d1cefb28e4 133-147,174,189,195-210,318-322
+packages/sdk/src/public/observe.ts
+  s_14200ecc19f70e::t_4010281199f58b 61-66,70-99,119-122,124-126,133-138,156-161,172-175,180-184,201-221,228,235,239-256,273-275,277,295-299,302-304,325,341-343
+packages/sdk/src/public/stream.ts
+  s_14200ecc19f70e::t_1e34fa0871a985 7-36,81-88,215
+packages/sdk/test/assignability.test-d.ts
+  s_14200ecc19f70e::t_c1a79a8285206f 3
+packages/sdk/test/client.test.ts
+  s_14200ecc19f70e::t_4bba0c93170be1 1,314-983
+packages/sdk/test/conversation-stream.test.ts
+  s_14200ecc19f70e::t_6f88f6d32132b9 496-502,534-545
+packages/sdk/test/stream-continuity.test.ts
+  s_14200ecc19f70e::t_ba0d21d6290d3b 1-405
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8a738fb5779d8bf8e6067ec689ed19995d06c539",
+  "prompts": {},
+  "sessions": {
+    "s_14200ecc19f70e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a45abef01d36502dd",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_881caf582d136f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a28fca5e3c2af8a96",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
