@@ -1,0 +1,29 @@
+packages/runtime/test/cloudflare-tracing.test.ts
+  s_be9fab125be153::t_3cff5eb1752d53 990,1040-1061
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_5bb2b0b6ae4178::t_7ace39b124a863 207-215,218
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a40ab356b66153f72a72e1083432983ef69937d6",
+  "prompts": {},
+  "sessions": {
+    "s_5bb2b0b6ae4178": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a35155f70f0558689",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_be9fab125be153": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f944f1d8-30b8-48d9-8787-665ddf9f3a67",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
