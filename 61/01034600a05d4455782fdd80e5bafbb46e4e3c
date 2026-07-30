@@ -1,0 +1,29 @@
+apps/www/astro.config.mjs
+  s_be9fab125be153::t_04a5d0af02b82b 14
+apps/www/src/components/BlogCover.astro
+  s_be9fab125be153::t_03cb4faeb0c223 2-12,15-49
+apps/www/src/layouts/BlogLayout.astro
+  s_be9fab125be153::t_b800fa6eecb5e1 12,16,101
+apps/www/src/pages/index.astro
+  s_be9fab125be153::t_83b991df69cfb4 8-10
+apps/www/src/styles/global.css
+  s_be9fab125be153::t_68ec2a6d72c75b 162,164-165,171
+apps/www/src/pages/blog/flue-2-0.mdx
+  s_be9fab125be153::t_941157dbd03af7 1-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6101034600a05d4455782fdd80e5bafbb46e4e3c",
+  "prompts": {},
+  "sessions": {
+    "s_be9fab125be153": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f944f1d8-30b8-48d9-8787-665ddf9f3a67",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
