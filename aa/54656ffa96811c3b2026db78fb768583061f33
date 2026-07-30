@@ -1,0 +1,27 @@
+CHANGELOG.md
+  s_43d0e273fd611b::t_0fe09b4e5c98d3 67
+packages/sdk/src/public/follow-policy.ts
+  s_43d0e273fd611b::t_d5b9f3321e67e9 1-70
+packages/sdk/src/public/observe.ts
+  s_43d0e273fd611b::t_892b8ebf9b7ef2 9-15,166
+packages/sdk/src/public/settle.ts
+  s_43d0e273fd611b::t_decc2f4d0e0561 5,8-14,22-25,66-89,98-214,216-217,221,248-266
+packages/sdk/test/client.test.ts
+  s_43d0e273fd611b::t_ea38c3784c7302 1138-1342,1510-1573
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "aa54656ffa96811c3b2026db78fb768583061f33",
+  "prompts": {},
+  "sessions": {
+    "s_43d0e273fd611b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a9e3edf99f03f763b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
