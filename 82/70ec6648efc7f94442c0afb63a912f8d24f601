@@ -1,0 +1,79 @@
+CHANGELOG.md
+  s_6ae5a9129c229c::t_c64206cc8ecf0a 34
+apps/docs/src/content/docs/guide/channels.md
+  s_6ae5a9129c229c::t_1060887c77cf67 52-54,72,79
+packages/discord/README.md
+  s_6ae5a9129c229c::t_ff1fb6eeb53ce3 36-38
+packages/google-chat/README.md
+  s_6ae5a9129c229c::t_5f9432bf9c7833 49-51
+packages/intercom/README.md
+  s_6ae5a9129c229c::t_6ebc8232f9a5cb 28-31
+packages/linear/README.md
+  s_6ae5a9129c229c::t_a2ffdc2c2b2761 35-38
+packages/runtime/src/agent-client.ts
+  s_6ae5a9129c229c::t_3835c26e8aa3bb 76,133-135,226-228
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_6ae5a9129c229c::t_2ad3e62bb2f4b2 10,16,24,39,839-840,846,848,851-902,916-923,933,963-966,968-1047,1050-1052,1056-1057,1065-1067
+packages/runtime/src/cloudflare/worker-config.ts
+  s_6ae5a9129c229c::t_5877b1727611a2 17,141-147,160-165
+packages/runtime/src/errors.ts
+  s_6ae5a9129c229c::t_e76cd849934f24 424-452
+packages/runtime/src/index.ts
+  s_6ae5a9129c229c::t_3f9524011c248e 43
+packages/runtime/src/node/agent-coordinator.ts
+  s_6ae5a9129c229c::t_87d3382eaa6f9a 5-9,15,20,22,33,45-47,52-57,108,112-114,116,668-669,671,674-712,720,729-734,741-746,792,805,811,813,818-866,881-888,898
+packages/runtime/src/runtime/agent-submissions.ts
+  s_6ae5a9129c229c::t_b17f55b3e19714 20,32,139,143-144,159-164,329,335-337,340-343,353-427
+packages/runtime/src/runtime/dispatch.ts
+  s_6ae5a9129c229c::t_07998bea2df32f 3,5,18-21,23-30
+packages/runtime/src/runtime/flue-app.ts
+  s_6ae5a9129c229c::t_7fc6768bd91e91 193
+packages/runtime/src/runtime/handle-agent.ts
+  s_6ae5a9129c229c::t_a711c6b77417ae 103-104,108-110,117,125
+packages/runtime/src/runtime/ids.ts
+  s_6ae5a9129c229c::t_eddb73b1b7c1ee 80-119
+packages/runtime/src/runtime/schemas.ts
+  s_6ae5a9129c229c::t_b6eea84eb5a555 91-114,122-124,130,135,138,149
+packages/runtime/src/types.ts
+  s_6ae5a9129c229c::t_b42d948baac020 109-120,150-156
+packages/runtime/test/agent-route.test.ts
+  s_6ae5a9129c229c::t_b2c28ea2c9e758 123-220
+packages/runtime/test/dispatch.test.ts
+  s_6ae5a9129c229c::t_4fa89fbe0c0fad 327-401
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_6ae5a9129c229c::t_5349eeb658ab56 16,33,2490-2799
+packages/sdk/src/public/send.ts
+  s_6ae5a9129c229c::t_702bee38dab2ff 51-62,72-74,85-90,98-100,104-106
+packages/sdk/test/client.test.ts
+  s_6ae5a9129c229c::t_b7f98e54dc21ee 65-97,1450-1476
+packages/slack/README.md
+  s_6ae5a9129c229c::t_54761937f63686 64-68
+packages/runtime/test/agent-client-cloudflare.test.ts
+  s_f32a82675d2732::t_619ef285fe6aed 8-12,219-307
+packages/runtime/test/cloudflare-agent-coordinator.test.ts
+  s_f32a82675d2732::t_52f523965911c4 14,784-996
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8270ec6648efc7f94442c0afb63a912f8d24f601",
+  "prompts": {},
+  "sessions": {
+    "s_6ae5a9129c229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e638a87a-60a6-468c-9182-4add0d2ba122",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f32a82675d2732": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a29858a8985e8a5c3",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
