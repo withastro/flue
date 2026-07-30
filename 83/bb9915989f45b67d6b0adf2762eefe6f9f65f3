@@ -1,0 +1,39 @@
+blueprints/sandbox--boxd.md
+  s_6ae5a9129c229c::t_8e29ba7f713c18 4,48,172-177,266,268,381-384,640-710
+blueprints/sandbox--daytona.md
+  s_6ae5a9129c229c::t_85bdea5b8a6085 4,38,111-116,184-185,258-261,509-576
+blueprints/sandbox--exedev.md
+  s_6ae5a9129c229c::t_8aaafce62d369a 4,47,506-511,516,533-535,698-702,747,1271-1339
+blueprints/sandbox--islo.md
+  s_6ae5a9129c229c::t_08f07b7f3b0475 4,49,125-130,337-366
+blueprints/sandbox--modal.md
+  s_6ae5a9129c229c::t_4957e27f213658 4,61,138-143,214-215,344-348,767-844
+apps/docs/src/content/docs/guide/sandboxes.md
+  s_b5d01d48563586::t_75a3ba4a6e0a21 172-173
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_b5d01d48563586::t_1ed5d0ed34116e 26,86,103,151,154-158,165-184,222,224,233,421-422,424
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "83bb9915989f45b67d6b0adf2762eefe6f9f65f3",
+  "prompts": {},
+  "sessions": {
+    "s_6ae5a9129c229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e638a87a-60a6-468c-9182-4add0d2ba122",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_b5d01d48563586": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-aa368be99e75168eb",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
