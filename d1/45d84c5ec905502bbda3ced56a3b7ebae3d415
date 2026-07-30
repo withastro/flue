@@ -1,0 +1,49 @@
+CHANGELOG.md
+  s_521dc3e6102e09::t_2d8a4a3f11faee 32-33,79
+apps/docs/src/content/docs/reference/events.md
+  s_521dc3e6102e09::t_3a081be091df79 225
+packages/libsql/src/libsql-adapter.ts
+  s_521dc3e6102e09::t_1887177dff869a 697-715
+packages/mongodb/src/submission-store.ts
+  s_521dc3e6102e09::t_4a568c0d8b7a4b 367-383
+packages/mysql/src/mysql-adapter.ts
+  s_521dc3e6102e09::t_9ac8e61be7b18b 825-843
+packages/postgres/src/postgres-adapter.ts
+  s_521dc3e6102e09::t_6351a55975de53 685-703
+packages/redis/src/redis-adapter.ts
+  s_521dc3e6102e09::t_6c2245191914c3 49,567-595
+packages/redis/src/redis-scripts.ts
+  s_521dc3e6102e09::t_cc200453483a55 150-169
+packages/runtime/src/agent-execution-store.ts
+  s_521dc3e6102e09::t_72802dae42f2de 311-327
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_521dc3e6102e09::t_f11e5c267767a1 30,32,539-552,555-572,594-599,731-764
+packages/runtime/src/node/agent-coordinator.ts
+  s_521dc3e6102e09::t_6853adf5d3ef6e 28,30,608-639,642-654,657-667,686-691
+packages/runtime/src/runtime/agent-submissions.ts
+  s_521dc3e6102e09::t_9fbd1acde00d83 10-11,668-747
+packages/runtime/src/sql-agent-execution-store.ts
+  s_521dc3e6102e09::t_8f1de2533f11e3 470-489
+packages/runtime/src/test-utils/define-store-contract-tests.ts
+  s_521dc3e6102e09::t_0626f806df9fd3 539-670
+packages/runtime/test/cloudflare-agent-coordinator.test.ts
+  s_521dc3e6102e09::t_41de8c76a4c269 313-317,375,379-381,384,1721-1722,1829-2030
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_521dc3e6102e09::t_e01585a4d7bda9 1544-1718
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "d145d84c5ec905502bbda3ced56a3b7ebae3d415",
+  "prompts": {},
+  "sessions": {
+    "s_521dc3e6102e09": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a67440a1cfa7e9abf",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
