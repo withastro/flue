@@ -1,0 +1,21 @@
+packages/runtime/test/overlay-packaged-skills.test.ts
+  s_a171be6212abe3::t_e69b20cce110a7 37-59
+packages/runtime/src/agent.ts
+  s_a171be6212abe3::t_58788c02bc0259 621-631
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "e1925cbcee6b7aeb75da83d379bcf8f2308b77de",
+  "prompts": {},
+  "sessions": {
+    "s_a171be6212abe3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff004b74-6c8f-45cd-aa89-043710878de7",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
