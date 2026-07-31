@@ -1,0 +1,32 @@
+AGENTS.md
+  s_06977d91515734::t_45662f894e09df 72,74
+  s_06977d91515734::t_1246f0378b1326 71
+apps/www/package.json
+  s_efb374c8cb9400::t_6196d64029db68 9
+apps/docs/package.json
+  s_efb374c8cb9400::t_fb6642d8a39372 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f3d85800bdeabff80823a0fc7b202a21f47635bc",
+  "prompts": {},
+  "sessions": {
+    "s_06977d91515734": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3b1c8dcf-f990-4ce3-836e-4fd9fc044cda",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_efb374c8cb9400": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "97ec5c6b-b4cd-422f-93f7-21a9269e34a9",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
