@@ -1,0 +1,31 @@
+CHANGELOG.md
+  s_6ae5a9129c229c::t_e73249b301abc9 28,39,53-54
+packages/opentelemetry/src/index.ts
+  s_6ae5a9129c229c::t_ebd55bf21144eb 25,37,79-82,263-265,342-345,701,712-726,777-783,813-839
+packages/opentelemetry/test/index.test.ts
+  s_6ae5a9129c229c::t_250cedb2affbb8 454,498-503,661-664,835-902,1459,1464-1523,1615-1617,1837-1839,1841
+packages/runtime/src/cloudflare/tracing/attributes.ts
+  s_6ae5a9129c229c::t_a7aa527e40d19d 23,37-39,43-49
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_6ae5a9129c229c::t_49b4d7a8c147ab 248,290-296,328-343,352-354,357-365,529-541
+packages/runtime/src/telemetry/semconv.ts
+  s_6ae5a9129c229c::t_7819c5bc7cb796 11-18
+packages/runtime/test/cloudflare-tracing.test.ts
+  s_6ae5a9129c229c::t_8a4c0d294bd4bc 149-152,157,255-314,397-399,952,989-998
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f076a465d71559fea5d235a6994c6bf7a75bfc54",
+  "prompts": {},
+  "sessions": {
+    "s_6ae5a9129c229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e638a87a-60a6-468c-9182-4add0d2ba122",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
