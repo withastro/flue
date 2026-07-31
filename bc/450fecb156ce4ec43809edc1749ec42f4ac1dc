@@ -1,0 +1,37 @@
+blueprints/sandbox--boxd.md
+  s_30124aaca1099b::t_04e7ac29bf83d0 4,48
+blueprints/sandbox--cloudflare-shell.md
+  s_30124aaca1099b::t_6ae9a65b6b32d2 4,39
+blueprints/sandbox--daytona.md
+  s_30124aaca1099b::t_c8a7573b210634 4,38
+blueprints/sandbox--exedev.md
+  s_30124aaca1099b::t_907c689e74cd23 4,47
+blueprints/sandbox--islo.md
+  s_30124aaca1099b::t_a4cdadd357b006 4,49
+blueprints/sandbox--modal.md
+  s_30124aaca1099b::t_c65d8eb820d6c3 4,61
+blueprints/tooling--braintrust.md
+  s_30124aaca1099b::t_ce47fb62c5286b 2,68
+blueprints/tooling--sentry.md
+  s_30124aaca1099b::t_f8d2dafb9dfb75 2,89,359
+blueprints/tooling.md
+  s_30124aaca1099b::t_39cea912fe6390 2
+packages/cli/test/add.test.mjs
+  s_30124aaca1099b::t_961e713d18ce18 514-515
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bc450fecb156ce4ec43809edc1749ec42f4ac1dc",
+  "prompts": {},
+  "sessions": {
+    "s_30124aaca1099b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "806e502e-ac34-47ec-93aa-b8d85ed5ac1b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
