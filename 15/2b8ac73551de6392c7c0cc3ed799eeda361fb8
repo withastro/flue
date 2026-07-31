@@ -1,0 +1,19 @@
+apps/www/src/pages/blog/flue-2.mdx
+  s_4c1b71333c67c6::t_e547d4e71f0b74 9
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "152b8ac73551de6392c7c0cc3ed799eeda361fb8",
+  "prompts": {},
+  "sessions": {
+    "s_4c1b71333c67c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b8da4885-f18f-41b4-91c2-202b684189af",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
