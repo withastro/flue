@@ -1,0 +1,23 @@
+packages/runtime/src/client.ts
+  s_4c1983bcf6aad3::t_77277ef87196bc 125-132
+packages/runtime/src/runtime/agent-submissions.ts
+  s_4c1983bcf6aad3::t_c043dae15cf85e 1148-1152,1154-1156
+packages/runtime/test/observe.test.ts
+  s_4c1983bcf6aad3::t_49bb2f97120d72 5,8,189-231
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1863128ef94ae97c13986ebde27f218c2d9de99d",
+  "prompts": {},
+  "sessions": {
+    "s_4c1983bcf6aad3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a711bdea328449be3",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}

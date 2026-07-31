@@ -1,0 +1,59 @@
+apps/docs/src/content/docs/reference/errors.md
+  s_6ae5a9129c229c::t_a37cfa53945e2b 4,54,60-61,65-69
+apps/docs/src/content/docs/sdk/errors.md
+  s_6ae5a9129c229c::t_d2a0d50d670838 4,36-37,43-47,49
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_1a6887d6e67eae::t_b3179684add42d 185
+packages/runtime/src/cloudflare/agent-execution-store.ts
+  s_1a6887d6e67eae::t_cb2c18e3329052 2,16-36,42-50,72
+packages/runtime/src/errors.ts
+  s_1a6887d6e67eae::t_49a0c776b5a21b 101-103,1103-1106,1115-1117,1119-1140,1142,1146,1157-1160,1162-1197,1199-1209,1213-1224,1235-1241,1261,1277,1281-1318,1323-1326,1328,1347-1349,1351-1355,1357
+packages/runtime/src/runtime/agent-routes.ts
+  s_1a6887d6e67eae::t_54be0e8f0fff45 15,54,76,84,91,99,110-111,113-114,116-141
+packages/runtime/src/runtime/agent-submissions.ts
+  s_1a6887d6e67eae::t_2145c1fec9f020 1083-1085
+packages/runtime/src/runtime/channel-routes.ts
+  s_1a6887d6e67eae::t_9324d1bab04de2 70
+packages/runtime/src/runtime/handle-agent.ts
+  s_1a6887d6e67eae::t_78f9ab7ea65fc1 127
+packages/runtime/src/runtime/ids.ts
+  s_1a6887d6e67eae::t_ccfa3de5a30567 95-105
+packages/runtime/src/runtime/registration.ts
+  s_1a6887d6e67eae::t_4a346a0f7f8496 332
+packages/runtime/test/agent-route.test.ts
+  s_1a6887d6e67eae::t_a3ae6bb45e9926 343-378
+packages/runtime/test/cloudflare-agent-execution-store.test.ts
+  s_1a6887d6e67eae::t_15b97b4353cd15 2-6,298,307-373
+packages/runtime/test/error-diagnostics.test.ts
+  s_1a6887d6e67eae::t_c994ae762d1ce7 2,5,9,13,208-351
+packages/sdk/src/http.ts
+  s_1a6887d6e67eae::t_85e9b34057a569 37-44,46-48,52,154-160,172-179,182,184
+packages/sdk/test/client.test.ts
+  s_1a6887d6e67eae::t_212d6fc3b47686 1633-1695
+CHANGELOG.md
+  s_1a6887d6e67eae::t_ba83850f88aadd 42,69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c808790de8817a7e2bcb3954484b3387f06b07bf",
+  "prompts": {},
+  "sessions": {
+    "s_1a6887d6e67eae": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a556dd400c7e49de2",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_6ae5a9129c229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e638a87a-60a6-468c-9182-4add0d2ba122",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}

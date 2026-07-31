@@ -1,0 +1,23 @@
+.github/dependabot.yml
+  s_5fa8b44ce4f7e9::t_c464debcb1c12b 1-6
+.github/workflows/approve-contributor.yml
+  s_5fa8b44ce4f7e9::t_cb671137f78e4b 9-10,19
+.github/workflows/pr-redirect.yml
+  s_5fa8b44ce4f7e9::t_bf116496e0af4f 29-30,45,85-87,90,93
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c7a60633d17c65c00ab2e58294bdc04055879fc9",
+  "prompts": {},
+  "sessions": {
+    "s_5fa8b44ce4f7e9": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a257f2d763b7d769b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
