@@ -1,0 +1,33 @@
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_a171be6212abe3::t_8f61c41938dbbf 13,37,323-348,557-559,656-659,676,699,1013,1134
+packages/runtime/test/cloudflare-agent-coordinator.test.ts
+  s_a171be6212abe3::t_6ca7b0913f9451 13,605-648,1555,1660,1732,1762,1799
+packages/opentelemetry/src/index.ts
+  s_a171be6212abe3::t_c715e2eb51dae0 510-545
+packages/opentelemetry/test/index.test.ts
+  s_a171be6212abe3::t_6813c465c18c58 212-245
+packages/runtime/src/cloudflare/tracing/attributes.ts
+  s_a171be6212abe3::t_6e3a781783b9d2 61-62
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_a171be6212abe3::t_1507db43c48987 500-526
+packages/runtime/src/execution-interceptor.ts
+  s_a171be6212abe3::t_5694971d99e905 5-16
+packages/runtime/test/cloudflare-tracing.test.ts
+  s_a171be6212abe3::t_a253ccfce2e4a0 220-248
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a99c320481146206526fc1759f99908bccdbbde4",
+  "prompts": {},
+  "sessions": {
+    "s_a171be6212abe3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff004b74-6c8f-45cd-aa89-043710878de7",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
