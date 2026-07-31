@@ -1,0 +1,31 @@
+apps/www/src/pages/blog/flue-2-0.mdx
+  s_1e80a3adf31a52::t_edc52ff6938523 7,14,16-18,29,35,46,48,61-63,65,79,81,83,134,136,139,155-156,163,165,169,173,177,179
+apps/www/src/pages/index.astro
+  s_6ae5a9129c229c::t_2ef2090560adb9 9
+apps/www/src/layouts/BlogLayout.astro
+  s_1e80a3adf31a52::t_8b39bd04166d74 102
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3b1608b7b41718bb0dd1329a65fc9ae4eba23f6c",
+  "prompts": {},
+  "sessions": {
+    "s_1e80a3adf31a52": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac596287-3839-4df5-a665-2f4e9841d8b6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_6ae5a9129c229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e638a87a-60a6-468c-9182-4add0d2ba122",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
