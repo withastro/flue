@@ -1,0 +1,29 @@
+packages/runtime/src/conversation-fold-checkpoint.ts
+  s_a171be6212abe3::t_54abfcd5b3d455 1-259
+packages/runtime/src/conversation-writer.ts
+  s_a171be6212abe3::t_078799d9cf629a 1,57,264-272
+packages/runtime/src/runtime/conversation-stream-store.ts
+  s_a171be6212abe3::t_57cbe2439bef61 44-62,97-114,162-179,236-258,264-265,458-478,746,823-920
+packages/runtime/src/conversation-reader.ts
+  s_a171be6212abe3::t_39fc3809ef0e79 1,10-12,18-19,35-41
+packages/runtime/src/conversation-reducer.ts
+  s_a171be6212abe3::t_e791f13e9f65b4 318-335
+packages/runtime/test/conversation-fold-checkpoint.test.ts
+  s_a171be6212abe3::t_1da7c9705bac7e 1-569
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "fffdb8fb00beda80591a3e4ead1c98a335a616e8",
+  "prompts": {},
+  "sessions": {
+    "s_a171be6212abe3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff004b74-6c8f-45cd-aa89-043710878de7",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}

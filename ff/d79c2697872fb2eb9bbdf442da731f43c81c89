@@ -1,0 +1,44 @@
+packages/runtime/src/adapter.ts
+  s_a171be6212abe3::t_0c52b5ecedd05d 119
+packages/mongodb/src/schema.ts
+  s_a171be6212abe3::t_3e4a173dce8b2a 44
+packages/runtime/src/runtime/sql-conversation-stream-store.ts
+  s_a171be6212abe3::t_049a8a951e1ac8 6,277-327
+packages/mongodb/src/conversation-store.ts
+  s_a171be6212abe3::t_cd537b320c250a 2,206-245,252-254
+packages/runtime/src/conversation-writer.ts
+  s_a171be6212abe3::t_078799d9cf629a 264-266
+  s_a171be6212abe3::t_7f03704bac6c13 267-269
+packages/redis/src/conversation-store.ts
+  s_a171be6212abe3::t_7b93907038cfb5 2,241-278
+packages/libsql/src/libsql-adapter.ts
+  s_a171be6212abe3::t_452a7c482dd5b3 159,269-277
+packages/runtime/src/test-utils/define-conversation-stream-store-contract-tests.ts
+  s_a171be6212abe3::t_3645ecf8384cae 630-718
+packages/redis/src/redis-keys.ts
+  s_a171be6212abe3::t_f5f94cb3b5ee78 35
+packages/postgres/src/postgres-adapter.ts
+  s_a171be6212abe3::t_918d673c5bb426 137,247-255
+packages/runtime/src/runtime/conversation-stream-store.ts
+  s_a171be6212abe3::t_bac8918811061c 244,846,849,871,879,913
+packages/mysql/src/mysql-adapter.ts
+  s_a171be6212abe3::t_52c682223baaa9 113-119,209-213,223,267-272,342
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_a171be6212abe3::t_dccf10c813c506 163-167,177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "ffd79c2697872fb2eb9bbdf442da731f43c81c89",
+  "prompts": {},
+  "sessions": {
+    "s_a171be6212abe3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff004b74-6c8f-45cd-aa89-043710878de7",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
