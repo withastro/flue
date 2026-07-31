@@ -1,0 +1,21 @@
+packages/runtime/src/cloudflare/workers-ai-provider.ts
+  s_41d6083f33b5c0::t_6932402d4865de 833-842,1075-1078
+packages/runtime/test/cloudflare-workers-ai-provider.test.ts
+  s_41d6083f33b5c0::t_3d30e8851d4b50 936-961
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "6e9968023a00185cd35e931b52c36ee9833db19d",
+  "prompts": {},
+  "sessions": {
+    "s_41d6083f33b5c0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "62373add-85af-4181-96b1-429792323dcc",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
