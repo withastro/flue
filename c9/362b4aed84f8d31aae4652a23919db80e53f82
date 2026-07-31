@@ -1,0 +1,41 @@
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_5e6fe1ae5f4b3c::t_a441031d1f7fab 23-28,47,49-50,91,105-106,154-159,162,203,209,272,279,295,313,321,329,364,389-391,398,400,412-413,420,430-431,433,454,456,460,468,608,613,621-625,632-633,636,642-643
+packages/runtime/test/cloudflare-tracing.test.ts
+  s_5e6fe1ae5f4b3c::t_f6fb8bfa9c087b 36-38,45-47,53-56,61,66-81,1199-1310
+apps/www/astro.config.mjs
+  s_be9fab125be153::t_04a5d0af02b82b 14
+apps/www/src/components/BlogCover.astro
+  s_be9fab125be153::t_03cb4faeb0c223 2-12,15-49
+apps/www/src/layouts/BlogLayout.astro
+  s_be9fab125be153::t_b800fa6eecb5e1 12,16,101
+apps/www/src/pages/index.astro
+  s_be9fab125be153::t_83b991df69cfb4 8-10
+apps/www/src/styles/global.css
+  s_be9fab125be153::t_68ec2a6d72c75b 162,164-165,171
+apps/www/src/pages/blog/flue-2-0.mdx
+  s_be9fab125be153::t_941157dbd03af7 1-153
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "c9362b4aed84f8d31aae4652a23919db80e53f82",
+  "prompts": {},
+  "sessions": {
+    "s_5e6fe1ae5f4b3c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d3e32998-cfad-4258-8393-a3ae1a21f051",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_be9fab125be153": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f944f1d8-30b8-48d9-8787-665ddf9f3a67",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
