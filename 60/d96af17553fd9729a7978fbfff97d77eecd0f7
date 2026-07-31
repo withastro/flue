@@ -1,0 +1,451 @@
+.flue/agents/pr-redirect.ts
+  s_be9fab125be153::t_4dfb6adcce7044 199
+.github/dependabot.yml
+  s_be9fab125be153::t_5f4f6cdec953e0 1-6
+.github/workflows/approve-contributor.yml
+  s_be9fab125be153::t_6bb1bedf0b57b8 9-10,19
+.github/workflows/pr-redirect.yml
+  s_be9fab125be153::t_eaed43293a39d3 29-30,45,85-87,90,93
+CHANGELOG.md
+  s_be9fab125be153::t_4f336a767b8201 7-18,34-40,44,46-47,52,54-60,65-66,68,83-105
+apps/docs/src/content/docs/ecosystem/channels/discord.md
+  s_be9fab125be153::t_e278172d6e4754 247
+apps/docs/src/content/docs/ecosystem/channels/github.md
+  s_be9fab125be153::t_9271ee17026922 231
+apps/docs/src/content/docs/ecosystem/channels/google-chat.md
+  s_be9fab125be153::t_f8805e2a5bfb24 326
+apps/docs/src/content/docs/ecosystem/channels/intercom.md
+  s_be9fab125be153::t_7c2053ff6378bf 174
+apps/docs/src/content/docs/ecosystem/channels/linear.md
+  s_be9fab125be153::t_9d8ef828990fd5 219,228-231
+apps/docs/src/content/docs/ecosystem/channels/messenger.md
+  s_be9fab125be153::t_81be75981a4e4f 194
+apps/docs/src/content/docs/ecosystem/channels/notion.md
+  s_be9fab125be153::t_2fe47ab19ea13a 183-188
+apps/docs/src/content/docs/ecosystem/channels/resend.md
+  s_be9fab125be153::t_3d982d58c4faa3 149
+apps/docs/src/content/docs/ecosystem/channels/salesforce-marketing-cloud.md
+  s_be9fab125be153::t_9d0d99b6af27a9 210
+apps/docs/src/content/docs/ecosystem/channels/shopify.md
+  s_be9fab125be153::t_802a2ace028f2b 223
+apps/docs/src/content/docs/ecosystem/channels/slack.md
+  s_be9fab125be153::t_a7bc339334b3a6 247
+apps/docs/src/content/docs/ecosystem/channels/stripe.md
+  s_be9fab125be153::t_16111c5aef3f2b 167-171
+apps/docs/src/content/docs/ecosystem/channels/teams.md
+  s_be9fab125be153::t_0559149055cc86 159
+apps/docs/src/content/docs/ecosystem/channels/telegram.md
+  s_be9fab125be153::t_22e3c9f5b5d886 242
+apps/docs/src/content/docs/ecosystem/channels/twilio.md
+  s_be9fab125be153::t_9ab5ba61a189b5 214
+apps/docs/src/content/docs/ecosystem/channels/whatsapp.md
+  s_be9fab125be153::t_341b4048207355 262
+apps/docs/src/content/docs/ecosystem/channels/zendesk.md
+  s_be9fab125be153::t_8f171704256ec8 185
+apps/docs/src/content/docs/ecosystem/databases/libsql.md
+  s_be9fab125be153::t_7bd1899cef21d4 141
+apps/docs/src/content/docs/ecosystem/databases/mongodb.md
+  s_be9fab125be153::t_b8f4c586db999d 79,113,142
+apps/docs/src/content/docs/ecosystem/databases/postgres.md
+  s_be9fab125be153::t_0dd08e5ea6d765 110
+apps/docs/src/content/docs/ecosystem/databases/redis.md
+  s_be9fab125be153::t_a380ddf8eb7126 107-108
+apps/docs/src/content/docs/ecosystem/databases/supabase.md
+  s_be9fab125be153::t_047820f8fe397b 127
+apps/docs/src/content/docs/ecosystem/databases/turso.md
+  s_be9fab125be153::t_08096fd98c65f2 138
+apps/docs/src/content/docs/ecosystem/databases/valkey.md
+  s_be9fab125be153::t_e01cdb37ffd399 111-112
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_be9fab125be153::t_0cf969e26465c1 488,490,571
+apps/docs/src/content/docs/ecosystem/deploy/github-actions.md
+  s_be9fab125be153::t_bed0b0eceefc8b 274
+apps/docs/src/content/docs/ecosystem/deploy/gitlab-ci.md
+  s_be9fab125be153::t_1e5f265200b5be 284
+apps/docs/src/content/docs/ecosystem/deploy/node.md
+  s_be9fab125be153::t_c51bef2e1162b9 156
+apps/docs/src/content/docs/ecosystem/tooling/opentelemetry.md
+  s_be9fab125be153::t_15e75f3631d6ec 66
+apps/docs/src/content/docs/guide/channels.md
+  s_be9fab125be153::t_a8298cd7640a51 52-54,72,79,184
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_be9fab125be153::t_a6a09eda885ad5 112,361,364,367,375,390
+apps/docs/src/content/docs/guide/database.md
+  s_be9fab125be153::t_f1e4d60a930678 118
+apps/docs/src/content/docs/guide/durability.md
+  s_be9fab125be153::t_fb24dca937b98f 82
+apps/docs/src/content/docs/guide/observability.md
+  s_be9fab125be153::t_3582682e53b244 181,187,190-192,198
+apps/docs/src/content/docs/guide/react.md
+  s_be9fab125be153::t_72b75e45bb4c3b 99-100
+apps/docs/src/content/docs/guide/sandboxes.md
+  s_be9fab125be153::t_27accf18b2807e 63,172-173
+apps/docs/src/content/docs/guide/tools.md
+  s_be9fab125be153::t_54e55ada6faf82 26,55,64,122,150
+apps/docs/src/content/docs/reference/agent-api.md
+  s_be9fab125be153::t_e0119d1440f9ad 495,505
+apps/docs/src/content/docs/reference/configuration.md
+  s_be9fab125be153::t_b52897228b2ee7 76,134-141
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_be9fab125be153::t_d3df0653d0d9a0 25-26,200,223,239
+apps/docs/src/content/docs/reference/errors.md
+  s_be9fab125be153::t_506a952d1135d6 4,54,60-61,65-69,89,206,210,213
+apps/docs/src/content/docs/reference/events.md
+  s_be9fab125be153::t_347f41eb562756 4,111,115,118-119,142-237,256,537,539-550,552,586
+apps/docs/src/content/docs/reference/provider-api.md
+  s_be9fab125be153::t_c0ac1650a7a999 78,103-104
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_be9fab125be153::t_5c7baed6d5e953 26,86,103,151,154-158,165-184,222,224,233,421-422,424
+apps/docs/src/content/docs/reference/streaming-protocol.md
+  s_be9fab125be153::t_f9c1cc2ea839fb 138,181
+apps/docs/src/content/docs/sdk/errors.md
+  s_be9fab125be153::t_39df595c905e21 4,36-37,43-47,49
+apps/docs/src/content/docs/sdk/flue-client.md
+  s_be9fab125be153::t_1a673db16024e7 253,261-271
+apps/www/astro.config.mjs
+  s_be9fab125be153::t_2988051dcb6b5d 14
+apps/www/src/components/BlogCover.astro
+  s_be9fab125be153::t_7ccf5e980cd202 2-12,15-49
+apps/www/src/layouts/BlogLayout.astro
+  s_be9fab125be153::t_154d6e753d5442 12,16,101
+apps/www/src/pages/blog/flue-2-0.mdx
+  s_be9fab125be153::t_f92de824083d0a 1-180
+apps/www/src/pages/index.astro
+  s_be9fab125be153::t_3d6edb62249fe9 8-10,416-418
+apps/www/src/styles/global.css
+  s_be9fab125be153::t_fa3a832cd2e0d2 86,104,124,139-142,153,168,170-171,177
+blueprints/channel--discord.md
+  s_be9fab125be153::t_2bb9342e9b2883 107
+blueprints/channel--github.md
+  s_be9fab125be153::t_f37d0a435a9481 146
+blueprints/channel--google-chat.md
+  s_be9fab125be153::t_677196a845fc3c 165
+blueprints/channel--intercom.md
+  s_be9fab125be153::t_03e3d5b54aa008 157-162
+blueprints/channel--linear.md
+  s_be9fab125be153::t_bea9f357b6b034 155,164-167
+blueprints/channel--messenger.md
+  s_be9fab125be153::t_b066f644126f14 139-141
+blueprints/channel--notion.md
+  s_be9fab125be153::t_4520eb8313470f 119-124
+blueprints/channel--resend.md
+  s_be9fab125be153::t_51315583ee3a03 98
+blueprints/channel--salesforce-marketing-cloud.md
+  s_be9fab125be153::t_fef942fb81c6b9 294
+blueprints/channel--shopify.md
+  s_be9fab125be153::t_12473c70a29e2e 165
+blueprints/channel--slack.md
+  s_be9fab125be153::t_210cc91d94dffd 110-113
+blueprints/channel--stripe.md
+  s_be9fab125be153::t_6bd48698235049 99-103
+blueprints/channel--teams.md
+  s_be9fab125be153::t_2e21e38c791c64 116
+blueprints/channel--telegram.md
+  s_be9fab125be153::t_004c6af001eff6 172
+blueprints/channel--twilio.md
+  s_be9fab125be153::t_6c92c9e4491b67 144
+blueprints/channel--whatsapp.md
+  s_be9fab125be153::t_295a2476081d7f 181
+blueprints/channel--zendesk.md
+  s_be9fab125be153::t_af634c346974d9 256
+blueprints/database--mongodb.md
+  s_be9fab125be153::t_9f61dd0feda438 22,235,264
+blueprints/database--redis.md
+  s_be9fab125be153::t_1bb0b262d8f8e9 80-81
+blueprints/database--valkey.md
+  s_be9fab125be153::t_1add445b10610f 82-83
+blueprints/sandbox--boxd.md
+  s_be9fab125be153::t_3622d4086b8e0f 4,48,172-177,266,268,381-384
+blueprints/sandbox--cloudflare-shell.md
+  s_be9fab125be153::t_fc217ec96b26f6 4,39
+blueprints/sandbox--daytona.md
+  s_be9fab125be153::t_871b6dc25d399f 4,38,111-116,184-185,258-261
+blueprints/sandbox--exedev.md
+  s_be9fab125be153::t_1b32abb9112f99 4,47,506-511,516,533-535,698-702,747
+blueprints/sandbox--islo.md
+  s_be9fab125be153::t_487262cfc693d7 125-130
+blueprints/sandbox--modal.md
+  s_be9fab125be153::t_8233e176f0c14e 4,61,138-143,214-215,344-348
+blueprints/tooling--braintrust.md
+  s_be9fab125be153::t_911d503de4a3d8 2,68
+blueprints/tooling--sentry.md
+  s_be9fab125be153::t_572e37590bd724 2,17-23,74-75,89,184-187,200-221,359,440-443,453-469,500-508,568-573
+blueprints/tooling.md
+  s_be9fab125be153::t_fe5580182fedb3 2
+demo/src/components/chat/message-item.tsx
+  s_be9fab125be153::t_96271b1315a486 23,147-151
+demo/src/components/chat/message-list.tsx
+  s_be9fab125be153::t_7eefa34634d54b 22-25,34-38,41,45,49-52,77
+examples/cloudflare/src/agents/skills-from-r2.ts
+  s_be9fab125be153::t_3f25c272855eb2 58
+examples/discord-channel/src/channels/discord.ts
+  s_be9fab125be153::t_27c08d18e375be 70
+examples/github-channel/src/channels/github.ts
+  s_be9fab125be153::t_791ebac6e53336 108
+examples/google-chat-channel/src/channels/google-chat.ts
+  s_be9fab125be153::t_36d597af906182 112
+examples/hello-world/src/agents/compaction-test.ts
+  s_be9fab125be153::t_f5ce79aacaf1a6 28
+examples/hello-world/src/agents/fs-surface-test.ts
+  s_be9fab125be153::t_047b50e2d12b02 35
+examples/hello-world/src/agents/fs-test.ts
+  s_be9fab125be153::t_9e95653a9ecf68 30
+examples/hello-world/src/agents/hello.ts
+  s_be9fab125be153::t_6339ae05fd8215 31
+examples/hello-world/src/agents/local-env-smoke.ts
+  s_be9fab125be153::t_207d6729987827 34
+examples/hello-world/src/agents/with-abort.ts
+  s_be9fab125be153::t_112366cf0e569a 61-65,67-73
+examples/hello-world/src/agents/with-image.ts
+  s_be9fab125be153::t_9d2df8a5e59321 21
+examples/hello-world/src/agents/with-registered-provider.ts
+  s_be9fab125be153::t_1724f931220255 40
+examples/hello-world/src/agents/with-request.ts
+  s_be9fab125be153::t_9640d15eb17dd0 12
+examples/hello-world/src/agents/with-sandbox.ts
+  s_be9fab125be153::t_546522f3f66211 42-50
+examples/hello-world/src/agents/with-skill.ts
+  s_be9fab125be153::t_c016e0b565e1fb 19
+examples/hello-world/src/agents/with-thinking.ts
+  s_be9fab125be153::t_632e0345f312b5 22
+examples/hello-world/src/agents/with-tools.ts
+  s_be9fab125be153::t_d7d9854dd3e0e8 39
+examples/imported-skill/src/agents/with-custom-bash.ts
+  s_be9fab125be153::t_1a080aab858fa6 15
+examples/imported-skill/src/agents/with-imported-skill.ts
+  s_be9fab125be153::t_51356f421a06ec 19
+examples/intercom-channel/src/channels/intercom.ts
+  s_be9fab125be153::t_da2050f1162415 66-71
+examples/linear-channel/src/channels/linear.ts
+  s_be9fab125be153::t_8ef9a79ddbd3d9 116,124-127
+examples/messenger-channel/src/channels/messenger.ts
+  s_be9fab125be153::t_6dd8f1054fb420 71-73
+examples/notion-channel/src/channels/notion.ts
+  s_be9fab125be153::t_97585ff98990d8 68
+examples/react-chat/src/agents/demo.ts
+  s_be9fab125be153::t_8299d6ba157ecf 57
+examples/resend-channel/src/channels/resend.ts
+  s_be9fab125be153::t_a7a16e74d27f74 59
+examples/salesforce-marketing-cloud-channel/src/channels/salesforce-marketing-cloud.ts
+  s_be9fab125be153::t_a389a8e1732cbc 100
+examples/sentry/src/agents/assistant.ts
+  s_be9fab125be153::t_841c78fdac9a29 12-17
+examples/sentry/src/agents/explicit.ts
+  s_be9fab125be153::t_8d8c1cb9224005 31
+examples/sentry/src/agents/hello.ts
+  s_be9fab125be153::t_f2a5e772fec03a 16
+examples/sentry/src/sentry.ts
+  s_be9fab125be153::t_2d8076653ad234 1,24-25,130-133,146-167
+examples/shopify-channel/src/channels/shopify.ts
+  s_be9fab125be153::t_9b45e93315e807 83
+examples/slack-channel/src/channels/slack.ts
+  s_be9fab125be153::t_db0563688d7a4f 75-78
+examples/stripe-channel/src/channels/stripe.ts
+  s_be9fab125be153::t_6a731cfea5ddf4 79
+examples/teams-channel/src/channels/teams.ts
+  s_be9fab125be153::t_8696af7d9a45ac 63
+examples/telegram-channel/src/channels/telegram.ts
+  s_be9fab125be153::t_649379849a9d0d 122
+examples/twilio-channel/src/channels/twilio.ts
+  s_be9fab125be153::t_a884bcfa66668d 80
+examples/whatsapp-channel/src/channels/whatsapp.ts
+  s_be9fab125be153::t_b7f0458ffb6d32 72
+examples/zendesk-channel/src/channels/zendesk.ts
+  s_be9fab125be153::t_01f943a5e7301e 70
+packages/cli/src/lib/init.ts
+  s_be9fab125be153::t_6b9e2a411502cc 247-249
+packages/discord/README.md
+  s_be9fab125be153::t_eacc1448b2f0e3 36-38
+packages/google-chat/README.md
+  s_be9fab125be153::t_9e1427f0f78c55 49-51
+packages/intercom/README.md
+  s_be9fab125be153::t_00f53dd224e093 28-31
+packages/libsql/src/libsql-adapter.ts
+  s_be9fab125be153::t_88e46c41d5a404 27,31,35,148,156,159-160,162-188,190,721-739
+packages/linear/README.md
+  s_be9fab125be153::t_06c27283bad2af 35-38
+packages/mongodb/src/mongodb-adapter.ts
+  s_be9fab125be153::t_b5eacb1ff4eb59 3-5,25-33,76-87,92-94,121-132,141,150,152
+packages/mongodb/src/submission-store.ts
+  s_be9fab125be153::t_a32fc2fc6f238b 367-383
+packages/mysql/src/mysql-adapter.ts
+  s_be9fab125be153::t_b866c81b1d1d8d 15,20,24,261,270,274,276-314,850-868
+packages/opentelemetry/src/index.ts
+  s_be9fab125be153::t_49773ad912adbc 12,14-15,27,37,39,47-51,66-68,86-89,100-112,154,156,163,217-226,228,236,244,251,272-274,281,284,292,294,312,350,353-356,389,407,417-418,420,462-463,465,467,475,580-581,589,655,664-666,672,675-678,680,687-689,696,713,722-724,735-749,787,799,801-807,812-813,827-828,839-865
+packages/opentelemetry/src/logs.ts
+  s_be9fab125be153::t_ba10b599b9ab12 23-43
+packages/postgres/src/postgres-adapter.ts
+  s_be9fab125be153::t_5ba9ed92db1c30 26,30,34,126,134,137-138,140-166,168,708-726
+packages/react/README.md
+  s_be9fab125be153::t_b4a0bf011c7608 47,67-68,95
+packages/react/src/agent-reducer.ts
+  s_be9fab125be153::t_c19770b2900d90 4,30-36,67,251
+packages/react/src/agent-session.ts
+  s_be9fab125be153::t_f5ad3fe92608a1 119
+packages/react/src/index.ts
+  s_be9fab125be153::t_c193689800933a 4-8
+packages/react/src/types.ts
+  s_be9fab125be153::t_24cd3254fe8aa6 4-8
+packages/react/src/use-agent.ts
+  s_be9fab125be153::t_c7d6e53a5448c5 12
+packages/redis/src/redis-adapter.ts
+  s_be9fab125be153::t_36b44dbb1ff58b 13,18,24,50,142,144-161,163-187,590-618
+packages/redis/src/redis-scripts.ts
+  s_be9fab125be153::t_05c395a956effe 150-169
+packages/runtime/src/adapter.ts
+  s_be9fab125be153::t_54e3d09959b477 77,83,85
+packages/runtime/src/agent-client.ts
+  s_be9fab125be153::t_694388773132e6 33-37,76,133-135,226-228,436,439-442
+packages/runtime/src/agent-execution-store.ts
+  s_be9fab125be153::t_fad21afaba2645 311-327,406,412,415,417,424,428,430
+packages/runtime/src/agent.ts
+  s_be9fab125be153::t_9f76fd21133d56 37-46,388-390,397
+packages/runtime/src/client.ts
+  s_be9fab125be153::t_8510230529cf08 125-132
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_be9fab125be153::t_b4145d17e20c9e 8,11,17,25,29-30,32,36-39,46,194,227-233,238-245,539-552,555-572,581-587,594-599,611-616,672-680,702-710,731-764,787-799,821,872-886,975,984-985,991,993,996-1054,1069-1076,1086,1116-1119,1121-1174,1176-1208,1211-1213,1217-1218,1226-1228
+packages/runtime/src/cloudflare/agent-execution-store.ts
+  s_be9fab125be153::t_240b725bc3c3c1 2,16-36,42-50,72
+packages/runtime/src/cloudflare/cf-sandbox.ts
+  s_be9fab125be153::t_e0de51617a0c82 113-117,164,180-181,280-285
+packages/runtime/src/cloudflare/internal.ts
+  s_be9fab125be153::t_8437f3995a74d7 9-16,21
+packages/runtime/src/cloudflare/tracing/attributes.ts
+  s_be9fab125be153::t_9336d99062790b 23,37-39,43-49,59-60
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_be9fab125be153::t_b77bcd55254fdd 23-28,34-37,41,47,49-50,91,105-106,154-159,162,203,209,213-244,247-250,261,272,279,295,304-310,313,321,329,345-360,364,369-371,374-383,389-391,398,400,412-413,420,430-431,433,454,456,460,468,535-566,608,613,621-625,632-633,636,642-643
+packages/runtime/src/cloudflare/worker-config.ts
+  s_be9fab125be153::t_36b55b0e33465d 17,141-147,160-165
+packages/runtime/src/cloudflare/workers-ai-provider.ts
+  s_be9fab125be153::t_7918b20b40a63b 7-13,31,40,48-50,311-319,650,672-869,884-947,1126-1129,1151,1174-1201
+packages/runtime/src/config.ts
+  s_be9fab125be153::t_8516196cb13557 81-90,127,163,344-345,372
+packages/runtime/src/conversation-projections.ts
+  s_be9fab125be153::t_9c38fbfc13a334 77-88,111-116,143,149-154,156,158,413,426
+packages/runtime/src/conversation-public.ts
+  s_be9fab125be153::t_45790677fdb013 35-44,148-168,322,339,491,497
+packages/runtime/src/conversation-records.ts
+  s_be9fab125be153::t_a5f7ed3e9f1357 248-255,320-326
+packages/runtime/src/conversation-reducer.ts
+  s_be9fab125be153::t_7379fc0c44f09a 54-60,614-616,683,777-782
+packages/runtime/src/errors.ts
+  s_be9fab125be153::t_df172a2b878841 101-103,332-359,424-452,521,532,534-535,538-539,1132-1135,1144-1156,1158-1169,1171,1175,1186-1189,1191-1226,1228-1238,1242-1253,1264-1270,1290,1306,1310-1347,1352-1355,1357,1376-1378,1380-1384,1386
+packages/runtime/src/format-version.ts
+  s_be9fab125be153::t_4de8d134ed1deb 2,4,12,16,18-19,21,24-25,32-34,36,48,51,53-95
+packages/runtime/src/hooks/use-tool.ts
+  s_be9fab125be153::t_63adafef657fe1 46-52,55
+packages/runtime/src/index.ts
+  s_be9fab125be153::t_e2874921ba9cfd 43,99-104,172
+packages/runtime/src/instrumentation.ts
+  s_be9fab125be153::t_7f59408eca346e 62-71
+packages/runtime/src/internal.ts
+  s_be9fab125be153::t_0d8730140a0141 36-40,54-58
+packages/runtime/src/node/agent-coordinator.ts
+  s_be9fab125be153::t_f7a49effa14e62 5-10,16,21,23,27-28,30,35-38,40,52-54,59-64,115,119-121,123,135-136,147,155-181,354,363,381-395,474-482,519-527,539-547,608-639,642-654,657-667,673-679,686-691,701-711,734-739,750-759,780-788,800,815-827,864-865,867,870-915,924,933-938,945-950,989-997,1005,1018,1024,1026,1031-1086,1102-1109,1119,1212-1219
+packages/runtime/src/node/assemble.ts
+  s_be9fab125be153::t_ea1a8f19a432de 20,27-40,123-126,156,172,190,199-210,212-218
+packages/runtime/src/node/local-env.ts
+  s_be9fab125be153::t_be5d9073aa5436 144-150
+packages/runtime/src/runtime/agent-routes.ts
+  s_be9fab125be153::t_fe545e7a4bbb0d 15,54,76,84,91,99,110-111,113-114,116-141
+packages/runtime/src/runtime/agent-submissions.ts
+  s_be9fab125be153::t_5c1124f0e19185 10-11,22,32,35,142,146-147,162-167,332,338-340,343-346,356-430,496,547,580,596,668-747,771-776,810-822,894,933,986,1013-1025,1058,1077-1089,1148-1150,1257-1261,1267,1277-1284,1288-1296,1317-1319
+packages/runtime/src/runtime/channel-routes.ts
+  s_be9fab125be153::t_cd8f97acf48bee 70
+packages/runtime/src/runtime/conversation-stream-store.ts
+  s_be9fab125be153::t_dbd3445e5b2429 5
+packages/runtime/src/runtime/dev-lifecycle-logger.ts
+  s_be9fab125be153::t_cf2d8e1635cdce 1,3-9,13-21,23-24
+packages/runtime/src/runtime/dispatch.ts
+  s_be9fab125be153::t_82c8dd85e8a2f3 3,5,18-21,23-30
+packages/runtime/src/runtime/events.ts
+  s_be9fab125be153::t_86212f6f244d6f 4-9,77-137
+packages/runtime/src/runtime/flue-app.ts
+  s_be9fab125be153::t_bd76059ee136dc 193
+packages/runtime/src/runtime/handle-agent.ts
+  s_be9fab125be153::t_b957314af4f9f9 103-104,108-110,117,125,131
+packages/runtime/src/runtime/handle-conversation-routes.ts
+  s_be9fab125be153::t_02ab1b1a651f38 1-4,13,26,139-142,167-188,190,192,209,231,240-245,337-341
+packages/runtime/src/runtime/ids.ts
+  s_be9fab125be153::t_5630452efe9167 80-119,135-145
+packages/runtime/src/runtime/registration.ts
+  s_be9fab125be153::t_bec60ac9e110ba 332
+packages/runtime/src/runtime/schemas.ts
+  s_be9fab125be153::t_8af886bd135e9d 91-114,122-124,130,135,138,149
+packages/runtime/src/sandbox.ts
+  s_be9fab125be153::t_15d4bd1628558f 17-137,245-247,256-261,263-265,325-330,368-379,381,386,393-409,411-412
+packages/runtime/src/session-identity.ts
+  s_be9fab125be153::t_5dc434c29838a0 90-92
+packages/runtime/src/session.ts
+  s_be9fab125be153::t_3c5a5e8b1bea05 41,183,2510-2514,2858,2868,2885-2891,3860-3861,3874-3877,4097-4118,5286-5289
+packages/runtime/src/sql-agent-execution-store.ts
+  s_be9fab125be153::t_0ac871eccd5ab4 46,470-489
+packages/runtime/src/sql-attachment-store.ts
+  s_be9fab125be153::t_8904d9d36beb46 12,31
+packages/runtime/src/submission-state.ts
+  s_be9fab125be153::t_2bf9d352d3473c 53-59,113-119,122-127,244-258,261,325-356,442-448
+packages/runtime/src/telemetry/content.ts
+  s_be9fab125be153::t_294d8d380c302b 7-8,13-18,21-26,66-71,75-82,87-91,125-128,131-132,138-196
+packages/runtime/src/telemetry/index.ts
+  s_be9fab125be153::t_1a36aedd042445 17-18,22-23,26
+packages/runtime/src/telemetry/semconv.ts
+  s_be9fab125be153::t_f1b1d1e060af26 11-18
+packages/runtime/src/telemetry/truncate.ts
+  s_be9fab125be153::t_c6fe3276c6cee5 22
+packages/runtime/src/test-utils/define-store-contract-tests.ts
+  s_be9fab125be153::t_3f96138b35df64 22,81-109,569-700,1397-1444
+packages/runtime/src/tool-entrypoint.ts
+  s_be9fab125be153::t_a2d1ca292e2c55 9
+packages/runtime/src/tool-types.ts
+  s_be9fab125be153::t_ff8f86e0a57e9e 67-90,119-123,127-129
+packages/runtime/src/tool.ts
+  s_be9fab125be153::t_0612ed0d0eed63 183-258,290-292
+packages/runtime/src/types.ts
+  s_be9fab125be153::t_24b1c40dce038a 30,109-120,150-156,279-286,1259-1304
+packages/sdk/src/client.ts
+  s_be9fab125be153::t_c75f48fc39e418 180,186
+packages/sdk/src/http.ts
+  s_be9fab125be153::t_c1632e877bc1ca 37-44,46-48,52,154-160,172-179,182,184
+packages/sdk/src/public/conversation-stream.ts
+  s_be9fab125be153::t_1212e50c6b7039 133-147,174,189,195-210,318-322
+packages/sdk/src/public/conversation.ts
+  s_be9fab125be153::t_e072b013afe576 125-133,169-178
+packages/sdk/src/public/follow-policy.ts
+  s_be9fab125be153::t_71eb2660358f16 1-70
+packages/sdk/src/public/observe.ts
+  s_be9fab125be153::t_0847d92cd48db0 9-15,68-73,96-99,101-103,110-115,133-138,149-152,157-161,166,178-198,205,212,216-233,250-252,254,272-276,279-281,302,318-320
+packages/sdk/src/public/send.ts
+  s_be9fab125be153::t_4953f44457ca3e 51-62,72-74,85-90,98-100,104-106
+packages/sdk/src/public/settle.ts
+  s_be9fab125be153::t_4b4678a88cdd35 5,8-14,22-25,66-89,98-214,216-217,221,248-266
+packages/sdk/src/public/stream.ts
+  s_be9fab125be153::t_2eeb8fba34850d 7-36,81-88,215
+packages/slack/README.md
+  s_be9fab125be153::t_8c3c3e5d4db04c 64-68
+packages/vite/src/bootstrap/node-server.ts
+  s_be9fab125be153::t_818262820b2ffa 29,38-43,45-51,165-167,169-170
+packages/vite/src/cloudflare-entry.ts
+  s_be9fab125be153::t_f95e6b570bc02f 35-40,49,51,121,150-162,233-235
+packages/vite/src/flue-plugin.ts
+  s_be9fab125be153::t_1d961ac47a8c93 553
+packages/vite/src/index.ts
+  s_be9fab125be153::t_f49a54a3196410 20-26
+packages/vite/src/types.ts
+  s_be9fab125be153::t_a669b86a2a8bdd 1-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "60d96af17553fd9729a7978fbfff97d77eecd0f7",
+  "prompts": {},
+  "sessions": {
+    "s_be9fab125be153": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f944f1d8-30b8-48d9-8787-665ddf9f3a67",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
