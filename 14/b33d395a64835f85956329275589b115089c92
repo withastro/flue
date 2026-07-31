@@ -1,0 +1,23 @@
+packages/runtime/test/conversation-record-retention.test.ts
+  s_a171be6212abe3::t_389af9f90674f6 383-385,796-797,804,807,809-815,858,863,928-946,988-991,993-996,1150,1155,1166-1186
+packages/runtime/test/conversation-reducer.test.ts
+  s_a171be6212abe3::t_a0538b8eaae5e8 660,662,664,666-690,2278-2280,2282-2284,2315-2319,2334-2341
+packages/runtime/src/conversation-reducer.ts
+  s_a171be6212abe3::t_1413d0143df782 115-127,261-265,386,525,619-625,808-813,1269,1288,1326
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "14b33d395a64835f85956329275589b115089c92",
+  "prompts": {},
+  "sessions": {
+    "s_a171be6212abe3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff004b74-6c8f-45cd-aa89-043710878de7",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
