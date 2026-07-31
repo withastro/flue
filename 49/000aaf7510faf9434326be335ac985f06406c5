@@ -1,0 +1,19 @@
+packages/mysql/vitest.config.ts
+  s_716e1578402bb6::t_5d6a3255e533a0 1-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "49000aaf7510faf9434326be335ac985f06406c5",
+  "prompts": {},
+  "sessions": {
+    "s_716e1578402bb6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a4b3a505ec6dd08b7",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
