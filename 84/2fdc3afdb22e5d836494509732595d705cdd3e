@@ -1,0 +1,61 @@
+apps/docs/src/content/docs/ecosystem/databases/libsql.md
+  s_30124aaca1099b::t_ada0f3687e1235 141
+apps/docs/src/content/docs/ecosystem/databases/mongodb.md
+  s_30124aaca1099b::t_bd7ee69b0c6ae1 79,113,142
+apps/docs/src/content/docs/ecosystem/databases/postgres.md
+  s_30124aaca1099b::t_5d0887324ef765 110
+apps/docs/src/content/docs/ecosystem/databases/redis.md
+  s_30124aaca1099b::t_220d0d446939c6 107-108
+apps/docs/src/content/docs/ecosystem/databases/supabase.md
+  s_30124aaca1099b::t_0820c7d4019dbc 127
+apps/docs/src/content/docs/ecosystem/databases/turso.md
+  s_30124aaca1099b::t_2cf9d6f9766412 138
+apps/docs/src/content/docs/ecosystem/databases/valkey.md
+  s_30124aaca1099b::t_868a59d516bd1f 111-112
+apps/docs/src/content/docs/guide/database.md
+  s_30124aaca1099b::t_69b740aa40943b 118
+blueprints/database--mongodb.md
+  s_30124aaca1099b::t_76f8c017249a23 22,235,264
+blueprints/database--redis.md
+  s_30124aaca1099b::t_159399a0627625 80-81
+blueprints/database--valkey.md
+  s_30124aaca1099b::t_d3e5b43d66a80d 82-83
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_f56eccde2f69cd::t_63131549479d2b 488,490
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_30124aaca1099b::t_ddaafd719c49dd 25-26,200,223,239
+apps/docs/src/content/docs/reference/errors.md
+  s_130e1369180a42::t_8676aef12acfbc 89,206,210,213
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "842fdc3afdb22e5d836494509732595d705cdd3e",
+  "prompts": {},
+  "sessions": {
+    "s_130e1369180a42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad7bd76d142c4a7e9",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_30124aaca1099b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "806e502e-ac34-47ec-93aa-b8d85ed5ac1b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_f56eccde2f69cd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a648ed3dfb0c74d29",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}

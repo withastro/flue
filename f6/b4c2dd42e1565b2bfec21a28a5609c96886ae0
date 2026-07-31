@@ -1,0 +1,87 @@
+packages/postgres/test/postgres-adapter.test.ts
+  s_30124aaca1099b::t_43cd7c7dcba26c 10,63-90,144,149-150,152-155,165,174,193,200,219
+packages/runtime/src/adapter.ts
+  s_30124aaca1099b::t_b5691b58bdd020 77,83,85
+packages/runtime/src/agent-execution-store.ts
+  s_30124aaca1099b::t_a03a4a07ac89bf 406,412,415,417,424,428,430
+packages/runtime/src/errors.ts
+  s_30124aaca1099b::t_0eff09219794c1 521,532,534-535,538-539
+packages/runtime/src/format-version.ts
+  s_30124aaca1099b::t_08203c2ac02d0f 2,4,12,16,18-19,21,24-25,32-34,36,48,51,53-95
+packages/runtime/src/runtime/conversation-stream-store.ts
+  s_30124aaca1099b::t_9bb2f661d72e64 5
+packages/runtime/src/session-identity.ts
+  s_30124aaca1099b::t_0f3f9227479f4e 90-92
+packages/runtime/src/sql-agent-execution-store.ts
+  s_30124aaca1099b::t_51fb94125bd73f 46
+packages/runtime/src/sql-attachment-store.ts
+  s_30124aaca1099b::t_29c9f081278fa8 12,31
+packages/runtime/test/format-version.test.ts
+  s_30124aaca1099b::t_bae40965f641a0 3-4,32-33,53,64,67,71-100
+packages/libsql/src/libsql-adapter.ts
+  s_6feaf994416f57::t_230393e7d38d0d 27,31,35,148,156,159-160,162-188,190
+packages/libsql/test/libsql-adapter.test.ts
+  s_6feaf994416f57::t_6137d54ccb700d 17,108-135,256,261-262,264-267,277,286,305,312,331
+packages/mongodb/src/mongodb-adapter.ts
+  s_30124aaca1099b::t_609ceae9667e06 3-5,25-33,76-87,92-94,121-132,141,150,152
+packages/mongodb/test/mongodb-adapter.test.ts
+  s_6feaf994416f57::t_6c1042283c3d81 2,234-262,353,359-360,364,368,374-375
+packages/mongodb/test/mongodb-unit.test.ts
+  s_130e1369180a42::t_01885b540f8962 5,15,62,73,95,118-120,126-193
+packages/mysql/src/mysql-adapter.ts
+  s_6feaf994416f57::t_2b161822d3206a 15,20,24,261,270,274,276-314
+packages/mysql/test/mysql-adapter.test.ts
+  s_6feaf994416f57::t_cbc1761dfa332d 1,75-104,147,151,153,165
+packages/postgres/src/postgres-adapter.ts
+  s_6feaf994416f57::t_c47bb524827f59 26,30,34,126,134,137-138,140-166,168
+packages/redis/src/redis-adapter.ts
+  s_6feaf994416f57::t_1056c72fb5769b 13,18,24,142,144-161,163-187
+packages/redis/test/redis-adapter.test.ts
+  s_215fe7419a26e0::t_e50b0ec8e6851e 2,86-112,189-239,376,381,384-385
+packages/runtime/test/agent-execution-store-contract.test.ts
+  s_6feaf994416f57::t_b66f7ac64f0cbe 18,36-37,50-54,81-87,92-117,122-168,378,386,389,393,419,431,439,444
+packages/runtime/src/test-utils/define-store-contract-tests.ts
+  s_6feaf994416f57::t_30961ecfd93348 22,81-109,1397-1444
+packages/runtime/test/cloudflare-agent-execution-store.test.ts
+  s_6feaf994416f57::t_4d1667ac7175e3 305
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f6b4c2dd42e1565b2bfec21a28a5609c96886ae0",
+  "prompts": {},
+  "sessions": {
+    "s_130e1369180a42": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad7bd76d142c4a7e9",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_215fe7419a26e0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a1c62f84b9cae372b",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_30124aaca1099b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "806e502e-ac34-47ec-93aa-b8d85ed5ac1b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_6feaf994416f57": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab2d5151b2653e5f7",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
