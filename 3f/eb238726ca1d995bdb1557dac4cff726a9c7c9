@@ -1,0 +1,19 @@
+CHANGELOG.md
+  s_6feaf994416f57::t_330166cc0810cd 7-18,53,57-61,69,97-106
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3feb238726ca1d995bdb1557dac4cff726a9c7c9",
+  "prompts": {},
+  "sessions": {
+    "s_6feaf994416f57": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ab2d5151b2653e5f7",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}

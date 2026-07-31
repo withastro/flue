@@ -1,0 +1,27 @@
+packages/runtime/src/telemetry/content.ts
+  s_5e6fe1ae5f4b3c::t_426edd7b7c6caa 7-8,13-18,21-26,66-71,75-82,87-91,125-128,131-132,138-196
+packages/runtime/src/telemetry/index.ts
+  s_5e6fe1ae5f4b3c::t_c21f61a0244fe4 17-18,22-23,26
+packages/runtime/src/telemetry/truncate.ts
+  s_5e6fe1ae5f4b3c::t_5dc788c410649f 22
+packages/runtime/test/package-entrypoints.test.ts
+  s_5e6fe1ae5f4b3c::t_ec0ba470d14ad7 114-115,118
+packages/runtime/test/telemetry-content.test.ts
+  s_5e6fe1ae5f4b3c::t_8b8d8bedd72775 8-10,252-281,297-397
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "0d7a4ed7ac1bf665e3b6cb0804b3b787c8446a38",
+  "prompts": {},
+  "sessions": {
+    "s_5e6fe1ae5f4b3c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d3e32998-cfad-4258-8393-a3ae1a21f051",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}

@@ -1,0 +1,63 @@
+apps/docs/src/content/docs/guide/react.md
+  s_6ae5a9129c229c::t_d743475f848db7 99-100
+apps/docs/src/content/docs/reference/streaming-protocol.md
+  s_6ae5a9129c229c::t_385db0766d5ec0 138,181
+apps/docs/src/content/docs/sdk/flue-client.md
+  s_6ae5a9129c229c::t_1191b9235eed02 253,261-271
+demo/src/components/chat/message-item.tsx
+  s_6ae5a9129c229c::t_29adfdf4068ac2 23,147-151
+demo/src/components/chat/message-list.tsx
+  s_6ae5a9129c229c::t_038389d5c2a7e0 22-25,34-38,41,45,49-52,77
+packages/react/README.md
+  s_6ae5a9129c229c::t_aa17f57f2875ec 47,67-68,95
+packages/react/src/agent-reducer.ts
+  s_6ae5a9129c229c::t_b553770774a0d4 4,30-36,67,251
+packages/react/src/agent-session.ts
+  s_6ae5a9129c229c::t_2f811452611e14 119
+packages/react/src/index.ts
+  s_6ae5a9129c229c::t_320fdfecfa6e11 4-8
+packages/react/src/types.ts
+  s_6ae5a9129c229c::t_3bec1d54070b27 4-8
+packages/react/src/use-agent.ts
+  s_6ae5a9129c229c::t_04711044fefccd 12
+packages/react/test/agent-reducer.test.ts
+  s_6ae5a9129c229c::t_012ee562d3ab0f 43-60
+packages/runtime/src/conversation-projections.ts
+  s_6ae5a9129c229c::t_1c39c42569c57a 77-88,111-116,143,149-154,156,158,413,426
+packages/runtime/src/conversation-records.ts
+  s_6ae5a9129c229c::t_1d956055119d4b 248-255,320-326
+packages/runtime/src/conversation-reducer.ts
+  s_6ae5a9129c229c::t_9690e7041243a6 54-60,614-616,683,777-782
+packages/runtime/test/cloudflare-agent-coordinator.test.ts
+  s_6ae5a9129c229c::t_3c970930256754 7,1188-1212,1214-1225
+packages/runtime/test/conversation-reducer.test.ts
+  s_6ae5a9129c229c::t_0c5d6a3d2ff22f 316-397,2230-2332
+packages/runtime/src/conversation-public.ts
+  s_14200ecc19f70e::t_ad22a63e055813 35-44,148-168,322,339,491,497
+packages/sdk/src/public/conversation.ts
+  s_14200ecc19f70e::t_05924e93500d2b 125-133,169-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a922b2ebb3c380b8b09af8bd2448e9039f96660d",
+  "prompts": {},
+  "sessions": {
+    "s_14200ecc19f70e": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a45abef01d36502dd",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_6ae5a9129c229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e638a87a-60a6-468c-9182-4add0d2ba122",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}

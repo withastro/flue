@@ -1,0 +1,29 @@
+packages/opentelemetry/src/index.ts
+  s_5e6fe1ae5f4b3c::t_4a13cebfb04f39 12,14-15,47-51,66-68,154,156,163,217-226,228,236,244,251,281,284,292,294,312,350,389,407,417-418,420,462-463,465,467,475,580-581,589,655,664-666,672,675-678,680,687-689,696,713,722-723,787,799,812-813,827-828
+packages/opentelemetry/test/index.test.ts
+  s_5bb2b0b6ae4178::t_182683b6005cb9 1284-1351
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "56fa664c9beb35da288b72ca3d8ea705469fa559",
+  "prompts": {},
+  "sessions": {
+    "s_5bb2b0b6ae4178": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a35155f70f0558689",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_5e6fe1ae5f4b3c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d3e32998-cfad-4258-8393-a3ae1a21f051",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}

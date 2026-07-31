@@ -1,0 +1,205 @@
+.flue/agents/pr-redirect.ts
+  s_6ae5a9129c229c::t_d74d224fe30f80 199
+apps/docs/src/content/docs/ecosystem/channels/discord.md
+  s_6ae5a9129c229c::t_197f582db5b6ea 247
+apps/docs/src/content/docs/ecosystem/channels/github.md
+  s_6ae5a9129c229c::t_99eb97e2089350 231
+apps/docs/src/content/docs/ecosystem/channels/google-chat.md
+  s_6ae5a9129c229c::t_328c2c28ee9b93 326
+apps/docs/src/content/docs/ecosystem/channels/intercom.md
+  s_6ae5a9129c229c::t_3b1a82f971aa1f 174
+apps/docs/src/content/docs/ecosystem/channels/linear.md
+  s_6ae5a9129c229c::t_3ab9f0855551e0 219,228-231
+apps/docs/src/content/docs/ecosystem/channels/messenger.md
+  s_6ae5a9129c229c::t_168cc38bfdb13d 194
+apps/docs/src/content/docs/ecosystem/channels/notion.md
+  s_6ae5a9129c229c::t_e1514a3b3f209a 183-188
+apps/docs/src/content/docs/ecosystem/channels/resend.md
+  s_6ae5a9129c229c::t_275aa5d71a6873 149
+apps/docs/src/content/docs/ecosystem/channels/salesforce-marketing-cloud.md
+  s_6ae5a9129c229c::t_ee40fd333e04cb 210
+apps/docs/src/content/docs/ecosystem/channels/shopify.md
+  s_6ae5a9129c229c::t_6872c373b51c52 223
+apps/docs/src/content/docs/ecosystem/channels/slack.md
+  s_6ae5a9129c229c::t_3c5e1d1dacae12 247
+apps/docs/src/content/docs/ecosystem/channels/stripe.md
+  s_6ae5a9129c229c::t_2aaf6f4997bab3 167-171
+apps/docs/src/content/docs/ecosystem/channels/teams.md
+  s_6ae5a9129c229c::t_30869ac4077f66 159
+apps/docs/src/content/docs/ecosystem/channels/telegram.md
+  s_6ae5a9129c229c::t_34ae035bacb041 242
+apps/docs/src/content/docs/ecosystem/channels/twilio.md
+  s_6ae5a9129c229c::t_a54584ddf4fb77 214
+apps/docs/src/content/docs/ecosystem/channels/whatsapp.md
+  s_6ae5a9129c229c::t_6565cdad315b77 262
+apps/docs/src/content/docs/ecosystem/channels/zendesk.md
+  s_6ae5a9129c229c::t_544d6c8cf6f36c 185
+apps/docs/src/content/docs/ecosystem/deploy/github-actions.md
+  s_6ae5a9129c229c::t_6b64a43e991e07 274
+apps/docs/src/content/docs/ecosystem/deploy/gitlab-ci.md
+  s_6ae5a9129c229c::t_27c0b0780a6ec1 284
+apps/docs/src/content/docs/ecosystem/deploy/node.md
+  s_6ae5a9129c229c::t_d80e2a85ecffd6 156
+apps/docs/src/content/docs/guide/channels.md
+  s_6ae5a9129c229c::t_b1641c772a52fc 181
+apps/docs/src/content/docs/guide/durability.md
+  s_6ae5a9129c229c::t_bc604e6c14e110 82
+apps/docs/src/content/docs/guide/sandboxes.md
+  s_6ae5a9129c229c::t_3c22e6788622a4 63
+apps/docs/src/content/docs/guide/tools.md
+  s_6ae5a9129c229c::t_bf08f4c164f5e8 26,55,64,122,150
+apps/docs/src/content/docs/reference/agent-api.md
+  s_6ae5a9129c229c::t_cdcaf6670e03a9 495,505
+blueprints/channel--discord.md
+  s_6ae5a9129c229c::t_59591a4da71536 107
+blueprints/channel--github.md
+  s_6ae5a9129c229c::t_f3c57cd11fb7f4 146
+blueprints/channel--google-chat.md
+  s_6ae5a9129c229c::t_3ce08080edba9f 165
+blueprints/channel--intercom.md
+  s_6ae5a9129c229c::t_b6405c93b45aff 157-162
+blueprints/channel--linear.md
+  s_6ae5a9129c229c::t_87b4e537e2742e 155,164-167
+blueprints/channel--messenger.md
+  s_6ae5a9129c229c::t_9cb462bae64db0 139-141
+blueprints/channel--notion.md
+  s_6ae5a9129c229c::t_dc5b44a0a32489 119-124
+blueprints/channel--resend.md
+  s_6ae5a9129c229c::t_66c89764b93327 98
+blueprints/channel--salesforce-marketing-cloud.md
+  s_6ae5a9129c229c::t_1b3cc0c401e526 294
+blueprints/channel--shopify.md
+  s_6ae5a9129c229c::t_df072e49cd7893 165
+blueprints/channel--slack.md
+  s_6ae5a9129c229c::t_b1792e128afd80 110-113
+blueprints/channel--stripe.md
+  s_6ae5a9129c229c::t_1f0f6669eabb24 99-103
+blueprints/channel--teams.md
+  s_6ae5a9129c229c::t_7893a96f5c62fd 116
+blueprints/channel--telegram.md
+  s_6ae5a9129c229c::t_14ef5fc8653579 172
+blueprints/channel--twilio.md
+  s_6ae5a9129c229c::t_4a007251b839b9 144
+blueprints/channel--whatsapp.md
+  s_6ae5a9129c229c::t_bf154850bcfa03 181
+blueprints/channel--zendesk.md
+  s_6ae5a9129c229c::t_3111657bcc7d02 256
+examples/cloudflare/src/agents/skills-from-r2.ts
+  s_6ae5a9129c229c::t_61f09b71648681 58
+examples/discord-channel/src/channels/discord.ts
+  s_6ae5a9129c229c::t_319b09ee58d642 70
+examples/github-channel/src/channels/github.ts
+  s_6ae5a9129c229c::t_5c5c01717ccb11 108
+examples/google-chat-channel/src/channels/google-chat.ts
+  s_6ae5a9129c229c::t_29f12d0f454a6a 112
+examples/hello-world/src/agents/compaction-test.ts
+  s_6ae5a9129c229c::t_6dfc89845bd032 28
+examples/hello-world/src/agents/fs-surface-test.ts
+  s_6ae5a9129c229c::t_fef18196d2b864 35
+examples/hello-world/src/agents/fs-test.ts
+  s_6ae5a9129c229c::t_d4f70483ee07c2 30
+examples/hello-world/src/agents/hello.ts
+  s_6ae5a9129c229c::t_b136ba6740b72b 31
+examples/hello-world/src/agents/local-env-smoke.ts
+  s_6ae5a9129c229c::t_c5db09c4af82b6 34
+examples/hello-world/src/agents/with-abort.ts
+  s_6ae5a9129c229c::t_3f6e0064f90b3e 61-65,67-73
+examples/hello-world/src/agents/with-image.ts
+  s_6ae5a9129c229c::t_1d63f522e2d64e 21
+examples/hello-world/src/agents/with-registered-provider.ts
+  s_6ae5a9129c229c::t_89be4da14cc516 40
+examples/hello-world/src/agents/with-request.ts
+  s_6ae5a9129c229c::t_5b0bf704d7f5d0 12
+examples/hello-world/src/agents/with-sandbox.ts
+  s_6ae5a9129c229c::t_b9db2289ad5853 42-50
+examples/hello-world/src/agents/with-skill.ts
+  s_6ae5a9129c229c::t_5904e4513f988c 19
+examples/hello-world/src/agents/with-thinking.ts
+  s_6ae5a9129c229c::t_0974ed57185a3c 22
+examples/hello-world/src/agents/with-tools.ts
+  s_6ae5a9129c229c::t_badda92415c1d3 39
+examples/imported-skill/src/agents/with-custom-bash.ts
+  s_6ae5a9129c229c::t_42d904438acf4a 15
+examples/imported-skill/src/agents/with-imported-skill.ts
+  s_6ae5a9129c229c::t_2039df3c68b436 19
+examples/intercom-channel/src/channels/intercom.ts
+  s_6ae5a9129c229c::t_f821002cd6670e 66-71
+examples/linear-channel/src/channels/linear.ts
+  s_6ae5a9129c229c::t_1785a28cd70d62 116,124-127
+examples/messenger-channel/src/channels/messenger.ts
+  s_6ae5a9129c229c::t_a3dfe6d311f09e 71-73
+examples/notion-channel/src/channels/notion.ts
+  s_6ae5a9129c229c::t_b98ac6968c7425 68
+examples/react-chat/src/agents/demo.ts
+  s_6ae5a9129c229c::t_1d6cbf5eba035d 57
+examples/resend-channel/src/channels/resend.ts
+  s_6ae5a9129c229c::t_a9535cb51051ce 59
+examples/salesforce-marketing-cloud-channel/src/channels/salesforce-marketing-cloud.ts
+  s_6ae5a9129c229c::t_f7367e9c5c1335 100
+examples/sentry/src/agents/assistant.ts
+  s_6ae5a9129c229c::t_d456934ec55cf2 12-17
+examples/sentry/src/agents/explicit.ts
+  s_6ae5a9129c229c::t_27b3494c23b233 31
+examples/sentry/src/agents/hello.ts
+  s_6ae5a9129c229c::t_c8750c9f2a1da9 16
+examples/shopify-channel/src/channels/shopify.ts
+  s_6ae5a9129c229c::t_51c145b34df149 83
+examples/slack-channel/src/channels/slack.ts
+  s_6ae5a9129c229c::t_c096ae918438e1 75-78
+examples/stripe-channel/src/channels/stripe.ts
+  s_6ae5a9129c229c::t_8da376e4dd6fdb 79
+examples/teams-channel/src/channels/teams.ts
+  s_6ae5a9129c229c::t_7a5b512866483e 63
+examples/telegram-channel/src/channels/telegram.ts
+  s_6ae5a9129c229c::t_e38589ba79c6d1 122
+examples/twilio-channel/src/channels/twilio.ts
+  s_6ae5a9129c229c::t_3a1cd0a908f191 80
+examples/whatsapp-channel/src/channels/whatsapp.ts
+  s_6ae5a9129c229c::t_c6240b426f39c3 72
+examples/zendesk-channel/src/channels/zendesk.ts
+  s_6ae5a9129c229c::t_a9e23de7b9c63b 70
+packages/runtime/src/hooks/use-tool.ts
+  s_6ae5a9129c229c::t_17763363ca628a 46-52,55
+packages/runtime/src/index.ts
+  s_6ae5a9129c229c::t_8b622c2e3deb70 166
+packages/runtime/src/session.ts
+  s_6ae5a9129c229c::t_2dd9372828170f 183,2510-2514,2858,2868,2885-2891,3860-3861,3874-3877,5286-5289
+packages/runtime/src/submission-state.ts
+  s_6ae5a9129c229c::t_d906b8bda34090 53-59,113-119,122-127,244-258,261,325-356,442-448
+packages/runtime/src/tool-entrypoint.ts
+  s_6ae5a9129c229c::t_e6727edd587669 9
+packages/runtime/src/tool-types.ts
+  s_6ae5a9129c229c::t_2bd6cd4776abf9 67-90,119-123,127-129
+packages/runtime/src/tool.ts
+  s_6ae5a9129c229c::t_bc0249fac62cb3 183-258,290-292
+packages/runtime/src/types.ts
+  s_6ae5a9129c229c::t_48c2d074e019c2 30
+packages/runtime/test/agent-harness-tool.test.ts
+  s_6ae5a9129c229c::t_2925c95e73d518 671
+packages/runtime/test/crash-window-sweep.test.ts
+  s_6ae5a9129c229c::t_431d85d4fdcf28 386-517
+packages/runtime/test/durable-tool.test.ts
+  s_6ae5a9129c229c::t_b5440d0c577196 162,223-224,228,399,543,549
+packages/runtime/test/session-operations.test.ts
+  s_6ae5a9129c229c::t_97dc60dba24408 770
+packages/runtime/test/submission-state.test.ts
+  s_6ae5a9129c229c::t_c5ec39f7247dcc 21-41,226-318,741-787
+packages/runtime/test/tool.test.ts
+  s_6ae5a9129c229c::t_3028b9f0c26403 66,128,179,217,228,239-357,438,483,667,674,696-785,809,877
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "49183dd5b3fe4e2810d60336a883b630f2a04038",
+  "prompts": {},
+  "sessions": {
+    "s_6ae5a9129c229c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e638a87a-60a6-468c-9182-4add0d2ba122",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}

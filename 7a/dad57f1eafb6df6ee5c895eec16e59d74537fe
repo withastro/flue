@@ -1,0 +1,19 @@
+apps/docs/src/content/docs/reference/provider-api.md
+  s_a171be6212abe3::t_c7cb1f406c975a 78,103-104
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "7adad57f1eafb6df6ee5c895eec16e59d74537fe",
+  "prompts": {},
+  "sessions": {
+    "s_a171be6212abe3": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ff004b74-6c8f-45cd-aa89-043710878de7",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
