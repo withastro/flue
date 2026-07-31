@@ -1,0 +1,587 @@
+.flue/agents/pr-redirect.ts
+  s_30124aaca1099b::t_6a15c403731509 199
+.github/dependabot.yml
+  s_30124aaca1099b::t_8820a32a1c9aba 1-6
+.github/workflows/approve-contributor.yml
+  s_30124aaca1099b::t_8dc57f7d8fcff6 9-10,19
+.github/workflows/pr-redirect.yml
+  s_30124aaca1099b::t_971ae39dc01a3f 29-30,45,85-87,90,93
+CHANGELOG.md
+  s_30124aaca1099b::t_e916b63df9ec75 3,7-18,34-40,44,46-47,52,54-60,65-68,70,85-107
+apps/docs/package.json
+  s_30124aaca1099b::t_0e95d22999be60 16
+apps/docs/src/content/docs/ecosystem/channels/discord.md
+  s_30124aaca1099b::t_2ae3ab209bb8ac 247
+apps/docs/src/content/docs/ecosystem/channels/github.md
+  s_30124aaca1099b::t_ab9ac8a3dfe5c3 231
+apps/docs/src/content/docs/ecosystem/channels/google-chat.md
+  s_30124aaca1099b::t_92eef597ce7f01 326
+apps/docs/src/content/docs/ecosystem/channels/intercom.md
+  s_30124aaca1099b::t_e71611d6ada12f 174
+apps/docs/src/content/docs/ecosystem/channels/linear.md
+  s_30124aaca1099b::t_832806bb81ca3f 219,228-231
+apps/docs/src/content/docs/ecosystem/channels/messenger.md
+  s_30124aaca1099b::t_27b5cbdf883671 194
+apps/docs/src/content/docs/ecosystem/channels/notion.md
+  s_30124aaca1099b::t_af8f371ca93966 183-188
+apps/docs/src/content/docs/ecosystem/channels/resend.md
+  s_30124aaca1099b::t_3dea3ecd213512 149
+apps/docs/src/content/docs/ecosystem/channels/salesforce-marketing-cloud.md
+  s_30124aaca1099b::t_0858123b6d6b31 210
+apps/docs/src/content/docs/ecosystem/channels/shopify.md
+  s_30124aaca1099b::t_ce5c4485a04288 223
+apps/docs/src/content/docs/ecosystem/channels/slack.md
+  s_30124aaca1099b::t_7adabf96e906a1 247
+apps/docs/src/content/docs/ecosystem/channels/stripe.md
+  s_30124aaca1099b::t_11a65f1f7c00ef 167-171
+apps/docs/src/content/docs/ecosystem/channels/teams.md
+  s_30124aaca1099b::t_1d260086b8bd3a 159
+apps/docs/src/content/docs/ecosystem/channels/telegram.md
+  s_30124aaca1099b::t_782fc90cca19d7 242
+apps/docs/src/content/docs/ecosystem/channels/twilio.md
+  s_30124aaca1099b::t_3a6c6b21e49893 214
+apps/docs/src/content/docs/ecosystem/channels/whatsapp.md
+  s_30124aaca1099b::t_63bc3163db364c 262
+apps/docs/src/content/docs/ecosystem/channels/zendesk.md
+  s_30124aaca1099b::t_6b031626616c49 185
+apps/docs/src/content/docs/ecosystem/databases/libsql.md
+  s_30124aaca1099b::t_53a31461b09afe 141
+apps/docs/src/content/docs/ecosystem/databases/mongodb.md
+  s_30124aaca1099b::t_69a2cd7e9df3b5 79,113,142
+apps/docs/src/content/docs/ecosystem/databases/postgres.md
+  s_30124aaca1099b::t_6217ce2d8506d7 110
+apps/docs/src/content/docs/ecosystem/databases/redis.md
+  s_30124aaca1099b::t_f73ca92e784f84 107-108
+apps/docs/src/content/docs/ecosystem/databases/supabase.md
+  s_30124aaca1099b::t_90eeaf68d75ee5 127
+apps/docs/src/content/docs/ecosystem/databases/turso.md
+  s_30124aaca1099b::t_3852fdb1b23a4d 138
+apps/docs/src/content/docs/ecosystem/databases/valkey.md
+  s_30124aaca1099b::t_489bb9917aae79 111-112
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_30124aaca1099b::t_7c0e4035907829 488,490,571
+apps/docs/src/content/docs/ecosystem/deploy/github-actions.md
+  s_30124aaca1099b::t_a50f29e71e8164 274
+apps/docs/src/content/docs/ecosystem/deploy/gitlab-ci.md
+  s_30124aaca1099b::t_02d5d3e58f01d1 284
+apps/docs/src/content/docs/ecosystem/deploy/node.md
+  s_30124aaca1099b::t_c0b6055e1f7d02 156
+apps/docs/src/content/docs/ecosystem/tooling/opentelemetry.md
+  s_30124aaca1099b::t_8d0cdd346b6bc2 66
+apps/docs/src/content/docs/guide/channels.md
+  s_30124aaca1099b::t_382e7f650c9d6c 52-54,72,79,184
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_30124aaca1099b::t_ea470f888dc74f 112,361,364,367,375,390
+apps/docs/src/content/docs/guide/database.md
+  s_30124aaca1099b::t_3123eb415208a6 118
+apps/docs/src/content/docs/guide/durability.md
+  s_30124aaca1099b::t_ae600726f9cb5b 82
+apps/docs/src/content/docs/guide/observability.md
+  s_30124aaca1099b::t_578c8f2c5572a9 181,187,190-192,198
+apps/docs/src/content/docs/guide/react.md
+  s_30124aaca1099b::t_0dd5341a466abe 99-100
+apps/docs/src/content/docs/guide/sandboxes.md
+  s_30124aaca1099b::t_c970a25f3680fc 63,172-173
+apps/docs/src/content/docs/guide/tools.md
+  s_30124aaca1099b::t_17e930f6fae02f 26,55,64,122,150
+apps/docs/src/content/docs/reference/agent-api.md
+  s_30124aaca1099b::t_f80c2502651ec7 495,505
+apps/docs/src/content/docs/reference/configuration.md
+  s_30124aaca1099b::t_237044b644628d 76,134-141
+apps/docs/src/content/docs/reference/data-persistence-api.md
+  s_30124aaca1099b::t_d595806d707438 25-26,163-167,177,206,229,245
+apps/docs/src/content/docs/reference/errors.md
+  s_30124aaca1099b::t_c7aee3d0e90ac0 4,54,60-61,65-69,89,206,210,213
+apps/docs/src/content/docs/reference/events.md
+  s_30124aaca1099b::t_82527e3f832b24 4,111,115,118-119,142-237,256,537,539-550,552,586
+apps/docs/src/content/docs/reference/provider-api.md
+  s_30124aaca1099b::t_c71d5c8b8d725c 78,103-104
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_30124aaca1099b::t_63ee8ca4e5035f 26,86,103,151,154-158,165-184,222,224,233,421-422,424
+apps/docs/src/content/docs/reference/streaming-protocol.md
+  s_30124aaca1099b::t_47d7d06f6de801 138,181
+apps/docs/src/content/docs/sdk/errors.md
+  s_30124aaca1099b::t_a9ac0244c960ad 4,36-37,43-47,49
+apps/docs/src/content/docs/sdk/flue-client.md
+  s_30124aaca1099b::t_21f5d4dec17426 253,261-271
+apps/www/astro.config.mjs
+  s_30124aaca1099b::t_cdf11330569311 14
+apps/www/package.json
+  s_30124aaca1099b::t_bbef0074d98443 14-16,18
+apps/www/src/components/BlogCover.astro
+  s_30124aaca1099b::t_163eb0ebbc189f 2-12,15-49
+apps/www/src/layouts/BlogLayout.astro
+  s_30124aaca1099b::t_7360b94b33f284 12-13,17-18,54,60,103
+apps/www/src/pages/blog/flue-2-0.mdx
+  s_30124aaca1099b::t_81234a233e4e1a 1-181
+apps/www/src/pages/index.astro
+  s_30124aaca1099b::t_4483e024051f0e 8-10,416-418
+apps/www/src/styles/global.css
+  s_30124aaca1099b::t_b0019ceb33d0c5 86,104,124,139-142,153,168,170-171,177
+blueprints/channel--discord.md
+  s_30124aaca1099b::t_3d07703dd54944 107
+blueprints/channel--github.md
+  s_30124aaca1099b::t_70e627c96749e2 146
+blueprints/channel--google-chat.md
+  s_30124aaca1099b::t_222eaaea48fe6c 165
+blueprints/channel--intercom.md
+  s_30124aaca1099b::t_074eb4cf84755a 157-162
+blueprints/channel--linear.md
+  s_30124aaca1099b::t_2ba828f2a3150a 155,164-167
+blueprints/channel--messenger.md
+  s_30124aaca1099b::t_42d5939dc3cb80 139-141
+blueprints/channel--notion.md
+  s_30124aaca1099b::t_ab78c2e1e06b79 119-124
+blueprints/channel--resend.md
+  s_30124aaca1099b::t_ed0e735c117de6 98
+blueprints/channel--salesforce-marketing-cloud.md
+  s_30124aaca1099b::t_3efadc573b7cf0 294
+blueprints/channel--shopify.md
+  s_30124aaca1099b::t_5b28b6d7a75789 165
+blueprints/channel--slack.md
+  s_30124aaca1099b::t_6cd756b1d00b5c 110-113
+blueprints/channel--stripe.md
+  s_30124aaca1099b::t_8bdd099056797f 99-103
+blueprints/channel--teams.md
+  s_30124aaca1099b::t_24921297084fde 116
+blueprints/channel--telegram.md
+  s_30124aaca1099b::t_95fa7cf9d54bbe 172
+blueprints/channel--twilio.md
+  s_30124aaca1099b::t_364be3498fa462 144
+blueprints/channel--whatsapp.md
+  s_30124aaca1099b::t_68f5433571c7fc 181
+blueprints/channel--zendesk.md
+  s_30124aaca1099b::t_fd7e9c77a4c30b 256
+blueprints/database--mongodb.md
+  s_30124aaca1099b::t_f808e763c615dc 22,235,264
+blueprints/database--redis.md
+  s_30124aaca1099b::t_c5cc1994cfefa2 80-81
+blueprints/database--valkey.md
+  s_30124aaca1099b::t_93c94c81f24598 82-83
+blueprints/sandbox--boxd.md
+  s_30124aaca1099b::t_f5921071539d13 4,48,172-177,266,268,381-384
+blueprints/sandbox--cloudflare-shell.md
+  s_30124aaca1099b::t_fa098f134c5877 4,39
+blueprints/sandbox--daytona.md
+  s_30124aaca1099b::t_2576ad310f50be 4,38,111-116,184-185,258-261
+blueprints/sandbox--exedev.md
+  s_30124aaca1099b::t_22af5405d142fc 4,47,506-511,516,533-535,698-702,747
+blueprints/sandbox--islo.md
+  s_30124aaca1099b::t_b84340683c9c68 125-130
+blueprints/sandbox--modal.md
+  s_30124aaca1099b::t_e7962cbcf115f4 4,61,138-143,214-215,344-348
+blueprints/tooling--braintrust.md
+  s_30124aaca1099b::t_f9fe5dee2389f0 2,68
+blueprints/tooling--sentry.md
+  s_30124aaca1099b::t_1fdad183f6289c 2,17-23,74-75,89,184-187,200-221,359,440-443,453-469,500-508,568-573
+blueprints/tooling.md
+  s_30124aaca1099b::t_7c1eaf4e50a308 2
+demo/src/components/chat/message-item.tsx
+  s_30124aaca1099b::t_8412ff7da3ad2a 23,147-151
+demo/src/components/chat/message-list.tsx
+  s_30124aaca1099b::t_85c671b9d44d94 22-25,34-38,41,45,49-52,77
+examples/assistant/package.json
+  s_30124aaca1099b::t_923165984b53cf 8
+examples/braintrust/package.json
+  s_30124aaca1099b::t_d93d6ceb154641 11
+examples/chat-sdk/package.json
+  s_30124aaca1099b::t_c7eaebb332b5f5 13,15
+examples/cloudflare/package.json
+  s_30124aaca1099b::t_f98ea92a4fbd25 14
+examples/cloudflare/src/agents/skills-from-r2.ts
+  s_30124aaca1099b::t_9c4f78a7d646bd 58
+examples/discord-channel/package.json
+  s_30124aaca1099b::t_10514f96ce6293 20,23
+examples/discord-channel/src/channels/discord.ts
+  s_30124aaca1099b::t_9d18019d1476af 70
+examples/github-channel/package.json
+  s_30124aaca1099b::t_6639bdfa001d92 18,21
+examples/github-channel/src/channels/github.ts
+  s_30124aaca1099b::t_8894f7ee23ff6d 108
+examples/google-chat-channel/package.json
+  s_30124aaca1099b::t_8d6f9d1e8cf23d 20,23
+examples/google-chat-channel/src/channels/google-chat.ts
+  s_30124aaca1099b::t_e959148d86879f 112
+examples/hello-world/package.json
+  s_30124aaca1099b::t_c3953b9bbced55 7,9
+examples/hello-world/src/agents/compaction-test.ts
+  s_30124aaca1099b::t_cd53352cbe7a66 28
+examples/hello-world/src/agents/fs-surface-test.ts
+  s_30124aaca1099b::t_a1794e139fad21 35
+examples/hello-world/src/agents/fs-test.ts
+  s_30124aaca1099b::t_277a27eb065a05 30
+examples/hello-world/src/agents/hello.ts
+  s_30124aaca1099b::t_846738c1dca445 31
+examples/hello-world/src/agents/local-env-smoke.ts
+  s_30124aaca1099b::t_8055a1cb992c30 34
+examples/hello-world/src/agents/with-abort.ts
+  s_30124aaca1099b::t_f45ddc8aa2ca96 61-65,67-73
+examples/hello-world/src/agents/with-image.ts
+  s_30124aaca1099b::t_a33527abdbd545 21
+examples/hello-world/src/agents/with-registered-provider.ts
+  s_30124aaca1099b::t_fae2fef5f0b1d4 40
+examples/hello-world/src/agents/with-request.ts
+  s_30124aaca1099b::t_a4f99c1219c50c 12
+examples/hello-world/src/agents/with-sandbox.ts
+  s_30124aaca1099b::t_3c940f5f836e6d 42-50
+examples/hello-world/src/agents/with-skill.ts
+  s_30124aaca1099b::t_14027cfe3c68c0 19
+examples/hello-world/src/agents/with-thinking.ts
+  s_30124aaca1099b::t_868595aca01800 22
+examples/hello-world/src/agents/with-tools.ts
+  s_30124aaca1099b::t_e7473b4dfd75be 39
+examples/imported-skill/package.json
+  s_30124aaca1099b::t_04f21a7248a349 7
+examples/imported-skill/src/agents/with-custom-bash.ts
+  s_30124aaca1099b::t_3bc4767d9021a0 15
+examples/imported-skill/src/agents/with-imported-skill.ts
+  s_30124aaca1099b::t_ca864df774611f 19
+examples/intercom-channel/package.json
+  s_30124aaca1099b::t_9bedc5d34184b0 20,24
+examples/intercom-channel/src/channels/intercom.ts
+  s_30124aaca1099b::t_6e04b78ce97931 66-71
+examples/linear-channel/package.json
+  s_30124aaca1099b::t_a7ea5da6eac51a 18,21
+examples/linear-channel/src/channels/linear.ts
+  s_30124aaca1099b::t_231417444e5582 116,124-127
+examples/messenger-channel/package.json
+  s_30124aaca1099b::t_7ab2b583996069 19,22
+examples/messenger-channel/src/channels/messenger.ts
+  s_30124aaca1099b::t_d2852ac6c8f6cf 71-73
+examples/notion-channel/package.json
+  s_30124aaca1099b::t_321a8a5a87d484 20,24
+examples/notion-channel/src/channels/notion.ts
+  s_30124aaca1099b::t_4f1f3e434f9fb4 68
+examples/react-chat/package.json
+  s_30124aaca1099b::t_1915b4cfbf18af 12,17
+examples/react-chat/src/agents/demo.ts
+  s_30124aaca1099b::t_4d1654718699dc 57
+examples/resend-channel/package.json
+  s_30124aaca1099b::t_3bb67bf8366582 19,24
+examples/resend-channel/src/channels/resend.ts
+  s_30124aaca1099b::t_ef5440aff7b0f2 59
+examples/salesforce-marketing-cloud-channel/package.json
+  s_30124aaca1099b::t_3c2913ecee6add 18,22
+examples/salesforce-marketing-cloud-channel/src/channels/salesforce-marketing-cloud.ts
+  s_30124aaca1099b::t_effc9103fe1a66 100
+examples/sentry/src/agents/assistant.ts
+  s_30124aaca1099b::t_73fa3cc32f6760 12-17
+examples/sentry/src/agents/explicit.ts
+  s_30124aaca1099b::t_c7b6109b9817eb 31
+examples/sentry/src/agents/hello.ts
+  s_30124aaca1099b::t_c73d0421130048 16
+examples/sentry/src/sentry.ts
+  s_30124aaca1099b::t_208614631f28d0 1,24-25,130-133,146-167
+examples/shopify-channel/package.json
+  s_30124aaca1099b::t_6542f813b24c40 19,23
+examples/shopify-channel/src/channels/shopify.ts
+  s_30124aaca1099b::t_ead6aff2121aa0 83
+examples/slack-channel/package.json
+  s_30124aaca1099b::t_a3711fc5dafa30 18,21
+examples/slack-channel/src/channels/slack.ts
+  s_30124aaca1099b::t_63971a10652a33 75-78
+examples/stripe-channel/package.json
+  s_30124aaca1099b::t_c9febf8cf31faa 19,23
+examples/stripe-channel/src/channels/stripe.ts
+  s_30124aaca1099b::t_d565d3df0edd7a 79
+examples/teams-channel/package.json
+  s_30124aaca1099b::t_8928ee8d8006a3 17,20
+examples/teams-channel/src/channels/teams.ts
+  s_30124aaca1099b::t_150b40b50575d1 63
+examples/telegram-channel/package.json
+  s_30124aaca1099b::t_da1f19b2039602 18,21
+examples/telegram-channel/src/channels/telegram.ts
+  s_30124aaca1099b::t_b2079d211b7ac0 122
+examples/twilio-channel/package.json
+  s_30124aaca1099b::t_a619797a49f4e5 19,22
+examples/twilio-channel/src/channels/twilio.ts
+  s_30124aaca1099b::t_8b2ddbf5967df4 80
+examples/whatsapp-channel/package.json
+  s_30124aaca1099b::t_3943662b75fb26 20,23
+examples/whatsapp-channel/src/channels/whatsapp.ts
+  s_30124aaca1099b::t_1ac5c22a9f6921 72
+examples/zendesk-channel/package.json
+  s_30124aaca1099b::t_88fd18817f7514 20,24
+examples/zendesk-channel/src/channels/zendesk.ts
+  s_30124aaca1099b::t_de7ffe9cfd8b6a 70
+packages/cli/package.json
+  s_30124aaca1099b::t_f8d5a674a8718d 3
+packages/cli/src/lib/init.ts
+  s_30124aaca1099b::t_6f6b9e5c67c45d 247-249
+packages/discord/README.md
+  s_30124aaca1099b::t_351b3780e31b52 36-38
+packages/discord/package.json
+  s_30124aaca1099b::t_77a60ebefe6063 3,33-34,40
+packages/github/package.json
+  s_30124aaca1099b::t_f29a4637050b5b 3,34,40
+packages/google-chat/README.md
+  s_30124aaca1099b::t_8ff978c1182541 49-51
+packages/google-chat/package.json
+  s_30124aaca1099b::t_84818a13c4e9c6 3,33-34,40
+packages/intercom/README.md
+  s_30124aaca1099b::t_5a48e538a822bf 28-31
+packages/intercom/package.json
+  s_30124aaca1099b::t_6adaf628337a53 3,33,39
+packages/libsql/package.json
+  s_30124aaca1099b::t_e8466069e86bbf 3
+packages/libsql/src/libsql-adapter.ts
+  s_30124aaca1099b::t_2770f3386688d9 27,31,35,148,156,159-186,188,269-277,728-746
+packages/linear/README.md
+  s_30124aaca1099b::t_7ff739d489e070 35-38
+packages/linear/package.json
+  s_30124aaca1099b::t_d6c5e652297924 3,33-34,40
+packages/messenger/package.json
+  s_30124aaca1099b::t_27d3a86aba83b8 3,33,39
+packages/mongodb/package.json
+  s_30124aaca1099b::t_f9baf2f43b1248 3
+packages/mongodb/src/conversation-store.ts
+  s_30124aaca1099b::t_f3611c82849f65 2,206-245,252-254
+packages/mongodb/src/mongodb-adapter.ts
+  s_30124aaca1099b::t_c46694f2369a0d 3-5,25-33,76-87,92-94,121-132,141,150,152
+packages/mongodb/src/schema.ts
+  s_30124aaca1099b::t_1608ca3b68c5a1 44
+packages/mongodb/src/submission-store.ts
+  s_30124aaca1099b::t_408f7005cb4683 367-383
+packages/mysql/package.json
+  s_30124aaca1099b::t_aafef9031faf2b 3
+packages/mysql/src/mysql-adapter.ts
+  s_30124aaca1099b::t_004900e45b0161 15,20,24,113-119,209-213,223,267-272,280,289,293,295-333,342,870-888
+packages/notion/package.json
+  s_30124aaca1099b::t_cc1b34e60f2a0f 3,33,41,43
+packages/opentelemetry/package.json
+  s_30124aaca1099b::t_cbf78d906472fe 3,41
+packages/opentelemetry/src/index.ts
+  s_30124aaca1099b::t_cb76f9d32ff235 12,14-15,27,37,39,47-51,66-68,86-89,100-112,154,156,163,206-210,222-231,233,241,249,256,277-279,286,289,297,299,317,355,358-361,394,412,422-423,425,467-468,470,472,480,510-545,621-622,630,696,705-707,713,716-719,721,728-730,737,754,763-772,783-797,835,847,849-855,860-861,875-876,887-913
+packages/opentelemetry/src/logs.ts
+  s_30124aaca1099b::t_c60de870ec0392 23-43
+packages/postgres/package.json
+  s_30124aaca1099b::t_b15c8009f4e914 3
+packages/postgres/src/postgres-adapter.ts
+  s_30124aaca1099b::t_dccc9d6f5ddcdb 26,30,34,126,134,137-164,166,247-255,715-733
+packages/react/README.md
+  s_30124aaca1099b::t_afdabf9a6f9e0b 47,67-68,95
+packages/react/package.json
+  s_30124aaca1099b::t_b82bb16a4cee2a 3
+packages/react/src/agent-reducer.ts
+  s_30124aaca1099b::t_3614cac7454f7f 4,30-36,67,251
+packages/react/src/agent-session.ts
+  s_30124aaca1099b::t_c3c2cd18189eaf 119
+packages/react/src/index.ts
+  s_30124aaca1099b::t_5fe2d7c5ae033c 4-8
+packages/react/src/types.ts
+  s_30124aaca1099b::t_9755f4575a7d71 4-8
+packages/react/src/use-agent.ts
+  s_30124aaca1099b::t_33d8c9faf57656 12
+packages/redis/package.json
+  s_30124aaca1099b::t_d94c8b9eca68cc 3
+packages/redis/src/conversation-store.ts
+  s_30124aaca1099b::t_1f3cf87fc92a06 2,241-278
+packages/redis/src/redis-adapter.ts
+  s_30124aaca1099b::t_cb5460ab64422d 13,18,24,50,142,144-161,163-187,590-618
+packages/redis/src/redis-keys.ts
+  s_30124aaca1099b::t_6b4d5adb2a586b 35
+packages/redis/src/redis-scripts.ts
+  s_30124aaca1099b::t_6153a4c5943834 150-169
+packages/resend/package.json
+  s_30124aaca1099b::t_8ca5a42dd335df 3,33,42,45
+packages/runtime/package.json
+  s_30124aaca1099b::t_2a875c4b73b4cd 3,87-88,90,99
+packages/runtime/src/adapter.ts
+  s_30124aaca1099b::t_a850c3bdc9a97a 77,83,85,119
+packages/runtime/src/agent-client.ts
+  s_30124aaca1099b::t_826accde1ca025 33-37,76,133-135,226-228,436,439-442
+packages/runtime/src/agent-execution-store.ts
+  s_30124aaca1099b::t_fb0550cdc3acee 311-327,406,412,415,417,424,428,430
+packages/runtime/src/agent.ts
+  s_30124aaca1099b::t_6299948ab2b833 37-46,388-390,397,621-631
+packages/runtime/src/client.ts
+  s_30124aaca1099b::t_00be89d9e771a0 125-132
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_30124aaca1099b::t_fd6aa27ac06a4a 8,11,13,18,26,30-31,33,37,44,192,225-231,236-243,323-348,557-559,562-575,578-595,604-610,617-622,634-639,656-659,676,689-697,699,719-727,748-781,804-816,838,889-903,992,1001-1002,1008,1010,1013-1070,1085-1092,1102,1132-1134,1136-1189,1191-1223,1226-1228,1232-1233,1241-1243
+packages/runtime/src/cloudflare/agent-execution-store.ts
+  s_30124aaca1099b::t_f5e579c9e3f40f 2,16-36,42-50,72
+packages/runtime/src/cloudflare/cf-sandbox.ts
+  s_30124aaca1099b::t_def1fa4c48859b 113-117,164,180-181,280-285
+packages/runtime/src/cloudflare/internal.ts
+  s_30124aaca1099b::t_056667d990b762 9-16,21
+packages/runtime/src/cloudflare/tracing/attributes.ts
+  s_30124aaca1099b::t_557a4825f2c1f6 23,37-39,43-49,59-62
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_30124aaca1099b::t_7c5f35e9147563 23-28,34-37,41,47,49-50,91,105-106,154-159,162,203,209-210,214-247,250-253,264,275,282,298,303-309,314-320,323,331,339,355-370,374,379-381,384-393,399-401,408,410,422-423,430,440-441,443,464,466,470,478,500-526,572-603,645,650,658-662,669-670,673,679-680
+packages/runtime/src/cloudflare/worker-config.ts
+  s_30124aaca1099b::t_8c1bf08377bf6a 17,141-147,160-165
+packages/runtime/src/cloudflare/workers-ai-provider.ts
+  s_30124aaca1099b::t_1d4acc7faa6626 7-13,31,40,48-50,89,312-320,651,673-876,891-954,1133-1136,1158,1181-1208
+packages/runtime/src/config.ts
+  s_30124aaca1099b::t_6b04b3039c711b 81-90,127,163,344-345,372
+packages/runtime/src/conversation-fold-checkpoint.ts
+  s_30124aaca1099b::t_fd9414c5e0ce38 1-259
+packages/runtime/src/conversation-fold-host.ts
+  s_30124aaca1099b::t_18c9c4cf7fe83c 1-184
+packages/runtime/src/conversation-projections.ts
+  s_30124aaca1099b::t_3df95e41aa18c1 77-88,111-116,143,149-154,156,158,413,426
+packages/runtime/src/conversation-public.ts
+  s_30124aaca1099b::t_710bae51b5e03f 35-44,148-168,322,339,491,497
+packages/runtime/src/conversation-reader.ts
+  s_30124aaca1099b::t_3d4098c2ea0d7c 1,10-12,18-19,35-41
+packages/runtime/src/conversation-records.ts
+  s_30124aaca1099b::t_5a7b90dc07c40a 248-255,320-326
+packages/runtime/src/conversation-reducer.ts
+  s_30124aaca1099b::t_46689e4561f689 54-60,115-127,165-175,272-276,318-335,415,430-435,481,561,655-662,677-679,746,840-849,851,854-868,895,966-977,1334,1353,1391
+packages/runtime/src/conversation-writer.ts
+  s_30124aaca1099b::t_419d66c984f237 1-2,56-58,66-67,84-90,92-97,263-274,295
+packages/runtime/src/errors.ts
+  s_30124aaca1099b::t_cb9fb50a5c007f 101-103,332-359,424-452,521,532,534-535,538-539,1132-1135,1144-1156,1158-1169,1171,1175,1186-1189,1191-1226,1228-1238,1242-1253,1264-1270,1290,1306,1310-1347,1352-1355,1357,1376-1378,1380-1384,1386
+packages/runtime/src/execution-interceptor.ts
+  s_30124aaca1099b::t_69d63df9426fa6 5-16
+packages/runtime/src/format-version.ts
+  s_30124aaca1099b::t_f02376fcee44f5 2,4,12,16,18-19,21,24-25,32-34,36,48,51,53-95
+packages/runtime/src/hooks/use-tool.ts
+  s_30124aaca1099b::t_934af8f124f0da 46-52,55
+packages/runtime/src/index.ts
+  s_30124aaca1099b::t_29fd825695d400 43,99-104,172
+packages/runtime/src/instrumentation.ts
+  s_30124aaca1099b::t_c01dfa9ffd39e7 62-71
+packages/runtime/src/internal.ts
+  s_30124aaca1099b::t_0c24194a2bfab7 36-40,54-58
+packages/runtime/src/node/agent-coordinator.ts
+  s_30124aaca1099b::t_d625a9773e86e4 5-10,16,21,23,27-28,30,35-38,40,52-54,59-64,115,119-121,123,135-136,147,155-181,354,363,381-395,474-482,519-527,539-547,608-639,642-654,657-667,673-679,686-691,701-711,734-739,750-759,780-788,800,815-827,864-865,867,870-915,924,933-938,945-950,989-997,1005,1018,1024,1026,1031-1086,1102-1109,1119,1212-1219
+packages/runtime/src/node/assemble.ts
+  s_30124aaca1099b::t_ca43ad55203415 20,27-40,123-126,156,172,190,199-210,212-218
+packages/runtime/src/node/local-env.ts
+  s_30124aaca1099b::t_c38655140258ae 144-150
+packages/runtime/src/runtime/agent-routes.ts
+  s_30124aaca1099b::t_5b28726a98989a 15,54,76,84,91,99,110-111,113-114,116-141
+packages/runtime/src/runtime/agent-submissions.ts
+  s_30124aaca1099b::t_96f03c87c7ff4a 10-11,22,32,35,142,146-147,162-167,332,338-340,343-346,356-430,496,547,580,596,668-747,771-776,810-822,894,933,986,1013-1025,1058,1077-1089,1148-1150,1257-1261,1267,1277-1284,1288-1296,1317-1319
+packages/runtime/src/runtime/channel-routes.ts
+  s_30124aaca1099b::t_50eafff61780c5 70
+packages/runtime/src/runtime/conversation-observer.ts
+  s_30124aaca1099b::t_ddf8cfd07a43b5 23-24,160-168,266
+packages/runtime/src/runtime/conversation-stream-store.ts
+  s_30124aaca1099b::t_97d3a0918de889 5,44-62,97-114,162-179,236-258,264-265,458-478,746,823-920
+packages/runtime/src/runtime/dev-lifecycle-logger.ts
+  s_30124aaca1099b::t_28ac9b52b33cd2 1,3-9,13-21,23-24
+packages/runtime/src/runtime/dispatch.ts
+  s_30124aaca1099b::t_fada61377b0b10 3,5,18-21,23-30
+packages/runtime/src/runtime/events.ts
+  s_30124aaca1099b::t_e9393c934e0372 4-9,77-137
+packages/runtime/src/runtime/flue-app.ts
+  s_30124aaca1099b::t_4e2d5edec75c58 193
+packages/runtime/src/runtime/handle-agent.ts
+  s_30124aaca1099b::t_834f066419609c 103-104,108-110,117,125,131
+packages/runtime/src/runtime/handle-conversation-routes.ts
+  s_30124aaca1099b::t_7be75f3b8594e4 2-7,12,25,64-70,132,135-138,163-184,186,188,201-219,241,250-256,347-348
+packages/runtime/src/runtime/ids.ts
+  s_30124aaca1099b::t_8319c0e0d68f7e 80-119,135-145
+packages/runtime/src/runtime/registration.ts
+  s_30124aaca1099b::t_1b097b63f29de6 332
+packages/runtime/src/runtime/schemas.ts
+  s_30124aaca1099b::t_a0bf60c0178481 91-114,122-124,130,135,138,149
+packages/runtime/src/runtime/sql-conversation-stream-store.ts
+  s_30124aaca1099b::t_3d1f9aa60f1069 6,277-327
+packages/runtime/src/sandbox.ts
+  s_30124aaca1099b::t_a65dc68cc510bc 17-137,245-247,256-261,263-265,325-330,368-379,381,386,393-409,411-412
+packages/runtime/src/session-identity.ts
+  s_30124aaca1099b::t_2d780b83a1ba48 90-92
+packages/runtime/src/session.ts
+  s_30124aaca1099b::t_1e01cb0310d11e 41,183,2510-2514,2858,2868,2885-2891,3860-3861,3874-3877,4097-4118,5286-5289
+packages/runtime/src/sql-agent-execution-store.ts
+  s_30124aaca1099b::t_271ce551fcfbb5 46,470-489
+packages/runtime/src/sql-attachment-store.ts
+  s_30124aaca1099b::t_fd3dd017b79f69 12,31
+packages/runtime/src/submission-state.ts
+  s_30124aaca1099b::t_1e0bbfd2412af6 53-59,113-119,122-127,244-258,261,325-356,442-448
+packages/runtime/src/telemetry/content.ts
+  s_30124aaca1099b::t_599093d8fbc24a 7-8,13-18,21-26,66-71,75-82,87-91,125-128,131-132,138-196
+packages/runtime/src/telemetry/index.ts
+  s_30124aaca1099b::t_5e968d4932d8cd 17-18,22-23,26
+packages/runtime/src/telemetry/semconv.ts
+  s_30124aaca1099b::t_1fcd1dda792958 11-18
+packages/runtime/src/telemetry/truncate.ts
+  s_30124aaca1099b::t_9c384ce7d41667 22
+packages/runtime/src/test-utils/define-conversation-stream-store-contract-tests.ts
+  s_30124aaca1099b::t_0f895986340da0 630-718
+packages/runtime/src/test-utils/define-store-contract-tests.ts
+  s_30124aaca1099b::t_d87d8b845195ea 22,81-109,569-700,1397-1444
+packages/runtime/src/tool-entrypoint.ts
+  s_30124aaca1099b::t_efd330068f888b 9
+packages/runtime/src/tool-types.ts
+  s_30124aaca1099b::t_45b33dea9e5a17 67-90,119-123,127-129
+packages/runtime/src/tool.ts
+  s_30124aaca1099b::t_c47db8036f3192 183-258,290-292
+packages/runtime/src/types.ts
+  s_30124aaca1099b::t_9ae85aa3fefc50 30,109-120,150-156,279-286,1259-1304
+packages/salesforce-marketing-cloud/package.json
+  s_30124aaca1099b::t_361a7cc60fdcf8 3,33,39
+packages/sdk/package.json
+  s_30124aaca1099b::t_dfd292e27d36df 3
+packages/sdk/src/client.ts
+  s_30124aaca1099b::t_11e7d5744f2456 180,186
+packages/sdk/src/http.ts
+  s_30124aaca1099b::t_b5fbc8b0cbbd04 37-44,46-48,52,154-160,172-179,182,184
+packages/sdk/src/public/conversation-stream.ts
+  s_30124aaca1099b::t_f5720d54196856 133-147,174,189,195-210,318-322
+packages/sdk/src/public/conversation.ts
+  s_30124aaca1099b::t_789aa397bbc97a 125-133,169-178
+packages/sdk/src/public/follow-policy.ts
+  s_30124aaca1099b::t_ee0cbc4a84d7ff 1-70
+packages/sdk/src/public/observe.ts
+  s_30124aaca1099b::t_de7fa4888d3afb 9-15,68-73,96-99,101-103,110-115,133-138,149-152,157-161,166,178-198,205,212,216-233,250-252,254,272-276,279-281,302,318-320
+packages/sdk/src/public/send.ts
+  s_30124aaca1099b::t_59ef367f0bcf35 51-62,72-74,85-90,98-100,104-106
+packages/sdk/src/public/settle.ts
+  s_30124aaca1099b::t_567a67e18bc245 5,8-14,22-25,66-89,98-214,216-217,221,248-266
+packages/sdk/src/public/stream.ts
+  s_30124aaca1099b::t_dfafc104a58c64 7-36,81-88,215
+packages/shopify/package.json
+  s_30124aaca1099b::t_f7c72a4918fe2a 3,33,40
+packages/slack/README.md
+  s_30124aaca1099b::t_2e31f6b0380d64 64-68
+packages/slack/package.json
+  s_30124aaca1099b::t_c391e0f5a59e5c 3,34,40
+packages/stripe/package.json
+  s_30124aaca1099b::t_992bb182ffa450 3,33,41,44
+packages/teams/package.json
+  s_30124aaca1099b::t_70f686128a7d3b 3,34-35,41
+packages/telegram/package.json
+  s_30124aaca1099b::t_258c688a5ea9e4 3,34,40
+packages/twilio/package.json
+  s_30124aaca1099b::t_1ee80d9454c741 3,33,39
+packages/vite/package.json
+  s_30124aaca1099b::t_ba03a9d901aad8 3,49-51
+packages/vite/src/bootstrap/node-server.ts
+  s_30124aaca1099b::t_60e5bbb6f4d297 29,38-43,45-51,165-167,169-170
+packages/vite/src/cloudflare-entry.ts
+  s_30124aaca1099b::t_ade259f323829a 35-40,49,51,121,150-162,233-235
+packages/vite/src/flue-plugin.ts
+  s_30124aaca1099b::t_93374102d0bab6 553
+packages/vite/src/index.ts
+  s_30124aaca1099b::t_acf230ba6ecf24 20-26
+packages/vite/src/types.ts
+  s_30124aaca1099b::t_9568bdb9241865 1-54
+packages/whatsapp/package.json
+  s_30124aaca1099b::t_80ad1282108994 3,34,40
+packages/zendesk/package.json
+  s_30124aaca1099b::t_3ca94a284b01b0 3,33,40
+pnpm-lock.yaml
+  s_30124aaca1099b::t_1f23c85755d707 13,20,26,32,35,38,47,49-50,53,56,69,72,77-78,80-81,83-84,87,89-90,100,103,127,133,152,155,164,167,179,190-191,194,198,201,210,218-219,222,235,241,244,246-247,252-253,256,259,262,269,278,281,287,290,295-296,299,306,309,318,321,336,342-343,351-352,358,361,376,382-383,391-392,398,401,413,416,422-423,431-432,438,441,447,449-450,455-456,459,462,475,483-484,487,490,500,503,515,525,527-528,537,539-540,546,549,561,564,570-571,579-580,586,589,601,607-608,616-617,623,626,638,648,660,663,670,672-673,682,684-685,691,694,699-700,712,714-715,734,746,758,761,765,767-768,777,782-783,789,792,804,808,810-811,820,822-823,829,832,847,850,863,878,882,884-885,894,896-897,903,906,921,927-928,936-937,943,946,958,961,964-965,974,976-977,983,986,995,1008,1020,1026-1027,1035-1036,1042,1045,1060,1066-1067,1075-1076,1082,1085,1097,1103-1104,1112-1113,1119,1122,1131,1150,1153,1156,1171,1177-1178,1186-1187,1193,1196,1208,1218,1220-1221,1230,1232-1233,1239,1242,1272,1282,1291,1296-1297,1299-1300,1303-1304,1310,1316,1324-1325,1328-1329,1335,1341,1346-1347,1349-1350,1353-1354,1360,1366,1371-1372,1375-1376,1382,1388,1401,1407,1412-1413,1415-1416,1419-1420,1426,1432,1437-1438,1441-1442,1448,1454,1470,1476,1486,1489,1495,1500-1501,1504-1505,1510-1511,1514,1517,1523,1535,1538,1541,1543-1544,1547,1553,1566,1572,1587,1596,1602,1618,1624,1632-1633,1636-1637,1643,1645-1646,1649,1655,1660-1661,1663-1664,1667,1669-1670,1676,1679,1689,1691-1692,1695,1698,1704,1709-1710,1713-1714,1720,1726,1739,1745,1750-1751,1757-1758,1764,1770,1778-1779,1782-1783,1789,1795,1800-1801,1804-1805,1811,1813-1814,1817,1823,1831-1832,1834-1835,1838-1839,1845,1851,1859-1860,1863-1864,1870,1876,1881-1882,1885-1886,1892,1901,1910,1913,1923,1925-1926,1928-1929,1931-1932,1935,1941,1944,1952-1953,1956-1957,1963,1969,1974-1975,1981-1982,1988,1994,2010-2011,2014-2015,2021-2022,2027-2028,2033-2034,2040-2041,2047-2048,2054-2055,2061-2062,2066-2067,2072-2073,2078-2079,2082-2083,2086-2087,2089-2090,2092-2093,2095-2096,2126-2127,2134-2135,2138-2139,2142-2143,2146-2147,2150-2151,2154-2155,2158-2159,2162-2163,2166-2167,2170-2171,2174-2175,2178-2179,2182,2184-2185,2188-2189,2192-2193,2196-2197,2200-2201,2208-2209,2220-2221,2360-2361,2365-2366,2371-2372,2377-2378,2384-2385,2391-2392,2398-2399,2405-2406,2411-2412,2517-2518,2521-2522,2525-2526,2540-2541,2545,2578-2579,2590-2591,2595,2597-2598,2604-2605,2610-2611,2616-2617,2622-2623,2628-2629,2634-2635,2645-2646,2648-2649,2651-2652,2654-2655,2674-2675,2678-2679,2692-2693,2701-2706,2710-2711,2910-2911,2929-2931,2941-2943,2953-2957,2963-2964,2973-2974,2983-2984,2995-2996,3007-3008,3019-3020,3031-3032,3043-3044,3055-3056,3067-3068,3079-3081,3093-3095,3107-3109,3121-3123,3135-3137,3149-3151,3163-3165,3177-3179,3191-3193,3199-3203,3209-3211,3221-3223,3233-3235,3353-3354,3377-3378,3381-3382,3385-3386,3395-3396,3399-3400,3406-3408,3410-3411,3434-3435,3529-3530,3535-3536,3547-3548,3559-3560,3565-3566,3571-3572,3577-3578,3583-3584,3589-3590,3595-3596,3601-3602,3607-3608,3613-3614,3619-3620,3625-3626,3637-3638,3643-3644,3649-3650,3655-3656,3661-3662,3667-3668,3679-3680,3685-3686,3691-3692,3697-3698,3709-3710,3715-3720,3734-3735,3740-3741,3746-3747,3752-3753,3758-3759,3764-3765,3770-3771,3776-3777,3783-3784,3790-3791,3797-3798,3804-3805,3811-3812,3818-3819,3825-3826,3832-3833,3838-3839,3843-3844,3849-3850,3855-3856,3867-3871,3875-3876,3880-3881,3885-3886,3890-3891,3895-3896,3900-3901,3905-3906,3911-3912,3917-3918,3923-3924,3929-3930,3935-3936,3941-3942,3947-3948,3953-3954,3958-3959,3963-3964,3968-3969,3973-3974,3979-3980,3985-3986,3991-3992,3997-3998,4003-4004,4009-4010,4015-4016,4022-4023,4029-4030,4036-4037,4043-4044,4050-4051,4057-4058,4064-4065,4071-4072,4077-4078,4083-4084,4089-4090,4130-4131,4172-4173,4175-4176,4178-4179,4191-4192,4204-4205,4217-4218,4230-4231,4243-4244,4256-4257,4269-4270,4282-4283,4295-4296,4304-4305,4317-4318,4326-4327,4339-4340,4348-4349,4361-4362,4374-4375,4383-4384,4396-4397,4409-4410,4422-4423,4431-4432,4444-4445,4457-4458,4470-4471,4483-4484,4496-4497,4509-4510,4522-4523,4535-4536,4548-4549,4561-4562,4574-4575,4587-4588,4600-4601,4613-4614,4626-4627,4639-4640,4652-4653,4665-4666,4674-4675,4687-4688,4700-4701,4713-4714,4726-4727,4739-4740,4752-4753,4765-4766,4774-4775,4783-4784,4792-4793,4801-4802,4810-4811,4819-4820,4828-4829,4837-4838,4846-4847,4859-4860,4904-4905,4916-4917,4928-4929,4940-4941,4952-4953,4965-4966,4979-4980,4993-4994,5007-5008,5021-5022,5035-5036,5048-5049,5059-5061,5069-5070,5081-5082,5128-5129,5132-5133,5153-5154,5157-5158,5165-5166,5239-5240,5243-5244,5247-5248,5259-5260,5263-5264,5435-5436,5440-5441,5445-5446,5450-5451,5455-5456,5460-5461,5606-5607,5788-5789,5847-5848,5852-5853,5857-5858,5862-5863,5868-5869,5874-5875,5880-5881,5886-5887,5892-5893,5898-5899,5903-5904,5908-5909,5913-5914,5918-5919,5923-5924,5929-5930,5935-5936,5941-5942,5947-5948,5953-5954,5959-5960,5964-5965,5969-5970,5990-5991,6006-6007,6010-6014,6018,6027-6028,6115-6116,6120,6142-6143,6159-6160,6193-6195,6201-6202,6207-6208,6281-6282,6286,6291-6292,6722-6723,6775-6776,6802-6803,6840-6841,6942-6943,7074-7075,7130-7131,7159-7160,7221-7222,7310-7311,7385-7386,7399-7400,7402-7403,7415-7416,7452-7454,7478-7479,7689-7690,7698-7699,7704-7705,7788-7789,7942-7943,7947-7948,8020-8021,8098-8099,8155-8156,8159-8160,8162-8163,8167,8187-8188,8203-8204,8236-8237,8239,8305-8306,8308-8309,8318-8319,8385-8386,8524-8525,8546-8547,8581-8582,8605-8606,8632-8633,8659-8660,8665-8666,8685-8687,8745-8746,8825-8828,8851-8852,8902-8903,8928-8929,8976-8977,8982-8983,9021-9022,9040-9041,9066-9067,9079-9080,9087-9090,9265-9266,9430-9431,9435-9436,9440,9520-9521,9534-9535,9537-9538,9540-9541,9561,9570,9572,9577,9588,9594,9597,9600,9603,9606,9609,9612,9614,9620,9623,9626,9628-9636,9641,9643,9648,9656,9659,9661,9672,9681,9683,9689,9691-9692,9694-9695,9702,9707,9720,9748,9750,9752,9760-9764,9767-9769,9773,9775-9779,9781-9783,9787,9790,9792-9793,9798,9800,9802,9806,9808,9810-9812,9816,9818-9825,9827-9828,9832,9834-9835,9837,9841,9843-9848,9850-9851,9855,9857,9859,9863,9865-9867,9869,9873,9875-9876,9878,9882,9885,9889,9891-9892,9899,9902,9906,9908-9909,9911,9915,9917,9919-9921,9925,9927-9928,9930-9932,9936,9939,9945-9946,9948,9952,9954-9955,9957,9970,10026,10135,10137-10144,10146,10149,10152,10155,10158,10161,10164,10167,10217,10232,10234,10237,10241,10244,10246,10250,10253,10255,10259,10276,10279,10281,10293,10295,10297-10298,10305,10309,10311,10313-10314,10316-10318,10324,10330-10332,10339,10342,10345,10348,10351,10354,10363,10365,10370,10372,10377,10379-10383,10386-10391,10393,10403-10405,10412,10414,10428-10429,10431,10435,10442,10444-10445,10447,10457,10461,10469,10492,10494,10508,10513-10515,10518-10520,10523-10525,10528,10531,10623,10625,10630,10654,10656,10670,10672,10680,10682,10690-10694,10700,10706,10712,10718,10724,10730,10736,10742,10748,10754,10760,10762,10770,10772,10780,10782,10790,10792,10800,10802,10810,10812,10820,10822,10830,10832,10840,10842,10847-10852,10860,10866,10872,10942,10951,10962,10996,11008,11017,11052,11054,11058,11062,11066,11068,11077-11079,11090,11092,11095,11105,11112,11119-11125,11144,11262,11265,11268,11276,11286,11290-11294,11296,11299-11303,11305,11308-11310,11312,11316-11322,11324,11327-11331,11333,11336-11341,11343,11346-11348,11351,11355-11358,11360,11363-11367,11369,11372-11376,11378,11381-11383,11386,11389-11390,11405,11408-11409,11411,11415-11417,11419,11422-11427,11429,11432,11434,11437,11439,11442,11451,11454-11456,11459,11462-11463,11465,11468-11493,11498,11501-11503,11514,11517-11526,11539,11542,11545,11548,11551,11554,11557,11560,11563,11566,11569,11572,11575,11578,11581,11584,11587,11589-11591,11594,11597,11600,11607-11609,11612,11615,11618,11621,11624,11627,11630,11633,11636,11639,11642,11645,11648,11651,11654,11657,11659-11661,11664,11667,11670,11673,11676,11679,11682,11685,11688,11691,11694,11697,11700,11703,11706,11709,11712,11715,11718,11721,11724,11748,11786,11788,11790,11792,11799-11809,11816,11818-11822,11829,11831,11838,11840,11847,11849-11854,11861,11863-11869,11876,11878-11885,11892,11894-11897,11904,11910,11912-11916,11923,11929-11943,11952,11958,11960-11964,11971,11973-11979,11986,11992,11994-11996,12003,12005-12010,12017-12027,12034,12036,12041,12043,12050-12067,12076-12087,12094-12109,12116-12129,12136,12138-12145,12152-12166,12175,12178-12186,12193,12195-12196,12203,12205,12212,12214,12221,12223-12224,12231-12241,12248-12260,12267-12277,12284-12305,12314,12316,12323-12335,12342,12344,12349,12351-12356,12363,12365-12372,12379-12392,12399,12401-12407,12414,12416-12418,12425,12427-12433,12440-12454,12461,12467,12469-12471,12476,12478,12483,12485,12490,12496,12502,12508,12510,12515,12517,12522,12524,12531,12558,12564,12570,12576,12582,12588,12594,12600,12606,12612,12618,12624,12631,12634,12636-12638,12644,12650,12653,12657,12660,12676,12680,12683-12684,12688-12689,12691,12693,12697,12699-12702,12709,12712-12713,12715,12717,12719,12722-12723,12788,12796,12803,12808,12810,12814,12816,12826,12830,12832,12836,12838,12867,12925,12930,12954-12955,12989,12992,12995,12998,13001,13004,13172,13178,13208,13283,13285,13287,13290,13292,13309,13311,13317,13321,13341,13349,13352,13355,13358,13361,13364,13367,13370,13373,13376,13379,13382,13385,13388,13391,13394,13397,13400,13403,13406,13409,13412,13415,13426,13428,13430,13432,13434,13446,13450-13453,13458,13462,13465-13468,13530,13532-13534,13560,13566-13567,13572,13580-13581,13586-13587,13635,13653,13696,13704,13707-13709,13719,13725,13749,13751,13753,13755,13763,13822,14233,14265,14267,14281,14310,14340,14352,14461,14465,14629,14639,14696,14700,14732,14739,14741,14904,14984,15033,15053,15055,15065,15103,15109,15115,15119,15148,15154-15155,15157,15160,15311,15317,15323,15516,15541,15669-15670,15835,15840,15843,15845,15852,15854,15884,15896,15898,15963,16008,16010,16012-16033,16035-16055,16057-16075,16088,16104,16149,16151,16195,16197,16219,16253,16292-16348,16434,16436-16437,16542,16568,16570,16606,16608,16611-16614,16641,16643,16646-16660,16706,16736,16738,16740,16768,16774-16800,16831,16903,16999-17003,17026,17028,17058,17083,17106,17144,17154-17155,17160,17183,17185-17190,17200,17214,17217,17258,17269,17273-17274,17350,17367,17369,17406,17423,17427,17431,17438,17440,17442,17446-17447,17451,17454,17470-17471,17475-17476,17523,17525-17529,17531,17534,17537,17540,17542,17594,17599,17618,17620,17622,17624,17626-17641,17643-17653
+AGENTS.md
+  s_30124aaca1099b::t_b62795c872b36b 3,44-45,52
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8a128a35b11ef437d1164974faa7d642c136547a",
+  "prompts": {},
+  "sessions": {
+    "s_30124aaca1099b": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "806e502e-ac34-47ec-93aa-b8d85ed5ac1b",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
