@@ -1,0 +1,19 @@
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_99f1ea83ca0c45::t_3a487553e75c18 233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "17f296470e7bb51e3d7fb33d5e9d576dfdb683a9",
+  "prompts": {},
+  "sessions": {
+    "s_99f1ea83ca0c45": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d59710a6-fe25-4fd9-83ba-b8f17d38c488",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
