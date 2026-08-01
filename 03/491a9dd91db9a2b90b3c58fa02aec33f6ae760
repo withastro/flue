@@ -1,0 +1,75 @@
+packages/cli/package.json
+  s_6bb7eaa47aa51f::t_2b2c2e5b013310 3
+packages/discord/package.json
+  s_6bb7eaa47aa51f::t_a0f3ff4c67a606 3
+packages/github/package.json
+  s_6bb7eaa47aa51f::t_ba876032936054 3
+packages/google-chat/package.json
+  s_6bb7eaa47aa51f::t_64adcd456b2480 3
+packages/intercom/package.json
+  s_6bb7eaa47aa51f::t_beb2dae74b68a2 3
+packages/libsql/package.json
+  s_6bb7eaa47aa51f::t_0fcf9d9b977355 3
+packages/linear/package.json
+  s_6bb7eaa47aa51f::t_5e1cee9c1ae8ad 3
+packages/messenger/package.json
+  s_6bb7eaa47aa51f::t_856df1bd8777f2 3
+packages/mongodb/package.json
+  s_6bb7eaa47aa51f::t_58cd027fe0bbb8 3
+packages/mysql/package.json
+  s_6bb7eaa47aa51f::t_a086cec051f824 3
+packages/notion/package.json
+  s_6bb7eaa47aa51f::t_b99121cbe322bd 3
+packages/opentelemetry/package.json
+  s_6bb7eaa47aa51f::t_5099bf79050f48 3
+packages/postgres/package.json
+  s_6bb7eaa47aa51f::t_4f15a76b525dc9 3
+packages/react/package.json
+  s_6bb7eaa47aa51f::t_4f1009a9ae120f 3
+packages/redis/package.json
+  s_6bb7eaa47aa51f::t_d46f1baf3c252a 3
+packages/resend/package.json
+  s_6bb7eaa47aa51f::t_91e409134fc0d1 3
+packages/runtime/package.json
+  s_6bb7eaa47aa51f::t_97f1e708459581 3
+packages/salesforce-marketing-cloud/package.json
+  s_6bb7eaa47aa51f::t_75e79ff2f611c6 3
+packages/sdk/package.json
+  s_6bb7eaa47aa51f::t_d189896bdbf3af 3
+packages/shopify/package.json
+  s_6bb7eaa47aa51f::t_370c82e86fc054 3
+packages/slack/package.json
+  s_6bb7eaa47aa51f::t_b71060f9a5e627 3
+packages/stripe/package.json
+  s_6bb7eaa47aa51f::t_fb4854f1bd99ba 3
+packages/teams/package.json
+  s_6bb7eaa47aa51f::t_17015904b4a8d3 3
+packages/telegram/package.json
+  s_6bb7eaa47aa51f::t_e2a180ce423547 3
+packages/twilio/package.json
+  s_6bb7eaa47aa51f::t_647e0fda6c125a 3
+packages/vite/package.json
+  s_6bb7eaa47aa51f::t_d3b4d1baeec0dc 3
+packages/whatsapp/package.json
+  s_6bb7eaa47aa51f::t_a3cc532473dd9d 3
+packages/zendesk/package.json
+  s_6bb7eaa47aa51f::t_6f5c6868813ea2 3
+CHANGELOG.md
+  s_6bb7eaa47aa51f::t_8722a69f82b26a 3-11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "03491a9dd91db9a2b90b3c58fa02aec33f6ae760",
+  "prompts": {},
+  "sessions": {
+    "s_6bb7eaa47aa51f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9167854-df15-4567-a0c1-15514b27d680",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
