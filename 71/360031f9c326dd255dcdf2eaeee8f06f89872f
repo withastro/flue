@@ -1,0 +1,21 @@
+apps/www/public/_redirects
+  s_4c1b71333c67c6::t_3bd07915d29263 1-2
+apps/www/src/pages/index.astro
+  s_4c1b71333c67c6::t_b18ef4f95e4f39 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "71360031f9c326dd255dcdf2eaeee8f06f89872f",
+  "prompts": {},
+  "sessions": {
+    "s_4c1b71333c67c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b8da4885-f18f-41b4-91c2-202b684189af",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}

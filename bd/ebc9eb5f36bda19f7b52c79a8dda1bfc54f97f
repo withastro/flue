@@ -1,0 +1,23 @@
+apps/www/src/code-snippets.ts
+  s_4c1b71333c67c6::t_8eddc4598b6062 4-8
+apps/www/src/pages/blog/flue-2.mdx
+  s_4c1b71333c67c6::t_65b98bfad603ae 134,159,161,165
+apps/www/src/pages/index.astro
+  s_4c1b71333c67c6::t_4edeffde709b72 237,246,256,265
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bdebc9eb5f36bda19f7b52c79a8dda1bfc54f97f",
+  "prompts": {},
+  "sessions": {
+    "s_4c1b71333c67c6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b8da4885-f18f-41b4-91c2-202b684189af",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
