@@ -1,0 +1,39 @@
+apps/docs/src/content/docs/reference/provider-api.md
+  s_1e80a3adf31a52::t_52a691b321961a 92,100,125,134
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_1e80a3adf31a52::t_d61f49bba2cc07 1140,1186-1191,1198,1201,1203-1271,1276,1282,1286
+apps/docs/src/content/docs/guide/durability.md
+  s_1e80a3adf31a52::t_a59d05cc3d97c9 47
+apps/docs/src/content/docs/guide/tools.md
+  s_1e80a3adf31a52::t_37fb322a9fc10a 73
+packages/runtime/src/abort.ts
+  s_1e80a3adf31a52::t_4aab8a70deb6f5 44-121
+packages/runtime/src/agent.ts
+  s_1e80a3adf31a52::t_2a359a9c2b7d4d 491-497,499-507
+packages/runtime/src/cloudflare/gateway.ts
+  s_1e80a3adf31a52::t_346bd50b5572d1 31-37
+packages/runtime/src/session.ts
+  s_1e80a3adf31a52::t_b468b030517a1b 26,3678-3681,3685
+packages/runtime/test/session-operations.test.ts
+  s_1e80a3adf31a52::t_8de83d1688e30a 11,1669-1724
+packages/runtime/src/cloudflare/workers-ai-provider.ts
+  s_1e80a3adf31a52::t_45be298d3bc576 227-286,365-390,393,400,402,408,457-458,468,601-603,736,743,778,783,836-837,842,869-872,1079,1086-1087,1092,1096-1102,1243-1250,1271-1274,1277
+packages/runtime/test/cloudflare-workers-ai-provider.test.ts
+  s_1e80a3adf31a52::t_4e5d1b40ee6457 170-250,328-412
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3012c64e7eb1aa8c66f764e51da18ca4f372bdc1",
+  "prompts": {},
+  "sessions": {
+    "s_1e80a3adf31a52": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "ac596287-3839-4df5-a665-2f4e9841d8b6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
