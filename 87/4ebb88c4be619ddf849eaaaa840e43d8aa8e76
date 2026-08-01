@@ -1,0 +1,21 @@
+.github/workflows/approve-contributor.yml
+  s_6bb7eaa47aa51f::t_85bccde403e5ba 19
+.github/workflows/pr-redirect.yml
+  s_6bb7eaa47aa51f::t_4098e18bb1cb1b 45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "874ebb88c4be619ddf849eaaaa840e43d8aa8e76",
+  "prompts": {},
+  "sessions": {
+    "s_6bb7eaa47aa51f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9167854-df15-4567-a0c1-15514b27d680",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
