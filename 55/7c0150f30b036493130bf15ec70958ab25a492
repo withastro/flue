@@ -1,0 +1,19 @@
+.github/workflows/pr-redirect.yml
+  s_6bb7eaa47aa51f::t_e2a709ee78556b 85
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "557c0150f30b036493130bf15ec70958ab25a492",
+  "prompts": {},
+  "sessions": {
+    "s_6bb7eaa47aa51f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9167854-df15-4567-a0c1-15514b27d680",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
