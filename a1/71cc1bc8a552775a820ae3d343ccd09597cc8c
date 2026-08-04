@@ -1,0 +1,203 @@
+CHANGELOG.md
+  s_998f5761a24f6c::t_73477014b1b6d6 3-12
+apps/docs/public/_redirects
+  s_998f5761a24f6c::t_0e063405a6bf2b 18-19
+apps/docs/src/content/docs/cli/update.md
+  s_998f5761a24f6c::t_7e5bf7ef839247 37
+apps/docs/src/content/docs/ecosystem/sandboxes/boxd.md
+  s_998f5761a24f6c::t_98379b96ac37f6 23-24,40,53,57-58
+apps/docs/src/content/docs/ecosystem/sandboxes/cloudflare-computer.md
+  s_998f5761a24f6c::t_88f1cb31379547 2-4,7-9,13,16,21,23-26,28,30-51,53-62,66,68-72,74,76-80,83-84,87,89
+apps/docs/src/content/docs/ecosystem/sandboxes/daytona.md
+  s_998f5761a24f6c::t_5b1ffe76b92c90 23-24,27,39,41-42,75-76,79
+apps/docs/src/content/docs/ecosystem/sandboxes/e2b.md
+  s_998f5761a24f6c::t_4771dbcb579311 23-24,27,39,41-42,74-75,77
+apps/docs/src/content/docs/ecosystem/sandboxes/exedev.md
+  s_998f5761a24f6c::t_8a6e7d25c28240 23-24,34,55,57,61,68
+apps/docs/src/content/docs/ecosystem/sandboxes/islo.md
+  s_998f5761a24f6c::t_e95454ab4b014f 24-25,34,69,71-72
+apps/docs/src/content/docs/ecosystem/sandboxes/mirage.md
+  s_998f5761a24f6c::t_2778d31dc567b6 23-24,33,112,120-121
+apps/docs/src/content/docs/ecosystem/sandboxes/modal.md
+  s_998f5761a24f6c::t_07bfbea728093d 23-24,35,47,49-50
+apps/docs/src/content/docs/ecosystem/sandboxes/vercel.md
+  s_998f5761a24f6c::t_b416c387df058c 23-24,27,93,95-96,128-129,131
+apps/docs/src/content/docs/guide/agent-hooks.md
+  s_998f5761a24f6c::t_60fd46f248f0b7 70
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_998f5761a24f6c::t_d3a43d1b4182a8 192,194,196,201,207,210
+apps/docs/src/content/docs/guide/migration.md
+  s_998f5761a24f6c::t_fdf47d628b1cec 144,165,181
+apps/docs/src/content/docs/guide/sandboxes.md
+  s_998f5761a24f6c::t_0f03e1553d78b5 109,147,160,163,170,176,212
+apps/docs/src/content/docs/guide/tools.md
+  s_998f5761a24f6c::t_81fe198514aafe 92-93,96,200-202
+apps/docs/src/content/docs/reference/agent-api.md
+  s_998f5761a24f6c::t_6c08e02355a61f 14,394,477,482,701
+apps/docs/src/content/docs/reference/agent-behavior.md
+  s_998f5761a24f6c::t_74673617ca4f74 1-184
+apps/docs/src/content/docs/reference/agent-hooks-api.md
+  s_998f5761a24f6c::t_c61b78dd85855e 111,113
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_998f5761a24f6c::t_d404143929c6dd 3,7,9-11,17-18,22,24,26,28,31,35,37-38,48,53,57,59,62,87,89,106,113,147,149,151-152,154,157-158,161,164,166-168,172,189,192,213,227,230,236,250-251,277,280,282,290,317,322-327,330,332-335
+apps/docs/src/lib/docs-navigation.ts
+  s_998f5761a24f6c::t_18061714b44419 94,178
+apps/ecosystem-catalog.ts
+  s_998f5761a24f6c::t_0f72b1dfb67f3a 244-245,248,251-252
+apps/www/public/_redirects
+  s_998f5761a24f6c::t_ba998a61427e49 3
+blueprints/sandbox--boxd.md
+  s_998f5761a24f6c::t_6865eb4b77056b 45,68-69,75,82-83,175,243,255,382,402,408,413-414,470-471,478
+blueprints/sandbox--cloudflare-computer.md
+  s_998f5761a24f6c::t_3bbb267aba3cf9 5-6,10,12,18-28,33,44,46,48-107,109-113,117-175,177,179,185-186,188-189,192-193,199-200,202,204-207,209-210,225-261,268-270,273-282,284,287-288,293-297,299-300,304-312,315,318-325,328,331-334,340,342,344-345,347-351,353-355,357-358,360-361,363-369,373-374,377,380-384,387-389,393,403-423,431-433,436,442-444,454-480,484-487,491
+blueprints/sandbox--daytona.md
+  s_998f5761a24f6c::t_bfc99ebbc99458 35,58-59,62,70,74,114,177,181,259,283,288,292-293,344-345,348
+blueprints/sandbox--e2b.md
+  s_998f5761a24f6c::t_6fc73ab8ab9e36 43,66,68,70,77-78,82,95,185,190,194-195,254,256,258
+blueprints/sandbox--exedev.md
+  s_998f5761a24f6c::t_f7d9bd5f93fbe5 44,65,91-92,94,102,108,110,420,459,509,699,754,756,760,767,871,882,884,905,910
+blueprints/sandbox--islo.md
+  s_998f5761a24f6c::t_94fbf82b630fb5 46,51,68-69,81,91,126,236,238-239
+blueprints/sandbox--mirage.md
+  s_998f5761a24f6c::t_02d3f57fd43b95 52,79-80,103,121,270,278,294-295
+blueprints/sandbox--modal.md
+  s_998f5761a24f6c::t_a504fd222d1c5f 26,58,81-82,87,94-95,141,199,211,346,374,379,381-382,447-448,455
+blueprints/sandbox--vercel.md
+  s_998f5761a24f6c::t_f3ac2188c336b4 35,58-59,61,68-69,73,75,178,183,185-186,253-254,256
+blueprints/sandbox.md
+  s_998f5761a24f6c::t_5a5aee8109b2e4 47,64,70
+examples/cloudflare/README.md
+  s_998f5761a24f6c::t_86797da30cdcb7 5-6,19-20,44,46-47,63-66
+examples/cloudflare/package.json
+  s_998f5761a24f6c::t_5f8719b0a8555e 11-12
+examples/cloudflare/src/agents/skills-from-git.ts
+  s_998f5761a24f6c::t_9fd38c3a29ea0d 3-10,20-22,30,35-37,39-40,43-50,52,59
+examples/cloudflare/src/agents/skills-from-r2.ts
+  s_998f5761a24f6c::t_8312fee3e7b5c5 3-8,21,24-26,34-65,96-98,100-101,103-110,112
+examples/cloudflare/src/cloudflare.ts
+  s_998f5761a24f6c::t_b5bf2c9830a9de 1-10
+examples/cloudflare/src/sandboxes/cloudflare-computer.ts
+  s_998f5761a24f6c::t_cebe2c10c3a777 1,3,5-11,13-22,24,26-41,43-47,49-61,63-70,73-97,99-128,132,134,136,142-143,145-146,149-150,156-157,159,161-164,166-167,182-218,225-227,230-239,241,244-245,250-254,256-257,261-269,272,275-282,285,288-291
+examples/cloudflare/wrangler.jsonc
+  s_998f5761a24f6c::t_3a203432e7f14a 10-12,35-41
+examples/hello-world/src/agents/with-sandbox.ts
+  s_998f5761a24f6c::t_fe2055e9229efc 11-12,15
+examples/hello-world/src/sandboxes/daytona.ts
+  s_998f5761a24f6c::t_50527a497f3013 19-20,23,32-33,35,38,40,133,139,141-142
+knip.json
+  s_998f5761a24f6c::t_60f8101ced2101 7-8
+packages/cli/package.json
+  s_998f5761a24f6c::t_9c9078b1de4754 3
+packages/discord/package.json
+  s_998f5761a24f6c::t_e68b86f5d21ce3 3
+packages/github/package.json
+  s_998f5761a24f6c::t_703841c5dee120 3
+packages/google-chat/package.json
+  s_998f5761a24f6c::t_ee0ba6a0ed5ce8 3
+packages/intercom/package.json
+  s_998f5761a24f6c::t_12af73b571b30e 3
+packages/libsql/package.json
+  s_998f5761a24f6c::t_f889f484319ca2 3
+packages/linear/package.json
+  s_998f5761a24f6c::t_acddd74038e480 3
+packages/messenger/package.json
+  s_998f5761a24f6c::t_ac123f57f85e0b 3
+packages/mongodb/package.json
+  s_998f5761a24f6c::t_3ddc1da0449d56 3
+packages/mysql/package.json
+  s_998f5761a24f6c::t_9e8d12362d2bd7 3
+packages/notion/package.json
+  s_998f5761a24f6c::t_1479f29322f9b9 3
+packages/opentelemetry/package.json
+  s_998f5761a24f6c::t_cb1cfb814a3b9c 3
+packages/postgres/package.json
+  s_998f5761a24f6c::t_946305341bab69 3
+packages/react/package.json
+  s_998f5761a24f6c::t_d6a720b5e5293b 3
+packages/redis/package.json
+  s_998f5761a24f6c::t_fc106d947f4f9f 3
+packages/resend/package.json
+  s_998f5761a24f6c::t_d9eb688866ed23 3
+packages/runtime/package.json
+  s_998f5761a24f6c::t_1d67b302cdd5db 3
+packages/runtime/src/abort.ts
+  s_998f5761a24f6c::t_d408394485fbe0 28
+packages/runtime/src/agent.ts
+  s_998f5761a24f6c::t_7aa47b81efb72f 5,55,57,96,100,136,139,173,176,188,213,216,279,283,310,485,487,514,517,579,582
+packages/runtime/src/client.ts
+  s_998f5761a24f6c::t_15a1141c6a5ca6 22,25-26,41,43,359,372,378,391-392,560-563,567-570,572-574,576,579,584-595
+packages/runtime/src/cloudflare/cf-sandbox.ts
+  s_998f5761a24f6c::t_64b1f8b43baad7 1,4-6,63,116,174,177,183,282,304
+packages/runtime/src/cloudflare/tracing/attributes.ts
+  s_998f5761a24f6c::t_e23f535b446a17 59-64
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_998f5761a24f6c::t_cd8d5a6af6938a 16-31,113-118,128-129,180,221-227,282-307,315,330,354,422,432
+packages/runtime/src/context.ts
+  s_998f5761a24f6c::t_4c3361f1723874 6,20,55,211
+packages/runtime/src/conversation-records.ts
+  s_998f5761a24f6c::t_7c6953827fe524 439
+packages/runtime/src/conversation-reducer.ts
+  s_998f5761a24f6c::t_18e5dba6858d50 334,890-903
+packages/runtime/src/harness.ts
+  s_998f5761a24f6c::t_2bb7017fc1ab64 13,18-19,39-40,51,56,94,96,101,109,125,148,325
+packages/runtime/src/hooks/use-sandbox.ts
+  s_998f5761a24f6c::t_7de744856daa60 6,8,14,60-63,66
+packages/runtime/src/index.ts
+  s_998f5761a24f6c::t_ee709da2d5d79a 101,104,106-107,157,159-162,188
+packages/runtime/src/internal.ts
+  s_998f5761a24f6c::t_3fe1d862c14388 129
+packages/runtime/src/node/local-env.ts
+  s_998f5761a24f6c::t_63cb22683a1d89 2,15,181,209,238
+packages/runtime/src/node/local.ts
+  s_998f5761a24f6c::t_ca9f328b6f0617 4,10,14,16,20
+packages/runtime/src/sandbox.ts
+  s_998f5761a24f6c::t_2d78633a1a2fb3 2,10,15,20,26,54,140,197,228,232,235,238,326,348,368-370,372-373,379-380,383,401,408,420,424,430-431,436,440,444,448,452,460-465
+packages/runtime/src/session.ts
+  s_998f5761a24f6c::t_f1651c7995a2cd 13,169,209,211,348,380,457,459,478,482,484-485,501,505,513,520,676,682,691,700,703,749-754,903-905,944-955,957,984,1072-1075,1108-1125,1127-1130,1173,1180,2234-2236,2651-2654,2661,4015
+packages/runtime/src/shell.ts
+  s_998f5761a24f6c::t_f77c627750dcda 16,30
+packages/runtime/src/tool-types.ts
+  s_998f5761a24f6c::t_f39e509c0bd53f 105
+packages/runtime/src/types.ts
+  s_998f5761a24f6c::t_b949f9209ffa54 250,253-255,259,313-315,709,734,750,951,965,967,971-973,975-977,980-983,987,994-1000,1003-1004,1009
+packages/salesforce-marketing-cloud/package.json
+  s_998f5761a24f6c::t_17c4e604ffb40a 3
+packages/sdk/package.json
+  s_998f5761a24f6c::t_7d24b2cf5204da 3
+packages/shopify/package.json
+  s_998f5761a24f6c::t_14a64cf25fb660 3
+packages/slack/package.json
+  s_998f5761a24f6c::t_6c59732fc7405d 3
+packages/stripe/package.json
+  s_998f5761a24f6c::t_7ddc8917466b44 3
+packages/teams/package.json
+  s_998f5761a24f6c::t_1c67dbe9ac6e29 3
+packages/telegram/package.json
+  s_998f5761a24f6c::t_97117140bae284 3
+packages/twilio/package.json
+  s_998f5761a24f6c::t_795a6b28046c88 3
+packages/vite/package.json
+  s_998f5761a24f6c::t_73536248725e4a 3
+packages/whatsapp/package.json
+  s_998f5761a24f6c::t_8cb694954e02db 3
+packages/zendesk/package.json
+  s_998f5761a24f6c::t_4c3c23e0937680 3
+pnpm-lock.yaml
+  s_998f5761a24f6c::t_03d0ea78917453 191,253,285-287,291-293,296,352,392,432,456,484,540,580,617,685,783,823,897,937,977,1036,1076,1113,1187,1233,1929,2540-2541,2543-2545,2547,2555,2558,2562,2576,2585,2592,2599,2605,2611,2617,2623,2629,4127-4130,10172,10175-10176,10178,10180-10181,11639-11640,13335,14057,15665-15666,15684-15685,16677-16678,16685
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "a171cc1bc8a552775a820ae3d343ccd09597cc8c",
+  "prompts": {},
+  "sessions": {
+    "s_998f5761a24f6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "072c7dac-ebbf-412b-93fd-741b7deedd60",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
