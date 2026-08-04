@@ -1,0 +1,191 @@
+apps/docs/src/content/docs/ecosystem/sandboxes/boxd.md
+  s_6bb7eaa47aa51f::t_ccbf4c19a60afe 23-24,40,53,57-58
+apps/docs/src/content/docs/ecosystem/sandboxes/cloudflare-shell.md
+  s_6bb7eaa47aa51f::t_a5a62a6c3d7557 31,53,61-62
+apps/docs/src/content/docs/ecosystem/sandboxes/e2b.md
+  s_000a654131e3bc::t_8750d9c9d308d2 23-24,27,39,41-42,74-75,77
+apps/docs/src/content/docs/ecosystem/sandboxes/vercel.md
+  s_6bb7eaa47aa51f::t_7612a14ac70d03 23-24,27,93,95-96,128-129,131
+apps/docs/src/content/docs/guide/sandboxes.md
+  s_000a654131e3bc::t_48d7e0df8c3c81 109,160,163,170
+blueprints/sandbox--boxd.md
+  s_000a654131e3bc::t_77b810858fa812 45,68-69,75,82-83,175,243,255,382,402,408,413-414,470-471,478
+blueprints/sandbox--cloudflare-shell.md
+  s_000a654131e3bc::t_b04894dfe95446 59-60,72,76,85,118,122,130-131,148,152
+blueprints/sandbox--daytona.md
+  s_000a654131e3bc::t_524801b8e2b1da 35,58-59,62,70,74,114,177,181,259,283,288,292-293,344-345,348
+blueprints/sandbox--e2b.md
+  s_000a654131e3bc::t_7766e71826219f 43,66,68,70,77-78,82,95,185,190,194-195,254,256,258
+blueprints/sandbox--islo.md
+  s_000a654131e3bc::t_eefced29bdbbe6 46,51,68-69,81,91,126,236,238-239
+blueprints/sandbox--mirage.md
+  s_000a654131e3bc::t_fdf88b1b7d6c38 52,79-80,103,121,270,278,294-295
+blueprints/sandbox--modal.md
+  s_000a654131e3bc::t_62fc7849d3c69e 26,58,81-82,87,94-95,141,199,211,346,374,379,381-382,447-448,455
+blueprints/sandbox--vercel.md
+  s_000a654131e3bc::t_af023edf99fe10 35,58-59,61,68-69,73,75,178,183,185-186,253-254,256
+blueprints/sandbox.md
+  s_6bb7eaa47aa51f::t_b6614039de7144 47,64,70
+examples/cloudflare/src/agents/skills-from-git.ts
+  s_6bb7eaa47aa51f::t_751ff9cb508c9e 9,35,45,51
+examples/cloudflare/src/sandboxes/cloudflare-shell.ts
+  s_000a654131e3bc::t_474000719b6410 19,21,75,79,88,121,125,133-134,151,155
+examples/hello-world/src/agents/with-sandbox.ts
+  s_000a654131e3bc::t_526f6e0fc74d9e 11-12,15
+examples/hello-world/src/sandboxes/daytona.ts
+  s_000a654131e3bc::t_48137238121e87 19-20,23,32-33,35,38,40,133,139,141-142
+packages/runtime/src/abort.ts
+  s_000a654131e3bc::t_ef7423c2f3ee75 28
+packages/runtime/src/agent.ts
+  s_6bb7eaa47aa51f::t_6f9c4074dd18f3 5,55,57,96,100,136,139,173,176,188,213,216,279,283,310,485,487,514,517,579,582
+packages/runtime/src/cloudflare/cf-sandbox.ts
+  s_000a654131e3bc::t_2672559e056710 1,4-6,63,116,174,177,183,282,304
+packages/runtime/src/context.ts
+  s_000a654131e3bc::t_8ad28a8e1683b4 6,20,55,211
+packages/runtime/src/harness.ts
+  s_000a654131e3bc::t_4a81df7d96adc2 13,18-19,39-40,51,56,94,96,101,109,125,148,325
+packages/runtime/src/index.ts
+  s_6bb7eaa47aa51f::t_93cfe1b95a0ada 101,104,106-107,157,159-162,188
+packages/runtime/src/internal.ts
+  s_6bb7eaa47aa51f::t_55f05b147740cf 129
+packages/runtime/src/node/local-env.ts
+  s_000a654131e3bc::t_dbe05932505658 2,15,181,209,238
+packages/runtime/src/node/local.ts
+  s_000a654131e3bc::t_f670550e97e8bd 4,10,14,16,20
+packages/runtime/src/session.ts
+  s_000a654131e3bc::t_c5c69fc99e5374 168,209-210,347,379,456,458,477,481,483-484,500,504,512,519,675,681,690,699,702,963,3961
+packages/runtime/src/shell.ts
+  s_000a654131e3bc::t_c71f68d1ad9366 16,30
+packages/runtime/src/tool-types.ts
+  s_000a654131e3bc::t_3709bfedcccc85 105
+packages/runtime/test/agent-harness-tool.test.ts
+  s_000a654131e3bc::t_0f3d7f6674e3e0 27,360-361,412,486,523,537,551,600,614,660-661,664,684
+packages/runtime/test/agent-subagent.test.ts
+  s_000a654131e3bc::t_90a16a2a050ecc 30,231
+packages/runtime/test/bash-tool.test.ts
+  s_000a654131e3bc::t_03f303dd9c4092 3,6,11,31,47
+packages/runtime/test/cloudflare-context.test.ts
+  s_000a654131e3bc::t_c8a48bc6b85be0 96,111,132,159,181,201,213,228,243,252,263,286,321,340,357,381,411,445
+packages/runtime/test/context.test.ts
+  s_000a654131e3bc::t_a8bffd8f62443c 8,32,269,301,361,402,445
+packages/runtime/test/define-skill.test.ts
+  s_000a654131e3bc::t_b58a322cbbf9d6 13,155,213,256
+packages/runtime/test/edit-tool.test.ts
+  s_000a654131e3bc::t_b1ac2208a55a1e 3,17,44,80
+packages/runtime/test/grep-tool.test.ts
+  s_000a654131e3bc::t_ce549868c85e72 3,11,29,44,57,67,80
+packages/runtime/test/harness-session.test.ts
+  s_000a654131e3bc::t_c54618a1d9dddf 6,24,34,64,73,92,124,152,173
+packages/runtime/test/node-agent-coordinator.test.ts
+  s_000a654131e3bc::t_5639109d72cd58 39,1066,1086
+packages/runtime/test/overlay-packaged-skills.test.ts
+  s_000a654131e3bc::t_3ebde7d70e8fd7 4,28,46,62,73
+packages/runtime/test/sandbox.test.ts
+  s_000a654131e3bc::t_b6b6d4ae69df04 7-8,10,36,57-58,73-74,99,114-115,142-143,159-160,177,183-184,194,216,234,252,279,333,356,384,394-397,421,430,448,484
+packages/runtime/test/session-event-images.test.ts
+  s_000a654131e3bc::t_5a7e5ca048fdc2 14,141,233
+packages/runtime/test/session-operations.test.ts
+  s_000a654131e3bc::t_f51ac8e37e785f 18,20,34,1342,1428,1430,1463
+packages/runtime/test/session-skills.test.ts
+  s_000a654131e3bc::t_1bad671b0f4dc6 11,29,105,138,187,262
+packages/runtime/test/submission-admission-identity.test.ts
+  s_000a654131e3bc::t_c2dc86b4052e29 21,70,72
+packages/runtime/test/tool.test.ts
+  s_000a654131e3bc::t_22d7990eae9193 26,51,385,1087
+skills/flue/SKILL.md
+  s_000a654131e3bc::t_884e132b2e9250 129-130,144
+CHANGELOG.md
+  s_000a654131e3bc::t_0ead791262cc47 3-9
+apps/docs/src/content/docs/ecosystem/sandboxes/daytona.md
+  s_000a654131e3bc::t_3ec2ed6e22e655 23-24,27,39,41-42,75-76,79
+apps/docs/src/content/docs/ecosystem/sandboxes/exedev.md
+  s_000a654131e3bc::t_b3cb198f4f1538 23-24,34,55,57,61,68
+apps/docs/src/content/docs/ecosystem/sandboxes/islo.md
+  s_3d65c11c14e6f6::t_ca55167c384b16 24-25,34,69,71-72
+apps/docs/src/content/docs/ecosystem/sandboxes/mirage.md
+  s_33dd5dc97ad15d::t_070e5197557679 23-24,33,112,120-121
+apps/docs/src/content/docs/ecosystem/sandboxes/modal.md
+  s_000a654131e3bc::t_261d61421bab9f 23-24,35,47,49-50
+apps/docs/src/content/docs/guide/migration.md
+  s_3d65c11c14e6f6::t_fd5a2f85848199 144,165,181
+apps/docs/src/content/docs/guide/tools.md
+  s_000a654131e3bc::t_a4b3df9bbba6c0 92-93,96
+apps/docs/src/content/docs/reference/agent-api.md
+  s_000a654131e3bc::t_95d7d140091412 14,394,477
+apps/docs/src/content/docs/reference/agent-hooks-api.md
+  s_000a654131e3bc::t_43923c0e2f9f73 111,113
+apps/docs/src/lib/docs-navigation.ts
+  s_000a654131e3bc::t_b94adb0c778b19 94
+blueprints/sandbox--exedev.md
+  s_33dd5dc97ad15d::t_73c0182d8aa965 44,65,91-92,94,102,108,110,420,459,509,699,754,756,760,767,871,882,884,905,910
+examples/cloudflare/src/agents/skills-from-r2.ts
+  s_33dd5dc97ad15d::t_3f7250a994e9a0 8,66,75,80
+knip.json
+  s_000a654131e3bc::t_5efd82e85c883a 7
+packages/runtime/src/types.ts
+  s_000a654131e3bc::t_f0d5f1dc3ca9ef 250,253-255,259,313-315,709,734,750,951,965,967,971-973,975-977,980-983,987,994-1000,1003-1004,1009
+packages/runtime/test/fixtures/sandbox.ts
+  s_ae31de861ba760::t_719b76a064083a 1,3,6
+packages/runtime/test/package-entrypoints.test.ts
+  s_ae31de861ba760::t_a521b04d988af2 27
+apps/docs/src/content/docs/reference/agent-behavior.md
+  s_000a654131e3bc::t_570ea274470f60 1-183
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_000a654131e3bc::t_b81e871e49ad81 3,7,9-11,17-18,22,24,26,28,31,35,37-38,48,53,57,59,62,87,89,106,113,147,149,151-152,154,157-158,161,164,166-168,172,189,192,213,227,230,236,250-251,277,280,282,290,317,322-327,330,332-335
+packages/runtime/src/client.ts
+  s_000a654131e3bc::t_dba67b94869bed 22,25-26,41,43,359,372,378,391-392,560-563,567-570,572-574,576,579,584-595
+packages/runtime/src/hooks/use-sandbox.ts
+  s_000a654131e3bc::t_fb1173d9e1ecac 6,8,14,60-63,66
+packages/runtime/src/sandbox.ts
+  s_000a654131e3bc::t_229cf3931d88cb 2,10,15,20,26,54,140,197,228,232,235,238,326,348,368-370,372-373,379-380,383,401,408,420,424,430-431,436,440,444,448,452,460-465
+packages/runtime/test/agent-sandbox.test.ts
+  s_000a654131e3bc::t_5bc2c2a41468be 11,28-29,83-84,197,205,262-341,358,416,418,487,489,595,678,745,804
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "3168d36246e0ee22dacd2b44be65477550ba458f",
+  "prompts": {},
+  "sessions": {
+    "s_000a654131e3bc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "30eb376f-3bbe-49b7-a999-da8982ab3222",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_33dd5dc97ad15d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a071fa9ab7cac9906",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_3d65c11c14e6f6": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-ad84f42cc83e068fd",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_6bb7eaa47aa51f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d9167854-df15-4567-a0c1-15514b27d680",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    },
+    "s_ae31de861ba760": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "agent-a68e0b1a07d9a3852",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
