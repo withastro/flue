@@ -9,5 +9,5 @@ const { depth, slug, text } = Astro.props;
 ---
 
 <li class:list={['[&+&]:mt-2.5 leading-none', { 'pl-3.5': depth === 3 }]}>
-	<a class="block text-sm text-gray-500 hover:text-gray-950" href={`#${slug}`}>{text}</a>
+	<a class="block text-sm text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50" href={`#${slug}`}>{text}</a>
 </li>

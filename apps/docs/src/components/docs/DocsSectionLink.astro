@@ -12,8 +12,8 @@ const { section, active, mobile = false } = Astro.props;
 
 <a
 	class:list={[
-		mobile ? 'text-sm font-medium' : 'relative flex h-full items-center gap-2 hover:text-blue-600',
-		active ? 'text-blue-600' : 'text-docs-muted',
+		mobile ? 'text-sm font-medium' : 'relative flex h-full items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400',
+		active ? 'text-blue-600 dark:text-blue-400' : 'text-docs-muted',
 		{ 'after:absolute after:right-0 after:-bottom-px after:left-0 after:h-0.5 after:bg-blue-500 after:content-[\'\']': active && !mobile },
 	]}
 	href={docsHref(section.landingSlug)}

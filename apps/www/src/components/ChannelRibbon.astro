@@ -7,16 +7,16 @@ const items = channels.filter((channel) => channel.icon);
 ---
 
 <section class="my-8">
-  <div class="my-2.5 flex items-center justify-between font-mono text-xs text-gray-500">
+  <div class="my-2.5 flex items-center justify-between font-mono text-xs text-zinc-500 dark:text-zinc-400">
     <span>The Flue Ecosystem</span>
     <a href="/docs/ecosystem/" class="channel-ribbon-browse transition-colors">[Browse]</a>
   </div>
-  <div class="rounded-sm border border-gray-200 bg-gray-50/60 px-4 py-5 sm:px-5">
+  <div class="rounded-sm border border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/60 px-4 py-5 sm:px-5">
     <div class="grid grid-cols-4 justify-items-center gap-3 sm:grid-cols-7">
       {items.map((app, index) => (
         <a href={app.href} aria-label={app.name} title={app.name} class:list={["group block w-full max-w-[64px]", index >= 12 && "hidden sm:block"]}>
           <span
-            class="grid aspect-square place-items-center overflow-hidden rounded-[22%] border border-gray-950/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_1px_2px_rgba(17,24,39,0.12),0_4px_10px_rgba(17,24,39,0.1)] transition duration-200 group-hover:scale-105 group-hover:border-blue-600/60"
+            class="grid aspect-square place-items-center overflow-hidden rounded-[22%] border border-zinc-950/10 dark:border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_1px_2px_rgba(17,24,39,0.12),0_4px_10px_rgba(17,24,39,0.1)] transition duration-200 group-hover:scale-105 group-hover:border-blue-600/60"
             style={`background: ${app.background}`}
           >
             <img

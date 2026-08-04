@@ -16,7 +16,7 @@ const { headings } = Astro.props;
 
 {headings.length > 1 && (
 	<nav class="sticky top-[calc(var(--docs-header-height)+var(--docs-aside-top))] max-h-[calc(100vh-var(--docs-header-height)-var(--docs-aside-top)-2rem)] overflow-y-auto pr-2" aria-label="On this page">
-		<p class="mb-3 text-xs font-semibold tracking-wider text-gray-500 uppercase">On this page</p>
+		<p class="mb-3 text-xs font-semibold tracking-wider text-zinc-500 dark:text-zinc-400 uppercase">On this page</p>
 		<ul class="m-0 list-none p-0">
 			{headings.map((heading) => <DocsTocItem depth={heading.depth} slug={heading.slug} text={heading.text} />)}
 		</ul>

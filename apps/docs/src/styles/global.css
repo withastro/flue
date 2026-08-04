@@ -4,13 +4,14 @@
 	--color-docs-border: var(--docs-border);
 	--color-docs-text: var(--docs-text);
 	--color-docs-muted: var(--docs-muted);
-	--color-docs-subtle: #92939b;
+	--color-docs-subtle: var(--docs-subtle);
 	--color-docs-accent-deep: var(--docs-accent-deep);
 	--color-docs-code: var(--docs-code);
-	--color-docs-tip: #eefbf5;
-	--color-docs-tip-border: #ade4c8;
-	--color-docs-warning: #fff9ed;
-	--color-docs-warning-border: #f4d08c;
+	--color-docs-note: var(--docs-note);
+	--color-docs-tip: var(--docs-tip);
+	--color-docs-tip-border: var(--docs-tip-border);
+	--color-docs-warning: var(--docs-warning);
+	--color-docs-warning-border: var(--docs-warning-border);
 	--breakpoint-docs-desktop: 47.5625rem;
 }
 
@@ -18,12 +19,18 @@
 	--docs-header-height: calc(3.5rem + 1px);
 	--docs-frame-width: 81.875rem;
 	--docs-aside-top: 2rem;
-	--docs-border: #e7e7eb;
-	--docs-text: #1b1b1f;
-	--docs-muted: #61636b;
+	--docs-border: #e4e4e7;
+	--docs-text: #18181b;
+	--docs-muted: #52525b;
+	--docs-subtle: #a1a1aa;
 	--docs-accent-deep: #2563eb;
-	--docs-surface-soft: #f7f8fa;
-	--docs-code: #f6f6f7;
+	--docs-surface-soft: #fafafa;
+	--docs-code: #f4f4f5;
+	--docs-note: #eff6ff;
+	--docs-tip: #eefbf5;
+	--docs-tip-border: #ade4c8;
+	--docs-warning: #fff9ed;
+	--docs-warning-border: #f4d08c;
 	--font-sans:
 		Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 	--font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -57,6 +64,28 @@
 		border-radius: 0.375rem;
 		outline: 2px solid #3b82f6;
 		outline-offset: 3px;
+	}
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		color-scheme: dark;
+		--docs-accent-deep: #60a5fa;
+		--docs-border: #27272a;
+		--docs-code: #18181b;
+		--docs-muted: #a1a1aa;
+		--docs-note: #18181b;
+		--docs-subtle: #71717a;
+		--docs-surface-soft: #18181b;
+		--docs-text: #f4f4f5;
+		--docs-tip: #18181b;
+		--docs-tip-border: #3f3f46;
+		--docs-warning: #18181b;
+		--docs-warning-border: #3f3f46;
+	}
+
+	body {
+		background: #09090b;
 	}
 }
 
@@ -134,7 +163,7 @@
 
 .docs-content h2,
 .docs-content h3 {
-	color: #1b1b1f;
+	color: var(--docs-text);
 	font-weight: 600;
 	letter-spacing: -0.025em;
 	line-height: 1.35;
@@ -220,12 +249,12 @@
 	width: 0.34rem;
 	height: 0.34rem;
 	border-radius: 0.04rem;
-	background: #a8a9b0;
+	background: var(--docs-subtle);
 	content: '';
 }
 
 .docs-content ul ul > li::before {
-	border: 1px solid #a8a9b0;
+	border: 1px solid var(--docs-subtle);
 	background: transparent;
 }
 
@@ -237,7 +266,7 @@
 	color: var(--docs-accent-deep);
 	font-weight: 500;
 	text-decoration: underline;
-	text-decoration-color: #b4c9f8;
+	text-decoration-color: color-mix(in srgb, var(--docs-accent-deep) 35%, transparent);
 	text-underline-offset: 0.17em;
 }
 
@@ -246,10 +275,10 @@
 }
 
 .docs-content :not(pre) > code {
-	border: 1px solid #e2e5eb;
+	border: 1px solid var(--docs-border);
 	border-radius: 0.32rem;
-	background: #f1f3f7;
-	color: #5133bf;
+	background: var(--docs-code);
+	color: var(--docs-accent-deep);
 	font-family: var(--font-mono);
 	font-size: 0.84em;
 	padding: 0.12rem 0.32rem;
@@ -257,16 +286,16 @@
 
 .docs-content pre.astro-code {
 	overflow-x: auto;
-	border: 1px solid #e2e5eb;
+	border: 1px solid var(--docs-border);
 	border-radius: 0.3rem;
-	background: #f6f8fa !important;
+	background: var(--docs-code) !important;
 	box-shadow: 0 1px 1px rgb(0 0 0 / 0.04);
 	font-family: var(--font-mono);
 	font-size: 0.77rem;
 	line-height: 1.7;
 	margin: 1.2rem 0 1.55rem;
 	padding: 0.95rem 1rem;
-	scrollbar-color: #d0d4dc #f6f8fa;
+	scrollbar-color: #71717a var(--docs-code);
 	scrollbar-width: thin;
 }
 
@@ -276,11 +305,11 @@
 
 .docs-content pre.astro-code::-webkit-scrollbar-track {
 	border-radius: 999px;
-	background: #f6f8fa;
+	background: var(--docs-code);
 }
 
 .docs-content pre.astro-code::-webkit-scrollbar-thumb {
-	border: 2px solid #f6f8fa;
+	border: 2px solid var(--docs-code);
 	border-radius: 999px;
 	background: #d0d4dc;
 }
@@ -303,11 +332,11 @@
 	display: flex;
 	align-items: center;
 	gap: 0.5rem;
-	border: 1px solid #e2e5eb;
+	border: 1px solid var(--docs-border);
 	border-bottom: 0;
 	border-radius: 0.3rem 0.3rem 0 0;
-	background: #eef1f6;
-	color: #4b5563;
+	background: var(--docs-surface-soft);
+	color: var(--docs-muted);
 	font-family: var(--font-mono);
 	font-size: 0.8rem;
 	line-height: 1.4;
@@ -318,7 +347,7 @@
 	width: 0.875rem;
 	height: 0.875rem;
 	flex-shrink: 0;
-	color: #9ca3af;
+	color: var(--docs-subtle);
 }
 
 .docs-content .astro-code-title span {
@@ -345,7 +374,7 @@
 
 .docs-content th {
 	background: var(--docs-surface-soft);
-	color: #374151;
+	color: var(--docs-muted);
 	font-size: 0.78rem;
 	font-weight: 650;
 	letter-spacing: 0.04em;

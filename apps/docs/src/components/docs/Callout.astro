@@ -7,9 +7,9 @@ interface Props {
 const { kind = 'note', title = kind === 'tip' ? 'Tip' : kind === 'warning' ? 'Caution' : 'Note' } = Astro.props;
 ---
 
-<aside class:list={['my-6 rounded-lg border p-4', { 'border-transparent bg-blue-50': kind === 'note', 'border-docs-tip-border bg-docs-tip': kind === 'tip', 'border-docs-warning-border bg-docs-warning': kind === 'warning' }]} aria-label={title}>
-	<p class="mb-3 text-xs font-bold tracking-wider leading-none text-gray-700 uppercase">{title}</p>
-	<div class="m-0 leading-relaxed text-gray-700 [&_p]:m-0">
+<aside class:list={['my-6 rounded-lg border p-4', { 'border-transparent bg-docs-note': kind === 'note', 'border-docs-tip-border bg-docs-tip': kind === 'tip', 'border-docs-warning-border bg-docs-warning': kind === 'warning' }]} aria-label={title}>
+	<p class="mb-3 text-xs font-bold tracking-wider leading-none text-zinc-700 dark:text-zinc-300 uppercase">{title}</p>
+	<div class="m-0 leading-relaxed text-zinc-700 dark:text-zinc-300 [&_p]:m-0">
 		<slot />
 	</div>
 </aside>

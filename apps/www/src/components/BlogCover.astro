@@ -23,11 +23,11 @@ const { variant = 'shader' } = Astro.props;
 			</svg>
 		</div>
 	) : (
-		<div class="relative mb-8 flex h-[200px] items-center justify-center overflow-hidden rounded-sm border border-slate-300 bg-[#e9eef4] max-[760px]:mb-6 max-[760px]:h-[168px]" aria-hidden="true">
+		<div class="relative mb-8 flex h-[200px] items-center justify-center overflow-hidden rounded-sm border border-zinc-300 bg-zinc-200 text-zinc-500 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-400 max-[760px]:mb-6 max-[760px]:h-[168px]" aria-hidden="true">
 			<svg class="absolute inset-0 size-full">
 				<defs>
 					<pattern id="blogCoverGrid" width="20" height="20" patternUnits="userSpaceOnUse">
-						<path d="M20 0H0V20" fill="none" stroke="#64748b" stroke-opacity="0.72" stroke-width="0.8" stroke-dasharray="1 2" />
+						<path d="M20 0H0V20" fill="none" stroke="currentColor" stroke-opacity="0.72" stroke-width="0.8" stroke-dasharray="1 2" />
 					</pattern>
 				</defs>
 				<rect width="100%" height="100%" fill="url(#blogCoverGrid)" />

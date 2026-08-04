@@ -2,13 +2,13 @@
 import SearchIcon from './SearchIcon.astro';
 ---
 
-<button class="inline-flex w-50 cursor-pointer items-center gap-2 rounded-lg border border-transparent bg-docs-code py-1.5 transition-colors duration-150 pr-2 pl-3 text-sm leading-none text-gray-600 hover:border-gray-400 hover:text-gray-950 max-docs-desktop:h-9 max-docs-desktop:w-full max-docs-desktop:min-w-0 max-docs-desktop:border-docs-border max-docs-desktop:px-3" type="button" data-search-open aria-label="Search documentation" aria-haspopup="dialog" aria-controls="docs-search-dialog">
+<button class="inline-flex w-50 cursor-pointer items-center gap-2 rounded-lg border border-transparent bg-docs-code py-1.5 transition-colors duration-150 pr-2 pl-3 text-sm leading-none text-zinc-600 dark:text-zinc-400 hover:border-zinc-400 dark:hover:border-zinc-500 hover:text-zinc-950 dark:hover:text-zinc-50 max-docs-desktop:h-9 max-docs-desktop:w-full max-docs-desktop:min-w-0 max-docs-desktop:border-docs-border max-docs-desktop:px-3" type="button" data-search-open aria-label="Search documentation" aria-haspopup="dialog" aria-controls="docs-search-dialog">
 	<SearchIcon />
-	<span class="text-gray-500">Search</span>
-	<kbd class="ml-auto rounded-md py-1 px-1.5 font-sans text-xs text-gray-400 max-docs-desktop:hidden">⌘ K</kbd>
+	<span class="text-zinc-500 dark:text-zinc-400">Search</span>
+	<kbd class="ml-auto rounded-md py-1 px-1.5 font-sans text-xs text-zinc-400 dark:text-zinc-500 max-docs-desktop:hidden">⌘ K</kbd>
 </button>
 
-<dialog id="docs-search-dialog" class="fixed top-18 m-auto w-[min(620px,calc(100%-2rem))] rounded-xl border-0 bg-white p-0 shadow-[0_20px_65px_rgb(15_23_42_/_24%)] backdrop:bg-[rgb(15_23_42_/_32%)] max-docs-desktop:top-2.5 max-docs-desktop:w-[calc(100%-1.25rem)]" aria-label="Search documentation">
+<dialog id="docs-search-dialog" class="fixed top-18 m-auto w-[min(620px,calc(100%-2rem))] rounded-xl border-0 bg-white dark:bg-zinc-950 p-0 shadow-[0_20px_65px_rgb(15_23_42_/_24%)] backdrop:bg-[rgb(15_23_42_/_32%)] max-docs-desktop:top-2.5 max-docs-desktop:w-[calc(100%-1.25rem)]" aria-label="Search documentation">
 	<div class="overflow-hidden rounded-[inherit]" data-search-panel>
 		<form class="flex items-center gap-3 border-b border-docs-border p-3" method="dialog">
 			<label class="flex flex-1 items-center gap-3 text-docs-subtle">

@@ -61,7 +61,8 @@ const formattedReviewedDate = lastReviewedAt?.toLocaleDateString('en-US', {
 		<link rel="apple-touch-icon" sizes="180x180" href={`${import.meta.env.BASE_URL}apple-touch-icon.png`} />
 		<link rel="manifest" href={`${import.meta.env.BASE_URL}site.webmanifest`} />
 		<meta name="generator" content={Astro.generator} />
-		<meta name="theme-color" content="#ffffff" />
+		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+		<meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
 		<meta name="description" content={pageDescription} />
 		<link rel="canonical" href={canonicalUrl} />
 		<meta property="og:type" content="website" />
@@ -110,9 +111,9 @@ const formattedReviewedDate = lastReviewedAt?.toLocaleDateString('en-US', {
 						variant === 'default' && (
 							<header class="mb-8 border-b border-docs-border pb-3 max-docs-desktop:mb-7">
 								{coverVariant && <DocsCover variant={coverVariant} />}
-								<h1 data-pagefind-body class="m-0 text-5xl font-bold leading-[1.08] tracking-[-0.05em] text-gray-950 max-docs-desktop:text-[2.375rem]">{title}</h1>
-								{subtitle && <p data-pagefind-body class="mt-4 mb-0 text-lg leading-7 text-gray-600">{subtitle}</p>}
-								<div class:list={['flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-gray-500 max-docs-desktop:gap-x-4 mt-4 max-docs-desktop:mt-3 place-content-between sm:place-content-start']}>
+								<h1 data-pagefind-body class="m-0 text-5xl font-bold leading-[1.08] tracking-[-0.05em] text-zinc-950 dark:text-zinc-50 max-docs-desktop:text-[2.375rem]">{title}</h1>
+								{subtitle && <p data-pagefind-body class="mt-4 mb-0 text-lg leading-7 text-zinc-600 dark:text-zinc-400">{subtitle}</p>}
+								<div class:list={['flex flex-wrap items-center gap-x-6 gap-y-3 text-sm text-zinc-500 dark:text-zinc-400 max-docs-desktop:gap-x-4 mt-4 max-docs-desktop:mt-3 place-content-between sm:place-content-start']}>
 									{
 										lastReviewedAt ? (
 												<span>Last updated <time datetime={reviewedDate} data-review-date title={formattedReviewedDate}>{formattedReviewedDate}</time></span>
@@ -120,13 +121,13 @@ const formattedReviewedDate = lastReviewedAt?.toLocaleDateString('en-US', {
 											<span>AI-generated, awaiting review</span>
 										)
 									}
-									<a class="inline-flex items-center gap-2 text-gray-500 transition-colors hover:text-gray-800" href={markdownUrl}>
+									<a class="inline-flex items-center gap-2 text-zinc-500 dark:text-zinc-400 transition-colors hover:text-zinc-800 dark:hover:text-zinc-200" href={markdownUrl}>
 										<svg class="size-[1.25rem] shrink-0 fill-current" aria-hidden="true" viewBox="0 0 640 640"><path d="M593.8 123.1L46.2 123.1C20.7 123.1 0 143.8 0 169.2L0 470.7C0 496.2 20.7 516.9 46.2 516.9L593.9 516.9C619.4 516.9 640.1 496.2 640 470.8L640 169.2C640 143.8 619.3 123.1 593.8 123.1zM338.5 424.6L277 424.6L277 304.6L215.5 381.5L154 304.6L154 424.6L92.3 424.6L92.3 215.4L153.8 215.4L215.3 292.3L276.8 215.4L338.3 215.4L338.3 424.6L338.5 424.6zM473.8 427.7L381.5 320L443 320L443 215.4L504.5 215.4L504.5 320L566 320L473.8 427.7z" /></svg>
 										View as Markdown
 									</a>
 									{
 										packageLink && (
-											<a class="inline-flex items-center gap-2 text-gray-500 transition-colors hover:text-gray-800" href={packageLink.href} target="_blank" rel="noopener noreferrer">
+											<a class="inline-flex items-center gap-2 text-zinc-500 dark:text-zinc-400 transition-colors hover:text-zinc-800 dark:hover:text-zinc-200" href={packageLink.href} target="_blank" rel="noopener noreferrer">
 												<svg class="h-[0.8rem] w-[2.05rem] shrink-0" aria-hidden="true" viewBox="0 0 18 7">
 													<path fill="currentColor" d="M0,0h18v6H9v1H5V6H0V0z M1,5h2V2h1v3h1V1H1V5z M6,1v5h2V5h2V1H6z M8,2h1v2H8V2z M11,1v4h2V2h1v3h1V2h1v3h1V1H11z" />
 													<polygon fill="#fff" points="1,5 3,5 3,2 4,2 4,5 5,5 5,1 1,1" />
@@ -174,9 +175,13 @@ const formattedReviewedDate = lastReviewedAt?.toLocaleDateString('en-US', {
 					const visuallyActive = pageActive || locationActive;
 					link.classList.toggle('font-medium', visuallyActive);
 					link.classList.toggle('text-blue-600', pageActive);
-					link.classList.toggle('text-black', locationActive);
-					link.classList.toggle('text-gray-600', !visuallyActive);
-					link.classList.toggle('hover:text-gray-950', !visuallyActive);
+					link.classList.toggle('dark:text-blue-400', pageActive);
+					link.classList.toggle('text-zinc-950', locationActive);
+					link.classList.toggle('dark:text-zinc-50', locationActive);
+					link.classList.toggle('text-zinc-600', !visuallyActive);
+					link.classList.toggle('dark:text-zinc-400', !visuallyActive);
+					link.classList.toggle('hover:text-zinc-950', !visuallyActive);
+					link.classList.toggle('dark:hover:text-zinc-50', !visuallyActive);
 					link.parentElement?.classList.toggle('docs-sidebar-location-active', locationActive);
 
 					if (locationActive) {

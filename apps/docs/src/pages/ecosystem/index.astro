@@ -13,21 +13,21 @@ import { channels, databases, deploy, sandboxes, tooling } from '../../../../eco
 >
 	<div class="ecosystem-directory">
 		<header class="mb-4">
-			<h1 class="m-0 text-5xl font-bold leading-[1.08] tracking-[-0.05em] text-gray-950 max-docs-desktop:text-[2.375rem]">Ecosystem</h1>
-			<p class="mt-4 max-w-175 text-base leading-7 text-gray-600">Deploy Flue applications and extend them with channels, databases, sandbox environments, and the tools your agents already use.</p>
+			<h1 class="m-0 text-5xl font-bold leading-[1.08] tracking-[-0.05em] text-zinc-950 dark:text-zinc-50 max-docs-desktop:text-[2.375rem]">Ecosystem</h1>
+			<p class="mt-4 max-w-175 text-base leading-7 text-zinc-600 dark:text-zinc-400">Deploy Flue applications and extend them with channels, databases, sandbox environments, and the tools your agents already use.</p>
 		</header>
 
 		<label class="relative mb-14 block" for="ecosystem-search">
 			<span class="sr-only">Search ecosystem</span>
-			<svg class="pointer-events-none absolute top-1/2 left-3.5 size-4.5 -translate-y-1/2 text-gray-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+			<svg class="pointer-events-none absolute top-1/2 left-3.5 size-4.5 -translate-y-1/2 text-zinc-500 dark:text-zinc-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
 				<circle cx="11" cy="11" r="7"></circle>
 				<path d="m20 20-3.8-3.8"></path>
 			</svg>
-			<input id="ecosystem-search" class="h-11 w-full rounded-lg border border-transparent bg-docs-code pr-3.5 pl-10.5 text-base leading-none text-gray-950 outline-none transition-colors duration-150 placeholder:text-gray-500 hover:border-gray-300 focus:border-gray-500 focus:bg-white" type="search" placeholder="Search ecosystem..." autocomplete="off" />
+			<input id="ecosystem-search" class="h-11 w-full rounded-lg border border-transparent bg-docs-code pr-3.5 pl-10.5 text-base leading-none text-zinc-950 outline-none transition-colors duration-150 placeholder:text-zinc-500 hover:border-zinc-300 focus:border-zinc-500 focus:bg-white dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-50 dark:placeholder:text-zinc-400 dark:hover:border-zinc-500 dark:focus:border-zinc-500" type="search" placeholder="Search ecosystem..." autocomplete="off" />
 		</label>
 
 		<section class="ecosystem-section mb-14" data-ecosystem-section>
-			<h2 id="channels" class="mb-6 scroll-mt-20 text-3xl font-semibold tracking-[-0.03em] text-gray-950">Channels</h2>
+			<h2 id="channels" class="mb-6 scroll-mt-20 text-3xl font-semibold tracking-[-0.03em] text-zinc-950 dark:text-zinc-50">Channels</h2>
 			<ul class="ecosystem-grid" role="list">
 				{channels.map((item) => (
 					<li data-ecosystem-item data-search={`${item.name} ${item.keywords ?? ''}`.toLowerCase()}>
@@ -62,7 +62,7 @@ import { channels, databases, deploy, sandboxes, tooling } from '../../../../eco
 		</section>
 
 		<section class="ecosystem-section mb-14" data-ecosystem-section>
-			<h2 id="sandboxes" class="mb-6 scroll-mt-20 text-3xl font-semibold tracking-[-0.03em] text-gray-950">Sandboxes</h2>
+			<h2 id="sandboxes" class="mb-6 scroll-mt-20 text-3xl font-semibold tracking-[-0.03em] text-zinc-950 dark:text-zinc-50">Sandboxes</h2>
 			<ul class="ecosystem-grid" role="list">
 				{sandboxes.map((item) => (
 					<li data-ecosystem-item data-search={`${item.name} ${item.keywords ?? ''}`.toLowerCase()}>
@@ -117,7 +117,7 @@ import { channels, databases, deploy, sandboxes, tooling } from '../../../../eco
 		</section>
 
 		<section class="ecosystem-section mb-14" data-ecosystem-section>
-			<h2 id="deploy" class="mb-6 scroll-mt-20 text-3xl font-semibold tracking-[-0.03em] text-gray-950">Deploy</h2>
+			<h2 id="deploy" class="mb-6 scroll-mt-20 text-3xl font-semibold tracking-[-0.03em] text-zinc-950 dark:text-zinc-50">Deploy</h2>
 			<ul class="ecosystem-grid" role="list">
 				{deploy.map((item) => (
 					<li data-ecosystem-item data-search={`${item.name} ${item.keywords ?? ''}`.toLowerCase()}>
@@ -137,7 +137,7 @@ import { channels, databases, deploy, sandboxes, tooling } from '../../../../eco
 		</section>
 
 		<section class="ecosystem-section mb-14" data-ecosystem-section>
-			<h2 id="databases" class="mb-6 scroll-mt-20 text-3xl font-semibold tracking-[-0.03em] text-gray-950">Databases</h2>
+			<h2 id="databases" class="mb-6 scroll-mt-20 text-3xl font-semibold tracking-[-0.03em] text-zinc-950 dark:text-zinc-50">Databases</h2>
 			<ul class="ecosystem-grid" role="list">
 				{databases.map((item) => (
 					<li data-ecosystem-item data-search={`${item.name} ${item.keywords ?? ''}`.toLowerCase()}>
@@ -174,7 +174,7 @@ import { channels, databases, deploy, sandboxes, tooling } from '../../../../eco
 		</section>
 
 		<section class="ecosystem-section mb-14" data-ecosystem-section>
-			<h2 id="tooling" class="mb-6 scroll-mt-20 text-3xl font-semibold tracking-[-0.03em] text-gray-950">Tooling</h2>
+			<h2 id="tooling" class="mb-6 scroll-mt-20 text-3xl font-semibold tracking-[-0.03em] text-zinc-950 dark:text-zinc-50">Tooling</h2>
 			<ul class="ecosystem-grid" role="list">
 				{tooling.map((item) => (
 					<li data-ecosystem-item data-search={`${item.name} ${item.keywords ?? ''}`.toLowerCase()}>
@@ -194,7 +194,7 @@ import { channels, databases, deploy, sandboxes, tooling } from '../../../../eco
 		</section>
 
 
-		<p class="ecosystem-empty hidden rounded-2xl border border-dashed border-gray-300 py-12 text-center text-gray-500" data-ecosystem-empty>No ecosystem integrations match that search.</p>
+		<p class="ecosystem-empty hidden rounded-2xl border border-dashed border-zinc-300 dark:border-zinc-700 py-12 text-center text-zinc-500 dark:text-zinc-400" data-ecosystem-empty>No ecosystem integrations match that search.</p>
 	</div>
 </DocsLayout>
 
@@ -379,6 +379,24 @@ import { channels, databases, deploy, sandboxes, tooling } from '../../../../eco
 
 	.ecosystem-item:hover .ecosystem-name {
 		color: #1d4ed8;
+	}
+
+	@media (prefers-color-scheme: dark) {
+		.ecosystem-icon {
+			border-color: rgb(255 255 255 / 0.12);
+			box-shadow:
+				inset 0 1px 0 rgb(255 255 255 / 0.12),
+				0 1px 2px rgb(0 0 0 / 0.32),
+				0 4px 10px rgb(0 0 0 / 0.24);
+		}
+
+		.ecosystem-name {
+			color: #d4d4d8;
+		}
+
+		.ecosystem-item:hover .ecosystem-name {
+			color: #60a5fa;
+		}
 	}
 
 	[hidden] {

@@ -14,7 +14,7 @@ const Heading = `h${headingLevel}` as 'h2' | 'h3';
 ---
 
 <section class:list={[mobile ? 'pb-3 [&+&]:pt-3' : 'pb-6 [&+&]:pt-1.5']}>
-	{group.title && <Heading class="mb-2 text-sm font-semibold tracking-normal text-gray-700">{group.title}</Heading>}
+	{group.title && <Heading class="mb-2 text-sm font-semibold tracking-normal text-zinc-700 dark:text-zinc-300">{group.title}</Heading>}
 	<ul class="m-0 list-none p-0">
 		{group.items.map((item) => (
 			<li><DocsSidebarLink item={item} currentSlug={currentSlug} /></li>

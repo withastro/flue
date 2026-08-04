@@ -64,7 +64,8 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
     <meta name="generator" content={Astro.generator} />
     <title>Flue — The Open Agent Framework</title>
     <meta name="description" content="Build durable AI agents with Flue's programmable TypeScript harness. Write once, deploy anywhere, use any LLM." />
-    <meta name="theme-color" content="#ffffff" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
     <link rel="canonical" href="https://flueframework.com/" />
 
     <!-- Open Graph -->
@@ -87,10 +88,10 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   </head>
-  <body class="bg-white text-gray-950 font-[system-ui,sans-serif] antialiased">
+  <body class="bg-white dark:bg-zinc-950 text-zinc-950 dark:text-zinc-50 font-[system-ui,sans-serif] antialiased">
 
     <!-- NAV -->
-    <nav class="relative z-50 border-b border-gray-200 bg-white/80 backdrop-blur-sm lg:sticky lg:top-0">
+    <nav class="relative z-50 border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80 lg:sticky lg:top-0">
       <div class="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
         <div class="flex h-full items-center gap-8">
           <a href="/" class="flex items-center gap-2">
@@ -101,22 +102,22 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
               <rect width="18" height="18" transform="matrix(-1 0 0 1 54 36)" fill="white"/>
               <rect width="18" height="18" transform="matrix(-1 0 0 1 72 54)" fill="white"/>
             </svg>
-            <span class="text-2xl font-extrabold tracking-tight text-gray-950 leading-8">Flue</span>
+            <span class="text-2xl font-extrabold tracking-tight text-zinc-950 dark:text-zinc-50 leading-8">Flue</span>
           </a>
-          <div class="hidden lg:flex h-full items-center gap-7 text-sm font-medium text-gray-500">
-            <a href="/docs/guide/getting-started/" class="hover:text-blue-600 transition-colors">Guide</a>
-            <a href="/docs/reference/agent-api/" class="hover:text-blue-600 transition-colors">Reference</a>
-            <a href="/docs/cli/overview/" class="hover:text-blue-600 transition-colors">CLI</a>
-            <a href="/docs/sdk/overview/" class="hover:text-blue-600 transition-colors">SDK</a>
-            <a href="/docs/ecosystem/" class="hover:text-blue-600 transition-colors">Ecosystem</a>
+          <div class="hidden lg:flex h-full items-center gap-7 text-sm font-medium text-zinc-500 dark:text-zinc-400">
+            <a href="/docs/guide/getting-started/" class="transition-colors hover:text-blue-600 dark:hover:text-blue-400">Guide</a>
+            <a href="/docs/reference/agent-api/" class="transition-colors hover:text-blue-600 dark:hover:text-blue-400">Reference</a>
+            <a href="/docs/cli/overview/" class="transition-colors hover:text-blue-600 dark:hover:text-blue-400">CLI</a>
+            <a href="/docs/sdk/overview/" class="transition-colors hover:text-blue-600 dark:hover:text-blue-400">SDK</a>
+            <a href="/docs/ecosystem/" class="transition-colors hover:text-blue-600 dark:hover:text-blue-400">Ecosystem</a>
           </div>
         </div>
         <div class="flex items-center gap-5">
-          <a href="/docs/guide/getting-started/" class="text-sm font-medium text-gray-500 transition-colors hover:text-gray-950 lg:hidden">Docs</a>
-          <a href="https://x.com/flueai" target="_blank" rel="noopener noreferrer" class="text-gray-500 hover:text-gray-950 transition-colors" aria-label="X">
+          <a href="/docs/guide/getting-started/" class="text-sm font-medium text-zinc-500 dark:text-zinc-400 transition-colors hover:text-zinc-950 dark:hover:text-zinc-50 lg:hidden">Docs</a>
+          <a href="https://x.com/flueai" target="_blank" rel="noopener noreferrer" class="text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-colors" aria-label="X">
             <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
           </a>
-          <a href="https://github.com/withastro/flue" target="_blank" rel="noopener noreferrer" class="text-gray-500 hover:text-gray-950 transition-colors" aria-label="GitHub">
+          <a href="https://github.com/withastro/flue" target="_blank" rel="noopener noreferrer" class="text-zinc-500 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-colors" aria-label="GitHub">
             <svg class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.065 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
           </a>
         </div>
@@ -128,10 +129,10 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
          sheet behind the hero. -->
     <div class="absolute left-0 right-0 top-0 h-[1000px] pointer-events-none overflow-hidden -z-1">
       <div class="absolute top-[420px] left-1/2 transform -translate-y-1/3 rotate-16 scale-150 hidden lg:block">
-        <svg width="700" height="850" viewBox="0 0 400 500" fill="none" overflow="visible" xmlns="http://www.w3.org/2000/svg">
+        <svg class="text-zinc-300 dark:text-zinc-900" width="700" height="850" viewBox="0 0 400 500" fill="none" overflow="visible" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <pattern id="grid" width="20" height="20" patternUnits="userSpaceOnUse">
-              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="#dddddd" stroke-width="1"/>
+              <path d="M 20 0 L 0 0 0 20" fill="none" stroke="currentColor" stroke-width="1"/>
             </pattern>
 
             <!-- Gradient mask fades the grid from right to left, so it stays
@@ -171,20 +172,20 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
     <!-- HERO -->
     <section class="bg-transparent relative overflow-hidden">
       <div class="max-w-6xl mx-auto px-6 pt-14 lg:pt-20 lg:pb-8 relative z-10">
-        <a href={heroAnnouncement.href} class="group mb-5 inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition-colors hover:text-gray-950">
+        <a href={heroAnnouncement.href} class="group mb-5 inline-flex items-center gap-2 text-sm font-medium text-zinc-600 dark:text-zinc-400 transition-colors hover:text-zinc-950 dark:hover:text-zinc-50">
           <span>{heroAnnouncement.label} — {heroAnnouncement.message}</span>
           <span class="transition-transform group-hover:translate-x-1">&rarr;</span>
         </a>
         <h1 class="max-w-6xl text-balance font-heading text-4xl font-bold tracking-tight leading-[1.03] sm:text-[3.5rem]">
           The Open Agent Framework
         </h1>
-        <p class="mt-3 lg:mt-4 max-w-xl text-md sm:text-xl  text-gray-600">
+        <p class="mt-3 lg:mt-4 max-w-xl text-md sm:text-xl  text-zinc-600 dark:text-zinc-400">
           Build durable AI agents with Flue's programmable TypeScript harness. Write once, deploy anywhere, use any LLM.
         </p>
         <div class="mt-6 lg:mt-8 flex flex-col items-start gap-3 sm:flex-row sm:flex-wrap sm:items-center">
           <div id="copy-prompt-shell" class="group/copy relative" data-feedback="false" data-copy-error="false">
-            <button id="copy-prompt-btn" type="button" class="squircle-button group inline-flex cursor-pointer items-center gap-2.5 border border-gray-950 bg-gray-950 px-5 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-gray-800">
-              <span class="relative flex items-center justify-start shrink-0 text-white w-[94px] h-5" aria-hidden="true">
+            <button id="copy-prompt-btn" type="button" class="squircle-button group inline-flex cursor-pointer items-center gap-2.5 border border-zinc-950 bg-zinc-950 px-5 py-3 text-sm font-medium text-white shadow-sm transition-colors hover:bg-zinc-800 dark:border-zinc-100 dark:bg-zinc-100 dark:text-zinc-950 dark:hover:bg-zinc-200">
+              <span class="relative flex h-5 w-[94px] shrink-0 items-center justify-start text-white dark:text-zinc-950" aria-hidden="true">
                 <svg class="w-5 h-5 transition-transform duration-300 ease-out -rotate-6 group-hover:-rotate-12 group-hover:-translate-x-1" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" clip-rule="evenodd" xmlns="http://www.w3.org/2000/svg"><path d="M20.998 10.949H24v3.102h-3v3.028h-1.487V20H18v-2.921h-1.487V20H15v-2.921H9V20H7.488v-2.921H6V20H4.487v-2.921H3V14.05H0V10.95h3V5h17.998v5.949zM6 10.949h1.488V8.102H6v2.847zm10.51 0H18V8.102h-1.49v2.847z"/></svg>
                 <svg class="w-5 h-5 ml-1 transition-transform duration-300 ease-out group-hover:-translate-x-px group-hover:-translate-y-px group-hover:rotate-6 group-hover:scale-110" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" xmlns="http://www.w3.org/2000/svg"><path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"/></svg>
                 <svg class="w-5 h-5 ml-1 transition-transform duration-300 ease-out group-hover:translate-x-px group-hover:translate-y-0.5 group-hover:-rotate-6 group-hover:scale-110" viewBox="82.65 82.65 634.71 634.71" fill="currentColor" fill-rule="evenodd" xmlns="http://www.w3.org/2000/svg"><path d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"/><path d="M517.36 400H634.72V634.72H517.36Z"/></svg>
@@ -194,22 +195,22 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
             </button>
             <span id="copy-prompt-preview" aria-live="polite" class="pointer-events-none absolute left-0 top-full mt-3 hidden whitespace-nowrap font-[JetBrains_Mono,monospace] text-xs opacity-0 translate-y-1 transition-all duration-200 ease-out group-hover/copy:translate-y-0 group-hover/copy:opacity-100 group-focus-within/copy:translate-y-0 group-focus-within/copy:opacity-100 group-data-[feedback=true]/copy:translate-y-0 group-data-[feedback=true]/copy:opacity-100 sm:inline-flex">
               <span class="relative inline-flex">
-                <span class="inline-flex items-center gap-1 text-gray-500 transition-all duration-200 ease-out group-data-[feedback=true]/copy:-translate-y-1 group-data-[feedback=true]/copy:opacity-0">
+                <span class="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400 transition-all duration-200 ease-out group-data-[feedback=true]/copy:-translate-y-1 group-data-[feedback=true]/copy:opacity-0">
                   <span class="relative top-px inline-flex w-3 shrink-0 justify-center text-sm leading-none text-blue-300">&ldquo;</span>
                   <span>{COPY_PROMPT}<span class="relative top-px ml-1 text-sm leading-none text-blue-300">&rdquo;</span></span>
                 </span>
                 <span id="copy-prompt-feedback" class="absolute left-0 top-0 inline-flex translate-y-1 items-center gap-1 opacity-0 transition-all duration-200 ease-out group-data-[feedback=true]/copy:translate-y-0 group-data-[feedback=true]/copy:opacity-100">
                   <span class="inline-flex w-3 shrink-0 justify-center text-blue-500 group-data-[copy-error=true]/copy:hidden">&#x2713;</span>
-                  <span class="hidden w-3 shrink-0 justify-center text-gray-500 group-data-[copy-error=true]/copy:inline-flex">!</span>
-                  <span class="text-blue-600 group-data-[copy-error=true]/copy:hidden">Copied — now paste that into your coding agent for a guided walkthrough!</span>
-                  <span class="hidden text-gray-600 group-data-[copy-error=true]/copy:inline">Could not copy prompt</span>
+                  <span class="hidden w-3 shrink-0 justify-center text-zinc-500 dark:text-zinc-400 group-data-[copy-error=true]/copy:inline-flex">!</span>
+                  <span class="text-blue-600 group-data-[copy-error=true]/copy:hidden dark:text-blue-400">Copied — now paste that into your coding agent for a guided walkthrough!</span>
+                  <span class="hidden text-zinc-600 dark:text-zinc-400 group-data-[copy-error=true]/copy:inline">Could not copy prompt</span>
                 </span>
               </span>
             </span>
           </div>
           <script id="copy-prompt-text" type="text/plain" set:html={COPY_PROMPT}></script>
-          <button id="watch-video-btn" type="button" class="squircle-button group inline-flex cursor-pointer items-center gap-2.5 border border-gray-300 bg-white px-5 py-3 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-gray-400 hover:bg-gray-50">
-            <svg class="w-5 h-5 fill-gray-400 transition-all duration-300 ease-out group-hover:fill-gray-700 group-hover:scale-110" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M187.2 100.9C174.8 94.1 159.8 94.4 147.6 101.6C135.4 108.8 128 121.9 128 136L128 504C128 518.1 135.5 531.2 147.6 538.4C159.7 545.6 174.8 545.9 187.2 539.1L523.2 355.1C536 348.1 544 334.6 544 320C544 305.4 536 291.9 523.2 284.9L187.2 100.9z"/></svg>
+          <button id="watch-video-btn" type="button" class="squircle-button group inline-flex cursor-pointer items-center gap-2.5 border border-zinc-300 bg-white px-5 py-3 text-sm font-medium text-zinc-700 shadow-sm transition-colors hover:border-zinc-400 hover:bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-900">
+            <svg class="w-5 h-5 fill-zinc-400 dark:fill-zinc-500 transition-all duration-300 ease-out group-hover:fill-zinc-700 dark:group-hover:fill-zinc-200 group-hover:scale-110" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" aria-hidden="true"><path d="M187.2 100.9C174.8 94.1 159.8 94.4 147.6 101.6C135.4 108.8 128 121.9 128 136L128 504C128 518.1 135.5 531.2 147.6 538.4C159.7 545.6 174.8 545.9 187.2 539.1L523.2 355.1C536 348.1 544 334.6 544 320C544 305.4 536 291.9 523.2 284.9L187.2 100.9z"/></svg>
             <span>Watch Video</span>
           </button>
         </div>
@@ -230,30 +231,30 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
 
          Background gradient hard-cuts at the vertical midpoint so the snippet
          card visually straddles both hero (white) and body (gray) sections. -->
-    <section class="relative z-1" style="background: linear-gradient(to bottom, transparent 0%, transparent 50%, #f8f9fb 50%, #f8f9fb 100%);">
+    <section class="hero-code-section relative z-1">
       <!-- 1px rule that runs behind the card at the section boundary. -->
-      <div class="absolute top-1/2 left-0 right-0 h-px bg-gray-300 transform -translate-y-1/2 z-0"></div>
+      <div class="absolute top-1/2 left-0 right-0 z-0 h-px -translate-y-1/2 transform bg-zinc-300 dark:bg-zinc-800"></div>
 
       <div class="max-w-6xl mx-auto px-6 py-40 relative z-10">
-        <div class="hero-code border border-gray-300 rounded-sm overflow-hidden shadow-lg bg-white/70 backdrop-blur-sm [&_pre]:p-6 [&_pre]:text-sm [&_pre]:leading-relaxed [&_pre]:overflow-x-auto [&_pre]:m-0 [&_pre]:rounded-none [&_pre]:bg-transparent">
+        <div class="hero-code overflow-hidden rounded-sm border border-zinc-300 bg-white/70 shadow-lg backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/70 [&_pre]:m-0 [&_pre]:overflow-x-auto [&_pre]:rounded-none [&_pre]:bg-transparent [&_pre]:p-6 [&_pre]:text-sm [&_pre]:leading-relaxed">
           <!-- Code block chrome: filename (left) + run modes (right). -->
-          <div class="flex items-stretch border-b border-gray-200 bg-gray-50/60">
+          <div class="flex items-stretch border-b border-zinc-200 bg-zinc-50/60 dark:border-zinc-800 dark:bg-zinc-950/60">
             <div class="flex items-center gap-2 px-4 py-2.5 min-w-0">
               <svg class="w-3.5 h-3.5 text-blue-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                 <polyline points="14 2 14 8 20 8"/>
               </svg>
-              <span class="font-[JetBrains_Mono,monospace] text-[13px] text-gray-600 truncate">agents/assistant.ts</span>
+              <span class="font-[JetBrains_Mono,monospace] text-[13px] text-zinc-600 dark:text-zinc-400 truncate">agents/assistant.ts</span>
             </div>
 
-            <div class="ml-auto flex items-stretch divide-x divide-gray-200 border-l border-gray-200">
+            <div class="ml-auto flex items-stretch divide-x divide-zinc-200 dark:divide-zinc-800 border-l border-zinc-200 dark:border-zinc-800">
               <!-- CLI agent interaction mode -->
               <div class="hidden md:flex items-baseline gap-2 px-4 py-2.5" title="Run one agent prompt from the CLI">
                 <svg class="w-3.5 h-3.5 text-blue-500 shrink-0 self-center" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                   <polyline points="4 17 10 11 4 5"/>
                   <line x1="12" y1="19" x2="20" y2="19"/>
                 </svg>
-                <span class="font-[JetBrains_Mono,monospace] text-[13px] text-gray-600">flue run ./agents/assistant.ts</span>
+                <span class="font-[JetBrains_Mono,monospace] text-[13px] text-zinc-600 dark:text-zinc-400">flue run ./agents/assistant.ts</span>
               </div>
               <!-- HTTP agent interaction mode -->
               <div class="hidden sm:flex items-baseline gap-2 px-4 py-2.5" title="Prompt a persistent agent instance over HTTP">
@@ -262,18 +263,18 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
                   <line x1="2" y1="12" x2="22" y2="12"/>
                   <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/>
                 </svg>
-                <span class="font-[JetBrains_Mono,monospace] text-[13px] text-gray-600">POST /agents/assistant/:id</span>
+                <span class="font-[JetBrains_Mono,monospace] text-[13px] text-zinc-600 dark:text-zinc-400">POST /agents/assistant/:id</span>
               </div>
 
             </div>
           </div>
-          <Code code={HERO} lang="typescript" theme="github-light" />
+          <Code code={HERO} lang="typescript" themes={{ dark: 'github-dark-default', light: 'github-light' }} defaultColor="light-dark()" />
         </div>
       </div>
     </section>
 
     <!-- Body sections — off-white background wraps everything below the hero. -->
-    <div class="bg-[#f8f9fb]">
+    <div class="bg-zinc-50 dark:bg-zinc-950">
 
     <section>
       <div class="max-w-6xl mx-auto px-6 py-24">
@@ -282,16 +283,16 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
             <h2 class="mt-3 font-heading text-3xl sm:text-4xl font-bold tracking-tight leading-[1.1] text-balance">
               Powered by Pi, the open agent harness.
             </h2>
-            <p class="mt-6 text-lg text-gray-600 leading-relaxed lg:max-w-md">
+            <p class="mt-6 text-lg text-zinc-600 dark:text-zinc-400 leading-relaxed lg:max-w-md">
               Flue is powered by Pi, the trusted agent harness used by OpenClaw and millions worldwide. Pi gives you the tools you need to unlock real agent autonomy, moving beyond simple chatbots.
             </p>
-            <p class="mt-6 text-lg text-gray-600 leading-relaxed lg:max-w-md">
-              Pi is the core of our open tech stack including <a href="https://durablestreams.com/" class="text-gray-700 underline decoration-gray-300 underline-offset-2 transition-colors hover:text-gray-950">Durable Streams</a>, <a href="https://vite.dev/" class="text-gray-700 underline decoration-gray-300 underline-offset-2 transition-colors hover:text-gray-950">Vite</a>, and a flexible <a href="https://flueframework.com/docs/guide/sandboxes/#remote-sandboxes" class="text-gray-700 underline decoration-gray-300 underline-offset-2 transition-colors hover:text-gray-950">Sandbox API</a>. Deploy Flue anywhere with confidence.
+            <p class="mt-6 text-lg text-zinc-600 dark:text-zinc-400 leading-relaxed lg:max-w-md">
+              Pi is the core of our open tech stack including <a href="https://durablestreams.com/" class="text-zinc-700 dark:text-zinc-300 underline decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2 transition-colors hover:text-zinc-950 dark:hover:text-zinc-50">Durable Streams</a>, <a href="https://vite.dev/" class="text-zinc-700 dark:text-zinc-300 underline decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2 transition-colors hover:text-zinc-950 dark:hover:text-zinc-50">Vite</a>, and a flexible <a href="https://flueframework.com/docs/guide/sandboxes/#remote-sandboxes" class="text-zinc-700 dark:text-zinc-300 underline decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2 transition-colors hover:text-zinc-950 dark:hover:text-zinc-50">Sandbox API</a>. Deploy Flue anywhere with confidence.
             </p>
           </div>
 
           <div class="order-1 mx-auto w-full max-w-sm overflow-hidden lg:order-2 lg:col-span-7 lg:max-w-none lg:translate-y-6 lg:px-12">
-            <svg class="block w-full h-auto" viewBox="75 20 850 650" role="img" aria-labelledby="agent-chip-title agent-chip-desc" xmlns="http://www.w3.org/2000/svg">
+            <svg class="runtime-diagram block h-auto w-full" viewBox="75 20 850 650" role="img" aria-labelledby="agent-chip-title agent-chip-desc" xmlns="http://www.w3.org/2000/svg">
             <title id="agent-chip-title">Flue agent architecture</title>
             <desc id="agent-chip-desc">An isometric agent harness powered by Pi, stacked above the Flue runtime.</desc>
 
@@ -351,10 +352,10 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
             <h2 class="font-heading text-3xl sm:text-4xl font-bold tracking-tight leading-[1.1] text-balance">
               Durability. Recovery. It's all handled for you.
             </h2>
-            <p class="mt-6 text-lg text-gray-600 leading-relaxed">
+            <p class="mt-6 text-lg text-zinc-600 dark:text-zinc-400 leading-relaxed">
               Agents can’t die when the server goes down. Flue records every session in a durable stream, then safely resumes interrupted work when the runtime comes back online. Run one agent or a multi-agent swarm on the same durable foundation.
             </p>
-            <ul class="mt-6 space-y-3 text-[15px] font-semibold text-gray-950">
+            <ul class="mt-6 space-y-3 text-[15px] font-semibold text-zinc-950 dark:text-zinc-50">
               <li class="flex items-center gap-2.5">
                 <svg class="size-4 shrink-0 fill-green-500" viewBox="0 0 640 640" aria-hidden="true"><path d="M530.8 134.1C545.1 144.5 548.3 164.5 537.9 178.8L281.9 530.8C276.4 538.4 267.9 543.1 258.5 543.9C249.1 544.7 240 541.2 233.4 534.6L105.4 406.6C92.9 394.1 92.9 373.8 105.4 361.3C117.9 348.8 138.2 348.8 150.7 361.3L252.2 462.8L486.2 141.1C496.6 126.8 516.6 123.6 530.9 134z"/></svg>
                 Accepted work is never lost
@@ -371,12 +372,12 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
           </div>
 
           <div class="order-1 mx-auto w-fit max-w-md min-w-0 font-[JetBrains_Mono,monospace] text-sm leading-5 lg:order-2 lg:col-span-7 lg:max-w-none">
-            <fieldset id="durability-frame" class="w-fit border border-gray-300 bg-transparent px-3 pb-4 transition-colors duration-300 sm:px-4 sm:pb-5">
+            <fieldset id="durability-frame" class="w-fit border border-zinc-300 bg-transparent px-3 pb-4 transition-colors duration-300 dark:border-zinc-800 sm:px-4 sm:pb-5">
               <div id="durability-cells" class="mt-4 grid grid-cols-[repeat(14,minmax(0,1rem))] justify-center gap-2 overflow-hidden transition-[height] duration-500 ease-out sm:mt-5 lg:grid-cols-[repeat(20,minmax(0,1rem))]" aria-hidden="true"></div>
             </fieldset>
             <div class="mt-2 flex items-center justify-between gap-3 px-3 sm:px-4">
-              <span id="durability-status" class="w-[9rem] shrink-0 text-gray-500 tabular-nums transition-colors duration-300" aria-live="polite">0 agents online</span>
-              <button id="durability-disrupt" type="button" class="w-fit cursor-pointer text-gray-500 transition-colors duration-700 hover:text-red-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-default">[disrupt]</button>
+              <span id="durability-status" class="w-[9rem] shrink-0 text-zinc-500 dark:text-zinc-400 tabular-nums transition-colors duration-300" aria-live="polite">0 agents online</span>
+              <button id="durability-disrupt" type="button" class="w-fit cursor-pointer text-zinc-500 dark:text-zinc-400 transition-colors duration-700 hover:text-red-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-default">[disrupt]</button>
             </div>
 
           </div>
@@ -391,7 +392,7 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
             <h2 class="font-heading text-3xl sm:text-4xl font-bold tracking-tight leading-[1.1] text-balance">
               Bring the stack you already love.
             </h2>
-            <a href="/docs/ecosystem/" class="group mt-3 inline-flex items-center gap-2 text-lg font-normal text-gray-600 transition-colors hover:text-gray-950">
+            <a href="/docs/ecosystem/" class="group mt-3 inline-flex items-center gap-2 text-lg font-normal text-zinc-600 dark:text-zinc-400 transition-colors hover:text-zinc-950 dark:hover:text-zinc-50">
               Explore our ecosystem <span class="transition-transform group-hover:translate-x-1">&rarr;</span>
             </a>
           </div>
@@ -401,7 +402,7 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
               {homepageEcosystemItems.map((app, index) => (
                 <li class:list={[index >= 12 && 'hidden sm:block']}>
                   <a href={app.href} aria-label={app.name} class="group block">
-                    <span class="grid aspect-square place-items-center overflow-hidden rounded-[22%] border border-gray-950/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_1px_2px_rgba(17,24,39,0.12),0_4px_10px_rgba(17,24,39,0.1)] transition duration-200 group-hover:scale-105 group-hover:border-blue-600/60 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_2px_3px_rgba(17,24,39,0.14),0_8px_16px_rgba(17,24,39,0.12)]" style={`background: ${app.background}`}>
+                    <span class="grid aspect-square place-items-center overflow-hidden rounded-[22%] border border-zinc-950/10 dark:border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_1px_2px_rgba(17,24,39,0.12),0_4px_10px_rgba(17,24,39,0.1)] transition duration-200 group-hover:scale-105 group-hover:border-blue-600/60 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_2px_3px_rgba(17,24,39,0.14),0_8px_16px_rgba(17,24,39,0.12)]" style={`background: ${app.background}`}>
                       {app.icon ? (
                         <img class:list={[
                           'object-contain',
@@ -423,8 +424,8 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
               ))}
               <li class="hidden sm:block">
                 <a href="/docs/ecosystem/" aria-label="Explore the full ecosystem" class="group block">
-                  <span class="grid aspect-square place-items-center overflow-hidden rounded-[22%] border border-gray-300 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_1px_2px_rgba(17,24,39,0.12),0_4px_10px_rgba(17,24,39,0.1)] transition duration-200 group-hover:scale-105 group-hover:border-blue-500 group-hover:bg-blue-50 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_2px_3px_rgba(17,24,39,0.14),0_8px_16px_rgba(17,24,39,0.12)]">
-                    <svg class="size-[42%] text-gray-500 transition-colors duration-200 group-hover:text-blue-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <span class="grid aspect-square place-items-center overflow-hidden rounded-[22%] border border-zinc-300 bg-white shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_1px_2px_rgba(17,24,39,0.12),0_4px_10px_rgba(17,24,39,0.1)] transition duration-200 group-hover:scale-105 group-hover:border-blue-500 group-hover:bg-blue-50 group-hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.24),0_2px_3px_rgba(17,24,39,0.14),0_8px_16px_rgba(17,24,39,0.12)] dark:border-zinc-800 dark:bg-zinc-900 dark:group-hover:border-blue-400 dark:group-hover:bg-blue-950/40">
+                    <svg class="size-[42%] text-zinc-500 transition-colors duration-200 group-hover:text-blue-600 dark:text-zinc-400 dark:group-hover:text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                       <path d="M5 12h14"/>
                       <path d="m13 6 6 6-6 6"/>
                     </svg>
@@ -432,8 +433,8 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
                 </a>
               </li>
             </ul>
-            <div id="ecosystem-grid-fade" class="absolute inset-x-0 bottom-0 z-10 hidden h-1/3 sm:block" style="background: linear-gradient(to bottom, transparent 0%, rgba(248, 249, 251, 0.28) 30%, rgba(248, 249, 251, 0.72) 68%, #f8f9fb 100%);"></div>
-            <button id="ecosystem-show-more" type="button" class="squircle-button absolute bottom-4 left-1/2 z-20 hidden -translate-x-1/2 cursor-pointer border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm transition-colors hover:border-gray-400 hover:bg-gray-50 hover:text-gray-950 sm:block">Show more</button>
+            <div id="ecosystem-grid-fade" class="ecosystem-grid-fade absolute inset-x-0 bottom-0 z-10 hidden h-1/3 sm:block"></div>
+            <button id="ecosystem-show-more" type="button" class="squircle-button absolute bottom-4 left-1/2 z-20 hidden -translate-x-1/2 cursor-pointer border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700 shadow-sm transition-colors hover:border-zinc-400 hover:bg-zinc-50 hover:text-zinc-950 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:bg-zinc-800 dark:hover:text-zinc-50 sm:block">Show more</button>
           </div>
         </div>
       </div>
@@ -446,97 +447,97 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
           <h2 class="font-heading text-3xl sm:text-4xl font-bold tracking-tight leading-[1.1] text-balance">
             Features
           </h2>
-          <p class="mt-4 text-lg text-gray-600 leading-relaxed">
+          <p class="mt-4 text-lg text-zinc-600 dark:text-zinc-400 leading-relaxed">
             Build agents that can safely take action, maintain continuity, and connect to the systems where work already happens.
           </p>
         </div>
 
         <div class="mt-10 grid lg:grid-cols-6 gap-5">
-          <a href="/docs/guide/building-agents/" class="lg:col-span-3 bg-white flex flex-col transition-colors hover:bg-gray-50 [&>div]:transition-colors hover:[&>div]:border-gray-400">
-            <div class="relative flex h-[184px] items-center justify-center overflow-hidden border border-slate-300 bg-[#e9eef4]">
+          <a href="/docs/guide/building-agents/" class="flex flex-col bg-white transition-colors hover:bg-zinc-50 hover:[&>div]:border-zinc-400 dark:bg-zinc-900 dark:hover:bg-zinc-800 [&>div]:transition-colors lg:col-span-3">
+            <div class="relative flex h-[184px] items-center justify-center overflow-hidden border border-zinc-300 bg-zinc-200 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-500">
               <svg class="absolute inset-0 h-full w-full" aria-hidden="true">
                 <defs>
                   <pattern id="agentsPaperGrid" width="20" height="20" patternUnits="userSpaceOnUse">
-                    <path d="M20 0H0V20" fill="none" stroke="#64748b" stroke-opacity="0.72" stroke-width="0.8" stroke-dasharray="1 2"/>
+                    <path d="M20 0H0V20" fill="none" stroke="currentColor" stroke-opacity="0.72" stroke-width="0.8" stroke-dasharray="1 2"/>
                   </pattern>
                 </defs>
                 <rect width="100%" height="100%" fill="url(#agentsPaperGrid)"/>
               </svg>
               <div class="feature-shader pattern-layer relative z-10 h-[128px] w-[128px] rounded-full" style="--shadow-rgb: 59 130 246;" data-ambient-shader data-color-back="#00000000" data-color-front="#3b82f6" data-shape="swirl" data-type="4x4" data-size="2" data-scale="0.25" data-speed="0.18"></div>
             </div>
-            <div class="flex-1 border-x border-b border-gray-300 p-6">
-              <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Agents</h3>
-              <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Build agents that can keep context across conversations and events as they autonomously work toward a goal. Each one is durable, stateful, and addressable over HTTP.</p>
+            <div class="flex-1 border-x border-b border-zinc-300 p-6 dark:border-zinc-800">
+              <h3 class="font-heading text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">Agents</h3>
+              <p class="mt-1.5 text-[15px] text-zinc-600 dark:text-zinc-400 leading-relaxed">Build agents that can keep context across conversations and events as they autonomously work toward a goal. Each one is durable, stateful, and addressable over HTTP.</p>
             </div>
           </a>
 
-          <a href="/docs/guide/workflows/" class="lg:col-span-3 bg-white flex flex-col transition-colors hover:bg-gray-50 [&>div]:transition-colors hover:[&>div]:border-gray-400">
-            <div class="relative flex h-[184px] items-center justify-center overflow-hidden border border-slate-300 bg-[#e9eef4]">
+          <a href="/docs/guide/workflows/" class="flex flex-col bg-white transition-colors hover:bg-zinc-50 hover:[&>div]:border-zinc-400 dark:bg-zinc-900 dark:hover:bg-zinc-800 [&>div]:transition-colors lg:col-span-3">
+            <div class="relative flex h-[184px] items-center justify-center overflow-hidden border border-zinc-300 bg-zinc-200 text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-500">
               <svg class="absolute inset-0 h-full w-full" aria-hidden="true">
                 <defs>
                   <pattern id="workflowsPaperGrid" width="20" height="20" patternUnits="userSpaceOnUse">
-                    <path d="M20 0H0V20" fill="none" stroke="#64748b" stroke-opacity="0.72" stroke-width="0.8" stroke-dasharray="1 2"/>
+                    <path d="M20 0H0V20" fill="none" stroke="currentColor" stroke-opacity="0.72" stroke-width="0.8" stroke-dasharray="1 2"/>
                   </pattern>
                 </defs>
                 <rect width="100%" height="100%" fill="url(#workflowsPaperGrid)"/>
               </svg>
               <div class="feature-shader pattern-layer relative z-10 h-[128px] w-[128px] rounded-full" style="--shadow-rgb: 59 130 246;" data-ambient-shader data-color-back="#00000000" data-color-front="#3b82f6" data-shape="sphere" data-type="4x4" data-size="2" data-scale="1.02" data-speed="0.18"></div>
             </div>
-            <div class="flex-1 border-x border-b border-gray-300 p-6">
-              <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Workflows</h3>
-              <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Agents are just functions. Script them with <code class="font-[JetBrains_Mono,monospace] text-[13px]">flue run</code> and the SDK — locally, in CI, or from your own backend — or orchestrate them with Cloudflare Workflows, Inngest, and more.</p>
+            <div class="flex-1 border-x border-b border-zinc-300 p-6 dark:border-zinc-800">
+              <h3 class="font-heading text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">Workflows</h3>
+              <p class="mt-1.5 text-[15px] text-zinc-600 dark:text-zinc-400 leading-relaxed">Agents are just functions. Script them with <code class="font-[JetBrains_Mono,monospace] text-[13px]">flue run</code> and the SDK — locally, in CI, or from your own backend — or orchestrate them with Cloudflare Workflows, Inngest, and more.</p>
             </div>
           </a>
 
-          <a href="/docs/guide/sandboxes/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
-            <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Sandboxes</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">A secure environment where agents run commands, edit files, and do real work.</p>
+          <a href="/docs/guide/sandboxes/" class="lg:col-span-2 border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 transition-colors hover:border-zinc-400 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800">
+            <h3 class="font-heading text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">Sandboxes</h3>
+            <p class="mt-1.5 text-[15px] text-zinc-600 dark:text-zinc-400 leading-relaxed">A secure environment where agents run commands, edit files, and do real work.</p>
           </a>
 
-          <a href="/docs/guide/agent-hooks/#persisted-state" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
-            <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Persistent State</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Write data on each agent and update its capabilities as state changes.</p>
+          <a href="/docs/guide/agent-hooks/#persisted-state" class="lg:col-span-2 border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 transition-colors hover:border-zinc-400 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800">
+            <h3 class="font-heading text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">Persistent State</h3>
+            <p class="mt-1.5 text-[15px] text-zinc-600 dark:text-zinc-400 leading-relaxed">Write data on each agent and update its capabilities as state changes.</p>
           </a>
 
-          <a href="/docs/guide/subagents/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
-            <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Subagents</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Define specialized roles and let your agent delegate work to the right expert.</p>
+          <a href="/docs/guide/subagents/" class="lg:col-span-2 border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 transition-colors hover:border-zinc-400 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800">
+            <h3 class="font-heading text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">Subagents</h3>
+            <p class="mt-1.5 text-[15px] text-zinc-600 dark:text-zinc-400 leading-relaxed">Define specialized roles and let your agent delegate work to the right expert.</p>
           </a>
 
-          <a href="/docs/guide/tools/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
-            <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Tools</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Agents call APIs, query data, and make changes — using the code you define.</p>
+          <a href="/docs/guide/tools/" class="lg:col-span-2 border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 transition-colors hover:border-zinc-400 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800">
+            <h3 class="font-heading text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">Tools</h3>
+            <p class="mt-1.5 text-[15px] text-zinc-600 dark:text-zinc-400 leading-relaxed">Agents call APIs, query data, and make changes — using the code you define.</p>
           </a>
 
-          <a href="/docs/guide/skills/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
-            <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Skills</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Package expertise that agents load whenever a task needs guidance.</p>
+          <a href="/docs/guide/skills/" class="lg:col-span-2 border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 transition-colors hover:border-zinc-400 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800">
+            <h3 class="font-heading text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">Skills</h3>
+            <p class="mt-1.5 text-[15px] text-zinc-600 dark:text-zinc-400 leading-relaxed">Package expertise that agents load whenever a task needs guidance.</p>
           </a>
 
-          <a href="/docs/guide/mcp/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
-            <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">MCP Servers</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Connect agents to thousands of tools through the open Model Context Protocol.</p>
+          <a href="/docs/guide/mcp/" class="lg:col-span-2 border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 transition-colors hover:border-zinc-400 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800">
+            <h3 class="font-heading text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">MCP Servers</h3>
+            <p class="mt-1.5 text-[15px] text-zinc-600 dark:text-zinc-400 leading-relaxed">Connect agents to thousands of tools through the open Model Context Protocol.</p>
           </a>
 
-          <a href="/docs/guide/durability/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
-            <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Durable Execution</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Work survives crashes, restarts, and deploys — sessions resume automatically.</p>
+          <a href="/docs/guide/durability/" class="lg:col-span-2 border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 transition-colors hover:border-zinc-400 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800">
+            <h3 class="font-heading text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">Durable Execution</h3>
+            <p class="mt-1.5 text-[15px] text-zinc-600 dark:text-zinc-400 leading-relaxed">Work survives crashes, restarts, and deploys — sessions resume automatically.</p>
           </a>
 
-          <a href="/docs/guide/observability/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
-            <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Observability</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Export session traces to OpenTelemetry, Braintrust, Sentry, or your own observer.</p>
+          <a href="/docs/guide/observability/" class="lg:col-span-2 border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 transition-colors hover:border-zinc-400 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800">
+            <h3 class="font-heading text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">Observability</h3>
+            <p class="mt-1.5 text-[15px] text-zinc-600 dark:text-zinc-400 leading-relaxed">Export session traces to OpenTelemetry, Braintrust, Sentry, or your own observer.</p>
           </a>
 
-          <a href="/docs/guide/channels/" class="lg:col-span-2 border border-gray-300 bg-white p-6 transition-colors hover:border-gray-400 hover:bg-gray-50">
-            <h3 class="font-heading text-xl font-semibold tracking-tight text-gray-950">Chat</h3>
-            <p class="mt-1.5 text-[15px] text-gray-600 leading-relaxed">Connect agents to where work happens — Slack, Teams, Discord, GitHub, and more.</p>
+          <a href="/docs/guide/channels/" class="lg:col-span-2 border border-zinc-300 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6 transition-colors hover:border-zinc-400 dark:hover:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800">
+            <h3 class="font-heading text-xl font-semibold tracking-tight text-zinc-950 dark:text-zinc-50">Chat</h3>
+            <p class="mt-1.5 text-[15px] text-zinc-600 dark:text-zinc-400 leading-relaxed">Connect agents to where work happens — Slack, Teams, Discord, GitHub, and more.</p>
           </a>
 
-          <a href="/docs/guide/getting-started/" class="group lg:col-span-6 flex flex-col gap-4 border border-gray-300 bg-gray-950 p-6 text-white transition-colors hover:bg-gray-800 sm:flex-row sm:items-center sm:justify-between">
+          <a href="/docs/guide/getting-started/" class="group flex flex-col gap-4 border border-zinc-300 bg-zinc-950 p-6 text-white transition-colors hover:bg-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:hover:bg-zinc-800 sm:flex-row sm:items-center sm:justify-between lg:col-span-6">
             <div>
               <h3 class="font-heading text-xl font-semibold tracking-tight">Explore the docs</h3>
-              <p class="mt-1.5 text-base text-gray-300 leading-relaxed">Learn how to build, run, and deploy production-ready agents with Flue.</p>
+              <p class="mt-1.5 text-base text-zinc-300 dark:text-zinc-400 leading-relaxed">Learn how to build, run, and deploy production-ready agents with Flue.</p>
             </div>
             <span class="inline-flex items-center gap-2 whitespace-nowrap text-sm font-medium text-white">Read the docs <span class="transition-transform group-hover:translate-x-1">&rarr;</span></span>
           </a>
@@ -547,9 +548,9 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
 
     </div><!-- end off-white wrapper -->
 
-    <footer class="bg-[#f8f9fb]">
+    <footer class="bg-zinc-50 dark:bg-zinc-950">
       <div class="max-w-6xl mx-auto px-6">
-        <div class="flex flex-col gap-3 border-t border-gray-200 px-4 py-8 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+        <div class="flex flex-col gap-3 border-t border-zinc-200 dark:border-zinc-800 px-4 py-8 text-sm text-zinc-500 dark:text-zinc-400 sm:flex-row sm:items-center sm:justify-between">
           <span>flue — the open agent framework.</span>
           <span>&copy; {new Date().getFullYear()}</span>
         </div>
@@ -700,9 +701,11 @@ const piCells = piPixelPattern.flatMap((line, sourceRow) =>
           const outageVisible = cells.some((cell) => cell.dataset.state === 'down' || cell.dataset.state === 'restarting');
           durStatus.textContent = `${online} agents online`;
           durStatus.classList.toggle('text-red-500', outageVisible);
-          durStatus.classList.toggle('text-gray-500', !outageVisible);
+          durStatus.classList.toggle('text-zinc-500', !outageVisible);
+          durStatus.classList.toggle('dark:text-zinc-400', !outageVisible);
           durFrame.classList.toggle('border-red-500', outageVisible);
-          durFrame.classList.toggle('border-gray-300', !outageVisible);
+          durFrame.classList.toggle('border-zinc-300', !outageVisible);
+          durFrame.classList.toggle('dark:border-zinc-800', !outageVisible);
         };
         const updateStatus = () => {
           if (statusFrame !== undefined) return;

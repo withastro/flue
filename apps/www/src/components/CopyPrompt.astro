@@ -8,14 +8,14 @@ interface Props {
 const { text } = Astro.props;
 ---
 
-<div class="my-6 rounded-[0.4rem] border border-[#37383e] bg-[#161616] px-5 py-4 font-[JetBrains_Mono,monospace] text-[0.8rem] leading-[1.7] text-gray-200" data-copy-prompt>
+<div class="my-6 rounded-[0.4rem] border border-[#37383e] bg-[#161616] px-5 py-4 font-[JetBrains_Mono,monospace] text-[0.8rem] leading-[1.7] text-zinc-200 dark:text-zinc-300" data-copy-prompt>
 	<div class="flex min-w-0 flex-col items-start gap-4 sm:mx-auto sm:w-fit sm:max-w-full sm:flex-row sm:items-center sm:gap-5">
 		<button class="order-2 flex shrink-0 cursor-pointer items-center gap-[0.45rem] rounded-[0.3rem] border border-[#4b4c51] bg-[#313136] px-[0.62rem] py-[0.34rem] text-inherit transition-colors hover:border-[#62636a] hover:bg-[#3b3c42] sm:order-1" type="button" aria-label="Copy prompt">
 			<svg class="size-[0.95rem] fill-current" viewBox="0 0 640 640" aria-hidden="true"><path d="M288 64C252.7 64 224 92.7 224 128L224 384C224 419.3 252.7 448 288 448L480 448C515.3 448 544 419.3 544 384L544 183.4C544 166 536.9 149.3 524.3 137.2L466.6 81.8C454.7 70.4 438.8 64 422.3 64L288 64zM160 192C124.7 192 96 220.7 96 256L96 512C96 547.3 124.7 576 160 576L352 576C387.3 576 416 547.3 416 512L416 496L352 496L352 512L160 512L160 256L176 256L176 192L160 192z"/></svg>
 			<span data-copy-prompt-label>Copy Prompt</span>
 		</button>
-		<p class="order-1 !m-0 min-w-0 max-w-full text-left text-gray-200 sm:order-2 sm:w-[22rem] sm:text-balance sm:text-center">
-			<span aria-hidden="true" class="text-gray-400">&ldquo;</span><span data-copy-prompt-text>{text}</span><span aria-hidden="true" class="text-gray-400">&rdquo;</span>
+		<p class="order-1 !m-0 min-w-0 max-w-full text-left text-zinc-200 dark:text-zinc-300 sm:order-2 sm:w-[22rem] sm:text-balance sm:text-center">
+			<span aria-hidden="true" class="text-zinc-400 dark:text-zinc-500">&ldquo;</span><span data-copy-prompt-text>{text}</span><span aria-hidden="true" class="text-zinc-400 dark:text-zinc-500">&rdquo;</span>
 		</p>
 	</div>
 </div>

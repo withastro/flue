@@ -11,7 +11,11 @@ export default defineConfig({
 	integrations: [mdx()],
 	markdown: {
 		shikiConfig: {
-			theme: 'github-light',
+			defaultColor: 'light-dark()',
+			themes: {
+				dark: 'github-dark',
+				light: 'github-light',
+			},
 			transformers: [
 				{
 					name: 'code-block-title',

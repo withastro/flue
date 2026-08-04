@@ -43,7 +43,8 @@ const formattedDate = pubDate
 		<meta name="generator" content={Astro.generator} />
 		<title>{pageTitle}</title>
 		<meta name="description" content={pageDescription} />
-		<meta name="theme-color" content="#ffffff" />
+		<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+		<meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)" />
 		<link rel="canonical" href={canonicalUrl} />
 
 		<meta property="og:type" content="article" />
@@ -64,9 +65,9 @@ const formattedDate = pubDate
 		<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 		<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 	</head>
-	<body class="bg-white text-gray-950 font-[Inter,system-ui,sans-serif] antialiased">
+	<body class="bg-white dark:bg-zinc-950 text-zinc-950 dark:text-zinc-50 font-[Inter,system-ui,sans-serif] antialiased">
 		<!-- NAV (shared with homepage) -->
-		<nav class="sticky top-0 z-50 border-b border-gray-200 bg-white/80 backdrop-blur-sm">
+		<nav class="sticky top-0 z-50 border-b border-zinc-200 bg-white/80 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/80">
 			<div class="mx-auto flex h-14 max-w-6xl items-center justify-between px-6">
 				<div class="flex h-full items-center gap-8">
 					<a href="/" class="flex items-center gap-2">
@@ -77,21 +78,21 @@ const formattedDate = pubDate
 							<rect width="18" height="18" transform="matrix(-1 0 0 1 54 36)" fill="white"/>
 							<rect width="18" height="18" transform="matrix(-1 0 0 1 72 54)" fill="white"/>
 						</svg>
-						<span class="text-2xl font-extrabold leading-8 tracking-tight text-gray-950">Flue</span>
+						<span class="text-2xl font-extrabold leading-8 tracking-tight text-zinc-950 dark:text-zinc-50">Flue</span>
 					</a>
-					<div class="hidden h-full items-center gap-7 text-sm font-medium text-gray-500 lg:flex">
-						<a href="/docs/guide/getting-started/" class="transition-colors hover:text-blue-600">Guide</a>
-						<a href="/docs/reference/agent-api/" class="transition-colors hover:text-blue-600">Reference</a>
-						<a href="/docs/cli/overview/" class="transition-colors hover:text-blue-600">CLI</a>
-						<a href="/docs/sdk/overview/" class="transition-colors hover:text-blue-600">SDK</a>
-						<a href="/docs/ecosystem/" class="transition-colors hover:text-blue-600">Ecosystem</a>
+					<div class="hidden h-full items-center gap-7 text-sm font-medium text-zinc-500 dark:text-zinc-400 lg:flex">
+						<a href="/docs/guide/getting-started/" class="transition-colors hover:text-blue-600 dark:hover:text-blue-400">Guide</a>
+						<a href="/docs/reference/agent-api/" class="transition-colors hover:text-blue-600 dark:hover:text-blue-400">Reference</a>
+						<a href="/docs/cli/overview/" class="transition-colors hover:text-blue-600 dark:hover:text-blue-400">CLI</a>
+						<a href="/docs/sdk/overview/" class="transition-colors hover:text-blue-600 dark:hover:text-blue-400">SDK</a>
+						<a href="/docs/ecosystem/" class="transition-colors hover:text-blue-600 dark:hover:text-blue-400">Ecosystem</a>
 					</div>
 				</div>
 				<div class="hidden items-center gap-6 sm:flex">
-					<a href="https://x.com/flueai" target="_blank" rel="noopener noreferrer" class="text-gray-400 transition-colors hover:text-gray-950" aria-label="X">
+					<a href="https://x.com/flueai" target="_blank" rel="noopener noreferrer" class="text-zinc-400 dark:text-zinc-500 transition-colors hover:text-zinc-950 dark:hover:text-zinc-50" aria-label="X">
 						<svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
 					</a>
-					<a href="https://github.com/withastro/flue" target="_blank" rel="noopener noreferrer" class="text-gray-400 transition-colors hover:text-gray-950" aria-label="GitHub">
+					<a href="https://github.com/withastro/flue" target="_blank" rel="noopener noreferrer" class="text-zinc-400 dark:text-zinc-500 transition-colors hover:text-zinc-950 dark:hover:text-zinc-50" aria-label="GitHub">
 						<svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
 					</a>
 				</div>
@@ -101,12 +102,12 @@ const formattedDate = pubDate
 		<main class="mx-auto w-[min(100%,46rem)] px-5 pb-24 pt-8 sm:pt-10">
 			<header class="pb-6">
 				<BlogCover variant={cover} />
-				<h1 class="text-4xl font-bold leading-[1.08] tracking-[-0.03em] text-gray-950 sm:text-5xl">{title}</h1>
-				<div class="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-gray-500">
+				<h1 class="text-4xl font-bold leading-[1.08] tracking-[-0.03em] text-zinc-950 dark:text-zinc-50 sm:text-5xl">{title}</h1>
+				<div class="mt-1 flex flex-wrap items-center gap-x-2 text-sm text-zinc-500 dark:text-zinc-400">
 					By {(
 						authorUrl
-							? <a href={authorUrl} target="_blank" rel="noopener noreferrer" class="text-gray-700 underline decoration-gray-300 underline-offset-2 transition-colors hover:text-gray-950">{author}</a>
-							: <span class="text-gray-700">{author}</span>
+							? <a href={authorUrl} target="_blank" rel="noopener noreferrer" class="text-zinc-700 dark:text-zinc-300 underline decoration-zinc-300 dark:decoration-zinc-700 underline-offset-2 transition-colors hover:text-zinc-950 dark:hover:text-zinc-50">{author}</a>
+							: <span class="text-zinc-700 dark:text-zinc-300">{author}</span>
 					)}
 					{author && formattedDate && <span aria-hidden="true">·</span>}
 					{formattedDate && <time datetime={pubDate}>{formattedDate}</time>}
@@ -118,9 +119,9 @@ const formattedDate = pubDate
 			</article>
 		</main>
 
-		<footer class="border-t border-gray-200 bg-[#f8f9fb]">
+		<footer class="border-t border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
 			<div class="mx-auto max-w-6xl px-6">
-				<div class="flex flex-col gap-3 px-4 py-8 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between">
+				<div class="flex flex-col gap-3 px-4 py-8 text-sm text-zinc-500 dark:text-zinc-400 sm:flex-row sm:items-center sm:justify-between">
 					<span>flue — the open agent framework.</span>
 					<span>&copy; {new Date().getFullYear()}</span>
 				</div>
