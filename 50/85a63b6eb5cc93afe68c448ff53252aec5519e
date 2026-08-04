@@ -1,0 +1,23 @@
+blueprints/sandbox--cloudflare-computer.md
+  s_c8bab7a643bb29::t_a14bb963b6d88e 156-162
+examples/cloudflare/src/sandboxes/cloudflare-computer.ts
+  s_c8bab7a643bb29::t_c27f6c84b971e7 113-119
+apps/docs/src/content/docs/ecosystem/sandboxes/cloudflare-computer.md
+  s_c8bab7a643bb29::t_72d360a1977f7b 89
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5085a63b6eb5cc93afe68c448ff53252aec5519e",
+  "prompts": {},
+  "sessions": {
+    "s_c8bab7a643bb29": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "47d57d33-9a8a-42ed-9821-528430025b92",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
