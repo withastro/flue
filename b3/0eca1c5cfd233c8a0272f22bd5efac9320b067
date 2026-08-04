@@ -1,0 +1,31 @@
+pnpm-lock.yaml
+  s_50f180474f8722::t_12d134f8df3c0f 1845-1847,2533,2545,2551,2557
+CHANGELOG.md
+  s_50f180474f8722::t_8c6eddf1218bbf 7
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_50f180474f8722::t_8741bab531f816 22,26
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_50f180474f8722::t_9aba02bdc7793e 582
+packages/vite/package.json
+  s_50f180474f8722::t_b7ad01fa99992a 40
+packages/vite/src/cloudflare-agents-resolver.ts
+  s_50f180474f8722::t_b4b96695f0d86b 1-61
+packages/vite/src/flue-plugin.ts
+  s_50f180474f8722::t_f94158a90fad68 59,358-361,720
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b30eca1c5cfd233c8a0272f22bd5efac9320b067",
+  "prompts": {},
+  "sessions": {
+    "s_50f180474f8722": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "522661f3-0031-4529-8b06-fce096801ad6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
