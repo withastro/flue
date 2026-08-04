@@ -1,0 +1,19 @@
+.opencode/skills/release/SKILL.md
+  s_998f5761a24f6c::t_01e432f0e015fb 25
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "9bad18c378e9904cf620e29e201c781e9f2e45a4",
+  "prompts": {},
+  "sessions": {
+    "s_998f5761a24f6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "072c7dac-ebbf-412b-93fd-741b7deedd60",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
