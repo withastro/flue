@@ -1,0 +1,23 @@
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_50f180474f8722::t_cfe9cca3c63491 22
+CHANGELOG.md
+  s_50f180474f8722::t_f89eff58415443 3-8
+packages/cli/src/lib/init.ts
+  s_50f180474f8722::t_e14064c71af5f1 39,45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "35e3bb5b4efc84aee5283b1bd1b44355f4143fe5",
+  "prompts": {},
+  "sessions": {
+    "s_50f180474f8722": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "522661f3-0031-4529-8b06-fce096801ad6",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
