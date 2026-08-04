@@ -1,0 +1,23 @@
+.flue/lib/github.ts
+  s_4e6f0cbf7a6187::t_d7838d64edb8be 12
+.flue/agents/pr-redirect.ts
+  s_4e6f0cbf7a6187::t_0e356525c64637 5-7,12-15
+.github/workflows/pr-redirect.yml
+  s_4e6f0cbf7a6187::t_2096f797909a61 3-7,9-17,20-29,31,37,41-42,44,46-47,51,53-55,63-128,130-131,134-135,137,146,163-167,177-180,182-184,186-197
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1f2709f9b89aeeda006e8e3af722bffb50b660d7",
+  "prompts": {},
+  "sessions": {
+    "s_4e6f0cbf7a6187": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "d270586a-5eeb-4e64-8b07-d73e5e4877cc",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
