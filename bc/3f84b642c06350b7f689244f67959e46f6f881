@@ -1,0 +1,27 @@
+apps/docs/src/content/docs/guide/agent-hooks.md
+  s_58e545385334eb::t_9e875badf2e9b6 70
+apps/docs/src/content/docs/guide/sandboxes.md
+  s_58e545385334eb::t_a2c87858d8b59b 212
+apps/docs/src/content/docs/guide/tools.md
+  s_58e545385334eb::t_29efb069d9e5c5 200-202
+apps/docs/src/content/docs/reference/agent-api.md
+  s_58e545385334eb::t_fb1d8312da4ea2 701
+apps/docs/src/content/docs/reference/agent-behavior.md
+  s_58e545385334eb::t_b347873c46b6cc 151-153,172-180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bc3f84b642c06350b7f689244f67959e46f6f881",
+  "prompts": {},
+  "sessions": {
+    "s_58e545385334eb": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "bccaeff4-0feb-4ccf-88fe-35266153d603",
+        "model": "unknown"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
