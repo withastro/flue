@@ -1,0 +1,93 @@
+.flue/agents/pr-redirect.ts
+  s_998f5761a24f6c::t_4e3fc42fe8f0f0 5-7,12-15
+.flue/lib/github.ts
+  s_998f5761a24f6c::t_a2713d16952f0a 12
+.github/workflows/pr-redirect.yml
+  s_998f5761a24f6c::t_3b7240fbebb2fd 3-7,9-17,20-29,31,37,41-42,44,46-47,51,53-55,63-128,130-131,134-135,137,146,163-167,177-180,182-184,186-197
+CHANGELOG.md
+  s_998f5761a24f6c::t_c5c2cf9c185c8d 3-8
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_998f5761a24f6c::t_600dc57a201e01 22,26
+packages/cli/package.json
+  s_998f5761a24f6c::t_ef6a44a8b25e89 3
+packages/cli/src/lib/init.ts
+  s_998f5761a24f6c::t_a4dfcd77bb37af 44
+packages/discord/package.json
+  s_998f5761a24f6c::t_46925437f9e3ea 3
+packages/github/package.json
+  s_998f5761a24f6c::t_75bd97542e728b 3
+packages/google-chat/package.json
+  s_998f5761a24f6c::t_efc9ac50258bc8 3
+packages/intercom/package.json
+  s_998f5761a24f6c::t_6f3e9cb41ae1f4 3
+packages/libsql/package.json
+  s_998f5761a24f6c::t_2234e0eb40b1f1 3
+packages/linear/package.json
+  s_998f5761a24f6c::t_b91ce2c410edb5 3
+packages/messenger/package.json
+  s_998f5761a24f6c::t_6bd7714e3baef3 3
+packages/mongodb/package.json
+  s_998f5761a24f6c::t_fca7609e125846 3
+packages/mysql/package.json
+  s_998f5761a24f6c::t_0db753ba1b8698 3
+packages/notion/package.json
+  s_998f5761a24f6c::t_d30f9cc0b975ac 3
+packages/opentelemetry/package.json
+  s_998f5761a24f6c::t_73c94a6071c231 3
+packages/postgres/package.json
+  s_998f5761a24f6c::t_3da6897b4bb2dc 3
+packages/react/package.json
+  s_998f5761a24f6c::t_62147cd79bcda4 3
+packages/redis/package.json
+  s_998f5761a24f6c::t_b1137eb0bc1224 3
+packages/resend/package.json
+  s_998f5761a24f6c::t_2e20c51d86331c 3
+packages/runtime/package.json
+  s_998f5761a24f6c::t_4b9a11b6e6350c 3
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_998f5761a24f6c::t_1da2a93af8bc7e 582
+packages/salesforce-marketing-cloud/package.json
+  s_998f5761a24f6c::t_d0226be0a67236 3
+packages/sdk/package.json
+  s_998f5761a24f6c::t_f6568bb9ea9b52 3
+packages/shopify/package.json
+  s_998f5761a24f6c::t_ca75f83199ee9d 3
+packages/slack/package.json
+  s_998f5761a24f6c::t_3dd0b15741f22e 3
+packages/stripe/package.json
+  s_998f5761a24f6c::t_1b32648e460073 3
+packages/teams/package.json
+  s_998f5761a24f6c::t_92554fe86aa4f4 3
+packages/telegram/package.json
+  s_998f5761a24f6c::t_4c8c43d2c77bf0 3
+packages/twilio/package.json
+  s_998f5761a24f6c::t_8db843c4dec63b 3
+packages/vite/package.json
+  s_998f5761a24f6c::t_28a0223ce57c83 3,40
+packages/vite/src/cloudflare-agents-resolver.ts
+  s_998f5761a24f6c::t_67e2c3883f7cb3 1-61
+packages/vite/src/flue-plugin.ts
+  s_998f5761a24f6c::t_92980ffd5c763f 59,358-361,720
+packages/whatsapp/package.json
+  s_998f5761a24f6c::t_748495df2be5e9 3
+packages/zendesk/package.json
+  s_998f5761a24f6c::t_a85574ba94e54b 3
+pnpm-lock.yaml
+  s_998f5761a24f6c::t_b9a07cbaa56994 1845-1847,2533,2545,2551,2557
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "bf86b8726f5ba189844185fdbeca0e194344ded1",
+  "prompts": {},
+  "sessions": {
+    "s_998f5761a24f6c": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "072c7dac-ebbf-412b-93fd-741b7deedd60",
+        "model": "claude-fable-5"
+      },
+      "human_author": "Fred K. Schott <622227+FredKSchott@users.noreply.github.com>"
+    }
+  }
+}
