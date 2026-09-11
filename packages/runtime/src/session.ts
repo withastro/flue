@@ -2237,7 +2237,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		});
 
 		this.eventCallback = options.onAgentEvent;
-		this.agentLoop.subscribe(async (event) => {
+		this.agentLoop.subscribe(async (event, signal) => {
 			switch (event.type) {
 				case 'agent_start':
 					this.emit({ type: 'agent_start' });
@@ -2600,6 +2600,47 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				}
 				case 'turn_end': {
 					const turnId = this.activeTurnId ?? generateTurnId();
+					if (signal.aborted && this.canonicalToolRequestMessageId) {
+						const requestId = this.canonicalToolRequestMessageId;
+						const conversation = await this.requireConversation();
+						const request = conversation.entries.get(requestId);
+						if (
+							conversation.activeLeafId === requestId &&
+							request?.type === 'message' &&
+							request.submissionId === this.activeSubmissionId &&
+							request.message.role === 'assistant' &&
+							request.message.stopReason === 'toolUse'
+						) {
+							const calls = request.message.content.filter((block) => block.type === 'toolCall');
+							let previousIndex = -1;
+							const orderedResults = event.toolResults.every((result) => {
+								const index = calls.findIndex((call) => call.id === result.toolCallId);
+								if (
+									index <= previousIndex ||
+									calls[index]?.name !== result.toolName ||
+									!conversation.toolOutcomes.has(toolOutcomeKey(requestId, result.toolCallId))
+								)
+									return false;
+								previousIndex = index;
+								return true;
+							});
+							if (event.toolResults.length < calls.length && orderedResults) {
+								// Pi can stop a sequential batch after one result. Commit its
+								// missing outcomes before Pi starts the aborted assistant.
+								await this.settleTrailingToolBatch({ submissionId: this.activeSubmissionId });
+								this.hookState?.drain();
+								this.canonicalToolRequestMessageId = undefined;
+								this.lastCommittedToolBatch = undefined;
+								this.activeJoinSource = undefined;
+								this.activeJoinSignal = undefined;
+								for (const result of event.toolResults) {
+									this.pendingToolPublications.get(result.toolCallId)?.();
+									this.pendingToolPublications.delete(result.toolCallId);
+								}
+								throw abortErrorFor(signal);
+							}
+						}
+					}
 					const committedToolResults = event.toolResults.length > 0;
 					if (committedToolResults) {
 						const parentId = await this.conversationWriter.getConversationLeaf(this.conversationId);
@@ -3444,9 +3485,37 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		// contract of terminalization, not a caller responsibility: every
 		// terminal path (retry exhaustion, timeout, post-input interruption,
 		// abort) routes through here.
-		const interruptedTools = await this.settleDanglingConversationState({
+		await this.settleDanglingConversationState({
 			submissionId: input.submissionId,
 		});
+		// The turn writer can commit repairs before this new Session starts.
+		// Match stored repair IDs and committed results, never result text.
+		const conversation = await this.requireConversation();
+		const interruptedTools: InterruptedToolCallRef[] = [];
+		for (const entry of conversation.entries.values()) {
+			if (
+				entry.type !== 'message' ||
+				entry.submissionId !== input.submissionId ||
+				entry.message.role !== 'assistant'
+			)
+				continue;
+			for (const call of entry.message.content) {
+				if (call.type !== 'toolCall') continue;
+				const result = conversation.entries.get(toolResultEntryId(entry.id, call.id));
+				if (result?.type !== 'message' || result.message.role !== 'toolResult') continue;
+				const repair = await this.conversationWriter.getRecord(
+					`record_tool_repair_outcome_${encodeCanonicalId(entry.id)}_${encodeCanonicalId(call.id)}`,
+				);
+				if (
+					repair?.type === 'tool_outcome' &&
+					repair.conversationId === this.conversationId &&
+					repair.toolName === call.name &&
+					repair.isError &&
+					result.message.isError
+				)
+					interruptedTools.push({ name: call.name, id: call.id });
+			}
+		}
 		let body = input.message;
 		if (interruptedTools.length > 0) {
 			const toolList = interruptedTools.map((t) => `  - ${t.name} (${t.id})`).join('\n');
