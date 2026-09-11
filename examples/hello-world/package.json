@@ -6,7 +6,7 @@
 		"@daytona/sdk": "*",
 		"@earendil-works/pi-ai": "^0.83.0",
 		"@flue/runtime": "workspace:*",
-		"hono": "^4.7.0",
+		"hono": "4.12.32",
 		"just-bash": "^3.0.1",
 		"valibot": "^1.0.0"
 	},

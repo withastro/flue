@@ -12,7 +12,7 @@
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
 		"@flue/stripe": "workspace:*",
-		"hono": "^4.7.0",
+		"hono": "4.12.32",
 		"stripe": "*"
 	},
 	"devDependencies": {

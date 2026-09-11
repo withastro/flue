@@ -11,7 +11,7 @@
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
 		"@flue/zendesk": "workspace:*",
-		"hono": "^4.7.0",
+		"hono": "4.12.32",
 		"lossless-json": "*",
 		"valibot": "^1.0.0"
 	},

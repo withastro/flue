@@ -13,7 +13,7 @@
 		"@earendil-works/pi-ai": "^0.83.0",
 		"@flue/runtime": "workspace:*",
 		"chat": "*",
-		"hono": "^4.8.3",
+		"hono": "4.12.32",
 		"just-bash": "^3.0.1",
 		"valibot": "^1.0.0"
 	},

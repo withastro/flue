@@ -11,7 +11,7 @@
 		"@cloudflare/computer": "^0.1.1",
 		"@platformatic/vfs": "^0.4.0",
 		"@flue/runtime": "workspace:*",
-		"hono": "^4.7.0",
+		"hono": "4.12.32",
 		"valibot": "^1.0.0"
 	},
 	"devDependencies": {

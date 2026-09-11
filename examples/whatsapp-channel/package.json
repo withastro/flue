@@ -13,7 +13,7 @@
 		"@flue/runtime": "workspace:*",
 		"@flue/whatsapp": "workspace:*",
 		"@kapso/whatsapp-cloud-api": "*",
-		"hono": "^4.7.0",
+		"hono": "4.12.32",
 		"valibot": "^1.0.0"
 	},
 	"devDependencies": {

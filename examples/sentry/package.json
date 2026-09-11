@@ -7,7 +7,7 @@
 		"@flue/runtime": "workspace:*",
 		"@opentelemetry/api": "^1.9.0",
 		"@sentry/node": "^10.64.0",
-		"hono": "^4.7.0",
+		"hono": "4.12.32",
 		"valibot": "^1.0.0"
 	},
 	"devDependencies": {

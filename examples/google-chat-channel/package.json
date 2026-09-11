@@ -12,7 +12,7 @@
 	"dependencies": {
 		"@flue/google-chat": "workspace:*",
 		"@flue/runtime": "workspace:*",
-		"hono": "^4.7.0",
+		"hono": "4.12.32",
 		"jose": "*",
 		"valibot": "^1.0.0"
 	},

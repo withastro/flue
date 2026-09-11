@@ -9,7 +9,7 @@
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
 		"croner": "^10.0.1",
-		"hono": "^4.7.0"
+		"hono": "4.12.32"
 	},
 	"devDependencies": {
 		"@flue/cli": "workspace:*",
