@@ -1,4 +1,4 @@
-// flue-blueprint: tooling/sentry@4
+// flue-blueprint: tooling/sentry@2
 
 /**
  * Sentry observability for Flue.
@@ -22,12 +22,12 @@
  * durable submission. Recovered errors an agent logs and moves past stay
  * logs — they arrive in Sentry Logs on the same trace, not as issues.
  * Coordinator recovery failures (a submission stuck retrying, not yet — or
- * never — settled) arrive as breadcrumbs, not issues either.
+ * never — settled) arrive as leveled Sentry Logs, not issues either.
  *
  * Model and tool content (prompts, completions, tool arguments/results)
- * stays out of traces unless SENTRY_AI_RECORD_INPUTS /
- * SENTRY_AI_RECORD_OUTPUTS opt in, and even then it passes through the
- * `scrub` redaction below.
+ * stays out of traces unless the SDK's `dataCollection.genAI` policy or the
+ * SENTRY_AI_RECORD_INPUTS / SENTRY_AI_RECORD_OUTPUTS overrides opt in, and
+ * even then it passes through the `scrub` redaction below.
  */
 
 import {
@@ -39,8 +39,10 @@ import {
 import { type FlueObservation, instrument } from '@flue/runtime';
 import * as Sentry from '@sentry/node';
 
-const recordInputs = process.env.SENTRY_AI_RECORD_INPUTS === 'true';
-const recordOutputs = process.env.SENTRY_AI_RECORD_OUTPUTS === 'true';
+// Explicit per-direction overrides for gen_ai content capture. Unset defers
+// to the SDK's resolved dataCollection policy — see contentPolicy().
+const recordInputsOverride = envFlag('SENTRY_AI_RECORD_INPUTS');
+const recordOutputsOverride = envFlag('SENTRY_AI_RECORD_OUTPUTS');
 const tracesSampleRate = clampRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 0);
 
 // Sentry ships integrations that patch AI provider SDKs directly. Flue's
@@ -53,6 +55,7 @@ const SENTRY_AI_PROVIDER_INTEGRATIONS = new Set([
 	'LangChain',
 	'LangGraph',
 	'VercelAI',
+	'WorkersAI',
 ]);
 
 Sentry.init({
@@ -64,7 +67,6 @@ Sentry.init({
 	// Stream spans to Sentry as each one finishes, so gen_ai children that
 	// complete after their parent span are not lost.
 	traceLifecycle: 'stream',
-	streamGenAiSpans: true,
 	enableLogs: true,
 	integrations: (defaults) =>
 		defaults.filter((integration) => !SENTRY_AI_PROVIDER_INTEGRATIONS.has(integration.name)),
@@ -73,9 +75,10 @@ Sentry.init({
 // ─── Traces: Flue's OpenTelemetry instrumentation ───────────────────────────
 
 // `Sentry.init` registered Sentry as the global OTel tracer provider, so
-// Flue's spans flow to Sentry without further wiring. Content capture is
-// on by default in the adapter; `contentPolicy()` narrows it to what the
-// record flags allow. The instrumentation is keyed, so a `vite dev` reload
+// Flue's spans flow to Sentry without further wiring (@sentry/node v11 needs
+// `skipOpenTelemetrySetup: false` for this). Content capture is on by
+// default in the adapter; `contentPolicy()` narrows it to what the resolved
+// policy allows. The instrumentation is keyed, so a `vite dev` reload
 // replaces the previous registration instead of stacking a duplicate.
 if (tracesSampleRate > 0) {
 	instrument(createOpenTelemetryInstrumentation({ content: contentPolicy() }));
@@ -128,7 +131,7 @@ instrument({
 			return;
 		}
 		if (event.type === 'submission_recovery') {
-			recordRecoveryBreadcrumb(event);
+			recordRecoveryLog(event);
 			return;
 		}
 		if (event.type === 'log') {
@@ -145,23 +148,19 @@ instrument({
 
 // A coordinator retrying or reconciling a stuck submission — not yet a
 // terminal outcome, and 'deferred'/'agent_unavailable' recur on every retry
-// wake, so this stays a breadcrumb rather than a captured issue. The one
+// wake, so each wake records a leveled log rather than an issue. The one
 // terminal outcome, 'terminated', always co-occurs with a `submission_settled`
-// outcome:'failed' event that the branch above already captures; recording it
-// here too would duplicate that issue.
-function recordRecoveryBreadcrumb(event: Extract<FlueObservation, { type: 'submission_recovery' }>): void {
-	Sentry.addBreadcrumb({
-		category: 'flue.submission_recovery',
-		level: event.outcome === 'terminated' ? 'error' : 'warning',
-		message: `${event.operation}: ${event.outcome}`,
-		data: {
-			...correlationTags(event),
-			'flue.recovery.operation': event.operation,
-			'flue.recovery.outcome': event.outcome,
-			...(event.attemptCount !== undefined ? { 'flue.recovery.attempt_count': event.attemptCount } : {}),
-			...(event.maxAttempts !== undefined ? { 'flue.recovery.max_attempts': event.maxAttempts } : {}),
-			...(event.errorInfo ? { 'error.type': event.errorInfo.type } : {}),
-		},
+// outcome:'failed' event that the branch above already captures; the log
+// complements that issue without duplicating it.
+function recordRecoveryLog(event: Extract<FlueObservation, { type: 'submission_recovery' }>): void {
+	const level = event.outcome === 'terminated' ? 'error' : 'warn';
+	Sentry.logger[level](`Submission recovery — ${event.operation}: ${event.outcome}`, {
+		...correlationTags(event),
+		'flue.recovery.operation': event.operation,
+		'flue.recovery.outcome': event.outcome,
+		...(event.attemptCount !== undefined ? { 'flue.recovery.attempt_count': event.attemptCount } : {}),
+		...(event.maxAttempts !== undefined ? { 'flue.recovery.max_attempts': event.maxAttempts } : {}),
+		...(event.errorInfo ? { 'error.type': event.errorInfo.type } : {}),
 	});
 }
 
@@ -218,12 +217,17 @@ function logAttributes(
 }
 
 /**
- * The content policy for trace spans. With both record flags off, no model
- * or tool content reaches Sentry at all (`content: false`). With either flag
- * on, the transform admits only the enabled direction, scrubs sensitive keys,
- * and tightens the adapter's default 56 KiB budget to 16 KiB per attribute.
+ * The content policy for trace spans. Record defaults come from the SDK's
+ * resolved `dataCollection.genAI` policy; the SENTRY_AI_RECORD_* variables
+ * override per direction. With both directions off, no model or tool content
+ * reaches Sentry at all (`content: false`); otherwise the transform admits
+ * only the enabled direction, scrubs sensitive keys, and tightens the
+ * adapter's default 56 KiB budget to 16 KiB per attribute.
  */
 function contentPolicy(): ContentOption {
+	const genAI = Sentry.getClient()?.getDataCollectionOptions().genAI;
+	const recordInputs = recordInputsOverride ?? genAI?.inputs ?? false;
+	const recordOutputs = recordOutputsOverride ?? genAI?.outputs ?? false;
 	if (!recordInputs && !recordOutputs) return false;
 	return {
 		transform(content, scope) {
@@ -294,6 +298,11 @@ function stringify(value: unknown): string {
 	} catch {
 		return String(value);
 	}
+}
+
+function envFlag(name: string): boolean | undefined {
+	const value = process.env[name];
+	return value === 'true' ? true : value === 'false' ? false : undefined;
 }
 
 function clampRate(value: string | undefined, fallback: number): number {
