@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.5 - 2026-09-11
+
+### Fixes & Other Changes
+
+- **Published packages once again resolve internal Flue dependencies to the release version.** The 2.0.4 release accidentally shipped raw pnpm `workspace:` dependency specifiers, making affected packages impossible to install outside the workspace. The complete lockstep package set is republished as 2.0.5 through pnpm so every internal dependency resolves to 2.0.5 (#657).
+
 ## 2.0.4 - 2026-09-09
 
 ### Fixes & Other Changes
