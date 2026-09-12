@@ -1,3 +1,10 @@
+import {
+	type AbandonedMessageAuthorization,
+	abandonedMessageRecordId,
+	checkAbandonedMessageRows,
+	parseAbandonedMessageBatch,
+} from './abandoned-message.ts';
+import type { AgentSubmissionStore, SubmissionAttemptRef } from './agent-execution-store.ts';
 import { FOLD_CHECKPOINT_INTERVAL, writeFoldCheckpoint } from './conversation-fold-checkpoint.ts';
 import { type ConversationFoldHost, getConversationFoldHost } from './conversation-fold-host.ts';
 import type {
@@ -21,6 +28,7 @@ export interface ConversationRecordScope {
 
 export interface ConversationAppendOptions {
 	submission?: { submissionId: string; attemptId: string };
+	abandonedMessage?: AbandonedMessageAuthorization;
 }
 
 type ConversationCreationInput = ConversationCreatedRecord extends infer Record
@@ -60,6 +68,7 @@ export class ConversationRecordWriter {
 		private readonly store: ConversationStreamStore,
 		readonly path: string,
 		private claim: ConversationProducerClaim,
+		private readonly streamIdentity: ConversationStreamIdentity,
 		private readonly onFailed?: (writer: ConversationRecordWriter) => void,
 	) {
 		this.nextProducerSequence = claim.nextProducerSequence;
@@ -76,7 +85,13 @@ export class ConversationRecordWriter {
 	}): Promise<ConversationRecordWriter> {
 		await options.store.createStream(options.path, options.identity);
 		const claim = await options.store.acquireProducer(options.path, options.producerId);
-		return new ConversationRecordWriter(options.store, options.path, claim, options.onFailed);
+		return new ConversationRecordWriter(
+			options.store,
+			options.path,
+			claim,
+			options.identity,
+			options.onFailed,
+		);
 	}
 
 	async loadReducedState(): Promise<ReducedInstanceState> {
@@ -222,67 +237,153 @@ export class ConversationRecordWriter {
 		}
 	}
 
-	private appendBatch(
-		records: readonly ConversationRecord[],
-		options: ConversationAppendOptions,
-	): Promise<{ offset: string }> {
-		const operation = this.tail.then(async () => {
-			this.assertActive();
-			const reduced = this.reducedState
-				? reduceConversationRecords(
-						this.reducedState,
-						records,
-						this.reducedState.recordsThroughOffset,
-					)
-				: undefined;
-			const producerSequence = this.nextProducerSequence;
-			const input = {
-				path: this.path,
-				producerId: this.claim.producerId,
-				producerEpoch: this.claim.producerEpoch,
-				incarnation: this.claim.incarnation,
-				producerSequence,
-				...(options.submission ? { submission: options.submission } : {}),
-				records,
-			};
-			try {
-				let result: { offset: string };
-				try {
-					result = await this.store.append(input);
-				} catch (firstError) {
-					try {
-						result = await this.store.append(input);
-					} catch {
-						throw firstError;
-					}
+	/** Clear only old terminal dispatch messages before this attempt appends its input. */
+	async clearAbandonedMessages(
+		submissions: Pick<AgentSubmissionStore, 'getSubmission'>,
+		before: SubmissionAttemptRef,
+	): Promise<void> {
+		await this.flush();
+		return this.serialize(async () => {
+			const state = await this.loadReducedState();
+			const conversation = [...state.conversations.values()].find(
+				(value) => value.harness === 'default' && value.session === 'default',
+			);
+			if (!conversation) return;
+			const candidates = [...conversation.inProgressMessages.values()].filter(
+				(message) => message.parentId !== conversation.activeLeafId,
+			);
+			if (candidates.length === 0) return;
+			if (!this.store.supportsAbandonedMessageCleanup) {
+				throw new Error(
+					'[flue] Abandoned message cleanup requires transactional submission storage.',
+				);
+			}
+			const next = await submissions.getSubmission(before.submissionId);
+			for (const message of candidates) {
+				if (!message.submissionId)
+					throw new Error('[flue] Abandoned message has no stored submission.');
+				const old = await submissions.getSubmission(message.submissionId);
+				const record: ConversationRecord = {
+					v: 2,
+					id: abandonedMessageRecordId(
+						conversation.conversationId,
+						message.submissionId,
+						message.messageId,
+					),
+					type: 'assistant_message_abandoned',
+					conversationId: conversation.conversationId,
+					harness: 'default',
+					session: 'default',
+					timestamp: new Date().toISOString(),
+					submissionId: message.submissionId,
+					messageId: message.messageId,
+				};
+				const parsed = parseAbandonedMessageBatch(
+					[record],
+					{
+						before,
+						target: {
+							submissionId: old?.submissionId,
+							sessionKey: old?.sessionKey,
+							sequence: old?.sequence,
+							settledAt: old?.settledAt,
+						},
+					},
+					undefined,
+				);
+				if (!parsed.ok) throw new Error(`[flue] ${parsed.reason}`);
+				if (!parsed.value) throw new Error('[flue] Cleanup record is missing.');
+				const checked = checkAbandonedMessageRows(
+					parsed.value.authorization,
+					old,
+					next,
+					this.streamIdentity,
+				);
+				if (!checked.ok) throw new Error(`[flue] ${checked.reason}`);
+				// Enqueues do not take the writer queue. Refuse if a producer buffers more work during the read.
+				if (this.pendingRecords.length > 0) {
+					throw new Error(
+						'[flue] Pending conversation writes must finish before abandoned message cleanup.',
+					);
 				}
-				this.nextProducerSequence = producerSequence + 1;
-				if (reduced) {
-					reduced.recordsThroughOffset = result.offset;
-					this.reducedState = reduced;
-					this.foldHost.adoptState(reduced, this.claim.incarnation);
-					// Durable fold checkpoint. The encode is synchronous (states
-					// are never mutated after publication, so it reads a stable
-					// snapshot); the store write floats off the append's critical
-					// path — the batch is durable either way, and a lost
-					// checkpoint just means the next cold load folds a longer
-					// suffix.
-					this.batchesSinceFoldCheckpoint += 1;
-					if (this.batchesSinceFoldCheckpoint >= FOLD_CHECKPOINT_INTERVAL) {
-						this.batchesSinceFoldCheckpoint = 0;
-						writeFoldCheckpoint(this.store, this.path, reduced, this.claim.incarnation);
-					}
-				}
-				return result;
-			} catch (error) {
-				throw this.fail(error);
+				await this.appendNow([parsed.value.record], {
+					abandonedMessage: parsed.value.authorization,
+				});
 			}
 		});
+	}
+
+	private serialize<T>(work: () => Promise<T>): Promise<T> {
+		const operation = this.tail.then(work);
 		this.tail = operation.then(
 			() => {},
 			() => {},
 		);
 		return operation;
+	}
+
+	private appendBatch(
+		records: readonly ConversationRecord[],
+		options: ConversationAppendOptions,
+	): Promise<{ offset: string }> {
+		return this.serialize(() => this.appendNow(records, options));
+	}
+
+	private async appendNow(
+		records: readonly ConversationRecord[],
+		options: ConversationAppendOptions,
+	): Promise<{ offset: string }> {
+		this.assertActive();
+		const reduced = this.reducedState
+			? reduceConversationRecords(
+					this.reducedState,
+					records,
+					this.reducedState.recordsThroughOffset,
+				)
+			: undefined;
+		const producerSequence = this.nextProducerSequence;
+		const input = {
+			path: this.path,
+			producerId: this.claim.producerId,
+			producerEpoch: this.claim.producerEpoch,
+			incarnation: this.claim.incarnation,
+			producerSequence,
+			...(options.submission ? { submission: options.submission } : {}),
+			...(options.abandonedMessage ? { abandonedMessage: options.abandonedMessage } : {}),
+			records,
+		};
+		try {
+			let result: { offset: string };
+			try {
+				result = await this.store.append(input);
+			} catch (firstError) {
+				try {
+					result = await this.store.append(input);
+				} catch {
+					throw firstError;
+				}
+			}
+			this.nextProducerSequence = producerSequence + 1;
+			if (reduced) {
+				reduced.recordsThroughOffset = result.offset;
+				this.reducedState = reduced;
+				this.foldHost.adoptState(reduced, this.claim.incarnation);
+				// Durable fold checkpoint. The encode is synchronous (states
+				// are never mutated after publication, so it reads a stable
+				// snapshot); the store write floats off the append's critical
+				// path — the batch is durable either way, and a lost
+				// checkpoint just means the next cold load folds a longer
+				// suffix.
+				this.batchesSinceFoldCheckpoint += 1;
+				if (this.batchesSinceFoldCheckpoint >= FOLD_CHECKPOINT_INTERVAL) {
+					this.batchesSinceFoldCheckpoint = 0;
+					writeFoldCheckpoint(this.store, this.path, reduced, this.claim.incarnation);
+				}
+			}
+			return result;
+		} catch (error) {
+			throw this.fail(error);
+		}
 	}
 
 	private assertActive(): void {
@@ -415,6 +516,7 @@ function sameAppendOptions(
 ): boolean {
 	return (
 		left.submission?.submissionId === right.submission?.submissionId &&
-		left.submission?.attemptId === right.submission?.attemptId
+		left.submission?.attemptId === right.submission?.attemptId &&
+		JSON.stringify(left.abandonedMessage) === JSON.stringify(right.abandonedMessage)
 	);
 }

@@ -834,8 +834,9 @@ export async function processSubmission(opts: ProcessSubmissionOptions): Promise
 		listUnresolved: () => submissions.listJoinedSubmissions(attempt.submissionId),
 	};
 
-	const execute = () =>
-		createAgentSubmissionSessionHandler(agent, input, (session) => {
+	const execute = async () => {
+		await opts.conversationWriter?.clearAbandonedMessages(submissions, attempt);
+		return createAgentSubmissionSessionHandler(agent, input, (session) => {
 			const handle = session.processSubmissionInput(input, {
 				joinSource,
 				onInputApplied: async (durability: SubmissionDurability) => {
@@ -883,6 +884,7 @@ export async function processSubmission(opts: ProcessSubmissionOptions): Promise
 			}
 			return handle;
 		})(ctx);
+	};
 
 	// Pre-execution abort: a queued submission that was abort-flagged is still
 	// claimed (creating an attempt) so settlement is uniform and

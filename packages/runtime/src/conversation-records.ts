@@ -328,6 +328,22 @@ export interface SubmissionSettledRecord extends ConversationRecordEnvelope {
 	error?: unknown;
 }
 
+/** Version 2 makes older readers refuse cleanup instead of keeping stale open state. */
+export interface AssistantMessageAbandonedRecord extends Omit<
+	ConversationRecordEnvelope,
+	'v' | 'attemptId'
+> {
+	v: 2;
+	type: 'assistant_message_abandoned';
+	harness: 'default';
+	session: 'default';
+	submissionId: string;
+	messageId: string;
+	attemptId?: never;
+	operationId?: never;
+	turnId?: never;
+}
+
 /**
  * One durable write to the agent instance's hook state (`usePersistentState`). The
  * record log is the source of truth: the current value of a state name is the
@@ -457,6 +473,7 @@ export type ConversationRecord =
 	| CompactionRecord
 	| ChildSessionRetainedRecord
 	| SubmissionSettledRecord
+	| AssistantMessageAbandonedRecord
 	| StateWriteRecord
 	| AgentStartRunRecord
 	| AgentFinishCycleRecord

@@ -1,4 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import {
+	type AbandonedMessageAuthorization,
+	abandonedMessageRecordId,
+} from '../abandoned-message.ts';
 import type { AgentSubmissionStore } from '../agent-execution-store.ts';
 import type { ConversationRecord } from '../conversation-records.ts';
 import type { ConversationStreamStore } from '../runtime/conversation-stream-store.ts';
@@ -16,7 +20,11 @@ export interface ConversationStreamStoreContractBackend {
 	cleanup?(): void | Promise<void>;
 }
 
-function userRecord(id: string, messageId: string, text = messageId): ConversationRecord {
+function userRecord(
+	id: string,
+	messageId: string,
+	text = messageId,
+): Extract<ConversationRecord, { type: 'user_message' }> {
 	return {
 		v: 1,
 		id,
@@ -75,6 +83,142 @@ export function defineConversationStreamStoreContractTests(
 		afterEach(async () => {
 			await backend.cleanup?.();
 		});
+
+		async function cleanupInput() {
+			const { stream, submissionStore } = await create();
+			if (!submissionStore) {
+				if (stream.supportsAbandonedMessageCleanup)
+					throw new Error('Cleanup tests require submission storage.');
+				return undefined;
+			}
+			const path = 'agents/echo/contract';
+			await stream.createStream(path, { agentName: 'echo', instanceId: 'contract' });
+			const producer = await stream.acquireProducer(path, 'cleanup');
+			await submissionStore.admitDispatch({
+				submissionId: 'old',
+				agent: 'echo',
+				id: 'contract',
+				message: { kind: 'user', body: 'old' },
+				acceptedAt: '2026-09-11T00:00:00.000Z',
+			});
+			await submissionStore.markSubmissionCanonicalReady('old');
+			await submissionStore.claimSubmission({
+				submissionId: 'old',
+				attemptId: 'old-final',
+				ownerId: 'test',
+				leaseExpiresAt: Date.now() + 30_000,
+			});
+			await submissionStore.completeSubmission({ submissionId: 'old', attemptId: 'old-final' });
+			await claimContractSubmission(submissionStore, 'next', 'next-attempt');
+			const old = await submissionStore.getSubmission('old');
+			if (!old || old.settledAt === undefined) throw new Error('Missing settled test row.');
+			const abandonedMessage: AbandonedMessageAuthorization = {
+				before: { submissionId: 'next', attemptId: 'next-attempt' },
+				target: {
+					submissionId: 'old',
+					sessionKey: old.sessionKey,
+					sequence: old.sequence,
+					settledAt: old.settledAt,
+				},
+			};
+			const record: ConversationRecord = {
+				v: 2,
+				id: abandonedMessageRecordId('conv_contract', 'old', 'open'),
+				type: 'assistant_message_abandoned',
+				conversationId: 'conv_contract',
+				harness: 'default',
+				session: 'default',
+				timestamp: '2026-09-11T01:00:00.000Z',
+				submissionId: 'old',
+				messageId: 'open',
+			};
+			return {
+				stream,
+				submissionStore,
+				old,
+				input: { path, ...producer, producerSequence: 0, records: [record], abandonedMessage },
+			};
+		}
+
+		it('appends one cleanup record without changing the old row and keeps exact retry behavior', async ({
+			skip,
+		}) => {
+			const fixture = await cleanupInput();
+			if (!fixture) return skip();
+			const { stream, submissionStore, input, old } = fixture;
+			if (!stream.supportsAbandonedMessageCleanup) {
+				await expect(stream.append(input)).rejects.toThrow();
+				return;
+			}
+			const result = await stream.append(input);
+			expect(await stream.append(input)).toEqual(result);
+			expect(await submissionStore.getSubmission('old')).toEqual(old);
+			expect((await stream.read(input.path)).batches).toHaveLength(1);
+			await expect(
+				stream.append({
+					...input,
+					abandonedMessage: {
+						...input.abandonedMessage,
+						target: {
+							...input.abandonedMessage.target,
+							settledAt: input.abandonedMessage.target.settledAt + 1,
+						},
+					},
+				}),
+			).rejects.toThrow();
+			await expect(
+				stream.append({
+					...input,
+					records: [
+						{ ...input.records[0], timestamp: '2026-09-11T02:00:00.000Z' } as ConversationRecord,
+					],
+				}),
+			).rejects.toThrow();
+		});
+
+		for (const condition of [
+			'missing-mode',
+			'mixed-batch',
+			'ordinary-attempt',
+			'wrong-target',
+			'changed-time',
+			'changed-sequence',
+			'foreign-session',
+			'stale-attempt',
+			'stale-producer',
+			'sequence-gap',
+		] as const) {
+			it(`refuses cleanup with ${condition} and writes no record`, async ({ skip }) => {
+				const fixture = await cleanupInput();
+				if (!fixture) return skip();
+				const { stream, input } = fixture;
+				if (condition === 'missing-mode') {
+					await expect(stream.append({ ...input, abandonedMessage: undefined })).rejects.toThrow();
+				} else if (condition === 'mixed-batch') {
+					await expect(
+						stream.append({ ...input, records: [...input.records, userRecord('extra', 'extra')] }),
+					).rejects.toThrow();
+				} else if (condition === 'ordinary-attempt') {
+					await expect(
+						stream.append({ ...input, submission: input.abandonedMessage.before }),
+					).rejects.toThrow();
+				} else {
+					if (condition === 'wrong-target') input.abandonedMessage.target.submissionId = 'missing';
+					if (condition === 'changed-time') input.abandonedMessage.target.settledAt += 1;
+					if (condition === 'changed-sequence') input.abandonedMessage.target.sequence += 1;
+					if (condition === 'foreign-session')
+						input.abandonedMessage.target.sessionKey =
+							'agent-session:["echo","other","default","default"]';
+					if (condition === 'stale-attempt')
+						input.abandonedMessage.before = { submissionId: 'next', attemptId: 'replaced' };
+					if (condition === 'stale-producer')
+						await stream.acquireProducer(input.path, 'new-producer');
+					if (condition === 'sequence-gap') input.producerSequence += 1;
+					await expect(stream.append(input)).rejects.toThrow();
+				}
+				expect((await stream.read(input.path)).batches).toHaveLength(0);
+			});
+		}
 
 		it('creates one stream when exact identities race', async () => {
 			const { stream } = await create();

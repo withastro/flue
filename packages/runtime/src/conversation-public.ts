@@ -276,7 +276,11 @@ function withPositions(
 }
 
 function requiresSnapshotReset(record: ConversationRecord): boolean {
-	return record.type === 'conversation_created' || record.type === 'compaction';
+	return (
+		record.type === 'conversation_created' ||
+		record.type === 'compaction' ||
+		record.type === 'assistant_message_abandoned'
+	);
 }
 
 function encodeRecord(

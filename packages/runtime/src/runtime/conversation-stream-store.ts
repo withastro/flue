@@ -1,3 +1,9 @@
+import {
+	type AbandonedMessageAuthorization,
+	abandonedMessageSqlRow,
+	checkAbandonedMessageRows,
+	parseAbandonedMessageBatch,
+} from '../abandoned-message.ts';
 import { clampLimit } from '../adapter-helpers.ts';
 import type { AgentSubmissionStore } from '../agent-execution-store.ts';
 import type { ConversationRecord } from '../conversation-records.ts';
@@ -61,6 +67,8 @@ export interface ConversationFoldCheckpoint {
 }
 
 export interface ConversationStreamStore {
+	/** Enable cleanup only when append checks both stored rows in the same transaction as the record. */
+	readonly supportsAbandonedMessageCleanup?: true;
 	createStream(path: string, identity: ConversationStreamIdentity): Promise<void>;
 	acquireProducer(path: string, producerId: string): Promise<ConversationProducerClaim>;
 	/**
@@ -86,6 +94,7 @@ export interface ConversationStreamStore {
 		incarnation: string;
 		producerSequence: number;
 		submission?: { submissionId: string; attemptId: string };
+		abandonedMessage?: AbandonedMessageAuthorization;
 		records: readonly ConversationRecord[];
 	}): Promise<{ offset: string }>;
 	read(
@@ -341,6 +350,7 @@ export class InMemoryConversationStreamStore implements ConversationStreamStore 
 		incarnation: string;
 		producerSequence: number;
 		submission?: { submissionId: string; attemptId: string };
+		abandonedMessage?: AbandonedMessageAuthorization;
 		records: readonly ConversationRecord[];
 	}): Promise<{ offset: string }> {
 		// Whole appends are serialized: the submission fence awaits the
@@ -361,11 +371,18 @@ export class InMemoryConversationStreamStore implements ConversationStreamStore 
 		incarnation: string;
 		producerSequence: number;
 		submission?: { submissionId: string; attemptId: string };
+		abandonedMessage?: AbandonedMessageAuthorization;
 		records: readonly ConversationRecord[];
 	}): Promise<{ offset: string }> {
 		if (input.records.length === 0)
 			this.fail('append', input.path, 'A canonical batch cannot be empty.');
 		const data = JSON.stringify(input.records);
+		const cleanup = parseAbandonedMessageBatch(
+			input.records,
+			input.abandonedMessage,
+			input.submission,
+		);
+		if (!cleanup.ok) this.fail('append', input.path, cleanup.reason);
 		const stream = this.streams.get(input.path);
 		if (!stream) this.fail('append', input.path, 'Stream does not exist.');
 		if (
@@ -394,6 +411,13 @@ export class InMemoryConversationStreamStore implements ConversationStreamStore 
 		if (stream.nextProducerSequence !== input.producerSequence) {
 			this.fail('append', input.path, 'Producer sequence is not the next expected value.');
 		}
+		// This store cannot transact with an external submission store.
+		if (cleanup.value)
+			this.fail(
+				'append',
+				input.path,
+				'Abandoned message cleanup requires transactional submission storage.',
+			);
 		await this.assertSubmissionAuthorization(input.path, input.submission, input.records);
 		const offset = formatOffset(stream.batches.length);
 		stream.batches.push({
@@ -556,6 +580,7 @@ export class InMemoryConversationStreamStore implements ConversationStreamStore 
 // Object SQLite requires synchronous `transactionSync`, so this store cannot use
 // the async SQL builder and keeps its own synchronous fence implementation.
 export class SqliteConversationStreamStore implements ConversationStreamStore {
+	readonly supportsAbandonedMessageCleanup = true;
 	private listeners = new StreamListenerRegistry();
 
 	constructor(
@@ -615,11 +640,18 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 		incarnation: string;
 		producerSequence: number;
 		submission?: { submissionId: string; attemptId: string };
+		abandonedMessage?: AbandonedMessageAuthorization;
 		records: readonly ConversationRecord[];
 	}): Promise<{ offset: string }> {
 		if (input.records.length === 0)
 			this.fail('append', input.path, 'A canonical batch cannot be empty.');
 		const data = JSON.stringify(input.records);
+		const cleanup = parseAbandonedMessageBatch(
+			input.records,
+			input.abandonedMessage,
+			input.submission,
+		);
+		if (!cleanup.ok) this.fail('append', input.path, cleanup.reason);
 		if (data.length > MAX_BATCH_DATA_LENGTH) {
 			this.fail('append', input.path, oversizedBatchReason(data.length, input.records));
 		}
@@ -638,6 +670,28 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 				meta.incarnation !== input.incarnation
 			) {
 				this.fail('append', input.path, 'Producer ownership is stale.');
+			}
+			if (cleanup.value) {
+				const authorization = cleanup.value.authorization;
+				const read = (id: string) =>
+					abandonedMessageSqlRow(
+						this.sql
+							.exec(
+								'SELECT submission_id, session_key, sequence, kind, status, attempt_id, joined_into, settled_at FROM flue_agent_submissions WHERE submission_id = ?',
+								id,
+							)
+							.toArray()[0],
+					);
+				const streams = this.sql
+					.exec('SELECT identity_json FROM flue_conversation_streams WHERE path = ?', input.path)
+					.toArray();
+				const checked = checkAbandonedMessageRows(
+					authorization,
+					read(authorization.target.submissionId),
+					read(authorization.before.submissionId),
+					streams[0] ? JSON.parse(String(streams[0].identity_json)) : undefined,
+				);
+				if (!checked.ok) this.fail('append', input.path, checked.reason);
 			}
 			const retry = this.sql
 				.exec(
@@ -668,7 +722,9 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 			if (meta.next_producer_sequence !== input.producerSequence) {
 				this.fail('append', input.path, 'Producer sequence is not the next expected value.');
 			}
-			this.assertSubmissionAuthorization(input.path, input.submission, input.records);
+			if (!cleanup.value) {
+				this.assertSubmissionAuthorization(input.path, input.submission, input.records);
+			}
 			const seq = meta.next_offset as number;
 			const stored =
 				data.length > CONVERSATION_BATCH_SPILL_THRESHOLD

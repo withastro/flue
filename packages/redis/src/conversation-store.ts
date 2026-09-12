@@ -1,4 +1,5 @@
 import type {
+	AbandonedMessageAuthorization,
 	ConversationFoldCheckpoint,
 	ConversationRecord,
 	ConversationStreamIdentity,
@@ -12,6 +13,7 @@ import {
 	DEFAULT_READ_LIMIT,
 	formatOffset,
 	MAX_READ_LIMIT,
+	parseAbandonedMessageBatch,
 	parseOffset,
 	StreamListenerRegistry,
 } from '@flue/runtime/adapter';
@@ -56,6 +58,7 @@ function integer(value: string | undefined): number {
 }
 
 export class RedisConversationStreamStore implements ConversationStreamStore {
+	readonly supportsAbandonedMessageCleanup = true;
 	private listeners = new StreamListenerRegistry();
 
 	constructor(
@@ -99,14 +102,21 @@ export class RedisConversationStreamStore implements ConversationStreamStore {
 		incarnation: string;
 		producerSequence: number;
 		submission?: { submissionId: string; attemptId: string };
+		abandonedMessage?: AbandonedMessageAuthorization;
 		records: readonly ConversationRecord[];
 	}): Promise<{ offset: string }> {
 		if (input.records.length === 0)
 			throw failure('append', input.path, 'A canonical batch cannot be empty.');
+		const cleanup = parseAbandonedMessageBatch(
+			input.records,
+			input.abandonedMessage,
+			input.submission,
+		);
+		if (!cleanup.ok) throw failure('append', input.path, cleanup.reason);
 		const owned = input.records.filter(
 			(record) => record.submissionId !== undefined || record.attemptId !== undefined,
 		);
-		if (!input.submission && owned.length > 0)
+		if (!input.submission && !cleanup.value && owned.length > 0)
 			throw failure(
 				'append',
 				input.path,
@@ -143,9 +153,11 @@ export class RedisConversationStreamStore implements ConversationStreamStore {
 		const first = input.records[0];
 		if (!first) throw failure('append', input.path, 'A canonical batch cannot be empty.');
 		const expectedIdentity = meta.identity;
-		const submissionKey = input.submission
-			? this.keys.submission(input.submission.submissionId)
-			: this.keys.meta();
+		const submissionKey = cleanup.value
+			? this.keys.submission(cleanup.value.authorization.before.submissionId)
+			: input.submission
+				? this.keys.submission(input.submission.submissionId)
+				: this.keys.meta();
 		const result = strings(
 			await this.runner.eval(
 				appendConversationScript,
@@ -155,6 +167,9 @@ export class RedisConversationStreamStore implements ConversationStreamStore {
 					this.keys.conversationOrder(input.path),
 					this.keys.conversationRetries(input.path),
 					submissionKey,
+					...(cleanup.value
+						? [this.keys.submission(cleanup.value.authorization.target.submissionId)]
+						: []),
 					...joinedDeliveryIds.map((id) => this.keys.submission(id)),
 				],
 				[
@@ -167,6 +182,7 @@ export class RedisConversationStreamStore implements ConversationStreamStore {
 					input.submission?.attemptId ?? '',
 					expectedIdentity.instanceId,
 					expectedIdentity.agentName,
+					cleanup.value ? JSON.stringify(cleanup.value.authorization) : '',
 				],
 			),
 		);
@@ -279,6 +295,8 @@ export class RedisConversationStreamStore implements ConversationStreamStore {
 }
 
 function appendReason(code: string | undefined): string {
+	if (code === 'cleanup')
+		return 'Abandoned message stored evidence is missing, changed, or outside this session.';
 	if (code === 'missing') return 'Stream does not exist.';
 	if (code === 'stale') return 'Producer ownership is stale.';
 	if (code === 'conflict') return 'Producer sequence has conflicting content.';

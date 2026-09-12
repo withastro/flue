@@ -23,6 +23,25 @@ return {'acquired', tostring(epoch), tostring(nextOffset), incarnation}
 export const appendConversationScript = `
 if redis.call('EXISTS', KEYS[1]) == 0 then return {'missing'} end
 if redis.call('HGET', KEYS[1], 'producerId') ~= ARGV[1] or redis.call('HGET', KEYS[1], 'producerEpoch') ~= ARGV[2] or redis.call('HGET', KEYS[1], 'incarnation') ~= ARGV[3] then return {'stale'} end
+local batch = cjson.decode(ARGV[5])
+if ARGV[10] and ARGV[10] ~= '' then
+  local authorization = cjson.decode(ARGV[10])
+  local old = authorization.target
+  local before = authorization.before
+  local sessionKey = redis.call('HGET', KEYS[6], 'sessionKey')
+  local oldSequence = tonumber(redis.call('HGET', KEYS[6], 'sequence'))
+  local nextSequence = tonumber(redis.call('HGET', KEYS[5], 'sequence'))
+  local settledAt = tonumber(redis.call('HGET', KEYS[6], 'settledAt'))
+  local joinedInto = redis.call('HGET', KEYS[6], 'joinedInto')
+  if #batch ~= 1 or batch[1].type ~= 'assistant_message_abandoned' or batch[1].v ~= 2 or batch[1].attemptId ~= nil or batch[1].submissionId ~= old.submissionId or ARGV[6] ~= '' then return {'cleanup'} end
+  if redis.call('HGET', KEYS[6], 'submissionId') ~= old.submissionId or redis.call('HGET', KEYS[6], 'kind') ~= 'dispatch' or redis.call('HGET', KEYS[6], 'status') ~= 'settled' or (joinedInto and joinedInto ~= '') or not settledAt or settledAt ~= old.settledAt or sessionKey ~= old.sessionKey or oldSequence ~= old.sequence then return {'cleanup'} end
+  if redis.call('HGET', KEYS[5], 'submissionId') ~= before.submissionId or redis.call('HGET', KEYS[5], 'status') ~= 'running' or redis.call('HGET', KEYS[5], 'attemptId') ~= before.attemptId or redis.call('HGET', KEYS[5], 'sessionKey') ~= sessionKey then return {'cleanup'} end
+  if not oldSequence or not nextSequence or oldSequence < 1 or oldSequence >= nextSequence or nextSequence % 1 ~= 0 or nextSequence > 9007199254740991 then return {'cleanup'} end
+  if not sessionKey or string.sub(sessionKey, 1, 14) ~= 'agent-session:' then return {'cleanup'} end
+  local ok, session = pcall(cjson.decode, string.sub(sessionKey, 15))
+  local stream = cjson.decode(redis.call('HGET', KEYS[1], 'identity'))
+  if not ok or type(session) ~= 'table' or #session ~= 4 or session[1] ~= stream.agentName or session[2] ~= stream.instanceId or session[3] ~= 'default' or session[4] ~= 'default' then return {'cleanup'} end
+end
 local retry = redis.call('HGET', KEYS[4], ARGV[2] .. ':' .. ARGV[4])
 if retry then
   local stored = cjson.decode(retry)
@@ -32,7 +51,6 @@ if retry then
 end
 if tonumber(redis.call('HGET', KEYS[1], 'nextProducerSequence') or '0') ~= tonumber(ARGV[4]) then return {'sequence'} end
 local seq = tonumber(redis.call('HGET', KEYS[1], 'nextOffset') or '0')
-local batch = cjson.decode(ARGV[5])
 if ARGV[6] ~= '' then
   for i = 6, #KEYS do
     local delivery = redis.call('HGET', KEYS[i], 'status')

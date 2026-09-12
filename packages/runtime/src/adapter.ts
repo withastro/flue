@@ -96,7 +96,14 @@ export {
 
 // ─── Canonical conversation stream store ────────────────────────────────────
 
+export type { AbandonedMessageAuthorization } from './abandoned-message.ts';
+export {
+	abandonedMessageSqlRow,
+	checkAbandonedMessageRows,
+	parseAbandonedMessageBatch,
+} from './abandoned-message.ts';
 export type {
+	AssistantMessageAbandonedRecord,
 	AttachmentRef,
 	ConversationRecord,
 	SubmissionSettledRecord,

@@ -1,5 +1,6 @@
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { AssistantMessage, ToolResultMessage, UserMessage } from '@earendil-works/pi-ai';
+import { parseAbandonedMessageRecord } from './abandoned-message.ts';
 import {
 	type AssistantMessageStartedRecord,
 	type AttachmentRef,
@@ -331,7 +332,7 @@ export interface ReducedContextEntry {
  * against from-scratch folds at every batch boundary, so shape drift without
  * a matching codec change fails CI.
  */
-export const REDUCED_STATE_FORMAT = 2;
+export const REDUCED_STATE_FORMAT = 3;
 
 export function createReducedInstanceState(): ReducedInstanceState {
 	return {
@@ -453,7 +454,10 @@ export function applyConversationRecord(
 		if (identical) return;
 		fail(record, `Record id "${record.id}" was reused with different content.`);
 	}
-	if (record.v !== 1) fail(record, `Record version "${String(record.v)}" is unsupported.`);
+	const version: number = record.v;
+	if (version !== 1 && !(version === 2 && record.type === 'assistant_message_abandoned')) {
+		fail(record, `Record version "${String(version)}" is unsupported.`);
+	}
 
 	if (record.type === 'conversation_created') {
 		validateConversationCreation(state, record);
@@ -824,6 +828,24 @@ export function applyConversationRecord(
 				fail(record, `Child conversation topology conflicts with an existing retained child.`);
 			}
 			conversation.childConversations.set(record.child.conversationId, record.child);
+			break;
+		}
+		case 'assistant_message_abandoned': {
+			const parsed = parseAbandonedMessageRecord(record);
+			if (!parsed.ok) fail(record, parsed.reason);
+			const message = conversation.inProgressMessages.get(parsed.value.messageId);
+			if (
+				!message ||
+				message.submissionId !== parsed.value.submissionId ||
+				message.parentId === conversation.activeLeafId
+			) {
+				fail(
+					record,
+					'Abandoned message must name an open message behind the tail for the same submission.',
+				);
+			}
+			// Keep raw records and completed entries. Only the selected stream stops being open.
+			conversation.inProgressMessages.delete(parsed.value.messageId);
 			break;
 		}
 		case 'submission_settled':

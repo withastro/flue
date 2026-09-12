@@ -143,6 +143,7 @@ Canonical per-agent-instance conversation streams: ordered, append-only batches 
 
 ```ts
 interface ConversationStreamStore {
+  readonly supportsAbandonedMessageCleanup?: true;
   createStream(path: string, identity: ConversationStreamIdentity): Promise<void>;
   acquireProducer(path: string, producerId: string): Promise<ConversationProducerClaim>;
   append(input: {
@@ -152,6 +153,7 @@ interface ConversationStreamStore {
     incarnation: string;
     producerSequence: number;
     submission?: { submissionId: string; attemptId: string };
+    abandonedMessage?: AbandonedMessageAuthorization;
     records: readonly ConversationRecord[];
   }): Promise<{ offset: string }>;
   read(
@@ -170,13 +172,56 @@ interface ConversationStreamStore {
 
 - `createStream` — create the stream if absent, minting a fresh incarnation id. Racing creates with the same identity both succeed; a conflicting identity for an existing path throws.
 - `acquireProducer` — take exclusive producership: increments the producer epoch, resets the producer sequence, and returns a claim carrying the epoch, incarnation, and current head offset. Acquisition fences every prior producer.
-- `append` — append one batch of records under one offset. Requires a current producer id, epoch, and incarnation, and the next expected `producerSequence`. An exact retry of an already-appended sequence returns the original offset; a conflicting retry throws. Records carrying `submissionId`/`attemptId` require a `submission` authorization that owns them. Every record in the batch persists together, all-or-nothing — a partial write corrupts the conversation graph.
+- `append` — append one batch of records under one offset. Require a current producer ID, epoch, incarnation, and the next `producerSequence`. An exact retry returns the original offset; a conflicting retry throws. Ordinary records with `submissionId` or `attemptId` require matching `submission` authorization. The cleanup exception is described below. Persist every record in the batch together; a partial write corrupts the conversation graph.
 - `read` — batches strictly after `options.offset` (default `'-1'`, the start). The sentinel `'now'` returns no batches and the current head as `nextOffset`. `limit` is clamped between `DEFAULT_READ_LIMIT` (`100`) and `MAX_READ_LIMIT` (`1000`). An offset beyond the head throws; an unknown path returns an empty, up-to-date result.
 - `getMeta` — the stream's identity, incarnation, head offset, and producer state, or `null` for an unknown path.
 - `subscribe` — register a process-local change listener for a path; returns an unsubscribe function. Notification is best-effort in-process fan-out, not a durable or cross-process signal.
 - `putFoldCheckpoint` / `getFoldCheckpoint` — optional fold-checkpoint capability: one durable serialized-fold snapshot per path, superseded on each write, so loads fold only the suffix appended since it instead of replaying the stream from the origin. A checkpoint is a cache over the log, never authoritative — the runtime validates its format version, incarnation, and offset on load and silently rebuilds by replay when anything mismatches. Adapters without the pair stay fully functional; the runtime degrades to full replay and warns once per path. Implementations must be torn-write safe: a partially persisted checkpoint must read back as absent or fail the read, never as a plausible blob. `getFoldCheckpoint` with `atOrBefore` returns the checkpoint only when its offset is at or before the bound.
 
 Offsets are opaque strings ordered by the stream; `formatOffset` and `parseOffset` convert between offset strings and integer sequence numbers. `defineSqlConversationStreamStore(dialect: SqlConversationDialect)` builds a complete `ConversationStreamStore` over an async SQL backend — the Postgres, libSQL, and MySQL adapters share one fence implementation and differ only in dialect constants. `InMemoryConversationStreamStore` and `StreamListenerRegistry` are exported as reference building blocks.
+
+### Abandoned assistant messages
+
+Before processing new input, the writer can clear an open assistant message behind the active tail.
+The default conversation must contain that message.
+Its stored submission must be an earlier, settled, unjoined dispatch in the same agent instance and default session.
+The stored sequence and settlement time must match the values selected by the writer.
+The final attempt can differ from the attempt that opened the message.
+
+The writer drains pending records before it selects messages.
+It then appends one `assistant_message_abandoned` record for each selected message and waits before processing input.
+The record has a stable ID from the conversation, submission, and message IDs.
+It records the present cleanup time, without an old outcome or attempt ID.
+It removes only that message's open state.
+Completed entries, raw records, tool outcomes, and the active tail remain available.
+No tool runs, and the old submission row stays unchanged.
+
+Adapters must set `supportsAbandonedMessageCleanup: true` only when they implement the new append checks.
+The `abandonedMessage` option supplies the selected terminal row fields and the current successor attempt.
+Parse it with `parseAbandonedMessageBatch` and check the stored rows with `checkAbandonedMessageRows`.
+Redis implements the stored-row checks in its append script.
+Check both rows within the record append transaction.
+Keep the producer epoch, incarnation, sequence, and ordinary attempt checks.
+Reject mixed batches, ordinary attempt options, missing rows, changed terminal fields, and foreign sessions.
+An exact storage retry must still pass the cleanup checks.
+A fresh writer skips a message whose cleanup record already removed its open state.
+
+SQLite, libSQL, Postgres, MySQL, MongoDB, and Redis implement this capability.
+The transient memory store cannot transact with submission storage and refuses cleanup.
+Older custom adapters also refuse cleanup until they implement and enable the capability.
+Read failures, append failures, and failed checks prevent the new input from running.
+
+**Stop old runtime readers before starting this version against a shared store.**
+Do not use a rolling deployment that leaves old raw-record readers active.
+The cleanup record uses record version 2; existing records keep version 1.
+Older runtime readers reject version 2 instead of silently keeping the old open message.
+The fold checkpoint format increases from 2 to 3.
+Both reader versions discard an unsupported checkpoint and replay records.
+New readers replay existing version 1 records and the new cleanup record.
+Old readers cannot read past the first cleanup record, including after a rollback.
+This change does not change the database format stamp or reset stored data.
+Live clients receive the existing `conversation-reset` chunk with the corrected snapshot.
+Custom raw-record readers must implement the new record before they consume a cleaned stream.
 
 ## `AttachmentStore`
 

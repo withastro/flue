@@ -1,3 +1,9 @@
+import {
+	type AbandonedMessageAuthorization,
+	abandonedMessageSqlRow,
+	checkAbandonedMessageRows,
+	parseAbandonedMessageBatch,
+} from '../abandoned-message.ts';
 import { clampLimit } from '../adapter-helpers.ts';
 import type { ConversationRecord } from '../conversation-records.ts';
 import { ConversationStreamStoreError } from '../errors.ts';
@@ -63,6 +69,7 @@ export function defineSqlConversationStreamStore(
 }
 
 class SqlConversationStreamStore implements ConversationStreamStore {
+	readonly supportsAbandonedMessageCleanup = true;
 	private listeners = new StreamListenerRegistry();
 
 	constructor(private dialect: SqlConversationDialect) {}
@@ -141,6 +148,7 @@ class SqlConversationStreamStore implements ConversationStreamStore {
 		incarnation: string;
 		producerSequence: number;
 		submission?: { submissionId: string; attemptId: string };
+		abandonedMessage?: AbandonedMessageAuthorization;
 		records: readonly ConversationRecord[];
 	}): Promise<{ offset: string }> {
 		const dialect = this.dialect;
@@ -149,6 +157,12 @@ class SqlConversationStreamStore implements ConversationStreamStore {
 		if (input.records.length === 0)
 			throw failure(input.path, 'A canonical batch cannot be empty.', 'append');
 		const data = JSON.stringify(input.records);
+		const cleanup = parseAbandonedMessageBatch(
+			input.records,
+			input.abandonedMessage,
+			input.submission,
+		);
+		if (!cleanup.ok) throw failure(input.path, cleanup.reason);
 		if (data.length > MAX_BATCH_DATA_LENGTH) {
 			throw failure(input.path, oversizedBatchReason(data.length, input.records));
 		}
@@ -166,6 +180,29 @@ class SqlConversationStreamStore implements ConversationStreamStore {
 				meta.incarnation !== input.incarnation
 			) {
 				throw failure(input.path, 'Producer ownership is stale.');
+			}
+			if (cleanup.value) {
+				const authorization = cleanup.value.authorization;
+				const read = async (id: string) =>
+					abandonedMessageSqlRow(
+						(
+							await tx.query(
+								`SELECT submission_id, session_key, sequence, kind, status, attempt_id, joined_into, settled_at FROM flue_agent_submissions WHERE submission_id = ${p(1)} ${dialect.lockClause}`,
+								[id],
+							)
+						)[0],
+					);
+				const streams = await tx.query(
+					`SELECT identity_json FROM flue_conversation_streams WHERE path = ${p(1)}`,
+					[input.path],
+				);
+				const checked = checkAbandonedMessageRows(
+					authorization,
+					await read(authorization.target.submissionId),
+					await read(authorization.before.submissionId),
+					streams[0] ? JSON.parse(String(streams[0].identity_json)) : undefined,
+				);
+				if (!checked.ok) throw failure(input.path, checked.reason);
 			}
 			const retries = await tx.query(
 				`SELECT seq, data, submission_id, attempt_id FROM flue_conversation_stream_batches
@@ -186,7 +223,15 @@ class SqlConversationStreamStore implements ConversationStreamStore {
 			if (Number(meta.next_producer_sequence) !== input.producerSequence) {
 				throw failure(input.path, 'Producer sequence is not the next expected value.');
 			}
-			await assertSubmissionAuthorization(dialect, tx, input.path, input.submission, input.records);
+			if (!cleanup.value) {
+				await assertSubmissionAuthorization(
+					dialect,
+					tx,
+					input.path,
+					input.submission,
+					input.records,
+				);
+			}
 			const seq = Number(meta.next_offset);
 			await tx.query(
 				`INSERT INTO flue_conversation_stream_batches

@@ -1,4 +1,5 @@
 import type {
+	AbandonedMessageAuthorization,
 	ConversationFoldCheckpoint,
 	ConversationRecord,
 	ConversationStreamIdentity,
@@ -8,10 +9,12 @@ import type {
 } from '@flue/runtime/adapter';
 import {
 	ConversationStreamStoreError,
+	checkAbandonedMessageRows,
 	clampLimit,
 	DEFAULT_READ_LIMIT,
 	formatOffset,
 	MAX_READ_LIMIT,
+	parseAbandonedMessageBatch,
 	parseOffset,
 	parseSessionStorageKey,
 	StreamListenerRegistry,
@@ -21,6 +24,7 @@ import type { MongoOperations, MongoRunner } from './mongodb-runner.ts';
 import { collectionName } from './schema.ts';
 
 export class MongoConversationStreamStore implements ConversationStreamStore {
+	readonly supportsAbandonedMessageCleanup = true;
 	private listeners = new StreamListenerRegistry();
 
 	constructor(
@@ -83,11 +87,18 @@ export class MongoConversationStreamStore implements ConversationStreamStore {
 		incarnation: string;
 		producerSequence: number;
 		submission?: { submissionId: string; attemptId: string };
+		abandonedMessage?: AbandonedMessageAuthorization;
 		records: readonly ConversationRecord[];
 	}): Promise<{ offset: string }> {
 		if (input.records.length === 0)
 			throw failure('append', input.path, 'A canonical batch cannot be empty.');
 		const data = JSON.stringify(input.records);
+		const cleanup = parseAbandonedMessageBatch(
+			input.records,
+			input.abandonedMessage,
+			input.submission,
+		);
+		if (!cleanup.ok) throw failure('append', input.path, cleanup.reason);
 		if (data.length > MAX_BATCH_DATA_LENGTH) {
 			throw failure('append', input.path, oversizedBatchReason(data.length, input.records));
 		}
@@ -101,6 +112,18 @@ export class MongoConversationStreamStore implements ConversationStreamStore {
 				meta.incarnation !== input.incarnation
 			)
 				throw failure('append', input.path, 'Producer ownership is stale.');
+			if (cleanup.value) {
+				const authorization = cleanup.value.authorization;
+				const submissions = tx.collection(collectionName(this.prefix, 'submissions'));
+				const target = await submissions.findOne({
+					submissionId: authorization.target.submissionId,
+				});
+				const before = await submissions.findOne({
+					submissionId: authorization.before.submissionId,
+				});
+				const checked = checkAbandonedMessageRows(authorization, target, before, meta.identity);
+				if (!checked.ok) throw failure('append', input.path, checked.reason);
+			}
 			const batches = tx.collection(collectionName(this.prefix, 'conversation_batches'));
 			const retry = await batches.findOne({
 				path: input.path,
@@ -119,14 +142,31 @@ export class MongoConversationStreamStore implements ConversationStreamStore {
 			}
 			if (Number(meta.nextProducerSequence) !== input.producerSequence)
 				throw failure('append', input.path, 'Producer sequence is not the next expected value.');
-			await assertSubmissionAuthorization(
-				tx,
-				this.prefix,
-				input.path,
-				meta.identity as ConversationStreamIdentity,
-				input.submission,
-				input.records,
-			);
+			if (!cleanup.value) {
+				await assertSubmissionAuthorization(
+					tx,
+					this.prefix,
+					input.path,
+					meta.identity as ConversationStreamIdentity,
+					input.submission,
+					input.records,
+				);
+			}
+			if (cleanup.value) {
+				const authorization = cleanup.value.authorization;
+				const submissions = tx.collection(collectionName(this.prefix, 'submissions'));
+				// Settled targets have no legal transition. Fence the running successor against replacement.
+				const fenced = await submissions.updateOne(
+					{
+						submissionId: authorization.before.submissionId,
+						attemptId: authorization.before.attemptId,
+						status: 'running',
+					},
+					{ $inc: { conversationWriteRevision: 1 } },
+				);
+				if (fenced.modifiedCount !== 1)
+					throw failure('append', input.path, 'Cleanup successor changed during append.');
+			}
 			const offset = Number(meta.nextOffset);
 			await batches.insertOne({
 				_id: `${input.path}:${offset}`,
