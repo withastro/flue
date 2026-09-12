@@ -17,6 +17,7 @@ import {
 	adoptKeyedSubmissionReplay,
 	createDirectAgentSubmissionInput,
 	createDispatchAgentSubmissionInput,
+	emitSubmissionAttemptChanged,
 	ensureInstanceIdentity,
 	finalizePendingSettlement,
 	type InstanceContactAdmission,
@@ -429,6 +430,12 @@ export function createNodeAgentCoordinator(options: {
 				leaseExpiresAt: Date.now() + LEASE_DURATION_MS,
 			});
 			if (!claimed) continue;
+			emitSubmissionAttemptChanged(
+				submission,
+				claimed,
+				'claim_submission',
+				coordinatorEventEmitter(claimed.input),
+			);
 			progressed = true;
 			spawnSubmissionTask(claimed);
 		}

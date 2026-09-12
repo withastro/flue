@@ -26,7 +26,7 @@ import {
 } from '../errors.ts';
 import { type FlueTraceCarrier, interceptExecution } from '../execution-interceptor.ts';
 import { getInternalSession } from '../session.ts';
-import type { Agent, CallHandle, DeliveredMessage } from '../types.ts';
+import type { Agent, CallHandle, DeliveredMessage, FlueEventInput } from '../types.ts';
 import { type AttachmentStore, createAttachmentRef } from './attachment-store.ts';
 import type { DispatchInput } from './dispatch-queue.ts';
 import type { CoordinatorEventEmitter } from './events.ts';
@@ -78,6 +78,13 @@ export interface InterruptedToolCallRef {
 
 export type AgentSubmissionInspection = 'absent' | 'completed' | 'interrupted';
 
+type SubmissionAttemptChanged = Extract<FlueEventInput, { type: 'submission_attempt_changed' }>;
+
+export interface AgentSubmissionInspectionSnapshot {
+	readonly state: AgentSubmissionInspection;
+	readonly position: SubmissionAttemptChanged['position'];
+}
+
 export interface ProcessAgentSubmissionOptions {
 	submissionAttempt?: SubmissionAttemptRef;
 	onInputApplied?: (durability: SubmissionDurability) => Promise<void> | void;
@@ -120,7 +127,7 @@ export interface AgentSubmissionSession {
 	readonly conversationId: string;
 	inspectSubmissionInput(
 		input: AgentSubmissionInput,
-	): Promise<AgentSubmissionInspection> | AgentSubmissionInspection;
+	): Promise<AgentSubmissionInspectionSnapshot> | AgentSubmissionInspectionSnapshot;
 	processSubmissionInput(
 		input: AgentSubmissionInput,
 		options?: ProcessAgentSubmissionOptions,
@@ -472,6 +479,38 @@ export function createAgentSubmissionSessionHandler(
 	};
 }
 
+/** Report only the attempt returned by a successful store change. */
+export function emitSubmissionAttemptChanged(
+	previous: AgentSubmission,
+	current: AgentSubmission,
+	operation: SubmissionAttemptChanged['operation'],
+	emit: CoordinatorEventEmitter | undefined,
+	position: SubmissionAttemptChanged['position'] = {
+		lastStreamOffset: null,
+		pendingToolCount: null,
+	},
+): void {
+	if (!current.attemptId) return;
+	// Claims guard queued status, but the row can be claimed and requeued
+	// after it was listed. Keep that stale prior snapshot unknown.
+	const previousApplies =
+		operation === 'replace_submission_attempt' ||
+		previous.attemptCount === current.attemptCount - 1;
+	emit?.({
+		type: 'submission_attempt_changed',
+		submissionId: current.submissionId,
+		kind: current.kind,
+		operation,
+		previous: previousApplies
+			? { attemptId: previous.attemptId ?? null, attemptCount: previous.attemptCount }
+			: null,
+		current: { attemptId: current.attemptId, attemptCount: current.attemptCount },
+		maxAttempts: current.maxAttempts,
+		reason: operation === 'claim_submission' ? 'queued_claim' : 'interrupted_transcript',
+		position,
+	});
+}
+
 /**
  * Shared reconciliation decision tree for an interrupted running submission.
  * Used by both the Cloudflare and Node agent coordinators.
@@ -505,9 +544,10 @@ export async function reconcileInterruptedSubmission(
 	// requeue branches — exhausting either must never discard (or append a
 	// contradictory interruption advisory over) work that already completed.
 	const ctx = createContext(input.submissionId);
-	const state = (await createAgentSubmissionSessionHandler(agent, input, (s) =>
+	const inspection = (await createAgentSubmissionSessionHandler(agent, input, (s) =>
 		s.inspectSubmissionInput(input),
-	)(ctx)) as AgentSubmissionInspection;
+	)(ctx)) as AgentSubmissionInspectionSnapshot;
+	const { state } = inspection;
 	if (state === 'completed') {
 		await settleJoinedSubmissions(
 			submissions,
@@ -658,6 +698,13 @@ export async function reconcileInterruptedSubmission(
 			lease,
 		);
 		if (!replacement?.attemptId) return undefined;
+		emitSubmissionAttemptChanged(
+			submission,
+			replacement,
+			'replace_submission_attempt',
+			emitCoordinatorEvent,
+			inspection.position,
+		);
 		return replacement;
 	}
 

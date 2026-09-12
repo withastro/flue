@@ -20,6 +20,7 @@ import {
 	type createAgentSubmissionSessionHandler,
 	createDirectAgentSubmissionInput,
 	createDispatchAgentSubmissionInput,
+	emitSubmissionAttemptChanged,
 	ensureInstanceIdentity,
 	finalizePendingSettlement,
 	type InstanceContactAdmission,
@@ -748,7 +749,15 @@ class CloudflareAgentCoordinator {
 					ownerId: this.instance.ctx.id.toString(),
 					leaseExpiresAt: 0,
 				});
-				if (claimed) toStart.push(claimed);
+				if (claimed) {
+					emitSubmissionAttemptChanged(
+						submission,
+						claimed,
+						'claim_submission',
+						this.emitCoordinatorEvent,
+					);
+					toStart.push(claimed);
+				}
 			}
 		} catch (error) {
 			console.error(

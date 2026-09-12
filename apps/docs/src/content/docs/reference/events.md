@@ -117,6 +117,7 @@ The v3 vocabulary contains 27 event types:
 - Agent lifecycle — [`agent_start`, `agent_end`, `idle`](#agent_start-agent_end-idle)
 - Submission lifecycle — [`submission_queued`, `submission_running`](#submission_queued-submission_running), [`submission_settled`](#submission_settled)
 - Recovery — [`submission_recovery`](#submission_recovery)
+- Attempt changes — [`submission_attempt_changed`](#submission_attempt_changed)
 - Operations — [`operation_start`, `operation`](#operation_start-operation)
 - Model turns — [`turn_start`, `turn_request`, `turn`, `turn_messages`](#turn_start-turn_request-turn-turn_messages)
 - Messages and deltas — [`message_start`, `message_end`, `text_delta`, `thinking_start`, `thinking_delta`, `thinking_end`, `toolcall_delta`](#message-and-delta-events)
@@ -190,6 +191,30 @@ observe((event) => {
 ```
 
 The pattern converges across process restarts and Durable Object eviction: a fresh isolate's recovery re-emits `submission_running` for every interrupted submission (and `submission_queued` re-fires on admission replays) before those submissions settle, so the new observer's busy set rebuilds itself. The at-least-once emissions are absorbed by the set semantics.
+
+### `submission_attempt_changed`
+
+```ts
+{
+  type: 'submission_attempt_changed';
+  submissionId: string;
+  kind: 'dispatch' | 'direct';
+  operation: 'claim_submission' | 'replace_submission_attempt';
+  previous: { attemptId: string | null; attemptCount: number } | null;
+  current: { attemptId: string; attemptCount: number };
+  maxAttempts: number;
+  reason: 'queued_claim' | 'interrupted_transcript';
+  position: { lastStreamOffset: string | null; pendingToolCount: number | null };
+}
+```
+
+Cloudflare and Node emit this event immediately after a guarded claim or replacement returns a changed row, before starting its execution. A rejected stale change returns no row and emits no event. The event uses the coordinator's envelope and event sequence, with `agentName` and `instanceId`.
+
+`current`, `submissionId`, `kind`, and `maxAttempts` come from the returned row. `previous` contains the observed prior attempt. Its `attemptId` is null when the observed row has no attempt ID. A queued row can be claimed and requeued after it is listed. If its observed count is no longer one below the returned count, the entire `previous` snapshot is null. Counts are submission attempts, independent of HTTP retries inside a model request.
+
+`reason` is `queued_claim` for a claim and `interrupted_transcript` for a replacement. The latter names the existing inspection result; it does not identify why the process stopped. `position` comes from that inspection, without another query. Claims have no inspection, so both fields are null. The built-in recovery inspection supplies the stream offset but does not count unresolved tool calls; `pendingToolCount` stays null. Null means unknown, not zero.
+
+Delivery is live and does not block execution. Observer failures are contained. A process can stop after the store commits and before the event reaches an observer. There is no replay, outbox, or exactly-once guarantee. The event does not change recovery, execution, or settlement.
 
 ### `submission_recovery`
 
@@ -538,17 +563,18 @@ Log events are runtime events only: the model never sees them and they never app
 For one durable submission whose `prompt` operation contains a single tool-calling turn, events arrive in this order:
 
 1. `submission_queued` at admission
-2. `submission_running` when the attempt starts processing
-3. `operation_start`, `agent_start`
-4. `message_start` / `message_end` for the user message
-5. `turn_start`, `turn_request`
-6. `message_start` for the assistant message; `text_delta`, `thinking_*`, and `toolcall_delta` interleave while it streams
-7. `turn`, then `message_end` for the completed assistant message
-8. per tool call: `tool_start` when execution begins, then `message_start` / `message_end` for its tool-result message when it finishes
-9. the terminal `tool` events when the batch commits, then `turn_messages`
-10. further turns repeat from step 5 until a turn produces no tool calls
-11. `agent_end`, `operation`, `idle`
-12. `submission_settled` when the submission settles
+2. `submission_attempt_changed` when the claim returns its changed row
+3. `submission_running` when the attempt starts processing
+4. `operation_start`, `agent_start`
+5. `message_start` / `message_end` for the user message
+6. `turn_start`, `turn_request`
+7. `message_start` for the assistant message; `text_delta`, `thinking_*`, and `toolcall_delta` interleave while it streams
+8. `turn`, then `message_end` for the completed assistant message
+9. per tool call: `tool_start` when execution begins, then `message_start` / `message_end` for its tool-result message when it finishes
+10. the terminal `tool` events when the batch commits, then `turn_messages`
+11. further turns repeat from step 6 until a turn produces no tool calls
+12. `agent_end`, `operation`, `idle`
+13. `submission_settled` when the submission settles
 
 The sequence describes the uncontended path. A delivery that joins an already-busy conversation can interleave additional user `message_start` / `message_end` pairs at turn boundaries — such a joined delivery contributes its own `submission_queued` and `submission_settled` but no `submission_running`.
 

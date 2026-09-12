@@ -151,6 +151,7 @@ import {
 import type {
 	AgentSubmissionInput,
 	AgentSubmissionInspection,
+	AgentSubmissionInspectionSnapshot,
 	AgentSubmissionInterruption,
 	AgentSubmissionSession,
 	InterruptedToolCallRef,
@@ -2734,14 +2735,24 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		);
 	}
 
-	async inspectSubmissionInput(input: AgentSubmissionInput): Promise<AgentSubmissionInspection> {
+	async inspectSubmissionInput(
+		input: AgentSubmissionInput,
+	): Promise<AgentSubmissionInspectionSnapshot> {
 		const conversation = await this.conversationWriter.getConversation(this.conversationId);
-		if (!conversation?.entries.has(this.canonicalInputEntryId(input))) return 'absent';
-		return this.inspectCanonicalState(
-			classifyConversationSubmission(conversation, this.canonicalInputEntryId(input), {
-				contextWindow: this.agentLoop.state.model?.contextWindow ?? 0,
-			}),
-		);
+		return {
+			state: !conversation?.entries.has(this.canonicalInputEntryId(input))
+				? 'absent'
+				: this.inspectCanonicalState(
+						classifyConversationSubmission(conversation, this.canonicalInputEntryId(input), {
+							contextWindow: this.agentLoop.state.model?.contextWindow ?? 0,
+						}),
+					),
+			position: {
+				lastStreamOffset: this.conversationWriter.offset,
+				// This inspection does not count unresolved tool calls.
+				pendingToolCount: null,
+			},
+		};
 	}
 
 	processSubmissionInput(

@@ -1281,6 +1281,23 @@ type FlueEventVariant =
 			kind: 'dispatch' | 'direct';
 	  }
 	| {
+			/** A guarded claim or replacement returned a new attempt, before
+			 *  execution starts. A process can stop after the store commits and
+			 *  before delivery; this live event has no replay guarantee. */
+			type: 'submission_attempt_changed';
+			submissionId: string;
+			kind: 'dispatch' | 'direct';
+			operation: 'claim_submission' | 'replace_submission_attempt';
+			/** The observed prior row, or null when a queued snapshot is stale. */
+			previous: { attemptId: string | null; attemptCount: number } | null;
+			/** Values copied from the row returned by the store. */
+			current: { attemptId: string; attemptCount: number };
+			maxAttempts: number;
+			reason: 'queued_claim' | 'interrupted_transcript';
+			/** The existing recovery inspection; null fields mean unknown. */
+			position: { lastStreamOffset: string | null; pendingToolCount: number | null };
+	  }
+	| {
 			/** An attempt started processing a claimed submission. Emitted on
 			 *  EVERY attempt — recovery replacements re-emit it with the
 			 *  incremented `attemptCount` — which is what lets an observer
