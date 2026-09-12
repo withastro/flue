@@ -110,6 +110,10 @@ import { type FlueExecutionContext, interceptExecution } from './execution-inter
 import { resolveSubagentDefinition } from './hooks/render.ts';
 import type { HookStateBuffer, HookStateWrite } from './hooks/use-persistent-state.ts';
 import {
+	assertLocalQueueAcknowledgment,
+	type LocalQueueAcknowledgment,
+} from './local-queue-acknowledgment.ts';
+import {
 	type AgentFinishContext,
 	type AgentFinishDeclaration,
 	type AgentOutputChannel,
@@ -1442,16 +1446,20 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		// Steer the callbacks' appends now, grouped in declaration order —
 		// durable order equals steer order, deterministic regardless of how the
 		// concurrent callbacks interleaved.
+		const acknowledgments: LocalQueueAcknowledgment[] = [];
 		for (const outcome of outcomes) {
 			if (outcome.status !== 'fulfilled') continue;
-			for (const message of outcome.value) this.enqueueSignalAppend(message);
+			for (const { message, acknowledgment } of outcome.value) {
+				this.enqueueSignalAppend(message);
+				if (acknowledgment) acknowledgments.push(acknowledgment);
+			}
 		}
 		const parentId =
 			this.pendingSignalAppends.length > 0
 				? await this.conversationWriter.getConversationLeaf(this.conversationId)
 				: null;
 		const { records: signalRecords } = this.drainSignalAppendRecords(parentId);
-		await this.appendCanonical([
+		const records: ConversationRecord[] = [
 			...signalRecords,
 			...this.drainHookStateRecords(),
 			{
@@ -1461,7 +1469,16 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				submissionId,
 				type: 'agent_start_run',
 			},
-		]);
+		];
+		if (acknowledgments.length === 0) {
+			await this.appendCanonical(records);
+		} else {
+			await this.conversationWriter.appendWithLocalAcknowledgments(
+				records,
+				acknowledgments,
+				this.canonicalAppendOptions(),
+			);
+		}
 	}
 
 	/**
@@ -1507,20 +1524,28 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		index: number,
 		hook: AgentStartDeclaration,
 		signal: AbortSignal,
-	): Promise<AgentSignalAppend[]> {
+	): Promise<Array<{ message: AgentSignalAppend; acknowledgment?: LocalQueueAcknowledgment }>> {
 		let harness: ActionHarness | undefined;
 		let appendWindowOpen = true;
-		const appends: AgentSignalAppend[] = [];
+		const appends: Array<{
+			message: AgentSignalAppend;
+			acknowledgment?: LocalQueueAcknowledgment;
+		}> = [];
 		// `this` is shadowed inside the ctx getter below.
 		const session = this;
 		const ctx: AgentStartContext = {
-			append: (message) => {
+			append: (message, options) => {
 				if (!appendWindowOpen) {
 					throw new Error(
 						'[flue] append() was called after its useAgentStart callback settled. The append window is the callback itself — to send input at any other time, use the dispatcher from useDispatchMessage().',
 					);
 				}
-				appends.push(assertAppendMessage(message));
+				const parsed = assertAppendMessage(message);
+				const acknowledgment =
+					options?.acknowledge === undefined
+						? undefined
+						: assertLocalQueueAcknowledgment(options.acknowledge);
+				appends.push({ message: parsed, acknowledgment });
 			},
 			log: this.createHookLogger('useAgentStart', index),
 			signal,

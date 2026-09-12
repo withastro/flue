@@ -3,6 +3,10 @@ import type { AgentSubmissionStore } from '../agent-execution-store.ts';
 import type { ConversationRecord } from '../conversation-records.ts';
 import { ConversationStreamStoreError } from '../errors.ts';
 import { migrateFlueSqlSchema } from '../format-version.ts';
+import {
+	applyLocalQueueAcknowledgments,
+	type LocalQueueAcknowledgment,
+} from '../local-queue-acknowledgment.ts';
 import { parseSessionStorageKey } from '../session-identity.ts';
 import type { SqlStorage } from '../sql-storage.ts';
 import { generateIncarnationId } from './ids.ts';
@@ -60,6 +64,16 @@ export interface ConversationFoldCheckpoint {
 	data: string;
 }
 
+export interface ConversationStreamAppendInput {
+	path: string;
+	producerId: string;
+	producerEpoch: number;
+	incarnation: string;
+	producerSequence: number;
+	submission?: { submissionId: string; attemptId: string };
+	records: readonly ConversationRecord[];
+}
+
 export interface ConversationStreamStore {
 	createStream(path: string, identity: ConversationStreamIdentity): Promise<void>;
 	acquireProducer(path: string, producerId: string): Promise<ConversationProducerClaim>;
@@ -79,15 +93,16 @@ export interface ConversationStreamStore {
 	 * size; a custom adapter that splits records across non-atomic writes
 	 * violates the contract.
 	 */
-	append(input: {
-		path: string;
-		producerId: string;
-		producerEpoch: number;
-		incarnation: string;
-		producerSequence: number;
-		submission?: { submissionId: string; attemptId: string };
-		records: readonly ConversationRecord[];
-	}): Promise<{ offset: string }>;
+	append(input: ConversationStreamAppendInput): Promise<{ offset: string }>;
+	/**
+	 * Commit local queue deletions in the same transaction as a new batch.
+	 * A failure rolls back both. A committed batch replay skips the deletions.
+	 * Stores without this capability must omit it; the writer rejects its use.
+	 */
+	appendWithLocalAcknowledgments?(
+		input: ConversationStreamAppendInput,
+		acknowledgments: readonly LocalQueueAcknowledgment[],
+	): Promise<{ offset: string }>;
 	read(
 		path: string,
 		options?: { offset?: string; limit?: number },
@@ -608,15 +623,21 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 		});
 	}
 
-	async append(input: {
-		path: string;
-		producerId: string;
-		producerEpoch: number;
-		incarnation: string;
-		producerSequence: number;
-		submission?: { submissionId: string; attemptId: string };
-		records: readonly ConversationRecord[];
-	}): Promise<{ offset: string }> {
+	append(input: ConversationStreamAppendInput): Promise<{ offset: string }> {
+		return this.appendBatch(input, []);
+	}
+
+	appendWithLocalAcknowledgments(
+		input: ConversationStreamAppendInput,
+		acknowledgments: readonly LocalQueueAcknowledgment[],
+	): Promise<{ offset: string }> {
+		return this.appendBatch(input, acknowledgments);
+	}
+
+	private async appendBatch(
+		input: ConversationStreamAppendInput,
+		acknowledgments: readonly LocalQueueAcknowledgment[],
+	): Promise<{ offset: string }> {
 		if (input.records.length === 0)
 			this.fail('append', input.path, 'A canonical batch cannot be empty.');
 		const data = JSON.stringify(input.records);
@@ -693,6 +714,7 @@ export class SqliteConversationStreamStore implements ConversationStreamStore {
 				 WHERE path = ?`,
 				input.path,
 			);
+			applyLocalQueueAcknowledgments(this.sql, acknowledgments);
 			return { offset: formatOffset(seq), appended: true };
 		});
 		if (result.appended) this.listeners.notify(input.path);

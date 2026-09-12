@@ -1,5 +1,6 @@
 import * as v from 'valibot';
 import { RESERVED_SIGNAL_TYPES } from './conversation-records.ts';
+import type { LocalQueueAcknowledgment } from './local-queue-acknowledgment.ts';
 import type { FlueHarness, FlueLogger, PromptUsage } from './types.ts';
 
 /**
@@ -142,6 +143,11 @@ export function assertAppendMessage(message: unknown): AgentSignalAppend {
 	};
 }
 
+export interface AgentStartAppendOptions {
+	/** Delete this row only when this delivery's signals, state, and start marker commit. */
+	readonly acknowledge?: LocalQueueAcknowledgment;
+}
+
 /**
  * The context a `useAgentStart` callback receives. `log` emits progress lines
  * into the conversation stream (the model never sees them); `signal` is the
@@ -157,7 +163,7 @@ export function assertAppendMessage(message: unknown): AgentSignalAppend {
  * Prefer dispatching; reach for `append` only when a delivery is wrong.
  */
 export interface AgentStartContext {
-	readonly append: (message: AgentAppendMessage) => void;
+	readonly append: (message: AgentAppendMessage, options?: AgentStartAppendOptions) => void;
 	readonly harness: FlueHarness;
 	readonly log: FlueLogger;
 	readonly signal: AbortSignal;

@@ -154,6 +154,10 @@ interface ConversationStreamStore {
     submission?: { submissionId: string; attemptId: string };
     records: readonly ConversationRecord[];
   }): Promise<{ offset: string }>;
+  appendWithLocalAcknowledgments?(
+    input: ConversationStreamAppendInput,
+    acknowledgments: readonly LocalQueueAcknowledgment[],
+  ): Promise<{ offset: string }>;
   read(
     path: string,
     options?: { offset?: string; limit?: number },
@@ -175,6 +179,8 @@ interface ConversationStreamStore {
 - `getMeta` — the stream's identity, incarnation, head offset, and producer state, or `null` for an unknown path.
 - `subscribe` — register a process-local change listener for a path; returns an unsubscribe function. Notification is best-effort in-process fan-out, not a durable or cross-process signal.
 - `putFoldCheckpoint` / `getFoldCheckpoint` — optional fold-checkpoint capability: one durable serialized-fold snapshot per path, superseded on each write, so loads fold only the suffix appended since it instead of replaying the stream from the origin. A checkpoint is a cache over the log, never authoritative — the runtime validates its format version, incarnation, and offset on load and silently rebuilds by replay when anything mismatches. Adapters without the pair stay fully functional; the runtime degrades to full replay and warns once per path. Implementations must be torn-write safe: a partially persisted checkpoint must read back as absent or fail the read, never as a plausible blob. `getFoldCheckpoint` with `atOrBefore` returns the checkpoint only when its offset is at or before the bound.
+
+`ConversationStreamAppendInput` is the input type of `append`. The optional `appendWithLocalAcknowledgments` method takes the same input and application queue row keys. It must commit each deletion in the same local SQLite transaction as a new batch. A failure rolls back the entire transaction. It must preserve producer and submission checks and skip deletions when returning an already committed batch. The runtime refuses acknowledgments when the method is absent. The built-in Node and Cloudflare SQLite stores provide it; the memory and async SQL stores do not. See the [start-hook API](/docs/reference/agent-hooks-api/#acknowledge-a-local-queued-note) for key validation and use.
 
 Offsets are opaque strings ordered by the stream; `formatOffset` and `parseOffset` convert between offset strings and integer sequence numbers. `defineSqlConversationStreamStore(dialect: SqlConversationDialect)` builds a complete `ConversationStreamStore` over an async SQL backend — the Postgres, libSQL, and MySQL adapters share one fence implementation and differ only in dialect constants. `InMemoryConversationStreamStore` and `StreamListenerRegistry` are exported as reference building blocks.
 

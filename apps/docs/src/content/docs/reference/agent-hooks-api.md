@@ -273,8 +273,17 @@ Declare a named, client-facing data part and get back a write-only function that
 ```ts
 function useAgentStart(run: (ctx: AgentStartContext) => void | Promise<void>): void;
 
+interface LocalQueueAcknowledgment {
+  readonly table: string;
+  readonly key: Readonly<Record<string, string | number | null>>;
+}
+
+interface AgentStartAppendOptions {
+  readonly acknowledge?: LocalQueueAcknowledgment;
+}
+
 interface AgentStartContext {
-  readonly append: (message: AgentAppendMessage) => void;
+  readonly append: (message: AgentAppendMessage, options?: AgentStartAppendOptions) => void;
   readonly harness: FlueHarness;
   readonly log: FlueLogger;
   readonly signal: AbortSignal;
@@ -289,6 +298,27 @@ Run a callback when the agent starts work on a delivered message — after the i
 - `ctx.append` writes a signal into this response **without** registering a delivery — no `useAgentStart` run of its own, no submission. It accepts the same [`AgentAppendMessage`](#useagentfinish) shape and validation as `useAgentFinish`'s `append`, and it is legal only during the callback's execution window; a captured reference throws afterwards. Prefer dispatching; reach for `append` only when a delivery is wrong.
 - `ctx.harness` is the [harness](/docs/reference/agent-api/#harness), materialized lazily on first access. `ctx.signal` is the submission's abort signal. `ctx.log` emits progress lines into the conversation stream; the model never sees them.
 - Compaction can eventually fold signals away — keep a callback's substance in durable state and files; a signal is the announcement, not the storage.
+
+### Acknowledge a local queued note
+
+Stage a row deletion with its signal when the queue uses the same local SQLite database as the conversation store:
+
+```ts
+useAgentStart(({ append }) => {
+  for (const note of readQueuedNotes()) {
+    append(
+      { kind: 'signal', type: 'queued_note', body: note.body },
+      { acknowledge: { table: 'app_notes', key: { note_id: note.id } } },
+    );
+  }
+});
+```
+
+`append` validates and copies the key. It does not delete the row. After every start callback succeeds, one transaction stores the signals, state writes, and `agent_start_run` marker, then deletes the queued rows. A callback, batch, or deletion failure leaves those writes and rows unchanged. Signals and deletions follow hook declaration order. A retry of a committed producer batch skips all deletions, so a later row that reuses a key remains queued.
+
+The table must be an application table in SQLite's `main` database. Table and column names use letters, digits, and underscores, and start with a letter or underscore. Table names starting with `flue_` or `sqlite_` are reserved. Key values use strings, finite numbers, or `null`. Each key must match exactly one row; a missing or non-unique match rolls back the batch. Include a row version in the key if another writer can replace a note before the transaction commits.
+
+The built-in Node and Cloudflare SQLite stores support this operation. Stores without the optional [local acknowledgment method](/docs/reference/data-persistence-api/#conversationstreamstore) reject it. It cannot acknowledge a remote queue, run an async callback, or confirm that the model acts on the note. Calls without `acknowledge` keep their existing behavior.
 
 ## `useAgentFinish()`
 

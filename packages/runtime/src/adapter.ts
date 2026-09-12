@@ -101,6 +101,7 @@ export type {
 	ConversationRecord,
 	SubmissionSettledRecord,
 } from './conversation-records.ts';
+export type { LocalQueueAcknowledgment } from './local-queue-acknowledgment.ts';
 export type {
 	AttachmentStore,
 	GetAttachmentInput,
@@ -118,6 +119,7 @@ export {
 export type {
 	ConversationFoldCheckpoint,
 	ConversationProducerClaim,
+	ConversationStreamAppendInput,
 	ConversationStreamBatch,
 	ConversationStreamIdentity,
 	ConversationStreamMeta,

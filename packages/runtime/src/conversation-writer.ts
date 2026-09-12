@@ -7,6 +7,7 @@ import type {
 } from './conversation-records.ts';
 import type { IndexedConversationRecord, ReducedInstanceState } from './conversation-reducer.ts';
 import { conversationScopeKey, reduceConversationRecords } from './conversation-reducer.ts';
+import type { LocalQueueAcknowledgment } from './local-queue-acknowledgment.ts';
 import type {
 	ConversationProducerClaim,
 	ConversationStreamIdentity,
@@ -147,6 +148,14 @@ export class ConversationRecordWriter {
 		}
 	}
 
+	appendWithLocalAcknowledgments(
+		records: readonly ConversationRecord[],
+		acknowledgments: readonly LocalQueueAcknowledgment[],
+		options: ConversationAppendOptions = {},
+	): Promise<{ offset: string }> {
+		return this.appendBatch(records, options, acknowledgments);
+	}
+
 	enqueue(
 		records: readonly ConversationRecord[],
 		options: ConversationAppendOptions = {},
@@ -225,6 +234,7 @@ export class ConversationRecordWriter {
 	private appendBatch(
 		records: readonly ConversationRecord[],
 		options: ConversationAppendOptions,
+		acknowledgments: readonly LocalQueueAcknowledgment[] = [],
 	): Promise<{ offset: string }> {
 		const operation = this.tail.then(async () => {
 			this.assertActive();
@@ -246,12 +256,21 @@ export class ConversationRecordWriter {
 				records,
 			};
 			try {
+				const append = () => {
+					if (acknowledgments.length === 0) return this.store.append(input);
+					if (!this.store.appendWithLocalAcknowledgments) {
+						throw new Error(
+							'[flue] This conversation store does not support atomic local acknowledgments.',
+						);
+					}
+					return this.store.appendWithLocalAcknowledgments(input, acknowledgments);
+				};
 				let result: { offset: string };
 				try {
-					result = await this.store.append(input);
+					result = await append();
 				} catch (firstError) {
 					try {
-						result = await this.store.append(input);
+						result = await append();
 					} catch {
 						throw firstError;
 					}
