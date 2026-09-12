@@ -511,6 +511,89 @@ export function emitSubmissionAttemptChanged(
 	});
 }
 
+type SubmissionRecoveryDecision = Extract<FlueEventInput, { type: 'submission_recovery_decision' }>;
+
+function recoveryErrorField(error: object, key: string): unknown {
+	try {
+		return Reflect.get(error, key);
+	} catch {
+		return undefined;
+	}
+}
+
+function recoveryErrorSummary(error: unknown): SubmissionRecoveryDecision['error'] {
+	const seen = new Set<object>();
+	let named: SubmissionRecoveryDecision['error'] = null;
+	let current = error;
+	for (let depth = 0; depth < 4; depth++) {
+		if (
+			current === null ||
+			(typeof current !== 'object' && typeof current !== 'function') ||
+			seen.has(current)
+		)
+			break;
+		seen.add(current);
+		const rawName = recoveryErrorField(current, 'name');
+		// Match the whole name; "$" alone also accepts a final line break.
+		const name =
+			typeof rawName === 'string' &&
+			rawName.match(/^[A-Za-z_$][A-Za-z0-9_$.-]{0,79}$/)?.[0] === rawName
+				? rawName
+				: null;
+		const retryable = recoveryErrorField(current, 'retryable');
+		const overloaded = recoveryErrorField(current, 'overloaded');
+		const remote = recoveryErrorField(current, 'remote');
+		const summary = {
+			name,
+			retryable: typeof retryable === 'boolean' ? retryable : null,
+			overloaded: typeof overloaded === 'boolean' ? overloaded : null,
+			remote: typeof remote === 'boolean' ? remote : null,
+		};
+		// Keep the platform flags and name from the same cause entry.
+		if (summary.retryable !== null || summary.overloaded !== null || summary.remote !== null) {
+			return summary;
+		}
+		if (name !== null && named === null) named = summary;
+		current = recoveryErrorField(current, 'cause');
+	}
+	return named;
+}
+
+/** Report a recovery decision without changing recovery when reporting fails. */
+export function emitSubmissionRecoveryDecision(
+	emit: CoordinatorEventEmitter | undefined,
+	options: {
+		readonly submission?: AgentSubmission;
+		readonly operation: SubmissionRecoveryDecision['operation'];
+		readonly reason: SubmissionRecoveryDecision['reason'];
+		readonly position?: SubmissionRecoveryDecision['position'];
+		readonly error?: unknown;
+	},
+): void {
+	if (!emit) return;
+	try {
+		const { submission, position } = options;
+		emit({
+			type: 'submission_recovery_decision',
+			...(submission ? { submissionId: submission.submissionId } : {}),
+			kind: submission?.kind ?? null,
+			attempt: submission
+				? { attemptId: submission.attemptId ?? null, attemptCount: submission.attemptCount }
+				: null,
+			maxAttempts: submission?.maxAttempts ?? null,
+			operation: options.operation,
+			reason: options.reason,
+			position: {
+				lastStreamOffset: position?.lastStreamOffset ?? null,
+				pendingToolCount: position?.pendingToolCount ?? null,
+			},
+			error: options.reason === 'reconcile_failed' ? recoveryErrorSummary(options.error) : null,
+		});
+	} catch {
+		// Reporting must not replace the original failure or stop settlement.
+	}
+}
+
 /**
  * Shared reconciliation decision tree for an interrupted running submission.
  * Used by both the Cloudflare and Node agent coordinators.
@@ -597,6 +680,12 @@ export async function reconcileInterruptedSubmission(
 	// misdescribe work that never happened. The shared budget itself is
 	// intentional — only the message distinguishes the case.
 	if (submission.attemptCount >= submission.maxAttempts) {
+		emitSubmissionRecoveryDecision(emitCoordinatorEvent, {
+			submission,
+			operation: 'reconcile_submission',
+			reason: 'retry_exhausted',
+			position: inspection.position,
+		});
 		await failInterruptedSubmission(
 			submissions,
 			submission,
@@ -618,12 +707,19 @@ export async function reconcileInterruptedSubmission(
 			createContext,
 			conversationWriter,
 			emitCoordinatorEvent,
+			inspection.position,
 		);
 		return undefined;
 	}
 
 	// Check timeout.
 	if (submission.timeoutAt > 0 && Date.now() >= submission.timeoutAt) {
+		emitSubmissionRecoveryDecision(emitCoordinatorEvent, {
+			submission,
+			operation: 'reconcile_submission',
+			reason: 'timeout',
+			position: inspection.position,
+		});
 		await failInterruptedSubmission(
 			submissions,
 			submission,
@@ -634,6 +730,7 @@ export async function reconcileInterruptedSubmission(
 			createContext,
 			conversationWriter,
 			emitCoordinatorEvent,
+			inspection.position,
 		);
 		return undefined;
 	}
@@ -1042,6 +1139,7 @@ async function failInterruptedSubmission(
 	createContext: (submissionId: string) => FlueContextInternal,
 	conversationWriter?: ConversationRecordWriter,
 	emitCoordinatorEvent?: CoordinatorEventEmitter,
+	position?: SubmissionRecoveryDecision['position'],
 ): Promise<void> {
 	const { input } = submission;
 	const ctx = createContext(input.submissionId);
@@ -1063,6 +1161,13 @@ async function failInterruptedSubmission(
 			}),
 		)(ctx)) as ReadonlyArray<InterruptedToolCallRef>;
 	} catch (terminalError) {
+		emitSubmissionRecoveryDecision(emitCoordinatorEvent, {
+			submission,
+			operation: 'reconcile_submission',
+			reason: 'reconcile_failed',
+			position,
+			error: terminalError,
+		});
 		console.error(
 			'[flue:submission-reconciliation] Failed to record terminal message for submission',
 			submission.submissionId,

@@ -18,6 +18,7 @@ import {
 	createDirectAgentSubmissionInput,
 	createDispatchAgentSubmissionInput,
 	emitSubmissionAttemptChanged,
+	emitSubmissionRecoveryDecision,
 	ensureInstanceIdentity,
 	finalizePendingSettlement,
 	type InstanceContactAdmission,
@@ -471,6 +472,11 @@ export function createNodeAgentCoordinator(options: {
 					// schedule one more pass).
 				} while (!stopping && (progressed || wakeRequested));
 			} catch (error) {
+				emitSubmissionRecoveryDecision(passEventEmitter, {
+					operation: 'reconcile_pass',
+					reason: 'reconcile_failed',
+					error,
+				});
 				// A transient DB error in listRunnableSubmissions or
 				// claimSubmission should not kill the entire loop. Log,
 				// back off briefly, and retry. Setting wakeRequested ensures
@@ -523,6 +529,11 @@ export function createNodeAgentCoordinator(options: {
 		// Errors in individual submissions are caught by spawnSubmissionTask.
 		// Unexpected errors in the loop itself are fatal and logged.
 		claimLoopDone = claimLoop().catch((error) => {
+			emitSubmissionRecoveryDecision(passEventEmitter, {
+				operation: 'reconcile_pass',
+				reason: 'reconcile_failed',
+				error,
+			});
 			console.error('[flue:claim-loop] Fatal error in claim loop:', error);
 			passEventEmitter(
 				{
@@ -694,6 +705,12 @@ export function createNodeAgentCoordinator(options: {
 				activeSubmissions.delete(submissionId);
 				conversationWriters.delete(agentStreamPath(submission.input.agent, submission.input.id));
 			} catch (error) {
+				emitSubmissionRecoveryDecision(coordinatorEventEmitter(submission.input), {
+					submission,
+					operation: 'reconcile_submission',
+					reason: 'reconcile_failed',
+					error,
+				});
 				coordinatorEventEmitter(submission.input)(
 					{
 						type: 'submission_recovery',
@@ -930,6 +947,12 @@ export function createNodeAgentCoordinator(options: {
 					spawnSubmissionTask(replacement);
 				}
 			} catch (error) {
+				emitSubmissionRecoveryDecision(coordinatorEventEmitter(submission.input), {
+					submission,
+					operation: 'reconcile_submission',
+					reason: 'reconcile_failed',
+					error,
+				});
 				console.error(
 					'[flue:submission-reconciliation]',
 					{
@@ -1112,6 +1135,11 @@ export function createNodeAgentCoordinator(options: {
 			wake();
 			if (hasInactive) {
 				void reconcileRunningSubmissions().catch((error) => {
+					emitSubmissionRecoveryDecision(passEventEmitter, {
+						operation: 'reconcile_pass',
+						reason: 'reconcile_failed',
+						error,
+					});
 					console.error('[flue:submission-abort] reconcile after abort failed:', error);
 					passEventEmitter(
 						{

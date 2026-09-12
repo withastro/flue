@@ -21,6 +21,7 @@ import {
 	createDirectAgentSubmissionInput,
 	createDispatchAgentSubmissionInput,
 	emitSubmissionAttemptChanged,
+	emitSubmissionRecoveryDecision,
 	ensureInstanceIdentity,
 	finalizePendingSettlement,
 	type InstanceContactAdmission,
@@ -760,6 +761,11 @@ class CloudflareAgentCoordinator {
 				}
 			}
 		} catch (error) {
+			emitSubmissionRecoveryDecision(this.emitCoordinatorEvent, {
+				operation: 'reconcile_pass',
+				reason: 'reconcile_failed',
+				error,
+			});
 			console.error(
 				'[flue:submission-reconciliation]',
 				{
@@ -826,6 +832,14 @@ class CloudflareAgentCoordinator {
 			| 'start_submission',
 		error: unknown,
 	): void {
+		if (operation === 'reconcile_submission') {
+			emitSubmissionRecoveryDecision(this.emitCoordinatorEvent, {
+				submission,
+				operation,
+				reason: 'reconcile_failed',
+				error,
+			});
+		}
 		console.error(
 			'[flue:submission-reconciliation]',
 			{

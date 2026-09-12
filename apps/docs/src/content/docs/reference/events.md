@@ -112,11 +112,12 @@ Two content guarantees hold for every event surface:
 
 ## Event types
 
-The v3 vocabulary contains 27 event types:
+The v3 vocabulary contains 28 event types:
 
 - Agent lifecycle — [`agent_start`, `agent_end`, `idle`](#agent_start-agent_end-idle)
 - Submission lifecycle — [`submission_queued`, `submission_running`](#submission_queued-submission_running), [`submission_settled`](#submission_settled)
 - Recovery — [`submission_recovery`](#submission_recovery)
+- Recovery decisions — [`submission_recovery_decision`](#submission_recovery_decision)
 - Attempt changes — [`submission_attempt_changed`](#submission_attempt_changed)
 - Operations — [`operation_start`, `operation`](#operation_start-operation)
 - Model turns — [`turn_start`, `turn_request`, `turn`, `turn_messages`](#turn_start-turn_request-turn-turn_messages)
@@ -215,6 +216,47 @@ Cloudflare and Node emit this event immediately after a guarded claim or replace
 `reason` is `queued_claim` for a claim and `interrupted_transcript` for a replacement. The latter names the existing inspection result; it does not identify why the process stopped. `position` comes from that inspection, without another query. Claims have no inspection, so both fields are null. The built-in recovery inspection supplies the stream offset but does not count unresolved tool calls; `pendingToolCount` stays null. Null means unknown, not zero.
 
 Delivery is live and does not block execution. Observer failures are contained. A process can stop after the store commits and before the event reaches an observer. There is no replay, outbox, or exactly-once guarantee. The event does not change recovery, execution, or settlement.
+
+### `submission_recovery_decision`
+
+```ts
+{
+  type: 'submission_recovery_decision';
+  submissionId?: string;
+  kind: 'dispatch' | 'direct' | null;
+  attempt: { attemptId: string | null; attemptCount: number } | null;
+  maxAttempts: number | null;
+  operation: 'reconcile_submission' | 'reconcile_pass';
+  reason: 'retry_exhausted' | 'timeout' | 'reconcile_failed';
+  position: { lastStreamOffset: string | null; pendingToolCount: number | null };
+  error: {
+    name: string | null;
+    retryable: boolean | null;
+    overloaded: boolean | null;
+    remote: boolean | null;
+  } | null;
+}
+```
+
+The coordinator selects a budget or timeout failure, or catches an error during reconciliation.
+The existing coordinator emitter sends this event to `observe()` without a request context.
+
+- `retry_exhausted` and `timeout` are emitted immediately before terminal work. Their `error` is null because no original error causes that choice.
+- Completion takes precedence over abort, budget, and timeout. Abort takes precedence over budget and timeout. Budget takes precedence over timeout.
+- `reconcile_failed` reports an existing reconciliation catch, including a failed terminal-record write. It can follow an earlier budget or timeout decision.
+- The event records the selected action or caught failure. It does not confirm settlement. Read the existing settlement record for the terminal result.
+- Available submission and attempt fields come from the current reconciliation row. A pass without a row omits `submissionId` and sets `kind`, `attempt`, and `maxAttempts` to null.
+- Position comes from the existing inspection. Without that result, both fields are null. The current inspection does not count pending tools, so `pendingToolCount` stays null.
+
+The error summary examines at most four entries in the original cause chain.
+A failed property read supplies an unknown value. A repeated object stops the scan.
+It selects the first entry with a Boolean `retryable`, `overloaded`, or `remote` flag; otherwise it selects the first safely named entry.
+The name and flags always come from the same entry. Names must match `[A-Za-z_$][A-Za-z0-9_$.-]{0,79}` in full.
+Invalid or absent names and flags are null. With no usable entry, `error` is null.
+This event adds no message, stack, request, body, metadata object, or `errorInfo` detail.
+
+Delivery is live only. A process failure can lose an event, and later failed wakes can emit another event.
+Subscriber failures do not change execution. No query, retry, attempt, or stored record is added by this event.
 
 ### `submission_recovery`
 

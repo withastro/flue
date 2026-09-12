@@ -1309,6 +1309,26 @@ type FlueEventVariant =
 			maxAttempts: number;
 	  }
 	| {
+			/** Recovery selected a failure or caught a reconciliation error.
+			 *  This live decision does not confirm terminal settlement. */
+			type: 'submission_recovery_decision';
+			submissionId?: string;
+			kind: 'dispatch' | 'direct' | null;
+			attempt: { attemptId: string | null; attemptCount: number } | null;
+			maxAttempts: number | null;
+			operation: 'reconcile_submission' | 'reconcile_pass';
+			reason: 'retry_exhausted' | 'timeout' | 'reconcile_failed';
+			/** Values from the existing inspection; null fields mean unknown. */
+			position: { lastStreamOffset: string | null; pendingToolCount: number | null };
+			/** Safe fields from one original cause entry, without error detail. */
+			error: {
+				name: string | null;
+				retryable: boolean | null;
+				overloaded: boolean | null;
+				remote: boolean | null;
+			} | null;
+	  }
+	| {
 			/** A coordinator recovery/reconciliation step failed (or skipped
 			 *  work) and was contained instead of settling the submission.
 			 *  Re-emitted on every failed wake while the condition persists;
