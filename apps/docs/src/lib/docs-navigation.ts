@@ -174,6 +174,7 @@ export const docsSections: DocsSection[] = [
 			{
 				title: 'Sandboxes',
 				items: [
+					{ title: 'Azure Sandboxes', slug: 'ecosystem/sandboxes/azure' },
 					{ title: 'boxd', slug: 'ecosystem/sandboxes/boxd' },
 					{ title: 'Cloudflare Computer', slug: 'ecosystem/sandboxes/cloudflare-computer' },
 					{ title: 'Cloudflare Sandbox', slug: 'ecosystem/sandboxes/cloudflare' },

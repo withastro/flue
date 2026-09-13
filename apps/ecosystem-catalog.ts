@@ -239,6 +239,12 @@ export const deploy: EcosystemItem[] = [
 ].sort(sortEcosystemItems);
 
 export const sandboxes: EcosystemItem[] = [
+	{
+		name: 'Azure Sandboxes',
+		href: '/docs/ecosystem/sandboxes/azure/',
+		background: '#0078d4',
+		keywords: '@azure/containerapps-sandbox azure container apps',
+	},
 	{ name: 'boxd', href: '/docs/ecosystem/sandboxes/boxd/', background: '#2563eb' },
 	{
 		name: 'Cloudflare Computer',
