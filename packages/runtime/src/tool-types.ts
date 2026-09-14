@@ -1,5 +1,4 @@
 import type * as v from 'valibot';
-import type { JsonValue } from './json-snapshot.ts';
 import type { FlueHarness, FlueLogger } from './types.ts';
 
 export type ToolInputSchema = v.GenericSchema<Record<string, unknown>, unknown>;
@@ -73,9 +72,20 @@ export type ToolContext<
  * required when an `output` schema is declared (forgetting the value is a bug
  * the type should catch) and optional otherwise.
  */
+/**
+ * `JsonValue` widened to admit `undefined` object properties. When a tool body
+ * returns different object shapes from different branches, TypeScript unions
+ * them by adding `?: undefined` for the missing keys, which the strict
+ * `JsonValue` index signature rejects with a misleading overload error.
+ * `undefined` properties are dropped by JSON serialization, so admitting them
+ * here changes nothing at runtime.
+ */
+export type JsonOutput =
+	null | boolean | number | string | JsonOutput[] | { [key: string]: JsonOutput | undefined };
+
 export type ToolRunEnvelope<S extends ToolOutputSchema | undefined> = S extends ToolOutputSchema
 	? { output: v.InferInput<S>; terminate?: boolean }
-	: { output?: JsonValue; terminate?: boolean };
+	: { output?: JsonOutput; terminate?: boolean };
 
 // Bare-string sugar: `return 'text'` means `return { output: 'text' }`. The
 // string arm exists only where a string is a valid output to begin with (no
