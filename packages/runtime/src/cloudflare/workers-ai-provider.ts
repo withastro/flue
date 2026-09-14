@@ -1063,6 +1063,7 @@ function toAnthropicGatewayModel(model: Model<Api>): Model<'anthropic-messages'>
 		api: 'anthropic-messages',
 		baseUrl: '',
 		compat: {
+			...model.compat,
 			supportsCacheControlOnTools: false,
 			supportsEagerToolInputStreaming: false,
 			supportsLongCacheRetention: false,
@@ -1338,9 +1339,6 @@ function gatewayCatalogModels(): Model<Api>[] {
 					id: `${vendor}/${model.id}`,
 					provider: 'cloudflare',
 					baseUrl: '',
-					// The gateway branches own compat: `toAnthropicGatewayModel`
-					// replaces it, and the binding applies session affinity itself.
-					compat: undefined,
 				},
 			];
 		});
