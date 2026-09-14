@@ -30,9 +30,13 @@ After running this example with a Sentry DSN configured:
   instance, and `flue.submission.id` pins down one submission.
 
 Model and tool **content** (prompts, completions, tool arguments and
-results) stays out of traces by default. `SENTRY_AI_RECORD_INPUTS` and
-`SENTRY_AI_RECORD_OUTPUTS` opt in per direction, and everything that
-leaves the process passes a redaction pass first.
+results) stays out of traces by default; this example's `.env` turns it on
+so traces show the full conversations. Defaults come from the SDK's resolved
+`dataCollection.genAI` policy — the same switch as Sentry's own AI
+integrations — with `SENTRY_AI_RECORD_INPUTS` / `SENTRY_AI_RECORD_OUTPUTS`
+as per-direction overrides. Everything that leaves the process passes a
+credential redaction pass; broader PII policy belongs to Sentry's
+server-side data scrubbing.
 
 ## Files
 

@@ -1,5 +1,5 @@
 ---
-{ "kind": "tooling", "version": 1, "website": "https://sentry.io" }
+{ "kind": "tooling", "version": 2, "website": "https://sentry.io" }
 ---
 
 # Add Sentry to Flue
@@ -51,8 +51,14 @@ Sentry convention:
 | `SENTRY_ENVIRONMENT`       | Optional environment name such as `production` or `staging`.                                           |
 | `SENTRY_RELEASE`           | Optional release identifier such as a commit SHA.                                                       |
 | `SENTRY_TRACES_SAMPLE_RATE`| `0` to `1`. `0` (default) sends errors and logs only; above `0` also sends the Flue span hierarchy.     |
-| `SENTRY_AI_RECORD_INPUTS`  | `true` to include prompts, system instructions, and tool definitions/arguments in trace spans.          |
-| `SENTRY_AI_RECORD_OUTPUTS` | `true` to include model output, tool results, and exception messages/stacks in trace spans.             |
+| `SENTRY_AI_RECORD_INPUTS`  | `true`/`false` override for recording prompts, system instructions, and tool definitions/arguments in trace spans. |
+| `SENTRY_AI_RECORD_OUTPUTS` | `true`/`false` override for recording model output, tool results, and exception messages/stacks in trace spans.    |
+
+When a record variable is unset, the integration defers to the SDK's resolved
+`dataCollection.genAI` policy, so Flue's gen_ai spans follow the same content
+switch as Sentry's own AI integrations. With neither configured, no content
+is recorded. On Cloudflare the SDK initializes per isolate after the content
+policy is built, so the variables are the only control there.
 
 Never invent a DSN or hard-code it in application source. A Sentry DSN permits
 event submission but does not grant read access to project data. Update an
@@ -64,19 +70,25 @@ the flat rate; do not add it unless the user asks.
 ## Decide what may leave the application
 
 Timing, token usage, model identifiers, error types, and `flue.*` correlation
-ids always flow. Everything else is policy:
+ids always flow. Model and tool content — prompts, model output, tool
+arguments and results — is a per-environment decision:
 
-- With both record flags `false` (the default), the integration passes
-  `content: false` to Flue's OpenTelemetry instrumentation and no model or
-  tool content reaches Sentry at all.
-- With either flag on, content passes a `transform` that admits only the
-  enabled direction, redacts values under sensitive keys (`scrub` below), and
-  tightens the adapter's built-in 56 KiB per-span content budget to 16 KiB
-  per attribute via `truncateContent`.
-- Log attributes forwarded to Sentry Logs pass the same `scrub` redaction.
+- Content on: spans carry the conversation itself, and Sentry's AI Agents
+  views reconstruct each run turn by turn. This is what makes agent behavior
+  debuggable; recommend it for development and staging.
+- Content off (the default with nothing configured): spans carry metadata
+  only. Make production a deliberate choice between the two.
 
-Review the `SENSITIVE_KEY` pattern against the application's own secret naming
-and extend it when the project handles regulated or user-identifying data.
+Enabled content passes a `transform` that admits only the enabled direction,
+redacts values under credential-shaped keys (`scrub` below), and truncates to
+16 KiB per attribute — large prompts across a trace's many spans can
+otherwise exceed Sentry's ingest limits. Log attributes forwarded to Sentry
+Logs pass the same redaction.
+
+`scrub` only keeps obvious credentials from leaving the process. It is not a
+PII policy: configure project- or regulation-specific rules in Sentry's
+server-side data scrubbing, which applies after send and needs no code
+change.
 
 ## Create the Flue integration
 
@@ -86,7 +98,7 @@ the same bridge and helpers; they differ in how the Sentry SDK initializes.
 ### Node
 
 ```ts title="src/sentry.ts"
-// flue-blueprint: tooling/sentry@1
+// flue-blueprint: tooling/sentry@2
 
 import {
   type ContentOption,
@@ -97,8 +109,10 @@ import {
 import { type FlueObservation, instrument } from '@flue/runtime';
 import * as Sentry from '@sentry/node';
 
-const recordInputs = process.env.SENTRY_AI_RECORD_INPUTS === 'true';
-const recordOutputs = process.env.SENTRY_AI_RECORD_OUTPUTS === 'true';
+// Explicit per-direction overrides for gen_ai content capture. Unset defers
+// to the SDK's resolved dataCollection policy — see contentPolicy().
+const recordInputsOverride = envFlag('SENTRY_AI_RECORD_INPUTS');
+const recordOutputsOverride = envFlag('SENTRY_AI_RECORD_OUTPUTS');
 const tracesSampleRate = clampRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 0);
 
 // Sentry ships integrations that patch AI provider SDKs directly. Flue's
@@ -111,6 +125,7 @@ const SENTRY_AI_PROVIDER_INTEGRATIONS = new Set([
   'LangChain',
   'LangGraph',
   'VercelAI',
+  'WorkersAI',
 ]);
 
 Sentry.init({
@@ -122,17 +137,17 @@ Sentry.init({
   // Stream spans to Sentry as each one finishes, so gen_ai children that
   // complete after their parent span are not lost.
   traceLifecycle: 'stream',
-  streamGenAiSpans: true,
   enableLogs: true,
   integrations: (defaults) =>
     defaults.filter((integration) => !SENTRY_AI_PROVIDER_INTEGRATIONS.has(integration.name)),
 });
 
 // `Sentry.init` registered Sentry as the global OTel tracer provider, so
-// Flue's spans flow to Sentry without further wiring. Content capture is
-// on by default in the adapter; `contentPolicy()` narrows it to what the
-// record flags allow. The instrumentation is keyed, so a dev reload
-// replaces the previous registration instead of stacking a duplicate.
+// Flue's spans flow to Sentry without further wiring (@sentry/node v11 needs
+// `skipOpenTelemetrySetup: false` for this). Content capture is on by
+// default in the adapter; `contentPolicy()` narrows it to what the resolved
+// policy allows. The instrumentation is keyed, so a dev reload replaces the
+// previous registration instead of stacking a duplicate.
 if (tracesSampleRate > 0) {
   instrument(createOpenTelemetryInstrumentation({ content: contentPolicy() }));
 }
@@ -182,7 +197,7 @@ instrument({
       return;
     }
     if (event.type === 'submission_recovery') {
-      recordRecoveryBreadcrumb(event);
+      recordRecoveryLog(event);
       return;
     }
     if (event.type === 'log') {
@@ -199,23 +214,19 @@ instrument({
 
 // A coordinator retrying or reconciling a stuck submission — not yet a
 // terminal outcome, and 'deferred'/'agent_unavailable' recur on every retry
-// wake, so this stays a breadcrumb rather than a captured issue. The one
+// wake, so each wake records a leveled log rather than an issue. The one
 // terminal outcome, 'terminated', always co-occurs with a `submission_settled`
-// outcome:'failed' event that the branch above already captures; recording it
-// here too would duplicate that issue.
-function recordRecoveryBreadcrumb(event: Extract<FlueObservation, { type: 'submission_recovery' }>): void {
-  Sentry.addBreadcrumb({
-    category: 'flue.submission_recovery',
-    level: event.outcome === 'terminated' ? 'error' : 'warning',
-    message: `${event.operation}: ${event.outcome}`,
-    data: {
-      ...correlationTags(event),
-      'flue.recovery.operation': event.operation,
-      'flue.recovery.outcome': event.outcome,
-      ...(event.attemptCount !== undefined ? { 'flue.recovery.attempt_count': event.attemptCount } : {}),
-      ...(event.maxAttempts !== undefined ? { 'flue.recovery.max_attempts': event.maxAttempts } : {}),
-      ...(event.errorInfo ? { 'error.type': event.errorInfo.type } : {}),
-    },
+// outcome:'failed' event that the branch above already captures; the log
+// complements that issue without duplicating it.
+function recordRecoveryLog(event: Extract<FlueObservation, { type: 'submission_recovery' }>): void {
+  const level = event.outcome === 'terminated' ? 'error' : 'warn';
+  Sentry.logger[level](`Submission recovery — ${event.operation}: ${event.outcome}`, {
+    ...correlationTags(event),
+    'flue.recovery.operation': event.operation,
+    'flue.recovery.outcome': event.outcome,
+    ...(event.attemptCount !== undefined ? { 'flue.recovery.attempt_count': event.attemptCount } : {}),
+    ...(event.maxAttempts !== undefined ? { 'flue.recovery.max_attempts': event.maxAttempts } : {}),
+    ...(event.errorInfo ? { 'error.type': event.errorInfo.type } : {}),
   });
 }
 
@@ -264,11 +275,17 @@ function logAttributes(event: Extract<FlueObservation, { type: 'log' }>): Record
   return attributes;
 }
 
-// The content policy for trace spans. With both record flags off, no model
-// or tool content reaches Sentry at all (`content: false`). With either flag
-// on, the transform admits only the enabled direction, scrubs sensitive keys,
-// and tightens the adapter's default 56 KiB budget to 16 KiB per attribute.
+// The content policy for trace spans. Record defaults come from the SDK's
+// resolved `dataCollection.genAI` policy (undefined on Cloudflare, where no
+// client exists at module scope); the SENTRY_AI_RECORD_* variables override
+// per direction. With both directions off, no model or tool content reaches
+// Sentry at all (`content: false`); otherwise the transform admits only the
+// enabled direction, scrubs sensitive keys, and tightens the adapter's
+// default 56 KiB budget to 16 KiB per attribute.
 function contentPolicy(): ContentOption {
+  const genAI = Sentry.getClient()?.getDataCollectionOptions().genAI;
+  const recordInputs = recordInputsOverride ?? genAI?.inputs ?? false;
+  const recordOutputs = recordOutputsOverride ?? genAI?.outputs ?? false;
   if (!recordInputs && !recordOutputs) return false;
   return {
     transform(content, scope) {
@@ -335,6 +352,11 @@ function stringify(value: unknown): string {
   }
 }
 
+function envFlag(name: string): boolean | undefined {
+  const value = process.env[name];
+  return value === 'true' ? true : value === 'false' ? false : undefined;
+}
+
 function clampRate(value: string | undefined, fallback: number): number {
   if (value === undefined) return fallback;
   const parsed = Number(value);
@@ -356,7 +378,7 @@ following; keep the helpers (`captureTerminalFailure` through `clampRate`)
 identical to the Node file.
 
 ```ts title="src/sentry.ts"
-// flue-blueprint: tooling/sentry@1
+// flue-blueprint: tooling/sentry@2
 
 import {
   type ContentOption,
@@ -375,8 +397,11 @@ interface Env {
   SENTRY_TRACES_SAMPLE_RATE?: string;
 }
 
-const recordInputs = process.env.SENTRY_AI_RECORD_INPUTS === 'true';
-const recordOutputs = process.env.SENTRY_AI_RECORD_OUTPUTS === 'true';
+// Per-direction overrides for gen_ai content capture. No Sentry client
+// exists at module scope on Cloudflare (the SDK initializes per isolate in
+// the DO wrapper below), so these variables are the only content control.
+const recordInputsOverride = envFlag('SENTRY_AI_RECORD_INPUTS');
+const recordOutputsOverride = envFlag('SENTRY_AI_RECORD_OUTPUTS');
 // Per-isolate `env` bindings are only available inside the DO wrapper below;
 // the module-scope `instrument(...)` gate reads `process.env`. Keep both
 // paths going through `clampRate` so an invalid rate becomes 0 on both.
@@ -389,6 +414,7 @@ const SENTRY_AI_PROVIDER_INTEGRATIONS = new Set([
   'LangChain',
   'LangGraph',
   'VercelAI',
+  'WorkersAI',
 ]);
 
 export const cloudflare = extend({
@@ -401,7 +427,6 @@ export const cloudflare = extend({
         release: env.SENTRY_RELEASE,
         tracesSampleRate: clampRate(env.SENTRY_TRACES_SAMPLE_RATE, 0),
         traceLifecycle: 'stream',
-        streamGenAiSpans: true,
         enableLogs: true,
         integrations: (defaults) =>
           defaults.filter((integration) => !SENTRY_AI_PROVIDER_INTEGRATIONS.has(integration.name)),
@@ -438,7 +463,7 @@ instrument({
       return;
     }
     if (event.type === 'submission_recovery') {
-      recordRecoveryBreadcrumb(event);
+      recordRecoveryLog(event);
       return;
     }
     if (event.type === 'log') {
@@ -451,20 +476,16 @@ instrument({
   },
 });
 
-// See the Node variant for why this stays a breadcrumb rather than an issue.
-function recordRecoveryBreadcrumb(event: Extract<FlueObservation, { type: 'submission_recovery' }>): void {
-  Sentry.addBreadcrumb({
-    category: 'flue.submission_recovery',
-    level: event.outcome === 'terminated' ? 'error' : 'warning',
-    message: `${event.operation}: ${event.outcome}`,
-    data: {
-      ...correlationTags(event),
-      'flue.recovery.operation': event.operation,
-      'flue.recovery.outcome': event.outcome,
-      ...(event.attemptCount !== undefined ? { 'flue.recovery.attempt_count': event.attemptCount } : {}),
-      ...(event.maxAttempts !== undefined ? { 'flue.recovery.max_attempts': event.maxAttempts } : {}),
-      ...(event.errorInfo ? { 'error.type': event.errorInfo.type } : {}),
-    },
+// See the Node variant for why each wake records a leveled log, not an issue.
+function recordRecoveryLog(event: Extract<FlueObservation, { type: 'submission_recovery' }>): void {
+  const level = event.outcome === 'terminated' ? 'error' : 'warn';
+  Sentry.logger[level](`Submission recovery — ${event.operation}: ${event.outcome}`, {
+    ...correlationTags(event),
+    'flue.recovery.operation': event.operation,
+    'flue.recovery.outcome': event.outcome,
+    ...(event.attemptCount !== undefined ? { 'flue.recovery.attempt_count': event.attemptCount } : {}),
+    ...(event.maxAttempts !== undefined ? { 'flue.recovery.max_attempts': event.maxAttempts } : {}),
+    ...(event.errorInfo ? { 'error.type': event.errorInfo.type } : {}),
   });
 }
 ```
@@ -498,9 +519,10 @@ span from a single conversation, and `flue.submission.id` pins down one
 submission.
 
 Capture only the terminal signals above as issues. Coordinator recovery
-failures (`submission_recovery`) are the exception: they land as breadcrumbs,
-not issues, because most outcomes recur on every retry and the one terminal
-outcome (`terminated`) duplicates the paired `submission_settled` issue. Do
+failures (`submission_recovery`) are the exception: they land in Sentry Logs
+as `warn` (`error` for `terminated`), not as issues — most outcomes recur on
+every coordinator wake, and `terminated` would duplicate the paired
+`submission_settled` issue. Do
 not capture lower-level failed tool, task, turn, or compaction events; they
 can be recoverable and would duplicate the selected terminal signals. Do not
 promote `log.error` to issues — error-level logs arrive in Sentry Logs with
@@ -548,7 +570,8 @@ sample-rate values may be Wrangler `vars`.
 3. Send a message to a tool-using agent; confirm one trace containing
    `invoke_agent <AgentName>` with `chat <model>` and `execute_tool <tool>`
    children, token usage on the `chat` span, and no model or tool content
-   while both record flags are off.
+   while the record variables are unset and `dataCollection.genAI` grants
+   nothing.
 4. Call `log.info(...)` and `log.error(...)` from a tool; confirm each arrives
    in Sentry Logs at its level, tagged with `flue.instance.id`, on the same
    trace as its conversation — and that no issue is raised for either.
@@ -556,8 +579,10 @@ sample-rate values may be Wrangler `vars`.
    Sentry issue carrying the original error name, message, and throw-site
    stack, tagged with `flue.instance.id` and `flue.submission.id` — not two
    issues (the settlement duplicate must be skipped).
-6. Set both record flags `true`, repeat step 3, and confirm message and tool
-   content appears with sensitive keys redacted.
+6. Set both record variables `true` (or, on Node, grant
+   `dataCollection: { genAI: { inputs: true, outputs: true } }` in
+   `Sentry.init` with the variables unset), repeat step 3, and confirm message
+   and tool content appears with sensitive keys redacted.
 7. On Cloudflare, exercise at least one wrapped agent Durable Object under
    workerd and confirm spans, logs, and an issue are delivered from that
    isolate.
@@ -567,10 +592,9 @@ sample-rate values may be Wrangler `vars`.
    confirm events are reported exactly once.
 10. Force a coordinator recovery condition (for example, make an agent
     Durable Object briefly unavailable to a dispatched submission) and confirm
-    a `flue.submission_recovery` breadcrumb — carrying
-    `flue.recovery.operation` and `flue.recovery.outcome` — appears attached
-    to the next captured event for that instance, and that no separate issue
-    is raised for it.
+    a `warn`-level "Submission recovery" entry — carrying
+    `flue.recovery.operation` and `flue.recovery.outcome` attributes — arrives
+    in Sentry Logs for each failed wake, and that no issue is raised for it.
 
 When updating an existing integration, inspect and compare it against this
 complete current blueprint, apply every relevant change while preserving
@@ -582,3 +606,186 @@ This comparison is required when the marker is missing.
 ### Version 1 — 2026-06-15
 
 Initial version.
+
+### Version 2 — 2026-08-08
+
+Recovery events move from breadcrumbs to Sentry Logs, where recurring
+warnings are searchable and alertable. Content capture defaults now come
+from the SDK's resolved `dataCollection.genAI` policy on Node, with the
+`SENTRY_AI_RECORD_*` variables as overrides — nothing configured still means
+no content. `streamGenAiSpans: true` is removed (SDK default since
+`@sentry/node` 10.61). `WorkersAI` joins the suppressed provider
+integrations.
+
+Node `src/sentry.ts`:
+
+```diff
+--- a/src/sentry.ts
++++ b/src/sentry.ts
+@@
+-// flue-blueprint: tooling/sentry@1
++// flue-blueprint: tooling/sentry@2
+@@
+-const recordInputs = process.env.SENTRY_AI_RECORD_INPUTS === 'true';
+-const recordOutputs = process.env.SENTRY_AI_RECORD_OUTPUTS === 'true';
++// Explicit per-direction overrides for gen_ai content capture. Unset defers
++// to the SDK's resolved dataCollection policy — see contentPolicy().
++const recordInputsOverride = envFlag('SENTRY_AI_RECORD_INPUTS');
++const recordOutputsOverride = envFlag('SENTRY_AI_RECORD_OUTPUTS');
+ const tracesSampleRate = clampRate(process.env.SENTRY_TRACES_SAMPLE_RATE, 0);
+@@
+   'LangGraph',
+   'VercelAI',
++  'WorkersAI',
+ ]);
+@@
+   traceLifecycle: 'stream',
+-  streamGenAiSpans: true,
+   enableLogs: true,
+@@
+ // `Sentry.init` registered Sentry as the global OTel tracer provider, so
+-// Flue's spans flow to Sentry without further wiring. Content capture is
+-// on by default in the adapter; `contentPolicy()` narrows it to what the
+-// record flags allow. The instrumentation is keyed, so a dev reload
+-// replaces the previous registration instead of stacking a duplicate.
++// Flue's spans flow to Sentry without further wiring (@sentry/node v11 needs
++// `skipOpenTelemetrySetup: false` for this). Content capture is on by
++// default in the adapter; `contentPolicy()` narrows it to what the resolved
++// policy allows. The instrumentation is keyed, so a dev reload replaces the
++// previous registration instead of stacking a duplicate.
+@@
+     if (event.type === 'submission_recovery') {
+-      recordRecoveryBreadcrumb(event);
++      recordRecoveryLog(event);
+       return;
+     }
+@@
+ // A coordinator retrying or reconciling a stuck submission — not yet a
+ // terminal outcome, and 'deferred'/'agent_unavailable' recur on every retry
+-// wake, so this stays a breadcrumb rather than a captured issue. The one
++// wake, so each wake records a leveled log rather than an issue. The one
+ // terminal outcome, 'terminated', always co-occurs with a `submission_settled`
+-// outcome:'failed' event that the branch above already captures; recording it
+-// here too would duplicate that issue.
+-function recordRecoveryBreadcrumb(event: Extract<FlueObservation, { type: 'submission_recovery' }>): void {
+-  Sentry.addBreadcrumb({
+-    category: 'flue.submission_recovery',
+-    level: event.outcome === 'terminated' ? 'error' : 'warning',
+-    message: `${event.operation}: ${event.outcome}`,
+-    data: {
+-      ...correlationTags(event),
+-      'flue.recovery.operation': event.operation,
+-      'flue.recovery.outcome': event.outcome,
+-      ...(event.attemptCount !== undefined ? { 'flue.recovery.attempt_count': event.attemptCount } : {}),
+-      ...(event.maxAttempts !== undefined ? { 'flue.recovery.max_attempts': event.maxAttempts } : {}),
+-      ...(event.errorInfo ? { 'error.type': event.errorInfo.type } : {}),
+-    },
+-  });
+-}
++// outcome:'failed' event that the branch above already captures; the log
++// complements that issue without duplicating it.
++function recordRecoveryLog(event: Extract<FlueObservation, { type: 'submission_recovery' }>): void {
++  const level = event.outcome === 'terminated' ? 'error' : 'warn';
++  Sentry.logger[level](`Submission recovery — ${event.operation}: ${event.outcome}`, {
++    ...correlationTags(event),
++    'flue.recovery.operation': event.operation,
++    'flue.recovery.outcome': event.outcome,
++    ...(event.attemptCount !== undefined ? { 'flue.recovery.attempt_count': event.attemptCount } : {}),
++    ...(event.maxAttempts !== undefined ? { 'flue.recovery.max_attempts': event.maxAttempts } : {}),
++    ...(event.errorInfo ? { 'error.type': event.errorInfo.type } : {}),
++  });
++}
+@@
+-// The content policy for trace spans. With both record flags off, no model
+-// or tool content reaches Sentry at all (`content: false`). With either flag
+-// on, the transform admits only the enabled direction, scrubs sensitive keys,
+-// and tightens the adapter's default 56 KiB budget to 16 KiB per attribute.
++// The content policy for trace spans. Record defaults come from the SDK's
++// resolved `dataCollection.genAI` policy (undefined on Cloudflare, where no
++// client exists at module scope); the SENTRY_AI_RECORD_* variables override
++// per direction. With both directions off, no model or tool content reaches
++// Sentry at all (`content: false`); otherwise the transform admits only the
++// enabled direction, scrubs sensitive keys, and tightens the adapter's
++// default 56 KiB budget to 16 KiB per attribute.
+ function contentPolicy(): ContentOption {
++  const genAI = Sentry.getClient()?.getDataCollectionOptions().genAI;
++  const recordInputs = recordInputsOverride ?? genAI?.inputs ?? false;
++  const recordOutputs = recordOutputsOverride ?? genAI?.outputs ?? false;
+   if (!recordInputs && !recordOutputs) return false;
+@@
++function envFlag(name: string): boolean | undefined {
++  const value = process.env[name];
++  return value === 'true' ? true : value === 'false' ? false : undefined;
++}
++
+ function clampRate(value: string | undefined, fallback: number): number {
+```
+
+Cloudflare `src/sentry.ts` (the shared helpers take the Node changes above;
+module scope additionally changes as follows):
+
+```diff
+--- a/src/sentry.ts
++++ b/src/sentry.ts
+@@
+-// flue-blueprint: tooling/sentry@1
++// flue-blueprint: tooling/sentry@2
+@@
+-const recordInputs = process.env.SENTRY_AI_RECORD_INPUTS === 'true';
+-const recordOutputs = process.env.SENTRY_AI_RECORD_OUTPUTS === 'true';
++// Per-direction overrides for gen_ai content capture. No Sentry client
++// exists at module scope on Cloudflare (the SDK initializes per isolate in
++// the DO wrapper below), so these variables are the only content control.
++const recordInputsOverride = envFlag('SENTRY_AI_RECORD_INPUTS');
++const recordOutputsOverride = envFlag('SENTRY_AI_RECORD_OUTPUTS');
+ // Per-isolate `env` bindings are only available inside the DO wrapper below;
+@@
+   'LangGraph',
+   'VercelAI',
++  'WorkersAI',
+ ]);
+@@
+         tracesSampleRate: clampRate(env.SENTRY_TRACES_SAMPLE_RATE, 0),
+         traceLifecycle: 'stream',
+-        streamGenAiSpans: true,
+         enableLogs: true,
+@@
+     if (event.type === 'submission_recovery') {
+-      recordRecoveryBreadcrumb(event);
++      recordRecoveryLog(event);
+       return;
+     }
+@@
+-// See the Node variant for why this stays a breadcrumb rather than an issue.
+-function recordRecoveryBreadcrumb(event: Extract<FlueObservation, { type: 'submission_recovery' }>): void {
+-  Sentry.addBreadcrumb({
+-    category: 'flue.submission_recovery',
+-    level: event.outcome === 'terminated' ? 'error' : 'warning',
+-    message: `${event.operation}: ${event.outcome}`,
+-    data: {
+-      ...correlationTags(event),
+-      'flue.recovery.operation': event.operation,
+-      'flue.recovery.outcome': event.outcome,
+-      ...(event.attemptCount !== undefined ? { 'flue.recovery.attempt_count': event.attemptCount } : {}),
+-      ...(event.maxAttempts !== undefined ? { 'flue.recovery.max_attempts': event.maxAttempts } : {}),
+-      ...(event.errorInfo ? { 'error.type': event.errorInfo.type } : {}),
+-    },
+-  });
+-}
++// See the Node variant for why each wake records a leveled log, not an issue.
++function recordRecoveryLog(event: Extract<FlueObservation, { type: 'submission_recovery' }>): void {
++  const level = event.outcome === 'terminated' ? 'error' : 'warn';
++  Sentry.logger[level](`Submission recovery — ${event.operation}: ${event.outcome}`, {
++    ...correlationTags(event),
++    'flue.recovery.operation': event.operation,
++    'flue.recovery.outcome': event.outcome,
++    ...(event.attemptCount !== undefined ? { 'flue.recovery.attempt_count': event.attemptCount } : {}),
++    ...(event.maxAttempts !== undefined ? { 'flue.recovery.max_attempts': event.maxAttempts } : {}),
++    ...(event.errorInfo ? { 'error.type': event.errorInfo.type } : {}),
++  });
++}
+```
+
+On `@sentry/node` v11, additionally set `skipOpenTelemetrySetup: false` in
+`Sentry.init` — v11 no longer registers the global OpenTelemetry tracer
+provider by default, which this integration relies on.
