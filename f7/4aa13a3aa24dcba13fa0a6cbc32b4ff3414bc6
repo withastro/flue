@@ -1,0 +1,21 @@
+apps/docs/src/content/docs/reference/events.md
+  s_08811b303074c7::t_f99aff97086338 366
+packages/runtime/src/session.ts
+  s_08811b303074c7::t_34bf80e82d90a7 735-736,2116-2122,4701
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "f74aa13a3aa24dcba13fa0a6cbc32b4ff3414bc6",
+  "prompts": {},
+  "sessions": {
+    "s_08811b303074c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "132dce6f-4fba-453a-a35c-52a924962d56",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Matt Carey <mcarey@cloudflare.com>"
+    }
+  }
+}
