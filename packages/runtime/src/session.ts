@@ -732,6 +732,8 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	private activeTurnId: string | undefined;
 	/** Per-turn request telemetry, set at `turn_request` and cleared at the turn's end. */
 	private modelRequests = new Map<string, { info: ModelRequestInfo; startedAt: number }>();
+	/** Whether the live model context was last rebuilt from a compacted conversation. */
+	private canonicalContextCompacted = false;
 	private activeTasks = new Set<Session>();
 	private activeActionHarnesses = new Set<ActionHarness>();
 	private delegationDepth: number;
@@ -2111,7 +2113,13 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			description: tool.description,
 			parameters: tool.parameters,
 		}));
-		const request = this.modelRequestInfo(model, options);
+		const request: ModelRequestInfo = {
+			...this.modelRequestInfo(model, options),
+			// `true | undefined` by construction: agent turns whose live context
+			// was rebuilt from a compacted conversation. Compaction turns
+			// themselves never carry it.
+			...(purpose === 'agent' && this.canonicalContextCompacted ? { contextCompacted: true } : {}),
+		};
 		this.modelRequests.set(turnId, { info: request, startedAt: Date.now() });
 		this.emit({
 			type: 'turn_request',
@@ -4690,6 +4698,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			},
 		});
 		this.agentLoop.state.messages = messages;
+		this.canonicalContextCompacted = getLatestConversationCompaction(conversation) !== undefined;
 	}
 
 	// ─── Model-turn recovery and compaction ───────────────────────────────────
