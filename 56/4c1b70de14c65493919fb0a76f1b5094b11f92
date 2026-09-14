@@ -1,0 +1,31 @@
+CHANGELOG.md
+  s_08811b303074c7::t_450302b4ac0399 3-8
+packages/runtime/src/conversation-reducer.ts
+  s_08811b303074c7::t_b2cc1793bfe4c3 334,692,694,1259-1263,1277-1278
+packages/runtime/src/tool-types.ts
+  s_08811b303074c7::t_6e368c24d5cbed 2,78
+packages/runtime/src/session.ts
+  s_08811b303074c7::t_615a6eedada4fc 2114,2512,2811-2816,3112,3119,3354,5278
+packages/runtime/src/submission-state.ts
+  s_08811b303074c7::t_317f0de6759af6 68-70,113-115,128,240-267,358,366,368,420
+packages/runtime/src/cloudflare/workers-ai-provider.ts
+  s_08811b303074c7::t_a21d38be9b88a2 1068-1071
+apps/docs/src/content/docs/reference/events.md
+  s_08811b303074c7::t_84f1238ef45b17 366
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "564c1b70de14c65493919fb0a76f1b5094b11f92",
+  "prompts": {},
+  "sessions": {
+    "s_08811b303074c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "132dce6f-4fba-453a-a35c-52a924962d56",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Matt Carey <mcarey@cloudflare.com>"
+    }
+  }
+}
