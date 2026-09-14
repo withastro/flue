@@ -46,6 +46,8 @@ export const AUTH_FAILURE_LIMIT = 3;
  */
 export const STALE_STREAM_TIMEOUT_MS = 90_000;
 
+export const HEALTHY_STREAM_MS = 30_000;
+
 /**
  * Exponential retry backoff: 1s doubled per consecutive attempt, capped at
  * 30s. `attempt` is zero-based (attempt 0 → 1s).

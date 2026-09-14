@@ -9,6 +9,7 @@ import {
 import {
 	AUTH_FAILURE_LIMIT,
 	comparePosition,
+	HEALTHY_STREAM_MS,
 	retryBackoffMs,
 	STALE_STREAM_TIMEOUT_MS,
 	statusOf,
@@ -180,11 +181,18 @@ export function createAgentConversationObservation(
 		// through scheduleRetry as a transient error — a stall carries no
 		// status, so it keeps backoff semantics and never touches the
 		// auth-failure streak.
+		let firstActivityAt: number | undefined;
+		const settleAttempt = () => {
+			if (firstActivityAt !== undefined && Date.now() - firstActivityAt >= HEALTHY_STREAM_MS) {
+				reconnectAttempt = 0;
+			}
+		};
 		const onStale = () => {
 			watchdogTimer = undefined;
 			if (!isCurrent(value) || stream !== nextStream) return;
 			stream = undefined;
 			nextStream.cancel();
+			settleAttempt();
 			scheduleRetry(
 				value,
 				new Error(
@@ -193,6 +201,7 @@ export function createAgentConversationObservation(
 			);
 		};
 		const armWatchdog = () => {
+			firstActivityAt ??= Date.now();
 			if (watchdogTimer) clearTimeout(watchdogTimer);
 			watchdogTimer = setTimeout(onStale, STALE_STREAM_TIMEOUT_MS);
 		};
@@ -255,10 +264,12 @@ export function createAgentConversationObservation(
 			}
 			if (!isCurrent(value) || stream !== nextStream) return;
 			stream = undefined;
+			settleAttempt();
 			scheduleRetry(value, new Error('Agent conversation stream ended unexpectedly.'));
 		} catch (error) {
 			if (!isCurrent(value) || stream !== nextStream) return;
 			stream = undefined;
+			settleAttempt();
 			scheduleRetry(value, toError(error));
 		}
 	};
