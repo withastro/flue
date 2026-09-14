@@ -223,16 +223,15 @@ function cfSandboxToSandbox(sandbox: CloudflareSandboxStub, cwd: string = '/work
 		},
 
 		async readdir(path: string): Promise<string[]> {
-			// NUL-separated `find` includes dotfiles (unlike plain `ls`) and
-			// survives filenames containing newlines.
+			// Newline-separated `find` includes dotfiles (unlike plain `ls`).
 			const result = await guarded(
 				'readdir',
-				sandbox.exec(`find ${shellQuote(path)} -mindepth 1 -maxdepth 1 -printf '%f\\0'`),
+				sandbox.exec(`find ${shellQuote(path)} -mindepth 1 -maxdepth 1 -printf '%f\\n'`),
 			);
 			if (!result.success) {
 				throw new Error(`readdir failed for ${path}: ${result.stderr}`);
 			}
-			return result.stdout.split('\0').filter((s: string) => s.length > 0);
+			return result.stdout.split('\n').filter((s: string) => s.length > 0);
 		},
 
 		async exists(path: string): Promise<boolean> {
