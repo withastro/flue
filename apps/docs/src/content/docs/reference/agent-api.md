@@ -493,6 +493,7 @@ function defineTool<...>(options: {
   harness?: boolean;
   durable?: boolean;
   timeoutMs?: number; // milliseconds
+  annotations?: McpToolAnnotations;
   run(context: ToolContext<...>): ToolRunEnvelope<Output> | string | void | Promise<ToolRunEnvelope<Output> | string | void>;
 }): ToolDefinition;
 ```
@@ -504,6 +505,7 @@ A typing and validation helper: it validates the definition and returns it froze
 - `output` — a Valibot schema for the return value. When present, the runtime parses the returned value through it before recording; a mismatch throws `ToolOutputValidationError`, and a schema producing `undefined` throws `ToolOutputSerializationError`.
 - `harness`, `durable` — capability flags, detailed below. Must be booleans when present.
 - `timeoutMs` — an optional bound on one call's execution, in milliseconds. On expiry the harness aborts the tool's `context.signal` and settles the call with a `ToolTimeoutError` (a tool error the model sees, so the conversation continues); the submission's durability timeout remains the outer backstop. See [Bounded tools](/docs/guide/tools/#bounded-tools).
+- `annotations` — optional MCP-compatible tool hints: `title`, `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`. [`createMcpConnection()`](#createmcpconnection) copies these from each server `tools/list` entry; wrappers can preserve them and application code can use them when deciding whether a call needs approval. The runtime does not alter execution from these hints. Treat them as untrusted unless you trust the MCP server that supplied them.
 - `run` — the implementation. May be async, and returns a `ToolRunEnvelope` — `{ output?, terminate? }`. `output` is the tool's result: it must be JSON-serializable, is snapshotted as JSON-compatible data, and is then JSON-stringified for the model; non-serializable output throws `ToolOutputSerializationError`. Returning a bare `string` is shorthand for `{ output: <string> }`, and returning nothing (`void`) is allowed only when no `output` schema is declared, reaching the model as `null`; any other bare return — a plain object, array, number, boolean, or `null` — throws, telling you to wrap it as `{ output: <value> }`. `terminate: true` ends the agent's turn once the current tool batch settles, the same loop-ending contract `finish`/`give_up` use — a multi-tool batch ends the turn only when every result in it terminates, a throwing tool never terminates, and the flag is recorded on the tool's canonical outcome, so termination survives a crash between the batch committing and the submission settling. Throwing inside `run` records a tool error the model sees; it does not fail the submission.
 - Arguments that fail the `input` schema throw `ToolInputValidationError` before `run` is invoked; the model receives the validation failure as the tool result and may retry.
 
@@ -693,6 +695,7 @@ Definition fields are documented at [`McpConnectionDefinition`](#mcpconnectionde
 
 - Adapted tool names take the form `mcp__<server>__<tool>`; characters outside `[A-Za-z0-9_-]` are replaced with underscores. Duplicate adapted names reject the connection.
 - Adapted descriptions carry the server's own tool description (and `Title:` when the server provides a distinct one). The original tool and server names are spelled out only when sanitization altered a name part — otherwise the adapted name already encodes both.
+- Adapted definitions preserve the server's `annotations` object, including `readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint`, so trusted application code can inspect the hints before mounting or wrapping a tool. MCP annotations are server-supplied hints, not a security boundary; only base approval policy on them when you trust the server.
 - Tool discovery follows `tools/list` pagination; a repeated cursor throws. Tools that require task-based execution are skipped with a console warning (allowlisting one is an error).
 - `auth` resolves before every request; a 401 re-resolves once and retries, so a credential the application has already refreshed recovers in place.
 - A tool result's content is flattened to text for the model; a result with `isError` becomes a tool error. When the server declares an output schema, the MCP client validates structured content against it and a mismatch is an error.

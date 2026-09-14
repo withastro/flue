@@ -75,7 +75,13 @@ export { defineSubagent, GeneralSubagent, useSubagent } from './hooks/use-subage
 export { useTool } from './hooks/use-tool.ts';
 export { type FlueInstrumentation, instrument } from './instrumentation.ts';
 export type { JsonValue } from './json-snapshot.ts';
-export type { McpAuth, McpConnection, McpConnectionDefinition, McpTransport } from './mcp.ts';
+export type {
+	McpAuth,
+	McpConnection,
+	McpConnectionDefinition,
+	McpToolAnnotations,
+	McpTransport,
+} from './mcp.ts';
 export { createMcpConnection } from './mcp.ts';
 export type {
 	AgentAppendMessage,

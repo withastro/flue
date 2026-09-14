@@ -12,7 +12,12 @@ import type { McpAuth, McpConnectionDefinition, McpTransport } from './mcp-types
 import { registerPreparedToolAdapter } from './tool-adapter.ts';
 import type { ToolDefinition } from './types.ts';
 
-export type { McpAuth, McpConnectionDefinition, McpTransport } from './mcp-types.ts';
+export type {
+	McpAuth,
+	McpConnectionDefinition,
+	McpToolAnnotations,
+	McpTransport,
+} from './mcp-types.ts';
 
 /** Request options in the MCP SDK's shape (its `timeout` is milliseconds). */
 type McpRequestOptions = {
@@ -262,6 +267,13 @@ function createMcpTools(
 			description: createToolDescription(serverName, tool),
 			input: undefined,
 			output: undefined,
+			// Carry the server's `tools/list` annotations through so application
+			// code can gate on readOnlyHint / destructiveHint / idempotentHint /
+			// openWorldHint. The copy is frozen like the definition itself —
+			// adapted tools are data, not handles.
+			...(tool.annotations === undefined
+				? {}
+				: { annotations: Object.freeze({ ...tool.annotations }) }),
 			run() {
 				throw new Error('[flue] MCP tools execute through the internal adapter.');
 			},

@@ -7,6 +7,27 @@
 export type McpTransport = 'streamable-http' | 'sse';
 
 /**
+ * Tool annotations from an MCP server's `tools/list` entry. The MCP adapter
+ * carries them through to the adapted tool definition's `annotations` field
+ * so application code can inspect the server's hints — e.g. when gating calls
+ * on human approval. They are untrusted unless the server is trusted; the
+ * runtime does not change execution based on them. `title` is also read by
+ * the adapted tool description.
+ */
+export interface McpToolAnnotations {
+	/** Tool title, when the server declares one. */
+	title?: string;
+	/** The server hints that the tool does not change server state. */
+	readOnlyHint?: boolean;
+	/** The server hints that the tool may perform destructive updates. */
+	destructiveHint?: boolean;
+	/** The server hints that repeated calls with identical arguments are idempotent. */
+	idempotentHint?: boolean;
+	/** The server hints that the tool may interact with an open world. */
+	openWorldHint?: boolean;
+}
+
+/**
  * Bearer credential for an MCP server: a static token, or a resolver the
  * runtime calls to obtain the current token — per request, so rotating and
  * per-user credentials stay fresh for a connection's whole lifetime. Keep the

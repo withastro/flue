@@ -1,4 +1,5 @@
 import type * as v from 'valibot';
+import type { McpToolAnnotations } from './mcp-types.ts';
 import type { FlueHarness, FlueLogger } from './types.ts';
 
 export type ToolInputSchema = v.GenericSchema<Record<string, unknown>, unknown>;
@@ -139,6 +140,15 @@ export interface ToolDefinition<
 	 * one hung call from consuming it.
 	 */
 	readonly timeoutMs?: number;
+	/**
+	 * MCP-compatible tool annotations. `createMcpConnection` copies these from
+	 * the server's `tools/list` entry; hand-written wrappers can preserve them.
+	 * Application code can inspect `readOnlyHint`, `destructiveHint`,
+	 * `idempotentHint`, and `openWorldHint` when gating calls. The runtime
+	 * ignores the field, and server-supplied hints are untrusted unless the
+	 * server itself is trusted.
+	 */
+	readonly annotations?: Readonly<McpToolAnnotations>;
 	// `| void` only for the no-`output`-schema case, where an undefined
 	// output is already an allowed result — a bare `() => sideEffect()` with
 	// no return statement is the same value at runtime, so nothing is lost by

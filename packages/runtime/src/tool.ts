@@ -3,8 +3,9 @@ import {
 	ToolOutputSerializationError,
 	ToolOutputValidationError,
 } from './errors.ts';
-import { cloneJsonSerializable } from './json-snapshot.ts';
 import { composeTimeoutSignal, raceToolWithDeadline } from './abort.ts';
+import { cloneJsonSerializable } from './json-snapshot.ts';
+import type { McpToolAnnotations } from './mcp-types.ts';
 import { generateToolCallId } from './runtime/ids.ts';
 import { isTopLevelObjectSchema, isValibotSchema, parseValibot } from './schema.ts';
 import type {
@@ -30,6 +31,13 @@ export function defineTool<
 	harness?: THarness;
 	durable?: TDurable;
 	timeoutMs?: number;
+	/**
+	 * MCP tool annotations, when adapting a tool from an MCP connection or
+	 * mirroring one in a wrapper. The runtime ignores the field; application
+	 * code reads the hints (`readOnlyHint`, `destructiveHint`, ...) to gate
+	 * calls.
+	 */
+	annotations?: McpToolAnnotations;
 	run: ToolDefinition<TInput, TOutput, THarness, TDurable>['run'];
 }): ToolDefinition<TInput, TOutput, THarness, TDurable> {
 	assertToolDefinition(options, 'defineTool()');
@@ -41,6 +49,9 @@ export function defineTool<
 		harness: options.harness as THarness,
 		durable: options.durable as TDurable,
 		...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
+		...(options.annotations === undefined
+			? {}
+			: { annotations: Object.freeze({ ...options.annotations }) }),
 		run: options.run,
 	});
 }
@@ -53,7 +64,16 @@ const TOOL_DEFINITION_FIELDS = new Set([
 	'harness',
 	'durable',
 	'timeoutMs',
+	'annotations',
 	'run',
+]);
+
+const MCP_ANNOTATION_FIELDS = new Set([
+	'title',
+	'readOnlyHint',
+	'destructiveHint',
+	'idempotentHint',
+	'openWorldHint',
 ]);
 
 export function assertToolDefinition(
@@ -92,6 +112,33 @@ export function assertToolDefinition(
 	}
 	if (tool.durable !== undefined && typeof tool.durable !== 'boolean') {
 		throw new Error(`[flue] ${label} durable must be a boolean.`);
+	}
+	if (tool.annotations !== undefined) {
+		const annotations = tool.annotations;
+		if (typeof annotations !== 'object' || annotations === null || Array.isArray(annotations)) {
+			throw new Error(`[flue] ${label} annotations must be an object.`);
+		}
+		for (const key of Object.keys(annotations)) {
+			if (!MCP_ANNOTATION_FIELDS.has(key)) {
+				throw new Error(
+					`[flue] ${label} annotations received unknown field "${key}". Accepted fields: ${[...MCP_ANNOTATION_FIELDS].join(', ')}.`,
+				);
+			}
+		}
+		const typed = annotations as Partial<McpToolAnnotations>;
+		if (typed.title !== undefined && typeof typed.title !== 'string') {
+			throw new Error(`[flue] ${label} annotations.title must be a string.`);
+		}
+		for (const hint of [
+			'readOnlyHint',
+			'destructiveHint',
+			'idempotentHint',
+			'openWorldHint',
+		] as const) {
+			if (typed[hint] !== undefined && typeof typed[hint] !== 'boolean') {
+				throw new Error(`[flue] ${label} annotations.${hint} must be a boolean.`);
+			}
+		}
 	}
 	if (typeof tool.run !== 'function') {
 		throw new Error(`[flue] ${label} run must be a function.`);

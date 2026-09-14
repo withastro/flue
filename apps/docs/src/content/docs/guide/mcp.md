@@ -149,6 +149,8 @@ export function ProjectAssistant() {
 }
 ```
 
+Each adapted definition preserves the server's MCP `annotations`, so trusted application code can inspect `tool.annotations?.readOnlyHint`, `destructiveHint`, `idempotentHint`, and `openWorldHint` before mounting or wrapping it — for example, to require human approval for destructive calls. These are server-supplied hints, not a security boundary; only use them for approval decisions when you trust the server.
+
 This can also be helpful inside of a Node.js script, if you're ever using the Node.js JavaScript API directly — see [Standalone scripts](/docs/guide/building-agents/#standalone-scripts).
 
 ## Next steps
