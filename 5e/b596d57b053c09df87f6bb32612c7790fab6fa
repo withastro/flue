@@ -1,0 +1,61 @@
+apps/docs/src/content/docs/ecosystem/channels/stripe.md
+  s_08811b303074c7::t_6bc64ed44d8618 168-171
+apps/docs/src/content/docs/ecosystem/sandboxes/cloudflare-computer.md
+  s_08811b303074c7::t_4379dacf4bad47 25-26,42-45,50,54-62,77-79
+apps/docs/src/content/docs/reference/sandbox-api.md
+  s_08811b303074c7::t_f635cda1028c69 280-283
+apps/www/src/pages/blog/flue-2.mdx
+  s_08811b303074c7::t_ecbcfd70a1dff9 16,22-25,53-57,63,70-75,87-102,112-130,140-144,148-151
+examples/cloudflare/README.md
+  s_08811b303074c7::t_8dbfaf1904ea6a 16-18,20
+examples/hello-world/src/sandboxes/daytona.ts
+  s_08811b303074c7::t_0bbad05893fc81 32-33
+examples/sentry/src/sentry.ts
+  s_08811b303074c7::t_5f09470d442a6a 152-154,163-168
+packages/redis/src/redis-adapter.ts
+  s_08811b303074c7::t_6070abd8d0cec3 24
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_08811b303074c7::t_a5cb362e2775d9 872,895
+packages/runtime/src/cloudflare/cf-sandbox.ts
+  s_08811b303074c7::t_d0d6982b515b3b 6,174
+packages/runtime/src/cloudflare/worker-config.ts
+  s_08811b303074c7::t_77ad697eb0d205 164-165
+packages/runtime/src/cloudflare/workers-ai-provider.ts
+  s_08811b303074c7::t_ed4b8d039f1c2a 873
+packages/runtime/src/conversation-public.ts
+  s_08811b303074c7::t_40583e964d2865 167-168
+packages/runtime/src/node/agent-coordinator.ts
+  s_08811b303074c7::t_355a95bcf8782f 36,54,160
+packages/runtime/src/runtime/agent-submissions.ts
+  s_08811b303074c7::t_bc6f86ef1b89d8 721
+packages/runtime/src/runtime/conversation-observer.ts
+  s_08811b303074c7::t_7e3f59ef561111 17
+packages/runtime/src/runtime/events.ts
+  s_08811b303074c7::t_fa21a19c8977f9 76
+packages/runtime/src/runtime/handle-conversation-routes.ts
+  s_08811b303074c7::t_785d9154678608 1
+packages/runtime/src/sql-agent-execution-store.ts
+  s_08811b303074c7::t_c17c2232d2c0a5 40
+packages/runtime/src/sql-attachment-store.ts
+  s_08811b303074c7::t_7c621bafc8463b 2
+packages/sdk/src/public/send.ts
+  s_08811b303074c7::t_a374ab33d5bed3 104
+packages/vite/src/index.ts
+  s_08811b303074c7::t_8dbed0bb704f6b 20-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "5eb596d57b053c09df87f6bb32612c7790fab6fa",
+  "prompts": {},
+  "sessions": {
+    "s_08811b303074c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "132dce6f-4fba-453a-a35c-52a924962d56",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Matt Carey <mcarey@cloudflare.com>"
+    }
+  }
+}
