@@ -319,6 +319,7 @@ export function createCloudflareTracing(
 					[FLUE_ATTR.instanceId]: event.instanceId,
 					[ATTR.conversationId]: event.conversationId,
 					[FLUE_ATTR.submissionId]: event.submissionId,
+					[FLUE_ATTR.operationId]: event.operationId,
 					[FLUE_ATTR.operationKind]: event.operationKind,
 				}),
 			});
@@ -333,6 +334,8 @@ export function createCloudflareTracing(
 					[ATTR.agentName]: event.agent,
 					[ATTR.conversationId]: event.conversationId,
 					[ATTR.toolCallId]: event.toolCallId,
+					[FLUE_ATTR.submissionId]: event.submissionId,
+					[FLUE_ATTR.operationId]: event.operationId,
 					[FLUE_ATTR.taskId]: event.taskId,
 					...contentEntry(
 						ledger,
@@ -354,6 +357,9 @@ export function createCloudflareTracing(
 				submissionId: event.submissionId,
 				attributes: (ledger) => ({
 					[ATTR.operationName]: 'chat',
+					[FLUE_ATTR.submissionId]: event.submissionId,
+					[FLUE_ATTR.operationId]: event.operationId,
+					[FLUE_ATTR.turnId]: event.turnId,
 					[ATTR.providerName]: request.providerName,
 					[ATTR.requestModel]: request.requestedModel,
 					[ATTR.requestStream]: true,
@@ -421,6 +427,8 @@ export function createCloudflareTracing(
 					owner: ownerKey(event),
 					submissionId: event.submissionId,
 					attributes: () => ({
+						[FLUE_ATTR.submissionId]: event.submissionId,
+						[FLUE_ATTR.operationId]: event.operationId,
 						[FLUE_ATTR.toolOrigin]: event.origin,
 					}),
 				});
@@ -439,6 +447,9 @@ export function createCloudflareTracing(
 					// tool runs on behalf of.
 					[ATTR.agentName]: event.agentName,
 					[ATTR.conversationId]: event.conversationId,
+					[FLUE_ATTR.submissionId]: event.submissionId,
+					[FLUE_ATTR.operationId]: event.operationId,
+					[FLUE_ATTR.turnId]: event.turnId,
 					[FLUE_ATTR.toolOrigin]: event.origin,
 					...contentEntry(
 						ledger,
