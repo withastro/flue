@@ -1,0 +1,21 @@
+packages/sdk/src/public/observe.ts
+  s_272b98b0e249fa::t_ce920150343f20 12,184-189,195,204,267,272
+packages/sdk/src/public/follow-policy.ts
+  s_272b98b0e249fa::t_4acc68fd311cbc 49-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "903b4d67bbafeba1ca8d7d327518f526b42fe811",
+  "prompts": {},
+  "sessions": {
+    "s_272b98b0e249fa": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a0a080-d501-7552-94e4-7afa1a4315b1",
+        "model": "gpt-6-astra"
+      },
+      "human_author": "Matt Carey <mcarey@cloudflare.com>"
+    }
+  }
+}
