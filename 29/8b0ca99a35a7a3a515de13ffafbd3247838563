@@ -1,0 +1,23 @@
+packages/runtime/src/cloudflare/tracing/attributes.ts
+  s_08811b303074c7::t_0b94239e0ea8ed 51-52
+packages/runtime/src/cloudflare/tracing/index.ts
+  s_08811b303074c7::t_2d83e2c5150359 322,337-338,360-362,430-431,450-452
+CHANGELOG.md
+  s_08811b303074c7::t_5139fc0619937a 3-8
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "298b0ca99a35a7a3a515de13ffafbd3247838563",
+  "prompts": {},
+  "sessions": {
+    "s_08811b303074c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "132dce6f-4fba-453a-a35c-52a924962d56",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Matt Carey <mcarey@cloudflare.com>"
+    }
+  }
+}
