@@ -1,7 +1,7 @@
 ---
 title: Cloudflare Sandbox
 description: Run Flue agent work inside Cloudflare container-backed sandboxes.
-lastReviewedAt: 2026-07-21
+lastReviewedAt: 2026-09-14
 ---
 
 Cloudflare Sandbox uses `@cloudflare/sandbox` to provide a container-backed Linux environment to a Flue application deployed on Cloudflare. This integration is platform-native: it is not an adapter module for a Node-target application.
@@ -13,6 +13,11 @@ Add container-backed Linux sandbox capability to an existing Flue project with t
 ```bash
 flue add sandbox cloudflare
 ```
+
+Before you start, check two prerequisites:
+
+- **Workers Paid plan.** Cloudflare Sandbox runs on [Containers](https://developers.cloudflare.com/containers/), which is a Workers Paid feature. See [Sandbox pricing](https://developers.cloudflare.com/sandbox/platform/pricing/).
+- **Docker for local development.** `vite dev` builds and runs the sandbox container image locally, so the Docker daemon must be installed and running. Deployed Workers do not need Docker.
 
 ## Overview
 
@@ -43,6 +48,8 @@ The blueprint also exports `Sandbox` from the source-root `cloudflare.ts`, adds 
 | Requirement                                  | Purpose                                                                                                                      |
 | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | Cloudflare target                            | **Required** — Runs the platform-native sandbox integration.                                                                 |
+| Workers Paid plan                            | **Required** — Containers, which back the sandbox, are a Workers Paid feature.                                               |
+| Docker (local development only)              | **Required for `vite dev`** — Builds and runs the container image locally; not needed for deployed Workers.                  |
 | `@cloudflare/sandbox` package                | **Required** — Provides the Sandbox Durable Object and RPC client.                                                           |
 | Container image                              | **Required** — Defines the Linux filesystem and command environment.                                                         |
 | Durable Object/container binding             | **Required on Cloudflare** — Exposes the sandbox through Wrangler platform configuration; it is not an environment variable. |

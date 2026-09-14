@@ -1,7 +1,7 @@
 ---
 title: Deploy to Cloudflare
 description: Build and deploy Flue agents on Cloudflare Workers with Vite.
-lastReviewedAt: 2026-07-21
+lastReviewedAt: 2026-09-14
 ---
 
 Build and deploy Flue agents on Cloudflare Workers. This guide walks you through the different kinds of agents you can build — from simple prompt-and-response endpoints to full coding agents backed by persistent storage and remote sandboxes.
@@ -337,6 +337,8 @@ Cloudflare has native container support via [`@cloudflare/sandbox`](https://deve
 If you'd rather connect to an external provider — e.g. Daytona — instead of running the sandbox on Cloudflare, see [Connect a Daytona Sandbox](/docs/ecosystem/sandboxes/daytona/).
 
 ### Setup
+
+Containers are a [Workers Paid](https://developers.cloudflare.com/sandbox/platform/pricing/) feature, and local development with `vite dev` needs the Docker daemon running to build and start the container image.
 
 You own the container config. That means four things:
 
