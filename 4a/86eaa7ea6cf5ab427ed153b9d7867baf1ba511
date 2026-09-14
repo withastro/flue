@@ -3,5 +3,15 @@
   "schema_version": "authorship/3.0.0",
   "git_ai_version": "1.6.10",
   "base_commit_sha": "4a86eaa7ea6cf5ab427ed153b9d7867baf1ba511",
-  "prompts": {}
+  "prompts": {},
+  "sessions": {
+    "s_08811b303074c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "132dce6f-4fba-453a-a35c-52a924962d56",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Matt Carey <mcarey@cloudflare.com>"
+    }
+  }
 }
