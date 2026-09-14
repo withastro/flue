@@ -57,7 +57,7 @@ export function agentOutputMessage(
 		| { type: 'data'; data: unknown }
 		| undefined,
 ): GenAIContent | undefined {
-	if (!output || output.type !== 'text') return undefined;
+	if (output?.type !== 'text') return undefined;
 	return [
 		{
 			role: 'assistant',

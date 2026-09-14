@@ -2330,7 +2330,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 						]);
 					} else if (assistant && aEvent.type === 'text_delta') {
 						const block = assistant.blocks.get(aEvent.contentIndex);
-						if (!block || block.type !== 'text')
+						if (block?.type !== 'text')
 							throw new Error('[flue] Canonical text delta has no started block.');
 						this.enqueueCanonical(
 							[
@@ -2347,7 +2347,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 						);
 					} else if (assistant && aEvent.type === 'text_end') {
 						const block = assistant.blocks.get(aEvent.contentIndex);
-						if (!block || block.type !== 'text')
+						if (block?.type !== 'text')
 							throw new Error('[flue] Canonical text completion has no started block.');
 						const content = aEvent.partial.content[aEvent.contentIndex];
 						await this.flushCanonical();
@@ -2384,7 +2384,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 						this.emit({ type: 'thinking_start', contentIndex: aEvent.contentIndex });
 					} else if (assistant && aEvent.type === 'thinking_delta') {
 						const block = assistant.blocks.get(aEvent.contentIndex);
-						if (!block || block.type !== 'reasoning')
+						if (block?.type !== 'reasoning')
 							throw new Error('[flue] Canonical reasoning delta has no started block.');
 						this.enqueueCanonical(
 							[
@@ -2406,7 +2406,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 						);
 					} else if (assistant && aEvent.type === 'thinking_end') {
 						const block = assistant.blocks.get(aEvent.contentIndex);
-						if (!block || block.type !== 'reasoning')
+						if (block?.type !== 'reasoning')
 							throw new Error('[flue] Canonical reasoning completion has no started block.');
 						const content = aEvent.partial.content[aEvent.contentIndex];
 						await this.flushCanonical();
@@ -5094,7 +5094,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				return false;
 			}
 			const firstKeptEntry = contextEntries[preparation.firstKeptIndex]?.sourceEntry;
-			if (!firstKeptEntry || firstKeptEntry.type !== 'message') {
+			if (firstKeptEntry?.type !== 'message') {
 				this.internalLog(
 					'info',
 					'[flue:compaction] Nothing to compact (first kept message has no entry)',

@@ -121,7 +121,7 @@ export function createCloudflareWorkerConfig(
 			);
 		}
 		const info = (await response.json()) as { exists?: unknown; uid?: unknown } | null;
-		if (!info || info.exists !== true) return null;
+		if (info?.exists !== true) return null;
 		return { id: instanceId, ...(typeof info.uid === 'string' ? { uid: info.uid } : {}) };
 	};
 

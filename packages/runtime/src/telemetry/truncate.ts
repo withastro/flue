@@ -27,7 +27,7 @@ export function truncateContent(content: unknown, options: { maxBytes: number })
 	if (!Number.isSafeInteger(options.maxBytes) || options.maxBytes < MIN_BUDGET_BYTES) {
 		throw new TypeError(`maxBytes must be a safe integer of at least ${MIN_BUDGET_BYTES}.`);
 	}
-	return fit(content, options.maxBytes);
+	return fitWithin(content, options.maxBytes);
 }
 
 /** Serialized UTF-8 byte length, or undefined when JSON can't represent it. */
@@ -42,7 +42,7 @@ function measure(value: unknown): number | undefined {
 	return ENCODER.encode(serialized).byteLength;
 }
 
-function fit(value: unknown, budget: number): unknown {
+function fitWithin(value: unknown, budget: number): unknown {
 	const size = measure(value);
 	if (size === undefined) return CONTENT_UNSERIALIZABLE;
 	if (size <= budget) return value;
@@ -109,11 +109,11 @@ function truncateArray(value: unknown[], budget: number): unknown {
 		droppedCount > 0 ? sentinelItem(messageShaped, droppedCount, droppedBytes) : undefined;
 	const overhead = (sentinel ? (measure(sentinel) ?? 0) + 1 : 0) + 4;
 	// Shrink the last element only when a workable slice of the budget is left
-	// beside the sentinel, and re-measure the result: nested fit() calls bottom
+	// beside the sentinel, and re-measure the result: nested fitWithin() calls bottom
 	// out in fixed-size markers that can overshoot a tight budget.
 	const innerBudget = budget - overhead;
 	if (innerBudget >= MIN_LEAF_BYTES) {
-		const shrunk = fit(items[0], innerBudget);
+		const shrunk = fitWithin(items[0], innerBudget);
 		const candidate = sentinel ? [sentinel, shrunk] : [shrunk];
 		const size = measure(candidate);
 		if (size !== undefined && size <= budget) return candidate;

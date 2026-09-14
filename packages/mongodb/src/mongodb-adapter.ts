@@ -69,7 +69,7 @@ export function mongodb(runner: MongoRunner, options: MongoOptions = {}): Persis
 							{ $set: { leaseExpiresAt: Date.now() + MIGRATION_LEASE_MS } },
 						)
 						.catch(() => null);
-					if (!result || result.matchedCount !== 1) lockLost = true;
+					if (result?.matchedCount !== 1) lockLost = true;
 				});
 			}, MIGRATION_LEASE_MS / 3);
 			try {

@@ -1151,7 +1151,7 @@ function pathToContextEntries(
 	let index = 0;
 	while (index < path.length) {
 		const entry = path[index];
-		if (!entry || entry.type !== 'message') {
+		if (entry?.type !== 'message') {
 			index += 1;
 			continue;
 		}

@@ -592,7 +592,10 @@ async function resolveSandbox(
 				'[flue] SandboxFactory.createSessionEnv is deprecated; rename the method to createSandbox.',
 			);
 		}
-		const env = await create!.call(sandbox, { id });
+		if (create === undefined) {
+			throw new Error('[flue] Invalid sandbox option composed by the agent function.');
+		}
+		const env = await create.call(sandbox, { id });
 		return { env, toolFactory: sandbox.tools };
 	}
 	throw new Error('[flue] Invalid sandbox option composed by the agent function.');
