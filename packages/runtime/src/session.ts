@@ -4915,11 +4915,15 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				// The turn the previous iteration ran settled. This exits before
 				// the halt checks so a deadline that expired during the final
 				// turn cannot discard its result.
-				if (assistant !== undefined) {
-					await this.checkCompaction(assistant);
-					if (assistant.stopReason === 'error' || assistant.stopReason === 'aborted') {
-						await this.rebuildCanonicalContext();
-					}
+				const settledAssistant =
+					assistant ??
+					(this.agentLoop.state.messages.findLast((message) => message.role === 'assistant') as
+						AssistantMessage | undefined);
+				if (settledAssistant !== undefined) {
+					await this.checkCompaction(settledAssistant);
+				}
+				if (assistant?.stopReason === 'error' || assistant?.stopReason === 'aborted') {
+					await this.rebuildCanonicalContext();
 				}
 				return;
 			}
