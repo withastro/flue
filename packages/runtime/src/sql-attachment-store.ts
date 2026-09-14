@@ -1,4 +1,5 @@
 import { AttachmentConflictError, AttachmentIntegrityError } from './errors.ts';
+import { migrateFlueSqlSchema } from './format-version.ts';
 import {
 	type AttachmentStore,
 	attachmentBytesEqual,
@@ -9,7 +10,6 @@ import {
 	sameAttachmentRef,
 	verifyAttachmentBytes,
 } from './runtime/attachment-store.ts';
-import { migrateFlueSqlSchema } from './format-version.ts';
 import type { SqlStorage } from './sql-storage.ts';
 
 export const ATTACHMENT_CHUNK_BYTE_LENGTH = 512 * 1024;

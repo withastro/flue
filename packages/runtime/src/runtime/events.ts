@@ -73,9 +73,7 @@ export function dispatchGlobalEvent(
 	const observation = createObservation(event, detail);
 	for (const subscriber of [...subscribers]) {
 		try {
-			const delivery = Promise.resolve(subscriber(observation, ctx)).catch(
-				reportSubscriberFailure,
-			);
+			const delivery = Promise.resolve(subscriber(observation, ctx)).catch(reportSubscriberFailure);
 			inFlightDeliveries.add(delivery);
 			void delivery.finally(() => inFlightDeliveries.delete(delivery));
 		} catch (error) {

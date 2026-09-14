@@ -165,9 +165,10 @@ export function retrieveCustomer(customerId: string) {
     async run() {
       const customer = await client.customers.retrieve(customerId);
       return {
-        output: 'deleted' in customer
-          ? { id: customer.id, deleted: true }
-          : { id: customer.id, name: customer.name, email: customer.email },
+        output:
+          'deleted' in customer
+            ? { id: customer.id, deleted: true }
+            : { id: customer.id, name: customer.name, email: customer.email },
       };
     },
   });

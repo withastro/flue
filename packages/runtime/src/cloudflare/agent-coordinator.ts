@@ -869,9 +869,7 @@ class CloudflareAgentCoordinator {
 		// Abort intent wins over timeout, mirroring the settle-order in
 		// reconcileInterruptedSubmission. AbortController.abort is idempotent,
 		// so re-signaling on every pass is safe.
-		controller.abort(
-			abortRequested ? new SubmissionAbortedError() : new SubmissionTimeoutError(),
-		);
+		controller.abort(abortRequested ? new SubmissionAbortedError() : new SubmissionTimeoutError());
 		// The grace is anchored to when the fiber was first SIGNALED, not to
 		// the deadline itself: a delayed first pass (late alarms) must not
 		// abort and force-settle in the same breath. Abort intents were
@@ -894,9 +892,7 @@ class CloudflareAgentCoordinator {
 				attemptCount: submission.attemptCount,
 				maxAttempts: submission.maxAttempts,
 				error: serializeSubmissionError(
-					abortRequested
-						? new SubmissionAbortedError()
-						: new SubmissionTimeoutError(),
+					abortRequested ? new SubmissionAbortedError() : new SubmissionTimeoutError(),
 				),
 			});
 			return false;

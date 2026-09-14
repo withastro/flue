@@ -22,8 +22,8 @@ The blueprint creates the adapter at `<source-root>/sandboxes/cloudflare-compute
 
 ```jsonc title="wrangler.jsonc"
 {
-	"compatibility_flags": ["nodejs_compat", "experimental"],
-	"worker_loaders": [{ "binding": "LOADER" }]
+  "compatibility_flags": ["nodejs_compat", "experimental"],
+  "worker_loaders": [{ "binding": "LOADER" }],
 }
 ```
 
@@ -39,27 +39,27 @@ import { extend, getDurableObjectIdentity } from '@flue/runtime/cloudflare';
 
 /** Re-export from each agent module: `export { workspaceHost as cloudflare } ...` */
 export const workspaceHost = extend({
-	base: (Base) =>
-		class extends Base {
-			/* ... captures the Durable Object state; exposes the workspace stub ... */
-		},
+  base: (Base) =>
+    class extends Base {
+      /* ... captures the Durable Object state; exposes the workspace stub ... */
+    },
 });
 
 /** One durable Workspace per agent instance, shared with the sandbox. */
 export function getComputerWorkspace(options: GetComputerWorkspaceOptions): Workspace {
-	/* ... memoized construction: DO storage + git client + WorkerShellBackend ... */
+  /* ... memoized construction: DO storage + git client + WorkerShellBackend ... */
 }
 
 export function getComputerSandbox(options: GetComputerWorkspaceOptions): SandboxFactory {
-	return {
-		async createSandbox(): Promise<ComputerSandboxEnv> {
-			const workspace = getComputerWorkspace(options);
-			await workspace.fs.mkdir('/workspace', { recursive: true });
-			return { ...createWorkspaceSandbox(workspace, '/workspace'), workspace };
-		},
-		// No `tools` override: exec() works here, so the framework's standard
-		// set (bash/grep/glob/read/write/edit) applies as-is.
-	};
+  return {
+    async createSandbox(): Promise<ComputerSandboxEnv> {
+      const workspace = getComputerWorkspace(options);
+      await workspace.fs.mkdir('/workspace', { recursive: true });
+      return { ...createWorkspaceSandbox(workspace, '/workspace'), workspace };
+    },
+    // No `tools` override: exec() works here, so the framework's standard
+    // set (bash/grep/glob/read/write/edit) applies as-is.
+  };
 }
 ```
 
@@ -74,9 +74,9 @@ import { getComputerSandbox } from '../sandboxes/cloudflare-computer';
 export { workspaceHost as cloudflare } from '../sandboxes/cloudflare-computer';
 
 export function Assistant() {
-	useModel('cloudflare/@cf/moonshotai/kimi-k2.6');
-	useSandbox(getComputerSandbox({ loader: env.LOADER }));
-	return 'You explore and edit your durable workspace with the standard file and shell tools.';
+  useModel('cloudflare/@cf/moonshotai/kimi-k2.6');
+  useSandbox(getComputerSandbox({ loader: env.LOADER }));
+  return 'You explore and edit your durable workspace with the standard file and shell tools.';
 }
 ```
 

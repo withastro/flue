@@ -1,8 +1,8 @@
+import { getConversationFoldHost } from '../conversation-fold-host.ts';
 import {
 	type ConversationStreamCheckpointChunk,
 	projectAgentConversationSnapshot,
 } from '../conversation-public.ts';
-import { getConversationFoldHost } from '../conversation-fold-host.ts';
 import { loadReducedConversationPrefix } from '../conversation-reader.ts';
 import type { ReducedInstanceState } from '../conversation-reducer.ts';
 import {

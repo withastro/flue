@@ -718,11 +718,7 @@ export async function settleUnclaimableSubmission(
 	error: unknown,
 	emitCoordinatorEvent: CoordinatorEventEmitter,
 ): Promise<boolean> {
-	const settled = await submissions.settleQueuedSubmission(
-		submission.submissionId,
-		outcome,
-		error,
-	);
+	const settled = await submissions.settleQueuedSubmission(submission.submissionId, outcome, error);
 	if (!settled) return false;
 	const errorInfo = { errorInfo: classifyError(error) };
 	emitCoordinatorEvent(

@@ -277,7 +277,10 @@ interface BashLike {
 ## `SandboxToolFactory`
 
 ```ts
-type SandboxToolFactory = (sandbox: Sandbox, options: SandboxToolFactoryOptions) => AgentTool<any>[];
+type SandboxToolFactory = (
+  sandbox: Sandbox,
+  options: SandboxToolFactoryOptions,
+) => AgentTool<any>[];
 
 interface SandboxToolFactoryOptions {
   subagents: Record<string, SubagentDefinition>;

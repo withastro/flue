@@ -3,7 +3,7 @@ import { decodeBase64, encodeBase64 } from '../base64.ts';
 import { SandboxDiedError } from '../errors.ts';
 import type { SandboxDriver } from '../sandbox.ts';
 import { sandboxFromDriver } from '../sandbox.ts';
-import type { SandboxFactory, Sandbox } from '../types.ts';
+import type { Sandbox, SandboxFactory } from '../types.ts';
 
 /**
  * Minimal structural surface of a `@cloudflare/sandbox` Durable Object stub
@@ -171,10 +171,7 @@ function raceContainerDeath<T>(
 
 // Module-private: only cloudflareSandbox() above uses it, and the entry-point
 // tests assert it stays off the cloudflare and internal barrels.
-function cfSandboxToSandbox(
-	sandbox: CloudflareSandboxStub,
-	cwd: string = '/workspace',
-): Sandbox {
+function cfSandboxToSandbox(sandbox: CloudflareSandboxStub, cwd: string = '/workspace'): Sandbox {
 	// Every container call goes through the death detector so a call that is
 	// in flight when the container dies settles instead of hanging forever.
 	const guarded = <T>(operation: string, rpc: Promise<T>): Promise<T> =>

@@ -101,9 +101,7 @@ export async function sendConversationMessage(
 	const siblings = {
 		...(options.initialData !== undefined ? { initialData: options.initialData } : {}),
 		...(options.uid !== undefined ? { uid: options.uid } : {}),
-		...(options.idempotencyKey !== undefined
-			? { idempotencyKey: options.idempotencyKey }
-			: {}),
+		...(options.idempotencyKey !== undefined ? { idempotencyKey: options.idempotencyKey } : {}),
 	};
 	return http.json<AgentSendResult>({
 		method: 'POST',

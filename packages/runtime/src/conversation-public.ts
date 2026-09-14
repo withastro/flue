@@ -164,7 +164,8 @@ export interface ConversationStreamCheckpointChunk {
 }
 
 /** Everything the `updates` wire can carry: projected chunks plus wire-only markers. */
-export type ConversationStreamWireChunk = ConversationStreamChunk | ConversationStreamCheckpointChunk;
+export type ConversationStreamWireChunk =
+	ConversationStreamChunk | ConversationStreamCheckpointChunk;
 
 // The public conversation API addresses exactly one conversation per agent
 // instance: the default harness/session root. An instance can hold other root

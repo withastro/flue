@@ -37,13 +37,13 @@ import type { SqlStorage } from './sql-storage.ts';
 
 type SqlRow = Record<string, unknown>;
 
+import { migrateFlueSqlSchema } from './format-version.ts';
 import { hydratePersistedSubmissionAttachments } from './persisted-image-placement.ts';
 import {
 	type AgentSubmissionInput,
 	createDispatchAgentSubmissionInput,
 } from './runtime/agent-submissions.ts';
 import type { DispatchInput } from './runtime/dispatch-queue.ts';
-import { migrateFlueSqlSchema } from './format-version.ts';
 import {
 	createSqlSubmissionChunkStore,
 	ensureSqlSubmissionChunkTable,

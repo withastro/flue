@@ -870,9 +870,7 @@ function streamCloudflareResponsesAi(
 				observeResponsesEvents(
 					iterateSseChunks(withStreamIdleDeadline(response.body, binding.streamIdleTimeoutMs)),
 					observed,
-				) as Parameters<
-					typeof processResponsesStream
-				>[0],
+				) as Parameters<typeof processResponsesStream>[0],
 				output,
 				stream,
 				responsesModel,

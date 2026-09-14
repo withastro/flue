@@ -13,11 +13,11 @@ mounts each agent's routes explicitly.
 
 ## Agents
 
-| Agent                        | Demonstrates                                                                                                                |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `with-cloudflare-binding.ts` | Routing model traffic through the Workers AI binding (no API keys).                                                         |
+| Agent                        | Demonstrates                                                                                                                           |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `with-cloudflare-binding.ts` | Routing model traffic through the Workers AI binding (no API keys).                                                                    |
 | `skills-from-r2.ts`          | Hydrating a cloudflare-computer `Workspace` from an R2 bucket and using a discovered skill (via a model-callable `check_spam` action). |
-| `skills-from-git.ts`         | Hydrating a cloudflare-computer `Workspace` from a git repo via the built-in `workspace.git` client.                        |
+| `skills-from-git.ts`         | Hydrating a cloudflare-computer `Workspace` from a git repo via the built-in `workspace.git` client.                                   |
 
 ## Setup
 

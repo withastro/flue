@@ -161,7 +161,8 @@ function dispatchAdmissionError(input: DispatchInput, status: number, rejection:
 			// The wire body's submissionId names the existing keyed submission;
 			// the dispatch input derived the same id, so it is the fallback.
 			return new SubmissionConflictError({
-				submissionId: typeof body.submissionId === 'string' ? body.submissionId : input.submissionId,
+				submissionId:
+					typeof body.submissionId === 'string' ? body.submissionId : input.submissionId,
 			});
 		case 'invalid_request':
 			return new InvalidRequestError({

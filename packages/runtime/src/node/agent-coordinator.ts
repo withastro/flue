@@ -33,10 +33,7 @@ import {
 import type { AttachmentStore } from '../runtime/attachment-store.ts';
 import type { ConversationStreamStore } from '../runtime/conversation-stream-store.ts';
 import type { DispatchInput, DispatchQueue } from '../runtime/dispatch-queue.ts';
-import {
-	type CoordinatorEventEmitter,
-	createCoordinatorEventEmitter,
-} from '../runtime/events.ts';
+import { type CoordinatorEventEmitter, createCoordinatorEventEmitter } from '../runtime/events.ts';
 import type { CreateAgentContextFn } from '../runtime/handle-agent.ts';
 import { generateAttemptId, generateOwnerId, isKeyDerivedSubmissionId } from '../runtime/ids.ts';
 import type { RuntimeActivityGate } from '../runtime/runtime-activity-gate.ts';
@@ -54,9 +51,7 @@ export interface NodeAgentCoordinator {
 	 * when a keyed admission converged on the submission its key already
 	 * names instead of admitting a new one.
 	 */
-	admitDispatch(
-		input: DispatchInput,
-	): Promise<
+	admitDispatch(input: DispatchInput): Promise<
 		| {
 				readonly kind: 'submission';
 				readonly submission: AgentSubmission;
@@ -162,10 +157,7 @@ export function createNodeAgentCoordinator(options: {
 	// and infallible by contract.
 	const passEventEmitter = createCoordinatorEventEmitter({ env: coordinatorEnv });
 	const instanceEventEmitters = new Map<string, CoordinatorEventEmitter>();
-	function coordinatorEventEmitter(input?: {
-		agent: string;
-		id: string;
-	}): CoordinatorEventEmitter {
+	function coordinatorEventEmitter(input?: { agent: string; id: string }): CoordinatorEventEmitter {
 		if (!input) return passEventEmitter;
 		const key = agentStreamPath(input.agent, input.id);
 		let emitter = instanceEventEmitters.get(key);

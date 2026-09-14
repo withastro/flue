@@ -13,16 +13,16 @@ import CopyPrompt from '../../components/CopyPrompt.astro';
 
 Flue 2.0 is available today. We rebuilt our agent framework around a new hooks-based API, unlocking a new kind of dynamic agent that can evolve its capabilities over time.
 
-**Agent Hooks** are the new foundation in Flue 2.0. Hooks let you build dynamic agents that can manage their own state, listen to agent lifecycle events, and even attach different resources and capabilities dynamically to enhance themselves at runtime. 
+**Agent Hooks** are the new foundation in Flue 2.0. Hooks let you build dynamic agents that can manage their own state, listen to agent lifecycle events, and even attach different resources and capabilities dynamically to enhance themselves at runtime.
 
 Hooks are authored in TypeScript and presented in a familiar API:
 
 ```ts
 export function Assistant() {
-  const [count, setCount] = usePersistentState('count', 0);
-  useAgentStart(() => setCount((n) => n + 1));
-  useModel('moonshot/kimi-k2');
-  return `You are a helpful assistant. This conversation has ${count} messages.`;
+	const [count, setCount] = usePersistentState('count', 0);
+	useAgentStart(() => setCount((n) => n + 1));
+	useModel('moonshot/kimi-k2');
+	return `You are a helpful assistant. This conversation has ${count} messages.`;
 }
 ```
 
@@ -50,29 +50,29 @@ In the original Flue 1.0 API I took the same static approach to agent architectu
 ```ts
 // Flue 1.0 API
 export default defineAgent(() => ({
-  model:   'moonshot/kimi-k2',
-  tools:   [replyToIssue],
-  skills:  [triage, verify],
-  sandbox: local(),
-  instructions,
+	model: 'moonshot/kimi-k2',
+	tools: [replyToIssue],
+	skills: [triage, verify],
+	sandbox: local(),
+	instructions,
 }));
 ```
 
 We dogfooded this API with real developers during the Flue 1.0 Beta. What we found was surprising: The static agent approach worked well for simple use-cases, but started to break down for more complex, non-trivial agents and multi-step workflows.
 
-We began to wonder: if Flue 1.0 had this problem, then how many other popular agent frameworks and SDKs had this problem as well? 
+We began to wonder: if Flue 1.0 had this problem, then how many other popular agent frameworks and SDKs had this problem as well?
 
 We decided that this was a problem worth solving, and that the timing was right to make the breaking change to Flue now, while we were still early. We experimented with a bunch of different approaches, but eventually a familiar design pattern started to come into focus:
 
 ```ts
 // Flue 2.0 API
 export function IssueTriageAgent() {
-  useModel('moonshot/kimi-k2');
-  useTool(replyToIssue);
-  useSkill(triage);
-  useSkill(verify);
-  useSandbox(local());
-  return instructions;
+	useModel('moonshot/kimi-k2');
+	useTool(replyToIssue);
+	useSkill(triage);
+	useSkill(verify);
+	useSandbox(local());
+	return instructions;
 }
 ```
 
@@ -84,22 +84,22 @@ Let's say you want your agent to be able to upgrade its initial model or sandbox
 
 ```ts
 export function CompanySlackAgent() {
-  // Attach persistent data to each agent, stored in your DB.
-  const [isEnhanced, setEnhanced] = usePersistentState("isEnhanced", false);
-  // Give your agent the ability to upgrade itself.
-  useTool({ name: "enhance", description: "...", run: () => setEnhanced(true) });
-  // Attach new capabilities, on-demand.
-  if (isEnhanced) {
-    useModel('anthropic/fable-5-0');
-    useSandbox(daytona());
-    useTool(/* ... */);
-    useSkill(/* ... */);
-    useSubagent(/* ... */);
-  } else {
-    useModel('moonshot/kimi-k2');
-  }
-  // Return your agent instructions. Flue handles the rest.
-  return `You are a helpful assistant.`;
+	// Attach persistent data to each agent, stored in your DB.
+	const [isEnhanced, setEnhanced] = usePersistentState('isEnhanced', false);
+	// Give your agent the ability to upgrade itself.
+	useTool({ name: 'enhance', description: '...', run: () => setEnhanced(true) });
+	// Attach new capabilities, on-demand.
+	if (isEnhanced) {
+		useModel('anthropic/fable-5-0');
+		useSandbox(daytona());
+		useTool(/* ... */);
+		useSkill(/* ... */);
+		useSubagent(/* ... */);
+	} else {
+		useModel('moonshot/kimi-k2');
+	}
+	// Return your agent instructions. Flue handles the rest.
+	return `You are a helpful assistant.`;
 }
 ```
 
@@ -109,25 +109,25 @@ In Flue 2.0, a workflow is persistent state plus conditional tools. Give each st
 
 ```ts
 export function IssueTriageAgent({ id }) {
-  useSandbox(local());
-  // Persist which step of the workflow the agent is on.
-  const [step, setStep] = usePersistentState('step', 'reproduce');
-  // Each step attaches its own tools and skills.
-  if (step === 'reproduce') {
-    useModel('anthropic/sonnet-5-0');
-    useSkill(reproChecklist);
-    useTool({ name: 'submit_repro', description: '...', run: () => setStep('diagnose') });
-  }
-  if (step === 'diagnose') {
-    useModel('anthropic/fable-5-0');
-    useSkill(debuggingGuide);
-    useTool({ name: 'submit_diagnosis', description: '...', run: () => setStep('report') });
-  }
-  if (step === 'report') {
-    useModel('anthropic/sonnet-5-0');
-    useTool(postGitHubComment);
-  }
-  return `Follow the workflow to triage GitHub issue ${id}: reproduce -> diagnose -> report.`;
+	useSandbox(local());
+	// Persist which step of the workflow the agent is on.
+	const [step, setStep] = usePersistentState('step', 'reproduce');
+	// Each step attaches its own tools and skills.
+	if (step === 'reproduce') {
+		useModel('anthropic/sonnet-5-0');
+		useSkill(reproChecklist);
+		useTool({ name: 'submit_repro', description: '...', run: () => setStep('diagnose') });
+	}
+	if (step === 'diagnose') {
+		useModel('anthropic/fable-5-0');
+		useSkill(debuggingGuide);
+		useTool({ name: 'submit_diagnosis', description: '...', run: () => setStep('report') });
+	}
+	if (step === 'report') {
+		useModel('anthropic/sonnet-5-0');
+		useTool(postGitHubComment);
+	}
+	return `Follow the workflow to triage GitHub issue ${id}: reproduce -> diagnose -> report.`;
 }
 ```
 
@@ -137,18 +137,18 @@ And just like React hooks, they compose together nicely. You can build your own 
 
 ```ts
 export function useLinear(apiKey) {
-  useMcpConnection({
-    name: 'linear',
-    url: 'https://mcp.linear.app/mcp',
-    auth: apiKey,
-  });
+	useMcpConnection({
+		name: 'linear',
+		url: 'https://mcp.linear.app/mcp',
+		auth: apiKey,
+	});
 }
 
 export function ProjectAssistant() {
-  useLinear(process.env.LINEAR_API_KEY);
-  useGitHub(process.env.GITHUB_API_KEY);
-  useBrowser();
-  return 'Help your team manage their work.';
+	useLinear(process.env.LINEAR_API_KEY);
+	useGitHub(process.env.GITHUB_API_KEY);
+	useBrowser();
+	return 'Help your team manage their work.';
 }
 ```
 

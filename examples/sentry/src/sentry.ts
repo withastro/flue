@@ -149,7 +149,9 @@ instrument({
 // terminal outcome, 'terminated', always co-occurs with a `submission_settled`
 // outcome:'failed' event that the branch above already captures; recording it
 // here too would duplicate that issue.
-function recordRecoveryBreadcrumb(event: Extract<FlueObservation, { type: 'submission_recovery' }>): void {
+function recordRecoveryBreadcrumb(
+	event: Extract<FlueObservation, { type: 'submission_recovery' }>,
+): void {
 	Sentry.addBreadcrumb({
 		category: 'flue.submission_recovery',
 		level: event.outcome === 'terminated' ? 'error' : 'warning',
@@ -158,8 +160,12 @@ function recordRecoveryBreadcrumb(event: Extract<FlueObservation, { type: 'submi
 			...correlationTags(event),
 			'flue.recovery.operation': event.operation,
 			'flue.recovery.outcome': event.outcome,
-			...(event.attemptCount !== undefined ? { 'flue.recovery.attempt_count': event.attemptCount } : {}),
-			...(event.maxAttempts !== undefined ? { 'flue.recovery.max_attempts': event.maxAttempts } : {}),
+			...(event.attemptCount !== undefined
+				? { 'flue.recovery.attempt_count': event.attemptCount }
+				: {}),
+			...(event.maxAttempts !== undefined
+				? { 'flue.recovery.max_attempts': event.maxAttempts }
+				: {}),
 			...(event.errorInfo ? { 'error.type': event.errorInfo.type } : {}),
 		},
 	});

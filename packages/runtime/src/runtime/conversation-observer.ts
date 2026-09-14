@@ -14,13 +14,13 @@
  *   CLI's `flue run` and the programmatic agent client.
  */
 
+import { getConversationFoldHost } from '../conversation-fold-host.ts';
 import {
 	type AgentConversationSnapshot,
 	type ConversationStreamChunk,
 	projectAgentConversationBatch,
 	projectAgentConversationSnapshot,
 } from '../conversation-public.ts';
-import { getConversationFoldHost } from '../conversation-fold-host.ts';
 import { loadReducedConversationPrefix } from '../conversation-reader.ts';
 import { reduceConversationRecords } from '../conversation-reducer.ts';
 import type {
