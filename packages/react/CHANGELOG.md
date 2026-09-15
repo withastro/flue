@@ -1,5 +1,11 @@
 # @flue/react
 
+## 2.0.8
+
+### Patch Changes
+
+- @flue/sdk@2.0.8
+
 ## 2.0.7
 
 ### Patch Changes

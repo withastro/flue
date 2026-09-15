@@ -1,5 +1,13 @@
 # @flue/cli
 
+## 2.0.8
+
+### Patch Changes
+
+- Updated dependencies [3f3daae]
+  - @flue/runtime@2.0.8
+  - @flue/vite@2.0.8
+
 ## 2.0.7
 
 ### Patch Changes
