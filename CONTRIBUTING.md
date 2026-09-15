@@ -64,23 +64,25 @@ This is the experiment behind how Flue is built: keep the team responsible for d
 
 ## Publishing
 
-Flue's public packages are versioned and published together with [Changesets](https://changesets.dev/). Every pull request with a user-facing package change should include a changeset:
+Flue's public packages are versioned and published together with [Changesets](https://changesets.dev/), configured in `.changeset/config.json`. If you add a new public package, add it to the fixed group in that file.
+
+Changes merged to `main` with changesets are collected into the `Version Packages` pull request. Merging that pull request runs the Release workflow, which builds and publishes every public package.
+
+To publish manually, first confirm that the working tree is clean, run `pnpm changeset version`, then review and commit the generated version and changelog changes. Build the packages and prepare the documentation bundled with `@flue/cli`, `@flue/runtime`, and `@flue/sdk`:
 
 ```sh
-pnpm changeset
+pnpm run build && pnpm run build:docs
 ```
 
-Select the affected package or packages, choose the appropriate semantic version bump, and commit the generated file. The packages form a fixed group, so the largest requested bump determines the version of the complete package set.
+Always run both commands before publishing. Each of the three documentation packages also prepares its own docs through a `prepack` lifecycle script. The lifecycle hook is a safety net, not a replacement for preparing and verifying the complete release first.
 
-After changesets reach `main`, the Release workflow creates or updates the `Version Packages` pull request. Merging that pull request builds the packages, prepares the documentation bundled with `@flue/cli`, `@flue/runtime`, and `@flue/sdk`, publishes every package through pnpm, and creates the package tags and GitHub releases.
-
-To verify the complete release locally before merging the release pull request, run:
+Publish every changed public package and create its git tag from the repository root:
 
 ```sh
-pnpm run build && pnpm run build:docs && pnpm test:package-docs
+pnpm changeset publish
 ```
 
-Do not publish with `npm publish`. The automated `changeset publish` command detects pnpm and uses it to replace internal `workspace:` dependency specifiers with the release version while packing.
+Do not use `npm publish`. Changesets detects pnpm and uses it to replace internal `workspace:` dependency specifiers with the release version while packing. If publishing stops partway through, do not immediately rerun the command: first determine which versions reached the registry.
 
 After publishing, allow time for every package to become visible on the npm registry, then verify the release version and bundled documentation. Replace `<version>` below with the version just published:
 
