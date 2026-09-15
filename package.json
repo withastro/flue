@@ -12,6 +12,8 @@
 		"dev": "turbo dev",
 		"build": "turbo build",
 		"build:docs": "node scripts/build-docs.mjs",
+		"changeset": "changeset",
+		"release": "pnpm run build && pnpm run build:docs && changeset publish",
 		"test": "turbo test",
 		"test:integration": "pnpm --dir packages/vite run test:integration:cloudflare",
 		"test:package-docs": "node scripts/smoke-test-package-docs.mjs",
@@ -25,6 +27,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.2.0",
+		"@changesets/cli": "^3.0.3",
 		"@flue/runtime": "workspace:*",
 		"@types/node": "^26.1.1",
 		"bgproc": "^0.3.0",

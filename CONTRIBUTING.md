@@ -64,23 +64,23 @@ This is the experiment behind how Flue is built: keep the team responsible for d
 
 ## Publishing
 
-Flue's public packages are versioned and published together. Before starting a release, confirm that the working tree is clean, update every public package to the release version, and add the release to `CHANGELOG.md`.
-
-Build the packages and prepare the documentation bundled with `@flue/cli`, `@flue/runtime`, and `@flue/sdk`:
+Flue's public packages are versioned and published together with [Changesets](https://changesets.dev/). Every pull request with a user-facing package change should include a changeset:
 
 ```sh
-pnpm run build && pnpm run build:docs
+pnpm changeset
 ```
 
-Always run both commands before publishing. Each of the three documentation packages also prepares its own docs automatically through a `prepack` lifecycle script. Package managers invoke `prepack` as part of `pack` and `publish`; maintainers do not run `prepack` directly. The lifecycle hook is a safety net, not a replacement for preparing and verifying the complete release first.
+Select the affected package or packages, choose the appropriate semantic version bump, and commit the generated file. The packages form a fixed group, so the largest requested bump determines the version of the complete package set.
 
-Publish every public package from the repository root with pnpm:
+After changesets reach `main`, the Release workflow creates or updates the `Version Packages` pull request. Merging that pull request builds the packages, prepares the documentation bundled with `@flue/cli`, `@flue/runtime`, and `@flue/sdk`, publishes every package through pnpm, and creates the package tags and GitHub releases.
+
+To verify the complete release locally before merging the release pull request, run:
 
 ```sh
-pnpm -r publish --access public --no-git-checks
+pnpm run build && pnpm run build:docs && pnpm test:package-docs
 ```
 
-Do not use `npm publish`. pnpm replaces internal `workspace:` dependency specifiers with the release version while packing; npm can publish those specifiers unchanged and produce packages that cannot be installed outside this workspace. Complete npm's interactive authentication prompt when required. If publishing stops partway through, do not immediately rerun the command: first determine which versions reached the registry.
+Do not publish with `npm publish`. The automated `changeset publish` command detects pnpm and uses it to replace internal `workspace:` dependency specifiers with the release version while packing.
 
 After publishing, allow time for every package to become visible on the npm registry, then verify the release version and bundled documentation. Replace `<version>` below with the version just published:
 

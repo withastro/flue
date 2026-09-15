@@ -96,8 +96,17 @@ jobs:
             // sweep: anything younger than this is left for the next night.
             const MIN_AGE_MS = 3 * 60 * 60 * 1000;
 
+            // Keep the same-repository Changesets release PR out of the
+            // redirect sweep without reserving a branch name for forks.
+            const releaseBranch = `changeset-release/${context.payload.repository.default_branch}`;
             const numbers = [];
             for (const pr of prs) {
+              const isChangesetsRelease =
+                pr.head.ref === releaseBranch && pr.head.repo?.full_name === `${owner}/${repo}`;
+              if (isChangesetsRelease) {
+                core.info(`Skipping #${pr.number}: Changesets release PR`);
+                continue;
+              }
               if (['OWNER', 'MEMBER'].includes(pr.author_association)) continue;
               if (approved.includes(pr.user.login.toLowerCase())) continue;
               if (Date.now() - Date.parse(pr.created_at) < MIN_AGE_MS) {
