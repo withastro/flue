@@ -1,5 +1,9 @@
 # @flue/sdk
 
+## 2.0.8
+
+No changes in this release.
+
 ## 2.0.7
 
 ### Patch Changes
