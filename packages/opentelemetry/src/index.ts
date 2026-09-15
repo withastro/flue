@@ -713,10 +713,6 @@ function setContent(
 	if (result.value !== undefined) tracked.span.setAttribute(name, result.value);
 }
 
-/**
- * The draw is charged under the semconv key; the raw fallback differs by a
- * few bytes, well inside the pool's slack.
- */
 function setToolContent(
 	tracked: TrackedSpan,
 	kind: 'arguments' | 'result',
@@ -726,21 +722,15 @@ function setToolContent(
 ): void {
 	if (policy === false) return;
 	const spanContext = tracked.span.spanContext();
+	const name = ATTR[kind === 'arguments' ? 'toolArguments' : 'toolResult'];
 	const result = drawContentAttribute(tracked.ledger, policy, () => value, event, {
-		key: ATTR[kind === 'arguments' ? 'toolArguments' : 'toolResult'],
+		key: name,
 		contentType: kind === 'arguments' ? 'tool_arguments' : 'tool_result',
 		rawString: true,
 		traceId: spanContext.traceId,
 		spanId: spanContext.spanId,
 	});
-	if (result.value !== undefined) {
-		tracked.span.setAttribute(
-			result.objectShaped
-				? ATTR[kind === 'arguments' ? 'toolArguments' : 'toolResult']
-				: `flue.tool.call.${kind}`,
-			result.value,
-		);
-	}
+	if (result.value !== undefined) tracked.span.setAttribute(name, result.value);
 }
 
 function complete(

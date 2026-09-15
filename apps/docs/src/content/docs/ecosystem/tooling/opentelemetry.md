@@ -65,7 +65,7 @@ const instrumentation = createOpenTelemetryInstrumentation({
 
 A detached converted value passes through `transform` once per content type; returning `undefined` omits that content, and a throwing transform emits a `[flue]` failure sentinel instead of the unredacted value. `scope` carries the content type, event type, execution identity, and `traceId`/`spanId`. For byte budgets, slice inside the transform or use the exported `truncateContent(content, { maxBytes })`. After the transform, a 56 KiB per-span content budget is enforced **in-band**: everything content-bearing a span carries — messages, system instructions, tool definitions and payloads, exception message/stack — shares one pool, with a reserve held so response content has room beside large prompts. Payloads stay valid JSON, oldest messages drop first behind a `role: "flue"` sentinel message, and oversized strings are cut with a `[flue:truncated, …]` suffix — there are no side-channel truncation marker attributes; search payloads for `[flue]` instead.
 
-Object-shaped tool arguments/results use standard `gen_ai.tool.call.*` attributes; other shapes use `flue.tool.call.arguments` or `flue.tool.call.result` under the same policy.
+Tool arguments/results use the standard `gen_ai.tool.call.*` attributes for every payload shape: structured payloads (including strings carrying serialized JSON) record as JSON, plain text records as a raw string.
 
 ## Metrics and Logs
 

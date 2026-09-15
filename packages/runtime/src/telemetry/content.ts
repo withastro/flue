@@ -95,8 +95,6 @@ export interface ContentAttributeOptions {
 
 export interface ContentAttributeResult {
 	value?: string;
-	/** Post-transform value was a plain object — decides `gen_ai.tool.call.*` vs the `flue.*` raw fallback keys. */
-	objectShaped?: boolean;
 }
 
 const ENCODER = new TextEncoder();
@@ -121,7 +119,16 @@ export function contentAttribute(
 		}
 		if (value === undefined) return {};
 	}
-	const objectShaped = isPlainObject(value);
+	if (
+		typeof value === 'string' &&
+		(options.contentType === 'tool_arguments' || options.contentType === 'tool_result')
+	) {
+		// Best-effort deserialization, per the semconv guidance for
+		// `gen_ai.tool.call.*`: a string carrying serialized JSON records in
+		// structured form; any other string records as-is.
+		const parsed = parseSerializedJson(value);
+		if (parsed !== undefined) value = parsed;
+	}
 	const budget =
 		typeof options.maxBytes === 'number' && Number.isFinite(options.maxBytes)
 			? Math.min(Math.max(Math.floor(options.maxBytes), MIN_BUDGET_BYTES), CONTENT_BUDGET_BYTES)
@@ -132,7 +139,7 @@ export function contentAttribute(
 		serialized = serialize(truncateContent(value, { maxBytes: budget }), options);
 		if (serialized === undefined) return { value: CONTENT_UNSERIALIZABLE };
 	}
-	return { value: serialized, objectShaped };
+	return { value: serialized };
 }
 
 /** Content types that describe the request; everything else records the outcome. */
@@ -226,4 +233,15 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 	if (value === null || typeof value !== 'object') return false;
 	const prototype = Object.getPrototypeOf(value);
 	return prototype === Object.prototype || prototype === null;
+}
+
+function parseSerializedJson(value: string): Record<string, unknown> | unknown[] | undefined {
+	const first = value.trimStart()[0];
+	if (first !== '{' && first !== '[') return undefined;
+	try {
+		const parsed: unknown = JSON.parse(value);
+		return isPlainObject(parsed) || Array.isArray(parsed) ? parsed : undefined;
+	} catch {
+		return undefined;
+	}
 }
