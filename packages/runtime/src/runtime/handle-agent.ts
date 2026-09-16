@@ -105,7 +105,7 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 		// validated shape a `dispatch()` call admits, so both transports share
 		// one schema and produce the same structured InvalidRequestError on bad
 		// input.
-		const { message, initialData, uid, idempotencyKey } = parseDeliveredInput(
+		const { message, initialData, uid, idempotencyKey, deliveryContext, deliveryMode } = parseDeliveredInput(
 			await parseJsonBody(request),
 		);
 		const traceCarrier = extractTraceCarrier(request.headers);
@@ -115,6 +115,8 @@ export async function handleAgentRequest(opts: HandleAgentOptions): Promise<Resp
 			...(initialData !== undefined ? { initialData } : {}),
 			...(uid !== undefined ? { uid } : {}),
 			...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+			...(deliveryContext !== undefined ? { deliveryContext } : {}),
+			...(deliveryMode !== undefined ? { deliveryMode } : {}),
 		});
 		return admissionResponse(
 			{

@@ -61,6 +61,7 @@ export { useAgentFinish } from './hooks/use-agent-finish.ts';
 export { useAgentStart } from './hooks/use-agent-start.ts';
 export { useDataWriter } from './hooks/use-data-writer.ts';
 export { useDelivery } from './hooks/use-delivery.ts';
+export { useDeliveryContext } from './hooks/use-delivery-context.ts';
 export { useDispatchMessage } from './hooks/use-dispatch-message.ts';
 export { useInitialData } from './hooks/use-initial-data.ts';
 export { useInstruction } from './hooks/use-instruction.ts';
@@ -91,8 +92,21 @@ export type { FlueObservationSubscriber } from './observation.ts';
 export { ResultUnavailableError } from './result.ts';
 export type { ChannelRouteDefinition } from './runtime/channel-routes.ts';
 export { createChannelRouter } from './runtime/channel-routes.ts';
+export {
+	type DurableMutationObservation,
+	type DurableMutationObserver,
+	observeDurableMutations,
+} from './runtime/durable-mutations.ts';
 export { type FlueEventSubscriber, observe } from './runtime/events.ts';
-export { type AgentInstanceInfo, dispatch, getAgentInstance } from './runtime/flue-app.ts';
+export {
+	type AgentInstanceInfo,
+	type AgentInstancePurgeResult,
+	type AgentInstanceQuiescence,
+	dispatch,
+	getAgentInstance,
+	purgeAgentInstance,
+	quiesceAgentInstance,
+} from './runtime/flue-app.ts';
 export { isDynamicModel, setProvider } from './runtime/providers.ts';
 export type { AgentIdentityBinding } from './runtime/registration.ts';
 export { __flueBindAgentModule } from './runtime/registration.ts';
@@ -123,6 +137,7 @@ export type {
 	DeliveredAttachment,
 	DeliveredMessage,
 	DeliveredMessageInput,
+	DeliveryMode,
 	DispatchReceipt,
 	DurabilityConfig,
 	FileStat,

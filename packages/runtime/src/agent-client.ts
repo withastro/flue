@@ -220,6 +220,10 @@ export function init(agent: Agent, options: InitOptions = {}): AgentInstanceHand
 					agent: name,
 					id,
 					message: delivered,
+					...(payload.deliveryContext !== undefined
+						? { deliveryContext: payload.deliveryContext }
+						: {}),
+					...(payload.deliveryMode !== undefined ? { deliveryMode: payload.deliveryMode } : {}),
 					...(payload.initialData !== undefined && !contacted
 						? { initialData: payload.initialData }
 						: {}),

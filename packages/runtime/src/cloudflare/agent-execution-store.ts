@@ -6,6 +6,7 @@ import {
 	ensureSqlAgentExecutionTables,
 } from '../sql-agent-execution-store.ts';
 import { ensureSqlAttachmentTable, SqliteAttachmentStore } from '../sql-attachment-store.ts';
+import { createSqlInstanceMaintenance } from '../sql-instance-maintenance.ts';
 import type { SqlStorage } from '../sql-storage.ts';
 
 interface DurableObjectStorage {
@@ -44,6 +45,7 @@ export function createSqlConversationStores(storage: DurableObjectStorage, class
 		return {
 			conversationStreamStore: new SqliteConversationStreamStore(sql, runTransaction),
 			attachmentStore: new SqliteAttachmentStore(sql, runTransaction),
+			instanceMaintenance: createSqlInstanceMaintenance(sql, runTransaction),
 		};
 	} catch (cause) {
 		throw initFailure(className, 'SQLite conversation stores', cause);

@@ -17,6 +17,7 @@ declare module '@earendil-works/pi-agent-core' {
 }
 
 import type * as v from 'valibot';
+import type { JsonValue } from './json-snapshot.ts';
 import type { McpConnectionDefinition } from './mcp-types.ts';
 import type { ToolDefinition } from './tool-types.ts';
 
@@ -81,12 +82,23 @@ export type DeliveredMessage =
  */
 export type DeliveredMessageInput = string | DeliveredMessage;
 
+/** Whether a delivery may join a response already in progress. */
+export type DeliveryMode = 'join' | 'fifo';
+
 /** Input accepted by `dispatch(agent, request)`. */
-export interface AgentDispatchRequest {
+export interface AgentDispatchRequest<TContext extends JsonValue = JsonValue> {
 	/** Target agent instance id. Must be a non-empty string. */
 	id: string;
 	/** The message delivered to the session. Flue snapshots the value at admission time. */
 	message: DeliveredMessageInput;
+	/**
+	 * Durable per-delivery data for agent code and tool closures. Flue snapshots
+	 * this JSON value at admission and never writes it to the conversation or
+	 * provider input. Read it with `useDeliveryContext<T>()`.
+	 */
+	deliveryContext?: TContext;
+	/** `join` (default) may join a busy response; `fifo` always waits its turn. */
+	deliveryMode?: DeliveryMode;
 	/**
 	 * Instance-creation data — the seed, consulted only when this send
 	 * creates the instance: validated against the agent's `initialData`

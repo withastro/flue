@@ -33,6 +33,7 @@ import {
 import type { AttachmentStore } from '../runtime/attachment-store.ts';
 import type { ConversationStreamStore } from '../runtime/conversation-stream-store.ts';
 import type { DispatchInput, DispatchQueue } from '../runtime/dispatch-queue.ts';
+import { hashDurableIdentity, publishDurableMutation } from '../runtime/durable-mutations.ts';
 import { type CoordinatorEventEmitter, createCoordinatorEventEmitter } from '../runtime/events.ts';
 import type { CreateAgentContextFn } from '../runtime/handle-agent.ts';
 import { generateAttemptId, generateOwnerId, isKeyDerivedSubmissionId } from '../runtime/ids.ts';
@@ -69,6 +70,8 @@ export interface NodeAgentCoordinator {
 	 * abort, `false` when the instance was idle.
 	 */
 	abortInstance(agentName: string, instanceId: string): Promise<boolean>;
+	/** Drop all process-local writer and connection state for one instance. */
+	invalidateInstance(agentName: string, instanceId: string): Promise<void>;
 	/**
 	 * Create a durable admission hook for a specific agent instance. The returned
 	 * function accepts a direct prompt payload, persists it as a durable submission,
@@ -944,6 +947,14 @@ export function createNodeAgentCoordinator(options: {
 	// ── Public interface ─────────────────────────────────────────────────
 
 	return {
+		async invalidateInstance(agentName: string, instanceId: string) {
+			const path = agentStreamPath(agentName, instanceId);
+			conversationWriters.delete(path);
+			const cache = mcpConnectionCaches.get(path);
+			mcpConnectionCaches.delete(path);
+			await cache?.close();
+		},
+
 		async reconcileSubmissions() {
 			if (!(await submissions.hasUnsettledSubmissions())) return;
 			await reconcileUnreadySubmissions();
@@ -1000,6 +1011,17 @@ export function createNodeAgentCoordinator(options: {
 						if (adopted && uid !== undefined) {
 							ensureClaimLoop();
 							wake();
+							publishDurableMutation({
+								operation: 'admit',
+								scope: 'submission',
+								identityHash: await hashDurableIdentity([
+									input.agent,
+									input.id,
+									adopted.submissionId,
+								]),
+								affected: 0,
+								noOp: true,
+							});
 							return { kind: 'submission', submission: adopted, uid, deduplicated: true };
 						}
 					}
@@ -1021,6 +1043,17 @@ export function createNodeAgentCoordinator(options: {
 				// Live queue signal, emitted immediately after durable admission.
 				// At-least-once: admission cannot distinguish an idempotent
 				// replay, so replays (keyed dedup included) re-emit.
+				publishDurableMutation({
+					operation: 'admit',
+					scope: 'submission',
+					identityHash: await hashDurableIdentity([
+						input.agent,
+						input.id,
+						admission.submission.submissionId,
+					]),
+					affected: deduplicated ? 0 : 1,
+					noOp: deduplicated,
+				});
 				coordinatorEventEmitter(input)({
 					type: 'submission_queued',
 					submissionId: admission.submission.submissionId,
@@ -1082,6 +1115,13 @@ export function createNodeAgentCoordinator(options: {
 				SUBMISSION_SESSION_NAME,
 			);
 			const affected = await submissions.requestSessionAbort(sessionKey);
+			publishDurableMutation({
+				operation: 'abort',
+				scope: 'instance',
+				identityHash: await hashDurableIdentity([agentName, instanceId]),
+				affected: affected.length,
+				noOp: affected.length === 0,
+			});
 			if (affected.length === 0) return false;
 			// Abort any of those attempts running in this process at a halt point —
 			// processSubmission's catch settles them aborted. Queued ones settle via
@@ -1114,7 +1154,7 @@ export function createNodeAgentCoordinator(options: {
 
 		createAdmission(agentName: string, instanceId: string): AttachedAgentSubmissionAdmission {
 			return async (message: DeliveredMessage, options = {}) => {
-				const { traceCarrier, initialData, uid, idempotencyKey } = options;
+				const { traceCarrier, initialData, uid, idempotencyKey, deliveryContext, deliveryMode } = options;
 				if (stopping) throw new RuntimeUnavailableError({ state: 'draining' });
 				// Same admission-scoped lease as admitDispatch: released when the
 				// admission call returns, not when the submission settles.
@@ -1134,6 +1174,8 @@ export function createNodeAgentCoordinator(options: {
 						initialData,
 						traceCarrier,
 						...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+						...(deliveryContext !== undefined ? { deliveryContext } : {}),
+						...(deliveryMode !== undefined ? { deliveryMode } : {}),
 					});
 					const keyed = idempotencyKey !== undefined;
 					const loadReducedState = async () => {
@@ -1148,6 +1190,13 @@ export function createNodeAgentCoordinator(options: {
 						if (reducedUid === undefined) return undefined;
 						ensureClaimLoop();
 						wake();
+						publishDurableMutation({
+							operation: 'admit',
+							scope: 'submission',
+							identityHash: await hashDurableIdentity([input.agent, input.id, submissionId]),
+							affected: 0,
+							noOp: true,
+						});
 						return {
 							submissionId,
 							offset: '-1',
@@ -1192,6 +1241,17 @@ export function createNodeAgentCoordinator(options: {
 					// Live queue signal, emitted immediately after durable
 					// admission. At-least-once: admission cannot distinguish an
 					// idempotent replay, so replays (keyed dedup included) re-emit.
+					publishDurableMutation({
+						operation: 'admit',
+						scope: 'submission',
+						identityHash: await hashDurableIdentity([
+							input.agent,
+							input.id,
+							admitted.submissionId,
+						]),
+						affected: deduplicated ? 0 : 1,
+						noOp: deduplicated,
+					});
 					coordinatorEventEmitter(input)({
 						type: 'submission_queued',
 						submissionId: admitted.submissionId,

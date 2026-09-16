@@ -31,6 +31,9 @@
 
 export type {
 	AgentDispatchAdmission,
+	AgentInstanceMaintenance,
+	AgentInstancePurgeResult,
+	AgentInstanceStorageIdentity,
 	AgentSubmission,
 	AgentSubmissionStore,
 	PersistenceAdapter,

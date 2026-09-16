@@ -115,6 +115,7 @@ import {
 } from './harness-tool-lineage.ts';
 import { resolveSubagentDefinition } from './hooks/render.ts';
 import type { HookStateBuffer, HookStateWrite } from './hooks/use-persistent-state.ts';
+import type { JsonValue } from './json-snapshot.ts';
 import {
 	type AgentFinishContext,
 	type AgentFinishDeclaration,
@@ -452,7 +453,7 @@ interface SessionInitOptions {
 	 * lifecycle callback appends a signal. Renders observe the new value from
 	 * the next re-render.
 	 */
-	advanceDelivery?: (message: DeliveredMessage) => void;
+	advanceDelivery?: (message: DeliveredMessage, context?: JsonValue) => void;
 	/**
 	 * Dynamic-resource runtime (function agents only): the init render's
 	 * resources, the durable baseline/narrated snapshots, and the rebaseline
@@ -774,7 +775,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	private hookState: HookStateBuffer | undefined;
 	private rerender: SessionRerender | undefined;
 	private outputChannel: AgentOutputChannel | undefined;
-	private advanceDelivery: ((message: DeliveredMessage) => void) | undefined;
+	private advanceDelivery: ((message: DeliveredMessage, context?: JsonValue) => void) | undefined;
 	/**
 	 * Dynamic resources. The live maps track the CURRENT render (skill
 	 * activation and task resolution always see what the agent declares now);
@@ -1745,7 +1746,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		// Advance the delivery cursor before the delivery's hooks run: the
 		// join boundary re-renders, so `useDelivery()` closures in those hooks
 		// see THIS message.
-		this.advanceDelivery?.(input.message);
+		this.advanceDelivery?.(input.message, input.deliveryContext);
 		await this.runAgentStartHooks(signal, input.submissionId, { joined: true });
 		await source.finalize(input.submissionId);
 	}
@@ -1791,7 +1792,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			const entryId = submissionEntryId(input.kind, input.submissionId);
 			if (submission.status === 'joining') {
 				if (await this.conversationWriter.hasConversationEntry(this.conversationId, entryId)) {
-					this.advanceDelivery?.(input.message);
+					this.advanceDelivery?.(input.message, input.deliveryContext);
 					await this.runAgentStartHooks(signal, input.submissionId, { joined: true });
 					await source.finalize(input.submissionId);
 				} else {
@@ -1799,7 +1800,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				}
 				continue;
 			}
-			this.advanceDelivery?.(input.message);
+			this.advanceDelivery?.(input.message, input.deliveryContext);
 			await this.runAgentStartHooks(signal, input.submissionId, { joined: true });
 		}
 		// The per-delivery advances above track hook re-runs in admission
@@ -1822,6 +1823,12 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		if (!this.advanceDelivery || !inputEntryId) return;
 		const conversation = await this.requireConversation();
 		const path = getActiveConversationPath(conversation);
+		const joinedContexts = new Map(
+			((await this.activeJoinSource?.listUnresolved()) ?? []).map((submission) => [
+				submissionEntryId(submission.input.kind, submission.submissionId),
+				submission.input.deliveryContext,
+			]),
+		);
 		const inputIndex = path.findIndex((entry) => entry.id === inputEntryId);
 		if (inputIndex === -1) return;
 		for (let i = path.length - 1; i > inputIndex; i--) {
@@ -1838,13 +1845,16 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				// runs before this walk), after every render the crashed attempt
 				// made. Skipping them restores exactly what the live renders saw.
 				if (RESERVED_SIGNAL_TYPES.has(message.type)) continue;
-				this.advanceDelivery({
-					kind: 'signal',
-					type: message.type,
-					body: message.content,
-					...(message.attributes ? { attributes: message.attributes } : {}),
-					...(message.tagName ? { tagName: message.tagName } : {}),
-				});
+				this.advanceDelivery(
+					{
+						kind: 'signal',
+						type: message.type,
+						body: message.content,
+						...(message.attributes ? { attributes: message.attributes } : {}),
+						...(message.tagName ? { tagName: message.tagName } : {}),
+					},
+					joinedContexts.get(entry.id),
+				);
 				return;
 			}
 			if (message.role !== 'user') continue;
@@ -1857,11 +1867,14 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			const refs = [...(entry.attachmentRefs?.values() ?? [])];
 			const attachments =
 				refs.length > 0 ? await this.resolveCanonicalImages(refs.map((ref) => ref.id)) : undefined;
-			this.advanceDelivery({
-				kind: 'user',
-				body,
-				...(attachments?.length ? { attachments } : {}),
-			});
+			this.advanceDelivery(
+				{
+					kind: 'user',
+					body,
+					...(attachments?.length ? { attachments } : {}),
+				},
+				joinedContexts.get(entry.id),
+			);
 			return;
 		}
 	}

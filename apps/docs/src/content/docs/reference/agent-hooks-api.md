@@ -235,6 +235,14 @@ Read the message currently in front of the model, as the same validated [`Delive
 - In a subagent render, the delivery is the parent's task prompt as a `kind: 'user'` message (task images ride as `attachments`).
 - Always present in the runtime: every response starts from a delivered message. A bare tooling/test render with no delivery behind it throws.
 
+## `useDeliveryContext()`
+
+```ts
+function useDeliveryContext<T extends JsonValue = JsonValue>(): T | undefined;
+```
+
+Read the durable, model-hidden context on the current delivery. The value is snapshotted as JSON at admission, survives queueing, restart, and turn-boundary joining, and advances with the same delivery cursor as `useDelivery()`. It is available to tool and lifecycle-hook closures created by the render. Flue never writes it to `DeliveredMessage`, conversation records, projected streams, telemetry payloads, or provider input. It is plumbing, not a place for product tenant or approval policy.
+
 ## `useDispatchMessage()`
 
 ```ts

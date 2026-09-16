@@ -427,7 +427,7 @@ export class MongoSubmissionStore implements AgentSubmissionStore {
 				} catch {
 					break;
 				}
-				if (submission.input.agent !== agentName) break;
+				if (submission.input.agent !== agentName || submission.input.deliveryMode === 'fifo') break;
 				const update = await submissions.updateOne(
 					{ submissionId: submission.submissionId, status: 'queued' },
 					{ $set: { status: 'joining', joinedInto: host.submissionId } },

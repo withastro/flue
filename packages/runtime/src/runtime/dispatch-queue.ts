@@ -1,10 +1,13 @@
-import type { DeliveredMessage, DispatchReceipt } from '../types.ts';
+import type { JsonValue } from '../json-snapshot.ts';
+import type { DeliveredMessage, DeliveryMode, DispatchReceipt } from '../types.ts';
 
 export interface DispatchInput {
 	submissionId: string;
 	agent: string;
 	id: string;
 	message: DeliveredMessage;
+	deliveryContext?: JsonValue;
+	deliveryMode?: DeliveryMode;
 	/** Instance-creation data; the seed, consulted only when this send creates. */
 	initialData?: unknown;
 	/**

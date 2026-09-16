@@ -7,6 +7,7 @@ import { SessionNotFoundError } from './errors.ts';
 import type { FlueExecutionContext } from './execution-interceptor.ts';
 import { EMPTY_HARNESS_TOOL_LINEAGE, type HarnessToolLineage } from './harness-tool-lineage.ts';
 import type { HookStateBuffer } from './hooks/use-persistent-state.ts';
+import type { JsonValue } from './json-snapshot.ts';
 import type { McpUnavailableConnection } from './mcp-types.ts';
 import type { AgentOutputChannel } from './message-output.ts';
 import type { AttachmentStore } from './runtime/attachment-store.ts';
@@ -86,7 +87,7 @@ export interface HarnessOptions {
 	 * so the session moves it when a delivery joins the live response or a
 	 * lifecycle callback appends a signal. Same routing as hookState.
 	 */
-	advanceDelivery?: (message: DeliveredMessage) => void;
+	advanceDelivery?: (message: DeliveredMessage, context?: JsonValue) => void;
 	/** Dynamic-resource runtime (function agents only); same routing as hookState. */
 	resources?: SessionResourceRuntime;
 	/**
@@ -147,7 +148,7 @@ export class Harness implements FlueHarness {
 	private hookState: HookStateBuffer | undefined;
 	private rerender: SessionRerender | undefined;
 	private output: AgentOutputChannel | undefined;
-	private advanceDelivery: ((message: DeliveredMessage) => void) | undefined;
+	private advanceDelivery: ((message: DeliveredMessage, context?: JsonValue) => void) | undefined;
 	private resources: SessionResourceRuntime | undefined;
 	private envRuntime: SandboxRuntime | undefined;
 

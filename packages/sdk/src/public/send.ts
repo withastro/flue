@@ -1,5 +1,8 @@
 import type { HttpClient } from '../http.ts';
 
+/** A recursively JSON-serializable value. */
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
 /** One image attachment on a `kind: 'user'` delivered message. */
 export interface DeliveredAttachment {
 	type: 'image';
@@ -28,6 +31,10 @@ export type DeliveredMessage =
 /** Options for delivering one message into the conversation. */
 export interface AgentPromptOptions {
 	message: DeliveredMessage;
+	/** Durable JSON data available to agent code but never sent to the model. */
+	deliveryContext?: JsonValue;
+	/** `join` (default) may join a busy response; `fifo` waits for its own turn. */
+	deliveryMode?: 'join' | 'fifo';
 	/**
 	 * Instance-creation data — the seed, consulted only when this send
 	 * creates the conversation: validated against the agent's `initialData`
@@ -102,10 +109,12 @@ export async function sendConversationMessage(
 		...(options.initialData !== undefined ? { initialData: options.initialData } : {}),
 		...(options.uid !== undefined ? { uid: options.uid } : {}),
 		...(options.idempotencyKey !== undefined ? { idempotencyKey: options.idempotencyKey } : {}),
+		...(options.deliveryContext !== undefined ? { deliveryContext: options.deliveryContext } : {}),
+		...(options.deliveryMode !== undefined ? { deliveryMode: options.deliveryMode } : {}),
 	};
 	return http.json<AgentSendResult>({
 		method: 'POST',
-		body: Object.keys(siblings).length > 0 ? { ...siblings, ...options.message } : options.message,
+		body: Object.keys(siblings).length > 0 ? { ...options.message, ...siblings } : options.message,
 		signal: options.signal,
 	});
 }

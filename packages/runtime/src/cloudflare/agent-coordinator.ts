@@ -1,5 +1,9 @@
 import { SUBMISSION_HARNESS_NAME, SUBMISSION_SESSION_NAME } from '../adapter-helpers.ts';
-import type { AgentSubmission, AgentSubmissionStore } from '../agent-execution-store.ts';
+import type {
+	AgentInstanceMaintenance,
+	AgentSubmission,
+	AgentSubmissionStore,
+} from '../agent-execution-store.ts';
 import type { FlueContextInternal } from '../client.ts';
 import { ConversationRecordWriter } from '../conversation-writer.ts';
 import {
@@ -35,6 +39,7 @@ import {
 } from '../runtime/agent-submissions.ts';
 import type { AttachmentStore } from '../runtime/attachment-store.ts';
 import type { ConversationStreamStore } from '../runtime/conversation-stream-store.ts';
+import { hashDurableIdentity, publishDurableMutation } from '../runtime/durable-mutations.ts';
 import {
 	type CoordinatorEventEmitter,
 	createCoordinatorEventEmitter,
@@ -57,6 +62,8 @@ import {
 
 export const CLOUDFLARE_AGENT_INTERNAL_DISPATCH_PATH = '/__flue/internal/dispatch';
 export const CLOUDFLARE_AGENT_INTERNAL_INSTANCE_INFO_PATH = '/__flue/internal/instance-info';
+export const CLOUDFLARE_AGENT_INTERNAL_QUIESCENCE_PATH = '/__flue/internal/quiescence';
+export const CLOUDFLARE_AGENT_INTERNAL_PURGE_PATH = '/__flue/internal/purge';
 
 const FLUE_AGENT_SUBMISSION_WAKE_CALLBACK = '__flueWakeAgentSubmissions';
 const FLUE_AGENT_SUBMISSION_WAKE_SECONDS = 30;
@@ -127,6 +134,7 @@ interface CloudflareAgentPreparedCoordinator {
 	readonly submissionStore: AgentSubmissionStore;
 	readonly conversationStreamStore: ConversationStreamStore;
 	readonly attachmentStore: AttachmentStore;
+	readonly instanceMaintenance: AgentInstanceMaintenance;
 }
 
 interface CloudflareAgentRuntimeOptions {
@@ -265,7 +273,7 @@ class CloudflareAgentCoordinator {
 	 * teardown — a DO has no disposal hook, and streamable HTTP holds no
 	 * server state worth a farewell.
 	 */
-	private readonly mcpConnections = createMcpConnectionCache();
+	private mcpConnections = createMcpConnectionCache();
 	/**
 	 * Abort controllers for in-flight attempt fibers in this isolate, keyed by
 	 * submissionId, so an incoming cancel request can abort the running attempt.
@@ -449,6 +457,36 @@ class CloudflareAgentCoordinator {
 	private async routeRequest(request: Request): Promise<Response | null> {
 		if (isInternalDispatchRequest(request)) return this.admitDispatch(request);
 		if (isInternalInstanceInfoRequest(request)) return this.instanceInfo();
+		if (isInternalMaintenanceRequest(request, 'GET', CLOUDFLARE_AGENT_INTERNAL_QUIESCENCE_PATH)) {
+			return Response.json({
+				quiescent: await this.prepared.instanceMaintenance.isQuiescent({
+					agentName: this.agentName,
+					instanceId: this.instance.name,
+				}),
+			});
+		}
+		if (isInternalMaintenanceRequest(request, 'POST', CLOUDFLARE_AGENT_INTERNAL_PURGE_PATH)) {
+			// Evict isolate-local state before the synchronous SQLite transaction.
+			// A racing admission then materializes fresh state and either makes the
+			// purge busy or starts after deletion; it cannot reuse the old writer.
+			this.conversationWriter = undefined;
+			this.conversationWriterCreation = undefined;
+			const staleConnections = this.mcpConnections;
+			this.mcpConnections = createMcpConnectionCache();
+			const result = await this.prepared.instanceMaintenance.purgeInstance({
+				agentName: this.agentName,
+				instanceId: this.instance.name,
+			});
+			await staleConnections.close();
+			publishDurableMutation({
+				operation: 'purge',
+				scope: 'instance',
+				identityHash: await hashDurableIdentity([this.agentName, this.instance.name]),
+				affected: result.affected,
+				noOp: result.noOp,
+			});
+			return Response.json(result);
+		}
 
 		if (isAbortRequest(request, this.agentName, this.instance.name)) {
 			const aborted = await this.abortInstance();
@@ -1040,6 +1078,13 @@ class CloudflareAgentCoordinator {
 			SUBMISSION_SESSION_NAME,
 		);
 		const affected = await this.submissions.requestSessionAbort(sessionKey);
+		publishDurableMutation({
+			operation: 'abort',
+			scope: 'instance',
+			identityHash: await hashDurableIdentity([this.agentName, this.instance.name]),
+			affected: affected.length,
+			noOp: affected.length === 0,
+		});
 		if (affected.length === 0) return false;
 		// Abort any of those attempt fibers live in this isolate —
 		// processSubmission's catch settles them aborted and the fiber tail
@@ -1108,7 +1153,7 @@ class CloudflareAgentCoordinator {
 		message: DeliveredMessage,
 		options: AttachedAgentSubmissionOptions = {},
 	) {
-		const { traceCarrier, initialData, uid, idempotencyKey } = options;
+		const { traceCarrier, initialData, uid, idempotencyKey, deliveryContext, deliveryMode } = options;
 		const input = await createDirectAgentSubmissionInput({
 			agent: this.agentName,
 			id: this.instance.name,
@@ -1116,6 +1161,8 @@ class CloudflareAgentCoordinator {
 			initialData,
 			traceCarrier,
 			...(idempotencyKey !== undefined ? { idempotencyKey } : {}),
+			...(deliveryContext !== undefined ? { deliveryContext } : {}),
+			...(deliveryMode !== undefined ? { deliveryMode } : {}),
 		});
 		const keyed = idempotencyKey !== undefined;
 		const agent = this.options.agents.find((record) => record.name === this.agentName)?.agent;
@@ -1128,6 +1175,13 @@ class CloudflareAgentCoordinator {
 			const reducedUid = (await loadReducedState()).uid;
 			if (reducedUid === undefined) return undefined;
 			await this.armDrain();
+			publishDurableMutation({
+				operation: 'admit',
+				scope: 'submission',
+				identityHash: await hashDurableIdentity([input.agent, input.id, submissionId]),
+				affected: 0,
+				noOp: true,
+			});
 			return {
 				submissionId,
 				offset: '-1',
@@ -1174,6 +1228,17 @@ class CloudflareAgentCoordinator {
 		// Live queue signal, emitted immediately after durable admission.
 		// At-least-once: admission cannot distinguish an idempotent replay, so
 		// replays (keyed dedup included) re-emit.
+		publishDurableMutation({
+			operation: 'admit',
+			scope: 'submission',
+			identityHash: await hashDurableIdentity([
+				input.agent,
+				input.id,
+				admitted.submissionId,
+			]),
+			affected: deduplicated ? 0 : 1,
+			noOp: deduplicated,
+		});
 		this.emitCoordinatorEvent({
 			type: 'submission_queued',
 			submissionId: admitted.submissionId,
@@ -1263,6 +1328,17 @@ class CloudflareAgentCoordinator {
 					const adoptedUid = adopted ? (await loadReducedState()).uid : undefined;
 					if (adopted && adoptedUid !== undefined) {
 						await this.armDrain();
+						publishDurableMutation({
+							operation: 'admit',
+							scope: 'submission',
+							identityHash: await hashDurableIdentity([
+								input.agent,
+								input.id,
+								adopted.submissionId,
+							]),
+							affected: 0,
+							noOp: true,
+						});
 						return Response.json({
 							submissionId: adopted.submissionId,
 							acceptedAt: adopted.input.acceptedAt,
@@ -1293,6 +1369,17 @@ class CloudflareAgentCoordinator {
 			// Live queue signal, emitted immediately after durable admission.
 			// At-least-once: admission cannot distinguish an idempotent replay,
 			// so replays (keyed dedup included) re-emit.
+			publishDurableMutation({
+				operation: 'admit',
+				scope: 'submission',
+				identityHash: await hashDurableIdentity([
+					input.agent,
+					input.id,
+					submission.submissionId,
+				]),
+				affected: deduplicated ? 0 : 1,
+				noOp: deduplicated,
+			});
 			this.emitCoordinatorEvent({
 				type: 'submission_queued',
 				submissionId: submission.submissionId,
@@ -1372,6 +1459,12 @@ function isInternalInstanceInfoRequest(request: Request): boolean {
 		request.method === 'GET' &&
 		new URL(request.url).pathname === CLOUDFLARE_AGENT_INTERNAL_INSTANCE_INFO_PATH
 	);
+}
+
+/** Maintenance requests originate only from the generated worker runtime. */
+export function isInternalMaintenanceRequest(request: Request, method: string, path: string): boolean {
+	const url = new URL(request.url);
+	return request.method === method && url.origin === 'https://flue.invalid' && url.pathname === path;
 }
 
 /**

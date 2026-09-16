@@ -384,6 +384,40 @@ export interface AgentSubmissionStore {
 
 // ─── Persistence adapter ────────────────────────────────────────────────────
 
+export interface AgentInstanceStorageIdentity {
+	readonly agentName: string;
+	readonly instanceId: string;
+}
+
+export interface AgentInstancePurgeResult {
+	readonly outcome: 'purged' | 'not_found' | 'busy';
+	readonly affected: number;
+	readonly noOp: boolean;
+	readonly deleted: {
+		readonly submissions: number;
+		readonly submissionChunks: number;
+		readonly conversationStreams: number;
+		readonly conversationBatches: number;
+		readonly conversationBatchChunks: number;
+		readonly conversationCheckpoints: number;
+		readonly conversationCheckpointChunks: number;
+		readonly attachments: number;
+		readonly attachmentChunks: number;
+	};
+}
+
+/** Optional physical-maintenance contract. Unsupported adapters fail clearly at the public API. */
+export interface AgentInstanceMaintenance {
+	/** True only when this instance has no queued, running, joining, or terminalizing work. */
+	isQuiescent(identity: AgentInstanceStorageIdentity): Promise<boolean>;
+	/**
+	 * Atomically refuse busy instances or physically delete all submission,
+	 * conversation, checkpoint, and attachment rows for one instance.
+	 * Repeated calls return `not_found` with `noOp: true`.
+	 */
+	purgeInstance(identity: AgentInstanceStorageIdentity): Promise<AgentInstancePurgeResult>;
+}
+
 /** The complete set of stores a {@link PersistenceAdapter} provides. */
 export interface PersistenceStores {
 	/** Durable agent submission lifecycle storage. */
@@ -392,6 +426,8 @@ export interface PersistenceStores {
 	readonly conversationStreamStore: ConversationStreamStore;
 	/** Immutable attachment bytes referenced by canonical conversation records. */
 	readonly attachmentStore: AttachmentStore;
+	/** Physical instance maintenance. Required to use `purgeAgentInstance()`. */
+	readonly instanceMaintenance?: AgentInstanceMaintenance;
 }
 
 /**

@@ -25,8 +25,9 @@ import {
 	SubmissionTimeoutError,
 } from '../errors.ts';
 import { type FlueTraceCarrier, interceptExecution } from '../execution-interceptor.ts';
+import type { JsonValue } from '../json-snapshot.ts';
 import { getInternalSession } from '../session.ts';
-import type { Agent, CallHandle, DeliveredMessage } from '../types.ts';
+import type { Agent, CallHandle, DeliveredMessage, DeliveryMode } from '../types.ts';
 import { type AttachmentStore, createAttachmentRef } from './attachment-store.ts';
 import type { DispatchInput } from './dispatch-queue.ts';
 import type { CoordinatorEventEmitter } from './events.ts';
@@ -52,6 +53,10 @@ export interface AgentSubmissionInput {
 	readonly agent: string;
 	readonly id: string;
 	readonly message: DeliveredMessage;
+	/** Durable data for code only; never projected into the conversation. */
+	readonly deliveryContext?: JsonValue;
+	/** Busy-instance admission policy. Omitted is the historical `join` default. */
+	readonly deliveryMode?: DeliveryMode;
 	/**
 	 * Instance-creation data riding this submission. Consulted only when the
 	 * submission turns out to be the instance's first contact; ignored on
@@ -165,6 +170,8 @@ export interface AttachedAgentSubmissionOptions {
 	 * a duplicate.
 	 */
 	readonly idempotencyKey?: string;
+	readonly deliveryContext?: JsonValue;
+	readonly deliveryMode?: DeliveryMode;
 }
 
 export type AttachedAgentSubmissionAdmission = (
@@ -324,6 +331,8 @@ export function createDispatchAgentSubmissionInput(input: DispatchInput): AgentS
 		agent: input.agent,
 		id: input.id,
 		message: input.message,
+		...(input.deliveryContext !== undefined ? { deliveryContext: input.deliveryContext } : {}),
+		...(input.deliveryMode !== undefined ? { deliveryMode: input.deliveryMode } : {}),
 		...(input.initialData !== undefined ? { initialData: input.initialData } : {}),
 		acceptedAt: input.acceptedAt,
 	};
@@ -335,6 +344,8 @@ export async function createDirectAgentSubmissionInput(options: {
 	message: DeliveredMessage;
 	initialData?: unknown;
 	traceCarrier?: FlueTraceCarrier;
+	deliveryContext?: JsonValue;
+	deliveryMode?: DeliveryMode;
 	/** When present, the submission id is derived from it instead of minted. */
 	idempotencyKey?: string;
 }): Promise<AgentSubmissionInput> {
@@ -347,6 +358,8 @@ export async function createDirectAgentSubmissionInput(options: {
 		agent: options.agent,
 		id: options.id,
 		message: options.message,
+		...(options.deliveryContext !== undefined ? { deliveryContext: options.deliveryContext } : {}),
+		...(options.deliveryMode !== undefined ? { deliveryMode: options.deliveryMode } : {}),
 		...(options.initialData !== undefined ? { initialData: options.initialData } : {}),
 		acceptedAt: new Date().toISOString(),
 		...(options.traceCarrier ? { traceCarrier: options.traceCarrier } : {}),
@@ -408,6 +421,8 @@ function sameSubmissionIdentity(
 		incoming.agent === stored.agent &&
 		incoming.id === stored.id &&
 		deepEquals(incoming.message, stored.message) &&
+		deepEquals(incoming.deliveryContext, stored.deliveryContext) &&
+		(incoming.deliveryMode ?? 'join') === (stored.deliveryMode ?? 'join') &&
 		deepEquals(incoming.initialData, stored.initialData)
 	);
 }
@@ -1375,7 +1390,12 @@ async function openAgentSubmissionSession(
 	// same value. Creation data rides along for degenerate contexts that
 	// self-provision their conversation runtime; on a durable runtime the
 	// birth record admission wrote is the only creation data renders see.
-	const harness = await ctx.initializeRootHarness(agent, input.message, input.initialData);
+	const harness = await ctx.initializeRootHarness(
+		agent,
+		input.message,
+		input.initialData,
+		input.deliveryContext,
+	);
 	// External submissions always target the default session of the default
 	// harness. `harness.session()` hands out the public FlueSession facade;
 	// unwrap it to reach the internal durable submission executor surface.

@@ -126,7 +126,7 @@ export async function assembleNodeAgentRuntime(
 	const displacedAgents = getRegisteredFlueAgents();
 	registerFlueAgents(options.agents);
 
-	const { submissionStore, conversationStreamStore, attachmentStore } = options.stores;
+	const { submissionStore, conversationStreamStore, attachmentStore, instanceMaintenance } = options.stores;
 	if (!conversationStreamStore || !attachmentStore) {
 		throw new Error('[flue] Persistence adapter did not provide conversation stores.');
 	}
@@ -168,6 +168,20 @@ export async function assembleNodeAgentRuntime(
 		abortAgentInstance: (agentName, instanceId) => coordinator.abortInstance(agentName, instanceId),
 		conversationStreamStore,
 		attachmentStore,
+		instanceMaintenance:
+			instanceMaintenance === undefined
+				? undefined
+				: {
+						isQuiescent: (identity) => instanceMaintenance.isQuiescent(identity),
+						async purgeInstance(identity) {
+							// Drop process-local state before the synchronous SQL transaction.
+							// A racing admission then creates fresh caches and either lands before
+							// the transaction (making purge return busy) or after it.
+							await coordinator.invalidateInstance(identity.agentName, identity.instanceId);
+							return instanceMaintenance.purgeInstance(identity);
+						},
+					},
+		env: runtimeEnv,
 	};
 	configurationAdapters.set(runtimeConfiguration, options.adapter);
 	configureFlueRuntime(runtimeConfiguration);

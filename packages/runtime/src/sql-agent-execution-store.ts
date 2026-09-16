@@ -529,7 +529,7 @@ class AgentSubmissionStoreImpl implements AgentSubmissionStore {
 				} catch {
 					break;
 				}
-				if (submission.input.agent !== agentName) break;
+				if (submission.input.agent !== agentName || submission.input.deliveryMode === 'fifo') break;
 				this.sql.exec(
 					`UPDATE flue_agent_submissions
 					 SET status = 'joining', joined_into = ?

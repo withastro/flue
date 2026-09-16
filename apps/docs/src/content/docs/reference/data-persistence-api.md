@@ -13,6 +13,13 @@ The adapter surface is Node-only: on the Cloudflare target every agent instance 
 ## `PersistenceAdapter`
 
 ```ts
+interface PersistenceStores {
+  submissionStore: AgentSubmissionStore;
+  conversationStreamStore: ConversationStreamStore;
+  attachmentStore: AttachmentStore;
+  instanceMaintenance?: AgentInstanceMaintenance;
+}
+
 interface PersistenceAdapter {
   connect(): PersistenceStores | Promise<PersistenceStores>;
   migrate?(): void | Promise<void>;
@@ -39,6 +46,10 @@ interface PersistenceStores {
 - `submissionStore` — durable submission lifecycle storage.
 - `conversationStreamStore` — canonical per-agent-instance conversation streams.
 - `attachmentStore` — immutable attachment bytes referenced by canonical conversation records.
+
+### Optional instance maintenance
+
+Adapters that support physical instance deletion expose `instanceMaintenance`. `isQuiescent()` reports whether one instance has unsettled work. `purgeInstance()` must atomically refuse a busy instance, delete every physical submission/conversation/checkpoint/attachment row when settled, and return precise affected/no-op facts. Repeated purge is a supported no-op. The built-in Node SQLite store and Cloudflare Durable Object SQLite implement this contract. Other adapters may omit it; the public maintenance API then fails clearly instead of doing a partial delete.
 
 ## `AgentSubmissionStore`
 

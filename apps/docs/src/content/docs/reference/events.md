@@ -191,6 +191,18 @@ observe((event) => {
 
 The pattern converges across process restarts and Durable Object eviction: a fresh isolate's recovery re-emits `submission_running` for every interrupted submission (and `submission_queued` re-fires on admission replays) before those submissions settle, so the new observer's busy set rebuilds itself. The at-least-once emissions are absorbed by the set semantics.
 
+## Durable mutation observations
+
+```ts
+import { observeDurableMutations } from '@flue/runtime';
+
+observeDurableMutations((mutation) => {
+  // { operation, scope, identityHash, affected, noOp }
+});
+```
+
+This separate neutral observer emits only after a durable admission, abort, or purge result is known. It does not receive the normal agent event or `FlueEventContext`, so it carries no messages, delivery context, creation data, prompt, result, error, agent name, instance id, submission id, or other raw private value. `identityHash` is a length-delimited SHA-256 correlation value, not an anonymity guarantee for predictable ids. Delivery is live-only and best-effort; use canonical stores as durable truth.
+
 ### `submission_recovery`
 
 ```ts

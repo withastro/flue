@@ -141,6 +141,20 @@ export function defineStoreContractTests(label: string, backend: StoreContractTe
 				});
 			});
 
+			it('replays identical private delivery context and conflicts when it changes', async () => {
+				const store = await create();
+				const input = dispatchInput({ deliveryContext: { tenant: 't-1', token: 'private' } });
+				const first = await store.admitDispatch(input);
+				const replay = await store.admitDispatch({
+					...input,
+					deliveryContext: { tenant: 't-1', token: 'private' },
+				});
+				expect(replay).toEqual(first);
+				expect(
+					await store.admitDispatch({ ...input, deliveryContext: { tenant: 't-2' } }),
+				).toEqual({ kind: 'conflict' });
+			});
+
 			it('returns conflict when one submission id is reused with another payload', async () => {
 				const store = await create();
 				await store.admitDispatch(dispatchInput());
@@ -1144,6 +1158,20 @@ export function defineStoreContractTests(label: string, backend: StoreContractTe
 				});
 				// No double-claim: the prefix is spoken for.
 				expect(await store.claimJoinableSubmissions(host, 'assistant')).toEqual([]);
+			});
+
+			it('stops at a fifo delivery so it runs only after the busy host settles', async () => {
+				const store = await create();
+				const host = await hostWithQueued(store, 0);
+				await admitDispatchReady(
+					store,
+					dispatchInput({ submissionId: 'fifo-1', deliveryMode: 'fifo' }),
+				);
+				await admitDispatchReady(store, dispatchInput({ submissionId: 'behind-fifo' }));
+				expect(await store.claimJoinableSubmissions(host, 'assistant')).toEqual([]);
+				expect(await store.completeSubmission(host)).toBe(true);
+				const runnable = await store.listRunnableSubmissions();
+				expect(runnable.map((submission) => submission.submissionId)).toEqual(['fifo-1']);
 			});
 
 			it('claims nothing for a stale attempt or a host that is not running', async () => {

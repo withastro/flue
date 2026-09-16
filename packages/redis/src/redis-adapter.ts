@@ -643,7 +643,12 @@ class RedisSubmissionStore implements AgentSubmissionStore {
 			if (row.status !== 'queued') continue;
 			if (!row.canonicalReadyAt || row.abortRequestedAt) break;
 			const submission = await this.readOperationalSubmission(id, 'queued');
-			if (!submission || submission.input.agent !== agentName) break;
+			if (
+				!submission ||
+				submission.input.agent !== agentName ||
+				submission.input.deliveryMode === 'fifo'
+			)
+				break;
 			candidates.push(submission);
 		}
 		if (candidates.length === 0) return [];

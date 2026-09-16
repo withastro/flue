@@ -948,7 +948,7 @@ class MysqlSubmissionStore implements AgentSubmissionStore {
 				} catch {
 					break;
 				}
-				if (submission.input.agent !== agentName) break;
+				if (submission.input.agent !== agentName || submission.input.deliveryMode === 'fifo') break;
 				await tx.query(
 					`UPDATE flue_agent_submissions SET status = 'joining', joined_into = ? WHERE submission_id = ? AND status = 'queued'`,
 					[host.submissionId, submission.submissionId],

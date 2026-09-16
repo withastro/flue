@@ -9,6 +9,7 @@ import {
 	renderAgentFunctionWithStructure,
 } from './hooks/render.ts';
 import { createHookStateBuffer } from './hooks/use-persistent-state.ts';
+import type { JsonValue } from './json-snapshot.ts';
 import { createMcpConnection, type McpConnectionResolver } from './mcp.ts';
 import type { McpConnectionDefinition, McpUnavailableConnection } from './mcp-types.ts';
 import { createAgentOutputChannel } from './message-output.ts';
@@ -91,6 +92,7 @@ export interface FlueContextInternal extends FlueEventContext {
 		agent: Agent,
 		delivery?: DeliveredMessage,
 		data?: unknown,
+		deliveryContext?: JsonValue,
 	): Promise<Harness>;
 	createEvent(event: FlueEventInput): FlueEvent;
 	publishEvent(event: FlueEvent, observation?: FlueObservationDetail): void;
@@ -187,6 +189,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 			agent: Agent,
 			delivery?: DeliveredMessage,
 			data?: unknown,
+			deliveryContext?: JsonValue,
 		): Promise<Harness> {
 			if (!conversationWriter || !attachmentStore) {
 				localConversationRuntime ??= createLocalConversationRuntime(config);
@@ -204,6 +207,7 @@ export function createFlueContext(config: FlueContextConfig): FlueContextInterna
 				{ ...config, conversationWriter, attachmentStore, mcpConnections },
 				emitEvent,
 				delivery,
+				deliveryContext,
 			);
 		},
 
@@ -297,6 +301,7 @@ async function initializeRootHarness(
 	config: FlueContextConfig,
 	emitEvent: (event: FlueEventInput, observation?: FlueObservationDetail) => void,
 	delivery?: DeliveredMessage,
+	deliveryContext?: JsonValue,
 ): Promise<Harness> {
 	if (!config.conversationWriter || !config.attachmentStore) {
 		throw new Error('[flue] Canonical conversation runtime is not configured.');
@@ -324,6 +329,7 @@ async function initializeRootHarness(
 		store: hookState,
 		output: outputChannel,
 		delivery,
+		deliveryContext,
 		instanceId: config.id,
 		...(config.agentName === undefined ? {} : { agentName: config.agentName }),
 		initialData,
@@ -493,8 +499,9 @@ async function initializeRootHarness(
 		hookState,
 		rerender,
 		output: outputChannel,
-		advanceDelivery: (message) => {
+		advanceDelivery: (message, context) => {
 			renderState.delivery = message;
+			renderState.deliveryContext = context;
 		},
 		resources: resourceRuntime,
 		envSlot,

@@ -150,8 +150,11 @@ function dispatch(agent: Agent, request: AgentDispatchRequest): Promise<Dispatch
 interface AgentDispatchRequest {
   id: string;
   message: DeliveredMessageInput;
+  deliveryContext?: JsonValue;
+  deliveryMode?: 'join' | 'fifo';
   initialData?: unknown;
   uid?: string | null;
+  idempotencyKey?: string;
 }
 
 interface DispatchReceipt {
@@ -167,6 +170,9 @@ Request fields:
 
 - `id` — the target instance id. Required, non-empty. The instance is created on first contact; there is no separate create step.
 - `message` — the delivered message. Snapshotted at admission time.
+- `deliveryContext` — JSON-only per-delivery data for agent code and tool closures. It is durable across queueing, joining, and restart, but never enters `DeliveredMessage`, conversation records, or provider input. Read it with `useDeliveryContext<T>()`. A keyed replay must carry an equal value.
+- `deliveryMode` — `'join'` (the default) lets the delivery join a busy response. `'fifo'` keeps it queued until earlier work settles, so it gets a distinct response.
+- `idempotencyKey` — the caller's stable name for the delivery. Equal retries converge on one submission; changing the message, private context, mode, or creation data rejects with `SubmissionConflictError`.
 - `initialData` — instance-creation data, consulted **only when this send creates the instance**: validated against the agent's `initialData` schema static (when declared) and recorded once, readable forever via `useInitialData()`. Silently ignored when the send continues an existing instance — pair with `uid: null` to error instead. Cannot be combined with a string `uid`; the combination is rejected at validation, before anything durable happens (the condition forbids creation, so the seed could never apply).
 - `uid` — the send condition; see [Conditional sends](#conditional-sends).
 
@@ -181,7 +187,7 @@ Behavior and errors:
 - The target must be a registered agent of the current application (a `'use agent'` export, or a `start()` entry). An unregistered function rejects; a non-function first argument rejects with `InvalidRequestError`.
 - Calling `dispatch()` before a runtime is configured rejects — inside a Flue-built server the runtime is configured automatically; standalone scripts call [`start()`](#start) first.
 - A missing `id` rejects with a human-readable `Error`; a malformed `message` throws `InvalidRequestError`.
-- A dispatch to a busy instance joins the live response at the next turn boundary; a dispatch to an idle instance wakes a new response. Deliveries that miss the live response run as their own submission from the durable queue — they are never lost. Dispatched activity belongs to the continuing instance and shares one accepted order with direct HTTP prompts to it.
+- A dispatch using the default `deliveryMode: 'join'` joins a busy instance's live response at the next turn boundary; `deliveryMode: 'fifo'` waits for its own response. A dispatch to an idle instance wakes a new response. Deliveries that miss the live response run as their own submission from the durable queue — they are never lost. Dispatched activity belongs to the continuing instance and shares one accepted order with direct HTTP prompts to it.
 - **Target differences.** On Cloudflare, dispatch durably admits work to the target agent's Durable Object and may retry processing after an interruption. On Node, delivery durability follows the configured [persistence adapter](/docs/reference/data-persistence-api/): the default in-memory store is process-lifetime only, while a durable adapter keeps admitted dispatches across restarts and reconciles them on the replacement process. On both targets processing is at-least-once — design external side effects to be idempotent.
 
 ## Conditional sends
@@ -276,6 +282,17 @@ class AgentRunError extends Error {
 ```
 
 The rejection of a `read()` whose submission settled `failed` or `aborted`. The settlement's underlying error, when one was recorded, is attached as `cause`.
+
+## Instance quiescence and purge
+
+```ts
+quiesceAgentInstance(agent, id, { signal?, pollIntervalMs? }): Promise<{ quiescent: true }>;
+purgeAgentInstance(agent, id): Promise<AgentInstancePurgeResult>;
+```
+
+`quiesceAgentInstance()` waits until the instance has no unsettled submissions. `purgeAgentInstance()` physically deletes its submission rows, conversation batches and checkpoints, and attachments. Purge never deletes unsettled work: it returns `outcome: 'busy'`, `affected: 0`, and `noOp: true`. A successful purge returns exact category counts; a repeated purge returns `outcome: 'not_found'` and `noOp: true`.
+
+The built-in Node SQLite adapter and Cloudflare Durable Object SQLite support this contract. A custom adapter must expose `PersistenceStores.instanceMaintenance`; otherwise both calls fail with a clear unsupported-adapter error. Quiescence is a point-in-time fact, so callers that admit work concurrently must use the purge result as the final safety check.
 
 ## `getAgentInstance()`
 

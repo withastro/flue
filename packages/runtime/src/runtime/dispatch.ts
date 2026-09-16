@@ -1,3 +1,4 @@
+import { cloneJsonSerializable, type JsonValue } from '../json-snapshot.ts';
 import type { DeliveredMessage, DispatchReceipt, NamedAgentDispatchRequest } from '../types.ts';
 import type { DispatchQueue } from './dispatch-queue.ts';
 import { deriveKeyedSubmissionId, generateSubmissionId } from './ids.ts';
@@ -31,6 +32,17 @@ export async function enqueueDispatch(options: {
 		agent,
 		id: options.request.id,
 		message,
+		...(options.request.deliveryContext !== undefined
+			? {
+					deliveryContext: cloneJsonSerializable(
+						options.request.deliveryContext,
+						'deliveryContext',
+					) as JsonValue,
+				}
+			: {}),
+		...(options.request.deliveryMode !== undefined
+			? { deliveryMode: options.request.deliveryMode }
+			: {}),
 		...(options.request.initialData !== undefined
 			? { initialData: options.request.initialData }
 			: {}),
@@ -51,6 +63,9 @@ function validateDispatchRequest(
 	}
 	if (!isRegisteredAgentIdentity(agent)) {
 		throw new Error(`[flue] dispatch() target agent "${agent}" is not registered.`);
+	}
+	if (request.deliveryMode !== undefined && request.deliveryMode !== 'join' && request.deliveryMode !== 'fifo') {
+		throw new Error('[flue] dispatch() deliveryMode must be "join" or "fifo".');
 	}
 	return parseDeliveredMessage(request.message);
 }

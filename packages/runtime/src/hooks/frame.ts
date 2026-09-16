@@ -1,3 +1,4 @@
+import type { JsonValue } from '../json-snapshot.ts';
 import type { McpConnectionDefinition } from '../mcp-types.ts';
 import type {
 	AgentFinishDeclaration,
@@ -63,6 +64,8 @@ export interface RenderStateContext {
 	 * message triggered the run (tests/tooling renders, delegated operations).
 	 */
 	delivery?: DeliveredMessage;
+	/** Model-hidden durable data for the current delivery. */
+	deliveryContext?: JsonValue;
 	/**
 	 * Instance-creation data (already schema-parsed when the agent declares
 	 * an `initialData` schema). Constant for the instance's life; read via

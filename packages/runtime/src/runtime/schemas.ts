@@ -1,7 +1,8 @@
 import * as v from 'valibot';
 import { RESERVED_SIGNAL_TYPES } from '../conversation-records.ts';
 import { InvalidRequestError } from '../errors.ts';
-import type { DeliveredMessage } from '../types.ts';
+import { cloneJsonSerializable, type JsonValue } from '../json-snapshot.ts';
+import type { DeliveredMessage, DeliveryMode } from '../types.ts';
 
 export const MAX_IMAGE_DATA_LENGTH = 14 * 1024 * 1024;
 
@@ -128,24 +129,50 @@ export function parseDeliveredInput(value: unknown): {
 	initialData?: unknown;
 	uid?: string | null;
 	idempotencyKey?: string;
+	deliveryContext?: JsonValue;
+	deliveryMode?: DeliveryMode;
 } {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) {
 		return { message: parseDeliveredMessage(value) };
 	}
-	if (!('initialData' in value) && !('uid' in value) && !('idempotencyKey' in value)) {
+	if (
+		!('initialData' in value) &&
+		!('uid' in value) &&
+		!('idempotencyKey' in value) &&
+		!('deliveryContext' in value) &&
+		!('deliveryMode' in value)
+	) {
 		return { message: parseDeliveredMessage(value) };
 	}
-	const { initialData, uid, idempotencyKey, ...rest } = value as Record<string, unknown>;
+	const { initialData, uid, idempotencyKey, deliveryContext, deliveryMode, ...rest } = value as Record<
+		string,
+		unknown
+	>;
 	if ('uid' in value && uid !== null && typeof uid !== 'string') {
 		throw new InvalidRequestError({
 			reason:
 				'`uid` must be a string (continue only that incarnation) or null (create only when fresh).',
 		});
 	}
+	if (deliveryMode !== undefined && deliveryMode !== 'join' && deliveryMode !== 'fifo') {
+		throw new InvalidRequestError({ reason: '`deliveryMode` must be "join" or "fifo".' });
+	}
+	let snappedContext: JsonValue | undefined;
+	if (deliveryContext !== undefined) {
+		try {
+			snappedContext = cloneJsonSerializable(deliveryContext, 'deliveryContext') as JsonValue;
+		} catch (error) {
+			throw new InvalidRequestError({
+				reason: error instanceof Error ? error.message : 'deliveryContext must be JSON-serializable.',
+			});
+		}
+	}
 	return {
 		message: parseDeliveredMessage(rest),
 		...(initialData !== undefined ? { initialData } : {}),
 		...('uid' in value ? { uid: uid as string | null } : {}),
 		...('idempotencyKey' in value ? { idempotencyKey: parseIdempotencyKey(idempotencyKey) } : {}),
+		...(snappedContext !== undefined ? { deliveryContext: snappedContext } : {}),
+		...(deliveryMode !== undefined ? { deliveryMode: deliveryMode as DeliveryMode } : {}),
 	};
 }

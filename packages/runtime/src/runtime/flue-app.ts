@@ -1,3 +1,7 @@
+import type {
+	AgentInstanceMaintenance,
+	AgentInstancePurgeResult,
+} from '../agent-execution-store.ts';
 import type { ConversationRecord } from '../conversation-records.ts';
 import { configureErrorRendering, InvalidRequestError } from '../errors.ts';
 import type {
@@ -11,6 +15,7 @@ import type { AttachmentStore } from './attachment-store.ts';
 import type { ConversationStreamStore } from './conversation-stream-store.ts';
 import { enqueueDispatch } from './dispatch.ts';
 import type { DispatchQueue } from './dispatch-queue.ts';
+import { hashDurableIdentity, publishDurableMutation } from './durable-mutations.ts';
 import { normalizeMessageInput } from './message-input.ts';
 import { getRegisteredAgentIdentity } from './registration.ts';
 import type { RuntimeActivityGate } from './runtime-activity-gate.ts';
@@ -33,6 +38,8 @@ export interface NodeRuntime extends RuntimeBase {
 	abortAgentInstance: (agentName: string, instanceId: string) => Promise<boolean>;
 	conversationStreamStore: ConversationStreamStore;
 	attachmentStore: AttachmentStore;
+	instanceMaintenance?: AgentInstanceMaintenance;
+	env?: Record<string, unknown>;
 }
 
 export interface CloudflareRuntime extends RuntimeBase {
@@ -90,6 +97,96 @@ export async function dispatch(
 		request: resolveAgentDefinitionDispatchRequest(agent, request),
 		dispatchQueue: rt.dispatchQueue,
 	});
+}
+
+/** What `getAgentInstance()` reports about one existing agent instance. */
+export interface AgentInstanceQuiescence {
+	readonly quiescent: boolean;
+}
+
+export type { AgentInstancePurgeResult };
+
+/** Wait until an instance has no unsettled durable work. */
+export async function quiesceAgentInstance(
+	agent: Agent,
+	id: string,
+	options: { signal?: AbortSignal; pollIntervalMs?: number } = {},
+): Promise<AgentInstanceQuiescence> {
+	const { rt, name } = resolveMaintenanceTarget(agent, id, 'quiesceAgentInstance');
+	const poll = Math.max(1, options.pollIntervalMs ?? 25);
+	for (;;) {
+		if (options.signal?.aborted) throw options.signal.reason;
+		let quiescent: boolean;
+		if (rt.target === 'node') {
+			if (!rt.instanceMaintenance) throw unsupportedMaintenance();
+			quiescent = await rt.instanceMaintenance.isQuiescent({ agentName: name, instanceId: id });
+		} else {
+			const response = await rt.routeAgentRequest(
+				new Request('https://flue.invalid/__flue/internal/quiescence'),
+				{},
+				{ agentName: name, instanceId: id },
+			);
+			if (!response) throw unsupportedMaintenance();
+			quiescent = Boolean((await response.json<{ quiescent: boolean }>()).quiescent);
+		}
+		if (quiescent) return { quiescent: true };
+		await new Promise<void>((resolve, reject) => {
+			const timer = setTimeout(resolve, poll);
+			options.signal?.addEventListener(
+				'abort',
+				() => {
+					clearTimeout(timer);
+					reject(options.signal?.reason);
+				},
+				{ once: true },
+			);
+		});
+	}
+}
+
+/** Physically delete a settled instance. Busy work is never deleted. */
+export async function purgeAgentInstance(
+	agent: Agent,
+	id: string,
+): Promise<AgentInstancePurgeResult> {
+	const { rt, name } = resolveMaintenanceTarget(agent, id, 'purgeAgentInstance');
+	let result: AgentInstancePurgeResult;
+	if (rt.target === 'node') {
+		if (!rt.instanceMaintenance) throw unsupportedMaintenance();
+		result = await rt.instanceMaintenance.purgeInstance({ agentName: name, instanceId: id });
+	} else {
+		const response = await rt.routeAgentRequest(
+			new Request('https://flue.invalid/__flue/internal/purge', { method: 'POST' }),
+			{},
+			{ agentName: name, instanceId: id },
+		);
+		if (!response) throw unsupportedMaintenance();
+		result = await response.json<AgentInstancePurgeResult>();
+	}
+	if (rt.target === 'node') {
+		publishDurableMutation({
+			operation: 'purge',
+			scope: 'instance',
+			identityHash: await hashDurableIdentity([name, id]),
+			affected: result.affected,
+			noOp: result.noOp,
+		});
+	}
+	return result;
+}
+
+function resolveMaintenanceTarget(agent: Agent, id: string, operation: string) {
+	const rt = runtimeConfig;
+	if (!rt) throw new Error(`[flue] ${operation}() called before runtime was configured.`);
+	if (!isAgentFunction(agent)) throw new InvalidRequestError({ reason: `${operation}() requires an agent function.` });
+	if (typeof id !== 'string' || id.trim() === '') throw new Error(`[flue] ${operation}() requires a non-empty instance id.`);
+	const name = getRegisteredAgentIdentity(agent);
+	if (!name) throw new Error(`[flue] ${operation}() target agent is not registered.`);
+	return { rt, name };
+}
+
+function unsupportedMaintenance(): Error {
+	return new Error('[flue] The configured persistence adapter does not implement instanceMaintenance; physical purge and quiescence are unsupported.');
 }
 
 /** What `getAgentInstance()` reports about one existing agent instance. */
@@ -186,6 +283,10 @@ function resolveAgentDefinitionDispatchRequest(
 		agent: name,
 		id: request.id,
 		message: normalizeMessageInput(request.message),
+		...(request.deliveryContext !== undefined
+			? { deliveryContext: request.deliveryContext }
+			: {}),
+		...(request.deliveryMode !== undefined ? { deliveryMode: request.deliveryMode } : {}),
 		...(request.initialData !== undefined ? { initialData: request.initialData } : {}),
 		// `uid: null` is a meaningful condition (create-only), so presence is
 		// keyed on the property, not on undefined.
