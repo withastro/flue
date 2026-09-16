@@ -15,7 +15,7 @@
  * `resource_snapshot` record), the diff, and the signal-body rendering.
  */
 
-import { fnv1a64 } from './fnv.ts';
+import { createHash } from 'node:crypto';
 
 /**
  * One resource as the model sees it named. `schema` only appears on tool
@@ -51,13 +51,15 @@ export interface ResourceSnapshot {
 }
 
 /**
- * Digest one render's composed instruction document (FNV-1a 64-bit — change
- * detection, not cryptography). `undefined` (an agent with no instruction
+ * Digest one render's composed instruction document with native SHA-256 over
+ * UTF-16LE bytes, preserving lone surrogate code units. `undefined` (no instruction
  * document) digests as the empty string, so gaining or losing the document
  * counts as a change like any edit.
  */
 export function digestInstructions(instructions: string | undefined): string {
-	return fnv1a64(instructions ?? '');
+	return createHash('sha256')
+		.update(instructions ?? '', 'utf16le')
+		.digest('hex');
 }
 
 /**
