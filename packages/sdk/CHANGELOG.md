@@ -1,5 +1,11 @@
 # @flue/sdk
 
+## 2.0.8
+
+### Patch Changes
+
+- 9d649bc: The Cloudflare Sandbox documentation page now presents `flue add sandbox cloudflare` as a copyable prompt for your coding agent, with an explainer of what the blueprint-driven agent may do — installing `@cloudflare/sandbox`, wiring the Durable Object binding, migration, and container `Dockerfile`, and updating the agent to use the sandbox.
+
 ## 2.0.7
 
 ### Patch Changes

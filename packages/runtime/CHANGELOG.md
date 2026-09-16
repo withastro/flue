@@ -1,5 +1,18 @@
 # @flue/runtime
 
+## 2.0.8
+
+### Patch Changes
+
+- aaefa69: Interrupted submissions no longer retry forever when the recovery render throws: once the submission's durability deadline passes, a submission whose classification render keeps failing is settled as timed out instead of being re-rendered on every supervisor wake without ever consuming an attempt.
+- 3d7a0ef: The Cloudflare binding's Anthropic gateway path now maps the agent's `thinkingLevel` to an adaptive-thinking effort (`output_config.effort`), so `useModel` thinking levels take effect on adaptive-thinking models instead of always running at Anthropic's default.
+- 3a6242f: The Cloudflare binding provider now accepts a `cacheRetention` option (`'short'` or `'long'`) to enable Anthropic prompt caching for `anthropic/…` gateway models — repeated prefixes are served from cache at the cached input rate instead of paying full input price every turn. Default `'none'` keeps the previous behavior.
+- 9d649bc: The Cloudflare Sandbox documentation page now presents `flue add sandbox cloudflare` as a copyable prompt for your coding agent, with an explainer of what the blueprint-driven agent may do — installing `@cloudflare/sandbox`, wiring the Durable Object binding, migration, and container `Dockerfile`, and updating the agent to use the sandbox.
+- 2d800f5: Fix the first streamed delta being delayed by the full coalescing interval: after a quiet period, the first delta now flushes to the durable stream immediately, so observers see output as soon as the model starts responding.
+- 3f3daae: Fix duplicate responses appearing after a model stream fails partway through and Flue retries it successfully. Clients now see only the successful replacement response instead of the incomplete first attempt followed by the complete retry.
+- 28e1afe: Models synthesized from a dynamic model template (providers that serve model IDs beyond their catalog, such as Workers AI) are now detectable via the exported `isDynamicModel()` helper, and the runtime warns once when such a model is first resolved — previously their cost silently read as $0 with no way to tell "free" apart from "unknown".
+- c5b1e25: GenAI trace content now stays schema-valid when it cannot be fully represented: oversized, unserializable, or transform-failing messages under `gen_ai.input.messages` / `gen_ai.output.messages` fall back to a shape-preserving `role: "flue"` message (output fallbacks keep `finish_reason`) instead of a bare diagnostic string or an array element that violates the message schema.
+
 ## 2.0.7
 
 ### Patch Changes
