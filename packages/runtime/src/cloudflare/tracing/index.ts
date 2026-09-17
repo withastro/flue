@@ -80,10 +80,13 @@ export interface CloudflareTracingOptions {
 	content?: ContentOption;
 	/**
 	 * Per-span content pool in bytes, defaulting to `CONTENT_BUDGET_BYTES`
-	 * (56 KiB, sized to workerd's 64 KiB span-attribute cap). Raise it to ship
-	 * fuller prompts and tool results to a backend that isn't bound by
-	 * workerd's limits; the per-span pool and the 128-byte sentinel floor still
-	 * apply. Must be at least 128 bytes.
+	 * (56 KiB, sized to workerd's 64 KiB span-attribute cap). On this backend
+	 * it is a tightening control only: workerd's span cap is a platform limit
+	 * no setting raises, so a value above the default does not ship fuller
+	 * content — the oversized write is silently dropped and can suppress the
+	 * usage, finish, and error attributes written after it. Raise the pool on
+	 * the OpenTelemetry adapter instead, for a backend without that cap. Must
+	 * be at least 128 bytes.
 	 */
 	contentBudgetBytes?: number;
 }
