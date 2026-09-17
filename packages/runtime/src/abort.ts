@@ -46,6 +46,67 @@ export const ABANDONED_TOOL_SUFFIX =
 	' The tool execution could not be confirmed cancelled and may still be running.';
 
 /**
+ * The distinguishable settlement of a tool call that exceeded its declared
+ * `timeoutMs`. Thrown by the harness race and surfaced to the model as the
+ * tool's error result (the conversation continues), never as a submission
+ * failure. Hosts can `instanceof` this to treat timeouts structurally.
+ */
+export class ToolTimeoutError extends Error {
+	readonly toolName: string;
+	readonly timeoutMs: number;
+
+	constructor(toolName: string, timeoutMs: number) {
+		super(`Tool "${toolName}" timed out after ${timeoutMs}ms`);
+		this.name = 'ToolTimeoutError';
+		this.toolName = toolName;
+		this.timeoutMs = timeoutMs;
+	}
+}
+
+/**
+ * Race a tool's `run()` against its declared deadline.
+ *
+ * No deadline: behaves exactly like {@link abandonToolOnAbort} (a host abort
+ * still un-wedges the turn). With a deadline: the tool's signal is composed
+ * with `AbortSignal.timeout(deadline)` — the tool sees the expiry as its own
+ * signal aborting — and on expiry the race settles deterministically with a
+ * {@link ToolTimeoutError}, whatever the abandoned run does afterwards (its
+ * late settlement is consumed under the same orphan discipline as
+ * {@link abandonToolOnAbort}, so nothing surfaces as an unhandled
+ * rejection). A host abort before the deadline keeps the plain abort error.
+ */
+export function raceToolWithDeadline<T>(
+	run: () => T | Promise<T>,
+	signal: AbortSignal | undefined,
+	timeoutMs: number | undefined,
+	toolName: string,
+): Promise<T> {
+	if (timeoutMs === undefined) return abandonToolOnAbort(run, signal);
+	const { timeoutSignal, mergedSignal } = composeTimeoutSignal(timeoutMs, signal);
+	return new Promise<T>((resolve, reject) => {
+		abandonToolOnAbort(run, mergedSignal).then(
+			(value) => resolve(value),
+			(error) => {
+				// The deadline fired when EITHER the race's own timer has aborted,
+				// or the settled error carries a TimeoutError reason — a signal-
+				// aware run observing its own composed signal can reject with the
+				// raw TimeoutError in a microtask before this race's timer flags
+				// `timeoutSignal.aborted`. In both cases the deadline is the
+				// binding contract: settle with the structured timeout error. A
+				// host abort (any other reason) passes through unchanged.
+				const reason = mergedSignal?.reason;
+				const deadlineFired =
+					timeoutSignal?.aborted === true ||
+					(error instanceof DOMException && error.name === 'TimeoutError') ||
+					(reason instanceof DOMException && reason.name === 'TimeoutError');
+				if (deadlineFired) reject(new ToolTimeoutError(toolName, timeoutMs));
+				else reject(error);
+			},
+		);
+	});
+}
+
+/**
  * Await `run()`, but reject promptly with an `AbortError` when `signal`
  * fires instead of waiting for the promise — the pi tool loop awaits tool
  * promises without racing its own signal, so a signal-deaf tool (a sandbox
@@ -58,15 +119,15 @@ export const ABANDONED_TOOL_SUFFIX =
  * their own first; the race is then a no-op.
  */
 export function abandonToolOnAbort<T>(
-	run: () => Promise<T>,
+	run: () => T | Promise<T>,
 	signal: AbortSignal | undefined,
 ): Promise<T> {
 	if (signal?.aborted) return Promise.reject(abortErrorFor(signal));
-	if (!signal) return run();
+	if (!signal) return Promise.resolve(run());
 
 	let pending: Promise<T>;
 	try {
-		pending = run();
+		pending = Promise.resolve(run());
 	} catch (error) {
 		return Promise.reject(error);
 	}

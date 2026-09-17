@@ -165,6 +165,28 @@ Four rules:
 
 Step records are operational bookkeeping: the model sees only the tool's final result, and step progress surfaces live as the call's log events. A thrown error is not an interruption — like any tool, a durable tool that throws settles the call as a tool error the model sees, and nothing retries automatically. Steps are scoped to one call: when the model invokes the tool again, they run fresh. The flags compose — a `durable: true, harness: true` tool receives both `step` and `harness`; wrap `harness.prompt(...)` in a step so recovery doesn't re-prompt. See [Durability](/docs/guide/durability/#durable-tools-and-stepdo) for how this fits the wider recovery model.
 
+## Bounded tools
+
+A tool whose internals hang — a transport that never observes its abort signal, an unbounded response-body read, a wedged SDK call — can silently consume an entire submission's durability budget while every turn around it looks healthy. Declare `timeoutMs` to bound one call:
+
+```ts title="src/tools/lookup-catalog.ts"
+import { defineTool } from '@flue/runtime';
+import * as v from 'valibot';
+
+export const lookupCatalog = defineTool({
+  name: 'lookup_catalog',
+  description: 'Query the upstream catalog API.',
+  input: v.object({ sku: v.string() }),
+  timeoutMs: 15_000,
+  async run({ data, signal }) {
+    const response = await fetch(`https://catalog.example.com/${data.sku}`, { signal });
+    // …
+  },
+});
+```
+
+When the deadline expires, the harness aborts the tool's `context.signal` (signal-aware code can clean up), settles the call with a `ToolTimeoutError` — surfaced to the model as the tool's error result, distinct from a thrown tool error — and discards the abandoned run's late settlement. The conversation continues: the model sees `Tool "<name>" timed out after <ms>ms` and can retry or change approach, while the submission's [durability timeout](/docs/guide/durability/) remains the outer backstop. A host abort (a session abort, a deployment) still lands as an abort, not a timeout.
+
 ## Conditional tools
 
 The agent function re-renders before every model call, and each render declares its tool set from scratch. That makes a tool's _presence_ just another piece of program logic: wrap `useTool` in a condition, and the tool exists only in the renders where the condition holds. Gate it on [persistent state](/docs/guide/agent-hooks/#persisted-state) and the agent can unlock its own capabilities:

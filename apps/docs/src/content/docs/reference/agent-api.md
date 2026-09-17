@@ -492,6 +492,7 @@ function defineTool<...>(options: {
   output?: ToolOutputSchema; // Valibot schema
   harness?: boolean;
   durable?: boolean;
+  timeoutMs?: number; // milliseconds
   run(context: ToolContext<...>): ToolRunEnvelope<Output> | string | void | Promise<ToolRunEnvelope<Output> | string | void>;
 }): ToolDefinition;
 ```
@@ -502,6 +503,7 @@ A typing and validation helper: it validates the definition and returns it froze
 - `input` — a Valibot schema for the call's arguments. Must be a top-level object schema (the model sends a JSON object); anything else throws. When present, the parsed output arrives as `context.data`, typed by inference. When absent, the tool receives no `data` property and callers' arguments are ignored.
 - `output` — a Valibot schema for the return value. When present, the runtime parses the returned value through it before recording; a mismatch throws `ToolOutputValidationError`, and a schema producing `undefined` throws `ToolOutputSerializationError`.
 - `harness`, `durable` — capability flags, detailed below. Must be booleans when present.
+- `timeoutMs` — an optional bound on one call's execution, in milliseconds. On expiry the harness aborts the tool's `context.signal` and settles the call with a `ToolTimeoutError` (a tool error the model sees, so the conversation continues); the submission's durability timeout remains the outer backstop. See [Bounded tools](/docs/guide/tools/#bounded-tools).
 - `run` — the implementation. May be async, and returns a `ToolRunEnvelope` — `{ output?, terminate? }`. `output` is the tool's result: it must be JSON-serializable, is snapshotted as JSON-compatible data, and is then JSON-stringified for the model; non-serializable output throws `ToolOutputSerializationError`. Returning a bare `string` is shorthand for `{ output: <string> }`, and returning nothing (`void`) is allowed only when no `output` schema is declared, reaching the model as `null`; any other bare return — a plain object, array, number, boolean, or `null` — throws, telling you to wrap it as `{ output: <value> }`. `terminate: true` ends the agent's turn once the current tool batch settles, the same loop-ending contract `finish`/`give_up` use — a multi-tool batch ends the turn only when every result in it terminates, a throwing tool never terminates, and the flag is recorded on the tool's canonical outcome, so termination survives a crash between the batch committing and the submission settling. Throwing inside `run` records a tool error the model sees; it does not fail the submission.
 - Arguments that fail the `input` schema throw `ToolInputValidationError` before `run` is invoked; the model receives the validation failure as the tool result and may retry.
 
@@ -542,6 +544,7 @@ The helper types `ToolInput<TTool>` and `ToolOutput<TTool>` extract a tool's inf
 
 - `harness: true` — `run` receives `harness`, the one interface to the agent's environment (`harness.sandbox`) and to models (`harness.prompt()`). Harness invocations are scoped to the tool call, count against the delegation-depth cap, and retain any child conversations they open. Harness tools only run inside an agent session, never standalone. Tools without the flag are pure functions of their data and cannot reach the runtime.
 - `durable: true` — `run` receives `step`, and every side effect in the run is expected to go through `step.do(...)`. In exchange, an interrupted call is re-executed on recovery — completed steps replay their recorded values instead of running again — rather than being settled with an unknown-outcome error like ordinary tools. See [Durable tools and `step.do`](/docs/guide/durability/#durable-tools-and-stepdo).
+- `timeoutMs: <ms>` — a per-call execution bound. When the deadline expires, the harness aborts the tool's `context.signal` and settles the call with `ToolTimeoutError` — the model sees `Tool "<name>" timed out after <ms>ms` as the tool's error result and the conversation continues; the abandoned run's late settlement is discarded, and a host abort still lands as an abort, not a timeout.
 
 The flags compose: a `durable: true, harness: true` tool receives both `step` and `harness` (wrap `harness.prompt(...)` in a step to avoid re-prompting on recovery).
 

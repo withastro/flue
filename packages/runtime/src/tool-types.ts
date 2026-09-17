@@ -129,6 +129,16 @@ export interface ToolDefinition<
 	 * settled with an unknown-outcome error like ordinary tools.
 	 */
 	readonly durable?: TDurable;
+	/**
+	 * Optional bound on one call's execution, in milliseconds. The harness
+	 * races `run` against the deadline: on expiry it aborts the tool's
+	 * `context.signal`, settles the call with a `ToolTimeoutError` (surfaced
+	 * to the model as the tool's error result — the conversation continues),
+	 * and discards the abandoned run's late settlement. The submission's
+	 * durability timeout remains the outer backstop; this bound just stops
+	 * one hung call from consuming it.
+	 */
+	readonly timeoutMs?: number;
 	// `| void` only for the no-`output`-schema case, where an undefined
 	// output is already an allowed result — a bare `() => sideEffect()` with
 	// no return statement is the same value at runtime, so nothing is lost by

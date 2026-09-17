@@ -42,6 +42,12 @@ export function useTool<
 	 * recovery with completed steps replaying their recorded values.
 	 */
 	durable?: TDurable;
+	/**
+	 * Optional bound on one call's execution, in milliseconds. On expiry the
+	 * harness aborts the tool's `context.signal` and settles the call with a
+	 * `ToolTimeoutError` — the conversation continues.
+	 */
+	timeoutMs?: number;
 	run: ToolDefinition<TInput, TOutput, THarness, TDurable>['run'];
 }): void;
 // A definition whose schema generics are already erased to the defaults

@@ -4,6 +4,7 @@ import {
 	ToolOutputValidationError,
 } from './errors.ts';
 import { cloneJsonSerializable } from './json-snapshot.ts';
+import { composeTimeoutSignal, raceToolWithDeadline } from './abort.ts';
 import { generateToolCallId } from './runtime/ids.ts';
 import { isTopLevelObjectSchema, isValibotSchema, parseValibot } from './schema.ts';
 import type {
@@ -28,6 +29,7 @@ export function defineTool<
 	output?: TOutput;
 	harness?: THarness;
 	durable?: TDurable;
+	timeoutMs?: number;
 	run: ToolDefinition<TInput, TOutput, THarness, TDurable>['run'];
 }): ToolDefinition<TInput, TOutput, THarness, TDurable> {
 	assertToolDefinition(options, 'defineTool()');
@@ -38,6 +40,7 @@ export function defineTool<
 		output: options.output as TOutput,
 		harness: options.harness as THarness,
 		durable: options.durable as TDurable,
+		...(options.timeoutMs !== undefined ? { timeoutMs: options.timeoutMs } : {}),
 		run: options.run,
 	});
 }
@@ -49,6 +52,7 @@ const TOOL_DEFINITION_FIELDS = new Set([
 	'output',
 	'harness',
 	'durable',
+	'timeoutMs',
 	'run',
 ]);
 
@@ -286,10 +290,22 @@ export async function validateAndRunTool<TTool extends ToolDefinition>(
 			`[flue] Tool "${tool.name}" declares \`harness: true\` and can only run inside an agent session — a standalone run has no harness.`,
 		);
 	}
-	const parsed = parseToolInput(tool, data, signal);
+	// The merged signal carries the per-tool deadline (when declared) so the
+	// tool's `context.signal` aborts on expiry; the race settles the deadline
+	// with a distinguishable ToolTimeoutError like the harness path does.
+	const { mergedSignal } = composeTimeoutSignal(tool.timeoutMs, signal);
+	const parsed = parseToolInput(tool, data, mergedSignal);
 	// `terminate` is a turn-loop concern; a standalone run has no turn to end,
 	// so only the resolved output survives here.
-	return resolveToolRun(tool, await tool.run(parsed.context)).output;
+	return resolveToolRun(
+		tool,
+		await raceToolWithDeadline(
+			() => tool.run(parsed.context),
+			mergedSignal,
+			tool.timeoutMs,
+			tool.name,
+		),
+	).output;
 }
 
 function assertNonEmptyString(value: unknown, label: string): asserts value is string {

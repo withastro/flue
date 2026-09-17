@@ -25,7 +25,13 @@ import type {
 	UserMessage,
 } from '@earendil-works/pi-ai';
 import type * as v from 'valibot';
-import { abandonToolOnAbort, abortErrorFor, createCallHandle } from './abort.ts';
+import {
+	abandonToolOnAbort,
+	abortErrorFor,
+	composeTimeoutSignal,
+	createCallHandle,
+	raceToolWithDeadline,
+} from './abort.ts';
 import {
 	createActivateSkillTool,
 	createBashTool,
@@ -4044,6 +4050,10 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				},
 			};
 			return this.wrapModelTool(tool, 'custom', (toolCallId, params, signal) => {
+				// The merged signal carries the tool's declared deadline so the
+				// tool sees the expiry as its own `context.signal` aborting, and
+				// the race settles it with a ToolTimeoutError below.
+				const { mergedSignal } = composeTimeoutSignal(toolDef.timeoutMs, signal);
 				if (preparedToolAdapter) {
 					return {
 						args: params,
@@ -4053,7 +4063,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 									type: 'text' as const,
 									text: await preparedToolAdapter.execute(
 										params as Record<string, unknown>,
-										signal,
+										mergedSignal,
 									),
 								},
 							],
@@ -4063,7 +4073,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					};
 				}
 				const toolLogger = this.createToolLogger(toolDef.name, toolCallId);
-				const parsed = parseToolInput(toolDef, params, signal, {
+				const parsed = parseToolInput(toolDef, params, mergedSignal, {
 					log: toolLogger,
 					toolCallId,
 					...(toolDef.durable
@@ -4080,13 +4090,21 @@ export class Session implements FlueSession, AgentSubmissionSession {
 						// never collide with a prior attempt's retained conversations).
 						const invocationId = toolDef.harness ? generateInvocationId() : undefined;
 						const harness = invocationId
-							? this.createInvocationHarness(invocationId, signal, toolDef)
+							? this.createInvocationHarness(invocationId, mergedSignal, toolDef)
 							: undefined;
 						try {
 							const context = harness
 								? ({ ...parsed.context, harness } as unknown as typeof parsed.context)
 								: parsed.context;
-							const resolved = resolveToolRun(toolDef, await toolDef.run(context));
+							const resolved = resolveToolRun(
+								toolDef,
+								await raceToolWithDeadline(
+									() => toolDef.run(context),
+									mergedSignal,
+									toolDef.timeoutMs,
+									toolDef.name,
+								),
+							);
 							const output = resolved.output;
 							return {
 								content: [
