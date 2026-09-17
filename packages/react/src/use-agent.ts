@@ -1,4 +1,9 @@
-import { type ConversationLiveMode, createFlueClient, type FlueClient } from '@flue/sdk';
+import {
+	type ConversationLiveMode,
+	createFlueClient,
+	type FlueClient,
+	type AgentSendResult,
+} from '@flue/sdk';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 import { type AgentSnapshot, emptyAgentState } from './agent-reducer.ts';
 import { AgentSession, type SendMessageOptions } from './agent-session.ts';
@@ -13,7 +18,7 @@ const emptySnapshot: AgentSnapshot = {
 };
 const emptySubscribe = () => () => {};
 const getEmptySnapshot = (): AgentSnapshot => emptySnapshot;
-const dormantSendMessage = async (): Promise<void> => {
+const dormantSendMessage = async (): Promise<never> => {
 	throw new Error('useFlueAgent() cannot send without a conversation url');
 };
 const dormantRefresh = (): void => {};
@@ -37,7 +42,7 @@ export interface UseFlueAgentOptions {
 }
 
 export interface UseFlueAgentResult extends AgentSnapshot {
-	sendMessage(message: string, options?: SendMessageOptions): Promise<void>;
+	sendMessage(message: string, options?: SendMessageOptions): Promise<AgentSendResult>;
 	/**
 	 * Re-checks the conversation and resumes live updates. Call this to observe a
 	 * conversation that may be created out-of-band after mount: when `status` is

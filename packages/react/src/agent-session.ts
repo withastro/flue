@@ -1,5 +1,7 @@
 import type {
 	AgentConversationObservation,
+	AgentPromptOptions,
+	AgentSendResult,
 	ConversationLiveMode,
 	DeliveredAttachment,
 	FlueClient,
@@ -12,9 +14,15 @@ import {
 	reduceAgentEvent,
 } from './agent-reducer.ts';
 
-export interface SendMessageOptions {
+/**
+ * Options for one `sendMessage` call. Everything `client.send()` accepts
+ * except the `message` itself is passed through untouched, so any SDK send
+ * control (idempotencyKey, initialData, uid, signal, …) works here too;
+ * `images` is the React convenience folded into the delivered message.
+ */
+export type SendMessageOptions = Omit<AgentPromptOptions, 'message'> & {
 	images?: DeliveredAttachment[];
-}
+};
 
 export class AgentSession {
 	private state: AgentState = { ...emptyAgentState };
@@ -56,19 +64,25 @@ export class AgentSession {
 		this.observation?.refresh();
 	};
 
-	sendMessage = async (message: string, options: SendMessageOptions = {}): Promise<void> => {
+	sendMessage = async (
+		message: string,
+		options: SendMessageOptions = {},
+	): Promise<AgentSendResult> => {
 		const localId = `local:${++this.localId}`;
-		this.dispatch({ type: 'local_send_submitted', localId, message, images: options.images });
+		const { images, ...sendOptions } = options;
+		this.dispatch({ type: 'local_send_submitted', localId, message, images });
 		try {
 			const receipt = await this.client.send({
+				...sendOptions,
 				message: {
 					kind: 'user',
 					body: message,
-					...(options.images?.length ? { attachments: options.images } : {}),
+					...(images?.length ? { attachments: images } : {}),
 				},
 			});
 			this.dispatch({ type: 'local_send_admitted', localId, submissionId: receipt.submissionId });
 			if (this.observation?.getSnapshot().phase === 'absent') this.observation.refresh();
+			return receipt;
 		} catch (error) {
 			const normalized = toError(error);
 			this.dispatch({ type: 'local_send_failed', localId, error: normalized });

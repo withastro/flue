@@ -45,13 +45,14 @@ interface UseFlueAgentResult {
   error: Error | undefined;
   failedSends: FailedSend[];
   settlements: FlueConversationSettlement[];
-  sendMessage(message: string, options?: SendMessageOptions): Promise<void>;
+  sendMessage(message: string, options?: SendMessageOptions): Promise<AgentSendResult>;
   refresh(): void;
 }
 
-interface SendMessageOptions {
+/** Every option `client.send()` accepts except `message` (see below), plus `images`. */
+type SendMessageOptions = Omit<AgentPromptOptions, 'message'> & {
   images?: DeliveredAttachment[];
-}
+};
 
 type AgentStatus = 'idle' | 'connecting' | 'submitted' | 'streaming' | 'error';
 ```
@@ -68,7 +69,9 @@ type AgentStatus = 'idle' | 'connecting' | 'submitted' | 'streaming' | 'error';
 
 ### `sendMessage()`
 
-Adds an optimistic user message, delivers it through the conversation client, and resolves when the server admits the prompt (202 admission). It does not wait for generation. If admission fails, the optimistic message is retained and surfaced through `failedSends` (with `status: 'error'`) so a UI can offer retry, and the promise rejects. The canonical user message later re-keys to the optimistic row's id, so the rendered row is stable across the optimistic→confirmed swap. Concurrent sends use the runtime's per-conversation queue. Calling it on a dormant hook rejects.
+Adds an optimistic user message, delivers it through the conversation client, and resolves with the admission receipt (`AgentSendResult`) when the server admits the prompt (202 admission). It does not wait for generation. The receipt carries the `submissionId` to correlate with `settlements`; on a replay it reports `deduplicated: true`. If admission fails, the optimistic message is retained and surfaced through `failedSends` (with `status: 'error'`) so a UI can offer retry, and the promise rejects. The canonical user message later re-keys to the optimistic row's id, so the rendered row is stable across the optimistic→confirmed swap. Concurrent sends use the runtime's per-conversation queue. Calling it on a dormant hook rejects.
+
+Because `SendMessageOptions` passes through everything `client.send()` accepts (minus the message itself), you can use an `idempotencyKey` to make a retry safe: a network failure does not prove the server rejected the prompt, so retry with the same key converges on the original submission instead of admitting a duplicate — generate and persist the key _before_ calling `sendMessage` (do not derive it from session-local state; it must survive unmounts and reloads to be useful).
 
 ### `refresh()`
 

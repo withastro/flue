@@ -22,9 +22,11 @@ export interface AgentSnapshot {
 	historyReady: boolean;
 	error: Error | undefined;
 	/**
-	 * Sends that failed before the server accepted them. Their optimistic
-	 * messages remain in `messages` (keyed by `id`) so a UI can show them with a
-	 * retry affordance instead of having them silently disappear.
+	 * Sends whose admission receipt never reached the client — the request was
+	 * rejected or its outcome is unknown (a lost response may still have been
+	 * admitted server-side). Their optimistic messages remain in `messages`
+	 * (keyed by `id`) so a UI can show them with a retry affordance instead of
+	 * having them silently disappear.
 	 */
 	failedSends: FailedSend[];
 	/**
