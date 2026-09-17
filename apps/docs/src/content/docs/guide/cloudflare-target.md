@@ -355,6 +355,7 @@ function createCloudflareTracing(options?: CloudflareTracingOptions): FlueInstru
 
 interface CloudflareTracingOptions {
   content?: false | { transform?(content: unknown, scope: GenAIContentScope): unknown | undefined };
+  contentBudgetBytes?: number; // per-span content pool, default 57_344 (56 KiB)
 }
 ```
 
@@ -387,7 +388,7 @@ instrument(
 );
 ```
 
-The transform runs on a detached copy; returning `undefined` omits that content, and a throwing transform emits a `[flue]` failure sentinel rather than the unredacted content. After the transform, a 56 KiB per-span content budget is enforced **in-band**: all content attributes on a span share one pool — Workers Traces caps a span's total attribute bytes, and token usage, finish, and error attributes must always land — with a reserve held so output messages have room beside large prompts. Payloads stay valid JSON, oldest messages drop first behind a `role: "flue"` sentinel message, and oversized strings are cut with a `[flue:truncated, N more bytes]` suffix — search for `[flue]` in the dashboard to find truncated content. `truncateContent` from `@flue/runtime/telemetry` is the same algorithm, exported for tighter budgets inside a transform.
+The transform runs on a detached copy; returning `undefined` omits that content, and a throwing transform emits a `[flue]` failure sentinel rather than the unredacted content. After the transform, a 56 KiB per-span content budget is enforced **in-band** (default, sized to workerd's 64 KiB span-attribute cap): all content attributes on a span share one pool — Workers Traces caps a span's total attribute bytes, and token usage, finish, and error attributes must always land — with a reserve held so output messages have room beside large prompts. Hosts not bound by workerd's limits can raise (or tighten) the pool with `contentBudgetBytes`, e.g. `contentBudgetBytes: 200_000` to ship fuller prompts and tool results. Payloads stay valid JSON, oldest messages drop first behind a `role: "flue"` sentinel message, and oversized strings are cut with a `[flue:truncated, N more bytes]` suffix — search for `[flue]` in the dashboard to find truncated content. `truncateContent` from `@flue/runtime/telemetry` is the same algorithm, exported for tighter budgets inside a transform.
 
 Two exclusions hold regardless of policy: raw error messages and stack traces never ship on this backend — a failed span records only a low-cardinality `error.type`, and aborted work is marked `flue.canceled` rather than counted as an error — and caller-origin shell (`bash`) operations stay content-free.
 

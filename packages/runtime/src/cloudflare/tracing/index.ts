@@ -78,6 +78,14 @@ export interface CloudflareTracingOptions {
 	 * content on with the safety-net truncation alone.
 	 */
 	content?: ContentOption;
+	/**
+	 * Per-span content pool in bytes, defaulting to `CONTENT_BUDGET_BYTES`
+	 * (56 KiB, sized to workerd's 64 KiB span-attribute cap). Raise it to ship
+	 * fuller prompts and tool results to a backend that isn't bound by
+	 * workerd's limits; the per-span pool and the 128-byte sentinel floor still
+	 * apply. Must be at least 128 bytes.
+	 */
+	contentBudgetBytes?: number;
 }
 
 /**
@@ -175,7 +183,7 @@ export function createCloudflareTracing(
 			const tracked: TrackedSpan = {
 				span: opened,
 				ended: false,
-				ledger: createContentLedger(),
+				ledger: createContentLedger(options.contentBudgetBytes),
 				operationKey: owner,
 				submissionId: span.submissionId,
 			};
@@ -261,7 +269,7 @@ export function createCloudflareTracing(
 	): void {
 		platform.startActiveSpan('submission_recovery', (span) => {
 			writeAttributes(
-				{ span, ended: false, ledger: createContentLedger() },
+				{ span, ended: false, ledger: createContentLedger(options.contentBudgetBytes) },
 				{
 					[FLUE_ATTR.submissionId]: event.submissionId,
 					[FLUE_ATTR.recoveryOperation]: event.operation,
@@ -578,7 +586,11 @@ export function createCloudflareTracing(
 			// One stable span name; phases distinguish by attribute so views
 			// keyed on the name survive new phases.
 			return platform.startActiveSpan('flue.coordinator', (opened) => {
-				const tracked: TrackedSpan = { span: opened, ended: false, ledger: createContentLedger() };
+				const tracked: TrackedSpan = {
+					span: opened,
+					ended: false,
+					ledger: createContentLedger(options.contentBudgetBytes),
+				};
 				if (opened.isTraced) {
 					writeAttributes(tracked, {
 						[FLUE_ATTR.coordinatorPhase]: operation.phase,

@@ -68,7 +68,10 @@ export type ContentOption = false | { transform?: ContentTransform };
  * bytes at 64 KiB and silently drops every write after the first overflow,
  * so content shares one pool per span; the 8 KiB left over is slack for the
  * operational attributes (usage, ids, error class) that must always land.
- * Adopted by both backends so the payload contract is identical everywhere.
+ * Adopted by both backends so the payload contract is identical
+ * everywhere; each backend's options accept a `contentBudgetBytes` override
+ * for hosts that don't conform to workerd's span limits (e.g. to ship full
+ * prompts and tool results to a non-workerd observability backend).
  */
 export const CONTENT_BUDGET_BYTES = 57_344;
 
@@ -85,8 +88,10 @@ export interface ContentAttributeOptions {
 	/** Emit string content as-is instead of JSON-encoding it (tool payloads, descriptions, exception text). */
 	rawString?: boolean;
 	/**
-	 * Tighter budget for this attribute, clamped to
-	 * [128, `CONTENT_BUDGET_BYTES`]. Ledger draws pass the pool remainder here.
+	 * Tighter budget for this attribute, floored at 128 bytes. Ledger draws
+	 * pass the pool remainder here; the pool (default `CONTENT_BUDGET_BYTES`,
+	 * overridable per backend) is the ceiling, so a raised pool allows larger
+	 * single attributes.
 	 */
 	maxBytes?: number;
 	traceId?: string;
@@ -159,7 +164,7 @@ export function contentAttribute(
 	const objectShaped = isPlainObject(value);
 	const budget =
 		typeof options.maxBytes === 'number' && Number.isFinite(options.maxBytes)
-			? Math.min(Math.max(Math.floor(options.maxBytes), MIN_BUDGET_BYTES), CONTENT_BUDGET_BYTES)
+			? Math.max(Math.floor(options.maxBytes), MIN_BUDGET_BYTES)
 			: CONTENT_BUDGET_BYTES;
 	let serialized = serialize(value, options);
 	if (serialized === undefined) {
@@ -195,14 +200,21 @@ const INPUT_CONTENT_TYPES: ReadonlySet<GenAIContentType> = new Set([
  * a pool too dry for real content still emits the in-band truncation
  * sentinels at the 128-byte floor, and that overshoot (bounded by the
  * handful of content attributes a span carries) lands in the operational
- * slack above `CONTENT_BUDGET_BYTES`.
+ * slack above `CONTENT_BUDGET_BYTES`. The pool defaults to
+ * `CONTENT_BUDGET_BYTES`; backends thread a configurable `contentBudgetBytes`
+ * through when their host does not need workerd's span limits.
  */
 export interface ContentLedger {
 	remaining: number;
 }
 
-export function createContentLedger(): ContentLedger {
-	return { remaining: CONTENT_BUDGET_BYTES };
+export function createContentLedger(budgetBytes?: number): ContentLedger {
+	return {
+		remaining:
+			budgetBytes === undefined
+				? CONTENT_BUDGET_BYTES
+				: Math.max(Math.floor(budgetBytes), MIN_BUDGET_BYTES),
+	};
 }
 
 export interface ContentDrawOptions extends Omit<ContentAttributeOptions, 'maxBytes'> {
