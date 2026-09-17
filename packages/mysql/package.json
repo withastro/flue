@@ -31,9 +31,7 @@
 		"@flue/runtime": "workspace:*"
 	},
 	"devDependencies": {
-		"mysql2": "^3.22.5",
 		"tsdown": "^0.22.7",
-		"typescript": "^7.0.2",
-		"vitest": "^4.1.6"
+		"typescript": "^7.0.2"
 	}
 }

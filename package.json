@@ -15,14 +15,14 @@
 		"changeset": "changeset",
 		"release": "pnpm run build && pnpm run build:docs && changeset publish",
 		"test": "turbo test",
-		"test:integration": "pnpm --dir packages/vite run test:integration:cloudflare",
 		"test:package-docs": "node scripts/smoke-test-package-docs.mjs",
 		"check": "turbo run build check:lint check:types && turbo run test",
-		"check:lint": "biome lint . && knip",
+		"check:ci": "biome ci && pnpm run check:knip",
+		"check:lint": "biome lint && pnpm run check:knip",
 		"check:knip": "knip",
 		"check:types": "turbo run check:types --filter=!apps-www",
 		"format": "turbo run format:lint format:style",
-		"format:lint": "biome check . --write",
+		"format:lint": "biome check --write",
 		"format:style": "prettier . --cache --write --list-different"
 	},
 	"devDependencies": {

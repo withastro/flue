@@ -1,6 +1,6 @@
 import { ulid } from 'ulidx';
 
-export function generateSessionAffinityKey(): string {
+function generateSessionAffinityKey(): string {
 	return `aff_${ulid()}`;
 }
 

@@ -117,7 +117,7 @@ export async function createMcpConnection(
 	);
 }
 
-export async function createMcpConnectionWithClient(
+async function createMcpConnectionWithClient(
 	name: string,
 	client: McpClient,
 	transport: Transport,

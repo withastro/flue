@@ -7,7 +7,7 @@ export interface AbortableExecution {
 	forceCloseSync(): void;
 }
 
-export interface BoundedShutdownOptions {
+interface BoundedShutdownOptions {
 	close(): Promise<void>;
 	forceCloseSync(): void;
 	exitCode: number;
@@ -15,7 +15,7 @@ export interface BoundedShutdownOptions {
 	terminate?: (code: number) => unknown;
 }
 
-export async function boundedShutdown(options: BoundedShutdownOptions): Promise<void> {
+async function boundedShutdown(options: BoundedShutdownOptions): Promise<void> {
 	process.exitCode = options.exitCode;
 	let timer: NodeJS.Timeout | undefined;
 	let timedOut = false;

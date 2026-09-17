@@ -14,12 +14,10 @@
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.39.2",
-		"@cloudflare/vitest-pool-workers": "0.19.1",
 		"@flue/cli": "workspace:*",
 		"@flue/vite": "workspace:*",
 		"@types/node": "^26.1.1",
 		"typescript": "^7.0.2",
-		"vite": "^8.0.14",
-		"vitest": "^4.1.6"
+		"vite": "^8.0.14"
 	}
 }

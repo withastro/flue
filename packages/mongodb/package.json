@@ -33,9 +33,7 @@
 		"ulidx": "^2.4.1"
 	},
 	"devDependencies": {
-		"mongodb": "^7.5.0",
 		"tsdown": "^0.22.7",
-		"typescript": "^7.0.2",
-		"vitest": "^4.1.6"
+		"typescript": "^7.0.2"
 	}
 }

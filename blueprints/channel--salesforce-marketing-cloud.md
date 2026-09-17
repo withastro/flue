@@ -372,14 +372,13 @@ emailRefFromEvent(
 ): SalesforceMarketingCloudEmailRef | undefined;
 
 emailEventInstanceId(ref: SalesforceMarketingCloudEmailRef): string;
-
-parseEmailEventInstanceId(id: string): SalesforceMarketingCloudEmailRef;
 ```
 
 Use positive decimal strings in the local reference so numeric and string ids
-normalize consistently. Reject malformed or non-canonical ids. This identity
-is application-defined for the selected email families; it is not a universal
-ENS identity. Do not use deprecated `compositeId` for transactional email.
+normalize consistently. Validate references before serializing them. This
+identity is application-defined for the selected email families; it is not a
+universal ENS identity. Do not use deprecated `compositeId` for transactional
+email.
 
 ## Create the agent
 

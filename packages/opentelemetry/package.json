@@ -34,12 +34,7 @@
 	"devDependencies": {
 		"@flue/runtime": "workspace:*",
 		"@opentelemetry/api": "^1.9.0",
-		"@opentelemetry/context-async-hooks": "^2.7.1",
-		"@opentelemetry/core": "^2.7.1",
-		"@opentelemetry/sdk-trace-base": "^2.7.1",
-		"@sentry/node": "10.69.0",
 		"tsdown": "^0.22.7",
-		"typescript": "^7.0.2",
-		"vitest": "^4.1.6"
+		"typescript": "^7.0.2"
 	}
 }

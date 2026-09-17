@@ -33,21 +33,6 @@ function agentPropsFor(state: RenderStateContext | undefined): AgentProps {
 }
 
 /**
- * Run one render of an agent function: invoke it inside a fresh frame,
- * validate the returned instruction, and map the hook attachments onto the
- * internal runtime-config shape the initialization path consumes. The whole
- * config is hook-composed — `useModel` declares the model and its tuning,
- * `useSandbox` the environment; hooks validated each value when it was
- * declared.
- */
-export function renderAgentFunction(
-	agent: AgentFunction<AgentProps>,
-	state?: RenderStateContext,
-): AgentRuntimeConfig {
-	return renderAgentFunctionWithStructure(agent, state).config;
-}
-
-/**
  * The structural fingerprint of one render. Message data (by name) feeds the
  * invariance guard — it must be identical across renders, because the parts
  * are the response's client-facing identity. `usePersistentState` is
@@ -77,7 +62,7 @@ export interface AgentRenderStructure {
 	resources: ResourceSnapshot;
 }
 
-/** `renderAgentFunction` plus the render's structural fingerprint. */
+/** Run one agent render and return its config plus structural fingerprint. */
 export function renderAgentFunctionWithStructure(
 	agent: AgentFunction<AgentProps>,
 	state?: RenderStateContext,

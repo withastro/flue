@@ -42,7 +42,6 @@
 		"@types/prompts": "^2.4.9",
 		"tsdown": "^0.22.7",
 		"tsx": "^4.19.2",
-		"typescript": "^7.0.2",
-		"vitest": "^4.1.6"
+		"typescript": "^7.0.2"
 	}
 }

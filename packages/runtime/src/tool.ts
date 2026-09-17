@@ -276,22 +276,6 @@ function validateToolOutput<TTool extends ToolDefinition>(
 	}
 }
 
-export async function validateAndRunTool<TTool extends ToolDefinition>(
-	tool: TTool,
-	data?: unknown,
-	signal?: AbortSignal,
-): Promise<ToolOutput<TTool>> {
-	if (tool.harness) {
-		throw new Error(
-			`[flue] Tool "${tool.name}" declares \`harness: true\` and can only run inside an agent session — a standalone run has no harness.`,
-		);
-	}
-	const parsed = parseToolInput(tool, data, signal);
-	// `terminate` is a turn-loop concern; a standalone run has no turn to end,
-	// so only the resolved output survives here.
-	return resolveToolRun(tool, await tool.run(parsed.context)).output;
-}
-
 function assertNonEmptyString(value: unknown, label: string): asserts value is string {
 	if (typeof value !== 'string' || value.trim().length === 0) {
 		throw new Error(`[flue] ${label} must be a non-empty string.`);

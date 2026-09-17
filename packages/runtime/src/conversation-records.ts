@@ -336,7 +336,7 @@ export interface SubmissionSettledRecord extends ConversationRecordEnvelope {
  * append batch as their batch's `tool_results_committed` record, so a state
  * write shares the durability of the tool batch that made it.
  */
-export interface StateWriteRecord extends ConversationRecordEnvelope {
+interface StateWriteRecord extends ConversationRecordEnvelope {
 	type: 'state_write';
 	name: string;
 	value: unknown;

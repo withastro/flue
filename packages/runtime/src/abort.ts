@@ -42,7 +42,7 @@ export function composeTimeoutSignal(
 }
 
 /** Appended to the abort error when the abandoned work may still be running. */
-export const ABANDONED_TOOL_SUFFIX =
+const ABANDONED_TOOL_SUFFIX =
 	' The tool execution could not be confirmed cancelled and may still be running.';
 
 /**

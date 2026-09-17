@@ -439,10 +439,7 @@ function cloneReducedInstanceState(state: ReducedInstanceState): ReducedInstance
 	};
 }
 
-export function applyConversationRecord(
-	state: ReducedInstanceState,
-	record: ConversationRecord,
-): void {
+function applyConversationRecord(state: ReducedInstanceState, record: ConversationRecord): void {
 	const accepted = state.recordsById.get(record.id);
 	if (accepted) {
 		// A stub compares by the digest of the record's canonical JSON — the

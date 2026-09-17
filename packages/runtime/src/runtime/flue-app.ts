@@ -149,7 +149,7 @@ export async function getAgentInstance(
  * the instance's stream, so existence and uid come from stream meta plus the
  * first batch.
  */
-export async function readInstanceInfoFromStream(
+async function readInstanceInfoFromStream(
 	store: ConversationStreamStore,
 	agentName: string,
 	instanceId: string,

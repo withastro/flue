@@ -27,7 +27,7 @@ Marketing Cloud Engagement ENS, not generic Salesforce APIs.
 
 ```ts title="src/channels/salesforce-marketing-cloud.ts (abridged)"
 import { createSalesforceMarketingCloudChannel } from '@flue/salesforce';
-import { dispatch, useModel } from '@flue/runtime';
+import { dispatch } from '@flue/runtime';
 import { Assistant } from '../agents/assistant.ts';
 import { createSalesforceMarketingCloudClient } from '../salesforce-marketing-cloud-client.ts';
 import { emailEventInstanceId, emailRefFromEvent } from '../salesforce-marketing-cloud-email.ts';
@@ -52,6 +52,15 @@ export const channel = createSalesforceMarketingCloudChannel({
     for (const { event, ref } of usefulEvents) {
       await dispatch(Assistant, {
         id: emailEventInstanceId(ref),
+        initialData: {
+          callbackId: ref.callbackId,
+          mid: ref.mid,
+          eid: ref.eid,
+          jobId: ref.jobId,
+          batchId: ref.batchId,
+          listId: ref.listId,
+          subscriberId: ref.subscriberId,
+        },
         message: {
           kind: 'signal',
           type: `salesforce-marketing-cloud.${event.eventCategoryType}`,
@@ -314,20 +323,34 @@ remain application-owned.
 
 ```ts title="src/agents/assistant.ts"
 'use agent';
-import { type AgentProps, useModel, useTool } from '@flue/runtime';
+import { useInitialData, useModel, useTool } from '@flue/runtime';
+import * as v from 'valibot';
 import { retrieveCallback } from '../channels/salesforce-marketing-cloud.ts';
-import { parseEmailEventInstanceId } from '../salesforce-marketing-cloud-email.ts';
 
-export function Assistant({ id }: AgentProps) {
+const initialData = v.object({
+  callbackId: v.string(),
+  mid: v.string(),
+  eid: v.string(),
+  jobId: v.string(),
+  batchId: v.string(),
+  listId: v.string(),
+  subscriberId: v.string(),
+});
+
+export function Assistant() {
   useModel('anthropic/claude-haiku-4-5');
-  const email = parseEmailEventInstanceId(id);
-  useTool(retrieveCallback(email));
+  const data = useInitialData<v.InferOutput<typeof initialData>>();
+  if (!data)
+    throw new Error('This agent is created by the Salesforce Marketing Cloud channel dispatch.');
+  useTool(retrieveCallback(data));
   return 'Review the inbound Salesforce Marketing Cloud email lifecycle event. Retrieve the configured ENS callback when callback status or delivery configuration is relevant.';
 }
+
+Assistant.initialData = initialData;
 ```
 
 The tool accepts no tenant origin, callback id, access token, or resource id
-from the model. The parsed local id remains an identifier, not authorization;
+from the model. The validated creation data remains context, not authorization;
 the tool checks its callback id again before selecting credentials.
 
 ## Callback verification

@@ -154,7 +154,7 @@ CREATE TABLE IF NOT EXISTS flue_conversation_stream_batch_chunks (
  * `flue_conversation_stream_batch_chunks` instead of the batch row's `data`
  * column: Cloudflare Durable Object SQLite caps an individual value at ~2MB.
  */
-export const CONVERSATION_BATCH_SPILL_THRESHOLD = 1024 * 1024;
+const CONVERSATION_BATCH_SPILL_THRESHOLD = 1024 * 1024;
 
 /** Code units per spilled chunk row; every cell stays far under the value cap. */
 const BATCH_CHUNK_LENGTH = 512 * 1024;

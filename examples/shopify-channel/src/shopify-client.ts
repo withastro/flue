@@ -4,7 +4,7 @@ import {
 	createAdminApiClient,
 } from '@shopify/admin-api-client';
 
-export const SHOPIFY_ADMIN_API_VERSION = '2026-04';
+const SHOPIFY_ADMIN_API_VERSION = '2026-04';
 
 export interface CreateShopifyClientOptions {
 	shopDomain: string;

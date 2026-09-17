@@ -98,7 +98,7 @@ class AgentScanError extends Error {
 }
 
 /** Two or more scanned agents resolve to the same identity. */
-export class DuplicateAgentIdentityError extends AgentScanError {
+class DuplicateAgentIdentityError extends AgentScanError {
 	readonly duplicates: ReadonlyArray<{
 		readonly identity: string;
 		readonly filePaths: readonly string[];
@@ -121,7 +121,7 @@ export class DuplicateAgentIdentityError extends AgentScanError {
 }
 
 /** Two distinct agent identities fold to the same generated durable identifier. */
-export class AgentIdentifierCollisionError extends AgentScanError {
+class AgentIdentifierCollisionError extends AgentScanError {
 	readonly collisions: ReadonlyArray<{
 		/** The colliding generated name (a DO class or binding name). */
 		readonly identifier: string;
@@ -153,7 +153,7 @@ export class AgentIdentifierCollisionError extends AgentScanError {
 }
 
 /** The same local function is exported under two different agent names. */
-export class DuplicateAgentExportError extends AgentScanError {
+class DuplicateAgentExportError extends AgentScanError {
 	readonly filePath: string;
 	readonly functionName: string;
 	readonly exportNames: readonly string[];
@@ -172,7 +172,7 @@ export class DuplicateAgentExportError extends AgentScanError {
 }
 
 /** A scanned agent's identity (function name or `agentName` override) is invalid. */
-export class InvalidAgentIdentityError extends AgentScanError {
+class InvalidAgentIdentityError extends AgentScanError {
 	readonly invalidAgents: ReadonlyArray<{
 		readonly identity: string;
 		readonly filePath: string;
@@ -193,7 +193,7 @@ export class InvalidAgentIdentityError extends AgentScanError {
 }
 
 /** An agent's `agentName` static is assigned in a form the build cannot read statically. */
-export class InvalidAgentNameStaticError extends AgentScanError {
+class InvalidAgentNameStaticError extends AgentScanError {
 	readonly filePath: string;
 
 	constructor(filePath: string, agentName: string, position: { line: number; column: number }) {
@@ -208,7 +208,7 @@ export class InvalidAgentNameStaticError extends AgentScanError {
 }
 
 /** A `'use agent'` module default-exports an anonymous function. */
-export class AnonymousAgentExportError extends AgentScanError {
+class AnonymousAgentExportError extends AgentScanError {
 	readonly filePath: string;
 
 	constructor(filePath: string, position: { line: number; column: number }) {
@@ -222,7 +222,7 @@ export class AnonymousAgentExportError extends AgentScanError {
 }
 
 /** A `'use agent'` module exports no agents (no capitalized exported functions). */
-export class NoAgentExportsError extends AgentScanError {
+class NoAgentExportsError extends AgentScanError {
 	readonly filePath: string;
 
 	constructor(filePath: string) {
@@ -236,7 +236,7 @@ export class NoAgentExportsError extends AgentScanError {
 }
 
 /** A `'use agent'` candidate module could not be parsed. */
-export class AgentModuleParseError extends AgentScanError {
+class AgentModuleParseError extends AgentScanError {
 	readonly filePath: string;
 
 	constructor(filePath: string, cause: unknown) {
@@ -308,12 +308,12 @@ export function isAgentModulePath(filePath: string): boolean {
 }
 
 /** `Flue<PascalCase>Agent` — matches the Cloudflare codegen exactly. */
-export function agentClassName(identity: string): string {
+function agentClassName(identity: string): string {
 	return `Flue${pascalCaseName(identity)}Agent`;
 }
 
 /** `FLUE_<SNAKE_UPPER>_AGENT` — camel boundaries split, so `IssueTriage` → `FLUE_ISSUE_TRIAGE_AGENT`. */
-export function agentBindingName(identity: string): string {
+function agentBindingName(identity: string): string {
 	return `FLUE_${snakeUpperName(identity)}_AGENT`;
 }
 

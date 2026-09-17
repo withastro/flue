@@ -46,7 +46,7 @@ export const FOLD_CHECKPOINT_INTERVAL = 64;
 type EncodedEntries = Array<[string, unknown]>;
 
 /** Serialize a reduced state to the checkpoint's canonical JSON `data`. */
-export function encodeReducedInstanceState(state: ReducedInstanceState): string {
+function encodeReducedInstanceState(state: ReducedInstanceState): string {
 	return JSON.stringify({
 		...state,
 		conversationScopes: [...state.conversationScopes],
@@ -85,7 +85,7 @@ export function encodeReducedInstanceState(state: ReducedInstanceState): string 
  * Rebuild a reduced state from checkpoint `data`. Throws on any structural
  * mismatch — callers treat every throw as "no checkpoint".
  */
-export function decodeReducedInstanceState(data: string): ReducedInstanceState {
+function decodeReducedInstanceState(data: string): ReducedInstanceState {
 	const parsed = JSON.parse(data) as Record<string, unknown>;
 	const state = {
 		...parsed,

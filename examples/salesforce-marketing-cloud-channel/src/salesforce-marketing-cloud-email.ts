@@ -54,37 +54,6 @@ export function emailEventInstanceId(ref: SalesforceMarketingCloudEmailRef): str
 	return `${EMAIL_EVENT_INSTANCE_PREFIX}${encodeURIComponent(JSON.stringify(canonical))}`;
 }
 
-export function parseEmailEventInstanceId(id: string): SalesforceMarketingCloudEmailRef {
-	if (!id.startsWith(EMAIL_EVENT_INSTANCE_PREFIX)) {
-		throw new TypeError('Expected a local Salesforce Marketing Cloud email agent id.');
-	}
-
-	let value: unknown;
-	try {
-		value = JSON.parse(decodeURIComponent(id.slice(EMAIL_EVENT_INSTANCE_PREFIX.length)));
-	} catch {
-		throw new TypeError('Expected a local Salesforce Marketing Cloud email agent id.');
-	}
-	if (!isRecord(value)) {
-		throw new TypeError('Expected a local Salesforce Marketing Cloud email agent id.');
-	}
-
-	const ref = {
-		callbackId: value.callbackId,
-		mid: value.mid,
-		eid: value.eid,
-		jobId: value.jobId,
-		batchId: value.batchId,
-		listId: value.listId,
-		subscriberId: value.subscriberId,
-	};
-	validateEmailRef(ref);
-	if (emailEventInstanceId(ref) !== id) {
-		throw new TypeError('Expected a local Salesforce Marketing Cloud email agent id.');
-	}
-	return ref;
-}
-
 function validateEmailRef(value: unknown): asserts value is SalesforceMarketingCloudEmailRef {
 	if (
 		!isRecord(value) ||

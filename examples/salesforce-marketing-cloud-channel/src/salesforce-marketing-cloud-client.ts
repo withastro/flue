@@ -64,7 +64,7 @@ export function createSalesforceMarketingCloudClient({
 	};
 }
 
-export function salesforceMarketingCloudRestOrigin(restBaseUrl: string): string {
+function salesforceMarketingCloudRestOrigin(restBaseUrl: string): string {
 	let url: URL;
 	try {
 		url = new URL(restBaseUrl);

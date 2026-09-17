@@ -152,7 +152,7 @@ export type ConversationStreamChunk =
  * current state (an unknown chunk shape). `observe()` recovers by rehydrating a
  * fresh snapshot.
  */
-export class ConversationStreamError extends Error {
+class ConversationStreamError extends Error {
 	constructor(message: string) {
 		super(message);
 		this.name = 'ConversationStreamError';
