@@ -56,6 +56,7 @@ import type { FlueObservationSubscriber } from '../../observation.ts';
 import {
 	agentInputMessage,
 	agentOutputMessage,
+	assertContentBudgetBytes,
 	CONTENT_ATTR,
 	type ContentLedger,
 	type ContentOption,
@@ -86,7 +87,7 @@ export interface CloudflareTracingOptions {
 	 * content — the oversized write is silently dropped and can suppress the
 	 * usage, finish, and error attributes written after it. Raise the pool on
 	 * the OpenTelemetry adapter instead, for a backend without that cap. Must
-	 * be at least 128 bytes.
+	 * be a safe integer of at least 128 bytes; invalid values throw.
 	 */
 	contentBudgetBytes?: number;
 }
@@ -169,6 +170,7 @@ function bindPlatformTracing(): PlatformTracing {
 export function createCloudflareTracing(
 	options: CloudflareTracingOptions = {},
 ): FlueInstrumentation {
+	assertContentBudgetBytes(options.contentBudgetBytes);
 	const platform = bindPlatformTracing();
 	const content = options.content;
 	const pending = new Map<string, PendingSpan>();

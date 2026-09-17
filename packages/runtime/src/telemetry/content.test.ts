@@ -129,10 +129,19 @@ describe('content budget configuration', () => {
 		expect(createContentLedger().remaining).toBe(CONTENT_BUDGET_BYTES);
 	});
 
-	it('sizes the pool from contentBudgetBytes and floors at the sentinel minimum', () => {
+	it('sizes the pool from contentBudgetBytes', () => {
 		expect(createContentLedger(200_000).remaining).toBe(200_000);
-		expect(createContentLedger(10).remaining).toBe(MIN_BUDGET_BYTES);
-		expect(createContentLedger(0).remaining).toBe(MIN_BUDGET_BYTES);
+		expect(createContentLedger(MIN_BUDGET_BYTES).remaining).toBe(MIN_BUDGET_BYTES);
+	});
+
+	it('rejects invalid contentBudgetBytes values', () => {
+		for (const invalid of [0, 10, -1, 3.7, NaN, Infinity, -Infinity]) {
+			expect(() => createContentLedger(invalid)).toThrow(TypeError);
+		}
+	});
+
+	it('accepts undefined as the default pool', () => {
+		expect(createContentLedger(undefined).remaining).toBe(CONTENT_BUDGET_BYTES);
 	});
 
 	it('a raised pool ships content larger than the default ceiling (the #563 case)', () => {

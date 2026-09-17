@@ -12,6 +12,7 @@
  */
 export {
 	CONTENT_BUDGET_BYTES,
+	assertContentBudgetBytes,
 	type ContentAttributeOptions,
 	type ContentAttributeResult,
 	type ContentDrawOptions,

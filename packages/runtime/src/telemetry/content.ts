@@ -208,13 +208,24 @@ export interface ContentLedger {
 	remaining: number;
 }
 
+export function assertContentBudgetBytes(
+	budgetBytes: unknown,
+): asserts budgetBytes is number | undefined {
+	if (budgetBytes === undefined) return;
+	if (
+		typeof budgetBytes !== 'number' ||
+		!Number.isSafeInteger(budgetBytes) ||
+		budgetBytes < MIN_BUDGET_BYTES
+	) {
+		throw new TypeError(
+			`contentBudgetBytes must be a safe integer of at least ${MIN_BUDGET_BYTES} bytes; got ${String(budgetBytes)}.`,
+		);
+	}
+}
+
 export function createContentLedger(budgetBytes?: number): ContentLedger {
-	return {
-		remaining:
-			budgetBytes === undefined
-				? CONTENT_BUDGET_BYTES
-				: Math.max(Math.floor(budgetBytes), MIN_BUDGET_BYTES),
-	};
+	assertContentBudgetBytes(budgetBytes);
+	return { remaining: budgetBytes === undefined ? CONTENT_BUDGET_BYTES : budgetBytes };
 }
 
 export interface ContentDrawOptions extends Omit<ContentAttributeOptions, 'maxBytes'> {
