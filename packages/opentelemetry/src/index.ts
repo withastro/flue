@@ -192,6 +192,7 @@ export function createOpenTelemetryInstrumentation(
 						},
 					),
 					event,
+					options.contentBudgetBytes,
 				),
 			);
 			return;
