@@ -1,5 +1,13 @@
 # @flue/sdk
 
+## 2.1.0
+
+### Patch Changes
+
+- 4def7b6: The OpenTelemetry ecosystem page and Cloudflare target guide now document `contentBudgetBytes` on `createOpenTelemetryInstrumentation()` / `createCloudflareTracing()`: an override for the default 56 KiB per-span content pool. Raising it ships fuller content only on backends not bound by workerd's span cap (the OpenTelemetry adapter); on the Cloudflare target it is a tightening control only, since workerd's 64 KiB span-attribute cap is a platform limit no setting raises.
+- 11e1323: The MCP guide and Agent API reference now document preserved MCP tool annotations, including how trusted applications can inspect them and why server-supplied hints are not a security boundary.
+- 12464d7: The Tools guide and agent API reference now document `timeoutMs` on tool definitions: a per-call execution bound that aborts the tool's `context.signal` and settles the call with a `ToolTimeoutError` instead of letting one hung call consume the submission's durability budget.
+
 ## 2.0.8
 
 ### Patch Changes
@@ -12,21 +20,29 @@
 
 - 1f6238a: Installed packages once again include the bundled Flue documentation, so commands such as `flue docs read guide/sandboxes` work out of the box.
 - ef0c89f: Fix delayed reconnects in `observe()`: after a stream has been healthy for a full stream lifetime, the reconnect backoff resets, so a subsequent disconnect reconnects promptly instead of applying a stale delay.
+
 ## 2.0.6
 
 ### Patch Changes
+
 - Published packages once again include the bundled Flue documentation.
+
 ## 2.0.5
 
 ### Patch Changes
+
 - Published packages once again resolve internal Flue dependencies to the release version.
+
 ## 2.0.2
 
 ### Patch Changes
+
 - New docs reference page: [Agent Behavior](https://flueframework.com/docs/reference/agent-behavior/).
+
 ## 2.0.0
 
 ### Patch Changes
+
 - The direct agent HTTP wire body is a `DeliveredMessage`.
 - Direct agent prompts are fire-and-forget only.
 - The SDK's `prompt()` is removed.

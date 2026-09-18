@@ -1,5 +1,27 @@
 # @flue/opentelemetry
 
+## 2.1.0
+
+### Minor Changes
+
+- 4def7b6: Trace content budgets are now configurable. `createCloudflareTracing({ contentBudgetBytes })` and `createOpenTelemetryInstrumentation({ contentBudgetBytes })` override the default 56 KiB per-span content pool — raise it (e.g. `contentBudgetBytes: 200_000`) to ship fuller prompts and tool results to an observability backend that isn't bound by workerd's 64 KiB span-attribute cap, or tighten it. The 128-byte sentinel floor and the shared-pool semantics are unchanged.
+
+### Patch Changes
+
+- d9e7f5c: Fix two bugs in the configurable content budget:
+
+  - An invalid `contentBudgetBytes` value (non-integer, too small, or too large) now throws a `TypeError` at setup instead of producing confusing trace content later.
+  - The span that records conversation compaction now honors the configured budget, so its content is truncated or shipped consistently with every other span.
+
+- Updated dependencies [4def7b6]
+- Updated dependencies [4def7b6]
+- Updated dependencies [11e1323]
+- Updated dependencies [12464d7]
+- Updated dependencies [d9e7f5c]
+- Updated dependencies [11e1323]
+- Updated dependencies [12464d7]
+  - @flue/runtime@2.1.0
+
 ## 2.0.8
 
 ### Patch Changes
@@ -13,13 +35,17 @@
 
 - Updated dependencies [b8c07bb, 4b436f7, c1ceacd, c663410, 96b8f0b, 1f6238a, da7c085, 21c6240, 2227864, 68dbb37, 7527739, 750f1f1, 4a86eaa]
   - @flue/runtime@2.0.7
+
 ## 2.0.5
 
 ### Patch Changes
+
 - Published packages once again resolve internal Flue dependencies to the release version.
+
 ## 2.0.0
 
 ### Patch Changes
+
 - Assistant output projects as one conversation message per response.
 - The `flue.dispatch.id` telemetry attribute is removed.
 - Trace content is captured by default, and `@flue/opentelemetry`'s content surface collapses to `content?: false | { transform }`.

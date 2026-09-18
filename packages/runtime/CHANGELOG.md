@@ -1,5 +1,52 @@
 # @flue/runtime
 
+## 2.1.0
+
+### Minor Changes
+
+- 4def7b6: Trace content budgets are now configurable. `createCloudflareTracing({ contentBudgetBytes })` and `createOpenTelemetryInstrumentation({ contentBudgetBytes })` override the default 56 KiB per-span content pool — raise it (e.g. `contentBudgetBytes: 200_000`) to ship fuller prompts and tool results to an observability backend that isn't bound by workerd's 64 KiB span-attribute cap, or tighten it. The 128-byte sentinel floor and the shared-pool semantics are unchanged.
+- 11e1323: Tools returned by `createMcpConnection()` now retain the metadata sent by the MCP server in its `tools/list` response. The metadata is available on each Flue tool as `tool.annotations`:
+
+  ```ts
+  const connection = await createMcpConnection(definition);
+  const deleteIssue = connection.tools.find((tool) => tool.name.endsWith('delete_issue'));
+
+  console.log(deleteIssue?.annotations?.destructiveHint); // true
+  ```
+
+  `defineTool()` and `useTool()` also accept `annotations`, so wrappers can carry the metadata forward. Flue does not automatically change a tool's behavior based on these server-supplied values.
+
+- 12464d7: Tools can now declare a `timeoutMs` execution bound: on expiry the harness aborts the tool's `context.signal` and settles the call with a `ToolTimeoutError` (the model sees `Tool "<name>" timed out after <ms>ms` and the conversation continues) instead of letting one hung call consume the submission's durability budget.
+
+  ```ts
+  import { defineTool } from '@flue/runtime';
+  import * as v from 'valibot';
+
+  export const lookupCatalog = defineTool({
+    name: 'lookup_catalog',
+    description: 'Query the upstream catalog API.',
+    input: v.object({ sku: v.string() }),
+    timeoutMs: 15_000,
+    async run({ data, signal }) {
+      // If this call exceeds 15s, `signal` aborts, the call settles with a
+      // ToolTimeoutError the model sees, and the conversation continues —
+      // the model can retry or change approach.
+      const response = await fetch(`https://catalog.example.com/${data.sku}`, { signal });
+      return { output: await response.json() };
+    },
+  });
+  ```
+
+### Patch Changes
+
+- 4def7b6: The OpenTelemetry ecosystem page and Cloudflare target guide now document `contentBudgetBytes` on `createOpenTelemetryInstrumentation()` / `createCloudflareTracing()`: an override for the default 56 KiB per-span content pool. Raising it ships fuller content only on backends not bound by workerd's span cap (the OpenTelemetry adapter); on the Cloudflare target it is a tightening control only, since workerd's 64 KiB span-attribute cap is a platform limit no setting raises.
+- 11e1323: The MCP guide and Agent API reference now document preserved MCP tool annotations, including how trusted applications can inspect them and why server-supplied hints are not a security boundary.
+- 12464d7: The Tools guide and agent API reference now document `timeoutMs` on tool definitions: a per-call execution bound that aborts the tool's `context.signal` and settles the call with a `ToolTimeoutError` instead of letting one hung call consume the submission's durability budget.
+- d9e7f5c: Fix two bugs in the configurable content budget:
+
+  - An invalid `contentBudgetBytes` value (non-integer, too small, or too large) now throws a `TypeError` at setup instead of producing confusing trace content later.
+  - The span that records conversation compaction now honors the configured budget, so its content is truncated or shipped consistently with every other span.
+
 ## 2.0.8
 
 ### Patch Changes
@@ -30,35 +77,47 @@
 - 7527739: Fix conversations erroring with `Cannot continue from message role: assistant` after context compaction. A completed response is now preserved through overflow compaction, so the next turn continues normally; only genuine provider overflow errors trigger a retry.
 - 750f1f1: Sessions that end through a terminating tool now compact their context as expected, so the next turn starts from a manageable context instead of continuing to grow.
 - 4a86eaa: Tools without an output schema can now return union-shaped results — inferred branch unions, optional object properties, readonly arrays, and explicit `undefined` — and still typecheck, matching what the runtime actually serializes.
+
 ## 2.0.6
 
 ### Patch Changes
+
 - Published packages once again include the bundled Flue documentation.
+
 ## 2.0.5
 
 ### Patch Changes
+
 - Published packages once again resolve internal Flue dependencies to the release version.
+
 ## 2.0.4
 
 ### Patch Changes
+
 - `"Connection error."` is now classified as a retryable model error.
+
 ## 2.0.2
 
 ### Patch Changes
+
 - Conditional tool additions are now cache-safe on models with deferred tool loading.
 - Cloudflare trace spans whose terminal event never arrives are force-closed when the submission settles.
 - The sandbox types are renamed to match their roles; the old names remain as deprecated aliases.
 - New docs reference page: [Agent Behavior](https://flueframework.com/docs/reference/agent-behavior/).
+
 ## 2.0.1
 
 ### Patch Changes
+
 - Reasoning effort sent through the Workers AI binding's Responses wire format is now clamped to the `/run` endpoint's `none|low|medium|high` ceiling.
 - A durable submission can no longer sit unsettled forever behind a hung await.
 - The awaits that could stall an attempt now bound themselves, so a stall recovers in seconds-to-minutes instead of failing at the durability deadline.
 - Settlement events no longer vanish in an invocation's final moments.
+
 ## 2.0.0
 
 ### Patch Changes
+
 - File-based routing is removed — `app.ts` is the route map.
 - The tool `run()` context and the harness are reshaped.
 - Sandboxes are opt-in: an agent that declares no `useSandbox()` has no execution environment.
