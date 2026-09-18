@@ -275,6 +275,8 @@ const BashParams = Type.Object({
 	timeout: Type.Optional(Type.Number({ description: 'Timeout in seconds' })),
 });
 
+const BASH_UPDATE_THROTTLE_MS = 100;
+
 /**
  * The framework's standard `bash` tool over a {@link Sandbox}. Requires a
  * working `env.exec` — leave it out of a `tools` list for sandboxes that
@@ -287,7 +289,12 @@ export function createBashTool(env: Sandbox): AgentTool<typeof BashParams> {
 		description:
 			'Execute a bash command. Returns stdout and stderr. Output is truncated to the last 2000 lines or 50KB.',
 		parameters: BashParams,
-		async execute(_toolCallId: string, params: Static<typeof BashParams>, signal?: AbortSignal) {
+		async execute(
+			_toolCallId: string,
+			params: Static<typeof BashParams>,
+			signal?: AbortSignal,
+			onUpdate?,
+		) {
 			throwIfAborted(signal);
 
 			// Two layers cooperate to enforce `params.timeout` (the
@@ -313,6 +320,42 @@ export function createBashTool(env: Sandbox): AgentTool<typeof BashParams> {
 			// needs `params.timeout` and a recoverable shape on timeout.
 			const timeoutMs = typeof params.timeout === 'number' ? params.timeout * 1000 : undefined;
 			const { timeoutSignal, mergedSignal: execSignal } = composeTimeoutSignal(timeoutMs, signal);
+			let stdout = '';
+			let stderr = '';
+			let updateTimer: ReturnType<typeof setTimeout> | undefined;
+			let updateDirty = false;
+			let lastUpdateAt = 0;
+			let acceptingOutput = true;
+			const emitOutputUpdate = () => {
+				if (!onUpdate || !acceptingOutput || !updateDirty) return;
+				updateDirty = false;
+				lastUpdateAt = Date.now();
+				onUpdate(formatBashUpdate(stdout, stderr, params.command));
+			};
+			const clearUpdateTimer = () => {
+				if (!updateTimer) return;
+				clearTimeout(updateTimer);
+				updateTimer = undefined;
+			};
+			const scheduleOutputUpdate = () => {
+				updateDirty = true;
+				const delay = BASH_UPDATE_THROTTLE_MS - (Date.now() - lastUpdateAt);
+				if (delay <= 0) {
+					clearUpdateTimer();
+					emitOutputUpdate();
+					return;
+				}
+				updateTimer ??= setTimeout(() => {
+					updateTimer = undefined;
+					emitOutputUpdate();
+				}, delay);
+			};
+			const stopOutputUpdates = () => {
+				acceptingOutput = false;
+				updateDirty = false;
+				clearUpdateTimer();
+			};
+			execSignal?.addEventListener('abort', stopOutputUpdates, { once: true });
 
 			const timedOut = () =>
 				formatBashResult(
@@ -325,6 +368,16 @@ export function createBashTool(env: Sandbox): AgentTool<typeof BashParams> {
 				);
 			try {
 				const result = await env.exec(params.command, {
+					...(onUpdate
+						? {
+								onOutput: (stream: 'stdout' | 'stderr', data: string) => {
+									if (!acceptingOutput) return;
+									if (stream === 'stdout') stdout = appendBashOutputTail(stdout, data);
+									else stderr = appendBashOutputTail(stderr, data);
+									scheduleOutputUpdate();
+								},
+							}
+						: {}),
 					timeoutMs,
 					signal: execSignal,
 				});
@@ -341,6 +394,11 @@ export function createBashTool(env: Sandbox): AgentTool<typeof BashParams> {
 				// cancellation surfaces as an AbortError.
 				if (timeoutSignal?.aborted && !signal?.aborted) return timedOut();
 				throw err;
+			} finally {
+				execSignal?.removeEventListener('abort', stopOutputUpdates);
+				clearUpdateTimer();
+				emitOutputUpdate();
+				acceptingOutput = false;
 			}
 		},
 	};
@@ -469,6 +527,20 @@ export function formatBashResult(
 		],
 		details: { command, exitCode: result.exitCode },
 	};
+}
+
+function formatBashUpdate(stdout: string, stderr: string, command: string): AgentToolResult<any> {
+	const combined = (stdout + (stderr ? `\n${stderr}` : '')).trim();
+	const { text } = truncateTail(combined, MAX_READ_LINES, MAX_READ_BYTES);
+	return {
+		content: [{ type: 'text', text }],
+		details: { command },
+	};
+}
+
+function appendBashOutputTail(current: string, chunk: string): string {
+	const output = current + chunk;
+	return output.length > MAX_READ_BYTES ? output.slice(-MAX_READ_BYTES) : output;
 }
 
 const GrepParams = Type.Object({

@@ -1,7 +1,7 @@
 /** Wraps a @cloudflare/sandbox instance (from getSandbox()) into Sandbox. */
 import { decodeBase64, encodeBase64 } from '../base64.ts';
 import { SandboxDiedError } from '../errors.ts';
-import type { SandboxDriver } from '../sandbox.ts';
+import type { SandboxDriver, SandboxObserverFailure } from '../sandbox.ts';
 import { sandboxFromDriver } from '../sandbox.ts';
 import type { Sandbox, SandboxFactory } from '../types.ts';
 
@@ -19,6 +19,8 @@ export interface CloudflareSandboxStub {
 			cwd?: string;
 			env?: Record<string, string>;
 			timeout?: number;
+			stream?: boolean;
+			onOutput?: (stream: 'stdout' | 'stderr', data: string) => void;
 		},
 	): Promise<{ success: boolean; stdout: string; stderr: string; exitCode?: number }>;
 	readFile(path: string, options?: { encoding?: string }): Promise<{ content: string }>;
@@ -38,6 +40,8 @@ export interface CloudflareSandboxStub {
 export interface CloudflareSandboxOptions {
 	/** Working directory inside the container. Defaults to `/workspace`. */
 	cwd?: string;
+	/** Receives failures thrown by observational sandbox callbacks. */
+	onObserverError?: (failure: SandboxObserverFailure) => void;
 }
 
 /**
@@ -60,7 +64,7 @@ export function cloudflareSandbox(
 	options?: CloudflareSandboxOptions,
 ): SandboxFactory {
 	return {
-		createSandbox: async () => cfSandboxToSandbox(sandbox, options?.cwd),
+		createSandbox: async () => cfSandboxToSandbox(sandbox, options?.cwd, options?.onObserverError),
 	};
 }
 
@@ -171,7 +175,11 @@ function raceContainerDeath<T>(
 
 // Module-private: only cloudflareSandbox() above uses it, and the entry-point
 // tests assert it stays off the cloudflare and internal barrels.
-function cfSandboxToSandbox(sandbox: CloudflareSandboxStub, cwd: string = '/workspace'): Sandbox {
+function cfSandboxToSandbox(
+	sandbox: CloudflareSandboxStub,
+	cwd: string = '/workspace',
+	onObserverError?: (failure: SandboxObserverFailure) => void,
+): Sandbox {
 	// Every container call goes through the death detector so a call that is
 	// in flight when the container dies settles instead of hanging forever.
 	const guarded = <T>(operation: string, rpc: Promise<T>): Promise<T> =>
@@ -269,6 +277,7 @@ function cfSandboxToSandbox(sandbox: CloudflareSandboxStub, cwd: string = '/work
 			execOpts?: {
 				cwd?: string;
 				env?: Record<string, string>;
+				onOutput?: (stream: 'stdout' | 'stderr', data: string) => void;
 				timeoutMs?: number;
 				signal?: AbortSignal;
 			},
@@ -279,6 +288,7 @@ function cfSandboxToSandbox(sandbox: CloudflareSandboxStub, cwd: string = '/work
 			// this adapter builds on) owns caller-facing abort and rejects
 			// promptly while the container keeps running the command. Only
 			// cloneable execution options cross the RPC boundary.
+			const onOutput = execOpts?.onOutput;
 			const result = await guarded(
 				'exec',
 				sandbox.exec(command, {
@@ -286,6 +296,12 @@ function cfSandboxToSandbox(sandbox: CloudflareSandboxStub, cwd: string = '/work
 					env: execOpts?.env,
 					// The Cloudflare sandbox `timeout` option is in milliseconds.
 					timeout: execOpts?.timeoutMs,
+					...(onOutput
+						? {
+								stream: true,
+								onOutput,
+							}
+						: {}),
 				}),
 			);
 
@@ -297,5 +313,5 @@ function cfSandboxToSandbox(sandbox: CloudflareSandboxStub, cwd: string = '/work
 		},
 	};
 
-	return sandboxFromDriver(api, cwd);
+	return sandboxFromDriver(api, cwd, { onObserverError });
 }
