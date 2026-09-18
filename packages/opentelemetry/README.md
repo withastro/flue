@@ -62,7 +62,7 @@ The master `enabled` value is the privacy ceiling. One detached copy passes thro
 
 `externalContent` is a side-effect-only sink for system instructions and input/output messages. It receives a detached, structurally limited clone plus a stable `contentType` scope before inline recording, regardless of sampling or `inline`. Its return value and mutations are ignored, failures only produce safe diagnostics, and tool definitions, descriptions, arguments, and results are never delivered to it.
 
-Set `inline: false` to skip serialization while retaining external delivery. `maxAttributeBytes` applies only to the exact final UTF-8 inline attribute string. Object-shaped tool arguments/results use standard `gen_ai.tool.call.*` attributes; other useful values use `flue.tool.call.arguments` or `flue.tool.call.result` under the same privacy and size policy. Tool descriptions and plain-text fallbacks remain raw strings. Structural truncation and byte omission are marked with bounded `flue.telemetry.content.*` attributes. Flue does not flatten undeclared child keys beneath `gen_ai.*`.
+Set `inline: false` to skip serialization while retaining external delivery. `maxAttributeBytes` applies only to the exact final UTF-8 inline attribute string. Tool arguments/results use the standard `gen_ai.tool.call.*` attributes: structured payloads (including strings carrying serialized JSON) record as JSON, and plain-text payloads record as raw strings, under the same privacy and size policy. Tool descriptions remain raw strings. Structural truncation and byte omission are marked with bounded `flue.telemetry.content.*` attributes. Flue does not flatten undeclared child keys beneath `gen_ai.*`.
 
 ## Metrics and Logs
 
