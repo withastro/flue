@@ -1,5 +1,17 @@
 # @flue/mysql
 
+## 2.1.0-next.0
+
+### Patch Changes
+
+- Updated dependencies [4def7b6]
+- Updated dependencies [4def7b6]
+- Updated dependencies [12464d7]
+- Updated dependencies [d9e7f5c]
+- Updated dependencies [4827d6e]
+- Updated dependencies [12464d7]
+  - @flue/runtime@2.1.0-next.0
+
 ## 2.0.8
 
 ### Patch Changes
@@ -13,7 +25,9 @@
 
 - Updated dependencies [b8c07bb, 4b436f7, c1ceacd, c663410, 96b8f0b, 1f6238a, da7c085, 21c6240, 2227864, 68dbb37, 7527739, 750f1f1, 4a86eaa]
   - @flue/runtime@2.0.7
+
 ## 2.0.5
 
 ### Patch Changes
+
 - Published packages once again resolve internal Flue dependencies to the release version.

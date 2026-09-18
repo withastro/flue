@@ -1,5 +1,20 @@
 # @flue/cli
 
+## 2.1.0-next.0
+
+### Patch Changes
+
+- 4def7b6: The OpenTelemetry ecosystem page and Cloudflare target guide now document `contentBudgetBytes` on `createOpenTelemetryInstrumentation()` / `createCloudflareTracing()`: an override for the default 56 KiB per-span content pool. Raising it ships fuller content only on backends not bound by workerd's span cap (the OpenTelemetry adapter); on the Cloudflare target it is a tightening control only, since workerd's 64 KiB span-attribute cap is a platform limit no setting raises.
+- 12464d7: The Tools guide and agent API reference now document `timeoutMs` on tool definitions: a per-call execution bound that aborts the tool's `context.signal` and settles the call with a `ToolTimeoutError` instead of letting one hung call consume the submission's durability budget.
+- Updated dependencies [4def7b6]
+- Updated dependencies [4def7b6]
+- Updated dependencies [12464d7]
+- Updated dependencies [d9e7f5c]
+- Updated dependencies [4827d6e]
+- Updated dependencies [12464d7]
+  - @flue/runtime@2.1.0-next.0
+  - @flue/vite@2.1.0-next.0
+
 ## 2.0.8
 
 ### Patch Changes
@@ -17,26 +32,36 @@
 - Updated dependencies [b8c07bb, 4b436f7, c1ceacd, c663410, 96b8f0b, 1f6238a, da7c085, 21c6240, 2227864, 68dbb37, 7527739, 750f1f1, 4a86eaa, d830034]
   - @flue/runtime@2.0.7
   - @flue/vite@2.0.7
+
 ## 2.0.6
 
 ### Patch Changes
+
 - Published packages once again include the bundled Flue documentation.
+
 ## 2.0.5
 
 ### Patch Changes
+
 - Published packages once again resolve internal Flue dependencies to the release version.
+
 ## 2.0.3
 
 ### Patch Changes
+
 - The Cloudflare Agents SDK (`agents`) is now a dependency of `@flue/vite` — projects no longer declare it.
+
 ## 2.0.2
 
 ### Patch Changes
+
 - The `cloudflare-shell` blueprint is replaced by `cloudflare-computer`.
 - New docs reference page: [Agent Behavior](https://flueframework.com/docs/reference/agent-behavior/).
+
 ## 2.0.0
 
 ### Patch Changes
+
 - Workflows are removed.
 - The `@flue/dev-console` TUI package is removed.
 - `flue run` is rewritten as transport-free local execution, and the CLI slims to `run`/`init`/`add`/`update`/`docs`.
