@@ -1,5 +1,13 @@
 # @flue/zendesk
 
+## 2.1.0-next.1
+
+### Patch Changes
+
+- Updated dependencies [11e1323]
+- Updated dependencies [11e1323]
+  - @flue/runtime@2.1.0-next.1
+
 ## 2.1.0-next.0
 
 ### Patch Changes

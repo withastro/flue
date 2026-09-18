@@ -1,5 +1,15 @@
 # @flue/cli
 
+## 2.1.0-next.1
+
+### Patch Changes
+
+- 11e1323: The MCP guide and Agent API reference now document preserved MCP tool annotations, including how trusted applications can inspect them and why server-supplied hints are not a security boundary.
+- Updated dependencies [11e1323]
+- Updated dependencies [11e1323]
+  - @flue/runtime@2.1.0-next.1
+  - @flue/vite@2.1.0-next.1
+
 ## 2.1.0-next.0
 
 ### Patch Changes
