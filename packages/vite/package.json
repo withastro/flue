@@ -37,7 +37,7 @@
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
 		"@hono/node-server": "^2.0.3",
-		"agents": "^0.20.1",
+		"agents": "^0.23.0",
 		"magic-string": "^1.0.0",
 		"tinyglobby": "^0.2.15",
 		"ulidx": "^2.4.1"

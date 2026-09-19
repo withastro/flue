@@ -8,15 +8,20 @@
  * - `runtime.prepare(...)` runs BEFORE `super(ctx, env)` so the coordinator's
  *   stores exist before the Agents SDK constructor can schedule work, then
  *   `runtime.attach(this, prepared)` binds the coordinator to the instance.
- * - `onStart` / `onRequest` / `onFiberRecovered` / the
- *   `__flueWakeAgentSubmissions` schedule target delegate to the shared
- *   Cloudflare agent runtime; `onStart`/`onFiberRecovered` forward to an
- *   inherited implementation when the (possibly extended) base defines one.
+ * - Submission execution runs on the Agents SDK `Tasks` capability the
+ *   `Agent` base installs as `this.tasks`: `taskDefinitions` declares the two
+ *   Flue definitions (a drive pass and a per-submission attempt), whose
+ *   handlers delegate to the shared Cloudflare agent runtime. The SDK
+ *   resolves the names against this field on every wake, so in-flight runs
+ *   always find their handler.
+ * - `onStart` / `onRequest` / `alarm` / `onError` delegate to the runtime and
+ *   forward to an inherited implementation when the (possibly extended) base
+ *   defines one.
  * - The module's `extend({ base, wrap })` export is resolved via
  *   `resolveCloudflareExtension`: `base` reshapes the superclass, `wrap`
  *   wraps the final class, and the wrapped class is what gets exported.
  */
-import type { CloudflareAgentRuntime } from './agent-coordinator.ts';
+import { type CloudflareAgentRuntime, FLUE_CONVERSATION_TASK } from './agent-coordinator.ts';
 import { type ExtensionClass, resolveCloudflareExtension } from './extension.ts';
 
 type CloudflareAgentInstance = Parameters<CloudflareAgentRuntime['attach']>[0];
@@ -46,6 +51,15 @@ export interface CreateFlueAgentClassOptions {
 }
 
 /**
+ * Task definitions an extension `base` declared as an instance field. Base
+ * class fields are assigned before a subclass's own initializers run, so
+ * reading the property at that point sees exactly the inherited value.
+ */
+function inheritedTaskDefinitions(instance: object): Record<string, unknown> {
+	return (instance as { taskDefinitions?: Record<string, unknown> }).taskDefinitions ?? {};
+}
+
+/**
  * Build the final (possibly extension-wrapped) Durable Object class for one
  * agent module.
  */
@@ -69,23 +83,23 @@ export function createFlueAgentClass(options: CreateFlueAgentClassOptions): Exte
 			runtime.attach(this as unknown as CloudflareAgentInstance, prepared);
 		}
 
+		/**
+		 * Flue's Task definitions, merged over any the extension `base`
+		 * declared. The Agents SDK reads this field lazily and re-resolves it
+		 * on every wake, which is what makes replay of an in-flight run
+		 * correct by construction.
+		 */
+		readonly taskDefinitions: Record<string, unknown> = {
+			...inheritedTaskDefinitions(this),
+			[FLUE_CONVERSATION_TASK]: runtime.conversationDefinition(
+				this as unknown as CloudflareAgentInstance,
+			),
+		};
+
 		onStart(props?: Record<string, unknown>) {
 			return runtime.onStart(this as unknown as CloudflareAgentInstance, () =>
 				typeof super.onStart === 'function' ? super.onStart(props) : undefined,
 			);
-		}
-
-		/**
-		 * Durable schedule target that owns submission supervision: armed at
-		 * zero delay by admission/abort/recovery/fiber-settle boundaries and
-		 * at 30s as the heartbeat while unsettled work exists. Dispatched
-		 * from the Durable Object's alarm invocation as one bounded,
-		 * storage-only pass that reconciles, enforces deadlines, and starts
-		 * attempt fibers detached — the fibers outlive the invocation on the
-		 * SDK's runFiber keepAlive/recovery machinery.
-		 */
-		__flueWakeAgentSubmissions() {
-			return runtime.drainSubmissions(this as unknown as CloudflareAgentInstance);
 		}
 
 		onRequest(request: Request) {
@@ -104,10 +118,22 @@ export function createFlueAgentClass(options: CreateFlueAgentClassOptions): Exte
 			);
 		}
 
-		onFiberRecovered(ctx: { readonly name?: string; readonly snapshot?: Record<string, unknown> }) {
-			return runtime.onFiberRecovered(this as unknown as CloudflareAgentInstance, ctx, () =>
-				typeof super.onFiberRecovered === 'function' ? super.onFiberRecovered(ctx) : undefined,
-			);
+		/**
+		 * The SDK reports terminal Task failures here (`onError(error)`; the
+		 * `(connection, error)` overload is WebSocket-only and never Flue's).
+		 * A failure the SDK recorded without running a handler — a deadline
+		 * settled over a hung attempt, a definition missing after a deploy —
+		 * leaves a submission row for the runtime to reconcile.
+		 */
+		async onError(...args: unknown[]) {
+			try {
+				if (typeof super.onError === 'function') await super.onError(...args);
+			} finally {
+				await runtime.onTaskError(
+					this as unknown as CloudflareAgentInstance,
+					args.length >= 2 ? args[1] : args[0],
+				);
+			}
 		}
 	}
 
