@@ -124,6 +124,43 @@ describe('GenAI message fallbacks', () => {
 	});
 });
 
+describe('structural array truncation', () => {
+	it('truncates large message arrays without repeatedly serializing every remaining message', () => {
+		const messages = Array.from({ length: 2_100 }, (_, index) => ({
+			role: 'user',
+			parts: [{ type: 'text', content: `${index}:${'x'.repeat(1_200)}` }],
+		}));
+		const started = performance.now();
+		const result = truncateContent(messages, { maxBytes: 40_960 }) as typeof messages;
+		const elapsed = performance.now() - started;
+
+		expect(elapsed).toBeLessThan(750);
+		expect(new TextEncoder().encode(JSON.stringify(result)).byteLength).toBeLessThanOrEqual(40_960);
+		expect(result[0]).toMatchObject({
+			role: 'flue',
+			parts: [
+				{
+					type: 'text',
+					content: expect.stringMatching(/^\[flue\] \d+ messages omitted/),
+				},
+			],
+		});
+		expect(result.at(-1)).toEqual(messages.at(-1));
+	});
+
+	it('preserves position-dependent serialization behavior on the compatibility path', () => {
+		const values = Array.from({ length: 20 }, (_, index) => ({
+			toJSON(key: string) {
+				return `${key}:${index}:${'x'.repeat(80)}`;
+			},
+		}));
+		const result = truncateContent(values, { maxBytes: 256 }) as unknown[];
+
+		expect(new TextEncoder().encode(JSON.stringify(result)).byteLength).toBeLessThanOrEqual(256);
+		expect(result[0]).toEqual(expect.stringMatching(/^\[flue\] \d+ items omitted/));
+	});
+});
+
 describe('content budget configuration', () => {
 	it('defaults the pool to CONTENT_BUDGET_BYTES', () => {
 		expect(createContentLedger().remaining).toBe(CONTENT_BUDGET_BYTES);

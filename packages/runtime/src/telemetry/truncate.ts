@@ -98,16 +98,43 @@ function truncateArray(value: unknown[], budget: number): unknown {
 	const items = [...value];
 	let droppedCount = 0;
 	let droppedBytes = 0;
-	while (items.length > 1) {
-		const removed = items.shift();
-		droppedCount += 1;
-		droppedBytes += (measure(removed) ?? 0) + 1;
-		const candidate = [
-			sentinelItem(messageShaped, outputShaped, droppedCount, droppedBytes),
-			...items,
-		];
-		const size = measure(candidate);
-		if (size !== undefined && size <= budget) return candidate;
+	const sizes = measurePlainArrayElements(items);
+	if (sizes) {
+		// A suffix sum lets us find the first fitting tail without serializing the
+		// entire remaining array after every dropped element.
+		const tailBytes = new Array<number>(items.length + 1).fill(0);
+		for (let index = items.length - 1; index >= 0; index -= 1) {
+			tailBytes[index] = tailBytes[index + 1]! + sizes[index]!;
+		}
+		while (droppedCount < items.length - 1) {
+			droppedBytes += sizes[droppedCount]! + 1;
+			droppedCount += 1;
+			const sentinel = sentinelItem(messageShaped, outputShaped, droppedCount, droppedBytes);
+			const tailLength = items.length - droppedCount;
+			// Two brackets, the sentinel, the tail, and one comma per tail item.
+			const size = 2 + (measure(sentinel) ?? 0) + tailBytes[droppedCount]! + tailLength;
+			if (size <= budget) {
+				const candidate = [sentinel, ...items.slice(droppedCount)];
+				// Keep actual serialization authoritative at the selected boundary.
+				const measured = measure(candidate);
+				if (measured !== undefined && measured <= budget) return candidate;
+			}
+		}
+		items.splice(0, droppedCount);
+	} else {
+		// Preserve the public helper's behavior for exotic values whose
+		// serialization can depend on array position or repeated evaluation.
+		while (items.length > 1) {
+			const removed = items.shift();
+			droppedCount += 1;
+			droppedBytes += (measure(removed) ?? 0) + 1;
+			const candidate = [
+				sentinelItem(messageShaped, outputShaped, droppedCount, droppedBytes),
+				...items,
+			];
+			const size = measure(candidate);
+			if (size !== undefined && size <= budget) return candidate;
+		}
 	}
 	const sentinel =
 		droppedCount > 0
@@ -152,6 +179,50 @@ function truncateArray(value: unknown[], budget: number): unknown {
 		if (floorSize !== undefined && floorSize <= budget) return floor;
 	}
 	return CONTENT_BUDGET_EXCEEDED;
+}
+
+/**
+ * Measure ordinary JSON data once per array element. Values with custom
+ * serialization, accessors, unsupported leaves, or cycles use the legacy
+ * path because repeated JSON.stringify calls can be observably different.
+ */
+function measurePlainArrayElements(items: unknown[]): number[] | undefined {
+	const sizes: number[] = [];
+	for (const item of items) {
+		if (!isPlainJsonValue(item, new Set())) return undefined;
+		const size = measure(item);
+		if (size === undefined) return undefined;
+		sizes.push(size);
+	}
+	return sizes;
+}
+
+function isPlainJsonValue(value: unknown, ancestors: Set<object>): boolean {
+	if (
+		value === null ||
+		typeof value === 'string' ||
+		typeof value === 'boolean' ||
+		(typeof value === 'number' && Number.isFinite(value))
+	) {
+		return true;
+	}
+	if (typeof value !== 'object') return false;
+	const prototype = Object.getPrototypeOf(value);
+	if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+		return false;
+	}
+	if (ancestors.has(value)) return false;
+	ancestors.add(value);
+	const descriptors = Object.getOwnPropertyDescriptors(value);
+	for (const [key, descriptor] of Object.entries(descriptors)) {
+		if (Array.isArray(value) && key === 'length') continue;
+		if (!('value' in descriptor) || !isPlainJsonValue(descriptor.value, ancestors)) {
+			ancestors.delete(value);
+			return false;
+		}
+	}
+	ancestors.delete(value);
+	return true;
 }
 
 function isMessageArray(value: unknown[]): boolean {
