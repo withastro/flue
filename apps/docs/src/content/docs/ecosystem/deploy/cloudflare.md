@@ -215,7 +215,7 @@ export const cloudflare = extend({
 });
 ```
 
-This is an advanced Cloudflare-only extension point. Flue applies `base` first, then defines its own Durable Object subclass with the generated binding and class identity. For the `Heartbeat` agent, authored Worker code can access the namespace as `env.FLUE_HEARTBEAT_AGENT`, and Wrangler binds that name to `FlueHeartbeatAgent`. Use `base` for native SDK lifecycle hooks and additional named methods. Do not override `fetch()`, `onRequest()`, `onError()`, `alarm()`, or `taskDefinitions`: Flue and the Agents SDK use them for routing, Task failure recovery, alarm multiplexing, and the durable execution definitions. A `base` that declares its own `taskDefinitions` keeps them; Flue merges its two definitions over them.
+This is an advanced Cloudflare-only extension point. Flue applies `base` first, then defines its own Durable Object subclass with the generated binding and class identity. For the `Heartbeat` agent, authored Worker code can access the namespace as `env.FLUE_HEARTBEAT_AGENT`, and Wrangler binds that name to `FlueHeartbeatAgent`. Use `base` for native SDK lifecycle hooks and additional named methods. Do not override `fetch()`, `onRequest()`, `onError()`, `alarm()`, or `taskDefinitions`: Flue and the Agents SDK use them for routing, Task failure recovery, alarm multiplexing, and the durable execution definitions. A `base` that declares its own `taskDefinitions` keeps them; Flue merges its conversation definition over them.
 
 Use `wrap` when an integration needs to wrap the final Flue-generated Durable Object class:
 

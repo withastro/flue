@@ -1299,6 +1299,9 @@ type FlueEventVariant =
 			type: 'submission_recovery';
 			submissionId?: string;
 			kind?: 'dispatch' | 'direct';
+			/** `start_submission` is retained for compatibility but no longer
+			 *  emitted: a claimed attempt is started by the turn that owns it,
+			 *  so a failure there is reported as `process_submission`. */
 			operation:
 				| 'materialize_submission'
 				| 'finalize_settlement'

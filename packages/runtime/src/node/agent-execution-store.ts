@@ -73,6 +73,19 @@ function createNodeTransactionSync(db: DatabaseSync): <T>(closure: () => T) => T
 	};
 }
 
+/**
+ * The raw `{ sql, transactionSync }` pair a Durable Object hands its stores,
+ * backed by `node:sqlite`. `sqlite()` builds finished stores from it; the
+ * Cloudflare coordinator builds its own, so tests that drive it on Node need
+ * the pair itself.
+ */
+export function createNodeDurableObjectStorage(db: DatabaseSync): {
+	sql: SqlStorage;
+	transactionSync<T>(closure: () => T): T;
+} {
+	return { sql: createNodeSqlStorage(db), transactionSync: createNodeTransactionSync(db) };
+}
+
 function openDatabase(path: string): {
 	db: DatabaseSync;
 	sql: SqlStorage;

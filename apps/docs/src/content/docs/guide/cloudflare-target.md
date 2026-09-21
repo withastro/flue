@@ -247,7 +247,7 @@ export const cloudflare = extend({
 });
 ```
 
-Both `base` and `wrap` are optional. Do not override Flue-owned `fetch()`, `onRequest()`, `onFiberRecovered()`, or `alarm()` methods.
+Both `base` and `wrap` are optional. Do not override `fetch()`, `onRequest()`, `onError()`, `alarm()`, or `taskDefinitions`: Flue and the Agents SDK use them for routing, Task failure recovery, alarm multiplexing, and the durable execution definitions.
 
 Use this module-local extension point for scheduled or queued behavior that belongs to one generated agent Durable Object. Scheduled callbacks share the object's alarm with agent execution: a `schedule()`/`scheduleEvery()` callback that comes due while a response is running fires after that response settles — see [Durable agent execution](#durable-agent-execution). Do not add a Worker cron trigger just to reach `scheduleEvery(...)`; the Agents SDK scheduling APIs run inside the generated Durable Object after that object is created. If your application needs to create the first conversation, expose an authenticated bootstrap route in `app.ts` or otherwise obtain the Durable Object namespace from `env` and address the conversation once.
 

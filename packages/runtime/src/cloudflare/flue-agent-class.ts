@@ -9,11 +9,10 @@
  *   stores exist before the Agents SDK constructor can schedule work, then
  *   `runtime.attach(this, prepared)` binds the coordinator to the instance.
  * - Submission execution runs on the Agents SDK `Tasks` capability the
- *   `Agent` base installs as `this.tasks`: `taskDefinitions` declares the two
- *   Flue definitions (a drive pass and a per-submission attempt), whose
- *   handlers delegate to the shared Cloudflare agent runtime. The SDK
- *   resolves the names against this field on every wake, so in-flight runs
- *   always find their handler.
+ *   `Agent` base installs as `this.tasks`: `taskDefinitions` declares the one
+ *   Flue conversation machine, whose phases delegate to the shared Cloudflare
+ *   agent runtime. The SDK resolves the name against this field on every
+ *   wake, so in-flight runs always find their handler.
  * - `onStart` / `onRequest` / `alarm` / `onError` delegate to the runtime and
  *   forward to an inherited implementation when the (possibly extended) base
  *   defines one.

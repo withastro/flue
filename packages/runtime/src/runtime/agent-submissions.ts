@@ -514,7 +514,8 @@ export async function reconcileInterruptedSubmission(
 		// A throwing render (e.g. a failing sandbox factory) never consumes an
 		// attempt or reaches the timeout check, so the submission used to retry
 		// forever on every wake. Past the deadline, settle it as timed out;
-		// before it, rethrow to keep the existing defer-and-wake behavior.
+		// before it, rethrow: the turn returns to idle and the reconcile pass
+		// retries it with backoff.
 		if (submission.timeoutAt > 0 && Date.now() >= submission.timeoutAt) {
 			await failInterruptedSubmission(
 				submissions,
@@ -810,6 +811,14 @@ export interface ProcessSubmissionOptions {
 	 * `true` to suppress normal settlement.
 	 */
 	isShutdownAbort?: (error: unknown) => boolean;
+	/**
+	 * Called once the session-resolved durability has been stamped on the
+	 * claimed row, carrying the deadline that replaces the claim-time
+	 * placeholder. The Cloudflare coordinator arms its in-turn abort timer
+	 * before the turn starts, so this is where it learns the configured
+	 * deadline and re-arms.
+	 */
+	onDurabilityStamped?: (durability: SubmissionDurability) => void;
 }
 
 /**
@@ -863,6 +872,7 @@ export async function processSubmission(opts: ProcessSubmissionOptions): Promise
 							'[flue] Agent submission attempt lost ownership before input application.',
 						);
 					}
+					opts.onDurabilityStamped?.(durability);
 					if (submission.kind === 'direct') {
 						try {
 							await ctx.flushEventCallbacks();

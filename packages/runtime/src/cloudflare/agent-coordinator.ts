@@ -1,5 +1,9 @@
 import { SUBMISSION_HARNESS_NAME, SUBMISSION_SESSION_NAME } from '../adapter-helpers.ts';
-import type { AgentSubmission, AgentSubmissionStore } from '../agent-execution-store.ts';
+import type {
+	AgentSubmission,
+	AgentSubmissionStore,
+	SubmissionDurability,
+} from '../agent-execution-store.ts';
 import type { FlueContextInternal } from '../client.ts';
 import { ConversationRecordWriter } from '../conversation-writer.ts';
 import {
@@ -70,6 +74,46 @@ export const FLUE_CONVERSATION_TASK = 'flue:conversation@v1';
 const FLUE_CONVERSATION_RUN_ID = 'flue:conversation';
 /** How often a live turn refreshes the engine's transition watchdog. */
 const TURN_HEARTBEAT_MS = 30_000;
+/**
+ * A runaway guard rather than a bound on work: the machine parks only when
+ * the ledger is empty, so it spends two transitions (idle, turn) per queued
+ * submission while it drains the whole backlog between parks.
+ */
+const CONVERSATION_TRANSITION_BUDGET = 100_000;
+
+/**
+ * The turn's abort timer and the cutoff its heartbeat respects, armed
+ * together so they can never disagree. A claimed row carries a claim-time
+ * placeholder deadline until the session stamps the agent's configured one,
+ * so the turn arms from the placeholder and re-arms when the stamp lands.
+ */
+interface TurnDeadline {
+	/** (Re-)arm both from `timeoutAt`; a non-positive value disarms. */
+	arm(timeoutAt: number): void;
+	/** Whether the armed deadline has passed — the heartbeat stops feeding then. */
+	expired(): boolean;
+	clear(): void;
+}
+
+export function createTurnDeadline(timeoutAt: number, abort: () => void): TurnDeadline {
+	let deadline: number | undefined;
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const clear = () => {
+		if (timer !== undefined) clearTimeout(timer);
+		timer = undefined;
+	};
+	const arm = (at: number) => {
+		clear();
+		deadline = at > 0 ? at : undefined;
+		if (deadline !== undefined) timer = setTimeout(abort, Math.max(0, deadline - Date.now()));
+	};
+	arm(timeoutAt);
+	return {
+		arm,
+		expired: () => deadline !== undefined && Date.now() >= deadline,
+		clear,
+	};
+}
 
 /** Backoff between idle passes that found unsettled work nothing could claim yet. */
 function deferralBackoffMs(deferrals: number): number {
@@ -144,6 +188,7 @@ export interface CloudflareMachineContext {
 /** The machine definition the generated agent class declares for the conversation. */
 export interface CloudflareConversationDefinition {
 	readonly initial: ConversationState;
+	readonly transitionBudget: number;
 	readonly phases: {
 		readonly idle: (state: ConversationState, ctx: CloudflareMachineContext) => Promise<unknown>;
 		readonly turn: (state: ConversationState, ctx: CloudflareMachineContext) => Promise<unknown>;
@@ -200,12 +245,6 @@ export interface CloudflareAgentRuntime {
 	 * a missing definition after a deploy. The ledger still holds unsettled
 	 * work: bring the run back and wake it so the idle pass reconciles.
 	 */
-	/**
-	 * The SDK recorded a terminal Task failure without running (or over) a
-	 * handler — a deadline, an exhausted budget, a missing definition. The
-	 * submission row it owned is still unsettled: ensure a drive run so the
-	 * reconcile pass settles it from evidence.
-	 */
 	onTaskError(instance: CloudflareAgentInstance, error: unknown): Promise<void>;
 	onRequest(instance: CloudflareAgentInstance, request: Request): Promise<Response | null>;
 	/**
@@ -256,6 +295,7 @@ export function createCloudflareAgentRuntime(
 			// runs, never when the definition is built.
 			return {
 				initial: IDLE,
+				transitionBudget: CONVERSATION_TRANSITION_BUDGET,
 				phases: {
 					idle: (state, ctx) => getCoordinator(instance).idle(state, ctx),
 					turn: (state, ctx) => getCoordinator(instance).turn(state, ctx),
@@ -263,8 +303,8 @@ export function createCloudflareAgentRuntime(
 				onCancel: (state, ctx) => getCoordinator(instance).onCancel(state, ctx),
 			};
 		},
-		onTaskError(instance, error) {
-			return getCoordinator(instance).onTaskError(error);
+		onTaskError(instance) {
+			return getCoordinator(instance).onTaskError();
 		},
 		onRequest(instance, request) {
 			return getCoordinator(instance).onRequest(request);
@@ -317,34 +357,32 @@ class CloudflareAgentCoordinator {
 	 */
 	private activeControllers = new Map<string, AbortController>();
 	/**
-	 * Attempt ids this isolate claimed and handed to an attempt run that has
-	 * not yet entered its handler body. The run's first execution takes the
-	 * id out and processes the claim as-is; a body that finds no entry is a
-	 * replay on a fresh isolate (or after its previous execution ended) and
-	 * must reconcile the row from durable evidence before doing anything.
+	 * Attempt ids this isolate claimed and handed to a turn that has not yet
+	 * entered its body. The turn's first execution takes the id out and
+	 * processes the claim as-is; a turn that finds no entry is a replay on a
+	 * fresh isolate (or after its previous execution ended) and must
+	 * reconcile the row from durable evidence before doing anything.
 	 */
 	private readonly startedAttempts = new Set<string>();
 
 	// Instance context is established at the boundaries where execution
-	// enters the Durable Object: onStart, onRequest, onAlarm, and the two
-	// Task handler bodies (drive, attempt). A Task handler may run on a fresh
-	// isolate with no ambient context, so each body (re)establishes it.
-	// onAlarm wraps the Agents SDK alarm handler, covering every scheduled
-	// callback it dispatches — including extension-authored
-	// schedule/scheduleEvery/queue targets (#437). Everything reachable from
-	// these boundaries — dispatch admission, reconciliation, materialization,
-	// submission processing — assumes the context is already present and
-	// never re-wraps.
+	// enters the Durable Object: onStart, onRequest, onAlarm, and the
+	// conversation machine's bodies (idle, turn, onCancel). A phase may run
+	// on a fresh isolate with no ambient context, so each body
+	// (re)establishes it. onAlarm wraps the Agents SDK alarm handler,
+	// covering every scheduled callback it dispatches — including
+	// extension-authored schedule/scheduleEvery/queue targets (#437).
+	// Everything reachable from these boundaries — dispatch admission,
+	// reconciliation, materialization, submission processing — assumes the
+	// context is already present and never re-wraps.
 	//
-	// Execution ownership: attempts start ONLY from the drive run's
-	// reconcile pass, each as its own `flue:attempt@v1` Task run whose
-	// handler body awaits the submission to settlement. The Agents SDK owns
-	// the durable wake (a claim backstop while the run is held, a replay on
-	// a fresh isolate after an interruption), the deadline (the submission's
-	// durability timeout, settled over a hung attempt with its later writes
-	// fenced out), and the attempt-wide abort signal. All other boundaries
-	// (admission, abort, onStart, Task failures) record durable intent and
-	// ensure the drive run exists; joining an existing one is free.
+	// Execution ownership: the one conversation run claims one attempt per
+	// turn and awaits it to settlement. The Agents SDK owns the durable wake
+	// (the mailbox while the run is parked, a replay on a fresh isolate after
+	// an interruption), the transition watchdog a live turn keeps fed, and
+	// the abort mark onCancel reads. All other boundaries (admission, abort,
+	// onStart, Task failures) record durable intent and wake the run;
+	// joining an existing one is free.
 	onStart(inherited: () => Promise<unknown> | unknown): Promise<void> {
 		return this.runWithInstanceContext(async () => {
 			await this.wakeIfUnsettled('start');
@@ -392,19 +430,59 @@ class CloudflareAgentCoordinator {
 	turn(state: ConversationState, ctx: CloudflareMachineContext): Promise<ConversationState> {
 		return this.runWithInstanceContext(async () => {
 			if (state.phase !== 'turn') return IDLE;
-			const row = await this.submissions.getSubmission(state.submissionId);
-			if (row?.status !== 'running' || row.attemptId !== state.attemptId) return IDLE;
-			if (!this.startedAttempts.delete(state.attemptId)) {
-				const replacement = await this.reconcileInterruptedSubmission(row);
-				if (!replacement?.attemptId) return IDLE;
-				this.startedAttempts.add(replacement.attemptId);
-				return {
-					phase: 'turn' as const,
-					submissionId: replacement.submissionId,
-					attemptId: replacement.attemptId,
-				};
+			// A throw out of a phase handler settles the whole conversation run,
+			// so the turn contains its failures the way the reconcile pass
+			// contains its per-item work and returns to idle, where the next
+			// pass retries on its backoff.
+			let row: AgentSubmission | null = null;
+			// Which half of the turn threw: classifying an interrupted attempt,
+			// or the attempt run itself.
+			let operation: 'reconcile_submission' | 'process_submission' = 'reconcile_submission';
+			try {
+				row = await this.submissions.getSubmission(state.submissionId);
+				if (row?.status !== 'running' || row.attemptId !== state.attemptId) return IDLE;
+				if (!this.startedAttempts.delete(state.attemptId)) {
+					const replacement = await this.reconcileInterruptedSubmission(row);
+					if (!replacement?.attemptId) return IDLE;
+					this.startedAttempts.add(replacement.attemptId);
+					return {
+						phase: 'turn' as const,
+						submissionId: replacement.submissionId,
+						attemptId: replacement.attemptId,
+					};
+				}
+				operation = 'process_submission';
+				await this.runAttempt(row, ctx);
+			} catch (error) {
+				// Without a row the ledger read itself failed, so log the turn's
+				// own identifiers instead of the submission's.
+				if (row) {
+					this.logSubmissionReconciliationFailure(row, operation, error);
+				} else {
+					console.error(
+						'[flue:submission-reconciliation]',
+						{
+							agentName: this.agentName,
+							instanceId: this.instance.name,
+							submissionId: state.submissionId,
+							attemptId: state.attemptId,
+							operation,
+							outcome: 'deferred_to_scheduled_wake',
+						},
+						error,
+					);
+					this.emitCoordinatorEvent(
+						{
+							type: 'submission_recovery',
+							submissionId: state.submissionId,
+							operation,
+							outcome: 'deferred',
+							error: serializeSubmissionError(error),
+						},
+						{ errorInfo: classifyError(error) },
+					);
+				}
 			}
-			await this.runAttempt(row, ctx);
 			return IDLE;
 		});
 	}
@@ -438,33 +516,29 @@ class CloudflareAgentCoordinator {
 		const onRunAbort = () => controller.abort(submissionAbortReason(ctx.signal.reason));
 		if (ctx.signal.aborted) onRunAbort();
 		else ctx.signal.addEventListener('abort', onRunAbort, { once: true });
-		const deadline = submission.timeoutAt > 0 ? submission.timeoutAt : undefined;
-		const deadlineTimer =
-			deadline === undefined
-				? undefined
-				: setTimeout(
-						() => controller.abort(new SubmissionTimeoutError()),
-						Math.max(0, deadline - Date.now()),
-					);
+		const deadline = createTurnDeadline(submission.timeoutAt, () =>
+			controller.abort(new SubmissionTimeoutError()),
+		);
 		// The engine's transition watchdog is the safety net for a turn that
 		// hangs past its own timeout; until then, a live turn keeps it fed.
 		const heartbeat = setInterval(() => {
-			if (deadline !== undefined && Date.now() >= deadline) return;
+			if (deadline.expired()) return;
 			ctx.heartbeat();
 		}, TURN_HEARTBEAT_MS);
 		try {
-			await this.processSubmissionEntry(submission, controller.signal);
+			await this.processSubmissionEntry(submission, controller.signal, (durability) =>
+				deadline.arm(durability.timeoutAt),
+			);
 		} finally {
 			clearInterval(heartbeat);
-			if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+			deadline.clear();
 			ctx.signal.removeEventListener('abort', onRunAbort);
 			this.deleteControllerIfCurrent(submission.submissionId, controller);
 			this.instance.ctx.waitUntil?.(drainGlobalEventDeliveries());
 		}
 	}
-	onTaskError(error: unknown): Promise<void> {
+	onTaskError(): Promise<void> {
 		return this.runWithInstanceContext(async () => {
-			if (!isTaskRecordedFailure(error)) return;
 			await this.wakeIfUnsettled('recover');
 		});
 	}
@@ -598,9 +672,14 @@ class CloudflareAgentCoordinator {
 
 	private get tasks(): CloudflareAgentTasks {
 		const tasks = this.instance.tasks;
-		if (!tasks || typeof tasks.run !== 'function') {
+		if (
+			!tasks ||
+			typeof tasks.run !== 'function' ||
+			typeof tasks.send !== 'function' ||
+			typeof tasks.reopen !== 'function'
+		) {
 			throw new Error(
-				'[flue] The installed "agents" package does not provide the Cloudflare Agents SDK Tasks capability on Agent. Upgrade @flue/vite (which supplies the Cloudflare Agents SDK), or remove the "agents" dependency from your project if it declares an older one.',
+				'[flue] The installed "agents" package does not provide the Cloudflare Agents SDK state-machine engine (run/send/reopen on Agent.tasks) this coordinator requires. Upgrade @flue/vite (which supplies the Cloudflare Agents SDK), or remove the "agents" dependency from your project if it declares an older one.',
 			);
 		}
 		return tasks;
@@ -729,14 +808,10 @@ class CloudflareAgentCoordinator {
 				}
 			}
 			for (const submission of await this.submissions.listRunningSubmissions()) {
-				// A running row whose attempt run the SDK still holds belongs to
-				// that run: it is either live in this isolate, or interrupted and
-				// due for the SDK's replay, whose handler body reconciles it.
-				// Reconciling here too would race that replay for the claim.
-				// A running row with NO attempt run is this pass's to recover:
-				// the run settled over a hung attempt (its deadline), failed
-				// without running (definition missing), or the claim-to-start
-				// gap was preempted. When the hung attempt is still live here it
+				// The pass runs from idle, with no turn of its own in flight, so
+				// every running row here is the pass's to recover: a turn the
+				// engine interrupted, one onCancel abandoned, or a claim whose
+				// turn never started. When the hung attempt is still live here it
 				// is signaled and orphaned first, so its late writes lose the
 				// settlement CAS and attempt-id fences and it can no longer
 				// append through the shared writer.
@@ -761,9 +836,8 @@ class CloudflareAgentCoordinator {
 						});
 					}
 					const replacement = await this.reconcileInterruptedSubmission(submission);
-					// The attempt run starts after the reconcile pass returns —
-					// see drive for why starts must escape the pass's tracing
-					// activation.
+					// The replacement is returned to the idle pass, which enters
+					// the turn phase with it — this method never runs an attempt.
 					if (replacement) toStart.push(replacement);
 					if (liveController) this.orphanEnforcedAttempt(submission.submissionId, liveController);
 				} catch (error) {
@@ -850,7 +924,7 @@ class CloudflareAgentCoordinator {
 			| 'materialize_submission'
 			| 'finalize_settlement'
 			| 'reconcile_submission'
-			| 'start_submission',
+			| 'process_submission',
 		error: unknown,
 	): void {
 		console.error(
@@ -883,8 +957,8 @@ class CloudflareAgentCoordinator {
 
 	/**
 	 * Recover one interrupted attempt. Returns the claimed replacement
-	 * submission (if recovery produced one) for the caller's reconcile pass
-	 * to start — attempts start only through the drain's guarded path.
+	 * submission (if recovery produced one) for the caller to hand to the
+	 * turn phase — attempts run only from there.
 	 */
 	private async reconcileInterruptedSubmission(
 		submission: AgentSubmission,
@@ -944,12 +1018,12 @@ class CloudflareAgentCoordinator {
 		const affected = await this.submissions.requestSessionAbort(sessionKey);
 		if (affected.length === 0) return false;
 		// Abort any of those attempts live in this isolate —
-		// processSubmission's catch settles them aborted and the attempt body
-		// ensures the next drive. Queued ones settle via the pre-execution
-		// abort check once a drive claims them; an evicted running attempt is
+		// processSubmission's catch settles them aborted and the turn returns
+		// to idle. Queued ones settle via the pre-execution abort check once
+		// the conversation run claims them; an evicted running attempt is
 		// driven by the durable flag through reconciliation, and a signal-deaf
-		// live attempt is settled over by its run deadline (the submission's
-		// durability timeout), after which the drive reconciles it aborted.
+		// live attempt is settled over at its own durability timeout, after
+		// which the idle pass reconciles it aborted.
 		for (const submissionId of affected) {
 			this.activeControllers.get(submissionId)?.abort(new SubmissionAbortedError());
 			await this.wake('abort', submissionId);
@@ -988,6 +1062,7 @@ class CloudflareAgentCoordinator {
 	private async processSubmissionEntry(
 		submission: AgentSubmission,
 		signal?: AbortSignal,
+		onDurabilityStamped?: (durability: SubmissionDurability) => void,
 	): Promise<void> {
 		const conversationWriter = await this.ensureConversationWriter();
 		await processSubmission({
@@ -1003,6 +1078,7 @@ class CloudflareAgentCoordinator {
 			conversationWriter,
 			emitCoordinatorEvent: this.emitCoordinatorEvent,
 			signal,
+			onDurabilityStamped,
 		});
 	}
 
@@ -1263,29 +1339,16 @@ class CloudflareAgentCoordinator {
 }
 
 /**
- * Translate the Agents SDK's attempt-wide abort reason into the submission
- * error `processSubmission` keys its settlement on: the run deadline is the
- * submission's durability timeout; anything else (an SDK cancellation) is an
- * abort.
+ * Translate the Agents SDK's run-wide abort reason into the submission error
+ * `processSubmission` keys its settlement on: an engine deadline is the
+ * submission's durability timeout; anything else (a cancellation) is an
+ * abort. Matched by name: `@flue/runtime` does not import `agents`.
  */
 function submissionAbortReason(reason: unknown): Error {
-	return isTaskError(reason, 'TaskDeadlineExceededError')
+	return isTaskError(reason, 'StateMachineDeadlineExceededError') ||
+		isTaskError(reason, 'StateMachineTurnDeadlineExceededError')
 		? new SubmissionTimeoutError()
 		: new SubmissionAbortedError();
-}
-
-/**
- * Whether an error the Agents SDK reported through `onError` is one it
- * recorded against a Task run without (or over) its handler — the cases
- * that leave a running submission row behind with no run to finish it.
- * Matched by name: `@flue/runtime` does not import `agents`.
- */
-function isTaskRecordedFailure(error: unknown): boolean {
-	return (
-		isTaskError(error, 'TaskDeadlineExceededError') ||
-		isTaskError(error, 'TaskAttemptsExhaustedError') ||
-		isTaskError(error, 'MissingTaskDefinitionError')
-	);
 }
 
 function isTaskError(error: unknown, name: string): boolean {
