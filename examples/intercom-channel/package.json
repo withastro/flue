@@ -10,7 +10,7 @@
 	"dependencies": {
 		"@flue/intercom": "workspace:*",
 		"@flue/runtime": "workspace:*",
-		"hono": "4.12.32",
+		"hono": "^4.12.32",
 		"intercom-client": "*",
 		"valibot": "^1.0.0"
 	},

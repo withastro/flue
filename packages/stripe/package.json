@@ -28,7 +28,7 @@
 		"check:types": "tsc --noEmit"
 	},
 	"dependencies": {
-		"hono": "4.12.32"
+		"hono": "^4.12.32"
 	},
 	"peerDependencies": {
 		"@flue/runtime": "workspace:^",

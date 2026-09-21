@@ -29,7 +29,7 @@
 	},
 	"dependencies": {
 		"discord-api-types": "0.38.52",
-		"hono": "4.12.32"
+		"hono": "^4.12.32"
 	},
 	"peerDependencies": {
 		"@flue/runtime": "workspace:^"

@@ -190,7 +190,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vite-plugin':
@@ -218,7 +218,7 @@ importers:
         specifier: 3.25.0
         version: 3.25.0(@aws-sdk/credential-provider-web-identity@3.972.71)(zod@4.4.3)
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -252,7 +252,7 @@ importers:
         specifier: '*'
         version: 4.35.0(zod@4.4.3)
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       just-bash:
         specifier: ^3.0.1
@@ -289,7 +289,7 @@ importers:
         specifier: ^0.4.0
         version: 0.4.0
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -326,7 +326,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -363,7 +363,7 @@ importers:
         specifier: '*'
         version: 22.0.1
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -397,7 +397,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       jose:
         specifier: '*'
@@ -437,7 +437,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       just-bash:
         specifier: ^3.0.1
@@ -462,7 +462,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       just-bash:
         specifier: ^3.0.1
@@ -490,7 +490,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       intercom-client:
         specifier: '*'
@@ -536,7 +536,7 @@ importers:
         specifier: '*'
         version: 88.3.0(graphql@17.0.2)
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -570,7 +570,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -604,7 +604,7 @@ importers:
         specifier: ^10.0.1
         version: 10.0.1
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@flue/cli':
@@ -629,7 +629,7 @@ importers:
         specifier: '*'
         version: 5.23.3
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -678,7 +678,7 @@ importers:
         specifier: ^2.0.3
         version: 2.0.12(hono@4.12.32)
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       react:
         specifier: ^19.1.1
@@ -721,7 +721,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       resend:
         specifier: '*'
@@ -764,7 +764,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/salesforce-marketing-cloud
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vite-plugin':
@@ -807,7 +807,7 @@ importers:
         specifier: ^10.64.0
         version: 10.69.0(@opentelemetry/core@2.10.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.220.0(@opentelemetry/api@1.9.1))
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -835,7 +835,7 @@ importers:
         specifier: '*'
         version: 1.1.2
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vite-plugin':
@@ -875,7 +875,7 @@ importers:
         specifier: ^8.0.0
         version: 8.0.0
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -909,7 +909,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/stripe
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       stripe:
         specifier: '*'
@@ -943,7 +943,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -968,7 +968,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/teams
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -1005,7 +1005,7 @@ importers:
         specifier: '*'
         version: 1.45.1
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -1039,7 +1039,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/twilio
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -1070,7 +1070,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/runtime
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -1110,7 +1110,7 @@ importers:
         specifier: '*'
         version: 0.2.3
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       valibot:
         specifier: ^1.0.0
@@ -1144,7 +1144,7 @@ importers:
         specifier: workspace:*
         version: link:../../packages/zendesk
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       lossless-json:
         specifier: '*'
@@ -1233,7 +1233,7 @@ importers:
         specifier: 0.38.52
         version: 0.38.52
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1258,7 +1258,7 @@ importers:
         specifier: 7.6.1
         version: 7.6.1
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1280,7 +1280,7 @@ importers:
   packages/google-chat:
     dependencies:
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       jose:
         specifier: 6.2.5
@@ -1305,7 +1305,7 @@ importers:
   packages/intercom:
     dependencies:
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1349,7 +1349,7 @@ importers:
         specifier: 88.3.0
         version: 88.3.0(graphql@17.0.2)
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1371,7 +1371,7 @@ importers:
   packages/messenger:
     dependencies:
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1434,7 +1434,7 @@ importers:
   packages/notion:
     dependencies:
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1566,7 +1566,7 @@ importers:
         specifier: '>=18'
         version: 19.2.17
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1609,7 +1609,7 @@ importers:
         specifier: ^1.3.0
         version: 1.7.1(valibot@1.4.2(typescript@7.0.2))
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       js-yaml:
         specifier: ^5.2.1
@@ -1643,7 +1643,7 @@ importers:
   packages/salesforce-marketing-cloud:
     dependencies:
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1684,7 +1684,7 @@ importers:
   packages/shopify:
     dependencies:
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       lossless-json:
         specifier: 4.3.0
@@ -1712,7 +1712,7 @@ importers:
         specifier: 3.0.0
         version: 3.0.0
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1734,7 +1734,7 @@ importers:
   packages/stripe:
     dependencies:
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1765,7 +1765,7 @@ importers:
         specifier: 4.23.3
         version: 4.23.3
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       jose:
         specifier: 6.2.5
@@ -1793,7 +1793,7 @@ importers:
         specifier: 4.0.0
         version: 4.0.0
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1815,7 +1815,7 @@ importers:
   packages/twilio:
     dependencies:
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1865,7 +1865,7 @@ importers:
         specifier: ^0.83.0
         version: 0.83.0(@modelcontextprotocol/sdk@1.30.0(@cfworker/json-schema@4.1.1)(zod@4.4.3))(ws@8.21.1)(zod@4.4.3)
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       tsdown:
         specifier: ^0.22.7
@@ -1886,7 +1886,7 @@ importers:
         specifier: 5.0.1
         version: 5.0.1
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
     devDependencies:
       '@cloudflare/vitest-pool-workers':
@@ -1908,7 +1908,7 @@ importers:
   packages/zendesk:
     dependencies:
       hono:
-        specifier: 4.12.32
+        specifier: ^4.12.32
         version: 4.12.32
       lossless-json:
         specifier: 4.3.0
@@ -2594,7 +2594,7 @@ packages:
       vitest: ^4.1.0
 
   '@cloudflare/workerd-darwin-64@1.20260730.1':
-    resolution: {integrity: sha512-+MBHmPaiTe2KajryW0T24rZvWFxb41hD3d8anNzQqHzft6vSEb18+sp0znSwxgij7ApPhSM1+vhkNg4f3YMguA==, tarball: https://registry.npmjs.org/@cloudflare/workerd-darwin-64/-/workerd-darwin-64-1.20260730.1.tgz}
+    resolution: {integrity: sha512-+MBHmPaiTe2KajryW0T24rZvWFxb41hD3d8anNzQqHzft6vSEb18+sp0znSwxgij7ApPhSM1+vhkNg4f3YMguA==}
     engines: {node: '>=16'}
     cpu: [x64]
     os: [darwin]
@@ -2606,19 +2606,19 @@ packages:
     os: [darwin]
 
   '@cloudflare/workerd-linux-64@1.20260730.1':
-    resolution: {integrity: sha512-ouyPOSMbiKPeSwUJUvxtMcxGAXs2J4aPE4T5ABIYX5ClcQx5j5bbHTmnqOQEY8sAuLTPjH7dY+iB6UI5ISlwwA==, tarball: https://registry.npmjs.org/@cloudflare/workerd-linux-64/-/workerd-linux-64-1.20260730.1.tgz}
+    resolution: {integrity: sha512-ouyPOSMbiKPeSwUJUvxtMcxGAXs2J4aPE4T5ABIYX5ClcQx5j5bbHTmnqOQEY8sAuLTPjH7dY+iB6UI5ISlwwA==}
     engines: {node: '>=16'}
     cpu: [x64]
     os: [linux]
 
   '@cloudflare/workerd-linux-arm64@1.20260730.1':
-    resolution: {integrity: sha512-YQ+Mi78U3TPdgBPtwq+Sm6rJU+Ihl2y0pjYtuuKkdmUbYzL7oLR6Xqq9wljhasnuCFICssDJaqhMep5WizYoEQ==, tarball: https://registry.npmjs.org/@cloudflare/workerd-linux-arm64/-/workerd-linux-arm64-1.20260730.1.tgz}
+    resolution: {integrity: sha512-YQ+Mi78U3TPdgBPtwq+Sm6rJU+Ihl2y0pjYtuuKkdmUbYzL7oLR6Xqq9wljhasnuCFICssDJaqhMep5WizYoEQ==}
     engines: {node: '>=16'}
     cpu: [arm64]
     os: [linux]
 
   '@cloudflare/workerd-windows-64@1.20260730.1':
-    resolution: {integrity: sha512-27fAN+vUECW1oYVc1KOcHYpkL8COM2Uxtxql7TL595kxbjoqS5yckw7NLz7bTf2pALFCZWjqXDjZGJ/xbG4ZKQ==, tarball: https://registry.npmjs.org/@cloudflare/workerd-windows-64/-/workerd-windows-64-1.20260730.1.tgz}
+    resolution: {integrity: sha512-27fAN+vUECW1oYVc1KOcHYpkL8COM2Uxtxql7TL595kxbjoqS5yckw7NLz7bTf2pALFCZWjqXDjZGJ/xbG4ZKQ==}
     engines: {node: '>=16'}
     cpu: [x64]
     os: [win32]

@@ -29,7 +29,7 @@
 	},
 	"dependencies": {
 		"@grammyjs/types": "4.0.0",
-		"hono": "4.12.32"
+		"hono": "^4.12.32"
 	},
 	"peerDependencies": {
 		"@flue/runtime": "workspace:^"
