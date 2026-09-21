@@ -1,0 +1,39 @@
+.changeset/cloudflare-conversation-machine.md
+  s_902f0d8aed10dd::t_2a0e8dda35927d 1-6
+apps/docs/src/content/docs/ecosystem/deploy/cloudflare.md
+  s_902f0d8aed10dd::t_eb2c5373aa64fb 218
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_902f0d8aed10dd::t_3bb5e1c68200d5 250
+apps/docs/src/content/docs/reference/events.md
+  s_902f0d8aed10dd::t_1d672b34d63e9e 225
+packages/runtime/src/cloudflare/agent-coordinator.test.ts
+  s_902f0d8aed10dd::t_b757595537322b 1-266
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_902f0d8aed10dd::t_e2969e42d8ac01 2-6,77-116,191,298,306-307,360-364,369-377,379-385,433-484,519-521,525,529-531,534,540,675-680,682,811-814,839-840,927,960-961,1021-1023,1025-1026,1065,1081,1342-1345,1348-1349
+packages/runtime/src/cloudflare/flue-agent-class.ts
+  s_902f0d8aed10dd::t_3b271b200860ee 12-15
+packages/runtime/src/cloudflare/turn-deadline.test.ts
+  s_902f0d8aed10dd::t_497c34994bc8ea 1-83
+packages/runtime/src/node/agent-execution-store.ts
+  s_902f0d8aed10dd::t_8a89a78479cab2 76-88
+packages/runtime/src/runtime/agent-submissions.ts
+  s_902f0d8aed10dd::t_25dcecdb513ccb 517-518,814-821,875
+packages/runtime/src/types.ts
+  s_902f0d8aed10dd::t_107973668fad2a 1302-1304
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "1e47f9361db35c7f4b823a904e90e4c2c82d7b70",
+  "prompts": {},
+  "sessions": {
+    "s_902f0d8aed10dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b071c91a-4a12-4b69-b33c-ae6f25b8521d",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Matt Carey <mcarey@cloudflare.com>"
+    }
+  }
+}
