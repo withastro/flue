@@ -189,7 +189,11 @@ export interface SkillDefinition {
 	readonly license?: string;
 	readonly compatibility?: string;
 	readonly metadata?: Readonly<Record<string, string>>;
-	/** Space-separated pre-approved tools (experimental in the Agent Skills spec). */
+	/**
+	 * Space-separated tool names the skill author prefers (experimental in
+	 * the Agent Skills spec). Accepted for compatibility; Flue does not
+	 * enforce it.
+	 */
 	readonly allowedTools?: string;
 	/** Supporting resources, keyed by path relative to the skill root. */
 	readonly files?: Readonly<Record<string, string | Uint8Array>>;

@@ -594,7 +594,7 @@ Equivalent to a skill directory: `instructions` is the `SKILL.md` body, and `fil
 - `instructions` — the skill's content, loaded on activation. Required, non-empty — a skill is its content, so a definition with no instructions is rejected rather than mounted as an empty catalog line.
 - `license`, `compatibility` — optional strings recorded in the packaged frontmatter (`compatibility` at most 500 characters).
 - `metadata` — a string-to-string map recorded in frontmatter.
-- `allowedTools` — space-separated pre-approved tools (experimental in the Agent Skills spec).
+- `allowedTools` — space-separated tool names the skill author prefers (experimental in the Agent Skills spec). Accepted for compatibility; Flue does not enforce it.
 - `files` — supporting resources keyed by path relative to the skill root. Paths must be safe relative paths (no leading `/`, no `.`/`..` segments, no backslashes) and must not be `SKILL.md` itself. Content is a string or `Uint8Array`.
 
 ## `defineSubagent()`
