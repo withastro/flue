@@ -56,7 +56,14 @@ export interface AgentState extends AgentSnapshot {
 	 * (otherwise a keyed/virtualized list sees remove+add and loses scroll/focus).
 	 */
 	localMessageIds: { submissionId: string; localId: string }[];
+	/** Submission ids admitted through local sends, in admission order. */
 	localSubmissionIds: string[];
+	/**
+	 * Unsettled submission ids admitted through local sends. Kept separate from
+	 * the conversation-derived active set (see `converge`) so a reload's observed
+	 * submissions can drive `streaming` without persisting into this in-memory
+	 * recollection.
+	 */
 	activeSubmissionIds: string[];
 }
 
@@ -232,7 +239,20 @@ function converge(state: AgentState): AgentState {
 		.find((settlement): settlement is NonNullable<typeof settlement> => settlement !== undefined);
 	const failedSettlement =
 		lastSettledLocalSubmission?.outcome === 'failed' ? lastSettledLocalSubmission : undefined;
-	const activeSubmissionIds = state.activeSubmissionIds.filter((id) => !settledIds.has(id));
+	// Locally-admitted submissions that have not yet settled. This is the only
+	// in-memory recollection of admission and does not survive a reload.
+	const localActiveSubmissionIds = state.activeSubmissionIds.filter((id) => !settledIds.has(id));
+	// The conversation itself is reload-safe: every tracked submission stamps its
+	// `submissionId` on its messages, and `settlements` records terminal
+	// outcomes. Unsettled submission ids can therefore be derived from the
+	// observed conversation (message submission ids minus settled ids), so an
+	// admitted-but-unsettled submission keeps `status === 'streaming'` after a
+	// reload even though the reducer has no memory of the admission receipt.
+	const observedActiveSubmissionIds = [...canonicalSubmissionIds].filter(
+		(id) => !settledIds.has(id),
+	);
+	const hasActiveSubmission =
+		localActiveSubmissionIds.length > 0 || observedActiveSubmissionIds.length > 0;
 	const hasFailedSend = state.failedSends.length > 0;
 
 	const status: AgentStatus = failedSettlement
@@ -241,7 +261,7 @@ function converge(state: AgentState): AgentState {
 			? 'streaming'
 			: pendingSends.length > 0
 				? 'submitted'
-				: activeSubmissionIds.length > 0
+				: hasActiveSubmission
 					? 'streaming'
 					: hasFailedSend
 						? 'error'
@@ -252,7 +272,7 @@ function converge(state: AgentState): AgentState {
 		messages,
 		settlements: conversation?.settlements ?? [],
 		pendingSends,
-		activeSubmissionIds,
+		activeSubmissionIds: localActiveSubmissionIds,
 		status,
 		error: failedSettlement
 			? new Error(settlementError(failedSettlement.error))
