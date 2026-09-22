@@ -242,12 +242,22 @@ function converge(state: AgentState): AgentState {
 	// Locally-admitted submissions that have not yet settled. This is the only
 	// in-memory recollection of admission and does not survive a reload.
 	const localActiveSubmissionIds = state.activeSubmissionIds.filter((id) => !settledIds.has(id));
-	// The conversation itself is reload-safe: every tracked submission stamps its
+	// The conversation itself is reload-safe for submissions that already have at
+	// least one materialized message: every tracked submission stamps its
 	// `submissionId` on its messages, and `settlements` records terminal
 	// outcomes. Unsettled submission ids can therefore be derived from the
 	// observed conversation (message submission ids minus settled ids), so an
 	// admitted-but-unsettled submission keeps `status === 'streaming'` after a
 	// reload even though the reducer has no memory of the admission receipt.
+	//
+	// Residual window: admission persists the operational row and returns the
+	// 202 receipt before `processSubmissionInput()` appends the submission's
+	// canonical user/signal message, so a reload in that window — or a queued/
+	// recovering submission delayed before input application — hydrates a
+	// conversation with no message for the submission and reports `idle` until
+	// its first message materializes. Closing that window needs reload-safe
+	// active-submission state (admission-time materialization or a durable
+	// client-side receipt) and is intentionally out of scope here.
 	const observedActiveSubmissionIds = [...canonicalSubmissionIds].filter(
 		(id) => !settledIds.has(id),
 	);

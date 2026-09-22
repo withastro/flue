@@ -51,6 +51,11 @@ function stubClient(overrides: { send?: () => Promise<AgentSendResult> } = {}) {
 			conversation = next;
 			for (const listener of listeners) listener();
 		},
+		publishAbsent() {
+			phase = 'absent';
+			conversation = undefined;
+			for (const listener of listeners) listener();
+		},
 	};
 }
 
@@ -81,6 +86,22 @@ function assistantMessage(
 		display: 'visible',
 		submissionId,
 		parts,
+		...overrides,
+	};
+}
+
+/** A webhook/dispatch/signal message admitted out-of-band (no local send). */
+function dispatchMessage(
+	submissionId: string,
+	overrides: Partial<FlueConversationMessage> = {},
+): FlueConversationMessage {
+	return {
+		id: `dispatch-${submissionId}`,
+		role: 'system',
+		purpose: 'dispatch',
+		display: 'diagnostic',
+		submissionId,
+		parts: [{ type: 'text', text: 'Webhook event', state: 'done' }],
 		...overrides,
 	};
 }
@@ -249,6 +270,102 @@ describe('useFlueAgent status after a reload edge cases', () => {
 			),
 		);
 		expect(result.current.status).toBe('streaming');
+	});
+});
+
+describe('useFlueAgent status for out-of-band submissions', () => {
+	it('reports streaming for an unsettled out-of-band submission with no local send', () => {
+		const source = stubClient();
+		const { result } = renderHook(() => useFlueAgent({ client: source.client }));
+		act(() => source.publish(conversation([dispatchMessage('dispatch-1')])));
+		expect(result.current.status).toBe('streaming');
+	});
+
+	it('reports idle once an out-of-band submission settles', () => {
+		const source = stubClient();
+		const { result } = renderHook(() => useFlueAgent({ client: source.client }));
+		act(() => source.publish(conversation([dispatchMessage('dispatch-1')])));
+		expect(result.current.status).toBe('streaming');
+		act(() =>
+			source.publish(
+				conversation(
+					[dispatchMessage('dispatch-1')],
+					[{ submissionId: 'dispatch-1', outcome: 'completed' }],
+				),
+			),
+		);
+		expect(result.current.status).toBe('idle');
+	});
+
+	// Documents the residual reload window: admission persists the row and
+	// returns 202 before the canonical user/signal message is materialized, so
+	// a reload that hydrates a still-empty conversation cannot discover the
+	// admitted submission and reports `idle` until its first message appears.
+	it('reports idle for an empty conversation snapshot (admitted submission not yet materialized)', () => {
+		const source = stubClient();
+		const { result } = renderHook(() => useFlueAgent({ client: source.client }));
+		act(() => source.publish(conversation([])));
+		expect(result.current.status).toBe('idle');
+	});
+});
+
+describe('useFlueAgent status aggregate precedence', () => {
+	it('pending local send outranks an unsettled out-of-band submission; streaming text outranks both', async () => {
+		let admit!: (receipt: AgentSendResult) => void;
+		const source = stubClient({
+			send: () => new Promise((resolve) => (admit = resolve)),
+		});
+		const { result } = renderHook(() => useFlueAgent({ client: source.client }));
+
+		act(() => void result.current.sendMessage('Build a house'));
+		act(() => source.publish(conversation([dispatchMessage('dispatch-1')])));
+		// The in-flight local send (pending) outranks the observed out-of-band
+		// submission in the aggregate precedence.
+		expect(result.current.status).toBe('submitted');
+
+		act(() =>
+			source.publish(
+				conversation([
+					dispatchMessage('dispatch-1'),
+					assistantMessage('dispatch-1', [{ type: 'text', text: 'Working', state: 'streaming' }]),
+				]),
+			),
+		);
+		// Streaming assistant text outranks the pending local send.
+		expect(result.current.status).toBe('streaming');
+
+		await act(async () =>
+			admit({ submissionId: 'submission-1', streamUrl: '/stream', offset: '0', uid: 'instance-1' }),
+		);
+	});
+
+	it('local recollection keeps streaming across an empty or absent observation until settled', async () => {
+		const source = stubClient();
+		const { result } = renderHook(() => useFlueAgent({ client: source.client }));
+		await act(() => result.current.sendMessage('Build a house'));
+		// Materialize the local submission (removes the pending echo).
+		act(() => source.publish(conversation([userMessage('submission-1')])));
+		expect(result.current.status).toBe('streaming');
+
+		// An authoritative empty observation (e.g. a reset/regrown snapshot) does
+		// not clear the in-memory recollection of the locally-admitted submission.
+		act(() => source.publish(conversation([])));
+		expect(result.current.status).toBe('streaming');
+
+		// Neither does an absent observation (e.g. a 404 after reset).
+		act(() => source.publishAbsent());
+		expect(result.current.status).toBe('streaming');
+
+		// Settlement clears the recollection.
+		act(() =>
+			source.publish(
+				conversation(
+					[userMessage('submission-1')],
+					[{ submissionId: 'submission-1', outcome: 'completed' }],
+				),
+			),
+		);
+		expect(result.current.status).toBe('idle');
 	});
 });
 

@@ -57,15 +57,26 @@ type SendMessageOptions = Omit<AgentPromptOptions, 'message'> & {
 type AgentStatus = 'idle' | 'connecting' | 'submitted' | 'streaming' | 'error';
 ```
 
-| Status       | Meaning                                                                  |
-| ------------ | ------------------------------------------------------------------------ |
-| `idle`       | No local prompt is active, or the hook is dormant.                       |
-| `connecting` | Initial connection or retry. `error` holds the latest retryable failure. |
-| `submitted`  | A prompt is being admitted or awaits attributable assistant activity.    |
-| `streaming`  | Assistant activity for this client's submission is arriving.             |
-| `error`      | Prompt admission, a submission, or stream observation failed.            |
+| Status       | Meaning                                                                                                                                                                                                               |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `idle`       | None of the conditions below hold — no unsettled submission, no in-flight local prompt, no retained failure. The hook is also `idle` when dormant.                                                                    |
+| `connecting` | Initial connection or retry. `error` holds the latest retryable failure.                                                                                                                                              |
+| `submitted`  | A local prompt is being admitted or awaits its activity appearing in the observed conversation.                                                                                                                       |
+| `streaming`  | An unsettled submission is active in the observed conversation (including out-of-band work: webhooks, dispatches, other clients), or a locally-admitted submission that has not yet settled is recollected in memory. |
+| `error`      | The latest settled _local_ submission failed, or a failed send is retained.                                                                                                                                           |
 
-`settlements` mirrors the observed conversation's terminal submission outcomes (`FlueConversationSettlement[]`), so application code can correlate a `submissionId` with its `completed`/`failed`/`aborted` outcome; `status` and `error` semantics are unaffected by it.
+`status` is the first of the following that applies, top to bottom:
+
+1. `error` — the latest settled _local_ submission failed.
+2. `streaming` — assistant text or reasoning is actively streaming.
+3. `submitted` — a local prompt is being admitted or awaits attributable activity.
+4. `streaming` — an unsettled submission is active in the observed conversation (including out-of-band work: webhooks, dispatches, other clients), or a locally-admitted submission that has not yet settled is recollected in memory.
+5. `error` — a failed send is retained.
+6. `idle` — none of the above.
+
+The local recollection is the exception to the conversation-scoped reading: a locally-admitted submission that has not yet settled keeps `status` at `streaming` across an empty or `absent` observation until the submission settles or the observation reflects it. Separately from this precedence, a fatal stream-observation failure reports `error`, and an in-flight initial read or retry reports `connecting` (with `error` holding the latest retryable failure) where the precedence above would otherwise be `idle`.
+
+`settlements` mirrors the observed conversation's terminal submission outcomes (`FlueConversationSettlement[]`), so application code can correlate a `submissionId` with its `completed`/`failed`/`aborted` outcome. Exposing it is additive — it does not change the `status`/`error` derivation above, which already reads the same observed settlements internally.
 
 ### `sendMessage()`
 
