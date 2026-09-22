@@ -20,20 +20,24 @@ export const GEN_AI_SEMCONV_REVISION = '4c8addb53718b544134be47e256237026fe88875
 /** Bumped when the role/parts message projection changes shape. */
 export const GEN_AI_PROJECTION_REVISION = 5;
 /**
- * Bumped when the `flue.*` extension vocabulary changes. Revision 4: the
- * `flue.telemetry.content.<type>.truncated/.omitted` marker attributes are
- * gone — truncation and omission are represented in-band, inside the content
- * payload, by `[flue]`-prefixed sentinels (see `./truncate.ts`).
+ * Bumped when the `flue.*` extension vocabulary changes. Revision 5: the
+ * `flue.tool.call.arguments`/`flue.tool.call.result` fallback keys are no
+ * longer emitted — tool payloads of every shape record under the semconv
+ * `gen_ai.tool.call.*` keys, which type them `any` and sanction JSON-string
+ * form on spans. The constants remain for source compatibility. (Revision 4
+ * moved truncation/omission markers in-band; see `./truncate.ts`.)
  */
-export const FLUE_TELEMETRY_EXTENSION_REVISION = 4;
+export const FLUE_TELEMETRY_EXTENSION_REVISION = 5;
 
 /**
  * Content-bearing attribute names. `gen_ai.*` keys follow the OpenTelemetry
- * GenAI semantic conventions (Development status). The two `flue.*` keys are
- * the fallback names for tool payloads that are not plain objects — the
- * semconv `gen_ai.tool.call.*` keys are specified as object-shaped, so
- * non-object payloads move to the extension namespace rather than lie about
- * their shape.
+ * GenAI semantic conventions (Development status). The `gen_ai.tool.call.*`
+ * keys are typed `any` there: structured form is preferred, and JSON-string
+ * form is sanctioned on spans when the attribute store cannot hold objects —
+ * which is every span attribute store this runtime writes to — so tool
+ * payloads of every shape ride the semconv keys. The two `flue.*` keys are
+ * the pre-5 fallback names for non-object tool payloads; they are retained
+ * for source compatibility and no longer emitted.
  */
 export const CONTENT_ATTR = {
 	inputMessages: 'gen_ai.input.messages',
@@ -43,6 +47,8 @@ export const CONTENT_ATTR = {
 	toolDescription: 'gen_ai.tool.description',
 	toolArguments: 'gen_ai.tool.call.arguments',
 	toolResult: 'gen_ai.tool.call.result',
+	/** @deprecated No longer emitted; see `FLUE_TELEMETRY_EXTENSION_REVISION` 5. */
 	toolArgumentsRaw: 'flue.tool.call.arguments',
+	/** @deprecated No longer emitted; see `FLUE_TELEMETRY_EXTENSION_REVISION` 5. */
 	toolResultRaw: 'flue.tool.call.result',
 } as const;

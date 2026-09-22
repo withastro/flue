@@ -751,10 +751,9 @@ function contentEntry(
 }
 
 /**
- * Tool payloads keep the semconv `gen_ai.tool.call.*` keys for plain objects
- * and move to the `flue.tool.call.*` fallback names otherwise, mirroring
- * `@flue/opentelemetry`. The draw is charged under the semconv key; the raw
- * fallback differs by a few bytes, well inside the pool's slack.
+ * Tool payloads of every shape ride the semconv `gen_ai.tool.call.*` keys
+ * (typed `any` there, with JSON-string form sanctioned on spans), mirroring
+ * `@flue/opentelemetry`. The draw is charged under the semconv key.
  */
 function toolPayloadEntry(
 	ledger: ContentLedger,
@@ -763,21 +762,13 @@ function toolPayloadEntry(
 	kind: 'arguments' | 'result',
 	value: unknown,
 ): AttributeValues {
+	const key = kind === 'arguments' ? CONTENT_ATTR.toolArguments : CONTENT_ATTR.toolResult;
 	const result = drawContentAttribute(ledger, content, () => value, event, {
-		key: kind === 'arguments' ? CONTENT_ATTR.toolArguments : CONTENT_ATTR.toolResult,
+		key,
 		contentType: kind === 'arguments' ? 'tool_arguments' : 'tool_result',
 		rawString: true,
 	});
-	if (result.value === undefined) return {};
-	const key =
-		kind === 'arguments'
-			? result.objectShaped
-				? CONTENT_ATTR.toolArguments
-				: CONTENT_ATTR.toolArgumentsRaw
-			: result.objectShaped
-				? CONTENT_ATTR.toolResult
-				: CONTENT_ATTR.toolResultRaw;
-	return { [key]: result.value };
+	return result.value === undefined ? {} : { [key]: result.value };
 }
 
 /**

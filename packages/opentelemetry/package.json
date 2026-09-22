@@ -25,7 +25,8 @@
 	},
 	"scripts": {
 		"build": "tsdown",
-		"check:types": "tsc --noEmit"
+		"check:types": "tsc --noEmit",
+		"test": "vitest run"
 	},
 	"peerDependencies": {
 		"@flue/runtime": "workspace:^",
