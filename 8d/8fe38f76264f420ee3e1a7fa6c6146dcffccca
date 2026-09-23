@@ -1,0 +1,25 @@
+apps/docs/src/content/docs/guide/cloudflare-target.md
+  s_902f0d8aed10dd::t_b0b499cd0ad751 110
+apps/docs/src/content/docs/guide/durability.md
+  s_902f0d8aed10dd::t_ed438eb2b9fe81 137,139-140
+packages/runtime/src/cloudflare/agent-coordinator.ts
+  s_902f0d8aed10dd::t_2505f1f811d7eb 62-67,69-72,74-76,79-84,92-98,100,105-110,112,131-133,135-141,144-151,192-195,197,199-201,253-264,350,355-360,362,364-368,375-382,386-390,392,394-405,407-408,412-416,418-435,438-454,458-460,468,610-612,614-616,618-619,622-628,631-635,773-787,955,1032,1117,1167,1234
+packages/runtime/src/cloudflare/flue-agent-class.ts
+  s_902f0d8aed10dd::t_8615b6b356aad7 24,94-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "8d8fe38f76264f420ee3e1a7fa6c6146dcffccca",
+  "prompts": {},
+  "sessions": {
+    "s_902f0d8aed10dd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "b071c91a-4a12-4b69-b33c-ae6f25b8521d",
+        "model": "claude-fable-5-1"
+      },
+      "human_author": "Matt Carey <mcarey@cloudflare.com>"
+    }
+  }
+}
