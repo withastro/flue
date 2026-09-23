@@ -1,11 +1,41 @@
 import { describe, expect, it, vi } from 'vitest';
-import { type CloudflareSandboxStub, cloudflareSandbox } from './cf-sandbox.ts';
+import { type CloudflareSandboxStub, cloudflareSandbox, consumeExecStream } from './cf-sandbox.ts';
 
 type StubExec = CloudflareSandboxStub['exec'];
+type StubExecStream = CloudflareSandboxStub['execStream'];
+const encoder = new TextEncoder();
 
-function createStub(exec: StubExec): CloudflareSandboxStub {
+function eventStream(events: readonly unknown[]): ReadableStream<Uint8Array> {
+	return new ReadableStream({
+		start(controller) {
+			for (const event of events) {
+				controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+			}
+			controller.close();
+		},
+	});
+}
+
+function textStream(chunks: readonly string[]): ReadableStream<Uint8Array> {
+	return new ReadableStream({
+		start(controller) {
+			for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+			controller.close();
+		},
+	});
+}
+
+function createExecStream(events: readonly unknown[]): StubExecStream {
+	return vi.fn(async () => eventStream(events));
+}
+
+function createStub(
+	exec: StubExec,
+	execStream: StubExecStream = createExecStream([{ type: 'complete', exitCode: 0 }]),
+): CloudflareSandboxStub {
 	return {
 		exec,
+		execStream,
 		async readFile() {
 			return { content: '' };
 		},
@@ -21,22 +51,76 @@ function createStub(exec: StubExec): CloudflareSandboxStub {
 	};
 }
 
+describe('consumeExecStream', () => {
+	it('parses fragmented SSE frames and collects the complete result', async () => {
+		const chunks: Array<['stdout' | 'stderr', string]> = [];
+		const stream = textStream([
+			'event: output\r\ndata: {"type":"stdout","data":"hel',
+			'lo "}\r\n\r\ndata: {"type":"stderr","data":"warning"}\n\n',
+			'data: {"type":"stdout","data":"world"}\n\ndata: {"type":"complete",',
+			'"exitCode":7}\n\n',
+		]);
+
+		const result = await consumeExecStream(Promise.resolve(stream), (channel, data) => {
+			chunks.push([channel, data]);
+		});
+
+		expect(chunks).toEqual([
+			['stdout', 'hello '],
+			['stderr', 'warning'],
+			['stdout', 'world'],
+		]);
+		expect(result).toEqual({
+			success: false,
+			stdout: 'hello world',
+			stderr: 'warning',
+			exitCode: 7,
+		});
+	});
+
+	it('ignores non-JSON SSE data', async () => {
+		const stream = textStream(['data: not-json\n\n', 'data: {"type":"complete","exitCode":0}\n\n']);
+
+		await expect(consumeExecStream(Promise.resolve(stream), vi.fn())).resolves.toEqual({
+			success: true,
+			stdout: '',
+			stderr: '',
+			exitCode: 0,
+		});
+	});
+
+	it('rejects Cloudflare error events', async () => {
+		const stream = eventStream([{ type: 'error', error: 'command failed' }]);
+
+		await expect(consumeExecStream(Promise.resolve(stream), vi.fn())).rejects.toThrow(
+			'command failed',
+		);
+	});
+
+	it('rejects a stream that ends without a completion event', async () => {
+		const onOutput = vi.fn();
+		const stream = eventStream([{ type: 'stdout', data: 'partial' }]);
+
+		await expect(consumeExecStream(Promise.resolve(stream), onOutput)).rejects.toThrow(
+			'ended without a completion event',
+		);
+		expect(onOutput).toHaveBeenCalledWith('stdout', 'partial');
+	});
+});
+
 describe('cloudflareSandbox exec output', () => {
 	it('streams stdout and stderr while preserving the complete result', async () => {
-		const exec = vi.fn<StubExec>(async (_command, options) => {
-			options?.onOutput?.('stdout', 'hello ');
-			options?.onOutput?.('stderr', 'warning');
-			options?.onOutput?.('stdout', 'world');
-			return {
-				success: true,
-				stdout: 'hello world',
-				stderr: 'warning',
-				exitCode: 0,
-			};
-		});
-		const sandbox = await cloudflareSandbox(createStub(exec), { cwd: '/workspace' }).createSandbox({
-			id: 'agent-1',
-		});
+		const exec = vi.fn<StubExec>();
+		const execStream = createExecStream([
+			{ type: 'start' },
+			{ type: 'stdout', data: 'hello ' },
+			{ type: 'stderr', data: 'warning' },
+			{ type: 'stdout', data: 'world' },
+			{ type: 'complete', exitCode: 0 },
+		]);
+		const sandbox = await cloudflareSandbox(createStub(exec, execStream), {
+			cwd: '/workspace',
+		}).createSandbox({ id: 'agent-1' });
 		const chunks: Array<['stdout' | 'stderr', string]> = [];
 
 		const result = await sandbox.exec('run', {
@@ -50,9 +134,10 @@ describe('cloudflareSandbox exec output', () => {
 			['stdout', 'world'],
 		]);
 		expect(result).toEqual({ stdout: 'hello world', stderr: 'warning', exitCode: 0 });
-		expect(exec).toHaveBeenCalledWith(
+		expect(exec).not.toHaveBeenCalled();
+		expect(execStream).toHaveBeenCalledWith(
 			'run',
-			expect.objectContaining({ cwd: '/workspace/project', stream: true }),
+			expect.objectContaining({ cwd: '/workspace/project' }),
 		);
 	});
 
@@ -73,13 +158,14 @@ describe('cloudflareSandbox exec output', () => {
 	it('does not fail the command when the output callback throws', async () => {
 		const observerError = new Error('logger failed');
 		const onObserverError = vi.fn();
-		const exec = vi.fn<StubExec>(async (_command, options) => {
-			options?.onOutput?.('stdout', 'progress');
-			return { success: true, stdout: 'progress', stderr: '', exitCode: 0 };
-		});
-		const sandbox = await cloudflareSandbox(createStub(exec), { onObserverError }).createSandbox({
-			id: 'agent-1',
-		});
+		const exec = vi.fn<StubExec>();
+		const execStream = createExecStream([
+			{ type: 'stdout', data: 'progress' },
+			{ type: 'complete', exitCode: 0 },
+		]);
+		const sandbox = await cloudflareSandbox(createStub(exec, execStream), {
+			onObserverError,
+		}).createSandbox({ id: 'agent-1' });
 
 		await expect(
 			sandbox.exec('run', {
@@ -94,13 +180,14 @@ describe('cloudflareSandbox exec output', () => {
 	it('reports an asynchronous output callback failure', async () => {
 		const observerError = new Error('async logger failed');
 		const onObserverError = vi.fn();
-		const exec = vi.fn<StubExec>(async (_command, options) => {
-			options?.onOutput?.('stdout', 'progress');
-			return { success: true, stdout: 'progress', stderr: '', exitCode: 0 };
-		});
-		const sandbox = await cloudflareSandbox(createStub(exec), { onObserverError }).createSandbox({
-			id: 'agent-1',
-		});
+		const exec = vi.fn<StubExec>();
+		const execStream = createExecStream([
+			{ type: 'stdout', data: 'progress' },
+			{ type: 'complete', exitCode: 0 },
+		]);
+		const sandbox = await cloudflareSandbox(createStub(exec, execStream), {
+			onObserverError,
+		}).createSandbox({ id: 'agent-1' });
 
 		await expect(
 			sandbox.exec('run', {
@@ -117,11 +204,12 @@ describe('cloudflareSandbox exec output', () => {
 	it('contains failures thrown by the observer failure reporter', async () => {
 		const reportError = new Error('reporter failed');
 		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-		const exec = vi.fn<StubExec>(async (_command, options) => {
-			options?.onOutput?.('stdout', 'progress');
-			return { success: true, stdout: 'progress', stderr: '', exitCode: 0 };
-		});
-		const sandbox = await cloudflareSandbox(createStub(exec), {
+		const exec = vi.fn<StubExec>();
+		const execStream = createExecStream([
+			{ type: 'stdout', data: 'progress' },
+			{ type: 'complete', exitCode: 0 },
+		]);
+		const sandbox = await cloudflareSandbox(createStub(exec, execStream), {
 			onObserverError: () => {
 				throw reportError;
 			},
@@ -150,11 +238,12 @@ describe('cloudflareSandbox exec output', () => {
 		const observerError = new Error('logger failed');
 		const reportError = new Error('async reporter failed');
 		const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-		const exec = vi.fn<StubExec>(async (_command, options) => {
-			options?.onOutput?.('stdout', 'progress');
-			return { success: true, stdout: 'progress', stderr: '', exitCode: 0 };
-		});
-		const sandbox = await cloudflareSandbox(createStub(exec), {
+		const exec = vi.fn<StubExec>();
+		const execStream = createExecStream([
+			{ type: 'stdout', data: 'progress' },
+			{ type: 'complete', exitCode: 0 },
+		]);
+		const sandbox = await cloudflareSandbox(createStub(exec, execStream), {
 			onObserverError: async () => {
 				throw reportError;
 			},
@@ -182,41 +271,35 @@ describe('cloudflareSandbox exec output', () => {
 	});
 
 	it('rejects when the output callback aborts during command startup', async () => {
-		const pending = Promise.withResolvers<{
-			success: boolean;
-			stdout: string;
-			stderr: string;
-			exitCode: number;
-		}>();
 		const controller = new AbortController();
-		const exec = vi.fn<StubExec>((_command, options) => {
-			options?.onOutput?.('stdout', 'started');
-			return pending.promise;
+		const exec = vi.fn<StubExec>();
+		const execStream = createExecStream([
+			{ type: 'stdout', data: 'started' },
+			{ type: 'complete', exitCode: 0 },
+		]);
+		const sandbox = await cloudflareSandbox(createStub(exec, execStream)).createSandbox({
+			id: 'agent-1',
 		});
-		const sandbox = await cloudflareSandbox(createStub(exec)).createSandbox({ id: 'agent-1' });
 		const result = sandbox.exec('run', {
 			signal: controller.signal,
 			onOutput: () => controller.abort('stop'),
 		});
 
 		await expect(result).rejects.toMatchObject({ name: 'AbortError' });
-		pending.resolve({ success: true, stdout: 'started', stderr: '', exitCode: 0 });
-		await pending.promise;
 	});
 
 	it('stops publishing output after caller-facing abort', async () => {
-		const pending = Promise.withResolvers<{
-			success: boolean;
-			stdout: string;
-			stderr: string;
-			exitCode: number;
-		}>();
-		let receivedOptions: Parameters<StubExec>[1];
-		const exec = vi.fn<StubExec>((_command, options) => {
-			receivedOptions = options;
-			return pending.promise;
+		let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
+		const stream = new ReadableStream<Uint8Array>({
+			start(controller) {
+				streamController = controller;
+			},
 		});
-		const sandbox = await cloudflareSandbox(createStub(exec)).createSandbox({ id: 'agent-1' });
+		const exec = vi.fn<StubExec>();
+		const execStream = vi.fn<StubExecStream>(async () => stream);
+		const sandbox = await cloudflareSandbox(createStub(exec, execStream)).createSandbox({
+			id: 'agent-1',
+		});
 		const controller = new AbortController();
 		const chunks: string[] = [];
 		const result = sandbox.exec('run', {
@@ -226,9 +309,14 @@ describe('cloudflareSandbox exec output', () => {
 
 		controller.abort('stop');
 		await expect(result).rejects.toMatchObject({ name: 'AbortError' });
-		receivedOptions?.onOutput?.('stdout', 'late output');
-		pending.resolve({ success: true, stdout: 'late output', stderr: '', exitCode: 0 });
-		await pending.promise;
+		streamController?.enqueue(
+			encoder.encode(`data: ${JSON.stringify({ type: 'stdout', data: 'late output' })}\n\n`),
+		);
+		streamController?.enqueue(
+			encoder.encode(`data: ${JSON.stringify({ type: 'complete', exitCode: 0 })}\n\n`),
+		);
+		streamController?.close();
+		await new Promise((resolve) => setTimeout(resolve, 0));
 
 		expect(chunks).toEqual([]);
 	});
