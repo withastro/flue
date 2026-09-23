@@ -276,7 +276,6 @@ export const sandboxes: EcosystemItem[] = [
 		brand: 'modal',
 		background: '#ffffff',
 	},
-	{ name: 'smolvm', href: '/docs/ecosystem/sandboxes/smolvm/', background: '#2563eb' },
 	{
 		name: 'Vercel Sandbox',
 		href: '/docs/ecosystem/sandboxes/vercel/',
