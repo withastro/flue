@@ -1,5 +1,14 @@
 # @flue/react
 
+## 2.1.1
+
+### Patch Changes
+
+- fb57977: Clarify `useFlueAgent`'s `status` contract to match the reducer's actual aggregate behavior. `status` reflects the observed conversation's activity — including submissions admitted out-of-band (webhooks, dispatches, other clients) — combined with the hook's in-memory local admission recollection. The README now documents the full precedence order (failed-local-settlement `error` → streaming text → `submitted` → active/recollected submission `streaming` → retained-failed-send `error` → `idle`) and notes that a locally-admitted submission that has not yet settled keeps `streaming` across empty or absent observations until it settles. The reload fix covers submissions already represented by conversation messages; a submission admitted but not yet materialized into a message at reload time is documented as a residual window.
+- 4685436: Keep `useFlueAgent`'s `status` at `streaming` after a reload for an unsettled submission. The reducer now derives active (unsettled) submission ids from the observed conversation — message `submissionId`s minus settled ids — instead of relying only on the in-memory admission receipt, which does not survive a reload. Previously a fresh hook would report `idle` for an admitted-but-silent prompt or a running tool call until the next assistant text part streamed.
+- Updated dependencies [c5a2a72, d9e2ac0]
+  - @flue/sdk@2.1.1
+
 ## 2.1.0
 
 ### Minor Changes

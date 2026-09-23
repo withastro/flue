@@ -1,5 +1,12 @@
 # @flue/sdk
 
+## 2.1.1
+
+### Patch Changes
+
+- c5a2a72: Clarify that a skill's `allowed-tools` field is guidance. Flue accepts it for Agent Skills spec compatibility and does not enforce it; enforce authorization in your own tools and approval gates.
+- d9e2ac0: Record tool arguments and results of every payload shape on the standard `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` attributes, so OTel backends can display them. The shape-based diversion to the vendor `flue.tool.call.*` fallback keys is removed — those keys are no longer emitted, and their constants are retained for source compatibility. Payloads record exactly as before: objects/arrays as JSON strings, strings byte-for-byte within the content budget, other scalars as their JSON form.
+
 ## 2.1.0
 
 ### Patch Changes

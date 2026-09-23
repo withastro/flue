@@ -1,5 +1,12 @@
 # @flue/mysql
 
+## 2.1.1
+
+### Patch Changes
+
+- Updated dependencies [c5a2a72, 756db76, d9e2ac0, 7841ff8]
+  - @flue/runtime@2.1.1
+
 ## 2.1.0
 
 ### Patch Changes
