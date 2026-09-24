@@ -27,6 +27,8 @@ interface AgentConversationSettlement {
 	 * on attempts that produced no assistant message.
 	 */
 	answeredBySubmissionId?: string;
+	/** Capture time (ISO 8601) of the `submission_settled` record. */
+	timestamp?: string;
 }
 
 /**
@@ -67,9 +69,10 @@ export interface AgentConversationSnapshot {
  * Boundary chunks (`message-started`, `tool-input`, `tool-output`,
  * `tool-output-error`, `message-completed`, `submission-settled`) carry the
  * capture-time `timestamp` of their underlying canonical record so run
- * chronology can be reconstructed from the stream. `message-delta`
- * deliberately omits it for wire weight — consumers interpolate between
- * stamped boundaries.
+ * chronology can be reconstructed from the stream; `message-appended` carries
+ * it on the embedded message (the same value the snapshot projects).
+ * `message-delta` deliberately omits it for wire weight — consumers
+ * interpolate between stamped boundaries.
  */
 type ConversationStreamChunkBody =
 	| { type: 'conversation-reset'; conversationId: string; snapshot: AgentConversationSnapshot }
@@ -375,6 +378,7 @@ function encodeRecord(
 						display: 'visible',
 						...(record.submissionId ? { submissionId: record.submissionId } : {}),
 						...(record.turnId ? { turnId: record.turnId } : {}),
+						...(record.timestamp ? { timestamp: record.timestamp } : {}),
 						parts: record.content.map((content) =>
 							content.type === 'text'
 								? { type: 'text', text: content.text, state: 'done' }
@@ -410,6 +414,7 @@ function encodeRecord(
 						...(record.turnId ? { turnId: record.turnId } : {}),
 						...(Object.keys(signal).length > 0 ? { signal } : {}),
 						...(settlement ? { settlement } : {}),
+						...(record.timestamp ? { timestamp: record.timestamp } : {}),
 						parts: [{ type: 'text', text: record.content, state: 'done' }],
 					},
 				},
@@ -571,6 +576,7 @@ function projectSettlements(
 				outcome: record.outcome,
 				...(record.error === undefined ? {} : { error: record.error }),
 				...(by === undefined ? {} : { answeredBySubmissionId: by }),
+				...(record.timestamp ? { timestamp: record.timestamp } : {}),
 			};
 		});
 }

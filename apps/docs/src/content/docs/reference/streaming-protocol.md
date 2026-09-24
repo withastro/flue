@@ -133,6 +133,8 @@ interface FlueConversationSettlement {
   submissionId: string;
   outcome: 'completed' | 'failed' | 'aborted';
   error?: unknown;
+  answeredBySubmissionId?: string;
+  timestamp?: string;
 }
 
 interface FlueConversationMessage {
@@ -144,6 +146,7 @@ interface FlueConversationMessage {
   turnId?: string;
   signal?: { tagName?: string; attributes?: Record<string, string> };
   settlement?: { outcome: 'failed' | 'aborted' };
+  timestamp?: string;
   parts: FlueConversationPart[];
   metadata?: Record<string, unknown>;
 }
@@ -183,11 +186,12 @@ type FlueConversationPart =
 - `v` — snapshot schema version; currently `1`.
 - `offset` — the durable head through which this snapshot was reduced, including batches that project to no visible message. Resuming an updates read from it yields exactly the changes after this snapshot.
 - `messages` — the conversation transcript in order. One assistant message represents one whole response: every model step of a submission folds into the submission's first assistant message, with parts accumulating across steps.
-- `settlements` — the terminal outcome of every settled submission on this conversation. `error` carries the caller-safe error value for `failed`/`aborted` outcomes.
+- `settlements` — the terminal outcome of every settled submission on this conversation. `error` carries the caller-safe error value for `failed`/`aborted` outcomes. `timestamp` is the capture time of the settlement record.
 - `role`/`purpose`/`display` — `role` is the coarse render lane; `purpose` classifies semantics (`dispatch` = delivered signals, `advisory` = runtime advisories); `display` is the visibility hint (`visible` primary chat, `diagnostic` activity-panel material, `hidden` plumbing).
 - `signal` — present only on `system`-role messages projected from signal deliveries; carries the delivered `tagName` and `attributes`.
 - `settlement` — present only on the terminal advisory the runtime appends when a submission settles `failed` or `aborted`; the message's `submissionId` names the settled submission. Completed submissions get no timeline marker (the assistant reply is the marker); `settlements` remains the programmatic outcome index.
-- `metadata` — entirely agent-authored (response-metadata hooks). The runtime stamps nothing; keys like `usage` or `model` are application conventions.
+- `timestamp` — server-authored capture time (ISO 8601) of the durable record behind the message: the user or signal record for `user`/`system` messages (when the input was applied to the conversation, not when the submission was accepted), and the first step's start for an assistant response (continuation steps keep it). Present for every role, including conversations recorded before the field was projected. It is server wall-clock time — records written in one synchronous span (notably on Cloudflare Workers) can share a timestamp, and clocks are not monotonic across hosts — so order by array position, never by timestamp.
+- `metadata` — entirely agent-authored (response-metadata hooks). The runtime stamps nothing into it; keys like `usage` or `model` are application conventions. Server capture time lives on `timestamp`.
 - `parts` — `text`/`reasoning` carry `state: 'streaming'` while a live response is mid-stream and `'done'` once complete. `data-<name>` parts are named client data writes, one part per write, in emit order. `file` parts reference attachments by `id`; `url` is never set by the server (the runtime does not know the public mount — the SDK resolves it client-side, and `GET /:id/attachments/:attachmentId` is the underlying route). `dynamic-tool` parts progress `input-available` → `output-available`/`output-error`; `durationMs` is the tool-handler execution time, absent on outcomes recorded before the field existed.
 
 The snapshot covers exactly one conversation per agent instance: the default root conversation. Child conversations (subagent tasks and other internal sessions) are never exposed through this surface. The canonical durable record schema is likewise never exposed — snapshots and update chunks are the only read formats on the wire.
@@ -310,7 +314,7 @@ type ChunkBody =
 
 - `position` — a monotonic ordering token: `batch` is the durable batch ordinal the chunk was projected from, `index` its position within that batch's projection. `{ batch, index }` is globally unique and ordered across the conversation; compare lexicographically (`batch`, then `index`) to dedupe redelivered chunks. Otherwise opaque — do not interpret the numbers.
 - `conversation-reset` — replace all accumulated state with the embedded [snapshot](#flueconversationsnapshot). Emitted when a batch contains a structural boundary (conversation creation, compaction); the reset subsumes every other chunk of its batch, so a fresh read from `offset=-1` begins with one. The embedded snapshot may already contain settlements — check `snapshot.settlements` as well as `submission-settled` chunks when awaiting an outcome.
-- `message-appended` — a complete message (user turn or system signal), in the same message format as the snapshot.
+- `message-appended` — a complete message (user turn or system signal), in the same message format as the snapshot, including its `timestamp` (the same value a later snapshot projects).
 - `message-started` — an assistant response opened. `metadata` carries agent-authored response metadata available at start. Assistant chunks are pre-coalesced: every model step of a submission addresses the submission's first assistant `messageId`, so accumulating parts per `messageId` reproduces the snapshot's one-message-per-response shape. A later `message-started` for an already-open `messageId` is a continuation, not a new message.
 - `message-metadata` — agent-authored metadata for an open response; merge onto the message.
 - `data-part` — one named client data write; append a `data-<name>` part.
@@ -318,7 +322,7 @@ type ChunkBody =
 - `tool-input` / `tool-output` / `tool-output-error` — tool-call lifecycle, correlated by `toolCallId`. Input arrives on the assistant message; outputs update the matching `dynamic-tool` part.
 - `message-completed` — the assistant response closed; mark streaming parts `done`.
 - `submission-settled` — the terminal outcome of one submission, matching the admission response's `submissionId`.
-- `timestamp` — capture time (ISO 8601) of the underlying durable record, present on boundary chunks (`message-started`, `tool-input`, `tool-output`, `tool-output-error`, `message-completed`, `submission-settled`). `message-delta` deliberately omits it for wire weight; interpolate between stamped boundaries.
+- `timestamp` — capture time (ISO 8601) of the underlying durable record, present on boundary chunks (`message-started`, `tool-input`, `tool-output`, `tool-output-error`, `message-completed`, `submission-settled`). `message-appended` carries it on the embedded message instead. `message-delta` deliberately omits it for wire weight; interpolate between stamped boundaries. The SDK copies `message-started`'s `timestamp` onto the assistant message it opens (a continuation keeps the first step's) and `submission-settled`'s onto the settlement.
 
 ## `HEAD /:id`
 

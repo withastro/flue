@@ -114,12 +114,21 @@ export interface ConversationUiMessage {
 	 * {@link ConversationSettlementMarker}.
 	 */
 	settlement?: ConversationSettlementMarker;
+	/**
+	 * Server-authored capture time (ISO 8601) of the message's underlying
+	 * canonical record: the user/signal record for `user`/`system` messages,
+	 * the first step's `assistant_message_started` for an assistant response.
+	 * A user message's time is when its input was applied to the conversation,
+	 * not when the submission was accepted. Server wall-clock: not guaranteed
+	 * unique or monotonic, so order by array position, never by timestamp.
+	 */
+	timestamp?: string;
 	parts: ConversationUiPart[];
 	/**
 	 * Message metadata is entirely agent-authored (`useResponseStart`/`useResponseFinish`
-	 * producers, deep-merged in call order). The runtime stamps nothing — keys
-	 * like `timestamp`, `usage`, or `model` are app conventions, present only
-	 * when the agent attaches them.
+	 * producers, deep-merged in call order). The runtime stamps nothing into
+	 * it — keys like `usage` or `model` are app conventions, present only when
+	 * the agent attaches them. Server capture time lives on `timestamp`.
 	 */
 	metadata?: Record<string, unknown>;
 }
@@ -440,6 +449,7 @@ function projectCompletedMessage(
 			display: 'visible',
 			...(entry.submissionId ? { submissionId: entry.submissionId } : {}),
 			...(entry.turnId ? { turnId: entry.turnId } : {}),
+			...(entry.timestamp ? { timestamp: entry.timestamp } : {}),
 			parts,
 		};
 	}
@@ -458,6 +468,7 @@ function projectCompletedMessage(
 			...(entry.turnId ? { turnId: entry.turnId } : {}),
 			...(Object.keys(signal).length > 0 ? { signal } : {}),
 			...(settlement ? { settlement } : {}),
+			...(entry.timestamp ? { timestamp: entry.timestamp } : {}),
 			parts: [{ type: 'text', text: message.content, state: 'done' }],
 		};
 	}
@@ -469,6 +480,7 @@ function projectCompletedMessage(
 		display: 'visible',
 		submissionId: entry.submissionId,
 		...(entry.turnId ? { turnId: entry.turnId } : {}),
+		...(entry.timestamp ? { timestamp: entry.timestamp } : {}),
 		parts: omitAssistantContent
 			? []
 			: message.content.map((block): ConversationUiPart => {
@@ -531,6 +543,7 @@ function projectInProgressMessage(
 		// `message-started` chunk and the completed projection already emit.
 		...(message.submissionId ? { submissionId: message.submissionId } : {}),
 		...(message.turnId ? { turnId: message.turnId } : {}),
+		...(message.timestamp ? { timestamp: message.timestamp } : {}),
 		parts,
 	};
 }

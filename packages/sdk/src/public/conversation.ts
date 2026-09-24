@@ -131,12 +131,25 @@ export interface FlueConversationMessage {
 	 * the marker — and `settlements` remains the programmatic outcome index.
 	 */
 	settlement?: { outcome: 'failed' | 'aborted' };
+	/**
+	 * Server-authored capture time (ISO 8601) of the durable record behind
+	 * this message, present for every role and for existing conversations.
+	 * For a `user` or `system` message it is when the input or signal was
+	 * applied to the conversation (not when the submission was accepted); for
+	 * an assistant response it is when the response's first step started.
+	 * Absent on the optimistic echo `useFlueAgent` renders before the server
+	 * confirms a send. Timestamps are server wall-clock times — not guaranteed
+	 * unique or monotonic — so order messages by array position, never by
+	 * timestamp.
+	 */
+	timestamp?: string;
 	parts: FlueConversationPart[];
 	/**
 	 * Message metadata is entirely agent-authored: whatever the agent's
 	 * `useResponseStart`/`useResponseFinish` hooks return, deep-merged in call order. The
-	 * runtime stamps nothing — keys like `timestamp`, `usage`, or `model` are
-	 * app conventions, present only when the agent attaches them.
+	 * runtime stamps nothing into it — keys like `usage` or `model` are app
+	 * conventions, present only when the agent attaches them. The server's
+	 * capture time lives on {@link FlueConversationMessage.timestamp}.
 	 */
 	metadata?: Record<string, unknown>;
 }
@@ -153,6 +166,8 @@ export interface FlueConversationSettlement {
 	 * linkage shipped and on submissions that produced no assistant message.
 	 */
 	answeredBySubmissionId?: string;
+	/** Server-authored capture time (ISO 8601) of the submission's settlement. */
+	timestamp?: string;
 }
 
 /**
