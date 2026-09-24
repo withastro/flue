@@ -17,7 +17,6 @@ import type {
 	AnthropicEffort,
 	AnthropicOptions,
 	AssistantMessage,
-	Context,
 	Model,
 	OpenAICompletionsCompat,
 	Provider,
@@ -26,6 +25,7 @@ import type {
 	ThinkingLevel,
 	Tool,
 	ToolCall,
+	TranscriptContext,
 	Usage,
 } from '@earendil-works/pi-ai';
 import {
@@ -33,7 +33,9 @@ import {
 	clampThinkingLevel,
 	createAssistantMessageEventStream,
 	createProvider,
+	getCurrentTools,
 	parseStreamingJson,
+	resolveTranscriptTools,
 } from '@earendil-works/pi-ai';
 // Protocol implementations load lazily, matching pi's own provider design:
 // the worker entry imports this module in every isolate, but the ~90KB of
@@ -68,15 +70,15 @@ const CLOUDFLARE_AI_BINDING_API = 'cloudflare-ai-binding' as const;
  */
 const WORKERS_AI_COMPAT: Omit<
 	Required<OpenAICompletionsCompat>,
-	'cacheControlFormat' | 'deferredToolsMode'
+	'cacheControlFormat' | 'thinkingTokenBudgetField' | 'vllmPriority'
 > & {
 	cacheControlFormat?: OpenAICompletionsCompat['cacheControlFormat'];
-	deferredToolsMode?: OpenAICompletionsCompat['deferredToolsMode'];
 } = {
 	supportsStore: false,
 	supportsDeveloperRole: false,
 	supportsReasoningEffort: true,
 	supportsUsageInStreaming: true,
+	supportsFinishReason: true,
 	maxTokensField: 'max_completion_tokens',
 	requiresToolResultName: false,
 	requiresAssistantAfterToolResult: false,
@@ -84,11 +86,15 @@ const WORKERS_AI_COMPAT: Omit<
 	requiresReasoningContentOnAssistantMessages: false,
 	thinkingFormat: 'openai',
 	chatTemplateKwargs: {},
+	chatTemplateArgs: {},
 	openRouterRouting: {},
 	vercelGatewayRouting: {},
 	zaiToolStream: false,
+	supportsThinkingTokenBudget: false,
 	supportsStrictMode: true,
 	supportsOpenAIGrammarTools: false,
+	supportsMidConvoSystemMessages: false,
+	supportsMidConvoToolAdditions: false,
 	cacheControlFormat: undefined,
 	sendSessionAffinityHeaders: true,
 	sessionAffinityFormat: 'openai',
@@ -396,7 +402,7 @@ function streamCloudflareWorkersAi(
 	ai: Ai,
 	binding: CloudflareBindingStreamConfig,
 	model: Model<Api>,
-	context: Context,
+	context: TranscriptContext,
 	options?: SimpleStreamOptions,
 ) {
 	switch (bindingWireFormat(model)) {
@@ -442,8 +448,13 @@ function streamCloudflareWorkersAi(
 				stream: true,
 				stream_options: { include_usage: true },
 			};
-			if (context.tools && context.tools.length > 0) {
-				payload.tools = convertTools(context.tools);
+			// The binding receives a transcript context: tool declarations ride in
+			// the transcript's system messages, never in `context.tools`. The
+			// completions wire format has no mid-convo additions channel, so the
+			// request always carries the full current tool set.
+			const requestTools = getCurrentTools(context.messages);
+			if (requestTools.length > 0) {
+				payload.tools = convertTools(requestTools);
 			}
 			if (options?.maxTokens) {
 				// Workers AI uses `max_completion_tokens` (see WORKERS_AI_COMPAT).
@@ -768,7 +779,7 @@ function streamCloudflareAnthropicAi(
 	ai: Ai,
 	binding: CloudflareBindingStreamConfig,
 	model: Model<Api>,
-	context: Context,
+	context: TranscriptContext,
 	options?: SimpleStreamOptions,
 ) {
 	warnZeroMetadataGatewayModel(model);
@@ -820,7 +831,7 @@ function streamCloudflareResponsesAi(
 	ai: Ai,
 	binding: CloudflareBindingStreamConfig,
 	model: Model<Api>,
-	context: Context,
+	context: TranscriptContext,
 	options?: SimpleStreamOptions,
 ) {
 	const { gateway } = binding;
@@ -851,15 +862,30 @@ function streamCloudflareResponsesAi(
 			]);
 
 			const responsesModel = toResponsesGatewayModel(model);
+			// Deferred tool loading (`additional_tools` / tool_search) is the
+			// model's own channel when its compat advertises it; without it, the
+			// full current tool set rides in the request-level `tools` field.
+			const supportsToolAdditions = Boolean(
+				responsesModel.compat?.supportsAdditionalTools || responsesModel.compat?.supportsToolSearch,
+			);
 			const payload: Record<string, unknown> = {
 				// `ai.run`'s model argument names the gateway target; like the
 				// chat-completions payload, the body carries no `model` field.
-				input: convertResponsesMessages(responsesModel, context, RESPONSES_TOOL_CALL_ID_PROVIDERS),
+				input: convertResponsesMessages(responsesModel, context, RESPONSES_TOOL_CALL_ID_PROVIDERS, {
+					supportsAdditionalTools: supportsToolAdditions,
+					supportsToolSearch: supportsToolAdditions,
+				}),
 				stream: true,
 				store: false,
 			};
-			if (context.tools && context.tools.length > 0) {
-				payload.tools = convertResponsesTools(context.tools);
+			// Transcript context: the tool set lives in the transcript's system
+			// messages. `convertResponsesMessages` renders mid-convo additions as
+			// `additional_tools` items only when the model advertises the channel;
+			// request-level tools mirror the same split via the request-tools
+			// projection so added definitions never leak into the cached prefix.
+			const { requestTools } = resolveTranscriptTools(context.messages, supportsToolAdditions);
+			if (requestTools.length > 0) {
+				payload.tools = convertResponsesTools(requestTools);
 			}
 			if (options?.maxTokens) {
 				payload.max_output_tokens = Math.max(options.maxTokens, OPENAI_RESPONSES_MIN_OUTPUT_TOKENS);
@@ -1117,6 +1143,10 @@ function toAnthropicGatewayModel(
 		baseUrl: '',
 		compat: {
 			...model.compat,
+			// pi's Anthropic compat accepts only the openrouter affinity format;
+			// the binding sends `x-session-affinity` itself (buildExtraHeaders),
+			// so drop whatever format the source catalog carried.
+			sessionAffinityFormat: undefined,
 			supportsCacheControlOnTools: caching,
 			supportsEagerToolInputStreaming: false,
 			supportsLongCacheRetention: false,
@@ -1131,32 +1161,36 @@ function createAnthropicBindingClient(
 	options: SimpleStreamOptions | undefined,
 	binding: CloudflareBindingStreamConfig,
 ): AnthropicOptions['client'] {
-	return {
-		messages: {
-			create(params: Record<string, unknown>, requestOptions?: { signal?: AbortSignal }) {
-				return {
-					async asResponse() {
-						const run = gatewayRunOptions(binding.gateway);
-						const extraHeaders = { ...buildExtraHeaders(options), ...run.headers };
-						const response = (await (ai.run as unknown as RunOverload)(model.id, params, {
-							returnRawResponse: true,
-							...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
-							...(Object.keys(extraHeaders).length > 0 ? { extraHeaders } : {}),
-							...(run.gateway ? { gateway: run.gateway } : {}),
-						})) as Response;
+	// pi 0.87 calls `client.beta.messages.create` (0.83 used `messages.create`);
+	// expose the same shim on both namespaces so the wire path stays version-agnostic.
+	const messages = {
+		create(params: Record<string, unknown>, requestOptions?: { signal?: AbortSignal }) {
+			return {
+				async asResponse() {
+					const run = gatewayRunOptions(binding.gateway);
+					const extraHeaders = { ...buildExtraHeaders(options), ...run.headers };
+					const response = (await (ai.run as unknown as RunOverload)(model.id, params, {
+						returnRawResponse: true,
+						...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
+						...(Object.keys(extraHeaders).length > 0 ? { extraHeaders } : {}),
+						...(run.gateway ? { gateway: run.gateway } : {}),
+					})) as Response;
 
-						await assertSuccessfulBindingResponse(response);
-						// pi-ai's Anthropic protocol consumes the body itself, so the
-						// idle deadline wraps the Response it hands back.
-						if (!response.body) return response;
-						return new Response(
-							withStreamIdleDeadline(response.body, binding.streamIdleTimeoutMs),
-							response,
-						);
-					},
-				};
-			},
+					await assertSuccessfulBindingResponse(response);
+					// pi-ai's Anthropic protocol consumes the body itself, so the
+					// idle deadline wraps the Response it hands back.
+					if (!response.body) return response;
+					return new Response(
+						withStreamIdleDeadline(response.body, binding.streamIdleTimeoutMs),
+						response,
+					);
+				},
+			};
 		},
+	};
+	return {
+		messages,
+		beta: { messages },
 	} as unknown as AnthropicOptions['client'];
 }
 
@@ -1359,8 +1393,11 @@ export function cloudflareBindingProvider(options: CloudflareBindingProviderOpti
 		cacheRetention: options.cacheRetention ?? 'none',
 	};
 	const ai = options.binding as Ai;
-	const stream = (model: Model<Api>, context: Context, streamOptions?: SimpleStreamOptions) =>
-		streamCloudflareWorkersAi(ai, binding, model, context, streamOptions);
+	const stream = (
+		model: Model<Api>,
+		context: TranscriptContext,
+		streamOptions?: SimpleStreamOptions,
+	) => streamCloudflareWorkersAi(ai, binding, model, context, streamOptions);
 	const streams: ProviderStreams = { stream, streamSimple: stream };
 
 	const provider = createProvider<Api>({

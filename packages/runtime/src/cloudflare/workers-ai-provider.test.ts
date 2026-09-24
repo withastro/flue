@@ -1,3 +1,4 @@
+import { normalizeContext } from '@earendil-works/pi-ai';
 import { describe, expect, it } from 'vitest';
 import { cloudflareBindingProvider } from './workers-ai-provider.ts';
 
@@ -94,7 +95,7 @@ describe('Cloudflare Workers AI assistant content', () => {
 			{ choices: [{ delta: {}, finish_reason: 'tool_calls' }] },
 		]);
 
-		const result = await provider.streamSimple(model, { messages: [] }).result();
+		const result = await provider.streamSimple(model, normalizeContext({ messages: [] })).result();
 
 		expect(result.stopReason).toBe('toolUse');
 		expect(result.content).toEqual([
@@ -111,7 +112,7 @@ describe('Cloudflare Workers AI assistant content', () => {
 			{ choices: [{ delta: {}, finish_reason: 'stop' }] },
 		]);
 
-		const result = await provider.streamSimple(model, { messages: [] }).result();
+		const result = await provider.streamSimple(model, normalizeContext({ messages: [] })).result();
 
 		expect(result.stopReason).toBe('error');
 		expect(result.errorMessage).toContain(
@@ -126,11 +127,11 @@ describe('Cloudflare binding Anthropic gateway effort', () => {
 		const result = await provider
 			.stream(
 				model,
-				{
+				normalizeContext({
 					systemPrompt: 'x',
 					messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
 					tools: [],
-				},
+				}),
 				{ reasoning: 'low' },
 			)
 			.result();
@@ -148,11 +149,11 @@ describe('Cloudflare binding Anthropic gateway effort', () => {
 		const result = await provider
 			.stream(
 				model,
-				{
+				normalizeContext({
 					systemPrompt: 'x',
 					messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
 					tools: [],
-				},
+				}),
 				{ reasoning: 'xhigh' },
 			)
 			.result();
@@ -164,11 +165,14 @@ describe('Cloudflare binding Anthropic gateway effort', () => {
 	it('omits output_config when reasoning is not set', async () => {
 		const { provider, model, recorded } = anthropicProviderFor();
 		const result = await provider
-			.stream(model, {
-				systemPrompt: 'x',
-				messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
-				tools: [],
-			})
+			.stream(
+				model,
+				normalizeContext({
+					systemPrompt: 'x',
+					messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
+					tools: [],
+				}),
+			)
 			.result();
 
 		expect(result.errorMessage).toBeUndefined();
@@ -182,11 +186,11 @@ describe('Cloudflare binding Anthropic prompt caching', () => {
 		await provider
 			.stream(
 				model,
-				{
+				normalizeContext({
 					systemPrompt: 'x',
 					messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
 					tools: [],
-				},
+				}),
 				{ sessionId: 'session-1' },
 			)
 			.result();
@@ -198,11 +202,11 @@ describe('Cloudflare binding Anthropic prompt caching', () => {
 		await provider
 			.stream(
 				model,
-				{
+				normalizeContext({
 					systemPrompt: 'x',
 					messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
 					tools: [],
-				},
+				}),
 				{ sessionId: 'session-1' },
 			)
 			.result();

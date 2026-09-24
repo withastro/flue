@@ -1069,6 +1069,11 @@ export type LlmToolCall = {
 	thoughtSignature?: string;
 };
 
+export type LlmSystemMessage = {
+	role: 'system';
+	content: string | (LlmTextContent | LlmImageContent)[];
+};
+
 export type LlmUserMessage = {
 	role: 'user';
 	content: string | (LlmTextContent | LlmImageContent)[];
@@ -1087,7 +1092,8 @@ export type LlmToolResultMessage = {
 	isError: boolean;
 };
 
-export type LlmMessage = LlmUserMessage | LlmAssistantMessage | LlmToolResultMessage;
+export type LlmMessage =
+	LlmSystemMessage | LlmUserMessage | LlmAssistantMessage | LlmToolResultMessage;
 
 export type LlmTool = {
 	name: string;

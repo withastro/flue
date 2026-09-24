@@ -11,6 +11,9 @@ export type GenAIContent = unknown[];
 
 export function inputMessages(messages: LlmMessage[]): GenAIContent {
 	return messages.map((message) => {
+		if (message.role === 'system') {
+			return { role: 'system', parts: parts(message.content) };
+		}
 		if (message.role === 'user') {
 			return { role: 'user', parts: parts(message.content) };
 		}
