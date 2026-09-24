@@ -108,6 +108,16 @@ Returns one materialized snapshot of the conversation: every message reduced to 
 
 Response: `200`, `Content-Type: application/json`, `Cache-Control: no-store`, `Stream-Next-Offset` set to the snapshot's `offset`, `Stream-Up-To-Date: true`.
 
+### Bounded reads
+
+Three optional query parameters bound the read to part of the transcript. A cursor is an opaque string taken from a previous response's `before` field.
+
+- `limit=N` — only the newest `N` messages (a positive integer). The response is a full snapshot (same `offset`, `incarnation`, and every settlement) plus `before`.
+- `from=<cursor>` — every message from the cursor's message (inclusive) through the head, as a full snapshot plus `before`. Cannot be combined with `limit`.
+- `before=<cursor>` — an older page: the messages strictly before the cursor, oldest first, optionally with `limit=N` to take only the newest `N` of them. The response is `{ v: 1, conversationId, messages, before }`, with no `offset`, `incarnation`, or `settlements`, and no `Stream-Next-Offset` header.
+
+`before` is the cursor for the next older page (the oldest returned message), or `null` when the response reaches the start of the conversation. Unbounded reads omit it. Combining `before` with `from`, repeating a parameter, an empty cursor, or a `limit` that is not a positive integer is rejected with `invalid_request` (400). A cursor that names no message in the current conversation (the stream was reset since the cursor was issued) is rejected with `history_cursor_not_found` (410). Runtimes that predate bounded reads ignore these parameters and return the whole conversation.
+
 ### `FlueConversationSnapshot`
 
 `@flue/sdk` exports the snapshot shapes as `FlueConversationSnapshot`, `FlueConversationMessage`, `FlueConversationPart`, and `FlueConversationSettlement`.
@@ -119,6 +129,7 @@ interface FlueConversationSnapshot {
   offset: string;
   messages: FlueConversationMessage[];
   settlements: FlueConversationSettlement[];
+  before?: string | null; // bounded reads only
 }
 
 interface FlueConversationSettlement {

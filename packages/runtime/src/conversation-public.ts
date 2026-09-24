@@ -45,6 +45,13 @@ export interface AgentConversationSnapshot {
 	incarnation?: string;
 	messages: ConversationUiMessage[];
 	settlements: AgentConversationSettlement[];
+	/**
+	 * Present only on bounded history reads (`limit` / `from`): the cursor for
+	 * the next older page — the id of the oldest returned message — or `null`
+	 * when `messages` starts at the beginning of the conversation. Absent on
+	 * unbounded reads and on `conversation-reset` snapshots.
+	 */
+	before?: string | null;
 }
 
 /**
@@ -277,10 +284,7 @@ function withPositions(
 	return bodies.map((body, index) => ({ ...body, position: { batch, index } }));
 }
 
-function requiresSnapshotReset(
-	record: ConversationRecord,
-	state: ReducedInstanceState,
-): boolean {
+function requiresSnapshotReset(record: ConversationRecord, state: ReducedInstanceState): boolean {
 	if (record.type === 'conversation_created' || record.type === 'compaction') return true;
 	if (record.type !== 'assistant_message_started' || !record.submissionId) return false;
 	// A live client already rendered the failed step's partial parts onto the

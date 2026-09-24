@@ -38,7 +38,10 @@ export interface AgentSubmissionReply {
  * `answeredBySubmissionId` names the host, whose final assistant message is
  * the coalesced reply that answered it. Settlements without that linkage
  * (recorded before it shipped) fall back to the conversation's last
- * assistant message.
+ * assistant message — except on a bounded conversation (one whose `before`
+ * cursor says older messages were not loaded), where the last loaded
+ * message may belong to a different submission and the reply resolves empty
+ * instead. A bounded conversation only finds replies inside its window.
  *
  * Accepts anything carrying materialized `messages` and `settlements` — a
  * `history()` snapshot or an `observe()` state.
@@ -47,6 +50,7 @@ export function readSubmissionReply(
 	conversation: {
 		messages: FlueConversationMessage[];
 		settlements?: FlueConversationSettlement[];
+		before?: string | null;
 	},
 	submissionId: string,
 ): AgentSubmissionReply {
@@ -62,7 +66,9 @@ export function readSubmissionReply(
 				? assistantMessages
 						.filter((message) => message.submissionId === settlement.answeredBySubmissionId)
 						.at(-1)
-				: assistantMessages.at(-1);
+				: typeof conversation.before === 'string'
+					? undefined
+					: assistantMessages.at(-1);
 	}
 	if (!reply) return { text: '', data: {} };
 

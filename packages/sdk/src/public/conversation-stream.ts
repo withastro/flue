@@ -227,6 +227,7 @@ export function createConversationStreamState(
 		conversationId: snapshot.conversationId,
 		messages: snapshot.messages,
 		settlements: snapshot.settlements,
+		...(snapshot.before !== undefined ? { before: snapshot.before } : {}),
 	};
 }
 

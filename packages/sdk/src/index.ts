@@ -18,7 +18,9 @@ export type {
 export { createFlueClient } from './client.ts';
 export { FlueApiError } from './http.ts';
 export type {
+	FlueConversationHistoryBeforeOptions,
 	FlueConversationHistoryOptions,
+	FlueConversationHistoryPage,
 	FlueConversationMessage,
 	FlueConversationPart,
 	FlueConversationSettlement,

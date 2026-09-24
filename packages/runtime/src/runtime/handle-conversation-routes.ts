@@ -7,12 +7,14 @@ import { loadReducedConversationPrefix } from '../conversation-reader.ts';
 import type { ReducedInstanceState } from '../conversation-reducer.ts';
 import {
 	AttachmentNotFoundError,
+	HistoryCursorNotFoundError,
 	InvalidRequestError,
 	StreamNotFoundError,
 	StreamOffsetGoneError,
 	toHttpResponse,
 } from '../errors.ts';
 import type { AttachmentStore } from './attachment-store.ts';
+import { applyHistoryWindow, parseHistoryWindow } from './conversation-history-window.ts';
 import {
 	LONG_POLL_TIMEOUT_MS,
 	projectConversationRead,
@@ -127,15 +129,33 @@ async function historyResponse(options: {
 			}),
 		);
 	}
+	const window = parseHistoryWindow(url);
+	if (window instanceof InvalidRequestError) return errorResponse(window);
 	const meta = await options.store.getMeta(options.path);
 	if (!meta) return errorResponse(new StreamNotFoundError({ path: options.path }));
 	const state = await getConversationFoldHost(options.store, options.path).getStateAtHead();
 	const snapshot = projectAgentConversationSnapshot(state);
 	if (!snapshot) return errorResponse(new StreamNotFoundError({ path: options.path }));
+	// Bounded reads slice the fully projected snapshot: the reduced state is
+	// resident in the fold host either way, so the saving is serialization,
+	// transfer, and client-side work — not server-side folding.
+	let windowed: ReturnType<typeof applyHistoryWindow>;
+	try {
+		windowed = applyHistoryWindow(snapshot, window);
+	} catch (error) {
+		if (error instanceof HistoryCursorNotFoundError) return errorResponse(error);
+		throw error;
+	}
+	// An older page is not a checkpoint: no offset, no incarnation.
+	if (!('offset' in windowed)) {
+		return Response.json(windowed, {
+			headers: { 'cache-control': 'no-store', ...SECURITY_HEADERS },
+		});
+	}
 	// The projection is meta-free; the route stamps the stream's generation
 	// identity so `observe()` can detect a reset-and-regrown stream mid-follow
 	// (via the stream-checkpoint chunk) against the generation it hydrated from.
-	return Response.json({ ...snapshot, incarnation: meta.incarnation } satisfies typeof snapshot, {
+	return Response.json({ ...windowed, incarnation: meta.incarnation } satisfies typeof snapshot, {
 		headers: {
 			'cache-control': 'no-store',
 			'Stream-Next-Offset': snapshot.offset,
@@ -345,7 +365,11 @@ function liveMode(url: URL): 'long-poll' | 'sse' | null | Response {
 
 function errorResponse(
 	error:
-		InvalidRequestError | StreamNotFoundError | StreamOffsetGoneError | AttachmentNotFoundError,
+		| InvalidRequestError
+		| StreamNotFoundError
+		| StreamOffsetGoneError
+		| AttachmentNotFoundError
+		| HistoryCursorNotFoundError,
 ): Response {
 	return toHttpResponse(error);
 }

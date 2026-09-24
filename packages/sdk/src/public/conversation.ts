@@ -177,17 +177,66 @@ export interface FlueConversationSnapshot {
 	 */
 	incarnation?: string;
 	messages: FlueConversationMessage[];
+	/**
+	 * Terminal outcomes of the conversation's tracked submissions. Always the
+	 * whole conversation's settlements, even on a bounded read.
+	 */
 	settlements: FlueConversationSettlement[];
+	/**
+	 * Present only on bounded reads (`history({ limit })`): the opaque cursor
+	 * for the next older page — pass it to `historyBefore()` — or `null` when
+	 * `messages` already starts at the beginning of the conversation. Absent
+	 * on unbounded reads, and on any read served by a runtime that predates
+	 * bounded history (which returns the whole conversation).
+	 */
+	before?: string | null;
+}
+
+/**
+ * One page of older messages read with `historyBefore()`. Not a checkpoint:
+ * it carries no stream offset and cannot seed `observe()`. Settlements are
+ * not repeated here — the bounded snapshot or observation that produced the
+ * cursor already carries the whole conversation's settlements.
+ */
+export interface FlueConversationHistoryPage {
+	v: 1;
+	conversationId: string;
+	/** Messages strictly older than the cursor, oldest first. */
+	messages: FlueConversationMessage[];
+	/** Cursor for the next older page, or `null` at the start of the conversation. */
+	before: string | null;
 }
 
 /** Live materialized conversation maintained by `observe()`. */
 export interface FlueConversationState {
 	conversationId: string;
 	messages: FlueConversationMessage[];
+	/** The whole conversation's settlements, including under a bounded `observe({ limit })`. */
 	settlements: FlueConversationSettlement[];
+	/**
+	 * Present only on a bounded observation (`observe({ limit })`): the opaque
+	 * cursor for the messages older than the observed window — pass it to
+	 * `historyBefore()` — or `null` when the window reaches the start of the
+	 * conversation. Absent on unbounded observations.
+	 */
+	before?: string | null;
 }
 
 /** Options for one `history()` read. */
 export interface FlueConversationHistoryOptions {
+	/**
+	 * Read only the newest `limit` messages (a positive integer). The snapshot
+	 * still carries the head `offset`, the `incarnation`, and every
+	 * settlement, plus a `before` cursor for `historyBefore()`. Omit to read
+	 * the whole conversation.
+	 */
+	limit?: number;
+	signal?: AbortSignal;
+}
+
+/** Options for one `historyBefore()` read. */
+export interface FlueConversationHistoryBeforeOptions {
+	/** Read at most this many messages (the newest ones older than the cursor). Omit to read all of them. */
+	limit?: number;
 	signal?: AbortSignal;
 }
