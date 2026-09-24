@@ -79,6 +79,7 @@ The wire `type` codes agent routes produce, with their status. Only `agent_insta
 - `route_not_found` — 404. No route matches the method and path. Registered routes are not enumerated.
 - `stream_not_found` — 404. Conversation stream read for an instance that has never received a prompt.
 - `attachment_not_found` — 404. Unknown attachment id, or an attachment belonging to a conversation other than the default one.
+- `history_cursor_not_found` — 410. A bounded history read's `before` or `from` cursor was issued by an earlier generation of the conversation stream (it was reset and regrown), or names a message that is gone. Carries the rejected cursor in `meta.cursor`. Re-read the newest window without a cursor.
 - `agent_instance_not_found` — 404. See [`AgentInstanceNotFoundError`](#agentinstancenotfounderror).
 - `agent_instance_exists` — 409. See [`AgentInstanceExistsError`](#agentinstanceexistserror).
 - `runtime_unavailable` — 503. The local dev runtime is reloading, draining, or failed to load. Carries `Retry-After: 1` and `meta.state` (`'loading' | 'draining' | 'failed'`); in dev mode `dev` carries the underlying load failure.

@@ -1266,7 +1266,7 @@ function assertEntryAppend(
  * assistant to still be the leaf). `tool_outcome` records and all non-entry
  * records are unaffected — they never move the leaf.
  */
-function hasUncommittedToolBatchAtLeaf(conversation: ReducedConversationState): boolean {
+export function hasUncommittedToolBatchAtLeaf(conversation: ReducedConversationState): boolean {
 	const leaf =
 		conversation.activeLeafId !== null
 			? conversation.entries.get(conversation.activeLeafId)

@@ -187,7 +187,9 @@ export interface FlueConversationSnapshot {
 	 * for the next older page — pass it to `historyBefore()` — or `null` when
 	 * `messages` already starts at the beginning of the conversation. Absent
 	 * on unbounded reads, and on any read served by a runtime that predates
-	 * bounded history (which returns the whole conversation).
+	 * bounded history (which returns the whole conversation). A cursor is
+	 * bound to the stream generation it was read from: once the stream is
+	 * reset, reads with it reject with a 410 `history_cursor_not_found`.
 	 */
 	before?: string | null;
 }
@@ -227,8 +229,10 @@ export interface FlueConversationHistoryOptions {
 	/**
 	 * Read only the newest `limit` messages (a positive integer). The snapshot
 	 * still carries the head `offset`, the `incarnation`, and every
-	 * settlement, plus a `before` cursor for `historyBefore()`. Omit to read
-	 * the whole conversation.
+	 * settlement, plus a `before` cursor for `historyBefore()`. `limit` counts
+	 * every message, hidden and diagnostic ones included, and the window may
+	 * hold more when a response that is still streaming sits above the newest
+	 * messages. Omit to read the whole conversation.
 	 */
 	limit?: number;
 	signal?: AbortSignal;
@@ -236,7 +240,11 @@ export interface FlueConversationHistoryOptions {
 
 /** Options for one `historyBefore()` read. */
 export interface FlueConversationHistoryBeforeOptions {
-	/** Read at most this many messages (the newest ones older than the cursor). Omit to read all of them. */
-	limit?: number;
+	/**
+	 * Page size (a positive integer): read at most this many messages, the
+	 * newest ones older than the cursor. Required, so a page read is always
+	 * bounded.
+	 */
+	limit: number;
 	signal?: AbortSignal;
 }

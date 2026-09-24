@@ -16,7 +16,7 @@ interface FlueClient {
   history(options?: FlueConversationHistoryOptions): Promise<FlueConversationSnapshot>;
   historyBefore(
     cursor: string,
-    options?: FlueConversationHistoryBeforeOptions,
+    options: FlueConversationHistoryBeforeOptions,
   ): Promise<FlueConversationHistoryPage>;
   observe(options?: AgentConversationObserveOptions): AgentConversationObservation;
   attachmentUrl(attachmentId: string): string;
@@ -223,12 +223,12 @@ interface FlueConversationHistoryOptions {
 }
 ```
 
-| Field    | Description                                                                                                                                                                                                                                                  |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `limit`  | Read only the newest `limit` messages (a positive integer). The snapshot keeps the head `offset` and every settlement, and adds a [`before`](#flueconversationsnapshot) cursor for [`historyBefore()`](#historybefore). Omit to read the whole conversation. |
-| `signal` | Aborts the request.                                                                                                                                                                                                                                          |
+| Field    | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `limit`  | Read only the newest `limit` messages (a positive integer). The snapshot keeps the head `offset` and every settlement, and adds a [`before`](#flueconversationsnapshot) cursor for [`historyBefore()`](#historybefore). `limit` counts every message, hidden and diagnostic ones included, so it is not a count of rendered rows. The window can hold more than `limit` messages: it always reaches back to include a response that is still streaming above messages delivered after it. Omit to read the whole conversation. |
+| `signal` | Aborts the request.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
-A bounded read keeps the network payload bounded for long-running conversations; it does not reduce the runtime's own work, which materializes the conversation either way. A runtime that predates bounded history ignores `limit` and returns the whole conversation without a `before` field.
+A bounded read bounds the message (transcript) portion of the response, which dominates its size in long-running conversations. It is not a fixed size bound: settlements always ship whole, since clients derive whether a submission is still active from them, and they grow with the conversation. Nor does it reduce the runtime's own work, which materializes the conversation either way. A runtime that predates bounded history ignores `limit` and returns the whole conversation without a `before` field.
 
 ### `FlueConversationSnapshot`
 
@@ -245,13 +245,13 @@ interface FlueConversationSnapshot {
 
 A materialized conversation read at a durable-stream offset — the whole transcript, or its newest messages on a bounded read.
 
-| Field         | Description                                                                                                                                                             |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `v`           | Snapshot format version.                                                                                                                                                |
-| `offset`      | Opaque durable-stream checkpoint at which the snapshot was materialized. Pass it back only through Flue's own observation machinery; `observe()` manages it internally. |
-| `messages`    | The conversation transcript, in order.                                                                                                                                  |
-| `settlements` | Terminal outcomes of the conversation's tracked submissions. Always the whole conversation's settlements, even on a bounded read.                                       |
-| `before`      | Present only on bounded reads: an opaque cursor for [`historyBefore()`](#historybefore), or `null` when `messages` starts at the beginning of the conversation.         |
+| Field         | Description                                                                                                                                                                                                                                        |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `v`           | Snapshot format version.                                                                                                                                                                                                                           |
+| `offset`      | Opaque durable-stream checkpoint at which the snapshot was materialized. Pass it back only through Flue's own observation machinery; `observe()` manages it internally.                                                                            |
+| `messages`    | The conversation transcript, in order.                                                                                                                                                                                                             |
+| `settlements` | Terminal outcomes of the conversation's tracked submissions. Always the whole conversation's settlements, even on a bounded read.                                                                                                                  |
+| `before`      | Present only on bounded reads: an opaque cursor for [`historyBefore()`](#historybefore), or `null` when `messages` starts at the beginning of the conversation. Do not construct or parse it: a cursor names one message in one stream generation. |
 
 ### `FlueConversationMessage`
 
@@ -332,11 +332,11 @@ Terminal outcome of one tracked agent submission within the conversation. `error
 ```ts
 historyBefore(
   cursor: string,
-  options?: FlueConversationHistoryBeforeOptions,
+  options: FlueConversationHistoryBeforeOptions,
 ): Promise<FlueConversationHistoryPage>;
 
 interface FlueConversationHistoryBeforeOptions {
-  limit?: number;
+  limit: number;
   signal?: AbortSignal;
 }
 
@@ -348,7 +348,7 @@ interface FlueConversationHistoryPage {
 }
 ```
 
-`GET <conversation url>?view=history&before=<cursor>`. Reads the messages older than a `before` cursor — from a bounded [`history()`](#history) snapshot, a bounded [`observe()`](#observe) state, or a previous page — oldest first. With `limit`, reads at most that many (the newest of them). The page's own `before` continues backward; `null` means the start of the conversation was reached. Pages carry no offset and no settlements: they are not checkpoints, and the snapshot or observation that produced the cursor already holds every settlement.
+`GET <conversation url>?view=history&before=<cursor>`. Reads the messages older than a `before` cursor — from a bounded [`history()`](#history) snapshot, a bounded [`observe()`](#observe) state, or a previous page — oldest first. `limit` (required) is the page size: at most that many messages, the newest of them. The page's own `before` continues backward; `null` means the start of the conversation was reached. Pages carry no offset and no settlements: they are not checkpoints, and the snapshot or observation that produced the cursor already holds every settlement.
 
 ```ts
 const page = await client.history({ limit: 50 });
@@ -357,7 +357,7 @@ if (page.before) {
 }
 ```
 
-A cursor that no longer names a message in the conversation (the stream was reset since it was issued) rejects with a 410 `FlueApiError` (`history_cursor_not_found`); re-read the newest window. Rejects with an `Error` when the runtime predates bounded history.
+A cursor from an earlier generation of the conversation stream (it was reset and regrown since the cursor was issued), or one whose message is gone, rejects with a 410 `FlueApiError` (`history_cursor_not_found`). This holds even when the new generation reuses the message's id. Discard pages read with it and re-read the newest window. Rejects with an `Error` when the runtime predates bounded history.
 
 ## `readSubmissionReply()`
 
@@ -367,7 +367,7 @@ import { readSubmissionReply } from '@flue/sdk';
 function readSubmissionReply(
   conversation: {
     messages: FlueConversationMessage[];
-    settlements?: FlueConversationSettlement[];
+    settlements: FlueConversationSettlement[];
     before?: string | null;
   },
   submissionId: string,
@@ -393,7 +393,7 @@ The reply is the final assistant message stamped with the given `submissionId`. 
 - `data` — named client data parts (`useDataWriter`) on the reply message, keyed by part name, each in emit order.
 - `metadata` — agent-authored response metadata, when present.
 
-On a bounded conversation (a `before` cursor is set, so older messages were not loaded), only replies inside the loaded window resolve: the last-assistant-message fallback is skipped, since that message may belong to another submission, and the reply resolves empty instead. `read()` always reads the whole conversation.
+`settlements` is required, so a [`historyBefore()`](#historybefore) page (which carries none) is not accepted: a page is a slice of older history, not a conversation to read a reply from. The last-assistant-message fallback for legacy settlements applies only to a complete conversation: an unbounded snapshot or state, or a bounded one whose `before` is `null`. On a bounded window with older messages unloaded (`before` is a cursor), only replies inside the window resolve. The fallback is skipped, since that message may belong to another submission, and the reply resolves empty instead. `read()` always reads the whole conversation.
 
 The same projection backs the runtime's `init().read()`, so a reply read over HTTP and one read in-process agree.
 
@@ -412,7 +412,7 @@ On start, the observation reads one history snapshot, publishes it, then follows
 - A 404 on the history read publishes phase `absent` (the conversation does not exist yet). The observation does not poll for it appearing; call `refresh()` to re-check.
 - Aborting `options.signal` or calling `close()` publishes the terminal phase `closed`.
 
-With `limit`, the observation hydrates only the newest `limit` messages. The observed window then grows forward with live updates and never shrinks: a rehydration after a reconnect reads from the window's oldest message through the head, so no gap opens below it, and `conversation-reset` updates (sent after compaction, for example) are cut back to the same window on the client. The state's [`before`](#flueconversationstate) cursor reads older messages with [`historyBefore()`](#historybefore); keep those pages alongside the observation and render them before its messages. The cursor stays the same for the life of the window. If it changes, the observation has re-based on a fresh newest window (the stream was reset and regrown, or `refresh()` was called), and pages loaded with the previous cursor should be discarded. Settlements always cover the whole conversation.
+With `limit`, the observation hydrates only the newest `limit` messages. The observed window then grows forward with live updates and never shrinks: a rehydration after a reconnect reads from the window's oldest message through the head, so no gap opens below it, and `conversation-reset` updates (sent after compaction, for example) are cut to the same window by the runtime, or on the client by runtimes that cannot. The window may hold more than `limit` messages, because it always includes every message that can still receive live updates. The state's [`before`](#flueconversationstate) cursor reads older messages with [`historyBefore()`](#historybefore); keep those pages alongside the observation and render them before its messages. The cursor stays the same for the life of the window. If it changes, the observation has re-based on a fresh newest window, and pages loaded with the previous cursor should be discarded. That happens when the stream was reset and regrown (detected even when the new generation reuses message ids), when a reset no longer contains the window, or when `refresh()` was called. Settlements always cover the whole conversation.
 
 ```ts
 const observation = client.observe({ limit: 50, live: 'sse' });

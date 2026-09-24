@@ -94,13 +94,14 @@ export interface FlueClient {
 	 */
 	history(options?: FlueConversationHistoryOptions): Promise<FlueConversationSnapshot>;
 	/**
-	 * Reads the messages older than a `before` cursor from a bounded
-	 * `history({ limit })` snapshot, a bounded `observe({ limit })` state, or
-	 * a previous page. Rejects when the runtime predates bounded history.
+	 * Reads one page (at most `limit` messages) older than a `before` cursor
+	 * from a bounded `history({ limit })` snapshot, a bounded
+	 * `observe({ limit })` state, or a previous page. Rejects when the runtime
+	 * predates bounded history.
 	 */
 	historyBefore(
 		cursor: string,
-		options?: FlueConversationHistoryBeforeOptions,
+		options: FlueConversationHistoryBeforeOptions,
 	): Promise<FlueConversationHistoryPage>;
 	/** Observes the materialized conversation across history catch-up and live updates. */
 	observe(options?: AgentConversationObserveOptions): AgentConversationObservation;
@@ -183,11 +184,13 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 				http,
 			);
 		},
-		historyBefore: async (cursor, opts = {}) => {
+		historyBefore: async (cursor, opts) => {
 			if (typeof cursor !== 'string' || cursor === '') {
 				throw new Error('The client historyBefore() requires a non-empty cursor.');
 			}
-			if (opts.limit !== undefined) assertHistoryLimit(opts.limit, 'historyBefore()');
+			// A page size is required: an unbounded older read would transfer
+			// the rest of the transcript in one call.
+			assertHistoryLimit(opts?.limit as number, 'historyBefore()');
 			const page = await http.json<FlueConversationHistoryPage | FlueConversationSnapshot>({
 				query: { view: 'history', before: cursor, limit: opts.limit },
 				signal: opts.signal,
@@ -217,11 +220,11 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 							}),
 							http,
 						),
-					updates: ({ onActivity, ...updateOptions }) =>
+					updates: ({ onActivity, window, ...updateOptions }) =>
 						createFlueEventStream<ConversationStreamChunk>(
 							updateOptions,
 							{
-								url: http.url('', { view: 'updates' }),
+								url: http.url('', { view: 'updates', from: window?.from, limit: window?.limit }),
 								fetch: http.fetchWithHeaders.bind(http),
 								onActivity,
 							},

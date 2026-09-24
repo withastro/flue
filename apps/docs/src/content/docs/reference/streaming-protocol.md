@@ -110,13 +110,13 @@ Response: `200`, `Content-Type: application/json`, `Cache-Control: no-store`, `S
 
 ### Bounded reads
 
-Three optional query parameters bound the read to part of the transcript. A cursor is an opaque string taken from a previous response's `before` field.
+Three optional query parameters bound the read to part of the transcript. A cursor is an opaque token taken from a previous response's `before` field. Do not construct or parse cursors: a cursor names one message in one stream generation.
 
-- `limit=N` — only the newest `N` messages (a positive integer). The response is a full snapshot (same `offset`, `incarnation`, and every settlement) plus `before`.
+- `limit=N` — the newest `N` messages (a positive integer). `N` counts every message, hidden and diagnostic ones included. The window may hold more than `N`: it always extends back to include every message that can still receive live updates, such as a response that is still streaming above messages delivered after it. The response is a full snapshot (same `offset`, `incarnation`, and every settlement) plus `before`.
 - `from=<cursor>` — every message from the cursor's message (inclusive) through the head, as a full snapshot plus `before`. Cannot be combined with `limit`.
 - `before=<cursor>` — an older page: the messages strictly before the cursor, oldest first, optionally with `limit=N` to take only the newest `N` of them. The response is `{ v: 1, conversationId, messages, before }`, with no `offset`, `incarnation`, or `settlements`, and no `Stream-Next-Offset` header.
 
-`before` is the cursor for the next older page (the oldest returned message), or `null` when the response reaches the start of the conversation. Unbounded reads omit it. Combining `before` with `from`, repeating a parameter, an empty cursor, or a `limit` that is not a positive integer is rejected with `invalid_request` (400). A cursor that names no message in the current conversation (the stream was reset since the cursor was issued) is rejected with `history_cursor_not_found` (410). Runtimes that predate bounded reads ignore these parameters and return the whole conversation.
+`before` is the cursor for the next older page (naming the oldest returned message), or `null` when the response reaches the start of the conversation. Unbounded reads omit it. Combining `before` with `from`, repeating a parameter, a value that is not a cursor, or a `limit` that is not a positive integer is rejected with `invalid_request` (400). A cursor from an earlier stream generation (the stream was reset and regrown since the cursor was issued), or one whose message is gone, is rejected with `history_cursor_not_found` (410), with the rejected cursor in `meta.cursor`. This holds even when the new generation contains a message with the same id. Re-read the newest window. Runtimes that predate bounded reads ignore these parameters and return the whole conversation.
 
 ### `FlueConversationSnapshot`
 
@@ -204,6 +204,7 @@ Query parameters:
 - `offset` — required, exactly once: `-1` or a previously returned offset. Missing, repeated, or malformed values are rejected with `invalid_request` (400).
 - `live` — optional: `long-poll` or `sse`. Any other value is rejected with `invalid_request` (400). Omitted = return immediately with whatever is available.
 - `tail` — not supported on this surface; rejected with `invalid_request` (400). A stream suffix can omit message starts, compaction boundaries, and earlier deltas, so it cannot be projected safely.
+- `from`, `limit` — optional window for `conversation-reset` snapshots, sent by a bounded observation. With them, each reset snapshot is cut to the window server-side, with a `before` cursor, instead of carrying the whole transcript. It starts at `from`'s message when that cursor still resolves in this stream generation, and otherwise holds the newest `limit` messages. The same rules as [bounded history reads](#bounded-reads) apply, and the same `invalid_request` validation. Without them, resets carry the whole transcript. `before` is rejected with `invalid_request` (400).
 
 Without `live`, the response is `200`, `Content-Type: application/json`, `Cache-Control: no-store`, with `Stream-Next-Offset` and (when the read reached the head) `Stream-Up-To-Date: true`. The body is a chunk array — empty when nothing was recorded after `offset`.
 
@@ -370,7 +371,7 @@ Every error on this surface renders the canonical Flue envelope with `Content-Ty
 }
 ```
 
-Branch on `type`; message prose is not API. The type codes, statuses, and field semantics are documented in the [Errors Reference](/docs/reference/errors/#route-error-types). Statuses used by this surface: `invalid_request` and `invalid_json` (400), `agent_instance_not_found` and `stream_not_found` and `attachment_not_found` (404), `method_not_allowed` (405), `agent_instance_exists` (409), `unsupported_media_type` (415), `runtime_unavailable` (503, local dev reloads, with `Retry-After`), and `internal_error` or `conversation_stream_store_failure` (500). Unknown server failures never leak their original message — they render as a generic `internal_error`.
+Branch on `type`; message prose is not API. The type codes, statuses, and field semantics are documented in the [Errors Reference](/docs/reference/errors/#route-error-types). Statuses used by this surface: `invalid_request` and `invalid_json` (400), `agent_instance_not_found` and `stream_not_found` and `attachment_not_found` (404), `method_not_allowed` (405), `agent_instance_exists` (409), `history_cursor_not_found` (410, bounded history reads), `unsupported_media_type` (415), `runtime_unavailable` (503, local dev reloads, with `Retry-After`), and `internal_error` or `conversation_stream_store_failure` (500). Unknown server failures never leak their original message — they render as a generic `internal_error`.
 
 ## Fixed response headers
 

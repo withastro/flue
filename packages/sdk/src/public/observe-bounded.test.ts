@@ -26,41 +26,46 @@ function message(
 	};
 }
 
-const transcript = (count: number) => Array.from({ length: count }, (_, i) => message(`m${i}`));
+const transcript = (count: number, prefix = 'm') =>
+	Array.from({ length: count }, (_, i) => message(`${prefix}${i}`));
 
-/** Emulates the runtime's windowing over a mutable transcript. */
-function windowed(
-	messages: FlueConversationMessage[],
-	request: { limit?: number; from?: string },
-	extra: Partial<FlueConversationSnapshot> = {},
-): FlueConversationSnapshot {
-	const base = {
-		v: 1 as const,
-		conversationId: 'conv',
-		offset: '1',
-		incarnation: 'inc',
-		settlements: [],
-	};
-	if (request.limit !== undefined) {
-		const start = Math.max(0, messages.length - request.limit);
-		return {
-			...base,
-			messages: messages.slice(start),
-			before: start > 0 ? (messages[start]?.id ?? null) : null,
-			...extra,
+/**
+ * Stand-in for the runtime's opaque cursor: bound to a generation and a
+ * message. The SDK must never parse it — these tests would fail if it did.
+ */
+const cursor = (incarnation: string, id: string) => `opaque:${incarnation}:${id}`;
+
+/** Emulates the runtime's windowing over a mutable transcript and generation. */
+class FakeRuntime {
+	constructor(
+		public messages: FlueConversationMessage[],
+		public incarnation = 'gen_a',
+	) {}
+
+	read(request: { limit?: number; from?: string }): FlueConversationSnapshot {
+		const base = {
+			v: 1 as const,
+			conversationId: 'conv',
+			offset: '1',
+			incarnation: this.incarnation,
+			settlements: [],
 		};
+		let start: number;
+		if (request.limit !== undefined) {
+			start = Math.max(0, this.messages.length - request.limit);
+		} else if (request.from !== undefined) {
+			start = this.messages.findIndex((m) => cursor(this.incarnation, m.id) === request.from);
+			if (start < 0) throw new FlueApiError(410, { error: { type: 'history_cursor_not_found' } });
+		} else {
+			return { ...base, messages: this.messages };
+		}
+		return { ...base, messages: this.messages.slice(start), before: this.cursorAt(start) };
 	}
-	if (request.from !== undefined) {
-		const start = messages.findIndex((m) => m.id === request.from);
-		if (start < 0) throw new FlueApiError(410, { error: { type: 'history_cursor_not_found' } });
-		return {
-			...base,
-			messages: messages.slice(start),
-			before: start > 0 ? (messages[start]?.id ?? null) : null,
-			...extra,
-		};
+
+	cursorAt(start: number): string | null {
+		const oldest = this.messages[start];
+		return start > 0 && oldest ? cursor(this.incarnation, oldest.id) : null;
 	}
-	return { ...base, messages, ...extra };
 }
 
 /** A manually driven updates stream. */
@@ -94,12 +99,13 @@ class FakeStream implements FlueEventStream<ConversationStreamChunk> {
 }
 
 function harness(
-	messages: FlueConversationMessage[],
+	runtime: FakeRuntime,
 	options: AgentConversationObserveOptions,
 	respond: (request: { limit?: number; from?: string }) => FlueConversationSnapshot = (request) =>
-		windowed(messages, request),
+		runtime.read(request),
 ) {
 	const historyCalls: { limit?: number; from?: string }[] = [];
+	const updateWindows: unknown[] = [];
 	const streams: FakeStream[] = [];
 	const source: AgentConversationObservationSource = {
 		history: async ({ limit, from }) => {
@@ -110,7 +116,8 @@ function harness(
 			historyCalls.push(request);
 			return respond(request);
 		},
-		updates: () => {
+		updates: ({ window }) => {
+			updateWindows.push(window);
 			const stream = new FakeStream();
 			streams.push(stream);
 			return stream;
@@ -118,7 +125,7 @@ function harness(
 	};
 	const observation = createAgentConversationObservation(source, options);
 	observation.subscribe(() => {});
-	return { observation, historyCalls, streams };
+	return { observation, historyCalls, updateWindows, streams };
 }
 
 function latest(streams: FakeStream[]): FakeStream {
@@ -130,6 +137,17 @@ function latest(streams: FakeStream[]): FakeStream {
 const settle = () => vi.advanceTimersByTimeAsync(0);
 const ids = (observation: AgentConversationObservation) =>
 	observation.getSnapshot().conversation?.messages.map((m) => m.id);
+const cursorOf = (observation: AgentConversationObservation) =>
+	observation.getSnapshot().conversation?.before;
+const reset = (
+	snapshot: Partial<FlueConversationSnapshot> & { messages: FlueConversationMessage[] },
+	batch: number,
+): ConversationStreamChunk => ({
+	type: 'conversation-reset',
+	conversationId: 'conv',
+	snapshot: { v: 1, conversationId: 'conv', offset: '2', settlements: [], ...snapshot },
+	position: { batch, index: 0 },
+});
 
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -140,38 +158,46 @@ afterEach(() => {
 
 describe('bounded observe()', () => {
 	it('keeps unbounded observation unchanged', async () => {
-		const { observation, historyCalls } = harness(transcript(4), {});
+		const { observation, historyCalls, updateWindows } = harness(
+			new FakeRuntime(transcript(4)),
+			{},
+		);
 		await settle();
 		expect(historyCalls).toEqual([{}]);
+		expect(updateWindows).toEqual([undefined]);
 		expect(ids(observation)).toEqual(['m0', 'm1', 'm2', 'm3']);
 		expect(observation.getSnapshot().conversation).not.toHaveProperty('before');
 		observation.close();
 	});
 
 	it('hydrates the newest window and re-hydrates from its anchor so no gap opens', async () => {
-		const messages = transcript(5);
-		const { observation, historyCalls, streams } = harness(messages, { limit: 2 });
+		const runtime = new FakeRuntime(transcript(5));
+		const { observation, historyCalls, updateWindows, streams } = harness(runtime, { limit: 2 });
 		await settle();
 		expect(historyCalls).toEqual([{ limit: 2 }]);
 		expect(ids(observation)).toEqual(['m3', 'm4']);
-		expect(observation.getSnapshot().conversation?.before).toBe('m3');
+		const anchor = cursor('gen_a', 'm3');
+		expect(cursorOf(observation)).toBe(anchor);
+		// The updates stream carries the window so the runtime can cut resets.
+		expect(updateWindows).toEqual([{ from: anchor, limit: 2 }]);
 
-		// Several messages land while disconnected — more than the limit.
-		messages.push(message('m5'), message('m6'), message('m7'));
+		// More messages than the limit land while disconnected.
+		runtime.messages.push(message('m5'), message('m6'), message('m7'));
 		latest(streams).push(new Error('connection dropped'));
 		await vi.advanceTimersByTimeAsync(1_000);
-		expect(historyCalls[1]).toEqual({ from: 'm3' });
+		expect(historyCalls[1]).toEqual({ from: anchor });
 		expect(ids(observation)).toEqual(['m3', 'm4', 'm5', 'm6', 'm7']);
-		expect(observation.getSnapshot().conversation?.before).toBe('m3');
+		expect(cursorOf(observation)).toBe(anchor);
 		observation.close();
 	});
 
 	it('re-hydrates the whole conversation once the window reaches its start', async () => {
-		const messages = transcript(2);
-		const { observation, historyCalls, streams } = harness(messages, { limit: 5 });
+		const runtime = new FakeRuntime(transcript(2));
+		const { observation, historyCalls, updateWindows, streams } = harness(runtime, { limit: 5 });
 		await settle();
-		expect(observation.getSnapshot().conversation?.before).toBeNull();
-		messages.push(...transcript(9).slice(2));
+		expect(cursorOf(observation)).toBeNull();
+		expect(updateWindows).toEqual([undefined]);
+		runtime.messages = transcript(9);
 		latest(streams).push(new Error('connection dropped'));
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(historyCalls[1]).toEqual({});
@@ -179,24 +205,46 @@ describe('bounded observe()', () => {
 		observation.close();
 	});
 
-	it('re-bases on the newest window when the anchor is gone', async () => {
-		let messages = transcript(5);
-		const { observation, historyCalls, streams } = harness(messages, { limit: 2 }, (request) =>
-			windowed(messages, request),
-		);
+	it('re-bases when the stream was reset while disconnected, even with repeated ids', async () => {
+		const runtime = new FakeRuntime(transcript(5));
+		const { observation, historyCalls, streams } = harness(runtime, { limit: 2 });
 		await settle();
-		messages = [message('n0'), message('n1'), message('n2')];
+		const first = cursorOf(observation);
+		// A regrown generation with the same deterministic ids.
+		runtime.incarnation = 'gen_b';
+		runtime.messages = transcript(6);
 		latest(streams).push(new Error('connection dropped'));
 		await vi.advanceTimersByTimeAsync(1_000);
-		expect(historyCalls.slice(1)).toEqual([{ from: 'm3' }, { limit: 2 }]);
-		expect(ids(observation)).toEqual(['n1', 'n2']);
-		expect(observation.getSnapshot().conversation?.before).toBe('n1');
+		expect(historyCalls.slice(1)).toEqual([{ from: first }, { limit: 2 }]);
+		expect(ids(observation)).toEqual(['m4', 'm5']);
+		// The changed cursor is the signal to discard older pages.
+		expect(cursorOf(observation)).toBe(cursor('gen_b', 'm4'));
+		expect(cursorOf(observation)).not.toBe(first);
 		expect(observation.getSnapshot().phase).toBe('live');
 		observation.close();
 	});
 
+	it('re-bases when an anchored read resolves in a different generation', async () => {
+		// Defense in depth: a runtime answering `from` across generations.
+		const runtime = new FakeRuntime(transcript(5));
+		let calls = 0;
+		const { observation, historyCalls, streams } = harness(runtime, { limit: 2 }, (request) => {
+			calls++;
+			if (calls === 2) return { ...runtime.read({ limit: 3 }), incarnation: 'gen_b' };
+			return runtime.read(request);
+		});
+		await settle();
+		latest(streams).push(new Error('connection dropped'));
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(historyCalls.slice(1)).toEqual([{ from: cursor('gen_a', 'm3') }, { limit: 2 }]);
+		expect(ids(observation)).toEqual(['m3', 'm4']);
+		observation.close();
+	});
+
 	it('re-bases on the newest window after an incarnation change', async () => {
-		const { observation, historyCalls, streams } = harness(transcript(5), { limit: 2 });
+		const { observation, historyCalls, streams } = harness(new FakeRuntime(transcript(5)), {
+			limit: 2,
+		});
 		await settle();
 		latest(streams).push({ type: 'stream-checkpoint', incarnation: 'regrown' });
 		await settle();
@@ -204,42 +252,57 @@ describe('bounded observe()', () => {
 		observation.close();
 	});
 
-	it('re-windows conversation-reset snapshots locally', async () => {
-		const messages = transcript(5);
-		const { observation, streams } = harness(messages, { limit: 2 });
+	it('accepts a reset the runtime already cut to the window', async () => {
+		const runtime = new FakeRuntime(transcript(5));
+		const { observation, historyCalls, streams } = harness(runtime, { limit: 2 });
 		await settle();
-		const reset = (all: FlueConversationMessage[], batch: number): ConversationStreamChunk => ({
-			type: 'conversation-reset',
-			conversationId: 'conv',
-			snapshot: { v: 1, conversationId: 'conv', offset: '2', messages: all, settlements: [] },
-			position: { batch, index: 0 },
-		});
-		latest(streams).push(reset([...messages, message('m5')], 1));
-		await settle();
-		expect(ids(observation)).toEqual(['m3', 'm4', 'm5']);
-		expect(observation.getSnapshot().conversation?.before).toBe('m3');
-
-		// A reset without the anchor (a new root conversation) re-bases.
+		const anchor = cursor('gen_a', 'm3');
 		latest(streams).push(
-			reset(
-				transcript(3).map((m) => ({ ...m, id: `x${m.id}` })),
-				2,
-			),
+			reset({ messages: [message('m3'), message('m4'), message('m5')], before: anchor }, 1),
 		);
 		await settle();
-		expect(ids(observation)).toEqual(['xm1', 'xm2']);
-		expect(observation.getSnapshot().conversation?.before).toBe('xm1');
+		expect(ids(observation)).toEqual(['m3', 'm4', 'm5']);
+		expect(cursorOf(observation)).toBe(anchor);
+		expect(historyCalls).toHaveLength(1);
+		observation.close();
+	});
+
+	it('re-bases when a server-cut reset no longer matches the window', async () => {
+		const runtime = new FakeRuntime(transcript(5));
+		const { observation, historyCalls, streams } = harness(runtime, { limit: 2 });
+		await settle();
+		latest(streams).push(reset({ messages: transcript(2, 'x'), before: cursor('gen_a', 'x0') }, 1));
+		await settle();
+		expect(historyCalls).toEqual([{ limit: 2 }, { limit: 2 }]);
+		observation.close();
+	});
+
+	it('cuts a whole-transcript reset locally at the oldest held message', async () => {
+		// A runtime that cannot window resets sends the whole transcript.
+		const runtime = new FakeRuntime(transcript(5));
+		const { observation, historyCalls, streams } = harness(runtime, { limit: 2 });
+		await settle();
+		latest(streams).push(reset({ messages: [...transcript(5), message('m5')] }, 1));
+		await settle();
+		expect(ids(observation)).toEqual(['m3', 'm4', 'm5']);
+		expect(cursorOf(observation)).toBe(cursor('gen_a', 'm3'));
+		expect(historyCalls).toHaveLength(1);
+
+		// Without the anchor (a new root conversation) it re-bases.
+		latest(streams).push(reset({ messages: transcript(3, 'x') }, 2));
+		await settle();
+		expect(historyCalls).toEqual([{ limit: 2 }, { limit: 2 }]);
 		observation.close();
 	});
 
 	it('treats a runtime predating bounded history as a full read', async () => {
-		const messages = transcript(4);
-		const { observation, historyCalls, streams } = harness(messages, { limit: 2 }, () =>
-			windowed(messages, {}),
+		const runtime = new FakeRuntime(transcript(4));
+		const { observation, historyCalls, streams } = harness(runtime, { limit: 2 }, () =>
+			runtime.read({}),
 		);
 		await settle();
 		expect(ids(observation)).toHaveLength(4);
-		expect(observation.getSnapshot().conversation?.before).toBeNull();
+		expect(cursorOf(observation)).toBeNull();
 		latest(streams).push(new Error('connection dropped'));
 		await vi.advanceTimersByTimeAsync(1_000);
 		expect(historyCalls[1]).toEqual({});
@@ -247,23 +310,37 @@ describe('bounded observe()', () => {
 	});
 
 	it('rejects an invalid limit', () => {
-		expect(() => harness([], { limit: 0 })).toThrow(/positive integer/);
-		expect(() => harness([], { limit: 1.5 })).toThrow(/positive integer/);
+		expect(() => harness(new FakeRuntime([]), { limit: 0 })).toThrow(/positive integer/);
+		expect(() => harness(new FakeRuntime([]), { limit: 1.5 })).toThrow(/positive integer/);
 	});
 });
 
-describe('readSubmissionReply on a bounded conversation', () => {
-	it('does not fall back to an unrelated latest reply', () => {
-		const assistant = message('a1', {
-			role: 'assistant',
-			purpose: 'assistant',
-			submissionId: 'sub_new',
-		});
-		const settlements = [{ submissionId: 'sub_old', outcome: 'completed' as const }];
+describe('readSubmissionReply on bounded conversations', () => {
+	const assistant = message('a1', {
+		role: 'assistant',
+		purpose: 'assistant',
+		submissionId: 'sub_new',
+	});
+	const settlements = [{ submissionId: 'sub_old', outcome: 'completed' as const }];
+
+	it('falls back to the latest reply only on a complete head', () => {
 		expect(readSubmissionReply({ messages: [assistant], settlements }, 'sub_old').text).toBe('a1');
+		// A bounded head that reaches the start is complete.
 		expect(
-			readSubmissionReply({ messages: [assistant], settlements, before: 'a1' }, 'sub_old').text,
+			readSubmissionReply({ messages: [assistant], settlements, before: null }, 'sub_old').text,
+		).toBe('a1');
+	});
+
+	it('does not fall back on a window with older messages unloaded', () => {
+		expect(
+			readSubmissionReply({ messages: [assistant], settlements, before: 'cursor' }, 'sub_old').text,
 		).toBe('');
+	});
+
+	it('does not fall back on the oldest history page', () => {
+		// Statically rejected (pages carry no settlements); guarded at runtime too.
+		const page = { v: 1, conversationId: 'conv', messages: [assistant], before: null };
+		expect(readSubmissionReply(page as never, 'sub_missing').text).toBe('');
 	});
 });
 
@@ -287,10 +364,10 @@ describe('client history pagination', () => {
 			messages: [],
 			before: null,
 		});
-		await client.historyBefore('m3', { limit: 10 });
+		await client.historyBefore('opaque', { limit: 10 });
 		expect(Object.fromEntries((requests[0] as URL).searchParams)).toEqual({
 			view: 'history',
-			before: 'm3',
+			before: 'opaque',
 			limit: '10',
 		});
 		await client.history({ limit: 5 });
@@ -301,13 +378,15 @@ describe('client history pagination', () => {
 	});
 
 	it('rejects historyBefore() against a runtime that ignores the cursor', async () => {
-		const { client } = clientServing(windowed(transcript(3), {}));
-		await expect(client.historyBefore('m1')).rejects.toThrow(/bounded history/);
+		const { client } = clientServing(new FakeRuntime(transcript(3)).read({}));
+		await expect(client.historyBefore('opaque', { limit: 5 })).rejects.toThrow(/bounded history/);
 	});
 
-	it('validates arguments', async () => {
+	it('requires a page size and a cursor', async () => {
 		const { client } = clientServing({});
 		await expect(client.history({ limit: 0 })).rejects.toThrow(/positive integer/);
-		await expect(client.historyBefore('')).rejects.toThrow(/non-empty cursor/);
+		await expect(client.historyBefore('', { limit: 5 })).rejects.toThrow(/non-empty cursor/);
+		await expect(client.historyBefore('opaque', {} as never)).rejects.toThrow(/positive integer/);
+		await expect(client.historyBefore('opaque', { limit: 0 })).rejects.toThrow(/positive integer/);
 	});
 });

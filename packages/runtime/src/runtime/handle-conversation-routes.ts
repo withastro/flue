@@ -1,7 +1,9 @@
 import { getConversationFoldHost } from '../conversation-fold-host.ts';
 import {
+	type AgentConversationSnapshot,
 	type ConversationStreamCheckpointChunk,
 	projectAgentConversationSnapshot,
+	projectLiveMessageTargets,
 } from '../conversation-public.ts';
 import { loadReducedConversationPrefix } from '../conversation-reader.ts';
 import type { ReducedInstanceState } from '../conversation-reducer.ts';
@@ -14,7 +16,13 @@ import {
 	toHttpResponse,
 } from '../errors.ts';
 import type { AttachmentStore } from './attachment-store.ts';
-import { applyHistoryWindow, parseHistoryWindow } from './conversation-history-window.ts';
+import {
+	applyHistoryWindow,
+	applyResetWindow,
+	parseHistoryWindow,
+	parseResetWindow,
+	type ResetWindow,
+} from './conversation-history-window.ts';
 import {
 	LONG_POLL_TIMEOUT_MS,
 	projectConversationRead,
@@ -141,7 +149,13 @@ async function historyResponse(options: {
 	// transfer, and client-side work — not server-side folding.
 	let windowed: ReturnType<typeof applyHistoryWindow>;
 	try {
-		windowed = applyHistoryWindow(snapshot, window);
+		windowed =
+			window.kind === 'full'
+				? snapshot
+				: applyHistoryWindow(snapshot, window, {
+						incarnation: meta.incarnation,
+						liveTargets: projectLiveMessageTargets(state),
+					});
 	} catch (error) {
 		if (error instanceof HistoryCursorNotFoundError) return errorResponse(error);
 		throw error;
@@ -178,6 +192,8 @@ async function updatesResponse(options: {
 	if (offset instanceof Response) return offset;
 	const live = liveMode(url);
 	if (live instanceof Response) return live;
+	const resetWindow = parseResetWindow(url);
+	if (resetWindow instanceof InvalidRequestError) return errorResponse(resetWindow);
 	const meta = await options.store.getMeta(options.path);
 	if (!meta) return errorResponse(new StreamNotFoundError({ path: options.path }));
 	// Reads start strictly after the requested offset, so equal-to-head is a
@@ -202,8 +218,16 @@ async function updatesResponse(options: {
 		type: 'stream-checkpoint',
 		incarnation: meta.incarnation,
 	};
+	const windowReset = resetWindowProjector(resetWindow, meta.incarnation);
 	if (live === 'sse') {
-		return sseResponse(options.store, options.path, offset, checkpoint, options.request.signal);
+		return sseResponse(
+			options.store,
+			options.path,
+			offset,
+			checkpoint,
+			options.request.signal,
+			windowReset,
+		);
 	}
 	const state = await stateAtOffset(options.store, options.path, offset);
 	let read = await options.store.read(options.path, { offset });
@@ -217,8 +241,31 @@ async function updatesResponse(options: {
 		if (waited === 'aborted') return new Response(null, { status: 499, headers: SECURITY_HEADERS });
 		read = waited;
 	}
-	const projected = projectConversationRead(state, read);
+	const projected = projectConversationRead(state, read, windowReset);
 	return dsJsonResponse([checkpoint, ...projected.items], read, projected.offset);
+}
+
+/**
+ * A bounded observation's updates stream (`from` / `limit`) receives
+ * `conversation-reset` snapshots cut to its window server-side, so a reset
+ * (compaction, a retried response) does not re-send the whole transcript.
+ * Without bounds, resets pass through whole — the unchanged wire shape.
+ */
+function resetWindowProjector(
+	window: ResetWindow,
+	incarnation: string,
+):
+	| ((
+			snapshot: AgentConversationSnapshot,
+			state: ReducedInstanceState,
+	  ) => AgentConversationSnapshot)
+	| undefined {
+	if (!window.from && window.limit === undefined) return undefined;
+	return (snapshot, state) =>
+		applyResetWindow(snapshot, window, {
+			incarnation,
+			liveTargets: projectLiveMessageTargets(state),
+		});
 }
 
 /**
@@ -260,6 +307,7 @@ function sseResponse(
 	offset: string,
 	checkpoint: ConversationStreamCheckpointChunk,
 	signal: AbortSignal,
+	windowReset: Parameters<typeof projectConversationRead>[2],
 ): Response {
 	const encoder = new TextEncoder();
 	let active = true;
@@ -297,7 +345,7 @@ function sseResponse(
 				while (active) {
 					pending = false;
 					const read = await store.read(path, { offset: currentOffset });
-					const projected = projectConversationRead(state, read);
+					const projected = projectConversationRead(state, read, windowReset);
 					state = projected.state;
 					if (projected.items.length > 0) {
 						controller.enqueue(

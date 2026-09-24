@@ -41,6 +41,15 @@ type ReducedPrefix = Awaited<ReturnType<typeof loadReducedConversationPrefix>>;
 export function projectConversationRead(
 	initialState: ReducedPrefix,
 	read: ConversationStreamReadResult,
+	/**
+	 * Rewrites each `conversation-reset` snapshot against the state it was
+	 * projected from — how a bounded observation's updates stream keeps reset
+	 * snapshots inside its window.
+	 */
+	windowReset?: (
+		snapshot: AgentConversationSnapshot,
+		state: ReducedPrefix,
+	) => AgentConversationSnapshot,
 ): { state: ReducedPrefix; items: ConversationStreamChunk[]; offset: string } {
 	let state = initialState;
 	const items: ConversationStreamChunk[] = [];
@@ -48,13 +57,21 @@ export function projectConversationRead(
 	for (const batch of read.batches) {
 		const previousState = state;
 		state = reduceConversationRecords(state, batch.records, batch.offset);
+		const batchState = state;
+		const chunks = projectAgentConversationBatch({
+			state,
+			previousState,
+			records: batch.records,
+			batchOrdinal: parseOffset(batch.offset),
+		});
 		items.push(
-			...projectAgentConversationBatch({
-				state,
-				previousState,
-				records: batch.records,
-				batchOrdinal: parseOffset(batch.offset),
-			}),
+			...(windowReset
+				? chunks.map((chunk) =>
+						chunk.type === 'conversation-reset'
+							? { ...chunk, snapshot: windowReset(chunk.snapshot, batchState) }
+							: chunk,
+					)
+				: chunks),
 		);
 		offset = batch.offset;
 	}

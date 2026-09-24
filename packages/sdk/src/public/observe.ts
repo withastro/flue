@@ -48,10 +48,15 @@ export interface AgentConversationObserveOptions {
 	 * Hydrate only the newest `limit` messages (a positive integer) instead of
 	 * the whole conversation. The observed window then grows forward with live
 	 * updates and never shrinks: re-hydration after a reconnect reads from the
-	 * window's oldest message through the head, so no gap opens below it. The
-	 * state's `before` cursor reads older messages with `historyBefore()`;
-	 * settlements always cover the whole conversation. Omit to observe the
-	 * whole conversation.
+	 * window's oldest message through the head, so no gap opens below it, and
+	 * `conversation-reset` snapshots stay cut to the window. The window may
+	 * hold more than `limit` messages: it always includes every message that
+	 * can still receive live content (a response still streaming above later
+	 * messages). The state's `before` cursor reads older messages with
+	 * `historyBefore()`; it stays the same for the life of the window, and a
+	 * changed cursor means the window re-based (discard older pages loaded
+	 * with the previous one). Settlements always cover the whole
+	 * conversation. Omit to observe the whole conversation.
 	 */
 	limit?: number;
 }
@@ -86,6 +91,12 @@ export interface AgentConversationObservationSource {
 		signal?: AbortSignal;
 		backoffOptions?: BackoffOptions;
 		/**
+		 * A bounded observation's window: the runtime cuts
+		 * `conversation-reset` snapshots to it (anchored at `from`, falling
+		 * back to the newest `limit` messages).
+		 */
+		window?: { from?: string; limit?: number };
+		/**
 		 * Liveness seam: invoked on every transport batch, including empty
 		 * keep-alive batches that yield no chunks. Feeds the stale-stream
 		 * watchdog in `follow()`.
@@ -106,9 +117,10 @@ export function createAgentConversationObservation(
 	// already reaches the conversation's first message, so re-hydration reads
 	// the whole conversation; `from` pins the window to its oldest message so
 	// re-hydration after a reconnect never leaves a gap below what the client
-	// holds. Cursors are the runtime's message ids (see the runtime's
-	// conversation-history-window.ts); the SDK relies on that to re-window
-	// `conversation-reset` snapshots locally. Unused when `limit` is undefined.
+	// holds. The cursor is the runtime's opaque token (bound to one stream
+	// generation); `oldestId` is the id of the window's oldest message, kept
+	// separately so resets from a runtime that cannot window them are cut
+	// locally without interpreting the cursor. Unused when `limit` is undefined.
 	let historyWindow: WindowAnchor = { kind: 'newest' };
 	let streamState: FlueConversationState | undefined;
 	let snapshot: AgentConversationObservationSnapshot = {
@@ -241,6 +253,9 @@ export function createAgentConversationObservation(
 				live: options.live,
 				signal: controller?.signal,
 				backoffOptions: options.backoffOptions,
+				...(limit !== undefined && historyWindow.kind === 'from'
+					? { window: { from: historyWindow.cursor, limit } }
+					: {}),
 				onActivity: armWatchdog,
 			});
 		} catch (error) {
@@ -281,12 +296,23 @@ export function createAgentConversationObservation(
 				if (lastApplied !== undefined && comparePosition(chunk.position, lastApplied) <= 0) {
 					continue;
 				}
-				streamState = applyConversationChunk(streamState, chunk);
-				// A reset carries the whole conversation; keep a bounded
-				// observation bounded by re-applying its window locally.
+				let nextState = applyConversationChunk(streamState, chunk);
+				// Keep a bounded observation's window across a reset. When the
+				// window cannot be kept, re-base: cancel and re-hydrate the newest
+				// window (routine recovery, like an incarnation change).
 				if (chunk.type === 'conversation-reset' && limit !== undefined) {
-					streamState = rewindow(streamState, limit);
+					const windowed = rewindow(nextState, chunk.snapshot);
+					if (!windowed) {
+						stream = undefined;
+						nextStream.cancel();
+						disarmWatchdog();
+						historyWindow = { kind: 'newest' };
+						void hydrate(value);
+						return;
+					}
+					nextState = windowed;
 				}
+				streamState = nextState;
 				lastApplied = chunk.position;
 				publish({
 					conversation: streamState,
@@ -326,14 +352,29 @@ export function createAgentConversationObservation(
 			// alone must not refill it, or a flapping credential (401 → issue →
 			// 401 → …) would retry forever.
 			authFailureStreak = 0;
+			// Defense in depth: an anchored read answered by a different stream
+			// generation belongs to different content, even if its cursor
+			// resolved. Re-base rather than mix generations.
+			if (
+				limit !== undefined &&
+				historyWindow.kind === 'from' &&
+				observedIncarnation !== undefined &&
+				history.incarnation !== undefined &&
+				history.incarnation !== observedIncarnation
+			) {
+				historyWindow = { kind: 'newest' };
+				void hydrate(value);
+				return;
+			}
 			streamState = createConversationStreamState(history);
 			if (limit !== undefined) {
-				// `before` is the id of the oldest returned message when older
-				// ones exist. A runtime predating bounded history omits it and
-				// returns the whole conversation — equivalent to `start`.
+				// `before` names the oldest returned message when older ones
+				// exist. A runtime predating bounded history omits it and returns
+				// the whole conversation — equivalent to `start`.
+				const oldest = history.messages[0];
 				historyWindow =
-					typeof history.before === 'string'
-						? { kind: 'from', cursor: history.before }
+					typeof history.before === 'string' && oldest
+						? { kind: 'from', cursor: history.before, oldestId: oldest.id }
 						: { kind: 'start' };
 				streamState = { ...streamState, before: windowBefore(historyWindow) };
 			}
@@ -382,20 +423,27 @@ export function createAgentConversationObservation(
 		return {};
 	};
 
-	// Re-apply the window to a state replaced by a `conversation-reset`
-	// snapshot (which always carries the whole conversation). The anchor
-	// message normally survives a reset — resets re-project the same
-	// append-only transcript — so the window is unchanged; if it is gone, the
-	// window re-bases on the newest `limit` messages.
-	const rewindow = (state: FlueConversationState, size: number): FlueConversationState => {
-		const messages = state.messages;
+	// Keep the window across a state replaced by a `conversation-reset`
+	// snapshot, or return undefined to re-base. A runtime that supports
+	// bounded history cuts the reset to the window itself (the snapshot then
+	// carries `before`): accept it iff it is still our window. An older
+	// runtime sends the whole transcript: cut it locally at the oldest held
+	// message — resets re-project the same append-only transcript, so it
+	// normally survives. Anything else re-bases.
+	const rewindow = (
+		state: FlueConversationState,
+		reset: FlueConversationSnapshot,
+	): FlueConversationState | undefined => {
+		const expected = windowBefore(historyWindow);
+		if (reset.before !== undefined) {
+			return historyWindow.kind !== 'newest' && reset.before === expected ? state : undefined;
+		}
 		if (historyWindow.kind === 'start') return { ...state, before: null };
-		const anchor = historyWindow.kind === 'from' ? historyWindow.cursor : undefined;
-		const index = anchor === undefined ? -1 : messages.findIndex((m) => m.id === anchor);
-		const start = index >= 0 ? index : Math.max(0, messages.length - size);
-		const oldest = messages[start];
-		historyWindow = start > 0 && oldest ? { kind: 'from', cursor: oldest.id } : { kind: 'start' };
-		return { ...state, messages: messages.slice(start), before: windowBefore(historyWindow) };
+		if (historyWindow.kind !== 'from') return undefined;
+		const anchor = historyWindow.oldestId;
+		const index = state.messages.findIndex((message) => message.id === anchor);
+		if (index < 0) return undefined;
+		return { ...state, messages: state.messages.slice(index), before: expected };
 	};
 
 	const begin = () => {
@@ -449,7 +497,8 @@ export function createAgentConversationObservation(
 	};
 }
 
-type WindowAnchor = { kind: 'newest' } | { kind: 'start' } | { kind: 'from'; cursor: string };
+type WindowAnchor =
+	{ kind: 'newest' } | { kind: 'start' } | { kind: 'from'; cursor: string; oldestId: string };
 
 function windowBefore(window: WindowAnchor): string | null {
 	return window.kind === 'from' ? window.cursor : null;

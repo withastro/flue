@@ -38,18 +38,20 @@ export interface AgentSubmissionReply {
  * `answeredBySubmissionId` names the host, whose final assistant message is
  * the coalesced reply that answered it. Settlements without that linkage
  * (recorded before it shipped) fall back to the conversation's last
- * assistant message — except on a bounded conversation (one whose `before`
- * cursor says older messages were not loaded), where the last loaded
- * message may belong to a different submission and the reply resolves empty
- * instead. A bounded conversation only finds replies inside its window.
+ * assistant message — only when the conversation is demonstrably the whole
+ * head of the transcript (it carries settlements and no older-page cursor).
+ * On a bounded window the last loaded message may belong to a different
+ * submission, so the reply resolves empty instead; a bounded conversation
+ * only finds replies inside its window.
  *
- * Accepts anything carrying materialized `messages` and `settlements` — a
- * `history()` snapshot or an `observe()` state.
+ * Accepts a `history()` snapshot or an `observe()` state. `settlements` is
+ * required, which excludes `historyBefore()` pages: a page is a slice of
+ * older history, never the conversation a reply is read from.
  */
 export function readSubmissionReply(
 	conversation: {
 		messages: FlueConversationMessage[];
-		settlements?: FlueConversationSettlement[];
+		settlements: FlueConversationSettlement[];
 		before?: string | null;
 	},
 	submissionId: string,
@@ -66,9 +68,9 @@ export function readSubmissionReply(
 				? assistantMessages
 						.filter((message) => message.submissionId === settlement.answeredBySubmissionId)
 						.at(-1)
-				: typeof conversation.before === 'string'
-					? undefined
-					: assistantMessages.at(-1);
+				: isCompleteHead(conversation)
+					? assistantMessages.at(-1)
+					: undefined;
 	}
 	if (!reply) return { text: '', data: {} };
 
@@ -94,4 +96,14 @@ export function readSubmissionReply(
 		data,
 		...(reply.metadata !== undefined ? { metadata: reply.metadata } : {}),
 	};
+}
+
+/**
+ * Whether a conversation is the whole transcript through its head: a snapshot
+ * or observation state (settlements present — pages carry none) whose window
+ * reaches the start (`before` absent on an unbounded read, `null` on a
+ * bounded one that covers everything).
+ */
+function isCompleteHead(conversation: { settlements?: unknown; before?: unknown }): boolean {
+	return Array.isArray(conversation.settlements) && typeof conversation.before !== 'string';
 }
