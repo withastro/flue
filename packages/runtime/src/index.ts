@@ -142,7 +142,6 @@ export type {
 	LlmAssistantMessage,
 	LlmImageContent,
 	LlmMessage,
-	LlmSystemMessage,
 	LlmTextContent,
 	LlmThinkingContent,
 	LlmTool,

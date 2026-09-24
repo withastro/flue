@@ -58,15 +58,16 @@ const CLOUDFLARE_AI_BINDING_API = 'cloudflare-ai-binding' as const;
 // ─── OpenAI-completions compat profile ──────────────────────────────────────
 
 /**
- * Mirrors pi-ai's effective compat for Workers AI models: `getCompat()`, i.e.
- * `detectCompat('cloudflare-workers-ai')` plus the per-model `compat`
- * overrides in pi-ai's model registry (which set `sendSessionAffinityHeaders:
- * true`; `detectCompat` alone returns `false`). Hardcoded here because
- * `convertMessages` requires a fully-resolved compat object and the binding's
- * wire format matches `cloudflare-workers-ai` exactly. Re-mirror if pi-ai's
- * detection logic or registry overrides change upstream. Note
- * `sendSessionAffinityHeaders` is inert in this provider — it applies the
- * `x-session-affinity` header itself in `streamCloudflareWorkersAi`.
+ * Base OpenAI-completions compat profile for the Workers AI binding, mirroring
+ * pi-ai's `detectCompat('cloudflare-workers-ai')` result (`sendSessionAffinity-
+ * Headers: true` — `detectCompat` alone returns `false`). Hardcoded here
+ * because `convertMessages` requires a fully-resolved compat object and the
+ * binding's wire format matches `cloudflare-workers-ai` exactly; per-model
+ * catalog overrides are merged over it at request time (see the
+ * chat-completions branch), mirroring pi's `getCompat()`. Re-mirror if
+ * pi-ai's detection logic changes upstream. Note `sendSessionAffinityHeaders`
+ * is inert in this provider — it applies the `x-session-affinity` header
+ * itself in `streamCloudflareWorkersAi`.
  */
 const WORKERS_AI_COMPAT: Omit<
 	Required<OpenAICompletionsCompat>,
@@ -435,12 +436,18 @@ function streamCloudflareWorkersAi(
 			// Loaded on demand (module-cached after the first call); the static
 			// specifier keeps bundlers chunking it normally.
 			const { convertMessages } = await import('@earendil-works/pi-ai/api/openai-completions');
+			// Per-model catalog compat overrides win over the hardcoded base
+			// profile, mirroring pi's own `getCompat()` (detect + overrides).
+			const compat = {
+				...WORKERS_AI_COMPAT,
+				...(model.compat as OpenAICompletionsCompat | undefined),
+			};
 			const messages = convertMessages(
 				// `convertMessages` is typed for `Model<'openai-completions'>` but
 				// only reads provider/id/reasoning, which our model has.
 				model as unknown as Model<'openai-completions'>,
 				context,
-				WORKERS_AI_COMPAT,
+				compat,
 			);
 
 			const payload: Record<string, unknown> = {
@@ -865,15 +872,21 @@ function streamCloudflareResponsesAi(
 			// Deferred tool loading (`additional_tools` / tool_search) is the
 			// model's own channel when its compat advertises it; without it, the
 			// full current tool set rides in the request-level `tools` field.
-			const supportsToolAdditions = Boolean(
-				responsesModel.compat?.supportsAdditionalTools || responsesModel.compat?.supportsToolSearch,
-			);
+			// The three compat booleans mirror pi's own Responses builder
+			// (`buildParams`): independent flags, and request tools resolved
+			// with their OR.
+			const supportsAdditionalTools = responsesModel.compat?.supportsAdditionalTools === true;
+			const supportsToolSearch = responsesModel.compat?.supportsToolSearch === true;
+			const supportsMidConvoSystemMessages =
+				responsesModel.compat?.supportsMidConvoSystemMessages === true;
+			const supportsToolAdditions = supportsAdditionalTools || supportsToolSearch;
 			const payload: Record<string, unknown> = {
 				// `ai.run`'s model argument names the gateway target; like the
 				// chat-completions payload, the body carries no `model` field.
 				input: convertResponsesMessages(responsesModel, context, RESPONSES_TOOL_CALL_ID_PROVIDERS, {
-					supportsAdditionalTools: supportsToolAdditions,
-					supportsToolSearch: supportsToolAdditions,
+					supportsAdditionalTools,
+					supportsToolSearch,
+					supportsMidConvoSystemMessages,
 				}),
 				stream: true,
 				store: false,
@@ -1425,7 +1438,11 @@ function bindingCatalogModels(): Model<Api>[] {
 			api: CLOUDFLARE_AI_BINDING_API,
 			provider: 'cloudflare',
 			baseUrl: '',
-			compat: undefined,
+			// Keep the catalog's per-model compat overrides (e.g. DeepSeek's
+			// `requiresReasoningContentOnAssistantMessages`/`thinkingFormat`):
+			// the chat-completions branch merges them over the base profile.
+			// `as never` because the binding api is outside pi's compat map.
+			compat: model.compat as never,
 		}));
 }
 

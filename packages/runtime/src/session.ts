@@ -24,7 +24,12 @@ import type {
 	ToolResultMessage,
 	UserMessage,
 } from '@earendil-works/pi-ai';
-import { getCurrentSystemPrompt, getCurrentTools } from '@earendil-works/pi-ai';
+import {
+	createInitialSystemMessage,
+	getCurrentSystemPrompt,
+	getCurrentTools,
+	toToolDeclaration,
+} from '@earendil-works/pi-ai';
 import type * as v from 'valibot';
 import {
 	abandonToolOnAbort,
@@ -209,7 +214,6 @@ import type {
 	FlueLogger,
 	FlueObservationDetail,
 	FlueSession,
-	LlmSystemMessage,
 	ModelRequestInfo,
 	PackagedSkillDirectory,
 	PromptImage,
@@ -304,17 +308,6 @@ function toTurnMessage(message: AgentMessage): TurnInputMessage {
 		return {
 			role: 'user',
 			content: renderSignalMessage(message),
-		};
-	}
-	if (message.role === 'system') {
-		// pi 0.87 carries the prompt and tool declarations in transcript system
-		// messages; surface them in telemetry like the rest of the input.
-		return {
-			role: 'system',
-			content:
-				typeof message.content === 'string'
-					? message.content
-					: (message.content.map(toTurnContent) as LlmSystemMessage['content']),
 		};
 	}
 	if (message.role === 'user') {
@@ -1165,8 +1158,14 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		// system messages before the next request (its transcript model carries
 		// `toolsAdded` declarations; deferred-tool-loading channels consume them
 		// via the request-tools projection). No live message marker or durable
-		// tool-addition record is needed anymore — removals and updates reach
-		// the model through the same rewritten tools array.
+		// tool-addition record is needed for the LIVE transcript. Durability
+		// contract: a canonical rebuild (crash/resume, fold, compaction) does
+		// NOT preserve the historical position of these mid-conversation
+		// declarations — `rebuildCanonicalContext` rebaselines the current
+		// prompt and current tool set into the leading system message instead.
+		// Request-level tools and semantics survive identically; only the
+		// declaration placement (and thus cache-prefix / deferred-tool anchors)
+		// rebaselines to the leading message on restore.
 		const { records } = this.drainSignalAppendRecords(parentId);
 		await this.appendCanonical([...records, this.resourceSnapshotRecord(current, false)]);
 		this.lastNarratedResources = current;
@@ -2161,7 +2160,13 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				...request,
 				input: {
 					systemPrompt: context.systemPrompt ?? getCurrentSystemPrompt(context.messages),
-					messages: context.messages.map(toTurnMessage),
+					// pi 0.87 passes a transcript: generated system messages (prompt +
+					// tool declarations) are excluded from the public messages
+					// projection — the pre-PR event contract had none — and their
+					// content surfaces through the systemPrompt/tools fields above.
+					messages: context.messages
+						.filter((message) => message.role !== 'system')
+						.map(toTurnMessage),
 					tools,
 				},
 			},
@@ -4881,8 +4886,32 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				return image;
 			},
 		});
-		this.agentLoop.state.messages = messages;
+		// Canonical entries never carry the transcript's leading system message,
+		// and pi derives `AgentState.systemPrompt` read-only from it — so every
+		// canonical rebuild re-materializes it from the current rendered prompt
+		// and executable tools. This IS the tool-declaration durability
+		// contract: after a rebuild the current prompt and tool set are
+		// rebaselined into the leading message, and the historical position of
+		// mid-conversation tool declarations is not preserved (pi re-declares
+		// the current set against this base before the next request).
+		const lead = this.leadingSystemMessage();
+		this.agentLoop.state.messages = lead ? [lead, ...messages] : messages;
 		this.contextCompacted = getLatestConversationCompaction(conversation) !== undefined;
+	}
+
+	/**
+	 * The transcript's leading system message: the current rendered prompt
+	 * plus the current executable tools as `toolsAdded` declarations. pi's
+	 * `createInitialSystemMessage` mirrors the seeding the `Agent` performed
+	 * at construction, so a rebuilt transcript is byte-consistent with a
+	 * freshly initialized one. `undefined` when the agent has neither a
+	 * prompt nor tools.
+	 */
+	private leadingSystemMessage(): ReturnType<typeof createInitialSystemMessage> {
+		return createInitialSystemMessage(
+			this.agentLoop.state.systemPrompt,
+			this.agentLoop.state.tools.map((tool) => toToolDeclaration(tool)),
+		);
 	}
 
 	// ─── Model-turn recovery and compaction ───────────────────────────────────
