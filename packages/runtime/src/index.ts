@@ -110,6 +110,7 @@ export {
 	// Deprecated alias for SandboxDriver.
 	type SandboxApi,
 	type SandboxDriver,
+	type SandboxObserverFailure,
 	sandboxFromDriver,
 } from './sandbox.ts';
 export { defineSkill } from './skill-definition.ts';

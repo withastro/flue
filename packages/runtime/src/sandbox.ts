@@ -41,6 +41,66 @@ export interface OrphanedExecSettlement {
 	error?: unknown;
 }
 
+/** A contained failure from an observational sandbox callback. */
+export interface SandboxObserverFailure {
+	observer: 'onOutput' | 'onOrphanSettled';
+	error: unknown;
+}
+
+/**
+ * Keep observational callbacks outside command control flow while making their
+ * failures visible to the adapter. A broken failure reporter is contained too;
+ * there is no callback left to notify, so that last failure goes to stderr.
+ */
+function invokeSandboxObserver(
+	observer: SandboxObserverFailure['observer'],
+	callback: () => unknown,
+	onObserverError?: (failure: SandboxObserverFailure) => void,
+): void {
+	const reportFailureReporterError = (
+		reportError: unknown,
+		failure: SandboxObserverFailure,
+	): void => {
+		console.error(
+			'[flue:sandbox] observer failure reporter failed:',
+			reportError,
+			'Original observer failure:',
+			failure,
+		);
+	};
+	const report = (error: unknown): void => {
+		const failure = { observer, error } as const;
+		if (!onObserverError) {
+			console.error(`[flue:sandbox] ${observer} callback failed:`, error);
+			return;
+		}
+		try {
+			const result = onObserverError(failure);
+			if (isThenable(result)) {
+				void Promise.resolve(result).catch((reportError: unknown) =>
+					reportFailureReporterError(reportError, failure),
+				);
+			}
+		} catch (reportError) {
+			reportFailureReporterError(reportError, failure);
+		}
+	};
+
+	try {
+		const result = callback();
+		if (isThenable(result)) void Promise.resolve(result).catch(report);
+	} catch (error) {
+		report(error);
+	}
+}
+
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+	return (
+		((typeof value === 'object' && value !== null) || typeof value === 'function') &&
+		typeof (value as { then?: unknown }).then === 'function'
+	);
+}
+
 /**
  * Appended to the abort reason on a mid-flight rejection. Uniformly
  * pessimistic: even a cancel-capable provider has not confirmed the kill at
@@ -67,6 +127,7 @@ function raceExecAbort(
 	run: () => Promise<ShellResult>,
 	signal: AbortSignal | undefined,
 	onOrphanSettled?: (settlement: OrphanedExecSettlement) => void,
+	onObserverError?: (failure: SandboxObserverFailure) => void,
 ): Promise<ShellResult> {
 	if (signal?.aborted) return Promise.reject(abortErrorFor(signal));
 	if (!signal) return run();
@@ -85,6 +146,7 @@ function raceExecAbort(
 		const onAbort = (): void => {
 			if (settled) return;
 			settled = true;
+			signal.removeEventListener('abort', onAbort);
 			const abortedAt = new Date();
 			// The provider promise is now an orphan. Consume both settlement
 			// paths so nothing can surface as an unhandled rejection, and hand
@@ -92,12 +154,19 @@ function raceExecAbort(
 			// conversation already recorded the terminal story at abort time,
 			// and a post-hoc second outcome would violate reducer invariants.
 			const record = (outcome: { result: ShellResult } | { error: unknown }): void => {
-				try {
-					onOrphanSettled?.({ command, startedAt, abortedAt, settledAt: new Date(), ...outcome });
-				} catch {
-					// A throwing observer must not become an unhandled rejection
-					// of a continuation nobody awaits.
-				}
+				if (!onOrphanSettled) return;
+				invokeSandboxObserver(
+					'onOrphanSettled',
+					() =>
+						onOrphanSettled({
+							command,
+							startedAt,
+							abortedAt,
+							settledAt: new Date(),
+							...outcome,
+						}),
+					onObserverError,
+				);
 			};
 			pending.then(
 				(result) => record({ result }),
@@ -114,6 +183,10 @@ function raceExecAbort(
 			reject(error);
 		};
 		signal.addEventListener('abort', onAbort, { once: true });
+		if (signal.aborted) {
+			onAbort();
+			return;
+		}
 
 		pending.then(
 			(result) => {
@@ -203,6 +276,7 @@ export function createCwdSandbox(parentEnv: Sandbox, cwd: string): Sandbox {
 			parentEnv.exec(cmd, {
 				cwd: opts?.cwd !== undefined ? resolvePath(opts.cwd) : scopedCwd,
 				env: opts?.env,
+				onOutput: opts?.onOutput,
 				timeoutMs: opts?.timeoutMs,
 				signal: opts?.signal,
 			}),
@@ -359,6 +433,7 @@ export interface SandboxDriver {
 		options?: {
 			cwd?: string;
 			env?: Record<string, string>;
+			onOutput?: (stream: 'stdout' | 'stderr', data: string) => void;
 			timeoutMs?: number;
 			signal?: AbortSignal;
 		},
@@ -375,14 +450,20 @@ export type SandboxApi = SandboxDriver;
  * `options.onOrphanSettled` observes {@link OrphanedExecSettlement}s: the
  * eventual settlement of commands whose caller was released early by an
  * abort. Adapter-facing only — the runtime never records orphan settlements.
+ * `options.onObserverError` receives failures thrown by `onOrphanSettled` or
+ * a caller's `exec.onOutput` callback without changing command settlement.
  */
 export function sandboxFromDriver(
 	driver: SandboxDriver,
 	cwd: string,
-	options?: { onOrphanSettled?: (settlement: OrphanedExecSettlement) => void },
+	options?: {
+		onOrphanSettled?: (settlement: OrphanedExecSettlement) => void;
+		onObserverError?: (failure: SandboxObserverFailure) => void;
+	},
 ): Sandbox {
 	const resolvePath = makeResolvePath(cwd);
 	const onOrphanSettled = options?.onOrphanSettled;
+	const onObserverError = options?.onObserverError;
 
 	return {
 		async exec(
@@ -390,6 +471,7 @@ export function sandboxFromDriver(
 			execOptions?: {
 				cwd?: string;
 				env?: Record<string, string>;
+				onOutput?: (stream: 'stdout' | 'stderr', data: string) => void;
 				timeoutMs?: number;
 				signal?: AbortSignal;
 			},
@@ -402,17 +484,26 @@ export function sandboxFromDriver(
 			// never executes, and a mid-flight abort rejects promptly —
 			// orphaning the remote command rather than awaiting it.
 			const signal = execOptions?.signal;
+			const onOutput = execOptions?.onOutput;
+			const observedOutput = onOutput
+				? (stream: 'stdout' | 'stderr', data: string): void => {
+						if (signal?.aborted) return;
+						invokeSandboxObserver('onOutput', () => onOutput(stream, data), onObserverError);
+					}
+				: undefined;
 			return raceExecAbort(
 				command,
 				() =>
 					driver.exec(command, {
 						cwd: execOptions?.cwd !== undefined ? resolvePath(execOptions.cwd) : cwd,
 						env: execOptions?.env,
+						onOutput: observedOutput,
 						timeoutMs: execOptions?.timeoutMs,
 						signal,
 					}),
 				signal,
 				onOrphanSettled,
+				onObserverError,
 			);
 		},
 

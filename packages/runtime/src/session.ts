@@ -11,6 +11,7 @@ import type {
 	AgentMessage,
 	AgentTool,
 	AgentToolResult,
+	AgentToolUpdateCallback,
 	PrepareNextTurnContext,
 	StreamFn,
 } from '@earendil-works/pi-agent-core';
@@ -2548,8 +2549,19 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					});
 					break;
 				}
-				case 'tool_execution_update':
+				case 'tool_execution_update': {
+					const call = this.activeToolCalls.get(event.toolCallId);
+					this.emit(
+						{
+							type: 'tool_update',
+							toolName: event.toolName,
+							toolCallId: event.toolCallId,
+							result: event.partialResult,
+						},
+						call?.telemetry,
+					);
 					break;
+				}
 				case 'tool_execution_end': {
 					const call = this.activeToolCalls.get(event.toolCallId) ?? {
 						startedAt: Date.now(),
@@ -3854,20 +3866,21 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			toolCallId: string,
 			params: unknown,
 			signal?: AbortSignal,
-		) => PreparedToolExecution = (toolCallId, params, signal) => ({
+			onUpdate?: AgentToolUpdateCallback,
+		) => PreparedToolExecution = (toolCallId, params, signal, onUpdate) => ({
 			args: params,
-			run: () => tool.execute(toolCallId, params, signal),
+			run: () => tool.execute(toolCallId, params, signal, onUpdate),
 			result: toolResultText,
 		}),
 	): AgentTool<any> {
 		const telemetry = this.toolTelemetry(source, tool);
 		const wrapped: AgentTool<any> = {
 			...tool,
-			execute: async (toolCallId, params, signal) => {
+			execute: async (toolCallId, params, signal, onUpdate) => {
 				let prepared: PreparedToolExecution;
 				try {
 					if (signal?.aborted) throw abortErrorFor(signal);
-					prepared = prepare(toolCallId, params, signal);
+					prepared = prepare(toolCallId, params, signal, onUpdate);
 				} catch (error) {
 					const call = this.activeToolCalls.get(toolCallId) ?? {
 						startedAt: Date.now(),

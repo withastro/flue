@@ -1,14 +1,14 @@
 ---
 title: Sandbox Adapter API
 description: The contract for building a sandbox adapter — SandboxFactory, Sandbox, SandboxDriver, the adapter tool factory, and the built-in sandbox factories.
-lastReviewedAt: 2026-07-21
+lastReviewedAt: 2026-09-16
 ---
 
 A sandbox adapter wraps an execution environment — a provider SDK, a container, the host machine, an in-memory emulation — into the factory contract that [`useSandbox(...)`](/docs/reference/agent-hooks-api/#usesandbox) accepts. This page documents that contract: the `SandboxFactory` interface, the `Sandbox` surface an adapter must produce, the helpers that produce it from simpler shapes, the adapter tool factory, and the built-in factories. For choosing and using sandboxes, see the [Sandboxes guide](/docs/guide/sandboxes/); for the catalog of supported providers, see [Sandboxes in the Ecosystem](/docs/ecosystem/#sandboxes).
 
 **The model never calls this surface.** An agent's model-facing file and shell capabilities are the built-in tools — `read` with offset/limit paging, `edit` string replacement, `grep`, `glob` — built on top of it and documented in [Agent Behavior](/docs/reference/agent-behavior/#built-in-tools). This page is for the two audiences underneath: adapter authors implementing a provider, and application code scripting the environment through [`harness.sandbox`](/docs/reference/agent-api/#harnesssandbox).
 
-All symbols on this page are exported from `@flue/runtime`, except `local()` (from `@flue/runtime/node`) and `cloudflareSandbox()` (from `@flue/runtime/cloudflare`). The former names — `SessionEnv`, `SandboxApi`, `SessionToolFactory`, `createSandboxSessionEnv`, and the factory method `createSessionEnv` — remain available as deprecated aliases, so existing adapters keep compiling and running unchanged.
+The core adapter symbols on this page are exported from `@flue/runtime`. The Node-specific `local()` and `LocalSandboxOptions` come from `@flue/runtime/node`. The Cloudflare-specific `cloudflareSandbox()`, `CloudflareSandboxOptions`, and `CloudflareSandboxStub` come from `@flue/runtime/cloudflare`. The former names — `SessionEnv`, `SandboxApi`, `SessionToolFactory`, `createSandboxSessionEnv`, and the factory method `createSessionEnv` — remain available as deprecated aliases, so existing adapters keep compiling and running unchanged.
 
 ## `SandboxFactory`
 
@@ -65,6 +65,7 @@ interface Sandbox {
     options?: {
       cwd?: string;
       env?: Record<string, string>;
+      onOutput?: (stream: 'stdout' | 'stderr', data: string) => void;
       timeoutMs?: number;
       signal?: AbortSignal;
     },
@@ -102,6 +103,7 @@ Runs a shell command and resolves with its output.
 - Resolves with a `ShellResult` for any completed command, non-zero exit codes included. Rejections are reserved for transport failures and aborts.
 - `options.cwd` — working directory for this command. A relative value resolves against `env.cwd`; when omitted, the command runs in `env.cwd`.
 - `options.env` — environment variables supplied to the command, layered on top of whatever base environment the adapter defines.
+- `options.onOutput` — receives stdout and stderr while the command is running. Each call identifies the stream and carries one chunk of text. A chunk may contain part of a line, one line, or several lines, so code that needs lines must buffer and split the chunks itself. The callback does not replace the result: `exec()` still resolves with complete `stdout` and `stderr` strings. `sandboxFromDriver()` keeps callback failures separate from command failures and stops delivering chunks after caller cancellation. Adapters without a streaming API ignore this option. Cloudflare Sandbox supports it; `local()` and `bash()` do not currently support it.
 - `options.timeoutMs` — wall-clock deadline hint in milliseconds, and the primary cancellation contract. Forward it to the provider's native timeout option (E2B `timeoutMs`, Daytona `timeout`, Modal `timeout`, and so on) so signal-blind providers still observe the deadline. Providers with coarser granularity may round the value up, never down.
 - `options.signal` — cancellation. Aborting rejects the returned promise promptly with an `AbortError` (`DOMException`) carrying the signal's reason as `cause` — never gated on the remote command's settlement. An adapter whose provider can cancel mid-flight does so, so the rejection is exact; one that can't leaves the command running as an **orphan** that keeps executing (and mutating the workspace) after the rejection, its eventual result discarded rather than surfacing later. The `AbortError` message says so. See [`sandboxFromDriver`](#sandboxfromdriverdriver-cwd-options) for how the wrapper implements this and how to observe an orphan's settlement.
 - `timeoutMs` and `signal` are independent. Callers with a deadline that also want ad-hoc cancellation pass both; adapters that support both should observe whichever fires first. The standard `bash` tool passes both whenever the model requests a timeout.
@@ -157,7 +159,10 @@ An adapter may return a sandbox with additional properties — a native surface 
 function sandboxFromDriver(
   driver: SandboxDriver,
   cwd: string,
-  options?: { onOrphanSettled?: (settlement: OrphanedExecSettlement) => void },
+  options?: {
+    onOrphanSettled?: (settlement: OrphanedExecSettlement) => void;
+    onObserverError?: (failure: SandboxObserverFailure) => void;
+  },
 ): Sandbox;
 ```
 
@@ -166,6 +171,16 @@ Wraps a `SandboxDriver` — the minimal interface a remote provider adapter impl
 - Path resolution: relative file paths and relative/absent `exec` working directories resolve against `cwd`, POSIX-normalized. The `driver` methods always receive absolute paths.
 - The `writeFile` parent-creation guarantee: a failed write is retried once after `driver.mkdir(parent, { recursive: true })`; when the retry still fails, the retried write's error propagates.
 - The `exec` abort race: an already-aborted signal rejects with `AbortError` before `driver.exec` is called. An abort that fires mid-flight rejects promptly too — the wrapper never waits on `driver.exec`'s own settlement to decide the caller's outcome, whether or not the adapter wired `signal` into its SDK. The adapter only needs to forward `signal` when its SDK has a real cancellation primitive; the abort race and the promise-consumption below apply either way.
+- Output callback isolation: the wrapper catches errors thrown by a caller's `onOutput` callback. It reports them through `options.onObserverError` without failing the command. It applies the same protection to `options.onOrphanSettled`. These callbacks are synchronous and are not awaited, but Flue still catches a rejected promise if an async function is passed by mistake. If no failure reporter is configured, the wrapper writes a `[flue:sandbox]` error to stderr. If the failure reporter throws or returns a rejected promise, that second error is written to stderr and still does not affect the command.
+
+The failure report identifies the callback and preserves the value it threw:
+
+```ts
+interface SandboxObserverFailure {
+  observer: 'onOutput' | 'onOrphanSettled';
+  error: unknown;
+}
+```
 
 ### Orphaned commands
 
@@ -203,6 +218,7 @@ interface SandboxDriver {
     options?: {
       cwd?: string;
       env?: Record<string, string>;
+      onOutput?: (stream: 'stdout' | 'stderr', data: string) => void;
       timeoutMs?: number;
       signal?: AbortSignal;
     },
@@ -222,6 +238,7 @@ File-verb implementation notes:
 
 `exec` implementation contract:
 
+- Forward `onOutput` to the provider's streaming execution API when one exists. Preserve the provider's stdout/stderr labels and chunk order, and keep collecting the same output for the final `ShellResult`. `sandboxFromDriver()` contains callback failures and stops delivery after caller cancellation. An adapter whose provider has no streaming API may ignore the callback.
 - Honor `timeoutMs` by forwarding it to the provider SDK's native timeout option, converting units and rounding up — never down — when the provider is coarser (a whole-seconds provider forwards `Math.ceil(timeoutMs / 1000)`). It stays the provider-primary deadline regardless of `signal`: it's what protects a signal-blind caller, and a caller that never aborts at all.
 - An adapter that enforces the deadline itself resolves an expired command as a `ShellResult` with `exitCode: 124` and the timeout details on `stderr` — the `timeout(1)` convention the shipped adapters follow. Rejection stays reserved for `signal` aborts.
 - Forward `signal` when the SDK has a real cancellation primitive (an `AbortSignal` option, a process kill, a cancel token) — doing so shrinks the orphan window from the command's remaining duration down to the SDK's cancellation latency. Confirm the cancellation actually takes effect; a `signal` that's accepted but not honored is worse than not forwarding it, since it advertises a kill the command never receives. Don't implement a second abort race around the call (a local `Promise.race`, or the adapter's own pre/post `signal.aborted` checks) — `sandboxFromDriver` already races `signal` against `driver.exec`'s promise and owns the caller-facing rejection; a second race only duplicates it while leaving the orphan bookkeeping unable to tell which one fired.
@@ -391,12 +408,15 @@ function cloudflareSandbox(
 
 interface CloudflareSandboxOptions {
   cwd?: string;
+  onObserverError?: (failure: SandboxObserverFailure) => void;
 }
 ```
 
 Cloudflare target. Wraps a `@cloudflare/sandbox` Durable Object stub (the value `getSandbox()` returns) into a `SandboxFactory`. `CloudflareSandboxStub` is structural, so `@flue/runtime` does not depend on `@cloudflare/sandbox`.
 
 - `cwd` — working directory inside the container. Defaults to `/workspace`.
+- `onObserverError` — handles an error thrown by `onOutput`. The command keeps running and still returns its own result. When this hook is omitted, Flue writes the callback error to stderr. If this hook throws, Flue writes that failure to stderr too.
+- Supplying `Sandbox.exec(..., { onOutput })` uses `@cloudflare/sandbox`'s streaming execution path for that command. The callback receives stdout and stderr chunks as they arrive. The returned `ShellResult` still contains the full output. Calls without `onOutput` keep using the provider's buffered path.
 
 See [Cloudflare Sandbox](/docs/guide/cloudflare-target/#cloudflare-sandbox) in the target guide and the [ecosystem entry](/docs/ecosystem/sandboxes/cloudflare/).
 
