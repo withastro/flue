@@ -372,7 +372,10 @@ const TaskParams = Type.Object({
 			Type.Object({
 				id: Type.String({ description: 'Attachment ID shown in the current conversation' }),
 			}),
-			{ description: 'Images from this conversation to include in the child agent prompt' },
+			{
+				description:
+					'Images or documents from this conversation to include in the child agent prompt',
+			},
 		),
 	),
 });

@@ -81,21 +81,31 @@ Signal fields:
 ### `DeliveredAttachment`
 
 ```ts
-interface DeliveredAttachment {
+type DeliveredAttachment = DeliveredImageAttachment | DeliveredDocumentAttachment;
+
+interface DeliveredImageAttachment {
   type: 'image';
   data: string;
   mimeType: string;
   filename?: string;
 }
+
+interface DeliveredDocumentAttachment {
+  type: 'document';
+  data: string;
+  mimeType: 'application/pdf';
+  filename?: string;
+}
 ```
 
-One attachment on a `kind: 'user'` message. Images are the only supported attachment type.
+One attachment on a `kind: 'user'` message: an image, or a document (PDF) forwarded to the model as native document content. Native document input is supported on Anthropic Messages, Google Generative AI / Vertex, and OpenAI (and Azure OpenAI) Responses models; on any other model API the document is replaced in model context with a text placeholder saying it was omitted (and the runtime logs a one-time warning per API).
 
-| Field      | Description                                                                           |
-| ---------- | ------------------------------------------------------------------------------------- |
-| `data`     | Base64-encoded image bytes. The server rejects data longer than 14 MiB of characters. |
-| `mimeType` | The image MIME type (`image/png`, `image/jpeg`, …).                                   |
-| `filename` | Optional original filename, surfaced on the projected `file` part.                    |
+| Field      | Description                                                                                                   |
+| ---------- | ------------------------------------------------------------------------------------------------------------- |
+| `type`     | `'image'` or `'document'`.                                                                                    |
+| `data`     | Base64-encoded bytes. The server rejects data longer than 14 MiB of characters.                               |
+| `mimeType` | The image MIME type (`image/png`, `image/jpeg`, …), or `application/pdf` for a document.                      |
+| `filename` | Optional original filename, surfaced on the projected `file` part (and passed to the provider for documents). |
 
 ### `AgentSendResult`
 

@@ -1,12 +1,16 @@
 import * as v from 'valibot';
 import { RESERVED_SIGNAL_TYPES } from '../conversation-records.ts';
+import { DOCUMENT_MIME_TYPES } from '../document-attachments.ts';
 import { InvalidRequestError } from '../errors.ts';
 import type { DeliveredMessage } from '../types.ts';
 
+/**
+ * Per-attachment base64 length cap, shared by images and documents (~10.5 MB
+ * decoded).
+ */
 export const MAX_IMAGE_DATA_LENGTH = 14 * 1024 * 1024;
 
-/** Attachment shape for a `DeliveredMessage`'s `attachments`. */
-const DeliveredAttachmentSchema = v.object({
+const DeliveredImageAttachmentSchema = v.object({
 	type: v.literal('image'),
 	data: v.pipe(
 		v.string(),
@@ -18,6 +22,28 @@ const DeliveredAttachmentSchema = v.object({
 	mimeType: v.string(),
 	filename: v.optional(v.string()),
 });
+
+const DeliveredDocumentAttachmentSchema = v.object({
+	type: v.literal('document'),
+	data: v.pipe(
+		v.string(),
+		v.maxLength(
+			MAX_IMAGE_DATA_LENGTH,
+			`Document data exceeds the ${MAX_IMAGE_DATA_LENGTH} character limit.`,
+		),
+	),
+	mimeType: v.picklist(
+		[...DOCUMENT_MIME_TYPES],
+		`Document mimeType must be one of: ${[...DOCUMENT_MIME_TYPES].join(', ')}.`,
+	),
+	filename: v.optional(v.string()),
+});
+
+/** Attachment shape for a `DeliveredMessage`'s `attachments`. */
+const DeliveredAttachmentSchema = v.variant('type', [
+	DeliveredImageAttachmentSchema,
+	DeliveredDocumentAttachmentSchema,
+]);
 
 const DeliveredUserMessageSchema = v.object({
 	kind: v.literal('user'),
@@ -78,7 +104,11 @@ export function parseDeliveredMessage(value: unknown): DeliveredMessage {
 	const parsed = v.safeParse(DeliveredMessageSchema, value);
 	if (parsed.success) return parsed.output;
 	const specificIssue = parsed.issues.find(
-		(issue) => issue.type === 'max_length' || issue.type === 'regex' || issue.type === 'check',
+		(issue) =>
+			issue.type === 'max_length' ||
+			issue.type === 'regex' ||
+			issue.type === 'check' ||
+			issue.type === 'picklist',
 	);
 	throw new InvalidRequestError({
 		reason:

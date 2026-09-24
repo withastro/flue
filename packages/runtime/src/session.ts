@@ -95,6 +95,11 @@ import {
 } from './conversation-reducer.ts';
 import type { ConversationRecordWriter } from './conversation-writer.ts';
 import {
+	mergeOperationAttachments,
+	prepareDocumentRequest,
+	toPublicAttachment,
+} from './document-attachments.ts';
+import {
 	AttachmentNotAvailableError,
 	ConversationRecordInvariantError,
 	classifyError,
@@ -842,7 +847,10 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	/** The active submission's canonical input entry id (delivery-cursor floor). */
 	private activeInputEntryId: string | undefined;
 
-	private emitTurnRequestAndStream: StreamFn = async (model, context, options) => {
+	private emitTurnRequestAndStream: StreamFn = async (model, requestContext, requestOptions) => {
+		// Documents ride pi's image carrier; rewrite them into native document
+		// blocks (or placeholders) for this model's API. No-op without documents.
+		const { context, options } = prepareDocumentRequest(model, requestContext, requestOptions);
 		if (this.activeTurnId === undefined) this.activeTurnId = generateTurnId();
 		const turnId = this.activeTurnId;
 		const operationId = this.activeOperationId ?? generateOperationId();
@@ -1866,7 +1874,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			this.advanceDelivery({
 				kind: 'user',
 				body,
-				...(attachments?.length ? { attachments } : {}),
+				...(attachments?.length ? { attachments: attachments.map(toPublicAttachment) } : {}),
 			});
 			return;
 		}
@@ -2754,7 +2762,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					tools: options?.tools,
 					model: options?.model,
 					thinkingLevel: options?.thinkingLevel,
-					images: options?.images,
+					images: mergeOperationAttachments(options?.images, options?.documents),
 					errorLabel: 'prompt',
 					signal,
 				});
@@ -3691,7 +3699,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					tools: options?.tools,
 					model: options?.model,
 					thinkingLevel: options?.thinkingLevel,
-					images: options?.images,
+					images: mergeOperationAttachments(options?.images, options?.documents),
 					errorLabel: `skill("${skillName}")`,
 					activePackagedSkills,
 					signal,
@@ -3710,7 +3718,18 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			this.runOperation(
 				'task',
 				signal,
-				async () => (await this.executeTask(text, options, signal)).output,
+				async () =>
+					(
+						await this.executeTask(
+							text,
+							options && {
+								...options,
+								images: mergeOperationAttachments(options.images, options.documents),
+								documents: undefined,
+							},
+							signal,
+						)
+					).output,
 			),
 		);
 	}
@@ -4681,7 +4700,8 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				type: 'image',
 				data: encodeBase64(stored.bytes),
 				mimeType: attachment.mimeType,
-			});
+				...(attachment.filename ? { filename: attachment.filename } : {}),
+			} as PromptImage);
 		}
 		return images;
 	}
@@ -5811,11 +5831,17 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				const beforeLeafId = await this.conversationWriter.getConversationLeaf(this.conversationId);
 				const messageId = generateConversationEntryId();
 				const refs = await this.persistCanonicalAttachments(
-					(args.images ?? []).map((image, index) => ({
-						id: `att_prompt_${messageId}_${index}`,
-						mimeType: image.mimeType,
-						data: image.data,
-					})),
+					(args.images ?? []).map((image, index) => {
+						// Task delegation forwards attachments resolved from the parent
+						// conversation, which carry their uploader filename.
+						const filename = (image as { filename?: unknown }).filename;
+						return {
+							id: `att_prompt_${messageId}_${index}`,
+							mimeType: image.mimeType,
+							data: image.data,
+							...(typeof filename === 'string' ? { filename } : {}),
+						};
+					}),
 				);
 				await this.appendCanonical([
 					{
@@ -5993,7 +6019,11 @@ function submissionEntryId(kind: 'direct' | 'dispatch', id: string): string {
  * delegate's `useDelivery()` mirrors a root agent's exactly.
  */
 function taskDeliveryMessage(text: string, images?: PromptImage[]): DeliveredMessage {
-	return { kind: 'user', body: text, ...(images?.length ? { attachments: images } : {}) };
+	return {
+		kind: 'user',
+		body: text,
+		...(images?.length ? { attachments: images.map(toPublicAttachment) } : {}),
+	};
 }
 
 function hasToolCallBlocks(message: AssistantMessage): boolean {

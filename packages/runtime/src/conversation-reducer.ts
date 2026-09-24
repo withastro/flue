@@ -10,6 +10,7 @@ import {
 	type ConversationRecord,
 	encodeCanonicalId,
 } from './conversation-records.ts';
+import { isDocumentMimeType } from './document-attachments.ts';
 import { AttachmentNotAvailableError, ConversationRecordInvariantError } from './errors.ts';
 import { fnv1a64 } from './fnv.ts';
 import { deepMergeMetadata } from './message-output.ts';
@@ -1513,7 +1514,13 @@ function resolveMessageAttachments(
 		const ref = entry.attachmentRefs?.get(block.data);
 		if (!ref) return block;
 		if (!options.resolveAttachment) throw new AttachmentNotAvailableError({ attachmentId: ref.id });
-		return { type: 'image' as const, ...options.resolveAttachment(ref) };
+		// Documents ride pi's image carrier (see document-attachments.ts); the
+		// uploader filename travels with them for the provider payload rewrite.
+		return {
+			type: 'image' as const,
+			...options.resolveAttachment(ref),
+			...(ref.filename && isDocumentMimeType(ref.mimeType) ? { filename: ref.filename } : {}),
+		};
 	});
 	if (!manifestProjected && attachments.length > 0) {
 		content.unshift({ type: 'text', text: attachmentManifest('', attachments) });
@@ -1524,10 +1531,24 @@ function resolveMessageAttachments(
 function attachmentManifest(text: string, attachments: readonly AttachmentRef[]): string {
 	if (attachments.length === 0) return text;
 	const manifest = attachments
-		.map((attachment) => `<image id="${attachment.id}" mimeType="${attachment.mimeType}" />`)
+		.map((attachment) =>
+			isDocumentMimeType(attachment.mimeType)
+				? `<document id="${attachment.id}" mimeType="${attachment.mimeType}"${
+						attachment.filename ? ` filename="${escapeManifestAttribute(attachment.filename)}"` : ''
+					} />`
+				: `<image id="${attachment.id}" mimeType="${attachment.mimeType}" />`,
+		)
 		.join('\n');
 	const projection = `\n\n<attachments>\n${manifest}\n</attachments>`;
 	return text.endsWith(projection) ? text : `${text}${projection}`;
+}
+
+function escapeManifestAttribute(value: string): string {
+	return value
+		.replaceAll('&', '&amp;')
+		.replaceAll('<', '&lt;')
+		.replaceAll('>', '&gt;')
+		.replaceAll('"', '&quot;');
 }
 
 function isCompleteToolBatch(

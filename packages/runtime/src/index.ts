@@ -1,6 +1,7 @@
 /// <reference path="../types/skill-md.d.ts" />
 /// <reference path="../types/markdown-md.d.ts" />
 
+export { ToolTimeoutError } from './abort.ts';
 // The standard model-facing tools, one factory per tool. Compose them in a
 // SandboxFactory's `tools` list to add, drop, or swap tools without
 // rebuilding the set; omit `tools` entirely for the framework default.
@@ -113,7 +114,6 @@ export {
 	sandboxFromDriver,
 } from './sandbox.ts';
 export { defineSkill } from './skill-definition.ts';
-export { ToolTimeoutError } from './abort.ts';
 export { defineTool } from './tool.ts';
 export type {
 	Agent,
@@ -155,6 +155,7 @@ export type {
 	ModelResponse,
 	PackagedSkillDirectory,
 	PackagedSkillFile,
+	PromptDocument,
 	PromptImage,
 	PromptModel,
 	PromptOptions,

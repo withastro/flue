@@ -43,6 +43,8 @@ export type {
 	AgentPromptOptions,
 	AgentSendResult,
 	DeliveredAttachment,
+	DeliveredDocumentAttachment,
+	DeliveredImageAttachment,
 	DeliveredMessage,
 } from './public/send.ts';
 export {

@@ -1,13 +1,34 @@
 import type { HttpClient } from '../http.ts';
 
 /** One image attachment on a `kind: 'user'` delivered message. */
-export interface DeliveredAttachment {
+export interface DeliveredImageAttachment {
 	type: 'image';
+	/** Base64-encoded image bytes. */
 	data: string;
 	mimeType: string;
 	/** Optional original filename, surfaced on the projected `file` part. */
 	filename?: string;
 }
+
+/**
+ * One document attachment on a `kind: 'user'` delivered message, forwarded to
+ * the model as native document content. Supported MIME types:
+ * `application/pdf`. Native document input is supported on Anthropic
+ * Messages, Google Generative AI / Vertex, and OpenAI (Azure) Responses
+ * models; other models see a text placeholder noting the document was
+ * omitted.
+ */
+export interface DeliveredDocumentAttachment {
+	type: 'document';
+	/** Base64-encoded document bytes. */
+	data: string;
+	mimeType: 'application/pdf';
+	/** Optional original filename, surfaced on the projected `file` part. */
+	filename?: string;
+}
+
+/** One attachment on a `kind: 'user'` delivered message: an image or a document. */
+export type DeliveredAttachment = DeliveredImageAttachment | DeliveredDocumentAttachment;
 
 /**
  * The message delivered into an agent's session — the same unified shape the

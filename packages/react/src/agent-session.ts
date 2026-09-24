@@ -4,6 +4,7 @@ import type {
 	AgentSendResult,
 	ConversationLiveMode,
 	DeliveredAttachment,
+	DeliveredDocumentAttachment,
 	FlueClient,
 } from '@flue/sdk';
 import {
@@ -18,10 +19,16 @@ import {
  * Options for one `sendMessage` call. Everything `client.send()` accepts
  * except the `message` itself is passed through untouched, so any SDK send
  * control (idempotencyKey, initialData, uid, signal, …) works here too;
- * `images` is the React convenience folded into the delivered message.
+ * `images` and `documents` are the React conveniences folded into the
+ * delivered message's `attachments` (images first, then documents).
  */
 export type SendMessageOptions = Omit<AgentPromptOptions, 'message'> & {
 	images?: DeliveredAttachment[];
+	/**
+	 * Documents (PDFs) forwarded to the model as native document content. See
+	 * `DeliveredDocumentAttachment` for provider support.
+	 */
+	documents?: DeliveredDocumentAttachment[];
 };
 
 export class AgentSession {
@@ -69,15 +76,16 @@ export class AgentSession {
 		options: SendMessageOptions = {},
 	): Promise<AgentSendResult> => {
 		const localId = `local:${++this.localId}`;
-		const { images, ...sendOptions } = options;
-		this.dispatch({ type: 'local_send_submitted', localId, message, images });
+		const { images, documents, ...sendOptions } = options;
+		const attachments: DeliveredAttachment[] = [...(images ?? []), ...(documents ?? [])];
+		this.dispatch({ type: 'local_send_submitted', localId, message, attachments });
 		try {
 			const receipt = await this.client.send({
 				...sendOptions,
 				message: {
 					kind: 'user',
 					body: message,
-					...(images?.length ? { attachments: images } : {}),
+					...(attachments.length ? { attachments } : {}),
 				},
 			});
 			this.dispatch({ type: 'local_send_admitted', localId, submissionId: receipt.submissionId });

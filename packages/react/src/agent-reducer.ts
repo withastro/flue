@@ -87,7 +87,7 @@ export type AgentReducerEvent =
 			type: 'local_send_submitted';
 			localId: string;
 			message: string;
-			images?: DeliveredAttachment[];
+			attachments?: DeliveredAttachment[];
 	  }
 	| { type: 'local_send_admitted'; localId: string; submissionId: string }
 	| { type: 'local_send_failed'; localId: string; error: Error }
@@ -307,11 +307,11 @@ function optimisticMessage(
 			// On the optimistic→confirmed swap, the canonical part (carrying the
 			// hosted `url` + `id`) takes its place; consumers read `part.url` either
 			// way, with no flicker and no object-URL lifecycle to manage.
-			...(event.images ?? []).map((image) => ({
+			...(event.attachments ?? []).map((attachment) => ({
 				type: 'file' as const,
-				mediaType: image.mimeType,
-				url: `data:${image.mimeType};base64,${image.data}`,
-				...(image.filename ? { filename: image.filename } : {}),
+				mediaType: attachment.mimeType,
+				url: `data:${attachment.mimeType};base64,${attachment.data}`,
+				...(attachment.filename ? { filename: attachment.filename } : {}),
 			})),
 		],
 	};
