@@ -1,5 +1,12 @@
 # @flue/salesforce
 
+## 2.2.0
+
+### Patch Changes
+
+- Updated dependencies [54cabb7, 43d15d1, 2663e50, 3b1adfd, 89032c5]
+  - @flue/runtime@2.2.0
+
 ## 2.1.1
 
 ### Patch Changes
