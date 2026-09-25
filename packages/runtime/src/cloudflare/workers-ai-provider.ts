@@ -46,6 +46,7 @@ import { cloudflareWorkersAIProvider } from '@earendil-works/pi-ai/providers/clo
 import { CloudflareAIBindingError, RETRYABLE_INTERRUPTION_MARKER } from '../errors.ts';
 import { attachProviderResponseDiagnostics } from '../provider-diagnostics.ts';
 import { DYNAMIC_MODEL_TEMPLATE } from '../runtime/providers.ts';
+import { prepareAnthropicBindingRequest } from './anthropic-binding-request.ts';
 import type { CloudflareGatewayOptions } from './gateway.ts';
 
 /**
@@ -1175,35 +1176,53 @@ function createAnthropicBindingClient(
 	binding: CloudflareBindingStreamConfig,
 ): AnthropicOptions['client'] {
 	// pi 0.87 calls `client.beta.messages.create` (0.83 used `messages.create`);
-	// expose the same shim on both namespaces so the wire path stays version-agnostic.
-	const messages = {
-		create(params: Record<string, unknown>, requestOptions?: { signal?: AbortSignal }) {
-			return {
-				async asResponse() {
-					const run = gatewayRunOptions(binding.gateway);
-					const extraHeaders = { ...buildExtraHeaders(options), ...run.headers };
-					const response = (await (ai.run as unknown as RunOverload)(model.id, params, {
-						returnRawResponse: true,
-						...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
-						...(Object.keys(extraHeaders).length > 0 ? { extraHeaders } : {}),
-						...(run.gateway ? { gateway: run.gateway } : {}),
-					})) as Response;
+	// both namespaces share one request path so the wire stays version-agnostic.
+	// The beta namespace translates `params.betas` into the `anthropic-beta`
+	// header like the Anthropic SDK (see prepareAnthropicBindingRequest).
+	type RequestOptions = { signal?: AbortSignal };
+	const send = (
+		namespace: 'messages' | 'beta',
+		params: Record<string, unknown>,
+		requestOptions: RequestOptions | undefined,
+	) => {
+		return {
+			async asResponse() {
+				const run = gatewayRunOptions(binding.gateway);
+				const { body, extraHeaders } = prepareAnthropicBindingRequest(namespace, params, {
+					...buildExtraHeaders(options),
+					...run.headers,
+				});
+				const response = (await (ai.run as unknown as RunOverload)(model.id, body, {
+					returnRawResponse: true,
+					...(requestOptions?.signal ? { signal: requestOptions.signal } : {}),
+					...(Object.keys(extraHeaders).length > 0 ? { extraHeaders } : {}),
+					...(run.gateway ? { gateway: run.gateway } : {}),
+				})) as Response;
 
-					await assertSuccessfulBindingResponse(response);
-					// pi-ai's Anthropic protocol consumes the body itself, so the
-					// idle deadline wraps the Response it hands back.
-					if (!response.body) return response;
-					return new Response(
-						withStreamIdleDeadline(response.body, binding.streamIdleTimeoutMs),
-						response,
-					);
-				},
-			};
-		},
+				await assertSuccessfulBindingResponse(response);
+				// pi-ai's Anthropic protocol consumes the body itself, so the
+				// idle deadline wraps the Response it hands back.
+				if (!response.body) return response;
+				return new Response(
+					withStreamIdleDeadline(response.body, binding.streamIdleTimeoutMs),
+					response,
+				);
+			},
+		};
 	};
 	return {
-		messages,
-		beta: { messages },
+		messages: {
+			create(params: Record<string, unknown>, requestOptions?: RequestOptions) {
+				return send('messages', params, requestOptions);
+			},
+		},
+		beta: {
+			messages: {
+				create(params: Record<string, unknown>, requestOptions?: RequestOptions) {
+					return send('beta', params, requestOptions);
+				},
+			},
+		},
 	} as unknown as AnthropicOptions['client'];
 }
 

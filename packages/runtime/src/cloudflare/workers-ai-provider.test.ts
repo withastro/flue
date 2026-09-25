@@ -40,9 +40,15 @@ function anthropicSseResponse(): Response {
 
 function anthropicProviderFor(extra?: Partial<Parameters<typeof cloudflareBindingProvider>[0]>) {
 	let recorded: Record<string, unknown> | undefined;
+	let recordedOptions: { extraHeaders?: Record<string, string> } | undefined;
 	const binding = {
-		async run(_modelId: string, params: Record<string, unknown>) {
+		async run(
+			_modelId: string,
+			params: Record<string, unknown>,
+			runOptions?: { extraHeaders?: Record<string, string> },
+		) {
 			recorded = params;
+			recordedOptions = runOptions;
 			return anthropicSseResponse();
 		},
 	};
@@ -55,7 +61,12 @@ function anthropicProviderFor(extra?: Partial<Parameters<typeof cloudflareBindin
 		.getModels()
 		.find((candidate) => candidate.id === 'anthropic/claude-opus-5');
 	if (!model) throw new Error('Expected an anthropic gateway catalog model');
-	return { provider, model, recorded: () => recorded };
+	return {
+		provider,
+		model,
+		recorded: () => recorded,
+		recordedHeaders: () => recordedOptions?.extraHeaders,
+	};
 }
 
 function providerFor(chunks: unknown[]) {
@@ -213,6 +224,99 @@ describe('Cloudflare binding Anthropic prompt caching', () => {
 		const payload = JSON.stringify(recorded());
 		expect(payload).toContain('cache_control');
 		expect(payload).toContain('"type":"ephemeral"');
+	});
+});
+
+describe('Cloudflare binding Anthropic beta features', () => {
+	const lookupTool = {
+		name: 'lookup',
+		description: 'Look something up',
+		parameters: { type: 'object', properties: {} },
+	} as never;
+
+	it('sends betas as the anthropic-beta header, not in the request body', async () => {
+		const { provider, model, recorded, recordedHeaders } = anthropicProviderFor();
+		const result = await provider
+			.stream(
+				model,
+				normalizeContext({
+					systemPrompt: 'x',
+					messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
+					tools: [lookupTool],
+				}),
+				{ sessionId: 'session-1' },
+			)
+			.result();
+
+		expect(result.errorMessage).toBeUndefined();
+		expect(recorded()).not.toHaveProperty('betas');
+		expect(recorded()?.tools).toHaveLength(1);
+		expect(recordedHeaders()).toMatchObject({
+			'anthropic-beta': 'fine-grained-tool-streaming-2025-05-14',
+			'x-session-affinity': 'session-1',
+		});
+	});
+
+	it('joins multiple betas with commas and replaces a configured header', async () => {
+		const { provider, model, recorded, recordedHeaders } = anthropicProviderFor();
+		await provider
+			.stream(
+				model,
+				normalizeContext({
+					systemPrompt: 'x',
+					messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
+					tools: [],
+				}),
+				{ headers: { 'Anthropic-Beta': 'beta-a, beta-b', 'x-custom': '1' } },
+			)
+			.result();
+
+		expect(recorded()).not.toHaveProperty('betas');
+		const headers = recordedHeaders() ?? {};
+		expect(headers['anthropic-beta']).toBe('beta-a,beta-b');
+		expect(headers).not.toHaveProperty('Anthropic-Beta');
+		expect(headers['x-custom']).toBe('1');
+	});
+
+	it('an explicit empty betas list overrides a configured anthropic-beta header', async () => {
+		const { provider, model, recorded, recordedHeaders } = anthropicProviderFor();
+		await provider
+			.stream(
+				model,
+				normalizeContext({
+					systemPrompt: 'x',
+					messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
+					tools: [],
+				}),
+				{
+					headers: { 'Anthropic-Beta': 'beta-a' },
+					onPayload: (payload) => ({ ...(payload as Record<string, unknown>), betas: [] }),
+				},
+			)
+			.result();
+
+		expect(recorded()).not.toHaveProperty('betas');
+		const headers = recordedHeaders() ?? {};
+		expect(headers).not.toHaveProperty('Anthropic-Beta');
+		expect(headers['anthropic-beta']).toBe('');
+		expect(JSON.stringify(headers)).not.toContain('beta-a');
+	});
+
+	it('sends no anthropic-beta header when no beta features apply', async () => {
+		const { provider, model, recorded, recordedHeaders } = anthropicProviderFor();
+		await provider
+			.stream(
+				model,
+				normalizeContext({
+					systemPrompt: 'x',
+					messages: [{ role: 'user', content: 'hi', timestamp: 0 }],
+					tools: [],
+				}),
+			)
+			.result();
+
+		expect(recorded()).not.toHaveProperty('betas');
+		expect(recordedHeaders()?.['anthropic-beta']).toBeUndefined();
 	});
 });
 
