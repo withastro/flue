@@ -227,6 +227,7 @@ export function createConversationStreamState(
 		conversationId: snapshot.conversationId,
 		messages: snapshot.messages,
 		settlements: snapshot.settlements,
+		...(snapshot.before !== undefined ? { before: snapshot.before } : {}),
 	};
 }
 
@@ -254,6 +255,7 @@ export function applyConversationChunk(
 						display: 'visible',
 						...(chunk.submissionId ? { submissionId: chunk.submissionId } : {}),
 						...(chunk.turnId ? { turnId: chunk.turnId } : {}),
+						...(chunk.timestamp ? { timestamp: chunk.timestamp } : {}),
 						parts: [],
 						...(chunk.metadata ? { metadata: chunk.metadata } : {}),
 					},
@@ -499,6 +501,7 @@ function applySettlement(
 		...(chunk.answeredBySubmissionId === undefined
 			? {}
 			: { answeredBySubmissionId: chunk.answeredBySubmissionId }),
+		...(chunk.timestamp ? { timestamp: chunk.timestamp } : {}),
 	};
 	const settlements = state.settlements;
 	const index = settlements.findIndex((value) => value.submissionId === settlement.submissionId);

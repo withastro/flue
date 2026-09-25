@@ -1,6 +1,6 @@
 {
 	"name": "@flue/zendesk",
-	"version": "2.1.0-next.1",
+	"version": "2.1.1",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -28,7 +28,7 @@
 		"check:types": "tsc --noEmit"
 	},
 	"dependencies": {
-		"hono": "4.12.32",
+		"hono": "^4.12.32",
 		"lossless-json": "4.3.0"
 	},
 	"peerDependencies": {

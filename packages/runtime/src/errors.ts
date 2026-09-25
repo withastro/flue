@@ -357,6 +357,27 @@ export class StreamOffsetGoneError extends FlueHttpError {
 	}
 }
 
+/**
+ * A bounded history read named a cursor (`before` / `from`) that does not
+ * identify a message in the conversation's current materialized transcript —
+ * the cursor was issued by an earlier stream generation (the stream was reset
+ * and regrown since), or its message is gone. 410, not 404: the conversation exists; only the cursor is gone.
+ * Clients recover by re-reading the newest window without a cursor.
+ */
+export class HistoryCursorNotFoundError extends FlueHttpError {
+	constructor({ cursor }: { cursor: string }) {
+		super({
+			type: 'history_cursor_not_found',
+			message: 'History cursor does not identify a message in this conversation.',
+			details:
+				'The cursor belongs to an earlier generation of this conversation stream, or the message it points at is gone — the stream was likely reset since the cursor was issued. Re-read the newest history window without a cursor.',
+			dev: '',
+			status: 410,
+			meta: { cursor },
+		});
+	}
+}
+
 export class InvalidRequestError extends FlueHttpError {
 	constructor({ reason }: { reason: string }) {
 		super({

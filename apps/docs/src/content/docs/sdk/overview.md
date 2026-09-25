@@ -51,7 +51,8 @@ Every client method is a typed wrapper over one route of the conversation URL (s
 - `send()` — `POST <url>`; the body is the same `DeliveredMessage` shape a server-side `dispatch(...)` admits, optionally with `initialData` and a `uid` send condition.
 - `read()` — `wait()`'s stream follow, then one `history()` read to return the submission's reply.
 - `wait()` — reads the `GET <url>?view=updates` stream from the admission's offset until the submission's `submission-settled` chunk arrives.
-- `history()` — `GET <url>?view=history`; one materialized snapshot.
+- `history()` — `GET <url>?view=history`; one materialized snapshot, optionally bounded to the newest messages with `limit`.
+- `historyBefore()` — `GET <url>?view=history&before=<cursor>`; one page of older messages.
 - `observe()` — `history()` to hydrate, then the `updates` stream to stay live, with reconnection, rehydration, and duplicate-chunk suppression handled internally.
 - `abort()` — `POST <url>/abort`.
 - `attachmentUrl()` — resolves `<url>/attachments/<attachmentId>` for one `file` part's bytes.

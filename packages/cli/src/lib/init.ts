@@ -37,7 +37,7 @@ export interface ScaffoldFile {
  */
 const DEPENDENCY_VERSIONS = {
 	cloudflareVitePlugin: '^1.39.2',
-	hono: '^4.7.0',
+	hono: '^4.12.32',
 	typescript: '^7.0.2',
 	typesNode: '^22.10.10',
 	vite: '^8.0.14',

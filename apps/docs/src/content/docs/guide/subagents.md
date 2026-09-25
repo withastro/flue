@@ -43,7 +43,7 @@ Delegation is model-driven. Every agent's tool set includes a framework-owned `t
 2. The child runs as a detached session in the parent's environment: it reads the task prompt, works with its own context window, and runs to completion.
 3. Only the child's final message returns to the parent, as the `task` tool's result. Nothing else — not the child's intermediate reasoning, tool calls, or file reads — enters the parent's conversation.
 
-The `task` tool is always present, but its required `agent` parameter only resolves against declared delegates — an agent with no `useSubagent()` calls has no valid value to pass and cannot delegate. The model may also pass an optional `cwd` to point the child at a different working directory, and can forward images from the conversation by attachment id.
+The `task` tool is always present, but its required `agent` parameter only resolves against declared delegates — an agent with no `useSubagent()` calls has no valid value to pass and cannot delegate. The model may also pass an optional `cwd` to point the child at a different working directory, and can forward images and documents from the conversation by attachment id.
 
 Two properties follow from the fresh-context design:
 

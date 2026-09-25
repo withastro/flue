@@ -128,12 +128,18 @@ type DeliveredMessage =
 
 type DeliveredMessageInput = string | DeliveredMessage;
 
-type DeliveredAttachment = PromptImage & { filename?: string };
+type DeliveredAttachment = (PromptImage | PromptDocument) & { filename?: string };
+
+interface PromptDocument {
+  type: 'document';
+  data: string; // base64
+  mimeType: string; // 'application/pdf'
+}
 ```
 
 The single unified input shape for every delivery surface: `dispatch()`, the `init()` handle, [`useDispatchMessage()`](/docs/reference/agent-hooks-api/#usedispatchmessage), and a direct HTTP prompt (whose wire body is this shape verbatim). Everywhere a `DeliveredMessageInput` is accepted, a bare string is shorthand for `{ kind: 'user', body }`.
 
-- `kind: 'user'` — a direct user talking to the assistant. Produces a canonical `user_message` record and projects with `purpose: 'user'` in the conversation. `attachments` carries images for vision-capable models: `{ type: 'image', data, mimeType, filename? }`, where `data` is base64 and capped at 14 MiB of base64 characters per attachment (`14 * 1024 * 1024`). Images are the only supported attachment.
+- `kind: 'user'` — a direct user talking to the assistant. Produces a canonical `user_message` record and projects with `purpose: 'user'` in the conversation. `attachments` carries images for vision-capable models — `{ type: 'image', data, mimeType, filename? }` — and documents — `{ type: 'document', data, mimeType: 'application/pdf', filename? }`. `data` is base64 and capped at 14 MiB of base64 characters per attachment (`14 * 1024 * 1024`). Documents are forwarded to the model as native document content (for PDFs the provider sees extracted text plus a rendered image of every page) rather than text extracted or pages rasterized in your code. Native document input is supported on Anthropic Messages, Google Generative AI / Vertex, and OpenAI (and Azure OpenAI) Responses models; on any other model API the document is replaced in model context with a text placeholder saying it was omitted (and the runtime logs a one-time warning per API). Other document MIME types are rejected with `invalid_request` (400).
 - `kind: 'signal'` — everything beyond a direct 1:1 exchange, and the right shape for most channels: each participant's or system's activity, with sender identity and structured metadata in `attributes` and the content in `body`. Signals render into model context as an XML-tagged block, not a chat turn.
   - `type` — caller-defined event type, e.g. `'slack.message'`. Non-empty. [Framework-reserved types](#dynamic-resources) are rejected at admission on every transport.
   - `body` — a plain string. JSON-stringify structured payloads yourself.
@@ -411,6 +417,7 @@ interface PromptOptions<S extends v.GenericSchema | undefined = undefined> {
   thinkingLevel?: ThinkingLevel;
   signal?: AbortSignal;
   images?: PromptImage[];
+  documents?: PromptDocument[];
 }
 ```
 
@@ -420,6 +427,7 @@ interface PromptOptions<S extends v.GenericSchema | undefined = undefined> {
 - `thinkingLevel` — reasoning-effort override for this call. See [`ThinkingLevel`](/docs/reference/agent-hooks-api/#usemodel).
 - `signal` — external abort signal, merged with the handle's own.
 - `images` — inline images attached to the operation's user message (`PromptImage` re-exports pi-ai's `ImageContent`: `{ type: 'image', data, mimeType }`). Requires a vision-capable model.
+- `documents` — inline documents attached to the operation's user message: `{ type: 'document', data, mimeType: 'application/pdf' }`, with `data` base64. Forwarded as native document content, like a document [`DeliveredAttachment`](#deliveredmessage). Native document input is supported on Anthropic Messages, Google Generative AI / Vertex, and OpenAI (and Azure OpenAI) Responses models; on any other model API the document is replaced in model context with a text placeholder saying it was omitted (and the runtime logs a one-time warning per API). An unsupported `mimeType` throws.
 
 ```ts
 interface PromptResponse {
@@ -594,7 +602,7 @@ Equivalent to a skill directory: `instructions` is the `SKILL.md` body, and `fil
 - `instructions` — the skill's content, loaded on activation. Required, non-empty — a skill is its content, so a definition with no instructions is rejected rather than mounted as an empty catalog line.
 - `license`, `compatibility` — optional strings recorded in the packaged frontmatter (`compatibility` at most 500 characters).
 - `metadata` — a string-to-string map recorded in frontmatter.
-- `allowedTools` — space-separated pre-approved tools (experimental in the Agent Skills spec).
+- `allowedTools` — space-separated tool names the skill author prefers (experimental in the Agent Skills spec). Accepted for compatibility; Flue does not enforce it.
 - `files` — supporting resources keyed by path relative to the skill root. Paths must be safe relative paths (no leading `/`, no `.`/`..` segments, no backslashes) and must not be `SKILL.md` itself. Content is a string or `Uint8Array`.
 
 ## `defineSubagent()`

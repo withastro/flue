@@ -100,7 +100,13 @@ export interface ContentAttributeOptions {
 
 export interface ContentAttributeResult {
 	value?: string;
-	/** Post-transform value was a plain object — decides `gen_ai.tool.call.*` vs the `flue.*` raw fallback keys. */
+	/**
+	 * @deprecated Retained for source compatibility. Tool payloads of every
+	 * shape record under the semconv `gen_ai.tool.call.*` keys, so this no
+	 * longer selects an attribute key. Reports whether the post-transform
+	 * value was a plain object (serialized-object strings report `false`, as
+	 * they always have).
+	 */
 	objectShaped?: boolean;
 }
 

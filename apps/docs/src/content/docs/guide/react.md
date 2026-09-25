@@ -67,7 +67,16 @@ The `url` here assumes `app.ts` mounted the agent at `/api/agents/support-assist
 
 `sendMessage()` adds the user message immediately and resolves when the server admits the prompt, not when generation finishes. The stream then reconciles that optimistic message with its durable copy without changing its transcript position. Use `status` to distinguish connection, submission, streaming, and error states. `historyReady` becomes `true` once the requested durable history has loaded as one coherent snapshot; it remains `true` through later live reconnects.
 
-Messages are Flue-owned `FlueConversationMessage` values with a parts-based shape: `text`, `reasoning`, `dynamic-tool`, and `file`. Validated structured tool output is preserved on the `dynamic-tool` part's `output`, so applications can render custom tool interfaces without a separate data-event channel. These are Flue's own types — they are not AI SDK types, and `@flue/react` neither depends on `ai` at runtime nor implements its transport protocol. Durable `file` parts carry a ready-to-use `url` for attachment bytes (served through the agent router's attachments endpoint); optimistic uploads carry a local `data:` preview.
+`sendMessage(message, options)` accepts every SDK send control (`idempotencyKey`, `initialData`, `uid`, `signal`, …) plus two attachment conveniences folded into the delivered message's `attachments`: `images` (`{ type: 'image', data, mimeType, filename? }`) and `documents` (`{ type: 'document', data, mimeType: 'application/pdf', filename? }`), with `data` base64. Documents reach the model as native document content on Anthropic, Google, and OpenAI Responses models; see [`DeliveredAttachment`](/docs/sdk/flue-client/#deliveredattachment) for details.
+
+```tsx
+const data = await fileToBase64(file); // your helper: File → base64 string
+await agent.sendMessage('Summarize this quote.', {
+  documents: [{ type: 'document', data, mimeType: 'application/pdf', filename: file.name }],
+});
+```
+
+Messages are Flue-owned `FlueConversationMessage` values with a parts-based shape: `text`, `reasoning`, `dynamic-tool`, and `file`. Validated structured tool output is preserved on the `dynamic-tool` part's `output`, so applications can render custom tool interfaces without a separate data-event channel. These are Flue's own types — they are not AI SDK types, and `@flue/react` neither depends on `ai` at runtime nor implements its transport protocol. Durable `file` parts carry a ready-to-use `url` for attachment bytes (served through the agent router's attachments endpoint); optimistic uploads carry a local `data:` preview. Branch on `part.mediaType` to render them — an `<img>` for `image/*`, a link for `application/pdf`.
 
 The hook uses the Flue Agent SDK's materialized `observe()` layer: it loads the complete canonical snapshot, publishes it atomically in durable order, and continues from that exact checkpoint through reconnects and canonical resets. Consumers do not need to coordinate the snapshot and live updates or sort `messages`. Live updates default to SSE, falling back to Durable Streams long-polling (`live: 'long-poll'` selects it explicitly). For a single point-in-time read with no live updates, use the SDK client's `history()` directly instead. Partial text and reasoning are best-effort while streaming; the completed canonical assistant message is authoritative.
 

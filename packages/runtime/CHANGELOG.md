@@ -1,9 +1,19 @@
 # @flue/runtime
 
-## 2.1.0-next.1
+## 2.1.1
+
+### Patch Changes
+
+- c5a2a72: Clarify that a skill's `allowed-tools` field is guidance. Flue accepts it for Agent Skills spec compatibility and does not enforce it; enforce authorization in your own tools and approval gates.
+- 756db76: Make trace content truncation scale linearly for long message arrays. Large traced conversations no longer repeatedly serialize the remaining history while fitting `gen_ai.input.messages` to the attribute budget, avoiding request latency and Cloudflare Durable Object CPU-limit resets.
+- d9e2ac0: Record tool arguments and results of every payload shape on the standard `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result` attributes, so OTel backends can display them. The shape-based diversion to the vendor `flue.tool.call.*` fallback keys is removed — those keys are no longer emitted, and their constants are retained for source compatibility. Payloads record exactly as before: objects/arrays as JSON strings, strings byte-for-byte within the content budget, other scalars as their JSON form.
+- 7841ff8: Allow Flue packages and newly scaffolded applications to share a compatible Hono installation. Hono dependencies now use `^4.12.32`, preventing fresh projects from installing a newer root Hono alongside the runtime's older exact version and failing typecheck.
+
+## 2.1.0
 
 ### Minor Changes
 
+- 4def7b6: Trace content budgets are now configurable. `createCloudflareTracing({ contentBudgetBytes })` and `createOpenTelemetryInstrumentation({ contentBudgetBytes })` override the default 56 KiB per-span content pool — raise it (e.g. `contentBudgetBytes: 200_000`) to ship fuller prompts and tool results to an observability backend that isn't bound by workerd's 64 KiB span-attribute cap, or tighten it. The 128-byte sentinel floor and the shared-pool semantics are unchanged.
 - 11e1323: Tools returned by `createMcpConnection()` now retain the metadata sent by the MCP server in its `tools/list` response. The metadata is available on each Flue tool as `tool.annotations`:
 
   ```ts
@@ -14,21 +24,6 @@
   ```
 
   `defineTool()` and `useTool()` also accept `annotations`, so wrappers can carry the metadata forward. Flue does not automatically change a tool's behavior based on these server-supplied values.
-
-### Patch Changes
-
-- 11e1323: The MCP guide and Agent API reference now document preserved MCP tool annotations, including how trusted applications can inspect them and why server-supplied hints are not a security boundary.
-
-## 2.1.0-next.0
-
-### Minor Changes
-
-- 4def7b6: Trace content budgets are now configurable. `createCloudflareTracing({ contentBudgetBytes })` and `createOpenTelemetryInstrumentation({ contentBudgetBytes })` override the default 56 KiB per-span content pool — raise it (e.g. `contentBudgetBytes: 200_000`) to ship fuller prompts and tool results to an observability backend that isn't bound by workerd's 64 KiB span-attribute cap, or tighten it. The 128-byte sentinel floor and the shared-pool semantics are unchanged.
-- 4827d6e: Cloudflare Sandbox commands can now report stdout and stderr while they run. Pass an `onOutput(stream, chunk)` callback to `harness.sandbox.exec()` to receive each piece of output as it arrives. The command still returns its complete buffered `stdout`, `stderr`, and exit code when it finishes.
-
-  Callback failures do not fail the command. Configure `cloudflareSandbox(..., { onObserverError })` to send those failures to your logger; without that hook, Flue reports them to stderr. Sandbox adapter authors can support the same streaming contract by forwarding `SandboxDriver.exec()`'s new `onOutput` option.
-
-  The built-in `bash` tool now forwards supported sandbox output as throttled, cumulative `tool_update` runtime events. These events are live progress snapshots and are not persisted or replayed; the terminal `tool` event remains authoritative.
 
 - 12464d7: Tools can now declare a `timeoutMs` execution bound: on expiry the harness aborts the tool's `context.signal` and settles the call with a `ToolTimeoutError` (the model sees `Tool "<name>" timed out after <ms>ms` and the conversation continues) instead of letting one hung call consume the submission's durability budget.
 
@@ -54,6 +49,7 @@
 ### Patch Changes
 
 - 4def7b6: The OpenTelemetry ecosystem page and Cloudflare target guide now document `contentBudgetBytes` on `createOpenTelemetryInstrumentation()` / `createCloudflareTracing()`: an override for the default 56 KiB per-span content pool. Raising it ships fuller content only on backends not bound by workerd's span cap (the OpenTelemetry adapter); on the Cloudflare target it is a tightening control only, since workerd's 64 KiB span-attribute cap is a platform limit no setting raises.
+- 11e1323: The MCP guide and Agent API reference now document preserved MCP tool annotations, including how trusted applications can inspect them and why server-supplied hints are not a security boundary.
 - 12464d7: The Tools guide and agent API reference now document `timeoutMs` on tool definitions: a per-call execution bound that aborts the tool's `context.signal` and settles the call with a `ToolTimeoutError` instead of letting one hung call consume the submission's durability budget.
 - d9e7f5c: Fix two bugs in the configurable content budget:
 

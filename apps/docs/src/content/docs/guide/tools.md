@@ -6,7 +6,7 @@ lastReviewedAt: 2026-07-23
 
 A **tool** is a function you write, described to the model, that the model may call while it works — look up an order, file a ticket, issue a refund. The model decides _when_ to call; your code decides _what happens_. Where a [skill](/docs/guide/skills/) provides reusable instructions and the [sandbox](/docs/guide/sandboxes/) provides file and command access, a tool executes your application's code.
 
-This guide covers defining custom tools and mounting them with `useTool`, the file and shell tools a sandbox brings, harness tools, durable tools, conditional tools, and protecting what a tool can access.
+This guide covers defining custom tools and mounting them with `useTool`, the file and shell tools a sandbox brings, harness tools, durable tools, conditional tools, approval gates, and protecting what a tool can access.
 
 ## Your first tool
 
@@ -224,6 +224,213 @@ Until an operator approves, `publish_release` doesn't exist — an unmounted too
 > **Note:** Changing the tool set rewrites the provider's tools array, which invalidates its prompt cache, so gate tools on state that changes rarely. The exception is a tool unlocked by a completed tool call, the way `record_approval` unlocks `publish_release` here: current Anthropic models (except Haiku) load its definition at the point in the conversation where it appeared, and the cache survives.
 
 Tools built this way pair naturally with [custom hooks](/docs/guide/agent-hooks/#custom-hooks): a `useEscalation()` hook that bundles the gate, the tools, and the matching instructions can be shared across every agent that needs the same behavior.
+
+## Approval gates
+
+A conditional tool unlocks a whole _capability_. Sometimes you need a person to approve one specific call — this refund, this release, these arguments — before it runs. Flue has no built-in approval API; this section shows a pattern built from the hooks above that you can copy and adapt.
+
+Don't make a tool's `run` wait for a person. While a tool call is running, the agent's response is still in progress, and a new message only joins it at a turn boundary, so the approval could never arrive. The wait would also count against the submission's [durability timeout](/docs/guide/durability/#retry-budget-and-timeout), and an interrupted call is not re-run. Instead, record the request and end the response. The decision arrives later as its own message, and the agent runs the stored call then:
+
+1. The model calls the tool. `run` saves the exact arguments in [persistent state](/docs/guide/agent-hooks/#persisted-state), keyed by the call's `toolCallId`, and returns a `pending_approval` result with `terminate: true`. The response ends and the conversation goes idle — no process waits for anyone.
+2. Your application shows the request to a person: a card in your UI, a button in a chat channel.
+3. A trusted route delivers the decision into the conversation as a signal.
+4. A [`useAgentStart`](/docs/reference/agent-hooks-api/#useagentstart) callback, which runs before the model reads that signal, executes the stored arguments on approval — not whatever the model might send next time — and appends the outcome for the model to read.
+
+The gate as a custom hook:
+
+```ts title="src/shared/use-approval-gate.ts"
+import { useAgentStart, useDelivery, usePersistentState, useTool } from '@flue/runtime';
+import * as v from 'valibot';
+
+type PendingCall = { args: unknown; requestedAt: string };
+
+export function useApprovalGate<TInput extends v.GenericSchema<Record<string, unknown>>>(gate: {
+  name: string;
+  description: string;
+  input: TInput;
+  /** Return false to run a call without asking. Omit to always ask. */
+  needsApproval?: (args: v.InferOutput<TInput>) => boolean;
+  /** The side effect. Returns a summary for the model; `approvalId` doubles as an idempotency key. */
+  execute: (args: v.InferOutput<TInput>, approvalId: string) => Promise<string>;
+}) {
+  const [pending, setPending] = usePersistentState<Record<string, PendingCall>>(
+    `approvals:${gate.name}`,
+    {},
+  );
+  const delivery = useDelivery();
+
+  useTool({
+    name: gate.name,
+    description: `${gate.description} Some calls need operator approval before they run.`,
+    input: gate.input,
+    async run({ data, toolCallId }) {
+      if (gate.needsApproval && !gate.needsApproval(data)) {
+        return { output: { status: 'executed', result: await gate.execute(data, toolCallId) } };
+      }
+      setPending((previous) => ({
+        ...previous,
+        [toolCallId]: { args: data, requestedAt: new Date().toISOString() },
+      }));
+      return { output: { status: 'pending_approval', approvalId: toolCallId }, terminate: true };
+    },
+  });
+
+  useAgentStart(async ({ append }) => {
+    if (delivery.kind !== 'signal' || delivery.type !== 'tool-approval') return;
+    const { approvalId = '', decision, approver = 'An operator' } = delivery.attributes ?? {};
+    const call = pending[approvalId];
+    if (!call) return; // not this gate's request, or already decided
+
+    setPending(({ [approvalId]: _decided, ...rest }) => rest);
+
+    if (decision !== 'approve') {
+      append({
+        kind: 'signal',
+        type: 'tool-approval-result',
+        body: `${approver} denied ${gate.name} (${approvalId}). Do not retry it; ask how to proceed.`,
+      });
+      return;
+    }
+    try {
+      const result = await gate.execute(call.args as v.InferOutput<TInput>, approvalId);
+      append({
+        kind: 'signal',
+        type: 'tool-approval-result',
+        body: `${approver} approved ${gate.name} (${approvalId}). Result: ${result}`,
+      });
+    } catch (error) {
+      append({
+        kind: 'signal',
+        type: 'tool-approval-result',
+        body: `${gate.name} (${approvalId}) was approved but failed: ${String(error)}`,
+      });
+    }
+  });
+}
+```
+
+An agent mounts it like any custom hook. Here prereleases publish immediately and stable releases wait for approval:
+
+```ts title="src/agents/release-manager.ts"
+'use agent';
+import { useModel } from '@flue/runtime';
+import * as v from 'valibot';
+import { releases } from '../shared/releases.ts';
+import { useApprovalGate } from '../shared/use-approval-gate.ts';
+
+export function ReleaseManager() {
+  useModel('anthropic/claude-sonnet-4-6');
+
+  useApprovalGate({
+    name: 'publish_release',
+    description: 'Publish a tagged release to npm.',
+    input: v.object({ pkg: v.string(), version: v.string() }),
+    needsApproval: ({ version }) => !version.includes('-next'),
+    async execute({ pkg, version }, approvalId) {
+      const { url } = await releases.publish({ pkg, version, idempotencyKey: approvalId });
+      return `Published ${pkg}@${version}: ${url}`;
+    },
+  });
+
+  return 'Prepare releases. Stable releases need operator approval before they publish.';
+}
+```
+
+The decision comes in through a route you control, not straight from the browser into the conversation: anyone who can post to the conversation could otherwise approve calls. The route authenticates the approver, then [`dispatch`es](/docs/guide/building-agents/#dispatch) the signal. Keying the dispatch on the approval id means the first decision wins — a second, different decision for the same request is rejected with a `409`:
+
+```ts title="src/app.ts"
+import { dispatch } from '@flue/runtime';
+import { createAgentRouter } from '@flue/runtime/routing';
+import { Hono } from 'hono';
+import { ReleaseManager } from './agents/release-manager.ts';
+import { requireOperator } from './shared/auth.ts';
+
+const app = new Hono();
+
+app.route('/api/agents/release-manager', createAgentRouter(ReleaseManager));
+
+app.post('/api/approvals/:conversationId', async (c) => {
+  const operator = await requireOperator(c.req.raw);
+  const { approvalId, decision } = await c.req.json<{
+    approvalId: string;
+    decision: 'approve' | 'deny';
+  }>();
+
+  const receipt = await dispatch(ReleaseManager, {
+    id: c.req.param('conversationId'),
+    message: {
+      kind: 'signal',
+      type: 'tool-approval',
+      body: `${operator.name} chose "${decision}" for ${approvalId}.`,
+      attributes: { approvalId, decision, approver: operator.name },
+    },
+    idempotencyKey: `approval:${approvalId}`,
+  });
+
+  return c.json(receipt, 202);
+});
+
+export default app;
+```
+
+A [channel](/docs/guide/channels/) handles its provider's button-click webhook the same way: verify it, then dispatch the same signal.
+
+On the client, a pending request is an ordinary `dynamic-tool` part whose `output.status` is `pending_approval`. The part's `input` holds the arguments to show the approver. The decision signal carries `approvalId` in its attributes, so a request is decided once a message with that attribute appears:
+
+```tsx title="src/ui/Approvals.tsx"
+import { type FlueConversationMessage, useFlueAgent } from '@flue/react';
+
+function pendingApprovals(messages: FlueConversationMessage[]) {
+  const decided = new Set(
+    messages.flatMap((message) => message.signal?.attributes?.approvalId ?? []),
+  );
+  return messages.flatMap((message) =>
+    message.parts.flatMap((part) =>
+      part.type === 'dynamic-tool' &&
+      part.state === 'output-available' &&
+      (part.output as { status?: string } | null)?.status === 'pending_approval' &&
+      !decided.has(part.toolCallId)
+        ? [{ approvalId: part.toolCallId, toolName: part.toolName, input: part.input }]
+        : [],
+    ),
+  );
+}
+
+export function Approvals({ conversationId }: { conversationId: string }) {
+  const agent = useFlueAgent({ url: `/api/agents/release-manager/${conversationId}` });
+
+  async function decide(approvalId: string, decision: 'approve' | 'deny') {
+    await fetch(`/api/approvals/${conversationId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approvalId, decision }),
+    });
+  }
+
+  return (
+    <ul>
+      {pendingApprovals(agent.messages).map(({ approvalId, toolName, input }) => (
+        <li key={approvalId}>
+          <code>{toolName}</code>
+          <pre>{JSON.stringify(input, null, 2)}</pre>
+          <button onClick={() => decide(approvalId, 'approve')}>Approve</button>
+          <button onClick={() => decide(approvalId, 'deny')}>Deny</button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+Things to keep in mind when adapting the pattern:
+
+- **Make `execute` idempotent.** `useAgentStart` callbacks are at-least-once: a crash while one runs re-runs it on the next attempt. Pass `approvalId` to the external system as an idempotency key, as `releases.publish` does above.
+- **The request ends the response without a reply.** `terminate: true` stops the model before it writes any text, so the approval card is what the user sees. Leave `terminate` off if you'd rather the model say it is waiting; the call still won't run until approved.
+- **Decide what happens with no person present.** A conversation started by a [schedule](/docs/guide/schedules/) or a webhook may have nobody watching. Use `needsApproval`, or a check on `useDelivery()`, to deny or skip those calls rather than leaving them pending.
+- **Requests don't expire on their own.** They stay in persistent state until decided. To expire them, have a scheduled job dispatch a `deny` decision for requests older than your limit.
+- **The transcript records two steps.** The original tool call keeps its `pending_approval` result, and the real outcome arrives later as a `tool-approval-result` signal.
+
+[MCP tool annotations](/docs/guide/mcp/) such as `destructiveHint` can feed `needsApproval` for tools from a server you trust. They are hints supplied by the server, so use them to require approval, never to skip it.
 
 ## Protect access
 

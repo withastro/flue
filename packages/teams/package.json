@@ -1,6 +1,6 @@
 {
 	"name": "@flue/teams",
-	"version": "2.1.0-next.1",
+	"version": "2.1.1",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -29,7 +29,7 @@
 	},
 	"dependencies": {
 		"botframework-schema": "4.23.3",
-		"hono": "4.12.32",
+		"hono": "^4.12.32",
 		"jose": "6.2.5"
 	},
 	"peerDependencies": {

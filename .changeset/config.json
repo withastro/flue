@@ -1,6 +1,6 @@
 {
 	"$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
-	"changelog": "@changesets/cli/changelog",
+	"changelog": "./changelog.mjs",
 	"commit": false,
 	"fixed": [["@flue/*"]],
 	"access": "public",

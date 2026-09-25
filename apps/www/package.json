@@ -8,11 +8,12 @@
 		"build": "astro build",
 		"deploy": "pnpm run build && pnpm exec wrangler deploy",
 		"preview": "astro preview",
-		"astro": "astro"
+		"astro": "astro",
+		"test": "vitest run"
 	},
 	"dependencies": {
 		"@astrojs/mdx": "7.0.5",
-		"@earendil-works/pi-ai": "^0.83.0",
+		"@earendil-works/pi-ai": "^0.87.1",
 		"@paper-design/shaders": "0.0.78",
 		"@tailwindcss/vite": "^4.2.0",
 		"astro": "7.1.6",
@@ -21,6 +22,7 @@
 	"devDependencies": {
 		"typescript": "^7.0.2",
 		"vite": "^8.0.14",
-		"wrangler": "^4.113.0"
+		"wrangler": "^4.113.0",
+		"vitest": "^4.1.6"
 	}
 }

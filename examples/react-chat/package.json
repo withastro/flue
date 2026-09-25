@@ -9,12 +9,12 @@
 		"check:types": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@earendil-works/pi-ai": "^0.83.0",
+		"@earendil-works/pi-ai": "^0.87.1",
 		"@flue/react": "workspace:*",
 		"@flue/runtime": "workspace:*",
 		"@flue/sdk": "workspace:*",
 		"@hono/node-server": "^2.0.3",
-		"hono": "4.12.32",
+		"hono": "^4.12.32",
 		"react": "^19.1.1",
 		"react-dom": "^19.2.6",
 		"valibot": "^1.0.0"

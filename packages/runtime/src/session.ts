@@ -25,6 +25,12 @@ import type {
 	ToolResultMessage,
 	UserMessage,
 } from '@earendil-works/pi-ai';
+import {
+	createInitialSystemMessage,
+	getCurrentSystemPrompt,
+	getCurrentTools,
+	toToolDeclaration,
+} from '@earendil-works/pi-ai';
 import type * as v from 'valibot';
 import {
 	abandonToolOnAbort,
@@ -95,6 +101,11 @@ import {
 	toolResultEntryId,
 } from './conversation-reducer.ts';
 import type { ConversationRecordWriter } from './conversation-writer.ts';
+import {
+	mergeOperationAttachments,
+	prepareDocumentRequest,
+	toPublicAttachment,
+} from './document-attachments.ts';
 import {
 	AttachmentNotAvailableError,
 	ConversationRecordInvariantError,
@@ -843,7 +854,10 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	/** The active submission's canonical input entry id (delivery-cursor floor). */
 	private activeInputEntryId: string | undefined;
 
-	private emitTurnRequestAndStream: StreamFn = async (model, context, options) => {
+	private emitTurnRequestAndStream: StreamFn = async (model, requestContext, requestOptions) => {
+		// Documents ride pi's image carrier; rewrite them into native document
+		// blocks (or placeholders) for this model's API. No-op without documents.
+		const { context, options } = prepareDocumentRequest(model, requestContext, requestOptions);
 		if (this.activeTurnId === undefined) this.activeTurnId = generateTurnId();
 		const turnId = this.activeTurnId;
 		const operationId = this.activeOperationId ?? generateOperationId();
@@ -958,7 +972,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			overrides?.extraTools ?? [],
 		);
 		this.agentLoop.state.tools = tools;
-		this.agentLoop.state.systemPrompt = next.systemPrompt;
+		this.updateAgentSystemPrompt(next.systemPrompt);
 		// Narrate from the same render evaluation that just produced the tool
 		// projection — the signal and the model's actual view cannot disagree.
 		// The steered signal injects before the next provider request (the
@@ -980,11 +994,31 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		else await this.narrateResourceDelta(anchor);
 		return {
 			context: {
-				systemPrompt: next.systemPrompt,
+				// pi 0.87 derives the system prompt from the transcript's leading
+				// system message (see updateAgentSystemPrompt); the returned
+				// context carries the updated messages so the next provider
+				// request sees the recomposed prompt and tool declarations.
 				messages: this.agentLoop.state.messages.slice(),
 				tools: this.agentLoop.state.tools,
 			},
 		};
+	}
+
+	/**
+	 * Update the agent's system prompt in the transcript. pi's transcript
+	 * model derives `AgentState.systemPrompt` read-only from the leading
+	 * system message, so a prompt change replaces that message's content
+	 * (the loop announces tool-set changes separately as system messages).
+	 */
+	private updateAgentSystemPrompt(prompt: string): void {
+		const messages = this.agentLoop.state.messages.slice();
+		const lead = messages[0];
+		if (lead && lead.role === 'system') {
+			messages[0] = { ...lead, content: prompt };
+		} else {
+			messages.unshift({ role: 'system', content: prompt, timestamp: Date.now() });
+		}
+		this.agentLoop.state.messages = messages;
 	}
 
 	/**
@@ -1128,29 +1162,21 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				{ advance: false },
 			);
 		}
-		// Additions unlocked by the anchoring tool batch ride its final result
-		// as `addedToolNames` — set live here, made durable on the snapshot
-		// record so replay rebuilds the same message. Providers with deferred
-		// tool loading use the marker to keep the added definitions out of the
-		// cached prompt prefix; removals and updates have no cache-safe
-		// channel and reach the model through the rewritten tools array.
-		const addedToolNames = anchor
-			? (deltas.find((delta) => delta.kind === 'tool')?.added.map((entry) => entry.name) ?? [])
-			: [];
-		const toolAddition =
-			anchor && addedToolNames.length > 0
-				? {
-						assistantMessageId: anchor.assistantMessageId,
-						toolCallId: anchor.toolResult.toolCallId,
-						names: addedToolNames,
-					}
-				: undefined;
-		if (toolAddition && anchor) anchor.toolResult.addedToolNames = toolAddition.names;
+		// Tool additions unlocked by the anchoring tool batch reach the model
+		// through the transcript: pi's agent loop announces tool-set changes as
+		// system messages before the next request (its transcript model carries
+		// `toolsAdded` declarations; deferred-tool-loading channels consume them
+		// via the request-tools projection). No live message marker or durable
+		// tool-addition record is needed for the LIVE transcript. Durability
+		// contract: a canonical rebuild (crash/resume, fold, compaction) does
+		// NOT preserve the historical position of these mid-conversation
+		// declarations — `rebuildCanonicalContext` rebaselines the current
+		// prompt and current tool set into the leading system message instead.
+		// Request-level tools and semantics survive identically; only the
+		// declaration placement (and thus cache-prefix / deferred-tool anchors)
+		// rebaselines to the leading message on restore.
 		const { records } = this.drainSignalAppendRecords(parentId);
-		await this.appendCanonical([
-			...records,
-			this.resourceSnapshotRecord(current, false, toolAddition),
-		]);
+		await this.appendCanonical([...records, this.resourceSnapshotRecord(current, false)]);
 		this.lastNarratedResources = current;
 	}
 
@@ -1193,14 +1219,12 @@ export class Session implements FlueSession, AgentSubmissionSession {
 	private resourceSnapshotRecord(
 		snapshot: ResourceSnapshot,
 		baseline: boolean,
-		toolAddition?: { assistantMessageId: string; toolCallId: string; names: string[] },
 	): ConversationRecord {
 		return {
 			...this.canonicalEnvelope('resource_snapshot'),
 			type: 'resource_snapshot',
 			baseline,
 			snapshot,
-			...(toolAddition ? { toolAddition } : {}),
 		};
 	}
 
@@ -1250,7 +1274,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		// prepareRerenderTurn does — a mid-call compaction must not drop a
 		// structured-result prompt's finish/give_up bundle, per-call tools,
 		// or active packaged skills for the turn that follows it.
-		this.agentLoop.state.systemPrompt = this.rerender().systemPrompt;
+		this.updateAgentSystemPrompt(this.rerender().systemPrompt);
 		const overrides = this.activeCallOverrides;
 		this.agentLoop.state.tools = this.assembleModelTools(
 			this.createBuiltinToolGroups(
@@ -1867,7 +1891,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			this.advanceDelivery({
 				kind: 'user',
 				body,
-				...(attachments?.length ? { attachments } : {}),
+				...(attachments?.length ? { attachments: attachments.map(toPublicAttachment) } : {}),
 			});
 			return;
 		}
@@ -2125,11 +2149,16 @@ export class Session implements FlueSession, AgentSubmissionSession {
 		},
 		options: SimpleStreamOptions | undefined,
 	): void {
-		const tools = context.tools?.map((tool): TurnInputTool => ({
-			name: tool.name,
-			description: tool.description,
-			parameters: tool.parameters,
-		}));
+		// pi 0.87 passes a transcript context: the prompt and tool declarations
+		// ride in the transcript's system messages, so fall back to pi's
+		// transcript readers when the fields are absent.
+		const tools = (context.tools ?? getCurrentTools(context.messages)).map(
+			(tool): TurnInputTool => ({
+				name: tool.name,
+				description: tool.description,
+				parameters: tool.parameters,
+			}),
+		);
 		const request = this.modelRequestInfo(model, purpose, options);
 		this.modelRequests.set(turnId, { info: request, startedAt: Date.now() });
 		this.emit({
@@ -2139,8 +2168,14 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			request: {
 				...request,
 				input: {
-					systemPrompt: context.systemPrompt,
-					messages: context.messages.map(toTurnMessage),
+					systemPrompt: context.systemPrompt ?? getCurrentSystemPrompt(context.messages),
+					// pi 0.87 passes a transcript: generated system messages (prompt +
+					// tool declarations) are excluded from the public messages
+					// projection — the pre-PR event contract had none — and their
+					// content surfaces through the systemPrompt/tools fields above.
+					messages: context.messages
+						.filter((message) => message.role !== 'system')
+						.map(toTurnMessage),
 					tools,
 				},
 			},
@@ -2766,7 +2801,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					tools: options?.tools,
 					model: options?.model,
 					thinkingLevel: options?.thinkingLevel,
-					images: options?.images,
+					images: mergeOperationAttachments(options?.images, options?.documents),
 					errorLabel: 'prompt',
 					signal,
 				});
@@ -3703,7 +3738,7 @@ export class Session implements FlueSession, AgentSubmissionSession {
 					tools: options?.tools,
 					model: options?.model,
 					thinkingLevel: options?.thinkingLevel,
-					images: options?.images,
+					images: mergeOperationAttachments(options?.images, options?.documents),
 					errorLabel: `skill("${skillName}")`,
 					activePackagedSkills,
 					signal,
@@ -3722,7 +3757,18 @@ export class Session implements FlueSession, AgentSubmissionSession {
 			this.runOperation(
 				'task',
 				signal,
-				async () => (await this.executeTask(text, options, signal)).output,
+				async () =>
+					(
+						await this.executeTask(
+							text,
+							options && {
+								...options,
+								images: mergeOperationAttachments(options.images, options.documents),
+								documents: undefined,
+							},
+							signal,
+						)
+					).output,
 			),
 		);
 	}
@@ -4694,7 +4740,8 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				type: 'image',
 				data: encodeBase64(stored.bytes),
 				mimeType: attachment.mimeType,
-			});
+				...(attachment.filename ? { filename: attachment.filename } : {}),
+			} as PromptImage);
 		}
 		return images;
 	}
@@ -4872,8 +4919,32 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				return image;
 			},
 		});
-		this.agentLoop.state.messages = messages;
+		// Canonical entries never carry the transcript's leading system message,
+		// and pi derives `AgentState.systemPrompt` read-only from it — so every
+		// canonical rebuild re-materializes it from the current rendered prompt
+		// and executable tools. This IS the tool-declaration durability
+		// contract: after a rebuild the current prompt and tool set are
+		// rebaselined into the leading message, and the historical position of
+		// mid-conversation tool declarations is not preserved (pi re-declares
+		// the current set against this base before the next request).
+		const lead = this.leadingSystemMessage();
+		this.agentLoop.state.messages = lead ? [lead, ...messages] : messages;
 		this.contextCompacted = getLatestConversationCompaction(conversation) !== undefined;
+	}
+
+	/**
+	 * The transcript's leading system message: the current rendered prompt
+	 * plus the current executable tools as `toolsAdded` declarations. pi's
+	 * `createInitialSystemMessage` mirrors the seeding the `Agent` performed
+	 * at construction, so a rebuilt transcript is byte-consistent with a
+	 * freshly initialized one. `undefined` when the agent has neither a
+	 * prompt nor tools.
+	 */
+	private leadingSystemMessage(): ReturnType<typeof createInitialSystemMessage> {
+		return createInitialSystemMessage(
+			this.agentLoop.state.systemPrompt,
+			this.agentLoop.state.tools.map((tool) => toToolDeclaration(tool)),
+		);
 	}
 
 	// ─── Model-turn recovery and compaction ───────────────────────────────────
@@ -5824,11 +5895,17 @@ export class Session implements FlueSession, AgentSubmissionSession {
 				const beforeLeafId = await this.conversationWriter.getConversationLeaf(this.conversationId);
 				const messageId = generateConversationEntryId();
 				const refs = await this.persistCanonicalAttachments(
-					(args.images ?? []).map((image, index) => ({
-						id: `att_prompt_${messageId}_${index}`,
-						mimeType: image.mimeType,
-						data: image.data,
-					})),
+					(args.images ?? []).map((image, index) => {
+						// Task delegation forwards attachments resolved from the parent
+						// conversation, which carry their uploader filename.
+						const filename = (image as { filename?: unknown }).filename;
+						return {
+							id: `att_prompt_${messageId}_${index}`,
+							mimeType: image.mimeType,
+							data: image.data,
+							...(typeof filename === 'string' ? { filename } : {}),
+						};
+					}),
 				);
 				await this.appendCanonical([
 					{
@@ -6006,7 +6083,11 @@ function submissionEntryId(kind: 'direct' | 'dispatch', id: string): string {
  * delegate's `useDelivery()` mirrors a root agent's exactly.
  */
 function taskDeliveryMessage(text: string, images?: PromptImage[]): DeliveredMessage {
-	return { kind: 'user', body: text, ...(images?.length ? { attachments: images } : {}) };
+	return {
+		kind: 'user',
+		body: text,
+		...(images?.length ? { attachments: images.map(toPublicAttachment) } : {}),
+	};
 }
 
 function hasToolCallBlocks(message: AssistantMessage): boolean {

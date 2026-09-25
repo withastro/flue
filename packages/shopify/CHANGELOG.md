@@ -1,24 +1,19 @@
 # @flue/shopify
 
-## 2.1.0-next.1
+## 2.1.1
 
 ### Patch Changes
 
-- Updated dependencies [11e1323]
-- Updated dependencies [11e1323]
-  - @flue/runtime@2.1.0-next.1
+- 7841ff8: Allow Flue packages and newly scaffolded applications to share a compatible Hono installation. Hono dependencies now use `^4.12.32`, preventing fresh projects from installing a newer root Hono alongside the runtime's older exact version and failing typecheck.
+- Updated dependencies [c5a2a72, 756db76, d9e2ac0, 7841ff8]
+  - @flue/runtime@2.1.1
 
-## 2.1.0-next.0
+## 2.1.0
 
 ### Patch Changes
 
-- Updated dependencies [4def7b6]
-- Updated dependencies [4def7b6]
-- Updated dependencies [12464d7]
-- Updated dependencies [d9e7f5c]
-- Updated dependencies [4827d6e]
-- Updated dependencies [12464d7]
-  - @flue/runtime@2.1.0-next.0
+- Updated dependencies [4def7b6, 11e1323, 12464d7, d9e7f5c]
+  - @flue/runtime@2.1.0
 
 ## 2.0.8
 

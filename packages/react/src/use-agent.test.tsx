@@ -92,6 +92,41 @@ describe('useFlueAgent callback identities', () => {
 		});
 	});
 
+	it('folds images and documents into attachments with optimistic file parts', async () => {
+		const source = activeClient();
+		const { result } = renderHook(() => useFlueAgent({ client: source.client }));
+
+		await act(async () => {
+			await result.current.sendMessage('summarize', {
+				images: [{ type: 'image', data: 'aGVsbG8=', mimeType: 'image/png' }],
+				documents: [
+					{ type: 'document', data: 'JVBERi0=', mimeType: 'application/pdf', filename: 'q.pdf' },
+				],
+			});
+		});
+
+		expect(source.sent[0]).toEqual({
+			message: {
+				kind: 'user',
+				body: 'summarize',
+				attachments: [
+					{ type: 'image', data: 'aGVsbG8=', mimeType: 'image/png' },
+					{ type: 'document', data: 'JVBERi0=', mimeType: 'application/pdf', filename: 'q.pdf' },
+				],
+			},
+		});
+		const optimistic = result.current.messages.find((message) => message.role === 'user');
+		expect(optimistic?.parts.filter((part) => part.type === 'file')).toEqual([
+			{ type: 'file', mediaType: 'image/png', url: 'data:image/png;base64,aGVsbG8=' },
+			{
+				type: 'file',
+				mediaType: 'application/pdf',
+				url: 'data:application/pdf;base64,JVBERi0=',
+				filename: 'q.pdf',
+			},
+		]);
+	});
+
 	it('sends only the message when no options are given', async () => {
 		const source = activeClient();
 		const { result } = renderHook(() => useFlueAgent({ client: source.client }));

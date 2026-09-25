@@ -56,7 +56,14 @@ export interface AgentState extends AgentSnapshot {
 	 * (otherwise a keyed/virtualized list sees remove+add and loses scroll/focus).
 	 */
 	localMessageIds: { submissionId: string; localId: string }[];
+	/** Submission ids admitted through local sends, in admission order. */
 	localSubmissionIds: string[];
+	/**
+	 * Unsettled submission ids admitted through local sends. Kept separate from
+	 * the conversation-derived active set (see `converge`) so a reload's observed
+	 * submissions can drive `streaming` without persisting into this in-memory
+	 * recollection.
+	 */
 	activeSubmissionIds: string[];
 }
 
@@ -80,7 +87,7 @@ export type AgentReducerEvent =
 			type: 'local_send_submitted';
 			localId: string;
 			message: string;
-			images?: DeliveredAttachment[];
+			attachments?: DeliveredAttachment[];
 	  }
 	| { type: 'local_send_admitted'; localId: string; submissionId: string }
 	| { type: 'local_send_failed'; localId: string; error: Error }
@@ -232,7 +239,30 @@ function converge(state: AgentState): AgentState {
 		.find((settlement): settlement is NonNullable<typeof settlement> => settlement !== undefined);
 	const failedSettlement =
 		lastSettledLocalSubmission?.outcome === 'failed' ? lastSettledLocalSubmission : undefined;
-	const activeSubmissionIds = state.activeSubmissionIds.filter((id) => !settledIds.has(id));
+	// Locally-admitted submissions that have not yet settled. This is the only
+	// in-memory recollection of admission and does not survive a reload.
+	const localActiveSubmissionIds = state.activeSubmissionIds.filter((id) => !settledIds.has(id));
+	// The conversation itself is reload-safe for submissions that already have at
+	// least one materialized message: every tracked submission stamps its
+	// `submissionId` on its messages, and `settlements` records terminal
+	// outcomes. Unsettled submission ids can therefore be derived from the
+	// observed conversation (message submission ids minus settled ids), so an
+	// admitted-but-unsettled submission keeps `status === 'streaming'` after a
+	// reload even though the reducer has no memory of the admission receipt.
+	//
+	// Residual window: admission persists the operational row and returns the
+	// 202 receipt before `processSubmissionInput()` appends the submission's
+	// canonical user/signal message, so a reload in that window — or a queued/
+	// recovering submission delayed before input application — hydrates a
+	// conversation with no message for the submission and reports `idle` until
+	// its first message materializes. Closing that window needs reload-safe
+	// active-submission state (admission-time materialization or a durable
+	// client-side receipt) and is intentionally out of scope here.
+	const observedActiveSubmissionIds = [...canonicalSubmissionIds].filter(
+		(id) => !settledIds.has(id),
+	);
+	const hasActiveSubmission =
+		localActiveSubmissionIds.length > 0 || observedActiveSubmissionIds.length > 0;
 	const hasFailedSend = state.failedSends.length > 0;
 
 	const status: AgentStatus = failedSettlement
@@ -241,7 +271,7 @@ function converge(state: AgentState): AgentState {
 			? 'streaming'
 			: pendingSends.length > 0
 				? 'submitted'
-				: activeSubmissionIds.length > 0
+				: hasActiveSubmission
 					? 'streaming'
 					: hasFailedSend
 						? 'error'
@@ -252,7 +282,7 @@ function converge(state: AgentState): AgentState {
 		messages,
 		settlements: conversation?.settlements ?? [],
 		pendingSends,
-		activeSubmissionIds,
+		activeSubmissionIds: localActiveSubmissionIds,
 		status,
 		error: failedSettlement
 			? new Error(settlementError(failedSettlement.error))
@@ -277,11 +307,11 @@ function optimisticMessage(
 			// On the optimistic→confirmed swap, the canonical part (carrying the
 			// hosted `url` + `id`) takes its place; consumers read `part.url` either
 			// way, with no flicker and no object-URL lifecycle to manage.
-			...(event.images ?? []).map((image) => ({
+			...(event.attachments ?? []).map((attachment) => ({
 				type: 'file' as const,
-				mediaType: image.mimeType,
-				url: `data:${image.mimeType};base64,${image.data}`,
-				...(image.filename ? { filename: image.filename } : {}),
+				mediaType: attachment.mimeType,
+				url: `data:${attachment.mimeType};base64,${attachment.data}`,
+				...(attachment.filename ? { filename: attachment.filename } : {}),
 			})),
 		],
 	};

@@ -1,6 +1,6 @@
 {
 	"name": "@flue/opentelemetry",
-	"version": "2.1.0-next.1",
+	"version": "2.1.1",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -25,7 +25,8 @@
 	},
 	"scripts": {
 		"build": "tsdown",
-		"check:types": "tsc --noEmit"
+		"check:types": "tsc --noEmit",
+		"test": "vitest run"
 	},
 	"peerDependencies": {
 		"@flue/runtime": "workspace:^",

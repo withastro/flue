@@ -1,5 +1,10 @@
 import type { AgentMessage } from '@earendil-works/pi-agent-core';
-import type { AssistantMessage, ToolResultMessage, UserMessage } from '@earendil-works/pi-ai';
+import type {
+	AssistantMessage,
+	JsonObject,
+	ToolResultMessage,
+	UserMessage,
+} from '@earendil-works/pi-ai';
 import {
 	type AssistantMessageStartedRecord,
 	type AttachmentRef,
@@ -10,6 +15,7 @@ import {
 	type ConversationRecord,
 	encodeCanonicalId,
 } from './conversation-records.ts';
+import { isDocumentMimeType } from './document-attachments.ts';
 import { AttachmentNotAvailableError, ConversationRecordInvariantError } from './errors.ts';
 import { fnv1a64 } from './fnv.ts';
 import { deepMergeMetadata } from './message-output.ts';
@@ -887,20 +893,9 @@ export function applyConversationRecord(
 						? { baseline: state.resources.baseline }
 						: {}),
 			};
-			// Restore the anchoring result's `addedToolNames` so a rehydrated
-			// context is byte-identical to the one the live loop ran with —
-			// deferred-tool-loading providers read the marker off the message.
-			// The anchor's entry always folds first (its commit record precedes
-			// this snapshot in the log); a miss means a foreign or truncated
-			// log, and the tools then simply load in the prefix.
-			if (record.toolAddition) {
-				const entry = conversation.entries.get(
-					toolResultEntryId(record.toolAddition.assistantMessageId, record.toolAddition.toolCallId),
-				);
-				if (entry?.type === 'message' && entry.message.role === 'toolResult') {
-					(entry.message as ToolResultMessage).addedToolNames = record.toolAddition.names.slice();
-				}
-			}
+			// The anchoring tool batch's additions are announced to the model
+			// through the transcript's system messages on replay (pi 0.87), so
+			// no live marker needs restoring on the tool result message.
 			break;
 		case 'agent_start_run':
 		case 'agent_finish_cycle':
@@ -1266,7 +1261,7 @@ function assertEntryAppend(
  * assistant to still be the leaf). `tool_outcome` records and all non-entry
  * records are unaffected — they never move the leaf.
  */
-function hasUncommittedToolBatchAtLeaf(conversation: ReducedConversationState): boolean {
+export function hasUncommittedToolBatchAtLeaf(conversation: ReducedConversationState): boolean {
 	const leaf =
 		conversation.activeLeafId !== null
 			? conversation.entries.get(conversation.activeLeafId)
@@ -1442,7 +1437,9 @@ function materializeAssistantBlock(
 		type: 'toolCall',
 		id: block.toolCallId,
 		name: block.name,
-		arguments: block.arguments,
+		// pi's ToolCall narrows arguments to JSON; the reduced block was parsed
+		// from streaming JSON, so the cast is a pure type-narrowing.
+		arguments: block.arguments as JsonObject,
 		thoughtSignature: block.thoughtSignature,
 	};
 }
@@ -1513,7 +1510,13 @@ function resolveMessageAttachments(
 		const ref = entry.attachmentRefs?.get(block.data);
 		if (!ref) return block;
 		if (!options.resolveAttachment) throw new AttachmentNotAvailableError({ attachmentId: ref.id });
-		return { type: 'image' as const, ...options.resolveAttachment(ref) };
+		// Documents ride pi's image carrier (see document-attachments.ts); the
+		// uploader filename travels with them for the provider payload rewrite.
+		return {
+			type: 'image' as const,
+			...options.resolveAttachment(ref),
+			...(ref.filename && isDocumentMimeType(ref.mimeType) ? { filename: ref.filename } : {}),
+		};
 	});
 	if (!manifestProjected && attachments.length > 0) {
 		content.unshift({ type: 'text', text: attachmentManifest('', attachments) });
@@ -1524,10 +1527,24 @@ function resolveMessageAttachments(
 function attachmentManifest(text: string, attachments: readonly AttachmentRef[]): string {
 	if (attachments.length === 0) return text;
 	const manifest = attachments
-		.map((attachment) => `<image id="${attachment.id}" mimeType="${attachment.mimeType}" />`)
+		.map((attachment) =>
+			isDocumentMimeType(attachment.mimeType)
+				? `<document id="${attachment.id}" mimeType="${attachment.mimeType}"${
+						attachment.filename ? ` filename="${escapeManifestAttribute(attachment.filename)}"` : ''
+					} />`
+				: `<image id="${attachment.id}" mimeType="${attachment.mimeType}" />`,
+		)
 		.join('\n');
 	const projection = `\n\n<attachments>\n${manifest}\n</attachments>`;
 	return text.endsWith(projection) ? text : `${text}${projection}`;
+}
+
+function escapeManifestAttribute(value: string): string {
+	return value
+		.replaceAll('&', '&amp;')
+		.replaceAll('<', '&lt;')
+		.replaceAll('>', '&gt;')
+		.replaceAll('"', '&quot;');
 }
 
 function isCompleteToolBatch(

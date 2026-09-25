@@ -10,7 +10,7 @@
 	"dependencies": {
 		"@flue/runtime": "workspace:*",
 		"@flue/salesforce": "workspace:*",
-		"hono": "4.12.32"
+		"hono": "^4.12.32"
 	},
 	"devDependencies": {
 		"@cloudflare/vite-plugin": "^1.39.2",

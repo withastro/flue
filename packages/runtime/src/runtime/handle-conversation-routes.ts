@@ -1,18 +1,28 @@
 import { getConversationFoldHost } from '../conversation-fold-host.ts';
 import {
+	type AgentConversationSnapshot,
 	type ConversationStreamCheckpointChunk,
 	projectAgentConversationSnapshot,
+	projectLiveMessageTargets,
 } from '../conversation-public.ts';
 import { loadReducedConversationPrefix } from '../conversation-reader.ts';
 import type { ReducedInstanceState } from '../conversation-reducer.ts';
 import {
 	AttachmentNotFoundError,
+	HistoryCursorNotFoundError,
 	InvalidRequestError,
 	StreamNotFoundError,
 	StreamOffsetGoneError,
 	toHttpResponse,
 } from '../errors.ts';
 import type { AttachmentStore } from './attachment-store.ts';
+import {
+	applyHistoryWindow,
+	applyResetWindow,
+	parseHistoryWindow,
+	parseResetWindow,
+	type ResetWindow,
+} from './conversation-history-window.ts';
 import {
 	LONG_POLL_TIMEOUT_MS,
 	projectConversationRead,
@@ -127,15 +137,39 @@ async function historyResponse(options: {
 			}),
 		);
 	}
+	const window = parseHistoryWindow(url);
+	if (window instanceof InvalidRequestError) return errorResponse(window);
 	const meta = await options.store.getMeta(options.path);
 	if (!meta) return errorResponse(new StreamNotFoundError({ path: options.path }));
 	const state = await getConversationFoldHost(options.store, options.path).getStateAtHead();
 	const snapshot = projectAgentConversationSnapshot(state);
 	if (!snapshot) return errorResponse(new StreamNotFoundError({ path: options.path }));
+	// Bounded reads slice the fully projected snapshot: the reduced state is
+	// resident in the fold host either way, so the saving is serialization,
+	// transfer, and client-side work — not server-side folding.
+	let windowed: ReturnType<typeof applyHistoryWindow>;
+	try {
+		windowed =
+			window.kind === 'full'
+				? snapshot
+				: applyHistoryWindow(snapshot, window, {
+						incarnation: meta.incarnation,
+						liveTargets: projectLiveMessageTargets(state),
+					});
+	} catch (error) {
+		if (error instanceof HistoryCursorNotFoundError) return errorResponse(error);
+		throw error;
+	}
+	// An older page is not a checkpoint: no offset, no incarnation.
+	if (!('offset' in windowed)) {
+		return Response.json(windowed, {
+			headers: { 'cache-control': 'no-store', ...SECURITY_HEADERS },
+		});
+	}
 	// The projection is meta-free; the route stamps the stream's generation
 	// identity so `observe()` can detect a reset-and-regrown stream mid-follow
 	// (via the stream-checkpoint chunk) against the generation it hydrated from.
-	return Response.json({ ...snapshot, incarnation: meta.incarnation } satisfies typeof snapshot, {
+	return Response.json({ ...windowed, incarnation: meta.incarnation } satisfies typeof snapshot, {
 		headers: {
 			'cache-control': 'no-store',
 			'Stream-Next-Offset': snapshot.offset,
@@ -158,6 +192,8 @@ async function updatesResponse(options: {
 	if (offset instanceof Response) return offset;
 	const live = liveMode(url);
 	if (live instanceof Response) return live;
+	const resetWindow = parseResetWindow(url);
+	if (resetWindow instanceof InvalidRequestError) return errorResponse(resetWindow);
 	const meta = await options.store.getMeta(options.path);
 	if (!meta) return errorResponse(new StreamNotFoundError({ path: options.path }));
 	// Reads start strictly after the requested offset, so equal-to-head is a
@@ -182,8 +218,16 @@ async function updatesResponse(options: {
 		type: 'stream-checkpoint',
 		incarnation: meta.incarnation,
 	};
+	const windowReset = resetWindowProjector(resetWindow, meta.incarnation);
 	if (live === 'sse') {
-		return sseResponse(options.store, options.path, offset, checkpoint, options.request.signal);
+		return sseResponse(
+			options.store,
+			options.path,
+			offset,
+			checkpoint,
+			options.request.signal,
+			windowReset,
+		);
 	}
 	const state = await stateAtOffset(options.store, options.path, offset);
 	let read = await options.store.read(options.path, { offset });
@@ -197,8 +241,31 @@ async function updatesResponse(options: {
 		if (waited === 'aborted') return new Response(null, { status: 499, headers: SECURITY_HEADERS });
 		read = waited;
 	}
-	const projected = projectConversationRead(state, read);
+	const projected = projectConversationRead(state, read, windowReset);
 	return dsJsonResponse([checkpoint, ...projected.items], read, projected.offset);
+}
+
+/**
+ * A bounded observation's updates stream (`from` / `limit`) receives
+ * `conversation-reset` snapshots cut to its window server-side, so a reset
+ * (compaction, a retried response) does not re-send the whole transcript.
+ * Without bounds, resets pass through whole — the unchanged wire shape.
+ */
+function resetWindowProjector(
+	window: ResetWindow,
+	incarnation: string,
+):
+	| ((
+			snapshot: AgentConversationSnapshot,
+			state: ReducedInstanceState,
+	  ) => AgentConversationSnapshot)
+	| undefined {
+	if (!window.from && window.limit === undefined) return undefined;
+	return (snapshot, state) =>
+		applyResetWindow(snapshot, window, {
+			incarnation,
+			liveTargets: projectLiveMessageTargets(state),
+		});
 }
 
 /**
@@ -240,6 +307,7 @@ function sseResponse(
 	offset: string,
 	checkpoint: ConversationStreamCheckpointChunk,
 	signal: AbortSignal,
+	windowReset: Parameters<typeof projectConversationRead>[2],
 ): Response {
 	const encoder = new TextEncoder();
 	let active = true;
@@ -277,7 +345,7 @@ function sseResponse(
 				while (active) {
 					pending = false;
 					const read = await store.read(path, { offset: currentOffset });
-					const projected = projectConversationRead(state, read);
+					const projected = projectConversationRead(state, read, windowReset);
 					state = projected.state;
 					if (projected.items.length > 0) {
 						controller.enqueue(
@@ -345,7 +413,11 @@ function liveMode(url: URL): 'long-poll' | 'sse' | null | Response {
 
 function errorResponse(
 	error:
-		InvalidRequestError | StreamNotFoundError | StreamOffsetGoneError | AttachmentNotFoundError,
+		| InvalidRequestError
+		| StreamNotFoundError
+		| StreamOffsetGoneError
+		| AttachmentNotFoundError
+		| HistoryCursorNotFoundError,
 ): Response {
 	return toHttpResponse(error);
 }

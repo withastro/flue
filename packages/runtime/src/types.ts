@@ -34,12 +34,13 @@ export type {
 export type { ThinkingLevel };
 
 /**
- * One attachment on a `kind: 'user'` {@link DeliveredMessage}. Mirrors pi-ai's
- * `ImageContent` with an optional uploader-provided `filename` (carried on
- * the wire and the canonical record, but not part of pi-ai's model image
- * shape). Today the only supported attachment is an image.
+ * One attachment on a `kind: 'user'` {@link DeliveredMessage}: an image
+ * ({@link PromptImage}, pi-ai's `ImageContent`) or a document
+ * ({@link PromptDocument}), with an optional uploader-provided `filename`
+ * (carried on the wire and the canonical record, but not part of the model
+ * content shape).
  */
-export type DeliveredAttachment = PromptImage & { filename?: string };
+export type DeliveredAttachment = (PromptImage | PromptDocument) & { filename?: string };
 
 /**
  * A message delivered into an agent's session — the single unified input
@@ -163,6 +164,27 @@ export interface DispatchReceipt {
  */
 export type PromptImage = ImageContent;
 
+/**
+ * Inline document content attached to a `prompt()`, `skill()`, or `task()`
+ * call, or carried as a {@link DeliveredAttachment}:
+ * `{ type: 'document', data: base64, mimeType }`.
+ *
+ * Documents are forwarded to the model as native document content — the
+ * provider receives the file itself (for PDFs: extracted text plus rendered
+ * page images) rather than text Flue extracted or pages rasterized in user
+ * land. Supported MIME types: `application/pdf`. Native document input is
+ * supported on Anthropic Messages, Google Generative AI / Vertex, and OpenAI
+ * (Azure) Responses models; on any other model API the document is replaced
+ * in the model context with a text placeholder noting it was omitted.
+ */
+export interface PromptDocument {
+	type: 'document';
+	/** Base64-encoded document bytes. */
+	data: string;
+	/** Document MIME type. Supported: `application/pdf`. */
+	mimeType: string;
+}
+
 // ─── Skill ──────────────────────────────────────────────────────────────────
 
 /** Imported packaged skill reference accepted by `useSkill()` and `session.skill()`. */
@@ -189,7 +211,11 @@ export interface SkillDefinition {
 	readonly license?: string;
 	readonly compatibility?: string;
 	readonly metadata?: Readonly<Record<string, string>>;
-	/** Space-separated pre-approved tools (experimental in the Agent Skills spec). */
+	/**
+	 * Space-separated tool names the skill author prefers (experimental in
+	 * the Agent Skills spec). Accepted for compatibility; Flue does not
+	 * enforce it.
+	 */
 	readonly allowedTools?: string;
 	/** Supporting resources, keyed by path relative to the skill root. */
 	readonly files?: Readonly<Record<string, string | Uint8Array>>;
@@ -914,6 +940,11 @@ interface OperationOptions<S extends v.GenericSchema | undefined = undefined> {
 	signal?: AbortSignal;
 	/** Images attached to the operation's user message. Requires a vision-capable model. */
 	images?: PromptImage[];
+	/**
+	 * Documents (PDFs) attached to the operation's user message, forwarded as
+	 * native document content. See {@link PromptDocument} for provider support.
+	 */
+	documents?: PromptDocument[];
 }
 
 /** All option fields are scoped to the duration of the `session.prompt()` call. */

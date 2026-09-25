@@ -232,7 +232,7 @@ Read the message currently in front of the model, as the same validated [`Delive
 - [Framework narration signals](/docs/reference/agent-api/#dynamic-resources) (`resources`/`instructions`/`environment`) do not advance the cursor — bookkeeping about the agent's own declared surface never displaces the input the response is answering.
 - Constant within one render; fresh at the next. Renders happen before every model call, and when several messages collect into one response the cursor walks them in the order the model read them. A `useAgentStart` callback firing for a joined message reads that message.
 - Crash-safe: a resumed attempt derives the same cursor from the durable record stream the live attempt saw.
-- In a subagent render, the delivery is the parent's task prompt as a `kind: 'user'` message (task images ride as `attachments`).
+- In a subagent render, the delivery is the parent's task prompt as a `kind: 'user'` message (task images and documents ride as `attachments`).
 - Always present in the runtime: every response starts from a delivered message. A bare tooling/test render with no delivery behind it throws.
 
 ## `useDispatchMessage()`

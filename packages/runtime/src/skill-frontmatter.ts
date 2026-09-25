@@ -7,6 +7,11 @@ export interface ParsedSkillMarkdown {
 	license?: string;
 	compatibility?: string;
 	metadata?: Record<string, string>;
+	/**
+	 * Tool names from the `allowed-tools` frontmatter field, split on
+	 * whitespace. Parsed and retained for Agent Skills spec compatibility;
+	 * Flue does not enforce it.
+	 */
 	allowedTools?: string[];
 }
 

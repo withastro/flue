@@ -63,15 +63,12 @@ type DeliveredMessage =
       tagName?: string;
     };
 
-type DeliveredAttachment = {
-  type: 'image';
-  data: string; // base64
-  mimeType: string;
-  filename?: string;
-};
+type DeliveredAttachment =
+  | { type: 'image'; data: string; mimeType: string; filename?: string } // data: base64
+  | { type: 'document'; data: string; mimeType: 'application/pdf'; filename?: string };
 ```
 
-- `kind: 'user'` — a direct user chat turn. `attachments` accepts images only; `data` is base64 and limited to 14,680,064 characters (14 × 1024 × 1024) — longer data is rejected with `invalid_request` (400).
+- `kind: 'user'` — a direct user chat turn. `attachments` accepts images and documents; `data` is base64 and limited to 14,680,064 characters (14 × 1024 × 1024) — longer data is rejected with `invalid_request` (400). A document's `mimeType` must be `application/pdf`, or the request is rejected with `invalid_request` (400).
 - `kind: 'signal'` — a structured event delivery. `type` must be non-empty. `body` is a plain string; JSON-stringify structured payloads yourself. `tagName` must be a valid XML tag name (`^[A-Za-z_][A-Za-z0-9_.-]*$`); it is rendered unescaped as the signal's envelope in model context, so looser values are rejected with `invalid_request` (400).
 - `initialData` — instance-creation data, consulted only when this send creates the conversation. When the agent declares an `initialData` schema, a creating send is validated against it; mismatches are rejected with `invalid_request` (400) before anything durable is admitted.
 - `uid` — send condition. A string delivers only to the incarnation with that uid: an absent instance or a mismatched uid is rejected with `agent_instance_not_found` (404). `null` creates only when no instance exists: an existing instance is rejected with `agent_instance_exists` (409), whose `details` names the existing uid. Omitted sends deliver unconditionally. Combining a string `uid` with `initialData` is a contradiction (the condition forbids creation) and is rejected with `invalid_request` (400). Failed conditions leave nothing durable behind.
@@ -108,6 +105,16 @@ Returns one materialized snapshot of the conversation: every message reduced to 
 
 Response: `200`, `Content-Type: application/json`, `Cache-Control: no-store`, `Stream-Next-Offset` set to the snapshot's `offset`, `Stream-Up-To-Date: true`.
 
+### Bounded reads
+
+Three optional query parameters bound the read to part of the transcript. A cursor is an opaque token taken from a previous response's `before` field. Do not construct or parse cursors: a cursor names one message in one stream generation.
+
+- `limit=N` — the newest `N` messages (a positive integer). `N` counts every message, hidden and diagnostic ones included. The window may hold more than `N`: it always extends back to include every message that can still receive live updates, such as a response that is still streaming above messages delivered after it. The response is a full snapshot (same `offset`, `incarnation`, and every settlement) plus `before`.
+- `from=<cursor>` — every message from the cursor's message (inclusive) through the head, as a full snapshot plus `before`. Cannot be combined with `limit`.
+- `before=<cursor>` — an older page: the messages strictly before the cursor, oldest first, optionally with `limit=N` to take only the newest `N` of them. The response is `{ v: 1, conversationId, messages, before }`, with no `offset`, `incarnation`, or `settlements`, and no `Stream-Next-Offset` header.
+
+`before` is the cursor for the next older page (naming the oldest returned message), or `null` when the response reaches the start of the conversation. Unbounded reads omit it. Combining `before` with `from`, repeating a parameter, a value that is not a cursor, or a `limit` that is not a positive integer is rejected with `invalid_request` (400). A cursor from an earlier stream generation (the stream was reset and regrown since the cursor was issued), or one whose message is gone, is rejected with `history_cursor_not_found` (410), with the rejected cursor in `meta.cursor`. This holds even when the new generation contains a message with the same id. Re-read the newest window. Runtimes that predate bounded reads ignore these parameters and return the whole conversation.
+
 ### `FlueConversationSnapshot`
 
 `@flue/sdk` exports the snapshot shapes as `FlueConversationSnapshot`, `FlueConversationMessage`, `FlueConversationPart`, and `FlueConversationSettlement`.
@@ -119,12 +126,15 @@ interface FlueConversationSnapshot {
   offset: string;
   messages: FlueConversationMessage[];
   settlements: FlueConversationSettlement[];
+  before?: string | null; // bounded reads only
 }
 
 interface FlueConversationSettlement {
   submissionId: string;
   outcome: 'completed' | 'failed' | 'aborted';
   error?: unknown;
+  answeredBySubmissionId?: string;
+  timestamp?: string;
 }
 
 interface FlueConversationMessage {
@@ -136,6 +146,7 @@ interface FlueConversationMessage {
   turnId?: string;
   signal?: { tagName?: string; attributes?: Record<string, string> };
   settlement?: { outcome: 'failed' | 'aborted' };
+  timestamp?: string;
   parts: FlueConversationPart[];
   metadata?: Record<string, unknown>;
 }
@@ -175,11 +186,12 @@ type FlueConversationPart =
 - `v` — snapshot schema version; currently `1`.
 - `offset` — the durable head through which this snapshot was reduced, including batches that project to no visible message. Resuming an updates read from it yields exactly the changes after this snapshot.
 - `messages` — the conversation transcript in order. One assistant message represents one whole response: every model step of a submission folds into the submission's first assistant message, with parts accumulating across steps.
-- `settlements` — the terminal outcome of every settled submission on this conversation. `error` carries the caller-safe error value for `failed`/`aborted` outcomes.
+- `settlements` — the terminal outcome of every settled submission on this conversation. `error` carries the caller-safe error value for `failed`/`aborted` outcomes. `timestamp` is the capture time of the settlement record.
 - `role`/`purpose`/`display` — `role` is the coarse render lane; `purpose` classifies semantics (`dispatch` = delivered signals, `advisory` = runtime advisories); `display` is the visibility hint (`visible` primary chat, `diagnostic` activity-panel material, `hidden` plumbing).
 - `signal` — present only on `system`-role messages projected from signal deliveries; carries the delivered `tagName` and `attributes`.
 - `settlement` — present only on the terminal advisory the runtime appends when a submission settles `failed` or `aborted`; the message's `submissionId` names the settled submission. Completed submissions get no timeline marker (the assistant reply is the marker); `settlements` remains the programmatic outcome index.
-- `metadata` — entirely agent-authored (response-metadata hooks). The runtime stamps nothing; keys like `usage` or `model` are application conventions.
+- `timestamp` — server-authored capture time (ISO 8601) of the durable record behind the message: the user or signal record for `user`/`system` messages (when the input was applied to the conversation, not when the submission was accepted), and the first step's start for an assistant response (continuation steps keep it). Present for every role, including conversations recorded before the field was projected. It is server wall-clock time — records written in one synchronous span (notably on Cloudflare Workers) can share a timestamp, and clocks are not monotonic across hosts — so order by array position, never by timestamp.
+- `metadata` — entirely agent-authored (response-metadata hooks). The runtime stamps nothing into it; keys like `usage` or `model` are application conventions. Server capture time lives on `timestamp`.
 - `parts` — `text`/`reasoning` carry `state: 'streaming'` while a live response is mid-stream and `'done'` once complete. `data-<name>` parts are named client data writes, one part per write, in emit order. `file` parts reference attachments by `id`; `url` is never set by the server (the runtime does not know the public mount — the SDK resolves it client-side, and `GET /:id/attachments/:attachmentId` is the underlying route). `dynamic-tool` parts progress `input-available` → `output-available`/`output-error`; `durationMs` is the tool-handler execution time, absent on outcomes recorded before the field existed.
 
 The snapshot covers exactly one conversation per agent instance: the default root conversation. Child conversations (subagent tasks and other internal sessions) are never exposed through this surface. The canonical durable record schema is likewise never exposed — snapshots and update chunks are the only read formats on the wire.
@@ -193,6 +205,7 @@ Query parameters:
 - `offset` — required, exactly once: `-1` or a previously returned offset. Missing, repeated, or malformed values are rejected with `invalid_request` (400).
 - `live` — optional: `long-poll` or `sse`. Any other value is rejected with `invalid_request` (400). Omitted = return immediately with whatever is available.
 - `tail` — not supported on this surface; rejected with `invalid_request` (400). A stream suffix can omit message starts, compaction boundaries, and earlier deltas, so it cannot be projected safely.
+- `from`, `limit` — optional window for `conversation-reset` snapshots, sent by a bounded observation. With them, each reset snapshot is cut to the window server-side, with a `before` cursor, instead of carrying the whole transcript. It starts at `from`'s message when that cursor still resolves in this stream generation, and otherwise holds the newest `limit` messages. The same rules as [bounded history reads](#bounded-reads) apply, and the same `invalid_request` validation. Without them, resets carry the whole transcript. `before` is rejected with `invalid_request` (400).
 
 Without `live`, the response is `200`, `Content-Type: application/json`, `Cache-Control: no-store`, with `Stream-Next-Offset` and (when the read reached the head) `Stream-Up-To-Date: true`. The body is a chunk array — empty when nothing was recorded after `offset`.
 
@@ -301,7 +314,7 @@ type ChunkBody =
 
 - `position` — a monotonic ordering token: `batch` is the durable batch ordinal the chunk was projected from, `index` its position within that batch's projection. `{ batch, index }` is globally unique and ordered across the conversation; compare lexicographically (`batch`, then `index`) to dedupe redelivered chunks. Otherwise opaque — do not interpret the numbers.
 - `conversation-reset` — replace all accumulated state with the embedded [snapshot](#flueconversationsnapshot). Emitted when a batch contains a structural boundary (conversation creation, compaction); the reset subsumes every other chunk of its batch, so a fresh read from `offset=-1` begins with one. The embedded snapshot may already contain settlements — check `snapshot.settlements` as well as `submission-settled` chunks when awaiting an outcome.
-- `message-appended` — a complete message (user turn or system signal), in the same message format as the snapshot.
+- `message-appended` — a complete message (user turn or system signal), in the same message format as the snapshot, including its `timestamp` (the same value a later snapshot projects).
 - `message-started` — an assistant response opened. `metadata` carries agent-authored response metadata available at start. Assistant chunks are pre-coalesced: every model step of a submission addresses the submission's first assistant `messageId`, so accumulating parts per `messageId` reproduces the snapshot's one-message-per-response shape. A later `message-started` for an already-open `messageId` is a continuation, not a new message.
 - `message-metadata` — agent-authored metadata for an open response; merge onto the message.
 - `data-part` — one named client data write; append a `data-<name>` part.
@@ -309,7 +322,7 @@ type ChunkBody =
 - `tool-input` / `tool-output` / `tool-output-error` — tool-call lifecycle, correlated by `toolCallId`. Input arrives on the assistant message; outputs update the matching `dynamic-tool` part.
 - `message-completed` — the assistant response closed; mark streaming parts `done`.
 - `submission-settled` — the terminal outcome of one submission, matching the admission response's `submissionId`.
-- `timestamp` — capture time (ISO 8601) of the underlying durable record, present on boundary chunks (`message-started`, `tool-input`, `tool-output`, `tool-output-error`, `message-completed`, `submission-settled`). `message-delta` deliberately omits it for wire weight; interpolate between stamped boundaries.
+- `timestamp` — capture time (ISO 8601) of the underlying durable record, present on boundary chunks (`message-started`, `tool-input`, `tool-output`, `tool-output-error`, `message-completed`, `submission-settled`). `message-appended` carries it on the embedded message instead. `message-delta` deliberately omits it for wire weight; interpolate between stamped boundaries. The SDK copies `message-started`'s `timestamp` onto the assistant message it opens (a continuation keeps the first step's) and `submission-settled`'s onto the settlement.
 
 ## `HEAD /:id`
 
@@ -359,7 +372,7 @@ Every error on this surface renders the canonical Flue envelope with `Content-Ty
 }
 ```
 
-Branch on `type`; message prose is not API. The type codes, statuses, and field semantics are documented in the [Errors Reference](/docs/reference/errors/#route-error-types). Statuses used by this surface: `invalid_request` and `invalid_json` (400), `agent_instance_not_found` and `stream_not_found` and `attachment_not_found` (404), `method_not_allowed` (405), `agent_instance_exists` (409), `unsupported_media_type` (415), `runtime_unavailable` (503, local dev reloads, with `Retry-After`), and `internal_error` or `conversation_stream_store_failure` (500). Unknown server failures never leak their original message — they render as a generic `internal_error`.
+Branch on `type`; message prose is not API. The type codes, statuses, and field semantics are documented in the [Errors Reference](/docs/reference/errors/#route-error-types). Statuses used by this surface: `invalid_request` and `invalid_json` (400), `agent_instance_not_found` and `stream_not_found` and `attachment_not_found` (404), `method_not_allowed` (405), `agent_instance_exists` (409), `history_cursor_not_found` (410, bounded history reads), `unsupported_media_type` (415), `runtime_unavailable` (503, local dev reloads, with `Retry-After`), and `internal_error` or `conversation_stream_store_failure` (500). Unknown server failures never leak their original message — they render as a generic `internal_error`.
 
 ## Fixed response headers
 

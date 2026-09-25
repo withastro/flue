@@ -1,6 +1,8 @@
 import { HttpClient, type HttpClientOptions, type RequestHeaders } from './http.ts';
 import type {
+	FlueConversationHistoryBeforeOptions,
 	FlueConversationHistoryOptions,
+	FlueConversationHistoryPage,
 	FlueConversationMessage,
 	FlueConversationSnapshot,
 } from './public/conversation.ts';
@@ -11,6 +13,7 @@ import {
 import {
 	type AgentConversationObservation,
 	type AgentConversationObserveOptions,
+	assertHistoryLimit,
 	createAgentConversationObservation,
 } from './public/observe.ts';
 import {
@@ -85,8 +88,21 @@ export interface FlueClient {
 	 * outcome asynchronously.
 	 */
 	abort(options?: { signal?: AbortSignal }): Promise<AgentAbortResult>;
-	/** Reads one materialized conversation snapshot. */
+	/**
+	 * Reads one materialized conversation snapshot — the whole conversation,
+	 * or only its newest messages with `limit`.
+	 */
 	history(options?: FlueConversationHistoryOptions): Promise<FlueConversationSnapshot>;
+	/**
+	 * Reads one page (at most `limit` messages) older than a `before` cursor
+	 * from a bounded `history({ limit })` snapshot, a bounded
+	 * `observe({ limit })` state, or a previous page. Rejects when the runtime
+	 * predates bounded history.
+	 */
+	historyBefore(
+		cursor: string,
+		options: FlueConversationHistoryBeforeOptions,
+	): Promise<FlueConversationHistoryPage>;
 	/** Observes the materialized conversation across history catch-up and live updates. */
 	observe(options?: AgentConversationObserveOptions): AgentConversationObservation;
 	/**
@@ -158,30 +174,57 @@ export function createFlueClient(options: CreateFlueClientOptions): FlueClient {
 				path: '/abort',
 				signal: opts.signal,
 			}),
-		history: async (opts = {}) =>
-			rewriteSnapshotAttachmentUrls(
+		history: async (opts = {}) => {
+			if (opts.limit !== undefined) assertHistoryLimit(opts.limit, 'history()');
+			return rewriteSnapshotAttachmentUrls(
 				await http.json<FlueConversationSnapshot>({
-					query: { view: 'history' },
+					query: { view: 'history', limit: opts.limit },
 					signal: opts.signal,
 				}),
 				http,
-			),
+			);
+		},
+		historyBefore: async (cursor, opts) => {
+			if (typeof cursor !== 'string' || cursor === '') {
+				throw new Error('The client historyBefore() requires a non-empty cursor.');
+			}
+			// A page size is required: an unbounded older read would transfer
+			// the rest of the transcript in one call.
+			assertHistoryLimit(opts?.limit as number, 'historyBefore()');
+			const page = await http.json<FlueConversationHistoryPage | FlueConversationSnapshot>({
+				query: { view: 'history', before: cursor, limit: opts.limit },
+				signal: opts.signal,
+			});
+			// A runtime predating bounded history ignores `before` and returns
+			// the whole conversation as a snapshot (with an offset, without a
+			// `before` cursor). Fail loudly rather than hand back a "page" that
+			// duplicates the messages the caller already holds.
+			if ('offset' in page || !('before' in page)) {
+				throw new Error(
+					'The client historyBefore() requires a Flue runtime that supports bounded history reads.',
+				);
+			}
+			return {
+				...page,
+				messages: page.messages.map((message) => withAttachmentUrls(message, http)),
+			};
+		},
 		observe: (opts = {}) =>
 			createAgentConversationObservation(
 				{
-					history: async (historyOptions) =>
+					history: async ({ signal, limit, from }) =>
 						rewriteSnapshotAttachmentUrls(
 							await http.json<FlueConversationSnapshot>({
-								query: { view: 'history' },
-								signal: historyOptions.signal,
+								query: { view: 'history', limit, from },
+								signal,
 							}),
 							http,
 						),
-					updates: ({ onActivity, ...updateOptions }) =>
+					updates: ({ onActivity, window, ...updateOptions }) =>
 						createFlueEventStream<ConversationStreamChunk>(
 							updateOptions,
 							{
-								url: http.url('', { view: 'updates' }),
+								url: http.url('', { view: 'updates', from: window?.from, limit: window?.limit }),
 								fetch: http.fetchWithHeaders.bind(http),
 								onActivity,
 							},

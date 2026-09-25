@@ -1,6 +1,6 @@
 {
 	"name": "@flue/slack",
-	"version": "2.1.0-next.1",
+	"version": "2.1.1",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -29,7 +29,7 @@
 	},
 	"dependencies": {
 		"@slack/types": "3.0.0",
-		"hono": "4.12.32"
+		"hono": "^4.12.32"
 	},
 	"peerDependencies": {
 		"@flue/runtime": "workspace:^"

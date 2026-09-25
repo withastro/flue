@@ -1,6 +1,6 @@
 {
 	"name": "@flue/sdk",
-	"version": "2.1.0-next.1",
+	"version": "2.1.1",
 	"type": "module",
 	"license": "Apache-2.0",
 	"homepage": "https://flueframework.com/",
@@ -24,7 +24,8 @@
 	"scripts": {
 		"build": "tsdown",
 		"prepack": "node ../../scripts/build-docs.mjs sdk",
-		"check:types": "tsc --noEmit"
+		"check:types": "tsc --noEmit",
+		"test": "vitest run"
 	},
 	"dependencies": {
 		"@durable-streams/client": "^0.2.6"
