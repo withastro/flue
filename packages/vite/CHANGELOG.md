@@ -1,5 +1,13 @@
 # @flue/vite
 
+## 2.2.0
+
+### Patch Changes
+
+- a52a72c: Markdown and skill imports written as Node subpath imports (package.json `imports`, e.g. `import core from '#src/prompts/core.md'`) now transform like relative and package specifiers in both dev and production builds: `.md` imports load as markdown text and `SKILL.md` imports package the skill directory. Previously the leading `#` was mistaken for a fragment marker, the import was left untransformed, and Vite tried to parse the Markdown file as JavaScript. Queried forms (`?raw`, `?url`, ...) continue to be delegated to Vite.
+- Updated dependencies [54cabb7, 43d15d1, 2663e50, 3b1adfd, 89032c5]
+  - @flue/runtime@2.2.0
+
 ## 2.1.1
 
 ### Patch Changes
