@@ -1,5 +1,11 @@
 # @flue/runtime
 
+## 2.2.0-next.1
+
+### Patch Changes
+
+- 43d15d1: Fix Cloudflare-routed Anthropic models (`cloudflare/anthropic/*`) failing with `betas: Extra inputs are not permitted` whenever the agent had tools. Anthropic beta features are now sent in the `anthropic-beta` request header instead of the request body.
+
 ## 2.2.0-next.0
 
 ### Minor Changes
