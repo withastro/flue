@@ -1,5 +1,12 @@
 # @flue/discord
 
+## 2.2.0-next.1
+
+### Patch Changes
+
+- Updated dependencies [43d15d1]
+  - @flue/runtime@2.2.0-next.1
+
 ## 2.2.0-next.0
 
 ### Patch Changes
