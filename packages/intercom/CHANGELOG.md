@@ -1,5 +1,12 @@
 # @flue/intercom
 
+## 2.2.0-next.0
+
+### Patch Changes
+
+- Updated dependencies [54cabb7, 2663e50, 3b1adfd, 89032c5]
+  - @flue/runtime@2.2.0-next.0
+
 ## 2.1.1
 
 ### Patch Changes
