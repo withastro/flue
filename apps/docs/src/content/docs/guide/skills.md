@@ -57,7 +57,7 @@ Flue validates every `SKILL.md` against the [Agent Skills specification](https:/
 - `metadata` (optional) — accepted; string-to-string mapping; not interpreted by Flue.
 - `allowed-tools` (optional) — accepted, not enforced. The field is experimental in the Agent Skills spec and support may vary between implementations; Flue carries it for compatibility and does not act on it.
 
-> **Security note:** `allowed-tools` lists the tools a skill author expects to use. It does not restrict what the skill can call, so enforce authorization in your own tools and approval gates.
+> **Security note:** `allowed-tools` lists the tools a skill author expects to use. It does not restrict what the skill can call, so enforce authorization in your own tools and [approval gates](/docs/guide/tools/#approval-gates).
 
 Unknown frontmatter fields are ignored, so skills that carry extra host-specific fields still load. The spec's [`skills-ref` validator](https://github.com/agentskills/agentskills/tree/main/skills-ref) flags unknown fields if you want stricter authoring checks.
 
