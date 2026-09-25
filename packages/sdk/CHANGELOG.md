@@ -1,5 +1,23 @@
 # @flue/sdk
 
+## 2.2.0-next.0
+
+### Minor Changes
+
+- 54cabb7: Add bounded conversation history reads so long-running chats no longer transfer the whole transcript on every page load or reconnect.
+
+  - `client.history({ limit })` reads only the newest messages. The snapshot keeps the head `offset`, the `incarnation`, and every settlement, and adds a `before` cursor.
+  - `client.historyBefore(cursor, { limit })` reads older messages one page at a time. The page size is required.
+  - `client.observe({ limit })` hydrates only the newest messages, then grows forward with live updates. Rehydration after a reconnect reads from the window's oldest message, so no gap opens. The runtime cuts `conversation-reset` snapshots to the same window. The observed state's `before` cursor feeds `historyBefore()`, and a changed cursor means the window re-based.
+  - A window never cuts out a message that can still receive live updates, such as a response still streaming above messages delivered after it. It may hold more than `limit` messages.
+  - Cursors are opaque and bound to one stream generation. After the stream is reset and regrown, reads with an old cursor are rejected with `history_cursor_not_found` (410), even when message ids repeat, and `observe()` re-bases.
+  - `readSubmissionReply()` now requires `settlements`, so history pages are not accepted. It falls back to the latest assistant message only on a complete conversation, never on a bounded window where that message may belong to another submission.
+
+  Unbounded reads are unchanged. `@flue/react` still observes the whole conversation.
+
+- 2663e50: Support document attachments (PDFs) on user messages. `DeliveredAttachment` is now a union of image and document attachments — `{ type: 'document', data, mimeType: 'application/pdf', filename? }` — accepted on `dispatch()`, the `init()` handle, and direct HTTP prompts. `session.prompt()`, `skill()`, and `task()` gain a `documents` option alongside `images`, and `@flue/react`'s `sendMessage()` gains a `documents` option. Documents are forwarded to the model as native document content: Anthropic `document` blocks, OpenAI (and Azure OpenAI) Responses `input_file` parts, and Google `inlineData`. On other model APIs the document is replaced in model context with a text placeholder saying it was omitted. Documents are stored like images — as canonical attachments projected as `file` parts with `mediaType: 'application/pdf'` — so existing conversations and persistence adapters need no migration. The SDK also exports `DeliveredImageAttachment` and `DeliveredDocumentAttachment`.
+- 3b1adfd: Conversation messages now carry a server-authored `timestamp` (ISO 8601 capture time of the underlying durable record) in `history()`, `observe()`, and `useFlueAgent`. It works for every role and for existing conversations. `metadata` remains entirely agent-authored. Conversation settlements carry the same `timestamp` for when the submission settled.
+
 ## 2.1.1
 
 ### Patch Changes
