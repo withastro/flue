@@ -229,6 +229,9 @@ export function resolveModel(model: string): Model<Api> {
 	const resolved = models.getModel(providerId, modelId);
 	if (resolved) return resolved;
 
+	const aliased = resolveVersionSeparatorAlias(providerId, modelId);
+	if (aliased) return aliased;
+
 	const template = (provider as ProviderWithDynamicModels)[DYNAMIC_MODEL_TEMPLATE];
 	if (template) {
 		warnDynamicModelSynthesis(providerId, modelId);
@@ -239,6 +242,57 @@ export function resolveModel(model: string): Model<Api> {
 		`[flue] Unknown model ID "${modelId}" for provider "${providerId}". ` +
 			`Declared model IDs: ${listModelIds(providerId)}.`,
 	);
+}
+
+// ─── Version-separator aliases ──────────────────────────────────────────────
+
+/**
+ * Canonical form of a model ID for version-separator matching: a `-` or `.`
+ * between two digits becomes `.`, so `claude-sonnet-4-6` and
+ * `claude-sonnet-4.6` compare equal.
+ */
+function versionSeparatorKey(modelId: string): string {
+	return modelId.replace(/(?<=\d)[-.](?=\d)/g, '.');
+}
+
+/** One warning per requested specifier: the alias fallback was used. */
+const warnedVersionSeparatorAliases = new Set<string>();
+
+/** Reset the version-separator alias warning guard. Test-only. */
+export function resetVersionSeparatorAliasWarnForTests(): void {
+	warnedVersionSeparatorAliases.clear();
+}
+
+/**
+ * Resolve an undeclared model ID that differs from exactly one declared ID
+ * only in its version separators (`-` vs `.` between digits).
+ *
+ * pi-ai catalogs occasionally rename IDs between these forms — pi 0.87 moved
+ * the `cloudflare-ai-gateway` Claude models from `claude-sonnet-4-6` to
+ * `claude-sonnet-4.6` — which would otherwise turn a dependency bump into a
+ * hard `Unknown model ID` failure for every existing specifier. Ambiguous
+ * matches resolve to nothing so the regular error still reports them.
+ */
+function resolveVersionSeparatorAlias(providerId: string, modelId: string): Model<Api> | undefined {
+	if (!/\d[-.]\d/.test(modelId)) return undefined;
+	const key = versionSeparatorKey(modelId);
+
+	const candidates = models
+		.getModels(providerId)
+		.filter((model) => model.id !== modelId && versionSeparatorKey(model.id) === key);
+	if (candidates.length !== 1) return undefined;
+
+	const [model] = candidates as [Model<Api>];
+	const requested = `${providerId}/${modelId}`;
+	if (!warnedVersionSeparatorAliases.has(requested)) {
+		warnedVersionSeparatorAliases.add(requested);
+		console.warn(
+			`[flue] Model "${requested}" is not in the provider's catalog; using ` +
+				`"${providerId}/${model.id}", which differs only in version separators. ` +
+				`Update the specifier to "${providerId}/${model.id}".`,
+		);
+	}
+	return model;
 }
 
 function listModelIds(providerId: string): string {
