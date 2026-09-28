@@ -29,7 +29,57 @@ let models: MutableModels = createModels();
  * takes precedence over the generated Workers AI binding default.
  */
 export function setProvider(provider: Provider): void {
-	models.setProvider(provider);
+	models.setProvider(
+		provider.id === CLOUDFLARE_AI_GATEWAY_PROVIDER_ID
+			? withAnthropicGatewayModelIds(provider)
+			: provider,
+	);
+}
+
+// ─── Cloudflare AI Gateway Anthropic ids ──────────────────────────────────────
+
+const CLOUDFLARE_AI_GATEWAY_PROVIDER_ID = 'cloudflare-ai-gateway';
+
+/**
+ * Whether a model is served by AI Gateway's native Anthropic endpoint
+ * (`…/{CLOUDFLARE_GATEWAY_ID}/anthropic`), which forwards the model id to
+ * Anthropic's Messages API unchanged.
+ */
+export function isAnthropicGatewayModel(model: Pick<Model<Api>, 'api' | 'baseUrl'>): boolean {
+	return model.api === 'anthropic-messages' && /\/anthropic\/?$/.test(model.baseUrl);
+}
+
+/**
+ * The Anthropic API id for a gateway catalog id: dotted versions become
+ * dashed (`claude-sonnet-4.6` → `claude-sonnet-4-6`). Anthropic only accepts
+ * dashed ids and answers dotted ones with a 404.
+ */
+export function anthropicGatewayModelId(modelId: string): string {
+	return modelId.replace(/(?<=\d)\.(?=\d)/g, '-');
+}
+
+/**
+ * Rewrite a gateway provider's Anthropic catalog ids to the ids Anthropic
+ * accepts. Since pi-ai 0.84.3 the `cloudflare-ai-gateway` catalog lists
+ * dotted Claude ids (`claude-sonnet-4.6`), and pi sends `model.id` to the
+ * native Anthropic endpoint verbatim, so every dotted model 404s. Dashed
+ * specifiers resolve directly; dotted specifiers still resolve through the
+ * version-separator alias in {@link resolveModel}. Already-dashed ids pass
+ * through, so this is a no-op once pi's catalog is fixed.
+ */
+function withAnthropicGatewayModelIds(provider: Provider): Provider {
+	return {
+		...provider,
+		getModels: () => {
+			const seen = new Set<string>();
+			return provider.getModels().flatMap((model) => {
+				const id = isAnthropicGatewayModel(model) ? anthropicGatewayModelId(model.id) : model.id;
+				if (seen.has(id)) return [];
+				seen.add(id);
+				return [id === model.id ? model : { ...model, id }];
+			});
+		},
+	};
 }
 
 /** Whether a provider ID has already been registered. */
@@ -267,11 +317,12 @@ export function resetVersionSeparatorAliasWarnForTests(): void {
  * Resolve an undeclared model ID that differs from exactly one declared ID
  * only in its version separators (`-` vs `.` between digits).
  *
- * pi-ai catalogs occasionally rename IDs between these forms — pi 0.87 moved
+ * pi-ai catalogs occasionally rename IDs between these forms (pi 0.84.3 moved
  * the `cloudflare-ai-gateway` Claude models from `claude-sonnet-4-6` to
- * `claude-sonnet-4.6` — which would otherwise turn a dependency bump into a
- * hard `Unknown model ID` failure for every existing specifier. Ambiguous
- * matches resolve to nothing so the regular error still reports them.
+ * `claude-sonnet-4.6`), and Cloudflare's binding catalog names models with
+ * dots where Anthropic uses dashes. Without this, a renamed ID becomes a hard
+ * `Unknown model ID` failure for every existing specifier. Ambiguous matches
+ * resolve to nothing so the regular error still reports them.
  */
 function resolveVersionSeparatorAlias(providerId: string, modelId: string): Model<Api> | undefined {
 	if (!/\d[-.]\d/.test(modelId)) return undefined;

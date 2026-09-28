@@ -1,8 +1,12 @@
 import type { Api, Model, Provider } from '@earendil-works/pi-ai';
+import { cloudflareAIGatewayProvider } from '@earendil-works/pi-ai/providers/cloudflare-ai-gateway';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+	anthropicGatewayModelId,
 	DYNAMIC_MODEL_MARKER,
 	DYNAMIC_MODEL_TEMPLATE,
+	getRuntimeModels,
+	isAnthropicGatewayModel,
 	isDynamicModel,
 	resetDynamicModelWarnForTests,
 	resetModelsForTests,
@@ -181,5 +185,83 @@ describe('version-separator aliases', () => {
 		resolveModel('test/claude-sonnet-4-6');
 		expect(warn).toHaveBeenCalledTimes(1);
 		expect(warn.mock.calls[0]?.[0]).toContain('test/claude-sonnet-4.6');
+	});
+});
+
+const GATEWAY_BASE = 'https://gateway.ai.cloudflare.com/v1/{CLOUDFLARE_ACCOUNT_ID}/{CLOUDFLARE_GATEWAY_ID}';
+
+function gatewayModel(id: string, api: Api, vendor: string): Model<Api> {
+	return {
+		...catalogModel('cloudflare-ai-gateway', id),
+		api,
+		baseUrl: `${GATEWAY_BASE}/${vendor}`,
+	};
+}
+
+describe('Cloudflare AI Gateway Anthropic ids', () => {
+	it('dashes dotted versions', () => {
+		expect(anthropicGatewayModelId('claude-sonnet-4.6')).toBe('claude-sonnet-4-6');
+		expect(anthropicGatewayModelId('claude-fable-5.1')).toBe('claude-fable-5-1');
+		expect(anthropicGatewayModelId('claude-opus-5')).toBe('claude-opus-5');
+		expect(anthropicGatewayModelId('claude-sonnet-4-6')).toBe('claude-sonnet-4-6');
+	});
+
+	it('registers native Anthropic endpoint models under Anthropic ids', () => {
+		setProvider(
+			providerWith('cloudflare-ai-gateway', [
+				gatewayModel('claude-sonnet-4.6', 'anthropic-messages', 'anthropic'),
+				gatewayModel('claude-opus-5', 'anthropic-messages', 'anthropic'),
+				gatewayModel('gpt-5.6-terra', 'openai-responses', 'openai'),
+				gatewayModel('workers-ai/@cf/moonshotai/kimi-k2.6', 'openai-completions', 'compat'),
+			]),
+		);
+		expect(getRuntimeModels().getModels('cloudflare-ai-gateway').map((model) => model.id)).toEqual([
+			'claude-sonnet-4-6',
+			'claude-opus-5',
+			'gpt-5.6-terra',
+			'workers-ai/@cf/moonshotai/kimi-k2.6',
+		]);
+		expect(resolveModel('cloudflare-ai-gateway/claude-sonnet-4-6').id).toBe('claude-sonnet-4-6');
+	});
+
+	it('resolves dotted specifiers to the Anthropic id', () => {
+		vi.spyOn(console, 'warn').mockImplementation(() => {});
+		setProvider(
+			providerWith('cloudflare-ai-gateway', [
+				gatewayModel('claude-sonnet-4.6', 'anthropic-messages', 'anthropic'),
+			]),
+		);
+		expect(resolveModel('cloudflare-ai-gateway/claude-sonnet-4.6').id).toBe('claude-sonnet-4-6');
+	});
+
+	it('keeps one entry when the catalog lists both forms', () => {
+		setProvider(
+			providerWith('cloudflare-ai-gateway', [
+				gatewayModel('claude-sonnet-4.6', 'anthropic-messages', 'anthropic'),
+				gatewayModel('claude-sonnet-4-6', 'anthropic-messages', 'anthropic'),
+			]),
+		);
+		expect(getRuntimeModels().getModels('cloudflare-ai-gateway').map((model) => model.id)).toEqual([
+			'claude-sonnet-4-6',
+		]);
+	});
+
+	it('leaves other providers unchanged', () => {
+		setProvider(
+			providerWith('cloudflare', [
+				{ ...gatewayModel('anthropic/claude-sonnet-4.6', 'anthropic-messages', 'anthropic'), provider: 'cloudflare' },
+			]),
+		);
+		expect(resolveModel('cloudflare/anthropic/claude-sonnet-4.6').id).toBe('anthropic/claude-sonnet-4.6');
+	});
+
+	it('leaves no dotted Anthropic ids in the shipped pi-ai gateway catalog', () => {
+		setProvider(cloudflareAIGatewayProvider());
+		const anthropic = getRuntimeModels()
+			.getModels('cloudflare-ai-gateway')
+			.filter(isAnthropicGatewayModel);
+		expect(anthropic.length).toBeGreaterThan(0);
+		expect(anthropic.filter((model) => /\d\.\d/.test(model.id)).map((model) => model.id)).toEqual([]);
+		expect(resolveModel('cloudflare-ai-gateway/claude-sonnet-4-6').id).toBe('claude-sonnet-4-6');
 	});
 });
