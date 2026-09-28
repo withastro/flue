@@ -1,5 +1,12 @@
 # @flue/react
 
+## 2.2.2
+
+### Patch Changes
+
+- Updated dependencies
+  - @flue/sdk@2.2.2
+
 ## 2.2.1
 
 ### Patch Changes
