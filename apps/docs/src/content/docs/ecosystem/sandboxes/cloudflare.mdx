@@ -93,6 +93,36 @@ export function Assistant({ id }: AgentProps) {
 }
 ```
 
+## Stream command output
+
+Cloudflare Sandbox can report stdout and stderr while a command is still running. Inside a harness-enabled tool or lifecycle hook, pass `onOutput` to a direct `harness.sandbox.exec()` call:
+
+```ts
+const result = await harness.sandbox.exec('pnpm install', {
+  onOutput(stream, chunk) {
+    console.log(`[sandbox:${stream}]`, chunk);
+  },
+});
+```
+
+`stream` is either `'stdout'` or `'stderr'`. `chunk` is a piece of text, not necessarily a complete line. A chunk can contain part of a line or several lines, so buffer chunks yourself if your logger needs line-by-line output.
+
+Streaming does not change the result. When the command finishes, `result.stdout` and `result.stderr` still contain the complete output. A call without `onOutput` uses Cloudflare's buffered execution path.
+
+Output callbacks are for observation only. If one throws, Flue keeps the command running and reports the callback failure separately. Use `onObserverError` on the factory to send those failures to your logger:
+
+```ts
+useSandbox(
+  cloudflareSandbox(getSandbox(Sandbox, id), {
+    onObserverError({ observer, error }) {
+      console.error(`[sandbox:${observer}] callback failed`, error);
+    },
+  }),
+);
+```
+
+After caller cancellation, Flue stops delivering output chunks even if the remote command is still winding down. Streaming is currently available only on direct `Sandbox.exec()` calls. The model-facing `bash` tool remains buffered and does not publish these chunks to the conversation stream.
+
 ## Choose this integration when
 
 Use Cloudflare Sandbox when an agent on Cloudflare needs git, package installation, native binaries, or other Linux tooling. Prefer Cloudflare Shell instead when a durable workspace with Workspace-oriented operations is sufficient and a Linux toolchain is unnecessary.

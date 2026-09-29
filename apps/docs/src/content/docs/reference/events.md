@@ -1,7 +1,7 @@
 ---
 title: Events Reference
 description: The runtime event vocabulary — the observe() and instrument() registration contracts, the event envelope, every event type and its payload, and the live-only observation fields.
-lastReviewedAt: 2026-07-30
+lastReviewedAt: 2026-09-18
 ---
 
 This page documents the runtime event surface of `@flue/runtime`: the `observe()` and `instrument()` registration contracts, the `FlueEvent` envelope, every event type and its payload, and the live-only fields a `FlueObservation` adds. For the consumer-oriented walkthrough — subscribing, metering usage, exporting telemetry — see [Observability](/docs/guide/observability/). The per-conversation message stream a chat UI reads is a different surface with a different schema; see the [Streaming Protocol Reference](/docs/reference/streaming-protocol/) and the [Flue Agent SDK events page](/docs/sdk/events/).
@@ -112,7 +112,7 @@ Two content guarantees hold for every event surface:
 
 ## Event types
 
-The v3 vocabulary contains 27 event types:
+The v3 vocabulary contains 28 event types:
 
 - Agent lifecycle — [`agent_start`, `agent_end`, `idle`](#agent_start-agent_end-idle)
 - Submission lifecycle — [`submission_queued`, `submission_running`](#submission_queued-submission_running), [`submission_settled`](#submission_settled)
@@ -120,7 +120,7 @@ The v3 vocabulary contains 27 event types:
 - Operations — [`operation_start`, `operation`](#operation_start-operation)
 - Model turns — [`turn_start`, `turn_request`, `turn`, `turn_messages`](#turn_start-turn_request-turn-turn_messages)
 - Messages and deltas — [`message_start`, `message_end`, `text_delta`, `thinking_start`, `thinking_delta`, `thinking_end`, `toolcall_delta`](#message-and-delta-events)
-- Tools — [`tool_start`, `tool`](#tool_start-tool)
+- Tools — [`tool_start`, `tool_update`, `tool`](#tool_start-tool_update-tool)
 - Tasks — [`task_start`, `task`](#task_start-task)
 - Compaction — [`compaction_start`, `compaction`](#compaction_start-compaction)
 - Logs — [`log`](#log)
@@ -435,10 +435,16 @@ Token counts per component plus cost computed from the model catalog's per-milli
 
 Delta events carry no `turnId` payload field; correlate them through the envelope's `turnId` correlation field.
 
-### `tool_start`, `tool`
+### `tool_start`, `tool_update`, `tool`
 
 ```ts
 { type: 'tool_start'; toolName: string; toolCallId: string; args?: any }
+{
+  type: 'tool_update';
+  toolName: string;
+  toolCallId: string;
+  result: unknown;
+}
 {
   type: 'tool';
   toolName: string;
@@ -449,9 +455,10 @@ Delta events carry no `turnId` payload field; correlate them through the envelop
 }
 ```
 
-Bounds of one tool execution, correlated by `toolCallId`. Emitted for model-invoked tool calls and for programmatic `shell()` calls alike (`shell()` appears as `toolName: 'bash'` with observation `origin: 'caller'`).
+Bounds and live progress of one tool execution, correlated by `toolCallId`. `tool_start` and `tool` are emitted for model-invoked tool calls and for programmatic `shell()` calls alike (`shell()` appears as `toolName: 'bash'` with observation `origin: 'caller'`). `tool_update` is emitted when a model tool reports partial results; the built-in `bash` tool reports cumulative output snapshots when its sandbox supports `onOutput`.
 
 - `args` — declared in the format but not populated by the current runtime; the normalized arguments are delivered on the live observation's `args` field instead, and the canonical conversation record carries them durably.
+- `tool_update.result` — the tool's latest partial result snapshot. Live-preview only: never persisted or replayed, and subscribers may miss updates. The terminal `tool` event remains authoritative.
 - `isError` — true when the tool threw. Tools signal errors by throwing; there is no error flag on a successful result value.
 - `result` — the tool's result value. For model tools this is the harness-level result shape (`content` blocks plus a tool-specific `details` payload) — an internal shape, not a stable contract. Image blocks in `result.content` carry [`IMAGE_DATA_OMITTED`](#image_data_omitted).
 - `durationMs` — measured once and shared with the durable record, so the two cannot disagree.
@@ -544,7 +551,7 @@ For one durable submission whose `prompt` operation contains a single tool-calli
 5. `turn_start`, `turn_request`
 6. `message_start` for the assistant message; `text_delta`, `thinking_*`, and `toolcall_delta` interleave while it streams
 7. `turn`, then `message_end` for the completed assistant message
-8. per tool call: `tool_start` when execution begins, then `message_start` / `message_end` for its tool-result message when it finishes
+8. per tool call: `tool_start` when execution begins, any live `tool_update` snapshots, then `message_start` / `message_end` for its tool-result message when it finishes
 9. the terminal `tool` events when the batch commits, then `turn_messages`
 10. further turns repeat from step 5 until a turn produces no tool calls
 11. `agent_end`, `operation`, `idle`
@@ -579,8 +586,8 @@ The shape `observe()` delivers: the event plus exporter-oriented detail fields. 
 
 - `agentInput` — the invocation's prompt text and image manifest (MIME types only, no bytes). On the terminal `operation` event for `prompt` and `skill` operations, and on `task_start`.
 - `agentOutput` — the invocation's outcome: freeform text with its finish reason, or the validated structured data of a `result:`-schema call. On successful `operation` (`prompt`/`skill`) and `task` events.
-- `origin` — who initiated a tool call: `model` (model-invoked, including custom tools), `adapter` (sandbox-adapter tools), `framework` (framework-added tools such as `task` and result extraction), or `caller` (programmatic `shell()`). On `tool_start` and `tool`.
-- `description` — the tool's description text. On `tool_start` and `tool` for model-invoked calls.
+- `origin` — who initiated a tool call: `model` (model-invoked, including custom tools), `adapter` (sandbox-adapter tools), `framework` (framework-added tools such as `task` and result extraction), or `caller` (programmatic `shell()`). On `tool_start`, `tool_update`, and `tool`.
+- `description` — the tool's description text. On `tool_start`, `tool_update`, and `tool` for model-invoked calls.
 - `args` — the tool call's normalized arguments. On `tool_start`.
 - `effectiveResult` — the tool's effective result as the model sees it (single text blocks collapsed to their string). On successful `tool` events. Image content is replaced with [`IMAGE_DATA_OMITTED`](#image_data_omitted).
 - `toolCallId` — on `task_start` when the task was raised by a model `task` tool call, linking the task to that call.

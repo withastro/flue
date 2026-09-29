@@ -1,7 +1,7 @@
 /** Wraps a @cloudflare/sandbox instance (from getSandbox()) into Sandbox. */
 import { decodeBase64, encodeBase64 } from '../base64.ts';
 import { SandboxDiedError } from '../errors.ts';
-import type { SandboxDriver } from '../sandbox.ts';
+import type { SandboxDriver, SandboxObserverFailure } from '../sandbox.ts';
 import { sandboxFromDriver } from '../sandbox.ts';
 import type { Sandbox, SandboxFactory } from '../types.ts';
 
@@ -19,8 +19,18 @@ export interface CloudflareSandboxStub {
 			cwd?: string;
 			env?: Record<string, string>;
 			timeout?: number;
+			stream?: boolean;
+			onOutput?: (stream: 'stdout' | 'stderr', data: string) => void;
 		},
 	): Promise<{ success: boolean; stdout: string; stderr: string; exitCode?: number }>;
+	execStream(
+		command: string,
+		options?: {
+			cwd?: string;
+			env?: Record<string, string>;
+			timeout?: number;
+		},
+	): Promise<ReadableStream<Uint8Array>>;
 	readFile(path: string, options?: { encoding?: string }): Promise<{ content: string }>;
 	writeFile(path: string, content: string, options?: { encoding?: string }): Promise<unknown>;
 	exists(path: string): Promise<{ exists: boolean }>;
@@ -35,9 +45,88 @@ export interface CloudflareSandboxStub {
 	getState(): Promise<{ status: string }>;
 }
 
+// Mirrors @cloudflare/sandbox's exported ExecEvent without making the runtime
+// package depend on that optional provider SDK.
+interface CloudflareExecEvent {
+	type: 'start' | 'stdout' | 'stderr' | 'complete' | 'error';
+	data?: string;
+	error?: string;
+	exitCode?: number;
+}
+
+export async function consumeExecStream(
+	streamPromise: Promise<ReadableStream<Uint8Array>>,
+	onOutput: (stream: 'stdout' | 'stderr', data: string) => void,
+): Promise<{ success: boolean; stdout: string; stderr: string; exitCode: number }> {
+	const stream = await streamPromise;
+	const reader = stream.getReader();
+	const decoder = new TextDecoder();
+	let buffer = '';
+	let stdout = '';
+	let stderr = '';
+
+	const consumeFrame = (frame: string): number | undefined => {
+		const data = frame
+			.split(/\r?\n/)
+			.filter((line) => line.startsWith('data:'))
+			.map((line) => (line.startsWith('data: ') ? line.slice(6) : line.slice(5)))
+			.join('\n');
+		if (!data || data === '[DONE]') return;
+
+		let event: CloudflareExecEvent;
+		try {
+			event = JSON.parse(data) as CloudflareExecEvent;
+		} catch {
+			return;
+		}
+
+		if ((event.type === 'stdout' || event.type === 'stderr') && event.data) {
+			if (event.type === 'stdout') stdout += event.data;
+			else stderr += event.data;
+			onOutput(event.type, event.data);
+			return;
+		}
+		if (event.type === 'error') {
+			throw new Error(event.error ?? event.data ?? 'Command execution failed');
+		}
+		if (event.type === 'complete') return event.exitCode ?? 0;
+	};
+
+	try {
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+			buffer += decoder.decode(value, { stream: true });
+			let boundary = /\r?\n\r?\n/.exec(buffer);
+			while (boundary) {
+				const exitCode = consumeFrame(buffer.slice(0, boundary.index));
+				buffer = buffer.slice(boundary.index + boundary[0].length);
+				if (exitCode !== undefined) return { success: exitCode === 0, stdout, stderr, exitCode };
+				boundary = /\r?\n\r?\n/.exec(buffer);
+			}
+		}
+
+		buffer += decoder.decode();
+		if (buffer.trim()) {
+			const exitCode = consumeFrame(buffer);
+			if (exitCode !== undefined) return { success: exitCode === 0, stdout, stderr, exitCode };
+		}
+		throw new Error('Cloudflare Sandbox exec stream ended without a completion event.');
+	} finally {
+		try {
+			await reader.cancel();
+		} catch {
+			// The remote stream may already be closed.
+		}
+		reader.releaseLock();
+	}
+}
+
 export interface CloudflareSandboxOptions {
 	/** Working directory inside the container. Defaults to `/workspace`. */
 	cwd?: string;
+	/** Receives failures thrown by observational sandbox callbacks. */
+	onObserverError?: (failure: SandboxObserverFailure) => void;
 }
 
 /**
@@ -60,7 +149,7 @@ export function cloudflareSandbox(
 	options?: CloudflareSandboxOptions,
 ): SandboxFactory {
 	return {
-		createSandbox: async () => cfSandboxToSandbox(sandbox, options?.cwd),
+		createSandbox: async () => cfSandboxToSandbox(sandbox, options?.cwd, options?.onObserverError),
 	};
 }
 
@@ -171,7 +260,11 @@ function raceContainerDeath<T>(
 
 // Module-private: only cloudflareSandbox() above uses it, and the entry-point
 // tests assert it stays off the cloudflare and internal barrels.
-function cfSandboxToSandbox(sandbox: CloudflareSandboxStub, cwd: string = '/workspace'): Sandbox {
+function cfSandboxToSandbox(
+	sandbox: CloudflareSandboxStub,
+	cwd: string = '/workspace',
+	onObserverError?: (failure: SandboxObserverFailure) => void,
+): Sandbox {
 	// Every container call goes through the death detector so a call that is
 	// in flight when the container dies settles instead of hanging forever.
 	const guarded = <T>(operation: string, rpc: Promise<T>): Promise<T> =>
@@ -269,6 +362,7 @@ function cfSandboxToSandbox(sandbox: CloudflareSandboxStub, cwd: string = '/work
 			execOpts?: {
 				cwd?: string;
 				env?: Record<string, string>;
+				onOutput?: (stream: 'stdout' | 'stderr', data: string) => void;
 				timeoutMs?: number;
 				signal?: AbortSignal;
 			},
@@ -279,14 +373,17 @@ function cfSandboxToSandbox(sandbox: CloudflareSandboxStub, cwd: string = '/work
 			// this adapter builds on) owns caller-facing abort and rejects
 			// promptly while the container keeps running the command. Only
 			// cloneable execution options cross the RPC boundary.
+			const providerOptions = {
+				cwd: execOpts?.cwd,
+				env: execOpts?.env,
+				// The Cloudflare sandbox `timeout` option is in milliseconds.
+				timeout: execOpts?.timeoutMs,
+			};
 			const result = await guarded(
 				'exec',
-				sandbox.exec(command, {
-					cwd: execOpts?.cwd,
-					env: execOpts?.env,
-					// The Cloudflare sandbox `timeout` option is in milliseconds.
-					timeout: execOpts?.timeoutMs,
-				}),
+				execOpts?.onOutput
+					? consumeExecStream(sandbox.execStream(command, providerOptions), execOpts.onOutput)
+					: sandbox.exec(command, providerOptions),
 			);
 
 			return {
@@ -297,5 +394,5 @@ function cfSandboxToSandbox(sandbox: CloudflareSandboxStub, cwd: string = '/work
 		},
 	};
 
-	return sandboxFromDriver(api, cwd);
+	return sandboxFromDriver(api, cwd, { onObserverError });
 }
